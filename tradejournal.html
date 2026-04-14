@@ -42,6 +42,20 @@ body.theme-classic{
 --border1:rgba(255,255,255,0.05);--border2:rgba(255,255,255,0.08);--border3:rgba(255,255,255,0.11);--border4:rgba(255,255,255,0.14);--border5:rgba(255,255,255,0.17);--border6:rgba(255,255,255,0.2);
 background:#0c0d12}
 body.theme-classic::before,body.theme-classic::after{display:none}
+/* ═══ LIGHT THEME — schoon, licht, hoog contrast ═══ */
+body.theme-light{
+--text:#1a1a1a;--text2:rgba(26,26,26,0.85);--text3:rgba(26,26,26,0.6);--text4:rgba(26,26,26,0.45);--text5:rgba(26,26,26,0.3);
+--green:#2d8659;--green2:rgba(45,134,89,0.12);--green3:rgba(45,134,89,0.22);
+--red:#c73e3e;--red2:rgba(199,62,62,0.10);--red3:rgba(199,62,62,0.20);
+--bg:#f7f6f2;--bg2:#ffffff;--bg3:#faf8f2;--bg4:#eeeae0;
+--glass:rgba(255,255,255,0.92);--glass-border:rgba(175,140,50,0.22);--glass-border-accent:rgba(175,140,50,0.35);
+--glass-blur:none;
+--border1:rgba(26,26,26,0.06);--border2:rgba(26,26,26,0.08);--border3:rgba(26,26,26,0.12);--border4:rgba(26,26,26,0.16);--border5:rgba(175,140,50,0.3);--border6:rgba(175,140,50,0.4);
+--gold:#a88a3c;--gold-dim:rgba(168,138,60,0.10);--gold-border:rgba(168,138,60,0.35);
+background:#f7f6f2;color:#1a1a1a}
+body.theme-light::before,body.theme-light::after{display:none}
+body.theme-light input,body.theme-light textarea,body.theme-light select{background:#ffffff!important;color:#1a1a1a!important;border-color:rgba(26,26,26,0.15)!important}
+body.theme-light input[type=date]::-webkit-calendar-picker-indicator{filter:invert(0)}
 /* ═══ AURORA THEME — v4_14 Morani Signature: mesh gradient orbs, glasmorfisme ═══ */
 body.theme-aurora{
 --bg:#08090c;--bg2:rgba(14,16,22,0.45);--bg3:rgba(14,16,22,0.45);--bg4:rgba(20,22,30,0.5);
@@ -407,6 +421,7 @@ window.addEventListener('unhandledrejection', function(e) {
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
 <script type="text/babel">
 
@@ -443,6 +458,8 @@ const NA=()=>React.createElement("span",{style:{color:"#939aa5",fontStyle:"itali
 const valOrNA=(v,formatter)=>isEmpty(v)?React.createElement(NA):formatter?formatter(v):v;
 const ts2date=(ms)=>{const d=new Date(parseInt(ms));return d.toISOString().split("T")[0]};
 const ts2time=(ms)=>{const d=new Date(parseInt(ms));return d.toTimeString().slice(0,5)};
+// Nederlandse datumweergave: 2026-04-14 → 14-04-2026. Storage blijft ISO voor sortering.
+const fmtNL=(iso)=>{if(!iso||typeof iso!=="string")return iso||"";const p=iso.split("-");return p.length===3?`${p[2]}-${p[1]}-${p[0]}`:iso;};
 
 // ============ SESSION DETECTION ============
 const SESSION_COLORS={
@@ -580,7 +597,9 @@ const EMPTY_TRADE={
   emotionTags:[],mistakeTags:[],customTags:[],
   rating:0,screenshot:null,notes:"",links:[],layers:[],
   source:"manual",positionId:"",openTime:"",closeTime:"",
-  status:"closed",manualOverrides:[],tpLevels:[]
+  status:"closed",manualOverrides:[],tpLevels:[],
+  entryNote:"",
+  riskUsd:"",riskPct:""
 };
 
 const iStyle={width:"100%",padding:"11px 14px",borderRadius:"var(--radius)",border:"1px solid rgba(201,168,76,0.18)",background:"rgba(255,255,255,0.03)",color:"var(--text)",fontSize:"14px",fontFamily:"var(--mono)",outline:"none",transition:"border-color .15s",lineHeight:1.5};
@@ -599,7 +618,7 @@ function getProxyUrl(){
   const WORKER="https://morani-proxy.moranitraden.workers.dev";
   try{
     const saved=localStorage.getItem("tj_proxy_url");
-    if(!saved||saved.includes("127.0.0.1")||saved.includes("localhost")){
+    if(!saved){
       localStorage.setItem("tj_proxy_url",WORKER);
       return WORKER;
     }
@@ -641,8 +660,37 @@ const ExchangeAPI = {
   },
   blofin:{
     name:"Blofin",color:"#6366f1",needsPassphrase:true,
+    // Directe call (geen Worker) — Blofin API is CORS-enabled.
+    async _direct(apiKey,apiSecret,passphrase,path,params={}){
+      const qs=new URLSearchParams(params).toString();
+      const pathWithQs=path+(qs?"?"+qs:"");
+      const ts=Date.now().toString();
+      const nonce=ts+Math.random().toString(36).slice(2,10);
+      // Blofin signing v2: prehash = pathWithQs + method + ts + nonce + body
+      const prehash=pathWithQs+"GET"+ts+nonce+"";
+      const enc=new TextEncoder();
+      const key=await crypto.subtle.importKey("raw",enc.encode(apiSecret),{name:"HMAC",hash:"SHA-256"},false,["sign"]);
+      const sig=await crypto.subtle.sign("HMAC",key,enc.encode(prehash));
+      // Blofin vereist: base64(hex(hmac)) — niet base64(raw)
+      const hex=Array.from(new Uint8Array(sig)).map(b=>b.toString(16).padStart(2,"0")).join("");
+      const signature=btoa(hex);
+      const res=await fetch("https://openapi.blofin.com"+pathWithQs,{
+        method:"GET",
+        headers:{"ACCESS-KEY":apiKey,"ACCESS-SIGN":signature,"ACCESS-TIMESTAMP":ts,"ACCESS-NONCE":nonce,"ACCESS-PASSPHRASE":passphrase,"Content-Type":"application/json"},
+      });
+      const data=await res.json();
+      if(data.code&&String(data.code)!=="0")throw new Error(`Blofin: ${data.msg||data.code}`);
+      return data;
+    },
     async fetchTrades(apiKey,apiSecret,passphrase,startTime){
-      const data=await proxyCall({exchange:"blofin",action:"trades",apiKey,apiSecret,passphrase,startTime});
+      const data=await this._direct(apiKey,apiSecret,passphrase,"/api/v1/account/positions-history",{limit:100});
+      // Client-side filter op startTime (Blofin's begin-param werkt niet op dit endpoint)
+      if(startTime){
+        data.data=(data.data||[]).filter(t=>{const ts=Number(t.updateTime||t.createTime||0);return ts>=Number(startTime);});
+      }
+      // Map direct-API veld (data.data) naar wat de bestaande code verwacht (data.trades)
+      data.trades=data.data||[];
+      data.source="positions-history";
       const source=data.source||"orders-history";
       if(source==="positions-history"){
         return(data.trades||[]).filter(t=>{const pnl=parseFloat(t.realizedPnl||t.pnl||"0");return pnl!==0||parseFloat(t.closeTotalPos||"0")>0}).map(t=>{
@@ -664,12 +712,23 @@ const ExchangeAPI = {
         return{id:"blofin_"+t.orderId,date:ts2date(closeTime),time:ts2time(closeTime),pair:(t.instId||"").replace("-","/"),direction,entry:entryPrice,exit:t.averagePrice||t.price||"",positionSize:t.filledSize||t.size||"",pnl:t.pnl||"",fees:t.fee?Math.abs(parseFloat(t.fee)).toString():"0",leverage:t.leverage||"10",source:"blofin",status:"closed",stopLoss:"",takeProfit:"",highestPrice:"",lowestPrice:"",setupTags:[],confirmationTags:[],timeframeTags:[],emotionTags:[],mistakeTags:[],customTags:[],rating:0,screenshot:null,notes:"",links:[],layers:[],positionId:t.positionId||"",openTime:t.createTime||"",closeTime:String(closeTime)};
       });
     },
-    async testConnection(apiKey,apiSecret,passphrase){const data=await proxyCall({exchange:"blofin",action:"test",apiKey,apiSecret,passphrase});return{success:true,balance:data.balance||"0"}},
-    async fetchOpenPositions(apiKey,apiSecret,passphrase){
-      const data=await proxyCall({exchange:"blofin",action:"open_positions",apiKey,apiSecret,passphrase});
-      return(data.positions||[]).map(p=>({id:"blofin_open_"+p.positionId,positionId:String(p.positionId||""),openTime:String(p.createTime||""),closeTime:"",date:ts2date(p.createTime||Date.now()),time:ts2time(p.createTime||Date.now()),pair:(p.instId||"").replace("-","/"),direction:parseFloat(p.positions||"0")>0?"long":"short",entry:String(p.averagePrice||""),exit:"",positionSize:String(Math.abs(parseFloat(p.positions||"0"))),pnl:"",fees:"0",leverage:String(p.leverage||"10"),source:"blofin",status:"open",unrealizedPnl:String(p.unrealizedPnl||""),liquidationPrice:String(p.liquidationPrice||""),stopLoss:"",takeProfit:"",highestPrice:"",lowestPrice:"",setupTags:[],confirmationTags:[],timeframeTags:[],emotionTags:[],mistakeTags:[],customTags:[],rating:0,screenshot:null,notes:"",links:[],layers:[]}));
+    async testConnection(apiKey,apiSecret,passphrase){
+      const data=await this._direct(apiKey,apiSecret,passphrase,"/api/v1/asset/balances",{accountType:"futures"});
+      const usdt=(data.data||[]).find(a=>a.currency==="USDT");
+      return{success:true,balance:usdt?String(usdt.balance||usdt.equity||"0"):"0"};
     },
-    async fetchFills(apiKey,apiSecret,passphrase,symbol,startTime,endTime){const data=await proxyCall({exchange:"blofin",action:"fills",apiKey,apiSecret,passphrase,symbol,startTime,endTime});return{fills:data.fills||[],total:data.total||0}}
+    async fetchOpenPositions(apiKey,apiSecret,passphrase){
+      const data=await this._direct(apiKey,apiSecret,passphrase,"/api/v1/account/positions");
+      return(data.data||[]).map(p=>({id:"blofin_open_"+p.positionId,positionId:String(p.positionId||""),openTime:String(p.createTime||""),closeTime:"",date:ts2date(p.createTime||Date.now()),time:ts2time(p.createTime||Date.now()),pair:(p.instId||"").replace("-","/"),direction:parseFloat(p.positions||"0")>0?"long":"short",entry:String(p.averagePrice||""),exit:"",positionSize:String(Math.abs(parseFloat(p.positions||"0"))),pnl:"",fees:"0",leverage:String(p.leverage||"10"),source:"blofin",status:"open",unrealizedPnl:String(p.unrealizedPnl||""),liquidationPrice:String(p.liquidationPrice||""),stopLoss:"",takeProfit:"",highestPrice:"",lowestPrice:"",setupTags:[],confirmationTags:[],timeframeTags:[],emotionTags:[],mistakeTags:[],customTags:[],rating:0,screenshot:null,notes:"",links:[],layers:[]}));
+    },
+    async fetchFills(apiKey,apiSecret,passphrase,symbol,startTime,endTime){
+      const params={limit:100};
+      if(symbol)params.instId=String(symbol).replace("_","-").replace("/","-");
+      if(startTime)params.begin=startTime;
+      if(endTime)params.end=endTime;
+      const data=await this._direct(apiKey,apiSecret,passphrase,"/api/v1/trade/fills-history",params);
+      return{fills:data.data||[],total:(data.data||[]).length};
+    }
   },
   kraken:{
     name:"Kraken Futures",color:"#7b61ff",needsPassphrase:false,
@@ -1417,7 +1476,7 @@ function TradeList({trades,onEdit,onDelete,onQuickTag,onBulkDelete,onBulkTag,sho
                 {t.status==="open"?<span style={{padding:"3px 8px",borderRadius:"4px",fontSize:"10px",fontWeight:700,background:"rgba(201,168,76,0.1)",color:"#C9A84C",display:"inline-flex",alignItems:"center",gap:"5px"}}><span style={{width:"6px",height:"6px",borderRadius:"50%",background:"#C9A84C",animation:"pulse 2s ease-in-out infinite"}}/>OPEN</span>
                 :<span style={{padding:"3px 8px",borderRadius:"4px",fontSize:"10px",fontWeight:700,background:isW?"rgba(46,170,111,0.12)":isL?"rgba(224,85,85,0.12)":"rgba(255,255,255,0.04)",color:isW?"#2eaa6f":isL?"#e05555":"rgba(255,255,255,0.4)"}}>{isW?"WIN":isL?"LOSS":"--"}</span>}
               </td>
-              <td style={{...tdStyle,fontFamily:"var(--mono)",color:"var(--text2)",fontSize:"11px",whiteSpace:"nowrap"}}>{t.date}{isNew&&<span style={{marginLeft:"6px",fontSize:"8px",padding:"1px 5px",borderRadius:"3px",background:"rgba(201,168,76,0.15)",color:"#d4b85c",fontWeight:700,verticalAlign:"middle",letterSpacing:"0.04em"}}>NEW</span>}<br/><span style={{color:"var(--text4)"}}>{t.time}</span></td>
+              <td style={{...tdStyle,fontFamily:"var(--mono)",color:"var(--text2)",fontSize:"11px",whiteSpace:"nowrap"}}>{fmtNL(t.date)}{isNew&&<span style={{marginLeft:"6px",fontSize:"8px",padding:"1px 5px",borderRadius:"3px",background:"rgba(201,168,76,0.15)",color:"#d4b85c",fontWeight:700,verticalAlign:"middle",letterSpacing:"0.04em"}}>NEW</span>}<br/><span style={{color:"var(--text4)"}}>{t.time}</span></td>
               <td style={{...tdStyle,fontWeight:600,color:"var(--text)"}}><div style={{display:"flex",alignItems:"center",gap:"8px"}}><div style={{position:"relative",flexShrink:0}}><CryptoIcon pair={t.pair} size={24}/>{t.source&&t.source!=="manual"&&<div style={{position:"absolute",bottom:"-2px",right:"-4px",borderRadius:"3px",overflow:"hidden",border:"1.5px solid var(--bg3)"}}><ExchangeIcon name={t.source} size={11}/></div>}</div><span>{t.pair}</span></div></td>
               <td style={{...tdStyle,fontFamily:"var(--mono)",fontSize:"11px",color:"var(--text2)",textAlign:"center"}}>{t.entry&&parseFloat(t.entry)?fmt(t.entry):<NA/>}</td>
               <td style={{...tdStyle,fontFamily:"var(--mono)",fontSize:"11px",color:"var(--text2)",textAlign:"center"}}>{t.exit&&parseFloat(t.exit)?fmt(t.exit):<NA/>}</td>
@@ -1677,10 +1736,16 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,accounts}){
       {(!trade.links||trade.links.length===0)&&<div style={{fontSize:"12px",color:"var(--text4)",padding:"8px 0"}}>Voeg TradingView chart links toe om je analyse te documenteren.</div>}
     </div>
 
-    {/* Notes */}
+    {/* Voor-trade notitie — gedachten vóór entry */}
+    <div style={{marginBottom:"1rem"}}>
+      <div style={{fontSize:"11px",color:"var(--gold)",textTransform:"uppercase",letterSpacing:"0.12em",fontWeight:700,marginBottom:"8px"}}>Waarom ga ik erin?</div>
+      <textarea value={trade.entryNote||""} onChange={e=>setTrade(p=>({...p,entryNote:e.target.value}))} placeholder="Je thesis vóór entry — setup, bias, trigger, risk, plan voor management..." rows={3} style={{...iStyle,fontFamily:"var(--font)",fontSize:"13px",resize:"vertical",lineHeight:"1.6"}}/>
+    </div>
+
+    {/* Post-trade notitie — evaluatie */}
     <div style={{marginBottom:"1.5rem"}}>
-      <div style={{fontSize:"11px",color:"var(--gold)",textTransform:"uppercase",letterSpacing:"0.12em",fontWeight:700,marginBottom:"8px"}}>Notities</div>
-      <textarea value={trade.notes} onChange={e=>setTrade(p=>({...p,notes:e.target.value}))} placeholder="Waarom nam je deze trade? Wat ging goed? Wat kon beter?" rows={4} style={{...iStyle,fontFamily:"var(--font)",fontSize:"13px",resize:"vertical",lineHeight:"1.6"}}/>
+      <div style={{fontSize:"11px",color:"var(--gold)",textTransform:"uppercase",letterSpacing:"0.12em",fontWeight:700,marginBottom:"8px"}}>Hoe ging het?</div>
+      <textarea value={trade.notes} onChange={e=>setTrade(p=>({...p,notes:e.target.value}))} placeholder="Post-mortem — wat ging goed, wat kon beter, wat leer je?" rows={4} style={{...iStyle,fontFamily:"var(--font)",fontSize:"13px",resize:"vertical",lineHeight:"1.6"}}/>
     </div>
 
     {/* Actions */}
@@ -1716,7 +1781,17 @@ function FilterBar({trades,allTrades,filters,setFilters,config,accounts}){
       <div style={{display:"flex",alignItems:"center",gap:"8px"}}>{activeCount>0&&<button onClick={e=>{e.stopPropagation();clearAll()}} style={{fontSize:"10px",color:"var(--red)",background:"transparent",border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:500}}>Reset</button>}<span style={{fontSize:"12px",color:"var(--text4)",transition:"transform .2s",transform:expanded?"rotate(180deg)":"rotate(0)"}}>▾</span></div>
     </div>
     {expanded&&<div style={{marginTop:"12px",display:"grid",gap:"10px"}}>
-      <div style={{display:"flex",alignItems:"center",gap:"8px",flexWrap:"wrap"}}><span style={{fontSize:"10px",color:"var(--text4)",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em",minWidth:"65px"}}>Datum</span><input type="date" value={filters.dateFrom||""} onChange={e=>setFilters(p=>({...p,dateFrom:e.target.value}))} style={{...iStyle,width:"140px",padding:"5px 8px",fontSize:"11px"}}/><span style={{fontSize:"11px",color:"var(--text4)"}}>t/m</span><input type="date" value={filters.dateTo||""} onChange={e=>setFilters(p=>({...p,dateTo:e.target.value}))} style={{...iStyle,width:"140px",padding:"5px 8px",fontSize:"11px"}}/></div>
+      <div style={{display:"flex",alignItems:"center",gap:"8px",flexWrap:"wrap"}}><span style={{fontSize:"10px",color:"var(--text4)",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em",minWidth:"65px"}}>Datum</span><input type="date" value={filters.dateFrom||""} onChange={e=>setFilters(p=>({...p,dateFrom:e.target.value}))} style={{...iStyle,width:"140px",padding:"5px 8px",fontSize:"11px"}}/><span style={{fontSize:"11px",color:"var(--text4)"}}>t/m</span><input type="date" value={filters.dateTo||""} onChange={e=>setFilters(p=>({...p,dateTo:e.target.value}))} style={{...iStyle,width:"140px",padding:"5px 8px",fontSize:"11px"}}/>
+        {(()=>{const today=new Date().toISOString().split("T")[0];const mk=(label,from)=>{const active=filters.dateFrom===from&&filters.dateTo===today;return(<button key={label} onClick={()=>setFilters(p=>({...p,dateFrom:from,dateTo:today}))} style={{padding:"4px 10px",borderRadius:"5px",fontSize:"10px",fontWeight:600,border:`1px solid ${active?"var(--gold)":"var(--border3)"}`,background:active?"var(--gold-dim)":"transparent",color:active?"var(--gold)":"var(--text4)",cursor:"pointer",fontFamily:"inherit"}}>{label}</button>);};
+          const day=new Date();const startWeek=new Date(day);startWeek.setDate(day.getDate()-((day.getDay()+6)%7));const startMonth=new Date(day.getFullYear(),day.getMonth(),1);
+          const allActive=!filters.dateFrom&&!filters.dateTo;
+          return(<>
+            {mk("Vandaag",today)}
+            {mk("Deze week",startWeek.toISOString().split("T")[0])}
+            {mk("Deze maand",startMonth.toISOString().split("T")[0])}
+            <button onClick={()=>setFilters(p=>({...p,dateFrom:"",dateTo:""}))} style={{padding:"4px 10px",borderRadius:"5px",fontSize:"10px",fontWeight:600,border:`1px solid ${allActive?"var(--gold)":"var(--border3)"}`,background:allActive?"var(--gold-dim)":"transparent",color:allActive?"var(--gold)":"var(--text4)",cursor:"pointer",fontFamily:"inherit"}}>Alles</button>
+          </>);})()}
+      </div>
       {sources.length>0&&<div style={{display:"flex",alignItems:"center",gap:"8px",flexWrap:"wrap"}}><span style={{fontSize:"10px",color:"var(--text4)",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em",minWidth:"65px"}}>Exchange</span>{chip("Alle","source","all")}{sources.map(s=>chip(<span style={{display:"inline-flex",alignItems:"center",gap:"5px"}}><ExchangeIcon name={s} size={14}/>{exName(s)}</span>,"source",s))}</div>}
       <div style={{display:"flex",alignItems:"center",gap:"8px",flexWrap:"wrap"}}><span style={{fontSize:"10px",color:"var(--text4)",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em",minWidth:"65px"}}>Pair</span>{chip("Alle","pair","all")}{pairs.map(p=>chip(p,"pair",p))}</div>
       <div style={{display:"flex",alignItems:"center",gap:"8px",flexWrap:"wrap"}}><span style={{fontSize:"10px",color:"var(--text4)",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em",minWidth:"65px"}}>Richting</span>{chip("Alle","direction","all")}{chip("Long","direction","long")}{chip("Short","direction","short")}</div>
@@ -2217,12 +2292,12 @@ function ReviewDashboard({trades}){
         {bestDay.date&&<div style={{borderRadius:"8px",padding:"14px",background:"rgba(46,170,111,0.08)",border:"1px solid rgba(46,170,111,0.15)"}}>
           <div style={{fontSize:"9px",color:"var(--green)",textTransform:"uppercase",fontWeight:700,marginBottom:"6px"}}>Beste dag</div>
           <div style={{fontSize:"16px",fontFamily:"var(--mono)",fontWeight:700,color:"var(--green)"}}>{bestDay.pnl>=0?"+":""}${fmt(bestDay.pnl)}</div>
-          <div style={{fontSize:"11px",color:"var(--text3)",marginTop:"4px"}}>{bestDay.date}</div>
+          <div style={{fontSize:"11px",color:"var(--text3)",marginTop:"4px"}}>{fmtNL(bestDay.date)}</div>
         </div>}
         {worstDay.date&&<div style={{borderRadius:"8px",padding:"14px",background:"rgba(220,122,122,0.08)",border:"1px solid rgba(220,122,122,0.15)"}}>
           <div style={{fontSize:"9px",color:"var(--red)",textTransform:"uppercase",fontWeight:700,marginBottom:"6px"}}>Slechtste dag</div>
           <div style={{fontSize:"16px",fontFamily:"var(--mono)",fontWeight:700,color:"var(--red)"}}>{worstDay.pnl>=0?"+":""}${fmt(worstDay.pnl)}</div>
-          <div style={{fontSize:"11px",color:"var(--text3)",marginTop:"4px"}}>{worstDay.date}</div>
+          <div style={{fontSize:"11px",color:"var(--text3)",marginTop:"4px"}}>{fmtNL(worstDay.date)}</div>
         </div>}
       </div>
     </div>}
@@ -2257,30 +2332,287 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,imp
   };
   const handleCSV=(e,forExchange)=>{
     const file=e.target.files[0];if(!file)return;
+    const isXlsx=/\.(xlsx|xls)$/i.test(file.name);
     const reader=new FileReader();
     reader.onload=(ev)=>{
       try{
-        const text=ev.target.result;const lines=text.split("\n").filter(l=>l.trim());
+        let text;
+        if(isXlsx){
+          if(typeof XLSX==="undefined")throw new Error("XLSX library niet geladen");
+          const wb=XLSX.read(ev.target.result,{type:"array"});
+          const sheet=wb.Sheets[wb.SheetNames[0]];
+          text=XLSX.utils.sheet_to_csv(sheet);
+        }else{
+          text=ev.target.result;
+        }
+        // Simpele CSV-parser die rekening houdt met quoted velden (MEXC heeft "68,125" met komma in prijs)
+        const parseCSVLine=(line)=>{const out=[];let cur="",inQ=false;for(const ch of line){if(ch==='"'){inQ=!inQ;}else if(ch===','&&!inQ){out.push(cur);cur="";}else cur+=ch;}out.push(cur);return out.map(v=>v.trim())};
+        const lines=text.split("\n").filter(l=>l.trim());
         if(lines.length<2)throw new Error("Leeg bestand");
-        const headers=lines[0].split(",").map(h=>h.trim().replace(/"/g,""));
+        const headers=parseCSVLine(lines[0]).map(h=>h.replace(/"/g,""));
         const isKrakenLog=headers.includes("uid")&&headers.includes("realized pnl")&&headers.includes("trade price");
+        const isMexcFutures=headers.includes("Futures Trading Pair")&&headers.includes("Closing PNL");
+        const isMexcPosition=headers.includes("Futures")&&headers.includes("Avg Entry Price")&&headers.includes("Avg Close Price");
+        const isBlofinOrder=headers.includes("Underlying Asset")&&headers.includes("Avg Fill")&&headers.includes("PNL");
         let csvTrades=[];
+        if(isBlofinOrder){
+          // Blofin Order History → FIFO positie-reconstructie (one-way mode verondersteld).
+          // PnL uit CSV is authoritative (bevat funding/fees). Orphan closes krijgen partial_data flag.
+          const stripUnit=(s)=>String(s||"").replace(/"/g,"").split(/\s+/)[0].replace(/,/g,"");
+          const parseBlofinDate=(dt)=>{
+            const m=(dt||"").match(/^(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2})(?::(\d{2}))?/);
+            if(!m)return{date:"",time:"",ts:0};
+            // CSV-tijd is UTC (Blofin server). Converteer naar browser-local tijdzone voor display.
+            const utcMs=Date.UTC(+m[3],+m[1]-1,+m[2],+m[4],+m[5],+(m[6]||0));
+            const local=new Date(utcMs);
+            const pad=n=>String(n).padStart(2,"0");
+            return{
+              date:`${local.getFullYear()}-${pad(local.getMonth()+1)}-${pad(local.getDate())}`,
+              time:`${pad(local.getHours())}:${pad(local.getMinutes())}`,
+              ts:utcMs,
+            };
+          };
+          const cleanPair=(s)=>s.endsWith("USDT")?s.slice(0,-4)+"/USDT":s.endsWith("USDC")?s.slice(0,-4)+"/USDC":s;
+          const uidShort=()=>Math.random().toString(36).slice(2,10);
+
+          // Parse + sort ASC
+          const orders=[];
+          for(let i=1;i<lines.length;i++){
+            const vals=parseCSVLine(lines[i]);
+            const r={};headers.forEach((h,idx)=>r[h]=vals[idx]||"");
+            if((r["Status"]||"").toLowerCase()!=="filled")continue;
+            const dt=parseBlofinDate(r["Order Time"]);
+            const sideRaw=(r["Side"]||"").toLowerCase();
+            const isBuy=sideRaw.startsWith("buy");
+            const reduceOnly=(r["Reduce-only"]||"").toLowerCase()==="y";
+            orders.push({
+              symbol:r["Underlying Asset"]||"",
+              isBuy,reduceOnly,
+              price:parseFloat(stripUnit(r["Avg Fill"]))||0,
+              size:parseFloat(stripUnit(r["Filled"]))||0,
+              pnl:parseFloat(stripUnit(r["PNL"]))||0,
+              fee:Math.abs(parseFloat(stripUnit(r["Fee"]))||0),
+              leverage:r["Leverage"]||"10",
+              date:dt.date,time:dt.time,ts:dt.ts,
+              raw:r,
+            });
+          }
+          orders.sort((a,b)=>a.ts-b.ts);
+
+          // FIFO queue per symbol — bevat open lots: [{price,size,fee,openDate,openTime,openTs}, ...]
+          const fifo={}; // symbol -> {direction, lots[], totalSize, tps[], feeSum, pnlSum}
+          const emit=(sym,pos)=>{
+            const entryW=pos.lots.reduce((s,l)=>s+l.price*l.size,0);
+            const origEntrySize=pos.origEntrySize||pos.tps.reduce((s,t)=>s+t.size,0);
+            const avgEntry=pos.entryW/pos.entryTotalSize;
+            const exitW=pos.tps.reduce((s,t)=>s+t.price*t.size,0);
+            const totalExit=pos.tps.reduce((s,t)=>s+t.size,0);
+            const avgExit=totalExit>0?exitW/totalExit:0;
+            // Net PnL = sum of CSV PNL column minus total fees (opening + closing fees)
+            const netPnl=pos.pnlSum-pos.feeSum;
+            csvTrades.push({...EMPTY_TRADE,
+              id:"blofin_csv_"+uid(),
+              date:pos.openDate,time:pos.openTime,
+              pair:cleanPair(sym),
+              direction:pos.direction,
+              entry:avgEntry>0?avgEntry.toFixed(6):"",
+              exit:avgExit>0?avgExit.toFixed(6):"",
+              positionSize:String(pos.entryTotalSize.toFixed(8)),
+              pnl:String(netPnl.toFixed(4)),
+              fees:String(pos.feeSum.toFixed(4)),
+              leverage:pos.leverage,
+              source:forExchange||"blofin",
+              status:"closed",
+              notes:pos.partial?"⚠ Partial data: opening orders niet in CSV-range":"",
+              tpLevels:pos.tps.map(t=>({id:uidShort(),price:String(t.price),pct:String(((t.size/pos.entryTotalSize)*100).toFixed(1)),status:"hit",actualPrice:String(t.price)})),
+            });
+          };
+
+          for(const o of orders){
+            const sym=o.symbol;if(!sym||!o.size)continue;
+            if(!o.reduceOnly){
+              // Open/add: direction = Buy→long, Sell→short
+              const dir=o.isBuy?"long":"short";
+              if(!fifo[sym]){
+                fifo[sym]={direction:dir,lots:[],entryW:0,entryTotalSize:0,tps:[],feeSum:0,pnlSum:0,openDate:o.date,openTime:o.time,openTs:o.ts,leverage:o.leverage,partial:false};
+              }else if(fifo[sym].direction!==dir){
+                // Tegenovergestelde open → eerst de huidige positie sluiten (edge case)
+                emit(sym,fifo[sym]);
+                fifo[sym]={direction:dir,lots:[],entryW:0,entryTotalSize:0,tps:[],feeSum:0,pnlSum:0,openDate:o.date,openTime:o.time,openTs:o.ts,leverage:o.leverage,partial:false};
+              }
+              fifo[sym].lots.push({price:o.price,size:o.size});
+              fifo[sym].entryW+=o.price*o.size;
+              fifo[sym].entryTotalSize+=o.size;
+              fifo[sym].feeSum+=o.fee;
+            }else{
+              // Close fill
+              if(!fifo[sym]){
+                // Orphan close — opening order buiten range. Emit los met partial flag.
+                const dir=o.isBuy?"short":"long"; // close-side is tegengesteld
+                csvTrades.push({...EMPTY_TRADE,
+                  id:"blofin_csv_"+uid(),
+                  date:o.date,time:o.time,pair:cleanPair(sym),direction:dir,
+                  entry:"",exit:String(o.price),positionSize:String(o.size),
+                  pnl:String((o.pnl-o.fee).toFixed(4)),fees:String(o.fee.toFixed(4)),
+                  leverage:o.leverage,source:forExchange||"blofin",status:"closed",
+                  notes:"⚠ Partial data: opening order valt buiten CSV-range",
+                });
+                continue;
+              }
+              const pos=fifo[sym];
+              // Trek size af van FIFO lots
+              let remaining=o.size;
+              while(remaining>1e-9&&pos.lots.length){
+                const lot=pos.lots[0];
+                if(lot.size<=remaining+1e-9){remaining-=lot.size;pos.lots.shift();}
+                else{lot.size-=remaining;remaining=0;}
+              }
+              pos.tps.push({price:o.price,size:o.size,pnl:o.pnl,ts:o.ts});
+              pos.pnlSum+=o.pnl;pos.feeSum+=o.fee;
+              if(pos.lots.length===0){
+                emit(sym,pos);
+                delete fifo[sym];
+              }
+            }
+          }
+        }
+        // Kraken account log — position-lifecycle tracking per contract
         if(isKrakenLog){
+          const rowsRaw=[];
+          for(let i=1;i<lines.length;i++){
+            const vals=parseCSVLine(lines[i]).map(v=>v.replace(/"/g,""));
+            const r={};headers.forEach((h,idx)=>r[h]=vals[idx]||"");
+            rowsRaw.push(r);
+          }
+          // Filter op "futures trade" met contract (niet usd-side, niet conversion)
+          const fills=rowsRaw.filter(r=>r.type==="futures trade"&&r.contract&&r.symbol!=="usd").reverse();
+          // Bovenstaande reverse: CSV is normaal nieuwste eerst; wij willen oudste eerst voor lifecycle tracking
+          // (als CSV al oud→nieuw is, geen reverse nodig; check eerste vs laatste date)
+          if(fills.length>=2&&new Date(fills[0].dateTime)>new Date(fills[fills.length-1].dateTime))fills.reverse();
+
+          const cleanPair=(s)=>{let x=(s||"").toUpperCase().replace("PF_","").replace("PI_","").replace("XBT","BTC");if(x.includes("/"))return x;if(x.endsWith("USDC"))return x.slice(0,-4)+"/USDC";if(x.endsWith("USDT"))return x.slice(0,-4)+"/USDT";if(x.endsWith("USD"))return x.slice(0,-3)+"/USD";return x+"/USD";};
+          const uidShort=()=>Math.random().toString(36).slice(2,10);
+          // Lifecycle per contract
+          const positions={};
+          for(const f of fills){
+            const contract=f.contract;if(!contract)continue;
+            const oldBal=parseFloat(f["new balance"])-parseFloat(f.change||0);
+            const newBal=parseFloat(f["new balance"]);
+            const chg=parseFloat(f.change||0);
+            const tradePrice=parseFloat(f["trade price"]||0);
+            const fee=Math.abs(parseFloat(f.fee||0));
+            // Find matching usd-side row voor realized pnl
+            const usdRow=rowsRaw.find(r=>r.type==="futures trade"&&r.symbol==="usd"&&r.dateTime===f.dateTime&&r["trade price"]===f["trade price"]);
+            const pnl=usdRow?parseFloat(usdRow["realized pnl"]||0):0;
+            const ts=new Date(f.dateTime).getTime();
+            const date=f.dateTime.split(" ")[0];
+            const time=(f.dateTime.split(" ")[1]||"00:00:00").slice(0,5);
+            const absOld=Math.abs(oldBal),absNew=Math.abs(newBal);
+            let pos=positions[contract];
+            // Nieuwe positie opent (balance van 0 naar non-zero)
+            if(absOld<1e-9&&absNew>1e-9){
+              positions[contract]={direction:newBal>0?"long":"short",openTs:ts,date,time,entryPrice:parseFloat(f["new average entry price"])||tradePrice,openSize:absNew,tps:[],totalPnl:0,totalFee:fee,partial:false};
+              continue;
+            }
+            // Orphan close: opening valt buiten CSV-range. Start virtuele positie bij eerste close-fill.
+            if(!pos&&absOld>1e-9&&absNew<absOld){
+              positions[contract]=pos={
+                direction:oldBal>0?"long":"short",
+                openTs:ts,date,time,
+                entryPrice:parseFloat(f["new average entry price"])||tradePrice,
+                openSize:absOld,
+                tps:[],totalPnl:0,totalFee:0,partial:true,
+              };
+            }
+            if(!pos)continue;
+            // Partial close
+            if(absNew<absOld-1e-9){
+              const closedAmt=absOld-absNew;
+              pos.tps.push({price:tradePrice,sizeClose:closedAmt,pnl});
+              pos.totalPnl+=pnl;pos.totalFee+=fee;
+              if(absNew<1e-9){
+                const exitW=pos.tps.reduce((s,t)=>s+t.price*t.sizeClose,0);
+                const totalClosed=pos.tps.reduce((s,t)=>s+t.sizeClose,0);
+                const avgExit=totalClosed>0?exitW/totalClosed:0;
+                csvTrades.push({...EMPTY_TRADE,
+                  id:"kraken_csv_"+uid(),
+                  date:pos.date,time:pos.time,
+                  pair:cleanPair(contract),
+                  direction:pos.direction,
+                  entry:String(pos.entryPrice),
+                  exit:String(avgExit),
+                  positionSize:String(pos.openSize.toFixed(8)),
+                  pnl:String((pos.totalPnl-pos.totalFee).toFixed(4)),
+                  fees:String(pos.totalFee.toFixed(4)),
+                  leverage:"1",
+                  source:forExchange||"kraken",
+                  status:"closed",
+                  notes:pos.partial?"⚠ Partial data: opening order niet in CSV-range":"",
+                  tpLevels:pos.tps.map(t=>({id:uidShort(),price:String(t.price),pct:String(((t.sizeClose/pos.openSize)*100).toFixed(1)),status:"hit",actualPrice:String(t.price)})),
+                });
+                delete positions[contract];
+              }
+              continue;
+            }
+            // Add to position
+            if(absNew>absOld+1e-9){
+              pos.openSize+=(absNew-absOld);
+              pos.entryPrice=parseFloat(f["new average entry price"])||pos.entryPrice;
+              pos.totalFee+=fee;
+            }
+          }
+        }else if(isBlofinOrder){/* al verwerkt hierboven */}else if(isMexcPosition){
+          // MEXC Position History — positie-level data met entry, exit, pnl
+          const normNum=(s)=>String(s||"").replace(/"/g,"").replace(/,/g,"").replace(/USDT|USDC|USD/g,"").trim();
+          for(let i=1;i<lines.length;i++){
+            const vals=parseCSVLine(lines[i]);
+            const row={};headers.forEach((h,idx)=>row[h]=vals[idx]||"");
+            const pnl=parseFloat(normNum(row["Realized PNL"]));
+            if(isNaN(pnl))continue;
+            const direction=(row["Direction"]||"").toLowerCase().includes("long")?"long":"short";
+            const pairRaw=row["Futures"]||"";
+            const pair=pairRaw.endsWith("USDT")?pairRaw.slice(0,-4)+"/USDT":pairRaw.endsWith("USDC")?pairRaw.slice(0,-4)+"/USDC":pairRaw.endsWith("USD")?pairRaw.slice(0,-3)+"/USD":pairRaw;
+            const openDt=row["Open Time"]||"";
+            const closeDt=row["Close Time"]||"";
+            csvTrades.push({...EMPTY_TRADE,id:"mexc_csv_"+uid(),date:openDt.split(" ")[0]||closeDt.split(" ")[0]||"",time:(openDt.split(" ")[1]||"00:00").slice(0,5),pair,direction,entry:normNum(row["Avg Entry Price"]),exit:normNum(row["Avg Close Price"]),positionSize:normNum(row["Closing Qty (Cont.)"]),pnl:String(pnl),fees:normNum(row["Trading Fee"])||"0",leverage:"10",source:forExchange||"mexc",status:"closed",openTime:openDt,closeTime:closeDt});
+          }
+        }else if(isMexcFutures){
+          // MEXC xlsx/csv export — rijen met Closing PNL ≠ 0 zijn gesloten trades
+          // Getal-normalisatie: MEXC gebruikt komma als duizendtal-scheiding ("68,125" = 68125)
+          const normNum=(s)=>String(s||"").replace(/"/g,"").replace(/,/g,"").trim();
+          for(let i=1;i<lines.length;i++){
+            const vals=parseCSVLine(lines[i]);
+            const row={};headers.forEach((h,idx)=>row[h]=vals[idx]||"");
+            const pnl=parseFloat(normNum(row["Closing PNL"]));
+            if(!pnl||isNaN(pnl))continue;
+            const dir=(row["Direction"]||"").toLowerCase();
+            const direction=dir.includes("long")?"long":dir.includes("short")?"short":"long";
+            const pairRaw=row["Futures Trading Pair"]||"";
+            const pair=pairRaw.endsWith("USDT")?pairRaw.slice(0,-4)+"/USDT":pairRaw.endsWith("USDC")?pairRaw.slice(0,-4)+"/USDC":pairRaw.endsWith("USD")?pairRaw.slice(0,-3)+"/USD":pairRaw;
+            const closePrice=normNum(row["Average Filled Price"]);
+            const sizeUsd=normNum(row["Filled Qty (Amount)"]);
+            const sizeAsset=normNum(row["Filled Qty (Crypto)"]);
+            const dt=row["Time"]||"";
+            csvTrades.push({...EMPTY_TRADE,id:"mexc_csv_"+uid(),date:dt.split(" ")[0]||"",time:(dt.split(" ")[1]||"00:00").slice(0,5),pair,direction,entry:"",exit:closePrice,positionSize:sizeUsd,positionSizeAsset:sizeAsset,pnl:String(pnl),fees:normNum(row["Trading Fee"])||"0",leverage:row["Leverage"]||"10",source:forExchange||"mexc",status:"closed"});
+          }
+        }else if(isKrakenLog){
           const rows=[];for(let i=1;i<lines.length;i++){const vals=lines[i].split(",").map(v=>v.trim().replace(/"/g,""));const row={};headers.forEach((h,idx)=>row[h]=vals[idx]||"");rows.push(row)}
           const usdCloses=rows.filter(r=>r.type==="futures trade"&&r.symbol==="usd"&&parseFloat(r["realized pnl"])!==0);
           const posRows=rows.filter(r=>r.type==="futures trade"&&r.symbol!=="usd");
           csvTrades=usdCloses.map(u=>{const matching=posRows.find(p=>p.dateTime===u.dateTime&&p["trade price"]===u["trade price"]);const sizeChg=matching?parseFloat(matching.change):0;const direction=sizeChg>0?"short":"long";const entryPrice=matching?matching["new average entry price"]:"";const contract=(u.contract||"pf_xbtusd").toUpperCase().replace("PF_","").replace("PI_","");const krakenP=(s)=>{s=s.replace("XBT","BTC");if(s.endsWith("USDC"))return s.slice(0,-4)+"/USDC";if(s.endsWith("USDT"))return s.slice(0,-4)+"/USDT";if(s.endsWith("USD"))return s.slice(0,-3)+"/USD";return s+"/USD"};const pair=krakenP(contract);const dt=u.dateTime||"";return{...EMPTY_TRADE,id:"kraken_csv_"+uid(),date:dt.split(" ")[0]||"",time:(dt.split(" ")[1]||"00:00").slice(0,5),pair,direction,entry:entryPrice||"",exit:u["trade price"]||"",positionSize:matching?String(Math.abs(sizeChg)):"",pnl:u["realized pnl"]||"",fees:u.fee||"0",leverage:"1",source:forExchange||"kraken",status:"closed"}});
-        }else{
-          for(let i=1;i<lines.length;i++){const vals=lines[i].split(",").map(v=>v.trim().replace(/"/g,""));const row={};headers.forEach((h,idx)=>row[h.toLowerCase()]=vals[idx]||"");const pairRaw=row.symbol||row.pair||row.contract||"";const pair=pairRaw?(pairRaw.includes("/")?pairRaw:pairRaw):"BTC/"+(config.defaultQuote||"USDT");const trade={...EMPTY_TRADE,id:"csv_"+uid(),date:row.date||(row.time||"").split(" ")[0]||(row.closetime||"").split(" ")[0]||"",time:((row.time||"").split(" ")[1]||(row.closetime||"").split(" ")[1]||"00:00").slice(0,5),pair,direction:((row.side||row.direction||row.type||"").toLowerCase().includes("buy")||(row.side||"").toLowerCase().includes("long"))?"long":"short",entry:row.openprice||row.entryprice||row.entry||row.price||"",exit:row.closeprice||row.exitprice||row.exit||"",positionSize:row.volume||row.size||row.quantity||row.amount||"",pnl:row.pnl||row.profit||row.realizedpnl||row.realised_pnl||"",fees:row.fee||row.fees||row.commission||"0",leverage:row.leverage||"10",source:forExchange||"csv",status:"closed"};if(trade.date)csvTrades.push(trade)}
+        }
+        if(!isKrakenLog&&!isBlofinOrder&&!isMexcPosition&&!isMexcFutures){
+          for(let i=1;i<lines.length;i++){const vals=parseCSVLine(lines[i]).map(v=>v.replace(/"/g,""));const row={};headers.forEach((h,idx)=>row[h.toLowerCase()]=vals[idx]||"");const pairRaw=row.symbol||row.pair||row.contract||"";const pair=pairRaw?(pairRaw.includes("/")?pairRaw:pairRaw):"BTC/"+(config.defaultQuote||"USDT");const trade={...EMPTY_TRADE,id:"csv_"+uid(),date:row.date||(row.time||"").split(" ")[0]||(row.closetime||"").split(" ")[0]||"",time:((row.time||"").split(" ")[1]||(row.closetime||"").split(" ")[1]||"00:00").slice(0,5),pair,direction:((row.side||row.direction||row.type||"").toLowerCase().includes("buy")||(row.side||"").toLowerCase().includes("long"))?"long":"short",entry:row.openprice||row.entryprice||row.entry||row.price||"",exit:row.closeprice||row.exitprice||row.exit||"",positionSize:row.volume||row.size||row.quantity||row.amount||"",pnl:row.pnl||row.profit||row.realizedpnl||row.realised_pnl||"",fees:row.fee||row.fees||row.commission||"0",leverage:row.leverage||"10",source:forExchange||"csv",status:"closed"};if(trade.date)csvTrades.push(trade)}
         }
         if(!csvTrades.length){showToast("Geen trades gevonden in CSV","error");return}
-        setPreview({exchange:forExchange||"csv",trades:csvTrades});
+        setPreview({exchange:forExchange||"csv",trades:csvTrades,source:"csv"});
         setSelected(new Set(csvTrades.map(t=>t.id)));
         setPrevFilter({direction:"all",result:"all"});
         showToast(`${csvTrades.length} trades gevonden — kies welke te importeren`);
       }catch(err){showToast("CSV fout: "+err.message,"error")}
     };
-    reader.readAsText(file);e.target.value="";
+    if(isXlsx)reader.readAsArrayBuffer(file); else reader.readAsText(file);
+    e.target.value="";
   };
   const[ex,setEx]=useState(()=>{const k=Object.keys(ExchangeAPI)[0];return k});
   const[testing,setTesting]=useState(null);
@@ -2289,7 +2621,7 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,imp
   const exCfg=()=>config?.exchanges?.[ex]||{};
   const setField=(k,v)=>setConfig(p=>({...p,exchanges:{...(p.exchanges||{}),[ex]:{...(exCfg()),[k]:v}}}));
   const test=async()=>{setTesting(ex);setSyncResult(null);try{const api=ExchangeAPI[ex];const c=exCfg();if(!c.apiKey||!c.apiSecret){showToast("Voer API key en secret in","error");return}const r=api.needsPassphrase?await api.testConnection(c.apiKey,c.apiSecret,c.passphrase):await api.testConnection(c.apiKey,c.apiSecret);if(r.success){setSyncResult({ok:true,msg:`✓ Verbonden. Balance: $${parseFloat(r.balance||"0").toFixed(2)} USDT`});showToast(`${ExchangeAPI[ex].name} verbonden`)}else{setSyncResult({ok:false,msg:"Verbinding mislukt"});showToast("Verbinding mislukt","error")}}catch(e){setSyncResult({ok:false,msg:e.message||"Verbinding mislukt"});showToast("Proxy niet bereikbaar, start proxy.py eerst","error")}finally{setTesting(null)}};
-  const sync=async()=>{setSyncing(ex);setSyncResult(null);try{const api=ExchangeAPI[ex];const c=exCfg();if(!c.apiKey||!c.apiSecret){showToast("Voer API key in","error");return}const startTime=c.syncFrom?new Date(c.syncFrom).getTime():Date.now()-90*86400000;const newTrades=api.needsPassphrase?await api.fetchTrades(c.apiKey,c.apiSecret,c.passphrase,startTime):await api.fetchTrades(c.apiKey,c.apiSecret,null,startTime);showToast(`${newTrades.length} trades opgehaald van ${ExchangeAPI[ex].name}`);setSyncResult({ok:true,count:newTrades.length,trades:newTrades})}catch(e){setSyncResult({ok:false,msg:e.message});showToast(e.message||"Sync mislukt","error")}finally{setSyncing(null)}};
+  const sync=async()=>{setSyncing(ex);setSyncResult(null);try{const api=ExchangeAPI[ex];const c=exCfg();if(!c.apiKey||!c.apiSecret){showToast("Voer API key in","error");return}const startTime=c.syncFrom?new Date(c.syncFrom).getTime():new Date(new Date().getFullYear(),new Date().getMonth(),1).getTime();const newTrades=api.needsPassphrase?await api.fetchTrades(c.apiKey,c.apiSecret,c.passphrase,startTime):await api.fetchTrades(c.apiKey,c.apiSecret,null,startTime);if(newTrades&&newTrades.length){setPreview({exchange:ex,trades:newTrades,source:"api"});setSelected(new Set(newTrades.map(t=>t.id)));setPrevFilter({direction:"all",result:"all"});showToast(`${newTrades.length} trades gevonden — kies welke te importeren`);}else{showToast("Geen trades gevonden","info");}setSyncResult({ok:true,count:newTrades.length,trades:newTrades})}catch(e){setSyncResult({ok:false,msg:e.message});showToast(e.message||"Sync mislukt","error")}finally{setSyncing(null)}};
   return(<div style={{animation:"fadeIn .3s ease"}}>
     <div style={{display:"grid",gridTemplateColumns:"240px 1fr",gap:"20px",alignItems:"start"}}>
       <div style={{background:"var(--glass)",backdropFilter:"var(--glass-blur)",WebkitBackdropFilter:"var(--glass-blur)",borderRadius:"var(--radius-lg)",padding:"16px",border:"1px solid var(--border1)"}}>
@@ -2299,9 +2631,8 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,imp
             <ExchangeIcon name={key} size={20}/>
             <div style={{textAlign:"left",flex:1}}><div style={{fontSize:"12px",fontWeight:600,color:ex===key?"var(--gold)":"var(--text2)"}}>{api.name}</div>{connected&&<div style={{fontSize:"9px",color:"var(--green)",display:"flex",alignItems:"center",gap:"4px"}}><div style={{width:"5px",height:"5px",borderRadius:"50%",background:"var(--green)",animation:"pulse 2s ease-in-out infinite"}}/> Actief</div>}</div>
           </button>
-          <button onClick={()=>{csvAcctRef.current=key;csvRef.current.click()}} title={"CSV importeren voor "+api.name} style={{padding:"8px 10px",borderRadius:"6px",border:"1px solid var(--border3)",background:"transparent",color:"var(--text3)",cursor:"pointer",fontFamily:"inherit",fontSize:"11px"}}>📄</button>
         </div>);})}
-        <input type="file" ref={csvRef} accept=".csv,.tsv,.txt" onChange={e=>handleCSV(e,csvAcctRef.current)} style={{display:"none"}}/>
+        <input type="file" ref={csvRef} accept=".csv,.tsv,.txt,.xlsx,.xls" onChange={e=>handleCSV(e,csvAcctRef.current)} style={{display:"none"}}/>
         <div style={{height:"1px",background:"var(--border2)",margin:"12px 0"}}/>
         <div style={{fontSize:"10px",color:"var(--text4)",textTransform:"uppercase",fontWeight:600,marginBottom:"12px",letterSpacing:"0.08em"}}>Handmatige accounts</div>
         {(accounts||[]).map(a=>(<div key={a.id} style={{display:"flex",alignItems:"center",gap:"8px",padding:"8px 12px",borderRadius:"8px",border:"1px solid var(--border1)",marginBottom:"4px",background:"rgba(42,46,57,0.3)"}}>
@@ -2316,35 +2647,22 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,imp
           <div style={{display:"flex",alignItems:"center",gap:"12px",marginBottom:"16px"}}><ExchangeIcon name={ex} size={28}/><div><div style={{fontSize:"14px",fontWeight:700,color:"var(--text)"}}>{ExchangeAPI[ex].name}</div><div style={{fontSize:"11px",color:"var(--text4)"}}>API verbinding instellen</div></div></div>
           <div style={{display:"grid",gap:"12px"}}>
             {[["apiKey","API Key","text"],["apiSecret","API Secret","password"],...(ExchangeAPI[ex].needsPassphrase?[["passphrase","Passphrase","password"]]:[])] .map(([field,label,type])=>(<div key={field}><div style={{fontSize:"11px",color:"var(--text3)",marginBottom:"6px",fontWeight:500,textTransform:"uppercase",letterSpacing:"0.06em"}}>{label}</div><input type={type} value={exCfg()[field]||""} onChange={e=>setField(field,e.target.value)} placeholder={field==="apiKey"?"Plak je API key...":field==="passphrase"?"Passphrase...":"Plak je API secret..."} style={{...iStyle,fontFamily:field!=="passphrase"?"var(--mono)":"var(--font)"}}/></div>))}
-            <div><div style={{fontSize:"11px",color:"var(--text3)",marginBottom:"6px",fontWeight:500,textTransform:"uppercase",letterSpacing:"0.06em"}}>Sync vanaf</div><input type="date" value={exCfg().syncFrom||""} onChange={e=>setField("syncFrom",e.target.value)} style={{...iStyle,width:"auto"}}/></div>
+            <div><div style={{fontSize:"11px",color:"var(--text3)",marginBottom:"6px",fontWeight:500,textTransform:"uppercase",letterSpacing:"0.06em"}}>Sync vanaf</div><input type="date" value={exCfg().syncFrom||new Date(new Date().getFullYear(),new Date().getMonth(),1).toISOString().split("T")[0]} onChange={e=>setField("syncFrom",e.target.value)} style={{...iStyle,width:"auto"}}/><div style={{fontSize:"10px",color:"var(--text5)",marginTop:"4px"}}>Default: 1e van deze maand</div></div>
           </div>
           <div style={{display:"flex",gap:"12px",marginTop:"16px",flexWrap:"wrap"}}>
             <button onClick={test} disabled={!!testing} style={{padding:"10px 20px",borderRadius:"var(--radius)",border:"1px solid var(--border4)",background:"transparent",color:"var(--text2)",cursor:"pointer",fontFamily:"inherit",fontSize:"13px",fontWeight:500,display:"flex",alignItems:"center",gap:"8px"}}>{testing===ex?<><span className="spinner"/>Testen...</>:"Verbinding testen"}</button>
             <button onClick={sync} disabled={!!syncing} style={{padding:"10px 20px",borderRadius:"var(--radius)",border:"none",background:"#C9A84C",color:"#000",cursor:"pointer",fontFamily:"inherit",fontSize:"13px",fontWeight:700,display:"flex",alignItems:"center",gap:"8px"}}>{syncing===ex?<><span className="spinner"/>Syncing...</>:"Trades importeren"}</button>
+            <button onClick={()=>{csvAcctRef.current=ex;csvRef.current.click()}} title="CSV of Excel (.xlsx) bestand uploaden" style={{padding:"10px 20px",borderRadius:"var(--radius)",border:"1px dashed var(--border5)",background:"transparent",color:"var(--text2)",cursor:"pointer",fontFamily:"inherit",fontSize:"13px",fontWeight:500,display:"flex",alignItems:"center",gap:"8px"}}>📄 Importeer CSV / XLSX</button>
+          </div>
+          {ex==="mexc"&&<div style={{marginTop:"10px",padding:"8px 12px",background:"rgba(201,168,76,0.06)",border:"1px solid rgba(201,168,76,0.18)",borderRadius:"6px",fontSize:"11px",color:"var(--text3)",lineHeight:1.5}}>
+            <strong style={{color:"var(--gold)"}}>⚠️ Exporteer <u>Position History</u> uit MEXC</strong> — niet Order History.
+          </div>}
+          {ex==="blofin"&&<div style={{marginTop:"10px",padding:"8px 12px",background:"rgba(46,170,111,0.06)",border:"1px solid rgba(46,170,111,0.2)",borderRadius:"6px",fontSize:"11px",color:"var(--text3)",lineHeight:1.5}}>
+            <strong style={{color:"var(--teal)"}}>✓ Blofin CSV werkt volledig</strong> — posities worden gereconstrueerd uit order history met entry + exit + TP's. Oude opens buiten de CSV-range krijgen "partial data" melding.
+          </div>}
+          <div style={{display:"none"}}>
           </div>
           {syncResult&&<div style={{marginTop:"12px",padding:"10px 14px",borderRadius:"8px",background:syncResult.ok?"rgba(46,170,111,0.1)":"rgba(239,83,80,0.1)",border:`1px solid ${syncResult.ok?"rgba(46,170,111,0.25)":"rgba(239,83,80,0.25)"}`,fontSize:"12px",color:syncResult.ok?"var(--green)":"var(--red)"}}>{syncResult.msg||`${syncResult.count} trades opgehaald`}</div>}
-          {syncResult?.ok&&syncResult?.trades?.length>0&&<div style={{marginTop:"12px"}}>
-            <div style={{fontSize:"11px",color:"var(--text3)",marginBottom:"8px",fontWeight:500}}>Opgehaalde trades ({syncResult.trades.length})</div>
-            {syncResult.trades.slice(0,5).map(t=>(<div key={t.id} style={{display:"flex",gap:"12px",padding:"8px 0",borderBottom:"1px solid var(--border1)",fontSize:"11px",fontFamily:"var(--mono)"}}>
-              <span style={{color:"var(--text3)"}}>{t.date}</span><span style={{fontWeight:600}}>{t.pair}</span><span style={{color:t.direction==="long"?"var(--green)":"var(--red)"}}>{t.direction}</span><span style={{color:parseFloat(t.pnl)>=0?"var(--green)":"var(--red)",marginLeft:"auto"}}>{parseFloat(t.pnl)>=0?"+":""}${fmt(t.pnl)}</span>
-            </div>))}
-            {syncResult.trades.length>5&&<div style={{fontSize:"10px",color:"var(--text4)",paddingTop:"4px"}}>...en {syncResult.trades.length-5} meer</div>}
-          </div>}
-        </div>
-        <div style={{background:"rgba(201,168,76,0.04)",borderRadius:"var(--radius-lg)",padding:"16px",border:"1px solid rgba(201,168,76,0.15)"}}>
-          <div style={{fontSize:"11px",color:"#C9A84C",fontWeight:600,marginBottom:"8px"}}>ℹ Proxy server</div>
-          <div style={{fontSize:"11px",color:"var(--text3)",lineHeight:1.7}}>API verbindingen vereisen de lokale proxy om CORS te omzeilen en je keys veilig te houden. Vul de URL van jouw Cloudflare Worker in. Je kunt de Worker gratis aanmaken via <strong>workers.cloudflare.com</strong> — geen installatie nodig voor members.</div>
-          <div style={{marginTop:"14px"}}>
-            <div style={{fontSize:"10px",color:"var(--gold)",fontWeight:700,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:"6px"}}>Worker URL</div>
-            <input
-              type="text"
-              value={config.proxyUrl||"https://morani-proxy.moranitraden.workers.dev"}
-              onChange={e=>{const v=e.target.value;setConfig(p=>({...p,proxyUrl:v}));try{localStorage.setItem("tj_proxy_url",v)}catch(err){}}}
-              placeholder="https://jouw-worker.workers.dev"
-              style={{width:"100%",padding:"10px 13px",borderRadius:"var(--radius)",border:"1px solid var(--border3)",background:"var(--glass)",color:"var(--text)",fontSize:"13px",fontFamily:"var(--mono)",outline:"none"}}
-            />
-            <div style={{fontSize:"11px",color:"var(--text3)",marginTop:"6px"}}>Kopieer de URL van jouw Cloudflare Worker en plak hem hier. Alle members die dezelfde journal gebruiken kunnen deze Worker gebruiken.</div>
-          </div>
         </div>
       </div>
     </div>
@@ -2370,7 +2688,7 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,imp
       const confirmImport=()=>{const toImport=preview.trades.filter(t=>selected.has(t.id));importTrades(toImport);setPreview(null);setSelected(new Set())};
       return(<div style={{background:"var(--glass)",backdropFilter:"var(--glass-blur)",WebkitBackdropFilter:"var(--glass-blur)",borderRadius:"var(--radius-lg)",padding:"20px",marginBottom:"20px",border:"1px solid rgba(201,168,76,0.3)"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"12px",flexWrap:"wrap",gap:"8px"}}>
-          <div style={{fontSize:"14px",fontWeight:700,color:"var(--gold)"}}>CSV preview — {preview.trades.length} trades <span style={{fontSize:"11px",color:"var(--text3)",fontWeight:500}}>({filteredSel} van {sorted.length} geselecteerd)</span></div>
+          <div style={{fontSize:"14px",fontWeight:700,color:"var(--gold)"}}>{preview.source==="csv"?"CSV / XLSX import":"Import preview"} — {preview.trades.length} trades <span style={{fontSize:"11px",color:"var(--text3)",fontWeight:500}}>({filteredSel} van {sorted.length} geselecteerd)</span></div>
           <div style={{display:"flex",gap:"6px",flexWrap:"wrap"}}>
             <button onClick={()=>setSelected(new Set(sorted.map(t=>t.id)))} style={{padding:"5px 10px",borderRadius:"5px",border:"1px solid var(--border3)",background:"transparent",color:"var(--text3)",fontSize:"11px",cursor:"pointer",fontFamily:"inherit"}}>Selecteer gefilterde</button>
             <button onClick={()=>selected.size===preview.trades.length?setSelected(new Set()):setSelected(new Set(preview.trades.map(t=>t.id)))} style={{padding:"5px 10px",borderRadius:"5px",border:"1px solid var(--border3)",background:"transparent",color:"var(--text3)",fontSize:"11px",cursor:"pointer",fontFamily:"inherit"}}>{selected.size===preview.trades.length?"Deselecteer alles":"Selecteer alles"}</button>
@@ -2398,7 +2716,7 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,imp
               <div style={{width:"14px",height:"14px",borderRadius:"3px",border:`1px solid ${sel?"var(--gold)":"var(--border3)"}`,background:sel?"var(--gold)":"transparent",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"9px",color:"#000"}}>{sel?"✓":""}</div>
               <span style={{padding:"2px 6px",borderRadius:"3px",fontSize:"9px",fontWeight:700,background:t.direction==="long"?"var(--green2)":"var(--red2)",color:t.direction==="long"?"var(--green)":"var(--red)",textAlign:"center"}}>{(t.direction||"").toUpperCase()}</span>
               <span style={{fontWeight:600,fontSize:"12px"}}>{t.pair}</span>
-              <span style={{fontSize:"10px",color:"var(--text4)",fontFamily:"var(--mono)"}}>{t.date} {t.time||""}</span>
+              <span style={{fontSize:"10px",color:"var(--text4)",fontFamily:"var(--mono)"}}>{fmtNL(t.date)} {t.time||""}</span>
               <span style={{fontFamily:"var(--mono)",fontWeight:600,fontSize:"12px",color:isW?"var(--green)":isL?"var(--red)":"var(--text3)",textAlign:"right"}}>{!isNaN(pnlN)?`${pnlN>=0?"+":""}$${fmt(pnlN)}`:"–"}</span>
             </div>
           )})}
@@ -2437,18 +2755,34 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,imp
         </div>
         <div style={{fontSize:"10px",color:"var(--text4)",marginTop:"6px",lineHeight:1.5}}>Polt gekoppelde exchanges automatisch op dit interval. Werkt alleen wanneer er minstens één API-verbinding actief is. Aanbevolen nu: <strong>Uit</strong> zolang de proxy-verbinding met MEXC nog niet werkt.</div>
       </div>
+
+      {/* Proxy server — Worker URL voor MEXC + Kraken (Blofin gaat direct) */}
+      <div style={{marginTop:"16px",paddingTop:"14px",borderTop:"1px solid var(--border2)"}}>
+        <div style={{fontSize:"12px",color:"var(--gold)",fontWeight:700,marginBottom:"8px",textTransform:"uppercase",letterSpacing:"0.08em"}}>ℹ Proxy server</div>
+        <div style={{fontSize:"11px",color:"var(--text3)",lineHeight:1.6,marginBottom:"10px"}}>MEXC en Kraken API vereisen een Cloudflare Worker om CORS te omzeilen. Blofin werkt direct vanuit de browser.</div>
+        <div style={{fontSize:"10px",color:"var(--gold)",fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:"6px"}}>Worker URL</div>
+        <input
+          type="text"
+          value={config.proxyUrl||"https://morani-proxy.moranitraden.workers.dev"}
+          onChange={e=>{const v=e.target.value;setConfig(p=>({...p,proxyUrl:v}));try{localStorage.setItem("tj_proxy_url",v)}catch(err){}}}
+          placeholder="https://jouw-worker.workers.dev"
+          style={{width:"100%",padding:"10px 13px",borderRadius:"var(--radius)",border:"1px solid var(--border3)",background:"var(--glass)",color:"var(--text)",fontSize:"13px",fontFamily:"var(--mono)",outline:"none"}}
+        />
+        <div style={{fontSize:"10px",color:"var(--text4)",marginTop:"6px",lineHeight:1.5}}>Standaard gebruiken we de Morani gedeelde Worker. Je kunt een eigen Worker aanmaken via <strong>workers.cloudflare.com</strong>.</div>
+      </div>
     </div>
 
     {/* Thema switcher — ported from v4_14 */}
     <div style={{background:"var(--glass)",backdropFilter:"var(--glass-blur)",WebkitBackdropFilter:"var(--glass-blur)",borderRadius:"var(--radius-lg)",padding:"20px",marginTop:"16px",border:"1px solid var(--border1)"}}>
       <div style={{fontSize:"11px",color:"var(--gold)",textTransform:"uppercase",letterSpacing:"0.12em",fontWeight:700,marginBottom:"12px"}}>Thema</div>
       <div style={{fontSize:"12px",color:"var(--text4)",marginBottom:"14px",lineHeight:1.6}}>Kies hoe de journal eruitziet. Wordt direct toegepast en opgeslagen in je browser.</div>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"12px",maxWidth:"780px"}}>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:"12px",maxWidth:"840px"}}>
         {[
           {id:"sync",label:"SyncJournal",desc:"Huidige look. Diep zwart met gouden randen.",preview:"linear-gradient(135deg,#000000 0%,#0a0a0a 50%,#111111 100%)"},
           {id:"classic",label:"Classic",desc:"Solide donker. Clean en snel.",preview:"linear-gradient(135deg,#0c0d12,#161722,#1a1b28)"},
-          {id:"aurora",label:"Aurora",desc:"Mesh gradient orbs, glasmorfisme, kleuraccenten.",preview:"linear-gradient(135deg,#08090c 0%,#1a150a 40%,#0a1018 100%)"}
-        ].map(t=>{const current=["sync","classic","aurora"].includes(config.theme)?config.theme:"sync";const active=current===t.id;return(
+          {id:"aurora",label:"Aurora",desc:"Mesh gradient orbs, glasmorfisme, kleuraccenten.",preview:"linear-gradient(135deg,#08090c 0%,#1a150a 40%,#0a1018 100%)"},
+          {id:"light",label:"Light",desc:"Schoon, licht, hoog contrast. Voor dagrust.",preview:"linear-gradient(135deg,#f7f6f2 0%,#ffffff 50%,#eeeae0 100%)"}
+        ].map(t=>{const current=["sync","classic","aurora","light"].includes(config.theme)?config.theme:"sync";const active=current===t.id;return(
           <button key={t.id} onClick={()=>setConfig(p=>({...p,theme:t.id}))} style={{padding:"12px",borderRadius:"var(--radius-lg)",border:`2px solid ${active?"var(--gold)":"var(--border2)"}`,background:"transparent",cursor:"pointer",fontFamily:"inherit",textAlign:"left",transition:"all .15s"}}>
             <div style={{height:"40px",borderRadius:"6px",background:t.preview,marginBottom:"8px",border:"1px solid var(--border1)"}}/>
             <div style={{fontSize:"13px",fontWeight:700,color:active?"var(--gold)":"var(--text)"}}>{t.label}{active&&" ✓"}</div>
@@ -2471,6 +2805,7 @@ function HelpPage(){
                 ["R-Multiple (v7 nieuw)","De R-Multiple wordt automatisch berekend als je entry + stopLoss hebt ingevuld. Het geeft aan hoeveel R je trade opleverde t.o.v. je risico.","r"],
         ["Setup lagen","Gebruik de top-down lagen voor gestructureerde trade analyse. Begin met het hoogste timeframe (Bias) en eindig met je entry timeframe.","layers"],
         ["API koppeling","Koppel MEXC, Blofin of Kraken Futures via de Accounts pagina. Vereist de lokale proxy.py om veilig te verbinden.","api"],
+        ["CSV / XLSX import","Upload Excel (.xlsx) of CSV-exports van je exchange via de Importeer-knop bij elke exchange. XLSX wordt automatisch omgezet naar CSV en getoond in een preview.","csv"],
         ["Opslag limiet","De browser kan max ~5MB bewaren. De app waarschuwt je bij 75%+ gebruik. Bij screenshots: overweeg kleine JPEGs te gebruiken.","storage"],
       ].map(([title,desc])=>(
         <div key={title} style={{padding:"12px 0",borderBottom:"1px solid var(--border1)"}}>
@@ -2483,9 +2818,46 @@ function HelpPage(){
 }
 
 // ============ SIMPLE TP TIMELINE ============
-function TPTimeline({trade,config}){
+function TPTimeline({trade,config,setTrade,showToast}){
+  const[loading,setLoading]=useState(false);
   const tpLevels=(trade.tpLevels||[]).filter(t=>parseFloat(t.price)>0);
-  if(!tpLevels.length&&!parseFloat(trade.takeProfit))return(<div style={{textAlign:"center",padding:"1.5rem",fontSize:"12px",color:"var(--text4)"}}>Geen TP niveaus ingesteld voor deze trade.</div>);
+  const sourceKey=(trade.source||"").toLowerCase();
+  const exApi=ExchangeAPI[sourceKey];
+  const exCfg=config?.exchanges?.[sourceKey]||{};
+  const connected=!!(exCfg.apiKey&&exCfg.apiSecret&&exApi);
+
+  const fetchTPs=async()=>{
+    if(!connected||!exApi.fetchFills||!setTrade)return;
+    setLoading(true);
+    try{
+      const symbol=(trade.pair||"").replace("/","_");
+      const startTime=trade.openTime?parseInt(trade.openTime):new Date(trade.date).getTime()-86400000;
+      const endTime=trade.closeTime?parseInt(trade.closeTime):Date.now();
+      const r=exApi.needsPassphrase
+        ?await exApi.fetchFills(exCfg.apiKey,exCfg.apiSecret,exCfg.passphrase,symbol,startTime,endTime)
+        :await exApi.fetchFills(exCfg.apiKey,exCfg.apiSecret,symbol,trade.positionId,startTime,endTime);
+      const fills=r.fills||[];
+      if(!fills.length){showToast&&showToast("Geen TP-fills gevonden bij exchange","error");return}
+      // Converteer elke fill naar een TP-level
+      const total=fills.reduce((s,f)=>s+Math.abs(parseFloat(f.size||f.vol||f.amount||0)),0)||1;
+      const newTPs=fills.map((f,i)=>{
+        const sz=Math.abs(parseFloat(f.size||f.vol||f.amount||0));
+        return{id:`tp_${Date.now()}_${i}`,price:String(f.price||f.tradePrice||f.closeAvgPrice||""),pct:String(((sz/total)*100).toFixed(1)),status:"hit",actualPrice:String(f.price||f.tradePrice||f.closeAvgPrice||"")};
+      }).filter(t=>parseFloat(t.price)>0);
+      setTrade(p=>({...p,tpLevels:newTPs}));
+      showToast&&showToast(`${newTPs.length} TP's opgehaald van ${exApi.name}`);
+    }catch(e){
+      showToast&&showToast(`TP-fetch mislukt: ${e.message}`,"error");
+    }finally{setLoading(false)}
+  };
+
+  const fetchBtn=connected&&setTrade?(
+    <button onClick={fetchTPs} disabled={loading} style={{padding:"6px 12px",borderRadius:"5px",border:"1px solid rgba(46,170,111,0.3)",background:"rgba(46,170,111,0.08)",color:"var(--teal)",fontSize:"11px",fontWeight:600,cursor:loading?"default":"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:"6px"}}>
+      {loading?<><span className="spinner"/>Ophalen...</>:<>🎯 TP's ophalen ({exApi.name})</>}
+    </button>
+  ):null;
+
+  if(!tpLevels.length&&!parseFloat(trade.takeProfit))return(<div style={{padding:"1.5rem",fontSize:"12px",color:"var(--text4)",textAlign:"center"}}>Geen TP niveaus ingesteld voor deze trade.{fetchBtn&&<div style={{marginTop:"12px",display:"flex",justifyContent:"center"}}>{fetchBtn}</div>}</div>);
   const entry=parseFloat(trade.entry)||0;
   const sl=parseFloat(trade.stopLoss)||0;
   const allTPs=tpLevels.length?tpLevels:[{price:trade.takeProfit,pct:"100",status:"open",actualPrice:""}];
@@ -2493,7 +2865,10 @@ function TPTimeline({trade,config}){
   const minP=Math.min(...prices)*0.998;const maxP=Math.max(...prices)*1.002;const range=maxP-minP||1;
   const pos=p=>((p-minP)/range)*100;
   return(<div style={{padding:"20px",background:"rgba(42,46,57,0.3)",borderRadius:"8px",marginTop:"12px"}}>
-    <div style={{fontSize:"11px",color:"var(--text3)",textTransform:"uppercase",fontWeight:600,marginBottom:"16px"}}>TP Tijdlijn</div>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"16px"}}>
+      <div style={{fontSize:"11px",color:"var(--text3)",textTransform:"uppercase",fontWeight:600}}>TP Tijdlijn</div>
+      {fetchBtn}
+    </div>
     <div style={{position:"relative",height:"40px",margin:"0 20px"}}>
       <div style={{position:"absolute",top:"50%",left:0,right:0,height:"2px",background:"rgba(255,255,255,0.1)",transform:"translateY(-50%)"}}/>
       {sl>0&&<div style={{position:"absolute",top:0,bottom:0,left:`${pos(sl)}%`,display:"flex",flexDirection:"column",alignItems:"center"}}>
@@ -2682,7 +3057,7 @@ function App(){
     showToast(`Backup geëxporteerd: ${trades.length} trades, ${(accounts||[]).length} accounts`);
   };
 
-  const theme=["sync","classic","aurora"].includes(config.theme)?config.theme:"sync";
+  const theme=["sync","classic","aurora","light"].includes(config.theme)?config.theme:"sync";
   useEffect(()=>{document.body.className=`theme-${theme}`},[theme]);
 
   const filteredTrades=applyFilters(trades,filters);
@@ -2754,7 +3129,6 @@ function App(){
         </div>
         <div className="tj-right-btns" style={{display:"flex",alignItems:"center",gap:"8px"}}>
           <button onClick={()=>{setNewTrade(newEmptyTrade());navigate("new")}} style={{padding:"7px 14px",borderRadius:"var(--radius)",border:"1px solid var(--blue2)",background:"rgba(201,168,76,0.12)",color:"#C9A84C",fontSize:"12px",cursor:"pointer",fontFamily:"inherit",fontWeight:600,display:"flex",alignItems:"center",gap:"6px"}}><span>+</span> Trade <span className="kbd" style={{fontSize:"9px",borderColor:"rgba(201,168,76,0.4)"}}>N</span></button>
-          <button onClick={exportTrades} title="Exporteer alle trades">Export</button>
           <button onClick={()=>setConfig(p=>({...p,theme:p.theme==="morani"?"purple":"morani"}))}>🌙</button>
           <div className="hamburger" onClick={()=>setMobileOpen(true)}>☰</div>
         </div>
@@ -2805,7 +3179,7 @@ function App(){
               </div>
             </div>
             <TradeForm trade={editTrade} setTrade={setEditTrade} onSave={()=>saveTrade(editTrade)} onCancel={()=>setEditTrade(null)} tagConfig={tagConfig} config={config} accounts={accounts}/>
-            <TPTimeline trade={editTrade} config={config}/>
+            <TPTimeline trade={editTrade} config={config} setTrade={setEditTrade} showToast={showToast}/>
           </div>
         </div>}
 

@@ -8,13 +8,27 @@ Basis kwam uit de feature-diff v4_14 → v9 onderaan. Inmiddels werken we op **v
 
 ## 🔜 Next up (deze of volgende werksessie)
 
-- [ ] **Repo live krijgen** — Denny pusht de baseline naar `ZaratrasJournal/SyncJournal`, Sebas cloned, beide testen feature-branch flow.
-- [ ] **Worker / MEXC API fixen** — Worker geeft 500 voor MEXC en Blofin. Worker-broncode nodig uit Cloudflare dashboard om te debuggen. Parked.
+- [ ] **Setup ranking widget** (uit batch 2 van feature-uitbreidingen)
+- [ ] **Risk-per-trade tracking**
+- [ ] **Dag-limiet / tilt guard**
+- [ ] **Deelbare trade-kaart met Morani logo**
+- [ ] **Trade-voucher / shareable link**
 
 ## 📋 Quick wins (klein, geïsoleerd, laag risico)
 
+- [ ] **Hyperliquid toevoegen** — kan volledig client-side (public info-endpoint, geen proxy). Zie `Agent` onderzoek van 2026-04-14.
+- [ ] **Datumformaat naar dd-mm-yyyy** — storage blijft ISO (voor sortering/filter), alle DISPLAY-plekken door `fmtNL()` helper. Locaties: trade-lijst, review highlights, dashboard labels, analytics x-as labels, calendar headers.
+- [ ] **Snel-filter presets** — knoppen "Vandaag / Deze week / Deze maand / Alle tijd" in FilterBar. Zet `filters.dateFrom` + `filters.dateTo` naar passende range.
+- [ ] **Voor-trade notitie** — 2 velden in TradeForm i.p.v. 1: "Waarom ga ik erin?" (vóór) + "Hoe ging het?" (post-mortem). Apart `trade.entryNote` naast bestaande `trade.notes`. Schema-migratie: lege `entryNote` voor oude trades.
 
 ## 🛠 Medium (raakt shared state / UI)
+
+- [ ] **Analytics/Review secties regrouping** — voorstel: Edge / Wat werkt / Timing / Risico & discipline groepen. Drag-drop POC in `tradejournal-dragdrop-test.html`.
+- [ ] **Setup ranking widget** — Dashboard/Analytics sectie "Top 3 setups" (gemiddelde R ≥ 1.5) + "Worst 3 setups". Elke rij klikbaar → zet `filters.setupTags=[setup]` en spring naar Trades-tab. Bijbehorend: "toon alleen losers van setup X" shortcut.
+- [ ] **Risk-per-trade tracking** — nieuwe velden op trade: `riskUsd` (verlies als SL geraakt) en `riskPct` (% van account-saldo). Auto-berekend als `entry + stopLoss + positionSize + account` aanwezig. Analytics-sectie "Risk consistency" — grafiek van risk-% per trade over tijd (signaleert escalerend risico).
+- [ ] **Dag-limiet / tilt guard** — instelling in Instellingen: `maxLossesPerDay` (default 3). Als user vandaag ≥ N losses én opent nieuwe TradeForm: modal "Je hebt vandaag al X losses — pauze overwegen?" met "Toch doorgaan" + "Neem pauze" knoppen. `tiltGuard` boolean in config.
+- [ ] **Deelbare trade-kaart** — export-knop op trade-detail: html2canvas snapshot van de trade (anoniem, zonder API-keys of account-grootte), met **Morani-logo** als watermerk, downloadbaar als PNG voor Discord. Toggle "Toon PnL %" vs "Toon PnL $" vs "Verborgen".
+- [ ] **Trade-voucher / shareable link** — "Kopieer trade-link" knop: serialiseer 1 trade in base64 in URL-fragment (bijv. `#/trade/share/eyJ...`). Ontvanger opent die link → read-only modal met trade-details (géén import naar hun journal). Geen server nodig, werkt client-side.
 
 
 ## ⚠️ Risky (refactor of schema-migratie)
@@ -30,6 +44,33 @@ Basis kwam uit de feature-diff v4_14 → v9 onderaan. Inmiddels werken we op **v
 
 ## ✅ Done
 
+- [x] 2026-04-14 — **Lokale CCXT-proxy** opgezet (`proxy-local/server.js`) met Express + CCXT + CORS. Draait op `http://localhost:8787`, vervangt tijdelijk de Cloudflare Worker voor Denny + Sebas tijdens dev.
+- [x] 2026-04-14 — **MEXC Contract V1 direct** — proxy roept `contract.mexc.com/api/v1/private/position/list/history_positions` aan met HMAC-SHA256 signing. Werkend, geaggregeerde posities binnen.
+- [x] 2026-04-14 — **Blofin positions-history direct** — proxy roept `openapi.blofin.com/api/v1/account/positions-history` aan met ACCESS-KEY/SIGN/TIMESTAMP/PASSPHRASE/NONCE. Werkend.
+- [x] 2026-04-14 — **Kraken Futures account-log** — via CCXT's `request()` naar `/api/history/v3/account-log`, met paginatie (max 20k entries) en positie-lifecycle tracking (open → partial closes → full close). Partial closes worden `tpLevels[]` in SyncJournal. Werkt globaal, TP-detectie nog te valideren.
+- [x] 2026-04-14 — **SyncJournal `getProxyUrl()` bug** — localhost-URLs werden automatisch terug-reset naar Cloudflare. Fixed.
+- [x] 2026-04-14 — **Sync `importTrades()` bug** — "Trades importeren" toonde preview maar sloeg niets op. Nu voegt 'ie toe aan de journal.
+- [x] 2026-04-14 — **Online onderzoek exchange-API's** via `web-search-agent`: CCXT (MIT, 37k stars) dekt alle 4 crypto-exchanges. FTMO vereist CSV-import. Geen bestaande Claude-subagents voor trading.
+- [x] 2026-04-14 — **MEXC Position History + Order History CSV/XLSX import** — SheetJS CDN toegevoegd, parser detecteert 2 MEXC-formats. Position History geeft entry+exit+pnl; Order History filtert op Closing PNL. Disclaimer alleen voor MEXC.
+- [x] 2026-04-14 — **Blofin CSV standalone (FIFO reconstructie)** — open-lots queue per symbol, reduce-only fills trekken af, emit bij size=0. Orphan closes krijgen "⚠ partial data" flag. PnL = net (CSV pnl − fees).
+- [x] 2026-04-14 — **Blofin CSV timezone fix** — CSV-tijden geïnterpreteerd als UTC, display converteert naar browser-local. Matcht nu Blofin UI.
+- [x] 2026-04-14 — **Kraken CSV positie-lifecycle tracking** — zelfde algoritme als API proxy, bundelt partial fills per contract. Orphan closes → virtuele positie met partial_data flag + entry uit `new_average_entry_price`.
+- [x] 2026-04-14 — **Blofin API handler** — directe call naar `/api/v1/account/positions-history` met ACCESS-KEY/SIGN/TIMESTAMP/PASSPHRASE/NONCE signing.
+- [x] 2026-04-14 — **MEXC & Blofin TP's ophalen (fills)** endpoints — proxy roept order_deals (MEXC) en fills-history (Blofin) aan; client mapt naar tpLevels.
+- [x] 2026-04-14 — **Snel-filter presets** — Vandaag / Deze week / Deze maand / Alles in FilterBar.
+- [x] 2026-04-14 — **Voor-trade notitie** — "Waarom ga ik erin?" veld in TradeForm, apart van post-mortem notes. `entryNote` field op EMPTY_TRADE.
+- [x] 2026-04-14 — **Sync vanaf default = 1e van maand** — zowel UI-display als sync() startTime.
+- [x] 2026-04-14 — **Datumformaat dd-mm-yyyy** — `fmtNL()` helper, toegepast op trade-lijst, review highlights, CSV preview. Storage blijft ISO.
+- [x] 2026-04-14 — **🎯 TP's ophalen knop** in TPTimeline — per exchange fills ophalen en als tpLevels mappen op trade.
+- [x] 2026-04-14 — **📄 Importeer CSV/XLSX knop** verplaatst naar exchange-paneel (naast "Trades importeren") ipv tiny icoon in sidebar.
+- [x] 2026-04-14 — **Cloudflare Worker gedeployed** via `wrangler` → `morani-proxy.moranitraden.workers.dev`. Code in `worker/proxy.js`. Vervangt v3.
+- [x] 2026-04-14 — **MEXC + Kraken API via Worker** werkend. Position-history voor MEXC, account-log met minute-bucket aggregatie voor Kraken.
+- [x] 2026-04-14 — **Kraken minute-bucket aggregatie** (reverted van position-lifecycle): partial fills binnen zelfde minuut/contract/richting → 1 trade. Simpel en betrouwbaar.
+- [x] 2026-04-14 — **Blofin direct vanuit browser** — geen Worker meer nodig. Cloudflare blokkeerde Worker→Blofin (beide op Cloudflare, bot-protection). `_direct()` helper met WebCrypto HMAC-signing + ACCESS-NONCE. Werkt standalone + client-side filtering op startTime.
+- [x] 2026-04-14 — **API-sync preview-flow** — "Trades importeren" toont nu hetzelfde preview-scherm als CSV/XLSX (filter long/short + win/loss, selecteren, dedup). Pas op "Importeer" klik worden trades geladen.
+- [x] 2026-04-14 — **Preview-titel dynamisch** — "Import preview" voor API, "CSV / XLSX import" voor bestanden.
+- [x] 2026-04-14 — **Proxy server panel verplaatst** naar Instellingen (onder Auto-sync). Was voorheen los blok rechts in exchange-paneel.
+- [x] 2026-04-14 — **Light theme toegevoegd** — 4e thema (naast SyncJournal, Classic, Aurora). Wit/cream bg, donkere tekst, brons-goud accent.
 - [x] 2026-04-13 — Projectopzet: `CLAUDE.md`, memory, `.gitignore`, GitHub-handleiding.
 - [x] 2026-04-13 — Custom subagents aangemaakt: `html-feature-diff`, `exchange-integrator`, `pr-reviewer-nl`.
 - [x] 2026-04-13 — `tradjournal_v9_morani.html` → `tradejournal.html`, titel/versielabel gezet naar `SyncJournal v9.0.0`.
