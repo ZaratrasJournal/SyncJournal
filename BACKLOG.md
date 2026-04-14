@@ -14,6 +14,12 @@ Basis kwam uit de feature-diff v4_14 → v9 onderaan. Inmiddels werken we op **v
 - [ ] **Deelbare trade-kaart met Morani logo**
 - [ ] **Trade-voucher / shareable link**
 
+### 💡 Inzichten uit concurrentie-onderzoek (MM Platinum, 2026-04-14)
+
+- [ ] **🥇 AI trade-review** — knop "Analyseer mijn laatste N trades" die via user's eigen API-key (OpenAI/Claude) patronen samenvat uit trades + tags + voor/na notities. Bijv: "Je verliest 65% van trades met 'FOMO' tag". Past bij single-file model: geen backend, user brengt eigen key. Grootste differentiator vs concurrenten.
+- [ ] **🥈 Trading Rules module** — user legt regels vast (bijv. "max 2% risk", "geen trades na 3 losses op dag X", "altijd stop loss bij entry"). Bij elke trade-save automatische compliance-check. Dashboard widget: "Je volgde je regels in 72% van je trades deze week". Combineert met Dag-limiet en Risk-per-trade items.
+- [ ] **🥉 Daily Journal / Event Log** — nieuwe storage key `tj_daily_notes`, 1 entry per datum met pre-market plan, markt-events, mindset check-in. Losse kalender-view + integreert met trade-detail (toont dag-notitie op trade's datum). Lage bouwkost, hoge retention-waarde.
+
 ## 📋 Quick wins (klein, geïsoleerd, laag risico)
 
 - [ ] **Hyperliquid toevoegen** — kan volledig client-side (public info-endpoint, geen proxy). Zie `Agent` onderzoek van 2026-04-14.
