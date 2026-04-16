@@ -1,133 +1,203 @@
-# SyncJournal — Hosting voor de community
+# SyncJournal — Hosting & Workflow
 
-Hoe je één vaste URL maakt waar de hele community de laatste versie gebruikt. Geen gedoe met downloads, en localStorage blijft per trader consistent.
+Hoe de community altijd de **final** versie gebruikt via één vaste URL, terwijl Denny & Sebas vrij kunnen bouwen op een **work** versie zonder ooit iets te breken voor de community.
 
 ---
 
-## 🥇 Stap-voor-stap: GitHub Pages aanzetten
+## 🎯 De opzet
 
-### 1. Open GitHub Settings
-
-Ga naar: **https://github.com/ZaratrasJournal/SyncJournal/settings/pages**
-
-Of handmatig:
-- Open de repo op github.com
-- Klik **Settings** (tab bovenaan)
-- Klik **Pages** (in de linker sidebar, onder "Code and automation")
-
-### 2. Source configureren
-
-- **Source:** `Deploy from a branch`
-- **Branch:** `main`
-- **Folder:** `/ (root)`
-- Klik **Save**
-
-### 3. Wachten (1–2 minuten)
-
-GitHub bouwt de site. Je ziet bovenin:
-> ⏳ Your site is being built from the `main` branch
-
-Na ~1 min ververs je de pagina → groene balk:
-> ✅ Your site is live at **https://zaratrasjournal.github.io/SyncJournal/**
-
-### 4. De juiste URL delen
-
-Omdat de repo meerdere HTML-files heeft, moet de community naar de **juiste file**:
+- **`main` branch** = SyncJournal final → publieke community-URL (met Cloudflare Access gate)
+- **`work` branch** = werk-in-uitvoering → private preview-URL (alleen Denny + Sebas)
+- **Cloudflare Pages** deployt beide branches automatisch naar aparte URL's
+- **Cloudflare Access** beschermt beide URL's: alleen whitelist-emails kunnen openen
 
 ```
-https://zaratrasjournal.github.io/SyncJournal/tradejournal.html
+Denny/Sebas ─push→ work branch   ─cloudflare→  work.syncjournal.pages.dev  (alleen wij)
+                       │
+                       │ git merge work (als tevreden)
+                       ↓
+                    main branch  ─cloudflare→  journal.moranitraden.nl     (community)
 ```
 
-Deze link pin je in Discord.
+---
+
+## 🚀 Stap 1: Cloudflare Pages project aanmaken
+
+### 1a. Connect GitHub
+
+1. Ga naar **https://dash.cloudflare.com** → **Workers & Pages**
+2. Klik **Create application** → tab **Pages** → **Connect to Git**
+3. Autoriseer Cloudflare voor GitHub (eenmalig)
+4. Selecteer repo `ZaratrasJournal/SyncJournal`
+
+### 1b. Build settings
+
+Omdat dit een static HTML site is:
+
+| Setting | Waarde |
+|---|---|
+| **Project name** | `syncjournal` |
+| **Production branch** | `main` |
+| **Framework preset** | None |
+| **Build command** | *(leeg laten)* |
+| **Build output directory** | `/` |
+
+Klik **Save and Deploy**.
+
+Na ~30 sec is je production live op `https://syncjournal.pages.dev/tradejournal.html`.
+
+### 1c. Custom domain (optioneel, aanbevolen)
+
+1. In het project → tab **Custom domains** → **Set up a custom domain**
+2. Typ: `journal.moranitraden.nl` (of wat je wil)
+3. Cloudflare voegt automatisch een CNAME toe (als moranitraden.nl bij Cloudflare staat) — anders DNS bij je provider: `CNAME journal → syncjournal.pages.dev`
 
 ---
 
-## 🎯 Optioneel: URL mooier maken met `index.html` redirect
+## 🔐 Stap 2: Cloudflare Access (community gate)
 
-Nu is de URL lang. Met een kleine redirect wordt het:
+Zonder Access is je URL publiek. Access voegt een **email-login** toe: alleen whitelist kan openen.
+
+### 2a. Access aanzetten
+
+1. Cloudflare Dashboard → **Zero Trust** (links in menu)
+2. Eerste keer: setup wizard (naam kiezen, gratis plan → up to 50 users)
+3. **Access** → **Applications** → **Add an application** → **Self-hosted**
+
+### 2b. App configureren
+
+| Setting | Waarde |
+|---|---|
+| **Application name** | SyncJournal |
+| **Session duration** | `1 month` (anders loggen mensen te vaak in) |
+| **Application domain** | `journal.moranitraden.nl` (of je Pages URL) |
+
+### 2c. Policy (wie mag erin?)
+
+- **Policy name:** `Morani community`
+- **Action:** Allow
+- **Include** → **Emails** → voeg elke trader's email toe
+  - Of **Emails ending in** → `@moranitraden.nl` (als iedereen dat domein heeft)
+  - Of **GitHub organization** → `ZaratrasJournal` (als ze allemaal GitHub hebben)
+
+Save. Vanaf nu: wie de URL opent krijgt een login-scherm, typt zijn email, krijgt magic-link, is 1 maand binnen.
+
+---
+
+## 🌳 Stap 3: Work branch aanmaken (als nog niet gedaan)
+
+```bash
+git checkout main
+git pull
+git checkout -b work
+git push -u origin work
+```
+
+Cloudflare Pages detecteert de nieuwe branch automatisch en maakt een **preview-deployment**. URL wordt ongeveer:
+```
+https://work.syncjournal.pages.dev
+```
+
+Optioneel: gate deze ook met Cloudflare Access (zelfde policy).
+
+---
+
+## 🔄 Dagelijkse workflow
+
+### Werken op `work`
+
+```bash
+git checkout work
+# bouwen, testen, pushen
+git add tradejournal.html
+git commit -m "WIP: new feature X"
+git push
+```
+
+Cloudflare bouwt binnen 1 min → check resultaat op `work.syncjournal.pages.dev`.
+
+### Tevreden? Merge naar `main` (= update voor community)
+
+```bash
+git checkout main
+git pull                      # veiligheidscheck
+git merge work                # fast-forward of merge-commit
+git push                      # community krijgt nieuwe versie binnen 1 min
+git checkout work             # terug naar dev
+```
+
+Of met een PR-flow als je Sebas wil laten reviewen:
+```bash
+gh pr create --base main --head work --title "Release: feature X"
+# Sebas reviewt, approved, merget via GitHub UI
+```
+
+### Rollback als er iets brak
+
+```bash
+git checkout main
+git revert HEAD               # maakt nieuwe commit die laatste undoet
+git push
+# of harder:
+git reset --hard <oude-sha>
+git push --force              # ⚠ voorzichtig, alleen in noodgevallen
+```
+
+---
+
+## 💾 localStorage: let op deze valkuil
+
+Elke deploy-URL heeft een **eigen localStorage**:
+- `journal.moranitraden.nl` → community-data
+- `work.syncjournal.pages.dev` → Denny's work-data
+
+Dat is **goed** — je breekt nooit per ongeluk community-data tijdens testen. Maar:
+
+- **Test data wil je soms kopiëren** tussen work → prod (of andersom). Gebruik Export JSON → import op andere URL.
+- **Schema-migraties** test je eerst op `work` met een kopie van je prod-backup.
+- **Als je een breaking change maakt** in localStorage-schema → altijd migratie toevoegen in `runSchemaMigrations()` vóór je naar main merged.
+
+---
+
+## 📋 Community-bericht (template voor Discord)
 
 ```
-https://zaratrasjournal.github.io/SyncJournal/
+🎯 SyncJournal is live!
+
+👉 https://journal.moranitraden.nl
+
+Eerste keer:
+1. Klik de link
+2. Typ je email (die je aan Denny hebt doorgegeven)
+3. Open de magic-link die Cloudflare stuurt
+4. Journal start — bookmark 'm!
+
+Je data staat in je eigen browser (localStorage). Voor backup:
+Instellingen → Export JSON → bewaar die file. Wissel je van apparaat of browser? Importeer 'm weer.
+
+Updates komen automatisch — gewoon de pagina verversen.
 ```
 
-Voeg `index.html` toe aan de repo-root met deze inhoud:
+---
 
-```html
-<!DOCTYPE html>
-<meta charset="utf-8">
-<title>SyncJournal — redirect</title>
-<meta http-equiv="refresh" content="0; url=tradejournal.html">
-<link rel="canonical" href="tradejournal.html">
-<script>location.replace("tradejournal.html")</script>
-<p>Laden… <a href="tradejournal.html">klik hier als er niks gebeurt</a></p>
-```
+## 🚨 Veiligheid
 
-Commit + push → na 1 min werkt `https://zaratrasjournal.github.io/SyncJournal/` direct.
+- **Geen API-keys in de code.** Elke trader vult ze zelf in de browser (localStorage). CLAUDE.md-regel.
+- **Private repo blijft privé.** Cloudflare Pages pullt via OAuth, niemand anders ziet je code.
+- **Cloudflare Access sessie = 1 maand.** Bij verlaten-community een trader: verwijder 'm uit de policy, logt dan uit binnen 1 maand (of force-revoke via Access UI).
+- **Commit nooit `.env`, CSV's, `*_personal.*`.** Staat al in `.gitignore`.
 
 ---
 
-## 🔄 Hoe updates werken
-
-1. Jij (of Sebas) pusht naar `main`
-2. GitHub bouwt automatisch (~1 min)
-3. Volgende keer dat community member F5 doet → nieuwste versie
-
-**localStorage blijft intact** omdat iedereen op dezelfde origin zit. Geen data-verlies bij updates.
-
-Tip: bump het versielabel binnenin de app bij grote changes, dan weet iedereen dat ze iets nieuws hebben.
-
----
-
-## 📱 Tips voor de community
-
-Stuur samen met de URL deze korte uitleg:
-
-> **SyncJournal openen**
->
-> 1. Open **https://zaratrasjournal.github.io/SyncJournal/** in Chrome/Edge/Firefox
-> 2. Bookmark 'm, of voeg toe aan je home screen (op mobiel via "Aan startscherm toevoegen")
-> 3. Je data blijft in je eigen browser (localStorage). Ander apparaat? → Export JSON uit Instellingen en importeer op het nieuwe apparaat.
-> 4. Updates komen automatisch — gewoon de pagina verversen.
-
----
-
-## 🔒 Later: privé maken
-
-Als je op enig moment **niet meer wil dat iedereen toegang heeft**:
-
-### Optie A: Switch naar Cloudflare Pages + Access (gratis tot 50 users)
-
-1. Zet `zaratrasjournal.github.io` uit (Settings → Pages → "None")
-2. Cloudflare Dashboard → Pages → "Create a project" → connect GitHub repo
-3. Build settings: leeg laten (statische HTML) → Deploy
-4. Cloudflare Access → application aanmaken → email whitelist (bv. community@)
-5. Custom domain koppelen: `journal.moranitraden.nl`
-
-Login via email: user krijgt magic-link, kan app gebruiken. Niet-community → 403.
-
-### Optie B: Repo privé maken (kost GitHub Pro voor Pages op private repos)
-
-Simpeler maar $4/maand. Alleen mensen met repo-access zien de Pages site.
-
----
-
-## ⚠️ Waarschuwingen
-
-- **API-keys in localStorage blijven lokaal** bij elke trader. Ze worden *niet* gedeeld via GitHub Pages. Code is open, data niet.
-- **Commit geen `.env`, `*_personal.*` of CSV's.** Staan al in `.gitignore`, dubbel-check bij elke commit.
-- **Breaking changes** in storage-schema → denk aan een migratie in `runSchemaMigrations()`, anders raakt iemands data stuk bij update.
-- **Privé dev werk?** Maak een aparte branch (`dev`, `feature/xyz`) — alleen `main` wordt live gepusht.
-
----
-
-## 🚨 Troubleshooting
+## 🐛 Troubleshooting
 
 | Probleem | Oplossing |
 |---|---|
-| "404 — There isn't a GitHub Pages site here" | Wacht 2 min, dan hard refresh (Ctrl+F5). Check Settings → Pages of branch = `main`. |
-| Update is niet zichtbaar | Hard refresh (Ctrl+Shift+R). GitHub Pages cached ~10 min. |
-| `localStorage is null` / data weg | User heeft iets in private mode geopend, of andere URL. Check dat ze de vaste URL gebruiken. |
-| Build failed | Check de **Actions** tab — meestal een YAML-fout of illegale filename. |
+| Deploy faalt na push | Cloudflare Dashboard → Pages → Deployments → click failed deploy → check build log. Meestal: illegale filename of te grote file. |
+| "Access denied" voor legitieme user | Check Access → Applications → Policies. Email goed gespeld? Case-sensitive soms. |
+| Trader ziet oude versie na update | Hard refresh (`Ctrl+Shift+R`). Cloudflare cached statisch ~5 min. |
+| Preview URL werkt niet meer | Check Cloudflare Pages → Deployments → staat `work` branch nog actief? |
+| localStorage weg na URL-wijziging | Normaal — andere origin. Import JSON-backup van oude URL. |
 
 ---
 
