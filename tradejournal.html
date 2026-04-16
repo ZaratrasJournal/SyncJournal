@@ -198,6 +198,24 @@ input[type=date]::-webkit-calendar-picker-indicator{filter:invert(0.5)}
 .exp-negative{color:#e05555;font-weight:700}
 /* v7 NEW: keyboard shortcut hint */
 .kbd{display:inline-block;font-size:9px;padding:1px 5px;border-radius:3px;border:1px solid var(--border4);background:rgba(255,255,255,0.06);color:var(--text4);font-family:var(--mono)}
+/* Trade-form collapsible sections (<details>/<summary>) */
+details.tj-section{border-top:1px solid var(--border2);padding:14px 0 0;margin:0 0 10px}
+details.tj-section>summary{list-style:none;cursor:pointer;display:flex;align-items:center;justify-content:space-between;padding:4px 2px;border-radius:6px;user-select:none;transition:background .15s}
+details.tj-section>summary::-webkit-details-marker{display:none}
+details.tj-section>summary::marker{content:""}
+details.tj-section>summary:hover{background:rgba(201,168,76,.04)}
+details.tj-section>summary .tj-sec-title{font-size:11px;color:var(--gold);text-transform:uppercase;letter-spacing:.12em;font-weight:700;display:flex;align-items:center;gap:8px}
+details.tj-section>summary .tj-sec-hint{font-size:10px;color:var(--text4);font-weight:500}
+details.tj-section>summary .tj-sec-chev{color:var(--text4);font-size:11px;transition:transform .2s;margin-left:8px}
+details.tj-section[open]>summary .tj-sec-chev{transform:rotate(180deg)}
+details.tj-section>.tj-sec-body{padding:14px 2px 4px}
+/* KPI strip for live risk / R:R / qty */
+.tj-kpi-strip{display:flex;gap:0;align-items:stretch;background:rgba(20,22,30,.6);border:1px solid var(--border2);border-radius:8px;overflow:hidden;margin-bottom:14px}
+.tj-kpi-strip .tj-kpi{flex:1;padding:8px 12px;display:flex;flex-direction:column;gap:2px;border-right:1px solid var(--border2)}
+.tj-kpi-strip .tj-kpi:last-child{border-right:none}
+.tj-kpi-strip .tj-kpi-label{font-size:9px;color:var(--text5);font-weight:600;text-transform:uppercase;letter-spacing:.08em}
+.tj-kpi-strip .tj-kpi-val{font-size:13px;color:var(--text);font-family:var(--mono);font-weight:700}
+.tj-kpi-strip .tj-kpi-val.muted{color:var(--text5);font-weight:400}
 
 
 
@@ -1602,18 +1620,411 @@ function TradeList({trades,onEdit,onDelete,onQuickTag,onBulkDelete,onBulkTag,sho
 
 
 // ============ TRADE FORM ============
+// ═══ Trade Card Export — 4 designs + veld-toggles + PNG download ═══
+function TradeCardExport({trade,onClose}){
+  const [style,setStyle]=useState(()=>{try{return localStorage.getItem("tj_card_style")||"classic"}catch{return"classic"}});
+  const [fields,setFields]=useState(()=>{try{return JSON.parse(localStorage.getItem("tj_card_fields")||"null")||{pnlAbs:true,pnlPct:true,rMult:true,entry:true,exit:true,size:true,stopLoss:false,holdTime:true,setup:true,dateTime:true,session:true,anonPair:false}}catch{return{}}});
+  useEffect(()=>{try{localStorage.setItem("tj_card_style",style);localStorage.setItem("tj_card_fields",JSON.stringify(fields));}catch{}},[style,fields]);
+  const cardRef=useRef(null);
+  const [busy,setBusy]=useState(false);
+
+  // Compute all trade values once
+  const pnl=parseFloat(trade.pnl)||0;
+  const entryP=parseFloat(trade.entry)||0;
+  const exitP=parseFloat(trade.exit)||0;
+  const size=trade.positionSize||trade.positionSizeAsset||"";
+  const sl=parseFloat(trade.stopLoss)||0;
+  const dir=trade.direction||"long";
+  const pairDisplay=fields.anonPair?"COIN/USDT":(trade.pair||"BTC/USDT");
+  const pairShort=pairDisplay.split("/")[0];
+  const quoteShort=pairDisplay.split("/")[1]||"USDT";
+  const rMult=(()=>{if(!entryP||!sl||!exitP)return null;const r=Math.abs(entryP-sl);if(!r)return null;return Math.abs(exitP-entryP)/r*(pnl>=0?1:-1);})();
+  const pnlPct=(()=>{if(!entryP||!size)return null;const notional=entryP*parseFloat(size);if(!notional)return null;return pnl/notional*100;})();
+  const holdMs=trade.openTime&&trade.closeTime?Math.abs(parseInt(trade.closeTime)-parseInt(trade.openTime)):0;
+  const holdStr=holdMs?(holdMs>86400000?(holdMs/86400000).toFixed(1)+"d":holdMs>3600000?Math.floor(holdMs/3600000)+"h "+Math.floor((holdMs%3600000)/60000)+"m":Math.floor(holdMs/60000)+"m"):"–";
+  const sessionStr=(()=>{try{const s=getSessionTags(trade.date,trade.time);return s[0]||"–";}catch{return"–";}})();
+  const setupStr=(trade.setupTags||[]).slice(0,2).join(" · ")||"–";
+  const dirColor=pnl>=0?"#2eaa6f":"#e05555";
+  const pnlSign=pnl>=0?"+":"";
+  const dateDisplay=fmtNL(trade.date||"")+(trade.time?" · "+trade.time:"");
+
+  const[copyStatus,setCopyStatus]=useState("");
+  const renderCanvas=async()=>{
+    const el=cardRef.current;
+    if(!el)throw new Error("card niet gevonden");
+    // Clone the card into an isolated detached container, away from any parent CSS
+    // (parent conic-gradient / transform:scale / backdrop-filter can break html2canvas)
+    const sandbox=document.createElement("div");
+    sandbox.style.cssText="position:fixed;left:-99999px;top:0;pointer-events:none;background:transparent;z-index:-1";
+    const clone=el.cloneNode(true);
+    clone.classList.add("capture-mode");
+    sandbox.appendChild(clone);
+    document.body.appendChild(sandbox);
+    try{
+      await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+      return await html2canvas(clone,{backgroundColor:null,scale:2,logging:false,useCORS:true,imageTimeout:0,removeContainer:true,foreignObjectRendering:false});
+    }finally{
+      document.body.removeChild(sandbox);
+    }
+  };
+  const downloadPNG=async()=>{
+    if(!cardRef.current||typeof html2canvas==="undefined")return;
+    setBusy(true);
+    try{
+      const canvas=await renderCanvas();
+      const url=canvas.toDataURL("image/png");
+      const a=document.createElement("a");a.href=url;a.download=`trade-${pairShort}-${trade.date||"card"}.png`;a.click();
+    }catch(e){alert("Export mislukt: "+e.message)}
+    setBusy(false);
+  };
+  const copyImage=async()=>{
+    if(!cardRef.current||typeof html2canvas==="undefined")return;
+    if(!navigator.clipboard||!window.ClipboardItem){setCopyStatus("Browser ondersteunt geen clipboard-image (gebruik Download)");setTimeout(()=>setCopyStatus(""),3500);return}
+    setBusy(true);setCopyStatus("");
+    try{
+      const canvas=await renderCanvas();
+      const blob=await new Promise(r=>canvas.toBlob(r,"image/png"));
+      if(!blob)throw new Error("Kon geen PNG blob maken");
+      await navigator.clipboard.write([new ClipboardItem({"image/png":blob})]);
+      setCopyStatus("✓ Gekopieerd — plak in Discord met Ctrl+V");
+      setTimeout(()=>setCopyStatus(""),3000);
+    }catch(e){
+      setCopyStatus("Kopiëren mislukt: "+(e.message||"onbekend"));
+      setTimeout(()=>setCopyStatus(""),3500);
+    }
+    setBusy(false);
+  };
+
+  const FieldToggle=({k,label})=>(
+    <label style={{display:"flex",alignItems:"center",gap:"10px",padding:"8px 10px",background:fields[k]?"rgba(46,170,111,.08)":"rgba(255,255,255,.02)",border:`1px solid ${fields[k]?"rgba(46,170,111,.22)":"var(--border2)"}`,borderRadius:"6px",cursor:"pointer",fontSize:"12px",color:"var(--text2)",marginBottom:"4px",userSelect:"none"}}>
+      <input type="checkbox" checked={!!fields[k]} onChange={()=>setFields(p=>({...p,[k]:!p[k]}))} style={{accentColor:"var(--gold)",width:"14px",height:"14px",cursor:"pointer"}}/>
+      <span>{label}</span>
+    </label>
+  );
+
+  // Per-card crypto animations — injected via style-block
+  const animStyle=(<style>{`
+    @keyframes coinOrbit{0%{transform:rotate(0) translateX(140px) rotate(0)}100%{transform:rotate(360deg) translateX(140px) rotate(-360deg)}}
+    @keyframes coinFloat{0%,100%{transform:translateY(0) rotateY(0)}50%{transform:translateY(-12px) rotateY(180deg)}}
+    @keyframes candleRise{0%{opacity:0;transform:translateY(30px) scale(.8)}15%{opacity:1}80%{opacity:.6}100%{opacity:0;transform:translateY(-140px) scale(1.2)}}
+    @keyframes chartScroll{0%{transform:translateX(0)}100%{transform:translateX(-120px)}}
+    @keyframes rocketFly{0%{transform:translate(-40px,420px) rotate(-20deg);opacity:0}10%{opacity:1}100%{transform:translate(420px,-80px) rotate(-20deg);opacity:0}}
+    @keyframes rocketFall{0%{transform:translate(-40px,-80px) rotate(160deg);opacity:0}10%{opacity:1}100%{transform:translate(420px,460px) rotate(160deg);opacity:0}}
+    @keyframes sparkle{0%,100%{opacity:0;transform:scale(.3)}50%{opacity:1;transform:scale(1.2)}}
+    @keyframes numberTick{0%{transform:translateY(8px);opacity:.4}100%{transform:translateY(0);opacity:1}}
+    @keyframes priceBlink{0%,100%{opacity:1}50%{opacity:.55}}
+    @keyframes coinSpin{0%{transform:rotateY(0)}100%{transform:rotateY(360deg)}}
+    @keyframes pulseRing{0%{transform:scale(.95);opacity:.9}70%{transform:scale(1.3);opacity:0}100%{transform:scale(1.3);opacity:0}}
+    @keyframes scanLine{0%{left:-2%;opacity:0}8%{opacity:1}92%{opacity:1}100%{left:102%;opacity:0}}
+    @keyframes sparkDraw{0%{stroke-dashoffset:1800}60%,100%{stroke-dashoffset:0}}
+    @keyframes glyphFloat{0%,100%{transform:translateY(0) rotate(-6deg)}50%{transform:translateY(-6px) rotate(-6deg)}}
+    @keyframes priceGlow{0%,100%{filter:drop-shadow(0 0 12px currentColor)}50%{filter:drop-shadow(0 0 24px currentColor)}}
+    @keyframes tickerSlide{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
+    @keyframes gridDrift{0%{background-position:0 0}100%{background-position:30px 30px}}
+    .capture-mode,.capture-mode *{animation:none!important;transition:none!important}
+  `}</style>);
+
+  // Static sparkline path — looks like real BTC price action, direction depends on win/loss
+  const sparkPath=pnl>=0
+    ? "M0,58 L30,54 L60,56 L90,48 L120,50 L150,42 L180,44 L210,36 L240,40 L270,30 L300,33 L330,26 L360,22 L390,28 L420,18 L450,14 L480,20 L510,10 L540,12 L570,6 L600,4"
+    : "M0,10 L30,14 L60,8 L90,16 L120,12 L150,20 L180,16 L210,24 L240,20 L270,30 L300,26 L330,34 L360,38 L390,32 L420,42 L450,46 L480,40 L510,50 L540,48 L570,54 L600,58";
+  const sparkFill=sparkPath+" L600,80 L0,80 Z";
+
+  // Design 1 — Exchange Premium (Bybit/Binance inspired) — ₿ watermark + static price chart
+  const Design1=()=>(<div ref={cardRef} style={{width:"600px",height:"400px",background:"linear-gradient(135deg,#06080c 0%,#0c0f16 60%,#080a10 100%)",borderRadius:"20px",padding:"28px 32px",position:"relative",overflow:"hidden",color:"#fff",border:"1px solid rgba(201,168,76,.25)",fontFamily:"'Outfit',sans-serif"}}>
+    {animStyle}
+    {/* Massive ₿ watermark — right side, static */}
+    <div style={{position:"absolute",right:"-80px",top:"50%",transform:"translateY(-50%) rotate(-6deg)",fontSize:"460px",fontWeight:900,color:"rgba(201,168,76,.055)",lineHeight:.8,userSelect:"none",pointerEvents:"none",letterSpacing:"-.06em",fontFamily:"'Times New Roman',serif"}}>₿</div>
+    {/* Static candle silhouette — pure divs, no SVG */}
+    <div style={{position:"absolute",left:"32px",width:"536px",bottom:"88px",height:"80px",opacity:.28,pointerEvents:"none",display:"flex",alignItems:"flex-end",gap:"3px"}}>
+      {candleHeights.slice(0,30).map((h,i)=>{const up=pnl>=0?(i%4!==2):(i%4===0);return(<div key={i} style={{flex:1,height:Math.min(h,85)+"%",background:up?"#2eaa6f":"#e05555",borderRadius:"1px 1px 0 0"}}/>)})}
+    </div>
+    {/* Top gold border line */}
+    <div style={{position:"absolute",top:0,left:0,right:0,height:"1px",background:"linear-gradient(90deg,transparent,rgba(201,168,76,.6),transparent)"}}/>
+    {/* Corner accents */}
+    <div style={{position:"absolute",top:"14px",left:"14px",width:"18px",height:"18px",borderTop:"1px solid rgba(201,168,76,.5)",borderLeft:"1px solid rgba(201,168,76,.5)",pointerEvents:"none"}}/>
+    <div style={{position:"absolute",top:"14px",right:"14px",width:"18px",height:"18px",borderTop:"1px solid rgba(201,168,76,.5)",borderRight:"1px solid rgba(201,168,76,.5)",pointerEvents:"none"}}/>
+    <div style={{position:"absolute",bottom:"14px",left:"14px",width:"18px",height:"18px",borderBottom:"1px solid rgba(201,168,76,.5)",borderLeft:"1px solid rgba(201,168,76,.5)",pointerEvents:"none"}}/>
+    <div style={{position:"absolute",bottom:"14px",right:"14px",width:"18px",height:"18px",borderBottom:"1px solid rgba(201,168,76,.5)",borderRight:"1px solid rgba(201,168,76,.5)",pointerEvents:"none"}}/>
+
+    {/* Header */}
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"22px",position:"relative",zIndex:2}}>
+      <div style={{display:"flex",alignItems:"center",gap:"10px"}}>
+        <div style={{width:"32px",height:"32px",borderRadius:"8px",background:"linear-gradient(135deg,#f0d57a,#C9A84C,#8c721c)",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:"16px",color:"#000",boxShadow:"0 2px 10px rgba(201,168,76,.4)"}}>M</div>
+        <div>
+          <div style={{fontWeight:800,fontSize:"12px",letterSpacing:".02em",lineHeight:1.1}}>SyncJournal</div>
+          <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:"8px",color:"rgba(255,255,255,.45)",letterSpacing:".18em",textTransform:"uppercase",marginTop:"2px"}}>Morani · Trade</div>
+        </div>
+      </div>
+      <div style={{display:"flex",alignItems:"center",gap:"8px"}}>
+        <div style={{width:"6px",height:"6px",borderRadius:"50%",background:dirColor,boxShadow:`0 0 8px ${dirColor}`}}/>
+        {fields.dateTime&&<div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:"10px",color:"rgba(255,255,255,.5)",letterSpacing:".08em"}}>{dateDisplay}</div>}
+      </div>
+    </div>
+
+    {/* Ticker + direction row */}
+    <div style={{display:"flex",alignItems:"center",gap:"14px",marginBottom:"4px",position:"relative",zIndex:2}}>
+      <div style={{fontSize:"44px",fontWeight:900,letterSpacing:"-.02em",lineHeight:1,color:"#fff"}}>{pairDisplay}</div>
+      <div style={{padding:"4px 10px",borderRadius:"5px",fontSize:"10px",fontWeight:800,letterSpacing:".12em",background:dir==="long"?"rgba(46,170,111,.15)":"rgba(224,85,85,.15)",color:dirColor,border:`1px solid ${dir==="long"?"rgba(46,170,111,.45)":"rgba(224,85,85,.45)"}`,textTransform:"uppercase"}}>{dir==="long"?"▲ Long":"▼ Short"}</div>
+    </div>
+
+    {/* Sub-label */}
+    <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:"10px",color:"rgba(201,168,76,.7)",letterSpacing:".2em",textTransform:"uppercase",marginBottom:"18px",position:"relative",zIndex:2}}>Realized P&L · Net of fees</div>
+
+    {/* Big PnL */}
+    {fields.pnlAbs&&<div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:"64px",fontWeight:800,color:dirColor,letterSpacing:"-.03em",lineHeight:1,marginBottom:"8px",position:"relative",zIndex:2}}>{pnlSign}${fmt(Math.abs(pnl))}</div>}
+
+    {/* Sub-stats inline */}
+    <div style={{fontSize:"12px",color:"rgba(255,255,255,.65)",fontWeight:500,fontFamily:"'JetBrains Mono',monospace",letterSpacing:".04em",position:"relative",zIndex:2}}>
+      {fields.rMult&&rMult!==null&&<span style={{color:"#C9A84C",fontWeight:700}}>{rMult>=0?"+":""}{rMult.toFixed(2)}R</span>}
+      {fields.pnlPct&&pnlPct!==null&&<>{fields.rMult&&rMult!==null?" · ":""}<span style={{color:dirColor}}>{pnlPct>=0?"+":""}{pnlPct.toFixed(2)}%</span></>}
+    </div>
+
+    {/* Bottom stats row */}
+    <div style={{position:"absolute",bottom:"22px",left:"32px",right:"32px",display:"flex",justifyContent:"space-between",alignItems:"flex-end",zIndex:2}}>
+      <div style={{display:"flex",gap:"18px",fontSize:"10px"}}>
+        {fields.entry&&<div><div style={{color:"rgba(255,255,255,.38)",textTransform:"uppercase",letterSpacing:".14em",fontWeight:600,marginBottom:"2px",fontSize:"8px"}}>Entry</div><div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:"13px",fontWeight:700,color:"rgba(255,255,255,.92)"}}>{entryP?fmt(entryP):"–"}</div></div>}
+        {fields.exit&&<div><div style={{color:"rgba(255,255,255,.38)",textTransform:"uppercase",letterSpacing:".14em",fontWeight:600,marginBottom:"2px",fontSize:"8px"}}>Exit</div><div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:"13px",fontWeight:700,color:dirColor}}>{exitP?fmt(exitP):"–"}</div></div>}
+        {fields.size&&<div><div style={{color:"rgba(255,255,255,.38)",textTransform:"uppercase",letterSpacing:".14em",fontWeight:600,marginBottom:"2px",fontSize:"8px"}}>Size</div><div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:"13px",fontWeight:700,color:"rgba(255,255,255,.92)"}}>{size||"–"}</div></div>}
+        {fields.holdTime&&holdStr!=="–"&&<div><div style={{color:"rgba(255,255,255,.38)",textTransform:"uppercase",letterSpacing:".14em",fontWeight:600,marginBottom:"2px",fontSize:"8px"}}>Hold</div><div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:"13px",fontWeight:700,color:"rgba(255,255,255,.92)"}}>{holdStr}</div></div>}
+      </div>
+      {(fields.setup&&setupStr!=="–")||(fields.session&&sessionStr!=="–")?<div style={{display:"flex",gap:"5px"}}>
+        {fields.setup&&(trade.setupTags||[]).slice(0,2).map(t=>(<div key={t} style={{padding:"3px 7px",borderRadius:"3px",fontSize:"8px",fontWeight:700,background:"rgba(201,168,76,.12)",color:"#C9A84C",border:"1px solid rgba(201,168,76,.28)",letterSpacing:".04em"}}>{t}</div>))}
+        {fields.session&&sessionStr!=="–"&&<div style={{padding:"3px 7px",borderRadius:"3px",fontSize:"8px",fontWeight:700,background:"rgba(138,159,192,.12)",color:"#8a9fc0",border:"1px solid rgba(138,159,192,.28)",letterSpacing:".04em"}}>{sessionStr}</div>}
+      </div>:null}
+    </div>
+  </div>);
+
+  // Static candle heights — looks like a real BTC chart session, deterministic
+  const candleHeights=[28,34,30,38,32,42,38,48,42,52,45,55,50,62,55,65,60,70,65,58,62,68,72,65,70,78,72,80,75,82,78,85,80,88,82,92,85,95,88,90];
+  // Design 2 — Exchange-Grade Static (1200x630) — ₿ watermark + static candle chart + clean hierarchy
+  const Design2=()=>(<div ref={cardRef} style={{width:"1200px",height:"630px",background:"linear-gradient(135deg,#06080c 0%,#0a0d15 50%,#06080c 100%)",position:"relative",overflow:"hidden",color:"#fff",fontFamily:"'Outfit',sans-serif",display:"flex",flexDirection:"column"}}>
+    {animStyle}
+    {/* Massive ₿ watermark — right side */}
+    <div style={{position:"absolute",right:"-140px",top:"90px",fontSize:"720px",fontWeight:900,color:"rgba(201,168,76,.055)",lineHeight:.8,userSelect:"none",pointerEvents:"none",letterSpacing:"-.06em",fontFamily:"'Times New Roman',serif"}}>₿</div>
+    {/* Static candle chart across bottom — realistic rally/drop silhouette */}
+    <div style={{position:"absolute",left:"56px",width:"744px",bottom:"76px",height:"220px",opacity:.18,pointerEvents:"none",display:"flex",alignItems:"flex-end",gap:"4px"}}>
+      {candleHeights.map((h,i)=>{const up=pnl>=0?(i%4!==2):(i%4===0);return(<div key={i} style={{flex:1,height:h+"%",background:up?"#2eaa6f":"#e05555",borderRadius:"1px 1px 0 0"}}/>)})}
+    </div>
+    {/* Top accent line */}
+    <div style={{height:"2px",background:"linear-gradient(90deg,transparent 0%,rgba(201,168,76,.55) 50%,transparent 100%)",position:"relative",zIndex:3}}/>
+    {/* Corner accents */}
+    <div style={{position:"absolute",top:"18px",left:"18px",width:"24px",height:"24px",borderTop:"1px solid rgba(201,168,76,.55)",borderLeft:"1px solid rgba(201,168,76,.55)",pointerEvents:"none",zIndex:4}}/>
+    <div style={{position:"absolute",top:"18px",right:"18px",width:"24px",height:"24px",borderTop:"1px solid rgba(201,168,76,.55)",borderRight:"1px solid rgba(201,168,76,.55)",pointerEvents:"none",zIndex:4}}/>
+    <div style={{position:"absolute",bottom:"18px",left:"18px",width:"24px",height:"24px",borderBottom:"1px solid rgba(201,168,76,.55)",borderLeft:"1px solid rgba(201,168,76,.55)",pointerEvents:"none",zIndex:4}}/>
+    <div style={{position:"absolute",bottom:"18px",right:"18px",width:"24px",height:"24px",borderBottom:"1px solid rgba(201,168,76,.55)",borderRight:"1px solid rgba(201,168,76,.55)",pointerEvents:"none",zIndex:4}}/>
+
+    <div style={{flex:1,padding:"44px 56px 0",display:"grid",gridTemplateColumns:"1fr 380px",gap:"40px",position:"relative",zIndex:2}}>
+      <div style={{display:"flex",flexDirection:"column",justifyContent:"space-between"}}>
+        <div>
+          <div style={{display:"flex",alignItems:"center",gap:"14px",marginBottom:"10px"}}>
+            <div style={{width:"52px",height:"52px",borderRadius:"14px",background:"linear-gradient(135deg,#f7931a 0%,#ffb84d 100%)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"28px",fontWeight:900,color:"#fff",boxShadow:"0 6px 20px rgba(247,147,26,.35)",flexShrink:0}}>{pairShort.charAt(0)}</div>
+            <div style={{fontSize:"60px",fontWeight:900,letterSpacing:"-.02em",lineHeight:1,color:"#fff"}}>{pairDisplay}</div>
+            <div style={{padding:"8px 16px",borderRadius:"7px",fontSize:"13px",fontWeight:800,letterSpacing:".12em",background:dir==="long"?"rgba(46,170,111,.18)":"rgba(224,85,85,.18)",color:dirColor,border:`1.5px solid ${dir==="long"?"rgba(46,170,111,.5)":"rgba(224,85,85,.5)"}`,textTransform:"uppercase"}}>{dir==="long"?"▲ Long":"▼ Short"}</div>
+          </div>
+          {fields.dateTime&&<div style={{color:"rgba(255,255,255,.5)",fontFamily:"'JetBrains Mono',monospace",fontSize:"13px",letterSpacing:".1em",textTransform:"uppercase"}}>{dateDisplay}{fields.session&&sessionStr!=="–"&&" · "+sessionStr}</div>}
+        </div>
+        <div style={{marginBottom:"20px"}}>
+          {fields.pnlAbs&&<>
+            <div style={{fontSize:"12px",color:"rgba(201,168,76,.75)",textTransform:"uppercase",letterSpacing:".28em",fontWeight:700,marginBottom:"12px"}}>Realized P&amp;L · Net of fees</div>
+            <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:"128px",fontWeight:900,color:dirColor,letterSpacing:"-.04em",lineHeight:.88}}>{pnlSign}${fmt(Math.abs(pnl))}</div>
+            <div style={{fontSize:"18px",color:"rgba(255,255,255,.7)",fontFamily:"'JetBrains Mono',monospace",marginTop:"10px",letterSpacing:".04em"}}>
+              {fields.rMult&&rMult!==null&&<span style={{color:"#C9A84C",fontWeight:700}}>{rMult>=0?"+":""}{rMult.toFixed(2)}R</span>}
+              {fields.pnlPct&&pnlPct!==null&&<>{fields.rMult&&rMult!==null?" · ":""}<span style={{color:dirColor}}>{pnlPct>=0?"+":""}{pnlPct.toFixed(2)}%</span></>}
+            </div>
+          </>}
+        </div>
+      </div>
+      <div style={{background:"rgba(201,168,76,.07)",border:"1px solid rgba(201,168,76,.3)",borderRadius:"14px",padding:"24px",display:"flex",flexDirection:"column",justifyContent:"center",height:"fit-content",marginTop:"4px"}}>
+        <div style={{display:"flex",alignItems:"center",gap:"8px",marginBottom:"16px"}}>
+          <div style={{width:"4px",height:"14px",background:"#C9A84C",borderRadius:"2px"}}/>
+          <div style={{fontSize:"11px",color:"#C9A84C",textTransform:"uppercase",letterSpacing:".24em",fontWeight:800}}>Trade detail</div>
+        </div>
+        {fields.entry&&<div style={{display:"flex",justifyContent:"space-between",padding:"11px 0",borderBottom:"1px solid rgba(255,255,255,.06)",fontSize:"13px"}}><span style={{color:"rgba(255,255,255,.55)",letterSpacing:".05em"}}>Entry</span><span style={{fontFamily:"'JetBrains Mono',monospace",fontWeight:700,color:"rgba(255,255,255,.95)"}}>{entryP?fmt(entryP):"–"}</span></div>}
+        {fields.exit&&<div style={{display:"flex",justifyContent:"space-between",padding:"11px 0",borderBottom:"1px solid rgba(255,255,255,.06)",fontSize:"13px"}}><span style={{color:"rgba(255,255,255,.55)",letterSpacing:".05em"}}>Exit</span><span style={{fontFamily:"'JetBrains Mono',monospace",fontWeight:700,color:dirColor}}>{exitP?fmt(exitP):"–"}</span></div>}
+        {fields.stopLoss&&sl>0&&<div style={{display:"flex",justifyContent:"space-between",padding:"11px 0",borderBottom:"1px solid rgba(255,255,255,.06)",fontSize:"13px"}}><span style={{color:"rgba(255,255,255,.55)",letterSpacing:".05em"}}>Stop-loss</span><span style={{fontFamily:"'JetBrains Mono',monospace",fontWeight:700,color:"#e05555"}}>{fmt(sl)}</span></div>}
+        {fields.size&&<div style={{display:"flex",justifyContent:"space-between",padding:"11px 0",borderBottom:"1px solid rgba(255,255,255,.06)",fontSize:"13px"}}><span style={{color:"rgba(255,255,255,.55)",letterSpacing:".05em"}}>Size</span><span style={{fontFamily:"'JetBrains Mono',monospace",fontWeight:700,color:"rgba(255,255,255,.95)"}}>{size||"–"}</span></div>}
+        {fields.holdTime&&holdStr!=="–"&&<div style={{display:"flex",justifyContent:"space-between",padding:"11px 0",borderBottom:"1px solid rgba(255,255,255,.06)",fontSize:"13px"}}><span style={{color:"rgba(255,255,255,.55)",letterSpacing:".05em"}}>Hold time</span><span style={{fontFamily:"'JetBrains Mono',monospace",fontWeight:700,color:"rgba(255,255,255,.95)"}}>{holdStr}</span></div>}
+        {fields.setup&&setupStr!=="–"&&<div style={{display:"flex",justifyContent:"space-between",padding:"11px 0",fontSize:"13px"}}><span style={{color:"rgba(255,255,255,.55)",letterSpacing:".05em"}}>Setup</span><span style={{fontFamily:"'JetBrains Mono',monospace",fontWeight:700,color:"#C9A84C"}}>{setupStr}</span></div>}
+      </div>
+    </div>
+    <div style={{background:"rgba(0,0,0,.6)",padding:"18px 56px",display:"flex",justifyContent:"space-between",alignItems:"center",borderTop:"1px solid rgba(201,168,76,.15)",position:"relative",zIndex:3}}>
+      <div style={{display:"flex",alignItems:"center",gap:"12px"}}>
+        <div style={{width:"40px",height:"40px",borderRadius:"11px",background:"linear-gradient(135deg,#f0d57a,#C9A84C,#8c721c)",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:"20px",color:"#000"}}>M</div>
+        <div>
+          <div style={{fontWeight:800,fontSize:"15px",letterSpacing:".02em"}}>SyncJournal</div>
+          <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:"9px",color:"rgba(255,255,255,.45)",letterSpacing:".2em",marginTop:"1px"}}>POWERED BY MORANI</div>
+        </div>
+      </div>
+      <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:"12px",color:"#C9A84C",letterSpacing:".1em"}}>moranitraden.nl</div>
+    </div>
+  </div>);
+
+  // Design 4 — Instagram Story — 🚀 rocket to moon (win) / ☄️ meteor fall (loss) + sparkles
+  const Design4=()=>(<div ref={cardRef} style={{width:"432px",height:"768px",background:"linear-gradient(180deg,#000 0%,#0c0e13 50%,#000 100%)",color:"#fff",fontFamily:"'Outfit',sans-serif",position:"relative",overflow:"hidden",display:"flex",flexDirection:"column"}}>
+    {animStyle}
+    <div style={{position:"absolute",top:0,left:0,right:0,height:"100%",background:`radial-gradient(ellipse 300px 200px at 50% 30%,${pnl>=0?"rgba(46,170,111,.15)":"rgba(224,85,85,.15)"} 0%,transparent 60%)`,pointerEvents:"none"}}/>
+    {/* Static rocket arc — diagonal trail for win, diagonal drop for loss */}
+    <div style={{position:"absolute",top:0,left:0,width:"100%",height:"100%",pointerEvents:"none",overflow:"hidden"}}>
+      <div style={{position:"absolute",fontSize:"44px",top:pnl>=0?"30%":"20%",right:pnl>=0?"18%":"22%",transform:pnl>=0?"rotate(-25deg)":"rotate(160deg)",filter:`drop-shadow(0 0 14px ${pnl>=0?"#2eaa6f":"#e05555"})`}}>{pnl>=0?"🚀":"☄️"}</div>
+      {/* Static sparkle/debris sprinkled across card */}
+      {[[12,18,14],[22,72,10],[35,8,12],[48,85,14],[60,15,10],[68,65,14],[78,22,12],[88,78,10]].map(([top,left,sz],i)=>(
+        <div key={i} style={{position:"absolute",top:top+"%",left:left+"%",fontSize:sz+"px",opacity:.85,color:pnl>=0?"#C9A84C":"#e05555",textShadow:pnl>=0?"0 0 6px #C9A84C":"none"}}>{pnl>=0?"✨":"·"}</div>
+      ))}
+    </div>
+    {/* ₿ watermark */}
+    <div style={{position:"absolute",right:"-40px",bottom:"-30px",fontSize:"320px",fontWeight:900,color:"rgba(201,168,76,.06)",lineHeight:.8,pointerEvents:"none",letterSpacing:"-.06em",fontFamily:"serif",transform:"rotate(-8deg)"}}>₿</div>
+    <div style={{padding:"30px",display:"flex",justifyContent:"space-between",alignItems:"center",zIndex:2,position:"relative"}}>
+      <div style={{display:"flex",alignItems:"center",gap:"10px"}}>
+        <div style={{width:"36px",height:"36px",borderRadius:"10px",background:"linear-gradient(135deg,#f0d57a,#C9A84C)",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,color:"#000"}}>M</div>
+        <div style={{fontWeight:800,fontSize:"14px"}}>SyncJournal</div>
+      </div>
+      {fields.dateTime&&<div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:"11px",color:"rgba(255,255,255,.5)"}}>{fmtNL(trade.date||"")}</div>}
+    </div>
+    <div style={{padding:"40px 30px",textAlign:"center",zIndex:2,position:"relative"}}>
+      <div style={{fontSize:"56px",fontWeight:900,letterSpacing:"-.03em",marginBottom:"12px",lineHeight:1}}>{pairDisplay}</div>
+      <div style={{display:"inline-block",padding:"8px 24px",borderRadius:"30px",fontSize:"14px",fontWeight:800,letterSpacing:".2em",background:`linear-gradient(135deg,${dir==="long"?"rgba(46,170,111,.2)":"rgba(224,85,85,.2)"},${dir==="long"?"rgba(46,170,111,.08)":"rgba(224,85,85,.08)"})`,color:dirColor,border:`2px solid ${dir==="long"?"rgba(46,170,111,.5)":"rgba(224,85,85,.5)"}`,boxShadow:`0 8px 24px ${dirColor}30`}}>{dir==="long"?"📈 LONG":"📉 SHORT"}</div>
+    </div>
+    <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"20px 30px",zIndex:2,position:"relative"}}>
+      {fields.pnlAbs&&<>
+        <div style={{fontSize:"12px",color:"rgba(255,255,255,.5)",textTransform:"uppercase",letterSpacing:".3em",fontWeight:600,marginBottom:"16px"}}>💰 Realized</div>
+        <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:"96px",fontWeight:900,color:dirColor,letterSpacing:"-.04em",lineHeight:.9,textShadow:`0 0 40px ${dirColor}80`,marginBottom:"8px"}}>{pnlSign}${fmt(Math.abs(pnl))}</div>
+        <div style={{fontSize:"18px",color:"rgba(255,255,255,.7)",fontFamily:"'JetBrains Mono',monospace"}}>
+          {fields.rMult&&rMult!==null&&<>{rMult>=0?"+":""}{rMult.toFixed(1)}R</>}
+          {fields.session&&sessionStr!=="–"&&<> · {sessionStr}</>}
+        </div>
+      </>}
+    </div>
+    <div style={{padding:"20px 30px",display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"12px",zIndex:2,position:"relative"}}>
+      {fields.entry&&<div style={{background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.08)",borderRadius:"10px",padding:"14px 10px",textAlign:"center"}}><div style={{fontSize:"9px",color:"rgba(255,255,255,.5)",textTransform:"uppercase",letterSpacing:".1em",fontWeight:600,marginBottom:"4px"}}>Entry</div><div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:"16px",fontWeight:700}}>{entryP?fmt(entryP):"–"}</div></div>}
+      {fields.exit&&<div style={{background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.08)",borderRadius:"10px",padding:"14px 10px",textAlign:"center"}}><div style={{fontSize:"9px",color:"rgba(255,255,255,.5)",textTransform:"uppercase",letterSpacing:".1em",fontWeight:600,marginBottom:"4px"}}>Exit</div><div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:"16px",fontWeight:700}}>{exitP?fmt(exitP):"–"}</div></div>}
+      {fields.holdTime&&<div style={{background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.08)",borderRadius:"10px",padding:"14px 10px",textAlign:"center"}}><div style={{fontSize:"9px",color:"rgba(255,255,255,.5)",textTransform:"uppercase",letterSpacing:".1em",fontWeight:600,marginBottom:"4px"}}>Hold</div><div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:"16px",fontWeight:700}}>{holdStr}</div></div>}
+    </div>
+    <div style={{padding:"20px 30px 30px",textAlign:"center",zIndex:2}}>
+      {fields.setup&&(trade.setupTags||[]).length>0&&<div style={{display:"flex",justifyContent:"center",gap:"6px",flexWrap:"wrap",marginBottom:"16px"}}>{(trade.setupTags||[]).slice(0,3).map(t=>(<div key={t} style={{padding:"4px 10px",fontSize:"10px",fontWeight:600,color:"#C9A84C",border:"1px solid rgba(201,168,76,.3)",borderRadius:"20px",background:"rgba(201,168,76,.08)"}}>{t}</div>))}</div>}
+      <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:"10px",color:"rgba(255,255,255,.4)",letterSpacing:".12em"}}>SYNCJOURNAL · MORANI</div>
+    </div>
+  </div>);
+
+  // Design 5 — Minimal Light — spinning coin + pulse ring achter PNL
+  const Design5=()=>(<div ref={cardRef} style={{width:"700px",height:"400px",background:"#fafaf7",color:"#1a1a1a",fontFamily:"'Outfit',sans-serif",borderRadius:"28px",padding:"44px 48px",position:"relative",overflow:"hidden"}}>
+    {animStyle}
+    {/* Big static ₿ watermark (light theme) */}
+    <div style={{position:"absolute",right:"-40px",bottom:"-40px",fontSize:"340px",fontWeight:900,color:"rgba(201,168,76,.09)",lineHeight:.8,pointerEvents:"none",letterSpacing:"-.06em",fontFamily:"serif",transform:"rotate(-8deg)"}}>₿</div>
+    {/* Static gold coin in bottom-right, at a nice tilted angle */}
+    <div style={{position:"absolute",bottom:"30px",right:"40px",width:"90px",height:"90px",borderRadius:"50%",background:"linear-gradient(135deg,#f0d57a 0%,#C9A84C 50%,#8c721c 100%)",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:900,fontSize:"38px",boxShadow:"0 8px 24px rgba(201,168,76,.35),inset 0 2px 8px rgba(255,255,255,.4)",opacity:.4,transform:"rotate(-12deg)"}}>₿</div>
+    {/* Static concentric rings achter PNL */}
+    <div style={{position:"absolute",top:"175px",left:"48px",width:"20px",height:"20px",pointerEvents:"none"}}>
+      <div style={{position:"absolute",width:"100%",height:"100%",borderRadius:"50%",border:`1.5px solid ${dir==="long"?"rgba(45,134,89,.35)":"rgba(199,62,62,.35)"}`,transform:"scale(1.6)"}}/>
+      <div style={{position:"absolute",width:"100%",height:"100%",borderRadius:"50%",border:`1.5px solid ${dir==="long"?"rgba(45,134,89,.2)":"rgba(199,62,62,.2)"}`,transform:"scale(2.4)"}}/>
+    </div>
+    <div style={{position:"absolute",top:"30px",right:"36px",display:"flex",alignItems:"center",gap:"8px"}}>
+      <div style={{width:"32px",height:"32px",borderRadius:"10px",background:"linear-gradient(135deg,#f0d57a,#a88a3c)",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:"14px"}}>M</div>
+      <div style={{fontWeight:700,fontSize:"13px",color:"#1a1a1a"}}>SyncJournal</div>
+    </div>
+    <div style={{display:"flex",alignItems:"baseline",gap:"14px",marginBottom:"6px"}}>
+      <div style={{fontSize:"40px",fontWeight:800,letterSpacing:"-.03em",lineHeight:1}}>{pairDisplay}</div>
+      <div style={{padding:"4px 12px",borderRadius:"6px",fontSize:"11px",fontWeight:800,letterSpacing:".1em",background:dir==="long"?"rgba(46,170,111,.1)":"rgba(224,85,85,.1)",color:dir==="long"?"#2d8659":"#c73e3e"}}>{dir.toUpperCase()}</div>
+    </div>
+    {fields.dateTime&&<div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:"12px",color:"rgba(26,26,26,.45)",marginBottom:"42px"}}>{dateDisplay}{fields.session&&" · "+sessionStr}</div>}
+    <div style={{display:"flex",alignItems:"baseline",gap:"16px",marginBottom:"36px"}}>
+      <div>
+        {fields.pnlAbs&&<>
+          <div style={{fontSize:"11px",color:"rgba(26,26,26,.5)",textTransform:"uppercase",letterSpacing:".2em",fontWeight:600}}>Realized P&L</div>
+          <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:"68px",fontWeight:800,color:dir==="long"?"#2d8659":"#c73e3e",letterSpacing:"-.02em",lineHeight:1}}>{pnlSign}${fmt(Math.abs(pnl))}</div>
+        </>}
+      </div>
+      {fields.pnlPct&&pnlPct!==null&&<div style={{fontSize:"16px",color:"#2d8659",fontFamily:"'JetBrains Mono',monospace",fontWeight:700}}>↑ {Math.abs(pnlPct).toFixed(1)}%</div>}
+    </div>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:"24px",paddingTop:"24px",borderTop:"1px solid rgba(0,0,0,.08)"}}>
+      {fields.entry&&<div><div style={{fontSize:"10px",color:"rgba(26,26,26,.45)",textTransform:"uppercase",letterSpacing:".14em",fontWeight:600,marginBottom:"6px"}}>Entry</div><div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:"18px",fontWeight:700}}>{entryP?fmt(entryP):"–"}</div></div>}
+      {fields.exit&&<div><div style={{fontSize:"10px",color:"rgba(26,26,26,.45)",textTransform:"uppercase",letterSpacing:".14em",fontWeight:600,marginBottom:"6px"}}>Exit</div><div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:"18px",fontWeight:700}}>{exitP?fmt(exitP):"–"}</div></div>}
+      {fields.rMult&&rMult!==null&&<div><div style={{fontSize:"10px",color:"rgba(26,26,26,.45)",textTransform:"uppercase",letterSpacing:".14em",fontWeight:600,marginBottom:"6px"}}>R-Multiple</div><div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:"18px",fontWeight:700,color:rMult>=0?"#2d8659":"#c73e3e"}}>{rMult>=0?"+":""}{rMult.toFixed(1)}R</div></div>}
+      {fields.holdTime&&<div><div style={{fontSize:"10px",color:"rgba(26,26,26,.45)",textTransform:"uppercase",letterSpacing:".14em",fontWeight:600,marginBottom:"6px"}}>Hold</div><div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:"18px",fontWeight:700}}>{holdStr}</div></div>}
+    </div>
+  </div>);
+
+  return(<div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.85)",zIndex:9998,display:"flex",alignItems:"center",justifyContent:"center",padding:"20px",backdropFilter:"blur(8px)",overflowY:"auto"}}>
+    <div onClick={e=>e.stopPropagation()} style={{background:"var(--bg2)",border:"1px solid var(--gold-border)",borderRadius:"16px",maxWidth:"1400px",width:"100%",maxHeight:"92vh",overflow:"auto",display:"grid",gridTemplateColumns:"280px 1fr",gap:"0"}}>
+      {/* Sidebar */}
+      <div style={{padding:"24px",borderRight:"1px solid var(--border3)",background:"var(--bg3)"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"20px"}}>
+          <div style={{fontSize:"11px",color:"var(--gold)",textTransform:"uppercase",letterSpacing:".12em",fontWeight:700}}>Deel als kaart</div>
+          <button onClick={onClose} style={{background:"transparent",border:"none",color:"var(--text3)",fontSize:"18px",cursor:"pointer"}}>✕</button>
+        </div>
+        <div style={{fontSize:"10px",color:"var(--text4)",textTransform:"uppercase",letterSpacing:".1em",fontWeight:600,marginBottom:"8px"}}>Stijl</div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"6px",marginBottom:"20px"}}>
+          {[["classic","Classic"],["ticker","Ticker"],["story","Story"],["minimal","Minimal"]].map(([k,l])=>(
+            <button key={k} onClick={()=>setStyle(k)} style={{padding:"10px",borderRadius:"6px",border:`1px solid ${style===k?"var(--gold)":"var(--border3)"}`,background:style===k?"var(--gold-dim)":"transparent",color:style===k?"var(--gold)":"var(--text3)",fontSize:"12px",fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{l}</button>
+          ))}
+        </div>
+        <div style={{fontSize:"10px",color:"var(--text4)",textTransform:"uppercase",letterSpacing:".1em",fontWeight:600,marginBottom:"8px"}}>Velden</div>
+        <FieldToggle k="pnlAbs" label="PnL ($)"/>
+        <FieldToggle k="pnlPct" label="PnL %"/>
+        <FieldToggle k="rMult" label="R-Multiple"/>
+        <FieldToggle k="entry" label="Entry prijs"/>
+        <FieldToggle k="exit" label="Exit prijs"/>
+        <FieldToggle k="stopLoss" label="Stop-loss (Ticker)"/>
+        <FieldToggle k="size" label="Size"/>
+        <FieldToggle k="holdTime" label="Hold time"/>
+        <FieldToggle k="setup" label="Setup tags"/>
+        <FieldToggle k="session" label="Sessie"/>
+        <FieldToggle k="dateTime" label="Datum/tijd"/>
+        <div style={{marginTop:"12px",paddingTop:"12px",borderTop:"1px solid var(--border2)"}}>
+          <FieldToggle k="anonPair" label="🥷 Pair anonimiseren"/>
+        </div>
+        <button onClick={copyImage} disabled={busy} title="Kopieer afbeelding naar klembord (Ctrl+V in Discord)" style={{width:"100%",marginTop:"16px",padding:"11px",borderRadius:"8px",background:"rgba(201,168,76,.12)",color:"#C9A84C",border:"1px solid rgba(201,168,76,.45)",fontFamily:"inherit",fontSize:"13px",fontWeight:700,cursor:busy?"default":"pointer",opacity:busy?.6:1,display:"flex",alignItems:"center",justifyContent:"center",gap:"6px"}}>📋 Kopieer afbeelding</button>
+        <button onClick={downloadPNG} disabled={busy} style={{width:"100%",marginTop:"8px",padding:"12px",borderRadius:"8px",background:"linear-gradient(135deg,#f0d57a,#C9A84C,#8c721c)",color:"#000",border:"none",fontFamily:"inherit",fontSize:"13px",fontWeight:700,cursor:busy?"default":"pointer",boxShadow:"0 6px 20px rgba(201,168,76,.35)",opacity:busy?.6:1}}>{busy?"⏳ Exporteren...":"📥 Download PNG"}</button>
+        {copyStatus&&<div style={{marginTop:"10px",padding:"8px 10px",borderRadius:"6px",fontSize:"11px",fontWeight:600,textAlign:"center",background:copyStatus.startsWith("✓")?"rgba(46,170,111,.15)":"rgba(224,85,85,.12)",color:copyStatus.startsWith("✓")?"#2eaa6f":"#e05555",border:`1px solid ${copyStatus.startsWith("✓")?"rgba(46,170,111,.35)":"rgba(224,85,85,.3)"}`}}>{copyStatus}</div>}
+        <div style={{marginTop:"10px",padding:"8px 10px",borderRadius:"6px",background:"rgba(138,159,192,.06)",border:"1px solid rgba(138,159,192,.15)",fontSize:"10px",color:"var(--text4)",lineHeight:1.5}}>💡 <strong style={{color:"var(--text3)"}}>Discord tip:</strong> klik <em>Kopieer</em> en plak direct met Ctrl+V in je chat — geen download/upload nodig.</div>
+      </div>
+      {/* Preview */}
+      <div style={{padding:"40px",display:"flex",alignItems:"center",justifyContent:"center",background:"var(--bg)",overflow:"auto"}}>
+        <div style={{transform:style==="ticker"?"scale(.6)":style==="story"?"scale(.8)":"scale(.9)",transformOrigin:"center"}}>
+          {style==="classic"&&<Design1/>}
+          {style==="ticker"&&<Design2/>}
+          {style==="story"&&<Design4/>}
+          {style==="minimal"&&<Design5/>}
+        </div>
+      </div>
+    </div>
+  </div>);
+}
+
+function Section({title,storeKey,defaultOpen=true,hint,children}){
+  const[open,setOpen]=useState(()=>{const s=localStorage.getItem("tj_form_section_"+storeKey);return s===null?defaultOpen:s==="1"});
+  const onToggle=(e)=>{const v=e.target.open;setOpen(v);localStorage.setItem("tj_form_section_"+storeKey,v?"1":"0")};
+  return(<details className="tj-section" open={open} onToggle={onToggle}>
+    <summary><span className="tj-sec-title">{title}</span>{hint&&<span className="tj-sec-hint">{hint}</span>}<span className="tj-sec-chev">▾</span></summary>
+    <div className="tj-sec-body">{children}</div>
+  </details>);
+}
+
 function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,accounts}){
+  const[showCard,setShowCard]=useState(false);
   const toggle=(f,tag)=>setTrade(p=>({...p,[f]:p[f].includes(tag)?p[f].filter(t=>t!==tag):[...p[f],tag]}));
   const fRef=useRef();
   const handleSS=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>setTrade(p=>({...p,screenshot:ev.target.result}));r.readAsDataURL(f)};
   const gt=(k)=>tagConfig[k]||DEFAULT_TAGS[k]||[];
   const[sizeInputMode,setSizeInputMode]=useState(()=>localStorage.getItem("tj_sizeInputMode")||"usdt");
+  const isOpen=(trade.status||"closed")==="open";
 
   const sourceOptions=[{id:"manual",label:"✏️ Handmatig",color:"var(--text3)"}];
   Object.entries(ExchangeAPI).forEach(([key,ex])=>{if(config?.exchanges?.[key]?.apiKey)sourceOptions.push({id:key,label:ex.name,color:ex.color})});
   (accounts||[]).forEach(a=>{if(!sourceOptions.find(s=>s.id===a.name))sourceOptions.push({id:a.name,label:"✏️ "+a.name,color:"var(--text3)"})});
 
   return(<div style={{animation:"fadeIn .3s ease",background:"var(--glass)",backdropFilter:"var(--glass-blur)",WebkitBackdropFilter:"var(--glass-blur)",borderRadius:"var(--radius-lg)",padding:"24px",border:"1px solid var(--glass-border)"}}>
+    {/* Status toggle — primary control, drives conditional form sections */}
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"16px",padding:"10px 14px",background:isOpen?"rgba(201,168,76,0.08)":"rgba(42,46,57,0.3)",borderRadius:"8px",border:`1px solid ${isOpen?"rgba(201,168,76,0.3)":"var(--border2)"}`}}>
+      <div style={{display:"flex",alignItems:"center",gap:"10px"}}>
+        <span style={{fontSize:"10px",color:"var(--text4)",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.08em"}}>Status</span>
+        <div style={{display:"flex",gap:0,borderRadius:"6px",overflow:"hidden",border:"1px solid var(--border3)"}}>
+          {["closed","open"].map(s=>(<button key={s} onClick={()=>setTrade(p=>({...p,status:s}))} style={{padding:"6px 16px",border:"none",fontSize:"11px",fontWeight:700,cursor:"pointer",fontFamily:"inherit",background:trade.status===s?(s==="open"?"rgba(201,168,76,0.2)":"rgba(42,46,57,0.9)"):"transparent",color:trade.status===s?(s==="open"?"#C9A84C":"var(--text)"):"var(--text4)",display:"flex",alignItems:"center",gap:"5px"}}>{s==="open"&&trade.status==="open"&&<span style={{width:"6px",height:"6px",borderRadius:"50%",background:"#C9A84C",boxShadow:"0 0 6px #C9A84C"}}/>}{s==="open"?"Open":"Closed"}</button>))}
+        </div>
+      </div>
+      <span style={{fontSize:"10px",color:"var(--text5)"}}>{isOpen?"Exit / PNL / fees pas in te vullen na sluiten":"Volledige trade — alle velden actief"}</span>
+    </div>
+
     {/* Account selector */}
     <div style={{marginBottom:"1rem"}}>
       <div style={{fontSize:"11px",color:"var(--text3)",marginBottom:"6px",fontWeight:500}}>ACCOUNT / EXCHANGE</div>
@@ -1644,11 +2055,11 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,accounts}){
     {/* Auto session tag */}
     {(()=>{const st=getSessionTags(trade.date,trade.time);return st.length>0?(<div style={{display:"flex",alignItems:"center",gap:"8px",marginBottom:"1rem"}}><span style={{fontSize:"10px",color:"var(--text4)",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em"}}>Sessie</span>{st.map(s=>{const c=SESSION_COLORS[s]||SESSION_COLORS["Off-session"];return(<span key={s} style={{padding:"4px 10px",borderRadius:"5px",fontSize:"11px",fontWeight:600,border:`1px solid ${c.border}`,background:c.bg,color:c.text}}>{s}</span>)})}<span style={{fontSize:"9px",color:"var(--text5)",fontFamily:"var(--mono)",marginLeft:"4px"}}>auto (CET)</span></div>):null})()}
 
-    {/* Entry/SL/Exit/Size/PNL */}
-    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:"12px",marginBottom:"1rem"}}>
-      {[["entry","ENTRY"],["stopLoss","STOP LOSS"],["exit","EXIT"]].map(([k,l])=>(<div key={k}><div style={{fontSize:"11px",color:"var(--text3)",marginBottom:"6px",fontWeight:500}}>{l}</div><input type="text" value={trade[k]} onChange={e=>{const v=e.target.value;setTrade(p=>({...p,[k]:v,manualOverrides:[...new Set([...(p.manualOverrides||[]),k])]}))}} style={{...iStyle,color:isEmpty(trade[k])?"#4b5563":"var(--text)"}} placeholder="N/A"/></div>))}
+    {/* Entry/SL/Exit */}
+    <div style={{display:"grid",gridTemplateColumns:isOpen?"1fr 1fr":"1fr 1fr 1fr",gap:"12px",marginBottom:"1rem"}}>
+      {[["entry","ENTRY"],["stopLoss","STOP LOSS"],...(isOpen?[]:[["exit","EXIT"]])].map(([k,l])=>(<div key={k}><div style={{fontSize:"11px",color:"var(--text3)",marginBottom:"6px",fontWeight:500}}>{l}</div><input type="text" value={trade[k]} onChange={e=>{const v=e.target.value;setTrade(p=>({...p,[k]:v,manualOverrides:[...new Set([...(p.manualOverrides||[]),k])]}))}} style={{...iStyle,color:isEmpty(trade[k])?"#4b5563":"var(--text)"}} placeholder="N/A"/></div>))}
     </div>
-    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"12px",marginBottom:"12px"}}>
+    <div style={{display:"grid",gridTemplateColumns:isOpen?"1fr":"1fr 1fr 1fr",gap:"12px",marginBottom:"12px"}}>
       {(()=>{
         const asset=(trade.pair||"BTC/USDT").split("/")[0]||"BTC";
         const toggleInput=()=>{const next=sizeInputMode==="usdt"?"asset":"usdt";setSizeInputMode(next);localStorage.setItem("tj_sizeInputMode",next)};
@@ -1659,21 +2070,32 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,accounts}){
         };
         return(<div><div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"6px"}}><div style={{fontSize:"11px",color:"var(--text3)",fontWeight:500}}>POSITIE ({sizeInputMode==="usdt"?"$":asset})</div><button onClick={toggleInput} style={{fontSize:"9px",padding:"2px 6px",borderRadius:"3px",border:"1px solid var(--border3)",background:"transparent",color:"var(--gold)",cursor:"pointer",fontFamily:"var(--mono)"}}>{sizeInputMode==="usdt"?"→ "+asset:"→ USDT"}</button></div><input type="text" value={sizeInputMode==="usdt"?(trade.positionSize||""):(trade.positionSizeAsset||"")} onChange={e=>handleSizeChange(e.target.value)} style={{...iStyle,color:isEmpty(sizeInputMode==="usdt"?trade.positionSize:trade.positionSizeAsset)?"#4b5563":"var(--text)"}} placeholder="N/A"/></div>);
       })()}
-      {[["pnl","PNL ($)"],["fees","FEES ($)"]].map(([k,l])=>(<div key={k}><div style={{fontSize:"11px",color:"var(--text3)",marginBottom:"6px",fontWeight:500}}>{l}</div><input type="text" value={trade[k]} onChange={e=>{const v=e.target.value;setTrade(p=>({...p,[k]:v,manualOverrides:[...new Set([...(p.manualOverrides||[]),k])]}))}} style={{...iStyle,color:isEmpty(trade[k])?"#4b5563":"var(--text)"}} placeholder="N/A"/></div>))}
+      {!isOpen&&[["pnl","PNL ($)"],["fees","FEES ($)"]].map(([k,l])=>(<div key={k}><div style={{fontSize:"11px",color:"var(--text3)",marginBottom:"6px",fontWeight:500}}>{l}</div><input type="text" value={trade[k]} onChange={e=>{const v=e.target.value;setTrade(p=>({...p,[k]:v,manualOverrides:[...new Set([...(p.manualOverrides||[]),k])]}))}} style={{...iStyle,color:isEmpty(trade[k])?"#4b5563":"var(--text)"}} placeholder="N/A"/></div>))}
     </div>
+
+    {/* Live KPI strip — Risk / R:R / Qty real-time */}
+    {(()=>{
+      const e=parseFloat(trade.entry),s=parseFloat(trade.stopLoss),sz=parseFloat(trade.positionSize);
+      const szAsset=parseFloat(trade.positionSizeAsset);
+      const qty=sz>0&&e>0?sz/e:(szAsset>0?szAsset:null);
+      const risk=(e>0&&s>0&&sz>0)?Math.abs(e-s)*sz/e:null;
+      const tps=trade.tpLevels||[];
+      const weightedRR=(()=>{
+        if(!e||!s)return null;const riskDist=Math.abs(e-s);if(riskDist===0)return null;
+        const rrs=tps.map(tp=>{const tpN=parseFloat(tp.price);const pct=parseFloat(tp.pct||0);return(tpN>0&&pct>0)?{rr:Math.abs(tpN-e)/riskDist,pct}:null}).filter(Boolean);
+        if(rrs.length===0){const ex=parseFloat(trade.exit);if(!ex)return null;return Math.abs(ex-e)/riskDist}
+        const sum=rrs.reduce((a,b)=>a+b.pct,0);return rrs.reduce((a,b)=>a+b.rr*b.pct,0)/(sum||1);
+      })();
+      const asset=(trade.pair||"BTC/USDT").split("/")[0]||"BTC";
+      return(<div className="tj-kpi-strip">
+        <div className="tj-kpi"><span className="tj-kpi-label">Risk</span><span className={"tj-kpi-val"+(risk==null?" muted":"")} style={risk!=null?{color:"var(--red)"}:{}}>{risk!=null?"$"+fmt(risk):"—"}</span></div>
+        <div className="tj-kpi"><span className="tj-kpi-label">R:R</span><span className={"tj-kpi-val"+(weightedRR==null?" muted":"")} style={weightedRR!=null?{color:weightedRR>=1?"var(--green)":"var(--amber)"}:{}}>{weightedRR!=null?"1:"+weightedRR.toFixed(2):"—"}</span></div>
+        <div className="tj-kpi"><span className="tj-kpi-label">Qty ({asset})</span><span className={"tj-kpi-val"+(qty==null?" muted":"")}>{qty!=null?qty.toFixed(6).replace(/\.?0+$/,""):"—"}</span></div>
+      </div>);
+    })()}
 
     {/* Auto PNL calc */}
-    {(()=>{const e=parseFloat(trade.entry);const ex=parseFloat(trade.exit);const sz=parseFloat(trade.positionSize);const fees=parseFloat(trade.fees)||0;if(e>0&&ex>0&&sz>0&&!(trade.manualOverrides||[]).includes("pnl")){const raw=trade.direction==="long"?(ex-e)*sz/e:(e-ex)*sz/e;const net2=raw-fees;if(trade.pnl!==""&&Math.abs(parseFloat(trade.pnl)-net2)>0.01||trade.pnl===""){return(<div style={{marginBottom:"12px"}}><button onClick={()=>setTrade(p=>({...p,pnl:net2.toFixed(2)}))} style={{fontSize:"10px",padding:"4px 12px",borderRadius:"5px",border:"1px solid var(--blue2)",background:"rgba(201,168,76,0.12)",color:"#C9A84C",cursor:"pointer",fontFamily:"inherit",fontWeight:500}}>💡 PNL berekenen: {net2>=0?"+":""}${fmt(net2)} {fees>0?`(na $${fmt(fees)} fees)`:""} → Toepassen</button></div>)}}return null;})()}
-
-    {/* Status */}
-    <div style={{display:"flex",gap:"12px",alignItems:"center",marginBottom:"1.5rem"}}>
-      <div>
-        <div style={{fontSize:"11px",color:"var(--text3)",marginBottom:"6px",fontWeight:500}}>STATUS</div>
-        <div style={{display:"flex",gap:0,borderRadius:"6px",overflow:"hidden",border:"1px solid var(--border3)"}}>
-          {["closed","open"].map(s=>(<button key={s} onClick={()=>setTrade(p=>({...p,status:s}))} style={{padding:"6px 14px",border:"none",fontSize:"11px",fontWeight:600,cursor:"pointer",fontFamily:"inherit",background:trade.status===s?(s==="open"?"rgba(201,168,76,0.1)":"rgba(42,46,57,0.7)"):"transparent",color:trade.status===s?(s==="open"?"#C9A84C":"var(--text)"):"var(--text4)"}}>{s==="open"?"Open":"Closed"}</button>))}
-        </div>
-      </div>
-    </div>
+    {!isOpen&&(()=>{const e=parseFloat(trade.entry);const ex=parseFloat(trade.exit);const sz=parseFloat(trade.positionSize);const fees=parseFloat(trade.fees)||0;if(e>0&&ex>0&&sz>0&&!(trade.manualOverrides||[]).includes("pnl")){const raw=trade.direction==="long"?(ex-e)*sz/e:(e-ex)*sz/e;const net2=raw-fees;if(trade.pnl!==""&&Math.abs(parseFloat(trade.pnl)-net2)>0.01||trade.pnl===""){return(<div style={{marginBottom:"12px"}}><button onClick={()=>setTrade(p=>({...p,pnl:net2.toFixed(2)}))} style={{fontSize:"10px",padding:"4px 12px",borderRadius:"5px",border:"1px solid var(--blue2)",background:"rgba(201,168,76,0.12)",color:"#C9A84C",cursor:"pointer",fontFamily:"inherit",fontWeight:500}}>💡 PNL berekenen: {net2>=0?"+":""}${fmt(net2)} {fees>0?`(na $${fmt(fees)} fees)`:""} → Toepassen</button></div>)}}return null;})()}
 
     {/* TP Levels (multi-TP with percentages) — ported from v4_14 */}
     {(()=>{
@@ -1752,8 +2174,8 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,accounts}){
       </div>);
     })()}
 
-    {/* Setup Layers */}
-    <div style={{borderTop:"1px solid var(--border2)",paddingTop:"1.5rem",marginBottom:"0.5rem"}}>
+    {/* Setup & Psychologie — collapsible */}
+    <Section title="📋 Setup & Psychologie" storeKey="setup" defaultOpen={true} hint={`${(trade.layers||[]).length} lagen${(trade.emotionTags||[]).length?` · ${(trade.emotionTags||[]).length} emoties`:""}${(trade.mistakeTags||[]).length?` · ${(trade.mistakeTags||[]).length} fouten`:""}`}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"12px"}}>
         <div style={{fontSize:"11px",color:"var(--gold)",textTransform:"uppercase",letterSpacing:"0.12em",fontWeight:700}}>Setup lagen (top-down)</div>
         <button onClick={()=>setTrade(p=>({...p,layers:[...(p.layers||[]),{...EMPTY_LAYER,id:uid()}]}))} style={{fontSize:"11px",padding:"4px 10px",borderRadius:"5px",border:"1px dashed var(--border5)",background:"transparent",color:"#C9A84C",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>+ Laag toevoegen</button>
@@ -1797,55 +2219,56 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,accounts}){
         </div>
       </div>
       <TagGroup label="Fouten" tags={gt("mistakeTags")} selected={trade.mistakeTags} onToggle={t=>toggle("mistakeTags",t)} color="orange"/>
-    </div>
+      <div style={{marginTop:"14px"}}><div style={{fontSize:"11px",color:"var(--gold)",textTransform:"uppercase",letterSpacing:"0.12em",fontWeight:700,marginBottom:"8px"}}>Trade kwaliteit</div><Stars value={trade.rating} onChange={r=>setTrade(p=>({...p,rating:r}))}/></div>
+    </Section>
 
-    {/* Rating */}
-    <div style={{marginBottom:"1rem"}}><div style={{fontSize:"11px",color:"var(--gold)",textTransform:"uppercase",letterSpacing:"0.12em",fontWeight:700,marginBottom:"8px"}}>Trade kwaliteit</div><Stars value={trade.rating} onChange={r=>setTrade(p=>({...p,rating:r}))}/></div>
-
-    {/* Screenshot */}
-    <div style={{marginBottom:"1rem"}}>
-      <div style={{fontSize:"11px",color:"var(--gold)",textTransform:"uppercase",letterSpacing:"0.12em",fontWeight:700,marginBottom:"8px"}}>Screenshot</div>
-      <input type="file" ref={fRef} accept="image/*" onChange={handleSS} style={{display:"none"}}/>
-      {trade.screenshot?(<div style={{position:"relative"}}><img src={trade.screenshot} alt="" style={{width:"100%",borderRadius:"8px",border:"1px solid var(--border2)"}}/><button onClick={()=>{setTrade(p=>({...p,screenshot:null}));fRef.current.value=""}} style={{position:"absolute",top:"8px",right:"8px",background:"rgba(0,0,0,0.7)",border:"none",color:"var(--red)",borderRadius:"6px",padding:"4px 10px",cursor:"pointer",fontSize:"12px",fontFamily:"inherit"}}>Verwijder</button></div>)
-      :(<button onClick={()=>fRef.current.click()} style={{padding:"24px",width:"100%",borderRadius:"8px",border:"1px dashed var(--border5)",background:"transparent",color:"var(--text3)",cursor:"pointer",fontFamily:"inherit",fontSize:"13px"}}>Klik om screenshot te uploaden (TradingView)</button>)}
-    </div>
-
-    {/* TradingView links — ported from v4_14 */}
-    <div style={{marginBottom:"1rem"}}>
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"8px"}}>
-        <div style={{fontSize:"11px",color:"var(--gold)",textTransform:"uppercase",letterSpacing:"0.12em",fontWeight:700}}>TradingView links</div>
-        <button onClick={()=>setTrade(p=>({...p,links:[...(p.links||[]),{id:uid(),url:"",comment:""}]}))} style={{fontSize:"11px",padding:"4px 10px",borderRadius:"5px",border:"1px dashed var(--border5)",background:"transparent",color:"var(--teal)",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>+ Link toevoegen</button>
+    {/* Media & Links — collapsible */}
+    <Section title="📸 Media & Links" storeKey="media" defaultOpen={false} hint={`${trade.screenshot?"screenshot":"geen screenshot"} · ${(trade.links||[]).length} link${(trade.links||[]).length===1?"":"s"}`}>
+      <div style={{marginBottom:"14px"}}>
+        <div style={{fontSize:"11px",color:"var(--gold)",textTransform:"uppercase",letterSpacing:"0.12em",fontWeight:700,marginBottom:"8px"}}>Screenshot</div>
+        <input type="file" ref={fRef} accept="image/*" onChange={handleSS} style={{display:"none"}}/>
+        {trade.screenshot?(<div style={{position:"relative"}}><img src={trade.screenshot} alt="" style={{width:"100%",borderRadius:"8px",border:"1px solid var(--border2)"}}/><button onClick={()=>{setTrade(p=>({...p,screenshot:null}));fRef.current.value=""}} style={{position:"absolute",top:"8px",right:"8px",background:"rgba(0,0,0,0.7)",border:"none",color:"var(--red)",borderRadius:"6px",padding:"4px 10px",cursor:"pointer",fontSize:"12px",fontFamily:"inherit"}}>Verwijder</button></div>)
+        :(<button onClick={()=>fRef.current.click()} style={{padding:"24px",width:"100%",borderRadius:"8px",border:"1px dashed var(--border5)",background:"transparent",color:"var(--text3)",cursor:"pointer",fontFamily:"inherit",fontSize:"13px"}}>Klik om screenshot te uploaden (TradingView)</button>)}
       </div>
-      {(trade.links||[]).map((link,i)=>(
-        <div key={link.id||i} style={{background:"rgba(42,46,57,0.3)",borderRadius:"8px",border:"1px solid var(--border2)",padding:"10px 12px",marginBottom:"6px"}}>
-          <div style={{display:"flex",gap:"6px",alignItems:"center",marginBottom:"6px"}}>
-            {i>0&&<button onClick={()=>setTrade(p=>{const l=[...(p.links||[])];[l[i-1],l[i]]=[l[i],l[i-1]];return{...p,links:l}})} style={{background:"none",border:"none",color:"var(--text4)",cursor:"pointer",fontSize:"14px",padding:"2px"}}>▲</button>}
-            {i<(trade.links||[]).length-1&&<button onClick={()=>setTrade(p=>{const l=[...(p.links||[])];[l[i],l[i+1]]=[l[i+1],l[i]];return{...p,links:l}})} style={{background:"none",border:"none",color:"var(--text4)",cursor:"pointer",fontSize:"14px",padding:"2px"}}>▼</button>}
-            <input value={link.url} onChange={e=>setTrade(p=>{const l=[...(p.links||[])];l[i]={...l[i],url:e.target.value};return{...p,links:l}})} placeholder="https://www.tradingview.com/chart/..." style={{...iStyle,padding:"7px 10px",fontSize:"12px",flex:1}}/>
-            {link.url&&<a href={link.url} target="_blank" rel="noopener" onClick={e=>e.stopPropagation()} style={{fontSize:"11px",color:"var(--teal)",textDecoration:"none",padding:"4px 8px",borderRadius:"4px",border:"1px solid rgba(46,170,111,0.3)",whiteSpace:"nowrap"}}>Open ↗</a>}
-            <button onClick={()=>setTrade(p=>({...p,links:(p.links||[]).filter((_,j)=>j!==i)}))} style={{background:"none",border:"none",color:"var(--text5)",cursor:"pointer",fontSize:"14px",padding:"2px 4px"}}>✕</button>
-          </div>
-          <input value={link.comment||""} onChange={e=>setTrade(p=>{const l=[...(p.links||[])];l[i]={...l[i],comment:e.target.value};return{...p,links:l}})} placeholder="Opmerking (bijv. 4H setup, entry zone, weekly bias...)" style={{...iStyle,padding:"6px 10px",fontSize:"12px",fontFamily:"var(--font)"}}/>
+      <div>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"8px"}}>
+          <div style={{fontSize:"11px",color:"var(--gold)",textTransform:"uppercase",letterSpacing:"0.12em",fontWeight:700}}>TradingView links</div>
+          <button onClick={()=>setTrade(p=>({...p,links:[...(p.links||[]),{id:uid(),url:"",comment:""}]}))} style={{fontSize:"11px",padding:"4px 10px",borderRadius:"5px",border:"1px dashed var(--border5)",background:"transparent",color:"var(--teal)",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>+ Link toevoegen</button>
         </div>
-      ))}
-      {(!trade.links||trade.links.length===0)&&<div style={{fontSize:"12px",color:"var(--text4)",padding:"8px 0"}}>Voeg TradingView chart links toe om je analyse te documenteren.</div>}
-    </div>
+        {(trade.links||[]).map((link,i)=>(
+          <div key={link.id||i} style={{background:"rgba(42,46,57,0.3)",borderRadius:"8px",border:"1px solid var(--border2)",padding:"10px 12px",marginBottom:"6px"}}>
+            <div style={{display:"flex",gap:"6px",alignItems:"center",marginBottom:"6px"}}>
+              {i>0&&<button onClick={()=>setTrade(p=>{const l=[...(p.links||[])];[l[i-1],l[i]]=[l[i],l[i-1]];return{...p,links:l}})} style={{background:"none",border:"none",color:"var(--text4)",cursor:"pointer",fontSize:"14px",padding:"2px"}}>▲</button>}
+              {i<(trade.links||[]).length-1&&<button onClick={()=>setTrade(p=>{const l=[...(p.links||[])];[l[i],l[i+1]]=[l[i+1],l[i]];return{...p,links:l}})} style={{background:"none",border:"none",color:"var(--text4)",cursor:"pointer",fontSize:"14px",padding:"2px"}}>▼</button>}
+              <input value={link.url} onChange={e=>setTrade(p=>{const l=[...(p.links||[])];l[i]={...l[i],url:e.target.value};return{...p,links:l}})} placeholder="https://www.tradingview.com/chart/..." style={{...iStyle,padding:"7px 10px",fontSize:"12px",flex:1}}/>
+              {link.url&&<a href={link.url} target="_blank" rel="noopener" onClick={e=>e.stopPropagation()} style={{fontSize:"11px",color:"var(--teal)",textDecoration:"none",padding:"4px 8px",borderRadius:"4px",border:"1px solid rgba(46,170,111,0.3)",whiteSpace:"nowrap"}}>Open ↗</a>}
+              <button onClick={()=>setTrade(p=>({...p,links:(p.links||[]).filter((_,j)=>j!==i)}))} style={{background:"none",border:"none",color:"var(--text5)",cursor:"pointer",fontSize:"14px",padding:"2px 4px"}}>✕</button>
+            </div>
+            <input value={link.comment||""} onChange={e=>setTrade(p=>{const l=[...(p.links||[])];l[i]={...l[i],comment:e.target.value};return{...p,links:l}})} placeholder="Opmerking (bijv. 4H setup, entry zone, weekly bias...)" style={{...iStyle,padding:"6px 10px",fontSize:"12px",fontFamily:"var(--font)"}}/>
+          </div>
+        ))}
+        {(!trade.links||trade.links.length===0)&&<div style={{fontSize:"12px",color:"var(--text4)",padding:"8px 0"}}>Voeg TradingView chart links toe om je analyse te documenteren.</div>}
+      </div>
+    </Section>
 
-    {/* Voor-trade notitie — gedachten vóór entry */}
-    <div style={{marginBottom:"1rem"}}>
-      <div style={{fontSize:"11px",color:"var(--gold)",textTransform:"uppercase",letterSpacing:"0.12em",fontWeight:700,marginBottom:"8px"}}>Waarom ga ik erin?</div>
-      <textarea value={trade.entryNote||""} onChange={e=>setTrade(p=>({...p,entryNote:e.target.value}))} placeholder="Je thesis vóór entry — setup, bias, trigger, risk, plan voor management..." rows={3} style={{...iStyle,fontFamily:"var(--font)",fontSize:"13px",resize:"vertical",lineHeight:"1.6"}}/>
-    </div>
+    {/* Notities — collapsible */}
+    <Section title="📝 Notities" storeKey="notes" defaultOpen={true} hint={`${trade.entryNote?"pre-trade ✓":"—"}${!isOpen?` · ${trade.notes?"post-trade ✓":"—"}`:""}`}>
+      <div style={{marginBottom:isOpen?0:"14px"}}>
+        <div style={{fontSize:"11px",color:"var(--gold)",textTransform:"uppercase",letterSpacing:"0.12em",fontWeight:700,marginBottom:"8px"}}>Waarom ga ik erin?</div>
+        <textarea value={trade.entryNote||""} onChange={e=>setTrade(p=>({...p,entryNote:e.target.value}))} placeholder="Je thesis vóór entry — setup, bias, trigger, risk, plan voor management..." rows={3} style={{...iStyle,fontFamily:"var(--font)",fontSize:"13px",resize:"vertical",lineHeight:"1.6"}}/>
+      </div>
+      {!isOpen&&<div>
+        <div style={{fontSize:"11px",color:"var(--gold)",textTransform:"uppercase",letterSpacing:"0.12em",fontWeight:700,marginBottom:"8px"}}>Hoe ging het?</div>
+        <textarea value={trade.notes} onChange={e=>setTrade(p=>({...p,notes:e.target.value}))} placeholder="Post-mortem — wat ging goed, wat kon beter, wat leer je?" rows={4} style={{...iStyle,fontFamily:"var(--font)",fontSize:"13px",resize:"vertical",lineHeight:"1.6"}}/>
+      </div>}
+    </Section>
 
-    {/* Post-trade notitie — evaluatie */}
-    <div style={{marginBottom:"1.5rem"}}>
-      <div style={{fontSize:"11px",color:"var(--gold)",textTransform:"uppercase",letterSpacing:"0.12em",fontWeight:700,marginBottom:"8px"}}>Hoe ging het?</div>
-      <textarea value={trade.notes} onChange={e=>setTrade(p=>({...p,notes:e.target.value}))} placeholder="Post-mortem — wat ging goed, wat kon beter, wat leer je?" rows={4} style={{...iStyle,fontFamily:"var(--font)",fontSize:"13px",resize:"vertical",lineHeight:"1.6"}}/>
-    </div>
-
+    <div style={{marginBottom:"1rem"}}/>
     {/* Actions */}
     <div style={{display:"flex",gap:"12px"}}>
       <button onClick={onSave} style={{flex:1,padding:"12px",borderRadius:"8px",border:"none",fontSize:"14px",fontWeight:700,background:"#C9A84C",color:"#000000",cursor:"pointer",fontFamily:"inherit",fontWeight:700}}>Trade opslaan</button>
+      {trade.pnl&&<button onClick={()=>setShowCard(true)} title="Deel als kaart" style={{padding:"12px 18px",borderRadius:"8px",border:"1px solid var(--gold-border)",background:"var(--gold-dim)",color:"var(--gold)",cursor:"pointer",fontFamily:"inherit",fontSize:"13px",fontWeight:600}}>📸 Deel kaart</button>}
+      {showCard&&<TradeCardExport trade={trade} onClose={()=>setShowCard(false)}/>}
       {onCancel&&<button onClick={onCancel} style={{padding:"12px 24px",borderRadius:"8px",border:"1px solid var(--border4)",background:"transparent",color:"var(--text2)",cursor:"pointer",fontFamily:"inherit",fontSize:"14px"}}>Annuleren</button>}
     </div>
   </div>);
@@ -2459,6 +2882,141 @@ function Analytics({trades}){
 // ════════════════════════════════════════════════════════════════
 // Premium Dashboard — hero greeting + KPI cards met sparklines + widgets
 // ════════════════════════════════════════════════════════════════
+// ═══ Goals Progress Rings ═══
+// Computes current-month metrics vs user-set goals; renders 3-4 animated SVG rings.
+function GoalsRings({goals,trades,onEdit}){
+  if(!goals)return null;
+  const now=new Date();
+  const monthTrades=(trades||[]).filter(t=>{if(!t.date)return false;const d=new Date(t.date);return d.getFullYear()===now.getFullYear()&&d.getMonth()===now.getMonth()&&t.pnl!==""&&!isNaN(parseFloat(t.pnl));});
+  const monthPnl=monthTrades.reduce((s,t)=>s+parseFloat(t.pnl),0);
+  const wins=monthTrades.filter(t=>parseFloat(t.pnl)>0).length;
+  const wr=monthTrades.length?wins/monthTrades.length*100:0;
+  // Drawdown: largest peak-to-trough deviation in running equity this month
+  const sorted=[...monthTrades].sort((a,b)=>(a.date+(a.time||"")).localeCompare(b.date+(b.time||"")));
+  let peak=0,dd=0,cum=0;sorted.forEach(t=>{cum+=parseFloat(t.pnl);if(cum>peak)peak=cum;const curDD=peak-cum;if(curDD>dd)dd=curDD;});
+
+  const items=[
+    {k:"monthPnl",label:"Maand P&L",current:monthPnl,target:goals.monthPnl,unit:"$",fmt:v=>(v>=0?"+":"")+"$"+fmt(Math.abs(v)),good:(c,t)=>c>=t},
+    {k:"winRate",label:"Win-rate",current:wr,target:goals.winRate,unit:"%",fmt:v=>v.toFixed(0)+"%",good:(c,t)=>c>=t},
+    {k:"maxDD",label:"Max Drawdown",current:dd,target:goals.maxDD,unit:"$",fmt:v=>"$"+fmt(v),good:(c,t)=>c<=t,inverted:true},
+    {k:"monthTrades",label:"Trades deze maand",current:monthTrades.length,target:goals.monthTrades,unit:"",fmt:v=>String(v),good:(c,t)=>c>=t},
+  ].filter(x=>goals.enabled?.[x.k]);
+
+  if(items.length===0)return null;
+
+  const Ring=({item})=>{
+    const {current,target,inverted}=item;
+    // Progress: normal = current/target. Inverted (DD): as current grows, progress goes down.
+    let progress=target?(inverted?Math.max(0,1-current/target):Math.min(current/target,1.2)):0;
+    if(progress<0)progress=0;
+    const done=item.good(current,target);
+    const cap=Math.min(progress,1);
+    const color=done?"#2eaa6f":progress>.8?"#C9A84C":progress>.4?"#d4a853":"#e05555";
+    const r=42,c=2*Math.PI*r;
+    const offset=c*(1-cap);
+    return(<div style={{flex:1,minWidth:"160px",background:"var(--glass)",border:"1px solid var(--border2)",borderRadius:"var(--radius-lg)",padding:"20px",textAlign:"center",position:"relative",overflow:"hidden",transition:"all .2s"}}>
+      <div style={{position:"absolute",top:0,left:0,right:0,height:"1px",background:`linear-gradient(90deg,transparent,${color}80,transparent)`,opacity:.7}}/>
+      <div style={{fontSize:"10px",color:"var(--text4)",textTransform:"uppercase",letterSpacing:".14em",fontWeight:700,marginBottom:"12px"}}>{item.label}</div>
+      <div style={{position:"relative",width:"100px",height:"100px",margin:"0 auto 12px"}}>
+        <svg viewBox="0 0 100 100" style={{width:"100%",height:"100%",transform:"rotate(-90deg)"}}>
+          <circle cx="50" cy="50" r={r} fill="none" stroke="rgba(255,255,255,.06)" strokeWidth="7"/>
+          <circle cx="50" cy="50" r={r} fill="none" stroke={color} strokeWidth="7" strokeDasharray={c} strokeDashoffset={offset} strokeLinecap="round" style={{transition:"stroke-dashoffset .6s cubic-bezier(.2,.8,.2,1),stroke .3s",filter:`drop-shadow(0 0 8px ${color}60)`}}/>
+        </svg>
+        <div style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}>
+          <div style={{fontFamily:"var(--mono)",fontSize:"16px",fontWeight:800,color:color,lineHeight:1}}>{item.fmt(current)}</div>
+          <div style={{fontSize:"9px",color:"var(--text5)",marginTop:"2px"}}>{done?"✓":Math.round(progress*100)+"%"}</div>
+        </div>
+      </div>
+      <div style={{fontSize:"11px",color:"var(--text4)"}}>Doel: <span style={{color:"var(--text2)",fontFamily:"var(--mono)",fontWeight:600}}>{item.fmt(target||0)}</span></div>
+    </div>);
+  };
+
+  return(<div style={{background:"var(--glass)",border:"1px solid var(--border2)",borderRadius:"var(--radius-lg)",padding:"20px",marginBottom:"16px"}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"16px"}}>
+      <div style={{fontSize:"11px",color:"var(--gold)",textTransform:"uppercase",letterSpacing:".12em",fontWeight:700}}>🎯 Maand-doelen</div>
+      {onEdit&&<button onClick={onEdit} style={{padding:"4px 10px",borderRadius:"5px",border:"1px solid var(--border3)",background:"transparent",color:"var(--text3)",fontSize:"10px",fontWeight:600,cursor:"pointer",fontFamily:"inherit",textTransform:"uppercase",letterSpacing:".08em"}}>⚙ Bewerken</button>}
+    </div>
+    <div style={{display:"flex",gap:"12px",flexWrap:"wrap"}}>
+      {items.map(it=>(<Ring key={it.k} item={it}/>))}
+    </div>
+  </div>);
+}
+
+// ═══ Command Palette (⌘K / Ctrl+K) ═══
+function CommandPalette({open,onClose,trades,navigate,setNewTrade,newEmptyTrade,exportTrades,setConfig,config}){
+  const [q,setQ]=useState("");
+  const [sel,setSel]=useState(0);
+  const inputRef=useRef(null);
+  useEffect(()=>{if(open){setQ("");setSel(0);setTimeout(()=>inputRef.current?.focus(),50);}},[open]);
+
+  const actions=useMemo(()=>{
+    const list=[
+      {t:"action",icon:"📊",title:"Dashboard",sub:"Overzicht en KPI's",hint:"G D",do:()=>navigate("dashboard")},
+      {t:"action",icon:"📋",title:"Trades",sub:"Alle trades bekijken",hint:"G T",do:()=>navigate("trades")},
+      {t:"action",icon:"📈",title:"Analytics",sub:"Deep data & heatmaps",hint:"G A",do:()=>navigate("analytics")},
+      {t:"action",icon:"🔍",title:"Review",sub:"Scorecard & grafieken",hint:"G R",do:()=>navigate("review")},
+      {t:"action",icon:"📅",title:"Kalender",sub:"Daily journal & heatmap",hint:"G C",do:()=>navigate("calendar")},
+      {t:"action",icon:"⚙️",title:"Instellingen",sub:"Accounts, rules, thema",hint:"G S",do:()=>navigate("accounts")},
+      {t:"action",icon:"📏",title:"Trading Rules",sub:"Regels bewerken",do:()=>navigate("rules")},
+      {t:"action",icon:"🏷",title:"Tags",sub:"Setup/emotie/fouten tags",do:()=>navigate("tags")},
+      {t:"action",icon:"⊕",title:"Nieuwe trade",sub:"Handmatig trade invoeren",hint:"N",do:()=>{setNewTrade&&setNewTrade(newEmptyTrade());navigate("new");}},
+      {t:"action",icon:"↓",title:"Backup exporteren",sub:"Download JSON van alles",do:()=>exportTrades&&exportTrades()},
+      {t:"action",icon:"🎨",title:"Thema: SyncJournal",do:()=>setConfig(p=>({...p,theme:"sync"}))},
+      {t:"action",icon:"🎨",title:"Thema: Classic",do:()=>setConfig(p=>({...p,theme:"classic"}))},
+      {t:"action",icon:"🎨",title:"Thema: Aurora",do:()=>setConfig(p=>({...p,theme:"aurora"}))},
+      {t:"action",icon:"🎨",title:"Thema: Light",do:()=>setConfig(p=>({...p,theme:"light"}))},
+      {t:"action",icon:"🖼",title:"Layout: Standaard",do:()=>setConfig(p=>({...p,layout:"standard"}))},
+      {t:"action",icon:"✨",title:"Layout: Premium",do:()=>setConfig(p=>({...p,layout:"premium"}))},
+    ];
+    return list;
+  },[navigate,setNewTrade,newEmptyTrade,exportTrades,setConfig]);
+
+  const recentTrades=useMemo(()=>(trades||[]).slice(0,40).map(t=>({t:"trade",trade:t,icon:parseFloat(t.pnl)>=0?"📈":"📉",title:t.pair||"BTC/USDT",sub:`${fmtNL(t.date||"")} · ${t.direction||""} · ${parseFloat(t.pnl)>=0?"+":""}$${fmt(parseFloat(t.pnl)||0)}`,hint:"",do:()=>navigate("trades")})),[trades,navigate]);
+
+  const fuzzy=(text,query)=>{text=text.toLowerCase();query=query.toLowerCase();let ti=0;for(const q of query){const idx=text.indexOf(q,ti);if(idx<0)return false;ti=idx+1;}return true;};
+  const results=useMemo(()=>{
+    const all=[...actions,...recentTrades];
+    if(!q.trim())return all.slice(0,8);
+    return all.filter(r=>fuzzy(r.title+" "+(r.sub||""),q)).slice(0,12);
+  },[q,actions,recentTrades]);
+
+  useEffect(()=>{if(sel>=results.length)setSel(0);},[results.length]);
+  const onKey=(e)=>{
+    if(e.key==="ArrowDown"){e.preventDefault();setSel(s=>Math.min(s+1,results.length-1));}
+    else if(e.key==="ArrowUp"){e.preventDefault();setSel(s=>Math.max(s-1,0));}
+    else if(e.key==="Enter"){e.preventDefault();const r=results[sel];if(r?.do){r.do();onClose();}}
+  };
+  if(!open)return null;
+  return(<div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.75)",zIndex:9999,display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"15vh 20px 20px",backdropFilter:"blur(10px)",animation:"fadeIn .15s ease"}}>
+    <div onClick={e=>e.stopPropagation()} style={{background:"linear-gradient(180deg,rgba(12,14,19,.98),rgba(6,7,10,.98))",border:"1px solid var(--gold-border)",borderRadius:"14px",width:"100%",maxWidth:"620px",overflow:"hidden",boxShadow:"0 24px 80px rgba(0,0,0,.6),0 0 40px rgba(201,168,76,.1)",animation:"cmdSlide .25s cubic-bezier(.2,.8,.2,1)"}}>
+      <style>{`@keyframes cmdSlide{from{opacity:0;transform:translateY(-12px) scale(.98)}to{opacity:1;transform:translateY(0) scale(1)}}`}</style>
+      <div style={{display:"flex",alignItems:"center",gap:"12px",padding:"16px 18px",borderBottom:"1px solid var(--border3)"}}>
+        <span style={{fontSize:"18px",color:"var(--gold)"}}>🔎</span>
+        <input ref={inputRef} value={q} onChange={e=>setQ(e.target.value)} onKeyDown={onKey} placeholder="Zoek acties, pagina's, trades..." style={{flex:1,background:"none",border:"none",color:"var(--text)",fontFamily:"inherit",fontSize:"16px",outline:"none"}}/>
+        <span style={{fontFamily:"var(--mono)",fontSize:"10px",padding:"3px 8px",background:"rgba(255,255,255,.06)",borderRadius:"4px",color:"var(--text4)",border:"1px solid var(--border3)"}}>ESC</span>
+      </div>
+      <div style={{maxHeight:"50vh",overflowY:"auto",padding:"8px"}}>
+        {results.length===0&&<div style={{padding:"30px",textAlign:"center",color:"var(--text4)",fontSize:"13px"}}>Geen resultaten voor "<strong style={{color:"var(--text2)"}}>{q}</strong>"</div>}
+        {results.map((r,i)=>(
+          <div key={i} onClick={()=>{r.do&&r.do();onClose();}} onMouseEnter={()=>setSel(i)} style={{display:"flex",alignItems:"center",gap:"12px",padding:"10px 14px",borderRadius:"8px",background:sel===i?"var(--gold-dim)":"transparent",border:`1px solid ${sel===i?"var(--gold-border)":"transparent"}`,cursor:"pointer",transition:"all .1s"}}>
+            <div style={{width:"28px",height:"28px",borderRadius:"7px",background:"rgba(255,255,255,.04)",border:"1px solid var(--border2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"14px",flexShrink:0}}>{r.icon}</div>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:"13px",fontWeight:600,color:"var(--text)"}}>{r.title}</div>
+              {r.sub&&<div style={{fontSize:"11px",color:"var(--text4)",marginTop:"1px",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.sub}</div>}
+            </div>
+            {r.hint&&<span style={{fontFamily:"var(--mono)",fontSize:"10px",padding:"2px 6px",background:"rgba(255,255,255,.05)",borderRadius:"4px",color:"var(--text4)",border:"1px solid var(--border2)"}}>{r.hint}</span>}
+            {sel===i&&<span style={{fontSize:"12px",color:"var(--gold)"}}>↵</span>}
+          </div>
+        ))}
+      </div>
+      <div style={{padding:"10px 18px",borderTop:"1px solid var(--border3)",display:"flex",justifyContent:"space-between",fontSize:"10px",color:"var(--text5)",fontFamily:"var(--mono)"}}>
+        <div style={{display:"flex",gap:"14px"}}><span>↑↓ navigeren</span><span>↵ kiezen</span><span>esc sluiten</span></div>
+        <div>SyncJournal ⌘K</div>
+      </div>
+    </div>
+  </div>);
+}
+
 function Sparkline({data,color="#2eaa6f"}){
   if(!data||data.length<2)return null;
   const min=Math.min(...data),max=Math.max(...data);
@@ -2471,7 +3029,7 @@ function Sparkline({data,color="#2eaa6f"}){
   </svg>);
 }
 
-function DashboardPremium({trades,config,accounts,tradingRules,dailyNotes,setTab,setNewTrade,newEmptyTrade}){
+function DashboardPremium({trades,config,accounts,tradingRules,dailyNotes,goals,setTab,setNewTrade,newEmptyTrade}){
   const closed=(trades||[]).filter(t=>t.pnl!==""&&!isNaN(parseFloat(t.pnl)));
   const hour=new Date().getHours();
   const greeting=hour<12?"Goedemorgen":hour<18?"Goedemiddag":"Goedenavond";
@@ -2514,6 +3072,9 @@ function DashboardPremium({trades,config,accounts,tradingRules,dailyNotes,setTab
         <button onClick={()=>{setNewTrade(newEmptyTrade());setTab("new");}} style={{padding:"12px 24px",borderRadius:"12px",background:"linear-gradient(135deg,#f0d57a,#C9A84C,#8c721c)",color:"#000",border:"none",fontFamily:"inherit",fontSize:"13px",fontWeight:700,cursor:"pointer",boxShadow:"0 6px 20px rgba(201,168,76,.35),inset 0 1px 0 rgba(255,255,255,.3)"}}>⊕ Nieuwe trade</button>
       </div>
     </div>
+
+    {/* GOALS RINGS */}
+    {goals&&<GoalsRings goals={goals} trades={closed} onEdit={()=>setTab("accounts")}/>}
 
     {/* KPI GRID */}
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:"16px",marginBottom:"24px"}}>
@@ -2929,7 +3490,7 @@ function ReviewDashboard({trades}){
 }
 
 // ============ ACCOUNTS HUB ============
-function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,importTrades,exportTrades,setTagConfig,tagConfig,tradingRules,setTradingRules}){
+function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,importTrades,exportTrades,setTagConfig,tagConfig,tradingRules,setTradingRules,goals,setGoals}){
   const csvRef=useRef();const csvAcctRef=useRef(null);
   const backupRef=useRef();
   // CSV preview state
@@ -3424,6 +3985,25 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,imp
       ))}
     </div>}
 
+    {/* Goals editor */}
+    {goals&&setGoals&&<div style={{background:"var(--glass)",backdropFilter:"var(--glass-blur)",WebkitBackdropFilter:"var(--glass-blur)",borderRadius:"var(--radius-lg)",padding:"20px",marginTop:"16px",border:"1px solid var(--border1)"}}>
+      <div style={{fontSize:"11px",color:"var(--gold)",textTransform:"uppercase",letterSpacing:"0.12em",fontWeight:700,marginBottom:"8px"}}>🎯 Maand-doelen</div>
+      <div style={{fontSize:"12px",color:"var(--text4)",marginBottom:"14px",lineHeight:1.5}}>Toont progress rings op het Dashboard (Premium layout). Zet uit wat je niet nodig hebt.</div>
+      {[
+        {k:"monthPnl",label:"P&L deze maand",unit:"$",hint:"Target netto PnL in USD"},
+        {k:"winRate",label:"Win-rate",unit:"%",hint:"Percentage winning trades"},
+        {k:"maxDD",label:"Max drawdown",unit:"$",hint:"Acceptabele max drawdown (lager = beter)"},
+        {k:"monthTrades",label:"Aantal trades",unit:"",hint:"Activiteit-doel voor de maand"},
+      ].map(g=>(
+        <div key={g.k} style={{display:"grid",gridTemplateColumns:"28px 1fr 140px 80px",gap:"12px",alignItems:"center",padding:"10px 0",borderBottom:"1px solid var(--border2)"}}>
+          <button onClick={()=>setGoals(p=>({...p,enabled:{...(p.enabled||{}),[g.k]:!p.enabled?.[g.k]}}))} title={goals.enabled?.[g.k]?"Actief":"Inactief"} style={{width:"22px",height:"22px",borderRadius:"5px",border:`1.5px solid ${goals.enabled?.[g.k]?"var(--green)":"var(--border4)"}`,background:goals.enabled?.[g.k]?"rgba(46,170,111,.15)":"transparent",color:goals.enabled?.[g.k]?"var(--green)":"var(--text5)",cursor:"pointer",fontSize:"12px",fontWeight:700}}>{goals.enabled?.[g.k]?"✓":""}</button>
+          <div><div style={{fontSize:"13px",fontWeight:600}}>{g.label}</div><div style={{fontSize:"10px",color:"var(--text5)"}}>{g.hint}</div></div>
+          <input type="number" value={goals[g.k]??""} onChange={e=>setGoals(p=>({...p,[g.k]:parseFloat(e.target.value)||0}))} style={{padding:"6px 10px",borderRadius:"5px",border:"1px solid var(--border3)",background:"var(--bg3)",color:"var(--text)",fontSize:"13px",fontFamily:"var(--mono)",outline:"none"}}/>
+          <span style={{fontSize:"11px",color:"var(--text4)",textAlign:"center"}}>{g.unit}</span>
+        </div>
+      ))}
+    </div>}
+
     {/* Layout switcher — kiest structuur/detail-niveau, werkt met élk thema */}
     <div style={{background:"var(--glass)",backdropFilter:"var(--glass-blur)",WebkitBackdropFilter:"var(--glass-blur)",borderRadius:"var(--radius-lg)",padding:"20px",marginTop:"16px",border:"1px solid var(--border1)"}}>
       <div style={{fontSize:"11px",color:"var(--gold)",textTransform:"uppercase",letterSpacing:"0.12em",fontWeight:700,marginBottom:"12px"}}>Layout</div>
@@ -3599,6 +4179,10 @@ function App(){
   const[accounts,setAccounts]=useState(()=>{try{const d=localStorage.getItem("tj_accounts");return d?JSON.parse(d):[]}catch(err){return[]}});
   const[tagConfig,setTagConfig]=useState(()=>{try{const d=localStorage.getItem("tj_tags");return d?JSON.parse(d):DEFAULT_TAGS}catch(err){return DEFAULT_TAGS}});
   const[dailyNotes,setDailyNotes]=useState(()=>{try{const d=localStorage.getItem("tj_daily_notes");return d?JSON.parse(d):{}}catch{return{}}});
+  const[goals,setGoals]=useState(()=>{try{const d=localStorage.getItem("tj_goals");return d?JSON.parse(d):{monthPnl:2000,winRate:60,maxDD:500,monthTrades:50,enabled:{monthPnl:true,winRate:true,maxDD:true,monthTrades:false}}}catch{return{monthPnl:2000,winRate:60,maxDD:500,monthTrades:50,enabled:{monthPnl:true,winRate:true,maxDD:true,monthTrades:false}}}});
+  useEffect(()=>{try{localStorage.setItem("tj_goals",JSON.stringify(goals))}catch{}},[goals]);
+  const[cmdOpen,setCmdOpen]=useState(false);
+  useEffect(()=>{const h=(e)=>{if((e.metaKey||e.ctrlKey)&&e.key==="k"){e.preventDefault();setCmdOpen(true);}if(e.key==="Escape")setCmdOpen(false);};document.addEventListener("keydown",h);return()=>document.removeEventListener("keydown",h);},[]);
   useEffect(()=>{try{localStorage.setItem("tj_daily_notes",JSON.stringify(dailyNotes))}catch{}},[dailyNotes]);
   const[tradingRules,setTradingRules]=useState(()=>{try{const d=localStorage.getItem("tj_trading_rules");return d?JSON.parse(d):[
     {id:"r1",name:"Max 2% risk per trade",type:"max_risk_pct",value:2,enabled:true},
@@ -3825,6 +4409,7 @@ function App(){
       </div></>}
 
       {/* Toast */}
+      <CommandPalette open={cmdOpen} onClose={()=>setCmdOpen(false)} trades={trades} navigate={navigate} setNewTrade={setNewTrade} newEmptyTrade={newEmptyTrade} exportTrades={exportTrades} setConfig={setConfig} config={config}/>
       {toast&&<div style={{position:"fixed",bottom:"24px",right:"24px",zIndex:1000,padding:"12px 20px",borderRadius:"var(--radius-lg)",background:toast.type==="error"?"rgba(210,50,50,0.9)":"rgba(30,40,55,0.95)",border:`1px solid ${toast.type==="error"?"rgba(239,83,80,0.4)":"rgba(54,58,69,0.9)"}`,color:"#fff",fontSize:"13px",fontWeight:500,display:"flex",alignItems:"center",gap:"12px",animation:"slideDown .3s ease",backdropFilter:"blur(12px)",boxShadow:"0 8px 32px rgba(0,0,0,0.4)"}}>
         <span>{toast.type==="error"?"❌":"✓"} {toast.msg}</span>
         {toast.data&&<button onClick={()=>{setTrades(p=>[toast.data,...p]);setToast(null)}} style={{fontSize:"11px",color:"#C9A84C",background:"none",border:"none",cursor:"pointer",fontFamily:"inherit",padding:"0",textDecoration:"underline"}}>Ongedaan maken</button>}
@@ -3867,13 +4452,13 @@ function App(){
 
         {/* Main content routing */}
         {tab==="dashboard"&&(layout==="premium"
-          ?<DashboardPremium trades={filteredTrades} config={config} accounts={accounts} tradingRules={tradingRules} dailyNotes={dailyNotes} setTab={navigate} setNewTrade={setNewTrade} newEmptyTrade={newEmptyTrade}/>
+          ?<DashboardPremium trades={filteredTrades} config={config} accounts={accounts} tradingRules={tradingRules} dailyNotes={dailyNotes} goals={goals} setTab={navigate} setNewTrade={setNewTrade} newEmptyTrade={newEmptyTrade}/>
           :<Dashboard trades={filteredTrades} config={config} accounts={accounts} onReport={()=>setShowPdf(true)} storageUsage={storageUsage}/>)}
         {tab==="trades"&&!editTrade&&<TradeList trades={filteredTrades} onEdit={setEditTrade} onDelete={deleteTrade} onBulkDelete={bulkDelete} onBulkTag={bulkTag} showToast={showToast} tagConfig={tagConfig}/>}
         {tab==="analytics"&&<Analytics trades={filteredTrades}/>}
         {tab==="review"&&<ReviewDashboard trades={filteredTrades}/>}
         {tab==="calendar"&&<Calendar trades={filteredTrades} setFilters={setFilters} setTab={setTab} dailyNotes={dailyNotes} setDailyNotes={setDailyNotes} tradingRules={tradingRules} onEdit={(t)=>{setEditTrade(t);setNewTrade({...EMPTY_TRADE,...t,tpLevels:t.tpLevels||[],layers:t.layers||[],links:t.links||[],manualOverrides:t.manualOverrides||[]});navigate("new");}}/>}
-        {tab==="accounts"&&<AccountsHub config={config} setConfig={setConfig} accounts={accounts} setAccounts={setAccounts} showToast={showToast} trades={trades} importTrades={importTrades} exportTrades={exportTrades} setTagConfig={setTagConfig} tagConfig={tagConfig} tradingRules={tradingRules} setTradingRules={setTradingRules}/>}
+        {tab==="accounts"&&<AccountsHub config={config} setConfig={setConfig} accounts={accounts} setAccounts={setAccounts} showToast={showToast} trades={trades} importTrades={importTrades} exportTrades={exportTrades} setTagConfig={setTagConfig} tagConfig={tagConfig} tradingRules={tradingRules} setTradingRules={setTradingRules} goals={goals} setGoals={setGoals}/>}
         {tab==="rules"&&<TradingRulesPage tradingRules={tradingRules} setTradingRules={setTradingRules}/>}
         {tab==="tags"&&<TagManager tagConfig={tagConfig} setTagConfig={setTagConfig} trades={trades} setTrades={setTrades} showToast={showToast}/>}
         {tab==="help"&&<HelpPage/>}
