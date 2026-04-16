@@ -1,191 +1,156 @@
-# SyncJournal — Hosting & Workflow
+# SyncJournal — Workflow & Distributie
 
-Hoe de community altijd de **final** versie gebruikt via één vaste URL, terwijl Denny & Sebas vrij kunnen bouwen op een **work** versie zonder ooit iets te breken voor de community.
+Twee folders in de GitHub repo:
 
----
+- **`/main/tradejournal.html`** → final versie. Community downloadt hier.
+- **`/work/tradejournal.html`** → werk-in-uitvoering. Alleen Denny + Sebas.
 
-## 🎯 De opzet
-
-- **`main` branch** = SyncJournal final → publieke community-URL (met Cloudflare Access gate)
-- **`work` branch** = werk-in-uitvoering → private preview-URL (alleen Denny + Sebas)
-- **Cloudflare Pages** deployt beide branches automatisch naar aparte URL's
-- **Cloudflare Access** beschermt beide URL's: alleen whitelist-emails kunnen openen
-
-```
-Denny/Sebas ─push→ work branch   ─cloudflare→  work.syncjournal.pages.dev  (alleen wij)
-                       │
-                       │ git merge work (als tevreden)
-                       ↓
-                    main branch  ─cloudflare→  journal.moranitraden.nl     (community)
-```
+Als we tevreden zijn met de `work` versie → kopiëren naar `main` → pushen → community downloadt de nieuwe versie.
 
 ---
 
-## 🚀 Stap 1: Cloudflare Pages project aanmaken
+## 📦 Voor de community: downloaden & updaten
 
-### 1a. Connect GitHub
+### Eerste keer
 
-1. Ga naar **https://dash.cloudflare.com** → **Workers & Pages**
-2. Klik **Create application** → tab **Pages** → **Connect to Git**
-3. Autoriseer Cloudflare voor GitHub (eenmalig)
-4. Selecteer repo `ZaratrasJournal/SyncJournal`
+1. Open **https://github.com/ZaratrasJournal/SyncJournal/tree/main/main**
+2. Klik op `tradejournal.html`
+3. Klik rechtsboven op het **Download raw file** icoon (↓ pijl omlaag)
+4. Sla op in een vaste map, bijv. `C:\SyncJournal\tradejournal.html`
+5. Dubbelklik het bestand → opent in Chrome/Edge/Firefox
+6. **Bookmark de file-locatie** (of maak een snelkoppeling op je desktop)
 
-### 1b. Build settings
+> 💡 **Tip:** gebruik altijd **dezelfde map** voor re-downloads. Je localStorage-data is gekoppeld aan het file-pad. Andere map → data weg.
 
-Omdat dit een static HTML site is:
+### Updaten (nieuwe versie)
 
-| Setting | Waarde |
-|---|---|
-| **Project name** | `syncjournal` |
-| **Production branch** | `main` |
-| **Framework preset** | None |
-| **Build command** | *(leeg laten)* |
-| **Build output directory** | `/` |
+1. Open dezelfde URL → download raw file
+2. **Overschrijf** het bestaande `tradejournal.html` (NIET een nieuwe kopie in een andere map)
+3. Ververs je browser-tab → nieuwe versie draait, data blijft
 
-Klik **Save and Deploy**.
+### Backup (verplicht bij grote updates)
 
-Na ~30 sec is je production live op `https://syncjournal.pages.dev/tradejournal.html`.
-
-### 1c. Custom domain (optioneel, aanbevolen)
-
-1. In het project → tab **Custom domains** → **Set up a custom domain**
-2. Typ: `journal.moranitraden.nl` (of wat je wil)
-3. Cloudflare voegt automatisch een CNAME toe (als moranitraden.nl bij Cloudflare staat) — anders DNS bij je provider: `CNAME journal → syncjournal.pages.dev`
+Vóór je een nieuwe versie download:
+- Instellingen in SyncJournal → **Export JSON** → bewaar ergens veilig
+- Als update iets breekt → reimporteer de backup
 
 ---
 
-## 🔐 Stap 2: Cloudflare Access (community gate)
+## 🛠️ Voor Denny + Sebas: dev workflow
 
-Zonder Access is je URL publiek. Access voegt een **email-login** toe: alleen whitelist kan openen.
-
-### 2a. Access aanzetten
-
-1. Cloudflare Dashboard → **Zero Trust** (links in menu)
-2. Eerste keer: setup wizard (naam kiezen, gratis plan → up to 50 users)
-3. **Access** → **Applications** → **Add an application** → **Self-hosted**
-
-### 2b. App configureren
-
-| Setting | Waarde |
-|---|---|
-| **Application name** | SyncJournal |
-| **Session duration** | `1 month` (anders loggen mensen te vaak in) |
-| **Application domain** | `journal.moranitraden.nl` (of je Pages URL) |
-
-### 2c. Policy (wie mag erin?)
-
-- **Policy name:** `Morani community`
-- **Action:** Allow
-- **Include** → **Emails** → voeg elke trader's email toe
-  - Of **Emails ending in** → `@moranitraden.nl` (als iedereen dat domein heeft)
-  - Of **GitHub organization** → `ZaratrasJournal` (als ze allemaal GitHub hebben)
-
-Save. Vanaf nu: wie de URL opent krijgt een login-scherm, typt zijn email, krijgt magic-link, is 1 maand binnen.
-
----
-
-## 🌳 Stap 3: Work branch aanmaken (als nog niet gedaan)
+### Setup (eenmalig)
 
 ```bash
-git checkout main
+git clone https://github.com/ZaratrasJournal/SyncJournal.git
+cd SyncJournal
+```
+
+### Dagelijks werken
+
+```bash
+# 1. Laatste wijzigingen trekken
 git pull
-git checkout -b work
-git push -u origin work
-```
 
-Cloudflare Pages detecteert de nieuwe branch automatisch en maakt een **preview-deployment**. URL wordt ongeveer:
-```
-https://work.syncjournal.pages.dev
-```
+# 2. Open work versie lokaal voor testen
+# (open work/tradejournal.html in je browser via Live Server / localhost)
 
-Optioneel: gate deze ook met Cloudflare Access (zelfde policy).
+# 3. Bewerk work/tradejournal.html
+# ... bouwen + testen ...
 
----
-
-## 🔄 Dagelijkse workflow
-
-### Werken op `work`
-
-```bash
-git checkout work
-# bouwen, testen, pushen
-git add tradejournal.html
-git commit -m "WIP: new feature X"
+# 4. Committen + pushen
+git add work/tradejournal.html
+git commit -m "WIP: feature X"
 git push
 ```
 
-Cloudflare bouwt binnen 1 min → check resultaat op `work.syncjournal.pages.dev`.
+### Release: work → main (community ziet nieuwe versie)
 
-### Tevreden? Merge naar `main` (= update voor community)
-
-```bash
-git checkout main
-git pull                      # veiligheidscheck
-git merge work                # fast-forward of merge-commit
-git push                      # community krijgt nieuwe versie binnen 1 min
-git checkout work             # terug naar dev
-```
-
-Of met een PR-flow als je Sebas wil laten reviewen:
-```bash
-gh pr create --base main --head work --title "Release: feature X"
-# Sebas reviewt, approved, merget via GitHub UI
-```
-
-### Rollback als er iets brak
+Wanneer je tevreden bent:
 
 ```bash
-git checkout main
-git revert HEAD               # maakt nieuwe commit die laatste undoet
+# Kopieer work naar main
+cp work/tradejournal.html main/tradejournal.html
+
+# Commit met duidelijke message (dit is wat community ziet in commit log)
+git add main/tradejournal.html
+git commit -m "Release v12.X: korte beschrijving van wat er nieuw is"
 git push
-# of harder:
-git reset --hard <oude-sha>
-git push --force              # ⚠ voorzichtig, alleen in noodgevallen
+```
+
+Community member doet volgende keer `Download raw file` → heeft nieuwste versie.
+
+### Alleen docs/backlog bijwerken
+
+Geen release nodig, gewoon committen:
+
+```bash
+git add BACKLOG.md
+git commit -m "Backlog: update"
+git push
 ```
 
 ---
 
-## 💾 localStorage: let op deze valkuil
+## ⚠️ Valkuilen
 
-Elke deploy-URL heeft een **eigen localStorage**:
-- `journal.moranitraden.nl` → community-data
-- `work.syncjournal.pages.dev` → Denny's work-data
+### localStorage & file-pad
 
-Dat is **goed** — je breekt nooit per ongeluk community-data tijdens testen. Maar:
+Elke browser koppelt localStorage aan het **exacte file-pad** (`file:///C:/SyncJournal/tradejournal.html`).
 
-- **Test data wil je soms kopiëren** tussen work → prod (of andersom). Gebruik Export JSON → import op andere URL.
-- **Schema-migraties** test je eerst op `work` met een kopie van je prod-backup.
-- **Als je een breaking change maakt** in localStorage-schema → altijd migratie toevoegen in `runSchemaMigrations()` vóór je naar main merged.
+- Bestand naar andere map verplaatsen → data weg (import JSON backup!)
+- Renamen → data weg
+- Op een ander apparaat openen → andere localStorage (import backup)
+
+**Oplossing voor meerdere apparaten:** altijd JSON-export bij je laatste data, import op nieuw apparaat.
+
+### `work` en `main` hebben verschillend gedrag
+
+Je test op `work/tradejournal.html` → andere localStorage dan `main/tradejournal.html` (verschillend file-pad).
+
+Dit is **goed** — je breekt nooit per ongeluk je echte data tijdens testen. Maar bedenk: testdata zit in `work`, niet in `main`.
+
+### Schema-migraties
+
+Als je `tj_*` localStorage keys wijzigt of nieuwe velden op trades toevoegt:
+- Altijd migratie toevoegen in `runSchemaMigrations()`
+- Test op `work` met een kopie van je echte data (JSON import)
+- Pas na verificatie → release naar `main`
+
+### Vergeten naar main te kopiëren
+
+Alleen pushen naar `work/` → community ziet niks. Checklist bij release:
+1. `cp work/tradejournal.html main/tradejournal.html`
+2. `git diff main/tradejournal.html` (is dit wat je wil vrijgeven?)
+3. Commit + push
 
 ---
 
-## 📋 Community-bericht (template voor Discord)
+## 📋 Community-bericht voor Discord
 
 ```
-🎯 SyncJournal is live!
+🎯 SyncJournal — download-link
 
-👉 https://journal.moranitraden.nl
+👉 https://github.com/ZaratrasJournal/SyncJournal/tree/main/main
 
-Eerste keer:
-1. Klik de link
-2. Typ je email (die je aan Denny hebt doorgegeven)
-3. Open de magic-link die Cloudflare stuurt
-4. Journal start — bookmark 'm!
+1. Klik op "tradejournal.html"
+2. Klik rechts op de ↓ "Download raw file" knop
+3. Sla op in een vaste map (bijv. C:\SyncJournal\)
+4. Dubbelklik → opent in je browser
 
-Je data staat in je eigen browser (localStorage). Voor backup:
-Instellingen → Export JSON → bewaar die file. Wissel je van apparaat of browser? Importeer 'm weer.
+Updates: re-download in DEZELFDE map (overschrijf oude bestand).
+Backup eerst: Instellingen → Export JSON.
 
-Updates komen automatisch — gewoon de pagina verversen.
+Data blijft in je eigen browser, niemand kan erbij.
 ```
 
 ---
 
-## 🚨 Veiligheid
+## 🔒 Wie kan erbij?
 
-- **Geen API-keys in de code.** Elke trader vult ze zelf in de browser (localStorage). CLAUDE.md-regel.
-- **Private repo blijft privé.** Cloudflare Pages pullt via OAuth, niemand anders ziet je code.
-- **Cloudflare Access sessie = 1 maand.** Bij verlaten-community een trader: verwijder 'm uit de policy, logt dan uit binnen 1 maand (of force-revoke via Access UI).
-- **Commit nooit `.env`, CSV's, `*_personal.*`.** Staat al in `.gitignore`.
+- **Private repo:** community-leden moeten GitHub-account hebben + als collaborator toegevoegd worden (Repo → Settings → Collaborators)
+- **Public repo:** iedereen met de link kan downloaden — simpeler, maar code is openbaar zichtbaar
+
+Wissel kan altijd later via Settings → General → Change visibility.
 
 ---
 
@@ -193,11 +158,10 @@ Updates komen automatisch — gewoon de pagina verversen.
 
 | Probleem | Oplossing |
 |---|---|
-| Deploy faalt na push | Cloudflare Dashboard → Pages → Deployments → click failed deploy → check build log. Meestal: illegale filename of te grote file. |
-| "Access denied" voor legitieme user | Check Access → Applications → Policies. Email goed gespeld? Case-sensitive soms. |
-| Trader ziet oude versie na update | Hard refresh (`Ctrl+Shift+R`). Cloudflare cached statisch ~5 min. |
-| Preview URL werkt niet meer | Check Cloudflare Pages → Deployments → staat `work` branch nog actief? |
-| localStorage weg na URL-wijziging | Normaal — andere origin. Import JSON-backup van oude URL. |
+| `localStorage is null` na update | Bestand staat op ander pad dan voorheen — verplaats terug of import JSON-backup |
+| Community ziet oude versie | Vergeet je niet `cp work/tradejournal.html main/` + push? |
+| Merge conflict op main/tradejournal.html | Twee mensen editten main direct. Regel: main is alleen kopie-uit-work, niet direct editten. |
+| Browser opent HTML als tekst | Gebruik "Download raw file" (↓ icoon), niet "Copy" — "Copy" geeft URL-tekst |
 
 ---
 
