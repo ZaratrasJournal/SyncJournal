@@ -722,6 +722,66 @@ function getCapitalForSource(source,config,accounts){
   return 0;
 }
 
+// ── Custom goals system ───────────────────────────────────────────────────
+// Available metrics: {id, label, unit, hint, inverted (lower-is-better), fmt}
+const GOAL_METRICS=[
+  {id:"pnl",label:"Net P&L",unit:"$",hint:"Som van alle closed trades",fmt:v=>(v>=0?"+":"")+"$"+(Math.abs(v).toLocaleString("nl-NL",{minimumFractionDigits:0,maximumFractionDigits:0}))},
+  {id:"winRate",label:"Win-rate",unit:"%",hint:"% winnende trades",fmt:v=>v.toFixed(0)+"%"},
+  {id:"trades",label:"Aantal trades",unit:"x",hint:"Count closed trades",fmt:v=>String(Math.round(v))},
+  {id:"winningDays",label:"Winning days",unit:"d",hint:"Dagen met positieve PnL",fmt:v=>String(Math.round(v))+"d"},
+  {id:"avgR",label:"Gem. R-multiple",unit:"R",hint:"Avg R-multiple per trade",fmt:v=>(v>=0?"+":"")+v.toFixed(2)+"R"},
+  {id:"grossProfit",label:"Gross Profit",unit:"$",hint:"Alleen winners, som",fmt:v=>"+$"+(Math.abs(v).toLocaleString("nl-NL",{minimumFractionDigits:0,maximumFractionDigits:0}))},
+  {id:"maxDD",label:"Max Drawdown",unit:"$",hint:"Peak-to-trough (lager = beter)",fmt:v=>"$"+(Math.abs(v).toLocaleString("nl-NL",{minimumFractionDigits:0,maximumFractionDigits:0})),inverted:true},
+  {id:"profitFactor",label:"Profit Factor",unit:"x",hint:"Gross winst / gross verlies",fmt:v=>v===Infinity?"∞":v.toFixed(2)+"x"},
+  {id:"expectancy",label:"Expectancy",unit:"$",hint:"Gemiddelde PnL per trade",fmt:v=>(v>=0?"+":"")+"$"+Math.abs(v).toFixed(2)},
+];
+const GOAL_PERIODS=[
+  {id:"week",label:"Deze week"},
+  {id:"month",label:"Deze maand"},
+  {id:"quarter",label:"Dit kwartaal"},
+  {id:"year",label:"Dit jaar"},
+  {id:"all",label:"Alle tijd"},
+];
+// Compute a metric value over a given period
+function computeGoalMetric(metric,trades,period){
+  const now=new Date();
+  const inPeriod=t=>{
+    if(!t.date)return false;
+    if(period==="all")return true;
+    const d=new Date(t.date);
+    if(period==="year")return d.getFullYear()===now.getFullYear();
+    if(period==="month")return d.getFullYear()===now.getFullYear()&&d.getMonth()===now.getMonth();
+    if(period==="quarter"){const q=Math.floor(d.getMonth()/3);const nq=Math.floor(now.getMonth()/3);return d.getFullYear()===now.getFullYear()&&q===nq}
+    if(period==="week"){const ws=new Date(now);const dow=(ws.getDay()+6)%7;ws.setDate(ws.getDate()-dow);ws.setHours(0,0,0,0);return d>=ws}
+    return true;
+  };
+  const scoped=(trades||[]).filter(t=>inPeriod(t)&&t.pnl!==""&&!isNaN(parseFloat(t.pnl)));
+  if(scoped.length===0)return 0;
+  switch(metric){
+    case "pnl":return scoped.reduce((s,t)=>s+parseFloat(t.pnl),0);
+    case "winRate":return scoped.filter(t=>parseFloat(t.pnl)>0).length/scoped.length*100;
+    case "trades":return scoped.length;
+    case "winningDays":{const byDay={};scoped.forEach(t=>{byDay[t.date]=(byDay[t.date]||0)+parseFloat(t.pnl)});return Object.values(byDay).filter(p=>p>0).length}
+    case "avgR":{const rs=scoped.map(t=>calcRMultiple(t)).filter(r=>r!==null&&!isNaN(r));return rs.length?rs.reduce((s,r)=>s+r,0)/rs.length:0}
+    case "grossProfit":return scoped.filter(t=>parseFloat(t.pnl)>0).reduce((s,t)=>s+parseFloat(t.pnl),0);
+    case "maxDD":{const sorted=[...scoped].sort((a,b)=>(a.date+(a.time||"")).localeCompare(b.date+(b.time||"")));let peak=0,dd=0,cum=0;sorted.forEach(t=>{cum+=parseFloat(t.pnl);if(cum>peak)peak=cum;const d=peak-cum;if(d>dd)dd=d});return dd}
+    case "profitFactor":{const gw=scoped.filter(t=>parseFloat(t.pnl)>0).reduce((s,t)=>s+parseFloat(t.pnl),0);const gl=Math.abs(scoped.filter(t=>parseFloat(t.pnl)<0).reduce((s,t)=>s+parseFloat(t.pnl),0));return gl>0?gw/gl:(gw>0?Infinity:0)}
+    case "expectancy":return scoped.reduce((s,t)=>s+parseFloat(t.pnl),0)/scoped.length;
+    default:return 0;
+  }
+}
+// Migrate legacy {monthPnl,winRate,maxDD,monthTrades,enabled} to {items:[]}
+function migrateGoals(goals){
+  if(goals&&Array.isArray(goals.items))return goals;
+  const legacy=goals||{};
+  const items=[
+    {id:"g-pnl",metric:"pnl",label:"Maand P&L",target:legacy.monthPnl??2000,period:"month",enabled:legacy.enabled?.monthPnl??true},
+    {id:"g-wr",metric:"winRate",label:"Win-rate",target:legacy.winRate??60,period:"month",enabled:legacy.enabled?.winRate??true},
+    {id:"g-dd",metric:"maxDD",label:"Max Drawdown",target:legacy.maxDD??500,period:"month",enabled:legacy.enabled?.maxDD??true},
+    {id:"g-n",metric:"trades",label:"Trades deze maand",target:legacy.monthTrades??50,period:"month",enabled:legacy.enabled?.monthTrades??false},
+  ];
+  return{items};
+}
 // Compute riskUsd / riskPct for a trade. Returns {} if insufficient data.
 function computeTradeRisk(trade,config,accounts){
   const entry=parseFloat(trade.entry),sl=parseFloat(trade.stopLoss),sz=parseFloat(trade.positionSize);
@@ -3004,22 +3064,13 @@ function Analytics({trades}){
 // Computes current-month metrics vs user-set goals; renders 3-4 animated SVG rings.
 function GoalsRings({goals,trades,onEdit}){
   if(!goals)return null;
-  const now=new Date();
-  const monthTrades=(trades||[]).filter(t=>{if(!t.date)return false;const d=new Date(t.date);return d.getFullYear()===now.getFullYear()&&d.getMonth()===now.getMonth()&&t.pnl!==""&&!isNaN(parseFloat(t.pnl));});
-  const monthPnl=monthTrades.reduce((s,t)=>s+parseFloat(t.pnl),0);
-  const wins=monthTrades.filter(t=>parseFloat(t.pnl)>0).length;
-  const wr=monthTrades.length?wins/monthTrades.length*100:0;
-  // Drawdown: largest peak-to-trough deviation in running equity this month
-  const sorted=[...monthTrades].sort((a,b)=>(a.date+(a.time||"")).localeCompare(b.date+(b.time||"")));
-  let peak=0,dd=0,cum=0;sorted.forEach(t=>{cum+=parseFloat(t.pnl);if(cum>peak)peak=cum;const curDD=peak-cum;if(curDD>dd)dd=curDD;});
-
-  const items=[
-    {k:"monthPnl",label:"Maand P&L",current:monthPnl,target:goals.monthPnl,unit:"$",fmt:v=>(v>=0?"+":"")+"$"+fmt(Math.abs(v)),good:(c,t)=>c>=t},
-    {k:"winRate",label:"Win-rate",current:wr,target:goals.winRate,unit:"%",fmt:v=>v.toFixed(0)+"%",good:(c,t)=>c>=t},
-    {k:"maxDD",label:"Max Drawdown",current:dd,target:goals.maxDD,unit:"$",fmt:v=>"$"+fmt(v),good:(c,t)=>c<=t,inverted:true},
-    {k:"monthTrades",label:"Trades deze maand",current:monthTrades.length,target:goals.monthTrades,unit:"",fmt:v=>String(v),good:(c,t)=>c>=t},
-  ].filter(x=>goals.enabled?.[x.k]);
-
+  const normalized=Array.isArray(goals.items)?goals:migrateGoals(goals);
+  const items=(normalized.items||[]).filter(g=>g.enabled).map(g=>{
+    const def=GOAL_METRICS.find(m=>m.id===g.metric)||GOAL_METRICS[0];
+    const current=computeGoalMetric(g.metric,trades,g.period||"month");
+    const target=parseFloat(g.target)||0;
+    return{k:g.id,label:g.label||def.label,current,target,fmt:def.fmt,good:def.inverted?((c,t)=>c<=t):((c,t)=>c>=t),inverted:!!def.inverted};
+  });
   if(items.length===0)return null;
 
   const Ring=({item})=>{
@@ -3317,6 +3368,82 @@ function DailyNoteEditor({date,notes,setNotes}){
 }
 
 // ── Trading Rules dedicated sub-tab page ──
+// ── Goals editor — custom goals op basis van metric + periode + doel ──
+function GoalsPage({goals,setGoals,trades}){
+  const items=goals?.items||[];
+  const addGoal=()=>{
+    const id="g"+Date.now();
+    const newGoal={id,metric:"pnl",label:"Nieuw doel",target:1000,period:"month",enabled:true};
+    setGoals(p=>({...p,items:[...(p?.items||[]),newGoal]}));
+  };
+  const updateGoal=(id,patch)=>setGoals(p=>({...p,items:(p?.items||[]).map(g=>g.id===id?{...g,...patch}:g)}));
+  const deleteGoal=(id)=>{
+    const g=items.find(x=>x.id===id);
+    if(!confirm(`Verwijder doel "${g?.label||id}"?`))return;
+    setGoals(p=>({...p,items:(p?.items||[]).filter(g=>g.id!==id)}));
+  };
+  return(<div style={{animation:"fadeIn .3s ease"}}>
+    <div style={{background:"var(--glass)",backdropFilter:"var(--glass-blur)",WebkitBackdropFilter:"var(--glass-blur)",borderRadius:"var(--radius-lg)",padding:"24px",border:"1px solid var(--border1)"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:"14px",gap:"16px",flexWrap:"wrap"}}>
+        <div>
+          <div style={{fontSize:"11px",color:"var(--gold)",textTransform:"uppercase",letterSpacing:"0.12em",fontWeight:700,marginBottom:"4px"}}>🎯 Goals</div>
+          <div style={{fontSize:"12px",color:"var(--text4)",lineHeight:1.6,maxWidth:"640px"}}>Stel je eigen maand/week/kwartaal-doelen in. Elke goal kiest een metric (PnL, winrate, R-multiple, drawdown enz.) en een periode. De rings op het Dashboard tonen alleen <em>actieve</em> doelen.</div>
+        </div>
+        <button onClick={addGoal} style={{padding:"10px 18px",borderRadius:"8px",border:"1px dashed var(--gold-border)",background:"var(--gold-dim)",color:"var(--gold)",fontSize:"12px",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>+ Doel toevoegen</button>
+      </div>
+
+      {items.length===0&&<div style={{fontSize:"13px",color:"var(--text4)",textAlign:"center",padding:"30px",background:"rgba(255,255,255,.02)",borderRadius:"8px",border:"1px dashed var(--border3)"}}>Nog geen doelen — klik <strong style={{color:"var(--gold)"}}>+ Doel toevoegen</strong> om te beginnen.</div>}
+
+      {items.map(g=>{
+        const def=GOAL_METRICS.find(m=>m.id===g.metric)||GOAL_METRICS[0];
+        const current=computeGoalMetric(g.metric,trades,g.period||"month");
+        const target=parseFloat(g.target)||0;
+        const reached=def.inverted?current<=target:current>=target;
+        const progress=target?Math.min(def.inverted?Math.max(0,1-current/target):current/target,1.2):0;
+        const pct=Math.round(Math.min(progress,1)*100);
+        return(<div key={g.id} style={{padding:"14px 16px",background:"rgba(255,255,255,.02)",border:`1px solid ${g.enabled?"var(--border3)":"var(--border1)"}`,borderLeft:`3px solid ${g.enabled?(reached?"var(--green)":"var(--gold)"):"var(--text5)"}`,borderRadius:"8px",marginBottom:"10px",opacity:g.enabled?1:0.55,transition:"all .15s"}}>
+          <div style={{display:"grid",gridTemplateColumns:"32px 1fr auto",gap:"12px",alignItems:"center",marginBottom:"10px"}}>
+            <button onClick={()=>updateGoal(g.id,{enabled:!g.enabled})} title={g.enabled?"Actief":"Inactief"} style={{width:"24px",height:"24px",borderRadius:"5px",border:`1.5px solid ${g.enabled?"var(--green)":"var(--border4)"}`,background:g.enabled?"rgba(46,170,111,.15)":"transparent",color:g.enabled?"var(--green)":"var(--text5)",cursor:"pointer",fontSize:"13px",fontWeight:700,fontFamily:"inherit"}}>{g.enabled?"✓":""}</button>
+            <input value={g.label} onChange={e=>updateGoal(g.id,{label:e.target.value})} placeholder="Naam van doel" style={{background:"transparent",border:"none",color:"var(--text)",fontSize:"14px",fontWeight:600,fontFamily:"inherit",outline:"none",width:"100%"}}/>
+            <button onClick={()=>deleteGoal(g.id)} style={{background:"transparent",border:"1px solid var(--border3)",color:"var(--text5)",cursor:"pointer",fontSize:"12px",padding:"6px 10px",borderRadius:"5px",fontFamily:"inherit"}}>✕</button>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 120px",gap:"10px",marginLeft:"44px",marginBottom:"10px"}}>
+            <div>
+              <div style={{fontSize:"9px",color:"var(--text5)",textTransform:"uppercase",letterSpacing:".08em",marginBottom:"3px",fontWeight:600}}>Metric</div>
+              <select value={g.metric} onChange={e=>updateGoal(g.id,{metric:e.target.value})} style={{width:"100%",padding:"6px 10px",borderRadius:"5px",border:"1px solid var(--border3)",background:"var(--bg3)",color:"var(--text2)",fontSize:"12px",fontFamily:"inherit",outline:"none",cursor:"pointer"}}>
+                {GOAL_METRICS.map(m=>(<option key={m.id} value={m.id}>{m.label} ({m.unit})</option>))}
+              </select>
+            </div>
+            <div>
+              <div style={{fontSize:"9px",color:"var(--text5)",textTransform:"uppercase",letterSpacing:".08em",marginBottom:"3px",fontWeight:600}}>Periode</div>
+              <select value={g.period||"month"} onChange={e=>updateGoal(g.id,{period:e.target.value})} style={{width:"100%",padding:"6px 10px",borderRadius:"5px",border:"1px solid var(--border3)",background:"var(--bg3)",color:"var(--text2)",fontSize:"12px",fontFamily:"inherit",outline:"none",cursor:"pointer"}}>
+                {GOAL_PERIODS.map(p=>(<option key={p.id} value={p.id}>{p.label}</option>))}
+              </select>
+            </div>
+            <div>
+              <div style={{fontSize:"9px",color:"var(--text5)",textTransform:"uppercase",letterSpacing:".08em",marginBottom:"3px",fontWeight:600}}>Doel {def.inverted?"(max)":"(min)"}</div>
+              <input type="number" step="any" value={g.target} onChange={e=>updateGoal(g.id,{target:parseFloat(e.target.value)||0})} style={{width:"100%",padding:"6px 10px",borderRadius:"5px",border:"1px solid var(--border3)",background:"var(--bg3)",color:"var(--text)",fontSize:"12px",fontFamily:"var(--mono)",outline:"none",textAlign:"right"}}/>
+            </div>
+          </div>
+          <div style={{marginLeft:"44px",display:"flex",alignItems:"center",gap:"14px",fontSize:"11px"}}>
+            <div style={{flex:1,display:"flex",alignItems:"center",gap:"8px"}}>
+              <div style={{flex:1,height:"6px",background:"rgba(255,255,255,.05)",borderRadius:"3px",overflow:"hidden"}}>
+                <div style={{height:"100%",width:pct+"%",background:reached?"var(--green)":"var(--gold)",transition:"width .3s"}}/>
+              </div>
+              <span style={{fontFamily:"var(--mono)",color:"var(--text3)",fontSize:"10px",minWidth:"36px",textAlign:"right"}}>{pct}%</span>
+            </div>
+            <div style={{fontFamily:"var(--mono)",color:reached?"var(--green)":"var(--text2)",fontWeight:700}}>
+              {def.fmt(current)} <span style={{color:"var(--text5)"}}>/ {def.fmt(target)}</span>
+              {reached&&<span style={{color:"var(--green)",marginLeft:"8px"}}>✓</span>}
+            </div>
+          </div>
+          <div style={{fontSize:"11px",color:"var(--text5)",marginTop:"8px",marginLeft:"44px",lineHeight:1.5}}>{def.hint}</div>
+        </div>);
+      })}
+    </div>
+  </div>);
+}
+
 function TradingRulesPage({tradingRules,setTradingRules}){
   const addRule=()=>{
     const name=prompt("Naam van nieuwe regel:");if(!name)return;
@@ -4204,23 +4331,7 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,imp
     </div>}
 
     {/* Goals editor */}
-    {goals&&setGoals&&<div style={{background:"var(--glass)",backdropFilter:"var(--glass-blur)",WebkitBackdropFilter:"var(--glass-blur)",borderRadius:"var(--radius-lg)",padding:"20px",marginTop:"16px",border:"1px solid var(--border1)"}}>
-      <div style={{fontSize:"11px",color:"var(--gold)",textTransform:"uppercase",letterSpacing:"0.12em",fontWeight:700,marginBottom:"8px"}}>🎯 Maand-doelen</div>
-      <div style={{fontSize:"12px",color:"var(--text4)",marginBottom:"14px",lineHeight:1.5}}>Toont progress rings op het Dashboard (Premium layout). Zet uit wat je niet nodig hebt.</div>
-      {[
-        {k:"monthPnl",label:"P&L deze maand",unit:"$",hint:"Target netto PnL in USD"},
-        {k:"winRate",label:"Win-rate",unit:"%",hint:"Percentage winning trades"},
-        {k:"maxDD",label:"Max drawdown",unit:"$",hint:"Acceptabele max drawdown (lager = beter)"},
-        {k:"monthTrades",label:"Aantal trades",unit:"",hint:"Activiteit-doel voor de maand"},
-      ].map(g=>(
-        <div key={g.k} style={{display:"grid",gridTemplateColumns:"28px 1fr 140px 80px",gap:"12px",alignItems:"center",padding:"10px 0",borderBottom:"1px solid var(--border2)"}}>
-          <button onClick={()=>setGoals(p=>({...p,enabled:{...(p.enabled||{}),[g.k]:!p.enabled?.[g.k]}}))} title={goals.enabled?.[g.k]?"Actief":"Inactief"} style={{width:"22px",height:"22px",borderRadius:"5px",border:`1.5px solid ${goals.enabled?.[g.k]?"var(--green)":"var(--border4)"}`,background:goals.enabled?.[g.k]?"rgba(46,170,111,.15)":"transparent",color:goals.enabled?.[g.k]?"var(--green)":"var(--text5)",cursor:"pointer",fontSize:"12px",fontWeight:700}}>{goals.enabled?.[g.k]?"✓":""}</button>
-          <div><div style={{fontSize:"13px",fontWeight:600}}>{g.label}</div><div style={{fontSize:"10px",color:"var(--text5)"}}>{g.hint}</div></div>
-          <input type="number" value={goals[g.k]??""} onChange={e=>setGoals(p=>({...p,[g.k]:parseFloat(e.target.value)||0}))} style={{padding:"6px 10px",borderRadius:"5px",border:"1px solid var(--border3)",background:"var(--bg3)",color:"var(--text)",fontSize:"13px",fontFamily:"var(--mono)",outline:"none"}}/>
-          <span style={{fontSize:"11px",color:"var(--text4)",textAlign:"center"}}>{g.unit}</span>
-        </div>
-      ))}
-    </div>}
+    {/* Goals editor — VERHUISD naar eigen "Goals" sub-tab */}
 
     {/* Layout switcher — kiest structuur/detail-niveau, werkt met élk thema */}
     <div style={{background:"var(--glass)",backdropFilter:"var(--glass-blur)",WebkitBackdropFilter:"var(--glass-blur)",borderRadius:"var(--radius-lg)",padding:"20px",marginTop:"16px",border:"1px solid var(--border1)"}}>
@@ -4397,7 +4508,7 @@ function App(){
   const[accounts,setAccounts]=useState(()=>{try{const d=localStorage.getItem("tj_accounts");return d?JSON.parse(d):[]}catch(err){return[]}});
   const[tagConfig,setTagConfig]=useState(()=>{try{const d=localStorage.getItem("tj_tags");return d?JSON.parse(d):DEFAULT_TAGS}catch(err){return DEFAULT_TAGS}});
   const[dailyNotes,setDailyNotes]=useState(()=>{try{const d=localStorage.getItem("tj_daily_notes");return d?JSON.parse(d):{}}catch{return{}}});
-  const[goals,setGoals]=useState(()=>{try{const d=localStorage.getItem("tj_goals");return d?JSON.parse(d):{monthPnl:2000,winRate:60,maxDD:500,monthTrades:50,enabled:{monthPnl:true,winRate:true,maxDD:true,monthTrades:false}}}catch{return{monthPnl:2000,winRate:60,maxDD:500,monthTrades:50,enabled:{monthPnl:true,winRate:true,maxDD:true,monthTrades:false}}}});
+  const[goals,setGoals]=useState(()=>{try{const d=localStorage.getItem("tj_goals");return migrateGoals(d?JSON.parse(d):null)}catch{return migrateGoals(null)}});
   useEffect(()=>{try{localStorage.setItem("tj_goals",JSON.stringify(goals))}catch{}},[goals]);
   const[cmdOpen,setCmdOpen]=useState(false);
   useEffect(()=>{const h=(e)=>{if((e.metaKey||e.ctrlKey)&&e.key==="k"){e.preventDefault();setCmdOpen(true);}if(e.key==="Escape")setCmdOpen(false);};document.addEventListener("keydown",h);return()=>document.removeEventListener("keydown",h);},[]);
@@ -4646,8 +4757,8 @@ function App(){
         {["trades","analytics","review","calendar"].includes(tab)&&!editTrade&&!newTrade&&<FilterBar trades={filteredTrades} allTrades={trades} filters={filters} setFilters={setFilters} config={config} accounts={accounts}/>}
 
         {/* Sub-nav for settings */}
-        {["accounts","rules","tags","help"].includes(tab)&&<div style={{display:"flex",gap:"4px",marginBottom:"16px"}}>
-          {[["accounts","🔗 Accounts"],["rules","📏 Trading Rules"],["tags","🏷 Tags"],["help","❓ Help"]].map(([id,label])=>(<button key={id} onClick={()=>setTab(id)} style={{padding:"6px 14px",borderRadius:"6px",border:"none",background:tab===id?"rgba(201,168,76,0.12)":"transparent",color:tab===id?"#C9A84C":"var(--text4)",fontSize:"12px",fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{label}</button>))}
+        {["accounts","rules","goals","tags","help"].includes(tab)&&<div style={{display:"flex",gap:"4px",marginBottom:"16px"}}>
+          {[["accounts","🔗 Accounts"],["rules","📏 Trading Rules"],["goals","🎯 Goals"],["tags","🏷 Tags"],["help","❓ Help"]].map(([id,label])=>(<button key={id} onClick={()=>setTab(id)} style={{padding:"6px 14px",borderRadius:"6px",border:"none",background:tab===id?"rgba(201,168,76,0.12)":"transparent",color:tab===id?"#C9A84C":"var(--text4)",fontSize:"12px",fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{label}</button>))}
         </div>}
 
         {/* New trade */}
@@ -4684,6 +4795,7 @@ function App(){
         {tab==="calendar"&&<Calendar trades={filteredTrades} setFilters={setFilters} setTab={setTab} dailyNotes={dailyNotes} setDailyNotes={setDailyNotes} tradingRules={tradingRules} onEdit={(t)=>{setEditTrade(t);setNewTrade({...EMPTY_TRADE,...t,tpLevels:t.tpLevels||[],layers:t.layers||[],links:t.links||[],manualOverrides:t.manualOverrides||[]});navigate("new");}}/>}
         {tab==="accounts"&&<AccountsHub config={config} setConfig={setConfig} accounts={accounts} setAccounts={setAccounts} showToast={showToast} trades={trades} importTrades={importTrades} exportTrades={exportTrades} setTagConfig={setTagConfig} tagConfig={tagConfig} tradingRules={tradingRules} setTradingRules={setTradingRules} goals={goals} setGoals={setGoals}/>}
         {tab==="rules"&&<TradingRulesPage tradingRules={tradingRules} setTradingRules={setTradingRules}/>}
+        {tab==="goals"&&<GoalsPage goals={goals} setGoals={setGoals} trades={trades}/>}
         {tab==="tags"&&<TagManager tagConfig={tagConfig} setTagConfig={setTagConfig} trades={trades} setTrades={setTrades} showToast={showToast}/>}
         {tab==="help"&&<HelpPage/>}
       </div>
