@@ -8,50 +8,41 @@ Basis kwam uit de feature-diff v4_14 → v9 onderaan. Inmiddels werken we op **v
 
 ## 🔜 Next up (deze of volgende werksessie)
 
-- [ ] **Setup ranking widget** (uit batch 2 van feature-uitbreidingen)
-- [ ] **Risk-per-trade tracking**
-- [ ] **Dag-limiet / tilt guard**
-- [ ] **Deelbare trade-kaart met Morani logo**
-- [ ] **Trade-voucher / shareable link**
-
-### 💡 Inzichten uit concurrentie-onderzoek (MM Platinum, 2026-04-14)
-
-- [ ] **🥇 AI trade-review** — knop "Analyseer mijn laatste N trades" die via user's eigen API-key (OpenAI/Claude) patronen samenvat uit trades + tags + voor/na notities. Bijv: "Je verliest 65% van trades met 'FOMO' tag". Past bij single-file model: geen backend, user brengt eigen key. Grootste differentiator vs concurrenten.
-- [ ] **🥈 Trading Rules module** — user legt regels vast (bijv. "max 2% risk", "geen trades na 3 losses op dag X", "altijd stop loss bij entry"). Bij elke trade-save automatische compliance-check. Dashboard widget: "Je volgde je regels in 72% van je trades deze week". Combineert met Dag-limiet en Risk-per-trade items.
-- [ ] **🥉 Daily Journal / Event Log** — nieuwe storage key `tj_daily_notes`, 1 entry per datum met pre-market plan, markt-events, mindset check-in. Losse kalender-view + integreert met trade-detail (toont dag-notitie op trade's datum). Lage bouwkost, hoge retention-waarde.
-- [ ] **Handmatige balance / capital-tracking per account** _(💡 Denny)_ — per account (exchange + handmatig) houd je je **ingelegd kapitaal** bij, niet een live exchange-balance. User kiest bewust hoeveel hij per account alloceert (bv. $1000 op Kraken swing, $500 op Blofin scalp). UI: 3 knoppen per account — ➕ Storting / ➖ Opname / ✏️ Correctie. Elke actie logt `{type, amount, date, note}`. Dashboard toont per account: `Capital` (sum deposits − withdrawals), `Equity` (Capital + som trade PnL), `Return %`. Koppelt aan **Risk-per-trade** item: risk % wordt berekend op account-specifiek capital, niet totaal portfolio. v4_14 had dit al voor handmatige accounts — uitbreiden naar exchanges.
-- [ ] **Account-labels per exchange** _(💡 Denny)_ — user kan per exchange/account een eigen naam/label geven (bijv. "Kraken Swing", "Blofin Scalp", "MEXC Daytrade"). UI: vrije invoer + preset-suggesties (Swing / Daytrade / Scalp / Swing-Scalp / News-trade / eigen strategie-naam). Opslag bij `config.exchanges[key].label` of apart veld. Tonen in trade-lijst, filter-bar, dashboard ("Top strategy" widget). Helpt traders die meerdere strategieën op zelfde exchange draaien.
+- [ ] **🥇 AI trade-review** — knop "Analyseer mijn laatste N trades" die via user's eigen API-key (OpenAI/Claude) patronen samenvat uit trades + tags + voor/na notities. Bijv: "Je verliest 65% van trades met 'FOMO' tag". Past bij single-file model: geen backend, user brengt eigen key. **Grootste differentiator vs concurrenten** — nu de top-prioriteit.
+- [ ] **Handmatige balance / capital-tracking per account** _(💡 Denny)_ — per account (exchange + handmatig) houd je je **ingelegd kapitaal** bij, niet een live exchange-balance. 3 knoppen per account: ➕ Storting / ➖ Opname / ✏️ Correctie. Dashboard toont per account: `Capital`, `Equity`, `Return %`. Koppelt aan Risk-per-trade.
+- [ ] **Account-labels per exchange** _(💡 Denny)_ — per exchange/account eigen naam (bijv. "Kraken Swing", "Blofin Scalp"). UI: vrije invoer + preset-suggesties. Tonen in trade-lijst, filter-bar, dashboard ("Top strategy" widget).
+- [ ] **Setup ranking widget** — Dashboard/Analytics sectie "Top 3 setups" (gem. R ≥ 1.5) + "Worst 3 setups". Klikbaar → filter trades op setup.
+- [ ] **Risk-per-trade tracking** — `riskUsd` + `riskPct` op trade, auto-berekend. Analytics "Risk consistency" grafiek (signaleert escalerend risico).
+- [ ] **Dag-limiet / tilt guard** — `maxLossesPerDay` setting. Bij N losses op dag → modal "Neem pauze?".
+- [ ] **Trade-voucher / shareable link** — serialiseer 1 trade in base64 URL-fragment. Ontvanger → read-only modal. Geen server nodig.
 
 ## 📋 Quick wins (klein, geïsoleerd, laag risico)
 
 - [ ] **Hyperliquid toevoegen** — kan volledig client-side (public info-endpoint, geen proxy). Zie `Agent` onderzoek van 2026-04-14.
-- [ ] **Datumformaat naar dd-mm-yyyy** — storage blijft ISO (voor sortering/filter), alle DISPLAY-plekken door `fmtNL()` helper. Locaties: trade-lijst, review highlights, dashboard labels, analytics x-as labels, calendar headers.
-- [ ] **Snel-filter presets** — knoppen "Vandaag / Deze week / Deze maand / Alle tijd" in FilterBar. Zet `filters.dateFrom` + `filters.dateTo` naar passende range.
-- [ ] **Voor-trade notitie** — 2 velden in TradeForm i.p.v. 1: "Waarom ga ik erin?" (vóór) + "Hoe ging het?" (post-mortem). Apart `trade.entryNote` naast bestaande `trade.notes`. Schema-migratie: lege `entryNote` voor oude trades.
-
-## 🛠 Medium (raakt shared state / UI)
-
-- [ ] **Analytics/Review secties regrouping** — voorstel: Edge / Wat werkt / Timing / Risico & discipline groepen. Drag-drop POC in `tradejournal-dragdrop-test.html`.
-- [ ] **Setup ranking widget** — Dashboard/Analytics sectie "Top 3 setups" (gemiddelde R ≥ 1.5) + "Worst 3 setups". Elke rij klikbaar → zet `filters.setupTags=[setup]` en spring naar Trades-tab. Bijbehorend: "toon alleen losers van setup X" shortcut.
-- [ ] **Risk-per-trade tracking** — nieuwe velden op trade: `riskUsd` (verlies als SL geraakt) en `riskPct` (% van account-saldo). Auto-berekend als `entry + stopLoss + positionSize + account` aanwezig. Analytics-sectie "Risk consistency" — grafiek van risk-% per trade over tijd (signaleert escalerend risico).
-- [ ] **Dag-limiet / tilt guard** — instelling in Instellingen: `maxLossesPerDay` (default 3). Als user vandaag ≥ N losses én opent nieuwe TradeForm: modal "Je hebt vandaag al X losses — pauze overwegen?" met "Toch doorgaan" + "Neem pauze" knoppen. `tiltGuard` boolean in config.
-- [ ] **Deelbare trade-kaart** — export-knop op trade-detail: html2canvas snapshot van de trade (anoniem, zonder API-keys of account-grootte), met **Morani-logo** als watermerk, downloadbaar als PNG voor Discord. Toggle "Toon PnL %" vs "Toon PnL $" vs "Verborgen".
-- [ ] **Trade-voucher / shareable link** — "Kopieer trade-link" knop: serialiseer 1 trade in base64 in URL-fragment (bijv. `#/trade/share/eyJ...`). Ontvanger opent die link → read-only modal met trade-details (géén import naar hun journal). Geen server nodig, werkt client-side.
-
 
 ## ⚠️ Risky (refactor of schema-migratie)
 
 - [ ] **PDFReportModal herintroduceren** — groot component, jsPDF + html2canvas CDNs staan al geladen. Trade-shape hercontroleren vóór port.
+- [ ] **Meerdere screenshots per trade** — v4_14 en v12 hebben 1 per trade. TF-breakdown (4H/15m/entry) zou datamodel + migratie vergen.
 
 ## 🔬 Onderzoek / te besluiten
 
 - [ ] **Welke exchanges prioriteit?** — lijst afstemmen met community. Bybit, Binance, MEXC, Blofin, Kraken, Hyperliquid?
 - [ ] **Later: backend ja/nee?** — pas relevant als community direct-API-sync wil. Voorlopig blijft keuze: lokaal + CSV.
 - [ ] **Distributiemodel** — hoe krijgen traders nieuwe versies? GitHub Releases + download, of gaan we toch hosten?
-- [ ] **Meerdere screenshots per trade?** — v4_14 en v12 hebben 1 per trade. Overwegen of TF-breakdown (4H/15m/entry) nuttig is. Zou datamodel + migratie vergen.
 
 ## ✅ Done
 
+- [x] 2026-04-16 — **Trade-form UX quick wins** — Status-toggle bovenaan (hide Exit/PNL/Fees/post-trade notes bij Open), live KPI-strip (Risk / R:R / Qty) real-time, 3 collapsible sections via `<details>` (Setup & Psychologie, Media & Links, Notities) met localStorage-persist per sectie. Commit `26e2168`.
+- [x] 2026-04-16 — **Deelbare trade-kaart** met 4 designs (Classic / Exchange Ticker / Story / Minimal), Bitcoin (Beta) watermark, statische candle silhouet, corner brackets, field-toggles voor PnL/R/entry/exit/size/hold/setup/session/anoniem. **Copy-to-clipboard** naast Download PNG — direct Ctrl+V plakken in Discord via `navigator.clipboard.write(ClipboardItem)`. Isolated sandbox-capture om parent-CSS (conic-gradient, transform:scale) te vermijden die html2canvas's `createPattern` crashte.
+- [x] 2026-04-16 — **⌘K Command Palette** — keyboard-shortcut voor nav-acties + fuzzy search.
+- [x] 2026-04-16 — **Goals & Progress Rings** op DashboardPremium — `tj_goals` {monthPnl, winRate, maxDD, monthTrades, enabled{}}.
+- [x] 2026-04-15 — **🥈 Trading Rules module** — dedicated sub-tab in Instellingen, regels opslaan als `tj_trading_rules[]`, per-regel handmatige override, collapsible widget op dashboard, per-dag evaluatie.
+- [x] 2026-04-15 — **🥉 Daily Journal / Event Log** — `tj_daily_notes` storage, 1 entry per datum met pre-market plan + mood-tags + reflection. Integreert met kalender-view.
+- [x] 2026-04-15 — **Premium layout** — aparte `body.layout-premium` class, werkt met alle 4 thema's (8 combinaties). Orthogonaal aan theme. Voorbeelden gebaseerd op `premium-demo.html`.
+- [x] 2026-04-15 — **Drag-drop section reordering in Analytics** — modulaire `useSortable` / `SortableSections` / `EditModeBar` helpers, sort-handle met solid bg, geen overlap met content.
+- [x] 2026-04-15 — **Review-pagina charts** — zoals v4_14 (equity curve + PnL/day bar).
+- [x] 2026-04-15 — **Drop-JSON box** van site weg — Export/Import nog wel via knop in Instellingen.
 - [x] 2026-04-14 — **Lokale CCXT-proxy** opgezet (`proxy-local/server.js`) met Express + CCXT + CORS. Draait op `http://localhost:8787`, vervangt tijdelijk de Cloudflare Worker voor Denny + Sebas tijdens dev.
 - [x] 2026-04-14 — **MEXC Contract V1 direct** — proxy roept `contract.mexc.com/api/v1/private/position/list/history_positions` aan met HMAC-SHA256 signing. Werkend, geaggregeerde posities binnen.
 - [x] 2026-04-14 — **Blofin positions-history direct** — proxy roept `openapi.blofin.com/api/v1/account/positions-history` aan met ACCESS-KEY/SIGN/TIMESTAMP/PASSPHRASE/NONCE. Werkend.
