@@ -8,17 +8,20 @@ Basis kwam uit de feature-diff v4_14 → v9 onderaan. Inmiddels werken we op **v
 
 ## 🔜 Next up (deze of volgende werksessie)
 
-- [ ] **🥇 AI trade-review** — knop "Analyseer mijn laatste N trades" die via user's eigen API-key (OpenAI/Claude) patronen samenvat uit trades + tags + voor/na notities. Bijv: "Je verliest 65% van trades met 'FOMO' tag". Past bij single-file model: geen backend, user brengt eigen key. **Grootste differentiator vs concurrenten** — nu de top-prioriteit.
-- [ ] **Handmatige balance / capital-tracking per account** _(💡 Denny)_ — per account (exchange + handmatig) houd je je **ingelegd kapitaal** bij, niet een live exchange-balance. 3 knoppen per account: ➕ Storting / ➖ Opname / ✏️ Correctie. Dashboard toont per account: `Capital`, `Equity`, `Return %`. Koppelt aan Risk-per-trade.
-- [ ] **Account-labels per exchange** _(💡 Denny)_ — per exchange/account eigen naam (bijv. "Kraken Swing", "Blofin Scalp"). UI: vrije invoer + preset-suggesties. Tonen in trade-lijst, filter-bar, dashboard ("Top strategy" widget).
-- [ ] **Setup ranking widget** — Dashboard/Analytics sectie "Top 3 setups" (gem. R ≥ 1.5) + "Worst 3 setups". Klikbaar → filter trades op setup.
-- [ ] **Risk-per-trade tracking** — `riskUsd` + `riskPct` op trade, auto-berekend. Analytics "Risk consistency" grafiek (signaleert escalerend risico).
-- [ ] **Dag-limiet / tilt guard** — `maxLossesPerDay` setting. Bij N losses op dag → modal "Neem pauze?".
+- [ ] **🥇 AI trade-review** — knop "Analyseer mijn laatste N trades" via user's eigen API-key (OpenAI/Claude). Patroon-analyse over trades + tags + notities. Grootste differentiator vs concurrenten.
+- [ ] **Dag-limiet / tilt guard** — `maxLossesPerDay` setting. Bij N losses op dag → modal "Neem pauze?". Data hiervoor zit al in Trading Rules — alleen nog triggering bij trade-open.
 - [ ] **Trade-voucher / shareable link** — serialiseer 1 trade in base64 URL-fragment. Ontvanger → read-only modal. Geen server nodig.
+- [ ] **MFE/MAE exit-efficiency scatter** — uit de 12 demo-ideeën nog niet geïntegreerd. Vereist MFE/MAE data uit exchange-fills of geschat.
+- [ ] **PnL Calendar Heatmap** — idee #2 uit demo. 13-weken grid, GitHub-stijl. Zou op Dashboard of Analytics kunnen.
+- [ ] **Discipline / Consistency Score** — idee #4 uit demo. FTMO-stijl gauge voor Dashboard.
+- [ ] **Scratch segmentation donut** — idee #5. "True Win-rate" los van scratch trades.
+- [ ] **Funding & Fees Drain waterfall** — idee #6. Crypto-futures specifiek, onderscheidend.
+- [ ] **Underwater Drawdown chart** — idee #8. Hedge-fund standaard, area onder 0-lijn.
 
 ## 📋 Quick wins (klein, geïsoleerd, laag risico)
 
 - [ ] **Hyperliquid toevoegen** — kan volledig client-side (public info-endpoint, geen proxy). Zie `Agent` onderzoek van 2026-04-14.
+- [ ] **MAE-to-Stop ratio per setup** (idee #12) — uitbreiding op Setup Insights tabel als we MAE data hebben.
 
 ## ⚠️ Risky (refactor of schema-migratie)
 
@@ -29,10 +32,17 @@ Basis kwam uit de feature-diff v4_14 → v9 onderaan. Inmiddels werken we op **v
 
 - [ ] **Welke exchanges prioriteit?** — lijst afstemmen met community. Bybit, Binance, MEXC, Blofin, Kraken, Hyperliquid?
 - [ ] **Later: backend ja/nee?** — pas relevant als community direct-API-sync wil. Voorlopig blijft keuze: lokaal + CSV.
-- [ ] **Distributiemodel** — hoe krijgen traders nieuwe versies? GitHub Releases + download, of gaan we toch hosten?
+- [ ] **Distributiemodel** — GitHub `/main/` folder nu. Overwegen: GitHub Pages (paid private) of Cloudflare Pages + Access (gratis, email-gate).
 
 ## ✅ Done
 
+- [x] 2026-04-16 — **Help page volledig herschreven** — 10 categorieën (Sneltoetsen, Data, Accounts, Trade form, Goals, Rules, Analytics, Trade cards, Themes, Versie-flow) met alle nieuwe features uitgelegd.
+- [x] 2026-04-16 — **Analytics upgrade met 4 charts uit demo** — R-Multiple distributie (Chart.js histogram, vervangt custom divs), Mistake Impact (Chart.js horizontal bar met $-bedragen + callout), Rolling 20-trade edge (dual-axis line WR%+Expectancy, nieuw), Setup insights tabel (8 kolommen met auto-advies: 🏆 Edge bevestigd / 🚫 Overweeg schrappen / 🎯 Targets verhogen / ⚠ Verliezen te groot / ✓ Consistent). Commit `eb49961`.
+- [x] 2026-04-16 — **Analytics demo file** (`analytics-demo.html`, gitignored) — standalone showcase van 10 chart-ideeën met 120 synthetische trades, gebaseerd op onderzoek naar Edgewonk/TraderSync/TradeZella/TradesViz/FTMO. Vervolg-analytics (MFE/MAE, Discipline Score, PnL Calendar, Underwater DD, Funding Drain, Scratch) staan als items in Next up.
+- [x] 2026-04-16 — **🎯 Goals sub-tab met custom goals** — nieuwe `GOAL_METRICS` catalog (9 metrics: pnl, winRate, trades, winningDays, avgR, grossProfit, maxDD, profitFactor, expectancy) × `GOAL_PERIODS` (week/month/quarter/year/all). `computeGoalMetric()` + `migrateGoals()` (backwards-compat met oude 4-goal shape). GoalsPage met add/edit/delete + inline progress bar. GoalsRings refactored om `goals.items` te lezen. Commit `a6d7365`.
+- [x] 2026-04-16 — **Account-labels + Capital-tracking** (Denny's ideeën, samen in één commit). Labels: preset-chips (Swing/Daytrade/Scalp/News trade/Test/Swing-scalp) + vrije invoer per manual-account én per exchange, gouden sub-regel onder pair in trade-lijst. Capital tracking: `transactions[]` met ➕ Storting / ➖ Opname / ✏️ Correctie per account (beide types), Capital + Equity + Return% live berekend. Correctie = absolute waarde om te syncen met exchange-balance. Commit `940bf44`.
+- [x] 2026-04-16 — **Setup Ranking widget** op beide Dashboards — Top 3 / Worst 3 setups by avg R-multiple (fallback avg PnL), min 3 trades per setup, klik rij → filters.setupTags=[tag] + navigate naar Trades. Commit `940bf44`.
+- [x] 2026-04-16 — **Risk-per-trade tracking** — `computeTradeRisk()` + `getCapitalForSource()` helpers. saveTrade auto-fills `riskUsd` + `riskPct` tenzij manual override. Live KPI-strip toont nu **Risk $ | Risk % | R:R | Qty** met kleur-thresholds (≤1% groen, ≤2% goud, ≤4% amber, >4% rood = tilt-signaal). Commit `940bf44`.
 - [x] 2026-04-16 — **Trade-form UX quick wins** — Status-toggle bovenaan (hide Exit/PNL/Fees/post-trade notes bij Open), live KPI-strip (Risk / R:R / Qty) real-time, 3 collapsible sections via `<details>` (Setup & Psychologie, Media & Links, Notities) met localStorage-persist per sectie. Commit `26e2168`.
 - [x] 2026-04-16 — **Deelbare trade-kaart** met 4 designs (Classic / Exchange Ticker / Story / Minimal), Bitcoin (Beta) watermark, statische candle silhouet, corner brackets, field-toggles voor PnL/R/entry/exit/size/hold/setup/session/anoniem. **Copy-to-clipboard** naast Download PNG — direct Ctrl+V plakken in Discord via `navigator.clipboard.write(ClipboardItem)`. Isolated sandbox-capture om parent-CSS (conic-gradient, transform:scale) te vermijden die html2canvas's `createPattern` crashte.
 - [x] 2026-04-16 — **⌘K Command Palette** — keyboard-shortcut voor nav-acties + fuzzy search.

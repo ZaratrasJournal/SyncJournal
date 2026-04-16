@@ -4167,7 +4167,7 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,imp
   const[syncResult,setSyncResult]=useState(null);
   const exCfg=()=>config?.exchanges?.[ex]||{};
   const setField=(k,v)=>setConfig(p=>({...p,exchanges:{...(p.exchanges||{}),[ex]:{...(exCfg()),[k]:v}}}));
-  const test=async()=>{setTesting(ex);setSyncResult(null);try{const api=ExchangeAPI[ex];const c=exCfg();if(!c.apiKey||!c.apiSecret){showToast("Voer API key en secret in","error");return}const r=api.needsPassphrase?await api.testConnection(c.apiKey,c.apiSecret,c.passphrase):await api.testConnection(c.apiKey,c.apiSecret);if(r.success){setSyncResult({ok:true,msg:`✓ Verbonden. Balance: $${parseFloat(r.balance||"0").toFixed(2)} USDT`});showToast(`${ExchangeAPI[ex].name} verbonden`)}else{setSyncResult({ok:false,msg:"Verbinding mislukt"});showToast("Verbinding mislukt","error")}}catch(e){setSyncResult({ok:false,msg:e.message||"Verbinding mislukt"});showToast("Proxy niet bereikbaar, start proxy.py eerst","error")}finally{setTesting(null)}};
+  const test=async()=>{setTesting(ex);setSyncResult(null);try{const api=ExchangeAPI[ex];const c=exCfg();if(!c.apiKey||!c.apiSecret){showToast("Voer API key en secret in","error");return}const r=api.needsPassphrase?await api.testConnection(c.apiKey,c.apiSecret,c.passphrase):await api.testConnection(c.apiKey,c.apiSecret);if(r.success){setSyncResult({ok:true,msg:`✓ Verbonden. Balance: $${parseFloat(r.balance||"0").toFixed(2)} USDT`});showToast(`${ExchangeAPI[ex].name} verbonden`)}else{setSyncResult({ok:false,msg:"Verbinding mislukt"});showToast("Verbinding mislukt","error")}}catch(e){setSyncResult({ok:false,msg:e.message||"Verbinding mislukt"});showToast("Proxy niet bereikbaar — check Worker URL in Instellingen","error")}finally{setTesting(null)}};
   const sync=async()=>{setSyncing(ex);setSyncResult(null);try{const api=ExchangeAPI[ex];const c=exCfg();if(!c.apiKey||!c.apiSecret){showToast("Voer API key in","error");return}const startTime=c.syncFrom?new Date(c.syncFrom).getTime():new Date(new Date().getFullYear(),new Date().getMonth(),1).getTime();const newTrades=api.needsPassphrase?await api.fetchTrades(c.apiKey,c.apiSecret,c.passphrase,startTime):await api.fetchTrades(c.apiKey,c.apiSecret,null,startTime);if(newTrades&&newTrades.length){setPreview({exchange:ex,trades:newTrades,source:"api"});setSelected(new Set(newTrades.map(t=>t.id)));setPrevFilter({direction:"all",result:"all"});showToast(`${newTrades.length} trades gevonden — kies welke te importeren`);}else{showToast("Geen trades gevonden","info");}setSyncResult({ok:true,count:newTrades.length,trades:newTrades})}catch(e){setSyncResult({ok:false,msg:e.message});showToast(e.message||"Sync mislukt","error")}finally{setSyncing(null)}};
   return(<div style={{animation:"fadeIn .3s ease"}}>
     <div style={{display:"grid",gridTemplateColumns:"240px 1fr",gap:"20px",alignItems:"start"}}>
@@ -4491,23 +4491,89 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,imp
 
 // ============ HELP PAGE ============
 function HelpPage(){
-  return(<div style={{animation:"fadeIn .3s ease",maxWidth:"680px",margin:"0 auto"}}>
-    <div style={{background:"var(--glass)",backdropFilter:"var(--glass-blur)",WebkitBackdropFilter:"var(--glass-blur)",borderRadius:"var(--radius-lg)",padding:"24px",marginBottom:"16px",border:"1px solid var(--border1)"}}>
-      <div style={{fontSize:"11px",color:"var(--gold)",textTransform:"uppercase",letterSpacing:"0.12em",fontWeight:700,marginBottom:"16px"}}>Snelgids, SyncJournal v12</div>
-      {[
-        ["Keyboard sneltoetsen","N = Nieuwe trade, T = Trade lijst, D = Dashboard, ESC = Sluit formulier","kbd"],
-        ["Trades bewaren","Alle data wordt automatisch opgeslagen in je browser (localStorage). Exporteer regelmatig een backup via de trade lijst.","data"],
-                ["R-Multiple (v7 nieuw)","De R-Multiple wordt automatisch berekend als je entry + stopLoss hebt ingevuld. Het geeft aan hoeveel R je trade opleverde t.o.v. je risico.","r"],
-        ["Setup lagen","Gebruik de top-down lagen voor gestructureerde trade analyse. Begin met het hoogste timeframe (Bias) en eindig met je entry timeframe.","layers"],
-        ["API koppeling","Koppel MEXC, Blofin of Kraken Futures via de Accounts pagina. Vereist de lokale proxy.py om veilig te verbinden.","api"],
-        ["CSV / XLSX import","Upload Excel (.xlsx) of CSV-exports van je exchange via de Importeer-knop bij elke exchange. XLSX wordt automatisch omgezet naar CSV en getoond in een preview.","csv"],
-        ["Opslag limiet","De browser kan max ~5MB bewaren. De app waarschuwt je bij 75%+ gebruik. Bij screenshots: overweeg kleine JPEGs te gebruiken.","storage"],
-      ].map(([title,desc])=>(
-        <div key={title} style={{padding:"12px 0",borderBottom:"1px solid var(--border1)"}}>
-          <div style={{fontSize:"13px",fontWeight:600,color:"var(--text)",marginBottom:"4px"}}>{title}</div>
-          <div style={{fontSize:"12px",color:"var(--text3)",lineHeight:1.6}}>{desc}</div>
-        </div>
-      ))}
+  const SECTIONS=[
+    {title:"⌨️ Sneltoetsen",icon:"⌨️",items:[
+      ["⌘K / Ctrl+K","Command palette — fuzzy zoeken + snelle navigatie"],
+      ["N","Nieuwe trade"],
+      ["T","Trade lijst"],
+      ["D","Dashboard"],
+      ["ESC","Sluit formulier of modal"],
+    ]},
+    {title:"💾 Data & backup",icon:"💾",items:[
+      ["Automatische opslag","Alle data staat in je browser (localStorage). Per file-pad / URL apart — op een ander apparaat begint het leeg."],
+      ["JSON export/import","Instellingen → 📦 Backup JSON — bewaar regelmatig, vooral vóór een update of nieuwe versie. Bevat trades + tags + accounts + config + goals + rules."],
+      ["Drag & drop import","Sleep een backup-JSON over de app — herstelt alles in één keer."],
+      ["Storage warning","Browser heeft ~5MB limiet. Bij 75% krijg je waarschuwing. Screenshots kosten veel — gebruik compressed JPEGs."],
+    ]},
+    {title:"🔗 Accounts & exchanges",icon:"🔗",items:[
+      ["Labels per account","Gouden sub-regel onder elke source. Presets: Swing / Daytrade / Scalp / News trade / Test — of je eigen label. Helpt bij strategie-tracking over meerdere accounts."],
+      ["Capital tracking","Per account (zowel exchange als handmatig): ➕ Storting / ➖ Opname / ✏️ Correctie. Correctie = absolute waarde (nuttig om te syncen met live exchange balance)."],
+      ["Equity & Return %","Capital (ingelegd) + som trade-PnL = Equity. Return % = rendement op ingelegd kapitaal per account. Koppelt aan Risk % in trade-form."],
+      ["API koppeling","Accounts tab → MEXC / Blofin / Kraken → API key + secret (+ passphrase voor Blofin). Worker op Cloudflare handelt CORS af — Blofin gaat direct vanuit browser."],
+      ["CSV / XLSX import","📄 Importeer knop per exchange. Ondersteunt: MEXC Position History + Order History, Blofin Order History (FIFO reconstructie), Kraken log. Preview-scherm laat je filteren en selecteren vóór import."],
+    ]},
+    {title:"📝 Trade form",icon:"📝",items:[
+      ["Status bovenaan","Open / Closed pill bepaalt welke velden zichtbaar zijn. Bij Open: Exit / PNL / Fees / post-trade notes verborgen."],
+      ["Live KPI strip","Real-time Risk $ / Risk % / R:R / Qty onder de prijs-inputs. Risk % kleurcode: ≤1% groen · ≤2% goud · ≤4% amber · >4% rood (tilt-signaal)."],
+      ["Auto risk op save","riskUsd en riskPct worden automatisch berekend en opgeslagen bij elke trade — tenzij je ze handmatig overschrijft."],
+      ["Collapsible secties","Setup & Psychologie, Media & Links, Notities — elke sectie klapt open/dicht en onthoudt per sectie of je 'm wil zien."],
+      ["TP niveaus","Meerdere TP's per trade met % allocation. Auto-berekening van winst en R:R per niveau. Status per TP: open / hit / missed."],
+      ["TP ophalen uit exchange","🎯 Knop in TP Timeline haalt echte fills uit MEXC / Blofin en zet ze om in tpLevels."],
+      ["Setup lagen","Top-down analyse: hoogste timeframe (Bias) eerst, entry-timeframe laatst. Elke laag heeft timeframe + setup + confirmatie + rol."],
+    ]},
+    {title:"🎯 Goals",icon:"🎯",items:[
+      ["Custom goals","Instellingen → 🎯 Goals. Onbeperkt doelen toevoegen met eigen naam."],
+      ["9 metrics","Net P&L, Win-rate, Aantal trades, Winning days, Gem. R-multiple, Gross Profit, Max Drawdown, Profit Factor, Expectancy."],
+      ["5 periodes","Deze week / Deze maand / Dit kwartaal / Dit jaar / Alle tijd — per goal instelbaar."],
+      ["Progress rings","Op DashboardPremium verschijnen alle actieve goals als rings met live voortgang."],
+    ]},
+    {title:"📏 Trading Rules",icon:"📏",items:[
+      ["Regel-types","Max trades/dag, Max losses/dag, Max risk %, SL verplicht, Pre-trade notitie verplicht, of custom (handmatig afvinken)."],
+      ["Auto-check","Widget op Dashboard / Kalender evalueert je dagtrades automatisch. Custom regels vink je zelf af."],
+      ["Inklapbaar","Widget klapt in/uit — als je geen zin hebt in tracking zet je 'm weg."],
+    ]},
+    {title:"📊 Analytics",icon:"📊",items:[
+      ["R-Multiple distributie","Histogram: komt edge uit 1 fat-tail of uit consistent +0.3R? Scheef rechts = goede edge."],
+      ["Rolling 20-trade edge","Dual-axis line — toont of win-rate + expectancy degradeert of verbetert. Veel nuttiger dan lifetime averages."],
+      ["Setup insights tabel","Per setup: WR / Avg R / best / worst + automatisch advies ('🏆 Edge bevestigd' / '🚫 Overweeg schrappen' / '🎯 Targets verhogen')."],
+      ["Setup ranking","Top 3 / Worst 3 setups op Dashboard, klikbaar voor filter."],
+      ["Fout impact","Horizontale bar chart per mistake-tag: zie concreet hoeveel geld 'FOMO' je kost."],
+      ["Drag & reorder","Edit mode (pen-icoon rechts) — sleep secties in je eigen volgorde. Toggle secties aan/uit via het tandwiel."],
+    ]},
+    {title:"📸 Trade cards",icon:"📸",items:[
+      ["4 designs","Classic (600×400) / Ticker (1200×630 Twitter) / Story (432×768 IG) / Minimal (700×400 light)."],
+      ["Field-toggles","Kies zelf wat zichtbaar is: PnL $, PnL %, R-multiple, entry/exit/size, hold-time, setup tags, sessie, anoniem pair."],
+      ["📋 Kopieer afbeelding","Direct Ctrl+V plakken in Discord (via navigator.clipboard.write) — geen download-stap."],
+      ["📥 Download PNG","Fallback — retina-scale 2× via html2canvas."],
+    ]},
+    {title:"🎨 Themes & layouts",icon:"🎨",items:[
+      ["4 themes","SyncJournal · Classic · Aurora · Light"],
+      ["2 layouts","Standard (compact) · Premium (hero-dashboard met rings + streaks). Werkt op elk thema (8 combinaties)."],
+    ]},
+    {title:"🌳 Versie-flow",icon:"🌳",items:[
+      ["/work/tradejournal.html","WIP — hier bouwen Denny + Sebas. Kan breken, gebruik op eigen risico."],
+      ["/main/tradejournal.html","Stable — community gebruikt deze. Wordt bijgewerkt wanneer we tevreden zijn op work."],
+      ["Update flow","Download raw file uit /main/ (GitHub), overschrijf lokaal bestand, hard refresh. localStorage blijft intact."],
+    ]},
+  ];
+  return(<div style={{animation:"fadeIn .3s ease",maxWidth:"880px",margin:"0 auto"}}>
+    <div style={{background:"var(--glass)",backdropFilter:"var(--glass-blur)",WebkitBackdropFilter:"var(--glass-blur)",borderRadius:"var(--radius-lg)",padding:"24px 28px",marginBottom:"16px",border:"1px solid var(--border1)"}}>
+      <div style={{fontSize:"11px",color:"var(--gold)",textTransform:"uppercase",letterSpacing:"0.12em",fontWeight:700,marginBottom:"6px"}}>❓ Snelgids · SyncJournal</div>
+      <div style={{fontSize:"13px",color:"var(--text3)",lineHeight:1.6,marginBottom:"4px"}}>Alles wat je moet weten om SyncJournal optimaal te gebruiken. Vragen of missing features? Pingen in de Morani Discord.</div>
+    </div>
+    {SECTIONS.map(sec=>(
+      <div key={sec.title} style={{background:"var(--glass)",backdropFilter:"var(--glass-blur)",WebkitBackdropFilter:"var(--glass-blur)",borderRadius:"var(--radius-lg)",padding:"20px 24px",marginBottom:"12px",border:"1px solid var(--border1)"}}>
+        <div style={{fontSize:"13px",color:"var(--gold)",fontWeight:700,marginBottom:"12px",letterSpacing:".04em"}}>{sec.title}</div>
+        {sec.items.map(([title,desc])=>(
+          <div key={title} style={{padding:"10px 0",borderBottom:"1px solid var(--border2)"}}>
+            <div style={{fontSize:"12px",fontWeight:700,color:"var(--text2)",marginBottom:"3px",fontFamily:title.length<20&&!title.includes(" ")?"var(--mono)":"inherit"}}>{title}</div>
+            <div style={{fontSize:"12px",color:"var(--text3)",lineHeight:1.6}}>{desc}</div>
+          </div>
+        ))}
+      </div>
+    ))}
+    <div style={{padding:"20px",textAlign:"center",fontSize:"11px",color:"var(--text5)",lineHeight:1.6}}>
+      SyncJournal · <a href="https://github.com/ZaratrasJournal/SyncJournal" target="_blank" rel="noopener" style={{color:"var(--gold)",textDecoration:"none"}}>GitHub</a> · gebouwd door Denny + Sebas voor de Morani community
     </div>
   </div>);
 }
