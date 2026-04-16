@@ -2806,7 +2806,9 @@ function Analytics({trades}){
     {label:"Grafieken",items:[
       {key:"longShort",label:"Long vs Short"},{key:"perPair",label:"Per Pair"},{key:"perDay",label:"Per Dag"},{key:"rrAnalysis",label:"R:R Analyse"},
       {key:"holdtime",label:"Holdtijd analyse"},{key:"heatmap",label:"Dagelijkse heatmap"},{key:"streaks",label:"Streaks"},
-      {key:"rMultipleDist",label:"R-Multiple distributie (v7)"},
+      {key:"rMultipleDist",label:"R-Multiple distributie"},
+      {key:"rollingEdge",label:"Rolling 20-trade edge"},
+      {key:"setupInsights",label:"Setup insights tabel"},
     ]},
     {label:"Overige secties",items:[
       {key:"foutAnalyse",label:"Fout analyse"},{key:"emotionImpact",label:"Emotie impact"},
@@ -2886,7 +2888,7 @@ function Analytics({trades}){
     <div style={{width:"38px",fontSize:"9px",color:wr2>=50?"var(--green)":"var(--red)",textAlign:"right",fontFamily:"var(--mono)"}}>{wr2.toFixed(0)}%</div>
   </div>)};
 
-  const DEFAULT_ANALYTICS_ORDER=["rMultipleDist","longShort","perPair","perDay","sessionPerf","foutAnalyse","emotionImpact","streaks","rrAnalysis","holdtime","heatmap","layerAnalysis"];
+  const DEFAULT_ANALYTICS_ORDER=["rMultipleDist","rollingEdge","setupInsights","longShort","perPair","perDay","sessionPerf","foutAnalyse","emotionImpact","streaks","rrAnalysis","holdtime","heatmap","layerAnalysis"];
   const analyticsContainerRef=useRef(null);
   useSortable(analyticsContainerRef,editMode,(newOrder)=>setOrder(newOrder));
   // Helper: wrap elke analytics-sectie in een sort-row met drag-handle
@@ -2906,27 +2908,27 @@ function Analytics({trades}){
     </div>
 
     <div ref={analyticsContainerRef} className={editMode?"edit-mode":""}>
-    {/* v7 NEW: R-Multiple Distribution */}
+    {/* R-Multiple Distribution — Chart.js histogram (upgraded) */}
     {seq("rMultipleDist",lp.rMultipleDist&&rMultHasData,<div style={sectStyle}>
-      {secH("R-Multiple distributie (v7)")}
+      {secH("R-Multiple distributie")}
       <div style={{marginBottom:"12px",fontSize:"12px",color:"var(--text3)"}}>Op basis van {rMultAll.length} trades met entry + stop loss. Gemiddeld R-multiple: <strong style={{color:avgRMult>=1?"var(--green)":avgRMult>=0?"var(--amber)":"var(--red)",fontFamily:"var(--mono)"}}>{avgRMult>=0?"+":""}{avgRMult?.toFixed(2)}R</strong></div>
-      <div style={{display:"flex",gap:"6px",alignItems:"flex-end",height:"140px",marginBottom:"8px"}}>
-        {rMultBuckets.map((count,i)=>{
-          const maxCount=Math.max(...rMultBuckets,1);
-          const h=(count/maxCount)*120;
-          const isPos=i>=5;const isNeg=i<3;const isBreak=i===3||i===4;
-          const bg=isPos?"rgba(46,170,111,0.5)":isNeg?"rgba(220,122,122,0.5)":"rgba(200,180,80,0.3)";
-          return(<div key={i} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"flex-end"}}>
-            <div style={{fontSize:"8px",color:"var(--text4)",fontFamily:"var(--mono)",marginBottom:"2px"}}>{count||""}</div>
-            <div style={{width:"100%",background:bg,borderRadius:"3px 3px 0 0",height:`${Math.max(h,count>0?4:0)}px`,transition:"height .3s"}}/>
-          </div>);
-        })}
-      </div>
-      <div style={{display:"flex",gap:"6px",justifyContent:"space-between"}}>
-        {rLabels.map((l,i)=>(<div key={i} style={{flex:1,textAlign:"center",fontSize:"7px",color:"var(--text5)",fontFamily:"var(--mono)",overflow:"hidden"}}>{l}</div>))}
-      </div>
+      <RMultDistChart trades={closed}/>
       {avgRMult!==null&&avgRMult<1&&<div style={{marginTop:"12px",padding:"8px 12px",background:"rgba(201,168,76,0.08)",border:"1px solid rgba(201,168,76,0.15)",borderRadius:"6px",fontSize:"11px",color:"var(--amber)"}}>💡 Gemiddeld R-multiple is onder 1R. Focus op het vasthouden van winnaars langer, of striktere SL op verliezers.</div>}
       {avgRMult!==null&&avgRMult>=2&&<div style={{marginTop:"12px",padding:"8px 12px",background:"rgba(46,170,111,0.08)",border:"1px solid rgba(46,170,111,0.15)",borderRadius:"6px",fontSize:"11px",color:"var(--green)"}}>✓ Uitstekend R-multiple gemiddelde. Je laat winnaars door.</div>}
+    </div>)}
+
+    {/* Rolling 20-trade edge — NEW */}
+    {seq("rollingEdge",lp.rollingEdge!==false&&closed.length>=20,<div style={sectStyle}>
+      {secH("Rolling 20-trade edge")}
+      <div style={{marginBottom:"12px",fontSize:"12px",color:"var(--text3)"}}>Voortschrijdend gemiddelde over laatste 20 trades. Toont of je edge <strong>degradeert</strong> of <strong>verbetert</strong> — lifetime averages liegen.</div>
+      <RollingEdgeChart trades={closed} window={20}/>
+    </div>)}
+
+    {/* Setup insights table — NEW, richer than old barchart */}
+    {seq("setupInsights",lp.setupInsights!==false&&closed.length>0,<div style={sectStyle}>
+      {secH("Setup insights · advies per setup")}
+      <div style={{marginBottom:"12px",fontSize:"12px",color:"var(--text3)"}}>Minimaal 3 trades per setup. <em style={{color:"var(--text4)"}}>Klik op een rij om te filteren in Trades.</em></div>
+      <SetupInsightsTable trades={closed}/>
     </div>)}
 
 
@@ -2959,9 +2961,15 @@ function Analytics({trades}){
       {(()=>{const maxAbs=Math.max(...Object.values(sessData).map(d=>Math.abs(d.pnl)),1);return ALL_SESSIONS.filter(s=>sessData[s].n>0).map(s=>{const d=sessData[s];const c=SESSION_COLORS[s];return barRow(s,d.w,d.l,d.pnl,maxAbs,c.text)})})()}
     </div>)}
 
-    {/* Fouten */}
+    {/* Fouten — upgraded to Chart.js horizontal bar chart */}
     {seq("foutAnalyse",lp.foutAnalyse&&Object.keys(mistakeImpact).length>0,<div style={sectStyle}>{secH("Fout impact op PNL")}
-      {(()=>{const maxAbs=Math.max(...Object.values(mistakeImpact).map(d=>Math.abs(d.pnl)),1);return Object.entries(mistakeImpact).sort((a,b)=>a[1].pnl-b[1].pnl).map(([m,d])=>barRow(m,0,d.n,d.pnl,maxAbs,"var(--orange)"))})()}
+      <div style={{marginBottom:"12px",fontSize:"12px",color:"var(--text3)"}}>Totale PnL-impact per mistake-tag. Negatieve balk = geld dat je fout je kost.</div>
+      <MistakeImpactChart trades={closed}/>
+      {(()=>{
+        const worst=Object.entries(mistakeImpact).sort((a,b)=>a[1].pnl-b[1].pnl)[0];
+        if(worst&&worst[1].pnl<-100)return(<div style={{marginTop:"12px",padding:"8px 12px",background:"rgba(224,85,85,0.08)",border:"1px solid rgba(224,85,85,0.15)",borderRadius:"6px",fontSize:"11px",color:"var(--red)"}}>💸 <strong>{worst[0]}</strong> kost je ${fmt(Math.abs(worst[1].pnl))} — grootste lek.</div>);
+        return null;
+      })()}
     </div>)}
 
     {/* Emotions */}
@@ -3583,6 +3591,112 @@ function PnlBarChart({data}){
     return()=>{if(chartRef.current){try{chartRef.current.destroy()}catch{}chartRef.current=null}};
   },[JSON.stringify(data)]);
   return(<div style={{height:"220px",position:"relative"}}><canvas ref={canvasRef}/></div>);
+}
+
+// ── R-Multiple Distribution — Chart.js bar histogram ──
+function RMultDistChart({trades}){
+  const canvasRef=useRef(null);const chartRef=useRef(null);
+  useEffect(()=>{
+    if(!canvasRef.current)return;
+    if(chartRef.current){try{chartRef.current.destroy()}catch{}chartRef.current=null}
+    const rs=(trades||[]).map(t=>calcRMultiple(t)).filter(r=>r!==null&&!isNaN(r));
+    if(rs.length===0)return;
+    const buckets={"< -2R":0,"-2R":0,"-1R":0,"0R":0,"+1R":0,"+2R":0,"+3R":0,"> +3R":0};
+    rs.forEach(r=>{if(r<-2)buckets["< -2R"]++;else if(r<-1.5)buckets["-2R"]++;else if(r<-0.5)buckets["-1R"]++;else if(r<0.5)buckets["0R"]++;else if(r<1.5)buckets["+1R"]++;else if(r<2.5)buckets["+2R"]++;else if(r<3.5)buckets["+3R"]++;else buckets["> +3R"]++});
+    const labels=Object.keys(buckets),data=Object.values(buckets);
+    const colors=labels.map(l=>l==="0R"?"rgba(156,163,175,0.6)":l.includes("< -")?"rgba(224,85,85,0.95)":l.includes("-")?"rgba(224,85,85,0.7)":l.includes("> +")?"rgba(46,170,111,0.95)":"rgba(46,170,111,0.7)");
+    chartRef.current=new Chart(canvasRef.current,{type:"bar",data:{labels,datasets:[{data,backgroundColor:colors,borderRadius:4,borderSkipped:false}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{backgroundColor:"rgba(10,12,18,0.9)",borderColor:"rgba(54,58,69,0.9)",borderWidth:1,padding:10,cornerRadius:6,titleColor:"#c0c5cd",bodyColor:"#f5f5f7",callbacks:{label:c=>`${c.parsed.y} trades`}}},scales:{x:{grid:{display:false},ticks:{color:"#939aa5",font:{size:10}}},y:{grid:{color:"rgba(255,255,255,0.05)"},ticks:{color:"#939aa5",font:{size:9},stepSize:1,precision:0},border:{display:false}}}}});
+    return()=>{if(chartRef.current){try{chartRef.current.destroy()}catch{}chartRef.current=null}};
+  },[trades.length,JSON.stringify(trades.slice(-5).map(t=>t.pnl))]);
+  return(<div style={{height:"200px",position:"relative"}}><canvas ref={canvasRef}/></div>);
+}
+
+// ── Mistake-tag Impact — Chart.js horizontal bar ──
+function MistakeImpactChart({trades}){
+  const canvasRef=useRef(null);const chartRef=useRef(null);
+  useEffect(()=>{
+    if(!canvasRef.current)return;
+    if(chartRef.current){try{chartRef.current.destroy()}catch{}chartRef.current=null}
+    const impact={};
+    (trades||[]).forEach(t=>(t.mistakeTags||[]).forEach(m=>{impact[m]=(impact[m]||0)+(parseFloat(t.pnl)||0)}));
+    const entries=Object.entries(impact).sort((a,b)=>a[1]-b[1]);
+    if(entries.length===0)return;
+    const labels=entries.map(e=>e[0]),data=entries.map(e=>e[1]);
+    const colors=data.map(v=>v<0?"rgba(224,85,85,0.85)":"rgba(46,170,111,0.85)");
+    chartRef.current=new Chart(canvasRef.current,{type:"bar",data:{labels,datasets:[{data,backgroundColor:colors,borderRadius:4,borderSkipped:false}]},options:{indexAxis:"y",responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{backgroundColor:"rgba(10,12,18,0.9)",borderColor:"rgba(54,58,69,0.9)",borderWidth:1,padding:10,cornerRadius:6,titleColor:"#c0c5cd",bodyColor:"#f5f5f7",callbacks:{label:c=>`${c.parsed.x>=0?"+":""}$${Math.abs(c.parsed.x).toLocaleString("nl-NL",{minimumFractionDigits:2,maximumFractionDigits:2})}`}}},scales:{x:{grid:{color:"rgba(255,255,255,0.05)"},ticks:{color:"#939aa5",font:{family:"var(--mono)",size:9},callback:v=>(v>=0?"+":"")+"$"+Math.round(v)},border:{display:false}},y:{grid:{display:false},ticks:{color:"#939aa5",font:{size:11}}}}}});
+    return()=>{if(chartRef.current){try{chartRef.current.destroy()}catch{}chartRef.current=null}};
+  },[trades.length,JSON.stringify(trades.flatMap(t=>t.mistakeTags||[]).slice(-10))]);
+  return(<div style={{height:"240px",position:"relative"}}><canvas ref={canvasRef}/></div>);
+}
+
+// ── Rolling 20-trade Win-rate + Expectancy — Chart.js dual-axis line ──
+function RollingEdgeChart({trades,window:W=20}){
+  const canvasRef=useRef(null);const chartRef=useRef(null);
+  useEffect(()=>{
+    if(!canvasRef.current)return;
+    if(chartRef.current){try{chartRef.current.destroy()}catch{}chartRef.current=null}
+    const sorted=[...(trades||[])].filter(t=>t.pnl!==""&&!isNaN(parseFloat(t.pnl))).sort((a,b)=>(a.date+(a.time||"")).localeCompare(b.date+(b.time||"")));
+    if(sorted.length<W)return;
+    const labels=[],wrLine=[],expLine=[];
+    for(let i=W-1;i<sorted.length;i++){
+      const win=sorted.slice(i-W+1,i+1);
+      const wins=win.filter(t=>parseFloat(t.pnl)>0).length;
+      const rs=win.map(t=>calcRMultiple(t)).filter(r=>r!==null&&!isNaN(r));
+      const expR=rs.length?rs.reduce((s,r)=>s+r,0)/rs.length:0;
+      wrLine.push(wins/W*100);expLine.push(expR);labels.push("#"+(i+1));
+    }
+    chartRef.current=new Chart(canvasRef.current,{type:"line",data:{labels,datasets:[{label:"Win-rate %",data:wrLine,borderColor:"#C9A84C",backgroundColor:"rgba(201,168,76,0.1)",borderWidth:2,fill:true,tension:0.4,pointRadius:0,pointHoverRadius:4,yAxisID:"y"},{label:"Expectancy (R)",data:expLine,borderColor:"#2eaa6f",backgroundColor:"transparent",borderWidth:2,borderDash:[5,3],fill:false,tension:0.4,pointRadius:0,pointHoverRadius:4,yAxisID:"y1"}]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:"index",intersect:false},plugins:{legend:{display:true,position:"top",labels:{color:"#c0c5cd",font:{size:10},boxWidth:10}},tooltip:{backgroundColor:"rgba(10,12,18,0.9)",borderColor:"rgba(54,58,69,0.9)",borderWidth:1,padding:10,cornerRadius:6,titleColor:"#c0c5cd",bodyColor:"#f5f5f7"}},scales:{x:{grid:{display:false},ticks:{color:"#939aa5",font:{size:9},maxTicksLimit:8}},y:{position:"left",min:0,max:100,grid:{color:"rgba(255,255,255,0.05)"},ticks:{color:"#C9A84C",font:{size:9},callback:v=>v+"%"},title:{display:true,text:"WR",color:"#C9A84C",font:{size:10}}},y1:{position:"right",grid:{display:false},ticks:{color:"#2eaa6f",font:{size:9},callback:v=>v.toFixed(1)+"R"},title:{display:true,text:"E[R]",color:"#2eaa6f",font:{size:10}}}}}});
+    return()=>{if(chartRef.current){try{chartRef.current.destroy()}catch{}chartRef.current=null}};
+  },[trades.length,W]);
+  return(<div style={{height:"240px",position:"relative"}}><canvas ref={canvasRef}/></div>);
+}
+
+// ── Per-setup insights table — richer than the bar chart, with advice column ──
+function SetupInsightsTable({trades,onSetupClick}){
+  const MIN_N=3;
+  const closed=(trades||[]).filter(t=>t.pnl!==""&&!isNaN(parseFloat(t.pnl)));
+  const perf={};
+  closed.forEach(t=>(t.setupTags||[]).forEach(tag=>{
+    if(!perf[tag])perf[tag]={n:0,w:0,pnl:0,rTotal:0,rCount:0,best:-Infinity,worst:Infinity};
+    perf[tag].n++;
+    const p=parseFloat(t.pnl);perf[tag].pnl+=p;if(p>0)perf[tag].w++;
+    const r=calcRMultiple(t);if(r!==null&&!isNaN(r)){perf[tag].rTotal+=r;perf[tag].rCount++;if(r>perf[tag].best)perf[tag].best=r;if(r<perf[tag].worst)perf[tag].worst=r}
+  }));
+  const rows=Object.entries(perf).filter(([,d])=>d.n>=MIN_N).map(([tag,d])=>{
+    const wr=d.w/d.n*100,avgR=d.rCount>0?d.rTotal/d.rCount:null,avgPnl=d.pnl/d.n;
+    let advice="—",adviceColor="var(--text4)";
+    if(wr<40&&d.n>=5){advice="🚫 Overweeg schrappen";adviceColor="var(--red)"}
+    else if(avgR!==null&&avgR>=1.5){advice="🏆 Edge bevestigd";adviceColor="var(--green)"}
+    else if(wr>=60&&avgR!==null&&avgR<0.5){advice="🎯 Targets verhogen";adviceColor="var(--gold)"}
+    else if(avgR!==null&&avgR<-0.3){advice="⚠ Verliezen te groot";adviceColor="var(--red)"}
+    else if(wr>=55&&avgR!==null&&avgR>=0.5){advice="✓ Consistent";adviceColor="var(--teal)"}
+    return{tag,n:d.n,wr,avgR,avgPnl,totalPnl:d.pnl,best:d.best,worst:d.worst,advice,adviceColor};
+  }).sort((a,b)=>(b.avgR??-999)-(a.avgR??-999));
+  if(rows.length===0)return(<div style={{fontSize:"12px",color:"var(--text4)",textAlign:"center",padding:"20px"}}>Minimaal {MIN_N} trades per setup nodig voor insights.</div>);
+  const th={padding:"10px 12px",textAlign:"left",color:"var(--text4)",fontSize:"10px",textTransform:"uppercase",letterSpacing:".08em",fontWeight:700,borderBottom:"1px solid var(--border2)"};
+  const td={padding:"10px 12px",borderBottom:"1px solid var(--border2)",fontSize:"12px"};
+  return(<div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse"}}>
+    <thead><tr>
+      <th style={th}>Setup</th>
+      <th style={{...th,textAlign:"center"}}>Trades</th>
+      <th style={{...th,textAlign:"center"}}>WR</th>
+      <th style={{...th,textAlign:"center"}}>Avg R</th>
+      <th style={{...th,textAlign:"right"}}>Avg $</th>
+      <th style={{...th,textAlign:"right"}}>Totaal</th>
+      <th style={{...th,textAlign:"center"}}>Best / Worst</th>
+      <th style={{...th,textAlign:"right"}}>Advies</th>
+    </tr></thead>
+    <tbody>{rows.map(r=>(<tr key={r.tag} onClick={onSetupClick?()=>onSetupClick(r.tag):undefined} style={{cursor:onSetupClick?"pointer":"default",transition:"background .15s"}} onMouseEnter={e=>{if(onSetupClick)e.currentTarget.style.background="rgba(201,168,76,.04)"}} onMouseLeave={e=>{if(onSetupClick)e.currentTarget.style.background="transparent"}}>
+      <td style={{...td,fontWeight:600,color:"var(--text2)"}}>{r.tag}</td>
+      <td style={{...td,textAlign:"center",fontFamily:"var(--mono)",color:"var(--text3)"}}>{r.n}</td>
+      <td style={{...td,textAlign:"center"}}><span style={{padding:"2px 8px",borderRadius:"10px",fontSize:"10px",fontWeight:700,fontFamily:"var(--mono)",background:r.wr>=50?"rgba(46,170,111,.15)":"rgba(224,85,85,.15)",color:r.wr>=50?"var(--green)":"var(--red)"}}>{r.wr.toFixed(0)}%</span></td>
+      <td style={{...td,textAlign:"center",fontFamily:"var(--mono)",fontWeight:700,color:r.avgR===null?"var(--text5)":r.avgR>=1?"var(--green)":r.avgR>=0?"var(--gold)":"var(--red)"}}>{r.avgR===null?"—":(r.avgR>=0?"+":"")+r.avgR.toFixed(2)+"R"}</td>
+      <td style={{...td,textAlign:"right",fontFamily:"var(--mono)",color:r.avgPnl>=0?"var(--green)":"var(--red)"}}>{r.avgPnl>=0?"+":""}${fmt(Math.abs(r.avgPnl))}</td>
+      <td style={{...td,textAlign:"right",fontFamily:"var(--mono)",fontWeight:700,color:r.totalPnl>=0?"var(--green)":"var(--red)"}}>{r.totalPnl>=0?"+":""}${fmt(Math.abs(r.totalPnl))}</td>
+      <td style={{...td,textAlign:"center",fontFamily:"var(--mono)",fontSize:"10px",color:"var(--text4)"}}>{r.best>-Infinity?(r.best>=0?"+":"")+r.best.toFixed(1)+"R":"—"} / {r.worst<Infinity?(r.worst>=0?"+":"")+r.worst.toFixed(1)+"R":"—"}</td>
+      <td style={{...td,textAlign:"right",color:r.adviceColor,fontSize:"11px",fontWeight:600}}>{r.advice}</td>
+    </tr>))}</tbody>
+  </table></div>);
 }
 
 function ReviewDashboard({trades}){
