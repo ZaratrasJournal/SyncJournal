@@ -8,15 +8,19 @@ Basis kwam uit de feature-diff v4_14 → v9 onderaan. Inmiddels werken we op **v
 
 ## 🔜 Next up (deze of volgende werksessie)
 
-- [ ] **🥇 AI trade-review** — knop "Analyseer mijn laatste N trades" via user's eigen API-key (OpenAI/Claude). Patroon-analyse over trades + tags + notities. Grootste differentiator vs concurrenten.
-- [ ] **Dag-limiet / tilt guard** — `maxLossesPerDay` setting. Bij N losses op dag → modal "Neem pauze?". Data hiervoor zit al in Trading Rules — alleen nog triggering bij trade-open.
-- [ ] **Trade-voucher / shareable link** — serialiseer 1 trade in base64 URL-fragment. Ontvanger → read-only modal. Geen server nodig.
-- [ ] **MFE/MAE exit-efficiency scatter** — uit de 12 demo-ideeën nog niet geïntegreerd. Vereist MFE/MAE data uit exchange-fills of geschat.
-- [ ] **PnL Calendar Heatmap** — idee #2 uit demo. 13-weken grid, GitHub-stijl. Zou op Dashboard of Analytics kunnen.
-- [ ] **Discipline / Consistency Score** — idee #4 uit demo. FTMO-stijl gauge voor Dashboard.
-- [ ] **Scratch segmentation donut** — idee #5. "True Win-rate" los van scratch trades.
-- [ ] **Funding & Fees Drain waterfall** — idee #6. Crypto-futures specifiek, onderscheidend.
-- [ ] **Underwater Drawdown chart** — idee #8. Hedge-fund standaard, area onder 0-lijn.
+- [ ] **🥇 AI trade-review** — knop "Analyseer mijn laatste N trades" via user's eigen API-key (OpenAI/Claude). Patroon-analyse + bias-detectie. Grootste differentiator.
+- [ ] **Emotie-tag per trade (Tiltmeter-lite)** — dropdown bij trade-entry (Calm/FOMO/Revenge/Anxious), correleer met winrate in analytics. Edgewonk's USP, wij missen het. Moeite: L.
+- [ ] **Dag-limiet / tilt guard** — modal bij N losses op dag. Data zit in Trading Rules.
+- [ ] **Trade-voucher / shareable link** — base64 URL-fragment. Read-only modal.
+- [ ] **Discord webhook** bij PnL-milestones — community leeft op Discord. Moeite: L.
+- [ ] **TradingView Lightweight Charts embed** — interactieve mini-chart in trade-detail i.p.v. link. 40KB, gratis. Moeite: M.
+- [ ] **Weekly performance summary** — lokaal gegenereerd, geen AI nodig voor v1. Pure aggregatie. Moeite: L.
+- [ ] **MFE/MAE exit-efficiency scatter** — vereist MFE/MAE data uit exchange-fills.
+- [ ] **PnL Calendar Heatmap** — 13-weken grid, GitHub-stijl.
+- [ ] **Discipline / Consistency Score** — FTMO-stijl gauge.
+- [ ] **Scratch segmentation donut** — "True Win-rate" los van scratch trades.
+- [ ] **Funding & Fees Drain waterfall** — crypto-futures specifiek, onderscheidend.
+- [ ] **Underwater Drawdown chart** — hedge-fund standaard.
 
 ## 📋 Quick wins (klein, geïsoleerd, laag risico)
 
@@ -36,6 +40,14 @@ Basis kwam uit de feature-diff v4_14 → v9 onderaan. Inmiddels werken we op **v
 
 ## ✅ Done
 
+- [x] 2026-04-17 — **Bento KPI grid + animated counters** op DashboardPremium — hero P&L card (5fr, 44px gold-shimmer) + 3 KPI sub-cards (7fr). `AnimNum` component telt vloeiend op (800ms cubic ease-out, 60fps). Cascade stagger 70ms per card.
+- [x] 2026-04-17 — **Rich progressive disclosure** op trade-hover — 3-rij detail-paneel: stats grid (SL/leverage/risk/fees/hold/PnL%/R-mult/account), gold-border thesis + review notes, meta badges (📐 layers, 🎯 TPs, ★ rating, 📎 links, 📸 screenshot, ⚠ mistakes). React hover-state ipv fragiele CSS.
+- [x] 2026-04-17 — **Classic theme + Premium lichter** — achtergronden opgelicht (#0c0d12→#10111a), win/loss kleuren helderder (#5ce0a0/#ff7b7b), goud warmer (#d4b45c), borders zichtbaarder. Classic+Premium combo met aparte overrides.
+- [x] 2026-04-17 — **Premium UI polish (ui-demo parity)** — Inter font, antialiased rendering, tabular-nums, button :active feedback (scale .97), gold left-border op hover-reveal notes, warm off-white tekst #E8E4DC, softer green/red.
+- [x] 2026-04-17 — **Quick-filter pill bar** — altijd zichtbaar, 2 rijen: datum van/t/m + presets + richting + resultaat + pairs (rij 1), exchange pills met icoon + label (rij 2). Airbnb-stijl rounded pills met gold active state.
+- [x] 2026-04-17 — **UI/UX hyper-modern CSS foundation** — gold shimmer sweep, card cascade stagger, glassmorphism hover glow + lift, skeleton shimmer, toast notifications met progress bar (slide-in + 4s countdown). Border-radius 10/14→12/16px. Alles pure CSS, geen deps.
+- [x] 2026-04-17 — **Competitive research rapport** — deep-dive 8 concurrenten (Tradezella/TraderSync/Edgewonk/Tradervue/TradesViz/Chartlog/MM Platinum/Deltalytix) + user pain-points + 10 UX-verbeteringen + crypto-niche features + AI roadmap + integraties shortlist. Bevindingen verwerkt in Next up.
+- [x] 2026-04-17 — **UI/UX research rapport** — trends 2026 (bento grid, view transitions, progressive disclosure, skeleton loading, animated counters), color/typography advies, 3 wow-factor CSS animaties, 5 missende UI-componenten.
 - [x] 2026-04-16 — **Help page volledig herschreven** — 10 categorieën (Sneltoetsen, Data, Accounts, Trade form, Goals, Rules, Analytics, Trade cards, Themes, Versie-flow) met alle nieuwe features uitgelegd.
 - [x] 2026-04-16 — **Analytics upgrade met 4 charts uit demo** — R-Multiple distributie (Chart.js histogram, vervangt custom divs), Mistake Impact (Chart.js horizontal bar met $-bedragen + callout), Rolling 20-trade edge (dual-axis line WR%+Expectancy, nieuw), Setup insights tabel (8 kolommen met auto-advies: 🏆 Edge bevestigd / 🚫 Overweeg schrappen / 🎯 Targets verhogen / ⚠ Verliezen te groot / ✓ Consistent). Commit `eb49961`.
 - [x] 2026-04-16 — **Analytics demo file** (`analytics-demo.html`, gitignored) — standalone showcase van 10 chart-ideeën met 120 synthetische trades, gebaseerd op onderzoek naar Edgewonk/TraderSync/TradeZella/TradesViz/FTMO. Vervolg-analytics (MFE/MAE, Discipline Score, PnL Calendar, Underwater DD, Funding Drain, Scratch) staan als items in Next up.
