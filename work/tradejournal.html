@@ -248,9 +248,11 @@ details.tj-section>.tj-sec-body{padding:14px 2px 4px}
 .tj-toast.info .tj-toast-bar{background:var(--gold)}
 @keyframes toastSlideIn{from{opacity:0;transform:translateX(40px)}to{opacity:1;transform:translateX(0)}}
 @keyframes toastCountdown{from{width:100%}to{width:0}}
-/* Trade row hover-reveal */
-.trade-row-extra{max-height:0;overflow:hidden;opacity:0;transition:max-height .28s ease,opacity .2s ease,padding .28s ease;padding:0 16px}
-tr:hover .trade-row-extra,tr.expanded .trade-row-extra{max-height:200px;opacity:1;padding:10px 16px}
+/* Trade row hover-reveal — detail row below each trade */
+tr.trade-detail td{padding:0!important;border:none!important}
+tr.trade-detail .trade-reveal{max-height:0;overflow:hidden;opacity:0;transition:max-height .3s ease,opacity .22s ease}
+tr.trade-main:hover+tr.trade-detail .trade-reveal,
+tr.trade-detail:hover .trade-reveal{max-height:160px;opacity:1}
 
 
 
@@ -1788,7 +1790,11 @@ function TradeList({trades,onEdit,onDelete,onQuickTag,onBulkDelete,onBulkTag,sho
             const layers=t.layers||[];const hasLayers=layers.length>0;
             // v7 NEW: R-multiple
             const rMult=calcRMultiple(t);
-            return(<tr key={t.id} onClick={()=>onEdit(t)} style={{cursor:"pointer",transition:"background .1s",background:isSel?"rgba(201,168,76,0.04)":"transparent"}} onMouseEnter={e=>{if(!isSel)e.currentTarget.style.background="rgba(42,46,57,0.3)"}} onMouseLeave={e=>{if(!isSel)e.currentTarget.style.background="transparent"}}>
+            const holdMs=t.openTime&&t.closeTime?Math.abs(parseInt(t.closeTime)-parseInt(t.openTime)):0;
+            const holdStr=holdMs?(holdMs>86400000?(holdMs/86400000).toFixed(1)+"d":holdMs>3600000?Math.floor(holdMs/3600000)+"h "+Math.floor((holdMs%3600000)/60000)+"m":Math.floor(holdMs/60000)+"m"):"";
+            const hasExtra=t.entryNote||t.notes||t.riskUsd||holdStr;
+            return(<React.Fragment key={t.id}>
+            <tr className="trade-main" onClick={()=>onEdit(t)} style={{cursor:"pointer",transition:"background .1s",background:isSel?"rgba(201,168,76,0.04)":"transparent"}} onMouseEnter={e=>{if(!isSel)e.currentTarget.style.background="rgba(42,46,57,0.3)"}} onMouseLeave={e=>{if(!isSel)e.currentTarget.style.background="transparent"}}>
               <td style={tdStyle} onClick={e=>toggleSelect(t.id,e)}>
                 <div style={{width:"14px",height:"14px",borderRadius:"3px",border:`1px solid ${isSel?"#C9A84C":"var(--border4)"}`,background:isSel?"#C9A84C":"transparent",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"9px",color:"#fff",margin:"0 auto",cursor:"pointer"}}>{isSel?"✓":""}</div>
               </td>
@@ -1813,7 +1819,16 @@ function TradeList({trades,onEdit,onDelete,onQuickTag,onBulkDelete,onBulkTag,sho
               <td style={tdStyle}>{getSessionTags(t.date,t.time).map(s=>{const c=SESSION_COLORS[s]||SESSION_COLORS["Off-session"];return <span key={s} style={tagStyle2(c.bg,c.text)}>{s}</span>})}</td>
               <td style={tdStyle}>{(t.emotionTags||[]).map(s=><span key={s} style={tagStyle2(isNegEmotion(s)?"var(--red2)":"var(--green2)",isNegEmotion(s)?"var(--red)":"var(--green)")}>{s}</span>)}</td>
               <td style={tdStyle}><button onClick={e=>{e.stopPropagation();onDelete(t.id)}} style={{background:"none",border:"none",color:"var(--text5)",cursor:"pointer",fontSize:"12px",padding:"2px 4px"}}>✕</button></td>
-            </tr>);
+            </tr>
+            {hasExtra&&<tr className="trade-detail"><td colSpan={14}><div className="trade-reveal" style={{padding:"8px 16px 10px 52px",display:"flex",gap:"20px",alignItems:"flex-start",flexWrap:"wrap",fontSize:"11px"}}>
+              {t.entryNote&&<div style={{flex:"1 1 200px",minWidth:0}}><div style={{fontSize:"9px",color:"var(--gold)",textTransform:"uppercase",letterSpacing:".08em",fontWeight:700,marginBottom:"3px"}}>Waarom erin?</div><div style={{color:"var(--text3)",lineHeight:1.5,overflow:"hidden",textOverflow:"ellipsis",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}>{t.entryNote}</div></div>}
+              {t.notes&&<div style={{flex:"1 1 200px",minWidth:0}}><div style={{fontSize:"9px",color:"var(--gold)",textTransform:"uppercase",letterSpacing:".08em",fontWeight:700,marginBottom:"3px"}}>Post-mortem</div><div style={{color:"var(--text3)",lineHeight:1.5,overflow:"hidden",textOverflow:"ellipsis",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}>{t.notes}</div></div>}
+              <div style={{display:"flex",gap:"16px",flexShrink:0}}>
+                {t.riskUsd&&<div><div style={{fontSize:"9px",color:"var(--text5)",textTransform:"uppercase",letterSpacing:".08em",fontWeight:600}}>Risk</div><div style={{fontFamily:"var(--mono)",fontWeight:700,color:"var(--red)"}}>${fmt(parseFloat(t.riskUsd))}{t.riskPct?<span style={{color:"var(--text4)",fontWeight:500}}> ({t.riskPct}%)</span>:""}</div></div>}
+                {holdStr&&<div><div style={{fontSize:"9px",color:"var(--text5)",textTransform:"uppercase",letterSpacing:".08em",fontWeight:600}}>Hold</div><div style={{fontFamily:"var(--mono)",fontWeight:700,color:"var(--text2)"}}>{holdStr}</div></div>}
+              </div>
+            </div></td></tr>}
+            </React.Fragment>);
           })}
         </tbody>
       </table>
