@@ -3346,6 +3346,27 @@ function CommandPalette({open,onClose,trades,navigate,setNewTrade,newEmptyTrade,
   </div>);
 }
 
+// Animated number counter — counts up from 0 to value over 800ms
+function AnimNum({value,prefix="",suffix="",abs=false,decimals}){
+  const[display,setDisplay]=useState(0);
+  const target=abs?Math.abs(value||0):(value||0);
+  const dec=decimals!==undefined?decimals:(Math.abs(target)>=100?0:Math.abs(target)>=1?2:2);
+  useEffect(()=>{
+    let start=0,startTime=null,cancelled=false;
+    const step=(ts)=>{
+      if(!startTime)startTime=ts;
+      const elapsed=ts-startTime;
+      const progress=Math.min(elapsed/800,1);
+      const eased=1-Math.pow(1-progress,3);
+      setDisplay(start+(target-start)*eased);
+      if(progress<1&&!cancelled)requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+    return()=>{cancelled=true};
+  },[target]);
+  return(<>{prefix}{display.toLocaleString("nl-NL",{minimumFractionDigits:dec,maximumFractionDigits:dec})}{suffix}</>);
+}
+
 function Sparkline({data,color="#2eaa6f"}){
   if(!data||data.length<2)return null;
   const min=Math.min(...data),max=Math.max(...data);
@@ -3405,27 +3426,47 @@ function DashboardPremium({trades,config,accounts,tradingRules,dailyNotes,goals,
     {/* GOALS RINGS */}
     {goals&&<GoalsRings goals={goals} trades={closed} onEdit={()=>setTab("accounts")}/>}
 
-    {/* KPI GRID */}
-    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:"16px",marginBottom:"24px"}}>
-      {[
-        {label:"Net P&L",value:(totalPnl>=0?"+":"-")+"$"+fmt(Math.abs(totalPnl)),cls:totalPnl>=0?"up":"down",icon:"💰",color:totalPnl>=0?"var(--green)":"var(--red)"},
-        {label:"Win-rate",value:wr.toFixed(0)+"%",cls:wr>=50?"up":"down",icon:"🎯",color:wr>=50?"var(--green)":"var(--red)"},
-        {label:"Profit factor",value:pf===999?"∞":pf.toFixed(2),cls:"gold",icon:"⚡",color:"var(--gold)"},
-        {label:"🔥 Streak",value:streak+" d",cls:"gold",icon:"🏆",color:"var(--gold)"},
-      ].map(k=>(
-        <div key={k.label} className="card-stagger card-glow" style={{background:"var(--glass)",border:"1px solid var(--border2)",borderRadius:"16px",padding:"20px",position:"relative",overflow:"hidden"}}>
-          <div style={{position:"absolute",top:0,left:0,right:0,height:"1px",background:"linear-gradient(90deg,transparent,var(--gold-border),transparent)",opacity:.5}}/>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"14px"}}>
-            <span style={{fontSize:"10px",color:"var(--text4)",textTransform:"uppercase",letterSpacing:".16em",fontWeight:600}}>{k.label}</span>
-            <div style={{width:"32px",height:"32px",borderRadius:"10px",background:"var(--gold-dim)",border:"1px solid var(--gold-border)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"14px"}}>{k.icon}</div>
-          </div>
-          <div style={{fontFamily:"var(--mono)",fontSize:"28px",fontWeight:700,letterSpacing:"-.02em",lineHeight:1,marginBottom:"6px",color:k.color}}>{k.value}</div>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end"}}>
-            <Sparkline data={sparkData} color={k.color.includes("green")?"#2eaa6f":k.color.includes("red")?"#e05555":"#C9A84C"}/>
-            <span style={{fontFamily:"var(--mono)",fontSize:"11px",color:"var(--text4)"}}>{closed.length}t</span>
+    {/* BENTO KPI GRID — hero PnL card (wide) + smaller KPIs */}
+    <div style={{display:"grid",gridTemplateColumns:"5fr 7fr",gap:"16px",marginBottom:"24px"}}>
+      {/* Hero: Net P&L — large, gold shimmer, animated counter */}
+      <div className="card-stagger card-glow" style={{background:"var(--glass)",border:"1px solid var(--border2)",borderRadius:"18px",padding:"28px 24px",position:"relative",overflow:"hidden"}}>
+        <div style={{position:"absolute",top:0,left:0,right:0,height:"1px",background:"linear-gradient(90deg,transparent,var(--gold-border),transparent)",opacity:.7}}/>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"16px"}}>
+          <span style={{fontSize:"10px",color:"var(--text4)",textTransform:"uppercase",letterSpacing:".2em",fontWeight:700}}>Net P&L</span>
+          <div style={{width:"36px",height:"36px",borderRadius:"10px",background:"var(--gold-dim)",border:"1px solid var(--gold-border)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"16px"}}>💰</div>
+        </div>
+        <div className={totalPnl>=0?"gold-shimmer":""} style={{fontFamily:"var(--mono)",fontSize:"44px",fontWeight:900,letterSpacing:"-.03em",lineHeight:1,marginBottom:"10px",color:totalPnl>=0?"var(--gold)":"var(--red)",WebkitTextFillColor:totalPnl>=0?"transparent":undefined}}>
+          <AnimNum value={totalPnl} prefix={totalPnl>=0?"+$":"-$"} abs={true}/>
+        </div>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end"}}>
+          <Sparkline data={sparkData} color={totalPnl>=0?"#2eaa6f":"#e05555"}/>
+          <div style={{textAlign:"right"}}>
+            <div style={{fontFamily:"var(--mono)",fontSize:"11px",color:"var(--text4)"}}>{closed.length} trades</div>
+            {thisMonth.length>0&&<div style={{fontFamily:"var(--mono)",fontSize:"10px",color:"var(--text5)",marginTop:"2px"}}>maand: {monthPnl>=0?"+":""}${fmt(monthPnl)}</div>}
           </div>
         </div>
-      ))}
+      </div>
+
+      {/* 3 smaller KPIs in sub-grid */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"16px"}}>
+        {[
+          {label:"Win-rate",num:wr,suffix:"%",icon:"🎯",color:wr>=50?"var(--green)":"var(--red)",sub:`${wins.length}W / ${losses.length}L`},
+          {label:"Profit Factor",num:pf===999?99.9:pf,suffix:"",icon:"⚡",color:"var(--gold)",sub:pf===999?"∞":`${fmt(gw)} / ${fmt(gl)}`},
+          {label:"Streak",num:streak,suffix:" d",icon:"🔥",color:"var(--gold)",sub:streak>0?"winning days":"geen streak"},
+        ].map((k,ki)=>(
+          <div key={k.label} className="card-stagger card-glow" style={{background:"var(--glass)",border:"1px solid var(--border2)",borderRadius:"16px",padding:"18px",position:"relative",overflow:"hidden",animationDelay:(ki*70+70)+"ms"}}>
+            <div style={{position:"absolute",top:0,left:0,right:0,height:"1px",background:"linear-gradient(90deg,transparent,var(--gold-border),transparent)",opacity:.5}}/>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"12px"}}>
+              <span style={{fontSize:"9px",color:"var(--text4)",textTransform:"uppercase",letterSpacing:".16em",fontWeight:700}}>{k.label}</span>
+              <div style={{width:"28px",height:"28px",borderRadius:"8px",background:"var(--gold-dim)",border:"1px solid var(--gold-border)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"13px"}}>{k.icon}</div>
+            </div>
+            <div style={{fontFamily:"var(--mono)",fontSize:"28px",fontWeight:800,letterSpacing:"-.02em",lineHeight:1,marginBottom:"6px",color:k.color}}>
+              <AnimNum value={k.num} suffix={k.suffix}/>
+            </div>
+            <div style={{fontSize:"10px",color:"var(--text4)",fontFamily:"var(--mono)"}}>{k.sub}</div>
+          </div>
+        ))}
+      </div>
     </div>
 
     {/* EQUITY CURVE — full width */}
