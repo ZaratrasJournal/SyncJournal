@@ -276,11 +276,9 @@ details.tj-section>.tj-sec-body{padding:14px 2px 4px}
 .tj-toast.info .tj-toast-bar{background:var(--gold)}
 @keyframes toastSlideIn{from{opacity:0;transform:translateX(40px)}to{opacity:1;transform:translateX(0)}}
 @keyframes toastCountdown{from{width:100%}to{width:0}}
-/* Trade row hover-reveal — tbody wraps main+detail, display toggle is only reliable method for table rows */
-tbody.trade-group>tr+tr{display:none}
-tbody.trade-group:hover>tr+tr{display:table-row}
-tbody.trade-group .trade-detail-td{padding:0 0 0 0!important;border:none!important;background:rgba(201,168,76,.02)}
-tbody.trade-group .trade-reveal{animation:fadeIn .15s ease}
+/* Trade row hover-reveal — React-state driven, detail row only renders when hovered */
+tr.trade-detail-row td{background:rgba(201,168,76,.02);border-top:none!important}
+tr.trade-detail-row{animation:fadeIn .15s ease}
 
 
 
@@ -1665,6 +1663,7 @@ function TradeList({trades,onEdit,onDelete,onQuickTag,onBulkDelete,onBulkTag,sho
   const[sizeMode,setSizeMode]=useState(()=>localStorage.getItem("tj_sizeMode")||"usdt");
   // v7 NEW: search state
   const[search,setSearch]=useState("");
+  const[hoveredId,setHoveredId]=useState(null);
 
   const toggleSizeMode=()=>{const next=sizeMode==="usdt"?"asset":"usdt";setSizeMode(next);localStorage.setItem("tj_sizeMode",next)};
   const fmtSize=(t)=>{
@@ -1822,8 +1821,8 @@ function TradeList({trades,onEdit,onDelete,onQuickTag,onBulkDelete,onBulkTag,sho
             const holdStr=holdMs?(holdMs>86400000?(holdMs/86400000).toFixed(1)+"d":holdMs>3600000?Math.floor(holdMs/3600000)+"h "+Math.floor((holdMs%3600000)/60000)+"m":Math.floor(holdMs/60000)+"m"):"";
             const layerStr=(t.layers||[]).map(l=>[l.timeframe,l.setup].filter(Boolean).join(" ")).filter(Boolean).join(" → ");
             const feesN=parseFloat(t.fees)||0;
-            return(<tbody key={t.id} className="trade-group">
-            <tr className="trade-main" onClick={()=>onEdit(t)} style={{cursor:"pointer",transition:"background .1s",background:isSel?"rgba(201,168,76,0.04)":"transparent"}} onMouseEnter={e=>{if(!isSel)e.currentTarget.style.background="rgba(42,46,57,0.3)"}} onMouseLeave={e=>{if(!isSel)e.currentTarget.style.background="transparent"}}>
+            return(<React.Fragment key={t.id}>
+            <tr onClick={()=>onEdit(t)} style={{cursor:"pointer",transition:"background .1s",background:isSel?"rgba(201,168,76,0.04)":hoveredId===t.id?"rgba(42,46,57,0.3)":"transparent"}} onMouseEnter={()=>setHoveredId(t.id)} onMouseLeave={()=>setHoveredId(null)}>
               <td style={tdStyle} onClick={e=>toggleSelect(t.id,e)}>
                 <div style={{width:"14px",height:"14px",borderRadius:"3px",border:`1px solid ${isSel?"#C9A84C":"var(--border4)"}`,background:isSel?"#C9A84C":"transparent",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"9px",color:"#fff",margin:"0 auto",cursor:"pointer"}}>{isSel?"✓":""}</div>
               </td>
@@ -1849,7 +1848,7 @@ function TradeList({trades,onEdit,onDelete,onQuickTag,onBulkDelete,onBulkTag,sho
               <td style={tdStyle}>{(t.emotionTags||[]).map(s=><span key={s} style={tagStyle2(isNegEmotion(s)?"var(--red2)":"var(--green2)",isNegEmotion(s)?"var(--red)":"var(--green)")}>{s}</span>)}</td>
               <td style={tdStyle}><button onClick={e=>{e.stopPropagation();onDelete(t.id)}} style={{background:"none",border:"none",color:"var(--text5)",cursor:"pointer",fontSize:"12px",padding:"2px 4px"}}>✕</button></td>
             </tr>
-            <tr><td colSpan={14} className="trade-detail-td"><div className="trade-reveal" style={{padding:"8px 16px 10px 52px",display:"flex",gap:"20px",alignItems:"flex-start",flexWrap:"wrap",fontSize:"11px"}}>
+            {hoveredId===t.id&&<tr className="trade-detail-row"><td colSpan={14} style={{padding:"6px 16px 8px 52px",borderTop:"none"}}><div style={{display:"flex",gap:"20px",alignItems:"flex-start",flexWrap:"wrap",fontSize:"11px"}}>
               {t.entryNote&&<div style={{flex:"1 1 180px",minWidth:0}}><div style={{fontSize:"9px",color:"var(--gold)",textTransform:"uppercase",letterSpacing:".08em",fontWeight:700,marginBottom:"3px"}}>Thesis</div><div style={{color:"var(--text3)",lineHeight:1.5,overflow:"hidden",textOverflow:"ellipsis",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",fontStyle:"italic"}}>{t.entryNote}</div></div>}
               {t.notes&&<div style={{flex:"1 1 180px",minWidth:0}}><div style={{fontSize:"9px",color:"var(--gold)",textTransform:"uppercase",letterSpacing:".08em",fontWeight:700,marginBottom:"3px"}}>Review</div><div style={{color:"var(--text3)",lineHeight:1.5,overflow:"hidden",textOverflow:"ellipsis",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",fontStyle:"italic"}}>{t.notes}</div></div>}
               {layerStr&&<div style={{flexShrink:0}}><div style={{fontSize:"9px",color:"var(--text5)",textTransform:"uppercase",letterSpacing:".08em",fontWeight:600}}>Layers</div><div style={{color:"var(--text3)",fontFamily:"var(--mono)",fontSize:"10px"}}>{layerStr}</div></div>}
@@ -1857,10 +1856,10 @@ function TradeList({trades,onEdit,onDelete,onQuickTag,onBulkDelete,onBulkTag,sho
                 {t.riskUsd&&<div><div style={{fontSize:"9px",color:"var(--text5)",textTransform:"uppercase",letterSpacing:".08em",fontWeight:600}}>Risk</div><div style={{fontFamily:"var(--mono)",fontWeight:700,color:"var(--red)",fontSize:"11px"}}>${fmt(parseFloat(t.riskUsd))}{t.riskPct?<span style={{color:"var(--text4)",fontWeight:500}}> ({t.riskPct}%)</span>:""}</div></div>}
                 {feesN>0&&<div><div style={{fontSize:"9px",color:"var(--text5)",textTransform:"uppercase",letterSpacing:".08em",fontWeight:600}}>Fees</div><div style={{fontFamily:"var(--mono)",fontWeight:600,color:"var(--text4)",fontSize:"11px"}}>${fmt(feesN)}</div></div>}
                 {holdStr&&<div><div style={{fontSize:"9px",color:"var(--text5)",textTransform:"uppercase",letterSpacing:".08em",fontWeight:600}}>Hold</div><div style={{fontFamily:"var(--mono)",fontWeight:700,color:"var(--text2)",fontSize:"11px"}}>{holdStr}</div></div>}
-                {!t.entryNote&&!t.notes&&!t.riskUsd&&!holdStr&&!layerStr&&<div style={{color:"var(--text5)",fontStyle:"italic",fontSize:"10px"}}>Hover voor details — klik om notities toe te voegen</div>}
+                {!t.entryNote&&!t.notes&&!t.riskUsd&&!holdStr&&!layerStr&&<div style={{color:"var(--text5)",fontStyle:"italic",fontSize:"10px"}}>Klik om notities toe te voegen</div>}
               </div>
-            </div></td></tr>
-            </tbody>);
+            </div></td></tr>}
+            </React.Fragment>);
           })}
         </tbody>
       </table>
