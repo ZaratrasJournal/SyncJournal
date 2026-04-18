@@ -1060,45 +1060,26 @@ const ExchangeAPI = {
       data.source="positions-history";
       const source=data.source||"orders-history";
       if(source==="positions-history"){
-        // Aggregeer records per positionId: Blofin geeft een record per close-event (partial closes),
-        // maar in onze journal = 1 positie = 1 trade met meerdere TPs.
-        const grouped={};
-        (data.trades||[]).forEach(t=>{const pid=t.positionId;if(!pid)return;if(!grouped[pid])grouped[pid]=[];grouped[pid].push(t)});
-        const trades=[];
-        for(const pid in grouped){
-          const records=grouped[pid].sort((a,b)=>(parseInt(a.updateTime||a.createTime||0))-(parseInt(b.updateTime||b.createTime||0)));
-          const first=records[0];
-          const last=records[records.length-1];
-          const posSide=(first.positionSide||"net").toLowerCase();
-          const entryPrice=first.openAveragePrice||first.averagePrice||first.openPrice||"";
-          // Gewogen gemiddelde exit over alle partials
-          const totalClosed=records.reduce((s,r)=>s+Math.abs(parseFloat(r.closePositions||"0")),0);
-          const weightedExit=totalClosed>0?records.reduce((s,r)=>s+(parseFloat(r.closeAveragePrice||"0")*Math.abs(parseFloat(r.closePositions||"0"))),0)/totalClosed:parseFloat(last.closeAveragePrice||"0");
-          const exitPrice=weightedExit>0?weightedExit.toFixed(6).replace(/\.?0+$/,""):"";
-          // Totale PnL + fees over alle partials
-          const totalPnl=records.reduce((s,r)=>s+(parseFloat(r.realizedPnl||r.pnl||"0")),0);
-          const totalFee=records.reduce((s,r)=>s+Math.abs(parseFloat(r.fee||"0")),0);
-          // Size = peak position (wat werkelijk in de trade zat), fallback naar totalClosed
-          const peakSize=Math.abs(parseFloat(first.maxPositions||"0"))||totalClosed;
-          const sizeAsset=peakSize>0?String(peakSize):"";
+        // Elk close-record = 1 trade (géén aggregatie). Size = closePositions (qty gesloten in DIT event).
+        return(data.trades||[]).filter(t=>{const pnl=parseFloat(t.realizedPnl||t.pnl||"0");const sz=Math.abs(parseFloat(t.closePositions||t.closeTotalPos||"0"));return pnl!==0||sz>0}).map(t=>{
+          const posSide=(t.positionSide||"net").toLowerCase();
+          const closeTime=t.updateTime||t.createTime||Date.now();
+          const entryPrice=t.openAveragePrice||t.averagePrice||t.openPrice||"";
+          const exitPrice=t.closeAveragePrice||t.avgClosePrice||t.closePrice||"";
+          // Size per record = closePositions (hoeveel in dit close-event, niet de peak)
+          const rawSize=t.closePositions||t.closeTotalPos||t.positions||t.size||"";
+          const sizeN=Math.abs(parseFloat(rawSize)||0);
+          const sizeAsset=sizeN>0?String(sizeN):"";
           const entryN=parseFloat(entryPrice)||0;
-          const sizeUsdt=(entryN>0&&peakSize>0)?(entryN*peakSize).toFixed(2):"";
-          // Direction
+          const sizeUsdt=(entryN>0&&sizeN>0)?(entryN*sizeN).toFixed(2):"";
+          // Direction: positionSide "long"/"short" → gebruik. Anders "net" → infer uit (exit-entry)*pnl
           let direction;
           if(posSide==="long")direction="long";
           else if(posSide==="short")direction="short";
-          else{const xN=weightedExit;direction=((xN-entryN)*totalPnl>=0)?"long":"short"}
-          // TP-levels: elke partial close = één TP (hit status)
-          const tpLevels=records.filter(r=>parseFloat(r.closePositions||"0")>0).map((r,i)=>{
-            const px=r.closeAveragePrice||"";
-            const pct=peakSize>0?(Math.abs(parseFloat(r.closePositions||"0"))/peakSize*100).toFixed(1):"";
-            return{id:"tp_blofin_"+pid+"_"+i,price:String(px),pct:String(pct),status:"hit",actualPrice:String(px)};
-          });
-          const openTime=first.createTime||first.updateTime||Date.now();
-          const closeTime=last.updateTime||last.createTime||Date.now();
-          trades.push({id:"blofin_"+pid,date:ts2date(closeTime),time:ts2time(closeTime),pair:(first.instId||"").replace("-","/"),direction,entry:entryPrice,exit:exitPrice,positionSize:sizeUsdt||sizeAsset,positionSizeAsset:sizeAsset,pnl:totalPnl.toFixed(6).replace(/\.?0+$/,""),fees:totalFee.toFixed(4).replace(/\.?0+$/,""),leverage:first.leverage||"10",source:"blofin",status:"closed",stopLoss:"",takeProfit:"",highestPrice:"",lowestPrice:"",setupTags:[],confirmationTags:[],timeframeTags:[],emotionTags:[],mistakeTags:[],customTags:[],rating:0,screenshot:null,notes:"",links:[],layers:[],tpLevels,positionId:pid,openTime:String(openTime),closeTime:String(closeTime)});
-        }
-        return trades.filter(t=>parseFloat(t.pnl)!==0||parseFloat(t.positionSizeAsset)>0);
+          else{const xN=parseFloat(exitPrice)||0;const pN=parseFloat(t.realizedPnl||t.pnl||"0");direction=((xN-entryN)*pN>=0)?"long":"short"}
+          // Unique ID per close-event zodat partial closes als aparte trades bestaan
+          return{id:"blofin_"+t.positionId+"_"+closeTime,date:ts2date(closeTime),time:ts2time(closeTime),pair:(t.instId||"").replace("-","/"),direction,entry:entryPrice,exit:exitPrice,positionSize:sizeUsdt||sizeAsset,positionSizeAsset:sizeAsset,pnl:t.realizedPnl||t.pnl||"",fees:t.fee?Math.abs(parseFloat(t.fee)).toString():"0",leverage:t.leverage||"10",source:"blofin",status:"closed",stopLoss:"",takeProfit:"",highestPrice:"",lowestPrice:"",setupTags:[],confirmationTags:[],timeframeTags:[],emotionTags:[],mistakeTags:[],customTags:[],rating:0,screenshot:null,notes:"",links:[],layers:[],positionId:t.positionId||"",openTime:t.createTime||"",closeTime:String(closeTime)};
+        });
       }
       return(data.trades||[]).filter(t=>parseFloat(t.pnl||"0")!==0).map(t=>{
         const side=(t.side||"").toLowerCase();
