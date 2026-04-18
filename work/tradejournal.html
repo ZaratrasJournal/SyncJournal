@@ -3169,6 +3169,11 @@ function Analytics({trades}){
   const{prefs:lp,toggle:lpToggle,reset:lpReset,setOrder}=useLayoutPrefs("analytics");
   const[lpOpen,setLpOpen]=useState(false);
   const[editMode,setEditMode]=useState(false);
+  // View mode: "proces" | "winst" | "both". Default "proces" for beginners (<100 trades).
+  const[viewMode,setViewMode]=useState(()=>{try{return localStorage.getItem("tj_analytics_view")||(trades.length<100?"proces":"both")}catch{return"both"}});
+  useEffect(()=>{try{localStorage.setItem("tj_analytics_view",viewMode)}catch{}},[viewMode]);
+  const showP=viewMode==="proces"||viewMode==="both";
+  const showW=viewMode==="winst"||viewMode==="both";
   const LP_SECTIONS=[
     {label:"Grafieken",items:[
       {key:"longShort",label:"Long vs Short"},{key:"perPair",label:"Per Pair"},{key:"perDay",label:"Per Dag"},{key:"rrAnalysis",label:"R:R Analyse"},
@@ -3255,6 +3260,29 @@ function Analytics({trades}){
     <div style={{width:"38px",fontSize:"9px",color:wr2>=50?"var(--green)":"var(--red)",textAlign:"right",fontFamily:"var(--mono)"}}>{wr2.toFixed(0)}%</div>
   </div>)};
 
+  // ─── PROCES-METRICS ───
+  // Plan-Adherence: trades met pre-trade notitie (thesis) = trade met plan gevolgd
+  const plannedTrades=closed.filter(t=>(t.entryNote||"").trim().length>10);
+  const planAdherencePct=closed.length?plannedTrades.length/closed.length*100:0;
+  // SL Discipline: trades met stop-loss gezet
+  const withSL=closed.filter(t=>parseFloat(t.stopLoss)>0);
+  const slDisciplinePct=closed.length?withSL.length/closed.length*100:0;
+  // Journal completeness: trades met post-trade review
+  const reviewedTrades=closed.filter(t=>(t.notes||"").trim().length>10);
+  const journalPct=closed.length?reviewedTrades.length/closed.length*100:0;
+  // Consistency Score (FTMO formule): 1 - (grootste dag / totale PnL) × 100
+  const totalPnlCalc=closed.reduce((s,t)=>s+parseFloat(t.pnl),0);
+  const byDayC={};closed.forEach(t=>{if(!byDayC[t.date])byDayC[t.date]=0;byDayC[t.date]+=parseFloat(t.pnl)});
+  const maxDayAbs=Math.max(...Object.values(byDayC).map(Math.abs),0);
+  const consistencyPct=totalPnlCalc>0?Math.max(0,Math.min(100,(1-maxDayAbs/totalPnlCalc)*100)):0;
+  // Risk deviation (consistency van risk-size)
+  const risks=closed.map(t=>parseFloat(t.riskPct)).filter(r=>r>0);
+  const meanRisk=risks.length?risks.reduce((s,r)=>s+r,0)/risks.length:0;
+  const riskVar=risks.length?Math.sqrt(risks.reduce((s,r)=>s+(r-meanRisk)**2,0)/risks.length):0;
+  // Rule Violation Count — trades met mistake-tags
+  const withMistakes=closed.filter(t=>(t.mistakeTags||[]).length>0);
+  const violationPct=closed.length?withMistakes.length/closed.length*100:0;
+
   const DEFAULT_ANALYTICS_ORDER=["rMultipleDist","rollingEdge","setupInsights","longShort","perPair","perDay","sessionPerf","foutAnalyse","emotionImpact","streaks","rrAnalysis","holdtime","heatmap","layerAnalysis"];
   const analyticsContainerRef=useRef(null);
   useSortable(analyticsContainerRef,editMode,(newOrder)=>setOrder(newOrder));
@@ -3265,18 +3293,71 @@ function Analytics({trades}){
     <EditModeBar editMode={editMode} setEditMode={setEditMode} onReset={()=>setOrder(DEFAULT_ANALYTICS_ORDER)} gear={<LayoutGear onClick={()=>setLpOpen(true)}/>}/>
     <LayoutPanel open={lpOpen} onClose={()=>setLpOpen(false)} sections={LP_SECTIONS} prefs={lp} toggle={lpToggle} reset={lpReset}/>
 
-    {/* Top stats row — ALTIJD eerste, niet sleepbaar */}
-    <div style={{display:"grid",gridTemplateColumns:"repeat(5,minmax(0,1fr))",gap:"12px",marginBottom:"16px"}}>
+    {/* View mode segmented control — user kiest focus: proces / winst / beide */}
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"16px",gap:"12px",flexWrap:"wrap"}}>
+      <div style={{display:"inline-flex",padding:"4px",borderRadius:"10px",background:"var(--bg4)",border:"1px solid var(--border2)",gap:"2px"}}>
+        {[["proces","🧠 Proces","Focus op discipline, plan, regels"],["winst","💰 Winst","Focus op PnL, R-multiple, setups"],["both","📊 Beide","Alles tonen"]].map(([k,l,tip])=>(
+          <button key={k} onClick={()=>setViewMode(k)} title={tip} style={{padding:"7px 16px",borderRadius:"8px",border:"none",background:viewMode===k?"var(--gold)":"transparent",color:viewMode===k?"#fff":"var(--text3)",fontSize:"12px",fontWeight:700,cursor:"pointer",fontFamily:"inherit",transition:"all .15s"}}>{l}</button>
+        ))}
+      </div>
+      <div style={{fontSize:"11px",color:"var(--text4)",fontStyle:"italic",maxWidth:"460px",textAlign:"right"}}>{viewMode==="proces"?"\"Focus on the process, the outcome takes care of itself.\" — Mark Douglas":viewMode==="winst"?"Resultaten van je trading. Uitkomst.":"Proces én uitkomst naast elkaar."}</div>
+    </div>
+
+    {/* PROCES — Discipline top row */}
+    {showP&&<div style={{display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:"12px",marginBottom:"16px"}}>
+      {[
+        {label:"Plan gevolgd",value:planAdherencePct.toFixed(0)+"%",sub:`${plannedTrades.length} van ${closed.length} trades met thesis`,color:planAdherencePct>=70?"var(--green)":planAdherencePct>=40?"var(--gold)":"var(--red)",icon:"📝"},
+        {label:"Stop-loss discipline",value:slDisciplinePct.toFixed(0)+"%",sub:`${withSL.length} van ${closed.length} met SL`,color:slDisciplinePct>=90?"var(--green)":slDisciplinePct>=70?"var(--gold)":"var(--red)",icon:"🛡️"},
+        {label:"Journal compleet",value:journalPct.toFixed(0)+"%",sub:`${reviewedTrades.length} trades geëvalueerd`,color:journalPct>=60?"var(--green)":journalPct>=30?"var(--gold)":"var(--red)",icon:"🔍"},
+        {label:"Consistency",value:consistencyPct.toFixed(0)+"%",sub:"1 − grootste dag ÷ totaal",color:consistencyPct>=80?"var(--green)":consistencyPct>=60?"var(--gold)":"var(--red)",icon:"⚖️"},
+      ].map(m=>(
+        <div key={m.label} className="card-stagger card-glow" style={{background:"var(--glass)",border:"1px solid var(--border2)",borderRadius:"14px",padding:"16px",position:"relative"}}>
+          <div style={{position:"absolute",top:0,left:0,right:0,height:"1px",background:"linear-gradient(90deg,transparent,var(--gold-border),transparent)",opacity:.5}}/>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"10px"}}>
+            <span style={{fontSize:"10px",color:"var(--text4)",textTransform:"uppercase",letterSpacing:".14em",fontWeight:700}}>{m.label}</span>
+            <div style={{width:"28px",height:"28px",borderRadius:"8px",background:"var(--gold-dim)",border:"1px solid var(--gold-border)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"13px"}}>{m.icon}</div>
+          </div>
+          <div style={{fontFamily:"var(--mono)",fontSize:"26px",fontWeight:800,letterSpacing:"-.02em",lineHeight:1,marginBottom:"6px",color:m.color}}>{m.value}</div>
+          <div style={{fontSize:"10px",color:"var(--text4)"}}>{m.sub}</div>
+          <div style={{width:"100%",height:"4px",background:"var(--bg4)",borderRadius:"2px",marginTop:"8px",overflow:"hidden"}}>
+            <div style={{height:"100%",width:Math.min(parseFloat(m.value),100)+"%",background:m.color,borderRadius:"2px",transition:"width .4s"}}/>
+          </div>
+        </div>
+      ))}
+    </div>}
+
+    {/* PROCES — extra regels: risk deviation + rule violation */}
+    {showP&&closed.length>0&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"12px",marginBottom:"16px"}}>
+      <div style={{background:"var(--glass)",border:"1px solid var(--border2)",borderRadius:"14px",padding:"16px"}}>
+        <div style={{fontSize:"10px",color:"var(--text4)",textTransform:"uppercase",letterSpacing:".14em",fontWeight:700,marginBottom:"10px"}}>Risk consistency</div>
+        {risks.length>2?<>
+          <div style={{display:"flex",gap:"20px",alignItems:"baseline"}}>
+            <div><div style={{fontFamily:"var(--mono)",fontSize:"22px",fontWeight:800,color:"var(--text)"}}>{meanRisk.toFixed(2)}%</div><div style={{fontSize:"10px",color:"var(--text4)"}}>gem. risk</div></div>
+            <div><div style={{fontFamily:"var(--mono)",fontSize:"22px",fontWeight:800,color:riskVar<=meanRisk*0.3?"var(--green)":riskVar<=meanRisk*0.6?"var(--gold)":"var(--red)"}}>±{riskVar.toFixed(2)}%</div><div style={{fontSize:"10px",color:"var(--text4)"}}>std dev</div></div>
+          </div>
+          <div style={{fontSize:"10px",color:"var(--text4)",marginTop:"8px",lineHeight:1.5}}>{riskVar<=meanRisk*0.3?"✓ Consistent risk-sizing — je houdt je aan je systeem":riskVar<=meanRisk*0.6?"⚠ Matig consistent — risk varieert nog wat":"🚨 Inconsistent — sommige trades zijn veel groter dan andere"}</div>
+        </>:<div style={{fontSize:"12px",color:"var(--text4)",fontStyle:"italic",padding:"8px 0"}}>Vul entry + stop-loss + position-size in op minstens 3 trades om risk-deviation te zien.</div>}
+      </div>
+      <div style={{background:"var(--glass)",border:"1px solid var(--border2)",borderRadius:"14px",padding:"16px"}}>
+        <div style={{fontSize:"10px",color:"var(--text4)",textTransform:"uppercase",letterSpacing:".14em",fontWeight:700,marginBottom:"10px"}}>Fout-ratio</div>
+        <div style={{fontFamily:"var(--mono)",fontSize:"22px",fontWeight:800,color:violationPct<=15?"var(--green)":violationPct<=35?"var(--gold)":"var(--red)"}}>{violationPct.toFixed(0)}%</div>
+        <div style={{fontSize:"10px",color:"var(--text4)",marginTop:"2px"}}>{withMistakes.length} van {closed.length} trades met mistake-tag</div>
+        <div style={{fontSize:"10px",color:"var(--text4)",marginTop:"8px",lineHeight:1.5}}>{violationPct<=15?"✓ Discipline staat — je tagt zelden fouten":violationPct<=35?"⚠ Regelmatig fouten — check Fout impact sectie":"🚨 Veel fouten — focus op 1 mistake-tag en fix die"}</div>
+      </div>
+    </div>}
+
+    {/* WINST — Top stats row */}
+    {showW&&<div style={{display:"grid",gridTemplateColumns:"repeat(5,minmax(0,1fr))",gap:"12px",marginBottom:"16px"}}>
       <Stat label="Winrate" value={pct(closed.length?wins.length/closed.length*100:0)} color={wins.length/closed.length>=0.5?"var(--green)":"var(--red)"} sub={`${wins.length}W/${losses.length}L`}/>
       <Stat label="Profit factor" value={(()=>{const gw=wins.reduce((s,t)=>s+parseFloat(t.pnl),0);const gl=Math.abs(losses.reduce((s,t)=>s+parseFloat(t.pnl),0));return gl>0?(gw/gl).toFixed(2):"∞"})()}/>
       <Stat label="Expectancy" value={expectancy!==null?(expectancy>=0?"+":"")+`$${fmt(expectancy)}`:""} color={expectancy!==null?(expectancy>=0?"var(--green)":"var(--red)"):"var(--text3)"} sub="per trade"/>
       {avgRMult!==null&&<Stat label="Gem. R-mult" value={(avgRMult>=0?"+":"")+avgRMult.toFixed(2)+"R"} color={avgRMult>=1?"var(--green)":avgRMult>=0?"var(--amber)":"var(--red)"}/>}
       <Stat label="Gesloten trades" value={closed.length} sub={`${wins.length} winst · ${losses.length} verlies`}/>
-    </div>
+    </div>}
 
     <div ref={analyticsContainerRef} className={editMode?"edit-mode":""}>
     {/* R-Multiple Distribution — Chart.js histogram (upgraded) */}
-    {seq("rMultipleDist",lp.rMultipleDist&&rMultHasData,<div style={sectStyle}>
+    {showW&&seq("rMultipleDist",lp.rMultipleDist&&rMultHasData,<div style={sectStyle}>
       {secH("R-Multiple distributie")}
       <div style={{marginBottom:"12px",fontSize:"12px",color:"var(--text3)"}}>Op basis van {rMultAll.length} trades met entry + stop loss. Gemiddeld R-multiple: <strong style={{color:avgRMult>=1?"var(--green)":avgRMult>=0?"var(--amber)":"var(--red)",fontFamily:"var(--mono)"}}>{avgRMult>=0?"+":""}{avgRMult?.toFixed(2)}R</strong></div>
       <RMultDistChart trades={closed}/>
@@ -3285,7 +3366,7 @@ function Analytics({trades}){
     </div>)}
 
     {/* Rolling 20-trade edge — NEW */}
-    {seq("rollingEdge",lp.rollingEdge!==false&&closed.length>=20,<div style={sectStyle}>
+    {showW&&seq("rollingEdge",lp.rollingEdge!==false&&closed.length>=20,<div style={sectStyle}>
       {secH("Rolling 20-trade edge")}
       <div style={{marginBottom:"12px",fontSize:"12px",color:"var(--text3)"}}>Voortschrijdend gemiddelde over laatste 20 trades. Toont of je edge <strong>degradeert</strong> of <strong>verbetert</strong> — lifetime averages liegen.</div>
       <RollingEdgeChart trades={closed} window={20}/>
@@ -3301,7 +3382,7 @@ function Analytics({trades}){
 
 
     {/* Long vs Short */}
-    {seq("longShort",lp.longShort,<div style={sectStyle}>{secH("Long vs Short")}
+    {showW&&seq("longShort",lp.longShort,<div style={sectStyle}>{secH("Long vs Short")}
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"12px"}}>
         {[["Long",longs,longPnl,"var(--green)"],["Short",shorts,shortPnl,"var(--red)"]].map(([label,ts,pnl2,color])=>{const w2=ts.filter(t=>parseFloat(t.pnl)>0).length;const l2=ts.filter(t=>parseFloat(t.pnl)<0).length;const wr2=ts.length?w2/ts.length*100:0;
           return(<div key={label} style={{background:"var(--bg4)",borderRadius:"8px",padding:"16px",border:`1px solid ${color}25`}}>
@@ -3314,12 +3395,12 @@ function Analytics({trades}){
     </div>)}
 
     {/* Per pair */}
-    {seq("perPair",lp.perPair&&Object.keys(pairData).length>0,<div style={sectStyle}>{secH("Performance per pair")}
+    {showW&&seq("perPair",lp.perPair&&Object.keys(pairData).length>0,<div style={sectStyle}>{secH("Performance per pair")}
       {(()=>{const maxAbs=Math.max(...Object.values(pairData).map(d=>Math.abs(d.pnl)),1);return Object.entries(pairData).sort((a,b)=>b[1].pnl-a[1].pnl).map(([p,d])=>barRow(p,d.w,d.l,d.pnl,maxAbs,"#C9A84C"))})()}
     </div>)}
 
     {/* Per day of week */}
-    {seq("perDay",lp.perDay,<div style={sectStyle}>{secH("Performance per dag")}
+    {showW&&seq("perDay",lp.perDay,<div style={sectStyle}>{secH("Performance per dag")}
       {(()=>{const maxAbs=Math.max(...Object.values(dayData).map(d=>Math.abs(d.pnl)),1);return Object.entries(dayData).filter(([,d])=>d.n>0).map(([day,d])=>barRow(day,d.w,d.l,d.pnl,maxAbs,"#C9A84C"))})()}
     </div>)}
 
@@ -3345,7 +3426,7 @@ function Analytics({trades}){
     </div>)}
 
     {/* Streaks */}
-    {seq("streaks",lp.streaks,<div style={sectStyle}>{secH("Streaks")}
+    {showW&&seq("streaks",lp.streaks,<div style={sectStyle}>{secH("Streaks")}
       <div style={{display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:"12px"}}>
         <Stat label="Huidige streak" value={streak+"×"} color={lastIsWin?"var(--green)":"var(--red)"} sub={lastIsWin?"winst":"verlies"}/>
         <Stat label="Max. winstreek" value={maxWin+"×"} color="var(--green)"/>
@@ -3355,7 +3436,7 @@ function Analytics({trades}){
     </div>)}
 
     {/* R:R Analyse — ported from v4_14 */}
-    {seq("rrAnalysis",lp.rrAnalysis,(()=>{
+    {showW&&seq("rrAnalysis",lp.rrAnalysis,(()=>{
       const rrTrades=closed.filter(t=>{const e=parseFloat(t.entry);const sl=parseFloat(t.stopLoss);return e>0&&sl>0&&e!==sl}).map(t=>{
         const e=parseFloat(t.entry);const sl=parseFloat(t.stopLoss);const tp=parseFloat(t.takeProfit);const ex=parseFloat(t.exit);
         const risk=Math.abs(e-sl);const isLong=t.direction==="long";
@@ -3397,7 +3478,7 @@ function Analytics({trades}){
     })())}
 
     {/* Holdtime analyse — ported from v4_14 */}
-    {seq("holdtime",lp.holdtime&&tradeHold.length>0,(()=>{
+    {showW&&seq("holdtime",lp.holdtime&&tradeHold.length>0,(()=>{
       const buckets=[{l:"<15m",max:0.25},{l:"15m-1h",max:1},{l:"1-4h",max:4},{l:"4-24h",max:24},{l:">1d",max:Infinity}];
       const b=buckets.map(bk=>({...bk,n:0,pnl:0,w:0}));
       tradeHold.forEach(t=>{const idx=buckets.findIndex(bk=>t.h<=bk.max);const i=idx<0?buckets.length-1:idx;b[i].n++;b[i].pnl+=t.pnl;if(t.pnl>0)b[i].w++});
@@ -3408,7 +3489,7 @@ function Analytics({trades}){
     })())}
 
     {/* Uur heatmap — ported from v4_14 */}
-    {seq("heatmap",lp.heatmap,(()=>{
+    {showW&&seq("heatmap",lp.heatmap,(()=>{
       const hrs=Array(24).fill(0).map(()=>({n:0,pnl:0,w:0}));
       closed.forEach(t=>{const h=parseInt((t.time||"00:00").split(":")[0],10);if(isNaN(h))return;hrs[h].n++;hrs[h].pnl+=parseFloat(t.pnl);if(parseFloat(t.pnl)>0)hrs[h].w++});
       const maxAbs=Math.max(...hrs.map(h=>Math.abs(h.pnl)),1);
