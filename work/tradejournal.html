@@ -669,6 +669,39 @@ const EMOTIONS_NEG=["FOMO","Gehaast","Twijfels","Overconfident","Gefrustreerd","
 const EMOTIONS_POS=["Geduldig","Rustig","Zelfverzekerd","Kalm","Gedisciplineerd"];
 const isNegEmotion=(tag)=>EMOTIONS_NEG.includes(tag);
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+
+// Compress an image file to max dimensions + JPEG quality, return base64 dataURL
+// Default: 1600×1200 max, JPEG 82%. Typical screenshot 4MB → 150-300KB (~95% kleiner).
+async function compressImage(file,maxW=1600,maxH=1200,quality=0.82){
+  return new Promise((resolve,reject)=>{
+    const reader=new FileReader();
+    reader.onerror=()=>reject(new Error("Kon bestand niet lezen"));
+    reader.onload=(ev)=>{
+      const img=new Image();
+      img.onerror=()=>reject(new Error("Geen geldige afbeelding"));
+      img.onload=()=>{
+        let{width:w,height:h}=img;
+        // Downscale alleen als nodig
+        if(w>maxW||h>maxH){
+          const ratio=Math.min(maxW/w,maxH/h);
+          w=Math.round(w*ratio);h=Math.round(h*ratio);
+        }
+        const canvas=document.createElement("canvas");
+        canvas.width=w;canvas.height=h;
+        const ctx=canvas.getContext("2d");
+        // Witte achtergrond voor PNG-met-transparantie → JPEG
+        ctx.fillStyle="#ffffff";ctx.fillRect(0,0,w,h);
+        ctx.drawImage(img,0,0,w,h);
+        // Kies format: PNG voor kleine screenshots (<200KB origineel), JPEG voor grotere
+        const useJpeg=file.size>200*1024;
+        const dataUrl=canvas.toDataURL(useJpeg?"image/jpeg":"image/png",quality);
+        resolve({dataUrl,originalSize:file.size,compressedSize:Math.round(dataUrl.length*0.75),width:w,height:h,format:useJpeg?"jpeg":"png"});
+      };
+      img.src=ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
 const fmt=(n)=>{if(n===null||n===undefined)return"--";const v=parseFloat(typeof n==="object"?0:n);return isNaN(v)?"--":v.toLocaleString("nl-NL",{minimumFractionDigits:2,maximumFractionDigits:2})};
 const pct=(n)=>{const v=parseFloat(n);return isNaN(v)?"--":v.toFixed(1)+"%"};
 const isEmpty=(v)=>v===undefined||v===null||v===""||v==="0"||v===0;
@@ -2507,7 +2540,21 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,accounts}){
   const[showCard,setShowCard]=useState(false);
   const toggle=(f,tag)=>setTrade(p=>({...p,[f]:p[f].includes(tag)?p[f].filter(t=>t!==tag):[...p[f],tag]}));
   const fRef=useRef();
-  const handleSS=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>setTrade(p=>({...p,screenshot:ev.target.result}));r.readAsDataURL(f)};
+  const[ssInfo,setSsInfo]=useState(null);
+  const handleSS=async(e)=>{
+    const f=e.target.files[0];if(!f)return;
+    setSsInfo({status:"compressing",name:f.name,original:f.size});
+    try{
+      const r=await compressImage(f,1600,1200,0.82);
+      setTrade(p=>({...p,screenshot:r.dataUrl}));
+      setSsInfo({status:"done",original:r.originalSize,compressed:r.compressedSize,saved:Math.round((1-r.compressedSize/r.originalSize)*100),width:r.width,height:r.height});
+      setTimeout(()=>setSsInfo(null),4000);
+    }catch(err){
+      setSsInfo({status:"error",msg:err.message});
+      setTimeout(()=>setSsInfo(null),3000);
+    }
+    e.target.value="";
+  };
   const gt=(k)=>tagConfig[k]||DEFAULT_TAGS[k]||[];
   const[sizeInputMode,setSizeInputMode]=useState(()=>localStorage.getItem("tj_sizeInputMode")||"usdt");
   const isOpen=(trade.status||"closed")==="open";
@@ -2735,7 +2782,9 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,accounts}){
         <div style={{fontSize:"11px",color:"var(--gold)",textTransform:"uppercase",letterSpacing:"0.12em",fontWeight:700,marginBottom:"8px"}}>Screenshot</div>
         <input type="file" ref={fRef} accept="image/*" onChange={handleSS} style={{display:"none"}}/>
         {trade.screenshot?(<div style={{position:"relative"}}><img src={trade.screenshot} alt="" style={{width:"100%",borderRadius:"8px",border:"1px solid var(--border2)"}}/><button onClick={()=>{setTrade(p=>({...p,screenshot:null}));fRef.current.value=""}} style={{position:"absolute",top:"8px",right:"8px",background:"rgba(0,0,0,0.7)",border:"none",color:"var(--red)",borderRadius:"6px",padding:"4px 10px",cursor:"pointer",fontSize:"12px",fontFamily:"inherit"}}>Verwijder</button></div>)
-        :(<button onClick={()=>fRef.current.click()} style={{padding:"24px",width:"100%",borderRadius:"8px",border:"1px dashed var(--border5)",background:"transparent",color:"var(--text3)",cursor:"pointer",fontFamily:"inherit",fontSize:"13px"}}>Klik om screenshot te uploaden (TradingView)</button>)}
+        :(<button onClick={()=>fRef.current.click()} disabled={ssInfo?.status==="compressing"} style={{padding:"24px",width:"100%",borderRadius:"8px",border:"1px dashed var(--border5)",background:"transparent",color:"var(--text3)",cursor:ssInfo?.status==="compressing"?"default":"pointer",fontFamily:"inherit",fontSize:"13px"}}>{ssInfo?.status==="compressing"?`⏳ Comprimeren van ${(ssInfo.original/1024/1024).toFixed(1)} MB...`:"Klik om screenshot te uploaden (TradingView)"}</button>)}
+        {ssInfo?.status==="done"&&<div style={{marginTop:"6px",padding:"6px 10px",borderRadius:"5px",background:"var(--green2)",border:"1px solid var(--green3)",color:"var(--green)",fontSize:"10px",fontFamily:"var(--mono)"}}>✓ {(ssInfo.original/1024).toFixed(0)} KB → {(ssInfo.compressed/1024).toFixed(0)} KB ({ssInfo.saved}% kleiner · {ssInfo.width}×{ssInfo.height})</div>}
+        {ssInfo?.status==="error"&&<div style={{marginTop:"6px",padding:"6px 10px",borderRadius:"5px",background:"var(--red2)",border:"1px solid var(--red3)",color:"var(--red)",fontSize:"11px"}}>✕ {ssInfo.msg}</div>}
       </div>
       <div>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"8px"}}>
