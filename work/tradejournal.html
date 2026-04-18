@@ -1060,18 +1060,21 @@ const ExchangeAPI = {
       data.source="positions-history";
       const source=data.source||"orders-history";
       if(source==="positions-history"){
-        return(data.trades||[]).filter(t=>{const pnl=parseFloat(t.realizedPnl||t.pnl||"0");return pnl!==0||parseFloat(t.closeTotalPos||"0")>0}).map(t=>{
+        // DEV debug: log eerste trade zodat we exact zien welke velden Blofin teruggeeft
+        if((data.trades||[]).length>0)console.log("[Blofin] Eerste positions-history record (velden-check):",data.trades[0]);
+        return(data.trades||[]).filter(t=>{const pnl=parseFloat(t.realizedPnl||t.pnl||"0");const sz=Math.abs(parseFloat(t.closeTotalPos||t.positions||"0"));return pnl!==0||sz>0}).map(t=>{
           const posSide=(t.positionSide||"net").toLowerCase();
           let direction=posSide==="long"?"long":posSide==="short"?"short":parseFloat(t.closeTotalPos||t.positions||"0")>=0?"long":"short";
           const closeTime=t.updateTime||t.createTime||Date.now();
           // Blofin positions-history field naming varies; try all common variants
           const entryPrice=t.openAveragePrice||t.averagePrice||t.avgOpenPrice||t.avgEntryPrice||t.openPrice||"";
           const exitPrice=t.closeAveragePrice||t.avgClosePrice||t.closePrice||"";
-          // Position size — Blofin uses various names; value is usually contract-count or asset-qty
-          const sizeAsset=t.closeTotalPos||t.positions||t.positionNum||t.size||t.qty||t.quantity||t.vol||"";
+          // Position size — probeer alle bekende velden + neem absolute waarde (shorts zijn negatief)
+          const rawSize=t.closeTotalPos||t.positions||t.positionNum||t.size||t.qty||t.quantity||t.vol||t.posSize||t.amount||t.filledSize||t.accFillSz||"";
+          const sizeN=Math.abs(parseFloat(rawSize)||0);
+          const sizeAsset=sizeN>0?String(sizeN):"";
           // Compute USDT notional from asset-qty × entry price (positionSize = USDT $ amount in onze app)
           const entryN=parseFloat(entryPrice)||0;
-          const sizeN=parseFloat(sizeAsset)||0;
           const sizeUsdt=(entryN>0&&sizeN>0)?(entryN*sizeN).toFixed(2):"";
           // Include closeTime in ID: partial-close records van dezelfde positie krijgen unieke IDs
           // (Blofin's positions-history geeft per close-event een record, maar allemaal met zelfde positionId)
