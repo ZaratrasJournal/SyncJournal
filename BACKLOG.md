@@ -9,7 +9,10 @@ Basis kwam uit de feature-diff v4_14 → v9 onderaan. Inmiddels werken we op **v
 ## 🔜 Next up (deze of volgende werksessie)
 
 - [ ] **🥇 AI trade-review** — knop "Analyseer mijn laatste N trades" via user's eigen API-key (OpenAI/Claude). Patroon-analyse + bias-detectie. Grootste differentiator.
-- [ ] **Emotie-tag per trade (Tiltmeter-lite)** — dropdown bij trade-entry (Calm/FOMO/Revenge/Anxious), correleer met winrate in analytics. Edgewonk's USP, wij missen het. Moeite: L.
+- [ ] **Tiltmeter (emotie 1-10 per trade)** — Edgewonk's USP. Correleer met PnL. Fase 2 van proces-focus (Fase 1 is al live).
+- [ ] **Pre-trade checklist builder** — user definieert 5-10 items (entry-criteria, risk-check, bias confirmation). Per trade score → toegevoegd aan Analytics Proces-mode.
+- [ ] **Time-of-day discipline heatmap** (7×24 grid) — bestaat nergens als visual. Toont wanneer je discipline zakt. Fase 2 proces-focus.
+- [ ] **Checklist-streak gamification** — Duolingo-stijl streak-counter voor "checklist volledig ingevuld X dagen op rij". Loss aversion werkt.
 - [ ] **Dag-limiet / tilt guard** — modal bij N losses op dag. Data zit in Trading Rules.
 - [ ] **Trade-voucher / shareable link** — base64 URL-fragment. Read-only modal.
 - [ ] **Discord webhook** bij PnL-milestones — community leeft op Discord. Moeite: L.
@@ -17,7 +20,6 @@ Basis kwam uit de feature-diff v4_14 → v9 onderaan. Inmiddels werken we op **v
 - [ ] **Weekly performance summary** — lokaal gegenereerd, geen AI nodig voor v1. Pure aggregatie. Moeite: L.
 - [ ] **MFE/MAE exit-efficiency scatter** — vereist MFE/MAE data uit exchange-fills.
 - [ ] **PnL Calendar Heatmap** — 13-weken grid, GitHub-stijl.
-- [ ] **Discipline / Consistency Score** — FTMO-stijl gauge.
 - [ ] **Scratch segmentation donut** — "True Win-rate" los van scratch trades.
 - [ ] **Funding & Fees Drain waterfall** — crypto-futures specifiek, onderscheidend.
 - [ ] **Underwater Drawdown chart** — hedge-fund standaard.
@@ -40,6 +42,16 @@ Basis kwam uit de feature-diff v4_14 → v9 onderaan. Inmiddels werken we op **v
 
 ## ✅ Done
 
+- [x] 2026-04-18 — **Proces-focus Analytics** (voorstel A — segmented control) — Analytics toont nu `[🧠 Proces | 💰 Winst | 📊 Beide]` pill-keuze bovenaan met Mark Douglas quote. Default Proces voor <100 trades. 4 proces KPIs (Plan gevolgd % / SL discipline % / Journal compleet % / FTMO Consistency) + Risk consistency + Fout-ratio cards. 9 PnL-only secties mode-gated met `showW&&seq()`. Gebaseerd op research 8 concurrenten + Mark Douglas / Van Tharp / Steenbarger. localStorage `tj_analytics_view`. Commits `f48ad51`, `857e852`.
+- [x] 2026-04-18 — **Drag handles verplaatst naar linker gutter** — floating top-right werd raar bij grid-secties (zweefde rechts buiten content). Nu consistent 48px gouden knop links, gecentreerd, werkt uniform voor single cards, 4-col grids, 2-col grids én tabellen. Commit `464b42e`.
+- [x] 2026-04-18 — **Proces research & thinking doc** — deep-research 8 journals (Edgewonk Tiltmeter/Edge Finder, Tradezella Zella Score, TraderSync Cypher AI, Tradervue tags, Chartlog strategy rules, TradesViz 600+ stats, FTMO Consistency, Topstep) → top 10 proces-metrics, 3 toggle UI-voorstellen, Mark Douglas/Van Tharp/Steenbarger bronnen.
+- [x] 2026-04-18 — **2 nieuwe light themes: Parchment + Daylight** — warm cream (Linear/Notion-stijl) + koel wit (Stripe/Vercel-stijl). WCAG AA compliant, gold accent aangepast per bg (#A8832E en #B8912F). Premium layout overrides ge-scoped naar dark themes alleen. Chart.js defaults theme-aware (text/border/tooltip uit CSS vars).
+- [x] 2026-04-18 — **Light-theme polish** — year heatmap empty cells (min alpha .4 op light ipv .18 voor zichtbaarheid), Review-pagina scorecard cards (rgba(42,46,57,0.3) → var(--bg4)), Analytics Long/Short cards, Capital tracking balk. Chart.js global sync via useEffect.
+- [x] 2026-04-18 — **Trade cards uitgebreid met 5 meme-kaarten** — Boss (Ibiza Final Boss), Goodfellas, Giggling, OMG, Pablo. Alle via herbruikbare `ImageCard` helper (beeld rechts + fade naar links + gouden accent). Base64 embedded, html2canvas compatible. Totaal nu 9 kaart-designs.
+- [x] 2026-04-18 — **Rich progressive disclosure op trade-hover** — volledig 3-rij detail (stats grid, thesis/review quotes, meta badges). `trade-detail-row` CSS + React hover state ipv fragiele tbody:hover.
+- [x] 2026-04-18 — **Quick-filter bar 2 rijen** — datum van/t/m + presets + richting/resultaat/pairs (rij 1), exchange pills met icon + account-label (rij 2). Pill CSS class foundation toegevoegd.
+- [x] 2026-04-18 — **Classic theme + Premium lichter** — lichtere bg (#10111a), helderder groen/rood, meer border-opacity. Classic+Premium combo met aparte gold-tinted orbs.
+- [x] 2026-04-18 — **Card modal breder** — trade-card export modal nu 20px padding inset-0 (bijna volledig scherm) ipv 95vw + dynamic scaling op cards. Trade-bewerken modal 760→960px.
 - [x] 2026-04-17 — **Bento KPI grid + animated counters** op DashboardPremium — hero P&L card (5fr, 44px gold-shimmer) + 3 KPI sub-cards (7fr). `AnimNum` component telt vloeiend op (800ms cubic ease-out, 60fps). Cascade stagger 70ms per card.
 - [x] 2026-04-17 — **Rich progressive disclosure** op trade-hover — 3-rij detail-paneel: stats grid (SL/leverage/risk/fees/hold/PnL%/R-mult/account), gold-border thesis + review notes, meta badges (📐 layers, 🎯 TPs, ★ rating, 📎 links, 📸 screenshot, ⚠ mistakes). React hover-state ipv fragiele CSS.
 - [x] 2026-04-17 — **Classic theme + Premium lichter** — achtergronden opgelicht (#0c0d12→#10111a), win/loss kleuren helderder (#5ce0a0/#ff7b7b), goud warmer (#d4b45c), borders zichtbaarder. Classic+Premium combo met aparte overrides.
