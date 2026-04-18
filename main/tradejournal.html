@@ -2550,7 +2550,7 @@ function Section({title,storeKey,defaultOpen=true,hint,children}){
   </details>);
 }
 
-function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,accounts}){
+function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,accounts,showToast}){
   const[showCard,setShowCard]=useState(false);
   const toggle=(f,tag)=>setTrade(p=>({...p,[f]:p[f].includes(tag)?p[f].filter(t=>t!==tag):[...p[f],tag]}));
   const fRef=useRef();
@@ -2688,10 +2688,39 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,accounts}){
         return Math.abs(parseFloat(tp.price)-entryN)/risk;
       };
 
+      // Fetch TPs vanuit exchange API (alleen als trade source een exchange met fetchFills is én die is geconfigureerd)
+      const tpSrcKey=(trade.source||"").toLowerCase();
+      const tpExApi=ExchangeAPI[tpSrcKey];
+      const tpExCfg=config?.exchanges?.[tpSrcKey]||{};
+      const tpCanFetch=!!(tpExApi&&tpExApi.fetchFills&&tpExCfg.apiKey&&tpExCfg.apiSecret);
+      const fetchTPsInline=async()=>{
+        if(!tpCanFetch)return;
+        try{
+          const symbol=(trade.pair||"").replace("/","_");
+          const startTime=trade.openTime?parseInt(trade.openTime):new Date(trade.date||Date.now()).getTime()-86400000;
+          const endTime=trade.closeTime?parseInt(trade.closeTime):Date.now();
+          const r=tpExApi.needsPassphrase
+            ?await tpExApi.fetchFills(tpExCfg.apiKey,tpExCfg.apiSecret,tpExCfg.passphrase,symbol,startTime,endTime)
+            :await tpExApi.fetchFills(tpExCfg.apiKey,tpExCfg.apiSecret,symbol,trade.positionId,startTime,endTime);
+          const fills=r.fills||[];
+          if(!fills.length){showToast&&showToast("Geen TP-fills gevonden bij exchange","error");return}
+          const total=fills.reduce((s,f)=>s+Math.abs(parseFloat(f.size||f.vol||f.amount||0)),0)||1;
+          const newTPs=fills.map((f,i)=>{
+            const sz=Math.abs(parseFloat(f.size||f.vol||f.amount||0));
+            return{id:`tp_${Date.now()}_${i}`,price:String(f.price||f.tradePrice||f.closeAvgPrice||""),pct:String(((sz/total)*100).toFixed(1)),status:"hit",actualPrice:String(f.price||f.tradePrice||f.closeAvgPrice||"")};
+          }).filter(t=>parseFloat(t.price)>0);
+          setTrade(p=>({...p,tpLevels:newTPs}));
+          showToast&&showToast(`${newTPs.length} TP's opgehaald van ${tpExApi.name}`);
+        }catch(e){showToast&&showToast(`TP-fetch mislukt: ${e.message}`,"error")}
+      };
+
       return(<div style={{borderTop:"1px solid var(--border2)",paddingTop:"1.5rem",marginBottom:"1rem"}}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"10px"}}>
           <div style={{fontSize:"11px",color:"var(--gold)",textTransform:"uppercase",letterSpacing:"0.12em",fontWeight:700}}>Take Profit niveaus</div>
-          {tps.length<4&&<button onClick={addTP} style={{fontSize:"11px",padding:"4px 10px",borderRadius:"5px",border:"1px dashed var(--border5)",background:"transparent",color:"#C9A84C",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>+ TP toevoegen</button>}
+          <div style={{display:"flex",gap:"6px"}}>
+            {tpCanFetch&&<button onClick={fetchTPsInline} title={`Haalt TP-fills op uit ${tpExApi.name}`} style={{fontSize:"11px",padding:"4px 10px",borderRadius:"5px",border:"1px solid rgba(46,170,111,0.3)",background:"rgba(46,170,111,0.08)",color:"var(--teal)",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>🎯 Uit {tpExApi.name} ophalen</button>}
+            {tps.length<4&&<button onClick={addTP} style={{fontSize:"11px",padding:"4px 10px",borderRadius:"5px",border:"1px dashed var(--border5)",background:"transparent",color:"#C9A84C",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>+ TP toevoegen</button>}
+          </div>
         </div>
 
         {tps.length>0&&<>
@@ -5144,47 +5173,10 @@ function HelpPage(){
   </div>);
 }
 
-// ============ SIMPLE TP TIMELINE ============
-function TPTimeline({trade,config,setTrade,showToast}){
-  const[loading,setLoading]=useState(false);
+// ============ SIMPLE TP TIMELINE — pure visualisatie, fetch-knop zit in TradeForm ============
+function TPTimeline({trade}){
   const tpLevels=(trade.tpLevels||[]).filter(t=>parseFloat(t.price)>0);
-  const sourceKey=(trade.source||"").toLowerCase();
-  const exApi=ExchangeAPI[sourceKey];
-  const exCfg=config?.exchanges?.[sourceKey]||{};
-  const connected=!!(exCfg.apiKey&&exCfg.apiSecret&&exApi);
-
-  const fetchTPs=async()=>{
-    if(!connected||!exApi.fetchFills||!setTrade)return;
-    setLoading(true);
-    try{
-      const symbol=(trade.pair||"").replace("/","_");
-      const startTime=trade.openTime?parseInt(trade.openTime):new Date(trade.date).getTime()-86400000;
-      const endTime=trade.closeTime?parseInt(trade.closeTime):Date.now();
-      const r=exApi.needsPassphrase
-        ?await exApi.fetchFills(exCfg.apiKey,exCfg.apiSecret,exCfg.passphrase,symbol,startTime,endTime)
-        :await exApi.fetchFills(exCfg.apiKey,exCfg.apiSecret,symbol,trade.positionId,startTime,endTime);
-      const fills=r.fills||[];
-      if(!fills.length){showToast&&showToast("Geen TP-fills gevonden bij exchange","error");return}
-      // Converteer elke fill naar een TP-level
-      const total=fills.reduce((s,f)=>s+Math.abs(parseFloat(f.size||f.vol||f.amount||0)),0)||1;
-      const newTPs=fills.map((f,i)=>{
-        const sz=Math.abs(parseFloat(f.size||f.vol||f.amount||0));
-        return{id:`tp_${Date.now()}_${i}`,price:String(f.price||f.tradePrice||f.closeAvgPrice||""),pct:String(((sz/total)*100).toFixed(1)),status:"hit",actualPrice:String(f.price||f.tradePrice||f.closeAvgPrice||"")};
-      }).filter(t=>parseFloat(t.price)>0);
-      setTrade(p=>({...p,tpLevels:newTPs}));
-      showToast&&showToast(`${newTPs.length} TP's opgehaald van ${exApi.name}`);
-    }catch(e){
-      showToast&&showToast(`TP-fetch mislukt: ${e.message}`,"error");
-    }finally{setLoading(false)}
-  };
-
-  const fetchBtn=connected&&setTrade?(
-    <button onClick={fetchTPs} disabled={loading} style={{padding:"6px 12px",borderRadius:"5px",border:"1px solid rgba(46,170,111,0.3)",background:"rgba(46,170,111,0.08)",color:"var(--teal)",fontSize:"11px",fontWeight:600,cursor:loading?"default":"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:"6px"}}>
-      {loading?<><span className="spinner"/>Ophalen...</>:<>🎯 TP's ophalen ({exApi.name})</>}
-    </button>
-  ):null;
-
-  if(!tpLevels.length&&!parseFloat(trade.takeProfit))return(<div style={{padding:"20px",background:"var(--bg4)",borderRadius:"8px",marginTop:"12px",fontSize:"12px",color:"var(--text4)",textAlign:"center"}}>Geen TP niveaus ingesteld voor deze trade.{fetchBtn&&<div style={{marginTop:"12px",display:"flex",justifyContent:"center"}}>{fetchBtn}</div>}</div>);
+  if(!tpLevels.length&&!parseFloat(trade.takeProfit))return null;
   const entry=parseFloat(trade.entry)||0;
   const sl=parseFloat(trade.stopLoss)||0;
   const allTPs=tpLevels.length?tpLevels:[{price:trade.takeProfit,pct:"100",status:"open",actualPrice:""}];
@@ -5194,7 +5186,6 @@ function TPTimeline({trade,config,setTrade,showToast}){
   return(<div style={{padding:"20px",background:"var(--bg4)",borderRadius:"8px",marginTop:"12px"}}>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"16px"}}>
       <div style={{fontSize:"11px",color:"var(--text3)",textTransform:"uppercase",fontWeight:600}}>TP Tijdlijn</div>
-      {fetchBtn}
     </div>
     <div style={{position:"relative",height:"40px",margin:"0 20px"}}>
       <div style={{position:"absolute",top:"50%",left:0,right:0,height:"2px",background:"rgba(255,255,255,0.1)",transform:"translateY(-50%)"}}/>
@@ -5589,7 +5580,7 @@ function App(){
             <div style={{fontSize:"16px",fontWeight:700}}>Nieuwe trade</div>
             <button onClick={()=>{setNewTrade(null);navigate("trades")}} style={{background:"none",border:"none",color:"var(--text4)",cursor:"pointer",fontSize:"14px"}}>✕</button>
           </div>
-          <TradeForm trade={newTrade} setTrade={setNewTrade} onSave={()=>saveTrade(newTrade)} onCancel={()=>{setNewTrade(null);navigate("trades")}} tagConfig={tagConfig} config={config} accounts={accounts}/>
+          <TradeForm trade={newTrade} setTrade={setNewTrade} onSave={()=>saveTrade(newTrade)} onCancel={()=>{setNewTrade(null);navigate("trades")}} tagConfig={tagConfig} config={config} accounts={accounts} showToast={showToast}/>
         </>}
 
         {/* Edit modal */}
@@ -5602,7 +5593,7 @@ function App(){
                 <button onClick={()=>setEditTrade(null)} style={{background:"none",border:"none",color:"var(--text4)",cursor:"pointer",fontSize:"14px",padding:"4px"}}>✕</button>
               </div>
             </div>
-            <TradeForm trade={editTrade} setTrade={setEditTrade} onSave={()=>saveTrade(editTrade)} onCancel={()=>setEditTrade(null)} tagConfig={tagConfig} config={config} accounts={accounts}/>
+            <TradeForm trade={editTrade} setTrade={setEditTrade} onSave={()=>saveTrade(editTrade)} onCancel={()=>setEditTrade(null)} tagConfig={tagConfig} config={config} accounts={accounts} showToast={showToast}/>
             <TPTimeline trade={editTrade} config={config} setTrade={setEditTrade} showToast={showToast}/>
           </div>
         </div>}
