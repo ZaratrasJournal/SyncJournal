@@ -5373,7 +5373,22 @@ function App(){
   const deleteTrade=(id)=>{const t=trades.find(x=>x.id===id);setTrades(p=>p.filter(x=>x.id!==id));showToast("Trade verwijderd","error",t)};
   const bulkDelete=(ids)=>setTrades(p=>p.filter(t=>!ids.includes(t.id)));
   const bulkTag=(ids,field,tag)=>setTrades(p=>p.map(t=>{if(!ids.includes(t.id))return t;const arr=t[field]||[];if(arr.includes(tag))return t;return{...t,[field]:[...arr,tag]}}));
-  const importTrades=(newOnes)=>{setTrades(p=>{const ex=new Set(p.map(t=>t.id));const fresh=newOnes.filter(t=>!ex.has(t.id));return[...fresh,...p]});showToast(`${newOnes.length} trades geïmporteerd`)};
+  const importTrades=(newOnes)=>{
+    const total=newOnes.length;
+    let freshCount=0;let dupCount=0;
+    setTrades(p=>{
+      const ex=new Set(p.map(t=>t.id));
+      const fresh=newOnes.filter(t=>{if(ex.has(t.id)){dupCount++;return false}return true});
+      freshCount=fresh.length;
+      return fresh.length?[...fresh,...p]:p;
+    });
+    // Wait one tick so setTrades closure populates freshCount/dupCount
+    setTimeout(()=>{
+      if(freshCount===0&&dupCount>0)showToast(`Alle ${dupCount} trades bestonden al — niets toegevoegd`,"info");
+      else if(dupCount>0)showToast(`${freshCount} nieuw · ${dupCount} al aanwezig (overgeslagen)`,"success");
+      else showToast(`${freshCount} trades geïmporteerd ✓`);
+    },0);
+  };
 
   const handleDrop=useCallback((e)=>{e.preventDefault();setImportDragOver(false);const f=e.dataTransfer.files[0];if(!f||!f.name.endsWith(".json"))return;const r=new FileReader();r.onload=ev=>{try{
     const d=JSON.parse(ev.target.result);const trList=d.trades||d;
