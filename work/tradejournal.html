@@ -947,67 +947,6 @@ function computeGoalMetric(metric,trades,period){
     default:return 0;
   }
 }
-// Migrate old Blofin per-close records (id pattern blofin_{positionId}_{closeTime}) to aggregated per-position trades
-function migrateBlofinPartials(trades){
-  if(!Array.isArray(trades)||!trades.length)return trades;
-  const OLD_RE=/^blofin_[^_]+_\d+$/;
-  const isOld=t=>t&&t.source==="blofin"&&OLD_RE.test(t.id||"");
-  const oldOnes=trades.filter(isOld);
-  if(!oldOnes.length)return trades;
-  const others=trades.filter(t=>!isOld(t));
-  const groups={};
-  for(const t of oldOnes){
-    const pid=t.positionId||((t.id||"").split("_")[1])||"";
-    if(!pid)continue;
-    if(!groups[pid])groups[pid]={records:[],pid};
-    groups[pid].records.push(t);
-  }
-  const aggregated=Object.values(groups).map(g=>{
-    g.records.sort((a,b)=>Number(a.closeTime||0)-Number(b.closeTime||0));
-    const first=g.records[0];
-    let sumQty=0,sumPnl=0,sumFee=0,sumExitW=0,maxCloseTime=0,minOpenTime=Infinity;
-    const userFields={notes:"",setupTags:[],confirmationTags:[],timeframeTags:[],emotionTags:[],mistakeTags:[],customTags:[],rating:0,screenshot:null,links:[],layers:[],stopLoss:"",takeProfit:"",highestPrice:"",lowestPrice:"",manualOverrides:[]};
-    for(const r of g.records){
-      const qty=Math.abs(parseFloat(r.positionSizeAsset||"0"))||0;
-      const exitN=parseFloat(r.exit||"0")||0;
-      const pnl=parseFloat(r.pnl||"0")||0;
-      const fee=Math.abs(parseFloat(r.fees||"0"))||0;
-      sumQty+=qty;sumPnl+=pnl;sumFee+=fee;
-      if(exitN>0&&qty>0)sumExitW+=exitN*qty;
-      const ct=Number(r.closeTime||0);if(ct>maxCloseTime)maxCloseTime=ct;
-      const ot=Number(r.openTime||0);if(ot>0&&ot<minOpenTime)minOpenTime=ot;
-      for(const f of["setupTags","confirmationTags","timeframeTags","emotionTags","mistakeTags","customTags","links","layers","manualOverrides"]){
-        if(Array.isArray(r[f]))for(const v of r[f])if(!userFields[f].includes(v))userFields[f].push(v);
-      }
-      if(!userFields.notes&&r.notes)userFields.notes=r.notes;
-      if(!userFields.screenshot&&r.screenshot)userFields.screenshot=r.screenshot;
-      if(!userFields.rating&&r.rating)userFields.rating=r.rating;
-      if(!userFields.stopLoss&&r.stopLoss)userFields.stopLoss=r.stopLoss;
-      if(!userFields.takeProfit&&r.takeProfit)userFields.takeProfit=r.takeProfit;
-      if(!userFields.highestPrice&&r.highestPrice)userFields.highestPrice=r.highestPrice;
-      if(!userFields.lowestPrice&&r.lowestPrice)userFields.lowestPrice=r.lowestPrice;
-    }
-    const avgExit=sumQty>0?sumExitW/sumQty:0;
-    const entryN=parseFloat(first.entry||"0")||0;
-    const tpLevels=g.records.length>1?g.records.map((r,i)=>{
-      const qty=Math.abs(parseFloat(r.positionSizeAsset||"0"))||0;
-      const price=parseFloat(r.exit||"0")||0;
-      const pct=sumQty>0?(qty/sumQty*100).toFixed(1):"0";
-      return{id:"tp_mig_"+(r.id||i),price:price>0?String(price):"",pct:String(pct),status:"hit",actualPrice:price>0?String(price):""};
-    }):[];
-    return Object.assign({},{id:"",date:"",time:"",pair:"",direction:"long",entry:"",exit:"",positionSize:"",positionSizeAsset:"",pnl:"",fees:"0",leverage:"10",source:"blofin",status:"closed",tpLevels:[],positionId:"",openTime:"",closeTime:""},{
-      id:"blofin_"+g.pid,date:first.date,time:first.time,pair:first.pair,direction:first.direction,
-      entry:first.entry,exit:avgExit>0?String(Number(avgExit.toFixed(8))):first.exit,
-      positionSize:(entryN>0&&sumQty>0)?(entryN*sumQty).toFixed(2):first.positionSize,
-      positionSizeAsset:sumQty>0?String(Number(sumQty.toFixed(8))):first.positionSizeAsset,
-      pnl:String(Number(sumPnl.toFixed(8))),fees:String(Number(sumFee.toFixed(8))),
-      leverage:first.leverage||"10",source:"blofin",status:"closed",tpLevels,positionId:g.pid,
-      openTime:minOpenTime!==Infinity?String(minOpenTime):"",closeTime:maxCloseTime>0?String(maxCloseTime):""
-    },userFields);
-  });
-  return[...others,...aggregated];
-}
-
 // Migrate legacy {monthPnl,winRate,maxDD,monthTrades,enabled} to {items:[]}
 function migrateGoals(goals){
   if(goals&&Array.isArray(goals.items))return goals;
@@ -1121,65 +1060,25 @@ const ExchangeAPI = {
       data.source="positions-history";
       const source=data.source||"orders-history";
       if(source==="positions-history"){
-        // Groepeer close-events per (positionId, positionSide) → 1 trade met tpLevels
-        const raw=(data.trades||[]).filter(t=>{const pnl=parseFloat(t.realizedPnl||t.pnl||"0");const sz=Math.abs(parseFloat(t.closePositions||t.closeTotalPos||"0"));return pnl!==0||sz>0});
-        const groups={};
-        for(const t of raw){
-          const pid=t.positionId||"";
-          const side=(t.positionSide||"net").toLowerCase();
-          const key=pid+"|"+side;
-          if(!groups[key])groups[key]={records:[],positionId:pid,positionSide:side,instId:t.instId||"",leverage:t.leverage||"10"};
-          groups[key].records.push(t);
-        }
-        return Object.values(groups).map(g=>{
-          // Chronologisch sorteren op updateTime — zodat TP1=eerste close, TP2=tweede, etc.
-          g.records.sort((a,b)=>Number(a.updateTime||a.createTime||0)-Number(b.updateTime||b.createTime||0));
-          const first=g.records[0];
-          const entryN=parseFloat(first.openAveragePrice||first.averagePrice||first.openPrice||"0")||0;
-          const entryPrice=entryN>0?String(entryN):"";
-          // Sommatie + weighted avg exit
-          let sumCloseQty=0,sumPnl=0,sumFee=0,sumExitWeighted=0,maxPos=0;
-          let minOpenTime=Infinity,maxCloseTime=0;
-          for(const t of g.records){
-            const qty=Math.abs(parseFloat(t.closePositions||t.closeTotalPos||"0"))||0;
-            const exitN=parseFloat(t.closeAveragePrice||t.avgClosePrice||t.closePrice||"0")||0;
-            const pnl=parseFloat(t.realizedPnl||t.pnl||"0")||0;
-            const fee=Math.abs(parseFloat(t.fee||"0"))||0;
-            const mp=Math.abs(parseFloat(t.maxPositions||"0"))||0;
-            sumCloseQty+=qty;
-            sumPnl+=pnl;
-            sumFee+=fee;
-            if(exitN>0&&qty>0)sumExitWeighted+=exitN*qty;
-            if(mp>maxPos)maxPos=mp;
-            const ot=Number(t.createTime||0);if(ot>0&&ot<minOpenTime)minOpenTime=ot;
-            const ct=Number(t.updateTime||t.createTime||0);if(ct>maxCloseTime)maxCloseTime=ct;
-          }
-          const avgExitN=sumCloseQty>0?sumExitWeighted/sumCloseQty:0;
-          const exitPrice=avgExitN>0?String(Number(avgExitN.toFixed(8))):"";
-          // Status: open als positie nog niet volledig dicht (sum close < maxPositions met float-marge)
-          const fullyClosed=maxPos<=0||sumCloseQty>=maxPos-1e-9;
-          const status=fullyClosed?"closed":"open";
-          // Size = peak positie (maxPositions) indien bekend, anders wat gesloten is
-          const totalQty=maxPos>0?maxPos:sumCloseQty;
-          const sizeAsset=totalQty>0?String(Number(totalQty.toFixed(8))):"";
-          const sizeUsdt=(entryN>0&&totalQty>0)?(entryN*totalQty).toFixed(2):"";
-          // Direction — hedge: long/short direct; net: infer uit (avgExit-entry)*sumPnl
+        // Elk close-record = 1 trade (géén aggregatie). Size = closePositions (qty gesloten in DIT event).
+        return(data.trades||[]).filter(t=>{const pnl=parseFloat(t.realizedPnl||t.pnl||"0");const sz=Math.abs(parseFloat(t.closePositions||t.closeTotalPos||"0"));return pnl!==0||sz>0}).map(t=>{
+          const posSide=(t.positionSide||"net").toLowerCase();
+          const closeTime=t.updateTime||t.createTime||Date.now();
+          const entryPrice=t.openAveragePrice||t.averagePrice||t.openPrice||"";
+          const exitPrice=t.closeAveragePrice||t.avgClosePrice||t.closePrice||"";
+          // Size per record = closePositions (hoeveel in dit close-event, niet de peak)
+          const rawSize=t.closePositions||t.closeTotalPos||t.positions||t.size||"";
+          const sizeN=Math.abs(parseFloat(rawSize)||0);
+          const sizeAsset=sizeN>0?String(sizeN):"";
+          const entryN=parseFloat(entryPrice)||0;
+          const sizeUsdt=(entryN>0&&sizeN>0)?(entryN*sizeN).toFixed(2):"";
+          // Direction: positionSide "long"/"short" → gebruik. Anders "net" → infer uit (exit-entry)*pnl
           let direction;
-          if(g.positionSide==="long")direction="long";
-          else if(g.positionSide==="short")direction="short";
-          else direction=((avgExitN-entryN)*sumPnl>=0)?"long":"short";
-          // tpLevels: één rij per partial close. Pct = qty / totalQty × 100 (zodat open deel als "missing" te zien is)
-          const tpLevels=g.records.length>1?g.records.map((t,i)=>{
-            const qty=Math.abs(parseFloat(t.closePositions||t.closeTotalPos||"0"))||0;
-            const price=parseFloat(t.closeAveragePrice||t.avgClosePrice||t.closePrice||"0")||0;
-            const pct=totalQty>0?(qty/totalQty*100).toFixed(1):"0";
-            return{id:"tp_"+(t.historyId||t.positionId||i),price:price>0?String(price):"",pct:String(pct),status:"hit",actualPrice:price>0?String(price):""};
-          }):[];
-          const closeTimeStr=maxCloseTime>0?String(maxCloseTime):"";
-          const openTimeStr=minOpenTime!==Infinity?String(minOpenTime):"";
-          const dateRef=maxCloseTime||Date.now();
-          const partialNote=(!fullyClosed&&maxPos>0)?`⚠ Partially Closed — ${(sumCloseQty/maxPos*100).toFixed(1)}% gesloten`:"";
-          return{id:"blofin_"+g.positionId,date:ts2date(dateRef),time:ts2time(dateRef),pair:(g.instId||"").replace("-","/"),direction,entry:entryPrice,exit:exitPrice,positionSize:sizeUsdt||sizeAsset,positionSizeAsset:sizeAsset,pnl:String(Number(sumPnl.toFixed(8))),fees:String(Number(sumFee.toFixed(8))),leverage:g.leverage||"10",source:"blofin",status,stopLoss:"",takeProfit:"",highestPrice:"",lowestPrice:"",setupTags:[],confirmationTags:[],timeframeTags:[],emotionTags:[],mistakeTags:[],customTags:[],rating:0,screenshot:null,notes:partialNote,links:[],layers:[],tpLevels,positionId:g.positionId||"",openTime:openTimeStr,closeTime:fullyClosed?closeTimeStr:""};
+          if(posSide==="long")direction="long";
+          else if(posSide==="short")direction="short";
+          else{const xN=parseFloat(exitPrice)||0;const pN=parseFloat(t.realizedPnl||t.pnl||"0");direction=((xN-entryN)*pN>=0)?"long":"short"}
+          // Unique ID per close-event zodat partial closes als aparte trades bestaan
+          return{id:"blofin_"+t.positionId+"_"+closeTime,date:ts2date(closeTime),time:ts2time(closeTime),pair:(t.instId||"").replace("-","/"),direction,entry:entryPrice,exit:exitPrice,positionSize:sizeUsdt||sizeAsset,positionSizeAsset:sizeAsset,pnl:t.realizedPnl||t.pnl||"",fees:t.fee?Math.abs(parseFloat(t.fee)).toString():"0",leverage:t.leverage||"10",source:"blofin",status:"closed",stopLoss:"",takeProfit:"",highestPrice:"",lowestPrice:"",setupTags:[],confirmationTags:[],timeframeTags:[],emotionTags:[],mistakeTags:[],customTags:[],rating:0,screenshot:null,notes:"",links:[],layers:[],positionId:t.positionId||"",openTime:t.createTime||"",closeTime:String(closeTime)};
         });
       }
       return(data.trades||[]).filter(t=>parseFloat(t.pnl||"0")!==0).map(t=>{
@@ -5323,10 +5222,8 @@ function App(){
   useEffect(function(){
     idbLoadAllTrades().then(function(idbTrades){
       if(idbTrades&&idbTrades.length>0){
-        var loaded=idbTrades.map(function(t){return Object.assign({},EMPTY_TRADE,t);});
-        var post=migrateBlofinPartials(loaded);
-        setTrades(post);
-        if(post.length!==loaded.length)idbSaveAllTrades(post);
+        // IndexedDB heeft data - gebruik dat
+        setTrades(idbTrades.map(function(t){return Object.assign({},EMPTY_TRADE,t);}));
         setTradesLoaded(true);
       } else {
         // Geen IDB data - probeer localStorage (migratie)
@@ -5334,8 +5231,9 @@ function App(){
           var ls=localStorage.getItem("tj_trades");
           if(ls){
             var parsed=JSON.parse(ls);
-            var migrated=migrateBlofinPartials(parsed.map(function(t){return Object.assign({},EMPTY_TRADE,t);}));
+            var migrated=parsed.map(function(t){return Object.assign({},EMPTY_TRADE,t);});
             setTrades(migrated);
+            // Sla meteen op in IDB
             idbSaveAllTrades(migrated);
           }
         }catch(e){}
@@ -5345,7 +5243,7 @@ function App(){
       // IDB volledig mislukt - val terug op localStorage
       try{
         var ls2=localStorage.getItem("tj_trades");
-        if(ls2)setTrades(migrateBlofinPartials(JSON.parse(ls2).map(function(t){return Object.assign({},EMPTY_TRADE,t);})));
+        if(ls2)setTrades(JSON.parse(ls2).map(function(t){return Object.assign({},EMPTY_TRADE,t);}));
       }catch(e){}
       setTradesLoaded(true);
     });
@@ -5482,38 +5380,19 @@ function App(){
   const bulkDelete=(ids)=>setTrades(p=>p.filter(t=>!ids.includes(t.id)));
   const bulkTag=(ids,field,tag)=>setTrades(p=>p.map(t=>{if(!ids.includes(t.id))return t;const arr=t[field]||[];if(arr.includes(tag))return t;return{...t,[field]:[...arr,tag]}}));
   const importTrades=(newOnes)=>{
-    // Fields that user may have edited — protect from being overwritten on re-sync
-    const PROTECTED=["notes","setupTags","confirmationTags","timeframeTags","emotionTags","mistakeTags","customTags","rating","screenshot","links","layers","stopLoss","takeProfit","highestPrice","lowestPrice","manualOverrides"];
-    let freshCount=0,updatedCount=0;
+    const total=newOnes.length;
+    let freshCount=0;let dupCount=0;
     setTrades(p=>{
-      const byId=new Map(p.map(t=>[t.id,t]));
-      const fresh=[];
-      const updatedIds=new Set();
-      for(const incoming of newOnes){
-        const existing=byId.get(incoming.id);
-        if(existing){
-          // Upsert: fresh data wins, except user fields + manualOverrides
-          const merged={...incoming};
-          for(const f of PROTECTED){if(existing[f]!==undefined&&existing[f]!==null&&(Array.isArray(existing[f])?existing[f].length:true))merged[f]=existing[f]}
-          for(const f of(existing.manualOverrides||[])){if(existing[f]!==undefined)merged[f]=existing[f]}
-          byId.set(incoming.id,merged);
-          updatedIds.add(incoming.id);
-        }else{
-          fresh.push(incoming);
-          byId.set(incoming.id,incoming);
-        }
-      }
+      const ex=new Set(p.map(t=>t.id));
+      const fresh=newOnes.filter(t=>{if(ex.has(t.id)){dupCount++;return false}return true});
       freshCount=fresh.length;
-      updatedCount=updatedIds.size;
-      const existingUpdated=p.map(t=>byId.get(t.id)||t);
-      return fresh.length?[...fresh,...existingUpdated]:existingUpdated;
+      return fresh.length?[...fresh,...p]:p;
     });
+    // Wait one tick so setTrades closure populates freshCount/dupCount
     setTimeout(()=>{
-      const parts=[];
-      if(freshCount)parts.push(`${freshCount} nieuw`);
-      if(updatedCount)parts.push(`${updatedCount} bijgewerkt`);
-      if(!parts.length)showToast("Geen wijzigingen sinds laatste sync","info");
-      else showToast(parts.join(" · ")+" ✓","success");
+      if(freshCount===0&&dupCount>0)showToast(`Alle ${dupCount} trades bestonden al — niets toegevoegd`,"info");
+      else if(dupCount>0)showToast(`${freshCount} nieuw · ${dupCount} al aanwezig (overgeslagen)`,"success");
+      else showToast(`${freshCount} trades geïmporteerd ✓`);
     },0);
   };
 
