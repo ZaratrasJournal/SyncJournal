@@ -1060,17 +1060,19 @@ const ExchangeAPI = {
       data.source="positions-history";
       const source=data.source||"orders-history";
       if(source==="positions-history"){
-        // DEV debug: log eerste trade zodat we exact zien welke velden Blofin teruggeeft
-        if((data.trades||[]).length>0)console.log("[Blofin] Eerste positions-history record (velden-check):",data.trades[0]);
-        return(data.trades||[]).filter(t=>{const pnl=parseFloat(t.realizedPnl||t.pnl||"0");const sz=Math.abs(parseFloat(t.closeTotalPos||t.positions||"0"));return pnl!==0||sz>0}).map(t=>{
+        return(data.trades||[]).filter(t=>{const pnl=parseFloat(t.realizedPnl||t.pnl||"0");const sz=Math.abs(parseFloat(t.closePositions||t.closeTotalPos||t.maxPositions||t.positions||"0"));return pnl!==0||sz>0}).map(t=>{
           const posSide=(t.positionSide||"net").toLowerCase();
-          let direction=posSide==="long"?"long":posSide==="short"?"short":parseFloat(t.closeTotalPos||t.positions||"0")>=0?"long":"short";
           const closeTime=t.updateTime||t.createTime||Date.now();
-          // Blofin positions-history field naming varies; try all common variants
           const entryPrice=t.openAveragePrice||t.averagePrice||t.avgOpenPrice||t.avgEntryPrice||t.openPrice||"";
           const exitPrice=t.closeAveragePrice||t.avgClosePrice||t.closePrice||"";
-          // Position size — probeer alle bekende velden + neem absolute waarde (shorts zijn negatief)
-          const rawSize=t.closeTotalPos||t.positions||t.positionNum||t.size||t.qty||t.quantity||t.vol||t.posSize||t.amount||t.filledSize||t.accFillSz||"";
+          // Direction: explicit long/short → gebruik. Anders ('net' mode): infer uit prijs-beweging vs PnL.
+          // long win/loss: (exit-entry)*pnl > 0   |   short win/loss: (exit-entry)*pnl < 0
+          let direction;
+          if(posSide==="long")direction="long";
+          else if(posSide==="short")direction="short";
+          else{const eN=parseFloat(entryPrice)||0;const xN=parseFloat(exitPrice)||0;const pN=parseFloat(t.realizedPnl||t.pnl||"0");direction=((xN-eN)*pN>=0)?"long":"short"}
+          // Size — Blofin heet het 'closePositions' (qty gesloten), 'maxPositions' = peak size tijdens trade
+          const rawSize=t.closePositions||t.closeTotalPos||t.maxPositions||t.positions||t.positionNum||t.size||"";
           const sizeN=Math.abs(parseFloat(rawSize)||0);
           const sizeAsset=sizeN>0?String(sizeN):"";
           // Compute USDT notional from asset-qty × entry price (positionSize = USDT $ amount in onze app)
