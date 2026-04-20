@@ -6,6 +6,15 @@ Basis kwam uit de feature-diff v4_14 → v9 onderaan. Inmiddels werken we op **v
 
 ---
 
+## 🐛 Bugs (prio — eerst fixen)
+
+<!-- Denny stuurt bugs 1 voor 1 — elk item krijgt datum + korte reproductiestap. -->
+
+- [ ] **2026-04-18 — Cloudflare / Proxy-sectie verbergen voor community-members** — community-lid (coelho) vraagt in Discord of hij zelf een Cloudflare Worker moet aanmaken. De "Proxy server" sectie met Worker URL-veld wekt die verwarring op, ook al staat er in de uitleg dat het niet nodig is. **Fix:** Worker URL volledig verbergen voor end-users (hardcoded, geen UI-veld). Alleen voor dev/Denny+Sebas zichtbaar (bijv. hidden achter een `?dev=1` query-param of een triple-click easter-egg op de logo). Voor de community geldt: het werkt gewoon — geen setup nodig.
+- [ ] **2026-04-18 — "Max trades per dag" toont decimalen + spinner-pijltjes overlappen** — Trading Rules, regel "Max trades per dag" staat op `2,8` (komma-getal). Trades per dag is per definitie een geheel getal. Ook: de browser-default `<input type="number">` spinner-pijltjes overlappen het getal en vallen uit de toon qua layout. Gemeld door coelho. **Fix:** `step="1"` + `min="0"` + parseInt bij opslag voor deze specifieke regel (en voor andere integer-regels zoals max-loss-streak). Spinner-pijltjes stylen via CSS (`-webkit-inner-spin-button`, `-moz-appearance`) of verbergen en eigen ▲▼ knopjes die in de pil-stijl passen.
+- [ ] **2026-04-18 — Trade-invoer modal sluit bij klik naast het vlak → invoer kwijt** — gemeld door Jordy én coelho. Als je per ongeluk net naast de invoer-popup klikt sluit de modal, en alle ingevulde velden zijn weg. Geldt óók voor het opslaan-moment (modal sluit tijdens de save flow). Extra: **opslagknop staat onder het zicht** (vereist verticaal scrollen om hem te vinden). **Fix voorstel:** (a) backdrop-click sluit niet meer standaard — alleen via ✕ of Annuleren; óf (b) als er unsaved changes zijn, toon confirm "Weet je zeker dat je wilt sluiten?". (c) Opslag-knop sticky onderin de modal maken zodat hij altijd zichtbaar is. (d) Overwegen: auto-save-naar-draft bij tabben tussen velden (coelho's suggestie) — draft in `localStorage` key `tj_trade_draft`, opnieuw geladen bij heropenen.
+- [ ] **2026-04-18 — Content scrollt door de top-navigatie heen** — gemeld door coelho (Help-pagina). Tekst onder het top-menu (tabs: Trades, Analytics, Review, Kalender, Instellingen) is zichtbaar door de tab-labels als je scrollt. Top-bar heeft onvoldoende ondoorzichtige achtergrond. **Fix:** top-nav stickybar een solide `background: var(--bg)` + hogere `z-index` geven, óf de `backdrop-filter: blur(..)` verzwaren zodat content onder de tabs niet leesbaar doorschijnt. Check dat dit klopt voor alle thema's (sync/classic/aurora/light/parchment/daylight).
+
 ## 🔜 Next up (deze of volgende werksessie)
 
 - [ ] **🥇 AI trade-review** — knop "Analyseer mijn laatste N trades" via user's eigen API-key (OpenAI/Claude). Patroon-analyse + bias-detectie. Grootste differentiator.
@@ -26,6 +35,8 @@ Basis kwam uit de feature-diff v4_14 → v9 onderaan. Inmiddels werken we op **v
 
 ## 📋 Quick wins (klein, geïsoleerd, laag risico)
 
+- [ ] **"📡 Open posities ophalen" knop ook voor Blofin** — infrastructuur is er al (`Blofin.fetchOpenPositions` in `ExchangeAPI` + Worker-route `/api/v1/account/positions` werkt). MEXC-knop (sinds commit `73c92d5`) beperkt op `ex==="mexc"`. **Fix:** voorwaarde verbreden naar elke exchange die `fetchOpenPositions` supports — dan verschijnt de knop automatisch bij Blofin (en Kraken). Test per exchange of de response-mapping klopt; `syncOpenPositions` in App is al exchange-agnostisch.
+- [ ] **Zichtbaar versie/build-nummer in de UI** — gemeld door coelho (Discord). Nu staat "SyncJournal v12" alleen in `<title>`; in de UI is er geen versie-indicator. Community kan dan niet inschatten of ze op de laatste versie draaien als er iets niet werkt. **Fix:** toon ergens prominent maar bescheiden een versie/build-string (bijv. footer van Help-pagina + Instellingen, of subtiel onderaan de sidebar). Format suggestie: `v12.X · 2026-04-18 · <korte git-hash>`. Hash kan bij release inline in de HTML gezet worden (handmatig in `cp work→main`-flow of via een pre-commit hook). Extra: bij "Nieuwere versie beschikbaar" waarschuwing — check `/main/tradejournal.html` raw op GitHub voor versie-string-verschil (optioneel, latere feature).
 - [ ] **Hyperliquid toevoegen** — kan volledig client-side (public info-endpoint, geen proxy). Zie `Agent` onderzoek van 2026-04-14.
 - [ ] **MAE-to-Stop ratio per setup** (idee #12) — uitbreiding op Setup Insights tabel als we MAE data hebben.
 
