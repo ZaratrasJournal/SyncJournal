@@ -18,6 +18,7 @@ Basis kwam uit de feature-diff v4_14 → v9 onderaan. Inmiddels werken we op **v
 ## 🔜 Next up (deze of volgende werksessie)
 
 - [ ] **🥇 AI trade-review** — knop "Analyseer mijn laatste N trades" via user's eigen API-key (OpenAI/Claude). Patroon-analyse + bias-detectie. Grootste differentiator.
+- [ ] **Subtiele mindset-reminders in de journal** — korte tekstuele/visuele nudges (Mark Douglas / Van Tharp / Steenbarger quotes, checklist-triggers, emotie-check), on/off per user in Instellingen. Gepitcht aan Morani community voor format-feedback. Mogelijke plekken: banner bovenin bij nieuwe trade (pre-entry: "Volgt dit je plan?"), popup na N losses op dag (tilt-guard), dagelijks 1 quote bij eerste app-open, iconen in TradeForm bij emotie-tags. Ondersteunt bestaande proces-focus richting. Format-keuze afwachten uit Discord-thread.
 - [ ] **Tiltmeter (emotie 1-10 per trade)** — Edgewonk's USP. Correleer met PnL. Fase 2 van proces-focus (Fase 1 is al live).
 - [ ] **Pre-trade checklist builder** — user definieert 5-10 items (entry-criteria, risk-check, bias confirmation). Per trade score → toegevoegd aan Analytics Proces-mode.
 - [ ] **Time-of-day discipline heatmap** (7×24 grid) — bestaat nergens als visual. Toont wanneer je discipline zakt. Fase 2 proces-focus.
