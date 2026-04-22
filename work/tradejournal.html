@@ -901,9 +901,8 @@ const MINDSET_CTX={
 
 const DEFAULT_MINDSET_PREFS={master:true,morning:true,preTrade:true,postLoss:true,dashboardCard:true,riskExceeded:true};
 
-// One-time migration: clear the old "seen this morning" key so users who already
-// dismissed today don't stay banner-less after this refactor. Runs once per page load, harmless.
-try{if(localStorage.getItem("tj_mindset_last_morning")){localStorage.removeItem("tj_mindset_last_morning")}}catch{}
+// One-time cleanup: stale keys from older mindset-reminder iterations. Harmless if not present.
+try{["tj_mindset_last_morning","tj_mindset_dashQuote","tj_mindset_quote_today","tj_mindset_dismissed_day"].forEach(k=>localStorage.removeItem(k))}catch{}
 // "Seen" tracking — so we don't repeat the same quote too often
 function getMindsetSeen(){try{const s=localStorage.getItem("tj_mindset_seen");return s?JSON.parse(s):{}}catch{return{}}}
 function markMindsetSeen(id){try{const s=getMindsetSeen();s[id]=Date.now();localStorage.setItem("tj_mindset_seen",JSON.stringify(s))}catch{}}
@@ -1779,20 +1778,6 @@ function SetupRankingWidget({trades,onSetupClick}){
 function Dashboard({trades,config,accounts,onReport,storageUsage,setFilters,setTab}){
   const[balances,setBalances]=useState(null);
   const[balLoading,setBalLoading]=useState(false);
-  // Mindset — weekly-rotating quote card (same localStorage key as DashboardPremium so it's consistent)
-  const[mindsetCard]=useState(()=>{
-    const p=readMindsetPrefs();
-    if(!p.master||!p.dashboardCard)return null;
-    try{
-      const now=new Date();const y=now.getFullYear();const w=Math.ceil(((now-new Date(y,0,1))/86400000+new Date(y,0,1).getDay()+1)/7);
-      const key=`${y}-${w}`;
-      const stored=localStorage.getItem("tj_mindset_dashQuote");
-      if(stored){const parsed=JSON.parse(stored);if(parsed.key===key)return parsed.quote;}
-      const q=pickMindsetQuote("dashboard-card");
-      if(q){markMindsetSeen(q.id);localStorage.setItem("tj_mindset_dashQuote",JSON.stringify({key,quote:q}))}
-      return q;
-    }catch{return null}
-  });
   const{prefs:lp,toggle:lpToggle,reset:lpReset}=useLayoutPrefs("dashboard");
   const[lpOpen,setLpOpen]=useState(false);
   const LP_SECTIONS=[
@@ -1867,16 +1852,6 @@ function Dashboard({trades,config,accounts,onReport,storageUsage,setFilters,setT
   return(<div style={{animation:"fadeIn .3s ease"}}>
     {/* v7 NEW: storage warning */}
     <StorageWarning usage={storageUsage}/>
-
-    {/* Mindset — weekly quote card (subtle, always visible on Dashboard) */}
-    {mindsetCard&&<div style={{padding:"14px 20px",marginBottom:"20px",borderRadius:"12px",background:"linear-gradient(135deg, rgba(201,168,76,.08) 0%, rgba(201,168,76,.02) 100%)",border:"1px solid rgba(201,168,76,.18)",display:"flex",alignItems:"center",gap:"14px",position:"relative",overflow:"hidden"}}>
-      <div style={{position:"absolute",top:"2px",right:"14px",fontSize:"42px",color:"var(--gold)",opacity:.18,fontFamily:"Georgia, serif",lineHeight:1,pointerEvents:"none"}}>"</div>
-      <div style={{fontSize:"18px",lineHeight:1}}>💭</div>
-      <div style={{flex:1,fontSize:"13px",lineHeight:1.55,color:"var(--text2)",fontStyle:"italic"}}>
-        "{mindsetCard.text}"
-        <span style={{color:"var(--gold)",fontSize:"10px",fontFamily:"var(--mono)",letterSpacing:".08em",textTransform:"uppercase",marginLeft:"8px",fontStyle:"normal",fontWeight:600}}>— {mindsetCard.src}</span>
-      </div>
-    </div>}
 
     {/* Portfolio waarde header */}
     {(()=>{
@@ -4252,20 +4227,6 @@ function DashboardPremium({trades,config,accounts,tradingRules,dailyNotes,goals,
     const ctx=buildInsightContext(closed,goals,tradingRules);
     return getDashboardInsight(ctx,Math.floor(Date.now()/1000));
   });
-  // Mindset — weekly-rotating quote on dashboard (only re-picks when week changes)
-  const[mindsetCard,setMindsetCard]=useState(()=>{
-    const p=readMindsetPrefs();
-    if(!p.master||!p.dashboardCard)return null;
-    try{
-      const now=new Date();const y=now.getFullYear();const w=Math.ceil(((now-new Date(y,0,1))/86400000+new Date(y,0,1).getDay()+1)/7);
-      const key=`${y}-${w}`;
-      const stored=localStorage.getItem("tj_mindset_dashQuote");
-      if(stored){const parsed=JSON.parse(stored);if(parsed.key===key)return parsed.quote;}
-      const q=pickMindsetQuote("dashboard-card");
-      if(q){markMindsetSeen(q.id);localStorage.setItem("tj_mindset_dashQuote",JSON.stringify({key,quote:q}))}
-      return q;
-    }catch{return null}
-  });
   const hour=new Date().getHours();
   const greeting=hour<12?"Goedemorgen":hour<18?"Goedemiddag":"Goedenavond";
   const today=new Date().toISOString().split("T")[0];
@@ -4312,16 +4273,6 @@ function DashboardPremium({trades,config,accounts,tradingRules,dailyNotes,goals,
         <button onClick={()=>{setNewTrade(newEmptyTrade());setTab("new");}} style={{padding:"12px 24px",borderRadius:"12px",background:"linear-gradient(135deg,#f0d57a,#C9A84C,#8c721c)",color:"#000",border:"none",fontFamily:"inherit",fontSize:"13px",fontWeight:700,cursor:"pointer",boxShadow:"0 6px 20px rgba(201,168,76,.35),inset 0 1px 0 rgba(255,255,255,.3)"}}>⊕ Nieuwe trade</button>
       </div>
     </div>
-
-    {/* Mindset — weekly quote card (subtle, not dismissable but quiet) */}
-    {mindsetCard&&<div style={{padding:"14px 20px",marginBottom:"20px",borderRadius:"12px",background:"linear-gradient(135deg, rgba(201,168,76,.08) 0%, rgba(201,168,76,.02) 100%)",border:"1px solid rgba(201,168,76,.18)",display:"flex",alignItems:"center",gap:"14px",position:"relative",overflow:"hidden"}}>
-      <div style={{position:"absolute",top:"2px",right:"14px",fontSize:"42px",color:"var(--gold)",opacity:.18,fontFamily:"Georgia, serif",lineHeight:1,pointerEvents:"none"}}>"</div>
-      <div style={{fontSize:"18px",lineHeight:1}}>💭</div>
-      <div style={{flex:1,fontSize:"13px",lineHeight:1.55,color:"var(--text2)",fontStyle:"italic"}}>
-        "{mindsetCard.text}"
-        <span style={{color:"var(--gold)",fontSize:"10px",fontFamily:"var(--mono)",letterSpacing:".08em",textTransform:"uppercase",marginLeft:"8px",fontStyle:"normal",fontWeight:600}}>— {mindsetCard.src}</span>
-      </div>
-    </div>}
 
     {/* GOALS RINGS */}
     {goals&&<GoalsRings goals={goals} trades={closed} onEdit={()=>setTab("accounts")}/>}
@@ -5556,7 +5507,7 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,imp
         </div>
         <div style={{fontSize:"10px",color:"var(--text4)",lineHeight:1.5,marginBottom:"10px"}}>Subtiele nudges (Morani + traders-canon) op de juiste momenten — ochtend-welkom, pre-trade reflectie, post-loss, Dashboard quote. Geen spam.</div>
         {mindsetPrefs?.master&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"6px 14px",paddingLeft:"4px"}}>
-          {[["morning","☀️ Ochtend-banner (1×/dag)"],["preTrade","🧘 Pre-trade italic"],["postLoss","💪 Post-loss toast"],["dashboardCard","📖 Dashboard quote-kaart"]].map(([k,l])=>(
+          {[["morning","☀️ Quote-banner (rotateert per tab)"],["preTrade","🧘 Pre-trade italic"],["postLoss","💪 Post-loss toast"]].map(([k,l])=>(
             <label key={k} style={{display:"flex",alignItems:"center",gap:"8px",fontSize:"11px",color:"var(--text3)",cursor:"pointer"}}>
               <input type="checkbox" checked={!!mindsetPrefs[k]} onChange={()=>setMindsetPrefs(p=>({...p,[k]:!p[k]}))} style={{accentColor:"var(--gold)",cursor:"pointer"}}/>
               {l}
