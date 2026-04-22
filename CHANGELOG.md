@@ -6,6 +6,15 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.8] — 2026-04-22
+
+### Toegevoegd
+- **Blofin SL/TP live meekomen met open posities** — tweede API-call naar `/api/v1/trade/orders-tpsl-pending` na ophalen van open posities. SL/TP worden automatisch geladen, gematched per instrument + positie-side. Verschijnen direct in je trade-detail bij een open Blofin-trade. Werkt silent — faalt de tweede call dan zijn de posities nog steeds bruikbaar zonder SL/TP.
+- **🔄 Live auto-refresh voor open posities** — nieuwe pill-row in Instellingen → Accounts (onder Auto-sync): `[Uit][30 sec][1 min][2 min]`. Default Uit. Ververst elke interval alle gekoppelde exchanges (MEXC + Blofin + Kraken) op open posities inclusief unrealized PnL, SL/TP, liquidation price. Silent — geen toasts. Pauzeert wanneer browser-tab inactief is. Tradezella-niveau live-tracking zonder backend/WebSocket.
+
+### Gewijzigd
+- **Smarter merge-logica in `syncOpenPositions`**: `stopLoss` en `takeProfit` worden nu overschreven door een niet-lege API-waarde (Blofin SL/TP verschuift → journal volgt). Manual-overrides (via `manualOverrides` array) blijven altijd winnen. Andere user-velden (notes, tags, rating) zijn nog altijd volledig beschermd.
+
 ## [v12.7] — 2026-04-22
 
 ### Toegevoegd

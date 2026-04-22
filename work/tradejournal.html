@@ -867,7 +867,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.7",released:"2026-04-22"};
+const APP_VERSION={version:"v12.8",released:"2026-04-22"};
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
 function isNewerVersion(a,b){
   const parse=(s)=>String(s||"").replace(/^v/,"").split(".").map(n=>parseInt(n,10)||0);
@@ -1373,7 +1373,25 @@ const ExchangeAPI = {
     },
     async fetchOpenPositions(apiKey,apiSecret,passphrase){
       const data=await this._direct(apiKey,apiSecret,passphrase,"/api/v1/account/positions");
-      return(data.data||[]).map(p=>({id:"blofin_open_"+p.positionId,positionId:String(p.positionId||""),openTime:String(p.createTime||""),closeTime:"",date:ts2date(p.createTime||Date.now()),time:ts2time(p.createTime||Date.now()),pair:(p.instId||"").replace("-","/"),direction:parseFloat(p.positions||"0")>0?"long":"short",entry:String(p.averagePrice||""),exit:"",positionSize:String(Math.abs(parseFloat(p.positions||"0"))),pnl:"",fees:"0",leverage:String(p.leverage||"10"),source:"blofin",status:"open",unrealizedPnl:String(p.unrealizedPnl||""),liquidationPrice:String(p.liquidationPrice||""),stopLoss:"",takeProfit:"",highestPrice:"",lowestPrice:"",setupTags:[],confirmationTags:[],timeframeTags:[],emotionTags:[],mistakeTags:[],customTags:[],rating:0,screenshot:null,notes:"",links:[],layers:[]}));
+      const positions=(data.data||[]).map(p=>({id:"blofin_open_"+p.positionId,positionId:String(p.positionId||""),instId:String(p.instId||""),positionSide:String(p.positionSide||""),openTime:String(p.createTime||""),closeTime:"",date:ts2date(p.createTime||Date.now()),time:ts2time(p.createTime||Date.now()),pair:(p.instId||"").replace("-","/"),direction:parseFloat(p.positions||"0")>0?"long":"short",entry:String(p.averagePrice||""),exit:"",positionSize:String(Math.abs(parseFloat(p.positions||"0"))),pnl:"",fees:"0",leverage:String(p.leverage||"10"),source:"blofin",status:"open",unrealizedPnl:String(p.unrealizedPnl||""),liquidationPrice:String(p.liquidationPrice||""),stopLoss:"",takeProfit:"",highestPrice:"",lowestPrice:"",setupTags:[],confirmationTags:[],timeframeTags:[],emotionTags:[],mistakeTags:[],customTags:[],rating:0,screenshot:null,notes:"",links:[],layers:[]}));
+      // Enrich with active TP/SL orders (second API call). Silent on failure — positions still usable without SL/TP.
+      try{
+        const tpslData=await this._direct(apiKey,apiSecret,passphrase,"/api/v1/trade/orders-tpsl-pending");
+        const orders=tpslData.data||[];
+        for(const pos of positions){
+          const sideMatches=(o)=>{
+            const ps=(o.positionSide||"net").toLowerCase();
+            if(ps==="net")return true;// one-way mode: any order for this instId applies
+            return(ps==="long"&&pos.direction==="long")||(ps==="short"&&pos.direction==="short");
+          };
+          const related=orders.filter(o=>String(o.instId||"")===pos.instId&&sideMatches(o));
+          const slOrder=related.find(o=>parseFloat(o.slTriggerPrice||"0")>0);
+          const tpOrder=related.find(o=>parseFloat(o.tpTriggerPrice||"0")>0);
+          if(slOrder)pos.stopLoss=String(slOrder.slTriggerPrice);
+          if(tpOrder)pos.takeProfit=String(tpOrder.tpTriggerPrice);
+        }
+      }catch(e){/* silent — positions still usable */}
+      return positions;
     },
     async fetchFills(apiKey,apiSecret,passphrase,symbol,startTime,endTime){
       const params={limit:100};
@@ -5706,7 +5724,18 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,imp
             <button key={opt.v} onClick={()=>setConfig(p=>({...p,syncInterval:opt.v}))} style={{padding:"5px 12px",borderRadius:"var(--radius)",border:"1px solid var(--border3)",fontSize:"11px",fontWeight:600,background:active?"var(--gold-dim)":"transparent",color:active?"var(--gold)":"var(--text4)",cursor:"pointer",fontFamily:"inherit"}}>{opt.l}</button>
           )})}
         </div>
-        <div style={{fontSize:"10px",color:"var(--text4)",marginTop:"6px",lineHeight:1.5}}>Polt gekoppelde exchanges automatisch op dit interval. Werkt alleen wanneer er minstens één API-verbinding actief is. Aanbevolen nu: <strong>Uit</strong> zolang de proxy-verbinding met MEXC nog niet werkt.</div>
+        <div style={{fontSize:"10px",color:"var(--text4)",marginTop:"6px",lineHeight:1.5}}>Polt gekoppelde exchanges automatisch op dit interval voor <strong>historische trades</strong>. Werkt alleen wanneer er minstens één API-verbinding actief is.</div>
+      </div>
+
+      {/* Live open-posities auto-refresh — separate from historical-trade sync because positions change fast */}
+      <div style={{marginTop:"16px",paddingTop:"14px",borderTop:"1px solid var(--border2)"}}>
+        <div style={{display:"flex",alignItems:"center",gap:"12px",flexWrap:"wrap"}}>
+          <span style={{fontSize:"12px",color:"var(--text2)",minWidth:"150px"}}>🔄 Live open posities:</span>
+          {[{v:0,l:"Uit"},{v:30,l:"30 sec"},{v:60,l:"1 min"},{v:120,l:"2 min"}].map(opt=>{const active=(config.autoRefreshOpen||0)===opt.v;return(
+            <button key={opt.v} onClick={()=>setConfig(p=>({...p,autoRefreshOpen:opt.v}))} style={{padding:"5px 12px",borderRadius:"var(--radius)",border:"1px solid var(--border3)",fontSize:"11px",fontWeight:600,background:active?"var(--gold-dim)":"transparent",color:active?"var(--gold)":"var(--text4)",cursor:"pointer",fontFamily:"inherit"}}>{opt.l}</button>
+          )})}
+        </div>
+        <div style={{fontSize:"10px",color:"var(--text4)",marginTop:"6px",lineHeight:1.5}}>Ververst live open posities (entry · unrealized PnL · SL/TP · liquidation) van elke gekoppelde exchange. Silent — geen toasts. Pauzeert wanneer tab inactief is.</div>
       </div>
 
       {/* Missed trades — opt-in power feature for tracking edge gap */}
@@ -6132,6 +6161,29 @@ function App(){
 
   useEffect(()=>{try{localStorage.setItem("tj_config",JSON.stringify(config))}catch(err){}},[config]);
 
+  // Live open-posities auto-refresh — separate/faster poll than historical-trade sync.
+  // Iterates all exchanges that have fetchOpenPositions + configured creds. Silent on errors.
+  useEffect(()=>{
+    const iv=config.autoRefreshOpen||0;
+    if(!iv)return;
+    const connected=Object.entries(config.exchanges||{}).filter(([k,c])=>c&&c.apiKey&&c.apiSecret&&ExchangeAPI[k]?.fetchOpenPositions);
+    if(!connected.length)return;
+    const refreshAll=async()=>{
+      if(document.hidden)return;
+      for(const[key,cfg] of connected){
+        try{
+          const api=ExchangeAPI[key];
+          const opens=api.needsPassphrase
+            ?await api.fetchOpenPositions(cfg.apiKey,cfg.apiSecret,cfg.passphrase)
+            :await api.fetchOpenPositions(cfg.apiKey,cfg.apiSecret);
+          if(Array.isArray(opens))syncOpenPositions(key,opens);
+        }catch(e){/* silent — user wil geen toasts elke 30s */}
+      }
+    };
+    const timer=setInterval(refreshAll,iv*1000);
+    return()=>clearInterval(timer);
+  },[config.autoRefreshOpen,config.exchanges]);
+
   // Auto-sync interval — alleen actief bij syncInterval>0 én minstens 1 gekoppelde exchange
   useEffect(()=>{
     const iv=config.syncInterval||0;
@@ -6242,8 +6294,14 @@ function App(){
   // Open-posities sync: vervangt alle bestaande open trades van deze exchange
   // door de verse set uit de API. Behoudt user-velden (tags, notes, rating, etc.)
   // en verwijdert "zombie" opens (trades die niet meer in de API-response staan).
+  //
+  // Two levels of protection:
+  // - ALWAYS_PROTECT: user-owned fields, never overwritten by API
+  // - PROTECT_IF_INCOMING_EMPTY: fields some exchanges populate (Blofin SL/TP) but others
+  //   don't (MEXC). If the API brings a value, we update; if empty, we keep what's there.
   const syncOpenPositions=(exchangeKey,opens)=>{
-    const PROTECTED=["notes","setupTags","confirmationTags","timeframeTags","emotionTags","mistakeTags","customTags","rating","screenshot","links","layers","stopLoss","takeProfit","highestPrice","lowestPrice","manualOverrides"];
+    const ALWAYS_PROTECT=["notes","setupTags","confirmationTags","timeframeTags","emotionTags","mistakeTags","customTags","rating","screenshot","links","layers","highestPrice","lowestPrice","manualOverrides"];
+    const PROTECT_IF_INCOMING_EMPTY=["stopLoss","takeProfit"];
     let freshCount=0,updatedCount=0,removedCount=0;
     setTrades(prev=>{
       const freshIds=new Set((opens||[]).map(t=>t.id));
@@ -6258,7 +6316,11 @@ function App(){
         const existing=byId.get(incoming.id);
         if(existing){
           const merged={...incoming};
-          for(const f of PROTECTED){if(existing[f]!==undefined&&existing[f]!==null&&(Array.isArray(existing[f])?existing[f].length:true))merged[f]=existing[f]}
+          for(const f of ALWAYS_PROTECT){if(existing[f]!==undefined&&existing[f]!==null&&(Array.isArray(existing[f])?existing[f].length:true))merged[f]=existing[f]}
+          for(const f of PROTECT_IF_INCOMING_EMPTY){
+            const incomingEmpty=!incoming[f]||(typeof incoming[f]==="string"&&incoming[f].trim()==="");
+            if(incomingEmpty&&existing[f]!==undefined&&existing[f]!==null&&existing[f]!=="")merged[f]=existing[f];
+          }
           for(const f of(existing.manualOverrides||[])){if(existing[f]!==undefined)merged[f]=existing[f]}
           byId.set(incoming.id,merged);
           updatedCount++;
