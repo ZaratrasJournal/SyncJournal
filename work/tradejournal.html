@@ -2560,8 +2560,14 @@ function Section({title,storeKey,defaultOpen=true,hint,children}){
   </details>);
 }
 
-function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,accounts,showToast}){
+function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,accounts,showToast,isDraft}){
   const[showCard,setShowCard]=useState(false);
+  // Auto-persist to tj_trade_draft so unsaved input survives accidental modal-close, tab-close, crash, etc.
+  // Only for new trades (isDraft=true); edits are already persisted via tj_trades.
+  useEffect(()=>{
+    if(!isDraft||!trade)return;
+    try{localStorage.setItem("tj_trade_draft",JSON.stringify({trade,savedAt:Date.now()}))}catch(err){}
+  },[trade,isDraft]);
   const toggle=(f,tag)=>setTrade(p=>({...p,[f]:p[f].includes(tag)?p[f].filter(t=>t!==tag):[...p[f],tag]}));
   const fRef=useRef();
   const[ssInfo,setSsInfo]=useState(null);
@@ -5312,6 +5318,21 @@ function App(){
   const[storageUsage,setStorageUsage]=useState(()=>getStorageUsage());
   const[showPdf,setShowPdf]=useState(false);
   const[showWelcome,setShowWelcome]=useState(function(){try{return!localStorage.getItem("tj_welcomed");}catch(e){return false;}});
+  // Unsaved draft recovery: on mount, check for a persisted new-trade draft (<48h old)
+  const[pendingDraft,setPendingDraft]=useState(null);
+  useEffect(()=>{
+    try{
+      const raw=localStorage.getItem("tj_trade_draft");if(!raw)return;
+      const parsed=JSON.parse(raw);
+      const ageMs=Date.now()-(parsed.savedAt||0);
+      if(ageMs>48*60*60*1000){localStorage.removeItem("tj_trade_draft");return;}
+      // Only offer recovery if the draft has actual content (not a blank freshly-opened form)
+      const t=parsed.trade||{};
+      const hasContent=(t.entry||t.exit||t.pnl||t.notes||t.entryNote||(t.setupTags||[]).length||(t.links||[]).length||t.screenshot);
+      if(hasContent)setPendingDraft({trade:t,savedAt:parsed.savedAt});
+      else localStorage.removeItem("tj_trade_draft");
+    }catch(err){}
+  },[]);
 
   const showToast=(msg,type="success",data=null)=>{setToast({msg,type,data,id:Date.now()});setTimeout(()=>setToast(null),5000)};
 
@@ -5401,6 +5422,8 @@ function App(){
     if(isNew){const sessions=getSessionTags(enriched.date,enriched.time);if(sessions.length&&!(enriched.timeframeTags||[]).some(t=>["Tokyo","London","New York","Off-session","Weekend"].includes(t))){}}
     setTrades(p=>{if(isNew){return[enriched,...p]}else{return p.map(t=>t.id===enriched.id?enriched:t)}});
     setEditTrade(null);setNewTrade(null);
+    // Draft was saved successfully; clear persisted draft so we don't prompt to restore it next session
+    if(isNew){try{localStorage.removeItem("tj_trade_draft")}catch(err){}}
     showToast(isNew?"Trade opgeslagen ✓":"Trade bijgewerkt ✓");
     if(isNew&&tab==="new")setTab("trades");
   };
@@ -5592,6 +5615,12 @@ function App(){
 
       {/* Toast */}
       <CommandPalette open={cmdOpen} onClose={()=>setCmdOpen(false)} trades={trades} navigate={navigate} setNewTrade={setNewTrade} newEmptyTrade={newEmptyTrade} exportTrades={exportTrades} setConfig={setConfig} config={config}/>
+      {pendingDraft&&!newTrade&&!editTrade&&<div style={{position:"fixed",top:"76px",left:"50%",transform:"translateX(-50%)",zIndex:400,padding:"12px 18px",borderRadius:"12px",background:"var(--gold-dim)",border:"1px solid var(--gold-border)",color:"var(--text)",fontSize:"13px",display:"flex",alignItems:"center",gap:"14px",boxShadow:"0 8px 32px rgba(0,0,0,.45)",maxWidth:"560px"}}>
+        <span style={{fontSize:"16px"}}>📝</span>
+        <span style={{flex:1,lineHeight:1.4}}>Niet-opgeslagen trade gevonden ({new Date(pendingDraft.savedAt).toLocaleString("nl-NL",{hour:"2-digit",minute:"2-digit",day:"2-digit",month:"2-digit"})}). Wil je 'm terughalen?</span>
+        <button onClick={()=>{setNewTrade(pendingDraft.trade);navigate("new");setPendingDraft(null)}} style={{padding:"6px 12px",borderRadius:"6px",border:"none",background:"var(--gold)",color:"#000",fontSize:"12px",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Herstellen</button>
+        <button onClick={()=>{try{localStorage.removeItem("tj_trade_draft")}catch(err){};setPendingDraft(null)}} style={{padding:"6px 10px",borderRadius:"6px",border:"1px solid var(--border3)",background:"transparent",color:"var(--text3)",fontSize:"12px",cursor:"pointer",fontFamily:"inherit"}}>Weggooien</button>
+      </div>}
       {toast&&<div className={`tj-toast ${toast.type==="error"?"error":toast.type==="info"?"info":"success"}`} style={{position:"fixed",bottom:"24px",right:"24px",zIndex:9999}}>
         <span>{toast.type==="error"?"✕":toast.type==="info"?"ℹ":"✓"}</span>
         <span style={{flex:1}}>{toast.msg}</span>
@@ -5614,9 +5643,9 @@ function App(){
         {(tab==="new"&&newTrade)&&<>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"1rem"}}>
             <div style={{fontSize:"16px",fontWeight:700}}>Nieuwe trade</div>
-            <button onClick={()=>{setNewTrade(null);navigate("trades")}} style={{background:"none",border:"none",color:"var(--text4)",cursor:"pointer",fontSize:"14px"}}>✕</button>
+            <button onClick={()=>{try{localStorage.removeItem("tj_trade_draft")}catch(err){};setNewTrade(null);navigate("trades")}} style={{background:"none",border:"none",color:"var(--text4)",cursor:"pointer",fontSize:"14px"}}>✕</button>
           </div>
-          <TradeForm trade={newTrade} setTrade={setNewTrade} onSave={()=>saveTrade(newTrade)} onCancel={()=>{setNewTrade(null);navigate("trades")}} tagConfig={tagConfig} config={config} accounts={accounts} showToast={showToast}/>
+          <TradeForm trade={newTrade} setTrade={setNewTrade} onSave={()=>saveTrade(newTrade)} onCancel={()=>{try{localStorage.removeItem("tj_trade_draft")}catch(err){};setNewTrade(null);navigate("trades")}} tagConfig={tagConfig} config={config} accounts={accounts} showToast={showToast} isDraft={true}/>
         </>}
 
         {/* Edit modal */}
