@@ -32,14 +32,9 @@ Basis kwam uit de feature-diff v4_14 → v9 onderaan. Inmiddels werken we op **v
 
 ## 📋 Quick wins (klein, geïsoleerd, laag risico)
 
-- [ ] **Morani-logo als favicon / bookmark / social thumbnail** — app heeft nu géén branding in `<head>`: geen favicon, geen Open Graph, geen apple-touch-icon, geen manifest. 3-fase implementatie:
-  - **Fase 1 — Favicon + touch-icon (MVP, ~30 min):** source = vierkante crop (M + candle). Formaten 16×16 / 32×32 / 48×48 PNG + 180×180 apple-touch-icon. **Embed als base64** in `<link rel="icon">` — blijft single-file-HTML, werkt offline. File-size impact: ~5-10KB.
-  - **Fase 2 — Open Graph / Twitter Card (~45 min):** source = landscape-logo (MORANI + subtitle) op donkere bg, 1200×630 PNG. **Moet extern gehost** (base64 werkt niet voor social-scrapers). Voorstel: `main/og-image.png` op GitHub raw. Meta tags: `og:image`, `og:title`, `og:description`, `og:url`, `twitter:card="summary_large_image"`, `twitter:image`. Werkt alleen als mensen app openen via GitHub-URL (niet via `file://`).
-  - **Fase 3 — Web App Manifest (optional, ~30 min):** `manifest.json` met icons + name + theme-color. Enables "Add to Home Screen" op mobiel. Hosting vereist.
-  - **Benodigd van Denny:** (1) vierkant logo (M+candle) als PNG ≥512×512, (2) volledig landscape-logo (MORANI + subtitle) 1200×630 PNG, OF één high-res SVG waaruit ik alles genereer.
-  - **Te beslissen:** (a) branding-naam: "Morani · Trading Journal" of "SyncJournal"? (logo is MORANI, app-code is SyncJournal — keuze welke voor komt in `og:title` en browser-tab); (b) welk formaat is officieel voor favicon — volledig "MORANI" of alleen M+candle icoon.
-- [ ] **"📡 Open posities ophalen" knop ook voor Blofin** — infrastructuur is er al (`Blofin.fetchOpenPositions` in `ExchangeAPI` + Worker-route `/api/v1/account/positions` werkt). MEXC-knop (sinds commit `73c92d5`) beperkt op `ex==="mexc"`. **Fix:** voorwaarde verbreden naar elke exchange die `fetchOpenPositions` supports — dan verschijnt de knop automatisch bij Blofin (en Kraken). Test per exchange of de response-mapping klopt; `syncOpenPositions` in App is al exchange-agnostisch.
-- [ ] **Zichtbaar versie/build-nummer in de UI** — gemeld door coelho (Discord). Nu staat "SyncJournal v12" alleen in `<title>`; in de UI is er geen versie-indicator. Community kan dan niet inschatten of ze op de laatste versie draaien als er iets niet werkt. **Fix:** toon ergens prominent maar bescheiden een versie/build-string (bijv. footer van Help-pagina + Instellingen, of subtiel onderaan de sidebar). Format suggestie: `v12.X · 2026-04-18 · <korte git-hash>`. Hash kan bij release inline in de HTML gezet worden (handmatig in `cp work→main`-flow of via een pre-commit hook). Extra: bij "Nieuwere versie beschikbaar" waarschuwing — check `/main/tradejournal.html` raw op GitHub voor versie-string-verschil (optioneel, latere feature).
+- [ ] **Blofin — near-liquidation warning** — mark-price vs liquidationPrice check, oranje/rode badge als binnen 10% van liq. Vereist mark-price feed (extra API-call per positie of een quote-poll). Middelgroot.
+- [ ] **Blofin — live "last refresh" indicator** — klein tijdje "3s geleden" badge naast open-posities om zichtbaar te maken dat auto-refresh draait. Puur UI, geen logica.
+- [ ] **Blofin — R:R live berekening** — nu SL/TP meekomt van API kunnen we live R:R tonen in trade-detail. Trivial UI-toevoeging (R:R computed uit entry/SL/TP).
 - [ ] **Hyperliquid toevoegen** — kan volledig client-side (public info-endpoint, geen proxy). Zie `Agent` onderzoek van 2026-04-14.
 - [ ] **MAE-to-Stop ratio per setup** (idee #12) — uitbreiding op Setup Insights tabel als we MAE data hebben.
 
@@ -56,6 +51,26 @@ Basis kwam uit de feature-diff v4_14 → v9 onderaan. Inmiddels werken we op **v
 
 ## ✅ Done
 
+- [x] 2026-04-22 — **🎯 Blofin live tracking — open posities + live TP/SL + auto-refresh (v12.7 + v12.8)** — research door `exchange-integrator` agent: de gap met Tradezella/TraderSync was 90% UI, niet backend. Blofin's API bood alles al, we toonden niks. Fix:
+  - Quick-win: "📡 Open posities ophalen" knop ontgrendeld voor alle exchanges met `fetchOpenPositions` (gate was hardcoded MEXC)
+  - Live unrealized PnL `~+$X` (tilde = niet-gerealiseerd) in Trades-tabel PnL-kolom
+  - Liquidation-price badge `LIQ $X` in amber onder Exit-kolom
+  - Tweede API-call naar `/api/v1/trade/orders-tpsl-pending` — SL/TP worden automatisch gevuld, match op instId + positionSide
+  - `autoRefreshOpen` config (Uit/30s/1min/2min) — silent polling, pauzeert bij inactive tab
+  - Smarter merge: `ALWAYS_PROTECT` (user content) + `PROTECT_IF_INCOMING_EMPTY` (SL/TP — Blofin overwrite, MEXC keep). Manual-overrides winnen nog altijd. Commits `cb00572`, `e56e6b9`.
+- [x] 2026-04-22 — **👻 Missed trades — opt-in power feature (v12.6)** — log setups die je spotte maar niet nam. Master toggle in Instellingen → Accounts (default UIT). 4 fases in 1 commit:
+  - Status "missed" (3e waarde naast open/closed), `missedReasonTags` array, `hindsightExit` veld
+  - TradeForm: "👻 Gemist?" toggle, conditioneel velden verbergen, Multi-select reason-tags, optionele hindsight sectie
+  - TagManager: nieuwe categorie "👻 Missed-redenen" met 7 default tags, volledig bewerkbaar
+  - Trades-lijst: 👻 MISS pill, opacity 0.72 voor missed rijen
+  - FilterBar: `[Genomen | Gemist | Beide]` type-pill (default Genomen)
+  - Command Palette: `⌘K → m` voor quick-log
+  - Analytics → Proces → "👻 Edge Gap" sectie: captured-ratio per setup, reasons breakdown, theoretical edge-leak met hindsight-bias warning
+  - `missed-trades-demo.html` standalone prototype. Commit `b819d9a`.
+- [x] 2026-04-22 — **📋 CHANGELOG.md + Instellingen-link (v12.5)** — source-of-truth op GitHub, niet in-app tab. Keep-a-Changelog format in NL. Link vanuit Instellingen → Accounts. Commit `c3cfaf2`.
+- [x] 2026-04-22 — **🔄 Update-flow in Instellingen (v12.3 → v12.4)** — manuele "🔄 Check voor updates" knop in Instellingen → Accounts (vervangt auto-banner). 4 uitkomsten: checking / up-to-date (groen) / error (rood) / newer (gold card met IS_HOSTED-aware action). Voor gehoste contexten: "↻ Update nu" = location.reload(). Voor lokale bestanden: "⬇ Download" naar GitHub raw. Commits `35017e0`, `fd1fec3`.
+- [x] 2026-04-22 — **🎨 Morani branding (v12.4)** — favicon + apple-touch-icon (base64 embedded, M+candle crop), Open Graph + Twitter Card meta tags (1200×630 og-image via GitHub raw hosting), theme-color `#C9A84C`, `<title>` "SyncJournal · Morani". `assets/` folder met source PNG + generated variants. Commit `3e2a456`.
+- [x] 2026-04-22 — **📦 Versie-beheer + auto-update-check (v12.1 → v12.2)** — `APP_VERSION` const bovenin HTML + `main/version.json` companion file. Semver `v12.X` formaat. Zichtbaar in Instellingen footer + Help-pagina (gold mono-font). `isNewerVersion()` semver-compare. `IS_HOSTED` detectie (file:// + localhost vs. public). Commits `a4ce4bd`, `b312b03`, `29a88e1`, `2038df1`, `eeb3035`.
 - [x] 2026-04-22 — **Dashboard cleanup — van 3 naar 2 mindset-elementen** — weekly quote-kaart verwijderd van beide Dashboards omdat de top-banner sinds `5e600fa` al per tab-navigatie roteert en de kaart redundant was. Settings-toggles van 4 → 3. Stale localStorage-keys (tj_mindset_dashQuote e.a.) éénmalig opgeruimd bij load. Commit `0ce2ef8`.
 - [x] 2026-04-22 — **Bug: Light themes logo + dashboard-greeting niet leesbaar** — eerste poging faalde (background-shorthand reset `background-clip: text`), definitieve fix: op light themes gradient + shimmer volledig uit → solid `var(--gold)` via `-webkit-text-fill-color` op `.tj-logo-text`, plus donkere logo-text via `--tj-text-color:var(--text)` op `.tj-logo`. Donkere themas ongewijzigd. Commits `f4bf6c8`, `2e1c005`.
 - [x] 2026-04-22 — **🎯 Persoonlijke greeting + stat-based insight + milestones** — Fase 1: naam-input in Instellingen (`config.displayName`, fallback "trader") + visuele "✓ Opgeslagen" bevestiging (400ms debounce, 1.8s fade). Fase 2: 9-branch priority-chain `getDashboardInsight()` met 31 micro-copy varianten (win-streak, best-week, consistency, discipline, goal-on-track, loss-streak, idle, fresh-user, neutral). Render onder greeting met tone-colored border-left. Fase 3: 9 milestone-celebrations (10/50/100/250/500/1000 trades, win-streak-5/10, first-win) als one-time modal. Persisted in `tj_milestones_seen`. Commits `4d6caa7`, `b0936ef`, `89b9055`, `b312b03`, `29a88e1`.
