@@ -904,6 +904,143 @@ function getMindsetSeen(){try{const s=localStorage.getItem("tj_mindset_seen");re
 function markMindsetSeen(id){try{const s=getMindsetSeen();s[id]=Date.now();localStorage.setItem("tj_mindset_seen",JSON.stringify(s))}catch{}}
 function readMindsetPrefs(){try{const s=localStorage.getItem("tj_mindset_prefs");return s?{...DEFAULT_MINDSET_PREFS,...JSON.parse(s)}:DEFAULT_MINDSET_PREFS}catch{return DEFAULT_MINDSET_PREFS}}
 
+// ─── DASHBOARD INSIGHT ──────────────────────────────────────────────
+// One stat-based line under the Dashboard greeting. Priority chain:
+// first match wins. Each branch has 3-5 micro-copy variants for rotation.
+// Returns {text, tone, icon} or null.
+const INSIGHT_BRANCHES=[
+  {id:"win-streak",tone:"celebrate",icon:"🔥",test:(c)=>c.winStreak>=3,variants:[
+    "Je bent op een {days}-dagen winning streak — doorgaan zo!",
+    "{days} groene dagen op rij. Je ritme zit goed.",
+    "Heet vuur: {days} dagen winst. Blijf bij je plan.",
+  ]},
+  {id:"best-week",tone:"good",icon:"📈",test:(c)=>c.isBestWeekInMonths>=2,variants:[
+    "Beste week in {months} maanden · {num}",
+    "Je beste 7 dagen sinds {months} maanden terug: {num}",
+    "Sterke week — {num} boven je recente gemiddelde.",
+  ]},
+  {id:"consistency",tone:"good",icon:"📊",test:(c)=>c.winStreak===2||(c.winStreak>=1&&c.totalWinningDays30d>=5),variants:[
+    "2 groene dagen op rij — je ritme zit goed.",
+    "Stabiele week: meerdere winstdagen recent.",
+    "Dit is wat consistentie eruit ziet.",
+  ]},
+  {id:"discipline-high",tone:"good",icon:"✅",test:(c)=>c.disciplineScore30d!==null&&c.disciplineScore30d>=0.8,variants:[
+    "Je discipline-score staat op {discPct}% — sterk, blijf bij je proces.",
+    "Discipline deze maand: {discPct}%. Dit is edge-territorium.",
+    "Elke check afgevinkt: {discPct}% score. Keep it up.",
+  ]},
+  {id:"goal-on-track",tone:"good",icon:"🎯",test:(c)=>c.goalProgressPct!==null&&c.goalProgressPct>=50&&c.goalProgressPct<100,variants:[
+    "Deze maand al {goalCurrent}/{goalTarget} — op schema voor je doel.",
+    "{goalPct}% richting je maanddoel — mooie voortgang.",
+    "Op koers: {goalCurrent}/{goalTarget} deze maand.",
+  ]},
+  {id:"loss-streak",tone:"support",icon:"💪",test:(c)=>c.lossStreak>=2,variants:[
+    "De laatste {days} dagen waren rood — vandaag terug naar de basis.",
+    "Een paar rode dagen achter elkaar. Terug naar je checklist?",
+    "{days} dagen tegenwind. Geen druk — pak je plan erbij.",
+  ]},
+  {id:"idle",tone:"neutral",icon:"⏸",test:(c)=>c.daysSinceLastTrade>=3&&c.totalTrades>0,variants:[
+    "Al {days} dagen geen trade — geduld is ook een edge.",
+    "{days} dagen stil. De markt loopt niet weg.",
+    "Rust is een positie. {days} dagen geen entry — bewust of wachtend?",
+  ]},
+  {id:"fresh-user",tone:"neutral",icon:"🌱",test:(c)=>c.totalTrades<=2,variants:[
+    "Welkom bij SyncJournal — je eerste trade wacht op je.",
+    "Leeg canvas. Elke grote trader startte hier.",
+    "Nog geen data — maar jouw systeem begint vandaag.",
+  ]},
+  {id:"neutral",tone:"neutral",icon:"🧘",test:()=>true,variants:[
+    "Welkom terug. Wat is je edge vandaag?",
+    "Klaar om gefocust te werken.",
+    "Geen haast. De beste trades komen naar je toe.",
+    "Check je plan, niet je P&L.",
+    "Een trade per dag, goed gedaan, is genoeg.",
+  ]},
+];
+
+// Build context from trades (closed only) + goals. Returns metric snapshot used by INSIGHT_BRANCHES tests.
+function buildInsightContext(closed,goals,tradingRules){
+  const ctx={totalTrades:closed.length};
+  // Group pnl by day
+  const byDay={};
+  closed.forEach(t=>{if(!t.date)return;byDay[t.date]=(byDay[t.date]||0)+parseFloat(t.pnl||0)});
+  const days=Object.keys(byDay).sort();// ascending date strings
+  const daysDesc=[...days].reverse();
+  // Winning / losing streak from most recent day backwards (skipping days without trades)
+  let winStreak=0,lossStreak=0;
+  for(const d of daysDesc){if(byDay[d]>0)winStreak++;else break}
+  for(const d of daysDesc){if(byDay[d]<0)lossStreak++;else break}
+  ctx.winStreak=winStreak;ctx.lossStreak=lossStreak;
+  // Total winning days last 30d
+  const now=Date.now();const MS30=30*86400000;
+  ctx.totalWinningDays30d=days.filter(d=>{const t=new Date(d).getTime();return !isNaN(t)&&now-t<=MS30&&byDay[d]>0}).length;
+  // Days since last trade
+  if(days.length){const last=new Date(days[days.length-1]).getTime();ctx.daysSinceLastTrade=isNaN(last)?0:Math.floor((now-last)/86400000)}else ctx.daysSinceLastTrade=0;
+  // Best-week-in-months: current-week PnL vs the max weekly PnL in the prior 12 weeks
+  const weeklyBuckets={};
+  for(const d of days){const dt=new Date(d);if(isNaN(dt))continue;const wkStart=new Date(dt);wkStart.setDate(dt.getDate()-dt.getDay());const key=wkStart.toISOString().slice(0,10);weeklyBuckets[key]=(weeklyBuckets[key]||0)+byDay[d]}
+  const wkKeysSorted=Object.keys(weeklyBuckets).sort();
+  if(wkKeysSorted.length>=4){
+    const thisWeek=weeklyBuckets[wkKeysSorted[wkKeysSorted.length-1]];
+    const prior=wkKeysSorted.slice(0,-1);
+    const priorMax=Math.max(...prior.map(k=>weeklyBuckets[k]));
+    if(thisWeek>priorMax&&thisWeek>0){
+      // How many weeks back was the previous best?
+      const priorMaxIdx=prior.map(k=>weeklyBuckets[k]).lastIndexOf(priorMax);
+      const weeksBack=prior.length-1-priorMaxIdx;
+      ctx.isBestWeekInMonths=Math.max(2,Math.floor(weeksBack/4));// at least 2 months claim
+      ctx.bestWeekPnl=thisWeek;
+    }else ctx.isBestWeekInMonths=0;
+  }else ctx.isBestWeekInMonths=0;
+  // Discipline score (last 30d), uses same 6 checks as DisciplineHeatmap
+  const maxRiskPct=(()=>{const r=(tradingRules||[]).find(x=>x.type==="max_risk_pct"&&x.enabled);return r?parseFloat(r.value)||2:2})();
+  const recent=closed.filter(t=>{if(!t.date)return false;const t0=new Date(t.date).getTime();return !isNaN(t0)&&now-t0<=MS30});
+  if(recent.length>=5){
+    let sum=0;
+    for(const t of recent){
+      let s=0;
+      if(t.stopLoss&&String(t.stopLoss).trim())s++;
+      if(t.entryNote&&String(t.entryNote).trim())s++;
+      if((t.setupTags||[]).length>0)s++;
+      if(t.riskPct===""||t.riskPct==null||parseFloat(t.riskPct)<=maxRiskPct)s++;
+      if(t.notes&&String(t.notes).trim())s++;
+      if(parseFloat(t.rating)>0)s++;
+      sum+=s/6;
+    }
+    ctx.disciplineScore30d=sum/recent.length;
+  }else ctx.disciplineScore30d=null;
+  // Goal progress for "month trades" if such a goal exists
+  ctx.goalProgressPct=null;ctx.goalCurrent=null;ctx.goalTarget=null;
+  const items=(goals&&goals.items)||[];
+  const tradesGoal=items.find(g=>g.metric==="trades"&&(g.period==="month"||!g.period));
+  if(tradesGoal&&tradesGoal.target>0){
+    const nowD=new Date();const thisMonth=closed.filter(t=>{const d=new Date(t.date);return d.getFullYear()===nowD.getFullYear()&&d.getMonth()===nowD.getMonth()});
+    ctx.goalCurrent=thisMonth.length;ctx.goalTarget=tradesGoal.target;
+    ctx.goalProgressPct=(thisMonth.length/tradesGoal.target)*100;
+  }
+  return ctx;
+}
+
+// Pick a dashboard insight: walks priority chain, returns first branch that tests true,
+// fills in the variant with ctx values. variantSalt changes the rotation seed per session.
+function getDashboardInsight(ctx,variantSalt=0){
+  for(const b of INSIGHT_BRANCHES){
+    if(b.test(ctx)){
+      const variant=b.variants[(variantSalt+b.id.length)%b.variants.length];
+      const filled=variant
+        .replace(/\{days\}/g,ctx.winStreak>ctx.lossStreak?ctx.winStreak:ctx.lossStreak||ctx.daysSinceLastTrade||0)
+        .replace(/\{months\}/g,ctx.isBestWeekInMonths||2)
+        .replace(/\{num\}/g,ctx.bestWeekPnl!=null?((ctx.bestWeekPnl>=0?"+€":"−€")+Math.abs(Math.round(ctx.bestWeekPnl))):"")
+        .replace(/\{discPct\}/g,ctx.disciplineScore30d!=null?Math.round(ctx.disciplineScore30d*100):"")
+        .replace(/\{goalCurrent\}/g,ctx.goalCurrent||"")
+        .replace(/\{goalTarget\}/g,ctx.goalTarget||"")
+        .replace(/\{goalPct\}/g,ctx.goalProgressPct!=null?Math.round(ctx.goalProgressPct):"");
+      return{id:b.id,text:filled,tone:b.tone,icon:b.icon};
+    }
+  }
+  return null;
+}
+
 // Pick a quote for a context. Prefers un-seen-lately quotes (within 7d cooldown).
 function pickMindsetQuote(contextId){
   const cats=MINDSET_CTX[contextId]||[];
@@ -4075,6 +4212,11 @@ function Sparkline({data,color="#2eaa6f"}){
 
 function DashboardPremium({trades,config,accounts,tradingRules,dailyNotes,goals,setTab,setNewTrade,newEmptyTrade,setFilters}){
   const closed=(trades||[]).filter(t=>t.pnl!==""&&!isNaN(parseFloat(t.pnl)));
+  // Insight — pick once on mount. Re-picks on next visit to Dashboard.
+  const[insight]=useState(()=>{
+    const ctx=buildInsightContext(closed,goals,tradingRules);
+    return getDashboardInsight(ctx,Math.floor(Date.now()/1000));
+  });
   // Mindset — weekly-rotating quote on dashboard (only re-picks when week changes)
   const[mindsetCard,setMindsetCard]=useState(()=>{
     const p=readMindsetPrefs();
@@ -4118,6 +4260,11 @@ function DashboardPremium({trades,config,accounts,tradingRules,dailyNotes,goals,
       <div>
         <div style={{fontSize:"11px",color:"var(--gold)",textTransform:"uppercase",letterSpacing:".2em",fontWeight:600,marginBottom:"10px"}}>⚡ Welkom terug</div>
         <div style={{fontSize:"36px",fontWeight:800,letterSpacing:"-.025em",lineHeight:1.1,marginBottom:"8px"}}>{greeting}, <span className="tj-logo-text" style={{background:"linear-gradient(90deg,#fff 0%,#C9A84C 50%,#fff 100%)",backgroundSize:"200% auto",WebkitBackgroundClip:"text",backgroundClip:"text",WebkitTextFillColor:"transparent",animation:"shimmer 8s linear infinite"}}>{(config?.displayName||"trader").trim()||"trader"}</span></div>
+        {/* Insight line — one stat-based reflection under the greeting, picked once per Dashboard visit */}
+        {insight&&<div style={{display:"inline-flex",alignItems:"center",gap:"10px",padding:"8px 14px",marginBottom:"10px",borderRadius:"8px",background:insight.tone==="celebrate"?"rgba(255,140,0,.06)":insight.tone==="good"?"rgba(46,170,111,.06)":insight.tone==="support"?"rgba(212,168,83,.06)":"rgba(138,159,192,.05)",borderLeft:"3px solid "+(insight.tone==="celebrate"?"#ff8c00":insight.tone==="good"?"var(--green)":insight.tone==="support"?"var(--amber)":"var(--blue,#8a9fc0)"),fontSize:"13px",color:"var(--text2)",lineHeight:1.5,maxWidth:"640px"}}>
+          <span style={{fontSize:"16px",lineHeight:1}}>{insight.icon}</span>
+          <span>{insight.text}</span>
+        </div>}
         <div style={{fontSize:"14px",color:"var(--text3)",display:"flex",alignItems:"center",gap:"14px",flexWrap:"wrap"}}>
           <span>Deze maand:</span>
           <span className={monthPnl>=0?"gold-shimmer":""} style={{padding:"4px 12px",borderRadius:"20px",fontSize:"13px",fontWeight:800,background:monthPnl>=0?"rgba(201,168,76,.12)":"rgba(224,85,85,.12)",border:`1px solid ${monthPnl>=0?"rgba(201,168,76,.3)":"rgba(224,85,85,.3)"}`,fontFamily:"var(--mono)",WebkitTextFillColor:monthPnl<0?undefined:"transparent",color:monthPnl<0?"var(--red)":"var(--gold)"}}>{monthPnl>=0?"+":""}${fmt(monthPnl)}</span>
