@@ -10,17 +10,15 @@ Basis kwam uit de feature-diff v4_14 → v9 onderaan. Inmiddels werken we op **v
 
 <!-- Denny stuurt bugs 1 voor 1 — elk item krijgt datum + korte reproductiestap. -->
 
-- [ ] **2026-04-22 — Light themes: logo "TRADING JOURNAL / built by Zaratras · powered by Morani" bijna niet zichtbaar** — op parchment/daylight/light themes is de logo-tekst (gold/warm) nauwelijks leesbaar op de crème/witte achtergrond. **Fix:** detecteer light theme en wissel logo-text color naar een donkere variant (bijv. `var(--text)` i.p.v. hardcoded white/gold), óf gebruik `--tj-text-color` CSS var per thema. Check in [work/tradejournal.html:5618](work/tradejournal.html#L5618) (Topbar-sectie met `TRADING JOURNAL` + `JOUW PAD NAAR WINSTGEVEND TRADEN`).
-- [ ] **2026-04-22 — Light themes: woord "trader" in dashboard-greeting niet leesbaar** — "Goedemiddag, trader" op DashboardPremium gebruikt een white→gold→white gradient (`.tj-logo-text` shimmer) die op light/parchment/daylight bg verdwijnt. **Fix:** theme-aware gradient — vervang `#fff` in de linear-gradient door een variabele per thema, óf gebruik `color-mix()` met `var(--text)` zodat de tekst donkerder wordt op lichte achtergronden. Zie [work/tradejournal.html:4093](work/tradejournal.html#L4093) (`background:"linear-gradient(90deg,#fff 0%,#C9A84C 50%,#fff 100%)"`).
+*Geen open bugs.*
 
 ## 🔜 Next up (deze of volgende werksessie)
 
 - [ ] **🥇 AI trade-review** — knop "Analyseer mijn laatste N trades" via user's eigen API-key (OpenAI/Claude). Patroon-analyse + bias-detectie. Grootste differentiator.
-- [ ] **Subtiele mindset-reminders in de journal** — korte tekstuele/visuele nudges (Mark Douglas / Van Tharp / Steenbarger quotes, checklist-triggers, emotie-check), on/off per user in Instellingen. Gepitcht aan Morani community voor format-feedback. Mogelijke plekken: banner bovenin bij nieuwe trade (pre-entry: "Volgt dit je plan?"), popup na N losses op dag (tilt-guard), dagelijks 1 quote bij eerste app-open, iconen in TradeForm bij emotie-tags. Ondersteunt bestaande proces-focus richting. Format-keuze afwachten uit Discord-thread.
-- [ ] **Tiltmeter (emotie 1-10 per trade)** — Edgewonk's USP. Correleer met PnL. Fase 2 van proces-focus (Fase 1 is al live).
+- [ ] **Tiltmeter (emotie 1-10 per trade)** — Edgewonk's USP. Correleer met PnL. Fase 2 van proces-focus (Fase 1 is al live, Discipline Heatmap afgerond 2026-04-22).
 - [ ] **Pre-trade checklist builder** — user definieert 5-10 items (entry-criteria, risk-check, bias confirmation). Per trade score → toegevoegd aan Analytics Proces-mode.
-- [ ] **Time-of-day discipline heatmap** (7×24 grid) — bestaat nergens als visual. Toont wanneer je discipline zakt. Fase 2 proces-focus.
 - [ ] **Checklist-streak gamification** — Duolingo-stijl streak-counter voor "checklist volledig ingevuld X dagen op rij". Loss aversion werkt.
+- [ ] **Mindset-reminders fase 2** — 4 deferred contexten: risk-exceeded inline warning, heatmap-red-zone warning in TradeForm, emotion-tag tooltip (opgewonden/hebzuchtig), weekend sidebar-whisper. Fase 1 (banner + pre-trade + post-loss) live sinds 2026-04-22.
 - [ ] **Dag-limiet / tilt guard** — modal bij N losses op dag. Data zit in Trading Rules.
 - [ ] **Trade-voucher / shareable link** — base64 URL-fragment. Read-only modal.
 - [ ] **Discord webhook** bij PnL-milestones — community leeft op Discord. Moeite: L.
@@ -52,6 +50,8 @@ Basis kwam uit de feature-diff v4_14 → v9 onderaan. Inmiddels werken we op **v
 
 ## ✅ Done
 
+- [x] 2026-04-22 — **Dashboard cleanup — van 3 naar 2 mindset-elementen** — weekly quote-kaart verwijderd van beide Dashboards omdat de top-banner sinds `5e600fa` al per tab-navigatie roteert en de kaart redundant was. Settings-toggles van 4 → 3. Stale localStorage-keys (tj_mindset_dashQuote e.a.) éénmalig opgeruimd bij load. Commit `0ce2ef8`.
+- [x] 2026-04-22 — **Bug: Light themes logo + dashboard-greeting niet leesbaar** — eerste poging faalde (background-shorthand reset `background-clip: text`), definitieve fix: op light themes gradient + shimmer volledig uit → solid `var(--gold)` via `-webkit-text-fill-color` op `.tj-logo-text`, plus donkere logo-text via `--tj-text-color:var(--text)` op `.tj-logo`. Donkere themas ongewijzigd. Commits `f4bf6c8`, `2e1c005`.
 - [x] 2026-04-22 — **🎯 Persoonlijke greeting + stat-based insight + milestones** — Fase 1: naam-input in Instellingen (`config.displayName`, fallback "trader") + visuele "✓ Opgeslagen" bevestiging (400ms debounce, 1.8s fade). Fase 2: 9-branch priority-chain `getDashboardInsight()` met 31 micro-copy varianten (win-streak, best-week, consistency, discipline, goal-on-track, loss-streak, idle, fresh-user, neutral). Render onder greeting met tone-colored border-left. Fase 3: 9 milestone-celebrations (10/50/100/250/500/1000 trades, win-streak-5/10, first-win) als one-time modal. Persisted in `tj_milestones_seen`. Commits `4d6caa7`, `b0936ef`, `89b9055`, `b312b03`, `29a88e1`.
 - [x] 2026-04-22 — **💭 Mindset-reminders geïntegreerd (fase 1)** — 13 quotes (8× Morani-voice + 5× classics, softer tone). 4 contexten live: (1) ochtend-banner rotating per tab-navigatie, (2) pre-trade italic in TradeForm, (3) post-loss toast met 2h cooldown, (4) Dashboard weekly quote-card (beide layouts). Master + per-categorie toggles in Instellingen (`tj_mindset_prefs`). Seen-tracking (`tj_mindset_seen`) voorkomt 7-daagse herhaling. Commits `20bd386`, `58bc1a4`, `6e878af`, `5e600fa`.
 - [x] 2026-04-22 — **🎯 Discipline Heatmap in Analytics** — 7×24 (of 7×5 sessies) heatmap in Proces-mode. 6-check score (SL/pre-notitie/setup-tag/binnen-risk/post-notitie/rating) met user-toggleable vinkjes (min 1, persisted in `tj_discipline_checks`). Amsterdam-tijd via `Intl.DateTimeFormat` (DST-aware). Theme-aware kleuren via `color-mix()`. Auto-insights (dag-patroon, tag-discipline, best-day). Min-sample 3 trades/cel (dashed grijs anders). Best/worst slot cards. Commit `726f02d`.
