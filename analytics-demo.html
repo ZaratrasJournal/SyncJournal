@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SyncJournal — Analytics Demo</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+:root{
+  --bg:#06080c; --bg2:#0a0d15; --bg3:#0c0f16; --glass:rgba(18,21,30,0.55);
+  --text:#f5f5f7; --text2:#c0c5cd; --text3:#939aa5; --text4:#6b7280; --text5:#4b5563;
+  --gold:#C9A84C; --gold-dim:rgba(201,168,76,0.12); --gold-border:rgba(201,168,76,0.3);
+  --green:#2eaa6f; --red:#e05555; --amber:#d4a853; --teal:#0d9488;
+  --border1:rgba(201,168,76,0.08); --border2:rgba(255,255,255,0.06); --border3:rgba(255,255,255,0.1);
+  --mono:'JetBrains Mono','SF Mono',Consolas,monospace;
+  --font:'Outfit','Inter',-apple-system,sans-serif;
+  --radius:8px; --radius-lg:12px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:var(--font);min-height:100vh}
+body{background:radial-gradient(ellipse 1200px 800px at 50% 0%,rgba(201,168,76,0.04) 0%,transparent 50%),var(--bg)}
+.wrap{max-width:1400px;margin:0 auto;padding:32px 24px}
+.topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:32px;padding-bottom:20px;border-bottom:1px solid var(--border1)}
+.logo{display:flex;align-items:center;gap:12px}
+.logo-m{width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,#f0d57a,#C9A84C,#8c721c);display:flex;align-items:center;justify-content:center;font-weight:900;font-size:20px;color:#000;box-shadow:0 4px 16px rgba(201,168,76,0.4)}
+.logo-text{font-weight:800;font-size:18px;letter-spacing:.02em}
+.logo-sub{font-family:var(--mono);font-size:10px;color:var(--text4);letter-spacing:.2em;text-transform:uppercase;margin-top:2px}
+.demo-tag{padding:5px 12px;border-radius:20px;background:var(--gold-dim);border:1px solid var(--gold-border);color:var(--gold);font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase}
+h1{font-size:32px;font-weight:800;letter-spacing:-.02em;margin:0 0 8px}
+.subtitle{font-size:14px;color:var(--text3);margin-bottom:32px;max-width:760px;line-height:1.6}
+.grid{display:grid;grid-template-columns:repeat(12,1fr);gap:16px}
+.card{background:var(--glass);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid var(--border1);border-radius:var(--radius-lg);padding:20px;position:relative;overflow:hidden}
+.card::before{content:"";position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--gold-border),transparent);opacity:.6}
+.card-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.card-title{font-size:11px;color:var(--gold);text-transform:uppercase;letter-spacing:.12em;font-weight:700;display:flex;align-items:center;gap:8px}
+.card-num{width:22px;height:22px;border-radius:50%;background:var(--gold-dim);border:1px solid var(--gold-border);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:var(--gold);font-family:var(--mono)}
+.card-hint{font-size:10px;color:var(--text5);font-weight:500}
+.insight{margin-top:12px;padding:10px 12px;background:rgba(138,159,192,0.06);border-left:2px solid #8a9fc0;border-radius:4px;font-size:11px;color:var(--text3);line-height:1.6}
+.insight strong{color:var(--text2)}
+.col-4{grid-column:span 4}
+.col-5{grid-column:span 5}
+.col-6{grid-column:span 6}
+.col-7{grid-column:span 7}
+.col-8{grid-column:span 8}
+.col-12{grid-column:span 12}
+@media(max-width:1000px){.col-4,.col-5,.col-6,.col-7,.col-8{grid-column:span 12}}
+.big-number{font-family:var(--mono);font-size:42px;font-weight:800;letter-spacing:-.03em;line-height:1}
+.big-label{font-size:10px;color:var(--text4);text-transform:uppercase;letter-spacing:.14em;font-weight:600;margin-top:6px}
+.gauge-wrap{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;height:220px}
+.gauge-score{position:absolute;top:50%;left:50%;transform:translate(-50%,-30%);text-align:center}
+.cal-heatmap{display:grid;grid-template-columns:repeat(13,1fr);gap:3px;padding:4px}
+.cal-cell{width:14px;height:14px;border-radius:2px;background:rgba(255,255,255,.03);transition:transform .15s;cursor:pointer;position:relative;flex-shrink:0}
+.cal-cell:hover{transform:scale(1.6);z-index:10;box-shadow:0 4px 12px rgba(0,0,0,.5)}
+.ch{position:relative;width:100%}
+.ch-sm{height:180px}
+.ch-md{height:210px}
+.ch-lg{height:240px}
+.cal-legend{display:flex;align-items:center;gap:6px;font-size:9px;color:var(--text5);margin-top:10px;justify-content:flex-end}
+.cal-legend-box{width:11px;height:11px;border-radius:2px}
+.stat-row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border2);font-size:12px}
+.stat-row:last-child{border-bottom:none}
+.stat-label{color:var(--text3)}
+.stat-val{font-family:var(--mono);font-weight:700;color:var(--text)}
+.pill{display:inline-block;padding:2px 8px;border-radius:10px;font-size:9px;font-weight:700;font-family:var(--mono);letter-spacing:.06em}
+.pill-green{background:rgba(46,170,111,.15);color:var(--green)}
+.pill-red{background:rgba(224,85,85,.15);color:var(--red)}
+.pill-gold{background:var(--gold-dim);color:var(--gold)}
+.tooltip{position:fixed;background:rgba(10,12,18,.95);border:1px solid var(--border3);border-radius:6px;padding:8px 12px;font-size:11px;color:var(--text);font-family:var(--mono);pointer-events:none;z-index:100;box-shadow:0 4px 20px rgba(0,0,0,.5);display:none}
+.section-title{font-size:16px;font-weight:700;margin:32px 0 16px;display:flex;align-items:center;gap:10px;color:var(--text2)}
+.section-title::before{content:"";display:inline-block;width:4px;height:18px;background:var(--gold);border-radius:2px}
+canvas{max-width:100%}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <div class="logo">
+      <div class="logo-m">M</div>
+      <div>
+        <div class="logo-text">SyncJournal · Analytics</div>
+        <div class="logo-sub">Morani · Trade Lab</div>
+      </div>
+    </div>
+    <span class="demo-tag">📊 Demo — 120 fictive trades</span>
+  </div>
+
+  <h1>9 nieuwe analytics voor SyncJournal</h1>
+  <div class="subtitle">
+    Op basis van onderzoek naar toonaangevende trading journals (Edgewonk, TraderSync, TradeZella, TradesViz, FTMO, Tradervue).
+    Deze demo toont hoe elke chart eruit kan zien met <strong style="color:var(--gold)">jouw theme</strong>.
+    Alle data hier is synthetisch maar realistisch — 120 fictieve trades over 90 dagen.
+  </div>
+
+  <div class="section-title">Discipline & edge fundamentals</div>
+  <div class="grid">
+    <!-- 1. R-Multiple Distribution -->
+    <div class="card col-6">
+      <div class="card-head">
+        <div class="card-title"><div class="card-num">1</div> R-Multiple Distribution</div>
+        <div class="card-hint">Van Tharp klassieker</div>
+      </div>
+      <div class="ch ch-sm"><canvas id="chart-rdist"></canvas></div>
+      <div class="insight">
+        <strong>Waarom:</strong> laat zien of je edge komt van 1 fat-tail winner of van consistent +0.3R over veel trades.
+        Als je verdeling scheef rechts is (veel 2R+ trades) dan heb je een goede edge.
+        Extreem links = stops vaak geraakt of te groot.
+      </div>
+    </div>
+
+    <!-- 4. Discipline Score (FTMO-style) -->
+    <div class="card col-3">
+      <div class="card-head">
+        <div class="card-title"><div class="card-num">4</div> Discipline Score</div>
+        <div class="card-hint">FTMO-stijl</div>
+      </div>
+      <div class="gauge-wrap">
+        <svg id="gauge" viewBox="0 0 200 110" style="width:100%;max-width:200px">
+          <path d="M20,100 A80,80 0 0,1 180,100" fill="none" stroke="rgba(255,255,255,.06)" stroke-width="14" stroke-linecap="round"/>
+          <path id="gauge-arc" d="" fill="none" stroke-width="14" stroke-linecap="round"/>
+        </svg>
+        <div class="gauge-score">
+          <div class="big-number" id="gauge-num" style="color:var(--gold);font-size:32px">—</div>
+          <div style="font-size:9px;color:var(--text4);text-transform:uppercase;letter-spacing:.1em;margin-top:4px">Consistency</div>
+        </div>
+      </div>
+      <div class="insight">
+        <strong>Formule:</strong> 1 − (grootste dag-PnL / totale PnL).
+        &gt;80% = consistente edge. &lt;60% = één lucky dag draagt alles.
+      </div>
+    </div>
+
+    <!-- 5. Scratch Segmentation -->
+    <div class="card col-3">
+      <div class="card-head">
+        <div class="card-title"><div class="card-num">5</div> True Win/Loss/Scratch</div>
+      </div>
+      <div class="ch" style="height:160px"><canvas id="chart-scratch"></canvas></div>
+      <div style="text-align:center;margin-top:8px">
+        <div id="true-wr" class="big-number" style="font-size:28px;color:var(--green)">—</div>
+        <div class="big-label">True Win-Rate (ex. scratch)</div>
+      </div>
+      <div class="insight">
+        <strong>Scratch</strong> = |PnL| &lt; 0.1R. Traditionele winrate telt scratches als winst/verlies — geeft vervormd beeld. Dit toont je echte edge.
+      </div>
+    </div>
+  </div>
+
+  <div class="section-title">Gedrag & mistake-tracking</div>
+  <div class="grid">
+    <!-- 3. Mistake Impact -->
+    <div class="card col-7">
+      <div class="card-head">
+        <div class="card-title"><div class="card-num">3</div> Mistake-Tag Impact</div>
+        <div class="card-hint">klik op een tag om te filteren</div>
+      </div>
+      <div class="ch" style="height:220px"><canvas id="chart-mistakes"></canvas></div>
+      <div class="insight">
+        <strong>Actionable:</strong> zie direct welke fouten je écht geld kosten. "FOMO kost je $2.340" is concreter dan "FOMO is slecht".
+        Combineer met de mistake-tags uit je trade-form.
+      </div>
+    </div>
+
+    <!-- 7. Rolling 20-trade metrics -->
+    <div class="card col-5">
+      <div class="card-head">
+        <div class="card-title"><div class="card-num">7</div> Rolling 20-trade edge</div>
+        <div class="card-hint">trend over tijd</div>
+      </div>
+      <div class="ch ch-md"><canvas id="chart-rolling"></canvas></div>
+      <div class="insight">
+        <strong>Degradatie zien:</strong> lifetime averages liegen. Een rolling window toont of je edge nu beter of slechter is dan 50 trades geleden.
+      </div>
+    </div>
+  </div>
+
+  <div class="section-title">Tijd & patronen</div>
+  <div class="grid">
+    <!-- 2. PnL Calendar Heatmap -->
+    <div class="card col-8">
+      <div class="card-head">
+        <div class="card-title"><div class="card-num">2</div> PnL Calendar Heatmap</div>
+        <div class="card-hint">laatste 13 weken</div>
+      </div>
+      <div id="calendar"></div>
+      <div class="cal-legend">
+        <span>Minder</span>
+        <div class="cal-legend-box" style="background:rgba(224,85,85,0.6)"></div>
+        <div class="cal-legend-box" style="background:rgba(224,85,85,0.3)"></div>
+        <div class="cal-legend-box" style="background:rgba(255,255,255,.05)"></div>
+        <div class="cal-legend-box" style="background:rgba(46,170,111,0.3)"></div>
+        <div class="cal-legend-box" style="background:rgba(46,170,111,0.6)"></div>
+        <div class="cal-legend-box" style="background:rgba(46,170,111,0.9)"></div>
+        <span>Meer</span>
+      </div>
+      <div class="insight">
+        <strong>Patronen:</strong> zie direct welke dagen van de week goed/slecht zijn, welke weken streaky waren, en waar je pauzes nam.
+        GitHub-stijl; elk vakje = 1 handelsdag.
+      </div>
+    </div>
+
+    <!-- 8. Underwater Drawdown -->
+    <div class="card col-4">
+      <div class="card-head">
+        <div class="card-title"><div class="card-num">8</div> Underwater Drawdown</div>
+        <div class="card-hint">hedge-fund standaard</div>
+      </div>
+      <div class="ch ch-lg"><canvas id="chart-underwater"></canvas></div>
+      <div class="insight">
+        <strong>Hoe diep + hoe lang</strong> zat je onder je all-time-high equity peak?
+        Elke "uitslag" toont een drawdown-event. Vlakke 0-lijn = op ATH.
+      </div>
+    </div>
+  </div>
+
+  <div class="section-title">Crypto-specifiek & geavanceerd</div>
+  <div class="grid">
+    <!-- 6. Funding/Fees Waterfall -->
+    <div class="card col-6">
+      <div class="card-head">
+        <div class="card-title"><div class="card-num">6</div> Funding & Fees Drain</div>
+        <div class="card-hint">uniek voor crypto-futures</div>
+      </div>
+      <div class="ch" style="height:220px"><canvas id="chart-waterfall"></canvas></div>
+      <div class="insight">
+        <strong>Lekkages:</strong> crypto-futures traders verliezen vaak 10-30% aan funding + fees.
+        Geen concurrent heeft dit goed. Deze chart maakt het concreet.
+      </div>
+    </div>
+
+    <!-- 9. MFE/MAE Scatter -->
+    <div class="card col-6">
+      <div class="card-head">
+        <div class="card-title"><div class="card-num">9</div> Exit-Efficiency (MFE/MAE)</div>
+        <div class="card-hint">diagonaal = perfect exit</div>
+      </div>
+      <div class="ch" style="height:220px"><canvas id="chart-mfe"></canvas></div>
+      <div class="insight">
+        <strong>Hoe dicht zit je bij perfect?</strong> X = Max Favorable Excursion (top tijdens trade), Y = realized PnL.
+        Punten ver onder diagonaal = geld op tafel laten liggen (te vroeg exit).
+      </div>
+    </div>
+  </div>
+
+  <div class="section-title">Bonus — insights tabel</div>
+  <div class="grid">
+    <div class="card col-12">
+      <div class="card-head">
+        <div class="card-title"><div class="card-num">10</div> Per-setup MAE-to-Stop ratio</div>
+        <div class="card-hint">tighter stops mogelijk</div>
+      </div>
+      <table id="mae-table" style="width:100%;border-collapse:collapse;font-size:12px">
+        <thead>
+          <tr style="text-align:left;border-bottom:1px solid var(--border2);color:var(--text4);font-size:10px;text-transform:uppercase;letter-spacing:.08em">
+            <th style="padding:10px 12px">Setup</th>
+            <th style="padding:10px 12px;text-align:center">Trades</th>
+            <th style="padding:10px 12px;text-align:center">Win-rate</th>
+            <th style="padding:10px 12px;text-align:center">Avg MAE / stop</th>
+            <th style="padding:10px 12px;text-align:center">Avg R</th>
+            <th style="padding:10px 12px;text-align:right">Advies</th>
+          </tr>
+        </thead>
+        <tbody id="mae-tbody"></tbody>
+      </table>
+      <div class="insight">
+        <strong>Stop-optimizer:</strong> als MAE gemiddeld maar 30% van je stop raakt kun je je stop tighter zetten → betere R per trade.
+      </div>
+    </div>
+  </div>
+
+  <div style="margin-top:40px;padding:20px;background:var(--glass);border-radius:var(--radius-lg);border:1px solid var(--border1);text-align:center">
+    <div style="font-size:11px;color:var(--text4);text-transform:uppercase;letter-spacing:.14em;font-weight:700;margin-bottom:8px">🚀 Volgende stap</div>
+    <div style="color:var(--text2);font-size:14px;line-height:1.7">
+      Kies welke grafieken je in <code style="color:var(--gold);font-family:var(--mono);font-size:12px">work/tradejournal.html</code> ingebouwd wil hebben.
+      <br>Alles hier is self-contained Chart.js + SVG — past in jullie single-file HTML stack.
+    </div>
+  </div>
+</div>
+
+<div id="tooltip" class="tooltip"></div>
+
+<script>
+// ═════════════════════════════════════════════════════════════════════════════
+// DEMO DATA GENERATOR — 120 synthetic trades over the last 90 days
+// Realistic: 55% win rate, positive expectancy, mix of setups/mistakes
+// ═════════════════════════════════════════════════════════════════════════════
+const SETUPS=["Breakout","FVG","Liquidity Grab","Trendline Break","Range Reject","Fill Play"];
+const MISTAKES=["FOMO","Too early exit","No stop","Revenge trade","Overleveraged","Moved SL","Chased price"];
+const PAIRS=["BTC/USDT","ETH/USDT","SOL/USDT","BNB/USDT"];
+const BASES={BTC:68000,ETH:3400,SOL:178,BNB:610};
+
+// Seeded RNG for reproducibility
+let _seed=42;
+function rng(){_seed=(_seed*9301+49297)%233280;return _seed/233280}
+function choice(a){return a[Math.floor(rng()*a.length)]}
+
+function generateTrades(n){
+  const trades=[];
+  const now=new Date();
+  for(let i=0;i<n;i++){
+    const daysAgo=Math.floor(rng()*90);
+    const d=new Date(now);d.setDate(d.getDate()-daysAgo);
+    const date=d.toISOString().slice(0,10);
+    const hour=8+Math.floor(rng()*12); // 8-20 uur
+    const time=String(hour).padStart(2,"0")+":"+String(Math.floor(rng()*60)).padStart(2,"0");
+    const pair=choice(PAIRS);
+    const base=BASES[pair.split("/")[0]];
+    const direction=rng()>0.45?"long":"short";
+    const entry=base*(1+(rng()-0.5)*0.04);
+    const stopDistPct=0.005+rng()*0.02; // 0.5-2.5% stop
+    const stopLoss=direction==="long"?entry*(1-stopDistPct):entry*(1+stopDistPct);
+    const positionSize=500+rng()*2000;
+    const riskUsd=Math.abs(entry-stopLoss)*positionSize/entry;
+    // Positive expectancy: 55% win, avg +1.5R win, avg -1R loss
+    const isWin=rng()<0.55;
+    const rMult=isWin?(0.3+rng()*2.7):(-0.3-rng()*1.2);
+    const pnl=rMult*riskUsd;
+    // MFE: for winners, slightly above realized; for losers, small positive excursion
+    const mfe=Math.max(pnl,0)+riskUsd*(0.1+rng()*1.5);
+    const mae=Math.min(pnl,0)-riskUsd*(0.1+rng()*0.7);
+    const fees=0.5+rng()*4;
+    const funding=rng()<0.3?(rng()*3-0.5):0; // 30% chance of funding cost
+    // Setup tags: 1-2 per trade
+    const setupTags=[choice(SETUPS)];
+    if(rng()<0.3)setupTags.push(choice(SETUPS.filter(s=>s!==setupTags[0])));
+    // Mistake tags: 20% chance 1 mistake
+    const mistakeTags=rng()<0.22?[choice(MISTAKES)]:[];
+    // Exit = entry + (pnl/positionSize) * entry (approx)
+    const exit=direction==="long"?entry+(pnl/positionSize)*entry:entry-(pnl/positionSize)*entry;
+    trades.push({id:i,date,time,pair,direction,entry,stopLoss,exit,positionSize,pnl,fees,funding,mfe,mae,riskUsd,rMult,setupTags,mistakeTags,status:"closed"});
+  }
+  return trades.sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time));
+}
+
+const TRADES=generateTrades(120);
+window.TRADES=TRADES; // for debugging
+
+// Chart.js global defaults
+Chart.defaults.color="#939aa5";
+Chart.defaults.borderColor="rgba(255,255,255,0.06)";
+Chart.defaults.font.family="'Outfit',sans-serif";
+Chart.defaults.font.size=11;
+
+const fmt=v=>Math.abs(v).toLocaleString("nl-NL",{minimumFractionDigits:2,maximumFractionDigits:2});
+const fmtNL=iso=>{const[y,m,d]=iso.split("-");return `${d}-${m}-${y}`};
+
+// ═════════════════════════════════════════════════════════════════════════════
+// CHART 1 — R-Multiple Distribution
+// ═════════════════════════════════════════════════════════════════════════════
+(function(){
+  const buckets={"< -2R":0,"-2R":0,"-1R":0,"0R":0,"+1R":0,"+2R":0,"+3R":0,"> +3R":0};
+  TRADES.forEach(t=>{
+    const r=t.rMult;
+    if(r<-2)buckets["< -2R"]++;
+    else if(r<-1.5)buckets["-2R"]++;
+    else if(r<-0.5)buckets["-1R"]++;
+    else if(r<0.5)buckets["0R"]++;
+    else if(r<1.5)buckets["+1R"]++;
+    else if(r<2.5)buckets["+2R"]++;
+    else if(r<3.5)buckets["+3R"]++;
+    else buckets["> +3R"]++;
+  });
+  const labels=Object.keys(buckets);
+  const data=Object.values(buckets);
+  const colors=labels.map(l=>l.includes("-")||l==="0R"?(l==="0R"?"rgba(156,163,175,0.6)":l.includes("< -")?"rgba(224,85,85,0.95)":"rgba(224,85,85,0.7)"):(l.includes("> +")?"rgba(46,170,111,0.95)":"rgba(46,170,111,0.7)"));
+  new Chart(document.getElementById("chart-rdist"),{
+    type:"bar",
+    data:{labels,datasets:[{data,backgroundColor:colors,borderRadius:4,borderSkipped:false}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>`${c.parsed.y} trades`}}},scales:{x:{grid:{display:false}},y:{grid:{color:"rgba(255,255,255,0.05)"},ticks:{stepSize:5}}}}
+  });
+})();
+
+// ═════════════════════════════════════════════════════════════════════════════
+// CHART 4 — Discipline / Consistency Score
+// ═════════════════════════════════════════════════════════════════════════════
+(function(){
+  const byDay={};TRADES.forEach(t=>{if(!byDay[t.date])byDay[t.date]=0;byDay[t.date]+=t.pnl});
+  const totalPnl=Object.values(byDay).reduce((s,v)=>s+v,0);
+  const maxDay=Math.max(...Object.values(byDay).map(Math.abs));
+  const score=totalPnl>0?Math.max(0,Math.min(1,1-maxDay/totalPnl)):0;
+  const scorePct=Math.round(score*100);
+  // Semi-circle arc from 20,100 to 180,100, radius 80
+  const startAngle=-Math.PI;const endAngle=0;
+  const currentAngle=startAngle+(endAngle-startAngle)*score;
+  const r=80,cx=100,cy=100;
+  const endX=cx+r*Math.cos(currentAngle);
+  const endY=cy+r*Math.sin(currentAngle);
+  const largeArc=score>0.5?1:0;
+  const color=score>=0.8?"#2eaa6f":score>=0.6?"#d4a853":"#e05555";
+  const arc=document.getElementById("gauge-arc");
+  arc.setAttribute("d",`M20,100 A80,80 0 ${largeArc},1 ${endX.toFixed(2)},${endY.toFixed(2)}`);
+  arc.setAttribute("stroke",color);
+  arc.style.filter=`drop-shadow(0 0 8px ${color}80)`;
+  const num=document.getElementById("gauge-num");
+  num.textContent=scorePct+"%";
+  num.style.color=color;
+})();
+
+// ═════════════════════════════════════════════════════════════════════════════
+// CHART 5 — Scratch Segmentation
+// ═════════════════════════════════════════════════════════════════════════════
+(function(){
+  const scratchThreshold=0.1; // 0.1R
+  let wins=0,losses=0,scratch=0;
+  TRADES.forEach(t=>{
+    if(Math.abs(t.rMult)<scratchThreshold)scratch++;
+    else if(t.pnl>0)wins++;
+    else losses++;
+  });
+  const real=wins+losses;
+  const trueWr=real>0?wins/real*100:0;
+  document.getElementById("true-wr").textContent=trueWr.toFixed(0)+"%";
+  document.getElementById("true-wr").style.color=trueWr>=50?"var(--green)":"var(--red)";
+  new Chart(document.getElementById("chart-scratch"),{
+    type:"doughnut",
+    data:{labels:["Real Win","Real Loss","Scratch"],datasets:[{data:[wins,losses,scratch],backgroundColor:["rgba(46,170,111,0.85)","rgba(224,85,85,0.85)","rgba(156,163,175,0.5)"],borderColor:"rgba(18,21,30,0.95)",borderWidth:2}]},
+    options:{responsive:true,maintainAspectRatio:false,cutout:"68%",plugins:{legend:{display:true,position:"bottom",labels:{boxWidth:10,padding:8,font:{size:10}}},tooltip:{callbacks:{label:c=>`${c.label}: ${c.parsed} trades`}}}}
+  });
+})();
+
+// ═════════════════════════════════════════════════════════════════════════════
+// CHART 3 — Mistake-Tag Impact
+// ═════════════════════════════════════════════════════════════════════════════
+(function(){
+  const impact={};
+  TRADES.forEach(t=>(t.mistakeTags||[]).forEach(m=>{impact[m]=(impact[m]||0)+t.pnl}));
+  const entries=Object.entries(impact).sort((a,b)=>a[1]-b[1]);
+  const labels=entries.map(e=>e[0]);
+  const data=entries.map(e=>e[1]);
+  const colors=data.map(v=>v<0?"rgba(224,85,85,0.85)":"rgba(46,170,111,0.85)");
+  new Chart(document.getElementById("chart-mistakes"),{
+    type:"bar",
+    data:{labels,datasets:[{data,backgroundColor:colors,borderRadius:4,borderSkipped:false}]},
+    options:{indexAxis:"y",responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>`${c.parsed.x>=0?"+":""}$${fmt(c.parsed.x)}`}}},scales:{x:{grid:{color:"rgba(255,255,255,0.05)"},ticks:{callback:v=>(v>=0?"+":"")+"$"+Math.round(v)}},y:{grid:{display:false}}}}
+  });
+})();
+
+// ═════════════════════════════════════════════════════════════════════════════
+// CHART 7 — Rolling 20-trade Win-Rate + Expectancy
+// ═════════════════════════════════════════════════════════════════════════════
+(function(){
+  const W=20;
+  const winRate=[],expectancy=[],labels=[];
+  for(let i=W-1;i<TRADES.length;i++){
+    const window=TRADES.slice(i-W+1,i+1);
+    const wins=window.filter(t=>t.pnl>0).length;
+    const wr=wins/window.length*100;
+    const expectR=window.reduce((s,t)=>s+t.rMult,0)/window.length;
+    winRate.push(wr);expectancy.push(expectR);
+    labels.push(`#${i+1}`);
+  }
+  new Chart(document.getElementById("chart-rolling"),{
+    type:"line",
+    data:{labels,datasets:[
+      {label:"Win-rate %",data:winRate,borderColor:"#C9A84C",backgroundColor:"rgba(201,168,76,0.1)",borderWidth:2,fill:true,tension:0.4,pointRadius:0,pointHoverRadius:4,yAxisID:"y"},
+      {label:"Expectancy (R)",data:expectancy,borderColor:"#2eaa6f",backgroundColor:"transparent",borderWidth:2,borderDash:[5,3],fill:false,tension:0.4,pointRadius:0,pointHoverRadius:4,yAxisID:"y1"}
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,interaction:{mode:"index",intersect:false},plugins:{legend:{display:true,position:"top",labels:{font:{size:10},boxWidth:10}},tooltip:{}},scales:{x:{grid:{display:false},ticks:{maxTicksLimit:8}},y:{position:"left",min:0,max:100,grid:{color:"rgba(255,255,255,0.05)"},ticks:{callback:v=>v+"%"},title:{display:true,text:"WR %",color:"#C9A84C",font:{size:10}}},y1:{position:"right",grid:{display:false},ticks:{callback:v=>v.toFixed(1)+"R"},title:{display:true,text:"E [R]",color:"#2eaa6f",font:{size:10}}}}}
+  });
+})();
+
+// ═════════════════════════════════════════════════════════════════════════════
+// CHART 2 — PnL Calendar Heatmap (SVG/grid, 13 cols x 7 rows)
+// ═════════════════════════════════════════════════════════════════════════════
+(function(){
+  const now=new Date();
+  const days=[];
+  for(let i=90;i>=0;i--){const d=new Date(now);d.setDate(d.getDate()-i);days.push(d.toISOString().slice(0,10))}
+  const byDay={};TRADES.forEach(t=>{if(!byDay[t.date])byDay[t.date]=0;byDay[t.date]+=t.pnl});
+  const max=Math.max(...Object.values(byDay).map(Math.abs).concat(1));
+  const cal=document.getElementById("calendar");
+  // Build 7 rows × N cols — rows=weekdays (Mon..Sun), cols=weeks
+  // Align first day with its weekday: fill leading nulls in grid[0..firstDow-1]
+  const grid=[];for(let r=0;r<7;r++)grid.push([]);
+  const firstDay=new Date(days[0]);
+  const firstDow=(firstDay.getDay()+6)%7; // Mon=0..Sun=6
+  for(let i=0;i<firstDow;i++)grid[i].push(null);
+  days.forEach(d=>{const dt=new Date(d);const dow=(dt.getDay()+6)%7;grid[dow].push(d)});
+  // Normalize column count (make all rows equal length)
+  const cols=Math.max(...grid.map(r=>r.length));
+  // Render as flex row of fixed-width columns (GitHub style)
+  cal.innerHTML="";
+  cal.style.display="flex";
+  cal.style.gap="3px";
+  cal.style.flexWrap="nowrap";
+  cal.style.overflowX="auto";
+  for(let c=0;c<cols;c++){
+    const col=document.createElement("div");
+    col.style.display="flex";col.style.flexDirection="column";col.style.gap="3px";col.style.flexShrink="0";
+    for(let r=0;r<7;r++){
+      const cell=document.createElement("div");
+      cell.className="cal-cell";
+      const day=grid[r]?.[c]||null;
+      if(day){
+        const pnl=byDay[day]||0;
+        let bg="rgba(255,255,255,.04)";
+        if(pnl>0){const a=0.15+0.7*Math.min(pnl/max,1);bg=`rgba(46,170,111,${a})`}
+        else if(pnl<0){const a=0.15+0.7*Math.min(Math.abs(pnl)/max,1);bg=`rgba(224,85,85,${a})`}
+        cell.style.background=bg;
+        cell.addEventListener("mouseenter",e=>showTip(e,`${fmtNL(day)} · ${pnl>=0?"+":""}$${fmt(pnl)}`));
+        cell.addEventListener("mouseleave",hideTip);
+      }else{cell.style.background="transparent";cell.style.pointerEvents="none"}
+      col.appendChild(cell);
+    }
+    cal.appendChild(col);
+  }
+})();
+
+function showTip(e,txt){const t=document.getElementById("tooltip");t.textContent=txt;t.style.display="block";t.style.left=(e.clientX+12)+"px";t.style.top=(e.clientY+12)+"px"}
+function hideTip(){document.getElementById("tooltip").style.display="none"}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// CHART 8 — Underwater Drawdown
+// ═════════════════════════════════════════════════════════════════════════════
+(function(){
+  let cum=0,peak=0;
+  const underwater=[];const labels=[];
+  TRADES.forEach((t,i)=>{cum+=t.pnl;if(cum>peak)peak=cum;underwater.push(cum-peak);labels.push(i)});
+  new Chart(document.getElementById("chart-underwater"),{
+    type:"line",
+    data:{labels,datasets:[{data:underwater,borderColor:"rgba(224,85,85,0.9)",backgroundColor:"rgba(224,85,85,0.25)",borderWidth:2,fill:true,tension:0.2,pointRadius:0,pointHoverRadius:3}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>`$${fmt(c.parsed.y)} onder peak`}}},scales:{x:{grid:{display:false},ticks:{display:false}},y:{max:0,grid:{color:"rgba(255,255,255,0.05)"},ticks:{callback:v=>"$"+Math.round(v)}}}}
+  });
+})();
+
+// ═════════════════════════════════════════════════════════════════════════════
+// CHART 6 — Funding & Fees Drain Waterfall
+// ═════════════════════════════════════════════════════════════════════════════
+(function(){
+  // Demo assumption: t.pnl is the raw gross (before fees/funding).
+  // Real app: pnl is usually already net — just compute gross = pnl + fees + funding.
+  const grossReal=TRADES.reduce((s,t)=>s+t.pnl,0);
+  const totalFees=TRADES.reduce((s,t)=>s+(t.fees||0),0);
+  const totalFunding=TRADES.reduce((s,t)=>s+(t.funding||0),0);
+  const net=grossReal-totalFees-totalFunding;
+  // Build floating bar: [start, end] for each
+  const steps=[
+    {label:"Gross PnL",val:grossReal,color:"rgba(46,170,111,0.75)",from:0},
+    {label:"Fees",val:-totalFees,color:"rgba(224,85,85,0.7)",from:grossReal},
+    {label:"Funding",val:-totalFunding,color:"rgba(224,85,85,0.85)",from:grossReal-totalFees},
+    {label:"Net PnL",val:net,color:net>=0?"rgba(201,168,76,0.9)":"rgba(224,85,85,0.9)",from:0}
+  ];
+  new Chart(document.getElementById("chart-waterfall"),{
+    type:"bar",
+    data:{labels:steps.map(s=>s.label),datasets:[{data:steps.map(s=>[s.from,s.from+s.val]),backgroundColor:steps.map(s=>s.color),borderRadius:4,borderSkipped:false}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>{const s=steps[c.dataIndex];return `${s.val>=0?"+":""}$${fmt(s.val)}`}}}},scales:{x:{grid:{display:false}},y:{grid:{color:"rgba(255,255,255,0.05)"},ticks:{callback:v=>"$"+Math.round(v)}}}}
+  });
+})();
+
+// ═════════════════════════════════════════════════════════════════════════════
+// CHART 9 — MFE/MAE Scatter (Exit Efficiency)
+// ═════════════════════════════════════════════════════════════════════════════
+(function(){
+  const points=TRADES.filter(t=>t.pnl>0).map(t=>({x:t.mfe,y:t.pnl}));
+  const maxMFE=Math.max(...points.map(p=>p.x));
+  new Chart(document.getElementById("chart-mfe"),{
+    type:"scatter",
+    data:{datasets:[
+      {label:"Trade",data:points,backgroundColor:points.map(p=>{const eff=p.y/p.x;return eff>0.7?"rgba(46,170,111,0.75)":eff>0.4?"rgba(201,168,76,0.75)":"rgba(224,85,85,0.75)"}),borderColor:"rgba(18,21,30,0.9)",borderWidth:1,pointRadius:5,pointHoverRadius:8},
+      {label:"Perfect exit",data:[{x:0,y:0},{x:maxMFE,y:maxMFE}],showLine:true,borderColor:"rgba(201,168,76,0.5)",borderWidth:1,borderDash:[5,4],pointRadius:0,fill:false,type:"line"}
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>{if(c.datasetIndex===1)return"Perfect exit";const p=c.raw;const eff=(p.y/p.x*100).toFixed(0);return `MFE: $${fmt(p.x)} · Realized: $${fmt(p.y)} (${eff}% efficiency)`}}}},scales:{x:{title:{display:true,text:"MFE ($) — max winst tijdens trade",color:"var(--text4)",font:{size:10}},grid:{color:"rgba(255,255,255,0.05)"},ticks:{callback:v=>"$"+Math.round(v)}},y:{title:{display:true,text:"Realized PnL ($)",color:"var(--text4)",font:{size:10}},grid:{color:"rgba(255,255,255,0.05)"},ticks:{callback:v=>"$"+Math.round(v)}}}}
+  });
+})();
+
+// ═════════════════════════════════════════════════════════════════════════════
+// TABLE 10 — Per-setup MAE-to-Stop ratio
+// ═════════════════════════════════════════════════════════════════════════════
+(function(){
+  const bySetup={};
+  TRADES.forEach(t=>{
+    (t.setupTags||[]).forEach(s=>{
+      if(!bySetup[s])bySetup[s]={n:0,wins:0,rSum:0,maeRatios:[]};
+      bySetup[s].n++;
+      if(t.pnl>0)bySetup[s].wins++;
+      bySetup[s].rSum+=t.rMult;
+      // MAE-to-stop ratio: abs(mae) / riskUsd (should be <= 1 for wins that didn't hit stop)
+      const ratio=Math.min(Math.abs(t.mae)/t.riskUsd,1.5);
+      bySetup[s].maeRatios.push(ratio);
+    });
+  });
+  const rows=Object.entries(bySetup).map(([setup,d])=>{
+    const wr=d.wins/d.n*100;
+    const avgR=d.rSum/d.n;
+    const avgMaeRatio=d.maeRatios.reduce((s,r)=>s+r,0)/d.maeRatios.length;
+    let advice="—";
+    if(avgMaeRatio<0.4)advice="🎯 Stop kan tighter";
+    else if(avgMaeRatio>0.85)advice="⚠ Stop te krap";
+    else advice="✓ Stop ok";
+    return{setup,n:d.n,wr,avgR,avgMaeRatio,advice};
+  }).sort((a,b)=>b.avgR-a.avgR);
+  const tbody=document.getElementById("mae-tbody");
+  tbody.innerHTML="";
+  rows.forEach(r=>{
+    const tr=document.createElement("tr");
+    tr.style.borderBottom="1px solid var(--border2)";
+    const wrClass=r.wr>=50?"pill-green":"pill-red";
+    const rClass=r.avgR>=0.5?"pill-green":r.avgR>=0?"pill-gold":"pill-red";
+    const ratioColor=r.avgMaeRatio<0.4?"var(--green)":r.avgMaeRatio>0.85?"var(--red)":"var(--gold)";
+    tr.innerHTML=`<td style="padding:10px 12px;font-weight:600;color:var(--text2)">${r.setup}</td><td style="padding:10px 12px;text-align:center;font-family:var(--mono);color:var(--text3)">${r.n}</td><td style="padding:10px 12px;text-align:center"><span class="pill ${wrClass}">${r.wr.toFixed(0)}%</span></td><td style="padding:10px 12px;text-align:center;font-family:var(--mono);color:${ratioColor};font-weight:700">${(r.avgMaeRatio*100).toFixed(0)}%</td><td style="padding:10px 12px;text-align:center"><span class="pill ${rClass}">${r.avgR>=0?"+":""}${r.avgR.toFixed(2)}R</span></td><td style="padding:10px 12px;text-align:right;color:var(--text3);font-size:11px">${r.advice}</td>`;
+    tbody.appendChild(tr);
+  });
+})();
+
+console.log("✓ Analytics demo loaded with",TRADES.length,"synthetic trades");
+</script>
+</body>
+</html>
