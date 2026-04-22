@@ -5809,6 +5809,27 @@ function App(){
   const[storageUsage,setStorageUsage]=useState(()=>getStorageUsage());
   const[showPdf,setShowPdf]=useState(false);
   const[showWelcome,setShowWelcome]=useState(function(){try{return!localStorage.getItem("tj_welcomed");}catch(e){return false;}});
+  // Update check — fetch main/version.json from GitHub raw, compare build date (YYYY-MM-DD string-sorts correctly).
+  // Silent on failure (offline / rate limit / CORS). User can dismiss per-build via tj_update_dismissed_build.
+  const[updateAvailable,setUpdateAvailable]=useState(null);
+  useEffect(()=>{
+    let cancelled=false;
+    (async()=>{
+      try{
+        const r=await fetch("https://raw.githubusercontent.com/ZaratrasJournal/SyncJournal/main/main/version.json",{cache:"no-cache"});
+        if(!r.ok||cancelled)return;
+        const remote=await r.json();
+        if(!remote||!remote.build)return;
+        if(remote.build>APP_VERSION.build){
+          const dismissed=localStorage.getItem("tj_update_dismissed_build");
+          if(dismissed!==remote.build)setUpdateAvailable(remote);
+        }
+      }catch{}
+    })();
+    return()=>{cancelled=true};
+  },[]);
+  const dismissUpdate=()=>{if(updateAvailable)try{localStorage.setItem("tj_update_dismissed_build",updateAvailable.build)}catch{};setUpdateAvailable(null)};
+
   // Milestone celebrations — one-time toast when user hits a trading journey milestone
   const[milestone,setMilestone]=useState(null);
   useEffect(()=>{
@@ -6197,6 +6218,12 @@ function App(){
 
       {/* Content */}
       <div className="tj-content" style={{padding:"28px 40px",maxWidth:"1520px",margin:"0 auto"}}>
+        {/* Update-available banner — shows when main/version.json on GitHub has a newer build date */}
+        {updateAvailable&&<div style={{padding:"10px 14px",marginBottom:"12px",borderRadius:"10px",background:"rgba(46,170,111,.06)",border:"1px solid rgba(46,170,111,.25)",borderLeft:"3px solid var(--green)",color:"var(--text2)",fontSize:"12px",display:"flex",alignItems:"center",gap:"12px",lineHeight:1.5}}>
+          <span style={{fontSize:"16px"}}>📦</span>
+          <span style={{flex:1}}>Nieuwere versie beschikbaar: <strong style={{color:"var(--green)"}}>{updateAvailable.label} · {updateAvailable.build}</strong>. <a href="https://github.com/ZaratrasJournal/SyncJournal/raw/main/main/tradejournal.html" target="_blank" rel="noopener" style={{color:"var(--gold)",textDecoration:"underline"}}>Download</a> en vervang je lokale bestand — localStorage blijft intact.</span>
+          <button onClick={dismissUpdate} title="Niet meer tonen voor deze versie" style={{background:"none",border:"none",color:"var(--text4)",cursor:"pointer",fontSize:"13px",padding:"2px 6px",lineHeight:1}}>✕</button>
+        </div>}
         {/* Mindset — ochtend-banner (1× per dag). Inline so it pushes content down instead of overlaying. Hidden when draft-recovery banner is showing. */}
         {morningQuote&&!pendingDraft&&<div style={{padding:"10px 14px 10px 16px",marginBottom:"16px",borderRadius:"10px",background:"var(--gold-dim)",border:"1px solid var(--gold-border)",borderLeft:"3px solid var(--gold)",color:"var(--text2)",fontSize:"12px",display:"flex",alignItems:"center",gap:"12px",lineHeight:1.5,animation:"fadeIn .3s ease"}}>
           <span style={{fontSize:"16px"}}>☀️</span>
