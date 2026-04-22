@@ -852,7 +852,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.2",released:"2026-04-22"};
+const APP_VERSION={version:"v12.3",released:"2026-04-22"};
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
 function isNewerVersion(a,b){
   const parse=(s)=>String(s||"").replace(/^v/,"").split(".").map(n=>parseInt(n,10)||0);
@@ -4949,6 +4949,27 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,imp
   // Visual confirmation for displayName auto-save (flashes after 400ms debounce, fades after 1800ms)
   const[nameSaved,setNameSaved]=useState(false);
   const nameTimerRef=useRef(null);const nameHideTimerRef=useRef(null);
+  // Update check — user-initiated. status: idle | checking | up-to-date | newer | error
+  const[updateCheck,setUpdateCheck]=useState({status:"idle"});
+  const checkForUpdates=async()=>{
+    setUpdateCheck({status:"checking"});
+    try{
+      const r=await fetch("https://raw.githubusercontent.com/ZaratrasJournal/SyncJournal/main/main/version.json",{cache:"no-cache"});
+      if(!r.ok)throw new Error("HTTP "+r.status);
+      const remote=await r.json();
+      const remoteVer=remote&&(remote.version||remote.label);
+      if(!remoteVer)throw new Error("Geen versie gevonden");
+      if(isNewerVersion(remoteVer,APP_VERSION.version)){
+        setUpdateCheck({status:"newer",remote:{...remote,version:remoteVer}});
+      }else{
+        setUpdateCheck({status:"up-to-date"});
+        setTimeout(()=>setUpdateCheck(p=>p.status==="up-to-date"?{status:"idle"}:p),4000);
+      }
+    }catch(e){
+      setUpdateCheck({status:"error",msg:String(e.message||e)});
+      setTimeout(()=>setUpdateCheck(p=>p.status==="error"?{status:"idle"}:p),4000);
+    }
+  };
   // CSV preview state
   const[preview,setPreview]=useState(null);
   const[selected,setSelected]=useState(new Set());
@@ -5551,9 +5572,45 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,imp
         />
         <div style={{fontSize:"10px",color:"var(--text4)",marginTop:"6px",lineHeight:1.5}}>Standaard gebruiken we de Morani gedeelde Worker. Je kunt een eigen Worker aanmaken via <strong>workers.cloudflare.com</strong>.</div>
       </div>}
-      {/* Version footer — hover shows release date for debugging */}
-      <div style={{marginTop:"16px",paddingTop:"14px",borderTop:"1px solid var(--border2)",textAlign:"center",fontSize:"10px",color:"var(--text5)",fontFamily:"var(--mono)",letterSpacing:".08em"}}>
-        SyncJournal <span style={{color:"var(--gold)"}} title={`Released ${APP_VERSION.released}`}>{APP_VERSION.version}</span>
+      {/* Version + update check */}
+      <div style={{marginTop:"16px",paddingTop:"14px",borderTop:"1px solid var(--border2)"}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:"12px",flexWrap:"wrap"}}>
+          <div style={{fontSize:"12px",color:"var(--text3)"}}>
+            SyncJournal <span style={{color:"var(--gold)",fontFamily:"var(--mono)",fontWeight:700}}>{APP_VERSION.version}</span>
+            <span style={{color:"var(--text5)",fontSize:"10px",fontFamily:"var(--mono)",marginLeft:"8px"}}>released {APP_VERSION.released}</span>
+          </div>
+          <button
+            onClick={checkForUpdates}
+            disabled={updateCheck.status==="checking"}
+            style={{padding:"6px 14px",borderRadius:"6px",border:"1px solid var(--border3)",background:"transparent",color:"var(--text2)",fontSize:"11px",fontWeight:600,cursor:updateCheck.status==="checking"?"default":"pointer",fontFamily:"inherit",opacity:updateCheck.status==="checking"?0.6:1}}
+          >
+            {updateCheck.status==="checking"?"⏳ Checken...":"🔄 Check voor updates"}
+          </button>
+        </div>
+        {/* Result area — conditional state */}
+        {updateCheck.status==="up-to-date"&&<div style={{marginTop:"10px",padding:"8px 12px",borderRadius:"6px",background:"rgba(46,170,111,.06)",border:"1px solid rgba(46,170,111,.2)",color:"var(--green)",fontSize:"11px",display:"flex",alignItems:"center",gap:"8px"}}>
+          <span>✓</span><span>Je hebt de laatste versie.</span>
+        </div>}
+        {updateCheck.status==="error"&&<div style={{marginTop:"10px",padding:"8px 12px",borderRadius:"6px",background:"rgba(224,85,85,.06)",border:"1px solid rgba(224,85,85,.2)",color:"var(--red)",fontSize:"11px",display:"flex",alignItems:"center",gap:"8px"}}>
+          <span>⚠</span><span>Check mislukt — {updateCheck.msg}. Internet / GitHub beschikbaar?</span>
+        </div>}
+        {updateCheck.status==="newer"&&<div style={{marginTop:"10px",padding:"12px 14px",borderRadius:"8px",background:"rgba(201,168,76,.06)",border:"1px solid var(--gold-border)",borderLeft:"3px solid var(--gold)"}}>
+          <div style={{fontSize:"12px",color:"var(--text2)",marginBottom:"8px",lineHeight:1.5}}>
+            📦 Nieuwere versie beschikbaar: <strong style={{color:"var(--gold)",fontFamily:"var(--mono)"}}>{updateCheck.remote.version}</strong>
+            {updateCheck.remote.released&&<span style={{color:"var(--text4)",fontSize:"10px",fontFamily:"var(--mono)",marginLeft:"6px"}}>({updateCheck.remote.released})</span>}
+          </div>
+          <div style={{fontSize:"10px",color:"var(--text4)",marginBottom:"10px",lineHeight:1.5}}>
+            {IS_HOSTED
+              ?"Klik \"Update nu\" — de pagina wordt ververst. Je localStorage blijft intact."
+              :<>Download het nieuwe <code style={{background:"rgba(255,255,255,.05)",padding:"1px 5px",borderRadius:"3px",fontFamily:"var(--mono)",color:"var(--text3)"}}>tradejournal.html</code> bestand, overschrijf je huidige bestand en ververs. <strong>localStorage blijft intact.</strong></>}
+          </div>
+          <div style={{display:"flex",gap:"8px",flexWrap:"wrap"}}>
+            {IS_HOSTED
+              ?<button onClick={()=>{try{location.reload()}catch{}}} style={{padding:"7px 16px",borderRadius:"6px",border:"none",background:"var(--green)",color:"#000",fontSize:"12px",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>↻ Update nu</button>
+              :<a href="https://github.com/ZaratrasJournal/SyncJournal/raw/main/main/tradejournal.html" target="_blank" rel="noopener" download="tradejournal.html" style={{padding:"7px 16px",borderRadius:"6px",border:"1px solid var(--gold)",background:"var(--gold-dim)",color:"var(--gold)",fontSize:"12px",fontWeight:700,cursor:"pointer",fontFamily:"inherit",textDecoration:"none"}}>⬇ Download {updateCheck.remote.version}</a>}
+            <button onClick={()=>setUpdateCheck({status:"idle"})} style={{padding:"7px 12px",borderRadius:"6px",border:"1px solid var(--border3)",background:"transparent",color:"var(--text4)",fontSize:"11px",cursor:"pointer",fontFamily:"inherit"}}>Later</button>
+          </div>
+        </div>}
       </div>
     </div>
 
@@ -5696,7 +5753,7 @@ function HelpPage(){
     {title:"🌳 Versie-flow",icon:"🌳",items:[
       ["/work/tradejournal.html","WIP — hier bouwen Denny + Sebas. Kan breken, gebruik op eigen risico."],
       ["/main/tradejournal.html","Stable — community gebruikt deze. Wordt bijgewerkt wanneer we tevreden zijn op work."],
-      ["Update flow","Bij nieuwere versie verschijnt een groene banner bovenaan. Gehost (via GitHub raw / hosted URL) = klik op ↻ Update nu. Lokaal (file:// of localhost) = klik op ⬇ Download, overschrijf je bestand en ververs. localStorage blijft altijd intact."],
+      ["Update flow","Ga naar Instellingen → Accounts, scroll naar beneden tot de versie-regel. Klik 🔄 Check voor updates. Als er een nieuwere versie is krijg je een knop: Update nu (gehost) of Download (lokaal bestand — overschrijf en ververs). localStorage blijft altijd intact."],
     ]},
   ];
   return(<div style={{animation:"fadeIn .3s ease",maxWidth:"880px",margin:"0 auto"}}>
@@ -5824,27 +5881,8 @@ function App(){
   const[storageUsage,setStorageUsage]=useState(()=>getStorageUsage());
   const[showPdf,setShowPdf]=useState(false);
   const[showWelcome,setShowWelcome]=useState(function(){try{return!localStorage.getItem("tj_welcomed");}catch(e){return false;}});
-  // Update check — fetch main/version.json from GitHub raw, compare via semver.
-  // Silent on failure (offline / rate limit / CORS). User can dismiss per-version via tj_update_dismissed_version.
-  const[updateAvailable,setUpdateAvailable]=useState(null);
-  useEffect(()=>{
-    let cancelled=false;
-    (async()=>{
-      try{
-        const r=await fetch("https://raw.githubusercontent.com/ZaratrasJournal/SyncJournal/main/main/version.json",{cache:"no-cache"});
-        if(!r.ok||cancelled)return;
-        const remote=await r.json();
-        const remoteVer=remote&&(remote.version||remote.label);
-        if(!remoteVer)return;
-        if(isNewerVersion(remoteVer,APP_VERSION.version)){
-          const dismissed=localStorage.getItem("tj_update_dismissed_version");
-          if(dismissed!==remoteVer)setUpdateAvailable({...remote,version:remoteVer});
-        }
-      }catch{}
-    })();
-    return()=>{cancelled=true};
-  },[]);
-  const dismissUpdate=()=>{if(updateAvailable)try{localStorage.setItem("tj_update_dismissed_version",updateAvailable.version)}catch{};setUpdateAvailable(null)};
+  // Update check moved to Instellingen → Accounts (user-initiated, not auto-banner).
+  // See checkForUpdates in AccountsHub.
 
   // Milestone celebrations — one-time toast when user hits a trading journey milestone
   const[milestone,setMilestone]=useState(null);
@@ -6234,19 +6272,6 @@ function App(){
 
       {/* Content */}
       <div className="tj-content" style={{padding:"28px 40px",maxWidth:"1520px",margin:"0 auto"}}>
-        {/* Update-available banner — shows when main/version.json on GitHub has a newer version */}
-        {updateAvailable&&<div style={{padding:"10px 14px",marginBottom:"12px",borderRadius:"10px",background:"rgba(46,170,111,.06)",border:"1px solid rgba(46,170,111,.25)",borderLeft:"3px solid var(--green)",color:"var(--text2)",fontSize:"12px",display:"flex",alignItems:"center",gap:"12px",lineHeight:1.5,flexWrap:"wrap"}}>
-          <span style={{fontSize:"16px"}}>📦</span>
-          <span style={{flex:1,minWidth:"200px"}}>Nieuwere versie beschikbaar: <strong style={{color:"var(--green)"}}>{updateAvailable.version}</strong>{updateAvailable.released?<span style={{color:"var(--text4)",fontFamily:"var(--mono)",fontSize:"10px",marginLeft:"6px"}}>({updateAvailable.released})</span>:null}
-            {IS_HOSTED
-              ?<span style={{color:"var(--text4)",marginLeft:"6px"}}>— klik Update om de nieuwste versie te laden.</span>
-              :<span style={{color:"var(--text4)",marginLeft:"6px"}}>— download de nieuwste <code style={{background:"rgba(255,255,255,.05)",padding:"1px 5px",borderRadius:"3px",fontFamily:"var(--mono)",color:"var(--text3)"}}>tradejournal.html</code>, overschrijf je lokale bestand en ververs. <strong>localStorage blijft intact.</strong></span>}
-          </span>
-          {IS_HOSTED
-            ?<button onClick={()=>{try{location.reload()}catch{}}} title="Ververs de pagina — nieuwste versie wordt geladen, localStorage blijft" style={{padding:"6px 14px",borderRadius:"6px",border:"none",background:"var(--green)",color:"#000",fontSize:"12px",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>↻ Update nu</button>
-            :<a href="https://github.com/ZaratrasJournal/SyncJournal/raw/main/main/tradejournal.html" target="_blank" rel="noopener" download="tradejournal.html" style={{padding:"6px 14px",borderRadius:"6px",border:"1px solid var(--green)",background:"rgba(46,170,111,.1)",color:"var(--green)",fontSize:"12px",fontWeight:700,cursor:"pointer",fontFamily:"inherit",textDecoration:"none"}}>⬇ Download {updateAvailable.version}</a>}
-          <button onClick={dismissUpdate} title="Niet meer tonen voor deze versie" style={{background:"none",border:"none",color:"var(--text4)",cursor:"pointer",fontSize:"13px",padding:"2px 6px",lineHeight:1}}>✕</button>
-        </div>}
         {/* Mindset — ochtend-banner (1× per dag). Inline so it pushes content down instead of overlaying. Hidden when draft-recovery banner is showing. */}
         {morningQuote&&!pendingDraft&&<div style={{padding:"10px 14px 10px 16px",marginBottom:"16px",borderRadius:"10px",background:"var(--gold-dim)",border:"1px solid var(--gold-border)",borderLeft:"3px solid var(--gold)",color:"var(--text2)",fontSize:"12px",display:"flex",alignItems:"center",gap:"12px",lineHeight:1.5,animation:"fadeIn .3s ease"}}>
           <span style={{fontSize:"16px"}}>☀️</span>
