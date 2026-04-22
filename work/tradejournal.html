@@ -861,6 +861,54 @@ const EMPTY_TRADE={
 
 const iStyle={width:"100%",padding:"11px 14px",borderRadius:"var(--radius)",border:"1px solid rgba(201,168,76,0.18)",background:"rgba(255,255,255,0.03)",color:"var(--text)",fontSize:"14px",fontFamily:"var(--mono)",outline:"none",transition:"border-color .15s",lineHeight:1.5};
 
+// ─── MINDSET QUOTES ──────────────────────────────────────────────────
+// Supportive voice — nudges, not hard-nosed rules. Categorised so the
+// right quote surfaces in the right context (morning, pre-trade, post-loss, etc.)
+const MINDSET_QUOTES=[
+  // Morani (jouw eigen community-voice)
+  {id:"m1",cat:"anti-fomo",src:"Morani",text:"Missen hoort erbij. De trade die je mist kost je niets — de trade uit emotie vaak wel. Als je FOMO voelt: even ademen."},
+  {id:"m2",cat:"emotion-check",src:"Morani",text:"Goede trades starten vaak met een ongemakkelijk gevoel. Slechte trades met opwinding. Luister naar wat je voelt."},
+  {id:"m3",cat:"discipline",src:"Morani",text:"Discipline wordt beloond, geduld ook. Emotie en ongeduld zijn menselijk — maar ze sturen je zelden de goede kant op."},
+  {id:"m4",cat:"risk-management",src:"Morani",text:"Kleine verliezen zijn geen falen — het zijn de prijs van doorgaan. Hou ze klein, laat winsten groeien."},
+  {id:"m5",cat:"post-loss",src:"Morani",text:"Een verlies is niet hetzelfde als een fout. Elke succesvolle trader kent ze. Wat telt: bleef je trouw aan je plan?"},
+  {id:"m6",cat:"process-focus",src:"Morani",text:"Focus op risico = winst. Focus op winst = druk. Je mindset is je belangrijkste tool."},
+  {id:"m7",cat:"resilience",src:"Morani",text:"Je bent niet klaar met traden. Je bent klaar met het op de verkeerde manier doen."},
+  {id:"m8",cat:"morning",src:"Morani",text:"Je edge is gevonden — de rest is mentaal. Begin rustig. Geduld werkt vandaag voor je."},
+  // Classics, warmer gephraseerd
+  {id:"c1",cat:"risk-management",src:"Ed Seykota",text:"Kleine verliezen zijn hoe goede traders hun kapitaal beschermen. Hou ze klein, en je blijft altijd in het spel."},
+  {id:"c2",cat:"patience",src:"Jesse Livermore",text:"Het was nooit mijn denkwerk dat het grote geld opleverde. Het was mijn geduld — stil blijven zitten terwijl anderen onrustig werden."},
+  {id:"c3",cat:"post-loss",src:"Paul Tudor Jones",text:"Een verliesgevende positie groter maken voelt als een kans, maar meestal is het emotie. Geef jezelf toestemming om eruit te stappen."},
+  {id:"c4",cat:"process-focus",src:"Mark Douglas",text:"Elke trade heeft een onzekere uitkomst. Wie dat volledig accepteert, tradet op waarschijnlijkheid — in plaats van op hoop."},
+  {id:"c5",cat:"post-loss",src:"Brett Steenbarger",text:"Succesvol traden draait niet om nooit verkeerde trades nemen. Het gaat om hoe je ermee omgaat — daar zit je groei."},
+];
+
+// Mindset context → categories mapping (which quote pools feed which UI moment)
+const MINDSET_CTX={
+  morning:["morning","process-focus","patience"],
+  "pre-trade":["emotion-check","anti-fomo","discipline"],
+  "post-loss":["post-loss","resilience","discipline"],
+  "dashboard-card":["process-focus","morning","discipline","patience","resilience"],
+  "risk-exceeded":["risk-management"],
+};
+
+const DEFAULT_MINDSET_PREFS={master:true,morning:true,preTrade:true,postLoss:true,dashboardCard:true,riskExceeded:true};
+
+// "Seen" tracking — so we don't repeat the same quote too often
+function getMindsetSeen(){try{const s=localStorage.getItem("tj_mindset_seen");return s?JSON.parse(s):{}}catch{return{}}}
+function markMindsetSeen(id){try{const s=getMindsetSeen();s[id]=Date.now();localStorage.setItem("tj_mindset_seen",JSON.stringify(s))}catch{}}
+function readMindsetPrefs(){try{const s=localStorage.getItem("tj_mindset_prefs");return s?{...DEFAULT_MINDSET_PREFS,...JSON.parse(s)}:DEFAULT_MINDSET_PREFS}catch{return DEFAULT_MINDSET_PREFS}}
+
+// Pick a quote for a context. Prefers un-seen-lately quotes (within 7d cooldown).
+function pickMindsetQuote(contextId){
+  const cats=MINDSET_CTX[contextId]||[];
+  const pool=MINDSET_QUOTES.filter(q=>cats.includes(q.cat));
+  if(!pool.length)return null;
+  const seen=getMindsetSeen();const now=Date.now();const WEEK=7*24*60*60*1000;
+  const unseen=pool.filter(q=>!seen[q.id]||(now-seen[q.id])>WEEK);
+  const choices=unseen.length?unseen:pool;
+  return choices[Math.floor(Math.random()*choices.length)];
+}
+
 // Account label suggestions — user-editable free text with preset buttons
 const LABEL_PRESETS=["Swing","Daytrade","Scalp","Swing-scalp","News trade","Test"];
 
@@ -2568,6 +2616,15 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,accounts,sho
     if(!isDraft||!trade)return;
     try{localStorage.setItem("tj_trade_draft",JSON.stringify({trade,savedAt:Date.now()}))}catch(err){}
   },[trade,isDraft]);
+  // Pre-trade mindset nudge — subtle italic above the form, shown once per form-open on new trades
+  const[preTradeQuote]=useState(()=>{
+    if(!isDraft)return null;
+    const p=readMindsetPrefs();
+    if(!p.master||!p.preTrade)return null;
+    const q=pickMindsetQuote("pre-trade");
+    if(q)markMindsetSeen(q.id);
+    return q;
+  });
   const toggle=(f,tag)=>setTrade(p=>({...p,[f]:p[f].includes(tag)?p[f].filter(t=>t!==tag):[...p[f],tag]}));
   const fRef=useRef();
   const[ssInfo,setSsInfo]=useState(null);
@@ -2594,6 +2651,10 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,accounts,sho
   (accounts||[]).forEach(a=>{if(!sourceOptions.find(s=>s.id===a.name))sourceOptions.push({id:a.name,label:"✏️ "+a.name,color:"var(--text3)"})});
 
   return(<div style={{animation:"fadeIn .3s ease",background:"var(--glass)",backdropFilter:"var(--glass-blur)",WebkitBackdropFilter:"var(--glass-blur)",borderRadius:"var(--radius-lg)",padding:"24px",border:"1px solid var(--glass-border)"}}>
+    {/* Mindset — pre-trade italic nudge (only on new trade, once per form-open) */}
+    {preTradeQuote&&<div style={{padding:"8px 12px",marginBottom:"14px",borderLeft:"2px solid var(--gold-border)",fontSize:"12px",color:"var(--text3)",fontStyle:"italic",lineHeight:1.5,background:"rgba(201,168,76,.03)"}}>
+      "{preTradeQuote.text}" <span style={{color:"var(--text5)",fontStyle:"normal",fontSize:"10px",fontFamily:"var(--mono)",letterSpacing:".06em",marginLeft:"4px"}}>— {preTradeQuote.src}</span>
+    </div>}
     {/* Status toggle — primary control, drives conditional form sections */}
     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"16px",padding:"10px 14px",background:isOpen?"var(--gold-dim)":"var(--bg4)",borderRadius:"8px",border:`1px solid ${isOpen?"var(--gold-border)":"var(--border2)"}`}}>
       <div style={{display:"flex",alignItems:"center",gap:"10px"}}>
@@ -3984,6 +4045,20 @@ function Sparkline({data,color="#2eaa6f"}){
 
 function DashboardPremium({trades,config,accounts,tradingRules,dailyNotes,goals,setTab,setNewTrade,newEmptyTrade,setFilters}){
   const closed=(trades||[]).filter(t=>t.pnl!==""&&!isNaN(parseFloat(t.pnl)));
+  // Mindset — weekly-rotating quote on dashboard (only re-picks when week changes)
+  const[mindsetCard,setMindsetCard]=useState(()=>{
+    const p=readMindsetPrefs();
+    if(!p.master||!p.dashboardCard)return null;
+    try{
+      const now=new Date();const y=now.getFullYear();const w=Math.ceil(((now-new Date(y,0,1))/86400000+new Date(y,0,1).getDay()+1)/7);
+      const key=`${y}-${w}`;
+      const stored=localStorage.getItem("tj_mindset_dashQuote");
+      if(stored){const parsed=JSON.parse(stored);if(parsed.key===key)return parsed.quote;}
+      const q=pickMindsetQuote("dashboard-card");
+      if(q){markMindsetSeen(q.id);localStorage.setItem("tj_mindset_dashQuote",JSON.stringify({key,quote:q}))}
+      return q;
+    }catch{return null}
+  });
   const hour=new Date().getHours();
   const greeting=hour<12?"Goedemorgen":hour<18?"Goedemiddag":"Goedenavond";
   const today=new Date().toISOString().split("T")[0];
@@ -4025,6 +4100,16 @@ function DashboardPremium({trades,config,accounts,tradingRules,dailyNotes,goals,
         <button onClick={()=>{setNewTrade(newEmptyTrade());setTab("new");}} style={{padding:"12px 24px",borderRadius:"12px",background:"linear-gradient(135deg,#f0d57a,#C9A84C,#8c721c)",color:"#000",border:"none",fontFamily:"inherit",fontSize:"13px",fontWeight:700,cursor:"pointer",boxShadow:"0 6px 20px rgba(201,168,76,.35),inset 0 1px 0 rgba(255,255,255,.3)"}}>⊕ Nieuwe trade</button>
       </div>
     </div>
+
+    {/* Mindset — weekly quote card (subtle, not dismissable but quiet) */}
+    {mindsetCard&&<div style={{padding:"14px 20px",marginBottom:"20px",borderRadius:"12px",background:"linear-gradient(135deg, rgba(201,168,76,.08) 0%, rgba(201,168,76,.02) 100%)",border:"1px solid rgba(201,168,76,.18)",display:"flex",alignItems:"center",gap:"14px",position:"relative",overflow:"hidden"}}>
+      <div style={{position:"absolute",top:"2px",right:"14px",fontSize:"42px",color:"var(--gold)",opacity:.18,fontFamily:"Georgia, serif",lineHeight:1,pointerEvents:"none"}}>"</div>
+      <div style={{fontSize:"18px",lineHeight:1}}>💭</div>
+      <div style={{flex:1,fontSize:"13px",lineHeight:1.55,color:"var(--text2)",fontStyle:"italic"}}>
+        "{mindsetCard.text}"
+        <span style={{color:"var(--gold)",fontSize:"10px",fontFamily:"var(--mono)",letterSpacing:".08em",textTransform:"uppercase",marginLeft:"8px",fontStyle:"normal",fontWeight:600}}>— {mindsetCard.src}</span>
+      </div>
+    </div>}
 
     {/* GOALS RINGS */}
     {goals&&<GoalsRings goals={goals} trades={closed} onEdit={()=>setTab("accounts")}/>}
@@ -4674,7 +4759,7 @@ function ReviewDashboard({trades}){
 }
 
 // ============ ACCOUNTS HUB ============
-function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,importTrades,syncOpenPositions,exportTrades,setTagConfig,tagConfig,tradingRules,setTradingRules,goals,setGoals}){
+function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,importTrades,syncOpenPositions,exportTrades,setTagConfig,tagConfig,tradingRules,setTradingRules,goals,setGoals,mindsetPrefs,setMindsetPrefs}){
   const csvRef=useRef();const csvAcctRef=useRef(null);
   const backupRef=useRef();
   // CSV preview state
@@ -5224,6 +5309,23 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,imp
         <div style={{fontSize:"10px",color:"var(--text4)",marginTop:"6px",lineHeight:1.5}}>Polt gekoppelde exchanges automatisch op dit interval. Werkt alleen wanneer er minstens één API-verbinding actief is. Aanbevolen nu: <strong>Uit</strong> zolang de proxy-verbinding met MEXC nog niet werkt.</div>
       </div>
 
+      {/* Mindset-reminders — subtle nudges throughout the journal */}
+      <div style={{marginTop:"16px",paddingTop:"14px",borderTop:"1px solid var(--border2)"}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"6px"}}>
+          <span style={{fontSize:"12px",color:"var(--text2)",fontWeight:600}}>💭 Mindset-reminders</span>
+          <button onClick={()=>setMindsetPrefs(p=>({...p,master:!p.master}))} style={{padding:"4px 12px",borderRadius:"14px",border:"1px solid "+(mindsetPrefs?.master?"var(--gold-border)":"var(--border3)"),background:mindsetPrefs?.master?"var(--gold-dim)":"transparent",color:mindsetPrefs?.master?"var(--gold)":"var(--text4)",fontSize:"11px",fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{mindsetPrefs?.master?"Aan":"Uit"}</button>
+        </div>
+        <div style={{fontSize:"10px",color:"var(--text4)",lineHeight:1.5,marginBottom:"10px"}}>Subtiele nudges (Morani + traders-canon) op de juiste momenten — ochtend-welkom, pre-trade reflectie, post-loss, Dashboard quote. Geen spam.</div>
+        {mindsetPrefs?.master&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"6px 14px",paddingLeft:"4px"}}>
+          {[["morning","☀️ Ochtend-banner (1×/dag)"],["preTrade","🧘 Pre-trade italic"],["postLoss","💪 Post-loss toast"],["dashboardCard","📖 Dashboard quote-kaart"]].map(([k,l])=>(
+            <label key={k} style={{display:"flex",alignItems:"center",gap:"8px",fontSize:"11px",color:"var(--text3)",cursor:"pointer"}}>
+              <input type="checkbox" checked={!!mindsetPrefs[k]} onChange={()=>setMindsetPrefs(p=>({...p,[k]:!p[k]}))} style={{accentColor:"var(--gold)",cursor:"pointer"}}/>
+              {l}
+            </label>
+          ))}
+        </div>}
+      </div>
+
       {/* Proxy server — dev-only. Hidden from community to avoid confusion; they don't need to configure a Worker, it just works. Unlock with ?dev=1 in URL. */}
       {IS_DEV&&<div style={{marginTop:"16px",paddingTop:"14px",borderTop:"1px solid var(--border2)"}}>
         <div style={{fontSize:"12px",color:"var(--gold)",fontWeight:700,marginBottom:"8px",textTransform:"uppercase",letterSpacing:"0.08em"}}>ℹ Proxy server <span style={{fontSize:"9px",opacity:0.6,marginLeft:"6px"}}>dev only</span></div>
@@ -5507,6 +5609,21 @@ function App(){
   const[storageUsage,setStorageUsage]=useState(()=>getStorageUsage());
   const[showPdf,setShowPdf]=useState(false);
   const[showWelcome,setShowWelcome]=useState(function(){try{return!localStorage.getItem("tj_welcomed");}catch(e){return false;}});
+  // Mindset reminders — master prefs + per-day morning banner + post-loss toast
+  const[mindsetPrefs,setMindsetPrefs]=useState(()=>readMindsetPrefs());
+  useEffect(()=>{try{localStorage.setItem("tj_mindset_prefs",JSON.stringify(mindsetPrefs))}catch{}},[mindsetPrefs]);
+  const[morningQuote,setMorningQuote]=useState(null);
+  const[mindsetToast,setMindsetToast]=useState(null);
+  useEffect(()=>{
+    if(!mindsetPrefs.master||!mindsetPrefs.morning)return;
+    try{
+      const today=new Date().toISOString().slice(0,10);
+      if(localStorage.getItem("tj_mindset_last_morning")===today)return;
+      const q=pickMindsetQuote("morning");
+      if(q){setMorningQuote(q);markMindsetSeen(q.id);localStorage.setItem("tj_mindset_last_morning",today)}
+    }catch{}
+  },[mindsetPrefs.master,mindsetPrefs.morning]);
+
   // Unsaved-changes tracking for Edit + New trade close flows
   const[editOriginal,setEditOriginal]=useState(null);
   const[closeConfirm,setCloseConfirm]=useState(null);// null | {title,onSave,onDiscard}
@@ -5622,6 +5739,19 @@ function App(){
     // Draft was saved successfully; clear persisted draft so we don't prompt to restore it next session
     if(isNew){try{localStorage.removeItem("tj_trade_draft")}catch(err){}}
     showToast(isNew?"Trade opgeslagen ✓":"Trade bijgewerkt ✓");
+    // Post-loss mindset nudge — gentle reflection after saving a losing trade (max 1×/2h, respects prefs)
+    const pnlNum=parseFloat(enriched.pnl);
+    if(mindsetPrefs.master&&mindsetPrefs.postLoss&&!isNaN(pnlNum)&&pnlNum<0){
+      try{
+        const lastKey="tj_mindset_lastPostLoss";
+        const last=parseInt(localStorage.getItem(lastKey)||"0",10);
+        const COOLDOWN=2*60*60*1000;
+        if(Date.now()-last>COOLDOWN){
+          const q=pickMindsetQuote("post-loss");
+          if(q){setMindsetToast(q);markMindsetSeen(q.id);localStorage.setItem(lastKey,String(Date.now()));setTimeout(()=>setMindsetToast(null),9000);}
+        }
+      }catch{}
+    }
     if(isNew&&tab==="new")setTab("trades");
   };
 
@@ -5812,6 +5942,21 @@ function App(){
 
       {/* Toast */}
       <CommandPalette open={cmdOpen} onClose={()=>setCmdOpen(false)} trades={trades} navigate={navigate} setNewTrade={setNewTrade} newEmptyTrade={newEmptyTrade} exportTrades={exportTrades} setConfig={setConfig} config={config}/>
+      {/* Mindset — ochtend-banner (1× per dag) — hidden if a draft-recovery banner is showing to avoid overlap */}
+      {morningQuote&&!pendingDraft&&<div style={{position:"fixed",top:"74px",left:"50%",transform:"translateX(-50%)",zIndex:90,padding:"10px 14px 10px 16px",borderRadius:"10px",background:"var(--gold-dim)",border:"1px solid var(--gold-border)",borderLeft:"3px solid var(--gold)",color:"var(--text2)",fontSize:"12px",display:"flex",alignItems:"center",gap:"12px",boxShadow:"0 6px 24px rgba(0,0,0,.35)",maxWidth:"640px",lineHeight:1.5,animation:"fadeIn .3s ease"}}>
+        <span style={{fontSize:"16px"}}>☀️</span>
+        <span style={{flex:1}}><span style={{fontStyle:"italic"}}>"{morningQuote.text}"</span> <span style={{color:"var(--text5)",fontSize:"10px",fontFamily:"var(--mono)",marginLeft:"4px"}}>— {morningQuote.src}</span></span>
+        <button onClick={()=>setMorningQuote(null)} title="Sluiten" style={{background:"none",border:"none",color:"var(--text4)",cursor:"pointer",fontSize:"13px",padding:"2px 6px",lineHeight:1}}>✕</button>
+      </div>}
+      {/* Mindset — post-loss toast (8s, cooldown 2h) */}
+      {mindsetToast&&<div style={{position:"fixed",bottom:mindsetToast?"92px":"24px",right:"24px",zIndex:9997,padding:"12px 14px",borderRadius:"10px",background:"rgba(10,12,18,.97)",border:"1px solid var(--gold-border)",borderLeft:"3px solid var(--gold)",color:"var(--text2)",fontSize:"11px",display:"flex",alignItems:"flex-start",gap:"10px",boxShadow:"0 8px 28px rgba(0,0,0,.5)",maxWidth:"360px",lineHeight:1.55,animation:"fadeIn .3s ease"}}>
+        <span style={{fontSize:"15px",lineHeight:1.3}}>💪</span>
+        <div style={{flex:1}}>
+          <div style={{fontStyle:"italic"}}>"{mindsetToast.text}"</div>
+          <div style={{color:"var(--gold)",fontSize:"9px",fontFamily:"var(--mono)",marginTop:"4px",letterSpacing:".06em"}}>— {mindsetToast.src}</div>
+        </div>
+        <button onClick={()=>setMindsetToast(null)} title="Sluiten" style={{background:"none",border:"none",color:"var(--text5)",cursor:"pointer",fontSize:"12px",padding:"0 2px",lineHeight:1}}>✕</button>
+      </div>}
       {closeConfirm&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:9998,display:"flex",alignItems:"center",justifyContent:"center",animation:"fadeIn .15s ease"}}>
         <div style={{background:"var(--bg2,var(--bg))",border:"1px solid var(--gold-border)",borderRadius:"12px",padding:"22px 24px",maxWidth:"420px",width:"90%",boxShadow:"0 20px 60px rgba(0,0,0,.6)"}}>
           <div style={{fontSize:"15px",fontWeight:700,color:"var(--text)",marginBottom:"6px"}}>⚠ Onopgeslagen wijzigingen</div>
@@ -5894,7 +6039,7 @@ function App(){
         {tab==="analytics"&&<Analytics trades={filteredTrades} tradingRules={tradingRules}/>}
         {tab==="review"&&<ReviewDashboard trades={filteredTrades}/>}
         {tab==="calendar"&&<Calendar trades={filteredTrades} setFilters={setFilters} setTab={setTab} dailyNotes={dailyNotes} setDailyNotes={setDailyNotes} tradingRules={tradingRules} onEdit={(t)=>{setEditTrade(t);setNewTrade({...EMPTY_TRADE,...t,tpLevels:t.tpLevels||[],layers:t.layers||[],links:t.links||[],manualOverrides:t.manualOverrides||[]});navigate("new");}}/>}
-        {tab==="accounts"&&<AccountsHub config={config} setConfig={setConfig} accounts={accounts} setAccounts={setAccounts} showToast={showToast} trades={trades} importTrades={importTrades} syncOpenPositions={syncOpenPositions} exportTrades={exportTrades} setTagConfig={setTagConfig} tagConfig={tagConfig} tradingRules={tradingRules} setTradingRules={setTradingRules} goals={goals} setGoals={setGoals}/>}
+        {tab==="accounts"&&<AccountsHub config={config} setConfig={setConfig} accounts={accounts} setAccounts={setAccounts} showToast={showToast} trades={trades} importTrades={importTrades} syncOpenPositions={syncOpenPositions} exportTrades={exportTrades} setTagConfig={setTagConfig} tagConfig={tagConfig} tradingRules={tradingRules} setTradingRules={setTradingRules} goals={goals} setGoals={setGoals} mindsetPrefs={mindsetPrefs} setMindsetPrefs={setMindsetPrefs}/>}
         {tab==="rules"&&<TradingRulesPage tradingRules={tradingRules} setTradingRules={setTradingRules}/>}
         {tab==="goals"&&<GoalsPage goals={goals} setGoals={setGoals} trades={trades}/>}
         {tab==="tags"&&<TagManager tagConfig={tagConfig} setTagConfig={setTagConfig} trades={trades} setTrades={setTrades} showToast={showToast}/>}
