@@ -3274,8 +3274,193 @@ function CalendarOldUNUSED({trades}){
 }
 
 
+// ============ DISCIPLINE HEATMAP ============
+// 7×N grid showing process-discipline per (day-of-week, hour|session) in Amsterdam time.
+// Discipline score = avg of enabled checks per trade (SL set, pre-note, setup-tag, risk-within-rule, post-note, rating).
+// User can toggle which of the 6 checks count toward the "overall" score (persisted in tj_discipline_checks).
+function DisciplineHeatmap({trades,tradingRules}){
+  const CHECKS=["hadSL","hadEntryNote","hasSetupTag","withinRisk","hadNotes","hasRating"];
+  const CHECK_LABELS={hadSL:"Stop-loss",hadEntryNote:"Pre-notitie",hasSetupTag:"Setup-tag",withinRisk:"Binnen risk",hadNotes:"Post-notitie",hasRating:"Rating"};
+  const METRIC_LABELS={overall:"Overall discipline",sl:"Stop-loss gezet",journal:"Journal compleet",tags:"Setup-tag aanwezig",risk:"Binnen risk-regel",count:"Trade volume"};
+  const DAYS=["Ma","Di","Wo","Do","Vr","Za","Zo"];
+  const DAYS_LONG=["Maandag","Dinsdag","Woensdag","Donderdag","Vrijdag","Zaterdag","Zondag"];
+  const SESSIONS=[
+    {label:"Nacht",icon:"🌙",hours:[22,23,0,1,2,3,4]},
+    {label:"Tokyo",icon:"🇯🇵",hours:[5,6,7,8]},
+    {label:"London",icon:"🇬🇧",hours:[9,10,11,12,13]},
+    {label:"NY",icon:"🇺🇸",hours:[14,15,16,17,18]},
+    {label:"Post-NY",icon:"🌅",hours:[19,20,21]},
+  ];
+  const MIN_SAMPLE=3;
+  const[metric,setMetric]=useState("overall");
+  const[view,setView]=useState(()=>{try{return localStorage.getItem("tj_discipline_view")||"hourly"}catch{return"hourly"}});
+  useEffect(()=>{try{localStorage.setItem("tj_discipline_view",view)}catch{}},[view]);
+  const[enabledChecks,setEnabledChecks]=useState(()=>{try{const s=localStorage.getItem("tj_discipline_checks");if(s)return new Set(JSON.parse(s))}catch{}return new Set(CHECKS)});
+  useEffect(()=>{try{localStorage.setItem("tj_discipline_checks",JSON.stringify([...enabledChecks]))}catch{}},[enabledChecks]);
+  const maxRiskPct=useMemo(()=>{const r=(tradingRules||[]).find(x=>x.type==="max_risk_pct"&&x.enabled);return r?parseFloat(r.value)||2:2},[tradingRules]);
+  const enriched=useMemo(()=>(trades||[]).map(t=>{
+    let d;if(t.openTime)d=new Date(t.openTime);else if(t.date)d=new Date(`${t.date}T${t.time||"00:00"}:00`);
+    if(!d||isNaN(d.getTime()))return null;
+    let day,hour;
+    try{
+      const parts=new Intl.DateTimeFormat("sv-SE",{timeZone:"Europe/Amsterdam",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).formatToParts(d);
+      const Y=+parts.find(p=>p.type==="year").value, M=+parts.find(p=>p.type==="month").value, D=+parts.find(p=>p.type==="day").value;
+      hour=+parts.find(p=>p.type==="hour").value;
+      const ams=new Date(Date.UTC(Y,M-1,D,hour,0));
+      day=(ams.getUTCDay()+6)%7;// Mo=0..Su=6
+    }catch{return null}
+    return{
+      day,hour,
+      hadSL:!!(t.stopLoss&&String(t.stopLoss).trim()),
+      hadEntryNote:!!(t.entryNote&&String(t.entryNote).trim()),
+      hasSetupTag:(t.setupTags||[]).length>0,
+      withinRisk:t.riskPct===""||t.riskPct==null||parseFloat(t.riskPct)<=maxRiskPct,
+      hadNotes:!!(t.notes&&String(t.notes).trim()),
+      hasRating:parseFloat(t.rating)>0,
+    };
+  }).filter(Boolean),[trades,maxRiskPct]);
+  const overallScore=(t)=>{const enabled=CHECKS.filter(c=>enabledChecks.has(c));if(!enabled.length)return 0;return enabled.filter(c=>t[c]).length/enabled.length};
+  const METRICS={overall:overallScore,sl:t=>t.hadSL?1:0,journal:t=>((t.hadEntryNote?1:0)+(t.hadNotes?1:0))/2,tags:t=>t.hasSetupTag?1:0,risk:t=>t.withinRisk?1:0,count:null};
+  const sessionForHour=(h)=>SESSIONS.findIndex(s=>s.hours.includes(h));
+  const numCols=view==="hourly"?24:SESSIONS.length;
+  const grid=useMemo(()=>{const g={};for(let d=0;d<7;d++){g[d]={};for(let c=0;c<numCols;c++)g[d][c]={count:0,sum:0}}for(const t of enriched){const col=view==="hourly"?t.hour:sessionForHour(t.hour);if(col<0)continue;g[t.day][col].count++;if(metric!=="count")g[t.day][col].sum+=METRICS[metric](t)}return g},[enriched,metric,view,enabledChecks]);
+  let maxCount=0;for(let d=0;d<7;d++)for(let c=0;c<numCols;c++)maxCount=Math.max(maxCount,grid[d][c].count);
+  const colorForScore=(s)=>{let v,a;if(s<0.4){v="var(--red)";a=35+s*75}else if(s<0.7){v="var(--amber, var(--gold))";a=35+s*40}else{v="var(--green)";a=40+s*40}return`color-mix(in srgb, ${v} ${a.toFixed(0)}%, transparent)`};
+  const colorForCount=(c,mx)=>`color-mix(in srgb, var(--gold) ${(12+Math.min(1,c/mx)*75).toFixed(0)}%, transparent)`;
+  let slots=[];for(let d=0;d<7;d++)for(let c=0;c<numCols;c++){const cell=grid[d][c];if(cell.count>=MIN_SAMPLE){const score=metric==="count"?cell.count:cell.sum/cell.count;slots.push({day:d,col:c,score,count:cell.count})}}slots.sort((a,b)=>b.score-a.score);
+  const best=slots[0],worst=slots[slots.length-1];
+  const colLabel=(c)=>view==="hourly"?`${String(c).padStart(2,"0")}:00`:SESSIONS[c].label;
+  const fmtScore=(s)=>metric==="count"?`${s} trades`:`${(s*100).toFixed(0)}%`;
+  const scoreColor=(s)=>metric==="count"?"var(--gold)":s>=0.7?"var(--green)":s>=0.4?"var(--amber, var(--gold))":"var(--red)";
+  const avgAll=enriched.length?enriched.reduce((a,t)=>a+overallScore(t),0)/enriched.length:0;
+  const byDay=DAYS.map((_,d)=>{const s=enriched.filter(t=>t.day===d);if(s.length<5)return null;const avg=s.reduce((a,t)=>a+overallScore(t),0)/s.length;return{day:d,avg,count:s.length,delta:avg-avgAll}}).filter(Boolean);
+  const worstDay=byDay.length?byDay.slice().sort((a,b)=>a.delta-b.delta)[0]:null;
+  const bestDay=byDay.length?byDay.slice().sort((a,b)=>b.delta-a.delta)[0]:null;
+  const tagPct=enriched.length?enriched.filter(t=>t.hasSetupTag).length/enriched.length:0;
+  const insights=[];
+  if(worstDay&&worstDay.delta<-0.08)insights.push({t:"bad",icon:"🔴",head:"Dag-patroon",body:`<b>${DAYS_LONG[worstDay.day]}en</b> zakt je discipline met ${(worstDay.delta*100).toFixed(0)}% onder weekgemiddelde (${worstDay.count} trades).`});
+  if(tagPct<0.7)insights.push({t:"bad",icon:"🏷",head:"Tag-discipline",body:`Slechts <b>${(tagPct*100).toFixed(0)}%</b> van je trades heeft een setup-tag. De rest is feitelijk ongecategoriseerd.`});
+  if(bestDay&&bestDay.delta>0.06&&insights.length<3)insights.push({t:"good",icon:"🟢",head:"Sterkste dag",body:`<b>${DAYS_LONG[bestDay.day]}en</b> is je sterkste dag — <b>${(bestDay.avg*100).toFixed(0)}%</b> over ${bestDay.count} trades.`});
+  if(insights.length<2&&enriched.length){const lvl=avgAll>=0.7?"good":avgAll>=0.5?"neutral":"bad";insights.push({t:lvl,icon:lvl==="good"?"✓":"●",head:"Gemiddelde",body:`Over ${enriched.length} trades is je overall discipline <b>${(avgAll*100).toFixed(0)}%</b>. Doel: stabiel boven 80%.`})}
+  if(!enriched.length)return(<div style={{background:"var(--glass)",border:"1px solid var(--border1)",borderRadius:"14px",padding:"40px 20px",textAlign:"center",color:"var(--text3)"}}>
+    <div style={{fontSize:"36px",opacity:0.3,marginBottom:"8px"}}>🎯</div>
+    <div style={{fontSize:"13px"}}>Nog geen trades met openTime/date — discipline heatmap verschijnt zodra je een trade met datum+tijd hebt opgeslagen.</div>
+  </div>);
+  const checkRates={};CHECKS.forEach(c=>{checkRates[c]=enriched.filter(t=>t[c]).length/enriched.length});
+  const toggleCheck=(c)=>{setEnabledChecks(p=>{const n=new Set(p);if(n.has(c)){if(n.size<=1)return p;n.delete(c)}else n.add(c);return n})};
+  const bar=(v)=>(<div style={{height:"5px",background:"rgba(128,128,128,.15)",borderRadius:"3px",overflow:"hidden"}}>
+    <div style={{height:"100%",width:`${(v*100).toFixed(0)}%`,borderRadius:"3px",background:v>=0.7?"var(--green)":v>=0.4?"var(--amber, var(--gold))":"var(--red)",transition:"width .3s"}}/>
+  </div>);
+  return(<div style={{background:"var(--glass)",border:"1px solid var(--border1)",borderRadius:"14px",padding:"20px"}}>
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"16px",flexWrap:"wrap",gap:"10px"}}>
+      <div>
+        <div style={{fontSize:"11px",color:"var(--gold)",textTransform:"uppercase",letterSpacing:".14em",fontWeight:700}}>🎯 Discipline Heatmap</div>
+        <div style={{fontSize:"11px",color:"var(--text4)",marginTop:"2px"}}>{METRIC_LABELS[metric]} per dag × {view==="hourly"?"uur":"sessie"} · Amsterdam-tijd</div>
+      </div>
+      <div style={{display:"flex",gap:"3px",padding:"3px",background:"rgba(128,128,128,.08)",border:"1px solid var(--border2)",borderRadius:"22px"}}>
+        <button onClick={()=>setView("hourly")} style={{padding:"5px 10px",borderRadius:"18px",border:"none",background:view==="hourly"?"var(--gold-dim)":"transparent",color:view==="hourly"?"var(--gold)":"var(--text4)",fontSize:"11px",fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>⏱ Uurlijks</button>
+        <button onClick={()=>setView("sessions")} style={{padding:"5px 10px",borderRadius:"18px",border:"none",background:view==="sessions"?"var(--gold-dim)":"transparent",color:view==="sessions"?"var(--gold)":"var(--text4)",fontSize:"11px",fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>🌍 Sessies</button>
+      </div>
+    </div>
+    <div style={{display:"flex",gap:"6px",flexWrap:"wrap",marginBottom:"14px"}}>
+      {[["overall","Overall"],["sl","Stop-loss"],["journal","Journal compleet"],["tags","Setup-tag"],["risk","Risk-regel"],["count","Volume"]].map(([k,l])=>(
+        <button key={k} onClick={()=>setMetric(k)} style={{padding:"6px 12px",borderRadius:"20px",border:"1px solid "+(metric===k?"var(--gold-border)":"var(--border2)"),background:metric===k?"var(--gold-dim)":"transparent",color:metric===k?"var(--gold)":"var(--text3)",fontSize:"11px",fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{l}</button>
+      ))}
+    </div>
+    {insights.length>0&&<div style={{display:"grid",gridTemplateColumns:`repeat(${Math.min(insights.length,3)},1fr)`,gap:"10px",marginBottom:"14px"}}>
+      {insights.map((ins,i)=>(
+        <div key={i} style={{padding:"10px 12px",borderRadius:"8px",border:"1px solid "+(ins.t==="good"?"rgba(46,170,111,.25)":ins.t==="bad"?"rgba(224,85,85,.25)":"var(--gold-border)"),background:ins.t==="good"?"rgba(46,170,111,.05)":ins.t==="bad"?"rgba(224,85,85,.05)":"var(--gold-dim)",display:"flex",gap:"10px",alignItems:"flex-start"}}>
+          <div style={{fontSize:"16px",lineHeight:1}}>{ins.icon}</div>
+          <div style={{flex:1,fontSize:"11px",lineHeight:1.5,color:"var(--text2)"}}>
+            <div style={{fontSize:"9px",textTransform:"uppercase",letterSpacing:".1em",fontWeight:700,marginBottom:"3px",color:ins.t==="good"?"var(--green)":ins.t==="bad"?"var(--red)":"var(--gold)"}}>{ins.head}</div>
+            <span dangerouslySetInnerHTML={{__html:ins.body}}/>
+          </div>
+        </div>
+      ))}
+    </div>}
+    <div style={{display:"grid",gridTemplateColumns:"2.4fr 1fr",gap:"16px",alignItems:"start"}}>
+      <div>
+        <div style={{display:"grid",gap:"4px",gridTemplateColumns:view==="hourly"?"34px repeat(24,1fr)":"44px repeat(5,1fr)",fontFamily:"var(--mono)",fontSize:"10px"}}>
+          <div/>
+          {view==="hourly"
+            ?Array.from({length:24}).map((_,h)=>(<div key={h} style={{color:"var(--text5)",textAlign:"center",fontSize:"9px",fontWeight:600,paddingTop:"4px"}}>{String(h).padStart(2,"0")}</div>))
+            :SESSIONS.map((s,i)=>(<div key={i} style={{color:"var(--text5)",textAlign:"center",fontSize:"9px",fontWeight:600,paddingTop:"4px"}}>{s.icon}<br/><span style={{opacity:.7}}>{s.label}</span></div>))
+          }
+          {Array.from({length:7}).map((_,d)=>(
+            <React.Fragment key={d}>
+              <div style={{color:"var(--text3)",fontSize:"10px",paddingRight:"6px",alignSelf:"center",textAlign:"right",fontWeight:600}}>{DAYS[d]}</div>
+              {Array.from({length:numCols}).map((_,c)=>{
+                const cell=grid[d][c];
+                const thin=cell.count>0&&cell.count<MIN_SAMPLE;
+                let bg="rgba(128,128,128,.04)",border="1px solid transparent";
+                if(cell.count>=MIN_SAMPLE){bg=metric==="count"?colorForCount(cell.count,maxCount):colorForScore(cell.sum/cell.count)}
+                else if(thin){bg="rgba(128,128,128,.08)";border="1px dashed rgba(128,128,128,.18)"}
+                const scoreStr=cell.count>=MIN_SAMPLE&&metric!=="count"?(cell.sum/cell.count*100).toFixed(0)+"%":"";
+                const title=cell.count===0?"":`${DAYS_LONG[d]} · ${colLabel(c)}\n${cell.count} trade${cell.count>1?"s":""}${thin?" (te weinig voor score)":scoreStr?" · "+scoreStr:""}`;
+                return(<div key={c} title={title} style={{aspectRatio:view==="hourly"?"1":undefined,minHeight:view==="sessions"?"32px":undefined,borderRadius:"3px",background:bg,border}}/>);
+              })}
+            </React.Fragment>
+          ))}
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:"10px",marginTop:"12px",justifyContent:"center",flexWrap:"wrap",fontSize:"10px",color:"var(--text5)"}}>
+          <span style={{fontFamily:"var(--mono)",fontSize:"9px"}}>Geen data</span>
+          <div style={{width:"18px",height:"12px",borderRadius:"2px",background:"rgba(128,128,128,.04)"}}/>
+          <div style={{width:"1px",height:"12px",background:"var(--border2)",margin:"0 4px"}}/>
+          <span style={{fontFamily:"var(--mono)",fontSize:"9px"}}>&lt;{MIN_SAMPLE}</span>
+          <div style={{width:"18px",height:"12px",borderRadius:"2px",background:"rgba(128,128,128,.08)",border:"1px dashed rgba(128,128,128,.18)"}}/>
+          <div style={{width:"1px",height:"12px",background:"var(--border2)",margin:"0 4px"}}/>
+          {metric==="count"
+            ?<><span style={{fontFamily:"var(--mono)",fontSize:"9px"}}>0</span>
+                <div style={{width:"18px",height:"12px",borderRadius:"2px",background:"color-mix(in srgb, var(--gold) 20%, transparent)"}}/>
+                <div style={{width:"18px",height:"12px",borderRadius:"2px",background:"color-mix(in srgb, var(--gold) 50%, transparent)"}}/>
+                <div style={{width:"18px",height:"12px",borderRadius:"2px",background:"color-mix(in srgb, var(--gold) 85%, transparent)"}}/>
+                <span style={{fontFamily:"var(--mono)",fontSize:"9px"}}>{maxCount}</span></>
+            :<><span style={{fontFamily:"var(--mono)",fontSize:"9px"}}>0%</span>
+                <div style={{width:"18px",height:"12px",borderRadius:"2px",background:"color-mix(in srgb, var(--red) 65%, transparent)"}}/>
+                <div style={{width:"18px",height:"12px",borderRadius:"2px",background:"color-mix(in srgb, var(--amber, var(--gold)) 60%, transparent)"}}/>
+                <div style={{width:"18px",height:"12px",borderRadius:"2px",background:"color-mix(in srgb, var(--green) 75%, transparent)"}}/>
+                <span style={{fontFamily:"var(--mono)",fontSize:"9px"}}>100%</span></>
+          }
+        </div>
+      </div>
+      <div style={{display:"grid",gap:"10px"}}>
+        <div style={{padding:"12px",border:"1px solid var(--border2)",borderRadius:"10px",background:"rgba(128,128,128,.03)"}}>
+          <div style={{fontSize:"9px",color:"var(--text4)",textTransform:"uppercase",letterSpacing:".12em",fontWeight:700,marginBottom:"6px"}}>🏆 Best slot</div>
+          {best
+            ?<><div style={{fontSize:"16px",fontWeight:700}}>{DAYS[best.day]} · {colLabel(best.col)}</div><div style={{fontFamily:"var(--mono)",fontSize:"12px",color:scoreColor(best.score),marginTop:"2px"}}>{fmtScore(best.score)} · {best.count} trades</div></>
+            :<div style={{fontSize:"11px",color:"var(--text4)"}}>Geen slot met ≥{MIN_SAMPLE} trades</div>
+          }
+        </div>
+        <div style={{padding:"12px",border:"1px solid var(--border2)",borderRadius:"10px",background:"rgba(128,128,128,.03)"}}>
+          <div style={{fontSize:"9px",color:"var(--text4)",textTransform:"uppercase",letterSpacing:".12em",fontWeight:700,marginBottom:"6px"}}>⚠ Worst slot</div>
+          {worst&&worst!==best
+            ?<><div style={{fontSize:"16px",fontWeight:700}}>{DAYS[worst.day]} · {colLabel(worst.col)}</div><div style={{fontFamily:"var(--mono)",fontSize:"12px",color:scoreColor(worst.score),marginTop:"2px"}}>{fmtScore(worst.score)} · {worst.count} trades</div></>
+            :<div style={{fontSize:"11px",color:"var(--text4)"}}>Niet genoeg spreiding</div>
+          }
+        </div>
+      </div>
+    </div>
+    <div style={{marginTop:"18px",padding:"14px",background:"rgba(128,128,128,.03)",border:"1px solid var(--border2)",borderRadius:"10px"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:"10px"}}>
+        <div style={{fontSize:"10px",color:"var(--text4)",textTransform:"uppercase",letterSpacing:".12em",fontWeight:700}}>📊 Checks · Gem. discipline <span style={{color:"var(--text5)",fontWeight:400}}>({enabledChecks.size}/6 aan)</span></div>
+        <div style={{fontSize:"20px",fontWeight:800,fontFamily:"var(--mono)",color:scoreColor(avgAll)}}>{(avgAll*100).toFixed(0)}%</div>
+      </div>
+      {CHECKS.map((c,i)=>{
+        const on=enabledChecks.has(c);
+        return(<div key={c} style={{display:"grid",gridTemplateColumns:"22px 1fr 80px 36px",gap:"8px",alignItems:"center",padding:"6px 0",borderBottom:i<CHECKS.length-1?"1px solid var(--border2)":"none",fontSize:"11px"}}>
+          <button onClick={()=>toggleCheck(c)} title={on?"Telt mee in overall":"Niet meegerekend"} style={{width:"20px",height:"20px",borderRadius:"5px",border:"1.5px solid "+(on?"var(--gold-border)":"var(--border3)"),background:on?"var(--gold-dim)":"transparent",color:on?"var(--gold)":"var(--text5)",cursor:"pointer",fontSize:"10px",fontWeight:700,padding:0,display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}>{on?"✓":""}</button>
+          <span style={{color:"var(--text3)"}}>{i+1}. {CHECK_LABELS[c]}</span>
+          {bar(checkRates[c])}
+          <span style={{fontFamily:"var(--mono)",fontWeight:700,color:"var(--text)",textAlign:"right"}}>{(checkRates[c]*100).toFixed(0)}%</span>
+        </div>);
+      })}
+      <div style={{marginTop:"8px",fontSize:"10px",color:"var(--text5)",lineHeight:1.5}}>💡 Klik het vinkje om een check wel/niet mee te tellen in de overall-score.</div>
+    </div>
+  </div>);
+}
+
 // ============ ANALYTICS ============
-function Analytics({trades}){
+function Analytics({trades,tradingRules}){
   const{prefs:lp,toggle:lpToggle,reset:lpReset,setOrder}=useLayoutPrefs("analytics");
   const[lpOpen,setLpOpen]=useState(false);
   const[editMode,setEditMode]=useState(false);
@@ -3291,6 +3476,7 @@ function Analytics({trades}){
     {label:"Proces (nieuw)",items:[
       {key:"procesKPIs",label:"Proces KPI's (4 cards)"},
       {key:"procesDetail",label:"Risk consistency + fout-ratio"},
+      {key:"disciplineHeatmap",label:"Discipline heatmap (7×24)"},
       {key:"winstKPIs",label:"Winst KPI row"},
     ]},
     {label:"Grafieken",items:[
@@ -3463,6 +3649,9 @@ function Analytics({trades}){
         <div style={{fontSize:"10px",color:"var(--text4)",marginTop:"8px",lineHeight:1.5}}>{violationPct<=15?"✓ Discipline staat — je tagt zelden fouten":violationPct<=35?"⚠ Regelmatig fouten — check Fout impact sectie":"🚨 Veel fouten — focus op 1 mistake-tag en fix die"}</div>
       </div>
     </div>)}
+
+    {/* PROCES — Discipline heatmap (7×24 or 7×sessions) */}
+    {showP&&closed.length>0&&seq("disciplineHeatmap",lp.disciplineHeatmap!==false,<DisciplineHeatmap trades={closed} tradingRules={tradingRules}/>)}
 
     {/* WINST KPI row */}
     {showW&&seq("winstKPIs",lp.winstKPIs!==false,<div style={{display:"grid",gridTemplateColumns:"repeat(5,minmax(0,1fr))",gap:"12px"}}>
@@ -5702,7 +5891,7 @@ function App(){
           ?<DashboardPremium trades={filteredTrades} config={config} accounts={accounts} tradingRules={tradingRules} dailyNotes={dailyNotes} goals={goals} setTab={navigate} setNewTrade={setNewTrade} newEmptyTrade={newEmptyTrade} setFilters={setFilters}/>
           :<Dashboard trades={filteredTrades} config={config} accounts={accounts} onReport={()=>setShowPdf(true)} storageUsage={storageUsage} setFilters={setFilters} setTab={navigate}/>)}
         {tab==="trades"&&!editTrade&&<TradeList trades={filteredTrades} onEdit={setEditTrade} onDelete={deleteTrade} onBulkDelete={bulkDelete} onBulkTag={bulkTag} showToast={showToast} tagConfig={tagConfig} config={config} accounts={accounts}/>}
-        {tab==="analytics"&&<Analytics trades={filteredTrades}/>}
+        {tab==="analytics"&&<Analytics trades={filteredTrades} tradingRules={tradingRules}/>}
         {tab==="review"&&<ReviewDashboard trades={filteredTrades}/>}
         {tab==="calendar"&&<Calendar trades={filteredTrades} setFilters={setFilters} setTab={setTab} dailyNotes={dailyNotes} setDailyNotes={setDailyNotes} tradingRules={tradingRules} onEdit={(t)=>{setEditTrade(t);setNewTrade({...EMPTY_TRADE,...t,tpLevels:t.tpLevels||[],layers:t.layers||[],links:t.links||[],manualOverrides:t.manualOverrides||[]});navigate("new");}}/>}
         {tab==="accounts"&&<AccountsHub config={config} setConfig={setConfig} accounts={accounts} setAccounts={setAccounts} showToast={showToast} trades={trades} importTrades={importTrades} syncOpenPositions={syncOpenPositions} exportTrades={exportTrades} setTagConfig={setTagConfig} tagConfig={tagConfig} tradingRules={tradingRules} setTradingRules={setTradingRules} goals={goals} setGoals={setGoals}/>}
