@@ -852,13 +852,22 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.1",released:"2026-04-22"};
+const APP_VERSION={version:"v12.2",released:"2026-04-22"};
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
 function isNewerVersion(a,b){
   const parse=(s)=>String(s||"").replace(/^v/,"").split(".").map(n=>parseInt(n,10)||0);
   const[aM,aN=0,aP=0]=parse(a);const[bM,bN=0,bP=0]=parse(b);
   if(aM!==bM)return aM>bM;if(aN!==bN)return aN>bN;return aP>bP;
 }
+// Detect whether the app is served from a hosted origin (GitHub raw, Pages, etc.)
+// or running locally (file:// or localhost server). Only hosted contexts benefit from
+// location.reload() to pick up a newer release — local users must download+replace.
+const IS_HOSTED=(()=>{try{
+  if(typeof location==="undefined"||location.protocol==="file:")return false;
+  const h=(location.hostname||"").toLowerCase();
+  if(!h||h==="localhost"||h==="127.0.0.1"||h.startsWith("192.168.")||h.startsWith("10.")||h.startsWith("172."))return false;
+  return true;
+}catch{return false}})();
 
 const EMPTY_TRADE={
   id:"",date:new Date().toISOString().split("T")[0],
@@ -5687,7 +5696,7 @@ function HelpPage(){
     {title:"🌳 Versie-flow",icon:"🌳",items:[
       ["/work/tradejournal.html","WIP — hier bouwen Denny + Sebas. Kan breken, gebruik op eigen risico."],
       ["/main/tradejournal.html","Stable — community gebruikt deze. Wordt bijgewerkt wanneer we tevreden zijn op work."],
-      ["Update flow","Download raw file uit /main/ (GitHub), overschrijf lokaal bestand, hard refresh. localStorage blijft intact."],
+      ["Update flow","Bij nieuwere versie verschijnt een groene banner bovenaan. Gehost (via GitHub raw / hosted URL) = klik op ↻ Update nu. Lokaal (file:// of localhost) = klik op ⬇ Download, overschrijf je bestand en ververs. localStorage blijft altijd intact."],
     ]},
   ];
   return(<div style={{animation:"fadeIn .3s ease",maxWidth:"880px",margin:"0 auto"}}>
@@ -6225,10 +6234,17 @@ function App(){
 
       {/* Content */}
       <div className="tj-content" style={{padding:"28px 40px",maxWidth:"1520px",margin:"0 auto"}}>
-        {/* Update-available banner — shows when main/version.json on GitHub has a newer build date */}
-        {updateAvailable&&<div style={{padding:"10px 14px",marginBottom:"12px",borderRadius:"10px",background:"rgba(46,170,111,.06)",border:"1px solid rgba(46,170,111,.25)",borderLeft:"3px solid var(--green)",color:"var(--text2)",fontSize:"12px",display:"flex",alignItems:"center",gap:"12px",lineHeight:1.5}}>
+        {/* Update-available banner — shows when main/version.json on GitHub has a newer version */}
+        {updateAvailable&&<div style={{padding:"10px 14px",marginBottom:"12px",borderRadius:"10px",background:"rgba(46,170,111,.06)",border:"1px solid rgba(46,170,111,.25)",borderLeft:"3px solid var(--green)",color:"var(--text2)",fontSize:"12px",display:"flex",alignItems:"center",gap:"12px",lineHeight:1.5,flexWrap:"wrap"}}>
           <span style={{fontSize:"16px"}}>📦</span>
-          <span style={{flex:1}}>Nieuwere versie beschikbaar: <strong style={{color:"var(--green)"}}>{updateAvailable.version}</strong>{updateAvailable.released?<span style={{color:"var(--text4)",fontFamily:"var(--mono)",fontSize:"10px",marginLeft:"6px"}}>({updateAvailable.released})</span>:null}. <a href="https://github.com/ZaratrasJournal/SyncJournal/raw/main/main/tradejournal.html" target="_blank" rel="noopener" style={{color:"var(--gold)",textDecoration:"underline"}}>Download</a> en vervang je lokale bestand — localStorage blijft intact.</span>
+          <span style={{flex:1,minWidth:"200px"}}>Nieuwere versie beschikbaar: <strong style={{color:"var(--green)"}}>{updateAvailable.version}</strong>{updateAvailable.released?<span style={{color:"var(--text4)",fontFamily:"var(--mono)",fontSize:"10px",marginLeft:"6px"}}>({updateAvailable.released})</span>:null}
+            {IS_HOSTED
+              ?<span style={{color:"var(--text4)",marginLeft:"6px"}}>— klik Update om de nieuwste versie te laden.</span>
+              :<span style={{color:"var(--text4)",marginLeft:"6px"}}>— download de nieuwste <code style={{background:"rgba(255,255,255,.05)",padding:"1px 5px",borderRadius:"3px",fontFamily:"var(--mono)",color:"var(--text3)"}}>tradejournal.html</code>, overschrijf je lokale bestand en ververs. <strong>localStorage blijft intact.</strong></span>}
+          </span>
+          {IS_HOSTED
+            ?<button onClick={()=>{try{location.reload()}catch{}}} title="Ververs de pagina — nieuwste versie wordt geladen, localStorage blijft" style={{padding:"6px 14px",borderRadius:"6px",border:"none",background:"var(--green)",color:"#000",fontSize:"12px",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>↻ Update nu</button>
+            :<a href="https://github.com/ZaratrasJournal/SyncJournal/raw/main/main/tradejournal.html" target="_blank" rel="noopener" download="tradejournal.html" style={{padding:"6px 14px",borderRadius:"6px",border:"1px solid var(--green)",background:"rgba(46,170,111,.1)",color:"var(--green)",fontSize:"12px",fontWeight:700,cursor:"pointer",fontFamily:"inherit",textDecoration:"none"}}>⬇ Download {updateAvailable.version}</a>}
           <button onClick={dismissUpdate} title="Niet meer tonen voor deze versie" style={{background:"none",border:"none",color:"var(--text4)",cursor:"pointer",fontSize:"13px",padding:"2px 6px",lineHeight:1}}>✕</button>
         </div>}
         {/* Mindset — ochtend-banner (1× per dag). Inline so it pushes content down instead of overlaying. Hidden when draft-recovery banner is showing. */}
