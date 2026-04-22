@@ -19,6 +19,9 @@ Basis kwam uit de feature-diff v4_14 → v9 onderaan. Inmiddels werken we op **v
 
 ## 🔜 Next up (deze of volgende werksessie)
 
+- [ ] **Persoonlijke greeting + stat-based dashboard-bericht** — 2 lagen:
+  - **Laag 1 (snel):** user's naam/nickname invoerbaar in Instellingen → `config.displayName`. DashboardPremium greeting wordt "Goedemiddag, Denny" / "Goedemiddag, Zaratras". Fallback naar "trader" als geen naam ingevuld.
+  - **Laag 2 (waardevoller):** onder de greeting 1 contextuele insight-regel o.b.v. recente stats. Zie onderzoek/voorstel in sessie-chat 2026-04-22 (prioritised fallback chain: streak → record → state-requires-attention → progress → neutral).
 - [ ] **🥇 AI trade-review** — knop "Analyseer mijn laatste N trades" via user's eigen API-key (OpenAI/Claude). Patroon-analyse + bias-detectie. Grootste differentiator.
 - [ ] **Subtiele mindset-reminders in de journal** — korte tekstuele/visuele nudges (Mark Douglas / Van Tharp / Steenbarger quotes, checklist-triggers, emotie-check), on/off per user in Instellingen. Gepitcht aan Morani community voor format-feedback. Mogelijke plekken: banner bovenin bij nieuwe trade (pre-entry: "Volgt dit je plan?"), popup na N losses op dag (tilt-guard), dagelijks 1 quote bij eerste app-open, iconen in TradeForm bij emotie-tags. Ondersteunt bestaande proces-focus richting. Format-keuze afwachten uit Discord-thread.
 - [ ] **Tiltmeter (emotie 1-10 per trade)** — Edgewonk's USP. Correleer met PnL. Fase 2 van proces-focus (Fase 1 is al live).
