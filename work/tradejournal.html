@@ -904,6 +904,36 @@ function getMindsetSeen(){try{const s=localStorage.getItem("tj_mindset_seen");re
 function markMindsetSeen(id){try{const s=getMindsetSeen();s[id]=Date.now();localStorage.setItem("tj_mindset_seen",JSON.stringify(s))}catch{}}
 function readMindsetPrefs(){try{const s=localStorage.getItem("tj_mindset_prefs");return s?{...DEFAULT_MINDSET_PREFS,...JSON.parse(s)}:DEFAULT_MINDSET_PREFS}catch{return DEFAULT_MINDSET_PREFS}}
 
+// ─── MILESTONES ─────────────────────────────────────────────────────
+// One-time celebration toasts when users hit meaningful milestones.
+// Fires on App mount. Seen-set persisted in tj_milestones_seen.
+const MILESTONE_DEFS=[
+  {id:"trades-10",icon:"🌱",head:"10 trades!",text:"Je eerste 10 trades zijn binnen — basis gelegd.",test:(c)=>c.totalTrades>=10},
+  {id:"trades-50",icon:"📊",head:"50 trades!",text:"Vijftig trades gejournald — jouw dataset begint betekenis te krijgen.",test:(c)=>c.totalTrades>=50},
+  {id:"trades-100",icon:"🎉",head:"100 trades!",text:"Honderd trades geregistreerd. Je bent nu een serieuze journal-trader.",test:(c)=>c.totalTrades>=100},
+  {id:"trades-250",icon:"🏆",head:"250 trades!",text:"Een kwart-duizend. Jouw patronen zijn nu statistisch relevant.",test:(c)=>c.totalTrades>=250},
+  {id:"trades-500",icon:"💎",head:"500 trades!",text:"Vijfhonderd. Je hebt meer data dan 95% van retail traders.",test:(c)=>c.totalTrades>=500},
+  {id:"trades-1000",icon:"👑",head:"1000 trades!",text:"Een vol duizendtal. Absolute veteraan.",test:(c)=>c.totalTrades>=1000},
+  {id:"win-streak-5",icon:"🔥",head:"5 dagen op rij winst",text:"Vijf groene dagen — dit is je ritme vasthouden.",test:(c)=>c.winStreak>=5},
+  {id:"win-streak-10",icon:"⚡",head:"10 dagen winning streak",text:"Tien groene dagen achter elkaar. Dit is zeldzaam — blijf bij het proces.",test:(c)=>c.winStreak>=10},
+  {id:"first-win",icon:"✨",head:"Eerste winst!",text:"Je eerste winnende trade staat geregistreerd. Nu begint het opbouwen.",test:(c)=>c.totalWinningTrades>=1&&c.totalTrades<=5},
+];
+function checkMilestones(closed){
+  const ctx={totalTrades:closed.length,totalWinningTrades:closed.filter(t=>parseFloat(t.pnl)>0).length};
+  // winStreak (reuse from insight context logic — compact inline version here)
+  const byDay={};closed.forEach(t=>{if(!t.date)return;byDay[t.date]=(byDay[t.date]||0)+parseFloat(t.pnl||0)});
+  const daysDesc=Object.keys(byDay).sort().reverse();
+  let ws=0;for(const d of daysDesc){if(byDay[d]>0)ws++;else break}ctx.winStreak=ws;
+  try{
+    const seen=JSON.parse(localStorage.getItem("tj_milestones_seen")||"[]");
+    const seenSet=new Set(seen);
+    // Return first unseen milestone that tests true — one celebration at a time
+    for(const m of MILESTONE_DEFS){if(!seenSet.has(m.id)&&m.test(ctx))return m;}
+  }catch{}
+  return null;
+}
+function markMilestoneSeen(id){try{const seen=JSON.parse(localStorage.getItem("tj_milestones_seen")||"[]");if(!seen.includes(id)){seen.push(id);localStorage.setItem("tj_milestones_seen",JSON.stringify(seen))}}catch{}}
+
 // ─── DASHBOARD INSIGHT ──────────────────────────────────────────────
 // One stat-based line under the Dashboard greeting. Priority chain:
 // first match wins. Each branch has 3-5 micro-copy variants for rotation.
@@ -5800,6 +5830,16 @@ function App(){
   const[storageUsage,setStorageUsage]=useState(()=>getStorageUsage());
   const[showPdf,setShowPdf]=useState(false);
   const[showWelcome,setShowWelcome]=useState(function(){try{return!localStorage.getItem("tj_welcomed");}catch(e){return false;}});
+  // Milestone celebrations — one-time toast when user hits a trading journey milestone
+  const[milestone,setMilestone]=useState(null);
+  useEffect(()=>{
+    if(!tradesLoaded)return;
+    const closed=(trades||[]).filter(t=>t.pnl!==""&&!isNaN(parseFloat(t.pnl)));
+    if(!closed.length)return;
+    const m=checkMilestones(closed);
+    if(m){setMilestone(m);markMilestoneSeen(m.id)}
+  },[tradesLoaded]);
+
   // Mindset reminders — master prefs + per-navigation rotating banner + post-loss toast
   const[mindsetPrefs,setMindsetPrefs]=useState(()=>readMindsetPrefs());
   useEffect(()=>{try{localStorage.setItem("tj_mindset_prefs",JSON.stringify(mindsetPrefs))}catch{}},[mindsetPrefs]);
@@ -6133,6 +6173,15 @@ function App(){
 
       {/* Toast */}
       <CommandPalette open={cmdOpen} onClose={()=>setCmdOpen(false)} trades={trades} navigate={navigate} setNewTrade={setNewTrade} newEmptyTrade={newEmptyTrade} exportTrades={exportTrades} setConfig={setConfig} config={config}/>
+      {/* Milestone celebration — one-time centered modal on hitting a meaningful mark */}
+      {milestone&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.7)",zIndex:9998,display:"flex",alignItems:"center",justifyContent:"center",animation:"fadeIn .2s ease",padding:"20px"}}>
+        <div style={{background:"linear-gradient(135deg, rgba(255,140,0,.12) 0%, rgba(201,168,76,.08) 100%)",border:"1px solid rgba(255,140,0,.3)",borderRadius:"16px",padding:"28px 32px",maxWidth:"460px",width:"100%",textAlign:"center",boxShadow:"0 20px 60px rgba(0,0,0,.5)",animation:"fadeIn .3s ease"}}>
+          <div style={{fontSize:"48px",lineHeight:1,marginBottom:"8px"}}>{milestone.icon}</div>
+          <div style={{fontSize:"20px",fontWeight:800,color:"var(--text)",marginBottom:"6px",letterSpacing:"-.01em"}}>{milestone.head}</div>
+          <div style={{fontSize:"13px",color:"var(--text3)",lineHeight:1.6,marginBottom:"20px"}}>{milestone.text}</div>
+          <button onClick={()=>setMilestone(null)} style={{padding:"10px 28px",borderRadius:"8px",border:"none",background:"linear-gradient(135deg,#f0d57a,#C9A84C,#8c721c)",color:"#000",fontSize:"13px",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Top! 🙏</button>
+        </div>
+      </div>}
       {/* Mindset — post-loss toast (8s, cooldown 2h) */}
       {mindsetToast&&<div style={{position:"fixed",bottom:mindsetToast?"92px":"24px",right:"24px",zIndex:9997,padding:"12px 14px",borderRadius:"10px",background:"rgba(10,12,18,.97)",border:"1px solid var(--gold-border)",borderLeft:"3px solid var(--gold)",color:"var(--text2)",fontSize:"11px",display:"flex",alignItems:"flex-start",gap:"10px",boxShadow:"0 8px 28px rgba(0,0,0,.5)",maxWidth:"360px",lineHeight:1.55,animation:"fadeIn .3s ease"}}>
         <span style={{fontSize:"15px",lineHeight:1.3}}>💪</span>
