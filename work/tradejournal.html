@@ -893,6 +893,9 @@ const MINDSET_CTX={
 
 const DEFAULT_MINDSET_PREFS={master:true,morning:true,preTrade:true,postLoss:true,dashboardCard:true,riskExceeded:true};
 
+// One-time migration: clear the old "seen this morning" key so users who already
+// dismissed today don't stay banner-less after this refactor. Runs once per page load, harmless.
+try{if(localStorage.getItem("tj_mindset_last_morning")){localStorage.removeItem("tj_mindset_last_morning")}}catch{}
 // "Seen" tracking — so we don't repeat the same quote too often
 function getMindsetSeen(){try{const s=localStorage.getItem("tj_mindset_seen");return s?JSON.parse(s):{}}catch{return{}}}
 function markMindsetSeen(id){try{const s=getMindsetSeen();s[id]=Date.now();localStorage.setItem("tj_mindset_seen",JSON.stringify(s))}catch{}}
@@ -1601,6 +1604,20 @@ function SetupRankingWidget({trades,onSetupClick}){
 function Dashboard({trades,config,accounts,onReport,storageUsage,setFilters,setTab}){
   const[balances,setBalances]=useState(null);
   const[balLoading,setBalLoading]=useState(false);
+  // Mindset — weekly-rotating quote card (same localStorage key as DashboardPremium so it's consistent)
+  const[mindsetCard]=useState(()=>{
+    const p=readMindsetPrefs();
+    if(!p.master||!p.dashboardCard)return null;
+    try{
+      const now=new Date();const y=now.getFullYear();const w=Math.ceil(((now-new Date(y,0,1))/86400000+new Date(y,0,1).getDay()+1)/7);
+      const key=`${y}-${w}`;
+      const stored=localStorage.getItem("tj_mindset_dashQuote");
+      if(stored){const parsed=JSON.parse(stored);if(parsed.key===key)return parsed.quote;}
+      const q=pickMindsetQuote("dashboard-card");
+      if(q){markMindsetSeen(q.id);localStorage.setItem("tj_mindset_dashQuote",JSON.stringify({key,quote:q}))}
+      return q;
+    }catch{return null}
+  });
   const{prefs:lp,toggle:lpToggle,reset:lpReset}=useLayoutPrefs("dashboard");
   const[lpOpen,setLpOpen]=useState(false);
   const LP_SECTIONS=[
@@ -1675,6 +1692,16 @@ function Dashboard({trades,config,accounts,onReport,storageUsage,setFilters,setT
   return(<div style={{animation:"fadeIn .3s ease"}}>
     {/* v7 NEW: storage warning */}
     <StorageWarning usage={storageUsage}/>
+
+    {/* Mindset — weekly quote card (subtle, always visible on Dashboard) */}
+    {mindsetCard&&<div style={{padding:"14px 20px",marginBottom:"20px",borderRadius:"12px",background:"linear-gradient(135deg, rgba(201,168,76,.08) 0%, rgba(201,168,76,.02) 100%)",border:"1px solid rgba(201,168,76,.18)",display:"flex",alignItems:"center",gap:"14px",position:"relative",overflow:"hidden"}}>
+      <div style={{position:"absolute",top:"2px",right:"14px",fontSize:"42px",color:"var(--gold)",opacity:.18,fontFamily:"Georgia, serif",lineHeight:1,pointerEvents:"none"}}>"</div>
+      <div style={{fontSize:"18px",lineHeight:1}}>💭</div>
+      <div style={{flex:1,fontSize:"13px",lineHeight:1.55,color:"var(--text2)",fontStyle:"italic"}}>
+        "{mindsetCard.text}"
+        <span style={{color:"var(--gold)",fontSize:"10px",fontFamily:"var(--mono)",letterSpacing:".08em",textTransform:"uppercase",marginLeft:"8px",fontStyle:"normal",fontWeight:600}}>— {mindsetCard.src}</span>
+      </div>
+    </div>}
 
     {/* Portfolio waarde header */}
     {(()=>{
@@ -5609,20 +5636,26 @@ function App(){
   const[storageUsage,setStorageUsage]=useState(()=>getStorageUsage());
   const[showPdf,setShowPdf]=useState(false);
   const[showWelcome,setShowWelcome]=useState(function(){try{return!localStorage.getItem("tj_welcomed");}catch(e){return false;}});
-  // Mindset reminders — master prefs + per-day morning banner + post-loss toast
+  // Mindset reminders — master prefs + persistent daily banner + post-loss toast
   const[mindsetPrefs,setMindsetPrefs]=useState(()=>readMindsetPrefs());
   useEffect(()=>{try{localStorage.setItem("tj_mindset_prefs",JSON.stringify(mindsetPrefs))}catch{}},[mindsetPrefs]);
   const[morningQuote,setMorningQuote]=useState(null);
   const[mindsetToast,setMindsetToast]=useState(null);
+  // Daily mindset banner: consistent quote for the day, re-appears on every page load
+  // until the user dismisses it. Dismissed → gone for rest of day. New day → fresh quote.
   useEffect(()=>{
     if(!mindsetPrefs.master||!mindsetPrefs.morning)return;
     try{
       const today=new Date().toISOString().slice(0,10);
-      if(localStorage.getItem("tj_mindset_last_morning")===today)return;
-      const q=pickMindsetQuote("morning");
-      if(q){setMorningQuote(q);markMindsetSeen(q.id);localStorage.setItem("tj_mindset_last_morning",today)}
+      if(localStorage.getItem("tj_mindset_dismissed_day")===today)return;
+      let q;
+      const stored=localStorage.getItem("tj_mindset_quote_today");
+      if(stored){const p=JSON.parse(stored);if(p&&p.date===today)q=p.quote}
+      if(!q){q=pickMindsetQuote("morning");if(q){markMindsetSeen(q.id);localStorage.setItem("tj_mindset_quote_today",JSON.stringify({date:today,quote:q}))}}
+      if(q)setMorningQuote(q);
     }catch{}
   },[mindsetPrefs.master,mindsetPrefs.morning]);
+  const dismissMorningQuote=()=>{try{localStorage.setItem("tj_mindset_dismissed_day",new Date().toISOString().slice(0,10))}catch{};setMorningQuote(null)};
 
   // Unsaved-changes tracking for Edit + New trade close flows
   const[editOriginal,setEditOriginal]=useState(null);
@@ -5982,7 +6015,7 @@ function App(){
         {morningQuote&&!pendingDraft&&<div style={{padding:"10px 14px 10px 16px",marginBottom:"16px",borderRadius:"10px",background:"var(--gold-dim)",border:"1px solid var(--gold-border)",borderLeft:"3px solid var(--gold)",color:"var(--text2)",fontSize:"12px",display:"flex",alignItems:"center",gap:"12px",lineHeight:1.5,animation:"fadeIn .3s ease"}}>
           <span style={{fontSize:"16px"}}>☀️</span>
           <span style={{flex:1}}><span style={{fontStyle:"italic"}}>"{morningQuote.text}"</span> <span style={{color:"var(--text5)",fontSize:"10px",fontFamily:"var(--mono)",marginLeft:"4px"}}>— {morningQuote.src}</span></span>
-          <button onClick={()=>setMorningQuote(null)} title="Sluiten" style={{background:"none",border:"none",color:"var(--text4)",cursor:"pointer",fontSize:"13px",padding:"2px 6px",lineHeight:1}}>✕</button>
+          <button onClick={dismissMorningQuote} title="Sluiten voor vandaag" style={{background:"none",border:"none",color:"var(--text4)",cursor:"pointer",fontSize:"13px",padding:"2px 6px",lineHeight:1}}>✕</button>
         </div>}
         {/* Filter bar for trade views */}
         {["trades","analytics","review","calendar"].includes(tab)&&!editTrade&&!newTrade&&<FilterBar trades={filteredTrades} allTrades={trades} filters={filters} setFilters={setFilters} config={config} accounts={accounts}/>}
