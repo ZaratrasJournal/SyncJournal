@@ -849,10 +849,16 @@ function calcExpectancy(trades){
 
 
 // ─── APP VERSION ─────────────────────────────────────────────────────
-// Bump `build` (YYYY-MM-DD) at each release. Auto-check compares against
-// main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={label:"v12",build:"2026-04-22"};
-const VERSION_STRING=`${APP_VERSION.label} · ${APP_VERSION.build}`;
+// Bump `version` at each release (semver: major.minor[.patch], prefix "v").
+// `released` is for internal tracking only (shown as tooltip in Instellingen).
+// Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
+const APP_VERSION={version:"v12.1",released:"2026-04-22"};
+// Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
+function isNewerVersion(a,b){
+  const parse=(s)=>String(s||"").replace(/^v/,"").split(".").map(n=>parseInt(n,10)||0);
+  const[aM,aN=0,aP=0]=parse(a);const[bM,bN=0,bP=0]=parse(b);
+  if(aM!==bM)return aM>bM;if(aN!==bN)return aN>bN;return aP>bP;
+}
 
 const EMPTY_TRADE={
   id:"",date:new Date().toISOString().split("T")[0],
@@ -5536,9 +5542,9 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,imp
         />
         <div style={{fontSize:"10px",color:"var(--text4)",marginTop:"6px",lineHeight:1.5}}>Standaard gebruiken we de Morani gedeelde Worker. Je kunt een eigen Worker aanmaken via <strong>workers.cloudflare.com</strong>.</div>
       </div>}
-      {/* Version footer */}
+      {/* Version footer — hover shows release date for debugging */}
       <div style={{marginTop:"16px",paddingTop:"14px",borderTop:"1px solid var(--border2)",textAlign:"center",fontSize:"10px",color:"var(--text5)",fontFamily:"var(--mono)",letterSpacing:".08em"}}>
-        SyncJournal <span style={{color:"var(--gold)"}}>{VERSION_STRING}</span>
+        SyncJournal <span style={{color:"var(--gold)"}} title={`Released ${APP_VERSION.released}`}>{APP_VERSION.version}</span>
       </div>
     </div>
 
@@ -5701,7 +5707,7 @@ function HelpPage(){
       </div>
     ))}
     <div style={{padding:"20px",textAlign:"center",fontSize:"11px",color:"var(--text5)",lineHeight:1.6}}>
-      SyncJournal <span style={{color:"var(--gold)",fontFamily:"var(--mono)"}}>{VERSION_STRING}</span> · <a href="https://github.com/ZaratrasJournal/SyncJournal" target="_blank" rel="noopener" style={{color:"var(--gold)",textDecoration:"none"}}>GitHub</a> · gebouwd door Denny + Sebas voor de Morani community
+      SyncJournal <span style={{color:"var(--gold)",fontFamily:"var(--mono)"}} title={`Released ${APP_VERSION.released}`}>{APP_VERSION.version}</span> · <a href="https://github.com/ZaratrasJournal/SyncJournal" target="_blank" rel="noopener" style={{color:"var(--gold)",textDecoration:"none"}}>GitHub</a> · gebouwd door Denny + Sebas voor de Morani community
     </div>
   </div>);
 }
@@ -5809,8 +5815,8 @@ function App(){
   const[storageUsage,setStorageUsage]=useState(()=>getStorageUsage());
   const[showPdf,setShowPdf]=useState(false);
   const[showWelcome,setShowWelcome]=useState(function(){try{return!localStorage.getItem("tj_welcomed");}catch(e){return false;}});
-  // Update check — fetch main/version.json from GitHub raw, compare build date (YYYY-MM-DD string-sorts correctly).
-  // Silent on failure (offline / rate limit / CORS). User can dismiss per-build via tj_update_dismissed_build.
+  // Update check — fetch main/version.json from GitHub raw, compare via semver.
+  // Silent on failure (offline / rate limit / CORS). User can dismiss per-version via tj_update_dismissed_version.
   const[updateAvailable,setUpdateAvailable]=useState(null);
   useEffect(()=>{
     let cancelled=false;
@@ -5819,16 +5825,17 @@ function App(){
         const r=await fetch("https://raw.githubusercontent.com/ZaratrasJournal/SyncJournal/main/main/version.json",{cache:"no-cache"});
         if(!r.ok||cancelled)return;
         const remote=await r.json();
-        if(!remote||!remote.build)return;
-        if(remote.build>APP_VERSION.build){
-          const dismissed=localStorage.getItem("tj_update_dismissed_build");
-          if(dismissed!==remote.build)setUpdateAvailable(remote);
+        const remoteVer=remote&&(remote.version||remote.label);
+        if(!remoteVer)return;
+        if(isNewerVersion(remoteVer,APP_VERSION.version)){
+          const dismissed=localStorage.getItem("tj_update_dismissed_version");
+          if(dismissed!==remoteVer)setUpdateAvailable({...remote,version:remoteVer});
         }
       }catch{}
     })();
     return()=>{cancelled=true};
   },[]);
-  const dismissUpdate=()=>{if(updateAvailable)try{localStorage.setItem("tj_update_dismissed_build",updateAvailable.build)}catch{};setUpdateAvailable(null)};
+  const dismissUpdate=()=>{if(updateAvailable)try{localStorage.setItem("tj_update_dismissed_version",updateAvailable.version)}catch{};setUpdateAvailable(null)};
 
   // Milestone celebrations — one-time toast when user hits a trading journey milestone
   const[milestone,setMilestone]=useState(null);
@@ -6147,7 +6154,7 @@ function App(){
             <div className="tj-logo">
               <div style={{display:"flex",flexDirection:"column",gap:"2px"}}>
                 <div style={{fontSize:"11px",fontWeight:700,letterSpacing:"0.18em",fontFamily:"var(--font)",color:"var(--tj-text-color,#ffffff)",textShadow:"var(--tj-text-shadow,0 0 12px rgba(201,168,76,0.5), 0 0 28px rgba(201,168,76,0.2))"}}>TRADING JOURNAL</div>
-                <div style={{fontSize:"8px",color:"rgba(201,168,76,0.55)",letterSpacing:"0.14em",fontFamily:"var(--font)"}}>built by Zaratras · powered by Morani · <span title={`Build ${APP_VERSION.build}`}>{VERSION_STRING}</span></div>
+                <div style={{fontSize:"8px",color:"rgba(201,168,76,0.55)",letterSpacing:"0.14em",fontFamily:"var(--font)"}}>built by Zaratras · powered by Morani</div>
               </div>
             </div>
           </a>
@@ -6221,7 +6228,7 @@ function App(){
         {/* Update-available banner — shows when main/version.json on GitHub has a newer build date */}
         {updateAvailable&&<div style={{padding:"10px 14px",marginBottom:"12px",borderRadius:"10px",background:"rgba(46,170,111,.06)",border:"1px solid rgba(46,170,111,.25)",borderLeft:"3px solid var(--green)",color:"var(--text2)",fontSize:"12px",display:"flex",alignItems:"center",gap:"12px",lineHeight:1.5}}>
           <span style={{fontSize:"16px"}}>📦</span>
-          <span style={{flex:1}}>Nieuwere versie beschikbaar: <strong style={{color:"var(--green)"}}>{updateAvailable.label} · {updateAvailable.build}</strong>. <a href="https://github.com/ZaratrasJournal/SyncJournal/raw/main/main/tradejournal.html" target="_blank" rel="noopener" style={{color:"var(--gold)",textDecoration:"underline"}}>Download</a> en vervang je lokale bestand — localStorage blijft intact.</span>
+          <span style={{flex:1}}>Nieuwere versie beschikbaar: <strong style={{color:"var(--green)"}}>{updateAvailable.version}</strong>{updateAvailable.released?<span style={{color:"var(--text4)",fontFamily:"var(--mono)",fontSize:"10px",marginLeft:"6px"}}>({updateAvailable.released})</span>:null}. <a href="https://github.com/ZaratrasJournal/SyncJournal/raw/main/main/tradejournal.html" target="_blank" rel="noopener" style={{color:"var(--gold)",textDecoration:"underline"}}>Download</a> en vervang je lokale bestand — localStorage blijft intact.</span>
           <button onClick={dismissUpdate} title="Niet meer tonen voor deze versie" style={{background:"none",border:"none",color:"var(--text4)",cursor:"pointer",fontSize:"13px",padding:"2px 6px",lineHeight:1}}>✕</button>
         </div>}
         {/* Mindset — ochtend-banner (1× per dag). Inline so it pushes content down instead of overlaying. Hidden when draft-recovery banner is showing. */}
