@@ -206,7 +206,13 @@ input[type=date]::-webkit-calendar-picker-indicator{filter:invert(0.5)}
 @keyframes logoShimmer{0%{background-position:-200% center}100%{background-position:200% center}}
 @keyframes logoPulse{0%,100%{filter:drop-shadow(0 0 3px rgba(201,168,76,0.1))}50%{filter:drop-shadow(0 0 12px rgba(46,170,111,0.4))}}
 .spinner{width:16px;height:16px;border:2px solid rgba(201,168,76,0.2);border-top-color:#C9A84C;border-radius:50%;animation:spin .6s linear infinite;display:inline-block}
-.tj-topbar{height:64px;background:var(--glass);-webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur);border-bottom:1px solid rgba(201,168,76,0.2);transition:all .2s}
+.tj-topbar{height:64px;background:var(--bg);-webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur);border-bottom:1px solid rgba(201,168,76,0.2);transition:all .2s}
+/* Aurora keeps a hint of the glass aesthetic but opaque enough to block scroll-through text */
+body.theme-aurora .tj-topbar{background:rgba(10,12,18,0.94)}
+/* Light themes: opaque to avoid any bleed through */
+body.theme-light .tj-topbar{background:#ffffff}
+body.theme-parchment .tj-topbar{background:#FBF9F3}
+body.theme-daylight .tj-topbar{background:#FFFFFF}
 
 .tj-logo{cursor:pointer;display:flex;align-items:center;gap:12px}
 .tj-logo:hover .tj-logo-text{filter:drop-shadow(0 0 8px rgba(201,168,76,0.5))}
@@ -992,6 +998,10 @@ function getProxyUrl(){
     return saved;
   }catch(err){return WORKER;}
 }
+
+// Dev-mode: hides advanced config (proxy URL, etc) from community users.
+// Unlock with ?dev=1 in URL (persisted in localStorage). Lock again with ?dev=0.
+const IS_DEV=(()=>{try{const qs=new URLSearchParams(location.search);if(qs.get("dev")==="1"){localStorage.setItem("tj_dev_mode","1")}else if(qs.get("dev")==="0"){localStorage.removeItem("tj_dev_mode")}return localStorage.getItem("tj_dev_mode")==="1";}catch(err){return false;}})();
 
 async function proxyCall(payload){
   const url=getProxyUrl();
@@ -2550,8 +2560,14 @@ function Section({title,storeKey,defaultOpen=true,hint,children}){
   </details>);
 }
 
-function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,accounts,showToast}){
+function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,accounts,showToast,isDraft}){
   const[showCard,setShowCard]=useState(false);
+  // Auto-persist to tj_trade_draft so unsaved input survives accidental modal-close, tab-close, crash, etc.
+  // Only for new trades (isDraft=true); edits are already persisted via tj_trades.
+  useEffect(()=>{
+    if(!isDraft||!trade)return;
+    try{localStorage.setItem("tj_trade_draft",JSON.stringify({trade,savedAt:Date.now()}))}catch(err){}
+  },[trade,isDraft]);
   const toggle=(f,tag)=>setTrade(p=>({...p,[f]:p[f].includes(tag)?p[f].filter(t=>t!==tag):[...p[f],tag]}));
   const fRef=useRef();
   const[ssInfo,setSsInfo]=useState(null);
@@ -2863,8 +2879,8 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,accounts,sho
     </Section>
 
     <div style={{marginBottom:"1rem"}}/>
-    {/* Actions */}
-    <div style={{display:"flex",gap:"12px"}}>
+    {/* Actions — sticky so Save is always reachable in long forms / scrolled modals */}
+    <div style={{display:"flex",gap:"12px",position:"sticky",bottom:0,background:"var(--bg)",padding:"12px 0",marginTop:"1rem",borderTop:"1px solid var(--border2)",zIndex:10}}>
       <button onClick={onSave} style={{flex:1,padding:"12px",borderRadius:"8px",border:"none",fontSize:"14px",fontWeight:700,background:"#C9A84C",color:"#000000",cursor:"pointer",fontFamily:"inherit",fontWeight:700}}>Trade opslaan</button>
       {trade.pnl&&<button onClick={()=>setShowCard(true)} title="Deel als kaart" style={{padding:"12px 18px",borderRadius:"8px",border:"1px solid var(--gold-border)",background:"var(--gold-dim)",color:"var(--gold)",cursor:"pointer",fontFamily:"inherit",fontSize:"13px",fontWeight:600}}>📸 Deel kaart</button>}
       {showCard&&<TradeCardExport trade={trade} onClose={()=>setShowCard(false)}/>}
@@ -4021,7 +4037,20 @@ function GoalsPage({goals,setGoals,trades}){
             </div>
             <div>
               <div style={{fontSize:"9px",color:"var(--text5)",textTransform:"uppercase",letterSpacing:".08em",marginBottom:"3px",fontWeight:600}}>Doel {def.inverted?"(max)":"(min)"}</div>
-              <input type="number" step="any" value={g.target} onChange={e=>updateGoal(g.id,{target:parseFloat(e.target.value)||0})} style={{width:"100%",padding:"6px 10px",borderRadius:"5px",border:"1px solid var(--border3)",background:"var(--bg3)",color:"var(--text)",fontSize:"12px",fontFamily:"var(--mono)",outline:"none",textAlign:"right"}}/>
+              <input
+                type="text"
+                inputMode={["trades","winningDays"].includes(g.metric)?"numeric":"decimal"}
+                value={g.target??""}
+                onChange={e=>{
+                  const isInt=["trades","winningDays"].includes(g.metric);
+                  const raw=e.target.value;
+                  const cleaned=isInt?raw.replace(/[^\d]/g,""):raw.replace(/[^\d.,]/g,"").replace(",",".");
+                  const parsed=isInt?parseInt(cleaned,10):parseFloat(cleaned);
+                  updateGoal(g.id,{target:Number.isFinite(parsed)?parsed:0});
+                }}
+                placeholder="0"
+                style={{width:"100%",padding:"6px 10px",borderRadius:"5px",border:"1px solid var(--border3)",background:"var(--bg3)",color:"var(--text)",fontSize:"12px",fontFamily:"var(--mono)",outline:"none",textAlign:"right"}}
+              />
             </div>
           </div>
           <div style={{marginLeft:"44px",display:"flex",alignItems:"center",gap:"14px",fontSize:"11px"}}>
@@ -4086,7 +4115,20 @@ function TradingRulesPage({tradingRules,setTradingRules}){
                 {Object.entries(TYPE_LABELS).map(([k,l])=>(<option key={k} value={k}>{l}</option>))}
               </select>
               {["max_trades_per_day","max_losses_per_day","max_risk_pct"].includes(r.type)
-                ?<input type="number" step="0.1" value={r.value||""} onChange={e=>setTradingRules(p=>p.map(x=>x.id===r.id?{...x,value:parseFloat(e.target.value)||0}:x))} style={{width:"70px",padding:"6px 10px",borderRadius:"5px",border:"1px solid var(--border3)",background:"var(--bg3)",color:"var(--text)",fontSize:"12px",fontFamily:"var(--mono)",outline:"none",textAlign:"right"}}/>
+                ?<input
+                  type="text"
+                  inputMode={r.type==="max_risk_pct"?"decimal":"numeric"}
+                  value={r.value??""}
+                  onChange={e=>{
+                    const isInt=r.type!=="max_risk_pct";
+                    const raw=e.target.value;
+                    const cleaned=isInt?raw.replace(/[^\d]/g,""):raw.replace(/[^\d.,]/g,"").replace(",",".");
+                    const parsed=isInt?parseInt(cleaned,10):parseFloat(cleaned);
+                    setTradingRules(p=>p.map(x=>x.id===r.id?{...x,value:Number.isFinite(parsed)?parsed:0}:x));
+                  }}
+                  placeholder="0"
+                  style={{width:"70px",padding:"6px 10px",borderRadius:"5px",border:"1px solid var(--border3)",background:"var(--bg3)",color:"var(--text)",fontSize:"12px",fontFamily:"var(--mono)",outline:"none",textAlign:"right"}}
+                />
                 :null}
             </div>
             <button onClick={()=>{if(confirm(`Verwijder regel "${r.name}"?`))setTradingRules(p=>p.filter(x=>x.id!==r.id))}} style={{background:"transparent",border:"1px solid var(--border3)",color:"var(--text5)",cursor:"pointer",fontSize:"12px",padding:"6px 10px",borderRadius:"5px",fontFamily:"inherit"}}>✕</button>
@@ -4964,7 +5006,7 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,imp
     {/* Backup & Restore — volledige snapshot van trades + tags + accounts + config */}
     <div style={{background:"var(--glass)",backdropFilter:"var(--glass-blur)",WebkitBackdropFilter:"var(--glass-blur)",borderRadius:"var(--radius-lg)",padding:"20px",marginTop:"16px",border:"1px solid var(--border1)"}}>
       <div style={{fontSize:"11px",color:"var(--gold)",textTransform:"uppercase",letterSpacing:"0.12em",fontWeight:700,marginBottom:"10px"}}>Backup & Restore</div>
-      <div style={{fontSize:"12px",color:"var(--text4)",marginBottom:"14px",lineHeight:1.6}}>Je data staat lokaal in deze browser. Maak regelmatig een backup zodat je niets verliest bij cache-clearing of een nieuw apparaat. Export bevat: trades, tags, handmatige accounts, exchange-instellingen, thema en proxy-URL.</div>
+      <div style={{fontSize:"12px",color:"var(--text4)",marginBottom:"14px",lineHeight:1.6}}>Je data staat lokaal in deze browser. Maak regelmatig een backup zodat je niets verliest bij cache-clearing of een nieuw apparaat. Export bevat: trades, tags, handmatige accounts, exchange-instellingen en thema.</div>
       <div style={{display:"flex",gap:"10px",flexWrap:"wrap"}}>
         <button onClick={exportTrades} disabled={!trades.length} style={{padding:"8px 16px",borderRadius:"var(--radius)",border:"1px solid var(--gold-border)",background:"var(--gold-dim)",color:"var(--gold)",fontSize:"12px",fontWeight:600,cursor:trades.length?"pointer":"default",fontFamily:"inherit",opacity:trades.length?1:0.4}}>↓ Backup exporteren (.json)</button>
         <button onClick={()=>backupRef.current.click()} style={{padding:"8px 16px",borderRadius:"var(--radius)",border:"1px solid var(--border3)",background:"transparent",color:"var(--text3)",fontSize:"12px",cursor:"pointer",fontFamily:"inherit"}}>↑ Backup importeren</button>
@@ -4993,9 +5035,9 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,imp
         <div style={{fontSize:"10px",color:"var(--text4)",marginTop:"6px",lineHeight:1.5}}>Polt gekoppelde exchanges automatisch op dit interval. Werkt alleen wanneer er minstens één API-verbinding actief is. Aanbevolen nu: <strong>Uit</strong> zolang de proxy-verbinding met MEXC nog niet werkt.</div>
       </div>
 
-      {/* Proxy server — Worker URL voor MEXC + Kraken (Blofin gaat direct) */}
-      <div style={{marginTop:"16px",paddingTop:"14px",borderTop:"1px solid var(--border2)"}}>
-        <div style={{fontSize:"12px",color:"var(--gold)",fontWeight:700,marginBottom:"8px",textTransform:"uppercase",letterSpacing:"0.08em"}}>ℹ Proxy server</div>
+      {/* Proxy server — dev-only. Hidden from community to avoid confusion; they don't need to configure a Worker, it just works. Unlock with ?dev=1 in URL. */}
+      {IS_DEV&&<div style={{marginTop:"16px",paddingTop:"14px",borderTop:"1px solid var(--border2)"}}>
+        <div style={{fontSize:"12px",color:"var(--gold)",fontWeight:700,marginBottom:"8px",textTransform:"uppercase",letterSpacing:"0.08em"}}>ℹ Proxy server <span style={{fontSize:"9px",opacity:0.6,marginLeft:"6px"}}>dev only</span></div>
         <div style={{fontSize:"11px",color:"var(--text3)",lineHeight:1.6,marginBottom:"10px"}}>MEXC en Kraken API vereisen een Cloudflare Worker om CORS te omzeilen. Blofin werkt direct vanuit de browser.</div>
         <div style={{fontSize:"10px",color:"var(--gold)",fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:"6px"}}>Worker URL</div>
         <input
@@ -5006,7 +5048,7 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,imp
           style={{width:"100%",padding:"10px 13px",borderRadius:"var(--radius)",border:"1px solid var(--border3)",background:"var(--glass)",color:"var(--text)",fontSize:"13px",fontFamily:"var(--mono)",outline:"none"}}
         />
         <div style={{fontSize:"10px",color:"var(--text4)",marginTop:"6px",lineHeight:1.5}}>Standaard gebruiken we de Morani gedeelde Worker. Je kunt een eigen Worker aanmaken via <strong>workers.cloudflare.com</strong>.</div>
-      </div>
+      </div>}
     </div>
 
     {/* Trading Rules editor — VERHUISD naar eigen "Trading Rules" sub-tab */}
@@ -5104,7 +5146,7 @@ function HelpPage(){
       ["Labels per account","Gouden sub-regel onder elke source. Presets: Swing / Daytrade / Scalp / News trade / Test — of je eigen label. Helpt bij strategie-tracking over meerdere accounts."],
       ["Capital tracking","Per account (zowel exchange als handmatig): ➕ Storting / ➖ Opname / ✏️ Correctie. Correctie = absolute waarde (nuttig om te syncen met live exchange balance)."],
       ["Equity & Return %","Capital (ingelegd) + som trade-PnL = Equity. Return % = rendement op ingelegd kapitaal per account. Koppelt aan Risk % in trade-form."],
-      ["API koppeling","Accounts tab → MEXC / Blofin / Kraken → API key + secret (+ passphrase voor Blofin). Worker op Cloudflare handelt CORS af — Blofin gaat direct vanuit browser."],
+      ["API koppeling","Accounts tab → MEXC / Blofin / Kraken → API key + secret (+ passphrase voor Blofin). Werkt direct — geen extra setup nodig."],
       ["CSV / XLSX import","📄 Importeer knop per exchange. Ondersteunt: MEXC Position History + Order History, Blofin Order History (FIFO reconstructie), Kraken log. Preview-scherm laat je filteren en selecteren vóór import."],
     ]},
     {title:"📝 Trade form",icon:"📝",items:[
@@ -5276,6 +5318,29 @@ function App(){
   const[storageUsage,setStorageUsage]=useState(()=>getStorageUsage());
   const[showPdf,setShowPdf]=useState(false);
   const[showWelcome,setShowWelcome]=useState(function(){try{return!localStorage.getItem("tj_welcomed");}catch(e){return false;}});
+  // Unsaved-changes tracking for Edit + New trade close flows
+  const[editOriginal,setEditOriginal]=useState(null);
+  const[closeConfirm,setCloseConfirm]=useState(null);// null | {title,onSave,onDiscard}
+  useEffect(()=>{
+    if(editTrade&&!editOriginal)setEditOriginal(JSON.stringify(editTrade));
+    if(!editTrade&&editOriginal)setEditOriginal(null);
+  },[editTrade,editOriginal]);
+  const tradeHasContent=(t)=>!!(t&&(t.entry||t.exit||t.pnl||t.notes||t.entryNote||(t.setupTags||[]).length||(t.links||[]).length||t.screenshot));
+  // Unsaved draft recovery: on mount, check for a persisted new-trade draft (<48h old)
+  const[pendingDraft,setPendingDraft]=useState(null);
+  useEffect(()=>{
+    try{
+      const raw=localStorage.getItem("tj_trade_draft");if(!raw)return;
+      const parsed=JSON.parse(raw);
+      const ageMs=Date.now()-(parsed.savedAt||0);
+      if(ageMs>48*60*60*1000){localStorage.removeItem("tj_trade_draft");return;}
+      // Only offer recovery if the draft has actual content (not a blank freshly-opened form)
+      const t=parsed.trade||{};
+      const hasContent=(t.entry||t.exit||t.pnl||t.notes||t.entryNote||(t.setupTags||[]).length||(t.links||[]).length||t.screenshot);
+      if(hasContent)setPendingDraft({trade:t,savedAt:parsed.savedAt});
+      else localStorage.removeItem("tj_trade_draft");
+    }catch(err){}
+  },[]);
 
   const showToast=(msg,type="success",data=null)=>{setToast({msg,type,data,id:Date.now()});setTimeout(()=>setToast(null),5000)};
 
@@ -5365,6 +5430,8 @@ function App(){
     if(isNew){const sessions=getSessionTags(enriched.date,enriched.time);if(sessions.length&&!(enriched.timeframeTags||[]).some(t=>["Tokyo","London","New York","Off-session","Weekend"].includes(t))){}}
     setTrades(p=>{if(isNew){return[enriched,...p]}else{return p.map(t=>t.id===enriched.id?enriched:t)}});
     setEditTrade(null);setNewTrade(null);
+    // Draft was saved successfully; clear persisted draft so we don't prompt to restore it next session
+    if(isNew){try{localStorage.removeItem("tj_trade_draft")}catch(err){}}
     showToast(isNew?"Trade opgeslagen ✓":"Trade bijgewerkt ✓");
     if(isNew&&tab==="new")setTab("trades");
   };
@@ -5556,6 +5623,23 @@ function App(){
 
       {/* Toast */}
       <CommandPalette open={cmdOpen} onClose={()=>setCmdOpen(false)} trades={trades} navigate={navigate} setNewTrade={setNewTrade} newEmptyTrade={newEmptyTrade} exportTrades={exportTrades} setConfig={setConfig} config={config}/>
+      {closeConfirm&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:9998,display:"flex",alignItems:"center",justifyContent:"center",animation:"fadeIn .15s ease"}}>
+        <div style={{background:"var(--bg2,var(--bg))",border:"1px solid var(--gold-border)",borderRadius:"12px",padding:"22px 24px",maxWidth:"420px",width:"90%",boxShadow:"0 20px 60px rgba(0,0,0,.6)"}}>
+          <div style={{fontSize:"15px",fontWeight:700,color:"var(--text)",marginBottom:"6px"}}>⚠ Onopgeslagen wijzigingen</div>
+          <div style={{fontSize:"13px",color:"var(--text3)",lineHeight:1.5,marginBottom:"18px"}}>{closeConfirm.title}. Wat wil je doen?</div>
+          <div style={{display:"flex",gap:"8px",flexWrap:"wrap"}}>
+            <button onClick={closeConfirm.onSave} style={{flex:1,minWidth:"120px",padding:"10px 14px",borderRadius:"8px",border:"none",background:"#C9A84C",color:"#000",fontSize:"13px",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Trade opslaan</button>
+            <button onClick={closeConfirm.onDiscard} style={{padding:"10px 14px",borderRadius:"8px",border:"1px solid var(--red,#e05555)",background:"transparent",color:"var(--red,#e05555)",fontSize:"13px",fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Sluiten zonder opslaan</button>
+            <button onClick={()=>setCloseConfirm(null)} style={{padding:"10px 14px",borderRadius:"8px",border:"1px solid var(--border3)",background:"transparent",color:"var(--text3)",fontSize:"13px",cursor:"pointer",fontFamily:"inherit"}}>Annuleren</button>
+          </div>
+        </div>
+      </div>}
+      {pendingDraft&&!newTrade&&!editTrade&&<div style={{position:"fixed",top:"76px",left:"50%",transform:"translateX(-50%)",zIndex:400,padding:"12px 18px",borderRadius:"12px",background:"var(--gold-dim)",border:"1px solid var(--gold-border)",color:"var(--text)",fontSize:"13px",display:"flex",alignItems:"center",gap:"14px",boxShadow:"0 8px 32px rgba(0,0,0,.45)",maxWidth:"560px"}}>
+        <span style={{fontSize:"16px"}}>📝</span>
+        <span style={{flex:1,lineHeight:1.4}}>Niet-opgeslagen trade gevonden ({new Date(pendingDraft.savedAt).toLocaleString("nl-NL",{hour:"2-digit",minute:"2-digit",day:"2-digit",month:"2-digit"})}). Wil je 'm terughalen?</span>
+        <button onClick={()=>{setNewTrade(pendingDraft.trade);navigate("new");setPendingDraft(null)}} style={{padding:"6px 12px",borderRadius:"6px",border:"none",background:"var(--gold)",color:"#000",fontSize:"12px",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Herstellen</button>
+        <button onClick={()=>{try{localStorage.removeItem("tj_trade_draft")}catch(err){};setPendingDraft(null)}} style={{padding:"6px 10px",borderRadius:"6px",border:"1px solid var(--border3)",background:"transparent",color:"var(--text3)",fontSize:"12px",cursor:"pointer",fontFamily:"inherit"}}>Weggooien</button>
+      </div>}
       {toast&&<div className={`tj-toast ${toast.type==="error"?"error":toast.type==="info"?"info":"success"}`} style={{position:"fixed",bottom:"24px",right:"24px",zIndex:9999}}>
         <span>{toast.type==="error"?"✕":toast.type==="info"?"ℹ":"✓"}</span>
         <span style={{flex:1}}>{toast.msg}</span>
@@ -5575,28 +5659,43 @@ function App(){
         </div>}
 
         {/* New trade */}
-        {(tab==="new"&&newTrade)&&<>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"1rem"}}>
-            <div style={{fontSize:"16px",fontWeight:700}}>Nieuwe trade</div>
-            <button onClick={()=>{setNewTrade(null);navigate("trades")}} style={{background:"none",border:"none",color:"var(--text4)",cursor:"pointer",fontSize:"14px"}}>✕</button>
-          </div>
-          <TradeForm trade={newTrade} setTrade={setNewTrade} onSave={()=>saveTrade(newTrade)} onCancel={()=>{setNewTrade(null);navigate("trades")}} tagConfig={tagConfig} config={config} accounts={accounts} showToast={showToast}/>
-        </>}
+        {(tab==="new"&&newTrade)&&(()=>{
+          const discardNew=()=>{try{localStorage.removeItem("tj_trade_draft")}catch(err){};setNewTrade(null);navigate("trades")};
+          const tryCloseNew=()=>{
+            if(!tradeHasContent(newTrade)){discardNew();return}
+            setCloseConfirm({title:"Je hebt een nieuwe trade in bewerking",onSave:()=>{saveTrade(newTrade);setCloseConfirm(null)},onDiscard:()=>{discardNew();setCloseConfirm(null)}});
+          };
+          return<>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"1rem"}}>
+              <div style={{fontSize:"16px",fontWeight:700}}>Nieuwe trade</div>
+              <button onClick={tryCloseNew} style={{background:"none",border:"none",color:"var(--text4)",cursor:"pointer",fontSize:"14px"}}>✕</button>
+            </div>
+            <TradeForm trade={newTrade} setTrade={setNewTrade} onSave={()=>saveTrade(newTrade)} onCancel={tryCloseNew} tagConfig={tagConfig} config={config} accounts={accounts} showToast={showToast} isDraft={true}/>
+          </>;
+        })()}
 
         {/* Edit modal */}
-        {editTrade&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",zIndex:500,overflowY:"auto",padding:"20px",animation:"fadeIn .2s ease"}} onClick={e=>{if(e.target===e.currentTarget)setEditTrade(null)}}>
+        {editTrade&&(()=>{
+          const discardEdit=()=>{setEditTrade(null)};
+          const tryCloseEdit=()=>{
+            const dirty=editOriginal&&JSON.stringify(editTrade)!==editOriginal;
+            if(!dirty){discardEdit();return}
+            setCloseConfirm({title:"Je hebt wijzigingen aangebracht",onSave:()=>{saveTrade(editTrade);setCloseConfirm(null)},onDiscard:()=>{discardEdit();setCloseConfirm(null)}});
+          };
+          return<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",zIndex:500,overflowY:"auto",padding:"20px",animation:"fadeIn .2s ease"}}>
           <div style={{maxWidth:"960px",margin:"0 auto",position:"relative"}}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"12px"}}>
               <div style={{fontSize:"16px",fontWeight:700,color:"var(--text)"}}>Trade bewerken</div>
               <div style={{display:"flex",gap:"8px"}}>
                 <button onClick={()=>{if(confirm("TP tijdlijn laden?")){}}} style={{display:"none"}}/>
-                <button onClick={()=>setEditTrade(null)} style={{background:"none",border:"none",color:"var(--text4)",cursor:"pointer",fontSize:"14px",padding:"4px"}}>✕</button>
+                <button onClick={tryCloseEdit} style={{background:"none",border:"none",color:"var(--text4)",cursor:"pointer",fontSize:"14px",padding:"4px"}}>✕</button>
               </div>
             </div>
-            <TradeForm trade={editTrade} setTrade={setEditTrade} onSave={()=>saveTrade(editTrade)} onCancel={()=>setEditTrade(null)} tagConfig={tagConfig} config={config} accounts={accounts} showToast={showToast}/>
+            <TradeForm trade={editTrade} setTrade={setEditTrade} onSave={()=>saveTrade(editTrade)} onCancel={tryCloseEdit} tagConfig={tagConfig} config={config} accounts={accounts} showToast={showToast}/>
             <TPTimeline trade={editTrade} config={config} setTrade={setEditTrade} showToast={showToast}/>
           </div>
-        </div>}
+        </div>;
+        })()}
 
         {/* Main content routing */}
         {tab==="dashboard"&&(layout==="premium"
