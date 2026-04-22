@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SyncJournal — Missed Trades Demo</title>
+<style>
+:root{
+  --bg:#06080c; --bg2:#0a0d15; --bg3:#0c0f16; --glass:rgba(18,21,30,0.55);
+  --text:#f5f5f7; --text2:#c0c5cd; --text3:#939aa5; --text4:#6b7280; --text5:#4b5563;
+  --gold:#C9A84C; --gold-dim:rgba(201,168,76,0.12); --gold-border:rgba(201,168,76,0.3);
+  --green:#2eaa6f; --red:#e05555; --amber:#d4a853; --blue:#8a9fc0; --ghost:#b48cc8;
+  --border1:rgba(201,168,76,0.08); --border2:rgba(255,255,255,0.06); --border3:rgba(255,255,255,0.1);
+  --mono:'JetBrains Mono','SF Mono',Consolas,monospace;
+  --font:'Outfit','Inter',-apple-system,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:var(--font);min-height:100vh;font-size:14px;line-height:1.6}
+body{background:radial-gradient(ellipse 1200px 800px at 50% 0%,rgba(201,168,76,0.04) 0%,transparent 50%),var(--bg)}
+.wrap{max-width:1280px;margin:0 auto;padding:28px 24px 80px}
+.topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;padding-bottom:18px;border-bottom:1px solid var(--border1)}
+.logo{display:flex;align-items:center;gap:12px}
+.logo-m{width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,#f0d57a,#C9A84C,#8c721c);display:flex;align-items:center;justify-content:center;font-weight:900;font-size:20px;color:#000;box-shadow:0 4px 16px rgba(201,168,76,0.4)}
+.logo-text{font-weight:800;font-size:18px;letter-spacing:.02em}
+.logo-sub{font-family:var(--mono);font-size:10px;color:var(--text4);letter-spacing:.2em;text-transform:uppercase;margin-top:2px}
+.demo-tag{padding:5px 12px;border-radius:20px;background:var(--gold-dim);border:1px solid var(--gold-border);color:var(--gold);font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase}
+
+h1{font-size:30px;font-weight:800;letter-spacing:-.02em;margin:0 0 8px}
+.subtitle{font-size:13px;color:var(--text3);margin-bottom:24px;max-width:820px;line-height:1.6}
+
+.section-title{font-size:14px;font-weight:700;margin:36px 0 14px;display:flex;align-items:center;gap:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.1em}
+.section-title::before{content:"";display:inline-block;width:4px;height:14px;background:var(--gold);border-radius:2px}
+.section-lead{font-size:12px;color:var(--text4);margin-bottom:18px;max-width:820px;line-height:1.6}
+
+/* Principle cards */
+.principles{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px}
+@media(max-width:900px){.principles{grid-template-columns:1fr 1fr}}
+.principle{padding:14px;background:rgba(255,255,255,.02);border:1px solid var(--border2);border-radius:8px;font-size:12px;line-height:1.6;color:var(--text3)}
+.principle strong{color:var(--gold);font-weight:700;display:block;margin-bottom:4px;font-size:11px;text-transform:uppercase;letter-spacing:.08em}
+
+/* Toggle showcase */
+.toggle-showcase{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px}
+@media(max-width:900px){.toggle-showcase{grid-template-columns:1fr}}
+.toggle-card{background:var(--glass);border:1px solid var(--border1);border-radius:12px;padding:18px;position:relative;overflow:hidden}
+.toggle-card::before{content:"";position:absolute;top:0;left:0;right:0;height:1px;opacity:.6}
+.toggle-card.off::before{background:linear-gradient(90deg,transparent,rgba(255,255,255,.1),transparent)}
+.toggle-card.on::before{background:linear-gradient(90deg,transparent,var(--gold-border),transparent)}
+.toggle-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;gap:10px}
+.toggle-title{font-size:12px;font-weight:700;color:var(--text);display:flex;align-items:center;gap:8px}
+.toggle-title .state{padding:3px 9px;border-radius:10px;font-size:10px;font-family:var(--mono);letter-spacing:.08em}
+.toggle-card.off .state{background:rgba(255,255,255,.05);color:var(--text4)}
+.toggle-card.on .state{background:var(--gold-dim);color:var(--gold)}
+.toggle-switch{width:38px;height:20px;border-radius:11px;background:rgba(255,255,255,.15);position:relative;cursor:pointer;transition:all .2s}
+.toggle-switch.on{background:var(--gold)}
+.toggle-switch::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#000;transition:all .2s}
+.toggle-switch.on::after{left:20px}
+.toggle-body{font-size:12px;color:var(--text3);line-height:1.6}
+.toggle-body ul{padding-left:18px;margin:6px 0}
+.toggle-body li{margin:4px 0;color:var(--text4);font-size:11px}
+.toggle-body strong{color:var(--text2)}
+
+/* Trade form mockup */
+.mock-card{background:var(--glass);border:1px solid var(--border1);border-radius:12px;padding:20px;margin-bottom:20px;position:relative}
+.mock-card::before{content:"";position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--gold-border),transparent);opacity:.6}
+.mock-label{font-size:9px;color:var(--text5);text-transform:uppercase;letter-spacing:.12em;font-weight:600;margin-bottom:4px;display:block}
+.mock-input{width:100%;padding:9px 12px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.02);border-radius:6px;color:var(--text);font-size:12px;font-family:var(--mono)}
+.mock-input.disabled{background:rgba(255,255,255,.01);color:var(--text5);text-decoration:line-through;border-style:dashed}
+.pill{display:inline-block;padding:4px 11px;border-radius:16px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid var(--border3);color:var(--text4);transition:all .15s}
+.pill.active{background:var(--gold-dim);border-color:var(--gold-border);color:var(--gold)}
+.pill.ghost{background:rgba(180,140,200,.1);border-color:rgba(180,140,200,.3);color:var(--ghost)}
+.pill.ghost.active{background:rgba(180,140,200,.2);color:#d4a8e8}
+
+.form-row{display:grid;gap:10px;margin-bottom:14px}
+.form-row.r2{grid-template-columns:1fr 1fr}
+.form-row.r3{grid-template-columns:1fr 1fr 1fr}
+.form-row.r4{grid-template-columns:1fr 1fr 1fr 1fr}
+
+.status-row{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--gold-dim);border:1px solid var(--gold-border);border-radius:8px;margin-bottom:14px;flex-wrap:wrap;gap:10px}
+.status-pills{display:flex;gap:0;border-radius:6px;overflow:hidden;border:1px solid var(--border3)}
+.status-pill{padding:6px 14px;background:transparent;color:var(--text4);font-size:11px;font-weight:600;cursor:pointer;border:none;font-family:inherit}
+.status-pill.active{background:var(--gold);color:#000}
+.missed-toggle{display:flex;align-items:center;gap:8px;padding:5px 12px;border-radius:18px;border:1px solid rgba(180,140,200,.3);background:rgba(180,140,200,.06);cursor:pointer;font-size:11px;color:var(--ghost);font-weight:600}
+.missed-toggle.active{background:rgba(180,140,200,.2);border-color:rgba(180,140,200,.5);color:#d4a8e8}
+
+.hint{font-size:10px;color:var(--text4);margin-top:4px;line-height:1.5;font-style:italic}
+.hint.soft-warn{color:var(--amber)}
+
+/* Trade list mockup */
+.filter-bar{display:flex;gap:6px;flex-wrap:wrap;padding:12px;background:rgba(255,255,255,.02);border:1px solid var(--border2);border-radius:8px;margin-bottom:10px;align-items:center}
+.filter-bar .sep{width:1px;height:16px;background:var(--border3);margin:0 4px}
+.trade-list{background:var(--glass);border:1px solid var(--border1);border-radius:10px;overflow:hidden}
+.trade-row{display:grid;grid-template-columns:80px 90px 110px 90px 90px 90px 1fr;gap:10px;padding:10px 14px;align-items:center;border-bottom:1px solid var(--border2);font-size:12px}
+.trade-row:last-child{border-bottom:none}
+.trade-row.header{background:rgba(255,255,255,.03);font-size:9px;color:var(--text5);text-transform:uppercase;letter-spacing:.1em;font-weight:700}
+.trade-row.missed{opacity:.72}
+.trade-row.missed:hover{opacity:1;background:rgba(180,140,200,.04)}
+.t-status{display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:10px;font-size:10px;font-weight:700;font-family:var(--mono)}
+.t-status.long{background:rgba(46,170,111,.14);color:var(--green)}
+.t-status.short{background:rgba(224,85,85,.14);color:var(--red)}
+.t-status.missed{background:rgba(180,140,200,.15);color:var(--ghost)}
+.t-pnl{font-family:var(--mono);font-weight:700}
+.t-pnl.pos{color:var(--green)}
+.t-pnl.neg{color:var(--red)}
+.t-pnl.empty{color:var(--text5);font-style:italic}
+.t-setup{color:var(--text3);font-size:11px}
+.t-setup .reason{margin-left:6px;padding:1px 6px;border-radius:8px;background:rgba(180,140,200,.1);color:var(--ghost);font-size:9px;font-family:var(--mono)}
+.list-summary{font-size:11px;color:var(--text4);padding:8px 14px;background:rgba(255,255,255,.02);border-bottom:1px solid var(--border2);font-family:var(--mono)}
+.list-summary strong{color:var(--gold)}
+
+/* Edge Gap analytics */
+.edge-grid{display:grid;grid-template-columns:1.5fr 1fr 1fr;gap:14px;margin-bottom:14px}
+@media(max-width:900px){.edge-grid{grid-template-columns:1fr}}
+.edge-card{background:var(--glass);border:1px solid var(--border1);border-radius:10px;padding:16px}
+.edge-card-title{font-size:10px;color:var(--gold);text-transform:uppercase;letter-spacing:.12em;font-weight:700;margin-bottom:10px}
+.captured-table{width:100%;font-size:11px;border-collapse:collapse}
+.captured-table th{text-align:left;padding:6px 8px;color:var(--text5);font-size:9px;letter-spacing:.08em;text-transform:uppercase;font-weight:700;border-bottom:1px solid var(--border2)}
+.captured-table td{padding:8px;border-bottom:1px solid var(--border2);color:var(--text3)}
+.captured-table td.setup{color:var(--text2);font-weight:600}
+.captured-table td.ratio{font-family:var(--mono);font-weight:700}
+.captured-table td.ratio.good{color:var(--green)}
+.captured-table td.ratio.mid{color:var(--amber)}
+.captured-table td.ratio.bad{color:var(--red)}
+.captured-bar{display:inline-block;width:50px;height:5px;background:rgba(255,255,255,.05);border-radius:3px;overflow:hidden;margin-right:6px;vertical-align:middle}
+.captured-bar-fill{height:100%;border-radius:3px}
+
+.donut-wrap{display:flex;flex-direction:column;align-items:center;padding:10px 0}
+.donut{width:140px;height:140px;border-radius:50%;background:conic-gradient(
+  var(--ghost) 0% 42%,
+  rgba(180,140,200,.6) 42% 67%,
+  rgba(180,140,200,.4) 67% 84%,
+  rgba(180,140,200,.25) 84% 100%
+);position:relative;margin-bottom:12px}
+.donut::after{content:"";position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:80px;height:80px;border-radius:50%;background:var(--bg2)}
+.donut-center{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;z-index:1}
+.donut-center .n{font-family:var(--mono);font-size:22px;font-weight:800;color:var(--ghost)}
+.donut-center .l{font-size:9px;color:var(--text5);text-transform:uppercase;letter-spacing:.08em;margin-top:-4px}
+.donut-legend{width:100%;font-size:10px}
+.donut-legend .row{display:flex;align-items:center;justify-content:space-between;padding:3px 0}
+.donut-legend .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
+.donut-legend .l-left{color:var(--text3)}
+.donut-legend .l-right{color:var(--text4);font-family:var(--mono)}
+
+.stat-big{font-family:var(--mono);font-size:28px;font-weight:800;color:var(--ghost);margin-bottom:4px}
+.stat-sub{font-size:10px;color:var(--text4);line-height:1.5}
+.bias-warn{margin-top:10px;padding:7px 10px;background:rgba(212,168,83,.08);border-left:2px solid var(--amber);border-radius:4px;font-size:10px;color:var(--amber);line-height:1.5}
+
+/* TagManager mockup */
+.tagmgr{background:var(--glass);border:1px solid var(--border1);border-radius:10px;padding:16px}
+.tagmgr-section{margin-bottom:14px}
+.tagmgr-section:last-child{margin-bottom:0}
+.tagmgr-title{font-size:11px;color:var(--gold);text-transform:uppercase;letter-spacing:.1em;font-weight:700;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center}
+.tagmgr-title .count{font-family:var(--mono);font-size:9px;color:var(--text5);font-weight:400;letter-spacing:.06em}
+.tagmgr-new{padding:4px 11px;border-radius:14px;border:1px dashed var(--border4);background:transparent;color:var(--text4);font-size:10px;font-weight:600;cursor:pointer;font-family:inherit}
+
+/* Demo controls */
+.ctrl-row{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:14px;padding:10px 14px;background:rgba(201,168,76,.04);border:1px solid rgba(201,168,76,.15);border-radius:8px;font-size:12px}
+.ctrl-row .ctrl-label{color:var(--gold);font-weight:700;text-transform:uppercase;letter-spacing:.08em;font-size:10px}
+.ctrl-row .pills{display:flex;gap:0;border-radius:6px;overflow:hidden;border:1px solid var(--border3)}
+.ctrl-row .pills button{padding:5px 12px;background:transparent;color:var(--text4);font-size:11px;font-weight:600;cursor:pointer;border:none;font-family:inherit}
+.ctrl-row .pills button.active{background:var(--gold);color:#000}
+
+.footer{margin-top:40px;padding-top:20px;border-top:1px solid var(--border1);font-size:11px;color:var(--text5);text-align:center;line-height:1.7}
+.footer code{background:rgba(255,255,255,.04);padding:2px 6px;border-radius:3px;font-family:var(--mono);color:var(--text3)}
+
+.gg{color:var(--ghost)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <div class="logo">
+      <div class="logo-m">M</div>
+      <div>
+        <div class="logo-text">SyncJournal · Missed Trades</div>
+        <div class="logo-sub">Concept · Observed edge tracking</div>
+      </div>
+    </div>
+    <div class="demo-tag">Prototype</div>
+  </div>
+
+  <h1>Waar laat je edge liggen? <span class="gg">👻</span></h1>
+  <p class="subtitle">
+    Missed trades zijn setups die je <strong>spotte maar niet nam</strong>. Door ze los te loggen met een reden krijg je antwoord op: <em>ben ik te conservatief?</em> · <em>is m'n edge-selectie juist?</em> · <em>mis ik consistent op bepaalde tijden of setups?</em> Onmisbaar voor wie serieus aan proces werkt.
+  </p>
+
+  <div class="principles">
+    <div class="principle"><strong>🔕 Opt-in</strong>Master toggle in Instellingen. Default UIT — nooit in de weg voor users die het niet willen.</div>
+    <div class="principle"><strong>🧩 Apart gelayerd</strong>Vier lagen zichtbaarheid: feature uit / aan maar verborgen / filter aan / analytics aan. Elke user kiest z'n diepte.</div>
+    <div class="principle"><strong>📊 Nooit in echte P&L</strong>Missed trades tellen nooit mee in je win-rate of netto PnL. Aparte analytics sectie "Edge Gap".</div>
+    <div class="principle"><strong>💾 Data-veilig</strong>Toggle uit = verborgen, niet gewist. Backup-export bevat ze automatisch. Zet 'm weer aan → alles terug.</div>
+  </div>
+
+  <div class="section-title">1. Master toggle in Instellingen</div>
+  <p class="section-lead">Zonder deze toggle zie je van missed-trades niks. Mét deze toggle verschijnen UI-elementen op de juiste plekken.</p>
+
+  <div class="toggle-showcase">
+    <div class="toggle-card off">
+      <div class="toggle-head">
+        <div class="toggle-title">👻 Gemiste trades bijhouden <span class="state">UIT</span></div>
+        <div class="toggle-switch"></div>
+      </div>
+      <div class="toggle-body">
+        Default voor nieuwe users. Alsof de feature niet bestaat:
+        <ul>
+          <li>Geen 👻 toggle in TradeForm</li>
+          <li>Geen filter-pill in Trades-lijst</li>
+          <li>Geen "Edge Gap" sectie in Analytics</li>
+          <li>Geen "Missed-redenen" categorie in TagManager</li>
+          <li>Geen <code style="background:rgba(255,255,255,.04);padding:1px 5px;border-radius:3px;font-size:10px;font-family:var(--mono);color:var(--text3)">⌘K → m</code> command</li>
+        </ul>
+        <strong>Zero cognitive load</strong> voor wie alleen echte trades wil loggen.
+      </div>
+    </div>
+    <div class="toggle-card on">
+      <div class="toggle-head">
+        <div class="toggle-title">👻 Gemiste trades bijhouden <span class="state">AAN</span></div>
+        <div class="toggle-switch on"></div>
+      </div>
+      <div class="toggle-body">
+        Alle UI-elementen verschijnen, maar:
+        <ul>
+          <li>Trade-filter default op <strong>"Genomen"</strong> (missed blijft verborgen tot je wil zien)</li>
+          <li>Edge Gap sectie kan apart verborgen via layout-gear ⚙</li>
+          <li>Reden-tags zijn <strong>aangeraden, niet verplicht</strong></li>
+        </ul>
+        <strong>Power-feature</strong> voor wie serieus aan edge-tracking wil.
+      </div>
+    </div>
+  </div>
+
+  <div class="section-title">2. Nieuwe trade loggen</div>
+  <p class="section-lead">Één formulier, context-afhankelijke velden. Toggle bovenaan wisselt tussen "Echte trade" en "👻 Gemiste trade".</p>
+
+  <!-- Demo control -->
+  <div class="ctrl-row">
+    <span class="ctrl-label">Form-modus:</span>
+    <div class="pills" id="form-mode">
+      <button data-mode="real" class="active">Echte trade</button>
+      <button data-mode="missed">👻 Gemiste trade</button>
+    </div>
+    <span style="color:var(--text5);font-size:10px;font-style:italic">Klik om te switchen — zie velden aanpassen</span>
+  </div>
+
+  <div class="mock-card" id="form-demo">
+    <div class="status-row">
+      <div style="display:flex;align-items:center;gap:10px">
+        <span style="font-size:9px;color:var(--text4);text-transform:uppercase;letter-spacing:.08em;font-weight:700">Status</span>
+        <div class="status-pills">
+          <button class="status-pill" id="status-open">● Open</button>
+          <button class="status-pill active" id="status-closed">✓ Closed</button>
+        </div>
+      </div>
+      <button class="missed-toggle" id="missed-toggle">👻 Gemiste trade</button>
+    </div>
+
+    <div class="form-row r3">
+      <div>
+        <span class="mock-label">Datum</span>
+        <input class="mock-input" value="22-04-2026" readonly/>
+      </div>
+      <div>
+        <span class="mock-label">Tijd</span>
+        <input class="mock-input" value="14:32" readonly/>
+      </div>
+      <div>
+        <span class="mock-label">Pair</span>
+        <input class="mock-input" value="BTC/USDT" readonly/>
+      </div>
+    </div>
+
+    <div class="form-row r2">
+      <div>
+        <span class="mock-label">Richting</span>
+        <div style="display:flex;gap:6px">
+          <span class="pill active">📈 Long</span>
+          <span class="pill">📉 Short</span>
+        </div>
+      </div>
+      <div>
+        <span class="mock-label">Leverage</span>
+        <input class="mock-input" value="10×" readonly/>
+      </div>
+    </div>
+
+    <div class="form-row r4">
+      <div>
+        <span class="mock-label" id="lbl-entry">Entry prijs</span>
+        <input class="mock-input" value="42,500" readonly/>
+      </div>
+      <div>
+        <span class="mock-label">Stop-loss</span>
+        <input class="mock-input" value="42,000" readonly/>
+      </div>
+      <div>
+        <span class="mock-label">Take-profit</span>
+        <input class="mock-input" value="43,500" readonly/>
+      </div>
+      <div>
+        <span class="mock-label" id="lbl-exit">Exit prijs</span>
+        <input class="mock-input" id="exit-input" value="43,200" readonly/>
+      </div>
+    </div>
+
+    <div class="form-row r2" id="real-only">
+      <div>
+        <span class="mock-label">Position size (USDT)</span>
+        <input class="mock-input" id="size-input" value="5000" readonly/>
+      </div>
+      <div>
+        <span class="mock-label">Fees</span>
+        <input class="mock-input" id="fees-input" value="5.20" readonly/>
+      </div>
+    </div>
+
+    <div id="missed-only" style="display:none;margin-bottom:14px">
+      <span class="mock-label">👻 Waarom niet genomen? <span style="color:var(--ghost);text-transform:none;font-weight:400;font-style:italic;letter-spacing:0">— aangeraden, niet verplicht</span></span>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <span class="pill ghost">🧠 Durf</span>
+        <span class="pill ghost active">📏 Buiten regels</span>
+        <span class="pill ghost">⏰ Te laat gespot</span>
+        <span class="pill ghost active">💰 Kapitaal vol</span>
+        <span class="pill ghost">👀 Onduidelijk</span>
+        <span class="pill ghost">⏸ Bewuste skip</span>
+        <span class="pill ghost">🚪 Offline</span>
+      </div>
+      <div class="hint soft-warn">💡 Meerdere redenen mogelijk. Geen reden = trade verschijnt niet in Edge Gap stats.</div>
+    </div>
+
+    <div class="form-row">
+      <div>
+        <span class="mock-label" id="lbl-notes">Post-mortem — wat ging goed, wat kon beter?</span>
+        <input class="mock-input" value="(placeholder)" readonly/>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:10px;margin-top:16px;padding-top:14px;border-top:1px solid var(--border2)">
+      <button style="flex:1;padding:10px;border-radius:8px;border:none;background:var(--gold);color:#000;font-weight:700;cursor:pointer;font-family:inherit" id="save-btn">Trade opslaan</button>
+    </div>
+  </div>
+
+  <div class="section-title">3. Trades-lijst met filter</div>
+  <p class="section-lead">Eén lijst, filter-pill bepaalt wat je ziet. Default <strong>"Genomen"</strong> — missed blijft verborgen tot je bewust kiest.</p>
+
+  <div class="filter-bar">
+    <span style="font-size:10px;color:var(--text5);text-transform:uppercase;letter-spacing:.08em;font-weight:700">Filter</span>
+    <span class="pill">Vandaag</span>
+    <span class="pill active">Week</span>
+    <span class="pill">Maand</span>
+    <div class="sep"></div>
+    <span class="pill">📈 Long</span>
+    <span class="pill">📉 Short</span>
+    <div class="sep"></div>
+    <span style="font-size:10px;color:var(--ghost);text-transform:uppercase;letter-spacing:.08em;font-weight:700">Type</span>
+    <div class="pills" id="type-filter">
+      <button data-type="real" class="active" style="padding:5px 12px;background:var(--gold);color:#000;font-size:11px;font-weight:600;cursor:pointer;border:none;font-family:inherit">Genomen</button>
+      <button data-type="missed" style="padding:5px 12px;background:transparent;color:var(--text4);font-size:11px;font-weight:600;cursor:pointer;border:none;font-family:inherit">👻 Gemist</button>
+      <button data-type="both" style="padding:5px 12px;background:transparent;color:var(--text4);font-size:11px;font-weight:600;cursor:pointer;border:none;font-family:inherit">Beide</button>
+    </div>
+  </div>
+
+  <div class="trade-list">
+    <div class="list-summary" id="list-summary">
+      <strong>47 genomen</strong> · P&L +€2,340 · Win-rate 68%
+    </div>
+    <div class="trade-row header">
+      <div>Status</div>
+      <div>Datum</div>
+      <div>Pair</div>
+      <div>Entry</div>
+      <div>Exit</div>
+      <div>PNL</div>
+      <div>Setup</div>
+    </div>
+    <div class="trade-row real"><div><span class="t-status long">📈 LONG</span></div><div>22-04 14:32</div><div>BTC/USDT</div><div>42,500</div><div>43,200</div><div class="t-pnl pos">+€700</div><div class="t-setup">Breakout · 4H bias</div></div>
+    <div class="trade-row real"><div><span class="t-status short">📉 SHORT</span></div><div>22-04 11:15</div><div>ETH/USDT</div><div>2,500</div><div>2,455</div><div class="t-pnl pos">+€225</div><div class="t-setup">Range-fade · rejection</div></div>
+    <div class="trade-row missed" style="display:none"><div><span class="t-status missed">👻 MISS</span></div><div>22-04 09:48</div><div>SOL/USDT</div><div>150</div><div>—</div><div class="t-pnl empty">—</div><div class="t-setup">Breakout <span class="reason">kapitaal</span></div></div>
+    <div class="trade-row real"><div><span class="t-status long">📈 LONG</span></div><div>21-04 16:22</div><div>AVAX/USDT</div><div>38.40</div><div>37.90</div><div class="t-pnl neg">-€150</div><div class="t-setup">Trend-continuation</div></div>
+    <div class="trade-row missed" style="display:none"><div><span class="t-status missed">👻 MISS</span></div><div>21-04 13:05</div><div>BTC/USDT</div><div>41,800</div><div>—</div><div class="t-pnl empty">—</div><div class="t-setup">Doji-break <span class="reason">durf</span> <span class="reason">te-laat</span></div></div>
+    <div class="trade-row real"><div><span class="t-status long">📈 LONG</span></div><div>21-04 10:48</div><div>DOGE/USDT</div><div>0.140</div><div>0.144</div><div class="t-pnl pos">+€320</div><div class="t-setup">Volume spike</div></div>
+    <div class="trade-row missed" style="display:none"><div><span class="t-status missed">👻 MISS</span></div><div>20-04 15:34</div><div>LINK/USDT</div><div>14.20</div><div>—</div><div class="t-pnl empty">—</div><div class="t-setup">Range-fade <span class="reason">onduidelijk</span></div></div>
+    <div class="trade-row real"><div><span class="t-status short">📉 SHORT</span></div><div>20-04 12:10</div><div>BTC/USDT</div><div>43,200</div><div>43,450</div><div class="t-pnl neg">-€180</div><div class="t-setup">Exhaustion · daily</div></div>
+  </div>
+  <div class="hint" style="margin-top:8px">Missed-rijen zijn gedimd (opacity 72%) en krijgen 👻-icoon. Klik "Beide" of "Gemist" hierboven.</div>
+
+  <div class="section-title">4. Analytics → Proces-mode → Edge Gap sectie</div>
+  <p class="section-lead">Aparte sectie in Analytics (niet een tab). Beantwoordt de kern-vraag: <em>waar laat ik edge liggen?</em></p>
+
+  <div class="edge-grid">
+    <div class="edge-card">
+      <div class="edge-card-title">🎯 Captured ratio per setup</div>
+      <table class="captured-table">
+        <thead><tr><th>Setup</th><th>Gen.</th><th>Gem.</th><th>Ratio</th></tr></thead>
+        <tbody>
+          <tr><td class="setup">Breakout</td><td>14</td><td>3</td><td class="ratio good"><span class="captured-bar"><span class="captured-bar-fill" style="width:82%;background:var(--green)"></span></span>82%</td></tr>
+          <tr><td class="setup">Range-fade</td><td>11</td><td>2</td><td class="ratio good"><span class="captured-bar"><span class="captured-bar-fill" style="width:85%;background:var(--green)"></span></span>85%</td></tr>
+          <tr><td class="setup">Doji-break</td><td>6</td><td>4</td><td class="ratio mid"><span class="captured-bar"><span class="captured-bar-fill" style="width:60%;background:var(--amber)"></span></span>60%</td></tr>
+          <tr><td class="setup">Trend-cont.</td><td>9</td><td>1</td><td class="ratio good"><span class="captured-bar"><span class="captured-bar-fill" style="width:90%;background:var(--green)"></span></span>90%</td></tr>
+          <tr><td class="setup">Exhaustion</td><td>4</td><td>2</td><td class="ratio mid"><span class="captured-bar"><span class="captured-bar-fill" style="width:67%;background:var(--amber)"></span></span>67%</td></tr>
+          <tr><td class="setup">Volume spike</td><td>3</td><td>0</td><td class="ratio good"><span class="captured-bar"><span class="captured-bar-fill" style="width:100%;background:var(--green)"></span></span>100%</td></tr>
+        </tbody>
+      </table>
+      <div class="hint" style="margin-top:8px">Overall captured-ratio: <strong style="color:var(--gold)">79%</strong> (47/59). Doji-break is je verbeter-zone.</div>
+    </div>
+
+    <div class="edge-card">
+      <div class="edge-card-title">👻 Waarom miste je?</div>
+      <div class="donut-wrap">
+        <div class="donut">
+          <div class="donut-center"><div class="n">12</div><div class="l">gemist</div></div>
+        </div>
+        <div class="donut-legend">
+          <div class="row"><span><span class="dot" style="background:var(--ghost)"></span>🧠 Durf</span><span class="l-right">5 · 42%</span></div>
+          <div class="row"><span><span class="dot" style="background:rgba(180,140,200,.6)"></span>📏 Rules</span><span class="l-right">3 · 25%</span></div>
+          <div class="row"><span><span class="dot" style="background:rgba(180,140,200,.4)"></span>⏰ Te laat</span><span class="l-right">2 · 17%</span></div>
+          <div class="row"><span><span class="dot" style="background:rgba(180,140,200,.25)"></span>Overig</span><span class="l-right">2 · 17%</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="edge-card">
+      <div class="edge-card-title">💸 Theoretical edge-leak</div>
+      <div class="stat-big">+€1,240</div>
+      <div class="stat-sub">Som van hindsight-R × jouw gem. risk (€150) over 8 missers mét ingevulde hindsight-exit.</div>
+      <div class="bias-warn">
+        ⚠ <strong>Hindsight-bias</strong>: dit is theoretisch max. Je zou deze trades niet 1-op-1 hebben uitgemolken met jouw echte exit-discipline. Gebruik als signaal, niet als "gemiste winst".
+      </div>
+    </div>
+  </div>
+
+  <p class="section-lead" style="margin-top:18px">Extra integratie: <strong>Setup Insights tabel</strong> krijgt extra "Captured %" kolom. <strong>Discipline Heatmap</strong> krijgt toggle "Alleen gemist" om visueel te zien in welke tijdslots je bevriest.</p>
+
+  <div class="section-title">5. TagManager in Instellingen → Tags</div>
+  <p class="section-lead">Missed-redenen leven in dezelfde tag-infrastructuur als setupTags / emotionTags. Volledig bewerkbaar — user kan eigen redenen toevoegen.</p>
+
+  <div class="tagmgr">
+    <div class="tagmgr-section">
+      <div class="tagmgr-title">🎯 Setups <span class="count">12 tags</span></div>
+      <div style="display:flex;gap:5px;flex-wrap:wrap">
+        <span class="pill active">Breakout</span>
+        <span class="pill active">Range-fade</span>
+        <span class="pill active">Doji-break</span>
+        <span class="pill">Trend-continuation</span>
+        <span class="pill">Volume spike</span>
+        <span style="color:var(--text5);font-size:11px;padding:4px 8px">...</span>
+      </div>
+    </div>
+    <div class="tagmgr-section">
+      <div class="tagmgr-title">🧘 Emoties <span class="count">8 tags</span></div>
+      <div style="display:flex;gap:5px;flex-wrap:wrap">
+        <span class="pill">Rustig</span>
+        <span class="pill">Gefocust</span>
+        <span class="pill">Opgewonden</span>
+        <span style="color:var(--text5);font-size:11px;padding:4px 8px">...</span>
+      </div>
+    </div>
+    <div class="tagmgr-section" style="padding:12px;background:rgba(180,140,200,.04);border:1px solid rgba(180,140,200,.2);border-radius:8px">
+      <div class="tagmgr-title" style="color:var(--ghost)">👻 Missed-redenen <span class="count" style="color:rgba(180,140,200,.5)">7 tags · NIEUW</span></div>
+      <div style="display:flex;gap:5px;flex-wrap:wrap">
+        <span class="pill ghost">🧠 Durf</span>
+        <span class="pill ghost">📏 Buiten regels</span>
+        <span class="pill ghost">⏰ Te laat gespot</span>
+        <span class="pill ghost">💰 Kapitaal vol</span>
+        <span class="pill ghost">👀 Onduidelijk</span>
+        <span class="pill ghost">⏸ Bewuste skip</span>
+        <span class="pill ghost">🚪 Offline</span>
+        <button class="tagmgr-new">+ Toevoegen</button>
+      </div>
+      <div class="hint">Deze categorie verschijnt alleen als <strong>👻 Gemiste trades bijhouden</strong> aan staat in Instellingen → Accounts. Je kunt eigen redenen toevoegen (bv. "losstreak-pauze", "wachten op 4H-confirmatie").</div>
+    </div>
+  </div>
+
+  <div class="section-title">6. Quick-log via Command Palette</div>
+  <p class="section-lead">Voor real-time loggen tijdens trading — <code style="background:rgba(255,255,255,.04);padding:2px 6px;border-radius:3px;font-family:var(--mono);color:var(--gold);font-size:11px">⌘K</code> of <code style="background:rgba(255,255,255,.04);padding:2px 6px;border-radius:3px;font-family:var(--mono);color:var(--gold);font-size:11px">Ctrl+K</code> opent palette, typ "miss".</p>
+
+  <div class="mock-card" style="max-width:560px">
+    <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:rgba(201,168,76,.08);border:1px solid var(--gold-border);border-radius:8px;margin-bottom:14px">
+      <span style="font-size:16px">🔍</span>
+      <input class="mock-input" value="miss" readonly style="background:transparent;border:none;padding:0"/>
+      <span style="font-family:var(--mono);color:var(--text5);font-size:10px">⌘K</span>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:4px">
+      <div style="padding:10px 14px;background:var(--gold-dim);border-left:3px solid var(--gold);border-radius:4px;display:flex;align-items:center;gap:10px">
+        <span style="font-size:16px">👻</span>
+        <div style="flex:1">
+          <div style="font-size:12px;color:var(--text);font-weight:600">Log gemiste trade</div>
+          <div style="font-size:10px;color:var(--text4)">Pair · direction · setup · reden · klaar (15 sec flow)</div>
+        </div>
+        <span style="font-family:var(--mono);font-size:10px;color:var(--gold)">M</span>
+      </div>
+      <div style="padding:10px 14px;color:var(--text4);font-size:11px">Andere matches: <em>mist</em>akes, MIST-model (strategie), ...</div>
+    </div>
+  </div>
+
+  <div class="section-title">7. Fase-plan</div>
+  <div class="edge-grid" style="grid-template-columns:repeat(4,1fr)">
+    <div class="edge-card" style="position:relative;padding-top:24px">
+      <div style="position:absolute;top:-10px;left:16px;padding:3px 10px;background:var(--gold);color:#000;font-size:10px;font-weight:800;font-family:var(--mono);border-radius:12px">FASE 1</div>
+      <h3 style="font-size:13px;margin:4px 0 8px;color:var(--text)">Data + entry</h3>
+      <p style="font-size:11px;color:var(--text3);margin:0 0 6px;line-height:1.5">Status "missed", toggle in form, missed-reason tag-categorie. Trades-lijst met dim + 👻.</p>
+      <div style="font-family:var(--mono);font-size:10px;color:var(--gold);margin-top:8px">⏱ ~3 uur</div>
+    </div>
+    <div class="edge-card" style="position:relative;padding-top:24px">
+      <div style="position:absolute;top:-10px;left:16px;padding:3px 10px;background:var(--gold);color:#000;font-size:10px;font-weight:800;font-family:var(--mono);border-radius:12px">FASE 2</div>
+      <h3 style="font-size:13px;margin:4px 0 8px;color:var(--text)">Filters + quick-log</h3>
+      <p style="font-size:11px;color:var(--text3);margin:0 0 6px;line-height:1.5">Filter-pill Genomen/Gemist/Beide. Command palette M-entry. Count in header.</p>
+      <div style="font-family:var(--mono);font-size:10px;color:var(--gold);margin-top:8px">⏱ ~2 uur</div>
+    </div>
+    <div class="edge-card" style="position:relative;padding-top:24px">
+      <div style="position:absolute;top:-10px;left:16px;padding:3px 10px;background:var(--gold);color:#000;font-size:10px;font-weight:800;font-family:var(--mono);border-radius:12px">FASE 3</div>
+      <h3 style="font-size:13px;margin:4px 0 8px;color:var(--text)">Edge Gap analytics</h3>
+      <p style="font-size:11px;color:var(--text3);margin:0 0 6px;line-height:1.5">Nieuwe sectie: captured-ratio tabel, reasons donut, edge-leak stat. Setup Insights extra kolom.</p>
+      <div style="font-family:var(--mono);font-size:10px;color:var(--gold);margin-top:8px">⏱ ~3 uur</div>
+    </div>
+    <div class="edge-card" style="position:relative;padding-top:24px">
+      <div style="position:absolute;top:-10px;left:16px;padding:3px 10px;background:var(--gold);color:#000;font-size:10px;font-weight:800;font-family:var(--mono);border-radius:12px">FASE 4</div>
+      <h3 style="font-size:13px;margin:4px 0 8px;color:var(--text)">Hindsight + polish</h3>
+      <p style="font-size:11px;color:var(--text3);margin:0 0 6px;line-height:1.5">Optional hindsight-exit, auto R-multiple. Heatmap "Gemist alleen" filter. Weekly-review nudge.</p>
+      <div style="font-family:var(--mono);font-size:10px;color:var(--gold);margin-top:8px">⏱ ~2 uur</div>
+    </div>
+  </div>
+  <p class="section-lead" style="margin-top:16px">Totaal ~10 uur verspreid over 4 releases. Elke fase is op zichzelf bruikbaar; community feedback per fase meenemen.</p>
+
+  <div class="footer">
+    Prototype met synthetische data. Echte implementatie wraps alle UI in <code>{config.trackMissedTrades && ...}</code> gates zodat feature compleet verborgen is wanneer uit.<br>
+    Bron-van-waarheid: <code>status: "missed"</code> + <code>missedReasonTags: [...]</code> in bestaande <code>tj_trades</code> array. Geen schema-migratie nodig.
+  </div>
+</div>
+
+<script>
+// Interactive: form-mode toggle
+const formModeButtons = document.querySelectorAll('#form-mode button');
+const missedToggle = document.getElementById('missed-toggle');
+const statusPills = document.querySelectorAll('.status-pill');
+const realOnly = document.getElementById('real-only');
+const missedOnly = document.getElementById('missed-only');
+const exitInput = document.getElementById('exit-input');
+const lblEntry = document.getElementById('lbl-entry');
+const lblExit = document.getElementById('lbl-exit');
+const lblNotes = document.getElementById('lbl-notes');
+const saveBtn = document.getElementById('save-btn');
+
+function setFormMode(mode){
+  const missed = mode === 'missed';
+  formModeButtons.forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+  missedToggle.classList.toggle('active', missed);
+  statusPills.forEach(p => p.style.opacity = missed ? '0.4' : '1');
+  realOnly.style.display = missed ? 'none' : '';
+  missedOnly.style.display = missed ? '' : 'none';
+  if (missed) {
+    lblEntry.textContent = 'Planned entry';
+    lblExit.textContent = 'Exit (niet ingevuld)';
+    exitInput.classList.add('disabled');
+    exitInput.value = '—';
+    lblNotes.textContent = 'Waarom wel/niet ingegaan?';
+    saveBtn.textContent = '👻 Gemiste trade opslaan';
+    saveBtn.style.background = 'linear-gradient(135deg, #c8a0e0, #b48cc8, #8a6ba0)';
+  } else {
+    lblEntry.textContent = 'Entry prijs';
+    lblExit.textContent = 'Exit prijs';
+    exitInput.classList.remove('disabled');
+    exitInput.value = '43,200';
+    lblNotes.textContent = 'Post-mortem — wat ging goed, wat kon beter?';
+    saveBtn.textContent = 'Trade opslaan';
+    saveBtn.style.background = 'var(--gold)';
+  }
+}
+formModeButtons.forEach(b => b.addEventListener('click', () => setFormMode(b.dataset.mode)));
+missedToggle.addEventListener('click', () => setFormMode(missedToggle.classList.contains('active') ? 'real' : 'missed'));
+
+// Interactive: trade list filter
+const typeButtons = document.querySelectorAll('#type-filter button');
+const realRows = document.querySelectorAll('.trade-row.real');
+const missedRows = document.querySelectorAll('.trade-row.missed');
+const listSummary = document.getElementById('list-summary');
+
+function setTypeFilter(type){
+  typeButtons.forEach(b => {
+    const active = b.dataset.type === type;
+    b.classList.toggle('active', active);
+    b.style.background = active ? 'var(--gold)' : 'transparent';
+    b.style.color = active ? '#000' : 'var(--text4)';
+  });
+  if (type === 'real') {
+    realRows.forEach(r => r.style.display = '');
+    missedRows.forEach(r => r.style.display = 'none');
+    listSummary.innerHTML = '<strong>47 genomen</strong> · P&L +€2,340 · Win-rate 68%';
+  } else if (type === 'missed') {
+    realRows.forEach(r => r.style.display = 'none');
+    missedRows.forEach(r => r.style.display = '');
+    listSummary.innerHTML = '<strong>12 gemist</strong> · Captured ratio 79% · Top reden: 🧠 Durf (5×)';
+  } else {
+    realRows.forEach(r => r.style.display = '');
+    missedRows.forEach(r => r.style.display = '');
+    listSummary.innerHTML = '<strong>47 genomen</strong> · <strong>12 gemist</strong> · Captured 79%';
+  }
+}
+typeButtons.forEach(b => b.addEventListener('click', () => setTypeFilter(b.dataset.type)));
+</script>
+</body>
+</html>

@@ -679,7 +679,9 @@ const DEFAULT_TAGS={
   confirmationTags:["Liquidity Sweep","OB","Divergence","EQL/EQH","ChoCh","Directe Play","Backtest Play"],
   timeframeTags:["1M","5M","15M","1H","4H","12H","Daily","Weekly"],
   emotionTags:["FOMO","Gehaast","Twijfels","Overconfident","Gefrustreerd","Tilt","Onzeker","Geduldig","Rustig","Zelfverzekerd","Kalm","Gedisciplineerd"],
-  mistakeTags:["Te vroeg in","SL te krap","SL te wijd","Geen plan","Overtrading","TP te vroeg","Positie te groot","Revenge trade"]
+  mistakeTags:["Te vroeg in","SL te krap","SL te wijd","Geen plan","Overtrading","TP te vroeg","Positie te groot","Revenge trade"],
+  // Missed-trade reasons — waarom je een gespotte setup niet nam. Multi-select, opt-in feature (config.trackMissedTrades).
+  missedReasonTags:["🧠 Durf","📏 Buiten regels","⏰ Te laat gespot","💰 Kapitaal vol","👀 Onduidelijk","⏸ Bewuste skip","🚪 Offline"]
 };
 const TAG_CATEGORIES=[
   {key:"setupTags",label:"Setup Type",color:"blue"},
@@ -687,6 +689,7 @@ const TAG_CATEGORIES=[
   {key:"timeframeTags",label:"Timeframe",color:"purple"},
   {key:"emotionTags",label:"Emoties",color:"amber"},
   {key:"mistakeTags",label:"Fouten",color:"orange"},
+  {key:"missedReasonTags",label:"👻 Missed-redenen",color:"purple",missedOnly:true},// hidden when config.trackMissedTrades is off
 ];
 const EMOTIONS_NEG=["FOMO","Gehaast","Twijfels","Overconfident","Gefrustreerd","Tilt","Onzeker"];
 const EMOTIONS_POS=["Geduldig","Rustig","Zelfverzekerd","Kalm","Gedisciplineerd"];
@@ -864,7 +867,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.5",released:"2026-04-22"};
+const APP_VERSION={version:"v12.6",released:"2026-04-22"};
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
 function isNewerVersion(a,b){
   const parse=(s)=>String(s||"").replace(/^v/,"").split(".").map(n=>parseInt(n,10)||0);
@@ -890,11 +893,13 @@ const EMPTY_TRADE={
   pnl:"",fees:"",
   setupTags:[],confirmationTags:[],timeframeTags:[],
   emotionTags:[],mistakeTags:[],customTags:[],
+  missedReasonTags:[],// voor status:"missed" trades
   rating:0,screenshot:null,notes:"",links:[],layers:[],
   source:"manual",positionId:"",openTime:"",closeTime:"",
   status:"closed",manualOverrides:[],tpLevels:[],
   entryNote:"",
-  riskUsd:"",riskPct:""
+  riskUsd:"",riskPct:"",
+  hindsightExit:""// optional: where did price actually go after a missed trade
 };
 
 const iStyle={width:"100%",padding:"11px 14px",borderRadius:"var(--radius)",border:"1px solid rgba(201,168,76,0.18)",background:"rgba(255,255,255,0.03)",color:"var(--text)",fontSize:"14px",fontFamily:"var(--mono)",outline:"none",transition:"border-color .15s",lineHeight:1.5};
@@ -1584,7 +1589,7 @@ function LayoutGear({onClick}){
 }
 
 // ============ v7: TAG MANAGER (FIXED) ============
-function TagManager({tagConfig,setTagConfig,trades,setTrades,showToast}){
+function TagManager({tagConfig,setTagConfig,trades,setTrades,showToast,config}){
   const[renaming,setRenaming]=useState(null);
   const[renameVal,setRenameVal]=useState("");
   const[adding,setAdding]=useState(null);
@@ -1633,7 +1638,7 @@ function TagManager({tagConfig,setTagConfig,trades,setTrades,showToast}){
     <div style={{animation:"fadeIn .3s ease",background:"var(--glass)",backdropFilter:"var(--glass-blur)",WebkitBackdropFilter:"var(--glass-blur)",borderRadius:"var(--radius-lg)",padding:"24px",border:"1px solid var(--glass-border)"}}>
       <div style={{fontSize:"11px",color:"var(--gold)",textTransform:"uppercase",letterSpacing:"0.12em",fontWeight:700,marginBottom:"1.5rem"}}>Tag categorieën beheren</div>
 
-      {TAG_CATEGORIES.map(cat=>{
+      {TAG_CATEGORIES.filter(cat=>!cat.missedOnly||config?.trackMissedTrades).map(cat=>{
         const c=COLORS[cat.color]||COLORS.blue;
         const tags=getTags(cat.key);
         const isAdding=adding===cat.key;
@@ -2220,12 +2225,13 @@ function TradeList({trades,onEdit,onDelete,onQuickTag,onBulkDelete,onBulkTag,sho
             const layerStr=(t.layers||[]).map(l=>[l.timeframe,l.setup].filter(Boolean).join(" ")).filter(Boolean).join(" → ");
             const feesN=parseFloat(t.fees)||0;
             return(<React.Fragment key={t.id}>
-            <tr onClick={()=>onEdit(t)} style={{cursor:"pointer",transition:"background .1s",background:isSel?"rgba(201,168,76,0.04)":hoveredId===t.id?"rgba(42,46,57,0.3)":"transparent"}} onMouseEnter={()=>setHoveredId(t.id)} onMouseLeave={()=>setHoveredId(null)}>
+            <tr onClick={()=>onEdit(t)} style={{cursor:"pointer",transition:"background .1s",background:isSel?"rgba(201,168,76,0.04)":hoveredId===t.id?"rgba(42,46,57,0.3)":"transparent",opacity:t.status==="missed"?0.72:1}} onMouseEnter={()=>setHoveredId(t.id)} onMouseLeave={()=>setHoveredId(null)}>
               <td style={tdStyle} onClick={e=>toggleSelect(t.id,e)}>
                 <div style={{width:"14px",height:"14px",borderRadius:"3px",border:`1px solid ${isSel?"#C9A84C":"var(--border4)"}`,background:isSel?"#C9A84C":"transparent",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"9px",color:"#fff",margin:"0 auto",cursor:"pointer"}}>{isSel?"✓":""}</div>
               </td>
               <td style={tdStyle}>
-                {t.status==="open"?<span style={{padding:"3px 8px",borderRadius:"4px",fontSize:"10px",fontWeight:700,background:"rgba(201,168,76,0.1)",color:"#C9A84C",display:"inline-flex",alignItems:"center",gap:"5px"}}><span style={{width:"6px",height:"6px",borderRadius:"50%",background:"#C9A84C",animation:"pulse 2s ease-in-out infinite"}}/>OPEN</span>
+                {t.status==="missed"?<span style={{padding:"3px 8px",borderRadius:"4px",fontSize:"10px",fontWeight:700,background:"rgba(180,140,200,0.15)",color:"#b48cc8",display:"inline-flex",alignItems:"center",gap:"5px"}}>👻 MISS</span>
+                :t.status==="open"?<span style={{padding:"3px 8px",borderRadius:"4px",fontSize:"10px",fontWeight:700,background:"rgba(201,168,76,0.1)",color:"#C9A84C",display:"inline-flex",alignItems:"center",gap:"5px"}}><span style={{width:"6px",height:"6px",borderRadius:"50%",background:"#C9A84C",animation:"pulse 2s ease-in-out infinite"}}/>OPEN</span>
                 :<span style={{padding:"3px 8px",borderRadius:"4px",fontSize:"10px",fontWeight:700,background:isW?"rgba(46,170,111,0.12)":isL?"rgba(224,85,85,0.12)":"rgba(255,255,255,0.04)",color:isW?"#2eaa6f":isL?"#e05555":"rgba(255,255,255,0.4)"}}>{isW?"WIN":isL?"LOSS":"--"}</span>}
               </td>
               <td style={{...tdStyle,fontFamily:"var(--mono)",color:"var(--text2)",fontSize:"11px",whiteSpace:"nowrap"}}>{fmtNL(t.date)}{isNew&&<span style={{marginLeft:"6px",fontSize:"8px",padding:"1px 5px",borderRadius:"3px",background:"rgba(201,168,76,0.15)",color:"#d4b85c",fontWeight:700,verticalAlign:"middle",letterSpacing:"0.04em"}}>NEW</span>}<br/><span style={{color:"var(--text4)"}}>{t.time}</span></td>
@@ -2854,7 +2860,10 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,accounts,sho
   };
   const gt=(k)=>tagConfig[k]||DEFAULT_TAGS[k]||[];
   const[sizeInputMode,setSizeInputMode]=useState(()=>localStorage.getItem("tj_sizeInputMode")||"usdt");
-  const isOpen=(trade.status||"closed")==="open";
+  const isMissed=trade.status==="missed";
+  const isOpen=!isMissed&&((trade.status||"closed")==="open");
+  const hideExitFields=isOpen||isMissed;// both states: no real exit/PnL/fees
+  const missedEnabled=!!config?.trackMissedTrades;
 
   const sourceOptions=[{id:"manual",label:"✏️ Handmatig",color:"var(--text3)"}];
   Object.entries(ExchangeAPI).forEach(([key,ex])=>{if(config?.exchanges?.[key]?.apiKey)sourceOptions.push({id:key,label:ex.name,color:ex.color})});
@@ -2866,14 +2875,15 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,accounts,sho
       "{preTradeQuote.text}" <span style={{color:"var(--text5)",fontStyle:"normal",fontSize:"10px",fontFamily:"var(--mono)",letterSpacing:".06em",marginLeft:"4px"}}>— {preTradeQuote.src}</span>
     </div>}
     {/* Status toggle — primary control, drives conditional form sections */}
-    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"16px",padding:"10px 14px",background:isOpen?"var(--gold-dim)":"var(--bg4)",borderRadius:"8px",border:`1px solid ${isOpen?"var(--gold-border)":"var(--border2)"}`}}>
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"16px",padding:"10px 14px",background:isMissed?"rgba(180,140,200,.08)":isOpen?"var(--gold-dim)":"var(--bg4)",borderRadius:"8px",border:`1px solid ${isMissed?"rgba(180,140,200,.3)":isOpen?"var(--gold-border)":"var(--border2)"}`,flexWrap:"wrap",gap:"10px"}}>
       <div style={{display:"flex",alignItems:"center",gap:"10px"}}>
         <span style={{fontSize:"10px",color:"var(--text4)",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.08em"}}>Status</span>
-        <div style={{display:"flex",gap:0,borderRadius:"6px",overflow:"hidden",border:"1px solid var(--border3)"}}>
-          {["closed","open"].map(s=>(<button key={s} onClick={()=>setTrade(p=>({...p,status:s}))} style={{padding:"6px 16px",border:"none",fontSize:"11px",fontWeight:700,cursor:"pointer",fontFamily:"inherit",background:trade.status===s?(s==="open"?"var(--gold-dim)":"var(--bg3)"):"transparent",color:trade.status===s?(s==="open"?"var(--gold)":"var(--text)"):"var(--text4)",display:"flex",alignItems:"center",gap:"5px"}}>{s==="open"&&trade.status==="open"&&<span style={{width:"6px",height:"6px",borderRadius:"50%",background:"var(--gold)",boxShadow:"0 0 6px var(--gold)"}}/>}{s==="open"?"Open":"Closed"}</button>))}
+        <div style={{display:"flex",gap:0,borderRadius:"6px",overflow:"hidden",border:"1px solid var(--border3)",opacity:isMissed?0.4:1}}>
+          {["closed","open"].map(s=>(<button key={s} disabled={isMissed} onClick={()=>setTrade(p=>({...p,status:s}))} style={{padding:"6px 16px",border:"none",fontSize:"11px",fontWeight:700,cursor:isMissed?"not-allowed":"pointer",fontFamily:"inherit",background:trade.status===s?(s==="open"?"var(--gold-dim)":"var(--bg3)"):"transparent",color:trade.status===s?(s==="open"?"var(--gold)":"var(--text)"):"var(--text4)",display:"flex",alignItems:"center",gap:"5px"}}>{s==="open"&&trade.status==="open"&&<span style={{width:"6px",height:"6px",borderRadius:"50%",background:"var(--gold)",boxShadow:"0 0 6px var(--gold)"}}/>}{s==="open"?"Open":"Closed"}</button>))}
         </div>
+        {missedEnabled&&<button onClick={()=>setTrade(p=>({...p,status:isMissed?"closed":"missed"}))} title={isMissed?"Terug naar echte trade":"Markeer als gemiste trade"} style={{padding:"5px 12px",borderRadius:"18px",border:"1px solid "+(isMissed?"rgba(180,140,200,.5)":"rgba(180,140,200,.3)"),background:isMissed?"rgba(180,140,200,.2)":"rgba(180,140,200,.06)",color:isMissed?"#d4a8e8":"#b48cc8",fontSize:"11px",fontWeight:600,cursor:"pointer",fontFamily:"inherit",marginLeft:"8px"}}>👻 {isMissed?"Gemiste trade":"Gemist?"}</button>}
       </div>
-      <span style={{fontSize:"10px",color:"var(--text5)"}}>{isOpen?"Exit / PNL / fees pas in te vullen na sluiten":"Volledige trade — alle velden actief"}</span>
+      <span style={{fontSize:"10px",color:"var(--text5)"}}>{isMissed?"👻 Niet genomen — plan-velden blijven, exit/PNL verborgen":isOpen?"Exit / PNL / fees pas in te vullen na sluiten":"Volledige trade — alle velden actief"}</span>
     </div>
 
     {/* Account selector */}
@@ -2907,10 +2917,10 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,accounts,sho
     {(()=>{const st=getSessionTags(trade.date,trade.time);return st.length>0?(<div style={{display:"flex",alignItems:"center",gap:"8px",marginBottom:"1rem"}}><span style={{fontSize:"10px",color:"var(--text4)",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em"}}>Sessie</span>{st.map(s=>{const c=SESSION_COLORS[s]||SESSION_COLORS["Off-session"];return(<span key={s} style={{padding:"4px 10px",borderRadius:"5px",fontSize:"11px",fontWeight:600,border:`1px solid ${c.border}`,background:c.bg,color:c.text}}>{s}</span>)})}<span style={{fontSize:"9px",color:"var(--text5)",fontFamily:"var(--mono)",marginLeft:"4px"}}>auto (CET)</span></div>):null})()}
 
     {/* Entry/SL/Exit */}
-    <div style={{display:"grid",gridTemplateColumns:isOpen?"1fr 1fr":"1fr 1fr 1fr",gap:"12px",marginBottom:"1rem"}}>
-      {[["entry","ENTRY"],["stopLoss","STOP LOSS"],...(isOpen?[]:[["exit","EXIT"]])].map(([k,l])=>(<div key={k}><div style={{fontSize:"11px",color:"var(--text3)",marginBottom:"6px",fontWeight:500}}>{l}</div><input type="text" value={trade[k]} onChange={e=>{const v=e.target.value;setTrade(p=>({...p,[k]:v,manualOverrides:[...new Set([...(p.manualOverrides||[]),k])]}))}} style={{...iStyle,color:isEmpty(trade[k])?"#4b5563":"var(--text)"}} placeholder="N/A"/></div>))}
+    <div style={{display:"grid",gridTemplateColumns:hideExitFields?"1fr 1fr":"1fr 1fr 1fr",gap:"12px",marginBottom:"1rem"}}>
+      {[["entry",isMissed?"PLANNED ENTRY":"ENTRY"],["stopLoss",isMissed?"PLANNED SL":"STOP LOSS"],...(hideExitFields?[]:[["exit","EXIT"]])].map(([k,l])=>(<div key={k}><div style={{fontSize:"11px",color:"var(--text3)",marginBottom:"6px",fontWeight:500}}>{l}</div><input type="text" value={trade[k]} onChange={e=>{const v=e.target.value;setTrade(p=>({...p,[k]:v,manualOverrides:[...new Set([...(p.manualOverrides||[]),k])]}))}} style={{...iStyle,color:isEmpty(trade[k])?"#4b5563":"var(--text)"}} placeholder="N/A"/></div>))}
     </div>
-    <div style={{display:"grid",gridTemplateColumns:isOpen?"1fr":"1fr 1fr 1fr",gap:"12px",marginBottom:"12px"}}>
+    <div style={{display:"grid",gridTemplateColumns:hideExitFields?"1fr":"1fr 1fr 1fr",gap:"12px",marginBottom:"12px"}}>
       {(()=>{
         const asset=(trade.pair||"BTC/USDT").split("/")[0]||"BTC";
         const toggleInput=()=>{const next=sizeInputMode==="usdt"?"asset":"usdt";setSizeInputMode(next);localStorage.setItem("tj_sizeInputMode",next)};
@@ -2921,7 +2931,7 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,accounts,sho
         };
         return(<div><div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"6px"}}><div style={{fontSize:"11px",color:"var(--text3)",fontWeight:500}}>POSITIE ({sizeInputMode==="usdt"?"$":asset})</div><button onClick={toggleInput} style={{fontSize:"9px",padding:"2px 6px",borderRadius:"3px",border:"1px solid var(--border3)",background:"transparent",color:"var(--gold)",cursor:"pointer",fontFamily:"var(--mono)"}}>{sizeInputMode==="usdt"?"→ "+asset:"→ USDT"}</button></div><input type="text" value={sizeInputMode==="usdt"?(trade.positionSize||""):(trade.positionSizeAsset||"")} onChange={e=>handleSizeChange(e.target.value)} style={{...iStyle,color:isEmpty(sizeInputMode==="usdt"?trade.positionSize:trade.positionSizeAsset)?"#4b5563":"var(--text)"}} placeholder="N/A"/></div>);
       })()}
-      {!isOpen&&[["pnl","PNL ($)"],["fees","FEES ($)"]].map(([k,l])=>(<div key={k}><div style={{fontSize:"11px",color:"var(--text3)",marginBottom:"6px",fontWeight:500}}>{l}</div><input type="text" value={trade[k]} onChange={e=>{const v=e.target.value;setTrade(p=>({...p,[k]:v,manualOverrides:[...new Set([...(p.manualOverrides||[]),k])]}))}} style={{...iStyle,color:isEmpty(trade[k])?"#4b5563":"var(--text)"}} placeholder="N/A"/></div>))}
+      {!hideExitFields&&[["pnl","PNL ($)"],["fees","FEES ($)"]].map(([k,l])=>(<div key={k}><div style={{fontSize:"11px",color:"var(--text3)",marginBottom:"6px",fontWeight:500}}>{l}</div><input type="text" value={trade[k]} onChange={e=>{const v=e.target.value;setTrade(p=>({...p,[k]:v,manualOverrides:[...new Set([...(p.manualOverrides||[]),k])]}))}} style={{...iStyle,color:isEmpty(trade[k])?"#4b5563":"var(--text)"}} placeholder="N/A"/></div>))}
     </div>
 
     {/* Live KPI strip — Risk / R:R / Qty real-time */}
@@ -3137,13 +3147,33 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,accounts,sho
       </div>
     </Section>
 
-    {/* Notities — collapsible */}
-    <Section title="📝 Notities" storeKey="notes" defaultOpen={true} hint={`${trade.entryNote?"pre-trade ✓":"—"}${!isOpen?` · ${trade.notes?"post-trade ✓":"—"}`:""}`}>
-      <div style={{marginBottom:isOpen?0:"14px"}}>
-        <div style={{fontSize:"11px",color:"var(--gold)",textTransform:"uppercase",letterSpacing:"0.12em",fontWeight:700,marginBottom:"8px"}}>Waarom ga ik erin?</div>
-        <textarea value={trade.entryNote||""} onChange={e=>setTrade(p=>({...p,entryNote:e.target.value}))} placeholder="Je thesis vóór entry — setup, bias, trigger, risk, plan voor management..." rows={3} style={{...iStyle,fontFamily:"var(--font)",fontSize:"13px",resize:"vertical",lineHeight:"1.6"}}/>
+    {/* Missed-reason tag selector — only for status:"missed" trades */}
+    {isMissed&&<Section title="👻 Waarom niet genomen?" storeKey="missedReasons" defaultOpen={true} hint={`${(trade.missedReasonTags||[]).length?`${(trade.missedReasonTags||[]).length} geselecteerd`:"optioneel · zonder reden geen edge-gap stats"}`}>
+      <div style={{fontSize:"10px",color:"var(--text4)",marginBottom:"10px",lineHeight:1.5,fontStyle:"italic"}}>Meerdere redenen mogelijk. Geen reden = trade verschijnt niet in je Edge Gap stats.</div>
+      <div style={{display:"flex",gap:"5px",flexWrap:"wrap"}}>
+        {gt("missedReasonTags").map(tg=>{
+          const active=(trade.missedReasonTags||[]).includes(tg);
+          return(<button key={tg} onClick={()=>toggle("missedReasonTags",tg)} style={{padding:"5px 12px",borderRadius:"16px",border:"1px solid "+(active?"rgba(180,140,200,.55)":"rgba(180,140,200,.25)"),background:active?"rgba(180,140,200,.22)":"rgba(180,140,200,.06)",color:active?"#d4a8e8":"#b48cc8",fontSize:"11px",fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{tg}</button>);
+        })}
       </div>
-      {!isOpen&&<div>
+    </Section>}
+
+    {/* Hindsight-exit — only for missed trades, optional */}
+    {isMissed&&<Section title="🔮 Hindsight (optioneel)" storeKey="missedHindsight" defaultOpen={false} hint={trade.hindsightExit?"ingevuld":"leeg"}>
+      <div style={{fontSize:"10px",color:"var(--text4)",marginBottom:"10px",lineHeight:1.5,fontStyle:"italic"}}>Waar ging de prijs heen nadat je deze setup overslag? Gebruikt voor theoretical edge-leak berekening. ⚠ Hindsight-bias: dit is theoretisch max, niet wat je werkelijk zou hebben verdiend.</div>
+      <div>
+        <div style={{fontSize:"11px",color:"var(--text3)",marginBottom:"6px",fontWeight:500}}>HINDSIGHT EXIT (prijs waar je uit had kunnen stappen)</div>
+        <input type="text" value={trade.hindsightExit||""} onChange={e=>setTrade(p=>({...p,hindsightExit:e.target.value}))} style={iStyle} placeholder="bv. 43500"/>
+      </div>
+    </Section>}
+
+    {/* Notities — collapsible */}
+    <Section title="📝 Notities" storeKey="notes" defaultOpen={true} hint={`${trade.entryNote?(isMissed?"observatie ✓":"pre-trade ✓"):"—"}${!hideExitFields?` · ${trade.notes?"post-trade ✓":"—"}`:""}`}>
+      <div style={{marginBottom:hideExitFields?0:"14px"}}>
+        <div style={{fontSize:"11px",color:"var(--gold)",textTransform:"uppercase",letterSpacing:"0.12em",fontWeight:700,marginBottom:"8px"}}>{isMissed?"Wat zag je? Waarom wel/niet?":"Waarom ga ik erin?"}</div>
+        <textarea value={trade.entryNote||""} onChange={e=>setTrade(p=>({...p,entryNote:e.target.value}))} placeholder={isMissed?"Wat viel je op in deze setup? Waarom besloot je niet in te gaan? Wat leer je hieruit?":"Je thesis vóór entry — setup, bias, trigger, risk, plan voor management..."} rows={3} style={{...iStyle,fontFamily:"var(--font)",fontSize:"13px",resize:"vertical",lineHeight:"1.6"}}/>
+      </div>
+      {!hideExitFields&&<div>
         <div style={{fontSize:"11px",color:"var(--gold)",textTransform:"uppercase",letterSpacing:"0.12em",fontWeight:700,marginBottom:"8px"}}>Hoe ging het?</div>
         <textarea value={trade.notes} onChange={e=>setTrade(p=>({...p,notes:e.target.value}))} placeholder="Post-mortem — wat ging goed, wat kon beter, wat leer je?" rows={4} style={{...iStyle,fontFamily:"var(--font)",fontSize:"13px",resize:"vertical",lineHeight:"1.6"}}/>
       </div>}
@@ -3152,7 +3182,7 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,accounts,sho
     <div style={{marginBottom:"1rem"}}/>
     {/* Actions — sticky so Save is always reachable in long forms / scrolled modals */}
     <div style={{display:"flex",gap:"12px",position:"sticky",bottom:0,background:"var(--bg)",padding:"12px 0",marginTop:"1rem",borderTop:"1px solid var(--border2)",zIndex:10}}>
-      <button onClick={onSave} style={{flex:1,padding:"12px",borderRadius:"8px",border:"none",fontSize:"14px",fontWeight:700,background:"#C9A84C",color:"#000000",cursor:"pointer",fontFamily:"inherit",fontWeight:700}}>Trade opslaan</button>
+      <button onClick={onSave} style={{flex:1,padding:"12px",borderRadius:"8px",border:"none",fontSize:"14px",fontWeight:700,background:isMissed?"linear-gradient(135deg,#c8a0e0,#b48cc8,#8a6ba0)":"#C9A84C",color:isMissed?"#fff":"#000000",cursor:"pointer",fontFamily:"inherit"}}>{isMissed?"👻 Gemiste trade opslaan":"Trade opslaan"}</button>
       {trade.pnl&&<button onClick={()=>setShowCard(true)} title="Deel als kaart" style={{padding:"12px 18px",borderRadius:"8px",border:"1px solid var(--gold-border)",background:"var(--gold-dim)",color:"var(--gold)",cursor:"pointer",fontFamily:"inherit",fontSize:"13px",fontWeight:600}}>📸 Deel kaart</button>}
       {showCard&&<TradeCardExport trade={trade} onClose={()=>setShowCard(false)}/>}
       {onCancel&&<button onClick={onCancel} style={{padding:"12px 24px",borderRadius:"8px",border:"1px solid var(--border4)",background:"transparent",color:"var(--text2)",cursor:"pointer",fontFamily:"inherit",fontSize:"14px"}}>Annuleren</button>}
@@ -3235,6 +3265,7 @@ function FilterBar({trades,allTrades,filters,setFilters,config,accounts}){
       <div style={{display:"flex",alignItems:"center",gap:"8px",flexWrap:"wrap"}}><span style={{fontSize:"10px",color:"var(--text4)",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em",minWidth:"65px"}}>Richting</span>{chip("Alle","direction","all")}{chip("Long","direction","long")}{chip("Short","direction","short")}</div>
       <div style={{display:"flex",alignItems:"center",gap:"8px",flexWrap:"wrap"}}><span style={{fontSize:"10px",color:"var(--text4)",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em",minWidth:"65px"}}>Status</span>{chip("Alle","status","all")}<button onClick={()=>setFilters(p=>({...p,status:p.status==="open"?"all":"open"}))} style={{padding:"4px 10px",borderRadius:"5px",fontSize:"11px",fontWeight:500,border:`1px solid ${filters.status==="open"?"#C9A84C":"var(--border3)"}`,background:filters.status==="open"?"rgba(201,168,76,0.12)":"transparent",color:filters.status==="open"?"#C9A84C":"var(--text3)",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:"5px"}}>{filters.status==="open"&&<span style={{width:"5px",height:"5px",borderRadius:"50%",background:"#C9A84C"}}/>}Open</button>{chip("Closed","status","closed")}</div>
       <div style={{display:"flex",alignItems:"center",gap:"8px",flexWrap:"wrap"}}><span style={{fontSize:"10px",color:"var(--text4)",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em",minWidth:"65px"}}>Resultaat</span>{chip("Alle","result","all")}{chip("Winners","result","win")}{chip("Losers","result","loss")}</div>
+      {config?.trackMissedTrades&&<div style={{display:"flex",alignItems:"center",gap:"8px",flexWrap:"wrap"}}><span style={{fontSize:"10px",color:"#b48cc8",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em",minWidth:"65px"}}>👻 Type</span>{[["real","Genomen"],["missed","👻 Gemist"],["both","Beide"]].map(([val,label])=>{const active=(filters.tradeType||"real")===val;return(<button key={val} onClick={()=>setFilters(p=>({...p,tradeType:val}))} style={{padding:"4px 10px",borderRadius:"5px",fontSize:"11px",fontWeight:500,border:`1px solid ${active?"rgba(180,140,200,.5)":"var(--border3)"}`,background:active?"rgba(180,140,200,.18)":"transparent",color:active?"#d4a8e8":"var(--text3)",cursor:"pointer",fontFamily:"inherit"}}>{label}</button>)})}</div>}
       <div style={{display:"flex",alignItems:"center",gap:"8px",flexWrap:"wrap"}}><span style={{fontSize:"10px",color:"var(--text4)",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em",minWidth:"65px"}}>Sessie</span>{ALL_SESSIONS.map(s=>{const arr=filters.sessionTags||[];const active=arr.includes(s);const c=SESSION_COLORS[s];return <button key={s} onClick={()=>setFilters(p=>{const cur=p.sessionTags||[];return{...p,sessionTags:active?cur.filter(v=>v!==s):[...cur,s]}})} style={{padding:"4px 10px",borderRadius:"5px",fontSize:"11px",fontWeight:500,border:`1px solid ${active?c.border:"var(--border3)"}`,background:active?c.bg:"transparent",color:active?c.text:"var(--text3)",cursor:"pointer",fontFamily:"inherit",transition:"all .12s"}}>{s}</button>})}</div>
       {allSetups.length>0&&<div style={{display:"flex",alignItems:"center",gap:"8px",flexWrap:"wrap"}}><span style={{fontSize:"10px",color:"var(--text4)",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em",minWidth:"65px"}}>Setup</span>{allSetups.map(s=>multiChip(s,"setupTags",s))}</div>}
       {allEmotions.length>0&&<div style={{display:"flex",alignItems:"center",gap:"8px",flexWrap:"wrap"}}><span style={{fontSize:"10px",color:"var(--text4)",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em",minWidth:"65px"}}>Emoties</span>{allEmotions.map(e=>{const neg=isNegEmotion(e);const arr=filters.emotionTags||[];const active=arr.includes(e);return <button key={e} onClick={()=>setFilters(p=>{const cur=p.emotionTags||[];return{...p,emotionTags:active?cur.filter(v=>v!==e):[...cur,e]}})} style={{padding:"4px 10px",borderRadius:"5px",fontSize:"11px",fontWeight:500,border:`1px solid ${active?(neg?"#dc2626":"#059669"):"var(--border3)"}`,background:active?(neg?"rgba(220,122,122,0.14)":"rgba(46,170,111,0.14)"):"transparent",color:active?(neg?"#e05555":CHART_COLORS.win):"var(--text3)",cursor:"pointer",fontFamily:"inherit",transition:"all .12s"}}>{e}</button>})}</div>}
@@ -3245,6 +3276,12 @@ function FilterBar({trades,allTrades,filters,setFilters,config,accounts}){
 
 function applyFilters(trades,filters){
   return trades.filter(t=>{
+    // Missed-trade type filter (real | missed | both). Default "real" hides missed trades from
+    // every existing view — non-breaking for users who don't use the feature.
+    const tt=filters.tradeType||"real";
+    const isMissedTrade=t.status==="missed";
+    if(tt==="real"&&isMissedTrade)return false;
+    if(tt==="missed"&&!isMissedTrade)return false;
     if(filters.source&&filters.source!=="all"&&(t.source||"manual")!==filters.source)return false;
     if(filters.pair&&filters.pair!=="all"&&t.pair!==filters.pair)return false;
     if(filters.quote&&filters.quote!=="all"&&(t.pair||"").split("/")[1]!==filters.quote)return false;
@@ -3730,8 +3767,114 @@ function DisciplineHeatmap({trades,tradingRules}){
   </div>);
 }
 
+// ============ EDGE GAP ============
+// Analytics section for missed trades. Shows: captured ratio per setup, reasons breakdown,
+// theoretical edge-leak stat. Only rendered when config.trackMissedTrades is on and there's data.
+function EdgeGap({allTrades}){
+  const missed=(allTrades||[]).filter(t=>t.status==="missed");
+  const taken=(allTrades||[]).filter(t=>t.status!=="missed"&&t.pnl!==""&&!isNaN(parseFloat(t.pnl)));
+  const total=missed.length+taken.length;
+  const capturedPct=total?Math.round((taken.length/total)*100):0;
+
+  // Captured ratio per setup-tag
+  const setupStats={};
+  [...taken,...missed].forEach(t=>{
+    (t.setupTags||[]).forEach(s=>{
+      if(!setupStats[s])setupStats[s]={taken:0,missed:0};
+      if(t.status==="missed")setupStats[s].missed++;
+      else setupStats[s].taken++;
+    });
+  });
+  const setupRows=Object.entries(setupStats).map(([setup,s])=>({setup,taken:s.taken,missed:s.missed,total:s.taken+s.missed,ratio:(s.taken+s.missed)?s.taken/(s.taken+s.missed):0})).filter(r=>r.total>=3).sort((a,b)=>a.ratio-b.ratio);
+
+  // Reasons breakdown — aggregate missedReasonTags
+  const reasonCounts={};
+  missed.forEach(t=>(t.missedReasonTags||[]).forEach(r=>{reasonCounts[r]=(reasonCounts[r]||0)+1}));
+  const reasonRows=Object.entries(reasonCounts).sort((a,b)=>b[1]-a[1]);
+  const totalReasonHits=reasonRows.reduce((a,[,n])=>a+n,0)||1;
+
+  // Theoretical edge-leak: sum of positive hindsight R-multiples × avg risk from taken trades
+  const avgRisk=taken.length?taken.reduce((a,t)=>a+(parseFloat(t.riskUsd)||0),0)/taken.length:0;
+  let hindsightR=0,hindsightCount=0;
+  missed.forEach(t=>{
+    const e=parseFloat(t.entry),sl=parseFloat(t.stopLoss),hx=parseFloat(t.hindsightExit);
+    if(isNaN(e)||isNaN(sl)||isNaN(hx))return;
+    const risk=Math.abs(e-sl);if(risk<=0)return;
+    const dir=t.direction==="short"?-1:1;
+    const r=((hx-e)/risk)*dir;
+    if(r>0){hindsightR+=r;hindsightCount++}
+  });
+  const theoreticalLeak=hindsightR*avgRisk;
+
+  const ratioColor=(r)=>r>=0.75?"var(--green)":r>=0.5?"var(--amber)":"var(--red)";
+
+  return(<div style={{background:"var(--glass)",border:"1px solid var(--border1)",borderRadius:"14px",padding:"20px"}}>
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"16px"}}>
+      <div>
+        <div style={{fontSize:"11px",color:"#b48cc8",textTransform:"uppercase",letterSpacing:".14em",fontWeight:700}}>👻 Edge Gap — missed trades</div>
+        <div style={{fontSize:"11px",color:"var(--text4)",marginTop:"2px"}}>Waar laat je edge liggen? {taken.length} genomen · {missed.length} gemist · captured {capturedPct}%</div>
+      </div>
+    </div>
+    <div style={{display:"grid",gridTemplateColumns:"1.5fr 1fr 1fr",gap:"14px"}}>
+      {/* Captured ratio table */}
+      <div style={{padding:"14px",background:"rgba(0,0,0,.15)",border:"1px solid var(--border2)",borderRadius:"10px"}}>
+        <div style={{fontSize:"10px",color:"#d4a8e8",textTransform:"uppercase",letterSpacing:".12em",fontWeight:700,marginBottom:"10px"}}>🎯 Captured ratio per setup</div>
+        {setupRows.length===0?<div style={{fontSize:"11px",color:"var(--text4)",padding:"12px 0",textAlign:"center"}}>Geen setup met ≥3 trades (genomen + gemist) om te vergelijken.</div>:
+          <table style={{width:"100%",fontSize:"11px",borderCollapse:"collapse"}}>
+            <thead><tr>
+              <th style={{textAlign:"left",padding:"4px 6px",color:"var(--text5)",fontSize:"9px",fontWeight:700,letterSpacing:".08em",textTransform:"uppercase",borderBottom:"1px solid var(--border2)"}}>Setup</th>
+              <th style={{textAlign:"right",padding:"4px 6px",color:"var(--text5)",fontSize:"9px",fontWeight:700,letterSpacing:".08em",textTransform:"uppercase",borderBottom:"1px solid var(--border2)"}}>Gen.</th>
+              <th style={{textAlign:"right",padding:"4px 6px",color:"var(--text5)",fontSize:"9px",fontWeight:700,letterSpacing:".08em",textTransform:"uppercase",borderBottom:"1px solid var(--border2)"}}>Gem.</th>
+              <th style={{textAlign:"right",padding:"4px 6px",color:"var(--text5)",fontSize:"9px",fontWeight:700,letterSpacing:".08em",textTransform:"uppercase",borderBottom:"1px solid var(--border2)"}}>Ratio</th>
+            </tr></thead>
+            <tbody>
+              {setupRows.slice(0,8).map(r=>(<tr key={r.setup}>
+                <td style={{padding:"6px",color:"var(--text2)",fontWeight:600,borderBottom:"1px solid var(--border2)"}}>{r.setup}</td>
+                <td style={{padding:"6px",textAlign:"right",color:"var(--text3)",fontFamily:"var(--mono)",borderBottom:"1px solid var(--border2)"}}>{r.taken}</td>
+                <td style={{padding:"6px",textAlign:"right",color:"#b48cc8",fontFamily:"var(--mono)",borderBottom:"1px solid var(--border2)"}}>{r.missed}</td>
+                <td style={{padding:"6px",textAlign:"right",fontFamily:"var(--mono)",fontWeight:700,color:ratioColor(r.ratio),borderBottom:"1px solid var(--border2)"}}>{Math.round(r.ratio*100)}%</td>
+              </tr>))}
+            </tbody>
+          </table>
+        }
+      </div>
+      {/* Reasons breakdown */}
+      <div style={{padding:"14px",background:"rgba(0,0,0,.15)",border:"1px solid var(--border2)",borderRadius:"10px"}}>
+        <div style={{fontSize:"10px",color:"#d4a8e8",textTransform:"uppercase",letterSpacing:".12em",fontWeight:700,marginBottom:"10px"}}>👻 Waarom miste je?</div>
+        {reasonRows.length===0?<div style={{fontSize:"11px",color:"var(--text4)",padding:"12px 0",textAlign:"center"}}>Geen missed-redenen ingevuld. Voeg ze toe voor inzicht.</div>:
+          <div>
+            {reasonRows.map(([reason,n],i)=>{
+              const pct=Math.round((n/totalReasonHits)*100);
+              return(<div key={reason} style={{marginBottom:"8px"}}>
+                <div style={{display:"flex",justifyContent:"space-between",fontSize:"11px",color:"var(--text3)",marginBottom:"3px"}}>
+                  <span>{reason}</span>
+                  <span style={{fontFamily:"var(--mono)",color:"#b48cc8"}}>{n}× · {pct}%</span>
+                </div>
+                <div style={{height:"4px",background:"rgba(255,255,255,.05)",borderRadius:"2px",overflow:"hidden"}}>
+                  <div style={{height:"100%",width:`${pct}%`,background:`rgba(180,140,200,${0.35+Math.min(1,n/totalReasonHits)*0.5})`,borderRadius:"2px"}}/>
+                </div>
+              </div>);
+            })}
+          </div>
+        }
+      </div>
+      {/* Theoretical edge-leak */}
+      <div style={{padding:"14px",background:"rgba(0,0,0,.15)",border:"1px solid var(--border2)",borderRadius:"10px"}}>
+        <div style={{fontSize:"10px",color:"#d4a8e8",textTransform:"uppercase",letterSpacing:".12em",fontWeight:700,marginBottom:"10px"}}>💸 Theoretical edge-leak</div>
+        {hindsightCount===0?<div style={{fontSize:"11px",color:"var(--text4)",padding:"12px 0"}}>Vul <code style={{background:"rgba(255,255,255,.04)",padding:"1px 5px",borderRadius:"3px",fontFamily:"var(--mono)",color:"var(--text3)",fontSize:"10px"}}>hindsightExit</code> in op missed trades om edge-leak te berekenen.</div>:
+          <div>
+            <div style={{fontFamily:"var(--mono)",fontSize:"24px",fontWeight:800,color:"#b48cc8",marginBottom:"4px"}}>{theoreticalLeak>=0?"+":""}${fmt(theoreticalLeak)}</div>
+            <div style={{fontSize:"10px",color:"var(--text4)",lineHeight:1.5}}>Som hindsight-R × gem. risk (${fmt(avgRisk)}) over {hindsightCount} missers met ingevulde hindsight-exit.</div>
+            <div style={{marginTop:"10px",padding:"7px 10px",background:"rgba(212,168,83,.08)",borderLeft:"2px solid var(--amber)",borderRadius:"4px",fontSize:"10px",color:"var(--amber)",lineHeight:1.5}}>⚠ <strong>Hindsight-bias</strong>: theoretisch max. Je zou deze trades niet 1-op-1 hebben uitgemolken met jouw echte exit-discipline. Gebruik als signaal, niet als "gemiste winst".</div>
+          </div>
+        }
+      </div>
+    </div>
+  </div>);
+}
+
 // ============ ANALYTICS ============
-function Analytics({trades,tradingRules}){
+function Analytics({trades,tradingRules,allTrades,config}){
   const{prefs:lp,toggle:lpToggle,reset:lpReset,setOrder}=useLayoutPrefs("analytics");
   const[lpOpen,setLpOpen]=useState(false);
   const[editMode,setEditMode]=useState(false);
@@ -3748,6 +3891,7 @@ function Analytics({trades,tradingRules}){
       {key:"procesKPIs",label:"Proces KPI's (4 cards)"},
       {key:"procesDetail",label:"Risk consistency + fout-ratio"},
       {key:"disciplineHeatmap",label:"Discipline heatmap (7×24)"},
+      {key:"edgeGap",label:"👻 Edge Gap (missed trades)"},
       {key:"winstKPIs",label:"Winst KPI row"},
     ]},
     {label:"Grafieken",items:[
@@ -3923,6 +4067,9 @@ function Analytics({trades,tradingRules}){
 
     {/* PROCES — Discipline heatmap (7×24 or 7×sessions) */}
     {showP&&closed.length>0&&seq("disciplineHeatmap",lp.disciplineHeatmap!==false,<DisciplineHeatmap trades={closed} tradingRules={tradingRules}/>)}
+
+    {/* Edge Gap — missed trades analytics. Only shown when feature is enabled AND there's missed-trade data. */}
+    {showP&&config?.trackMissedTrades&&(allTrades||[]).some(t=>t.status==="missed")&&seq("edgeGap",lp.edgeGap!==false,<EdgeGap allTrades={allTrades||[]}/>)}
 
     {/* WINST KPI row */}
     {showW&&seq("winstKPIs",lp.winstKPIs!==false,<div style={{display:"grid",gridTemplateColumns:"repeat(5,minmax(0,1fr))",gap:"12px"}}>
@@ -4161,6 +4308,7 @@ function CommandPalette({open,onClose,trades,navigate,setNewTrade,newEmptyTrade,
       {t:"action",icon:"📏",title:"Trading Rules",sub:"Regels bewerken",do:()=>navigate("rules")},
       {t:"action",icon:"🏷",title:"Tags",sub:"Setup/emotie/fouten tags",do:()=>navigate("tags")},
       {t:"action",icon:"⊕",title:"Nieuwe trade",sub:"Handmatig trade invoeren",hint:"N",do:()=>{setNewTrade&&setNewTrade(newEmptyTrade());navigate("new");}},
+      ...(config?.trackMissedTrades?[{t:"action",icon:"👻",title:"Log gemiste trade",sub:"Setup gespot maar niet genomen",hint:"M",do:()=>{setNewTrade&&setNewTrade({...newEmptyTrade(),status:"missed"});navigate("new");}}]:[]),
       {t:"action",icon:"↓",title:"Backup exporteren",sub:"Download JSON van alles",do:()=>exportTrades&&exportTrades()},
       {t:"action",icon:"🎨",title:"Thema: SyncJournal",do:()=>setConfig(p=>({...p,theme:"sync"}))},
       {t:"action",icon:"🎨",title:"Thema: Classic",do:()=>setConfig(p=>({...p,theme:"classic"}))},
@@ -5553,6 +5701,15 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,imp
         <div style={{fontSize:"10px",color:"var(--text4)",marginTop:"6px",lineHeight:1.5}}>Polt gekoppelde exchanges automatisch op dit interval. Werkt alleen wanneer er minstens één API-verbinding actief is. Aanbevolen nu: <strong>Uit</strong> zolang de proxy-verbinding met MEXC nog niet werkt.</div>
       </div>
 
+      {/* Missed trades — opt-in power feature for tracking edge gap */}
+      <div style={{marginTop:"16px",paddingTop:"14px",borderTop:"1px solid var(--border2)"}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"6px"}}>
+          <span style={{fontSize:"12px",color:"var(--text2)",fontWeight:600}}>👻 Gemiste trades bijhouden</span>
+          <button onClick={()=>setConfig(p=>({...p,trackMissedTrades:!p.trackMissedTrades}))} style={{padding:"4px 12px",borderRadius:"14px",border:"1px solid "+(config.trackMissedTrades?"rgba(180,140,200,.4)":"var(--border3)"),background:config.trackMissedTrades?"rgba(180,140,200,.15)":"transparent",color:config.trackMissedTrades?"#d4a8e8":"var(--text4)",fontSize:"11px",fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{config.trackMissedTrades?"Aan":"Uit"}</button>
+        </div>
+        <div style={{fontSize:"10px",color:"var(--text4)",lineHeight:1.5}}>Log setups die je spotte maar <strong>niet nam</strong> (durf, kapitaal, rules, etc). Apart zichtbaar, telt nooit in je echte P&L. Default uit — alleen aan als je bewust aan edge-tracking wilt werken.</div>
+      </div>
+
       {/* Mindset-reminders — subtle nudges throughout the journal */}
       <div style={{marginTop:"16px",paddingTop:"14px",borderTop:"1px solid var(--border2)"}}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"6px"}}>
@@ -5887,7 +6044,7 @@ function App(){
   const[tab,setTab]=useState(()=>parseHash().view||"dashboard");
   const[editTrade,setEditTrade]=useState(null);
   const[newTrade,setNewTrade]=useState(null);
-  const[filters,setFilters]=useState({source:"all",pair:"all",quote:"all",direction:"all",status:"all",dateFrom:"",dateTo:"",setupTags:[],confirmationTags:[],emotionTags:[],mistakeTags:[],timeframeTags:[],sessionTags:[],leverage:"all",result:"all"});
+  const[filters,setFilters]=useState({source:"all",pair:"all",quote:"all",direction:"all",status:"all",dateFrom:"",dateTo:"",setupTags:[],confirmationTags:[],emotionTags:[],mistakeTags:[],timeframeTags:[],sessionTags:[],leverage:"all",result:"all",tradeType:"real"});
   const[toast,setToast]=useState(null);
   const[mobileOpen,setMobileOpen]=useState(false);
   const[importDragOver,setImportDragOver]=useState(false);
@@ -6344,13 +6501,13 @@ function App(){
           ?<DashboardPremium trades={filteredTrades} config={config} accounts={accounts} tradingRules={tradingRules} dailyNotes={dailyNotes} goals={goals} setTab={navigate} setNewTrade={setNewTrade} newEmptyTrade={newEmptyTrade} setFilters={setFilters}/>
           :<Dashboard trades={filteredTrades} config={config} accounts={accounts} onReport={()=>setShowPdf(true)} storageUsage={storageUsage} setFilters={setFilters} setTab={navigate}/>)}
         {tab==="trades"&&!editTrade&&<TradeList trades={filteredTrades} onEdit={setEditTrade} onDelete={deleteTrade} onBulkDelete={bulkDelete} onBulkTag={bulkTag} showToast={showToast} tagConfig={tagConfig} config={config} accounts={accounts}/>}
-        {tab==="analytics"&&<Analytics trades={filteredTrades} tradingRules={tradingRules}/>}
+        {tab==="analytics"&&<Analytics trades={filteredTrades} tradingRules={tradingRules} allTrades={trades} config={config}/>}
         {tab==="review"&&<ReviewDashboard trades={filteredTrades}/>}
         {tab==="calendar"&&<Calendar trades={filteredTrades} setFilters={setFilters} setTab={setTab} dailyNotes={dailyNotes} setDailyNotes={setDailyNotes} tradingRules={tradingRules} onEdit={(t)=>{setEditTrade(t);setNewTrade({...EMPTY_TRADE,...t,tpLevels:t.tpLevels||[],layers:t.layers||[],links:t.links||[],manualOverrides:t.manualOverrides||[]});navigate("new");}}/>}
         {tab==="accounts"&&<AccountsHub config={config} setConfig={setConfig} accounts={accounts} setAccounts={setAccounts} showToast={showToast} trades={trades} importTrades={importTrades} syncOpenPositions={syncOpenPositions} exportTrades={exportTrades} setTagConfig={setTagConfig} tagConfig={tagConfig} tradingRules={tradingRules} setTradingRules={setTradingRules} goals={goals} setGoals={setGoals} mindsetPrefs={mindsetPrefs} setMindsetPrefs={setMindsetPrefs}/>}
         {tab==="rules"&&<TradingRulesPage tradingRules={tradingRules} setTradingRules={setTradingRules}/>}
         {tab==="goals"&&<GoalsPage goals={goals} setGoals={setGoals} trades={trades}/>}
-        {tab==="tags"&&<TagManager tagConfig={tagConfig} setTagConfig={setTagConfig} trades={trades} setTrades={setTrades} showToast={showToast}/>}
+        {tab==="tags"&&<TagManager tagConfig={tagConfig} setTagConfig={setTagConfig} trades={trades} setTrades={setTrades} showToast={showToast} config={config}/>}
         {tab==="help"&&<HelpPage/>}
       </div>
 
