@@ -6,6 +6,14 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.15] — 2026-04-23
+
+### Fixed
+- **Hyperliquid API-import miste entry-prijzen + rekende open-fees niet bij PnL** — de v12.12 API-parser filterde alleen close-fills en nam `netPnl = closedPnl − close_fee`. Maar Hyperliquid's `closedPnl` op een close-fill is al `gross − close_fee`, en de fees van de bijbehorende opens moeten er ook nog af. Gevolg: entry toonde "N/A", PnL was systematisch iets te gunstig, en `date/time` was de close-tijd in plaats van de open-tijd (inconsistent met de CSV-route en met TradesViz/TraderSync-conventie).
+- **Fix via gedeelde FIFO-helper** `ExchangeAPI.hyperliquid._reconstructTrades(fills, idPrefix)`. Zowel `fetchTrades` (API) als de CSV-parser (`isHyperliquidFills` branch) sturen nu hun fills door deze ene helper. Gewogen-gemiddelde entry-prijs over alle opens die een close dekken, `netPnl = close.closedPnl − Σ(open_fees)`, date/time op open-tijd. Identieke output van beide paden gevalideerd met 67-fill sample: 33 trades, netto −$8.35, fees $3.62.
+- **Research-bevestiging**: FIFO-matching is industrie-standaard (TraderSync biedt FIFO/LIFO/Weighted keuze, CoinLedger gebruikt FIFO by default, Hyperliquid's eigen docs definiëren entry als position-size-weighted gemiddelde). Flip-fills `Long > Short`/`Short > Long` blijven in MVP overgeslagen.
+- **Dedup verbeterd**: API gebruikt `tid` (Hyperliquid's unieke fill-ID) als dedup-sleutel → stabiel bij re-sync. CSV gebruikt `openMs_coin_side_closeMs` fingerprint. Prefixes `hyperliquid_` vs `hyperliquid_csv_` voorkomen botsing tussen de twee routes.
+
 ## [v12.14] — 2026-04-23
 
 ### Toegevoegd

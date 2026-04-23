@@ -867,7 +867,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.14",released:"2026-04-23"};
+const APP_VERSION={version:"v12.15",released:"2026-04-23"};
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
 function isNewerVersion(a,b){
   const parse=(s)=>String(s||"").replace(/^v/,"").split(".").map(n=>parseInt(n,10)||0);
@@ -1510,6 +1510,71 @@ const ExchangeAPI = {
       if(coin.startsWith("@"))return coin+" (spot)";
       return coin+"/USDC";
     },
+    // Gedeelde FIFO-reconstructie voor API + CSV. Input: array van fills met
+    // {coin, dir, px, sz, fee, closedPnl, ms, tid?}. Elke close-fill wordt gematcht met
+    // oudste opens per coin+richting → gewogen entry, netto PnL (closedPnl − openFees),
+    // totale fees = close-fee + opens-fees. Partial fills gesplitst over meerdere opens.
+    _reconstructTrades(fills,idPrefix){
+      const opens={};// key "COIN:side" → [{px,sz,fee,ms}, ...]
+      const out=[];
+      const sorted=[...fills].sort((a,b)=>(a.ms||0)-(b.ms||0));
+      for(const f of sorted){
+        let side,isOpen;
+        if(f.dir==="Open Long"){side="long";isOpen=true;}
+        else if(f.dir==="Close Long"){side="long";isOpen=false;}
+        else if(f.dir==="Open Short"){side="short";isOpen=true;}
+        else if(f.dir==="Close Short"){side="short";isOpen=false;}
+        else if(f.dir==="Buy"){side="long";isOpen=true;}// spot open long
+        else if(f.dir==="Sell"){side="long";isOpen=false;}// spot close long
+        else continue;// flip-fills "Long > Short" / "Short > Long" — MVP skip
+        const szN=Math.abs(parseFloat(f.sz)||0);
+        const pxN=parseFloat(f.px)||0;
+        const feeN=Math.abs(parseFloat(f.fee)||0);
+        const pnlN=parseFloat(f.closedPnl)||0;
+        const key=f.coin+":"+side;
+        if(isOpen){
+          if(!opens[key])opens[key]=[];
+          opens[key].push({px:pxN,sz:szN,fee:feeN,ms:Number(f.ms)||0});
+        }else{
+          const q=opens[key]||[];
+          let remaining=szN,entryW=0,entrySize=0,openFees=0,openMs=0;
+          while(remaining>1e-9&&q.length){
+            const lot=q[0];
+            if(!openMs)openMs=lot.ms;
+            if(lot.sz<=remaining+1e-9){entryW+=lot.px*lot.sz;entrySize+=lot.sz;openFees+=lot.fee;remaining-=lot.sz;q.shift();}
+            else{entryW+=lot.px*remaining;entrySize+=remaining;openFees+=lot.fee*(remaining/lot.sz);lot.sz-=remaining;remaining=0;}
+          }
+          const avgEntry=entrySize>0?entryW/entrySize:0;
+          const netPnl=pnlN-openFees;// closedPnl is al (gross − close-fee); open-fees er ook af = echte netto
+          const totalFee=feeN+openFees;
+          const partial=entrySize<szN-1e-9;
+          const usdNotional=avgEntry>0?(avgEntry*szN).toFixed(2):"";
+          const closeMs=Number(f.ms)||0;
+          const fingerprint=f.tid||(openMs+"_"+f.coin+"_"+side+"_"+closeMs);
+          out.push({...EMPTY_TRADE,
+            id:idPrefix+"_"+fingerprint,
+            date:openMs?ts2date(openMs):ts2date(closeMs),
+            time:openMs?ts2time(openMs):ts2time(closeMs),
+            openTime:openMs?String(openMs):"",
+            closeTime:String(closeMs),
+            pair:this._toPair(f.coin),
+            direction:side,
+            entry:avgEntry>0?normPrice(avgEntry):"",
+            exit:normPrice(pxN),
+            positionSize:usdNotional,
+            positionSizeAsset:szN>0?normPrice(szN):"",
+            pnl:String(netPnl.toFixed(4)),
+            fees:String(totalFee.toFixed(4)),
+            leverage:"",
+            source:"hyperliquid",
+            status:"closed",
+            positionId:f.tid?String(f.tid):"",
+            notes:partial?"⚠ Partial data: opening fills buiten range":"",
+          });
+        }
+      }
+      return out;
+    },
     async testConnection(walletAddress){
       const addr=this._validateAddress(walletAddress);
       const state=await this._post({type:"clearinghouseState",user:addr});
@@ -1518,58 +1583,22 @@ const ExchangeAPI = {
     },
     async fetchTrades(walletAddress,_unused1,_unused2,startTime){
       const addr=this._validateAddress(walletAddress);
-      // Pagineer userFillsByTime in batches van 2000. startTime is ms-epoch.
-      // Hyperliquid geeft max 2000 fills per call; loop tot response < 2000 of oudste fill < startTime.
+      // Pagineer userFillsByTime in batches van 2000. Hyperliquid cap = laatste 10k fills totaal.
       const fromTs=startTime?Number(startTime):new Date(Date.now()-90*24*60*60*1000).getTime();// default 90d
       const allFills=[];let cursor=fromTs;let guard=0;
-      while(guard++<20){// hard cap: 20 calls = 40k fills max
+      while(guard++<20){
         const batch=await this._post({type:"userFillsByTime",user:addr,startTime:cursor});
         if(!Array.isArray(batch)||batch.length===0)break;
         allFills.push(...batch);
         if(batch.length<2000)break;
         const lastTs=batch[batch.length-1].time;
-        if(!lastTs||lastTs<=cursor)break;// safety: geen voortgang
+        if(!lastTs||lastTs<=cursor)break;
         cursor=lastTs+1;
       }
-      // Alleen close-fills tellen als afgesloten trades. Open-fills zijn entries zonder exit.
-      // dir-waarden: "Open Long"/"Close Long"/"Open Short"/"Close Short"/"Long > Short"/"Short > Long"/"Buy"(spot open long)/"Sell"(spot close long).
-      const closeFills=allFills.filter(f=>{
-        const d=String(f.dir||"");
-        return d.startsWith("Close ")||d.includes(" > ")||d==="Sell";
-      });
-      return closeFills.map(f=>{
-        const isFlip=String(f.dir||"").includes(" > ");
-        const isLongClose=f.dir==="Close Long"||f.dir==="Long > Short"||f.dir==="Sell";
-        const direction=isLongClose?"long":"short";
-        const sz=Math.abs(parseFloat(f.sz||"0"));
-        const px=parseFloat(f.px||"0");
-        const usdNotional=(sz>0&&px>0)?(sz*px).toFixed(2):"";
-        const pnl=parseFloat(f.closedPnl||"0");
-        const fee=Math.abs(parseFloat(f.fee||"0"));
-        const netPnl=pnl-fee;
-        return{
-          id:"hyperliquid_"+(f.tid||uid()),
-          positionId:String(f.oid||""),
-          date:ts2date(f.time),time:ts2time(f.time),
-          openTime:"",// niet beschikbaar uit close-fill alleen; zou aggregatie over open-fill vereisen
-          closeTime:String(f.time||""),
-          pair:this._toPair(f.coin),
-          direction,
-          entry:"",// zonder positie-aggregatie niet betrouwbaar af te leiden
-          exit:normPrice(f.px||""),
-          positionSize:usdNotional,
-          positionSizeAsset:sz>0?normPrice(sz):"",
-          pnl:String(netPnl.toFixed(4)),
-          fees:String(fee.toFixed(4)),
-          leverage:"",// Hyperliquid leverage is per-account setting, niet per fill in response
-          source:"hyperliquid",status:"closed",
-          stopLoss:"",takeProfit:"",
-          setupTags:[],confirmationTags:[],timeframeTags:[],emotionTags:[],mistakeTags:[],customTags:[],
-          rating:0,screenshot:null,
-          notes:isFlip?"⚠ Flip-fill ("+f.dir+") — bevat zowel close als entry van tegengestelde richting":"",
-          links:[],layers:[],manualOverrides:[],tpLevels:[],
-        };
-      });
+      // FIFO-reconstructie via gedeelde helper — haalt open-fills op, weegt entry-price,
+      // trekt open-fees af van closedPnl voor echte netto-PnL.
+      const fills=allFills.map(f=>({coin:f.coin,dir:f.dir,px:f.px,sz:f.sz,fee:f.fee,closedPnl:f.closedPnl,ms:Number(f.time)||0,tid:f.tid}));
+      return this._reconstructTrades(fills,"hyperliquid");
     },
     async fetchOpenPositions(walletAddress){
       const addr=this._validateAddress(walletAddress);
@@ -5658,62 +5687,20 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,imp
           csvTrades=usdCloses.map(u=>{const matching=posRows.find(p=>p.dateTime===u.dateTime&&p["trade price"]===u["trade price"]);const sizeChg=matching?parseFloat(matching.change):0;const direction=sizeChg>0?"short":"long";const entryPrice=matching?matching["new average entry price"]:"";const contract=(u.contract||"pf_xbtusd").toUpperCase().replace("PF_","").replace("PI_","");const krakenP=(s)=>{s=s.replace("XBT","BTC");if(s.endsWith("USDC"))return s.slice(0,-4)+"/USDC";if(s.endsWith("USDT"))return s.slice(0,-4)+"/USDT";if(s.endsWith("USD"))return s.slice(0,-3)+"/USD";return s+"/USD"};const pair=krakenP(contract);const dt=u.dateTime||"";return{...EMPTY_TRADE,id:"kraken_csv_"+uid(),date:dt.split(" ")[0]||"",time:(dt.split(" ")[1]||"00:00").slice(0,5),pair,direction,entry:entryPrice||"",exit:u["trade price"]||"",positionSize:matching?String(Math.abs(sizeChg)):"",pnl:u["realized pnl"]||"",fees:u.fee||"0",leverage:"1",source:forExchange||"kraken",status:"closed"}});
         }
         if(isHyperliquidFills){
-          // Hyperliquid compact CSV — elke rij is een fill (Open/Close). FIFO-match opens met closes
-          // per coin+direction. Close-fill = 1 trade. closedPnl op close = gross - close-fee (netto exclusief
-          // open-fees); wij tellen open-fees er nog af voor echte netto.
-          const parseHLDate=(s)=>{const m=String(s||"").match(/^(\d{1,2})-(\d{1,2})-(\d{4})\s*-\s*(\d{2}):(\d{2})(?::(\d{2}))?/);if(!m)return{date:"",time:"00:00",full:""};return{date:`${m[3]}-${m[2].padStart(2,"0")}-${m[1].padStart(2,"0")}`,time:`${m[4]}:${m[5]}`,full:`${m[3]}-${m[2].padStart(2,"0")}-${m[1].padStart(2,"0")} ${m[4]}:${m[5]}:${m[6]||"00"}`};};
-          const hlPair=(c)=>!c?"":(c.startsWith("@")?c+" (spot)":c+"/USDC");
-          const opens={};// key="COIN:side" → [{px,sz,fee,date,time,full}, ...]
+          // Hyperliquid compact CSV — elke rij is een fill (Open/Close). Delegeer FIFO-reconstructie
+          // aan ExchangeAPI.hyperliquid._reconstructTrades zodat API- en CSV-import identieke output
+          // geven (zelfde entry-avg, netto-PnL, dedup-sleutel).
+          const parseHLDateMs=(s)=>{const m=String(s||"").match(/^(\d{1,2})-(\d{1,2})-(\d{4})\s*-\s*(\d{2}):(\d{2})(?::(\d{2}))?/);if(!m)return 0;return new Date(`${m[3]}-${m[2].padStart(2,"0")}-${m[1].padStart(2,"0")}T${m[4]}:${m[5]}:${m[6]||"00"}`).getTime();};
+          const fills=[];
           for(let i=1;i<lines.length;i++){
-            const vals=parseCSVLine(lines[i]).map(v=>v.replace(/"/g,"").trim());
-            if(vals.length<8)continue;
-            const[timeStr,coin,dir,px,sz,_ntl,fee,closedPnl]=vals;
-            const pxN=parseFloat(px)||0,szN=Math.abs(parseFloat(sz)||0),feeN=Math.abs(parseFloat(fee)||0),pnlN=parseFloat(closedPnl)||0;
-            const d=parseHLDate(timeStr);
-            let side,isOpen;
-            if(dir==="Open Long"){side="long";isOpen=true;}
-            else if(dir==="Close Long"){side="long";isOpen=false;}
-            else if(dir==="Open Short"){side="short";isOpen=true;}
-            else if(dir==="Close Short"){side="short";isOpen=false;}
-            else if(dir==="Buy"){side="long";isOpen=true;}// spot: Buy opent long
-            else if(dir==="Sell"){side="long";isOpen=false;}// spot: Sell sluit long
-            else continue;// flip-fills "Long > Short" / "Short > Long" — MVP: skip
-            const qKey=coin+":"+side;
-            if(isOpen){
-              if(!opens[qKey])opens[qKey]=[];
-              opens[qKey].push({px:pxN,sz:szN,fee:feeN,date:d.date,time:d.time,full:d.full});
-            }else{
-              const q=opens[qKey]||[];
-              let remaining=szN,entryW=0,entrySize=0,openFees=0,openDate="",openTime="",openFull="";
-              while(remaining>1e-9&&q.length){
-                const lot=q[0];
-                if(!openDate){openDate=lot.date;openTime=lot.time;openFull=lot.full;}
-                if(lot.sz<=remaining+1e-9){entryW+=lot.px*lot.sz;entrySize+=lot.sz;openFees+=lot.fee;remaining-=lot.sz;q.shift();}
-                else{entryW+=lot.px*remaining;entrySize+=remaining;openFees+=lot.fee*(remaining/lot.sz);lot.sz-=remaining;remaining=0;}
-              }
-              const avgEntry=entrySize>0?entryW/entrySize:0;
-              const netPnl=pnlN-openFees;// close.closedPnl is al (gross - close-fee); aftrekken van open-fees geeft echte netto
-              const totalFee=feeN+openFees;
-              const partial=entrySize<szN-1e-9;
-              const usdNotional=avgEntry>0?(avgEntry*szN).toFixed(2):"";
-              csvTrades.push({...EMPTY_TRADE,
-                id:"hyperliquid_csv_"+uid(),
-                date:openDate||d.date,time:openTime||d.time,
-                openTime:openFull||"",closeTime:d.full,
-                pair:hlPair(coin),
-                direction:side,
-                entry:avgEntry>0?normPrice(avgEntry):"",
-                exit:normPrice(pxN),
-                positionSize:usdNotional,
-                positionSizeAsset:szN>0?normPrice(szN):"",
-                pnl:String(netPnl.toFixed(4)),
-                fees:String(totalFee.toFixed(4)),
-                leverage:"",
-                source:forExchange||"hyperliquid",
-                status:"closed",
-                notes:partial?"⚠ Partial data: opening fills buiten CSV-range":"",
-              });
-            }
+            const v=parseCSVLine(lines[i]).map(x=>x.replace(/"/g,"").trim());
+            if(v.length<8)continue;
+            fills.push({coin:v[1],dir:v[2],px:v[3],sz:v[4],fee:v[6],closedPnl:v[7],ms:parseHLDateMs(v[0])});
+          }
+          const reconstructed=ExchangeAPI.hyperliquid._reconstructTrades(fills,"hyperliquid_csv");
+          for(const t of reconstructed){
+            t.source=forExchange||"hyperliquid";
+            csvTrades.push(t);
           }
         }
         if(isFtmoMetriX){
