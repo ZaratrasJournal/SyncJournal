@@ -867,7 +867,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.12",released:"2026-04-23"};
+const APP_VERSION={version:"v12.13",released:"2026-04-23"};
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
 function isNewerVersion(a,b){
   const parse=(s)=>String(s||"").replace(/^v/,"").split(".").map(n=>parseInt(n,10)||0);
@@ -5722,6 +5722,7 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,imp
   const[testing,setTesting]=useState(null);
   const[syncing,setSyncing]=useState(null);
   const[syncResult,setSyncResult]=useState(null);
+  const[walletFocused,setWalletFocused]=useState(false);// voor masker-on-blur bij walletOnly exchanges
   const exCfg=()=>config?.exchanges?.[ex]||{};
   const setField=(k,v)=>setConfig(p=>({...p,exchanges:{...(p.exchanges||{}),[ex]:{...(exCfg()),[k]:v}}}));
   const test=async()=>{setTesting(ex);setSyncResult(null);try{const api=ExchangeAPI[ex];const c=exCfg();if(api.walletOnly){if(!c.walletAddress){showToast("Voer wallet-adres in","error");return}const r=await api.testConnection(c.walletAddress);if(r.success){setSyncResult({ok:true,msg:`✓ Verbonden. Account value: $${parseFloat(r.balance||"0").toFixed(2)}`});showToast(`${api.name} verbonden`)}return}if(!c.apiKey||!c.apiSecret){showToast("Voer API key en secret in","error");return}const r=api.needsPassphrase?await api.testConnection(c.apiKey,c.apiSecret,c.passphrase):await api.testConnection(c.apiKey,c.apiSecret);if(r.success){setSyncResult({ok:true,msg:`✓ Verbonden. Balance: $${parseFloat(r.balance||"0").toFixed(2)} USDT`});showToast(`${ExchangeAPI[ex].name} verbonden`)}else{setSyncResult({ok:false,msg:"Verbinding mislukt"});showToast("Verbinding mislukt","error")}}catch(e){setSyncResult({ok:false,msg:e.message||"Verbinding mislukt"});showToast(e.message||"Verbinding mislukt","error")}finally{setTesting(null)}};
@@ -5797,7 +5798,11 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,imp
         <div style={{background:"var(--glass)",backdropFilter:"var(--glass-blur)",WebkitBackdropFilter:"var(--glass-blur)",borderRadius:"var(--radius-lg)",padding:"20px",marginBottom:"16px",border:"1px solid var(--border1)"}}>
           <div style={{display:"flex",alignItems:"center",gap:"12px",marginBottom:"16px"}}><ExchangeIcon name={ex} size={28}/><div><div style={{fontSize:"14px",fontWeight:700,color:"var(--text)"}}>{ExchangeAPI[ex].name}</div><div style={{fontSize:"11px",color:"var(--text4)"}}>{ExchangeAPI[ex].csvOnly?"CSV import — geen API-koppeling":ExchangeAPI[ex].walletOnly?"Wallet-adres (geen API key)":"API verbinding instellen"}</div></div></div>
           <div style={{display:"grid",gap:"12px"}}>
-            {ExchangeAPI[ex].walletOnly&&<div><div style={{fontSize:"11px",color:"var(--text3)",marginBottom:"6px",fontWeight:500,textTransform:"uppercase",letterSpacing:"0.06em"}}>Wallet-adres</div><input type="text" value={exCfg().walletAddress||""} onChange={e=>setField("walletAddress",e.target.value)} placeholder="0x..." style={{...iStyle,fontFamily:"var(--mono)"}}/><div style={{fontSize:"10px",color:"var(--amber)",marginTop:"6px",lineHeight:1.5}}>⚠ Je wallet-adres is publiek op Hyperliquid. Iedereen met dit adres kan je trades inzien via de app of API.</div></div>}
+            {ExchangeAPI[ex].walletOnly&&(()=>{
+              const addr=exCfg().walletAddress||"";
+              const masked=addr.length>10?`${addr.slice(0,6)}…${addr.slice(-4)}`:addr;
+              return(<div><div style={{fontSize:"11px",color:"var(--text3)",marginBottom:"6px",fontWeight:500,textTransform:"uppercase",letterSpacing:"0.06em"}}>Wallet-adres</div><input type="text" value={walletFocused?addr:masked} onChange={e=>setField("walletAddress",e.target.value)} onFocus={()=>setWalletFocused(true)} onBlur={()=>setWalletFocused(false)} placeholder="0x..." style={{...iStyle,fontFamily:"var(--mono)"}}/><div style={{fontSize:"10px",color:"var(--text5)",marginTop:"4px"}}>{addr&&!walletFocused?"Klik om te bewerken — middenstuk verborgen tegen shoulder-surfen":" "}</div><div style={{fontSize:"10px",color:"var(--amber)",marginTop:"6px",lineHeight:1.5}}>⚠ Je Hyperliquid-trades zijn public on-chain. Iedereen met je wallet-adres kan ze inzien.</div></div>);
+            })()}
             {!ExchangeAPI[ex].csvOnly&&!ExchangeAPI[ex].walletOnly&&[["apiKey","API Key","text"],["apiSecret","API Secret","password"],...(ExchangeAPI[ex].needsPassphrase?[["passphrase","Passphrase","password"]]:[])] .map(([field,label,type])=>(<div key={field}><div style={{fontSize:"11px",color:"var(--text3)",marginBottom:"6px",fontWeight:500,textTransform:"uppercase",letterSpacing:"0.06em"}}>{label}</div><input type={type} value={exCfg()[field]||""} onChange={e=>setField(field,e.target.value)} placeholder={field==="apiKey"?"Plak je API key...":field==="passphrase"?"Passphrase...":"Plak je API secret..."} style={{...iStyle,fontFamily:field!=="passphrase"?"var(--mono)":"var(--font)"}}/></div>))}
             {!ExchangeAPI[ex].csvOnly&&<div><div style={{fontSize:"11px",color:"var(--text3)",marginBottom:"6px",fontWeight:500,textTransform:"uppercase",letterSpacing:"0.06em"}}>Sync vanaf</div><input type="date" value={exCfg().syncFrom||new Date(new Date().getFullYear(),new Date().getMonth(),1).toISOString().split("T")[0]} onChange={e=>setField("syncFrom",e.target.value)} style={{...iStyle,width:"auto"}}/><div style={{fontSize:"10px",color:"var(--text5)",marginTop:"4px"}}>Default: 1e van deze maand</div></div>}
             {/* Strategie-label (bijv. "Swing", "Scalp") + preset-suggesties */}

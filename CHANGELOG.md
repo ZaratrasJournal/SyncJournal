@@ -6,6 +6,11 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.13] — 2026-04-23
+
+### Gewijzigd
+- **Hyperliquid wallet-adres gemaskeerd on-blur** — na invoer toont het veld `0x628Dbd…E888` i.p.v. het volledige 42-char adres. Klik in het veld → volledig adres terug, om te bewerken. Beschermt tegen shoulder-surfen wanneer je je journal aan iemand laat zien. Disclaimer is ook strakker gemaakt: "Je Hyperliquid-trades zijn public on-chain. Iedereen met je wallet-adres kan ze inzien."
+
 ## [v12.12] — 2026-04-23
 
 ### Toegevoegd
