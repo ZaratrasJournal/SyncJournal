@@ -867,7 +867,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.15",released:"2026-04-23"};
+const APP_VERSION={version:"v12.16",released:"2026-04-23"};
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
 function isNewerVersion(a,b){
   const parse=(s)=>String(s||"").replace(/^v/,"").split(".").map(n=>parseInt(n,10)||0);
@@ -1510,14 +1510,34 @@ const ExchangeAPI = {
       if(coin.startsWith("@"))return coin+" (spot)";
       return coin+"/USDC";
     },
+    // Aggregeer sub-fills op (ms, coin, dir) — Hyperliquid's API levert één logische order
+    // vaak als meerdere fills op dezelfde ms (bv. 0.00017 + 0.00207 BTC op dezelfde sec).
+    // Hun eigen CSV-export doet die consolidatie al server-side; wij doen het voor de API zodat
+    // beide paden identiek uitkomen. Sz wordt gesommeerd, px = size-weighted average, fee +
+    // closedPnl gesommeerd. Tid van de eerste sub-fill behouden voor dedup.
+    _aggregateSubFills(fills){
+      const g={};
+      for(const f of fills){
+        const k=(f.ms||0)+"|"+(f.coin||"")+"|"+(f.dir||"");
+        const sz=Math.abs(parseFloat(f.sz)||0);
+        const px=parseFloat(f.px)||0;
+        const fee=Math.abs(parseFloat(f.fee)||0);
+        const pnl=parseFloat(f.closedPnl)||0;
+        if(!g[k]){g[k]={ms:f.ms,coin:f.coin,dir:f.dir,tid:f.tid,_szSum:0,_pxW:0,_feeSum:0,_pnlSum:0};}
+        g[k]._szSum+=sz;g[k]._pxW+=px*sz;g[k]._feeSum+=fee;g[k]._pnlSum+=pnl;
+        if(!g[k].tid&&f.tid)g[k].tid=f.tid;
+      }
+      return Object.values(g).map(o=>({ms:o.ms,coin:o.coin,dir:o.dir,tid:o.tid,sz:String(o._szSum),px:o._szSum>0?String(o._pxW/o._szSum):"0",fee:String(o._feeSum),closedPnl:String(o._pnlSum)}));
+    },
     // Gedeelde FIFO-reconstructie voor API + CSV. Input: array van fills met
-    // {coin, dir, px, sz, fee, closedPnl, ms, tid?}. Elke close-fill wordt gematcht met
-    // oudste opens per coin+richting → gewogen entry, netto PnL (closedPnl − openFees),
-    // totale fees = close-fee + opens-fees. Partial fills gesplitst over meerdere opens.
+    // {coin, dir, px, sz, fee, closedPnl, ms, tid?}. Sub-fills op zelfde ms+coin+dir worden
+    // eerst geaggregeerd. Elke close-fill wordt gematcht met oudste opens per coin+richting
+    // → gewogen entry, netto PnL (closedPnl − openFees), totale fees = close-fee + opens-fees.
     _reconstructTrades(fills,idPrefix){
+      const aggregated=this._aggregateSubFills(fills);
       const opens={};// key "COIN:side" → [{px,sz,fee,ms}, ...]
       const out=[];
-      const sorted=[...fills].sort((a,b)=>(a.ms||0)-(b.ms||0));
+      const sorted=[...aggregated].sort((a,b)=>(a.ms||0)-(b.ms||0));
       for(const f of sorted){
         let side,isOpen;
         if(f.dir==="Open Long"){side="long";isOpen=true;}
@@ -1545,8 +1565,11 @@ const ExchangeAPI = {
             else{entryW+=lot.px*remaining;entrySize+=remaining;openFees+=lot.fee*(remaining/lot.sz);lot.sz-=remaining;remaining=0;}
           }
           const avgEntry=entrySize>0?entryW/entrySize:0;
-          const netPnl=pnlN-openFees;// closedPnl is al (gross − close-fee); open-fees er ook af = echte netto
+          // closedPnl (API-stijl, na pre-aggregatie) = GROSS PnL zonder fees afgetrokken.
+          // Echte netto = gross − close_fee − Σ(open_fees). CSV-parser normaliseert zijn
+          // eigen "closedPnl − close_fee" convention naar API-stijl vóór de helper.
           const totalFee=feeN+openFees;
+          const netPnl=pnlN-totalFee;
           const partial=entrySize<szN-1e-9;
           const usdNotional=avgEntry>0?(avgEntry*szN).toFixed(2):"";
           const closeMs=Number(f.ms)||0;
@@ -5695,7 +5718,12 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,imp
           for(let i=1;i<lines.length;i++){
             const v=parseCSVLine(lines[i]).map(x=>x.replace(/"/g,"").trim());
             if(v.length<8)continue;
-            fills.push({coin:v[1],dir:v[2],px:v[3],sz:v[4],fee:v[6],closedPnl:v[7],ms:parseHLDateMs(v[0])});
+            // Normaliseer CSV's closedPnl (gross − close-fee) naar API-stijl (gross)
+            // door de fee erbij op te tellen. Voor open-rijen is dat −fee + fee = 0 (API-match).
+            // Voor close-rijen is dat (gross − close_fee) + close_fee = gross.
+            const feeVal=Math.abs(parseFloat(v[6])||0);
+            const pnlNorm=String((parseFloat(v[7])||0)+feeVal);
+            fills.push({coin:v[1],dir:v[2],px:v[3],sz:v[4],fee:v[6],closedPnl:pnlNorm,ms:parseHLDateMs(v[0])});
           }
           const reconstructed=ExchangeAPI.hyperliquid._reconstructTrades(fills,"hyperliquid_csv");
           for(const t of reconstructed){

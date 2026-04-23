@@ -6,6 +6,22 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.16] — 2026-04-23
+
+### Fixed
+- **Hyperliquid API-import: sub-fill aggregatie + juiste `closedPnl`-conventie** — bij diepgaandere vergelijking van API vs CSV tegen een echt wallet-adres bleken twee problemen, die samen de netto-PnL structureel lieten afwijken:
+  1. **Sub-fills**: Hyperliquid's API levert soms meerdere fills op dezelfde ms (bv. `0.00017 + 0.00207 = 0.00224 BTC`) voor één logisch order. Hun eigen CSV-export consolideert die server-side tot één regel. Onze parser emit per close-fill een trade → API-route kreeg hierdoor "extra" duplicate trades. Fix: nieuwe `_aggregateSubFills` stap vóór FIFO die sub-fills op `(ms, coin, dir)` samenvoegt met size-weighted average px + gesommeerde fee + closedPnl.
+  2. **`closedPnl` convention mismatch**: de API retourneert `closedPnl` als **gross PnL** (geen fees afgetrokken), de CSV als `gross − close_fee`. Mijn v12.15 helper nam de CSV-conventie aan voor beide, waardoor API-netto telkens te gunstig was (alleen open-fees werden afgetrokken, close-fee werd gemist). Fix: helper hanteert nu API-conventie als intern formaat (`closedPnl = gross`), CSV-parser normaliseert naar die stijl door `+ fee` op elke rij; helperformule is `netPnl = closedPnl − (close_fee + Σ open_fees)` = `pnlN − totalFee`.
+
+### Verificatie
+Gevalideerd tegen live wallet `0x1Bd6519AedE0A6cB8ecB37B4C94bA9f0AC3911Be` (72 API-fills, 68 CSV-regels in zelfde tijdrange):
+- API: 33 trades, Σ netto PnL −$8.3548, Σ fees $3.6207
+- CSV: 33 trades, Σ netto PnL −$8.3548, Σ fees $3.6207
+- Per-trade diffs > $0.001: **0**
+
+### Leermoment
+De v12.15 research-agent interpreteerde Hyperliquid's docs-formule `closedPnl = fee_close + side*(exit−entry)*sz` verkeerd (las het als "gross − fee"). Directe meting tegen live data liet de juiste conventie zien. Docs blindelings vertrouwen < echte response inspecteren.
+
 ## [v12.15] — 2026-04-23
 
 ### Fixed
