@@ -867,7 +867,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.13",released:"2026-04-23"};
+const APP_VERSION={version:"v12.14",released:"2026-04-23"};
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
 function isNewerVersion(a,b){
   const parse=(s)=>String(s||"").replace(/^v/,"").split(".").map(n=>parseInt(n,10)||0);
@@ -5400,6 +5400,9 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,imp
         // FTMO MetriX export: Ticket,Open,Type,Volume,Symbol,Price,SL,TP,Close,Price,Swap,Commissions,Profit,Pips,"Trade duration in seconds"
         // Positioneel parsen vereist: kolom "Price" komt twee keer voor (idx 5=entry, idx 9=exit).
         const isFtmoMetriX=headers[0]==="Ticket"&&headers.includes("Pips")&&headers.includes("Volume")&&headers.includes("Swap");
+        // Hyperliquid compact CSV export: time,coin,dir,px,sz,ntl,fee,closedPnl
+        // FIFO match open→close per coin+direction om round-trip trades te reconstrueren.
+        const isHyperliquidFills=headers[0]==="time"&&headers.includes("coin")&&headers.includes("closedPnl")&&headers.includes("dir")&&headers.includes("ntl");
         let csvTrades=[];
         if(isBlofinOrder){
           // Blofin Order History → FIFO positie-reconstructie (one-way mode verondersteld).
@@ -5654,6 +5657,65 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,imp
           const posRows=rows.filter(r=>r.type==="futures trade"&&r.symbol!=="usd");
           csvTrades=usdCloses.map(u=>{const matching=posRows.find(p=>p.dateTime===u.dateTime&&p["trade price"]===u["trade price"]);const sizeChg=matching?parseFloat(matching.change):0;const direction=sizeChg>0?"short":"long";const entryPrice=matching?matching["new average entry price"]:"";const contract=(u.contract||"pf_xbtusd").toUpperCase().replace("PF_","").replace("PI_","");const krakenP=(s)=>{s=s.replace("XBT","BTC");if(s.endsWith("USDC"))return s.slice(0,-4)+"/USDC";if(s.endsWith("USDT"))return s.slice(0,-4)+"/USDT";if(s.endsWith("USD"))return s.slice(0,-3)+"/USD";return s+"/USD"};const pair=krakenP(contract);const dt=u.dateTime||"";return{...EMPTY_TRADE,id:"kraken_csv_"+uid(),date:dt.split(" ")[0]||"",time:(dt.split(" ")[1]||"00:00").slice(0,5),pair,direction,entry:entryPrice||"",exit:u["trade price"]||"",positionSize:matching?String(Math.abs(sizeChg)):"",pnl:u["realized pnl"]||"",fees:u.fee||"0",leverage:"1",source:forExchange||"kraken",status:"closed"}});
         }
+        if(isHyperliquidFills){
+          // Hyperliquid compact CSV — elke rij is een fill (Open/Close). FIFO-match opens met closes
+          // per coin+direction. Close-fill = 1 trade. closedPnl op close = gross - close-fee (netto exclusief
+          // open-fees); wij tellen open-fees er nog af voor echte netto.
+          const parseHLDate=(s)=>{const m=String(s||"").match(/^(\d{1,2})-(\d{1,2})-(\d{4})\s*-\s*(\d{2}):(\d{2})(?::(\d{2}))?/);if(!m)return{date:"",time:"00:00",full:""};return{date:`${m[3]}-${m[2].padStart(2,"0")}-${m[1].padStart(2,"0")}`,time:`${m[4]}:${m[5]}`,full:`${m[3]}-${m[2].padStart(2,"0")}-${m[1].padStart(2,"0")} ${m[4]}:${m[5]}:${m[6]||"00"}`};};
+          const hlPair=(c)=>!c?"":(c.startsWith("@")?c+" (spot)":c+"/USDC");
+          const opens={};// key="COIN:side" → [{px,sz,fee,date,time,full}, ...]
+          for(let i=1;i<lines.length;i++){
+            const vals=parseCSVLine(lines[i]).map(v=>v.replace(/"/g,"").trim());
+            if(vals.length<8)continue;
+            const[timeStr,coin,dir,px,sz,_ntl,fee,closedPnl]=vals;
+            const pxN=parseFloat(px)||0,szN=Math.abs(parseFloat(sz)||0),feeN=Math.abs(parseFloat(fee)||0),pnlN=parseFloat(closedPnl)||0;
+            const d=parseHLDate(timeStr);
+            let side,isOpen;
+            if(dir==="Open Long"){side="long";isOpen=true;}
+            else if(dir==="Close Long"){side="long";isOpen=false;}
+            else if(dir==="Open Short"){side="short";isOpen=true;}
+            else if(dir==="Close Short"){side="short";isOpen=false;}
+            else if(dir==="Buy"){side="long";isOpen=true;}// spot: Buy opent long
+            else if(dir==="Sell"){side="long";isOpen=false;}// spot: Sell sluit long
+            else continue;// flip-fills "Long > Short" / "Short > Long" — MVP: skip
+            const qKey=coin+":"+side;
+            if(isOpen){
+              if(!opens[qKey])opens[qKey]=[];
+              opens[qKey].push({px:pxN,sz:szN,fee:feeN,date:d.date,time:d.time,full:d.full});
+            }else{
+              const q=opens[qKey]||[];
+              let remaining=szN,entryW=0,entrySize=0,openFees=0,openDate="",openTime="",openFull="";
+              while(remaining>1e-9&&q.length){
+                const lot=q[0];
+                if(!openDate){openDate=lot.date;openTime=lot.time;openFull=lot.full;}
+                if(lot.sz<=remaining+1e-9){entryW+=lot.px*lot.sz;entrySize+=lot.sz;openFees+=lot.fee;remaining-=lot.sz;q.shift();}
+                else{entryW+=lot.px*remaining;entrySize+=remaining;openFees+=lot.fee*(remaining/lot.sz);lot.sz-=remaining;remaining=0;}
+              }
+              const avgEntry=entrySize>0?entryW/entrySize:0;
+              const netPnl=pnlN-openFees;// close.closedPnl is al (gross - close-fee); aftrekken van open-fees geeft echte netto
+              const totalFee=feeN+openFees;
+              const partial=entrySize<szN-1e-9;
+              const usdNotional=avgEntry>0?(avgEntry*szN).toFixed(2):"";
+              csvTrades.push({...EMPTY_TRADE,
+                id:"hyperliquid_csv_"+uid(),
+                date:openDate||d.date,time:openTime||d.time,
+                openTime:openFull||"",closeTime:d.full,
+                pair:hlPair(coin),
+                direction:side,
+                entry:avgEntry>0?normPrice(avgEntry):"",
+                exit:normPrice(pxN),
+                positionSize:usdNotional,
+                positionSizeAsset:szN>0?normPrice(szN):"",
+                pnl:String(netPnl.toFixed(4)),
+                fees:String(totalFee.toFixed(4)),
+                leverage:"",
+                source:forExchange||"hyperliquid",
+                status:"closed",
+                notes:partial?"⚠ Partial data: opening fills buiten CSV-range":"",
+              });
+            }
+          }
+        }
         if(isFtmoMetriX){
           // FTMO MetriX export — CFD-trades uit MT5. Positioneel parsen: kolom "Price" staat twee keer.
           // Kolom-order: 0=Ticket 1=Open 2=Type 3=Volume 4=Symbol 5=Price(entry) 6=SL 7=TP 8=Close 9=Price(exit) 10=Swap 11=Commissions 12=Profit 13=Pips 14=Duration
@@ -5705,7 +5767,7 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,imp
             });
           }
         }
-        if(!isKrakenLog&&!isBlofinOrder&&!isMexcPosition&&!isMexcFutures&&!isFtmoMetriX){
+        if(!isKrakenLog&&!isBlofinOrder&&!isMexcPosition&&!isMexcFutures&&!isFtmoMetriX&&!isHyperliquidFills){
           for(let i=1;i<lines.length;i++){const vals=parseCSVLine(lines[i]).map(v=>v.replace(/"/g,""));const row={};headers.forEach((h,idx)=>row[h.toLowerCase()]=vals[idx]||"");const pairRaw=row.symbol||row.pair||row.contract||"";const pair=pairRaw?(pairRaw.includes("/")?pairRaw:pairRaw):"BTC/"+(config.defaultQuote||"USDT");const trade={...EMPTY_TRADE,id:"csv_"+uid(),date:row.date||(row.time||"").split(" ")[0]||(row.closetime||"").split(" ")[0]||"",time:((row.time||"").split(" ")[1]||(row.closetime||"").split(" ")[1]||"00:00").slice(0,5),pair,direction:((row.side||row.direction||row.type||"").toLowerCase().includes("buy")||(row.side||"").toLowerCase().includes("long"))?"long":"short",entry:row.openprice||row.entryprice||row.entry||row.price||"",exit:row.closeprice||row.exitprice||row.exit||"",positionSize:row.volume||row.size||row.quantity||row.amount||"",pnl:row.pnl||row.profit||row.realizedpnl||row.realised_pnl||"",fees:row.fee||row.fees||row.commission||"0",leverage:row.leverage||"10",source:forExchange||"csv",status:"closed"};if(trade.date)csvTrades.push(trade)}
         }
         if(!csvTrades.length){showToast("Geen trades gevonden in CSV","error");return}
@@ -5870,11 +5932,14 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,imp
             <strong style={{color:"var(--teal)"}}>✓ Blofin CSV werkt volledig</strong> — posities worden gereconstrueerd uit order history met entry + exit + TP's. Oude opens buiten de CSV-range krijgen "partial data" melding.
           </div>}
           {ex==="hyperliquid"&&<div style={{marginTop:"10px",padding:"10px 14px",background:"rgba(0,194,255,0.06)",border:"1px solid rgba(0,194,255,0.2)",borderRadius:"6px",fontSize:"11px",color:"var(--text3)",lineHeight:1.6}}>
-            <strong style={{color:"#00c2ff"}}>🔗 Hyperliquid — wallet-adres sync</strong>
-            <div style={{marginTop:"6px"}}>1. Plak je Hyperliquid wallet-adres (0x... + 40 hex-tekens) in het veld hierboven</div>
-            <div>2. Klik <strong>Verbinding testen</strong> — toont je account value als het klopt</div>
-            <div>3. <strong>Trades importeren</strong> haalt historische closed fills op, <strong>Open posities ophalen</strong> de live posities</div>
-            <div style={{marginTop:"8px",paddingTop:"8px",borderTop:"1px solid rgba(0,194,255,0.15)",fontSize:"10px",color:"var(--text4)"}}>Fase 1: perps only, geen funding, spot-pairs als "@ID (spot)" — uitbreidingen komen later. Max 10.000 recente fills via API (CSV-fallback voor oudere trades).</div>
+            <strong style={{color:"#00c2ff"}}>🔗 Hyperliquid — twee opties</strong>
+            <div style={{marginTop:"8px",marginBottom:"4px",fontWeight:600,color:"var(--text2)"}}>A · Wallet-adres sync (live)</div>
+            <div>1. Plak je wallet-adres (0x… + 40 hex) hierboven → <strong>Verbinding testen</strong></div>
+            <div>2. <strong>Trades importeren</strong> = historische closes, <strong>Open posities ophalen</strong> = live</div>
+            <div style={{marginTop:"8px",marginBottom:"4px",fontWeight:600,color:"var(--text2)"}}>B · CSV import (oudere trades)</div>
+            <div>1. Op app.hyperliquid.xyz → Portfolio → scroll naar Trade History → <strong>Export to CSV</strong></div>
+            <div>2. Klik <strong>Importeer CSV / XLSX</strong> hieronder, kies het bestand</div>
+            <div style={{marginTop:"8px",paddingTop:"8px",borderTop:"1px solid rgba(0,194,255,0.15)",fontSize:"10px",color:"var(--text4)"}}>API-limiet: laatste 10.000 fills. CSV gaat verder terug. Parser doet FIFO-match open↔close per coin+richting; open fills aan einde van export (nog niet gesloten) worden overgeslagen.</div>
           </div>}
           {ex==="ftmo"&&<div style={{marginTop:"10px",padding:"10px 14px",background:"rgba(0,160,233,0.06)",border:"1px solid rgba(0,160,233,0.2)",borderRadius:"6px",fontSize:"11px",color:"var(--text3)",lineHeight:1.6}}>
             <strong style={{color:"#00a0e9"}}>📘 FTMO MetriX CSV importeren</strong>

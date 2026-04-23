@@ -6,6 +6,19 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.14] — 2026-04-23
+
+### Toegevoegd
+- **Hyperliquid CSV-import** — complementeert de v12.12 API-route voor oudere trades (API levert max 10.000 recente fills). Het compacte export-format van Hyperliquid is `time,coin,dir,px,sz,ntl,fee,closedPnl`. Parser doet FIFO-matching: opens worden per `coin+direction` in een queue geduwd, closes poppen matching opens in chronologische volgorde met gewogen entry-prijs bij partial fills. PnL-berekening: close's `closedPnl` is al (gross − close-fee); open-fees worden er nog van afgetrokken voor echte netto. Open fills zonder matching close (open posities aan einde van export) worden overgeslagen.
+- **Hyperliquid instructieblok** nu twee-opties: A) wallet-adres live sync, B) CSV-import — met stappenplan per route.
+- **Datum-parser** `D-M-YYYY - HH:MM:SS` (Hyperliquid's eigen format) → ISO `YYYY-MM-DD HH:MM:SS` voor ons schema.
+- **Auto-detect header**: `time[0] + coin + closedPnl + dir + ntl` is uniek voor Hyperliquid CSV (onderscheid met FTMO, Blofin, MEXC, Kraken).
+
+### Known limitations
+- Flip-fills `Long > Short` / `Short > Long` worden overgeslagen (zeldzaam, MVP keeps parser simple).
+- Spot asset-namen met `@ID`-notatie worden getoond als `@ID (spot)` (spotMeta-lookup komt fase 2).
+- Geen funding-correctie (Hyperliquid levert funding via apart endpoint/bestand — fase 2).
+
 ## [v12.13] — 2026-04-23
 
 ### Gewijzigd
