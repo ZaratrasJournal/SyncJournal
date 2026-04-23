@@ -6,6 +6,23 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.12] — 2026-04-23
+
+### Toegevoegd
+- **Hyperliquid API-integratie** (fase 1) — nieuwe "Hyperliquid" exchange in Instellingen → Accounts. Geen API-key nodig, alleen wallet-adres (0x… 40-hex). Directe browser-calls naar `https://api.hyperliquid.xyz/info` (CORS-enabled, geen Worker, geen signing). Ondersteunt:
+  - **Trades importeren** — pagineert `userFillsByTime` in batches van 2000, filtert op close-fills (`Close Long`/`Close Short`/flip/`Sell`-spot), dedup via `tid`. Default sync-window 90 dagen, configureerbaar via "Sync vanaf".
+  - **Open posities ophalen** — `clearinghouseState` → `assetPositions` → direction + entry + size + uPnL + liquidation price.
+  - **Verbinding testen** — valideert adres (regex) + toont `marginSummary.accountValue`.
+- **Nieuwe `walletOnly` flag** in `ExchangeAPI`-registry. UI toont "Wallet-adres" input i.p.v. API Key/Secret, plus een gele privacy-disclaimer ("je wallet-adres is publiek — iedereen kan je trades zien"). `test` / `sync` / `syncOpen` handlers pass `walletAddress` als eerste argument door naar `fetchTrades(walletAddress, null, null, startTime)`.
+- **Hyperliquid instructieblok** in Instellingen — 3-stappen uitleg + fase-1 kanttekeningen (perps only, geen funding-correctie, spot-pairs tonen als `@ID (spot)` zolang spotMeta-lookup ontbreekt).
+
+### Known limitations (fase 1)
+- Entry-prijs niet afgeleid uit losse close-fills (zou per-position aggregatie vereisen). Getoond als leeg; user kan handmatig invullen.
+- Funding-betalingen niet inbegrepen in PnL (HL levert die via apart `userFunding`-endpoint — fase 2).
+- Spot `@ID` asset-naam niet vertaald (lookup via `spotMeta` — fase 2).
+- API-limiet: laatste 10.000 fills. Voor oudere history komt CSV-import later.
+- "Long > Short" / "Short > Long" flip-fills worden als 1 trade geregistreerd met een waarschuwingsnotitie — technisch is het een close + nieuwe entry in één order.
+
 ## [v12.11] — 2026-04-23
 
 ### Fixed

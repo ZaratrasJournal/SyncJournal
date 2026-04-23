@@ -867,7 +867,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.11",released:"2026-04-23"};
+const APP_VERSION={version:"v12.12",released:"2026-04-23"};
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
 function isNewerVersion(a,b){
   const parse=(s)=>String(s||"").replace(/^v/,"").split(".").map(n=>parseInt(n,10)||0);
@@ -1488,6 +1488,123 @@ const ExchangeAPI = {
     async fetchOpenPositions(apiKey,apiSecret){const data=await proxyCall({exchange:"kraken",action:"open_positions",apiKey,apiSecret});return(data.positions||[]).map(t=>({...this._normalise({...t,status:"open"}),status:"open"}))},
     async fetchFills(apiKey,apiSecret,_pp,symbol,startTime,endTime){const data=await proxyCall({exchange:"kraken",action:"fills",apiKey,apiSecret,symbol,startTime,endTime});return{fills:(data.fills||[]).map(t=>this._normalise(t)),total:data.total||0}}
   },
+  hyperliquid:{
+    // Wallet-only exchange — geen API-keys, alleen wallet-adres (public on-chain data).
+    // Directe browser-calls naar /info endpoint (CORS-enabled), geen Worker nodig, geen signing.
+    // User data via wallet-adres als parameter; iedereen die dit adres kent kan de trades zien.
+    name:"Hyperliquid",color:"#00c2ff",needsPassphrase:false,walletOnly:true,
+    _base:"https://api.hyperliquid.xyz/info",
+    async _post(body){
+      const res=await fetch(this._base,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+      if(!res.ok)throw new Error(`Hyperliquid HTTP ${res.status}`);
+      return res.json();
+    },
+    _validateAddress(addr){
+      if(!addr||typeof addr!=="string"||!/^0x[0-9a-fA-F]{40}$/.test(addr.trim()))throw new Error("Ongeldig wallet-adres — verwacht 0x gevolgd door 40 hex-tekens");
+      return addr.trim();
+    },
+    // coin → pair: perps zijn USDC-gemargined ("BTC" → "BTC/USDC"). Spot (@107-notatie) wordt
+    // as-is weergegeven in fase 1; spotMeta-lookup komt later.
+    _toPair(coin){
+      if(!coin)return"";
+      if(coin.startsWith("@"))return coin+" (spot)";
+      return coin+"/USDC";
+    },
+    async testConnection(walletAddress){
+      const addr=this._validateAddress(walletAddress);
+      const state=await this._post({type:"clearinghouseState",user:addr});
+      const equity=parseFloat(state?.marginSummary?.accountValue||"0");
+      return{success:true,balance:equity.toFixed(2)};
+    },
+    async fetchTrades(walletAddress,_unused1,_unused2,startTime){
+      const addr=this._validateAddress(walletAddress);
+      // Pagineer userFillsByTime in batches van 2000. startTime is ms-epoch.
+      // Hyperliquid geeft max 2000 fills per call; loop tot response < 2000 of oudste fill < startTime.
+      const fromTs=startTime?Number(startTime):new Date(Date.now()-90*24*60*60*1000).getTime();// default 90d
+      const allFills=[];let cursor=fromTs;let guard=0;
+      while(guard++<20){// hard cap: 20 calls = 40k fills max
+        const batch=await this._post({type:"userFillsByTime",user:addr,startTime:cursor});
+        if(!Array.isArray(batch)||batch.length===0)break;
+        allFills.push(...batch);
+        if(batch.length<2000)break;
+        const lastTs=batch[batch.length-1].time;
+        if(!lastTs||lastTs<=cursor)break;// safety: geen voortgang
+        cursor=lastTs+1;
+      }
+      // Alleen close-fills tellen als afgesloten trades. Open-fills zijn entries zonder exit.
+      // dir-waarden: "Open Long"/"Close Long"/"Open Short"/"Close Short"/"Long > Short"/"Short > Long"/"Buy"(spot open long)/"Sell"(spot close long).
+      const closeFills=allFills.filter(f=>{
+        const d=String(f.dir||"");
+        return d.startsWith("Close ")||d.includes(" > ")||d==="Sell";
+      });
+      return closeFills.map(f=>{
+        const isFlip=String(f.dir||"").includes(" > ");
+        const isLongClose=f.dir==="Close Long"||f.dir==="Long > Short"||f.dir==="Sell";
+        const direction=isLongClose?"long":"short";
+        const sz=Math.abs(parseFloat(f.sz||"0"));
+        const px=parseFloat(f.px||"0");
+        const usdNotional=(sz>0&&px>0)?(sz*px).toFixed(2):"";
+        const pnl=parseFloat(f.closedPnl||"0");
+        const fee=Math.abs(parseFloat(f.fee||"0"));
+        const netPnl=pnl-fee;
+        return{
+          id:"hyperliquid_"+(f.tid||uid()),
+          positionId:String(f.oid||""),
+          date:ts2date(f.time),time:ts2time(f.time),
+          openTime:"",// niet beschikbaar uit close-fill alleen; zou aggregatie over open-fill vereisen
+          closeTime:String(f.time||""),
+          pair:this._toPair(f.coin),
+          direction,
+          entry:"",// zonder positie-aggregatie niet betrouwbaar af te leiden
+          exit:normPrice(f.px||""),
+          positionSize:usdNotional,
+          positionSizeAsset:sz>0?normPrice(sz):"",
+          pnl:String(netPnl.toFixed(4)),
+          fees:String(fee.toFixed(4)),
+          leverage:"",// Hyperliquid leverage is per-account setting, niet per fill in response
+          source:"hyperliquid",status:"closed",
+          stopLoss:"",takeProfit:"",
+          setupTags:[],confirmationTags:[],timeframeTags:[],emotionTags:[],mistakeTags:[],customTags:[],
+          rating:0,screenshot:null,
+          notes:isFlip?"⚠ Flip-fill ("+f.dir+") — bevat zowel close als entry van tegengestelde richting":"",
+          links:[],layers:[],manualOverrides:[],tpLevels:[],
+        };
+      });
+    },
+    async fetchOpenPositions(walletAddress){
+      const addr=this._validateAddress(walletAddress);
+      const state=await this._post({type:"clearinghouseState",user:addr});
+      const positions=state?.assetPositions||[];
+      return positions.map(ap=>{
+        const p=ap.position||{};
+        const szi=parseFloat(p.szi||"0");// signed size: positief=long, negatief=short
+        const sz=Math.abs(szi);
+        const entryPx=parseFloat(p.entryPx||"0");
+        const usdNotional=(sz>0&&entryPx>0)?(sz*entryPx).toFixed(2):"";
+        return{
+          id:"hyperliquid_open_"+p.coin+"_"+Date.now(),
+          positionId:p.coin||"",
+          openTime:"",closeTime:"",
+          date:ts2date(Date.now()),time:ts2time(Date.now()),
+          pair:this._toPair(p.coin),
+          direction:szi>0?"long":"short",
+          entry:normPrice(entryPx),exit:"",
+          positionSize:usdNotional,
+          positionSizeAsset:sz>0?normPrice(sz):"",
+          pnl:"",
+          fees:"0",
+          leverage:String(p.leverage?.value||""),
+          source:"hyperliquid",status:"open",
+          unrealizedPnl:normPrice(p.unrealizedPnl||""),
+          liquidationPrice:normPrice(p.liquidationPx||""),
+          stopLoss:"",takeProfit:"",
+          setupTags:[],confirmationTags:[],timeframeTags:[],emotionTags:[],mistakeTags:[],customTags:[],
+          rating:0,screenshot:null,notes:"",
+          links:[],layers:[],
+        };
+      });
+    }
+  },
   ftmo:{
     // CSV-only exchange — MT5 / FTMO MetriX export. Geen API (FTMO heeft er geen publieke),
     // read-only MT5 investor-password route zou MetaApi.cloud vereisen (~$30/mnd boven dev-tier).
@@ -1535,11 +1652,11 @@ function Stat({label,value,sub,color}){
   </div>);
 }
 
-const exName=(n)=>{if(!n)return"";const map={mexc:"MEXC",blofin:"Blofin",kraken:"Kraken",ftmo:"FTMO (MT5)",manual:"Handmatig",csv:"CSV"};return map[n.toLowerCase()]||n.charAt(0).toUpperCase()+n.slice(1)};
+const exName=(n)=>{if(!n)return"";const map={mexc:"MEXC",blofin:"Blofin",kraken:"Kraken",hyperliquid:"Hyperliquid",ftmo:"FTMO (MT5)",manual:"Handmatig",csv:"CSV"};return map[n.toLowerCase()]||n.charAt(0).toUpperCase()+n.slice(1)};
 
 function ExchangeIcon({name,size=16}){
   const n=(name||"").toLowerCase();
-  const logos={mexc:"https://www.google.com/s2/favicons?domain=mexc.com&sz=64",blofin:"https://www.google.com/s2/favicons?domain=blofin.com&sz=64",kraken:"https://www.google.com/s2/favicons?domain=kraken.com&sz=64",ftmo:"https://www.google.com/s2/favicons?domain=ftmo.com&sz=64"};
+  const logos={mexc:"https://www.google.com/s2/favicons?domain=mexc.com&sz=64",blofin:"https://www.google.com/s2/favicons?domain=blofin.com&sz=64",kraken:"https://www.google.com/s2/favicons?domain=kraken.com&sz=64",hyperliquid:"https://www.google.com/s2/favicons?domain=hyperliquid.xyz&sz=64",ftmo:"https://www.google.com/s2/favicons?domain=ftmo.com&sz=64"};
   if(logos[n])return(<img src={logos[n]} alt={n} style={{width:size,height:size,borderRadius:"3px",objectFit:"contain",flexShrink:0}} title={exName(n)}/>);
   if(n==="csv")return(<div style={{width:size,height:size,borderRadius:"4px",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:size*0.55,fontWeight:800,fontFamily:"var(--mono)",background:"#4B5563",color:"#fff",flexShrink:0}} title="CSV">C</div>);
   if(n==="manual"||n==="handmatig")return(<span style={{fontSize:size*0.85,flexShrink:0}} title="Handmatig">✏️</span>);
@@ -5607,14 +5724,14 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,imp
   const[syncResult,setSyncResult]=useState(null);
   const exCfg=()=>config?.exchanges?.[ex]||{};
   const setField=(k,v)=>setConfig(p=>({...p,exchanges:{...(p.exchanges||{}),[ex]:{...(exCfg()),[k]:v}}}));
-  const test=async()=>{setTesting(ex);setSyncResult(null);try{const api=ExchangeAPI[ex];const c=exCfg();if(!c.apiKey||!c.apiSecret){showToast("Voer API key en secret in","error");return}const r=api.needsPassphrase?await api.testConnection(c.apiKey,c.apiSecret,c.passphrase):await api.testConnection(c.apiKey,c.apiSecret);if(r.success){setSyncResult({ok:true,msg:`✓ Verbonden. Balance: $${parseFloat(r.balance||"0").toFixed(2)} USDT`});showToast(`${ExchangeAPI[ex].name} verbonden`)}else{setSyncResult({ok:false,msg:"Verbinding mislukt"});showToast("Verbinding mislukt","error")}}catch(e){setSyncResult({ok:false,msg:e.message||"Verbinding mislukt"});showToast("Proxy niet bereikbaar — check Worker URL in Instellingen","error")}finally{setTesting(null)}};
-  const sync=async()=>{setSyncing(ex);setSyncResult(null);try{const api=ExchangeAPI[ex];const c=exCfg();if(!c.apiKey||!c.apiSecret){showToast("Voer API key in","error");return}const startTime=c.syncFrom?new Date(c.syncFrom).getTime():new Date(new Date().getFullYear(),new Date().getMonth(),1).getTime();const newTrades=api.needsPassphrase?await api.fetchTrades(c.apiKey,c.apiSecret,c.passphrase,startTime):await api.fetchTrades(c.apiKey,c.apiSecret,null,startTime);if(newTrades&&newTrades.length){setPreview({exchange:ex,trades:newTrades,source:"api"});setSelected(new Set(newTrades.map(t=>t.id)));setPrevFilter({direction:"all",result:"all"});showToast(`${newTrades.length} trades gevonden — kies welke te importeren`);}else{showToast("Geen trades gevonden","info");}setSyncResult({ok:true,count:newTrades.length,trades:newTrades})}catch(e){setSyncResult({ok:false,msg:e.message});showToast(e.message||"Sync mislukt","error")}finally{setSyncing(null)}};
-  const syncOpen=async()=>{setSyncing(ex);setSyncResult(null);try{const api=ExchangeAPI[ex];const c=exCfg();if(!c.apiKey||!c.apiSecret){showToast("Voer API key in","error");return}if(!api.fetchOpenPositions){showToast(`${api.name} ondersteunt open posities niet`,"error");return}const opens=api.needsPassphrase?await api.fetchOpenPositions(c.apiKey,c.apiSecret,c.passphrase):await api.fetchOpenPositions(c.apiKey,c.apiSecret);const list=opens||[];syncOpenPositions(ex,list);setSyncResult({ok:true,count:list.length,trades:list,kind:"open"})}catch(e){setSyncResult({ok:false,msg:e.message});showToast(e.message||"Open posities ophalen mislukt","error")}finally{setSyncing(null)}};
+  const test=async()=>{setTesting(ex);setSyncResult(null);try{const api=ExchangeAPI[ex];const c=exCfg();if(api.walletOnly){if(!c.walletAddress){showToast("Voer wallet-adres in","error");return}const r=await api.testConnection(c.walletAddress);if(r.success){setSyncResult({ok:true,msg:`✓ Verbonden. Account value: $${parseFloat(r.balance||"0").toFixed(2)}`});showToast(`${api.name} verbonden`)}return}if(!c.apiKey||!c.apiSecret){showToast("Voer API key en secret in","error");return}const r=api.needsPassphrase?await api.testConnection(c.apiKey,c.apiSecret,c.passphrase):await api.testConnection(c.apiKey,c.apiSecret);if(r.success){setSyncResult({ok:true,msg:`✓ Verbonden. Balance: $${parseFloat(r.balance||"0").toFixed(2)} USDT`});showToast(`${ExchangeAPI[ex].name} verbonden`)}else{setSyncResult({ok:false,msg:"Verbinding mislukt"});showToast("Verbinding mislukt","error")}}catch(e){setSyncResult({ok:false,msg:e.message||"Verbinding mislukt"});showToast(e.message||"Verbinding mislukt","error")}finally{setTesting(null)}};
+  const sync=async()=>{setSyncing(ex);setSyncResult(null);try{const api=ExchangeAPI[ex];const c=exCfg();const startTime=c.syncFrom?new Date(c.syncFrom).getTime():new Date(new Date().getFullYear(),new Date().getMonth(),1).getTime();let newTrades;if(api.walletOnly){if(!c.walletAddress){showToast("Voer wallet-adres in","error");return}newTrades=await api.fetchTrades(c.walletAddress,null,null,startTime)}else{if(!c.apiKey||!c.apiSecret){showToast("Voer API key in","error");return}newTrades=api.needsPassphrase?await api.fetchTrades(c.apiKey,c.apiSecret,c.passphrase,startTime):await api.fetchTrades(c.apiKey,c.apiSecret,null,startTime)}if(newTrades&&newTrades.length){setPreview({exchange:ex,trades:newTrades,source:"api"});setSelected(new Set(newTrades.map(t=>t.id)));setPrevFilter({direction:"all",result:"all"});showToast(`${newTrades.length} trades gevonden — kies welke te importeren`);}else{showToast("Geen trades gevonden","info");}setSyncResult({ok:true,count:(newTrades||[]).length,trades:newTrades||[]})}catch(e){setSyncResult({ok:false,msg:e.message});showToast(e.message||"Sync mislukt","error")}finally{setSyncing(null)}};
+  const syncOpen=async()=>{setSyncing(ex);setSyncResult(null);try{const api=ExchangeAPI[ex];const c=exCfg();if(!api.fetchOpenPositions){showToast(`${api.name} ondersteunt open posities niet`,"error");return}let opens;if(api.walletOnly){if(!c.walletAddress){showToast("Voer wallet-adres in","error");return}opens=await api.fetchOpenPositions(c.walletAddress)}else{if(!c.apiKey||!c.apiSecret){showToast("Voer API key in","error");return}opens=api.needsPassphrase?await api.fetchOpenPositions(c.apiKey,c.apiSecret,c.passphrase):await api.fetchOpenPositions(c.apiKey,c.apiSecret)}const list=opens||[];syncOpenPositions(ex,list);setSyncResult({ok:true,count:list.length,trades:list,kind:"open"})}catch(e){setSyncResult({ok:false,msg:e.message});showToast(e.message||"Open posities ophalen mislukt","error")}finally{setSyncing(null)}};
   return(<div style={{animation:"fadeIn .3s ease"}}>
     <div style={{display:"grid",gridTemplateColumns:"240px 1fr",gap:"20px",alignItems:"start"}}>
       <div style={{background:"var(--glass)",backdropFilter:"var(--glass-blur)",WebkitBackdropFilter:"var(--glass-blur)",borderRadius:"var(--radius-lg)",padding:"16px",border:"1px solid var(--border1)"}}>
         <div style={{fontSize:"10px",color:"var(--text4)",textTransform:"uppercase",fontWeight:600,marginBottom:"12px",letterSpacing:"0.08em"}}>Exchanges</div>
-        {Object.entries(ExchangeAPI).map(([key,api])=>{const cfg=config?.exchanges?.[key]||{};const connected=!!(cfg.apiKey&&cfg.apiSecret);return(<div key={key} style={{display:"flex",alignItems:"center",gap:"4px",marginBottom:"4px"}}>
+        {Object.entries(ExchangeAPI).map(([key,api])=>{const cfg=config?.exchanges?.[key]||{};const connected=api.walletOnly?!!cfg.walletAddress:!!(cfg.apiKey&&cfg.apiSecret);return(<div key={key} style={{display:"flex",alignItems:"center",gap:"4px",marginBottom:"4px"}}>
           <button onClick={()=>{setEx(key);setSyncResult(null)}} style={{display:"flex",alignItems:"center",gap:"10px",flex:1,padding:"10px 12px",borderRadius:"8px",border:`1px solid ${ex===key?"rgba(201,168,76,0.25)":"transparent"}`,background:ex===key?"var(--gold-dim)":"transparent",cursor:"pointer",fontFamily:"inherit"}}>
             <ExchangeIcon name={key} size={20}/>
             <div style={{textAlign:"left",flex:1}}><div style={{fontSize:"12px",fontWeight:600,color:ex===key?"var(--gold)":"var(--text2)"}}>{api.name}</div>{connected&&<div style={{fontSize:"9px",color:"var(--green)",display:"flex",alignItems:"center",gap:"4px"}}><div style={{width:"5px",height:"5px",borderRadius:"50%",background:"var(--green)",animation:"pulse 2s ease-in-out infinite"}}/> Actief</div>}</div>
@@ -5678,9 +5795,10 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,imp
       </div>
       <div>
         <div style={{background:"var(--glass)",backdropFilter:"var(--glass-blur)",WebkitBackdropFilter:"var(--glass-blur)",borderRadius:"var(--radius-lg)",padding:"20px",marginBottom:"16px",border:"1px solid var(--border1)"}}>
-          <div style={{display:"flex",alignItems:"center",gap:"12px",marginBottom:"16px"}}><ExchangeIcon name={ex} size={28}/><div><div style={{fontSize:"14px",fontWeight:700,color:"var(--text)"}}>{ExchangeAPI[ex].name}</div><div style={{fontSize:"11px",color:"var(--text4)"}}>{ExchangeAPI[ex].csvOnly?"CSV import — geen API-koppeling":"API verbinding instellen"}</div></div></div>
+          <div style={{display:"flex",alignItems:"center",gap:"12px",marginBottom:"16px"}}><ExchangeIcon name={ex} size={28}/><div><div style={{fontSize:"14px",fontWeight:700,color:"var(--text)"}}>{ExchangeAPI[ex].name}</div><div style={{fontSize:"11px",color:"var(--text4)"}}>{ExchangeAPI[ex].csvOnly?"CSV import — geen API-koppeling":ExchangeAPI[ex].walletOnly?"Wallet-adres (geen API key)":"API verbinding instellen"}</div></div></div>
           <div style={{display:"grid",gap:"12px"}}>
-            {!ExchangeAPI[ex].csvOnly&&[["apiKey","API Key","text"],["apiSecret","API Secret","password"],...(ExchangeAPI[ex].needsPassphrase?[["passphrase","Passphrase","password"]]:[])] .map(([field,label,type])=>(<div key={field}><div style={{fontSize:"11px",color:"var(--text3)",marginBottom:"6px",fontWeight:500,textTransform:"uppercase",letterSpacing:"0.06em"}}>{label}</div><input type={type} value={exCfg()[field]||""} onChange={e=>setField(field,e.target.value)} placeholder={field==="apiKey"?"Plak je API key...":field==="passphrase"?"Passphrase...":"Plak je API secret..."} style={{...iStyle,fontFamily:field!=="passphrase"?"var(--mono)":"var(--font)"}}/></div>))}
+            {ExchangeAPI[ex].walletOnly&&<div><div style={{fontSize:"11px",color:"var(--text3)",marginBottom:"6px",fontWeight:500,textTransform:"uppercase",letterSpacing:"0.06em"}}>Wallet-adres</div><input type="text" value={exCfg().walletAddress||""} onChange={e=>setField("walletAddress",e.target.value)} placeholder="0x..." style={{...iStyle,fontFamily:"var(--mono)"}}/><div style={{fontSize:"10px",color:"var(--amber)",marginTop:"6px",lineHeight:1.5}}>⚠ Je wallet-adres is publiek op Hyperliquid. Iedereen met dit adres kan je trades inzien via de app of API.</div></div>}
+            {!ExchangeAPI[ex].csvOnly&&!ExchangeAPI[ex].walletOnly&&[["apiKey","API Key","text"],["apiSecret","API Secret","password"],...(ExchangeAPI[ex].needsPassphrase?[["passphrase","Passphrase","password"]]:[])] .map(([field,label,type])=>(<div key={field}><div style={{fontSize:"11px",color:"var(--text3)",marginBottom:"6px",fontWeight:500,textTransform:"uppercase",letterSpacing:"0.06em"}}>{label}</div><input type={type} value={exCfg()[field]||""} onChange={e=>setField(field,e.target.value)} placeholder={field==="apiKey"?"Plak je API key...":field==="passphrase"?"Passphrase...":"Plak je API secret..."} style={{...iStyle,fontFamily:field!=="passphrase"?"var(--mono)":"var(--font)"}}/></div>))}
             {!ExchangeAPI[ex].csvOnly&&<div><div style={{fontSize:"11px",color:"var(--text3)",marginBottom:"6px",fontWeight:500,textTransform:"uppercase",letterSpacing:"0.06em"}}>Sync vanaf</div><input type="date" value={exCfg().syncFrom||new Date(new Date().getFullYear(),new Date().getMonth(),1).toISOString().split("T")[0]} onChange={e=>setField("syncFrom",e.target.value)} style={{...iStyle,width:"auto"}}/><div style={{fontSize:"10px",color:"var(--text5)",marginTop:"4px"}}>Default: 1e van deze maand</div></div>}
             {/* Strategie-label (bijv. "Swing", "Scalp") + preset-suggesties */}
             <div>
@@ -5745,6 +5863,13 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,imp
           </div>}
           {ex==="blofin"&&<div style={{marginTop:"10px",padding:"8px 12px",background:"rgba(46,170,111,0.06)",border:"1px solid rgba(46,170,111,0.2)",borderRadius:"6px",fontSize:"11px",color:"var(--text3)",lineHeight:1.5}}>
             <strong style={{color:"var(--teal)"}}>✓ Blofin CSV werkt volledig</strong> — posities worden gereconstrueerd uit order history met entry + exit + TP's. Oude opens buiten de CSV-range krijgen "partial data" melding.
+          </div>}
+          {ex==="hyperliquid"&&<div style={{marginTop:"10px",padding:"10px 14px",background:"rgba(0,194,255,0.06)",border:"1px solid rgba(0,194,255,0.2)",borderRadius:"6px",fontSize:"11px",color:"var(--text3)",lineHeight:1.6}}>
+            <strong style={{color:"#00c2ff"}}>🔗 Hyperliquid — wallet-adres sync</strong>
+            <div style={{marginTop:"6px"}}>1. Plak je Hyperliquid wallet-adres (0x... + 40 hex-tekens) in het veld hierboven</div>
+            <div>2. Klik <strong>Verbinding testen</strong> — toont je account value als het klopt</div>
+            <div>3. <strong>Trades importeren</strong> haalt historische closed fills op, <strong>Open posities ophalen</strong> de live posities</div>
+            <div style={{marginTop:"8px",paddingTop:"8px",borderTop:"1px solid rgba(0,194,255,0.15)",fontSize:"10px",color:"var(--text4)"}}>Fase 1: perps only, geen funding, spot-pairs als "@ID (spot)" — uitbreidingen komen later. Max 10.000 recente fills via API (CSV-fallback voor oudere trades).</div>
           </div>}
           {ex==="ftmo"&&<div style={{marginTop:"10px",padding:"10px 14px",background:"rgba(0,160,233,0.06)",border:"1px solid rgba(0,160,233,0.2)",borderRadius:"6px",fontSize:"11px",color:"var(--text3)",lineHeight:1.6}}>
             <strong style={{color:"#00a0e9"}}>📘 FTMO MetriX CSV importeren</strong>
