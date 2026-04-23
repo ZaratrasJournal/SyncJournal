@@ -867,7 +867,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.8",released:"2026-04-22"};
+const APP_VERSION={version:"v12.11",released:"2026-04-23"};
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
 function isNewerVersion(a,b){
   const parse=(s)=>String(s||"").replace(/^v/,"").split(".").map(n=>parseInt(n,10)||0);
@@ -900,6 +900,45 @@ const EMPTY_TRADE={
   entryNote:"",
   riskUsd:"",riskPct:"",
   hindsightExit:""// optional: where did price actually go after a missed trade
+};
+
+// Normalize een price-string: verwijdert floating-point trailing zeros.
+// "2335.0000000000000000" → "2335", "77575.80000000" → "77575.8", "" → "".
+// Tussenresultaten als NaN of null geven "" terug.
+const normPrice=(v)=>{
+  if(v===null||v===undefined||v==="")return"";
+  const s=String(v).trim();
+  if(!s)return"";
+  const n=parseFloat(s);
+  if(!isFinite(n))return"";
+  // JS default toString() gebruikt minimale representatie (2335, niet 2335.000000000000)
+  return String(n);
+};
+
+// Migratie-normalisatie voor trades bij laden.
+// Fixt trailing-zero rommel op price-fields. GEEN size-swap (de v12.10 swap-heuristiek
+// kon API-contracts niet onderscheiden van CSV-qty en corrupteerde API-trades; revert in v12.11).
+// Size-correctheid wordt nu aan de bron opgelost (fetchOpenPositions / fetchTrades doen
+// contractValue-conversie; CSV-parser splitst qty → positionSize + positionSizeAsset).
+const normalizeTrade=(t)=>{
+  if(!t)return t;
+  const out={...t};
+  for(const k of["entry","stopLoss","takeProfit","exit","hindsightExit"]){
+    if(out[k]!==undefined&&out[k]!==null&&String(out[k]).length>0){
+      const clean=normPrice(out[k]);
+      if(clean!==""&&clean!==out[k])out[k]=clean;
+    }
+  }
+  if(Array.isArray(out.tpLevels)){
+    out.tpLevels=out.tpLevels.map(tp=>{
+      if(!tp)return tp;
+      const n={...tp};
+      if(n.price)n.price=normPrice(n.price)||n.price;
+      if(n.actualPrice)n.actualPrice=normPrice(n.actualPrice)||n.actualPrice;
+      return n;
+    });
+  }
+  return out;
 };
 
 const iStyle={width:"100%",padding:"11px 14px",borderRadius:"var(--radius)",border:"1px solid rgba(201,168,76,0.18)",background:"rgba(255,255,255,0.03)",color:"var(--text)",fontSize:"14px",fontFamily:"var(--mono)",outline:"none",transition:"border-color .15s",lineHeight:1.5};
@@ -1300,6 +1339,27 @@ const ExchangeAPI = {
   },
   blofin:{
     name:"Blofin",color:"#6366f1",needsPassphrase:true,
+    // contractValue lookup — Blofin's /positions en /positions-history geven qty in
+    // CONTRACTS (niet base currency). 1 BTC-USDT contract = 0.001 BTC, 1 DOGE-USDT = 1000 DOGE.
+    // Zonder deze conversie zou een positie van 2.9 contracten als 2.9 BTC (1000× te groot) in
+    // de journal belanden. Cache 15 min zodat we niet bij elke sync opnieuw fetchen.
+    _ctvCache:null,_ctvCacheTs:0,
+    async _getContractValue(instId){
+      const now=Date.now();
+      if(!this._ctvCache||now-this._ctvCacheTs>15*60*1000){
+        try{
+          const res=await fetch("https://openapi.blofin.com/api/v1/market/instruments?instType=SWAP");
+          const data=await res.json();
+          const map={};
+          (data.data||[]).forEach(i=>{
+            const cv=parseFloat(i.contractValue);
+            if(i.instId&&isFinite(cv)&&cv>0)map[i.instId]=cv;
+          });
+          this._ctvCache=map;this._ctvCacheTs=now;
+        }catch{this._ctvCache=this._ctvCache||{};}
+      }
+      return this._ctvCache[instId]||1;// fallback 1 (spot-like, geen conversie)
+    },
     // Directe call (geen Worker) — Blofin API is CORS-enabled.
     async _direct(apiKey,apiSecret,passphrase,path,params={}){
       const qs=new URLSearchParams(params).toString();
@@ -1333,25 +1393,27 @@ const ExchangeAPI = {
       data.source="positions-history";
       const source=data.source||"orders-history";
       if(source==="positions-history"){
+        // Warm up contractValue cache vóór mapping
+        await this._getContractValue("BTC-USDT");
+        const ctvMap=this._ctvCache||{};
         // Elk close-record = 1 trade (géén aggregatie). Size = closePositions (qty gesloten in DIT event).
         return(data.trades||[]).filter(t=>{const pnl=parseFloat(t.realizedPnl||t.pnl||"0");const sz=Math.abs(parseFloat(t.closePositions||t.closeTotalPos||"0"));return pnl!==0||sz>0}).map(t=>{
           const posSide=(t.positionSide||"net").toLowerCase();
           const closeTime=t.updateTime||t.createTime||Date.now();
           const entryPrice=t.openAveragePrice||t.averagePrice||t.openPrice||"";
           const exitPrice=t.closeAveragePrice||t.avgClosePrice||t.closePrice||"";
-          // Size per record = closePositions (hoeveel in dit close-event, niet de peak)
-          const rawSize=t.closePositions||t.closeTotalPos||t.positions||t.size||"";
-          const sizeN=Math.abs(parseFloat(rawSize)||0);
-          const sizeAsset=sizeN>0?String(sizeN):"";
+          // Size per record = closePositions (hoeveel in dit close-event, in CONTRACTS).
+          const rawContracts=t.closePositions||t.closeTotalPos||t.positions||t.size||"";
+          const contractsN=Math.abs(parseFloat(rawContracts)||0);
+          const ctVal=ctvMap[t.instId]||1;
+          const assetQty=contractsN*ctVal;// echte qty in base currency
           const entryN=parseFloat(entryPrice)||0;
-          const sizeUsdt=(entryN>0&&sizeN>0)?(entryN*sizeN).toFixed(2):"";
-          // Direction: positionSide "long"/"short" → gebruik. Anders "net" → infer uit (exit-entry)*pnl
+          const sizeUsdt=(entryN>0&&assetQty>0)?(entryN*assetQty).toFixed(2):"";
           let direction;
           if(posSide==="long")direction="long";
           else if(posSide==="short")direction="short";
           else{const xN=parseFloat(exitPrice)||0;const pN=parseFloat(t.realizedPnl||t.pnl||"0");direction=((xN-entryN)*pN>=0)?"long":"short"}
-          // Unique ID per close-event zodat partial closes als aparte trades bestaan
-          return{id:"blofin_"+t.positionId+"_"+closeTime,date:ts2date(closeTime),time:ts2time(closeTime),pair:(t.instId||"").replace("-","/"),direction,entry:entryPrice,exit:exitPrice,positionSize:sizeUsdt||sizeAsset,positionSizeAsset:sizeAsset,pnl:t.realizedPnl||t.pnl||"",fees:t.fee?Math.abs(parseFloat(t.fee)).toString():"0",leverage:t.leverage||"10",source:"blofin",status:"closed",stopLoss:"",takeProfit:"",highestPrice:"",lowestPrice:"",setupTags:[],confirmationTags:[],timeframeTags:[],emotionTags:[],mistakeTags:[],customTags:[],rating:0,screenshot:null,notes:"",links:[],layers:[],positionId:t.positionId||"",openTime:t.createTime||"",closeTime:String(closeTime)};
+          return{id:"blofin_"+t.positionId+"_"+closeTime,date:ts2date(closeTime),time:ts2time(closeTime),pair:(t.instId||"").replace("-","/"),direction,entry:normPrice(entryPrice),exit:normPrice(exitPrice),positionSize:sizeUsdt||normPrice(assetQty),positionSizeAsset:assetQty>0?normPrice(assetQty):"",pnl:t.realizedPnl||t.pnl||"",fees:t.fee?Math.abs(parseFloat(t.fee)).toString():"0",leverage:t.leverage||"10",source:"blofin",status:"closed",stopLoss:"",takeProfit:"",highestPrice:"",lowestPrice:"",setupTags:[],confirmationTags:[],timeframeTags:[],emotionTags:[],mistakeTags:[],customTags:[],rating:0,screenshot:null,notes:"",links:[],layers:[],positionId:t.positionId||"",openTime:t.createTime||"",closeTime:String(closeTime)};
         });
       }
       return(data.trades||[]).filter(t=>parseFloat(t.pnl||"0")!==0).map(t=>{
@@ -1363,7 +1425,7 @@ const ExchangeAPI = {
         const sizeVal=parseFloat(t.filledSize||t.size||"0");
         let entryPrice="";
         if(exitPrice>0&&sizeVal>0){const ppu=pnlVal/sizeVal;const calc=direction==="long"?exitPrice-ppu:exitPrice+ppu;if(calc>0)entryPrice=calc.toString()}
-        return{id:"blofin_"+t.orderId,date:ts2date(closeTime),time:ts2time(closeTime),pair:(t.instId||"").replace("-","/"),direction,entry:entryPrice,exit:t.averagePrice||t.price||"",positionSize:t.filledSize||t.size||"",pnl:t.pnl||"",fees:t.fee?Math.abs(parseFloat(t.fee)).toString():"0",leverage:t.leverage||"10",source:"blofin",status:"closed",stopLoss:"",takeProfit:"",highestPrice:"",lowestPrice:"",setupTags:[],confirmationTags:[],timeframeTags:[],emotionTags:[],mistakeTags:[],customTags:[],rating:0,screenshot:null,notes:"",links:[],layers:[],positionId:t.positionId||"",openTime:t.createTime||"",closeTime:String(closeTime)};
+        return{id:"blofin_"+t.orderId,date:ts2date(closeTime),time:ts2time(closeTime),pair:(t.instId||"").replace("-","/"),direction,entry:normPrice(entryPrice),exit:normPrice(t.averagePrice||t.price||""),positionSize:normPrice(t.filledSize||t.size||""),pnl:t.pnl||"",fees:t.fee?Math.abs(parseFloat(t.fee)).toString():"0",leverage:t.leverage||"10",source:"blofin",status:"closed",stopLoss:"",takeProfit:"",highestPrice:"",lowestPrice:"",setupTags:[],confirmationTags:[],timeframeTags:[],emotionTags:[],mistakeTags:[],customTags:[],rating:0,screenshot:null,notes:"",links:[],layers:[],positionId:t.positionId||"",openTime:t.createTime||"",closeTime:String(closeTime)};
       });
     },
     async testConnection(apiKey,apiSecret,passphrase){
@@ -1373,7 +1435,17 @@ const ExchangeAPI = {
     },
     async fetchOpenPositions(apiKey,apiSecret,passphrase){
       const data=await this._direct(apiKey,apiSecret,passphrase,"/api/v1/account/positions");
-      const positions=(data.data||[]).map(p=>({id:"blofin_open_"+p.positionId,positionId:String(p.positionId||""),instId:String(p.instId||""),positionSide:String(p.positionSide||""),openTime:String(p.createTime||""),closeTime:"",date:ts2date(p.createTime||Date.now()),time:ts2time(p.createTime||Date.now()),pair:(p.instId||"").replace("-","/"),direction:parseFloat(p.positions||"0")>0?"long":"short",entry:String(p.averagePrice||""),exit:"",positionSize:String(Math.abs(parseFloat(p.positions||"0"))),pnl:"",fees:"0",leverage:String(p.leverage||"10"),source:"blofin",status:"open",unrealizedPnl:String(p.unrealizedPnl||""),liquidationPrice:String(p.liquidationPrice||""),stopLoss:"",takeProfit:"",highestPrice:"",lowestPrice:"",setupTags:[],confirmationTags:[],timeframeTags:[],emotionTags:[],mistakeTags:[],customTags:[],rating:0,screenshot:null,notes:"",links:[],layers:[]}));
+      // Warm up contractValue cache vóór mapping
+      await this._getContractValue("BTC-USDT");
+      const ctvMap=this._ctvCache||{};
+      const positions=(data.data||[]).map(p=>{
+        const contracts=Math.abs(parseFloat(p.positions||"0"));
+        const ctVal=ctvMap[p.instId]||1;
+        const assetQty=contracts*ctVal;// contracts → base currency
+        const avgPrice=parseFloat(p.averagePrice||"0");
+        const usdNotional=avgPrice>0&&assetQty>0?(avgPrice*assetQty).toFixed(2):"";
+        return{id:"blofin_open_"+p.positionId,positionId:String(p.positionId||""),instId:String(p.instId||""),positionSide:String(p.positionSide||""),openTime:String(p.createTime||""),closeTime:"",date:ts2date(p.createTime||Date.now()),time:ts2time(p.createTime||Date.now()),pair:(p.instId||"").replace("-","/"),direction:parseFloat(p.positions||"0")>0?"long":"short",entry:normPrice(p.averagePrice||""),exit:"",positionSize:usdNotional||normPrice(assetQty),positionSizeAsset:assetQty>0?normPrice(assetQty):"",pnl:"",fees:"0",leverage:String(p.leverage||"10"),source:"blofin",status:"open",unrealizedPnl:normPrice(p.unrealizedPnl||""),liquidationPrice:normPrice(p.liquidationPrice||""),stopLoss:"",takeProfit:"",highestPrice:"",lowestPrice:"",setupTags:[],confirmationTags:[],timeframeTags:[],emotionTags:[],mistakeTags:[],customTags:[],rating:0,screenshot:null,notes:"",links:[],layers:[]};
+      });
       // Enrich with active TP/SL orders (second API call). Silent on failure — positions still usable without SL/TP.
       try{
         const tpslData=await this._direct(apiKey,apiSecret,passphrase,"/api/v1/trade/orders-tpsl-pending");
@@ -1387,8 +1459,8 @@ const ExchangeAPI = {
           const related=orders.filter(o=>String(o.instId||"")===pos.instId&&sideMatches(o));
           const slOrder=related.find(o=>parseFloat(o.slTriggerPrice||"0")>0);
           const tpOrder=related.find(o=>parseFloat(o.tpTriggerPrice||"0")>0);
-          if(slOrder)pos.stopLoss=String(slOrder.slTriggerPrice);
-          if(tpOrder)pos.takeProfit=String(tpOrder.tpTriggerPrice);
+          if(slOrder)pos.stopLoss=normPrice(slOrder.slTriggerPrice);
+          if(tpOrder)pos.takeProfit=normPrice(tpOrder.tpTriggerPrice);
         }
       }catch(e){/* silent — positions still usable */}
       return positions;
@@ -1415,6 +1487,12 @@ const ExchangeAPI = {
     async testConnection(apiKey,apiSecret){const data=await proxyCall({exchange:"kraken",action:"test",apiKey,apiSecret});if(!data.success)throw new Error(data.error||"Kraken verbinding mislukt");return{success:true,balance:data.balance||"0"}},
     async fetchOpenPositions(apiKey,apiSecret){const data=await proxyCall({exchange:"kraken",action:"open_positions",apiKey,apiSecret});return(data.positions||[]).map(t=>({...this._normalise({...t,status:"open"}),status:"open"}))},
     async fetchFills(apiKey,apiSecret,_pp,symbol,startTime,endTime){const data=await proxyCall({exchange:"kraken",action:"fills",apiKey,apiSecret,symbol,startTime,endTime});return{fills:(data.fills||[]).map(t=>this._normalise(t)),total:data.total||0}}
+  },
+  ftmo:{
+    // CSV-only exchange — MT5 / FTMO MetriX export. Geen API (FTMO heeft er geen publieke),
+    // read-only MT5 investor-password route zou MetaApi.cloud vereisen (~$30/mnd boven dev-tier).
+    // Auto-sync is bewust weggelaten om community-kosten te vermijden.
+    name:"FTMO (MT5)",color:"#00a0e9",needsPassphrase:false,csvOnly:true,
   }
 };
 
@@ -1457,11 +1535,11 @@ function Stat({label,value,sub,color}){
   </div>);
 }
 
-const exName=(n)=>{if(!n)return"";const map={mexc:"MEXC",blofin:"Blofin",kraken:"Kraken",manual:"Handmatig",csv:"CSV"};return map[n.toLowerCase()]||n.charAt(0).toUpperCase()+n.slice(1)};
+const exName=(n)=>{if(!n)return"";const map={mexc:"MEXC",blofin:"Blofin",kraken:"Kraken",ftmo:"FTMO (MT5)",manual:"Handmatig",csv:"CSV"};return map[n.toLowerCase()]||n.charAt(0).toUpperCase()+n.slice(1)};
 
 function ExchangeIcon({name,size=16}){
   const n=(name||"").toLowerCase();
-  const logos={mexc:"https://www.google.com/s2/favicons?domain=mexc.com&sz=64",blofin:"https://www.google.com/s2/favicons?domain=blofin.com&sz=64",kraken:"https://www.google.com/s2/favicons?domain=kraken.com&sz=64"};
+  const logos={mexc:"https://www.google.com/s2/favicons?domain=mexc.com&sz=64",blofin:"https://www.google.com/s2/favicons?domain=blofin.com&sz=64",kraken:"https://www.google.com/s2/favicons?domain=kraken.com&sz=64",ftmo:"https://www.google.com/s2/favicons?domain=ftmo.com&sz=64"};
   if(logos[n])return(<img src={logos[n]} alt={n} style={{width:size,height:size,borderRadius:"3px",objectFit:"contain",flexShrink:0}} title={exName(n)}/>);
   if(n==="csv")return(<div style={{width:size,height:size,borderRadius:"4px",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:size*0.55,fontWeight:800,fontFamily:"var(--mono)",background:"#4B5563",color:"#fff",flexShrink:0}} title="CSV">C</div>);
   if(n==="manual"||n==="handmatig")return(<span style={{fontSize:size*0.85,flexShrink:0}} title="Handmatig">✏️</span>);
@@ -5202,6 +5280,9 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,imp
         const isMexcFutures=headers.includes("Futures Trading Pair")&&headers.includes("Closing PNL");
         const isMexcPosition=headers.includes("Futures")&&headers.includes("Avg Entry Price")&&headers.includes("Avg Close Price");
         const isBlofinOrder=headers.includes("Underlying Asset")&&headers.includes("Avg Fill")&&headers.includes("PNL");
+        // FTMO MetriX export: Ticket,Open,Type,Volume,Symbol,Price,SL,TP,Close,Price,Swap,Commissions,Profit,Pips,"Trade duration in seconds"
+        // Positioneel parsen vereist: kolom "Price" komt twee keer voor (idx 5=entry, idx 9=exit).
+        const isFtmoMetriX=headers[0]==="Ticket"&&headers.includes("Pips")&&headers.includes("Volume")&&headers.includes("Swap");
         let csvTrades=[];
         if(isBlofinOrder){
           // Blofin Order History → FIFO positie-reconstructie (one-way mode verondersteld).
@@ -5258,21 +5339,25 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,imp
             const avgExit=totalExit>0?exitW/totalExit:0;
             // Net PnL = sum of CSV PNL column minus total fees (opening + closing fees)
             const netPnl=pos.pnlSum-pos.feeSum;
+            // positionSize = USD notional, positionSizeAsset = asset-qty (convention in deze app).
+            const qty=pos.entryTotalSize;
+            const usdNotional=avgEntry>0?avgEntry*qty:0;
             csvTrades.push({...EMPTY_TRADE,
               id:"blofin_csv_"+uid(),
               date:pos.openDate,time:pos.openTime,
               pair:cleanPair(sym),
               direction:pos.direction,
-              entry:avgEntry>0?avgEntry.toFixed(6):"",
-              exit:avgExit>0?avgExit.toFixed(6):"",
-              positionSize:String(pos.entryTotalSize.toFixed(8)),
+              entry:normPrice(avgEntry>0?avgEntry.toFixed(6):""),
+              exit:normPrice(avgExit>0?avgExit.toFixed(6):""),
+              positionSize:usdNotional>0?String(usdNotional.toFixed(2)):"",
+              positionSizeAsset:qty>0?normPrice(qty.toFixed(8)):"",
               pnl:String(netPnl.toFixed(4)),
               fees:String(pos.feeSum.toFixed(4)),
               leverage:pos.leverage,
               source:forExchange||"blofin",
               status:"closed",
               notes:pos.partial?"⚠ Partial data: opening orders niet in CSV-range":"",
-              tpLevels:pos.tps.map(t=>({id:uidShort(),price:String(t.price),pct:String(((t.size/pos.entryTotalSize)*100).toFixed(1)),status:"hit",actualPrice:String(t.price)})),
+              tpLevels:pos.tps.map(t=>({id:uidShort(),price:normPrice(t.price),pct:String(((t.size/pos.entryTotalSize)*100).toFixed(1)),status:"hit",actualPrice:normPrice(t.price)})),
             });
           };
 
@@ -5297,10 +5382,13 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,imp
               if(!fifo[sym]){
                 // Orphan close — opening order buiten range. Emit los met partial flag.
                 const dir=o.isBuy?"short":"long"; // close-side is tegengesteld
+                const orphanUsd=o.price*o.size;
                 csvTrades.push({...EMPTY_TRADE,
                   id:"blofin_csv_"+uid(),
                   date:o.date,time:o.time,pair:cleanPair(sym),direction:dir,
-                  entry:"",exit:String(o.price),positionSize:String(o.size),
+                  entry:"",exit:normPrice(o.price),
+                  positionSize:orphanUsd>0?String(orphanUsd.toFixed(2)):"",
+                  positionSizeAsset:normPrice(o.size),
                   pnl:String((o.pnl-o.fee).toFixed(4)),fees:String(o.fee.toFixed(4)),
                   leverage:o.leverage,source:forExchange||"blofin",status:"closed",
                   notes:"⚠ Partial data: opening order valt buiten CSV-range",
@@ -5449,7 +5537,58 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,imp
           const posRows=rows.filter(r=>r.type==="futures trade"&&r.symbol!=="usd");
           csvTrades=usdCloses.map(u=>{const matching=posRows.find(p=>p.dateTime===u.dateTime&&p["trade price"]===u["trade price"]);const sizeChg=matching?parseFloat(matching.change):0;const direction=sizeChg>0?"short":"long";const entryPrice=matching?matching["new average entry price"]:"";const contract=(u.contract||"pf_xbtusd").toUpperCase().replace("PF_","").replace("PI_","");const krakenP=(s)=>{s=s.replace("XBT","BTC");if(s.endsWith("USDC"))return s.slice(0,-4)+"/USDC";if(s.endsWith("USDT"))return s.slice(0,-4)+"/USDT";if(s.endsWith("USD"))return s.slice(0,-3)+"/USD";return s+"/USD"};const pair=krakenP(contract);const dt=u.dateTime||"";return{...EMPTY_TRADE,id:"kraken_csv_"+uid(),date:dt.split(" ")[0]||"",time:(dt.split(" ")[1]||"00:00").slice(0,5),pair,direction,entry:entryPrice||"",exit:u["trade price"]||"",positionSize:matching?String(Math.abs(sizeChg)):"",pnl:u["realized pnl"]||"",fees:u.fee||"0",leverage:"1",source:forExchange||"kraken",status:"closed"}});
         }
-        if(!isKrakenLog&&!isBlofinOrder&&!isMexcPosition&&!isMexcFutures){
+        if(isFtmoMetriX){
+          // FTMO MetriX export — CFD-trades uit MT5. Positioneel parsen: kolom "Price" staat twee keer.
+          // Kolom-order: 0=Ticket 1=Open 2=Type 3=Volume 4=Symbol 5=Price(entry) 6=SL 7=TP 8=Close 9=Price(exit) 10=Swap 11=Commissions 12=Profit 13=Pips 14=Duration
+          const ftmoPair=(s)=>{const up=(s||"").toUpperCase();if(up.endsWith("USDT"))return up.slice(0,-4)+"/USDT";if(up.endsWith("USDC"))return up.slice(0,-4)+"/USDC";if(up.endsWith("USD"))return up.slice(0,-3)+"/USD";if(up.endsWith("EUR"))return up.slice(0,-3)+"/EUR";if(up.endsWith("GBP"))return up.slice(0,-3)+"/GBP";if(up.endsWith("JPY"))return up.slice(0,-3)+"/JPY";return up};
+          const cleanNum=(s)=>{const n=parseFloat(String(s||"").replace(/"/g,"").trim());return isNaN(n)?0:n};
+          const splitDt=(dt)=>{const clean=String(dt||"").replace(/"/g,"").trim();const[d,t]=clean.split(" ");return{date:d||"",time:(t||"00:00").slice(0,5),full:clean}};
+          for(let i=1;i<lines.length;i++){
+            const vals=parseCSVLine(lines[i]).map(v=>v.replace(/"/g,"").trim());
+            if(vals.length<13)continue;
+            const ticket=vals[0];
+            const openDt=splitDt(vals[1]);
+            const typeRaw=(vals[2]||"").toLowerCase();
+            if(typeRaw!=="buy"&&typeRaw!=="sell")continue;// skip balance/credit/bonus rows (MetriX filtert deze normaal al weg)
+            const volume=cleanNum(vals[3]);
+            const symbol=vals[4]||"";
+            const entryPrice=cleanNum(vals[5]);
+            const sl=cleanNum(vals[6]);
+            const tp=cleanNum(vals[7]);
+            const closeDt=splitDt(vals[8]);
+            const exitPrice=cleanNum(vals[9]);
+            const swap=cleanNum(vals[10]);
+            const commissions=cleanNum(vals[11]);
+            const profit=cleanNum(vals[12]);
+            const pips=vals[13]?cleanNum(vals[13]):null;
+            const fees=Math.abs(swap)+Math.abs(commissions);
+            // MT5 "Profit" is bruto (exclusief swap + commissie). Sla netto op voor consistentie met andere parsers.
+            const netPnl=profit+swap+commissions;
+            const direction=typeRaw==="buy"?"long":"short";
+            csvTrades.push({...EMPTY_TRADE,
+              id:"ftmo_csv_"+uid(),
+              date:openDt.date,time:openDt.time,
+              pair:ftmoPair(symbol),
+              direction,
+              entry:entryPrice>0?String(entryPrice):"",
+              exit:exitPrice>0?String(exitPrice):"",
+              stopLoss:sl>0?String(sl):"",
+              takeProfit:tp>0?String(tp):"",
+              positionSize:"",
+              positionSizeAsset:volume>0?String(volume):"",
+              pnl:String(netPnl.toFixed(2)),
+              fees:String(fees.toFixed(2)),
+              leverage:"",
+              source:forExchange||"ftmo",
+              status:"closed",
+              positionId:ticket,
+              openTime:openDt.full,
+              closeTime:closeDt.full,
+              notes:pips!==null?`${volume} lot · ${pips} pips`:`${volume} lot`,
+            });
+          }
+        }
+        if(!isKrakenLog&&!isBlofinOrder&&!isMexcPosition&&!isMexcFutures&&!isFtmoMetriX){
           for(let i=1;i<lines.length;i++){const vals=parseCSVLine(lines[i]).map(v=>v.replace(/"/g,""));const row={};headers.forEach((h,idx)=>row[h.toLowerCase()]=vals[idx]||"");const pairRaw=row.symbol||row.pair||row.contract||"";const pair=pairRaw?(pairRaw.includes("/")?pairRaw:pairRaw):"BTC/"+(config.defaultQuote||"USDT");const trade={...EMPTY_TRADE,id:"csv_"+uid(),date:row.date||(row.time||"").split(" ")[0]||(row.closetime||"").split(" ")[0]||"",time:((row.time||"").split(" ")[1]||(row.closetime||"").split(" ")[1]||"00:00").slice(0,5),pair,direction:((row.side||row.direction||row.type||"").toLowerCase().includes("buy")||(row.side||"").toLowerCase().includes("long"))?"long":"short",entry:row.openprice||row.entryprice||row.entry||row.price||"",exit:row.closeprice||row.exitprice||row.exit||"",positionSize:row.volume||row.size||row.quantity||row.amount||"",pnl:row.pnl||row.profit||row.realizedpnl||row.realised_pnl||"",fees:row.fee||row.fees||row.commission||"0",leverage:row.leverage||"10",source:forExchange||"csv",status:"closed"};if(trade.date)csvTrades.push(trade)}
         }
         if(!csvTrades.length){showToast("Geen trades gevonden in CSV","error");return}
@@ -5539,10 +5678,10 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,imp
       </div>
       <div>
         <div style={{background:"var(--glass)",backdropFilter:"var(--glass-blur)",WebkitBackdropFilter:"var(--glass-blur)",borderRadius:"var(--radius-lg)",padding:"20px",marginBottom:"16px",border:"1px solid var(--border1)"}}>
-          <div style={{display:"flex",alignItems:"center",gap:"12px",marginBottom:"16px"}}><ExchangeIcon name={ex} size={28}/><div><div style={{fontSize:"14px",fontWeight:700,color:"var(--text)"}}>{ExchangeAPI[ex].name}</div><div style={{fontSize:"11px",color:"var(--text4)"}}>API verbinding instellen</div></div></div>
+          <div style={{display:"flex",alignItems:"center",gap:"12px",marginBottom:"16px"}}><ExchangeIcon name={ex} size={28}/><div><div style={{fontSize:"14px",fontWeight:700,color:"var(--text)"}}>{ExchangeAPI[ex].name}</div><div style={{fontSize:"11px",color:"var(--text4)"}}>{ExchangeAPI[ex].csvOnly?"CSV import — geen API-koppeling":"API verbinding instellen"}</div></div></div>
           <div style={{display:"grid",gap:"12px"}}>
-            {[["apiKey","API Key","text"],["apiSecret","API Secret","password"],...(ExchangeAPI[ex].needsPassphrase?[["passphrase","Passphrase","password"]]:[])] .map(([field,label,type])=>(<div key={field}><div style={{fontSize:"11px",color:"var(--text3)",marginBottom:"6px",fontWeight:500,textTransform:"uppercase",letterSpacing:"0.06em"}}>{label}</div><input type={type} value={exCfg()[field]||""} onChange={e=>setField(field,e.target.value)} placeholder={field==="apiKey"?"Plak je API key...":field==="passphrase"?"Passphrase...":"Plak je API secret..."} style={{...iStyle,fontFamily:field!=="passphrase"?"var(--mono)":"var(--font)"}}/></div>))}
-            <div><div style={{fontSize:"11px",color:"var(--text3)",marginBottom:"6px",fontWeight:500,textTransform:"uppercase",letterSpacing:"0.06em"}}>Sync vanaf</div><input type="date" value={exCfg().syncFrom||new Date(new Date().getFullYear(),new Date().getMonth(),1).toISOString().split("T")[0]} onChange={e=>setField("syncFrom",e.target.value)} style={{...iStyle,width:"auto"}}/><div style={{fontSize:"10px",color:"var(--text5)",marginTop:"4px"}}>Default: 1e van deze maand</div></div>
+            {!ExchangeAPI[ex].csvOnly&&[["apiKey","API Key","text"],["apiSecret","API Secret","password"],...(ExchangeAPI[ex].needsPassphrase?[["passphrase","Passphrase","password"]]:[])] .map(([field,label,type])=>(<div key={field}><div style={{fontSize:"11px",color:"var(--text3)",marginBottom:"6px",fontWeight:500,textTransform:"uppercase",letterSpacing:"0.06em"}}>{label}</div><input type={type} value={exCfg()[field]||""} onChange={e=>setField(field,e.target.value)} placeholder={field==="apiKey"?"Plak je API key...":field==="passphrase"?"Passphrase...":"Plak je API secret..."} style={{...iStyle,fontFamily:field!=="passphrase"?"var(--mono)":"var(--font)"}}/></div>))}
+            {!ExchangeAPI[ex].csvOnly&&<div><div style={{fontSize:"11px",color:"var(--text3)",marginBottom:"6px",fontWeight:500,textTransform:"uppercase",letterSpacing:"0.06em"}}>Sync vanaf</div><input type="date" value={exCfg().syncFrom||new Date(new Date().getFullYear(),new Date().getMonth(),1).toISOString().split("T")[0]} onChange={e=>setField("syncFrom",e.target.value)} style={{...iStyle,width:"auto"}}/><div style={{fontSize:"10px",color:"var(--text5)",marginTop:"4px"}}>Default: 1e van deze maand</div></div>}
             {/* Strategie-label (bijv. "Swing", "Scalp") + preset-suggesties */}
             <div>
               <div style={{fontSize:"11px",color:"var(--text3)",marginBottom:"6px",fontWeight:500,textTransform:"uppercase",letterSpacing:"0.06em"}}>Label / strategie</div>
@@ -5596,16 +5735,23 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,imp
             </div>);
           })()}
           <div style={{display:"flex",gap:"12px",marginTop:"16px",flexWrap:"wrap"}}>
-            <button onClick={test} disabled={!!testing} style={{padding:"10px 20px",borderRadius:"var(--radius)",border:"1px solid var(--border4)",background:"transparent",color:"var(--text2)",cursor:"pointer",fontFamily:"inherit",fontSize:"13px",fontWeight:500,display:"flex",alignItems:"center",gap:"8px"}}>{testing===ex?<><span className="spinner"/>Testen...</>:"Verbinding testen"}</button>
-            <button onClick={sync} disabled={!!syncing} style={{padding:"10px 20px",borderRadius:"var(--radius)",border:"none",background:"#C9A84C",color:"#000",cursor:"pointer",fontFamily:"inherit",fontSize:"13px",fontWeight:700,display:"flex",alignItems:"center",gap:"8px"}}>{syncing===ex?<><span className="spinner"/>Syncing...</>:"Trades importeren"}</button>
-            {ExchangeAPI[ex]?.fetchOpenPositions&&<button onClick={syncOpen} disabled={!!syncing} title={`Haalt openstaande posities op via ${ExchangeAPI[ex].name} API`} style={{padding:"10px 20px",borderRadius:"var(--radius)",border:"1px solid var(--gold)",background:"transparent",color:"var(--gold)",cursor:"pointer",fontFamily:"inherit",fontSize:"13px",fontWeight:600,display:"flex",alignItems:"center",gap:"8px"}}>{syncing===ex?<><span className="spinner"/>Ophalen...</>:"📡 Open posities ophalen"}</button>}
-            <button onClick={()=>{csvAcctRef.current=ex;csvRef.current.click()}} title="CSV of Excel (.xlsx) bestand uploaden" style={{padding:"10px 20px",borderRadius:"var(--radius)",border:"1px dashed var(--border5)",background:"transparent",color:"var(--text2)",cursor:"pointer",fontFamily:"inherit",fontSize:"13px",fontWeight:500,display:"flex",alignItems:"center",gap:"8px"}}>📄 Importeer CSV / XLSX</button>
+            {!ExchangeAPI[ex].csvOnly&&<button onClick={test} disabled={!!testing} style={{padding:"10px 20px",borderRadius:"var(--radius)",border:"1px solid var(--border4)",background:"transparent",color:"var(--text2)",cursor:"pointer",fontFamily:"inherit",fontSize:"13px",fontWeight:500,display:"flex",alignItems:"center",gap:"8px"}}>{testing===ex?<><span className="spinner"/>Testen...</>:"Verbinding testen"}</button>}
+            {!ExchangeAPI[ex].csvOnly&&<button onClick={sync} disabled={!!syncing} style={{padding:"10px 20px",borderRadius:"var(--radius)",border:"none",background:"#C9A84C",color:"#000",cursor:"pointer",fontFamily:"inherit",fontSize:"13px",fontWeight:700,display:"flex",alignItems:"center",gap:"8px"}}>{syncing===ex?<><span className="spinner"/>Syncing...</>:"Trades importeren"}</button>}
+            {!ExchangeAPI[ex].csvOnly&&ExchangeAPI[ex]?.fetchOpenPositions&&<button onClick={syncOpen} disabled={!!syncing} title={`Haalt openstaande posities op via ${ExchangeAPI[ex].name} API`} style={{padding:"10px 20px",borderRadius:"var(--radius)",border:"1px solid var(--gold)",background:"transparent",color:"var(--gold)",cursor:"pointer",fontFamily:"inherit",fontSize:"13px",fontWeight:600,display:"flex",alignItems:"center",gap:"8px"}}>{syncing===ex?<><span className="spinner"/>Ophalen...</>:"📡 Open posities ophalen"}</button>}
+            <button onClick={()=>{csvAcctRef.current=ex;csvRef.current.click()}} title="CSV of Excel (.xlsx) bestand uploaden" style={{padding:"10px 20px",borderRadius:"var(--radius)",border:ExchangeAPI[ex].csvOnly?"none":"1px dashed var(--border5)",background:ExchangeAPI[ex].csvOnly?"#C9A84C":"transparent",color:ExchangeAPI[ex].csvOnly?"#000":"var(--text2)",cursor:"pointer",fontFamily:"inherit",fontSize:"13px",fontWeight:ExchangeAPI[ex].csvOnly?700:500,display:"flex",alignItems:"center",gap:"8px"}}>📄 Importeer CSV / XLSX</button>
           </div>
           {ex==="mexc"&&<div style={{marginTop:"10px",padding:"8px 12px",background:"rgba(201,168,76,0.06)",border:"1px solid rgba(201,168,76,0.18)",borderRadius:"6px",fontSize:"11px",color:"var(--text3)",lineHeight:1.5}}>
             <strong style={{color:"var(--gold)"}}>⚠️ Exporteer <u>Position History</u> uit MEXC</strong> — niet Order History.
           </div>}
           {ex==="blofin"&&<div style={{marginTop:"10px",padding:"8px 12px",background:"rgba(46,170,111,0.06)",border:"1px solid rgba(46,170,111,0.2)",borderRadius:"6px",fontSize:"11px",color:"var(--text3)",lineHeight:1.5}}>
             <strong style={{color:"var(--teal)"}}>✓ Blofin CSV werkt volledig</strong> — posities worden gereconstrueerd uit order history met entry + exit + TP's. Oude opens buiten de CSV-range krijgen "partial data" melding.
+          </div>}
+          {ex==="ftmo"&&<div style={{marginTop:"10px",padding:"10px 14px",background:"rgba(0,160,233,0.06)",border:"1px solid rgba(0,160,233,0.2)",borderRadius:"6px",fontSize:"11px",color:"var(--text3)",lineHeight:1.6}}>
+            <strong style={{color:"#00a0e9"}}>📘 FTMO MetriX CSV importeren</strong>
+            <div style={{marginTop:"6px"}}>1. Log in op <span style={{fontFamily:"var(--mono)"}}>ftmo.com</span> → Accounts Overview → klik <strong>MetriX</strong> bij je account</div>
+            <div>2. Scroll naar <strong>Trading Journal</strong> → klik <strong>Export</strong> → kies <strong>CSV</strong></div>
+            <div>3. Klik hierboven op <strong>Importeer CSV / XLSX</strong> en kies het bestand</div>
+            <div style={{marginTop:"8px",paddingTop:"8px",borderTop:"1px solid rgba(0,160,233,0.15)",fontSize:"10px",color:"var(--text4)"}}>Ondersteunt ook MT5 native History-export met dezelfde kolommen (Ticket, Open, Type, Volume, Symbol, Price, SL, TP, Close, Price, Swap, Commissions, Profit, Pips).</div>
           </div>}
           <div style={{display:"none"}}>
           </div>
@@ -6029,7 +6175,7 @@ function App(){
     idbLoadAllTrades().then(function(idbTrades){
       if(idbTrades&&idbTrades.length>0){
         // IndexedDB heeft data - gebruik dat
-        setTrades(idbTrades.map(function(t){return Object.assign({},EMPTY_TRADE,t);}));
+        setTrades(idbTrades.map(function(t){return normalizeTrade(Object.assign({},EMPTY_TRADE,t));}));
         setTradesLoaded(true);
       } else {
         // Geen IDB data - probeer localStorage (migratie)
@@ -6037,7 +6183,7 @@ function App(){
           var ls=localStorage.getItem("tj_trades");
           if(ls){
             var parsed=JSON.parse(ls);
-            var migrated=parsed.map(function(t){return Object.assign({},EMPTY_TRADE,t);});
+            var migrated=parsed.map(function(t){return normalizeTrade(Object.assign({},EMPTY_TRADE,t));});
             setTrades(migrated);
             // Sla meteen op in IDB
             idbSaveAllTrades(migrated);
@@ -6049,7 +6195,7 @@ function App(){
       // IDB volledig mislukt - val terug op localStorage
       try{
         var ls2=localStorage.getItem("tj_trades");
-        if(ls2)setTrades(JSON.parse(ls2).map(function(t){return Object.assign({},EMPTY_TRADE,t);}));
+        if(ls2)setTrades(JSON.parse(ls2).map(function(t){return normalizeTrade(Object.assign({},EMPTY_TRADE,t));}));
       }catch(e){}
       setTradesLoaded(true);
     });

@@ -6,6 +6,33 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.11] — 2026-04-23
+
+### Fixed
+- **Blofin: positie-size was 1000× te groot voor API-imports** — Blofin's `/positions` en `/positions-history` endpoints leveren quantity in **contracts**, niet in base currency. 1 BTC-USDT contract = 0.001 BTC (via Blofin's `/market/instruments` endpoint, veld `contractValue`). Voor 2.9 contracten werd `positionSize=2.9 BTC` opgeslagen waar `0.0029 BTC` correct was — factor 1000. Fix: `ExchangeAPI.blofin._getContractValue(instId)` fetcht het instruments-endpoint één keer per 15 min en cachet de map. `fetchOpenPositions` en `fetchTrades(positions-history)` vermenigvuldigen `positions × contractValue` → echte asset-qty, vervolgens `× entry` → USD notional. Werkt voor alle Blofin perps (BTC=0.001, ETH=0.01, SOL=1, DOGE=1000, PEPE=10.000.000 etc.).
+- **v12.10 size-swap heuristiek gereverteerd** — de heuristiek `positionSizeAsset="" + entry > positionSize*10` kon API-contracts (positionSize=2.9) niet onderscheiden van CSV-qty (positionSize=0.0028) en maakte API-geïmporteerde Blofin-trades juist 1000× te groot. `normalizeTrade()` doet nu alleen nog prijs-normalisatie (trailing zeros). Correctheid van size-data wordt aan de bron geregeld (API + CSV-parser).
+
+### Gewijzigd
+- **Actie voor Blofin-gebruikers**: trades die via de API zijn ingeladen onder v12.10 hebben corrupte `positionSize` / `positionSizeAsset`. Fix: Instellingen → Accounts → Blofin → klik opnieuw **Trades importeren** (overschrijft op trade-ID) én **Open posities ophalen**. Nieuwe data is correct. Bij CSV-imports blijft alles werken — CSV bevat al asset-qty met unit (bv. `"0.0028 BTC"`) en heeft de contract-conversie niet nodig.
+
+## [v12.10] — 2026-04-23
+
+### Fixed
+- **Blofin: trailing-zero rommel in entry / SL / TP / exit** — prices als `2355.000000000000000000` (floating-point string-representatie vanuit de Blofin API / CSV) worden nu bij import én bij laden uit IndexedDB genormaliseerd naar `2355`. Nieuwe `normPrice()` helper gebruikt `String(parseFloat(v))` voor minimale representatie. Geldt voor fetchTrades, fetchOpenPositions (inclusief stopLoss/takeProfit/unrealizedPnl/liquidationPrice), en CSV-import (entry/exit/TP-levels).
+- **Blofin CSV: positie-size viel op de verkeerde plek** — asset-qty (bv `0.12` BTC) werd opgeslagen in `positionSize` (bedoeld voor USD-notional) en `positionSizeAsset` bleef leeg. Form toonde `$0.12` of niks. Nu: `positionSize` = avgEntry × qty (USD), `positionSizeAsset` = qty. Zelfde split voor orphan-close-rijen en open posities via API.
+
+### Gewijzigd
+- **Trade-migratie bij laden** — elke trade wordt bij read uit IndexedDB of localStorage door `normalizeTrade()` gehaald. Fixt bestaande Blofin-imports retroactief: trailing zeros verdwijnen, en size wordt geswapt wanneer `source="blofin"` + `positionSizeAsset` leeg + `entry > positionSize*10` (heuristiek voor qty-in-size-veld).
+
+## [v12.9] — 2026-04-23
+
+### Toegevoegd
+- **FTMO (MT5) CSV-import** — nieuwe exchange "FTMO (MT5)" in Instellingen → Accounts. Geschikt voor elke MT5-broker die het MetriX-kolomformaat exporteert (Ticket, Open, Type, Volume, Symbol, Price, SL, TP, Close, Price, Swap, Commissions, Profit, Pips, Trade duration). Positioneel parsen lost de dubbele "Price"-kolom op. Swap + commissie worden als fees opgeslagen, Profit wordt naar netto PnL genormaliseerd voor consistentie met andere exchange-parsers. Symbol-formatting naar `X/USD`, `X/EUR`, `X/JPY` etc. afhankelijk van quote-currency.
+- **`csvOnly` flag voor exchanges** — nieuwe flag in `ExchangeAPI`-registry. Bij gezet verbergt de UI de API-key/secret velden en Test/Sync-knoppen. FTMO gebruikt deze flag omdat er bewust geen API-koppeling is (FTMO heeft geen publieke API, MetaApi-route schaalt niet gratis naar community).
+
+### Waarom geen FTMO auto-sync
+MT5 heeft geen publieke REST API. Third-party bruggen zoals MetaApi.cloud werken wel (read-only investor password route), maar schalen niet gratis boven 1-2 accounts. CSV-route werkt voor iedereen zonder externe dependencies of maandelijkse kosten. Als later een betaald model haalbaar is, kan MetaApi-integratie in de bestaande `proxy-local/worker.js` bijgebouwd worden.
+
 ## [v12.8] — 2026-04-22
 
 ### Toegevoegd
