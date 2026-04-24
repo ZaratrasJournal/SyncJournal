@@ -6,6 +6,16 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.26] — 2026-04-24
+
+### Toegevoegd
+- **Live status-bar bovenaan** (SyncJournal-stijl terminal bar, 32px) — staat nu boven de topbar op elke tab. Inhoud: `● LIVE` pulsing dot (0.8s), huidige klok (tikt elke seconde) + datum, `SESSION` auto-detected uit UTC-uur (Tokyo / London / New York / Off-session), totale `BAL` (sum van alle account-capital + PnL), max `DD` (peak-to-trough drawdown op equity curve), `RISK TODAY` (som van riskPct van trades vandaag), **live BTC ticker** via Binance WS, **live ETH ticker** via Binance WS, en rechts-uitgelijnd `⚡ N opens` (aantal open posities).
+- **ETH live ticker** — nieuwe `useBinanceTicker(symbol)` hook (geabstraheerd uit de oude `useBtcTicker`) ondersteunt nu zowel `btcusdt` als `ethusdt`. Beide tickers tonen realtime price met green/red flash op tick-directie + 24H pct change. `useBtcTicker()` blijft bestaan als backward-compat alias.
+- **`useLiveClock()` + `getSession()`** helpers naar tradejournal.html geport (al aanwezig in syncjournal.html).
+
+### Gewijzigd
+- **Maand-doelen ringen zijn nu optioneel** — nieuwe toggle `config.showGoalsRings` (default: aan). Verschijnt in Instellingen → Accounts → Layout, direct onder de Premium-keuze (alleen zichtbaar als je op Premium-layout zit). Uitzetten verbergt de GoalsRings widget bovenaan het Dashboard zonder je goals-data aan te tasten.
+
 ## [v12.25] — 2026-04-24
 
 ### Gewijzigd

@@ -868,7 +868,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.25",released:"2026-04-24"};
+const APP_VERSION={version:"v12.26",released:"2026-04-24"};
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
 function isNewerVersion(a,b){
   const parse=(s)=>String(s||"").replace(/^v/,"").split(".").map(n=>parseInt(n,10)||0);
@@ -1819,17 +1819,19 @@ function useSortable(containerRef,enabled,onReorder){
     return()=>s.destroy();
   },[enabled]);
 }
-// Real-time BTC ticker via Binance public WebSocket — no auth, CORS-friendly.
-// Auto-reconnect on close. Returns {price, change, pct, flash, history, high24, low24, volume24, status}.
-// Status: "connecting" | "live" | "reconnecting" | "error". Fallback price = 67420.50 until first tick.
-function useBtcTicker(){
-  const[btc,setBtc]=useState({price:67420.50,change:0,pct:0,flash:null,history:Array.from({length:30},(_,i)=>67200+Math.sin(i/4)*180),high24:0,low24:0,volume24:0,status:"connecting"});
+// Real-time ticker via Binance public WebSocket — no auth, CORS-friendly.
+// Symbol lower-case zoals "btcusdt" of "ethusdt". Auto-reconnect bij close.
+// Returns {price, change, pct, flash, history, high24, low24, volume24, status}.
+// Status: "connecting" | "live" | "reconnecting" | "error".
+function useBinanceTicker(symbol){
+  const fallback={btcusdt:67420.5,ethusdt:3248}[symbol]||100;
+  const[tick,setTick]=useState({price:fallback,change:0,pct:0,flash:null,history:Array.from({length:30},(_,i)=>fallback+Math.sin(i/4)*fallback*0.003),high24:0,low24:0,volume24:0,status:"connecting"});
   useEffect(()=>{
     let ws=null,prev=null,hist=[],reconnect=null,closed=false;
     const connect=()=>{
       try{
-        ws=new WebSocket("wss://stream.binance.com:9443/ws/btcusdt@ticker");
-        ws.onopen=()=>setBtc(p=>({...p,status:"live"}));
+        ws=new WebSocket("wss://stream.binance.com:9443/ws/"+symbol+"@ticker");
+        ws.onopen=()=>setTick(p=>({...p,status:"live"}));
         ws.onmessage=(e)=>{
           try{
             const d=JSON.parse(e.data);
@@ -1837,18 +1839,83 @@ function useBtcTicker(){
             if(!isFinite(price))return;
             const dir=prev===null?null:price>prev?"up":price<prev?"down":null;
             hist.push(price);if(hist.length>60)hist.shift();
-            setBtc({price,change:parseFloat(d.p)||0,pct:parseFloat(d.P)||0,flash:dir,history:[...hist],high24:parseFloat(d.h)||0,low24:parseFloat(d.l)||0,volume24:parseFloat(d.q)||0,status:"live"});
+            setTick({price,change:parseFloat(d.p)||0,pct:parseFloat(d.P)||0,flash:dir,history:[...hist],high24:parseFloat(d.h)||0,low24:parseFloat(d.l)||0,volume24:parseFloat(d.q)||0,status:"live"});
             prev=price;
           }catch(err){}
         };
-        ws.onerror=()=>setBtc(p=>({...p,status:"error"}));
-        ws.onclose=()=>{if(closed)return;setBtc(p=>({...p,status:"reconnecting"}));reconnect=setTimeout(connect,3000);};
-      }catch(err){setBtc(p=>({...p,status:"error"}));}
+        ws.onerror=()=>setTick(p=>({...p,status:"error"}));
+        ws.onclose=()=>{if(closed)return;setTick(p=>({...p,status:"reconnecting"}));reconnect=setTimeout(connect,3000);};
+      }catch(err){setTick(p=>({...p,status:"error"}));}
     };
     connect();
     return()=>{closed=true;if(ws){try{ws.close();}catch{}}if(reconnect)clearTimeout(reconnect);};
-  },[]);
-  return btc;
+  },[symbol]);
+  return tick;
+}
+// Backwards-compat alias (gebruikt door DashboardPremium BTC-card).
+function useBtcTicker(){return useBinanceTicker("btcusdt");}
+// Live clock: re-render elke seconde.
+function useLiveClock(){
+  const[t,setT]=useState(()=>new Date());
+  useEffect(()=>{const id=setInterval(()=>setT(new Date()),1000);return()=>clearInterval(id);},[]);
+  return t;
+}
+function getSession(date){
+  const h=date.getUTCHours();
+  if(h>=0&&h<7)return"TOKYO";
+  if(h>=7&&h<12)return"LONDON";
+  if(h>=12&&h<21)return"NEW YORK";
+  return"OFF-SESSION";
+}
+
+// Status bar — SyncJournal-stijl terminal bar bovenaan:
+// LIVE pulse + klok/datum + sessie + bal/DD/risk + BTC live + ETH live + opens.
+// Data uit trades + accounts + config; fallback "—" als niet beschikbaar.
+function AppStatusBar({trades,accounts,config}){
+  const btc=useBinanceTicker("btcusdt");
+  const eth=useBinanceTicker("ethusdt");
+  const now=useLiveClock();
+  const[pulse,setPulse]=useState(true);
+  useEffect(()=>{const id=setInterval(()=>setPulse(p=>!p),800);return()=>clearInterval(id);},[]);
+  const timeStr=now.toLocaleTimeString("nl-NL",{hour:"2-digit",minute:"2-digit",second:"2-digit"});
+  const dateStr=now.toLocaleDateString("nl-NL",{day:"2-digit",month:"short",year:"numeric"}).toUpperCase();
+  const session=getSession(now);
+  // Balance = sum van capital + pnl over handmatige accounts + exchange-configs met transactions
+  const closed=(trades||[]).filter(t=>t.pnl!==""&&!isNaN(parseFloat(t.pnl)));
+  const totalPnl=closed.reduce((s,t)=>s+parseFloat(t.pnl),0);
+  const handmatigCap=(accounts||[]).reduce((s,a)=>s+(computeAccountCapital(a.transactions||[])),0);
+  const exchangeCap=Object.values(config?.exchanges||{}).reduce((s,e)=>s+computeAccountCapital(e.transactions||[]),0);
+  const bal=handmatigCap+exchangeCap+totalPnl;
+  // Drawdown: max peak-to-trough over equity curve
+  const byDay={};closed.forEach(t=>{byDay[t.date]=(byDay[t.date]||0)+parseFloat(t.pnl);});
+  let cum=0,peak=0,maxDd=0;
+  Object.keys(byDay).sort().forEach(d=>{cum+=byDay[d];if(cum>peak)peak=cum;const dd=peak-cum;if(dd>maxDd)maxDd=dd;});
+  // Risk vandaag: som van riskPct van trades vandaag
+  const today=new Date().toISOString().split("T")[0];
+  const todayRisk=closed.filter(t=>t.date===today).reduce((s,t)=>s+(parseFloat(t.riskPct)||0),0);
+  // Open posities
+  const opens=(trades||[]).filter(t=>t.status==="open").length;
+  const btcUp=btc.change>=0,ethUp=eth.change>=0;
+
+  return(<div style={{height:"32px",display:"flex",alignItems:"center",gap:0,padding:"0 24px",borderBottom:"1px solid rgba(201,168,76,0.14)",background:"rgba(10,12,18,0.9)",fontFamily:"var(--mono)",fontSize:"11px",color:"var(--text3)",overflow:"hidden",whiteSpace:"nowrap",flexShrink:0}}>
+    <span style={{color:"var(--green)",fontWeight:700,marginRight:"14px",opacity:pulse?1:0.45,transition:"opacity .3s"}}>● LIVE</span>
+    <span style={{marginRight:"22px"}}>{timeStr} CET · {dateStr}</span>
+    <span style={{marginRight:"22px"}}>SESSION <span style={{color:"var(--gold)"}}>{session}</span></span>
+    <span style={{marginRight:"22px"}}>BAL <span style={{color:"var(--text)"}}>${fmt(bal)}</span></span>
+    <span style={{marginRight:"22px"}}>DD <span style={{color:"var(--red)"}}>{maxDd>0?"-$"+fmt(maxDd):"$0"}</span></span>
+    <span style={{marginRight:"22px"}}>RISK TODAY <span style={{color:"var(--gold)"}}>{todayRisk?todayRisk.toFixed(1)+"%":"0%"}</span></span>
+    <span style={{marginRight:"22px",display:"inline-flex",alignItems:"center",gap:"6px"}}>
+      <span style={{color:"#f7931a",fontWeight:700}}>₿ BTC</span>
+      <span style={{color:btc.flash==="up"?"var(--green)":btc.flash==="down"?"var(--red)":"var(--text)",fontWeight:700,transition:"color .2s"}}>${btc.price.toLocaleString("en-US",{maximumFractionDigits:0})}</span>
+      <span style={{color:btcUp?"var(--green)":"var(--red)",fontSize:"10px"}}>{btcUp?"▲":"▼"} {btc.pct.toFixed(2)}%</span>
+    </span>
+    <span style={{marginRight:"22px",display:"inline-flex",alignItems:"center",gap:"6px"}}>
+      <span style={{color:"#627eea",fontWeight:700}}>Ξ ETH</span>
+      <span style={{color:eth.flash==="up"?"var(--green)":eth.flash==="down"?"var(--red)":"var(--text)",fontWeight:700,transition:"color .2s"}}>${eth.price.toLocaleString("en-US",{maximumFractionDigits:0})}</span>
+      <span style={{color:ethUp?"var(--green)":"var(--red)",fontSize:"10px"}}>{ethUp?"▲":"▼"} {eth.pct.toFixed(2)}%</span>
+    </span>
+    <span style={{marginLeft:"auto",color:"var(--gold)"}}>⚡ {opens} open{opens===1?"":"s"}</span>
+  </div>);
 }
 function SortableSections({sections,defaultOrder,order,setOrder,editMode}){
   const containerRef=useRef(null);
@@ -4849,7 +4916,7 @@ function DashboardPremium({trades,config,accounts,tradingRules,dailyNotes,goals,
       </div>
     </div>
 
-    {goals&&<GoalsRings goals={goals} trades={closed} onEdit={()=>setTab("accounts")}/>}
+    {goals&&config?.showGoalsRings!==false&&<GoalsRings goals={goals} trades={closed} onEdit={()=>setTab("accounts")}/>}
 
     {/* MAIN GRID — content left, sidebar right */}
     <div style={{display:"grid",gridTemplateColumns:"1fr 280px",gap:"14px",marginBottom:"18px"}}>
@@ -6394,6 +6461,13 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,imp
           </button>);
         })}
       </div>
+      {(config.layout||"standard")==="premium"&&<div style={{marginTop:"14px",padding:"10px 14px",background:"rgba(255,255,255,0.02)",border:"1px solid var(--border2)",borderRadius:"8px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:"14px",maxWidth:"560px"}}>
+        <div>
+          <div style={{fontSize:"12px",fontWeight:600,color:"var(--text2)"}}>🎯 Maand-doelen ringen op Dashboard</div>
+          <div style={{fontSize:"11px",color:"var(--text4)",marginTop:"2px"}}>Toont de goals-rings bovenaan de Premium dashboard. Uitzetten om het scherm rustiger te maken.</div>
+        </div>
+        <button onClick={()=>setConfig(p=>({...p,showGoalsRings:p?.showGoalsRings===false?true:false}))} style={{padding:"6px 14px",borderRadius:"6px",fontSize:"11px",fontWeight:600,border:"1px solid "+(config?.showGoalsRings!==false?"var(--gold-border)":"var(--border3)"),background:config?.showGoalsRings!==false?"var(--gold-dim)":"transparent",color:config?.showGoalsRings!==false?"var(--gold)":"var(--text4)",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>{config?.showGoalsRings!==false?"Aan":"Uit"}</button>
+      </div>}
     </div>
 
     {/* Thema switcher — ported from v4_14 */}
@@ -7073,6 +7147,7 @@ function App(){
       </div>}
 
       {/* Topbar */}
+      <AppStatusBar trades={trades} accounts={accounts} config={config}/>
       <div className="tj-topbar" style={{flexShrink:0,zIndex:100,display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 20px"}}>
         <div style={{display:"flex",alignItems:"center",gap:"0"}}>
           <a className="morani-link" href="https://www.moranitraden.nl" target="_blank" rel="noopener noreferrer">
