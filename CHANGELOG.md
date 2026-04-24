@@ -6,6 +6,12 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.19] — 2026-04-24
+
+### Gewijzigd
+- **Feature-referentie groepen zijn nu inklapbaar** (accordeon, zelfde patroon als de FAQ). Elke groep-header toont item-count en een +/− toggle. Standaard dicht; klik om te openen. "Alles open" + "Alles dicht" knoppen rechtsboven de referentie voor bulk-toggle.
+- **"🌳 Versie-flow" groep verwijderd uit Feature-referentie** — dev-interne informatie (work/ vs main/ workflow tussen Denny + Sebas) hoort niet in user-gerichte help. Update-pad is nu volledig gedekt door de FAQ-entry "Hoe check ik of er een update is?" die zelfstandig leest.
+
 ## [v12.18] — 2026-04-24
 
 ### Gewijzigd
