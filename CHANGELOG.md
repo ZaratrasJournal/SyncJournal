@@ -6,6 +6,14 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.31] — 2026-04-24
+
+### Toegevoegd
+- **Tags zijn nu sleepbaar in volgorde** (Instellingen → Tags). Tot v12.30 werd elke nieuwe tag onderaan gekwakt — vervelend als je `2H` toevoegt aan Timeframe en die tussen `1H` en `4H` wil hebben staan. Nu: drag & drop per categorie via een ⋮⋮-handle. Native HTML5 (geen library), per categorie geïsoleerd zodat je niet per ongeluk tags tussen categorieën sleept. Voor Emoties zijn neg/pos sub-groepen apart sleepbaar (geen menging). Visuele feedback: opacity .4 op de gesleepte tag, gouden border op de drop-target. Klikken op de naam blijft hernoemen, ✕ blijft verwijderen.
+
+### Verwijderd
+- **ROL-knoppen bij setup-lagen** (Bias / Entry / Confirmatie). De optie was alleen relevant in 1 plek (Analytics → R:R analyse → R:R-per-timeframe filterde op `role="Entry"`) maar voor users met 1 laag per trade had het geen zichtbare impact en de drie opties zorgden voor verwarring. Verwijderd: `ROLE_OPTIONS` constant, `role`-veld uit `EMPTY_LAYER`, ROL-row in trade-form, en de `l.role==="Entry"`-filter in R:R-per-timeframe (alle lagen tellen nu mee). Bestaande trades met opgeslagen `role`-veld blijven werken — het veld wordt simpelweg genegeerd, geen migratie nodig.
+
 ## [v12.30] — 2026-04-24
 
 ### Gewijzigd
