@@ -6,6 +6,11 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.27] — 2026-04-24
+
+### Gewijzigd
+- **Status bar volgt nu het thema** — tot v12.26 had de bar hardcoded `rgba(10,12,18,0.9)` donkere achtergrond, wat op light/parchment/daylight thema's niet paste (donker strookje boven lichte app). Fix: inline style verplaatst naar CSS-class `.tj-statusbar`, met per-thema overrides — light/daylight = witte achtergrond, parchment = cream, classic = donker-paars. Text-colors gebruiken al thema-bewuste CSS-vars (`var(--text)`, `var(--gold)`, etc.) en hoeven dus niet aangepast. Brand-colors (BTC `#f7931a` oranje, ETH `#627eea` blauw) blijven vast want dat zijn de officiële crypto brand-colors.
+
 ## [v12.26] — 2026-04-24
 
 ### Toegevoegd
