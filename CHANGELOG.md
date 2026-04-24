@@ -6,6 +6,11 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.24] — 2026-04-24
+
+### Gewijzigd
+- **`Sparkline` component is nu responsive** — gebruikte een hardcoded 60×24 viewport en renderde daardoor als een minuscuul icoontje in de nieuwe brede BTC-card. Nu: `width="100%"` + `viewBox="0 0 600 H"` + `preserveAspectRatio="none"` + `vectorEffect="non-scaling-stroke"` → de svg rekt zich horizontaal tot de beschikbare container-breedte, lijn-dikte blijft constant, height prop stuurt verticale maat (default 60). Alleen gebruikt in DashboardPremium BTC-card op dit moment, dus geen risico voor andere plekken.
+
 ## [v12.23] — 2026-04-24
 
 ### Gewijzigd
