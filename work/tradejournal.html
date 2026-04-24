@@ -874,7 +874,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.27",released:"2026-04-24"};
+const APP_VERSION={version:"v12.28",released:"2026-04-24"};
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
 function isNewerVersion(a,b){
   const parse=(s)=>String(s||"").replace(/^v/,"").split(".").map(n=>parseInt(n,10)||0);
@@ -1830,7 +1830,7 @@ function useSortable(containerRef,enabled,onReorder){
 // Returns {price, change, pct, flash, history, high24, low24, volume24, status}.
 // Status: "connecting" | "live" | "reconnecting" | "error".
 function useBinanceTicker(symbol){
-  const fallback={btcusdt:67420.5,ethusdt:3248}[symbol]||100;
+  const fallback={btcusdt:67420.5,ethusdt:3248,solusdt:200}[symbol]||100;
   const[tick,setTick]=useState({price:fallback,change:0,pct:0,flash:null,history:Array.from({length:30},(_,i)=>fallback+Math.sin(i/4)*fallback*0.003),high24:0,low24:0,volume24:0,status:"connecting"});
   useEffect(()=>{
     let ws=null,prev=null,hist=[],reconnect=null,closed=false;
@@ -1860,6 +1860,49 @@ function useBinanceTicker(symbol){
 }
 // Backwards-compat alias (gebruikt door DashboardPremium BTC-card).
 function useBtcTicker(){return useBinanceTicker("btcusdt");}
+// Binance Futures TradFi perpetuals (XAUUSDT/XAGUSDT, sinds jan-2026 live).
+// @ticker stream wordt voor deze symbols (nog) NIET uitgezonden — alleen @bookTicker werkt.
+// Hybride aanpak: WebSocket @bookTicker voor live mid-prijs (~per 100ms), REST poll
+// /fapi/v1/ticker/24hr per 60s voor 24h pct change. Geo-block-risico in EU is laag voor WS.
+function useBinanceFuturesMetal(symbol){
+  const fallback={xauusdt:4700,xagusdt:75}[symbol]||100;
+  const[tick,setTick]=useState({price:fallback,change:0,pct:0,flash:null,history:Array.from({length:30},(_,i)=>fallback+Math.sin(i/4)*fallback*0.003),high24:0,low24:0,volume24:0,status:"connecting"});
+  useEffect(()=>{
+    let ws=null,prev=null,hist=[],reconnect=null,closed=false,statsTimer=null;
+    const fetchStats=async()=>{
+      try{
+        const r=await fetch("https://fapi.binance.com/fapi/v1/ticker/24hr?symbol="+symbol.toUpperCase(),{cache:"no-cache"});
+        if(!r.ok)return;
+        const d=await r.json();
+        setTick(p=>({...p,pct:parseFloat(d.priceChangePercent)||0,change:parseFloat(d.priceChange)||0,high24:parseFloat(d.highPrice)||0,low24:parseFloat(d.lowPrice)||0,volume24:parseFloat(d.quoteVolume)||0}));
+      }catch(err){}
+    };
+    fetchStats();statsTimer=setInterval(fetchStats,60000);
+    const connect=()=>{
+      try{
+        ws=new WebSocket("wss://fstream.binance.com/ws/"+symbol+"@bookTicker");
+        ws.onopen=()=>setTick(p=>({...p,status:"live"}));
+        ws.onmessage=(e)=>{
+          try{
+            const d=JSON.parse(e.data);
+            const bid=parseFloat(d.b),ask=parseFloat(d.a);
+            if(!isFinite(bid)||!isFinite(ask))return;
+            const price=(bid+ask)/2;
+            const dir=prev===null?null:price>prev?"up":price<prev?"down":null;
+            hist.push(price);if(hist.length>60)hist.shift();
+            setTick(p=>({...p,price,flash:dir,history:[...hist],status:"live"}));
+            prev=price;
+          }catch(err){}
+        };
+        ws.onerror=()=>setTick(p=>({...p,status:"error"}));
+        ws.onclose=()=>{if(closed)return;setTick(p=>({...p,status:"reconnecting"}));reconnect=setTimeout(connect,3000);};
+      }catch(err){setTick(p=>({...p,status:"error"}));}
+    };
+    connect();
+    return()=>{closed=true;if(statsTimer)clearInterval(statsTimer);if(ws){try{ws.close();}catch{}}if(reconnect)clearTimeout(reconnect);};
+  },[symbol]);
+  return tick;
+}
 // Live clock: re-render elke seconde.
 function useLiveClock(){
   const[t,setT]=useState(()=>new Date());
@@ -1880,6 +1923,11 @@ function getSession(date){
 function AppStatusBar({trades,accounts,config}){
   const btc=useBinanceTicker("btcusdt");
   const eth=useBinanceTicker("ethusdt");
+  const sol=useBinanceTicker("solusdt");
+  // Gold/Silver via Binance Futures TradFi perpetuals (XAUUSDT/XAGUSDT — sinds jan-2026 live).
+  // Aparte hook want @ticker stream is voor deze symbols nog niet actief; gebruikt @bookTicker WS + REST 60s poll.
+  const xau=useBinanceFuturesMetal("xauusdt");
+  const xag=useBinanceFuturesMetal("xagusdt");
   const now=useLiveClock();
   const[pulse,setPulse]=useState(true);
   useEffect(()=>{const id=setInterval(()=>setPulse(p=>!p),800);return()=>clearInterval(id);},[]);
@@ -1901,25 +1949,27 @@ function AppStatusBar({trades,accounts,config}){
   const todayRisk=closed.filter(t=>t.date===today).reduce((s,t)=>s+(parseFloat(t.riskPct)||0),0);
   // Open posities
   const opens=(trades||[]).filter(t=>t.status==="open").length;
-  const btcUp=btc.change>=0,ethUp=eth.change>=0;
+  // Render-helper voor één ticker-blokje (BTC/ETH/SOL/XAU/XAG)
+  const ticker=(t,label,color,decimals)=>{const up=t.change>=0;return(
+    <span style={{marginRight:"16px",display:"inline-flex",alignItems:"center",gap:"5px"}}>
+      <span style={{color,fontWeight:700}}>{label}</span>
+      <span style={{color:t.flash==="up"?"var(--green)":t.flash==="down"?"var(--red)":"var(--text)",fontWeight:700,transition:"color .2s"}}>${t.price.toLocaleString("en-US",{minimumFractionDigits:decimals,maximumFractionDigits:decimals})}</span>
+      <span style={{color:up?"var(--green)":"var(--red)",fontSize:"10px"}}>{up?"▲":"▼"} {t.pct.toFixed(2)}%</span>
+    </span>);
+  };
 
   return(<div className="tj-statusbar">
-    <span style={{color:"var(--green)",fontWeight:700,marginRight:"14px",opacity:pulse?1:0.45,transition:"opacity .3s"}}>● LIVE</span>
-    <span style={{marginRight:"22px"}}>{timeStr} CET · {dateStr}</span>
-    <span style={{marginRight:"22px"}}>SESSION <span style={{color:"var(--gold)"}}>{session}</span></span>
-    <span style={{marginRight:"22px"}}>BAL <span style={{color:"var(--text)"}}>${fmt(bal)}</span></span>
-    <span style={{marginRight:"22px"}}>DD <span style={{color:"var(--red)"}}>{maxDd>0?"-$"+fmt(maxDd):"$0"}</span></span>
-    <span style={{marginRight:"22px"}}>RISK TODAY <span style={{color:"var(--gold)"}}>{todayRisk?todayRisk.toFixed(1)+"%":"0%"}</span></span>
-    <span style={{marginRight:"22px",display:"inline-flex",alignItems:"center",gap:"6px"}}>
-      <span style={{color:"#f7931a",fontWeight:700}}>₿ BTC</span>
-      <span style={{color:btc.flash==="up"?"var(--green)":btc.flash==="down"?"var(--red)":"var(--text)",fontWeight:700,transition:"color .2s"}}>${btc.price.toLocaleString("en-US",{maximumFractionDigits:0})}</span>
-      <span style={{color:btcUp?"var(--green)":"var(--red)",fontSize:"10px"}}>{btcUp?"▲":"▼"} {btc.pct.toFixed(2)}%</span>
-    </span>
-    <span style={{marginRight:"22px",display:"inline-flex",alignItems:"center",gap:"6px"}}>
-      <span style={{color:"#627eea",fontWeight:700}}>Ξ ETH</span>
-      <span style={{color:eth.flash==="up"?"var(--green)":eth.flash==="down"?"var(--red)":"var(--text)",fontWeight:700,transition:"color .2s"}}>${eth.price.toLocaleString("en-US",{maximumFractionDigits:0})}</span>
-      <span style={{color:ethUp?"var(--green)":"var(--red)",fontSize:"10px"}}>{ethUp?"▲":"▼"} {eth.pct.toFixed(2)}%</span>
-    </span>
+    <span style={{color:"var(--green)",fontWeight:700,marginRight:"12px",opacity:pulse?1:0.45,transition:"opacity .3s"}}>● LIVE</span>
+    <span style={{marginRight:"16px"}}>{timeStr} CET · {dateStr}</span>
+    <span style={{marginRight:"16px"}}>SESSION <span style={{color:"var(--gold)"}}>{session}</span></span>
+    <span style={{marginRight:"16px"}}>BALANS <span style={{color:"var(--text)"}}>${fmt(bal)}</span></span>
+    <span style={{marginRight:"16px"}}>DD <span style={{color:"var(--red)"}}>{maxDd>0?"-$"+fmt(maxDd):"$0"}</span></span>
+    <span style={{marginRight:"16px"}}>RISK <span style={{color:"var(--gold)"}}>{todayRisk?todayRisk.toFixed(1)+"%":"0%"}</span></span>
+    {ticker(btc,"₿ BTC","#f7931a",0)}
+    {ticker(eth,"Ξ ETH","#627eea",0)}
+    {ticker(sol,"◎ SOL","#9945ff",2)}
+    {ticker(xau,"Au XAU","#ffd166",0)}
+    {ticker(xag,"Ag XAG","#c8c8d0",2)}
     <span style={{marginLeft:"auto",color:"var(--gold)"}}>⚡ {opens} open{opens===1?"":"s"}</span>
   </div>);
 }
@@ -3609,7 +3659,11 @@ function FilterBar({trades,allTrades,filters,setFilters,config,accounts}){
   const allConfs=[...new Set(at.flatMap(t=>t.confirmationTags||[]))].sort();
   const allEmotions=[...new Set(at.flatMap(t=>t.emotionTags||[]))].sort();
   const allMistakes=[...new Set(at.flatMap(t=>t.mistakeTags||[]))].sort();
-  const activeCount=Object.values(filters).filter(v=>v&&v!=="all"&&(!Array.isArray(v)||v.length>0)&&v!=="").length;
+  // tradeType heeft default "real" (niet "all") — telt alleen als gebruiker hem expliciet wijzigt naar bv. "demo"
+  const activeCount=Object.entries(filters).filter(([k,v])=>{
+    if(k==="tradeType")return v&&v!=="real"&&v!=="all";
+    return v&&v!=="all"&&(!Array.isArray(v)||v.length>0)&&v!=="";
+  }).length;
   const[expanded,setExpanded]=useState(activeCount>0);
   const chip=(label,field,value)=>{const active=filters[field]===value;return <button key={value} onClick={()=>setFilters(p=>({...p,[field]:active?"all":value}))} style={{padding:"4px 10px",borderRadius:"5px",fontSize:"11px",fontWeight:500,border:`1px solid ${active?"#C9A84C":"var(--border3)"}`,background:active?"rgba(201,168,76,0.12)":"transparent",color:active?"#C9A84C":"var(--text3)",cursor:"pointer",fontFamily:"inherit",transition:"all .12s"}}>{label}</button>};
   const multiChip=(label,field,value)=>{const arr=filters[field]||[];const active=arr.includes(value);return <button key={value} onClick={()=>setFilters(p=>{const cur=p[field]||[];return{...p,[field]:active?cur.filter(v=>v!==value):[...cur,value]}})} style={{padding:"4px 10px",borderRadius:"5px",fontSize:"11px",fontWeight:500,border:`1px solid ${active?"#C9A84C":"var(--border3)"}`,background:active?"rgba(201,168,76,0.12)":"transparent",color:active?"#C9A84C":"var(--text3)",cursor:"pointer",fontFamily:"inherit",transition:"all .12s"}}>{label}</button>};
@@ -4854,10 +4908,117 @@ function Sparkline({data,color="#2eaa6f",height=60}){
   </svg>);
 }
 
+// BTC live chart met timeframe-selector. REST klines bij mount + bij TF-switch,
+// daarna live updates via @kline_<ws> stream (laatste candle wordt continu vervangen,
+// nieuwe candle bij interval-rollover).
+const BTC_TFS=[
+  {id:"5M", interval:"1s", limit:300, ws:"1s"},
+  {id:"15M",interval:"1m", limit:15,  ws:"1m"},
+  {id:"1H", interval:"1m", limit:60,  ws:"1m"},
+  {id:"4H", interval:"5m", limit:48,  ws:"5m"},
+  {id:"1D", interval:"15m",limit:96,  ws:"15m"},
+  {id:"1W", interval:"1h", limit:168, ws:"1h"},
+];
+function BtcLiveChart(){
+  const[tf,setTf]=useState("1H");
+  const[candles,setCandles]=useState([]);
+  const[loading,setLoading]=useState(true);
+  const cfg=BTC_TFS.find(t=>t.id===tf);
+  useEffect(()=>{
+    let cancelled=false,ws=null,reconnect=null;
+    setCandles([]);setLoading(true);
+    const fetchInitial=async()=>{
+      try{
+        const r=await fetch(`https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=${cfg.interval}&limit=${cfg.limit}`,{cache:"no-cache"});
+        if(!r.ok||cancelled)return;
+        const raw=await r.json();
+        if(cancelled)return;
+        setCandles(raw.map(k=>({time:Math.floor(k[0]/1000),close:parseFloat(k[4]),high:parseFloat(k[2]),low:parseFloat(k[3])})));
+        setLoading(false);
+      }catch(e){if(!cancelled)setLoading(false);}
+    };
+    fetchInitial();
+    const connect=()=>{
+      try{
+        ws=new WebSocket(`wss://stream.binance.com:9443/ws/btcusdt@kline_${cfg.ws}`);
+        ws.onmessage=(e)=>{
+          try{
+            const d=JSON.parse(e.data);const k=d.k;
+            const c={time:Math.floor(k.t/1000),close:parseFloat(k.c),high:parseFloat(k.h),low:parseFloat(k.l)};
+            setCandles(prev=>{
+              const next=[...prev];const last=next[next.length-1];
+              if(last&&last.time===c.time){next[next.length-1]=c;}
+              else{next.push(c);if(next.length>cfg.limit)next.shift();}
+              return next;
+            });
+          }catch{}
+        };
+        ws.onclose=()=>{if(!cancelled)reconnect=setTimeout(connect,3000);};
+      }catch{}
+    };
+    connect();
+    return()=>{cancelled=true;if(ws){try{ws.close();}catch{}}if(reconnect)clearTimeout(reconnect);};
+  },[tf]);
+  // SVG paths
+  const W=600,H=120,padTop=8,padBot=6,innerH=H-padTop-padBot;
+  const{linePath,areaPath,lastX,lastY,color}=useMemo(()=>{
+    if(candles.length<2)return{linePath:"",areaPath:"",lastX:0,lastY:0,color:"#5a606e"};
+    const closes=candles.map(c=>c.close);
+    const min=Math.min(...closes),max=Math.max(...closes);
+    const range=max-min||1;
+    const xy=(i,v)=>[(i/(candles.length-1))*W,padTop+innerH-((v-min)/range)*innerH];
+    const pts=candles.map((c,i)=>xy(i,c.close));
+    const lp=pts.map((p,i)=>(i?"L":"M")+p[0].toFixed(1)+","+p[1].toFixed(1)).join(" ");
+    const ap=lp+` L ${W},${H} L 0,${H} Z`;
+    const last=pts[pts.length-1];
+    const up=candles[candles.length-1].close>=candles[0].close;
+    return{linePath:lp,areaPath:ap,lastX:last[0],lastY:last[1],color:up?"#2eaa6f":"#e05555"};
+  },[candles]);
+  return(<div style={{display:"flex",flexDirection:"column",gap:"6px",height:"140px",width:"100%"}}>
+    <div style={{display:"flex",gap:"3px",justifyContent:"flex-end"}}>
+      {BTC_TFS.map(t=>(<button key={t.id} onClick={()=>setTf(t.id)} style={{padding:"3px 8px",fontSize:"9.5px",fontFamily:"var(--mono)",fontWeight:600,letterSpacing:".06em",borderRadius:"4px",border:`1px solid ${tf===t.id?"var(--gold-border)":"var(--border3)"}`,background:tf===t.id?"var(--gold-dim)":"transparent",color:tf===t.id?"var(--gold)":"var(--text4)",cursor:"pointer",transition:"all .12s"}}>{t.id}</button>))}
+    </div>
+    <div style={{flex:1,minHeight:0,position:"relative"}}>
+      {loading||candles.length<2?(
+        <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"10px",color:"var(--text5)",fontFamily:"var(--mono)",letterSpacing:".1em"}}>LADEN…</div>
+      ):(
+        <svg width="100%" height="100%" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{display:"block"}}>
+          <defs>
+            <linearGradient id="btcChartFill" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={color} stopOpacity="0.32"/>
+              <stop offset="100%" stopColor={color} stopOpacity="0"/>
+            </linearGradient>
+          </defs>
+          <path d={areaPath} fill="url(#btcChartFill)"/>
+          <path d={linePath} fill="none" stroke={color} strokeWidth="1.4" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke"/>
+          <circle cx={lastX} cy={lastY} r="2.5" fill={color}/>
+          <circle cx={lastX} cy={lastY} r="6" fill={color} opacity="0.25">
+            <animate attributeName="r" values="2.5;7;2.5" dur="1.6s" repeatCount="indefinite"/>
+            <animate attributeName="opacity" values="0.4;0;0.4" dur="1.6s" repeatCount="indefinite"/>
+          </circle>
+        </svg>
+      )}
+    </div>
+  </div>);
+}
+
 function DashboardPremium({trades,config,accounts,tradingRules,dailyNotes,goals,setTab,setNewTrade,newEmptyTrade,setFilters}){
-  const closed=(trades||[]).filter(t=>t.pnl!==""&&!isNaN(parseFloat(t.pnl)));
+  const allClosed=(trades||[]).filter(t=>t.pnl!==""&&!isNaN(parseFloat(t.pnl)));
+  const[period,setPeriod]=useState("1M");
+  const PERIODS=["1D","1W","1M","3M","YTD","ALL"];
+  const periodStart=useMemo(()=>{
+    const now=new Date();
+    if(period==="1D")return new Date(now.getFullYear(),now.getMonth(),now.getDate());
+    if(period==="1W")return new Date(now.getTime()-7*864e5);
+    if(period==="1M")return new Date(now.getTime()-30*864e5);
+    if(period==="3M")return new Date(now.getTime()-90*864e5);
+    if(period==="YTD")return new Date(now.getFullYear(),0,1);
+    return null;
+  },[period]);
+  const closed=useMemo(()=>!periodStart?allClosed:allClosed.filter(t=>{const d=new Date(t.date);return !isNaN(d)&&d>=periodStart;}),[allClosed,periodStart]);
+  const periodLabel={"1D":"Vandaag","1W":"Deze week","1M":"30 dagen","3M":"90 dagen","YTD":"YTD","ALL":"Totaal"}[period];
   const[insight]=useState(()=>{
-    const ctx=buildInsightContext(closed,goals,tradingRules);
+    const ctx=buildInsightContext(allClosed,goals,tradingRules);
     return getDashboardInsight(ctx,Math.floor(Date.now()/1000));
   });
   const btc=useBtcTicker();
@@ -4873,15 +5034,13 @@ function DashboardPremium({trades,config,accounts,tradingRules,dailyNotes,goals,
   const avgLoss=losses.length?gl/losses.length:0;
   const rr=avgLoss>0?avgWin/avgLoss:0;
   const expectancy=closed.length?(wr/100*avgWin)-((1-wr/100)*avgLoss):0;
-  const thisMonth=closed.filter(t=>{const d=new Date(t.date);const n=new Date();return d.getFullYear()===n.getFullYear()&&d.getMonth()===n.getMonth();});
-  const monthPnl=thisMonth.reduce((s,t)=>s+parseFloat(t.pnl),0);
   const daysMap={};closed.forEach(t=>{if(!daysMap[t.date])daysMap[t.date]=0;daysMap[t.date]+=parseFloat(t.pnl);});
   const sortedDays=Object.entries(daysMap).sort((a,b)=>b[0].localeCompare(a[0]));
   let streak=0;for(const[,pnl] of sortedDays){if(pnl>0)streak++;else break;}
-  // Recent trades (last 10 closed, newest first)
+  // Recent trades (last 10 in period, newest first)
   const recent=[...closed].sort((a,b)=>((b.date||"")+(b.time||"")).localeCompare((a.date||"")+(a.time||""))).slice(0,10);
-  // Pairs MTD (performance per pair voor deze maand)
-  const pairsMap={};thisMonth.forEach(t=>{pairsMap[t.pair]=(pairsMap[t.pair]||0)+parseFloat(t.pnl);});
+  // Pairs in period (performance per pair)
+  const pairsMap={};closed.forEach(t=>{pairsMap[t.pair]=(pairsMap[t.pair]||0)+parseFloat(t.pnl);});
   const pairsMtd=Object.entries(pairsMap).sort((a,b)=>b[1]-a[1]).slice(0,6);
   const pairsMaxAbs=Math.max(1,...pairsMtd.map(([,v])=>Math.abs(v)));
   // Top setup for AI insight
@@ -4903,9 +5062,9 @@ function DashboardPremium({trades,config,accounts,tradingRules,dailyNotes,goals,
           <span style={{fontSize:"16px",lineHeight:1}}>{insight.icon}</span><span>{insight.text}</span>
         </div>}
         <div style={{fontSize:"12px",color:"var(--text4)",marginTop:"8px",fontFamily:"var(--mono)"}}>
-          Maand: <span style={{color:monthPnl>=0?"var(--green)":"var(--red)",fontWeight:600}}>{(monthPnl>=0?"+":"-")+"$"+fmt(Math.abs(monthPnl))}</span>
+          {periodLabel}: <span style={{color:totalPnl>=0?"var(--green)":"var(--red)",fontWeight:600}}>{(totalPnl>=0?"+":"-")+"$"+fmt(Math.abs(totalPnl))}</span>
           <span style={{margin:"0 10px",opacity:.4}}>·</span>
-          {thisMonth.length} trades deze maand
+          {closed.length} trade{closed.length===1?"":"s"}
           <span style={{margin:"0 10px",opacity:.4}}>·</span>
           win-rate <span style={{color:wr>=50?"var(--green)":"var(--red)"}}>{wr.toFixed(0)}%</span>
           {streak>0&&<><span style={{margin:"0 10px",opacity:.4}}>·</span>🔥 <span style={{color:"var(--gold)",fontWeight:600}}>{streak}d streak</span></>}
@@ -4913,9 +5072,9 @@ function DashboardPremium({trades,config,accounts,tradingRules,dailyNotes,goals,
       </div>
       <div style={{display:"flex",alignItems:"center",gap:"8px"}}>
         <div style={{display:"flex",gap:"6px"}}>
-          {["1D","1W","1M","3M","YTD","ALL"].map((p,i)=>(
-            <button key={p} style={{padding:"5px 11px",fontSize:"11px",fontFamily:"var(--mono)",borderRadius:"8px",cursor:"pointer",background:i===2?"var(--gold-dim)":"transparent",color:i===2?"var(--gold)":"var(--text4)",border:"1px solid "+(i===2?"var(--gold-border)":"var(--border3)")}}>{p}</button>
-          ))}
+          {PERIODS.map(p=>{const active=p===period;return(
+            <button key={p} onClick={()=>setPeriod(p)} style={{padding:"5px 11px",fontSize:"11px",fontFamily:"var(--mono)",borderRadius:"8px",cursor:"pointer",background:active?"var(--gold-dim)":"transparent",color:active?"var(--gold)":"var(--text4)",border:"1px solid "+(active?"var(--gold-border)":"var(--border3)")}}>{p}</button>
+          );})}
         </div>
         <button onClick={()=>setTab("accounts")} style={{padding:"8px 14px",borderRadius:"10px",background:"rgba(255,255,255,.05)",color:"var(--text2)",border:"1px solid rgba(255,255,255,.08)",fontFamily:"inherit",fontSize:"12px",fontWeight:600,cursor:"pointer"}}>📥 Sync</button>
         <button onClick={()=>{setNewTrade(newEmptyTrade());setTab("new");}} style={{padding:"8px 16px",borderRadius:"10px",background:"linear-gradient(135deg,#f0d57a,#C9A84C,#8c721c)",color:"#000",border:"none",fontFamily:"inherit",fontSize:"12px",fontWeight:700,cursor:"pointer",boxShadow:"0 4px 16px rgba(201,168,76,.3)"}}>⊕ Nieuwe trade</button>
@@ -4930,7 +5089,7 @@ function DashboardPremium({trades,config,accounts,tradingRules,dailyNotes,goals,
         {/* BTC Live Feed — Binance WS */}
         <div style={{background:"linear-gradient(135deg,rgba(247,147,26,.08),var(--glass))",border:"1px solid rgba(247,147,26,.22)",borderRadius:"12px",padding:"14px 18px",display:"grid",gridTemplateColumns:"auto 1fr auto",gap:"20px",alignItems:"center",position:"relative",overflow:"hidden"}}>
           <div style={{position:"absolute",top:0,left:0,right:0,height:"1px",background:"linear-gradient(90deg,transparent,rgba(247,147,26,.5),transparent)",opacity:.7}}/>
-          <div>
+          <div style={{alignSelf:"center"}}>
             <div style={{fontSize:"9.5px",fontWeight:700,letterSpacing:".2em",color:"#f7931a",fontFamily:"var(--mono)",marginBottom:"4px",display:"flex",alignItems:"center",gap:"6px"}}>
               <span style={{width:"6px",height:"6px",borderRadius:"50%",background:btc.status==="live"?"var(--green)":btc.status==="reconnecting"?"var(--gold)":"var(--red)",boxShadow:btc.status==="live"?"0 0 8px rgba(46,170,111,.8)":"none"}}/>
               BTC / USD · {btc.status==="live"?"LIVE BINANCE":btc.status.toUpperCase()}
@@ -4944,10 +5103,10 @@ function DashboardPremium({trades,config,accounts,tradingRules,dailyNotes,goals,
               {btc.volume24>0&&<span>24H VOL <span style={{color:"var(--text2)"}}>${(btc.volume24/1e9).toFixed(2)}B</span></span>}
             </div>
           </div>
-          <div style={{height:"60px"}}>
-            <Sparkline data={btc.history} color={btcUp?"#2eaa6f":"#e05555"} fill={true}/>
+          <div style={{minWidth:0}}>
+            <BtcLiveChart/>
           </div>
-          <div style={{display:"flex",flexDirection:"column",gap:"4px",fontFamily:"var(--mono)",fontSize:"10px",textAlign:"right",color:"var(--text4)",borderLeft:"1px dashed rgba(255,255,255,.06)",paddingLeft:"16px"}}>
+          <div style={{display:"flex",flexDirection:"column",gap:"4px",fontFamily:"var(--mono)",fontSize:"10px",textAlign:"right",color:"var(--text4)",borderLeft:"1px dashed rgba(255,255,255,.06)",paddingLeft:"16px",alignSelf:"center"}}>
             <div>24H HIGH <span style={{color:"var(--green)"}}>${btc.high24?btc.high24.toFixed(0):"—"}</span></div>
             <div>24H LOW <span style={{color:"var(--red)"}}>${btc.low24?btc.low24.toFixed(0):"—"}</span></div>
             <button onClick={()=>{setNewTrade({...newEmptyTrade(),pair:"BTC/USDT"});setTab("new");}} style={{padding:"4px 10px",fontSize:"10px",marginTop:"4px",borderRadius:"6px",border:"1px solid var(--gold-border)",background:"var(--gold-dim)",color:"var(--gold)",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>Trade BTC →</button>
@@ -5003,8 +5162,8 @@ function DashboardPremium({trades,config,accounts,tradingRules,dailyNotes,goals,
 
           <div style={{background:"var(--glass)",border:"1px solid var(--border2)",borderRadius:"12px",padding:"14px 16px",position:"relative"}}>
             <div style={{position:"absolute",top:0,left:0,right:0,height:"1px",background:"linear-gradient(90deg,transparent,var(--gold-border),transparent)",opacity:.5}}/>
-            <div style={{fontSize:"11px",fontWeight:700,letterSpacing:".16em",color:"var(--text2)",fontFamily:"var(--mono)",marginBottom:"10px"}}>📊 PAIRS · MTD</div>
-            {pairsMtd.length===0?<div style={{fontSize:"11px",color:"var(--text4)",padding:"12px 0",textAlign:"center"}}>Geen trades deze maand</div>:pairsMtd.map(([p,v],i)=>{
+            <div style={{fontSize:"11px",fontWeight:700,letterSpacing:".16em",color:"var(--text2)",fontFamily:"var(--mono)",marginBottom:"10px"}}>📊 PAIRS · {period}</div>
+            {pairsMtd.length===0?<div style={{fontSize:"11px",color:"var(--text4)",padding:"12px 0",textAlign:"center"}}>Geen trades in deze periode</div>:pairsMtd.map(([p,v],i)=>{
               const w=Math.abs(v)/pairsMaxAbs*100;
               return(<div key={p} onClick={()=>{if(setFilters&&setTab){setFilters(pr=>({...pr,pair:p}));setTab("trades")}}} style={{display:"flex",alignItems:"center",gap:"10px",padding:"6px 0",borderBottom:i===pairsMtd.length-1?"none":"1px dashed rgba(255,255,255,.04)",cursor:"pointer"}}>
                 <div style={{fontSize:"11px",fontFamily:"var(--mono)",fontWeight:700,minWidth:"62px"}}>{p}</div>
@@ -5624,6 +5783,29 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,imp
   const nameTimerRef=useRef(null);const nameHideTimerRef=useRef(null);
   // Update check — user-initiated. status: idle | checking | up-to-date | newer | error
   const[updateCheck,setUpdateCheck]=useState({status:"idle"});
+  const[downloading,setDownloading]=useState(false);
+  const downloadUpdate=async()=>{
+    // <a download> wordt door browsers genegeerd bij cross-origin (raw.githubusercontent.com),
+    // dus Chrome opent de file inline (Content-Type: text/plain). Workaround: fetch als blob,
+    // re-typen als text/html, en triggeren via blob-URL — dat is same-origin dus download werkt.
+    setDownloading(true);
+    try{
+      const r=await fetch("https://raw.githubusercontent.com/ZaratrasJournal/SyncJournal/main/main/tradejournal.html",{cache:"no-cache"});
+      if(!r.ok)throw new Error("HTTP "+r.status);
+      const text=await r.text();
+      const blob=new Blob([text],{type:"text/html"});
+      const url=URL.createObjectURL(blob);
+      const a=document.createElement("a");
+      a.href=url;a.download="tradejournal.html";
+      document.body.appendChild(a);a.click();document.body.removeChild(a);
+      setTimeout(()=>URL.revokeObjectURL(url),2000);
+      showToast("Download gestart — overschrijf je oude bestand en ververs.","success");
+    }catch(e){
+      showToast("Download mislukt: "+(e.message||e),"error");
+    }finally{
+      setDownloading(false);
+    }
+  };
   const checkForUpdates=async()=>{
     setUpdateCheck({status:"checking"});
     try{
@@ -6035,7 +6217,14 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,imp
     if(isXlsx)reader.readAsArrayBuffer(file); else reader.readAsText(file);
     e.target.value="";
   };
-  const[ex,setEx]=useState(()=>{const k=Object.keys(ExchangeAPI)[0];return k});
+  const isExConnected=(key)=>{const a=ExchangeAPI[key];if(!a)return false;const c=config?.exchanges?.[key]||{};return a.walletOnly?!!c.walletAddress:!!(c.apiKey&&c.apiSecret)};
+  const[ex,setEx]=useState(()=>{const keys=Object.keys(ExchangeAPI);return keys.find(isExConnected)||keys[0]});
+  const connectedExchanges=Object.keys(ExchangeAPI).filter(isExConnected);
+  const availableExchanges=Object.keys(ExchangeAPI).filter(k=>!isExConnected(k));
+  const[showAvailable,setShowAvailable]=useState(()=>{
+    const keys=Object.keys(ExchangeAPI);
+    return keys.filter(k=>{const a=ExchangeAPI[k];const c=config?.exchanges?.[k]||{};return a.walletOnly?!!c.walletAddress:!!(c.apiKey&&c.apiSecret)}).length===0;
+  });
   const[testing,setTesting]=useState(null);
   const[syncing,setSyncing]=useState(null);
   const[syncResult,setSyncResult]=useState(null);
@@ -6049,12 +6238,25 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,imp
     <div style={{display:"grid",gridTemplateColumns:"240px 1fr",gap:"20px",alignItems:"start"}}>
       <div style={{background:"var(--glass)",backdropFilter:"var(--glass-blur)",WebkitBackdropFilter:"var(--glass-blur)",borderRadius:"var(--radius-lg)",padding:"16px",border:"1px solid var(--border1)"}}>
         <div style={{fontSize:"10px",color:"var(--text4)",textTransform:"uppercase",fontWeight:600,marginBottom:"12px",letterSpacing:"0.08em"}}>Exchanges</div>
-        {Object.entries(ExchangeAPI).map(([key,api])=>{const cfg=config?.exchanges?.[key]||{};const connected=api.walletOnly?!!cfg.walletAddress:!!(cfg.apiKey&&cfg.apiSecret);return(<div key={key} style={{display:"flex",alignItems:"center",gap:"4px",marginBottom:"4px"}}>
-          <button onClick={()=>{setEx(key);setSyncResult(null)}} style={{display:"flex",alignItems:"center",gap:"10px",flex:1,padding:"10px 12px",borderRadius:"8px",border:`1px solid ${ex===key?"rgba(201,168,76,0.25)":"transparent"}`,background:ex===key?"var(--gold-dim)":"transparent",cursor:"pointer",fontFamily:"inherit"}}>
-            <ExchangeIcon name={key} size={20}/>
-            <div style={{textAlign:"left",flex:1}}><div style={{fontSize:"12px",fontWeight:600,color:ex===key?"var(--gold)":"var(--text2)"}}>{api.name}</div>{connected&&<div style={{fontSize:"9px",color:"var(--green)",display:"flex",alignItems:"center",gap:"4px"}}><div style={{width:"5px",height:"5px",borderRadius:"50%",background:"var(--green)",animation:"pulse 2s ease-in-out infinite"}}/> Actief</div>}</div>
-          </button>
-        </div>);})}
+        {(()=>{
+          const renderExBtn=(key)=>{const api=ExchangeAPI[key];const connected=isExConnected(key);return(<div key={key} style={{display:"flex",alignItems:"center",gap:"4px",marginBottom:"4px"}}>
+            <button onClick={()=>{setEx(key);setSyncResult(null)}} style={{display:"flex",alignItems:"center",gap:"10px",flex:1,padding:"10px 12px",borderRadius:"8px",border:`1px solid ${ex===key?"rgba(201,168,76,0.25)":"transparent"}`,background:ex===key?"var(--gold-dim)":"transparent",cursor:"pointer",fontFamily:"inherit"}}>
+              <ExchangeIcon name={key} size={20}/>
+              <div style={{textAlign:"left",flex:1}}><div style={{fontSize:"12px",fontWeight:600,color:ex===key?"var(--gold)":"var(--text2)"}}>{api.name}</div>{connected&&<div style={{fontSize:"9px",color:"var(--green)",display:"flex",alignItems:"center",gap:"4px"}}><div style={{width:"5px",height:"5px",borderRadius:"50%",background:"var(--green)",animation:"pulse 2s ease-in-out infinite"}}/> Actief</div>}</div>
+            </button>
+          </div>);};
+          return(<>
+            {connectedExchanges.length===0&&<div style={{fontSize:"11px",color:"var(--text5)",padding:"8px 4px 10px",fontStyle:"italic",lineHeight:1.4}}>Nog geen verbindingen — kies hieronder een exchange om te koppelen.</div>}
+            {connectedExchanges.map(renderExBtn)}
+            {availableExchanges.length>0&&<>
+              <button onClick={()=>setShowAvailable(s=>!s)} style={{width:"100%",padding:"7px 12px",borderRadius:"6px",border:"1px dashed var(--border5)",background:"transparent",color:"var(--text4)",cursor:"pointer",fontSize:"10.5px",fontFamily:"inherit",marginTop:connectedExchanges.length?"8px":"0",marginBottom:"6px",display:"flex",alignItems:"center",justifyContent:"space-between",letterSpacing:".02em"}}>
+                <span>+ Meer exchanges ({availableExchanges.length})</span>
+                <span style={{fontSize:"9px",opacity:.7,transition:"transform .15s",display:"inline-block",transform:showAvailable?"rotate(90deg)":"rotate(0deg)"}}>▸</span>
+              </button>
+              {showAvailable&&availableExchanges.map(renderExBtn)}
+            </>}
+          </>);
+        })()}
         <input type="file" ref={csvRef} accept=".csv,.tsv,.txt,.xlsx,.xls" onChange={e=>handleCSV(e,csvAcctRef.current)} style={{display:"none"}}/>
         <div style={{height:"1px",background:"var(--border2)",margin:"12px 0"}}/>
         <div style={{fontSize:"10px",color:"var(--text4)",textTransform:"uppercase",fontWeight:600,marginBottom:"12px",letterSpacing:"0.08em"}}>Handmatige accounts</div>
@@ -6411,7 +6613,7 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,imp
           <div style={{display:"flex",gap:"8px",flexWrap:"wrap"}}>
             {IS_HOSTED
               ?<button onClick={()=>{try{location.reload()}catch{}}} style={{padding:"7px 16px",borderRadius:"6px",border:"none",background:"var(--green)",color:"#000",fontSize:"12px",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>↻ Update nu</button>
-              :<a href="https://github.com/ZaratrasJournal/SyncJournal/raw/main/main/tradejournal.html" target="_blank" rel="noopener" download="tradejournal.html" style={{padding:"7px 16px",borderRadius:"6px",border:"1px solid var(--gold)",background:"var(--gold-dim)",color:"var(--gold)",fontSize:"12px",fontWeight:700,cursor:"pointer",fontFamily:"inherit",textDecoration:"none"}}>⬇ Download {updateCheck.remote.version}</a>}
+              :<button onClick={downloadUpdate} disabled={downloading} style={{padding:"7px 16px",borderRadius:"6px",border:"1px solid var(--gold)",background:"var(--gold-dim)",color:"var(--gold)",fontSize:"12px",fontWeight:700,cursor:downloading?"wait":"pointer",fontFamily:"inherit",opacity:downloading?.6:1,display:"inline-flex",alignItems:"center",gap:"6px"}}>{downloading?<><span className="spinner"/>Downloaden…</>:<>⬇ Download {updateCheck.remote.version}</>}</button>}
             <button onClick={()=>setUpdateCheck({status:"idle"})} style={{padding:"7px 12px",borderRadius:"6px",border:"1px solid var(--border3)",background:"transparent",color:"var(--text4)",fontSize:"11px",cursor:"pointer",fontFamily:"inherit"}}>Later</button>
           </div>
         </div>}
@@ -7246,7 +7448,7 @@ function App(){
           <button onClick={dismissMorningQuote} title="Sluiten voor vandaag" style={{background:"none",border:"none",color:"var(--text4)",cursor:"pointer",fontSize:"13px",padding:"2px 6px",lineHeight:1}}>✕</button>
         </div>}
         {/* Filter bar for trade views */}
-        {["trades","analytics","review","calendar"].includes(tab)&&!editTrade&&!newTrade&&<FilterBar trades={filteredTrades} allTrades={trades} filters={filters} setFilters={setFilters} config={config} accounts={accounts}/>}
+        {["trades","analytics","review","calendar"].includes(tab)&&!editTrade&&!newTrade&&<FilterBar key={tab} trades={filteredTrades} allTrades={trades} filters={filters} setFilters={setFilters} config={config} accounts={accounts}/>}
 
         {/* Sub-nav for settings */}
         {["accounts","rules","goals","tags","help"].includes(tab)&&<div style={{display:"flex",gap:"4px",marginBottom:"16px"}}>

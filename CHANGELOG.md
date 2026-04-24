@@ -6,6 +6,21 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.28] — 2026-04-24
+
+### Toegevoegd
+- **Dashboard BTC live-chart heeft nu een echte timeframe-selector** (5M / 15M / 1H / 4H / 1D / 1W). Tot v12.27 was de sparkline een 60-tick-buffer die bij elke page-refresh leeg begon en geen tijd-as had. Nu: nieuwe `BtcLiveChart` component fetcht bij mount + bij elke TF-switch een REST `klines` request (intervals: `1s/1m/5m/15m/1h` afhankelijk van het venster) en blijft daarna live via `@kline_<interval>` WebSocket — laatste candle wordt continu vervangen, nieuwe candle bij elke interval-rollover. 5M en 15M gebruiken Binance's 1-seconde klines voor maximale interactiviteit (300 ticks per 5 min). SVG area-render met pulserende dot op de laatste prijs, kleur groen/rood op basis van eerste-vs-laatste candle in zichtbaar venster. Hoogte gegroeid van 60px → 140px om de TF-bar + chart te huisvesten.
+- **Statusbar: SOL + Gold (XAU) + Silver (XAG) live tickers** naast BTC/ETH. SOL via Binance Spot WebSocket (`solusdt@ticker`), Gold/Silver via Binance Futures (USDT-margined TradFi perpetuals, sinds jan-2026 live op Nest Exchange / FSRA-Abu Dhabi). Eerste poging via `xauusdt@ticker` faalde stil — Binance zendt voor deze symbols (nog) geen 24h-ticker stream uit, ws.open lukt maar er komen nooit messages. Werkende oplossing: nieuwe `useBinanceFuturesMetal` hook die `@bookTicker` WebSocket gebruikt voor live mid-prijs (~per 100ms) plus een REST poll naar `/fapi/v1/ticker/24hr` per 60s voor de 24h pct change. Margins in de statusbar verkleind van 22px → 16px om alle 5 tickers + de bestaande info te laten passen. Render-helper geëxtraheerd zodat elk ticker-blokje 1-regel is.
+
+### Gewijzigd
+- **Exchange-sidebar op Accounts toont alleen actieve verbindingen** (Coelho's feedback in Discord). Tot v12.27 verscheen elke exchange uit de registry altijd in de linkerkolom, en de default-selectie was hardcoded op de eerste in de lijst (MEXC) — ook als jouw enige actieve koppeling Blofin was. Nu: connected exchanges staan bovenaan en zijn meteen geselecteerd; ongekoppelde exchanges zitten weggeklapt achter een `+ Meer exchanges (N)` toggle, één klik weg om er een nieuwe toe te voegen. Bij nul verbindingen klapt de toggle automatisch open zodat de gebruiker weet waar te kiezen.
+
+### Fixed
+- **Periode-knoppen op Dashboard werken nu** (1D / 1W / 1M / 3M / YTD / ALL) — waren tot v12.27 enkel decoratieve buttons zonder `onClick`. Klikken filtert nu het hele dashboard: hero P&L + win-rate + streak + trade-count, equity curve, trade tape, pairs-widget, key metrics, AI insight en risk alert. Hero-label past zich aan ("Vandaag" / "Deze week" / "30 dagen" / "90 dagen" / "YTD" / "Totaal"). AI insight in de hero blijft op alle data gebaseerd (zodat de boodschap niet flickert bij elke klik).
+- **Status bar: `BAL` → `BALANS`** — afkorting was te cryptisch.
+- **Geavanceerde filters klappen automatisch dicht bij tab-wissel.** FilterBar wordt op Trades / Analytics / Review / Kalender gerenderd; tot v12.27 bleef de "Geavanceerd"-sectie open hangen tussen die tabs. Twee fixes: (1) `key={tab}` op FilterBar dwingt een remount per tab af zodat `expanded`-state reset, (2) de `activeCount` telde `tradeType:"real"` (= default) ten onrechte als actieve filter, waardoor `expanded` na remount wéér op `true` initialiseerde. Nu telt `tradeType` alleen wanneer het expliciet ≠ "real" is, dus de bar opent na remount alleen bij écht actieve filters.
+- **Download-knop bij update-banner downloadt nu écht** (Coelho's feedback). Tot v12.27 was de knop een `<a download>` link naar `raw.githubusercontent.com`. Browsers negeren het `download`-attribuut bij cross-origin links, dus Chrome opende het bestand inline (GitHub raw stuurt `Content-Type: text/plain`) en je kreeg de hele HTML-source als tekst te zien. Fix: klik triggert nu een `fetch` → `Blob` met `text/html` MIME → blob-URL → click — same-origin dus de browser respecteert het `download`-attribuut. Spinner tijdens fetch en toast-melding bij succes/fout. **Eenmalig nog handmatig updaten naar v12.28**: in v12.27 — rechtsklik op de Download-knop → "Link opslaan als…" werkt wel correct in Chrome.
+
 ## [v12.27] — 2026-04-24
 
 ### Gewijzigd
