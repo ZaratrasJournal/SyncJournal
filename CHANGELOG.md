@@ -6,6 +6,11 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.25] — 2026-04-24
+
+### Gewijzigd
+- **Content max-width 1520px terug** — v12.23 strekte content over de volle schermbreedte, maar dat oogde op wide-schermen te uitgerekt. Denny wees terug naar de SyncJournal-demo als gewenst ontwerp (waar content compacter staat). `tj-content` heeft nu weer `maxWidth:1520px; margin:0 auto`. Viewport-lock van v12.22 (geen page-scroll, topbar blijft) én responsive Sparkline van v12.24 blijven intact.
+
 ## [v12.24] — 2026-04-24
 
 ### Gewijzigd
