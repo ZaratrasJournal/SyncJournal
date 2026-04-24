@@ -6,6 +6,12 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.22] — 2026-04-24
+
+### Gewijzigd
+- **Viewport-vullende layout** voor alle tabs (zelfde patroon als SyncJournal-demo). `html/body` staan nu op `height:100%` + `overflow:hidden` — browser-scroll is uit. De root-container is een flex-column van 100vh hoog. De **topbar blijft altijd zichtbaar** bovenaan (geen sticky meer nodig want flex-child). Daaronder een **scroll-wrapper** (`flex:1, overflow:auto, minHeight:0`) die alle content + footer-hint bevat. Modals (Welcome, closeConfirm, mindsetToast, draft-recovery banner) blijven `position:fixed` — niet geraakt.
+- **Gevolg**: geen meer "overall page scroll" met topbar die meeglipt. Elke tab heeft z'n eigen scroll-positie intern. Bij veel content (lange Trades-lijst, Analytics, Help-FAQ) scrollt alleen het content-gebied, niet de hele pagina.
+
 ## [v12.21] — 2026-04-24
 
 ### Toegevoegd
