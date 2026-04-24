@@ -6,6 +6,11 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.23] — 2026-04-24
+
+### Gewijzigd
+- **Content vult nu de volledige breedte** (horizontaal + verticaal). v12.22 maakte de layout verticaal viewport-vullend, maar de content bleef gecentreerd op `maxWidth: 1520px` op brede schermen. Die cap is weg — `tj-content` heeft nu alleen `padding: 28px 40px` en strekt over de volle vensterbreedte, net als de SyncJournal-demo.
+
 ## [v12.22] — 2026-04-24
 
 ### Gewijzigd
