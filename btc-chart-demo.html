@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>BTC Chart Demo — A / B / D</title>
+<style>
+  :root{
+    --bg:#06070a; --bg2:#0c0e13; --bg3:#13161e;
+    --text:#e8eaf0; --text2:#b4b8c5; --text3:#8a90a0; --text4:#5a606e; --text5:#3e424d;
+    --gold:#C9A84C; --gold-dim:rgba(201,168,76,0.08); --gold-border:rgba(201,168,76,0.25);
+    --green:#2eaa6f; --red:#e05555;
+    --border1:rgba(255,255,255,0.05); --border2:rgba(255,255,255,0.08); --border3:rgba(255,255,255,0.12);
+    --glass:rgba(20,22,30,0.55);
+    --mono:'SF Mono','Menlo','Consolas','Monaco',monospace;
+    --font:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:var(--font);background:linear-gradient(180deg,#06070a 0%,#0c0e13 100%);color:var(--text);min-height:100vh;padding:32px 24px;line-height:1.5}
+  .wrap{max-width:1280px;margin:0 auto}
+  h1{font-size:22px;letter-spacing:-.02em;font-weight:800;margin-bottom:6px}
+  .subtitle{font-size:12px;color:var(--text4);font-family:var(--mono);letter-spacing:.05em;margin-bottom:24px}
+  .grid{display:grid;grid-template-columns:1fr;gap:18px}
+  .card{background:linear-gradient(135deg,rgba(247,147,26,.04),var(--glass));border:1px solid rgba(247,147,26,.18);border-radius:14px;padding:18px 22px;position:relative;overflow:hidden}
+  .card::before{content:"";position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(247,147,26,.45),transparent);opacity:.7}
+  .header{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:14px;flex-wrap:wrap}
+  .label{font-size:9.5px;font-weight:700;letter-spacing:.22em;color:#f7931a;font-family:var(--mono);margin-bottom:6px;display:flex;align-items:center;gap:8px}
+  .label .dot{width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 8px rgba(46,170,111,.7)}
+  .variant-tag{display:inline-block;padding:2px 8px;border-radius:4px;background:var(--gold-dim);border:1px solid var(--gold-border);color:var(--gold);font-size:9.5px;font-family:var(--mono);font-weight:700;letter-spacing:.08em;margin-right:8px}
+  .variant-desc{font-size:11px;color:var(--text4);margin-top:2px;line-height:1.4}
+  .price-row{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+  .price{font-family:var(--mono);font-size:28px;font-weight:800;letter-spacing:-.02em;line-height:1;transition:color .2s}
+  .price.up{color:var(--green)} .price.down{color:var(--red)} .price.flat{color:var(--text)}
+  .change{font-family:var(--mono);font-size:11px;font-weight:700}
+  .change.up{color:var(--green)} .change.down{color:var(--red)}
+  .stats{display:flex;gap:16px;font-family:var(--mono);font-size:10.5px;color:var(--text4);margin-top:6px}
+  .stats span strong{color:var(--text2)}
+  .tf-bar{display:flex;gap:6px;margin-top:10px}
+  .tf-btn{padding:5px 12px;font-size:10.5px;font-family:var(--mono);font-weight:600;letter-spacing:.08em;border-radius:6px;border:1px solid var(--border3);background:transparent;color:var(--text4);cursor:pointer;transition:all .12s}
+  .tf-btn:hover{color:var(--text2);border-color:var(--text5)}
+  .tf-btn.active{background:var(--gold-dim);border-color:var(--gold-border);color:var(--gold)}
+  .chart-area{margin-top:14px;position:relative;width:100%;height:180px}
+  .chart-area svg{width:100%;height:100%;display:block}
+  .footnote{margin-top:10px;font-size:10px;color:var(--text5);font-family:var(--mono);letter-spacing:.04em}
+  .status-pill{padding:2px 8px;border-radius:4px;font-size:9px;font-family:var(--mono);font-weight:700;letter-spacing:.08em;background:rgba(46,170,111,.1);color:var(--green);border:1px solid rgba(46,170,111,.25)}
+  .status-pill.connecting{background:rgba(201,168,76,.1);color:var(--gold);border-color:var(--gold-border)}
+  .status-pill.error{background:rgba(224,85,85,.1);color:var(--red);border-color:rgba(224,85,85,.25)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>BTC Live Chart — varianten</h1>
+  <div class="subtitle">A · MINIMAAL  ·  B · TIMEFRAME-SELECTOR  ·  D · TRADINGVIEW LIGHTWEIGHT</div>
+
+  <div class="grid">
+
+    <!-- VARIANT A -->
+    <div class="card" id="card-a">
+      <div class="header">
+        <div>
+          <div class="label"><span class="dot"></span><span class="variant-tag">A</span>BTC / USD · LAATSTE UUR</div>
+          <div class="variant-desc">REST <code style="color:var(--gold)">klines?interval=1m&amp;limit=60</code> bij mount, daarna live mergen via WS <code style="color:var(--gold)">@kline_1m</code>. Geen UI — kortste oplossing.</div>
+        </div>
+        <div style="text-align:right">
+          <div class="price-row" style="justify-content:flex-end">
+            <span class="price flat" id="a-price">$—</span>
+          </div>
+          <div class="change up" id="a-change">— —</div>
+          <div class="stats" style="justify-content:flex-end"><span id="a-status" class="status-pill connecting">CONNECTING</span></div>
+        </div>
+      </div>
+      <div class="chart-area"><svg id="a-svg" preserveAspectRatio="none"></svg></div>
+      <div class="footnote" id="a-foot">— points · loading…</div>
+    </div>
+
+    <!-- VARIANT B -->
+    <div class="card" id="card-b">
+      <div class="header">
+        <div>
+          <div class="label"><span class="dot"></span><span class="variant-tag">B</span>BTC / USD · TIMEFRAME-SELECTOR</div>
+          <div class="variant-desc">Vier knoppen, elk eigen interval/limit. Klik triggert nieuwe REST fetch + WS resubscribe op de juiste kline-stream.</div>
+          <div class="tf-bar" id="b-tf">
+            <button class="tf-btn" data-tf="1H">1H</button>
+            <button class="tf-btn active" data-tf="4H">4H</button>
+            <button class="tf-btn" data-tf="1D">1D</button>
+            <button class="tf-btn" data-tf="1W">1W</button>
+          </div>
+        </div>
+        <div style="text-align:right">
+          <div class="price-row" style="justify-content:flex-end">
+            <span class="price flat" id="b-price">$—</span>
+          </div>
+          <div class="change up" id="b-change">— —</div>
+          <div class="stats" style="justify-content:flex-end"><span id="b-status" class="status-pill connecting">CONNECTING</span></div>
+        </div>
+      </div>
+      <div class="chart-area"><svg id="b-svg" preserveAspectRatio="none"></svg></div>
+      <div class="footnote" id="b-foot">— points</div>
+    </div>
+
+    <!-- VARIANT D -->
+    <div class="card" id="card-d">
+      <div class="header">
+        <div>
+          <div class="label"><span class="dot"></span><span class="variant-tag">D</span>BTC / USD · TRADINGVIEW LIGHTWEIGHT CHARTS</div>
+          <div class="variant-desc">Officiële library (<code style="color:var(--gold)">unpkg.com/lightweight-charts</code>, ~50KB). Echte kandelaars, crosshair, tijd-as. Vereist 1 extra script-tag.</div>
+          <div class="tf-bar" id="d-tf">
+            <button class="tf-btn" data-tf="1H">1H</button>
+            <button class="tf-btn active" data-tf="4H">4H</button>
+            <button class="tf-btn" data-tf="1D">1D</button>
+            <button class="tf-btn" data-tf="1W">1W</button>
+          </div>
+        </div>
+        <div style="text-align:right">
+          <div class="price-row" style="justify-content:flex-end">
+            <span class="price flat" id="d-price">$—</span>
+          </div>
+          <div class="change up" id="d-change">— —</div>
+          <div class="stats" style="justify-content:flex-end"><span id="d-status" class="status-pill connecting">CONNECTING</span></div>
+        </div>
+      </div>
+      <div class="chart-area" style="height:240px"><div id="d-tv" style="width:100%;height:100%"></div></div>
+      <div class="footnote">Library lazy-geladen via CDN. Bij offline of CDN-down: graceful fail (rest van pagina werkt door).</div>
+    </div>
+
+  </div>
+</div>
+
+<script src="https://unpkg.com/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js" defer></script>
+<script>
+'use strict';
+
+// ===== Shared helpers =====
+const SYMBOL = 'BTCUSDT';
+const TF_MAP = {
+  '1H': {interval:'1m',  limit:60,  wsInterval:'1m'},
+  '4H': {interval:'5m',  limit:48,  wsInterval:'5m'},
+  '1D': {interval:'15m', limit:96,  wsInterval:'15m'},
+  '1W': {interval:'1h',  limit:168, wsInterval:'1h'},
+};
+const fmtUSD = (n) => '$' + n.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+const fmtPct = (n) => (n>=0?'+':'') + n.toFixed(2) + '%';
+
+async function fetchKlines(interval, limit){
+  const url = `https://api.binance.com/api/v3/klines?symbol=${SYMBOL}&interval=${interval}&limit=${limit}`;
+  const r = await fetch(url, {cache:'no-cache'});
+  if(!r.ok) throw new Error('HTTP ' + r.status);
+  const raw = await r.json();
+  return raw.map(k => ({
+    time: Math.floor(k[0]/1000),
+    open: parseFloat(k[1]),
+    high: parseFloat(k[2]),
+    low:  parseFloat(k[3]),
+    close: parseFloat(k[4]),
+    volume: parseFloat(k[5]),
+  }));
+}
+
+// SVG sparkline render (used by A and B)
+function renderSparkline(svgEl, candles){
+  if(!candles.length){ svgEl.innerHTML = ''; return; }
+  const W = svgEl.clientWidth || 600, H = svgEl.clientHeight || 180;
+  svgEl.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  const closes = candles.map(c=>c.close);
+  const min = Math.min(...closes), max = Math.max(...closes);
+  const range = max - min || 1;
+  const padTop = 12, padBot = 8;
+  const innerH = H - padTop - padBot;
+  const xy = (i, v) => [
+    (i / (candles.length - 1)) * W,
+    padTop + innerH - ((v - min) / range) * innerH,
+  ];
+  const points = candles.map((c,i) => xy(i, c.close));
+  const linePath = points.map((p,i) => (i?'L':'M') + p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ');
+  const areaPath = linePath + ` L ${W},${H} L 0,${H} Z`;
+  const up = candles[candles.length-1].close >= candles[0].close;
+  const stroke = up ? '#2eaa6f' : '#e05555';
+  const fillId = 'fill-' + svgEl.id;
+  const last = points[points.length-1];
+  svgEl.innerHTML = `
+    <defs>
+      <linearGradient id="${fillId}" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%"  stop-color="${stroke}" stop-opacity="0.35"/>
+        <stop offset="100%" stop-color="${stroke}" stop-opacity="0"/>
+      </linearGradient>
+    </defs>
+    <path d="${areaPath}" fill="url(#${fillId})"/>
+    <path d="${linePath}" fill="none" stroke="${stroke}" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/>
+    <circle cx="${last[0].toFixed(1)}" cy="${last[1].toFixed(1)}" r="3.5" fill="${stroke}"/>
+    <circle cx="${last[0].toFixed(1)}" cy="${last[1].toFixed(1)}" r="6.5" fill="${stroke}" opacity="0.25">
+      <animate attributeName="r" values="3.5;7.5;3.5" dur="1.6s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0.45;0;0.45" dur="1.6s" repeatCount="indefinite"/>
+    </circle>
+  `;
+}
+
+function setStatus(el, status){
+  el.className = 'status-pill ' + (status==='live'?'':status);
+  el.textContent = status.toUpperCase();
+}
+
+function updatePriceRow(priceEl, changeEl, candles, prevPrice){
+  if(!candles.length) return;
+  const c = candles[candles.length-1].close;
+  const o = candles[0].close;
+  const diff = c - o;
+  const pct = (diff / o) * 100;
+  priceEl.textContent = fmtUSD(c);
+  if(prevPrice != null){
+    priceEl.classList.remove('up','down','flat');
+    priceEl.classList.add(c > prevPrice ? 'up' : c < prevPrice ? 'down' : 'flat');
+  }
+  changeEl.className = 'change ' + (diff>=0?'up':'down');
+  changeEl.textContent = (diff>=0?'▲ +':'▼ ') + Math.abs(diff).toFixed(2) + '  ' + fmtPct(pct);
+}
+
+// ===== VARIANT A =====
+(async function variantA(){
+  const svg = document.getElementById('a-svg');
+  const priceEl = document.getElementById('a-price');
+  const changeEl = document.getElementById('a-change');
+  const statusEl = document.getElementById('a-status');
+  const footEl = document.getElementById('a-foot');
+  let candles = [];
+  let prevPrice = null;
+  const draw = () => {
+    renderSparkline(svg, candles);
+    updatePriceRow(priceEl, changeEl, candles, prevPrice);
+    if(candles.length) prevPrice = candles[candles.length-1].close;
+    footEl.textContent = `${candles.length} candles · 1m × 60 = laatste uur · live via @kline_1m`;
+  };
+  try{
+    candles = await fetchKlines('1m', 60);
+    setStatus(statusEl, 'live');
+    draw();
+  }catch(e){
+    setStatus(statusEl, 'error');
+    footEl.textContent = 'REST fetch mislukt: ' + e.message;
+    return;
+  }
+  // WS — kline updates voor laatste candle, nieuwe candle bij minute-rollover
+  const ws = new WebSocket('wss://stream.binance.com:9443/ws/btcusdt@kline_1m');
+  ws.onmessage = (e) => {
+    try{
+      const d = JSON.parse(e.data);
+      const k = d.k;
+      const c = {
+        time: Math.floor(k.t/1000),
+        open: parseFloat(k.o), high: parseFloat(k.h), low: parseFloat(k.l), close: parseFloat(k.c),
+        volume: parseFloat(k.v),
+      };
+      const last = candles[candles.length-1];
+      if(last && last.time === c.time){
+        candles[candles.length-1] = c;
+      } else {
+        candles.push(c);
+        if(candles.length > 60) candles.shift();
+      }
+      draw();
+    }catch(err){}
+  };
+  ws.onerror = () => setStatus(statusEl, 'error');
+  window.addEventListener('resize', draw);
+})();
+
+// ===== VARIANT B =====
+(function variantB(){
+  const svg = document.getElementById('b-svg');
+  const priceEl = document.getElementById('b-price');
+  const changeEl = document.getElementById('b-change');
+  const statusEl = document.getElementById('b-status');
+  const footEl = document.getElementById('b-foot');
+  const tfBar = document.getElementById('b-tf');
+  let currentTf = '4H';
+  let candles = [];
+  let prevPrice = null;
+  let ws = null;
+  const draw = () => {
+    renderSparkline(svg, candles);
+    updatePriceRow(priceEl, changeEl, candles, prevPrice);
+    if(candles.length) prevPrice = candles[candles.length-1].close;
+    const cfg = TF_MAP[currentTf];
+    footEl.textContent = `${candles.length} candles · ${cfg.interval} × ${cfg.limit} · live via @kline_${cfg.wsInterval}`;
+  };
+  const switchTf = async (tf) => {
+    currentTf = tf;
+    [...tfBar.children].forEach(b => b.classList.toggle('active', b.dataset.tf === tf));
+    setStatus(statusEl, 'connecting');
+    if(ws){ try{ ws.close(); }catch{} ws = null; }
+    const cfg = TF_MAP[tf];
+    try{
+      candles = await fetchKlines(cfg.interval, cfg.limit);
+      prevPrice = null;
+      setStatus(statusEl, 'live');
+      draw();
+    }catch(e){
+      setStatus(statusEl, 'error');
+      footEl.textContent = 'REST fetch mislukt: ' + e.message;
+      return;
+    }
+    ws = new WebSocket(`wss://stream.binance.com:9443/ws/btcusdt@kline_${cfg.wsInterval}`);
+    ws.onmessage = (e) => {
+      try{
+        const d = JSON.parse(e.data);
+        const k = d.k;
+        const c = {
+          time: Math.floor(k.t/1000),
+          open: parseFloat(k.o), high: parseFloat(k.h), low: parseFloat(k.l), close: parseFloat(k.c),
+          volume: parseFloat(k.v),
+        };
+        const last = candles[candles.length-1];
+        if(last && last.time === c.time){
+          candles[candles.length-1] = c;
+        } else {
+          candles.push(c);
+          if(candles.length > cfg.limit) candles.shift();
+        }
+        draw();
+      }catch(err){}
+    };
+    ws.onerror = () => setStatus(statusEl, 'error');
+  };
+  tfBar.addEventListener('click', (e) => {
+    if(e.target.dataset.tf) switchTf(e.target.dataset.tf);
+  });
+  window.addEventListener('resize', draw);
+  switchTf(currentTf);
+})();
+
+// ===== VARIANT D =====
+(function variantD(){
+  const container = document.getElementById('d-tv');
+  const priceEl = document.getElementById('d-price');
+  const changeEl = document.getElementById('d-change');
+  const statusEl = document.getElementById('d-status');
+  const tfBar = document.getElementById('d-tf');
+  let chart = null, series = null, candles = [], prevPrice = null, currentTf = '4H', ws = null;
+
+  const init = () => {
+    if(!window.LightweightCharts){
+      setStatus(statusEl, 'error');
+      container.innerHTML = '<div style="padding:40px;text-align:center;color:#5a606e;font-family:var(--mono);font-size:11px">⚠ Library niet geladen — CDN unreachable?</div>';
+      return false;
+    }
+    chart = LightweightCharts.createChart(container, {
+      width: container.clientWidth,
+      height: container.clientHeight,
+      layout: {background:{type:'solid', color:'transparent'}, textColor:'#8a90a0', fontSize:10, fontFamily:'SF Mono, Menlo, Consolas, monospace'},
+      grid: {vertLines:{color:'rgba(255,255,255,0.04)'}, horzLines:{color:'rgba(255,255,255,0.04)'}},
+      timeScale: {timeVisible:true, secondsVisible:false, borderColor:'rgba(255,255,255,0.08)'},
+      rightPriceScale: {borderColor:'rgba(255,255,255,0.08)'},
+      crosshair: {mode:LightweightCharts.CrosshairMode.Normal, vertLine:{color:'rgba(201,168,76,0.4)', width:1, style:LightweightCharts.LineStyle.Dashed}, horzLine:{color:'rgba(201,168,76,0.4)', width:1, style:LightweightCharts.LineStyle.Dashed}},
+    });
+    series = chart.addCandlestickSeries({
+      upColor:'#2eaa6f', downColor:'#e05555',
+      borderUpColor:'#2eaa6f', borderDownColor:'#e05555',
+      wickUpColor:'#2eaa6f', wickDownColor:'#e05555',
+    });
+    return true;
+  };
+
+  const updateHeader = () => {
+    if(!candles.length) return;
+    const c = candles[candles.length-1].close;
+    const o = candles[0].close;
+    const diff = c - o, pct = (diff/o)*100;
+    priceEl.textContent = fmtUSD(c);
+    if(prevPrice != null){
+      priceEl.classList.remove('up','down','flat');
+      priceEl.classList.add(c > prevPrice ? 'up' : c < prevPrice ? 'down' : 'flat');
+    }
+    prevPrice = c;
+    changeEl.className = 'change ' + (diff>=0?'up':'down');
+    changeEl.textContent = (diff>=0?'▲ +':'▼ ') + Math.abs(diff).toFixed(2) + '  ' + fmtPct(pct);
+  };
+
+  const switchTf = async (tf) => {
+    currentTf = tf;
+    [...tfBar.children].forEach(b => b.classList.toggle('active', b.dataset.tf === tf));
+    setStatus(statusEl, 'connecting');
+    if(ws){ try{ ws.close(); }catch{} ws = null; }
+    const cfg = TF_MAP[tf];
+    try{
+      candles = await fetchKlines(cfg.interval, cfg.limit);
+      series.setData(candles);
+      chart.timeScale().fitContent();
+      setStatus(statusEl, 'live');
+      prevPrice = null;
+      updateHeader();
+    }catch(e){
+      setStatus(statusEl, 'error');
+      return;
+    }
+    ws = new WebSocket(`wss://stream.binance.com:9443/ws/btcusdt@kline_${cfg.wsInterval}`);
+    ws.onmessage = (e) => {
+      try{
+        const d = JSON.parse(e.data);
+        const k = d.k;
+        const c = {time: Math.floor(k.t/1000), open: parseFloat(k.o), high: parseFloat(k.h), low: parseFloat(k.l), close: parseFloat(k.c)};
+        const last = candles[candles.length-1];
+        if(last && last.time === c.time){
+          candles[candles.length-1] = c;
+        } else {
+          candles.push(c);
+          if(candles.length > cfg.limit) candles.shift();
+        }
+        series.update(c);
+        updateHeader();
+      }catch(err){}
+    };
+    ws.onerror = () => setStatus(statusEl, 'error');
+  };
+
+  // Wait for library to load
+  const tryStart = () => {
+    if(window.LightweightCharts){
+      if(init()){
+        tfBar.addEventListener('click', (e) => {
+          if(e.target.dataset.tf) switchTf(e.target.dataset.tf);
+        });
+        window.addEventListener('resize', () => {
+          if(chart) chart.applyOptions({width: container.clientWidth, height: container.clientHeight});
+        });
+        switchTf(currentTf);
+      }
+    } else {
+      setTimeout(tryStart, 100);
+    }
+  };
+  // Library loaded with `defer`, so wait for DOMContentLoaded then check
+  if(document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', tryStart);
+  } else {
+    tryStart();
+  }
+})();
+</script>
+</body>
+</html>
