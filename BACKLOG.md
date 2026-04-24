@@ -10,7 +10,7 @@ Basis kwam uit de feature-diff v4_14 → v9 onderaan. Inmiddels werken we op **v
 
 <!-- Denny stuurt bugs 1 voor 1 — elk item krijgt datum + korte reproductiestap. -->
 
-*Geen open bugs.*
+- [ ] **Hyperliquid live balance wordt niet opgehaald in BALANS bovenin** *(2026-04-24, gemeld door Denny)* — Hyperliquid `testConnection` haalt nu alleen `clearinghouseState.marginSummary.accountValue` op (perp-only equity). Te checken: (a) returnt de call überhaupt `success: true` met `balance > 0` voor Denny's wallet — debug via console of de hook hyperliquid wel oppakt; (b) `useLiveExchangeBalances` skipt mogelijk wallet-only exchanges door de check `if(ex.walletOnly){if(!cfg.walletAddress)continue;}` — of werkt die correct?; (c) als de wallet alleen spot-balance heeft (`spotClearinghouseState.balances` met USDC/USDT) telt dat nu niet mee in `accountValue` — uitbreiden met spot-fetch zou nodig zijn (zoals we eerder probeerden in een teruggedraaide v12.30 patch). Reproductie: Denny's profiel met Hyperliquid wallet ingevuld → Hyperliquid contributeert niets aan BALANS bovenin. Code: [work/tradejournal.html:1642-1647](work/tradejournal.html#L1642-L1647) (testConnection) + [work/tradejournal.html:1924-1958](work/tradejournal.html#L1924-L1958) (hook).
 
 ## 🔜 Next up (deze of volgende werksessie)
 
