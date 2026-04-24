@@ -6,6 +6,20 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.18] — 2026-04-24
+
+### Gewijzigd
+- **FAQ + Feature-referentie ontdubbeld** — v12.17 bracht FAQ én bestaande feature-secties naast elkaar, met behoorlijke overlap. Opschoning per onderwerp (één plek per onderwerp):
+  - **FAQ als primary** voor user-gerichte vragen (zoekbalk + Q&A-stijl).
+  - **Feature-referentie** behoudt alleen unieke feature-details die geen natuurlijke Q&A vormen.
+- **Uit Feature-referentie verwijderd** (staat in FAQ):
+  - Hele groep "⌨️ Sneltoetsen" — volledig in FAQ "Waar vind ik sneltoetsen?"
+  - "Automatische opslag" + "JSON export/import" + "Drag & drop import" — FAQ "Data & privacy" en "Backup & versies" dekken dit.
+  - "Capital tracking" + "Equity & Return %" — FAQ "Capital vs Equity".
+  - "API koppeling" + "CSV / XLSX import" — FAQ per-exchange entries.
+- **Feature-referentie behoudt**: Storage-limiet (legacy localStorage), Account-labels, Trade form details, Goals, Trading Rules, Analytics feature-uitleg, Trade cards, Themes & layouts, Versie-flow.
+- **Uit FAQ verwijderd**: "Hoe check ik of er een update is?" → samengevat + verwijst naar Feature-referentie (daar staat het gedetailleerde update-pad). "Wat is het verschil tussen work/ en main/?" → Feature-referentie "Versie-flow" dekt dit completer.
+
 ## [v12.17] — 2026-04-24
 
 ### Toegevoegd
