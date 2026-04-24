@@ -677,8 +677,7 @@ const {useState,useRef,useEffect,useCallback,useMemo} = React;
 
 // ============ CONSTANTS & HELPERS ============
 const TF_ORDER=["1m","3m","5m","15m","30m","1h","2h","4h","6h","8h","12h","1d","3d","1w","1M"];
-const ROLE_OPTIONS=["Bias","Entry","Confirmatie"];
-const EMPTY_LAYER={id:"",timeframe:"",setup:"",fillPlayType:undefined,confirmation:"",confirmations:[],role:"Bias",notes:""};
+const EMPTY_LAYER={id:"",timeframe:"",setup:"",fillPlayType:undefined,confirmation:"",confirmations:[],notes:""};
 const EMPTY_TP={id:"",price:"",pct:"25",status:"open",actualPrice:""};
 
 const DEFAULT_TAGS={
@@ -881,7 +880,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.30",released:"2026-04-24"};
+const APP_VERSION={version:"v12.31",released:"2026-04-24"};
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
 function isNewerVersion(a,b){
   const parse=(s)=>String(s||"").replace(/^v/,"").split(".").map(n=>parseInt(n,10)||0);
@@ -2106,8 +2105,32 @@ function TagManager({tagConfig,setTagConfig,trades,setTrades,showToast,config}){
   const[renameVal,setRenameVal]=useState("");
   const[adding,setAdding]=useState(null);
   const[addVal,setAddVal]=useState("");
+  // Drag & drop reorder state. dragInfo = {catKey, fromIdx}; dragOver = {catKey, idx}.
+  const[dragInfo,setDragInfo]=useState(null);
+  const[dragOver,setDragOver]=useState(null);
 
   const getTags=(catKey)=>tagConfig[catKey]||DEFAULT_TAGS[catKey]||[];
+
+  // Reorder via drag & drop. catKey = welke categorie, fromIdx → toIdx.
+  // Voor emotionTags filteren we eerst neg/pos zodat sub-groepen apart te ordenen zijn.
+  const reorderTags=(catKey,fromIdx,toIdx,subFilter)=>{
+    if(fromIdx===toIdx)return;
+    setTagConfig(p=>{
+      const all=[...(p[catKey]||DEFAULT_TAGS[catKey]||[])];
+      if(subFilter){
+        // Reorder binnen sub-groep (bv. neg of pos emoties), bewaar de rest in originele volgorde
+        const indices=all.map((t,i)=>subFilter(t)?i:-1).filter(i=>i>=0);
+        const fromGlobal=indices[fromIdx];
+        const toGlobal=indices[toIdx];
+        const[moved]=all.splice(fromGlobal,1);
+        all.splice(toGlobal>fromGlobal?toGlobal-1:toGlobal,0,moved);
+      }else{
+        const[moved]=all.splice(fromIdx,1);
+        all.splice(toIdx>fromIdx?toIdx-1:toIdx,0,moved);
+      }
+      return{...p,[catKey]:all};
+    });
+  };
 
   const addTag=(catKey)=>{
     if(!addVal.trim())return;
@@ -2155,7 +2178,9 @@ function TagManager({tagConfig,setTagConfig,trades,setTrades,showToast,config}){
         const tags=getTags(cat.key);
         const isAdding=adding===cat.key;
 
-        const renderTag=(tag)=>{
+        // renderTag: idx is positie binnen lokale lijst (voor reorder).
+        // subFilter is optioneel — voor emotionTags die in twee subgroepen staan (neg/pos).
+        const renderTag=(tag,idx,subFilter)=>{
           const isRenaming=renaming?.catKey===cat.key&&renaming?.tag===tag;
           const usedCount=trades.filter(t=>(t[cat.key]||[]).includes(tag)).length;
           const isEmo=cat.key==="emotionTags";
@@ -2170,8 +2195,23 @@ function TagManager({tagConfig,setTagConfig,trades,setTrades,showToast,config}){
               <button type="button" onClick={()=>setRenaming(null)} style={{padding:"5px 8px",borderRadius:"5px",border:"none",background:"transparent",color:"var(--text4)",fontSize:"11px",cursor:"pointer",fontFamily:"inherit"}}>Annuleer</button>
             </form>
           );
+          // dragKey scheidt drag-state per categorie + subgroep zodat je niet per ongeluk neg→pos sleept
+          const dragKey=cat.key+(subFilter?(neg?":neg":":pos"):"");
+          const isBeingDragged=dragInfo?.catKey===dragKey&&dragInfo?.fromIdx===idx;
+          const isDropTarget=dragOver?.catKey===dragKey&&dragOver?.idx===idx;
           return(
-            <div key={tag} style={{display:"flex",alignItems:"center",gap:"2px",padding:"4px 4px 4px 10px",borderRadius:"6px",border:`1px solid ${tagBorder}`,background:tagBg,fontSize:"12px",color:tagColor,fontWeight:500}}>
+            <div
+              key={tag}
+              draggable={true}
+              onDragStart={e=>{setDragInfo({catKey:dragKey,fromIdx:idx});e.dataTransfer.effectAllowed="move";try{e.dataTransfer.setData("text/plain",tag);}catch{}}}
+              onDragEnd={()=>{setDragInfo(null);setDragOver(null);}}
+              onDragOver={e=>{if(!dragInfo||dragInfo.catKey!==dragKey)return;e.preventDefault();e.dataTransfer.dropEffect="move";setDragOver({catKey:dragKey,idx});}}
+              onDragLeave={()=>{if(dragOver?.catKey===dragKey&&dragOver?.idx===idx)setDragOver(null);}}
+              onDrop={e=>{e.preventDefault();if(!dragInfo||dragInfo.catKey!==dragKey)return;reorderTags(cat.key,dragInfo.fromIdx,idx,subFilter);setDragInfo(null);setDragOver(null);}}
+              style={{display:"flex",alignItems:"center",gap:"2px",padding:"4px 4px 4px 10px",borderRadius:"6px",border:`1px solid ${isDropTarget?"var(--gold)":tagBorder}`,background:tagBg,fontSize:"12px",color:tagColor,fontWeight:500,cursor:"grab",opacity:isBeingDragged?0.4:1,transition:"opacity .15s, border-color .15s",userSelect:"none"}}
+              title="Sleep om te herordenen · klik op naam om te hernoemen"
+            >
+              <span style={{color:"var(--text5)",fontSize:"10px",marginRight:"2px",cursor:"grab"}}>⋮⋮</span>
               <span style={{cursor:"pointer"}} onClick={()=>startRename(cat.key,tag)} title="Klik om te hernoemen">{tag}</span>
               <span style={{fontSize:"9px",color:"var(--text4)",marginLeft:"4px",fontFamily:"var(--mono)"}}>{usedCount>0?`${usedCount}x`:""}</span>
               <button onClick={()=>removeTag(cat.key,tag)} style={{background:"none",border:"none",color:tagColor,cursor:"pointer",fontSize:"12px",padding:"2px 4px",opacity:0.5}} title="Verwijder">✕</button>
@@ -2192,7 +2232,7 @@ function TagManager({tagConfig,setTagConfig,trades,setTrades,showToast,config}){
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"16px"}}>
                 <div>
                   <div style={{fontSize:"10px",color:"var(--red)",fontWeight:600,marginBottom:"8px",display:"flex",alignItems:"center",gap:"5px"}}><GlowCross size={14}/> Negatief</div>
-                  <div style={{display:"flex",flexWrap:"wrap",gap:"6px",marginBottom:"8px"}}>{negTags.map(renderTag)}</div>
+                  <div style={{display:"flex",flexWrap:"wrap",gap:"6px",marginBottom:"8px"}}>{negTags.map((t,i)=>renderTag(t,i,isNegEmotion))}</div>
                   {!isAddingNeg&&<button onClick={()=>{setAdding("emo_neg");setAddVal("")}} style={{padding:"5px 12px",borderRadius:"6px",fontSize:"12px",border:"1px dashed rgba(220,122,122,0.28)",background:"transparent",color:"var(--red)",cursor:"pointer",fontFamily:"inherit"}}>+ Negatief</button>}
                   {isAddingNeg&&<form onSubmit={e=>{e.preventDefault();if(!addVal.trim())return;const cur=getTags("emotionTags");if(cur.includes(addVal.trim())){showToast("Tag bestaat al","error");return}setTagConfig(p=>({...p,emotionTags:[...cur,addVal.trim()]}));EMOTIONS_NEG.push(addVal.trim());setAddVal("");setAdding(null);showToast("Negatieve emotie toegevoegd")}} style={{display:"flex",gap:"6px",marginTop:"4px"}}>
                     <input autoFocus value={addVal} onChange={e=>setAddVal(e.target.value)} placeholder="Nieuwe negatieve emotie..." style={{...iStyle,width:"160px",padding:"6px 10px",fontSize:"12px"}}/>
@@ -2202,7 +2242,7 @@ function TagManager({tagConfig,setTagConfig,trades,setTrades,showToast,config}){
                 </div>
                 <div>
                   <div style={{fontSize:"10px",color:"var(--green)",fontWeight:600,marginBottom:"8px",display:"flex",alignItems:"center",gap:"5px"}}><GlowCheck size={14}/> Positief</div>
-                  <div style={{display:"flex",flexWrap:"wrap",gap:"6px",marginBottom:"8px"}}>{posTags.map(renderTag)}</div>
+                  <div style={{display:"flex",flexWrap:"wrap",gap:"6px",marginBottom:"8px"}}>{posTags.map((t,i)=>renderTag(t,i,t=>!isNegEmotion(t)))}</div>
                   {!isAddingPos&&<button onClick={()=>{setAdding("emo_pos");setAddVal("")}} style={{padding:"5px 12px",borderRadius:"6px",fontSize:"12px",border:"1px dashed rgba(46,170,111,0.28)",background:"transparent",color:"var(--green)",cursor:"pointer",fontFamily:"inherit"}}>+ Positief</button>}
                   {isAddingPos&&<form onSubmit={e=>{e.preventDefault();if(!addVal.trim())return;const cur=getTags("emotionTags");if(cur.includes(addVal.trim())){showToast("Tag bestaat al","error");return}setTagConfig(p=>({...p,emotionTags:[...cur,addVal.trim()]}));setAddVal("");setAdding(null);showToast("Positieve emotie toegevoegd")}} style={{display:"flex",gap:"6px",marginTop:"4px"}}>
                     <input autoFocus value={addVal} onChange={e=>setAddVal(e.target.value)} placeholder="Nieuwe positieve emotie..." style={{...iStyle,width:"160px",padding:"6px 10px",fontSize:"12px"}}/>
@@ -2222,7 +2262,7 @@ function TagManager({tagConfig,setTagConfig,trades,setTrades,showToast,config}){
               <span style={{fontSize:"11px",color:"var(--text4)",fontFamily:"var(--mono)"}}>{tags.length} tags</span>
             </div>
             <div style={{display:"flex",flexWrap:"wrap",gap:"6px",marginBottom:isAdding?"12px":"0"}}>
-              {tags.map(renderTag)}
+              {tags.map((t,i)=>renderTag(t,i))}
               {!isAdding&&<button onClick={()=>{setAdding(cat.key);setAddVal("")}} style={{padding:"5px 12px",borderRadius:"6px",fontSize:"12px",border:"1px dashed var(--border5)",background:"transparent",color:"var(--text3)",cursor:"pointer",fontFamily:"inherit"}}>+ Nieuwe tag</button>}
             </div>
             {isAdding&&<form onSubmit={e=>{e.preventDefault();addTag(cat.key)}} style={{display:"flex",gap:"6px",marginTop:"8px"}}>
@@ -3619,7 +3659,6 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,accounts,sho
                 </div>}
               </div>
             <div><div style={{fontSize:"10px",color:"var(--text4)",marginBottom:"4px",fontWeight:500}}>CONFIRMATIE(S)</div><div style={{display:"flex",flexWrap:"wrap",gap:"4px"}}>{gt("confirmationTags").map(c=>{const sel=(layer.confirmations||[layer.confirmation].filter(Boolean)).includes(c);return(<button key={c} onClick={()=>setTrade(p=>{const l=[...(p.layers||[])];const cur=l[i].confirmations||[l[i].confirmation].filter(Boolean);l[i]={...l[i],confirmations:sel?cur.filter(x=>x!==c):[...cur,c],confirmation:undefined};return{...p,layers:l}})} style={{padding:"3px 8px",borderRadius:"4px",fontSize:"10px",fontWeight:600,border:`1px solid ${sel?"#0d9488":"var(--border3)"}`,background:sel?"rgba(13,148,136,0.2)":"transparent",color:sel?"#2eaa6f":"var(--text4)",cursor:"pointer",fontFamily:"inherit"}}>{c}</button>)})}</div></div>
-            <div><div style={{fontSize:"10px",color:"var(--text4)",marginBottom:"4px",fontWeight:500}}>ROL</div><div style={{display:"flex",flexWrap:"wrap",gap:"4px"}}>{ROLE_OPTIONS.map(r=>{const sel=layer.role===r;return(<button key={r} onClick={()=>setTrade(p=>{const l=[...(p.layers||[])];l[i]={...l[i],role:sel?"Bias":r};return{...p,layers:l}})} style={{padding:"3px 8px",borderRadius:"4px",fontSize:"10px",fontWeight:600,border:`1px solid ${sel?"#d97706":"var(--border3)"}`,background:sel?"rgba(201,168,76,0.2)":"transparent",color:sel?"#c9a84c":"var(--text4)",cursor:"pointer",fontFamily:"inherit"}}>{r}</button>)})}</div></div>
           </div>
         </div>);
       })}
@@ -4742,7 +4781,7 @@ function Analytics({trades,tradingRules,allTrades,config}){
       const avgRW=avgW.length?avgW.reduce((s,t)=>s+t.realizedRR,0)/avgW.length:0;
       const avgRL=avgL.length?avgL.reduce((s,t)=>s+t.realizedRR,0)/avgL.length:0;
       const rrBySetup={};rrTrades.forEach(t=>(t.setupTags||[]).forEach(s=>{if(!rrBySetup[s])rrBySetup[s]={n:0,realized:0,nR:0};rrBySetup[s].n++;if(t.realizedRR!==null){rrBySetup[s].realized+=t.realizedRR;rrBySetup[s].nR++}}));
-      const rrByTF={};rrTrades.forEach(t=>(t.layers||[]).forEach(l=>{if(l.timeframe&&l.role==="Entry"){if(!rrByTF[l.timeframe])rrByTF[l.timeframe]={n:0,realized:0,nR:0};rrByTF[l.timeframe].n++;if(t.realizedRR!==null){rrByTF[l.timeframe].realized+=t.realizedRR;rrByTF[l.timeframe].nR++}}}));
+      const rrByTF={};rrTrades.forEach(t=>(t.layers||[]).forEach(l=>{if(l.timeframe){if(!rrByTF[l.timeframe])rrByTF[l.timeframe]={n:0,realized:0,nR:0};rrByTF[l.timeframe].n++;if(t.realizedRR!==null){rrByTF[l.timeframe].realized+=t.realizedRR;rrByTF[l.timeframe].nR++}}}));
       const rrRow=(label,avg,n)=>{const maxBar=4;const w=Math.min(Math.abs(avg)/maxBar,1)*100;const c=avg>=1.5?"var(--green)":avg>=1?"var(--amber)":avg>=0?"var(--gold)":"var(--red)";return(<div key={label} style={{display:"flex",alignItems:"center",gap:"10px",marginBottom:"6px"}}>
         <div style={{width:"90px",fontSize:"11px",color:"var(--text2)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={label}>{label}</div>
         <div style={{flex:1,height:"20px",background:"var(--bg4)",borderRadius:"3px",position:"relative",overflow:"hidden"}}>
