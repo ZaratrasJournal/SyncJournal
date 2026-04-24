@@ -6,9 +6,19 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.32] — 2026-04-24
+
+### Toegevoegd
+- **Meerdere screenshots per trade** (max 10). Trade-form heeft nu een thumbnail-grid (4:3 aspect, ~120px breed) i.p.v. één grote inline preview. Elke nieuwe upload of `Ctrl+V`-paste voegt toe aan de array. Per thumbnail een ✕ om te verwijderen (met confirm). Klik op een thumbnail opent een **lightbox**: full-screen donker overlay, image gecentreerd op max 94vw × 90vh. Bij meerdere screenshots: `‹ ›`-knoppen + `← →`-pijltoetsen om te bladeren, `Esc` om te sluiten, teller `1 / N` onderaan. Klik op de overlay sluit ook. Sectie-hint toont nu het aantal: *"3 screenshots · 1 link"*.
+- **Achterliggende data-fix**: IndexedDB-save schreef tot v12.31 `screenshot=null` voor data:URLs (oude TODO-comment over een nooit-gebouwd "idb: references"-systeem). Resultaat: screenshots verdwenen na page-refresh. Nu worden ze gewoon volledig in IDB bewaard (geen practische size-limit). LocalStorage-backup blijft screenshots wegfilteren want die heeft wél een 5MB-limiet.
+
+### Migratie
+- **Bestaande trades met legacy `screenshot` (single)** → automatisch gelift naar `screenshots: [oude_screenshot]` bij eerste load via `normalizeTrade`. Het `screenshot`-veld blijft staan voor backwards-compat met oudere exports/imports. Geen actie van gebruiker nodig.
+
 ## [v12.31] — 2026-04-24
 
 ### Toegevoegd
+- **Screenshot plakken met `Ctrl+V` / `Cmd+V`** in het trade-formulier. Geen klik op de upload-zone nodig: kopieer in TradingView (Alt+S → "Copy chart image") en plak direct ergens in het formulier — wordt automatisch herkend en gecomprimeerd via dezelfde pipeline als de bestand-upload (1600×1200 max, JPEG 82%, IndexedDB-opslag). Toast bevestigt: *"Screenshot geplakt uit clipboard"*. Tekstvelden blijven gewoon werken — browsers triggeren `paste` met image-data alleen als de clipboard daadwerkelijk een image bevat. Upload-zone toont nu een hint: *"Klik om screenshot te uploaden — of plak met `Ctrl+V`"*.
 - **Tags zijn nu sleepbaar in volgorde** (Instellingen → Tags). Tot v12.30 werd elke nieuwe tag onderaan gekwakt — vervelend als je `2H` toevoegt aan Timeframe en die tussen `1H` en `4H` wil hebben staan. Nu: drag & drop per categorie via een ⋮⋮-handle. Native HTML5 (geen library), per categorie geïsoleerd zodat je niet per ongeluk tags tussen categorieën sleept. Voor Emoties zijn neg/pos sub-groepen apart sleepbaar (geen menging). Visuele feedback: opacity .4 op de gesleepte tag, gouden border op de drop-target. Klikken op de naam blijft hernoemen, ✕ blijft verwijderen.
 
 ### Verwijderd
