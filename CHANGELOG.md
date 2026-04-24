@@ -6,6 +6,20 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.17] — 2026-04-24
+
+### Toegevoegd
+- **Demo-modus voor sceptische eerste-sessie users** — nieuwe derde knop "📊 Probeer met demo" in de Welcome-modal. Laadt 10 realistische fake trades (mix BTC + ETH + FTMO, win/loss, met tags/entry-notes/TP-levels) zodat Analytics, Dashboard, Heatmap en Charts direct laten zien wat de app kan zónder API-sync of handmatige invoer. Blauwe banner bovenaan met "🗑 Wis demo-data"-knop zolang demo-modus actief is. `buildDemoTrades()` helper bovenin, state via `localStorage.tj_demo_mode="1"`. Inspired by TraderSync's "onboarding game" pattern.
+- **Startersguide bovenaan Help-pagina** — 3-path keuze (Exchange sync / CSV-MT5 / Demo) met elk een 3-stappen flow. Oriëntatie voor nieuwe users, bevestiging voor ervaren users.
+- **FAQ-accordeon met zoekbalk** (~30 Q&A's in 6 categorieën) — Aan de slag, Data & privacy, Exchange-koppeling, Features, Problemen oplossen, Backup & versies. Zoekbalk filtert op substring in vraag + antwoord + categorie. Accordeon-items onthouden hun open-state binnen de sessie. Data-array `FAQ_ENTRIES` bovenin de HTML zodat elke release de FAQ in dezelfde PR kan bijwerken.
+
+### Gewijzigd
+- **Welcome-modal**: grid van 2 → 3 kolommen, compactere padding zodat 3 paden netjes passen naast elkaar. Nieuwe "Probeer met demo" gebruikt Hyperliquid-blauw (`#00c2ff`) om op te vallen als de "speelse" route.
+- **HelpPage-structuur**: bestaande 10 feature-secties behouden, nu onder een duidelijke "📚 Feature-referentie"-kop. Top van de pagina is nu onboarding-first (startersguide → FAQ → referentie).
+
+### Research-basis
+Aanpak is op onderzoek gebaseerd naar hoe TraderSync, TradesViz, Edgewonk en Tradezella onboarden. Key inzichten: (1) **"laat sceptici eerst spelen"** (TraderSync demo-data), (2) **per-broker mini-guides** (TradesViz), (3) **FAQ-accordion als primary** (niet externe docs-site bij kleine community), (4) **data-array in code** voor lage onderhoudslast bij single-file HTML.
+
 ## [v12.16] — 2026-04-23
 
 ### Fixed
