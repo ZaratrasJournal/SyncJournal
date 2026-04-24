@@ -35,7 +35,7 @@
 --stat-fs:clamp(18px,2vw,26px);--stat-label-fs:clamp(10px,1vw,12px);
 --content-pad:clamp(16px,2vw,28px);
 --c-win:#2eaa6f;--c-loss:#e05555;--c-long:#2eaa6f;--c-short:#e05555;
---c-tokyo:#C9A84C;--c-london:#8a9fc0;--c-ny:#9a8acc;--c-off:#666672;--c-weekend:#b07090;
+--c-asia:#C9A84C;--c-london:#8a9fc0;--c-ny:#9a8acc;--c-uslate:#7a8a98;--c-weekend:#b07090;
 --c-neutral:#6a7a8a;
 --bg:#000000;--bg2:#0a0a0a;--bg3:#0f0f0f;--bg4:#141414;
 --glass:rgba(255,255,255,0.03);--glass-border:rgba(201,168,76,0.18);--glass-border-accent:rgba(201,168,76,0.28);
@@ -746,30 +746,37 @@ const ts2time=(ms)=>{const d=new Date(parseInt(ms));return d.toTimeString().slic
 const fmtNL=(iso)=>{if(!iso||typeof iso!=="string")return iso||"";const p=iso.split("-");return p.length===3?`${p[2]}-${p[1]}-${p[0]}`:iso;};
 
 // ============ SESSION DETECTION ============
+// 5 sessions, Amsterdam-tijd (DST-aware via Intl.DateTimeFormat).
+// Asia    01:00–09:00 · London  09:00–15:30 · New York 15:30–22:00
+// US Late 22:00–01:00 (wraps midnight) · Weekend = Sat/Sun whole day.
 const SESSION_COLORS={
-  "Tokyo":{bg:"rgba(201,168,76,0.08)",border:"rgba(201,168,76,0.25)",text:"#C9A84C"},
+  "Asia":{bg:"rgba(201,168,76,0.08)",border:"rgba(201,168,76,0.25)",text:"#C9A84C"},
   "London":{bg:"rgba(138,159,192,0.08)",border:"rgba(138,159,192,0.22)",text:"#8a9fc0"},
   "New York":{bg:"rgba(154,138,204,0.08)",border:"rgba(154,138,204,0.22)",text:"#9a8acc"},
-  "Off-session":{bg:"rgba(102,102,114,0.08)",border:"rgba(102,102,114,0.22)",text:"#666672"},
+  "US Late":{bg:"rgba(122,138,152,0.08)",border:"rgba(122,138,152,0.22)",text:"#7a8a98"},
   "Weekend":{bg:"rgba(176,112,144,0.08)",border:"rgba(176,112,144,0.22)",text:"#b07090"},
 };
-const CHART_COLORS={win:"#2eaa6f",loss:"#e05555",long:"#2eaa6f",short:"#e05555",open:"#C9A84C",tokyo:"#C9A84C",london:"#8a9fc0",ny:"#9a8acc",off:"#666672",weekend:"#b07090",neutral:"#6a7a8a"};
-const ALL_SESSIONS=["Tokyo","London","New York","Off-session","Weekend"];
+const CHART_COLORS={win:"#2eaa6f",loss:"#e05555",long:"#2eaa6f",short:"#e05555",open:"#C9A84C",asia:"#C9A84C",london:"#8a9fc0",ny:"#9a8acc",uslate:"#7a8a98",weekend:"#b07090",neutral:"#6a7a8a"};
+const ALL_SESSIONS=["Asia","London","New York","US Late","Weekend"];
 
+// Core: classify any Date object into one of the 5 sessions, in Amsterdam time.
+function getSessionAt(dt){
+  const parts=new Intl.DateTimeFormat("en-GB",{timeZone:"Europe/Amsterdam",hour:"numeric",minute:"numeric",weekday:"short",hour12:false}).formatToParts(dt);
+  const h=parseInt(parts.find(p=>p.type==="hour")?.value||"0");
+  const m=parseInt(parts.find(p=>p.type==="minute")?.value||"0");
+  const hm=h*60+m;
+  const wd=parts.find(p=>p.type==="weekday")?.value?.toLowerCase()||"";
+  if(wd==="sat"||wd==="sun")return"Weekend";
+  if(hm>=60&&hm<540)return"Asia";        // 01:00–09:00
+  if(hm>=540&&hm<930)return"London";     // 09:00–15:30
+  if(hm>=930&&hm<1320)return"New York";  // 15:30–22:00
+  return"US Late";                        // 22:00–01:00 (wraps midnight)
+}
 function getSessionTags(date,time){
   if(!date||!time)return[];
   const dt=new Date(date+"T"+(time.length===5?time+":00":time));
   if(isNaN(dt.getTime()))return[];
-  const cetParts=new Intl.DateTimeFormat("en-GB",{timeZone:"Europe/Amsterdam",hour:"numeric",minute:"numeric",weekday:"short",hour12:false}).formatToParts(dt);
-  const h=parseInt(cetParts.find(p=>p.type==="hour")?.value||"0");
-  const m=parseInt(cetParts.find(p=>p.type==="minute")?.value||"0");
-  const hm=h*60+m;
-  const wd=cetParts.find(p=>p.type==="weekday")?.value?.toLowerCase()||"";
-  if(wd==="sat"||wd==="sun")return["Weekend"];
-  if(hm>=930&&hm<1320)return["New York"];
-  if(hm>=540&&hm<930)return["London"];
-  if(hm>=120&&hm<480)return["Tokyo"];
-  return["Off-session"];
+  return[getSessionAt(dt)];
 }
 
 // ============ STORAGE UTILS ============
@@ -874,7 +881,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.28",released:"2026-04-24"};
+const APP_VERSION={version:"v12.29",released:"2026-04-24"};
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
 function isNewerVersion(a,b){
   const parse=(s)=>String(s||"").replace(/^v/,"").split(".").map(n=>parseInt(n,10)||0);
@@ -1909,12 +1916,47 @@ function useLiveClock(){
   useEffect(()=>{const id=setInterval(()=>setT(new Date()),1000);return()=>clearInterval(id);},[]);
   return t;
 }
+// Status bar wrapper: returnt zelfde 5 sessies als getSessionTags maar in caps.
 function getSession(date){
-  const h=date.getUTCHours();
-  if(h>=0&&h<7)return"TOKYO";
-  if(h>=7&&h<12)return"LONDON";
-  if(h>=12&&h<21)return"NEW YORK";
-  return"OFF-SESSION";
+  return getSessionAt(date).toUpperCase();
+}
+
+// Live exchange balances ophalen via testConnection (per 60s).
+// Cache in localStorage zodat eerste render niet "verkeerd" is bij refresh.
+// Returns {[exchangeKey]: numericBalance}. Exchanges zonder testConnection (csvOnly) staan niet in de map.
+const LIVE_BAL_CACHE_KEY="tj_live_exchange_balances";
+function useLiveExchangeBalances(config){
+  const[balances,setBalances]=useState(()=>{
+    try{return JSON.parse(localStorage.getItem(LIVE_BAL_CACHE_KEY)||"{}");}catch{return{};}
+  });
+  useEffect(()=>{
+    let cancelled=false;
+    const fetchAll=async()=>{
+      const results={};
+      for(const[exKey,ex]of Object.entries(ExchangeAPI)){
+        const cfg=config?.exchanges?.[exKey]||{};
+        if(!ex.testConnection)continue;
+        // walletOnly = adres ipv key/secret
+        if(ex.walletOnly){if(!cfg.walletAddress)continue;}
+        else{if(!cfg.apiKey||!cfg.apiSecret)continue;}
+        try{
+          const r=ex.walletOnly
+            ?await ex.testConnection(cfg.walletAddress)
+            :ex.needsPassphrase
+              ?await ex.testConnection(cfg.apiKey,cfg.apiSecret,cfg.passphrase)
+              :await ex.testConnection(cfg.apiKey,cfg.apiSecret);
+          if(r.success){const v=parseFloat(r.balance)||0;if(v>0)results[exKey]=v;}
+        }catch{}
+      }
+      if(cancelled)return;
+      setBalances(results);
+      try{localStorage.setItem(LIVE_BAL_CACHE_KEY,JSON.stringify(results));}catch{}
+    };
+    fetchAll();
+    const id=setInterval(fetchAll,60000);
+    return()=>{cancelled=true;clearInterval(id);};
+  },[config?.exchanges]);
+  return balances;
 }
 
 // Status bar — SyncJournal-stijl terminal bar bovenaan:
@@ -1934,12 +1976,38 @@ function AppStatusBar({trades,accounts,config}){
   const timeStr=now.toLocaleTimeString("nl-NL",{hour:"2-digit",minute:"2-digit",second:"2-digit"});
   const dateStr=now.toLocaleDateString("nl-NL",{day:"2-digit",month:"short",year:"numeric"}).toUpperCase();
   const session=getSession(now);
-  // Balance = sum van capital + pnl over handmatige accounts + exchange-configs met transactions
+  // Balance: per account de juiste bron pakken (live API > transactions+linked-PnL).
+  // Voorkomt dubbel-tellen: live-balance bevat al alle PnL, dus daar geen losse trade-pnl bovenop.
   const closed=(trades||[]).filter(t=>t.pnl!==""&&!isNaN(parseFloat(t.pnl)));
+  const liveBalances=useLiveExchangeBalances(config);
+  const bal=useMemo(()=>{
+    let total=0;const counted=new Set();
+    (accounts||[]).forEach(a=>{
+      total+=computeAccountCapital(a.transactions||[]);
+      total+=sumTradePnl(closed,a.name);
+      counted.add(a.name);
+    });
+    Object.entries(config?.exchanges||{}).forEach(([key,ex])=>{
+      const hasTx=(ex.transactions||[]).length>0;
+      if(hasTx){
+        // User vulde Storting/Opname/Correctie in → respecteer dat als source of truth
+        total+=computeAccountCapital(ex.transactions||[]);
+        total+=sumTradePnl(closed,key);
+      }else if(liveBalances[key]!=null){
+        // Geen handmatige tracking → live API balance is huidig saldo (incl. PnL)
+        total+=liveBalances[key];
+      }else{
+        // Niets bekend → alleen linked PnL
+        total+=sumTradePnl(closed,key);
+      }
+      counted.add(key);
+    });
+    // Orphan trades (source niet gekoppeld aan account/exchange) tellen we los mee
+    closed.forEach(t=>{if(!counted.has(t.source||"manual"))total+=parseFloat(t.pnl)||0;});
+    return total;
+  },[accounts,config?.exchanges,closed,liveBalances]);
+  // Drawdown gebruikt nog steeds de pure trade-PnL curve
   const totalPnl=closed.reduce((s,t)=>s+parseFloat(t.pnl),0);
-  const handmatigCap=(accounts||[]).reduce((s,a)=>s+(computeAccountCapital(a.transactions||[])),0);
-  const exchangeCap=Object.values(config?.exchanges||{}).reduce((s,e)=>s+computeAccountCapital(e.transactions||[]),0);
-  const bal=handmatigCap+exchangeCap+totalPnl;
   // Drawdown: max peak-to-trough over equity curve
   const byDay={};closed.forEach(t=>{byDay[t.date]=(byDay[t.date]||0)+parseFloat(t.pnl);});
   let cum=0,peak=0,maxDd=0;
@@ -2474,7 +2542,7 @@ function Dashboard({trades,config,accounts,onReport,storageUsage,setFilters,setT
           const grossL=Math.abs(closed.filter(t=>getSessionTags(t.date,t.time).includes(s)&&parseFloat(t.pnl)<0).reduce((a,t)=>a+parseFloat(t.pnl),0));
           const profitFactor=grossL>0?grossW/grossL:(grossW>0?Infinity:0);
           const w=Math.abs(d.pnl)/sessMax*100;const pos=d.pnl>=0;
-          const c=SESSION_COLORS[s]||SESSION_COLORS["Off-session"];
+          const c=SESSION_COLORS[s]||SESSION_COLORS["US Late"];
           return(<div key={s} style={{display:"flex",alignItems:"center",gap:"12px",marginBottom:"8px"}}>
             <div style={{width:"90px",display:"flex",alignItems:"center",gap:"6px"}}><div style={{width:"8px",height:"8px",borderRadius:"2px",background:c.text,flexShrink:0}}/><span style={{fontSize:"12px",color:c.text,fontWeight:600}}>{s}</span></div>
             <div style={{flex:1,height:"24px",background:"rgba(255,255,255,0.10)",borderRadius:"4px",position:"relative",overflow:"hidden"}}><div style={{height:"100%",width:`${Math.max(w,2)}%`,background:pos?`${c.text}30`:`rgba(220,122,122,0.28)`,borderRadius:"4px"}}/><div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",paddingLeft:"8px",fontSize:"11px",fontFamily:"var(--mono)",color:pos?"var(--green)":"var(--red)",fontWeight:600}}>{d.pnl>=0?"+":""}${fmt(d.pnl)}</div></div>
@@ -2703,7 +2771,7 @@ function TradeList({trades,onEdit,onDelete,onQuickTag,onBulkDelete,onBulkTag,sho
                 {rMult!==null?<span className={`r-chip ${rMult>0?"r-pos":rMult<0?"r-neg":"r-zero"}`}>{rMult>=0?"+":""}{rMult.toFixed(1)}R</span>:<span style={{color:"var(--text5)",fontSize:"9px"}}>–</span>}
               </td>
               <td style={tdStyle}>{hasLayers?layers.map((l,li)=>{const confs=(l.confirmations||[l.confirmation].filter(Boolean));const fpLabel=l.setup==="Fill Play"&&l.fillPlayType?` · ${l.fillPlayType}`:"";return <span key={li} style={{...tagStyle2("rgba(201,168,76,0.1)","#C9A84C")}}>{l.timeframe}{l.setup?" · "+l.setup:""}{fpLabel}{confs.length>0?" · "+confs.join("+"):""}</span>}):(t.setupTags||[]).length>0?(t.setupTags||[]).map(s=><span key={s} style={tagStyle2("rgba(201,168,76,0.08)","#C9A84C")}>{s}</span>):<button onClick={e=>{e.stopPropagation();onQuickTag&&onQuickTag(t)}} style={{fontSize:"10px",padding:"2px 8px",borderRadius:"3px",border:"1px dashed var(--border4)",background:"transparent",color:"var(--text4)",cursor:"pointer",fontFamily:"inherit"}}>+ tag</button>}</td>
-              <td style={tdStyle}>{getSessionTags(t.date,t.time).map(s=>{const c=SESSION_COLORS[s]||SESSION_COLORS["Off-session"];return <span key={s} style={tagStyle2(c.bg,c.text)}>{s}</span>})}</td>
+              <td style={tdStyle}>{getSessionTags(t.date,t.time).map(s=>{const c=SESSION_COLORS[s]||SESSION_COLORS["US Late"];return <span key={s} style={tagStyle2(c.bg,c.text)}>{s}</span>})}</td>
               <td style={tdStyle}>{(t.emotionTags||[]).map(s=><span key={s} style={tagStyle2(isNegEmotion(s)?"var(--red2)":"var(--green2)",isNegEmotion(s)?"var(--red)":"var(--green)")}>{s}</span>)}</td>
               <td style={tdStyle}><button onClick={e=>{e.stopPropagation();onDelete(t.id)}} style={{background:"none",border:"none",color:"var(--text5)",cursor:"pointer",fontSize:"12px",padding:"2px 4px"}}>✕</button></td>
             </tr>
@@ -3369,7 +3437,7 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,accounts,sho
     </div>
 
     {/* Auto session tag */}
-    {(()=>{const st=getSessionTags(trade.date,trade.time);return st.length>0?(<div style={{display:"flex",alignItems:"center",gap:"8px",marginBottom:"1rem"}}><span style={{fontSize:"10px",color:"var(--text4)",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em"}}>Sessie</span>{st.map(s=>{const c=SESSION_COLORS[s]||SESSION_COLORS["Off-session"];return(<span key={s} style={{padding:"4px 10px",borderRadius:"5px",fontSize:"11px",fontWeight:600,border:`1px solid ${c.border}`,background:c.bg,color:c.text}}>{s}</span>)})}<span style={{fontSize:"9px",color:"var(--text5)",fontFamily:"var(--mono)",marginLeft:"4px"}}>auto (CET)</span></div>):null})()}
+    {(()=>{const st=getSessionTags(trade.date,trade.time);return st.length>0?(<div style={{display:"flex",alignItems:"center",gap:"8px",marginBottom:"1rem"}}><span style={{fontSize:"10px",color:"var(--text4)",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em"}}>Sessie</span>{st.map(s=>{const c=SESSION_COLORS[s]||SESSION_COLORS["US Late"];return(<span key={s} style={{padding:"4px 10px",borderRadius:"5px",fontSize:"11px",fontWeight:600,border:`1px solid ${c.border}`,background:c.bg,color:c.text}}>{s}</span>)})}<span style={{fontSize:"9px",color:"var(--text5)",fontFamily:"var(--mono)",marginLeft:"4px"}}>auto (CET)</span></div>):null})()}
 
     {/* Entry/SL/Exit */}
     <div style={{display:"grid",gridTemplateColumns:hideExitFields?"1fr 1fr":"1fr 1fr 1fr",gap:"12px",marginBottom:"1rem"}}>
@@ -4051,12 +4119,13 @@ function DisciplineHeatmap({trades,tradingRules}){
   const METRIC_LABELS={overall:"Overall discipline",sl:"Stop-loss gezet",journal:"Journal compleet",tags:"Setup-tag aanwezig",risk:"Binnen risk-regel",count:"Trade volume"};
   const DAYS=["Ma","Di","Wo","Do","Vr","Za","Zo"];
   const DAYS_LONG=["Maandag","Dinsdag","Woensdag","Donderdag","Vrijdag","Zaterdag","Zondag"];
+  // Hour-buckets afgestemd op de 5-sessie indeling van getSessionAt.
+  // Asia/London/NY hebben 30-min overlap-uren — wijzen we toe aan de hoofd-sessie van dat uur.
   const SESSIONS=[
-    {label:"Nacht",icon:"🌙",hours:[22,23,0,1,2,3,4]},
-    {label:"Tokyo",icon:"🇯🇵",hours:[5,6,7,8]},
-    {label:"London",icon:"🇬🇧",hours:[9,10,11,12,13]},
-    {label:"NY",icon:"🇺🇸",hours:[14,15,16,17,18]},
-    {label:"Post-NY",icon:"🌅",hours:[19,20,21]},
+    {label:"Asia",   icon:"🌏",hours:[1,2,3,4,5,6,7,8]},
+    {label:"London", icon:"🇬🇧",hours:[9,10,11,12,13,14,15]},
+    {label:"NY",     icon:"🇺🇸",hours:[16,17,18,19,20,21]},
+    {label:"US Late",icon:"🌃",hours:[22,23,0]},
   ];
   const MIN_SAMPLE=3;
   const[metric,setMetric]=useState("overall");
@@ -5731,7 +5800,7 @@ function ReviewDashboard({trades}){
       const ls=[{label:"Long",value:longN,color:CHART_COLORS.long},{label:"Short",value:shortN,color:CHART_COLORS.loss}];
       const sessCounts={};ALL_SESSIONS.forEach(s=>sessCounts[s]=0);
       closed.forEach(t=>{getSessionTags(t.date,t.time).forEach(s=>{if(sessCounts[s]!==undefined)sessCounts[s]++})});
-      const sessSegs=ALL_SESSIONS.filter(s=>sessCounts[s]>0).map(s=>({label:s,value:sessCounts[s],color:(SESSION_COLORS[s]||SESSION_COLORS["Off-session"]).text}));
+      const sessSegs=ALL_SESSIONS.filter(s=>sessCounts[s]>0).map(s=>({label:s,value:sessCounts[s],color:(SESSION_COLORS[s]||SESSION_COLORS["US Late"]).text}));
       const topSess=sessSegs.length?sessSegs.reduce((a,b)=>b.value>a.value?b:a).label:"–";
       return(<div className="resp-grid-donuts" style={{marginBottom:"16px"}}>
         <div style={sectStyle}><Donut title="Win / Loss" segments={wl} centerText={`${wr.toFixed(0)}%`} centerSub="winrate"/></div>
@@ -6676,6 +6745,13 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,imp
         </div>
         <button onClick={()=>setConfig(p=>({...p,showGoalsRings:p?.showGoalsRings===false?true:false}))} style={{padding:"6px 14px",borderRadius:"6px",fontSize:"11px",fontWeight:600,border:"1px solid "+(config?.showGoalsRings!==false?"var(--gold-border)":"var(--border3)"),background:config?.showGoalsRings!==false?"var(--gold-dim)":"transparent",color:config?.showGoalsRings!==false?"var(--gold)":"var(--text4)",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>{config?.showGoalsRings!==false?"Aan":"Uit"}</button>
       </div>}
+      <div style={{marginTop:"10px",padding:"10px 14px",background:"rgba(255,255,255,0.02)",border:"1px solid var(--border2)",borderRadius:"8px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:"14px",maxWidth:"560px"}}>
+        <div>
+          <div style={{fontSize:"12px",fontWeight:600,color:"var(--text2)"}}>📊 Live status bar bovenaan</div>
+          <div style={{fontSize:"11px",color:"var(--text4)",marginTop:"2px"}}>Terminal-bar met klok, sessie, balans, DD, risk en live tickers (BTC · ETH · SOL · XAU · XAG). Uitzetten geeft je 32px extra ruimte op het scherm.</div>
+        </div>
+        <button onClick={()=>setConfig(p=>({...p,showStatusBar:p?.showStatusBar===false?true:false}))} style={{padding:"6px 14px",borderRadius:"6px",fontSize:"11px",fontWeight:600,border:"1px solid "+(config?.showStatusBar!==false?"var(--gold-border)":"var(--border3)"),background:config?.showStatusBar!==false?"var(--gold-dim)":"transparent",color:config?.showStatusBar!==false?"var(--gold)":"var(--text4)",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>{config?.showStatusBar!==false?"Aan":"Uit"}</button>
+      </div>
     </div>
 
     {/* Thema switcher — ported from v4_14 */}
@@ -7165,7 +7241,7 @@ function App(){
     const enriched={...trade};
     if(risk.riskUsd!==undefined&&!overrides.includes("riskUsd"))enriched.riskUsd=risk.riskUsd;
     if(risk.riskPct!==undefined&&!overrides.includes("riskPct"))enriched.riskPct=risk.riskPct;
-    if(isNew){const sessions=getSessionTags(enriched.date,enriched.time);if(sessions.length&&!(enriched.timeframeTags||[]).some(t=>["Tokyo","London","New York","Off-session","Weekend"].includes(t))){}}
+    if(isNew){const sessions=getSessionTags(enriched.date,enriched.time);if(sessions.length&&!(enriched.timeframeTags||[]).some(t=>ALL_SESSIONS.includes(t))){}}
     setTrades(p=>{if(isNew){return[enriched,...p]}else{return p.map(t=>t.id===enriched.id?enriched:t)}});
     setEditTrade(null);setNewTrade(null);
     // Draft was saved successfully; clear persisted draft so we don't prompt to restore it next session
@@ -7355,7 +7431,7 @@ function App(){
       </div>}
 
       {/* Topbar */}
-      <AppStatusBar trades={trades} accounts={accounts} config={config}/>
+      {config?.showStatusBar!==false&&<AppStatusBar trades={trades} accounts={accounts} config={config}/>}
       <div className="tj-topbar" style={{flexShrink:0,zIndex:100,display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 20px"}}>
         <div style={{display:"flex",alignItems:"center",gap:"0"}}>
           <a className="morani-link" href="https://www.moranitraden.nl" target="_blank" rel="noopener noreferrer">
