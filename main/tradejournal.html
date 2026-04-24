@@ -823,11 +823,8 @@ function idbSaveAllTrades(trades){
       var store=tx.objectStore("trades");
       store.clear();
       trades.forEach(function(t){
-        var clean=Object.assign({},t);
-        // Keep screenshots only as idb: references, not raw base64
-        if(clean.screenshot&&clean.screenshot.startsWith("data:"))
-          clean.screenshot=null;
-        store.put(clean);
+        // IndexedDB heeft geen practische size-limit, dus screenshots (incl. data: URLs) blijven bewaard.
+        store.put(t);
       });
       tx.oncomplete=function(){res(true);};
       tx.onerror=function(){res(false);};
@@ -880,7 +877,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.31",released:"2026-04-24"};
+const APP_VERSION={version:"v12.32",released:"2026-04-24"};
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
 function isNewerVersion(a,b){
   const parse=(s)=>String(s||"").replace(/^v/,"").split(".").map(n=>parseInt(n,10)||0);
@@ -907,7 +904,7 @@ const EMPTY_TRADE={
   setupTags:[],confirmationTags:[],timeframeTags:[],
   emotionTags:[],mistakeTags:[],customTags:[],
   missedReasonTags:[],// voor status:"missed" trades
-  rating:0,screenshot:null,notes:"",links:[],layers:[],
+  rating:0,screenshot:null,screenshots:[],notes:"",links:[],layers:[],
   source:"manual",positionId:"",openTime:"",closeTime:"",
   status:"closed",manualOverrides:[],tpLevels:[],
   entryNote:"",
@@ -942,6 +939,9 @@ const normalizeTrade=(t)=>{
       if(clean!==""&&clean!==out[k])out[k]=clean;
     }
   }
+  // Migrate legacy single screenshot → screenshots[]. Behoud `screenshot` veld voor backwards compat.
+  if(!Array.isArray(out.screenshots))out.screenshots=[];
+  if(out.screenshot&&out.screenshots.length===0)out.screenshots=[out.screenshot];
   if(Array.isArray(out.tpLevels)){
     out.tpLevels=out.tpLevels.map(tp=>{
       if(!tp)return tp;
@@ -2817,7 +2817,7 @@ function TradeList({trades,onEdit,onDelete,onQuickTag,onBulkDelete,onBulkTag,sho
               const lev=t.leverage||"";
               const tps=t.tpLevels||[];
               const links=t.links||[];
-              const hasSS=!!t.screenshot;
+              const hasSS=!!(t.screenshot||(t.screenshots||[]).length>0);
               const rating=t.rating||0;
               const pnlPctCalc=(()=>{const e=parseFloat(t.entry),ex=parseFloat(t.exit),sz=parseFloat(t.positionSize);if(e>0&&ex>0&&sz>0){const notional=e*(sz/e);return(pnlN/notional*100)}return null})();
               const lbl=resolveAccountLabel(t.source,config,accounts);
@@ -3404,20 +3404,64 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,accounts,sho
   const toggle=(f,tag)=>setTrade(p=>({...p,[f]:p[f].includes(tag)?p[f].filter(t=>t!==tag):[...p[f],tag]}));
   const fRef=useRef();
   const[ssInfo,setSsInfo]=useState(null);
-  const handleSS=async(e)=>{
-    const f=e.target.files[0];if(!f)return;
-    setSsInfo({status:"compressing",name:f.name,original:f.size});
+  // Lightbox state: index van zichtbare screenshot of null. ←/→ navigeert, Esc sluit.
+  const[lightboxIdx,setLightboxIdx]=useState(null);
+  const MAX_SCREENSHOTS=10;
+  // Shared image-handler — gebruikt door file-input én clipboard-paste. Voegt toe aan array.
+  const acceptScreenshotFile=async(file,sourceLabel)=>{
+    if(!file)return;
+    if((trade.screenshots||[]).length>=MAX_SCREENSHOTS){
+      showToast&&showToast(`Max ${MAX_SCREENSHOTS} screenshots per trade`,"error");
+      return;
+    }
+    setSsInfo({status:"compressing",name:file.name||"clipboard.png",original:file.size});
     try{
-      const r=await compressImage(f,1600,1200,0.82);
-      setTrade(p=>({...p,screenshot:r.dataUrl}));
+      const r=await compressImage(file,1600,1200,0.82);
+      setTrade(p=>({...p,screenshots:[...(p.screenshots||[]),r.dataUrl]}));
       setSsInfo({status:"done",original:r.originalSize,compressed:r.compressedSize,saved:Math.round((1-r.compressedSize/r.originalSize)*100),width:r.width,height:r.height});
+      if(sourceLabel==="paste")showToast&&showToast("Screenshot geplakt uit clipboard","success");
       setTimeout(()=>setSsInfo(null),4000);
     }catch(err){
       setSsInfo({status:"error",msg:err.message});
       setTimeout(()=>setSsInfo(null),3000);
     }
+  };
+  const handleSS=async(e)=>{
+    const f=e.target.files[0];
+    await acceptScreenshotFile(f,"file");
     e.target.value="";
   };
+  // Ctrl+V / Cmd+V plakt een screenshot vanuit clipboard. Werkt overal binnen het trade-form,
+  // ook tijdens type in een textarea (browsers triggeren paste-event met image alleen als de
+  // clipboard daadwerkelijk een image bevat — text-paste blijft normaal werken).
+  useEffect(()=>{
+    const onPaste=(e)=>{
+      const items=e.clipboardData?.items;
+      if(!items)return;
+      for(const item of items){
+        if(item.type&&item.type.startsWith("image/")){
+          e.preventDefault();
+          const file=item.getAsFile();
+          if(file)acceptScreenshotFile(file,"paste");
+          return;
+        }
+      }
+    };
+    document.addEventListener("paste",onPaste);
+    return()=>document.removeEventListener("paste",onPaste);
+  },[]);
+  // Lightbox keyboard navigation
+  useEffect(()=>{
+    if(lightboxIdx===null)return;
+    const onKey=(e)=>{
+      const arr=trade.screenshots||[];
+      if(e.key==="Escape")setLightboxIdx(null);
+      else if(e.key==="ArrowLeft"&&arr.length>1)setLightboxIdx(i=>(i-1+arr.length)%arr.length);
+      else if(e.key==="ArrowRight"&&arr.length>1)setLightboxIdx(i=>(i+1)%arr.length);
+    };
+    document.addEventListener("keydown",onKey);
+    return()=>document.removeEventListener("keydown",onKey);
+  },[lightboxIdx,trade.screenshots]);
   const gt=(k)=>tagConfig[k]||DEFAULT_TAGS[k]||[];
   const[sizeInputMode,setSizeInputMode]=useState(()=>localStorage.getItem("tj_sizeInputMode")||"usdt");
   const isMissed=trade.status==="missed";
@@ -3676,15 +3720,45 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,accounts,sho
     </Section>
 
     {/* Media & Links — collapsible */}
-    <Section title="📸 Media & Links" storeKey="media" defaultOpen={false} hint={`${trade.screenshot?"screenshot":"geen screenshot"} · ${(trade.links||[]).length} link${(trade.links||[]).length===1?"":"s"}`}>
+    <Section title="📸 Media & Links" storeKey="media" defaultOpen={false} hint={`${(trade.screenshots||[]).length||(trade.screenshot?1:0)} screenshot${((trade.screenshots||[]).length||(trade.screenshot?1:0))===1?"":"s"} · ${(trade.links||[]).length} link${(trade.links||[]).length===1?"":"s"}`}>
       <div style={{marginBottom:"14px"}}>
-        <div style={{fontSize:"11px",color:"var(--gold)",textTransform:"uppercase",letterSpacing:"0.12em",fontWeight:700,marginBottom:"8px"}}>Screenshot</div>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"8px"}}>
+          <div style={{fontSize:"11px",color:"var(--gold)",textTransform:"uppercase",letterSpacing:"0.12em",fontWeight:700}}>Screenshots {(trade.screenshots||[]).length>0&&<span style={{color:"var(--text5)",fontFamily:"var(--mono)",marginLeft:"6px"}}>({(trade.screenshots||[]).length}/{MAX_SCREENSHOTS})</span>}</div>
+        </div>
         <input type="file" ref={fRef} accept="image/*" onChange={handleSS} style={{display:"none"}}/>
-        {trade.screenshot?(<div style={{position:"relative"}}><img src={trade.screenshot} alt="" style={{width:"100%",borderRadius:"8px",border:"1px solid var(--border2)"}}/><button onClick={()=>{setTrade(p=>({...p,screenshot:null}));fRef.current.value=""}} style={{position:"absolute",top:"8px",right:"8px",background:"rgba(0,0,0,0.7)",border:"none",color:"var(--red)",borderRadius:"6px",padding:"4px 10px",cursor:"pointer",fontSize:"12px",fontFamily:"inherit"}}>Verwijder</button></div>)
-        :(<button onClick={()=>fRef.current.click()} disabled={ssInfo?.status==="compressing"} style={{padding:"24px",width:"100%",borderRadius:"8px",border:"1px dashed var(--border5)",background:"transparent",color:"var(--text3)",cursor:ssInfo?.status==="compressing"?"default":"pointer",fontFamily:"inherit",fontSize:"13px"}}>{ssInfo?.status==="compressing"?`⏳ Comprimeren van ${(ssInfo.original/1024/1024).toFixed(1)} MB...`:"Klik om screenshot te uploaden (TradingView)"}</button>)}
+        {(trade.screenshots||[]).length>0?(
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(120px, 1fr))",gap:"8px",marginBottom:"8px"}}>
+            {(trade.screenshots||[]).map((src,idx)=>(
+              <div key={idx} style={{position:"relative",aspectRatio:"4/3",borderRadius:"6px",overflow:"hidden",border:"1px solid var(--border2)",background:"var(--bg4)",cursor:"pointer"}} onClick={()=>setLightboxIdx(idx)} title="Klik voor grote weergave">
+                <img src={src} alt="" style={{width:"100%",height:"100%",objectFit:"cover",display:"block",transition:"transform .15s"}}/>
+                <button onClick={e=>{e.stopPropagation();if(!confirm("Screenshot verwijderen?"))return;setTrade(p=>({...p,screenshots:(p.screenshots||[]).filter((_,i)=>i!==idx)}));}} title="Verwijder" style={{position:"absolute",top:"4px",right:"4px",background:"rgba(0,0,0,0.75)",border:"none",color:"var(--red)",borderRadius:"4px",padding:"2px 7px",cursor:"pointer",fontSize:"11px",fontFamily:"inherit",lineHeight:1.2}}>✕</button>
+                <div style={{position:"absolute",bottom:"4px",left:"4px",background:"rgba(0,0,0,0.6)",color:"#fff",borderRadius:"3px",padding:"1px 5px",fontSize:"9px",fontFamily:"var(--mono)"}}>{idx+1}</div>
+              </div>
+            ))}
+            {(trade.screenshots||[]).length<MAX_SCREENSHOTS&&(
+              <button onClick={()=>fRef.current.click()} disabled={ssInfo?.status==="compressing"} style={{aspectRatio:"4/3",borderRadius:"6px",border:"1px dashed var(--border5)",background:"transparent",color:"var(--text4)",cursor:ssInfo?.status==="compressing"?"default":"pointer",fontFamily:"inherit",fontSize:"22px",fontWeight:300,display:"flex",alignItems:"center",justifyContent:"center"}}>{ssInfo?.status==="compressing"?"⏳":"+"}</button>
+            )}
+          </div>
+        ):(
+          <button onClick={()=>fRef.current.click()} disabled={ssInfo?.status==="compressing"} style={{padding:"24px",width:"100%",borderRadius:"8px",border:"1px dashed var(--border5)",background:"transparent",color:"var(--text3)",cursor:ssInfo?.status==="compressing"?"default":"pointer",fontFamily:"inherit",fontSize:"13px",lineHeight:1.5}}>{ssInfo?.status==="compressing"?`⏳ Comprimeren van ${(ssInfo.original/1024/1024).toFixed(1)} MB...`:<>Klik om screenshots te uploaden<br/><span style={{fontSize:"11px",color:"var(--text5)"}}>of plak met <kbd style={{padding:"1px 5px",borderRadius:"3px",background:"rgba(255,255,255,0.06)",border:"1px solid var(--border3)",fontFamily:"var(--mono)",fontSize:"10px"}}>Ctrl+V</kbd> · TradingView · max {MAX_SCREENSHOTS}</span></>}</button>
+        )}
         {ssInfo?.status==="done"&&<div style={{marginTop:"6px",padding:"6px 10px",borderRadius:"5px",background:"var(--green2)",border:"1px solid var(--green3)",color:"var(--green)",fontSize:"10px",fontFamily:"var(--mono)"}}>✓ {(ssInfo.original/1024).toFixed(0)} KB → {(ssInfo.compressed/1024).toFixed(0)} KB ({ssInfo.saved}% kleiner · {ssInfo.width}×{ssInfo.height})</div>}
         {ssInfo?.status==="error"&&<div style={{marginTop:"6px",padding:"6px 10px",borderRadius:"5px",background:"var(--red2)",border:"1px solid var(--red3)",color:"var(--red)",fontSize:"11px"}}>✕ {ssInfo.msg}</div>}
       </div>
+      {/* Lightbox modal — full-screen viewer met arrow-navigation */}
+      {lightboxIdx!==null&&(trade.screenshots||[])[lightboxIdx]&&(()=>{
+        const arr=trade.screenshots||[];
+        const total=arr.length;
+        return(<div onClick={()=>setLightboxIdx(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.92)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",cursor:"zoom-out",animation:"fadeIn .15s ease"}}>
+          <button onClick={e=>{e.stopPropagation();setLightboxIdx(null);}} title="Sluit (Esc)" style={{position:"absolute",top:"16px",right:"20px",background:"rgba(255,255,255,0.1)",border:"1px solid rgba(255,255,255,0.2)",color:"#fff",borderRadius:"6px",padding:"6px 14px",cursor:"pointer",fontSize:"13px",fontFamily:"inherit",fontWeight:600}}>✕ Sluit</button>
+          {total>1&&<>
+            <button onClick={e=>{e.stopPropagation();setLightboxIdx((lightboxIdx-1+total)%total);}} title="Vorige (←)" style={{position:"absolute",left:"20px",top:"50%",transform:"translateY(-50%)",background:"rgba(255,255,255,0.1)",border:"1px solid rgba(255,255,255,0.2)",color:"#fff",borderRadius:"50%",width:"48px",height:"48px",cursor:"pointer",fontSize:"22px",fontFamily:"inherit",fontWeight:700}}>‹</button>
+            <button onClick={e=>{e.stopPropagation();setLightboxIdx((lightboxIdx+1)%total);}} title="Volgende (→)" style={{position:"absolute",right:"20px",top:"50%",transform:"translateY(-50%)",background:"rgba(255,255,255,0.1)",border:"1px solid rgba(255,255,255,0.2)",color:"#fff",borderRadius:"50%",width:"48px",height:"48px",cursor:"pointer",fontSize:"22px",fontFamily:"inherit",fontWeight:700}}>›</button>
+            <div style={{position:"absolute",bottom:"20px",left:"50%",transform:"translateX(-50%)",background:"rgba(0,0,0,0.6)",color:"#fff",borderRadius:"4px",padding:"4px 12px",fontSize:"12px",fontFamily:"var(--mono)"}}>{lightboxIdx+1} / {total}</div>
+          </>}
+          <img src={arr[lightboxIdx]} alt="" onClick={e=>e.stopPropagation()} style={{maxWidth:"94vw",maxHeight:"90vh",borderRadius:"8px",boxShadow:"0 20px 60px rgba(0,0,0,0.5)",cursor:"default"}}/>
+        </div>);
+      })()}
       <div>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"8px"}}>
           <div style={{fontSize:"11px",color:"var(--gold)",textTransform:"uppercase",letterSpacing:"0.12em",fontWeight:700}}>TradingView links</div>
@@ -7185,7 +7259,7 @@ function App(){
     if(editTrade&&!editOriginal)setEditOriginal(JSON.stringify(editTrade));
     if(!editTrade&&editOriginal)setEditOriginal(null);
   },[editTrade,editOriginal]);
-  const tradeHasContent=(t)=>!!(t&&(t.entry||t.exit||t.pnl||t.notes||t.entryNote||(t.setupTags||[]).length||(t.links||[]).length||t.screenshot));
+  const tradeHasContent=(t)=>!!(t&&(t.entry||t.exit||t.pnl||t.notes||t.entryNote||(t.setupTags||[]).length||(t.links||[]).length||t.screenshot||(t.screenshots||[]).length>0));
   // Unsaved draft recovery: on mount, check for a persisted new-trade draft (<48h old)
   const[pendingDraft,setPendingDraft]=useState(null);
   useEffect(()=>{
@@ -7196,7 +7270,7 @@ function App(){
       if(ageMs>48*60*60*1000){localStorage.removeItem("tj_trade_draft");return;}
       // Only offer recovery if the draft has actual content (not a blank freshly-opened form)
       const t=parsed.trade||{};
-      const hasContent=(t.entry||t.exit||t.pnl||t.notes||t.entryNote||(t.setupTags||[]).length||(t.links||[]).length||t.screenshot);
+      const hasContent=(t.entry||t.exit||t.pnl||t.notes||t.entryNote||(t.setupTags||[]).length||(t.links||[]).length||t.screenshot||(t.screenshots||[]).length>0);
       if(hasContent)setPendingDraft({trade:t,savedAt:parsed.savedAt});
       else localStorage.removeItem("tj_trade_draft");
     }catch(err){}
@@ -7214,7 +7288,7 @@ function App(){
     });
     // Probeer ook localStorage als backup (faalt stil bij vol)
     try{
-      var small=trades.map(function(t){return Object.assign({},t,{screenshot:null});});
+      var small=trades.map(function(t){return Object.assign({},t,{screenshot:null,screenshots:[]});});
       localStorage.setItem("tj_trades",JSON.stringify(small));
     }catch(e){}
     setStorageUsage(getStorageUsage());
