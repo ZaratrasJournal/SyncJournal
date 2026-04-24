@@ -6,6 +6,19 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.30] — 2026-04-24
+
+### Gewijzigd
+- **Balans-formule definitief: BALANS = Live API + Capital Tracker (add-on, ≥$0).** Vier iteraties later het juiste model gevonden: tracker en live API zijn complementair, niet concurrent. Voor exchange-koppelingen: live API-balance (= echt saldo, incl. PnL) plus eventuele tracker capital (= off-platform reserve / persoonlijke ledger) opgeteld. Voor accounts zonder API (csv/wallet-only/handmatige accounts): tracker capital + linked trade-PnL. Tracker capital wordt gecapt op $0 — kan nooit negatief, en `Opname > capital` wordt geweigerd door `promptCapitalTx` met heldere alert. Voorkomt zowel Coelho's case (typo's leiden niet meer tot $0 of negatieve cap) als Denny's case (storting verlaagt nooit BALANS). Mini-hint in widget legt het model uit bij exchanges met live API.
+- **Capital Tracking widget vereenvoudigd**. v12.29 mengde Capital + Equity + Return + Trade PnL door elkaar — bij iemand met $20 inleg + $22 historisch verlies stond er "Equity -$2 / Return -111%" wat eruitzag alsof het systeem geld weghaalde door te storten. Nu: pure capital tracking. Alleen één centraal getal "Ingelegd capital: $X" + twee knoppen **Storting** / **Opname** + collapsible mutaties-lijst. De Correctie-knop is uit de UI gehaald (legacy `correction`-entries blijven leesbaar in de mutaties-lijst voor backwards compat); fouten herstel je nu door de mutatie te verwijderen en een nieuwe te maken. Trade PnL en equity zie je elders (Dashboard / Analytics / live API balance) — die horen niet in een widget die "capital tracking" heet. Geldt voor zowel exchange-koppelingen als handmatige accounts.
+
+### Toegevoegd
+- **Guardrails op capital-mutaties** (Coelho's `−$100k typo` issue). Nieuwe shared helper `promptCapitalTx` rond elke Storting/Opname/Correctie-knop:
+  - **Live preview**: het prompt toont nu `(huidig: $X)` zodat je weet waar je op voortbouwt; bij Correctie staat erbij dat het bedrag het *nieuwe totaal* wordt, niet een delta.
+  - **Sanity-check confirms**: extra `confirm()` met waarschuwing als (a) de mutatie capital negatief maakt, (b) een Opname >2× je huidige capital is (typo-detectie), of (c) een Correctie >50% afwijkt van het huidige capital.
+  - **Toast na elke mutatie**: `"MEXC capital nu: $X"` — direct visuele bevestiging, dus typo's vallen meteen op.
+  - Werkt voor zowel handmatige accounts als exchange-koppelingen (één gedeelde helper).
+
 ## [v12.29] — 2026-04-24
 
 ### Toegevoegd

@@ -881,7 +881,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.29",released:"2026-04-24"};
+const APP_VERSION={version:"v12.30",released:"2026-04-24"};
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
 function isNewerVersion(a,b){
   const parse=(s)=>String(s||"").replace(/^v/,"").split(".").map(n=>parseInt(n,10)||0);
@@ -1982,23 +1982,20 @@ function AppStatusBar({trades,accounts,config}){
   const liveBalances=useLiveExchangeBalances(config);
   const bal=useMemo(()=>{
     let total=0;const counted=new Set();
+    // Capital tracker = Math.max(0, ...) — kan nooit negatief zijn.
     (accounts||[]).forEach(a=>{
-      total+=computeAccountCapital(a.transactions||[]);
+      total+=Math.max(0,computeAccountCapital(a.transactions||[]));
       total+=sumTradePnl(closed,a.name);
       counted.add(a.name);
     });
     Object.entries(config?.exchanges||{}).forEach(([key,ex])=>{
-      const hasTx=(ex.transactions||[]).length>0;
-      if(hasTx){
-        // User vulde Storting/Opname/Correctie in → respecteer dat als source of truth
-        total+=computeAccountCapital(ex.transactions||[]);
-        total+=sumTradePnl(closed,key);
-      }else if(liveBalances[key]!=null){
-        // Geen handmatige tracking → live API balance is huidig saldo (incl. PnL)
-        total+=liveBalances[key];
+      // Definitief model: BALANS = Live API + Capital Tracker. Tracker is een add-on bovenop API,
+      // geen vervanger. Voor exchanges zonder API (csv/wallet-only): tracker + linked PnL.
+      const txCap=Math.max(0,computeAccountCapital(ex.transactions||[]));
+      if(liveBalances[key]!=null&&liveBalances[key]>0){
+        total+=liveBalances[key]+txCap;
       }else{
-        // Niets bekend → alleen linked PnL
-        total+=sumTradePnl(closed,key);
+        total+=txCap+sumTradePnl(closed,key);
       }
       counted.add(key);
     });
@@ -5844,6 +5841,43 @@ function ReviewDashboard({trades}){
 }
 
 // ============ ACCOUNTS HUB ============
+// Shared helper voor capital-mutaties (Storting/Opname/Correctie).
+// Toont live preview + waarschuwt bij destructive acties (negatief saldo, opname > 2x cap, correction >50% afwijking).
+// Returns {transaction, newCapital} bij succes, null bij annuleer/invalid.
+function promptCapitalTx({type,label,currentCapital,accountLabel}){
+  const cap=parseFloat(currentCapital)||0;
+  const previewLine=cap>0?` (huidig: $${cap.toFixed(2)})`:"";
+  const promptMsg=type==="correction"
+    ?`${label}${previewLine}\n\nWordt het NIEUWE totaal capital. Bedrag (USDT):`
+    :`${label}${previewLine}\n\nBedrag (USDT):`;
+  const amt=prompt(promptMsg);
+  if(amt===null)return null;
+  const cleaned=String(amt).replace(",",".").trim();
+  const amount=parseFloat(cleaned);
+  if(isNaN(amount)||amount<0){alert("Ongeldig bedrag");return null;}
+  let newCap=cap;
+  if(type==="deposit")newCap+=amount;
+  else if(type==="withdrawal")newCap-=amount;
+  else if(type==="correction")newCap=amount;
+  // Tracker capital kan nooit negatief zijn. Voor opname: weiger als > huidige cap.
+  if(type==="withdrawal"&&newCap<0){
+    alert(`Opname ($${amount.toFixed(2)}) is groter dan je tracker capital ($${cap.toFixed(2)}). Kan niet onder $0.`);
+    return null;
+  }
+  const warnings=[];
+  if(type==="correction"&&newCap<0)warnings.push(`• Correctie maakt capital negatief: $${newCap.toFixed(2)}`);
+  if(type==="correction"&&cap>0&&Math.abs(newCap-cap)>cap*0.5)warnings.push(`• Correctie verandert capital van $${cap.toFixed(2)} naar $${newCap.toFixed(2)} (>50%)`);
+  if(warnings.length>0){
+    const acctTxt=accountLabel?` voor "${accountLabel}"`:"";
+    if(!confirm(`⚠️ Weet je dit zeker${acctTxt}?\n\n${warnings.join("\n")}\n\nNa deze mutatie: $${newCap.toFixed(2)}`))return null;
+  }
+  const note=prompt("Notitie (optioneel):")||"";
+  return{
+    transaction:{id:uid(),type,amount:amount.toString(),date:new Date().toISOString().split("T")[0],note},
+    newCapital:newCap,
+  };
+}
+
 function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,importTrades,syncOpenPositions,exportTrades,setTagConfig,tagConfig,tradingRules,setTradingRules,goals,setGoals,mindsetPrefs,setMindsetPrefs}){
   const csvRef=useRef();const csvAcctRef=useRef(null);
   const backupRef=useRef();
@@ -6349,14 +6383,11 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,imp
               <div><div style={{color:"var(--text5)",textTransform:"uppercase",letterSpacing:".06em"}}>Return</div><div style={{fontFamily:"var(--mono)",color:retPct>=0?"var(--green)":"var(--red)",fontWeight:700,fontSize:"10px"}}>{retPct>=0?"+":""}{retPct.toFixed(1)}%</div></div>
             </div>
             <div style={{display:"flex",gap:"3px"}}>
-              {Object.entries(TX_TYPES).map(([type,meta])=>(<button key={type} onClick={()=>{
-                const amt=prompt(`${meta.label} bedrag (USDT)${type==="correction"?" — nieuw totaal capital":""}:`);
-                if(amt===null)return;
-                const amount=parseFloat(amt);
-                if(isNaN(amount)||amount<0){alert("Ongeldig bedrag");return}
-                const date=new Date().toISOString().split("T")[0];
-                const note=prompt("Notitie (optioneel):")||"";
-                setAccounts(p=>p.map(x=>x.id===a.id?{...x,transactions:[...(x.transactions||[]),{id:uid(),type,amount:amount.toString(),date,note}]}:x));
+              {[["deposit",TX_TYPES.deposit],["withdrawal",TX_TYPES.withdrawal]].map(([type,meta])=>(<button key={type} onClick={()=>{
+                const r=promptCapitalTx({type,label:meta.label,currentCapital:capital,accountLabel:a.name});
+                if(!r)return;
+                setAccounts(p=>p.map(x=>x.id===a.id?{...x,transactions:[...(x.transactions||[]),r.transaction]}:x));
+                showToast&&showToast(`${a.name} capital nu: $${fmt(r.newCapital)}`,"success");
               }} title={meta.label} style={{flex:1,padding:"4px",borderRadius:"4px",border:`1px solid ${meta.color}33`,background:"transparent",color:meta.color,cursor:"pointer",fontSize:"10px",fontWeight:600,fontFamily:"inherit"}}>{meta.icon} {meta.label}</button>))}
             </div>
             {(a.transactions||[]).length>0&&<details style={{marginTop:"6px"}}>
@@ -6402,44 +6433,43 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,imp
               </div>
             </div>
           </div>
-          {/* Capital tracking — per-exchange deposits/withdrawals/corrections */}
+          {/* Capital tracking — alleen storting + opname + mutaties-lijst.
+             Trade PnL en equity zie je elders (Dashboard / Analytics / live API balance). */}
           {(()=>{
             const txs=exCfg().transactions||[];
             const capital=computeAccountCapital(txs);
-            const pnl=sumTradePnl(trades,ex);
-            const equity=capital+pnl;
-            const retPct=capital>0?pnl/capital*100:0;
             const hasTx=txs.length>0;
-            return(<div style={{marginTop:"14px",padding:"12px 14px",background:"var(--bg4)",borderRadius:"8px",border:"1px solid var(--border2)"}}>
-              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"10px"}}>
-                <div style={{fontSize:"10px",color:"var(--gold)",textTransform:"uppercase",letterSpacing:".12em",fontWeight:700}}>💰 Capital tracking</div>
-                <div style={{fontSize:"9px",color:"var(--text5)"}}>{hasTx?`${txs.length} mutatie${txs.length===1?"":"s"}`:"nog leeg"}</div>
+            const hasLiveApi=!ExchangeAPI[ex]?.csvOnly&&(ExchangeAPI[ex]?.walletOnly?!!exCfg().walletAddress:!!(exCfg().apiKey&&exCfg().apiSecret));
+            const SIMPLE_TX=[["deposit",TX_TYPES.deposit],["withdrawal",TX_TYPES.withdrawal]];
+            return(<div style={{marginTop:"14px",padding:"14px 16px",background:"var(--bg4)",borderRadius:"10px",border:"1px solid var(--border2)"}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"12px"}}>
+                <div style={{fontSize:"10px",color:"var(--gold)",textTransform:"uppercase",letterSpacing:".14em",fontWeight:700,display:"flex",alignItems:"center",gap:"6px"}}>💰 Capital tracking</div>
+                <div style={{fontSize:"10px",color:"var(--text5)",fontFamily:"var(--mono)"}}>{hasTx?`${txs.length} mutatie${txs.length===1?"":"s"}`:"nog leeg"}</div>
               </div>
-              {hasTx&&<div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:"10px",marginBottom:"10px"}}>
-                <div><div style={{fontSize:"9px",color:"var(--text5)",textTransform:"uppercase",letterSpacing:".06em"}}>Capital</div><div style={{fontFamily:"var(--mono)",color:"var(--text)",fontWeight:700,fontSize:"15px"}}>${fmt(capital)}</div></div>
-                <div><div style={{fontSize:"9px",color:"var(--text5)",textTransform:"uppercase",letterSpacing:".06em"}}>Equity</div><div style={{fontFamily:"var(--mono)",color:equity>=capital?"var(--green)":"var(--red)",fontWeight:700,fontSize:"15px"}}>${fmt(equity)}</div></div>
-                <div><div style={{fontSize:"9px",color:"var(--text5)",textTransform:"uppercase",letterSpacing:".06em"}}>Return</div><div style={{fontFamily:"var(--mono)",color:retPct>=0?"var(--green)":"var(--red)",fontWeight:700,fontSize:"15px"}}>{retPct>=0?"+":""}{retPct.toFixed(1)}%</div></div>
+              {hasLiveApi&&<div style={{fontSize:"10px",color:"var(--text5)",marginBottom:"10px",lineHeight:1.5,padding:"6px 10px",background:"rgba(255,255,255,.02)",borderLeft:"2px solid var(--border3)",borderRadius:"3px"}}>
+                💡 BALANS bovenaan = <strong style={{color:"var(--text4)"}}>Live API-balance</strong> + jouw tracker capital. Tracker is een add-on (bv. off-platform reserve) — kan nooit onder $0 komen.
               </div>}
-              <div style={{display:"flex",gap:"6px"}}>
-                {Object.entries(TX_TYPES).map(([type,meta])=>(<button key={type} onClick={()=>{
-                  const amt=prompt(`${meta.label} bedrag (USDT)${type==="correction"?" — nieuw totaal":""}:`);
-                  if(amt===null)return;
-                  const amount=parseFloat(amt);
-                  if(isNaN(amount)||amount<0){alert("Ongeldig bedrag");return}
-                  const date=new Date().toISOString().split("T")[0];
-                  const note=prompt("Notitie (optioneel):")||"";
-                  setField("transactions",[...(exCfg().transactions||[]),{id:uid(),type,amount:amount.toString(),date,note}]);
-                }} style={{flex:1,padding:"8px",borderRadius:"5px",border:`1px solid ${meta.color}33`,background:"transparent",color:meta.color,cursor:"pointer",fontSize:"11px",fontWeight:600,fontFamily:"inherit"}}>{meta.icon} {meta.label}</button>))}
+              {hasTx&&<div style={{textAlign:"center",marginBottom:"14px",paddingBottom:"12px",borderBottom:"1px solid var(--border2)"}}>
+                <div style={{fontSize:"9px",color:"var(--text5)",textTransform:"uppercase",letterSpacing:".08em",fontWeight:600,marginBottom:"4px"}}>Ingelegd capital</div>
+                <div style={{fontFamily:"var(--mono)",color:"var(--text)",fontWeight:700,fontSize:"22px",letterSpacing:"-.01em"}}>${fmt(capital)}</div>
+              </div>}
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"8px"}}>
+                {SIMPLE_TX.map(([type,meta])=>(<button key={type} onClick={()=>{
+                  const r=promptCapitalTx({type,label:meta.label,currentCapital:capital,accountLabel:ExchangeAPI[ex]?.name||ex});
+                  if(!r)return;
+                  setField("transactions",[...(exCfg().transactions||[]),r.transaction]);
+                  showToast&&showToast(`${ExchangeAPI[ex]?.name||ex} capital nu: $${fmt(r.newCapital)}`,"success");
+                }} style={{padding:"10px 8px",borderRadius:"6px",border:`1px solid ${meta.color}40`,background:`${meta.color}0d`,color:meta.color,cursor:"pointer",fontSize:"12px",fontWeight:600,fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:"6px",transition:"background .12s"}} onMouseEnter={e=>e.currentTarget.style.background=`${meta.color}1a`} onMouseLeave={e=>e.currentTarget.style.background=`${meta.color}0d`}>{meta.icon} {meta.label}</button>))}
               </div>
-              {hasTx&&<details style={{marginTop:"10px"}}>
-                <summary style={{fontSize:"10px",color:"var(--text4)",cursor:"pointer",userSelect:"none"}}>Mutaties tonen ▾</summary>
-                <div style={{marginTop:"6px",maxHeight:"140px",overflowY:"auto"}}>
-                  {txs.slice().reverse().map(t=>{const meta=TX_TYPES[t.type]||TX_TYPES.correction;return(<div key={t.id} style={{display:"flex",alignItems:"center",gap:"8px",padding:"5px 6px",fontSize:"10px",borderBottom:"1px solid rgba(255,255,255,.04)"}}>
-                    <span style={{color:meta.color,fontSize:"11px"}}>{meta.icon}</span>
-                    <span style={{color:"var(--text4)",fontFamily:"var(--mono)",width:"74px"}}>{t.date}</span>
+              {hasTx&&<details style={{marginTop:"12px"}}>
+                <summary style={{fontSize:"10px",color:"var(--text4)",cursor:"pointer",userSelect:"none",fontFamily:"var(--mono)",letterSpacing:".06em"}}>▸ Mutaties tonen ({txs.length})</summary>
+                <div style={{marginTop:"8px",maxHeight:"160px",overflowY:"auto",border:"1px solid var(--border2)",borderRadius:"6px"}}>
+                  {txs.slice().reverse().map(t=>{const meta=TX_TYPES[t.type]||TX_TYPES.correction;return(<div key={t.id} style={{display:"flex",alignItems:"center",gap:"10px",padding:"7px 10px",fontSize:"11px",borderBottom:"1px solid rgba(255,255,255,.04)"}}>
+                    <span style={{color:meta.color,fontSize:"12px",width:"14px",textAlign:"center"}}>{meta.icon}</span>
+                    <span style={{color:"var(--text4)",fontFamily:"var(--mono)",width:"82px"}}>{t.date}</span>
                     <span style={{color:"var(--text3)",flex:1}}>{meta.label}{t.note?` · ${t.note}`:""}</span>
-                    <span style={{color:"var(--text2)",fontFamily:"var(--mono)",fontWeight:600}}>${fmt(parseFloat(t.amount))}</span>
-                    <button onClick={()=>{if(!confirm("Verwijder mutatie?"))return;setField("transactions",(exCfg().transactions||[]).filter(tx=>tx.id!==t.id))}} style={{background:"none",border:"none",color:"var(--text5)",cursor:"pointer",fontSize:"10px"}}>✕</button>
+                    <span style={{color:"var(--text2)",fontFamily:"var(--mono)",fontWeight:600,minWidth:"80px",textAlign:"right"}}>${fmt(parseFloat(t.amount))}</span>
+                    <button onClick={()=>{if(!confirm("Verwijder mutatie?"))return;setField("transactions",(exCfg().transactions||[]).filter(tx=>tx.id!==t.id));showToast&&showToast("Mutatie verwijderd","success");}} title="Verwijder" style={{background:"none",border:"none",color:"var(--text5)",cursor:"pointer",fontSize:"12px",padding:"2px 4px"}}>✕</button>
                   </div>)})}
                 </div>
               </details>}
