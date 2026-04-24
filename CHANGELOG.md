@@ -6,6 +6,17 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.20] — 2026-04-24
+
+### Toegevoegd
+- **Setup Edge** (nieuwe Analytics-widget) — compacte tabel in SyncJournal-stijl met per setup-tag: aantal trades, win-rate, totaal PnL, en progress-bar (WR-breedte, groen bij positieve PnL / rood bij negatieve). Klik een rij om in Trades te filteren op die setup. Gebruikt inline aggregatie op `(t.setupTags||[])`. Toggle-baar via Analytics-settings (`lp.setupEdge`), zichtbaar direct na "Setup insights" in de default-volgorde.
+
+### Gewijzigd
+- **Emotie impact op PNL** — visuele overhaul naar SyncJournal-stijl 2-kolom kaart-grid. Elke kaart toont per emotie: de emotie-naam + POS/NEG badge, netto PnL (groot mono getal), en "n trades · X% WR" subregel. Kleur-accent (green/red border) op basis van PnL-sign. Vervangt de oude bar-row layout. Datasource en toggle-key (`emotionImpact`) onveranderd — bestaande user-prefs blijven werken.
+
+### Research-basis
+Beide widgets komen 1:1 uit de SyncJournal design-handoff demo (`work/syncjournal.html`) zodat de visuele taal van tradejournal.html stap-voor-stap richting de nieuwe look groeit. Pad A (dashboard-vervanging) volgt in een latere release.
+
 ## [v12.19] — 2026-04-24
 
 ### Gewijzigd

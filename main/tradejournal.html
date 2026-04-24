@@ -867,7 +867,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.19",released:"2026-04-24"};
+const APP_VERSION={version:"v12.20",released:"2026-04-24"};
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
 function isNewerVersion(a,b){
   const parse=(s)=>String(s||"").replace(/^v/,"").split(".").map(n=>parseInt(n,10)||0);
@@ -4200,6 +4200,7 @@ function Analytics({trades,tradingRules,allTrades,config}){
       {key:"rMultipleDist",label:"R-Multiple distributie"},
       {key:"rollingEdge",label:"Rolling 20-trade edge"},
       {key:"setupInsights",label:"Setup insights tabel"},
+      {key:"setupEdge",label:"Setup edge (compacte tabel)"},
     ]},
     {label:"Overige secties",items:[
       {key:"foutAnalyse",label:"Fout analyse"},{key:"emotionImpact",label:"Emotie impact"},
@@ -4302,7 +4303,7 @@ function Analytics({trades,tradingRules,allTrades,config}){
   const withMistakes=closed.filter(t=>(t.mistakeTags||[]).length>0);
   const violationPct=closed.length?withMistakes.length/closed.length*100:0;
 
-  const DEFAULT_ANALYTICS_ORDER=["procesKPIs","procesDetail","winstKPIs","rMultipleDist","rollingEdge","setupInsights","longShort","perPair","perDay","sessionPerf","foutAnalyse","emotionImpact","streaks","rrAnalysis","holdtime","heatmap","layerAnalysis"];
+  const DEFAULT_ANALYTICS_ORDER=["procesKPIs","procesDetail","winstKPIs","rMultipleDist","rollingEdge","setupInsights","setupEdge","longShort","perPair","perDay","sessionPerf","foutAnalyse","emotionImpact","streaks","rrAnalysis","holdtime","heatmap","layerAnalysis"];
   // Helper: wrap elke analytics-sectie in een sort-row met drag-handle
   const seq=(key,visible,children)=>visible?<div key={key} data-sortkey={key} className="sort-row">{editMode&&<div className="drag-handle">≡</div>}{children}</div>:null;
 
@@ -4402,6 +4403,37 @@ function Analytics({trades,tradingRules,allTrades,config}){
       <SetupInsightsTable trades={closed}/>
     </div>)}
 
+    {/* Setup Edge — SyncJournal-stijl compacte tabel met progress bar per setup */}
+    {seq("setupEdge",lp.setupEdge!==false&&closed.length>0,(()=>{
+      const setupPerf={};
+      closed.forEach(t=>(t.setupTags||[]).forEach(tag=>{
+        if(!setupPerf[tag])setupPerf[tag]={n:0,w:0,pnl:0};
+        setupPerf[tag].n++;
+        setupPerf[tag].pnl+=parseFloat(t.pnl);
+        if(parseFloat(t.pnl)>0)setupPerf[tag].w++;
+      }));
+      const rows=Object.entries(setupPerf).map(([name,v])=>({name,...v,wr:v.n?v.w/v.n*100:0})).sort((a,b)=>b.pnl-a.pnl);
+      if(rows.length===0)return null;
+      return(<div style={sectStyle}>{secH("⚡ Setup edge")}
+        <div style={{fontFamily:"var(--mono)",fontSize:"11px"}}>
+          <div style={{display:"grid",gridTemplateColumns:"1.5fr 40px 55px 80px 110px",gap:"10px",padding:"6px 2px",fontSize:"9.5px",color:"var(--text5)",borderBottom:"1px solid var(--border2)",letterSpacing:".08em",textTransform:"uppercase",fontWeight:700}}>
+            <span>Setup</span><span style={{textAlign:"right"}}>n</span><span style={{textAlign:"right"}}>WR</span><span style={{textAlign:"right"}}>P&amp;L</span><span>Bar</span>
+          </div>
+          {rows.map(st=>(
+            <div key={st.name} onClick={()=>{if(setFilters&&setTab){setFilters(p=>({...p,setupTags:[st.name]}));setTab("trades")}}} style={{display:"grid",gridTemplateColumns:"1.5fr 40px 55px 80px 110px",gap:"10px",padding:"9px 2px",borderBottom:"1px dashed var(--border2)",alignItems:"center",cursor:"pointer",borderRadius:"4px",transition:"background .15s"}} onMouseEnter={e=>e.currentTarget.style.background="rgba(201,168,76,0.04)"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+              <span style={{color:"var(--text)",fontWeight:600,fontFamily:"var(--font)"}}>{st.name}</span>
+              <span style={{textAlign:"right",color:"var(--text3)"}}>{st.n}</span>
+              <span style={{textAlign:"right",color:st.wr>=50?"var(--green)":"var(--red)",fontWeight:700}}>{st.wr.toFixed(0)}%</span>
+              <span style={{textAlign:"right",color:st.pnl>=0?"var(--green)":"var(--red)",fontWeight:700}}>{(st.pnl>=0?"+":"-")+"$"+fmt(Math.abs(st.pnl))}</span>
+              <div style={{height:"5px",background:"rgba(255,255,255,0.04)",borderRadius:"2px",overflow:"hidden"}}>
+                <div style={{width:Math.min(100,st.wr)+"%",height:"100%",background:st.pnl>=0?"linear-gradient(90deg,#2eaa6f,#4fcf8f)":"var(--red)"}}/>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>);
+    })())}
+
 
 
     {/* Long vs Short */}
@@ -4443,9 +4475,21 @@ function Analytics({trades,tradingRules,allTrades,config}){
       })()}
     </div>)}
 
-    {/* Emotions */}
-    {seq("emotionImpact",lp.emotionImpact&&Object.keys(emoImpact).length>0,<div style={sectStyle}>{secH("Emotie impact op PNL")}
-      {(()=>{const maxAbs=Math.max(...Object.values(emoImpact).map(d=>Math.abs(d.pnl)),1);return Object.entries(emoImpact).sort((a,b)=>b[1].pnl-a[1].pnl).map(([e,d])=>barRow(e,d.w,d.n-d.w,d.pnl,maxAbs,isNegEmotion(e)?"var(--red)":"var(--green)"))})()}
+    {/* Emotions — SyncJournal-stijl 2-kolom grid */}
+    {seq("emotionImpact",lp.emotionImpact&&Object.keys(emoImpact).length>0,<div style={sectStyle}>{secH("🧠 Emotie impact")}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:"10px"}}>
+        {Object.entries(emoImpact).sort((a,b)=>b[1].pnl-a[1].pnl).map(([e,d])=>{
+          const pos=d.pnl>=0;
+          return(<div key={e} style={{padding:"12px 14px",background:"rgba(255,255,255,0.02)",borderRadius:"8px",border:"1px solid "+(pos?"rgba(46,170,111,0.22)":"rgba(224,85,85,0.22)")}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"5px"}}>
+              <span style={{fontSize:"11.5px",color:"var(--text3)",fontWeight:500}}>{e}</span>
+              <span style={{fontSize:"9px",color:isNegEmotion(e)?"var(--red)":"var(--green)",fontWeight:700,letterSpacing:".08em",fontFamily:"var(--mono)"}}>{isNegEmotion(e)?"NEG":"POS"}</span>
+            </div>
+            <div style={{fontFamily:"var(--mono)",fontSize:"15px",fontWeight:700,color:pos?"var(--green)":"var(--red)",marginBottom:"3px"}}>{(pos?"+":"-")+"$"+fmt(Math.abs(d.pnl))}</div>
+            <div style={{fontSize:"10px",color:"var(--text5)",fontFamily:"var(--mono)"}}>{d.n} trade{d.n!==1?"s":""} · {d.n?(d.w/d.n*100).toFixed(0):0}% WR</div>
+          </div>);
+        })}
+      </div>
     </div>)}
 
     {/* Streaks */}
