@@ -6,6 +6,25 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.29] — 2026-04-24
+
+### Toegevoegd
+- **Live status bar aan/uit toggle** — Instellingen → Accounts → Layout sectie. Default aan; uitzetten verbergt de hele bar (klok, sessie, balans, DD, risk, BTC/ETH/SOL/XAU/XAG tickers) en geeft 32px extra schermruimte. Stop ook met de balance-fetch + WS-tickers wanneer de bar verborgen is — de hook zit ín `AppStatusBar`, dus die unmount volledig.
+
+### Fixed
+- **BALANS in status bar toonde alleen de winst, niet het totaalsaldo** (Coelho's + Denny's feedback). Bij een storting van $1000 + $50 winst toonde de bar `$50` ipv `$1050`; bij een handmatig ingevulde Storting van $10.000 werd dat genegeerd zodra de exchange-API een ander bedrag teruggaf. Oorzaak: oude formule `handmatigCap + exchangeCap + totalPnl` ging ervan uit dat je je storting altijd handmatig invult, en de eerste fix-poging vertrouwde altijd op live API als die beschikbaar was — beide breken een legitieme use case. Definitieve formule per exchange-koppeling, in volgorde van prioriteit: (1) als je zelf Storting/Opname/Correctie hebt ingevuld → respecteer dat als source of truth (`transactions + gelinkte trade-PnL`), (2) anders gebruik live API-balance via nieuwe `useLiveExchangeBalances` hook (elke 60s `testConnection`-call, gecachet in `localStorage`), (3) anders alleen gelinkte PnL. Orphan trades tellen los mee. Voorkomt zowel onder- als overschatting.
+
+### Gewijzigd
+- **Trading sessies herzien naar 5 NL-georiënteerde tijdvakken** (Amsterdam-tijd, DST-aware via `Intl.DateTimeFormat`):
+  - **Asia** 01:00–09:00 (was Tokyo 02:00–08:00 — uitgebreid met Sydney-overlap)
+  - **London** 09:00–15:30 (ongewijzigd)
+  - **New York** 15:30–22:00 (status bar toonde dit voorheen vanaf 14:00 NL = 1.5u te vroeg)
+  - **US Late** 22:00–01:00 — NIEUW; combineert wat eerder "Off-session" was met Fed/FOMC-news window om 20:00 NL én de na-NY pump/dump-zone
+  - **Weekend** Sat/Sun (ongewijzigd)
+- Status bar (`getSession`) en trade-tagging (`getSessionTags`) gebruiken nu **één gedeelde core-functie** `getSessionAt(date)` met identieke grenzen — voorheen had de status bar een eigen UTC-uur-mapping die afweek (`12-21 UTC = NEW YORK` = 14:00–23:00 NL, te vroeg én te laat). Trades worden automatisch herkleurd want sessie-tags worden on-the-fly berekend uit `date`+`time`, niet gepersisteerd in de trade — een trade van 22:30 die voorheen "Off-session" was wordt nu "US Late", overal in de app (trade-tabel, filter, analytics, calendar).
+- DisciplineHeatmap (uur-buckets in Analytics) gemigreerd van Nacht/Tokyo/London/NY/Post-NY → Asia/London/NY/US Late zodat de heatmap dezelfde sessies toont als de rest van de app.
+- Filter-state met oude waarde `"Tokyo"` of `"Off-session"` filtert nu op een sessie die niet meer bestaat → 0 trades. Klik **Reset** in de filter-bar om dat op te lossen.
+
 ## [v12.28] — 2026-04-24
 
 ### Toegevoegd
