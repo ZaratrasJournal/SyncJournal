@@ -6,6 +6,35 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.21] — 2026-04-24
+
+### Toegevoegd
+- **Real-time BTC-ticker via Binance public WebSocket** — nieuwe herbruikbare `useBtcTicker()` hook. Directe verbinding naar `wss://stream.binance.com:9443/ws/btcusdt@ticker` (geen auth, CORS-enabled). Levert live price, 24h change $/%, 24h high/low/volume, directional flash (up/down). Auto-reconnect bij disconnect (3s delay). Status-veld voor UI-feedback: `connecting` / `live` / `reconnecting` / `error`.
+- **Dashboard (premium-layout) — volledige overhaul naar SyncJournal "premium terminal"-stijl**:
+  - Hero: Terminal-subtitle + "Goedemorgen, {naam}" met gold-shimmer, insight-line, month/trades/WR/streak-samenvatting, rechts period selector (1D/1W/1M/3M/YTD/ALL) + Sync + Nieuwe trade knoppen.
+  - **BTC Live Feed card**: grote live prijs (kleurwissel bij up/down), Sparkline over laatste 60 ticks, 24H high/low/volume, "Trade BTC" shortcut (opent Nieuwe Trade met pair=BTC/USDT), "LIVE BINANCE" status indicator.
+  - **Equity Curve card** (bestaand `EquityCurveChart`, nu met HIGH / END headers).
+  - **Trade Tape** (laatste 10 trades, compact tabel met Tijd/Pair/Dir/PnL/Rating) + **Pairs MTD** (top 6 pairs deze maand, horizontale bar per pair met + en − breedte-splits), side-by-side.
+  - **Key Metrics sidebar** (9 rijen: WR / PF / Expectancy / Avg R:R / Avg Win / Avg Loss / Streak / Total / Net P&L).
+  - **AI Insight card** (dynamisch — toont beste setup > 3 trades met WR + PnL).
+  - **Risk Alert card** (verschijnt alleen bij ≥3 emotionele trades met negatief netto — FOMO / Gehaast / Tilt / Revenge tags).
+  - **Trading Rules compliance widget** verhuisd naar sidebar (compact).
+  - **Daily Journal** compact in sidebar (plan + mood-tags, openen → Calendar).
+
+### Verwijderd uit Dashboard-premium (verplaatst of niet langer getoond)
+- Oude "BENTO KPI" grid (Net P&L hero + 3 kleinere KPIs) — vervangen door Key Metrics sidebar.
+- `SetupRankingWidget` (Top 3 / Worst 3 setups op dashboard) — blijft bestaan als component, niet meer op Dashboard maar wel via Analytics-tab.
+- Oude "Top Setups" zijblok + 3-kolom grid — vervangen door AI Insight + Pairs MTD.
+
+### Niet veranderd
+- Standard-layout (`config.layout !== "premium"`) blijft intact voor users die minimalistisch willen.
+- `GoalsRings` blijft bovenaan dashboard als goals geconfigureerd zijn.
+- Mindset-ochtendbanner (`morningQuote`) rendert globaal op elke tab — niet aangeraakt.
+- Alle helpers (`AnimNum`, `Sparkline`, `EquityCurveChart`, `TradingRulesWidget`, `buildInsightContext`, `getDashboardInsight`) hergebruikt.
+
+### Ook
+- Binance-hook wordt momenteel alleen in tradejournal.html Dashboard gebruikt. Syncjournal.html kreeg dezelfde hook voor z'n BTC-card + status bar (tweede commit in deze release).
+
 ## [v12.20] — 2026-04-24
 
 ### Toegevoegd

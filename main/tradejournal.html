@@ -867,7 +867,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.20",released:"2026-04-24"};
+const APP_VERSION={version:"v12.21",released:"2026-04-24"};
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
 function isNewerVersion(a,b){
   const parse=(s)=>String(s||"").replace(/^v/,"").split(".").map(n=>parseInt(n,10)||0);
@@ -1817,6 +1817,37 @@ function useSortable(containerRef,enabled,onReorder){
     });
     return()=>s.destroy();
   },[enabled]);
+}
+// Real-time BTC ticker via Binance public WebSocket — no auth, CORS-friendly.
+// Auto-reconnect on close. Returns {price, change, pct, flash, history, high24, low24, volume24, status}.
+// Status: "connecting" | "live" | "reconnecting" | "error". Fallback price = 67420.50 until first tick.
+function useBtcTicker(){
+  const[btc,setBtc]=useState({price:67420.50,change:0,pct:0,flash:null,history:Array.from({length:30},(_,i)=>67200+Math.sin(i/4)*180),high24:0,low24:0,volume24:0,status:"connecting"});
+  useEffect(()=>{
+    let ws=null,prev=null,hist=[],reconnect=null,closed=false;
+    const connect=()=>{
+      try{
+        ws=new WebSocket("wss://stream.binance.com:9443/ws/btcusdt@ticker");
+        ws.onopen=()=>setBtc(p=>({...p,status:"live"}));
+        ws.onmessage=(e)=>{
+          try{
+            const d=JSON.parse(e.data);
+            const price=parseFloat(d.c);
+            if(!isFinite(price))return;
+            const dir=prev===null?null:price>prev?"up":price<prev?"down":null;
+            hist.push(price);if(hist.length>60)hist.shift();
+            setBtc({price,change:parseFloat(d.p)||0,pct:parseFloat(d.P)||0,flash:dir,history:[...hist],high24:parseFloat(d.h)||0,low24:parseFloat(d.l)||0,volume24:parseFloat(d.q)||0,status:"live"});
+            prev=price;
+          }catch(err){}
+        };
+        ws.onerror=()=>setBtc(p=>({...p,status:"error"}));
+        ws.onclose=()=>{if(closed)return;setBtc(p=>({...p,status:"reconnecting"}));reconnect=setTimeout(connect,3000);};
+      }catch(err){setBtc(p=>({...p,status:"error"}));}
+    };
+    connect();
+    return()=>{closed=true;if(ws){try{ws.close();}catch{}}if(reconnect)clearTimeout(reconnect);};
+  },[]);
+  return btc;
 }
 function SortableSections({sections,defaultOrder,order,setOrder,editMode}){
   const containerRef=useRef(null);
@@ -4747,11 +4778,11 @@ function Sparkline({data,color="#2eaa6f"}){
 
 function DashboardPremium({trades,config,accounts,tradingRules,dailyNotes,goals,setTab,setNewTrade,newEmptyTrade,setFilters}){
   const closed=(trades||[]).filter(t=>t.pnl!==""&&!isNaN(parseFloat(t.pnl)));
-  // Insight — pick once on mount. Re-picks on next visit to Dashboard.
   const[insight]=useState(()=>{
     const ctx=buildInsightContext(closed,goals,tradingRules);
     return getDashboardInsight(ctx,Math.floor(Date.now()/1000));
   });
+  const btc=useBtcTicker();
   const hour=new Date().getHours();
   const greeting=hour<12?"Goedemorgen":hour<18?"Goedemiddag":"Goedenavond";
   const today=new Date().toISOString().split("T")[0];
@@ -4759,148 +4790,208 @@ function DashboardPremium({trades,config,accounts,tradingRules,dailyNotes,goals,
   const totalPnl=closed.reduce((s,t)=>s+parseFloat(t.pnl),0);
   const wr=closed.length?wins.length/closed.length*100:0;
   const gw=wins.reduce((s,t)=>s+parseFloat(t.pnl),0);const gl=Math.abs(losses.reduce((s,t)=>s+parseFloat(t.pnl),0));
-  const pf=gl>0?gw/gl:(wins.length>0?999:0);
+  const pf=gl>0?gw/gl:(wins.length>0?Infinity:0);
+  const avgWin=wins.length?gw/wins.length:0;
+  const avgLoss=losses.length?gl/losses.length:0;
+  const rr=avgLoss>0?avgWin/avgLoss:0;
+  const expectancy=closed.length?(wr/100*avgWin)-((1-wr/100)*avgLoss):0;
   const thisMonth=closed.filter(t=>{const d=new Date(t.date);const n=new Date();return d.getFullYear()===n.getFullYear()&&d.getMonth()===n.getMonth();});
   const monthPnl=thisMonth.reduce((s,t)=>s+parseFloat(t.pnl),0);
-  // Streak calc — aantal achtereenvolgende winnende dagen
   const daysMap={};closed.forEach(t=>{if(!daysMap[t.date])daysMap[t.date]=0;daysMap[t.date]+=parseFloat(t.pnl);});
   const sortedDays=Object.entries(daysMap).sort((a,b)=>b[0].localeCompare(a[0]));
   let streak=0;for(const[,pnl] of sortedDays){if(pnl>0)streak++;else break;}
-  // Sparkline data — laatste 20 trades running pnl
-  const sparkData=(()=>{const sorted=[...closed].sort((a,b)=>(a.date+(a.time||"")).localeCompare(b.date+(b.time||"")));let c=0;return sorted.slice(-20).map(t=>{c+=parseFloat(t.pnl);return c;});})();
-  // Setup edge finder
+  // Recent trades (last 10 closed, newest first)
+  const recent=[...closed].sort((a,b)=>((b.date||"")+(b.time||"")).localeCompare((a.date||"")+(a.time||""))).slice(0,10);
+  // Pairs MTD (performance per pair voor deze maand)
+  const pairsMap={};thisMonth.forEach(t=>{pairsMap[t.pair]=(pairsMap[t.pair]||0)+parseFloat(t.pnl);});
+  const pairsMtd=Object.entries(pairsMap).sort((a,b)=>b[1]-a[1]).slice(0,6);
+  const pairsMaxAbs=Math.max(1,...pairsMtd.map(([,v])=>Math.abs(v)));
+  // Top setup for AI insight
   const setupMap={};closed.forEach(t=>(t.setupTags||[]).forEach(s=>{if(!setupMap[s])setupMap[s]={n:0,w:0,pnl:0};setupMap[s].n++;setupMap[s].pnl+=parseFloat(t.pnl);if(parseFloat(t.pnl)>0)setupMap[s].w++;}));
-  const setupList=Object.entries(setupMap).sort((a,b)=>(b[1].pnl)-(a[1].pnl));
-  const topSetups=setupList.slice(0,2);
-  const worstSetup=setupList[setupList.length-1];
+  const topSetup=Object.entries(setupMap).filter(([,v])=>v.n>=3).sort((a,b)=>b[1].pnl-a[1].pnl)[0];
+  // Risk alert — FOMO-tag trades PnL
+  const fomoTrades=closed.filter(t=>(t.emotionTags||[]).some(e=>["FOMO","Gehaast","Revenge trade","Tilt"].includes(e)));
+  const fomoPnl=fomoTrades.reduce((s,t)=>s+parseFloat(t.pnl),0);
   const todayNote=dailyNotes?.[today];
+  const btcUp=btc.change>=0;
 
   return(<div style={{animation:"fadeIn .3s ease"}}>
-    {/* HERO */}
-    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",marginBottom:"32px",flexWrap:"wrap",gap:"20px"}}>
+    {/* HERO + period selector */}
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",marginBottom:"20px",flexWrap:"wrap",gap:"20px"}}>
       <div>
-        <div style={{fontSize:"11px",color:"var(--gold)",textTransform:"uppercase",letterSpacing:".2em",fontWeight:600,marginBottom:"10px"}}>⚡ Welkom terug</div>
-        <div style={{fontSize:"36px",fontWeight:800,letterSpacing:"-.025em",lineHeight:1.1,marginBottom:"8px"}}>{greeting}, <span className="tj-logo-text" style={{background:"linear-gradient(90deg,#fff 0%,#C9A84C 50%,#fff 100%)",backgroundSize:"200% auto",WebkitBackgroundClip:"text",backgroundClip:"text",WebkitTextFillColor:"transparent",animation:"shimmer 8s linear infinite"}}>{(config?.displayName||"trader").trim()||"trader"}</span></div>
-        {/* Insight line — one stat-based reflection under the greeting, picked once per Dashboard visit */}
-        {insight&&<div style={{display:"inline-flex",alignItems:"center",gap:"10px",padding:"8px 14px",marginBottom:"10px",borderRadius:"8px",background:insight.tone==="celebrate"?"rgba(255,140,0,.06)":insight.tone==="good"?"rgba(46,170,111,.06)":insight.tone==="support"?"rgba(212,168,83,.06)":"rgba(138,159,192,.05)",borderLeft:"3px solid "+(insight.tone==="celebrate"?"#ff8c00":insight.tone==="good"?"var(--green)":insight.tone==="support"?"var(--amber)":"var(--blue,#8a9fc0)"),fontSize:"13px",color:"var(--text2)",lineHeight:1.5,maxWidth:"640px"}}>
-          <span style={{fontSize:"16px",lineHeight:1}}>{insight.icon}</span>
-          <span>{insight.text}</span>
+        <div style={{fontSize:"10px",color:"var(--gold)",letterSpacing:".25em",fontWeight:700,marginBottom:"6px",fontFamily:"var(--mono)"}}>TERMINAL · DASHBOARD</div>
+        <div style={{fontSize:"26px",fontWeight:800,letterSpacing:"-.02em"}}>{greeting}, <span className="gold-shimmer">{(config?.displayName||"trader").trim()||"trader"}</span></div>
+        {insight&&<div style={{display:"inline-flex",alignItems:"center",gap:"10px",padding:"8px 14px",marginTop:"10px",borderRadius:"8px",background:insight.tone==="celebrate"?"rgba(255,140,0,.06)":insight.tone==="good"?"rgba(46,170,111,.06)":insight.tone==="support"?"rgba(212,168,83,.06)":"rgba(138,159,192,.05)",borderLeft:"3px solid "+(insight.tone==="celebrate"?"#ff8c00":insight.tone==="good"?"var(--green)":insight.tone==="support"?"var(--amber)":"var(--blue,#8a9fc0)"),fontSize:"13px",color:"var(--text2)",lineHeight:1.5,maxWidth:"640px"}}>
+          <span style={{fontSize:"16px",lineHeight:1}}>{insight.icon}</span><span>{insight.text}</span>
         </div>}
-        <div style={{fontSize:"14px",color:"var(--text3)",display:"flex",alignItems:"center",gap:"14px",flexWrap:"wrap"}}>
-          <span>Deze maand:</span>
-          <span className={monthPnl>=0?"gold-shimmer":""} style={{padding:"4px 12px",borderRadius:"20px",fontSize:"13px",fontWeight:800,background:monthPnl>=0?"rgba(201,168,76,.12)":"rgba(224,85,85,.12)",border:`1px solid ${monthPnl>=0?"rgba(201,168,76,.3)":"rgba(224,85,85,.3)"}`,fontFamily:"var(--mono)",WebkitTextFillColor:monthPnl<0?undefined:"transparent",color:monthPnl<0?"var(--red)":"var(--gold)"}}>{monthPnl>=0?"+":""}${fmt(monthPnl)}</span>
-          {streak>0&&<span style={{padding:"4px 10px",borderRadius:"20px",fontSize:"11px",fontWeight:600,background:"rgba(255,140,0,.12)",color:"#ff8c00",border:"1px solid rgba(255,140,0,.3)"}}>🔥 {streak} winning days streak</span>}
-          <span style={{opacity:.6}}>·  {closed.length} trades  ·  {wr.toFixed(0)}% win-rate</span>
+        <div style={{fontSize:"12px",color:"var(--text4)",marginTop:"8px",fontFamily:"var(--mono)"}}>
+          Maand: <span style={{color:monthPnl>=0?"var(--green)":"var(--red)",fontWeight:600}}>{(monthPnl>=0?"+":"-")+"$"+fmt(Math.abs(monthPnl))}</span>
+          <span style={{margin:"0 10px",opacity:.4}}>·</span>
+          {thisMonth.length} trades deze maand
+          <span style={{margin:"0 10px",opacity:.4}}>·</span>
+          win-rate <span style={{color:wr>=50?"var(--green)":"var(--red)"}}>{wr.toFixed(0)}%</span>
+          {streak>0&&<><span style={{margin:"0 10px",opacity:.4}}>·</span>🔥 <span style={{color:"var(--gold)",fontWeight:600}}>{streak}d streak</span></>}
         </div>
       </div>
-      <div style={{display:"flex",gap:"10px"}}>
-        <button onClick={()=>setTab("accounts")} style={{padding:"12px 20px",borderRadius:"12px",background:"rgba(255,255,255,.05)",color:"var(--text2)",border:"1px solid rgba(255,255,255,.08)",fontFamily:"inherit",fontSize:"13px",fontWeight:600,cursor:"pointer"}}>📥 Sync</button>
-        <button onClick={()=>{setNewTrade(newEmptyTrade());setTab("new");}} style={{padding:"12px 24px",borderRadius:"12px",background:"linear-gradient(135deg,#f0d57a,#C9A84C,#8c721c)",color:"#000",border:"none",fontFamily:"inherit",fontSize:"13px",fontWeight:700,cursor:"pointer",boxShadow:"0 6px 20px rgba(201,168,76,.35),inset 0 1px 0 rgba(255,255,255,.3)"}}>⊕ Nieuwe trade</button>
+      <div style={{display:"flex",alignItems:"center",gap:"8px"}}>
+        <div style={{display:"flex",gap:"6px"}}>
+          {["1D","1W","1M","3M","YTD","ALL"].map((p,i)=>(
+            <button key={p} style={{padding:"5px 11px",fontSize:"11px",fontFamily:"var(--mono)",borderRadius:"8px",cursor:"pointer",background:i===2?"var(--gold-dim)":"transparent",color:i===2?"var(--gold)":"var(--text4)",border:"1px solid "+(i===2?"var(--gold-border)":"var(--border3)")}}>{p}</button>
+          ))}
+        </div>
+        <button onClick={()=>setTab("accounts")} style={{padding:"8px 14px",borderRadius:"10px",background:"rgba(255,255,255,.05)",color:"var(--text2)",border:"1px solid rgba(255,255,255,.08)",fontFamily:"inherit",fontSize:"12px",fontWeight:600,cursor:"pointer"}}>📥 Sync</button>
+        <button onClick={()=>{setNewTrade(newEmptyTrade());setTab("new");}} style={{padding:"8px 16px",borderRadius:"10px",background:"linear-gradient(135deg,#f0d57a,#C9A84C,#8c721c)",color:"#000",border:"none",fontFamily:"inherit",fontSize:"12px",fontWeight:700,cursor:"pointer",boxShadow:"0 4px 16px rgba(201,168,76,.3)"}}>⊕ Nieuwe trade</button>
       </div>
     </div>
 
-    {/* GOALS RINGS */}
     {goals&&<GoalsRings goals={goals} trades={closed} onEdit={()=>setTab("accounts")}/>}
 
-    {/* BENTO KPI GRID — hero PnL card (wide) + smaller KPIs */}
-    <div style={{display:"grid",gridTemplateColumns:"5fr 7fr",gap:"16px",marginBottom:"24px"}}>
-      {/* Hero: Net P&L — large, gold shimmer, animated counter */}
-      <div className="card-stagger card-glow" style={{background:"var(--glass)",border:"1px solid var(--border2)",borderRadius:"18px",padding:"28px 24px",position:"relative",overflow:"hidden"}}>
-        <div style={{position:"absolute",top:0,left:0,right:0,height:"1px",background:"linear-gradient(90deg,transparent,var(--gold-border),transparent)",opacity:.7}}/>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"16px"}}>
-          <span style={{fontSize:"10px",color:"var(--text4)",textTransform:"uppercase",letterSpacing:".2em",fontWeight:700}}>Net P&L</span>
-          <div style={{width:"36px",height:"36px",borderRadius:"10px",background:"var(--gold-dim)",border:"1px solid var(--gold-border)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"16px"}}>💰</div>
-        </div>
-        <div className={totalPnl>=0?"gold-shimmer":""} style={{fontFamily:"var(--mono)",fontSize:"44px",fontWeight:900,letterSpacing:"-.03em",lineHeight:1,marginBottom:"10px",color:totalPnl>=0?"var(--gold)":"var(--red)",WebkitTextFillColor:totalPnl>=0?"transparent":undefined}}>
-          <AnimNum value={totalPnl} prefix={totalPnl>=0?"+$":"-$"} abs={true}/>
-        </div>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end"}}>
-          <Sparkline data={sparkData} color={totalPnl>=0?"#2eaa6f":"#e05555"}/>
-          <div style={{textAlign:"right"}}>
-            <div style={{fontFamily:"var(--mono)",fontSize:"11px",color:"var(--text4)"}}>{closed.length} trades</div>
-            {thisMonth.length>0&&<div style={{fontFamily:"var(--mono)",fontSize:"10px",color:"var(--text5)",marginTop:"2px"}}>maand: {monthPnl>=0?"+":""}${fmt(monthPnl)}</div>}
+    {/* MAIN GRID — content left, sidebar right */}
+    <div style={{display:"grid",gridTemplateColumns:"1fr 280px",gap:"14px",marginBottom:"18px"}}>
+      <div style={{display:"flex",flexDirection:"column",gap:"12px"}}>
+        {/* BTC Live Feed — Binance WS */}
+        <div style={{background:"linear-gradient(135deg,rgba(247,147,26,.08),var(--glass))",border:"1px solid rgba(247,147,26,.22)",borderRadius:"12px",padding:"14px 18px",display:"grid",gridTemplateColumns:"auto 1fr auto",gap:"20px",alignItems:"center",position:"relative",overflow:"hidden"}}>
+          <div style={{position:"absolute",top:0,left:0,right:0,height:"1px",background:"linear-gradient(90deg,transparent,rgba(247,147,26,.5),transparent)",opacity:.7}}/>
+          <div>
+            <div style={{fontSize:"9.5px",fontWeight:700,letterSpacing:".2em",color:"#f7931a",fontFamily:"var(--mono)",marginBottom:"4px",display:"flex",alignItems:"center",gap:"6px"}}>
+              <span style={{width:"6px",height:"6px",borderRadius:"50%",background:btc.status==="live"?"var(--green)":btc.status==="reconnecting"?"var(--gold)":"var(--red)",boxShadow:btc.status==="live"?"0 0 8px rgba(46,170,111,.8)":"none"}}/>
+              BTC / USD · {btc.status==="live"?"LIVE BINANCE":btc.status.toUpperCase()}
+            </div>
+            <div style={{fontFamily:"var(--mono)",fontSize:"30px",fontWeight:800,letterSpacing:"-.02em",color:btc.flash==="up"?"var(--green)":btc.flash==="down"?"var(--red)":"var(--text)",lineHeight:1,transition:"color .2s"}}>
+              ${btc.price.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}
+            </div>
+            <div style={{display:"flex",gap:"12px",fontSize:"10.5px",color:"var(--text4)",fontFamily:"var(--mono)",marginTop:"5px"}}>
+              <span style={{color:btcUp?"var(--green)":"var(--red)",fontWeight:700}}>{btcUp?"▲":"▼"} {btcUp?"+":""}{btc.change.toFixed(2)}</span>
+              <span style={{color:btcUp?"var(--green)":"var(--red)",fontWeight:700}}>{btcUp?"+":""}{btc.pct.toFixed(3)}%</span>
+              {btc.volume24>0&&<span>24H VOL <span style={{color:"var(--text2)"}}>${(btc.volume24/1e9).toFixed(2)}B</span></span>}
+            </div>
+          </div>
+          <div style={{height:"60px"}}>
+            <Sparkline data={btc.history} color={btcUp?"#2eaa6f":"#e05555"} fill={true}/>
+          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:"4px",fontFamily:"var(--mono)",fontSize:"10px",textAlign:"right",color:"var(--text4)",borderLeft:"1px dashed rgba(255,255,255,.06)",paddingLeft:"16px"}}>
+            <div>24H HIGH <span style={{color:"var(--green)"}}>${btc.high24?btc.high24.toFixed(0):"—"}</span></div>
+            <div>24H LOW <span style={{color:"var(--red)"}}>${btc.low24?btc.low24.toFixed(0):"—"}</span></div>
+            <button onClick={()=>{setNewTrade({...newEmptyTrade(),pair:"BTC/USDT"});setTab("new");}} style={{padding:"4px 10px",fontSize:"10px",marginTop:"4px",borderRadius:"6px",border:"1px solid var(--gold-border)",background:"var(--gold-dim)",color:"var(--gold)",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>Trade BTC →</button>
           </div>
         </div>
-      </div>
 
-      {/* 3 smaller KPIs in sub-grid */}
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"16px"}}>
-        {[
-          {label:"Win-rate",num:wr,suffix:"%",icon:"🎯",color:wr>=50?"var(--green)":"var(--red)",sub:`${wins.length}W / ${losses.length}L`},
-          {label:"Profit Factor",num:pf===999?99.9:pf,suffix:"",icon:"⚡",color:"var(--gold)",sub:pf===999?"∞":`${fmt(gw)} / ${fmt(gl)}`},
-          {label:"Streak",num:streak,suffix:" d",icon:"🔥",color:"var(--gold)",sub:streak>0?"winning days":"geen streak"},
-        ].map((k,ki)=>(
-          <div key={k.label} className="card-stagger card-glow" style={{background:"var(--glass)",border:"1px solid var(--border2)",borderRadius:"16px",padding:"18px",position:"relative",overflow:"hidden",animationDelay:(ki*70+70)+"ms"}}>
+        {/* Equity curve */}
+        {(()=>{
+          const byDay={};closed.forEach(t=>{if(!byDay[t.date])byDay[t.date]=0;byDay[t.date]+=parseFloat(t.pnl);});
+          const sortedEq=Object.entries(byDay).sort((a,b)=>a[0].localeCompare(b[0]));
+          let cum=0;const eq=sortedEq.map(([d,p])=>{cum+=p;return{date:d,cum};});
+          if(eq.length<2)return(<div style={{background:"var(--glass)",border:"1px solid var(--border2)",borderRadius:"12px",padding:"18px",fontSize:"12px",color:"var(--text4)",textAlign:"center"}}>Minstens 2 trading-dagen nodig voor equity curve</div>);
+          const maxCum=Math.max(...eq.map(e=>e.cum));
+          return(<div style={{background:"var(--glass)",border:"1px solid var(--border2)",borderRadius:"12px",padding:"14px 16px",position:"relative"}}>
             <div style={{position:"absolute",top:0,left:0,right:0,height:"1px",background:"linear-gradient(90deg,transparent,var(--gold-border),transparent)",opacity:.5}}/>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"12px"}}>
-              <span style={{fontSize:"9px",color:"var(--text4)",textTransform:"uppercase",letterSpacing:".16em",fontWeight:700}}>{k.label}</span>
-              <div style={{width:"28px",height:"28px",borderRadius:"8px",background:"var(--gold-dim)",border:"1px solid var(--gold-border)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"13px"}}>{k.icon}</div>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"10px"}}>
+              <div style={{display:"flex",alignItems:"center",gap:"10px"}}>
+                <span style={{width:"8px",height:"8px",borderRadius:"50%",background:"var(--gold)",boxShadow:"0 0 10px var(--gold)"}}/>
+                <span style={{fontSize:"11px",fontWeight:700,letterSpacing:".16em",color:"var(--text2)",fontFamily:"var(--mono)"}}>EQUITY CURVE · USD</span>
+              </div>
+              <div style={{display:"flex",gap:"14px",fontSize:"10px",color:"var(--text4)",fontFamily:"var(--mono)"}}>
+                <span>HIGH <span style={{color:"var(--green)"}}>+${fmt(maxCum)}</span></span>
+                <span>END <span style={{color:"var(--gold)"}}>{(totalPnl>=0?"+":"-")+"$"+fmt(Math.abs(totalPnl))}</span></span>
+              </div>
             </div>
-            <div style={{fontFamily:"var(--mono)",fontSize:"28px",fontWeight:800,letterSpacing:"-.02em",lineHeight:1,marginBottom:"6px",color:k.color}}>
-              <AnimNum value={k.num} suffix={k.suffix}/>
-            </div>
-            <div style={{fontSize:"10px",color:"var(--text4)",fontFamily:"var(--mono)"}}>{k.sub}</div>
-          </div>
-        ))}
-      </div>
-    </div>
-
-    {/* EQUITY CURVE — full width */}
-    {(()=>{
-      const byDay={};closed.forEach(t=>{if(!byDay[t.date])byDay[t.date]=0;byDay[t.date]+=parseFloat(t.pnl);});
-      const sorted=Object.entries(byDay).sort((a,b)=>a[0].localeCompare(b[0]));
-      let cum=0;const eq=sorted.map(([d,p])=>{cum+=p;return{date:d,cum};});
-      if(eq.length<2)return null;
-      return(<div style={{background:"var(--glass)",border:"1px solid var(--border2)",borderRadius:"var(--radius-lg)",padding:"24px",marginBottom:"24px",position:"relative"}}>
-        <div style={{position:"absolute",top:0,left:0,right:0,height:"1px",background:"linear-gradient(90deg,transparent,var(--gold-border),transparent)",opacity:.5}}/>
-        <div style={{fontSize:"13px",color:"var(--text2)",fontWeight:700,letterSpacing:".04em",textTransform:"uppercase",marginBottom:"16px",display:"flex",alignItems:"center",gap:"10px"}}><span style={{width:"8px",height:"8px",borderRadius:"50%",background:"var(--gold)",boxShadow:"0 0 12px var(--gold)"}}/>Equity Curve</div>
-        <EquityCurveChart line={eq}/>
-      </div>);
-    })()}
-
-    {/* Setup ranking — Top 3 / Worst 3 */}
-    <SetupRankingWidget trades={trades} onSetupClick={setFilters&&setTab?(tag)=>{setFilters(p=>({...p,setupTags:[tag]}));setTab("trades")}:null}/>
-
-    {/* 3-col grid: rules + setups + journal */}
-    <div style={{display:"grid",gridTemplateColumns:"1.2fr 1fr 1fr",gap:"16px",marginBottom:"24px"}}>
-      <div>{tradingRules&&<TradingRulesWidget rules={tradingRules} trades={closed}/>}</div>
-      <div style={{background:"var(--glass)",border:"1px solid var(--border2)",borderRadius:"var(--radius-lg)",padding:"20px"}}>
-        <div style={{fontSize:"11px",color:"var(--gold)",textTransform:"uppercase",letterSpacing:".12em",fontWeight:700,marginBottom:"14px"}}>Top setups</div>
-        {topSetups.length?topSetups.map(([name,d],i)=>{const wr=d.n?d.w/d.n*100:0;return(
-          <div key={name} style={{padding:"12px",background:"rgba(255,255,255,.02)",border:"1px solid rgba(46,170,111,.2)",borderLeft:"3px solid var(--green)",borderRadius:"10px",marginBottom:"8px"}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"6px"}}>
-              <span style={{fontSize:"13px",fontWeight:700}}>{name}</span><span style={{fontFamily:"var(--mono)",fontSize:"11px",color:"var(--gold)",fontWeight:700}}>#{i+1}</span>
-            </div>
-            <div style={{display:"flex",justifyContent:"space-between",fontSize:"11px",fontFamily:"var(--mono)"}}>
-              <span>WR: <span style={{color:wr>=50?"var(--green)":"var(--red)",fontWeight:600}}>{wr.toFixed(0)}%</span></span>
-              <span>{d.n}t</span>
-              <span style={{color:d.pnl>=0?"var(--green)":"var(--red)",fontWeight:700}}>{d.pnl>=0?"+":""}${fmt(d.pnl)}</span>
-            </div>
-          </div>);
-        }):<div style={{fontSize:"12px",color:"var(--text4)",padding:"20px 0",textAlign:"center"}}>Voeg setup-tags toe aan trades voor ranking</div>}
-        {worstSetup&&worstSetup[1].pnl<0&&(()=>{const[name,d]=worstSetup;const wr=d.n?d.w/d.n*100:0;return(
-          <div style={{padding:"12px",background:"rgba(255,255,255,.02)",border:"1px solid rgba(224,85,85,.2)",borderLeft:"3px solid var(--red)",borderRadius:"10px",marginTop:"8px"}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"6px"}}>
-              <span style={{fontSize:"13px",fontWeight:700}}>{name}</span><span style={{fontFamily:"var(--mono)",fontSize:"11px",color:"var(--red)",fontWeight:700}}>⚠️ Worst</span>
-            </div>
-            <div style={{display:"flex",justifyContent:"space-between",fontSize:"11px",fontFamily:"var(--mono)"}}>
-              <span>WR: <span style={{color:"var(--red)",fontWeight:600}}>{wr.toFixed(0)}%</span></span>
-              <span>{d.n}t</span>
-              <span style={{color:"var(--red)",fontWeight:700}}>${fmt(d.pnl)}</span>
-            </div>
+            <EquityCurveChart line={eq}/>
           </div>);
         })()}
-      </div>
-      <div style={{background:"var(--glass)",border:"1px solid var(--border2)",borderRadius:"var(--radius-lg)",padding:"20px"}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"14px"}}>
-          <div style={{fontSize:"11px",color:"var(--gold)",textTransform:"uppercase",letterSpacing:".12em",fontWeight:700}}>📝 Daily Journal</div>
-          <button onClick={()=>setTab("calendar")} style={{padding:"4px 10px",borderRadius:"6px",fontSize:"10px",background:"rgba(255,255,255,.05)",color:"var(--text3)",border:"1px solid var(--border3)",cursor:"pointer",fontFamily:"inherit",textTransform:"uppercase",letterSpacing:".06em",fontWeight:600}}>Openen →</button>
+
+        {/* Trade Tape + Pairs MTD */}
+        <div style={{display:"grid",gridTemplateColumns:"1.35fr 1fr",gap:"12px"}}>
+          <div style={{background:"var(--glass)",border:"1px solid var(--border2)",borderRadius:"12px",padding:"14px 16px",position:"relative"}}>
+            <div style={{position:"absolute",top:0,left:0,right:0,height:"1px",background:"linear-gradient(90deg,transparent,var(--gold-border),transparent)",opacity:.5}}/>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"8px"}}>
+              <div style={{fontSize:"11px",fontWeight:700,letterSpacing:".16em",color:"var(--text2)",fontFamily:"var(--mono)"}}>📜 TRADE TAPE</div>
+              <button onClick={()=>setTab("trades")} style={{background:"none",border:"none",color:"var(--text4)",fontSize:"10px",fontFamily:"var(--mono)",cursor:"pointer"}}>Alles zien →</button>
+            </div>
+            {recent.length===0?<div style={{fontSize:"12px",color:"var(--text4)",padding:"20px 0",textAlign:"center"}}>Nog geen trades</div>:<div style={{fontFamily:"var(--mono)",fontSize:"11px"}}>
+              <div style={{display:"grid",gridTemplateColumns:"46px 1fr 30px 70px 50px",gap:"6px",padding:"5px 2px",fontSize:"9.5px",color:"var(--text5)",borderBottom:"1px solid var(--border2)",letterSpacing:".08em",textTransform:"uppercase"}}>
+                <span>Tijd</span><span>Pair</span><span>D</span><span style={{textAlign:"right"}}>P&amp;L</span><span style={{textAlign:"right"}}>Rating</span>
+              </div>
+              {recent.map((t,i)=>{const p=parseFloat(t.pnl);return(
+                <div key={t.id||i} onClick={()=>setTab("trades")} style={{display:"grid",gridTemplateColumns:"46px 1fr 30px 70px 50px",gap:"6px",padding:"7px 2px",borderBottom:i===recent.length-1?"none":"1px dashed rgba(255,255,255,.03)",cursor:"pointer",borderRadius:"4px",alignItems:"center"}}>
+                  <span style={{color:"var(--text4)"}}>{(t.time||"").slice(0,5)}</span>
+                  <span style={{color:"var(--text)",fontWeight:600}}>{t.pair}</span>
+                  <span style={{color:t.direction==="long"?"var(--green)":"var(--red)",fontWeight:700}}>{t.direction==="long"?"L":"S"}</span>
+                  <span style={{textAlign:"right",color:p>=0?"var(--green)":"var(--red)",fontWeight:700}}>{(p>=0?"+":"-")+"$"+fmt(Math.abs(p))}</span>
+                  <span style={{textAlign:"right",color:"var(--gold)"}}>{"★".repeat(t.rating||0)}</span>
+                </div>);
+              })}
+            </div>}
+          </div>
+
+          <div style={{background:"var(--glass)",border:"1px solid var(--border2)",borderRadius:"12px",padding:"14px 16px",position:"relative"}}>
+            <div style={{position:"absolute",top:0,left:0,right:0,height:"1px",background:"linear-gradient(90deg,transparent,var(--gold-border),transparent)",opacity:.5}}/>
+            <div style={{fontSize:"11px",fontWeight:700,letterSpacing:".16em",color:"var(--text2)",fontFamily:"var(--mono)",marginBottom:"10px"}}>📊 PAIRS · MTD</div>
+            {pairsMtd.length===0?<div style={{fontSize:"11px",color:"var(--text4)",padding:"12px 0",textAlign:"center"}}>Geen trades deze maand</div>:pairsMtd.map(([p,v],i)=>{
+              const w=Math.abs(v)/pairsMaxAbs*100;
+              return(<div key={p} onClick={()=>{if(setFilters&&setTab){setFilters(pr=>({...pr,pair:p}));setTab("trades")}}} style={{display:"flex",alignItems:"center",gap:"10px",padding:"6px 0",borderBottom:i===pairsMtd.length-1?"none":"1px dashed rgba(255,255,255,.04)",cursor:"pointer"}}>
+                <div style={{fontSize:"11px",fontFamily:"var(--mono)",fontWeight:700,minWidth:"62px"}}>{p}</div>
+                <div style={{flex:1,height:"6px",background:"rgba(255,255,255,.03)",borderRadius:"3px",overflow:"hidden",position:"relative"}}>
+                  <div style={{position:"absolute",top:0,bottom:0,left:v>=0?"50%":(50-w/2)+"%",width:w/2+"%",background:v>=0?"linear-gradient(90deg,rgba(46,170,111,.3),var(--green))":"linear-gradient(90deg,var(--red),rgba(224,85,85,.3))",borderRadius:"3px"}}/>
+                  <div style={{position:"absolute",top:0,bottom:0,left:"50%",width:"1px",background:"rgba(255,255,255,.1)"}}/>
+                </div>
+                <div className="mono" style={{fontSize:"10.5px",fontWeight:700,color:v>=0?"var(--green)":"var(--red)",minWidth:"58px",textAlign:"right"}}>{(v>=0?"+":"-")+"$"+fmt(Math.abs(v))}</div>
+              </div>);
+            })}
+          </div>
         </div>
-        {todayNote?(<>
-          {todayNote.plan&&<div style={{marginBottom:"10px"}}><div style={{fontSize:"10px",color:"var(--gold)",textTransform:"uppercase",letterSpacing:".1em",fontWeight:700,marginBottom:"4px"}}>📍 Plan</div><div style={{fontSize:"12px",color:"var(--text2)",lineHeight:1.5,padding:"8px 10px",background:"rgba(255,255,255,.025)",borderLeft:"3px solid var(--gold)",borderRadius:"0 6px 6px 0"}}>{todayNote.plan}</div></div>}
-          {(todayNote.mood||[]).length>0&&<div style={{marginBottom:"8px"}}><div style={{fontSize:"10px",color:"var(--gold)",textTransform:"uppercase",letterSpacing:".1em",fontWeight:700,marginBottom:"4px"}}>🧠 Mindset</div><div style={{display:"flex",gap:"4px",flexWrap:"wrap"}}>{todayNote.mood.map(m=>(<span key={m} style={{padding:"3px 8px",borderRadius:"4px",fontSize:"10px",background:"rgba(46,170,111,.1)",color:"var(--green)",border:"1px solid rgba(46,170,111,.25)"}}>{m}</span>))}</div></div>}
-          {todayNote.reflection&&<div style={{fontSize:"11px",color:"var(--text3)",fontStyle:"italic",marginTop:"8px"}}>"{todayNote.reflection}"</div>}
-        </>):(<div style={{fontSize:"12px",color:"var(--text4)",padding:"16px 0",textAlign:"center"}}>Nog geen daily note voor vandaag.<br/><button onClick={()=>setTab("calendar")} style={{marginTop:"10px",padding:"8px 14px",borderRadius:"6px",background:"var(--gold-dim)",color:"var(--gold)",border:"1px solid var(--gold-border)",fontSize:"11px",fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>+ Plan je dag</button></div>)}
+      </div>
+
+      {/* Sidebar */}
+      <div style={{display:"flex",flexDirection:"column",gap:"12px"}}>
+        <div style={{background:"var(--glass)",border:"1px solid var(--border3)",borderRadius:"12px",padding:"16px 18px",position:"relative"}}>
+          <div style={{position:"absolute",top:0,left:0,right:0,height:"1px",background:"linear-gradient(90deg,transparent,var(--gold-border),transparent)",opacity:.7}}/>
+          <div style={{fontSize:"10px",letterSpacing:".22em",color:"var(--text4)",fontWeight:700,marginBottom:"14px",fontFamily:"var(--mono)"}}>⚡ KEY METRICS</div>
+          {[
+            {l:"Win Rate",v:wr.toFixed(1)+"%",c:wr>=50?"var(--green)":"var(--red)"},
+            {l:"Profit Factor",v:pf===Infinity?"∞":pf.toFixed(2),c:"var(--gold)"},
+            {l:"Expectancy",v:(expectancy>=0?"+":"-")+"$"+fmt(Math.abs(expectancy)),c:expectancy>=0?"var(--green)":"var(--red)"},
+            {l:"Avg R:R",v:rr.toFixed(2),c:rr>=1?"var(--gold)":"var(--red)"},
+            {l:"Avg Win",v:"+$"+fmt(avgWin),c:"var(--green)"},
+            {l:"Avg Loss",v:"-$"+fmt(avgLoss),c:"var(--red)"},
+            {l:"Streak",v:streak+"d",c:"var(--gold)"},
+            {l:"Total Trades",v:closed.length,c:"var(--text)"},
+            {l:"Net P&L",v:(totalPnl>=0?"+":"-")+"$"+fmt(Math.abs(totalPnl)),c:totalPnl>=0?"var(--green)":"var(--red)"},
+          ].map((r,i,arr)=>(
+            <div key={r.l} style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",padding:"9px 0",borderBottom:i===arr.length-1?"none":"1px dashed rgba(255,255,255,.05)"}}>
+              <span style={{fontSize:"11.5px",color:"var(--text3)"}}>{r.l}</span>
+              <span className="mono" style={{fontSize:"13px",fontWeight:700,color:r.c}}>{r.v}</span>
+            </div>
+          ))}
+        </div>
+
+        {topSetup&&<div style={{background:"linear-gradient(135deg,rgba(46,170,111,.08),var(--glass))",border:"1px solid rgba(46,170,111,.22)",borderRadius:"12px",padding:"14px 16px",position:"relative"}}>
+          <div style={{position:"absolute",top:0,left:0,right:0,height:"1px",background:"linear-gradient(90deg,transparent,rgba(46,170,111,.5),transparent)",opacity:.7}}/>
+          <div style={{fontSize:"10px",letterSpacing:".22em",color:"var(--green)",fontWeight:700,marginBottom:"8px",fontFamily:"var(--mono)"}}>💡 AI INSIGHT</div>
+          <div style={{fontSize:"12px",color:"var(--text2)",lineHeight:1.55}}>
+            Je beste edge zit in <strong style={{color:"var(--gold)"}}>{topSetup[0]}</strong>: {topSetup[1].n} trades, {(topSetup[1].w/topSetup[1].n*100).toFixed(0)}% WR, {topSetup[1].pnl>=0?"+":"-"}${fmt(Math.abs(topSetup[1].pnl))} netto.
+          </div>
+        </div>}
+
+        {fomoTrades.length>=3&&fomoPnl<0&&<div style={{background:"var(--glass)",border:"1px solid rgba(224,85,85,.22)",borderRadius:"12px",padding:"14px 16px",position:"relative"}}>
+          <div style={{position:"absolute",top:0,left:0,right:0,height:"1px",background:"linear-gradient(90deg,transparent,rgba(224,85,85,.5),transparent)",opacity:.7}}/>
+          <div style={{fontSize:"10px",letterSpacing:".22em",color:"var(--red)",fontWeight:700,marginBottom:"8px",fontFamily:"var(--mono)"}}>⚠ RISK ALERT</div>
+          <div style={{fontSize:"12px",color:"var(--text2)",lineHeight:1.55}}>
+            Emotionele trades (FOMO/Tilt/Revenge): <strong style={{color:"var(--red)"}}>-${fmt(Math.abs(fomoPnl))} / {fomoTrades.length} trades</strong>. Overweeg emotion-filter bij entry.
+          </div>
+        </div>}
+
+        {tradingRules&&<TradingRulesWidget rules={tradingRules} trades={closed}/>}
+
+        <div style={{background:"var(--glass)",border:"1px solid var(--border2)",borderRadius:"12px",padding:"14px 16px"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"10px"}}>
+            <div style={{fontSize:"10px",letterSpacing:".22em",color:"var(--gold)",fontWeight:700,fontFamily:"var(--mono)"}}>📝 DAILY JOURNAL</div>
+            <button onClick={()=>setTab("calendar")} style={{padding:"3px 8px",borderRadius:"5px",fontSize:"9px",background:"rgba(255,255,255,.05)",color:"var(--text3)",border:"1px solid var(--border3)",cursor:"pointer",fontFamily:"var(--mono)",letterSpacing:".06em",fontWeight:600}}>OPENEN →</button>
+          </div>
+          {todayNote?(<>
+            {todayNote.plan&&<div style={{fontSize:"11.5px",color:"var(--text3)",lineHeight:1.5,padding:"8px 10px",background:"rgba(255,255,255,.02)",borderLeft:"2px solid var(--gold)",borderRadius:"0 4px 4px 0",marginBottom:"8px"}}>{todayNote.plan}</div>}
+            {(todayNote.mood||[]).length>0&&<div style={{display:"flex",gap:"4px",flexWrap:"wrap"}}>{todayNote.mood.map(m=>(<span key={m} style={{padding:"2px 7px",borderRadius:"4px",fontSize:"9.5px",background:"rgba(46,170,111,.1)",color:"var(--green)",border:"1px solid rgba(46,170,111,.25)"}}>{m}</span>))}</div>}
+          </>):(<div style={{fontSize:"11px",color:"var(--text5)",textAlign:"center",padding:"8px 0"}}>Nog geen daily note voor vandaag<br/><button onClick={()=>setTab("calendar")} style={{marginTop:"6px",padding:"5px 10px",borderRadius:"5px",background:"var(--gold-dim)",color:"var(--gold)",border:"1px solid var(--gold-border)",fontSize:"10px",fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>+ Plan je dag</button></div>)}
+        </div>
       </div>
     </div>
   </div>);

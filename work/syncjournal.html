@@ -260,27 +260,64 @@ function EquityChart({ data, height = 220, accent = "#C9A84C" }) {
 // ──────────────── Shell hooks ───────────────────
 const DemoContext = createContext(null);
 
+// Real-time BTC ticker via Binance public WebSocket.
+// Endpoint: wss://stream.binance.com:9443/ws/btcusdt@ticker (no auth, CORS-enabled)
+// Falls back to static placeholder values if WS is unavailable; auto-reconnects on close.
 function useBtcTicker() {
   const [btc, setBtc] = useState(() => ({
     price: 67420.50, change: 0, pct: 0, flash: null,
-    history: Array.from({length:30},(_,i)=>67200 + Math.sin(i/4)*180 + Math.random()*60),
+    history: Array.from({length:30},(_,i)=>67200 + Math.sin(i/4)*180),
+    high24: 0, low24: 0, volume24: 0,
+    status: "connecting",
   }));
   useEffect(() => {
-    const id = setInterval(() => {
-      setBtc(prev => {
-        const drift = (Math.random() - 0.48) * 85;
-        const next = Math.max(65000, Math.min(70000, prev.price + drift));
-        const dir = next > prev.price ? "up" : next < prev.price ? "down" : null;
-        return {
-          price: next,
-          change: next - 67420.50,
-          pct: ((next - 67420.50)/67420.50) * 100,
-          history: [...prev.history.slice(-29), next],
-          flash: dir,
+    let ws = null;
+    let prevPrice = null;
+    let historyBuf = [];
+    let reconnectTimer = null;
+    let closed = false;
+    const connect = () => {
+      try {
+        ws = new WebSocket("wss://stream.binance.com:9443/ws/btcusdt@ticker");
+        ws.onopen = () => setBtc(p => ({...p, status: "live"}));
+        ws.onmessage = (e) => {
+          try {
+            const d = JSON.parse(e.data);
+            const price = parseFloat(d.c);
+            if (!isFinite(price)) return;
+            const dir = prevPrice === null ? null : price > prevPrice ? "up" : price < prevPrice ? "down" : null;
+            historyBuf.push(price);
+            if (historyBuf.length > 60) historyBuf.shift();
+            setBtc({
+              price,
+              change: parseFloat(d.p) || 0,
+              pct: parseFloat(d.P) || 0,
+              flash: dir,
+              history: [...historyBuf],
+              high24: parseFloat(d.h) || 0,
+              low24: parseFloat(d.l) || 0,
+              volume24: parseFloat(d.q) || 0,
+              status: "live",
+            });
+            prevPrice = price;
+          } catch (err) { /* parse error — ignore this frame */ }
         };
-      });
-    }, 1500);
-    return () => clearInterval(id);
+        ws.onerror = () => setBtc(p => ({...p, status: "error"}));
+        ws.onclose = () => {
+          if (closed) return;
+          setBtc(p => ({...p, status: "reconnecting"}));
+          reconnectTimer = setTimeout(connect, 3000);
+        };
+      } catch (err) {
+        setBtc(p => ({...p, status: "error"}));
+      }
+    };
+    connect();
+    return () => {
+      closed = true;
+      if (ws) { try { ws.close(); } catch {} }
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+    };
   }, []);
   return btc;
 }
@@ -511,16 +548,16 @@ function ScreenDashboard() {
               <div style={{display:"flex",gap:12,fontSize:10.5,color:"var(--text4)",fontFamily:"var(--mono)",marginTop:5}}>
                 <span style={{color:btcUp?"#2eaa6f":"#e05555",fontWeight:700}}>{btcUp?"▲":"▼"} {btcUp?"+":""}{btc.change.toFixed(2)}</span>
                 <span style={{color:btcUp?"#2eaa6f":"#e05555",fontWeight:700}}>{btcUp?"+":""}{btc.pct.toFixed(3)}%</span>
-                <span>24H VOL <span style={{color:"var(--text2)"}}>$28.4B</span></span>
+                <span>STATUS <span style={{color:btc.status==="live"?"#2eaa6f":btc.status==="reconnecting"?"#C9A84C":"#e05555"}}>● {btc.status.toUpperCase()}</span></span>
               </div>
             </div>
             <div style={{height:60}}>
               <Sparkline data={btc.history} width={340} height={60} color={btcUp?"#2eaa6f":"#e05555"} fill={true}/>
             </div>
             <div style={{display:"flex",flexDirection:"column",gap:4,fontFamily:"var(--mono)",fontSize:10,textAlign:"right",color:"var(--text4)",borderLeft:"1px dashed rgba(255,255,255,.06)",paddingLeft:16}}>
-              <div>24H HIGH <span style={{color:"#2eaa6f"}}>${Math.max(...btc.history).toFixed(0)}</span></div>
-              <div>24H LOW <span style={{color:"#e05555"}}>${Math.min(...btc.history).toFixed(0)}</span></div>
-              <div>OPEN <span style={{color:"var(--text2)"}}>$67,420</span></div>
+              <div>24H HIGH <span style={{color:"#2eaa6f"}}>${btc.high24?btc.high24.toFixed(0):"—"}</span></div>
+              <div>24H LOW <span style={{color:"#e05555"}}>${btc.low24?btc.low24.toFixed(0):"—"}</span></div>
+              <div>24H VOL <span style={{color:"var(--text2)"}}>{btc.volume24?"$"+(btc.volume24/1e9).toFixed(2)+"B":"—"}</span></div>
               <button className="tjv-btn" style={{padding:"4px 10px",fontSize:10,marginTop:4,justifyContent:"center"}} onClick={()=>setTab("new")}>Trade BTC →</button>
             </div>
           </div>
