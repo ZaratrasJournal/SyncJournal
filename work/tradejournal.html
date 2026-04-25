@@ -877,7 +877,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.32",released:"2026-04-24"};
+const APP_VERSION={version:"v12.33",released:"2026-04-25"};
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
 function isNewerVersion(a,b){
   const parse=(s)=>String(s||"").replace(/^v/,"").split(".").map(n=>parseInt(n,10)||0);
@@ -1363,17 +1363,56 @@ async function proxyCall(payload){
 const ExchangeAPI = {
   mexc:{
     name:"MEXC",color:"#00b897",needsPassphrase:false,
+    // contractSize lookup — MEXC futures geven `vol` in contracts (BTC_USDT = 0.0001 BTC per contract,
+    // ETH_USDT = 0.01 ETH, SOL_USDT = 1 SOL, etc). Public endpoint /api/v1/contract/detail is CORS-open.
+    _ctvCache:{},
+    async _getContractSize(symbol){
+      if(!symbol)return 0;
+      if(this._ctvCache[symbol]!=null)return this._ctvCache[symbol];
+      try{
+        const r=await fetch(`https://contract.mexc.com/api/v1/contract/detail?symbol=${symbol}`,{cache:"no-cache"});
+        if(!r.ok)return 0;
+        const d=await r.json();
+        const size=parseFloat(d?.data?.contractSize)||0;
+        this._ctvCache[symbol]=size;
+        return size;
+      }catch{return 0;}
+    },
+    // Helpt fetchTrades + fetchOpenPositions met converteren van contracts → assetQty + USD notional.
+    _convertContracts(symbol,vol,price){
+      const ctSize=this._ctvCache[symbol]||0;
+      const contracts=parseFloat(vol)||0;
+      const assetQty=ctSize>0?contracts*ctSize:0;
+      const p=parseFloat(price)||0;
+      const usdNotional=assetQty*p;
+      return{assetQty,usdNotional,ctSize};
+    },
     async fetchTrades(apiKey,apiSecret,_pp,startTime){
       const data=await proxyCall({exchange:"mexc",action:"trades",apiKey,apiSecret,startTime});
-      return(data.trades||[]).map(t=>{
+      const trades=data.trades||[];
+      // Warm contract-size cache voor alle symbolen in batch
+      const symbols=[...new Set(trades.map(t=>t.symbol).filter(Boolean))];
+      await Promise.all(symbols.map(s=>this._getContractSize(s)));
+      return trades.map(t=>{
         const closeTime=t.updateTime||t.closeTime||Date.now();
-        return{id:"mexc_"+t.positionId+"_"+closeTime,positionId:String(t.positionId||""),openTime:String(t.openTime||t.createTime||""),closeTime:String(closeTime),date:ts2date(closeTime),time:ts2time(closeTime),pair:(t.symbol||"BTC_USDT").replace("_","/"),direction:t.positionType===1?"long":"short",entry:String(t.openAvgPrice||""),exit:String(t.closeAvgPrice||""),positionSize:String(t.closeVol||t.vol||""),pnl:String(t.realised||""),fees:String(t.fee||"0"),leverage:String(t.leverage||"10"),source:"mexc",status:"closed",stopLoss:"",takeProfit:"",highestPrice:"",lowestPrice:"",setupTags:[],confirmationTags:[],timeframeTags:[],emotionTags:[],mistakeTags:[],customTags:[],rating:0,screenshot:null,notes:""};
+        const conv=this._convertContracts(t.symbol,t.closeVol||t.vol,t.openAvgPrice||t.closeAvgPrice);
+        const positionSize=conv.usdNotional>0?conv.usdNotional.toFixed(2):String(t.closeVol||t.vol||"");
+        const positionSizeAsset=conv.assetQty>0?String(conv.assetQty):"";
+        return{id:"mexc_"+t.positionId+"_"+closeTime,positionId:String(t.positionId||""),openTime:String(t.openTime||t.createTime||""),closeTime:String(closeTime),date:ts2date(closeTime),time:ts2time(closeTime),pair:(t.symbol||"BTC_USDT").replace("_","/"),direction:t.positionType===1?"long":"short",entry:String(t.openAvgPrice||""),exit:String(t.closeAvgPrice||""),positionSize,positionSizeAsset,pnl:String(t.realised||""),fees:String(t.fee||"0"),leverage:String(t.leverage||"10"),source:"mexc",status:"closed",stopLoss:"",takeProfit:"",highestPrice:"",lowestPrice:"",setupTags:[],confirmationTags:[],timeframeTags:[],emotionTags:[],mistakeTags:[],customTags:[],rating:0,screenshot:null,notes:""};
       });
     },
     async testConnection(apiKey,apiSecret){const data=await proxyCall({exchange:"mexc",action:"test",apiKey,apiSecret});return{success:true,balance:data.balance||"0"}},
     async fetchOpenPositions(apiKey,apiSecret){
       const data=await proxyCall({exchange:"mexc",action:"open_positions",apiKey,apiSecret});
-      return(data.positions||[]).map(p=>({id:"mexc_open_"+p.positionId,positionId:String(p.positionId||""),openTime:String(p.createTime||""),closeTime:"",date:ts2date(p.createTime||Date.now()),time:ts2time(p.createTime||Date.now()),pair:(p.symbol||"BTC_USDT").replace("_","/"),direction:p.positionType===1?"long":"short",entry:String(p.openAvgPrice||p.holdAvgPrice||""),exit:"",positionSize:String(p.holdVol||""),pnl:"",fees:String(p.holdFee||"0"),leverage:String(p.leverage||"10"),source:"mexc",status:"open",unrealizedPnl:String(p.unrealized||p.realised||""),liquidationPrice:String(p.liquidatePrice||""),stopLoss:"",takeProfit:"",highestPrice:"",lowestPrice:"",setupTags:[],confirmationTags:[],timeframeTags:[],emotionTags:[],mistakeTags:[],customTags:[],rating:0,screenshot:null,notes:"",links:[],layers:[]}));
+      const positions=data.positions||[];
+      const symbols=[...new Set(positions.map(p=>p.symbol).filter(Boolean))];
+      await Promise.all(symbols.map(s=>this._getContractSize(s)));
+      return positions.map(p=>{
+        const conv=this._convertContracts(p.symbol,p.holdVol,p.openAvgPrice||p.holdAvgPrice);
+        const positionSize=conv.usdNotional>0?conv.usdNotional.toFixed(2):String(p.holdVol||"");
+        const positionSizeAsset=conv.assetQty>0?String(conv.assetQty):"";
+        return{id:"mexc_open_"+p.positionId,positionId:String(p.positionId||""),openTime:String(p.createTime||""),closeTime:"",date:ts2date(p.createTime||Date.now()),time:ts2time(p.createTime||Date.now()),pair:(p.symbol||"BTC_USDT").replace("_","/"),direction:p.positionType===1?"long":"short",entry:String(p.openAvgPrice||p.holdAvgPrice||""),exit:"",positionSize,positionSizeAsset,pnl:"",fees:String(p.holdFee||"0"),leverage:String(p.leverage||"10"),source:"mexc",status:"open",unrealizedPnl:String(p.unrealized||p.realised||""),liquidationPrice:String(p.liquidatePrice||""),stopLoss:"",takeProfit:"",highestPrice:"",lowestPrice:"",setupTags:[],confirmationTags:[],timeframeTags:[],emotionTags:[],mistakeTags:[],customTags:[],rating:0,screenshot:null,notes:"",links:[],layers:[]};
+      });
     },
     async fetchFills(apiKey,apiSecret,symbol,positionId,startTime,endTime){const data=await proxyCall({exchange:"mexc",action:"fills",apiKey,apiSecret,symbol:symbol.replace("/","_"),positionId,startTime,endTime});return{fills:data.fills||[],debug:data.debug||null,unfiltered:data.unfiltered||false,total:data.total||0}}
   },

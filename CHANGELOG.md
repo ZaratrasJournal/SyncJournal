@@ -6,6 +6,11 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.33] — 2026-04-25
+
+### Fixed
+- **MEXC positie-size klopt nu** (Denny's report). Tot v12.32 nam de MEXC-import de raw `vol`/`closeVol`/`holdVol` direct over als `positionSize` — maar dat zijn **contracts**, niet USDT. Voor BTC_USDT betekent 1 contract = 0.0001 BTC, dus een echte positie van 0.0212 BTC werd in de journal als `212` weergegeven (en geïnterpreteerd als $212 USDT). Fix: zelfde patroon als Blofin — een `_getContractSize(symbol)` helper haalt de echte contract-size op via MEXC's public endpoint `https://contract.mexc.com/api/v1/contract/detail?symbol=X` (CORS-open, geen API-key, geen worker-proxy nodig). Cache per symbol. Bij `fetchTrades` en `fetchOpenPositions` worden contracts geconverteerd naar `positionSizeAsset` (BTC/ETH/SOL qty) en `positionSize` (USD notional via entry-prijs). Voor BTC_USDT op 50× leverage: $1641 USD notional + 0.0212 BTC ipv `212` als raw contracts. Re-sync je MEXC-trades om bestaande verkeerde records te overschrijven (zelfde trade-ID dus geen duplicaten).
+
 ## [v12.32] — 2026-04-24
 
 ### Toegevoegd
