@@ -6,6 +6,29 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.35] — 2026-04-25
+
+### Gewijzigd
+- **Tendencies gepromoot van Analytics-sectie naar eigen hoofdtab** (🎯 Tendencies, 6e tab tussen Kalender en Instellingen). Reden: Tendencies is een coach-perspectief, geen statistiek — verdient primair entry-point. Mengen met Analytics-widgets maakt beide minder scherp. De huidige sectie in Analytics is verwijderd; alle detectie-logica blijft hetzelfde maar krijgt nu meer ruimte.
+- **Tendencies-pagina** heeft eigen periode-controls los van de globale FilterBar (`7d / 30d / 90d / Alles`, default 30d), severity-filter pills, en grotere cards (`380px` min-width vs `320px` in de oude widget). Per card ook een extra meta-regel onderaan: *"Eerst: 2026-03-04 · Laatst: 2026-04-22 · Toon trades →"*.
+
+### Toegevoegd
+- **Coach's Note bovenaan Dashboard** — toont de 1 meest urgente tendency van de huidige periode (hoogste impact, severity = red of amber). Bij geen pijn-patronen toont de top sterkte als positieve nudge. Klik op de hele card OF op `Bekijk alles →` knop springt naar Tendencies-tab. Verschijnt alleen vanaf 10 trades. Uit te zetten in Instellingen → Accounts → Layout via *"🎯 Coach's Note op Dashboard"* toggle (default aan). Volgt het Tim Grittani-pattern: één coach-quote prominent, glance-and-go.
+- **Command palette** (Cmd+K / Ctrl+K) krijgt Tendencies als action.
+
+## [v12.34] — 2026-04-25
+
+### Toegevoegd
+- **🔍 Tendencies-sectie in Analytics** — cross-dimensionele patroon-detectie. Tot v12.33 had je per-setup, per-emotion, per-mistake en per-sessie widgets, maar **combinaties** waren onzichtbaar (bv. "FOMO + US Late session", "SFP-setup op BTC/USDT"). De nieuwe sectie detecteert 6 categorieën patronen:
+  - `emotionTag × session` — emotie-staat per sessie (bv. *"FOMO tijdens US Late: 12 trades, 18% WR, -$420"*)
+  - `setupTag × pair` — sterke (>65% WR) of zwakke (<30% WR) pair-setup combo's
+  - `timeframe × emotion` — sterkte-detectie ("4H + Geduldig" = template)
+  - Weekend-trade gedragspatroon (los van sessionPerf — focus op gedrag)
+  - `emotion-combo` (2 tags samen) — bv. *"FOMO + Gehaast: 8 trades, 12% WR"*
+  - `mistakeTag × session` — sessie-specifieke triggers van fouten
+  
+  **Severity-classificatie**: 🔴 Hoge pijn / 🟡 Aandacht / 🟢 Sterkte / 🔵 Observatie. Per card: stats (n / WR / cumulatieve PnL), mini-sparkline van cumulatieve PnL met zero-line, en een auto-gegenereerde aanbeveling ("Voorstel: voeg toe aan Trading Rules…"). Klik op een card → filter-state wordt overgenomen + spring naar Trades-tab. Filter-pills bovenaan: Alles / Pijnpunten / Sterktes / Observaties. Limit top 12 patronen om de pagina niet te overspoelen. **Adaptieve drempel**: bij <30 trades MIN_N=2 (anders zie je niks bij weinig data), daarna MIN_N=3. Bij <10 trades verschijnt een hint dat tendencies pas zinvol worden vanaf 10 trades. Geen overlap met bestaande secties: "mistake-tag puur" zit al in "Fout impact" en is daarom niet als detector toegevoegd; alleen `mistake × sessie` is nieuw. Geen AI in v1 — pure aggregatie.
+
 ## [v12.33] — 2026-04-25
 
 ### Fixed
