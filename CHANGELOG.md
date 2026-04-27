@@ -6,6 +6,13 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.36] — 2026-04-27
+
+### Toegevoegd
+- **🎯 Setup × Sessie matrix bovenaan Tendencies** — heatmap-tabel die elke setup uitsplitst over 7 fijne sessie-buckets (`Asia / London-AM / London-PM / NY-AM / NY-PM / US Late / Weekend`). De bestaande sessie-detectie gebruikt 5 buckets — die smelten London-AM en London-PM samen tot één gemiddelde, waardoor het patroon *"deze setup werkt 's ochtends maar verliest 's middags"* onzichtbaar blijft. De fijnere indeling onthult dat. Cellen kleuren op WR + cumulatieve PnL; vlaggetjes 🎯 (edge bevestigd) / 🕒 (edge weg) / ⏰ (aandacht) markeren de drempels. Cellen met &lt; 3 trades zijn gedimd. Klik op een cel → filtert Trades-tab op die setup. Matrix is collapsible (default open, persisted in `tj_matrix_open`).
+- **7e Tendencies-detector: setup × fijne-sessie** — naast de bestaande 6 detectors flagt deze nu individuele setup × sessie-bucket combinaties. Drempels gelijk aan setup × pair detector (≥4 trades, WR ≥ 65% + PnL > +$150 = sterkte; WR ≤ 30% + PnL < −$100 = edge weg; WR ≤ 45% + PnL < −$50 = aandacht). Recommendation-zin verwijst naar de matrix bovenaan voor visuele context. Inzicht direct uit een community-tip: *"the edge often disappears after 11:30."*
+- Nieuwe helpers `getFineSessionAt(dt)` + `getFineSessionTags(date,time)` + constant `ALL_FINE_SESSIONS`. Amsterdam-tijd via `Intl.DateTimeFormat` (DST-aware), zelfde patroon als de bestaande `getSessionAt`.
+
 ## [v12.35] — 2026-04-25
 
 ### Gewijzigd
