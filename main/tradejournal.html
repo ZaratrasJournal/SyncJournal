@@ -778,6 +778,31 @@ function getSessionTags(date,time){
   return[getSessionAt(dt)];
 }
 
+// Fine-grained 7-bucket sessions — splits London + New York in AM/PM halves
+// to surface "edge disappears after 11:30" style patterns that the coarse
+// 5-bucket version smooths over. Used by the Setup×Sessie tendency detector.
+const ALL_FINE_SESSIONS=["Asia","London-AM","London-PM","NY-AM","NY-PM","US Late","Weekend"];
+function getFineSessionAt(dt){
+  const parts=new Intl.DateTimeFormat("en-GB",{timeZone:"Europe/Amsterdam",hour:"numeric",minute:"numeric",weekday:"short",hour12:false}).formatToParts(dt);
+  const h=parseInt(parts.find(p=>p.type==="hour")?.value||"0");
+  const m=parseInt(parts.find(p=>p.type==="minute")?.value||"0");
+  const hm=h*60+m;
+  const wd=parts.find(p=>p.type==="weekday")?.value?.toLowerCase()||"";
+  if(wd==="sat"||wd==="sun")return"Weekend";
+  if(hm>=60&&hm<540)return"Asia";          // 01:00–09:00
+  if(hm>=540&&hm<690)return"London-AM";    // 09:00–11:30
+  if(hm>=690&&hm<930)return"London-PM";    // 11:30–15:30
+  if(hm>=930&&hm<1140)return"NY-AM";       // 15:30–19:00
+  if(hm>=1140&&hm<1320)return"NY-PM";      // 19:00–22:00
+  return"US Late";                          // 22:00–01:00 (wraps midnight)
+}
+function getFineSessionTags(date,time){
+  if(!date||!time)return[];
+  const dt=new Date(date+"T"+(time.length===5?time+":00":time));
+  if(isNaN(dt.getTime()))return[];
+  return[getFineSessionAt(dt)];
+}
+
 // ============ STORAGE UTILS ============
 // v7 FIX: localStorage quota monitoring
 function getStorageUsage(){
@@ -877,7 +902,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.35",released:"2026-04-25"};
+const APP_VERSION={version:"v12.36",released:"2026-04-27"};
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
 function isNewerVersion(a,b){
   const parse=(s)=>String(s||"").replace(/^v/,"").split(".").map(n=>parseInt(n,10)||0);
@@ -4683,9 +4708,63 @@ function detectTendencies(closed){
     }
   }
 
+  // 7. setup × fijne-sessie — splits elke setup uit over 7 sessie-buckets
+  // (incl. London-AM/PM en NY-AM/PM) zodat tijdvak-specifieke edge zichtbaar
+  // wordt. Hetzelfde patroon "SFP werkt 's ochtends, verliest 's middags" zou
+  // bij detector #2 (setup × pair) middelen tot een nietszeggend gemiddelde.
+  const fineOf=(t)=>{const s=getFineSessionTags(t.date,t.time);return s[0]||null;};
+  for(const setup of setupSet){
+    for(const sess of ALL_FINE_SESSIONS){
+      const matched=closed.filter(t=>(t.setupTags||[]).includes(setup)&&fineOf(t)===sess);
+      if(matched.length<Math.max(minN,4))continue;
+      const wins=matched.filter(t=>parseFloat(t.pnl)>0).length;
+      const pnlSum=matched.reduce((s,t)=>s+parseFloat(t.pnl),0);
+      const wr=(wins/matched.length)*100;
+      if(wr>=65&&pnlSum>150){
+        add({icon:"🎯",title:`${setup} in ${sess}`,
+          desc:`Sterke edge: <strong>${setup}</strong>-setups in <strong>${sess}</strong>. ${wins}/${matched.length} winners, cumulatief +$${pnlSum.toFixed(0)}. Repliceer dit tijdvak als A+ template.`,
+          trades:matched,wr,pnlSum,n:matched.length,filter:{setupTags:[setup]}});
+      }else if(wr<=30&&pnlSum<-100){
+        add({icon:"🕒",title:`${setup} verdwijnt in ${sess}`,
+          desc:`Diezelfde setup verliest hier consistent: <strong>${wins}/${matched.length}</strong> winners (${wr.toFixed(0)}% WR), cumulatief <strong>−$${Math.abs(pnlSum).toFixed(0)}</strong>. Edge geldt blijkbaar niet in dit tijdvak.`,
+          trades:matched,wr,pnlSum,n:matched.length,filter:{setupTags:[setup]}});
+      }else if(wr<=45&&pnlSum<-50&&matched.length>=4){
+        add({icon:"⏰",title:`${setup} zwak in ${sess}`,
+          desc:`Onder-presteert in dit tijdvak: ${wins}/${matched.length} winners, cumulatief −$${Math.abs(pnlSum).toFixed(0)}. Niet rampzalig, maar de edge is dun.`,
+          trades:matched,wr,pnlSum,n:matched.length,filter:{setupTags:[setup]}});
+      }
+    }
+  }
+
   // Sorteer op |pnlSum| descending — hoogste impact eerst
   out.sort((a,b)=>Math.abs(b.pnlSum)-Math.abs(a.pnlSum));
   return out;
+}
+
+// Bouw setup × fijne-sessie matrix voor de heatmap-visualisatie. Returnt
+// {setups, buckets, cells} waarbij cells[setup+'|'+bucket] = stats-object.
+// Sluit aan op detector #7 — gebruikt dezelfde drempels voor flag-iconen.
+function buildSetupSessionMatrix(closed){
+  const fineOf=(t)=>{const s=getFineSessionTags(t.date,t.time);return s[0]||null;};
+  const setupsSet=new Set();
+  closed.forEach(t=>(t.setupTags||[]).forEach(s=>setupsSet.add(s)));
+  const setups=[...setupsSet].sort();
+  const cells={};
+  for(const t of closed){
+    const b=fineOf(t);if(!b)continue;
+    const tags=t.setupTags||[];
+    for(const s of tags){
+      const k=s+"|"+b;
+      if(!cells[k])cells[k]={setup:s,bucket:b,trades:[],n:0,wins:0,pnlSum:0};
+      cells[k].trades.push(t);
+      cells[k].n++;
+      const p=parseFloat(t.pnl);
+      if(p>0)cells[k].wins++;
+      cells[k].pnlSum+=p;
+    }
+  }
+  for(const k in cells)cells[k].wr=cells[k].n?(cells[k].wins/cells[k].n)*100:0;
+  return{setups,buckets:ALL_FINE_SESSIONS,cells};
 }
 
 function classifyTendency(t){
@@ -4700,6 +4779,8 @@ function tendencyRecommendation(t){
   if(t.icon==="⚠️")return"Voorstel: voeg toe aan Trading Rules → \"Geen trade als deze fout in laatste 3 trades zat in deze sessie.\"";
   if(t.icon==="🎯"||t.icon==="✨"||t.icon==="⭐")return"Voorstel: markeer als A+ setup in je playbook. Verhoog risk tot je standaard maximum.";
   if(t.icon==="🚫")return"Voorstel: skip deze pair-setup combinatie of degradeer naar paper-trading tot WR > 50%.";
+  if(t.icon==="🕒")return"Voorstel: skip deze setup tijdens dit tijdvak. Dezelfde setup werkt elders mogelijk wel — check de matrix bovenaan.";
+  if(t.icon==="⏰")return"Voorstel: halve risk in dit tijdvak totdat WR boven 50% staat over 5+ extra trades.";
   if(t.icon==="🌙")return"Voorstel: declareer weekend-uren als no-trade-window in je rules.";
   return"Blijf monitoren — meer data nodig voor een harde regel.";
 }
@@ -4724,6 +4805,71 @@ function TendencySparkline({trades}){
     <path d={areaPath} fill={colorRgba}/>
     <path d={linePath} fill="none" stroke={color} strokeWidth="1.4" strokeLinejoin="round" vectorEffect="non-scaling-stroke"/>
   </svg>);
+}
+
+// ─── SetupSessionMatrix — heatmap-tabel die elke setup uitsplitst over de 7
+// fijne sessie-buckets. Bovenaan TendenciesPage. Cellen kleuren op WR + PnL,
+// vlaggetjes (🎯 / 🕒 / ⏰) markeren de drempels uit detector #7. Cellen met
+// minder dan 3 trades worden gedimd. Klik op cel → filtert trades-tab.
+const SETUP_SESSION_MATRIX_KEY="tj_matrix_open";
+function SetupSessionMatrix({closed,setFilters,setTab}){
+  const[open,setOpen]=useState(()=>{try{const v=localStorage.getItem(SETUP_SESSION_MATRIX_KEY);return v===null?true:v==="1";}catch{return true;}});
+  useEffect(()=>{try{localStorage.setItem(SETUP_SESSION_MATRIX_KEY,open?"1":"0");}catch{}},[open]);
+  const{setups,buckets,cells}=useMemo(()=>buildSetupSessionMatrix(closed),[closed]);
+  if(setups.length===0)return null;
+  const minN=3;// drempel voor "significant" — onder = gedimd weergegeven
+  const cellMeta=(c)=>{
+    if(!c||c.n<minN)return{bg:"transparent",flag:"",dim:true};
+    if(c.wr>=65&&c.pnlSum>150)return{bg:"rgba(46,170,111,0.18)",flag:"🎯",dim:false};
+    if(c.wr<=30&&c.pnlSum<-100)return{bg:"rgba(224,85,85,0.20)",flag:"🕒",dim:false};
+    if(c.wr<=45&&c.pnlSum<-50)return{bg:"rgba(212,168,83,0.18)",flag:"⏰",dim:false};
+    if(c.wr>=55)return{bg:"rgba(46,170,111,0.06)",flag:"",dim:false};
+    if(c.wr<=45)return{bg:"rgba(224,85,85,0.06)",flag:"",dim:false};
+    return{bg:"transparent",flag:"",dim:false};
+  };
+  return(<div style={{marginBottom:"22px",background:"var(--glass)",border:"1px solid var(--border2)",borderRadius:"12px",overflow:"hidden"}}>
+    <div onClick={()=>setOpen(v=>!v)} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"14px 18px",cursor:"pointer",userSelect:"none",borderBottom:open?"1px solid var(--border1)":"none"}}>
+      <div>
+        <div style={{fontSize:"10px",color:"var(--gold)",letterSpacing:".18em",fontWeight:700,fontFamily:"var(--mono)",textTransform:"uppercase",marginBottom:"3px"}}>📊 Setup × Sessie matrix</div>
+        <div style={{fontSize:"13px",color:"var(--text3)"}}>Edge per setup, uitgesplitst over 7 sessie-buckets. <span style={{color:"var(--text5)",fontSize:"11px"}}>Cellen met &lt; {minN} trades zijn gedimd.</span></div>
+      </div>
+      <div style={{fontSize:"14px",color:"var(--text4)",fontFamily:"var(--mono)",transition:"transform .2s",transform:open?"rotate(0deg)":"rotate(-90deg)"}}>▾</div>
+    </div>
+    {open&&<div style={{padding:"14px 18px 18px",overflowX:"auto"}}>
+      <table style={{borderCollapse:"collapse",width:"100%",fontFamily:"var(--mono)",fontSize:"11px",minWidth:"760px"}}>
+        <thead>
+          <tr>
+            <th style={{padding:"8px 10px",textAlign:"left",border:"1px solid var(--border1)",fontSize:"10px",color:"var(--text4)",textTransform:"uppercase",letterSpacing:".08em",fontWeight:600,background:"rgba(255,255,255,0.02)",minWidth:"140px"}}>Setup ↓ / Sessie →</th>
+            {buckets.map(b=><th key={b} style={{padding:"8px 10px",textAlign:"center",border:"1px solid var(--border1)",fontSize:"10px",color:"var(--text4)",textTransform:"uppercase",letterSpacing:".08em",fontWeight:600,background:"rgba(255,255,255,0.02)"}}>{b}</th>)}
+          </tr>
+        </thead>
+        <tbody>
+          {setups.map(s=>(<tr key={s}>
+            <th style={{padding:"8px 10px",textAlign:"left",border:"1px solid var(--border1)",color:"var(--text2)",fontWeight:600}}>{s}</th>
+            {buckets.map(b=>{
+              const c=cells[s+"|"+b];
+              if(!c)return<td key={b} style={{padding:"8px 10px",textAlign:"center",border:"1px solid var(--border1)",color:"var(--text5)",fontStyle:"italic"}}>—</td>;
+              const m=cellMeta(c);
+              const wrColor=m.dim?"var(--text5)":(c.wr>=50?"var(--green)":"var(--red)");
+              const pnlColor=c.pnlSum>=0?"var(--green)":"var(--red)";
+              const pnlStr=(c.pnlSum>=0?"+":"−")+"$"+Math.abs(c.pnlSum).toFixed(0);
+              const onClick=()=>{if(setFilters&&setTab){setFilters(p=>({...p,setupTags:[s]}));setTab("trades");}};
+              return(<td key={b} onClick={onClick} style={{padding:"8px 10px",textAlign:"center",border:"1px solid var(--border1)",background:m.bg,opacity:m.dim?0.4:1,position:"relative",cursor:setFilters?"pointer":"default"}} title={`${s} in ${b}: ${c.n} trades, ${c.wr.toFixed(0)}% WR, ${pnlStr}`}>
+                {m.flag&&<span style={{position:"absolute",top:"2px",right:"4px",fontSize:"10px"}}>{m.flag}</span>}
+                <div style={{fontWeight:700,fontSize:"12px",color:wrColor}}>{c.wr.toFixed(0)}%</div>
+                <div style={{fontSize:"9px",color:"var(--text4)",marginTop:"2px"}}>{c.n}t · <span style={{color:pnlColor}}>{pnlStr}</span></div>
+              </td>);
+            })}
+          </tr>))}
+        </tbody>
+      </table>
+      <div style={{marginTop:"10px",fontSize:"10px",color:"var(--text5)",fontFamily:"var(--mono)",display:"flex",gap:"14px",flexWrap:"wrap"}}>
+        <span>🎯 Edge bevestigd (WR ≥ 65% · PnL &gt; +$150)</span>
+        <span>🕒 Edge weg (WR ≤ 30% · PnL &lt; −$100)</span>
+        <span>⏰ Aandacht (WR ≤ 45% · PnL &lt; −$50)</span>
+      </div>
+    </div>}
+  </div>);
 }
 
 // ─── TendenciesPage — eigen hoofdtab. Grotere cards dan de Analytics-versie,
@@ -4780,6 +4926,8 @@ function TendenciesPage({trades,setFilters,setTab}){
         <strong style={{color:"var(--text3)"}}>{sevFiltered.length}</strong> {sevFiltered.length===1?"patroon":"patronen"} over <strong style={{color:"var(--text3)"}}>{periodFiltered.length}</strong> trades
       </div>
     </div>
+
+    <SetupSessionMatrix closed={periodFiltered} setFilters={setFilters} setTab={setTab}/>
 
     {sevFiltered.length===0?(
       <div style={{padding:"40px 24px",background:"rgba(255,255,255,0.02)",border:"1px dashed var(--border3)",borderRadius:"10px",fontSize:"13px",color:"var(--text4)",textAlign:"center",lineHeight:1.6}}>
