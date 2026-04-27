@@ -14,7 +14,10 @@ Basis kwam uit de feature-diff v4_14 → v9 onderaan. Inmiddels werken we op **v
 
 ## 🔜 Next up (deze of volgende werksessie)
 
-- [ ] **🥇 AI trade-review** — knop "Analyseer mijn laatste N trades" via user's eigen API-key (OpenAI/Claude). Patroon-analyse + bias-detectie. Grootste differentiator.
+- [ ] **🥇 AI Trade Autopsy** — knop "🔍 AI Autopsy" in trade-detail. Input: screenshots (multi, sinds v12.32) + entry/exit/SL/TP + actieve Trading Rules + setup/mistake/emotion-tags + write-up. Vragen in NL: "Voldeed mijn entry aan mijn regels? Volgde ik mijn exit-plan? Welk patroon zie je? Belangrijkste verbeterpunt? Als je mijn coach was — wat zou je zeggen?". Output → `aiAutopsy` veld op trade. Stack-keuze open: (a) opt-in user-supplied API-key (privacy + geen kosten voor ons, sluit non-techies uit) of (b) gedeelde Cloudflare Worker met community-budget. Default voorstel: optie (a). Effort: 1–2 dagen. Bouwt voort op multi-screenshot uit v12.32.
+- [ ] **🥈 AI Super-Prompt "Wat heeft prioriteit?"** — knop bovenaan Tendencies-tab. Aggregeert laatste 10 autopsies + huidige tendencies → 1 zin top-prioriteit + 3 concrete acties voor deze week. Voorkomt overfitting bij veel tendencies. Hangt af van Autopsy-feature (genoeg autopsies om te aggregeren). Effort: 3–4u na Autopsy.
+- [ ] **Pre-Market Game Plan tab** — dagelijkse template: watchlist (pairs), bias per pair, news/catalysts, mood-check. Match later op die dag gelogde trades → "matchte je pre-market bias" / "niet". Optionele AI-laag: priority-table uit watchlist + news. Effort: 1–2 dagen.
+- [ ] **Alerts Cookbook in Help-tab** — copy-paste Pine Script alert-prompts voor Claude (opening range break + volume + VWAP, etc). Pure docs, community-marketing waarde. Effort: ~2u.
 - [ ] **Tiltmeter (emotie 1-10 per trade)** — Edgewonk's USP. Correleer met PnL. Fase 2 van proces-focus (Fase 1 is al live, Discipline Heatmap afgerond 2026-04-22).
 - [ ] **Pre-trade checklist builder** — user definieert 5-10 items (entry-criteria, risk-check, bias confirmation). Per trade score → toegevoegd aan Analytics Proces-mode.
 - [ ] **Checklist-streak gamification** — Duolingo-stijl streak-counter voor "checklist volledig ingevuld X dagen op rij". Loss aversion werkt.
