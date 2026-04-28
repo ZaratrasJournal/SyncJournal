@@ -6,6 +6,28 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.43] — 2026-04-28
+
+### Toegevoegd
+- **📚 Handleiding — 16 lessen voor crypto-traders** (Notion-stijl) in de Help-tab. Nieuw als eerste sub-tab; oude Startersguide en FAQ verplaatst naar eigen sub-tabs.
+  - **8 Beginner-lessen** (totaal ~58 min): Wat is een trading journal · Je eerste trade loggen · R-multiple in 5 minuten · CSV importeren · Exchange koppelen · Tags & Setups · Het Dashboard lezen · Backup & export
+  - **8 Advanced-lessen** (totaal ~83 min): Playbook vs. Journal · Tendencies-detectie lezen · Compliance × PnL · Setup × Sessie matrix · R-multiple op portfolio-niveau · Trading Rules + Heatmap · Missed-trades backtest · Goals & milestones
+  - Notion-stijl **card-grid** met inline gold-line SVG-illustraties (16 unieke icons in Morani-stijl, geen externe assets)
+  - **Filter-pills**: niveau (Alle / 🌱 Beginner / 🚀 Advanced) + status (Alle / Niet gelezen / Voltooid)
+  - **Voortgangsbalk** bovenaan met percentage en X/16 voltooid + Reset-knop
+  - **Smart-suggestie banner** dynamisch op basis van `trades.length` + leesvoortgang. Vier zones: <5 trades (basis-concept) / 5–30 (R + tags + dashboard) / 30–50 (afronden beginner) / 50+ (Playbook + Tendencies + Compliance)
+  - **Reading-modal** per les met:
+    - Crypto-specifieke voorbeelden (BTC/USDT $-prijzen i.p.v. FX-pips)
+    - Vier callout-kleuren: 🟡 Waarom · 🟢 Voorbeeld · 🟠 Waarschuwing · 🔵 Tip
+    - **Deeplinks** *"Open Trades →"*, *"Open Playbook →"*, *"Beheer tags →"* — sluiten modal en navigeren direct naar de juiste tab
+    - Markeer-als-voltooid toggle (persistent in `tj_lessons_seen`)
+    - Vorige/volgende-knoppen voor sequentiële doorloop
+- **Help-tab nieuwe structuur** met 3 sub-tabs (default opent op Handleiding, persistent in `tj_help_subtab`):
+  1. 📚 Handleiding (nieuw)
+  2. 🚀 Startersguide (bestaande 3-paden cards)
+  3. ❓ FAQ (bestaande accordion + Feature-referentie)
+- **localStorage**: `tj_lessons_seen` (Set van les-IDs) + `tj_help_subtab` (laatst geopende sub-tab)
+
 ## [v12.42] — 2026-04-28
 
 ### Gewijzigd
