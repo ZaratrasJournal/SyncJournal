@@ -6,6 +6,13 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.49] — 2026-04-28
+
+### Fixed
+- **Setup-lagen tag-pills onleesbaar op Parchment-theme** (gemeld door Denny). De Setup-pills bij Trades → trade-detail → "+ Laag toevoegen" gebruikten hardcoded `rgba(255,255,255,0.35)` voor unselected tekst en lichte borders die op cream-bg parchment vrijwel onzichtbaar waren. Vervangen door `var(--text3)` voor tekst en `var(--border4)` voor borders — werkt nu correct op alle 6 themes (sync / classic / aurora / light / parchment / daylight). Geldt voor alle drie pill-types in de layer-builder: Timeframe, Setup, Confirmatie(s).
+- **Layout-toggles ("Indeling aanpassen") onzichtbaar in OFF-state op light themes** (gemeld door Denny). De toggle-track gebruikte `rgba(255,255,255,0.08)` als OFF-background en `rgba(255,255,255,0.25)` als OFF-knob — wit op cream/wit-bg = onzichtbaar. Gebruikers konden uitgeschakelde widgets niet meer aanzetten. Vervangen door `var(--bg4)` track + `1px solid var(--border3)` border + `var(--text4)` knob in OFF-state. ON-state (groen + gold) onveranderd. Werkt nu zichtbaar op alle 6 themes.
+- **Fees worden nu auto-verrekend in PnL bij handmatige trades** (gemeld door Morani via Discord). De PnL-velding had alleen een handmatige *"💡 PNL berekenen"* knop — gebruikers vulden fees in en verwachtten dat PnL automatisch zou aanpassen. Nu doet 'ie dat: nieuwe `useEffect` recalculeert PnL automatisch wanneer entry/exit/positionSize/fees veranderen, mits het een handmatige trade is (`source === "manual"`) en de gebruiker PnL niet handmatig heeft overschreven (`"pnl"` niet in `manualOverrides`). Zodra user PnL handmatig invult, stopt de auto-update — geen overrides van expliciete waarden. API-imports (Blofin / MEXC / Kraken / Hyperliquid) worden geskipt; die leveren al netto PnL.
+
 ## [v12.48] — 2026-04-28
 
 ### Toegevoegd
