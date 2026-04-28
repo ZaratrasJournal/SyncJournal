@@ -6,6 +6,11 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.39] — 2026-04-28
+
+### Fixed
+- **Playbook-tab was niet zichtbaar in de top-navigatie** (Denny gemeld). De `TABS`-array bevatte de Playbook-entry op index 6, maar de top-nav rendert alleen `TABS.slice(0,6)` — alleen de eerste 6 tabs. Daarna volgt een hardcoded "Instellingen"-knop voor de cluster Accounts/Rules/Tags/Help. Resultaat in v12.38: Playbook bestond als route en als content (`tab==="playbook"&&<PlaybookPage…>` rendered correct), maar er was geen klikbare ingang in de top-nav. Fix: `slice(0,6)` → `slice(0,7)` zodat Playbook als 7e top-tab verschijnt tussen Tendencies en Instellingen.
+
 ## [v12.38] — 2026-04-28
 
 ### Toegevoegd
