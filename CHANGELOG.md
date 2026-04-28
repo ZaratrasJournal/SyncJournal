@@ -6,6 +6,26 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.40] — 2026-04-28
+
+### Gewijzigd
+- **PlaybookForm UX-redesign** (Denny gemeld). Het nieuwe-playbook formulier was in v12.38 één lange opsomming van 11 velden onder elkaar — overweldigend, geen visuele hiërarchie, optionele velden even prominent als verplichte. De form is nu opgedeeld in **5 gekleurde sectie-cards** met eigen accent-kleur en spacing:
+  - 📋 **Basis** (neutraal grijs) — Naam (prominent groter veld met goud-tint), Status, Eén-zin omschrijving
+  - 🔍 **Setup-lagen** (gold accent) — Setup-tags (chip-input), Timeframes (pills), Confirmaties (collapsible, default dicht)
+  - 📊 **Markt** (blue accent) — Pairs, Sessies, Markt-context (collapsible, default dicht)
+  - ✅ **Entry-criteria** (green accent) — Genummerde criteria-rijen met visuele 1/2/3-badges, gouden border bij verplicht, accent-color checkboxes
+  - 🎯 **Trade-rules** (amber accent) — Stop (rood label), Target (groen label), Min R:R, Mistake-pattern (collapsible, default dicht)
+
+  **Progressive disclosure**: drie optionele velden (Confirmaties, Markt-context, Mistake-pattern) zijn nu collapsible en standaard dichtgeklapt. Bij bewerken van een bestaande playbook met data in die velden klapt de sectie automatisch open. Verkort het visuele oppervlak van de form met ~40% bij eerste-keer-aanmaken.
+
+  **Snelkoppelingen** (`+ SFP`, `+ MSB` etc.) zijn nu kleiner getekend (10px ipv 11px, lichtere border) en gegroepeerd onder een *"Voorbeelden:"* label. Geeft minder visuele dominantie t.o.v. de eigenlijke chip-input.
+
+  **Naam-veld** is nu visueel het belangrijkste: 15px font, gouden border-tint, lichte gold-tinted background. Maakt direct duidelijk dat dit het kritieke veld is.
+
+  **Status-dropdown** krijgt emoji-prefix (🟡 Testing / 🟢 Actief / ⚪ Retired) voor sneller scannen.
+
+  Geen schema- of data-wijzigingen — alleen visuele reorganisatie. Bestaande playbooks blijven onveranderd.
+
 ## [v12.39] — 2026-04-28
 
 ### Fixed

@@ -889,7 +889,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.39",released:"2026-04-28"};
+const APP_VERSION={version:"v12.40",released:"2026-04-28"};
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
 function isNewerVersion(a,b){
   const parse=(s)=>String(s||"").replace(/^v/,"").split(".").map(n=>parseInt(n,10)||0);
@@ -5076,93 +5076,182 @@ function PlaybookForm({initial,onSave,onClose}){
   const[pairInput,setPairInput]=useState("");
   const[setupInput,setSetupInput]=useState("");
   const[confInput,setConfInput]=useState("");
+  // Optionele velden default-collapsed: minder visuele lawaai voor wie minimaal invult
+  const[expContext,setExpContext]=useState(!!initial?.context);
+  const[expConfirms,setExpConfirms]=useState(!!(initial?.confirmations||[]).length);
+  const[expMistake,setExpMistake]=useState(!!initial?.mistake);
   const handleSave=()=>{if(!pb.name.trim()){alert("Naam is verplicht");return;}onSave({...pb,name:pb.name.trim(),updatedAt:new Date().toISOString(),createdAt:pb.createdAt||new Date().toISOString(),criteria:pb.criteria.filter(c=>c.text.trim())});};
   const TFs=["1D","4H","1H","15M","5M","1M"];
-  const lblSt={fontSize:"10.5px",color:"var(--text4)",fontFamily:"var(--mono)",fontWeight:600,letterSpacing:".06em",textTransform:"uppercase",marginBottom:"5px",display:"block"};
-  const inpSt={width:"100%",background:"var(--bg3)",color:"var(--text)",border:"1px solid var(--border3)",borderRadius:"6px",padding:"8px 10px",fontFamily:"var(--font)",fontSize:"13px",outline:"none"};
+  // Reusable styles
+  const lblSt={fontSize:"10.5px",color:"var(--text4)",fontFamily:"var(--mono)",fontWeight:600,letterSpacing:".06em",textTransform:"uppercase",marginBottom:"6px",display:"block"};
+  const lblHint=(txt)=><span style={{textTransform:"none",letterSpacing:0,fontFamily:"var(--font)",color:"var(--text5)",fontSize:"10.5px",fontWeight:400,marginLeft:6}}>— {txt}</span>;
+  const inpSt={width:"100%",background:"var(--bg3)",color:"var(--text)",border:"1px solid var(--border3)",borderRadius:"6px",padding:"9px 11px",fontFamily:"var(--font)",fontSize:"13px",outline:"none",transition:"border-color .15s"};
+  const inpStBig={...inpSt,fontSize:"15px",fontWeight:600,padding:"11px 13px",border:"1px solid var(--gold-border)",background:"rgba(201,168,76,0.04)"};
   const taSt={...inpSt,resize:"vertical",minHeight:"60px",fontFamily:"var(--mono)",fontSize:"12px"};
-  const pillBtn=(active,onClick,label)=><button type="button" onClick={onClick} style={{padding:"5px 11px",fontSize:"11px",fontFamily:"var(--mono)",fontWeight:600,letterSpacing:".06em",borderRadius:"6px",border:`1px solid ${active?"var(--gold-border)":"var(--border3)"}`,background:active?"var(--gold-dim)":"transparent",color:active?"var(--gold)":"var(--text4)",cursor:"pointer"}}>{label}</button>;
+  const pillBtn=(active,onClick,label,small)=><button type="button" onClick={onClick} style={{padding:small?"3px 9px":"5px 11px",fontSize:small?"10px":"11px",fontFamily:"var(--mono)",fontWeight:600,letterSpacing:".04em",borderRadius:"5px",border:`1px solid ${active?"var(--gold-border)":"var(--border3)"}`,background:active?"var(--gold-dim)":"transparent",color:active?"var(--gold)":"var(--text4)",cursor:"pointer",transition:"all .12s"}}>{label}</button>;
   const chip=(val,onRm,color)=><span key={val} style={{display:"inline-flex",alignItems:"center",gap:"6px",padding:"5px 6px 5px 11px",fontSize:"11px",fontFamily:"var(--mono)",fontWeight:600,borderRadius:"6px",background:color.bg,border:`1px solid ${color.border}`,color:color.text}}>{val}<button type="button" onClick={onRm} style={{background:"transparent",border:"none",color:"inherit",cursor:"pointer",fontSize:"14px",padding:"0 4px",borderRadius:"3px",opacity:0.7}}>×</button></span>;
-  return(<div onClick={e=>{if(e.target===e.currentTarget)onClose();}} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",backdropFilter:"blur(4px)",display:"flex",alignItems:"flex-start",justifyContent:"center",zIndex:200,overflowY:"auto",padding:"32px 16px"}}>
+  // Section card wrapper — geeft elke logische blok eigen kleur-tint + spacing
+  const Section=({icon,title,subtitle,tint,children,collapsible,expanded,setExpanded})=>{
+    const tintMap={
+      gold:{border:"rgba(201,168,76,0.18)",bg:"rgba(201,168,76,0.025)",accent:"var(--gold)"},
+      blue:{border:"rgba(138,159,192,0.18)",bg:"rgba(138,159,192,0.025)",accent:"#8a9fc0"},
+      green:{border:"rgba(46,170,111,0.18)",bg:"rgba(46,170,111,0.025)",accent:"var(--green)"},
+      amber:{border:"rgba(212,168,83,0.18)",bg:"rgba(212,168,83,0.025)",accent:"var(--amber)"},
+      neutral:{border:"var(--border2)",bg:"rgba(255,255,255,0.015)",accent:"var(--text3)"},
+    };
+    const c=tintMap[tint||"neutral"];
+    return(<div style={{background:c.bg,border:`1px solid ${c.border}`,borderRadius:"10px",padding:"18px 20px"}}>
+      <div onClick={collapsible?()=>setExpanded(!expanded):undefined} style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:expanded||!collapsible?"14px":0,cursor:collapsible?"pointer":"default",userSelect:collapsible?"none":"auto"}}>
+        <div>
+          <div style={{display:"flex",alignItems:"center",gap:"8px",fontSize:"11px",color:c.accent,fontFamily:"var(--mono)",fontWeight:700,letterSpacing:".15em",textTransform:"uppercase"}}><span>{icon}</span>{title}</div>
+          {subtitle&&<div style={{fontSize:"11.5px",color:"var(--text4)",marginTop:"3px",lineHeight:1.5}}>{subtitle}</div>}
+        </div>
+        {collapsible&&<span style={{fontSize:"14px",color:"var(--text4)",fontFamily:"var(--mono)",transition:"transform .2s",transform:expanded?"rotate(0deg)":"rotate(-90deg)"}}>▾</span>}
+      </div>
+      {(!collapsible||expanded)&&<div style={{display:"flex",flexDirection:"column",gap:"14px"}}>{children}</div>}
+    </div>);
+  };
+  // Snelkoppeling-strip met "Voorbeelden:" label voor mindere visuele dominantie
+  const QuickAdd=({items,onPick})=>(<div style={{display:"flex",flexWrap:"wrap",gap:5,marginTop:6,alignItems:"center"}}>
+    <span style={{fontSize:"9.5px",color:"var(--text5)",fontFamily:"var(--mono)",letterSpacing:".06em",textTransform:"uppercase",marginRight:2}}>Voorbeelden:</span>
+    {items.map(t=>pillBtn(false,()=>onPick(t),"+ "+t,true))}
+  </div>);
+
+  return(<div onClick={e=>{if(e.target===e.currentTarget)onClose();}} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.78)",backdropFilter:"blur(4px)",display:"flex",alignItems:"flex-start",justifyContent:"center",zIndex:200,overflowY:"auto",padding:"32px 16px"}}>
     <div style={{background:"var(--bg2)",border:"1px solid var(--border3)",borderRadius:"14px",width:"100%",maxWidth:"880px",maxHeight:"calc(100vh - 64px)",overflowY:"auto",position:"relative"}}>
+      {/* Header */}
       <div style={{padding:"22px 28px 18px",borderBottom:"1px solid var(--border1)",position:"sticky",top:0,background:"var(--bg2)",zIndex:5}}>
         <button onClick={onClose} style={{position:"absolute",top:16,right:18,background:"transparent",border:"none",color:"var(--text4)",fontSize:"22px",cursor:"pointer",width:32,height:32}}>×</button>
-        <h2 style={{margin:0,fontSize:"18px"}}>{initial?.id?"✏️ Playbook bewerken":"+ Nieuw Playbook"}</h2>
-        <p style={{fontSize:"12px",color:"var(--text4)",marginTop:4,lineHeight:1.55}}>Vul de basis in. Stats berekenen we automatisch zodra je trades met deze setup-tag logt.</p>
+        <h2 style={{margin:0,fontSize:"20px",fontWeight:800,letterSpacing:"-.01em"}}>{initial?.id?"✏️ Playbook bewerken":"📘 Nieuw Playbook"}</h2>
+        <p style={{fontSize:"12.5px",color:"var(--text4)",marginTop:6,lineHeight:1.55}}>Stats berekenen automatisch zodra je trades met deze setup-tag logt. Alleen <strong style={{color:"var(--text2)"}}>Naam</strong> en <strong style={{color:"var(--text2)"}}>Setup-tags</strong> zijn echt nodig — de rest verfijnt je playbook over tijd.</p>
       </div>
-      <div style={{padding:"22px 28px 28px",display:"flex",flexDirection:"column",gap:"14px"}}>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"14px"}}>
-          <div><label style={lblSt}>Naam *</label><input style={inpSt} value={pb.name} onChange={e=>upd("name",e.target.value)} placeholder="bv. London-Open SFP Reclaim"/></div>
-          <div><label style={lblSt}>Status</label><select style={inpSt} value={pb.status} onChange={e=>upd("status",e.target.value)}>
-            <option value="testing">Testing — eerst valideren</option>
-            <option value="active">Actief</option>
-            <option value="retired">Retired</option>
-          </select></div>
-        </div>
-        <div><label style={lblSt}>Eén-zin omschrijving</label><input style={inpSt} value={pb.oneLiner} onChange={e=>upd("oneLiner",e.target.value)} placeholder="bv. Sweep Asian-low + reclaim met volume tijdens London-Open"/></div>
 
-        {/* Setup-tags chip-input */}
-        <div>
-          <label style={lblSt}>Setup-tags <span style={{textTransform:"none",letterSpacing:0,fontFamily:"var(--font)",color:"var(--text5)",fontSize:"10.5px",fontWeight:400,marginLeft:4}}>— meerdere lagen mogelijk (bv. SFP + Liquidity Sweep)</span></label>
-          <div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:6}}>{(pb.setupTags||[]).map(s=>chip(s,()=>rmChip("setupTags",s),{bg:"rgba(46,170,111,0.08)",border:"rgba(46,170,111,0.30)",text:"var(--green)"}))}</div>
-          <div style={{display:"flex",gap:6}}><input style={{...inpSt,flex:1}} value={setupInput} onChange={e=>setSetupInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();addChip("setupTags",setupInput.trim());setSetupInput("");}}} placeholder="Typ tag + Enter, of kies snelkoppeling"/><button type="button" onClick={()=>{addChip("setupTags",setupInput.trim());setSetupInput("");}} style={{padding:"7px 14px",fontSize:"11.5px",fontFamily:"var(--mono)",fontWeight:600,borderRadius:6,border:"1px solid var(--border3)",background:"transparent",color:"var(--text2)",cursor:"pointer"}}>+ Toevoegen</button></div>
-          <div style={{display:"flex",flexWrap:"wrap",gap:5,marginTop:6}}>{["SFP","MSB","BOS","Liquidity Sweep","Reclaim","Range retest","FVG tap","OB tap"].map(t=>pillBtn(false,()=>addChip("setupTags",t),"+ "+t))}</div>
-        </div>
+      {/* Body — sections met spacing 18px */}
+      <div style={{padding:"22px 28px 28px",display:"flex",flexDirection:"column",gap:"18px"}}>
 
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"14px"}}>
-          {/* Pairs chip-input */}
+        {/* ─── 📋 BASIS ─── */}
+        <Section icon="📋" title="Basis" tint="neutral">
           <div>
-            <label style={lblSt}>Pairs</label>
-            <div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:6}}>{(pb.pairs||[]).map(s=>chip(s,()=>rmChip("pairs",s),{bg:"rgba(201,168,76,0.06)",border:"var(--gold-border)",text:"var(--gold)"}))}</div>
-            <div style={{display:"flex",gap:6}}><input style={{...inpSt,flex:1}} value={pairInput} onChange={e=>setPairInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();addChip("pairs",pairInput.trim().toUpperCase());setPairInput("");}}} placeholder="bv. SOL/USDT, XAU/USDT"/><button type="button" onClick={()=>{addChip("pairs",pairInput.trim().toUpperCase());setPairInput("");}} style={{padding:"7px 12px",fontSize:"11.5px",fontFamily:"var(--mono)",fontWeight:600,borderRadius:6,border:"1px solid var(--border3)",background:"transparent",color:"var(--text2)",cursor:"pointer"}}>+</button></div>
-            <div style={{display:"flex",flexWrap:"wrap",gap:5,marginTop:6}}>{["BTC/USDT","ETH/USDT","SOL/USDT","XAU/USDT"].map(t=>pillBtn(false,()=>addChip("pairs",t),"+ "+t.split("/")[0]))}</div>
+            <label style={lblSt}>Naam *</label>
+            <input style={inpStBig} value={pb.name} onChange={e=>upd("name",e.target.value)} placeholder="bv. London-Open SFP Reclaim"/>
           </div>
-          {/* Sessions multi-pills */}
+          <div style={{display:"grid",gridTemplateColumns:"2fr 1fr",gap:"14px"}}>
+            <div><label style={lblSt}>Eén-zin omschrijving</label><input style={inpSt} value={pb.oneLiner} onChange={e=>upd("oneLiner",e.target.value)} placeholder="bv. Sweep Asian-low + reclaim met volume"/></div>
+            <div><label style={lblSt}>Status</label><select style={inpSt} value={pb.status} onChange={e=>upd("status",e.target.value)}>
+              <option value="testing">🟡 Testing — eerst valideren</option>
+              <option value="active">🟢 Actief</option>
+              <option value="retired">⚪ Retired</option>
+            </select></div>
+          </div>
+        </Section>
+
+        {/* ─── 🔍 SETUP-LAGEN ─── */}
+        <Section icon="🔍" title="Setup-lagen" subtitle="Top-down: van HTF context tot LTF entry-trigger" tint="gold">
+          {/* Setup-tags */}
           <div>
-            <label style={lblSt}>Sessies</label>
-            <div style={{display:"flex",flexWrap:"wrap",gap:5}}>{ALL_SESSIONS.map(s=>pillBtn((pb.sessions||[]).includes(s),()=>togArr("sessions",s),s))}</div>
+            <label style={lblSt}>Setup-tags {lblHint("meerdere lagen mogelijk, bv. SFP + Liquidity Sweep")}</label>
+            {(pb.setupTags||[]).length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:6}}>{pb.setupTags.map(s=>chip(s,()=>rmChip("setupTags",s),{bg:"rgba(46,170,111,0.10)",border:"rgba(46,170,111,0.30)",text:"var(--green)"}))}</div>}
+            <div style={{display:"flex",gap:6}}>
+              <input style={{...inpSt,flex:1}} value={setupInput} onChange={e=>setSetupInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();addChip("setupTags",setupInput.trim());setSetupInput("");}}} placeholder="Typ tag + Enter"/>
+              <button type="button" onClick={()=>{addChip("setupTags",setupInput.trim());setSetupInput("");}} style={{padding:"9px 14px",fontSize:"11.5px",fontFamily:"var(--mono)",fontWeight:600,borderRadius:6,border:"1px solid var(--border3)",background:"transparent",color:"var(--text2)",cursor:"pointer",whiteSpace:"nowrap"}}>+ Toevoegen</button>
+            </div>
+            <QuickAdd items={["SFP","MSB","BOS","Liquidity Sweep","Reclaim","Range retest"]} onPick={t=>addChip("setupTags",t)}/>
           </div>
-        </div>
+          {/* Timeframes */}
+          <div>
+            <label style={lblSt}>Timeframes {lblHint("HTF context → MTF setup → LTF entry")}</label>
+            <div style={{display:"flex",flexWrap:"wrap",gap:5}}>{TFs.map(tf=>pillBtn((pb.timeframes||[]).includes(tf),()=>togArr("timeframes",tf),tf))}</div>
+          </div>
+          {/* Confirmaties — collapsible */}
+          <div style={{borderTop:"1px dashed var(--border2)",paddingTop:"14px"}}>
+            <div onClick={()=>setExpConfirms(!expConfirms)} style={{cursor:"pointer",userSelect:"none",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+              <div>
+                <span style={{...lblSt,marginBottom:0,display:"inline"}}>Confirmaties</span>
+                <span style={{textTransform:"none",letterSpacing:0,fontFamily:"var(--font)",color:"var(--text5)",fontSize:"10.5px",fontWeight:400,marginLeft:6}}>— optioneel · extra confluence-points {(pb.confirmations||[]).length>0?`(${pb.confirmations.length})`:""}</span>
+              </div>
+              <span style={{fontSize:"12px",color:"var(--text4)",fontFamily:"var(--mono)",transition:"transform .2s",transform:expConfirms?"rotate(0deg)":"rotate(-90deg)"}}>▾</span>
+            </div>
+            {expConfirms&&<div style={{marginTop:"10px"}}>
+              {(pb.confirmations||[]).length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:6}}>{pb.confirmations.map(s=>chip(s,()=>rmChip("confirmations",s),{bg:"rgba(212,168,83,0.10)",border:"rgba(212,168,83,0.30)",text:"var(--amber)"}))}</div>}
+              <div style={{display:"flex",gap:6}}>
+                <input style={{...inpSt,flex:1}} value={confInput} onChange={e=>setConfInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();addChip("confirmations",confInput.trim());setConfInput("");}}} placeholder="bv. CVD divergentie, OB tap, Funding flip"/>
+                <button type="button" onClick={()=>{addChip("confirmations",confInput.trim());setConfInput("");}} style={{padding:"9px 12px",fontSize:"11.5px",fontFamily:"var(--mono)",fontWeight:600,borderRadius:6,border:"1px solid var(--border3)",background:"transparent",color:"var(--text2)",cursor:"pointer"}}>+</button>
+              </div>
+              <QuickAdd items={["CVD divergentie","Volume sweep ≥ 1.5×","FVG tap","OB level","Funding flip","OI rising","Liquidaties zichtbaar","HTF trend aligned"]} onPick={t=>addChip("confirmations",t)}/>
+            </div>}
+          </div>
+        </Section>
 
-        {/* Timeframes */}
-        <div>
-          <label style={lblSt}>Timeframes <span style={{textTransform:"none",letterSpacing:0,fontFamily:"var(--font)",color:"var(--text5)",fontSize:"10.5px",fontWeight:400,marginLeft:4}}>— top-down: HTF context → MTF setup → LTF entry</span></label>
-          <div style={{display:"flex",flexWrap:"wrap",gap:5}}>{TFs.map(tf=>pillBtn((pb.timeframes||[]).includes(tf),()=>togArr("timeframes",tf),tf))}</div>
-        </div>
+        {/* ─── 📊 MARKT ─── */}
+        <Section icon="📊" title="Markt" subtitle="Welke pairs en sessies werkt deze setup?" tint="blue">
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"14px"}}>
+            {/* Pairs */}
+            <div>
+              <label style={lblSt}>Pairs</label>
+              {(pb.pairs||[]).length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:6}}>{pb.pairs.map(s=>chip(s,()=>rmChip("pairs",s),{bg:"rgba(201,168,76,0.08)",border:"var(--gold-border)",text:"var(--gold)"}))}</div>}
+              <div style={{display:"flex",gap:6}}>
+                <input style={{...inpSt,flex:1}} value={pairInput} onChange={e=>setPairInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();addChip("pairs",pairInput.trim().toUpperCase());setPairInput("");}}} placeholder="bv. SOL/USDT"/>
+                <button type="button" onClick={()=>{addChip("pairs",pairInput.trim().toUpperCase());setPairInput("");}} style={{padding:"9px 12px",fontSize:"12px",fontFamily:"var(--mono)",fontWeight:600,borderRadius:6,border:"1px solid var(--border3)",background:"transparent",color:"var(--text2)",cursor:"pointer"}}>+</button>
+              </div>
+              <QuickAdd items={["BTC/USDT","ETH/USDT","SOL/USDT","XAU/USDT"]} onPick={t=>addChip("pairs",t)}/>
+            </div>
+            {/* Sessies */}
+            <div>
+              <label style={lblSt}>Sessies</label>
+              <div style={{display:"flex",flexWrap:"wrap",gap:5}}>{ALL_SESSIONS.map(s=>pillBtn((pb.sessions||[]).includes(s),()=>togArr("sessions",s),s))}</div>
+            </div>
+          </div>
+          {/* Markt-context — collapsible */}
+          <div style={{borderTop:"1px dashed var(--border2)",paddingTop:"14px"}}>
+            <div onClick={()=>setExpContext(!expContext)} style={{cursor:"pointer",userSelect:"none",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+              <div>
+                <span style={{...lblSt,marginBottom:0,display:"inline"}}>Markt-context</span>
+                <span style={{textTransform:"none",letterSpacing:0,fontFamily:"var(--font)",color:"var(--text5)",fontSize:"10.5px",fontWeight:400,marginLeft:6}}>— optioneel · wanneer geldt deze setup?</span>
+              </div>
+              <span style={{fontSize:"12px",color:"var(--text4)",fontFamily:"var(--mono)",transition:"transform .2s",transform:expContext?"rotate(0deg)":"rotate(-90deg)"}}>▾</span>
+            </div>
+            {expContext&&<textarea style={{...taSt,marginTop:"10px"}} value={pb.context} onChange={e=>upd("context",e.target.value)} placeholder="bv. Asian range > 4u, geen major news komende 30 min, BTC.D stabiel, funding rate neutraal"/>}
+          </div>
+        </Section>
 
-        {/* Confirmaties chip-input */}
-        <div>
-          <label style={lblSt}>Confirmaties <span style={{textTransform:"none",letterSpacing:0,fontFamily:"var(--font)",color:"var(--text5)",fontSize:"10.5px",fontWeight:400,marginLeft:4}}>— extra confluence-points naast je criteria</span></label>
-          <div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:6}}>{(pb.confirmations||[]).map(s=>chip(s,()=>rmChip("confirmations",s),{bg:"rgba(212,168,83,0.08)",border:"rgba(212,168,83,0.30)",text:"var(--amber)"}))}</div>
-          <div style={{display:"flex",gap:6}}><input style={{...inpSt,flex:1}} value={confInput} onChange={e=>setConfInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();addChip("confirmations",confInput.trim());setConfInput("");}}} placeholder="bv. CVD divergentie, OB tap, Funding flip"/><button type="button" onClick={()=>{addChip("confirmations",confInput.trim());setConfInput("");}} style={{padding:"7px 12px",fontSize:"11.5px",fontFamily:"var(--mono)",fontWeight:600,borderRadius:6,border:"1px solid var(--border3)",background:"transparent",color:"var(--text2)",cursor:"pointer"}}>+</button></div>
-          <div style={{display:"flex",flexWrap:"wrap",gap:5,marginTop:6}}>{["CVD divergentie","Volume sweep ≥ 1.5×","FVG tap","OB level","Funding flip","OI rising","Liquidaties zichtbaar","HTF trend aligned"].map(t=>pillBtn(false,()=>addChip("confirmations",t),"+ "+t))}</div>
-        </div>
-
-        <div><label style={lblSt}>Markt-context</label><textarea style={taSt} value={pb.context} onChange={e=>upd("context",e.target.value)} placeholder="bv. Asian range > 4u, geen major news komende 30 min, BTC.D stabiel"/></div>
-
-        {/* Criteria builder */}
-        <div>
-          <label style={lblSt}>Entry-criteria <span style={{textTransform:"none",letterSpacing:0,fontFamily:"var(--font)",color:"var(--text5)",fontSize:"10.5px",fontWeight:400,marginLeft:4}}>— vink "verplicht" voor must-have items</span></label>
+        {/* ─── ✅ ENTRY-CRITERIA ─── */}
+        <Section icon="✅" title="Entry-criteria" subtitle="Checklist die je moet afvinken vóór elke trade. Verplicht-toggle = must-have." tint="green">
           <div style={{display:"flex",flexDirection:"column",gap:6}}>{pb.criteria.map((c,i)=><div key={i} style={{display:"flex",gap:8,alignItems:"center"}}>
+            <span style={{width:"20px",height:"20px",borderRadius:"4px",border:`1.5px solid ${c.mandatory?"var(--gold)":"var(--text5)"}`,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"11px",color:"var(--text5)"}}>{i+1}</span>
             <input style={{...inpSt,flex:1}} value={c.text} onChange={e=>updCrit(i,{text:e.target.value})} placeholder="bv. Sweep candle onder Asian-low"/>
-            <label style={{display:"flex",alignItems:"center",gap:5,fontSize:11,color:"var(--text4)",cursor:"pointer",whiteSpace:"nowrap"}}><input type="checkbox" checked={c.mandatory} onChange={e=>updCrit(i,{mandatory:e.target.checked})}/> Verplicht</label>
+            <label style={{display:"flex",alignItems:"center",gap:5,fontSize:11,color:c.mandatory?"var(--gold)":"var(--text4)",cursor:"pointer",whiteSpace:"nowrap",fontFamily:"var(--mono)",fontWeight:600}}><input type="checkbox" checked={c.mandatory} onChange={e=>updCrit(i,{mandatory:e.target.checked})} style={{accentColor:"var(--gold)",cursor:"pointer"}}/> Verplicht</label>
             <button type="button" onClick={()=>rmCrit(i)} style={{padding:"5px 9px",fontSize:11,borderRadius:5,border:"1px solid var(--border3)",background:"transparent",color:"var(--text4)",cursor:"pointer"}}>×</button>
           </div>)}</div>
-          <button type="button" onClick={addCrit} style={{marginTop:6,padding:"5px 11px",fontSize:11,fontFamily:"var(--mono)",fontWeight:600,borderRadius:6,border:"1px solid var(--border3)",background:"transparent",color:"var(--text2)",cursor:"pointer"}}>+ Criterium toevoegen</button>
-        </div>
+          <button type="button" onClick={addCrit} style={{alignSelf:"flex-start",padding:"6px 12px",fontSize:11.5,fontFamily:"var(--mono)",fontWeight:600,borderRadius:6,border:"1px dashed var(--border3)",background:"transparent",color:"var(--text3)",cursor:"pointer"}}>+ Criterium toevoegen</button>
+        </Section>
 
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"14px"}}>
-          <div><label style={lblSt}>Stop-rule</label><textarea style={taSt} value={pb.stop} onChange={e=>upd("stop",e.target.value)} placeholder="bv. 2 ticks onder sweep-low. Hard stop."/></div>
-          <div><label style={lblSt}>Target-rule</label><textarea style={taSt} value={pb.target} onChange={e=>upd("target",e.target.value)} placeholder="bv. Partial 1R, runner naar HTF liq-pool"/></div>
-        </div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 2fr",gap:"14px"}}>
-          <div><label style={lblSt}>Min R:R</label><input style={inpSt} value={pb.minRR} onChange={e=>upd("minRR",e.target.value)} placeholder="bv. 1.5"/></div>
-          <div><label style={lblSt}>Mistake-pattern <span style={{textTransform:"none",letterSpacing:0,fontFamily:"var(--font)",color:"var(--text5)",fontSize:"10.5px",fontWeight:400,marginLeft:4}}>— hoe verpest jij dit setup meestal?</span></label><input style={inpSt} value={pb.mistake} onChange={e=>upd("mistake",e.target.value)} placeholder="bv. FOMO entry vóór reclaim sluit"/></div>
-        </div>
+        {/* ─── 🎯 TRADE-RULES ─── */}
+        <Section icon="🎯" title="Trade-rules" subtitle="Stop, target en het patroon dat jij meestal verpest." tint="amber">
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"14px"}}>
+            <div><label style={{...lblSt,color:"var(--red)"}}>🛑 Stop-rule</label><textarea style={taSt} value={pb.stop} onChange={e=>upd("stop",e.target.value)} placeholder="bv. 2 ticks onder sweep-low. Hard stop."/></div>
+            <div><label style={{...lblSt,color:"var(--green)"}}>🏁 Target-rule</label><textarea style={taSt} value={pb.target} onChange={e=>upd("target",e.target.value)} placeholder="bv. Partial 1R, runner naar HTF liq-pool"/></div>
+          </div>
+          <div>
+            <label style={lblSt}>Min R:R</label>
+            <input style={{...inpSt,maxWidth:"160px"}} value={pb.minRR} onChange={e=>upd("minRR",e.target.value)} placeholder="bv. 1.5"/>
+          </div>
+          {/* Mistake-pattern — collapsible */}
+          <div style={{borderTop:"1px dashed var(--border2)",paddingTop:"14px"}}>
+            <div onClick={()=>setExpMistake(!expMistake)} style={{cursor:"pointer",userSelect:"none",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+              <div>
+                <span style={{...lblSt,marginBottom:0,display:"inline"}}>⚠️ Mistake-pattern</span>
+                <span style={{textTransform:"none",letterSpacing:0,fontFamily:"var(--font)",color:"var(--text5)",fontSize:"10.5px",fontWeight:400,marginLeft:6}}>— optioneel · hoe verpest jij dit setup meestal?</span>
+              </div>
+              <span style={{fontSize:"12px",color:"var(--text4)",fontFamily:"var(--mono)",transition:"transform .2s",transform:expMistake?"rotate(0deg)":"rotate(-90deg)"}}>▾</span>
+            </div>
+            {expMistake&&<input style={{...inpSt,marginTop:"10px"}} value={pb.mistake} onChange={e=>upd("mistake",e.target.value)} placeholder="bv. FOMO entry vóór reclaim sluit"/>}
+          </div>
+        </Section>
 
-        <div style={{display:"flex",justifyContent:"flex-end",gap:8,marginTop:8,paddingTop:18,borderTop:"1px solid var(--border1)"}}>
-          <button onClick={onClose} style={{padding:"7px 14px",fontSize:"11.5px",fontFamily:"var(--mono)",fontWeight:600,borderRadius:6,border:"1px solid var(--border3)",background:"transparent",color:"var(--text2)",cursor:"pointer"}}>Annuleren</button>
-          <button onClick={handleSave} style={{padding:"7px 14px",fontSize:"11.5px",fontFamily:"var(--mono)",fontWeight:600,borderRadius:6,border:"1px solid var(--gold-border)",background:"var(--gold-dim)",color:"var(--gold)",cursor:"pointer"}}>💾 Opslaan</button>
+        {/* Footer */}
+        <div style={{display:"flex",justifyContent:"flex-end",gap:8,marginTop:6,paddingTop:18,borderTop:"1px solid var(--border1)"}}>
+          <button onClick={onClose} style={{padding:"9px 16px",fontSize:"12px",fontFamily:"var(--mono)",fontWeight:600,borderRadius:6,border:"1px solid var(--border3)",background:"transparent",color:"var(--text2)",cursor:"pointer"}}>Annuleren</button>
+          <button onClick={handleSave} style={{padding:"9px 18px",fontSize:"12px",fontFamily:"var(--mono)",fontWeight:700,borderRadius:6,border:"1px solid var(--gold-border)",background:"var(--gold-dim)",color:"var(--gold)",cursor:"pointer"}}>💾 Opslaan</button>
         </div>
       </div>
     </div>
