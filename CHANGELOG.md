@@ -6,6 +6,18 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.42] — 2026-04-28
+
+### Gewijzigd
+- **PlaybookForm Mistake-pattern → multi-select uit `tagConfig.mistakeTags`** (Denny gemeld). Het laatste vrije text-veld in de Playbook-form is nu ook een pill-grid uit de centrale tag-bron, consistent met setup-tags / confirmaties / timeframes (v12.41). Geen tag-wirwar meer mogelijk.
+  - Nieuw schema-veld `mistakePatterns: []` op playbooks; defaults naar `[]` via `migratePlaybooks()`.
+  - Pill-grid uit `tagConfig.mistakeTags` ("Te vroeg in", "SL te krap", "FOMO", "Revenge trade", etc.).
+  - **Beheer tags →** deeplink + lege-staat hint zoals andere tag-velden.
+  - **Orphan-detectie** voor tags die uit `tagConfig` zijn verwijderd.
+  - **Backwards-compat met legacy free-text** (`mistake: string` veld uit v12.38–12.41): bestaande playbooks tonen de oude tekst onder een grijs *"📜 Oude vrije tekst (legacy)"* block met *Verwijder oude tekst* knop. Geen data-loss.
+- **PlaybookDetailModal** toont nu chips i.p.v. tekst voor mistake-patterns (rood-getint), met legacy free-text als optionele *"extra context"* eronder.
+- **PlaybookShareModal** payload bevat nu zowel `mistakePatterns[]` als (indien aanwezig) de legacy `mistake` string. Tekst-format: `⚠️ Te vroeg in · SL te krap` met optioneel *"Context: …"* erna.
+
 ## [v12.41] — 2026-04-28
 
 ### Gewijzigd
