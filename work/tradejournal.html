@@ -889,7 +889,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.46",released:"2026-04-28"};
+const APP_VERSION={version:"v12.47",released:"2026-04-28"};
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
 function isNewerVersion(a,b){
   const parse=(s)=>String(s||"").replace(/^v/,"").split(".").map(n=>parseInt(n,10)||0);
@@ -5069,8 +5069,56 @@ function PlaybookMissedHistogram({ms}){
 }
 
 // ─── PlaybookCard — list-item op de hoofdtab ─────────────────────────────────
+// v12.47: Edge-Erosion stats — splitst linked trades per simType en berekent
+// avgR / WR / n per groep. Vereist hindsightExit + entry + stopLoss voor sim-types.
+// Voor real-trades: standaard pnl/riskUsd. Doel: edge-erosion van Backtest →
+// Paper → Real visualiseren in Playbook detail.
+function playbookErosionStats(pb,allTrades){
+  const linked=tradesForPlaybook(pb,allTrades);
+  const buckets={real:[],paper:[],backtest:[]};
+  for(const t of linked){
+    if(t.status!=="missed"){
+      // Real trade — gebruik bestaande _trR helper (pnl/riskUsd)
+      if(t.pnl!==""&&!isNaN(parseFloat(t.pnl))&&t.status!=="open")buckets.real.push({r:_trR(t),win:parseFloat(t.pnl)>0});
+      continue;
+    }
+    // Sim trade — bereken theoretical R uit hindsightExit
+    const entry=parseFloat(t.entry),sl=parseFloat(t.stopLoss),hx=parseFloat(t.hindsightExit);
+    if(!isFinite(entry)||!isFinite(sl)||!isFinite(hx))continue;
+    const riskPerUnit=Math.abs(entry-sl);
+    if(riskPerUnit<=0)continue;
+    const sign=t.direction==="short"?-1:1;
+    const r=(hx-entry)*sign/riskPerUnit;
+    const st=t.simType||"missed";
+    if(st==="backtest")buckets.backtest.push({r,win:r>0});
+    else if(st==="paper")buckets.paper.push({r,win:r>0});
+    // missed (real-time gespot) is niet hetzelfde als paper — skipt deze visualisatie
+  }
+  const stat=(arr)=>arr.length?{n:arr.length,wr:(arr.filter(x=>x.win).length/arr.length)*100,avgR:arr.reduce((s,x)=>s+x.r,0)/arr.length}:{n:0,wr:0,avgR:0};
+  return{real:stat(buckets.real),paper:stat(buckets.paper),backtest:stat(buckets.backtest)};
+}
+
+// Trust-Score: classificeer een playbook in één van 5 stadia op basis van
+// real/paper/backtest counts. Idee → Theorized → Validated → Tradeable → Bewezen.
+function classifyTrust(pb,allTrades){
+  const e=playbookErosionStats(pb,allTrades);
+  const c={real:e.real.n,paper:e.paper.n,backtest:e.backtest.n};
+  // Bewezen: 16+ real met expectancy >0.3R
+  if(c.real>=16&&e.real.avgR>0.3)
+    return{stage:"Bewezen",fillCls:"proven",active:4,label:"BEWEZEN",color:"var(--green)",fill:"var(--green)",pct:100};
+  if(c.real>=6)
+    return{stage:"Tradeable",fillCls:"tradeable",active:3,label:"TRADEABLE",color:"var(--gold)",fill:"var(--gold)",pct:78};
+  if(c.paper>=1)
+    return{stage:"Validated",fillCls:"validated",active:2,label:"VALIDATED",color:"var(--purple)",fill:"var(--purple)",pct:58};
+  if(c.backtest>=4)
+    return{stage:"Theorized",fillCls:"theorized",active:1,label:"THEORIZED",color:"#7ab4d2",fill:"#7ab4d2",pct:38};
+  return{stage:"Idea",fillCls:"idea",active:0,label:"IDEA",color:"var(--text5)",fill:"var(--text5)",pct:18};
+}
+
 function PlaybookCard({pb,allTrades,onClick}){
   const s=playbookStats(pb,allTrades);
+  const trust=classifyTrust(pb,allTrades);
+  const ero=playbookErosionStats(pb,allTrades);
   const pnlPos=s.pnl>=0;
   const statusColor=pb.status==="active"?"var(--green)":pb.status==="testing"?"var(--amber)":"var(--text5)";
   const statusBg=pb.status==="active"?"rgba(46,170,111,0.12)":pb.status==="testing"?"rgba(212,168,83,0.12)":"rgba(138,144,160,0.10)";
@@ -5095,6 +5143,21 @@ function PlaybookCard({pb,allTrades,onClick}){
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:"10px",color:"var(--text5)",fontFamily:"var(--mono)",marginTop:s.trades.length>=2?"10px":"4px"}}>
       <span>Gem. {s.avgR>=0?"+":""}{s.avgR.toFixed(2)}R · exp. {s.exp>=0?"+":""}{s.exp.toFixed(2)}R</span>
       {s.n===0&&<span style={{color:"var(--text4)"}}>Nog geen linked trades</span>}
+    </div>
+    {/* v12.47: Trust-Score progress bar — Idea → Theorized → Validated → Tradeable → Bewezen */}
+    <div style={{marginTop:"12px",paddingTop:"10px",borderTop:"1px solid var(--border1)"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"6px"}}>
+        <span style={{fontSize:"9px",color:"var(--text5)",fontFamily:"var(--mono)",letterSpacing:".08em",textTransform:"uppercase"}}>🏆 Trust-Score</span>
+        <span style={{fontSize:"10px",color:trust.color,fontFamily:"var(--mono)",fontWeight:700,letterSpacing:".08em"}}>{trust.label}</span>
+      </div>
+      <div style={{height:"5px",background:"rgba(255,255,255,0.04)",border:"1px solid var(--border1)",borderRadius:"3px",overflow:"hidden"}}>
+        <div style={{height:"100%",width:trust.pct+"%",background:trust.fill,borderRadius:"2px",transition:"width .4s ease"}}/>
+      </div>
+      {(ero.backtest.n>0||ero.paper.n>0)&&<div style={{display:"flex",justifyContent:"space-between",fontSize:"9.5px",color:"var(--text5)",fontFamily:"var(--mono)",marginTop:"5px"}}>
+        {ero.backtest.n>0&&<span>🔬 {ero.backtest.n}</span>}
+        {ero.paper.n>0&&<span>📝 {ero.paper.n}</span>}
+        {ero.real.n>0&&<span>✅ {ero.real.n}</span>}
+      </div>}
     </div>
   </div>);
 }
@@ -5423,6 +5486,74 @@ function PlaybookDetailModal({pb,allTrades,setFilters,setTab,onClose,onEdit,onDe
             {pb.mistake&&<div style={{fontSize:12.5,color:"var(--text3)",lineHeight:1.55,fontStyle:"italic"}}><strong style={{color:"var(--red)",fontFamily:"var(--mono)",fontWeight:700,letterSpacing:".05em",textTransform:"uppercase",fontSize:10,fontStyle:"normal"}}>extra context:</strong> {pb.mistake}</div>}
           </div>
         </div>}
+
+        {/* v12.47: EDGE-EROSION FUNNEL — vergelijkt avg-R per type (Backtest → Paper → Real) */}
+        {(()=>{
+          const ero=playbookErosionStats(pb,allTrades);
+          // Toon alleen als ten minste 2 van de 3 types data hebben (anders niets te vergelijken)
+          const typesWithData=[ero.backtest.n>0,ero.paper.n>0,ero.real.n>0].filter(Boolean).length;
+          if(typesWithData<2)return null;
+          const types=[
+            {key:"backtest",label:"🔬 Backtest",val:ero.backtest,color:"#7ab4d2"},
+            {key:"paper",label:"📝 Paper",val:ero.paper,color:"#9a8acc"},
+            {key:"real",label:"✅ Real",val:ero.real,color:"#2eaa6f"},
+          ].filter(t=>t.val.n>0);
+          const maxAbs=Math.max(...types.map(t=>Math.abs(t.val.avgR)),0.5);
+          // Insights — alleen als alle 3 types data hebben
+          const allThree=ero.backtest.n>0&&ero.paper.n>0&&ero.real.n>0;
+          const realBetter=allThree&&ero.real.avgR>ero.backtest.avgR;
+          const hindsight=allThree?((ero.backtest.avgR-ero.paper.avgR)/Math.abs(ero.backtest.avgR||1))*100:0;
+          const execution=allThree?((ero.paper.avgR-ero.real.avgR)/Math.abs(ero.paper.avgR||1))*100:0;
+          const total=allThree?((ero.backtest.avgR-ero.real.avgR)/Math.abs(ero.backtest.avgR||1))*100:0;
+          return(<div>
+            <div style={{fontSize:11,color:"var(--gold)",fontFamily:"var(--mono)",fontWeight:700,letterSpacing:".18em",textTransform:"uppercase",marginBottom:10}}>📉 Edge-Erosion Funnel <span style={{color:"var(--text5)",fontWeight:400,letterSpacing:0,textTransform:"none",fontFamily:"var(--font)",fontSize:11}}>— hoe edge erodeert van Backtest → Paper → Real</span></div>
+            <div style={{background:"rgba(255,255,255,0.02)",border:"1px solid var(--border1)",borderRadius:10,padding:"16px 18px"}}>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:18,alignItems:"center"}}>
+                {/* Stats tabel */}
+                <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+                  <thead><tr>
+                    <th style={{textAlign:"left",fontSize:10,color:"var(--text5)",fontFamily:"var(--mono)",letterSpacing:".08em",textTransform:"uppercase",fontWeight:600,padding:"8px 4px",borderBottom:"1px solid var(--border1)"}}>Metric</th>
+                    {types.map(t=><th key={t.key} style={{textAlign:"right",fontSize:10,color:t.color,fontFamily:"var(--mono)",letterSpacing:".06em",fontWeight:600,padding:"8px 4px",borderBottom:"1px solid var(--border1)"}}>{t.label}</th>)}
+                  </tr></thead>
+                  <tbody>
+                    <tr><td style={{padding:"8px 4px",color:"var(--text2)",fontWeight:600}}>Trades</td>{types.map(t=><td key={t.key} style={{padding:"8px 4px",textAlign:"right",fontFamily:"var(--mono)",fontWeight:700,color:t.color}}>{t.val.n}</td>)}</tr>
+                    <tr><td style={{padding:"8px 4px",color:"var(--text2)",fontWeight:600}}>Win-rate</td>{types.map(t=><td key={t.key} style={{padding:"8px 4px",textAlign:"right",fontFamily:"var(--mono)",fontWeight:700,color:t.color}}>{t.val.wr.toFixed(0)}%</td>)}</tr>
+                    <tr><td style={{padding:"8px 4px",color:"var(--text2)",fontWeight:600}}>Gem. R</td>{types.map(t=><td key={t.key} style={{padding:"8px 4px",textAlign:"right",fontFamily:"var(--mono)",fontWeight:700,color:t.color}}>{t.val.avgR>=0?"+":""}{t.val.avgR.toFixed(2)}R</td>)}</tr>
+                  </tbody>
+                </table>
+                {/* Funnel SVG */}
+                <svg viewBox={`0 0 600 ${types.length*70+30}`} preserveAspectRatio="none" style={{width:"100%",height:types.length*70+30+"px"}}>
+                  {types.map((t,i)=>{
+                    const y=8+i*70;
+                    const barX=110,barMaxW=380;
+                    const barW=(Math.abs(t.val.avgR)/maxAbs)*barMaxW;
+                    const fill=t.val.avgR>=0?t.color:"#e05555";
+                    const barXStart=t.val.avgR>=0?barX:barX-barW;
+                    return(<g key={t.key}>
+                      <text x="100" y={y+22} fill="rgba(255,255,255,0.85)" fontSize="13" fontFamily="system-ui" fontWeight="600" textAnchor="end">{t.label}</text>
+                      <rect x={barXStart} y={y+8} width={barW.toFixed(1)} height="36" fill={fill} opacity="0.65" rx="4"/>
+                      <rect x={barXStart} y={y+8} width={barW.toFixed(1)} height="36" fill="none" stroke={fill} strokeWidth="1" rx="4"/>
+                      <text x={barXStart+barW+8} y={y+30} fill={fill} fontSize="14" fontFamily="ui-monospace,Menlo" fontWeight="700">{t.val.avgR>=0?"+":""}{t.val.avgR.toFixed(2)}R</text>
+                      {i>0&&(()=>{const prev=types[i-1];const delta=((t.val.avgR-prev.val.avgR)/Math.abs(prev.val.avgR||1))*100;const dc=delta>=0?"#2eaa6f":"#e05555";return<text x={barX-8} y={y+2} fill={dc} fontSize="10" fontFamily="ui-monospace,Menlo" fontWeight="600" textAnchor="end" letterSpacing="1">Δ {delta>=0?"+":""}{delta.toFixed(0)}%</text>;})()}
+                    </g>);
+                  })}
+                  <line x1="110" y1="8" x2="110" y2={types.length*70+8} stroke="rgba(255,255,255,0.15)" strokeWidth="0.7" strokeDasharray="2,3"/>
+                </svg>
+              </div>
+              {/* Insights */}
+              {allThree&&<div style={{display:"flex",flexDirection:"column",gap:8,marginTop:14,paddingTop:14,borderTop:"1px solid var(--border1)"}}>
+                {realBetter?
+                  <div style={{padding:"10px 12px",background:"rgba(212,168,83,0.05)",border:"1px solid rgba(212,168,83,0.25)",borderLeft:"3px solid var(--amber)",borderRadius:6,fontSize:12,color:"var(--text3)",lineHeight:1.5}}><strong style={{color:"var(--amber)"}}>⚡ Edge buiten regels:</strong> Real ({(ero.real.avgR>=0?"+":"")+ero.real.avgR.toFixed(2)}R) beter dan Backtest ({(ero.backtest.avgR>=0?"+":"")+ero.backtest.avgR.toFixed(2)}R). Je hebt edge die niet in mechanische regels zit — instinct, timing, "feel". Onderzoek wat dit triggert om expliciet te maken in je playbook.</div>
+                  :<>
+                  <div style={{padding:"10px 12px",background:"rgba(122,180,210,0.05)",border:"1px solid rgba(122,180,210,0.25)",borderLeft:"3px solid #7ab4d2",borderRadius:6,fontSize:12,color:"var(--text3)",lineHeight:1.5}}><strong style={{color:"#7ab4d2"}}>🔬→📝 Hindsight-bias leak:</strong> {hindsight.toFixed(0)}% — chart-replay liet sweet-spots zien die je in real-time niet zag.</div>
+                  <div style={{padding:"10px 12px",background:"rgba(46,170,111,0.05)",border:"1px solid rgba(46,170,111,0.25)",borderLeft:"3px solid var(--green)",borderRadius:6,fontSize:12,color:"var(--text3)",lineHeight:1.5}}><strong style={{color:"var(--green)"}}>📝→✅ Execution-stress leak:</strong> {execution.toFixed(0)}% — markt is hetzelfde, geld op het spel. Hier zit psychologisch werk.</div>
+                  <div style={{padding:"10px 12px",background:"rgba(212,168,83,0.05)",border:"1px solid rgba(212,168,83,0.25)",borderLeft:"3px solid var(--amber)",borderRadius:6,fontSize:12,color:"var(--text3)",lineHeight:1.5}}><strong style={{color:"var(--amber)"}}>🎯 Total edge-leakage:</strong> {total.toFixed(0)}% verloren tussen theorie en praktijk. Splits: <strong>{hindsight.toFixed(0)}%</strong> hindsight + <strong>{execution.toFixed(0)}%</strong> execution.</div>
+                </>}
+              </div>}
+              {!allThree&&<div style={{marginTop:12,padding:"8px 12px",background:"rgba(138,144,160,0.05)",border:"1px dashed var(--border3)",borderRadius:6,fontSize:11,color:"var(--text4)",fontStyle:"italic"}}>Voeg {!ero.backtest.n?"backtest":!ero.paper.n?"paper":"real"}-trades toe voor volledige edge-erosion analyse — minstens 1 trade per type voor automatische insights.</div>}
+            </div>
+          </div>);
+        })()}
 
         {/* SIMULATED TRADES — backtest analyse met subtype filter (missed/backtest/all) */}
         {(missedCount+backtestCount)>0&&<div>

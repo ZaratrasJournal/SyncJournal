@@ -6,6 +6,30 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.47] — 2026-04-28
+
+### Toegevoegd
+- **📉 Edge-Erosion Funnel in Playbook detail** — visualiseert hoe edge erodeert van Backtest → Paper → Real. Per-type tabel (Trades / Win-rate / Gem. R) naast SVG-bar-chart met Δ-percentages tussen rijen. Verschijnt automatisch zodra een playbook minstens 2 van de 3 types data heeft. Boven de bestaande Simulated Trades-sectie. Bron: research op Steenbarger + sport-coaching analogie ("clutch-factor" = paper vs real verschil). Zie `simtrades-analytics-demo.html` voor concept.
+
+  Auto-gegenereerde insights bij alle drie types data:
+  - 🔬→📝 **Hindsight-bias leak** (% verloren tussen Backtest en Paper) — chart-replay liet sweet-spots zien die in real-time niet zichtbaar waren
+  - 📝→✅ **Execution-stress leak** (% verloren tussen Paper en Real) — markt is hetzelfde, geld op het spel; psychologisch werk
+  - 🎯 **Total edge-leakage** met split tussen hindsight en execution
+  - ⚡ **Edge buiten regels** — zeldzame case waarin Real > Backtest, betekent dat je instinct/timing/feel een edge oplevert buiten je mechanische regels. Onderzoek wat dit triggert.
+
+  Niet beschikbaar bij <2 types data: hint-block dat aangeeft welk type ontbreekt voor volledige analyse.
+
+- **🏆 Trust-Score per Playbook** — visuele 5-stadia progressie-bar in elke PlaybookCard onder de stats:
+  1. **Idea** (grijs, 0-3 backtest)
+  2. **Theorized** (blauw, 4+ backtest)
+  3. **Validated** (paars, 1+ paper)
+  4. **Tradeable** (gold, 6+ real)
+  5. **Bewezen** (groen, 16+ real met expectancy >0.3R)
+
+  Onder de bar count-badges per type (🔬 backtest / 📝 paper / ✅ real) zodat je in één oogopslag prioriteert welke playbook nog werk vereist en welke "klaar" is. Visuele kleur per stadium. `classifyTrust(pb, allTrades)` helper.
+
+- **`playbookErosionStats(pb, allTrades)`** helper — splitst linked trades per simType (real/paper/backtest) en berekent per groep: n / WR / avgR. Voor real-trades via `_trR()` (pnl/riskUsd); voor sim-trades via theoretical R uit `hindsightExit`. Hergebruikbaar voor toekomstige Cross-Validation Tendencies en Stress-Leak Detector (Fase B in v12.48).
+
 ## [v12.46] — 2026-04-28
 
 ### Toegevoegd

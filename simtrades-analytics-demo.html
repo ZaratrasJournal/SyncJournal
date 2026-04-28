@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Sim-Trades Analytics — TradeJournal demo</title>
+<style>
+  :root{
+    --bg:#06070a; --bg2:#0c0e13; --bg3:#13161e; --bg4:#181c26;
+    --text:#e8eaf0; --text2:#b4b8c5; --text3:#8a90a0; --text4:#5a606e; --text5:#3e424d;
+    --gold:#C9A84C; --gold-soft:#D4B45C; --gold-dim:rgba(201,168,76,0.08); --gold-border:rgba(201,168,76,0.25);
+    --green:#2eaa6f; --red:#e05555; --amber:#d4a853; --blue:#8a9fc0; --purple:#9a8acc;
+    --real:#2eaa6f;  --paper:#9a8acc;  --backtest:#7ab4d2;  --missed:#b48cc8;
+    --border1:rgba(255,255,255,0.05); --border2:rgba(255,255,255,0.08); --border3:rgba(255,255,255,0.12);
+    --glass:rgba(20,22,30,0.55);
+    --mono:'SF Mono','Menlo','Consolas','Monaco',monospace;
+    --font:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:var(--font);background:linear-gradient(180deg,#06070a 0%,#0c0e13 100%);color:var(--text);min-height:100vh;padding:32px 24px;line-height:1.5}
+  .wrap{max-width:1320px;margin:0 auto}
+  .head{margin-bottom:32px}
+  .crumb{font-size:11px;color:var(--gold);letter-spacing:.2em;font-family:var(--mono);font-weight:700;text-transform:uppercase;margin-bottom:8px}
+  h1{font-size:28px;letter-spacing:-.02em;font-weight:800;margin-bottom:6px}
+  .sub{font-size:13px;color:var(--text4);max-width:880px;line-height:1.6}
+  .sub strong{color:var(--text2)}
+
+  /* Section */
+  .section{margin-bottom:36px}
+  .section-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:10px}
+  .section-title{display:flex;align-items:center;gap:10px}
+  .section-title h2{font-size:18px;font-weight:700;letter-spacing:-.005em}
+  .section-num{display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;background:var(--gold-dim);border:1px solid var(--gold-border);color:var(--gold);font-family:var(--mono);font-weight:700;font-size:13px}
+  .section-tag{font-size:10px;color:var(--gold);font-family:var(--mono);font-weight:700;letter-spacing:.18em;text-transform:uppercase;background:var(--gold-dim);border:1px solid var(--gold-border);padding:3px 9px;border-radius:4px}
+  .section-desc{font-size:12.5px;color:var(--text4);line-height:1.55;margin-bottom:16px;max-width:780px}
+  .section-desc strong{color:var(--text2)}
+
+  /* Card base */
+  .card{background:var(--glass);border:1px solid var(--border2);border-radius:12px;padding:20px 22px}
+  .card-title-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:10px}
+  .card-title{font-size:13px;color:var(--gold);font-family:var(--mono);font-weight:700;letter-spacing:.15em;text-transform:uppercase}
+
+  /* Pills */
+  .pill{padding:6px 14px;font-size:11px;font-family:var(--mono);font-weight:600;letter-spacing:.06em;border-radius:6px;border:1px solid var(--border3);background:transparent;color:var(--text4);cursor:pointer;transition:all .12s}
+  .pill:hover{color:var(--text2);border-color:var(--text5)}
+  .pill.active{background:var(--gold-dim);border-color:var(--gold-border);color:var(--gold)}
+
+  /* SECTION 1: EDGE-EROSION FUNNEL */
+  .funnel-grid{display:grid;grid-template-columns:1.2fr 2fr;gap:18px}
+  @media(max-width:900px){.funnel-grid{grid-template-columns:1fr}}
+  .stats-table{width:100%;border-collapse:collapse}
+  .stats-table th{font-size:10px;color:var(--text5);font-family:var(--mono);text-transform:uppercase;letter-spacing:.08em;font-weight:600;padding:10px 0;text-align:right;border-bottom:1px solid var(--border1)}
+  .stats-table th.lbl{text-align:left;color:var(--text4)}
+  .stats-table td{padding:10px 8px;text-align:right;font-family:var(--mono);font-weight:700;font-size:14px}
+  .stats-table td.lbl{text-align:left;font-family:var(--font);font-weight:600;color:var(--text2);font-size:12.5px}
+  .col-real{color:var(--real)}
+  .col-paper{color:var(--paper)}
+  .col-backtest{color:var(--backtest)}
+  .col-missed{color:var(--missed)}
+  .col-icon{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:6px;vertical-align:middle}
+
+  .funnel-svg{height:240px;width:100%}
+  .funnel-bar{transition:width .4s ease}
+
+  .insights{display:flex;flex-direction:column;gap:10px;margin-top:16px}
+  .insight{padding:10px 14px;border-radius:8px;border-left:3px solid;font-size:12.5px;line-height:1.5;color:var(--text3);display:flex;align-items:center;gap:10px}
+  .insight strong{color:var(--text)}
+  .insight .label{font-family:var(--mono);font-weight:700;font-size:10px;letter-spacing:.08em;text-transform:uppercase;padding:3px 7px;border-radius:3px;flex-shrink:0}
+  .insight.hindsight{background:rgba(122,180,210,0.05);border-color:var(--backtest)}
+  .insight.hindsight .label{background:rgba(122,180,210,0.15);color:var(--backtest)}
+  .insight.execution{background:rgba(46,170,111,0.05);border-color:var(--real)}
+  .insight.execution .label{background:rgba(46,170,111,0.15);color:var(--real)}
+  .insight.unique{background:rgba(212,168,83,0.05);border-color:var(--amber)}
+  .insight.unique .label{background:rgba(212,168,83,0.15);color:var(--amber)}
+
+  /* SECTION 2: CROSS-VALIDATION TENDENCIES */
+  .tendency-table{width:100%;border-collapse:collapse;font-size:12.5px}
+  .tendency-table th{padding:10px 12px;text-align:left;font-size:10px;color:var(--text5);font-family:var(--mono);text-transform:uppercase;letter-spacing:.08em;font-weight:600;border-bottom:1px solid var(--border2)}
+  .tendency-table td{padding:12px;border-bottom:1px solid var(--border1)}
+  .tendency-table td.center{text-align:center}
+  .tendency-table tr:hover td{background:rgba(255,255,255,0.015)}
+  .check{font-size:14px}
+  .check.yes{color:var(--green)}
+  .check.no{color:var(--text5);opacity:0.5}
+  .badge{font-size:10px;font-family:var(--mono);font-weight:700;letter-spacing:.08em;padding:3px 9px;border-radius:4px;text-transform:uppercase;white-space:nowrap}
+  .badge-validated{background:rgba(46,170,111,0.12);color:var(--green);border:1px solid rgba(46,170,111,0.30)}
+  .badge-noise{background:rgba(212,168,83,0.12);color:var(--amber);border:1px solid rgba(212,168,83,0.30)}
+  .badge-overfit{background:rgba(154,138,204,0.12);color:var(--purple);border:1px solid rgba(154,138,204,0.30)}
+
+  /* SECTION 3: STRESS-LEAK */
+  .stress-grid{display:grid;grid-template-columns:1.3fr 1fr;gap:20px}
+  @media(max-width:900px){.stress-grid{grid-template-columns:1fr}}
+  .thermo{display:flex;flex-direction:column;gap:14px}
+  .thermo-row{display:flex;align-items:center;gap:14px}
+  .thermo-label{flex-shrink:0;width:130px;display:flex;flex-direction:column;gap:3px}
+  .thermo-label-name{font-size:12px;color:var(--text2);font-weight:600}
+  .thermo-label-sub{font-size:10px;color:var(--text5);font-family:var(--mono);letter-spacing:.06em;text-transform:uppercase}
+  .thermo-bar-wrap{flex:1;height:32px;background:rgba(255,255,255,0.03);border:1px solid var(--border1);border-radius:6px;position:relative;overflow:hidden}
+  .thermo-bar{height:100%;border-radius:5px;display:flex;align-items:center;padding:0 12px;font-family:var(--mono);font-weight:700;font-size:13px;color:#fff;transition:width .5s ease}
+  .thermo-bar.real{background:linear-gradient(90deg,rgba(46,170,111,0.4),rgba(46,170,111,0.7))}
+  .thermo-bar.paper{background:linear-gradient(90deg,rgba(154,138,204,0.4),rgba(154,138,204,0.7))}
+  .leak-card{background:rgba(224,85,85,0.05);border:1px solid rgba(224,85,85,0.20);border-left:3px solid var(--red);border-radius:10px;padding:18px}
+  .leak-pct{font-family:var(--mono);font-weight:800;font-size:32px;color:var(--red);line-height:1}
+  .leak-label{font-size:10px;color:var(--text4);font-family:var(--mono);text-transform:uppercase;letter-spacing:.1em;margin-top:4px}
+  .leak-diag{font-size:12.5px;color:var(--text3);line-height:1.55;margin-top:14px}
+  .leak-diag strong{color:var(--text)}
+  .leak-diag em{color:var(--gold);font-style:normal;font-weight:600}
+
+  /* SECTION 4: TRUST-SCORE */
+  .trust-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:900px){.trust-grid{grid-template-columns:1fr}}
+  .trust-card{background:var(--glass);border:1px solid var(--border2);border-radius:10px;padding:16px 18px}
+  .trust-name{font-size:14px;font-weight:700;color:var(--text);margin-bottom:4px}
+  .trust-stage{font-size:10px;color:var(--text5);font-family:var(--mono);letter-spacing:.08em;text-transform:uppercase;margin-bottom:14px}
+  .trust-stage strong{color:var(--gold)}
+  .trust-track{height:8px;background:rgba(255,255,255,0.04);border:1px solid var(--border1);border-radius:4px;overflow:hidden;margin-bottom:10px;position:relative}
+  .trust-fill{height:100%;border-radius:3px;transition:width .5s ease}
+  .trust-fill.idea{background:var(--text5);width:18%}
+  .trust-fill.theorized{background:var(--backtest);width:38%}
+  .trust-fill.validated{background:var(--paper);width:58%}
+  .trust-fill.tradeable{background:var(--gold);width:78%}
+  .trust-fill.proven{background:var(--green);width:100%}
+  .trust-stages-row{display:flex;justify-content:space-between;font-size:9px;color:var(--text5);font-family:var(--mono);letter-spacing:.04em;text-transform:uppercase}
+  .trust-stages-row span.active{color:var(--gold);font-weight:700}
+  .trust-counts{display:flex;justify-content:space-between;margin-top:14px;padding-top:14px;border-top:1px solid var(--border1);font-size:11px;font-family:var(--mono);color:var(--text4)}
+  .trust-count{display:flex;align-items:center;gap:5px}
+  .trust-count strong{color:var(--text2);font-weight:700}
+
+  /* Top-level controls */
+  .controls{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:24px}
+  .controls span.lbl{font-size:10px;color:var(--text5);font-family:var(--mono);letter-spacing:.08em;text-transform:uppercase;margin-right:6px}
+
+  /* Sub-tab style pills (for filter inside section 2) */
+  .filter-strip{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
+
+  /* Footer */
+  .footer{margin-top:48px;padding:24px 0;border-top:1px solid var(--border1);font-size:11px;color:var(--text5);text-align:center;line-height:1.7}
+  .footer strong{color:var(--text3)}
+
+  details.debug{margin-top:36px;padding:14px;background:rgba(255,255,255,0.02);border-radius:8px;border:1px solid var(--border1);font-size:11px;color:var(--text4)}
+  details.debug summary{cursor:pointer;font-family:var(--mono);font-weight:600;color:var(--text3);letter-spacing:.06em;text-transform:uppercase;font-size:10px}
+  details.debug pre{margin-top:10px;font-family:var(--mono);font-size:10px;color:var(--text4);overflow:auto;max-height:300px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="head">
+    <div class="crumb">🔬 Analytics · Sim-Trades Demo</div>
+    <h1>Real, Missed, Backtest, Paper — alle vier de bril-dragers</h1>
+    <p class="sub">Vier soorten trade-data, vier verschillende biases, vier verschillende vragen die ze beantwoorden. Default-views blijven <strong>real-only</strong>. Deze demo laat zien hoe de drie out-of-the-box framings — <strong>Edge-Erosion Funnel</strong>, <strong>Cross-Validation Tendencies</strong>, en <strong>Stress-Leak Detector</strong> — concreet werken zodra je naast real-trades ook backtest en paper logged.</p>
+  </div>
+
+  <!-- ─── SECTION 1: EDGE-EROSION FUNNEL ─────────────────────────── -->
+  <div class="section">
+    <div class="section-head">
+      <div class="section-title">
+        <span class="section-num">1</span>
+        <h2>📉 Edge-Erosion Funnel</h2>
+      </div>
+      <span class="section-tag">In Playbook detail</span>
+    </div>
+    <p class="section-desc">Per playbook visualiseert hoe edge erodeert van Backtest → Paper → Real. <strong>Backtest → Paper</strong> = hindsight-bias verdwijnt. <strong>Paper → Real</strong> = financiële stress komt erbij. <strong>Real &gt; Backtest</strong> (zeldzaam) = je hebt edge buiten mechanische regels.</p>
+
+    <div class="card">
+      <div class="card-title-row">
+        <div class="card-title">📊 Playbook: <span id="pbName" style="color:var(--text);font-family:var(--font);text-transform:none;letter-spacing:0">SFP London-Open Reclaim</span></div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button class="pill active" data-pb="0">SFP London</button>
+          <button class="pill" data-pb="1">MSB NY-AM</button>
+          <button class="pill" data-pb="2">Liquidity Sweep</button>
+          <button class="pill" data-pb="3">Range Retest BTC</button>
+        </div>
+      </div>
+
+      <div class="funnel-grid">
+        <!-- 3-koloms vergelijkingstabel -->
+        <div>
+          <table class="stats-table">
+            <thead>
+              <tr>
+                <th class="lbl">Metric</th>
+                <th><span class="col-icon" style="background:var(--backtest)"></span>🔬 Backtest</th>
+                <th><span class="col-icon" style="background:var(--paper)"></span>📝 Paper</th>
+                <th><span class="col-icon" style="background:var(--real)"></span>✅ Real</th>
+              </tr>
+            </thead>
+            <tbody id="statsBody">
+              <!-- gevuld door JS -->
+            </tbody>
+          </table>
+        </div>
+
+        <!-- SVG Funnel chart -->
+        <div>
+          <svg class="funnel-svg" id="funnelChart" viewBox="0 0 600 280" preserveAspectRatio="none"></svg>
+        </div>
+      </div>
+
+      <!-- Insights -->
+      <div class="insights" id="insights"></div>
+    </div>
+  </div>
+
+  <!-- ─── SECTION 2: CROSS-VALIDATION TENDENCIES ────────────────── -->
+  <div class="section">
+    <div class="section-head">
+      <div class="section-title">
+        <span class="section-num">2</span>
+        <h2>🔀 Cross-Validation Tendencies</h2>
+      </div>
+      <span class="section-tag">In Tendencies-tab</span>
+    </div>
+    <p class="section-desc">Tendencies werken nu alleen op real trades. Met simtrades erbij kun je tendencies <strong>cross-valideren</strong>: een patroon dat in real én backtest verschijnt is een sterker signaal dan een patroon dat alleen in één dataset zit. Mogelijke ruis vs. mogelijke overfit worden zichtbaar.</p>
+
+    <div class="card">
+      <div class="filter-strip">
+        <span style="font-size:10px;color:var(--text5);font-family:var(--mono);letter-spacing:.08em;text-transform:uppercase">Filter:</span>
+        <button class="pill active">Alle (12)</button>
+        <button class="pill">🔀 Validated (5)</button>
+        <button class="pill">⚠ Noise risk (3)</button>
+        <button class="pill">⚠ Overfit risk (4)</button>
+      </div>
+
+      <table class="tendency-table">
+        <thead>
+          <tr>
+            <th>Tendency</th>
+            <th class="center">Real</th>
+            <th class="center">Backtest</th>
+            <th class="center">Paper</th>
+            <th class="center">Severity (n)</th>
+            <th>Cross-validation</th>
+          </tr>
+        </thead>
+        <tbody id="tendencyBody"></tbody>
+      </table>
+
+      <div class="insight unique" style="margin-top:16px">
+        <span class="label">Inzicht</span>
+        <div><strong>Validated</strong> tendencies (groen) vertrouw je meer. <strong>Overfit-risk</strong> tendencies (paars) verschijnen alleen in backtest — kunnen cherrypicked replays zijn. <strong>Noise-risk</strong> (amber) verschijnt alleen in real op klein sample — wacht op meer data voor je actie onderneemt.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── SECTION 3: STRESS-LEAK DETECTOR ──────────────────────── -->
+  <div class="section">
+    <div class="section-head">
+      <div class="section-title">
+        <span class="section-num">3</span>
+        <h2>💢 Stress-Leak Detector</h2>
+      </div>
+      <span class="section-tag">In Analytics</span>
+    </div>
+    <p class="section-desc">Coaches in atletiek meten <strong>training-vs-wedstrijd</strong> als clutch-factor. Trading-equivalent: vergelijk je rule-discipline in <strong>paper</strong> (geen druk) met je rule-discipline in <strong>real</strong> (financiële stress). Het verschil is geen edge-probleem — het is je <em>mentale bandbreedte onder geld-druk</em>. Een psychologische metric die nergens anders zichtbaar is.</p>
+
+    <div class="card">
+      <div class="stress-grid">
+        <div>
+          <div class="card-title" style="margin-bottom:18px">📏 Rule-discipline-rate</div>
+          <div class="thermo">
+            <div class="thermo-row">
+              <div class="thermo-label">
+                <div class="thermo-label-name">📝 Paper</div>
+                <div class="thermo-label-sub">geen druk</div>
+              </div>
+              <div class="thermo-bar-wrap">
+                <div class="thermo-bar paper" style="width:95%">95%</div>
+              </div>
+            </div>
+            <div class="thermo-row">
+              <div class="thermo-label">
+                <div class="thermo-label-name">✅ Real</div>
+                <div class="thermo-label-sub">geld op het spel</div>
+              </div>
+              <div class="thermo-bar-wrap">
+                <div class="thermo-bar real" style="width:71%">71%</div>
+              </div>
+            </div>
+          </div>
+
+          <div style="margin-top:24px;padding-top:18px;border-top:1px solid var(--border1)">
+            <div class="card-title" style="margin-bottom:14px">📊 WR per type</div>
+            <div class="thermo">
+              <div class="thermo-row">
+                <div class="thermo-label">
+                  <div class="thermo-label-name">📝 Paper-WR</div>
+                  <div class="thermo-label-sub">simulatie</div>
+                </div>
+                <div class="thermo-bar-wrap">
+                  <div class="thermo-bar paper" style="width:64%">64%</div>
+                </div>
+              </div>
+              <div class="thermo-row">
+                <div class="thermo-label">
+                  <div class="thermo-label-name">✅ Real-WR</div>
+                  <div class="thermo-label-sub">echt</div>
+                </div>
+                <div class="thermo-bar-wrap">
+                  <div class="thermo-bar real" style="width:54%">54%</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="leak-card">
+          <div class="leak-label">Stress-Leak</div>
+          <div class="leak-pct">−24<span style="font-size:18px;color:var(--text4);margin-left:4px">pp</span></div>
+          <div style="height:10px"></div>
+          <div class="leak-label">Diagnose</div>
+          <div class="leak-diag">
+            <strong>Mentale bandbreedte-probleem</strong>, geen edge-probleem. Je strategie werkt — je houdt 'm in paper-mode 95% van de tijd vol. Maar onder financiële druk val je terug naar 71%.
+            <br/><br/>
+            <em>Concrete actie</em>: halveer je positie-size voor 4 weken. Track of paper-discipline en real-discipline convergeren. Als ja → graduated re-build. Zo niet: dieper psychologisch werk.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── SECTION 4: TRUST-SCORE PER PLAYBOOK ───────────────────── -->
+  <div class="section">
+    <div class="section-head">
+      <div class="section-title">
+        <span class="section-num">4</span>
+        <h2>🏆 Trust-Score per Playbook</h2>
+      </div>
+      <span class="section-tag">In Playbook lijst</span>
+    </div>
+    <p class="section-desc">Elke playbook klimt door 5 stadia: <strong>Idea</strong> (0-3 backtest) → <strong>Theorized</strong> (4+ backtest) → <strong>Validated</strong> (paper-trades met edge) → <strong>Tradeable</strong> (real-trades) → <strong>Bewezen</strong> (16+ real met expectancy &gt; +0.3R). Visuele bar in de Playbook-lijst — direct prioriteit-overzicht.</p>
+
+    <div class="trust-grid" id="trustGrid"></div>
+  </div>
+
+  <details class="debug">
+    <summary>▸ Debug: ruwe mock-data per playbook</summary>
+    <pre id="debugOut"></pre>
+  </details>
+
+  <div class="footer">
+    <strong>Sim-Trades Analytics Demo</strong> · TradeJournal v12.46+ concept<br/>
+    Edge-Erosion Funnel · Cross-Validation · Stress-Leak · Trust-Score · samen één coherente Sim-Trades laag.
+  </div>
+</div>
+
+<script>
+'use strict';
+
+// ============================================================================
+// MOCK DATA — 4 playbooks met data in real / paper / backtest
+// ============================================================================
+const PLAYBOOKS = [
+  {
+    name: "SFP London-Open Reclaim",
+    backtest: { n: 25, wr: 72, avgR: 1.4 },
+    paper:    { n: 12, wr: 65, avgR: 1.1 },
+    real:     { n:  8, wr: 58, avgR: 0.9 },
+    // Trust-Score-data
+    counts: { backtest: 25, paper: 12, real: 8 },
+    realExpectancy: 0.4,
+  },
+  {
+    name: "MSB NY-AM Continuation",
+    backtest: { n: 18, wr: 78, avgR: 1.8 },
+    paper:    { n:  9, wr: 67, avgR: 1.4 },
+    real:     { n:  4, wr: 50, avgR: 0.7 },
+    counts: { backtest: 18, paper: 9, real: 4 },
+    realExpectancy: 0.2,
+  },
+  {
+    name: "Liquidity Sweep + Reclaim",
+    backtest: { n: 30, wr: 67, avgR: 1.6 },
+    paper:    { n: 18, wr: 65, avgR: 1.5 },
+    real:     { n: 22, wr: 64, avgR: 1.4 },
+    counts: { backtest: 30, paper: 18, real: 22 },
+    realExpectancy: 0.7,
+  },
+  {
+    name: "Range Retest BTC (instinct)",
+    backtest: { n: 12, wr: 50, avgR: 0.6 },
+    paper:    { n:  8, wr: 55, avgR: 0.8 },
+    real:     { n: 14, wr: 64, avgR: 1.2 },
+    counts: { backtest: 12, paper: 8, real: 14 },
+    realExpectancy: 0.5,
+  },
+];
+
+const TENDENCIES = [
+  { name:"SFP in London-AM",                real:true,  backtest:true,  paper:true,  n:18, status:"validated" },
+  { name:"FOMO in US-Late session",         real:true,  backtest:false, paper:false, n:6,  status:"noise" },
+  { name:"Range retest BTC/USDT",           real:false, backtest:true,  paper:false, n:14, status:"overfit" },
+  { name:"MSB + 4H + Geduldig",             real:true,  backtest:true,  paper:false, n:11, status:"validated" },
+  { name:"Liquidity Sweep + Volume spike",  real:true,  backtest:true,  paper:true,  n:24, status:"validated" },
+  { name:"Boos + Gefrustreerd combo",       real:true,  backtest:false, paper:false, n:8,  status:"noise" },
+  { name:"Asian Range Breakout in US-PM",   real:false, backtest:true,  paper:false, n:9,  status:"overfit" },
+  { name:"FVG tap + Bullish retest",        real:true,  backtest:true,  paper:false, n:13, status:"validated" },
+  { name:"BOS in Weekend",                  real:false, backtest:true,  paper:false, n:7,  status:"overfit" },
+  { name:"SL te krap in NY-AM",             real:true,  backtest:false, paper:false, n:5,  status:"noise" },
+  { name:"Reclaim na sweep + funding-flip", real:true,  backtest:true,  paper:false, n:16, status:"validated" },
+  { name:"Tegen-trend short in London-PM",  real:false, backtest:true,  paper:false, n:6,  status:"overfit" },
+];
+
+// ============================================================================
+// SECTION 1: EDGE-EROSION FUNNEL — render
+// ============================================================================
+let currentPb = 0;
+
+function renderFunnel(){
+  const pb = PLAYBOOKS[currentPb];
+  document.getElementById("pbName").textContent = pb.name;
+
+  // Fill stats table
+  const rows = [
+    ["Trades (n)",       pb.backtest.n,                            pb.paper.n,                            pb.real.n,                            ""],
+    ["Win-rate",         pb.backtest.wr+"%",                       pb.paper.wr+"%",                       pb.real.wr+"%",                       "%"],
+    ["Gem. R",           (pb.backtest.avgR>=0?"+":"")+pb.backtest.avgR.toFixed(2)+"R",
+                          (pb.paper.avgR>=0?"+":"")+pb.paper.avgR.toFixed(2)+"R",
+                          (pb.real.avgR>=0?"+":"")+pb.real.avgR.toFixed(2)+"R", "R"],
+  ];
+  document.getElementById("statsBody").innerHTML = rows.map(r=>`
+    <tr>
+      <td class="lbl">${r[0]}</td>
+      <td class="col-backtest">${r[1]}</td>
+      <td class="col-paper">${r[2]}</td>
+      <td class="col-real">${r[3]}</td>
+    </tr>
+  `).join("");
+
+  // Funnel SVG — three horizontal bars, width proportional to avgR
+  const svg = document.getElementById("funnelChart");
+  const types = [
+    { type:"🔬 Backtest", val:pb.backtest.avgR, color:"var(--backtest)", color2:"#7ab4d2" },
+    { type:"📝 Paper",    val:pb.paper.avgR,    color:"var(--paper)",    color2:"#9a8acc" },
+    { type:"✅ Real",     val:pb.real.avgR,     color:"var(--real)",     color2:"#2eaa6f" },
+  ];
+  const maxR = Math.max(...types.map(t=>Math.abs(t.val)), 1);
+  const W = 600, H = 280, padTop = 18, rowH = 70, barX = 110, barMaxW = 380;
+  let svgHTML = "";
+  types.forEach((t,i)=>{
+    const y = padTop + i*rowH;
+    const barW = (Math.abs(t.val)/maxR) * barMaxW;
+    const barColor = t.val>=0 ? t.color2 : "#e05555";
+    const barX2 = t.val>=0 ? barX : barX-barW;
+    svgHTML += `
+      <text x="100" y="${y+22}" fill="rgba(255,255,255,0.85)" font-size="13" font-family="system-ui" font-weight="600" text-anchor="end">${t.type}</text>
+      <rect x="${barX2}" y="${y+8}" width="${barW.toFixed(1)}" height="36" fill="${barColor}" opacity="0.65" rx="4"/>
+      <rect x="${barX2}" y="${y+8}" width="${barW.toFixed(1)}" height="36" fill="none" stroke="${barColor}" stroke-width="1" rx="4"/>
+      <text x="${barX2+barW+8}" y="${y+30}" fill="${barColor}" font-size="14" font-family="ui-monospace,Menlo" font-weight="700">${(t.val>=0?"+":"")}${t.val.toFixed(2)}R</text>
+    `;
+    // Delta annotation between rows
+    if(i>0){
+      const prev = types[i-1];
+      const delta = ((t.val-prev.val)/Math.abs(prev.val||1))*100;
+      const deltaColor = delta>=0?"#2eaa6f":"#e05555";
+      svgHTML += `<text x="${barX-8}" y="${y+2}" fill="${deltaColor}" font-size="10" font-family="ui-monospace,Menlo" font-weight="600" text-anchor="end" letter-spacing="1">Δ ${delta>=0?"+":""}${delta.toFixed(0)}%</text>`;
+    }
+  });
+  // Baseline at 0
+  svgHTML += `<line x1="${barX}" y1="${padTop}" x2="${barX}" y2="${H-30}" stroke="rgba(255,255,255,0.15)" stroke-width="0.7" stroke-dasharray="2,3"/>`;
+  svgHTML += `<text x="${barX}" y="${H-12}" fill="rgba(138,144,160,0.7)" font-size="10" font-family="ui-monospace,Menlo" text-anchor="middle">0R</text>`;
+  svg.innerHTML = svgHTML;
+
+  // Insights
+  const hindsight = ((pb.backtest.avgR - pb.paper.avgR) / Math.abs(pb.backtest.avgR||1)) * 100;
+  const execution = ((pb.paper.avgR - pb.real.avgR) / Math.abs(pb.paper.avgR||1)) * 100;
+  const total = ((pb.backtest.avgR - pb.real.avgR) / Math.abs(pb.backtest.avgR||1)) * 100;
+  const realBetter = pb.real.avgR > pb.backtest.avgR;
+
+  let insightsHTML = "";
+  if(realBetter){
+    insightsHTML += `
+      <div class="insight unique">
+        <span class="label">⚡ Edge buiten regels</span>
+        <div><strong>Real (+${pb.real.avgR.toFixed(2)}R) presteert beter dan Backtest (+${pb.backtest.avgR.toFixed(2)}R)</strong> — je hebt een edge die niet in de mechanische regels zit. Instinct, timing, "feel". Onderzoek wat dit triggert; mogelijk een impliciete confluence die je in je playbook moet expliciteren.</div>
+      </div>
+    `;
+  } else {
+    insightsHTML += `
+      <div class="insight hindsight">
+        <span class="label">🔬 → 📝 Hindsight-bias leak</span>
+        <div>Backtest naar Paper: <strong>${hindsight.toFixed(0)}% leak</strong>. Dit is het deel van je "edge" dat alleen op papier bestaat — chart-replay laat je sweet-spots zien die je in real-time niet ziet.</div>
+      </div>
+      <div class="insight execution">
+        <span class="label">📝 → ✅ Execution-stress leak</span>
+        <div>Paper naar Real: <strong>${execution.toFixed(0)}% leak</strong>. Dit is je clutch-factor — de markt is hetzelfde, maar nu staat er geld op het spel. Hier zit psychologisch werk.</div>
+      </div>
+      <div class="insight unique">
+        <span class="label">🎯 Total edge-leakage</span>
+        <div><strong>${total.toFixed(0)}%</strong> van je theoretische backtest-edge komt niet aan in real. Splits: <strong>${hindsight.toFixed(0)}%</strong> verloren door hindsight-bias, <strong>${execution.toFixed(0)}%</strong> verloren door execution-stress.</div>
+      </div>
+    `;
+  }
+  document.getElementById("insights").innerHTML = insightsHTML;
+}
+
+// Pill listeners
+document.querySelectorAll(".pill[data-pb]").forEach(btn=>{
+  btn.addEventListener("click",()=>{
+    document.querySelectorAll(".pill[data-pb]").forEach(b=>b.classList.remove("active"));
+    btn.classList.add("active");
+    currentPb = parseInt(btn.dataset.pb,10);
+    renderFunnel();
+  });
+});
+
+renderFunnel();
+
+// ============================================================================
+// SECTION 2: TENDENCIES TABLE
+// ============================================================================
+function renderTendencies(){
+  const body = document.getElementById("tendencyBody");
+  body.innerHTML = TENDENCIES.map(t=>{
+    const sev = t.n >= 12 ? "var(--red)" : t.n >= 8 ? "var(--amber)" : "var(--blue)";
+    let badge, badgeText;
+    if(t.status === "validated"){ badge = "badge-validated"; badgeText = "🔀 Validated"; }
+    else if(t.status === "overfit"){ badge = "badge-overfit"; badgeText = "⚠ Overfit risk"; }
+    else { badge = "badge-noise"; badgeText = "⚠ Noise risk"; }
+    return `<tr>
+      <td><strong style="color:var(--text2)">${t.name}</strong></td>
+      <td class="center"><span class="check ${t.real?"yes":"no"}">${t.real?"✓":"−"}</span></td>
+      <td class="center"><span class="check ${t.backtest?"yes":"no"}">${t.backtest?"✓":"−"}</span></td>
+      <td class="center"><span class="check ${t.paper?"yes":"no"}">${t.paper?"✓":"−"}</span></td>
+      <td class="center"><span style="font-family:var(--mono);color:${sev};font-weight:600">${t.n}</span></td>
+      <td><span class="badge ${badge}">${badgeText}</span></td>
+    </tr>`;
+  }).join("");
+}
+renderTendencies();
+
+// ============================================================================
+// SECTION 4: TRUST-SCORE
+// ============================================================================
+function classifyTrust(pb){
+  const c = pb.counts;
+  if(c.real >= 16 && pb.realExpectancy > 0.3)
+    return { stage:"Bewezen", fillCls:"proven", active:4, label:"BEWEZEN" };
+  if(c.real >= 6)
+    return { stage:"Tradeable", fillCls:"tradeable", active:3, label:"TRADEABLE" };
+  if(c.paper >= 1)
+    return { stage:"Validated", fillCls:"validated", active:2, label:"VALIDATED" };
+  if(c.backtest >= 4)
+    return { stage:"Theorized", fillCls:"theorized", active:1, label:"THEORIZED" };
+  return { stage:"Idea", fillCls:"idea", active:0, label:"IDEA" };
+}
+
+function renderTrust(){
+  const grid = document.getElementById("trustGrid");
+  const stages = ["Idea","Theorized","Validated","Tradeable","Bewezen"];
+  grid.innerHTML = PLAYBOOKS.map(pb=>{
+    const t = classifyTrust(pb);
+    return `<div class="trust-card">
+      <div class="trust-name">${pb.name}</div>
+      <div class="trust-stage">Status: <strong>${t.label}</strong></div>
+      <div class="trust-track"><div class="trust-fill ${t.fillCls}"></div></div>
+      <div class="trust-stages-row">
+        ${stages.map((s,i)=>`<span class="${i===t.active?"active":""}">${s}</span>`).join("")}
+      </div>
+      <div class="trust-counts">
+        <span class="trust-count"><span style="color:var(--backtest)">🔬</span> <strong>${pb.counts.backtest}</strong> backtest</span>
+        <span class="trust-count"><span style="color:var(--paper)">📝</span> <strong>${pb.counts.paper}</strong> paper</span>
+        <span class="trust-count"><span style="color:var(--real)">✅</span> <strong>${pb.counts.real}</strong> real <span style="color:var(--text5)">(exp ${pb.realExpectancy>=0?"+":""}${pb.realExpectancy.toFixed(1)}R)</span></span>
+      </div>
+    </div>`;
+  }).join("");
+}
+renderTrust();
+
+// ============================================================================
+// DEBUG
+// ============================================================================
+document.getElementById("debugOut").textContent = JSON.stringify({
+  playbooks_count: PLAYBOOKS.length,
+  tendencies_count: TENDENCIES.length,
+  validated_tendencies: TENDENCIES.filter(t=>t.status==="validated").length,
+  overfit_tendencies: TENDENCIES.filter(t=>t.status==="overfit").length,
+  noise_tendencies: TENDENCIES.filter(t=>t.status==="noise").length,
+  trust_distribution: PLAYBOOKS.map(pb=>({name:pb.name, stage:classifyTrust(pb).label})),
+}, null, 2);
+</script>
+</body>
+</html>
