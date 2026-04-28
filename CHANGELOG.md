@@ -6,6 +6,26 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.41] — 2026-04-28
+
+### Gewijzigd
+- **PlaybookForm — geen vrije tag-input meer** (Denny gemeld). De setup-tags / confirmaties / timeframes velden waren in v12.40 nog chip-inputs met vrije tekst, wat tag-wirwar in de hand werkte ("SFP" / "sfp" / "S F P" / "swing-trade" naast elkaar zou kunnen ontstaan, en dat ondermijnt Tendencies + Compliance × PnL detectie). Discipline-principe: één tag-bron.
+
+  Nu alle drie als **multi-select pill-grids** uit `tagConfig`:
+  - Setup-tags ← `tagConfig.setupTags`
+  - Confirmaties ← `tagConfig.confirmationTags`
+  - Timeframes ← `tagConfig.timeframeTags`
+
+  Klik op pill = selecteren · klik nogmaals = deselecteren. Dezelfde lijst die TradeForm gebruikt — playbook en logged trade kijken naar dezelfde naming.
+
+  **Beheer tags →** deeplink onder elke pill-grid springt direct naar Instellingen → Tags voor wie een tag mist. Lege tag-lijst toont een hint met dezelfde deeplink.
+
+  **Orphan-tag detectie**: als een bestaande playbook tags bevat die ondertussen uit `tagConfig` zijn verwijderd, verschijnen die in een aparte amber-blok onder de pill-grid met *"⚠ Niet meer in tag-lijst — opschonen?"*. Klik × om weg te halen. Geen stilzwijgende data-loss.
+
+  **Pairs blijven flexibel** — ticker-symbols zijn geen tags (BTC/USDT is overal hetzelfde), dus chip-input + snelkoppelingen blijven zoals ze waren.
+
+  Geen schema-migratie. Bestaande playbooks blijven werken; tags die in de pill-grid staan worden gewoon getoond, andere komen onder ⚠.
+
 ## [v12.40] — 2026-04-28
 
 ### Gewijzigd
