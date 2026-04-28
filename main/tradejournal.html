@@ -748,17 +748,26 @@ const fmtNL=(iso)=>{if(!iso||typeof iso!=="string")return iso||"";const p=iso.sp
 // 5 sessions, Amsterdam-tijd (DST-aware via Intl.DateTimeFormat).
 // Asia    01:00–09:00 · London  09:00–15:30 · New York 15:30–22:00
 // US Late 22:00–01:00 (wraps midnight) · Weekend = Sat/Sun whole day.
+// 8-bucket sessions in Amsterdam time (DST-aware). Replaces the previous
+// 5-bucket model + 7-bucket fine model — one source of truth.
+// Asia:    01:00–05:00 AM · 05:00–09:00 PM
+// London:  09:00–11:30 AM · 11:30–15:30 PM
+// US:      15:30–19:00 AM · 19:00–22:00 PM · 22:00–01:00 Late
+// Weekend: Sat/Sun
 const SESSION_COLORS={
-  "Asia":{bg:"rgba(201,168,76,0.08)",border:"rgba(201,168,76,0.25)",text:"#C9A84C"},
-  "London":{bg:"rgba(138,159,192,0.08)",border:"rgba(138,159,192,0.22)",text:"#8a9fc0"},
-  "New York":{bg:"rgba(154,138,204,0.08)",border:"rgba(154,138,204,0.22)",text:"#9a8acc"},
+  "Asia AM":{bg:"rgba(212,180,92,0.08)",border:"rgba(212,180,92,0.25)",text:"#D4B45C"},
+  "Asia PM":{bg:"rgba(184,154,64,0.08)",border:"rgba(184,154,64,0.25)",text:"#B89A40"},
+  "London AM":{bg:"rgba(158,181,211,0.08)",border:"rgba(158,181,211,0.22)",text:"#9eb5d3"},
+  "London PM":{bg:"rgba(120,145,176,0.08)",border:"rgba(120,145,176,0.22)",text:"#7891b0"},
+  "US AM":{bg:"rgba(173,157,219,0.08)",border:"rgba(173,157,219,0.22)",text:"#ad9ddb"},
+  "US PM":{bg:"rgba(135,117,184,0.08)",border:"rgba(135,117,184,0.22)",text:"#8775b8"},
   "US Late":{bg:"rgba(122,138,152,0.08)",border:"rgba(122,138,152,0.22)",text:"#7a8a98"},
   "Weekend":{bg:"rgba(176,112,144,0.08)",border:"rgba(176,112,144,0.22)",text:"#b07090"},
 };
 const CHART_COLORS={win:"#2eaa6f",loss:"#e05555",long:"#2eaa6f",short:"#e05555",open:"#C9A84C",asia:"#C9A84C",london:"#8a9fc0",ny:"#9a8acc",uslate:"#7a8a98",weekend:"#b07090",neutral:"#6a7a8a"};
-const ALL_SESSIONS=["Asia","London","New York","US Late","Weekend"];
+const ALL_SESSIONS=["Asia AM","Asia PM","London AM","London PM","US AM","US PM","US Late","Weekend"];
 
-// Core: classify any Date object into one of the 5 sessions, in Amsterdam time.
+// Core: classify any Date object into one of the 8 sessions, in Amsterdam time.
 function getSessionAt(dt){
   const parts=new Intl.DateTimeFormat("en-GB",{timeZone:"Europe/Amsterdam",hour:"numeric",minute:"numeric",weekday:"short",hour12:false}).formatToParts(dt);
   const h=parseInt(parts.find(p=>p.type==="hour")?.value||"0");
@@ -766,41 +775,19 @@ function getSessionAt(dt){
   const hm=h*60+m;
   const wd=parts.find(p=>p.type==="weekday")?.value?.toLowerCase()||"";
   if(wd==="sat"||wd==="sun")return"Weekend";
-  if(hm>=60&&hm<540)return"Asia";        // 01:00–09:00
-  if(hm>=540&&hm<930)return"London";     // 09:00–15:30
-  if(hm>=930&&hm<1320)return"New York";  // 15:30–22:00
-  return"US Late";                        // 22:00–01:00 (wraps midnight)
+  if(hm>=60&&hm<300)return"Asia AM";        // 01:00–05:00
+  if(hm>=300&&hm<540)return"Asia PM";       // 05:00–09:00
+  if(hm>=540&&hm<690)return"London AM";     // 09:00–11:30
+  if(hm>=690&&hm<930)return"London PM";     // 11:30–15:30
+  if(hm>=930&&hm<1140)return"US AM";        // 15:30–19:00
+  if(hm>=1140&&hm<1320)return"US PM";       // 19:00–22:00
+  return"US Late";                           // 22:00–01:00 (wraps midnight)
 }
 function getSessionTags(date,time){
   if(!date||!time)return[];
   const dt=new Date(date+"T"+(time.length===5?time+":00":time));
   if(isNaN(dt.getTime()))return[];
   return[getSessionAt(dt)];
-}
-
-// Fine-grained 7-bucket sessions — splits London + New York in AM/PM halves
-// to surface "edge disappears after 11:30" style patterns that the coarse
-// 5-bucket version smooths over. Used by the Setup×Sessie tendency detector.
-const ALL_FINE_SESSIONS=["Asia","London-AM","London-PM","NY-AM","NY-PM","US Late","Weekend"];
-function getFineSessionAt(dt){
-  const parts=new Intl.DateTimeFormat("en-GB",{timeZone:"Europe/Amsterdam",hour:"numeric",minute:"numeric",weekday:"short",hour12:false}).formatToParts(dt);
-  const h=parseInt(parts.find(p=>p.type==="hour")?.value||"0");
-  const m=parseInt(parts.find(p=>p.type==="minute")?.value||"0");
-  const hm=h*60+m;
-  const wd=parts.find(p=>p.type==="weekday")?.value?.toLowerCase()||"";
-  if(wd==="sat"||wd==="sun")return"Weekend";
-  if(hm>=60&&hm<540)return"Asia";          // 01:00–09:00
-  if(hm>=540&&hm<690)return"London-AM";    // 09:00–11:30
-  if(hm>=690&&hm<930)return"London-PM";    // 11:30–15:30
-  if(hm>=930&&hm<1140)return"NY-AM";       // 15:30–19:00
-  if(hm>=1140&&hm<1320)return"NY-PM";      // 19:00–22:00
-  return"US Late";                          // 22:00–01:00 (wraps midnight)
-}
-function getFineSessionTags(date,time){
-  if(!date||!time)return[];
-  const dt=new Date(date+"T"+(time.length===5?time+":00":time));
-  if(isNaN(dt.getTime()))return[];
-  return[getFineSessionAt(dt)];
 }
 
 // ============ STORAGE UTILS ============
@@ -902,7 +889,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.36",released:"2026-04-27"};
+const APP_VERSION={version:"v12.37",released:"2026-04-28"};
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
 function isNewerVersion(a,b){
   const parse=(s)=>String(s||"").replace(/^v/,"").split(".").map(n=>parseInt(n,10)||0);
@@ -1979,7 +1966,7 @@ function useLiveClock(){
   useEffect(()=>{const id=setInterval(()=>setT(new Date()),1000);return()=>clearInterval(id);},[]);
   return t;
 }
-// Status bar wrapper: returnt zelfde 5 sessies als getSessionTags maar in caps.
+// Status bar wrapper: returnt zelfde 8 sessies als getSessionTags maar in caps.
 function getSession(date){
   return getSessionAt(date).toUpperCase();
 }
@@ -4293,13 +4280,16 @@ function DisciplineHeatmap({trades,tradingRules}){
   const METRIC_LABELS={overall:"Overall discipline",sl:"Stop-loss gezet",journal:"Journal compleet",tags:"Setup-tag aanwezig",risk:"Binnen risk-regel",count:"Trade volume"};
   const DAYS=["Ma","Di","Wo","Do","Vr","Za","Zo"];
   const DAYS_LONG=["Maandag","Dinsdag","Woensdag","Donderdag","Vrijdag","Zaterdag","Zondag"];
-  // Hour-buckets afgestemd op de 5-sessie indeling van getSessionAt.
-  // Asia/London/NY hebben 30-min overlap-uren — wijzen we toe aan de hoofd-sessie van dat uur.
+  // Hour-buckets afgestemd op de 8-sessie indeling van getSessionAt (sans Weekend).
+  // 30-min grensgevallen (uur 11, 15) wijzen we toe aan de overwegend dominante sessie.
   const SESSIONS=[
-    {label:"Asia",   icon:"🌏",hours:[1,2,3,4,5,6,7,8]},
-    {label:"London", icon:"🇬🇧",hours:[9,10,11,12,13,14,15]},
-    {label:"NY",     icon:"🇺🇸",hours:[16,17,18,19,20,21]},
-    {label:"US Late",icon:"🌃",hours:[22,23,0]},
+    {label:"Asia AM",  icon:"🌏",hours:[1,2,3,4]},
+    {label:"Asia PM",  icon:"🌅",hours:[5,6,7,8]},
+    {label:"London AM",icon:"🇬🇧",hours:[9,10,11]},
+    {label:"London PM",icon:"🌤",hours:[12,13,14,15]},
+    {label:"US AM",    icon:"🇺🇸",hours:[16,17,18]},
+    {label:"US PM",    icon:"🌆",hours:[19,20,21]},
+    {label:"US Late",  icon:"🌃",hours:[22,23,0]},
   ];
   const MIN_SAMPLE=3;
   const[metric,setMetric]=useState("overall");
@@ -4708,14 +4698,14 @@ function detectTendencies(closed){
     }
   }
 
-  // 7. setup × fijne-sessie — splits elke setup uit over 7 sessie-buckets
-  // (incl. London-AM/PM en NY-AM/PM) zodat tijdvak-specifieke edge zichtbaar
-  // wordt. Hetzelfde patroon "SFP werkt 's ochtends, verliest 's middags" zou
-  // bij detector #2 (setup × pair) middelen tot een nietszeggend gemiddelde.
-  const fineOf=(t)=>{const s=getFineSessionTags(t.date,t.time);return s[0]||null;};
+  // 7. setup × sessie — splits elke setup uit over de 8 sessie-buckets
+  // (Asia AM/PM, London AM/PM, US AM/PM/Late, Weekend) zodat tijdvak-specifieke
+  // edge zichtbaar wordt. Hetzelfde patroon "SFP werkt 's ochtends, verliest 's
+  // middags" zou bij detector #2 (setup × pair) middelen tot een nietszeggend
+  // gemiddelde.
   for(const setup of setupSet){
-    for(const sess of ALL_FINE_SESSIONS){
-      const matched=closed.filter(t=>(t.setupTags||[]).includes(setup)&&fineOf(t)===sess);
+    for(const sess of ALL_SESSIONS){
+      const matched=closed.filter(t=>(t.setupTags||[]).includes(setup)&&sessOf(t)===sess);
       if(matched.length<Math.max(minN,4))continue;
       const wins=matched.filter(t=>parseFloat(t.pnl)>0).length;
       const pnlSum=matched.reduce((s,t)=>s+parseFloat(t.pnl),0);
@@ -4741,17 +4731,17 @@ function detectTendencies(closed){
   return out;
 }
 
-// Bouw setup × fijne-sessie matrix voor de heatmap-visualisatie. Returnt
+// Bouw setup × sessie matrix voor de heatmap-visualisatie. Returnt
 // {setups, buckets, cells} waarbij cells[setup+'|'+bucket] = stats-object.
 // Sluit aan op detector #7 — gebruikt dezelfde drempels voor flag-iconen.
 function buildSetupSessionMatrix(closed){
-  const fineOf=(t)=>{const s=getFineSessionTags(t.date,t.time);return s[0]||null;};
+  const sessOf=(t)=>{const s=getSessionTags(t.date,t.time);return s[0]||null;};
   const setupsSet=new Set();
   closed.forEach(t=>(t.setupTags||[]).forEach(s=>setupsSet.add(s)));
   const setups=[...setupsSet].sort();
   const cells={};
   for(const t of closed){
-    const b=fineOf(t);if(!b)continue;
+    const b=sessOf(t);if(!b)continue;
     const tags=t.setupTags||[];
     for(const s of tags){
       const k=s+"|"+b;
@@ -4764,7 +4754,7 @@ function buildSetupSessionMatrix(closed){
     }
   }
   for(const k in cells)cells[k].wr=cells[k].n?(cells[k].wins/cells[k].n)*100:0;
-  return{setups,buckets:ALL_FINE_SESSIONS,cells};
+  return{setups,buckets:ALL_SESSIONS,cells};
 }
 
 function classifyTendency(t){
@@ -4807,10 +4797,11 @@ function TendencySparkline({trades}){
   </svg>);
 }
 
-// ─── SetupSessionMatrix — heatmap-tabel die elke setup uitsplitst over de 7
-// fijne sessie-buckets. Bovenaan TendenciesPage. Cellen kleuren op WR + PnL,
-// vlaggetjes (🎯 / 🕒 / ⏰) markeren de drempels uit detector #7. Cellen met
-// minder dan 3 trades worden gedimd. Klik op cel → filtert trades-tab.
+// ─── SetupSessionMatrix — heatmap-tabel die elke setup uitsplitst over de 8
+// sessie-buckets (Asia AM/PM, London AM/PM, US AM/PM/Late, Weekend). Bovenaan
+// TendenciesPage. Cellen kleuren op WR + PnL, vlaggetjes (🎯 / 🕒 / ⏰)
+// markeren de drempels uit detector #7. Cellen met minder dan 3 trades worden
+// gedimd. Klik op cel → filtert trades-tab.
 const SETUP_SESSION_MATRIX_KEY="tj_matrix_open";
 function SetupSessionMatrix({closed,setFilters,setTab}){
   const[open,setOpen]=useState(()=>{try{const v=localStorage.getItem(SETUP_SESSION_MATRIX_KEY);return v===null?true:v==="1";}catch{return true;}});
@@ -4831,7 +4822,7 @@ function SetupSessionMatrix({closed,setFilters,setTab}){
     <div onClick={()=>setOpen(v=>!v)} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"14px 18px",cursor:"pointer",userSelect:"none",borderBottom:open?"1px solid var(--border1)":"none"}}>
       <div>
         <div style={{fontSize:"10px",color:"var(--gold)",letterSpacing:".18em",fontWeight:700,fontFamily:"var(--mono)",textTransform:"uppercase",marginBottom:"3px"}}>📊 Setup × Sessie matrix</div>
-        <div style={{fontSize:"13px",color:"var(--text3)"}}>Edge per setup, uitgesplitst over 7 sessie-buckets. <span style={{color:"var(--text5)",fontSize:"11px"}}>Cellen met &lt; {minN} trades zijn gedimd.</span></div>
+        <div style={{fontSize:"13px",color:"var(--text3)"}}>Edge per setup, uitgesplitst over 8 sessie-buckets. <span style={{color:"var(--text5)",fontSize:"11px"}}>Cellen met &lt; {minN} trades zijn gedimd.</span></div>
       </div>
       <div style={{fontSize:"14px",color:"var(--text4)",fontFamily:"var(--mono)",transition:"transform .2s",transform:open?"rotate(0deg)":"rotate(-90deg)"}}>▾</div>
     </div>
@@ -7436,6 +7427,7 @@ const FAQ_ENTRIES=[
   {cat:"📝 Features",q:"Hoe werken missed trades?",a:"Opt-in feature via Instellingen → Accounts → '👻 Gemiste trades'. Bij een trade → klik 'Gemist?' knop naast Status. Exit/PnL verdwijnen, Entry/SL/TP blijven als planned. Tag waarom je 'm niet nam (Durf, Te laat gespot, Buiten regels...). Analytics laat 'Edge Gap' zien: wat had je kunnen winnen als je wel genomen had."},
   {cat:"📝 Features",q:"Multi-TP: waarom zou ik dat gebruiken?",a:"Real-world sluit je zelden een positie in één klap. Je neemt 50% winst bij TP1, laat de rest lopen naar TP2. In het form voeg je TP-levels toe met % allocation. Auto-berekening van winst + R:R per niveau. Op close kan je per TP markeren: Hit / Missed / Open."},
   {cat:"📝 Features",q:"Wat doet de discipline-heatmap?",a:"Heatmap van dagen × uren waarin je trades open hebt (Amsterdam-tijd). Toont je tijds-patroon: tilt je tijdens late avonduren, trade je alleen London open, etc. Instellingen → Mindset/Discipline om te personaliseren."},
+  {cat:"📝 Features",q:"Welke sessie-buckets gebruikt SyncJournal en wat zijn de tijden?",a:"Sinds v12.37 gebruiken we 8 sessie-buckets in Amsterdam-tijd (DST-aware). Tot v12.36 waren dat er 5; nu zijn Asia / London / US elk gesplitst in AM/PM voor fijnere edge-detectie. Tijden:\n\n• Asia AM — 01:00–05:00 (Tokyo open)\n• Asia PM — 05:00–09:00 (Tokyo lunch/close, pre-London)\n• London AM — 09:00–11:30 (London-open volatility)\n• London PM — 11:30–15:30 (pre-NY drift)\n• US AM — 15:30–19:00 (NY cash-open)\n• US PM — 19:00–22:00 (richting NY close)\n• US Late — 22:00–01:00 (post-NY, Asia preview)\n• Weekend — Zat/Zon hele dag\n\nDeze indeling wordt overal gebruikt: FilterBar, Trade-tabel, sessionPerf, Discipline Heatmap (hourly view), Tendencies (Setup × Sessie matrix). Eén waarheid, geen parallelle systemen meer."},
   {cat:"📝 Features",q:"Capital tracking: wat is het verschil tussen Capital en Equity?",a:"Capital = ingelegd (deposits − withdrawals). Equity = Capital + som trade-PnL. Return % = PnL / Capital × 100. Nuttig om te zien hoe elke account presteert los van de rest. Per exchange (API-synced) én handmatig account voeg je mutaties toe: ➕ Storting / ➖ Opname / ✏️ Correctie."},
 
   // === Problemen oplossen ===
