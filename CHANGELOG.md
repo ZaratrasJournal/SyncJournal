@@ -6,6 +6,28 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.37] — 2026-04-28
+
+### Gewijzigd
+- **Sessies van 5 naar 8 buckets — één waarheid in de hele app.** Tot v12.36 hadden we 5 buckets (Asia / London / New York / US Late / Weekend) en sinds v12.36 een tweede 7-bucket systeem dat alleen voor de Setup × Sessie matrix gebruikt werd. Twee parallelle waarheden = verwarrend. v12.37 convergeert beide naar één 8-bucket model in Amsterdam-tijd (DST-aware):
+  - **Asia AM** — 01:00–05:00 (Tokyo open)
+  - **Asia PM** — 05:00–09:00 (Tokyo lunch/close, pre-London)
+  - **London AM** — 09:00–11:30 (London-open volatility)
+  - **London PM** — 11:30–15:30 (pre-NY drift)
+  - **US AM** — 15:30–19:00 (NY cash-open) — *was "New York" + "NY-AM"*
+  - **US PM** — 19:00–22:00 (richting NY close) — *was "NY-PM"*
+  - **US Late** — 22:00–01:00 (post-NY, Asia preview)
+  - **Weekend** — Zat/Zon hele dag
+
+  Dit raakt: FilterBar sessie-pills (8 i.p.v. 5), sessionPerf cards in Analytics, Trade-tabel sessie-tags, Discipline Heatmap hourly-view (7 sessies, sans Weekend), Tendencies emotion×session / mistake×session / setup×session detectors, Setup × Sessie matrix. Niet-persistente filter-state betekent geen migratie nodig; sessie-tags op trades worden real-time uit `date+time` berekend dus bestaande trades krijgen automatisch de nieuwe label.
+
+### Toegevoegd
+- **FAQ-entry over sessie-buckets** in Help-tab onder *"Welke sessie-buckets gebruikt SyncJournal en wat zijn de tijden?"* — exacte tijden, motivatie, waar het overal gebruikt wordt.
+- **Nieuwe sessie-kleuren** voor de 4 nieuwe buckets (Asia AM/PM, London AM, US AM/PM) in `SESSION_COLORS`. Bestaande Asia → split in lichter/donkerder gold, London → split in lichter/donkerder blue, US → split in lichter/donkerder purple. US Late en Weekend onveranderd.
+
+### Verwijderd
+- **`ALL_FINE_SESSIONS`, `getFineSessionAt`, `getFineSessionTags`** (toegevoegd in v12.36) — overbodig nu de hoofdsessie-helper 8 buckets returnt.
+
 ## [v12.36] — 2026-04-27
 
 ### Toegevoegd
