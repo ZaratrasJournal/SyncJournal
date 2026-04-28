@@ -6,6 +6,31 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.50] — 2026-04-28
+
+### Toegevoegd
+- **📘 Playbook-koppeling bij + Nieuwe Trade** — selecteer een playbook bovenaan in TradeForm en setup-tags / timeframes / confirmaties / pair worden automatisch gevuld vanuit de playbook-blueprint. Pills blijven toggleable — overschrijven mag wanneer setup afwijkt. Bron: research op Steenbarger + Bellafiore (playbook-thinking als pre-trade ritueel).
+- **✅ Entry-criteria checklist** — verschijnt automatisch zodra een playbook is gekozen. Vink af welke criteria je vóór entry hebt gezien. Werkt naast de bestaande Setup-lagen sectie. Verplichte vs optionele criteria visueel onderscheiden (gold border-left voor mandatory).
+- **Live compliance-meter** — toont je score op basis van mandatory criteria afgevinkt. Drie niveaus:
+  - 🟢 **≥80%** → A+ entry — *"Sterke setup, discipline-stats positief"*
+  - 🟡 **50-79%** → judgement-call — *"Geel licht, overweeg of ontbrekende items kunnen wachten"*
+  - 🔴 **<50%** → buiten plan — *"Niet geblokkeerd, maar weet wat je doet"*
+
+  **Geen save-blokkade** bij rood — alleen visuele waarschuwing. Journal moet logging niet blokkeren.
+
+- **Schema-uitbreiding** voor `EMPTY_TRADE`: drie nieuwe velden — `playbookId` (FK naar playbook), `complianceChecks[]` (afgevinkte criteria-text), `complianceScore` (% mandatory afgevinkt). `normalizeTrade()` defaults deze naar leeg/null voor backwards-compat — bestaande trades blijven onveranderd.
+
+### Gewijzigd
+- **`playbookStats()` Compliance × PnL split werkt nu in twee modes**:
+  - **EXPLICIT** (nieuw, default zodra ≥50% trades expliciete `complianceScore` hebben) — gebruikt de echte vinkjes uit TradeForm, geen heuristiek-disclaimers meer
+  - **HEURISTIC** (fallback) — bestaande tag-overlap logica voor oude trades zonder explicit score
+
+  Mode-badge zichtbaar in Playbook-detail naast de "⚖️ Compliance × PnL" titel. EXPLICIT in groen, HEURISTIC in amber. Subtitel toont de juiste drempel-uitleg per mode.
+
+### Documentatie
+- **FAQ-entry** *"Hoe werkt de Playbook-koppeling bij + Nieuwe Trade?"* — volledige uitleg van auto-fill + checklist + 3 compliance-niveaus + opt-out.
+- **Lesson 11 (Compliance × PnL begrijpen)** in de handleiding bijgewerkt — uitleg van EXPLICIT vs HEURISTIC mode, hoe je de explicit mode activeert (playbook kiezen + criteria afvinken vóór entry), en hindsight-bias waarschuwing.
+
 ## [v12.49] — 2026-04-28
 
 ### Fixed
