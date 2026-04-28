@@ -889,7 +889,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.49",released:"2026-04-28"};
+const APP_VERSION={version:"v12.50",released:"2026-04-28"};
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
 function isNewerVersion(a,b){
   const parse=(s)=>String(s||"").replace(/^v/,"").split(".").map(n=>parseInt(n,10)||0);
@@ -956,6 +956,9 @@ const EMPTY_TRADE={
   emotionTags:[],mistakeTags:[],customTags:[],
   missedReasonTags:[],// voor status:"missed" trades
   simType:"",         // "missed" (real-time gespot, niet genomen) of "backtest" (chart-replay). Leeg = legacy "missed".
+  playbookId:"",      // v12.50: FK naar playbook-id; auto-fill bron + compliance-tracking
+  complianceChecks:[],// v12.50: array van criteria-text die afgevinkt waren bij entry
+  complianceScore:null,// v12.50: % mandatory criteria afgevinkt (cached voor analytics)
   rating:0,screenshot:null,screenshots:[],notes:"",links:[],layers:[],
   source:"manual",positionId:"",openTime:"",closeTime:"",
   status:"closed",manualOverrides:[],tpLevels:[],
@@ -1008,6 +1011,11 @@ const normalizeTrade=(t)=>{
   // expliciet — alleen via UI-toggle. Hierdoor geen breaking change voor
   // bestaande edge-leak / Playbook stats.
   if(out.status==="missed"&&!out.simType)out.simType="missed";
+  // v12.50: playbook-tracking velden defaults. Bestaande trades zonder
+  // playbookId krijgen lege defaults — heuristische compliance blijft werken.
+  if(out.playbookId===undefined)out.playbookId="";
+  if(!Array.isArray(out.complianceChecks))out.complianceChecks=[];
+  if(out.complianceScore===undefined)out.complianceScore=null;
   return out;
 };
 
@@ -3481,7 +3489,7 @@ function Section({title,storeKey,defaultOpen=true,hint,children}){
   </details>);
 }
 
-function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,accounts,showToast,isDraft}){
+function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,accounts,showToast,isDraft,playbooks,setTab}){
   const[showCard,setShowCard]=useState(false);
   // Auto-persist to tj_trade_draft so unsaved input survives accidental modal-close, tab-close, crash, etc.
   // Only for new trades (isDraft=true); edits are already persisted via tj_trades.
@@ -3598,6 +3606,54 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,accounts,sho
     }
   },[trade.entry,trade.exit,trade.positionSize,trade.fees,trade.direction,trade.status,trade.source]);
 
+  // v12.50: Playbook-tracking — auto-fill + compliance-criteria checklist.
+  // playbookId is FK; bij keuze auto-fill setup-tags / timeframes / sessies /
+  // confirmaties / pair (alleen als pair leeg). User mag alles overschrijven.
+  // complianceChecks slaat afgevinkte criteria op; complianceScore is %
+  // mandatory afgevinkt. Beide worden gebruikt door playbookStats voor de
+  // Compliance × PnL split — harde data i.p.v. heuristiek.
+  const activePlaybook=useMemo(()=>(playbooks||[]).find(p=>p.id===trade.playbookId)||null,[playbooks,trade.playbookId]);
+  const applyPlaybook=(pbId)=>{
+    const pb=(playbooks||[]).find(p=>p.id===pbId);
+    if(!pb){
+      setTrade(p=>({...p,playbookId:"",complianceChecks:[],complianceScore:null}));
+      return;
+    }
+    setTrade(p=>{
+      const next={...p,playbookId:pbId,complianceChecks:[],complianceScore:0};
+      // Auto-fill: alleen als veld leeg/default is, niet overschrijven van handmatige input
+      if(Array.isArray(pb.setupTags))next.setupTags=[...new Set([...(p.setupTags||[]),...pb.setupTags])];
+      if(Array.isArray(pb.timeframes))next.timeframeTags=[...new Set([...(p.timeframeTags||[]),...pb.timeframes])];
+      if(Array.isArray(pb.confirmations))next.confirmationTags=[...new Set([...(p.confirmationTags||[]),...pb.confirmations])];
+      if(Array.isArray(pb.pairs)&&pb.pairs.length>0&&(!p.pair||p.pair==="BTC/USDT"))next.pair=pb.pairs[0];
+      return next;
+    });
+  };
+  const toggleCriterion=(text)=>{
+    setTrade(p=>{
+      const checks=new Set(p.complianceChecks||[]);
+      if(checks.has(text))checks.delete(text);else checks.add(text);
+      const pb=(playbooks||[]).find(x=>x.id===p.playbookId);
+      const mandatory=(pb?.criteria||[]).filter(c=>c.mandatory);
+      const checkedMand=mandatory.filter(c=>checks.has(c.text)).length;
+      const score=mandatory.length?Math.round((checkedMand/mandatory.length)*100):null;
+      return{...p,complianceChecks:[...checks],complianceScore:score};
+    });
+  };
+  // Compliance-meter — kleuren + label
+  const complianceMeta=(()=>{
+    if(!activePlaybook)return null;
+    const mandatory=(activePlaybook.criteria||[]).filter(c=>c.mandatory);
+    if(mandatory.length===0)return{tone:"gray",pct:null,checked:0,total:0,label:"Geen verplichte criteria"};
+    const checked=mandatory.filter(c=>(trade.complianceChecks||[]).includes(c.text)).length;
+    const pct=Math.round((checked/mandatory.length)*100);
+    let tone,label;
+    if(pct>=80){tone="green";label="A+ entry";}
+    else if(pct>=50){tone="amber";label="Judgement-call";}
+    else{tone="red";label="Buiten plan";}
+    return{tone,pct,checked,total:mandatory.length,label};
+  })();
+
   return(<div style={{animation:"fadeIn .3s ease",background:"var(--glass)",backdropFilter:"var(--glass-blur)",WebkitBackdropFilter:"var(--glass-blur)",borderRadius:"var(--radius-lg)",padding:"24px",border:"1px solid var(--glass-border)"}}>
     {/* Mindset — pre-trade italic nudge (only on new trade, once per form-open) */}
     {preTradeQuote&&<div style={{padding:"8px 12px",marginBottom:"14px",borderLeft:"2px solid var(--gold-border)",fontSize:"12px",color:"var(--text3)",fontStyle:"italic",lineHeight:1.5,background:"rgba(201,168,76,.03)"}}>
@@ -3620,6 +3676,23 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,accounts,sho
       </div>
       <span style={{fontSize:"10px",color:"var(--text5)"}}>{hint}</span>
     </div>);})()}
+
+    {/* v12.50: Playbook-picker — auto-fill tags + criteria-checklist */}
+    {!isMissed&&(playbooks||[]).length>0&&<div style={{padding:"14px 16px",background:activePlaybook?"linear-gradient(135deg,rgba(201,168,76,0.08),rgba(201,168,76,0.02))":"var(--bg4)",border:"1px solid "+(activePlaybook?"var(--gold-border)":"var(--border2)"),borderLeft:"3px solid "+(activePlaybook?"var(--gold)":"var(--text5)"),borderRadius:"10px",marginBottom:"16px"}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:"12px",flexWrap:"wrap"}}>
+        <div>
+          <div style={{fontSize:"10px",color:"var(--gold)",fontFamily:"var(--mono)",fontWeight:700,letterSpacing:".18em",textTransform:"uppercase"}}>📘 Playbook (optioneel)</div>
+          <div style={{fontSize:"11.5px",color:"var(--text4)",marginTop:"3px",lineHeight:1.5}}>{activePlaybook?`Geactiveerd: ${(activePlaybook.criteria||[]).length} criteria · ${(activePlaybook.criteria||[]).filter(c=>c.mandatory).length} verplicht`:"Kies een playbook om criteria + tags automatisch in te vullen, of laat leeg voor een vrije trade."}</div>
+        </div>
+        <select value={trade.playbookId||""} onChange={e=>applyPlaybook(e.target.value)} style={{padding:"8px 12px",background:"var(--bg3)",color:"var(--text)",border:"1px solid var(--border3)",borderRadius:"6px",fontFamily:"inherit",fontSize:"13px",cursor:"pointer",minWidth:"240px"}}>
+          <option value="">— Geen playbook (vrije trade)</option>
+          {(playbooks||[]).filter(p=>p.status!=="retired").map(p=><option key={p.id} value={p.id}>📘 {p.name}</option>)}
+        </select>
+      </div>
+      {activePlaybook&&trade.playbookId&&<div style={{marginTop:"10px",padding:"8px 10px",background:"rgba(46,170,111,0.05)",border:"1px solid rgba(46,170,111,0.20)",borderRadius:"6px",fontSize:"11.5px",color:"var(--text3)",lineHeight:1.55}}>
+        <strong style={{color:"var(--green)"}}>✨ Auto-gevuld:</strong> setup-tags / timeframes / confirmaties uit playbook-blueprint. Pills zijn toggleable — overschrijf vrij wanneer setup afwijkt.
+      </div>}
+    </div>}
 
     {/* Account selector */}
     <div style={{marginBottom:"1rem"}}>
@@ -3849,6 +3922,42 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,accounts,sho
       <TagGroup label="Fouten" tags={gt("mistakeTags")} selected={trade.mistakeTags} onToggle={t=>toggle("mistakeTags",t)} color="orange"/>
       <div style={{marginTop:"14px"}}><div style={{fontSize:"11px",color:"var(--gold)",textTransform:"uppercase",letterSpacing:"0.12em",fontWeight:700,marginBottom:"8px"}}>Trade kwaliteit</div><Stars value={trade.rating} onChange={r=>setTrade(p=>({...p,rating:r}))}/></div>
     </Section>
+
+    {/* v12.50: Compliance criteria checklist — verschijnt zodra een playbook is gekozen */}
+    {activePlaybook&&(activePlaybook.criteria||[]).length>0&&(()=>{
+      const m=complianceMeta;
+      const toneColor=m?.tone==="green"?"var(--green)":m?.tone==="amber"?"var(--amber)":m?.tone==="red"?"var(--red)":"var(--text4)";
+      const toneBg=m?.tone==="green"?"rgba(46,170,111,0.05)":m?.tone==="amber"?"rgba(212,168,83,0.05)":m?.tone==="red"?"rgba(224,85,85,0.05)":"rgba(138,144,160,0.05)";
+      const toneBorder=m?.tone==="green"?"rgba(46,170,111,0.30)":m?.tone==="amber"?"rgba(212,168,83,0.30)":m?.tone==="red"?"rgba(224,85,85,0.30)":"rgba(138,144,160,0.20)";
+      const msg=m?.tone==="green"?"Sterke setup. Volgens je playbook is dit een entry die je discipline-stats positief zal beïnvloeden.":m?.tone==="amber"?"Geel licht. Overweeg of de ontbrekende items kunnen wachten of dat dit echt nog binnen je plan valt.":m?.tone==="red"?"Rood licht. Slechts "+m.checked+" van "+m.total+" verplichte criteria afgevinkt — dit is geen playbook-trade meer. Niet geblokkeerd, maar weet wat je doet.":"";
+      return(<Section title="✅ Entry-criteria" storeKey="complianceCriteria" defaultOpen={true} hint={m?.total?`${m.checked}/${m.total} verplicht · ${m.pct}%`:`uit "${activePlaybook.name}"`}>
+        <div style={{fontSize:"11px",color:"var(--text4)",marginBottom:"12px",lineHeight:1.5}}>Vink af wat je <strong style={{color:"var(--text2)"}}>vóór entry</strong> hebt gezien. Dit voedt direct de Compliance × PnL split in Playbook-detail (geen heuristiek meer — harde data).</div>
+        <div style={{display:"flex",flexDirection:"column",gap:"6px",marginBottom:"14px"}}>
+          {activePlaybook.criteria.map((c,i)=>{
+            const checked=(trade.complianceChecks||[]).includes(c.text);
+            const baseColor=c.mandatory?"var(--gold)":"var(--text5)";
+            const bg=checked?"rgba(46,170,111,0.05)":"rgba(255,255,255,0.02)";
+            const borderC=checked?"rgba(46,170,111,0.20)":"var(--border1)";
+            return(<div key={i} onClick={()=>toggleCriterion(c.text)} style={{display:"flex",alignItems:"center",gap:"10px",padding:"10px 12px",background:bg,border:`1px solid ${borderC}`,borderLeft:c.mandatory?`2px solid ${checked?"var(--green)":baseColor}`:`1px solid ${borderC}`,borderRadius:"8px",fontSize:"12.5px",color:"var(--text2)",cursor:"pointer",transition:"all .12s"}}>
+              <div style={{flexShrink:0,width:"18px",height:"18px",border:`1.5px solid ${checked?"var(--green)":"var(--text5)"}`,background:checked?"var(--green)":"transparent",borderRadius:"4px",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"12px",color:"#fff",transition:"all .15s"}}>{checked?"✓":""}</div>
+              <div style={{flex:1}}>{c.text}</div>
+              <span style={{fontSize:"9.5px",fontFamily:"var(--mono)",fontWeight:700,letterSpacing:".06em",textTransform:"uppercase",padding:"2px 7px",borderRadius:"3px",flexShrink:0,background:c.mandatory?"rgba(201,168,76,0.10)":"rgba(138,144,160,0.08)",color:c.mandatory?"var(--gold)":"var(--text4)",border:`1px solid ${c.mandatory?"rgba(201,168,76,0.30)":"var(--border3)"}`}}>{c.mandatory?"Verplicht":"Optioneel"}</span>
+            </div>);
+          })}
+        </div>
+        {/* Compliance meter */}
+        <div style={{padding:"14px 16px",borderRadius:"10px",background:toneBg,border:`1px solid ${toneBorder}`}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"10px",flexWrap:"wrap",gap:"8px"}}>
+            <span style={{fontSize:"10px",fontFamily:"var(--mono)",fontWeight:700,letterSpacing:".12em",textTransform:"uppercase",color:toneColor}}>Compliance — {m?.label}</span>
+            <span style={{fontFamily:"var(--mono)",fontWeight:800,fontSize:"24px",color:toneColor,lineHeight:1}}>{m?.pct!=null?m.pct+"%":"—"}</span>
+          </div>
+          <div style={{height:"6px",background:"rgba(255,255,255,0.04)",borderRadius:"3px",overflow:"hidden",marginBottom:"8px"}}>
+            <div style={{height:"100%",width:(m?.pct||0)+"%",background:toneColor,borderRadius:"3px",transition:"width .4s ease"}}/>
+          </div>
+          {msg&&<div style={{fontSize:"12px",color:"var(--text3)",lineHeight:1.5}}>{msg}</div>}
+        </div>
+      </Section>);
+    })()}
 
     {/* Media & Links — collapsible */}
     <Section title="📸 Media & Links" storeKey="media" defaultOpen={false} hint={`${(trade.screenshots||[]).length||(trade.screenshot?1:0)} screenshot${((trade.screenshots||[]).length||(trade.screenshot?1:0))===1?"":"s"} · ${(trade.links||[]).length} link${(trade.links||[]).length===1?"":"s"}`}>
@@ -4977,21 +5086,36 @@ function playbookStats(pb,allTrades){
   const avgWinR=winsArr.length?winsArr.reduce((s,t)=>s+_trR(t),0)/winsArr.length:0;
   const avgLossR=lossArr.length?Math.abs(lossArr.reduce((s,t)=>s+_trR(t),0)/lossArr.length):0;
   const exp=(wr/100)*avgWinR-((100-wr)/100)*avgLossR;
-  // Compliance heuristiek: trade compliant als ≥80% playbook-confirmaties terug
-  // te vinden zijn in trade.confirmationTags. Geen confirmaties → geen split.
-  let compHigh=null,compLow=null;
-  const pbConfs=(pb.confirmations||[]).filter(c=>c&&c.length>0);
-  if(pbConfs.length>0){
-    const compArr=closed.filter(t=>{
-      const tags=new Set(t.confirmationTags||[]);
-      const hits=pbConfs.filter(c=>tags.has(c)).length;
-      return(hits/pbConfs.length)>=0.8;
-    });
-    const lowArr=closed.filter(t=>!compArr.includes(t));
+  // v12.50: Compliance split — gebruikt expliciete complianceScore wanneer
+  // beschikbaar (harde data uit TradeForm criteria-checklist), valt anders
+  // terug op heuristiek (≥80% confirmation-tag overlap). Resultaat krijgt
+  // `mode: "explicit"` of `"heuristic"` zodat UI het onderscheid kan tonen.
+  let compHigh=null,compLow=null,compMode=null;
+  const tradesWithExplicitScore=closed.filter(t=>typeof t.complianceScore==="number");
+  if(tradesWithExplicitScore.length>=Math.max(3,Math.floor(closed.length*0.5))){
+    // Explicit-mode: minstens 50% van de trades heeft een echte score, gebruik dat.
+    compMode="explicit";
+    const compArr=tradesWithExplicitScore.filter(t=>t.complianceScore>=80);
+    const lowArr=tradesWithExplicitScore.filter(t=>t.complianceScore<80);
     const stat=(arr)=>arr.length?{n:arr.length,avgR:arr.reduce((s,t)=>s+_trR(t),0)/arr.length,wr:(arr.filter(t=>parseFloat(t.pnl)>0).length/arr.length)*100}:null;
     compHigh=stat(compArr);compLow=stat(lowArr);
+  } else {
+    // Heuristic-mode: trade compliant als ≥80% playbook-confirmaties terug
+    // te vinden zijn in trade.confirmationTags. Geen confirmaties → geen split.
+    const pbConfs=(pb.confirmations||[]).filter(c=>c&&c.length>0);
+    if(pbConfs.length>0){
+      compMode="heuristic";
+      const compArr=closed.filter(t=>{
+        const tags=new Set(t.confirmationTags||[]);
+        const hits=pbConfs.filter(c=>tags.has(c)).length;
+        return(hits/pbConfs.length)>=0.8;
+      });
+      const lowArr=closed.filter(t=>!compArr.includes(t));
+      const stat=(arr)=>arr.length?{n:arr.length,avgR:arr.reduce((s,t)=>s+_trR(t),0)/arr.length,wr:(arr.filter(t=>parseFloat(t.pnl)>0).length/arr.length)*100}:null;
+      compHigh=stat(compArr);compLow=stat(lowArr);
+    }
   }
-  return{n:closed.length,wr,avgR,exp,pnl,compHigh,compLow,trades:closed};
+  return{n:closed.length,wr,avgR,exp,pnl,compHigh,compLow,compMode,trades:closed};
 }
 
 // Missed-trades stats: gebruik bestaande hindsightExit + entry/stopLoss om
@@ -5608,7 +5732,7 @@ function PlaybookDetailModal({pb,allTrades,setFilters,setTab,onClose,onEdit,onDe
             {[["Trades",s.n,"var(--text)"],["Win-rate",s.wr.toFixed(0)+"%",s.wr>=50?"var(--green)":"var(--red)"],["Gem. R",(s.avgR>=0?"+":"")+s.avgR.toFixed(2),s.avgR>=0?"var(--green)":"var(--red)"],["Expectancy",(s.exp>=0?"+":"")+s.exp.toFixed(2)+"R",s.exp>=0?"var(--green)":"var(--red)"],["Cum. PnL",(pnlPos?"+":"−")+"$"+Math.abs(s.pnl).toFixed(0),pnlPos?"var(--green)":"var(--red)"]].map(([lbl,val,col])=>(<div key={lbl} style={{textAlign:"center",padding:12,background:"rgba(255,255,255,0.02)",border:"1px solid var(--border1)",borderRadius:8}}><div style={{fontSize:9,color:"var(--text5)",textTransform:"uppercase",letterSpacing:".08em",fontWeight:600,marginBottom:3}}>{lbl}</div><div style={{fontFamily:"var(--mono)",fontWeight:700,fontSize:18,color:col}}>{val}</div></div>))}
           </div>
           {s.compHigh&&s.compLow&&<div style={{background:"rgba(201,168,76,0.04)",border:"1px solid var(--gold-border)",borderRadius:10,padding:"16px 18px"}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}><div style={{fontSize:13,fontWeight:700,color:"var(--gold)",fontFamily:"var(--mono)",letterSpacing:".05em",textTransform:"uppercase"}}>⚖️ Compliance × PnL</div><small style={{fontSize:10,color:"var(--text5)",fontFamily:"var(--mono)"}}>drempel: ≥80% confirmaties matchen</small></div>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,gap:10,flexWrap:"wrap"}}><div style={{fontSize:13,fontWeight:700,color:"var(--gold)",fontFamily:"var(--mono)",letterSpacing:".05em",textTransform:"uppercase"}}>⚖️ Compliance × PnL {s.compMode==="explicit"&&<span style={{color:"var(--green)",fontSize:9,marginLeft:6,letterSpacing:".08em"}}>· EXPLICIT</span>}{s.compMode==="heuristic"&&<span style={{color:"var(--amber)",fontSize:9,marginLeft:6,letterSpacing:".08em"}}>· HEURISTIC</span>}</div><small style={{fontSize:10,color:"var(--text5)",fontFamily:"var(--mono)"}}>{s.compMode==="explicit"?"drempel: ≥80% mandatory criteria afgevinkt":"drempel: ≥80% confirmaties matchen (heuristiek)"}</small></div>
             <div style={{display:"flex",height:36,borderRadius:6,overflow:"hidden",background:"rgba(255,255,255,0.04)",marginBottom:10,border:"1px solid var(--border1)"}}>
               <div style={{display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"var(--mono)",fontSize:11.5,fontWeight:700,padding:"0 10px",width:`${(s.compHigh.n/s.n*100).toFixed(0)}%`,background:"linear-gradient(90deg,rgba(46,170,111,0.6),rgba(46,170,111,0.4))",color:"#fff"}}>{s.compHigh.n} compliant · {s.compHigh.avgR>=0?"+":""}{s.compHigh.avgR.toFixed(2)}R</div>
               <div style={{display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"var(--mono)",fontSize:11.5,fontWeight:700,padding:"0 10px",width:`${(s.compLow.n/s.n*100).toFixed(0)}%`,background:"linear-gradient(90deg,rgba(224,85,85,0.4),rgba(224,85,85,0.6))",color:"#fff"}}>{s.compLow.n} non-compliant · {s.compLow.avgR>=0?"+":""}{s.compLow.avgR.toFixed(2)}R</div>
@@ -8639,6 +8763,7 @@ const FAQ_ENTRIES=[
   {cat:"📝 Features",q:"Wat is een setup-layer?",a:"Top-down multi-timeframe analyse. Eerste laag = hoogste timeframe (bias, bv 4H trend omhoog). Volgende lagen narrow down tot entry-timeframe. Elke laag heeft: timeframe + setup + confirmatie + rol (Bias/Entry/Confirmatie). Helpt je gestructureerd denken."},
   {cat:"📝 Features",q:"Hoe werken missed trades?",a:"Opt-in feature via Instellingen → Accounts → '👻 Gemiste trades'. Bij een trade → klik 'Gemist?' knop naast Status. Exit/PnL verdwijnen, Entry/SL/TP blijven als planned. Tag waarom je 'm niet nam (Durf, Te laat gespot, Buiten regels...). Analytics laat 'Edge Gap' zien: wat had je kunnen winnen als je wel genomen had."},
   {cat:"📝 Features",q:"Wat is het verschil tussen Gemist, Backtest en Paper?",a:"Sinds v12.48 onderscheiden we drie soorten 'simulated' trades — elk met een andere bias-richting:\n\n• 👻 **Gemist** — setup die je real-time spotte maar niet nam. Twijfel/FOMO/discipline zit erin gebakken. Stats hierop zijn realistisch.\n• 🔬 **Backtest** — setup gevonden via chart-replay (achteraf). Hindsight-bias is hoog, edge-cijfers worden opgeblazen. Goed voor strategie-validatie vooraf.\n• 📝 **Paper** — live demo-account trade, geen echt geld. Geen hindsight, geen financiële stress. Dat onderscheid (paper vs real) is wat de **Stress-Leak Detector** in Analytics meet.\n\nDrie killer-features bouwen hierop:\n\n1. **Edge-Erosion Funnel** (Playbook detail) — vergelijkt Backtest → Paper → Real R-cijfers. Verschil tussen Backtest en Paper = hindsight-leak. Verschil tussen Paper en Real = execution-stress-leak.\n2. **Cross-Validation Tendencies** — patronen die in real én backtest verschijnen krijgen 🔀 Validated badge. Patronen alleen in real op klein sample krijgen ⚠ Noise risk.\n3. **Stress-Leak Detector** (Analytics) — vergelijkt rule-discipline tussen paper en real. Verschil = mentale bandbreedte onder druk.\n\nTendencies sluit backtest-trades automatisch uit van patroon-detectie (om hindsight-overfit te voorkomen). Trust-Score in Playbook-lijst toont per playbook een 5-stadia bar: Idea → Theorized → Validated → Tradeable → Bewezen."},
+  {cat:"📝 Features",q:"Hoe werkt de Playbook-koppeling bij + Nieuwe Trade?",a:"Sinds v12.50 kun je in TradeForm een playbook selecteren via de dropdown bovenaan (na de Status-toggle). Bij keuze:\n\n• **Auto-fill** van setup-tags / timeframes / confirmaties uit de playbook-blueprint. Pair wordt overgenomen als deze leeg of default is. Alle pre-fills zijn handmatig overschrijfbaar — pills blijven toggleable.\n• **Criteria-checklist** verschijnt als nieuwe sectie ('✅ Entry-criteria'). Vink af welke criteria je vóór entry hebt gezien.\n• **Live compliance-meter** toont je score op basis van afgevinkte verplichte criteria:\n  - 🟢 ≥80% mandatory afgevinkt → A+ entry\n  - 🟡 50-79% → judgement-call\n  - 🔴 <50% → buiten plan (niet geblokkeerd, alleen waarschuwing)\n\nDe afgevinkte criteria + score worden opgeslagen op de trade als nieuwe velden `playbookId`, `complianceChecks` en `complianceScore`. Dat maakt de **Compliance × PnL split** in Playbook-detail van een heuristiek (gokken op tag-overlap) naar **harde data** (echte vinkjes vóór entry). Het label boven de Compliance × PnL bar toont nu **EXPLICIT** zodra je 50%+ trades met expliciete score hebt, anders **HEURISTIC**.\n\nVoor wie de feature niet wil gebruiken: laat de playbook-dropdown op '— Geen playbook'. Form werkt dan zoals altijd."},
   {cat:"📝 Features",q:"Multi-TP: waarom zou ik dat gebruiken?",a:"Real-world sluit je zelden een positie in één klap. Je neemt 50% winst bij TP1, laat de rest lopen naar TP2. In het form voeg je TP-levels toe met % allocation. Auto-berekening van winst + R:R per niveau. Op close kan je per TP markeren: Hit / Missed / Open."},
   {cat:"📝 Features",q:"Wat doet de discipline-heatmap?",a:"Heatmap van dagen × uren waarin je trades open hebt (Amsterdam-tijd). Toont je tijds-patroon: tilt je tijdens late avonduren, trade je alleen London open, etc. Instellingen → Mindset/Discipline om te personaliseren."},
   {cat:"📝 Features",q:"Welke sessie-buckets gebruikt SyncJournal en wat zijn de tijden?",a:"Sinds v12.37 gebruiken we 8 sessie-buckets in Amsterdam-tijd (DST-aware). Tot v12.36 waren dat er 5; nu zijn Asia / London / US elk gesplitst in AM/PM voor fijnere edge-detectie. Tijden:\n\n• Asia AM — 01:00–05:00 (Tokyo open)\n• Asia PM — 05:00–09:00 (Tokyo lunch/close, pre-London)\n• London AM — 09:00–11:30 (London-open volatility)\n• London PM — 11:30–15:30 (pre-NY drift)\n• US AM — 15:30–19:00 (NY cash-open)\n• US PM — 19:00–22:00 (richting NY close)\n• US Late — 22:00–01:00 (post-NY, Asia preview)\n• Weekend — Zat/Zon hele dag\n\nDeze indeling wordt overal gebruikt: FilterBar, Trade-tabel, sessionPerf, Discipline Heatmap (hourly view), Tendencies (Setup × Sessie matrix). Eén waarheid, geen parallelle systemen meer."},
@@ -8695,7 +8820,7 @@ const LESSONS=[
   {id:"l08",level:"beginner",svg:"cloud",duration:4,title:"Backup & export",desc:"Vier minuten om je hele journal te beveiligen. Doe dit voor elke browserwissel.",content:`<p>Al je data staat lokaal in je browser (localStorage + IndexedDB). Geen server, geen cloud — dat is privacy, maar ook risico bij browser-cache wissen.</p><h2>Backup maken (15 sec)</h2><ol><li>Accounts → scroll naar Backup &amp; Restore</li><li>📦 Backup exporteren (.json)</li><li>Bestand bevat <strong>alles</strong>: trades, tags, accounts, config, goals, rules, playbooks</li></ol><h2>Backup terugzetten</h2><p>Sleep het JSON-bestand in het venster. Of: Accounts → Restore → kies bestand. Bestaande data wordt overschreven (waarschuwing eerst).</p><div class="lesson-callout warn"><div class="lc-title">Wanneer maak je backup?</div>Voor elke update, voor browserwissel, voor extension-installatie die storage raakt. Eens per week is sowieso slim.</div><h2>Migratie naar nieuwe laptop</h2><p>Oude laptop: backup downloaden. Nieuwe laptop: open SyncJournal → sleep JSON erin. Klaar in &lt;30 sec.</p><h2>Wat als ik geen backup heb?</h2><p>Browser-cache wissen verwijdert <strong>localStorage + IndexedDB</strong>. Je trades zijn dan weg. Geen recovery mogelijk — wij hebben geen backend.</p><div class="lesson-callout tip"><div class="lc-title">Tip</div>Stel een agenda-reminder in: zondag 18:00 backup maken. 30 seconden werk, jaren gemoedsrust.</div>`},
   {id:"l09",level:"advanced",svg:"bookCompare",duration:10,title:"Playbook vs. Journal — waarom de splitsing?",desc:"Een journal logt élke trade. Een playbook isoleert je 20% setups die 80% PnL leveren.",content:`<p>Je journal heeft inmiddels 50+ trades. Het Dashboard toont een gemiddelde expectancy van bv. +0.4R. Maar dat gemiddelde verbergt iets cruciaals.</p><h2>Het probleem met gemiddelden</h2><p>Stel: je traden 4 setups door elkaar. SFP doet +1.1R, Breakouts doen -0.3R, Range-fades +0.2R, Reversals +0.5R. Gemiddeld +0.4R — prima. Maar je verliest geld op Breakouts.</p><div class="lesson-callout why"><div class="lc-title">Waarom Bellafiore (SMB Capital) zwoer bij playbooks</div>"Take only trades you have already perfected." Een playbook isoleert per setup zodat je per setup expectancy ziet. Setups met negatieve expectancy → schrappen. Resultaat: gemiddelde gaat van +0.4R naar +0.7R zonder dat je beter bent geworden — je traden alleen minder slechte setups.</div><h2>Het verschil concreet</h2><ul><li><strong>Journal</strong>: chronologisch log van alles. Doel = data.</li><li><strong>Playbook</strong>: per setup gestructureerde criteria + stats. Doel = patronen perfectioneren.</li></ul><h2>Wat hoort er per playbook-entry?</h2><ol><li>Setup-naam + 1-zin omschrijving</li><li>Markt-context (sessie, trend, vol)</li><li>Entry-criteria checklist (verplicht-toggles)</li><li>Stop / Target rules + min R:R</li><li>Mistake-pattern: <em>"hoe verpest ik dit setup meestal?"</em></li></ol><div class="lesson-callout example"><div class="lc-title">Voor / na bij Denny (concept)</div>Vóór playbook: 50 trades, expectancy +0.4R. Na playbook-isolatie + retiren van twee zwakke setups: dezelfde 50 trades hadden +0.7R opgeleverd. Edge ging niet omhoog — je traden minder slechte setups.</div><h2>Wanneer formaliseren?</h2><p>Vanaf 30+ trades per setup. Daaronder is het ruis, geen statistiek.</p><button class="lesson-link" data-target="playbook">Open Playbook →</button>`},
   {id:"l10",level:"advanced",svg:"dots",duration:12,title:"Tendencies-detectie lezen",desc:"Wat een dot wel/niet betekent. Plus de overfitting-trap die de meeste journals niet noemen.",content:`<p>Tendencies is de cross-dimensionele patroon-detector. 7 detector-categorieën die emoties × sessies, setups × pairs, mistakes × sessies, en setup × tijdvak combineren.</p><h2>Wat een rode dot betekent</h2><p><strong>Niet</strong>: "deze combinatie zal nooit werken." <strong>Wel</strong>: "in jouw historische data presteert deze combinatie statistisch slecht — onderzoek waarom."</p><div class="lesson-callout warn"><div class="lc-title">De overfitting-trap</div>Met 20 dimensies × 30 trades vind je <em>altijd</em> patronen. Dat zijn vaak ruis-correlaties, geen echte edge. Daarom: minimaal 4-5 trades per cel, minimaal 30 trades totaal voordat je conclusies trekt.</div><h2>Severity-niveaus</h2><ul><li>🟢 <strong>Sterkte</strong> — replicate this, mark as A+ in playbook</li><li>🟡 <strong>Aandacht</strong> — onderpresteert, halve risk</li><li>🔴 <strong>Hoge pijn</strong> — skip of paper-trade tot WR &gt; 50%</li><li>🔵 <strong>Observatie</strong> — opvallend maar niet duidelijk goed/slecht</li></ul><h2>De 8-bucket sessie-detector</h2><p>Sinds v12.37 splitsen we Asia/London/US elk in AM/PM. Reden: de bekende "edge verdwijnt na 11:30 NL"-observatie wordt zichtbaar in 8 buckets, niet in 5.</p><div class="lesson-callout example"><div class="lc-title">Concreet</div>Setup: SFP. Met 5 buckets: London = 55% WR (gemiddeld). Met 8 buckets: London-AM = 78% WR, London-PM = 32% WR. Dezelfde data, twee verhalen. Conclusie: skip SFP na 11:30.</div><h2>Hoe handelen?</h2><p>Klik op een tendency-card → trade-filter wordt overgenomen, je springt naar Trades-tab met alleen die trades. Lees ze door, vraag jezelf: <em>wat hadden ze gemeen?</em></p><button class="lesson-link" data-target="tendencies">Open Tendencies →</button>`},
-  {id:"l11",level:"advanced",svg:"balance",duration:15,title:"Compliance × PnL begrijpen",desc:"Discipline-violations isoleren van marktruis. \"Was die loss een rule-break of pech?\"",content:`<p>Dit is het unieke verkoopargument van TradeJournal. Geen enkele andere journal toont dit zo expliciet.</p><h2>Het probleem</h2><p>Je verliest een trade. Was het de markt of jij? Zonder compliance-tracking is dat een gevoelskwestie. Met compliance-tracking is het een data-vraag.</p><h2>De heuristiek</h2><p>Voor elke playbook hebben we een lijst <strong>confirmaties</strong> (CVD divergence, Volume spike, OB tap, Funding flip…). Bij elke trade vink je af welke aanwezig waren. We zien de overlap.</p><div class="lesson-callout why"><div class="lc-title">Waarom dit cruciaal is</div>De gemiddelde trader probeert hun strategie te fixen na elke verliesreeks. Maar de strategie is meestal niet kapot — de uitvoering is dat. Compliance × PnL onthult dat verschil.</div><h2>De split</h2><p>Een trade is <strong>compliant</strong> als ≥80% van de playbook-confirmaties terug te vinden is in de trade-tags. Anders <strong>non-compliant</strong>.</p><div class="lesson-callout example"><div class="lc-title">Voorbeeld output</div>SFP playbook, 28 trades:<br/>• Compliant (22 trades): +1.45R/trade, 73% WR<br/>• Non-compliant (6 trades): -0.82R/trade, 17% WR<br/><br/><strong>Discipline-delta: +2.27R per trade.</strong><br/>Conclusie: je strategie werkt; je discipline kost je geld als je 'm niet volgt.</div><h2>Hoe gebruik je dit?</h2><ol><li>Maak playbook met expliciete confirmation-list</li><li>Bij elke trade: vink in TradeForm de confirmaties die je zag</li><li>Open playbook-detail → kijk naar de Compliance × PnL bar</li><li>Als delta &gt; +1R: jouw discipline is je grootste hefboom</li></ol><h2>Hindsight-bias waarschuwing</h2><p>Vink confirmaties aan <em>vóór</em> entry, niet erna. Anders meet je achterklap-gemak, niet discipline.</p><button class="lesson-link" data-target="playbook">Open Playbook →</button>`},
+  {id:"l11",level:"advanced",svg:"balance",duration:15,title:"Compliance × PnL begrijpen",desc:"Discipline-violations isoleren van marktruis. \"Was die loss een rule-break of pech?\"",content:`<p>Dit is het unieke verkoopargument van TradeJournal. Geen enkele andere journal toont dit zo expliciet.</p><h2>Het probleem</h2><p>Je verliest een trade. Was het de markt of jij? Zonder compliance-tracking is dat een gevoelskwestie. Met compliance-tracking is het een data-vraag.</p><h2>Twee modes — Heuristic en Explicit</h2><p>De Compliance × PnL split werkt in twee modes:</p><ul><li><strong>HEURISTIC</strong> (oudere trades, fallback) — we kijken of ≥80% van de playbook-confirmaties terug te vinden zijn in trade.confirmationTags. Werkt automatisch maar is gevoelig voor slordige tagging.</li><li><strong>EXPLICIT</strong> (sinds v12.50, aanbevolen) — bij <em>+ Nieuwe Trade</em> kies je een playbook, en de criteria-checklist verschijnt onderaan. Vink af welke criteria je vóór entry zag. Score wordt opgeslagen op de trade als <code>complianceScore</code>. Harde data, geen tag-gokwerk.</li></ul><p>Zodra ≥50% van je linked trades expliciete scores heeft, switcht het label naar <strong>EXPLICIT</strong> in de Playbook-detail.</p><div class="lesson-callout why"><div class="lc-title">Waarom dit cruciaal is</div>De gemiddelde trader probeert hun strategie te fixen na elke verliesreeks. Maar de strategie is meestal niet kapot — de uitvoering is dat. Compliance × PnL onthult dat verschil.</div><h2>De split</h2><p>Een trade is <strong>compliant</strong> als ≥80% van de mandatory criteria afgevinkt zijn (explicit) of ≥80% van de confirmation-tags matchen (heuristic). Anders <strong>non-compliant</strong>.</p><div class="lesson-callout example"><div class="lc-title">Voorbeeld output</div>SFP playbook, 28 trades:<br/>• Compliant (22 trades): +1.45R/trade, 73% WR<br/>• Non-compliant (6 trades): -0.82R/trade, 17% WR<br/><br/><strong>Discipline-delta: +2.27R per trade.</strong><br/>Conclusie: je strategie werkt; je discipline kost je geld als je 'm niet volgt.</div><h2>Hoe gebruik je dit?</h2><ol><li>Maak playbook met expliciete criteria-list (mark must-haves als 'verplicht')</li><li>Bij <em>+ Nieuwe Trade</em>: kies playbook in dropdown bovenaan</li><li>Vink <strong>vóór entry</strong> de criteria af die je zag — niet erna (hindsight-bias)</li><li>Save: trade krijgt automatisch een complianceScore</li><li>Open playbook-detail → Compliance × PnL bar toont je discipline-delta</li><li>Als delta &gt; +1R: jouw discipline is je grootste hefboom</li></ol><h2>Hindsight-bias waarschuwing</h2><p>Vink criteria aan <em>vóór</em> entry, niet erna. Anders meet je achterklap-gemak, niet discipline. De TradeForm geeft je een waarschuwing: rood licht bij &lt;50% mandatory afgevinkt.</p><button class="lesson-link" data-target="playbook">Open Playbook →</button>`},
   {id:"l12",level:"advanced",svg:"matrix",duration:10,title:"Setup × Sessie matrix — waarom 8 buckets?",desc:"De 5-bucket variant verbergt het 11:30-fenomeen. Hier de logica achter de fijnere indeling.",content:`<p>De Tendencies-tab heeft een matrix bovenaan: setup-rijen × 8 sessie-kolommen. Cellen kleuren op WR + cum. PnL.</p><h2>Waarom 8 in plaats van 5?</h2><p>De vorige versie had Asia / London / NY / US Late / Weekend. Eén "London"-bucket bevatte 09:00-15:30 — 6,5 uur, twee fundamenteel verschillende markt-regimes.</p><div class="lesson-callout example"><div class="lc-title">Het 11:30-fenomeen</div>London-open 09:00-11:30: hoog volume, scherpe directional moves, sweep-en-reclaim werkt. London-PM 11:30-15:30: pre-NY drift, volume daalt, trend dunner. Dezelfde "SFP" is een andere trade in deze twee periodes.</div><h2>De 8 buckets (Amsterdam-tijd)</h2><ul><li><strong>Asia AM</strong> 01:00-05:00 — Tokyo open</li><li><strong>Asia PM</strong> 05:00-09:00 — Tokyo lunch/close, pre-London</li><li><strong>London AM</strong> 09:00-11:30 — London-open volatility</li><li><strong>London PM</strong> 11:30-15:30 — pre-NY drift</li><li><strong>US AM</strong> 15:30-19:00 — NY cash-open</li><li><strong>US PM</strong> 19:00-22:00 — richting close</li><li><strong>US Late</strong> 22:00-01:00 — post-NY, Asia preview</li><li><strong>Weekend</strong> — Zat/Zon</li></ul><h2>Hoe gebruik je de matrix?</h2><p>Klik op een gekleurde cel → trade-filter ingesteld, naar Trades-tab. Bekijk die trades; vraag: wat hadden ze gemeen, wat onderscheidt deze sessie?</p><div class="lesson-callout warn"><div class="lc-title">Drempel</div>Cellen met &lt; 3 trades zijn gedimd — niet betrouwbaar. Wacht met conclusies tot je 5+ trades per cel hebt.</div><h2>Vlaggetjes</h2><ul><li>🎯 Edge bevestigd (WR ≥ 65%, PnL &gt; +$150)</li><li>🕒 Edge weg (WR ≤ 30%, PnL &lt; -$100)</li><li>⏰ Aandacht (WR ≤ 45%, PnL &lt; -$50)</li></ul><button class="lesson-link" data-target="tendencies">Open Tendencies →</button>`},
   {id:"l13",level:"advanced",svg:"histogram",duration:12,title:"R-multiple op portfolio-niveau",desc:"Distributie, expectancy-formule, en waarom een fat-tail je gemiddelde scheef trekt.",content:`<p>Je hebt 100+ trades. Het gemiddelde van +0.4R is bekend. Maar dat ene cijfer verbergt de werkelijke vorm van je edge.</p><h2>De distributie</h2><p>Plot je R-multiples in een histogram. Drie patronen zijn mogelijk:</p><ul><li><strong>Symmetrisch rond 0</strong> — geen edge. Stop met deze strategie.</li><li><strong>Scheef rechts (fat positive tail)</strong> — gezonde edge. Veel kleine winners + een paar runners die gemiddelde optillen.</li><li><strong>Bimodaal</strong> — twee strategieën door elkaar. Splits in playbook.</li></ul><div class="lesson-callout why"><div class="lc-title">Waarom mediaan náást gemiddelde belangrijk is</div>Eén +10R runner trekt je gemiddelde van +0.3R naar +0.5R — terwijl 80% van je trades onder +0.3R zit. Mediaan is robuuster: als mediaan ≈ gemiddelde → distributie is symmetrisch. Als mediaan &lt;&lt; gemiddelde → je edge is fat-tail-driven.</div><h2>Expectancy in detail</h2><p><code>E = (WR × avgWinR) − (LR × avgLossR)</code></p><p>Drie scenario's met dezelfde +0.3R expectancy:</p><ul><li>60% WR × +1R / 40% LR × -1.05R = +0.3R</li><li>40% WR × +2R / 60% LR × -0.83R = +0.3R</li><li>30% WR × +3R / 70% LR × -0.86R = +0.3R</li></ul><p>Allemaal +0.3R, maar mentaal heel verschillend. 30% WR voelt 7-op-10 dagen als verlies. Veel traders kunnen die psychologie niet aan en switchen prematuur.</p><h2>Rolling 20-trade edge</h2><p>Belangrijker dan lifetime gemiddelde. Toont of je edge degradeert (vermoeidheid, regime-change) of stabiel blijft. Trend naar beneden = pauzeer, analyseer.</p><div class="lesson-callout tip"><div class="lc-title">Tip</div>Je <em>laatste</em> 20 trades vertellen meer over je huidige edge dan je <em>lifetime</em> 200. De markt verandert, jij verandert; rolling stats vangen dat.</div><button class="lesson-link" data-target="analytics">Open Analytics →</button>`},
   {id:"l14",level:"advanced",svg:"shield",duration:8,title:"Trading Rules + Discipline Heatmap",desc:"Waarom dagelijkse rule-checks een leading indicator zijn voor toekomstige PnL.",content:`<p>Trading Rules + Discipline Heatmap is de proces-laag van TradeJournal. Geen PnL-data, alleen gedragsmetrics.</p><h2>De rule-types</h2><ul><li><strong>Max risk per trade</strong> (bv. 2%)</li><li><strong>Max trades per dag</strong> (bv. 5)</li><li><strong>Max losses per dag</strong> (bv. 2 — pauze daarna)</li><li><strong>SL verplicht</strong> bij entry</li><li><strong>Pre-trade notitie</strong> verplicht</li><li><strong>Custom</strong> — handmatig afvinken</li></ul><h2>Hoe werkt de Heatmap?</h2><p>7×24 (of 7×8 sessies) grid. Per cel een score op 6 checks: SL gezet, pre-notitie, setup-tag, binnen risk, post-notitie, rating gegeven.</p><div class="lesson-callout why"><div class="lc-title">Waarom dit een leading indicator is</div>Steenbarger ("The Daily Trading Coach") toonde aan: traders die rule-violations toelaten verliezen 3-4 weken later geld. Discipline-degradatie verschijnt eerst, PnL-degradatie volgt. De Heatmap is je vroegtijdige waarschuwing.</div><h2>Concreet patroon-voorbeeld</h2><div class="lesson-callout example"><div class="lc-title">Weekend / US-Late rood</div>Trader Y zag in zijn Heatmap dat zaterdagavond + zondag 22:00-01:00 consistent rood was: lage volume crypto, SL te wijd, geen notities. Tijdens die uren: -3R gemiddeld over BTC en ETH. Conclusie: weekend + US-Late = no-trade-window. Resultaat: lifetime expectancy van +0.3R naar +0.5R, alleen door <em>minder</em> traden.</div><h2>Hoe optimaliseer je?</h2><ol><li>Identificeer de roodste cel in jouw Heatmap</li><li>Voeg toe als rule: "geen trades tijdens [die periode]"</li><li>Maak het automatisch via Custom-rule</li><li>Track 4 weken</li></ol><button class="lesson-link" data-target="analytics">Open Analytics →</button>`},
@@ -9615,7 +9740,7 @@ function App(){
               <div style={{fontSize:"16px",fontWeight:700}}>Nieuwe trade</div>
               <button onClick={tryCloseNew} style={{background:"none",border:"none",color:"var(--text4)",cursor:"pointer",fontSize:"14px"}}>✕</button>
             </div>
-            <TradeForm trade={newTrade} setTrade={setNewTrade} onSave={()=>saveTrade(newTrade)} onCancel={tryCloseNew} tagConfig={tagConfig} config={config} accounts={accounts} showToast={showToast} isDraft={true}/>
+            <TradeForm trade={newTrade} setTrade={setNewTrade} onSave={()=>saveTrade(newTrade)} onCancel={tryCloseNew} tagConfig={tagConfig} config={config} accounts={accounts} showToast={showToast} isDraft={true} playbooks={playbooks} setTab={setTab}/>
           </>;
         })()}
 
@@ -9636,7 +9761,7 @@ function App(){
                 <button onClick={tryCloseEdit} style={{background:"none",border:"none",color:"var(--text4)",cursor:"pointer",fontSize:"14px",padding:"4px"}}>✕</button>
               </div>
             </div>
-            <TradeForm trade={editTrade} setTrade={setEditTrade} onSave={()=>saveTrade(editTrade)} onCancel={tryCloseEdit} tagConfig={tagConfig} config={config} accounts={accounts} showToast={showToast}/>
+            <TradeForm trade={editTrade} setTrade={setEditTrade} onSave={()=>saveTrade(editTrade)} onCancel={tryCloseEdit} tagConfig={tagConfig} config={config} accounts={accounts} showToast={showToast} playbooks={playbooks} setTab={setTab}/>
             <TPTimeline trade={editTrade} config={config} setTrade={setEditTrade} showToast={showToast}/>
           </div>
         </div>;
