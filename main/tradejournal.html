@@ -889,7 +889,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.40",released:"2026-04-28"};
+const APP_VERSION={version:"v12.41",released:"2026-04-28"};
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
 function isNewerVersion(a,b){
   const parse=(s)=>String(s||"").replace(/^v/,"").split(".").map(n=>parseInt(n,10)||0);
@@ -5064,7 +5064,7 @@ function PlaybookCard({pb,allTrades,onClick}){
 }
 
 // ─── PlaybookForm — add/edit modal ───────────────────────────────────────────
-function PlaybookForm({initial,onSave,onClose}){
+function PlaybookForm({initial,onSave,onClose,tagConfig,setTab}){
   const[pb,setPb]=useState(()=>({...EMPTY_PLAYBOOK,...initial,id:initial?.id||"pb"+Date.now(),criteria:(initial?.criteria||[]).length?[...initial.criteria]:[{text:"",mandatory:true}]}));
   const upd=(k,v)=>setPb(p=>({...p,[k]:v}));
   const togArr=(k,v)=>setPb(p=>{const arr=new Set(p[k]||[]);arr.has(v)?arr.delete(v):arr.add(v);return{...p,[k]:[...arr]};});
@@ -5074,14 +5074,22 @@ function PlaybookForm({initial,onSave,onClose}){
   const addCrit=()=>setPb(p=>({...p,criteria:[...p.criteria,{text:"",mandatory:false}]}));
   const rmCrit=(i)=>setPb(p=>({...p,criteria:p.criteria.filter((_,j)=>j!==i)}));
   const[pairInput,setPairInput]=useState("");
-  const[setupInput,setSetupInput]=useState("");
-  const[confInput,setConfInput]=useState("");
   // Optionele velden default-collapsed: minder visuele lawaai voor wie minimaal invult
   const[expContext,setExpContext]=useState(!!initial?.context);
   const[expConfirms,setExpConfirms]=useState(!!(initial?.confirmations||[]).length);
   const[expMistake,setExpMistake]=useState(!!initial?.mistake);
   const handleSave=()=>{if(!pb.name.trim()){alert("Naam is verplicht");return;}onSave({...pb,name:pb.name.trim(),updatedAt:new Date().toISOString(),createdAt:pb.createdAt||new Date().toISOString(),criteria:pb.criteria.filter(c=>c.text.trim())});};
-  const TFs=["1D","4H","1H","15M","5M","1M"];
+  // Tag-options uit tagConfig (single source of truth) — voorkomt tag-wirwar.
+  // Fallback naar DEFAULT_TAGS als tagConfig nog niet geladen.
+  const setupOpts=tagConfig?.setupTags||DEFAULT_TAGS.setupTags;
+  const confOpts=tagConfig?.confirmationTags||DEFAULT_TAGS.confirmationTags;
+  const tfOpts=tagConfig?.timeframeTags||DEFAULT_TAGS.timeframeTags;
+  // Orphan-detection: tags op deze playbook die niet meer in tagConfig staan.
+  // Tonen we apart met ⚠ zodat user data ziet en kan opschonen.
+  const orphanSetups=(pb.setupTags||[]).filter(t=>!setupOpts.includes(t));
+  const orphanConfirms=(pb.confirmations||[]).filter(t=>!confOpts.includes(t));
+  const orphanTFs=(pb.timeframes||[]).filter(t=>!tfOpts.includes(t));
+  const goManageTags=()=>{if(setTab){onClose();setTab("tags");}};
   // Reusable styles
   const lblSt={fontSize:"10.5px",color:"var(--text4)",fontFamily:"var(--mono)",fontWeight:600,letterSpacing:".06em",textTransform:"uppercase",marginBottom:"6px",display:"block"};
   const lblHint=(txt)=><span style={{textTransform:"none",letterSpacing:0,fontFamily:"var(--font)",color:"var(--text5)",fontSize:"10.5px",fontWeight:400,marginLeft:6}}>— {txt}</span>;
@@ -5146,23 +5154,34 @@ function PlaybookForm({initial,onSave,onClose}){
         </Section>
 
         {/* ─── 🔍 SETUP-LAGEN ─── */}
-        <Section icon="🔍" title="Setup-lagen" subtitle="Top-down: van HTF context tot LTF entry-trigger" tint="gold">
-          {/* Setup-tags */}
+        <Section icon="🔍" title="Setup-lagen" subtitle="Multi-select uit jouw tag-lijst (één bron, geen wirwar)" tint="gold">
+          {/* Setup-tags — multi-select uit tagConfig */}
           <div>
-            <label style={lblSt}>Setup-tags {lblHint("meerdere lagen mogelijk, bv. SFP + Liquidity Sweep")}</label>
-            {(pb.setupTags||[]).length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:6}}>{pb.setupTags.map(s=>chip(s,()=>rmChip("setupTags",s),{bg:"rgba(46,170,111,0.10)",border:"rgba(46,170,111,0.30)",text:"var(--green)"}))}</div>}
-            <div style={{display:"flex",gap:6}}>
-              <input style={{...inpSt,flex:1}} value={setupInput} onChange={e=>setSetupInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();addChip("setupTags",setupInput.trim());setSetupInput("");}}} placeholder="Typ tag + Enter"/>
-              <button type="button" onClick={()=>{addChip("setupTags",setupInput.trim());setSetupInput("");}} style={{padding:"9px 14px",fontSize:"11.5px",fontFamily:"var(--mono)",fontWeight:600,borderRadius:6,border:"1px solid var(--border3)",background:"transparent",color:"var(--text2)",cursor:"pointer",whiteSpace:"nowrap"}}>+ Toevoegen</button>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:"6px"}}>
+              <label style={{...lblSt,marginBottom:0}}>Setup-tags {lblHint("meerdere lagen mogelijk, bv. SFP + MSB")}</label>
+              {setTab&&<span onClick={goManageTags} style={{fontSize:"10.5px",fontFamily:"var(--mono)",fontWeight:600,color:"var(--gold)",cursor:"pointer",letterSpacing:".04em"}}>Beheer tags →</span>}
             </div>
-            <QuickAdd items={["SFP","MSB","BOS","Liquidity Sweep","Reclaim","Range retest"]} onPick={t=>addChip("setupTags",t)}/>
+            {setupOpts.length===0?<div style={{padding:"10px 12px",background:"rgba(255,255,255,0.02)",border:"1px dashed var(--border3)",borderRadius:6,fontSize:11.5,color:"var(--text4)",fontStyle:"italic"}}>Nog geen setup-tags. <span onClick={goManageTags} style={{color:"var(--gold)",cursor:"pointer"}}>Maak ze aan in Tags →</span></div>:
+            <div style={{display:"flex",flexWrap:"wrap",gap:5}}>{setupOpts.map(t=>pillBtn((pb.setupTags||[]).includes(t),()=>togArr("setupTags",t),t))}</div>}
+            {orphanSetups.length>0&&<div style={{marginTop:"10px",padding:"8px 10px",background:"rgba(212,168,83,0.05)",border:"1px solid rgba(212,168,83,0.20)",borderRadius:6,fontSize:11,color:"var(--text3)"}}>
+              <div style={{fontSize:9.5,fontFamily:"var(--mono)",fontWeight:700,color:"var(--amber)",letterSpacing:".08em",textTransform:"uppercase",marginBottom:5}}>⚠ Niet meer in tag-lijst — opschonen?</div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:5}}>{orphanSetups.map(s=>chip(s,()=>rmChip("setupTags",s),{bg:"rgba(212,168,83,0.08)",border:"rgba(212,168,83,0.25)",text:"var(--amber)"}))}</div>
+            </div>}
           </div>
-          {/* Timeframes */}
+          {/* Timeframes — multi-select uit tagConfig */}
           <div>
-            <label style={lblSt}>Timeframes {lblHint("HTF context → MTF setup → LTF entry")}</label>
-            <div style={{display:"flex",flexWrap:"wrap",gap:5}}>{TFs.map(tf=>pillBtn((pb.timeframes||[]).includes(tf),()=>togArr("timeframes",tf),tf))}</div>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:"6px"}}>
+              <label style={{...lblSt,marginBottom:0}}>Timeframes {lblHint("HTF context → MTF setup → LTF entry")}</label>
+              {setTab&&<span onClick={goManageTags} style={{fontSize:"10.5px",fontFamily:"var(--mono)",fontWeight:600,color:"var(--gold)",cursor:"pointer",letterSpacing:".04em"}}>Beheer tags →</span>}
+            </div>
+            {tfOpts.length===0?<div style={{padding:"10px 12px",background:"rgba(255,255,255,0.02)",border:"1px dashed var(--border3)",borderRadius:6,fontSize:11.5,color:"var(--text4)",fontStyle:"italic"}}>Nog geen timeframes. <span onClick={goManageTags} style={{color:"var(--gold)",cursor:"pointer"}}>Maak ze aan in Tags →</span></div>:
+            <div style={{display:"flex",flexWrap:"wrap",gap:5}}>{tfOpts.map(tf=>pillBtn((pb.timeframes||[]).includes(tf),()=>togArr("timeframes",tf),tf))}</div>}
+            {orphanTFs.length>0&&<div style={{marginTop:"10px",padding:"8px 10px",background:"rgba(212,168,83,0.05)",border:"1px solid rgba(212,168,83,0.20)",borderRadius:6,fontSize:11,color:"var(--text3)"}}>
+              <div style={{fontSize:9.5,fontFamily:"var(--mono)",fontWeight:700,color:"var(--amber)",letterSpacing:".08em",textTransform:"uppercase",marginBottom:5}}>⚠ Niet meer in tag-lijst</div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:5}}>{orphanTFs.map(s=>chip(s,()=>rmChip("timeframes",s),{bg:"rgba(212,168,83,0.08)",border:"rgba(212,168,83,0.25)",text:"var(--amber)"}))}</div>
+            </div>}
           </div>
-          {/* Confirmaties — collapsible */}
+          {/* Confirmaties — collapsible, multi-select uit tagConfig */}
           <div style={{borderTop:"1px dashed var(--border2)",paddingTop:"14px"}}>
             <div onClick={()=>setExpConfirms(!expConfirms)} style={{cursor:"pointer",userSelect:"none",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
               <div>
@@ -5172,12 +5191,15 @@ function PlaybookForm({initial,onSave,onClose}){
               <span style={{fontSize:"12px",color:"var(--text4)",fontFamily:"var(--mono)",transition:"transform .2s",transform:expConfirms?"rotate(0deg)":"rotate(-90deg)"}}>▾</span>
             </div>
             {expConfirms&&<div style={{marginTop:"10px"}}>
-              {(pb.confirmations||[]).length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:6}}>{pb.confirmations.map(s=>chip(s,()=>rmChip("confirmations",s),{bg:"rgba(212,168,83,0.10)",border:"rgba(212,168,83,0.30)",text:"var(--amber)"}))}</div>}
-              <div style={{display:"flex",gap:6}}>
-                <input style={{...inpSt,flex:1}} value={confInput} onChange={e=>setConfInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();addChip("confirmations",confInput.trim());setConfInput("");}}} placeholder="bv. CVD divergentie, OB tap, Funding flip"/>
-                <button type="button" onClick={()=>{addChip("confirmations",confInput.trim());setConfInput("");}} style={{padding:"9px 12px",fontSize:"11.5px",fontFamily:"var(--mono)",fontWeight:600,borderRadius:6,border:"1px solid var(--border3)",background:"transparent",color:"var(--text2)",cursor:"pointer"}}>+</button>
+              <div style={{display:"flex",justifyContent:"flex-end",marginBottom:"6px"}}>
+                {setTab&&<span onClick={goManageTags} style={{fontSize:"10.5px",fontFamily:"var(--mono)",fontWeight:600,color:"var(--gold)",cursor:"pointer",letterSpacing:".04em"}}>Beheer tags →</span>}
               </div>
-              <QuickAdd items={["CVD divergentie","Volume sweep ≥ 1.5×","FVG tap","OB level","Funding flip","OI rising","Liquidaties zichtbaar","HTF trend aligned"]} onPick={t=>addChip("confirmations",t)}/>
+              {confOpts.length===0?<div style={{padding:"10px 12px",background:"rgba(255,255,255,0.02)",border:"1px dashed var(--border3)",borderRadius:6,fontSize:11.5,color:"var(--text4)",fontStyle:"italic"}}>Nog geen confirmation-tags. <span onClick={goManageTags} style={{color:"var(--gold)",cursor:"pointer"}}>Maak ze aan in Tags →</span></div>:
+              <div style={{display:"flex",flexWrap:"wrap",gap:5}}>{confOpts.map(t=>pillBtn((pb.confirmations||[]).includes(t),()=>togArr("confirmations",t),t))}</div>}
+              {orphanConfirms.length>0&&<div style={{marginTop:"10px",padding:"8px 10px",background:"rgba(212,168,83,0.05)",border:"1px solid rgba(212,168,83,0.20)",borderRadius:6,fontSize:11,color:"var(--text3)"}}>
+                <div style={{fontSize:9.5,fontFamily:"var(--mono)",fontWeight:700,color:"var(--amber)",letterSpacing:".08em",textTransform:"uppercase",marginBottom:5}}>⚠ Niet meer in tag-lijst — opschonen?</div>
+                <div style={{display:"flex",flexWrap:"wrap",gap:5}}>{orphanConfirms.map(s=>chip(s,()=>rmChip("confirmations",s),{bg:"rgba(212,168,83,0.08)",border:"rgba(212,168,83,0.25)",text:"var(--amber)"}))}</div>
+              </div>}
             </div>}
           </div>
         </Section>
@@ -5571,7 +5593,7 @@ function PlaybookImportModal({onImport,onClose,initialInput,showToast}){
 }
 
 // ─── PlaybookPage — hoofdtab ────────────────────────────────────────────────
-function PlaybookPage({playbooks,setPlaybooks,allTrades,setFilters,setTab,showToast,pendingImport,clearPendingImport}){
+function PlaybookPage({playbooks,setPlaybooks,allTrades,setFilters,setTab,showToast,pendingImport,clearPendingImport,tagConfig}){
   const[detailId,setDetailId]=useState(null);
   const[formInitial,setFormInitial]=useState(null);// null=closed, {} or {id:..}=open
   const[shareId,setShareId]=useState(null);
@@ -5671,7 +5693,7 @@ function PlaybookPage({playbooks,setPlaybooks,allTrades,setFilters,setTab,showTo
     </div>}
 
     {detailId&&(()=>{const pb=playbooks.find(p=>p.id===detailId);if(!pb)return null;return<PlaybookDetailModal pb={pb} allTrades={allTrades} setFilters={setFilters} setTab={setTab} onClose={()=>setDetailId(null)} onEdit={(p)=>{setFormInitial(p);setDetailId(null);}} onDelete={onDelete} onShare={(p)=>{setShareId(p.id);setDetailId(null);}}/>;})()}
-    {formInitial!==null&&<PlaybookForm initial={formInitial} onSave={onSave} onClose={()=>setFormInitial(null)}/>}
+    {formInitial!==null&&<PlaybookForm initial={formInitial} onSave={onSave} onClose={()=>setFormInitial(null)} tagConfig={tagConfig} setTab={setTab}/>}
     {shareId&&(()=>{const pb=playbooks.find(p=>p.id===shareId);if(!pb)return null;return<PlaybookShareModal pb={pb} allTrades={allTrades} onClose={()=>setShareId(null)} showToast={showToast}/>;})()}
     {importOpen&&<PlaybookImportModal onImport={onImport} onClose={()=>{setImportOpen(false);if(clearPendingImport)clearPendingImport();}} initialInput={pendingImport||""} showToast={showToast}/>}
   </div>);
@@ -9019,7 +9041,7 @@ function App(){
         {tab==="trades"&&!editTrade&&<TradeList trades={filteredTrades} onEdit={setEditTrade} onDelete={deleteTrade} onBulkDelete={bulkDelete} onBulkTag={bulkTag} showToast={showToast} tagConfig={tagConfig} config={config} accounts={accounts}/>}
         {tab==="analytics"&&<Analytics trades={filteredTrades} tradingRules={tradingRules} allTrades={trades} config={config} setFilters={setFilters} setTab={setTab}/>}
         {tab==="tendencies"&&<TendenciesPage trades={filteredTrades} setFilters={setFilters} setTab={setTab}/>}
-        {tab==="playbook"&&<PlaybookPage playbooks={playbooks} setPlaybooks={setPlaybooks} allTrades={trades} setFilters={setFilters} setTab={setTab} showToast={showToast} pendingImport={pendingPbImport} clearPendingImport={()=>setPendingPbImport("")}/>}
+        {tab==="playbook"&&<PlaybookPage playbooks={playbooks} setPlaybooks={setPlaybooks} allTrades={trades} setFilters={setFilters} setTab={setTab} showToast={showToast} pendingImport={pendingPbImport} clearPendingImport={()=>setPendingPbImport("")} tagConfig={tagConfig}/>}
         {tab==="review"&&<ReviewDashboard trades={filteredTrades}/>}
         {tab==="calendar"&&<Calendar trades={filteredTrades} setFilters={setFilters} setTab={setTab} dailyNotes={dailyNotes} setDailyNotes={setDailyNotes} tradingRules={tradingRules} onEdit={(t)=>{setEditTrade(t);setNewTrade({...EMPTY_TRADE,...t,tpLevels:t.tpLevels||[],layers:t.layers||[],links:t.links||[],manualOverrides:t.manualOverrides||[]});navigate("new");}}/>}
         {tab==="accounts"&&<AccountsHub config={config} setConfig={setConfig} accounts={accounts} setAccounts={setAccounts} showToast={showToast} trades={trades} importTrades={importTrades} syncOpenPositions={syncOpenPositions} exportTrades={exportTrades} setTagConfig={setTagConfig} tagConfig={tagConfig} tradingRules={tradingRules} setTradingRules={setTradingRules} goals={goals} setGoals={setGoals} mindsetPrefs={mindsetPrefs} setMindsetPrefs={setMindsetPrefs}/>}
