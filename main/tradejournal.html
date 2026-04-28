@@ -889,7 +889,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.41",released:"2026-04-28"};
+const APP_VERSION={version:"v12.42",released:"2026-04-28"};
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
 function isNewerVersion(a,b){
   const parse=(s)=>String(s||"").replace(/^v/,"").split(".").map(n=>parseInt(n,10)||0);
@@ -924,7 +924,8 @@ const EMPTY_PLAYBOOK={
   stop:"",               // stop-rule
   target:"",             // target-rule
   minRR:"",              // min R:R (vrij format)
-  mistake:"",            // hoe verpest de gebruiker dit setup meestal
+  mistake:"",            // legacy free-text mistake-beschrijving (v12.38-12.41)
+  mistakePatterns:[],    // multi-select uit tagConfig.mistakeTags (v12.42+)
   importedFrom:"",       // gevuld bij import van community-share
   importedAt:"",         // ISO-timestamp
   createdAt:"",
@@ -938,6 +939,7 @@ function migratePlaybooks(arr){
     confirmations:Array.isArray(p?.confirmations)?p.confirmations:[],
     pairs:Array.isArray(p?.pairs)?p.pairs:[],
     sessions:Array.isArray(p?.sessions)?p.sessions:[],
+    mistakePatterns:Array.isArray(p?.mistakePatterns)?p.mistakePatterns:[],
     criteria:Array.isArray(p?.criteria)?p.criteria.map(c=>typeof c==="string"?{text:c,mandatory:true}:({text:c.text||"",mandatory:!!c.mandatory})):[],
     id:p?.id||("pb"+Date.now()+Math.floor(Math.random()*999)),
   }));
@@ -5084,11 +5086,13 @@ function PlaybookForm({initial,onSave,onClose,tagConfig,setTab}){
   const setupOpts=tagConfig?.setupTags||DEFAULT_TAGS.setupTags;
   const confOpts=tagConfig?.confirmationTags||DEFAULT_TAGS.confirmationTags;
   const tfOpts=tagConfig?.timeframeTags||DEFAULT_TAGS.timeframeTags;
+  const mistakeOpts=tagConfig?.mistakeTags||DEFAULT_TAGS.mistakeTags;
   // Orphan-detection: tags op deze playbook die niet meer in tagConfig staan.
   // Tonen we apart met ⚠ zodat user data ziet en kan opschonen.
   const orphanSetups=(pb.setupTags||[]).filter(t=>!setupOpts.includes(t));
   const orphanConfirms=(pb.confirmations||[]).filter(t=>!confOpts.includes(t));
   const orphanTFs=(pb.timeframes||[]).filter(t=>!tfOpts.includes(t));
+  const orphanMistakes=(pb.mistakePatterns||[]).filter(t=>!mistakeOpts.includes(t));
   const goManageTags=()=>{if(setTab){onClose();setTab("tags");}};
   // Reusable styles
   const lblSt={fontSize:"10.5px",color:"var(--text4)",fontFamily:"var(--mono)",fontWeight:600,letterSpacing:".06em",textTransform:"uppercase",marginBottom:"6px",display:"block"};
@@ -5257,16 +5261,31 @@ function PlaybookForm({initial,onSave,onClose,tagConfig,setTab}){
             <label style={lblSt}>Min R:R</label>
             <input style={{...inpSt,maxWidth:"160px"}} value={pb.minRR} onChange={e=>upd("minRR",e.target.value)} placeholder="bv. 1.5"/>
           </div>
-          {/* Mistake-pattern — collapsible */}
+          {/* Mistake-patterns — collapsible, multi-select uit tagConfig */}
           <div style={{borderTop:"1px dashed var(--border2)",paddingTop:"14px"}}>
             <div onClick={()=>setExpMistake(!expMistake)} style={{cursor:"pointer",userSelect:"none",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
               <div>
-                <span style={{...lblSt,marginBottom:0,display:"inline"}}>⚠️ Mistake-pattern</span>
-                <span style={{textTransform:"none",letterSpacing:0,fontFamily:"var(--font)",color:"var(--text5)",fontSize:"10.5px",fontWeight:400,marginLeft:6}}>— optioneel · hoe verpest jij dit setup meestal?</span>
+                <span style={{...lblSt,marginBottom:0,display:"inline"}}>⚠️ Mistake-patterns</span>
+                <span style={{textTransform:"none",letterSpacing:0,fontFamily:"var(--font)",color:"var(--text5)",fontSize:"10.5px",fontWeight:400,marginLeft:6}}>— optioneel · welke fouten maak jij meestal op dit setup? {(pb.mistakePatterns||[]).length>0?`(${pb.mistakePatterns.length})`:""}</span>
               </div>
               <span style={{fontSize:"12px",color:"var(--text4)",fontFamily:"var(--mono)",transition:"transform .2s",transform:expMistake?"rotate(0deg)":"rotate(-90deg)"}}>▾</span>
             </div>
-            {expMistake&&<input style={{...inpSt,marginTop:"10px"}} value={pb.mistake} onChange={e=>upd("mistake",e.target.value)} placeholder="bv. FOMO entry vóór reclaim sluit"/>}
+            {expMistake&&<div style={{marginTop:"10px"}}>
+              <div style={{display:"flex",justifyContent:"flex-end",marginBottom:"6px"}}>
+                {setTab&&<span onClick={goManageTags} style={{fontSize:"10.5px",fontFamily:"var(--mono)",fontWeight:600,color:"var(--gold)",cursor:"pointer",letterSpacing:".04em"}}>Beheer tags →</span>}
+              </div>
+              {mistakeOpts.length===0?<div style={{padding:"10px 12px",background:"rgba(255,255,255,0.02)",border:"1px dashed var(--border3)",borderRadius:6,fontSize:11.5,color:"var(--text4)",fontStyle:"italic"}}>Nog geen mistake-tags. <span onClick={goManageTags} style={{color:"var(--gold)",cursor:"pointer"}}>Maak ze aan in Tags →</span></div>:
+              <div style={{display:"flex",flexWrap:"wrap",gap:5}}>{mistakeOpts.map(t=>pillBtn((pb.mistakePatterns||[]).includes(t),()=>togArr("mistakePatterns",t),t))}</div>}
+              {orphanMistakes.length>0&&<div style={{marginTop:"10px",padding:"8px 10px",background:"rgba(212,168,83,0.05)",border:"1px solid rgba(212,168,83,0.20)",borderRadius:6,fontSize:11,color:"var(--text3)"}}>
+                <div style={{fontSize:9.5,fontFamily:"var(--mono)",fontWeight:700,color:"var(--amber)",letterSpacing:".08em",textTransform:"uppercase",marginBottom:5}}>⚠ Niet meer in tag-lijst — opschonen?</div>
+                <div style={{display:"flex",flexWrap:"wrap",gap:5}}>{orphanMistakes.map(s=>chip(s,()=>rmChip("mistakePatterns",s),{bg:"rgba(212,168,83,0.08)",border:"rgba(212,168,83,0.25)",text:"var(--amber)"}))}</div>
+              </div>}
+              {pb.mistake&&<div style={{marginTop:"12px",padding:"10px 12px",background:"rgba(138,144,160,0.05)",border:"1px solid var(--border2)",borderRadius:6}}>
+                <div style={{fontSize:9.5,fontFamily:"var(--mono)",fontWeight:700,color:"var(--text4)",letterSpacing:".08em",textTransform:"uppercase",marginBottom:5}}>📜 Oude vrije tekst (legacy)</div>
+                <div style={{fontSize:12,color:"var(--text3)",lineHeight:1.5,fontStyle:"italic",marginBottom:8}}>"{pb.mistake}"</div>
+                <button type="button" onClick={()=>upd("mistake","")} style={{padding:"4px 10px",fontSize:10.5,fontFamily:"var(--mono)",fontWeight:600,borderRadius:5,border:"1px solid var(--border3)",background:"transparent",color:"var(--text4)",cursor:"pointer"}}>Verwijder oude tekst</button>
+              </div>}
+            </div>}
           </div>
         </Section>
 
@@ -5357,10 +5376,13 @@ function PlaybookDetailModal({pb,allTrades,setFilters,setTab,onClose,onEdit,onDe
           </div>
         </div>}
 
-        {/* MISTAKE */}
-        {pb.mistake&&<div>
+        {/* MISTAKE-PATTERNS — chips uit tagConfig + legacy text indien aanwezig */}
+        {((pb.mistakePatterns||[]).length>0||pb.mistake)&&<div>
           <div style={{fontSize:11,color:"var(--gold)",fontFamily:"var(--mono)",fontWeight:700,letterSpacing:".18em",textTransform:"uppercase",marginBottom:10}}>⚠️ Hoe verpest jij dit setup?</div>
-          <div style={{background:"rgba(224,85,85,0.05)",border:"1px solid rgba(224,85,85,0.20)",borderLeft:"3px solid var(--red)",borderRadius:8,padding:"12px 14px",fontSize:12.5,color:"var(--text3)",lineHeight:1.55}}><strong style={{color:"var(--red)",fontFamily:"var(--mono)",fontWeight:700,letterSpacing:".05em",textTransform:"uppercase",fontSize:10}}>jouw patroon:</strong> {pb.mistake}</div>
+          <div style={{background:"rgba(224,85,85,0.05)",border:"1px solid rgba(224,85,85,0.20)",borderLeft:"3px solid var(--red)",borderRadius:8,padding:"14px 16px"}}>
+            {(pb.mistakePatterns||[]).length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:pb.mistake?"10px":0}}>{pb.mistakePatterns.map(m=><span key={m} style={{fontSize:11.5,fontFamily:"var(--mono)",fontWeight:600,padding:"4px 10px",borderRadius:4,background:"rgba(224,85,85,0.10)",color:"var(--red)",border:"1px solid rgba(224,85,85,0.30)"}}>⚠ {m}</span>)}</div>}
+            {pb.mistake&&<div style={{fontSize:12.5,color:"var(--text3)",lineHeight:1.55,fontStyle:"italic"}}><strong style={{color:"var(--red)",fontFamily:"var(--mono)",fontWeight:700,letterSpacing:".05em",textTransform:"uppercase",fontSize:10,fontStyle:"normal"}}>extra context:</strong> {pb.mistake}</div>}
+          </div>
         </div>}
 
         {/* MISSED-TRADES BACKTEST */}
@@ -5431,7 +5453,7 @@ function PlaybookShareModal({pb,allTrades,onClose,showToast}){
     if(fields.context)p.context=pb.context;
     if(fields.criteria)p.criteria=pb.criteria;
     if(fields.rules){p.stop=pb.stop;p.target=pb.target;p.minRR=pb.minRR;}
-    if(fields.mistake)p.mistake=pb.mistake;
+    if(fields.mistake){p.mistakePatterns=pb.mistakePatterns;if(pb.mistake)p.mistake=pb.mistake;}
     if(fields.stats&&s.n>0){p.stats={n:s.n,wr:parseFloat(s.wr.toFixed(1)),avgR:parseFloat(s.avgR.toFixed(2)),expR:parseFloat(s.exp.toFixed(2))};if(privacy==="USD")p.stats.cumPnl=parseFloat(s.pnl.toFixed(0));}
     return p;
   },[pb,fields,privacy,s]);
@@ -5454,7 +5476,12 @@ function PlaybookShareModal({pb,allTrades,onClose,showToast}){
     if(p.context){lines.push(h("Markt-context"));lines.push(p.context);lines.push("");}
     if(p.criteria?.length){lines.push(h("Entry-criteria"));p.criteria.forEach(c=>lines.push(`${c.mandatory?"✅":"⚪"} ${c.text}${c.mandatory?" "+(D?"`(verplicht)`":"(verplicht)"):""}`));lines.push("");}
     if(p.stop||p.target){lines.push(h("Rules"));if(p.stop)lines.push(`${bold("🛑 Stop:")} ${p.stop}`);if(p.target)lines.push(`${bold("🎯 Target:")} ${p.target}`);if(p.minRR)lines.push(`${bold("Min R:R:")} ${p.minRR}`);lines.push("");}
-    if(p.mistake){lines.push(h("Mistake-pattern"));lines.push(`⚠️ ${p.mistake}`);lines.push("");}
+    if((p.mistakePatterns&&p.mistakePatterns.length)||p.mistake){
+      lines.push(h("Mistake-patterns"));
+      if(p.mistakePatterns&&p.mistakePatterns.length)lines.push(`⚠️ ${p.mistakePatterns.map(m=>D?`\`${m}\``:m).join(" · ")}`);
+      if(p.mistake)lines.push(p.mistakePatterns&&p.mistakePatterns.length?`Context: ${p.mistake}`:`⚠️ ${p.mistake}`);
+      lines.push("");
+    }
     if(p.stats){const st=p.stats;lines.push(h(`Stats (${st.n} trades)`));lines.push(`📊 ${st.wr}% WR · gem. ${st.avgR>=0?"+":""}${st.avgR}R · expectancy ${st.expR>=0?"+":""}${st.expR}R${st.cumPnl!=null?` · cum. ${st.cumPnl>=0?"+":"−"}$${Math.abs(st.cumPnl)}`:""}`);lines.push("");}
     lines.push(D?"— gedeeld via SyncJournal":"-- gedeeld via SyncJournal");
     return lines.join("\n").trim();
