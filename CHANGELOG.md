@@ -6,6 +6,11 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.45] — 2026-04-28
+
+### Toegevoegd
+- **Nieuwe Steenbarger-quote** in `MINDSET_QUOTES` (categorie `process-focus`): *"We hoeven onszelf niet totaal anders te maken. We hoeven alleen consistenter te zijn in wie we al zijn op ons best."* — uit zijn SMB Trading Summit 2026 talk *"Positive Trading Psychology"*. Verschijnt nu in de rotating mindset-banner, dashboard-card en pre-trade hints. ID `c6`, NL-paraphrase consistent met de andere classics.
+
 ## [v12.44] — 2026-04-28
 
 ### Fixed
