@@ -6,6 +6,25 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.46] — 2026-04-28
+
+### Toegevoegd
+- **Backtest trades naast Missed trades** (Denny voorgesteld). Tot v12.45 had je alleen 👻 Gemist (real-time gespotte setup, niet genomen). Nu ook 🔬 Backtest (chart-replay analyse). Beide vallen onder de bestaande `status:"missed"` paraplu — geen breaking change — maar onderscheiden via nieuw veld `simType: "missed" | "backtest"`. Backwards compat: lege `simType` op bestaande trades wordt automatisch `"missed"` bij eerstvolgende load (`normalizeTrade`).
+
+  **Waarom de splitsing belangrijk is**: missed en backtest hebben fundamenteel verschillende **bias-richting**. Missed-trades hebben twijfel/FOMO/discipline ingebakken — stats erop zijn realistisch. Backtest-trades hebben **hindsight-bias** ingebakken (je weet al hoe de markt liep) — stats erop zijn opgeblazen. Samen-poolen geeft misleidende edge-cijfers. Daarom default-filter op "Gemist" in alle stats, backtest opt-in.
+
+  **Wijzigingen per plek**:
+  - **TradeForm**: status-balk heeft nu twee aparte toggle-knoppen — `👻 Gemist?` (huidige flow, paars) en `🔬 Backtest?` (nieuw, blauw). Beide zetten `status:"missed"` met respectievelijke `simType`. Header krijgt context-hint: *"🔬 Backtest / chart-replay — uitgesloten van standaard edge-stats."*
+  - **Trades-tabel**: badge toont 👻 MISS (paars) of 🔬 BT (blauw) op basis van simType
+  - **FilterBar**: type-filter uitgebreid van `[Genomen | Gemist | Beide]` naar `[Genomen | 👻 Gemist | 🔬 Backtest | Sim (👻+🔬) | Alles]`. Backwards compat: oude `"both"` filter mapt naar `"sim"`.
+  - **PlaybookDetailModal — Simulated Trades sectie** (heette voorheen "Missed Trades · Playbook-backtest"): subtype-filter pills `[👻 Gemist (n) | 🔬 Backtest (n) | Beide]`. Default Gemist. Bij "Beide" verschijnt een amber waarschuwing over hindsight-bias-vertekening.
+  - **playbookMissedStats(pb, allTrades, subTypeFilter)**: derde argument met default `"missed"`. Backtest-trades worden niet gemixt in standaard edge-leak cijfers tenzij expliciet gevraagd.
+  - **Tendencies**: backtest-trades automatisch uitgesloten van patroon-detectie (existing detectors filterden al op `pnl !== ""` waardoor `status:"missed"` trades sowieso al buiten boord vielen — onveranderd).
+  - **CommandPalette**: nieuwe actie *"🔬 Log backtest trade"* naast bestaande *"👻 Log gemiste trade"*. Sneltoets `M` blijft voor missed.
+  - **Help-FAQ**: nieuwe entry *"Wat is het verschil tussen Gemist en Backtest?"* legt het bias-onderscheid uit.
+
+  **Use case voor backtest**: scroll door TradingView-replay, log gespotte setups als backtest-trade met `hindsightExit`, zie pure mechanische edge per setup. Handig om een setup te valideren vóór je 'm aan je playbook toevoegt. Toekomstig opvolg: `simType: "paper"` voor live demo-account trades.
+
 ## [v12.45] — 2026-04-28
 
 ### Toegevoegd
