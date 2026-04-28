@@ -6,6 +6,36 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.48] — 2026-04-28
+
+### Toegevoegd
+- **🔀 Cross-Validation Tendencies** — elke tendency-card krijgt nu een extra badge naast de severity-badge die toont of het patroon ook in backtest- of paper-trades verschijnt:
+  - **🔀 Validated (sim n=X)** (groen) — patroon werkt in real én sim-data (positief in beide), sterker signaal dan alleen real
+  - **⚠ Noise risk (sim ±X.YR)** (amber) — real-tendency met klein sample (<5) terwijl sim-data het juist tegenspreekt — mogelijk ruis-correlatie
+
+  Helper: `crossValidateTendency(tend, allTrades)` matcht een tendency's filter op simulated trades, berekent virtuele R uit `hindsightExit`, en classificeert op basis van real + sim-uitkomst. Backtest is primaire validator (≥3 trades vereist); paper als fallback. Geen badge wanneer er geen sim-data is — geen visuele ruis voor users zonder simulated trades.
+
+- **💢 Stress-Leak Detector** in Analytics (Proces-mode) — nieuwe widget die rule-discipline vergelijkt tussen paper-trades (geen druk) en real-trades (geld op het spel). Sport-coaching analogie: clutch-factor = het verschil tussen training en wedstrijd.
+  - Twee thermometers: **Paper-discipline** vs **Real-discipline** (% rule-compliance)
+  - Plus secundaire **WR-vergelijking** (paper-WR vs real-WR via hindsight-R)
+  - Stress-Leak in pp + diagnose-tekst:
+    - **>15pp leak** (rood) → "Mentale bandbreedte-probleem onder financiële druk. Halveer size 4 weken."
+    - **5-15pp** (amber) → "Lichte stress-leak — let op grote size."
+    - **±5pp** (groen) → "Discipline consistent. Issues elders."
+    - **<−5pp** (blauw) → "Real-disc beter dan paper — paper niet serieus genomen?"
+  - `tradeDisciplineScore(t, maxRiskPct)` — 5-check rule-compliance: SL gezet / setup-tag / pre-notitie / binnen risk-limit / post-notitie. Hergebruikt de Trading Rules `max_risk_pct` als drempel.
+  - `stressLeakStats(allTrades, maxRiskPct)` — minimum 3 paper + 3 real samples vereist; toont "te weinig data"-hint bij ondersample.
+  - Verschijnt in Analytics alleen als er paper-trades bestaan (`config.trackMissedTrades` + minstens 1 paper-trade). Layout-pref-key `stressLeak` toggelbaar via tandwiel.
+
+- **📝 Paper-trade subtype** — derde simType naast Missed en Backtest:
+  - Nieuwe knop in TradeForm status-bar: 📝 **Paper?** (paars)
+  - Trades-tabel badge: 📝 **PAPER** (paars)
+  - FilterBar tradeType: nieuwe optie `[📝 Paper]` (paars accent)
+  - CommandPalette: nieuwe actie `📝 Log paper trade — Live demo-account, geen geld`
+  - Edge-Erosion Funnel (v12.47) toont nu ook paper-rij in de tabel + funnel-bars
+  - Trust-Score (v12.47) gebruikt paper-counts voor "Validated"-stadium (1+ paper na 4+ backtest)
+- **Help-FAQ entry uitgebreid** — *"Wat is het verschil tussen Gemist, Backtest en Paper?"* legt nu alle drie de bias-onderscheiden uit en linkt expliciet aan de drie killer-features (Edge-Erosion Funnel, Cross-Validation, Stress-Leak Detector).
+
 ## [v12.47] — 2026-04-28
 
 ### Toegevoegd
