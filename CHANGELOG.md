@@ -6,6 +6,11 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.44] — 2026-04-28
+
+### Fixed
+- **Lesson-card SVG illustraties schaalden niet** (Denny gemeld). De 16 SVG icons in de Handleiding-tab hadden alleen `viewBox="0 0 80 80"` zonder explicit `width`/`height` attributes — browsers defaulten dan naar 300×150px (HTML5 spec), waardoor de illustraties uit de 120px-hoge container braken en de cards visueel onevenwichtig werden. Fix: explicit `width="80" height="80"` toegevoegd aan alle 16 SVG-strings. In de demo (`handleiding-demo.html`) was dit afgevangen via een CSS-regel `.card-illustration svg{max-width:80px}` die niet meekwam tijdens v12.43-integratie.
+
 ## [v12.43] — 2026-04-28
 
 ### Toegevoegd
