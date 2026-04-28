@@ -889,7 +889,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.45",released:"2026-04-28"};
+const APP_VERSION={version:"v12.46",released:"2026-04-28"};
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
 function isNewerVersion(a,b){
   const parse=(s)=>String(s||"").replace(/^v/,"").split(".").map(n=>parseInt(n,10)||0);
@@ -955,6 +955,7 @@ const EMPTY_TRADE={
   setupTags:[],confirmationTags:[],timeframeTags:[],
   emotionTags:[],mistakeTags:[],customTags:[],
   missedReasonTags:[],// voor status:"missed" trades
+  simType:"",         // "missed" (real-time gespot, niet genomen) of "backtest" (chart-replay). Leeg = legacy "missed".
   rating:0,screenshot:null,screenshots:[],notes:"",links:[],layers:[],
   source:"manual",positionId:"",openTime:"",closeTime:"",
   status:"closed",manualOverrides:[],tpLevels:[],
@@ -1002,6 +1003,11 @@ const normalizeTrade=(t)=>{
       return n;
     });
   }
+  // v12.46+: simType migration. Bestaande status:"missed" trades zonder
+  // simType krijgen "missed" (real-time gespot, niet genomen). Backtest is
+  // expliciet — alleen via UI-toggle. Hierdoor geen breaking change voor
+  // bestaande edge-leak / Playbook stats.
+  if(out.status==="missed"&&!out.simType)out.simType="missed";
   return out;
 };
 
@@ -2873,7 +2879,7 @@ function TradeList({trades,onEdit,onDelete,onQuickTag,onBulkDelete,onBulkTag,sho
                 <div style={{width:"14px",height:"14px",borderRadius:"3px",border:`1px solid ${isSel?"#C9A84C":"var(--border4)"}`,background:isSel?"#C9A84C":"transparent",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"9px",color:"#fff",margin:"0 auto",cursor:"pointer"}}>{isSel?"✓":""}</div>
               </td>
               <td style={tdStyle}>
-                {t.status==="missed"?<span style={{padding:"3px 8px",borderRadius:"4px",fontSize:"10px",fontWeight:700,background:"rgba(180,140,200,0.15)",color:"#b48cc8",display:"inline-flex",alignItems:"center",gap:"5px"}}>👻 MISS</span>
+                {t.status==="missed"?(t.simType==="backtest"?<span style={{padding:"3px 8px",borderRadius:"4px",fontSize:"10px",fontWeight:700,background:"rgba(122,180,210,0.15)",color:"#7ab4d2",display:"inline-flex",alignItems:"center",gap:"5px"}}>🔬 BT</span>:<span style={{padding:"3px 8px",borderRadius:"4px",fontSize:"10px",fontWeight:700,background:"rgba(180,140,200,0.15)",color:"#b48cc8",display:"inline-flex",alignItems:"center",gap:"5px"}}>👻 MISS</span>)
                 :t.status==="open"?<span style={{padding:"3px 8px",borderRadius:"4px",fontSize:"10px",fontWeight:700,background:"rgba(201,168,76,0.1)",color:"#C9A84C",display:"inline-flex",alignItems:"center",gap:"5px"}}><span style={{width:"6px",height:"6px",borderRadius:"50%",background:"#C9A84C",animation:"pulse 2s ease-in-out infinite"}}/>OPEN</span>
                 :<span style={{padding:"3px 8px",borderRadius:"4px",fontSize:"10px",fontWeight:700,background:isW?"rgba(46,170,111,0.12)":isL?"rgba(224,85,85,0.12)":"rgba(255,255,255,0.04)",color:isW?"#2eaa6f":isL?"#e05555":"rgba(255,255,255,0.4)"}}>{isW?"WIN":isL?"LOSS":"--"}</span>}
               </td>
@@ -3559,6 +3565,11 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,accounts,sho
   const isOpen=!isMissed&&((trade.status||"closed")==="open");
   const hideExitFields=isOpen||isMissed;// both states: no real exit/PnL/fees
   const missedEnabled=!!config?.trackMissedTrades;
+  // v12.46: simType onderscheid binnen status:"missed" — "missed" (real-time) of "backtest" (chart-replay).
+  // Empty/legacy = "missed" voor backwards compat. Backtest is opt-in via aparte toggle.
+  const simType=trade.simType||(isMissed?"missed":"");
+  const isBacktest=isMissed&&simType==="backtest";
+  const isMissedReal=isMissed&&simType!=="backtest";
 
   const sourceOptions=[{id:"manual",label:"✏️ Handmatig",color:"var(--text3)"}];
   Object.entries(ExchangeAPI).forEach(([key,ex])=>{if(config?.exchanges?.[key]?.apiKey)sourceOptions.push({id:key,label:ex.name,color:ex.color})});
@@ -3570,16 +3581,21 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,accounts,sho
       "{preTradeQuote.text}" <span style={{color:"var(--text5)",fontStyle:"normal",fontSize:"10px",fontFamily:"var(--mono)",letterSpacing:".06em",marginLeft:"4px"}}>— {preTradeQuote.src}</span>
     </div>}
     {/* Status toggle — primary control, drives conditional form sections */}
-    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"16px",padding:"10px 14px",background:isMissed?"rgba(180,140,200,.08)":isOpen?"var(--gold-dim)":"var(--bg4)",borderRadius:"8px",border:`1px solid ${isMissed?"rgba(180,140,200,.3)":isOpen?"var(--gold-border)":"var(--border2)"}`,flexWrap:"wrap",gap:"10px"}}>
-      <div style={{display:"flex",alignItems:"center",gap:"10px"}}>
+    {(()=>{const simBg=isBacktest?"rgba(122,180,210,.08)":isMissedReal?"rgba(180,140,200,.08)":isOpen?"var(--gold-dim)":"var(--bg4)";const simBorder=isBacktest?"rgba(122,180,210,.3)":isMissedReal?"rgba(180,140,200,.3)":isOpen?"var(--gold-border)":"var(--border2)";const hint=isBacktest?"🔬 Backtest / chart-replay — uitgesloten van standaard edge-stats":isMissedReal?"👻 Niet genomen — plan-velden blijven, exit/PNL verborgen":isOpen?"Exit / PNL / fees pas in te vullen na sluiten":"Volledige trade — alle velden actief";return(
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"16px",padding:"10px 14px",background:simBg,borderRadius:"8px",border:`1px solid ${simBorder}`,flexWrap:"wrap",gap:"10px"}}>
+      <div style={{display:"flex",alignItems:"center",gap:"10px",flexWrap:"wrap"}}>
         <span style={{fontSize:"10px",color:"var(--text4)",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.08em"}}>Status</span>
         <div style={{display:"flex",gap:0,borderRadius:"6px",overflow:"hidden",border:"1px solid var(--border3)",opacity:isMissed?0.4:1}}>
-          {["closed","open"].map(s=>(<button key={s} disabled={isMissed} onClick={()=>setTrade(p=>({...p,status:s}))} style={{padding:"6px 16px",border:"none",fontSize:"11px",fontWeight:700,cursor:isMissed?"not-allowed":"pointer",fontFamily:"inherit",background:trade.status===s?(s==="open"?"var(--gold-dim)":"var(--bg3)"):"transparent",color:trade.status===s?(s==="open"?"var(--gold)":"var(--text)"):"var(--text4)",display:"flex",alignItems:"center",gap:"5px"}}>{s==="open"&&trade.status==="open"&&<span style={{width:"6px",height:"6px",borderRadius:"50%",background:"var(--gold)",boxShadow:"0 0 6px var(--gold)"}}/>}{s==="open"?"Open":"Closed"}</button>))}
+          {["closed","open"].map(s=>(<button key={s} disabled={isMissed} onClick={()=>setTrade(p=>({...p,status:s,simType:""}))} style={{padding:"6px 16px",border:"none",fontSize:"11px",fontWeight:700,cursor:isMissed?"not-allowed":"pointer",fontFamily:"inherit",background:trade.status===s?(s==="open"?"var(--gold-dim)":"var(--bg3)"):"transparent",color:trade.status===s?(s==="open"?"var(--gold)":"var(--text)"):"var(--text4)",display:"flex",alignItems:"center",gap:"5px"}}>{s==="open"&&trade.status==="open"&&<span style={{width:"6px",height:"6px",borderRadius:"50%",background:"var(--gold)",boxShadow:"0 0 6px var(--gold)"}}/>}{s==="open"?"Open":"Closed"}</button>))}
         </div>
-        {missedEnabled&&<button onClick={()=>setTrade(p=>({...p,status:isMissed?"closed":"missed"}))} title={isMissed?"Terug naar echte trade":"Markeer als gemiste trade"} style={{padding:"5px 12px",borderRadius:"18px",border:"1px solid "+(isMissed?"rgba(180,140,200,.5)":"rgba(180,140,200,.3)"),background:isMissed?"rgba(180,140,200,.2)":"rgba(180,140,200,.06)",color:isMissed?"#d4a8e8":"#b48cc8",fontSize:"11px",fontWeight:600,cursor:"pointer",fontFamily:"inherit",marginLeft:"8px"}}>👻 {isMissed?"Gemiste trade":"Gemist?"}</button>}
+        {missedEnabled&&<>
+          <span style={{width:"1px",height:"20px",background:"var(--border3)",margin:"0 4px"}}/>
+          <button onClick={()=>setTrade(p=>({...p,status:isMissedReal?"closed":"missed",simType:isMissedReal?"":"missed"}))} title={isMissedReal?"Terug naar echte trade":"Markeer als gemiste trade (real-time gespot, niet genomen)"} style={{padding:"5px 12px",borderRadius:"18px",border:"1px solid "+(isMissedReal?"rgba(180,140,200,.5)":"rgba(180,140,200,.3)"),background:isMissedReal?"rgba(180,140,200,.2)":"rgba(180,140,200,.06)",color:isMissedReal?"#d4a8e8":"#b48cc8",fontSize:"11px",fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>👻 {isMissedReal?"Gemist":"Gemist?"}</button>
+          <button onClick={()=>setTrade(p=>({...p,status:isBacktest?"closed":"missed",simType:isBacktest?"":"backtest"}))} title={isBacktest?"Terug naar echte trade":"Backtest — chart-replay, niet real-time"} style={{padding:"5px 12px",borderRadius:"18px",border:"1px solid "+(isBacktest?"rgba(122,180,210,.5)":"rgba(122,180,210,.3)"),background:isBacktest?"rgba(122,180,210,.2)":"rgba(122,180,210,.06)",color:isBacktest?"#9ec5dd":"#7ab4d2",fontSize:"11px",fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>🔬 {isBacktest?"Backtest":"Backtest?"}</button>
+        </>}
       </div>
-      <span style={{fontSize:"10px",color:"var(--text5)"}}>{isMissed?"👻 Niet genomen — plan-velden blijven, exit/PNL verborgen":isOpen?"Exit / PNL / fees pas in te vullen na sluiten":"Volledige trade — alle velden actief"}</span>
-    </div>
+      <span style={{fontSize:"10px",color:"var(--text5)"}}>{hint}</span>
+    </div>);})()}
 
     {/* Account selector */}
     <div style={{marginBottom:"1rem"}}>
@@ -3993,7 +4009,7 @@ function FilterBar({trades,allTrades,filters,setFilters,config,accounts}){
       <div style={{display:"flex",alignItems:"center",gap:"8px",flexWrap:"wrap"}}><span style={{fontSize:"10px",color:"var(--text4)",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em",minWidth:"65px"}}>Richting</span>{chip("Alle","direction","all")}{chip("Long","direction","long")}{chip("Short","direction","short")}</div>
       <div style={{display:"flex",alignItems:"center",gap:"8px",flexWrap:"wrap"}}><span style={{fontSize:"10px",color:"var(--text4)",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em",minWidth:"65px"}}>Status</span>{chip("Alle","status","all")}<button onClick={()=>setFilters(p=>({...p,status:p.status==="open"?"all":"open"}))} style={{padding:"4px 10px",borderRadius:"5px",fontSize:"11px",fontWeight:500,border:`1px solid ${filters.status==="open"?"#C9A84C":"var(--border3)"}`,background:filters.status==="open"?"rgba(201,168,76,0.12)":"transparent",color:filters.status==="open"?"#C9A84C":"var(--text3)",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:"5px"}}>{filters.status==="open"&&<span style={{width:"5px",height:"5px",borderRadius:"50%",background:"#C9A84C"}}/>}Open</button>{chip("Closed","status","closed")}</div>
       <div style={{display:"flex",alignItems:"center",gap:"8px",flexWrap:"wrap"}}><span style={{fontSize:"10px",color:"var(--text4)",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em",minWidth:"65px"}}>Resultaat</span>{chip("Alle","result","all")}{chip("Winners","result","win")}{chip("Losers","result","loss")}</div>
-      {config?.trackMissedTrades&&<div style={{display:"flex",alignItems:"center",gap:"8px",flexWrap:"wrap"}}><span style={{fontSize:"10px",color:"#b48cc8",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em",minWidth:"65px"}}>👻 Type</span>{[["real","Genomen"],["missed","👻 Gemist"],["both","Beide"]].map(([val,label])=>{const active=(filters.tradeType||"real")===val;return(<button key={val} onClick={()=>setFilters(p=>({...p,tradeType:val}))} style={{padding:"4px 10px",borderRadius:"5px",fontSize:"11px",fontWeight:500,border:`1px solid ${active?"rgba(180,140,200,.5)":"var(--border3)"}`,background:active?"rgba(180,140,200,.18)":"transparent",color:active?"#d4a8e8":"var(--text3)",cursor:"pointer",fontFamily:"inherit"}}>{label}</button>)})}</div>}
+      {config?.trackMissedTrades&&<div style={{display:"flex",alignItems:"center",gap:"8px",flexWrap:"wrap"}}><span style={{fontSize:"10px",color:"#b48cc8",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em",minWidth:"65px"}}>👻 Type</span>{[["real","Genomen","#b48cc8"],["missed","👻 Gemist","#b48cc8"],["backtest","🔬 Backtest","#7ab4d2"],["sim","Sim (👻+🔬)","#b48cc8"],["all","Alles","#b48cc8"]].map(([val,label,col])=>{const active=(filters.tradeType||"real")===val;const accent=val==="backtest"?"122,180,210":"180,140,200";return(<button key={val} onClick={()=>setFilters(p=>({...p,tradeType:val}))} style={{padding:"4px 10px",borderRadius:"5px",fontSize:"11px",fontWeight:500,border:`1px solid ${active?`rgba(${accent},.5)`:"var(--border3)"}`,background:active?`rgba(${accent},.18)`:"transparent",color:active?col:"var(--text3)",cursor:"pointer",fontFamily:"inherit"}}>{label}</button>)})}</div>}
       <div style={{display:"flex",alignItems:"center",gap:"8px",flexWrap:"wrap"}}><span style={{fontSize:"10px",color:"var(--text4)",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em",minWidth:"65px"}}>Sessie</span>{ALL_SESSIONS.map(s=>{const arr=filters.sessionTags||[];const active=arr.includes(s);const c=SESSION_COLORS[s];return <button key={s} onClick={()=>setFilters(p=>{const cur=p.sessionTags||[];return{...p,sessionTags:active?cur.filter(v=>v!==s):[...cur,s]}})} style={{padding:"4px 10px",borderRadius:"5px",fontSize:"11px",fontWeight:500,border:`1px solid ${active?c.border:"var(--border3)"}`,background:active?c.bg:"transparent",color:active?c.text:"var(--text3)",cursor:"pointer",fontFamily:"inherit",transition:"all .12s"}}>{s}</button>})}</div>
       {allSetups.length>0&&<div style={{display:"flex",alignItems:"center",gap:"8px",flexWrap:"wrap"}}><span style={{fontSize:"10px",color:"var(--text4)",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em",minWidth:"65px"}}>Setup</span>{allSetups.map(s=>multiChip(s,"setupTags",s))}</div>}
       {allEmotions.length>0&&<div style={{display:"flex",alignItems:"center",gap:"8px",flexWrap:"wrap"}}><span style={{fontSize:"10px",color:"var(--text4)",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em",minWidth:"65px"}}>Emoties</span>{allEmotions.map(e=>{const neg=isNegEmotion(e);const arr=filters.emotionTags||[];const active=arr.includes(e);return <button key={e} onClick={()=>setFilters(p=>{const cur=p.emotionTags||[];return{...p,emotionTags:active?cur.filter(v=>v!==e):[...cur,e]}})} style={{padding:"4px 10px",borderRadius:"5px",fontSize:"11px",fontWeight:500,border:`1px solid ${active?(neg?"#dc2626":"#059669"):"var(--border3)"}`,background:active?(neg?"rgba(220,122,122,0.14)":"rgba(46,170,111,0.14)"):"transparent",color:active?(neg?"#e05555":CHART_COLORS.win):"var(--text3)",cursor:"pointer",fontFamily:"inherit",transition:"all .12s"}}>{e}</button>})}</div>}
@@ -4004,12 +4020,18 @@ function FilterBar({trades,allTrades,filters,setFilters,config,accounts}){
 
 function applyFilters(trades,filters){
   return trades.filter(t=>{
-    // Missed-trade type filter (real | missed | both). Default "real" hides missed trades from
-    // every existing view — non-breaking for users who don't use the feature.
-    const tt=filters.tradeType||"real";
+    // Sim-trade type filter (real | missed | backtest | sim | all). Default "real" hides
+    // alle simulated trades. v12.46+: "missed" = simType==="missed" only, "backtest" = simType==="backtest"
+    // only, "sim" = beide, "all" = alles. Backwards compat: "both" → "sim".
+    let tt=filters.tradeType||"real";
+    if(tt==="both")tt="sim";
     const isMissedTrade=t.status==="missed";
+    const tradeSimType=t.simType||(isMissedTrade?"missed":"");
     if(tt==="real"&&isMissedTrade)return false;
-    if(tt==="missed"&&!isMissedTrade)return false;
+    if(tt==="missed"&&(!isMissedTrade||tradeSimType!=="missed"))return false;
+    if(tt==="backtest"&&(!isMissedTrade||tradeSimType!=="backtest"))return false;
+    if(tt==="sim"&&!isMissedTrade)return false;
+    // tt==="all" → geen filter
     if(filters.source&&filters.source!=="all"&&(t.source||"manual")!==filters.source)return false;
     if(filters.pair&&filters.pair!=="all"&&t.pair!==filters.pair)return false;
     if(filters.quote&&filters.quote!=="all"&&(t.pair||"").split("/")[1]!==filters.quote)return false;
@@ -4949,9 +4971,20 @@ function playbookStats(pb,allTrades){
 
 // Missed-trades stats: gebruik bestaande hindsightExit + entry/stopLoss om
 // theoretical R te berekenen. matchRate = overlap (criteria.text vs trade.tags).
-function playbookMissedStats(pb,allTrades){
+// v12.46: subTypeFilter accepts "missed" (default, real-time gespotte trades),
+// "backtest" (chart-replay, hindsight-rich), or "all" (beide gepoold met
+// vertekening-waarschuwing). Default "missed" houdt edge-leak cijfers
+// realistisch — backtest trades zouden anders het gemiddelde opblazen.
+function playbookMissedStats(pb,allTrades,subTypeFilter){
+  const filter=subTypeFilter||"missed";
   const linked=tradesForPlaybook(pb,allTrades);
-  const missed=linked.filter(t=>t.status==="missed");
+  const missed=linked.filter(t=>{
+    if(t.status!=="missed")return false;
+    const st=t.simType||"missed";
+    if(filter==="missed")return st==="missed";
+    if(filter==="backtest")return st==="backtest";
+    return true;// "all"
+  });
   const items=[];
   const pbCritTexts=(pb.criteria||[]).map(c=>(c.text||"").toLowerCase().trim()).filter(Boolean);
   const pbConfs=new Set(pb.confirmations||[]);
@@ -5303,7 +5336,12 @@ function PlaybookForm({initial,onSave,onClose,tagConfig,setTab}){
 // ─── PlaybookDetailModal — full view ─────────────────────────────────────────
 function PlaybookDetailModal({pb,allTrades,setFilters,setTab,onClose,onEdit,onDelete,onShare}){
   const s=playbookStats(pb,allTrades);
-  const ms=playbookMissedStats(pb,allTrades);
+  const[missSubFilter,setMissSubFilter]=useState("missed");// "missed" | "backtest" | "all"
+  // Counts per simType: nodig voor (a) sectie-zichtbaarheid en (b) filter-pill labels
+  const allSimsLinked=tradesForPlaybook(pb,allTrades).filter(t=>t.status==="missed");
+  const missedCount=allSimsLinked.filter(t=>(t.simType||"missed")==="missed").length;
+  const backtestCount=allSimsLinked.filter(t=>t.simType==="backtest").length;
+  const ms=playbookMissedStats(pb,allTrades,missSubFilter);
   const pnlPos=s.pnl>=0;
   const statusColor=pb.status==="active"?"var(--green)":pb.status==="testing"?"var(--amber)":"var(--text5)";
   const linkSection=(label,arr,bg,border,col)=>arr.length===0?null:(<div style={{padding:"12px 14px",background:bg,border:`1px solid ${border}`,borderRadius:"8px"}}>
@@ -5386,9 +5424,23 @@ function PlaybookDetailModal({pb,allTrades,setFilters,setTab,onClose,onEdit,onDe
           </div>
         </div>}
 
-        {/* MISSED-TRADES BACKTEST */}
-        {ms.n>0&&<div>
-          <div style={{fontSize:11,color:"var(--gold)",fontFamily:"var(--mono)",fontWeight:700,letterSpacing:".18em",textTransform:"uppercase",marginBottom:10}}>🔬 Missed Trades · Playbook-backtest <span style={{color:"var(--text5)",fontWeight:400,letterSpacing:0,textTransform:"none",fontFamily:"var(--font)",fontSize:11}}>— setups die je spotte maar niet nam</span></div>
+        {/* SIMULATED TRADES — backtest analyse met subtype filter (missed/backtest/all) */}
+        {(missedCount+backtestCount)>0&&<div>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8,marginBottom:10}}>
+            <div style={{fontSize:11,color:"var(--gold)",fontFamily:"var(--mono)",fontWeight:700,letterSpacing:".18em",textTransform:"uppercase"}}>🔬 Simulated Trades · Playbook-backtest <span style={{color:"var(--text5)",fontWeight:400,letterSpacing:0,textTransform:"none",fontFamily:"var(--font)",fontSize:11}}>— edge-leak analyse</span></div>
+            {(missedCount>0&&backtestCount>0)&&<div style={{display:"flex",gap:5}}>
+              {[["missed",`👻 Gemist (${missedCount})`,"#b48cc8"],["backtest",`🔬 Backtest (${backtestCount})`,"#7ab4d2"],["all",`Beide (${missedCount+backtestCount})`,"var(--text3)"]].map(([v,lbl,col])=>{
+                const a=missSubFilter===v;
+                const accent=v==="backtest"?"122,180,210":v==="missed"?"180,140,200":"138,144,160";
+                return<button key={v} onClick={()=>setMissSubFilter(v)} style={{padding:"4px 10px",fontSize:10.5,fontFamily:"var(--mono)",fontWeight:600,letterSpacing:".04em",borderRadius:5,border:`1px solid ${a?`rgba(${accent},.5)`:"var(--border3)"}`,background:a?`rgba(${accent},.18)`:"transparent",color:a?col:"var(--text4)",cursor:"pointer"}}>{lbl}</button>;
+              })}
+            </div>}
+          </div>
+          {ms.n===0?<div style={{padding:"14px 16px",background:"rgba(255,255,255,0.02)",border:"1px dashed var(--border3)",borderRadius:8,fontSize:12,color:"var(--text4)",textAlign:"center",fontStyle:"italic"}}>Geen {missSubFilter==="missed"?"gemiste":"backtest"}-trades in deze playbook. Probeer een ander filter.</div>:<></>}
+          {ms.n>0&&<></>}
+          {ms.n>0&&missSubFilter==="all"&&<div style={{padding:"8px 12px",background:"rgba(212,168,83,0.05)",border:"1px solid rgba(212,168,83,0.20)",borderLeft:"2px solid var(--amber)",borderRadius:6,fontSize:11,color:"var(--text3)",lineHeight:1.5,marginBottom:10}}>⚠ <strong style={{color:"var(--amber)"}}>Gemixte data</strong>: backtest-trades hebben ingebakken hindsight-bias en blazen edge-leak op. Filter op "Gemist" voor realistische cijfers.</div>}
+          {ms.n>0&&<>
+          {/* origineel block hieronder, alleen tonen als ms.n>0 */}
           <div style={{background:"linear-gradient(135deg,rgba(154,138,204,0.06),rgba(154,138,204,0.02))",border:"1px solid rgba(154,138,204,0.20)",borderLeft:"3px solid #9a8acc",borderRadius:10,padding:"16px 18px"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12,gap:12}}>
               <div><div style={{fontSize:13,fontWeight:700,color:"#9a8acc",fontFamily:"var(--mono)",letterSpacing:".05em",textTransform:"uppercase"}}>Theoretical edge-leak</div><div style={{fontSize:12,color:"var(--text3)",lineHeight:1.5,marginTop:4}}>{ms.n} missed trades — als je ze had genomen volgens je playbook…</div></div>
@@ -5411,6 +5463,7 @@ function PlaybookDetailModal({pb,allTrades,setFilters,setTab,onClose,onEdit,onDe
               <span style={{display:"block",marginTop:6,fontSize:10.5,color:"var(--text5)",fontStyle:"italic"}}>⚠ Hindsight-bias: theoretisch resultaat. Real-time twijfel zit hier niet in.</span>
             </div>
           </div>
+          </>}
         </div>}
 
         {/* LINKED TRADES */}
@@ -6300,7 +6353,7 @@ function CommandPalette({open,onClose,trades,navigate,setNewTrade,newEmptyTrade,
       {t:"action",icon:"📏",title:"Trading Rules",sub:"Regels bewerken",do:()=>navigate("rules")},
       {t:"action",icon:"🏷",title:"Tags",sub:"Setup/emotie/fouten tags",do:()=>navigate("tags")},
       {t:"action",icon:"⊕",title:"Nieuwe trade",sub:"Handmatig trade invoeren",hint:"N",do:()=>{setNewTrade&&setNewTrade(newEmptyTrade());navigate("new");}},
-      ...(config?.trackMissedTrades?[{t:"action",icon:"👻",title:"Log gemiste trade",sub:"Setup gespot maar niet genomen",hint:"M",do:()=>{setNewTrade&&setNewTrade({...newEmptyTrade(),status:"missed"});navigate("new");}}]:[]),
+      ...(config?.trackMissedTrades?[{t:"action",icon:"👻",title:"Log gemiste trade",sub:"Setup gespot maar niet genomen",hint:"M",do:()=>{setNewTrade&&setNewTrade({...newEmptyTrade(),status:"missed",simType:"missed"});navigate("new");}},{t:"action",icon:"🔬",title:"Log backtest trade",sub:"Chart-replay analyse",do:()=>{setNewTrade&&setNewTrade({...newEmptyTrade(),status:"missed",simType:"backtest"});navigate("new");}}]:[]),
       {t:"action",icon:"↓",title:"Backup exporteren",sub:"Download JSON van alles",do:()=>exportTrades&&exportTrades()},
       {t:"action",icon:"🎨",title:"Thema: SyncJournal",do:()=>setConfig(p=>({...p,theme:"sync"}))},
       {t:"action",icon:"🎨",title:"Thema: Classic",do:()=>setConfig(p=>({...p,theme:"classic"}))},
@@ -8289,6 +8342,7 @@ const FAQ_ENTRIES=[
   {cat:"📝 Features",q:"Wat is een R-multiple?",a:"R = je risk per trade (entry − SL × size). Als je +2R wint bij 1R risk, is je winst 2× je risk. Goede traders mikken op >1R gemiddeld. Je ziet R-multiple per trade en als 'Rolling 20-trade edge' in Analytics."},
   {cat:"📝 Features",q:"Wat is een setup-layer?",a:"Top-down multi-timeframe analyse. Eerste laag = hoogste timeframe (bias, bv 4H trend omhoog). Volgende lagen narrow down tot entry-timeframe. Elke laag heeft: timeframe + setup + confirmatie + rol (Bias/Entry/Confirmatie). Helpt je gestructureerd denken."},
   {cat:"📝 Features",q:"Hoe werken missed trades?",a:"Opt-in feature via Instellingen → Accounts → '👻 Gemiste trades'. Bij een trade → klik 'Gemist?' knop naast Status. Exit/PnL verdwijnen, Entry/SL/TP blijven als planned. Tag waarom je 'm niet nam (Durf, Te laat gespot, Buiten regels...). Analytics laat 'Edge Gap' zien: wat had je kunnen winnen als je wel genomen had."},
+  {cat:"📝 Features",q:"Wat is het verschil tussen Gemist en Backtest?",a:"Sinds v12.46 onderscheiden we twee soorten 'simulated' trades:\n\n• 👻 **Gemist** — setup die je real-time spotte maar niet nam. Twijfel/FOMO/discipline zit erin gebakken. Stats hierop zijn realistisch.\n• 🔬 **Backtest** — setup gevonden via chart-replay (achteraf). Hindsight-bias is hoog, edge-cijfers worden opgeblazen.\n\nBeide werken hetzelfde qua invoer (entry/SL/TP + hindsightExit), maar zijn fundamenteel andere data-types. In de Playbook-sectie 'Simulated Trades · Edge analyse' filter je standaard op Gemist (realistisch). Backtest opt-in toont je pure mechanische edge zonder execution-twijfel — handig om strategieën vooraf te valideren, niet om te claimen 'dit is mijn edge'. Tendencies sluit backtest-trades automatisch uit van patroon-detectie."},
   {cat:"📝 Features",q:"Multi-TP: waarom zou ik dat gebruiken?",a:"Real-world sluit je zelden een positie in één klap. Je neemt 50% winst bij TP1, laat de rest lopen naar TP2. In het form voeg je TP-levels toe met % allocation. Auto-berekening van winst + R:R per niveau. Op close kan je per TP markeren: Hit / Missed / Open."},
   {cat:"📝 Features",q:"Wat doet de discipline-heatmap?",a:"Heatmap van dagen × uren waarin je trades open hebt (Amsterdam-tijd). Toont je tijds-patroon: tilt je tijdens late avonduren, trade je alleen London open, etc. Instellingen → Mindset/Discipline om te personaliseren."},
   {cat:"📝 Features",q:"Welke sessie-buckets gebruikt SyncJournal en wat zijn de tijden?",a:"Sinds v12.37 gebruiken we 8 sessie-buckets in Amsterdam-tijd (DST-aware). Tot v12.36 waren dat er 5; nu zijn Asia / London / US elk gesplitst in AM/PM voor fijnere edge-detectie. Tijden:\n\n• Asia AM — 01:00–05:00 (Tokyo open)\n• Asia PM — 05:00–09:00 (Tokyo lunch/close, pre-London)\n• London AM — 09:00–11:30 (London-open volatility)\n• London PM — 11:30–15:30 (pre-NY drift)\n• US AM — 15:30–19:00 (NY cash-open)\n• US PM — 19:00–22:00 (richting NY close)\n• US Late — 22:00–01:00 (post-NY, Asia preview)\n• Weekend — Zat/Zon hele dag\n\nDeze indeling wordt overal gebruikt: FilterBar, Trade-tabel, sessionPerf, Discipline Heatmap (hourly view), Tendencies (Setup × Sessie matrix). Eén waarheid, geen parallelle systemen meer."},
