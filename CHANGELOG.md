@@ -6,6 +6,49 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.38] — 2026-04-28
+
+### Toegevoegd
+- **📘 Playbook — eigen hoofdtab** tussen Tendencies en Accounts. Een gestructureerde catalogus van bewezen setups (Bellafiore-stijl: *"take only trades you have already perfected"*). Aanvulling op het journal: een journal logt élke trade, een playbook bevat alléén je A+ setups met criteria, rules en stats. Pre-market scan je alleen op deze setups; alles daarbuiten = no-trade.
+
+  **Velden per playbook**:
+  - `name`, `oneLiner`, `status` (testing / actief / retired)
+  - `setupTags[]` — multi (top-down lagen, bv. SFP + Liquidity Sweep)
+  - `timeframes[]` — top-down stack (1D / 4H / 1H / 15M / 5M / 1M)
+  - `pairs[]` — vrij in te vullen (chip-input + snelkoppelingen voor BTC/ETH/SOL/XAU)
+  - `sessions[]` — multi-select uit de 8 sessie-buckets (v12.37)
+  - `confirmations[]` — extra confluence (CVD divergentie, FVG tap, OB level, funding flip, OI rising, …)
+  - `context`, `criteria[]` met `mandatory`-toggle, `stop`, `target`, `minRR`, `mistake`-pattern
+
+  **Lijst-view**: filter pills (Alles / Actief / Testing / Retired + per pair) + sort (cum. PnL / WR / # trades / laatst gebruikt). Cards met status-pill, badges, mini-stats, sparkline van cum. R.
+
+  **Detail-modal** per playbook:
+  - Setup-lagen sectie (top-down) — tags, timeframes, confirmaties als gekleurde rijen
+  - Stats grid (n / WR / gem. R / expectancy / cum. PnL) afgeleid uit setup-tag join met je trades
+  - **⚖️ Compliance × PnL split** — heuristiek op overlap tussen `pb.confirmations` en `trade.confirmationTags`. Toont *"compliant trades = +X.XR/trade vs. non-compliant = +Y.YR/trade. Discipline-delta: +Z.ZR per trade."* — uniek t.o.v. Tradezella/TraderSync.
+  - Markt-context, entry-criteria checklist (gouden border = verplicht), stop/target rules
+  - Mistake-pattern card (rood)
+  - **🔬 Missed Trades · Playbook-backtest** — gebruikt bestaande `hindsightExit` veld (v12.6) om opportunity-cost te berekenen. SVG-histogram met 20 × 5%-bins toont verdeling van match-rate vs. trades. Threshold-lijn op 80%. Aggregated: *"X setups matchten je playbook volledig — daar liet je +Y.YR liggen."* Met hindsight-bias-waarschuwing.
+  - Linked trades lijst (laatste 8) met R-multiple en PnL
+  - Acties: Verwijder / Bewerk / 🔗 Delen / 📊 Toon alle trades
+
+  **Add/Edit form** met chip-inputs voor multi-select velden, pill-toggles voor sessions/timeframes, criteria-builder met add/remove rijen + verplicht-toggle.
+
+  **🔗 Delen-modal** — drie formats voor de Discord-community:
+  - **📋 Tekst** in 3 stijlen: Discord-markdown / Plain text / Markdown
+  - **📦 JSON-bestand** (download .json voor Discord file-attachment)
+  - **📸 PNG-card** (visueel via html2canvas, retina-scale 2×)
+  - **Privacy-toggle**: Pro-mode (R-multiples, default) vs. Showcase ($-bedragen, opt-in)
+  - **Field-toggles**: per veld kiezen wat meegaat (oneliner / pairs / sessies / timeframes / setup-tags / confirmaties / context / criteria / rules / mistake / stats / individuele trades). Mistake en trades-list default uit voor privacy.
+
+  **📥 Importeer-modal** — accepteert JSON-tekst plakken, .json bestand selecteren of erop slepen. Parser ondersteunt wrapped JSON (`{type:"tradejournal-playbook", playbook:{…}}`), bare JSON, base64-string, en URL-fragment (forward-compat). Preview vóór import. Stats van de deler worden NIET overgenomen — geïmporteerde playbook start als `testing` met lege trades-array. Naam-collision: auto-suffix `(geïmporteerd)`, `(geïmporteerd 2)`, etc. + non-blocking toast.
+
+  **URL-import banner**: bij `#playbook=...` hash detect verschijnt een paarse banner bovenaan de Playbook-tab i.p.v. een intrusieve modal. Click "Bekijk" → import-preview opent.
+
+  **Backup/restore-flow** uitgebreid met `playbooks` array — JSON-export bevat nu ook je hele playbook-collectie; sleep-import herstelt 'm.
+
+  **localStorage**: nieuwe key `tj_playbooks` met `migratePlaybooks()` voor schema-stabiliteit.
+
 ## [v12.37] — 2026-04-28
 
 ### Gewijzigd

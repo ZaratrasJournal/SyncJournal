@@ -889,7 +889,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.37",released:"2026-04-28"};
+const APP_VERSION={version:"v12.38",released:"2026-04-28"};
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
 function isNewerVersion(a,b){
   const parse=(s)=>String(s||"").replace(/^v/,"").split(".").map(n=>parseInt(n,10)||0);
@@ -905,6 +905,43 @@ const IS_HOSTED=(()=>{try{
   if(!h||h==="localhost"||h==="127.0.0.1"||h.startsWith("192.168.")||h.startsWith("10.")||h.startsWith("172."))return false;
   return true;
 }catch{return false}})();
+
+// ─── PLAYBOOK — gestructureerde catalogus van bewezen setups ───
+// Gekoppeld aan trades via setup-tag overlap (geen apart playbookId-veld nodig).
+// Schema: zie demo (playbook-demo.html) voor de blauwdruk.
+const EMPTY_PLAYBOOK={
+  id:"",
+  name:"",
+  oneLiner:"",
+  setupTags:[],          // multi: SFP + Liquidity Sweep + …
+  timeframes:[],         // top-down: 1D / 4H / 1H / 15M / 5M / 1M
+  confirmations:[],      // extra confluence (CVD, OB, FVG, funding flip, …)
+  pairs:[],              // BTC/USDT, ETH/USDT, of vrij ingevuld
+  sessions:[],           // 8 sessie-buckets uit ALL_SESSIONS
+  status:"testing",      // testing | active | retired
+  context:"",            // markt-context paragraaf
+  criteria:[],           // [{text, mandatory}] checklist
+  stop:"",               // stop-rule
+  target:"",             // target-rule
+  minRR:"",              // min R:R (vrij format)
+  mistake:"",            // hoe verpest de gebruiker dit setup meestal
+  importedFrom:"",       // gevuld bij import van community-share
+  importedAt:"",         // ISO-timestamp
+  createdAt:"",
+  updatedAt:"",
+};
+function migratePlaybooks(arr){
+  if(!Array.isArray(arr))return[];
+  return arr.map(p=>({...EMPTY_PLAYBOOK,...p,
+    setupTags:Array.isArray(p?.setupTags)?p.setupTags:[],
+    timeframes:Array.isArray(p?.timeframes)?p.timeframes:[],
+    confirmations:Array.isArray(p?.confirmations)?p.confirmations:[],
+    pairs:Array.isArray(p?.pairs)?p.pairs:[],
+    sessions:Array.isArray(p?.sessions)?p.sessions:[],
+    criteria:Array.isArray(p?.criteria)?p.criteria.map(c=>typeof c==="string"?{text:c,mandatory:true}:({text:c.text||"",mandatory:!!c.mandatory})):[],
+    id:p?.id||("pb"+Date.now()+Math.floor(Math.random()*999)),
+  }));
+}
 
 const EMPTY_TRADE={
   id:"",date:new Date().toISOString().split("T")[0],
@@ -4863,6 +4900,694 @@ function SetupSessionMatrix({closed,setFilters,setTab}){
   </div>);
 }
 
+// ════════════════════════════════════════════════════════════════════════════
+// PLAYBOOK — helpers + components. Gekoppeld aan trades via setup-tag overlap.
+// ════════════════════════════════════════════════════════════════════════════
+
+// Trades die binnen deze playbook vallen (setup-tag overlap).
+function tradesForPlaybook(pb,allTrades){
+  const pbTags=new Set(pb.setupTags||[]);
+  if(pbTags.size===0)return[];
+  return(allTrades||[]).filter(t=>(t.setupTags||[]).some(tag=>pbTags.has(tag)));
+}
+// R-multiple uit pnl/riskUsd; 0 als risk leeg of 0.
+const _trR=(t)=>{const r=parseFloat(t.riskUsd)||0;const p=parseFloat(t.pnl);if(r<=0||isNaN(p))return 0;return p/r;};
+
+// Stats afgeleid uit linked closed trades.
+function playbookStats(pb,allTrades){
+  const linked=tradesForPlaybook(pb,allTrades);
+  const closed=linked.filter(t=>t.status!=="missed"&&t.pnl!==""&&!isNaN(parseFloat(t.pnl)));
+  if(closed.length===0)return{n:0,wr:0,avgR:0,exp:0,pnl:0,compHigh:null,compLow:null,trades:[]};
+  const wins=closed.filter(t=>parseFloat(t.pnl)>0).length;
+  const wr=(wins/closed.length)*100;
+  const pnl=closed.reduce((s,t)=>s+parseFloat(t.pnl),0);
+  const avgR=closed.reduce((s,t)=>s+_trR(t),0)/closed.length;
+  const winsArr=closed.filter(t=>parseFloat(t.pnl)>0);
+  const lossArr=closed.filter(t=>parseFloat(t.pnl)<=0);
+  const avgWinR=winsArr.length?winsArr.reduce((s,t)=>s+_trR(t),0)/winsArr.length:0;
+  const avgLossR=lossArr.length?Math.abs(lossArr.reduce((s,t)=>s+_trR(t),0)/lossArr.length):0;
+  const exp=(wr/100)*avgWinR-((100-wr)/100)*avgLossR;
+  // Compliance heuristiek: trade compliant als ≥80% playbook-confirmaties terug
+  // te vinden zijn in trade.confirmationTags. Geen confirmaties → geen split.
+  let compHigh=null,compLow=null;
+  const pbConfs=(pb.confirmations||[]).filter(c=>c&&c.length>0);
+  if(pbConfs.length>0){
+    const compArr=closed.filter(t=>{
+      const tags=new Set(t.confirmationTags||[]);
+      const hits=pbConfs.filter(c=>tags.has(c)).length;
+      return(hits/pbConfs.length)>=0.8;
+    });
+    const lowArr=closed.filter(t=>!compArr.includes(t));
+    const stat=(arr)=>arr.length?{n:arr.length,avgR:arr.reduce((s,t)=>s+_trR(t),0)/arr.length,wr:(arr.filter(t=>parseFloat(t.pnl)>0).length/arr.length)*100}:null;
+    compHigh=stat(compArr);compLow=stat(lowArr);
+  }
+  return{n:closed.length,wr,avgR,exp,pnl,compHigh,compLow,trades:closed};
+}
+
+// Missed-trades stats: gebruik bestaande hindsightExit + entry/stopLoss om
+// theoretical R te berekenen. matchRate = overlap (criteria.text vs trade.tags).
+function playbookMissedStats(pb,allTrades){
+  const linked=tradesForPlaybook(pb,allTrades);
+  const missed=linked.filter(t=>t.status==="missed");
+  const items=[];
+  const pbCritTexts=(pb.criteria||[]).map(c=>(c.text||"").toLowerCase().trim()).filter(Boolean);
+  const pbConfs=new Set(pb.confirmations||[]);
+  for(const t of missed){
+    const entry=parseFloat(t.entry),sl=parseFloat(t.stopLoss),hx=parseFloat(t.hindsightExit);
+    if(!isFinite(entry)||!isFinite(sl)||!isFinite(hx))continue;
+    const riskPerUnit=Math.abs(entry-sl);
+    if(riskPerUnit<=0)continue;
+    const sign=t.direction==="short"?-1:1;
+    const hindsightR=parseFloat(((hx-entry)*sign/riskPerUnit).toFixed(2));
+    // matchRate: hoeveel playbook-confirmations zijn afgevinkt in deze trade
+    let matchRate=0.5;// default neutraal
+    if(pbConfs.size>0){
+      const tConfs=new Set(t.confirmationTags||[]);
+      matchRate=[...pbConfs].filter(c=>tConfs.has(c)).length/pbConfs.size;
+    }
+    items.push({date:t.date,pair:t.pair,matchRate,hindsightR,reason:(t.missedReasonTags||[]).join(" · ")||"—"});
+  }
+  if(items.length===0)return{n:0,bins:[],hi:null,mid:null,low:null,totalTheoR:0,maxBinN:0,items:[]};
+  const bins=[];
+  for(let i=0;i<20;i++){
+    const lo=i*0.05,hi=(i+1)*0.05;
+    const inBin=items.filter(x=>x.matchRate>=lo&&(i===19?x.matchRate<=hi:x.matchRate<hi));
+    bins.push({lo,hi,n:inBin.length,theoR:inBin.reduce((s,x)=>s+x.hindsightR,0),wr:inBin.length?(inBin.filter(x=>x.hindsightR>0).length/inBin.length)*100:0});
+  }
+  const sumR=(arr)=>arr.reduce((s,x)=>s+x.hindsightR,0);
+  const hiArr=items.filter(x=>x.matchRate>=0.8);
+  const midArr=items.filter(x=>x.matchRate>=0.5&&x.matchRate<0.8);
+  const lowArr=items.filter(x=>x.matchRate<0.5);
+  return{n:items.length,bins,maxBinN:Math.max(...bins.map(b=>b.n),1),
+    hi:{n:hiArr.length,theoR:sumR(hiArr),wr:hiArr.length?(hiArr.filter(x=>x.hindsightR>0).length/hiArr.length)*100:0},
+    mid:{n:midArr.length,theoR:sumR(midArr),wr:midArr.length?(midArr.filter(x=>x.hindsightR>0).length/midArr.length)*100:0},
+    low:{n:lowArr.length,theoR:sumR(lowArr),wr:lowArr.length?(lowArr.filter(x=>x.hindsightR>0).length/lowArr.length)*100:0},
+    totalTheoR:sumR(items),items:items.sort((a,b)=>b.date.localeCompare(a.date)),
+  };
+}
+
+// Playbook sparkline (cum R over tijd) — hergebruikt patroon van TendencySparkline
+function PlaybookSparkline({trades}){
+  if(!trades||trades.length<2)return null;
+  const sorted=[...trades].sort((a,b)=>((a.date||"")+(a.time||"")).localeCompare((b.date||"")+(b.time||"")));
+  let cum=0;const pts=sorted.map(t=>{cum+=_trR(t);return cum;});
+  const min=Math.min(0,...pts),max=Math.max(0,...pts);const range=max-min||1;
+  const W=320,H=32,pad=2;
+  const xy=(i,v)=>[(i/(pts.length-1))*W,H-pad-((v-min)/range)*(H-pad*2)];
+  const linePath=pts.map((v,i)=>{const[x,y]=xy(i,v);return(i?"L":"M")+x.toFixed(1)+","+y.toFixed(1);}).join(" ");
+  const areaPath=linePath+` L ${W},${H} L 0,${H} Z`;
+  const isUp=pts[pts.length-1]>=0;
+  const color=isUp?"var(--green)":"var(--red)";
+  const colorRgba=isUp?"rgba(46,170,111,0.18)":"rgba(224,85,85,0.18)";
+  return(<svg width="100%" height="32" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{display:"block"}}>
+    <path d={areaPath} fill={colorRgba}/>
+    <path d={linePath} fill="none" stroke={color} strokeWidth="1.4" strokeLinejoin="round" vectorEffect="non-scaling-stroke"/>
+  </svg>);
+}
+
+// SVG histogram (20 × 5%-bins) voor missed-trades. Reflects demo design.
+function PlaybookMissedHistogram({ms}){
+  const W=600,H=110,padTop=8,padBottom=22,barGap=1.5;
+  const innerH=H-padTop-padBottom;
+  const barW=(W-barGap*19)/20;
+  const baseY=padTop+innerH;
+  const thrX=16*(barW+barGap)-barGap/2;
+  return(<svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{width:"100%",height:"110px",display:"block"}}>
+    <line x1="0" y1={baseY} x2={W} y2={baseY} stroke="rgba(255,255,255,0.08)" strokeWidth="0.7"/>
+    <line x1={thrX} y1={padTop} x2={thrX} y2={baseY} stroke="rgba(154,138,204,0.5)" strokeWidth="0.8" strokeDasharray="2,3"/>
+    <text x={thrX+3} y={padTop+9} fill="rgba(154,138,204,0.9)" fontSize="8.5" fontFamily="var(--mono)" fontWeight="700" letterSpacing=".06em">THRESHOLD 80%</text>
+    {ms.bins.map((b,i)=>{
+      const x=i*(barW+barGap);
+      const h=b.n?Math.max(2,(b.n/ms.maxBinN)*innerH):0;
+      const y=padTop+(innerH-h);
+      const cls=b.lo>=0.8?"hi":(b.lo>=0.5?"mid":"low");
+      const fill=cls==="hi"?"rgba(154,138,204,0.7)":(cls==="mid"?"rgba(212,168,83,0.6)":"rgba(138,144,160,0.45)");
+      const stroke=cls==="hi"?"rgba(154,138,204,1)":(cls==="mid"?"rgba(212,168,83,0.9)":"rgba(138,144,160,0.7)");
+      const tip=`${(b.lo*100).toFixed(0)}-${(b.hi*100).toFixed(0)}%: ${b.n} trades, ${b.theoR>=0?"+":""}${b.theoR.toFixed(1)}R`;
+      return(<g key={i}><title>{tip}</title>
+        {b.n>0&&<rect x={x.toFixed(1)} y={y.toFixed(1)} width={barW.toFixed(1)} height={h.toFixed(1)} fill={fill} stroke={stroke} strokeWidth="0.7" rx="1"/>}
+      </g>);
+    })}
+    {[0,25,50,75,100].map(p=>{const x=(p/100)*W;return<text key={p} x={x.toFixed(0)} y={H-6} fill="rgba(138,144,160,0.7)" fontSize="9" fontFamily="var(--mono)" textAnchor={p===0?"start":p===100?"end":"middle"}>{p}%</text>;})}
+  </svg>);
+}
+
+// ─── PlaybookCard — list-item op de hoofdtab ─────────────────────────────────
+function PlaybookCard({pb,allTrades,onClick}){
+  const s=playbookStats(pb,allTrades);
+  const pnlPos=s.pnl>=0;
+  const statusColor=pb.status==="active"?"var(--green)":pb.status==="testing"?"var(--amber)":"var(--text5)";
+  const statusBg=pb.status==="active"?"rgba(46,170,111,0.12)":pb.status==="testing"?"rgba(212,168,83,0.12)":"rgba(138,144,160,0.10)";
+  const opacity=pb.status==="retired"?0.65:1;
+  return(<div onClick={onClick} style={{padding:"18px 20px",background:"var(--glass)",borderRadius:"12px",border:"1px solid var(--border2)",borderLeft:`3px solid ${statusColor}`,cursor:"pointer",transition:"transform .15s, border-color .15s, box-shadow .15s",opacity}} onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-2px)";e.currentTarget.style.borderColor="var(--border3)";e.currentTarget.style.boxShadow="0 8px 24px rgba(0,0,0,.3)";}} onMouseLeave={e=>{e.currentTarget.style.transform="translateY(0)";e.currentTarget.style.borderColor="var(--border2)";e.currentTarget.style.boxShadow="none";}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:"10px",marginBottom:"8px"}}>
+      <div style={{fontSize:"15px",fontWeight:700,color:"var(--text)",lineHeight:1.3,flex:1}}>{pb.name||"Naamloos"}</div>
+      <span style={{fontSize:"9px",fontFamily:"var(--mono)",fontWeight:700,letterSpacing:".1em",padding:"3px 8px",borderRadius:"3px",textTransform:"uppercase",whiteSpace:"nowrap",color:statusColor,background:statusBg,border:`1px solid ${statusColor}55`}}>{pb.status}</span>
+    </div>
+    {pb.oneLiner&&<div style={{fontSize:"12.5px",color:"var(--text3)",lineHeight:1.55,marginBottom:"12px",fontStyle:"italic"}}>"{pb.oneLiner}"</div>}
+    <div style={{display:"flex",flexWrap:"wrap",gap:"5px",marginBottom:"14px"}}>
+      {pb.pairs.map(p=><span key={p} style={{fontSize:"10px",fontFamily:"var(--mono)",fontWeight:600,padding:"2px 7px",borderRadius:"3px",background:"rgba(201,168,76,0.06)",color:"var(--gold)",border:"1px solid var(--gold-border)"}}>{p}</span>)}
+      {(pb.timeframes||[]).map(t=><span key={t} style={{fontSize:"10px",fontFamily:"var(--mono)",fontWeight:600,padding:"2px 7px",borderRadius:"3px",background:"rgba(154,138,204,0.06)",color:"#9a8acc",border:"1px solid rgba(154,138,204,0.25)"}}>{t}</span>)}
+      {(pb.sessions||[]).map(x=><span key={x} style={{fontSize:"10px",fontFamily:"var(--mono)",fontWeight:600,padding:"2px 7px",borderRadius:"3px",background:"rgba(138,159,192,0.06)",color:"#8a9fc0",border:"1px solid rgba(138,159,192,0.25)"}}>{x}</span>)}
+    </div>
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"8px",padding:"10px 0",borderTop:"1px solid var(--border1)",borderBottom:"1px solid var(--border1)",marginBottom:"12px"}}>
+      <div style={{textAlign:"center"}}><div style={{fontSize:"9px",color:"var(--text5)",textTransform:"uppercase",letterSpacing:".08em",fontWeight:600,marginBottom:"3px"}}>Trades</div><div style={{fontFamily:"var(--mono)",fontWeight:700,fontSize:"14px",color:"var(--text)"}}>{s.n}</div></div>
+      <div style={{textAlign:"center"}}><div style={{fontSize:"9px",color:"var(--text5)",textTransform:"uppercase",letterSpacing:".08em",fontWeight:600,marginBottom:"3px"}}>Win-rate</div><div style={{fontFamily:"var(--mono)",fontWeight:700,fontSize:"14px",color:s.wr>=50?"var(--green)":"var(--red)"}}>{s.n>0?s.wr.toFixed(0)+"%":"—"}</div></div>
+      <div style={{textAlign:"center"}}><div style={{fontSize:"9px",color:"var(--text5)",textTransform:"uppercase",letterSpacing:".08em",fontWeight:600,marginBottom:"3px"}}>Cum.</div><div style={{fontFamily:"var(--mono)",fontWeight:700,fontSize:"14px",color:pnlPos?"var(--green)":"var(--red)"}}>{s.n>0?(pnlPos?"+":"−")+"$"+Math.abs(s.pnl).toFixed(0):"—"}</div></div>
+    </div>
+    {s.trades.length>=2&&<div style={{height:"36px"}}><PlaybookSparkline trades={s.trades}/></div>}
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:"10px",color:"var(--text5)",fontFamily:"var(--mono)",marginTop:s.trades.length>=2?"10px":"4px"}}>
+      <span>Gem. {s.avgR>=0?"+":""}{s.avgR.toFixed(2)}R · exp. {s.exp>=0?"+":""}{s.exp.toFixed(2)}R</span>
+      {s.n===0&&<span style={{color:"var(--text4)"}}>Nog geen linked trades</span>}
+    </div>
+  </div>);
+}
+
+// ─── PlaybookForm — add/edit modal ───────────────────────────────────────────
+function PlaybookForm({initial,onSave,onClose}){
+  const[pb,setPb]=useState(()=>({...EMPTY_PLAYBOOK,...initial,id:initial?.id||"pb"+Date.now(),criteria:(initial?.criteria||[]).length?[...initial.criteria]:[{text:"",mandatory:true}]}));
+  const upd=(k,v)=>setPb(p=>({...p,[k]:v}));
+  const togArr=(k,v)=>setPb(p=>{const arr=new Set(p[k]||[]);arr.has(v)?arr.delete(v):arr.add(v);return{...p,[k]:[...arr]};});
+  const addChip=(k,v)=>{if(!v)return;setPb(p=>{const arr=p[k]||[];if(arr.includes(v))return p;return{...p,[k]:[...arr,v]};});};
+  const rmChip=(k,v)=>setPb(p=>({...p,[k]:(p[k]||[]).filter(x=>x!==v)}));
+  const updCrit=(i,patch)=>setPb(p=>({...p,criteria:p.criteria.map((c,j)=>j===i?{...c,...patch}:c)}));
+  const addCrit=()=>setPb(p=>({...p,criteria:[...p.criteria,{text:"",mandatory:false}]}));
+  const rmCrit=(i)=>setPb(p=>({...p,criteria:p.criteria.filter((_,j)=>j!==i)}));
+  const[pairInput,setPairInput]=useState("");
+  const[setupInput,setSetupInput]=useState("");
+  const[confInput,setConfInput]=useState("");
+  const handleSave=()=>{if(!pb.name.trim()){alert("Naam is verplicht");return;}onSave({...pb,name:pb.name.trim(),updatedAt:new Date().toISOString(),createdAt:pb.createdAt||new Date().toISOString(),criteria:pb.criteria.filter(c=>c.text.trim())});};
+  const TFs=["1D","4H","1H","15M","5M","1M"];
+  const lblSt={fontSize:"10.5px",color:"var(--text4)",fontFamily:"var(--mono)",fontWeight:600,letterSpacing:".06em",textTransform:"uppercase",marginBottom:"5px",display:"block"};
+  const inpSt={width:"100%",background:"var(--bg3)",color:"var(--text)",border:"1px solid var(--border3)",borderRadius:"6px",padding:"8px 10px",fontFamily:"var(--font)",fontSize:"13px",outline:"none"};
+  const taSt={...inpSt,resize:"vertical",minHeight:"60px",fontFamily:"var(--mono)",fontSize:"12px"};
+  const pillBtn=(active,onClick,label)=><button type="button" onClick={onClick} style={{padding:"5px 11px",fontSize:"11px",fontFamily:"var(--mono)",fontWeight:600,letterSpacing:".06em",borderRadius:"6px",border:`1px solid ${active?"var(--gold-border)":"var(--border3)"}`,background:active?"var(--gold-dim)":"transparent",color:active?"var(--gold)":"var(--text4)",cursor:"pointer"}}>{label}</button>;
+  const chip=(val,onRm,color)=><span key={val} style={{display:"inline-flex",alignItems:"center",gap:"6px",padding:"5px 6px 5px 11px",fontSize:"11px",fontFamily:"var(--mono)",fontWeight:600,borderRadius:"6px",background:color.bg,border:`1px solid ${color.border}`,color:color.text}}>{val}<button type="button" onClick={onRm} style={{background:"transparent",border:"none",color:"inherit",cursor:"pointer",fontSize:"14px",padding:"0 4px",borderRadius:"3px",opacity:0.7}}>×</button></span>;
+  return(<div onClick={e=>{if(e.target===e.currentTarget)onClose();}} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",backdropFilter:"blur(4px)",display:"flex",alignItems:"flex-start",justifyContent:"center",zIndex:200,overflowY:"auto",padding:"32px 16px"}}>
+    <div style={{background:"var(--bg2)",border:"1px solid var(--border3)",borderRadius:"14px",width:"100%",maxWidth:"880px",maxHeight:"calc(100vh - 64px)",overflowY:"auto",position:"relative"}}>
+      <div style={{padding:"22px 28px 18px",borderBottom:"1px solid var(--border1)",position:"sticky",top:0,background:"var(--bg2)",zIndex:5}}>
+        <button onClick={onClose} style={{position:"absolute",top:16,right:18,background:"transparent",border:"none",color:"var(--text4)",fontSize:"22px",cursor:"pointer",width:32,height:32}}>×</button>
+        <h2 style={{margin:0,fontSize:"18px"}}>{initial?.id?"✏️ Playbook bewerken":"+ Nieuw Playbook"}</h2>
+        <p style={{fontSize:"12px",color:"var(--text4)",marginTop:4,lineHeight:1.55}}>Vul de basis in. Stats berekenen we automatisch zodra je trades met deze setup-tag logt.</p>
+      </div>
+      <div style={{padding:"22px 28px 28px",display:"flex",flexDirection:"column",gap:"14px"}}>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"14px"}}>
+          <div><label style={lblSt}>Naam *</label><input style={inpSt} value={pb.name} onChange={e=>upd("name",e.target.value)} placeholder="bv. London-Open SFP Reclaim"/></div>
+          <div><label style={lblSt}>Status</label><select style={inpSt} value={pb.status} onChange={e=>upd("status",e.target.value)}>
+            <option value="testing">Testing — eerst valideren</option>
+            <option value="active">Actief</option>
+            <option value="retired">Retired</option>
+          </select></div>
+        </div>
+        <div><label style={lblSt}>Eén-zin omschrijving</label><input style={inpSt} value={pb.oneLiner} onChange={e=>upd("oneLiner",e.target.value)} placeholder="bv. Sweep Asian-low + reclaim met volume tijdens London-Open"/></div>
+
+        {/* Setup-tags chip-input */}
+        <div>
+          <label style={lblSt}>Setup-tags <span style={{textTransform:"none",letterSpacing:0,fontFamily:"var(--font)",color:"var(--text5)",fontSize:"10.5px",fontWeight:400,marginLeft:4}}>— meerdere lagen mogelijk (bv. SFP + Liquidity Sweep)</span></label>
+          <div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:6}}>{(pb.setupTags||[]).map(s=>chip(s,()=>rmChip("setupTags",s),{bg:"rgba(46,170,111,0.08)",border:"rgba(46,170,111,0.30)",text:"var(--green)"}))}</div>
+          <div style={{display:"flex",gap:6}}><input style={{...inpSt,flex:1}} value={setupInput} onChange={e=>setSetupInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();addChip("setupTags",setupInput.trim());setSetupInput("");}}} placeholder="Typ tag + Enter, of kies snelkoppeling"/><button type="button" onClick={()=>{addChip("setupTags",setupInput.trim());setSetupInput("");}} style={{padding:"7px 14px",fontSize:"11.5px",fontFamily:"var(--mono)",fontWeight:600,borderRadius:6,border:"1px solid var(--border3)",background:"transparent",color:"var(--text2)",cursor:"pointer"}}>+ Toevoegen</button></div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:5,marginTop:6}}>{["SFP","MSB","BOS","Liquidity Sweep","Reclaim","Range retest","FVG tap","OB tap"].map(t=>pillBtn(false,()=>addChip("setupTags",t),"+ "+t))}</div>
+        </div>
+
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"14px"}}>
+          {/* Pairs chip-input */}
+          <div>
+            <label style={lblSt}>Pairs</label>
+            <div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:6}}>{(pb.pairs||[]).map(s=>chip(s,()=>rmChip("pairs",s),{bg:"rgba(201,168,76,0.06)",border:"var(--gold-border)",text:"var(--gold)"}))}</div>
+            <div style={{display:"flex",gap:6}}><input style={{...inpSt,flex:1}} value={pairInput} onChange={e=>setPairInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();addChip("pairs",pairInput.trim().toUpperCase());setPairInput("");}}} placeholder="bv. SOL/USDT, XAU/USDT"/><button type="button" onClick={()=>{addChip("pairs",pairInput.trim().toUpperCase());setPairInput("");}} style={{padding:"7px 12px",fontSize:"11.5px",fontFamily:"var(--mono)",fontWeight:600,borderRadius:6,border:"1px solid var(--border3)",background:"transparent",color:"var(--text2)",cursor:"pointer"}}>+</button></div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:5,marginTop:6}}>{["BTC/USDT","ETH/USDT","SOL/USDT","XAU/USDT"].map(t=>pillBtn(false,()=>addChip("pairs",t),"+ "+t.split("/")[0]))}</div>
+          </div>
+          {/* Sessions multi-pills */}
+          <div>
+            <label style={lblSt}>Sessies</label>
+            <div style={{display:"flex",flexWrap:"wrap",gap:5}}>{ALL_SESSIONS.map(s=>pillBtn((pb.sessions||[]).includes(s),()=>togArr("sessions",s),s))}</div>
+          </div>
+        </div>
+
+        {/* Timeframes */}
+        <div>
+          <label style={lblSt}>Timeframes <span style={{textTransform:"none",letterSpacing:0,fontFamily:"var(--font)",color:"var(--text5)",fontSize:"10.5px",fontWeight:400,marginLeft:4}}>— top-down: HTF context → MTF setup → LTF entry</span></label>
+          <div style={{display:"flex",flexWrap:"wrap",gap:5}}>{TFs.map(tf=>pillBtn((pb.timeframes||[]).includes(tf),()=>togArr("timeframes",tf),tf))}</div>
+        </div>
+
+        {/* Confirmaties chip-input */}
+        <div>
+          <label style={lblSt}>Confirmaties <span style={{textTransform:"none",letterSpacing:0,fontFamily:"var(--font)",color:"var(--text5)",fontSize:"10.5px",fontWeight:400,marginLeft:4}}>— extra confluence-points naast je criteria</span></label>
+          <div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:6}}>{(pb.confirmations||[]).map(s=>chip(s,()=>rmChip("confirmations",s),{bg:"rgba(212,168,83,0.08)",border:"rgba(212,168,83,0.30)",text:"var(--amber)"}))}</div>
+          <div style={{display:"flex",gap:6}}><input style={{...inpSt,flex:1}} value={confInput} onChange={e=>setConfInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();addChip("confirmations",confInput.trim());setConfInput("");}}} placeholder="bv. CVD divergentie, OB tap, Funding flip"/><button type="button" onClick={()=>{addChip("confirmations",confInput.trim());setConfInput("");}} style={{padding:"7px 12px",fontSize:"11.5px",fontFamily:"var(--mono)",fontWeight:600,borderRadius:6,border:"1px solid var(--border3)",background:"transparent",color:"var(--text2)",cursor:"pointer"}}>+</button></div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:5,marginTop:6}}>{["CVD divergentie","Volume sweep ≥ 1.5×","FVG tap","OB level","Funding flip","OI rising","Liquidaties zichtbaar","HTF trend aligned"].map(t=>pillBtn(false,()=>addChip("confirmations",t),"+ "+t))}</div>
+        </div>
+
+        <div><label style={lblSt}>Markt-context</label><textarea style={taSt} value={pb.context} onChange={e=>upd("context",e.target.value)} placeholder="bv. Asian range > 4u, geen major news komende 30 min, BTC.D stabiel"/></div>
+
+        {/* Criteria builder */}
+        <div>
+          <label style={lblSt}>Entry-criteria <span style={{textTransform:"none",letterSpacing:0,fontFamily:"var(--font)",color:"var(--text5)",fontSize:"10.5px",fontWeight:400,marginLeft:4}}>— vink "verplicht" voor must-have items</span></label>
+          <div style={{display:"flex",flexDirection:"column",gap:6}}>{pb.criteria.map((c,i)=><div key={i} style={{display:"flex",gap:8,alignItems:"center"}}>
+            <input style={{...inpSt,flex:1}} value={c.text} onChange={e=>updCrit(i,{text:e.target.value})} placeholder="bv. Sweep candle onder Asian-low"/>
+            <label style={{display:"flex",alignItems:"center",gap:5,fontSize:11,color:"var(--text4)",cursor:"pointer",whiteSpace:"nowrap"}}><input type="checkbox" checked={c.mandatory} onChange={e=>updCrit(i,{mandatory:e.target.checked})}/> Verplicht</label>
+            <button type="button" onClick={()=>rmCrit(i)} style={{padding:"5px 9px",fontSize:11,borderRadius:5,border:"1px solid var(--border3)",background:"transparent",color:"var(--text4)",cursor:"pointer"}}>×</button>
+          </div>)}</div>
+          <button type="button" onClick={addCrit} style={{marginTop:6,padding:"5px 11px",fontSize:11,fontFamily:"var(--mono)",fontWeight:600,borderRadius:6,border:"1px solid var(--border3)",background:"transparent",color:"var(--text2)",cursor:"pointer"}}>+ Criterium toevoegen</button>
+        </div>
+
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"14px"}}>
+          <div><label style={lblSt}>Stop-rule</label><textarea style={taSt} value={pb.stop} onChange={e=>upd("stop",e.target.value)} placeholder="bv. 2 ticks onder sweep-low. Hard stop."/></div>
+          <div><label style={lblSt}>Target-rule</label><textarea style={taSt} value={pb.target} onChange={e=>upd("target",e.target.value)} placeholder="bv. Partial 1R, runner naar HTF liq-pool"/></div>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 2fr",gap:"14px"}}>
+          <div><label style={lblSt}>Min R:R</label><input style={inpSt} value={pb.minRR} onChange={e=>upd("minRR",e.target.value)} placeholder="bv. 1.5"/></div>
+          <div><label style={lblSt}>Mistake-pattern <span style={{textTransform:"none",letterSpacing:0,fontFamily:"var(--font)",color:"var(--text5)",fontSize:"10.5px",fontWeight:400,marginLeft:4}}>— hoe verpest jij dit setup meestal?</span></label><input style={inpSt} value={pb.mistake} onChange={e=>upd("mistake",e.target.value)} placeholder="bv. FOMO entry vóór reclaim sluit"/></div>
+        </div>
+
+        <div style={{display:"flex",justifyContent:"flex-end",gap:8,marginTop:8,paddingTop:18,borderTop:"1px solid var(--border1)"}}>
+          <button onClick={onClose} style={{padding:"7px 14px",fontSize:"11.5px",fontFamily:"var(--mono)",fontWeight:600,borderRadius:6,border:"1px solid var(--border3)",background:"transparent",color:"var(--text2)",cursor:"pointer"}}>Annuleren</button>
+          <button onClick={handleSave} style={{padding:"7px 14px",fontSize:"11.5px",fontFamily:"var(--mono)",fontWeight:600,borderRadius:6,border:"1px solid var(--gold-border)",background:"var(--gold-dim)",color:"var(--gold)",cursor:"pointer"}}>💾 Opslaan</button>
+        </div>
+      </div>
+    </div>
+  </div>);
+}
+
+// ─── PlaybookDetailModal — full view ─────────────────────────────────────────
+function PlaybookDetailModal({pb,allTrades,setFilters,setTab,onClose,onEdit,onDelete,onShare}){
+  const s=playbookStats(pb,allTrades);
+  const ms=playbookMissedStats(pb,allTrades);
+  const pnlPos=s.pnl>=0;
+  const statusColor=pb.status==="active"?"var(--green)":pb.status==="testing"?"var(--amber)":"var(--text5)";
+  const linkSection=(label,arr,bg,border,col)=>arr.length===0?null:(<div style={{padding:"12px 14px",background:bg,border:`1px solid ${border}`,borderRadius:"8px"}}>
+    <div style={{fontSize:"9px",color:"var(--text5)",fontFamily:"var(--mono)",textTransform:"uppercase",letterSpacing:".08em",marginBottom:5,fontWeight:600}}>{label}</div>
+    <div style={{display:"flex",flexWrap:"wrap",gap:5}}>{arr.map(x=><span key={x} style={{fontSize:11,fontFamily:"var(--mono)",fontWeight:600,padding:"3px 8px",borderRadius:3,background:bg,border:`1px solid ${border}`,color:col}}>{x}</span>)}</div>
+  </div>);
+  const onSetupClick=()=>{if(setFilters&&setTab&&pb.setupTags?.length){setFilters(p=>({...p,setupTags:[...pb.setupTags]}));setTab("trades");onClose();}};
+  return(<div onClick={e=>{if(e.target===e.currentTarget)onClose();}} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",backdropFilter:"blur(4px)",display:"flex",alignItems:"flex-start",justifyContent:"center",zIndex:200,overflowY:"auto",padding:"32px 16px"}}>
+    <div style={{background:"var(--bg2)",border:"1px solid var(--border3)",borderRadius:"14px",width:"100%",maxWidth:"920px",maxHeight:"calc(100vh - 64px)",overflowY:"auto"}}>
+      <div style={{padding:"22px 28px 18px",borderBottom:"1px solid var(--border1)",position:"sticky",top:0,background:"var(--bg2)",zIndex:5}}>
+        <button onClick={onClose} style={{position:"absolute",top:16,right:18,background:"transparent",border:"none",color:"var(--text4)",fontSize:"22px",cursor:"pointer",width:32,height:32}}>×</button>
+        <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",marginBottom:6}}>
+          <h2 style={{margin:0,fontSize:"22px",fontWeight:800,letterSpacing:"-.01em"}}>{pb.name}</h2>
+          <span style={{fontSize:9,fontFamily:"var(--mono)",fontWeight:700,letterSpacing:".1em",padding:"3px 8px",borderRadius:3,textTransform:"uppercase",color:statusColor,background:`${statusColor}20`,border:`1px solid ${statusColor}55`}}>{pb.status}</span>
+        </div>
+        {pb.oneLiner&&<p style={{fontSize:13,color:"var(--text3)",fontStyle:"italic",lineHeight:1.55}}>"{pb.oneLiner}"</p>}
+        <div style={{display:"flex",flexWrap:"wrap",gap:5,marginTop:10}}>
+          {pb.pairs.map(p=><span key={p} style={{fontSize:10,fontFamily:"var(--mono)",fontWeight:600,padding:"2px 7px",borderRadius:3,background:"rgba(201,168,76,0.06)",color:"var(--gold)",border:"1px solid var(--gold-border)"}}>{p}</span>)}
+          {(pb.timeframes||[]).map(t=><span key={t} style={{fontSize:10,fontFamily:"var(--mono)",fontWeight:600,padding:"2px 7px",borderRadius:3,background:"rgba(154,138,204,0.06)",color:"#9a8acc",border:"1px solid rgba(154,138,204,0.25)"}}>{t}</span>)}
+          {(pb.sessions||[]).map(x=><span key={x} style={{fontSize:10,fontFamily:"var(--mono)",fontWeight:600,padding:"2px 7px",borderRadius:3,background:"rgba(138,159,192,0.06)",color:"#8a9fc0",border:"1px solid rgba(138,159,192,0.25)"}}>{x}</span>)}
+        </div>
+        {pb.importedFrom&&<div style={{marginTop:10,padding:"8px 10px",background:"rgba(154,138,204,0.06)",border:"1px solid rgba(154,138,204,0.20)",borderLeft:"2px solid #9a8acc",borderRadius:6,fontSize:11,color:"var(--text3)"}}>📥 Geïmporteerd op {pb.importedAt?pb.importedAt.split("T")[0]:"?"}{pb.importedFrom?` · van ${pb.importedFrom}`:""} — eigen stats opgebouwd vanaf nul.</div>}
+      </div>
+
+      <div style={{padding:"22px 28px 28px",display:"flex",flexDirection:"column",gap:24}}>
+        {/* SETUP-LAGEN */}
+        <div>
+          <div style={{fontSize:11,color:"var(--gold)",fontFamily:"var(--mono)",fontWeight:700,letterSpacing:".18em",textTransform:"uppercase",marginBottom:10}}>🔍 Setup-lagen (top-down)</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:6}}>
+            {linkSection("Setup-tags · meerdere lagen",pb.setupTags||[],"rgba(46,170,111,0.05)","rgba(46,170,111,0.20)","var(--green)")}
+            {linkSection("Timeframes · top-down",pb.timeframes||[],"rgba(154,138,204,0.05)","rgba(154,138,204,0.20)","#9a8acc")}
+          </div>
+          {(pb.confirmations||[]).length>0&&<div style={{padding:"12px 14px",background:"rgba(212,168,83,0.05)",border:"1px solid rgba(212,168,83,0.20)",borderRadius:8}}><div style={{fontSize:9,color:"var(--text5)",fontFamily:"var(--mono)",textTransform:"uppercase",letterSpacing:".08em",marginBottom:5,fontWeight:600}}>Confirmaties · alle moeten zichtbaar zijn</div><div style={{display:"flex",flexWrap:"wrap",gap:5}}>{pb.confirmations.map(c=><span key={c} style={{fontSize:11,fontFamily:"var(--mono)",fontWeight:600,padding:"3px 8px",borderRadius:3,background:"rgba(212,168,83,0.08)",color:"var(--amber)",border:"1px solid rgba(212,168,83,0.25)"}}>✓ {c}</span>)}</div></div>}
+        </div>
+
+        {/* STATS */}
+        <div>
+          <div style={{fontSize:11,color:"var(--gold)",fontFamily:"var(--mono)",fontWeight:700,letterSpacing:".18em",textTransform:"uppercase",marginBottom:10}}>📊 Stats</div>
+          {s.n===0?<div style={{padding:"18px 22px",background:"rgba(255,255,255,0.02)",border:"1px dashed var(--border3)",borderRadius:10,fontSize:13,color:"var(--text4)",textAlign:"center",lineHeight:1.6}}>Nog geen linked trades. Voeg een trade toe met setup-tag <strong style={{color:"var(--text2)"}}>{(pb.setupTags||[]).join(" / ")||"—"}</strong> om stats te starten.</div>:
+          <><div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:10,marginBottom:14}}>
+            {[["Trades",s.n,"var(--text)"],["Win-rate",s.wr.toFixed(0)+"%",s.wr>=50?"var(--green)":"var(--red)"],["Gem. R",(s.avgR>=0?"+":"")+s.avgR.toFixed(2),s.avgR>=0?"var(--green)":"var(--red)"],["Expectancy",(s.exp>=0?"+":"")+s.exp.toFixed(2)+"R",s.exp>=0?"var(--green)":"var(--red)"],["Cum. PnL",(pnlPos?"+":"−")+"$"+Math.abs(s.pnl).toFixed(0),pnlPos?"var(--green)":"var(--red)"]].map(([lbl,val,col])=>(<div key={lbl} style={{textAlign:"center",padding:12,background:"rgba(255,255,255,0.02)",border:"1px solid var(--border1)",borderRadius:8}}><div style={{fontSize:9,color:"var(--text5)",textTransform:"uppercase",letterSpacing:".08em",fontWeight:600,marginBottom:3}}>{lbl}</div><div style={{fontFamily:"var(--mono)",fontWeight:700,fontSize:18,color:col}}>{val}</div></div>))}
+          </div>
+          {s.compHigh&&s.compLow&&<div style={{background:"rgba(201,168,76,0.04)",border:"1px solid var(--gold-border)",borderRadius:10,padding:"16px 18px"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}><div style={{fontSize:13,fontWeight:700,color:"var(--gold)",fontFamily:"var(--mono)",letterSpacing:".05em",textTransform:"uppercase"}}>⚖️ Compliance × PnL</div><small style={{fontSize:10,color:"var(--text5)",fontFamily:"var(--mono)"}}>drempel: ≥80% confirmaties matchen</small></div>
+            <div style={{display:"flex",height:36,borderRadius:6,overflow:"hidden",background:"rgba(255,255,255,0.04)",marginBottom:10,border:"1px solid var(--border1)"}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"var(--mono)",fontSize:11.5,fontWeight:700,padding:"0 10px",width:`${(s.compHigh.n/s.n*100).toFixed(0)}%`,background:"linear-gradient(90deg,rgba(46,170,111,0.6),rgba(46,170,111,0.4))",color:"#fff"}}>{s.compHigh.n} compliant · {s.compHigh.avgR>=0?"+":""}{s.compHigh.avgR.toFixed(2)}R</div>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"var(--mono)",fontSize:11.5,fontWeight:700,padding:"0 10px",width:`${(s.compLow.n/s.n*100).toFixed(0)}%`,background:"linear-gradient(90deg,rgba(224,85,85,0.4),rgba(224,85,85,0.6))",color:"#fff"}}>{s.compLow.n} non-compliant · {s.compLow.avgR>=0?"+":""}{s.compLow.avgR.toFixed(2)}R</div>
+            </div>
+            <div style={{fontSize:12,color:"var(--text3)",lineHeight:1.5}}>Wanneer je je <strong style={{color:"var(--text)"}}>volledig aan je criteria houdt</strong>, doet deze setup <strong style={{color:"var(--text)"}}>{s.compHigh.avgR>=0?"+":""}{s.compHigh.avgR.toFixed(2)}R/trade</strong>. Wanneer je criteria <strong style={{color:"var(--text)"}}>skipt</strong>: <strong style={{color:"var(--text)"}}>{s.compLow.avgR>=0?"+":""}{s.compLow.avgR.toFixed(2)}R/trade</strong>. <span style={{color:"var(--gold)",fontWeight:700}}>Discipline-delta: {(s.compHigh.avgR-s.compLow.avgR>=0?"+":"")}{(s.compHigh.avgR-s.compLow.avgR).toFixed(2)}R per trade.</span></div>
+          </div>}</>}
+        </div>
+
+        {/* MARKT-CONTEXT */}
+        {pb.context&&<div>
+          <div style={{fontSize:11,color:"var(--gold)",fontFamily:"var(--mono)",fontWeight:700,letterSpacing:".18em",textTransform:"uppercase",marginBottom:10}}>🌐 Markt-context</div>
+          <div style={{padding:"12px 14px",background:"rgba(255,255,255,0.02)",border:"1px solid var(--border1)",borderRadius:8,fontSize:13,color:"var(--text2)",lineHeight:1.55}}>{pb.context}</div>
+        </div>}
+
+        {/* CRITERIA */}
+        {(pb.criteria||[]).length>0&&<div>
+          <div style={{fontSize:11,color:"var(--gold)",fontFamily:"var(--mono)",fontWeight:700,letterSpacing:".18em",textTransform:"uppercase",marginBottom:10}}>✅ Entry-criteria <span style={{color:"var(--text5)",fontWeight:400,letterSpacing:0,textTransform:"none",fontFamily:"var(--font)",fontSize:11}}>— gouden border = verplicht</span></div>
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>{pb.criteria.map((c,i)=><div key={i} style={{display:"flex",alignItems:"flex-start",gap:10,padding:"10px 12px",background:"rgba(255,255,255,0.02)",border:"1px solid var(--border1)",borderLeft:c.mandatory?"2px solid var(--gold)":"1px solid var(--border1)",borderRadius:8,fontSize:12.5,lineHeight:1.5,color:"var(--text2)"}}><div style={{width:18,height:18,border:"1.5px solid var(--text5)",borderRadius:4,flexShrink:0,marginTop:1}}/>{c.text}{c.mandatory&&<small style={{color:"var(--text5)",fontFamily:"var(--mono)",fontSize:10,letterSpacing:".06em",textTransform:"uppercase",marginLeft:6}}>verplicht</small>}</div>)}</div>
+        </div>}
+
+        {/* RULES */}
+        {(pb.stop||pb.target)&&<div>
+          <div style={{fontSize:11,color:"var(--gold)",fontFamily:"var(--mono)",fontWeight:700,letterSpacing:".18em",textTransform:"uppercase",marginBottom:10}}>🎯 Rules</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+            {pb.stop&&<div style={{padding:"12px 14px",background:"rgba(255,255,255,0.02)",border:"1px solid var(--border1)",borderLeft:"3px solid var(--red)",borderRadius:8}}><div style={{fontSize:9,fontFamily:"var(--mono)",textTransform:"uppercase",letterSpacing:".1em",fontWeight:700,marginBottom:6,color:"var(--red)"}}>Stop</div><div style={{fontSize:13,color:"var(--text2)",lineHeight:1.5}}>{pb.stop}</div></div>}
+            {pb.target&&<div style={{padding:"12px 14px",background:"rgba(255,255,255,0.02)",border:"1px solid var(--border1)",borderLeft:"3px solid var(--green)",borderRadius:8}}><div style={{fontSize:9,fontFamily:"var(--mono)",textTransform:"uppercase",letterSpacing:".1em",fontWeight:700,marginBottom:6,color:"var(--green)"}}>Target{pb.minRR?` — min ${pb.minRR}R`:""}</div><div style={{fontSize:13,color:"var(--text2)",lineHeight:1.5}}>{pb.target}</div></div>}
+          </div>
+        </div>}
+
+        {/* MISTAKE */}
+        {pb.mistake&&<div>
+          <div style={{fontSize:11,color:"var(--gold)",fontFamily:"var(--mono)",fontWeight:700,letterSpacing:".18em",textTransform:"uppercase",marginBottom:10}}>⚠️ Hoe verpest jij dit setup?</div>
+          <div style={{background:"rgba(224,85,85,0.05)",border:"1px solid rgba(224,85,85,0.20)",borderLeft:"3px solid var(--red)",borderRadius:8,padding:"12px 14px",fontSize:12.5,color:"var(--text3)",lineHeight:1.55}}><strong style={{color:"var(--red)",fontFamily:"var(--mono)",fontWeight:700,letterSpacing:".05em",textTransform:"uppercase",fontSize:10}}>jouw patroon:</strong> {pb.mistake}</div>
+        </div>}
+
+        {/* MISSED-TRADES BACKTEST */}
+        {ms.n>0&&<div>
+          <div style={{fontSize:11,color:"var(--gold)",fontFamily:"var(--mono)",fontWeight:700,letterSpacing:".18em",textTransform:"uppercase",marginBottom:10}}>🔬 Missed Trades · Playbook-backtest <span style={{color:"var(--text5)",fontWeight:400,letterSpacing:0,textTransform:"none",fontFamily:"var(--font)",fontSize:11}}>— setups die je spotte maar niet nam</span></div>
+          <div style={{background:"linear-gradient(135deg,rgba(154,138,204,0.06),rgba(154,138,204,0.02))",border:"1px solid rgba(154,138,204,0.20)",borderLeft:"3px solid #9a8acc",borderRadius:10,padding:"16px 18px"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12,gap:12}}>
+              <div><div style={{fontSize:13,fontWeight:700,color:"#9a8acc",fontFamily:"var(--mono)",letterSpacing:".05em",textTransform:"uppercase"}}>Theoretical edge-leak</div><div style={{fontSize:12,color:"var(--text3)",lineHeight:1.5,marginTop:4}}>{ms.n} missed trades — als je ze had genomen volgens je playbook…</div></div>
+              <div style={{fontFamily:"var(--mono)",fontWeight:700,fontSize:18,color:"#9a8acc",whiteSpace:"nowrap"}}>{ms.totalTheoR>=0?"+":""}{ms.totalTheoR.toFixed(1)}R</div>
+            </div>
+            <div style={{background:"rgba(0,0,0,0.25)",border:"1px solid var(--border1)",borderRadius:8,padding:"12px 14px 6px",marginBottom:10}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:10,color:"var(--text5)",fontFamily:"var(--mono)",letterSpacing:".06em",textTransform:"uppercase",marginBottom:6}}>
+                <span>Verdeling over 5%-match buckets</span>
+                <span style={{display:"flex",gap:12,fontSize:10,textTransform:"none",letterSpacing:0}}>
+                  <span style={{display:"flex",alignItems:"center",gap:4,color:"var(--text4)"}}><span style={{display:"inline-block",width:10,height:10,borderRadius:2,background:"rgba(138,144,160,0.45)",border:"1px solid rgba(138,144,160,0.7)"}}/>&lt;50%</span>
+                  <span style={{display:"flex",alignItems:"center",gap:4,color:"var(--text4)"}}><span style={{display:"inline-block",width:10,height:10,borderRadius:2,background:"rgba(212,168,83,0.6)",border:"1px solid rgba(212,168,83,0.9)"}}/>50-79%</span>
+                  <span style={{display:"flex",alignItems:"center",gap:4,color:"var(--text4)"}}><span style={{display:"inline-block",width:10,height:10,borderRadius:2,background:"rgba(154,138,204,0.7)",border:"1px solid rgba(154,138,204,1)"}}/>≥80%</span>
+                </span>
+              </div>
+              <PlaybookMissedHistogram ms={ms}/>
+            </div>
+            <div style={{fontSize:12,color:"var(--text3)",lineHeight:1.5}}>
+              {ms.hi.n>0?<><strong style={{color:"var(--text)"}}>{ms.hi.n} setups</strong> matchten je playbook volledig (≥80%) — daar liet je <em style={{color:"#9a8acc",fontStyle:"normal",fontWeight:600}}>{ms.hi.theoR>=0?"+":""}{ms.hi.theoR.toFixed(1)}R</em> liggen.</>:<>Geen volledig matchende missed trades. Discipline rond instap zit goed.</>}
+              <span style={{display:"block",marginTop:6,fontSize:11,color:"var(--text4)"}}><strong style={{color:"#9a8acc"}}>≥80%:</strong> {ms.hi.n}t · {ms.hi.theoR>=0?"+":""}{ms.hi.theoR.toFixed(1)}R<span style={{margin:"0 8px",color:"var(--text5)"}}>·</span><strong style={{color:"var(--amber)"}}>50-79%:</strong> {ms.mid.n}t · {ms.mid.theoR>=0?"+":""}{ms.mid.theoR.toFixed(1)}R<span style={{margin:"0 8px",color:"var(--text5)"}}>·</span><strong style={{color:"var(--text3)"}}>&lt;50%:</strong> {ms.low.n}t · {ms.low.theoR>=0?"+":""}{ms.low.theoR.toFixed(1)}R</span>
+              <span style={{display:"block",marginTop:6,fontSize:10.5,color:"var(--text5)",fontStyle:"italic"}}>⚠ Hindsight-bias: theoretisch resultaat. Real-time twijfel zit hier niet in.</span>
+            </div>
+          </div>
+        </div>}
+
+        {/* LINKED TRADES */}
+        {s.trades.length>0&&<div>
+          <div style={{fontSize:11,color:"var(--gold)",fontFamily:"var(--mono)",fontWeight:700,letterSpacing:".18em",textTransform:"uppercase",marginBottom:10}}>📋 Recent gelinkte trades <span style={{color:"var(--text5)",fontWeight:400,letterSpacing:0,textTransform:"none",fontFamily:"var(--font)",fontSize:11}}>— laatste 8 van {s.n}</span></div>
+          <div style={{display:"flex",flexDirection:"column",gap:6}}>{s.trades.slice(0,8).map(t=><div key={t.id} style={{display:"grid",gridTemplateColumns:"auto 1fr auto auto",gap:12,alignItems:"center",padding:"9px 12px",background:"rgba(255,255,255,0.02)",border:"1px solid var(--border1)",borderRadius:6,fontSize:12}}>
+            <span style={{fontFamily:"var(--mono)",color:"var(--text4)",fontSize:11}}>{t.date}</span>
+            <span style={{fontFamily:"var(--mono)",color:"var(--text2)",fontWeight:600}}>{t.pair}</span>
+            <span style={{fontFamily:"var(--mono)",color:_trR(t)>=0?"var(--green)":"var(--red)",fontWeight:700}}>{_trR(t)>=0?"+":""}{_trR(t).toFixed(2)}R</span>
+            <span style={{fontFamily:"var(--mono)",color:parseFloat(t.pnl)>=0?"var(--green)":"var(--red)",fontSize:11}}>{parseFloat(t.pnl)>=0?"+":"−"}${Math.abs(parseFloat(t.pnl)).toFixed(0)}</span>
+          </div>)}</div>
+        </div>}
+
+        <div style={{display:"flex",justifyContent:"flex-end",gap:8,paddingTop:18,borderTop:"1px solid var(--border1)",flexWrap:"wrap"}}>
+          <button onClick={()=>onDelete(pb)} style={{padding:"7px 14px",fontSize:11.5,fontFamily:"var(--mono)",fontWeight:600,borderRadius:6,border:"1px solid rgba(224,85,85,0.30)",background:"transparent",color:"var(--red)",cursor:"pointer"}}>🗑 Verwijder</button>
+          <button onClick={()=>onEdit(pb)} style={{padding:"7px 14px",fontSize:11.5,fontFamily:"var(--mono)",fontWeight:600,borderRadius:6,border:"1px solid var(--border3)",background:"transparent",color:"var(--text2)",cursor:"pointer"}}>✏️ Bewerk</button>
+          <button onClick={()=>onShare(pb)} style={{padding:"7px 14px",fontSize:11.5,fontFamily:"var(--mono)",fontWeight:600,borderRadius:6,border:"1px solid rgba(46,170,111,0.30)",background:"rgba(46,170,111,0.10)",color:"var(--green)",cursor:"pointer"}}>🔗 Delen</button>
+          {s.n>0&&<button onClick={onSetupClick} style={{padding:"7px 14px",fontSize:11.5,fontFamily:"var(--mono)",fontWeight:600,borderRadius:6,border:"1px solid var(--gold-border)",background:"var(--gold-dim)",color:"var(--gold)",cursor:"pointer"}}>📊 Toon alle {s.n} trades →</button>}
+        </div>
+      </div>
+    </div>
+  </div>);
+}
+
+// ─── PlaybookShareModal — JSON / Tekst / PNG ────────────────────────────────
+function PlaybookShareModal({pb,allTrades,onClose,showToast}){
+  const[privacy,setPrivacy]=useState("R");
+  const[fmt,setFmt]=useState("text");
+  const[tfmt,setTfmt]=useState("discord");
+  const[fields,setFields]=useState({oneLiner:true,pairs:true,sessions:true,timeframes:true,setupTags:true,confirmations:true,context:true,criteria:true,rules:true,mistake:false,stats:true,tradesList:false});
+  const tog=(k)=>setFields(p=>({...p,[k]:!p[k]}));
+  const s=playbookStats(pb,allTrades);
+  const payload=useMemo(()=>{
+    const p={name:pb.name};
+    if(fields.oneLiner)p.oneLiner=pb.oneLiner;
+    if(fields.pairs)p.pairs=pb.pairs;
+    if(fields.sessions)p.sessions=pb.sessions;
+    if(fields.timeframes)p.timeframes=pb.timeframes;
+    if(fields.setupTags)p.setupTags=pb.setupTags;
+    if(fields.confirmations)p.confirmations=pb.confirmations;
+    if(fields.context)p.context=pb.context;
+    if(fields.criteria)p.criteria=pb.criteria;
+    if(fields.rules){p.stop=pb.stop;p.target=pb.target;p.minRR=pb.minRR;}
+    if(fields.mistake)p.mistake=pb.mistake;
+    if(fields.stats&&s.n>0){p.stats={n:s.n,wr:parseFloat(s.wr.toFixed(1)),avgR:parseFloat(s.avgR.toFixed(2)),expR:parseFloat(s.exp.toFixed(2))};if(privacy==="USD")p.stats.cumPnl=parseFloat(s.pnl.toFixed(0));}
+    return p;
+  },[pb,fields,privacy,s]);
+  const formatText=(p,style)=>{
+    const D=style==="discord",M=style==="markdown";
+    const bold=(x)=>(D||M)?`**${x}**`:x;
+    const quote=(x)=>(D||M)?`> ${x}`:x;
+    const h=(x)=>D?bold(x):(M?`## ${x}`:x.toUpperCase());
+    const lines=[];
+    lines.push(`${D?"📘 ":""}${bold("[Playbook] "+p.name)}`);
+    if(p.oneLiner)lines.push(quote(p.oneLiner));
+    lines.push("");
+    const cats=[];
+    if(p.pairs?.length)cats.push(`${bold("Pairs:")} ${p.pairs.join(", ")}`);
+    if(p.timeframes?.length)cats.push(`${bold("Timeframes:")} ${p.timeframes.join(" · ")}`);
+    if(p.sessions?.length)cats.push(`${bold("Sessies:")} ${p.sessions.join(", ")}`);
+    if(p.setupTags?.length)cats.push(`${bold("Setup-tags:")} ${p.setupTags.join(" + ")}`);
+    if(cats.length){lines.push(...cats);lines.push("");}
+    if(p.confirmations?.length){lines.push(h("Confirmaties"));p.confirmations.forEach(c=>lines.push(`✓ ${c}`));lines.push("");}
+    if(p.context){lines.push(h("Markt-context"));lines.push(p.context);lines.push("");}
+    if(p.criteria?.length){lines.push(h("Entry-criteria"));p.criteria.forEach(c=>lines.push(`${c.mandatory?"✅":"⚪"} ${c.text}${c.mandatory?" "+(D?"`(verplicht)`":"(verplicht)"):""}`));lines.push("");}
+    if(p.stop||p.target){lines.push(h("Rules"));if(p.stop)lines.push(`${bold("🛑 Stop:")} ${p.stop}`);if(p.target)lines.push(`${bold("🎯 Target:")} ${p.target}`);if(p.minRR)lines.push(`${bold("Min R:R:")} ${p.minRR}`);lines.push("");}
+    if(p.mistake){lines.push(h("Mistake-pattern"));lines.push(`⚠️ ${p.mistake}`);lines.push("");}
+    if(p.stats){const st=p.stats;lines.push(h(`Stats (${st.n} trades)`));lines.push(`📊 ${st.wr}% WR · gem. ${st.avgR>=0?"+":""}${st.avgR}R · expectancy ${st.expR>=0?"+":""}${st.expR}R${st.cumPnl!=null?` · cum. ${st.cumPnl>=0?"+":"−"}$${Math.abs(st.cumPnl)}`:""}`);lines.push("");}
+    lines.push(D?"— gedeeld via SyncJournal":"-- gedeeld via SyncJournal");
+    return lines.join("\n").trim();
+  };
+  const formatJSON=(p)=>JSON.stringify({type:"tradejournal-playbook",schemaVersion:1,sharedAt:new Date().toISOString(),playbook:p},null,2);
+  const slug=(pb.name||"playbook").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"");
+  const doAction=async()=>{
+    if(fmt==="text"){const t=formatText(payload,tfmt);try{await navigator.clipboard.writeText(t);showToast("📋 Tekst gekopieerd — plak in Discord");}catch{showToast("⚠ Kon niet naar klembord","error");}}
+    else if(fmt==="json"){const j=formatJSON(payload);const blob=new Blob([j],{type:"application/json"});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download=`tj-playbook-${slug}.json`;a.click();URL.revokeObjectURL(url);showToast("⬇ JSON gedownload — sleep naar Discord");}
+    else{const node=document.getElementById("pbShareCard");if(typeof html2canvas==="undefined"){showToast("⚠ html2canvas niet geladen","error");return;}try{const canvas=await html2canvas(node,{backgroundColor:"#0a0d13",scale:2,logging:false});canvas.toBlob(b=>{const u=URL.createObjectURL(b);const a=document.createElement("a");a.href=u;a.download=`playbook-${slug}.png`;a.click();URL.revokeObjectURL(u);showToast("⬇ PNG gedownload");});}catch(e){showToast("⚠ PNG-export faalde","error");}}
+  };
+  const pillBtn=(active,onClick,label)=><button type="button" onClick={onClick} style={{padding:"6px 14px",fontSize:11,fontFamily:"var(--mono)",fontWeight:600,letterSpacing:".06em",borderRadius:6,border:`1px solid ${active?"var(--gold-border)":"var(--border3)"}`,background:active?"var(--gold-dim)":"transparent",color:active?"var(--gold)":"var(--text4)",cursor:"pointer"}}>{label}</button>;
+  return(<div onClick={e=>{if(e.target===e.currentTarget)onClose();}} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",backdropFilter:"blur(4px)",display:"flex",alignItems:"flex-start",justifyContent:"center",zIndex:201,overflowY:"auto",padding:"32px 16px"}}>
+    <div style={{background:"var(--bg2)",border:"1px solid var(--border3)",borderRadius:14,width:"100%",maxWidth:880,maxHeight:"calc(100vh - 64px)",overflowY:"auto"}}>
+      <div style={{padding:"22px 28px 18px",borderBottom:"1px solid var(--border1)",position:"sticky",top:0,background:"var(--bg2)",zIndex:5}}>
+        <button onClick={onClose} style={{position:"absolute",top:16,right:18,background:"transparent",border:"none",color:"var(--text4)",fontSize:22,cursor:"pointer",width:32,height:32}}>×</button>
+        <h2 style={{margin:0,fontSize:18}}>🔗 Deel "{pb.name}" met de community</h2>
+        <p style={{fontSize:12,color:"var(--text4)",marginTop:4,lineHeight:1.55}}>Kies wat je deelt en in welk format. <strong style={{color:"var(--text2)"}}>Pro-mode (R) = privacy-vriendelijk</strong>, $-mode = exact bedragen zichtbaar.</p>
+      </div>
+      <div style={{padding:"22px 28px 28px",display:"flex",flexDirection:"column",gap:24}}>
+        <div>
+          <div style={{fontSize:11,color:"var(--gold)",fontFamily:"var(--mono)",fontWeight:700,letterSpacing:".18em",textTransform:"uppercase",marginBottom:10}}>🔒 Privacy-modus</div>
+          <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{pillBtn(privacy==="R",()=>setPrivacy("R"),"Pro-mode · R-multiples")}{pillBtn(privacy==="USD",()=>setPrivacy("USD"),"Showcase · $-bedragen")}</div>
+        </div>
+        <div>
+          <div style={{fontSize:11,color:"var(--gold)",fontFamily:"var(--mono)",fontWeight:700,letterSpacing:".18em",textTransform:"uppercase",marginBottom:10}}>📋 Wat deel je?</div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(200px, 1fr))",gap:8}}>{[["oneLiner","Oneliner"],["pairs","Pairs"],["sessions","Sessies"],["timeframes","Timeframes"],["setupTags","Setup-tags"],["confirmations","Confirmaties"],["context","Markt-context"],["criteria","Entry-criteria"],["rules","Stop / Target rules"],["mistake","Mistake-pattern"],["stats","Stats (n / WR / R)"],["tradesList","Individuele trades"]].map(([k,lbl])=><label key={k} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",background:"rgba(255,255,255,0.02)",border:"1px solid var(--border1)",borderRadius:6,fontSize:12,color:"var(--text2)",cursor:"pointer"}}><input type="checkbox" checked={fields[k]} onChange={()=>tog(k)} style={{accentColor:"var(--gold)",cursor:"pointer"}}/>{lbl}</label>)}</div>
+        </div>
+        <div>
+          <div style={{fontSize:11,color:"var(--gold)",fontFamily:"var(--mono)",fontWeight:700,letterSpacing:".18em",textTransform:"uppercase",marginBottom:10}}>📦 Format</div>
+          <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>{pillBtn(fmt==="text",()=>setFmt("text"),"📋 Tekst (Discord-ready)")}{pillBtn(fmt==="json",()=>setFmt("json"),"📦 JSON-bestand")}{pillBtn(fmt==="png",()=>setFmt("png"),"📸 PNG-card")}</div>
+          {fmt==="text"&&<>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",marginBottom:12}}><span style={{fontSize:10,color:"var(--text5)",fontFamily:"var(--mono)",letterSpacing:".06em",marginRight:4,textTransform:"uppercase"}}>Tekst-stijl:</span>{pillBtn(tfmt==="discord",()=>setTfmt("discord"),"Discord-markdown")}{pillBtn(tfmt==="plain",()=>setTfmt("plain"),"Plain text")}{pillBtn(tfmt==="markdown",()=>setTfmt("markdown"),"Markdown")}</div>
+            <textarea readOnly value={formatText(payload,tfmt)} style={{width:"100%",minHeight:280,background:"#0a0d13",color:"var(--text2)",fontFamily:"var(--mono)",fontSize:11.5,lineHeight:1.55,padding:14,borderRadius:8,border:"1px solid var(--border2)",resize:"vertical"}}/>
+          </>}
+          {fmt==="json"&&<><textarea readOnly value={formatJSON(payload)} style={{width:"100%",minHeight:280,background:"#0a0d13",color:"var(--text2)",fontFamily:"var(--mono)",fontSize:11,lineHeight:1.55,padding:14,borderRadius:8,border:"1px solid var(--border2)",resize:"vertical"}}/><small style={{display:"block",marginTop:8,fontSize:11,color:"var(--text5)",lineHeight:1.55}}>Download het bestand of kopieer de JSON-tekst. Stuur via Discord (file-attachment werkt het beste).</small></>}
+          {fmt==="png"&&<>
+            <div id="pbShareCard" style={{width:"100%",maxWidth:600,margin:"0 auto",background:"linear-gradient(135deg,#0a0d13 0%,#13161e 100%)",border:"1px solid var(--gold-border)",borderRadius:14,padding:24,position:"relative",overflow:"hidden"}}>
+              <div style={{position:"absolute",top:18,right:22,fontSize:10,color:"var(--text5)",fontFamily:"var(--mono)",letterSpacing:".18em",fontWeight:700,textTransform:"uppercase"}}>SyncJournal</div>
+              <div style={{fontSize:10,color:"var(--gold)",fontFamily:"var(--mono)",fontWeight:700,letterSpacing:".18em",marginBottom:8,textTransform:"uppercase"}}>📘 Playbook</div>
+              <div style={{fontSize:22,fontWeight:800,letterSpacing:"-.01em",marginBottom:6,color:"var(--text)"}}>{payload.name}</div>
+              {payload.oneLiner&&<div style={{fontSize:12.5,color:"var(--text3)",fontStyle:"italic",marginBottom:14,lineHeight:1.55}}>"{payload.oneLiner}"</div>}
+              <div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:16}}>
+                {(payload.pairs||[]).map(x=><span key={x} style={{fontSize:10,fontFamily:"var(--mono)",fontWeight:600,padding:"2px 7px",borderRadius:3,background:"rgba(201,168,76,0.06)",color:"var(--gold)",border:"1px solid var(--gold-border)"}}>{x}</span>)}
+                {(payload.timeframes||[]).map(x=><span key={x} style={{fontSize:10,fontFamily:"var(--mono)",fontWeight:600,padding:"2px 7px",borderRadius:3,background:"rgba(154,138,204,0.06)",color:"#9a8acc",border:"1px solid rgba(154,138,204,0.25)"}}>{x}</span>)}
+                {(payload.sessions||[]).map(x=><span key={x} style={{fontSize:10,fontFamily:"var(--mono)",fontWeight:600,padding:"2px 7px",borderRadius:3,background:"rgba(138,159,192,0.06)",color:"#8a9fc0",border:"1px solid rgba(138,159,192,0.25)"}}>{x}</span>)}
+              </div>
+              {payload.stats&&<div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,padding:"14px 0",borderTop:"1px solid var(--border1)",borderBottom:"1px solid var(--border1)",marginBottom:14}}>
+                {[["Trades",payload.stats.n,"var(--text)"],["Win-rate",payload.stats.wr.toFixed(0)+"%",payload.stats.wr>=50?"var(--green)":"var(--red)"],["Gem. R",(payload.stats.avgR>=0?"+":"")+payload.stats.avgR.toFixed(2),payload.stats.avgR>=0?"var(--green)":"var(--red)"],[payload.stats.cumPnl!=null?"Cum. PnL":"Expectancy",payload.stats.cumPnl!=null?((payload.stats.cumPnl>=0?"+":"−")+"$"+Math.abs(payload.stats.cumPnl).toFixed(0)):((payload.stats.expR>=0?"+":"")+payload.stats.expR.toFixed(2)+"R"),(payload.stats.cumPnl??payload.stats.expR)>=0?"var(--green)":"var(--red)"]].map(([lbl,val,col])=><div key={lbl} style={{textAlign:"center"}}><div style={{fontSize:9,color:"var(--text5)",fontFamily:"var(--mono)",textTransform:"uppercase",letterSpacing:".08em",marginBottom:4}}>{lbl}</div><div style={{fontFamily:"var(--mono)",fontWeight:700,fontSize:18,color:col}}>{val}</div></div>)}
+              </div>}
+              {payload.criteria&&payload.criteria.length>0&&<div style={{marginBottom:12}}><div style={{fontSize:10,color:"var(--gold)",fontFamily:"var(--mono)",fontWeight:700,textTransform:"uppercase",letterSpacing:".12em",marginBottom:6}}>Entry-criteria</div>{payload.criteria.slice(0,5).map((c,i)=><div key={i} style={{fontSize:11.5,color:"var(--text2)",lineHeight:1.6}}><span style={{color:"var(--green)",fontWeight:700}}>✓ </span>{c.text}{c.mandatory&&<em style={{color:"var(--gold)",fontSize:10,marginLeft:6}}>(verplicht)</em>}</div>)}</div>}
+              {payload.confirmations&&payload.confirmations.length>0&&<div style={{marginBottom:12}}><div style={{fontSize:10,color:"var(--gold)",fontFamily:"var(--mono)",fontWeight:700,textTransform:"uppercase",letterSpacing:".12em",marginBottom:6}}>Confirmaties</div>{payload.confirmations.slice(0,5).map((c,i)=><div key={i} style={{fontSize:11.5,color:"var(--text2)",lineHeight:1.6}}><span style={{color:"var(--green)",fontWeight:700}}>✓ </span>{c}</div>)}</div>}
+              {(payload.stop||payload.target)&&<div style={{marginBottom:12}}><div style={{fontSize:10,color:"var(--gold)",fontFamily:"var(--mono)",fontWeight:700,textTransform:"uppercase",letterSpacing:".12em",marginBottom:6}}>Rules{payload.minRR?` · min ${payload.minRR}R`:""}</div>{payload.stop&&<div style={{fontSize:11.5,color:"var(--text2)",lineHeight:1.6}}><strong style={{color:"var(--red)"}}>Stop:</strong> {payload.stop}</div>}{payload.target&&<div style={{fontSize:11.5,color:"var(--text2)",lineHeight:1.6}}><strong style={{color:"var(--green)"}}>Target:</strong> {payload.target}</div>}</div>}
+              <div style={{marginTop:14,paddingTop:14,borderTop:"1px solid var(--border1)",display:"flex",justifyContent:"space-between",fontSize:10,color:"var(--text5)",fontFamily:"var(--mono)",letterSpacing:".06em"}}><span>{privacy==="R"?"Pro-mode · R-multiples":"Showcase · $-bedragen"}</span><span>SyncJournal</span></div>
+            </div>
+            <small style={{display:"block",marginTop:8,fontSize:11,color:"var(--text5)"}}>Visuele card voor Discord. Download als PNG en plak hem als image-attachment.</small>
+          </>}
+        </div>
+        <div style={{display:"flex",justifyContent:"flex-end",gap:8,paddingTop:18,borderTop:"1px solid var(--border1)"}}>
+          <button onClick={onClose} style={{padding:"7px 14px",fontSize:11.5,fontFamily:"var(--mono)",fontWeight:600,borderRadius:6,border:"1px solid var(--border3)",background:"transparent",color:"var(--text2)",cursor:"pointer"}}>Sluiten</button>
+          <button onClick={doAction} style={{padding:"7px 14px",fontSize:11.5,fontFamily:"var(--mono)",fontWeight:600,borderRadius:6,border:"1px solid var(--gold-border)",background:"var(--gold-dim)",color:"var(--gold)",cursor:"pointer"}}>{fmt==="text"?"📋 Kopieer tekst":fmt==="json"?"⬇ Download .json":"⬇ Download PNG"}</button>
+        </div>
+      </div>
+    </div>
+  </div>);
+}
+
+// ─── PlaybookImportModal — paste JSON / file / drag-drop ─────────────────────
+function PlaybookImportModal({onImport,onClose,initialInput,showToast}){
+  const[input,setInput]=useState(initialInput||"");
+  const[err,setErr]=useState("");
+  const[parsed,setParsed]=useState(null);
+  const fileRef=useRef(null);
+  const parse=(str)=>{
+    setErr("");setParsed(null);
+    if(!str.trim()){return;}
+    let p=null;
+    try{
+      const m=str.match(/[#?]playbook=([A-Za-z0-9+/=_-]+)/);
+      if(m){p=JSON.parse(decodeURIComponent(escape(atob(m[1]))));}
+      else if(str.trim().startsWith("{")){p=JSON.parse(str);}
+      else{try{p=JSON.parse(decodeURIComponent(escape(atob(str.trim()))));}catch{}}
+      if(p&&p.type==="tradejournal-playbook"&&p.playbook){p=p.playbook;}
+      if(!p||!p.name)throw new Error("Geen geldige playbook-data — input mist een naam-veld.");
+      setParsed(p);
+    }catch(e){setErr("⚠ "+(e.message||"Kon de input niet parsen"));}
+  };
+  useEffect(()=>{parse(input);},[input]);
+  const onFile=(e)=>{const f=e.target.files?.[0];if(!f)return;const r=new FileReader();r.onload=ev=>setInput(ev.target.result);r.readAsText(f);};
+  const onDrop=(e)=>{e.preventDefault();const f=e.dataTransfer?.files?.[0];if(!f)return;if(!/\.json$/i.test(f.name)&&f.type!=="application/json"){setErr("⚠ Alleen .json bestanden");return;}const r=new FileReader();r.onload=ev=>setInput(ev.target.result);r.readAsText(f);};
+  const confirm=()=>{if(parsed){onImport(parsed);}};
+  return(<div onClick={e=>{if(e.target===e.currentTarget)onClose();}} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",backdropFilter:"blur(4px)",display:"flex",alignItems:"flex-start",justifyContent:"center",zIndex:201,overflowY:"auto",padding:"32px 16px"}}>
+    <div style={{background:"var(--bg2)",border:"1px solid var(--border3)",borderRadius:14,width:"100%",maxWidth:760,maxHeight:"calc(100vh - 64px)",overflowY:"auto"}}>
+      <div style={{padding:"22px 28px 18px",borderBottom:"1px solid var(--border1)",position:"sticky",top:0,background:"var(--bg2)",zIndex:5}}>
+        <button onClick={onClose} style={{position:"absolute",top:16,right:18,background:"transparent",border:"none",color:"var(--text4)",fontSize:22,cursor:"pointer",width:32,height:32}}>×</button>
+        <h2 style={{margin:0,fontSize:18}}>📥 Importeer gedeeld playbook</h2>
+        <p style={{fontSize:12,color:"var(--text4)",marginTop:4,lineHeight:1.55}}>Plak een JSON of selecteer een bestand. We tonen een preview vóór de import.</p>
+      </div>
+      <div style={{padding:"22px 28px 28px"}}>
+        <div style={{marginBottom:24}}>
+          <div style={{fontSize:11,color:"var(--gold)",fontFamily:"var(--mono)",fontWeight:700,letterSpacing:".18em",textTransform:"uppercase",marginBottom:10}}>📦 Plak JSON of selecteer bestand</div>
+          <div style={{display:"flex",gap:8,marginBottom:8,alignItems:"center",flexWrap:"wrap"}}>
+            <input ref={fileRef} type="file" accept=".json,application/json" style={{display:"none"}} onChange={onFile}/>
+            <button onClick={()=>fileRef.current?.click()} style={{padding:"7px 14px",fontSize:11.5,fontFamily:"var(--mono)",fontWeight:600,borderRadius:6,border:"1px solid var(--gold-border)",background:"var(--gold-dim)",color:"var(--gold)",cursor:"pointer"}}>📁 Selecteer .json bestand</button>
+            <span style={{fontSize:11,color:"var(--text5)",fontFamily:"var(--mono)"}}>— of sleep een bestand op het tekstveld, of plak JSON-tekst:</span>
+          </div>
+          <textarea value={input} onChange={e=>setInput(e.target.value)} onDragOver={e=>{e.preventDefault();e.target.style.borderColor="var(--gold-border)";}} onDragLeave={e=>{e.target.style.borderColor="var(--border3)";}} onDrop={onDrop} placeholder='Plak JSON hier... bijvoorbeeld {"type":"tradejournal-playbook","schemaVersion":1,...} of sleep een .json bestand erop' style={{width:"100%",minHeight:120,background:"var(--bg3)",color:"var(--text)",fontFamily:"var(--mono)",fontSize:11.5,padding:12,borderRadius:8,border:"1px solid var(--border3)",resize:"vertical"}}/>
+          {err&&<div style={{marginTop:8,padding:"10px 12px",background:"rgba(224,85,85,0.08)",border:"1px solid rgba(224,85,85,0.25)",borderRadius:6,fontSize:12,color:"var(--red)"}}>{err}</div>}
+        </div>
+        {parsed&&<>
+          <div style={{marginBottom:24}}>
+            <div style={{fontSize:11,color:"var(--gold)",fontFamily:"var(--mono)",fontWeight:700,letterSpacing:".18em",textTransform:"uppercase",marginBottom:10}}>👀 Preview</div>
+            <div style={{padding:18,background:"rgba(255,255,255,0.02)",border:"1px solid var(--border2)",borderRadius:10}}>
+              <div style={{fontSize:18,fontWeight:700,marginBottom:6}}>{parsed.name}</div>
+              {parsed.oneLiner&&<div style={{fontSize:12.5,color:"var(--text3)",fontStyle:"italic",marginBottom:12}}>"{parsed.oneLiner}"</div>}
+              <div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:12}}>
+                {(parsed.pairs||[]).map(x=><span key={x} style={{fontSize:10,fontFamily:"var(--mono)",fontWeight:600,padding:"2px 7px",borderRadius:3,background:"rgba(201,168,76,0.06)",color:"var(--gold)",border:"1px solid var(--gold-border)"}}>{x}</span>)}
+                {(parsed.timeframes||[]).map(x=><span key={x} style={{fontSize:10,fontFamily:"var(--mono)",fontWeight:600,padding:"2px 7px",borderRadius:3,background:"rgba(154,138,204,0.06)",color:"#9a8acc",border:"1px solid rgba(154,138,204,0.25)"}}>{x}</span>)}
+                {(parsed.sessions||[]).map(x=><span key={x} style={{fontSize:10,fontFamily:"var(--mono)",fontWeight:600,padding:"2px 7px",borderRadius:3,background:"rgba(138,159,192,0.06)",color:"#8a9fc0",border:"1px solid rgba(138,159,192,0.25)"}}>{x}</span>)}
+                {(parsed.setupTags||[]).map(x=><span key={x} style={{fontSize:10,fontFamily:"var(--mono)",fontWeight:600,padding:"2px 7px",borderRadius:3,background:"rgba(46,170,111,0.06)",color:"var(--green)",border:"1px solid rgba(46,170,111,0.25)"}}>{x}</span>)}
+              </div>
+              {parsed.criteria&&parsed.criteria.length>0&&<div style={{marginBottom:10}}><div style={{fontSize:11,color:"var(--text4)",fontFamily:"var(--mono)",textTransform:"uppercase",letterSpacing:".06em",marginBottom:5}}>Entry-criteria ({parsed.criteria.length})</div>{parsed.criteria.map((c,i)=><div key={i} style={{fontSize:12,color:"var(--text2)",padding:"3px 0"}}>{c.mandatory?"✅":"⚪"} {c.text}</div>)}</div>}
+              {(parsed.stop||parsed.target)&&<div style={{fontSize:12,color:"var(--text2)",lineHeight:1.55,marginTop:10}}>{parsed.stop&&<div><strong style={{color:"var(--red)"}}>Stop:</strong> {parsed.stop}</div>}{parsed.target&&<div><strong style={{color:"var(--green)"}}>Target:</strong> {parsed.target}</div>}</div>}
+              {(parsed.stats||parsed.trades)&&<div style={{marginTop:14,padding:"10px 12px",background:"rgba(138,144,160,0.06)",border:"1px solid var(--border2)",borderRadius:6,fontSize:11,color:"var(--text4)",lineHeight:1.5}}>🔒 <strong style={{color:"var(--text3)"}}>Niet overgenomen</strong>: stats en/of trades-lijst van de deler — die blijven van hem/haar.</div>}
+            </div>
+          </div>
+          <div style={{padding:"12px 14px",background:"rgba(212,168,83,0.06)",border:"1px solid rgba(212,168,83,0.25)",borderLeft:"3px solid var(--amber)",borderRadius:8,fontSize:12,color:"var(--text3)",lineHeight:1.55,marginBottom:18}}><strong style={{color:"var(--amber)",fontFamily:"var(--mono)",fontSize:10,letterSpacing:".08em",textTransform:"uppercase"}}>Belangrijk</strong><br/>Stats van de oorspronkelijke deler worden <strong>niet overgenomen</strong>. Je start met <strong>status: testing</strong> en bouwt eigen stats op vanaf de eerste trade die je linkt.</div>
+        </>}
+        <div style={{display:"flex",justifyContent:"flex-end",gap:8,paddingTop:18,borderTop:"1px solid var(--border1)"}}>
+          <button onClick={onClose} style={{padding:"7px 14px",fontSize:11.5,fontFamily:"var(--mono)",fontWeight:600,borderRadius:6,border:"1px solid var(--border3)",background:"transparent",color:"var(--text2)",cursor:"pointer"}}>Annuleren</button>
+          <button onClick={confirm} disabled={!parsed} style={{padding:"7px 14px",fontSize:11.5,fontFamily:"var(--mono)",fontWeight:600,borderRadius:6,border:"1px solid var(--gold-border)",background:"var(--gold-dim)",color:"var(--gold)",cursor:parsed?"pointer":"not-allowed",opacity:parsed?1:0.4}}>Importeer als Testing</button>
+        </div>
+      </div>
+    </div>
+  </div>);
+}
+
+// ─── PlaybookPage — hoofdtab ────────────────────────────────────────────────
+function PlaybookPage({playbooks,setPlaybooks,allTrades,setFilters,setTab,showToast,pendingImport,clearPendingImport}){
+  const[detailId,setDetailId]=useState(null);
+  const[formInitial,setFormInitial]=useState(null);// null=closed, {} or {id:..}=open
+  const[shareId,setShareId]=useState(null);
+  const[importOpen,setImportOpen]=useState(false);
+  const[bannerDismissed,setBannerDismissed]=useState(false);
+  const[fStatus,setFStatus]=useState("all");
+  const[fPair,setFPair]=useState("all");
+  const[sortBy,setSortBy]=useState("pnl");
+
+  // Auto-open import modal als er een pending import is (URL-banner geklikt)
+  useEffect(()=>{if(pendingImport&&!importOpen){setImportOpen(true);}},[pendingImport]);
+
+  const filtered=useMemo(()=>{
+    let arr=[...playbooks];
+    if(fStatus!=="all")arr=arr.filter(p=>p.status===fStatus);
+    if(fPair!=="all")arr=arr.filter(p=>(p.pairs||[]).includes(fPair));
+    arr.sort((a,b)=>{
+      const sa=playbookStats(a,allTrades),sb=playbookStats(b,allTrades);
+      if(sortBy==="wr")return sb.wr-sa.wr;
+      if(sortBy==="n")return sb.n-sa.n;
+      if(sortBy==="recent"){const da=sa.trades[0]?.date||"";const db=sb.trades[0]?.date||"";return db.localeCompare(da);}
+      return sb.pnl-sa.pnl;
+    });
+    return arr;
+  },[playbooks,allTrades,fStatus,fPair,sortBy]);
+
+  const allPairs=useMemo(()=>{const s=new Set();playbooks.forEach(p=>(p.pairs||[]).forEach(x=>s.add(x)));return[...s].sort();},[playbooks]);
+
+  const onSave=(pb)=>{setPlaybooks(prev=>{const exists=prev.some(p=>p.id===pb.id);return exists?prev.map(p=>p.id===pb.id?pb:p):[pb,...prev];});setFormInitial(null);showToast(`💾 Playbook ${formInitial?.id?"bijgewerkt":"opgeslagen"}: ${pb.name}`);};
+  const onDelete=(pb)=>{if(!confirm(`Verwijder playbook "${pb.name}"?`))return;setPlaybooks(prev=>prev.filter(p=>p.id!==pb.id));setDetailId(null);showToast("🗑 Verwijderd: "+pb.name);};
+  const onImport=(payload)=>{
+    let finalName=payload.name||"Naamloos";
+    let collision="";
+    if(playbooks.some(p=>p.name===finalName)){
+      let cand=`${finalName} (geïmporteerd)`,i=2;
+      while(playbooks.some(p=>p.name===cand)){cand=`${finalName} (geïmporteerd ${i})`;i++;}
+      finalName=cand;collision=` · naam bestond al, opgeslagen als "${finalName}"`;
+    }
+    const newPb=migratePlaybooks([{...EMPTY_PLAYBOOK,...payload,id:"pb"+Date.now(),name:finalName,status:"testing",importedFrom:"community",importedAt:new Date().toISOString(),createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()}])[0];
+    setPlaybooks(prev=>[newPb,...prev]);
+    setImportOpen(false);
+    if(clearPendingImport)clearPendingImport();
+    showToast("📥 Geïmporteerd als Testing — bouw eigen stats op"+collision);
+  };
+
+  const pillBtn=(active,onClick,label)=><button type="button" onClick={onClick} style={{padding:"6px 14px",fontSize:11,fontFamily:"var(--mono)",fontWeight:600,letterSpacing:".06em",borderRadius:6,border:`1px solid ${active?"var(--gold-border)":"var(--border3)"}`,background:active?"var(--gold-dim)":"transparent",color:active?"var(--gold)":"var(--text4)",cursor:"pointer"}}>{label}</button>;
+
+  return(<div style={{animation:"fadeIn .3s ease"}}>
+    <div style={{marginBottom:20}}>
+      <div style={{fontSize:10,color:"var(--gold)",letterSpacing:".22em",fontWeight:700,marginBottom:6,fontFamily:"var(--mono)",textTransform:"uppercase"}}>📘 Playbook · Setup-catalogus</div>
+      <div style={{fontSize:22,fontWeight:800,letterSpacing:"-.02em",marginBottom:6}}>Jouw bewezen setups, geformaliseerd</div>
+      <div style={{fontSize:13,color:"var(--text4)",maxWidth:780,lineHeight:1.6}}>Een journal logt élke trade. Een playbook bevat alleen je <strong style={{color:"var(--text2)"}}>A+ setups</strong>, gestructureerd en herhaalbaar. Pre-market scan je alleen op deze setups; alles daarbuiten = no-trade. Stats worden automatisch berekend uit trades met overlappende setup-tag.</div>
+    </div>
+
+    {pendingImport&&!bannerDismissed&&<div style={{marginBottom:18,padding:"14px 18px",display:"flex",alignItems:"center",gap:14,fontSize:13,background:"linear-gradient(135deg,rgba(154,138,204,0.10),rgba(154,138,204,0.04))",border:"1px solid rgba(154,138,204,0.30)",borderLeft:"3px solid #9a8acc",borderRadius:10}}>
+      <div style={{fontSize:24}}>📥</div>
+      <div style={{flex:1}}>
+        <div style={{fontWeight:700,color:"var(--text)",marginBottom:3}}>Iemand deelt een playbook met jou</div>
+        <small style={{color:"var(--text4)",fontSize:11.5,lineHeight:1.5}}>— bekijk de inhoud vóór je 'm importeert</small>
+      </div>
+      <div style={{display:"flex",gap:8}}>
+        <button onClick={()=>setImportOpen(true)} style={{padding:"7px 14px",fontSize:11.5,fontFamily:"var(--mono)",fontWeight:600,borderRadius:6,border:"1px solid rgba(154,138,204,0.30)",background:"rgba(154,138,204,0.12)",color:"#9a8acc",cursor:"pointer"}}>📥 Bekijk</button>
+        <button onClick={()=>{setBannerDismissed(true);if(clearPendingImport)clearPendingImport();}} style={{padding:"7px 14px",fontSize:11.5,fontFamily:"var(--mono)",fontWeight:600,borderRadius:6,border:"1px solid var(--border3)",background:"transparent",color:"var(--text4)",cursor:"pointer"}}>Sluiten</button>
+      </div>
+    </div>}
+
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:22,flexWrap:"wrap",gap:12}}>
+      <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+        <span style={{fontSize:10,color:"var(--text5)",fontFamily:"var(--mono)",letterSpacing:".06em",marginRight:4,textTransform:"uppercase"}}>Filter:</span>
+        {pillBtn(fStatus==="all",()=>setFStatus("all"),"Alles")}
+        {pillBtn(fStatus==="active",()=>setFStatus("active"),"Actief")}
+        {pillBtn(fStatus==="testing",()=>setFStatus("testing"),"Testing")}
+        {pillBtn(fStatus==="retired",()=>setFStatus("retired"),"Retired")}
+        {allPairs.length>0&&<>
+          <span style={{width:1,height:20,background:"var(--border3)",margin:"0 8px"}}/>
+          <span style={{fontSize:10,color:"var(--text5)",fontFamily:"var(--mono)",letterSpacing:".06em",marginRight:4,textTransform:"uppercase"}}>Pair:</span>
+          {pillBtn(fPair==="all",()=>setFPair("all"),"Alle")}
+          {allPairs.slice(0,4).map(p=>pillBtn(fPair===p,()=>setFPair(p),p.split("/")[0]))}
+        </>}
+      </div>
+      <div style={{display:"flex",gap:10,alignItems:"center"}}>
+        <select value={sortBy} onChange={e=>setSortBy(e.target.value)} style={{background:"var(--bg3)",color:"var(--text)",border:"1px solid var(--border3)",borderRadius:6,padding:"6px 10px",fontFamily:"var(--mono)",fontSize:11}}>
+          <option value="pnl">Sorteer: cum. PnL ↓</option>
+          <option value="wr">Sorteer: win-rate ↓</option>
+          <option value="n">Sorteer: # trades ↓</option>
+          <option value="recent">Sorteer: laatst gebruikt ↓</option>
+        </select>
+        <button onClick={()=>setImportOpen(true)} style={{padding:"7px 14px",fontSize:11.5,fontFamily:"var(--mono)",fontWeight:600,borderRadius:6,border:"1px solid var(--border3)",background:"transparent",color:"var(--text2)",cursor:"pointer"}}>📥 Importeer gedeeld</button>
+        <button onClick={()=>setFormInitial({})} style={{padding:"7px 14px",fontSize:11.5,fontFamily:"var(--mono)",fontWeight:600,borderRadius:6,border:"1px solid var(--gold-border)",background:"var(--gold-dim)",color:"var(--gold)",cursor:"pointer"}}>+ Nieuw playbook</button>
+      </div>
+    </div>
+
+    {filtered.length===0?<div style={{padding:"40px 24px",background:"rgba(255,255,255,0.02)",border:"1px dashed var(--border3)",borderRadius:10,fontSize:13,color:"var(--text4)",textAlign:"center",lineHeight:1.6}}>
+      {playbooks.length===0?<>Nog geen playbooks. Klik op <strong style={{color:"var(--text2)"}}>+ Nieuw playbook</strong> om je eerste setup te formaliseren — of importeer er een van een community-lid via Discord.</>:"Geen playbooks in deze filter. Probeer een andere combinatie."}
+    </div>:<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(380px, 1fr))",gap:14}}>
+      {filtered.map(pb=><div key={pb.id}><PlaybookCard pb={pb} allTrades={allTrades} onClick={()=>setDetailId(pb.id)}/></div>)}
+    </div>}
+
+    {detailId&&(()=>{const pb=playbooks.find(p=>p.id===detailId);if(!pb)return null;return<PlaybookDetailModal pb={pb} allTrades={allTrades} setFilters={setFilters} setTab={setTab} onClose={()=>setDetailId(null)} onEdit={(p)=>{setFormInitial(p);setDetailId(null);}} onDelete={onDelete} onShare={(p)=>{setShareId(p.id);setDetailId(null);}}/>;})()}
+    {formInitial!==null&&<PlaybookForm initial={formInitial} onSave={onSave} onClose={()=>setFormInitial(null)}/>}
+    {shareId&&(()=>{const pb=playbooks.find(p=>p.id===shareId);if(!pb)return null;return<PlaybookShareModal pb={pb} allTrades={allTrades} onClose={()=>setShareId(null)} showToast={showToast}/>;})()}
+    {importOpen&&<PlaybookImportModal onImport={onImport} onClose={()=>{setImportOpen(false);if(clearPendingImport)clearPendingImport();}} initialInput={pendingImport||""} showToast={showToast}/>}
+  </div>);
+}
+
 // ─── TendenciesPage — eigen hoofdtab. Grotere cards dan de Analytics-versie,
 // eigen periode-controls (los van globale FilterBar), en ruimere lay-out met
 // extra meta per card (eerste/laatste trade-datum + "Toon trades →" link).
@@ -7681,6 +8406,12 @@ function App(){
     {id:"r5",name:"Pre-trade notitie ingevuld",type:"require_entry_note",value:null,enabled:true},
   ]}catch{return[]}});
   useEffect(()=>{try{localStorage.setItem("tj_trading_rules",JSON.stringify(tradingRules))}catch{}},[tradingRules]);
+
+  // Playbook — gestructureerde catalogus van bewezen setups (v12.38)
+  const[playbooks,setPlaybooks]=useState(()=>{try{const d=localStorage.getItem("tj_playbooks");return migratePlaybooks(d?JSON.parse(d):[]);}catch{return[]}});
+  useEffect(()=>{try{localStorage.setItem("tj_playbooks",JSON.stringify(playbooks))}catch{}},[playbooks]);
+  // Pending import — gevuld als URL #playbook=... hash wordt gedetecteerd bij load
+  const[pendingPbImport,setPendingPbImport]=useState(()=>{try{if(window.location.hash&&window.location.hash.includes("playbook=")){return window.location.href;}}catch{}return"";});
   const parseHash=()=>{
     const h=(window.location.hash||"#/dashboard").slice(1);
     const parts=h.split("/").filter(Boolean);
@@ -7962,13 +8693,14 @@ function App(){
     if(d.tagConfig&&typeof d.tagConfig==="object")setTagConfig(d.tagConfig);
     if(Array.isArray(d.accounts))setAccounts(d.accounts);
     if(d.config&&typeof d.config==="object")setConfig(p=>({...p,...d.config}));
+    if(Array.isArray(d.playbooks))setPlaybooks(migratePlaybooks(d.playbooks));
   }catch(err){showToast("Fout bij importeren","error")}};r.readAsText(f)},[trades]);
   const handleDragOver=useCallback((e)=>{e.preventDefault();setImportDragOver(true)},[]);
   const handleDragLeave=useCallback(()=>setImportDragOver(false),[]);
 
   // Volledige backup: trades + tags + accounts + config (proxy-URL / thema / quote / sync-interval / exchange-keys)
   const exportTrades=()=>{
-    const payload={version:12,schemaVersion:CURRENT_SCHEMA_VERSION,exportDate:new Date().toISOString(),trades,tagConfig,accounts,config};
+    const payload={version:12,schemaVersion:CURRENT_SCHEMA_VERSION,exportDate:new Date().toISOString(),trades,tagConfig,accounts,config,playbooks};
     const blob=new Blob([JSON.stringify(payload,null,2)],{type:"application/json"});
     const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;
     a.download=`syncjournal-backup-${new Date().toISOString().split("T")[0]}.json`;a.click();URL.revokeObjectURL(url);
@@ -8005,6 +8737,7 @@ function App(){
     {id:"review",label:"Review",icon:"🔍"},
     {id:"calendar",label:"Kalender",icon:"📅"},
     {id:"tendencies",label:"Tendencies",icon:"🎯"},
+    {id:"playbook",label:"Playbook",icon:"📘"},
     {id:"accounts",label:"Accounts",icon:"🔗"},
     {id:"tags",label:"Tags",icon:"🏷"},
     {id:"help",label:"Help",icon:"❓"},
@@ -8197,6 +8930,7 @@ function App(){
         {tab==="trades"&&!editTrade&&<TradeList trades={filteredTrades} onEdit={setEditTrade} onDelete={deleteTrade} onBulkDelete={bulkDelete} onBulkTag={bulkTag} showToast={showToast} tagConfig={tagConfig} config={config} accounts={accounts}/>}
         {tab==="analytics"&&<Analytics trades={filteredTrades} tradingRules={tradingRules} allTrades={trades} config={config} setFilters={setFilters} setTab={setTab}/>}
         {tab==="tendencies"&&<TendenciesPage trades={filteredTrades} setFilters={setFilters} setTab={setTab}/>}
+        {tab==="playbook"&&<PlaybookPage playbooks={playbooks} setPlaybooks={setPlaybooks} allTrades={trades} setFilters={setFilters} setTab={setTab} showToast={showToast} pendingImport={pendingPbImport} clearPendingImport={()=>setPendingPbImport("")}/>}
         {tab==="review"&&<ReviewDashboard trades={filteredTrades}/>}
         {tab==="calendar"&&<Calendar trades={filteredTrades} setFilters={setFilters} setTab={setTab} dailyNotes={dailyNotes} setDailyNotes={setDailyNotes} tradingRules={tradingRules} onEdit={(t)=>{setEditTrade(t);setNewTrade({...EMPTY_TRADE,...t,tpLevels:t.tpLevels||[],layers:t.layers||[],links:t.links||[],manualOverrides:t.manualOverrides||[]});navigate("new");}}/>}
         {tab==="accounts"&&<AccountsHub config={config} setConfig={setConfig} accounts={accounts} setAccounts={setAccounts} showToast={showToast} trades={trades} importTrades={importTrades} syncOpenPositions={syncOpenPositions} exportTrades={exportTrades} setTagConfig={setTagConfig} tagConfig={tagConfig} tradingRules={tradingRules} setTradingRules={setTradingRules} goals={goals} setGoals={setGoals} mindsetPrefs={mindsetPrefs} setMindsetPrefs={setMindsetPrefs}/>}
