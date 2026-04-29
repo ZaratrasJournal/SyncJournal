@@ -889,7 +889,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.57",released:"2026-04-29"};
+const APP_VERSION={version:"v12.58",released:"2026-04-29"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -5234,12 +5234,31 @@ function playbookMissedStats(pb,allTrades,subTypeFilter){
   const pbCritTexts=(pb.criteria||[]).map(c=>(c.text||"").toLowerCase().trim()).filter(Boolean);
   const pbConfs=new Set(pb.confirmations||[]);
   for(const t of missed){
-    const entry=parseFloat(t.entry),sl=parseFloat(t.stopLoss),hx=parseFloat(t.hindsightExit);
-    if(!isFinite(entry)||!isFinite(sl)||!isFinite(hx))continue;
-    const riskPerUnit=Math.abs(entry-sl);
-    if(riskPerUnit<=0)continue;
-    const sign=t.direction==="short"?-1:1;
-    const hindsightR=parseFloat(((hx-entry)*sign/riskPerUnit).toFixed(2));
+    const st=t.simType||"missed";
+    const entry=parseFloat(t.entry),sl=parseFloat(t.stopLoss);
+    let hindsightR=null;
+    // v12.58: R-bron hangt af van sim-type:
+    //   - missed (gespotte setup, niet genomen): hindsightExit (waar zou prijs gegaan zijn)
+    //   - backtest / paper: echte exit ingevuld; gebruik exit + entry + sl, of pnl/riskUsd
+    if(st==="missed"){
+      const hx=parseFloat(t.hindsightExit);
+      if(!isFinite(entry)||!isFinite(sl)||!isFinite(hx))continue;
+      const riskPerUnit=Math.abs(entry-sl);
+      if(riskPerUnit<=0)continue;
+      const sign=t.direction==="short"?-1:1;
+      hindsightR=parseFloat(((hx-entry)*sign/riskPerUnit).toFixed(2));
+    }else{
+      // backtest / paper: liever entry+exit+sl (geometrisch), fallback naar pnl/riskUsd
+      const ex=parseFloat(t.exit);
+      if(isFinite(entry)&&isFinite(sl)&&isFinite(ex)&&Math.abs(entry-sl)>0){
+        const sign=t.direction==="short"?-1:1;
+        hindsightR=parseFloat(((ex-entry)*sign/Math.abs(entry-sl)).toFixed(2));
+      }else{
+        const r=_trR(t);
+        if(r===0&&!parseFloat(t.pnl))continue;
+        hindsightR=parseFloat(r.toFixed(2));
+      }
+    }
     // matchRate: hoeveel playbook-confirmations zijn afgevinkt in deze trade
     let matchRate=0.5;// default neutraal
     if(pbConfs.size>0){

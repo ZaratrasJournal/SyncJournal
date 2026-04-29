@@ -6,6 +6,13 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.58] — 2026-04-29
+
+### Fixed
+- **Backtest- en paper-trades werden alsnog leeg gerenderd in de Simulated-Trades sectie van Playbook-detail** (vervolg op v12.56/57, gemeld door Denny). `playbookMissedStats()` filterde elke trade weg waar `hindsightExit` niet was ingevuld — terwijl dat veld alleen bedoeld is voor échte gemiste trades (waar zou de prijs zijn gegaan als je had genomen?). Een backtest- of paper-trade heeft juist een **echte** `exit` ingevuld. Fix: R-bron hangt nu af van sim-type — `missed` blijft `hindsightExit`, `backtest` en `paper` gebruiken `exit + entry + stopLoss` (of `pnl/riskUsd` als fallback). Backtest-trades verschijnen daardoor nu met match-rate tier (≥80% / 50–79% / <50%) + R-multiple in de edge-leak analyse.
+
+---
+
 ## [v12.57] — 2026-04-29
 
 ### Fixed
