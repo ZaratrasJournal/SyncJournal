@@ -6,6 +6,13 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.55] — 2026-04-29
+
+### Gewijzigd
+- **Playbook-picker is nu ook beschikbaar bij Gemist / Backtest / Paper trades** (gemeld door Denny). Voorheen werd de picker verstopt zodra je `Gemist? / Backtest? / Paper?` aanklikte (`!isMissed`-guard in TradeForm), waardoor je een backtest of gemiste setup niet aan een playbook kon koppelen. Nu zichtbaar voor alle statussen — de playbook-koppeling, auto-fill (setup-tags / timeframes / confirmaties / pair / lagen) én entry-criteria checklist werken bij elke trade-soort. Belangrijk voor wie zijn backtests systematisch tegen specifieke playbooks valideert.
+
+---
+
 ## [v12.54] — 2026-04-29
 
 ### Toegevoegd
