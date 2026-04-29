@@ -889,7 +889,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.53",released:"2026-04-29"};
+const APP_VERSION={version:"v12.54",released:"2026-04-29"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -911,13 +911,27 @@ const IS_HOSTED=(()=>{try{
 // ─── PLAYBOOK — gestructureerde catalogus van bewezen setups ───
 // Gekoppeld aan trades via setup-tag overlap (geen apart playbookId-veld nodig).
 // Schema: zie demo (playbook-demo.html) voor de blauwdruk.
+//
+// v12.54: layered structure mirrors TradeForm — een playbook heeft nu lagen
+// waarbij elke laag (top-down: HTF bias → entry-TF) een eigen TF + setups +
+// confirmations bundelt. Voorheen waren dit drie losse flat arrays op pb-niveau,
+// wat de relatie ertussen verloor. De flat-velden blijven bestaan als gederiveerde
+// unions (voor share/export en backwards compat) maar worden niet meer in de UI
+// bewerkt.
+const EMPTY_PLAYBOOK_LAYER={
+  id:"",
+  timeframe:"",          // single TF tag
+  setups:[],             // multi: bv. ["SFP","MSB"]
+  confirmations:[],      // multi confluence per laag
+};
 const EMPTY_PLAYBOOK={
   id:"",
   name:"",
   oneLiner:"",
-  setupTags:[],          // multi: SFP + Liquidity Sweep + …
-  timeframes:[],         // top-down: 1D / 4H / 1H / 15M / 5M / 1M
-  confirmations:[],      // extra confluence (CVD, OB, FVG, funding flip, …)
+  layers:[],             // v12.54: top-down setup-lagen, mirror van trade.layers
+  setupTags:[],          // legacy/derived union — gevuld via syncPlaybookFlatFields
+  timeframes:[],         // legacy/derived union
+  confirmations:[],      // legacy/derived union
   pairs:[],              // BTC/USDT, ETH/USDT, of vrij ingevuld
   sessions:[],           // 8 sessie-buckets uit ALL_SESSIONS
   status:"testing",      // testing | active | retired
@@ -933,18 +947,52 @@ const EMPTY_PLAYBOOK={
   createdAt:"",
   updatedAt:"",
 };
+// Houdt de gederiveerde flat-velden in sync met layers[]. Eén plek zodat alle
+// schrijfpaden (form, import, migratie) hetzelfde resultaat geven.
+function syncPlaybookFlatFields(pb){
+  const layers=Array.isArray(pb?.layers)?pb.layers:[];
+  const setupSet=new Set();const tfSet=new Set();const confSet=new Set();
+  for(const L of layers){
+    (L?.setups||[]).forEach(s=>s&&setupSet.add(s));
+    if(L?.timeframe)tfSet.add(L.timeframe);
+    (L?.confirmations||[]).forEach(c=>c&&confSet.add(c));
+  }
+  return{...pb,setupTags:[...setupSet],timeframes:[...tfSet],confirmations:[...confSet]};
+}
 function migratePlaybooks(arr){
   if(!Array.isArray(arr))return[];
-  return arr.map(p=>({...EMPTY_PLAYBOOK,...p,
-    setupTags:Array.isArray(p?.setupTags)?p.setupTags:[],
-    timeframes:Array.isArray(p?.timeframes)?p.timeframes:[],
-    confirmations:Array.isArray(p?.confirmations)?p.confirmations:[],
-    pairs:Array.isArray(p?.pairs)?p.pairs:[],
-    sessions:Array.isArray(p?.sessions)?p.sessions:[],
-    mistakePatterns:Array.isArray(p?.mistakePatterns)?p.mistakePatterns:[],
-    criteria:Array.isArray(p?.criteria)?p.criteria.map(c=>typeof c==="string"?{text:c,mandatory:true}:({text:c.text||"",mandatory:!!c.mandatory})):[],
-    id:p?.id||("pb"+Date.now()+Math.floor(Math.random()*999)),
-  }));
+  return arr.map(p=>{
+    const base={...EMPTY_PLAYBOOK,...p,
+      pairs:Array.isArray(p?.pairs)?p.pairs:[],
+      sessions:Array.isArray(p?.sessions)?p.sessions:[],
+      mistakePatterns:Array.isArray(p?.mistakePatterns)?p.mistakePatterns:[],
+      criteria:Array.isArray(p?.criteria)?p.criteria.map(c=>typeof c==="string"?{text:c,mandatory:true}:({text:c.text||"",mandatory:!!c.mandatory})):[],
+      id:p?.id||("pb"+Date.now()+Math.floor(Math.random()*999)),
+    };
+    // v12.54: backfill layers vanuit oude flat-velden als layers ontbreekt.
+    // We bouwen 1 laag met de eerste TF (of leeg) + alle setups + alle confirmations.
+    // User kan dat in de form daarna opsplitsen in echte top-down lagen.
+    let layers=Array.isArray(p?.layers)?p.layers.map(L=>({...EMPTY_PLAYBOOK_LAYER,...L,
+      id:L?.id||("pl"+Date.now()+Math.floor(Math.random()*999)),
+      setups:Array.isArray(L?.setups)?L.setups:[],
+      confirmations:Array.isArray(L?.confirmations)?L.confirmations:[],
+    })):[];
+    if(layers.length===0){
+      const oldSetups=Array.isArray(p?.setupTags)?p.setupTags:[];
+      const oldTfs=Array.isArray(p?.timeframes)?p.timeframes:[];
+      const oldConfs=Array.isArray(p?.confirmations)?p.confirmations:[];
+      if(oldSetups.length||oldTfs.length||oldConfs.length){
+        // 1 laag per TF zodat top-down structuur deels gerespecteerd wordt;
+        // setups+confirmations kopiëren we naar elke laag — user kan splitsen.
+        if(oldTfs.length>0){
+          layers=oldTfs.map((tf,i)=>({...EMPTY_PLAYBOOK_LAYER,id:"pl"+Date.now()+i,timeframe:tf,setups:i===0?[...oldSetups]:[],confirmations:i===0?[...oldConfs]:[]}));
+        }else{
+          layers=[{...EMPTY_PLAYBOOK_LAYER,id:"pl"+Date.now(),timeframe:"",setups:[...oldSetups],confirmations:[...oldConfs]}];
+        }
+      }
+    }
+    return syncPlaybookFlatFields({...base,layers});
+  });
 }
 
 const EMPTY_TRADE={
@@ -3657,6 +3705,11 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,accounts,sho
       if(Array.isArray(pb.timeframes))next.timeframeTags=[...new Set([...(p.timeframeTags||[]),...pb.timeframes])];
       if(Array.isArray(pb.confirmations))next.confirmationTags=[...new Set([...(p.confirmationTags||[]),...pb.confirmations])];
       if(Array.isArray(pb.pairs)&&pb.pairs.length>0&&(!p.pair||p.pair==="BTC/USDT"))next.pair=pb.pairs[0];
+      // v12.54: layers uit playbook → trade.layers, alleen als trade nog geen lagen heeft
+      // (anders niet overschrijven; user heeft mogelijk al iets ingevuld).
+      if(Array.isArray(pb.layers)&&pb.layers.length>0&&(!Array.isArray(p.layers)||p.layers.length===0)){
+        next.layers=pb.layers.map(L=>({...EMPTY_LAYER,id:uid(),timeframe:L.timeframe||"",setups:Array.isArray(L.setups)?[...L.setups]:[],confirmations:Array.isArray(L.confirmations)?[...L.confirmations]:[]}));
+      }
       return next;
     });
   };
@@ -5445,9 +5498,49 @@ function PlaybookCard({pb,allTrades,onClick}){
   </div>);
 }
 
+// ─── PlaybookForm helpers — module-scope so they keep stable identity across renders.
+// Defined inline inside PlaybookForm previously; that gave them a fresh component type on
+// every keystroke, which unmounted+remounted every input/textarea inside (focus loss, page jump).
+function PlaybookFormSection({icon,title,subtitle,tint,children,collapsible,expanded,setExpanded}){
+  const tintMap={
+    gold:{border:"rgba(201,168,76,0.18)",bg:"rgba(201,168,76,0.025)",accent:"var(--gold)"},
+    blue:{border:"rgba(138,159,192,0.18)",bg:"rgba(138,159,192,0.025)",accent:"#8a9fc0"},
+    green:{border:"rgba(46,170,111,0.18)",bg:"rgba(46,170,111,0.025)",accent:"var(--green)"},
+    amber:{border:"rgba(212,168,83,0.18)",bg:"rgba(212,168,83,0.025)",accent:"var(--amber)"},
+    neutral:{border:"var(--border2)",bg:"rgba(255,255,255,0.015)",accent:"var(--text3)"},
+  };
+  const c=tintMap[tint||"neutral"];
+  return(<div style={{background:c.bg,border:`1px solid ${c.border}`,borderRadius:"10px",padding:"18px 20px"}}>
+    <div onClick={collapsible?()=>setExpanded(!expanded):undefined} style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:expanded||!collapsible?"14px":0,cursor:collapsible?"pointer":"default",userSelect:collapsible?"none":"auto"}}>
+      <div>
+        <div style={{display:"flex",alignItems:"center",gap:"8px",fontSize:"11px",color:c.accent,fontFamily:"var(--mono)",fontWeight:700,letterSpacing:".15em",textTransform:"uppercase"}}><span>{icon}</span>{title}</div>
+        {subtitle&&<div style={{fontSize:"11.5px",color:"var(--text4)",marginTop:"3px",lineHeight:1.5}}>{subtitle}</div>}
+      </div>
+      {collapsible&&<span style={{fontSize:"14px",color:"var(--text4)",fontFamily:"var(--mono)",transition:"transform .2s",transform:expanded?"rotate(0deg)":"rotate(-90deg)"}}>▾</span>}
+    </div>
+    {(!collapsible||expanded)&&<div style={{display:"flex",flexDirection:"column",gap:"14px"}}>{children}</div>}
+  </div>);
+}
+function PlaybookFormQuickAdd({items,onPick,pillBtn}){
+  return(<div style={{display:"flex",flexWrap:"wrap",gap:5,marginTop:6,alignItems:"center"}}>
+    <span style={{fontSize:"9.5px",color:"var(--text5)",fontFamily:"var(--mono)",letterSpacing:".06em",textTransform:"uppercase",marginRight:2}}>Voorbeelden:</span>
+    {items.map(t=>pillBtn(false,()=>onPick(t),"+ "+t,true))}
+  </div>);
+}
+
 // ─── PlaybookForm — add/edit modal ───────────────────────────────────────────
 function PlaybookForm({initial,onSave,onClose,tagConfig,setTab}){
-  const[pb,setPb]=useState(()=>({...EMPTY_PLAYBOOK,...initial,id:initial?.id||"pb"+Date.now(),criteria:(initial?.criteria||[]).length?[...initial.criteria]:[{text:"",mandatory:true}]}));
+  // v12.54: bij open zorgen dat er ≥1 laag is — UX zoals TradeForm. Migratie heeft
+  // bestaande data al naar layers omgezet bij load; voor nieuwe playbooks starten
+  // we met 1 lege laag zodat de user direct iets ziet om in te vullen.
+  const[pb,setPb]=useState(()=>{
+    const seedLayers=Array.isArray(initial?.layers)&&initial.layers.length?initial.layers:[{...EMPTY_PLAYBOOK_LAYER,id:"pl"+Date.now()}];
+    return{...EMPTY_PLAYBOOK,...initial,
+      id:initial?.id||"pb"+Date.now(),
+      layers:seedLayers,
+      criteria:(initial?.criteria||[]).length?[...initial.criteria]:[{text:"",mandatory:true}],
+    };
+  });
   const upd=(k,v)=>setPb(p=>({...p,[k]:v}));
   const togArr=(k,v)=>setPb(p=>{const arr=new Set(p[k]||[]);arr.has(v)?arr.delete(v):arr.add(v);return{...p,[k]:[...arr]};});
   const addChip=(k,v)=>{if(!v)return;setPb(p=>{const arr=p[k]||[];if(arr.includes(v))return p;return{...p,[k]:[...arr,v]};});};
@@ -5455,12 +5548,24 @@ function PlaybookForm({initial,onSave,onClose,tagConfig,setTab}){
   const updCrit=(i,patch)=>setPb(p=>({...p,criteria:p.criteria.map((c,j)=>j===i?{...c,...patch}:c)}));
   const addCrit=()=>setPb(p=>({...p,criteria:[...p.criteria,{text:"",mandatory:false}]}));
   const rmCrit=(i)=>setPb(p=>({...p,criteria:p.criteria.filter((_,j)=>j!==i)}));
+  // Layer-helpers — mirror van TradeForm patroon
+  const addLayer=()=>setPb(p=>({...p,layers:[...(p.layers||[]),{...EMPTY_PLAYBOOK_LAYER,id:"pl"+Date.now()+Math.floor(Math.random()*999)}]}));
+  const rmLayer=(i)=>setPb(p=>({...p,layers:(p.layers||[]).filter((_,j)=>j!==i)}));
+  const moveLayer=(i,dir)=>setPb(p=>{const l=[...(p.layers||[])];const j=i+dir;if(j<0||j>=l.length)return p;[l[i],l[j]]=[l[j],l[i]];return{...p,layers:l}});
+  const updLayer=(i,patch)=>setPb(p=>({...p,layers:(p.layers||[]).map((L,j)=>j===i?{...L,...patch}:L)}));
+  const togLayerArr=(i,key,v)=>setPb(p=>({...p,layers:(p.layers||[]).map((L,j)=>{if(j!==i)return L;const arr=new Set(L[key]||[]);arr.has(v)?arr.delete(v):arr.add(v);return{...L,[key]:[...arr]}})}));
   const[pairInput,setPairInput]=useState("");
   // Optionele velden default-collapsed: minder visuele lawaai voor wie minimaal invult
   const[expContext,setExpContext]=useState(!!initial?.context);
-  const[expConfirms,setExpConfirms]=useState(!!(initial?.confirmations||[]).length);
   const[expMistake,setExpMistake]=useState(!!initial?.mistake);
-  const handleSave=()=>{if(!pb.name.trim()){alert("Naam is verplicht");return;}onSave({...pb,name:pb.name.trim(),updatedAt:new Date().toISOString(),createdAt:pb.createdAt||new Date().toISOString(),criteria:pb.criteria.filter(c=>c.text.trim())});};
+  const handleSave=()=>{
+    if(!pb.name.trim()){alert("Naam is verplicht");return;}
+    // v12.54: lege layers eruit (geen TF + geen setups + geen confirmations) en
+    // sync flat-velden met de unions zodat trade-matchers en share-export blijven werken.
+    const cleanLayers=(pb.layers||[]).filter(L=>L.timeframe||(L.setups||[]).length||(L.confirmations||[]).length);
+    const synced=syncPlaybookFlatFields({...pb,layers:cleanLayers});
+    onSave({...synced,name:pb.name.trim(),updatedAt:new Date().toISOString(),createdAt:pb.createdAt||new Date().toISOString(),criteria:pb.criteria.filter(c=>c.text.trim())});
+  };
   // Tag-options uit tagConfig (single source of truth) — voorkomt tag-wirwar.
   // Fallback naar DEFAULT_TAGS als tagConfig nog niet geladen.
   const setupOpts=tagConfig?.setupTags||DEFAULT_TAGS.setupTags;
@@ -5469,9 +5574,7 @@ function PlaybookForm({initial,onSave,onClose,tagConfig,setTab}){
   const mistakeOpts=tagConfig?.mistakeTags||DEFAULT_TAGS.mistakeTags;
   // Orphan-detection: tags op deze playbook die niet meer in tagConfig staan.
   // Tonen we apart met ⚠ zodat user data ziet en kan opschonen.
-  const orphanSetups=(pb.setupTags||[]).filter(t=>!setupOpts.includes(t));
-  const orphanConfirms=(pb.confirmations||[]).filter(t=>!confOpts.includes(t));
-  const orphanTFs=(pb.timeframes||[]).filter(t=>!tfOpts.includes(t));
+  // v12.54: setup/confirmation/TF orphans worden nu per laag gedetecteerd.
   const orphanMistakes=(pb.mistakePatterns||[]).filter(t=>!mistakeOpts.includes(t));
   const goManageTags=()=>{if(setTab){onClose();setTab("tags");}};
   // Reusable styles
@@ -5482,34 +5585,14 @@ function PlaybookForm({initial,onSave,onClose,tagConfig,setTab}){
   const taSt={...inpSt,resize:"vertical",minHeight:"60px",fontFamily:"var(--mono)",fontSize:"12px"};
   const pillBtn=(active,onClick,label,small)=><button type="button" onClick={onClick} style={{padding:small?"3px 9px":"5px 11px",fontSize:small?"10px":"11px",fontFamily:"var(--mono)",fontWeight:600,letterSpacing:".04em",borderRadius:"5px",border:`1px solid ${active?"var(--gold-border)":"var(--border3)"}`,background:active?"var(--gold-dim)":"transparent",color:active?"var(--gold)":"var(--text4)",cursor:"pointer",transition:"all .12s"}}>{label}</button>;
   const chip=(val,onRm,color)=><span key={val} style={{display:"inline-flex",alignItems:"center",gap:"6px",padding:"5px 6px 5px 11px",fontSize:"11px",fontFamily:"var(--mono)",fontWeight:600,borderRadius:"6px",background:color.bg,border:`1px solid ${color.border}`,color:color.text}}>{val}<button type="button" onClick={onRm} style={{background:"transparent",border:"none",color:"inherit",cursor:"pointer",fontSize:"14px",padding:"0 4px",borderRadius:"3px",opacity:0.7}}>×</button></span>;
-  // Section card wrapper — geeft elke logische blok eigen kleur-tint + spacing
-  const Section=({icon,title,subtitle,tint,children,collapsible,expanded,setExpanded})=>{
-    const tintMap={
-      gold:{border:"rgba(201,168,76,0.18)",bg:"rgba(201,168,76,0.025)",accent:"var(--gold)"},
-      blue:{border:"rgba(138,159,192,0.18)",bg:"rgba(138,159,192,0.025)",accent:"#8a9fc0"},
-      green:{border:"rgba(46,170,111,0.18)",bg:"rgba(46,170,111,0.025)",accent:"var(--green)"},
-      amber:{border:"rgba(212,168,83,0.18)",bg:"rgba(212,168,83,0.025)",accent:"var(--amber)"},
-      neutral:{border:"var(--border2)",bg:"rgba(255,255,255,0.015)",accent:"var(--text3)"},
-    };
-    const c=tintMap[tint||"neutral"];
-    return(<div style={{background:c.bg,border:`1px solid ${c.border}`,borderRadius:"10px",padding:"18px 20px"}}>
-      <div onClick={collapsible?()=>setExpanded(!expanded):undefined} style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:expanded||!collapsible?"14px":0,cursor:collapsible?"pointer":"default",userSelect:collapsible?"none":"auto"}}>
-        <div>
-          <div style={{display:"flex",alignItems:"center",gap:"8px",fontSize:"11px",color:c.accent,fontFamily:"var(--mono)",fontWeight:700,letterSpacing:".15em",textTransform:"uppercase"}}><span>{icon}</span>{title}</div>
-          {subtitle&&<div style={{fontSize:"11.5px",color:"var(--text4)",marginTop:"3px",lineHeight:1.5}}>{subtitle}</div>}
-        </div>
-        {collapsible&&<span style={{fontSize:"14px",color:"var(--text4)",fontFamily:"var(--mono)",transition:"transform .2s",transform:expanded?"rotate(0deg)":"rotate(-90deg)"}}>▾</span>}
-      </div>
-      {(!collapsible||expanded)&&<div style={{display:"flex",flexDirection:"column",gap:"14px"}}>{children}</div>}
-    </div>);
-  };
-  // Snelkoppeling-strip met "Voorbeelden:" label voor mindere visuele dominantie
-  const QuickAdd=({items,onPick})=>(<div style={{display:"flex",flexWrap:"wrap",gap:5,marginTop:6,alignItems:"center"}}>
-    <span style={{fontSize:"9.5px",color:"var(--text5)",fontFamily:"var(--mono)",letterSpacing:".06em",textTransform:"uppercase",marginRight:2}}>Voorbeelden:</span>
-    {items.map(t=>pillBtn(false,()=>onPick(t),"+ "+t,true))}
-  </div>);
+  // Section is module-scope (PlaybookFormSection); lokale alias zodat de JSX hieronder
+  // onaangetast blijft. QuickAdd wordt direct als <PlaybookFormQuickAdd .../> gebruikt
+  // omdat hij pillBtn als prop nodig heeft.
+  const Section=PlaybookFormSection;
 
-  return(<div onClick={e=>{if(e.target===e.currentTarget)onClose();}} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.78)",backdropFilter:"blur(4px)",display:"flex",alignItems:"flex-start",justifyContent:"center",zIndex:200,overflowY:"auto",padding:"32px 16px"}}>
+  // Backdrop-click sluit NIET (zoals trade-edit modal) — voorkomt accidenteel verlies
+  // van werk wanneer je naast een veld klikt.
+  return(<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.78)",backdropFilter:"blur(4px)",display:"flex",alignItems:"flex-start",justifyContent:"center",zIndex:200,overflowY:"auto",padding:"32px 16px"}}>
     <div style={{background:"var(--bg2)",border:"1px solid var(--border3)",borderRadius:"14px",width:"100%",maxWidth:"880px",maxHeight:"calc(100vh - 64px)",overflowY:"auto",position:"relative"}}>
       {/* Header */}
       <div style={{padding:"22px 28px 18px",borderBottom:"1px solid var(--border1)",position:"sticky",top:0,background:"var(--bg2)",zIndex:5}}>
@@ -5537,54 +5620,58 @@ function PlaybookForm({initial,onSave,onClose,tagConfig,setTab}){
           </div>
         </Section>
 
-        {/* ─── 🔍 SETUP-LAGEN ─── */}
-        <Section icon="🔍" title="Setup-lagen" subtitle="Multi-select uit jouw tag-lijst (één bron, geen wirwar)" tint="gold">
-          {/* Setup-tags — multi-select uit tagConfig */}
-          <div>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:"6px"}}>
-              <label style={{...lblSt,marginBottom:0}}>Setup-tags {lblHint("meerdere lagen mogelijk, bv. SFP + MSB")}</label>
-              {setTab&&<span onClick={goManageTags} style={{fontSize:"10.5px",fontFamily:"var(--mono)",fontWeight:600,color:"var(--gold)",cursor:"pointer",letterSpacing:".04em"}}>Beheer tags →</span>}
-            </div>
-            {setupOpts.length===0?<div style={{padding:"10px 12px",background:"rgba(255,255,255,0.02)",border:"1px dashed var(--border3)",borderRadius:6,fontSize:11.5,color:"var(--text4)",fontStyle:"italic"}}>Nog geen setup-tags. <span onClick={goManageTags} style={{color:"var(--gold)",cursor:"pointer"}}>Maak ze aan in Tags →</span></div>:
-            <div style={{display:"flex",flexWrap:"wrap",gap:5}}>{setupOpts.map(t=>pillBtn((pb.setupTags||[]).includes(t),()=>togArr("setupTags",t),t))}</div>}
-            {orphanSetups.length>0&&<div style={{marginTop:"10px",padding:"8px 10px",background:"rgba(212,168,83,0.05)",border:"1px solid rgba(212,168,83,0.20)",borderRadius:6,fontSize:11,color:"var(--text3)"}}>
-              <div style={{fontSize:9.5,fontFamily:"var(--mono)",fontWeight:700,color:"var(--amber)",letterSpacing:".08em",textTransform:"uppercase",marginBottom:5}}>⚠ Niet meer in tag-lijst — opschonen?</div>
-              <div style={{display:"flex",flexWrap:"wrap",gap:5}}>{orphanSetups.map(s=>chip(s,()=>rmChip("setupTags",s),{bg:"rgba(212,168,83,0.08)",border:"rgba(212,168,83,0.25)",text:"var(--amber)"}))}</div>
-            </div>}
+        {/* ─── 🔍 SETUP-LAGEN ─── per laag een TF + setups + confirmations, mirror van TradeForm */}
+        <Section icon="🔍" title="Setup-lagen" subtitle="Top-down: HTF context → MTF setup → LTF entry. Per laag eigen TF + setups + confirmaties." tint="gold">
+          {(setupOpts.length===0||tfOpts.length===0)&&<div style={{padding:"10px 12px",background:"rgba(255,255,255,0.02)",border:"1px dashed var(--border3)",borderRadius:6,fontSize:11.5,color:"var(--text4)",fontStyle:"italic",marginBottom:12}}>Nog geen setup- of timeframe-tags. <span onClick={goManageTags} style={{color:"var(--gold)",cursor:"pointer"}}>Maak ze aan in Tags →</span></div>}
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            {(pb.layers||[]).map((layer,i)=>{
+              const tfIdx=TF_ORDER.indexOf((layer.timeframe||"").toLowerCase());
+              const prevTfIdx=i>0?TF_ORDER.indexOf(((pb.layers||[])[i-1]?.timeframe||"").toLowerCase()):-1;
+              const orderWarn=i>0&&tfIdx>=0&&prevTfIdx>=0&&tfIdx>prevTfIdx;// hogere TF index = lager TF, dus moet aflopend zijn
+              const layerOrphanSetups=(layer.setups||[]).filter(t=>!setupOpts.includes(t));
+              const layerOrphanConfs=(layer.confirmations||[]).filter(t=>!confOpts.includes(t));
+              const layerOrphanTF=layer.timeframe&&!tfOpts.includes(layer.timeframe);
+              return(<div key={layer.id||i} style={{background:orderWarn?"rgba(212,168,83,0.05)":"var(--bg3)",border:`1px solid ${orderWarn?"rgba(212,168,83,0.30)":"var(--border3)"}`,borderRadius:10,padding:"12px 14px"}}>
+                <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:10}}>
+                  <span style={{fontSize:11,color:"var(--text4)",fontWeight:700,fontFamily:"var(--mono)",width:20}}>{i+1}.</span>
+                  {i>0&&<button type="button" onClick={()=>moveLayer(i,-1)} title="Omhoog" style={{background:"none",border:"none",color:"var(--text4)",cursor:"pointer",fontSize:12,padding:2}}>▲</button>}
+                  {i<(pb.layers||[]).length-1&&<button type="button" onClick={()=>moveLayer(i,1)} title="Omlaag" style={{background:"none",border:"none",color:"var(--text4)",cursor:"pointer",fontSize:12,padding:2}}>▼</button>}
+                  <div style={{flex:1}}/>
+                  {orderWarn&&<span style={{fontSize:10,color:"var(--amber)",fontWeight:500}}>⚠ Niet top-down</span>}
+                  <button type="button" onClick={()=>rmLayer(i)} title="Verwijder laag" style={{background:"none",border:"none",color:"var(--text5)",cursor:"pointer",fontSize:13,padding:2}}>✕</button>
+                </div>
+                <div style={{display:"grid",gap:10}}>
+                  {/* Timeframe — single select */}
+                  <div>
+                    <div style={{fontSize:9,color:"var(--gold)",marginBottom:6,fontWeight:700,letterSpacing:".12em",textTransform:"uppercase"}}>Timeframe</div>
+                    {tfOpts.length>0?<div style={{display:"flex",flexWrap:"wrap",gap:5}}>{tfOpts.map(tf=>{const sel=layer.timeframe===tf;return(<button key={tf} type="button" onClick={()=>updLayer(i,{timeframe:sel?"":tf})} style={{padding:"4px 10px",borderRadius:5,fontSize:10.5,fontWeight:600,border:`1px solid ${sel?"#7c3aed":"var(--border3)"}`,background:sel?"rgba(124,58,237,0.18)":"var(--bg4)",color:sel?"#a78bfa":"var(--text2)",cursor:"pointer",fontFamily:"inherit"}}>{tf}</button>)})}</div>:<div style={{fontSize:11,color:"var(--text5)",fontStyle:"italic"}}>Geen timeframe-tags beschikbaar</div>}
+                    {layerOrphanTF&&<div style={{marginTop:6,fontSize:10,color:"var(--amber)",fontFamily:"var(--mono)"}}>⚠ "{layer.timeframe}" niet meer in tag-lijst <button type="button" onClick={()=>updLayer(i,{timeframe:""})} style={{background:"none",border:"none",color:"var(--amber)",textDecoration:"underline",cursor:"pointer",fontSize:10,marginLeft:4}}>verwijder</button></div>}
+                  </div>
+                  {/* Setup — multi select */}
+                  <div>
+                    <div style={{fontSize:9,color:"var(--gold)",marginBottom:6,fontWeight:700,letterSpacing:".12em",textTransform:"uppercase"}}>Setup <span style={{color:"var(--text5)",fontWeight:500,letterSpacing:".04em",textTransform:"none",fontSize:9.5}}>— meerdere mogelijk (bv. MSB + SFP)</span></div>
+                    {setupOpts.length>0?<div style={{display:"flex",flexWrap:"wrap",gap:5}}>{setupOpts.map(s=>{const sel=(layer.setups||[]).includes(s);return(<button key={s} type="button" onClick={()=>togLayerArr(i,"setups",s)} style={{padding:"4px 11px",borderRadius:6,fontSize:10.5,fontWeight:600,border:`1px solid ${sel?"var(--gold-border)":"var(--border3)"}`,background:sel?"var(--gold-dim)":"var(--bg4)",color:sel?"var(--gold)":"var(--text2)",cursor:"pointer",fontFamily:"inherit"}}>{s}</button>)})}</div>:<div style={{fontSize:11,color:"var(--text5)",fontStyle:"italic"}}>Geen setup-tags beschikbaar</div>}
+                    {layerOrphanSetups.length>0&&<div style={{marginTop:8,padding:"6px 8px",background:"rgba(212,168,83,0.05)",border:"1px solid rgba(212,168,83,0.20)",borderRadius:5,fontSize:10,color:"var(--text3)"}}>
+                      <div style={{fontSize:9,fontFamily:"var(--mono)",fontWeight:700,color:"var(--amber)",letterSpacing:".08em",textTransform:"uppercase",marginBottom:4}}>⚠ Niet meer in tag-lijst</div>
+                      <div style={{display:"flex",flexWrap:"wrap",gap:4}}>{layerOrphanSetups.map(s=>chip(s,()=>togLayerArr(i,"setups",s),{bg:"rgba(212,168,83,0.08)",border:"rgba(212,168,83,0.25)",text:"var(--amber)"}))}</div>
+                    </div>}
+                  </div>
+                  {/* Confirmaties — multi select */}
+                  <div>
+                    <div style={{fontSize:9,color:"var(--gold)",marginBottom:6,fontWeight:700,letterSpacing:".12em",textTransform:"uppercase"}}>Confirmatie(s) <span style={{color:"var(--text5)",fontWeight:500,letterSpacing:".04em",textTransform:"none",fontSize:9.5}}>— optioneel</span></div>
+                    {confOpts.length>0?<div style={{display:"flex",flexWrap:"wrap",gap:5}}>{confOpts.map(c=>{const sel=(layer.confirmations||[]).includes(c);return(<button key={c} type="button" onClick={()=>togLayerArr(i,"confirmations",c)} style={{padding:"4px 10px",borderRadius:5,fontSize:10.5,fontWeight:600,border:`1px solid ${sel?"#0d9488":"var(--border3)"}`,background:sel?"rgba(13,148,136,0.18)":"var(--bg4)",color:sel?"var(--green)":"var(--text2)",cursor:"pointer",fontFamily:"inherit"}}>{c}</button>)})}</div>:<div style={{fontSize:11,color:"var(--text5)",fontStyle:"italic"}}>Geen confirmation-tags beschikbaar</div>}
+                    {layerOrphanConfs.length>0&&<div style={{marginTop:8,padding:"6px 8px",background:"rgba(212,168,83,0.05)",border:"1px solid rgba(212,168,83,0.20)",borderRadius:5,fontSize:10,color:"var(--text3)"}}>
+                      <div style={{fontSize:9,fontFamily:"var(--mono)",fontWeight:700,color:"var(--amber)",letterSpacing:".08em",textTransform:"uppercase",marginBottom:4}}>⚠ Niet meer in tag-lijst</div>
+                      <div style={{display:"flex",flexWrap:"wrap",gap:4}}>{layerOrphanConfs.map(s=>chip(s,()=>togLayerArr(i,"confirmations",s),{bg:"rgba(212,168,83,0.08)",border:"rgba(212,168,83,0.25)",text:"var(--amber)"}))}</div>
+                    </div>}
+                  </div>
+                </div>
+              </div>);
+            })}
           </div>
-          {/* Timeframes — multi-select uit tagConfig */}
-          <div>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:"6px"}}>
-              <label style={{...lblSt,marginBottom:0}}>Timeframes {lblHint("HTF context → MTF setup → LTF entry")}</label>
-              {setTab&&<span onClick={goManageTags} style={{fontSize:"10.5px",fontFamily:"var(--mono)",fontWeight:600,color:"var(--gold)",cursor:"pointer",letterSpacing:".04em"}}>Beheer tags →</span>}
-            </div>
-            {tfOpts.length===0?<div style={{padding:"10px 12px",background:"rgba(255,255,255,0.02)",border:"1px dashed var(--border3)",borderRadius:6,fontSize:11.5,color:"var(--text4)",fontStyle:"italic"}}>Nog geen timeframes. <span onClick={goManageTags} style={{color:"var(--gold)",cursor:"pointer"}}>Maak ze aan in Tags →</span></div>:
-            <div style={{display:"flex",flexWrap:"wrap",gap:5}}>{tfOpts.map(tf=>pillBtn((pb.timeframes||[]).includes(tf),()=>togArr("timeframes",tf),tf))}</div>}
-            {orphanTFs.length>0&&<div style={{marginTop:"10px",padding:"8px 10px",background:"rgba(212,168,83,0.05)",border:"1px solid rgba(212,168,83,0.20)",borderRadius:6,fontSize:11,color:"var(--text3)"}}>
-              <div style={{fontSize:9.5,fontFamily:"var(--mono)",fontWeight:700,color:"var(--amber)",letterSpacing:".08em",textTransform:"uppercase",marginBottom:5}}>⚠ Niet meer in tag-lijst</div>
-              <div style={{display:"flex",flexWrap:"wrap",gap:5}}>{orphanTFs.map(s=>chip(s,()=>rmChip("timeframes",s),{bg:"rgba(212,168,83,0.08)",border:"rgba(212,168,83,0.25)",text:"var(--amber)"}))}</div>
-            </div>}
-          </div>
-          {/* Confirmaties — collapsible, multi-select uit tagConfig */}
-          <div style={{borderTop:"1px dashed var(--border2)",paddingTop:"14px"}}>
-            <div onClick={()=>setExpConfirms(!expConfirms)} style={{cursor:"pointer",userSelect:"none",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <div>
-                <span style={{...lblSt,marginBottom:0,display:"inline"}}>Confirmaties</span>
-                <span style={{textTransform:"none",letterSpacing:0,fontFamily:"var(--font)",color:"var(--text5)",fontSize:"10.5px",fontWeight:400,marginLeft:6}}>— optioneel · extra confluence-points {(pb.confirmations||[]).length>0?`(${pb.confirmations.length})`:""}</span>
-              </div>
-              <span style={{fontSize:"12px",color:"var(--text4)",fontFamily:"var(--mono)",transition:"transform .2s",transform:expConfirms?"rotate(0deg)":"rotate(-90deg)"}}>▾</span>
-            </div>
-            {expConfirms&&<div style={{marginTop:"10px"}}>
-              <div style={{display:"flex",justifyContent:"flex-end",marginBottom:"6px"}}>
-                {setTab&&<span onClick={goManageTags} style={{fontSize:"10.5px",fontFamily:"var(--mono)",fontWeight:600,color:"var(--gold)",cursor:"pointer",letterSpacing:".04em"}}>Beheer tags →</span>}
-              </div>
-              {confOpts.length===0?<div style={{padding:"10px 12px",background:"rgba(255,255,255,0.02)",border:"1px dashed var(--border3)",borderRadius:6,fontSize:11.5,color:"var(--text4)",fontStyle:"italic"}}>Nog geen confirmation-tags. <span onClick={goManageTags} style={{color:"var(--gold)",cursor:"pointer"}}>Maak ze aan in Tags →</span></div>:
-              <div style={{display:"flex",flexWrap:"wrap",gap:5}}>{confOpts.map(t=>pillBtn((pb.confirmations||[]).includes(t),()=>togArr("confirmations",t),t))}</div>}
-              {orphanConfirms.length>0&&<div style={{marginTop:"10px",padding:"8px 10px",background:"rgba(212,168,83,0.05)",border:"1px solid rgba(212,168,83,0.20)",borderRadius:6,fontSize:11,color:"var(--text3)"}}>
-                <div style={{fontSize:9.5,fontFamily:"var(--mono)",fontWeight:700,color:"var(--amber)",letterSpacing:".08em",textTransform:"uppercase",marginBottom:5}}>⚠ Niet meer in tag-lijst — opschonen?</div>
-                <div style={{display:"flex",flexWrap:"wrap",gap:5}}>{orphanConfirms.map(s=>chip(s,()=>rmChip("confirmations",s),{bg:"rgba(212,168,83,0.08)",border:"rgba(212,168,83,0.25)",text:"var(--amber)"}))}</div>
-              </div>}
-            </div>}
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:10}}>
+            <button type="button" onClick={addLayer} style={{padding:"6px 12px",fontSize:11.5,fontFamily:"var(--mono)",fontWeight:600,borderRadius:6,border:"1px dashed var(--gold-border)",background:"transparent",color:"var(--gold)",cursor:"pointer"}}>+ Laag toevoegen</button>
+            {setTab&&<span onClick={goManageTags} style={{fontSize:10.5,fontFamily:"var(--mono)",fontWeight:600,color:"var(--gold)",cursor:"pointer",letterSpacing:".04em"}}>Beheer tags →</span>}
           </div>
         </Section>
 
@@ -5599,7 +5686,7 @@ function PlaybookForm({initial,onSave,onClose,tagConfig,setTab}){
                 <input style={{...inpSt,flex:1}} value={pairInput} onChange={e=>setPairInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();addChip("pairs",pairInput.trim().toUpperCase());setPairInput("");}}} placeholder="bv. SOL/USDT"/>
                 <button type="button" onClick={()=>{addChip("pairs",pairInput.trim().toUpperCase());setPairInput("");}} style={{padding:"9px 12px",fontSize:"12px",fontFamily:"var(--mono)",fontWeight:600,borderRadius:6,border:"1px solid var(--border3)",background:"transparent",color:"var(--text2)",cursor:"pointer"}}>+</button>
               </div>
-              <QuickAdd items={["BTC/USDT","ETH/USDT","SOL/USDT","XAU/USDT"]} onPick={t=>addChip("pairs",t)}/>
+              <PlaybookFormQuickAdd items={["BTC/USDT","ETH/USDT","SOL/USDT","XAU/USDT"]} onPick={t=>addChip("pairs",t)} pillBtn={pillBtn}/>
             </div>
             {/* Sessies */}
             <div>
@@ -5713,14 +5800,24 @@ function PlaybookDetailModal({pb,allTrades,setFilters,setTab,onClose,onEdit,onDe
       </div>
 
       <div style={{padding:"22px 28px 28px",display:"flex",flexDirection:"column",gap:24}}>
-        {/* SETUP-LAGEN */}
+        {/* SETUP-LAGEN — v12.54: structurele lagen-weergave (top-down). Fallback naar
+            flat-velden voor playbooks die nog niet gemigreerd zijn (mag eigenlijk niet
+            voorkomen want migratePlaybooks doet 't bij load, maar safety net). */}
         <div>
           <div style={{fontSize:11,color:"var(--gold)",fontFamily:"var(--mono)",fontWeight:700,letterSpacing:".18em",textTransform:"uppercase",marginBottom:10}}>🔍 Setup-lagen (top-down)</div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:6}}>
-            {linkSection("Setup-tags · meerdere lagen",pb.setupTags||[],"rgba(46,170,111,0.05)","rgba(46,170,111,0.20)","var(--green)")}
+          {(pb.layers||[]).length>0?<div style={{display:"flex",flexDirection:"column",gap:8}}>
+            {pb.layers.map((L,i)=>(<div key={L.id||i} style={{padding:"12px 14px",background:"rgba(255,255,255,0.02)",border:"1px solid var(--border1)",borderLeft:"2px solid var(--gold)",borderRadius:8}}>
+              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+                <span style={{fontSize:10,fontFamily:"var(--mono)",fontWeight:700,color:"var(--text4)",letterSpacing:".08em"}}>LAAG {i+1}</span>
+                {L.timeframe&&<span style={{fontSize:10,fontFamily:"var(--mono)",fontWeight:700,padding:"2px 7px",borderRadius:3,background:"rgba(154,138,204,0.08)",color:"#9a8acc",border:"1px solid rgba(154,138,204,0.25)"}}>{L.timeframe}</span>}
+              </div>
+              {(L.setups||[]).length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:(L.confirmations||[]).length>0?6:0}}>{L.setups.map(s=><span key={s} style={{fontSize:11,fontFamily:"var(--mono)",fontWeight:600,padding:"3px 8px",borderRadius:3,background:"rgba(46,170,111,0.06)",color:"var(--green)",border:"1px solid rgba(46,170,111,0.25)"}}>{s}</span>)}</div>}
+              {(L.confirmations||[]).length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:5}}>{L.confirmations.map(c=><span key={c} style={{fontSize:11,fontFamily:"var(--mono)",fontWeight:600,padding:"3px 8px",borderRadius:3,background:"rgba(212,168,83,0.08)",color:"var(--amber)",border:"1px solid rgba(212,168,83,0.25)"}}>✓ {c}</span>)}</div>}
+            </div>))}
+          </div>:<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:6}}>
+            {linkSection("Setup-tags",pb.setupTags||[],"rgba(46,170,111,0.05)","rgba(46,170,111,0.20)","var(--green)")}
             {linkSection("Timeframes · top-down",pb.timeframes||[],"rgba(154,138,204,0.05)","rgba(154,138,204,0.20)","#9a8acc")}
-          </div>
-          {(pb.confirmations||[]).length>0&&<div style={{padding:"12px 14px",background:"rgba(212,168,83,0.05)",border:"1px solid rgba(212,168,83,0.20)",borderRadius:8}}><div style={{fontSize:9,color:"var(--text5)",fontFamily:"var(--mono)",textTransform:"uppercase",letterSpacing:".08em",marginBottom:5,fontWeight:600}}>Confirmaties · alle moeten zichtbaar zijn</div><div style={{display:"flex",flexWrap:"wrap",gap:5}}>{pb.confirmations.map(c=><span key={c} style={{fontSize:11,fontFamily:"var(--mono)",fontWeight:600,padding:"3px 8px",borderRadius:3,background:"rgba(212,168,83,0.08)",color:"var(--amber)",border:"1px solid rgba(212,168,83,0.25)"}}>✓ {c}</span>)}</div></div>}
+          </div>}
         </div>
 
         {/* STATS */}
@@ -5961,6 +6058,11 @@ function PlaybookShareModal({pb,allTrades,onClose,showToast}){
     if(fields.timeframes)p.timeframes=pb.timeframes;
     if(fields.setupTags)p.setupTags=pb.setupTags;
     if(fields.confirmations)p.confirmations=pb.confirmations;
+    // v12.54: layered structure mee-exporteren als één van de drie laag-velden is gekozen.
+    // Bij import bouwt migratePlaybooks de unions opnieuw uit layers.
+    if((fields.timeframes||fields.setupTags||fields.confirmations)&&Array.isArray(pb.layers)&&pb.layers.length){
+      p.layers=pb.layers.map(L=>({timeframe:L.timeframe||"",setups:[...(L.setups||[])],confirmations:[...(L.confirmations||[])]}));
+    }
     if(fields.context)p.context=pb.context;
     if(fields.criteria)p.criteria=pb.criteria;
     if(fields.rules){p.stop=pb.stop;p.target=pb.target;p.minRR=pb.minRR;}
