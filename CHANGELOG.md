@@ -6,6 +6,26 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.54] — 2026-04-29
+
+### Toegevoegd
+- **Setup-lagen in Playbook-form** (Denny voorgesteld). Voorheen had de Playbook-form drie losse flat multi-selects: Setup-tags / Timeframes / Confirmaties — die geen relatie met elkaar legden. Nu mirror van TradeForm: per laag een eigen TF + multi-select setups + multi-select confirmaties. Voeg lagen top-down toe (HTF bias → entry-TF), herorder met ▲▼, verwijder met ✕, "⚠ Niet top-down" waarschuwing als TF-volgorde stijgt. Een playbook is daardoor 1-op-1 een template voor een trade: bij selectie in TradeForm wordt `trade.layers` automatisch met de playbook-lagen voorgevuld (alleen als trade nog geen lagen heeft).
+- **Layered share/import** — een gedeelde playbook (JSON-export) bevat nu de gestructureerde `layers[]`. Bij import via community-link bouwt `migratePlaybooks` de unions opnieuw uit de lagen, dus structuur blijft behouden tussen gebruikers.
+
+### Gewijzigd
+- **Playbook detail-modal** toont nu een echte top-down stack van lagen (genummerd, per laag eigen TF + setups + confirmaties chips) i.p.v. één flat tag-cloud. Voor playbooks die nog niet gemigreerd zijn (edge case) blijft de oude flat-rendering als fallback.
+- **`pb.setupTags` / `pb.timeframes` / `pb.confirmations`** worden nu automatisch afgeleid als de union van `pb.layers[*]`. Alle bestaande consumenten (TradeForm playbook-koppeling, `tradesForPlaybook`-matcher, `playbookStats` compliance × PnL split, PlaybookCard, share-export, FilterBar) werken ongewijzigd door — geen breaking changes voor analytics.
+
+### Schema
+- **`EMPTY_PLAYBOOK_LAYER`** toegevoegd: `{id, timeframe, setups[], confirmations[]}`. Mirror van `EMPTY_LAYER` in trades, minus de trade-specifieke velden (`fillPlayType`, `notes`).
+- **`EMPTY_PLAYBOOK.layers[]`** is de nieuwe canonieke structuur. `setupTags`/`timeframes`/`confirmations` blijven bestaan op het schema als gederiveerde unions (niet meer in de UI bewerkbaar). `migratePlaybooks` backfilt automatisch: oude flat-velden → 1 laag per TF (eerste TF krijgt alle setups + confirmaties; user kan splitsen). Geen gebruikersactie nodig.
+
+### Fixed
+- **Schermflicker + focus-loss bij typen in Playbook-form Naam/Omschrijving** (gemeld door Denny). `Section` en `QuickAdd` waren als componenten *binnen* `PlaybookForm` gedefinieerd — bij elke keystroke kregen ze nieuwe component-identiteit, waardoor React de hele subtree (incl. het input-veld waar je in typte) unmounte+remounte. Focus viel weg, browser scrollde. Fix: helpers naar module-scope (`PlaybookFormSection`, `PlaybookFormQuickAdd`) — zelfde patroon als `Section` voor TradeForm.
+- **Playbook-modal sluit niet meer bij klikken naast het venster** (gemeld door Denny). Backdrop-`onClick` verwijderd; gedrag nu identiek aan trade-edit modal — alleen de ✕-knop sluit. Voorkomt accidenteel verlies van werk.
+
+---
+
 ## [v12.53] — 2026-04-29
 
 ### Gewijzigd
