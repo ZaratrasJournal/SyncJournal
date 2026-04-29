@@ -6,6 +6,13 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.60] — 2026-04-29
+
+### Toegevoegd (tijdelijk · diagnostic)
+- **🔍 Debug raw response** knop in Accounts → Blofin. Tijdelijk hulpmiddel om Blofin's `/positions-history` gedrag empirisch te valideren — vooral: of partial closes echt N records opleveren met dezelfde `positionId` (zoals de docs impliceren maar niet expliciet zeggen). Toont per positionId: aantal records, states, sum-pnl, openAvg, close-prijs-range, of de positie nog open is, en of `historyId` aanwezig is. Alleen geaggregeerde counts — geen ruwe API-data wordt opgeslagen of verzonden. Knop wordt verwijderd zodra de partial-close aggregator (volgende release) is gevalideerd. Achtergrond: gemeld door Denny — een Blofin-positie van 22-04 met TP1-hit op 29-04 verschijnt nu als 2 losse trades i.p.v. 1 trade met TP-niveau.
+
+---
+
 ## [v12.59] — 2026-04-29
 
 ### Fixed

@@ -889,7 +889,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.59",released:"2026-04-29"};
+const APP_VERSION={version:"v12.60",released:"2026-04-29"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -8463,6 +8463,70 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,imp
   const[syncing,setSyncing]=useState(null);
   const[syncResult,setSyncResult]=useState(null);
   const[walletFocused,setWalletFocused]=useState(false);// voor masker-on-blur bij walletOnly exchanges
+  // v12.60-debug: tijdelijke diagnostic voor Blofin partial-close investigatie.
+  // Toont counts + structuur per positionId zodat we de aannames in de docs kunnen
+  // valideren met echte data. Geen raw response stored — alleen geaggregeerde
+  // statistieken die veilig zijn om te delen voor support.
+  const[debugReport,setDebugReport]=useState(null);
+  const[debugging,setDebugging]=useState(false);
+  const debugBlofin=async()=>{
+    setDebugging(true);setDebugReport(null);
+    try{
+      const c=exCfg();
+      if(!c.apiKey||!c.apiSecret||!c.passphrase){throw new Error("API key, secret en passphrase nodig")}
+      const api=ExchangeAPI.blofin;
+      // Direct call naar /positions-history zonder mapping/filter zodat we de raw shape zien
+      const histRaw=await api._direct(c.apiKey,c.apiSecret,c.passphrase,"/api/v1/account/positions-history",{limit:50});
+      const histRecords=histRaw.data||[];
+      // Open posities erbij om te checken welke positionIds nog open staan
+      const openRaw=await api._direct(c.apiKey,c.apiSecret,c.passphrase,"/api/v1/account/positions",{});
+      const openRecords=openRaw.data||[];
+      // Group history op positionId om te zien of partial closes echt N records geven
+      const byPosId=new Map();
+      for(const r of histRecords){
+        const pid=String(r.positionId||"");
+        if(!byPosId.has(pid))byPosId.set(pid,[]);
+        byPosId.get(pid).push(r);
+      }
+      const openPosIds=new Set(openRecords.map(p=>String(p.positionId||"")));
+      // Per positionId: aantal records, states, fields aanwezig, sum vs first realizedPnl
+      const groups=[...byPosId.entries()].map(([pid,recs])=>{
+        const states=[...new Set(recs.map(r=>String(r.state||"unknown")))];
+        const sumPnl=recs.reduce((s,r)=>s+(parseFloat(r.realizedPnl||r.pnl||"0")||0),0);
+        const sumClosePos=recs.reduce((s,r)=>s+Math.abs(parseFloat(r.closePositions||r.closeTotalPos||"0")||0),0);
+        const closeAvgPrices=recs.map(r=>parseFloat(r.closeAveragePrice||r.avgClosePrice||"0")).filter(p=>p>0);
+        const firstFieldsKeys=recs[0]?Object.keys(recs[0]).sort():[];
+        const hasHistoryId=recs.every(r=>"historyId" in r);
+        const isStillOpen=openPosIds.has(pid);
+        const sample=recs[0]||{};
+        return{
+          positionId:pid,
+          recordCount:recs.length,
+          states,
+          isStillOpen,
+          hasHistoryId,
+          sumRealizedPnl:sumPnl.toFixed(4),
+          sumClosePositions:sumClosePos.toFixed(8),
+          closeAvgPriceRange:closeAvgPrices.length?`${Math.min(...closeAvgPrices)}–${Math.max(...closeAvgPrices)}`:"—",
+          instId:sample.instId||"?",
+          openAvgPrice:sample.openAveragePrice||sample.averagePrice||"?",
+          createTime:sample.createTime||"?",
+          updateTimes:recs.map(r=>r.updateTime||"?"),
+          fieldKeys:firstFieldsKeys,
+        };
+      }).sort((a,b)=>b.recordCount-a.recordCount);
+      setDebugReport({
+        totalHistory:histRecords.length,
+        totalOpen:openRecords.length,
+        uniquePositionIds:byPosId.size,
+        partialCount:groups.filter(g=>g.recordCount>1).length,
+        openPositionIds:[...openPosIds],
+        groups,
+      });
+    }catch(e){
+      setDebugReport({error:String(e.message||e)});
+    }finally{setDebugging(false)}
+  };
   const exCfg=()=>config?.exchanges?.[ex]||{};
   const setField=(k,v)=>setConfig(p=>({...p,exchanges:{...(p.exchanges||{}),[ex]:{...(exCfg()),[k]:v}}}));
   const test=async()=>{setTesting(ex);setSyncResult(null);try{const api=ExchangeAPI[ex];const c=exCfg();if(api.walletOnly){if(!c.walletAddress){showToast("Voer wallet-adres in","error");return}const r=await api.testConnection(c.walletAddress);if(r.success){setSyncResult({ok:true,msg:`✓ Verbonden. Account value: $${parseFloat(r.balance||"0").toFixed(2)}`});showToast(`${api.name} verbonden`)}return}if(!c.apiKey||!c.apiSecret){showToast("Voer API key en secret in","error");return}const r=api.needsPassphrase?await api.testConnection(c.apiKey,c.apiSecret,c.passphrase):await api.testConnection(c.apiKey,c.apiSecret);if(r.success){setSyncResult({ok:true,msg:`✓ Verbonden. Balance: $${parseFloat(r.balance||"0").toFixed(2)} USDT`});showToast(`${ExchangeAPI[ex].name} verbonden`)}else{setSyncResult({ok:false,msg:"Verbinding mislukt"});showToast("Verbinding mislukt","error")}}catch(e){setSyncResult({ok:false,msg:e.message||"Verbinding mislukt"});showToast(e.message||"Verbinding mislukt","error")}finally{setTesting(null)}};
@@ -8610,8 +8674,52 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,imp
             {!ExchangeAPI[ex].csvOnly&&<button onClick={test} disabled={!!testing} style={{padding:"10px 20px",borderRadius:"var(--radius)",border:"1px solid var(--border4)",background:"transparent",color:"var(--text2)",cursor:"pointer",fontFamily:"inherit",fontSize:"13px",fontWeight:500,display:"flex",alignItems:"center",gap:"8px"}}>{testing===ex?<><span className="spinner"/>Testen...</>:"Verbinding testen"}</button>}
             {!ExchangeAPI[ex].csvOnly&&<button onClick={sync} disabled={!!syncing} style={{padding:"10px 20px",borderRadius:"var(--radius)",border:"none",background:"#C9A84C",color:"#000",cursor:"pointer",fontFamily:"inherit",fontSize:"13px",fontWeight:700,display:"flex",alignItems:"center",gap:"8px"}}>{syncing===ex?<><span className="spinner"/>Syncing...</>:"Trades importeren"}</button>}
             {!ExchangeAPI[ex].csvOnly&&ExchangeAPI[ex]?.fetchOpenPositions&&<button onClick={syncOpen} disabled={!!syncing} title={`Haalt openstaande posities op via ${ExchangeAPI[ex].name} API`} style={{padding:"10px 20px",borderRadius:"var(--radius)",border:"1px solid var(--gold)",background:"transparent",color:"var(--gold)",cursor:"pointer",fontFamily:"inherit",fontSize:"13px",fontWeight:600,display:"flex",alignItems:"center",gap:"8px"}}>{syncing===ex?<><span className="spinner"/>Ophalen...</>:"📡 Open posities ophalen"}</button>}
+            {ex==="blofin"&&<button onClick={debugBlofin} disabled={debugging} title="Diagnostic: hoeveel records per positionId? Helpt partial-close logica valideren." style={{padding:"10px 16px",borderRadius:"var(--radius)",border:"1px dashed var(--text5)",background:"transparent",color:"var(--text4)",cursor:"pointer",fontFamily:"inherit",fontSize:"12px",fontWeight:500,display:"flex",alignItems:"center",gap:"6px"}}>{debugging?<><span className="spinner"/>Analyseren…</>:"🔍 Debug raw response"}</button>}
             <button onClick={()=>{csvAcctRef.current=ex;csvRef.current.click()}} title="CSV of Excel (.xlsx) bestand uploaden" style={{padding:"10px 20px",borderRadius:"var(--radius)",border:ExchangeAPI[ex].csvOnly?"none":"1px dashed var(--border5)",background:ExchangeAPI[ex].csvOnly?"#C9A84C":"transparent",color:ExchangeAPI[ex].csvOnly?"#000":"var(--text2)",cursor:"pointer",fontFamily:"inherit",fontSize:"13px",fontWeight:ExchangeAPI[ex].csvOnly?700:500,display:"flex",alignItems:"center",gap:"8px"}}>📄 Importeer CSV / XLSX</button>
           </div>
+          {/* v12.60-debug: Blofin partial-close diagnostic output */}
+          {ex==="blofin"&&debugReport&&<div style={{marginTop:"14px",padding:"14px 16px",background:"rgba(124,58,237,0.04)",border:"1px solid rgba(124,58,237,0.25)",borderRadius:"8px",fontSize:"12px",color:"var(--text2)",lineHeight:1.6}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+              <strong style={{color:"#a78bfa",fontSize:11,fontFamily:"var(--mono)",letterSpacing:".08em",textTransform:"uppercase"}}>🔍 Diagnostic — Blofin partial-close</strong>
+              <button onClick={()=>setDebugReport(null)} style={{background:"none",border:"none",color:"var(--text4)",cursor:"pointer",fontSize:14}}>✕</button>
+            </div>
+            {debugReport.error?<div style={{color:"var(--red)",fontFamily:"var(--mono)",fontSize:11}}>⚠ {debugReport.error}</div>:<>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:12}}>
+                {[["History records",debugReport.totalHistory],["Open posities",debugReport.totalOpen],["Unieke positionIds",debugReport.uniquePositionIds],["Met meer dan 1 record",debugReport.partialCount]].map(([lbl,val])=>(<div key={lbl} style={{padding:"8px 10px",background:"var(--bg4)",borderRadius:6,textAlign:"center"}}>
+                  <div style={{fontSize:9,color:"var(--text5)",textTransform:"uppercase",letterSpacing:".06em",fontWeight:600,marginBottom:2}}>{lbl}</div>
+                  <div style={{fontFamily:"var(--mono)",fontSize:16,fontWeight:700,color:"var(--text)"}}>{val}</div>
+                </div>))}
+              </div>
+              <div style={{fontSize:11,color:"var(--text3)",marginBottom:8,lineHeight:1.5}}>
+                {debugReport.partialCount>0?<><strong style={{color:"var(--green)"}}>✓ Partial-close patroon bevestigd</strong> — er zijn positionIds met meerdere records.</>:<><strong style={{color:"var(--amber)"}}>⚠ Geen positionIds met meerdere records gevonden.</strong> Mogelijk zit je TP-hit van 29-04 net buiten de limit=50 query, of geeft Blofin pas 1 record bij volledige close. Check hieronder.</>}
+              </div>
+              <div style={{maxHeight:340,overflowY:"auto",border:"1px solid var(--border1)",borderRadius:6}}>
+                <table style={{width:"100%",borderCollapse:"collapse",fontSize:10.5,fontFamily:"var(--mono)"}}>
+                  <thead style={{position:"sticky",top:0,background:"var(--bg4)"}}>
+                    <tr style={{textAlign:"left"}}>{["positionId","instId","records","states","sumPnl","sumClosed","openAvg","closeRange","stillOpen","historyId?"].map(h=><th key={h} style={{padding:"6px 8px",fontSize:9,color:"var(--text4)",fontWeight:600,letterSpacing:".05em",textTransform:"uppercase",borderBottom:"1px solid var(--border2)"}}>{h}</th>)}</tr>
+                  </thead>
+                  <tbody>
+                    {debugReport.groups.map(g=>(<tr key={g.positionId} style={{borderBottom:"1px solid var(--border1)"}}>
+                      <td style={{padding:"5px 8px",color:"var(--text3)"}} title={g.positionId}>{g.positionId.length>10?g.positionId.slice(0,8)+"…":g.positionId}</td>
+                      <td style={{padding:"5px 8px"}}>{g.instId}</td>
+                      <td style={{padding:"5px 8px",fontWeight:700,color:g.recordCount>1?"#a78bfa":"var(--text2)"}}>{g.recordCount}</td>
+                      <td style={{padding:"5px 8px",color:"var(--text4)"}}>{g.states.join(",")}</td>
+                      <td style={{padding:"5px 8px",color:parseFloat(g.sumRealizedPnl)>=0?"var(--green)":"var(--red)"}}>{g.sumRealizedPnl}</td>
+                      <td style={{padding:"5px 8px"}}>{g.sumClosePositions}</td>
+                      <td style={{padding:"5px 8px"}}>{g.openAvgPrice}</td>
+                      <td style={{padding:"5px 8px",color:"var(--text4)"}}>{g.closeAvgPriceRange}</td>
+                      <td style={{padding:"5px 8px"}}>{g.isStillOpen?"🟢 ja":"⚪ nee"}</td>
+                      <td style={{padding:"5px 8px",color:g.hasHistoryId?"var(--green)":"var(--amber)"}}>{g.hasHistoryId?"✓":"—"}</td>
+                    </tr>))}
+                  </tbody>
+                </table>
+              </div>
+              {debugReport.groups[0]&&<details style={{marginTop:10}}><summary style={{cursor:"pointer",fontSize:10,color:"var(--text4)",fontFamily:"var(--mono)",letterSpacing:".05em",textTransform:"uppercase"}}>Velden in eerste record</summary>
+                <div style={{marginTop:6,padding:"8px 10px",background:"var(--bg4)",borderRadius:5,fontFamily:"var(--mono)",fontSize:10,color:"var(--text3)",wordBreak:"break-all"}}>{debugReport.groups[0].fieldKeys.join(" · ")}</div>
+              </details>}
+              <div style={{marginTop:10,fontSize:10,color:"var(--text5)",fontStyle:"italic",lineHeight:1.5}}>Geen ruwe API-data wordt opgeslagen. Maak een screenshot van deze tabel om te delen voor support.</div>
+            </>}
+          </div>}
           {ex==="mexc"&&<div style={{marginTop:"10px",padding:"8px 12px",background:"rgba(201,168,76,0.06)",border:"1px solid rgba(201,168,76,0.18)",borderRadius:"6px",fontSize:"11px",color:"var(--text3)",lineHeight:1.5}}>
             <strong style={{color:"var(--gold)"}}>⚠️ Exporteer <u>Position History</u> uit MEXC</strong> — niet Order History.
           </div>}
