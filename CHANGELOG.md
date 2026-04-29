@@ -6,6 +6,18 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.53] — 2026-04-29
+
+### Gewijzigd
+- **Setup-pills per laag zijn nu multi-select** (Denny voorgesteld). Tot v12.52 kon je per laag in TradeForm maar één setup-tag aanvinken — onrealistisch in de praktijk, want een 4H-laag kan tegelijk een **MSB én een SFP** zijn (of een Reclaim + Liquidity Sweep, etc.). Pills werken nu identiek aan de CONFIRMATIE-rij: klik = toggle add/remove. Sub-label *"meerdere mogelijk (bv. MSB + SFP op dezelfde laag)"* maakt 't expliciet voor nieuwe gebruikers. Fill Play sub-section verschijnt zodra "Fill Play" in de geselecteerde setups zit; deselecteren wist `fillPlayType` automatisch (zelfde gedrag als voorheen).
+- **Display-format**: Trade-list cell toont layers nu als `4H · MSB+SFP · CVD divergentie+Volume spike` — consistent met hoe confirmaties al gerenderd werden. PlaybookStats layer-summary key wordt `4H+MSB+SFP → 15m+FVG tap` zodat multi-setup combinaties hun eigen unieke groep krijgen (geen vermenging met single-setup variants).
+- **`t.setupTags` (flat trade-level array) blijft onveranderd** — gebruikt door 95% van analytics (Tendencies, Setup × Sessie matrix, FilterBar, Setup Ranking, Playbook compliance). Layer-setups zijn supplementaal voor wie diep wil bouwen, niet de bron-van-waarheid voor patroon-detectie.
+
+### Schema
+- **`layer.setup` (string) → `layer.setups` (array)** in `EMPTY_LAYER`. Backwards-compat: `normalizeTrade()` migreert legacy layers automatisch op load — bestaande `setup: "MSB"` wordt `setups: ["MSB"]`. Oude `setup` field wordt netjes gestript via destructuring. Bestaande trades blijven werken zonder gebruikersactie.
+
+---
+
 ## [v12.52] — 2026-04-28
 
 ### Toegevoegd

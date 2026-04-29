@@ -677,7 +677,7 @@ const {useState,useRef,useEffect,useCallback,useMemo} = React;
 
 // ============ CONSTANTS & HELPERS ============
 const TF_ORDER=["1m","3m","5m","15m","30m","1h","2h","4h","6h","8h","12h","1d","3d","1w","1M"];
-const EMPTY_LAYER={id:"",timeframe:"",setup:"",fillPlayType:undefined,confirmation:"",confirmations:[],notes:""};
+const EMPTY_LAYER={id:"",timeframe:"",setups:[],fillPlayType:undefined,confirmation:"",confirmations:[],notes:""};
 const EMPTY_TP={id:"",price:"",pct:"25",status:"open",actualPrice:""};
 
 const DEFAULT_TAGS={
@@ -889,7 +889,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.52",released:"2026-04-28"};
+const APP_VERSION={version:"v12.53",released:"2026-04-29"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -1036,6 +1036,17 @@ const normalizeTrade=(t)=>{
   if(out.playbookId===undefined)out.playbookId="";
   if(!Array.isArray(out.complianceChecks))out.complianceChecks=[];
   if(out.complianceScore===undefined)out.complianceScore=null;
+  // v12.53: layer.setup (string) → layer.setups (array). Voorbeeld: een 4H laag
+  // kan zowel MSB als SFP zijn. Migreert legacy single-setup naar single-element array.
+  if(Array.isArray(out.layers)){
+    out.layers=out.layers.map(l=>{
+      if(!l)return l;
+      if(Array.isArray(l.setups))return l;
+      const legacy=l.setup;
+      const {setup,...rest}=l;
+      return{...rest,setups:legacy?[legacy]:[]};
+    });
+  }
   return out;
 };
 
@@ -2899,7 +2910,7 @@ function TradeList({trades,onEdit,onDelete,onQuickTag,onBulkDelete,onBulkTag,sho
             const rMult=calcRMultiple(t);
             const holdMs=t.openTime&&t.closeTime?Math.abs(parseInt(t.closeTime)-parseInt(t.openTime)):0;
             const holdStr=holdMs?(holdMs>86400000?(holdMs/86400000).toFixed(1)+"d":holdMs>3600000?Math.floor(holdMs/3600000)+"h "+Math.floor((holdMs%3600000)/60000)+"m":Math.floor(holdMs/60000)+"m"):"";
-            const layerStr=(t.layers||[]).map(l=>[l.timeframe,l.setup].filter(Boolean).join(" ")).filter(Boolean).join(" → ");
+            const layerStr=(t.layers||[]).map(l=>{const ss=(l.setups||[]).join("+");return[l.timeframe,ss].filter(Boolean).join(" ")}).filter(Boolean).join(" → ");
             const feesN=parseFloat(t.fees)||0;
             return(<React.Fragment key={t.id}>
             <tr onClick={()=>onEdit(t)} style={{cursor:"pointer",transition:"background .1s",background:isSel?"rgba(201,168,76,0.04)":hoveredId===t.id?"rgba(42,46,57,0.3)":"transparent",opacity:t.status==="missed"?0.72:1}} onMouseEnter={()=>setHoveredId(t.id)} onMouseLeave={()=>setHoveredId(null)}>
@@ -2932,7 +2943,7 @@ function TradeList({trades,onEdit,onDelete,onQuickTag,onBulkDelete,onBulkTag,sho
               <td style={{...tdStyle,textAlign:"center"}}>
                 {rMult!==null?<span className={`r-chip ${rMult>0?"r-pos":rMult<0?"r-neg":"r-zero"}`}>{rMult>=0?"+":""}{rMult.toFixed(1)}R</span>:<span style={{color:"var(--text5)",fontSize:"9px"}}>–</span>}
               </td>
-              <td style={tdStyle}>{hasLayers?layers.map((l,li)=>{const confs=(l.confirmations||[l.confirmation].filter(Boolean));const fpLabel=l.setup==="Fill Play"&&l.fillPlayType?` · ${l.fillPlayType}`:"";return <span key={li} style={{...tagStyle2("rgba(201,168,76,0.1)","#C9A84C")}}>{l.timeframe}{l.setup?" · "+l.setup:""}{fpLabel}{confs.length>0?" · "+confs.join("+"):""}</span>}):(t.setupTags||[]).length>0?(t.setupTags||[]).map(s=><span key={s} style={tagStyle2("rgba(201,168,76,0.08)","#C9A84C")}>{s}</span>):<button onClick={e=>{e.stopPropagation();onQuickTag&&onQuickTag(t)}} style={{fontSize:"10px",padding:"2px 8px",borderRadius:"3px",border:"1px dashed var(--border4)",background:"transparent",color:"var(--text4)",cursor:"pointer",fontFamily:"inherit"}}>+ tag</button>}</td>
+              <td style={tdStyle}>{hasLayers?layers.map((l,li)=>{const confs=(l.confirmations||[l.confirmation].filter(Boolean));const ss=(l.setups||[]).join("+");const fpLabel=(l.setups||[]).includes("Fill Play")&&l.fillPlayType?` · ${l.fillPlayType}`:"";return <span key={li} style={{...tagStyle2("rgba(201,168,76,0.1)","#C9A84C")}}>{l.timeframe}{ss?" · "+ss:""}{fpLabel}{confs.length>0?" · "+confs.join("+"):""}</span>}):(t.setupTags||[]).length>0?(t.setupTags||[]).map(s=><span key={s} style={tagStyle2("rgba(201,168,76,0.08)","#C9A84C")}>{s}</span>):<button onClick={e=>{e.stopPropagation();onQuickTag&&onQuickTag(t)}} style={{fontSize:"10px",padding:"2px 8px",borderRadius:"3px",border:"1px dashed var(--border4)",background:"transparent",color:"var(--text4)",cursor:"pointer",fontFamily:"inherit"}}>+ tag</button>}</td>
               <td style={tdStyle}>{getSessionTags(t.date,t.time).map(s=>{const c=SESSION_COLORS[s]||SESSION_COLORS["US Late"];return <span key={s} style={tagStyle2(c.bg,c.text)}>{s}</span>})}</td>
               <td style={tdStyle}>{(t.emotionTags||[]).map(s=><span key={s} style={tagStyle2(isNegEmotion(s)?"var(--red2)":"var(--green2)",isNegEmotion(s)?"var(--red)":"var(--green)")}>{s}</span>)}</td>
               <td style={tdStyle}><button onClick={e=>{e.stopPropagation();onDelete(t.id)}} style={{background:"none",border:"none",color:"var(--text5)",cursor:"pointer",fontSize:"12px",padding:"2px 4px"}}>✕</button></td>
@@ -3919,9 +3930,9 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,accounts,sho
           <div style={{display:"grid",gap:"10px"}}>
             <div><div style={{fontSize:"9px",color:"var(--gold)",marginBottom:"6px",fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase"}}>Timeframe</div><div style={{display:"flex",flexWrap:"wrap",gap:"5px"}}>{gt("timeframeTags").map(tf=>{const sel=layer.timeframe===tf;return(<button key={tf} onClick={()=>setTrade(p=>{const l=[...(p.layers||[])];l[i]={...l[i],timeframe:sel?"":tf};return{...p,layers:l}})} style={{padding:"4px 10px",borderRadius:"5px",fontSize:"10.5px",fontWeight:600,border:`1px solid ${sel?"#7c3aed":"var(--border3)"}`,background:sel?"rgba(124,58,237,0.18)":"var(--bg4)",color:sel?"#a78bfa":"var(--text2)",cursor:"pointer",fontFamily:"inherit",transition:"all .15s"}}>{tf}</button>)})}</div></div>
             <div>
-                <div style={{fontSize:"9px",color:"var(--gold)",marginBottom:"6px",fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase"}}>Setup</div>
-                <div style={{display:"flex",flexWrap:"wrap",gap:"5px",marginBottom:"4px"}}>{gt("setupTags").map(s=>{const sel=layer.setup===s;return(<button key={s} onClick={()=>setTrade(p=>{const l=[...(p.layers||[])];l[i]={...l[i],setup:sel?"":s,fillPlayType:s!=="Fill Play"?undefined:l[i].fillPlayType};return{...p,layers:l}})} style={{padding:"4px 11px",borderRadius:"6px",fontSize:"10.5px",fontWeight:600,border:`1px solid ${sel?"var(--gold-border)":"var(--border3)"}`,background:sel?"var(--gold-dim)":"var(--bg4)",color:sel?"var(--gold)":"var(--text2)",cursor:"pointer",fontFamily:"inherit",transition:"all .15s"}}>{s}</button>)})}</div>
-                {layer.setup==="Fill Play"&&<div style={{marginTop:"6px",padding:"9px 12px",background:"rgba(201,168,76,0.05)",border:"1px solid rgba(201,168,76,0.2)",borderRadius:"6px",borderLeft:"2px solid #C9A84C",borderTopLeftRadius:"0",borderBottomLeftRadius:"0"}}>
+                <div style={{fontSize:"9px",color:"var(--gold)",marginBottom:"6px",fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase"}}>Setup <span style={{color:"var(--text5)",fontWeight:500,letterSpacing:".04em",textTransform:"none",fontSize:"9.5px"}}>— meerdere mogelijk (bv. MSB + SFP op dezelfde laag)</span></div>
+                <div style={{display:"flex",flexWrap:"wrap",gap:"5px",marginBottom:"4px"}}>{gt("setupTags").map(s=>{const sel=(layer.setups||[]).includes(s);return(<button key={s} onClick={()=>setTrade(p=>{const l=[...(p.layers||[])];const cur=l[i].setups||[];const next=sel?cur.filter(x=>x!==s):[...cur,s];const fp=next.includes("Fill Play")?l[i].fillPlayType:undefined;l[i]={...l[i],setups:next,fillPlayType:fp};return{...p,layers:l}})} style={{padding:"4px 11px",borderRadius:"6px",fontSize:"10.5px",fontWeight:600,border:`1px solid ${sel?"var(--gold-border)":"var(--border3)"}`,background:sel?"var(--gold-dim)":"var(--bg4)",color:sel?"var(--gold)":"var(--text2)",cursor:"pointer",fontFamily:"inherit",transition:"all .15s"}}>{s}</button>)})}</div>
+                {(layer.setups||[]).includes("Fill Play")&&<div style={{marginTop:"6px",padding:"9px 12px",background:"rgba(201,168,76,0.05)",border:"1px solid rgba(201,168,76,0.2)",borderRadius:"6px",borderLeft:"2px solid #C9A84C",borderTopLeftRadius:"0",borderBottomLeftRadius:"0"}}>
                   <div style={{fontSize:"9px",color:"#C9A84C",fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase",marginBottom:"7px"}}>Type</div>
                   <div style={{display:"flex",gap:"6px"}}>{["Directe Play","Backtest Play"].map(fp=>{const fsel=layer.fillPlayType===fp;return(<button key={fp} onClick={()=>setTrade(p=>{const l=[...(p.layers||[])];l[i]={...l[i],fillPlayType:fsel?undefined:fp};return{...p,layers:l}})} style={{padding:"5px 16px",borderRadius:"6px",fontSize:"11px",fontWeight:700,border:`1px solid ${fsel?"#C9A84C":"rgba(201,168,76,0.2)"}`,background:fsel?"#C9A84C":"transparent",color:fsel?"#000000":"rgba(201,168,76,0.6)",cursor:"pointer",fontFamily:"inherit",transition:"all .15s"}}>{fp}</button>)})}</div>
                 </div>}
@@ -6417,7 +6428,7 @@ function Analytics({trades,tradingRules,allTrades,config,setFilters,setTab}){
 
   // Layer analysis
   const layerSets={};const layerPairs={};const layerCounts={};
-  closed.forEach(t=>{const layers=t.layers||[];if(layers.length>0){const summary=layers.map(l=>[l.timeframe,l.setup].filter(Boolean).join("+")).join(" → ");if(!layerSets[summary])layerSets[summary]={n:0,pnl:0,w:0};layerSets[summary].n++;layerSets[summary].pnl+=netPnl(t);if(netPnl(t)>0)layerSets[summary].w++}});
+  closed.forEach(t=>{const layers=t.layers||[];if(layers.length>0){const summary=layers.map(l=>{const ss=(l.setups||[]).join("+");return[l.timeframe,ss].filter(Boolean).join("+")}).join(" → ");if(!layerSets[summary])layerSets[summary]={n:0,pnl:0,w:0};layerSets[summary].n++;layerSets[summary].pnl+=netPnl(t);if(netPnl(t)>0)layerSets[summary].w++}});
 
   const sectStyle={background:"var(--glass)",backdropFilter:"var(--glass-blur)",WebkitBackdropFilter:"var(--glass-blur)",borderRadius:"var(--radius-lg)",padding:"20px",marginBottom:"16px",border:"1px solid var(--border1)",transition:"border-color .25s,box-shadow .25s,transform .2s"};
   const secH=(t)=>(<div style={{fontSize:"11px",color:"var(--gold)",textTransform:"uppercase",letterSpacing:"0.12em",fontWeight:700,marginBottom:"14px"}}>{t}</div>);
