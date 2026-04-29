@@ -889,7 +889,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.58",released:"2026-04-29"};
+const APP_VERSION={version:"v12.59",released:"2026-04-29"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -5248,12 +5248,39 @@ function playbookMissedStats(pb,allTrades,subTypeFilter){
       const sign=t.direction==="short"?-1:1;
       hindsightR=parseFloat(((hx-entry)*sign/riskPerUnit).toFixed(2));
     }else{
-      // backtest / paper: liever entry+exit+sl (geometrisch), fallback naar pnl/riskUsd
-      const ex=parseFloat(t.exit);
-      if(isFinite(entry)&&isFinite(sl)&&isFinite(ex)&&Math.abs(entry-sl)>0){
+      // v12.59: backtest / paper hebben géén exit-veld (hideExitFields=true), maar
+      // wél tpLevels[] met status "hit" / "open" / "missed". Bereken weighted R uit
+      // de hit TPs (mirror van wat TradeForm zelf onderaan toont als "Gem R:R").
+      // Resterende pct telt als −1R (aangenomen op SL). Fallback: exit (legacy
+      // edits) of pnl/riskUsd.
+      if(isFinite(entry)&&isFinite(sl)&&Math.abs(entry-sl)>0){
+        const riskPerUnit=Math.abs(entry-sl);
         const sign=t.direction==="short"?-1:1;
-        hindsightR=parseFloat(((ex-entry)*sign/Math.abs(entry-sl)).toFixed(2));
+        const hitTPs=(t.tpLevels||[]).filter(tp=>tp.status==="hit"&&isFinite(parseFloat(tp.price)));
+        if(hitTPs.length>0){
+          let weightedR=0,totalPct=0;
+          for(const tp of hitTPs){
+            const pct=parseFloat(tp.pct)||0;
+            const tpR=((parseFloat(tp.price)-entry)*sign)/riskPerUnit;
+            weightedR+=tpR*(pct/100);
+            totalPct+=pct;
+          }
+          // Restant op SL: −1R × (100-totalPct)/100
+          if(totalPct<100)weightedR+=-1*((100-totalPct)/100);
+          hindsightR=parseFloat(weightedR.toFixed(2));
+        }else{
+          // Geen hit TPs — probeer exit (legacy), anders pnl/riskUsd
+          const ex=parseFloat(t.exit);
+          if(isFinite(ex)){
+            hindsightR=parseFloat(((ex-entry)*sign/riskPerUnit).toFixed(2));
+          }else{
+            const r=_trR(t);
+            if(r===0&&!parseFloat(t.pnl))continue;
+            hindsightR=parseFloat(r.toFixed(2));
+          }
+        }
       }else{
+        // entry of stopLoss ontbreekt — val terug op pnl/riskUsd
         const r=_trR(t);
         if(r===0&&!parseFloat(t.pnl))continue;
         hindsightR=parseFloat(r.toFixed(2));

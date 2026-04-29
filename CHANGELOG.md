@@ -6,6 +6,13 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.59] — 2026-04-29
+
+### Fixed
+- **Backtest- en paper-trades nog steeds onzichtbaar in Simulated-Trades sectie** (vervolg op v12.58, gemeld door Denny). De v12.58 fix las `trade.exit` — maar dat veld is verborgen voor missed/backtest/paper trades (`hideExitFields=isOpen||isMissed` in TradeForm). De échte exit-data zit in `trade.tpLevels[]` met per niveau een prijs + percentage + status (`hit` / `open` / `missed`). Fix: `playbookMissedStats()` berekent nu **weighted R uit de hit-TPs** (zelfde formule die TradeForm onderaan toont als *"Gem R:R"*) — bv. 50% op TP1 + 25% op TP2 + 25% op TP3 → 3.52R bij Denny's setup. Resterende positie zonder hit telt als −1R (aangenomen op SL). Fallback-volgorde: hit-TPs → legacy exit-veld → pnl/riskUsd.
+
+---
+
 ## [v12.58] — 2026-04-29
 
 ### Fixed
