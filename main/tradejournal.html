@@ -889,7 +889,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.56",released:"2026-04-29"};
+const APP_VERSION={version:"v12.57",released:"2026-04-29"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -5781,11 +5781,19 @@ function PlaybookForm({initial,onSave,onClose,tagConfig,setTab}){
 // ─── PlaybookDetailModal — full view ─────────────────────────────────────────
 function PlaybookDetailModal({pb,allTrades,setFilters,setTab,onClose,onEdit,onDelete,onShare}){
   const s=playbookStats(pb,allTrades);
-  const[missSubFilter,setMissSubFilter]=useState("missed");// "missed" | "backtest" | "all"
   // Counts per simType: nodig voor (a) sectie-zichtbaarheid en (b) filter-pill labels
   const allSimsLinked=tradesForPlaybook(pb,allTrades).filter(t=>t.status==="missed");
   const missedCount=allSimsLinked.filter(t=>(t.simType||"missed")==="missed").length;
   const backtestCount=allSimsLinked.filter(t=>t.simType==="backtest").length;
+  // v12.57: default filter intelligent kiezen — als alleen backtest-trades zijn
+  // (geen gemiste), start dan op "backtest" zodat de Simulated-Trades sectie ze
+  // direct toont. Voorheen stond default altijd op "missed" en bleef de sectie
+  // leeg voor wie alleen backtest-trades had (filter-pills verschijnen alleen
+  // wanneer beide tellers > 0).
+  const[missSubFilter,setMissSubFilter]=useState(()=>{
+    if(missedCount===0&&backtestCount>0)return"backtest";
+    return"missed";
+  });
   const ms=playbookMissedStats(pb,allTrades,missSubFilter);
   const pnlPos=s.pnl>=0;
   const statusColor=pb.status==="active"?"var(--green)":pb.status==="testing"?"var(--amber)":"var(--text5)";
@@ -5967,8 +5975,11 @@ function PlaybookDetailModal({pb,allTrades,setFilters,setTab,onClose,onEdit,onDe
         {(missedCount+backtestCount)>0&&<div>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8,marginBottom:10}}>
             <div style={{fontSize:11,color:"var(--gold)",fontFamily:"var(--mono)",fontWeight:700,letterSpacing:".18em",textTransform:"uppercase"}}>🔬 Simulated Trades · Playbook-backtest <span style={{color:"var(--text5)",fontWeight:400,letterSpacing:0,textTransform:"none",fontFamily:"var(--font)",fontSize:11}}>— edge-leak analyse</span></div>
-            {(missedCount>0&&backtestCount>0)&&<div style={{display:"flex",gap:5}}>
-              {[["missed",`👻 Gemist (${missedCount})`,"#b48cc8"],["backtest",`🔬 Backtest (${backtestCount})`,"#7ab4d2"],["all",`Beide (${missedCount+backtestCount})`,"var(--text3)"]].map(([v,lbl,col])=>{
+            {/* v12.57: pills zichtbaar zodra één teller > 0 (was: alleen wanneer beide > 0).
+                Voor user die alleen backtest of alleen gemist heeft, was er voorheen
+                geen pill-feedback dat z'n trades waren gevonden. */}
+            {(missedCount>0||backtestCount>0)&&<div style={{display:"flex",gap:5}}>
+              {[["missed",`👻 Gemist (${missedCount})`,"#b48cc8"],["backtest",`🔬 Backtest (${backtestCount})`,"#7ab4d2"],["all",`Beide (${missedCount+backtestCount})`,"var(--text3)"]].filter(([v])=>v==="all"?(missedCount>0&&backtestCount>0):true).map(([v,lbl,col])=>{
                 const a=missSubFilter===v;
                 const accent=v==="backtest"?"122,180,210":v==="missed"?"180,140,200":"138,144,160";
                 return<button key={v} onClick={()=>setMissSubFilter(v)} style={{padding:"4px 10px",fontSize:10.5,fontFamily:"var(--mono)",fontWeight:600,letterSpacing:".04em",borderRadius:5,border:`1px solid ${a?`rgba(${accent},.5)`:"var(--border3)"}`,background:a?`rgba(${accent},.18)`:"transparent",color:a?col:"var(--text4)",cursor:"pointer"}}>{lbl}</button>;

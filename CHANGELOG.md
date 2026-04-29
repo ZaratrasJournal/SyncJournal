@@ -6,6 +6,13 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.57] — 2026-04-29
+
+### Fixed
+- **Backtest-trade onzichtbaar in Playbook-detail terwijl matcher ze wel vond** (vervolg op v12.56, gemeld door Denny). De Simulated-Trades sectie had `missSubFilter` default op `"missed"` — voor wie alleen backtest-trades had bleef de sectie leeg met "Geen gemiste-trades, probeer een ander filter". Erger: de filter-pills (👻 / 🔬) verschenen alleen wanneer **beide** tellers > 0, dus geen knop om naar Backtest te switchen. Twee fixes: (1) default filter is nu intelligent — als alleen backtest-trades, start op `"backtest"`; (2) pills zichtbaar zodra één teller > 0, zodat de user altijd visuele feedback krijgt dat de trades gevonden zijn. "Beide"-pill verschijnt alleen als er daadwerkelijk twee types zijn.
+
+---
+
 ## [v12.56] — 2026-04-29
 
 ### Fixed
