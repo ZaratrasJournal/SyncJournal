@@ -6,6 +6,13 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.56] — 2026-04-29
+
+### Fixed
+- **Backtest / Gemiste / Paper trades met playbook-koppeling werden niet teruggevonden in de Playbook-detail-modal** (gemeld door Denny). `tradesForPlaybook()` matchte alleen op setup-tag-overlap met `pb.setupTags`, maar negeerde de expliciete `t.playbookId` FK die `applyPlaybook()` sinds v12.50 zet. Resultaat: koppelde je een backtest-trade aan een playbook zonder setup-tags (of klikte je de auto-gevulde tags handmatig weg), dan verscheen de trade nergens — terwijl `t.playbookId === pb.id` correct was. Fix: `playbookId` is nu de primaire match, setup-tag overlap blijft fallback voor legacy trades zonder FK. Geldt voor alle drie de sim-types (Gemist 👻 / Backtest 🔬 / Paper 📝) én normale closed/open trades.
+
+---
+
 ## [v12.55] — 2026-04-29
 
 ### Gewijzigd

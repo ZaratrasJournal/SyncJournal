@@ -889,7 +889,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.55",released:"2026-04-29"};
+const APP_VERSION={version:"v12.56",released:"2026-04-29"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -5150,11 +5150,20 @@ function SetupSessionMatrix({closed,setFilters,setTab}){
 // PLAYBOOK — helpers + components. Gekoppeld aan trades via setup-tag overlap.
 // ════════════════════════════════════════════════════════════════════════════
 
-// Trades die binnen deze playbook vallen (setup-tag overlap).
+// Trades die binnen deze playbook vallen.
+// v12.56: primaire match via expliciete playbookId (gezet door applyPlaybook in
+// TradeForm sinds v12.50). Setup-tag overlap blijft fallback voor legacy trades
+// zonder playbookId. Bug-fix: backtest/missed/paper trades met een gekoppelde
+// playbook werden niet teruggevonden omdat ze auto-gevulde setup-tags konden
+// missen (lege playbook, of user die de tags handmatig wegklikte) — terwijl de
+// playbookId-koppeling wel klopte.
 function tradesForPlaybook(pb,allTrades){
   const pbTags=new Set(pb.setupTags||[]);
-  if(pbTags.size===0)return[];
-  return(allTrades||[]).filter(t=>(t.setupTags||[]).some(tag=>pbTags.has(tag)));
+  return(allTrades||[]).filter(t=>{
+    if(t.playbookId&&t.playbookId===pb.id)return true;
+    if(pbTags.size>0&&(t.setupTags||[]).some(tag=>pbTags.has(tag)))return true;
+    return false;
+  });
 }
 // R-multiple uit pnl/riskUsd; 0 als risk leeg of 0.
 const _trR=(t)=>{const r=parseFloat(t.riskUsd)||0;const pRaw=parseFloat(t.pnl);if(r<=0||isNaN(pRaw))return 0;return netPnl(t)/r;};
