@@ -161,6 +161,14 @@ echo '{"tool_name":"Edit","tool_input":{"file_path":"work/tradejournal.html","ne
 # Verwacht: exit 2 + uitleg
 ```
 
+### Claude PR-review CI (claude-code-action)
+
+Twee GitHub workflows in `.github/workflows/`:
+- `claude-pr-review.yml` — auto-review op elke nieuwe PR met onze NL-checklist (single-file HTML valkuilen, tj_-prefix, schemaVersion, theme-tokens, Amsterdam-tijd)
+- `claude-mention.yml` — `@claude <vraag>` in PR/issue comment triggert Claude in de thread
+
+**Setup**: zie `.github/CLAUDE-REVIEW-SETUP.md` voor de eenmalige stappen (ANTHROPIC_API_KEY toevoegen aan repo secrets). Werkt zonder GitHub App.
+
 ### ccusage — token & kosten check
 
 ```bash

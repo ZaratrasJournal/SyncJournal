@@ -1,0 +1,42 @@
+name: Claude Auto PR Review (NL)
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            Review deze PR voor het TradeJournal project (single-file HTML + vanilla JS + React via Babel CDN, localStorage met `tj_` prefix, 6 thema's).
+
+            Focus op single-file HTML valkuilen:
+            1. **Globale state-leaks** — variabelen buiten een component-scope die per ongeluk gedeeld worden
+            2. **Duplicate IDs** — in een single-file kan een nieuw component een ID hergebruiken
+            3. **localStorage key collisions** — alle keys MOETEN `tj_` prefix hebben
+            4. **schemaVersion** — bij data-shape wijzigingen moet `schemaVersion` mee bumpen + migratie
+            5. **Inline-script ordering bugs** — helpers gedefinieerd ná gebruik
+            6. **API-keys in browser** — NOOIT API-keys hardcoden of in localStorage zonder waarschuwing
+            7. **Theme-tokens** — JSX inline styles MOETEN `var(--text|text2|gold|bg|...)` gebruiken, geen `#fff`/`#000`/`#C9A84C` (er is een PreToolUse hook die dit lokaal afdwingt — check of dit niet bypassed is)
+            8. **Amsterdam-tijd** — datums moeten `Intl.DateTimeFormat("sv-SE", {timeZone:"Europe/Amsterdam"})` gebruiken voor DST-correctheid
+
+            Check ook:
+            - Zijn er nieuwe Playwright-tests bij feature-changes? (zie `tests/<feature>.spec.js` patroon)
+            - Is `CHANGELOG.md` bijgewerkt voor user-facing changes? (refactor/test/docs hoeven niet)
+            - Bij `APP_VERSION` bump in `work/tradejournal.html`: is `main/version.json` ook bijgewerkt?
+
+            Schrijf je review in het **Nederlands**, beknopt, met concrete file-line referenties (bv. `work/tradejournal.html:1234`). Laat triviale styling-zaken weg — focus op correctheid en de checklist hierboven. Sluit af met een oordeel: ✓ approve / 🟡 small changes / ✗ blocker.
+          claude_args: "--max-turns 6"
