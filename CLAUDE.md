@@ -11,14 +11,27 @@ Trading journal web-app voor een kleine trade-community. Denny en Sebas bouwen s
 - **JSON export/import** knop is verplicht: vangnet voor gebruikers bij browserwissels en toekomstige backend-migratie.
 - **Exchange-koppeling:** eerst CSV-import (werkt voor alle exchanges). Directe API's pas wanneer er een backend is (API-keys horen niet in de browser).
 
+## Folder layout
+```
+work/        - dev: huidige tradejournal.html
+main/        - release-mirror + version.json (gesynct via cp work -> main)
+demos/       - losse *-demo.html voor UI-iteratie
+  share-examples/ - voorbeeld share-playbook JSONs
+assets/      - logo, favicons, og-image
+  share-cards/    - bron-PNGs voor trade-share kaart-achtergronden (boss/giggling/omg/pablo/goodfellas)
+tests/       - Playwright specs + fixtures + helpers + screenshots
+scripts/     - tooling (gen-demo-backup.js)
+proxy-local/ - CORS-proxy voor lokaal exchange-API testen
+_scratch/    - GITIGNORED: oude varianten (v4_14, dragdrop-test, design-handoff), backups, persoonlijke csv's
+```
+
 ## Versies & bestanden
 - `work/tradejournal.html` — huidige development-file. Hier werk je.
 - `main/tradejournal.html` — community-release. Wordt gesynct via `cp work → main` bij elke release (niet bij elke commit).
 - `main/version.json` — bron-van-waarheid voor auto-update-check: `{version: "v12.X", released: "YYYY-MM-DD"}`. Wordt gefetched door de app via GitHub raw.
 - `APP_VERSION` const bovenin `work/tradejournal.html` — semver `v12.X`. **Moet synchroon blijven met `main/version.json`**.
-- `assets/` — bronbestanden (logo, favicons, OG-image). `main/og-image.png` is de extern-gehoste OG voor social scrapers.
 - `CHANGELOG.md` — user-facing release-notes. Standaard "Keep a Changelog"-stijl in NL.
-- `TradeJournal_v4_14.html` — historische referentie (Denny's oude versie). Features zijn grotendeels gemigreerd; zie feature-diff onderin BACKLOG.md.
+- `_scratch/TradeJournal_v4_14.html` — historische referentie (Denny's oude versie, gitignored). Features zijn grotendeels gemigreerd; zie feature-diff onderin BACKLOG.md.
 
 ## Release-flow (exact ritueel bij user-facing changes)
 1. Bump `APP_VERSION.version` in `work/tradejournal.html` (zoek `const APP_VERSION`).
@@ -72,7 +85,7 @@ Claude mag (en moet) deze tools proactief inzetten. Denny hoeft er niet steeds o
 - Bij werken aan beide HTML-versies: start met `html-feature-diff`.
 - Bij nieuwe exchange: start met `exchange-integrator` (die gebruikt intern `web-search-agent`).
 - Vóór een merge naar `main`: `pr-reviewer-nl` over de diff.
-- **Demo-first voor grote UI-features**: bouw eerst een losse `<feature>-demo.html` in de project-root (patroon zoals `discipline-heatmap-demo.html`, `mindset-reminders-demo.html`, `personalized-greeting-demo.html`). Itereer op het visuele met Denny. Pas als de UX zit, integreer in `work/tradejournal.html`. Bespaart herwerk en houdt de grote file schoon tijdens experimenten.
+- **Demo-first voor grote UI-features**: bouw eerst een losse `demos/<feature>-demo.html` (patroon zoals `demos/discipline-heatmap-demo.html`, `demos/mindset-reminders-demo.html`, `demos/personalized-greeting-demo.html`). Itereer op het visuele met Denny. Pas als de UX zit, integreer in `work/tradejournal.html`. Bespaart herwerk en houdt de grote file schoon tijdens experimenten.
 - **Changelog-discipline**: elke user-facing commit hoort in de release-flow (zie boven). Refactor/test/docs hoeven niet in changelog.
 - **Bij bug-fix op theme-gerelateerd gedrag**: altijd alle 6 thema's checken (sync / classic / aurora / light / parchment / daylight).
 
@@ -86,6 +99,7 @@ Claude Code kan UI-flows zelfstandig testen tegen `work/tradejournal.html` via P
 - **`tests/`-folder** bevat:
   - `smoke.spec.js` — laad app, verifieer versie, geen JS-errors, screenshot in `tests/screenshots/`.
   - `blofin-partial.spec.js` — seedt localStorage met `tests/fixtures/blofin-partial-state.json`, valideert detectPartialFromSiblings + UI-rendering.
+  - `themes.spec.js` — laadt app voor alle 6 thema's (sync/classic/aurora/light/parchment/daylight), checkt body.className + geen JS-errors + screenshot per thema in `tests/screenshots/themes/`.
   - `helpers/seed.js` — `seedLocalStorage(fixture)` voor `page.addInitScript`.
   - `run-adhoc.js` — losse Node-runner voor ad-hoc exploratie (geen test-framework).
   - `screenshots/` — gegitignored behalve `baseline/`.
@@ -104,9 +118,10 @@ Claude Code kan UI-flows zelfstandig testen tegen `work/tradejournal.html` via P
 
 ```bash
 cd C:/Users/Denny/Documents/Tradejournal
-npm test                            # alle tests
+npm test                                  # alle tests
 npx playwright test tests/smoke.spec.js
 npx playwright test tests/blofin-partial.spec.js
+npx playwright test tests/themes.spec.js  # 6 thema's × ~9s = ~55s
 node tests/run-adhoc.js --fixture=blofin-partial-state.json --theme=parchment
 ```
 
@@ -129,6 +144,31 @@ node tests/run-adhoc.js --fixture=blofin-partial-state.json --theme=parchment
 - `node_modules/` (gitignored)
 - `tests/screenshots/*.png` behalve `baseline/` (gitignored)
 - Lokale `blofin-snapshot-*.json` (gitignored — kan positionId's bevatten die specifiek voor user zijn)
+
+## Tooling — guardrails & cost-tracking (sinds v12.62)
+
+### Theme-token validator hook
+
+`.claude/hooks/check-theme-tokens.js` (PreToolUse op Edit/Write) blokkeert hardcoded `#fff` / `#000` / `#C9A84C` / `rgb(255,255,255)` in JSX inline-style attributes voor `work/tradejournal.html`. CSS in `<style>` blokken (theme-overrides via `body.theme-light .selector {...}`) is wel toegestaan. Geregistreerd in `.claude/settings.json`.
+
+**Effect**: Claude krijgt direct feedback (exit 2 + stderr) bij theme-violation, kan zelf fixen vóór de Edit doorgaat. Voorkomt theme-bug-categorie permanent.
+
+Test handmatig:
+```bash
+echo '{"tool_name":"Edit","tool_input":{"file_path":"work/tradejournal.html","new_string":"<div style={{color:\"#fff\"}}>x</div>"}}' \
+  | node .claude/hooks/check-theme-tokens.js
+# Verwacht: exit 2 + uitleg
+```
+
+### ccusage — token & kosten check
+
+```bash
+npx ccusage@latest daily              # dagoverzicht
+npx ccusage@latest blocks             # 5-uur block-view
+npx ccusage@latest session            # per-sessie overzicht
+```
+
+Geen install nodig. Parseert `~/.claude/projects/*.jsonl`. Gebruik wekelijks om budget in de gaten te houden.
 
 ## Niet doen
 - Geen `file://` paden in instructies naar gebruikers.
