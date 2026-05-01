@@ -131,7 +131,8 @@ node tests/run-adhoc.js --fixture=blofin-partial-state.json --theme=parchment
 2. **Pure logic gewijzigd?** Run Node-simulatie tegen relevante snapshot-fixture.
 3. **UI gewijzigd?** Run/uitbreiden van de bijbehorende `*.spec.js`. Lees screenshot via Read-tool.
 4. **Nieuwe feature?** Voeg test toe in `tests/<feature>.spec.js` voordat je 'm afsluit. Past in dezelfde commit.
-5. **Visuele regressie verdacht?** Vergelijk met `tests/screenshots/baseline/` (eerder vastgelegd).
+5. **Visuele regressie verdacht?** Vergelijk via Read-tool de nieuwe `tests/screenshots/<x>.png` met de gecommitte baseline in `tests/screenshots/baseline/<x>.png`. Voor thema's: per-thema baseline staat in `tests/screenshots/baseline/themes/<theme>.png` (vastgelegd vanaf v12.62 Dashboard).
+6. **Baseline updaten?** Alleen na bewuste UI-keuze: `cp tests/screenshots/themes/*.png tests/screenshots/baseline/themes/` en commit met "update theme baseline (vX.Y — reden)".
 
 ### Bekende limitaties
 
