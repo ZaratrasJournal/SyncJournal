@@ -6,6 +6,18 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.63] — 2026-05-01
+
+### Fixed
+- **Toegankelijkheid: screen-reader labels op datum-velden** — vier `<input type="date">` velden hadden visuele labels maar geen programmatische koppeling, waardoor screen-readers (NVDA, JAWS, Windows Narrator) ze als "datum" voorlazen zonder context. Nu allemaal voorzien van een `aria-label`:
+  - **Trade-form** datum (in Nieuw/Edit modal) → "Trade datum"
+  - **Trades-filter** van/tot datum (boven trade-list) → "Filter datum vanaf" / "Filter datum tot en met"
+  - **Geavanceerde filters** van/tot datum (uitklap-paneel) → idem
+  - **Account-config** Sync-vanaf datum (Instellingen → exchange) → "Sync trades vanaf datum"
+  - Geen visuele wijziging — `aria-label` is screen-reader-only metadata. Voldoet nu aan WCAG 2.1 niveau-A "1.3.1 Info and Relationships" en "4.1.2 Name, Role, Value".
+
+---
+
 ## [v12.62] — 2026-05-01
 
 ### Toegevoegd
