@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Share Card v2 — Demo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Archivo:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&family=Caveat:wght@400;500;600;700&family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet"/>
+<script src="https://cdn.jsdelivr.net/npm/html-to-image@1.11.13/dist/html-to-image.min.js"></script>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{min-height:100%;background:#0a0a0b;color:#fff;
+    font-family:"Archivo",-apple-system,sans-serif;
+    -webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums}
+
+  /* ─────── Layout chrome ─────── */
+  .app{display:grid;grid-template-columns:340px 1fr;min-height:100vh;gap:24px;padding:24px;align-items:start}
+  .sidebar{position:sticky;top:24px;background:#111114;border:1px solid rgba(255,255,255,.06);border-radius:14px;padding:18px;display:flex;flex-direction:column;gap:14px;max-height:calc(100vh - 48px);overflow-y:auto}
+  .sidebar h1{font-family:"Archivo Black";font-size:16px;letter-spacing:-.01em;text-transform:uppercase}
+  .sidebar h1 em{font-style:normal;color:#f97316}
+  .sidebar .lead{font-size:11px;color:rgba(255,255,255,.55);line-height:1.5;font-family:"JetBrains Mono",monospace;letter-spacing:.04em}
+  .sidebar .group{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+  .sidebar label{font-family:"JetBrains Mono",monospace;font-size:9px;letter-spacing:.18em;text-transform:uppercase;color:rgba(255,255,255,.5);font-weight:600}
+  .sidebar input,.sidebar select{font-family:"JetBrains Mono",monospace;font-size:12px;background:#0a0a0b;color:#fff;border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:8px 10px;outline:none}
+  .sidebar input:focus,.sidebar select:focus{border-color:#f97316}
+  .sidebar .row2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .sidebar .auto-pill{display:inline-flex;align-items:center;gap:6px;font-family:"JetBrains Mono",monospace;font-size:10px;letter-spacing:.18em;text-transform:uppercase;background:rgba(249,115,22,.12);border:1px solid rgba(249,115,22,.4);color:#f97316;padding:5px 9px;border-radius:6px;align-self:flex-start;font-weight:600}
+  .sidebar button{font-family:"Archivo",sans-serif;font-weight:600;font-size:12px;background:#f97316;color:#0a0a0b;border:none;border-radius:8px;padding:10px 14px;cursor:pointer;transition:transform .12s ease}
+  .sidebar button:hover{transform:translateY(-1px)}
+  .sidebar button.secondary{background:transparent;color:#fff;border:1px solid rgba(255,255,255,.15)}
+  .sidebar .download-row{display:flex;flex-direction:column;gap:8px;margin-top:8px}
+
+  .canvas{display:flex;flex-direction:column;gap:24px;padding-bottom:80px}
+
+  .selector-row{display:grid;grid-template-columns:repeat(5,1fr);gap:12px}
+  .reaction-tile{aspect-ratio:1/1;background:#111;border-radius:14px;overflow:hidden;position:relative;
+    box-shadow:0 12px 32px rgba(0,0,0,.5),0 0 0 1px rgba(255,255,255,.06);
+    transition:transform .2s ease,box-shadow .2s ease;cursor:pointer;border:2px solid transparent}
+  .reaction-tile:hover{transform:translateY(-3px)}
+  .reaction-tile.active{border-color:#f97316;box-shadow:0 16px 40px rgba(249,115,22,.3),0 0 0 1px rgba(249,115,22,.6)}
+  .reaction-tile img{width:100%;height:100%;object-fit:cover}
+  .reaction-tile::after{content:"";position:absolute;inset:0;background:linear-gradient(to bottom,transparent 35%,rgba(0,0,0,.15) 50%,rgba(0,0,0,.88) 100%)}
+  .reaction-tile .pill{position:absolute;top:10px;left:10px;font-family:"JetBrains Mono",monospace;font-size:8px;letter-spacing:.22em;text-transform:uppercase;background:rgba(0,0,0,.5);backdrop-filter:blur(6px);color:#fff;padding:4px 7px;border-radius:5px;font-weight:600;z-index:2;border:1px solid rgba(255,255,255,.12)}
+  .reaction-tile .scenario{position:absolute;bottom:10px;left:10px;right:10px;font-family:"Archivo Black",sans-serif;font-size:11px;line-height:1.15;color:#fff;text-transform:uppercase;letter-spacing:-.005em;z-index:2;text-shadow:0 2px 8px rgba(0,0,0,.6)}
+
+  .preview-block{display:flex;flex-direction:column;gap:14px}
+  .stage-label{font-family:"JetBrains Mono",monospace;font-size:9.5px;letter-spacing:.28em;color:rgba(255,255,255,.45);text-transform:uppercase;font-weight:600}
+
+  /* ════════════════════════════════════════════════════════════
+     CARD CHASSIS — same as design export
+     ════════════════════════════════════════════════════════════ */
+  .card{position:relative;overflow:hidden;border-radius:20px;box-shadow:0 30px 80px rgba(0,0,0,.6),0 0 0 1px rgba(255,255,255,.04)}
+  .card-16x9{width:1080px;height:608px;display:grid;grid-template-columns:1fr 1fr}
+  .card-1x1{width:520px;height:520px;display:grid;grid-template-rows:1fr auto}
+
+  .photo{position:relative;overflow:hidden;background:#000}
+  .photo img{width:100%;height:100%;object-fit:cover;display:block}
+  .photo::after{content:"";position:absolute;inset:0;pointer-events:none}
+
+  .content{padding:32px 36px;display:flex;flex-direction:column;justify-content:space-between;position:relative;gap:14px}
+
+  .top-row{display:flex;justify-content:space-between;align-items:flex-start;gap:14px}
+  .brand-mark{font-family:"Archivo Black",sans-serif;font-size:18px;letter-spacing:-.005em;line-height:1;text-transform:uppercase}
+  .brand-mark em{font-style:normal}
+  .brand-sub{font-family:"JetBrains Mono",monospace;font-size:9px;letter-spacing:.28em;text-transform:uppercase;margin-top:3px;font-weight:600;opacity:.6}
+  .num-pill{font-family:"JetBrains Mono",monospace;font-size:10px;letter-spacing:.18em;text-transform:uppercase;padding:6px 11px;border-radius:999px;font-weight:600}
+
+  .scream-eyebrow{font-family:"JetBrains Mono",monospace;font-size:10px;letter-spacing:.32em;text-transform:uppercase;font-weight:700;margin-bottom:8px}
+  .scream-line{font-family:"Archivo Black",sans-serif;font-size:60px;line-height:.92;letter-spacing:-.025em;text-transform:uppercase}
+  .scream-line em{font-style:italic;font-weight:900}
+
+  .pnl-block{margin-top:auto;padding:18px 0 0;border-top:3px solid currentColor}
+  .pnl-row{display:flex;align-items:flex-end;gap:12px;justify-content:space-between}
+  .pnl-num{font-family:"Archivo Black",sans-serif;font-size:84px;line-height:.9;letter-spacing:-.04em}
+  .pnl-stats{font-family:"JetBrains Mono",monospace;font-size:11px;letter-spacing:.18em;text-transform:uppercase;text-align:right;line-height:1.6;font-weight:500;opacity:.85}
+  .pnl-stats b{font-weight:700;opacity:1}
+
+  .meta-row{margin-top:12px;display:flex;justify-content:space-between;align-items:center;gap:14px;
+    padding-top:12px;border-top:1px dashed rgba(255,255,255,.18);
+    font-family:"JetBrains Mono",monospace;font-size:9.5px;letter-spacing:.18em;text-transform:uppercase;font-weight:500;opacity:.7}
+  .meta-row b{font-weight:700;opacity:1}
+  .meta-row .pair{font-family:"Archivo Black";letter-spacing:-.005em;font-size:13px;text-transform:uppercase;opacity:1}
+
+  .sticker{position:absolute;font-family:"Caveat",cursive;font-size:30px;line-height:.95;transform:rotate(-7deg);font-weight:700;padding:7px 14px;border-radius:6px;box-shadow:0 5px 14px rgba(0,0,0,.25);border:2px solid #0a0a0a;z-index:4;text-align:center}
+  .sticker em{font-style:normal}
+
+  .tape{position:absolute;width:120px;height:22px;border:1px dashed rgba(0,0,0,.18);transform:rotate(-3deg);z-index:4;box-shadow:0 2px 6px rgba(0,0,0,.15)}
+
+  .confetti{position:absolute;inset:0;pointer-events:none;z-index:3}
+  .confetti span{position:absolute;width:10px;height:10px;border-radius:2px;opacity:.92}
+
+  .card-1x1 .content{padding:22px 26px;gap:10px}
+  .card-1x1 .scream-line{font-size:42px}
+  .card-1x1 .pnl-num{font-size:60px}
+  .card-1x1 .pnl-stats{font-size:9.5px;letter-spacing:.16em;line-height:1.5}
+  .card-1x1 .meta-row{font-size:9px;letter-spacing:.16em}
+  .card-1x1 .pnl-block{padding-top:14px;border-top-width:2.5px}
+  .card-1x1 .photo{grid-row:1}
+  .card-1x1 .content{grid-row:2}
+
+  /* ─────── Variant: Goodfellas (Big W) ─────── */
+  .v-goodfellas{background:linear-gradient(135deg,#fef3c7 0%,#fde68a 50%,#fbbf24 100%);color:#0a0a0a}
+  .v-goodfellas .photo img{filter:saturate(1.15) contrast(1.05)}
+  .v-goodfellas .photo::after{background:linear-gradient(135deg,transparent 50%,rgba(251,191,36,.3))}
+  .v-goodfellas .brand-mark em{color:#dc2626}
+  .v-goodfellas .num-pill{background:#0a0a0a;color:#fef3c7}
+  .v-goodfellas .scream-eyebrow{color:#dc2626}
+  .v-goodfellas .scream-line em{color:#dc2626}
+  .v-goodfellas .pnl-num{color:#16a34a}
+  .v-goodfellas .meta-row{border-top-color:rgba(10,10,10,.35);opacity:1;color:rgba(10,10,10,.7)}
+  .v-goodfellas .meta-row b,.v-goodfellas .meta-row .pair{color:#0a0a0a}
+  .v-goodfellas .pnl-stats{color:rgba(10,10,10,.7)}
+  .v-goodfellas .pnl-stats b{color:#0a0a0a}
+  .v-goodfellas .sticker{background:#facc15;color:#dc2626}
+  .v-goodfellas .tape{background:rgba(252,211,77,.7)}
+
+  /* ─────── Variant: Giggling (Wholesome W) ─────── */
+  .v-giggling{background:linear-gradient(135deg,#fef7f0 0%,#fde8d4 50%,#f5d6b3 100%);color:#3d2817}
+  .v-giggling .photo img{filter:saturate(1.05) contrast(1.02)}
+  .v-giggling .photo::after{background:linear-gradient(135deg,transparent 60%,rgba(245,214,179,.25))}
+  .v-giggling .brand-mark em{color:#c2410c}
+  .v-giggling .num-pill{background:#3d2817;color:#fef7f0}
+  .v-giggling .scream-eyebrow{color:#c2410c}
+  .v-giggling .scream-line em{color:#c2410c;font-family:"Caveat",cursive;font-style:normal;font-weight:700;font-size:1.1em;letter-spacing:0;display:inline-block;transform:rotate(-2deg) translateY(4px)}
+  .v-giggling .pnl-num{color:#15803d;font-family:"Cormorant Garamond",serif;font-weight:500;font-style:italic}
+  .v-giggling .meta-row{border-top-color:rgba(61,40,23,.25);opacity:1;color:rgba(61,40,23,.7)}
+  .v-giggling .meta-row b,.v-giggling .meta-row .pair{color:#3d2817}
+  .v-giggling .pnl-stats{color:rgba(61,40,23,.7)}
+  .v-giggling .pnl-stats b{color:#3d2817}
+  .v-giggling .pnl-block{border-top-color:rgba(61,40,23,.3)}
+  .v-giggling .sticker{background:#f5d6b3;color:#15803d;border-color:#3d2817}
+  .v-giggling .tape{background:rgba(252,165,165,.55)}
+  .v-giggling .scream-line{font-size:54px}
+  .v-giggling .card-1x1 .scream-line{font-size:38px}
+
+  .hearts{position:absolute;inset:0;pointer-events:none;z-index:3}
+  .hearts span{position:absolute;font-family:"Caveat",cursive;font-size:24px;color:#c2410c;opacity:.55}
+
+  /* ─────── Variant: OMG (Hype/Pre-entry) ─────── */
+  .v-omg{background:radial-gradient(ellipse at top,#581c87 0%,#1e1b4b 50%,#0a0612 100%);color:#fdf4ff}
+  .v-omg .photo img{filter:saturate(1.2) contrast(1.05) brightness(1.05)}
+  .v-omg .photo::after{
+    background:radial-gradient(ellipse at center,transparent 30%,rgba(88,28,135,.5) 80%,rgba(10,6,18,.85) 100%),
+      linear-gradient(135deg,transparent 50%,rgba(217,70,239,.18))}
+  .v-omg .brand-mark em{color:#d946ef}
+  .v-omg .num-pill{background:#d946ef;color:#0a0612}
+  .v-omg .scream-eyebrow{color:#d946ef}
+  .v-omg .scream-line em{color:#d946ef}
+  .v-omg .pnl-num{color:#facc15;font-style:italic}
+  .v-omg .meta-row{border-top-color:rgba(253,244,255,.25)}
+  .v-omg .pnl-block{border-top-color:rgba(253,244,255,.35)}
+  .v-omg .sticker{background:#facc15;color:#581c87;border-color:#fdf4ff;font-size:28px}
+  .v-omg .tape{background:rgba(217,70,239,.45)}
+
+  .rays{position:absolute;top:50%;left:50%;width:200%;height:200%;
+    background:conic-gradient(from 0deg,transparent 0deg,rgba(217,70,239,.18) 10deg,transparent 20deg,
+      transparent 90deg,rgba(217,70,239,.12) 100deg,transparent 110deg,
+      transparent 180deg,rgba(217,70,239,.18) 190deg,transparent 200deg,
+      transparent 270deg,rgba(217,70,239,.12) 280deg,transparent 290deg);
+    transform:translate(-50%,-50%);pointer-events:none;mix-blend-mode:screen;z-index:2;opacity:.6}
+  .stars{position:absolute;inset:0;pointer-events:none;z-index:3}
+  .stars span{position:absolute;font-family:"Archivo Black";color:#facc15;text-shadow:0 0 12px #facc15;font-size:24px}
+
+  /* ─────── Variant: Final Boss (Pay Day) ─────── */
+  .v-finalboss{background:linear-gradient(135deg,#0a0a0a 0%,#1a1a1a 50%,#0a0a0a 100%);color:#f5f5f5}
+  .v-finalboss .photo img{filter:saturate(.9) contrast(1.15) brightness(.95)}
+  .v-finalboss .photo::after{
+    background:linear-gradient(135deg,transparent 40%,rgba(0,0,0,.6)),
+      linear-gradient(to bottom,transparent 60%,rgba(220,38,38,.18) 100%)}
+  .v-finalboss .brand-mark em{color:#dc2626}
+  .v-finalboss .num-pill{background:#dc2626;color:#0a0a0a;font-weight:700}
+  .v-finalboss .scream-eyebrow{color:#dc2626}
+  .v-finalboss .scream-line em{color:#dc2626}
+  .v-finalboss .pnl-num{color:#22c55e}
+  .v-finalboss .meta-row{border-top-color:rgba(245,245,245,.18);opacity:1;color:rgba(245,245,245,.55)}
+  .v-finalboss .meta-row b,.v-finalboss .meta-row .pair{color:#f5f5f5}
+  .v-finalboss .pnl-stats{color:rgba(245,245,245,.6)}
+  .v-finalboss .pnl-stats b{color:#f5f5f5}
+  .v-finalboss .pnl-block{border-top-color:rgba(245,245,245,.3)}
+  .v-finalboss .sticker{background:#dc2626;color:#0a0a0a;border-color:#0a0a0a;font-family:"Archivo Black",sans-serif;font-size:18px;letter-spacing:.04em;text-transform:uppercase;font-weight:900;font-style:normal}
+  .v-finalboss .tape{background:rgba(220,38,38,.45)}
+
+  .glint{position:absolute;background:linear-gradient(135deg,transparent,rgba(255,255,255,.12) 50%,transparent);pointer-events:none;z-index:2}
+
+  /* ─────── Variant: Pablo (Took the L) ─────── */
+  .v-pablo{background:linear-gradient(135deg,#1c1917 0%,#292524 50%,#1c1917 100%);color:#f5f5f4}
+  .v-pablo .photo img{filter:saturate(.78) contrast(.95) brightness(.88)}
+  .v-pablo .photo::after{background:linear-gradient(135deg,transparent 30%,rgba(0,0,0,.55))}
+  .v-pablo .brand-mark em{color:#f97316}
+  .v-pablo .num-pill{background:#f97316;color:#0a0a0a}
+  .v-pablo .scream-eyebrow{color:#f97316}
+  .v-pablo .scream-line em{color:#f97316}
+  .v-pablo .pnl-num{color:#ef4444}
+  .v-pablo .meta-row{border-top-color:rgba(245,245,244,.18);opacity:1;color:rgba(245,245,244,.55)}
+  .v-pablo .meta-row b,.v-pablo .meta-row .pair{color:#f5f5f4}
+  .v-pablo .pnl-stats{color:rgba(245,245,244,.55)}
+  .v-pablo .pnl-stats b{color:#f5f5f4}
+  .v-pablo .pnl-block{border-top-color:rgba(245,245,244,.25)}
+  .v-pablo .sticker{background:#f97316;color:#0a0a0a;border-color:#0a0a0a;font-size:26px;transform:rotate(7deg)}
+  .v-pablo .tape{background:rgba(249,115,22,.55)}
+  .rain{position:absolute;inset:0;pointer-events:none;z-index:3;opacity:.25}
+  .rain span{position:absolute;width:1px;height:24px;background:linear-gradient(to bottom,transparent,rgba(245,245,244,.6),transparent)}
+
+  /* ─────── Preview wrappers (for screenshot/export) ─────── */
+  .stage-16x9, .stage-1x1{display:flex;flex-direction:column;gap:10px}
+  .stage-16x9 .card-16x9, .stage-1x1 .card-1x1{transform-origin:top left}
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- ───── Sidebar: data form ───── -->
+  <aside class="sidebar">
+    <h1>Share Card<br/><em>v2 demo</em></h1>
+    <p class="lead">Live preview. Auto-suggest variant op basis van R-multiple + side. Klik tile om handmatig te switchen.</p>
+
+    <div class="auto-pill" id="autoPill">Auto-suggest: —</div>
+
+    <div class="group">
+      <label>Pair</label>
+      <input id="i-pair" type="text" value="BTC/USDT"/>
+    </div>
+
+    <div class="row2">
+      <div class="group">
+        <label>Side</label>
+        <select id="i-side"><option>long</option><option>short</option></select>
+      </div>
+      <div class="group">
+        <label>Trade Nº</label>
+        <input id="i-tradenr" type="text" value="142"/>
+      </div>
+    </div>
+
+    <div class="group">
+      <label>Datum</label>
+      <input id="i-date" type="text" value="29 IV 2026"/>
+    </div>
+
+    <div class="row2">
+      <div class="group">
+        <label>PnL ($)</label>
+        <input id="i-pnl" type="number" step="0.01" value="945"/>
+      </div>
+      <div class="group">
+        <label>R-multiple</label>
+        <input id="i-rmult" type="number" step="0.1" value="5.6"/>
+      </div>
+    </div>
+
+    <div class="row2">
+      <div class="group">
+        <label>Return (%)</label>
+        <input id="i-pct" type="number" step="0.01" value="3.16"/>
+      </div>
+      <div class="group">
+        <label>Hold</label>
+        <input id="i-hold" type="text" value="04h 12m"/>
+      </div>
+    </div>
+
+    <div class="row2">
+      <div class="group">
+        <label>Entry</label>
+        <input id="i-entry" type="text" value="71.200"/>
+      </div>
+      <div class="group">
+        <label>Exit</label>
+        <input id="i-exit" type="text" value="73.450"/>
+      </div>
+    </div>
+
+    <div class="group">
+      <label>Brand URL</label>
+      <input id="i-brand" type="text" value="moranitraden.nl"/>
+    </div>
+
+    <div class="download-row">
+      <button id="dl-16x9">↓ Download 16:9 PNG</button>
+      <button id="dl-1x1" class="secondary">↓ Download 1:1 PNG</button>
+    </div>
+
+    <p class="lead" style="margin-top:8px">Tip: open in een desktop-browser. Cards renderen op echte 1080×608 / 520×520 resolutie maar worden geschaald getoond.</p>
+  </aside>
+
+  <!-- ───── Canvas: variant tiles + previews ───── -->
+  <main class="canvas">
+
+    <div class="selector-row" id="selectorRow">
+      <article class="reaction-tile" data-variant="goodfellas">
+        <span class="pill">Big W</span>
+        <img src="../assets/share-cards/goodfellas.png" alt=""/>
+        <div class="scenario">I told you so</div>
+      </article>
+      <article class="reaction-tile" data-variant="giggling">
+        <span class="pill">Wholesome W</span>
+        <img src="../assets/share-cards/giggling.png" alt=""/>
+        <div class="scenario">Tiny W, big smile</div>
+      </article>
+      <article class="reaction-tile" data-variant="omg">
+        <span class="pill">Hype</span>
+        <img src="../assets/share-cards/omg.png" alt=""/>
+        <div class="scenario">OMG this is it</div>
+      </article>
+      <article class="reaction-tile" data-variant="finalboss">
+        <span class="pill">Pay Day</span>
+        <img src="../assets/share-cards/finalboss.png" alt=""/>
+        <div class="scenario">Final boss energy</div>
+      </article>
+      <article class="reaction-tile" data-variant="pablo">
+        <span class="pill">Took the L</span>
+        <img src="../assets/share-cards/pablo.png" alt=""/>
+        <div class="scenario">Stops are tuition</div>
+      </article>
+    </div>
+
+    <div class="preview-block">
+      <div class="stage-label">16:9 · 1080 × 608</div>
+      <div id="stage-16x9" class="stage-16x9">
+        <!-- card-16x9 wordt geïnjecteerd door render() -->
+      </div>
+    </div>
+
+    <div class="preview-block">
+      <div class="stage-label">1:1 · 520 × 520</div>
+      <div id="stage-1x1" class="stage-1x1">
+        <!-- card-1x1 wordt geïnjecteerd door render() -->
+      </div>
+    </div>
+
+  </main>
+
+</div>
+
+<script>
+// ─────────────────────────────────────────────────────────────
+// State + auto-suggest mapping
+// ─────────────────────────────────────────────────────────────
+const STATE = { variant: null, manualOverride: false };
+
+function autoSuggest(data){
+  const r = parseFloat(data.rmult);
+  const isShort = data.side === 'short';
+  if (isNaN(r)) return 'omg';                  // pre-entry / setup
+  if (r >= 5 && isShort) return 'finalboss';
+  if (r >= 5) return 'goodfellas';
+  if (r > 0 && r < 1) return 'giggling';
+  if (r < 0) return 'pablo';
+  return 'goodfellas'; // 1 ≤ R < 5: default Big W
+}
+
+function readForm(){
+  return {
+    pair: document.getElementById('i-pair').value || 'BTC/USDT',
+    side: document.getElementById('i-side').value,
+    tradenr: document.getElementById('i-tradenr').value,
+    date: document.getElementById('i-date').value,
+    pnl: parseFloat(document.getElementById('i-pnl').value) || 0,
+    rmult: parseFloat(document.getElementById('i-rmult').value),
+    pct: parseFloat(document.getElementById('i-pct').value),
+    hold: document.getElementById('i-hold').value,
+    entry: document.getElementById('i-entry').value,
+    exit: document.getElementById('i-exit').value,
+    brand: document.getElementById('i-brand').value,
+  };
+}
+
+// Dutch number format helpers
+const fmtMoney = n => {
+  const sign = n < 0 ? '−' : '+';
+  const abs = Math.abs(n);
+  const formatted = new Intl.NumberFormat('nl-NL', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(abs);
+  return `${sign}$${formatted}`;
+};
+const fmtPct = n => {
+  if (isNaN(n)) return '—';
+  const sign = n < 0 ? '−' : '+';
+  return `${sign}${new Intl.NumberFormat('nl-NL', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Math.abs(n))}%`;
+};
+const fmtR = n => {
+  if (isNaN(n)) return '—';
+  const sign = n < 0 ? '−' : '+';
+  return `${sign}${new Intl.NumberFormat('nl-NL', { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(Math.abs(n))} R`;
+};
+
+// ─────────────────────────────────────────────────────────────
+// Variant content (copy + decorations)
+// ─────────────────────────────────────────────────────────────
+const VARIANTS = {
+  goodfellas: {
+    label: 'Big W', img: '../assets/share-cards/goodfellas.png',
+    eyebrowPrefix: '▲ Closed', screamMain: 'I told', screamEm: 'you so.',
+    sticker16: { html: 'when stoploss<br/>holds <em>perfectly</em>', style: 'top:30px;left:30px;transform:rotate(-12deg)' },
+    sticker1:  { html: 'stoploss<br/><em>held</em>', style: 'top:18px;left:18px;font-size:22px;transform:rotate(-10deg)' },
+    decoration16: `<div class="confetti">
+      <span style="background:#f97316;top:8%;left:10%;transform:rotate(15deg)"></span>
+      <span style="background:#22c55e;top:15%;left:80%;transform:rotate(-20deg)"></span>
+      <span style="background:#facc15;top:70%;left:6%;transform:rotate(40deg)"></span>
+      <span style="background:#ef4444;top:88%;left:45%;transform:rotate(-15deg)"></span>
+      <span style="background:#22c55e;top:30%;left:60%;transform:rotate(60deg);width:14px;height:14px"></span>
+      <span style="background:#facc15;top:55%;left:88%;transform:rotate(20deg)"></span>
+    </div>`,
+    decoration1: `<div class="confetti">
+      <span style="background:#f97316;top:12%;left:14%;transform:rotate(15deg)"></span>
+      <span style="background:#22c55e;top:22%;left:78%;transform:rotate(-20deg)"></span>
+      <span style="background:#facc15;top:70%;left:8%;transform:rotate(40deg)"></span>
+    </div>`,
+    tape16: 'top:-6px;left:30%',
+  },
+  giggling: {
+    label: 'Wholesome W', img: '../assets/share-cards/giggling.png',
+    eyebrowPrefix: '▲ Scalp', screamMain: 'Tiny W,', screamEm: 'smile.', screamMid: 'big',
+    sticker16: { html: '+0,5 R<br/><em>still counts!</em>', style: 'top:24px;right:24px;transform:rotate(6deg)' },
+    sticker1:  { html: 'still<br/><em>counts!</em>', style: 'top:18px;right:18px;font-size:20px;transform:rotate(6deg)' },
+    decoration16: `<div class="hearts">
+      <span style="top:12%;left:8%">♡</span>
+      <span style="top:25%;right:10%">♡</span>
+      <span style="bottom:14%;left:14%">♡</span>
+      <span style="top:55%;right:20%;font-size:18px">♡</span>
+    </div>`,
+    decoration1: `<div class="hearts">
+      <span style="top:14%;left:12%">♡</span>
+      <span style="top:60%;right:14%">♡</span>
+    </div>`,
+    tape16: 'top:-6px;right:22%',
+  },
+  omg: {
+    label: 'Hype', img: '../assets/share-cards/omg.png',
+    eyebrowPrefix: '⏵ Setup', screamMain: 'OMG', screamEm: 'is it.', screamMid: 'this',
+    sticker16: { html: 'setup =<br/><em>chefs kiss</em>', style: 'top:24px;right:24px;transform:rotate(8deg)' },
+    sticker1:  { html: 'chefs<br/><em>kiss</em>', style: 'top:18px;right:18px;font-size:20px;transform:rotate(8deg)' },
+    decoration16: `<div class="rays"></div><div class="stars">
+      <span style="top:14%;left:10%">★</span>
+      <span style="top:70%;right:12%;font-size:18px">★</span>
+      <span style="bottom:18%;left:18%;font-size:30px">✦</span>
+    </div>`,
+    decoration1: `<div class="stars">
+      <span style="top:18%;left:12%;font-size:18px">★</span>
+      <span style="top:64%;right:14%;font-size:22px">✦</span>
+    </div>`,
+    tape16: null,
+  },
+  finalboss: {
+    label: 'Pay Day', img: '../assets/share-cards/finalboss.png',
+    eyebrowPrefix: '▼ Closed', screamMain: 'Final boss', screamEm: 'energy.',
+    sticker16: { html: 'no mercy<br/>no overstay', style: 'bottom:24px;left:24px' },
+    sticker1:  { html: 'no mercy', style: 'bottom:18px;left:18px;font-size:14px' },
+    decoration16: `<div class="glint" style="top:10%;left:0;width:60%;height:2px"></div>
+      <div class="glint" style="bottom:30%;right:0;width:40%;height:1px"></div>`,
+    decoration1: '',
+    tape16: null,
+  },
+  pablo: {
+    label: 'Took the L', img: '../assets/share-cards/pablo.png',
+    eyebrowPrefix: '▼ Stopped', screamMain: 'Took', screamEm: 'L.', screamMid: 'the',
+    sticker16: { html: 'stops are<br/><em>tuition</em>', style: 'top:30px;right:30px;transform:rotate(7deg)' },
+    sticker1:  { html: 'stops =<br/><em>tuition</em>', style: 'top:18px;right:18px;font-size:18px;transform:rotate(7deg)' },
+    decoration16: `<div class="rain">
+      <span style="top:10%;left:14%"></span>
+      <span style="top:30%;left:42%"></span>
+      <span style="top:60%;left:72%"></span>
+      <span style="top:18%;left:78%"></span>
+      <span style="top:50%;left:24%"></span>
+    </div>`,
+    decoration1: '',
+    tape16: 'top:-6px;right:25%',
+  },
+};
+
+// ─────────────────────────────────────────────────────────────
+// Renderers
+// ─────────────────────────────────────────────────────────────
+function renderCard16x9(variant, data){
+  const v = VARIANTS[variant];
+  const isPreEntry = variant === 'omg';
+  const sideLabel = data.side === 'short' ? 'Short' : 'Long';
+  const eyebrow = `${v.eyebrowPrefix} · ${sideLabel} · ${data.pair}`;
+  const screamHtml = v.screamMid
+    ? `${v.screamMain}<br/>${v.screamMid} <em>${v.screamEm}</em>`
+    : `${v.screamMain}<br/>${data.side === 'short' && variant === 'pablo' ? 'the' : 'you'}<em>${v.screamEm}</em>`;
+
+  // Pablo special: "Took the L" needs "the" between Took and L
+  const pabloScream = `Took<br/>the<em>L.</em>`;
+  const finalScream = variant === 'pablo' ? pabloScream
+                    : variant === 'goodfellas' ? `I told<br/>you<em>so.</em>`
+                    : variant === 'giggling' ? `Tiny W,<br/>big <em>smile.</em>`
+                    : variant === 'omg' ? `OMG<br/>this <em>is it.</em>`
+                    : `Final boss<br/><em>energy.</em>`;
+
+  const stickerHtml = v.sticker16
+    ? `<div class="sticker" style="${v.sticker16.style}">${v.sticker16.html}</div>` : '';
+
+  const tapeHtml = v.tape16 ? `<div class="tape" style="${v.tape16}"></div>` : '';
+
+  // Pre-entry has different pnl-block
+  const pnlBlock = isPreEntry
+    ? `<div class="pnl-block">
+        <div class="pnl-row" style="align-items:center">
+          <div style="font-family:'Archivo Black';font-size:48px;line-height:.95;color:#facc15;letter-spacing:-.025em">PRE<br/>ENTRY</div>
+          <div class="pnl-stats">
+            <div>Entry zone <b>${data.entry}</b></div>
+            <div>Stop · Risk <b>${isNaN(data.rmult) ? '—' : (data.pct ? data.pct + '%' : '—')}</b></div>
+            <div>Target <b>${data.exit}</b> · <b>${fmtR(data.rmult).replace(/^[+−]/, '')}+</b></div>
+          </div>
+        </div>
+        <div class="meta-row">
+          <span class="pair">${data.pair} · ${sideLabel}</span>
+          <span>Setup: <b>${data.tradenr ? 'Nº ' + data.tradenr : 'PRE-ENTRY'}</b></span>
+          <span>${data.brand}</span>
+        </div>
+      </div>`
+    : `<div class="pnl-block">
+        <div class="pnl-row">
+          <div class="pnl-num">${fmtMoney(data.pnl)}</div>
+          <div class="pnl-stats">
+            <div><b>${fmtPct(data.pct)}</b> Return</div>
+            <div><b>${fmtR(data.rmult)}</b> Multiple</div>
+            <div><b>${data.hold || '—'}</b> Hold</div>
+          </div>
+        </div>
+        <div class="meta-row">
+          <span class="pair">${data.pair} · ${sideLabel}</span>
+          <span>${data.entry} → <b>${data.exit}</b></span>
+          <span>${data.brand}</span>
+        </div>
+      </div>`;
+
+  return `<article class="card card-16x9 v-${variant}" id="card-16x9-render">
+    <div class="photo">
+      <img src="${v.img}" alt=""/>
+      ${v.decoration16}
+      ${stickerHtml}
+    </div>
+    <div class="content">
+      ${tapeHtml}
+      <div class="top-row">
+        <div>
+          <div class="brand-mark">Sync<em>Journal</em></div>
+          <div class="brand-sub">${isPreEntry ? 'Setup Alert · Vol. III' : 'Trade Nº ' + data.tradenr + ' · Vol. III'}</div>
+        </div>
+        <div class="num-pill">${data.date}</div>
+      </div>
+      <div class="scream">
+        <div class="scream-eyebrow">${eyebrow}</div>
+        <div class="scream-line">${finalScream}</div>
+      </div>
+      ${pnlBlock}
+    </div>
+  </article>`;
+}
+
+function renderCard1x1(variant, data){
+  const v = VARIANTS[variant];
+  const isPreEntry = variant === 'omg';
+  const sideLabel = data.side === 'short' ? 'Short' : 'Long';
+  const arrow = data.side === 'short' ? '▼' : '▲';
+  const finalScreamShort = variant === 'pablo' ? `Took the <em>L.</em>`
+                    : variant === 'goodfellas' ? `I told you <em>so.</em>`
+                    : variant === 'giggling' ? `Tiny W, big <em>smile.</em>`
+                    : variant === 'omg' ? `OMG this <em>is it.</em>`
+                    : `Final boss<em> energy.</em>`;
+
+  const stickerHtml = v.sticker1
+    ? `<div class="sticker" style="${v.sticker1.style}">${v.sticker1.html}</div>` : '';
+
+  const pillContent = isPreEntry ? 'PRE-ENTRY' : (isNaN(data.rmult) ? data.date : fmtR(data.rmult));
+
+  const pnlBlock = isPreEntry
+    ? `<div class="pnl-block">
+        <div class="pnl-row">
+          <div style="font-family:'Archivo Black';font-size:30px;color:#facc15;letter-spacing:-.025em">${data.entry}<br/><span style="font-size:14px;color:rgba(253,244,255,.6)">entry zone</span></div>
+          <div class="pnl-stats">
+            <div>TP <b>${data.exit}</b></div>
+            <div><b>${fmtR(data.rmult).replace(/^[+−]/, '')}+</b> target</div>
+          </div>
+        </div>
+      </div>`
+    : `<div class="pnl-block">
+        <div class="pnl-row">
+          <div class="pnl-num">${fmtMoney(data.pnl)}</div>
+          <div class="pnl-stats">
+            <div><b>${fmtPct(data.pct)}</b></div>
+            <div><b>${data.hold || '—'}</b></div>
+          </div>
+        </div>
+      </div>`;
+
+  return `<article class="card card-1x1 v-${variant}" id="card-1x1-render">
+    <div class="photo">
+      <img src="${v.img}" alt=""/>
+      ${v.decoration1}
+      ${stickerHtml}
+    </div>
+    <div class="content">
+      <div class="top-row">
+        <div>
+          <div class="brand-mark" style="font-size:14px">Sync<em>Journal</em></div>
+          <div class="brand-sub" style="font-size:8px">Nº ${data.tradenr} · ${data.date}</div>
+        </div>
+        <div class="num-pill" style="font-size:9px">${pillContent}</div>
+      </div>
+      <div class="scream">
+        <div class="scream-eyebrow" style="font-size:9px">${arrow} ${sideLabel} · ${data.pair}</div>
+        <div class="scream-line">${finalScreamShort}</div>
+      </div>
+      ${pnlBlock}
+    </div>
+  </article>`;
+}
+
+// ─────────────────────────────────────────────────────────────
+// Render + state sync
+// ─────────────────────────────────────────────────────────────
+function render(){
+  const data = readForm();
+  const suggested = autoSuggest(data);
+  document.getElementById('autoPill').textContent = `Auto-suggest: ${suggested}`;
+
+  if (!STATE.manualOverride) STATE.variant = suggested;
+  const v = STATE.variant;
+
+  // Update tile-active state
+  document.querySelectorAll('.reaction-tile').forEach(t => {
+    t.classList.toggle('active', t.dataset.variant === v);
+  });
+
+  // Render cards
+  document.getElementById('stage-16x9').innerHTML = renderCard16x9(v, data);
+  document.getElementById('stage-1x1').innerHTML = renderCard1x1(v, data);
+}
+
+// Tile click → manual override
+document.getElementById('selectorRow').addEventListener('click', e => {
+  const tile = e.target.closest('.reaction-tile');
+  if (!tile) return;
+  STATE.variant = tile.dataset.variant;
+  STATE.manualOverride = true;
+  render();
+});
+
+// Form changes → re-render (auto-suggest re-applies if not overridden)
+['i-pair','i-side','i-tradenr','i-date','i-pnl','i-rmult','i-pct','i-hold','i-entry','i-exit','i-brand'].forEach(id => {
+  document.getElementById(id).addEventListener('input', () => {
+    // If user manually adjusts a key field, reset override so auto-suggest re-runs
+    if (id === 'i-rmult' || id === 'i-side') STATE.manualOverride = false;
+    render();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────
+// PNG download via html-to-image
+// ─────────────────────────────────────────────────────────────
+async function downloadCard(selectorId, suffix){
+  const node = document.getElementById(selectorId);
+  if (!node || !window.htmlToImage) { alert('html-to-image niet geladen'); return; }
+  try {
+    const dataUrl = await window.htmlToImage.toPng(node, {
+      pixelRatio: 2,
+      cacheBust: true,
+      quality: 1,
+    });
+    const data = readForm();
+    const link = document.createElement('a');
+    link.download = `syncjournal-${data.tradenr || 'trade'}-${STATE.variant}-${suffix}.png`;
+    link.href = dataUrl;
+    link.click();
+  } catch (err) {
+    console.error('Download failed:', err);
+    alert('Download mislukt: ' + err.message);
+  }
+}
+document.getElementById('dl-16x9').addEventListener('click', () => downloadCard('card-16x9-render', '16x9'));
+document.getElementById('dl-1x1').addEventListener('click', () => downloadCard('card-1x1-render', '1x1'));
+
+// Initial render
+render();
+</script>
+
+</body>
+</html>
