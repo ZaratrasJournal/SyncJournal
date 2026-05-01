@@ -6,6 +6,14 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.64.10] — 2026-05-01
+
+### Gewijzigd
+- **Alle Reactions 16:9 varianten: letterbox-look met `object-fit: contain`** — wat in v12.64.9 alleen voor OMG werd toegepast (met paarse letterbox), gebeurt nu voor alle 5 mood-varianten (Goodfellas/Giggling/OMG/FinalBoss/Pablo). Photo background staat op `transparent` zodat de variant-gradient (gold/sage/magenta/obsidian/burnt-grey) als naadloze letterbox door de bovenkant en onderkant van de foto schemert. Hele meme-foto altijd compleet zichtbaar — gezicht én eventuele meme-tekst niet meer afgesneden op 16:9.
+- **1:1 ongewijzigd** — daar blijft `object-fit: cover` met variant-specifieke `object-position` tweaks (giggling 22%, finalboss 25%, omg 25% top voor face-focus). Wider container in 1:1 maakt cover daar wel werkbaar.
+
+---
+
 ## [v12.64.9] — 2026-05-01
 
 ### Fixed
