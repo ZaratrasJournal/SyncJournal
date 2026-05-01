@@ -6,6 +6,17 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.64.4] — 2026-05-01
+
+### Gewijzigd
+- **Pre-entry (open trade) toont nu target Return% prominent** — voor de Reactions OMG variant (open trades) was er geen Return% maar een "PRE / ENTRY" placeholder. Nu berekent de share-card het **target return%** als `(exit − entry) / entry × 100` (richting-gecorrigeerd voor short) en toont die als hero, met **target R-multiple** + **TP** als sub-stats. Consistent met de hero-swap-philosophie van v12.64.2.
+- **Setup-toggle toont nu setup + confirmation tags** — voorheen alleen `setupTags` (max 2). Nu voegt de share-card ook `confirmationTags` toe (max 2 elk = max 4 tags totaal). Voorbeeld: `Breakout · Pullback · Volume confirm · RSI divergence`.
+
+### Fixed
+- **OMG meme-foto cropping** — de "OMG THIS IS SO EXCITING!" tekst onderaan de meme werd afgesneden door `object-fit: cover` met default center-positie. Fix: `object-position: center 95%` voor de OMG variant zodat de tekst onderaan in beeld blijft (gezicht boven blijft ook zichtbaar).
+
+---
+
 ## [v12.64.3] — 2026-05-01
 
 ### Fixed
