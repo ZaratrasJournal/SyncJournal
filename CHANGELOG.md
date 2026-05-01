@@ -6,6 +6,13 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.64.3] — 2026-05-01
+
+### Fixed
+- **"Deel kaart"-knop verscheen alleen bij Blofin-trades, niet bij MEXC** — de knop-conditie was `{trade.pnl && ...}`, wat falsy is bij lege string `""`. MEXC's API-mapping doet `pnl: String(t.realised || "")` waarbij JavaScript `0 || ""` als `""` evaluatert (0 is falsy). Resultaat: voor MEXC break-even trades én alle open trades was de knop verborgen. Fix: knop altijd tonen — open trades krijgen automatisch de pre-entry (OMG) variant in de share-card via auto-suggest, en break-even trades zijn ook deelbaar.
+
+---
+
 ## [v12.64.2] — 2026-05-01
 
 ### Gewijzigd
