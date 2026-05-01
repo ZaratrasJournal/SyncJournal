@@ -6,6 +6,14 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.64.6] — 2026-05-01
+
+### Fixed
+- **Setup-tag werd niet getoond op pre-entry/open trade share-cards** — voor open trades (Reactions OMG variant) zat de setup-tag wel in de meta-row maar door de specifieke logica + lege `setupTags` op API-imports kwam de tag niet in beeld. Nu **vervangt setup-tag de generic "Setup" label in de eyebrow** voor pre-entry: voorheen `▶ Setup · Short · ETH/USDT` → nu `▶ Breakout · Pullback · Short · ETH/USDT`. Voor closed trades blijft setup-tag in de meta-row zoals voorheen.
+- **"STOP"/"Entry"/"TP" toonden zonder waarde** — als de Stop-toggle aan stond maar `trade.stopLoss` was leeg, kreeg je de label "STOP" zonder cijfer (idem voor leeg Entry of Target). Nu: alle stat-rijen vereisen zowel toggle aan als non-empty waarde voordat ze renderen.
+
+---
+
 ## [v12.64.5] — 2026-05-01
 
 ### Gewijzigd

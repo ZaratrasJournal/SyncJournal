@@ -895,7 +895,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.64.5",released:"2026-05-01"};
+const APP_VERSION={version:"v12.64.6",released:"2026-05-01"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -3236,7 +3236,10 @@ const TC_BRAND="moranitraden.nl";
 // ── Render: Reactions ──
 function tcRenderReactions16x9(variant,d){
   const v=TC_REACT[variant];const s=d.show;
-  const eyebrow=v.eyebrowPrefix+" · "+tcSideLabel(d)+" · "+d.pair;
+  // Eyebrow: voor pre-entry met setup-tag → vervang generic "Setup" door echte tag(s).
+  // Voor closed: eyebrow blijft "▲ Closed · Long · BTC/USDT" (status + side + pair).
+  const eyebrowPrefix=(v.isPreEntry&&s.setup&&d.setup)?`⏵ ${d.setup}`:v.eyebrowPrefix;
+  const eyebrow=eyebrowPrefix+" · "+tcSideLabel(d)+" · "+d.pair;
   const stickerHtml=v.sticker16?`<div class="tc-sticker" style="${v.sticker16.style}">${v.sticker16.html}</div>`:"";
   const tapeHtml=v.tape16?`<div class="tc-tape" style="${v.tape16}"></div>`:"";
   const brandSub=v.isPreEntry?"Setup Alert · Vol. III":(s.tradenr?`Trade Nº ${d.tradenr} · Vol. III`:"Vol. III");
@@ -3247,18 +3250,19 @@ function tcRenderReactions16x9(variant,d){
   if(s.rmult)statsRows.push(`<div><b>${tcFmtR(d.rmult)}</b> Multiple</div>`);
   if(s.hold)statsRows.push(`<div><b>${d.hold||"—"}</b> Hold</div>`);
   const statsBlock=statsRows.length?`<div class="tc-pnl-stats">${statsRows.join("")}</div>`:"";
-  // Meta-row: pair·side ALTIJD, dan entry→exit (als aan), dan setup-tag (als aan), dan brand
+  // Meta-row: pair·side ALTIJD, dan entry→exit (closed only), dan setup-tag (altijd, ook pre-entry), dan brand
   const metaParts=[`<span class="tc-pair">${d.pair} · ${tcSideLabel(d)}</span>`];
   if(s.entryexit&&!v.isPreEntry)metaParts.push(`<span>${d.entry} → <b>${d.exit}</b></span>`);
-  if(s.setup&&d.setup)metaParts.push(`<span>${d.setup}</span>`);
+  if(s.setup&&d.setup&&!v.isPreEntry)metaParts.push(`<span>${d.setup}</span>`);// pre-entry heeft setup al in eyebrow
   metaParts.push(`<span>${TC_BRAND}</span>`);
   // Voor pre-entry (open trade): toon target-pct/target-R als hero, met "TARGET" label
+  // Stop alleen tonen als zowel toggle aan als waarde aanwezig (anders "STOP" zonder cijfer)
   const targetStats=[];
   if(v.isPreEntry){
     if(s.rmult&&!isNaN(d.rmult))targetStats.push(`<div><b>${tcFmtR(d.rmult).replace(/^[+−]/,"")}+</b> R Target</div>`);
-    if(s.entryexit)targetStats.push(`<div>Entry <b>${d.entry}</b></div>`);
-    if(s.entryexit)targetStats.push(`<div>Target <b>${d.exit}</b></div>`);
-    if(s.stop)targetStats.push(`<div>Stop <b>${d.stop}</b></div>`);
+    if(s.entryexit&&d.entry)targetStats.push(`<div>Entry <b>${d.entry}</b></div>`);
+    if(s.entryexit&&d.exit)targetStats.push(`<div>Target <b>${d.exit}</b></div>`);
+    if(s.stop&&d.stop)targetStats.push(`<div>Stop <b>${d.stop}</b></div>`);
   }
   const targetStatsBlock=targetStats.length?`<div class="tc-pnl-stats">${targetStats.join("")}</div>`:"";
   const pnlBlock=v.isPreEntry
@@ -3281,17 +3285,22 @@ function tcRenderReactions1x1(variant,d){
   if(s.pnl)statsRows.push(`<div class="tc-pnl-money"><b>${tcFmtMoney(d.pnl)}</b></div>`);
   if(s.hold)statsRows.push(`<div><b>${d.hold||"—"}</b></div>`);
   const statsBlock=statsRows.length?`<div class="tc-pnl-stats">${statsRows.join("")}</div>`:"";
-  // Pre-entry 1:1: target-pct als hero, R + TP als sub
+  // Pre-entry 1:1: target-pct als hero, R + TP als sub. Stop alleen tonen als waarde aanwezig.
   const peStats1=[];
   if(v.isPreEntry){
     if(s.rmult&&!isNaN(d.rmult))peStats1.push(`<div><b>${tcFmtR(d.rmult).replace(/^[+−]/,"")}+</b> R</div>`);
-    if(s.entryexit)peStats1.push(`<div>TP <b>${d.exit}</b></div>`);
+    if(s.entryexit&&d.exit)peStats1.push(`<div>TP <b>${d.exit}</b></div>`);
+    if(s.stop&&d.stop)peStats1.push(`<div>SL <b>${d.stop}</b></div>`);
   }
   const peStats1Block=peStats1.length?`<div class="tc-pnl-stats">${peStats1.join("")}</div>`:"";
   const pnlBlock=v.isPreEntry
     ?`<div class="tc-pnl-block"><div class="tc-pnl-row">${s.pct&&!isNaN(d.pct)?`<div class="tc-pnl-num" style="color:#facc15;font-style:italic">${tcFmtPct(d.pct)}</div>`:`<div class="tc-pnl-num" style="font-size:36px;color:#facc15">SETUP</div>`}${peStats1Block}</div></div>`
     :`<div class="tc-pnl-block"><div class="tc-pnl-row">${s.pct?`<div class="tc-pnl-num">${tcFmtPct(d.pct)}</div>`:""}${statsBlock}</div></div>`;
-  return `<article class="tc-card tc-1x1 tc-v-${variant}"><div class="tc-photo"><img src="${v.img}" alt=""/>${v.decoration1}${stickerHtml}</div><div class="tc-content"><div class="tc-top-row"><div><div class="tc-brand-mark" style="font-size:14px">Sync<em>Journal</em></div><div class="tc-brand-sub" style="font-size:8px">${brandSub}</div></div>${pillHtml}</div><div class="tc-scream"><div class="tc-scream-eyebrow" style="font-size:9px">${tcSideArrow(d)} ${tcSideLabel(d)} · ${d.pair}</div><div class="tc-scream-line">${v.scream1}</div></div>${pnlBlock}</div></article>`;
+  // Eyebrow: setup-tag prominent voor pre-entry, anders gewoon side·pair
+  const eyebrowText1x1=(v.isPreEntry&&s.setup&&d.setup)
+    ?`⏵ ${d.setup} · ${tcSideLabel(d)} · ${d.pair}`
+    :`${tcSideArrow(d)} ${tcSideLabel(d)} · ${d.pair}`;
+  return `<article class="tc-card tc-1x1 tc-v-${variant}"><div class="tc-photo"><img src="${v.img}" alt=""/>${v.decoration1}${stickerHtml}</div><div class="tc-content"><div class="tc-top-row"><div><div class="tc-brand-mark" style="font-size:14px">Sync<em>Journal</em></div><div class="tc-brand-sub" style="font-size:8px">${brandSub}</div></div>${pillHtml}</div><div class="tc-scream"><div class="tc-scream-eyebrow" style="font-size:9px">${eyebrowText1x1}</div><div class="tc-scream-line">${v.scream1}</div></div>${pnlBlock}</div></article>`;
 }
 
 // ── Render: Cinema ──
