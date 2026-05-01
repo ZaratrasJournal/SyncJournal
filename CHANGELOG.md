@@ -6,6 +6,13 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.64.8] — 2026-05-01
+
+### Fixed
+- **Pre-entry hero pct duwde stats naar de rand** — bij Reactions OMG variant met 4 stats (R Target/Entry/Target/Stop) was de hero `+126,92%` op 84px (Reactions default) te dominant. Stats rechts werden naar de rand geknepen. Fix: pre-entry pct krijgt **64px** voor 16:9 (was 84px) en **44px** voor 1:1 (was 60px). Closed-trade hero blijft 84px/60px omdat die maar 3 sub-stats heeft (PnL/R/Hold).
+
+---
+
 ## [v12.64.7] — 2026-05-01
 
 ### Fixed
