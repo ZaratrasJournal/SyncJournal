@@ -6,6 +6,24 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.64.2] — 2026-05-01
+
+### Gewijzigd
+- **Share-card v2 hero-swap: Return% groot, PnL secundair** — geïnspireerd op MEXC's referral-card waar `+68.86%` enorm in beeld staat met `+5.22 USDT` daaronder. In alle 4 directions (Reactions/Cinema/Dossier/Monogram) is nu de **return-percentage de hero**:
+  - **Reactions** 16:9 + 1:1: `tc-pnl-num` toont nu `+3,16%` (was `+$945`); PnL prominent in stats-rij als `+$945 USDT` met `tc-pnl-money` styling.
+  - **Cinema** 16:9: `tc-pnl-hero` toont nu Return% in 76px Bodoni (was 56px voor pnl); sub-meta toont PnL + R-multiple.
+  - **Cinema** 1:1: 96px Bodoni voor pct; pnl als sub-stat met `P&L` label.
+  - **Dossier** 16:9: `tc-fact-num` 84px GFS Didot voor pct; PnL in fact-side als sub.
+  - **Dossier** 1:1: 78px voor pct.
+  - **Monogram** 16:9: `tc-num` 240px Didot voor pct (was 200px voor pnl); PnL als 1e fact-item in de facts-row.
+  - **Monogram** 1:1: 200px Didot voor pct; label gewijzigd van "Realized P&L" naar "Return".
+
+### Fixed
+- **Setup-tag verdween in Reactions** — bug in meta-row logica: `else if (s.setup && !v.isPreEntry)` betekende dat setup-tag ALLEEN getoond werd als entry/exit UIT was. Met beide aan (default) verdween de setup-tag uit de share-kaart. Fix: setup-tag toont nu altijd als de toggle aan staat, naast entry/exit.
+- **Setup-tag in Dossier/Monogram/Cinema** — werkte al correct via subhead/post/credits-block, alleen Reactions had de logica-bug. Geen wijzigingen nodig in de andere directions.
+
+---
+
 ## [v12.64.1] — 2026-05-01
 
 ### Fixed
