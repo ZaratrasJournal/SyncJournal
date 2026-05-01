@@ -4,26 +4,26 @@ description: Autonome visuele design-review over alle 6 thema's met checklist en
 
 # /design-review
 
-Voer een autonome design-review uit op `work/tradejournal.html` over alle 6 thema's. Gebruik onze bestaande Playwright + screenshot infrastructuur. Geen menselijke clicks nodig — output is een gestructureerd rapport dat Denny kan lezen.
+Voer een autonome design-review uit op `work/tradejournal.html` over alle 6 thema's × 3 schermen (Dashboard / Trades / Instellingen). Gebruik onze bestaande Playwright + screenshot infrastructuur. Geen menselijke clicks nodig — output is een gestructureerd rapport dat Denny kan lezen.
 
-Als de gebruiker een argument meegeeft (`/design-review trades` of `/design-review playbook`), focus de review op die specifieke screen door de spec uit te breiden of `addInitScript` te gebruiken om naar die tab te navigeren.
+Als de gebruiker een argument meegeeft (`/design-review trades` of `/design-review accounts` of `/design-review dashboard`), focus de review op alleen die screen om de output beknopt te houden.
 
 ## Werkproces
 
 ### Stap 1 — Run de tests
 ```bash
 cd C:/Users/Denny/Documents/Tradejournal
-npx playwright test tests/themes.spec.js tests/smoke.spec.js
+npx playwright test tests/design-review.spec.js tests/smoke.spec.js
 ```
 
-Verifieer dat alle 7 tests groen zijn (6 thema's + 1 smoke). Bij failure: stop, rapporteer welke test faalde + waarom, vraag of door te gaan.
+Verifieer dat alle 19 tests groen zijn (6 thema's × 3 schermen + 1 smoke). Bij failure: stop, rapporteer welke test faalde + waarom, vraag of door te gaan.
 
-### Stap 2 — Lees alle 6 nieuwe screenshots
-Voor elk thema: `Read tests/screenshots/themes/<theme>.png` (sync, classic, aurora, light, parchment, daylight). Je ziet ze multimodaal — analyseer wat er staat.
+### Stap 2 — Lees screenshots
+Per thema, per scherm: `Read tests/screenshots/design-review/<theme>-<screen>.png`. Beschikbare screens: `dashboard`, `trades`, `accounts`. Bij argument-filter: alleen die screen lezen.
 
 ### Stap 3 — Vergelijk met baseline
-Voor elk thema: `Read tests/screenshots/baseline/themes/<theme>.png` en zet naast de nieuwe versie. Noteer:
-- **Identiek**: geen verschil → ✓
+Per thema/screen: `Read tests/screenshots/baseline/design-review/<theme>-<screen>.png` en zet naast de nieuwe versie. Noteer:
+- **Identiek**: geen verschil → ✓ (timestamps/quote-rotatie/live-koers tellen niet)
 - **Bedoelde wijziging**: layout/styling change die Denny aankondigde → ⓘ (en suggereer baseline-update)
 - **Onbedoelde regressie**: iets veranderd dat niet bewust was → ⚠ (vereist actie)
 
@@ -63,13 +63,14 @@ Schrijf in NL, kort, scanbaar:
 ```
 # Design Review — work/tradejournal.html (vX.X)
 Datum: YYYY-MM-DD
-Tests: 7/7 ✓ (themes 6, smoke 1)
+Tests: 19/19 ✓ (6 thema's × 3 schermen + smoke)
 
 ## Per-theme bevindingen
 
-### sync (dark, gold)        Status: ✓ / ⚠ / ✗
-- Bevinding 1
-- Bevinding 2
+### sync (dark, gold)
+- Dashboard: ✓ / ⚠ / ✗  — kort
+- Trades:    ✓ / ⚠ / ✗  — kort
+- Instellingen: ✓ / ⚠ / ✗  — kort
 
 ### classic ...
 ...

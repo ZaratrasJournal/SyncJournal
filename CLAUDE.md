@@ -173,11 +173,15 @@ Geen install nodig. Parseert `~/.claude/projects/*.jsonl`. Gebruik wekelijks om 
 
 ### /design-review slash command
 
-`.claude/commands/design-review.md` — autonome visuele review over alle 6 thema's. Type `/design-review` (optioneel met argument zoals `trades` of `playbook`). Workflow: runt themes+smoke specs, leest output-screenshots multimodaal, vergelijkt met baseline, loopt design-checklist (contrast, theme-consistency, layout integrity, whitespace, top-bar info), output in Nederlands gestructureerd rapport met ✓/⚠/✗ per thema + top-actiepunten + ship/fix-verdict.
+`.claude/commands/design-review.md` — autonome visuele review over 6 thema's × 3 schermen (Dashboard / Trades / Instellingen). Type `/design-review` (of met argument: `trades` / `accounts` / `dashboard` om te scopen). Workflow: runt `tests/design-review.spec.js` (18 specs, ~2.5 min) + smoke, leest output-screenshots multimodaal, vergelijkt met baseline in `tests/screenshots/baseline/design-review/`, loopt design-checklist (contrast, theme-consistency, layout integrity, whitespace, top-bar info), output in Nederlands gestructureerd rapport met ✓/⚠/✗ per scherm × thema + top-actiepunten + ship/fix-verdict.
+
+**Twee specs onderscheid:**
+- `tests/themes.spec.js` — snelle Dashboard-only check (~55s, 6 shots) — voor pre-commit / smoke
+- `tests/design-review.spec.js` — comprehensive multi-screen × multi-theme (~2.5 min, 18 shots, met fixture) — voor `/design-review`
 
 **Wanneer gebruiken**: vóór elke release-bump, na elke grote UI-feature, bij twijfel of een theme-fix het niet brak.
 
-**Wat het NIET doet**: subjectieve UX ("voelt premium"), klikflows (gebruik feature-specs), accessibility audit (fase 3).
+**Wat het NIET doet**: subjectieve UX ("voelt premium"), klikflows binnen schermen (gebruik feature-specs), accessibility audit (fase 3).
 
 ## Niet doen
 - Geen `file://` paden in instructies naar gebruikers.
