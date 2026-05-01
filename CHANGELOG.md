@@ -6,6 +6,15 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.64.9] — 2026-05-01
+
+### Fixed
+- **OMG meme cropping per format apart afgestemd** — OMG photo (483×440) past niet perfect in beide formats. Vorige fix met `object-position: center 95%` toonde tekst maar sneed gezicht af op 1:1, en sneed tekst af op 16:9. Nu format-specifiek:
+  - **16:9** (taller container 540×608): `object-fit: contain` + OMG-paars achtergrond — hele meme zichtbaar (gezicht + "OMG THIS IS SO EXCITING!" tekst), met minimale letterbox die opgaat in de bg-kleur.
+  - **1:1** (wider container ~520×280): `object-position: center 25%` — focus op gezicht/hoofd top, tekst onderaan wordt afgesneden (Denny's keuze: hoofd belangrijker dan tekst op 1:1).
+
+---
+
 ## [v12.64.8] — 2026-05-01
 
 ### Fixed
