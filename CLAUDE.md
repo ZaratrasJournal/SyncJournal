@@ -76,6 +76,60 @@ Claude mag (en moet) deze tools proactief inzetten. Denny hoeft er niet steeds o
 - **Changelog-discipline**: elke user-facing commit hoort in de release-flow (zie boven). Refactor/test/docs hoeven niet in changelog.
 - **Bij bug-fix op theme-gerelateerd gedrag**: altijd alle 6 thema's checken (sync / classic / aurora / light / parchment / daylight).
 
+## Autonome testing (sinds v12.62)
+
+Claude Code kan UI-flows zelfstandig testen tegen `work/tradejournal.html` via Playwright. **Geen copy-paste loop meer voor visuele validatie.**
+
+### Tooling
+
+- **Playwright + headless Chromium** geïnstalleerd in `node_modules/` (eenmalig via `npm install` + `npx playwright install chromium`).
+- **`tests/`-folder** bevat:
+  - `smoke.spec.js` — laad app, verifieer versie, geen JS-errors, screenshot in `tests/screenshots/`.
+  - `blofin-partial.spec.js` — seedt localStorage met `tests/fixtures/blofin-partial-state.json`, valideert detectPartialFromSiblings + UI-rendering.
+  - `helpers/seed.js` — `seedLocalStorage(fixture)` voor `page.addInitScript`.
+  - `run-adhoc.js` — losse Node-runner voor ad-hoc exploratie (geen test-framework).
+  - `screenshots/` — gegitignored behalve `baseline/`.
+  - `fixtures/` — JSON-fixtures voor reproducibele state.
+
+### Wanneer welke tool gebruiken
+
+| Situatie | Tool | Waarom |
+|---|---|---|
+| Pure logic-fix (helper-functie) | `node -e "..."` simulatie tegen snapshot-JSON | Snelste, geen browser nodig |
+| UI-rendering check (visueel) | `npx playwright test tests/<feature>.spec.js` + Read-tool op `tests/screenshots/*.png` | Headless browser, ik zie wat user ziet |
+| Ad-hoc exploratie ("kijk wat er gebeurt") | `node tests/run-adhoc.js --fixture=X.json --theme=parchment` | Geen test-spec nodig, snelle iteratie |
+| Live exchange-data | Snapshot-knop in app → Denny levert JSON → fixture laden in test | Credentials blijven bij Denny |
+
+### Standaard-commands
+
+```bash
+cd C:/Users/Denny/Documents/Tradejournal
+npm test                            # alle tests
+npx playwright test tests/smoke.spec.js
+npx playwright test tests/blofin-partial.spec.js
+node tests/run-adhoc.js --fixture=blofin-partial-state.json --theme=parchment
+```
+
+### Workflow voor mij (Claude) bij elke nieuwe feature
+
+1. Code wijzigen in `work/tradejournal.html`.
+2. **Pure logic gewijzigd?** Run Node-simulatie tegen relevante snapshot-fixture.
+3. **UI gewijzigd?** Run/uitbreiden van de bijbehorende `*.spec.js`. Lees screenshot via Read-tool.
+4. **Nieuwe feature?** Voeg test toe in `tests/<feature>.spec.js` voordat je 'm afsluit. Past in dezelfde commit.
+5. **Visuele regressie verdacht?** Vergelijk met `tests/screenshots/baseline/` (eerder vastgelegd).
+
+### Bekende limitaties
+
+- **Live exchange API met credentials**: ik kan niet inloggen met Denny's keys. Snapshot-knop blijft de brug.
+- **Externe OAuth flows**: niet automatiseerbaar.
+- **Subjective UX-calls** ("voelt warm genoeg", "is dit visueel mooi"): blijft Denny's call. Read-tool toont kleur/layout, maar smaak is menselijk.
+
+### Niet committen
+
+- `node_modules/` (gitignored)
+- `tests/screenshots/*.png` behalve `baseline/` (gitignored)
+- Lokale `blofin-snapshot-*.json` (gitignored — kan positionId's bevatten die specifiek voor user zijn)
+
 ## Niet doen
 - Geen `file://` paden in instructies naar gebruikers.
 - Geen API-keys in de browser persisten zolang er geen backend is.
