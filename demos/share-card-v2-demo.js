@@ -48,6 +48,10 @@ function autoSuggestVariant(d){
 }
 
 function readForm(){
+  const show = {};
+  document.querySelectorAll('input[data-show]').forEach(cb => {
+    show[cb.dataset.show] = cb.checked;
+  });
   return {
     pair: document.getElementById('i-pair').value || 'BTC/USDT',
     side: document.getElementById('i-side').value,
@@ -61,6 +65,7 @@ function readForm(){
     exit: document.getElementById('i-exit').value,
     stop: document.getElementById('i-stop').value,
     setup: document.getElementById('i-setup').value,
+    show,
   };
 }
 
@@ -131,26 +136,50 @@ const REACT_VARIANTS = {
 // ─────────────────────────────────────────────────────────────
 function renderReactions16x9(variant, d){
   const v = REACT_VARIANTS[variant];
+  const s = d.show;
   const eyebrow = `${v.eyebrowPrefix} · ${sideLabel(d)} · ${d.pair}`;
   const stickerHtml = v.sticker16 ? `<div class="sticker" style="${v.sticker16.style}">${v.sticker16.html}</div>` : '';
   const tapeHtml = v.tape16 ? `<div class="tape" style="${v.tape16}"></div>` : '';
 
+  // Brand-sub: "Trade Nº X · Vol. III" of fallback
+  const brandSub = v.isPreEntry ? 'Setup Alert · Vol. III'
+                   : (s.tradenr ? `Trade Nº ${d.tradenr} · Vol. III` : 'Vol. III');
+  const numPill = s.date ? `<div class="num-pill">${d.date}</div>` : '';
+
+  // Stats rij: alleen tonen wat aan staat
+  const statsRows = [];
+  if (s.pct)   statsRows.push(`<div><b>${fmtPct(d.pct)}</b> Return</div>`);
+  if (s.rmult) statsRows.push(`<div><b>${fmtR(d.rmult)}</b> Multiple</div>`);
+  if (s.hold)  statsRows.push(`<div><b>${d.hold || '—'}</b> Hold</div>`);
+  const statsBlock = statsRows.length ? `<div class="pnl-stats">${statsRows.join('')}</div>` : '';
+
+  // Meta-row componenten
+  const metaParts = [];
+  metaParts.push(`<span class="pair">${d.pair} · ${sideLabel(d)}</span>`);
+  if (s.entryexit) metaParts.push(v.isPreEntry ? `<span>Setup: <b>${s.setup ? d.setup : '—'}</b></span>` : `<span>${d.entry} → <b>${d.exit}</b></span>`);
+  else if (s.setup && !v.isPreEntry) metaParts.push(`<span>${d.setup}</span>`);
+  metaParts.push(`<span>${BRAND}</span>`);
+
   const pnlBlock = v.isPreEntry
     ? `<div class="pnl-block"><div class="pnl-row" style="align-items:center">
         <div style="font-family:'Archivo Black';font-size:48px;line-height:.95;color:#facc15;letter-spacing:-.025em">PRE<br/>ENTRY</div>
-        <div class="pnl-stats"><div>Entry zone <b>${d.entry}</b></div><div>Stop <b>${d.stop}</b></div><div>Target <b>${d.exit}</b> · <b>${fmtR(d.rmult).replace(/^[+−]/, '')}+</b></div></div>
-      </div><div class="meta-row"><span class="pair">${d.pair} · ${sideLabel(d)}</span><span>Setup: <b>${d.setup}</b></span><span>${BRAND}</span></div></div>`
+        <div class="pnl-stats">
+          ${s.entryexit ? `<div>Entry zone <b>${d.entry}</b></div>` : ''}
+          ${s.stop ? `<div>Stop <b>${d.stop}</b></div>` : ''}
+          ${s.entryexit && s.rmult ? `<div>Target <b>${d.exit}</b> · <b>${fmtR(d.rmult).replace(/^[+−]/, '')}+</b></div>` : ''}
+        </div>
+      </div><div class="meta-row">${metaParts.join('')}</div></div>`
     : `<div class="pnl-block"><div class="pnl-row">
-        <div class="pnl-num">${fmtMoney(d.pnl)}</div>
-        <div class="pnl-stats"><div><b>${fmtPct(d.pct)}</b> Return</div><div><b>${fmtR(d.rmult)}</b> Multiple</div><div><b>${d.hold || '—'}</b> Hold</div></div>
-      </div><div class="meta-row"><span class="pair">${d.pair} · ${sideLabel(d)}</span><span>${d.entry} → <b>${d.exit}</b></span><span>${BRAND}</span></div></div>`;
+        ${s.pnl ? `<div class="pnl-num">${fmtMoney(d.pnl)}</div>` : ''}
+        ${statsBlock}
+      </div><div class="meta-row">${metaParts.join('')}</div></div>`;
 
   return `<article class="card card-16x9 v-${variant}" id="card-16x9-render">
     <div class="photo"><img src="${v.img}" alt=""/>${v.decoration16}${stickerHtml}</div>
     <div class="content">${tapeHtml}
       <div class="top-row">
-        <div><div class="brand-mark">Sync<em>Journal</em></div><div class="brand-sub">${v.isPreEntry ? 'Setup Alert · Vol. III' : 'Trade Nº ' + d.tradenr + ' · Vol. III'}</div></div>
-        <div class="num-pill">${d.date}</div>
+        <div><div class="brand-mark">Sync<em>Journal</em></div><div class="brand-sub">${brandSub}</div></div>
+        ${numPill}
       </div>
       <div class="scream"><div class="scream-eyebrow">${eyebrow}</div><div class="scream-line">${v.scream16}</div></div>
       ${pnlBlock}
@@ -160,25 +189,46 @@ function renderReactions16x9(variant, d){
 
 function renderReactions1x1(variant, d){
   const v = REACT_VARIANTS[variant];
+  const s = d.show;
   const stickerHtml = v.sticker1 ? `<div class="sticker" style="${v.sticker1.style}">${v.sticker1.html}</div>` : '';
-  const pillContent = v.isPreEntry ? 'PRE-ENTRY' : (isNaN(d.rmult) ? d.date : fmtR(d.rmult));
+
+  // Pill: PRE-ENTRY (omg) of R-multiple of date als R uit
+  const pillContent = v.isPreEntry ? 'PRE-ENTRY'
+                       : (s.rmult && !isNaN(d.rmult)) ? fmtR(d.rmult)
+                       : (s.date ? d.date : '');
+  const pillHtml = pillContent ? `<div class="num-pill" style="font-size:9px">${pillContent}</div>` : '';
+
+  // Brand-sub: Nº X · datum, beide afhankelijk van toggles
+  const subParts = [];
+  if (s.tradenr) subParts.push(`Nº ${d.tradenr}`);
+  if (s.date)    subParts.push(d.date);
+  const brandSub = subParts.length ? subParts.join(' · ') : 'Vol. III';
+
+  // Stats — voor 1:1 max 2 items voor space
+  const statsRows = [];
+  if (s.pct)  statsRows.push(`<div><b>${fmtPct(d.pct)}</b></div>`);
+  if (s.hold) statsRows.push(`<div><b>${d.hold || '—'}</b></div>`);
+  const statsBlock = statsRows.length ? `<div class="pnl-stats">${statsRows.join('')}</div>` : '';
 
   const pnlBlock = v.isPreEntry
     ? `<div class="pnl-block"><div class="pnl-row">
-        <div style="font-family:'Archivo Black';font-size:30px;color:#facc15;letter-spacing:-.025em">${d.entry}<br/><span style="font-size:14px;color:rgba(253,244,255,.6)">entry zone</span></div>
-        <div class="pnl-stats"><div>TP <b>${d.exit}</b></div><div><b>${fmtR(d.rmult).replace(/^[+−]/, '')}+</b> target</div></div>
+        ${s.entryexit ? `<div style="font-family:'Archivo Black';font-size:30px;color:#facc15;letter-spacing:-.025em">${d.entry}<br/><span style="font-size:14px;color:rgba(253,244,255,.6)">entry zone</span></div>` : ''}
+        <div class="pnl-stats">
+          ${s.entryexit ? `<div>TP <b>${d.exit}</b></div>` : ''}
+          ${s.rmult ? `<div><b>${fmtR(d.rmult).replace(/^[+−]/, '')}+</b> target</div>` : ''}
+        </div>
       </div></div>`
     : `<div class="pnl-block"><div class="pnl-row">
-        <div class="pnl-num">${fmtMoney(d.pnl)}</div>
-        <div class="pnl-stats"><div><b>${fmtPct(d.pct)}</b></div><div><b>${d.hold || '—'}</b></div></div>
+        ${s.pnl ? `<div class="pnl-num">${fmtMoney(d.pnl)}</div>` : ''}
+        ${statsBlock}
       </div></div>`;
 
   return `<article class="card card-1x1 v-${variant}" id="card-1x1-render">
     <div class="photo"><img src="${v.img}" alt=""/>${v.decoration1}${stickerHtml}</div>
     <div class="content">
       <div class="top-row">
-        <div><div class="brand-mark" style="font-size:14px">Sync<em>Journal</em></div><div class="brand-sub" style="font-size:8px">Nº ${d.tradenr} · ${d.date}</div></div>
-        <div class="num-pill" style="font-size:9px">${pillContent}</div>
+        <div><div class="brand-mark" style="font-size:14px">Sync<em>Journal</em></div><div class="brand-sub" style="font-size:8px">${brandSub}</div></div>
+        ${pillHtml}
       </div>
       <div class="scream"><div class="scream-eyebrow" style="font-size:9px">${sideArrow(d)} ${sideLabel(d)} · ${d.pair}</div><div class="scream-line">${v.scream1}</div></div>
       ${pnlBlock}
@@ -196,59 +246,81 @@ function makeCinemaTitle(d){
     : `The Cost of <em>Conviction</em>`;
 }
 function renderCinema16x9(d){
+  const s = d.show;
   const winClass = isWin(d) ? '' : ' loss';
   const sprockets = Array(9).fill('<div class="sprocket"></div>').join('');
+  const billing = `Sync<em style="font-style:italic">Journal</em> presents · A Morani trade${s.tradenr ? ` · No. ${d.tradenr}` : ''}`;
+  const tagline = s.setup
+    ? `${d.setup}${s.hold ? ', ' + d.hold : ''} — ${isWin(d) ? 'and the levels held.' : 'the thesis broke.'}`
+    : (isWin(d) ? 'The levels held.' : 'The thesis broke; the stop did its job.');
+  const metaParts = [];
+  if (s.pct) metaParts.push(fmtPct(d.pct));
+  if (s.rmult) metaParts.push(fmtR(d.rmult));
+  const credits = [];
+  credits.push(`<div class="credits-block"><div class="credit-row"><div class="credit-role">Featuring</div><div class="credit-name">${d.pair.replace('/', ' <em>/</em> ')}</div></div></div>`);
+  credits.push(`<div class="credits-block"><div class="credit-row"><div class="credit-role">Direction</div><div class="credit-name"><b>${sideLabel(d)}</b></div></div></div>`);
+  if (s.setup) credits.push(`<div class="credits-block"><div class="credit-row"><div class="credit-role">Setup</div><div class="credit-name">${d.setup}</div></div></div>`);
+  const bottomLeftParts = [];
+  if (s.entryexit) bottomLeftParts.push(`Entry <b>${d.entry}</b> · Exit <b>${d.exit}</b>`);
+  if (s.stop) bottomLeftParts.push(`Stop <b>${d.stop}</b>`);
   return `<article class="card card-16x9" id="card-16x9-render">
     <div class="sprockets left">${sprockets}</div>
     <div class="sprockets right">${sprockets}</div>
-    <div class="reel"><span class="reel-circle"></span> REEL ${d.tradenr} / SCENE IV</div>
+    ${s.tradenr ? `<div class="reel"><span class="reel-circle"></span> REEL ${d.tradenr} / SCENE IV</div>` : ''}
     <header class="top">
       <div class="studio">A film by <b>SYNC<em>JOURNAL</em></b></div>
-      <div class="runtime">Running time · ${d.hold}</div>
+      ${s.hold ? `<div class="runtime">Running time · ${d.hold}</div>` : ''}
     </header>
     <div class="left-pane">
-      <div class="billing">Sync<em style="font-style:italic">Journal</em> presents · A Morani trade · No. ${d.tradenr}</div>
+      <div class="billing">${billing}</div>
       <h2 class="title">${makeCinemaTitle(d)}</h2>
-      <p class="tagline">${isWin(d) ? `${d.setup}, ${d.hold} — and the levels held.` : `${d.setup}. The thesis broke; the stop did its job.`}</p>
+      <p class="tagline">${tagline}</p>
     </div>
     <div class="vrule"></div>
     <div class="right-pane">
-      <div>
-        <div class="credits-block"><div class="credit-row"><div class="credit-role">Featuring</div><div class="credit-name">${d.pair.replace('/', ' <em>/</em> ')}</div></div></div>
-        <div class="credits-block"><div class="credit-row"><div class="credit-role">Direction</div><div class="credit-name"><b>${sideLabel(d)}</b></div></div></div>
-        <div class="credits-block"><div class="credit-row"><div class="credit-role">Setup</div><div class="credit-name">${d.setup}</div></div></div>
-      </div>
+      <div>${credits.join('')}</div>
       <div class="pnl-hero">
         <div class="label">Realized P&amp;L</div>
-        <div class="num${winClass}">${fmtMoneyDecimal(d.pnl)}</div>
-        <div class="meta">${fmtPct(d.pct)} · ${fmtR(d.rmult)}</div>
+        ${s.pnl ? `<div class="num${winClass}">${fmtMoneyDecimal(d.pnl)}</div>` : ''}
+        ${metaParts.length ? `<div class="meta">${metaParts.join(' · ')}</div>` : ''}
       </div>
     </div>
     <footer class="bottom">
-      <div class="left">Entry <b>${d.entry}</b> · Exit <b>${d.exit}</b><br/>Stop <b>${d.stop}</b></div>
+      <div class="left">${bottomLeftParts.join('<br/>') || ''}</div>
       <div class="center">— a Morani picture —</div>
-      <div class="right">${d.date}<br/>${BRAND}</div>
+      <div class="right">${s.date ? d.date + '<br/>' : ''}${BRAND}</div>
     </footer>
   </article>`;
 }
 function renderCinema1x1(d){
+  const s = d.show;
   const winClass = isWin(d) ? '' : ' loss';
   const sprockets = Array(8).fill('<div class="sprocket"></div>').join('');
+  const billingParts = ['A Morani trade'];
+  if (s.tradenr) billingParts.push(`Nº ${d.tradenr}`);
+  if (s.date) billingParts.push(d.date);
+  const tagline = s.setup
+    ? `${d.setup} — ${isWin(d) ? 'levels held.' : 'thesis broke.'}`
+    : (isWin(d) ? 'The levels held.' : 'Thesis broke; stop did its job.');
+  const stats = [];
+  if (s.pct) stats.push(`<div><span class="k">Return</span><em>${fmtPct(d.pct)}</em></div>`);
+  if (s.rmult) stats.push(`<div><span class="k">R</span><em>${fmtR(d.rmult)}</em></div>`);
+  stats.push(`<div><span class="k">Pair</span>${d.pair} · <b>${sideLabel(d)}</b></div>`);
   return `<article class="card card-1x1" id="card-1x1-render">
     <div class="sprockets left">${sprockets}</div>
     <div class="sprockets right">${sprockets}</div>
-    <div class="reel"><span class="reel-circle"></span> REEL ${d.tradenr}</div>
-    <header class="top"><div class="studio"><b>SYNC<em>JOURNAL</em></b></div><div class="runtime">${d.hold}</div></header>
+    ${s.tradenr ? `<div class="reel"><span class="reel-circle"></span> REEL ${d.tradenr}</div>` : ''}
+    <header class="top"><div class="studio"><b>SYNC<em>JOURNAL</em></b></div>${s.hold ? `<div class="runtime">${d.hold}</div>` : ''}</header>
     <div class="left-pane">
-      <div class="billing">A Morani trade · Nº ${d.tradenr} · ${d.date}</div>
+      <div class="billing">${billingParts.join(' · ')}</div>
       <h2 class="title">${makeCinemaTitle(d)}</h2>
-      <p class="tagline">${isWin(d) ? `${d.setup} — and the levels held.` : `${d.setup}. Thesis broke; stop did its job.`}</p>
+      <p class="tagline">${tagline}</p>
       <div class="pnl-hero-1x1" style="margin-top:24px">
-        <div><div class="label">Realized P&amp;L</div><div class="num${winClass}">${fmtMoney(d.pnl)}</div></div>
-        <div class="stats"><div><span class="k">Return</span><em>${fmtPct(d.pct)}</em></div><div><span class="k">R</span><em>${fmtR(d.rmult)}</em></div><div><span class="k">Pair</span>${d.pair} · <b>${sideLabel(d)}</b></div></div>
+        <div><div class="label">Realized P&amp;L</div>${s.pnl ? `<div class="num${winClass}">${fmtMoney(d.pnl)}</div>` : ''}</div>
+        <div class="stats">${stats.join('')}</div>
       </div>
     </div>
-    <footer class="bottom"><div class="left">Entry <b>${d.entry}</b> · Exit <b>${d.exit}</b></div><div class="center">— a Morani picture —</div><div class="right">${BRAND}</div></footer>
+    <footer class="bottom"><div class="left">${s.entryexit ? `Entry <b>${d.entry}</b> · Exit <b>${d.exit}</b>` : ''}</div><div class="center">— a Morani picture —</div><div class="right">${BRAND}</div></footer>
   </article>`;
 }
 
@@ -256,87 +328,99 @@ function renderCinema1x1(d){
 // Dossier render
 // ─────────────────────────────────────────────────────────────
 function renderDossier16x9(d){
+  const s = d.show;
   const winClass = isWin(d) ? 'win' : 'loss';
+  const subParts = [`<span class="lede">${d.pair}</span> opened${s.entryexit ? ` at <b>${d.entry}</b>` : ''} and ${isWin(d) ? 'was retired' : 'was stopped'}${s.entryexit ? ` at <b>${d.exit}</b>` : ''}.`];
+  if (s.hold) subParts.push(` Held ${d.hold}.`);
+  if (s.setup) subParts.push(` Setup: ${d.setup}.`);
+  const factSideParts = [];
+  if (s.pct) factSideParts.push(`<b>${fmtPct(d.pct)}</b> return`);
+  if (s.rmult) factSideParts.push(`<b>${fmtR(d.rmult)}</b> on risk`);
+  const headlineExit = s.entryexit ? parseFloat(d.exit).toLocaleString('nl-NL').split(',')[0] : 'the level';
+  // Build optional table rows
+  const tableRows = [];
+  tableRows.push(`<tr><td>Instrument</td><td>${d.pair}</td></tr>`);
+  tableRows.push(`<tr><td>Direction</td><td>${sideLabel(d)}</td></tr>`);
+  if (s.entryexit) {
+    tableRows.push(`<tr><td>Entry</td><td>${d.entry}</td></tr>`);
+    tableRows.push(`<tr><td>Exit</td><td>${d.exit}</td></tr>`);
+  }
+  if (s.stop) tableRows.push(`<tr><td>Stop loss</td><td>${d.stop}</td></tr>`);
+  if (s.setup) tableRows.push(`<tr><td>Setup</td><td>${d.setup}</td></tr>`);
+  if (s.hold) tableRows.push(`<tr><td>Hold</td><td>${d.hold}</td></tr>`);
   return `<article class="card card-16x9" id="card-16x9-render">
     <header class="masthead">
       <div class="mast-left">
         <div class="mast-logo">Sync<em>Journal</em></div>
-        <div class="mast-vol">Vol. III · Nº ${d.tradenr}</div>
+        ${s.tradenr ? `<div class="mast-vol">Vol. III · Nº ${d.tradenr}</div>` : `<div class="mast-vol">Vol. III</div>`}
       </div>
-      <div class="mast-right">${d.date}<br/>${d.pair} · <b>${sideLabel(d)}</b></div>
+      <div class="mast-right">${s.date ? d.date + '<br/>' : ''}${d.pair} · <b>${sideLabel(d)}</b></div>
     </header>
     <div class="body-grid">
       <div class="col-left">
         <div>
           <div class="kicker">${isWin(d) ? 'Closed Position' : 'Stopped Position'} · ${sideLabel(d)}</div>
-          <h2 class="headline">${isWin(d) ? `A clean break of <em>${parseFloat(d.exit).toLocaleString('nl-NL').split(',')[0]}</em>.` : `The thesis <em>did not hold</em>.`}</h2>
-          <p class="subhead">
-            <span class="lede">${d.pair}</span> opened at <b>${d.entry}</b> and ${isWin(d) ? `was retired at <b>${d.exit}</b>` : `was stopped at <b>${d.exit}</b>`}.
-            Held ${d.hold}. Setup: ${d.setup}.
-          </p>
+          <h2 class="headline">${isWin(d) ? `A clean break of <em>${headlineExit}</em>.` : `The thesis <em>did not hold</em>.`}</h2>
+          <p class="subhead">${subParts.join('')}</p>
         </div>
-        <div class="fact">
-          <div><div class="fact-label">Realized P&amp;L · net of fees</div><div class="fact-num ${winClass}">${fmtMoneyDecimal(d.pnl)}</div></div>
-          <div class="fact-side"><b>${fmtPct(d.pct)}</b> return<br/><b>${fmtR(d.rmult)}</b> on risk</div>
-        </div>
+        ${s.pnl || factSideParts.length ? `<div class="fact">
+          <div><div class="fact-label">Realized P&amp;L · net of fees</div>${s.pnl ? `<div class="fact-num ${winClass}">${fmtMoneyDecimal(d.pnl)}</div>` : ''}</div>
+          ${factSideParts.length ? `<div class="fact-side">${factSideParts.join('<br/>')}</div>` : ''}
+        </div>` : ''}
       </div>
       <div class="vrule"></div>
       <div class="col-right">
         <div class="tab-title">Trade record</div>
-        <table class="data-table">
-          <tbody>
-            <tr><td>Instrument</td><td>${d.pair}</td></tr>
-            <tr><td>Direction</td><td>${sideLabel(d)}</td></tr>
-            <tr><td>Entry</td><td>${d.entry}</td></tr>
-            <tr><td>Exit</td><td>${d.exit}</td></tr>
-            <tr><td>Stop loss</td><td>${d.stop}</td></tr>
-            <tr><td>Setup</td><td>${d.setup}</td></tr>
-            <tr><td>Hold</td><td>${d.hold}</td></tr>
-          </tbody>
-        </table>
+        <table class="data-table"><tbody>${tableRows.join('')}</tbody></table>
       </div>
     </div>
     <footer class="colophon">
       <div class="colophon-left"><span>${BRAND}</span><span>by Morani</span></div>
       <div class="colophon-right">— Discipline is the only edge.</div>
-      <div class="folio">${d.tradenr}</div>
+      <div class="folio">${s.tradenr ? d.tradenr : 'III'}</div>
     </footer>
   </article>`;
 }
 function renderDossier1x1(d){
+  const s = d.show;
   const winClass = isWin(d) ? 'win' : 'loss';
+  const subParts = [];
+  if (s.setup) subParts.push(d.setup);
+  if (s.hold) subParts.push(`held ${d.hold}`);
+  const subText = subParts.length ? subParts.join(' — ') + '.' : '';
+  const factSideParts = [];
+  if (s.pct) factSideParts.push(`<b>${fmtPct(d.pct)}</b>`);
+  if (s.rmult) factSideParts.push(`<b>${fmtR(d.rmult)}</b>`);
+  const tableRows = [];
+  if (s.entryexit) {
+    tableRows.push(`<tr><td>Entry</td><td>${d.entry}</td></tr>`);
+    tableRows.push(`<tr><td>Exit</td><td>${d.exit}</td></tr>`);
+  }
+  if (s.stop) tableRows.push(`<tr><td>Stop</td><td>${d.stop}</td></tr>`);
+  if (s.setup) tableRows.push(`<tr><td>Setup</td><td>${d.setup}</td></tr>`);
   return `<article class="card card-1x1" id="card-1x1-render">
     <header class="masthead">
-      <div class="mast-left"><div class="mast-logo" style="font-size:26px">Sync<em>Journal</em></div><div class="mast-vol">Nº ${d.tradenr}</div></div>
-      <div class="mast-right">${d.date}<br/><b>${sideLabel(d)}</b> · ${d.pair}</div>
+      <div class="mast-left"><div class="mast-logo" style="font-size:26px">Sync<em>Journal</em></div>${s.tradenr ? `<div class="mast-vol">Nº ${d.tradenr}</div>` : ''}</div>
+      <div class="mast-right">${s.date ? d.date + '<br/>' : ''}<b>${sideLabel(d)}</b> · ${d.pair}</div>
     </header>
     <div class="body-grid">
       <div class="col-left">
         <div>
           <div class="kicker">${isWin(d) ? 'Closed' : 'Stopped'} · ${sideLabel(d)} · ${d.pair}</div>
           <h2 class="headline">${isWin(d) ? `A clean break <em>held</em>.` : `Thesis <em>broke</em>.`}</h2>
-          <p class="subhead" style="max-width:none">${d.setup} — held ${d.hold}.</p>
+          ${subText ? `<p class="subhead" style="max-width:none">${subText}</p>` : ''}
         </div>
-        <div class="fact" style="margin-top:24px">
-          <div><div class="fact-label">Realized P&amp;L</div><div class="fact-num ${winClass}">${fmtMoneyDecimal(d.pnl)}</div></div>
-          <div class="fact-side"><b>${fmtPct(d.pct)}</b><br/><b>${fmtR(d.rmult)}</b></div>
-        </div>
-        <div class="col-right">
-          <table class="data-table" style="margin-top:0">
-            <tbody>
-              <tr><td>Entry</td><td>${d.entry}</td></tr>
-              <tr><td>Exit</td><td>${d.exit}</td></tr>
-              <tr><td>Stop</td><td>${d.stop}</td></tr>
-              <tr><td>Setup</td><td>${d.setup}</td></tr>
-            </tbody>
-          </table>
-        </div>
+        ${s.pnl || factSideParts.length ? `<div class="fact" style="margin-top:24px">
+          <div><div class="fact-label">Realized P&amp;L</div>${s.pnl ? `<div class="fact-num ${winClass}">${fmtMoneyDecimal(d.pnl)}</div>` : ''}</div>
+          ${factSideParts.length ? `<div class="fact-side">${factSideParts.join('<br/>')}</div>` : ''}
+        </div>` : ''}
+        ${tableRows.length ? `<div class="col-right"><table class="data-table" style="margin-top:0"><tbody>${tableRows.join('')}</tbody></table></div>` : ''}
       </div>
     </div>
     <footer class="colophon">
       <div class="colophon-left"><span>${BRAND}</span></div>
       <div class="colophon-right">— Discipline is the only edge.</div>
-      <div class="folio">${d.tradenr}</div>
+      <div class="folio">${s.tradenr ? d.tradenr : 'III'}</div>
     </footer>
   </article>`;
 }
@@ -345,54 +429,68 @@ function renderDossier1x1(d){
 // Monogram render
 // ─────────────────────────────────────────────────────────────
 function renderMonogram16x9(d){
+  const s = d.show;
   const winClass = isWin(d) ? 'win' : 'loss';
-  // Split number into main + cents (after comma)
   const formatted = fmtMoneyDecimal(d.pnl);
   const [mainPart, centsPart] = formatted.split(',');
+  const subParts = [];
+  if (s.setup) subParts.push(d.setup);
+  if (s.hold) subParts.push(`held ${d.hold}`);
+  const subText = subParts.length ? subParts.join(' — ') + '.' : '';
+  const facts = [];
+  if (s.pct) facts.push(`<div class="fact-item"><div class="k">Return</div><div class="v ${isWin(d) ? 'pos' : 'neg'}">${fmtPct(d.pct)}</div></div>`);
+  if (s.rmult) facts.push(`<div class="fact-item"><div class="k">R-Multiple</div><div class="v accent">${fmtR(d.rmult)}</div></div>`);
+  if (s.entryexit) {
+    facts.push(`<div class="fact-item"><div class="k">Entry</div><div class="v">${d.entry}</div></div>`);
+    facts.push(`<div class="fact-item"><div class="k">Exit</div><div class="v ${isWin(d) ? 'pos' : 'neg'}">${d.exit}</div></div>`);
+  }
+  if (s.hold) facts.push(`<div class="fact-item"><div class="k">Hold</div><div class="v">${d.hold}</div></div>`);
   return `<article class="card card-16x9" id="card-16x9-render">
     <div class="watermark">M</div>
     <header class="hdr">
-      <div><div class="mark">Sync<em>Journal</em></div><div class="mark-sub">By Morani · Vol. III · Nº ${d.tradenr}</div></div>
-      <div class="hdr-meta">${d.date}<br/>${d.pair} · <b>${sideLabel(d)}</b></div>
+      <div><div class="mark">Sync<em>Journal</em></div><div class="mark-sub">By Morani · Vol. III${s.tradenr ? ' · Nº ' + d.tradenr : ''}</div></div>
+      <div class="hdr-meta">${s.date ? d.date + '<br/>' : ''}${d.pair} · <b>${sideLabel(d)}</b></div>
     </header>
     <div class="center">
       <div class="pretag">${d.pair} <span>·</span> ${sideLabel(d)} <span>·</span> ${isWin(d) ? 'Closed' : 'Stopped'}</div>
-      <div class="num ${winClass}">${mainPart}<span class="small">,${centsPart || '00'}</span></div>
-      <div class="post">${d.setup} — held ${d.hold}.</div>
-      <div class="facts">
-        <div class="fact-item"><div class="k">Return</div><div class="v ${isWin(d) ? 'pos' : 'neg'}">${fmtPct(d.pct)}</div></div>
-        <div class="fact-item"><div class="k">R-Multiple</div><div class="v accent">${fmtR(d.rmult)}</div></div>
-        <div class="fact-item"><div class="k">Entry</div><div class="v">${d.entry}</div></div>
-        <div class="fact-item"><div class="k">Exit</div><div class="v ${isWin(d) ? 'pos' : 'neg'}">${d.exit}</div></div>
-        <div class="fact-item"><div class="k">Hold</div><div class="v">${d.hold}</div></div>
-      </div>
+      ${s.pnl ? `<div class="num ${winClass}">${mainPart}<span class="small">,${centsPart || '00'}</span></div>` : ''}
+      ${subText ? `<div class="post">${subText}</div>` : ''}
+      ${facts.length ? `<div class="facts">${facts.join('')}</div>` : ''}
     </div>
     <footer class="ftr">
       <span>${BRAND}</span>
       <span class="ftr-mark">— ${isWin(d) ? 'a cleared trade.' : 'a stopped trade.'}</span>
-      <span>Nº ${d.tradenr}</span>
+      <span>${s.tradenr ? 'Nº ' + d.tradenr : 'Vol. III'}</span>
     </footer>
   </article>`;
 }
 function renderMonogram1x1(d){
+  const s = d.show;
   const winClass = isWin(d) ? 'win' : 'loss';
   const formatted = fmtMoneyDecimal(d.pnl);
   const [mainPart, centsPart] = formatted.split(',');
+  const subParts = [];
+  if (s.setup) subParts.push(d.setup);
+  if (s.hold) subParts.push(`held ${d.hold}`);
+  const subText = subParts.length ? subParts.join(' — ') + '.' : '';
+  const headParts = [];
+  if (s.tradenr) headParts.push(`Nº ${d.tradenr}`);
+  if (s.date) headParts.push(d.date);
+  const facts = [];
+  if (s.pct) facts.push(`<div class="fact-item"><div class="k">Return</div><div class="v ${isWin(d) ? 'pos' : 'neg'}">${fmtPct(d.pct)}</div></div>`);
+  if (s.rmult) facts.push(`<div class="fact-item"><div class="k">R</div><div class="v accent">${fmtR(d.rmult)}</div></div>`);
+  if (s.hold) facts.push(`<div class="fact-item"><div class="k">Hold</div><div class="v">${d.hold}</div></div>`);
   return `<article class="card card-1x1" id="card-1x1-render">
     <div class="watermark">M</div>
     <header class="hdr">
-      <div><div class="mark" style="font-size:30px">Sync<em>Journal</em></div><div class="mark-sub">Nº ${d.tradenr} · ${d.date}</div></div>
+      <div><div class="mark" style="font-size:30px">Sync<em>Journal</em></div>${headParts.length ? `<div class="mark-sub">${headParts.join(' · ')}</div>` : ''}</div>
       <div class="hdr-meta">${sideLabel(d)} · ${d.pair}</div>
     </header>
     <div class="center" style="padding:0">
       <div class="pretag" style="margin-top:30px">Realized P&amp;L · net of fees</div>
-      <div class="num ${winClass}">${mainPart}<span class="small">,${centsPart || '00'}</span></div>
-      <div class="post" style="font-size:17px">${d.setup} — held ${d.hold}.</div>
-      <div class="facts">
-        <div class="fact-item"><div class="k">Return</div><div class="v ${isWin(d) ? 'pos' : 'neg'}">${fmtPct(d.pct)}</div></div>
-        <div class="fact-item"><div class="k">R</div><div class="v accent">${fmtR(d.rmult)}</div></div>
-        <div class="fact-item"><div class="k">Hold</div><div class="v">${d.hold}</div></div>
-      </div>
+      ${s.pnl ? `<div class="num ${winClass}">${mainPart}<span class="small">,${centsPart || '00'}</span></div>` : ''}
+      ${subText ? `<div class="post" style="font-size:17px">${subText}</div>` : ''}
+      ${facts.length ? `<div class="facts">${facts.join('')}</div>` : ''}
     </div>
     <footer class="ftr">
       <span>${BRAND}</span>
@@ -658,6 +756,11 @@ document.getElementById('moodRow').addEventListener('click', e => {
     if (id === 'i-rmult' || id === 'i-side') STATE.manualOverride = false;
     render();
   });
+});
+
+// Show-toggle checkboxes → re-render
+document.querySelectorAll('input[data-show]').forEach(cb => {
+  cb.addEventListener('change', render);
 });
 
 // ─────────────────────────────────────────────────────────────
