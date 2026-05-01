@@ -6,6 +6,14 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.64.11] — 2026-05-01
+
+### Fixed
+- **Letterbox-look op Reactions 16:9 was inconsistent** — `object-fit: contain` werkt afhankelijk van photo-aspect ratio. Goodfellas (407×484) en Final Boss (417×538) zijn taller dan de photo-container, dus contain gaf side-letterbox ipv top+bottom — niet de "filmposter"-look die OMG/Pablo wel hadden. Fix: padding-based letterbox via `padding: 50px 24px` op `.tc-photo` + `display: flex` met centered img. Garandeert consistente top+bottom (en kleine zijkant) ruimte voor alle 5 varianten ongeacht photo-aspect.
+- **Goodfellas: groen confetti-vierkantje op voorhoofd** — verplaatst van `top: 30%, left: 60%` (recht boven gezicht) naar `top: 8%, left: 50%` (top edge, valt nu in de bovenste letterbox-balk).
+
+---
+
 ## [v12.64.10] — 2026-05-01
 
 ### Gewijzigd
