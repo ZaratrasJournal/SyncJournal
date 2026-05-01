@@ -6,6 +6,17 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.64.7] — 2026-05-01
+
+### Fixed
+- **Setup-tags lazen niet uit `trade.layers[]`** — sinds v12.54 worden setup/confirmation tags vaak in **layers** opgeslagen (multi-laag setup-systeem) ipv de legacy flat `trade.setupTags[]`. De share-card las alleen het flat veld, dus voor trades met layered setups bleef de tag-string leeg. Nu **beide bronnen samengevoegd**:
+  - `trade.setupTags[]` (legacy flat, fallback voor oude trades)
+  - `trade.layers[].setups[]` + `trade.layers[].confirmations[]` (nieuwe multi-laag structuur)
+  - Gededupliceerd via `Set`, max 2 setups + 2 confirmations = 4 tags totaal.
+- **Lege rijen op alle 4 directions** — voor open/sync trades waar `stopLoss`, `setup`, `entry/exit` of `hold` leeg zijn, toonden cards rijen met alleen labels en geen waarden. Bv. Dossier toonde "Stop loss" en "Setup" rijen leeg, en de subhead bevatte "Setup: ." (alleen punt). Fix: alle stat/tabel/sub-rijen vereisen nu zowel toggle aan **als** non-empty waarde.
+
+---
+
 ## [v12.64.6] — 2026-05-01
 
 ### Fixed
