@@ -33,6 +33,8 @@ const SCREENS = [
   { route: 'dashboard', label: 'dashboard' },
   { route: 'trades',    label: 'trades' },
   { route: 'accounts',  label: 'accounts' }, // = Instellingen
+  { route: 'playbook',  label: 'playbook' },
+  { route: 'analytics', label: 'analytics' },
 ];
 
 test.describe('Design-review (multi-screen × multi-theme)', () => {

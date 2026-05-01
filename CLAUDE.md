@@ -161,6 +161,23 @@ echo '{"tool_name":"Edit","tool_input":{"file_path":"work/tradejournal.html","ne
 # Verwacht: exit 2 + uitleg
 ```
 
+### Accessibility audit (axe-core)
+
+`tests/a11y.spec.js` — runt axe-core (WCAG 2.1 A + AA tags) over Dashboard/Trades/Accounts × 6 thema's = 18 specs (~3 min). Logt alle violations per scherm gegroepeerd op impact (critical/serious/moderate/minor) + concrete rule-IDs en eerste 3 affected nodes voor critical.
+
+**Hard-fail beleid**: alleen `critical` impact blokkeert (form-labels, keyboard-traps, missing roles). `serious` (vooral color-contrast) wordt gelogd maar niet geblokkeerd — onze 6 thema's hebben bewust subtiele inactieve tabs/ondertitels die ~3.4:1 zitten i.p.v. WCAG 4.5:1. Bij regressie zou de log-output direct opvallen.
+
+**Run**:
+```bash
+npx playwright test tests/a11y.spec.js
+```
+
+**Baseline drift** (gemeten 2026-05-01 op v12.62, na 4 aria-label fixes):
+- Dark thema's: 15-40 serious per scherm (vooral inactieve tabs, LIVE-indicator, "built by Zaratras" subtitel)
+- Light thema's: 35-76 serious per scherm (lichtgrijs op wit = altijd marginaal)
+
+Hand-fixes voor specifieke contrast-issues kunnen later — pas `BLOCKING_IMPACTS` in de spec aan om strakker te worden.
+
 ### Claude PR-review CI (claude-code-action)
 
 Twee GitHub workflows in `.github/workflows/`:
