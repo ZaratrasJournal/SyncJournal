@@ -6,6 +6,13 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.64.5] — 2026-05-01
+
+### Gewijzigd
+- **Share-card preview groter en beter leesbaar** — modal-preview schaalde op 0.55× wat tekst (10-13px font-sizes) effectief naar 6-7px maakte op screen. Nu **scale 0.75×** voor zowel 16:9 als 1:1 — tekst is ~36% groter, leesbaarheid significant beter. Card native dimensies + PNG-export blijven onveranderd op originele resolutie (2× retina).
+
+---
+
 ## [v12.64.4] — 2026-05-01
 
 ### Gewijzigd
