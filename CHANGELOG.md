@@ -6,6 +6,13 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.64.12] — 2026-05-01
+
+### Verwijderd
+- **"Share Card v2" titel + sidebar lead-tekst** — de "Share Card v2" header en de regel "4 designs. Auto-suggest variant. Brand: moranitraden.nl." in de share-modal sidebar zijn weg. Sidebar begint nu direct met de close-knop en de direction-tiles. Cleaner.
+
+---
+
 ## [v12.64.11] — 2026-05-01
 
 ### Fixed
