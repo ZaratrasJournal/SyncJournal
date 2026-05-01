@@ -6,6 +6,77 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.62] — 2026-05-01
+
+### Toegevoegd
+- **`partial`-status voor open posities met partial closes** (uit research naar TraderVue / Edgewonk / NautilusTrader patterns). Een Blofin-positie waarvan deels al gerealiseerd is (bv. 22-04 BTC short 0.0019 BTC + 29-04 TP1 0.0010 hit) verschijnt nu als één open trade met:
+  - Amber **PARTIAL**-badge in trade-list (i.p.v. de gewone gouden OPEN-stip)
+  - **Realized PnL** zichtbaar inline (bv. `PARTIAL +$3.26`) — aggregeert alle closed-records met dezelfde `positionId`
+  - In TradeForm: Status-pill toont "Partial" met amber accent; status-bar hint *"🔄 Partial close · restant open · realized +$3.26"*
+- Mirror-pattern uit best-in-class journals: een deels-gesloten positie is **niet open en niet closed** — het is een derde staat met eigen visueel karakter en eigen realized PnL.
+
+### Schema
+- `EMPTY_TRADE.realizedPnl` (string, default `""`) — sum van pnl van closed-siblings die dezelfde `positionId` delen. Gevuld door `syncOpenPositions`.
+- `EMPTY_TRADE.status` accepteert nu `"partial"` als waarde (naast `"open"`, `"closed"`, `"missed"`). Gederiveerd, niet handmatig zetbaar — auto-overgang via sibling-detectie.
+
+### Gewijzigd
+- **`syncOpenPositions` doet nu sibling-detectie**: na de reguliere merge loopt 'ie door alle open trades van die exchange, zoekt closed-records die op `(pair, direction, entry-prijs op 8 decimalen)` matchen, en markeert de open trade als `partial` + sum'ed `realizedPnl`. **Niet** op `positionId` — empirisch bewezen via Denny's data dat Blofin `positionId` hergebruikt over meerdere posities (1 positionId telde 8 verschillende BTC-trades met verschillende entries). Een exacte entry-prijs op 8 decimalen is wel uniek per positie. Werkt voor elke exchange waar pair/direction/entry stabiel zijn over partial-close events — Blofin direct, MEXC en Hyperliquid impliciet.
+- **TradeForm `isOpen`** behandelt `partial` nu hetzelfde als `open` voor exit-fields (verborgen) — positie is technisch nog open. Visueel onderscheid alleen via badge + hint.
+- **FilterBar status-filter** — `"open"` matcht nu zowel `open` als `partial` records (want partial is een open-staat).
+
+### Fixed (binnen v12.62, na test)
+- **Partial-status auto-recompute bij app-load** — `detectPartialFromSiblings` runde voorheen alleen tijdens `syncOpenPositions` (knop-actie). Bij stale state (bv. na code-update of na localStorage-mutatie zonder verse sync) kon een open trade onterecht "open" of "partial" blijven met outdated `realizedPnl`. Nieuwe `useEffect` runt detectie 1× bij elke app-load over alle exchanges, en updatet alleen waar de gederiveerde waarde echt anders is.
+- **Sibling close-records verbergen uit trade-list** — gemeld door Denny: de TP-record van 29-04 (+$3.26) verscheen naast de 22-04 PARTIAL-rij als losse trade. Beide vertellen hetzelfde verhaal. Nu: in TradeList rendering, closed-records die op `(source, pair, direction, entry)` matchen met een open of partial trade worden verborgen. localStorage en analytics blijven intact — pure visuele filter. Bij volledige positie-sluiting (open trade weg) komen ze automatisch terug als zichtbare losse trades.
+- **Auto-fill `tpLevels` op partial-status open trades** — gemeld door Denny: de TP-record verdween uit de lijst maar verscheen niet in de "Take Profit niveaus" sectie van de open trade. Nu: `detectPartialFromSiblings` vult `tpLevels[]` met de matched siblings als de open trade nog géén user-gedefinieerde tpLevels heeft (geen overschrijving van eigen planning). Per niveau: `price` = closeAveragePrice, `pct` = correct berekend uit raw size, `status: "hit"`, `actualPrice` = closeAveragePrice. Voor Denny's geval: TP1 op 75.647,20 verschijnt als 34.48%-hit op de 22-04 BTC short (= 0.001 BTC van origineel 0.0029 BTC).
+- **TP-winst-calc gebruikte rest-size i.p.v. originele size** — gemeld door Denny: TP1 toonde +$2.16 i.p.v. de echte +$3.35. `calcProfit` rekende `pct × positionSize` waarbij positionSize voor partial-trades de **rest** is (0.0019 BTC) i.p.v. **origineel** (0.0029 BTC). Fix: nieuwe veld `originalSizeAsset` op partial trades (gevuld door `detectPartialFromSiblings` als `rest + alle siblings`), en `calcProfit` gebruikt die wanneer `status==="partial"`. Voor closed/open trades: ongewijzigd gedrag.
+- **"Uit Blofin ophalen" knop overschreef tpLevels met lege array** — gemeld door Denny: na klik verdween de auto-gevulde TP. Bug: `setTrade(p=>({...p,tpLevels:newTPs}))` overschreef ook als `newTPs.length === 0` na price-filter. Fix: bij geen valide fills toon waarschuwing-toast en behoud bestaande tpLevels (incl. door auto-detectie gevulde). Plus: knop verbergt zich bij partial-trades waar tpLevels al gevuld zijn — anti-conflict met auto-detectie.
+- **Blofin closePositions eenheid-bug omzeild** — Blofin's `/positions-history` returnt `closePositions` in **base currency direct** (BTC voor BTC-USDT) terwijl `/positions` `positions` in contracts geeft. Onze fetchTrades vermenigvuldigt closePositions onnodig met ctVal=0.001 → `positionSizeAsset` op closed-records is 1000× te klein. Voor de tpLevels pct-berekening gebruiken we nu een nieuw veld `_rawCloseSize` (raw waarde) i.p.v. de buggy `positionSizeAsset`. Bredere fix (size-display in trade-list) blijft op backlog — heeft cosmetische impact maar geen logica-bug.
+
+### Diagnostic — autonome iteratie zonder copy-paste-loop
+- **📥 Snapshot Blofin response** knop in Accounts → Blofin. Doet beide API-calls (positions + positions-history) en biedt het rauwe resultaat aan als download-bestand `blofin-snapshot-<datum>.json`. Fixture is bedoeld als offline test-data — geen credentials erin.
+- **🔬 Test fixture** file-input. Drop een eerder gecaptured snapshot → de app simuleert `fetchTrades` + `fetchOpenPositions` mapping op die data, runt `detectPartialFromSiblings` (de pure helper die ook in productie draait), en toont per open positie **expected vs actual**: hoeveel siblings, wat de realizedPnl moet zijn, of de status klopt. Mismatches highlighten met rode border-left.
+- **`detectPartialFromSiblings` extraheerd** als module-scope pure functie (was inline in `syncOpenPositions`). Maakt 't testbaar zonder React state of API-calls. Productie-flow ongewijzigd qua gedrag.
+- Doel: bij toekomstige Blofin-issues hoeft Denny alleen 1× een snapshot te capturen i.p.v. elke iteratie console-data te kopiëren.
+
+### Niet meegenomen (deferred)
+- **historyId als primary trade-ID** (i.p.v. `blofin_<positionId>_<closeTime>`). Research-gap #1 uit gap-tabel — zou onze "matchte geen enkele closed-record"-bug eerder hebben opgelost. Niet nu omdat: composite-ID werkt op zich (geen actief reproduceerbaar dedup-probleem na de v12.62 fix), en switch vereist legacy-migratie. Op backlog.
+- **TPSL pending-endpoint integratie** voor "geplande TPs" naast "uitgevoerde TPs". Blofin's endpoint heeft geen `positionId`-filter — koppeling fragiel. Op backlog.
+- **WebSocket real-time updates**. Vereist persistent connection + backend; past niet bij single-file HTML-architectuur.
+
+### Bron
+Research-rapport (2026-04-30) naar Tradezella / TraderSync / TraderVue / Edgewonk / FX Replay + GitHub-projecten ccxt / freqtrade / NautilusTrader. Conclusie: dominant model is **position-as-container met fills als events** (NautilusTrader-stijl), en best-in-class journals tonen een derde `partial` status met realized PnL. Onze v12.62 implementeert het tonen-deel; de container-refactor (alle fills in 1 trade) is bewust uitgesteld als groter-scope werk.
+
+---
+
+## [v12.61] — 2026-04-30
+
+### Toegevoegd
+- **Bellafiore Playbook-uitbreidingen** (uit research naar Mike Bellafiore's "The Playbook" + Tradezella, gepluimd met Denny's UX-feedback). Twee Bellafiore-concepten geïntegreerd in de bestaande Playbook-feature:
+  - **🌍 Big-Picture-velden op playbook-niveau** — drie optionele textareas: *Big Picture* (markt-state · BTC.D / DXY / total-cap / risk-on of -off), *Reading the Tape* (order-flow · CVD / book-imbalance / liquidations / funding / whale-flows), *Intuition* (pattern-recognition uit ervaring, expliciet apart). Toggle aan/uit per playbook — niet iedereen wil deze laag. Default uit voor nieuwe playbooks; voor bestaande playbooks met `context` ingevuld migreert dat veld automatisch naar `bigPicture` en flipt de toggle aan, zodat geen data verloren gaat.
+  - **🎯 A+/A/B/C grading + sizing-helper** — Bellafiore's Tier-systeem voor risico-allocatie. Per playbook stel je een **default-grade** in (wat is dit setup typisch?). Per trade kun je dat overrulen via grade-pills. De **sizing-helper** toont op basis van de grade het suggested risk in % (default A+ 2 / A 1.5 / B 1 / C 0.5 — conservatief voor crypto, lager dan Bellafiore's stocks-30%-DLL omdat 24/7-markt en hogere variance). Met `config.bellafioreAccountSize` ingesteld toont 'ie ook het $-bedrag. **Info-only**, geen save-block — consistent met de bestaande compliance-meter-filosofie.
+
+### Schema
+- `EMPTY_PLAYBOOK`: nieuwe velden `defaultGrade`, `bigPictureEnabled`, `bigPicture`, `tape`, `intuition`. Bestaande `context` blijft als legacy-veld; bij `migratePlaybooks` wordt 'ie naar `bigPicture` gemapped als die nog leeg is, en `bigPictureEnabled` wordt op `true` gezet zodat de user de migratie direct ziet werken.
+- `EMPTY_TRADE`: nieuw veld `tradeGrade` (per-trade override van playbook's default-grade).
+- Nieuwe module-scope constant `DEFAULT_GRADE_RISK_PCT = {"A+":2,"A":1.5,"B":1,"C":0.5}`. User kan via `config.gradeRiskPct` overschrijven.
+
+### Gewijzigd
+- **`applyPlaybook` in TradeForm**: bij playbook-keuze wordt `pb.defaultGrade` gekopieerd naar `trade.tradeGrade` (alleen als trade nog geen grade heeft — geen overschrijving van handmatige input).
+- **PlaybookForm Markt-sectie**: legacy `context`-textarea is alleen nog zichtbaar als de playbook *geen* Big-Picture-toggle aan heeft maar wél oude context-data bevat. Anders verborgen — Bellafiore Big-Picture is de vervanger.
+
+### Bellafiore-bron
+- Mike Bellafiore — *"The Playbook"* (2010), SMB Capital. 5 decision-indicators: Big Picture · Intraday Fundamentals · Technical Analysis · Reading the Tape · Intuition. A+ trades verdienen meer risk (Tier-systeem). [SMB Capital blog: The SMB PlayBook — Compiling our best trades](https://www.smbtraining.com/blog/the-smb-playbook-compiling-our-best-trades).
+
+### Niet meegenomen (deferred)
+- **Intraday Fundamentals als 4e veld** — Bellafiore's 3e decision-indicator. Voor crypto vertaalt dit naar tag-chips (token unlocks / FOMC / regulatory / liquidation cascade / etc.) plus vrij veld. Deferred volgens Denny — past niet in dezelfde release-scope, op backlog gezet.
+- **Reasons2Sell exit-checklist · Trust-Score met PF-tiers · Pre-market ritueel** — Bellafiore optimalisaties #3, #4, #5 uit research-rapport. Volgende releases.
+
+### Documentatie
+- **3 nieuwe FAQ-entries** in Help-tab onder 📝 Features: *"Wat zijn de Bellafiore Big-Picture-velden?"*, *"Hoe werkt het A+/A/B/C grading-systeem?"*, *"Hoe stel ik mijn account-saldo in voor de sizing-helper?"* — met crypto-vertaalde voorbeelden voor BTC.D / CVD / funding / etc.
+- **Nieuwe handleiding-lesson l17** *"Bellafiore Big-Picture + A+/A/B/C grading"* (advanced, 11 min) — Bellafiore-bron, voorbeeld-Daily-Bias-playbook, sizing-rekenvoorbeeld op $10k account, anti-pattern waarschuwing tegen achteraf-rebrandering, en aanbeveling om met 1-2 hoogste-conviction setups te starten.
+
+---
+
 ## [v12.60] — 2026-04-29
 
 ### Toegevoegd (tijdelijk · diagnostic)

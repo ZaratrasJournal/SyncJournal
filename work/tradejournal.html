@@ -219,6 +219,9 @@ input[type=date]::-webkit-calendar-picker-indicator{filter:invert(0.5)}
 @keyframes logoShimmer{0%{background-position:-200% center}100%{background-position:200% center}}
 @keyframes logoPulse{0%,100%{filter:drop-shadow(0 0 3px rgba(201,168,76,0.1))}50%{filter:drop-shadow(0 0 12px rgba(46,170,111,0.4))}}
 .spinner{width:16px;height:16px;border:2px solid rgba(201,168,76,0.2);border-top-color:#C9A84C;border-radius:50%;animation:spin .6s linear infinite;display:inline-block}
+/* v12.61: number-inputs zonder spinner-arrows (lelijk streepje rechts) */
+.no-spin::-webkit-outer-spin-button,.no-spin::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.no-spin{-moz-appearance:textfield;appearance:textfield}
 .tj-topbar{height:64px;background:var(--bg);-webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur);border-bottom:1px solid rgba(201,168,76,0.2);transition:all .2s}
 /* Aurora keeps a hint of the glass aesthetic but opaque enough to block scroll-through text */
 body.theme-aurora .tj-topbar{background:rgba(10,12,18,0.94)}
@@ -889,7 +892,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.60",released:"2026-04-29"};
+const APP_VERSION={version:"v12.62",released:"2026-05-01"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -907,6 +910,88 @@ const IS_HOSTED=(()=>{try{
   if(!h||h==="localhost"||h==="127.0.0.1"||h.startsWith("192.168.")||h.startsWith("10.")||h.startsWith("172."))return false;
   return true;
 }catch{return false}})();
+
+// v12.61: Bellafiore A+/A/B/C grading defaults — conservatieve % per grade.
+// User kan overrides zetten via config.gradeRiskPct. Defaults gekozen voor crypto:
+// kleiner dan Bellafiore's stocks-30%-DLL (welke voor day-trading equity meer haalbaar is).
+const DEFAULT_GRADE_RISK_PCT={"A+":2,"A":1.5,"B":1,"C":0.5};
+
+// v12.62: pure helper voor partial-status detectie. Pakt een trades-array, returnt
+// dezelfde array maar met `status="partial"` + `realizedPnl=sum` toegepast op open
+// trades die closed-siblings hebben op (pair, direction, entry-prijs op 8 decimalen).
+// Geëxtraheerd uit syncOpenPositions zodat 'ie testbaar is via fixture-import zonder
+// React state of API-calls. Belangrijk: positionId is GEEN match-key — Blofin hergebruikt
+// 'm over verschillende posities heen (empirisch via Denny's data: 1 posId voor 8 BTC trades).
+function detectPartialFromSiblings(trades,exchangeKey){
+  if(!Array.isArray(trades))return trades;
+  const matchKey=(t)=>{
+    const e=parseFloat(t.entry);
+    if(!isFinite(e)||e<=0)return null;
+    return `${t.pair}|${t.direction}|${e.toFixed(8)}`;
+  };
+  return trades.map(t=>{
+    if(t.source!==exchangeKey)return t;
+    if(t.status!=="open"&&t.status!=="partial")return t;
+    const tKey=matchKey(t);
+    if(!tKey)return t;
+    const siblings=trades.filter(s=>s.source===exchangeKey&&s.status==="closed"&&s.id!==t.id&&matchKey(s)===tKey);
+    if(siblings.length===0){
+      if(t.status==="partial")return{...t,status:"open",realizedPnl:""};
+      return t;
+    }
+    const realizedPnl=siblings.reduce((sum,c)=>sum+(parseFloat(c.pnl)||0),0);
+    // v12.62: ook tpLevels vullen als leeg — siblings worden hit-niveaus op de
+    // open trade. Pct = sibling-size / origineel (= open-rest + alle gesloten siblings).
+    // Behoud bestaande tpLevels als user die zelf had gepland — geen overschrijving.
+    let next={...t,status:"partial",realizedPnl:realizedPnl.toFixed(2)};
+    const hasUserTps=Array.isArray(t.tpLevels)&&t.tpLevels.length>0;
+    if(!hasUserTps){
+      const sortedSiblings=[...siblings].sort((a,b)=>{
+        const at=parseInt((a.id||"").split("_").pop()||"0",10);
+        const bt=parseInt((b.id||"").split("_").pop()||"0",10);
+        return at-bt;
+      });
+      // v12.62: pct = closed-size / origineel (= open-rest + alle gesloten siblings).
+      // Voor Blofin is positionSizeAsset op closed-records buggy (Blofin's closePositions
+      // is al in BTC voor BTC-USDT, maar wij vermenigvuldigen 'm opnieuw met ctVal=0.001
+      // → 1000× te klein). Fallback-keten:
+      //   1. _rawCloseSize uit recent fetched records (raw waarde, klopt direct)
+      //   2. Geometric inverse: pnl / |exit-entry| → klopt voor records zonder _rawCloseSize
+      //   3. positionSizeAsset (buggy, laatste fallback om niets te tonen te voorkomen)
+      const sizeOf=(rec)=>{
+        const raw=parseFloat(rec._rawCloseSize);
+        if(isFinite(raw)&&raw>0)return raw;
+        const pnl=parseFloat(rec.pnl);
+        const exit=parseFloat(rec.exit);
+        const entry=parseFloat(rec.entry);
+        if(isFinite(pnl)&&isFinite(exit)&&isFinite(entry)&&Math.abs(exit-entry)>0){
+          const sz=Math.abs(pnl)/Math.abs(exit-entry);
+          if(sz>0)return sz;
+        }
+        return Math.abs(parseFloat(rec.positionSizeAsset)||0);
+      };
+      const restAsset=Math.abs(parseFloat(t.positionSizeAsset)||0);
+      const closedAsset=sortedSiblings.reduce((s,c)=>s+sizeOf(c),0);
+      const totalAsset=restAsset+closedAsset;
+      // v12.62: bewaar origineel size op de trade. Wordt gebruikt door TradeForm's
+      // calcProfit zodat TP-winst correct berekend wordt over origineel (0.0029 BTC),
+      // niet over de partial-rest (0.0019 BTC). Anders krijg je $2.16 i.p.v. $3.35.
+      if(totalAsset>0)next.originalSizeAsset=String(totalAsset);
+      next.tpLevels=sortedSiblings.map(c=>{
+        const cAsset=sizeOf(c);
+        const pct=totalAsset>0?(cAsset/totalAsset*100):0;
+        return{
+          id:"tp_"+c.id,
+          price:c.exit||"",
+          pct:pct.toFixed(2),
+          status:"hit",
+          actualPrice:c.exit||"",
+        };
+      });
+    }
+    return next;
+  });
+}
 
 // ─── PLAYBOOK — gestructureerde catalogus van bewezen setups ───
 // Gekoppeld aan trades via setup-tag overlap (geen apart playbookId-veld nodig).
@@ -935,7 +1020,14 @@ const EMPTY_PLAYBOOK={
   pairs:[],              // BTC/USDT, ETH/USDT, of vrij ingevuld
   sessions:[],           // 8 sessie-buckets uit ALL_SESSIONS
   status:"testing",      // testing | active | retired
-  context:"",            // markt-context paragraaf
+  context:"",            // legacy — wordt bij migratie gemapped naar bigPicture als bigPicture leeg is
+  // v12.61: Bellafiore "5 decision-indicators" — top-down marktcontext.
+  // Default uit; user toggelt aan via PlaybookForm. Auto-fillen naar trade alleen als enabled.
+  bigPictureEnabled:false,
+  bigPicture:"",         // markt-state: BTC.D / DXY / total-cap / risk-on of -off
+  tape:"",               // order-flow: CVD / book-imbalance / liquidations / funding / whale-flows
+  intuition:"",          // pattern-recognition uit ervaring (op playbook-niveau)
+  defaultGrade:"",       // v12.61: A+ / A / B / C — wat is dit setup typisch (bewuste keuze, geen default)
   criteria:[],           // [{text, mandatory}] checklist
   stop:"",               // stop-rule
   target:"",             // target-rule
@@ -991,6 +1083,12 @@ function migratePlaybooks(arr){
         }
       }
     }
+    // v12.61: legacy `context` → `bigPicture` mappen. Als context gevuld én bigPicture leeg
+    // is, kopieer naar bigPicture en zet de toggle aan zodat user 't direct ziet.
+    if(base.context&&!base.bigPicture){
+      base.bigPicture=base.context;
+      base.bigPictureEnabled=true;
+    }
     return syncPlaybookFlatFields({...base,layers});
   });
 }
@@ -1009,9 +1107,16 @@ const EMPTY_TRADE={
   playbookId:"",      // v12.50: FK naar playbook-id; auto-fill bron + compliance-tracking
   complianceChecks:[],// v12.50: array van criteria-text die afgevinkt waren bij entry
   complianceScore:null,// v12.50: % mandatory criteria afgevinkt (cached voor analytics)
+  tradeGrade:"",      // v12.61: A+/A/B/C — overschrijft pb.defaultGrade per trade (Bellafiore Tier-systeem)
   rating:0,screenshot:null,screenshots:[],notes:"",links:[],layers:[],
   source:"manual",positionId:"",openTime:"",closeTime:"",
+  // v12.62: status uitgebreid met "partial" — gederiveerd door syncOpenPositions
+  // wanneer een open positie closed-siblings heeft via dezelfde positionId.
+  // Behandeld als "open" voor exit-fields (verborgen), maar krijgt visueel een
+  // amber badge + realizedPnl-display.
   status:"closed",manualOverrides:[],tpLevels:[],
+  realizedPnl:"",     // v12.62: voor status="partial" — sum(pnl) van closed-siblings met zelfde positionId
+  originalSizeAsset:"",// v12.62: voor status="partial" — origineel size in base currency (= rest + alle closed siblings); gebruikt voor correcte TP-winst-calc
   entryNote:"",
   riskUsd:"",riskPct:"",
   hindsightExit:""// optional: where did price actually go after a missed trade
@@ -1084,6 +1189,9 @@ const normalizeTrade=(t)=>{
   if(out.playbookId===undefined)out.playbookId="";
   if(!Array.isArray(out.complianceChecks))out.complianceChecks=[];
   if(out.complianceScore===undefined)out.complianceScore=null;
+  // v12.62: realizedPnl + tradeGrade default voor backwards-compat
+  if(out.realizedPnl===undefined)out.realizedPnl="";
+  if(out.tradeGrade===undefined)out.tradeGrade="";
   // v12.53: layer.setup (string) → layer.setups (array). Voorbeeld: een 4H laag
   // kan zowel MSB als SFP zijn. Migreert legacy single-setup naar single-element array.
   if(Array.isArray(out.layers)){
@@ -1612,7 +1720,6 @@ const ExchangeAPI = {
       if(startTime){
         data.data=(data.data||[]).filter(t=>{const ts=Number(t.updateTime||t.createTime||0);return ts>=Number(startTime);});
       }
-      // Map direct-API veld (data.data) naar wat de bestaande code verwacht (data.trades)
       data.trades=data.data||[];
       data.source="positions-history";
       const source=data.source||"orders-history";
@@ -1637,7 +1744,10 @@ const ExchangeAPI = {
           if(posSide==="long")direction="long";
           else if(posSide==="short")direction="short";
           else{const xN=parseFloat(exitPrice)||0;const pN=parseFloat(t.realizedPnl||t.pnl||"0");direction=((xN-entryN)*pN>=0)?"long":"short"}
-          return{id:"blofin_"+t.positionId+"_"+closeTime,date:ts2date(closeTime),time:ts2time(closeTime),pair:(t.instId||"").replace("-","/"),direction,entry:normPrice(entryPrice),exit:normPrice(exitPrice),positionSize:sizeUsdt||normPrice(assetQty),positionSizeAsset:assetQty>0?normPrice(assetQty):"",pnl:t.realizedPnl||t.pnl||"",fees:t.fee?Math.abs(parseFloat(t.fee)).toString():"0",leverage:t.leverage||"10",source:"blofin",status:"closed",stopLoss:"",takeProfit:"",highestPrice:"",lowestPrice:"",setupTags:[],confirmationTags:[],timeframeTags:[],emotionTags:[],mistakeTags:[],customTags:[],rating:0,screenshot:null,notes:"",links:[],layers:[],positionId:t.positionId||"",openTime:t.createTime||"",closeTime:String(closeTime)};
+          return{id:"blofin_"+t.positionId+"_"+closeTime,date:ts2date(closeTime),time:ts2time(closeTime),pair:(t.instId||"").replace("-","/"),direction,entry:normPrice(entryPrice),exit:normPrice(exitPrice),positionSize:sizeUsdt||normPrice(assetQty),positionSizeAsset:assetQty>0?normPrice(assetQty):"",pnl:t.realizedPnl||t.pnl||"",fees:t.fee?Math.abs(parseFloat(t.fee)).toString():"0",leverage:t.leverage||"10",source:"blofin",status:"closed",stopLoss:"",takeProfit:"",highestPrice:"",lowestPrice:"",setupTags:[],confirmationTags:[],timeframeTags:[],emotionTags:[],mistakeTags:[],customTags:[],rating:0,screenshot:null,notes:"",links:[],layers:[],positionId:t.positionId||"",openTime:t.createTime||"",closeTime:String(closeTime),
+            // v12.62: raw close-size in base currency (Blofin geeft closePositions in BTC voor BTC-USDT, niet in contracts).
+            // Gebruikt door detectPartialFromSiblings voor correcte pct-berekening op tpLevels — anders krijg je 0.05% i.p.v. 34%.
+            _rawCloseSize:String(rawContracts||"")};
         });
       }
       return(data.trades||[]).filter(t=>parseFloat(t.pnl||"0")!==0).map(t=>{
@@ -2823,9 +2933,37 @@ function TradeList({trades,onEdit,onDelete,onQuickTag,onBulkDelete,onBulkTag,sho
     <div style={{marginTop:"8px",fontSize:"11px",color:"var(--text4)"}}><span className="kbd">N</span> Nieuwe trade toevoegen</div>
   </div>);
 
+  // v12.62: Hide closed-records die sibling zijn van een open/partial trade (zelfde
+  // source, pair, direction, entry-prijs op 8 decimalen). Reden: de sibling vertelt
+  // hetzelfde verhaal als de "realized" indicator op de open trade — dubbele info in
+  // de lijst. localStorage en analytics blijven intact (alleen UI-filter); bij volledige
+  // positie-sluiting verschijnen ze automatisch weer als losse closed trades zodra de
+  // open-rij wegvalt uit de array.
+  const consumedSiblingIds=(()=>{
+    const matchKey=(t)=>{
+      const e=parseFloat(t.entry);
+      if(!isFinite(e)||e<=0)return null;
+      return `${t.source}|${t.pair}|${t.direction}|${e.toFixed(8)}`;
+    };
+    const openKeys=new Set();
+    for(const t of trades){
+      if(t.status!=="open"&&t.status!=="partial")continue;
+      const k=matchKey(t);
+      if(k)openKeys.add(k);
+    }
+    if(openKeys.size===0)return new Set();
+    const consumed=new Set();
+    for(const t of trades){
+      if(t.status!=="closed")continue;
+      const k=matchKey(t);
+      if(k&&openKeys.has(k))consumed.add(t.id);
+    }
+    return consumed;
+  })();
+  const visibleTrades=consumedSiblingIds.size>0?trades.filter(t=>!consumedSiblingIds.has(t.id)):trades;
   // v7 NEW: search filter (debounced on state)
   const searchLower=search.toLowerCase().trim();
-  const searchFiltered=searchLower?trades.filter(t=>{
+  const searchFiltered=searchLower?visibleTrades.filter(t=>{
     if((t.pair||"").toLowerCase().includes(searchLower))return true;
     if((t.notes||"").toLowerCase().includes(searchLower))return true;
     if((t.date||"").includes(searchLower))return true;
@@ -2834,7 +2972,7 @@ function TradeList({trades,onEdit,onDelete,onQuickTag,onBulkDelete,onBulkTag,sho
     const rMult=calcRMultiple(t);
     if(rMult!==null&&(`${rMult.toFixed(1)}R`).includes(searchLower))return true;
     return false;
-  }):trades;
+  }):visibleTrades;
 
   const sorted=[...searchFiltered].sort((a,b)=>{
     if(a.status==="open"&&b.status!=="open")return -1;
@@ -2967,6 +3105,7 @@ function TradeList({trades,onEdit,onDelete,onQuickTag,onBulkDelete,onBulkTag,sho
               </td>
               <td style={tdStyle}>
                 {t.status==="missed"?(t.simType==="backtest"?<span style={{padding:"3px 8px",borderRadius:"4px",fontSize:"10px",fontWeight:700,background:"rgba(122,180,210,0.15)",color:"#7ab4d2",display:"inline-flex",alignItems:"center",gap:"5px"}}>🔬 BT</span>:t.simType==="paper"?<span style={{padding:"3px 8px",borderRadius:"4px",fontSize:"10px",fontWeight:700,background:"rgba(154,138,204,0.15)",color:"#9a8acc",display:"inline-flex",alignItems:"center",gap:"5px"}}>📝 PAPER</span>:<span style={{padding:"3px 8px",borderRadius:"4px",fontSize:"10px",fontWeight:700,background:"rgba(180,140,200,0.15)",color:"#b48cc8",display:"inline-flex",alignItems:"center",gap:"5px"}}>👻 MISS</span>)
+                :t.status==="partial"?(()=>{const r=parseFloat(t.realizedPnl);const rTxt=isFinite(r)&&r!==0?` ${r>=0?"+":""}$${r.toFixed(2)}`:"";return<span title={"Partial close — restant nog open"+(rTxt?", realized "+rTxt.trim():"")} style={{padding:"3px 8px",borderRadius:"4px",fontSize:"10px",fontWeight:700,background:"rgba(212,168,83,0.14)",color:"var(--amber)",display:"inline-flex",alignItems:"center",gap:"5px"}}><span style={{width:"6px",height:"6px",borderRadius:"50%",background:"var(--amber)",animation:"pulse 2s ease-in-out infinite"}}/>PARTIAL{rTxt}</span>;})()
                 :t.status==="open"?<span style={{padding:"3px 8px",borderRadius:"4px",fontSize:"10px",fontWeight:700,background:"rgba(201,168,76,0.1)",color:"#C9A84C",display:"inline-flex",alignItems:"center",gap:"5px"}}><span style={{width:"6px",height:"6px",borderRadius:"50%",background:"#C9A84C",animation:"pulse 2s ease-in-out infinite"}}/>OPEN</span>
                 :<span style={{padding:"3px 8px",borderRadius:"4px",fontSize:"10px",fontWeight:700,background:isW?"rgba(46,170,111,0.12)":isL?"rgba(224,85,85,0.12)":"rgba(255,255,255,0.04)",color:isW?"#2eaa6f":isL?"#e05555":"rgba(255,255,255,0.4)"}}>{isW?"WIN":isL?"LOSS":"--"}</span>}
               </td>
@@ -3568,8 +3707,9 @@ function Section({title,storeKey,defaultOpen=true,hint,children}){
   </details>);
 }
 
-function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,accounts,showToast,isDraft,playbooks,setTab}){
+function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,setConfig,accounts,showToast,isDraft,playbooks,setTab}){
   const[showCard,setShowCard]=useState(false);
+  const[sizeEditOpen,setSizeEditOpen]=useState(false);// v12.61: inline edit voor Bellafiore account-saldo
   // Auto-persist to tj_trade_draft so unsaved input survives accidental modal-close, tab-close, crash, etc.
   // Only for new trades (isDraft=true); edits are already persisted via tj_trades.
   useEffect(()=>{
@@ -3649,7 +3789,10 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,accounts,sho
   const gt=(k)=>tagConfig[k]||DEFAULT_TAGS[k]||[];
   const[sizeInputMode,setSizeInputMode]=useState(()=>localStorage.getItem("tj_sizeInputMode")||"usdt");
   const isMissed=trade.status==="missed";
-  const isOpen=!isMissed&&((trade.status||"closed")==="open");
+  // v12.62: "partial" wordt voor exit-fields hetzelfde behandeld als "open" — positie
+  // is nog deels open, geen volledige exit ingevuld. Visueel onderscheid via badge.
+  const isPartial=trade.status==="partial";
+  const isOpen=!isMissed&&((trade.status||"closed")==="open"||isPartial);
   const hideExitFields=isOpen||isMissed;// both states: no real exit/PnL/fees
   const missedEnabled=!!config?.trackMissedTrades;
   // v12.46-12.48: simType onderscheid binnen status:"missed" — "missed" (real-time),
@@ -3710,6 +3853,8 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,accounts,sho
       if(Array.isArray(pb.layers)&&pb.layers.length>0&&(!Array.isArray(p.layers)||p.layers.length===0)){
         next.layers=pb.layers.map(L=>({...EMPTY_LAYER,id:uid(),timeframe:L.timeframe||"",setups:Array.isArray(L.setups)?[...L.setups]:[],confirmations:Array.isArray(L.confirmations)?[...L.confirmations]:[]}));
       }
+      // v12.61: default-grade overnemen alleen als trade nog geen tradeGrade heeft (geen overschrijving)
+      if(pb.defaultGrade&&!p.tradeGrade)next.tradeGrade=pb.defaultGrade;
       return next;
     });
   };
@@ -3744,12 +3889,23 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,accounts,sho
       "{preTradeQuote.text}" <span style={{color:"var(--text5)",fontStyle:"normal",fontSize:"10px",fontFamily:"var(--mono)",letterSpacing:".06em",marginLeft:"4px"}}>— {preTradeQuote.src}</span>
     </div>}
     {/* Status toggle — primary control, drives conditional form sections */}
-    {(()=>{const simBg=isPaper?"rgba(154,138,204,.08)":isBacktest?"rgba(122,180,210,.08)":isMissedReal?"rgba(180,140,200,.08)":isOpen?"var(--gold-dim)":"var(--bg4)";const simBorder=isPaper?"rgba(154,138,204,.3)":isBacktest?"rgba(122,180,210,.3)":isMissedReal?"rgba(180,140,200,.3)":isOpen?"var(--gold-border)":"var(--border2)";const hint=isPaper?"📝 Paper / demo-account — telt mee in Stress-Leak Detector":isBacktest?"🔬 Backtest / chart-replay — uitgesloten van standaard edge-stats":isMissedReal?"👻 Niet genomen — plan-velden blijven, exit/PNL verborgen":isOpen?"Exit / PNL / fees pas in te vullen na sluiten":"Volledige trade — alle velden actief";return(
+    {(()=>{
+      // v12.62: partial-status krijgt amber-tint + realized PnL in hint
+      const realizedNum=parseFloat(trade.realizedPnl);
+      const realizedTxt=isFinite(realizedNum)&&realizedNum!==0?`${realizedNum>=0?"+":""}$${realizedNum.toFixed(2)}`:null;
+      const simBg=isPartial?"rgba(212,168,83,.08)":isPaper?"rgba(154,138,204,.08)":isBacktest?"rgba(122,180,210,.08)":isMissedReal?"rgba(180,140,200,.08)":isOpen?"var(--gold-dim)":"var(--bg4)";
+      const simBorder=isPartial?"rgba(212,168,83,.35)":isPaper?"rgba(154,138,204,.3)":isBacktest?"rgba(122,180,210,.3)":isMissedReal?"rgba(180,140,200,.3)":isOpen?"var(--gold-border)":"var(--border2)";
+      const hint=isPartial?`🔄 Partial close · restant open${realizedTxt?` · realized ${realizedTxt}`:""}`:isPaper?"📝 Paper / demo-account — telt mee in Stress-Leak Detector":isBacktest?"🔬 Backtest / chart-replay — uitgesloten van standaard edge-stats":isMissedReal?"👻 Niet genomen — plan-velden blijven, exit/PNL verborgen":isOpen?"Exit / PNL / fees pas in te vullen na sluiten":"Volledige trade — alle velden actief";
+      return(
     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"16px",padding:"10px 14px",background:simBg,borderRadius:"8px",border:`1px solid ${simBorder}`,flexWrap:"wrap",gap:"10px"}}>
       <div style={{display:"flex",alignItems:"center",gap:"10px",flexWrap:"wrap"}}>
         <span style={{fontSize:"10px",color:"var(--text4)",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.08em"}}>Status</span>
         <div style={{display:"flex",gap:0,borderRadius:"6px",overflow:"hidden",border:"1px solid var(--border3)",opacity:isMissed?0.4:1}}>
-          {["closed","open"].map(s=>(<button key={s} disabled={isMissed} onClick={()=>setTrade(p=>({...p,status:s,simType:""}))} style={{padding:"6px 16px",border:"none",fontSize:"11px",fontWeight:700,cursor:isMissed?"not-allowed":"pointer",fontFamily:"inherit",background:trade.status===s?(s==="open"?"var(--gold-dim)":"var(--bg3)"):"transparent",color:trade.status===s?(s==="open"?"var(--gold)":"var(--text)"):"var(--text4)",display:"flex",alignItems:"center",gap:"5px"}}>{s==="open"&&trade.status==="open"&&<span style={{width:"6px",height:"6px",borderRadius:"50%",background:"var(--gold)",boxShadow:"0 0 6px var(--gold)"}}/>}{s==="open"?"Open":"Closed"}</button>))}
+          {["closed","open"].map(s=>{
+            // "Open"-pill is ook actief bij status="partial" (geclusterd)
+            const isActive=trade.status===s||(s==="open"&&isPartial);
+            return(<button key={s} disabled={isMissed} onClick={()=>setTrade(p=>({...p,status:s,simType:""}))} style={{padding:"6px 16px",border:"none",fontSize:"11px",fontWeight:700,cursor:isMissed?"not-allowed":"pointer",fontFamily:"inherit",background:isActive?(s==="open"?(isPartial?"rgba(212,168,83,.18)":"var(--gold-dim)"):"var(--bg3)"):"transparent",color:isActive?(s==="open"?(isPartial?"var(--amber)":"var(--gold)"):"var(--text)"):"var(--text4)",display:"flex",alignItems:"center",gap:"5px"}}>{s==="open"&&isActive&&<span style={{width:"6px",height:"6px",borderRadius:"50%",background:isPartial?"var(--amber)":"var(--gold)",boxShadow:`0 0 6px ${isPartial?"var(--amber)":"var(--gold)"}`}}/>}{s==="open"?(isPartial?"Partial":"Open"):"Closed"}</button>);
+          })}
         </div>
         {missedEnabled&&<>
           <span style={{width:"1px",height:"20px",background:"var(--border3)",margin:"0 4px"}}/>
@@ -3780,6 +3936,76 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,accounts,sho
         <strong style={{color:"var(--green)"}}>✨ Auto-gevuld:</strong> setup-tags / timeframes / confirmaties uit playbook-blueprint. Pills zijn toggleable — overschrijf vrij wanneer setup afwijkt.
       </div>}
     </div>}
+
+    {/* v12.61: Bellafiore trade-grade + sizing-helper + Big-Picture auto-fill.
+        Alleen tonen als playbook is gekozen — grade-systeem is per definitie playbook-gekoppeld. */}
+    {activePlaybook&&(()=>{
+      const tradeGrade=trade.tradeGrade||activePlaybook.defaultGrade||"";
+      const gradeRiskPctMap=(config?.gradeRiskPct&&Object.keys(config.gradeRiskPct).length)?config.gradeRiskPct:DEFAULT_GRADE_RISK_PCT;
+      const accountSize=parseFloat(config?.bellafioreAccountSize)||0;
+      const tradeGradePct=gradeRiskPctMap[tradeGrade];
+      const gradeColors={"A+":["var(--gold)","var(--gold-border)","var(--gold-dim)"],"A":["var(--green)","rgba(46,170,111,0.30)","rgba(46,170,111,0.14)"],"B":["var(--amber)","rgba(212,168,83,0.30)","rgba(212,168,83,0.14)"],"C":["var(--red)","rgba(224,85,85,0.30)","rgba(224,85,85,0.14)"]};
+      const showBigPicture=!!activePlaybook.bigPictureEnabled;
+      const hasGradingOrBigPicture=activePlaybook.defaultGrade||showBigPicture;
+      if(!hasGradingOrBigPicture)return null;
+      return(<div style={{padding:"12px 14px",background:"rgba(138,159,192,0.04)",border:"1px solid rgba(138,159,192,0.20)",borderLeft:"3px solid #8a9fc0",borderRadius:"10px",marginBottom:"16px"}}>
+        {/* Grade-pills */}
+        {(activePlaybook.defaultGrade||trade.tradeGrade)&&<div style={{marginBottom:showBigPicture||accountSize>0?12:0}}>
+          <div style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",marginBottom:6,flexWrap:"wrap",gap:8}}>
+            <span style={{fontSize:"10px",color:"#8a9fc0",fontFamily:"var(--mono)",fontWeight:700,letterSpacing:".18em",textTransform:"uppercase"}}>🎯 Trade-grade</span>
+            <span style={{fontSize:"10.5px",color:"var(--text5)"}}>{trade.tradeGrade?`Override (playbook default: ${activePlaybook.defaultGrade||"geen"})`:`Default uit playbook: ${activePlaybook.defaultGrade||"geen"}`}</span>
+          </div>
+          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+            {["A+","A","B","C"].map(g=>{
+              const sel=tradeGrade===g;
+              const[col,bd,bg]=gradeColors[g];
+              return(<button key={g} type="button" onClick={()=>setTrade(p=>({...p,tradeGrade:p.tradeGrade===g?"":g}))} style={{padding:"6px 13px",borderRadius:6,fontFamily:"var(--mono)",fontWeight:700,fontSize:11.5,letterSpacing:".04em",border:`1px solid ${sel?col:"var(--border3)"}`,background:sel?bg:"transparent",color:sel?col:"var(--text3)",cursor:"pointer",transition:"all .12s"}}>{g}</button>);
+            })}
+          </div>
+        </div>}
+        {/* Sizing-helper — toont %, en $ alleen als accountSize > 0. Inline edit-knop
+            voor account-saldo zodat user niet via DevTools hoeft. */}
+        {tradeGrade&&tradeGradePct!==undefined&&<div style={{padding:"10px 12px",background:"rgba(46,170,111,0.04)",border:"1px solid rgba(46,170,111,0.18)",borderRadius:7,marginBottom:showBigPicture?12:0}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:4,flexWrap:"wrap",gap:8}}>
+            <span style={{fontSize:"9.5px",color:"var(--green)",fontFamily:"var(--mono)",fontWeight:700,letterSpacing:".14em",textTransform:"uppercase"}}>💰 Suggested risk (per grade)</span>
+            <span style={{fontSize:"10px",color:"var(--text5)",fontFamily:"var(--mono)"}}>info-only · geen save-block</span>
+          </div>
+          <div style={{fontSize:"12px",color:"var(--text2)",lineHeight:1.55,display:"flex",alignItems:"center",flexWrap:"wrap",gap:6}}>
+            <span><strong style={{color:"var(--green)",fontSize:13}}>{tradeGradePct}%</strong> voor {tradeGrade} trade</span>
+            {accountSize>0?<>
+              <span style={{color:"var(--text5)"}}>·</span>
+              <span>= <strong style={{color:"var(--text)"}}>{"$"+(accountSize*tradeGradePct/100).toFixed(2)}</strong> van</span>
+              {sizeEditOpen?
+                <input autoFocus type="number" min="0" step="100" defaultValue={accountSize} onBlur={e=>{const v=parseFloat(e.target.value)||0;if(setConfig)setConfig(p=>({...p,bellafioreAccountSize:v}));setSizeEditOpen(false);}} onKeyDown={e=>{if(e.key==="Enter"){e.target.blur();}else if(e.key==="Escape"){setSizeEditOpen(false);}}} className="no-spin" style={{width:90,padding:"3px 7px",fontSize:12,fontFamily:"var(--mono)",background:"var(--bg3)",color:"var(--text)",border:"1px solid var(--gold-border)",borderRadius:4,outline:"none"}}/>
+                :<button type="button" onClick={()=>setSizeEditOpen(true)} title="Klik om account-saldo aan te passen" style={{padding:"2px 8px",fontSize:11.5,fontFamily:"var(--mono)",fontWeight:700,background:"var(--bg3)",color:"var(--text)",border:"1px dashed var(--border4)",borderRadius:4,cursor:"pointer"}}>{"$"+accountSize}</button>}
+              <span>account</span>
+            </>:<>
+              <span style={{color:"var(--text5)"}}>·</span>
+              {sizeEditOpen?
+                <span style={{display:"inline-flex",alignItems:"center",gap:4,color:"var(--text4)"}}>
+                  account-saldo: $<input autoFocus type="number" min="0" step="100" defaultValue="" placeholder="bv. 5000" onBlur={e=>{const v=parseFloat(e.target.value)||0;if(setConfig&&v>0)setConfig(p=>({...p,bellafioreAccountSize:v}));setSizeEditOpen(false);}} onKeyDown={e=>{if(e.key==="Enter"){e.target.blur();}else if(e.key==="Escape"){setSizeEditOpen(false);}}} className="no-spin" style={{width:90,padding:"3px 7px",fontSize:12,fontFamily:"var(--mono)",background:"var(--bg3)",color:"var(--text)",border:"1px solid var(--gold-border)",borderRadius:4,outline:"none"}}/>
+                </span>
+                :<button type="button" onClick={()=>setSizeEditOpen(true)} title="Stel je account-saldo in voor $-bedrag" style={{padding:"2px 10px",fontSize:11,fontFamily:"var(--mono)",fontWeight:600,background:"transparent",color:"var(--gold)",border:"1px dashed var(--gold-border)",borderRadius:4,cursor:"pointer"}}>+ stel account-saldo in</button>}
+            </>}
+          </div>
+        </div>}
+        {/* Big-Picture auto-fill */}
+        {showBigPicture&&<>
+          {activePlaybook.bigPicture&&<div style={{padding:"9px 11px",background:"var(--bg3)",border:"1px solid var(--border2)",borderLeft:"2px solid var(--gold)",borderRadius:6,marginBottom:8}}>
+            <div style={{fontSize:"9px",color:"var(--text4)",fontFamily:"var(--mono)",fontWeight:700,letterSpacing:".1em",textTransform:"uppercase",marginBottom:4}}>🌍 Big Picture <span style={{color:"var(--gold)"}}>auto uit playbook</span></div>
+            <div style={{fontSize:"12px",color:"var(--text2)",lineHeight:1.55,whiteSpace:"pre-wrap"}}>{activePlaybook.bigPicture}</div>
+          </div>}
+          {activePlaybook.tape&&<div style={{padding:"9px 11px",background:"var(--bg3)",border:"1px solid var(--border2)",borderLeft:"2px solid var(--gold)",borderRadius:6,marginBottom:8}}>
+            <div style={{fontSize:"9px",color:"var(--text4)",fontFamily:"var(--mono)",fontWeight:700,letterSpacing:".1em",textTransform:"uppercase",marginBottom:4}}>📡 Reading the Tape <span style={{color:"var(--gold)"}}>auto uit playbook</span></div>
+            <div style={{fontSize:"12px",color:"var(--text2)",lineHeight:1.55,whiteSpace:"pre-wrap"}}>{activePlaybook.tape}</div>
+          </div>}
+          {activePlaybook.intuition&&<div style={{padding:"9px 11px",background:"var(--bg3)",border:"1px solid var(--border2)",borderLeft:"2px solid var(--gold)",borderRadius:6}}>
+            <div style={{fontSize:"9px",color:"var(--text4)",fontFamily:"var(--mono)",fontWeight:700,letterSpacing:".1em",textTransform:"uppercase",marginBottom:4}}>💡 Intuition <span style={{color:"var(--gold)"}}>auto uit playbook</span></div>
+            <div style={{fontSize:"12px",color:"var(--text2)",lineHeight:1.55,whiteSpace:"pre-wrap"}}>{activePlaybook.intuition}</div>
+          </div>}
+        </>}
+      </div>);
+    })()}
 
     {/* Account selector */}
     <div style={{marginBottom:"1rem"}}>
@@ -3870,8 +4096,18 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,accounts,sho
       const toggleStatus=(id)=>setTrade(p=>({...p,tpLevels:(p.tpLevels||[]).map(tp=>tp.id===id?{...tp,status:tp.status==="hit"?"open":tp.status==="open"?"missed":"hit"}:tp)}));
 
       const calcProfit=(tp)=>{
-        if(!entryN||!sizeN||!parseFloat(tp.price))return null;
+        if(!entryN||!parseFloat(tp.price))return null;
         const pct=parseFloat(tp.pct||0)/100;const tpPrice=parseFloat(tp.price);
+        // v12.62: voor partial-trades pct toepassen op ORIGINELE size (niet de rest).
+        // Anders rekent een 33.86% TP-niveau over de rest 0.0019 BTC ($2.16) i.p.v.
+        // over origineel 0.0029 BTC ($3.35 — de echte realized).
+        const origAsset=parseFloat(trade.originalSizeAsset);
+        if(trade.status==="partial"&&isFinite(origAsset)&&origAsset>0){
+          const profit=Math.abs(tpPrice-entryN)*origAsset*pct;
+          const sign=isLong?(tpPrice>=entryN?1:-1):(tpPrice<=entryN?1:-1);
+          return profit*sign;
+        }
+        if(!sizeN)return null;
         return isLong?(tpPrice-entryN)*sizeN*pct/entryN:(entryN-tpPrice)*sizeN*pct/entryN;
       };
       const calcRR=(tp)=>{
@@ -3895,12 +4131,15 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,accounts,sho
             ?await tpExApi.fetchFills(tpExCfg.apiKey,tpExCfg.apiSecret,tpExCfg.passphrase,symbol,startTime,endTime)
             :await tpExApi.fetchFills(tpExCfg.apiKey,tpExCfg.apiSecret,symbol,trade.positionId,startTime,endTime);
           const fills=r.fills||[];
-          if(!fills.length){showToast&&showToast("Geen TP-fills gevonden bij exchange","error");return}
+          if(!fills.length){showToast&&showToast("Geen TP-fills gevonden bij exchange — bestaande TPs behouden","error");return}
           const total=fills.reduce((s,f)=>s+Math.abs(parseFloat(f.size||f.vol||f.amount||0)),0)||1;
           const newTPs=fills.map((f,i)=>{
             const sz=Math.abs(parseFloat(f.size||f.vol||f.amount||0));
             return{id:`tp_${Date.now()}_${i}`,price:String(f.price||f.tradePrice||f.closeAvgPrice||""),pct:String(((sz/total)*100).toFixed(1)),status:"hit",actualPrice:String(f.price||f.tradePrice||f.closeAvgPrice||"")};
           }).filter(t=>parseFloat(t.price)>0);
+          // v12.62: niet overschrijven met lege array. Als geen valide TPs gefetched zijn,
+          // toon waarschuwing en behoud bestaande tpLevels (incl. door auto-detectie gevulde).
+          if(!newTPs.length){showToast&&showToast("Geen geldige TP-fills gevonden — bestaande TPs behouden","error");return}
           setTrade(p=>({...p,tpLevels:newTPs}));
           showToast&&showToast(`${newTPs.length} TP's opgehaald van ${tpExApi.name}`);
         }catch(e){showToast&&showToast(`TP-fetch mislukt: ${e.message}`,"error")}
@@ -3910,7 +4149,7 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,accounts,sho
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"10px"}}>
           <div style={{fontSize:"11px",color:"var(--gold)",textTransform:"uppercase",letterSpacing:"0.12em",fontWeight:700}}>Take Profit niveaus</div>
           <div style={{display:"flex",gap:"6px"}}>
-            {tpCanFetch&&<button onClick={fetchTPsInline} title={`Haalt TP-fills op uit ${tpExApi.name}`} style={{fontSize:"11px",padding:"4px 10px",borderRadius:"5px",border:"1px solid rgba(46,170,111,0.3)",background:"rgba(46,170,111,0.08)",color:"var(--teal)",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>🎯 Uit {tpExApi.name} ophalen</button>}
+            {tpCanFetch&&!(trade.status==="partial"&&(trade.tpLevels||[]).length>0)&&<button onClick={fetchTPsInline} title={`Haalt TP-fills op uit ${tpExApi.name}`} style={{fontSize:"11px",padding:"4px 10px",borderRadius:"5px",border:"1px solid rgba(46,170,111,0.3)",background:"rgba(46,170,111,0.08)",color:"var(--teal)",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>🎯 Uit {tpExApi.name} ophalen</button>}
             {tps.length<4&&<button onClick={addTP} style={{fontSize:"11px",padding:"4px 10px",borderRadius:"5px",border:"1px dashed var(--border5)",background:"transparent",color:"#C9A84C",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>+ TP toevoegen</button>}
           </div>
         </div>
@@ -4257,7 +4496,12 @@ function applyFilters(trades,filters){
     if(filters.pair&&filters.pair!=="all"&&t.pair!==filters.pair)return false;
     if(filters.quote&&filters.quote!=="all"&&(t.pair||"").split("/")[1]!==filters.quote)return false;
     if(filters.direction&&filters.direction!=="all"&&t.direction!==filters.direction)return false;
-    if(filters.status&&filters.status!=="all"&&(t.status||"closed")!==filters.status)return false;
+    // v12.62: partial telt als open voor de status-filter (positie is technisch nog open)
+    if(filters.status&&filters.status!=="all"){
+      const ts=t.status||"closed";
+      const matchOpen=filters.status==="open"&&(ts==="open"||ts==="partial");
+      if(!matchOpen&&ts!==filters.status)return false;
+    }
     if(filters.dateFrom&&t.date<filters.dateFrom)return false;
     if(filters.dateTo&&t.date>filters.dateTo)return false;
     if(filters.result&&filters.result!=="all"){const pnlR=parseFloat(t.pnl);if(isNaN(pnlR))return false;const pnl=netPnl(t);if(filters.result==="win"&&pnl<=0)return false;if(filters.result==="loss"&&pnl>=0)return false;}
@@ -5614,7 +5858,6 @@ function PlaybookForm({initial,onSave,onClose,tagConfig,setTab}){
   const togLayerArr=(i,key,v)=>setPb(p=>({...p,layers:(p.layers||[]).map((L,j)=>{if(j!==i)return L;const arr=new Set(L[key]||[]);arr.has(v)?arr.delete(v):arr.add(v);return{...L,[key]:[...arr]}})}));
   const[pairInput,setPairInput]=useState("");
   // Optionele velden default-collapsed: minder visuele lawaai voor wie minimaal invult
-  const[expContext,setExpContext]=useState(!!initial?.context);
   const[expMistake,setExpMistake]=useState(!!initial?.mistake);
   const handleSave=()=>{
     if(!pb.name.trim()){alert("Naam is verplicht");return;}
@@ -5676,6 +5919,38 @@ function PlaybookForm({initial,onSave,onClose,tagConfig,setTab}){
               <option value="retired">⚪ Retired</option>
             </select></div>
           </div>
+          {/* v12.61: Default-grade pills (Bellafiore A+/A/B/C) */}
+          <div>
+            <label style={lblSt}>Default-grade {lblHint("wat is dit setup typisch? Bewuste keuze, geen default — bepaalt sizing-suggestie")}</label>
+            <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+              {[["A+","var(--gold)","var(--gold-border)","var(--gold-dim)"],["A","var(--green)","rgba(46,170,111,0.30)","rgba(46,170,111,0.14)"],["B","var(--amber)","rgba(212,168,83,0.30)","rgba(212,168,83,0.14)"],["C","var(--red)","rgba(224,85,85,0.30)","rgba(224,85,85,0.14)"]].map(([g,col,bd,bg])=>{
+                const sel=pb.defaultGrade===g;
+                return(<button key={g} type="button" onClick={()=>upd("defaultGrade",sel?"":g)} style={{padding:"7px 14px",borderRadius:6,fontFamily:"var(--mono)",fontWeight:700,fontSize:12,letterSpacing:".04em",border:`1px solid ${sel?col:"var(--border3)"}`,background:sel?bg:"transparent",color:sel?col:"var(--text3)",cursor:"pointer",transition:"all .12s"}}>{g}</button>);
+              })}
+            </div>
+          </div>
+        </Section>
+
+        {/* ─── 🌍 BELLAFIORE BIG-PICTURE — optioneel via toggle ─── */}
+        <Section icon="🌍" title="Big-Picture-velden" subtitle="Optioneel · top-down marktcontext. Voor crypto: markt-state, order-flow, intuition — drie aparte velden zodat data en pattern-recognition niet door elkaar lopen." tint="blue">
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,padding:"8px 10px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:6}}>
+            <span style={{fontSize:11.5,color:"var(--text2)",fontWeight:600}}>{pb.bigPictureEnabled?"🟢 Velden zijn AAN — auto-fillen naar trade":"⚪ Velden zijn UIT — sectie hieronder verborgen"}</span>
+            <button type="button" onClick={()=>upd("bigPictureEnabled",!pb.bigPictureEnabled)} style={{padding:"5px 12px",fontSize:11,fontFamily:"var(--mono)",fontWeight:600,letterSpacing:".04em",borderRadius:5,border:"1px solid "+(pb.bigPictureEnabled?"rgba(138,159,192,0.40)":"var(--border3)"),background:pb.bigPictureEnabled?"rgba(138,159,192,0.14)":"transparent",color:pb.bigPictureEnabled?"#8a9fc0":"var(--text4)",cursor:"pointer"}}>{pb.bigPictureEnabled?"Aan":"Uit"}</button>
+          </div>
+          {pb.bigPictureEnabled&&<>
+            <div>
+              <label style={lblSt}>🌍 Big Picture {lblHint("BTC.D / DXY / total-cap / risk-on of -off")}</label>
+              <textarea style={taSt} value={pb.bigPicture} onChange={e=>upd("bigPicture",e.target.value)} placeholder="bv. BTC.D < 51% en dalend, alts trending. DXY consolideert. Risk-on regime."/>
+            </div>
+            <div>
+              <label style={lblSt}>📡 Reading the Tape {lblHint("CVD / book-imbalance / liquidations / funding / whale-flows")}</label>
+              <textarea style={taSt} value={pb.tape} onChange={e=>upd("tape",e.target.value)} placeholder="bv. CVD divergeert van prijs op 1H. OI stabiel. Geen extreme funding. Liquidaties op support opgevangen."/>
+            </div>
+            <div>
+              <label style={lblSt}>💡 Intuition {lblHint("pattern-recognition uit ervaring · expliciet apart van data-velden")}</label>
+              <textarea style={taSt} value={pb.intuition} onChange={e=>upd("intuition",e.target.value)} placeholder="bv. Setup voelt vergelijkbaar met de Apr-12 short — zelfde sweep-en-reclaim ritme."/>
+            </div>
+          </>}
         </Section>
 
         {/* ─── 🔍 SETUP-LAGEN ─── per laag een TF + setups + confirmations, mirror van TradeForm */}
@@ -5752,17 +6027,13 @@ function PlaybookForm({initial,onSave,onClose,tagConfig,setTab}){
               <div style={{display:"flex",flexWrap:"wrap",gap:5}}>{ALL_SESSIONS.map(s=>pillBtn((pb.sessions||[]).includes(s),()=>togArr("sessions",s),s))}</div>
             </div>
           </div>
-          {/* Markt-context — collapsible */}
-          <div style={{borderTop:"1px dashed var(--border2)",paddingTop:"14px"}}>
-            <div onClick={()=>setExpContext(!expContext)} style={{cursor:"pointer",userSelect:"none",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <div>
-                <span style={{...lblSt,marginBottom:0,display:"inline"}}>Markt-context</span>
-                <span style={{textTransform:"none",letterSpacing:0,fontFamily:"var(--font)",color:"var(--text5)",fontSize:"10.5px",fontWeight:400,marginLeft:6}}>— optioneel · wanneer geldt deze setup?</span>
-              </div>
-              <span style={{fontSize:"12px",color:"var(--text4)",fontFamily:"var(--mono)",transition:"transform .2s",transform:expContext?"rotate(0deg)":"rotate(-90deg)"}}>▾</span>
-            </div>
-            {expContext&&<textarea style={{...taSt,marginTop:"10px"}} value={pb.context} onChange={e=>upd("context",e.target.value)} placeholder="bv. Asian range > 4u, geen major news komende 30 min, BTC.D stabiel, funding rate neutraal"/>}
-          </div>
+          {/* v12.61: legacy `context` veld — tonen alleen als de bigPicture-toggle UIT staat
+              en er nog oude content in `context` staat. Anders is Bellafiore Big-Picture de
+              vervanger. User kan via toggle aan terug naar de nieuwe velden. */}
+          {pb.context&&!pb.bigPictureEnabled&&<div style={{borderTop:"1px dashed var(--border2)",paddingTop:"14px"}}>
+            <label style={lblSt}>Legacy markt-context {lblHint("ouder veld; gebruik liever Big-Picture-velden (toggle hierboven aan)")}</label>
+            <textarea style={taSt} value={pb.context} onChange={e=>upd("context",e.target.value)} placeholder="bv. Asian range > 4u, geen major news komende 30 min, BTC.D stabiel"/>
+          </div>}
         </Section>
 
         {/* ─── ✅ ENTRY-CRITERIA ─── */}
@@ -8515,6 +8786,7 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,imp
           fieldKeys:firstFieldsKeys,
         };
       }).sort((a,b)=>b.recordCount-a.recordCount);
+      const filteredCount=histRecords.filter(t=>{const pnl=parseFloat(t.realizedPnl||t.pnl||"0");const sz=Math.abs(parseFloat(t.closePositions||t.closeTotalPos||"0"));return pnl!==0||sz>0}).length;
       setDebugReport({
         totalHistory:histRecords.length,
         totalOpen:openRecords.length,
@@ -8522,10 +8794,127 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,imp
         partialCount:groups.filter(g=>g.recordCount>1).length,
         openPositionIds:[...openPosIds],
         groups,
+        filteredHistoryCount:filteredCount,
       });
     }catch(e){
       setDebugReport({error:String(e.message||e)});
     }finally{setDebugging(false)}
+  };
+  // v12.62: Snapshot + Fixture-test — laat dev itereren tegen offline mock-data zonder
+  // copy-paste loop. captureSnapshot doet de twee API-calls en biedt download als JSON.
+  // runFixtureTest laadt zo'n JSON en simuleert de sync-flow + sibling-detectie.
+  const captureSnapshot=async()=>{
+    setDebugging(true);
+    try{
+      const c=exCfg();
+      if(!c.apiKey||!c.apiSecret||!c.passphrase){throw new Error("API key, secret en passphrase nodig")}
+      const api=ExchangeAPI.blofin;
+      const histRaw=await api._direct(c.apiKey,c.apiSecret,c.passphrase,"/api/v1/account/positions-history",{limit:100});
+      const openRaw=await api._direct(c.apiKey,c.apiSecret,c.passphrase,"/api/v1/account/positions",{});
+      const snapshot={
+        type:"blofin-snapshot",
+        version:APP_VERSION.version,
+        capturedAt:new Date().toISOString(),
+        positionsHistory:histRaw.data||[],
+        openPositions:openRaw.data||[],
+      };
+      const blob=new Blob([JSON.stringify(snapshot,null,2)],{type:"application/json"});
+      const url=URL.createObjectURL(blob);
+      const a=document.createElement("a");
+      a.href=url;a.download=`blofin-snapshot-${new Date().toISOString().slice(0,16).replace(/[:T]/g,"-")}.json`;
+      a.click();URL.revokeObjectURL(url);
+      showToast(`📥 Snapshot opgeslagen: ${snapshot.openPositions.length} open · ${snapshot.positionsHistory.length} closed`,"success");
+    }catch(e){
+      showToast(e.message||"Snapshot mislukt","error");
+    }finally{setDebugging(false)}
+  };
+  const[fixtureReport,setFixtureReport]=useState(null);
+  const runFixtureTest=async(file)=>{
+    if(!file)return;
+    try{
+      const text=await file.text();
+      const fixture=JSON.parse(text);
+      if(fixture.type!=="blofin-snapshot")throw new Error("Geen blofin-snapshot bestand");
+      const histRecords=fixture.positionsHistory||[];
+      const openRecords=fixture.openPositions||[];
+      // Map raw → trade-shape via dezelfde adapter-logica als productie
+      const api=ExchangeAPI.blofin;
+      // Warm contractValue cache via real API (single GET, geen credentials nodig)
+      try{await api._getContractValue("BTC-USDT")}catch{}
+      const ctvMap=api._ctvCache||{};
+      // Map closed records (zoals fetchTrades doet)
+      const closedTrades=histRecords.filter(t=>{const pnl=parseFloat(t.realizedPnl||t.pnl||"0");const sz=Math.abs(parseFloat(t.closePositions||t.closeTotalPos||"0"));return pnl!==0||sz>0}).map(t=>{
+        const closeTime=t.updateTime||t.createTime||Date.now();
+        const entryPrice=t.openAveragePrice||t.averagePrice||t.openPrice||"";
+        const exitPrice=t.closeAveragePrice||t.avgClosePrice||t.closePrice||"";
+        const rawContracts=t.closePositions||t.closeTotalPos||t.positions||t.size||"";
+        const contractsN=Math.abs(parseFloat(rawContracts)||0);
+        const ctVal=ctvMap[t.instId]||1;
+        const assetQty=contractsN*ctVal;
+        const entryN=parseFloat(entryPrice)||0;
+        const sizeUsdt=(entryN>0&&assetQty>0)?(entryN*assetQty).toFixed(2):"";
+        const posSide=(t.positionSide||"net").toLowerCase();
+        let direction;
+        if(posSide==="long")direction="long";else if(posSide==="short")direction="short";
+        else{const xN=parseFloat(exitPrice)||0;const pN=parseFloat(t.realizedPnl||t.pnl||"0");direction=((xN-entryN)*pN>=0)?"long":"short"}
+        return{id:"blofin_"+t.positionId+"_"+closeTime,date:ts2date(closeTime),time:ts2time(closeTime),pair:(t.instId||"").replace("-","/"),direction,entry:normPrice(entryPrice),exit:normPrice(exitPrice),positionSize:sizeUsdt||normPrice(assetQty),positionSizeAsset:assetQty>0?normPrice(assetQty):"",pnl:t.realizedPnl||t.pnl||"",fees:t.fee?Math.abs(parseFloat(t.fee)).toString():"0",leverage:t.leverage||"10",source:"blofin",status:"closed",positionId:t.positionId||""};
+      });
+      // Map open records
+      const openTrades=openRecords.map(p=>{
+        const contracts=Math.abs(parseFloat(p.positions||"0"));
+        const ctVal=ctvMap[p.instId]||1;
+        const assetQty=contracts*ctVal;
+        const avgPrice=parseFloat(p.averagePrice||"0");
+        const usdNotional=avgPrice>0&&assetQty>0?(avgPrice*assetQty).toFixed(2):"";
+        return{id:"blofin_open_"+p.positionId,positionId:String(p.positionId||""),pair:(p.instId||"").replace("-","/"),direction:parseFloat(p.positions||"0")>0?"long":"short",entry:normPrice(p.averagePrice||""),positionSize:usdNotional||normPrice(assetQty),positionSizeAsset:assetQty>0?normPrice(assetQty):"",source:"blofin",status:"open"};
+      });
+      const merged=[...openTrades,...closedTrades];
+      // Run pure helper
+      const detected=detectPartialFromSiblings(merged,"blofin");
+      // Build analysis: per open trade, lijst van expected siblings + sum pnl
+      const matchKey=(t)=>{const e=parseFloat(t.entry);if(!isFinite(e)||e<=0)return null;return `${t.pair}|${t.direction}|${e.toFixed(8)}`;};
+      const analysis=openTrades.map(o=>{
+        const tKey=matchKey(o);
+        const detectedTrade=detected.find(d=>d.id===o.id);
+        const siblings=tKey?closedTrades.filter(c=>matchKey(c)===tKey):[];
+        const sumPnl=siblings.reduce((s,c)=>s+(parseFloat(c.pnl)||0),0);
+        return{
+          openId:o.id,
+          pair:o.pair,
+          direction:o.direction,
+          entry:o.entry,
+          positionId:o.positionId,
+          siblingsCount:siblings.length,
+          siblings:siblings.map(s=>({id:s.id,entry:s.entry,exit:s.exit,pnl:s.pnl,closeTime:s.id.split("_").pop()})),
+          expectedRealizedPnl:sumPnl.toFixed(2),
+          expectedStatus:siblings.length>0?"partial":"open",
+          actualStatus:detectedTrade?detectedTrade.status:"?",
+          actualRealizedPnl:detectedTrade?(detectedTrade.realizedPnl||""):"",
+          match:detectedTrade&&detectedTrade.status===(siblings.length>0?"partial":"open"),
+        };
+      });
+      // Per closed trade: hoeveel andere closed trades delen positionId, en hoeveel matchen op (pair,dir,entry)
+      const posIdGroups=new Map();
+      for(const c of closedTrades){
+        const pid=String(c.positionId||"");
+        if(!posIdGroups.has(pid))posIdGroups.set(pid,[]);
+        posIdGroups.get(pid).push(c);
+      }
+      setFixtureReport({
+        capturedAt:fixture.capturedAt,
+        version:fixture.version,
+        totalOpen:openRecords.length,
+        totalClosed:histRecords.length,
+        mappedClosed:closedTrades.length,
+        uniquePosIds:posIdGroups.size,
+        posIdReuseCount:[...posIdGroups.values()].filter(g=>g.length>1).length,
+        analysis,
+      });
+      showToast(`🔬 Fixture-test gerund: ${analysis.length} open posities geanalyseerd`,"success");
+    }catch(e){
+      setFixtureReport({error:String(e.message||e)});
+      showToast(e.message||"Fixture-test mislukt","error");
+    }
   };
   const exCfg=()=>config?.exchanges?.[ex]||{};
   const setField=(k,v)=>setConfig(p=>({...p,exchanges:{...(p.exchanges||{}),[ex]:{...(exCfg()),[k]:v}}}));
@@ -8675,6 +9064,8 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,imp
             {!ExchangeAPI[ex].csvOnly&&<button onClick={sync} disabled={!!syncing} style={{padding:"10px 20px",borderRadius:"var(--radius)",border:"none",background:"#C9A84C",color:"#000",cursor:"pointer",fontFamily:"inherit",fontSize:"13px",fontWeight:700,display:"flex",alignItems:"center",gap:"8px"}}>{syncing===ex?<><span className="spinner"/>Syncing...</>:"Trades importeren"}</button>}
             {!ExchangeAPI[ex].csvOnly&&ExchangeAPI[ex]?.fetchOpenPositions&&<button onClick={syncOpen} disabled={!!syncing} title={`Haalt openstaande posities op via ${ExchangeAPI[ex].name} API`} style={{padding:"10px 20px",borderRadius:"var(--radius)",border:"1px solid var(--gold)",background:"transparent",color:"var(--gold)",cursor:"pointer",fontFamily:"inherit",fontSize:"13px",fontWeight:600,display:"flex",alignItems:"center",gap:"8px"}}>{syncing===ex?<><span className="spinner"/>Ophalen...</>:"📡 Open posities ophalen"}</button>}
             {ex==="blofin"&&<button onClick={debugBlofin} disabled={debugging} title="Diagnostic: hoeveel records per positionId? Helpt partial-close logica valideren." style={{padding:"10px 16px",borderRadius:"var(--radius)",border:"1px dashed var(--text5)",background:"transparent",color:"var(--text4)",cursor:"pointer",fontFamily:"inherit",fontSize:"12px",fontWeight:500,display:"flex",alignItems:"center",gap:"6px"}}>{debugging?<><span className="spinner"/>Analyseren…</>:"🔍 Debug raw response"}</button>}
+            {ex==="blofin"&&<button onClick={captureSnapshot} disabled={debugging} title="Download raw API response als JSON-fixture voor offline testen" style={{padding:"10px 16px",borderRadius:"var(--radius)",border:"1px dashed var(--text5)",background:"transparent",color:"var(--text4)",cursor:"pointer",fontFamily:"inherit",fontSize:"12px",fontWeight:500,display:"flex",alignItems:"center",gap:"6px"}}>{debugging?"…":"📥 Snapshot"}</button>}
+            {ex==="blofin"&&<label title="Drop een blofin-snapshot.json om partial-detectie offline te testen" style={{padding:"10px 16px",borderRadius:"var(--radius)",border:"1px dashed var(--text5)",background:"transparent",color:"var(--text4)",cursor:"pointer",fontFamily:"inherit",fontSize:"12px",fontWeight:500,display:"flex",alignItems:"center",gap:"6px"}}>🔬 Test fixture<input type="file" accept=".json" onChange={e=>{if(e.target.files&&e.target.files[0])runFixtureTest(e.target.files[0]);e.target.value="";}} style={{display:"none"}}/></label>}
             <button onClick={()=>{csvAcctRef.current=ex;csvRef.current.click()}} title="CSV of Excel (.xlsx) bestand uploaden" style={{padding:"10px 20px",borderRadius:"var(--radius)",border:ExchangeAPI[ex].csvOnly?"none":"1px dashed var(--border5)",background:ExchangeAPI[ex].csvOnly?"#C9A84C":"transparent",color:ExchangeAPI[ex].csvOnly?"#000":"var(--text2)",cursor:"pointer",fontFamily:"inherit",fontSize:"13px",fontWeight:ExchangeAPI[ex].csvOnly?700:500,display:"flex",alignItems:"center",gap:"8px"}}>📄 Importeer CSV / XLSX</button>
           </div>
           {/* v12.60-debug: Blofin partial-close diagnostic output */}
@@ -8717,7 +9108,47 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,imp
               {debugReport.groups[0]&&<details style={{marginTop:10}}><summary style={{cursor:"pointer",fontSize:10,color:"var(--text4)",fontFamily:"var(--mono)",letterSpacing:".05em",textTransform:"uppercase"}}>Velden in eerste record</summary>
                 <div style={{marginTop:6,padding:"8px 10px",background:"var(--bg4)",borderRadius:5,fontFamily:"var(--mono)",fontSize:10,color:"var(--text3)",wordBreak:"break-all"}}>{debugReport.groups[0].fieldKeys.join(" · ")}</div>
               </details>}
+              <div style={{marginTop:10,fontSize:10.5,color:"var(--text4)",lineHeight:1.5}}>
+                Filter-pipeline: <strong>{debugReport.totalHistory}</strong> raw records → <strong>{debugReport.filteredHistoryCount}</strong> na pnl/size-filter → die worden 1-op-1 als losse trades geïmporteerd (Blofin UI-stijl).
+              </div>
               <div style={{marginTop:10,fontSize:10,color:"var(--text5)",fontStyle:"italic",lineHeight:1.5}}>Geen ruwe API-data wordt opgeslagen. Maak een screenshot van deze tabel om te delen voor support.</div>
+            </>}
+          </div>}
+          {/* v12.62: Fixture-test analysis-paneel — partial-detectie expected vs actual op offline data */}
+          {ex==="blofin"&&fixtureReport&&<div style={{marginTop:"14px",padding:"14px 16px",background:"rgba(46,170,111,0.04)",border:"1px solid rgba(46,170,111,0.25)",borderRadius:"8px",fontSize:"12px",color:"var(--text2)",lineHeight:1.55}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,flexWrap:"wrap",gap:8}}>
+              <strong style={{color:"var(--green)",fontSize:11,fontFamily:"var(--mono)",letterSpacing:".08em",textTransform:"uppercase"}}>🔬 Fixture-test resultaat</strong>
+              <button onClick={()=>setFixtureReport(null)} style={{background:"none",border:"none",color:"var(--text4)",cursor:"pointer",fontSize:14}}>✕</button>
+            </div>
+            {fixtureReport.error?<div style={{color:"var(--red)",fontFamily:"var(--mono)",fontSize:11}}>⚠ {fixtureReport.error}</div>:<>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(120px, 1fr))",gap:6,marginBottom:12}}>
+                {[["Captured at",fixtureReport.capturedAt?fixtureReport.capturedAt.slice(0,16).replace("T"," "):"—"],["Versie",fixtureReport.version||"?"],["Open posities",fixtureReport.totalOpen],["Closed records (raw)",fixtureReport.totalClosed],["Closed na filter",fixtureReport.mappedClosed],["Unieke positionIds",fixtureReport.uniquePosIds],["PosId hergebruik",fixtureReport.posIdReuseCount]].map(([lbl,val])=>(<div key={lbl} style={{padding:"7px 9px",background:"var(--bg4)",borderRadius:5,textAlign:"center"}}>
+                  <div style={{fontSize:8.5,color:"var(--text5)",textTransform:"uppercase",letterSpacing:".08em",fontWeight:600,marginBottom:2}}>{lbl}</div>
+                  <div style={{fontFamily:"var(--mono)",fontSize:11,fontWeight:700,color:"var(--text)"}}>{val}</div>
+                </div>))}
+              </div>
+              {fixtureReport.analysis&&fixtureReport.analysis.length>0?<div>
+                <div style={{fontSize:10,color:"var(--text4)",fontFamily:"var(--mono)",fontWeight:700,letterSpacing:".08em",textTransform:"uppercase",marginBottom:8}}>Per open positie · expected vs actual</div>
+                <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                  {fixtureReport.analysis.map((a,i)=>(<div key={i} style={{padding:"10px 12px",background:a.match?"rgba(46,170,111,.04)":"rgba(224,85,85,.04)",border:`1px solid ${a.match?"rgba(46,170,111,.25)":"rgba(224,85,85,.25)"}`,borderLeft:`3px solid ${a.match?"var(--green)":"var(--red)"}`,borderRadius:6}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:4,flexWrap:"wrap",gap:8}}>
+                      <span style={{fontSize:11,fontFamily:"var(--mono)",fontWeight:700,color:"var(--text)"}}>{a.match?"✓":"✗"} {a.pair} {a.direction.toUpperCase()} entry={a.entry}</span>
+                      <span style={{fontSize:10,fontFamily:"var(--mono)",color:"var(--text4)"}}>posId: {(a.positionId||"").slice(0,12)}</span>
+                    </div>
+                    <div style={{fontSize:10.5,fontFamily:"var(--mono)",color:"var(--text3)",lineHeight:1.6}}>
+                      Expected: <strong>{a.expectedStatus}</strong> · realized {a.expectedRealizedPnl} · {a.siblingsCount} siblings<br/>
+                      Actual: <strong>{a.actualStatus}</strong> · realized {a.actualRealizedPnl||"—"}
+                    </div>
+                    {a.siblings&&a.siblings.length>0&&<details style={{marginTop:6}}>
+                      <summary style={{cursor:"pointer",fontSize:10,color:"var(--text4)",fontFamily:"var(--mono)"}}>{a.siblings.length} matchende close-record(s) ▾</summary>
+                      <div style={{marginTop:5,fontSize:10,fontFamily:"var(--mono)",color:"var(--text3)"}}>
+                        {a.siblings.map((s,j)=>(<div key={j} style={{padding:"3px 0",borderTop:"1px dashed var(--border1)"}}>{s.entry} → {s.exit||"—"} · pnl {s.pnl}</div>))}
+                      </div>
+                    </details>}
+                  </div>))}
+                </div>
+              </div>:<div style={{padding:10,fontStyle:"italic",color:"var(--text5)",fontSize:11}}>Geen open posities in fixture om te analyseren.</div>}
+              <div style={{marginTop:10,fontSize:10,color:"var(--text5)",fontStyle:"italic",lineHeight:1.5}}>Fixture is offline · geen API-keys gebruikt · maak screenshot om te delen.</div>
             </>}
           </div>}
           {ex==="mexc"&&<div style={{marginTop:"10px",padding:"8px 12px",background:"rgba(201,168,76,0.06)",border:"1px solid rgba(201,168,76,0.18)",borderRadius:"6px",fontSize:"11px",color:"var(--text3)",lineHeight:1.5}}>
@@ -9085,6 +9516,8 @@ const FAQ_ENTRIES=[
   {cat:"📝 Features",q:"Hoe werken missed trades?",a:"Opt-in feature via Instellingen → Accounts → '👻 Gemiste trades'. Bij een trade → klik 'Gemist?' knop naast Status. Exit/PnL verdwijnen, Entry/SL/TP blijven als planned. Tag waarom je 'm niet nam (Durf, Te laat gespot, Buiten regels...). Analytics laat 'Edge Gap' zien: wat had je kunnen winnen als je wel genomen had."},
   {cat:"📝 Features",q:"Wat is het verschil tussen Gemist, Backtest en Paper?",a:"Sinds v12.48 onderscheiden we drie soorten 'simulated' trades — elk met een andere bias-richting:\n\n• 👻 **Gemist** — setup die je real-time spotte maar niet nam. Twijfel/FOMO/discipline zit erin gebakken. Stats hierop zijn realistisch.\n• 🔬 **Backtest** — setup gevonden via chart-replay (achteraf). Hindsight-bias is hoog, edge-cijfers worden opgeblazen. Goed voor strategie-validatie vooraf.\n• 📝 **Paper** — live demo-account trade, geen echt geld. Geen hindsight, geen financiële stress. Dat onderscheid (paper vs real) is wat de **Stress-Leak Detector** in Analytics meet.\n\nDrie killer-features bouwen hierop:\n\n1. **Edge-Erosion Funnel** (Playbook detail) — vergelijkt Backtest → Paper → Real R-cijfers. Verschil tussen Backtest en Paper = hindsight-leak. Verschil tussen Paper en Real = execution-stress-leak.\n2. **Cross-Validation Tendencies** — patronen die in real én backtest verschijnen krijgen 🔀 Validated badge. Patronen alleen in real op klein sample krijgen ⚠ Noise risk.\n3. **Stress-Leak Detector** (Analytics) — vergelijkt rule-discipline tussen paper en real. Verschil = mentale bandbreedte onder druk.\n\nTendencies sluit backtest-trades automatisch uit van patroon-detectie (om hindsight-overfit te voorkomen). Trust-Score in Playbook-lijst toont per playbook een 5-stadia bar: Idea → Theorized → Validated → Tradeable → Bewezen."},
   {cat:"📝 Features",q:"Hoe werkt de Playbook-koppeling bij + Nieuwe Trade?",a:"Sinds v12.50 kun je in TradeForm een playbook selecteren via de dropdown bovenaan (na de Status-toggle). Bij keuze:\n\n• **Auto-fill** van setup-tags / timeframes / confirmaties uit de playbook-blueprint. Pair wordt overgenomen als deze leeg of default is. Alle pre-fills zijn handmatig overschrijfbaar — pills blijven toggleable.\n• **Criteria-checklist** verschijnt als nieuwe sectie ('✅ Entry-criteria'). Vink af welke criteria je vóór entry hebt gezien.\n• **Live compliance-meter** toont je score op basis van afgevinkte verplichte criteria:\n  - 🟢 ≥80% mandatory afgevinkt → A+ entry\n  - 🟡 50-79% → judgement-call\n  - 🔴 <50% → buiten plan (niet geblokkeerd, alleen waarschuwing)\n\nDe afgevinkte criteria + score worden opgeslagen op de trade als nieuwe velden `playbookId`, `complianceChecks` en `complianceScore`. Dat maakt de **Compliance × PnL split** in Playbook-detail van een heuristiek (gokken op tag-overlap) naar **harde data** (echte vinkjes vóór entry). Het label boven de Compliance × PnL bar toont nu **EXPLICIT** zodra je 50%+ trades met expliciete score hebt, anders **HEURISTIC**.\n\nVoor wie de feature niet wil gebruiken: laat de playbook-dropdown op '— Geen playbook'. Form werkt dan zoals altijd."},
+  {cat:"📝 Features",q:"Wat zijn de Big-Picture-velden in mijn playbook?",a:"Sinds v12.61 kun je per playbook drie optionele velden vullen — top-down marktcontext, voor crypto vertaald:\n\n• 🌍 **Big Picture** — markt-state. Voorbeeld: *\"BTC.D < 51% en dalend, alts trending. DXY consolideert. Risk-on regime sinds vorige week. Geen FOMC/CPI komende sessie.\"*\n• 📡 **Reading the Tape** — order-flow. Voorbeeld: *\"4H BOS bevestigd vorige week. CVD volgt prijs aligned. OI stabiel. Funding neutraal binnen ±0.04%. Volume profile toont accumulation onder 1H pullback-zone.\"*\n• 💡 **Intuition** — pattern-recognition uit ervaring. Bewust apart van data-velden. Voorbeeld: *\"Klassieke Apr-15 setup-ritme. Pullbacks naar EMA21 in trending regime werken al weken — voelt high-probability.\"*\n\n**Optioneel via toggle aan/uit** per playbook (default uit). Niet iedereen wil deze laag — sommigen genoeg aan setup-lagen + criteria. Bij keuze: open een playbook in de form → klik 'Aan' bij '🌍 Big-Picture-velden'. De drie textareas verschijnen.\n\n**Auto-fill in TradeForm**: zodra je in + Nieuwe Trade een playbook kiest waarbij Big-Picture aan staat, verschijnen de drie velden read-only in een paneel direct onder de playbook-picker. Je ziet zo in één oogopslag of de markt-context die je voor deze setup hebt gedocumenteerd ook *vandaag* nog klopt.\n\n**Migratie van legacy `context`-veld**: bestaande playbooks die het oude algemene 'Markt-context'-veld hadden ingevuld, krijgen die tekst automatisch in 'Big Picture' gezet en de toggle gaat aan."},
+  {cat:"📝 Features",q:"Hoe werkt het A+/A/B/C grading-systeem?",a:"Sinds v12.61 hebben playbooks en trades een **grade** — een Tier-systeem voor risico-allocatie. De gedachte: niet alle trades zijn gelijk; A+ verdient meer risk, C minder.\n\n**Per playbook: default-grade** (in de Basis-sectie van PlaybookForm). Pills: A+/A/B/C, of leeg (geen grade gekozen). Bewuste keuze vóór entry — geen achteraf-rebrandering, anders is je grading data-pollutie.\n\n**Per trade: tradeGrade** (override). Bij + Nieuwe Trade na playbook-keuze verschijnt de grade-pills. Default uit playbook overgenomen, kun je per trade overschrijven. Voorbeeld: setup is normaal A, maar deze keer ontbreekt 1 confluence → druk B aan voor deze trade.\n\n**Sizing-helper** verschijnt direct onder de grade-pills. Toont per grade het suggested risk in %:\n\n• A+ = **2%**\n• A = **1.5%**\n• B = **1%**\n• C = **0.5%**\n\nDeze defaults zijn conservatief — voor crypto's 24/7-markt + hogere variance is dat veiliger dan agressieve % uit equity-day-trading. Aan te passen via `config.gradeRiskPct`. Met je account-saldo ingesteld toont 'ie ook het $-bedrag (bv. *\"2% × $10k = $200 risk\"*) — direct via de inline ✏-knop in de sizing-card aanpasbaar.\n\n**Belangrijk**: de helper is **info-only** — geen save-block, geen verplichting. Net zoals de compliance-meter is dit een leidraad, geen rem. Discipline werkt door bewustwording, niet door dwang."},
   {cat:"📝 Features",q:"Multi-TP: waarom zou ik dat gebruiken?",a:"Real-world sluit je zelden een positie in één klap. Je neemt 50% winst bij TP1, laat de rest lopen naar TP2. In het form voeg je TP-levels toe met % allocation. Auto-berekening van winst + R:R per niveau. Op close kan je per TP markeren: Hit / Missed / Open."},
   {cat:"📝 Features",q:"Wat doet de discipline-heatmap?",a:"Heatmap van dagen × uren waarin je trades open hebt (Amsterdam-tijd). Toont je tijds-patroon: tilt je tijdens late avonduren, trade je alleen London open, etc. Instellingen → Mindset/Discipline om te personaliseren."},
   {cat:"📝 Features",q:"Welke sessie-buckets gebruikt SyncJournal en wat zijn de tijden?",a:"Sinds v12.37 gebruiken we 8 sessie-buckets in Amsterdam-tijd (DST-aware). Tot v12.36 waren dat er 5; nu zijn Asia / London / US elk gesplitst in AM/PM voor fijnere edge-detectie. Tijden:\n\n• Asia AM — 01:00–05:00 (Tokyo open)\n• Asia PM — 05:00–09:00 (Tokyo lunch/close, pre-London)\n• London AM — 09:00–11:30 (London-open volatility)\n• London PM — 11:30–15:30 (pre-NY drift)\n• US AM — 15:30–19:00 (NY cash-open)\n• US PM — 19:00–22:00 (richting NY close)\n• US Late — 22:00–01:00 (post-NY, Asia preview)\n• Weekend — Zat/Zon hele dag\n\nDeze indeling wordt overal gebruikt: FilterBar, Trade-tabel, sessionPerf, Discipline Heatmap (hourly view), Tendencies (Setup × Sessie matrix). Eén waarheid, geen parallelle systemen meer."},
@@ -9133,19 +9566,20 @@ const LESSON_SVG={
 const LESSONS=[
   {id:"l01",level:"beginner",svg:"notebook",duration:5,title:"Wat is een trading journal?",desc:"Je waarom voor het loggen van trades, en waarom self-bias je grootste vijand is.",content:`<p>Een trading journal is een gestructureerd logboek van elke trade die je neemt. Klinkt simpel, maar het verschil tussen <strong>"ik dacht"</strong> en <strong>"de data zegt"</strong> is gigantisch.</p><div class="lesson-callout why"><div class="lc-title">Waarom dit ertoe doet</div>Je geheugen liegt. Onderzoek (Daniel Kahneman, "Thinking Fast and Slow") laat zien dat traders zonder journal hun winnaars onthouden en verliezers vergeten. Resultaat: een vertekend zelfbeeld. Het journal corrigeert dat.</div><h2>Wat een journal niet is</h2><p>Een journal is geen <strong>kopie van je broker-statement</strong>. Een statement zegt <em>wat</em> je deed; een journal zegt <em>waarom</em>. Dat verschil is alles.</p><h2>Wat erin hoort</h2><ul><li><strong>Setup-tag</strong> — welke patroon trade je? (SFP, Breakout, MSB)</li><li><strong>Sessie</strong> — automatisch berekend uit datum/tijd</li><li><strong>Pre-trade notitie</strong> — wat zag je, waarom ga je in?</li><li><strong>Mistake-tags</strong> bij verlies — was het de markt of jij?</li></ul><div class="lesson-callout example"><div class="lc-title">Voorbeeld</div>Trader X dacht zijn BTC-breakouts werkten. Na 50 trades met tags zag hij: 70% verlies in Asia-PM (lage volume), 65% winst in US-AM (NY-open vol-spike). Conclusie: skip Asia-breakouts. Edge-leak gevonden zonder strategie te veranderen.</div><h2>Klaar om te starten?</h2><p>De volgende les loopt door het trade-logging-formulier en laat zien welke velden ertoe doen.</p><button class="lesson-link" data-target="trades">Open Trades →</button>`},
   {id:"l02",level:"beginner",svg:"pencilChart",duration:8,title:"Je eerste trade loggen",desc:"Stap-voor-stap door het trade-formulier — welke velden verplicht, welke optioneel.",content:`<p>We loggen samen je eerste trade. Voorbeeld dat we volgen: <strong>BTC/USDT long</strong>, entry $67.500, stop $66.800, exit $69.100. Resultaat: +2.3R.</p><h2>Status eerst</h2><p>Bovenaan kies je <strong>Open</strong> (positie staat nog) of <strong>Closed</strong> (al uit). Bij Open verbergen we Exit/PnL/Fees automatisch — minder ruis.</p><h2>Kernvelden</h2><ol><li><strong>Pair, datum/tijd, richting</strong> — basis. Sessie wordt automatisch berekend in Amsterdam-tijd.</li><li><strong>Entry, Stop-loss, Take-profit</strong> — hierop berekenen we R-multiple en R:R live.</li><li><strong>Leverage</strong> (alleen perp-futures) — default 10×. Beïnvloedt qty en margin-berekening, niet je R.</li><li><strong>Position size</strong> — vul USDT-notional in (bv. $1.500) of qty in BTC (0.022). De ander wordt auto-berekend op basis van entry-prijs.</li><li><strong>Exit + PnL</strong> — bij Closed. Fees zijn optioneel maar belangrijk voor netto R, vooral bij perp-funding.</li></ol><div class="lesson-callout tip"><div class="lc-title">Tip</div>De live KPI-strip onder de prijs-velden toont <strong>Risk $ · Risk % · R:R · Qty</strong> realtime. Risk % &gt; 4% wordt rood — dat is je tilt-signaal. Voor perp-traders met 50× leverage: kijk vooral naar Risk %, niet naar leverage zelf.</div><h2>Setup &amp; Psychologie</h2><p>Open de collapsible sectie en vink minstens deze 3 in:</p><ul><li><strong>Setup-tag</strong> (SFP, Breakout, …) — anders werkt Tendencies straks niet.</li><li><strong>Emotie-tag</strong> (Geduldig, FOMO, Onzeker) — voor compliance-analyse.</li><li><strong>Mistake-tag bij verlies</strong> (SL te krap, Te vroeg in) — voorkomt herhaling.</li></ul><div class="lesson-callout warn"><div class="lc-title">Veelgemaakte fout</div>Tags overslaan voelt sneller, maar maakt de hele Tendencies/Playbook-laag onbruikbaar. Tag-discipline is dé succesfactor van een journal.</div><h2>Save</h2><p>Bij <em>Save</em> berekenen we automatisch Risk $/% op basis van je account-equity en stop-distance. Geen handmatig werk.</p><button class="lesson-link" data-target="trades">Open Trades →</button>`},
-  {id:"l03",level:"beginner",svg:"scale",duration:5,title:"R-multiple in 5 minuten",desc:"Eén concept dat je hele journal-analyse mogelijk maakt. Zonder dit kun je strategieën niet vergelijken.",content:`<p>R staat voor <strong>Risk</strong>. Eén R is wat je verliest als je stop wordt geraakt. Alles wordt uitgedrukt in veelvouden van R.</p><div class="lesson-callout example"><div class="lc-title">Concreet voorbeeld</div>Entry BTC/USDT op $67.500, stop op $66.800 = $700 risico per BTC = <strong>1R</strong>. Exit op $69.100 = +$1.600 winst = <strong>+2.3R</strong>. Verliezer met stop geraakt = <strong>-1R</strong>. Je positie-grootte bepaalt hoe veel R in dollars is — strategie-vergelijking gaat altijd in R, niet in dollars.</div><h2>Waarom niet gewoon dollars?</h2><p>Stel je trade strategie A met $50 per positie en strategie B met $500. Strategie A maakt $200 winst, B maakt $300. Wie is beter?</p><p>Niet B — strategie B verliest $700 met dezelfde win-rate als strategie A die $200 winst maakt. <strong>R-multiple normaliseert weg het size-effect</strong> zodat je alleen edge vergelijkt, niet portemonnee.</p><div class="lesson-callout why"><div class="lc-title">Waarom pro-traders zo praten</div>Bellafiore (SMB Capital), Mark Minervini, Tim Grittani — allemaal communiceren ze in R. Het is de universele taal van trading-edge.</div><h2>Drie cijfers die ertoe doen</h2><ul><li><strong>Gemiddelde R</strong> — &gt;0.3R = werkende strategie</li><li><strong>Expectancy</strong> = (WR × avg-winR) − (LR × avg-lossR). &gt;0.2R = gezonde edge</li><li><strong>Cum. R</strong> — som van alle R's. Toont of je over tijd opbouwt</li></ul><h2>Waar zie je dit terug?</h2><p>Op het Dashboard, in Analytics, en per Playbook. Elke trade krijgt automatisch een R-multiple zodra je entry+SL+exit hebt ingevuld.</p>`},
+  {id:"l03",level:"beginner",svg:"scale",duration:5,title:"R-multiple in 5 minuten",desc:"Eén concept dat je hele journal-analyse mogelijk maakt. Zonder dit kun je strategieën niet vergelijken.",content:`<p>R staat voor <strong>Risk</strong>. Eén R is wat je verliest als je stop wordt geraakt. Alles wordt uitgedrukt in veelvouden van R.</p><div class="lesson-callout example"><div class="lc-title">Concreet voorbeeld</div>Entry BTC/USDT op $67.500, stop op $66.800 = $700 risico per BTC = <strong>1R</strong>. Exit op $69.100 = +$1.600 winst = <strong>+2.3R</strong>. Verliezer met stop geraakt = <strong>-1R</strong>. Je positie-grootte bepaalt hoe veel R in dollars is — strategie-vergelijking gaat altijd in R, niet in dollars.</div><h2>Waarom niet gewoon dollars?</h2><p>Stel je trade strategie A met $50 per positie en strategie B met $500. Strategie A maakt $200 winst, B maakt $300. Wie is beter?</p><p>Niet B — strategie B verliest $700 met dezelfde win-rate als strategie A die $200 winst maakt. <strong>R-multiple normaliseert weg het size-effect</strong> zodat je alleen edge vergelijkt, niet portemonnee.</p><div class="lesson-callout why"><div class="lc-title">Waarom pro-traders zo praten</div>Mark Minervini, Tim Grittani, prop-firm desks — allemaal communiceren ze in R. Het is de universele taal van trading-edge.</div><h2>Drie cijfers die ertoe doen</h2><ul><li><strong>Gemiddelde R</strong> — &gt;0.3R = werkende strategie</li><li><strong>Expectancy</strong> = (WR × avg-winR) − (LR × avg-lossR). &gt;0.2R = gezonde edge</li><li><strong>Cum. R</strong> — som van alle R's. Toont of je over tijd opbouwt</li></ul><h2>Waar zie je dit terug?</h2><p>Op het Dashboard, in Analytics, en per Playbook. Elke trade krijgt automatisch een R-multiple zodra je entry+SL+exit hebt ingevuld.</p>`},
   {id:"l04",level:"beginner",svg:"csv",duration:10,title:"CSV importeren",desc:"Voor MEXC / Blofin / Kraken Futures traders — exporteer je exchange-history en haal hem binnen.",content:`<p>De snelste manier om een journal te vullen met historische data: importeer je exchange-export. Voor crypto-traders die niet willen wachten op live API-sync.</p><h2>Stap 1 — Export uit je exchange</h2><p style="margin-bottom:10px">TradeJournal heeft op dit moment <strong>dedicated CSV-parsers</strong> voor de volgende crypto-exchanges:</p><ul><li><strong>MEXC</strong>: Futures → Order History → Position History → Export CSV/XLSX</li><li><strong>Blofin</strong>: USDT-Perp → Order History → Filled → Export CSV</li><li><strong>Kraken Futures</strong>: account-log via dashboard → Export</li></ul><div class="lesson-callout tip"><div class="lc-title">Tip</div>Op MEXC heeft Position History entry+exit+pnl in één regel — dat is wat je wil. Order History is per fill (twee regels per trade) — werkt ook maar minder schoon.</div><div class="lesson-callout warn"><div class="lc-title">Trade je op een andere exchange?</div>Andere exchanges worden <strong>nog niet ondersteund</strong> via CSV-import. Plak een sample-CSV in de Morani Discord met je verzoek; we voegen exchanges toe op basis van community-vraag. Tussentijds: handmatig loggen via <em>+ Trade</em>, of koppel via API als je exchange dat ondersteunt (zie volgende les).</div><h2>Stap 2 — Importeren</h2><ol><li>Accounts-tab → kies de juiste bron (MEXC / Blofin / Kraken)</li><li>📄 Importeer CSV/XLSX</li><li>Preview-scherm verschijnt — filter long/short, win/loss, vink trades aan</li><li>Bevestig → trades komen in je journal</li></ol><div class="lesson-callout tip"><div class="lc-title">Dedup</div>De preview voorkomt dubbelwerk. Vink al-bekende trades uit; de dedup-logica werkt op trade-ID (positionId + closeTime). Bij wissels van exchange kan die afwijken.</div><h2>Stap 3 — Tags toevoegen</h2><p>Geïmporteerde trades hebben geen setup-tag. Open ze één voor één en vul minstens setup + sessie in. Klinkt vervelend, maar geeft je 5x meer waarde uit Tendencies en Playbook.</p><div class="lesson-callout warn"><div class="lc-title">Veelgemaakte fout</div>50 BTC-trades importeren en niet taggen. Resultaat: dashboard ziet er vol uit, maar Tendencies/Playbook hebben niets om mee te werken. Begin met je laatste 10 trades taggen voordat je verder gaat.</div><h2>Veelgemaakte CSV-issues bij crypto</h2><ul><li><strong>Contract size klopt niet</strong> — Blofin levert size in contracts, niet in BTC. v12.11+ converteert automatisch via contractValue endpoint, oude trades sync je opnieuw.</li><li><strong>Tijdzone</strong> — exchanges geven UTC, wij display in Amsterdam-tijd. Sessie-tagging werkt automatisch goed.</li><li><strong>Funding fees</strong> — perp-funding zit niet altijd in PnL-kolom. Check de export-headers; voeg handmatig toe als gemist.</li></ul><h2>Wat als preview leeg is?</h2><p>Meestal is dat een kolom-mismatch. Open de CSV in een editor en vergelijk de header met wat de parser verwacht — of plak een sample in de Morani Discord, dan helpen we.</p><button class="lesson-link" data-target="accounts">Open Accounts →</button>`},
   {id:"l05",level:"beginner",svg:"link",duration:12,title:"Exchange koppelen",desc:"Live API-sync voor MEXC / Blofin / Kraken / Hyperliquid. Plus permission-veiligheid.",content:`<p>Voor crypto-traders: koppel een API-key en je trades komen automatisch binnen, met live unrealized PnL en open posities.</p><h2>Welke exchange werkt hoe?</h2><ul><li><strong>MEXC, Blofin, Kraken</strong> — API-key + secret (Blofin ook passphrase)</li><li><strong>Hyperliquid</strong> — alleen wallet-adres, geen key. On-chain data is publiek</li></ul><h2>Permissions — alleen "Read"</h2><div class="lesson-callout warn"><div class="lc-title">Belangrijk</div>Gebruik <strong>NOOIT</strong> een key met trading- of withdrawal-rechten. Alleen <strong>Read</strong>. Als de key ooit lekt, kan een aanvaller niets doen behalve je trades zien.</div><h2>Stap voor stap (Blofin als voorbeeld)</h2><ol><li>Blofin → API Management → Create</li><li>Name: "TradeJournal", Permissions: <strong>Read only</strong></li><li>IP Whitelist: jouw huidige IP (extra veiligheid, optioneel)</li><li>Sla key + secret + passphrase op</li><li>Plak in TradeJournal → Accounts → Blofin</li><li>Klik <strong>Verbinding testen</strong> — als balance verschijnt, zit je goed</li><li>📡 Open posities ophalen + 📥 Trades importeren</li></ol><h2>Auto-sync</h2><p>In Instellingen kun je auto-sync interval aanzetten (15/30/60 min). Tabblad pauzeert silent als de tab inactief is.</p><div class="lesson-callout tip"><div class="lc-title">Tip</div>Gebruik live tracking vooral om <strong>open posities</strong> te zien — niet om trades zonder tags te bulk-loaden. Na elke gesloten trade open je 'm even om setup/emotie te taggen.</div>`},
   {id:"l06",level:"beginner",svg:"tags",duration:8,title:"Tags & Setups gebruiken",desc:"Tags zijn het onderwerp wat journals onderscheidt van een statement-list. Hier waarom.",content:`<p>Een trade zonder tags is alleen een rij in een database. Een trade <strong>met</strong> tags wordt voer voor patronen-detectie.</p><h2>Vier tag-categorieën</h2><ul><li><strong>Setup-tags</strong> — welk patroon? Voor crypto: SFP, MSB, BOS, Liquidity Sweep, Range retest, Funding-Flip Squeeze, Asian Range Breakout</li><li><strong>Confirmation-tags</strong> — crypto-specifieke confluence: CVD divergentie, Volume spike, Funding flip, OI rising, Liquidaties zichtbaar (Coinglass), HTF trend aligned, OB tap, FVG tap</li><li><strong>Emotion-tags</strong> — mentale staat: Geduldig, FOMO, Onzeker, Hebzuchtig, Gehaast</li><li><strong>Mistake-tags</strong> — bij verlies: SL te krap, Te vroeg in (vóór reclaim), Geen plan, Tegen funding ingegaan, Lage volume genegeerd</li></ul><div class="lesson-callout why"><div class="lc-title">Waarom dit ertoe doet</div>Setup-tags maken Tendencies, Playbook, en Setup × Sessie matrix mogelijk. Confirmation-tags maken de Compliance × PnL split mogelijk. Zonder tags zijn die features visueel mooi maar leeg.</div><h2>Tag-discipline</h2><p>Begin minimalistisch. Vier setup-tags die jij echt traden, niet 30 generieke. Je kunt altijd uitbreiden.</p><div class="lesson-callout example"><div class="lc-title">Voorbeeld set voor crypto-perp trader</div><strong>Setup</strong>: SFP · MSB · Liquidity Sweep · Range retest<br/><strong>Confirmation</strong>: CVD divergentie · Volume spike · Funding flip · Liquidaties zichtbaar<br/><br/>Meer dan voldoende voor de eerste 50 trades. Voeg pas een vijfde setup toe als je 'm écht onderscheidt van de bestaande vier.</div><h2>Edit / hernoem / sleep</h2><p>Open Instellingen → Tags. Sleep tags in eigen volgorde, hernoem ze, of verberg ongebruikte. Wijzigingen werken backwards-compatible op bestaande trades.</p><button class="lesson-link" data-target="tags">Beheer tags →</button>`},
   {id:"l07",level:"beginner",svg:"dashboard",duration:6,title:"Het Dashboard lezen",desc:"Welke 3 cijfers ertoe doen, en wat 'gezond' is voor elk.",content:`<p>Het Dashboard kan overweldigend zijn. Drie cijfers zijn belangrijker dan de rest:</p><h2>1. Win-rate</h2><p>Percentage winnende trades. <strong>Niet de heilige graal</strong>. 40% WR met +2R per winner is winstgevender dan 60% WR met +0.5R per winner.</p><div class="lesson-callout tip"><div class="lc-title">Range voor crypto-traders</div>Scalpers (BTC/ETH 5m/15m): 55-65% WR is normaal. Swing/intraday op 1H/4H: 40-55% WR met hogere R is normaal. Liquidity-sweep / SFP setups draaien doorgaans 60-70% WR. Onder 35% WR over 30+ trades = check Tendencies, er zit iets fundamenteel scheef.</div><h2>2. Gemiddelde R</h2><p>De andere kant van WR. <strong>+0.3R gemiddeld is solide</strong>, +0.5R is sterk, +1R+ is uitzonderlijk en zelden duurzaam.</p><h2>3. Expectancy</h2><p>De ware maatstaf van edge. Formule: <code>(WR × avg-winR) − (LR × avg-lossR)</code>. Positief = je strategie verdient geld over tijd. Negatief = stop met traden, fix iets.</p><div class="lesson-callout why"><div class="lc-title">Waarom expectancy belangrijker is dan WR</div>Een 90% WR setup met -0.5R/win en -10R/loss heeft negatieve expectancy. Een 30% WR setup met +3R/win en -1R/loss heeft positieve expectancy. Expectancy vat beide samen.</div><h2>Streaks &amp; milestones</h2><p>Onderaan zie je je huidige streak (X winners op rij) en milestones (bv. eerste 100 trades). Niet kritisch — wel motiverend.</p><button class="lesson-link" data-target="dashboard">Open Dashboard →</button>`},
   {id:"l08",level:"beginner",svg:"cloud",duration:4,title:"Backup & export",desc:"Vier minuten om je hele journal te beveiligen. Doe dit voor elke browserwissel.",content:`<p>Al je data staat lokaal in je browser (localStorage + IndexedDB). Geen server, geen cloud — dat is privacy, maar ook risico bij browser-cache wissen.</p><h2>Backup maken (15 sec)</h2><ol><li>Accounts → scroll naar Backup &amp; Restore</li><li>📦 Backup exporteren (.json)</li><li>Bestand bevat <strong>alles</strong>: trades, tags, accounts, config, goals, rules, playbooks</li></ol><h2>Backup terugzetten</h2><p>Sleep het JSON-bestand in het venster. Of: Accounts → Restore → kies bestand. Bestaande data wordt overschreven (waarschuwing eerst).</p><div class="lesson-callout warn"><div class="lc-title">Wanneer maak je backup?</div>Voor elke update, voor browserwissel, voor extension-installatie die storage raakt. Eens per week is sowieso slim.</div><h2>Migratie naar nieuwe laptop</h2><p>Oude laptop: backup downloaden. Nieuwe laptop: open SyncJournal → sleep JSON erin. Klaar in &lt;30 sec.</p><h2>Wat als ik geen backup heb?</h2><p>Browser-cache wissen verwijdert <strong>localStorage + IndexedDB</strong>. Je trades zijn dan weg. Geen recovery mogelijk — wij hebben geen backend.</p><div class="lesson-callout tip"><div class="lc-title">Tip</div>Stel een agenda-reminder in: zondag 18:00 backup maken. 30 seconden werk, jaren gemoedsrust.</div>`},
-  {id:"l09",level:"advanced",svg:"bookCompare",duration:10,title:"Playbook vs. Journal — waarom de splitsing?",desc:"Een journal logt élke trade. Een playbook isoleert je 20% setups die 80% PnL leveren.",content:`<p>Je journal heeft inmiddels 50+ trades. Het Dashboard toont een gemiddelde expectancy van bv. +0.4R. Maar dat gemiddelde verbergt iets cruciaals.</p><h2>Het probleem met gemiddelden</h2><p>Stel: je traden 4 setups door elkaar. SFP doet +1.1R, Breakouts doen -0.3R, Range-fades +0.2R, Reversals +0.5R. Gemiddeld +0.4R — prima. Maar je verliest geld op Breakouts.</p><div class="lesson-callout why"><div class="lc-title">Waarom Bellafiore (SMB Capital) zwoer bij playbooks</div>"Take only trades you have already perfected." Een playbook isoleert per setup zodat je per setup expectancy ziet. Setups met negatieve expectancy → schrappen. Resultaat: gemiddelde gaat van +0.4R naar +0.7R zonder dat je beter bent geworden — je traden alleen minder slechte setups.</div><h2>Het verschil concreet</h2><ul><li><strong>Journal</strong>: chronologisch log van alles. Doel = data.</li><li><strong>Playbook</strong>: per setup gestructureerde criteria + stats. Doel = patronen perfectioneren.</li></ul><h2>Wat hoort er per playbook-entry?</h2><ol><li>Setup-naam + 1-zin omschrijving</li><li>Markt-context (sessie, trend, vol)</li><li>Entry-criteria checklist (verplicht-toggles)</li><li>Stop / Target rules + min R:R</li><li>Mistake-pattern: <em>"hoe verpest ik dit setup meestal?"</em></li></ol><div class="lesson-callout example"><div class="lc-title">Voor / na bij Denny (concept)</div>Vóór playbook: 50 trades, expectancy +0.4R. Na playbook-isolatie + retiren van twee zwakke setups: dezelfde 50 trades hadden +0.7R opgeleverd. Edge ging niet omhoog — je traden minder slechte setups.</div><h2>Wanneer formaliseren?</h2><p>Vanaf 30+ trades per setup. Daaronder is het ruis, geen statistiek.</p><button class="lesson-link" data-target="playbook">Open Playbook →</button>`},
+  {id:"l09",level:"advanced",svg:"bookCompare",duration:10,title:"Playbook vs. Journal — waarom de splitsing?",desc:"Een journal logt élke trade. Een playbook isoleert je 20% setups die 80% PnL leveren.",content:`<p>Je journal heeft inmiddels 50+ trades. Het Dashboard toont een gemiddelde expectancy van bv. +0.4R. Maar dat gemiddelde verbergt iets cruciaals.</p><h2>Het probleem met gemiddelden</h2><p>Stel: je traden 4 setups door elkaar. SFP doet +1.1R, Breakouts doen -0.3R, Range-fades +0.2R, Reversals +0.5R. Gemiddeld +0.4R — prima. Maar je verliest geld op Breakouts.</p><div class="lesson-callout why"><div class="lc-title">Waarom Top prop-firm desks zwoeren bij playbooks</div>"Take only trades you have already perfected." Een playbook isoleert per setup zodat je per setup expectancy ziet. Setups met negatieve expectancy → schrappen. Resultaat: gemiddelde gaat van +0.4R naar +0.7R zonder dat je beter bent geworden — je traden alleen minder slechte setups.</div><h2>Het verschil concreet</h2><ul><li><strong>Journal</strong>: chronologisch log van alles. Doel = data.</li><li><strong>Playbook</strong>: per setup gestructureerde criteria + stats. Doel = patronen perfectioneren.</li></ul><h2>Wat hoort er per playbook-entry?</h2><ol><li>Setup-naam + 1-zin omschrijving</li><li>Markt-context (sessie, trend, vol)</li><li>Entry-criteria checklist (verplicht-toggles)</li><li>Stop / Target rules + min R:R</li><li>Mistake-pattern: <em>"hoe verpest ik dit setup meestal?"</em></li></ol><div class="lesson-callout example"><div class="lc-title">Voor / na bij Denny (concept)</div>Vóór playbook: 50 trades, expectancy +0.4R. Na playbook-isolatie + retiren van twee zwakke setups: dezelfde 50 trades hadden +0.7R opgeleverd. Edge ging niet omhoog — je traden minder slechte setups.</div><h2>Wanneer formaliseren?</h2><p>Vanaf 30+ trades per setup. Daaronder is het ruis, geen statistiek.</p><button class="lesson-link" data-target="playbook">Open Playbook →</button>`},
   {id:"l10",level:"advanced",svg:"dots",duration:12,title:"Tendencies-detectie lezen",desc:"Wat een dot wel/niet betekent. Plus de overfitting-trap die de meeste journals niet noemen.",content:`<p>Tendencies is de cross-dimensionele patroon-detector. 7 detector-categorieën die emoties × sessies, setups × pairs, mistakes × sessies, en setup × tijdvak combineren.</p><h2>Wat een rode dot betekent</h2><p><strong>Niet</strong>: "deze combinatie zal nooit werken." <strong>Wel</strong>: "in jouw historische data presteert deze combinatie statistisch slecht — onderzoek waarom."</p><div class="lesson-callout warn"><div class="lc-title">De overfitting-trap</div>Met 20 dimensies × 30 trades vind je <em>altijd</em> patronen. Dat zijn vaak ruis-correlaties, geen echte edge. Daarom: minimaal 4-5 trades per cel, minimaal 30 trades totaal voordat je conclusies trekt.</div><h2>Severity-niveaus</h2><ul><li>🟢 <strong>Sterkte</strong> — replicate this, mark as A+ in playbook</li><li>🟡 <strong>Aandacht</strong> — onderpresteert, halve risk</li><li>🔴 <strong>Hoge pijn</strong> — skip of paper-trade tot WR &gt; 50%</li><li>🔵 <strong>Observatie</strong> — opvallend maar niet duidelijk goed/slecht</li></ul><h2>De 8-bucket sessie-detector</h2><p>Sinds v12.37 splitsen we Asia/London/US elk in AM/PM. Reden: de bekende "edge verdwijnt na 11:30 NL"-observatie wordt zichtbaar in 8 buckets, niet in 5.</p><div class="lesson-callout example"><div class="lc-title">Concreet</div>Setup: SFP. Met 5 buckets: London = 55% WR (gemiddeld). Met 8 buckets: London-AM = 78% WR, London-PM = 32% WR. Dezelfde data, twee verhalen. Conclusie: skip SFP na 11:30.</div><h2>Hoe handelen?</h2><p>Klik op een tendency-card → trade-filter wordt overgenomen, je springt naar Trades-tab met alleen die trades. Lees ze door, vraag jezelf: <em>wat hadden ze gemeen?</em></p><button class="lesson-link" data-target="tendencies">Open Tendencies →</button>`},
   {id:"l11",level:"advanced",svg:"balance",duration:15,title:"Compliance × PnL begrijpen",desc:"Discipline-violations isoleren van marktruis. \"Was die loss een rule-break of pech?\"",content:`<p>Dit is het unieke verkoopargument van TradeJournal. Geen enkele andere journal toont dit zo expliciet.</p><h2>Het probleem</h2><p>Je verliest een trade. Was het de markt of jij? Zonder compliance-tracking is dat een gevoelskwestie. Met compliance-tracking is het een data-vraag.</p><h2>Twee modes — Heuristic en Explicit</h2><p>De Compliance × PnL split werkt in twee modes:</p><ul><li><strong>HEURISTIC</strong> (oudere trades, fallback) — we kijken of ≥80% van de playbook-confirmaties terug te vinden zijn in trade.confirmationTags. Werkt automatisch maar is gevoelig voor slordige tagging.</li><li><strong>EXPLICIT</strong> (sinds v12.50, aanbevolen) — bij <em>+ Nieuwe Trade</em> kies je een playbook, en de criteria-checklist verschijnt onderaan. Vink af welke criteria je vóór entry zag. Score wordt opgeslagen op de trade als <code>complianceScore</code>. Harde data, geen tag-gokwerk.</li></ul><p>Zodra ≥50% van je linked trades expliciete scores heeft, switcht het label naar <strong>EXPLICIT</strong> in de Playbook-detail.</p><div class="lesson-callout why"><div class="lc-title">Waarom dit cruciaal is</div>De gemiddelde trader probeert hun strategie te fixen na elke verliesreeks. Maar de strategie is meestal niet kapot — de uitvoering is dat. Compliance × PnL onthult dat verschil.</div><h2>De split</h2><p>Een trade is <strong>compliant</strong> als ≥80% van de mandatory criteria afgevinkt zijn (explicit) of ≥80% van de confirmation-tags matchen (heuristic). Anders <strong>non-compliant</strong>.</p><div class="lesson-callout example"><div class="lc-title">Voorbeeld output</div>SFP playbook, 28 trades:<br/>• Compliant (22 trades): +1.45R/trade, 73% WR<br/>• Non-compliant (6 trades): -0.82R/trade, 17% WR<br/><br/><strong>Discipline-delta: +2.27R per trade.</strong><br/>Conclusie: je strategie werkt; je discipline kost je geld als je 'm niet volgt.</div><h2>Hoe gebruik je dit?</h2><ol><li>Maak playbook met expliciete criteria-list (mark must-haves als 'verplicht')</li><li>Bij <em>+ Nieuwe Trade</em>: kies playbook in dropdown bovenaan</li><li>Vink <strong>vóór entry</strong> de criteria af die je zag — niet erna (hindsight-bias)</li><li>Save: trade krijgt automatisch een complianceScore</li><li>Open playbook-detail → Compliance × PnL bar toont je discipline-delta</li><li>Als delta &gt; +1R: jouw discipline is je grootste hefboom</li></ol><h2>Hindsight-bias waarschuwing</h2><p>Vink criteria aan <em>vóór</em> entry, niet erna. Anders meet je achterklap-gemak, niet discipline. De TradeForm geeft je een waarschuwing: rood licht bij &lt;50% mandatory afgevinkt.</p><button class="lesson-link" data-target="playbook">Open Playbook →</button>`},
   {id:"l12",level:"advanced",svg:"matrix",duration:10,title:"Setup × Sessie matrix — waarom 8 buckets?",desc:"De 5-bucket variant verbergt het 11:30-fenomeen. Hier de logica achter de fijnere indeling.",content:`<p>De Tendencies-tab heeft een matrix bovenaan: setup-rijen × 8 sessie-kolommen. Cellen kleuren op WR + cum. PnL.</p><h2>Waarom 8 in plaats van 5?</h2><p>De vorige versie had Asia / London / NY / US Late / Weekend. Eén "London"-bucket bevatte 09:00-15:30 — 6,5 uur, twee fundamenteel verschillende markt-regimes.</p><div class="lesson-callout example"><div class="lc-title">Het 11:30-fenomeen</div>London-open 09:00-11:30: hoog volume, scherpe directional moves, sweep-en-reclaim werkt. London-PM 11:30-15:30: pre-NY drift, volume daalt, trend dunner. Dezelfde "SFP" is een andere trade in deze twee periodes.</div><h2>De 8 buckets (Amsterdam-tijd)</h2><ul><li><strong>Asia AM</strong> 01:00-05:00 — Tokyo open</li><li><strong>Asia PM</strong> 05:00-09:00 — Tokyo lunch/close, pre-London</li><li><strong>London AM</strong> 09:00-11:30 — London-open volatility</li><li><strong>London PM</strong> 11:30-15:30 — pre-NY drift</li><li><strong>US AM</strong> 15:30-19:00 — NY cash-open</li><li><strong>US PM</strong> 19:00-22:00 — richting close</li><li><strong>US Late</strong> 22:00-01:00 — post-NY, Asia preview</li><li><strong>Weekend</strong> — Zat/Zon</li></ul><h2>Hoe gebruik je de matrix?</h2><p>Klik op een gekleurde cel → trade-filter ingesteld, naar Trades-tab. Bekijk die trades; vraag: wat hadden ze gemeen, wat onderscheidt deze sessie?</p><div class="lesson-callout warn"><div class="lc-title">Drempel</div>Cellen met &lt; 3 trades zijn gedimd — niet betrouwbaar. Wacht met conclusies tot je 5+ trades per cel hebt.</div><h2>Vlaggetjes</h2><ul><li>🎯 Edge bevestigd (WR ≥ 65%, PnL &gt; +$150)</li><li>🕒 Edge weg (WR ≤ 30%, PnL &lt; -$100)</li><li>⏰ Aandacht (WR ≤ 45%, PnL &lt; -$50)</li></ul><button class="lesson-link" data-target="tendencies">Open Tendencies →</button>`},
   {id:"l13",level:"advanced",svg:"histogram",duration:12,title:"R-multiple op portfolio-niveau",desc:"Distributie, expectancy-formule, en waarom een fat-tail je gemiddelde scheef trekt.",content:`<p>Je hebt 100+ trades. Het gemiddelde van +0.4R is bekend. Maar dat ene cijfer verbergt de werkelijke vorm van je edge.</p><h2>De distributie</h2><p>Plot je R-multiples in een histogram. Drie patronen zijn mogelijk:</p><ul><li><strong>Symmetrisch rond 0</strong> — geen edge. Stop met deze strategie.</li><li><strong>Scheef rechts (fat positive tail)</strong> — gezonde edge. Veel kleine winners + een paar runners die gemiddelde optillen.</li><li><strong>Bimodaal</strong> — twee strategieën door elkaar. Splits in playbook.</li></ul><div class="lesson-callout why"><div class="lc-title">Waarom mediaan náást gemiddelde belangrijk is</div>Eén +10R runner trekt je gemiddelde van +0.3R naar +0.5R — terwijl 80% van je trades onder +0.3R zit. Mediaan is robuuster: als mediaan ≈ gemiddelde → distributie is symmetrisch. Als mediaan &lt;&lt; gemiddelde → je edge is fat-tail-driven.</div><h2>Expectancy in detail</h2><p><code>E = (WR × avgWinR) − (LR × avgLossR)</code></p><p>Drie scenario's met dezelfde +0.3R expectancy:</p><ul><li>60% WR × +1R / 40% LR × -1.05R = +0.3R</li><li>40% WR × +2R / 60% LR × -0.83R = +0.3R</li><li>30% WR × +3R / 70% LR × -0.86R = +0.3R</li></ul><p>Allemaal +0.3R, maar mentaal heel verschillend. 30% WR voelt 7-op-10 dagen als verlies. Veel traders kunnen die psychologie niet aan en switchen prematuur.</p><h2>Rolling 20-trade edge</h2><p>Belangrijker dan lifetime gemiddelde. Toont of je edge degradeert (vermoeidheid, regime-change) of stabiel blijft. Trend naar beneden = pauzeer, analyseer.</p><div class="lesson-callout tip"><div class="lc-title">Tip</div>Je <em>laatste</em> 20 trades vertellen meer over je huidige edge dan je <em>lifetime</em> 200. De markt verandert, jij verandert; rolling stats vangen dat.</div><button class="lesson-link" data-target="analytics">Open Analytics →</button>`},
   {id:"l14",level:"advanced",svg:"shield",duration:8,title:"Trading Rules + Discipline Heatmap",desc:"Waarom dagelijkse rule-checks een leading indicator zijn voor toekomstige PnL.",content:`<p>Trading Rules + Discipline Heatmap is de proces-laag van TradeJournal. Geen PnL-data, alleen gedragsmetrics.</p><h2>De rule-types</h2><ul><li><strong>Max risk per trade</strong> (bv. 2%)</li><li><strong>Max trades per dag</strong> (bv. 5)</li><li><strong>Max losses per dag</strong> (bv. 2 — pauze daarna)</li><li><strong>SL verplicht</strong> bij entry</li><li><strong>Pre-trade notitie</strong> verplicht</li><li><strong>Custom</strong> — handmatig afvinken</li></ul><h2>Hoe werkt de Heatmap?</h2><p>7×24 (of 7×8 sessies) grid. Per cel een score op 6 checks: SL gezet, pre-notitie, setup-tag, binnen risk, post-notitie, rating gegeven.</p><div class="lesson-callout why"><div class="lc-title">Waarom dit een leading indicator is</div>Steenbarger ("The Daily Trading Coach") toonde aan: traders die rule-violations toelaten verliezen 3-4 weken later geld. Discipline-degradatie verschijnt eerst, PnL-degradatie volgt. De Heatmap is je vroegtijdige waarschuwing.</div><h2>Concreet patroon-voorbeeld</h2><div class="lesson-callout example"><div class="lc-title">Weekend / US-Late rood</div>Trader Y zag in zijn Heatmap dat zaterdagavond + zondag 22:00-01:00 consistent rood was: lage volume crypto, SL te wijd, geen notities. Tijdens die uren: -3R gemiddeld over BTC en ETH. Conclusie: weekend + US-Late = no-trade-window. Resultaat: lifetime expectancy van +0.3R naar +0.5R, alleen door <em>minder</em> traden.</div><h2>Hoe optimaliseer je?</h2><ol><li>Identificeer de roodste cel in jouw Heatmap</li><li>Voeg toe als rule: "geen trades tijdens [die periode]"</li><li>Maak het automatisch via Custom-rule</li><li>Track 4 weken</li></ol><button class="lesson-link" data-target="analytics">Open Analytics →</button>`},
   {id:"l15",level:"advanced",svg:"ghost",duration:10,title:"Missed-trades backtest",desc:"Opportunity-cost meten. Hoe weet je of je te conservatief bent?",content:`<p>De missed-trades feature (v12.6) lijkt op het eerste oog overbodig — waarom een trade loggen die je niet nam? Het antwoord: opportunity-cost meting.</p><h2>Het concept</h2><p>Bij elk gemiste setup log je: pair, setup-tag, entry/SL die je had genomen, en — cruciaal — <strong>hindsightExit</strong>: waar de prijs daadwerkelijk naartoe ging.</p><h2>Hoe Playbook dit gebruikt</h2><p>In Playbook-detail zie je een "🔬 Missed Trades · Backtest" sectie. Histogram met 5%-bins toont per match-percentage hoe vaak je 'm overskipte, en wat de theoretical R was.</p><div class="lesson-callout example"><div class="lc-title">Output-voorbeeld</div>SFP playbook, 9 missed trades laatste 60 dagen:<br/>• 5 setups met ≥80% match: +6.4R theoretical leak<br/>• 3 setups met 50-79% match: +1.8R<br/>• 1 setup met &lt;50% match: +1.1R<br/><br/><strong>Totale edge-leak: +9.3R.</strong> Vooral die ≥80% bucket — die had je écht moeten nemen.</div><h2>Hindsight-bias waarschuwing</h2><div class="lesson-callout warn"><div class="lc-title">Belangrijk</div>Theoretical R ≠ actual R. In real-time had je twijfels die nu vergeten zijn. Een mechanische backtest overschat altijd. Behandel deze data als een vraag, geen verwijt.</div><h2>Twee modi</h2><ul><li><strong>Forward-test</strong> (best practice) — log de missed trade <em>tijdens</em> de setup, vul hindsight 4u later in. Voorkomt cherry-picking.</li><li><strong>Hindsight-test</strong> — scroll achteraf door je charts, log gespotte gemiste setups. Sneller maar vatbaarder voor selectiebias.</li></ul><h2>Wat is een gezond niveau?</h2><p>Edge-leak van 10-20% van je actual R is normaal — perfect zou robotisch zijn. Edge-leak &gt; 50% = je bent te conservatief; sizing of execution-rules aanpassen.</p>`},
+  {id:"l17",level:"advanced",svg:"bookCompare",duration:10,title:"Big-Picture + A+/A/B/C grading",desc:"Tier-systeem voor risico-allocatie + drie marktcontext-velden per playbook. Sinds v12.61.",content:`<p>Sinds v12.61 zitten er twee samenhangende concepten in elke playbook: <strong>Big-Picture-velden</strong> en <strong>A+/A/B/C grading</strong> met sizing-helper. Samen dwingen ze je om vóór entry een bewuste conviction-keuze te maken — geen one-size-fits-all sizing.</p><h2>Probleem dat het oplost</h2><p>De gemiddelde trader behandelt elke setup met dezelfde size en dezelfde checks. Resultaat: A-setups worden ondergezined (geen full conviction), C-setups worden overgehyped (te veel risk). Edge wordt verspreid over middelmaat.</p><div class="lesson-callout why"><div class="lc-title">Het principe</div>"Take only trades you have already perfected — and size them according to the conviction of the setup." A+ verdient méér dan een gemiddelde trade; C krijgt minimaal of geen size. De gradering dwingt je vóóraf te beslissen welke set conditions je high-conviction zijn.</div><h2>1. Big-Picture-velden</h2><p>Per playbook drie optionele velden (toggle aan/uit). Voor crypto vertaald:</p><ul><li><strong>🌍 Big Picture</strong> — BTC.D, DXY, total-cap trend, risk-on/off</li><li><strong>📡 Reading the Tape</strong> — CVD, book-imbalance, liquidations, funding, whale-flows</li><li><strong>💡 Intuition</strong> — pattern-recognition uit ervaring, bewust apart van data</li></ul><div class="lesson-callout example"><div class="lc-title">Voorbeeld — "Daily Bias 1H Pullback (BTC)"</div><strong>Big Picture</strong>: BTC trend up op 1D (boven 50EMA), risk-on regime. BTC.D zijwaarts. DXY consolideert onder 105. Geen FOMC/CPI komende sessie.<br/><strong>Reading the Tape</strong>: 4H BOS bevestigd vorige week. CVD volgt prijs aligned. OI stabiel. Funding neutraal binnen ±0.04%.<br/><strong>Intuition</strong>: Klassieke Apr-15 setup-ritme. Pullbacks naar EMA21 in trending regime werken al weken — voelt high-probability.</div><div class="lesson-callout tip"><div class="lc-title">Auto-fill in TradeForm</div>Bij + Nieuwe Trade kies je een playbook → de drie Big-Picture-velden verschijnen direct als read-only blokken onder de playbook-picker. In één oogopslag check je of jouw gedocumenteerde marktcontext nog klopt voor vandaag.</div><h2>2. A+/A/B/C grading — Tier-systeem</h2><p>Per playbook stel je een <strong>default-grade</strong> in (wat is dit setup typisch?). Per trade override je dat als de specifieke entry afwijkt.</p><h2>3. Sizing-helper</h2><p>Onder de grade-pills toont een card het suggested risk in %. Default-percentages voor crypto (conservatief):</p><ul><li><strong>A+</strong> = 2%</li><li><strong>A</strong> = 1.5%</li><li><strong>B</strong> = 1%</li><li><strong>C</strong> = 0.5%</li></ul><p>Klik de inline ✏-knop in de sizing-card om je account-saldo in te stellen — daarna toont de helper ook $-bedragen.</p><div class="lesson-callout example"><div class="lc-title">Concreet — $10k account, A-trade</div>1.5% van $10k account = $150 risk. Met SL op $66.800 (1R = $700/BTC), positie-grootte: $150 / $700 = ~0.21 BTC. App toont dit als info bij je risk-input — geen save-block.</div><div class="lesson-callout warn"><div class="lc-title">Anti-pattern: achteraf-rebrandering</div>Een trade die nu loost als A+ markeren omdat 'ie eindigde op +5R is data-pollution. De grade-pills zijn voor <strong>vóór entry</strong>: bewuste keuze op basis van de setup-condities die je vóór trigger zag, niet de uitkomst achteraf.</div><h2>Hoe gebruik je dit in de praktijk?</h2><ol><li>Open je playbook → klik 'Aan' bij '🌍 Big-Picture-velden'</li><li>Vul de drie velden in (of laat leeg — alleen die je wil)</li><li>Stel een default-grade in onder Basis (A+/A/B/C)</li><li>Bij + Nieuwe Trade → kies de playbook → grade overgenomen + sizing-suggestie verschijnt</li><li>Override grade voor deze specifieke trade als die afwijkt</li></ol><div class="lesson-callout tip"><div class="lc-title">Tip — start met je beste 1-2 setups</div>Definieer A+/A/B/C niet voor alle 8 setups tegelijk. Begin met je 1-2 hoogste-conviction setups (volgens je win-rate + cum. R per playbook). Gradering is bewuste keuze; te snel uitrollen leidt tot lui labelen.</div><button class="lesson-link" data-target="playbook">Open Playbook →</button>`},
   {id:"l16",level:"advanced",svg:"target",duration:6,title:"Goals & milestones — psychologie",desc:"Waarom kleine wins versterken proces-discipline. Plus de target-traps die de meeste traders overzien.",content:`<p>De Goals-feature lijkt licht — maar zit op een diepe psychologische laag.</p><h2>De feedback-loop</h2><p>Trading is intermittent reinforcement (variabele beloning). Slot-machine psychologie. Zonder structurele tussenliggende feedback raken traders verslaafd aan resultaat-validatie. Goals introduceren deterministische tussenliggende validatie.</p><div class="lesson-callout why"><div class="lc-title">Waarom dit ertoe doet</div>Mark Douglas ("Trading in the Zone") leerde: de markt valideert je niet, jouw proces wel. Goals — gekoppeld aan proces-metrics, niet alleen PnL — zijn de vorm van die proces-validatie.</div><h2>De 9 goal-metrics</h2><p>TradeJournal ondersteunt: net P&amp;L, win-rate, # trades, winning days, gem. R, gross profit, max drawdown, profit factor, expectancy.</p><p>Gebruik <strong>process-metrics</strong> (winning days, # trades, expectancy) liever dan <strong>outcome-metrics</strong> (P&amp;L target). Reden: P&amp;L target stimuleert revenge-trading bij ondermaats kwartaal.</p><h2>Periodes</h2><p>Week / Maand / Kwartaal / Jaar / All-time. Mijn aanbeveling: één weekly proces-goal, één kwartaal outcome-goal.</p><div class="lesson-callout example"><div class="lc-title">Voorbeeld goal-set</div><strong>Weekly</strong>: 4 winning days van 5 (proces-discipline)<br/><strong>Monthly</strong>: expectancy ≥ +0.4R (edge-validatie)<br/><strong>Quarterly</strong>: net +20R (outcome)</div><h2>Milestones</h2><p>One-time celebrations: eerste 10 / 50 / 100 trades, eerste win-streak van 5/10, eerste profitable maand. Verschijnen automatisch als modal — eenmalig, niet spammy.</p><div class="lesson-callout tip"><div class="lc-title">Tip</div>Vier proces-milestones harder dan PnL-milestones. "100 trades met setup-tag op alles" zegt meer over de toekomst dan "+1000 deze maand."</div>`},
 ];
 
@@ -9609,6 +10043,35 @@ function App(){
     if(m){setMilestone(m);markMilestoneSeen(m.id)}
   },[tradesLoaded]);
 
+  // v12.62: bij app-load partial-status hersynchroniseren over alle exchanges.
+  // detectPartialFromSiblings runde voorheen alleen tijdens syncOpenPositions
+  // (knop-actie); bij stale state kon een open trade onterecht "open" of "partial"
+  // blijven na een code-update of localStorage-mutatie. Dit useEffect runt 1×
+  // bij init en updatet alleen waar de gederiveerde status ander is dan de huidige.
+  useEffect(()=>{
+    if(!tradesLoaded)return;
+    setTrades(prev=>{
+      const exchanges=[...new Set(prev.filter(t=>t.source&&t.source!=="manual"&&t.source!=="csv").map(t=>t.source))];
+      let result=prev;
+      for(const ex of exchanges){
+        result=detectPartialFromSiblings(result,ex);
+      }
+      // Alleen wijzigen als er iets veranderd is (voorkom onnodige re-renders).
+      // Check ook tpLevels en originalSizeAsset — eerder gemiste die niet werden
+      // gepersisteerd als status al op "partial" stond maar tpLevels of originalSizeAsset
+      // nog niet gevuld waren door eerdere code-versies.
+      const changed=result.some((t,i)=>{
+        const p=prev[i];if(!p)return true;
+        if(t.status!==p.status||t.realizedPnl!==p.realizedPnl)return true;
+        if((t.originalSizeAsset||"")!==(p.originalSizeAsset||""))return true;
+        const pTps=p.tpLevels?.length||0;
+        const tTps=t.tpLevels?.length||0;
+        return pTps!==tTps;
+      });
+      return changed?result:prev;
+    });
+  },[tradesLoaded]);
+
   // Mindset reminders — master prefs + per-navigation rotating banner + post-loss toast
   const[mindsetPrefs,setMindsetPrefs]=useState(()=>readMindsetPrefs());
   useEffect(()=>{try{localStorage.setItem("tj_mindset_prefs",JSON.stringify(mindsetPrefs))}catch{}},[mindsetPrefs]);
@@ -9790,7 +10253,6 @@ function App(){
       freshCount=fresh.length;
       return fresh.length?[...fresh,...p]:p;
     });
-    // Wait one tick so setTrades closure populates freshCount/dupCount
     setTimeout(()=>{
       if(freshCount===0&&dupCount>0)showToast(`Alle ${dupCount} trades bestonden al — niets toegevoegd`,"info");
       else if(dupCount>0)showToast(`${freshCount} nieuw · ${dupCount} al aanwezig (overgeslagen)`,"success");
@@ -9838,7 +10300,9 @@ function App(){
       }
       freshCount=fresh.length;
       const updated=kept.map(t=>byId.get(t.id)||t);
-      return fresh.length?[...fresh,...updated]:updated;
+      const merged=fresh.length?[...fresh,...updated]:updated;
+      // v12.62: delegate partial-status detection naar pure helper (zie module-scope).
+      return detectPartialFromSiblings(merged,exchangeKey);
     });
     setTimeout(()=>{
       const parts=[];
@@ -10061,7 +10525,7 @@ function App(){
               <div style={{fontSize:"16px",fontWeight:700}}>Nieuwe trade</div>
               <button onClick={tryCloseNew} style={{background:"none",border:"none",color:"var(--text4)",cursor:"pointer",fontSize:"14px"}}>✕</button>
             </div>
-            <TradeForm trade={newTrade} setTrade={setNewTrade} onSave={()=>saveTrade(newTrade)} onCancel={tryCloseNew} tagConfig={tagConfig} config={config} accounts={accounts} showToast={showToast} isDraft={true} playbooks={playbooks} setTab={setTab}/>
+            <TradeForm trade={newTrade} setTrade={setNewTrade} onSave={()=>saveTrade(newTrade)} onCancel={tryCloseNew} tagConfig={tagConfig} config={config} setConfig={setConfig} accounts={accounts} showToast={showToast} isDraft={true} playbooks={playbooks} setTab={setTab}/>
           </>;
         })()}
 
@@ -10082,7 +10546,7 @@ function App(){
                 <button onClick={tryCloseEdit} style={{background:"none",border:"none",color:"var(--text4)",cursor:"pointer",fontSize:"14px",padding:"4px"}}>✕</button>
               </div>
             </div>
-            <TradeForm trade={editTrade} setTrade={setEditTrade} onSave={()=>saveTrade(editTrade)} onCancel={tryCloseEdit} tagConfig={tagConfig} config={config} accounts={accounts} showToast={showToast} playbooks={playbooks} setTab={setTab}/>
+            <TradeForm trade={editTrade} setTrade={setEditTrade} onSave={()=>saveTrade(editTrade)} onCancel={tryCloseEdit} tagConfig={tagConfig} config={config} setConfig={setConfig} accounts={accounts} showToast={showToast} playbooks={playbooks} setTab={setTab}/>
             <TPTimeline trade={editTrade} config={config} setTrade={setEditTrade} showToast={showToast}/>
           </div>
         </div>;
