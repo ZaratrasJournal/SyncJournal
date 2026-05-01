@@ -6,6 +6,31 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.64] — 2026-05-01
+
+### Gewijzigd
+- **Share-trade kaarten compleet vernieuwd (v2)** — uitspraakvol design-systeem met **4 stijl-richtingen**:
+  - **Reactions** — meme-foto met 5 mood-varianten (Goodfellas/Giggling/OMG/Final Boss/Pablo). Auto-suggest op basis van R-multiple + side. Past bij Discord/X community-vibe.
+  - **Cinema** — A24/Mubi filmposter aesthetiek. Bodoni Moda + sprocket-holes + vignette. Cinematic restraint.
+  - **Dossier** — editorial broadsheet. GFS Didot + warme paper texture + serif body. Trade als "een artikel".
+  - **Monogram** — fine-art catalogus. Eén getal in Didot, witruimte, micro-typografie. Minimalistisch.
+- **Per-veld toggle-checkboxes** — 9 toggles in de modal (Trade Nº, Datum, PnL $, Return %, R-multiple, Hold time, Entry/Exit, Stop, Setup tag) bepalen wat er op de card komt. Werkt over alle 4 directions.
+- **Twee export-formats** per direction:
+  - **16:9** (1080×608 of 1200×675) — voor Discord embeds + X link previews
+  - **1:1** (520×520 of 760×760) — voor Twitter/X feed + Instagram
+- **Brand `moranitraden.nl`** vast op elke kaart — niet meer editable.
+- **PNG export** via `html2canvas` op 2× retina; **clipboard-kopie** voor direct plakken in Discord (Ctrl+V).
+
+### Verwijderd
+- **Oude v1 share-card** (9 stijlen: classic/ticker/story/minimal/boss/goodfellas/giggling/omg/pablo) — vervangen door v2-systeem hierboven. Voor referentie blijft de v1 in git history (`git log --all -- work/tradejournal.html`).
+
+### Onder de motorkap
+- **5 meme-PNG's als base64 ge-embed** in de single-file HTML (~1.8MB toename) zodat de app zonder externe `assets/share-cards/`-folder werkt — community downloadt 1 file en alles werkt.
+- **Google Fonts uitgebreid** met Archivo Black, JetBrains Mono, Caveat, Cormorant Garamond, Bodoni Moda, GFS Didot, Source Serif 4 (alle Google CDN, geen build-stap).
+- **CSS in `.tc-*` namespace** zodat de share-card stijlen niet botsen met de 6 app-thema's.
+
+---
+
 ## [v12.63] — 2026-05-01
 
 ### Fixed
