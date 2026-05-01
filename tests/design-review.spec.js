@@ -11,6 +11,7 @@
 const { test, expect } = require('@playwright/test');
 const path = require('path');
 const fs = require('fs');
+const { diffPng } = require('./helpers/diff-baseline');
 
 const APP_PATH = path.resolve(__dirname, '../work/tradejournal.html');
 const FILE_URL = 'file:///' + APP_PATH.replace(/\\/g, '/');
@@ -18,6 +19,14 @@ const FIXTURE = JSON.parse(
   fs.readFileSync(path.join(__dirname, 'fixtures/blofin-partial-state.json'), 'utf8')
 );
 const SHOT_DIR = path.join(__dirname, 'screenshots/design-review');
+const BASELINE_DIR = path.join(__dirname, 'screenshots/baseline/design-review');
+const DIFF_DIR = path.join(__dirname, 'screenshots/diff/design-review');
+
+// Pixel-diff regressie threshold. Daadwerkelijke baseline-drift door dynamic
+// content (live tickers, timestamps, mindset-quote rotatie) zit op 0.2-0.7%.
+// 2% geeft ~3x veiligheidsmarge en vangt echte regressies (kleur-shifts,
+// layout-wijzigingen) zonder false positives op rotatie.
+const MAX_DIFF_RATIO = 0.02;
 
 const THEMES = ['sync', 'classic', 'aurora', 'light', 'parchment', 'daylight'];
 const SCREENS = [
@@ -81,10 +90,26 @@ test.describe('Design-review (multi-screen × multi-theme)', () => {
         expect(errors, `Geen JS-errors voor ${theme}/${screen.label}`).toHaveLength(0);
 
         // Screenshot
-        await page.screenshot({
-          path: path.join(SHOT_DIR, `${theme}-${screen.label}.png`),
-          fullPage: false,
-        });
+        const shotPath = path.join(SHOT_DIR, `${theme}-${screen.label}.png`);
+        await page.screenshot({ path: shotPath, fullPage: false });
+
+        // Pixel-diff vs baseline (soft threshold — dynamic content tolereren)
+        const baselinePath = path.join(BASELINE_DIR, `${theme}-${screen.label}.png`);
+        const diffPath = path.join(DIFF_DIR, `${theme}-${screen.label}.diff.png`);
+        const result = await diffPng(shotPath, baselinePath, { diffPath });
+
+        if (result.missingBaseline) {
+          console.log(`  [diff] ${theme}/${screen.label}: BASELINE MISSING — kopieer huidige als baseline`);
+        } else if (result.sizeMismatch) {
+          throw new Error(`${theme}/${screen.label}: viewport-size mismatch met baseline`);
+        } else {
+          const pct = (result.ratio * 100).toFixed(2);
+          console.log(`  [diff] ${theme}/${screen.label}: ${pct}% pixels gewijzigd (${result.numDiff}/${result.total})`);
+          expect(
+            result.ratio,
+            `Pixel-diff voor ${theme}/${screen.label} = ${pct}% — overschrijdt drempel ${(MAX_DIFF_RATIO*100).toFixed(0)}%. Bekijk diff: ${diffPath}`
+          ).toBeLessThan(MAX_DIFF_RATIO);
+        }
       });
     }
   }

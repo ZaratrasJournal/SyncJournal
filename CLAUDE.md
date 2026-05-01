@@ -177,7 +177,13 @@ Geen install nodig. Parseert `~/.claude/projects/*.jsonl`. Gebruik wekelijks om 
 
 **Twee specs onderscheid:**
 - `tests/themes.spec.js` — snelle Dashboard-only check (~55s, 6 shots) — voor pre-commit / smoke
-- `tests/design-review.spec.js` — comprehensive multi-screen × multi-theme (~2.5 min, 18 shots, met fixture) — voor `/design-review`
+- `tests/design-review.spec.js` — comprehensive multi-screen × multi-theme (~2.5 min, 18 shots, met fixture) — voor `/design-review`. **Heeft pixel-diff** tegen `tests/screenshots/baseline/design-review/<theme>-<screen>.png` via `pixelmatch` (helper in `tests/helpers/diff-baseline.js`). Drempel 2% — daadwerkelijke drift door dynamic content (live tickers, timestamps, mindset-quote rotatie) zit op 0.2-0.7%, dus 2% geeft ~3× marge en vangt elke echte regressie. Bij failure: bekijk `tests/screenshots/diff/design-review/<theme>-<screen>.diff.png` voor visuele diff (rood = veranderd).
+
+**Baseline updaten** (na bewuste UI-keuze):
+```bash
+cp tests/screenshots/design-review/<theme>-<screen>.png tests/screenshots/baseline/design-review/
+git commit -am "update design-review baseline (vX.Y — reden)"
+```
 
 **Wanneer gebruiken**: vóór elke release-bump, na elke grote UI-feature, bij twijfel of een theme-fix het niet brak.
 
