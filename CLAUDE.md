@@ -171,6 +171,14 @@ npx ccusage@latest session            # per-sessie overzicht
 
 Geen install nodig. Parseert `~/.claude/projects/*.jsonl`. Gebruik wekelijks om budget in de gaten te houden.
 
+### /design-review slash command
+
+`.claude/commands/design-review.md` — autonome visuele review over alle 6 thema's. Type `/design-review` (optioneel met argument zoals `trades` of `playbook`). Workflow: runt themes+smoke specs, leest output-screenshots multimodaal, vergelijkt met baseline, loopt design-checklist (contrast, theme-consistency, layout integrity, whitespace, top-bar info), output in Nederlands gestructureerd rapport met ✓/⚠/✗ per thema + top-actiepunten + ship/fix-verdict.
+
+**Wanneer gebruiken**: vóór elke release-bump, na elke grote UI-feature, bij twijfel of een theme-fix het niet brak.
+
+**Wat het NIET doet**: subjectieve UX ("voelt premium"), klikflows (gebruik feature-specs), accessibility audit (fase 3).
+
 ## Niet doen
 - Geen `file://` paden in instructies naar gebruikers.
 - Geen API-keys in de browser persisten zolang er geen backend is.
