@@ -6,6 +6,18 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.64.1] — 2026-05-01
+
+### Fixed
+- **Share-card v2 modal: layout + render-fix** — bij eerste live-test bleek dat:
+  1. **Cards overflowten buiten de modal** — de `1fr` grid-track in de modal liet 1080-1200px brede cards naar buiten ontsnappen. Fix: `gridTemplateColumns: "320px minmax(0, 1fr)"` plus `transform: scale(0.55)` op een fixed-dimensie wrapper per format. PNG-export blijft op origineel formaat (2× retina).
+  2. **Cinema/Dossier/Monogram backgrounds onzichtbaar** — de tc-* CSS in het head `<style>` block werd door de browser parser niet geladen (parsing stopte ergens vóór de tc-injectie). Fix: CSS verplaatst naar een inline `<style>` tag binnen het TradeCardExport component zelf — wordt door React gemount samen met de modal en parseert gegarandeerd.
+  3. **PNG-download van scaled preview** — html2canvas captureerde bij eerste implementatie de visueel-geschaalde versie. Fix: clone de card naar een offscreen sandbox zonder `transform`, capture daar, sandbox opruimen.
+
+Geen visuele wijziging in de cards zelf — alleen de modal-rendering en download flow zijn betrouwbaar gemaakt.
+
+---
+
 ## [v12.64] — 2026-05-01
 
 ### Gewijzigd
