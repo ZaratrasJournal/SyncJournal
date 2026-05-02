@@ -895,7 +895,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.68",released:"2026-05-02"};
+const APP_VERSION={version:"v12.69",released:"2026-05-02"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -2466,6 +2466,15 @@ function TagManager({tagConfig,setTagConfig,trades,setTrades,showToast,config}){
   // Drag & drop reorder state. dragInfo = {catKey, fromIdx}; dragOver = {catKey, idx}.
   const[dragInfo,setDragInfo]=useState(null);
   const[dragOver,setDragOver]=useState(null);
+  // 3-keuze delete-confirm modal: shape {catKey, tag, usedCount} of null.
+  // Verschijnt alleen als usedCount>0 — bij ongebruikte tag valt het terug op simpele confirm().
+  const[confirmDelete,setConfirmDelete]=useState(null);
+  useEffect(()=>{
+    if(!confirmDelete)return;
+    const onKey=(e)=>{if(e.key==="Escape")setConfirmDelete(null)};
+    document.addEventListener("keydown",onKey);
+    return()=>document.removeEventListener("keydown",onKey);
+  },[confirmDelete]);
 
   const getTags=(catKey)=>tagConfig[catKey]||DEFAULT_TAGS[catKey]||[];
 
@@ -2500,10 +2509,34 @@ function TagManager({tagConfig,setTagConfig,trades,setTrades,showToast,config}){
 
   const removeTag=(catKey,tag)=>{
     const usedCount=trades.filter(t=>(t[catKey]||[]).includes(tag)).length;
-    const msg=usedCount>0?`"${tag}" verwijderen? Wordt nog getoond op ${usedCount} bestaande trade${usedCount>1?"s":""}.`:`"${tag}" verwijderen?`;
-    if(!confirm(msg))return;
+    if(usedCount===0){
+      // Tag staat op 0 trades — geen meervoudige keuze nodig, simpele bevestiging.
+      if(!confirm(`"${tag}" verwijderen?`))return;
+      setTagConfig(p=>({...p,[catKey]:getTags(catKey).filter(t=>t!==tag)}));
+      showToast(`Tag "${tag}" verwijderd`);
+      return;
+    }
+    // Tag staat op ≥1 trade — open 3-keuze modal: A) overal weg, B) alleen config, C) annuleren.
+    setConfirmDelete({catKey,tag,usedCount});
+  };
+
+  // Pad A: tag uit config + opschonen op alle trades.
+  const deleteTagEverywhere=(catKey,tag,usedCount)=>{
     setTagConfig(p=>({...p,[catKey]:getTags(catKey).filter(t=>t!==tag)}));
-    showToast(`Tag "${tag}" verwijderd`);
+    setTrades(p=>p.map(t=>{
+      const arr=t[catKey]||[];
+      if(!arr.includes(tag))return t;
+      return{...t,[catKey]:arr.filter(x=>x!==tag)};
+    }));
+    setConfirmDelete(null);
+    showToast(`Tag "${tag}" verwijderd uit config en van ${usedCount} trade${usedCount>1?"s":""}`);
+  };
+
+  // Pad B: alleen tag uit config halen — trades behouden hun tag (huidig gedrag).
+  const deleteTagConfigOnly=(catKey,tag,usedCount)=>{
+    setTagConfig(p=>({...p,[catKey]:getTags(catKey).filter(t=>t!==tag)}));
+    setConfirmDelete(null);
+    showToast(`Tag "${tag}" uit config; ${usedCount} trade${usedCount>1?"s":""} ${usedCount>1?"behouden":"behoudt"} de tag`);
   };
 
   const startRename=(catKey,tag)=>{setRenaming({catKey,tag});setRenameVal(tag)};
@@ -2560,6 +2593,7 @@ function TagManager({tagConfig,setTagConfig,trades,setTrades,showToast,config}){
           return(
             <div
               key={tag}
+              data-testid={`tag-box-${cat.key}-${tag}`}
               draggable={true}
               onDragStart={e=>{setDragInfo({catKey:dragKey,fromIdx:idx});e.dataTransfer.effectAllowed="move";try{e.dataTransfer.setData("text/plain",tag);}catch{}}}
               onDragEnd={()=>{setDragInfo(null);setDragOver(null);}}
@@ -2632,6 +2666,39 @@ function TagManager({tagConfig,setTagConfig,trades,setTrades,showToast,config}){
           </div>
         );
       })}
+      {confirmDelete&&(
+        <div role="dialog" aria-modal="true" aria-label={`Tag "${confirmDelete.tag}" verwijderen`}
+             onClick={()=>setConfirmDelete(null)}
+             style={{position:"fixed",top:0,left:0,right:0,bottom:0,zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.6)",backdropFilter:"blur(4px)",WebkitBackdropFilter:"blur(4px)",padding:"20px"}}>
+          <div onClick={e=>e.stopPropagation()}
+               style={{background:"var(--bg2)",border:"1px solid var(--gold-border)",borderRadius:"var(--radius-lg)",padding:"24px",maxWidth:"480px",width:"100%",boxShadow:"0 20px 60px rgba(0,0,0,0.5)",animation:"fadeIn .15s ease"}}>
+            <div style={{fontSize:"15px",fontWeight:700,color:"var(--text)",marginBottom:"8px"}}>Tag "{confirmDelete.tag}" verwijderen?</div>
+            <div style={{fontSize:"13px",color:"var(--text3)",marginBottom:"18px",lineHeight:1.55}}>
+              Deze tag staat op <strong style={{color:"var(--text2)"}}>{confirmDelete.usedCount}</strong> {confirmDelete.usedCount===1?"trade":"trades"}. Wat wil je doen?
+            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:"8px"}}>
+              <button onClick={()=>deleteTagEverywhere(confirmDelete.catKey,confirmDelete.tag,confirmDelete.usedCount)}
+                      style={{padding:"12px 16px",borderRadius:"8px",border:"1px solid rgba(224,85,85,0.4)",background:"rgba(224,85,85,0.08)",color:"var(--red)",fontSize:"13px",fontWeight:600,textAlign:"left",cursor:"pointer",fontFamily:"inherit",display:"flex",flexDirection:"column",alignItems:"flex-start",gap:"3px",transition:"background .15s, border-color .15s"}}
+                      onMouseEnter={e=>{e.currentTarget.style.background="rgba(224,85,85,0.16)";e.currentTarget.style.borderColor="rgba(224,85,85,0.6)"}}
+                      onMouseLeave={e=>{e.currentTarget.style.background="rgba(224,85,85,0.08)";e.currentTarget.style.borderColor="rgba(224,85,85,0.4)"}}>
+                <span>⚠ Verwijder uit config én van trades</span>
+                <span style={{fontSize:"11px",color:"var(--text4)",fontWeight:400}}>Tag verdwijnt overal</span>
+              </button>
+              <button onClick={()=>deleteTagConfigOnly(confirmDelete.catKey,confirmDelete.tag,confirmDelete.usedCount)}
+                      style={{padding:"12px 16px",borderRadius:"8px",border:"1px solid var(--gold-border)",background:"var(--gold-dim)",color:"var(--gold)",fontSize:"13px",fontWeight:600,textAlign:"left",cursor:"pointer",fontFamily:"inherit",display:"flex",flexDirection:"column",alignItems:"flex-start",gap:"3px",transition:"background .15s"}}
+                      onMouseEnter={e=>e.currentTarget.style.background="var(--gold-border)"}
+                      onMouseLeave={e=>e.currentTarget.style.background="var(--gold-dim)"}>
+                <span>✓ Verwijder uit config</span>
+                <span style={{fontSize:"11px",color:"var(--text4)",fontWeight:400}}>{confirmDelete.usedCount} {confirmDelete.usedCount===1?"trade behoudt":"trades behouden"} de tag</span>
+              </button>
+            </div>
+            <div style={{display:"flex",justifyContent:"flex-end",marginTop:"14px"}}>
+              <button autoFocus onClick={()=>setConfirmDelete(null)}
+                      style={{padding:"8px 16px",borderRadius:"6px",border:"1px solid var(--border3)",background:"transparent",color:"var(--text3)",fontSize:"12px",cursor:"pointer",fontFamily:"inherit"}}>Annuleren</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

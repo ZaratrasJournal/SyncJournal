@@ -6,6 +6,24 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.69] — 2026-05-02
+
+3-keuze tag-delete modal — voorkomt verloren tags op trades bij wissen via Instellingen.
+
+### Gewijzigd
+- **Tag verwijderen in Instellingen → Tags** vraagt nu expliciet wat er met de tag op bestaande trades moet gebeuren. Voorheen verdween de tag alleen uit de config en bleef hij stilzwijgend op alle trades hangen — verwarrend bij latere filtering. Nu krijg je een modal met 3 opties:
+  - **⚠ Verwijder uit config én van trades** (rood/destructief) — tag verdwijnt overal.
+  - **✓ Verwijder uit config** (goud/neutraal) — trades behouden hun tag (oude gedrag, expliciet gemaakt).
+  - **Annuleren** (grijs, default keyboard-focus) — niets verandert.
+- Modal verschijnt **alleen** als de tag op ≥1 trade staat. Bij een ongebruikte tag valt het terug op een simpele bevestiging zoals voorheen — geen dialog-fatigue voor lege tags.
+- ESC-toets en klik buiten de modal sluiten zonder wijzigingen.
+- Toast-feedback verschilt per pad (*"... verwijderd uit config en van 12 trades"* vs *"... uit config; 12 trades behouden hun tag"*) zodat je direct weet wat er gebeurd is.
+
+### Tests
+- **Nieuwe Playwright spec `tests/tag-delete-modal.spec.js`** — 6 scenario's: pad A/B/C, ESC, klik-buiten-modal, en de fallback bij 0 trades. Voegt `data-testid="tag-box-${catKey}-${tag}"` toe aan tag-boxes voor robuuste lookup vanuit tests.
+
+---
+
 ## [v12.68] — 2026-05-02
 
 Tendencies-page voor users zonder tags — 4 nieuwe tag-loze detectoren + empty-state hint.
