@@ -10,6 +10,10 @@ Basis kwam uit de feature-diff v4_14 → v9 onderaan. Inmiddels werken we op **v
 
 <!-- Denny stuurt bugs 1 voor 1 — elk item krijgt datum + korte reproductiestap. -->
 
+- [ ] **Trades-pagina toont andere PnL/WR dan Dashboard** *(2026-05-02, gevonden tijdens pro-trader review — zie [docs/pro-trader-review-2026-05-02.md](docs/pro-trader-review-2026-05-02.md) §2.2)* — Met blofin-partial-state.json fixture toont Dashboard "Net P&L -€8,37 · WR 33,3% · 15 trades" (correct) maar Trades-pagina header-stat-line toont "**-$11,43 · WR 27% · 15 trades**". Drie inconsistencies tegelijk: (a) valuta $ vs €, (b) bedrag −11,43 vs −8,37, (c) WR 27% vs 33,3%. Vermoedelijke oorzaak: PARTIAL-trades verschillend geclassificeerd (Trades-pagina telt 4/15 wins, Dashboard 5/15 — verschil = de 1 PARTIAL trade) + valuta-conversie niet consistent toegepast. **Critical** — pro-trader-vertrouwen breekt bij elke discrepantie. Fix: route alle PnL-berekeningen via `netPnl()` helper (regel 1133), één canonieke valuta-formatter via `config.currency`, één win-definitie (incl. of excl. PARTIAL — kies en documenteer).
+
+- [ ] **Floating-point precision in trade-detail modal** *(2026-05-02, gevonden tijdens pro-trader review — zie [docs/pro-trader-review-2026-05-02.md](docs/pro-trader-review-2026-05-02.md) §2.9)* — Trade Edit-modal toont rauwe float-values: Entry `2255.5805555555557` (16 decimalen), PnL `-6.749084190000000001`. Op Trades-tabel staat de prijs wel afgekapt naar `2.355,58` — dus probleem zit alleen bij display in modal. **Critical** — pro-trader die deze ruis ziet vertrouwt de hele app niet meer. Fix: gebruik bestaande `normPrice()` helper (regel 1149) bij modal-render, of formatter met instrument-relevante precisie (BTC: 2 decimalen, ETH: 2, alts: 4-6).
+
 - [ ] **Blofin partial-close → open trade koppeling** *(2026-04-30, deferred door Denny — work-in-progress teruggedraaid naar v12.59)* — Doel: een Blofin-positie met partial closes (bv. 22-04 BTC short open op 79000, TP1-hit 0.0010 op 29-04 op 75647) verschijnt nu als 2 losse trades (1 open in /positions + 1 closed in /positions-history) i.p.v. 1 trade met TP-niveau. Onderzoek tot dusver:
 
   **Aanpak afgewezen** — *Aggregator op positionId* (alle close-events van zelfde positionId mergen tot 1 trade met `tpLevels[]`). Gefaald door real-world data: 1 positie kan 32 close-events hebben (averaging-out, multi-TPs, hedges). Resulteert in onhandelbare trades met 32 tps + verwarrende open-datums (24-02 ipv close-datum). Plus: niet alle 32 records zijn echte TP-hits.
@@ -39,7 +43,61 @@ Basis kwam uit de feature-diff v4_14 → v9 onderaan. Inmiddels werken we op **v
 
 - [ ] **Hyperliquid live balance wordt niet opgehaald in BALANS bovenin** *(2026-04-24, gemeld door Denny)* — Hyperliquid `testConnection` haalt nu alleen `clearinghouseState.marginSummary.accountValue` op (perp-only equity). Te checken: (a) returnt de call überhaupt `success: true` met `balance > 0` voor Denny's wallet — debug via console of de hook hyperliquid wel oppakt; (b) `useLiveExchangeBalances` skipt mogelijk wallet-only exchanges door de check `if(ex.walletOnly){if(!cfg.walletAddress)continue;}` — of werkt die correct?; (c) als de wallet alleen spot-balance heeft (`spotClearinghouseState.balances` met USDC/USDT) telt dat nu niet mee in `accountValue` — uitbreiden met spot-fetch zou nodig zijn (zoals we eerder probeerden in een teruggedraaide v12.30 patch). Reproductie: Denny's profiel met Hyperliquid wallet ingevuld → Hyperliquid contributeert niets aan BALANS bovenin. Code: [work/tradejournal.html:1642-1647](work/tradejournal.html#L1642-L1647) (testConnection) + [work/tradejournal.html:1924-1958](work/tradejournal.html#L1924-L1958) (hook).
 
+## 🚧 Hidden / work-in-progress (knop verborgen, code intact)
+
+- [ ] **Bulk-tag knop op Trades-pagina afmaken** *(2026-05-02, knop verstopt in v12.73 — toggle-flag in [work/tradejournal.html](work/tradejournal.html) zoek `{false&&<button` regel ~3175)* — De feature werkte technisch (v12.71 + v12.72 toegevoegd) maar Denny meldde dat er nog logica mist. Knop is verborgen tot dit af is. Bij re-enable: `{false&&...}` weghalen + `test.describe.skip` → `test.describe` in `tests/bulk-tag-layered.spec.js`.
+
+  **Wat werkt al** (v12.71 + v12.72 — handlers + UI staan in code, alleen UI-toegang dichtgezet):
+    - Timeframe als 5e categorie in bulk-tag panel
+    - Layer-builder (TF + setups + confirmations → "+ Voeg layer toe") met dedupe
+    - Layer-aware single-tag knoppen (schrijven naar eerste layer als trade `layers[]` heeft)
+    - Active-state styling + toggle (klik op actieve knop verwijdert)
+    - 9 Playwright scenario's groen (skipped tot we 'm weer aanzetten)
+
+  **Wat nog moet** (Denny zal precieze gaps later specificeren — ruwe vermoedens):
+    - Edge-cases bij meerdere layers per trade (bv. waar voeg je de tag toe als er 3 layers zijn — eerste? alle? user-keuze?)
+    - Een "ook layer verwijderen"-actie (nu kun je alleen tags binnen layers wijzigen, niet de layer als geheel verwijderen)
+    - Mogelijk: counter/badge die laat zien hoeveel trades de tag al hebben (1/5, 3/5, 5/5)
+    - UX-validatie met echte data van Denny — feedback was "we zijn er bijna, mist nog logica"
+
+  **Code-locaties** voor de re-activering:
+    - `{false&&<button ...>Tags toevoegen</button>}` in [work/tradejournal.html:3175](work/tradejournal.html#L3175)
+    - `bulkTag` / `bulkUntag` / `bulkAddLayer` handlers in [work/tradejournal.html:11305-11375](work/tradejournal.html#L11305-L11375)
+    - Bulk-tag panel-render in [work/tradejournal.html:3185-3220](work/tradejournal.html#L3185-L3220)
+    - `test.describe.skip` in [tests/bulk-tag-layered.spec.js](tests/bulk-tag-layered.spec.js)
+
 ## 🔜 Next up (deze of volgende werksessie)
+
+- [x] ~~**Pro-trader review followup — 8 majors**~~ *(2026-05-02, batch uit [docs/pro-trader-review-2026-05-02.md](docs/pro-trader-review-2026-05-02.md) — afgerond in v12.66 + v12.67)* — De 2 critical bugs + 8 majors zijn uitgewerkt:
+  - ✓ #1 Sample-size waarschuwing globaal — `<SampleSizeBanner>` in Dashboard/Review/Analytics (v12.66)
+  - ✓ #2 Twee parallelle "rules"-systems consolideren — KPI-labels hernoemd ("Thesis-gevuld" / "SL-gedefinieerd" / "Post-trade notes") + explainer-banner over verschil met Kalender Trading Rules (v12.67)
+  - ✗ #3 "Sharpe Cumulatief" mislabel — was misinterpretatie pro-trader-review, code zegt correct "Huidige cumulatief"
+  - ✓ #4 "Trade Score 35/100" tooltip + breakdown — hover op gauge + ⓘ-icoon (v12.67)
+  - ✓ #5 Drawdown-threshold/limit configurable — gebruikt bestaande `maxDD`-goal, top-bar toont `DD -$X / -$Y limiet` met kleurindicatie (v12.67)
+  - ✗ #6 Rule-adherence prominent op Dashboard als 5e KPI — nog niet gedaan, Calendar Trading Rules + Analytics proces-KPI's zijn al duidelijk gescheiden
+  - ✓ #7 Empty-state Analytics 0%-metrics — "—" met cursief uitleg ipv rauw 0% (v12.67)
+  - ✗ #8 Setup Insights identieke cijfers (Breakout = Pullback) — nog te verifiëren of dit een echte bug is of multi-tag overlap
+  - ✓ Critical: PnL/WR-inconsistency Dashboard ↔ Trades — `getConsumedSiblings()` op App-niveau (v12.66)
+  - ✓ Critical: Floating-point precision in trade-modal — `fmtPriceDisplay()` smart decimals (v12.66)
+
+  **Resterende items voor later:** #6 (Rule-adherence card op Dashboard) en #8 (Setup Insights audit). Plus minor #4 default name "Trader" → onboarding-vraag.
+
+- [ ] **Pro-trader review followup — Resterende items** *(2026-05-02)* — twee items niet afgerond in v12.66/v12.67:
+  - **Rule-adherence prominent op Dashboard als 5e KPI** — Calendar laat per-day-trading-rules zien, Analytics laat per-trade data-completeness zien. Een Dashboard-card "Discipline-score X%" zou een agg geven van beide. Effort: M (concept-design + UI).
+  - **Setup Insights identieke cijfers verifiëren** — Analytics tabel toonde Breakout en Pullback met identieke cijfers (5 trades, 40% WR, $0,79). Mogelijk multi-tag overlap (sinds v12.53), maar verdient verificatie + tooltip met trade-IDs. Effort: S.
+  - **Default account-name "Trader" → onboarding-vraag** — bij eerste gebruik Settings → Profile vragen. Effort: S. — naast de 2 critical bugs (boven) zijn er 8 major issues geïdentificeerd:
+  1. **Sample-size waarschuwing globaal** — alle ratio's (PF, Expectancy, WR per setup) gegrijst onder N=30 met badge "N=15, te klein voor conclusie". Affects: Dashboard, Review, Analytics, Rapport. Best new component: `<NCheck n={...} threshold={30}/>`.
+  2. **Twee parallelle "rules"-systems consolideren** — Calendar toont 5/5 trading-rules, Analytics toont 0% Plan-gevolgd voor zelfde dataset. Pro trader weet niet welke "echte" discipline meet. Fix: één canonical Discipline Score (gewogen avg van Trading Rules + tradePlan-veld + SL-veld + journal-veld), Calendar wordt per-day-detail, Analytics wordt periode-aggregaat.
+  3. **"Sharpe Cumulatief −€8,37" mislabel op Review** — toont gewoon eind-equity in €. Sharpe is dimensieloze ratio. Fix: óf relabel naar "Cumulatieve P&L", óf bereken echte Sharpe (gem. daily return / stdev × √252).
+  4. **"Trade Score 35/100" zonder uitleg/tooltip** op Review-gauge. Pro trader: hoe berekend? Wat is goed/slecht? Fix: tooltip + hover-breakdown van factoren.
+  5. **Drawdown-threshold/limit configurable** voor FTMO/prop-firm-traders. Nu toont top-bar `DD -€20,24` zonder context. Fix: Goals-tab krijgt "Max DD limiet" veld (€/%); top-bar toont dan "DD -€20,24 / -€50 limiet".
+  6. **Rule-adherence prominent op Dashboard** — als 5e KPI-card ("Discipline X%"). Pro-checklist top-5: equity / today-P&L / expectancy-R / drawdown-vs-limit / discipline.
+  7. **Empty-state Analytics 0%-metrics** — fixture-trades zonder tradePlan/SL/journal-velden tonen rauw "0%" alsof het echte performance is. Fix: detect alle-velden-leeg → toon "Vul tradePlan-veld in trade-form om te activeren" badge ipv 0%.
+  8. **Setup Insights identieke cijfers (Breakout = Pullback met identieke metrics)** — verdacht. Mogelijk correct door multi-tag overlap (v12.53 multi-select), maar verdient verificatie + tooltip. Fix: voeg "5 trades met deze setup-tag" hover met list van trade-IDs.
+
+  Plus 5 minor polish-items (currency-format `-€4,66` ipv `€-4,66`, period-tab duplicate "Halfjaar/6M", mindset-banner-frequency, Dashboard "Voeg account toe" CTA terwijl Blofin-trades bestaan, default account-name "Trader" → onboarding-vraag).
+
+  Effort: 3-5 dagen totaal voor alle 8 majors. Volgorde-suggestie: #1 (sample-size, raakt veel plekken) → #3+#4 (relabels/tooltips, snel) → #2 (rule-systems, vereist denken) → rest.
 
 - [ ] **🥇 AI Trade Autopsy** — knop "🔍 AI Autopsy" in trade-detail. Input: screenshots (multi, sinds v12.32) + entry/exit/SL/TP + actieve Trading Rules + setup/mistake/emotion-tags + write-up. Vragen in NL: "Voldeed mijn entry aan mijn regels? Volgde ik mijn exit-plan? Welk patroon zie je? Belangrijkste verbeterpunt? Als je mijn coach was — wat zou je zeggen?". Output → `aiAutopsy` veld op trade. Stack-keuze open: (a) opt-in user-supplied API-key (privacy + geen kosten voor ons, sluit non-techies uit) of (b) gedeelde Cloudflare Worker met community-budget. Default voorstel: optie (a). Effort: 1–2 dagen. Bouwt voort op multi-screenshot uit v12.32.
 - [ ] **🥈 AI Super-Prompt "Wat heeft prioriteit?"** — knop bovenaan Tendencies-tab. Aggregeert laatste 10 autopsies + huidige tendencies → 1 zin top-prioriteit + 3 concrete acties voor deze week. Voorkomt overfitting bij veel tendencies. Hangt af van Autopsy-feature (genoeg autopsies om te aggregeren). Effort: 3–4u na Autopsy.
@@ -82,6 +140,7 @@ Basis kwam uit de feature-diff v4_14 → v9 onderaan. Inmiddels werken we op **v
 
 ## 🔬 Onderzoek / te besluiten
 
+- [ ] **MFE/MAE-analyse toevoegen** *(2026-05-01, onderzoek klaar — zie [docs/research-mfe-mae.md](docs/research-mfe-mae.md))* — Maximum Favorable / Adverse Excursion is de #1 metric-gap voor een serieus journal. Geen enkele crypto-native journal heeft het topnotch (Tradervue=US-aandelen, TradesViz=futures, Edgewonk=manual-only). **Wat we nu hebben:** niets behalve één CSS-comment `/* v7 NEW: MAE/MFE badge */` op [work/tradejournal.html](work/tradejournal.html#L335) regel 335. **Aanbeveling:** bouw Path A (manual entry, 2 velden in trade-form, ~2 dagen) + Path B (auto-fetch via public Binance/Bybit/Blofin klines API, ~1-2 weken) parallel. **Storage:** 2 raw velden per trade (`mfePrice`, `maePrice`), alle metrics on-the-fly. **Integratie met Trade Performance Report (v12.65):** vervangt lege R-distributie-fallback op page 5 door 4 echte MFE/MAE-cards. **Volgende stap:** demo-first — `demos/mfe-mae-demo.html` met Path A bouwen, dan iteratie met Denny voordat we naar `work/` integreren. Volledig verslag (10 secties, 30+ bronnen incl. Tradervue/TradesViz/Edgewonk docs, Binance/Bybit kline specs, Curtis Faith E-Ratio): [docs/research-mfe-mae.md](docs/research-mfe-mae.md).
 - [ ] **Welke exchanges prioriteit?** — lijst afstemmen met community. Bybit, Binance, MEXC, Blofin, Kraken, Hyperliquid?
 - [ ] **Later: backend ja/nee?** — pas relevant als community direct-API-sync wil. Voorlopig blijft keuze: lokaal + CSV.
 - [ ] **Distributiemodel** — GitHub `/main/` folder nu. Overwegen: GitHub Pages (paid private) of Cloudflare Pages + Access (gratis, email-gate).

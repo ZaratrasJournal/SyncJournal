@@ -83,7 +83,10 @@ async function readTrades(page) {
   return page.evaluate(() => JSON.parse(localStorage.getItem('tj_trades') || '[]'));
 }
 
-test.describe('Bulk-tag panel: timeframe + layer-builder', () => {
+// v12.73: bulk-tag knop is tijdelijk verborgen (feature work-in-progress, zie BACKLOG.md).
+// Suite blijft in repo zodat we 'm 1-op-1 terug kunnen activeren wanneer de feature af is —
+// flip simpelweg .skip terug naar .describe en haal de {false&&...} weg in TradeList.
+test.describe.skip('Bulk-tag panel: timeframe + layer-builder', () => {
   test('Timeframe-categorie staat tussen de bulk-tag-knoppen', async ({ page }) => {
     await setup(page, [makeFlatOnlyTrade('t1'), makeFlatOnlyTrade('t2', 2)]);
     await selectAllTrades(page);

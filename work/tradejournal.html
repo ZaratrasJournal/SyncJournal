@@ -895,7 +895,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.72",released:"2026-05-02"};
+const APP_VERSION={version:"v12.73",released:"2026-05-02"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -1053,6 +1053,37 @@ function syncPlaybookFlatFields(pb){
     (L?.confirmations||[]).forEach(c=>c&&confSet.add(c));
   }
   return{...pb,setupTags:[...setupSet],timeframes:[...tfSet],confirmations:[...confSet]};
+}
+
+// v12.73: shared helpers voor tag-aware operaties op een trade. Zowel TagManager's
+// "verwijder uit config + van trades" (pad A van de delete-modal) als de bulk-untag in
+// het Trades-bulk-panel gebruiken dezelfde logica. Aparte helpers zodat de regel
+// "tag verdwijnt uit flat ÉN uit alle layers" op één plek staat.
+function tradeHasTag(t,catKey,tag){
+  if(!t)return false;
+  if((t[catKey]||[]).includes(tag))return true;
+  const layers=Array.isArray(t.layers)?t.layers:[];
+  if(catKey==="setupTags")return layers.some(L=>(L?.setups||[]).includes(tag));
+  if(catKey==="confirmationTags")return layers.some(L=>(L?.confirmations||[]).includes(tag));
+  if(catKey==="timeframeTags")return layers.some(L=>L?.timeframe===tag);
+  return false;
+}
+function stripTagFromTrade(t,catKey,tag){
+  if(!t)return t;
+  let next={...t};
+  if(Array.isArray(next[catKey])){
+    next[catKey]=next[catKey].filter(x=>x!==tag);
+  }
+  const layerFieldMap={setupTags:"setups",timeframeTags:"timeframe",confirmationTags:"confirmations"};
+  if(layerFieldMap[catKey]&&Array.isArray(next.layers)&&next.layers.length>0){
+    const lf=layerFieldMap[catKey];
+    next.layers=next.layers.map(L=>{
+      if(lf==="timeframe")return L?.timeframe===tag?{...L,timeframe:""}:L;
+      const arr=L?.[lf]||[];
+      return arr.includes(tag)?{...L,[lf]:arr.filter(x=>x!==tag)}:L;
+    });
+  }
+  return syncTradeFlatFields(next);
 }
 
 // Spiegelvorm voor trades: bij gebruik van layers[] (multi-entry / multi-TF trades)
@@ -2533,7 +2564,9 @@ function TagManager({tagConfig,setTagConfig,trades,setTrades,showToast,config}){
   };
 
   const removeTag=(catKey,tag)=>{
-    const usedCount=trades.filter(t=>(t[catKey]||[]).includes(tag)).length;
+    // v12.73: usedCount via tradeHasTag — telt zowel flat-arrays als layers[]. Voorheen
+    // miste hij layer-only voorkomens, waardoor de modal niet vuurde voor SFP in een laag.
+    const usedCount=trades.filter(t=>tradeHasTag(t,catKey,tag)).length;
     if(usedCount===0){
       // Tag staat op 0 trades — geen meervoudige keuze nodig, simpele bevestiging.
       if(!confirm(`"${tag}" verwijderen?`))return;
@@ -2545,14 +2578,14 @@ function TagManager({tagConfig,setTagConfig,trades,setTrades,showToast,config}){
     setConfirmDelete({catKey,tag,usedCount});
   };
 
-  // Pad A: tag uit config + opschonen op alle trades.
+  // Pad A: tag uit config + opschonen op alle trades. v12.73: nu via stripTagFromTrade
+  // zodat ook layers[].setups / .confirmations / .timeframe meegaan. Voorheen werd alleen
+  // de platte array geleegd; v12.70's syncTradeFlatFields zou de tag dan op de volgende
+  // load weer toevoegen vanuit de niet-opgeschoonde layers, plus de trade-list rendert
+  // chips direct uit layers[] dus de tag bleef visueel zichtbaar.
   const deleteTagEverywhere=(catKey,tag,usedCount)=>{
     setTagConfig(p=>({...p,[catKey]:getTags(catKey).filter(t=>t!==tag)}));
-    setTrades(p=>p.map(t=>{
-      const arr=t[catKey]||[];
-      if(!arr.includes(tag))return t;
-      return{...t,[catKey]:arr.filter(x=>x!==tag)};
-    }));
+    setTrades(p=>p.map(t=>tradeHasTag(t,catKey,tag)?stripTagFromTrade(t,catKey,tag):t));
     setConfirmDelete(null);
     showToast(`Tag "${tag}" verwijderd uit config en van ${usedCount} trade${usedCount>1?"s":""}`);
   };
@@ -3172,7 +3205,10 @@ function TradeList({trades,onEdit,onDelete,onQuickTag,onBulkDelete,onBulkTag,onB
     {selCount>0&&<div style={{display:"flex",alignItems:"center",gap:"8px",padding:"10px 16px",marginBottom:"12px",borderRadius:"var(--radius)",background:"rgba(201,168,76,0.12)",border:"1px solid rgba(201,168,76,0.2)",animation:"slideDown .2s ease",flexWrap:"wrap"}}>
       <span style={{fontSize:"12px",color:"#C9A84C",fontWeight:600}}>{selCount} trade{selCount>1?"s":""} geselecteerd</span>
       <div style={{width:"1px",height:"16px",background:"rgba(201,168,76,0.2)"}}/>
-      <button onClick={()=>setBulkAction(bulkAction==="tag"?null:"tag")} style={{fontSize:"11px",padding:"5px 12px",borderRadius:"5px",border:"1px solid rgba(201,168,76,0.3)",background:bulkAction==="tag"?"rgba(201,168,76,0.15)":"transparent",color:"#C9A84C",cursor:"pointer",fontFamily:"inherit",fontWeight:500}}>Tags toevoegen</button>
+      {/* v12.73: "Tags toevoegen"-knop tijdelijk verborgen — feature werkt maar mist nog logica
+          (zie BACKLOG.md "🚧 Hidden / work-in-progress"). De handler + bulk-tag panel-code blijft
+          intact zodat we 'm later in één regel terug aan kunnen zetten door deze flag te flippen. */}
+      {false&&<button onClick={()=>setBulkAction(bulkAction==="tag"?null:"tag")} style={{fontSize:"11px",padding:"5px 12px",borderRadius:"5px",border:"1px solid rgba(201,168,76,0.3)",background:bulkAction==="tag"?"rgba(201,168,76,0.15)":"transparent",color:"var(--gold)",cursor:"pointer",fontFamily:"inherit",fontWeight:500}}>Tags toevoegen</button>}
       <button onClick={bulkExportJSON} style={{fontSize:"11px",padding:"5px 12px",borderRadius:"5px",border:"1px solid var(--border3)",background:"transparent",color:"var(--text3)",cursor:"pointer",fontFamily:"inherit",fontWeight:500}}>Export JSON</button>
       <button onClick={bulkExportCSV} style={{fontSize:"11px",padding:"5px 12px",borderRadius:"5px",border:"1px solid var(--border3)",background:"transparent",color:"var(--text3)",cursor:"pointer",fontFamily:"inherit",fontWeight:500}}>Export CSV</button>
       <button onClick={bulkDelete} style={{fontSize:"11px",padding:"5px 12px",borderRadius:"5px",border:"1px solid rgba(220,122,122,0.28)",background:"transparent",color:"var(--red)",cursor:"pointer",fontFamily:"inherit",fontWeight:500}}>Verwijderen</button>
@@ -3185,17 +3221,8 @@ function TradeList({trades,onEdit,onDelete,onQuickTag,onBulkDelete,onBulkTag,onB
       const layerReady=layerBuild.setups.length>0||layerBuild.confirmations.length>0;
       const tfTags=gt("timeframeTags");const setupTagsAll=gt("setupTags");const confTagsAll=gt("confirmationTags");
       // v12.72: active-state per tag — tag is "actief" als ALLE geselecteerde trades 'em hebben.
-      // Voor layer-aware velden (setupTags / confirmationTags / timeframeTags) checkt de helper
-      // ook de layers, niet alleen flat — zo blijft visualisatie kloppend voor layered trades.
+      // tradeHasTag is een top-level helper (v12.73) die zowel flat-arrays als layers[] checkt.
       const selectedTradesArr=visibleTrades.filter(t=>selected.has(t.id));
-      const tradeHasTag=(t,catKey,tag)=>{
-        if((t[catKey]||[]).includes(tag))return true;
-        const layers=Array.isArray(t.layers)?t.layers:[];
-        if(catKey==="setupTags")return layers.some(L=>(L?.setups||[]).includes(tag));
-        if(catKey==="confirmationTags")return layers.some(L=>(L?.confirmations||[]).includes(tag));
-        if(catKey==="timeframeTags")return layers.some(L=>L?.timeframe===tag);
-        return false;
-      };
       const isActiveOnAll=(catKey,tag)=>selectedTradesArr.length>0&&selectedTradesArr.every(t=>tradeHasTag(t,catKey,tag));
       return(<div style={{padding:"14px 16px",marginBottom:"12px",borderRadius:"var(--radius)",background:"var(--glass)",backdropFilter:"var(--glass-blur)",WebkitBackdropFilter:"var(--glass-blur)",border:"1px solid var(--border2)",animation:"slideDown .2s ease"}}>
         <div style={{fontSize:"10px",color:"var(--text4)",textTransform:"uppercase",letterSpacing:"0.06em",fontWeight:600,marginBottom:"10px"}}>Tags toevoegen aan {selCount} trades</div>
@@ -11359,28 +11386,12 @@ function App(){
     return{...t,[field]:[...arr,tag]};
   }));
 
-  // Spiegelvorm van bulkTag: strip de tag uit flat-array, en bij layer-aware
-  // categorieën (setupTags / timeframeTags / confirmationTags) ook uit ALLE layers.
-  // Voor timeframeTags op een layer met die TF: clear L.timeframe maar behoud de
-  // layer (de gebruiker raakt geen setups/confirmations kwijt). syncTradeFlatFields
-  // herbouwt flat na de mutatie.
-  const bulkUntag=(ids,field,tag)=>setTrades(p=>p.map(t=>{
-    if(!ids.includes(t.id))return t;
-    const layerFieldMap={setupTags:"setups",timeframeTags:"timeframe",confirmationTags:"confirmations"};
-    let next={...t};
-    if(Array.isArray(next[field])){
-      next[field]=next[field].filter(x=>x!==tag);
-    }
-    if(layerFieldMap[field]&&Array.isArray(next.layers)&&next.layers.length>0){
-      const lf=layerFieldMap[field];
-      next.layers=next.layers.map(L=>{
-        if(lf==="timeframe")return L?.timeframe===tag?{...L,timeframe:""}:L;
-        const arr=L?.[lf]||[];
-        return arr.includes(tag)?{...L,[lf]:arr.filter(x=>x!==tag)}:L;
-      });
-    }
-    return syncTradeFlatFields(next);
-  }));
+  // Spiegelvorm van bulkTag — gebruikt de top-level stripTagFromTrade helper zodat
+  // de "tag uit flat én alle layers"-logica op één plek staat (gedeeld met TagManager's
+  // pad A van de delete-modal).
+  const bulkUntag=(ids,field,tag)=>setTrades(p=>p.map(t=>
+    ids.includes(t.id)?stripTagFromTrade(t,field,tag):t
+  ));
 
   // Voegt één complete layer toe aan elke geselecteerde trade. Dedup via
   // signature: zelfde TF + zelfde setup-set + zelfde confirmation-set = skip.

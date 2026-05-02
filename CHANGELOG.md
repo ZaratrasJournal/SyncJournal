@@ -6,6 +6,22 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.73] — 2026-05-02
+
+Tag-delete strip nu ook layers (fix voor "SFP blijft staan in trade-overzicht na verwijderen"). Plus bulk-tag knop tijdelijk verborgen want feature mist nog logica.
+
+### Fixed
+- **Critical: tag-delete pad A liet de tag in `layers[].setups` / `.confirmations` / `.timeframe` staan.** Reproductie (Denny): SFP zit in een laag van een trade, gebruiker verwijdert SFP via Instellingen → Tags met *"Verwijder uit config én van trades"*. Voorheen werd alleen `t.setupTags` (flat) geleegd; v12.70's `syncTradeFlatFields` zou bij de eerstvolgende load de flat herafleiden uit de niet-opgeschoonde layers, dus SFP kwam terug. Bovendien rendert de trade-list de chips direct uit `layers[]`, dus de tag bleef visueel zichtbaar zelfs zonder die revival. **Fix**: gedeelde top-level helper `stripTagFromTrade(t, catKey, tag)` die zowel de platte array als alle layer-velden cleant en daarna `syncTradeFlatFields` runt. Voor `timeframeTags` op een laag met die TF: `L.timeframe` wordt geleegd, layer + setups + confirmations blijven. `bulkUntag` (uit v12.72) gebruikt nu dezelfde helper — zelfde regel op één plek.
+- **`removeTag`-counter telt nu ook layer-voorkomens.** Voorheen: `trades.filter(t => (t[catKey]||[]).includes(tag))` miste tags die alleen in een layer zaten (de delete-modal vuurde dan niet, ook al stond de tag wel ergens op de trade). Nu via `tradeHasTag(t, catKey, tag)` — top-level helper die flat én layers checkt.
+
+### Gewijzigd
+- **"Tags toevoegen"-knop op de Trades-pagina tijdelijk verborgen** *(zie [BACKLOG.md](BACKLOG.md) "🚧 Hidden / work-in-progress")*. De feature werkte technisch (timeframe + layer-builder + toggle) maar miste nog logica volgens Denny — bv. hoe omgaan met meerdere layers per trade en een "verwijder hele layer"-actie. Knop is verstopt via `{false && <button .../>}`-wrap; bulk-tag panel-code, handlers en 9 Playwright scenario's blijven intact zodat re-activeren een 2-regel-edit is. Spec `tests/bulk-tag-layered.spec.js` is gemarkeerd als `test.describe.skip(...)` met dezelfde reden.
+
+### Tests
+- **Nieuwe scenario in `tests/tag-delete-modal.spec.js`**: *"Pad A op layered trade"* — SFP staat in twee layers van één trade, klik *"Verwijder uit config én van trades"* → beide layers krijgen SFP gestript, layer-count blijft 2 (TF + confirmations behouden), flat is correct gederiveerd. Volledige focused regressie: 17/17 groen.
+
+---
+
 ## [v12.72] — 2026-05-02
 
 Bulk-tag knoppen tonen nu actieve staat én werken als toggle — visueel gelijk aan de tag-pickers in TradeForm.
