@@ -6,6 +6,28 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.71] — 2026-05-02
+
+Bulk-tag panel voor Trades-pagina: Timeframe-rij + complete layer-builder + layer-aware single-tag knoppen.
+
+### Toegevoegd
+- **Timeframe-categorie** in het bulk-tag panel — 5e knoppenrij, naast Setup Type, Confirmaties, Emoties en Fouten. Voorheen was timeframe alleen via de TradeForm per trade in te stellen.
+- **Layer-builder** in het bulk-tag panel — bouw één complete laag (TF + setup(s) + confirmatie(s)) en voeg 'm met één klik toe aan **alle** geselecteerde trades. Herhaal voor extra lagen. Beantwoordt de directe behoefte: *"meerdere lagen toevoegen via Trades-pagina"*.
+  - **Dedupe**: zelfde TF + dezelfde setup-set + dezelfde confirmation-set = skip (idempotent).
+  - **Disabled-state**: knop *"+ Voeg layer toe"* is alleen actief als minstens één setup óf één confirmatie gepickt is. Lege lagen (alleen TF, geen tags) zijn betekenisloos en niet toegestaan.
+  - **Wissen**-knop reset de pickers, *"+ Voeg layer toe"* reset óók na succesvolle toevoeging.
+
+### Gewijzigd
+- **`bulkTag()` is nu layer-aware** — voor trades met `layers.length > 0` schrijft de simple tag-knop (Setup Type, Confirmaties, Timeframe) naar de **eerste layer** in plaats van de platte array. Voorheen schreef 'ie naar flat, maar v12.70's `syncTradeFlatFields` zou die mutatie bij de volgende load weer wegvegen omdat layers winnen. Voor `emotionTags` en `mistakeTags` blijft platte append gelden — die zitten niet in layers.
+- Bij Timeframe-tag op een layered trade waar de eerste layer al een TF heeft: **timeframe wordt niet overschreven** (bestaande layer-info is sacred). De user kan via TradeForm een nieuwe layer maken voor extra TF's.
+- Na elke bulk-mutatie wordt `syncTradeFlatFields` aangeroepen zodat de gederiveerde flat-arrays consistent blijven met de layers — zo blijven FilterBar, Analytics, Tendencies en TagManager up-to-date direct na de bulk-actie.
+
+### Tests
+- **Nieuwe Playwright spec `tests/bulk-tag-layered.spec.js`** — 5 scenario's: Timeframe-rij zichtbaar, layer-builder voegt layer toe aan elke geselecteerde trade, dedupe werkt, simple-tag knop schrijft naar eerste layer (layered trade), simple-tag knop schrijft naar flat (geen layers).
+- Volledige regressie: 21/21 groen (smoke, blofin-partial, tag-delete, flat-sync, tendencies-untagged, bulk-tag-layered).
+
+---
+
 ## [v12.70] — 2026-05-02
 
 Flat-tag-sync uit `layers[]` — fixt onzichtbare layer-tags in TagManager, FilterBar, Analytics en Tendencies.

@@ -895,7 +895,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.70",released:"2026-05-02"};
+const APP_VERSION={version:"v12.71",released:"2026-05-02"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -3060,7 +3060,7 @@ function Dashboard({trades,config,accounts,storageUsage,setFilters,setTab}){
 
 
 // ============ TRADE LIST (v7: with search) ============
-function TradeList({trades,onEdit,onDelete,onQuickTag,onBulkDelete,onBulkTag,showToast,tagConfig,config,accounts}){
+function TradeList({trades,onEdit,onDelete,onQuickTag,onBulkDelete,onBulkTag,onBulkAddLayer,showToast,tagConfig,config,accounts}){
   const[sortField,setSortField]=useState("date");
   const[sortDir,setSortDir]=useState("desc");
   const[selected,setSelected]=useState(new Set());
@@ -3069,6 +3069,8 @@ function TradeList({trades,onEdit,onDelete,onQuickTag,onBulkDelete,onBulkTag,sho
   // v7 NEW: search state
   const[search,setSearch]=useState("");
   const[hoveredId,setHoveredId]=useState(null);
+  // v12.71: layer-builder state voor bulk-tag panel. Reset bij sluiten van bulk-tag.
+  const[layerBuild,setLayerBuild]=useState({timeframe:"",setups:[],confirmations:[]});
 
   const toggleSizeMode=()=>{const next=sizeMode==="usdt"?"asset":"usdt";setSizeMode(next);localStorage.setItem("tj_sizeMode",next)};
   const fmtSize=(t)=>{
@@ -3179,18 +3181,56 @@ function TradeList({trades,onEdit,onDelete,onQuickTag,onBulkDelete,onBulkTag,sho
     </div>}
 
     {/* Bulk tag panel */}
-    {bulkAction==="tag"&&selCount>0&&<div style={{padding:"14px 16px",marginBottom:"12px",borderRadius:"var(--radius)",background:"var(--glass)",backdropFilter:"var(--glass-blur)",WebkitBackdropFilter:"var(--glass-blur)",border:"1px solid var(--border2)",animation:"slideDown .2s ease"}}>
-      <div style={{fontSize:"10px",color:"var(--text4)",textTransform:"uppercase",letterSpacing:"0.06em",fontWeight:600,marginBottom:"10px"}}>Tags toevoegen aan {selCount} trades</div>
-      {[{key:"setupTags",label:"Setup Type",color:"blue"},{key:"confirmationTags",label:"Confirmaties",color:"teal"},{key:"emotionTags",label:"Emoties",color:"amber"},{key:"mistakeTags",label:"Fouten",color:"orange"}].map(cat=>{
-        const c=COLORS[cat.color]||COLORS.blue;const tags=gt(cat.key);
-        return(<div key={cat.key} style={{marginBottom:"8px"}}>
-          <div style={{fontSize:"9px",color:"var(--text4)",fontWeight:600,marginBottom:"4px"}}>{cat.label}</div>
-          <div style={{display:"flex",flexWrap:"wrap",gap:"4px"}}>
-            {tags.map(tag=>(<button key={tag} onClick={()=>{onBulkTag([...selected],cat.key,tag);showToast(`"${tag}" toegevoegd aan ${selCount} trades`)}} style={{padding:"3px 8px",borderRadius:"4px",fontSize:"10px",fontWeight:600,border:`1px solid ${c.border}40`,background:"transparent",color:c.text,cursor:"pointer",fontFamily:"inherit",opacity:0.7}} onMouseEnter={e=>e.currentTarget.style.opacity="1"} onMouseLeave={e=>e.currentTarget.style.opacity="0.7"}>{tag}</button>))}
+    {bulkAction==="tag"&&selCount>0&&(()=>{
+      const layerReady=layerBuild.setups.length>0||layerBuild.confirmations.length>0;
+      const tfTags=gt("timeframeTags");const setupTagsAll=gt("setupTags");const confTagsAll=gt("confirmationTags");
+      return(<div style={{padding:"14px 16px",marginBottom:"12px",borderRadius:"var(--radius)",background:"var(--glass)",backdropFilter:"var(--glass-blur)",WebkitBackdropFilter:"var(--glass-blur)",border:"1px solid var(--border2)",animation:"slideDown .2s ease"}}>
+        <div style={{fontSize:"10px",color:"var(--text4)",textTransform:"uppercase",letterSpacing:"0.06em",fontWeight:600,marginBottom:"10px"}}>Tags toevoegen aan {selCount} trades</div>
+        {[{key:"setupTags",label:"Setup Type",color:"blue"},{key:"confirmationTags",label:"Confirmaties",color:"teal"},{key:"timeframeTags",label:"Timeframe",color:"purple"},{key:"emotionTags",label:"Emoties",color:"amber"},{key:"mistakeTags",label:"Fouten",color:"orange"}].map(cat=>{
+          const c=COLORS[cat.color]||COLORS.blue;const tags=gt(cat.key);
+          return(<div key={cat.key} style={{marginBottom:"8px"}}>
+            <div style={{fontSize:"9px",color:"var(--text4)",fontWeight:600,marginBottom:"4px"}}>{cat.label}</div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:"4px"}}>
+              {tags.map(tag=>(<button key={tag} onClick={()=>{onBulkTag([...selected],cat.key,tag);showToast(`"${tag}" toegevoegd aan ${selCount} trades`)}} style={{padding:"3px 8px",borderRadius:"4px",fontSize:"10px",fontWeight:600,border:`1px solid ${c.border}40`,background:"transparent",color:c.text,cursor:"pointer",fontFamily:"inherit",opacity:0.7}} onMouseEnter={e=>e.currentTarget.style.opacity="1"} onMouseLeave={e=>e.currentTarget.style.opacity="0.7"}>{tag}</button>))}
+            </div>
+          </div>);
+        })}
+        {/* v12.71: Layer-builder — pick TF + setups + confirms en append als nieuwe layer aan elke selected trade */}
+        <div data-testid="bulk-layer-builder" style={{marginTop:"14px",paddingTop:"12px",borderTop:"1px dashed var(--border3)"}}>
+          <div style={{fontSize:"10px",color:"var(--gold)",textTransform:"uppercase",letterSpacing:"0.06em",fontWeight:700,marginBottom:"8px"}}>+ Complete layer toevoegen</div>
+          <div style={{fontSize:"10.5px",color:"var(--text4)",lineHeight:1.5,marginBottom:"10px"}}>Bouw één laag (TF + setup(s) + confirmatie(s)) en voeg 'm in één klik toe aan alle {selCount} trades. Herhaal voor extra lagen.</div>
+          <div style={{marginBottom:"8px"}}>
+            <div style={{fontSize:"9px",color:"var(--text4)",fontWeight:600,marginBottom:"4px"}}>Timeframe (kies één)</div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:"4px"}}>
+              {tfTags.map(tag=>{const a=layerBuild.timeframe===tag;return(<button key={tag} onClick={()=>setLayerBuild(p=>({...p,timeframe:a?"":tag}))} style={{padding:"3px 8px",borderRadius:"4px",fontSize:"10px",fontWeight:600,border:`1px solid ${a?"var(--gold-border)":(COLORS.purple.border+"40")}`,background:a?"var(--gold-dim)":"transparent",color:a?"var(--gold)":COLORS.purple.text,cursor:"pointer",fontFamily:"inherit"}}>{tag}</button>);})}
+            </div>
           </div>
-        </div>);
-      })}
-    </div>}
+          <div style={{marginBottom:"8px"}}>
+            <div style={{fontSize:"9px",color:"var(--text4)",fontWeight:600,marginBottom:"4px"}}>Setup(s)</div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:"4px"}}>
+              {setupTagsAll.map(tag=>{const a=layerBuild.setups.includes(tag);return(<button key={tag} onClick={()=>setLayerBuild(p=>({...p,setups:a?p.setups.filter(x=>x!==tag):[...p.setups,tag]}))} style={{padding:"3px 8px",borderRadius:"4px",fontSize:"10px",fontWeight:600,border:`1px solid ${a?"var(--gold-border)":(COLORS.blue.border+"40")}`,background:a?"var(--gold-dim)":"transparent",color:a?"var(--gold)":COLORS.blue.text,cursor:"pointer",fontFamily:"inherit"}}>{tag}</button>);})}
+            </div>
+          </div>
+          <div style={{marginBottom:"10px"}}>
+            <div style={{fontSize:"9px",color:"var(--text4)",fontWeight:600,marginBottom:"4px"}}>Confirmatie(s)</div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:"4px"}}>
+              {confTagsAll.map(tag=>{const a=layerBuild.confirmations.includes(tag);return(<button key={tag} onClick={()=>setLayerBuild(p=>({...p,confirmations:a?p.confirmations.filter(x=>x!==tag):[...p.confirmations,tag]}))} style={{padding:"3px 8px",borderRadius:"4px",fontSize:"10px",fontWeight:600,border:`1px solid ${a?"var(--gold-border)":(COLORS.teal.border+"40")}`,background:a?"var(--gold-dim)":"transparent",color:a?"var(--gold)":COLORS.teal.text,cursor:"pointer",fontFamily:"inherit"}}>{tag}</button>);})}
+            </div>
+          </div>
+          <div style={{display:"flex",gap:"8px",alignItems:"center"}}>
+            <button disabled={!layerReady} onClick={()=>{
+              if(!layerReady||!onBulkAddLayer)return;
+              onBulkAddLayer([...selected],{...layerBuild});
+              const parts=[layerBuild.timeframe,layerBuild.setups.join("+"),layerBuild.confirmations.join("+")].filter(Boolean);
+              showToast(`Layer "${parts.join(" · ")}" toegevoegd aan ${selCount} trades`);
+              setLayerBuild({timeframe:"",setups:[],confirmations:[]});
+            }} style={{padding:"6px 14px",borderRadius:"5px",fontSize:"11px",fontWeight:700,fontFamily:"var(--mono)",letterSpacing:".04em",border:`1px solid ${layerReady?"var(--gold-border)":"var(--border3)"}`,background:layerReady?"var(--gold-dim)":"transparent",color:layerReady?"var(--gold)":"var(--text5)",cursor:layerReady?"pointer":"not-allowed",opacity:layerReady?1:0.55}}>+ Voeg layer toe</button>
+            {(layerBuild.timeframe||layerBuild.setups.length||layerBuild.confirmations.length)?<button onClick={()=>setLayerBuild({timeframe:"",setups:[],confirmations:[]})} style={{padding:"6px 10px",fontSize:"10px",fontFamily:"var(--mono)",border:"1px solid var(--border3)",background:"transparent",color:"var(--text4)",cursor:"pointer",borderRadius:"5px"}}>Wissen</button>:null}
+            {!layerReady&&<span style={{fontSize:"10px",color:"var(--text5)",fontStyle:"italic"}}>Kies minstens één setup of confirmatie</span>}
+          </div>
+        </div>
+      </div>);
+    })()}
 
     {/* Size mode toggle */}
     <div style={{display:"flex",justifyContent:"flex-end",marginBottom:"8px"}}>
@@ -11258,7 +11298,59 @@ function App(){
 
   const deleteTrade=(id)=>{const t=trades.find(x=>x.id===id);setTrades(p=>p.filter(x=>x.id!==id));showToast("Trade verwijderd","error",t)};
   const bulkDelete=(ids)=>setTrades(p=>p.filter(t=>!ids.includes(t.id)));
-  const bulkTag=(ids,field,tag)=>setTrades(p=>p.map(t=>{if(!ids.includes(t.id))return t;const arr=t[field]||[];if(arr.includes(tag))return t;return{...t,[field]:[...arr,tag]}}));
+  // Layer-aware bulk-tag: voor trades met layers[] (multi-entry / multi-TF setups)
+  // schrijft 'ie de tag naar de EERSTE laag — anders zou syncTradeFlatFields het bij
+  // de volgende load weer wegvegen (layers winnen). Voor flat-only categorieën
+  // (emotionTags, mistakeTags) altijd platte append want layers slaan die niet op.
+  // Roept syncTradeFlatFields aan na elke mutatie zodat flat consistent blijft.
+  const bulkTag=(ids,field,tag)=>setTrades(p=>p.map(t=>{
+    if(!ids.includes(t.id))return t;
+    // Layers-bron-velden: route naar eerste layer indien aanwezig
+    const layerFieldMap={setupTags:"setups",timeframeTags:"timeframe",confirmationTags:"confirmations"};
+    if(layerFieldMap[field]&&Array.isArray(t.layers)&&t.layers.length>0){
+      const lf=layerFieldMap[field];
+      const layers=t.layers.map((L,i)=>{
+        if(i!==0)return L;
+        if(lf==="timeframe"){
+          // Timeframe is een single string. Alleen schrijven als 'ie nog leeg is om
+          // bestaande layer-info niet te overschrijven. Voor latere layers blijft
+          // de user via de TradeForm bouwen.
+          return L?.timeframe?L:{...L,timeframe:tag};
+        }
+        const arr=L?.[lf]||[];
+        if(arr.includes(tag))return L;
+        return{...L,[lf]:[...arr,tag]};
+      });
+      return syncTradeFlatFields({...t,layers});
+    }
+    // Flat-pad (geen layers, of emotion/mistake-categorieën): platte append
+    const arr=t[field]||[];
+    if(arr.includes(tag))return t;
+    return{...t,[field]:[...arr,tag]};
+  }));
+
+  // Voegt één complete layer toe aan elke geselecteerde trade. Dedup via
+  // signature: zelfde TF + zelfde setup-set + zelfde confirmation-set = skip.
+  // Layer kan aan een trade ZONDER bestaande layers worden toegevoegd; dan
+  // worden de flat-arrays via syncTradeFlatFields direct geupdate.
+  const bulkAddLayer=(ids,layerSpec)=>{
+    if(!layerSpec||(!layerSpec.setups?.length&&!layerSpec.confirmations?.length))return;
+    const sig=(L)=>`${L?.timeframe||""}|${[...(L?.setups||[])].sort().join(",")}|${[...(L?.confirmations||[])].sort().join(",")}`;
+    const newSig=sig(layerSpec);
+    setTrades(p=>p.map(t=>{
+      if(!ids.includes(t.id))return t;
+      const existing=Array.isArray(t.layers)?t.layers:[];
+      if(existing.some(L=>sig(L)===newSig))return t;
+      const newLayer={
+        id:"L"+Date.now()+Math.floor(Math.random()*999),
+        timeframe:layerSpec.timeframe||"",
+        setups:[...(layerSpec.setups||[])],
+        confirmations:[...(layerSpec.confirmations||[])],
+        notes:"",
+      };
+      return syncTradeFlatFields({...t,layers:[...existing,newLayer]});
+    }));
+  };
   const importTrades=(newOnes)=>{
     const total=newOnes.length;
     let freshCount=0;let dupCount=0;
@@ -11580,7 +11672,7 @@ function App(){
         {tab==="dashboard"&&(layout==="premium"
           ?<DashboardPremium trades={filteredTrades} config={config} accounts={accounts} tradingRules={tradingRules} dailyNotes={dailyNotes} goals={goals} setTab={navigate} setNewTrade={setNewTrade} newEmptyTrade={newEmptyTrade} setFilters={setFilters}/>
           :<Dashboard trades={filteredTrades} config={config} accounts={accounts} storageUsage={storageUsage} setFilters={setFilters} setTab={navigate}/>)}
-        {tab==="trades"&&!editTrade&&<TradeList trades={filteredTrades} onEdit={setEditTrade} onDelete={deleteTrade} onBulkDelete={bulkDelete} onBulkTag={bulkTag} showToast={showToast} tagConfig={tagConfig} config={config} accounts={accounts}/>}
+        {tab==="trades"&&!editTrade&&<TradeList trades={filteredTrades} onEdit={setEditTrade} onDelete={deleteTrade} onBulkDelete={bulkDelete} onBulkTag={bulkTag} onBulkAddLayer={bulkAddLayer} showToast={showToast} tagConfig={tagConfig} config={config} accounts={accounts}/>}
         {tab==="analytics"&&<Analytics trades={filteredTrades} tradingRules={tradingRules} allTrades={trades} config={config} accounts={accounts} setFilters={setFilters} setTab={setTab}/>}
         {tab==="tendencies"&&<TendenciesPage trades={filteredTrades} allTrades={trades} setFilters={setFilters} setTab={setTab}/>}
         {tab==="playbook"&&<PlaybookPage playbooks={playbooks} setPlaybooks={setPlaybooks} allTrades={trades} setFilters={setFilters} setTab={setTab} showToast={showToast} pendingImport={pendingPbImport} clearPendingImport={()=>setPendingPbImport("")} tagConfig={tagConfig}/>}
