@@ -6,6 +6,26 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.74] — 2026-05-02
+
+Standaard tag-baseline voor nieuwe users afgestemd op de community-set die Denny + Sebas hanteren.
+
+### Gewijzigd
+- **`DEFAULT_TAGS`** vernieuwd naar de set die zichtbaar is in de community-screenshot. Per categorie:
+  - **Setup Type** (10): toegevoegd `Structuur`, `MLS`, `Range`, `Bullish retest`, `Bearish retest`. Verwijderd: `Fill Play`.
+  - **Confirmaties** (11): kern (`Liquidity Sweep`, `OB`, `EQL/EQH`) behouden + nieuw: `FVG`, `Flat candle`, `Session sweep US/UK/AS`, `VAH / VAL / POC`, `Range retest`, `Range acceptatie`, `Spot koop`, `Spot verkoop`. Verwijderd: `Divergence`, `ChoCh`, `Directe Play`, `Backtest Play`.
+  - **Timeframe** (10): `30M` en `2H` toegevoegd voor fijnere intraday-granulariteit.
+  - **Emoties** (6): gereduceerd tot 3 negatief (`FOMO`, `Gehaast`, `Twijfels`) + 3 positief (`Geduldig`, `Rustig`, `Zelfverzekerd`). Onbruikbaar geworden: `Overconfident`, `Gefrustreerd`, `Tilt`, `Onzeker`, `Kalm`, `Gedisciplineerd`.
+  - **Fouten**: ongewijzigd (8 tags).
+  - **Missed-redenen**: zelfde labels, andere icons — `🐢 Durf`, `🔪 Buiten regels`, `⏰ Te laat gespot`, `💰 Kapitaal vol`, `🌫️ Onduidelijk`, `🚷 Bewuste skip`, `🛌 Offline`.
+- **Geen migratie van bestaande users**. `tagConfig` in localStorage blijft 1-op-1 staan voor iedereen die al een eigen set heeft. Alleen verse installs (geen `tj_tags`-key) krijgen de nieuwe defaults. Reden: users hebben hun tag-config vaak gepersonaliseerd; force-merge zou ongewenst zijn.
+- **`EMOTIONS_NEG` / `EMOTIONS_POS` blijven comprehensive** — bevatten naast de nieuwe defaults ook alle legacy-emoties (`Overconfident`, `Gefrustreerd`, `Tilt`, `Onzeker`, `Kalm`, `Gedisciplineerd`) zodat trades met die historische tags nog steeds rood-vs-groen geclassificeerd worden in alle widgets (TagManager, Tendencies-tag-styling, FilterBar emotion-chips).
+
+### Tests
+- **Nieuwe Playwright spec `tests/default-tags.spec.js`** — 2 scenario's: (1) verse user krijgt exact de 10+11+10+6+8+7 tags via `data-testid` lookup in TagManager; (2) bestaande user met eigen `tj_tags` behoudt die config volledig en krijgt geen automatische merge.
+
+---
+
 ## [v12.73] — 2026-05-02
 
 Tag-delete strip nu ook layers (fix voor "SFP blijft staan in trade-overzicht na verwijderen"). Plus bulk-tag knop tijdelijk verborgen want feature mist nog logica.
