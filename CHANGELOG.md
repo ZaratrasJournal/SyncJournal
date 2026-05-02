@@ -6,6 +6,104 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.68] — 2026-05-02
+
+Tendencies-page voor users zonder tags — 4 nieuwe tag-loze detectoren + empty-state hint.
+
+### Toegevoegd
+- **4 tag-loze tendency-detectoren** — werken puur op `pair`, `direction`, `date` en `time`, dus zichtbaar zonder dat je trades getagd hebt:
+  - **#8 pair × sessie** (🎯/🕒) — sterke of zwakke edge per pair-tijdvak combo (bv. *"BTC/USDT verzwakt in London PM"*).
+  - **#9 direction-bias** (↔️) — long/short bias per pair, alleen verlies-zijde geflagd, met opposite-direction stats in de beschrijving (*"Tegenovergestelde richting op zelfde pair: 63% WR over 32 trades"*).
+  - **#10 day-of-week** (📈/📉) — top-1 verlies-dag + top-1 flow-dag (max 2 cards, geen 7×spam). Gate op ≥30 closed trades zodat weekdag-stats niet flapperen op kleine datasets.
+  - **#11 overtrading-cluster** (🌀) — detecteert 5+ trades binnen 2 uur; firet pas bij ≥2 verlies-bursts (1 cluster = toeval, 2+ = patroon). Klassieke revenge/FOMO-signaal.
+- **Empty-state hint op Tendencies-page** — *"Patronen-bibliotheek: X van 11 actief"* banner verschijnt zodra <10% van je trades getagd is. Legt uit welke detectoren je ontgrendelt door 2 setup-tags + 2 emotion-tags toe te voegen. Permanent dismissable via *"Niet meer tonen"* (`tj_tendencies_taghint_dismissed`).
+- **`Weekdag`-filter-chip-rij** in de FilterBar (geavanceerde filters) — Ma/Di/Wo/Do/Vr/Za/Zo, multi-select, tijdzone-aware via `Europe/Amsterdam`.
+- **`tradeIds`-actieve-filter-chip** naast de Reset-knop (*"🔍 N specifieke trades ✕"*) — verschijnt wanneer een tendency-cluster geklikt wordt en filtert op exact die set trades. Klik om te legen.
+
+### Gewijzigd
+- **Filter-infra uitgebreid**: `applyFilters` ondersteunt nu `dayOfWeek` (array van 0-6, zondag=0) en `tradeIds` (array van trade-ID's). `tradeMatchesTendencyFilter` ondersteunt nu ook `direction` (verbetert cross-validation voor bestaande detectoren). Beide additief, geen schemaVersion-bump.
+- **`crossValidateTendency` skipt op `tradeIds`-filters** — overtrading-clusters zijn gedragspatronen op specifieke real-trades, niet repliceerbaar in backtests/paper-trades.
+- **`DETECTOR_REGISTRY`-constante** — declaratieve lijst van alle 11 detectoren met hun tag-vereisten. Drijft de "X van 11 actief"-counter automatisch zodat toekomstige detectoren één regel toevoeging zijn.
+
+### Tests
+- **Nieuwe Playwright spec `tests/tendencies-untagged.spec.js`** — seedt een dataset van 52 ongetagde trades met ingebouwde patronen (BTC long winners, ETH long losers, BTC short bias, 2 verlies-clusters). Valideert dat ≥3 detectoren firen, dat de hint verschijnt + correct gedismissed wordt + persistent blijft over reloads.
+
+---
+
+## [v12.67] — 2026-05-02
+
+Sessie 2 van pro-trader-review followup — 4 majors uitgewerkt.
+
+### Toegevoegd
+- **Trade Score-tooltip** op Review-pagina — hover over de 35/100 score-cirkel toont breakdown: "Start: 50 + WR-bonus + PF-bonus + Avg-W>L bonus − uitschieter-penalty = score". Plus een ⓘ-icoon naast de "Trade score"-label met uitleg over de formule en interpretatie (75+ sterk, 50-74 OK, <50 aandacht). Pro-trader review feedback: "score 35/100 zonder uitleg = vanity metric".
+- **Drawdown-limiet in top-bar** — als een gebruiker een actieve `maxDD`-goal heeft (al beschikbaar in Goals-tab), toont de top-bar nu `DD -$X / -$Y limiet` met kleurindicatie (rood bij ≥80%, amber bij ≥60%). Voor FTMO/prop-firm-traders is dit critical context; voorheen toonde de bar alleen het bedrag zonder threshold.
+- **Empty-state Analytics proces-KPI's** — "Thesis-gevuld / SL-gedefinieerd / Post-trade notes" tonen nu **"—"** met cursief sub-tekst *"Niet getrackt — vul X in trade-form"* als geen enkele trade het veld ingevuld heeft. Voorheen toonde elke KPI rauw 0% wat demotiverend was bij eerste import. Plus een explainer-banner bovenaan de Proces-tab die het verschil met Kalender's "Trading Rules" duidelijk maakt.
+
+### Gewijzigd
+- **Analytics proces-KPI labels hernoemd** voor duidelijkheid: "Plan gevolgd" → **"Thesis-gevuld"**, "Stop-loss discipline" → **"SL-gedefinieerd"**, "Journal compleet" → **"Post-trade notes"**. Maakt expliciet dat dit *trade-data-compleetheid* meet, niet *rule-volgen* (dat is Kalender's Trading Rules). Pro-trader review feedback: twee parallelle "rules"-systems waren verwarrend.
+
+### Niet gefixt — was misinterpretatie
+- **"Sharpe Cumulatief" mislabel** — geverifieerd in code: review-pagina toont correct "Huidige cumulatief" (geen "Sharpe"-label). Mijn pro-trader-review screenshot was misgelezen.
+
+### Nog op backlog
+- Default account-name "Trader" → onboarding-vraag (skip, te complex voor minor)
+- Period-tab dedup "Halfjaar/6M" — niet teruggevonden in code (was visualisatie-artifact)
+- Echte Sharpe-ratio-berekening (was niet kapot, alleen nice-to-have)
+
+Zie [docs/pro-trader-review-2026-05-02.md](docs/pro-trader-review-2026-05-02.md) voor de volledige context.
+
+---
+
+## [v12.66] — 2026-05-02
+
+### Fixed
+- **Critical: PnL/WR-inconsistency tussen Dashboard en Trades-pagina** *(uit pro-trader review 2026-05-02)* — Dashboard toonde `$-8,37 / WR 33,3%` terwijl Trades-pagina header `$-11,63 / WR 27%` toonde voor exact dezelfde dataset. Verschil = de PARTIAL-trade die op Dashboard wel meetelde, op Trades niet (Trades had eigen `consumedSiblingIds` filter, Dashboard had die niet). Fix: helper `getConsumedSiblings()` op top-level geëxtraheerd, App past 'm één keer toe op `mergedTrades` vóór `applyFilters` zodat alle views (Dashboard / Trades / Analytics / Review / Calendar / Rapport) dezelfde set zien. Plus: Trades-stat-line gebruikt nu `closedSorted` (excl. open trades in WR-noemer, consistent met Dashboard).
+- **Critical: Floating-point precision in trade-edit modal** — Entry/Exit/PnL/Fees velden toonden rauwe float-waarden zoals `2255.5805555555557` (16 decimalen) en `-6.749084190000000001`. Pro-trader-vertrouwen breekt bij elke ruis-pixel. Fix: nieuwe helper `fmtPriceDisplay()` rondt floating-point-ruis af met smart-decimals op basis van magnitude (BTC ~78000 → 2 decimalen, ETH ~2300 → 2, alts < 1 → 6, sat-precision tot 10 decimalen behouden). Toegepast op alle modal-input-bindings.
+- **Minor: Currency-format `$-4,66` → `-$4,66`** — minus stond NA dollar-symbool op Goals-cards (Net P&L, Expectancy). Pro-conventie: minus altijd VOOR symbool. Fix: `(v>=0?"+":"")+"$"+abs` patroon vervangen door `(v>=0?"+":"-")+"$"+abs` op regels 1570, 1578.
+
+### Toegevoegd
+- **Sample-size waarschuwingsbanner** — nieuwe `<SampleSizeBanner n={...} threshold={30}>` component die alleen rendert als trades-count onder de drempel zit. Plug-in op Dashboard, Review, Analytics. Tekst: *"⚠ Sample-size waarschuwing: N trades — onder de 30-drempel voor statistisch betrouwbare conclusies. Profit Factor, Expectancy, WR per setup zijn indicatief; behandel als richting, niet als feit."* Edgewonk/TradeZella-conventie. Pro-trader checklist top-5.
+
+### Gewijzigd
+- **Mindset-banner alleen op Dashboard + Review** (was elke pagina) — pro-trader feedback: banner op iedere tab is afleidend; mindset-reflectie hoort bij review-momenten, niet tijdens data-werk op Trades/Analytics.
+- **"Voeg een account toe"-CTA** op Dashboard toont nu "Account-balans niet geconfigureerd" als er gesyncte trades zijn maar geen API-balans. Voorheen suggereerde de CTA dat er nog geen accounts waren terwijl er wel trades stonden.
+
+### Niet gefixt in v12.66 (op backlog gebleven)
+- **Twee parallelle "rules"-systems consolideren** (Calendar 5/5 vs Analytics 0%) — vereist conceptuele beslissing
+- **"Sharpe Cumulatief" mislabel op Review** — wacht op echte Sharpe-berekening
+- **"Trade Score 35/100" tooltip** — needs design-think
+- **Drawdown-limit configurable** in Goals — feature-werk, niet bug-fix
+- **Empty-state Analytics 0%-metrics** — needs design
+
+Zie [docs/pro-trader-review-2026-05-02.md](docs/pro-trader-review-2026-05-02.md) voor volledige context en [BACKLOG.md](BACKLOG.md) "🔜 Next up" voor de overige 5 majors.
+
+---
+
+## [v12.65] — 2026-05-01
+
+### Toegevoegd
+- **Trade Performance Report** — nieuwe hoofdpagina (📄 Rapport-tab in de nav, tussen Review en Kalender). 12-pagina institutioneel rapport met cover, executive summary, performance overview (equity-curve + drawdown underwater chart), risk analysis (Sharpe/Sortino/Calmar), trade statistics (R-multiple distributie + top winners/losers), segmentatie (per setup/pair/exchange), tijd-analyse (kalender heatmap + per weekdag), process & discipline scorecard, **5 reflectie-prompts met persistent storage per periode**, auto-gegenereerde findings & next steps, glossary + methodology + disclaimer.
+- **Periode-selector**: Week / Maand / Kwartaal / Jaar / Custom range — alle metrics herberekenen live op basis van trade exit-datum.
+- **Sectie-toggles**: gebruiker kan via "⚙ Secties"-dropdown elke sectie aan/uitvinken voor het rapport.
+- **Sample-size waarschuwing** verschijnt automatisch bij < 30 trades in de gekozen periode (Edgewonk/TradeZella richtlijn).
+- **Smart fig.2-fallback**: bij < 5 buckets toont een tabel ipv een bar-chart (voorkomt amputeerd-ogende grafieken bij week-rapport met 7 dagen of kwartaal-rapport met 3 maanden).
+- **Auto-gegenereerde findings**: top-3 hoofdbevindingen op p2 + strengths/weaknesses op p11, gebaseerd op profit factor, win rate, max drawdown en setup-performance van de echte trades.
+- **PDF-export via `Ctrl+P`** met `@media print` styles: hide app-chrome, A4 portrait, page-breaks per sectie.
+- **Branded cover**: SyncJournal masthead, "CONFIDENTIAL" stempel, samenvatting-line met Net P&L · Win Rate · Profit Factor · Avg R, en spark-equity onderaan de cover.
+- **Inline metric-uitleg**: info-icoontjes + "Hoe te lezen"-blokken bij elke KPI/figuur, plus glossary op p12.
+
+### Gewijzigd
+- **Source Serif 4** ingeladen met extra `weight 900` voor de hero-titels van het rapport (was eerst alleen 300/400/600/700).
+- **Hoofdnav**: 8 zichtbare tabs in plaats van 7 (`TABS.slice(0,7)` → `TABS.slice(0,8)`) om Rapport ernaast te tonen.
+
+### Verwijderd
+- **Dode "📄 Genereer rapport"-knop op het Dashboard** — `onReport`-prop, dode `showPdf`-state en de `setShowPdf(true)`-wiring zijn allemaal weg. Rapport heeft nu een eigen tab als logische plek.
+
+### Onderzoek
+- Voorafgaand aan de bouw is online onderzoek gedaan naar Edgewonk / Tradervue / TradeZella / TradesViz rapport-formaten + institutional tear-sheet-structuur (hedge funds, CTA monthly reports, McKinsey/Goldman) + Steenbarger/Mark Douglas reflectie-frameworks. Sample size, mistake-clustering, één-actiepunt-principe en risk-adjusted-ratio uitleg komen direct uit dit onderzoek. Anti-gamification-principe (CFA Institute / Management Science research) heeft de visuele toon bepaald: serieus, plat, monochroom-bias, geen confetti.
+
+---
+
 ## [v12.64.12] — 2026-05-01
 
 ### Verwijderd
