@@ -6,6 +6,28 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.70] — 2026-05-02
+
+Flat-tag-sync uit `layers[]` — fixt onzichtbare layer-tags in TagManager, FilterBar, Analytics en Tendencies.
+
+### Fixed
+- **Critical: layer-tags telden nergens mee** — trades met `layers[]` (multi-entry / multi-TF setups, bv. *"1H · SFP · Liquidity Sweep"* + *"5M · MSB · OB"* in één trade) sloegen hun setup/timeframe/confirmation **alleen** op in `layers[].setups` / `.timeframe` / `.confirmations`. De platte arrays `setupTags` / `timeframeTags` / `confirmationTags` bleven leeg. Gevolg: deze trades waren **onzichtbaar** voor:
+  - TagManager-counter (`Nx` ontbrak naast tags) en de v12.69 delete-modal (viel terug op simpele confirm omdat usedCount=0)
+  - FilterBar setup-chips ([5228](work/tradejournal.html#L5228))
+  - `applyFilters()` op setupTags ([5263](work/tradejournal.html#L5263))
+  - Analytics `setupPerf` ([2858](work/tradejournal.html#L2858)) en `rrBySetup` ([8091](work/tradejournal.html#L8091))
+  - `detectTendencies()` detector #2 (setup × pair) en #7 (setup × session) ([5932](work/tradejournal.html#L5932))
+- **Fix**: nieuwe helper `syncTradeFlatFields(trade)` (spiegelvorm van `syncPlaybookFlatFields`) derives platte arrays als unie van alle `layers[].*`-waarden. Wordt aangeroepen op twee plekken:
+  - **`normalizeTrade()`** — draait op elke load (localStorage + IndexedDB + JSON-import). Migreert historische trades automatisch zonder schemaVersion-bump; alle 173 layer-only trades van Denny krijgen direct correcte flat-arrays bij eerste boot van v12.70.
+  - **`saveTrade()`** — derives flat-arrays uit `enriched.layers` vóór het persisten, zodat nieuwe edits direct correcte stats geven.
+- **Behoudregel**: alleen syncen als `layers.length > 0`. Trades zonder layers (oude-stijl handmatige flat-tagging) blijven ongemoeid. `emotionTags` / `mistakeTags` raken nooit door deze sync, want layers slaan die niet op.
+- **Conflict-resolution**: bij stale flat-tags die niet in layers voorkomen, **winnen layers** (overschrijven flat). Consistent met `syncPlaybookFlatFields`-gedrag.
+
+### Tests
+- **Nieuwe Playwright spec `tests/trade-flat-sync.spec.js`** — 5 scenario's: layer-only migratie na load, flat-only blijft ongemoeid, lege `layers:[]` blijft ongemoeid, layers winnen bij conflict, en TagManager-counter + v12.69 delete-modal vuren correct voor layer-only tags.
+
+---
+
 ## [v12.69] — 2026-05-02
 
 3-keuze tag-delete modal — voorkomt verloren tags op trades bij wissen via Instellingen.

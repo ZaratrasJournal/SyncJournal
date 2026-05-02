@@ -895,7 +895,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.69",released:"2026-05-02"};
+const APP_VERSION={version:"v12.70",released:"2026-05-02"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -1053,6 +1053,27 @@ function syncPlaybookFlatFields(pb){
     (L?.confirmations||[]).forEach(c=>c&&confSet.add(c));
   }
   return{...pb,setupTags:[...setupSet],timeframes:[...tfSet],confirmations:[...confSet]};
+}
+
+// Spiegelvorm voor trades: bij gebruik van layers[] (multi-entry / multi-TF trades)
+// blijven de platte arrays setupTags / timeframeTags / confirmationTags gederiveerd.
+// Die platte arrays zijn de bron-van-waarheid voor FilterBar, applyFilters, Analytics,
+// detectTendencies en TagManager. Zonder sync zien die views layer-only trades niet.
+//
+// Behoud-regel: alleen syncen als layers.length>0. Trades zonder layers (oude-stijl,
+// alleen flat-tagging via TradeForm) blijven ongemoeid — hun flat-arrays zijn al canonical.
+//
+// emotionTags + mistakeTags raakt deze sync NIET aan: layers slaan die niet op.
+function syncTradeFlatFields(t){
+  const layers=Array.isArray(t?.layers)?t.layers:[];
+  if(layers.length===0)return t;
+  const setupSet=new Set();const tfSet=new Set();const confSet=new Set();
+  for(const L of layers){
+    (L?.setups||[]).forEach(s=>s&&setupSet.add(s));
+    if(L?.timeframe)tfSet.add(L.timeframe);
+    (L?.confirmations||[]).forEach(c=>c&&confSet.add(c));
+  }
+  return{...t,setupTags:[...setupSet],timeframeTags:[...tfSet],confirmationTags:[...confSet]};
 }
 function migratePlaybooks(arr){
   if(!Array.isArray(arr))return[];
@@ -1267,7 +1288,11 @@ const normalizeTrade=(t)=>{
       return{...rest,setups:legacy?[legacy]:[]};
     });
   }
-  return out;
+  // v12.70: derive flat-tag arrays uit layers[]. Loopt op elke load — fixt
+  // historische trades waarvan setupTags / timeframeTags / confirmationTags
+  // leeg waren terwijl de layers gevuld. Zonder deze sync miste TagManager,
+  // FilterBar, Analytics, detectTendencies elke layer-tag.
+  return syncTradeFlatFields(out);
 };
 
 // ─── DEMO-MODE: sample trades voor sceptische nieuwe users ──────────────
@@ -11202,10 +11227,14 @@ function App(){
     // Auto-compute risk unless manually overridden
     const overrides=trade.manualOverrides||[];
     const risk=computeTradeRisk(trade,config,accounts);
-    const enriched={...trade};
+    let enriched={...trade};
     if(risk.riskUsd!==undefined&&!overrides.includes("riskUsd"))enriched.riskUsd=risk.riskUsd;
     if(risk.riskPct!==undefined&&!overrides.includes("riskPct"))enriched.riskPct=risk.riskPct;
     if(isNew){const sessions=getSessionTags(enriched.date,enriched.time);if(sessions.length&&!(enriched.timeframeTags||[]).some(t=>ALL_SESSIONS.includes(t))){}}
+    // v12.70: derive setupTags / timeframeTags / confirmationTags uit layers[]
+    // zodat FilterBar, Analytics, detectTendencies en TagManager up-to-date zijn
+    // direct nadat de user opslaat.
+    enriched=syncTradeFlatFields(enriched);
     setTrades(p=>{if(isNew){return[enriched,...p]}else{return p.map(t=>t.id===enriched.id?enriched:t)}});
     setEditTrade(null);setNewTrade(null);
     // Draft was saved successfully; clear persisted draft so we don't prompt to restore it next session
