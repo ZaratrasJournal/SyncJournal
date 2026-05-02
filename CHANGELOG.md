@@ -6,6 +6,33 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.75] — 2026-05-02
+
+Eerste van een serie diepere exchange-handleidingen — **Blofin koppelen + importeren** (lesson l18) toegevoegd onder Help. Beginner-niveau, ~12 min, dekt zowel CSV als API.
+
+### Toegevoegd
+- **Lesson l18 — "Blofin koppelen + importeren"** — stap-voor-stap voor zowel **CSV-export** (eenvoudig) als **API-koppeling** (live sync). Schrijfstijl gericht op iedereen "met en zonder kennis":
+  - Glossary in-lesson voor jargon (API key vs Secret vs Passphrase, IP whitelist).
+  - Veiligheidswaarschuwing prominent: alleen `Read`-permissie aanvinken — Trade en Withdraw uit. Met *waarom*-onderbouwing.
+  - **De 90-dagen-trap** — kritieke pitfall die Blofin's officiële docs noemen: een API-key zonder IP-whitelist verloopt na 90 dagen, sync stopt dan stilletjes. Twee oplossingen (statisch IP / kalender-reminder) uitgelegd.
+  - Common-pitfalls-sectie: mobile app kan niet exporteren · contract size BTC = 0.001 · funding fees ontbreken in standaard CSV (apart aanvragen via support) · 180 dagen max per export · partial closes worden automatisch geaggregeerd.
+  - "Trades komen niet binnen — wat nu?" troubleshooting met verwijzing naar exacte CSV-headers (`Underlying Asset` / `Avg Fill` / `PNL`) zodat user zelf kan checken of 't juiste export-type gekozen is.
+  - **"Laatst gecontroleerd: 2026-05-02"** stempel onderaan — UI's veranderen, dit erkent dat.
+
+### Tests
+- **Nieuwe Playwright spec `tests/blofin-lesson.spec.js`** (2 scenario's): (1) lesson-card zichtbaar in Help → lessons, kern-secties + 90-dagen-trap + CSV-headers worden correct gerenderd, géén JS-errors; (2) "Open Accounts →"-knop in lesson navigeert naar Accounts-tab (verifieert lesson-link click-handler).
+- **Babel-deoptimisation-noise** in console wordt expliciet gefilterd in test-assertions — die warning hoort bij in-browser babel-compilatie van een groot single-file script en is geen bug.
+- Volledige focused regressie: 21/21 groen (smoke + blofin-partial + tag-delete + flat-sync + tendencies + default-tags + blofin-lesson).
+
+### Volgorde van komende exchange-lessons
+- v12.76 — MEXC (l19)
+- v12.77 — Kraken Futures (l20) + Hyperliquid (l21)
+- v12.78 — FTMO MT5 (l22), CSV-only
+
+Per release: review door Denny + Sebas tegen hun eigen accounts vóór de volgende lesson begint.
+
+---
+
 ## [v12.74] — 2026-05-02
 
 Standaard tag-baseline voor nieuwe users afgestemd op de community-set die Denny + Sebas hanteren.
