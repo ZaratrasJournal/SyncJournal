@@ -182,4 +182,106 @@ test.describe('Bulk-tag panel: timeframe + layer-builder', () => {
     expect(t.layers).toEqual([]);
     expect(t.setupTags).toEqual(['BOS']);
   });
+
+  test('Toggle: tag-knop highlight als alle selected trades de tag hebben, klik = remove', async ({ page }) => {
+    // Beide trades hebben SFP in flat — knop moet direct active zijn
+    const trades = [
+      { ...makeFlatOnlyTrade('t1'), setupTags: ['SFP'] },
+      { ...makeFlatOnlyTrade('t2', 2), setupTags: ['SFP'] },
+    ];
+    await setup(page, trades);
+    await selectAllTrades(page);
+    await openBulkTagPanel(page);
+
+    // SFP-knop in Setup Type-rij moet aria-pressed="true" hebben (active state)
+    const sfpBtn = page.getByRole('button', { name: 'SFP', exact: true }).first();
+    await expect(sfpBtn).toHaveAttribute('aria-pressed', 'true');
+
+    // Klik → tag moet weg zijn van beide
+    await sfpBtn.click();
+    await page.waitForTimeout(200);
+
+    const after = await readTrades(page);
+    expect(after.find(x => x.id === 't1').setupTags).toEqual([]);
+    expect(after.find(x => x.id === 't2').setupTags).toEqual([]);
+    // Knop moet nu inactive zijn
+    await expect(sfpBtn).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  test('Toggle: tag op één-van-twee trades is NIET active (mixed state)', async ({ page }) => {
+    const trades = [
+      { ...makeFlatOnlyTrade('t1'), setupTags: ['SFP'] },
+      { ...makeFlatOnlyTrade('t2', 2), setupTags: [] }, // mist SFP
+    ];
+    await setup(page, trades);
+    await selectAllTrades(page);
+    await openBulkTagPanel(page);
+
+    const sfpBtn = page.getByRole('button', { name: 'SFP', exact: true }).first();
+    // Mixed state — niet alle trades hebben de tag → niet active
+    await expect(sfpBtn).toHaveAttribute('aria-pressed', 'false');
+
+    // Klik → voegt toe aan beide
+    await sfpBtn.click();
+    await page.waitForTimeout(200);
+
+    const after = await readTrades(page);
+    expect(after.find(x => x.id === 't1').setupTags).toEqual(['SFP']);
+    expect(after.find(x => x.id === 't2').setupTags).toEqual(['SFP']);
+    await expect(sfpBtn).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  test('Toggle layer-aware: untag op layered trade strip de tag uit alle layers', async ({ page }) => {
+    const trade = {
+      ...makeLayeredTrade('t_l'),
+      // Twee layers, beide hebben SFP
+      layers: [
+        { id: 'L1', timeframe: '4H', setups: ['MSB', 'SFP'], confirmations: ['Liquidity Sweep'] },
+        { id: 'L2', timeframe: '1H', setups: ['SFP'], confirmations: ['OB'] },
+      ],
+    };
+    await setup(page, [trade]);
+    await selectAllTrades(page);
+    await openBulkTagPanel(page);
+
+    const sfpBtn = page.getByRole('button', { name: 'SFP', exact: true }).first();
+    await expect(sfpBtn).toHaveAttribute('aria-pressed', 'true');
+
+    await sfpBtn.click();
+    await page.waitForTimeout(200);
+
+    const t = (await readTrades(page)).find(x => x.id === 't_l');
+    // SFP weg uit beide layers
+    expect(t.layers[0].setups).toEqual(['MSB']);
+    expect(t.layers[1].setups).toEqual([]);
+    // Layers blijven bestaan (geen layer verwijderd)
+    expect(t.layers).toHaveLength(2);
+    // Flat ge-resynced uit layers
+    expect(t.setupTags).toEqual(['MSB']);
+  });
+
+  test('Toggle timeframe-untag: layer behoudt setups/confirmations, alleen TF wordt geleegd', async ({ page }) => {
+    const trade = {
+      ...makeLayeredTrade('t_tf'),
+      layers: [
+        { id: 'L1', timeframe: '4H', setups: ['MSB'], confirmations: ['Liquidity Sweep'] },
+      ],
+    };
+    await setup(page, [trade]);
+    await selectAllTrades(page);
+    await openBulkTagPanel(page);
+
+    const tfBtn = page.getByRole('button', { name: '4H', exact: true }).first();
+    await expect(tfBtn).toHaveAttribute('aria-pressed', 'true');
+
+    await tfBtn.click();
+    await page.waitForTimeout(200);
+
+    const t = (await readTrades(page)).find(x => x.id === 't_tf');
+    expect(t.layers).toHaveLength(1);
+    expect(t.layers[0].timeframe).toBe('');
+    expect(t.layers[0].setups).toEqual(['MSB']);
+    expect(t.layers[0].confirmations).toEqual(['Liquidity Sweep']);
+    expect(t.timeframeTags).toEqual([]);
+  });
 });

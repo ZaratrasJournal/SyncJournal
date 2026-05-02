@@ -6,6 +6,28 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.72] — 2026-05-02
+
+Bulk-tag knoppen tonen nu actieve staat én werken als toggle — visueel gelijk aan de tag-pickers in TradeForm.
+
+### Toegevoegd
+- **Active-state styling** op de simple-tag knoppen in het bulk-tag panel. Een tag-knop wordt **goud-gehighlight** (zelfde stijl als TradeForm + de layer-builder picks) wanneer **alle** geselecteerde trades de tag hebben — voor layer-aware velden (Setup Type / Confirmaties / Timeframe) checkt de helper zowel de platte arrays als alle `layers[].setups` / `.confirmations` / `.timeframe`. Beantwoordt Denny's vraag *"die knop moet vasthouden welke geselecteerd is, zoals in de trade zelf"*.
+- **Toggle-gedrag**: klik op een actieve knop **verwijdert** de tag van alle geselecteerde trades; klik op een inactieve knop **voegt 'm toe** (oud gedrag). Mixed state (1 van 2 trades heeft de tag) telt als inactive — eerste klik vult dan iedereen aan, tweede klik verwijdert overal.
+- **`aria-pressed`** attribuut op de tag-knoppen voor screen-readers en betrouwbare test-assertions.
+
+### Gewijzigd
+- **Nieuwe `bulkUntag(ids, field, tag)` handler** — spiegelvorm van `bulkTag`. Strip de tag uit de platte array én uit ALLE layers (over alle layers, niet alleen de eerste — anders zouden lagere lagen 'm behouden). Voor `timeframeTags` op een layer met die TF: clear `L.timeframe` maar behoud de layer (setups/confirmations blijven). Roept `syncTradeFlatFields` aan na de mutatie zodat flat-arrays correct herbouwd worden.
+- Toast-feedback verschilt per richting: *"X toegevoegd aan N trades"* vs *"X verwijderd van N trades"*.
+
+### Tests
+- **Vier nieuwe scenario's in `tests/bulk-tag-layered.spec.js`** (totaal 9 in deze spec, 25 over de focused regressie):
+  - Active-state: tag op alle selected → `aria-pressed="true"` + klik = remove uit beide
+  - Mixed state: tag op één-van-twee → `aria-pressed="false"` + klik = add to all
+  - Layer-aware untag: SFP in twee verschillende layers → klik = beide layers strippen
+  - Timeframe-untag op layer: TF wordt geleegd, layer + setups + confirmations blijven
+
+---
+
 ## [v12.71] — 2026-05-02
 
 Bulk-tag panel voor Trades-pagina: Timeframe-rij + complete layer-builder + layer-aware single-tag knoppen.
