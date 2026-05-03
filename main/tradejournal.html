@@ -708,6 +708,21 @@ div.lesson-body{font-size:16px;line-height:1.65;color:var(--text);letter-spacing
 .lesson-body .lesson-exchange-tabs button{padding:7px 12px;border-radius:5px;border:1px solid var(--border3);background:transparent;color:var(--text3);font-family:inherit;font-size:12.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px;transition:background .12s,border-color .12s,color .12s;margin:0}
 .lesson-body .lesson-exchange-tabs button:hover:not(.active):not(:disabled){border-color:var(--gold-border);color:var(--text);background:var(--glass)}
 .lesson-body .lesson-exchange-tabs button.active{border-color:var(--gold-border);background:var(--gold-dim);color:var(--gold);cursor:default}
+/* v12.83: FAQ-readability — markdown-rendered answers krijgen nette opmaak met
+   bullets, code-tags, bold + paragraaf-spacing zodat het geen lappen tekst is.
+   Toegepast op .faq-answer container in HelpPage. */
+.faq-answer{font-size:13px;line-height:1.7;color:var(--text2)}
+.faq-answer p{margin:0 0 12px}
+.faq-answer p:last-child{margin-bottom:0}
+.faq-answer strong{color:var(--text);font-weight:600}
+.faq-answer em{color:var(--text);font-style:italic}
+.faq-answer code{font-family:var(--mono);font-size:0.9em;padding:1px 6px;border-radius:4px;background:rgba(201,168,76,0.10);color:var(--gold);border:1px solid var(--border2)}
+.faq-answer ul.faq-ul,.faq-answer ol.faq-ol{margin:0 0 14px;padding-left:0;list-style:none}
+.faq-answer ul.faq-ul li{position:relative;padding:4px 0 4px 18px;line-height:1.65}
+.faq-answer ul.faq-ul li::before{content:"";position:absolute;left:5px;top:13px;width:5px;height:5px;border-radius:50%;background:var(--gold);opacity:0.7}
+.faq-answer ol.faq-ol{counter-reset:faqstep}
+.faq-answer ol.faq-ol li{counter-increment:faqstep;position:relative;padding:5px 0 5px 32px;line-height:1.65;margin-bottom:2px}
+.faq-answer ol.faq-ol li::before{content:counter(faqstep);position:absolute;left:0;top:4px;width:22px;height:22px;border-radius:50%;background:var(--gold-dim);border:1px solid var(--gold-border);color:var(--gold);font-family:var(--mono);font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center}
 </style>
 </head>
 <body>
@@ -956,7 +971,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.82",released:"2026-05-03"};
+const APP_VERSION={version:"v12.83",released:"2026-05-03"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -10658,6 +10673,29 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,imp
 // ============ HELP PAGE ============
 // FAQ Q&A — uitbreidbare data-array. Toegankelijk via accordeon + zoekbalk in HelpPage.
 // Elke commit die een feature wijzigt zou ook een FAQ-entry moeten bijwerken.
+// v12.83: render FAQ-answers met markdown → HTML zodat **bold**, `code`, lists en
+// paragrafen netjes opmaakt worden i.p.v. lappen platte tekst. Hou syntax bewust
+// minimaal: **bold**, *italic*, `code`, "1. " ordered list, "• " bullet list,
+// dubbele newline = paragraaf-grens.
+function renderFaqAnswer(text){
+  const esc=s=>s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  const inline=s=>esc(s)
+    .replace(/`([^`\n]+)`/g,"<code>$1</code>")
+    .replace(/\*\*([^*\n]+)\*\*/g,"<strong>$1</strong>")
+    .replace(/(^|[^a-zA-Z*])\*([^*\n]+?)\*(?!\*)/g,'$1<em>$2</em>');
+  return text.split(/\n\n+/).map(block=>{
+    const lines=block.split(/\n/).map(l=>l.trim()).filter(Boolean);
+    if(!lines.length)return"";
+    if(lines.every(l=>/^\d+\.\s/.test(l))){
+      return'<ol class="faq-ol">'+lines.map(l=>"<li>"+inline(l.replace(/^\d+\.\s+/,""))+"</li>").join("")+"</ol>";
+    }
+    if(lines.every(l=>/^[•·]\s/.test(l))){
+      return'<ul class="faq-ul">'+lines.map(l=>"<li>"+inline(l.replace(/^[•·]\s+/,""))+"</li>").join("")+"</ul>";
+    }
+    return"<p>"+lines.map(inline).join("<br>")+"</p>";
+  }).join("");
+}
+
 const FAQ_ENTRIES=[
   // === Aan de slag ===
   {cat:"🚀 Aan de slag",q:"Ik start voor het eerst. Wat moet ik doen?",a:"Drie opties:\n\n1. **Koppel een exchange** (Accounts → kies exchange → plak API-key of wallet-adres) — automatisch al je trades binnen.\n2. **Importeer een CSV** (Accounts → kies bron → 📄 Importeer CSV) — eenmalig, geen sleutels nodig.\n3. **Start met demo** (Welcome-modal → 'Probeer met demo') — 10 voorbeeld-trades om alles te verkennen zonder eigen data.\n\nTwijfelt? Begin met optie 3 om SyncJournal te leren kennen. Wis daarna en begin met je echte trades.\n\nVoor exchange-specifieke handleidingen: open Help → Handleiding → klik je exchange."},
@@ -10705,7 +10743,6 @@ const FAQ_ENTRIES=[
   {cat:"💾 Backup & versies",q:"Hoe maak ik een backup?",a:"Accounts → scroll naar **Backup & Restore** → klik **📦 Backup exporteren (.json)**.\n\nHet bestand bevat **alles**: trades, tags, accounts, instellingen, goals, regels, playbooks. Sla het op in een veilige plek (USB / cloud / e-mail naar jezelf).\n\n**Tip**: zet een wekelijkse reminder in je agenda. 30 seconden werk, jaren gemoedsrust."},
   {cat:"💾 Backup & versies",q:"Hoe herstel ik een backup?",a:"Twee manieren:\n\n1. **Slepen** — sleep het JSON-bestand gewoon in het SyncJournal-venster.\n2. **Klikken** — Accounts → Backup & Restore → Backup importeren → kies bestand.\n\nJe krijgt een waarschuwing dat huidige data wordt overschreven. Bevestig en alles staat er weer."},
   {cat:"💾 Backup & versies",q:"Hoe check ik of er een nieuwe versie is?",a:"Accounts → scroll naar onderen → klik **🔄 Check voor updates**. Bij een nieuwere versie verschijnt een banner met een Update-knop:\n\n• **'Update nu'** (als je via een online URL draait) → de pagina laadt opnieuw.\n• **'⬇ Download'** (als je het HTML-bestand zelf bewaart) → je nieuwe bestand wordt gedownload, vervang het oude en ververs.\n\nJe trades, tags en alle instellingen blijven altijd staan bij een update — geen risico."},
-  {cat:"💾 Backup & versies",q:"Mag ik SyncJournal openen door op het bestand te dubbelklikken?",a:"Liever niet. Als je het HTML-bestand opent met **dubbel-klik**, gebruikt je browser het `file://`-pad. Dat werkt vaak prima, maar bij sommige updates of als je het bestand verplaatst, kan je browser denken dat het een 'andere site' is en je trades vergeten.\n\n**Veiliger**: open SyncJournal altijd vanaf dezelfde plek. Gebruik een vaste map en hernoem het bestand niet. Of vraag in de Discord naar de hosted versie — dan log je in via een vaste URL en heb je dit probleem niet."},
 ];
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -10886,14 +10923,19 @@ function LessonsView({trades,setTab}){
   },[]);
   const toggleSeen=(id)=>setLessonsSeen(prev=>{const n=new Set(prev);n.has(id)?n.delete(id):n.add(id);return n;});
   const resetProgress=()=>{if(confirm("Reset alle lees-voortgang?"))setLessonsSeen(new Set());};
-  const filtered=LESSONS.filter(l=>{
+  // v12.83: exchange-detail-lessons (l18-l22) zijn al bereikbaar via de hub-knoppen
+  // in l04 (CSV) en l05 (Exchange koppelen). Hier verbergen we ze uit de grid om
+  // dubbele weergave te voorkomen. Modal-navigatie + openLesson-event blijft werken.
+  const HIDDEN_FROM_GRID=new Set(["l18","l19","l20","l21","l22"]);
+  const visibleLessons=LESSONS.filter(l=>!HIDDEN_FROM_GRID.has(l.id));
+  const filtered=visibleLessons.filter(l=>{
     if(activeLevel!=="all"&&l.level!==activeLevel)return false;
     if(activeStatus==="new"&&lessonsSeen.has(l.id))return false;
     if(activeStatus==="done"&&!lessonsSeen.has(l.id))return false;
     return true;
   });
-  const total=LESSONS.length;
-  const done=LESSONS.filter(l=>lessonsSeen.has(l.id)).length;
+  const total=visibleLessons.length;
+  const done=visibleLessons.filter(l=>lessonsSeen.has(l.id)).length;
   const pct=Math.round((done/total)*100);
   const sug=getLessonSuggestion(tradeCount,lessonsSeen);
   const pillBtn=(active,onClick,label)=><button onClick={onClick} style={{padding:"6px 14px",fontSize:11,fontFamily:"var(--mono)",fontWeight:600,letterSpacing:".06em",borderRadius:6,border:`1px solid ${active?"var(--gold-border)":"var(--border3)"}`,background:active?"var(--gold-dim)":"transparent",color:active?"var(--gold)":"var(--text4)",cursor:"pointer"}}>{label}</button>;
@@ -11054,7 +11096,7 @@ function HelpPage({trades,setTab}){
                 <span style={{flex:1}}>{e.q}</span>
                 <span style={{color:"var(--text4)",fontSize:"14px",flexShrink:0}}>{isOpen?"−":"+"}</span>
               </button>
-              {isOpen&&<div style={{padding:"4px 14px 14px 14px",fontSize:"12px",color:"var(--text3)",lineHeight:1.7}}>{e.a}</div>}
+              {isOpen&&<div className="faq-answer" style={{padding:"4px 14px 14px 14px"}} dangerouslySetInnerHTML={{__html:renderFaqAnswer(e.a)}}/>}
             </div>);
           })}
         </div>
