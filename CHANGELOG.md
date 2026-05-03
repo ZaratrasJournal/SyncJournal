@@ -6,6 +6,40 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.77] — 2026-05-03
+
+Lesson-readability redesign. Geen "lap tekst"-gevoel meer — typography, callouts, step-markers, scroll-progress.
+
+### Toegevoegd
+- **Lesson-typography CSS** — eigen `<style id="lesson-readability-v12-77">` block met theme-aware styling voor `.lesson-body` en alle sub-elementen:
+  - **Body 16px / line-height 1.65** (research: optimaal voor reading-heavy content op desktop)
+  - **Body color `var(--text)`** ipv `text2` — voorkomt het "alles is grijs"-gevoel dat docs vaak hebben
+  - **Lead-paragraph** (eerste `<p>`) op 17px voor visuele hierarchy
+  - **Max-width 65ch** op alle content-elementen — leescomfort, geen lange regels in 780px modal
+  - **h2** op 24px met onderstreep-line + ruime `margin-top:36px` (4:1 ratio met margin-bottom = scannable hierarchy)
+  - **h3** op 19px, weight 600 (niet 700 — research: te zwaar bij gold-accent)
+  - **Custom counter-cirkels** voor `<ol>` items via CSS counter — gold-dim circle met monospace nummering (`30%` snellere scan-snelheid volgens Microsoft Style Guide)
+  - **Custom dot-bullets** voor `<ul>` items — subtiele gold dot
+  - **`<code>`** krijgt gold-tinted background + border voor visuele isolatie
+  - **`<blockquote>`** als pull-quote met gold-border-left, italic, 16px
+  - **Callout-styling** (`.lesson-callout` met variants `.tip` `.warn` `.why` `.example`) krijgt eigen border-left-color + tint per variant — volgt Mintlify/Quarto-conventie
+  - **`.lesson-tldr`-class** klaar voor toekomstige TL;DR-blocks bovenaan lessons
+- **Scroll-progress bar** in modal-header — 3px gold strip onderaan de sticky header die meegroeit met scroll-positie binnen de lesson-content. Lage cognitieve cost, hoge "ik weet waar ik ben"-payoff voor 12-min lessons.
+- **`cardRef` + `useEffect`** in `LessonReadingModal` — attacht scroll-listener op modal-card, reset op lesson-switch zodat progress nul start bij elke nieuwe lesson.
+
+### Gewijzigd
+- **Inline `style={{fontSize:14,lineHeight:1.7,color:var(--text2)}}`** op de `.lesson-body` div verwijderd — overrulede de CSS-class met hogere specificity. Nu alleen `padding:"24px 32px 28px"` inline.
+- **CSS in een tweede `<style>`-block** geplaatst (na de hoofdblok). Reden: de hoofdblok bevat legacy `.theme-purple` rules met genest-aanhalingstekens (bv. `[style*="background:"#C9A84C""]`) die de CSS-parser-state corrumperen — alle nieuwe rules erna werden niet geladen. Een onafhankelijke tweede block omzeilt dat. Opmerking in code dekt dit voor toekomstige bewerkers.
+
+### Tests
+- **Nieuwe Playwright spec `tests/lesson-readability.spec.js`** met 3 scenario's: (1) typography-CSS daadwerkelijk toegepast — verifieert via `getComputedStyle` dat body 16px is, h2 24px met `border-bottom`; (2) scroll-progress-bar bestaat en groeit van 0% naar >0% bij scroll; (3) custom counter-markers op `<ol>` renderen via `::before` pseudo-element met `content:counter(...)` en ronde marker.
+- **Focused regressie**: 21/21 groen (smoke + blofin-partial + tag-delete + flat-sync + blofin-lesson + lesson-readability).
+
+### Research-bronnen
+Pimp my Type, Baymard, Butterick's Practical Typography, Material Design 3, Stripe Docs, Tailwind Docs, React.dev (callouts), Linear changelog, Mintlify, Quarto. Volledige lijst in research-output van session.
+
+---
+
 ## [v12.76] — 2026-05-03
 
 l04 (CSV importeren) en l05 (Exchange koppelen) omgevormd tot **hub-lessons** met exchange-keuze-knoppen. Plus lesson-naar-lesson navigatie in de Reading Modal.
