@@ -18,7 +18,10 @@ async function openBlofinLesson(page) {
   await page.waitForFunction(() => /Dashboard/i.test(document.body.innerText), { timeout: 15_000 });
   await page.evaluate(() => { window.location.hash = '#/help'; });
   await page.waitForTimeout(400);
-  await page.getByText('Blofin koppelen + importeren').first().click();
+  // v12.83: open via CSV-hub (l18 staat niet meer als losse card in grid)
+  await page.getByText('CSV importeren — kies je exchange').first().click();
+  await page.waitForTimeout(300);
+  await page.getByRole('button', { name: /📥 Blofin →/i }).click();
   await page.waitForTimeout(400);
 }
 

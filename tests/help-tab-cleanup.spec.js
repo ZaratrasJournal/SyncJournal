@@ -51,6 +51,39 @@ test.describe('HelpPage cleanup (v12.82)', () => {
     expect(html).not.toMatch(/python -m http\.server/);
   });
 
+  test('FAQ markdown wordt gerendered: bold, bullets, ordered list, code-tags', async ({ page }) => {
+    await setup(page);
+    await page.getByRole('button', { name: /FAQ/i }).click();
+    await page.waitForTimeout(200);
+
+    // Open een entry met **bold** en een ordered list
+    await page.getByRole('button', { name: /Ik start voor het eerst/i }).click();
+    await page.waitForTimeout(150);
+
+    // Open een entry met code-tags
+    await page.getByRole('button', { name: /Hyperliquid: waarom alleen wallet/i }).click();
+    await page.waitForTimeout(150);
+
+    const result = await page.evaluate(() => {
+      const answers = [...document.querySelectorAll('.faq-answer')];
+      return {
+        anyOl: answers.some(a => a.querySelector('ol.faq-ol')),
+        anyUl: answers.some(a => a.querySelector('ul.faq-ul')),
+        anyStrong: answers.some(a => a.querySelector('strong')),
+        anyCode: answers.some(a => a.querySelector('code')),
+        // Geen literal markdown-markers meer zichtbaar in de output
+        noLiteralBold: answers.every(a => !/\*\*[^*]/.test(a.textContent)),
+        noLiteralBackticks: answers.every(a => !/`[^`]+`/.test(a.textContent)),
+      };
+    });
+
+    expect(result.anyOl, 'verwacht <ol class=faq-ol> ergens').toBe(true);
+    expect(result.anyStrong, 'verwacht <strong> ergens').toBe(true);
+    expect(result.anyCode, 'verwacht <code> ergens (Hyperliquid 0x)').toBe(true);
+    expect(result.noLiteralBold, 'geen letterlijke ** in tekst').toBe(true);
+    expect(result.noLiteralBackticks, 'geen letterlijke `code` in tekst').toBe(true);
+  });
+
   test('Legacy users met startersguide in localStorage worden gemapt naar lessons', async ({ page }) => {
     await page.addInitScript(() => {
       localStorage.setItem('tj_welcomed', '1');

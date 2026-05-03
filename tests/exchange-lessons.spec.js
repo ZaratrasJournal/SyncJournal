@@ -18,15 +18,27 @@ async function setup(page) {
   await page.waitForTimeout(500);
 }
 
+// v12.83: detail-lessons l18-l22 staan niet meer als losse cards in de grid.
+// Open ze via de CSV-hub (l04) → klik op de exchange-knop.
+async function openExchangeLessonViaHub(page, exchangeRegex) {
+  await page.getByText('CSV importeren — kies je exchange').first().click();
+  await page.waitForTimeout(300);
+  await page.getByRole('button', { name: exchangeRegex }).click();
+  await page.waitForTimeout(400);
+}
+
 test.describe('Exchange-lessons hub + 4 nieuwe lessons (v12.78)', () => {
-  test('Alle 5 lesson-cards zichtbaar in Help: l18 t/m l22', async ({ page }) => {
+  test('Exchange-detail-lessons (l18-l22) NIET als losse cards in grid (alleen via hub)', async ({ page }) => {
     await setup(page);
-    // Per lesson: titel zichtbaar in de cards-grid
-    await expect(page.getByText('Blofin koppelen + importeren').first()).toBeVisible();
-    await expect(page.getByText('MEXC koppelen + importeren').first()).toBeVisible();
-    await expect(page.getByText('Kraken Futures koppelen + importeren').first()).toBeVisible();
-    await expect(page.getByText('Hyperliquid koppelen + importeren').first()).toBeVisible();
-    await expect(page.getByText('FTMO (MT5) koppelen + importeren').first()).toBeVisible();
+    // De hub-cards moeten zichtbaar zijn
+    await expect(page.getByText('CSV importeren — kies je exchange').first()).toBeVisible();
+    await expect(page.getByText('Exchange koppelen — kies je exchange').first()).toBeVisible();
+    // De detail-lessons NIET als losse card in de grid
+    await expect(page.getByText('Blofin koppelen + importeren').first()).not.toBeVisible();
+    await expect(page.getByText('MEXC koppelen + importeren').first()).not.toBeVisible();
+    await expect(page.getByText('Kraken Futures koppelen + importeren').first()).not.toBeVisible();
+    await expect(page.getByText('Hyperliquid koppelen + importeren').first()).not.toBeVisible();
+    await expect(page.getByText('FTMO (MT5) koppelen + importeren').first()).not.toBeVisible();
   });
 
   test('CSV-hub (l04): alle 5 exchange-knoppen zijn klikbaar (geen disabled meer)', async ({ page }) => {
@@ -59,8 +71,7 @@ test.describe('Exchange-lessons hub + 4 nieuwe lessons (v12.78)', () => {
 
   test('Kraken-lesson (l20): EU/ESMA-warning + futures.kraken.com onderscheid', async ({ page }) => {
     await setup(page);
-    await page.getByText('Kraken Futures koppelen + importeren').first().click();
-    await page.waitForTimeout(400);
+    await openExchangeLessonViaHub(page, /📥 Kraken Futures →/i);
 
     await expect(page.getByText(/EU-traders/i).first()).toBeVisible();
     await expect(page.getByText(/ESMA/).first()).toBeVisible();
@@ -71,8 +82,7 @@ test.describe('Exchange-lessons hub + 4 nieuwe lessons (v12.78)', () => {
 
   test('Hyperliquid-lesson (l21): privacy-warning prominent + 0x-formaat', async ({ page }) => {
     await setup(page);
-    await page.getByText('Hyperliquid koppelen + importeren').first().click();
-    await page.waitForTimeout(400);
+    await openExchangeLessonViaHub(page, /📥 Hyperliquid →/i);
 
     await expect(page.getByText(/Privacy: alle trades zijn publiek/i).first()).toBeVisible();
     await expect(page.getByText(/HyperTracker/).first()).toBeVisible();
@@ -82,10 +92,9 @@ test.describe('Exchange-lessons hub + 4 nieuwe lessons (v12.78)', () => {
 
   test('FTMO-lesson (l22): CSV-only + US vs Global pitfall + MetriX-pad', async ({ page }) => {
     await setup(page);
-    await page.getByText('FTMO (MT5) koppelen + importeren').first().click();
-    await page.waitForTimeout(400);
+    await openExchangeLessonViaHub(page, /📥 FTMO \(MT5\) →/i);
 
-    await expect(page.getByText(/Geen API-koppeling/i).first()).toBeVisible();
+    await expect(page.getByText(/Geen API beschikbaar/i).first()).toBeVisible();
     await expect(page.getByText(/MetriX/i).first()).toBeVisible();
     await expect(page.getByText(/FTMO US.*FTMO Global|FTMO Global.*FTMO US/i).first()).toBeVisible();
     await expect(page.getByText(/netting\/FIFO/i).first()).toBeVisible();
@@ -93,9 +102,8 @@ test.describe('Exchange-lessons hub + 4 nieuwe lessons (v12.78)', () => {
 
   test('Detail-lesson heeft tab-strip BOVENAAN met active-state + cross-navigatie werkt', async ({ page }) => {
     await setup(page);
-    // Open Blofin (l18)
-    await page.getByText('Blofin koppelen + importeren').first().click();
-    await page.waitForTimeout(400);
+    // Open Blofin (l18) via de CSV-hub
+    await openExchangeLessonViaHub(page, /📥 Blofin →/i);
 
     // Tab-strip moet zichtbaar zijn — alle 5 exchanges
     const tabsContainer = page.locator('.lesson-exchange-tabs').first();
@@ -146,6 +154,6 @@ test.describe('Exchange-lessons hub + 4 nieuwe lessons (v12.78)', () => {
 
     // FTMO-lesson moet nu open zijn
     await expect(page.getByText('FTMO (MT5) koppelen + importeren').first()).toBeVisible();
-    await expect(page.getByText(/Geen API-koppeling/i).first()).toBeVisible();
+    await expect(page.getByText(/Geen API beschikbaar/i).first()).toBeVisible();
   });
 });

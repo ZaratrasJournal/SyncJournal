@@ -33,11 +33,11 @@ test.describe('Blofin-handleiding lesson (l18)', () => {
     await page.evaluate(() => { window.location.hash = '#/help'; });
     await page.waitForTimeout(800);
 
-    // Lesson-card moet zichtbaar zijn in de overview
-    await expect(page.getByText('Blofin koppelen + importeren').first()).toBeVisible({ timeout: 5_000 });
-
-    // Open de lesson via klik
-    await page.getByText('Blofin koppelen + importeren').first().click();
+    // v12.83: detail-lessons staan niet meer als losse cards in grid.
+    // Open via CSV-hub → klik exchange-knop.
+    await page.getByText('CSV importeren — kies je exchange').first().click();
+    await page.waitForTimeout(300);
+    await page.getByRole('button', { name: /📥 Blofin →/i }).click();
     await page.waitForTimeout(400);
 
     // Kern-secties moeten zichtbaar zijn (compactere v12.80-versie)
@@ -97,7 +97,10 @@ test.describe('Blofin-handleiding lesson (l18)', () => {
     await page.evaluate(() => { window.location.hash = '#/help'; });
     await page.waitForTimeout(500);
 
-    await page.getByText('Blofin koppelen + importeren').first().click();
+    // v12.83: open via CSV-hub
+    await page.getByText('CSV importeren — kies je exchange').first().click();
+    await page.waitForTimeout(300);
+    await page.getByRole('button', { name: /📥 Blofin →/i }).click();
     await page.waitForTimeout(300);
 
     // Klik de "Open Accounts →" CTA aan het eind van de lesson

@@ -36,8 +36,10 @@ test.describe('Lesson-modal kleur-leesbaarheid per thema', () => {
       await page.evaluate(() => { window.location.hash = '#/help'; });
       await page.waitForTimeout(500);
 
-      // Open Blofin-lesson (heeft TL;DR + callouts + step-cirkels — representatief)
-      await page.getByText('Blofin koppelen + importeren').first().click();
+      // Open Blofin-lesson via CSV-hub (l18 staat niet meer als losse card)
+      await page.getByText('CSV importeren — kies je exchange').first().click();
+      await page.waitForTimeout(300);
+      await page.getByRole('button', { name: /📥 Blofin →/i }).click();
       await page.waitForTimeout(600);
 
       // Viewport groot genoeg voor lesson-modal

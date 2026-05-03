@@ -6,6 +6,17 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.83] — 2026-05-03
+
+Hub-only navigatie voor exchange-lessons + FAQ-opmaak met markdown-rendering.
+
+### Gewijzigd
+- **Exchange-detail-lessons (l18-l22) verborgen uit de Handleiding-grid**. Ze waren dubbel zichtbaar: één keer als losse card én als knop in de hubs (CSV importeren / Exchange koppelen). De hubs zijn nu de enige route — voorkomt verwarring "welke moet ik klikken?". Lessen blijven volledig bereikbaar via de twee hub-cards en de exchange-tab-strip bovenaan elke detail-lesson.
+- **FAQ-antwoorden krijgen markdown-rendering**. Tot nu toe werden `**bold**`, `1. lijst`, `• bullets` en `` `code` `` letterlijk getoond als platte tekst — lappen tekst die niet uitnodigde tot lezen. Nieuwe `renderFaqAnswer()` helper converteert minimal-markdown (bold, italic, code, ordered/unordered lists, paragrafen) naar HTML met aparte `.faq-answer` styling: gold-counter-cirkels voor genummerde lijsten, gold-bullets voor punt-lijsten, monospace gold code-tags. Resultaat: gestructureerde antwoorden met visuele hiërarchie i.p.v. lopende tekst. Werkt op alle 6 thema's.
+
+### Fixed
+- **Exchange-lessons cards niet meer dubbel zichtbaar**: `HIDDEN_FROM_GRID` Set in `LessonsView` filtert de 5 detail-lessons (l18-l22) uit de grid. Voortgangsteller `done/total` rekent nu ook met de zichtbare set zodat de progressie niet ineens van 22 naar 17 lessen springt.
+
 ## [v12.82] — 2026-05-03
 
 HelpPage opgeschoond: Startersguide weg, FAQ herschreven gebruiksvriendelijk.
