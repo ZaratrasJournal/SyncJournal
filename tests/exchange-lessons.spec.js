@@ -74,9 +74,9 @@ test.describe('Exchange-lessons hub + 4 nieuwe lessons (v12.78)', () => {
     await page.getByText('Hyperliquid koppelen + importeren').first().click();
     await page.waitForTimeout(400);
 
-    await expect(page.getByText(/Privacy bovenaan: alle trades zijn publiek/i).first()).toBeVisible();
+    await expect(page.getByText(/Privacy: alle trades zijn publiek/i).first()).toBeVisible();
     await expect(page.getByText(/HyperTracker/).first()).toBeVisible();
-    await expect(page.getByText(/42 tekens totaal/).first()).toBeVisible();
+    await expect(page.getByText(/42 totaal/).first()).toBeVisible();
     await expect(page.getByText(/10\.000/).first()).toBeVisible();
   });
 
@@ -91,27 +91,40 @@ test.describe('Exchange-lessons hub + 4 nieuwe lessons (v12.78)', () => {
     await expect(page.getByText(/netting\/FIFO/i).first()).toBeVisible();
   });
 
-  test('Detail-lesson heeft "Andere exchange?"-sectie + cross-navigatie werkt', async ({ page }) => {
+  test('Detail-lesson heeft tab-strip BOVENAAN met active-state + cross-navigatie werkt', async ({ page }) => {
     await setup(page);
     // Open Blofin (l18)
     await page.getByText('Blofin koppelen + importeren').first().click();
     await page.waitForTimeout(400);
 
-    // "Andere exchange?"-sectie moet zichtbaar zijn
-    await expect(page.getByText('Andere exchange?').first()).toBeVisible();
-    // 4 chip-knoppen voor de andere exchanges (geen Blofin want we ZIJN op Blofin)
-    await expect(page.getByRole('button', { name: /MEXC →/ }).first()).toBeVisible();
-    await expect(page.getByRole('button', { name: /Kraken Futures →/ }).first()).toBeVisible();
-    await expect(page.getByRole('button', { name: /Hyperliquid →/ }).first()).toBeVisible();
-    await expect(page.getByRole('button', { name: /FTMO \(MT5\) →/ }).first()).toBeVisible();
+    // Tab-strip moet zichtbaar zijn — alle 5 exchanges
+    const tabsContainer = page.locator('.lesson-exchange-tabs').first();
+    await expect(tabsContainer).toBeVisible();
 
-    // Klik op MEXC-chip → l19 opent in dezelfde modal
-    await page.getByRole('button', { name: /🟢 MEXC →/ }).click();
+    // Self-exchange (Blofin) heeft active-state via aria-current
+    const blofinTab = tabsContainer.locator('button[aria-current="page"]');
+    await expect(blofinTab).toBeVisible();
+    await expect(blofinTab).toContainText('Blofin');
+
+    // Andere 4 zijn klikbaar via .lesson-link met data-lesson-target
+    for (const exch of ['MEXC', 'Kraken Futures', 'Hyperliquid', 'FTMO (MT5)']) {
+      const tab = tabsContainer.locator(`button.lesson-link:has-text("${exch}")`);
+      await expect(tab).toBeVisible();
+    }
+
+    // Onderaan-sectie ("Andere exchange?" h2) moet WEG zijn (verplaatst naar boven als tabs)
+    await expect(page.getByRole('heading', { name: 'Andere exchange?' })).not.toBeVisible();
+
+    // Klik op MEXC-tab → l19 opent in dezelfde modal
+    await tabsContainer.locator('button.lesson-link:has-text("MEXC")').click();
     await page.waitForTimeout(400);
     await expect(page.getByText('MEXC koppelen + importeren').first()).toBeVisible();
 
-    // Op MEXC-lesson moet nu "Andere exchange?"-sectie ook bestaan, met Blofin-chip
-    await expect(page.getByRole('button', { name: /🟣 Blofin →/ })).toBeVisible();
+    // Op MEXC-lesson is MEXC nu de active tab + Blofin is klikbaar
+    const mexcTabs = page.locator('.lesson-exchange-tabs').first();
+    const mexcActive = mexcTabs.locator('button[aria-current="page"]');
+    await expect(mexcActive).toContainText('MEXC');
+    await expect(mexcTabs.locator('button.lesson-link:has-text("Blofin")')).toBeVisible();
   });
 
   test('API-hub (l05): 4 knoppen actief + FTMO als callout-link naar l22', async ({ page }) => {

@@ -40,12 +40,12 @@ test.describe('Blofin-handleiding lesson (l18)', () => {
     await page.getByText('Blofin koppelen + importeren').first().click();
     await page.waitForTimeout(400);
 
-    // Kern-secties moeten zichtbaar zijn
-    await expect(page.getByText(/Welk pad past bij jou/i)).toBeVisible();
-    await expect(page.getByText(/CSV exporteren \(3 minuten\)/i)).toBeVisible();
-    await expect(page.getByText(/API-koppeling/i).first()).toBeVisible();
+    // Kern-secties moeten zichtbaar zijn (compactere v12.80-versie)
+    await expect(page.getByText(/TL;DR · 30 seconden/i)).toBeVisible();
+    await expect(page.getByText(/Pad A — CSV exporteren/i)).toBeVisible();
+    await expect(page.getByText(/Pad B — API-koppeling/i)).toBeVisible();
     await expect(page.getByText(/90-dagen-trap/i)).toBeVisible();
-    await expect(page.getByText(/Common pitfalls bij Blofin/i)).toBeVisible();
+    await expect(page.getByText(/Pitfalls/i).first()).toBeVisible();
 
     // Footer "Laatst gecontroleerd"-stempel
     await expect(page.getByText(/Laatst gecontroleerd: 2026-05-02/)).toBeVisible();

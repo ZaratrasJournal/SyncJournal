@@ -6,6 +6,34 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.80] — 2026-05-03
+
+Tab-strip bovenaan in plaats van "Andere exchange?"-sectie onderaan. Lessons compacter geschreven — minder lap tekst, meer functionaliteit.
+
+### Gewijzigd
+- **Exchange-tabs verplaatst van onderaan naar bovenaan** elke detail-lesson (l18-l22). Nieuwe `.lesson-exchange-tabs`-class — compacte horizontal strip met 5 chips, self-exchange highlighted in goud (`active` + `aria-current="page"`), andere 4 klikbaar via `data-lesson-target`. **Direct na openen lesson zie je alle exchange-opties** in plaats van pas onderaan na scrollen.
+- **Onderaan-sectie "Andere exchange?" verwijderd** — was dubbel met de nieuwe top-tabs.
+- **Alle 5 lessons compacter herschreven**:
+  - Inleidingsparagraaf van 3-4 zinnen naar 1-2 zinnen
+  - "Welk pad past bij jou?"-secties verwijderd waar TL;DR het al uitlegt
+  - Glossary-blokken (API key vs Secret vs Passphrase) ingekrompen tot 1 callout of weggehaald
+  - "Common pitfalls" van 5-6 punten naar top 3-4 essentiële
+  - "Trades komen niet binnen?"-troubleshooting van 5 stappen naar top 3
+  - **l18 Blofin** krijgt eindelijk ook een TL;DR-block (was de enige lesson zonder)
+- Resultaat: ~30% minder tekst per lesson, dezelfde kritische info (90-dagen-trap, ESMA, privacy, US-vs-Global).
+
+### Toegevoegd
+- **`scripts/move-exchange-tabs-top.js`** — eenmalig script dat de tabs bovenaan plaatste en de onderaan-sectie verwijderde voor alle 5 lessons.
+- **`scripts/rewrite-exchange-lessons-compact.js`** — eenmalig script dat de volledige content van l18-l22 vervangt met compacte versies. Behoudt id/level/svg/title/desc, vervangt alleen de content-string.
+
+### Tests
+- `tests/exchange-lessons.spec.js` scenario "Andere exchange?-sectie + cross-navigatie" hernoemd naar **"tab-strip BOVENAAN met active-state + cross-navigatie"** — verifieert nu `.lesson-exchange-tabs` class, `aria-current="page"` op self-exchange, en dat de oude onderaan-`<h2>Andere exchange?</h2>` verdwenen is.
+- `tests/blofin-lesson.spec.js` content-assertions bijgewerkt: oude headings ("Welk pad past bij jou", "Common pitfalls bij Blofin") vervangen door huidige (TL;DR, Pad A — CSV exporteren, Pad B — API-koppeling, Pitfalls).
+- `tests/exchange-lessons.spec.js` Hyperliquid-test: callout-titel-tekst aangepast (van "Privacy bovenaan: alle trades zijn publiek" naar "Privacy: alle trades zijn publiek").
+- **Volledige focused regressie**: alle relevante lesson-specs (15/15) groen.
+
+---
+
 ## [v12.79] — 2026-05-03
 
 Cross-exchange navigatie binnen detail-lessons. Plus design-review check in alle 6 thema's voor lesson-modal kleur-leesbaarheid.
