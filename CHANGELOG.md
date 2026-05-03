@@ -6,6 +6,19 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.81] — 2026-05-03
+
+Lesson-grid card-illustratie passend bij thema in lichte modi.
+
+### Fixed
+- **Lesson-card SVG-illustratie-container** had hardcoded donkere gradient (`linear-gradient(135deg,#0a0d13,#13161e)`) die er onsamenhangend uitzag op lichte thema's (light / parchment / daylight) — donkere blokken op lichte achtergrond. Vervangen door `linear-gradient(135deg,var(--bg3),var(--bg4))`. In donker thema's: blijft donker. In lichte: meegekleurd met de bg-token-shift, zodat de cards homogeen zijn met de rest van de pagina.
+
+### Tests
+- **Nieuwe spec `tests/lesson-grid-themes.spec.js`** — opent Help → Handleiding card-grid in alle 6 thema's (sync/classic/aurora/light/parchment/daylight) en maakt screenshots in `tests/screenshots/lesson-grid-themes/`. Visuele regressie-tool voor toekomstige theme-tweaks aan de card-grid.
+- Verifieerde uitkomsten: sync (donker) blijft donker zoals voorheen; light + parchment + daylight tonen nu correct lichte illustratie-containers passend bij thema.
+
+---
+
 ## [v12.80] — 2026-05-03
 
 Tab-strip bovenaan in plaats van "Andere exchange?"-sectie onderaan. Lessons compacter geschreven — minder lap tekst, meer functionaliteit.
