@@ -6,6 +6,33 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.78] — 2026-05-03
+
+Vier nieuwe exchange-handleidingen: **MEXC (l19), Kraken Futures (l20), Hyperliquid (l21), FTMO MT5 (l22)**. Hub-knoppen in l04/l05 zijn nu allemaal actief.
+
+### Toegevoegd
+- **Lesson l19 — "MEXC koppelen + importeren"** (~11 min). CSV-pad via Orders → Futures Orders → Position History (max 18 maanden). API-pad zonder passphrase (anders dan Blofin/OKX). Documenteert de **90-dagen-key-trap** (zelfde patroon als Blofin: zonder IP-whitelist verloopt key na 90d). Pitfalls: Spot vs Futures aparte exports, mobiele app exporteert niet, max 100k entries / 10 downloads per maand.
+- **Lesson l20 — "Kraken Futures koppelen + importeren"** (~12 min). futures.kraken.com is een **aparte interface** — spot-keys werken niet. CSV via Logs → Download All (Account Log met `booking_uid`/`trade_price`/`realized_pnl`). API via Settings → API → Read Only, geen passphrase, HMAC-Authent header. **EU-traders-warning**: nov 2025 lanceerde Kraken via CySEC perpetuals voor EU-retail (max 10× hefboom). ESMA publiceerde feb 2026 dat perpetuals onder CFD-product-intervention vallen → leverage zou H2 2026 naar 2× kunnen zakken. Lesson waarschuwt expliciet.
+- **Lesson l21 — "Hyperliquid koppelen + importeren"** (~9 min). DEX zonder API-key — alleen 0x-wallet-adres (42 chars). **Privacy-warning prominent bovenaan**: alle Hyperliquid-trades zijn 100% publiek on-chain — leaderboard, HyperTracker, Coinglass tonen elke positie/PnL/win-rate. Tip: gebruik dedicated trading-wallet, geen wallet met persoonlijke ENS/NFT's. CSV via Portfolio → Trade History → Export (hard limit 10.000 rijen — voor meer: trade-export.hypedexer.com community-tool). Sub-accounts/vaults hebben eigen adres.
+- **Lesson l22 — "FTMO (MT5) koppelen + importeren"** (~10 min). **CSV-only — geen API**. Pad via trader.ftmo.com → Accounts Overview → klik account → MetriX → Trading Journal → Export CSV. Date-range filter boven tabel. **Pitfall #1: FTMO US (netting/FIFO) vs FTMO Global (hedging)** — radicaal andere CSV-output. Bij netting verbergt average-entry losse fills. Symbol-format: `EURUSD`/`BTCUSD`/`US30`/`XAUUSD` (geen slash, geen suffix). Trial accounts zonder eerste trade hebben geen MetriX-tab.
+
+### Gewijzigd
+- **l04 (CSV-hub)**: alle 5 exchange-knoppen zijn nu actief klikbaar (Blofin/MEXC/Kraken Futures/Hyperliquid/FTMO MT5). Geen "binnenkort"-badges meer.
+- **l05 (API-hub)**: 4 knoppen actief (Blofin/MEXC/Kraken Futures/Hyperliquid). FTMO blijft een aparte callout maar is nu **klikbaar** — opent direct l22 voor de CSV-pad.
+- **Alle 4 nieuwe lessons gebruiken het v12.77 readability-redesign**: TL;DR-block bovenaan met 3-4 key-takeaways, custom counter-cirkels op `<ol>`, gestylede callouts (warn/tip/why/example), `<code>` met gold-tint, scroll-progress in de modal-header. "Laatst gecontroleerd: 2026-05-03" stempel onderaan elke lesson.
+
+### Tests
+- **Nieuwe Playwright spec `tests/exchange-lessons.spec.js`** met 7 scenario's: alle 5 lesson-cards zichtbaar, CSV-hub alle knoppen klikbaar (geen disabled meer), klik op MEXC-knop opent l19 met TL;DR + 90-dagen-trap, Kraken-lesson bevat EU/ESMA-warning + futures.kraken.com onderscheid, Hyperliquid-lesson heeft prominent privacy-warning + 0x-format, FTMO-lesson heeft CSV-only + US-vs-Global pitfall, API-hub klik op FTMO-callout-knop opent l22.
+- **Volledige focused regressie**: 28/28 groen.
+
+### Onderzoek-bronnen per exchange
+- **MEXC**: officiële MEXC support center (export-articles, API tutorial, Key renewal regels), MEXC API docs, community-bronnen (Cryptact, Gunbot).
+- **Kraken Futures**: Kraken support 360022839451, docs.kraken.com/api/docs/futures-api, python-kraken-sdk veldenset, Kraken blog (3 nov 2025 EU-launch), ESMA-statement (24 feb 2026), Finance Magnates analyse.
+- **Hyperliquid**: hyperliquid.gitbook.io, app.hyperliquid.xyz/portfolio, Cryptact integratie, trade-export.hypedexer.com, community guides over wallet-extensies.
+- **FTMO MT5**: FTMO blog (Account MetriX, Scaling out), FTMO Academy, trader-journal-integraties (TradeZella/TradesViz/TradeBB), MQL5 forum (positions vs deals), The Payout Report (FTMO US vs Global, MT5 risk controls).
+
+---
+
 ## [v12.77] — 2026-05-03
 
 Lesson-readability redesign. Geen "lap tekst"-gevoel meer — typography, callouts, step-markers, scroll-progress.
