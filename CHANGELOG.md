@@ -6,6 +6,29 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.82] — 2026-05-03
+
+HelpPage opgeschoond: Startersguide weg, FAQ herschreven gebruiksvriendelijk.
+
+### Verwijderd
+- **Startersguide-tab** uit Help. De content (3 cards: Exchange sync / CSV / Demo) was verouderd geworden — de exchange-namen verschenen ook in de Handleiding-cards. Dubbele info, en de Handleiding dekt nu alle paden via lessons l04-l05 (hubs) + l18-l22 (per exchange). Header-tekst aangepast: weg met "snelle startersguide", in de plaats: "Stap-voor-stap handleidingen per onderdeel, plus een doorzoekbare FAQ."
+- **Legacy migratie**: gebruikers met `tj_help_subtab="startersguide"` in localStorage worden automatisch gemapt naar `lessons` zodat ze geen blanco tab zien.
+
+### Gewijzigd
+- **FAQ volledig herschreven** voor niet-technische gebruikers. ~30 entries doorgelopen:
+  - **Geen DevTools-instructies meer** ("F12 → Console → typ `localStorage.removeItem(...)`") — vervangen door UI-routes.
+  - **Geen `python -m http.server`-tip** als oplossing voor file:// — vervangen door begrijpelijk advies (vaste map, hosted versie via Discord vragen).
+  - **Lange essays ingekrompen**: het Playbook-koppeling antwoord ging van 800+ woorden naar ~150 woorden, idem voor Big-Picture-velden, A+/A/B/C grading, Gemist/Backtest/Paper.
+  - **Jargon vereenvoudigd**: "IndexedDB + localStorage" → "in je browser, op je eigen apparaat". "Cloudflare Worker als proxy voor CORS-signing" → "een proxy om de exchange te bereiken (technische noodzaak voor veiligheid)".
+  - **Concrete voorbeelden toegevoegd** waar abstract: R-multiple uitleg met BTC entry/SL/exit prijzen, Capital vs Equity met $10k voorbeeld, multi-TP met split percentage-voorbeeld.
+  - **Verwijzingen naar de juiste hulp**: "voor stap-voor-stap per exchange: Help → Handleiding → klik je exchange" — kruisverwijzing naar de uitgewerkte exchange-lessons in plaats van inline herhaling.
+
+### Tests
+- **Nieuwe spec `tests/help-tab-cleanup.spec.js`** met 4 scenario's: Startersguide-tab is weg, header-tekst is bijgewerkt, FAQ-tab opent en bevat de gebruiksvriendelijke entries (verifieert dat DevTools- en python-instructies eruit zijn), legacy `startersguide`-state in localStorage wordt correct naar lessons gemapt.
+- **Volledige focused regressie**: 19/19 groen.
+
+---
+
 ## [v12.81] — 2026-05-03
 
 Lesson-grid card-illustratie passend bij thema in lichte modi.
