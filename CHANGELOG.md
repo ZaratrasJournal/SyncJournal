@@ -6,6 +6,30 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.79] — 2026-05-03
+
+Cross-exchange navigatie binnen detail-lessons. Plus design-review check in alle 6 thema's voor lesson-modal kleur-leesbaarheid.
+
+### Toegevoegd
+- **"Andere exchange?"-sectie** onderaan elke detail-lesson (l18 t/m l22). Bevat 4 chip-knoppen voor de overige exchanges (zelf-exchange wordt eruit gefilterd). Snel switchen zonder via Help-tab terug te hoeven. Lost het *"als ik op MEXC klik verdwijnen de andere knoppen"*-gevoel op — gebruiker kan nu binnen één modal-sessie tussen alle 5 lessons heen-en-weer.
+- **Nieuwe spec `tests/lesson-themes.spec.js`** — opent l18 in alle 6 thema's en maakt screenshots in `tests/screenshots/lesson-themes/`. Visuele regressie-tool voor toekomstige theme-tweaks.
+- **Eenmalige helper `scripts/add-other-exchange-section.js`** — Node-script dat de "Andere exchange?"-sectie programmatisch in elke lesson injecteerde (5 lessons in 1 run, deterministisch).
+
+### Design-review uitkomsten
+Lesson-modal getest in alle 6 thema's. Resultaat: **alle 6 leesbaar zonder kleur-fixes nodig**:
+- ✅ **Sync** (default donker): goede contrast, callouts duidelijk gekleurd, step-cirkels gold-tinted, body op `var(--text)` knalt
+- ✅ **Classic** (donker, minder goud): tekst helder, callouts blijven onderscheidend
+- ✅ **Aurora** (donker met paars-accent): leesbaar; modal-rendering klein in screenshot maar inhoudelijk OK
+- ✅ **Light** (wit/grijs accent): donkere tekst op witte modal — sterk contrast, callout-tints werken
+- ✅ **Parchment** (warme beige): warmte gehandhaafd, geen "alles is grijs"-gevoel
+- ✅ **Daylight** (zacht licht): subtieler dan Light maar nog steeds goed leesbaar
+
+### Tests
+- **8 scenario's in `tests/exchange-lessons.spec.js`** (1 nieuw): cross-navigatie via "Andere exchange?"-sectie verifieert dat klik op MEXC-chip in Blofin-lesson l19 opent, en dat l19 op zijn beurt de Blofin-chip toont.
+- **Volledige focused regressie**: 29/29 groen.
+
+---
+
 ## [v12.78] — 2026-05-03
 
 Vier nieuwe exchange-handleidingen: **MEXC (l19), Kraken Futures (l20), Hyperliquid (l21), FTMO MT5 (l22)**. Hub-knoppen in l04/l05 zijn nu allemaal actief.

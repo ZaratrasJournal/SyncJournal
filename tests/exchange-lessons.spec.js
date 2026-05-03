@@ -91,6 +91,29 @@ test.describe('Exchange-lessons hub + 4 nieuwe lessons (v12.78)', () => {
     await expect(page.getByText(/netting\/FIFO/i).first()).toBeVisible();
   });
 
+  test('Detail-lesson heeft "Andere exchange?"-sectie + cross-navigatie werkt', async ({ page }) => {
+    await setup(page);
+    // Open Blofin (l18)
+    await page.getByText('Blofin koppelen + importeren').first().click();
+    await page.waitForTimeout(400);
+
+    // "Andere exchange?"-sectie moet zichtbaar zijn
+    await expect(page.getByText('Andere exchange?').first()).toBeVisible();
+    // 4 chip-knoppen voor de andere exchanges (geen Blofin want we ZIJN op Blofin)
+    await expect(page.getByRole('button', { name: /MEXC →/ }).first()).toBeVisible();
+    await expect(page.getByRole('button', { name: /Kraken Futures →/ }).first()).toBeVisible();
+    await expect(page.getByRole('button', { name: /Hyperliquid →/ }).first()).toBeVisible();
+    await expect(page.getByRole('button', { name: /FTMO \(MT5\) →/ }).first()).toBeVisible();
+
+    // Klik op MEXC-chip → l19 opent in dezelfde modal
+    await page.getByRole('button', { name: /🟢 MEXC →/ }).click();
+    await page.waitForTimeout(400);
+    await expect(page.getByText('MEXC koppelen + importeren').first()).toBeVisible();
+
+    // Op MEXC-lesson moet nu "Andere exchange?"-sectie ook bestaan, met Blofin-chip
+    await expect(page.getByRole('button', { name: /🟣 Blofin →/ })).toBeVisible();
+  });
+
   test('API-hub (l05): 4 knoppen actief + FTMO als callout-link naar l22', async ({ page }) => {
     await setup(page);
     await page.getByText(/Exchange koppelen — kies je exchange/i).first().click();
