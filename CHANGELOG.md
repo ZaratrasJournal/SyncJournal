@@ -6,6 +6,24 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.76] — 2026-05-03
+
+l04 (CSV importeren) en l05 (Exchange koppelen) omgevormd tot **hub-lessons** met exchange-keuze-knoppen. Plus lesson-naar-lesson navigatie in de Reading Modal.
+
+### Toegevoegd
+- **Hub-knoppen in l04 + l05** — gebruiker ziet nu een directe keuze "Welke exchange gebruik je?" met klikbare buttons per exchange. Klik = open de bijbehorende detail-lesson zonder de modal te sluiten. Blofin (l18) is nu actief; MEXC, Kraken, Hyperliquid, FTMO staan als disabled buttons met "(binnenkort · v12.7X)"-badge zodat gebruiker weet dat ze in komen.
+- **`data-lesson-target` attribuut** in lesson-content. Naast de bestaande `data-target="<tab>"` (sluit modal + switch app-tab) ondersteunt LessonReadingModal nu `data-lesson-target="<lesson-id>"` dat de modal-content verwisselt door het bestaande `openLesson`-event te dispatchen. Dezelfde mechaniek die de prev/next-knoppen al gebruiken — geen nieuwe state, geen modal-flicker.
+
+### Gewijzigd
+- **l04 "CSV importeren — kies je exchange"** — duration verlaagd van 10 naar 4 min (hub is nu kort). Algemene tips (taggen na import, dedup, klein beginnen) blijven; exchange-specifieke instructies zijn verhuisd naar de detail-lessons (l18+).
+- **l05 "Exchange koppelen — kies je exchange"** — duration verlaagd van 12 naar 4 min. Universele Read-only-veiligheidsregel + uitleg over wat live-sync ophaalt (trades / open posities / balance / TP-fills) blijven. Specifieke API-stappen zijn nu in de detail-lessons.
+
+### Tests
+- **Nieuwe scenario in `tests/blofin-lesson.spec.js`**: verifieert hub-navigatie — open l04 → klik Blofin-knop → l18 swap-t in dezelfde modal en de "90-dagen-trap" sectie van l18 is zichtbaar (bewijst dat de juiste lesson is geopend).
+- Volledige regressie: 18/18 groen.
+
+---
+
 ## [v12.75] — 2026-05-02
 
 Eerste van een serie diepere exchange-handleidingen — **Blofin koppelen + importeren** (lesson l18) toegevoegd onder Help. Beginner-niveau, ~12 min, dekt zowel CSV als API.

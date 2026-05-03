@@ -58,6 +58,35 @@ test.describe('Blofin-handleiding lesson (l18)', () => {
     expect(errors, `JS errors tijdens rendering:\n${errors.join('\n')}`).toEqual([]);
   });
 
+  test('Hub-navigatie: klik Blofin-knop in l04 (CSV) opent l18 zonder modal-close', async ({ page }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem('tj_welcomed', '1');
+      localStorage.setItem('tj_milestones_seen', JSON.stringify(['trades-10','first-win']));
+    });
+    await page.goto(FILE_URL, { waitUntil: 'networkidle' });
+    await page.waitForFunction(() => /Dashboard/i.test(document.body.innerText), { timeout: 15_000 });
+    await page.evaluate(() => { window.location.hash = '#/help'; });
+    await page.waitForTimeout(500);
+
+    // Open de CSV-hub-lesson (l04)
+    await page.getByText(/CSV importeren — kies je exchange/i).first().click();
+    await page.waitForTimeout(300);
+
+    // Verifieer dat hub-knoppen voor alle exchanges zichtbaar zijn
+    await expect(page.getByRole('button', { name: /📥 Blofin/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /📥 MEXC/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /📥 FTMO/i })).toBeVisible();
+
+    // Klik op Blofin-knop → moet l18 (Blofin lesson) openen
+    await page.getByRole('button', { name: /📥 Blofin →/i }).click();
+    await page.waitForTimeout(400);
+
+    // Lesson-titel van l18 moet nu zichtbaar zijn (modal swap, niet close)
+    await expect(page.locator('text=Blofin koppelen + importeren').first()).toBeVisible({ timeout: 3_000 });
+    // Specifieke l18-content (90-dagen-trap) bewijst dat de juiste lesson is geopend
+    await expect(page.getByText(/90-dagen-trap/i)).toBeVisible();
+  });
+
   test('"Open Accounts"-knop in de lesson navigeert naar de Accounts-tab', async ({ page }) => {
     await page.addInitScript(() => {
       localStorage.setItem('tj_welcomed', '1');
