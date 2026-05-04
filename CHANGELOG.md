@@ -6,6 +6,62 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.85] — 2026-05-04
+
+Grote release: Instellingen-pagina herontworpen met scroll-spy sidebar, Playbook-pagina als edge-archief uitgebreid, en exchange-bug-isolatie via adapter-pattern. Plus diverse bug-fixes en UX-polish.
+
+### Toegevoegd
+
+#### ⚙️ Instellingen-pagina — scroll-spy redesign
+- **Sticky sidebar links** met 3 categorieën (🔌 Account & Data / 🔧 App / ⚙️ Geavanceerd) en scroll-spy navigatie. IntersectionObserver highlight de actieve sectie tijdens scroll, klik in sidebar = smooth scroll naar het anker.
+- **Sub-tabs (Accounts / Trading Rules / Goals / Tags / Help)** verplaatst boven de "Account & Data" banner en links uitgelijnd voor consistentie tussen alle settings-pagina's. Zichtbaar in alle 6 thema's via subtle border + `var(--text2)` op inactieve tabs.
+- **Hoofdstuk-labels** in de sidebar duidelijker: gold-kleur, font-weight 800, 11px, letter-spacing .14em + subtiele divider tussen categorieën.
+- **Data wissen-card** met confirm-modals: "Wis trades" toont aantal trades, "Reset alles" vereist letterlijk **typen van `RESET`** voordat de bevestig-knop ontgrendelt. ESC sluit, klik buiten de card sluit ook.
+- **Storage-card** toont localStorage-gebruik (KB / 5MB) met groene badge.
+
+#### 🎯 Playbook-pagina — edge-archief
+- **Setup-voorbeelden** (max 5 per playbook) — referentie-charts gemarkeerd als ✓ Schoolvoorbeeld / ⚡ Marginal / ✗ Valse setup. Upload via klik, sleep, of **Ctrl+V plakken** uit clipboard (zoals trade-screenshots). Helpt pattern-recognition trainen — édge bouwen begint bij weten hoe het er goed/slecht uitziet.
+- **Referenties-sectie** in Playbook-form en -detail: TradingView chart-template URL + Bron-label + Bron-URL (vrij format, bv. *"Morani — MLS strategie"*).
+- **Anti-criteria** als checklist paralel aan Entry-criteria — vóór-trade gates ("wanneer NIET nemen"). Andere semantiek dan Mistake-patterns (= ná-trade reflectie). Hard stop-flag voor harde no-go regels.
+- **Edge-breakdown** in PlaybookDetailModal — 4 cards met horizontale R-bars + 💡 inzicht-callouts:
+  - Per sessie (bv. *"Beste sessie: London AM (+2.23R · 6 trades). Verlies in Asia PM — overweeg te skippen."*)
+  - Per dag van de week (NL labels, Amsterdam-tijd)
+  - Per grade (A+/A/B/C — verschil in R per grade)
+  - Per confirmation-tag (mét vs zonder vergelijking + Δ-delta zodat je ziet welke confluence het meest bijdraagt aan je edge)
+
+#### 🔧 Architecture
+- **Exchange-bug-isolatie via adapter-pattern**. `detectPartialFromSiblings` (shared helper) wordt nu via `ExchangeAPI[ex].detectPartials(...)` geroepen ipv direct shared-aanroep. Een Blofin-fix kan onmogelijk MEXC-paden raken (en omgekeerd). Toegevoegd aan elke exchange (Blofin/MEXC/Kraken/Hyperliquid wrappen de shared helper, FTMO is no-op want CSV-only). Regressie-test [tests/exchange-isolation.spec.js](tests/exchange-isolation.spec.js) bewijst de isolatie. Zie ook [CLAUDE.md](CLAUDE.md) sectie "Exchange-architectuur" voor het architectuur-principe.
+
+### Gewijzigd
+- **Analytics-pagina spacing** — alle Analytics-secties (Proces-KPI's, Risk Consistency, Setup Edge, Sessie Performance, Heatmap, etc.) hadden geen tussenruimte tussen de cards. `.sort-row` heeft nu `margin-bottom: 18px` zodat secties netjes ademen.
+- **HelpPage volledige breedte** — `maxWidth: 1100px` constraint verwijderd zodat Help dezelfde brede layout krijgt als Trading Rules / Goals / Tags.
+- **Top-right thema-toggle** wisselt nu tussen `light` en `classic` (was: tussen niet-bestaande thema's `morani`/`purple` waardoor de knop niets deed).
+- **PlaybookForm intro-tekst** vervangt misleidende "alleen Naam + Setup-tags zijn echt nodig" door uitnodigender *"Hoe vollediger je deze playbook invult, hoe scherper je edge wordt"* met expliciete moedig om criteria, anti-criteria, regels en voorbeelden mee te nemen.
+
+### Fixed
+- **Milestone-popup transparantie** — card had een gradient van 8-12% alpha zonder solide basislaag, waardoor underlying content erdoorheen leesbaar bleef. Stack nu: `linear-gradient(...) , var(--bg2)`.
+- **Milestone-popup demo-skip** — demo-trades triggeren geen "10 trades!"-felicitatie meer (voelde vals). Wordt ook niet als seen opgeslagen, dus zodra demo uit gaat en je 10 echte trades behaalt, fired de popup wél.
+
+### Verwijderd
+- **Proxy URL setting** uit Voorkeuren-card. Default Cloudflare Worker werkt out-of-the-box; dev-only override blijft mogelijk via `tj_proxy_url` localStorage.
+- **Diagnostiek-snapshot knop** uit oude Debug-card. Vervangen door enkel een Storage-card die het ruimte-gebruik toont.
+- **Categorie-banners taglines** ("Hoe je trades binnenkomen + waar je backup-vangnet zit." / "Algemene voorkeuren + updates." / "Voor wie z'n setup zelf in de hand heeft") verwijderd. Banner-titel alleen.
+
+### Verborgen (dev-only)
+- **Blofin debug-knoppen** (🔍 Debug raw response / 📥 Snapshot / 🔬 Test fixture) zijn nu alleen zichtbaar met `?dev=1` in de URL. Code intact voor toekomstige debug-sessies. Documentatie + uitbreidings-pad voor andere exchanges in [BACKLOG.md](BACKLOG.md) onder "🚧 Hidden / dev-only debug-knoppen".
+
+## [v12.84] — 2026-05-03
+
+Vrijwillige donatie-sectie + milestone-popup fixes.
+
+### Toegevoegd
+- **🍕 Vrijwillige donatie-card** onderaan de Instellingen-pagina. SyncJournal blijft 100% gratis voor de community; deze sectie geeft mensen die willen bijdragen een nette plek om dat te doen, zonder enige verplichting of feature-gating. Twee crypto-adressen (USDC op Arbitrum, SOL op Solana) met **📋 Kopieer-knoppen** die per klik wisselen naar `✓ Gekopieerd` (1.6s feedback). Network-warning callout om te voorkomen dat iemand op het verkeerde netwerk stuurt. Werkt op alle 6 thema's via theme-tokens (`var(--gold-border)`, `var(--bg3)`, `var(--gold-dim)` — geen hardcoded kleuren).
+
+### Fixed
+- **Milestone-popup vuurt niet meer in demo-modus**. Wie demo-data inlaadde kreeg ten onrechte de "10 trades!"-felicitatie, want het zijn geen echt verdiende trades. We slaan ze ook niet als gezien op — zodra demo wordt uitgezet en de user 10 echte trades behaalt, fired de popup wél.
+- **Milestone-popup is niet meer doorschijnend**. De card had een gold-tint gradient van 8-12% alpha zonder solide basislaag, waardoor de underlying content erdoorheen leesbaar bleef. Nieuwe stack: `linear-gradient(...) , var(--bg2)` + steviger `var(--gold-border)` zodat de popup op alle 6 thema's solide oogt.
+- **Top-right thema-toggle werkt weer**. Knop wisselde tussen `morani`/`purple` (twee thema's die niet meer bestaan), waardoor klikken niets deed. Nieuwe gedrag: wisselt tussen `light` en `classic`. Icoon switcht mee (☀️ in dark / 🌙 in light) en heeft een tooltip + aria-label. Andere thema's blijven kiesbaar via Instellingen → Thema.
+
 ## [v12.83] — 2026-05-03
 
 Hub-only navigatie voor exchange-lessons + FAQ-opmaak met markdown-rendering.

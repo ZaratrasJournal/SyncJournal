@@ -40,7 +40,7 @@ _scratch/    - GITIGNORED: oude varianten (v4_14, dragdrop-test, design-handoff)
 4. Commit de user-facing changes bij elkaar (code + version-bumps + CHANGELOG entry in één commit).
 5. `cp work/tradejournal.html main/tradejournal.html`.
 6. Commit als `Release: sync work -> main (vX.Y — korte titel)`.
-7. `git push` — community ziet update-banner in Instellingen → Accounts bij hun volgende Check.
+7. **`git push` ALLEEN op expliciet "push"-commando van Denny.** Een "ga maar bouwen" / "doe maar" / "zet erin" is **géén** push-toestemming. Lokale commits zijn OK; pushen naar `origin/main` maakt het publiek voor de community en vereist altijd Denny's expliciete go. Na push ziet de community de update-banner in Instellingen → Accounts bij hun volgende Check.
 
 ## Code-conventies
 - **Theme-awareness**: nooit hardcoded `#fff`, `rgba(255,255,255,...)`, `#C9A84C` in JSX. Gebruik `var(--text)`, `var(--text2)`, `var(--gold)`, `var(--bg)`, `var(--green)`, `var(--red)`, `var(--amber)`. Of voeg per-thema override toe in `<style>` block met `body.theme-light .selector {...}`. Alle 6 thema's testen: sync / classic / aurora / light / parchment / daylight.
@@ -51,6 +51,21 @@ _scratch/    - GITIGNORED: oude varianten (v4_14, dragdrop-test, design-handoff)
 - **Inline JSX styling**: inline `style={{}}` is de norm in deze file. CSS-class alleen als er een hover/media-query nodig is. Houd style-objects compact.
 - **React hooks**: `useState` / `useEffect` / `useRef` / `useMemo` / `useCallback` zijn globaal gedestructureerd bovenin het bestand (`const {useState,...} = React`). Geen `React.useState` nodig.
 - **Amsterdam-tijd voor user-facing datums**: gebruik `Intl.DateTimeFormat("sv-SE", {timeZone:"Europe/Amsterdam", ...})` voor dag-of-week / uur berekeningen (DST-aware). Zie DisciplineHeatmap als voorbeeld.
+
+## Exchange-architectuur — bug-isolatie tussen exchanges
+
+We ondersteunen 5 exchanges (Blofin, MEXC, Kraken Futures, Hyperliquid, FTMO MT5). Elke exchange heeft eigen data-shapes en eigen aannames; **een fix voor één exchange mag niet per ongeluk een andere breken**. Daarom:
+
+- **API-adapters zijn per exchange** in `ExchangeAPI.{exchange}` — `fetchTrades`, `testConnection`, `fetchOpenPositions`, `fetchFills`, etc. Elk eigen object, eigen closure. Hier nooit cross-exchange logica plakken.
+- **Trade-processing met exchange-aannames hoort óók in de adapter**, niet in shared helpers. Voorbeeld: Blofin's partial-close detectie maakt aannames over `positionId`-hergebruik en `_rawCloseSize`-veld die voor MEXC niet kloppen. Zo'n functie wordt een adapter-methode (`ExchangeAPI.blofin.detectPartials(...)`), niet een gedeelde helper die met `if (ex==="blofin")` switcht.
+- **Pure utilities mogen gedeeld blijven** als ze ZERO exchange-aannames hebben: `syncTradeFlatFields` (layers→flat tags), `normalizeTrade` (price-precisie fix), `getConsumedSiblings` (algemene matchKey). Geen `if (exchange === ...)` ergens in. Bij twijfel: per exchange.
+- **Bij wijzigingen aan iets dat door meerdere exchanges loopt**: expliciet toetsen welke exchanges het pad raken. Een commit-message als "fix Blofin partial-close" terwijl je `detectPartialFromSiblings` (shared) wijzigt = misleidend, want MEXC gaat ook door dezelfde functie.
+- **Nieuwe exchange toevoegen** = vol-formuleerd adapter-object met alle methodes (incl. no-ops voor wat niet relevant is, bv. `detectPartials: t => t` voor CSV-only). Dispatcher in App roept altijd via `ExchangeAPI[ex].method(...)`, nooit een if/else op exchange-naam in App.
+- **Snapshot-fixture pattern** (`?dev=1` knoppen voor Blofin in v12.85): per-exchange uitbreidbaar. Patroon staat in `BACKLOG.md` onder "🚧 Hidden / dev-only debug-knoppen".
+
+**Anti-patroon**: één gedeelde `detectPartialFromSiblings` met `if (exchange === "blofin") { /* speciale logica */ }`. Dat trekt Blofin-aannames over het MEXC-pad heen. Beter: split naar adapter-methodes.
+
+**Pragmatische scope**: niet alles moet vandaag al gemoduleerd worden. Bestaande gedeelde code mag staan. **Maar nieuwe exchange-specifieke logica gaat per direct in de adapter**, en wanneer een gedeelde helper buggy blijkt voor een specifieke exchange splitsen we 'm bij de fix (niet patchen met een if-statement).
 
 ## Werkafspraken
 - Communiceer in het **Nederlands**.
@@ -215,6 +230,7 @@ git commit -am "update design-review baseline (vX.Y — reden)"
 **Wat het NIET doet**: subjectieve UX ("voelt premium"), klikflows binnen schermen (gebruik feature-specs), accessibility audit (fase 3).
 
 ## Niet doen
+- **Geen `git push` naar `origin/main` zonder expliciet "push"-commando van Denny.** Geldt voor élke push (gewoon, force, vanaf andere branch — alles). "Ga maar bouwen" / "doe maar" / "zet erin" / "ja akkoord" zijn **géén** push-toestemming, alleen het letterlijke woord *push* (of "release", "live", "publiceer") telt. Lokale commits + `cp work → main` zijn OK; pas op het moment dat het naar GitHub gaat is expliciete go vereist. Bij twijfel: niet pushen, vragen.
 - Geen `file://` paden in instructies naar gebruikers.
 - Geen API-keys in de browser persisten zolang er geen backend is.
 - Geen framework-refactor zonder expliciet akkoord.

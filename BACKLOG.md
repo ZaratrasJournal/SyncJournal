@@ -43,7 +43,46 @@ Basis kwam uit de feature-diff v4_14 → v9 onderaan. Inmiddels werken we op **v
 
 - [ ] **Hyperliquid live balance wordt niet opgehaald in BALANS bovenin** *(2026-04-24, gemeld door Denny)* — Hyperliquid `testConnection` haalt nu alleen `clearinghouseState.marginSummary.accountValue` op (perp-only equity). Te checken: (a) returnt de call überhaupt `success: true` met `balance > 0` voor Denny's wallet — debug via console of de hook hyperliquid wel oppakt; (b) `useLiveExchangeBalances` skipt mogelijk wallet-only exchanges door de check `if(ex.walletOnly){if(!cfg.walletAddress)continue;}` — of werkt die correct?; (c) als de wallet alleen spot-balance heeft (`spotClearinghouseState.balances` met USDC/USDT) telt dat nu niet mee in `accountValue` — uitbreiden met spot-fetch zou nodig zijn (zoals we eerder probeerden in een teruggedraaide v12.30 patch). Reproductie: Denny's profiel met Hyperliquid wallet ingevuld → Hyperliquid contributeert niets aan BALANS bovenin. Code: [work/tradejournal.html:1642-1647](work/tradejournal.html#L1642-L1647) (testConnection) + [work/tradejournal.html:1924-1958](work/tradejournal.html#L1924-L1958) (hook).
 
+## 📋 Onderzocht — wacht op go (geen code geschreven)
+
+- [ ] **Combined trades — meerdere trades als één behandelen** *(2026-05-02, onderzoek afgerond — zie [docs/combined-trades-research-2026-05-02.md](docs/combined-trades-research-2026-05-02.md))* — Feature-request van Denny: trades selecteren in TradeList → klik "Combineer" → 4 trades worden één logische trade met aggregate entry/SL/exit/PnL/fees + de 4 individuele trades als TP-niveaus. Use-case voorbeeld: 4× 0.25 BTC long met verschillende TP-targets samen behandelen als 1× 1 BTC long met 4 TPs.
+
+  **Wat onderzocht is**:
+  - **Aanname-correctie**: Denny dacht dat FTMO/MT5 geen partial TPs ondersteunt — dat klopt **niet helemaal**. MT5 hedging-mode (standaard FTMO niet-US) ondersteunt het natief. Alleen FTMO **US** (netting + FIFO) is anders. De "splits in N trades"-praktijk is dus een keuze, geen verplichting.
+  - **Per-exchange status**: van de 5 geïmplementeerde exchanges hebben er 4 al auto-aggregatie (Blofin CSV, Kraken, Hyperliquid, MEXC). Alleen FTMO (geen partial-detect) en Blofin API (fragile heuristiek) hebben deze feature nodig. Plus toekomstige Bybit-parser (Denny's primaire crypto-exchange).
+  - **Architectuur**: past op het bestaande v12.62 partial-systeem (`tpLevels[]`, `originalSizeAsset`, `realizedPnl`, `getConsumedSiblings`-filter). Beide systemen kunnen naast elkaar bestaan.
+
+  **Plan-sketch in 3 sprints** (v12.75 / v12.76 / v12.77):
+  - Sprint 1: `tradeGroupId` + `tradeGroupRole` + `tradeGroupLabel` velden, `combineTradesIntoGroup` / `splitTradeGroup` / `getGroupedMembers` handlers, App-niveau filter (geen UI nog).
+  - Sprint 2: combine-modal in Trades-pagina (vervangt de plek waar `Tags toevoegen` verstopt is sinds v12.73), primary-display met "4 trades gegroepeerd"-badge.
+  - Sprint 3: splits-action, edge-case validation (cross-pair / cross-direction blokkeren), Playwright-tests inclusief PnL-conservation sanity-check.
+
+  **Aanbeveling in research-doc**: bouw als algemene feature, niet alleen FTMO — de datamodel is sowieso exchange-agnostisch, en Blofin API + Bybit-toekomst maken het breder bruikbaar.
+
+  **Wacht op groen licht van Denny voordat we Sprint 1 starten.**
+
 ## 🚧 Hidden / work-in-progress (knop verborgen, code intact)
+
+- [ ] **Dev-only debug-knoppen voor exchange-API's** *(2026-05-03, v12.85 — verborgen achter `?dev=1`)* — Bij Blofin (Accounts → kies Blofin in dev-mode) verschijnen 3 dev-knoppen onder de standaard-action-row:
+    - **🔍 Debug raw response** — toont counts + states + fields per `positionId` van de positions-history API. Helpt partial-close logica valideren.
+    - **📥 Snapshot** — download de raw API-response als JSON-fixture, voor offline iteratie zonder credentials.
+    - **🔬 Test fixture** — laad een snapshot-JSON terug om de import-pipeline te runnen tegen vaste data (regressie-tests).
+
+  Activeer in browser via `?dev=1` in URL (persisteert via `tj_dev_mode` localStorage). Deactiveer via `?dev=0`.
+
+  **Code-locaties**:
+    - 3 button-renders in [work/tradejournal.html:10378-10380](work/tradejournal.html#L10378-L10380) — wrap `{IS_DEV&&ex==="blofin"&&...}`
+    - Debug-result panel in [work/tradejournal.html:10384-10430](work/tradejournal.html#L10384-L10430)
+    - Fixture-result panel in [work/tradejournal.html:10433-10475](work/tradejournal.html#L10433-L10475)
+    - Handler functies `debugBlofin` / `captureSnapshot` / `runFixtureTest` in [work/tradejournal.html:10012-10198](work/tradejournal.html#L10012-L10198)
+
+  **Toekomstig uitbreiden naar andere exchanges** (bij debug-noodzaak):
+    - **MEXC** — `_direct` calls op `position/list_history_positions` + `position/open_positions`. PositionId + state-counts vergelijken zoals Blofin.
+    - **Kraken Futures** — `historyfills` + `openpositions` endpoints. Vergelijk `fill_id` als unique key. Kraken levert al de meeste fees uit, dus partial-close debug is anders dan Blofin.
+    - **Hyperliquid** — `userFills` + `clearinghouseState`. Geen API-keys nodig (alleen wallet-adres) dus snapshot is automatisch deelbaar zonder credentials lekken.
+    - **FTMO MT5** — geen API; debug-pad zou een CSV-parser-snapshot zijn (raw rows in / mapped trades out).
+
+  **Patroon voor uitbreiding**: per-exchange `debugX()` / `captureSnapshotX()` / `runFixtureX()` met dezelfde JSON-shape `{type:"<exchange>-snapshot",version,capturedAt,...}`. Generieke fixture-loader detecteert `type` en routeert.
 
 - [ ] **Bulk-tag knop op Trades-pagina afmaken** *(2026-05-02, knop verstopt in v12.73 — toggle-flag in [work/tradejournal.html](work/tradejournal.html) zoek `{false&&<button` regel ~3175)* — De feature werkte technisch (v12.71 + v12.72 toegevoegd) maar Denny meldde dat er nog logica mist. Knop is verborgen tot dit af is. Bij re-enable: `{false&&...}` weghalen + `test.describe.skip` → `test.describe` in `tests/bulk-tag-layered.spec.js`.
 
@@ -67,6 +106,45 @@ Basis kwam uit de feature-diff v4_14 → v9 onderaan. Inmiddels werken we op **v
     - `test.describe.skip` in [tests/bulk-tag-layered.spec.js](tests/bulk-tag-layered.spec.js)
 
 ## 🔜 Next up (deze of volgende werksessie)
+
+- [x] ~~**Exchange-bug-isolatie: detectPartialFromSiblings → adapter-methode**~~ *(2026-05-03, ingevoerd v12.85)* — Klein, gericht refactor om Blofin-fixes te scheiden van MEXC/Kraken/Hyperliquid/FTMO paden. Zie regel in [CLAUDE.md](CLAUDE.md) "Exchange-architectuur".
+
+  **Geïmplementeerd:**
+  - Elke `ExchangeAPI[ex]` heeft nu eigen `detectPartials(trades)` methode (Blofin/MEXC/Kraken/Hyperliquid wrappen de shared helper, FTMO is no-op).
+  - 2 dispatcher-call-sites in App ([work/tradejournal.html:11510](work/tradejournal.html#L11510) en [11821](work/tradejournal.html#L11821)) routen nu via `ExchangeAPI[ex].detectPartials(...)` ipv direct shared-aanroep.
+  - Regressie-test [tests/exchange-isolation.spec.js](tests/exchange-isolation.spec.js) — 5 scenario's groen, bewijst:
+    - Elke exchange heeft een eigen `detectPartials` functie
+    - Blofin-aanroep raakt MEXC-trades niet (en omgekeerd)
+    - FTMO is daadwerkelijk no-op
+    - Adapter-aanroep is functioneel identiek aan de oude shared-aanroep (gedrag-behoudend refactor)
+  - Bestaande [tests/blofin-partial.spec.js](tests/blofin-partial.spec.js) + [tests/smoke.spec.js](tests/smoke.spec.js) blijven groen.
+
+  **Was niet gedaan (bewust)**:
+  - `syncTradeFlatFields`, `normalizeTrade`, `getConsumedSiblings` blijven shared — geen exchange-aannames in.
+  - Snapshot-fixtures voor MEXC/Kraken/Hyperliquid: pas bouwen wanneer er een echte bug is om te debuggen. Patroon staat in BACKLOG "Hidden / dev-only debug-knoppen" sectie.
+
+
+  **Stappen** (in deze volgorde):
+  1. **Regressie-baseline**: snapshot-fixture maken voor MEXC + Kraken + Hyperliquid via dev-mode (`?dev=1`) — patroon van Blofin's `captureSnapshot` extenderen. Sla op in `tests/fixtures/`. Zo kunnen we vóór en ná de refactor exact dezelfde import-output verifiëren.
+  2. **`ExchangeAPI[ex].detectPartials(trades)` toevoegen** als methode op elke adapter:
+     - **Blofin** krijgt de huidige `detectPartialFromSiblings`-logica met al z'n aannames (positionId-hergebruik, `_rawCloseSize`, sibling-matching op entry-prijs)
+     - **MEXC / Kraken / Hyperliquid** krijgen `detectPartials: trades => trades` (no-op tot we MEXC-eigen partial-logica nodig hebben)
+     - **FTMO MT5** krijgt ook no-op (CSV-only, geen partial-detectie via API)
+  3. **Dispatcher**: vervang `detectPartialFromSiblings(trades, ex)` calls door `ExchangeAPI[ex].detectPartials(trades)`. Zoek in App-init useEffect ([work/tradejournal.html:11489](work/tradejournal.html#L11489) e.o.) en `syncOpenPositions` handler.
+  4. **De oude shared functie blijft beschikbaar** (door Blofin-adapter aangeroepen) — niet weggooien, alleen ontkoppelen van direct App-gebruik. Kan later helemaal verhuizen naar Blofin-adapter scope.
+  5. **Regressie-test per exchange** in `tests/exchange-isolation.spec.js`:
+     - Laad fixture-snapshot per exchange
+     - Run import-pipeline
+     - Verifieer trade-counts, partial-status, tpLevels, realizedPnl per fixture-sample
+     - Doel: bewijs dat een Blofin-tweak (`ExchangeAPI.blofin.detectPartials`) géén MEXC/Kraken/Hyperliquid output verandert
+
+  **Acceptatie-criteria**:
+  - Alle bestaande Playwright tests groen (geen regressies)
+  - Nieuwe regressie-test per exchange groen
+  - Code-review: geen `if (exchange === "blofin")` meer in shared scope; alle exchange-aannames zitten in adapters
+  - Documentatie: vermelding in CHANGELOG en korte note in [CLAUDE.md](CLAUDE.md) "Exchange-architectuur" met "✓ ingevoerd v12.86" o.i.d.
+
+  **Scope-discipline**: NIET tegelijk de andere shared helpers (`syncTradeFlatFields`, `normalizeTrade`, `getConsumedSiblings`) refactoren — die hebben ZERO exchange-aannames en horen gedeeld te blijven. Alleen `detectPartialFromSiblings` is de probleem-plek.
 
 - [x] ~~**Pro-trader review followup — 8 majors**~~ *(2026-05-02, batch uit [docs/pro-trader-review-2026-05-02.md](docs/pro-trader-review-2026-05-02.md) — afgerond in v12.66 + v12.67)* — De 2 critical bugs + 8 majors zijn uitgewerkt:
   - ✓ #1 Sample-size waarschuwing globaal — `<SampleSizeBanner>` in Dashboard/Review/Analytics (v12.66)
