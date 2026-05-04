@@ -6,6 +6,17 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.86] — 2026-05-04
+
+Lichtere thema's beter leesbaar voor de community.
+
+### Gewijzigd
+- **Light / Parchment / Daylight thema's** — text-tokens versterkt zodat secondary helptekst (descriptions onder section-headers, theme-card subtexts, footer-hints) WCAG-AA contrast haalt op lichte achtergronden. text4 ging van ~3:1 naar ~4.6:1.
+  - **Light**: alpha-getinte greys verstrekt (`rgba(26,26,26,0.45) → 0.6`). Koel/clean karakter behouden, gold-accent donkerder (`#a88a3c → #8d6f1f`).
+  - **Parchment**: koel-blauwe greys (`#928C80 / #B8B2A4`) vervangen door **warm/sepia** greys (`#5a4f44 / #7a6e62`). Geen koud-warm botsing meer met het beige paper-karakter.
+  - **Daylight**: lichte cool-greys (`#8898AA / #ADBDCC`) → **cool slate-blue** (`#475264 / #646e80`). Stripe/Vercel-look behouden.
+  - Hierarchie `text2 > text3 > text4 > text5` blijft in alle drie behouden, plus borders versterkt voor card-scheiding.
+
 ## [v12.85] — 2026-05-04
 
 Grote release: Instellingen-pagina herontworpen met scroll-spy sidebar, Playbook-pagina als edge-archief uitgebreid, en exchange-bug-isolatie via adapter-pattern. Plus diverse bug-fixes en UX-polish.
