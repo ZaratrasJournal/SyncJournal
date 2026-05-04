@@ -1023,7 +1023,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.86",released:"2026-05-04"};
+const APP_VERSION={version:"v12.87",released:"2026-05-04"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -1071,10 +1071,12 @@ function detectPartialFromSiblings(trades,exchangeKey){
       return t;
     }
     const realizedPnl=siblings.reduce((sum,c)=>sum+(parseFloat(c.pnl)||0),0);
-    // v12.62: ook tpLevels vullen als leeg — siblings worden hit-niveaus op de
-    // open trade. Pct = sibling-size / origineel (= open-rest + alle gesloten siblings).
-    // Behoud bestaande tpLevels als user die zelf had gepland — geen overschrijving.
-    let next={...t,status:"partial",realizedPnl:realizedPnl.toFixed(2)};
+    // v12.87 (bug 2 fix): aggregeer fees van alle siblings + de open-trade zelf.
+    // Voorheen werden geconsumeerde sibling-fees onzichtbaar (omdat closed
+    // siblings via getConsumedSiblings worden gefilterd uit de UI). Door fees
+    // op de partial te zetten blijven ze zichtbaar in totalen + per-trade.
+    const sumFees=siblings.reduce((s,c)=>s+(Math.abs(parseFloat(c.fees||"0"))||0),0)+(Math.abs(parseFloat(t.fees||"0"))||0);
+    let next={...t,status:"partial",realizedPnl:realizedPnl.toFixed(2),fees:sumFees.toFixed(4)};
     const hasUserTps=Array.isArray(t.tpLevels)&&t.tpLevels.length>0;
     if(!hasUserTps){
       const sortedSiblings=[...siblings].sort((a,b)=>{
@@ -1101,8 +1103,15 @@ function detectPartialFromSiblings(trades,exchangeKey){
         }
         return Math.abs(parseFloat(rec.positionSizeAsset)||0);
       };
-      const restAsset=Math.abs(parseFloat(t.positionSizeAsset)||0);
+      // v12.87 (bug 1 fix): bij een ghost-partial (= positie volledig dicht,
+      // open trade staat alleen nog in journal omdat syncOpenPositions 'm niet
+      // heeft opgeruimd) is `t.positionSizeAsset` een STALE waarde — hij dekt
+      // overlappend met de siblings. Detecteer dit: als ANY sibling minimaal
+      // even groot is als `t.positionSizeAsset`, neem rest=0 (positie is dicht).
+      // Anders is het een echte partial-rest.
+      const rawRest=Math.abs(parseFloat(t.positionSizeAsset)||0);
       const closedAsset=sortedSiblings.reduce((s,c)=>s+sizeOf(c),0);
+      const restAsset=(rawRest>0&&closedAsset>=rawRest*0.99)?0:rawRest;
       const totalAsset=restAsset+closedAsset;
       // v12.62: bewaar origineel size op de trade. Wordt gebruikt door TradeForm's
       // calcProfit zodat TP-winst correct berekend wordt over origineel (0.0029 BTC),
@@ -1860,7 +1869,19 @@ function getProxyUrl(){
 
 // Dev-mode: hides advanced config (proxy URL, etc) from community users.
 // Unlock with ?dev=1 in URL (persisted in localStorage). Lock again with ?dev=0.
-const IS_DEV=(()=>{try{const qs=new URLSearchParams(location.search);if(qs.get("dev")==="1"){localStorage.setItem("tj_dev_mode","1")}else if(qs.get("dev")==="0"){localStorage.removeItem("tj_dev_mode")}return localStorage.getItem("tj_dev_mode")==="1";}catch(err){return false;}})();
+// v12.87: hash-fallback voor file://-gebruikers. Sommige browsers (Edge, Brave)
+// interpreteren `?dev=1` als deel van de bestandsnaam wanneer je een .html via
+// file:// opent → ERR_FILE_NOT_FOUND. Hash (#dev=1) gaat altijd door, dus we
+// supporten beide. Plus: regex op location.href ipv URLSearchParams zodat we
+// query én hash in één keer afvangen.
+const IS_DEV=(()=>{try{
+  const url=location.href||"";
+  const dev1=/[?#&]dev=1\b/.test(url);
+  const dev0=/[?#&]dev=0\b/.test(url);
+  if(dev1)localStorage.setItem("tj_dev_mode","1");
+  else if(dev0)localStorage.removeItem("tj_dev_mode");
+  return localStorage.getItem("tj_dev_mode")==="1";
+}catch(err){return false;}})();
 
 async function proxyCall(payload){
   const url=getProxyUrl();
@@ -10500,6 +10521,62 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,set
   const test=async()=>{setTesting(ex);setSyncResult(null);try{const api=ExchangeAPI[ex];const c=exCfg();if(api.walletOnly){if(!c.walletAddress){showToast("Voer wallet-adres in","error");return}const r=await api.testConnection(c.walletAddress);if(r.success){setSyncResult({ok:true,msg:`✓ Verbonden. Account value: $${parseFloat(r.balance||"0").toFixed(2)}`});showToast(`${api.name} verbonden`)}return}if(!c.apiKey||!c.apiSecret){showToast("Voer API key en secret in","error");return}const r=api.needsPassphrase?await api.testConnection(c.apiKey,c.apiSecret,c.passphrase):await api.testConnection(c.apiKey,c.apiSecret);if(r.success){setSyncResult({ok:true,msg:`✓ Verbonden. Balance: $${parseFloat(r.balance||"0").toFixed(2)} USDT`});showToast(`${ExchangeAPI[ex].name} verbonden`)}else{setSyncResult({ok:false,msg:"Verbinding mislukt"});showToast("Verbinding mislukt","error")}}catch(e){setSyncResult({ok:false,msg:e.message||"Verbinding mislukt"});showToast(e.message||"Verbinding mislukt","error")}finally{setTesting(null)}};
   const sync=async()=>{setSyncing(ex);setSyncResult(null);try{const api=ExchangeAPI[ex];const c=exCfg();const startTime=c.syncFrom?new Date(c.syncFrom).getTime():new Date(new Date().getFullYear(),new Date().getMonth(),1).getTime();let newTrades;if(api.walletOnly){if(!c.walletAddress){showToast("Voer wallet-adres in","error");return}newTrades=await api.fetchTrades(c.walletAddress,null,null,startTime)}else{if(!c.apiKey||!c.apiSecret){showToast("Voer API key in","error");return}newTrades=api.needsPassphrase?await api.fetchTrades(c.apiKey,c.apiSecret,c.passphrase,startTime):await api.fetchTrades(c.apiKey,c.apiSecret,null,startTime)}if(newTrades&&newTrades.length){setPreview({exchange:ex,trades:newTrades,source:"api"});setSelected(new Set(newTrades.map(t=>t.id)));setPrevFilter({direction:"all",result:"all"});showToast(`${newTrades.length} trades gevonden — kies welke te importeren`);}else{showToast("Geen trades gevonden","info");}setSyncResult({ok:true,count:(newTrades||[]).length,trades:newTrades||[]})}catch(e){setSyncResult({ok:false,msg:e.message});showToast(e.message||"Sync mislukt","error")}finally{setSyncing(null)}};
   const syncOpen=async()=>{setSyncing(ex);setSyncResult(null);try{const api=ExchangeAPI[ex];const c=exCfg();if(!api.fetchOpenPositions){showToast(`${api.name} ondersteunt open posities niet`,"error");return}let opens;if(api.walletOnly){if(!c.walletAddress){showToast("Voer wallet-adres in","error");return}opens=await api.fetchOpenPositions(c.walletAddress)}else{if(!c.apiKey||!c.apiSecret){showToast("Voer API key in","error");return}opens=api.needsPassphrase?await api.fetchOpenPositions(c.apiKey,c.apiSecret,c.passphrase):await api.fetchOpenPositions(c.apiKey,c.apiSecret)}const list=opens||[];syncOpenPositions(ex,list);setSyncResult({ok:true,count:list.length,trades:list,kind:"open"})}catch(e){setSyncResult({ok:false,msg:e.message});showToast(e.message||"Open posities ophalen mislukt","error")}finally{setSyncing(null)}};
+  // v12.87: 1 Refresh-knop combineert syncOpen + sync (incrementeel).
+  // Volgorde: eerst open posities ophalen (zodat stale-opens worden gefinaliseerd
+  // door de nieuwe v12.87 finalize-flow), dan trade history vanaf laatste sync.
+  // Incrementeel via tj_lastsync_<ex> localStorage met 1 uur veiligheidsbuffer
+  // — voor het geval een trade tussen syncs door werd gesloten.
+  const refresh=async()=>{
+    setSyncing(ex);setSyncResult(null);
+    try{
+      const api=ExchangeAPI[ex];const c=exCfg();
+      // Stap 1: open posities (alleen voor exchanges die het ondersteunen)
+      if(api.fetchOpenPositions){
+        try{
+          let opens;
+          if(api.walletOnly){
+            if(!c.walletAddress){showToast("Voer wallet-adres in","error");setSyncing(null);return}
+            opens=await api.fetchOpenPositions(c.walletAddress);
+          }else{
+            if(!c.apiKey||!c.apiSecret){showToast("Voer API key in","error");setSyncing(null);return}
+            opens=api.needsPassphrase?await api.fetchOpenPositions(c.apiKey,c.apiSecret,c.passphrase):await api.fetchOpenPositions(c.apiKey,c.apiSecret);
+          }
+          syncOpenPositions(ex,opens||[]);
+        }catch(e){console.warn("refresh: open posities fetch faalde",e);}
+      }
+      // Stap 2: trade history — incrementeel vanaf laatste succesvolle sync (-1u buffer).
+      // Bij eerste sync: gebruik configured syncFrom of 1e van deze maand (oude default).
+      let startTime;
+      try{
+        const lastSyncStr=localStorage.getItem(`tj_lastsync_${ex}`);
+        const lastSync=lastSyncStr?parseInt(lastSyncStr,10):0;
+        const configuredStart=c.syncFrom?new Date(c.syncFrom).getTime():new Date(new Date().getFullYear(),new Date().getMonth(),1).getTime();
+        startTime=lastSync>0?Math.max(configuredStart,lastSync-3600*1000):configuredStart;
+      }catch{startTime=new Date(new Date().getFullYear(),new Date().getMonth(),1).getTime();}
+      let newTrades;
+      if(api.walletOnly){
+        if(!c.walletAddress){setSyncing(null);return}
+        newTrades=await api.fetchTrades(c.walletAddress,null,null,startTime);
+      }else{
+        if(!c.apiKey||!c.apiSecret){setSyncing(null);return}
+        newTrades=api.needsPassphrase?await api.fetchTrades(c.apiKey,c.apiSecret,c.passphrase,startTime):await api.fetchTrades(c.apiKey,c.apiSecret,null,startTime);
+      }
+      // Bewaar timestamp voor volgende incremental
+      try{localStorage.setItem(`tj_lastsync_${ex}`,String(Date.now()));}catch{}
+      if(newTrades&&newTrades.length){
+        setPreview({exchange:ex,trades:newTrades,source:"api"});
+        setSelected(new Set(newTrades.map(t=>t.id)));
+        setPrevFilter({direction:"all",result:"all"});
+        showToast(`${newTrades.length} nieuwe trades — kies welke te importeren`);
+      }else{
+        showToast("Up-to-date — geen nieuwe trades","info");
+      }
+      setSyncResult({ok:true,count:(newTrades||[]).length,trades:newTrades||[]});
+    }catch(e){
+      setSyncResult({ok:false,msg:e.message});
+      showToast(e.message||"Refresh mislukt","error");
+    }finally{setSyncing(null);}
+  };
   // v12.85: scroll-spy active section. IntersectionObserver in useEffect-onder.
   const[settingsActive,setSettingsActive]=useState("sec-accounts");
   // Sidebar-config — sync met section-IDs. Volgorde komt overeen met de cards in DOM.
@@ -10683,8 +10760,10 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,set
           })()}
           <div style={{display:"flex",gap:"12px",marginTop:"16px",flexWrap:"wrap"}}>
             {!ExchangeAPI[ex].csvOnly&&<button onClick={test} disabled={!!testing} style={{padding:"10px 20px",borderRadius:"var(--radius)",border:"1px solid var(--border4)",background:"transparent",color:"var(--text2)",cursor:"pointer",fontFamily:"inherit",fontSize:"13px",fontWeight:500,display:"flex",alignItems:"center",gap:"8px"}}>{testing===ex?<><span className="spinner"/>Testen...</>:"Verbinding testen"}</button>}
-            {!ExchangeAPI[ex].csvOnly&&<button onClick={sync} disabled={!!syncing} style={{padding:"10px 20px",borderRadius:"var(--radius)",border:"none",background:"#C9A84C",color:"#000",cursor:"pointer",fontFamily:"inherit",fontSize:"13px",fontWeight:700,display:"flex",alignItems:"center",gap:"8px"}}>{syncing===ex?<><span className="spinner"/>Syncing...</>:"Trades importeren"}</button>}
-            {!ExchangeAPI[ex].csvOnly&&ExchangeAPI[ex]?.fetchOpenPositions&&<button onClick={syncOpen} disabled={!!syncing} title={`Haalt openstaande posities op via ${ExchangeAPI[ex].name} API`} style={{padding:"10px 20px",borderRadius:"var(--radius)",border:"1px solid var(--gold)",background:"transparent",color:"var(--gold)",cursor:"pointer",fontFamily:"inherit",fontSize:"13px",fontWeight:600,display:"flex",alignItems:"center",gap:"8px"}}>{syncing===ex?<><span className="spinner"/>Ophalen...</>:"📡 Open posities ophalen"}</button>}
+            {/* v12.87: 1 Refresh-knop combineert open posities + trade history.
+                Eerst open posities (finalize stale partials via v12.87 fix), dan
+                history vanaf laatste sync (incrementeel via tj_lastsync_<ex>). */}
+            {!ExchangeAPI[ex].csvOnly&&<button onClick={refresh} disabled={!!syncing} title={`Haalt open posities + nieuwe trades op via ${ExchangeAPI[ex].name} API`} style={{padding:"10px 20px",borderRadius:"var(--radius)",border:"none",background:"var(--gold)",color:"var(--bg)",cursor:"pointer",fontFamily:"inherit",fontSize:"13px",fontWeight:700,display:"flex",alignItems:"center",gap:"8px"}}>{syncing===ex?<><span className="spinner"/>Refreshen...</>:"🔄 Refresh trades"}</button>}
             {/* v12.85: Blofin debug-knoppen alleen zichtbaar in dev-modus (?dev=1).
                 Logica blijft beschikbaar voor toekomstige debug-sessies — zie ook
                 BACKLOG.md sectie "Hidden / dev-only debug-knoppen". */}
@@ -12078,12 +12157,62 @@ function App(){
   const syncOpenPositions=(exchangeKey,opens)=>{
     const ALWAYS_PROTECT=["notes","setupTags","confirmationTags","timeframeTags","emotionTags","mistakeTags","customTags","rating","screenshot","links","layers","highestPrice","lowestPrice","manualOverrides"];
     const PROTECT_IF_INCOMING_EMPTY=["stopLoss","takeProfit"];
-    let freshCount=0,updatedCount=0,removedCount=0;
+    let freshCount=0,updatedCount=0,removedCount=0,finalizedCount=0;
     setTrades(prev=>{
       const freshIds=new Set((opens||[]).map(t=>t.id));
       const kept=[];
+      // v12.87 (bug 3+4 fix): finalize-flow voor stale open/partial trades.
+      // Voorheen werden stale opens VERWIJDERD (manual edits weg). Nu: zetten
+      // we ze om naar status="closed" met aggregaten uit closed-siblings,
+      // behouden ALWAYS_PROTECT velden (notes/setup/screenshot/etc), en
+      // markeer status partial → closed wanneer de positie volledig dicht is.
+      const matchKey=(t)=>{const e=parseFloat(t.entry);if(!isFinite(e)||e<=0)return null;return `${t.pair}|${t.direction}|${e.toFixed(8)}`;};
       for(const t of prev){
-        if(t.source===exchangeKey&&t.status==="open"&&!freshIds.has(t.id)){removedCount++;continue}
+        const isStaleOpenOrPartial=t.source===exchangeKey&&(t.status==="open"||t.status==="partial")&&!freshIds.has(t.id);
+        if(isStaleOpenOrPartial){
+          // Vind closed-siblings met dezelfde matchKey
+          const tKey=matchKey(t);
+          const siblings=tKey?prev.filter(s=>s.source===exchangeKey&&s.status==="closed"&&s.id!==t.id&&matchKey(s)===tKey):[];
+          if(siblings.length===0){
+            // Geen siblings: positie is gewoon verdwenen zonder fills (Blofin glitch
+            // of trade volledig dicht in 1 SL-fill die nog niet is geïmporteerd).
+            // Behoud de trade als status="open" — wachten op importTrades-cyclus.
+            kept.push(t);continue;
+          }
+          // Finalize: aggregeer pnl + fees + exit, behoud manual edits
+          const sumPnl=siblings.reduce((s,c)=>s+(parseFloat(c.pnl)||0),0);
+          const sumFees=siblings.reduce((s,c)=>s+(Math.abs(parseFloat(c.fees||"0"))||0),0)+(Math.abs(parseFloat(t.fees||"0"))||0);
+          const lastClose=siblings.reduce((latest,c)=>{
+            const ct=parseFloat(c.closeTime||"0")||0;
+            return ct>latest.ct?{ct,exit:c.exit||"",closeTime:c.closeTime||""}:latest;
+          },{ct:0,exit:"",closeTime:""});
+          // tpLevels: hits uit siblings (zelfde logica als detectPartialFromSiblings)
+          const sortedSiblings=[...siblings].sort((a,b)=>(parseInt((a.id||"").split("_").pop()||"0",10))-(parseInt((b.id||"").split("_").pop()||"0",10)));
+          const sizeOf=(rec)=>{
+            const raw=parseFloat(rec._rawCloseSize);if(isFinite(raw)&&raw>0)return raw;
+            const pnl=parseFloat(rec.pnl),exit=parseFloat(rec.exit),entry=parseFloat(rec.entry);
+            if(isFinite(pnl)&&isFinite(exit)&&isFinite(entry)&&Math.abs(exit-entry)>0){const sz=Math.abs(pnl)/Math.abs(exit-entry);if(sz>0)return sz;}
+            return Math.abs(parseFloat(rec.positionSizeAsset)||0);
+          };
+          const totalAsset=sortedSiblings.reduce((s,c)=>s+sizeOf(c),0);
+          const tpLevels=(t.tpLevels&&t.tpLevels.length)?t.tpLevels:sortedSiblings.map(c=>{
+            const cAsset=sizeOf(c);const pct=totalAsset>0?(cAsset/totalAsset*100):0;
+            return{id:"tp_"+c.id,price:c.exit||"",pct:pct.toFixed(2),status:"hit",actualPrice:c.exit||""};
+          });
+          kept.push({
+            ...t,
+            status:"closed",
+            pnl:sumPnl.toFixed(4),
+            fees:sumFees.toFixed(4),
+            exit:lastClose.exit||t.exit||"",
+            closeTime:lastClose.closeTime||t.closeTime||"",
+            originalSizeAsset:totalAsset>0?String(totalAsset):(t.originalSizeAsset||t.positionSizeAsset||""),
+            realizedPnl:"",  // niet meer relevant: pnl is nu finaal
+            tpLevels,
+          });
+          finalizedCount++;
+          continue;
+        }
         kept.push(t);
       }
       const byId=new Map(kept.map(t=>[t.id,t]));
@@ -12117,6 +12246,7 @@ function App(){
       if(freshCount)parts.push(`${freshCount} nieuw`);
       if(updatedCount)parts.push(`${updatedCount} bijgewerkt`);
       if(removedCount)parts.push(`${removedCount} dichtgegaan`);
+      if(finalizedCount)parts.push(`${finalizedCount} afgerond`);
       if(!parts.length)showToast("Geen open posities","info");
       else showToast(parts.join(" · ")+" ✓","success");
     },0);

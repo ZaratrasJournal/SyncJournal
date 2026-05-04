@@ -6,6 +6,23 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.87] — 2026-05-04
+
+Blofin partial-close finalize-flow + 1 Refresh-knop + cross-exchange regressie-suite. Lost de community-bug op waar TP1+SL trades als losse records bleven staan met verloren manual edits.
+
+### Fixed
+- **Bug 1 — `originalSizeAsset` 2× te groot bij ghost-partial.** Wanneer een open trade in journal stond met stale `positionSizeAsset` (positie was eigenlijk dicht), telde de helper rest + alle siblings op zonder te detecteren dat ze overlappen. TP-percentages werden daardoor de helft te klein getoond. Fix: detecteer wanneer `closedAsset >= rawRest * 0.99` en zet `restAsset=0`.
+- **Bug 2 — Fees gaan verloren bij geconsumeerde siblings.** Closed-siblings worden via `getConsumedSiblings` verborgen in de UI; hun fees verdwenen mee. Fix: aggregeer sibling-fees naar `partial.fees` zodat ze in totalen + per-trade zichtbaar blijven.
+- **Bug 3+4 — Stale opens werden verwijderd ipv gefinaliseerd.** `syncOpenPositions` verwijderde elke open-trade die niet meer in de fresh API-response zat — manual edits (notes, setupTags, screenshot, rating, emotionTags) gingen verloren. Plus: partials werden nooit opgeruimd want de check was alleen op `status==="open"`. **Nieuwe finalize-flow**: stale open/partial → omgezet naar `status="closed"` met behoud van alle manual edits + aggregaten uit closed-siblings (pnl, fees, exit, tpLevels, originalSizeAsset). Toast: *"X afgerond"* in plaats van *"X verwijderd"*.
+
+### Gewijzigd
+- **Eén Refresh-knop ipv twee.** "Trades importeren" + "Open posities ophalen" zijn vervangen door één **🔄 Refresh trades**. Doet beide in correcte volgorde (open posities eerst → finalize via v12.87 fix → daarna trade history). **Incrementeel** via `tj_lastsync_<ex>` localStorage met 1u-veiligheidsbuffer; alleen nieuwe records sinds laatste sync. Toast: *"X nieuwe trades"* of *"Up-to-date — geen nieuwe trades"*.
+- **Hash-fallback voor `?dev=1`.** Sommige browsers (Edge, Brave) interpreteren `?dev=1` als bestandsnaam-deel bij `file://` URLs (ERR_FILE_NOT_FOUND). Detectie regex'et nu zowel query als hash (`#dev=1`) op `location.href` — werkt ook offline zonder server.
+
+### Toegevoegd
+- **Cross-exchange pipeline regressie-suite** ([tests/exchange-pipeline-cross.spec.js](tests/exchange-pipeline-cross.spec.js)) — 17 tests: 4 kern-scenarios (TP1+SL / TP1+TP2 / full-close / positionId-hergebruik) × 4 exchanges (Blofin/MEXC/Kraken/Hyperliquid) + 1 FTMO no-op check. Generic fixture-builder werkt voor alle exchanges. Toekomstige fixes worden nu automatisch tegen alle exchanges geregresseerd.
+- **Diepgaande Blofin pipeline-suite** ([tests/blofin-pipeline-scenarios.spec.js](tests/blofin-pipeline-scenarios.spec.js)) — 12 scenarios met edge-cases (missing `_rawCloseSize`, sizeAsset=0, ghost-partials, mixed exchanges).
+
 ## [v12.86] — 2026-05-04
 
 Lichtere thema's beter leesbaar voor de community.
