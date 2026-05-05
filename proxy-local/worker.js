@@ -90,13 +90,78 @@ async function handleMEXC(action, { apiKey, apiSecret, startTime, symbol, positi
     return { positions: d.data || [] };
   }
   if (action === 'fills') {
+    // v12.89 permanente fix: combineer order_deals (regular fills) + stoporder triggered fills.
+    // MEXC's TP/SL trigger-orders staan in stoporder/list/orders met placeOrderId. Voor elke
+    // executed (state=3) entry, pak de echte fill via order/deal_details/{orderId}. Daarmee
+    // krijgen we ALLE close-fills, ook die order_deals soms mist door propagatie-delay.
     const q = {};
     if (symbol) q.symbol = symbol.replace('/', '_');
     if (positionId) q.position_id = positionId;
     if (startTime) q.start_time = startTime;
     if (endTime) q.end_time = endTime;
-    const d = await get('/api/v1/private/order/list/order_deals', q);
-    return { fills: d.data || [], total: (d.data || []).length };
+    const dealsResp = await get('/api/v1/private/order/list/order_deals', q);
+    const dealFills = dealsResp.data || [];
+
+    // Stap 2: stoporder/list/orders met executed-state (state=3), voor missing fills
+    let stopFills = [];
+    try {
+      const stopQ = { is_finished: 1, page_num: 1, page_size: 100 };
+      if (symbol) stopQ.symbol = symbol.replace('/', '_');
+      if (startTime) stopQ.start_time = startTime;
+      if (endTime) stopQ.end_time = endTime;
+      const stopResp = await get('/api/v1/private/stoporder/list/orders', stopQ);
+      const executedTriggers = (stopResp.data || []).filter(s => s.state === 3 && s.placeOrderId);
+      for (const trig of executedTriggers) {
+        try {
+          const dd = await get(`/api/v1/private/order/deal_details/${trig.placeOrderId}`);
+          const detailFills = (dd.data || []).map(f => ({
+            ...f,
+            side: f.side || (trig.positionType === 1 ? 4 : 2),
+            _fromStopOrder: true,
+            _triggerSide: trig.triggerSide,
+            positionId: trig.positionId,
+          }));
+          stopFills = stopFills.concat(detailFills);
+        } catch { /* skip individuele trigger */ }
+      }
+    } catch { /* stoporder endpoint mag falen */ }
+
+    // v12.89 stap 3: PENDING TP/SL orders — open trades met TP/SL gezet maar nog niet getriggerd.
+    // is_finished=0 + state=1 (untriggered). We tonen ze als status="open" tpLevels in de adapter.
+    let pendingTPs = [];
+    try {
+      const pendQ = { is_finished: 0, page_num: 1, page_size: 100 };
+      if (symbol) pendQ.symbol = symbol.replace('/', '_');
+      const pendResp = await get('/api/v1/private/stoporder/list/orders', pendQ);
+      pendingTPs = (pendResp.data || [])
+        .filter(s => s.state === 1) // untriggered
+        .filter(s => !positionId || String(s.positionId) === String(positionId))
+        .map(s => ({
+          _pending: true,
+          _triggerSide: s.triggerSide, // 1=tp, 2=sl
+          positionId: s.positionId,
+          symbol: s.symbol,
+          // Use takeProfitPrice or stopLossPrice based on triggerSide
+          price: s.triggerSide === 1 ? s.takeProfitPrice : (s.triggerSide === 2 ? s.stopLossPrice : (s.takeProfitPrice || s.stopLossPrice)),
+          vol: s.vol,
+          side: s.positionType === 1 ? 4 : 2, // long position → close long(4), short → close short(2)
+          orderId: s.id || s.placeOrderId,
+        }));
+    } catch { /* pending fetch mag falen */ }
+
+    const seen = new Set(dealFills.map(f => f.id || f.orderId).filter(Boolean));
+    const extraFills = stopFills.filter(f => {
+      const k = f.id || f.orderId;
+      if (!k || seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+    const allFills = [...dealFills, ...extraFills, ...pendingTPs];
+    return {
+      fills: allFills,
+      total: allFills.length,
+      _sources: { deals: dealFills.length, stoporder: extraFills.length, pending: pendingTPs.length },
+    };
   }
   // trades — position history (geaggregeerde closed posities)
   const since = startTime ? Number(startTime) : Date.now() - 90 * 86400000;

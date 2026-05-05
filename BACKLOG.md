@@ -61,9 +61,31 @@ Basis kwam uit de feature-diff v4_14 → v9 onderaan. Inmiddels werken we op **v
 
   **Wacht op groen licht van Denny voordat we Sprint 1 starten.**
 
+## 🧪 Test-scenarios — te bouwen + toekomstig
+
+### Sinds v12.88 actief (real-data + synthetic combineren)
+
+In [tests/](tests/) staan 4 real-data specs (`<exchange>-real-data.spec.js`) die per exchange de pipeline tegen een snapshot uit `tests/_fixtures/` valideren (smoke + count + PnL-sum + fees-sum + open-positions + detectPartials). Plus de synthetic spec [tests/blofin-pipeline-scenarios.spec.js](tests/blofin-pipeline-scenarios.spec.js) (12 scenarios A–J) en [tests/exchange-pipeline-cross.spec.js](tests/exchange-pipeline-cross.spec.js) (4 scenarios × 4 exchanges = 16 + 1 FTMO).
+
+### Te bouwen — Scenarios K–O (synthetic, geen extra fixtures nodig)
+
+- [x] ~~**Scenario K: Entry + SL hit (zonder TP)**~~ *(v12.88, [tests/scenarios-klmn.spec.js](tests/scenarios-klmn.spec.js))* — open positie met SL gezet, prijs raakt SL. Verifieert dat `stopLoss`-veld bewaard blijft op de merged partial trade en SL-fill wordt geregistreerd als tpLevel.
+- [x] ~~**Scenario L: Manual edits behoud bij SL na TP1**~~ *(v12.88, [tests/scenarios-klmn.spec.js](tests/scenarios-klmn.spec.js))* — community-bug-variant van v12.87. Open trade met `notes` + `setupTags` + `rating` + `screenshot` + `stopLoss` + `takeProfit`. TP1 partial-close → SL. Verifieert dat ALLE user-edits behouden blijven op het samengevoegde partial-trade record (regressie-test voor v12.87 finalize-flow fix).
+- [x] ~~**Scenario M: Unrealized PnL op open trade**~~ *(v12.88, [tests/scenarios-klmn.spec.js](tests/scenarios-klmn.spec.js))* — open positie zonder siblings. Verifieert `status='open'`, `unrealizedPnl` behoud, geen `realizedPnl`/`tpLevels` toegevoegd, en dat `getConsumedSiblings` 'm met rust laat.
+- [x] ~~**Scenario N: getConsumedSiblings filtering na partial**~~ *(v12.88, [tests/scenarios-klmn.spec.js](tests/scenarios-klmn.spec.js))* — partial trade verbergt 2 closed siblings via `getConsumedSiblings` (consumed.size=2, visible=1). Voorkomt dubbele weergave in Trades-pagina.
+- [ ] **Scenario O: Funding-fees toegepast (na funding-feature live)** — geblokkeerd op funding-feature implementatie (zie "Funding-fees per trade tracken" hierboven). Vereist een fixture met funding-events naast trade-fills + verifieer per-trade matching + aggregaat-card.
+
+### Te noteren — Toekomstige scenarios (later, vereist fixture-uitbreiding of nieuwe schema)
+
+- [ ] **Scenario P: Scaling-in (meerdere opens vóór 1 close)** — bv. 3× 0.01 BTC long op verschillende prijzen, dan 1 close 0.03. Hyperliquid heeft dit al via `_reconstructTrades` FIFO-logica (zie ook fee-drift bug hierboven). Andere exchanges via positionId-aggregatie. Verifieer gewogen entry-price + correcte fee-attributie.
+- [ ] **Scenario Q: Direction-flip (long → short via netting)** — Blofin/MEXC net-mode: 1 BTC long → sell 2 BTC = direction flip naar 1 BTC short, niet 0 + new short. Vereist sub-fill-tracking om de flip-event te splitsen in (close 1 long) + (open 1 short). Nu skipt `_reconstructTrades` deze fills (zie regel 2168 — "MVP skip"). Niet kritiek tot er flip-trades in productie binnenkomen.
+- [ ] **Scenario R: Leverage-change tijdens open positie** — user verandert leverage van 10x → 20x op een open trade. API geeft 1 record met `leverage=20`, maar de trade was deels op 10x geopend. Margin-berekeningen kloppen niet meer. Edge-case voor display-only (echte PnL klopt nog wel via `realised`).
+- [ ] **Scenario S: Liquidation event** — `liquidationPositions > 0` in Blofin, of `liq` flag in Hyperliquid `dir`. Verwacht: trade krijgt `notes="⚠ Liquidated"` of equivalent flag, fees zijn liquidation-fee (hoger dan trading-fee). Niet kritiek voor users die niet liquideren, maar wel voor accurate post-mortems.
+- [ ] **Scenario T: Sub-accounts / vaults** — Hyperliquid HLP-deposits, Bybit sub-accounts, Blofin sub-uids. Aparte wallets/accounts onder dezelfde user-account. Voor Hyperliquid: vault-PnL zit in `vaultEquities`, niet in `userFills`. Vereist apart endpoint en aparte trade-shape (geen entry/exit, alleen periodic equity-changes). Latere scope.
+
 ## 🚧 Hidden / work-in-progress (knop verborgen, code intact)
 
-- [ ] **Dev-only debug-knoppen voor exchange-API's** *(2026-05-03, v12.85 — verborgen achter `?dev=1`)* — Bij Blofin (Accounts → kies Blofin in dev-mode) verschijnen 3 dev-knoppen onder de standaard-action-row:
+- [ ] **Dev-only debug-knoppen voor exchange-API's** *(2026-05-03, v12.85 — verborgen achter `?dev=1`; v12.88 — uitgebreid naar alle exchanges)* — Bij Blofin/MEXC/Kraken/Hyperliquid (Accounts → kies exchange in dev-mode) verschijnt nu een **📥 Snapshot**-knop. FTMO niet (CSV-only). Per-exchange `ExchangeAPI[ex].captureSnapshot(creds)` haalt raw API-response op en download als JSON-fixture (`<exchange>-snapshot-...json`). Bij Blofin staan ook nog de 🔍 Debug-raw + 🔬 Test-fixture knoppen (specifiek voor partial-close diagnostic). Bij Blofin (Accounts → kies Blofin in dev-mode) verschijnen 3 dev-knoppen onder de standaard-action-row:
     - **🔍 Debug raw response** — toont counts + states + fields per `positionId` van de positions-history API. Helpt partial-close logica valideren.
     - **📥 Snapshot** — download de raw API-response als JSON-fixture, voor offline iteratie zonder credentials.
     - **🔬 Test fixture** — laad een snapshot-JSON terug om de import-pipeline te runnen tegen vaste data (regressie-tests).
@@ -200,7 +222,37 @@ Basis kwam uit de feature-diff v4_14 → v9 onderaan. Inmiddels werken we op **v
 - [ ] **MFE/MAE exit-efficiency scatter** — vereist MFE/MAE data uit exchange-fills.
 - [ ] **PnL Calendar Heatmap** — 13-weken grid, GitHub-stijl.
 - [ ] **Scratch segmentation donut** — "True Win-rate" los van scratch trades.
-- [ ] **Funding & Fees Drain waterfall** — crypto-futures specifiek, onderscheidend.
+- [ ] **Funding-fees per trade tracken** *(2026-05-03, plan na Blofin-bug-sprint v12.87)* — Voor crypto-futures is funding-fee een aparte cost-component naast trade-fees (open/close commissies). Op exchanges met perpetuals (Blofin, MEXC, Bybit, Hyperliquid, Kraken Futures) wordt funding elke 1/4/8 uur afgerekend op open posities. Nu telt SyncJournal die kosten nergens mee — True PnL is dus onnauwkeurig voor swing-trades die een funding-cycle overspannen.
+
+  **Ontwerp-keuze**: per-trade matching (niet aggregate-only). Funding-events worden gekoppeld aan de open trade die op dat moment bestond, zodat True PnL = `realizedPnl − tradeFees − fundingFees` per trade klopt. Aggregate-card "💸 Funding fees" in Analytics is bonus.
+
+  **Implementatie-pad in 3 stappen**:
+  1. **Schema + migratie** — nieuwe velden `t.fundingFees` (number, default 0) en `t.fundingEvents[]` (array van `{ts, amount, rate, intervalHours}`). Migratie backfillt naar 0 voor bestaande trades. `netPnl()` helper aanpassen: `realizedPnl − fees − fundingFees`. Display in TradeDetailModal: aparte regel "💸 Funding -€X,XX" onder fees.
+  2. **Per-exchange `fetchFundingFees()` adapter** — nieuwe methode op `ExchangeAPI[ex]` per exchange die funding-events haalt vanaf `syncFrom`:
+     - **Blofin** — `/api/v1/asset/bills` met `type=funding` filter, of `/api/v1/account/bills` (te onderzoeken). Velden: `ts`, `amount`, `instrument`.
+     - **MEXC** — `account/history` (futures-account) met `type=FUNDING_FEE`, of dedicated funding-endpoint. Velden idem.
+     - **Kraken Futures** — `accountlogs` met `info=funding`. Krijgt al fees+funding apart.
+     - **Hyperliquid** — `userFunding` (info-endpoint, geen API-key nodig). Velden: `time`, `coin`, `usdc`, `szi`, `fundingRate`. Returns array per user-wallet.
+     - **FTMO MT5** — n.v.t. (geen perpetuals; FX/CFD heeft swap maar dat is ander mechanisme — later).
+  3. **Matching + integratie** — voor elk funding-event: zoek de trade die op `event.ts` open was op (`pair`, `direction`). Ken `event.amount` toe aan `t.fundingFees` (sum) + push naar `t.fundingEvents[]`. Edge-cases zie hieronder. Hook in op `refresh`-handler na `syncOpen` + na `detectPartials`. Analytics-card "💸 Funding fees" toont totaal + per-pair breakdown.
+
+  **Edge-cases om te valideren met fixtures**:
+  - **Twee parallelle opens op zelfde pair+direction** (bv. 2× BTC-LONG door scaling-in op verschillende prijzen): funding-event split naar rato van size? Of toewijzen aan oudste open? — *Voorstel*: pro-rata op `positionSizeAsset` met fallback naar oldest-open.
+  - **Open trade nu, funding loopt nog**: tonen we cumulatieve funding live in TradeDetailModal voor open trades? — *Voorstel*: ja, "Funding tot nu: -€X,XX" naast unrealized PnL. Snapshot bij close.
+  - **Funding-event valt na trade-close** (settle-lag, < 1 funding-cycle ná close): toewijzen aan laatst-gesloten matchende trade, of dropt als ghost? — *Voorstel*: assign aan laatst-gesloten als binnen 1 interval, anders aggregate-only.
+  - **Funding-event zonder enkele matchende trade** (bv. user heeft positie geopend buiten SyncJournal en gesloten ervoor): aggregate-only, niet aan trade gekoppeld. Rapporteer in Analytics-card.
+
+  **Acceptatie-criteria**:
+  - True PnL formule: `realizedPnl − tradeFees − fundingFees` werkt per trade en in alle aggregate-views (Dashboard, Analytics, Rapport).
+  - Backwards-compat: trades zonder funding-data tonen `fundingFees=0`, niet "—" of error.
+  - Per-exchange isolatie: Blofin funding-fetcher raakt MEXC/Kraken niet. Test in `tests/exchange-isolation.spec.js` uitbreiden met funding-no-op voor exchanges zonder adapter.
+  - Fixture-tests: per exchange een `<exchange>-funding.json` snapshot in `tests/_fixtures/` + spec die matching tegen scenario-trades verifieert.
+
+  **Volgorde**: stap 1 (schema) eerst los — zonder data is dat een no-op. Daarna stap 2 per exchange in volgorde van prioriteit (Blofin → MEXC → Hyperliquid → Kraken). Stap 3 kan parallel met stap 2 omdat matching exchange-agnostisch is.
+
+  **Effort**: stap 1 ~3-4u, stap 2 ~half dag per exchange, stap 3 ~half dag. Totaal: ~3-4 dagen voor 4 exchanges.
+
+- [ ] **Funding & Fees Drain waterfall** — crypto-futures specifiek, onderscheidend. **Vereist** dat funding-fees-tracking eerst af is (zie hierboven). Visualisatie idee: waterfall van Gross PnL → tradeFees → fundingFees → Net PnL, kleurcodering rood (kost) vs groen (saldo). Per-pair breakdown ernaast.
 - [ ] **Underwater Drawdown chart** — hedge-fund standaard.
 
 ## 📋 Quick wins (klein, geïsoleerd, laag risico)
@@ -210,6 +262,7 @@ Basis kwam uit de feature-diff v4_14 → v9 onderaan. Inmiddels werken we op **v
 - [ ] **Blofin — R:R live berekening** — nu SL/TP meekomt van API kunnen we live R:R tonen in trade-detail. Trivial UI-toevoeging (R:R computed uit entry/SL/TP).
 - [ ] **Hyperliquid toevoegen** — kan volledig client-side (public info-endpoint, geen proxy). Zie `Agent` onderzoek van 2026-04-14.
 - [ ] **MAE-to-Stop ratio per setup** (idee #12) — uitbreiding op Setup Insights tabel als we MAE data hebben.
+- [ ] **Parallel fetchFills bij refresh (concurrency cap)** *(2026-05-04, deferred — sequentieel werkt nu prima)* — huidige refresh-flow doet `for(t of needsTPs) await api.fetchFills(...)` sequentieel. Voor 1-5 trades neemt 1-2 sec/trade = 2-10 sec. Voor users met 20+ open MEXC trades wordt het merkbaar (40+ sec). **Fix**: parallel fetchen met max 3 concurrent (= ~3× sneller, ver onder MEXC's 20 req/sec rate-limit). Pseudocode + impact-analyse staan in conversation 2026-05-04 (Denny's vraag over rate-limit). Per-exchange refresh-knop bestaat al — geen UI-change nodig, alleen code in [work/tradejournal.html refresh-handler](work/tradejournal.html#L10643). Helper-pattern: `pMap(items, fn, concurrency=3)`.
 
 ## ⚠️ Risky (refactor of schema-migratie)
 
@@ -225,6 +278,12 @@ Basis kwam uit de feature-diff v4_14 → v9 onderaan. Inmiddels werken we op **v
 
 ## ✅ Done
 
+- [x] 2026-05-04 — **MEXC stale-open trade + 18 stale tpLevels + CORS contractSize-fallback** (v12.89) — Community-bug: gesloten positie staat nog als OPEN in app met 18 TP-niveaus uit andere posities, plus positionSize klopt niet. Drie root causes geïdentificeerd via reproductie-spec met echte IDB-export + verse API-snapshot: (1) `detectPartialFromSiblings` rebuildde `tpLevels` niet als ze al bestonden — bij elke sync stapelden nieuwe siblings bovenop oude. (2) Finalize-flow (`syncOpenPositions`) liep VÓÓR closed siblings in journal stonden — kon stale-open dus niet matchen + finalizen. (3) `contract.mexc.com` is CORS-blocked vanaf `file://`, contractSize fallback was 0 → positionSize 0. Fixes: rebuild tpLevels altijd (behoud alleen user-status≠"hit"), finalize-pass in `importTrades` (atomair na closed records), hardcoded contractSize-map voor 12 populaire pairs. Tests: [tests/mexc-stale-open.spec.js](tests/mexc-stale-open.spec.js).
+
+- [ ] **MEXC eigen `detectPartials` op positionId** *(2026-05-04, gevonden tijdens v12.89 sprint, niet kritiek)* — De v12.89 fix gebruikt nog steeds matchKey op `(pair, direction, entry-prijs)` zoals de shared helper. Voor MEXC zou matching op `positionId` (uniek per positie volgens MEXC docs, niet hergebruikt) betrouwbaarder zijn. Vereist: nieuwe `ExchangeAPI.mexc.detectPartials` adapter-methode die positionId-match doet (geen entry-prijs match). Niet user-blocking voor de community-bug van v12.89 (die is opgelost), wel een verbetering voor edge-cases waar verschillende MEXC posities toevallig dezelfde gemiddelde entry hebben.
+
+- [x] 2026-05-04 — **MEXC fees-sign + xlsx PnL-aggregatie convention** (v12.88) — MEXC's `fee`-veld komt negatief uit de API (uitgaand vanuit account), terwijl andere exchanges absolute fees leveren. Plus open vraag uit 3-way: was `realised` GROSS of NET? Verified via xlsx-trace op 1 BTC-positie + empirische check op 134 records: **realised is altijd NET** (fee=0 → realised=gross; fee≠0 → realised=gross−|fee|). Xlsx ClosingPNL is GROSS per fill. Beide bronnen convergeren via `xlsxNet = xlsxGross − xlsxFee = snapRealised`. Eerste v12.88 fix trok fees nóg een keer af (regressie); 2nd fix herstelde dat. Resultaat: drift voor BTC ging van $382 → $17 (boundary-fills over 127 positions). Tests: [tests/mexc-real-data.spec.js](tests/mexc-real-data.spec.js) + [tests/mexc-3way.spec.js](tests/mexc-3way.spec.js).
+- [x] 2026-05-04 — **Hyperliquid scaled-in fee-duplicatie** (v12.88) — In `_reconstructTrades` partial-fill matching werd open-fee pro-rata afgesplitst maar `lot.fee` bleef onveranderd → fee-duplicatie bij volgende close-fills van dezelfde lot (~3% over-attribution gemeten). Fix: `lot.fee -= feeShare` na elke pro-rata aftrek. Drift in Denny's snapshot: 1.030× → 1.000×. Test: [tests/hyperliquid-real-data.spec.js](tests/hyperliquid-real-data.spec.js).
 - [x] 2026-04-28 — **Edge-Erosion Funnel + Theoretical edge-leak UX-redesign** (v12.52) — Edge-Erosion Funnel was tabel + parallel SVG-bars met dubbele info. Vervangen door verticale stack van 3 stadium-cards met dashed connector-pills tussen rijen die het verhaal vertellen ("Hindsight-bias leak: −X%"). Theoretical edge-leak histogram (20 buckets, sparse data, hardcoded dark bg) vervangen door 3 tier-cards (≥80% / 50–79% / <50%) met adaptive headline-pill bovenaan. Dead code opgeruimd: `PlaybookMissedHistogram` + 20-bucket bins-berekening verwijderd.
 - [x] 2026-04-28 — **Setup-laag UX-redesign + filled chips op alle themes** (v12.52) — wrapper `var(--bg3)` met soft elevation-shadow, pills filled (`var(--bg4)` chip) i.p.v. transparent, theme-aware gold-vars voor selected SETUP-pill, labels gelijkgetrokken (alle 9px gold uppercase). Vervolg op v12.49 contrast-fix die nog niet voldoende was.
 - [x] 2026-04-28 — **Save-knop label + gradient differentiëren Backtest 🔬 / Paper 📝 / Gemist 👻** (v12.52) — was alle drie "Gemiste trade opslaan" met roze gradient. Backtest blauw, Paper paars, Gemist roze — matcht status-pills bovenin het formulier.
