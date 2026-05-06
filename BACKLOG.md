@@ -10,6 +10,34 @@ Basis kwam uit de feature-diff v4_14 → v9 onderaan. Inmiddels werken we op **v
 
 <!-- Denny stuurt bugs 1 voor 1 — elk item krijgt datum + korte reproductiestap. -->
 
+- [ ] **MEXC partial-close: TP-winst-totaal wijkt ~factor 8 af van werkelijke PnL** *(2026-05-06, gemeld door Denny op een ander profiel met v12.95 + Worker v6)* — In edit-modal van een gesloten BTC short trade: entry=80282.5, exit=79857.5, positionSize=$336, qty=0.004185 BTC, **PnL=$14.27**. Drie TPs (39.9% / 30.1% / 30.1% — totaal 100.1% met "⚠ >100%" flag) tonen individuele winsten +$0.49 / +$0.69 / +$0.60, **Verwacht totaal: $1.78**. Discrepantie $14.27 vs $1.78 = **factor 8.02**.
+
+  **Mogelijke root cause** (nog niet bevestigd, vereist snapshot-analyse):
+  - **Hypothese 1 (meest waarschijnlijk)**: `positionSize` + `qty` zijn verkeerd opgeslagen — werkelijke trade was 0.0337 BTC ($2705), niet 0.004185 BTC ($336). Factor 8 ≈ ratio tussen werkelijke vs opgeslagen size. PnL veld zou dan correct kloppen ($14.32 = 425 × 0.0337) maar TP-winst-berekening (`(entry−tpPrice) × pct × qty`) gebruikt de foute kleinere qty → 1/8 van werkelijke winst per TP.
+  - **Hypothese 2**: TP-fills hebben `dealVol` in andere eenheid (= base currency BTC vs contracts) en client doet useScaled conversie verkeerd. Dan zouden percentages eigenlijk correct zijn maar onder verkeerde aanname over qty.
+  - **Hypothese 3**: trade is geïmporteerd in de overgangsfase tussen Worker v5 en v6, met inconsistente velden uit fetchTrades vs fetchFills.
+
+  **Reproductie**: open trade in Trades-lijst → klik om edit-modal te openen → check `Verwacht: +$X.XX` onderaan TP-niveaus en vergelijk met PnL-veld bovenin. Discrepantie >5× = bug.
+
+  **Te onderzoeken**:
+  1. Snapshot maken (`?dev=1` → 📥 Snapshot) van de positionsHistory record voor deze positionId. Check `closeVol` (in contracts of in BTC?) en `closeAvgPrice`.
+  2. Snapshot van history_orders response (vereist nieuwe debug-knop) voor zelfde positionId. Check `dealVol` per close-order.
+  3. Vergelijk MEXC futures UI position-history voor deze trade — wat staat daar als size?
+  4. Reken handmatig: 425 × 0.0337 = $14.32. Klopt met PnL? Dan is qty voor calcProfit gewoon te klein.
+
+  **Code-locaties om te checken**:
+  - `_convertContracts` in [work/tradejournal.html:1944](work/tradejournal.html#L1944) — converteert closeVol→assetQty via contractSize
+  - `calcProfit` in [work/tradejournal.html:5300](work/tradejournal.html#L5300) — gebruikt entry × pct × originalSize voor TP-winst
+  - Worker v6 [worker-patches/v6-online-worker.js](worker-patches/v6-online-worker.js) regel ~135 `vol: o.dealVol` — check of dealVol consistent is met closeVol uit position-history
+
+  **Acceptatie-criteria**:
+  - `Verwacht totaal` onderaan TP-niveaus matcht trade.pnl op cent niveau (binnen $0.05 voor afronding)
+  - `pct` totaal = 100.0% (niet 100.1% door rondingsfout)
+  - Per TP individuele winst klopt met de exchange-UI
+  - Test: nieuwe spec met fixture die deze scenario simuleert
+
+  **Niet-blocker voor de meeste users**: PnL-veld zelf is correct (matcht MEXC realised). Alleen de TP-breakdown weergave is verkeerd. Maar verwarrend en breekt R-multiple analytics per niveau.
+
 - [ ] **Kraken trades hebben geen TP-coverage — `needsTPs`-filter skipt ze omdat positionId leeg is** *(2026-05-06, ontdekt tijdens MEXC-TP diagnose — zie diagnose-context in conversation 2026-05-06)* — Bij Denny's journal hebben **alle 37 Kraken trades** lege `tpLevels` én lege `_tpFetched` marker. Geen permanent-stuck-bug zoals MEXC, maar een structureel **gat in TP-coverage**: Kraken trades worden nooit door de TP-fetch-flow gehaald omdat de filter in [work/tradejournal.html:10726](work/tradejournal.html#L10726) skipt op `!t.positionId`, en Kraken's API geeft geen positionId per trade.
 
   **Root cause**: Kraken's API gebruikt een **account-log architectuur** ([proxy-local/worker.js:231-368](proxy-local/worker.js#L231-L368)) waarbij trades server-side gereconstrueerd worden uit fills. Het gevolg is dat trades binnenkomen met `id: "kraken_pf_ethusd_<ts>_<dir>"` maar `positionId: ""`. De refresh-handler skipt ze daardoor uit de needsTPs queue → fetchFills wordt nooit aangeroepen → tpLevels blijft leeg.

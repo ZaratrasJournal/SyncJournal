@@ -6,6 +6,27 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.96] — 2026-05-06
+
+Self-heal voor legacy MEXC positionSize bug. Trades uit pre-v12.89 era waar de contractSize-conversie faalde (CORS-fail vóór de fallback-map bestond) hadden `positionSize = String(closeVol)` opgeslagen — raw contracts opgevat als USD, factor 8-100× te klein. Symptoom werd zichtbaar nu de TP-breakdown (v12.93+) per-fill winsten toont: `Verwacht totaal $1.78` terwijl PnL `$14.27` was, plus TP-percentage som > 100%.
+
+### Fixed
+- **Legacy MEXC positionSize/asset factor-mismatch** *(2026-05-06, gemeld door Denny op tweede profiel met v12.95 + Worker v6)* — Voor élke MEXC closed trade berekent normalizeTrade nu de verwachte asset uit `(pnl + fees) / |exit − entry|` (PnL is autoritatief sinds v12.88 = MEXC `realised` veld). Als de opgeslagen asset >2× of <0.5× afwijkt van die verwachting: corrigeer `positionSizeAsset` + `positionSize` automatisch en zet marker `_sizeRehealed=true` om dubbele migratie te voorkomen. Voor de gevallen trade (pid=1360488693): `0.004185 BTC` / `$336` → `0.0336 BTC` / `$2697` (matcht raw `closeVol × ctSize` uit snapshot). Trades binnen 0.5-2.0× ratio (= normale fee/ronding-variatie) worden niet aangeraakt.
+
+### Aanpak
+- Migratie loopt eenmalig per trade bij eerstvolgende app-load via `normalizeTrade`. Geen actie vereist van community-leden.
+- PnL-veld blijft onveranderd (was nooit fout — MEXC realised is netto).
+- TP-percentages tellen na correctie correct op tot 100% en per-TP winst klopt met PnL.
+- Open trades worden bewust overgeslagen — exit kan markprijs zijn ipv echte exit, asset-correctie zou onbetrouwbaar zijn.
+
+### Toegevoegd
+- **Self-heal spec** ([tests/mexc-size-rehel.spec.js](tests/mexc-size-rehel.spec.js)) — 5 scenarios: factor-8 mismatch wordt gecorrigeerd, correcte trades blijven onaangeraakt, marker voorkomt dubbele migratie, open trades worden overgeslagen, fees worden correct meegenomen in gross-PnL berekening.
+
+### Voor de community
+Geen actie nodig. Bij update naar v12.96 worden eventuele factor-mismatches in MEXC trades automatisch gecorrigeerd bij de eerstvolgende app-load. PnL-totalen veranderen niet — alleen positionSize-display + TP-percentages worden consistent.
+
+---
+
 ## [v12.95] — 2026-05-06
 
 Validatie-checklist tab in Instellingen voor systematisch testen van trade-flow per exchange. Community-leden kunnen scenarios afvinken, afwijkingen noteren en een rapport-PNG genereren om naar Discord te sturen.

@@ -1023,7 +1023,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.95",released:"2026-05-06"};
+const APP_VERSION={version:"v12.96",released:"2026-05-06"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -1464,6 +1464,43 @@ const normalizeTrade=(t)=>{
     delete out._tpFetched;
     if(Array.isArray(out.tpLevels)&&out.tpLevels.length>0){
       out._tpFetchedAt=Date.now()-12*60*60*1000;
+    }
+  }
+  // v12.96: self-heal MEXC legacy positionSize bug. Pre-v12.89 trades waar
+  // _getContractSize 0 retourneerde (CORS-fail vóór de fallback-map bestond)
+  // kregen `positionSize = String(closeVol)` (= raw contracts, opgeslagen alsof
+  // het USD was). Bij display: qty = positionSize / entry = factor-fout-kleine
+  // BTC. Symptoom: TP-percentage som > 100%, per-TP winst klopt niet met PnL.
+  //
+  // Detectie: PnL is autoritatief (= MEXC realised, sinds v12.88 geverifieerd).
+  // Als (exit-entry) × asset × dirSign sterk afwijkt van pnl + fees, dan is
+  // asset fout. Recompute uit PnL + fees als gross. Tolerance: factor 2+ off
+  // = bug, factor 0.5-2.0 = normale ronding/fee-impact (niet aanraken).
+  // Marker `_sizeRehealed` voorkomt dubbel migreren.
+  if(out.source==="mexc"&&out.status==="closed"&&!out._sizeRehealed){
+    const entry=parseFloat(out.entry)||0;
+    const exit=parseFloat(out.exit)||0;
+    const asset=Math.abs(parseFloat(out.positionSizeAsset)||0);
+    const pnl=parseFloat(out.pnl)||0;
+    const fees=Math.abs(parseFloat(out.fees)||0);
+    const dirSign=out.direction==="long"?1:-1;
+    const priceDiff=exit-entry;
+    if(entry>0&&exit>0&&asset>0&&Math.abs(pnl)>0.001&&Math.abs(priceDiff)>0.001){
+      // expectedAsset = gross PnL / (priceDiff × dirSign). Gross = pnl + fees
+      // (PnL is netto sinds v12.88, fees positief opgeslagen).
+      const grossSign=Math.sign(pnl); // gross heeft zelfde teken als netto pnl
+      const grossPnl=Math.abs(pnl)+fees;
+      const expected=grossPnl/Math.abs(priceDiff);
+      if(expected>0&&Number.isFinite(expected)){
+        const ratio=asset/expected;
+        // Ratio buiten 0.5-2.0 = factor-mismatch (echte bug), niet aanraken
+        // bij normale fee/ronding-variatie.
+        if(ratio>2||ratio<0.5){
+          out.positionSizeAsset=String(expected);
+          out.positionSize=(expected*entry).toFixed(2);
+          out._sizeRehealed=true;
+        }
+      }
     }
   }
   // v12.50: playbook-tracking velden defaults. Bestaande trades zonder
