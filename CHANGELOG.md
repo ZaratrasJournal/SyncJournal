@@ -6,6 +6,20 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.101] — 2026-05-06
+
+Twee Kraken open-positions bugs gefixt in `_normalise`. Geïsoleerd in de Kraken-adapter — geen impact op MEXC/Blofin/Hyperliquid/FTMO.
+
+### Fixed
+- **Direction omgekeerd voor Kraken open posities** *(gemeld door Denny op live BTC long)* — Kraken's `/derivatives/api/v3/openpositions` endpoint geeft `side: "long"` of `side: "short"`, géén `"buy"`/`"sell"`. De `_normalise` viel terug op `t.side === "buy" ? "long" : "short"` waardoor élke open Kraken-positie als **short** in het journal terecht kwam. **Fix**: matchen op zowel `"buy"` als `"long"` (case-insensitive). Closed Kraken-trades waren niet geraakt — die kregen `direction` direct van de Worker.
+- **Instabiele id voor Kraken open posities** — Kraken's openpositions endpoint heeft géén `fill_id`, dus de fallback `uid()` genereerde bij elke re-sync een nieuwe random id → riskeerde duplicaten in de trade-lijst. **Fix**: voor open posities is de id nu `kraken_open_${symbol}_${fillTime}_${side}` — deterministisch, idempotent over re-syncs heen. Closed trades blijven hun `fill_id` van de Worker gebruiken.
+
+### Voor de community
+- Geen actie nodig voor closed Kraken-trades.
+- **Heb je nu een open Kraken-positie in je journal?** Verwijder 'm één keer en doe een refresh — de fresh sync schrijft 'm met correcte direction én stabiele id terug. Vanaf v12.101 ontstaat de bug niet meer.
+
+---
+
 ## [v12.100] — 2026-05-06
 
 Kraken trade-import client-side fixes ter ondersteuning van Worker v11. Maakt Kraken trades zichtbaar met correcte position-size + TPs + auto-heal voor bestaande buggy trades zonder verlies van handmatige edits.
