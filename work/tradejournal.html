@@ -1023,7 +1023,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.98",released:"2026-05-06"};
+const APP_VERSION={version:"v12.99",released:"2026-05-06"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -1466,18 +1466,21 @@ const normalizeTrade=(t)=>{
       out._tpFetchedAt=Date.now()-12*60*60*1000;
     }
   }
-  // v12.96: self-heal MEXC legacy positionSize bug. Pre-v12.89 trades waar
-  // _getContractSize 0 retourneerde (CORS-fail vóór de fallback-map bestond)
-  // kregen `positionSize = String(closeVol)` (= raw contracts, opgeslagen alsof
-  // het USD was). Bij display: qty = positionSize / entry = factor-fout-kleine
-  // BTC. Symptoom: TP-percentage som > 100%, per-TP winst klopt niet met PnL.
+  // v12.96: self-heal positionSize bug. Pre-v12.89 trades waar contractSize-
+  // conversie faalde (MEXC) of pre-v12.90 mixed-units (Blofin) kregen
+  // `positionSizeAsset = ""` of factor-fout asset opgeslagen. Symptoom:
+  // TP-percentage som > 100%, per-TP winst klopt niet met PnL.
   //
-  // Detectie: PnL is autoritatief (= MEXC realised, sinds v12.88 geverifieerd).
-  // Als (exit-entry) × asset × dirSign sterk afwijkt van pnl + fees, dan is
-  // asset fout. Recompute uit PnL + fees als gross. Tolerance: factor 2+ off
-  // = bug, factor 0.5-2.0 = normale ronding/fee-impact (niet aanraken).
+  // Detectie: PnL is autoritatief over alle exchanges (= netto realized uit
+  // exchange API). Als (exit-entry) × asset × dirSign sterk afwijkt van pnl + fees,
+  // dan is asset fout. Recompute uit PnL + fees als gross. Tolerance: factor 2+
+  // off = bug, factor 0.5-2.0 = normale ronding/fee-impact (niet aanraken).
+  //
+  // v12.99: exchange-agnostisch — werkt nu voor Blofin/MEXC/Hyperliquid/Kraken.
+  // Bulk-analyse 2026-05-06 op community-data: 9 Blofin trades met factor-bug
+  // (3 real, 6 medium), 13 MEXC, 0 Kraken (andere field-names, separate check).
   // Marker `_sizeRehealed` voorkomt dubbel migreren.
-  if(out.source==="mexc"&&out.status==="closed"&&!out._sizeRehealed){
+  if(out.source&&out.status==="closed"&&!out._sizeRehealed){
     const entry=parseFloat(out.entry)||0;
     const exit=parseFloat(out.exit)||0;
     const asset=Math.abs(parseFloat(out.positionSizeAsset)||0);
@@ -10097,7 +10100,7 @@ function DonationSection(){
   </div>);
 }
 
-function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,setTrades,importTrades,syncOpenPositions,exportTrades,setTagConfig,tagConfig,tradingRules,setTradingRules,goals,setGoals,mindsetPrefs,setMindsetPrefs,setTab}){
+function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,setTrades,importTrades,syncOpenPositions,exportTrades,setTagConfig,tagConfig,tradingRules,setTradingRules,goals,setGoals,mindsetPrefs,setMindsetPrefs,lastSyncTimes,setTab}){
   const csvRef=useRef();const csvAcctRef=useRef(null);
   const backupRef=useRef();
   // Visual confirmation for displayName auto-save (flashes after 400ms debounce, fades after 1800ms)
@@ -11649,18 +11652,30 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,set
       </div>
       <div style={{fontSize:"10px",color:"var(--text4)",marginTop:"6px",lineHeight:1.5}}>Wordt gebruikt als default bij nieuwe handmatige trades. API/CSV import behoudt de originele pairing.</div>
 
-      {/* v12.98: één auto-sync setting (was eerder 2: historisch + live posities).
-          Live polling van open posities is wat users echt continu willen zien.
-          Voor nieuwe historische trades: gebruik de 🔄 Refresh trades knop op de
-          exchange-pagina. Houdt config-key `autoRefreshOpen` voor backwards-compat. */}
+      {/* v12.99: Auto-sync intervallen aangepast naar 15/30/60 min ivm community-
+          schaal: ~50+ users via 1 Worker IP zou bij 30sec interval MEXC's rate-limit
+          (20 reqs/sec) overschrijden. 15+ min zit ruim binnen Cloudflare free tier
+          en alle exchange rate-limits. Per cycle: BEIDE fetchOpenPositions +
+          fetchTrades. Plus jitter (0-30s offset) om sync-spikes bij community te
+          voorkomen. Nieuwe key `autoSyncMin` (minuten); oude `autoRefreshOpen`
+          (seconden) blijft als dode-code voor backwards-compat. */}
       <div style={{marginTop:"16px",paddingTop:"14px",borderTop:"1px solid var(--border2)"}}>
         <div style={{display:"flex",alignItems:"center",gap:"12px",flexWrap:"wrap"}}>
           <span style={{fontSize:"12px",color:"var(--text2)",minWidth:"150px"}}>🔄 Auto-sync:</span>
-          {[{v:0,l:"Uit"},{v:30,l:"30 sec"},{v:60,l:"1 min"},{v:120,l:"2 min"}].map(opt=>{const active=(config.autoRefreshOpen||0)===opt.v;return(
-            <button key={opt.v} onClick={()=>setConfig(p=>({...p,autoRefreshOpen:opt.v}))} style={{padding:"5px 12px",borderRadius:"var(--radius)",border:"1px solid var(--border3)",fontSize:"11px",fontWeight:600,background:active?"var(--gold-dim)":"transparent",color:active?"var(--gold)":"var(--text4)",cursor:"pointer",fontFamily:"inherit"}}>{opt.l}</button>
+          {[{v:0,l:"Uit"},{v:15,l:"15 min"},{v:30,l:"30 min"},{v:60,l:"1 uur"}].map(opt=>{const active=(config.autoSyncMin||0)===opt.v;return(
+            <button key={opt.v} onClick={()=>setConfig(p=>({...p,autoSyncMin:opt.v}))} style={{padding:"5px 12px",borderRadius:"var(--radius)",border:"1px solid var(--border3)",fontSize:"11px",fontWeight:600,background:active?"var(--gold-dim)":"transparent",color:active?"var(--gold)":"var(--text4)",cursor:"pointer",fontFamily:"inherit"}}>{opt.l}</button>
           )})}
         </div>
-        <div style={{fontSize:"10px",color:"var(--text4)",marginTop:"6px",lineHeight:1.5}}>Ververst live open posities (entry · unrealized PnL · SL/TP · liquidation). Silent — geen toasts. Pauzeert bij inactieve tab. Voor nieuwe historische trades: klik <strong>🔄 Refresh trades</strong> op de exchange-pagina.</div>
+        <div style={{fontSize:"10px",color:"var(--text4)",marginTop:"6px",lineHeight:1.5}}>Haalt automatisch nieuwe trades en open posities op (entry · unrealized PnL · SL/TP · liquidation). Silent — geen toasts. Pauzeert bij inactieve tab.</div>
+        {config.autoSyncMin>0&&(()=>{
+          const times=Object.values(lastSyncTimes||{}).filter(Boolean);
+          if(!times.length)return(<div style={{fontSize:"10px",color:"var(--text4)",marginTop:"4px",fontFamily:"var(--mono)",opacity:0.7}}>Laatst gesynchroniseerd: nog niet — wacht op eerste cyclus</div>);
+          const latest=Math.max(...times);
+          const ago=Math.floor((Date.now()-latest)/60000);
+          const exNames=Object.entries(lastSyncTimes||{}).filter(([k,v])=>v).map(([k])=>ExchangeAPI[k]?.name||k).join(' · ');
+          const agoStr=ago<1?"net":ago<60?`${ago} min geleden`:`${Math.floor(ago/60)}u ${ago%60}m geleden`;
+          return(<div style={{fontSize:"10px",color:"var(--text4)",marginTop:"4px",fontFamily:"var(--mono)"}}>Laatst gesynchroniseerd: <strong style={{color:"var(--text3)"}}>{agoStr}</strong> — {exNames}</div>);
+        })()}
       </div>
 
       {/* Missed trades — opt-in power feature for tracking edge gap */}
@@ -12663,6 +12678,8 @@ function App(){
 
   // Playbook — gestructureerde catalogus van bewezen setups (v12.38)
   const[playbooks,setPlaybooks]=useState(()=>{try{const d=localStorage.getItem("tj_playbooks");return migratePlaybooks(d?JSON.parse(d):[]);}catch{return[]}});
+  // v12.99: laatste sync-tijden per exchange voor "Laatst gesynchroniseerd: X geleden" indicator.
+  const[lastSyncTimes,setLastSyncTimes]=useState(()=>{try{const d=localStorage.getItem("tj_last_sync_times");return d?JSON.parse(d):{};}catch{return{}}});
   useEffect(()=>{try{localStorage.setItem("tj_playbooks",JSON.stringify(playbooks))}catch{}},[playbooks]);
   // Pending import — gevuld als URL #playbook=... hash wordt gedetecteerd bij load
   const[pendingPbImport,setPendingPbImport]=useState(()=>{try{if(window.location.hash&&window.location.hash.includes("playbook=")){return window.location.href;}}catch{}return"";});
@@ -12792,52 +12809,53 @@ function App(){
 
   useEffect(()=>{try{localStorage.setItem("tj_config",JSON.stringify(config))}catch(err){}},[config]);
 
-  // Live open-posities auto-refresh — separate/faster poll than historical-trade sync.
-  // Iterates all exchanges that have fetchOpenPositions + configured creds. Silent on errors.
+  // v12.99: gecombineerde auto-sync. Doet BEIDE fetchOpenPositions + fetchTrades
+  // per cycle voor elke gekoppelde exchange. Intervallen 15/30/60 min — schaal-
+  // veilig voor community via gedeelde Cloudflare Worker (zie v12.99 changelog).
+  // Plus jitter: 0-30s random offset bij start zodat 50+ users niet tegelijk syncen.
+  // Vervangt eerdere syncInterval + autoRefreshOpen useEffects.
   useEffect(()=>{
-    const iv=config.autoRefreshOpen||0;
-    if(!iv)return;
-    const connected=Object.entries(config.exchanges||{}).filter(([k,c])=>c&&c.apiKey&&c.apiSecret&&ExchangeAPI[k]?.fetchOpenPositions);
-    if(!connected.length)return;
-    const refreshAll=async()=>{
-      if(document.hidden)return;
-      for(const[key,cfg] of connected){
-        try{
-          const api=ExchangeAPI[key];
-          const opens=api.needsPassphrase
-            ?await api.fetchOpenPositions(cfg.apiKey,cfg.apiSecret,cfg.passphrase)
-            :await api.fetchOpenPositions(cfg.apiKey,cfg.apiSecret);
-          if(Array.isArray(opens))syncOpenPositions(key,opens);
-        }catch(e){/* silent — user wil geen toasts elke 30s */}
-      }
-    };
-    const timer=setInterval(refreshAll,iv*1000);
-    return()=>clearInterval(timer);
-  },[config.autoRefreshOpen,config.exchanges]);
-
-  // Auto-sync interval — alleen actief bij syncInterval>0 én minstens 1 gekoppelde exchange
-  useEffect(()=>{
-    const iv=config.syncInterval||0;
+    const iv=config.autoSyncMin||0;
     if(!iv)return;
     const connected=Object.entries(config.exchanges||{}).filter(([k,c])=>c&&c.apiKey&&c.apiSecret&&ExchangeAPI[k]);
     if(!connected.length)return;
-    const timer=setInterval(async()=>{
+    const refreshAll=async()=>{
       if(document.hidden)return;
+      const newTimes={...lastSyncTimes};
       for(const[key,cfg] of connected){
         try{
           const api=ExchangeAPI[key];
-          const startTime=Date.now()-30*86400000;
+          // Open posities (live PnL/SL/TP/LIQ)
+          if(api.fetchOpenPositions){
+            const opens=api.needsPassphrase
+              ?await api.fetchOpenPositions(cfg.apiKey,cfg.apiSecret,cfg.passphrase)
+              :await api.fetchOpenPositions(cfg.apiKey,cfg.apiSecret);
+            if(Array.isArray(opens))syncOpenPositions(key,opens);
+          }
+          // Nieuwe historische trades (laatste 7 dagen — interval is iv min, ruim genoeg)
+          const startTime=Date.now()-7*86400000;
           const fetched=api.needsPassphrase
             ?await api.fetchTrades(cfg.apiKey,cfg.apiSecret,cfg.passphrase,startTime)
             :await api.fetchTrades(cfg.apiKey,cfg.apiSecret,null,startTime);
-          if(fetched&&fetched.length){
+          if(Array.isArray(fetched)&&fetched.length){
             setTrades(prev=>{const ex=new Set(prev.map(t=>t.id));const fresh=fetched.filter(t=>!ex.has(t.id));return fresh.length?[...fresh,...prev]:prev;});
           }
-        }catch(e){console.warn("[auto-sync]",key,e.message)}
+          newTimes[key]=Date.now();
+        }catch(e){/* silent — user wil geen toasts bij elke cyclus */}
       }
-    },iv*60*1000);
-    return()=>clearInterval(timer);
-  },[config.syncInterval,config.exchanges]);
+      setLastSyncTimes(newTimes);
+      try{localStorage.setItem("tj_last_sync_times",JSON.stringify(newTimes))}catch{}
+    };
+    // Jitter — voorkomt dat alle community-users tegelijk om :00/:15/:30 syncen.
+    // Zonder dit zou Cloudflare + exchange-side een spike krijgen elke 15 min.
+    const jitterMs=Math.floor(Math.random()*30000);
+    let intervalTimer=null;
+    const startupTimer=setTimeout(()=>{
+      refreshAll();
+      intervalTimer=setInterval(refreshAll,iv*60*1000);
+    },jitterMs);
+    return()=>{clearTimeout(startupTimer);if(intervalTimer)clearInterval(intervalTimer);};
+  },[config.autoSyncMin,config.exchanges]);
   useEffect(()=>{try{localStorage.setItem("tj_accounts",JSON.stringify(accounts))}catch(err){}},[accounts]);
   useEffect(()=>{try{localStorage.setItem("tj_tags",JSON.stringify(tagConfig))}catch(err){}},[tagConfig]);
 
@@ -13438,7 +13456,7 @@ function App(){
             settings-onderdelen die in de hoofdpagina horen (Accounts/Backup/App-
             voorkeuren/Geavanceerd). Trading Rules / Goals / Tags blijven hun eigen
             tab + pagina, om die niet onnodig in de scroll-spy te proppen. */}
-        {tab==="accounts"&&<AccountsHub config={config} setConfig={setConfig} accounts={accounts} setAccounts={setAccounts} showToast={showToast} trades={trades} setTrades={setTrades} importTrades={importTrades} syncOpenPositions={syncOpenPositions} exportTrades={exportTrades} setTagConfig={setTagConfig} tagConfig={tagConfig} tradingRules={tradingRules} setTradingRules={setTradingRules} goals={goals} setGoals={setGoals} mindsetPrefs={mindsetPrefs} setMindsetPrefs={setMindsetPrefs} setTab={navigate}/>}
+        {tab==="accounts"&&<AccountsHub config={config} setConfig={setConfig} accounts={accounts} setAccounts={setAccounts} showToast={showToast} trades={trades} setTrades={setTrades} importTrades={importTrades} syncOpenPositions={syncOpenPositions} exportTrades={exportTrades} setTagConfig={setTagConfig} tagConfig={tagConfig} tradingRules={tradingRules} setTradingRules={setTradingRules} goals={goals} setGoals={setGoals} mindsetPrefs={mindsetPrefs} setMindsetPrefs={setMindsetPrefs} lastSyncTimes={lastSyncTimes} setTab={navigate}/>}
         {tab==="rules"&&<TradingRulesPage tradingRules={tradingRules} setTradingRules={setTradingRules}/>}
         {tab==="goals"&&<GoalsPage goals={goals} setGoals={setGoals} trades={trades}/>}
         {tab==="tags"&&<TagManager tagConfig={tagConfig} setTagConfig={setTagConfig} trades={trades} setTrades={setTrades} showToast={showToast} config={config}/>}

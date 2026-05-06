@@ -107,6 +107,37 @@ test.describe('v12.97 positionSize self-heal — drie-lagen fix', () => {
     expect(parseFloat(result.positionSize), 'positionSize ≈ $0.10').toBeCloseTo(0.10, 2);
   });
 
+  test('v12.99 — Blofin trade met factor-bug wordt ook gehealed (exchange-agnostisch)', async ({ page }) => {
+    // Sample uit Denny's backup: Blofin BTC trade pid 8000000610733 met factor-17 bug
+    // entry=67396.9, exit=67386.4, asset=0.0166, pnl=-1.52
+    // Werkelijke asset zou zijn: 1.52 / |67386.4-67396.9| = 1.52 / 10.5 = 0.1448
+    await loadAppWithTrade(page, {
+      id: 'blofin_legacy_factor',
+      source: 'blofin',
+      status: 'closed',
+      direction: 'long',
+      pair: 'BTC/USDT',
+      positionId: '8000000610733',
+      entry: '67396.9',
+      exit: '67386.4',
+      positionSize: '1119',
+      positionSizeAsset: '0.0166', // factor-fout (ratio 0.06)
+      pnl: '-1.516741668',
+      fees: '0',
+    });
+
+    await page.waitForFunction(() => {
+      const t = JSON.parse(localStorage.getItem('tj_trades'))[0];
+      return t._sizeRehealed === true;
+    }, { timeout: 5_000 });
+
+    const corrected = await page.evaluate(() => JSON.parse(localStorage.getItem('tj_trades'))[0]);
+    const asset = parseFloat(corrected.positionSizeAsset);
+    // expected: 1.5167 / 10.5 = 0.1444
+    expect(asset, 'Blofin asset gehealed via pnl-math').toBeCloseTo(0.1444, 3);
+    expect(corrected._sizeRehealed).toBe(true);
+  });
+
   test('Trade die al correct staat wordt NIET aangeraakt', async ({ page }) => {
     await loadAppWithTrade(page, {
       id: 'mexc_correct_v1297',

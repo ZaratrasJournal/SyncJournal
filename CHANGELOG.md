@@ -6,6 +6,32 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.99] — 2026-05-06
+
+Auto-sync intervallen aangepast voor community-schaal + nieuwe gecombineerde sync flow + jitter + last-sync indicator. Plus universele positionSize self-heal voor alle exchanges (was MEXC-only).
+
+### Fixed
+- **PositionSize self-heal werkt nu voor alle exchanges** — Bulk-analyse op community-data wees uit dat ook Blofin trades de factor-bug kunnen hebben (in jouw backup: 9 trades met factor-issue, waarvan 3 echte bugs met ratio 0.06 = factor 17 verschil). Pre-v12.90 Blofin had eigen "mixed-units" issue (contracts vs base currency) waardoor `positionSizeAsset` factor-fout werd opgeslagen. **Fix**: migratie in `normalizeTrade` heeft de `out.source === "mexc"` filter laten vallen — werkt nu voor élke source met geldige entry/exit/pnl/asset (Blofin, MEXC, Hyperliquid). Kraken niet (andere field-names, separate ticket op backlog).
+
+### Gewijzigd
+- **Auto-sync intervallen 30sec/1min/2min → 15min/30min/1uur** — De korte intervallen waren technisch werkbaar voor solo-gebruik, maar **niet schaalbaar** voor de community via gedeelde Cloudflare Worker. Bij 50+ users tegelijk via dezelfde Worker IP zou MEXC's rate-limit (20 reqs/sec) overschreden worden bij 30sec interval. Plus Cloudflare free-tier (100K reqs/dag) zou snel vol raken. Nieuwe intervallen zitten ruim binnen alle limits.
+- **Eén gecombineerde sync per cyclus** — Voorheen aparte useEffects voor `fetchOpenPositions` (live PnL) en `fetchTrades` (historisch). Nu één useEffect die beide doet per gekoppelde exchange. Voor users die "Auto-sync = Uit" hebben: alles werkt zoals altijd via de manuele "🔄 Refresh trades" knop.
+- **Jitter (0-30s random offset)** bij elke setInterval-start. Voorkomt dat alle community-users tegelijk om :00 / :15 / :30 syncen → minder kortstondige spikes op Cloudflare + exchange-side.
+
+### Toegevoegd
+- **"Laatst gesynchroniseerd: X geleden" indicator** onder de Auto-sync setting in Voorkeuren. Toont de meest recente sync-tijd plus per welke exchanges. Persisteert via `tj_last_sync_times` localStorage zodat info ook na reload zichtbaar is.
+
+### Code-changes
+- Nieuwe config-key `autoSyncMin` (in minuten). Oude `autoRefreshOpen` (seconden) en `syncInterval` blijven in storage als dode-code voor backwards-compat — geen breaking change voor users die deze legacy-keys hebben.
+- Twee oude useEffects (`autoRefreshOpen` poll + `syncInterval` poll) vervangen door één gecombineerde useEffect.
+- Default `autoSyncMin = 0` (uit) bij upgrade — users moeten zelf kiezen om auto-sync aan te zetten.
+
+### Voor de community
+- Geen actie nodig. Default staat Auto-sync op "Uit" — werk dezelfde manier als nu (manuele refresh op exchange-pagina).
+- Wil je auto-sync? Voorkeuren → Auto-sync → kies 15/30/60 min. Live posities + nieuwe trades komen dan automatisch binnen op dat interval.
+
+---
+
 ## [v12.98] — 2026-05-06
 
 Drie-lagen positionSize fix voor MEXC trades + Auto-sync UI vereenvoudigd naar één setting. v12.96 self-heal had één gat: trades met **lege** `positionSizeAsset` werden niet gecorrigeerd. Zichtbaar bij Denny's trade van vandaag (closeTime 2026-05-06 10:32) met `positionSize="72"` en `positionSizeAsset=""`.
