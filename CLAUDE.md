@@ -21,7 +21,9 @@ assets/      - logo, favicons, og-image
   share-cards/    - bron-PNGs voor trade-share kaart-achtergronden (boss/giggling/omg/pablo/goodfellas)
 tests/       - Playwright specs + fixtures + helpers + screenshots
 scripts/     - tooling (gen-demo-backup.js)
-proxy-local/ - CORS-proxy voor lokaal exchange-API testen
+proxy-local/ - HISTORISCH: oude lokale CORS-proxy. NIET MEER ACTIEF. Wijzigingen
+               aan `worker.js` hebben GEEN effect — productie draait via de online
+               Cloudflare Worker. Zie sectie "Cloudflare Worker proxy" hieronder.
 _scratch/    - GITIGNORED: oude varianten (v4_14, dragdrop-test, design-handoff), backups, persoonlijke csv's
 ```
 
@@ -51,6 +53,27 @@ _scratch/    - GITIGNORED: oude varianten (v4_14, dragdrop-test, design-handoff)
 - **Inline JSX styling**: inline `style={{}}` is de norm in deze file. CSS-class alleen als er een hover/media-query nodig is. Houd style-objects compact.
 - **React hooks**: `useState` / `useEffect` / `useRef` / `useMemo` / `useCallback` zijn globaal gedestructureerd bovenin het bestand (`const {useState,...} = React`). Geen `React.useState` nodig.
 - **Amsterdam-tijd voor user-facing datums**: gebruik `Intl.DateTimeFormat("sv-SE", {timeZone:"Europe/Amsterdam", ...})` voor dag-of-week / uur berekeningen (DST-aware). Zie DisciplineHeatmap als voorbeeld.
+
+## Cloudflare Worker proxy (productie — enige actieve proxy)
+
+De app praat met exchange-API's via een **online Cloudflare Worker**, niet via `proxy-local/`. Die laatste is historisch en niet meer in gebruik — wijzigingen daaraan hebben geen productie-effect.
+
+### Wat dat betekent voor proxy-wijzigingen
+- **Nooit zeggen** "gebruik wrangler dev tegen `proxy-local/`" of "edit worker.js lokaal" als instructie aan Denny — dat doet niets.
+- **Worker-code zelf** wordt door Denny extern beheerd (niet in deze repo onder version-control). Voor de feitelijke deploy moet zij óf direct in Cloudflare dashboard editen, óf via haar eigen wrangler-setup ergens anders.
+- **Wij kunnen wel** in deze repo voorstellen formuleren ("vervang in worker.js de fills-action door deze code"), maar de daadwerkelijke deploy gebeurt buiten ons zicht.
+- **Veranderingen aan `proxy-local/worker.js`** zijn dus in principe **alleen historisch / als referentie**. Als we de productie-Worker willen wijzigen, leveren we de diff aan Denny en zij past het toe in haar Worker-omgeving.
+
+### Wat dat betekent voor lokaal testen
+- Lokaal end-to-end testen tegen echte MEXC/Blofin/Kraken/Hyperliquid APIs **kan niet** zonder credentials + actieve Worker.
+- **Snapshot-fixture pattern** blijft daarom de enige autonome test-route: `?dev=1` knop captured raw API response → JSON fixture → offline pipeline-test in `tests/`. Zie sectie "Autonome testing" verder in dit document.
+- Mock-fixtures voor proxy-response in unit-tests blijven ook bruikbaar voor client-side parsing/filter validatie (bv. `tests/mexc-history-orders.spec.js` v12.93 patroon).
+
+### Wat te doen bij een proxy-wijziging
+1. Schrijf de wijziging op in tekst/diff-vorm met exacte snippet en regelnummer-context.
+2. Vermeld in CHANGELOG dat de wijziging een Worker re-deploy door Denny vereist vóór effect.
+3. **Niet** spelen met `proxy-local/worker.js` of refereren naar `wrangler dev` als route — verwarrend en onjuist.
+4. Cliënt-side fallback (zoals v12.92's positionsHistory fallback-TP) is een goede strategie om wijzigingen te overbruggen tot de Worker is ge-redeployd.
 
 ## Exchange-architectuur — bug-isolatie tussen exchanges
 

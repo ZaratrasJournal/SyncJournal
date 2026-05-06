@@ -6,6 +6,88 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.94] — 2026-05-06
+
+Self-healing TP-fetch flow + dev-only TP-coverage diagnostics + schema-invariant tests. Sluit de robustness-roadmap af. Marker is nu officieel een hint, geen autoriteit — de filter beslist op basis van wat de trade écht heeft vs. wat hij zou moeten hebben.
+
+### Fixed
+- **"PNL berekenen → Toepassen" knop verscheen ook bij API-imports** — De helper-knop in de trade-edit modal vergeleek de eigen formule `(exit-entry)×size/entry − fees` met de PnL uit de exchange-import, en bood aan de exchange-waarde te overschrijven bij drift >$0.01. Voor MEXC/Blofin/Kraken/Hyperliquid is de exchange echter de bron-van-waarheid (al netto PnL via `realised`/`pnl` velden), en onze formule wijkt licht af door fee-handling verschillen. Klikken zou correcte data overschrijven met een ruwe schatting. **Fix**: knop alleen tonen voor `trade.source === "manual"`. Voor API-imports en CSV-imports blijft de exchange-waarde behouden. Test: [tests/pnl-calc-button.spec.js](tests/pnl-calc-button.spec.js).
+
+### Toegevoegd
+- **Self-heal in `needsTPs` filter** (laag 3) — drie automatische triggers re-queuen trades ongeacht marker-status:
+  - `onlyFallback`: trade heeft alleen v12.92 positionsHistory fallback-TPs → wil upgraden naar echte history_orders breakdown via v6 Worker
+  - `suspectMissing`: closed trade met realised PnL maar 0 hit-TPs en jonger dan 90d → data-gat dat zichzelf moet helen
+  - `noTps`: standaard, gerespecteerd door 24u-TTL
+  Bij onlyFallback en suspectMissing wordt TTL bewust genegeerd om asap echte data binnen te halen. Effect: na deploy van Worker v6 worden de 116 fallback-trades automatisch opgewaardeerd naar echte history_orders breakdown bij de volgende refresh, zonder dat de gebruiker iets hoeft te wissen.
+- **TP-coverage diagnostics panel** (laag 4) — dev-only `📊 TP-coverage` knop in Instellingen → Accounts (`?dev=1`) per exchange met `fetchFills`. Toont totaal closed / met echte TPs / alleen fallback / zonder TPs + marker-status (none/fresh/expired) + leeftijd-distributie + waarschuwingen voor suspect-missing en permanent-stuck markers. Helpt drift detecteren vóór de community 'm meldt.
+- **Schema-invariant test-spec** ([tests/mexc-self-heal.spec.js](tests/mexc-self-heal.spec.js)) (laag 5) — 5 self-heal scenarios + 2 schema-invariant checks. Voorkomt dat dit type bug-categorie ooit terugkomt: permanent-stuck markers, suspect-missing zonder marker, fallback-only zonder retry-trigger. Loopt mee in CI.
+
+### Aanpak
+Sluit de 3-fase robustness-roadmap af die op 2026-05-06 startte met v12.91 (time-bounded markers). Combinatie:
+- **v12.91**: marker boolean → timestamp + invariant-aware setting + one-shot migratie
+- **v12.92**: positionsHistory fallback-TP wanneer fetchFills 0 close-fills retourneert
+- **v12.93**: proxy switch order_deals → history_orders (Worker re-deploy nodig)
+- **v12.94**: self-heal in filter + diagnostics + invariant tests
+
+Resultaat: het permanent-stuck-marker probleem is structureel onmogelijk geworden. Markers kunnen verkeerd staan, fetches kunnen 0 fills retourneren, propagation-delays kunnen optreden — het systeem detecteert het en heelt zichzelf bij elke refresh.
+
+---
+
+## [v12.93] — 2026-05-06
+
+MEXC fetchFills schakelt over van `order_deals` naar `history_orders` voor accurate fill-breakdown bij partial-close trades. **Vereist Cloudflare Worker re-deploy** voor effect op gehoste proxy.
+
+### Fixed
+- **MEXC: per-fill TP-breakdown bij partial-close trades** — Onderzoek (zie research 2026-05-06) wees uit dat MEXC's `order_deals` endpoint het `position_id`-filter stilzwijgend negeert én structureel alleen open-fills retourneert. Daardoor zag de client consistent 0 close-fills, en kreeg elke trade hooguit 1 fallback-TP (uit v12.92). **Fix**: in `proxy-local/worker.js` schakelt de MEXC fills-action over naar `/api/v1/private/order/list/history_orders`. Dat endpoint retourneert per record een `positionId` veld (zodat client-side filtering wel werkt) plus voor close-orders alle benodigde velden: `dealAvgPrice`, `dealVol`, `profit`, `totalFee`, `state`. Velden worden in de proxy gemapt naar de bestaande fill-shape (vol/price/profit/fee/timestamp) zodat de client-side parser ongewijzigd blijft. Filter `state=3` (= completed orders). ccxt gebruikt dit endpoint ook als primary source.
+
+### Aanpak
+- Voor single-close trades: 1 TP direct uit history_orders (vervangt v12.92 fallback automatisch via merge-flow).
+- Voor partial-close trades: meerdere TPs (één per close-order op verschillende prijzen). Bv. een ETH LONG die in 3 stukken wordt gesloten op 3550/3580/3600 toont nu 3 TPs i.p.v. 1 gewogen-gemiddelde.
+- Pending TP/SL orders blijven via `stoporder/list/orders` (is_finished=0, state=1) ophalen — die zitten niet in history_orders.
+- Fallback-TP uit v12.92 blijft als safety-net wanneer history_orders 0 close-orders oplevert (bv. tijdelijke API-fout of trade buiten history-window).
+
+### Toegevoegd
+- **history_orders parsing spec** ([tests/mexc-history-orders.spec.js](tests/mexc-history-orders.spec.js)) — 4 scenarios: single-close, multi-close partial, open-orders worden geskipt, field-mapping aansluit op client-parser.
+
+### Deploy-instructies
+- **Lokaal testen**: gebruik `wrangler dev` tegen `proxy-local/worker.js`.
+- **Hosted Worker**: na deploy is de fix direct actief voor alle community-leden. Check `_sources._endpoint: 'history_orders'` in de fills-response om te bevestigen dat de nieuwe versie draait.
+
+---
+
+## [v12.92] — 2026-05-06
+
+MEXC trades zonder TP-niveaus krijgen nu automatisch een fallback-TP uit de positionsHistory data. Lost het stuck-trades probleem direct op zonder extra API-calls of Worker-deploy.
+
+### Fixed
+- **MEXC: 116 closed trades zonder TP's krijgen nu fallback-TP** *(diagnose 2026-05-06 — vervolg op v12.91 markers fix)* — Onderzoek wees uit dat MEXC's `order_deals` endpoint close-fills niet betrouwbaar levert: het `position_id`-filter wordt stilzwijgend genegeerd én het endpoint retourneert structureel alleen open-fills (side 1/3). Daarom kreeg de TP-fetch flow consistent 0 close-fills. **Fix**: in de refresh-handler, wanneer fetchFills 0 close-fills oplevert voor een MEXC closed trade met geldige `exit` + `closeTime`, genereer 1 fallback-TP op `closeAvgPrice` (gewogen gemiddelde van alle close-fills volgens positionsHistory aggregaat). Voor partial-close trades is dit 1 gemiddelde TP i.p.v. een per-fill breakdown — beter dan niets, en wordt automatisch vervangen door echte fills wanneer v12.93 (proxy switch naar `history_orders`) landt. Werkt voor alle 116 stuck trades inclusief 10 oudere die niet meer in de huidige positionsHistory page staan (data zit al opgeslagen in journal-record). Alleen actief voor MEXC; andere exchanges ongewijzigd.
+
+### Toegevoegd
+- **Fallback-TP spec** ([tests/mexc-fallback-tp.spec.js](tests/mexc-fallback-tp.spec.js)) — 4 scenarios: fallback wordt gegenereerd voor closed trades, niet voor open of voor trades zonder exit, en wordt automatisch vervangen door echte fills via de bestaande merge-flow.
+
+### Aanpak
+Tweede fase van robustness-roadmap (v12.91 was time-bounded markers). v12.93 zal de proxy switchen naar `history_orders` voor echte fill-breakdown bij partial-close trades — vereist Cloudflare Worker re-deploy. v12.94 brengt self-healing audit en TP-coverage diagnostics.
+
+---
+
+## [v12.91] — 2026-05-06
+
+TP-fetch-markers zijn nu time-bounded en self-healing. Voorkomt structureel dat een eenmalig "0 fills"-antwoord (door propagation-delay of transient API-glitch) een trade *permanent* uit de TP-fetch queue blokkeert. Geldt voor alle exchanges met `fetchFills` (MEXC, Blofin, Hyperliquid).
+
+### Fixed
+- **MEXC: 116 trades stonden permanent zonder TP's** *(diagnose 2026-05-06 op community-data Denny)* — De v12.90 marker `_tpFetched: true` werd gezet ongeacht of de fetch fills opleverde. Eénmaal door een transient 0-fills response gemarkeerd, werd een trade nooit meer hergerprobeerd, ook niet als MEXC nadien wel data zou geven. Bij Denny's journal stonden 70% van haar MEXC trades (116/165) zo permanent zonder TP-niveaus. **Root cause**: boolean-marker zonder TTL + zonder invariant-check. **Fix in 3 lagen**:
+  1. **Time-bounded markers** — boolean `_tpFetched` vervangen door timestamp `_tpFetchedAt: <ms>`. Skip alleen binnen 24u-TTL — daarna automatisch retry. Voorkomt permanent-stuck states structureel.
+  2. **Invariant-aware marker-setting** — marker NIET zetten wanneer `closed && realised≠0 && fills.length=0 && trade <90d oud`. Een gesloten trade met PnL *moet* fills hebben — 0 fills is per definitie verdacht en hoort retry'd te worden. Voor trades ouder dan 90d (= praktische API-archief-grens) accepteren we 0 fills wel als definitief.
+  3. **One-shot migratie in `normalizeTrade`** — bestaande `_tpFetched=true && tpLevels=[]` markers worden bij eerste load van v12.91 weggegooid → die 116 trades komen automatisch terug in de fetch-queue. `_tpFetched=true && tpLevels=[N]` (succesvolle markers) krijgen `_tpFetchedAt=now-12u` zodat ze nog binnen TTL liggen en niet onnodig hergerprobeerd worden.
+
+### Toegevoegd
+- **TP-fetch retry spec** ([tests/mexc-tpfetched-retry.spec.js](tests/mexc-tpfetched-retry.spec.js)) — 4 scenarios: migratie van stuck markers, migratie van success markers, TTL-skip-logica, invariant-guard tegen suspect-empty markers.
+
+### Aanpak
+Eerste fase van een 3-fase robustness-roadmap. v12.92 voegt self-healing audit toe (markers worden hint, niet autoriteit), v12.93 brengt dev-only TP-coverage diagnostics + schema-invariant CI tests. Kraken's TP-gat (alle 37 trades zonder TPs door ontbrekende positionId) staat als aparte ticket op de backlog — andere bug-categorie, eigen fix.
+
+---
+
 ## [v12.90] — 2026-05-05
 
 Blofin trade-import is nu accuraat: positie-grootte, TP-detectie, direction en sibling-matching werken correct ook voor stale data. Zes Blofin-specifieke fixes plus één UI-tweak.
@@ -25,6 +107,12 @@ Blofin trade-import is nu accuraat: positie-grootte, TP-detectie, direction en s
 
 ### Toegevoegd
 - **MEXC pending-TPs spec** ([tests/mexc-pending-tps.spec.js](tests/mexc-pending-tps.spec.js)) — 9 scenarios voor pending-TP rendering, originalSize-heuristiek, en open/partial trade gedrag.
+
+### Fixed (2026-05-05 patches)
+- **MEXC: TP's van andere posities lekken in als hit-TPs van huidige trade** *(community-bug 2026-05-05)* — voor user met meerdere BTC-trades verschenen er 3 TP-niveaus op een 0.0258 BTC SHORT-trade waarvan TP3 = 80800 (= boven entry → onmogelijk als hit-TP voor SHORT) en TP2 = 80000 met fill-grootte > positie-grootte. **Root cause**: `proxy-local/worker.js` `fills`-action haalde `stoporder/list/orders` met `state=3` (executed triggers) op zonder `positionId`-filter. Triggered TP/SL fills van eerdere BTC-posities binnen het tijdvenster bleven dus gemerged worden in de huidige trade's fills. Zelfde bug-categorie als Blofin's "fills van andere posities" (zie scope-filter in [tradejournal.html:10752](work/tradejournal.html#L10752)). **Fix**: extra `.filter(s => !positionId || String(s.positionId) === String(positionId))` op de executed-triggers in proxy. **Vereist proxy-redeploy** voor effect op hosted Cloudflare worker — werkt nu al lokaal via proxy-local. Pending TPs hadden deze filter al sinds v12.89.
+
+### Performance
+- **Skip TP-fetch voor al-gefetchte closed trades** *(community-perf 2026-05-05)* — voorheen werd voor elke `closed && tpLevels.length===0` trade bij elke Refresh opnieuw fills opgehaald. Voor users met veel handmatig-gesloten oude trades (geen TP-trigger gebruikt) leverde dat 0 close-fills op maar wel 100+ API-calls = 3-4 minuten wachten per refresh. **Fix**: per-trade marker `_tpFetched: true` wordt gezet na elke succesvolle fetch-poging (succes + 0-fills, niét bij netwerk/API-error → transient errors retry'en vanzelf). Volgende refresh slaat zo'n trade over. **Failsafe-design**: marker reist mee met trade-record in localStorage — bij delete + reimport is marker automatisch weg = retry. Open/partial trades blijven altijd refetchen (positie kan elke refresh veranderen). Closed trades binnen 1u grace-window ook nog refetchen (exchange API propagation-delay). Geldt voor alle exchanges met `fetchFills` (Blofin/MEXC/Hyperliquid/Kraken). FTMO MT5 niet geraakt (CSV-only, geen fetchFills-pad).
 
 ## [v12.89] — 2026-05-04
 

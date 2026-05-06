@@ -1023,7 +1023,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.90",released:"2026-05-05"};
+const APP_VERSION={version:"v12.94",released:"2026-05-06"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -1453,6 +1453,19 @@ const normalizeTrade=(t)=>{
   // expliciet — alleen via UI-toggle. Hierdoor geen breaking change voor
   // bestaande edge-leak / Playbook stats.
   if(out.status==="missed"&&!out.simType)out.simType="missed";
+  // v12.91: migrate _tpFetched (boolean) → _tpFetchedAt (timestamp). Two cases:
+  //   (a) _tpFetched=true && tpLevels.length>0  → marker was correct, set
+  //       _tpFetchedAt to now-12u (still within 24u-TTL = no retry).
+  //   (b) _tpFetched=true && tpLevels.length===0 → suspect-empty marker that
+  //       blocked retries permanently. Drop marker entirely so next refresh
+  //       re-fetches (the v12.91 invariant-aware setter will only re-set
+  //       the marker if appropriate).
+  if(out._tpFetched===true){
+    delete out._tpFetched;
+    if(Array.isArray(out.tpLevels)&&out.tpLevels.length>0){
+      out._tpFetchedAt=Date.now()-12*60*60*1000;
+    }
+  }
   // v12.50: playbook-tracking velden defaults. Bestaande trades zonder
   // playbookId krijgen lege defaults — heuristische compliance blijft werken.
   if(out.playbookId===undefined)out.playbookId="";
@@ -5269,8 +5282,11 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,setConfig,ac
       </div>);
     })()}
 
-    {/* Auto PNL calc */}
-    {!isOpen&&(()=>{const e=parseFloat(trade.entry);const ex=parseFloat(trade.exit);const sz=parseFloat(trade.positionSize);const fees=parseFloat(trade.fees)||0;if(e>0&&ex>0&&sz>0&&!(trade.manualOverrides||[]).includes("pnl")){const raw=trade.direction==="long"?(ex-e)*sz/e:(e-ex)*sz/e;const net2=raw-fees;if(trade.pnl!==""&&Math.abs(parseFloat(trade.pnl)-net2)>0.01||trade.pnl===""){return(<div style={{marginBottom:"12px"}}><button onClick={()=>setTrade(p=>({...p,pnl:net2.toFixed(2)}))} style={{fontSize:"10px",padding:"4px 12px",borderRadius:"5px",border:"1px solid var(--blue2)",background:"rgba(201,168,76,0.12)",color:"#C9A84C",cursor:"pointer",fontFamily:"inherit",fontWeight:500}}>💡 PNL berekenen: {net2>=0?"+":""}${fmt(net2)} {fees>0?`(na $${fmt(fees)} fees)`:""} → Toepassen</button></div>)}}return null;})()}
+    {/* Auto PNL calc — alleen voor handmatig ingevoerde trades. API/CSV-imports
+        hebben de exchange als bron-van-waarheid voor PnL (MEXC `realised`, Blofin
+        `pnl`, etc., zijn al netto). Knop daar tonen zou correcte data overschrijven
+        met een ruwe formule-schatting. Sinds v12.94. */}
+    {!isOpen&&trade.source==="manual"&&(()=>{const e=parseFloat(trade.entry);const ex=parseFloat(trade.exit);const sz=parseFloat(trade.positionSize);const fees=parseFloat(trade.fees)||0;if(e>0&&ex>0&&sz>0&&!(trade.manualOverrides||[]).includes("pnl")){const raw=trade.direction==="long"?(ex-e)*sz/e:(e-ex)*sz/e;const net2=raw-fees;if(trade.pnl!==""&&Math.abs(parseFloat(trade.pnl)-net2)>0.01||trade.pnl===""){return(<div style={{marginBottom:"12px"}}><button onClick={()=>setTrade(p=>({...p,pnl:net2.toFixed(2)}))} style={{fontSize:"10px",padding:"4px 12px",borderRadius:"5px",border:"1px solid var(--blue2)",background:"rgba(201,168,76,0.12)",color:"var(--gold)",cursor:"pointer",fontFamily:"inherit",fontWeight:500}}>💡 PNL berekenen: {net2>=0?"+":""}${fmt(net2)} {fees>0?`(na $${fmt(fees)} fees)`:""} → Toepassen</button></div>)}}return null;})()}
 
     {/* TP Levels (multi-TP with percentages) — ported from v4_14 */}
     {(()=>{
@@ -5367,7 +5383,7 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,setConfig,ac
             const statusIcon=tp.status==="hit"?<GlowCheck size={14}/>:tp.status==="missed"?<GlowCross size={14}/>:"◔";
             return(<div key={tp.id} style={{display:"grid",gridTemplateColumns:"32px 1fr 70px 80px 70px 60px 28px",gap:"6px",alignItems:"center",marginBottom:"4px"}}>
               <span style={{fontSize:"11px",fontWeight:700,color:"var(--gold)",textAlign:"center"}}>TP{i+1}</span>
-              <input type="text" value={tp.price} onChange={e=>updateTP(tp.id,"price",e.target.value)} placeholder="Prijs" style={{...iStyle,padding:"6px 8px",fontSize:"12px"}}/>
+              <input type="text" value={fmtPriceDisplay(tp.price)} onChange={e=>updateTP(tp.id,"price",e.target.value)} placeholder="Prijs" style={{...iStyle,padding:"6px 8px",fontSize:"12px"}}/>
               <div style={{position:"relative"}}>
                 <input type="text" value={tp.pct} onChange={e=>updateTP(tp.id,"pct",e.target.value)} style={{...iStyle,padding:"6px 8px",fontSize:"12px",paddingRight:"18px"}}/>
                 <span style={{position:"absolute",right:"8px",top:"50%",transform:"translateY(-50%)",fontSize:"10px",color:"var(--text4)"}}>%</span>
@@ -10475,6 +10491,50 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,set
   // statistieken die veilig zijn om te delen voor support.
   const[debugReport,setDebugReport]=useState(null);
   const[debugging,setDebugging]=useState(false);
+  // v12.94 laag 4: TP-coverage diagnostics (dev-only). Toont per exchange hoeveel
+  // trades TPs hebben, hoeveel fallback-only zijn, hoeveel suspect-missing, en
+  // marker-status per leeftijd-bucket. Helpt drift detecteren vóór de community 'm meldt.
+  const[tpCoverage,setTpCoverage]=useState(null);
+  const computeTpCoverage=(forEx)=>{
+    const TTL=24*60*60*1000;
+    const NINETY_D=90*86400000;
+    const now=Date.now();
+    const exTrades=(trades||[]).filter(t=>t.source===forEx);
+    const buckets={'<7d':0,'7-30d':0,'30-90d':0,'>90d':0,invalid:0};
+    let withRealTPs=0,withFallbackOnly=0,withoutTPs=0,suspectMissing=0,permanentStuck=0;
+    let markerNone=0,markerFresh=0,markerExpired=0;
+    for(const t of exTrades){
+      if(t.status!=='closed')continue;
+      const hitTps=(t.tpLevels||[]).filter(tp=>tp&&tp.status==='hit'&&!tp._pending);
+      const fallbackTps=hitTps.filter(tp=>tp._source==='positionsHistory_fallback');
+      const realTps=hitTps.filter(tp=>tp._source!=='positionsHistory_fallback');
+      const realised=Math.abs(parseFloat(t.realizedPnl||t.pnl)||0);
+      const ageMs=t.closeTime?(now-parseInt(t.closeTime)):0;
+      if(ageMs>0){
+        if(ageMs<7*86400000)buckets['<7d']++;
+        else if(ageMs<30*86400000)buckets['7-30d']++;
+        else if(ageMs<NINETY_D)buckets['30-90d']++;
+        else buckets['>90d']++;
+      }else buckets.invalid++;
+      if(realTps.length>0)withRealTPs++;
+      else if(fallbackTps.length>0)withFallbackOnly++;
+      else withoutTPs++;
+      if(hitTps.length===0&&realised>0.0001&&ageMs<NINETY_D)suspectMissing++;
+      const fa=parseInt(t._tpFetchedAt)||0;
+      if(!fa)markerNone++;
+      else if(now-fa<TTL)markerFresh++;
+      else markerExpired++;
+      // permanent-stuck pre-v12.91 marker (zou na v12.91 migratie 0 moeten zijn)
+      if(t._tpFetched===true&&hitTps.length===0)permanentStuck++;
+    }
+    return{
+      total:exTrades.length,
+      closed:exTrades.filter(t=>t.status==='closed').length,
+      withRealTPs,withFallbackOnly,withoutTPs,suspectMissing,permanentStuck,
+      markers:{none:markerNone,fresh:markerFresh,expired:markerExpired},
+      buckets,
+    };
+  };
   const debugBlofin=async()=>{
     setDebugging(true);setDebugReport(null);
     try{
@@ -10725,12 +10785,44 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,set
           if(seen.has(t.id))return false;seen.add(t.id);
           if(t.source!==ex||!t.positionId)return false;
           if(t.status==="open"||t.status==="partial")return true;
-          if(t.status==="closed"&&(!Array.isArray(t.tpLevels)||t.tpLevels.length===0))return true;
+          if(t.status==="closed"){
+            // v12.94 self-heal: marker is een hint, niet de autoriteit. We bouwen
+            // de queue-beslissing op basis van wat de trade ECHT heeft vs. wat hij
+            // zou moeten hebben (closed + realised≠0 → fills moeten bestaan).
+            //
+            //  - noTps        = geen non-pending hit-TPs (de v12.91 conditie)
+            //  - onlyFallback = alleen positionsHistory fallback-TPs van v12.92.
+            //                   Re-queue ongeacht TTL want we willen ASAP upgraden
+            //                   naar echte history_orders breakdown via v6 Worker.
+            //  - suspectMissing = closed met realised PnL maar 0 hit-TPs + jong (<90d)
+            //                     = data-gat dat zichzelf moet helen. Ignore TTL.
+            const hitTps=(t.tpLevels||[]).filter(tp=>tp&&tp.status==="hit"&&!tp._pending);
+            const noTps=hitTps.length===0;
+            const onlyFallback=hitTps.length>0&&hitTps.every(tp=>tp._source==="positionsHistory_fallback");
+            const realised=Math.abs(parseFloat(t.realizedPnl||t.pnl)||0);
+            const ageMs=t.closeTime?(Date.now()-parseInt(t.closeTime)):0;
+            const suspectMissing=noTps&&realised>0.0001&&ageMs<90*86400000;
+            if(noTps||onlyFallback){
+              const TP_REFETCH_TTL=24*60*60*1000;
+              const fetchedAt=parseInt(t._tpFetchedAt)||0;
+              // Marker-skip alleen geldig wanneer self-heal triggers NIET vuren.
+              const ignoreTTL=onlyFallback||suspectMissing;
+              if(fetchedAt&&(Date.now()-fetchedAt<TP_REFETCH_TTL)&&!ignoreTTL)return false;
+              return true;
+            }
+          }
           return false;
         });
         console.log(`[refresh ${ex}] ${needsTPs.length} trades needing TP-fetch:`,needsTPs.map(t=>({id:t.id,positionId:t.positionId,status:t.status,entry:t.entry})));
         if(needsTPs.length){
           const tpUpdates=new Map();
+          // v12.91: marker is nu een timestamp (`_tpFetchedAt: <ms>`) ipv boolean,
+          // met 24u-TTL en invariant-aware setting. Bij error géén marker → transient
+          // errors retry'en. Bij succes met fills → marker (long-lived skip). Bij succes
+          // met 0 fills + realised≠0 + trade <90d → géén marker (verdacht 0-fills:
+          // closed trade met PnL kan geen 0 fills hebben, dus dit is een data-gat dat
+          // bij volgende refresh opnieuw geprobeerd moet worden).
+          const attemptedIds=new Set();
           for(const t of needsTPs){
             try{
               const symbol=(t.pair||"").replace("/","_");
@@ -10739,6 +10831,9 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,set
               const r=api.needsPassphrase
                 ?await api.fetchFills(c.apiKey,c.apiSecret,c.passphrase,symbol,sTime,eTime)
                 :await api.fetchFills(c.apiKey,c.apiSecret,symbol,t.positionId,sTime,eTime);
+              // Fetch geslaagd → markeer als attempted (ook bij 0 fills). Catch hieronder
+              // skipt deze regel bij netwerk/API-error → retry op volgende refresh.
+              attemptedIds.add(t.id);
               const all=r.fills||[];
               console.log(`[refresh ${ex}] positionId=${t.positionId} → ${all.length} raw fills, sample:`,all[0]);
               // v12.89: Blofin's fetchFills retourneert ALLE fills voor symbol+tijdvenster,
@@ -10757,6 +10852,51 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,set
                   return true;
                 });
                 if(scopedAll.length!==all.length)console.log(`[refresh ${ex}] positionId=${t.positionId} → scoped to ${scopedAll.length}/${all.length} fills (time+positionSide filter)`);
+                // v12.90: aggregeer sub-fills per orderId — Blofin's market-orders worden
+                // soms in 5-10 chunks gevuld (verschillende mini-prijzen). Zonder aggregatie
+                // krijg je 8 TPs voor 1 close-order. Hyperliquid heeft dit al via
+                // _aggregateSubFills; voor Blofin doen we het inline hier.
+                const groups=new Map();
+                for(const f of scopedAll){
+                  const oid=String(f.orderId||f.id||"");
+                  if(!oid){
+                    // Geen orderId → behoud als-is (kan geen aggregeren)
+                    groups.set("__no_order_"+groups.size,{...f,_aggSize:parseFloat(f.fillSize||f.size||0)||0,_aggPx:0,_aggPnl:0,_aggFee:0,_aggCount:1});
+                    continue;
+                  }
+                  const sz=Math.abs(parseFloat(f.fillSize||f.size||0))||0;
+                  const px=parseFloat(f.fillPrice||f.price||0)||0;
+                  const pnl=parseFloat(f.fillPnL||f.fillPnl||f.pnl||"0")||0;
+                  const fee=Math.abs(parseFloat(f.fee||"0"))||0;
+                  const ts=Number(f.ts||f.timestamp||0)||0;
+                  const cur=groups.get(oid);
+                  if(cur){
+                    cur._aggSize+=sz;
+                    cur._aggPxWeighted+=px*sz;
+                    cur._aggPnl+=pnl;
+                    cur._aggFee+=fee;
+                    cur._aggCount++;
+                    if(ts>cur._aggLastTs){cur._aggLastTs=ts;}
+                  }else{
+                    groups.set(oid,{...f,_aggSize:sz,_aggPxWeighted:px*sz,_aggPnl:pnl,_aggFee:fee,_aggCount:1,_aggLastTs:ts});
+                  }
+                }
+                const aggregated=Array.from(groups.values()).map(g=>{
+                  const avgPx=g._aggSize>0?(g._aggPxWeighted||0)/g._aggSize:(parseFloat(g.fillPrice||g.price||0)||0);
+                  // Afronden op 4 decimals — voorkomt 80700.36766917295 type ruis. BTC heeft
+                  // tickSize 0.1, ETH 0.01, alts vaak 0.0001 — 4 decimals dekt alles binnen 1 tick.
+                  const avgPxRounded=Math.round(avgPx*10000)/10000;
+                  return{
+                    ...g,
+                    fillSize:String(g._aggSize),
+                    fillPrice:String(avgPxRounded),
+                    fillPnL:String(g._aggPnl),
+                    fee:String(g._aggFee),
+                    ts:g._aggLastTs||g.ts,
+                  };
+                });
+                if(aggregated.length<scopedAll.length)console.log(`[refresh ${ex}] positionId=${t.positionId} → aggregated ${scopedAll.length} sub-fills into ${aggregated.length} orders`);
+                scopedAll=aggregated;
               }
               const entryN=parseFloat(t.entry)||0;
               const closeFills=scopedAll.filter(f=>{
@@ -10774,7 +10914,32 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,set
                 return false;
               });
               console.log(`[refresh ${ex}] positionId=${t.positionId} → ${closeFills.length} close-fills na filter`);
-              if(!closeFills.length){tpFailCount++;continue;}
+              if(!closeFills.length){
+                // v12.92: fallback-TP uit positionsHistory wanneer fetchFills geen close-fills
+                // retourneert. MEXC's order_deals endpoint blijkt close-fills niet betrouwbaar
+                // te leveren (zie research 2026-05-06). Voor MEXC closed trades met geldige
+                // exit + closeTime: genereer 1 fallback-TP op closeAvgPrice (= gewogen
+                // gemiddelde van alle close-fills volgens positionsHistory aggregaat). Voor
+                // partial-close trades is dat 1 gemiddelde TP ipv breakdown — beter dan niets.
+                // v12.93 zal proxy switchen naar history_orders voor echte fill-breakdown,
+                // waarna deze fallback-TP's automatisch vervangen worden via de merge-flow.
+                if(ex==="mexc"&&t.status==="closed"&&parseFloat(t.exit)>0&&parseInt(t.closeTime)>0){
+                  const fallbackTP=[{
+                    id:`tp_${t.id}_fallback`,
+                    price:String(t.exit),
+                    pct:"100",
+                    status:"hit",
+                    actualPrice:String(t.exit),
+                    ts:parseInt(t.closeTime)||0,
+                    _source:"positionsHistory_fallback",
+                  }];
+                  tpUpdates.set(t.id,{tpLevels:fallbackTP,originalSizeAsset:0});
+                  tpFetchedCount++;
+                  console.log(`[refresh ${ex}] positionId=${t.positionId} → fallback-TP from positionsHistory: ${t.exit} @ ${t.closeTime}`);
+                  continue;
+                }
+                tpFailCount++;continue;
+              }
               // Resolve tradeSize in BASE CURRENCY met fallbacks (positionSizeAsset kan leeg zijn na sync)
               let tradeSize=Math.abs(parseFloat(t.positionSizeAsset)||0);
               if(tradeSize<=0){
@@ -10892,23 +11057,47 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,set
               tpFailCount++;
             }
           }
-          if(tpUpdates.size){
+          // v12.90 patch: ook lege attempts loggen via setTrades zodat _tpFetched-marker
+          // wordt gezet — voorkomt dat oude closed-zonder-tpLevels trades elke refresh
+          // opnieuw worden gefetched. Marker voor alle exchanges met fetchFills.
+          if(tpUpdates.size||attemptedIds.size){
             setTrades(prev=>prev.map(t=>{
-              if(!tpUpdates.has(t.id))return t;
-              const u=tpUpdates.get(t.id);
-              const userTps=(Array.isArray(t.tpLevels)?t.tpLevels:[]).filter(tp=>tp&&tp.status!=="hit");
-              const updated={...t,tpLevels:[...userTps,...u.tpLevels]};
-              // Update originalSizeAsset alleen als (a) berekend > 0 en (b) bestaande is leeg/kleiner.
-              // Behoudt finalize-flow's originalSizeAsset wanneer die al goed staat.
-              if(u.originalSizeAsset>0){
-                const existing=Math.abs(parseFloat(t.originalSizeAsset)||0);
-                if(!existing||u.originalSizeAsset>existing*1.01){
-                  updated.originalSizeAsset=String(u.originalSizeAsset);
+              const wasAttempted=attemptedIds.has(t.id);
+              const hasUpdate=tpUpdates.has(t.id);
+              if(!wasAttempted&&!hasUpdate)return t;
+              let updated=t;
+              if(hasUpdate){
+                const u=tpUpdates.get(t.id);
+                const userTps=(Array.isArray(t.tpLevels)?t.tpLevels:[]).filter(tp=>tp&&tp.status!=="hit");
+                updated={...t,tpLevels:[...userTps,...u.tpLevels]};
+                // Update originalSizeAsset alleen als (a) berekend > 0 en (b) bestaande is leeg/kleiner.
+                // Behoudt finalize-flow's originalSizeAsset wanneer die al goed staat.
+                if(u.originalSizeAsset>0){
+                  const existing=Math.abs(parseFloat(t.originalSizeAsset)||0);
+                  if(!existing||u.originalSizeAsset>existing*1.01){
+                    updated.originalSizeAsset=String(u.originalSizeAsset);
+                  }
+                }
+              }
+              // v12.91: invariant-aware marker. Skip-marker NIET zetten als
+              //   closed && realised≠0 && hadFills===false && trade <90d oud
+              // want dat is verdacht: een gesloten trade met PnL moet fills hebben.
+              // Door geen marker te zetten retry't de volgende refresh automatisch.
+              // Voor trades >90d oud (= MEXC's praktische archief-grens) accepteren we
+              // 0 fills als "echt geen data meer" en zetten marker wel.
+              if(wasAttempted&&t.status==="closed"){
+                const hadFills=tpUpdates.has(t.id);
+                const realised=Math.abs(parseFloat(t.realizedPnl||t.pnl)||0);
+                const ageMs=t.closeTime?(Date.now()-parseInt(t.closeTime)):0;
+                const suspectEmpty=!hadFills&&realised>0.0001&&ageMs<90*86400000;
+                if(!suspectEmpty){
+                  updated=updated===t?{...t,_tpFetchedAt:Date.now()}:{...updated,_tpFetchedAt:Date.now()};
                 }
               }
               return updated;
             }));
-            showToast(`✓ TPs bijgewerkt voor ${tpFetchedCount} trade${tpFetchedCount===1?"":"s"}`,"success");
+            if(tpUpdates.size)showToast(`✓ TPs bijgewerkt voor ${tpFetchedCount} trade${tpFetchedCount===1?"":"s"}`,"success");
+            else if(needsTPs.length)showToast(`⚠ Geen TPs gevonden — check console (F12) voor debug`,"info");
           }else if(needsTPs.length){
             showToast(`⚠ Geen TPs gevonden — check console (F12) voor debug`,"info");
           }
@@ -11118,8 +11307,58 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,set
             {/* v12.88: Snapshot-knop voor elke exchange met captureSnapshot-methode (Blofin/MEXC/Kraken/Hyperliquid). FTMO niet — CSV-only. */}
             {IS_DEV&&ExchangeAPI[ex]?.captureSnapshot&&<button onClick={captureSnapshot} disabled={debugging} title={`Download raw ${ExchangeAPI[ex].name} API response als JSON-fixture voor offline testen`} style={{padding:"10px 16px",borderRadius:"var(--radius)",border:"1px dashed var(--text5)",background:"transparent",color:"var(--text4)",cursor:"pointer",fontFamily:"inherit",fontSize:"12px",fontWeight:500,display:"flex",alignItems:"center",gap:"6px"}}>{debugging?"…":"📥 Snapshot"}</button>}
             {IS_DEV&&ex==="blofin"&&<label title="Drop een blofin-snapshot.json om partial-detectie offline te testen" style={{padding:"10px 16px",borderRadius:"var(--radius)",border:"1px dashed var(--text5)",background:"transparent",color:"var(--text4)",cursor:"pointer",fontFamily:"inherit",fontSize:"12px",fontWeight:500,display:"flex",alignItems:"center",gap:"6px"}}>🔬 Test fixture<input type="file" accept=".json" onChange={e=>{if(e.target.files&&e.target.files[0])runFixtureTest(e.target.files[0]);e.target.value="";}} style={{display:"none"}}/></label>}
+            {/* v12.94 laag 4: TP-coverage diagnostics — dev-only, alle exchanges met fetchFills */}
+            {IS_DEV&&ExchangeAPI[ex]?.fetchFills&&<button onClick={()=>setTpCoverage({ex,data:computeTpCoverage(ex)})} title={`Toon TP-coverage stats voor ${ExchangeAPI[ex].name}: hoeveel trades met echte TPs, fallback-only, missing, etc.`} style={{padding:"10px 16px",borderRadius:"var(--radius)",border:"1px dashed var(--text5)",background:"transparent",color:"var(--text4)",cursor:"pointer",fontFamily:"inherit",fontSize:"12px",fontWeight:500,display:"flex",alignItems:"center",gap:"6px"}}>📊 TP-coverage</button>}
             <button onClick={()=>{csvAcctRef.current=ex;csvRef.current.click()}} title="CSV of Excel (.xlsx) bestand uploaden" style={{padding:"10px 20px",borderRadius:"var(--radius)",border:ExchangeAPI[ex].csvOnly?"none":"1px dashed var(--border5)",background:ExchangeAPI[ex].csvOnly?"#C9A84C":"transparent",color:ExchangeAPI[ex].csvOnly?"#000":"var(--text2)",cursor:"pointer",fontFamily:"inherit",fontSize:"13px",fontWeight:ExchangeAPI[ex].csvOnly?700:500,display:"flex",alignItems:"center",gap:"8px"}}>📄 Importeer CSV / XLSX</button>
           </div>
+          {/* v12.94 laag 4: TP-coverage diagnostics panel */}
+          {IS_DEV&&tpCoverage&&tpCoverage.ex===ex&&(()=>{
+            const d=tpCoverage.data;
+            const cards=[
+              ["Totaal closed",d.closed,"var(--text)"],
+              ["Met echte TPs",d.withRealTPs,"var(--green)"],
+              ["Alleen fallback",d.withFallbackOnly,"var(--amber)"],
+              ["Zonder TPs",d.withoutTPs,d.withoutTPs>0?"var(--red)":"var(--text)"],
+            ];
+            const flags=[
+              ["⚠ Suspect-missing (closed+pnl≠0+0 TPs+<90d)",d.suspectMissing],
+              ["⚠ Permanent-stuck pre-v12.91 marker (zou 0 moeten zijn)",d.permanentStuck],
+            ];
+            return(<div style={{marginTop:"14px",padding:"14px 16px",background:"rgba(46,170,111,0.04)",border:"1px solid rgba(46,170,111,0.25)",borderRadius:"8px",fontSize:"12px",color:"var(--text2)",lineHeight:1.55}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+                <strong style={{color:"#2eaa6f",fontSize:11,fontFamily:"var(--mono)",letterSpacing:".08em",textTransform:"uppercase"}}>📊 TP-coverage — {ExchangeAPI[ex].name}</strong>
+                <button onClick={()=>setTpCoverage(null)} style={{background:"none",border:"none",color:"var(--text4)",cursor:"pointer",fontSize:14}}>✕</button>
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:12}}>
+                {cards.map(([lbl,val,col])=>(<div key={lbl} style={{padding:"8px 10px",background:"var(--bg4)",borderRadius:6,textAlign:"center"}}>
+                  <div style={{fontSize:9,color:"var(--text5)",textTransform:"uppercase",letterSpacing:".06em",fontWeight:600,marginBottom:2}}>{lbl}</div>
+                  <div style={{fontFamily:"var(--mono)",fontSize:16,fontWeight:700,color:col}}>{val}</div>
+                </div>))}
+              </div>
+              {flags.some(([,v])=>v>0)&&<div style={{marginBottom:12,padding:"8px 10px",background:"rgba(220,122,122,0.06)",border:"1px solid rgba(220,122,122,0.2)",borderRadius:6,fontSize:11,color:"var(--text2)",lineHeight:1.5}}>
+                {flags.filter(([,v])=>v>0).map(([lbl,v])=><div key={lbl}><strong style={{color:"var(--red)"}}>{v}×</strong> {lbl}</div>)}
+              </div>}
+              <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:12}}>
+                <div>
+                  <div style={{fontSize:9,color:"var(--text5)",textTransform:"uppercase",letterSpacing:".06em",fontWeight:600,marginBottom:6}}>Marker-status</div>
+                  <div style={{fontFamily:"var(--mono)",fontSize:11,lineHeight:1.7}}>
+                    <div>geen marker: <strong style={{color:"var(--text)"}}>{d.markers.none}</strong></div>
+                    <div>fresh (&lt;24u): <strong style={{color:"var(--text)"}}>{d.markers.fresh}</strong></div>
+                    <div>expired: <strong style={{color:"var(--text)"}}>{d.markers.expired}</strong></div>
+                  </div>
+                </div>
+                <div>
+                  <div style={{fontSize:9,color:"var(--text5)",textTransform:"uppercase",letterSpacing:".06em",fontWeight:600,marginBottom:6}}>Leeftijd-distributie</div>
+                  <div style={{fontFamily:"var(--mono)",fontSize:11,lineHeight:1.7}}>
+                    <div>&lt;7d: <strong style={{color:"var(--text)"}}>{d.buckets['<7d']}</strong></div>
+                    <div>7-30d: <strong style={{color:"var(--text)"}}>{d.buckets['7-30d']}</strong></div>
+                    <div>30-90d: <strong style={{color:"var(--text)"}}>{d.buckets['30-90d']}</strong></div>
+                    <div>&gt;90d: <strong style={{color:"var(--text)"}}>{d.buckets['>90d']}</strong></div>
+                  </div>
+                </div>
+              </div>
+            </div>);
+          })()}
           {/* v12.60-debug: Blofin partial-close diagnostic output */}
           {IS_DEV&&ex==="blofin"&&debugReport&&<div style={{marginTop:"14px",padding:"14px 16px",background:"rgba(124,58,237,0.04)",border:"1px solid rgba(124,58,237,0.25)",borderRadius:"8px",fontSize:"12px",color:"var(--text2)",lineHeight:1.6}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>

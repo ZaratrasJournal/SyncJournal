@@ -1,9 +1,22 @@
 /**
- * Morani Trading Journal — Cloudflare Worker Proxy v5
+ * Morani Trading Journal — Cloudflare Worker Proxy v6
  *
- * Changes vs v4:
- *  - MEXC get(): HTTP-status + raw body in foutmelding, zodat je ziet of
- *    het een domein/permission/signature/timing issue is i.p.v. generic "unknown"
+ * Changes vs v5 (alleen MEXC; Blofin + Kraken ongewijzigd):
+ *  - MEXC fills: switch van order_deals → history_orders (v12.93).
+ *    Reden: research 2026-05-06 wees uit dat order_deals het
+ *    position_id parameter stilzwijgend negeert én structureel alleen
+ *    open-fills retourneert. history_orders heeft positionId per record
+ *    en levert open + close orders met dealAvgPrice/dealVol/profit/totalFee.
+ *    Filter state=3 (= completed) en map naar fill-shape zodat client
+ *    parser onveranderd blijft.
+ *  - MEXC fills: pending TP/SL ophaling toegevoegd (v12.89). Open trades
+ *    met TP/SL gezet maar nog niet getriggerd worden nu opgehaald via
+ *    stoporder/list/orders met is_finished=0 + state=1, en in de response
+ *    gemarkeerd als _pending: true zodat de client ze als status="open"
+ *    tpLevels rendert.
+ *  - MEXC fills: positionId-filter op pending TPs (v12.90) zodat fills
+ *    van andere posities op zelfde pair niet als TP's van huidige trade
+ *    verschijnen.
  *
  * Let op: contract.mexc.com blijft het juiste futures-domein
  * (api.mexc.com is de spot API — andere endpoints).
@@ -101,7 +114,7 @@ async function handleMEXC(action, { apiKey, apiSecret, startTime, symbol, positi
     // + `profit` + `totalFee` per order. Eén order = één fill (MEXC aggregeert
     // sub-fills al op orderniveau). state=3 = completed (filter alleen daarop).
     //
-    // ccxt gebruikt dit endpoint ook als primary source. Zie BACKLOG.md research.
+    // ccxt gebruikt dit endpoint ook als primary source.
     const q = {};
     if (symbol) q.symbol = symbol.replace('/', '_');
     if (startTime) q.start_time = startTime;
@@ -133,28 +146,31 @@ async function handleMEXC(action, { apiKey, apiSecret, startTime, symbol, positi
         _fromHistoryOrder: true,
       }));
 
-    // PENDING TP/SL orders blijven via stoporder/list/orders ophalen — die zitten
-    // niet in history_orders (history_orders is filled orders only). is_finished=0
-    // + state=1 = untriggered. Client toont ze als status="open" tpLevels.
+    // v12.89: PENDING TP/SL orders — open trades met TP/SL gezet maar nog niet
+    // getriggerd. Komen niet in history_orders (die is filled-only). Aparte fetch
+    // via stoporder/list/orders met is_finished=0 + state=1 (untriggered).
+    // v12.90: positionId-filter zodat TPs van andere posities niet als TPs van
+    // huidige trade verschijnen.
     let pendingTPs = [];
     try {
       const pendQ = { is_finished: 0, page_num: 1, page_size: 100 };
       if (symbol) pendQ.symbol = symbol.replace('/', '_');
       const pendResp = await get('/api/v1/private/stoporder/list/orders', pendQ);
       pendingTPs = (pendResp.data || [])
-        .filter(s => s.state === 1)
+        .filter(s => s.state === 1) // untriggered
         .filter(s => !positionId || String(s.positionId) === String(positionId))
         .map(s => ({
           _pending: true,
           _triggerSide: s.triggerSide, // 1=tp, 2=sl
           positionId: s.positionId,
           symbol: s.symbol,
+          // Use takeProfitPrice or stopLossPrice based on triggerSide
           price: s.triggerSide === 1 ? s.takeProfitPrice : (s.triggerSide === 2 ? s.stopLossPrice : (s.takeProfitPrice || s.stopLossPrice)),
           vol: s.vol,
           side: s.positionType === 1 ? 4 : 2, // long → close long(4), short → close short(2)
           orderId: s.id || s.placeOrderId,
         }));
-    } catch { /* pending fetch mag falen */ }
+    } catch { /* pending fetch mag falen — niet kritiek */ }
 
     const allFills = [...orderFills, ...pendingTPs];
     return {
@@ -172,6 +188,7 @@ async function handleMEXC(action, { apiKey, apiSecret, startTime, symbol, positi
 
 // ═══════════════════════════════════════════════════════════════
 // Blofin — direct HTTP + HMAC-SHA256 (base64 van hex-digest)
+// ONGEWIJZIGD vs v5
 // ═══════════════════════════════════════════════════════════════
 async function handleBlofin(action, { apiKey, apiSecret, passphrase, startTime, endTime, symbol }) {
   const base = 'https://openapi.blofin.com';
@@ -222,6 +239,7 @@ async function handleBlofin(action, { apiKey, apiSecret, passphrase, startTime, 
 
 // ═══════════════════════════════════════════════════════════════
 // Kraken Futures — account-log + server-side positie-lifecycle tracking
+// ONGEWIJZIGD vs v5
 // ═══════════════════════════════════════════════════════════════
 async function handleKraken(action, { apiKey, apiSecret, startTime }) {
   const base = 'https://futures.kraken.com';

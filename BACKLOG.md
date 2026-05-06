@@ -10,6 +10,43 @@ Basis kwam uit de feature-diff v4_14 → v9 onderaan. Inmiddels werken we op **v
 
 <!-- Denny stuurt bugs 1 voor 1 — elk item krijgt datum + korte reproductiestap. -->
 
+- [ ] **Kraken trades hebben geen TP-coverage — `needsTPs`-filter skipt ze omdat positionId leeg is** *(2026-05-06, ontdekt tijdens MEXC-TP diagnose — zie diagnose-context in conversation 2026-05-06)* — Bij Denny's journal hebben **alle 37 Kraken trades** lege `tpLevels` én lege `_tpFetched` marker. Geen permanent-stuck-bug zoals MEXC, maar een structureel **gat in TP-coverage**: Kraken trades worden nooit door de TP-fetch-flow gehaald omdat de filter in [work/tradejournal.html:10726](work/tradejournal.html#L10726) skipt op `!t.positionId`, en Kraken's API geeft geen positionId per trade.
+
+  **Root cause**: Kraken's API gebruikt een **account-log architectuur** ([proxy-local/worker.js:231-368](proxy-local/worker.js#L231-L368)) waarbij trades server-side gereconstrueerd worden uit fills. Het gevolg is dat trades binnenkomen met `id: "kraken_pf_ethusd_<ts>_<dir>"` maar `positionId: ""`. De refresh-handler skipt ze daardoor uit de needsTPs queue → fetchFills wordt nooit aangeroepen → tpLevels blijft leeg.
+
+  **Verschil met MEXC-bug**: MEXC = permanent-stuck markers (v12.91 robustness-fix lost dat op). Kraken = ander code-pad helemaal niet bewandeld. Vraagt eigen aanpak.
+
+  **Fix-richtingen** (te onderzoeken):
+  - **A) TPs direct in `fetchTrades` afleiden uit account-log fills** — de proxy heeft de fills al server-side (regel 274-291 in worker.js), maar groepeert ze op `(contract|minute|direction)` tot 1 trade i.p.v. fills retourneren. Optie: proxy retourneert *zowel* gegroepeerde trades *als* per-trade fills (`fills_by_trade_id`), client zet die direct als tpLevels bij import. Geen aparte fetchFills-call nodig. Voordeel: 1-pass import, geen extra round-trip. Nadeel: proxy-data-shape verandert.
+  - **B) `fetchFillsByTimeRange` adapter-methode** — Kraken's adapter krijgt eigen `detectFillsForTrade(t)` die op `(pair, openTime±tolerance, closeTime±tolerance, direction)` matcht tegen een time-range fills-fetch. Dispatcher in needsTPs-filter wordt: `if (api.requiresPositionId && !t.positionId) return false;` (Kraken `requiresPositionId=false`). Voordeel: respecteert exchange-architectuur uit CLAUDE.md. Nadeel: ~half dag werk per exchange-spec.
+  - **C) Use account-log entries als tpLevels** — voor Kraken zijn de fills uit de account-log al de close-events; reconstrueer per trade welke log-entries bij welke trade horen op basis van `(contract, minuteKey, direction)` (zelfde groupkey als de proxy). Hou ze als tpLevels met `status="hit"`. Pure client-side transformatie zonder schema-wijziging. Voordeel: snelste implementatie. Nadeel: de proxy moet wel de losse fills meesturen — nu doet ie alleen de aggregatie.
+
+  **Aanbeveling**: optie **A** — proxy retourneert `{trades, fills_by_trade_id}`, client mapt fills naar tpLevels in `fetchTrades`. Past in bestaande architectuur, geen extra round-trip, schaalt voor andere "log-based" exchanges in de toekomst.
+
+  **Acceptatie-criteria**:
+  - Alle Kraken closed-trades met `realised≠0` hebben minstens 1 TP-level na re-import.
+  - Trades met partial-closes (meerdere log-entries op verschillende minuut-keys binnen zelfde positie-cyclus) tonen meerdere tpLevels chronologisch gesorteerd.
+  - Test: `tests/kraken-tp-coverage.spec.js` — fixture met account-log van bv. ETH/USD scaling-out trade → verifieer 3 tpLevels met juiste prijzen + chronologische volgorde.
+  - Geen regressie in PnL-berekening (Kraken doet die al server-side via `realized_pnl − fee` aggregatie).
+
+  **Effort**: M (~half dag). Vereist proxy-aanpassing + client-side mapping + test-fixture.
+
+  **Niet onderdeel van v12.91 robustness-fix** — die fix maakt _tpFetched markers tijdgebonden en self-healing, maar raakt Kraken's pad niet (Kraken heeft *geen* markers omdat de pad niet wordt bewandeld).
+
+- [ ] **Privacy-toggle (👁) op Dashboard verbergt alleen account-waarde, niet PnL-kaartjes en overige bedragen** *(2026-05-06, gemeld door Denny)* — Het oogje rechts naast "Account waarde (live)" toggelt `lp.accountValue` en verbergt dan totaal-balans, per-exchange-balances, per-account-balances en "Gerealiseerde winst" in de header — maar de rest van het Dashboard (PnL-kaartjes, KPI-tegels, drawdown, expectancy in $, win/loss-bedragen) blijft volledig zichtbaar. Voor stream/share/over-de-schouder-context is dat niet bruikbaar — privacy lekt direct alsnog. **Reproductie**: open Dashboard → klik op 👁-icoon naast "Account waarde (live)" → header maskt naar `$***,**`, maar scroll naar beneden → alle PnL-cards, expectancy, drawdown enz. tonen rauwe bedragen.
+
+  **Root cause**: helper `fmtP(v)` is gedefinieerd op [work/tradejournal.html:3172](work/tradejournal.html#L3172) (`const fmtP=(v)=>priv?"***,**":(typeof v==="number"?`$${fmt(v)}`:v);`) maar wordt vervolgens **nergens** aangeroepen — `Grep "fmtP("` geeft 0 hits. De masking-logica zit alleen inline in de header-render ([work/tradejournal.html:3239-3257](work/tradejournal.html#L3239-L3257)) via 4× ad-hoc `priv?"$***,**":...` ternaries.
+
+  **Fix-richting** (kies één):
+  - **A) Eng houden + label aanpassen**: hernoem tooltip naar "Verberg account-saldo" (specifiek), accepteer dat PnL-kaartjes blijven. Snel maar lost het user-probleem (stream-veilig delen) niet op.
+  - **B) Globale privacy-mode (aanbevolen)**: lift `priv` naar app-niveau (van `useLayoutPrefs("dashboard")` naar een eigen `tj_privacy_mode` localStorage-key zodat hij ook over Trades/Analytics/Review heen werkt). Wrap álle `$${fmt(v)}` / valuta-renders met `fmtP(v)` of een nieuwe `fmtMoney(v)` helper. Toggle-knop ook bovenaan de top-bar zodat hij niet alleen op Dashboard zit. Effort: M (1-2u — vooral grep-en-vervang werk + 6 thema's testen).
+
+  **Acceptatie-criteria** (voor B):
+  - Toggle op één plek zet alle dollar-bedragen op `$***,**` over alle pagina's heen (Dashboard / Trades / Analytics / Review / Rapport / TradeDetailModal).
+  - R-multiples, percentages en counts blijven wél zichtbaar (privacy-vriendelijk maar nog leesbaar).
+  - Persisteert via localStorage (`tj_privacy_mode`), default = uit.
+  - Werkt op alle 6 thema's.
+
 - [ ] **Trades-pagina toont andere PnL/WR dan Dashboard** *(2026-05-02, gevonden tijdens pro-trader review — zie [docs/pro-trader-review-2026-05-02.md](docs/pro-trader-review-2026-05-02.md) §2.2)* — Met blofin-partial-state.json fixture toont Dashboard "Net P&L -€8,37 · WR 33,3% · 15 trades" (correct) maar Trades-pagina header-stat-line toont "**-$11,43 · WR 27% · 15 trades**". Drie inconsistencies tegelijk: (a) valuta $ vs €, (b) bedrag −11,43 vs −8,37, (c) WR 27% vs 33,3%. Vermoedelijke oorzaak: PARTIAL-trades verschillend geclassificeerd (Trades-pagina telt 4/15 wins, Dashboard 5/15 — verschil = de 1 PARTIAL trade) + valuta-conversie niet consistent toegepast. **Critical** — pro-trader-vertrouwen breekt bij elke discrepantie. Fix: route alle PnL-berekeningen via `netPnl()` helper (regel 1133), één canonieke valuta-formatter via `config.currency`, één win-definitie (incl. of excl. PARTIAL — kies en documenteer).
 
 - [ ] **Floating-point precision in trade-detail modal** *(2026-05-02, gevonden tijdens pro-trader review — zie [docs/pro-trader-review-2026-05-02.md](docs/pro-trader-review-2026-05-02.md) §2.9)* — Trade Edit-modal toont rauwe float-values: Entry `2255.5805555555557` (16 decimalen), PnL `-6.749084190000000001`. Op Trades-tabel staat de prijs wel afgekapt naar `2.355,58` — dus probleem zit alleen bij display in modal. **Critical** — pro-trader die deze ruis ziet vertrouwt de hele app niet meer. Fix: gebruik bestaande `normPrice()` helper (regel 1149) bij modal-render, of formatter met instrument-relevante precisie (BTC: 2 decimalen, ETH: 2, alts: 4-6).
@@ -263,6 +300,26 @@ In [tests/](tests/) staan 4 real-data specs (`<exchange>-real-data.spec.js`) die
 - [ ] **Hyperliquid toevoegen** — kan volledig client-side (public info-endpoint, geen proxy). Zie `Agent` onderzoek van 2026-04-14.
 - [ ] **MAE-to-Stop ratio per setup** (idee #12) — uitbreiding op Setup Insights tabel als we MAE data hebben.
 - [ ] **Parallel fetchFills bij refresh (concurrency cap)** *(2026-05-04, deferred — sequentieel werkt nu prima)* — huidige refresh-flow doet `for(t of needsTPs) await api.fetchFills(...)` sequentieel. Voor 1-5 trades neemt 1-2 sec/trade = 2-10 sec. Voor users met 20+ open MEXC trades wordt het merkbaar (40+ sec). **Fix**: parallel fetchen met max 3 concurrent (= ~3× sneller, ver onder MEXC's 20 req/sec rate-limit). Pseudocode + impact-analyse staan in conversation 2026-05-04 (Denny's vraag over rate-limit). Per-exchange refresh-knop bestaat al — geen UI-change nodig, alleen code in [work/tradejournal.html refresh-handler](work/tradejournal.html#L10643). Helper-pattern: `pMap(items, fn, concurrency=3)`.
+
+- [ ] **MEXC contractSize via proxy (community-proof voor exotic coins)** *(2026-05-06, follow-up op v12.89 fallback-map)* — In v12.89 hebben we hardcoded contractSizes voor de top-12 pairs (BTC/ETH/SOL/DOGE/XRP/ADA/DOT/MATIC/LINK/AVAX/LTC/BNB) als CORS-fallback omdat `contract.mexc.com/api/v1/contract/detail` vanaf `file://` (origin=null) geblokkeerd wordt. **Probleem**: voor community-leden die exotic coins traden (alles buiten de top-12) is `contractSize=0` → `positionSize` klopt niet. Niet user-blocking voor Denny zelf (BTC-only), wel voor anderen. **Fix**: routeer via Cloudflare Worker — die heeft geen CORS-issue server-side. Eén bulk-call per sessie haalt alle ~700 MEXC contracts, cachet alles in `_ctvCache`.
+
+  **Implementatie** (~10 regels app + ~5 regels worker):
+  - **Worker**: in `handleMEXC` (vóór de signed `get`-helper) een unauthenticated branch `if (action === 'contract_details') { const r = await fetch('https://contract.mexc.com/api/v1/contract/detail'); return { contracts: (await r.json()).data || [] }; }`. Geen apiKey/apiSecret — publiek endpoint.
+  - **App**: vervang `_getContractSize` door bulk-warm strategie. Nieuwe `_warmAllContractSizes()` doet `proxyCall({exchange:"mexc", action:"contract_details"})` éénmalig (gecached via promise op `this._ctvWarmPromise`), vult `_ctvCache` voor alle symbolen. `_getContractSize` blijft async maar pakt na warm uit cache. Fallback-map blijft als safety-net wanneer proxy onbereikbaar is.
+  - **Test**: `tests/mexc-contractsize-bulk.spec.js` — mock proxyCall, verifieer dat 1 call de cache vult voor alle returnee symbolen + dat exotic coin (bv. PEPE_USDT) een non-zero contractSize krijgt.
+
+  **Code-locaties**:
+  - [work/tradejournal.html:1909-1929](work/tradejournal.html#L1909-L1929) (`_ctvFallback` + `_getContractSize`)
+  - [work/tradejournal.html:1944-1945](work/tradejournal.html#L1944-L1945) (`Promise.all(symbols.map(s=>this._getContractSize(s)))` in `fetchTrades` — wordt overbodig na bulk-warm, of vervangen door één `await this._warmAllContractSizes()`)
+  - [proxy-local/worker.js:54](proxy-local/worker.js#L54) (`handleMEXC` — voeg `contract_details` branch toe)
+
+  **Acceptatie-criteria**:
+  - Console-spam (3× CORS-error per refresh) is weg op `file://`-context.
+  - Trade van een coin buiten de top-12 (bv. PEPE_USDT, WIF_USDT) krijgt correcte `positionSize` na refresh.
+  - Fallback-map blijft werken wanneer Worker offline is (graceful degradation).
+  - Bestaande Blofin/Kraken/Hyperliquid/FTMO paden onaangetast (test via `tests/exchange-isolation.spec.js`).
+
+  **Effort**: ~30 min code + ~30 min tests. Vereist Worker re-deploy (Denny doet zelf).
 
 ## ⚠️ Risky (refactor of schema-migratie)
 
