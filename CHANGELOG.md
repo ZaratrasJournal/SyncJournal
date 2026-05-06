@@ -6,6 +6,32 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.98] — 2026-05-06
+
+Drie-lagen positionSize fix voor MEXC trades + Auto-sync UI vereenvoudigd naar één setting. v12.96 self-heal had één gat: trades met **lege** `positionSizeAsset` werden niet gecorrigeerd. Zichtbaar bij Denny's trade van vandaag (closeTime 2026-05-06 10:32) met `positionSize="72"` en `positionSizeAsset=""`.
+
+### Fixed (positionSize self-heal)
+- **Lege `positionSizeAsset` wordt nu ook gehealed** — Migratie in `normalizeTrade` verbreed: heal als `assetEmpty || ratio>2 || ratio<0.5`. Voorheen alleen bij ratio-mismatch (vereiste niet-lege asset → parseFloat("")=NaN→0 faalde de `asset > 0` check).
+- **`_convertContracts` valt zelf terug op `_ctvFallback`** als cache leeg is (race-condition-vrij). Voorkomt dat de bug-state ooit ontstaat voor coins in fallback-map (BTC/ETH/SOL/etc.).
+- **`fetchTrades` mapping krijgt pnl-derivation als laatste vangnet** — als ctSize toch 0 blijft (exotic coin niet in fallback-map zoals PEPE/WIF), bereken `positionSizeAsset` direct uit `(realised + fees) / |exit-entry|`. PnL is autoritatief (= MEXC `realised`, netto sinds v12.88).
+
+### Aanpak — drie verdedigingslagen voor positionSize
+- **Laag 1** (root, `_convertContracts`): cache OR fallback-map → assetQty correct voor alle pairs in fallback-map zelfs zonder warming
+- **Laag 2** (defense, `fetchTrades`): pnl-derivation als laatste vangnet voor exotic coins
+- **Laag 3** (heal, `normalizeTrade`): bestaande trades met lege OF factor-fout asset worden gecorrigeerd bij eerstvolgende app-load
+- Relatieve priceMove-drempel (`> entry * 1e-9`) zodat ook microcap coins (PEPE etc.) gecorrigeerd worden
+
+### Gewijzigd (UI-cleanup)
+- **Auto-sync vereenvoudigd van twee settings naar één** — Voorkeuren had twee aparte intervallen ("Auto-sync interval" 15-60 min voor historische trades + "Live open posities" 30s-2min voor live PnL). Verwarrend en in praktijk weinig nut: live PnL is wat users continu willen zien, nieuwe historische trades komen sowieso binnen via de "🔄 Refresh trades" knop op de exchange-pagina. **Fix**: één setting "🔄 Auto-sync" (Uit / 30sec / 1min / 2min) die live posities ververst. Description vertelt expliciet voor historische trades de refresh-knop te gebruiken. `config.syncInterval` is dode code geworden — backwards-compat behouden door state niet te wissen.
+
+### Toegevoegd
+- **Drie-lagen test-spec** ([tests/mexc-size-rehel-v1297.spec.js](tests/mexc-size-rehel-v1297.spec.js)) — 4 scenarios: lege asset wordt gehealed (Denny's trade pid 1364821115), `_convertContracts` gebruikt fallback-map, exotic coin pnl-derivation werkt voor microcap, correcte trade niet aangeraakt.
+
+### Voor de community
+Geen actie nodig. Bij update naar v12.98 worden trades met lege `positionSizeAsset` automatisch gecorrigeerd bij eerstvolgende app-load. Voor nieuwe imports na de update: bug-state ontstaat niet meer dankzij laag 1 + 2.
+
+---
+
 ## [v12.96] — 2026-05-06
 
 Self-heal voor legacy MEXC positionSize bug. Trades uit pre-v12.89 era waar de contractSize-conversie faalde (CORS-fail vóór de fallback-map bestond) hadden `positionSize = String(closeVol)` opgeslagen — raw contracts opgevat als USD, factor 8-100× te klein. Symptoom werd zichtbaar nu de TP-breakdown (v12.93+) per-fill winsten toont: `Verwacht totaal $1.78` terwijl PnL `$14.27` was, plus TP-percentage som > 100%.

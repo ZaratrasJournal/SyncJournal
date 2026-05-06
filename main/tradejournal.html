@@ -1023,7 +1023,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.96",released:"2026-05-06"};
+const APP_VERSION={version:"v12.98",released:"2026-05-06"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -1483,19 +1483,22 @@ const normalizeTrade=(t)=>{
     const asset=Math.abs(parseFloat(out.positionSizeAsset)||0);
     const pnl=parseFloat(out.pnl)||0;
     const fees=Math.abs(parseFloat(out.fees)||0);
-    const dirSign=out.direction==="long"?1:-1;
     const priceDiff=exit-entry;
-    if(entry>0&&exit>0&&asset>0&&Math.abs(pnl)>0.001&&Math.abs(priceDiff)>0.001){
-      // expectedAsset = gross PnL / (priceDiff × dirSign). Gross = pnl + fees
-      // (PnL is netto sinds v12.88, fees positief opgeslagen).
-      const grossSign=Math.sign(pnl); // gross heeft zelfde teken als netto pnl
+    // v12.97: ook trades met LEGE positionSizeAsset healen (was in v12.96 een gat —
+    // parseFloat("") = NaN → asset 0 → check faalde → migratie skipte trade).
+    // Nu: als pnl + entry + exit aanwezig zijn EN (asset leeg OF asset wijkt factor 2+
+    // af van expected), corrigeer asset + positionSize uit pnl-math.
+    // Relatieve priceMove-drempel zodat microcap coins (PEPE etc.) ook gehealed worden.
+    const absPriceDiff=Math.abs(priceDiff);
+    if(entry>0&&exit>0&&Math.abs(pnl)>0.001&&absPriceDiff>entry*1e-9){
       const grossPnl=Math.abs(pnl)+fees;
-      const expected=grossPnl/Math.abs(priceDiff);
+      const expected=grossPnl/absPriceDiff;
       if(expected>0&&Number.isFinite(expected)){
-        const ratio=asset/expected;
-        // Ratio buiten 0.5-2.0 = factor-mismatch (echte bug), niet aanraken
-        // bij normale fee/ronding-variatie.
-        if(ratio>2||ratio<0.5){
+        const assetEmpty=asset<=0;
+        const ratio=assetEmpty?0:asset/expected;
+        // Heal als: asset is leeg, OF ratio buiten 0.5-2.0 (factor-mismatch).
+        // Tussen 0.5-2.0 = normale fee/ronding-variatie, niet aanraken.
+        if(assetEmpty||ratio>2||ratio<0.5){
           out.positionSizeAsset=String(expected);
           out.positionSize=(expected*entry).toFixed(2);
           out._sizeRehealed=true;
@@ -1979,8 +1982,11 @@ const ExchangeAPI = {
       }
     },
     // Helpt fetchTrades + fetchOpenPositions met converteren van contracts → assetQty + USD notional.
+    // v12.97: ook _ctvFallback consulteren als cache leeg is (race-condition-vrij).
+    // Voorheen: alleen this._ctvCache → bij race waar _getContractSize nog niet gerund is
+    // returnt deze 0 → positionSize valt terug naar raw closeVol = bug-state.
     _convertContracts(symbol,vol,price){
-      const ctSize=this._ctvCache[symbol]||0;
+      const ctSize=this._ctvCache[symbol]||this._ctvFallback[symbol]||0;
       const contracts=parseFloat(vol)||0;
       const assetQty=ctSize>0?contracts*ctSize:0;
       const p=parseFloat(price)||0;
@@ -1996,8 +2002,31 @@ const ExchangeAPI = {
       return trades.map(t=>{
         const closeTime=t.updateTime||t.closeTime||Date.now();
         const conv=this._convertContracts(t.symbol,t.closeVol||t.vol,t.openAvgPrice||t.closeAvgPrice);
-        const positionSize=conv.usdNotional>0?conv.usdNotional.toFixed(2):String(t.closeVol||t.vol||"");
-        const positionSizeAsset=conv.assetQty>0?String(conv.assetQty):"";
+        // v12.97: laatste vangnet — als ctSize 0 blijft (exotic coin niet in fallback-map),
+        // derive asset uit pnl-math als entry/exit/realised aanwezig zijn. PnL is autoritatief
+        // (= MEXC realised, netto sinds v12.88). Voorkomt bug-state waar positionSize = raw
+        // closeVol als USD wordt opgeslagen.
+        let positionSize=conv.usdNotional>0?conv.usdNotional.toFixed(2):"";
+        let positionSizeAsset=conv.assetQty>0?String(conv.assetQty):"";
+        if(!positionSizeAsset){
+          const entryN=parseFloat(t.openAvgPrice)||0;
+          const exitN=parseFloat(t.closeAvgPrice)||0;
+          const realisedN=parseFloat(t.realised)||0;
+          const feeAbs2=Math.abs(parseFloat(t.fee)||0);
+          // Relatieve drempel zodat dit ook werkt voor microcap coins (PEPE etc.)
+          // waar absolute prijs-verschil < $0.001 kan zijn.
+          const priceMove=Math.abs(exitN-entryN);
+          if(entryN>0&&exitN>0&&Math.abs(realisedN)>0.001&&priceMove>entryN*1e-9){
+            const grossPnl=Math.abs(realisedN)+feeAbs2;
+            const derivedAsset=grossPnl/priceMove;
+            if(derivedAsset>0&&Number.isFinite(derivedAsset)){
+              positionSizeAsset=String(derivedAsset);
+              positionSize=(derivedAsset*entryN).toFixed(2);
+            }
+          }
+        }
+        // Allerlaatste fallback (alleen als pnl-derivation ook niet kon): raw closeVol-string
+        if(!positionSize)positionSize=String(t.closeVol||t.vol||"");
         // v12.88 (2nd fix): MEXC's `realised` is NETTO PnL (al fee-afgetrokken).
         // Verified via 3-way validation tegen xlsx export:
         //   - xlsx ClosingPNL = GROSS per fill (Σ over positie = positie-gross-PnL)
@@ -11620,25 +11649,18 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,set
       </div>
       <div style={{fontSize:"10px",color:"var(--text4)",marginTop:"6px",lineHeight:1.5}}>Wordt gebruikt als default bij nieuwe handmatige trades. API/CSV import behoudt de originele pairing.</div>
 
+      {/* v12.98: één auto-sync setting (was eerder 2: historisch + live posities).
+          Live polling van open posities is wat users echt continu willen zien.
+          Voor nieuwe historische trades: gebruik de 🔄 Refresh trades knop op de
+          exchange-pagina. Houdt config-key `autoRefreshOpen` voor backwards-compat. */}
       <div style={{marginTop:"16px",paddingTop:"14px",borderTop:"1px solid var(--border2)"}}>
         <div style={{display:"flex",alignItems:"center",gap:"12px",flexWrap:"wrap"}}>
-          <span style={{fontSize:"12px",color:"var(--text2)",minWidth:"150px"}}>Auto-sync interval:</span>
-          {[{v:0,l:"Uit"},{v:15,l:"15 min"},{v:30,l:"30 min"},{v:60,l:"60 min"}].map(opt=>{const active=(config.syncInterval||0)===opt.v;return(
-            <button key={opt.v} onClick={()=>setConfig(p=>({...p,syncInterval:opt.v}))} style={{padding:"5px 12px",borderRadius:"var(--radius)",border:"1px solid var(--border3)",fontSize:"11px",fontWeight:600,background:active?"var(--gold-dim)":"transparent",color:active?"var(--gold)":"var(--text4)",cursor:"pointer",fontFamily:"inherit"}}>{opt.l}</button>
-          )})}
-        </div>
-        <div style={{fontSize:"10px",color:"var(--text4)",marginTop:"6px",lineHeight:1.5}}>Polt gekoppelde exchanges automatisch op dit interval voor <strong>historische trades</strong>. Werkt alleen wanneer er minstens één API-verbinding actief is.</div>
-      </div>
-
-      {/* Live open-posities auto-refresh — separate from historical-trade sync because positions change fast */}
-      <div style={{marginTop:"16px",paddingTop:"14px",borderTop:"1px solid var(--border2)"}}>
-        <div style={{display:"flex",alignItems:"center",gap:"12px",flexWrap:"wrap"}}>
-          <span style={{fontSize:"12px",color:"var(--text2)",minWidth:"150px"}}>🔄 Live open posities:</span>
+          <span style={{fontSize:"12px",color:"var(--text2)",minWidth:"150px"}}>🔄 Auto-sync:</span>
           {[{v:0,l:"Uit"},{v:30,l:"30 sec"},{v:60,l:"1 min"},{v:120,l:"2 min"}].map(opt=>{const active=(config.autoRefreshOpen||0)===opt.v;return(
             <button key={opt.v} onClick={()=>setConfig(p=>({...p,autoRefreshOpen:opt.v}))} style={{padding:"5px 12px",borderRadius:"var(--radius)",border:"1px solid var(--border3)",fontSize:"11px",fontWeight:600,background:active?"var(--gold-dim)":"transparent",color:active?"var(--gold)":"var(--text4)",cursor:"pointer",fontFamily:"inherit"}}>{opt.l}</button>
           )})}
         </div>
-        <div style={{fontSize:"10px",color:"var(--text4)",marginTop:"6px",lineHeight:1.5}}>Ververst live open posities (entry · unrealized PnL · SL/TP · liquidation) van elke gekoppelde exchange. Silent — geen toasts. Pauzeert wanneer tab inactief is.</div>
+        <div style={{fontSize:"10px",color:"var(--text4)",marginTop:"6px",lineHeight:1.5}}>Ververst live open posities (entry · unrealized PnL · SL/TP · liquidation). Silent — geen toasts. Pauzeert bij inactieve tab. Voor nieuwe historische trades: klik <strong>🔄 Refresh trades</strong> op de exchange-pagina.</div>
       </div>
 
       {/* Missed trades — opt-in power feature for tracking edge gap */}
