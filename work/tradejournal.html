@@ -1023,7 +1023,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.94",released:"2026-05-06"};
+const APP_VERSION={version:"v12.95",released:"2026-05-06"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -11150,7 +11150,7 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,set
     {/* v12.85: sub-tabs binnen de right-pane geplaatst, LEFT-aligned zodat ze
         direct boven de "ACCOUNT & DATA" banner staan ipv aan de rechter rand. */}
     <div style={{display:"flex",gap:"4px",marginBottom:"16px",justifyContent:"flex-start",flexWrap:"wrap"}}>
-      {[["accounts","🔗 Accounts"],["rules","📏 Trading Rules"],["goals","🎯 Goals"],["tags","🏷 Tags"],["help","❓ Help"]].map(([id,label])=>{
+      {[["accounts","🔗 Accounts"],["rules","📏 Trading Rules"],["goals","🎯 Goals"],["tags","🏷 Tags"],["validation","🧪 Validatie"],["help","❓ Help"]].map(([id,label])=>{
         const active=id==="accounts";
         return(<button key={id} onClick={()=>setTab&&setTab(id)} style={{padding:"7px 14px",borderRadius:"6px",border:"1px solid "+(active?"var(--gold-border)":"var(--border3)"),background:active?"var(--gold-dim)":"transparent",color:active?"var(--gold)":"var(--text2)",fontSize:"12px",fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{label}</button>);
       })}
@@ -12218,6 +12218,172 @@ function LessonsView({trades,setTab}){
   </div>);
 }
 
+// v12.95: Exchange validatie-checklist tab. Per exchange × 8 scenarios checkboxes
+// + notitie-velden. localStorage state via `tj_validation_state`. Genereer rapport
+// als PNG via html2canvas zodat community-leden het naar Discord kunnen sturen.
+const VALIDATION_EXCHANGES=[
+  {id:"blofin",label:"Blofin",emoji:"🟣"},
+  {id:"mexc",label:"MEXC",emoji:"🟢"},
+  {id:"kraken",label:"Kraken Futures",emoji:"🟠"},
+  {id:"hyperliquid",label:"Hyperliquid",emoji:"🔵"},
+];
+const VALIDATION_SCENARIOS=[
+  {id:"open_sl",title:"1. Open trade + SL gezet (live)",checks:[
+    "Open trade verschijnt met LIVE-badge",
+    "Entry prijs match exchange",
+    "Stop-loss prijs zichtbaar in trade-row",
+    "Direction (long/short) klopt",
+    "Position size in BTC/asset klopt",
+    "Position size in $ klopt (≈ entry × size)",
+    "Live PnL ~$X update werkt",
+    "Risk $ in KPI-strip klopt",
+  ]},
+  {id:"one_tp",title:"2. Trade met 1 TP, daarna exit op TP",checks:[
+    "TP1 verschijnt vóór exit (status open)",
+    "TP1 percentage = 100%",
+    "R:R berekening klopt",
+    "Na hit: status → closed, exit = TP-prijs",
+    "TP1 status → hit, actualPrice gevuld",
+    "PnL klopt op cent-niveau met exchange",
+    "Fees klopt met exchange",
+    "R-multiple klopt",
+  ]},
+  {id:"two_tp",title:"3. Trade met 2 TPs (partial close)",checks:[
+    "Beide TPs zichtbaar vóór exit",
+    "TP1 + TP2 percentages tellen op tot 100%",
+    "Na TP1-hit: status = partial",
+    "Na TP1-hit: TP1 actualPrice gevuld",
+    "Na TP2-hit: status = closed",
+    "Beide TPs hebben eigen prijs (geen 1 gemiddelde)",
+    "Σ TP-PnL = trade.pnl op cent-niveau",
+    "TP-timestamps chronologisch oplopend",
+  ]},
+  {id:"live",title:"4. Live trade tijdens markt-bewegingen",checks:[
+    "Live PnL update zonder manuele refresh",
+    "Bij beweging tegen je: PnL rood",
+    "Bij beweging in voordeel: PnL groen",
+    "Liquidation-price (LIQ) zichtbaar en update",
+    "Account-balans bovenin update",
+  ]},
+  {id:"closed",title:"5. Volledig gesloten trade (na refresh)",checks:[
+    "Trade staat als closed",
+    "Geen ~ prefix meer voor PnL",
+    "Edit-modal toont alle TPs als hit met actualPrice",
+    "Dashboard total-PnL bevat deze trade",
+    "Trades-pagina header-stats kloppen met Dashboard",
+    "Hold-time klopt (closeTime − openTime)",
+  ]},
+  {id:"sl_hit",title:"6. Trade die SL hit (verlies)",checks:[
+    "Status = closed na SL-hit",
+    "Exit prijs = SL-prijs (binnen slippage)",
+    "PnL is negatief en klopt met exchange",
+    "R-multiple ≈ −1R",
+    "TP (indien gezet) heeft status missed of open, niet hit",
+    "SL-veld zichtbaar in trade-row + edit-modal",
+  ]},
+  {id:"manual_close",title:"7. Trade handmatig gesloten (markt-close)",checks:[
+    "Status = closed",
+    "Exit prijs = market-close (niet TP/SL)",
+    "Geen TP gemarkeerd als hit",
+    "PnL klopt met exchange",
+    "Fees klopt",
+    "Hold-time klopt",
+  ]},
+  {id:"sl_moved",title:"8. SL verplaatst tijdens leven (bv. naar BE)",checks:[
+    "Nieuwe SL-waarde zichtbaar na refresh",
+    "R-multiple herberekent met nieuwe risk",
+    "Risk $ in KPI-strip update",
+    "Bij eventuele exit op nieuwe SL: PnL klopt",
+  ]},
+];
+function ValidationChecklistPage({setTab}){
+  const[state,setState]=useState(()=>{try{return JSON.parse(localStorage.getItem("tj_validation_state")||"null")||{tester:"",notes:{},checks:{}}}catch{return{tester:"",notes:{},checks:{}}}});
+  const[openExchange,setOpenExchange]=useState("blofin");
+  const reportRef=useRef(null);
+  const[generating,setGenerating]=useState(false);
+  useEffect(()=>{try{localStorage.setItem("tj_validation_state",JSON.stringify(state))}catch{}},[state]);
+  const setTester=v=>setState(p=>({...p,tester:v}));
+  const setCheck=(key,v)=>setState(p=>({...p,checks:{...p.checks,[key]:v}}));
+  const setNote=(key,v)=>setState(p=>({...p,notes:{...p.notes,[key]:v}}));
+  const reset=()=>{if(confirm("Alle vinkjes en notities wissen?")){setState({tester:state.tester,notes:{},checks:{}})}};
+  const generateReport=async()=>{
+    if(typeof html2canvas==="undefined"){alert("html2canvas niet geladen");return}
+    setGenerating(true);
+    // Open alle exchange-secties tijdelijk zodat alles in screenshot zit
+    const prevOpen=openExchange;
+    setOpenExchange("ALL");
+    await new Promise(r=>setTimeout(r,150));
+    try{
+      const canvas=await html2canvas(reportRef.current,{scale:2,backgroundColor:getComputedStyle(document.body).backgroundColor||"#0a0a0a",logging:false,useCORS:true});
+      const link=document.createElement("a");
+      const ts=new Date().toISOString().slice(0,19).replace(/[:T]/g,"-");
+      link.download=`validation-report-${state.tester||"tester"}-${ts}.png`;
+      link.href=canvas.toDataURL("image/png");
+      link.click();
+    }catch(e){alert("Rapport-generatie mislukt: "+(e.message||e))}
+    setOpenExchange(prevOpen);
+    setGenerating(false);
+  };
+  // Stats: totaal checks vs aangevinkt
+  const totalChecks=VALIDATION_EXCHANGES.length*VALIDATION_SCENARIOS.reduce((s,sc)=>s+sc.checks.length,0);
+  const checkedCount=Object.values(state.checks).filter(Boolean).length;
+  const progress=totalChecks>0?Math.round(checkedCount/totalChecks*100):0;
+  return(<div ref={reportRef} style={{padding:"4px 0 24px"}}>
+    <div className="settings-cat-banner"><h2>🧪 Exchange validatie-checklist</h2></div>
+    <div style={{padding:"0 4px 16px",fontSize:13,color:"var(--text3)",lineHeight:1.55}}>
+      Per exchange × 8 scenarios doorlopen om TPs / fees / PnL / percentages te valideren tegen de exchange-UI. Vinkjes + notities worden lokaal opgeslagen. Klaar? Klik <strong style={{color:"var(--gold)"}}>📸 Genereer rapport</strong> voor een PNG die je naar Denny kunt sturen.
+    </div>
+    <div style={{display:"flex",gap:12,alignItems:"center",marginBottom:16,padding:"12px 14px",background:"var(--glass)",borderRadius:8,border:"1px solid var(--border1)"}}>
+      <div style={{flex:1}}>
+        <label style={{fontSize:10,color:"var(--text4)",textTransform:"uppercase",letterSpacing:".08em",fontWeight:600,display:"block",marginBottom:4}}>Tester naam</label>
+        <input type="text" value={state.tester||""} onChange={e=>setTester(e.target.value)} placeholder="bv. Denny / community handle" style={{width:"100%",padding:"7px 10px",borderRadius:6,border:"1px solid var(--border3)",background:"var(--bg3)",color:"var(--text)",fontFamily:"inherit",fontSize:12}}/>
+      </div>
+      <div>
+        <div style={{fontSize:10,color:"var(--text4)",textTransform:"uppercase",letterSpacing:".08em",fontWeight:600,marginBottom:4}}>Versie</div>
+        <div style={{fontFamily:"var(--mono)",fontSize:13,color:"var(--text2)",fontWeight:600}}>{APP_VERSION.version}</div>
+      </div>
+      <div>
+        <div style={{fontSize:10,color:"var(--text4)",textTransform:"uppercase",letterSpacing:".08em",fontWeight:600,marginBottom:4}}>Voortgang</div>
+        <div style={{fontFamily:"var(--mono)",fontSize:13,color:"var(--text2)",fontWeight:600}}>{checkedCount}/{totalChecks} <span style={{color:progress>=80?"var(--green)":progress>=40?"var(--gold)":"var(--text4)"}}>({progress}%)</span></div>
+      </div>
+    </div>
+    {VALIDATION_EXCHANGES.map(ex=>{
+      const isOpen=openExchange===ex.id||openExchange==="ALL";
+      return(<div key={ex.id} style={{marginBottom:12,border:"1px solid var(--border2)",borderRadius:8,overflow:"hidden"}}>
+        <button onClick={()=>setOpenExchange(isOpen&&openExchange!=="ALL"?null:ex.id)} style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 16px",background:isOpen?"var(--gold-dim)":"var(--bg3)",border:"none",cursor:"pointer",fontFamily:"inherit",color:"var(--text)",fontSize:14,fontWeight:600}}>
+          <span><span style={{marginRight:8}}>{ex.emoji}</span>{ex.label}</span>
+          <span style={{fontSize:11,color:"var(--text4)",fontFamily:"var(--mono)"}}>{(()=>{const subset=Object.entries(state.checks).filter(([k,v])=>k.startsWith(ex.id+"/")&&v).length;const total=VALIDATION_SCENARIOS.reduce((s,sc)=>s+sc.checks.length,0);return`${subset}/${total}`})()} {isOpen?"▾":"▸"}</span>
+        </button>
+        {isOpen&&<div style={{padding:"4px 0",background:"var(--bg2)"}}>
+          {VALIDATION_SCENARIOS.map(sc=>{
+            const noteKey=`${ex.id}/${sc.id}`;
+            return(<div key={sc.id} style={{padding:"12px 16px",borderTop:"1px solid var(--border1)"}}>
+              <div style={{fontSize:12,fontWeight:700,color:"var(--gold)",marginBottom:8,fontFamily:"var(--mono)",letterSpacing:".04em"}}>{sc.title}</div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr",gap:4,marginBottom:8}}>
+                {sc.checks.map((check,i)=>{
+                  const ckey=`${ex.id}/${sc.id}/${i}`;
+                  const isChecked=!!state.checks[ckey];
+                  return(<label key={i} style={{display:"flex",alignItems:"flex-start",gap:8,padding:"4px 0",cursor:"pointer",fontSize:12,lineHeight:1.5,color:isChecked?"var(--text3)":"var(--text2)"}}>
+                    <input type="checkbox" checked={isChecked} onChange={e=>setCheck(ckey,e.target.checked)} style={{marginTop:2,cursor:"pointer",accentColor:"var(--gold)"}}/>
+                    <span style={{textDecoration:isChecked?"line-through":"none"}}>{check}</span>
+                  </label>);
+                })}
+              </div>
+              <textarea value={state.notes[noteKey]||""} onChange={e=>setNote(noteKey,e.target.value)} placeholder="Notitie / afwijking (alleen invullen bij issue)..." rows={2} style={{width:"100%",padding:"6px 9px",borderRadius:6,border:"1px solid var(--border2)",background:"var(--bg3)",color:"var(--text2)",fontFamily:"inherit",fontSize:11,resize:"vertical"}}/>
+            </div>);
+          })}
+        </div>}
+      </div>);
+    })}
+    <div style={{display:"flex",gap:10,marginTop:20,paddingTop:16,borderTop:"1px solid var(--border1)"}}>
+      <button onClick={generateReport} disabled={generating} style={{padding:"10px 18px",borderRadius:8,border:"none",background:"var(--gold)",color:"var(--bg)",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:700,display:"flex",alignItems:"center",gap:8}}>
+        {generating?<><span className="spinner"/>Genereren...</>:"📸 Genereer rapport"}
+      </button>
+      <button onClick={reset} style={{padding:"10px 16px",borderRadius:8,border:"1px solid var(--border3)",background:"transparent",color:"var(--text3)",cursor:"pointer",fontFamily:"inherit",fontSize:12,fontWeight:500}}>🔄 Reset</button>
+    </div>
+  </div>);
+}
+
 function HelpPage({trades,setTab}){
   // v12.82: startersguide-tab verwijderd want de Handleiding dekt 'm volledig met
   // exchange-specifieke lessons l18-l22. Legacy users met "startersguide" in
@@ -13156,8 +13322,8 @@ function App(){
             (boven de Account & Data banner, in de right-pane, LEFT-aligned). Voor de
             andere settings-tabs (rules/goals/tags/help) tonen we 'm hier op page-
             niveau, ook LEFT-aligned voor consistentie tussen alle sub-tabs. */}
-        {["rules","goals","tags","help"].includes(tab)&&<div style={{display:"flex",gap:"4px",marginBottom:"16px",justifyContent:"flex-start",flexWrap:"wrap"}}>
-          {[["accounts","🔗 Accounts"],["rules","📏 Trading Rules"],["goals","🎯 Goals"],["tags","🏷 Tags"],["help","❓ Help"]].map(([id,label])=>(<button key={id} onClick={()=>navigate(id)} style={{padding:"7px 14px",borderRadius:"6px",border:"1px solid "+(tab===id?"var(--gold-border)":"var(--border3)"),background:tab===id?"var(--gold-dim)":"transparent",color:tab===id?"var(--gold)":"var(--text2)",fontSize:"12px",fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{label}</button>))}
+        {["rules","goals","tags","validation","help"].includes(tab)&&<div style={{display:"flex",gap:"4px",marginBottom:"16px",justifyContent:"flex-start",flexWrap:"wrap"}}>
+          {[["accounts","🔗 Accounts"],["rules","📏 Trading Rules"],["goals","🎯 Goals"],["tags","🏷 Tags"],["validation","🧪 Validatie"],["help","❓ Help"]].map(([id,label])=>(<button key={id} onClick={()=>navigate(id)} style={{padding:"7px 14px",borderRadius:"6px",border:"1px solid "+(tab===id?"var(--gold-border)":"var(--border3)"),background:tab===id?"var(--gold-dim)":"transparent",color:tab===id?"var(--gold)":"var(--text2)",fontSize:"12px",fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{label}</button>))}
         </div>}
 
         {/* New trade */}
@@ -13217,6 +13383,7 @@ function App(){
         {tab==="rules"&&<TradingRulesPage tradingRules={tradingRules} setTradingRules={setTradingRules}/>}
         {tab==="goals"&&<GoalsPage goals={goals} setGoals={setGoals} trades={trades}/>}
         {tab==="tags"&&<TagManager tagConfig={tagConfig} setTagConfig={setTagConfig} trades={trades} setTrades={setTrades} showToast={showToast} config={config}/>}
+        {tab==="validation"&&<ValidationChecklistPage setTab={setTab}/>}
         {tab==="help"&&<HelpPage trades={trades} setTab={setTab}/>}
       </div>
 

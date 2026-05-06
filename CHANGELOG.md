@@ -6,6 +6,28 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.95] — 2026-05-06
+
+Validatie-checklist tab in Instellingen voor systematisch testen van trade-flow per exchange. Community-leden kunnen scenarios afvinken, afwijkingen noteren en een rapport-PNG genereren om naar Discord te sturen.
+
+### Toegevoegd
+- **🧪 Validatie tab in Instellingen** — naast Accounts / Trading Rules / Goals / Tags / Help. Per exchange (Blofin / MEXC / Kraken / Hyperliquid) × 8 standaard scenarios:
+  1. Open trade + SL gezet (live)
+  2. Trade met 1 TP, daarna exit
+  3. Trade met 2 TPs (partial close)
+  4. Live trade tijdens markt-bewegingen
+  5. Volledig gesloten trade
+  6. Trade die SL hit (verlies)
+  7. Trade handmatig gesloten (markt-close)
+  8. SL verplaatst tijdens leven (bv. naar BE)
+  Per scenario: 4-8 checkboxes voor TPs / fees / PnL / percentages / R-multiple validatie + vrij notitie-veld voor afwijkingen.
+- **State persistence** — vinkjes + notities + tester-naam worden opgeslagen in `tj_validation_state` localStorage. Voortgang-teller bovenin (X/Y aangevinkt = Z%).
+- **📸 Genereer rapport** — html2canvas-export van de hele checklist als PNG. Bestand: `validation-report-{tester}-{timestamp}.png`. Klaar om naar Discord te sturen.
+- **🔄 Reset** — wist alle vinkjes + notities (tester-naam blijft).
+- **Tests** — [tests/validation-tab.spec.js](tests/validation-tab.spec.js) (3 scenarios: tab opent + state persisteert, tester-naam veld + voortgang teller, reset werkt) + [docs/exchange-validation-checklist.md](docs/exchange-validation-checklist.md) als bron-document.
+
+---
+
 ## [v12.94] — 2026-05-06
 
 Self-healing TP-fetch flow + dev-only TP-coverage diagnostics + schema-invariant tests. Sluit de robustness-roadmap af. Marker is nu officieel een hint, geen autoriteit — de filter beslist op basis van wat de trade écht heeft vs. wat hij zou moeten hebben.
