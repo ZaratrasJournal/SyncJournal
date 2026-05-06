@@ -13,6 +13,41 @@ Snippets en complete versies van de **online Cloudflare Worker** die de exchange
 
 ## Versies
 
+### v8-online-worker.js (2026-05-06)
+
+**Wat verandert vs v7**: alleen Kraken matching-logica + diagnostic info. MEXC + Blofin byte-voor-byte ongewijzigd vs v7.
+
+- v7 leverde `fillsCount: 328, logsCount: 1000, matchedCount: 0` voor Denny — fills + logs kwamen binnen, maar match-criterium faalde voor élke fill.
+- **v8 fixes**:
+  1. Case-insensitive contract-matching (`pf_xbtusd` ↔ `PF_XBTUSD`)
+  2. Match-window 5s → **30s** (account-log entries kunnen propagation-delay hebben)
+  3. Scan ±2 minuten i.p.v. ±1 (randgevallen rond minute-boundary)
+  4. Diagnostic-fields toegevoegd aan `_v8Debug`: `firstFillSample`, `firstLogSample`, `eventLookupKeys`, `firstMatchAttempt`, `tradeEventsCount` — zodat we exact zien waar matching nog faalt als matchedCount nog steeds 0 is
+
+**Verificatie via console-snippet**:
+```js
+const cfg = JSON.parse(localStorage.getItem('tj_config'));
+const k = cfg.exchanges.kraken;
+const r = await fetch('https://morani-proxy.moranitraden.workers.dev', {
+  method:'POST', headers:{'Content-Type':'application/json'},
+  body: JSON.stringify({exchange:'kraken', action:'trades',
+    apiKey: k.apiKey, apiSecret: k.apiSecret,
+    startTime: Date.now() - 30*86400000})
+});
+const data = await r.json();
+console.log('source:', data.source);
+console.log('_v8Debug:', data._v8Debug);
+```
+
+**Verwachte uitkomst**:
+- `source: "fills+account_log"` (in plaats van `account_log_fallback`)
+- `_v8Debug.matchedCount > 0`
+- Eerste trade in `data.trades[0]` heeft `size > 0` en `exit_price > 0`
+
+Als `matchedCount` nog steeds 0 is: stuur de `firstFillSample` + `firstLogSample` + `firstMatchAttempt` waarden. Daaruit kunnen we de exacte mismatch zien (bv. `fill.symbol` vs `log.contract`).
+
+**Rollback**: paste v7 of v6 terug.
+
 ### v7-online-worker.js (2026-05-06)
 
 **Wat verandert**: alleen Kraken `trades`-action. MEXC + Blofin byte-voor-byte ongewijzigd vs v6.
