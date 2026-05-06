@@ -1023,7 +1023,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.99",released:"2026-05-06"};
+const APP_VERSION={version:"v12.100",released:"2026-05-06"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -2258,7 +2258,18 @@ const ExchangeAPI = {
       const ft=t.fillTime||t.open_time||"";const closeT=t.fillTime||"";
       const pair=t.pair_clean||this._pair(t.symbol||"");const status=t.status||"closed";
       const pnlRaw=t.pnl;const pnlVal=(pnlRaw!==null&&pnlRaw!==undefined&&pnlRaw!=="")?String(pnlRaw):"";
-      return{id:"kraken_"+(t.fill_id||uid()),openTime:t.open_time||ft,closeTime:closeT,date:closeT?closeT.split("T")[0]:(ft?ft.split("T")[0]:""),time:closeT?(closeT.split("T")[1]||"").slice(0,5):(ft?(ft.split("T")[1]||"").slice(0,5):""),pair,direction:t.direction||(t.side==="buy"?"long":"short"),entry:String(t.entry_price||t.price||""),exit:status==="closed"?String(t.exit_price||""):"",positionSize:String(t.size||""),positionSizeAsset:String(t.size||""),pnl:status==="closed"?pnlVal:"",unrealizedPnl:status==="open"?String(t.unrealized_pnl||""):"",liquidationPrice:String(t.liquidation_price||""),fees:t.fee?String(Math.abs(parseFloat(t.fee)||0).toFixed(4)):"0",leverage:"1",source:"kraken",status,stopLoss:"",takeProfit:"",highestPrice:"",lowestPrice:"",setupTags:[],confirmationTags:[],timeframeTags:[],emotionTags:[],mistakeTags:[],customTags:[],rating:0,screenshot:null,notes:"",links:[],layers:[],manualOverrides:[]};
+      // v12.100 fix #1: positionSize = size × entry_price (USD-notional), niet de raw size.
+      // Voorheen: positionSize = size (BTC qty) wat gelijk was aan positionSizeAsset → onmogelijk
+      // klein USD-bedrag in modal. Nu: USD-notional voor display, BTC voor asset-veld.
+      const sizeBase=parseFloat(t.size)||0;
+      const entryNum=parseFloat(t.entry_price||t.price)||0;
+      const usdNotional=sizeBase*entryNum;
+      // v12.100 fix #2: passthrough tpLevels van Worker v11+ (Kraken trades hebben geen
+      // positionId dus standaard fetchFills-pad werkt niet — Worker bouwt tpLevels al
+      // uit close-fills). Voor v6-v10 Worker: array niet aanwezig → fallback []
+      const tpLevels=Array.isArray(t.tpLevels)?t.tpLevels:[];
+      const originalSizeAsset=t.originalSizeAsset||(sizeBase>0?String(sizeBase):"");
+      return{id:"kraken_"+(t.fill_id||uid()),openTime:t.open_time||ft,closeTime:closeT,date:closeT?closeT.split("T")[0]:(ft?ft.split("T")[0]:""),time:closeT?(closeT.split("T")[1]||"").slice(0,5):(ft?(ft.split("T")[1]||"").slice(0,5):""),pair,direction:t.direction||(t.side==="buy"?"long":"short"),entry:String(t.entry_price||t.price||""),exit:status==="closed"?String(t.exit_price||""):"",positionSize:usdNotional>0?usdNotional.toFixed(2):String(t.size||""),positionSizeAsset:String(t.size||""),pnl:status==="closed"?pnlVal:"",unrealizedPnl:status==="open"?String(t.unrealized_pnl||""):"",liquidationPrice:String(t.liquidation_price||""),fees:t.fee?String(Math.abs(parseFloat(t.fee)||0).toFixed(4)):"0",leverage:"1",source:"kraken",status,stopLoss:"",takeProfit:"",highestPrice:"",lowestPrice:"",setupTags:[],confirmationTags:[],timeframeTags:[],emotionTags:[],mistakeTags:[],customTags:[],rating:0,screenshot:null,notes:"",links:[],layers:[],manualOverrides:[],tpLevels,originalSizeAsset};
     },
     async fetchTrades(apiKey,apiSecret,_pp,startTime){const data=await proxyCall({exchange:"kraken",action:"trades",apiKey,apiSecret,startTime});return(data.trades||[]).filter(t=>t.pair_clean||t.symbol||t.direction).map(t=>this._normalise(t))},
     async testConnection(apiKey,apiSecret){const data=await proxyCall({exchange:"kraken",action:"test",apiKey,apiSecret});if(!data.success)throw new Error(data.error||"Kraken verbinding mislukt");return{success:true,balance:data.balance||"0"}},
@@ -12988,12 +12999,56 @@ function App(){
   };
   const importTrades=(newOnes)=>{
     const total=newOnes.length;
-    let freshCount=0;let dupCount=0;let finalizedCount=0;
+    let freshCount=0;let dupCount=0;let finalizedCount=0;let healedCount=0;
     setTrades(p=>{
-      const ex=new Set(p.map(t=>t.id));
-      const fresh=newOnes.filter(t=>{if(ex.has(t.id)){dupCount++;return false}return true});
+      const existingById=new Map(p.map(t=>[t.id,t]));
+      // v12.100 community-friendly heal: voor source=kraken trades waar bestaande
+      // versie buggy is (size leeg/0/"0.00000000" of exit leeg/0) maar incoming data
+      // wel correct is, overschrijf alleen de fix-velden (size/positionSize/exit/
+      // tpLevels/fillTime). Notes/tags/screenshots/playbook-koppelingen blijven
+      // intact zodat community-leden niets verliezen bij re-import.
+      const isKrakenBuggy=(t)=>{
+        if(!t||t.source!=="kraken")return false;
+        const asset=parseFloat(t.positionSizeAsset||"0")||0;
+        const exit=parseFloat(t.exit||"0")||0;
+        return asset<=0||exit<=0;
+      };
+      const hasValidFreshData=(t)=>{
+        const asset=parseFloat(t.positionSizeAsset||"0")||0;
+        const exit=parseFloat(t.exit||"0")||0;
+        return asset>0&&exit>0;
+      };
+      const fresh=[];
+      newOnes.forEach(t=>{
+        if(!existingById.has(t.id)){fresh.push(t);return}
+        const existing=existingById.get(t.id);
+        if(isKrakenBuggy(existing)&&hasValidFreshData(t)){
+          // Heal: overschrijf alleen fix-velden, behoud user-edits
+          existingById.set(t.id,{
+            ...existing,
+            entry:t.entry||existing.entry,
+            exit:t.exit||existing.exit,
+            positionSize:t.positionSize||existing.positionSize,
+            positionSizeAsset:t.positionSizeAsset||existing.positionSizeAsset,
+            originalSizeAsset:t.originalSizeAsset||existing.originalSizeAsset,
+            // tpLevels alleen overschrijven als fresh er meer/echter heeft
+            tpLevels:Array.isArray(t.tpLevels)&&t.tpLevels.length>0?t.tpLevels:existing.tpLevels,
+            fillTime:t.fillTime||existing.fillTime,
+            closeTime:t.closeTime||existing.closeTime,
+            // PnL/fees ook bijwerken als fresh data heeft
+            pnl:t.pnl||existing.pnl,
+            fees:t.fees||existing.fees,
+            // Behoud expliciet: notes, tags, screenshots, playbook, ratings, etc.
+          });
+          healedCount++;
+        }else{
+          dupCount++;
+        }
+      });
       freshCount=fresh.length;
-      let merged=fresh.length?[...fresh,...p]:p;
+      // existingById bevat alleen bestaande trades (mogelijk gehealed); fresh-items
+      // werden niet daarin gestopt. Resultaat = fresh + alle bestaande (in volgorde).
+      let merged=fresh.length?[...fresh,...existingById.values()]:[...existingById.values()];
       // v12.89 (stale-open finalize fix): bij elke import, check stale-opens van de
       // betrokken exchanges. Voorheen werd finalize alleen gedaan in syncOpenPositions
       // (= aangeroepen na fetchOpenPositions, waar siblings nog niet beschikbaar waren).
@@ -13058,10 +13113,11 @@ function App(){
     setTimeout(()=>{
       const parts=[];
       if(freshCount)parts.push(`${freshCount} nieuw`);
+      if(healedCount)parts.push(`${healedCount} bijgewerkt`);
       if(dupCount)parts.push(`${dupCount} al aanwezig`);
       if(finalizedCount)parts.push(`${finalizedCount} afgerond`);
       if(!parts.length&&dupCount===0)showToast(`Geen trades om te importeren`,"info");
-      else if(freshCount===0&&dupCount>0&&!finalizedCount)showToast(`Alle ${dupCount} trades bestonden al — niets toegevoegd`,"info");
+      else if(freshCount===0&&dupCount>0&&!finalizedCount&&!healedCount)showToast(`Alle ${dupCount} trades bestonden al — niets toegevoegd`,"info");
       else showToast(parts.join(" · ")+" ✓","success");
     },0);
   };

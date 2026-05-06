@@ -6,6 +6,26 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.100] — 2026-05-06
+
+Kraken trade-import client-side fixes ter ondersteuning van Worker v11. Maakt Kraken trades zichtbaar met correcte position-size + TPs + auto-heal voor bestaande buggy trades zonder verlies van handmatige edits.
+
+### Fixed
+- **Kraken `_normalise` positionSize bug** — `positionSize` werd op de raw `size` (BTC qty) gezet, gelijk aan `positionSizeAsset`. Resultaat: modal toonde "Position ($) = 0.00120000" identiek aan "Position (BTC) = 0.00120000". **Fix**: `positionSize = size × entry_price` (USD-notional). `positionSizeAsset` blijft de BTC qty.
+- **Kraken trades hadden geen TPs** — Kraken trades hebben geen positionId, dus de needsTPs filter skipte ze altijd. **Fix**: Worker v11 levert nu `tpLevels` array per trade gebouwd uit de close-fills (1 TP per fill = correct voor partial-close trades). Client passthrough via `_normalise`.
+- **Auto-heal voor bestaande Kraken trades met buggy data** — `importTrades` filterde duplicates op id, dus bestaande trades met `positionSizeAsset: "0.00000000"` of `exit: "0"` werden nooit overschreven met fresh data. **Fix**: detecteer source=kraken trades waar bestaande data buggy is EN incoming data correct is → overschrijf alleen fix-velden (`size`, `exit`, `positionSize`, `positionSizeAsset`, `tpLevels`, `fillTime`, `pnl`, `fees`). **Behoud** alle user-edits: notes, tags, screenshots, playbook-koppelingen, ratings, complianceChecks. Toast toont nu `${healedCount} bijgewerkt` naast nieuwe trades.
+
+### Aanpak
+- Geen actie nodig voor community-leden. Bij refresh na Worker v11 deploy worden bestaande Kraken trades automatisch bijgewerkt zonder verlies van handmatige edits.
+- Patroon herbruikbaar voor toekomstige bugs in andere exchanges (= "self-healing import" architectuur).
+
+### Voor de community
+1. Deploy Worker v11 in Cloudflare (zie [worker-patches/v11-online-worker.js](worker-patches/v11-online-worker.js))
+2. Update naar v12.100 via Instellingen → Accounts → Check voor updates
+3. Eén refresh op Kraken → bestaande 37 trades worden automatisch ge-update met correcte size/exit/TPs
+
+---
+
 ## [v12.99] — 2026-05-06
 
 Auto-sync intervallen aangepast voor community-schaal + nieuwe gecombineerde sync flow + jitter + last-sync indicator. Plus universele positionSize self-heal voor alle exchanges (was MEXC-only).
