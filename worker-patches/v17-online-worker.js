@@ -1,18 +1,23 @@
 /**
+ * Morani Trading Journal — Cloudflare Worker Proxy v17
+ *
+ * Changes vs v16 (Kraken trades-action — pagination + label-detection):
+ *  - v16 leverde 23 close-events (verwacht 50 uit CSV ground truth).
+ *    Twee mogelijke oorzaken:
+ *    1. Pagination needed — 1000 elements is mogelijk niet genoeg
+ *    2. Partial-closes hebben label 'decrease' i.p.v. 'close'
+ *
+ *  - v17 fixes:
+ *    1. Pagination via continuationToken (correct, met defensieve stop)
+ *    2. CLOSE_LIKE set: ['close', 'decrease', 'partialClose', 'positionDecrease']
+ *       — vangt verschillende mogelijke partial-close labels
+ *    3. Diagnostic histograms in _v17Debug:
+ *       - eventTypeCounts (welke event-keys voorkomen)
+ *       - positionChangeCounts (welke positionChange-waarden voorkomen)
+ *       - inWindowCount, firstResponseLen, pagesFetched
+ *
+ * Original v16 docstring:
  * Morani Trading Journal — Cloudflare Worker Proxy v16
- *
- * Changes vs v15 (Kraken trades-action defensiever):
- *  - v15 gaf 500 error. Vermoedelijk crash in pagination via continuationToken.
- *  - v16 fixes:
- *    1. Geen pagination — 1 call retourneert tot 1000 elements (= ruim voor
- *       50+ closed positions). Pagination toevoegen als nodig.
- *    2. Try/catch rond de hele flow — error wordt teruggegeven als JSON
- *       response ipv 500 status, zodat we de error-message kunnen lezen.
- *    3. Defensievere null-checks op alle nested fields.
- *    4. _v16Debug heeft errorTrace veld bij failure.
- *
- * Original v15 docstring:
- * Morani Trading Journal — Cloudflare Worker Proxy v15
  *
  * Changes vs v14 (Kraken trades-action volledig herschreven):
  *  - v14 probe-test wees uit dat /api/history/v3/positions het ECHTE
