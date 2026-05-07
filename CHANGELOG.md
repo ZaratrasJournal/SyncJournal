@@ -6,6 +6,30 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.102] — 2026-05-07
+
+Nieuwe **Playbook Analytics dashboard** als sub-view in de Playbook-pagina (Phase 1). Beantwoordt de vraag *"vertaalt mijn backtest-edge naar real?"* met source-filtering (real/bt/paper/missed), Trust-Score progressie en multi-source equity curve.
+
+### Toegevoegd
+- **View-toggle in PlaybookPage** — knoppen `📋 Lijst | 📊 Analytics` bovenaan de Playbook-pagina (regel ~8650). De lijst-view bestaat zoals voorheen; Analytics opent een nieuw dashboard scoped op een gekozen playbook.
+- **Source-toggle pills** (Alles · Real · Backtest · Paper · Missed) — per bron live counts uit `simType` (`real` = `status!="missed"` met PnL; `bt` = `simType==="backtest"`; `paper` = `simType==="paper"`; `missed` = legacy/real-time gespotte trades). Buttons worden disabled als de bron 0 trades heeft.
+- **Trust-Score progressie** (5-stappen stepper Idee → Theorized → Validated → Tradeable → Bewezen) — hergebruikt de bestaande `classifyTrust(pb, allTrades)` helper. Active-stap is goud, voltooide stappen groen, "Bewezen"-eindstap krijgt een ★ marker.
+- **Backtest vs Real card** — drie-koloms vergelijking (BT / Real / Δ) met automatische verdict ("Edge bevestigd" als WR-gap <10pp en R-gap <0.5R, anders "Significante execution-gap"). Verschijnt alleen wanneer er BT én Real trades zijn.
+- **Headline KPI's strip** (6 cellen: Trades · WR · Avg R · Expectancy · Cum. PnL · Compliance) — scope volgt source-toggle. Cum. PnL toont *theoretisch* voor BT/missed.
+- **Equity Curve · USD met multi-source toggle** — smooth Catmull-Rom interpolatie, Y-as in dollars (`+$504`, `+$1.2k`), datum X-as, groen-fill boven nullijn / rood-fill onder via clip-paths, dual-line overlay met dashed lijnen per bron (BT 5-4, Paper 2-3, Missed 1-3). HIGH/END stats top-right. Per playbook real-time berekend uit `netPnl(t)` (real) of `((hindsightExit-entry)*dirSign)/Math.abs(entry-stopLoss) * riskUsd` (theoretisch voor BT/paper/missed).
+
+### Aanpak
+- **Phase 1 = kern** (filter + source-toggle + Trust + BT-vs-Real + KPIs + Equity). Hergebruikt bestaande helpers: `tradesForPlaybook`, `playbookStats`, `playbookErosionStats`, `classifyTrust`, `playbookMissedStats`, `netPnl`.
+- **Phase 2 (volgt)**: Sessie × Weekday heatmap, Criteria-impact ranking met lift-score, Mistake/Emotion-tag rankings, Missed-opportunities detail-card. Vereisen nieuwe groupBy-helpers — bewust overgeslagen voor reviewbare commit.
+- Twee nieuwe componenten: `PlaybookAnalyticsView` + `PlaybookEquityCurve`. Helpers (`_pbBucketBySource`, `_pbEquityReal`, `_pbEquityTheoretical`, `_pbSmoothPath`, `_pbFmtUsd`) zijn private (underscore-prefix) om niet met andere `playbook*` helpers te clashen.
+- **Demo-first traject**: v3-interactief in [demos/analytics-playbook-filter-demo-v3-interactief.html](demos/analytics-playbook-filter-demo-v3-interactief.html) iteratief getuned vóór integratie.
+
+### Voor de community
+- Geen actie nodig. Bij update naar v12.102 verschijnt automatisch de view-toggle in Playbook → Analytics.
+- Voor de meeste waarde: koppel een reeks trades aan een playbook (via `playbookId` of overlappende `setupTags`), en log een mix van real-trades én backtest-trades (via Mark als → 🔬 Backtest in TradeForm) zodat de Backtest-vs-Real validatie zinvol vergelijkt.
+
+---
+
 ## [v12.101] — 2026-05-06
 
 Twee Kraken open-positions bugs gefixt in `_normalise`. Geïsoleerd in de Kraken-adapter — geen impact op MEXC/Blofin/Hyperliquid/FTMO.

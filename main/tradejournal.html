@@ -1023,7 +1023,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.101",released:"2026-05-06"};
+const APP_VERSION={version:"v12.102",released:"2026-05-07"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -8309,8 +8309,348 @@ function PlaybookImportModal({onImport,onClose,initialInput,showToast}){
   </div>);
 }
 
+// ─── PlaybookAnalyticsView (v12.102) ───────────────────────────────────────
+// Phase 1: filter + source-toggle + KPI strip + Trust-Score + BT-vs-Real + Equity curve
+// Helpers gedeeld met PlaybookDetailModal — geen exchange-specifieke logica.
+function _pbBucketBySource(linked){
+  const out={real:[],bt:[],paper:[],missed:[]};
+  for(const t of linked||[]){
+    if(t.status!=="missed"&&t.pnl!==""&&!isNaN(parseFloat(t.pnl)))out.real.push(t);
+    else if(t.status==="missed"&&t.simType==="backtest")out.bt.push(t);
+    else if(t.status==="missed"&&t.simType==="paper")out.paper.push(t);
+    else if(t.status==="missed"&&(!t.simType||t.simType==="missed"))out.missed.push(t);
+  }
+  return out;
+}
+function _pbEquityReal(trades){
+  const sorted=[...trades].sort((a,b)=>(a.closeTime||a.date||"").localeCompare(b.closeTime||b.date||""));
+  let cum=0;
+  return sorted.map(t=>{cum+=netPnl(t);return{date:(t.closeTime||t.date||"").slice(5,10),cum};});
+}
+function _pbEquityTheoretical(trades,fallbackR=100){
+  const sorted=[...trades].sort((a,b)=>(a.date||"").localeCompare(b.date||""));
+  let cum=0;
+  return sorted.map(t=>{
+    const e=parseFloat(t.entry),sl=parseFloat(t.stopLoss),hx=parseFloat(t.hindsightExit);
+    if(!isFinite(e)||!isFinite(sl)||!isFinite(hx)||Math.abs(e-sl)<=0)return null;
+    const r=((hx-e)*(t.direction==="short"?-1:1))/Math.abs(e-sl);
+    const $perR=parseFloat(t.riskUsd)||fallbackR;
+    cum+=r*$perR;
+    return{date:(t.date||"").slice(5,10),cum};
+  }).filter(Boolean);
+}
+function _pbSmoothPath(pts){
+  if(!pts.length)return"";
+  if(pts.length===1)return`M${pts[0].x},${pts[0].y}`;
+  let d=`M${pts[0].x.toFixed(1)},${pts[0].y.toFixed(1)}`;
+  for(let i=0;i<pts.length-1;i++){
+    const p0=pts[i-1]||pts[i],p1=pts[i],p2=pts[i+1],p3=pts[i+2]||pts[i+1];
+    const c1x=p1.x+(p2.x-p0.x)/6,c1y=p1.y+(p2.y-p0.y)/6;
+    const c2x=p2.x-(p3.x-p1.x)/6,c2y=p2.y-(p3.y-p1.y)/6;
+    d+=` C${c1x.toFixed(1)},${c1y.toFixed(1)} ${c2x.toFixed(1)},${c2y.toFixed(1)} ${p2.x.toFixed(1)},${p2.y.toFixed(1)}`;
+  }
+  return d;
+}
+function _pbFmtUsd(n){
+  const abs=Math.abs(n),sign=n<0?"-":(n>0?"+":"");
+  if(abs>=1000)return`${sign}$${(abs/1000).toFixed(1)}k`;
+  return`${sign}$${Math.round(abs)}`;
+}
+const PB_SRC=[
+  {id:"all",ico:"📊",label:"Alles",color:"var(--gold)"},
+  {id:"real",ico:"●",label:"Real",color:"var(--green)"},
+  {id:"bt",ico:"🔬",label:"Backtest",color:"var(--bt-blue,#7ab4d2)"},
+  {id:"paper",ico:"📝",label:"Paper",color:"var(--paper-color,#9a8acc)"},
+  {id:"missed",ico:"👻",label:"Missed",color:"var(--miss-color,#b48cc8)"},
+];
+
+function PlaybookAnalyticsView({playbooks,allTrades}){
+  const[pbId,setPbId]=useState(playbooks[0]?.id||"");
+  const[source,setSource]=useState("real");
+  const[eqSources,setEqSources]=useState(["real"]);
+
+  const pb=playbooks.find(p=>p.id===pbId);
+
+  const data=useMemo(()=>{
+    if(!pb)return null;
+    const linked=tradesForPlaybook(pb,allTrades);
+    const buckets=_pbBucketBySource(linked);
+    const counts={real:buckets.real.length,bt:buckets.bt.length,paper:buckets.paper.length,missed:buckets.missed.length};
+    const total=counts.real+counts.bt+counts.paper+counts.missed;
+    const erosion=playbookErosionStats(pb,allTrades);
+    const trust=classifyTrust(pb,allTrades);
+    const realStats=playbookStats(pb,allTrades);
+    const eqCurves={real:_pbEquityReal(buckets.real),bt:_pbEquityTheoretical(buckets.bt),paper:_pbEquityTheoretical(buckets.paper),missed:_pbEquityTheoretical(buckets.missed)};
+    return{linked,buckets,counts,total,erosion,trust,realStats,eqCurves};
+  },[pb,allTrades]);
+
+  useEffect(()=>{
+    if(!data)return;
+    if(source!=="all"&&data.counts[source]===0)setSource("real");
+  },[pbId]);
+
+  if(!playbooks.length){
+    return(<div style={{padding:"40px 24px",background:"var(--bg3)",border:"1px dashed var(--border3)",borderRadius:10,fontSize:13,color:"var(--text4)",textAlign:"center"}}>Nog geen playbooks. Maak er eerst eentje aan.</div>);
+  }
+  if(!pb||!data)return null;
+
+  const _srcStats=(src)=>{
+    if(src==="all"){
+      const allClosed=data.buckets.real;
+      if(!allClosed.length)return null;
+      const wins=allClosed.filter(t=>netPnl(t)>0).length;
+      const wr=allClosed.length?(wins/allClosed.length*100):0;
+      const sumPnl=allClosed.reduce((s,t)=>s+netPnl(t),0);
+      const avgR=allClosed.reduce((s,t)=>{const r=parseFloat(t.riskUsd)||0;const p=netPnl(t);return s+(r>0?p/r:0);},0)/allClosed.length;
+      return{n:allClosed.length,wr,avgR,pnl:sumPnl};
+    }
+    if(src==="real")return data.erosion.real.n?{n:data.erosion.real.n,wr:data.erosion.real.wr,avgR:data.erosion.real.avgR,pnl:data.realStats.pnl}:null;
+    if(src==="bt")return data.erosion.backtest.n?{n:data.erosion.backtest.n,wr:data.erosion.backtest.wr,avgR:data.erosion.backtest.avgR,pnl:null}:null;
+    if(src==="paper")return data.erosion.paper.n?{n:data.erosion.paper.n,wr:data.erosion.paper.wr,avgR:data.erosion.paper.avgR,pnl:null}:null;
+    if(src==="missed"){
+      const m=playbookMissedStats(pb,allTrades);
+      return m.n?{n:m.n,wr:m.wr||0,avgR:m.avgR||0,pnl:m.theorPnl||null}:null;
+    }
+    return null;
+  };
+
+  const cur=_srcStats(source);
+  const cardStyle={padding:"18px 20px",background:"var(--bg2)",border:"1px solid var(--border1)",borderRadius:12,marginBottom:18};
+  const sectionTitle={fontSize:11,color:"var(--gold)",fontFamily:"var(--mono)",fontWeight:700,letterSpacing:".18em",textTransform:"uppercase",margin:"0 0 8px 0",display:"flex",alignItems:"center",gap:6};
+  const subStyle={fontSize:11,color:"var(--text4)",marginBottom:14,lineHeight:1.5};
+
+  return(<div style={{animation:"fadeIn .3s ease"}}>
+
+    <div style={{display:"flex",alignItems:"center",gap:14,padding:"14px 18px",background:"var(--bg2)",border:"1px solid var(--gold-border)",borderRadius:"12px 12px 0 0",borderBottom:"none",flexWrap:"wrap"}}>
+      <span style={{fontSize:10,fontFamily:"var(--mono)",fontWeight:700,color:"var(--gold)",letterSpacing:".12em",textTransform:"uppercase"}}>📘 Playbook</span>
+      <select value={pbId} onChange={e=>setPbId(e.target.value)} style={{padding:"8px 14px",borderRadius:8,border:"1px solid var(--gold-border)",background:"var(--bg3)",color:"var(--text)",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"var(--font)",minWidth:240}}>
+        {playbooks.map(p=><option key={p.id} value={p.id}>{p.name}  ·  {tradesForPlaybook(p,allTrades).length} trades</option>)}
+      </select>
+      <span style={{fontSize:10.5,fontFamily:"var(--mono)",fontWeight:600,padding:"5px 10px",borderRadius:5,background:"var(--gold-dim)",color:"var(--gold)",border:"1px solid var(--gold-border)"}}>{data.total} trades</span>
+      <span style={{fontSize:10.5,fontFamily:"var(--mono)",fontWeight:600,padding:"5px 10px",borderRadius:5,background:"var(--gold-dim)",color:"var(--gold)",border:"1px solid var(--gold-border)"}}>{pb.status||"testing"}</span>
+    </div>
+
+    <div style={{display:"flex",alignItems:"center",padding:"0 18px",background:"var(--bg3)",border:"1px solid var(--gold-border)",borderTop:"1px solid var(--border1)",borderRadius:"0 0 12px 12px",flexWrap:"wrap",marginBottom:22}}>
+      <span style={{fontSize:9,fontFamily:"var(--mono)",fontWeight:700,color:"var(--text4)",letterSpacing:".12em",textTransform:"uppercase",padding:"11px 0",marginRight:14}}>Bekijken:</span>
+      <div style={{display:"flex",gap:0,padding:"7px 0"}}>
+        {PB_SRC.map((s,i)=>{
+          const cnt=s.id==="all"?data.total:data.counts[s.id];
+          const dis=cnt===0;
+          const active=source===s.id;
+          return(<button key={s.id} disabled={dis} onClick={()=>setSource(s.id)} style={{
+            padding:"6px 14px",fontFamily:"var(--font)",fontSize:11.5,fontWeight:600,
+            border:`1px solid ${active?"var(--gold-border)":"var(--border2)"}`,
+            background:active?"var(--gold-dim)":"transparent",
+            color:active?"var(--gold)":(dis?"var(--text5)":"var(--text3)"),
+            cursor:dis?"not-allowed":"pointer",opacity:dis?.4:1,
+            display:"flex",alignItems:"center",gap:6,
+            borderRightWidth:i===PB_SRC.length-1?1:0,
+            borderRadius:i===0?"6px 0 0 6px":(i===PB_SRC.length-1?"0 6px 6px 0":0)
+          }}>
+            <span style={{fontSize:12,color:s.color}}>{s.ico}</span>{s.label}
+            <span style={{fontFamily:"var(--mono)",fontWeight:700,fontSize:10.5,color:active?"var(--gold)":"var(--text4)",marginLeft:2}}>{cnt}</span>
+          </button>);
+        })}
+      </div>
+    </div>
+
+    <div style={cardStyle}>
+      <h4 style={sectionTitle}>🛡 Trust-Score progressie</h4>
+      <div style={subStyle}>Idee → Theorized → Validated → Tradeable → Bewezen.</div>
+      <div style={{display:"flex",alignItems:"center",margin:"8px 0 14px"}}>
+        {[{lbl:"Idee",sub:""},{lbl:"Theorized",sub:"10+ BT"},{lbl:"Validated",sub:"5+ paper"},{lbl:"Tradeable",sub:"6+ real"},{lbl:"Bewezen",sub:"16+ &gt;0.3R"}].map((s,i)=>{
+          const isProven=data.trust.stage==="Bewezen";
+          const stageIdx=isProven?4:(data.trust.active||0);
+          const isDone=i<stageIdx;
+          const isActive=i===stageIdx&&!isProven;
+          const isProvenStep=isProven&&i===4;
+          let dotBg="var(--bg3)",dotBorder="var(--border1)",dotColor="var(--text4)",lblColor="var(--text4)",lineColor="var(--border1)";
+          if(isDone){dotBg="var(--green-dim)";dotBorder="var(--green)";dotColor="var(--green)";lblColor="var(--green)";lineColor="var(--green)";}
+          if(isActive){dotBg="var(--gold-dim)";dotBorder="var(--gold)";dotColor="var(--gold)";lblColor="var(--gold)";}
+          if(isProvenStep){dotBg="var(--green-dim)";dotBorder="var(--green)";dotColor="var(--green)";lblColor="var(--green)";lineColor="var(--green)";}
+          const dotChar=isDone?"✓":(isActive?"●":(isProvenStep?"★":(i+1)));
+          return(<div key={i} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:6,position:"relative"}}>
+            {i<4&&<div style={{position:"absolute",left:"50%",right:"-50%",top:13,height:2,background:lineColor,zIndex:0}}/>}
+            <div style={{width:28,height:28,borderRadius:"50%",background:dotBg,border:`2px solid ${dotBorder}`,position:"relative",zIndex:1,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,color:dotColor,boxShadow:isActive?"0 0 12px rgba(201,168,76,0.4)":(isProvenStep?"0 0 14px rgba(46,170,111,0.5)":"none")}}>{dotChar}</div>
+            <div style={{fontSize:9.5,fontFamily:"var(--mono)",fontWeight:700,color:lblColor,textTransform:"uppercase",letterSpacing:".07em",textAlign:"center",lineHeight:1.3}}>{s.lbl}{s.sub&&<><br/><span dangerouslySetInnerHTML={{__html:s.sub}}/></>}</div>
+          </div>);
+        })}
+      </div>
+      <div style={{fontSize:10.5,color:"var(--text3)",lineHeight:1.5,fontFamily:"var(--mono)"}}>
+        Status: <b style={{color:data.trust.color}}>{data.trust.label}</b> — {data.counts.real} real trades met {data.realStats.avgR>0?"+":""}{(data.realStats.avgR||0).toFixed(2)}R avg.
+        {data.trust.stage!=="Bewezen"&&data.counts.real<16&&<> Nog <b style={{color:"var(--text)"}}>{16-data.counts.real} real trades</b> nodig (en >0.3R behouden) voor <b style={{color:"var(--text)"}}>Bewezen</b>-status.</>}
+        {data.trust.stage==="Bewezen"&&<> Bewezen workhorse — overweeg risk-allocatie verhogen.</>}
+      </div>
+    </div>
+
+    {(data.counts.bt>0&&data.counts.real>0)&&(()=>{
+      const r=data.erosion.real,b=data.erosion.backtest;
+      const wrGap=(r.wr-b.wr).toFixed(0);
+      const rGap=(r.avgR-b.avgR).toFixed(2);
+      const verdict=Math.abs(r.wr-b.wr)<10&&Math.abs(r.avgR-b.avgR)<0.5?"good":"warn";
+      return(<div style={cardStyle}>
+        <h4 style={sectionTitle}>🔬 Backtest vs Real</h4>
+        <div style={subStyle}>Vertalen je theoretische resultaten naar de echte markt? Klein verschil = playbook bewezen.</div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:0,border:"1px solid var(--border1)",borderRadius:10,overflow:"hidden"}}>
+          <div style={{padding:"16px 18px",borderRight:"1px solid var(--border1)"}}>
+            <div style={{margin:"0 0 10px",fontSize:10,fontFamily:"var(--mono)",fontWeight:700,letterSpacing:".1em",textTransform:"uppercase",color:"#7ab4d2"}}>🔬 Backtest ({b.n})</div>
+            <div style={{display:"flex",justifyContent:"space-between",padding:"6px 0",fontSize:11.5,borderBottom:"1px solid var(--border1)"}}><span style={{fontSize:10,color:"var(--text4)",fontWeight:600}}>Win-rate</span><span style={{fontFamily:"var(--mono)",fontWeight:700,fontSize:13,color:"#7ab4d2"}}>{b.wr.toFixed(0)}%</span></div>
+            <div style={{display:"flex",justifyContent:"space-between",padding:"6px 0",fontSize:11.5}}><span style={{fontSize:10,color:"var(--text4)",fontWeight:600}}>Avg R</span><span style={{fontFamily:"var(--mono)",fontWeight:700,fontSize:13,color:"#7ab4d2"}}>{b.avgR>=0?"+":""}{b.avgR.toFixed(2)}R</span></div>
+          </div>
+          <div style={{padding:"16px 18px",borderRight:"1px solid var(--border1)"}}>
+            <div style={{margin:"0 0 10px",fontSize:10,fontFamily:"var(--mono)",fontWeight:700,letterSpacing:".1em",textTransform:"uppercase",color:"var(--green)"}}>● Real ({r.n})</div>
+            <div style={{display:"flex",justifyContent:"space-between",padding:"6px 0",fontSize:11.5,borderBottom:"1px solid var(--border1)"}}><span style={{fontSize:10,color:"var(--text4)",fontWeight:600}}>Win-rate</span><span style={{fontFamily:"var(--mono)",fontWeight:700,fontSize:13,color:"var(--green)"}}>{r.wr.toFixed(0)}%</span></div>
+            <div style={{display:"flex",justifyContent:"space-between",padding:"6px 0",fontSize:11.5}}><span style={{fontSize:10,color:"var(--text4)",fontWeight:600}}>Avg R</span><span style={{fontFamily:"var(--mono)",fontWeight:700,fontSize:13,color:"var(--green)"}}>{r.avgR>=0?"+":""}{r.avgR.toFixed(2)}R</span></div>
+          </div>
+          <div style={{padding:"16px 18px"}}>
+            <div style={{margin:"0 0 10px",fontSize:10,fontFamily:"var(--mono)",fontWeight:700,letterSpacing:".1em",textTransform:"uppercase",color:"var(--text3)"}}>Δ Real − BT</div>
+            <div style={{display:"flex",justifyContent:"space-between",padding:"6px 0",fontSize:11.5,borderBottom:"1px solid var(--border1)"}}><span style={{fontSize:10,color:"var(--text4)",fontWeight:600}}>WR-gap</span><span style={{fontFamily:"var(--mono)",fontWeight:700,fontSize:13,color:wrGap>=0?"var(--green)":"var(--red)"}}>{wrGap>=0?"+":""}{wrGap}pp</span></div>
+            <div style={{display:"flex",justifyContent:"space-between",padding:"6px 0",fontSize:11.5}}><span style={{fontSize:10,color:"var(--text4)",fontWeight:600}}>R-gap</span><span style={{fontFamily:"var(--mono)",fontWeight:700,fontSize:13,color:rGap>=0?"var(--green)":"var(--red)"}}>{rGap>=0?"+":""}{rGap}R</span></div>
+          </div>
+        </div>
+        <div style={{marginTop:14,padding:"12px 16px",borderRadius:8,fontSize:11.5,lineHeight:1.5,background:verdict==="good"?"var(--green-dim)":"var(--red-dim)",border:`1px solid ${verdict==="good"?"var(--green-border)":"var(--red-border)"}`,color:"var(--text2)"}}>
+          {verdict==="good"?<>✅ <b style={{color:"var(--text)"}}>Edge bevestigd, kleine execution-gap.</b> Verschil van {Math.abs(wrGap)}pp / {Math.abs(rGap)}R is normaal voor slippage + emotionele discount.</>:<>⚠️ <b style={{color:"var(--text)"}}>Significante execution-gap.</b> {Math.abs(wrGap)}pp / {Math.abs(rGap)}R verschil — onderzoek welke filters in real anders zijn dan in BT.</>}
+        </div>
+      </div>);
+    })()}
+
+    <div style={{marginBottom:18}}>
+      <div style={{display:"flex",alignItems:"baseline",gap:12,marginBottom:14}}>
+        <h4 style={{...sectionTitle,marginBottom:0}}>Headline KPI's</h4>
+        <span style={{fontSize:11,color:"var(--text4)"}}>scope: <em style={{color:"var(--text3)",fontStyle:"normal",fontWeight:600}}>{PB_SRC.find(s=>s.id===source).label}</em>{cur?` · ${cur.n} trades`:""}</span>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:10}}>
+        {!cur?<div style={{gridColumn:"1/-1",padding:"30px",textAlign:"center",color:"var(--text4)",fontSize:13}}>Geen {PB_SRC.find(s=>s.id===source).label.toLowerCase()} trades voor deze playbook.</div>:[
+          {l:"Trades",v:cur.n,c:"gold"},
+          {l:"Win-rate",v:`${cur.wr.toFixed(0)}%`,c:cur.wr>=50?"green":"red"},
+          {l:"Avg R",v:`${cur.avgR>=0?"+":""}${cur.avgR.toFixed(2)}R`,c:cur.avgR>=0?"green":"red"},
+          {l:"Expectancy",v:source==="real"?_pbFmtUsd(data.realStats.exp):"—",c:"green"},
+          {l:"Cum. PnL",v:cur.pnl!==null&&cur.pnl!==undefined?_pbFmtUsd(cur.pnl):(source==="bt"||source==="missed"?"theor.":"—"),c:"green"},
+          {l:"Compliance",v:source==="real"&&data.realStats.compHigh?`${(data.realStats.compHigh.n||0)}/${(data.realStats.compHigh.n||0)+(data.realStats.compLow?.n||0)}`:"—",c:"gold"},
+        ].map((k,i)=>(<div key={i} style={{padding:"14px 16px",background:"var(--bg2)",border:"1px solid var(--border1)",borderRadius:10}}>
+          <div style={{fontSize:9,color:"var(--text4)",textTransform:"uppercase",letterSpacing:".08em",fontWeight:700,marginBottom:6}}>{k.l}</div>
+          <div style={{fontFamily:"var(--mono)",fontWeight:700,fontSize:22,color:`var(--${k.c})`}}>{k.v}</div>
+        </div>))}
+      </div>
+    </div>
+
+    <PlaybookEquityCurve eqCurves={data.eqCurves} eqSources={eqSources} setEqSources={setEqSources}/>
+
+  </div>);
+}
+
+function PlaybookEquityCurve({eqCurves,eqSources,setEqSources}){
+  const W=800,H=280,padL=56,padR=28,padT=18,padB=36;
+  const plotW=W-padL-padR,plotH=H-padT-padB;
+
+  const active=eqSources.filter(s=>eqCurves[s]&&eqCurves[s].length>0);
+  const meta={real:{lbl:"Real",ico:"●",color:"var(--green)",bg:"var(--green-dim)",dash:""},bt:{lbl:"Backtest",ico:"🔬",color:"#7ab4d2",bg:"rgba(122,180,210,0.14)",dash:"5 4"},paper:{lbl:"Paper",ico:"📝",color:"#9a8acc",bg:"rgba(154,138,204,0.14)",dash:"2 3"},missed:{lbl:"Missed",ico:"👻",color:"#b48cc8",bg:"rgba(180,140,200,0.14)",dash:"1 3"}};
+
+  const togglePill=(src)=>{
+    const has=eqCurves[src]&&eqCurves[src].length>0;
+    if(!has)return;
+    const idx=eqSources.indexOf(src);
+    if(idx>=0){if(eqSources.length>1)setEqSources(eqSources.filter(s=>s!==src));}
+    else setEqSources([...eqSources,src]);
+  };
+
+  let inner;
+  if(!active.length){
+    inner=<div style={{padding:"40px",textAlign:"center",color:"var(--text4)",fontSize:12,fontFamily:"var(--mono)"}}>Selecteer minstens één bron hierboven</div>;
+  }else{
+    const allY=active.flatMap(s=>eqCurves[s].map(p=>p.cum)).concat([0]);
+    let yMin=Math.min(...allY),yMax=Math.max(...allY);
+    const range=yMax-yMin;
+    yMin-=range*0.08;yMax+=range*0.08;
+    if(yMin>0)yMin=-range*0.05;
+    const yToSvg=(y)=>padT+plotH*(1-(y-yMin)/(yMax-yMin));
+    const zeroY=yToSvg(0);
+    const longest=active.reduce((a,s)=>eqCurves[s].length>eqCurves[a].length?s:a,active[0]);
+    const xData=eqCurves[longest];
+    const xCount=xData.length;
+    const xToSvg=(i,total)=>padL+plotW*(total>1?i/(total-1):0.5);
+    const seriesPaths=active.map(src=>{
+      const data=eqCurves[src];
+      const points=data.map((d,i)=>({x:xToSvg(i,data.length),y:yToSvg(d.cum),cum:d.cum,date:d.date}));
+      return{src,points,smooth:_pbSmoothPath(points)};
+    });
+    const realSeries=seriesPaths.find(s=>s.src==="real");
+    let realFill="";
+    if(realSeries){
+      const pts=realSeries.points;
+      realFill=_pbSmoothPath(pts)+` L${pts[pts.length-1].x.toFixed(1)},${zeroY.toFixed(1)} L${pts[0].x.toFixed(1)},${zeroY.toFixed(1)} Z`;
+    }
+    const ticks=[];for(let i=0;i<6;i++){const y=yMin+(yMax-yMin)*(i/5);ticks.push({y,svgY:yToSvg(y)});}
+    const xStep=Math.max(1,Math.floor(xCount/6));
+    const xTicks=[];for(let i=0;i<xCount;i+=xStep)xTicks.push({i,label:xData[i].date});
+    if(xTicks[xTicks.length-1].i!==xCount-1)xTicks.push({i:xCount-1,label:xData[xCount-1].date});
+    const primary=realSeries||seriesPaths[0];
+    const high=Math.max(...primary.points.map(p=>p.cum));
+    const end=primary.points[primary.points.length-1].cum;
+
+    inner=(<>
+      <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",marginBottom:12}}>
+        <h4 style={{margin:0,fontSize:11,color:"var(--gold)",fontFamily:"var(--mono)",fontWeight:700,letterSpacing:".18em",textTransform:"uppercase",display:"flex",alignItems:"center",gap:8}}><span style={{width:8,height:8,borderRadius:"50%",background:"var(--gold)",boxShadow:"0 0 8px rgba(201,168,76,0.6)"}}/>Equity Curve · USD</h4>
+        <div style={{marginLeft:"auto",display:"flex",gap:18,fontSize:10.5,fontFamily:"var(--mono)",fontWeight:700,color:"var(--text4)",textTransform:"uppercase",letterSpacing:".08em"}}>
+          <span>HIGH <b style={{fontSize:13,color:high>=0?"var(--green)":"var(--red)"}}>{_pbFmtUsd(high)}</b></span>
+          <span>END <b style={{fontSize:13,color:end>=0?"var(--green)":"var(--red)"}}>{_pbFmtUsd(end)}</b></span>
+        </div>
+      </div>
+      <div style={{display:"flex",gap:6,marginBottom:10,flexWrap:"wrap"}}>
+        {Object.entries(meta).map(([src,m])=>{
+          const has=eqCurves[src]&&eqCurves[src].length>0;
+          const isOn=eqSources.includes(src)&&has;
+          return(<button key={src} disabled={!has} onClick={()=>togglePill(src)} style={{
+            padding:"5px 11px",fontFamily:"var(--font)",fontSize:11,fontWeight:600,
+            border:`1px solid ${isOn?m.color:"var(--border2)"}`,
+            background:isOn?m.bg:"transparent",
+            color:isOn?m.color:(has?"var(--text3)":"var(--text5)"),
+            cursor:has?"pointer":"not-allowed",borderRadius:5,display:"flex",alignItems:"center",gap:5,
+            opacity:has?1:0.4,letterSpacing:".02em"
+          }}><span style={{fontSize:11,color:m.color}}>{m.ico}</span>{m.lbl}</button>);
+        })}
+      </div>
+      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet" style={{width:"100%",height:"auto",display:"block"}}>
+        <defs>
+          <linearGradient id="pbEqGreen" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="var(--green)" stopOpacity="0.32"/><stop offset="100%" stopColor="var(--green)" stopOpacity="0"/></linearGradient>
+          <linearGradient id="pbEqRed" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="var(--red)" stopOpacity="0"/><stop offset="100%" stopColor="var(--red)" stopOpacity="0.32"/></linearGradient>
+          <pattern id="pbGridPat" x="0" y="0" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M 40 0 L 0 0 0 40" fill="none" stroke="var(--border1)" strokeWidth="0.5"/></pattern>
+          <clipPath id="pbAboveZero"><rect x={padL} y={padT} width={plotW} height={zeroY-padT}/></clipPath>
+          <clipPath id="pbBelowZero"><rect x={padL} y={zeroY} width={plotW} height={H-padB-zeroY}/></clipPath>
+        </defs>
+        <rect x={padL} y={padT} width={plotW} height={plotH} fill="url(#pbGridPat)" opacity="0.4"/>
+        {ticks.map((t,i)=>(<g key={i}>
+          <line x1={padL} y1={t.svgY} x2={W-padR} y2={t.svgY} stroke="var(--border1)" strokeWidth="1" strokeDasharray="2 3" opacity="0.6"/>
+          <text x={padL-8} y={t.svgY+3} textAnchor="end" style={{fill:"var(--text4)",fontSize:9.5,fontFamily:"var(--mono)",fontWeight:500}}>{_pbFmtUsd(t.y)}</text>
+        </g>))}
+        <line x1={padL} y1={zeroY} x2={W-padR} y2={zeroY} stroke="var(--text4)" strokeWidth="1" strokeDasharray="3 3" opacity="0.5"/>
+        {xTicks.map((t,i)=>{const x=xToSvg(t.i,xCount);return(<g key={i}>
+          <text x={x} y={H-padB+18} textAnchor="middle" style={{fill:"var(--text4)",fontSize:9.5,fontFamily:"var(--mono)",fontWeight:500}}>{t.label}</text>
+          <line x1={x} y1={padT} x2={x} y2={H-padB} stroke="var(--border1)" strokeWidth="0.5" strokeDasharray="1 4" opacity="0.4"/>
+        </g>);})}
+        {realFill&&<>
+          <path d={realFill} fill="url(#pbEqGreen)" clipPath="url(#pbAboveZero)"/>
+          <path d={realFill} fill="url(#pbEqRed)" clipPath="url(#pbBelowZero)"/>
+        </>}
+        {seriesPaths.filter(s=>s.src!=="real").map(s=><path key={s.src} d={s.smooth} fill="none" stroke={meta[s.src].color} strokeWidth="1.8" strokeDasharray={meta[s.src].dash} strokeLinecap="round" strokeLinejoin="round" opacity="0.9"/>)}
+        {realSeries&&<path d={realSeries.smooth} fill="none" stroke="var(--green)" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"/>}
+        {seriesPaths.map(s=>{const last=s.points[s.points.length-1];return(<circle key={s.src} cx={last.x.toFixed(1)} cy={last.y.toFixed(1)} r="4" fill={meta[s.src].color} stroke="var(--bg2)" strokeWidth="2"/>);})}
+      </svg>
+      <div style={{display:"flex",gap:14,fontSize:10,fontFamily:"var(--mono)",color:"var(--text3)",marginTop:8,flexWrap:"wrap"}}>
+        {active.map(src=>{const data=eqCurves[src],end=data[data.length-1].cum,m=meta[src];return(<span key={src} style={{display:"inline-flex",alignItems:"center",gap:5}}>
+          <span style={{width:14,height:2,display:"inline-block",background:m.color,backgroundImage:m.dash?`repeating-linear-gradient(90deg,${m.color} 0,${m.color} 3px,transparent 3px,transparent 6px)`:"none"}}/>
+          {m.lbl} ({data.length}) — {_pbFmtUsd(end)}
+        </span>);})}
+      </div>
+    </>);
+  }
+
+  return(<div style={{padding:"18px 20px",background:"var(--bg2)",border:"1px solid var(--border1)",borderRadius:12}}>{inner}</div>);
+}
+
 // ─── PlaybookPage — hoofdtab ────────────────────────────────────────────────
 function PlaybookPage({playbooks,setPlaybooks,allTrades,setFilters,setTab,showToast,pendingImport,clearPendingImport,tagConfig}){
+  const[view,setView]=useState("list"); // v12.102: "list" | "analytics"
   const[detailId,setDetailId]=useState(null);
   const[formInitial,setFormInitial]=useState(null);// null=closed, {} or {id:..}=open
   const[shareId,setShareId]=useState(null);
@@ -8377,37 +8717,50 @@ function PlaybookPage({playbooks,setPlaybooks,allTrades,setFilters,setTab,showTo
       </div>
     </div>}
 
-    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:22,flexWrap:"wrap",gap:12}}>
-      <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
-        <span style={{fontSize:10,color:"var(--text5)",fontFamily:"var(--mono)",letterSpacing:".06em",marginRight:4,textTransform:"uppercase"}}>Filter:</span>
-        {pillBtn(fStatus==="all",()=>setFStatus("all"),"Alles")}
-        {pillBtn(fStatus==="active",()=>setFStatus("active"),"Actief")}
-        {pillBtn(fStatus==="testing",()=>setFStatus("testing"),"Testing")}
-        {pillBtn(fStatus==="retired",()=>setFStatus("retired"),"Retired")}
-        {allPairs.length>0&&<>
-          <span style={{width:1,height:20,background:"var(--border3)",margin:"0 8px"}}/>
-          <span style={{fontSize:10,color:"var(--text5)",fontFamily:"var(--mono)",letterSpacing:".06em",marginRight:4,textTransform:"uppercase"}}>Pair:</span>
-          {pillBtn(fPair==="all",()=>setFPair("all"),"Alle")}
-          {allPairs.slice(0,4).map(p=>pillBtn(fPair===p,()=>setFPair(p),p.split("/")[0]))}
-        </>}
-      </div>
-      <div style={{display:"flex",gap:10,alignItems:"center"}}>
-        <select value={sortBy} onChange={e=>setSortBy(e.target.value)} style={{background:"var(--bg3)",color:"var(--text)",border:"1px solid var(--border3)",borderRadius:6,padding:"6px 10px",fontFamily:"var(--mono)",fontSize:11}}>
-          <option value="pnl">Sorteer: cum. PnL ↓</option>
-          <option value="wr">Sorteer: win-rate ↓</option>
-          <option value="n">Sorteer: # trades ↓</option>
-          <option value="recent">Sorteer: laatst gebruikt ↓</option>
-        </select>
-        <button onClick={()=>setImportOpen(true)} style={{padding:"7px 14px",fontSize:11.5,fontFamily:"var(--mono)",fontWeight:600,borderRadius:6,border:"1px solid var(--border3)",background:"transparent",color:"var(--text2)",cursor:"pointer"}}>📥 Importeer gedeeld</button>
-        <button onClick={()=>setFormInitial({})} style={{padding:"7px 14px",fontSize:11.5,fontFamily:"var(--mono)",fontWeight:600,borderRadius:6,border:"1px solid var(--gold-border)",background:"var(--gold-dim)",color:"var(--gold)",cursor:"pointer"}}>+ Nieuw playbook</button>
-      </div>
+    {/* v12.102: View-toggle Lijst | Analytics */}
+    <div style={{display:"flex",gap:6,marginBottom:18,padding:"4px",background:"var(--bg2)",border:"1px solid var(--border1)",borderRadius:8,width:"fit-content"}}>
+      {[{k:"list",ico:"📋",lbl:"Lijst"},{k:"analytics",ico:"📊",lbl:"Analytics"}].map(v=>(
+        <button key={v.k} onClick={()=>setView(v.k)} style={{padding:"7px 16px",fontSize:12,fontFamily:"var(--mono)",fontWeight:700,letterSpacing:".06em",borderRadius:6,border:"none",background:view===v.k?"var(--gold-dim)":"transparent",color:view===v.k?"var(--gold)":"var(--text4)",cursor:"pointer",display:"inline-flex",alignItems:"center",gap:6}}>
+          <span style={{fontSize:13}}>{v.ico}</span>{v.lbl}
+        </button>
+      ))}
     </div>
 
-    {filtered.length===0?<div style={{padding:"40px 24px",background:"rgba(255,255,255,0.02)",border:"1px dashed var(--border3)",borderRadius:10,fontSize:13,color:"var(--text4)",textAlign:"center",lineHeight:1.6}}>
-      {playbooks.length===0?<>Nog geen playbooks. Klik op <strong style={{color:"var(--text2)"}}>+ Nieuw playbook</strong> om je eerste setup te formaliseren — of importeer er een van een community-lid via Discord.</>:"Geen playbooks in deze filter. Probeer een andere combinatie."}
-    </div>:<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(380px, 1fr))",gap:14}}>
-      {filtered.map(pb=><div key={pb.id}><PlaybookCard pb={pb} allTrades={allTrades} onClick={()=>setDetailId(pb.id)}/></div>)}
-    </div>}
+    {view==="list"&&<>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:22,flexWrap:"wrap",gap:12}}>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+          <span style={{fontSize:10,color:"var(--text5)",fontFamily:"var(--mono)",letterSpacing:".06em",marginRight:4,textTransform:"uppercase"}}>Filter:</span>
+          {pillBtn(fStatus==="all",()=>setFStatus("all"),"Alles")}
+          {pillBtn(fStatus==="active",()=>setFStatus("active"),"Actief")}
+          {pillBtn(fStatus==="testing",()=>setFStatus("testing"),"Testing")}
+          {pillBtn(fStatus==="retired",()=>setFStatus("retired"),"Retired")}
+          {allPairs.length>0&&<>
+            <span style={{width:1,height:20,background:"var(--border3)",margin:"0 8px"}}/>
+            <span style={{fontSize:10,color:"var(--text5)",fontFamily:"var(--mono)",letterSpacing:".06em",marginRight:4,textTransform:"uppercase"}}>Pair:</span>
+            {pillBtn(fPair==="all",()=>setFPair("all"),"Alle")}
+            {allPairs.slice(0,4).map(p=>pillBtn(fPair===p,()=>setFPair(p),p.split("/")[0]))}
+          </>}
+        </div>
+        <div style={{display:"flex",gap:10,alignItems:"center"}}>
+          <select value={sortBy} onChange={e=>setSortBy(e.target.value)} style={{background:"var(--bg3)",color:"var(--text)",border:"1px solid var(--border3)",borderRadius:6,padding:"6px 10px",fontFamily:"var(--mono)",fontSize:11}}>
+            <option value="pnl">Sorteer: cum. PnL ↓</option>
+            <option value="wr">Sorteer: win-rate ↓</option>
+            <option value="n">Sorteer: # trades ↓</option>
+            <option value="recent">Sorteer: laatst gebruikt ↓</option>
+          </select>
+          <button onClick={()=>setImportOpen(true)} style={{padding:"7px 14px",fontSize:11.5,fontFamily:"var(--mono)",fontWeight:600,borderRadius:6,border:"1px solid var(--border3)",background:"transparent",color:"var(--text2)",cursor:"pointer"}}>📥 Importeer gedeeld</button>
+          <button onClick={()=>setFormInitial({})} style={{padding:"7px 14px",fontSize:11.5,fontFamily:"var(--mono)",fontWeight:600,borderRadius:6,border:"1px solid var(--gold-border)",background:"var(--gold-dim)",color:"var(--gold)",cursor:"pointer"}}>+ Nieuw playbook</button>
+        </div>
+      </div>
+
+      {filtered.length===0?<div style={{padding:"40px 24px",background:"var(--bg3)",border:"1px dashed var(--border3)",borderRadius:10,fontSize:13,color:"var(--text4)",textAlign:"center",lineHeight:1.6}}>
+        {playbooks.length===0?<>Nog geen playbooks. Klik op <strong style={{color:"var(--text2)"}}>+ Nieuw playbook</strong> om je eerste setup te formaliseren — of importeer er een van een community-lid via Discord.</>:"Geen playbooks in deze filter. Probeer een andere combinatie."}
+      </div>:<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(380px, 1fr))",gap:14}}>
+        {filtered.map(pb=><div key={pb.id}><PlaybookCard pb={pb} allTrades={allTrades} onClick={()=>setDetailId(pb.id)}/></div>)}
+      </div>}
+    </>}
+
+    {view==="analytics"&&<PlaybookAnalyticsView playbooks={playbooks} allTrades={allTrades}/>}
 
     {detailId&&(()=>{const pb=playbooks.find(p=>p.id===detailId);if(!pb)return null;return<PlaybookDetailModal pb={pb} allTrades={allTrades} setFilters={setFilters} setTab={setTab} onClose={()=>setDetailId(null)} onEdit={(p)=>{setFormInitial(p);setDetailId(null);}} onDelete={onDelete} onShare={(p)=>{setShareId(p.id);setDetailId(null);}}/>;})()}
     {formInitial!==null&&<PlaybookForm initial={formInitial} onSave={onSave} onClose={()=>setFormInitial(null)} tagConfig={tagConfig} setTab={setTab}/>}
