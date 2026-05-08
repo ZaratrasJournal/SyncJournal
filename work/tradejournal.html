@@ -1082,7 +1082,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.116",released:"2026-05-08"};
+const APP_VERSION={version:"v12.117",released:"2026-05-08"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -3816,7 +3816,11 @@ function TradeList({trades,onEdit,onDelete,onQuickTag,onBulkDelete,onBulkTag,onB
         </thead>
         <tbody>
           {sorted.map(t=>{
-            const pnlRaw=parseFloat(t.pnl);const pnlN=netPnl(t);const isW=!isNaN(pnlRaw)&&pnlN>0;const isL=!isNaN(pnlRaw)&&pnlN<0;
+            // v12.117: voor missed/BT/paper trades — netPnl returnt 0 (correct voor analytics-aggregatie),
+            // maar voor row-display gebruiken we pnlRaw of theoretische PnL zodat user wel W/L ziet.
+            const pnlRaw=parseFloat(t.pnl);
+            const pnlN=t.status==="missed"&&!isNaN(pnlRaw)?pnlRaw:netPnl(t);
+            const isW=!isNaN(pnlRaw)&&pnlN>0;const isL=!isNaN(pnlRaw)&&pnlN<0;
             const isNew=t.date&&(Date.now()-new Date(t.date).getTime())<3*24*60*60*1000;
             const isSel=selected.has(t.id);
             const tdStyle={padding:"10px 6px",borderBottom:"1px solid var(--border1)",verticalAlign:"middle"};
@@ -3864,13 +3868,18 @@ function TradeList({trades,onEdit,onDelete,onQuickTag,onBulkDelete,onBulkTag,onB
               <td style={{...tdStyle,textAlign:"center"}}>
                 <span style={{padding:"3px 10px",borderRadius:"4px",fontSize:"10px",fontWeight:700,background:t.direction==="long"?"rgba(46,170,111,0.12)":"rgba(224,85,85,0.12)",color:t.direction==="long"?"#2eaa6f":"#e05555"}}>{t.direction.toUpperCase()}</span>
               </td>
-              <td style={{...tdStyle,fontFamily:"var(--mono)",fontWeight:700,fontSize:"12px",color:isW?"var(--green)":isL?"var(--red)":"var(--text3)"}}>{!isNaN(pnlRaw)?`${pnlN>=0?"+":""}$${fmt(pnlN)}`:(()=>{
+              <td style={{...tdStyle,fontFamily:"var(--mono)",fontWeight:700,fontSize:"12px",color:isW?"var(--green)":isL?"var(--red)":"var(--text3)"}}>{(()=>{
+                // v12.117: voor missed/BT/paper toon trade.pnl met ~ prefix (theoretical) als ingevuld
+                if(t.status==="missed"&&!isNaN(pnlRaw)){
+                  return<span title="Theoretische PnL — niet gerealiseerd" style={{color:pnlRaw>=0?"var(--green)":"var(--red)",opacity:0.85,fontSize:"11px",fontStyle:"italic"}}>~{pnlRaw>=0?"+":""}${fmt(pnlRaw)}</span>;
+                }
+                if(!isNaN(pnlRaw))return`${pnlN>=0?"+":""}$${fmt(pnlN)}`;
                 const uPnl=t.status==="open"?parseFloat(t.unrealizedPnl):NaN;
                 if(!isNaN(uPnl))return<span title="Live unrealized PnL — niet gerealiseerd" style={{color:uPnl>=0?"var(--green)":"var(--red)",opacity:0.88,fontSize:"11px"}}>~{uPnl>=0?"+":""}${fmt(uPnl)}</span>;
-                // v12.109: theoretische PnL voor missed/BT/paper trades met hindsightExit
+                // Theoretische PnL fallback voor missed-zonder-pnl (bv. uit hit-TPs of hindsightExit)
                 if(t.status==="missed"){
                   const tPnl=calcTheoreticalPnl(t);
-                  if(tPnl!==null)return<span title="Theoretische PnL uit hindsightExit — niet gerealiseerd" style={{color:tPnl>=0?"var(--green)":"var(--red)",opacity:0.85,fontSize:"11px",fontStyle:"italic"}}>~{tPnl>=0?"+":""}${fmt(tPnl)}</span>;
+                  if(tPnl!==null)return<span title="Theoretische PnL afgeleid uit TPs/exit — niet gerealiseerd" style={{color:tPnl>=0?"var(--green)":"var(--red)",opacity:0.85,fontSize:"11px",fontStyle:"italic"}}>~{tPnl>=0?"+":""}${fmt(tPnl)}</span>;
                 }
                 return<NA/>;
               })()}</td>

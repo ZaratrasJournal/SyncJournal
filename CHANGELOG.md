@@ -6,6 +6,20 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.117] — 2026-05-08
+
+Hotfix: BT/paper trades met EXIT ingevuld toonden `+$0,00` in PnL-kolom van trades-tabel — terwijl het formulier wel `-7.85` aangaf. Oude `netPnl()` clamp van missed trades naar 0 brak v12.115 EXIT-flow.
+
+### Fixed
+- **PnL-kolom in trades-tabel respecteert ingevulde `trade.pnl` voor BT/paper** *(2026-05-08, gemeld door Denny — BT short met EXIT=SL ingevuld toonde `+$0,00` ipv `-$7,85`)* — `netPnl(t)` returnt 0 voor `t.status === "missed"` (= correct voor analytics-aggregatie zodat sim-trades real edge-stats niet vervuilen). Maar de trade-rij gebruikte die voor display, waardoor user-ingevulde PnL op BT/paper trades werd gemaskeerd. **Fix**: row-display gebruikt nu `pnlRaw` direct voor missed-trades met PnL ingevuld, met `~` prefix en italic styling om aan te geven dat het theoretisch is. `netPnl()` zelf onveranderd — analytics-paden blijven correct.
+- **W/L kleur en badge correct voor BT/paper** — `isW`/`isL` flags gebruikten ook netPnl, dus toonden geen kleur. Nu fallback naar pnlRaw voor missed trades.
+
+### Aanpak
+- Geen `netPnl()` wijziging — die blijft "missed = 0" returnen voor aggregaties (Cum. PnL, Avg PnL, Expectancy worden correct gescoped op real trades).
+- Display-laag verandering alleen in `Trades` tabel-renderer.
+
+---
+
 ## [v12.116] — 2026-05-08
 
 UX-fix op v12.114: knop-labels waren ambigu — leek alsof "🛑 SL hit" de status was, terwijl het de actie was. Plus state-indicator wanneer trade bulk-gemarkeerd is.
