@@ -6,6 +6,35 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.120] — 2026-05-08
+
+Trust-Score visueel gemoderniseerd + drempel-labels gecorrigeerd. Iconen per stage, continue progress-bar, status-samenvatting in header.
+
+### Gewijzigd
+- **Drempel-labels gecorrigeerd** *(2026-05-08, gemeld door Denny — labels toonden nog oude v12.109 thresholds)* — De Trust-Score progressie-bar gaf nog labels van vóór v12.110 ("10+ BT", "5+ paper", "6+ real", "16+ >0.3R"). Sinds v12.110 zijn drempels type-agnostisch. **Fix**: labels nu correct:
+  - `Idee` (geen drempel — playbook bestaat)
+  - `Theorized` · 1+ trade
+  - `Validated` · 2+ trades
+  - `Tradeable` · 4+ trades
+  - `Bewezen` · 5+ · &gt;0.3R
+- **Modern visueel ontwerp**:
+  - **Iconen per stage** (💡 Idee · 🔬 Theorized · 📊 Validated · 🎯 Tradeable · 🏆 Bewezen) ipv simpele dots/cijfers
+  - **Continue progress-bar** onder de stages — gradient van groen→goud→groen, vult zich proportioneel naarmate je meer trades + edge hebt (15% / 40% / 65% / 82% / 100%)
+  - **Status-samenvatting in header** — `STATUS · BEWEZEN · 10 trades · +3.05R avg` ipv duplicaat onder de bar
+  - **Active stage** krijgt gold-glow, **Bewezen** krijgt extra green-glow + ★ badge rechtsonder
+  - **Done stages** krijgen klein groen ✓ badge rechtsonder de icon
+  - **Pending stages** zijn icoon in grayscale + verlaagde opacity zodat de progressie visueel duidelijk is
+- **Action-hint card** vervangt de oude inline status-tekst — alleen actie-tekst zichtbaar:
+  - 🏆 Bewezen → groene success-card "Bewezen workhorse — overweeg risk-allocatie verhogen"
+  - ⚠ Sample te klein / R-data ontbreekt / edge te laag → amber warning-card met concrete actie
+  - Andere stages zonder actie → geen card
+
+### Aanpak
+- Geen logica-wijziging in `classifyTrust` — alleen presentatie-laag.
+- Continue progress % afgeleid uit dezelfde drempels die `classifyTrust` gebruikt → blijft 1-op-1 in sync.
+
+---
+
 ## [v12.119] — 2026-05-08
 
 **Playbook Analytics Phase 2** — 7 nieuwe analyse-secties onder de bestaande Trust-Score / KPI's / Equity Curve. Layer-patterns, sessie-heatmap, criteria-impact, mistakes, emotions, missed-opportunities, en auto-insights.

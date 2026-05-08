@@ -1082,7 +1082,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.119",released:"2026-05-08"};
+const APP_VERSION={version:"v12.120",released:"2026-05-08"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -8937,38 +8937,83 @@ function PlaybookAnalyticsView({playbooks,allTrades}){
     </div>
 
     <div style={cardStyle}>
-      <h4 style={sectionTitle}>🛡 Trust-Score progressie</h4>
-      <div style={subStyle}>Idee → Theorized → Validated → Tradeable → Bewezen.</div>
-      <div style={{display:"flex",alignItems:"center",margin:"8px 0 14px"}}>
-        {[{lbl:"Idee",sub:""},{lbl:"Theorized",sub:"10+ BT"},{lbl:"Validated",sub:"5+ paper"},{lbl:"Tradeable",sub:"6+ real"},{lbl:"Bewezen",sub:"16+ &gt;0.3R"}].map((s,i)=>{
-          const isProven=data.trust.stage==="Bewezen";
-          const stageIdx=isProven?4:(data.trust.active||0);
-          const isDone=i<stageIdx;
-          const isActive=i===stageIdx&&!isProven;
-          const isProvenStep=isProven&&i===4;
-          let dotBg="var(--bg3)",dotBorder="var(--border1)",dotColor="var(--text4)",lblColor="var(--text4)",lineColor="var(--border1)";
-          if(isDone){dotBg="var(--green-dim)";dotBorder="var(--green)";dotColor="var(--green)";lblColor="var(--green)";lineColor="var(--green)";}
-          if(isActive){dotBg="var(--gold-dim)";dotBorder="var(--gold)";dotColor="var(--gold)";lblColor="var(--gold)";}
-          if(isProvenStep){dotBg="var(--green-dim)";dotBorder="var(--green)";dotColor="var(--green)";lblColor="var(--green)";lineColor="var(--green)";}
-          const dotChar=isDone?"✓":(isActive?"●":(isProvenStep?"★":(i+1)));
-          return(<div key={i} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:6,position:"relative"}}>
-            {i<4&&<div style={{position:"absolute",left:"50%",right:"-50%",top:13,height:2,background:lineColor,zIndex:0}}/>}
-            <div style={{width:28,height:28,borderRadius:"50%",background:dotBg,border:`2px solid ${dotBorder}`,position:"relative",zIndex:1,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,color:dotColor,boxShadow:isActive?"0 0 12px rgba(201,168,76,0.4)":(isProvenStep?"0 0 14px rgba(46,170,111,0.5)":"none")}}>{dotChar}</div>
-            <div style={{fontSize:9.5,fontFamily:"var(--mono)",fontWeight:700,color:lblColor,textTransform:"uppercase",letterSpacing:".07em",textAlign:"center",lineHeight:1.3}}>{s.lbl}{s.sub&&<><br/><span dangerouslySetInnerHTML={{__html:s.sub}}/></>}</div>
-          </div>);
-        })}
+      <div style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",gap:14,marginBottom:14,flexWrap:"wrap"}}>
+        <h4 style={{...sectionTitle,marginBottom:0}}>🛡 Trust-Score</h4>
+        <div style={{display:"flex",alignItems:"baseline",gap:14}}>
+          <div style={{fontSize:11,color:"var(--text4)",fontFamily:"var(--mono)",letterSpacing:".06em"}}>
+            STATUS · <b style={{color:data.trust.color,fontWeight:700,letterSpacing:".1em"}}>{data.trust.label}</b>
+          </div>
+          <div style={{fontSize:11,color:"var(--text4)",fontFamily:"var(--mono)"}}>
+            {data.trust.total||0} trade{(data.trust.total||0)===1?"":"s"}{data.trust.haveEdgeData?<> · <b style={{color:(data.trust.totalAvgR||0)>=0?"var(--green)":"var(--red)"}}>{(data.trust.totalAvgR||0)>=0?"+":""}{(data.trust.totalAvgR||0).toFixed(2)}R</b> avg</>:null}
+          </div>
+        </div>
       </div>
-      <div style={{fontSize:10.5,color:"var(--text3)",lineHeight:1.5,fontFamily:"var(--mono)"}}>
-        Status: <b style={{color:data.trust.color}}>{data.trust.label}</b> — {data.trust.total||0} trades totaal{data.trust.haveEdgeData?<>, avg <b style={{color:"var(--text)"}}>{(data.trust.totalAvgR||0)>0?"+":""}{(data.trust.totalAvgR||0).toFixed(2)}R</b> uit {data.trust.nWithR} met R-data</>:<>, geen R-data nog</>}.
-        {(()=>{
-          if(data.trust.stage==="Bewezen")return<> Bewezen workhorse — overweeg risk-allocatie verhogen.</>;
-          const total=data.trust.total||0,nR=data.trust.nWithR||0,avgR=data.trust.totalAvgR||0;
-          if(total<5)return<> Nog <b style={{color:"var(--text)"}}>{5-total} trade{5-total===1?"":"s"}</b> nodig voor <b style={{color:"var(--text)"}}>Bewezen</b>.</>;
-          if(nR<5)return<> Sample oké. Vul <code style={{background:"var(--bg3)",padding:"1px 5px",borderRadius:3,color:"var(--text3)"}}>hindsightExit</code> in op <b style={{color:"var(--text)"}}>{5-nR} extra trade{5-nR===1?"":"s"}</b> (= 5+ met R-data) voor <b style={{color:"var(--text)"}}>Bewezen</b>.</>;
-          if(avgR<=0.3)return<> Sample + R-data oké, maar edge nog te laag (huidige avg {avgR.toFixed(2)}R, nodig &gt;0.3R) voor <b style={{color:"var(--text)"}}>Bewezen</b>.</>;
-          return null;
-        })()}
-      </div>
+      {/* v12.120: moderne progress-bar — continue gradient onder de stage-dots, icon per stage. */}
+      {(()=>{
+        const stages=[
+          {lbl:"Idee",sub:"",icon:"💡",threshold:0,desc:"playbook bestaat"},
+          {lbl:"Theorized",sub:"1+ trade",icon:"🔬",threshold:1,desc:"eerste sample"},
+          {lbl:"Validated",sub:"2+ trades",icon:"📊",threshold:2,desc:"replicatie"},
+          {lbl:"Tradeable",sub:"4+ trades",icon:"🎯",threshold:4,desc:"breed sample"},
+          {lbl:"Bewezen",sub:"5+ · &gt;0.3R",icon:"🏆",threshold:5,desc:"sample + edge"},
+        ];
+        const isProven=data.trust.stage==="Bewezen";
+        const stageIdx=isProven?4:(data.trust.active||0);
+        // Continuous progress percentage (0-100)
+        const total=data.trust.total||0,avgR=data.trust.totalAvgR||0;
+        let pct=0;
+        if(total>=1)pct=Math.max(pct,15);
+        if(total>=2)pct=Math.max(pct,40);
+        if(total>=4)pct=Math.max(pct,65);
+        if(total>=5&&data.trust.nWithR>=5){
+          if(avgR>0.3)pct=100;
+          else pct=Math.max(pct,82);
+        }
+        return(<div style={{position:"relative",padding:"6px 0 4px"}}>
+          {/* Background track */}
+          <div style={{position:"absolute",left:18,right:18,top:24,height:3,background:"var(--bg3)",borderRadius:2,overflow:"hidden"}}>
+            {/* Filled track */}
+            <div style={{height:"100%",width:`${pct}%`,background:isProven?"linear-gradient(90deg,var(--green),rgba(46,170,111,0.85))":"linear-gradient(90deg,var(--green),var(--gold))",borderRadius:2,transition:"width .35s ease-out"}}/>
+          </div>
+          {/* Stage dots */}
+          <div style={{display:"flex",alignItems:"flex-start",position:"relative",zIndex:1}}>
+            {stages.map((s,i)=>{
+              const isDone=i<stageIdx;
+              const isActive=i===stageIdx&&!isProven;
+              const isProvenStep=isProven&&i===4;
+              const isPending=!isDone&&!isActive&&!isProvenStep;
+              let dotBg="var(--bg2)",dotBorder="var(--border1)",iconColor="var(--text5)",lblColor="var(--text4)",glow="none";
+              if(isDone){dotBg="var(--green-dim)";dotBorder="var(--green)";iconColor="var(--green)";lblColor="var(--text2)";}
+              if(isActive){dotBg="var(--gold-dim)";dotBorder="var(--gold)";iconColor="var(--gold)";lblColor="var(--gold)";glow="0 0 14px rgba(201,168,76,0.5)";}
+              if(isProvenStep){dotBg="var(--green-dim)";dotBorder="var(--green)";iconColor="var(--green)";lblColor="var(--green)";glow="0 0 18px rgba(46,170,111,0.55)";}
+              return(<div key={i} title={s.desc} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:8}}>
+                <div style={{width:38,height:38,borderRadius:"50%",background:dotBg,border:`2px solid ${dotBorder}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,boxShadow:glow,transition:"all .25s",position:"relative"}}>
+                  <span style={{filter:isPending?"grayscale(0.7) opacity(0.5)":"none",lineHeight:1}}>{s.icon}</span>
+                  {isDone&&<span style={{position:"absolute",bottom:-2,right:-2,width:14,height:14,borderRadius:"50%",background:"var(--green)",color:"var(--bg2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:800,border:"1.5px solid var(--bg2)"}}>✓</span>}
+                  {isProvenStep&&<span style={{position:"absolute",bottom:-2,right:-2,width:14,height:14,borderRadius:"50%",background:"var(--gold)",color:"var(--bg2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:800,border:"1.5px solid var(--bg2)"}}>★</span>}
+                </div>
+                <div style={{textAlign:"center",lineHeight:1.3}}>
+                  <div style={{fontSize:10,fontFamily:"var(--mono)",fontWeight:700,color:lblColor,textTransform:"uppercase",letterSpacing:".08em"}}>{s.lbl}</div>
+                  {s.sub&&<div style={{fontSize:9,color:"var(--text5)",fontFamily:"var(--mono)",marginTop:2}} dangerouslySetInnerHTML={{__html:s.sub}}/>}
+                </div>
+              </div>);
+            })}
+          </div>
+        </div>);
+      })()}
+      {(()=>{
+        // v12.120: alleen actie-hint — header bevat al status + samenvatting
+        if(data.trust.stage==="Bewezen")return(<div style={{marginTop:14,padding:"10px 14px",borderRadius:8,background:"var(--green-dim)",border:"1px solid var(--green-border)",fontSize:11.5,color:"var(--text2)",lineHeight:1.5,fontFamily:"var(--mono)"}}>🏆 <b style={{color:"var(--text)"}}>Bewezen workhorse</b> — overweeg risk-allocatie verhogen.</div>);
+        const total=data.trust.total||0,nR=data.trust.nWithR||0,avgR=data.trust.totalAvgR||0;
+        let msg=null,tone="info";
+        if(total<5){msg=<>Nog <b style={{color:"var(--text)"}}>{5-total} trade{5-total===1?"":"s"}</b> nodig voor <b style={{color:"var(--text)"}}>Bewezen</b>-status.</>;tone="info";}
+        else if(nR<5){msg=<>Sample oké. Vul exit in op <b style={{color:"var(--text)"}}>{5-nR} extra trade{5-nR===1?"":"s"}</b> (= 5+ met R-data) voor <b style={{color:"var(--text)"}}>Bewezen</b>.</>;tone="warn";}
+        else if(avgR<=0.3){msg=<>Sample + R-data oké, maar edge nog te laag (avg {avgR.toFixed(2)}R, nodig &gt;0.3R) voor <b style={{color:"var(--text)"}}>Bewezen</b>.</>;tone="warn";}
+        if(!msg)return null;
+        const bg=tone==="warn"?"var(--gold-dim)":"var(--bg3)";
+        const border=tone==="warn"?"var(--gold-border)":"var(--border1)";
+        return(<div style={{marginTop:14,padding:"10px 14px",borderRadius:8,background:bg,border:`1px solid ${border}`,fontSize:11.5,color:"var(--text2)",lineHeight:1.5,fontFamily:"var(--mono)"}}>{tone==="warn"?"⚠ ":"💡 "}{msg}</div>);
+      })()}
     </div>
 
     {(data.counts.bt>0&&data.counts.real>0)&&(()=>{
