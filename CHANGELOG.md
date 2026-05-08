@@ -6,6 +6,27 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.108] — 2026-05-08
+
+Uitbreiding op v12.107 close-button: dezelfde knop verschijnt nu ook bij **al-gesloten** handmatige trades wanneer de opgeslagen PnL afwijkt van wat de hit-TPs samen suggereren. Klik = bijwerken, met manualOverrides-bescherming.
+
+### Toegevoegd
+- **Knop heeft nu twee modes** *(2026-05-08, gemeld door Denny op eigen closed trade waar PnL=$12.50 stond maar 4 hit-TPs samen +$24.38 zouden geven)*:
+  - `mode="close"` — trade is `open`/`partial` met sum-of-hit-pcts ≥ 100%. Knop: groen `✓ Trade sluiten · PnL: +$24.38 · Exit: $81450`. Klik = status closed + PnL/exit/closeTime gevuld.
+  - `mode="update"` — trade is `closed`, sum-of-hit-pcts ≥ 100%, opgeslagen PnL wijkt > $1 af van TP-totaal. Knop: amber `🔄 PnL bijwerken naar TPs · was +$12.50 → +$24.38`. Klik = pnl/exit bijgewerkt naar TP-berekening, status blijft closed, closeTime onveranderd.
+- **$1 drempel** voorkomt dat de knop opduikt door floating-point noise of micro-fee-verschillen.
+- **manualOverrides bescherming** blijft werken in beide modes — als gebruiker `pnl` of `exit` handmatig heeft gezet (en dus in `manualOverrides` staat), worden die niet overschreven bij klik.
+
+### Aanpak
+- Single component-niveau wijziging: `closeData` returnt nu een object met `{mode, netPnl, wExit, hitCount, currentPnl?}`. Knop-styling en label conditioneel op mode. Toast wisselt tekst.
+- Test-suite uitgebreid van 9 naar 12 cases — drempel-test, update-mode reconciliatie tegen Jordy's $24.38 vs $12.50 scenario, en applyClose-edge-cases (status onveranderd, closeTime bewaard).
+
+### Voor de community
+- Geen actie nodig. Bij update naar v12.108 verschijnt de knop automatisch op trades waar 'ie van toegevoegde waarde is.
+- **Use case**: heb je een trade die je in het verleden handmatig hebt gesloten met een single exit-prijs/PnL maar inmiddels alle hit-TPs hebt aangevinkt? De knop springt op met de TP-derived PnL als suggestie. Klik = synced. Alle individuele TP-winsten correct gerepresenteerd in de cumulative PnL.
+
+---
+
 ## [v12.107] — 2026-05-08
 
 UX-verbetering voor handmatig ingevoerde trades, gemeld door Jordy in de community. Bij 100% van de TPs aangevinkt verschijnt een prominente "✓ Trade sluiten" knop met de berekende PnL en exit. Klik = sluit trade in één keer met juiste velden.
