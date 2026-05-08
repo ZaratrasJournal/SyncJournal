@@ -6,6 +6,31 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.111] — 2026-05-08
+
+Hotfix op v12.110: Trust-Score telde alleen trades **met** hindsightExit. 10 BT trades zonder hindsight stonden nog steeds op "Idee" met "0 trades totaal". Nu gefixt — sample-size telt onafhankelijk van R-data.
+
+### Fixed
+- **Trust-Score `classifyTrust` count gebaseerd op status+simType, niet hindsightExit** *(2026-05-08, gemeld door Denny — 10 BT trades zonder hindsight bleven op Idee)* — v12.110 gebruikte `playbookErosionStats` voor counts, welke hindsightExit vereist. Daardoor: BT trades zonder hindsightExit telden niet mee → Trust-Score bleef op Idee. **Fix**: `classifyTrust` doet eigen pass over `tradesForPlaybook` met dezelfde filter als `_pbBucketBySource` (status+simType). R-aggregatie gebruikt alleen subset met geldige R-data.
+  
+  Resultaat voor 10 BT zonder hindsightExit:
+  - Voor: stage=Idea, "0 trades totaal"
+  - Na: stage=**Tradeable**, "10 trades totaal, geen R-data nog"
+- **Bewezen vereist nu ook 5+ trades MET R-data** — voorheen kon 1 trade met +2R en 9 zonder hindsightExit theoretisch Bewezen triggeren. Nu: `nWithR >= 5 AND avgR > 0.3R AND total >= 5`. Voorkomt dat één lucky trade het stempel "Bewezen" forceert.
+- **Trust-rule bericht differentieert nu drie scenarios** voor non-Bewezen:
+  - Sample te klein (`total < 5`): "Nog X trades nodig"
+  - Sample oké, R-data incompleet (`nWithR < 5`): "Vul hindsightExit in op X extra trades (= 5+ met R-data) voor Bewezen"
+  - Sample + R-data oké maar edge te laag (`avgR <= 0.3R`): "Edge nog te laag (huidige avg X.XXR, nodig >0.3R)"
+
+### Aanpak
+- `classifyTrust` retourneert nu ook `nWithR` voor de UI-message-logica.
+- Test-suite uitgebreid van 10 → 13 cases — partial-hindsight scenarios (8 zonder + 2 met) + 10 zonder hindsight + 5 zonder edge-data.
+
+### Voor de community
+- Geen actie nodig. Bij update toont Trust-Score nu correct het aantal totaal-trades. Vul `hindsightExit` op je trades om Bewezen-status te ontgrendelen.
+
+---
+
 ## [v12.110] — 2026-05-08
 
 Trust-Score type-agnostisch: alle trade-types (real + paper + backtest + missed) tellen nu mee, drempel voor Bewezen verlaagd van 16 real → 5 totaal.

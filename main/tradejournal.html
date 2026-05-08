@@ -1048,7 +1048,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.110",released:"2026-05-08"};
+const APP_VERSION={version:"v12.111",released:"2026-05-08"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -7269,42 +7269,57 @@ function playbookErosionStats(pb,allTrades){
   return{real:stat(buckets.real),paper:stat(buckets.paper),backtest:stat(buckets.backtest)};
 }
 
-// Trust-Score: classificeer een playbook in één van 5 stadia op basis van TOTAAL trades
-// (real + paper + backtest + missed). v12.110: type-agnostisch ipv real-only — verlaagde
-// drempels zodat playbooks sneller "Bewezen" worden bij voldoende sample-size, ongeacht
-// of trades real, paper, backtest of missed zijn. Idee → Theorized → Validated → Tradeable → Bewezen.
+// Trust-Score: classificeer een playbook in één van 5 stadia op basis van TOTAAL trades.
+// v12.110: type-agnostisch (real + paper + backtest + missed). v12.111: count uit
+// status+simType filter (zonder hindsightExit-eis); avgR alleen uit subset met
+// hindsightExit (of pnl voor real). Sample-size telt voor stage-progressie; edge-eis
+// (>0.3R) gated alleen Bewezen → playbooks zonder hindsightExit kunnen Tradeable
+// bereiken maar pas Bewezen na invullen hindsight + edge confirmation.
 function classifyTrust(pb,allTrades){
-  const e=playbookErosionStats(pb,allTrades);
-  // Voeg missed trades met geldige hindsightExit toe (playbookErosionStats skipt die)
   const linked=tradesForPlaybook(pb,allTrades);
-  let missedN=0,missedSumR=0;
+  // Tellen per type via status+simType (zelfde filter als _pbBucketBySource).
+  // R alleen aggregeren uit trades met geldige R-data:
+  //   - real: pnl + riskUsd via _trR
+  //   - sim (bt/paper/missed): hindsightExit + entry + stopLoss
+  let nReal=0,nPaper=0,nBt=0,nMissed=0;
+  let sumR=0,nWithR=0;
   for(const t of linked){
-    if(t.status!=="missed")continue;
+    if(t.status!=="missed"){
+      // Real trade
+      if(t.pnl===""||isNaN(parseFloat(t.pnl))||t.status==="open")continue;
+      nReal++;
+      const r=_trR(t);
+      if(isFinite(r)){sumR+=r;nWithR++;}
+      continue;
+    }
+    // Sim trade
     const st=t.simType||"missed";
-    if(st!=="missed")continue; // backtest/paper zitten al in erosion
+    if(st==="backtest")nBt++;
+    else if(st==="paper")nPaper++;
+    else nMissed++;
+    // R-derivatie (vereist hindsightExit)
     const entry=parseFloat(t.entry),sl=parseFloat(t.stopLoss),hx=parseFloat(t.hindsightExit);
     if(!isFinite(entry)||!isFinite(sl)||!isFinite(hx))continue;
     const risk=Math.abs(entry-sl);
     if(risk<=0)continue;
     const sign=t.direction==="short"?-1:1;
-    missedSumR+=((hx-entry)*sign)/risk;
-    missedN++;
+    sumR+=((hx-entry)*sign)/risk;
+    nWithR++;
   }
-  const c={real:e.real.n,paper:e.paper.n,backtest:e.backtest.n,missed:missedN};
-  const total=c.real+c.paper+c.backtest+c.missed;
-  // Weighted aggregate avgR over alle types
-  const sumR=(e.real.avgR*c.real)+(e.paper.avgR*c.paper)+(e.backtest.avgR*c.backtest)+missedSumR;
-  const totalAvgR=total>0?sumR/total:0;
-  // Drempels: Bewezen = 5+ trades + edge > 0.3R. Lagere stages glijdend.
-  if(total>=5&&totalAvgR>0.3)
-    return{stage:"Bewezen",fillCls:"proven",active:4,label:"BEWEZEN",color:"var(--green)",fill:"var(--green)",pct:100,total,totalAvgR};
+  const total=nReal+nPaper+nBt+nMissed;
+  const totalAvgR=nWithR>0?sumR/nWithR:0;
+  const haveEdgeData=nWithR>0;
+  // Drempels: Bewezen = 5+ trades MET R-data EN edge > 0.3R.
+  // Vereiste nWithR>=5 voorkomt dat 1 toevallige winning trade meteen Bewezen triggert.
+  if(total>=5&&nWithR>=5&&totalAvgR>0.3)
+    return{stage:"Bewezen",fillCls:"proven",active:4,label:"BEWEZEN",color:"var(--green)",fill:"var(--green)",pct:100,total,totalAvgR,haveEdgeData,nWithR};
   if(total>=4)
-    return{stage:"Tradeable",fillCls:"tradeable",active:3,label:"TRADEABLE",color:"var(--gold)",fill:"var(--gold)",pct:78,total,totalAvgR};
+    return{stage:"Tradeable",fillCls:"tradeable",active:3,label:"TRADEABLE",color:"var(--gold)",fill:"var(--gold)",pct:78,total,totalAvgR,haveEdgeData,nWithR};
   if(total>=2)
-    return{stage:"Validated",fillCls:"validated",active:2,label:"VALIDATED",color:"var(--purple)",fill:"var(--purple)",pct:58,total,totalAvgR};
+    return{stage:"Validated",fillCls:"validated",active:2,label:"VALIDATED",color:"var(--purple)",fill:"var(--purple)",pct:58,total,totalAvgR,haveEdgeData,nWithR};
   if(total>=1)
-    return{stage:"Theorized",fillCls:"theorized",active:1,label:"THEORIZED",color:"#7ab4d2",fill:"#7ab4d2",pct:38,total,totalAvgR};
-  return{stage:"Idea",fillCls:"idea",active:0,label:"IDEA",color:"var(--text5)",fill:"var(--text5)",pct:18,total:0,totalAvgR:0};
+    return{stage:"Theorized",fillCls:"theorized",active:1,label:"THEORIZED",color:"#7ab4d2",fill:"#7ab4d2",pct:38,total,totalAvgR,haveEdgeData,nWithR};
+  return{stage:"Idea",fillCls:"idea",active:0,label:"IDEA",color:"var(--text5)",fill:"var(--text5)",pct:18,total:0,totalAvgR:0,haveEdgeData:false,nWithR:0};
 }
 
 // v12.48: Cross-Validation — voor een tendency uit real-trades, check of dezelfde
@@ -8674,10 +8689,15 @@ function PlaybookAnalyticsView({playbooks,allTrades}){
         })}
       </div>
       <div style={{fontSize:10.5,color:"var(--text3)",lineHeight:1.5,fontFamily:"var(--mono)"}}>
-        Status: <b style={{color:data.trust.color}}>{data.trust.label}</b> — {data.trust.total||0} trades totaal (real + paper + backtest + missed) met {(data.trust.totalAvgR||0)>0?"+":""}{(data.trust.totalAvgR||0).toFixed(2)}R avg.
-        {data.trust.stage!=="Bewezen"&&(data.trust.total||0)<5&&<> Nog <b style={{color:"var(--text)"}}>{5-(data.trust.total||0)} trade{5-(data.trust.total||0)===1?"":"s"}</b> nodig (en avg R &gt;0.3R) voor <b style={{color:"var(--text)"}}>Bewezen</b>-status.</>}
-        {data.trust.stage!=="Bewezen"&&(data.trust.total||0)>=5&&(data.trust.totalAvgR||0)<=0.3&&<> Sample-size oké, maar edge nog te laag (huidige avg {(data.trust.totalAvgR||0).toFixed(2)}R, nodig &gt;0.3R) voor <b style={{color:"var(--text)"}}>Bewezen</b>.</>}
-        {data.trust.stage==="Bewezen"&&<> Bewezen workhorse — overweeg risk-allocatie verhogen.</>}
+        Status: <b style={{color:data.trust.color}}>{data.trust.label}</b> — {data.trust.total||0} trades totaal{data.trust.haveEdgeData?<>, avg <b style={{color:"var(--text)"}}>{(data.trust.totalAvgR||0)>0?"+":""}{(data.trust.totalAvgR||0).toFixed(2)}R</b> uit {data.trust.nWithR} met R-data</>:<>, geen R-data nog</>}.
+        {(()=>{
+          if(data.trust.stage==="Bewezen")return<> Bewezen workhorse — overweeg risk-allocatie verhogen.</>;
+          const total=data.trust.total||0,nR=data.trust.nWithR||0,avgR=data.trust.totalAvgR||0;
+          if(total<5)return<> Nog <b style={{color:"var(--text)"}}>{5-total} trade{5-total===1?"":"s"}</b> nodig voor <b style={{color:"var(--text)"}}>Bewezen</b>.</>;
+          if(nR<5)return<> Sample oké. Vul <code style={{background:"var(--bg3)",padding:"1px 5px",borderRadius:3,color:"var(--text3)"}}>hindsightExit</code> in op <b style={{color:"var(--text)"}}>{5-nR} extra trade{5-nR===1?"":"s"}</b> (= 5+ met R-data) voor <b style={{color:"var(--text)"}}>Bewezen</b>.</>;
+          if(avgR<=0.3)return<> Sample + R-data oké, maar edge nog te laag (huidige avg {avgR.toFixed(2)}R, nodig &gt;0.3R) voor <b style={{color:"var(--text)"}}>Bewezen</b>.</>;
+          return null;
+        })()}
       </div>
     </div>
 

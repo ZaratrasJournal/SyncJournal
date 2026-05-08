@@ -1,20 +1,20 @@
 // v12.110 logic-test voor type-agnostische classifyTrust drempels.
 // Repliceert de helper-logica om mock-trades door te rekenen.
 
+// v12.111: trades zonder R-data (geen hindsightExit/pnl) tellen mee voor stage-progressie
+// maar NIET voor avgR. Bewezen vereist sample + R-data + edge.
+// Input: arrays per type. Elke entry kan een nummer zijn (= R-waarde) of null (= geen R-data).
 function classifyTrustSim({real=[],paper=[],backtest=[],missed=[]}) {
-  // Imitate playbookErosionStats output
-  const stat = (rs) => rs.length ? { n: rs.length, avgR: rs.reduce((s,r)=>s+r,0)/rs.length, wr: rs.filter(r=>r>0).length/rs.length*100 } : { n:0, avgR:0, wr:0 };
-  const e = { real: stat(real), paper: stat(paper), backtest: stat(backtest) };
-  const c = { real: e.real.n, paper: e.paper.n, backtest: e.backtest.n, missed: missed.length };
-  const total = c.real + c.paper + c.backtest + c.missed;
-  const missedSumR = missed.reduce((s,r)=>s+r,0);
-  const sumR = (e.real.avgR*c.real) + (e.paper.avgR*c.paper) + (e.backtest.avgR*c.backtest) + missedSumR;
-  const totalAvgR = total > 0 ? sumR/total : 0;
-  if (total >= 5 && totalAvgR > 0.3) return { stage: 'Bewezen', total, totalAvgR };
-  if (total >= 4) return { stage: 'Tradeable', total, totalAvgR };
-  if (total >= 2) return { stage: 'Validated', total, totalAvgR };
-  if (total >= 1) return { stage: 'Theorized', total, totalAvgR };
-  return { stage: 'Idea', total: 0, totalAvgR: 0 };
+  const all = [...real, ...paper, ...backtest, ...missed];
+  const total = all.length;
+  const withR = all.filter(r => typeof r === 'number' && !isNaN(r));
+  const totalAvgR = withR.length > 0 ? withR.reduce((s,r)=>s+r,0) / withR.length : 0;
+  const haveEdgeData = withR.length > 0;
+  if (total >= 5 && withR.length >= 5 && totalAvgR > 0.3) return { stage: 'Bewezen', total, totalAvgR, haveEdgeData, nWithR: withR.length };
+  if (total >= 4) return { stage: 'Tradeable', total, totalAvgR, haveEdgeData, nWithR: withR.length };
+  if (total >= 2) return { stage: 'Validated', total, totalAvgR, haveEdgeData, nWithR: withR.length };
+  if (total >= 1) return { stage: 'Theorized', total, totalAvgR, haveEdgeData, nWithR: withR.length };
+  return { stage: 'Idea', total: 0, totalAvgR: 0, haveEdgeData: false, nWithR: 0 };
 }
 
 const tests = [];
@@ -74,6 +74,30 @@ t('Aggregate avgR werkt over types (weighted)', () => {
   const r = classifyTrustSim({ real: [2,2], backtest: [0,0,0] });
   if (Math.abs(r.totalAvgR - 0.8) > 0.001) throw new Error(`avgR: ${r.totalAvgR}`);
   if (r.stage !== 'Bewezen') throw new Error(`stage: ${r.stage} — moet Bewezen zijn (5 trades, avg 0.8R > 0.3R)`);
+});
+
+t("v12.111 — 10 BT trades zonder hindsightExit → Tradeable (count telt, avgR onbekend)", () => {
+  // Denny's situatie: 10 BT trades ingevuld, maar geen hindsightExit nog
+  const r = classifyTrustSim({ backtest: [null,null,null,null,null,null,null,null,null,null] });
+  if (r.stage !== 'Tradeable') throw new Error(`stage: ${r.stage} (total=${r.total})`);
+  if (r.total !== 10) throw new Error(`total: ${r.total}`);
+  if (r.haveEdgeData) throw new Error('haveEdgeData moet false zijn — geen R-data');
+  if (r.nWithR !== 0) throw new Error(`nWithR: ${r.nWithR}`);
+});
+
+t('v12.111 — Mix: 8 BT zonder hindsight, 2 met +2R → Tradeable, avg uit subset 2.0R', () => {
+  const r = classifyTrustSim({ backtest: [null,null,null,null,null,null,null,null,2,2] });
+  if (r.stage !== 'Tradeable') throw new Error(`stage: ${r.stage}`);
+  if (r.total !== 10) throw new Error(`total: ${r.total}`);
+  if (r.nWithR !== 2) throw new Error(`nWithR: ${r.nWithR}`);
+  if (Math.abs(r.totalAvgR - 2.0) > 0.001) throw new Error(`avgR: ${r.totalAvgR}`);
+  // Tradeable, niet Bewezen — want avgR is high maar uit zwakke subset (2/10)
+});
+
+t('v12.111 — 5 BT zonder hindsight → Tradeable (count = 5, geen edge-data)', () => {
+  const r = classifyTrustSim({ backtest: [null,null,null,null,null] });
+  if (r.stage !== 'Tradeable') throw new Error(`stage: ${r.stage}`);
+  // total = 5 maar haveEdgeData = false → niet Bewezen
 });
 
 let passed = 0, failed = 0;
