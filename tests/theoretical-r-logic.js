@@ -1,14 +1,25 @@
 // v12.109 logic-tests voor calcTheoreticalR + calcTheoreticalPnl helpers.
 
-// v12.113: derive exit uit hit-TPs eerst, hindsightExit als fallback.
+// v12.113+v12.114: derive exit uit hit-TPs / hit+missed combo / hindsightExit fallback.
 function _simTradeExit(trade) {
   if (trade.status !== 'missed') return null;
   const tps = trade.tpLevels || [];
   const hitTps = tps.filter(tp => tp && tp.status === 'hit' && parseFloat(tp.price) > 0);
+  const missedTps = tps.filter(tp => tp && tp.status === 'missed');
   const hitPctSum = hitTps.reduce((s, tp) => s + (parseFloat(tp.pct) || 0), 0);
+  const missedPctSum = missedTps.reduce((s, tp) => s + (parseFloat(tp.pct) || 0), 0);
+  const resolvedPct = hitPctSum + missedPctSum;
   if (hitPctSum >= 99.99 && hitTps.length > 0) {
     const wExit = hitTps.reduce((s, tp) => s + parseFloat(tp.price) * parseFloat(tp.pct||0), 0) / hitPctSum;
     return { exit: wExit, source: 'tps' };
+  }
+  if (resolvedPct >= 99.99 && (hitTps.length > 0 || missedTps.length > 0)) {
+    const sl = parseFloat(trade.stopLoss);
+    if (isFinite(sl) && sl > 0) {
+      const hitContrib = hitTps.reduce((s, tp) => s + parseFloat(tp.price) * parseFloat(tp.pct||0), 0);
+      const wExit = (hitContrib + sl * missedPctSum) / 100;
+      return { exit: wExit, source: hitTps.length > 0 ? 'tps+sl' : 'sl' };
+    }
   }
   const hx = parseFloat(trade.hindsightExit);
   if (isFinite(hx) && hx > 0) return { exit: hx, source: 'hindsight' };
@@ -56,6 +67,46 @@ t('v12.113: BT LONG met 100% hit TPs → R afgeleid uit weighted exit', () => {
   // PnL: (71500-70000)*1000/70000 = 21.43
   const p = calcTheoreticalPnl(trade);
   if (p.toFixed(2) !== '21.43') throw new Error(`PnL uit TPs: ${p}`);
+});
+
+t('v12.114: alle TPs missed → SL hit, R = -1', () => {
+  const trade = { status: 'missed', simType: 'backtest', direction: 'long', entry: '70000', stopLoss: '69000', positionSize: '1000',
+    tpLevels: [
+      { price: '71000', pct: '50', status: 'missed' },
+      { price: '72000', pct: '50', status: 'missed' },
+    ]
+  };
+  const r = calcTheoreticalR(trade);
+  // Alle missed → wExit = SL = 69000 → R = (69000-70000)/1000 = -1
+  if (r.toFixed(2) !== '-1.00') throw new Error(`R fout: ${r}`);
+  // PnL: (69000-70000)*1000/70000 = -14.29
+  const p = calcTheoreticalPnl(trade);
+  if (p.toFixed(2) !== '-14.29') throw new Error(`PnL: ${p}`);
+});
+
+t('v12.114: hit + missed = 100% → mixed exit (hits at TP, missed at SL)', () => {
+  const trade = { status: 'missed', simType: 'backtest', direction: 'long', entry: '70000', stopLoss: '69000', positionSize: '1000',
+    tpLevels: [
+      { price: '71000', pct: '50', status: 'hit' },
+      { price: '72000', pct: '50', status: 'missed' },  // user marks: TP2 didn't trigger, SL hit on remainder
+    ]
+  };
+  const r = calcTheoreticalR(trade);
+  // wExit = (71000*50 + 69000*50)/100 = 70000 → R = 0
+  if (r.toFixed(2) !== '0.00') throw new Error(`R fout: ${r} — moet 0 zijn (50% TP1 + 50% SL = break-even)`);
+});
+
+t('v12.114: hit + missed = 100% short trade', () => {
+  const trade = { status: 'missed', simType: 'backtest', direction: 'short', entry: '70000', stopLoss: '71000',
+    tpLevels: [
+      { price: '69000', pct: '70', status: 'hit' },
+      { price: '68000', pct: '30', status: 'missed' },  // SL hit on 30%
+    ]
+  };
+  const r = calcTheoreticalR(trade);
+  // wExit = (69000*70 + 71000*30)/100 = 69600
+  // short R = (70000-69600)/1000 = 0.4
+  if (r.toFixed(2) !== '0.40') throw new Error(`R fout: ${r}`);
 });
 
 t('v12.113: BT met partial-hit TPs (50%) → null (sample niet compleet)', () => {

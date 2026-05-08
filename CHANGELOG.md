@@ -6,6 +6,34 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.114] — 2026-05-08
+
+Verlies-trades met SL-hit kunnen nu in 1 klik gemarkeerd worden + mixed-outcome (sommige TPs hit, rest naar SL) wordt automatisch correct afgeleid.
+
+### Toegevoegd
+- **Quick-action knoppen voor sim-trades** *(2026-05-08, gemeld door Denny — niet alle BT trades toonden W/L)* — In de TP-sectie van missed/BT/paper trades:
+  - Groen `✓ Alle TPs hit` — markeert alle TPs als hit in 1 klik (= trade volledig in winst)
+  - Rood `🛑 SL hit` — markeert alle TPs als missed in 1 klik (= trade volledig stopgezet)
+  - Knoppen verdwijnen wanneer trade al in die staat is (bv. "✓ Alle TPs hit" verbergt zich als allemaal al hit)
+  - Spaart 2 clicks per TP (toggle-cyclus is open→missed→hit). Bij 4 TPs: 8 clicks → 1 klik.
+- **Mixed-outcome derivatie**: hit + missed = 100% van de trade. Hit-portie sluit op TP-prijs, missed-portie op SL-prijs. Voorbeeld: TP1 hit (50%) + TP2 missed (50%) op long entry 70k / SL 69k / TP1 71k → weighted exit = 70000 → R = 0 (= break-even na partial winst + SL op rest).
+
+### Aanpak
+- `_simTradeExit` chain uitgebreid:
+  1. 100% hit TPs → weighted exit
+  2. **NIEUW**: hit + missed = 100% + SL gezet → mixed weighted (hits op TP-prijs, missed op SL)
+  3. **NIEUW**: alle TPs missed (= SL hit op volledige positie) → exit = SL → R = -1
+  4. hindsightExit fallback
+  5. null
+- Test-suite 12 → 15 cases. Alle scenarios: 100% hit, alle missed (SL), mixed long/short, fallback chain.
+
+### Voor de community
+- **Verlies-trade in backtest**: open de trade → klik "🛑 SL hit" knop → analytics werkt direct. Trade-rij toont rood ✗ in BT-badge, R-multiple `-1.0R`, theoretische PnL.
+- **Winst-trade**: klik "✓ Alle TPs hit" of toggle individuele TPs handmatig.
+- **Mixed**: vink TPs handmatig hit/missed naar je replay — auto-derivatie pakt dat op.
+
+---
+
 ## [v12.113] — 2026-05-08
 
 Theoretische exit voor BT/paper/missed trades wordt nu **automatisch afgeleid uit 100% hit-TPs** — geen apart `hindsightExit`-veld meer nodig als de gebruiker zijn TPs al heeft aangevinkt.
