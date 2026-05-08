@@ -1023,7 +1023,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.102",released:"2026-05-07"};
+const APP_VERSION={version:"v12.103",released:"2026-05-08"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -2049,10 +2049,15 @@ const ExchangeAPI = {
       const symbols=[...new Set(positions.map(p=>p.symbol).filter(Boolean))];
       await Promise.all(symbols.map(s=>this._getContractSize(s)));
       return positions.map(p=>{
-        const conv=this._convertContracts(p.symbol,p.holdVol,p.openAvgPrice||p.holdAvgPrice);
-        const positionSize=conv.usdNotional>0?conv.usdNotional.toFixed(2):String(p.holdVol||"");
+        // v12.103: bij partial-close-still-open positions levert MEXC `holdVol` (resterend) en
+        // `closeVol` (al gesloten). Origineel = som. Vorige versie gebruikte alleen holdVol →
+        // positionSizeAsset werd te klein → TP-percentages > 100% (bv. TP2 = 199.2%) en TP-winst
+        // berekening factor-fout. Reconciliatie via mexc-partial-open-fix.js validatietest.
+        const totalVol=(parseFloat(p.holdVol)||0)+(parseFloat(p.closeVol)||0);
+        const conv=this._convertContracts(p.symbol,totalVol,p.openAvgPrice||p.holdAvgPrice);
+        const positionSize=conv.usdNotional>0?conv.usdNotional.toFixed(2):String(totalVol||"");
         const positionSizeAsset=conv.assetQty>0?String(conv.assetQty):"";
-        return{id:"mexc_open_"+p.positionId,positionId:String(p.positionId||""),openTime:String(p.createTime||""),closeTime:"",date:ts2date(p.createTime||Date.now()),time:ts2time(p.createTime||Date.now()),pair:(p.symbol||"BTC_USDT").replace("_","/"),direction:p.positionType===1?"long":"short",entry:String(p.openAvgPrice||p.holdAvgPrice||""),exit:"",positionSize,positionSizeAsset,pnl:"",fees:String(p.holdFee||"0"),leverage:String(p.leverage||"10"),source:"mexc",status:"open",unrealizedPnl:String(p.unrealized||p.realised||""),liquidationPrice:String(p.liquidatePrice||""),stopLoss:"",takeProfit:"",highestPrice:"",lowestPrice:"",setupTags:[],confirmationTags:[],timeframeTags:[],emotionTags:[],mistakeTags:[],customTags:[],rating:0,screenshot:null,notes:"",links:[],layers:[]};
+        return{id:"mexc_open_"+p.positionId,positionId:String(p.positionId||""),openTime:String(p.createTime||""),closeTime:"",date:ts2date(p.createTime||Date.now()),time:ts2time(p.createTime||Date.now()),pair:(p.symbol||"BTC_USDT").replace("_","/"),direction:p.positionType===1?"long":"short",entry:String(p.openAvgPrice||p.holdAvgPrice||""),exit:"",positionSize,positionSizeAsset,pnl:"",fees:String(p.holdFee||"0"),leverage:String(p.leverage||"10"),source:"mexc",status:"open",unrealizedPnl:String(p.unrealized||p.realised||""),liquidationPrice:String(p.liquidatePrice||""),stopLoss:"",takeProfit:"",highestPrice:"",lowestPrice:"",setupTags:[],confirmationTags:[],timeframeTags:[],emotionTags:[],mistakeTags:[],customTags:[],rating:0,screenshot:null,notes:"",links:[],layers:[],_rawHoldVol:String(p.holdVol||""),_rawCloseVol:String(p.closeVol||"")};
       });
     },
     async fetchFills(apiKey,apiSecret,symbol,positionId,startTime,endTime){const data=await proxyCall({exchange:"mexc",action:"fills",apiKey,apiSecret,symbol:symbol.replace("/","_"),positionId,startTime,endTime});return{fills:data.fills||[],debug:data.debug||null,unfiltered:data.unfiltered||false,total:data.total||0}}

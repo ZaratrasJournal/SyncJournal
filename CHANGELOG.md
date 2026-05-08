@@ -6,6 +6,24 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.103] — 2026-05-08
+
+MEXC partial-close-still-open positie: `positionSizeAsset` werd te klein opgeslagen (alleen resterende deel), waardoor TP-percentages > 100% en TP-winst-berekeningen factor-fout werden. Geïsoleerd in MEXC-adapter.
+
+### Fixed
+- **MEXC `fetchOpenPositions`: positionSizeAsset gebruikt origineel = `holdVol + closeVol`** *(2026-05-08, gemeld door Denny via snapshot mexc-snapshot-2026-05-08-06-39.json)* — Bij open positions die al een partial-close hebben gehad levert MEXC `holdVol` (resterend) en `closeVol` (al gesloten). Vorige versie gebruikte alleen `holdVol` voor `_convertContracts`. Symptoom: BTC short positionId `1367600842` had originele 0.0247 BTC (= 247 contracts), maar journal sloeg `positionSizeAsset = 0.0124` op (alleen de resterende 124 contracts). Resultaat: TP1 toonde 49.8% correct (pct opgeslagen op fill-tijd tegen original), maar TP2 toonde **199.2%** want pct = `qty(0.0247) / stored(0.0124) × 100`. Plus warning "Totaal 249% > 100%". **Fix**: `totalVol = (parseFloat(p.holdVol)||0) + (parseFloat(p.closeVol)||0)` als basis voor `_convertContracts`. Reconciliatie volledig gevalideerd via `tests/mexc-partial-open-fix.js` + in-browser test `tests/mexc-partial-open-browser.js`.
+
+### Aanpak
+- **Self-heal**: `syncOpenPositions` overschrijft `positionSize` en `positionSizeAsset` automatisch bij volgende refresh (geen ALWAYS_PROTECT-veld). Een `🔄 Refresh trades` op MEXC voldoet om bestaande buggy data te corrigeren.
+- **Bewaard voor debug**: nieuwe `_rawHoldVol` en `_rawCloseVol` velden op de trade voor toekomstige diagnose van soortgelijke partial-close-states.
+- **TP-percentages opnieuw berekenen**: helaas blijven al-opgeslagen `tpLevels[i].pct` waarden (zoals 199.2%) staan tot de gebruiker handmatig de TP wijzigt OF de trade volledig sluit (waarna `positionsHistory` finalisatie plaatsvindt). Voor nu = manual action; auto-heal van TP-pct staat op de backlog voor v12.104+.
+
+### Voor de community
+- Doe één **🔄 Refresh trades** op MEXC na update — dat herstelt `positionSize` + `positionSizeAsset` voor alle open positions die al een partial-close hadden.
+- Toon je playbook nog TP-percentages > 100% in een specifieke trade? Open de trade-modal, verwijder de offending TP-rij en voeg 'm opnieuw toe — pct wordt dan herberekend tegen de juiste base.
+
+---
+
 ## [v12.102] — 2026-05-07
 
 Nieuwe **Playbook Analytics dashboard** als sub-view in de Playbook-pagina (Phase 1). Beantwoordt de vraag *"vertaalt mijn backtest-edge naar real?"* met source-filtering (real/bt/paper/missed), Trust-Score progressie en multi-source equity curve.
