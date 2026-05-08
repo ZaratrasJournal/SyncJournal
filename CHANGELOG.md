@@ -6,6 +6,27 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.104] — 2026-05-08
+
+MEXC stop-loss orders verschenen foutief als TP-rij in de trade-modal. Nu correct gefilterd + auto-geplaatst in `trade.stopLoss`. Bestaande buggy trades worden automatisch geheald bij eerstvolgende app-load.
+
+### Fixed
+- **Pending stop-loss orders verschenen als TP-niveau** *(2026-05-08, gemeld door Denny — BTC short positionId 1367600842 toonde SL=81000 als TP2)* — De Cloudflare Worker stuurt pending stop-loss orders (`triggerSide=2`) mee in de pending-fills lijst voor MEXC, met `_triggerSide` als marker. Vorige versie filterde die marker niet en zette ze door naar `tpLevels` met status `"open"`. Resultaat: een SHORT met SL=81000 (boven entry 80552.7) toonde 81000 als "TP2" met negatieve "winst". **Fix**: client filtert pending-fills op `_triggerSide !== 2` voor TP-conversie en routeert SL-orders naar `trade.stopLoss` (= hoogste-volume SL als heuristiek). Manueel ingestelde stopLoss (in `manualOverrides`) wordt expliciet niet overschreven.
+- **Self-heal voor bestaande buggy trades** — Trades die de SL als TP-rij hadden krijgen automatische correctie via `normalizeTrade`: detecteer status="open" tpLevel waar prijs aan de SL-zijde ligt (boven entry voor short, onder voor long) → verplaats prijs naar `trade.stopLoss` (alleen als die leeg is) en verwijder uit `tpLevels`. Marker `_slHealed=true` voorkomt dubbele migratie.
+
+### Aanpak
+- **Twee verdedigingslagen**:
+  1. Worker-response filter in [refresh-flow](work/tradejournal.html#L11409) — fix komt direct binnen voor nieuwe syncs
+  2. Self-heal-migratie in [`normalizeTrade`](work/tradejournal.html#L1442) — corrigeert bestaande data bij eerstvolgende load
+- **Worker-fix als backlog** (BACKLOG.md): de Cloudflare Worker zelf zou `triggerSide=2` netter kunnen retourneren met een aparte `_pendingStop` marker zodat de classificatie aan de bron gebeurt. Voor nu doet de client de juiste split via het bestaande `_triggerSide`-veld dat de Worker al meelevert (zie [proxy-local/worker.js:149](proxy-local/worker.js#L149) als referentie).
+- **Test-suite uitgebreid**: 4 nieuwe tests in `tests/mexc-sl-*.js` covering pure-logic, in-browser filter, self-heal voor buggy data, en bescherming van manuele edits.
+
+### Voor de community
+- Geen actie nodig. Bij update naar v12.104 worden bestaande trades waar de SL als TP-rij verscheen automatisch gecorrigeerd bij eerstvolgende app-load. De SL-prijs verschijnt dan in het `Stop Loss` veld; de TP-rij verdwijnt uit de modal.
+- Heb je zelf de stopLoss handmatig ingevuld voor een trade? Die blijft bewaard — self-heal raakt 'm niet aan.
+
+---
+
 ## [v12.103] — 2026-05-08
 
 MEXC partial-close-still-open positie: `positionSizeAsset` werd te klein opgeslagen (alleen resterende deel), waardoor TP-percentages > 100% en TP-winst-berekeningen factor-fout werden. Geïsoleerd in MEXC-adapter.

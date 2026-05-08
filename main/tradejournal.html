@@ -1023,7 +1023,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.103",released:"2026-05-08"};
+const APP_VERSION={version:"v12.104",released:"2026-05-08"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -1447,6 +1447,35 @@ const normalizeTrade=(t)=>{
       if(n.actualPrice)n.actualPrice=normPrice(n.actualPrice)||n.actualPrice;
       return n;
     });
+    // v12.104: self-heal SL-as-TP. Vóór v12.104 stuurde de Worker pending stop-loss
+    // orders mee als pending fills, en de client behandelde die als TP-rij. Symptoom:
+    // SHORT met SL=81000 (boven entry) toont 81000 als TP2 met "winst" -$X.
+    // Heal: detecteer status="open" tpLevel waar prijs-positie consistent is met SL
+    // (hoger dan entry voor SHORT, lager voor LONG) → verplaats naar trade.stopLoss
+    // (alleen als die nog leeg is) en verwijder uit tpLevels. One-time per trade.
+    if(out.tpLevels.length&&!out._slHealed&&out.entry&&out.direction){
+      const entry=parseFloat(out.entry);
+      const isShort=out.direction==="short";
+      if(isFinite(entry)&&entry>0){
+        const looksLikeSL=(tp)=>{
+          if(!tp||tp.status==="hit"||tp._healed)return false;
+          const p=parseFloat(tp.price);
+          if(!isFinite(p)||p<=0)return false;
+          // SHORT: SL is BOVEN entry. LONG: SL is ONDER entry.
+          return isShort?p>entry:p<entry;
+        };
+        const slCandidate=out.tpLevels.find(looksLikeSL);
+        if(slCandidate){
+          const slEmpty=!out.stopLoss||String(out.stopLoss).trim()===""||parseFloat(out.stopLoss)<=0;
+          const slManual=(out.manualOverrides||[]).includes("stopLoss");
+          if(slEmpty&&!slManual)out.stopLoss=String(slCandidate.price);
+          out.tpLevels=out.tpLevels.filter(tp=>tp!==slCandidate);
+          out._slHealed=true;
+        }else{
+          out._slHealed=true; // niets te healen, marker zetten zodat we niet bij elke load opnieuw kijken
+        }
+      }
+    }
   }
   // v12.46+: simType migration. Bestaande status:"missed" trades zonder
   // simType krijgen "missed" (real-time gespot, niet genomen). Backtest is
@@ -11409,8 +11438,19 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,set
               // v12.89: split pending vs filled. Pending TPs (uit stoporder met state=1) krijgen
               // status="open" zodat ze in de UI als "ingestelde TP nog niet gehit" verschijnen.
               // Filled fills (uit order_deals + state=3 stoporder) krijgen status="hit".
+              // v12.104: Worker stuurt OOK pending stop-loss orders (_triggerSide===2) mee in
+              // pending-fills lijst. Die filteren we hier expliciet uit zodat de SL niet
+              // foutief als TP-niveau in de modal verschijnt. SL-prijs wordt apart in
+              // trade.stopLoss gezet (zie sl-extractie hieronder). Dit fixt het feit dat
+              // bv. een short met SL=81000 anders 81000 als TP2 zou tonen.
               const filledFills=closeFills.filter(f=>!f._pending);
-              const pendingFills=closeFills.filter(f=>f._pending);
+              const pendingFills=closeFills.filter(f=>f._pending&&f._triggerSide!==2);
+              // v12.104: pending stop-loss extractie. Pak hoogste-volume SL-order voor deze positie.
+              const pendingSLs=closeFills.filter(f=>f._pending&&f._triggerSide===2);
+              const inferredStopLoss=pendingSLs.length?String(pendingSLs.reduce((best,f)=>{
+                const v=Math.abs(parseFloat(f.vol||0));
+                return v>best._v?{p:f.price,_v:v}:best;
+              },{p:"",_v:0}).p||""):"";
               // v12.89: bereken originalSize voor calcProfit-correctheid.
               //  - Open/partial trades met fills → originalSize = knownSize + tradeSize
               //    (= alle gehit + nog open rest). Eerder probeerde ik "stale-open" te detecteren
@@ -11494,7 +11534,7 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,set
               newTPs.push(...sortedTPs);
               // v12.89: pct's zijn al correct berekend in filledTPs.map met pctDenom.
               // computedOrigSize wordt opgeslagen op de trade voor calcProfit-correctheid.
-              if(newTPs.length){tpUpdates.set(t.id,{tpLevels:newTPs,originalSizeAsset:computedOrigSize});tpFetchedCount++;}
+              if(newTPs.length||inferredStopLoss){tpUpdates.set(t.id,{tpLevels:newTPs,originalSizeAsset:computedOrigSize,inferredStopLoss});if(newTPs.length)tpFetchedCount++;}
             }catch(err){
               console.warn(`[refresh ${ex}] fetchFills faalde voor positionId=${t.positionId}:`,err.message||err);
               tpFailCount++;
@@ -11520,6 +11560,14 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,set
                   if(!existing||u.originalSizeAsset>existing*1.01){
                     updated.originalSizeAsset=String(u.originalSizeAsset);
                   }
+                }
+                // v12.104: zet stopLoss-veld als de Worker een pending SL-order voor
+                // deze positie meelevert (triggerSide=2). Behoud user-edit:
+                // alleen overschrijven als trade.stopLoss leeg is OF niet manueel gewijzigd.
+                if(u.inferredStopLoss){
+                  const slEmpty=!t.stopLoss||String(t.stopLoss).trim()==="";
+                  const slManual=(t.manualOverrides||[]).includes("stopLoss");
+                  if(slEmpty&&!slManual)updated.stopLoss=u.inferredStopLoss;
                 }
               }
               // v12.91: invariant-aware marker. Skip-marker NIET zetten als
