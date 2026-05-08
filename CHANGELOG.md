@@ -11,7 +11,7 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 UX-verbetering voor handmatig ingevoerde trades, gemeld door Jordy in de community: bij 100% van de TPs aangevinkt sluit de trade automatisch en wordt de PnL ingevuld.
 
 ### Toegevoegd
-- **Auto-close + auto-PnL bij 100% TP-hit op handmatige trades** *(2026-05-08, gemeld door Jordy in Discord)* — Bij `source==="manual"` trades met status `open`/`partial`: zodra de som van **hit**-TP-percentages ≥ 100% bereikt na een status-toggle, wordt de trade automatisch:
+- **Auto-close + auto-PnL bij 100% TP-hit op handmatige trades** *(2026-05-08, gemeld door Jordy in Discord)* — Vóór: bij een handmatige trade alle TPs aanvinken liet de trade "open" staan. Gebruiker moest zelf 3 stappen doen: status omzetten naar "Closed", exit-prijs handmatig invullen, en de "Verwacht: $X" waarde onder de TPs overtypen naar het PnL-veld. **Nu**: bij `source==="manual"` trades met status `open`/`partial`, zodra de som van **hit**-TP-percentages ≥ 100% bereikt na een status-toggle, wordt de trade automatisch:
   - `status: "closed"`
   - `pnl: <netto-PnL>` (= som van per-TP `(tpPrice − entry) × size × pct/entry` minus fees, zelfde formule als de bestaande `calcProfit` fallback). Wordt niet overschreven als gebruiker `pnl` in `manualOverrides` heeft.
   - `exit: <pct-gewogen avg van hit-TP prijzen>`. Niet overschreven bij `manualOverrides.exit`.
