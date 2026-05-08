@@ -1004,30 +1004,48 @@ function calcRMultiple(trade){
   if(riskUsdt<=0)return null;
   return pnlVal/riskUsdt;
 }
-// v12.109: theoretische R voor missed/backtest/paper trades. Gebruikt hindsightExit
-// (waar prijs naartoe ging na 'gemiste' setup) i.p.v. echte pnl. Apart van calcRMultiple
-// zodat het edge-stats voor real trades NIET vervuilt — alleen UI-display van W/L op
-// niet-gerealiseerde trades.
+// v12.113: derive theoretische exit voor missed/BT/paper trades.
+// Priority: 100% hit TPs (weighted exit) > hindsightExit > null.
+// Veel gebruikers vullen TPs in en vinken die hit aan tijdens hun replay/notatie —
+// dat is genoeg data om R+PnL af te leiden zonder apart hindsightExit-veld.
+function _simTradeExit(trade){
+  if(trade.status!=="missed")return null;
+  // Priority 1: 100% hit TPs → weighted exit
+  const tps=trade.tpLevels||[];
+  const hitTps=tps.filter(tp=>tp&&tp.status==="hit"&&parseFloat(tp.price)>0);
+  const hitPctSum=hitTps.reduce((s,tp)=>s+(parseFloat(tp.pct)||0),0);
+  if(hitPctSum>=99.99&&hitTps.length>0){
+    const wExit=hitTps.reduce((s,tp)=>s+parseFloat(tp.price)*parseFloat(tp.pct||0),0)/hitPctSum;
+    return{exit:wExit,source:"tps"};
+  }
+  // Priority 2: hindsightExit (handmatig ingevuld)
+  const hx=parseFloat(trade.hindsightExit);
+  if(isFinite(hx)&&hx>0)return{exit:hx,source:"hindsight"};
+  return null;
+}
+// v12.109+v12.113: theoretische R voor missed/backtest/paper trades.
 function calcTheoreticalR(trade){
   if(trade.status!=="missed")return null;
   const entry=parseFloat(trade.entry);
   const sl=parseFloat(trade.stopLoss);
-  const hx=parseFloat(trade.hindsightExit);
-  if(!isFinite(entry)||!isFinite(sl)||!isFinite(hx)||entry<=0||sl===entry)return null;
+  if(!isFinite(entry)||!isFinite(sl)||entry<=0||sl===entry)return null;
+  const exitInfo=_simTradeExit(trade);
+  if(!exitInfo)return null;
   const dirSign=trade.direction==="short"?-1:1;
   const risk=Math.abs(entry-sl);
   if(risk<=0)return null;
-  return((hx-entry)*dirSign)/risk;
+  return((exitInfo.exit-entry)*dirSign)/risk;
 }
-// v12.109: theoretische PnL in USD voor missed trades met hindsightExit.
+// v12.109+v12.113: theoretische PnL in USD voor missed trades.
 function calcTheoreticalPnl(trade){
   if(trade.status!=="missed")return null;
   const entry=parseFloat(trade.entry);
-  const hx=parseFloat(trade.hindsightExit);
   const size=parseFloat(trade.positionSize)||0;
-  if(!isFinite(entry)||!isFinite(hx)||entry<=0||size<=0)return null;
+  if(!isFinite(entry)||entry<=0||size<=0)return null;
+  const exitInfo=_simTradeExit(trade);
+  if(!exitInfo)return null;
   const dirSign=trade.direction==="short"?-1:1;
-  return(hx-entry)*dirSign*size/entry;
+  return(exitInfo.exit-entry)*dirSign*size/entry;
 }
 function calcExpectancy(trades){
   if(!trades||!trades.length)return null;
@@ -1048,7 +1066,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.112",released:"2026-05-08"};
+const APP_VERSION={version:"v12.113",released:"2026-05-08"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -5816,25 +5834,33 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,setConfig,ac
 
     {/* Hindsight-exit — only for missed trades, optional */}
     {isMissed&&(()=>{
-      // v12.112: per simType context. Voor backtest/paper is exit een VEREIST veld
-      // (zonder geen W/L/avg-R analytics), defaultOpen=true en geen "optioneel" label.
-      // Voor missed (real-time gespot) blijft het hindsight = optioneel.
+      // v12.112+v12.113: per simType context. Exit is auto-afleidbaar uit 100% hit-TPs;
+      // hindsightExit is fallback. Section toont alleen amber-warn als BEIDE ontbreken.
       const isBT=isBacktest,isPa=isPaper,isMR=isMissedReal;
       const title=isBT?"🎯 Backtest Exit":isPa?"🎯 Paper Exit":"🔮 Hindsight (optioneel)";
-      const inputLbl=isBT?"BACKTEST EXIT (waar sloot je in je replay)":isPa?"PAPER EXIT (waar sloot je op demo-account)":"HINDSIGHT EXIT (prijs waar je uit had kunnen stappen)";
-      const desc=isBT
-        ?"Vul je werkelijke exit-prijs in uit de chart-replay. Gebruikt voor W/L, Avg R en Cum. PnL in Playbook Analytics. Zonder dit blijven stats leeg."
-        :isPa
-        ?"Vul de exit-prijs in uit je demo-account. Gebruikt voor W/L, Avg R en Cum. PnL in Playbook Analytics. Zonder dit blijven stats leeg."
-        :"Waar ging de prijs heen nadat je deze setup overslag? Gebruikt voor theoretical edge-leak berekening. ⚠ Hindsight-bias: dit is theoretisch max, niet wat je werkelijk zou hebben verdiend.";
+      const inputLbl=isBT?"BACKTEST EXIT (alternatief — TPs aanvinken werkt ook)":isPa?"PAPER EXIT (alternatief — TPs aanvinken werkt ook)":"HINDSIGHT EXIT (prijs waar je uit had kunnen stappen)";
+      // Check if 100% TP-hit gives us derived exit
+      const tps=trade.tpLevels||[];
+      const hitPctSum=tps.filter(tp=>tp&&tp.status==="hit"&&parseFloat(tp.price)>0).reduce((s,tp)=>s+(parseFloat(tp.pct)||0),0);
+      const hasFullTPs=hitPctSum>=99.99;
+      const hxFilled=trade.hindsightExit&&parseFloat(trade.hindsightExit)>0;
+      const hasExit=hasFullTPs||hxFilled;
       const isRequired=isBT||isPa;
-      const isFilled=trade.hindsightExit&&parseFloat(trade.hindsightExit)>0;
-      const hint=isFilled?"ingevuld ✓":(isRequired?"vereist voor analytics ⚠":"leeg");
-      return(<Section title={title} storeKey={isBT?"btExit":isPa?"paperExit":"missedHindsight"} defaultOpen={isRequired&&!isFilled} hint={hint}>
-        <div style={{fontSize:"10px",color:isRequired&&!isFilled?"var(--amber)":"var(--text4)",marginBottom:"10px",lineHeight:1.5,fontStyle:"italic"}}>{desc}</div>
+      const desc=isBT
+        ?(hasFullTPs?"✓ Exit afgeleid uit 100% hit-TPs. Geen extra invoer nodig — analytics werkt al."
+          :"Twee opties voor analytics: (a) vink al je TPs aan op status=hit (= 100% afgedekt), of (b) vul handmatig de exit-prijs uit de chart-replay hieronder.")
+        :isPa
+        ?(hasFullTPs?"✓ Exit afgeleid uit 100% hit-TPs. Geen extra invoer nodig."
+          :"Twee opties: (a) TPs aanvinken op hit, of (b) handmatig exit-prijs invullen.")
+        :"Waar ging de prijs heen nadat je deze setup oversloeg? Optioneel, gebruikt voor edge-leak berekening.";
+      const hint=hxFilled?"ingevuld ✓":(hasFullTPs?"afgeleid uit TPs ✓":(isRequired?"TPs aanvinken óf prijs invullen ⚠":"leeg"));
+      // Open alleen als vereist EN nog geen exit-data
+      const showAmberWarn=isRequired&&!hasExit;
+      return(<Section title={title} storeKey={isBT?"btExit":isPa?"paperExit":"missedHindsight"} defaultOpen={showAmberWarn} hint={hint}>
+        <div style={{fontSize:"10px",color:showAmberWarn?"var(--amber)":"var(--text4)",marginBottom:"10px",lineHeight:1.5,fontStyle:"italic"}}>{desc}</div>
         <div>
           <div style={{fontSize:"11px",color:"var(--text3)",marginBottom:"6px",fontWeight:500}}>{inputLbl}</div>
-          <input type="text" value={trade.hindsightExit||""} onChange={e=>setTrade(p=>({...p,hindsightExit:e.target.value}))} style={{...iStyle,...(isRequired&&!isFilled?{borderColor:"var(--amber)"}:{})}} placeholder="bv. 43500"/>
+          <input type="text" value={trade.hindsightExit||""} onChange={e=>setTrade(p=>({...p,hindsightExit:e.target.value}))} style={{...iStyle,...(showAmberWarn?{borderColor:"var(--amber)"}:{})}} placeholder="bv. 43500"/>
         </div>
       </Section>);
     })()}
@@ -7269,17 +7295,13 @@ function playbookErosionStats(pb,allTrades){
       if(t.pnl!==""&&!isNaN(parseFloat(t.pnl))&&t.status!=="open")buckets.real.push({r:_trR(t),win:netPnl(t)>0});
       continue;
     }
-    // Sim trade — bereken theoretical R uit hindsightExit
-    const entry=parseFloat(t.entry),sl=parseFloat(t.stopLoss),hx=parseFloat(t.hindsightExit);
-    if(!isFinite(entry)||!isFinite(sl)||!isFinite(hx))continue;
-    const riskPerUnit=Math.abs(entry-sl);
-    if(riskPerUnit<=0)continue;
-    const sign=t.direction==="short"?-1:1;
-    const r=(hx-entry)*sign/riskPerUnit;
+    // Sim trade — gebruik calcTheoreticalR (= 100% hit TPs OF hindsightExit)
+    const r=calcTheoreticalR(t);
+    if(r===null)continue;
     const st=t.simType||"missed";
     if(st==="backtest")buckets.backtest.push({r,win:r>0});
     else if(st==="paper")buckets.paper.push({r,win:r>0});
-    // missed (real-time gespot) is niet hetzelfde als paper — skipt deze visualisatie
+    // missed (real-time gespot) niet in erosion (zit in playbookMissedStats)
   }
   const stat=(arr)=>arr.length?{n:arr.length,wr:(arr.filter(x=>x.win).length/arr.length)*100,avgR:arr.reduce((s,x)=>s+x.r,0)/arr.length}:{n:0,wr:0,avgR:0};
   return{real:stat(buckets.real),paper:stat(buckets.paper),backtest:stat(buckets.backtest)};
@@ -7313,13 +7335,10 @@ function classifyTrust(pb,allTrades){
     if(st==="backtest")nBt++;
     else if(st==="paper")nPaper++;
     else nMissed++;
-    // R-derivatie (vereist hindsightExit)
-    const entry=parseFloat(t.entry),sl=parseFloat(t.stopLoss),hx=parseFloat(t.hindsightExit);
-    if(!isFinite(entry)||!isFinite(sl)||!isFinite(hx))continue;
-    const risk=Math.abs(entry-sl);
-    if(risk<=0)continue;
-    const sign=t.direction==="short"?-1:1;
-    sumR+=((hx-entry)*sign)/risk;
+    // R-derivatie via calcTheoreticalR (= 100% hit TPs OF hindsightExit)
+    const r=calcTheoreticalR(t);
+    if(r===null)continue;
+    sumR+=r;
     nWithR++;
   }
   const total=nReal+nPaper+nBt+nMissed;

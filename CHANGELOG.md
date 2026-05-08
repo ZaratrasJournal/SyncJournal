@@ -6,6 +6,35 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.113] — 2026-05-08
+
+Theoretische exit voor BT/paper/missed trades wordt nu **automatisch afgeleid uit 100% hit-TPs** — geen apart `hindsightExit`-veld meer nodig als de gebruiker zijn TPs al heeft aangevinkt.
+
+### Gewijzigd
+- **Auto-afgeleide exit voor sim-trades** *(2026-05-08, gevraagd door Denny — "waarom hindsight invullen? het kan toch op basis van de gegevens die zijn ingevuld")* — Voor backtest/paper/missed trades wordt theoretische R en PnL nu in deze volgorde bepaald:
+  1. **100% hit-TPs**: weighted exit uit `tp.price × tp.pct`. R = `(weighted_exit − entry) / |entry − SL|`. Geen extra invoer nodig — gewoon TPs aanvinken op hit.
+  2. **`hindsightExit` als fallback**: alleen als TPs niet 100% afgevinkt zijn.
+  3. **Null** (geen analytics): als beide ontbreken.
+- **`calcTheoreticalR` + `calcTheoreticalPnl` herzien** — gebruiken nieuwe helper `_simTradeExit(trade)` die de afleiding centraal houdt. Backwards compatible: trades met alleen `hindsightExit` blijven werken.
+- **`playbookErosionStats` gebruikt nieuwe afleiding** — Trust-Score, BT-vs-Real comparison, Edge-Erosion stats — allemaal pakken nu hit-TPs op als beschikbaar.
+- **UX-hint context-bewust**: "🎯 Backtest Exit" sectie toont nu:
+  - `✓ Exit afgeleid uit 100% hit-TPs. Geen extra invoer nodig` als TPs gevuld
+  - `Twee opties: (a) TPs aanvinken op hit, of (b) handmatig exit-prijs invullen` als geen exit-data
+  - Section auto-opent alleen wanneer **noch** TPs noch hindsightExit beschikbaar
+- **Hint-status** in Section header: `afgeleid uit TPs ✓` / `ingevuld ✓` / `TPs aanvinken óf prijs invullen ⚠`.
+
+### Aanpak
+- Centrale derivatie in `_simTradeExit` voorkomt drift tussen verschillende paden (KPI, Trust, Edge-Erosion, trade-tabel display).
+- Test-suite uitgebreid van 8 naar 12 cases — TPs-priority over hindsightExit, partial-hit fallback, beide leeg → null.
+
+### Voor de community
+- **Heb je BT/paper trades met TPs aangevinkt op hit (✓)?** Bij update werkt analytics direct — geen extra werk. De Trust-Score, BT-vs-Real en Win-rate worden automatisch berekend uit de TP-data die al in je trade zit.
+- **Geen TPs aangevinkt?** Twee opties:
+  1. Vink je TPs aan op `hit` in de trade-modal (toggle-cyclus is open → missed → hit, dus 2 clicks per TP).
+  2. OF vul handmatig een Backtest/Paper Exit-prijs in onder de gelijknamige sectie.
+
+---
+
 ## [v12.112] — 2026-05-08
 
 UX-fix op v12.111: voor backtest/paper trades was de exit-prijs verstopt achter een collapsible "🔮 Hindsight (optioneel)" sectie, defaultOpen=false. Daardoor sloegen gebruikers het over en kregen geen analytics. Nu prominenter en context-specifiek.
