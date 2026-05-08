@@ -1048,7 +1048,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.109",released:"2026-05-08"};
+const APP_VERSION={version:"v12.110",released:"2026-05-08"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -7269,21 +7269,42 @@ function playbookErosionStats(pb,allTrades){
   return{real:stat(buckets.real),paper:stat(buckets.paper),backtest:stat(buckets.backtest)};
 }
 
-// Trust-Score: classificeer een playbook in één van 5 stadia op basis van
-// real/paper/backtest counts. Idee → Theorized → Validated → Tradeable → Bewezen.
+// Trust-Score: classificeer een playbook in één van 5 stadia op basis van TOTAAL trades
+// (real + paper + backtest + missed). v12.110: type-agnostisch ipv real-only — verlaagde
+// drempels zodat playbooks sneller "Bewezen" worden bij voldoende sample-size, ongeacht
+// of trades real, paper, backtest of missed zijn. Idee → Theorized → Validated → Tradeable → Bewezen.
 function classifyTrust(pb,allTrades){
   const e=playbookErosionStats(pb,allTrades);
-  const c={real:e.real.n,paper:e.paper.n,backtest:e.backtest.n};
-  // Bewezen: 16+ real met expectancy >0.3R
-  if(c.real>=16&&e.real.avgR>0.3)
-    return{stage:"Bewezen",fillCls:"proven",active:4,label:"BEWEZEN",color:"var(--green)",fill:"var(--green)",pct:100};
-  if(c.real>=6)
-    return{stage:"Tradeable",fillCls:"tradeable",active:3,label:"TRADEABLE",color:"var(--gold)",fill:"var(--gold)",pct:78};
-  if(c.paper>=1)
-    return{stage:"Validated",fillCls:"validated",active:2,label:"VALIDATED",color:"var(--purple)",fill:"var(--purple)",pct:58};
-  if(c.backtest>=4)
-    return{stage:"Theorized",fillCls:"theorized",active:1,label:"THEORIZED",color:"#7ab4d2",fill:"#7ab4d2",pct:38};
-  return{stage:"Idea",fillCls:"idea",active:0,label:"IDEA",color:"var(--text5)",fill:"var(--text5)",pct:18};
+  // Voeg missed trades met geldige hindsightExit toe (playbookErosionStats skipt die)
+  const linked=tradesForPlaybook(pb,allTrades);
+  let missedN=0,missedSumR=0;
+  for(const t of linked){
+    if(t.status!=="missed")continue;
+    const st=t.simType||"missed";
+    if(st!=="missed")continue; // backtest/paper zitten al in erosion
+    const entry=parseFloat(t.entry),sl=parseFloat(t.stopLoss),hx=parseFloat(t.hindsightExit);
+    if(!isFinite(entry)||!isFinite(sl)||!isFinite(hx))continue;
+    const risk=Math.abs(entry-sl);
+    if(risk<=0)continue;
+    const sign=t.direction==="short"?-1:1;
+    missedSumR+=((hx-entry)*sign)/risk;
+    missedN++;
+  }
+  const c={real:e.real.n,paper:e.paper.n,backtest:e.backtest.n,missed:missedN};
+  const total=c.real+c.paper+c.backtest+c.missed;
+  // Weighted aggregate avgR over alle types
+  const sumR=(e.real.avgR*c.real)+(e.paper.avgR*c.paper)+(e.backtest.avgR*c.backtest)+missedSumR;
+  const totalAvgR=total>0?sumR/total:0;
+  // Drempels: Bewezen = 5+ trades + edge > 0.3R. Lagere stages glijdend.
+  if(total>=5&&totalAvgR>0.3)
+    return{stage:"Bewezen",fillCls:"proven",active:4,label:"BEWEZEN",color:"var(--green)",fill:"var(--green)",pct:100,total,totalAvgR};
+  if(total>=4)
+    return{stage:"Tradeable",fillCls:"tradeable",active:3,label:"TRADEABLE",color:"var(--gold)",fill:"var(--gold)",pct:78,total,totalAvgR};
+  if(total>=2)
+    return{stage:"Validated",fillCls:"validated",active:2,label:"VALIDATED",color:"var(--purple)",fill:"var(--purple)",pct:58,total,totalAvgR};
+  if(total>=1)
+    return{stage:"Theorized",fillCls:"theorized",active:1,label:"THEORIZED",color:"#7ab4d2",fill:"#7ab4d2",pct:38,total,totalAvgR};
+  return{stage:"Idea",fillCls:"idea",active:0,label:"IDEA",color:"var(--text5)",fill:"var(--text5)",pct:18,total:0,totalAvgR:0};
 }
 
 // v12.48: Cross-Validation — voor een tendency uit real-trades, check of dezelfde
@@ -8653,8 +8674,9 @@ function PlaybookAnalyticsView({playbooks,allTrades}){
         })}
       </div>
       <div style={{fontSize:10.5,color:"var(--text3)",lineHeight:1.5,fontFamily:"var(--mono)"}}>
-        Status: <b style={{color:data.trust.color}}>{data.trust.label}</b> — {data.counts.real} real trades met {data.realStats.avgR>0?"+":""}{(data.realStats.avgR||0).toFixed(2)}R avg.
-        {data.trust.stage!=="Bewezen"&&data.counts.real<16&&<> Nog <b style={{color:"var(--text)"}}>{16-data.counts.real} real trades</b> nodig (en >0.3R behouden) voor <b style={{color:"var(--text)"}}>Bewezen</b>-status.</>}
+        Status: <b style={{color:data.trust.color}}>{data.trust.label}</b> — {data.trust.total||0} trades totaal (real + paper + backtest + missed) met {(data.trust.totalAvgR||0)>0?"+":""}{(data.trust.totalAvgR||0).toFixed(2)}R avg.
+        {data.trust.stage!=="Bewezen"&&(data.trust.total||0)<5&&<> Nog <b style={{color:"var(--text)"}}>{5-(data.trust.total||0)} trade{5-(data.trust.total||0)===1?"":"s"}</b> nodig (en avg R &gt;0.3R) voor <b style={{color:"var(--text)"}}>Bewezen</b>-status.</>}
+        {data.trust.stage!=="Bewezen"&&(data.trust.total||0)>=5&&(data.trust.totalAvgR||0)<=0.3&&<> Sample-size oké, maar edge nog te laag (huidige avg {(data.trust.totalAvgR||0).toFixed(2)}R, nodig &gt;0.3R) voor <b style={{color:"var(--text)"}}>Bewezen</b>.</>}
         {data.trust.stage==="Bewezen"&&<> Bewezen workhorse — overweeg risk-allocatie verhogen.</>}
       </div>
     </div>

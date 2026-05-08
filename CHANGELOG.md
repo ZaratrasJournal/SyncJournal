@@ -6,6 +6,32 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.110] — 2026-05-08
+
+Trust-Score type-agnostisch: alle trade-types (real + paper + backtest + missed) tellen nu mee, drempel voor Bewezen verlaagd van 16 real → 5 totaal.
+
+### Gewijzigd
+- **`classifyTrust` drempels herzien** *(2026-05-08, gevraagd door Denny)* — Vóór: progressie naar Bewezen vereiste **16 real trades** met avgR > 0.3R. Voor playbooks die voornamelijk via backtest/paper/missed worden gebouwd was Bewezen-status onbereikbaar zonder veel real-money handel. **Nu**: type-agnostische progressie:
+  - **Idee** — 0 trades
+  - **Theorized** — 1+ trade (any type)
+  - **Validated** — 2+ trades
+  - **Tradeable** — 4+ trades
+  - **Bewezen** — 5+ trades **én** weighted-avg R > 0.3R
+- **Aggregaat avgR over alle types** — Bewezen-criterium gebruikt nu een gewogen gemiddelde over real/paper/backtest/missed buckets ipv alleen real-avgR. Sample-size telt; edge-vereiste blijft >0.3R.
+- **Trust-rule bericht aangepast** in PlaybookAnalyticsView — toont totaal aantal trades over alle types met aggregaat avgR. Specifieke waarschuwingen voor twee scenarios:
+  - Sample te klein: "Nog X trades nodig"
+  - Sample oké, edge te laag: "Sample-size oké, maar edge nog te laag (huidige avg X.XXR, nodig >0.3R)"
+- **`classifyTrust` retourneert nu `total` en `totalAvgR`** velden voor downstream gebruik.
+
+### Aanpak
+- `playbookErosionStats` skipt missed-trades (bewust, om edge-erosion analysis schoon te houden), maar `classifyTrust` voegt missed nu apart toe via `hindsightExit`-derivatie.
+- Test-suite: 10 logic-cases in `tests/trust-score-thresholds.js` — alle stages, edge-cases (5 trades met avgR<0.3 = Tradeable niet Bewezen), Denny's specifieke scenario (10 BT trades).
+
+### Voor de community
+- Geen actie nodig. Bij update naar v12.110 worden bestaande playbooks heractiveerd op de nieuwe drempels — een playbook met bv. 10 backtest trades met avg +0.5R komt direct op Bewezen-status.
+
+---
+
 ## [v12.109] — 2026-05-08
 
 Win/Loss zichtbaar maken op backtest/paper/missed trades + Playbook Analytics werkt nu ook zonder hindsightExit (toont count + hint).
