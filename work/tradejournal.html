@@ -1082,7 +1082,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.117",released:"2026-05-08"};
+const APP_VERSION={version:"v12.118",released:"2026-05-08"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -8654,7 +8654,17 @@ function PlaybookAnalyticsView({playbooks,allTrades}){
 
   useEffect(()=>{
     if(!data)return;
-    if(source!=="all"&&data.counts[source]===0)setSource("real");
+    // v12.118: auto-pick eerste beschikbare bron als huidige selectie leeg is
+    if(source!=="all"&&data.counts[source]===0){
+      const firstAvail=["real","bt","paper","missed"].find(s=>data.counts[s]>0);
+      setSource(firstAvail||"real");
+    }
+    // Equity curves: pak bron die data heeft (curves vereisen exit/TPs/hindsight)
+    const hasCurveData=eqSources.some(s=>data.eqCurves[s]&&data.eqCurves[s].length>0);
+    if(!hasCurveData){
+      const firstCurve=["real","bt","paper","missed"].find(s=>data.eqCurves[s]?.length>0);
+      if(firstCurve)setEqSources([firstCurve]);
+    }
   },[pbId]);
 
   if(!playbooks.length){
@@ -8679,21 +8689,26 @@ function PlaybookAnalyticsView({playbooks,allTrades}){
       if(!data.counts.real)return null;
       return{n:data.counts.real,wr:data.erosion.real.wr,avgR:data.erosion.real.avgR,pnl:data.realStats.pnl,statsAvail:data.erosion.real.n>0};
     }
+    // v12.118: theoretische Cum PnL voor BT/paper berekenen uit calcTheoreticalPnl per trade
+    const sumTheorPnl=(arr)=>{let s=0;for(const t of arr){const p=calcTheoreticalPnl(t);if(p!==null)s+=p;}return s;};
     if(src==="bt"){
       if(!data.counts.bt)return null;
       const hasStats=data.erosion.backtest.n>0;
-      return{n:data.counts.bt,wr:hasStats?data.erosion.backtest.wr:null,avgR:hasStats?data.erosion.backtest.avgR:null,pnl:null,statsAvail:hasStats,needHindsight:!hasStats};
+      const theorPnl=sumTheorPnl(data.buckets.bt);
+      return{n:data.counts.bt,wr:hasStats?data.erosion.backtest.wr:null,avgR:hasStats?data.erosion.backtest.avgR:null,pnl:theorPnl||null,statsAvail:hasStats,needHindsight:!hasStats};
     }
     if(src==="paper"){
       if(!data.counts.paper)return null;
       const hasStats=data.erosion.paper.n>0;
-      return{n:data.counts.paper,wr:hasStats?data.erosion.paper.wr:null,avgR:hasStats?data.erosion.paper.avgR:null,pnl:null,statsAvail:hasStats,needHindsight:!hasStats};
+      const theorPnl=sumTheorPnl(data.buckets.paper);
+      return{n:data.counts.paper,wr:hasStats?data.erosion.paper.wr:null,avgR:hasStats?data.erosion.paper.avgR:null,pnl:theorPnl||null,statsAvail:hasStats,needHindsight:!hasStats};
     }
     if(src==="missed"){
       if(!data.counts.missed)return null;
       const m=playbookMissedStats(pb,allTrades);
       const hasStats=m.n>0;
-      return{n:data.counts.missed,wr:hasStats?(m.wr||0):null,avgR:hasStats?(m.avgR||0):null,pnl:hasStats?(m.theorPnl||null):null,statsAvail:hasStats,needHindsight:!hasStats};
+      const theorPnl=sumTheorPnl(data.buckets.missed);
+      return{n:data.counts.missed,wr:hasStats?(m.wr||0):null,avgR:hasStats?(m.avgR||0):null,pnl:theorPnl||(hasStats?(m.theorPnl||null):null),statsAvail:hasStats,needHindsight:!hasStats};
     }
     return null;
   };

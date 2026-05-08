@@ -6,6 +6,23 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.118] — 2026-05-08
+
+Quick-fixes Playbook Analytics: equity curve auto-defaults naar beschikbare bron + Cum. PnL toont theoretisch totaal voor BT/paper/missed.
+
+### Fixed
+- **Equity curve "Selecteer minstens één bron"** *(2026-05-08, gemeld door Denny — 10 BT trades zonder real toonden geen curve)* — Bij playbook-switch (of initial load) was eqSources hard-coded `["real"]`. Voor playbooks zonder real-trades bleef de curve leeg. **Fix**: useEffect detecteert empty curve-state en pakt automatisch eerste beschikbare bron (real → bt → paper → missed). Source-toggle voor KPIs idem.
+- **Cum. PnL toonde "theor." placeholder voor BT/paper/missed** — Nu berekent de KPI sum van `calcTheoreticalPnl(t)` over alle trades in bucket. Voor jouw 10 BT met +3.05R avg op $1000 size → toont nu daadwerkelijke theoretische PnL i.p.v. statisch "theor." label.
+
+### Aanpak
+- `_srcStats` voor bt/paper/missed berekent nu `sumTheorPnl(buckets[src])` en zet dat als `pnl` veld → KPI display formatteert via `_pbFmtUsd`.
+- useEffect bij `pbId` change: scant counts en eqCurves voor eerste beschikbare bron.
+
+### Voor de community
+- Geen actie nodig. Bij update toont Playbook Analytics nu direct data voor sample-types die je hebt — geen handmatige source-toggle meer nodig om curve te zien.
+
+---
+
 ## [v12.117] — 2026-05-08
 
 Hotfix: BT/paper trades met EXIT ingevuld toonden `+$0,00` in PnL-kolom van trades-tabel — terwijl het formulier wel `-7.85` aangaf. Oude `netPnl()` clamp van missed trades naar 0 brak v12.115 EXIT-flow.
