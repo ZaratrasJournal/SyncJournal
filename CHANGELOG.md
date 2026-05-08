@@ -6,6 +6,24 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.116] — 2026-05-08
+
+UX-fix op v12.114: knop-labels waren ambigu — leek alsof "🛑 SL hit" de status was, terwijl het de actie was. Plus state-indicator wanneer trade bulk-gemarkeerd is.
+
+### Gewijzigd
+- **Knop-labels actie-georiënteerd** *(2026-05-08, gemeld door Denny — "als ik TP op groen vink komt er SL hit te staan, klopt je logica wel?")* — Voorheen `✓ Alle TPs hit` en `🛑 SL hit` lazen als status-claims. Nu duidelijk acties:
+  - `✓ Mark als win` (klik → alle TPs naar hit)
+  - `🛑 Mark als verlies` (klik → alle TPs naar missed)
+- **State-indicator pillen** verschijnen bij volledige bulk-state:
+  - Wanneer alle TPs hit zijn: groene pill `✓ Win gemarkeerd` (geen knop, alleen status)
+  - Wanneer alle TPs missed: rode pill `🛑 Verlies gemarkeerd`
+  - De inverse-actie knop blijft beschikbaar — gebruiker kan met 1 klik switchen.
+
+### Resultaat
+Bij allHit: zie `✓ Win gemarkeerd` (status pil) + `🛑 Mark als verlies` (actie knop voor switch). Niet langer alleen "🛑 SL hit" wat verwarrend was.
+
+---
+
 ## [v12.115] — 2026-05-08
 
 EXIT-veld nu zichtbaar voor backtest/paper trades. Simpelste UX: vul exit-prijs in → analytics werkt. Geen hindsightExit of TP-toggling meer nodig.
