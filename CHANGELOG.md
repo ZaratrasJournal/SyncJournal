@@ -6,6 +6,36 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.119] — 2026-05-08
+
+**Playbook Analytics Phase 2** — 7 nieuwe analyse-secties onder de bestaande Trust-Score / KPI's / Equity Curve. Layer-patterns, sessie-heatmap, criteria-impact, mistakes, emotions, missed-opportunities, en auto-insights.
+
+### Toegevoegd
+- **📐 Layer-Pattern bars** — trades gegroepeerd op layer-combinatie (`4H+SFP → 15m+BOS+MSB`). Per pattern: avgR, n, sortering op edge. Min. 1 trade/pattern. Toont top 8.
+- **📅 Sessie × Weekday heatmap** — 8 sessies (Asia AM/PM, EU AM/PM, US AM/PM/Late, Weekend) × 7 weekdagen. Cel-kleur intensiteit op |avgR|. Cellen met data tonen `+1.5R · n=3`.
+- **⏰ Tijd-van-dag bars** — 2-uurs blokken (00:00–02:00 etc). Welk uur is je sweet-spot?
+- **🎓 Per Grade · 💱 Per Pair · 🧭 Per Direction** — drie bars-cards op één rij. Grade volgt A+/A/B/C ordering. Pair top 5 op edge. Direction long/short voor bias-detectie.
+- **✅ Criteria-impact ranking** *(real only)* — voor elk criterium in `pb.criteria`: % afgevinkt in winners vs losers + lift-score. Hoge lift = sterke voorspeller. Vereist `complianceChecks` op real trades.
+- **📊 Compliance × Outcome split** *(real only)* — high (≥80% checks) vs low compliance bars + WR/avgR/PnL per group.
+- **😤 Mistake-tags ranking** *(real only)* — top 6 mistakes op cumulatieve PnL-impact. "Welke fouten kosten het meest?"
+- **🧠 Emotion-impact ranking** *(real only)* — top 6 emoties op avgR. "Geduldig 100% WR / FOMO 0%"
+- **👻 Missed-opportunities detail** *(alleen als missed > 0)* — n, theoretische avgR, cum. PnL, % van real PnL. Plus top reden-tags ranking uit `missedReasonTags`.
+- **💡 Auto-Insights cards** — derive 2-4 highlight statements: best layer, worst layer, best session-cell, worst mistake, best emotion. Smart heuristieken (min. 2 trades, drempels op avgR/PnL).
+
+### Aanpak
+- Nieuwe helpers in `tradejournal.html`: `_pbTradeR`, `_pbTradePnl`, `_pbGroupBy`, `_pbTagFreq`, `_pbLayerKey`, `_pbSessionWeekdayKey`, `_pbHourKey`, `_pbCriteriaImpact`, `_pbComplianceSplit`, `_pbAutoInsights`. Alle samengetrokken in 1 helper-blok boven `PlaybookAnalyticsView`.
+- Universele R-derivatie via `_pbTradeR(t)`: real trades → `calcRMultiple`, sim trades → `calcTheoreticalR` (= trade.exit / hit-TPs / hindsightExit fallback chain).
+- Sections renderen alleen wanneer relevante data aanwezig is. Per-Grade/Pair/Direction tonen subtiele empty-states (50% opacity) als data ontbreekt.
+- Auto-Insights heuristieken: best layer/session/emotion vereisen `n>=2` AND `avgR>0.5`. Worst mistake vereist `sumPnl<-50`. Output max 4 cards.
+- Test-suite: `tests/playbook-analytics-phase2.js` — 6 logic-cases (layer-key uit layers, fallback uit setupTags, groupBy met avgR, real vs sim mixed, skip zonder R-data, tag-frequency).
+
+### Voor de community
+- Geen actie nodig. Bij update naar v12.119 ziet je Playbook Analytics direct de nieuwe sections op basis van bestaande trade-data.
+- **Voor 10 BT trades zoals Denny's voorbeeld**: Layer-pattern (1 pattern uit '1H+BOS+MSB'), Sessie-heatmap (London PM/AM/Weekend cells), Per Grade (A+/A/B/C verdeling), Auto-Insights (sweet-spot identificatie). Mistakes/Emotions/Criteria zijn empty (zijn real-only) — die vullen zich naarmate je real trades neemt.
+- **Tip**: vul `tradeGrade` (A+/A/B/C) op je trades om Per-Grade breakdown te zien. Vul `complianceChecks` op real trades voor criteria-impact ranking.
+
+---
+
 ## [v12.118] — 2026-05-08
 
 Quick-fixes Playbook Analytics: equity curve auto-defaults naar beschikbare bron + Cum. PnL toont theoretisch totaal voor BT/paper/missed.

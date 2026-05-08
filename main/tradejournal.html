@@ -1082,7 +1082,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.118",released:"2026-05-08"};
+const APP_VERSION={version:"v12.119",released:"2026-05-08"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -8596,16 +8596,174 @@ function _pbEquityReal(trades){
   return sorted.map(t=>{cum+=netPnl(t);return{date:(t.closeTime||t.date||"").slice(5,10),cum};});
 }
 function _pbEquityTheoretical(trades,fallbackR=100){
+  // v12.119: gebruik calcTheoreticalPnl (= _simTradeExit chain) zodat curve werkt voor
+  // hit-TPs, all-missed (SL), mixed, hindsightExit én trade.exit varianten.
   const sorted=[...trades].sort((a,b)=>(a.date||"").localeCompare(b.date||""));
   let cum=0;
   return sorted.map(t=>{
-    const e=parseFloat(t.entry),sl=parseFloat(t.stopLoss),hx=parseFloat(t.hindsightExit);
-    if(!isFinite(e)||!isFinite(sl)||!isFinite(hx)||Math.abs(e-sl)<=0)return null;
-    const r=((hx-e)*(t.direction==="short"?-1:1))/Math.abs(e-sl);
-    const $perR=parseFloat(t.riskUsd)||fallbackR;
-    cum+=r*$perR;
+    const p=calcTheoreticalPnl(t);
+    if(p===null){
+      // Fallback: probeer R-based curve via riskUsd
+      const r=calcTheoreticalR(t);
+      if(r===null)return null;
+      const $perR=parseFloat(t.riskUsd)||fallbackR;
+      cum+=r*$perR;
+    }else{
+      cum+=p;
+    }
     return{date:(t.date||"").slice(5,10),cum};
   }).filter(Boolean);
+}
+
+// ─── Phase 2 Playbook Analytics helpers (v12.119) ─────────────────────────
+// Universele R-multiple per trade (real of sim). Returnt null als niet berekenbaar.
+function _pbTradeR(t){
+  if(!t)return null;
+  if(t.status!=="missed")return calcRMultiple(t);
+  return calcTheoreticalR(t);
+}
+// Universele PnL per trade (real of sim). Voor sim: gebruikt user-pnl of theoretisch.
+function _pbTradePnl(t){
+  if(!t)return 0;
+  if(t.status!=="missed")return netPnl(t);
+  const p=parseFloat(t.pnl);
+  if(!isNaN(p))return p;
+  return calcTheoreticalPnl(t)||0;
+}
+// Group trades by key-function. Returns array van {key, n, sumR, sumPnl, wins, avgR, wr}.
+function _pbGroupBy(trades,keyFn){
+  const map=new Map();
+  for(const t of trades){
+    const r=_pbTradeR(t);
+    if(r===null)continue;
+    const k=keyFn(t);
+    if(k===null||k===undefined||k==="")continue;
+    if(!map.has(k))map.set(k,{key:k,n:0,sumR:0,sumPnl:0,wins:0});
+    const g=map.get(k);
+    g.n++;
+    g.sumR+=r;
+    g.sumPnl+=_pbTradePnl(t);
+    if(r>0)g.wins++;
+  }
+  return[...map.values()].map(g=>({...g,avgR:g.n?g.sumR/g.n:0,wr:g.n?g.wins/g.n*100:0}));
+}
+// Tag-frequency: trades met arrays van tags (mistakes, emotions, setupTags, etc.)
+function _pbTagFreq(trades,tagsFn){
+  const map=new Map();
+  for(const t of trades){
+    const r=_pbTradeR(t);
+    if(r===null)continue;
+    const tags=tagsFn(t)||[];
+    for(const tag of tags){
+      if(!tag)continue;
+      if(!map.has(tag))map.set(tag,{key:tag,n:0,sumR:0,sumPnl:0,wins:0});
+      const g=map.get(tag);
+      g.n++;
+      g.sumR+=r;
+      g.sumPnl+=_pbTradePnl(t);
+      if(r>0)g.wins++;
+    }
+  }
+  return[...map.values()].map(g=>({...g,avgR:g.n?g.sumR/g.n:0,wr:g.n?g.wins/g.n*100:0}));
+}
+// Layer-pattern key: "4H+SFP → 15m+BOS" of "BOS+MSB" als geen layers.
+function _pbLayerKey(t){
+  const layers=t.layers||[];
+  if(layers.length===0){
+    const tags=t.setupTags||[];
+    if(tags.length===0)return null;
+    return tags.slice(0,3).join("+");
+  }
+  return layers.map(l=>{
+    const tf=l.timeframe||"?";
+    const setups=(l.setups||[]).join("+");
+    return setups?`${tf}+${setups}`:tf;
+  }).join(" → ");
+}
+// Sessie × Weekday key + losse keys
+function _pbSessionWeekdayKey(t){
+  if(!t.date||!t.time)return null;
+  const dt=new Date(t.date+"T"+(t.time.length===5?t.time+":00":t.time));
+  if(isNaN(dt.getTime()))return null;
+  const sess=getSessionAt(dt);
+  const wdParts=new Intl.DateTimeFormat("en-GB",{timeZone:"Europe/Amsterdam",weekday:"short"}).formatToParts(dt);
+  const wd=wdParts.find(p=>p.type==="weekday")?.value||"";
+  return`${sess}|${wd}`;
+}
+// Hour-of-day (0-23) — voor tijd-distributie
+function _pbHourKey(t){
+  if(!t.date||!t.time)return null;
+  const dt=new Date(t.date+"T"+(t.time.length===5?t.time+":00":t.time));
+  if(isNaN(dt.getTime()))return null;
+  const h=parseInt(new Intl.DateTimeFormat("en-GB",{timeZone:"Europe/Amsterdam",hour:"numeric",hour12:false}).formatToParts(dt).find(p=>p.type==="hour")?.value||"0");
+  // Bucket per 2-uur voor compactere display
+  const start=Math.floor(h/2)*2;
+  return`${String(start).padStart(2,"0")}:00–${String(start+2).padStart(2,"0")}:00`;
+}
+// Criteria-impact: voor elk criterium in pb.criteria, % aanwezig in winners vs verliezers
+function _pbCriteriaImpact(pb,trades){
+  const criteria=(pb.criteria||[]).filter(c=>c&&c.text);
+  if(!criteria.length)return[];
+  const realTrades=trades.filter(t=>t.status!=="missed"&&!isNaN(parseFloat(t.pnl)));
+  if(realTrades.length<2)return[];
+  const winners=realTrades.filter(t=>netPnl(t)>0);
+  const losers=realTrades.filter(t=>netPnl(t)<0);
+  if(winners.length===0||losers.length===0)return[];
+  return criteria.map(c=>{
+    const ct=(c.text||"").toLowerCase().trim();
+    const winChecked=winners.filter(t=>(t.complianceChecks||[]).some(cc=>(cc.text||cc).toLowerCase().trim()===ct)).length;
+    const lossChecked=losers.filter(t=>(t.complianceChecks||[]).some(cc=>(cc.text||cc).toLowerCase().trim()===ct)).length;
+    const winPct=winners.length?(winChecked/winners.length*100):0;
+    const lossPct=losers.length?(lossChecked/losers.length*100):0;
+    const lift=winPct-lossPct;
+    return{text:c.text,winPct,lossPct,winChecked,lossChecked,winN:winners.length,lossN:losers.length,lift};
+  }).filter(c=>c.winN+c.lossN>0).sort((a,b)=>b.lift-a.lift);
+}
+// Compliance × outcome split: high (>=80%) vs low (<80%)
+function _pbComplianceSplit(trades){
+  const real=trades.filter(t=>t.status!=="missed"&&!isNaN(parseFloat(t.pnl))&&typeof t.complianceScore==="number");
+  if(real.length<2)return null;
+  const high=real.filter(t=>t.complianceScore>=80);
+  const low=real.filter(t=>t.complianceScore<80);
+  const stat=(arr)=>{
+    if(!arr.length)return{n:0,wr:0,avgR:0,sumPnl:0};
+    const wins=arr.filter(t=>netPnl(t)>0).length;
+    const sumPnl=arr.reduce((s,t)=>s+netPnl(t),0);
+    const sumR=arr.reduce((s,t)=>s+(_trR(t)||0),0);
+    return{n:arr.length,wr:wins/arr.length*100,avgR:sumR/arr.length,sumPnl};
+  };
+  return{high:stat(high),low:stat(low),total:real.length};
+}
+// Auto-insights: derive 2-4 highlight statements uit data
+function _pbAutoInsights(data,layerStats,sessionGrid,mistakeStats,emotionStats){
+  const out=[];
+  // Best layer-pattern
+  const bestLayer=[...layerStats].filter(l=>l.n>=2).sort((a,b)=>b.avgR-a.avgR)[0];
+  if(bestLayer&&bestLayer.avgR>0.5){
+    out.push({cls:"good",ic:"🎯",text:`<b>Sweet-spot:</b> "${bestLayer.key}" doet ${bestLayer.n} trades met +${bestLayer.avgR.toFixed(1)}R avg, ${bestLayer.wr.toFixed(0)}% WR. Focus op deze setup.`});
+  }
+  // Worst layer-pattern
+  const worstLayer=[...layerStats].filter(l=>l.n>=2).sort((a,b)=>a.avgR-b.avgR)[0];
+  if(worstLayer&&worstLayer.avgR<-0.3&&worstLayer!==bestLayer){
+    out.push({cls:"warn",ic:"⚠️",text:`<b>Lekkage:</b> "${worstLayer.key}" doet ${worstLayer.n} trades met ${worstLayer.avgR.toFixed(1)}R avg. Overweeg deze setup als C-grade of skippen.`});
+  }
+  // Best session-weekday cell
+  const bestCell=[...sessionGrid].filter(c=>c.n>=2).sort((a,b)=>b.avgR-a.avgR)[0];
+  if(bestCell&&bestCell.avgR>0.5){
+    const[sess,wd]=bestCell.key.split("|");
+    out.push({cls:"info",ic:"📅",text:`<b>${sess} ${wd}</b> sweet-spot: ${bestCell.n} trades met +${bestCell.avgR.toFixed(1)}R avg.`});
+  }
+  // Worst mistake
+  const worstMistake=[...mistakeStats].filter(m=>m.n>=2).sort((a,b)=>a.sumPnl-b.sumPnl)[0];
+  if(worstMistake&&worstMistake.sumPnl<-50){
+    out.push({cls:"warn",ic:"😤",text:`<b>"${worstMistake.key}"</b> kost je het meest: ${worstMistake.n} trades, $${Math.abs(worstMistake.sumPnl).toFixed(0)} verlies. Check je playbook-rules.`});
+  }
+  // Best emotion
+  const bestEmotion=[...emotionStats].filter(e=>e.n>=2).sort((a,b)=>b.avgR-a.avgR)[0];
+  if(bestEmotion&&bestEmotion.avgR>0.5){
+    out.push({cls:"good",ic:"🧠",text:`<b>"${bestEmotion.key}"</b> mood = edge: ${bestEmotion.n} trades, +${bestEmotion.avgR.toFixed(1)}R avg, ${bestEmotion.wr.toFixed(0)}% WR.`});
+  }
+  return out.slice(0,4);
 }
 function _pbSmoothPath(pts){
   if(!pts.length)return"";
@@ -8649,7 +8807,32 @@ function PlaybookAnalyticsView({playbooks,allTrades}){
     const trust=classifyTrust(pb,allTrades);
     const realStats=playbookStats(pb,allTrades);
     const eqCurves={real:_pbEquityReal(buckets.real),bt:_pbEquityTheoretical(buckets.bt),paper:_pbEquityTheoretical(buckets.paper),missed:_pbEquityTheoretical(buckets.missed)};
-    return{linked,buckets,counts,total,erosion,trust,realStats,eqCurves};
+    // v12.119 Phase 2: aggregate analyses voor breakdowns
+    // Pool: alle trades met R-data (real PnL OR sim met derivable exit)
+    const analyzable=linked.filter(t=>_pbTradeR(t)!==null);
+    const realOnly=linked.filter(t=>t.status!=="missed"&&!isNaN(parseFloat(t.pnl)));
+    const layerStats=_pbGroupBy(analyzable,_pbLayerKey).sort((a,b)=>b.avgR-a.avgR);
+    const sessionGrid=_pbGroupBy(analyzable,_pbSessionWeekdayKey);
+    const hourStats=_pbGroupBy(analyzable,_pbHourKey).sort((a,b)=>a.key.localeCompare(b.key));
+    const gradeStats=_pbGroupBy(analyzable,t=>t.tradeGrade||null).sort((a,b)=>{
+      const ord={"A+":0,"A":1,"B":2,"C":3};
+      return(ord[a.key]??99)-(ord[b.key]??99);
+    });
+    const pairStats=_pbGroupBy(analyzable,t=>t.pair||null).sort((a,b)=>b.avgR-a.avgR);
+    const directionStats=_pbGroupBy(analyzable,t=>t.direction||null);
+    const mistakeStats=_pbTagFreq(realOnly,t=>t.mistakeTags).sort((a,b)=>a.sumPnl-b.sumPnl);
+    const emotionStats=_pbTagFreq(realOnly,t=>t.emotionTags).sort((a,b)=>b.avgR-a.avgR);
+    const criteriaImpact=_pbCriteriaImpact(pb,linked);
+    const complianceSplit=_pbComplianceSplit(linked);
+    // Missed-opportunities detail
+    const missedTheor={n:buckets.missed.length,sumPnl:buckets.missed.reduce((s,t)=>s+(calcTheoreticalPnl(t)||0),0),avgR:0};
+    if(buckets.missed.length){
+      const rs=buckets.missed.map(t=>calcTheoreticalR(t)).filter(r=>r!==null);
+      missedTheor.avgR=rs.length?rs.reduce((s,r)=>s+r,0)/rs.length:0;
+    }
+    const missedReasons=_pbTagFreq(buckets.missed,t=>t.missedReasonTags).sort((a,b)=>b.n-a.n);
+    const insights=_pbAutoInsights(null,layerStats,sessionGrid,mistakeStats,emotionStats);
+    return{linked,buckets,counts,total,erosion,trust,realStats,eqCurves,analyzable,realOnly,layerStats,sessionGrid,hourStats,gradeStats,pairStats,directionStats,mistakeStats,emotionStats,criteriaImpact,complianceSplit,missedTheor,missedReasons,insights};
   },[pb,allTrades]);
 
   useEffect(()=>{
@@ -8844,6 +9027,234 @@ function PlaybookAnalyticsView({playbooks,allTrades}){
     </div>
 
     <PlaybookEquityCurve eqCurves={data.eqCurves} eqSources={eqSources} setEqSources={setEqSources}/>
+
+    {/* === Phase 2: Layer-Pattern bars === */}
+    {data.layerStats.length>0&&<div style={{...cardStyle,marginTop:18}}>
+      <h4 style={sectionTitle}>📐 Layer-Pattern · welke setups werken?</h4>
+      <div style={subStyle}>Trades gegroepeerd op layer-combinatie (timeframe + setups). Min. 1 trade per pattern. Sortering: hoogste avgR eerst.</div>
+      <div style={{display:"flex",flexDirection:"column",gap:8}}>
+        {data.layerStats.slice(0,8).map((l,i)=>{
+          const pct=Math.min(95,Math.max(5,Math.abs(l.avgR)*40+10));
+          const isWin=l.avgR>=0;
+          return(<div key={i} style={{display:"grid",gridTemplateColumns:"1fr 100px 90px",gap:10,alignItems:"center",fontSize:11.5}}>
+            <div style={{fontFamily:"var(--mono)",color:"var(--text2)",fontWeight:600,fontSize:11}}>{l.key}</div>
+            <div style={{height:18,background:"var(--bg3)",borderRadius:4,position:"relative",overflow:"hidden",border:"1px solid var(--border1)",display:"flex",alignItems:"center",justifyContent:isWin?"flex-start":"flex-end"}}>
+              <div style={{height:"100%",width:`${pct}%`,background:isWin?"linear-gradient(90deg,var(--green),rgba(46,170,111,0.6))":"linear-gradient(90deg,var(--red),rgba(224,85,85,0.6))",borderRadius:3}}/>
+            </div>
+            <div style={{textAlign:"right",fontFamily:"var(--mono)",fontWeight:700,color:isWin?"var(--green)":"var(--red)"}}>{isWin?"+":""}{l.avgR.toFixed(1)}R · {l.n}</div>
+          </div>);
+        })}
+      </div>
+    </div>}
+
+    {/* === Phase 2: Sessie × Weekday heatmap + Hour distribution (2-col) === */}
+    {(data.sessionGrid.length>0||data.hourStats.length>0)&&<div style={{display:"grid",gridTemplateColumns:"1.2fr 1fr",gap:18,marginTop:18}}>
+      {data.sessionGrid.length>0&&<div style={cardStyle}>
+        <h4 style={sectionTitle}>📅 Sessie × Weekday — wanneer werkt deze playbook?</h4>
+        <div style={subStyle}>avgR per (sessie, dag). Min. 1 trade per cel. Cellen met geen data = grijs.</div>
+        {(()=>{
+          const days=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+          const dayLbls={Mon:"Ma",Tue:"Di",Wed:"Wo",Thu:"Do",Fri:"Vr",Sat:"Za",Sun:"Zo"};
+          const sessions=["Asia AM","Asia PM","London AM","London PM","US AM","US PM","US Late","Weekend"];
+          const sessLbls={"Asia AM":"🌏 Asia AM","Asia PM":"🌏 Asia PM","London AM":"🇪🇺 EU AM","London PM":"🇪🇺 EU PM","US AM":"🇺🇸 US AM","US PM":"🇺🇸 US PM","US Late":"🌙 US Late","Weekend":"🏖 Weekend"};
+          const grid={};
+          data.sessionGrid.forEach(g=>{const[s,d]=g.key.split("|");grid[`${s}|${d}`]=g;});
+          const activeSess=sessions.filter(s=>days.some(d=>grid[`${s}|${d}`]));
+          if(!activeSess.length)return<div style={{padding:"20px",textAlign:"center",color:"var(--text4)",fontSize:11}}>Geen sessie-data beschikbaar</div>;
+          return(<div style={{display:"grid",gridTemplateColumns:`90px repeat(${days.length},1fr)`,gap:3,fontFamily:"var(--mono)",fontSize:10}}>
+            <div></div>
+            {days.map(d=><div key={d} style={{padding:"5px 4px",textAlign:"center",fontSize:9,color:"var(--text4)",fontWeight:700,textTransform:"uppercase"}}>{dayLbls[d]}</div>)}
+            {activeSess.map(s=><React.Fragment key={s}>
+              <div style={{padding:"6px 4px",textAlign:"right",fontSize:9,color:"var(--text4)",fontWeight:700}}>{sessLbls[s]}</div>
+              {days.map(d=>{
+                const cell=grid[`${s}|${d}`];
+                if(!cell)return<div key={d} style={{padding:"8px 4px",textAlign:"center",borderRadius:4,background:"var(--bg3)",color:"var(--text5)",fontSize:9}}>—</div>;
+                const isWin=cell.avgR>=0;
+                const intensity=Math.min(0.55,Math.max(0.12,Math.abs(cell.avgR)*0.18));
+                const bg=isWin?`rgba(46,170,111,${intensity})`:`rgba(224,85,85,${intensity})`;
+                const color=isWin?"var(--green)":"var(--red)";
+                const border=isWin?"var(--green-border)":"var(--red-border)";
+                return(<div key={d} title={`${s} · ${dayLbls[d]} · ${cell.n} trades`} style={{padding:"7px 3px",textAlign:"center",borderRadius:4,background:bg,color,border:`1px solid ${border}`,fontWeight:700,fontSize:10}}>{isWin?"+":""}{cell.avgR.toFixed(1)}<div style={{fontSize:8,fontWeight:600,opacity:0.7,marginTop:1}}>n={cell.n}</div></div>);
+              })}
+            </React.Fragment>)}
+          </div>);
+        })()}
+      </div>}
+      {data.hourStats.length>0&&<div style={cardStyle}>
+        <h4 style={sectionTitle}>⏰ Tijd-van-dag (CET)</h4>
+        <div style={subStyle}>avgR per 2-uurs blok. Welk uur is je sweet-spot?</div>
+        <div style={{display:"flex",flexDirection:"column",gap:6}}>
+          {data.hourStats.map((h,i)=>{
+            const isWin=h.avgR>=0;
+            const pct=Math.min(95,Math.max(5,Math.abs(h.avgR)*40+10));
+            return(<div key={i} style={{display:"grid",gridTemplateColumns:"100px 1fr 70px",gap:8,alignItems:"center",fontSize:11}}>
+              <div style={{fontFamily:"var(--mono)",color:"var(--text2)",fontWeight:600,fontSize:10.5}}>{h.key}</div>
+              <div style={{height:14,background:"var(--bg3)",borderRadius:3,position:"relative",overflow:"hidden",border:"1px solid var(--border1)",display:"flex",alignItems:"center",justifyContent:isWin?"flex-start":"flex-end"}}>
+                <div style={{height:"100%",width:`${pct}%`,background:isWin?"var(--green)":"var(--red)",opacity:0.65,borderRadius:2}}/>
+              </div>
+              <div style={{textAlign:"right",fontFamily:"var(--mono)",fontWeight:700,fontSize:10.5,color:isWin?"var(--green)":"var(--red)"}}>{isWin?"+":""}{h.avgR.toFixed(1)}R · {h.n}</div>
+            </div>);
+          })}
+        </div>
+      </div>}
+    </div>}
+
+    {/* === Phase 2: Per Grade / Pair / Direction (3-col) === */}
+    {(data.gradeStats.length>0||data.pairStats.length>0||data.directionStats.length>0)&&<div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:14,marginTop:18}}>
+      {data.gradeStats.length>0?<div style={cardStyle}>
+        <h4 style={sectionTitle}>🎓 Per Grade</h4>
+        <div style={subStyle}>conviction-niveau (A+/A/B/C)</div>
+        {data.gradeStats.map((g,i)=>(<div key={i} style={{display:"grid",gridTemplateColumns:"40px 1fr 70px",gap:8,alignItems:"center",fontSize:11,marginBottom:5}}>
+          <span style={{fontFamily:"var(--mono)",fontWeight:700,color:"var(--gold)"}}>{g.key}</span>
+          <div style={{height:14,background:"var(--bg3)",borderRadius:3,position:"relative",overflow:"hidden",border:"1px solid var(--border1)",display:"flex",alignItems:"center",justifyContent:g.avgR>=0?"flex-start":"flex-end"}}>
+            <div style={{height:"100%",width:`${Math.min(95,Math.max(5,Math.abs(g.avgR)*30+10))}%`,background:g.avgR>=0?"var(--green)":"var(--red)",opacity:0.65,borderRadius:2}}/>
+          </div>
+          <span style={{textAlign:"right",fontFamily:"var(--mono)",fontWeight:700,fontSize:10.5,color:g.avgR>=0?"var(--green)":"var(--red)"}}>{g.avgR>=0?"+":""}{g.avgR.toFixed(1)}R · {g.n}</span>
+        </div>))}
+      </div>:<div style={{...cardStyle,opacity:0.5}}><h4 style={sectionTitle}>🎓 Per Grade</h4><div style={{...subStyle,padding:"8px 0",color:"var(--text5)",fontSize:11}}>Geen grade-data — vul tradeGrade in om te zien</div></div>}
+      {data.pairStats.length>0?<div style={cardStyle}>
+        <h4 style={sectionTitle}>💱 Per Pair</h4>
+        <div style={subStyle}>welk instrument werkt het best?</div>
+        {data.pairStats.slice(0,5).map((p,i)=>(<div key={i} style={{display:"grid",gridTemplateColumns:"90px 1fr 70px",gap:8,alignItems:"center",fontSize:11,marginBottom:5}}>
+          <span style={{fontFamily:"var(--mono)",color:"var(--text2)",fontSize:10.5,fontWeight:600}}>{p.key}</span>
+          <div style={{height:14,background:"var(--bg3)",borderRadius:3,position:"relative",overflow:"hidden",border:"1px solid var(--border1)",display:"flex",alignItems:"center",justifyContent:p.avgR>=0?"flex-start":"flex-end"}}>
+            <div style={{height:"100%",width:`${Math.min(95,Math.max(5,Math.abs(p.avgR)*30+10))}%`,background:p.avgR>=0?"var(--green)":"var(--red)",opacity:0.65,borderRadius:2}}/>
+          </div>
+          <span style={{textAlign:"right",fontFamily:"var(--mono)",fontWeight:700,fontSize:10.5,color:p.avgR>=0?"var(--green)":"var(--red)"}}>{p.avgR>=0?"+":""}{p.avgR.toFixed(1)}R · {p.n}</span>
+        </div>))}
+      </div>:<div style={{...cardStyle,opacity:0.5}}><h4 style={sectionTitle}>💱 Per Pair</h4><div style={{...subStyle,padding:"8px 0",color:"var(--text5)",fontSize:11}}>Geen pair-variatie</div></div>}
+      {data.directionStats.length>0?<div style={cardStyle}>
+        <h4 style={sectionTitle}>🧭 Per Direction</h4>
+        <div style={subStyle}>long vs short bias?</div>
+        {data.directionStats.map((d,i)=>(<div key={i} style={{display:"grid",gridTemplateColumns:"60px 1fr 70px",gap:8,alignItems:"center",fontSize:11,marginBottom:5}}>
+          <span style={{padding:"2px 8px",borderRadius:4,fontSize:9.5,fontWeight:700,fontFamily:"var(--mono)",letterSpacing:".06em",textAlign:"center",background:d.key==="long"?"var(--green-dim)":"var(--red-dim)",color:d.key==="long"?"var(--green)":"var(--red)",border:`1px solid ${d.key==="long"?"var(--green-border)":"var(--red-border)"}`}}>{d.key.toUpperCase()}</span>
+          <div style={{height:14,background:"var(--bg3)",borderRadius:3,position:"relative",overflow:"hidden",border:"1px solid var(--border1)",display:"flex",alignItems:"center",justifyContent:d.avgR>=0?"flex-start":"flex-end"}}>
+            <div style={{height:"100%",width:`${Math.min(95,Math.max(5,Math.abs(d.avgR)*30+10))}%`,background:d.avgR>=0?"var(--green)":"var(--red)",opacity:0.65,borderRadius:2}}/>
+          </div>
+          <span style={{textAlign:"right",fontFamily:"var(--mono)",fontWeight:700,fontSize:10.5,color:d.avgR>=0?"var(--green)":"var(--red)"}}>{d.avgR>=0?"+":""}{d.avgR.toFixed(1)}R · {d.n}</span>
+        </div>))}
+      </div>:null}
+    </div>}
+
+    {/* === Phase 2: Criteria-impact + Compliance split (real-only) === */}
+    {(data.criteriaImpact.length>0||data.complianceSplit)&&<div style={{display:"grid",gridTemplateColumns:"1.3fr 1fr",gap:18,marginTop:18}}>
+      {data.criteriaImpact.length>0?<div style={cardStyle}>
+        <h4 style={sectionTitle}>✅ Criteria-impact ranking <span style={{fontSize:9,color:"var(--text5)",fontWeight:600,marginLeft:6}}>real only</span></h4>
+        <div style={subStyle}>per criterium: % afgevinkt in winners vs losers. Lift = winnings-aandeel minus losers-aandeel. Hoge lift = sterke voorspeller.</div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 70px 70px 70px",gap:8,padding:"4px 8px 6px",fontSize:9,fontFamily:"var(--mono)",fontWeight:700,color:"var(--text4)",textTransform:"uppercase",letterSpacing:".07em"}}>
+          <span>Criterium</span><span style={{textAlign:"right"}}>In wins</span><span style={{textAlign:"right"}}>In losses</span><span style={{textAlign:"right"}}>Lift</span>
+        </div>
+        <div style={{display:"flex",flexDirection:"column",gap:5}}>
+          {data.criteriaImpact.map((c,i)=>{
+            const cls=c.lift>=15?"gain":c.lift<=-15?"drag":"mixed";
+            const accent=cls==="gain"?"var(--green)":cls==="drag"?"var(--red)":"var(--text4)";
+            return(<div key={i} style={{display:"grid",gridTemplateColumns:"1fr 70px 70px 70px",gap:8,alignItems:"center",padding:"7px 9px",borderRadius:6,fontSize:11,border:"1px solid var(--border1)",background:"var(--bg3)",borderLeft:`3px solid ${accent}`}}>
+              <span style={{color:"var(--text2)",fontWeight:500}}>{c.text}</span>
+              <span style={{textAlign:"right",fontFamily:"var(--mono)",fontWeight:700,fontSize:11,color:cls==="gain"?"var(--green)":"var(--text2)"}}>{c.winPct.toFixed(0)}%</span>
+              <span style={{textAlign:"right",fontFamily:"var(--mono)",fontWeight:700,fontSize:11,color:cls==="drag"?"var(--red)":"var(--text2)"}}>{c.lossPct.toFixed(0)}%</span>
+              <span style={{textAlign:"right",fontFamily:"var(--mono)",fontWeight:700,fontSize:11.5,color:accent}}>{c.lift>=0?"+":""}{c.lift.toFixed(0)}pp</span>
+            </div>);
+          })}
+        </div>
+      </div>:null}
+      {data.complianceSplit?<div style={cardStyle}>
+        <h4 style={sectionTitle}>📊 Compliance × Outcome</h4>
+        <div style={subStyle}>Trades met ≥80% criteria afgevinkt vs &lt;80%. Werkt jouw discipline?</div>
+        {(()=>{
+          const co=data.complianceSplit;
+          const total=co.high.n+co.low.n;
+          const hp=total?(co.high.n/total*100).toFixed(0):0;
+          return(<div style={{padding:"14px 18px",background:"var(--gold-dim)",border:"1px solid var(--gold-border)",borderRadius:10}}>
+            <div style={{display:"flex",height:38,borderRadius:6,overflow:"hidden",marginBottom:12,border:"1px solid var(--border1)",background:"var(--bg3)"}}>
+              {co.high.n>0&&<div style={{flex:co.high.n,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"var(--mono)",fontSize:11,fontWeight:700,padding:"0 8px",color:"var(--text)",background:"linear-gradient(90deg,rgba(46,170,111,0.7),rgba(46,170,111,0.5))"}}>{co.high.n} high ({hp}%)</div>}
+              {co.low.n>0&&<div style={{flex:co.low.n,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"var(--mono)",fontSize:11,fontWeight:700,padding:"0 8px",color:"var(--text)",background:"linear-gradient(90deg,rgba(224,85,85,0.5),rgba(224,85,85,0.7))"}}>{co.low.n} low</div>}
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+              <div style={{padding:"10px 12px",background:"var(--bg3)",borderRadius:8,border:"1px solid var(--border1)"}}>
+                <div style={{fontSize:9,color:"var(--text4)",fontWeight:700,textTransform:"uppercase",letterSpacing:".07em",marginBottom:4}}>High-compliance ({co.high.n})</div>
+                <div style={{fontFamily:"var(--mono)",fontWeight:700,fontSize:13,color:co.high.avgR>=0?"var(--green)":"var(--red)"}}>{co.high.wr.toFixed(0)}% WR · {co.high.avgR>=0?"+":""}{co.high.avgR.toFixed(2)}R</div>
+                <div style={{fontFamily:"var(--mono)",fontSize:10,color:"var(--text4)",marginTop:2}}>{_pbFmtUsd(co.high.sumPnl)} totaal</div>
+              </div>
+              <div style={{padding:"10px 12px",background:"var(--bg3)",borderRadius:8,border:"1px solid var(--border1)"}}>
+                <div style={{fontSize:9,color:"var(--text4)",fontWeight:700,textTransform:"uppercase",letterSpacing:".07em",marginBottom:4}}>Low-compliance ({co.low.n})</div>
+                <div style={{fontFamily:"var(--mono)",fontWeight:700,fontSize:13,color:co.low.avgR>=0?"var(--green)":"var(--red)"}}>{co.low.wr.toFixed(0)}% WR · {co.low.avgR>=0?"+":""}{co.low.avgR.toFixed(2)}R</div>
+                <div style={{fontFamily:"var(--mono)",fontSize:10,color:"var(--text4)",marginTop:2}}>{_pbFmtUsd(co.low.sumPnl)} totaal</div>
+              </div>
+            </div>
+          </div>);
+        })()}
+      </div>:null}
+    </div>}
+
+    {/* === Phase 2: Mistakes + Emotions (real-only) === */}
+    {(data.mistakeStats.length>0||data.emotionStats.length>0)&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:18,marginTop:18}}>
+      {data.mistakeStats.length>0?<div style={cardStyle}>
+        <h4 style={sectionTitle}>😤 Mistake-tags · top kosten <span style={{fontSize:9,color:"var(--text5)",fontWeight:600,marginLeft:6}}>real only</span></h4>
+        <div style={subStyle}>Welke fouten kostten R in deze playbook? Sortering: laagste sumPnl eerst (= grootste verlies).</div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 50px 60px 80px",gap:8,padding:"4px 8px 6px",fontSize:9,fontFamily:"var(--mono)",fontWeight:700,color:"var(--text4)",textTransform:"uppercase",letterSpacing:".07em"}}>
+          <span>Tag</span><span style={{textAlign:"right"}}>×</span><span style={{textAlign:"right"}}>Avg R</span><span style={{textAlign:"right"}}>Impact</span>
+        </div>
+        <div style={{display:"flex",flexDirection:"column",gap:5}}>
+          {data.mistakeStats.slice(0,6).map((m,i)=>(<div key={i} style={{display:"grid",gridTemplateColumns:"1fr 50px 60px 80px",gap:8,alignItems:"center",padding:"7px 9px",borderRadius:6,fontSize:11,border:"1px solid var(--border1)",background:"var(--bg3)"}}>
+            <span style={{color:"var(--text2)",fontWeight:500}}>{m.key}</span>
+            <span style={{textAlign:"right",fontFamily:"var(--mono)",fontWeight:700}}>{m.n}</span>
+            <span style={{textAlign:"right",fontFamily:"var(--mono)",fontWeight:700,color:m.avgR>=0?"var(--green)":"var(--red)"}}>{m.avgR>=0?"+":""}{m.avgR.toFixed(2)}R</span>
+            <span style={{textAlign:"right",fontFamily:"var(--mono)",fontWeight:700,color:m.sumPnl>=0?"var(--green)":"var(--red)"}}>{_pbFmtUsd(m.sumPnl)}</span>
+          </div>))}
+        </div>
+      </div>:<div style={{...cardStyle,opacity:0.5}}><h4 style={sectionTitle}>😤 Mistake-tags</h4><div style={{...subStyle,padding:"8px 0",color:"var(--text5)",fontSize:11}}>Geen mistake-tags op real trades</div></div>}
+      {data.emotionStats.length>0?<div style={cardStyle}>
+        <h4 style={sectionTitle}>🧠 Emotion-impact <span style={{fontSize:9,color:"var(--text5)",fontWeight:600,marginLeft:6}}>real only</span></h4>
+        <div style={subStyle}>Welke emoties bij entry → welk effect op uitkomst?</div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 50px 60px 60px",gap:8,padding:"4px 8px 6px",fontSize:9,fontFamily:"var(--mono)",fontWeight:700,color:"var(--text4)",textTransform:"uppercase",letterSpacing:".07em"}}>
+          <span>Tag</span><span style={{textAlign:"right"}}>×</span><span style={{textAlign:"right"}}>Avg R</span><span style={{textAlign:"right"}}>WR</span>
+        </div>
+        <div style={{display:"flex",flexDirection:"column",gap:5}}>
+          {data.emotionStats.slice(0,6).map((e,i)=>(<div key={i} style={{display:"grid",gridTemplateColumns:"1fr 50px 60px 60px",gap:8,alignItems:"center",padding:"7px 9px",borderRadius:6,fontSize:11,border:"1px solid var(--border1)",background:"var(--bg3)"}}>
+            <span style={{color:"var(--text2)",fontWeight:500}}>{e.key}</span>
+            <span style={{textAlign:"right",fontFamily:"var(--mono)",fontWeight:700}}>{e.n}</span>
+            <span style={{textAlign:"right",fontFamily:"var(--mono)",fontWeight:700,color:e.avgR>=0?"var(--green)":"var(--red)"}}>{e.avgR>=0?"+":""}{e.avgR.toFixed(2)}R</span>
+            <span style={{textAlign:"right",fontFamily:"var(--mono)",fontWeight:700,color:e.wr>=50?"var(--green)":"var(--red)"}}>{e.wr.toFixed(0)}%</span>
+          </div>))}
+        </div>
+      </div>:<div style={{...cardStyle,opacity:0.5}}><h4 style={sectionTitle}>🧠 Emotion-impact</h4><div style={{...subStyle,padding:"8px 0",color:"var(--text5)",fontSize:11}}>Geen emotion-tags op real trades</div></div>}
+    </div>}
+
+    {/* === Phase 2: Missed Opportunities (only if missed trades exist) === */}
+    {data.counts.missed>0&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:18,marginTop:18}}>
+      <div style={cardStyle}>
+        <h4 style={sectionTitle}>👻 Missed-impact</h4>
+        <div style={subStyle}>Theoretische R/PnL gebaseerd op hindsight per missed trade.</div>
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          <div style={{display:"grid",gridTemplateColumns:"1fr auto",alignItems:"baseline",padding:"10px 14px",background:"rgba(180,140,200,0.12)",border:"1px solid rgba(180,140,200,0.32)",borderRadius:8}}><span style={{fontSize:11,color:"var(--text2)",fontWeight:500}}>Aantal missed</span><span style={{fontFamily:"var(--mono)",fontWeight:700,fontSize:15,color:"#b48cc8"}}>{data.missedTheor.n}</span></div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr auto",alignItems:"baseline",padding:"10px 14px",background:"rgba(180,140,200,0.12)",border:"1px solid rgba(180,140,200,0.32)",borderRadius:8}}><span style={{fontSize:11,color:"var(--text2)",fontWeight:500}}>Theoretische avg R</span><span style={{fontFamily:"var(--mono)",fontWeight:700,fontSize:15,color:"#b48cc8"}}>{data.missedTheor.avgR>=0?"+":""}{data.missedTheor.avgR.toFixed(2)}R</span></div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr auto",alignItems:"baseline",padding:"10px 14px",background:"rgba(180,140,200,0.12)",border:"1px solid rgba(180,140,200,0.32)",borderRadius:8}}><span style={{fontSize:11,color:"var(--text2)",fontWeight:500}}>Theoretische cum. PnL</span><span style={{fontFamily:"var(--mono)",fontWeight:700,fontSize:15,color:"#b48cc8"}}>{_pbFmtUsd(data.missedTheor.sumPnl)}</span></div>
+          {data.realStats.pnl>0&&<div style={{display:"grid",gridTemplateColumns:"1fr auto",alignItems:"baseline",padding:"10px 14px",background:"rgba(180,140,200,0.12)",border:"1px solid rgba(180,140,200,0.32)",borderRadius:8}}><span style={{fontSize:11,color:"var(--text2)",fontWeight:500}}>% van real PnL</span><span style={{fontFamily:"var(--mono)",fontWeight:700,fontSize:15,color:"#b48cc8"}}>{(Math.abs(data.missedTheor.sumPnl)/Math.abs(data.realStats.pnl)*100).toFixed(0)}%</span></div>}
+        </div>
+      </div>
+      {data.missedReasons.length>0?<div style={cardStyle}>
+        <h4 style={sectionTitle}>🚫 Top redenen voor missen</h4>
+        <div style={subStyle}>Uit missedReasonTags — waarom besloot je niet in te gaan?</div>
+        <div style={{display:"flex",flexDirection:"column",gap:6}}>
+          {data.missedReasons.slice(0,5).map((r,i)=>(<div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 12px",borderRadius:6,fontSize:11.5,border:"1px solid var(--border1)",background:"var(--bg3)"}}>
+            <span style={{color:"var(--text3)"}}>{r.key}</span>
+            <span style={{fontFamily:"var(--mono)",fontWeight:700,fontSize:11,color:"#b48cc8"}}>{r.n}× · {_pbFmtUsd(r.sumPnl)} theor.</span>
+          </div>))}
+        </div>
+      </div>:<div style={{...cardStyle,opacity:0.5}}><h4 style={sectionTitle}>🚫 Top redenen voor missen</h4><div style={{...subStyle,padding:"8px 0",color:"var(--text5)",fontSize:11}}>Geen reden-tags op missed trades</div></div>}
+    </div>}
+
+    {/* === Phase 2: Auto-Insights cards === */}
+    {data.insights.length>0&&<div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:12,marginTop:18}}>
+      {data.insights.map((ins,i)=>{
+        const bg=ins.cls==="good"?"var(--green-dim)":ins.cls==="warn"?"var(--red-dim)":"var(--gold-dim)";
+        const border=ins.cls==="good"?"var(--green-border)":ins.cls==="warn"?"var(--red-border)":"var(--gold-border)";
+        return(<div key={i} style={{padding:"14px 16px",borderRadius:10,fontSize:12.5,lineHeight:1.55,border:`1px solid ${border}`,background:bg,color:"var(--text2)",display:"flex",gap:10,alignItems:"flex-start"}}>
+          <div style={{fontSize:18,lineHeight:1,flexShrink:0,marginTop:1}}>{ins.ic}</div>
+          <div dangerouslySetInnerHTML={{__html:ins.text}}/>
+        </div>);
+      })}
+    </div>}
 
   </div>);
 }
