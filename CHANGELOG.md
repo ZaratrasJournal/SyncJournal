@@ -6,6 +6,25 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.105] — 2026-05-08
+
+Hotfix op v12.104: SL-as-TP self-heal was niet **idempotent** — kon falen wanneer een SL-row na een eerdere heal opnieuw werd toegevoegd via een refresh-cyclus. Plus defensieve Number-cast op `_triggerSide` voor robuustheid tegen JSON-roundtrip variaties.
+
+### Fixed
+- **Self-heal werkt nu altijd** — v12.104 zette een `_slHealed=true` marker zodat de migratie maar 1× per trade liep. Probleem: als een refresh ná die heal alsnog een SL-row in `tpLevels` zette (bv. doordat de Worker iets terugstuurt vóór de filter kicks in), bleef die staan tot de gebruiker handmatig de TP-rij verwijderde. **Fix**: heal is nu idempotent — geen marker meer, draait bij elke app-load opnieuw. Performance-impact verwaarloosbaar (single-pass over `tpLevels`). Bestaande `_slHealed=true` markers worden bij eerstvolgende load opgeruimd.
+- **Pending-fills filter robuuster** — `_triggerSide` wordt nu via `Number(f._triggerSide) === 2` vergeleken. Voorheen `f._triggerSide !== 2` zou strings ("2" uit een rare proxy-roundtrip) niet vangen. MEXC stuurt het als number, maar defensiever schaadt niet.
+- **Multi-SL detectie** — als de Worker meerdere SL-rows zou meesturen (zelden, maar mogelijk bij bracket-orders), worden ze nu **allemaal** uit `tpLevels` verwijderd (was: alleen de eerste).
+
+### Aanpak
+- Test-suite uitgebreid met `tests/mexc-sl-idempotent-reload.js` — twee scenarios: (a) fresh buggy data, (b) post-heal data waar de SL alsnog opnieuw is geïntroduceerd. Beide krijgen volledige healing bij elke load.
+- Bestaande tests `mexc-sl-self-heal.js` en `mexc-sl-protect-manual.js` aangepast — verwachten geen `_slHealed=true` marker meer.
+
+### Voor de community
+- **Heb je v12.104 geupdate maar zie je nog steeds een TP-rij op de SL-prijs (bv. 81000 voor een short bij entry 80552)?** Update naar v12.105 → bij eerstvolgende app-load wordt 'ie alsnog gecorrigeerd.
+- Geen actie verder nodig.
+
+---
+
 ## [v12.104] — 2026-05-08
 
 MEXC stop-loss orders verschenen foutief als TP-rij in de trade-modal. Nu correct gefilterd + auto-geplaatst in `trade.stopLoss`. Bestaande buggy trades worden automatisch geheald bij eerstvolgende app-load.

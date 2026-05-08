@@ -47,11 +47,11 @@ const TRADE_WITH_MANUAL_SL = [{
 
   const ok1 = result?.stopLoss === '82000'; // bewaard
   const ok2 = (result?.tpLevels || []).length === 1; // SL-row alsnog uit tpLevels gehaald
-  const ok3 = result?._slHealed === true; // markeerd
+  const ok3 = !result?._slHealed; // v12.105: marker niet meer nodig (idempotent)
 
   console.log('\n=== ASSERTIONS ===');
   console.log(`Manual stopLoss "82000" preserved: ${ok1?'✓':'✗'}`);
   console.log(`SL-row removed from tpLevels: ${ok2?'✓':'✗'}`);
-  console.log(`_slHealed marker set: ${ok3?'✓':'✗'}`);
+  console.log(`_slHealed marker NOT set (v12.105 idempotent): ${ok3?'✓':'✗'}`);
   process.exit(ok1 && ok2 && ok3 ? 0 : 1);
 })();

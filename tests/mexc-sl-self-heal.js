@@ -65,12 +65,12 @@ const BUGGY_TRADES = [
   const ok1 = result?.stopLoss === '81000';
   const ok2 = (result?.tpLevels || []).length === 1;
   const ok3 = (result?.tpLevels || []).every(tp => parseFloat(tp.price) < 80552.7);
-  const ok4 = result?._slHealed === true;
+  const ok4 = !result?._slHealed; // v12.105: marker niet meer nodig (idempotent)
 
   console.log('\n=== SELF-HEAL ASSERTIONS ===');
   console.log(`stopLoss = "81000" (was ""): ${ok1 ? '✓' : '✗'}`);
   console.log(`tpLevels reduced to 1 (was 2): ${ok2 ? '✓' : '✗'}`);
   console.log(`Remaining TPs are below entry (= valid TPs for short): ${ok3 ? '✓' : '✗'}`);
-  console.log(`_slHealed marker set: ${ok4 ? '✓' : '✗'}`);
+  console.log(`_slHealed marker NOT set (v12.105 idempotent): ${ok4 ? '✓' : '✗'}`);
   process.exit(ok1 && ok2 && ok3 && ok4 ? 0 : 1);
 })();
