@@ -1023,7 +1023,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.105",released:"2026-05-08"};
+const APP_VERSION={version:"v12.106",released:"2026-05-08"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -5419,7 +5419,37 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,setConfig,ac
       const addTP=()=>{const remaining=Math.max(0,100-totalPct);setTrade(p=>({...p,tpLevels:[...(p.tpLevels||[]),{...EMPTY_TP,id:uid(),pct:String(remaining>0?Math.min(remaining,25):25)}]}))};
       const updateTP=(id,field,val)=>setTrade(p=>({...p,tpLevels:(p.tpLevels||[]).map(tp=>tp.id===id?{...tp,[field]:val}:tp)}));
       const removeTP=(id)=>setTrade(p=>({...p,tpLevels:(p.tpLevels||[]).filter(tp=>tp.id!==id)}));
-      const toggleStatus=(id)=>setTrade(p=>({...p,tpLevels:(p.tpLevels||[]).map(tp=>tp.id===id?{...tp,status:tp.status==="hit"?"open":tp.status==="open"?"missed":"hit"}:tp)}));
+      // v12.106: bij handmatige trades — als sum van HIT-pcts >= 100%, sluit automatisch:
+      // status="closed", PnL = sum van calcProfit per hit-TP, exit = pct-gewogen avg, closeTime=now.
+      // Bespaart de stap waar gebruiker zelf "💡 PNL berekenen" + status-knop moest doen.
+      // Manual overrides worden gerespecteerd (pnl/exit niet overschrijven als user manueel ingevoerd).
+      const toggleStatus=(id)=>setTrade(p=>{
+        const newTps=(p.tpLevels||[]).map(tp=>tp.id===id?{...tp,status:tp.status==="hit"?"open":tp.status==="open"?"missed":"hit"}:tp);
+        const isManualOpen=p.source==="manual"&&(p.status==="open"||p.status==="partial");
+        if(isManualOpen){
+          const hitTps=newTps.filter(tp=>tp.status==="hit"&&parseFloat(tp.price)>0);
+          const hitPctSum=hitTps.reduce((s,tp)=>s+(parseFloat(tp.pct)||0),0);
+          const entryN2=parseFloat(p.entry),sizeN2=parseFloat(p.positionSize),isLong2=p.direction==="long";
+          if(hitPctSum>=99.99&&entryN2>0&&sizeN2>0&&hitTps.length>0){
+            const totalPct=hitTps.reduce((s,tp)=>s+parseFloat(tp.pct||0),0);
+            const wExit=hitTps.reduce((s,tp)=>s+parseFloat(tp.price)*parseFloat(tp.pct||0),0)/totalPct;
+            const grossPnl=hitTps.reduce((s,tp)=>{
+              const tpPrice=parseFloat(tp.price),pct=parseFloat(tp.pct)/100;
+              return s+(isLong2?(tpPrice-entryN2)*sizeN2*pct/entryN2:(entryN2-tpPrice)*sizeN2*pct/entryN2);
+            },0);
+            const fees=parseFloat(p.fees)||0;
+            const netPnl=grossPnl-fees;
+            const ovr=p.manualOverrides||[];
+            const updates={tpLevels:newTps,status:"closed"};
+            if(!ovr.includes("pnl"))updates.pnl=netPnl.toFixed(2);
+            if(!ovr.includes("exit"))updates.exit=String(parseFloat(wExit.toFixed(8)));
+            if(!p.closeTime)updates.closeTime=String(Date.now());
+            if(typeof showToast==="function")setTimeout(()=>showToast(`✓ Trade auto-gesloten — PnL: ${netPnl>=0?"+":""}$${fmt(netPnl)}`,"success"),50);
+            return{...p,...updates};
+          }
+        }
+        return{...p,tpLevels:newTps};
+      });
 
       const calcProfit=(tp)=>{
         if(!entryN||!parseFloat(tp.price))return null;

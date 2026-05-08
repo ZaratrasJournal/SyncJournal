@@ -6,6 +6,31 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.106] — 2026-05-08
+
+UX-verbetering voor handmatig ingevoerde trades, gemeld door Jordy in de community: bij 100% van de TPs aangevinkt sluit de trade automatisch en wordt de PnL ingevuld.
+
+### Toegevoegd
+- **Auto-close + auto-PnL bij 100% TP-hit op handmatige trades** *(2026-05-08, gemeld door Jordy in Discord)* — Bij `source==="manual"` trades met status `open`/`partial`: zodra de som van **hit**-TP-percentages ≥ 100% bereikt na een status-toggle, wordt de trade automatisch:
+  - `status: "closed"`
+  - `pnl: <netto-PnL>` (= som van per-TP `(tpPrice − entry) × size × pct/entry` minus fees, zelfde formule als de bestaande `calcProfit` fallback). Wordt niet overschreven als gebruiker `pnl` in `manualOverrides` heeft.
+  - `exit: <pct-gewogen avg van hit-TP prijzen>`. Niet overschreven bij `manualOverrides.exit`.
+  - `closeTime: Date.now()` (alleen als nog leeg).
+  - Toast "✓ Trade auto-gesloten — PnL: ±$X.XX" als bevestiging.
+- **Scope expliciet handmatig**: voor exchange-trades (MEXC/Blofin/Kraken/Hyperliquid/FTMO) verandert er niets — die hebben hun eigen finalize-flow via API/refresh.
+- **Idempotent**: éénmaal closed gaat de auto-trigger niet opnieuw af, ook niet als de gebruiker een TP weer naar `open` toggled.
+
+### Aanpak
+- Eén-functie wijziging in `toggleStatus` binnen `TradeForm` op [tradejournal.html:5422](work/tradejournal.html#L5422). Geen schema-migratie, geen impact op andere code-paden.
+- Test-suite: 7 logic-tests in `tests/manual-tp-auto-close-logic.js` — long/short, partial-hit, exchange-trade exclusion, manual-override behoud, fees-aftrek, geen re-open na toggle-off.
+- UI-flow blijft hetzelfde: toggle-cyclus is `open → missed → hit → open` (= 2 clicks om vanaf "open" naar "hit" te gaan). De auto-close fired bij het bereiken van het hit-totaal.
+
+### Voor de community
+- Geen actie nodig. Bij update naar v12.106 werkt de auto-close direct voor handmatig ingevoerde trades.
+- **Hoe gebruik je 'm**: vink in het trade-formulier elke TP aan tot je het groene ✓-icon ziet. Zodra alle TPs samen 100% afdekken, sluit de trade automatisch met de berekende PnL. Geen handmatig kopiëren van "Verwacht: $X" meer.
+
+---
+
 ## [v12.105] — 2026-05-08
 
 Hotfix op v12.104: SL-as-TP self-heal was niet **idempotent** — kon falen wanneer een SL-row na een eerdere heal opnieuw werd toegevoegd via een refresh-cyclus. Plus defensieve Number-cast op `_triggerSide` voor robuustheid tegen JSON-roundtrip variaties.
