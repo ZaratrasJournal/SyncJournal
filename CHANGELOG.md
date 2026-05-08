@@ -6,28 +6,33 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
-## [v12.106] — 2026-05-08
+## [v12.107] — 2026-05-08
 
-UX-verbetering voor handmatig ingevoerde trades, gemeld door Jordy in de community: bij 100% van de TPs aangevinkt sluit de trade automatisch en wordt de PnL ingevuld.
+UX-verbetering voor handmatig ingevoerde trades, gemeld door Jordy in de community. Bij 100% van de TPs aangevinkt verschijnt een prominente "✓ Trade sluiten" knop met de berekende PnL en exit. Klik = sluit trade in één keer met juiste velden.
 
 ### Toegevoegd
-- **Auto-close + auto-PnL bij 100% TP-hit op handmatige trades** *(2026-05-08, gemeld door Jordy in Discord)* — Vóór: bij een handmatige trade alle TPs aanvinken liet de trade "open" staan. Gebruiker moest zelf 3 stappen doen: status omzetten naar "Closed", exit-prijs handmatig invullen, en de "Verwacht: $X" waarde onder de TPs overtypen naar het PnL-veld. **Nu**: bij `source==="manual"` trades met status `open`/`partial`, zodra de som van **hit**-TP-percentages ≥ 100% bereikt na een status-toggle, wordt de trade automatisch:
+- **"✓ Trade sluiten" knop bij 100% TP-hit op handmatige trades** *(2026-05-08, gemeld door Jordy in Discord)* — Vóór: bij een handmatige trade alle TPs aanvinken liet de trade "open" staan. Gebruiker moest 3 stappen handmatig doen: status omzetten naar "Closed", exit-prijs invullen, en de "Verwacht: $X" waarde overtypen naar het PnL-veld. **Nu**: zodra je voor `source==="manual"` trades met status `open`/`partial` de som van **hit**-TP-percentages ≥ 100% bereikt, verschijnt onder de TP-lijst een prominente knop:
+  > **✓ Trade sluiten · PnL: +$21.43 · Exit: $71500**
+  
+  Klik → trade krijgt automatisch:
   - `status: "closed"`
-  - `pnl: <netto-PnL>` (= som van per-TP `(tpPrice − entry) × size × pct/entry` minus fees, zelfde formule als de bestaande `calcProfit` fallback). Wordt niet overschreven als gebruiker `pnl` in `manualOverrides` heeft.
+  - `pnl: <netto-PnL>` (= som van per-TP profit minus fees, zelfde formule als `calcProfit` fallback). Niet overschreven als `manualOverrides.pnl` is gezet.
   - `exit: <pct-gewogen avg van hit-TP prijzen>`. Niet overschreven bij `manualOverrides.exit`.
   - `closeTime: Date.now()` (alleen als nog leeg).
-  - Toast "✓ Trade auto-gesloten — PnL: ±$X.XX" als bevestiging.
-- **Scope expliciet handmatig**: voor exchange-trades (MEXC/Blofin/Kraken/Hyperliquid/FTMO) verandert er niets — die hebben hun eigen finalize-flow via API/refresh.
-- **Idempotent**: éénmaal closed gaat de auto-trigger niet opnieuw af, ook niet als de gebruiker een TP weer naar `open` toggled.
+  - Toast "✓ Trade gesloten — PnL: ±$X.XX" als bevestiging.
+- **Knop kleurt mee met PnL**: groen (winst) of amber (verlies) zodat de uitkomst direct visueel duidelijk is vóór klik.
+- **Geen auto-close**: jij houdt controle. Verkeerde TP per ongeluk aangevinkt? Knop verschijnt, maar zolang je niet klikt blijft de trade open. Aanvinken ongedaan maken → knop verdwijnt vanzelf.
+- **Reopen-by-remove werkt impliciet**: verwijder een TP die de sum naar <100% drukt → knop verdwijnt automatisch (geen state-mutatie nodig).
 
 ### Aanpak
-- Eén-functie wijziging in `toggleStatus` binnen `TradeForm` op [tradejournal.html:5422](work/tradejournal.html#L5422). Geen schema-migratie, geen impact op andere code-paden.
-- Test-suite: 7 logic-tests in `tests/manual-tp-auto-close-logic.js` — long/short, partial-hit, exchange-trade exclusion, manual-override behoud, fees-aftrek, geen re-open na toggle-off.
-- UI-flow blijft hetzelfde: toggle-cyclus is `open → missed → hit → open` (= 2 clicks om vanaf "open" naar "hit" te gaan). De auto-close fired bij het bereiken van het hit-totaal.
+- Single component-niveau wijziging in `TradeForm` op [tradejournal.html:5419-5470](work/tradejournal.html#L5419) — `toggleStatus` blijft eenvoudige toggle, nieuwe `closeData` + `closeManualTrade` helpers, JSX-knop direct na de TP-summary.
+- Scope: alleen `source==="manual"` — exchange-trades (MEXC/Blofin/Kraken/Hyperliquid/FTMO) blijven via hun eigen finalize-flow lopen.
+- Test-suite: 9 logic-tests in `tests/manual-tp-close-button-logic.js` — closeData berekening (long/short, percentages), exchange-exclusion, manual-override-protect, fees-aftrek, applyClose semantiek.
+- Vorige iteratie (v12.106 — onuitgegeven) had auto-close zonder confirmatie. Aangepast naar knop-variant op community-feedback voor betere voorspelbaarheid en geen reopen-edge-cases.
 
 ### Voor de community
-- Geen actie nodig. Bij update naar v12.106 werkt de auto-close direct voor handmatig ingevoerde trades.
-- **Hoe gebruik je 'm**: vink in het trade-formulier elke TP aan tot je het groene ✓-icon ziet. Zodra alle TPs samen 100% afdekken, sluit de trade automatisch met de berekende PnL. Geen handmatig kopiëren van "Verwacht: $X" meer.
+- Geen actie nodig. Bij update naar v12.107 verschijnt de knop automatisch bij geschikte trades.
+- **Hoe gebruik je 'm**: bij een handmatige open trade, vink je TPs aan tot je het groene ✓-icon ziet (toggle-cyclus is open → missed → hit → open, dus 2 clicks om vanaf "open" naar "hit" te gaan). Zodra alle hit-TPs samen ≥ 100% afdekken, verschijnt onderaan de TP-sectie de "✓ Trade sluiten" knop met je berekende PnL. Eén klik = trade dicht.
 
 ---
 
