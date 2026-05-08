@@ -6,6 +6,26 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.112] — 2026-05-08
+
+UX-fix op v12.111: voor backtest/paper trades was de exit-prijs verstopt achter een collapsible "🔮 Hindsight (optioneel)" sectie, defaultOpen=false. Daardoor sloegen gebruikers het over en kregen geen analytics. Nu prominenter en context-specifiek.
+
+### Gewijzigd
+- **Backtest/Paper exit-veld is nu prominent** *(2026-05-08, gemeld door Denny — 10 BT trades zonder hindsightExit ondanks v12.111 fix)* — Het `hindsightExit` veld krijgt nu per `simType` een aangepaste presentatie:
+  - **Backtest** (`simType="backtest"`): Section title `🎯 Backtest Exit`, input label `BACKTEST EXIT (waar sloot je in je replay)`, defaultOpen=true, hint `vereist voor analytics ⚠`. Beschrijving: *"Vul je werkelijke exit-prijs in uit de chart-replay. Zonder dit blijven stats leeg."*
+  - **Paper** (`simType="paper"`): zelfde behandeling met titel `🎯 Paper Exit`, label `PAPER EXIT (waar sloot je op demo-account)`.
+  - **Missed** (legacy/real-time gespot): blijft `🔮 Hindsight (optioneel)` zoals voorheen — daar is het inderdaad optioneel voor edge-leak analyse.
+- **Visuele waarschuwing als veld leeg is op vereiste-trade**: input-border kleurt amber, beschrijving krijgt amber-tint. Wanneer ingevuld → standaard styling + ✓ in hint.
+
+### Aanpak
+- Geen logica-verandering, alleen presentatie. Bestaande `trade.hindsightExit` veld blijft de bron — voor BT/paper is het functioneel hetzelfde als de "exit" zou zijn voor closed real trades, alleen onder een andere naam.
+- Section auto-opent alleen wanneer het vereist EN nog leeg is. Wanneer ingevuld → collapsed (default), geen visuele clutter.
+
+### Voor de community
+- Bij update naar v12.112: open een bestaande BT of paper trade → de "Backtest Exit" / "Paper Exit" sectie staat automatisch open met amber border. Vul de prijs in → analytics werkt.
+
+---
+
 ## [v12.111] — 2026-05-08
 
 Hotfix op v12.110: Trust-Score telde alleen trades **met** hindsightExit. 10 BT trades zonder hindsight stonden nog steeds op "Idee" met "0 trades totaal". Nu gefixt — sample-size telt onafhankelijk van R-data.

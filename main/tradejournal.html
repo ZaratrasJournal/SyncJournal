@@ -1048,7 +1048,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.111",released:"2026-05-08"};
+const APP_VERSION={version:"v12.112",released:"2026-05-08"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -5815,13 +5815,29 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,setConfig,ac
     </Section>}
 
     {/* Hindsight-exit — only for missed trades, optional */}
-    {isMissed&&<Section title="🔮 Hindsight (optioneel)" storeKey="missedHindsight" defaultOpen={false} hint={trade.hindsightExit?"ingevuld":"leeg"}>
-      <div style={{fontSize:"10px",color:"var(--text4)",marginBottom:"10px",lineHeight:1.5,fontStyle:"italic"}}>Waar ging de prijs heen nadat je deze setup overslag? Gebruikt voor theoretical edge-leak berekening. ⚠ Hindsight-bias: dit is theoretisch max, niet wat je werkelijk zou hebben verdiend.</div>
-      <div>
-        <div style={{fontSize:"11px",color:"var(--text3)",marginBottom:"6px",fontWeight:500}}>HINDSIGHT EXIT (prijs waar je uit had kunnen stappen)</div>
-        <input type="text" value={trade.hindsightExit||""} onChange={e=>setTrade(p=>({...p,hindsightExit:e.target.value}))} style={iStyle} placeholder="bv. 43500"/>
-      </div>
-    </Section>}
+    {isMissed&&(()=>{
+      // v12.112: per simType context. Voor backtest/paper is exit een VEREIST veld
+      // (zonder geen W/L/avg-R analytics), defaultOpen=true en geen "optioneel" label.
+      // Voor missed (real-time gespot) blijft het hindsight = optioneel.
+      const isBT=isBacktest,isPa=isPaper,isMR=isMissedReal;
+      const title=isBT?"🎯 Backtest Exit":isPa?"🎯 Paper Exit":"🔮 Hindsight (optioneel)";
+      const inputLbl=isBT?"BACKTEST EXIT (waar sloot je in je replay)":isPa?"PAPER EXIT (waar sloot je op demo-account)":"HINDSIGHT EXIT (prijs waar je uit had kunnen stappen)";
+      const desc=isBT
+        ?"Vul je werkelijke exit-prijs in uit de chart-replay. Gebruikt voor W/L, Avg R en Cum. PnL in Playbook Analytics. Zonder dit blijven stats leeg."
+        :isPa
+        ?"Vul de exit-prijs in uit je demo-account. Gebruikt voor W/L, Avg R en Cum. PnL in Playbook Analytics. Zonder dit blijven stats leeg."
+        :"Waar ging de prijs heen nadat je deze setup overslag? Gebruikt voor theoretical edge-leak berekening. ⚠ Hindsight-bias: dit is theoretisch max, niet wat je werkelijk zou hebben verdiend.";
+      const isRequired=isBT||isPa;
+      const isFilled=trade.hindsightExit&&parseFloat(trade.hindsightExit)>0;
+      const hint=isFilled?"ingevuld ✓":(isRequired?"vereist voor analytics ⚠":"leeg");
+      return(<Section title={title} storeKey={isBT?"btExit":isPa?"paperExit":"missedHindsight"} defaultOpen={isRequired&&!isFilled} hint={hint}>
+        <div style={{fontSize:"10px",color:isRequired&&!isFilled?"var(--amber)":"var(--text4)",marginBottom:"10px",lineHeight:1.5,fontStyle:"italic"}}>{desc}</div>
+        <div>
+          <div style={{fontSize:"11px",color:"var(--text3)",marginBottom:"6px",fontWeight:500}}>{inputLbl}</div>
+          <input type="text" value={trade.hindsightExit||""} onChange={e=>setTrade(p=>({...p,hindsightExit:e.target.value}))} style={{...iStyle,...(isRequired&&!isFilled?{borderColor:"var(--amber)"}:{})}} placeholder="bv. 43500"/>
+        </div>
+      </Section>);
+    })()}
 
     {/* Notities — collapsible */}
     <Section title="📝 Notities" storeKey="notes" defaultOpen={true} hint={`${trade.entryNote?(isMissed?"observatie ✓":"pre-trade ✓"):"—"}${!hideExitFields?` · ${trade.notes?"post-trade ✓":"—"}`:""}`}>
