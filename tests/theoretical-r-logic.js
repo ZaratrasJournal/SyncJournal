@@ -1,8 +1,11 @@
 // v12.109 logic-tests voor calcTheoreticalR + calcTheoreticalPnl helpers.
 
-// v12.113+v12.114: derive exit uit hit-TPs / hit+missed combo / hindsightExit fallback.
+// v12.113-v12.115: priority chain: trade.exit > 100% hit TPs > hit+missed combo > all-missed/SL > hindsightExit.
 function _simTradeExit(trade) {
   if (trade.status !== 'missed') return null;
+  // v12.115: trade.exit als primaire bron — simpelste UX
+  const directExit = parseFloat(trade.exit);
+  if (isFinite(directExit) && directExit > 0) return { exit: directExit, source: 'exit' };
   const tps = trade.tpLevels || [];
   const hitTps = tps.filter(tp => tp && tp.status === 'hit' && parseFloat(tp.price) > 0);
   const missedTps = tps.filter(tp => tp && tp.status === 'missed');
@@ -52,6 +55,37 @@ function calcTheoreticalPnl(trade) {
 
 const tests = [];
 const t = (name, fn) => tests.push({ name, fn });
+
+t('v12.115: trade.exit ingevuld → primaire bron, ALLES anders genegeerd', () => {
+  const trade = { status: 'missed', simType: 'backtest', direction: 'long', entry: '70000', stopLoss: '69000', positionSize: '1000',
+    exit: '72000',  // direct exit — moet winnen over alles anders
+    hindsightExit: '99999', // wild value, moet GENEGEERD worden
+    tpLevels: [
+      { price: '71000', pct: '100', status: 'hit' }, // moet GENEGEERD worden
+    ]
+  };
+  const r = calcTheoreticalR(trade);
+  // R = (72000-70000)/1000 = 2.0 (uit trade.exit, niet TPs of hindsight)
+  if (r.toFixed(1) !== '2.0') throw new Error(`R fout: ${r} — trade.exit moet priority hebben`);
+});
+
+t('v12.115: trade.exit voor SL-hit short trade', () => {
+  const trade = { status: 'missed', simType: 'paper', direction: 'short', entry: '80000', stopLoss: '81000', positionSize: '1000',
+    exit: '81000', // SL-hit = exit op SL-prijs
+  };
+  const r = calcTheoreticalR(trade);
+  if (r.toFixed(2) !== '-1.00') throw new Error(`R fout: ${r}`);
+});
+
+t('v12.115: geen trade.exit → fallback naar TPs-derivatie blijft werken', () => {
+  const trade = { status: 'missed', simType: 'backtest', direction: 'long', entry: '70000', stopLoss: '69000',
+    tpLevels: [
+      { price: '72000', pct: '100', status: 'hit' },
+    ]
+  };
+  const r = calcTheoreticalR(trade);
+  if (r.toFixed(1) !== '2.0') throw new Error(`R fout: ${r}`);
+});
 
 t('v12.113: BT LONG met 100% hit TPs → R afgeleid uit weighted exit', () => {
   const trade = { status: 'missed', simType: 'backtest', direction: 'long', entry: '70000', stopLoss: '69000', positionSize: '1000',

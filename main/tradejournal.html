@@ -1004,28 +1004,29 @@ function calcRMultiple(trade){
   if(riskUsdt<=0)return null;
   return pnlVal/riskUsdt;
 }
-// v12.113+v12.114: derive theoretische exit voor missed/BT/paper trades uit jouw bestaande
-// trade-data. Priority chain:
-//  1. 100% hit TPs → weighted exit van hit-prijzen
-//  2. hit + missed = 100% (alle TPs aangevinkt) → weighted exit waarbij missed-portie naar SL gaat
-//     (= jij gaf aan "deze TP triggerde niet" wat impliceert SL-hit op die portie)
-//  3. ALLE TPs missed (= 100% missed) → SL hit, R = -1
-//  4. hindsightExit handmatig ingevuld → fallback
-//  5. Else null (sample niet compleet)
+// v12.113-v12.115: derive theoretische exit voor missed/BT/paper trades uit bestaande data.
+// Priority chain (eerst werkende = winnende):
+//  1. trade.exit ingevuld (= directe replay-exit voor BT/paper) — winnt altijd
+//  2. 100% hit TPs → weighted exit van hit-prijzen
+//  3. hit + missed = 100% (volledige resolutie) → mixed weighted (hit op TP, missed op SL)
+//  4. ALLE TPs missed → SL hit, R = -1
+//  5. hindsightExit handmatig ingevuld → legacy fallback
+//  6. Else null (sample niet compleet)
 function _simTradeExit(trade){
   if(trade.status!=="missed")return null;
+  // v12.115: trade.exit als primaire bron — simpelste UX
+  const directExit=parseFloat(trade.exit);
+  if(isFinite(directExit)&&directExit>0)return{exit:directExit,source:"exit"};
   const tps=trade.tpLevels||[];
   const hitTps=tps.filter(tp=>tp&&tp.status==="hit"&&parseFloat(tp.price)>0);
   const missedTps=tps.filter(tp=>tp&&tp.status==="missed");
   const hitPctSum=hitTps.reduce((s,tp)=>s+(parseFloat(tp.pct)||0),0);
   const missedPctSum=missedTps.reduce((s,tp)=>s+(parseFloat(tp.pct)||0),0);
   const resolvedPct=hitPctSum+missedPctSum;
-  // Case 1: 100% hit
   if(hitPctSum>=99.99&&hitTps.length>0){
     const wExit=hitTps.reduce((s,tp)=>s+parseFloat(tp.price)*parseFloat(tp.pct||0),0)/hitPctSum;
     return{exit:wExit,source:"tps"};
   }
-  // Case 2 + 3: hit + missed = 100% (volledig opgelost). Missed-portie gaat naar SL.
   if(resolvedPct>=99.99&&(hitTps.length>0||missedTps.length>0)){
     const sl=parseFloat(trade.stopLoss);
     if(isFinite(sl)&&sl>0){
@@ -1034,7 +1035,6 @@ function _simTradeExit(trade){
       return{exit:wExit,source:hitTps.length>0?"tps+sl":"sl"};
     }
   }
-  // Case 4: hindsightExit fallback
   const hx=parseFloat(trade.hindsightExit);
   if(isFinite(hx)&&hx>0)return{exit:hx,source:"hindsight"};
   return null;
@@ -1082,7 +1082,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.114",released:"2026-05-08"};
+const APP_VERSION={version:"v12.115",released:"2026-05-08"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -5184,7 +5184,6 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,setConfig,ac
   // is nog deels open, geen volledige exit ingevuld. Visueel onderscheid via badge.
   const isPartial=trade.status==="partial";
   const isOpen=!isMissed&&((trade.status||"closed")==="open"||isPartial);
-  const hideExitFields=isOpen||isMissed;// both states: no real exit/PnL/fees
   const missedEnabled=!!config?.trackMissedTrades;
   // v12.46-12.48: simType onderscheid binnen status:"missed" — "missed" (real-time),
   // "backtest" (chart-replay), of "paper" (live demo-account). Empty/legacy = "missed".
@@ -5192,6 +5191,9 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,setConfig,ac
   const isBacktest=isMissed&&simType==="backtest";
   const isPaper=isMissed&&simType==="paper";
   const isMissedReal=isMissed&&simType!=="backtest"&&simType!=="paper";
+  // v12.115: voor BT/paper trades exit-veld wel tonen (gebruiker kan direct de replay/demo
+  // exit-prijs invullen). Alleen real-time gemiste trades (isMissedReal) houden exit verborgen.
+  const hideExitFields=isOpen||isMissedReal;
 
   const sourceOptions=[{id:"manual",label:"✏️ Handmatig",color:"var(--text3)"}];
   Object.entries(ExchangeAPI).forEach(([key,ex])=>{if(config?.exchanges?.[key]?.apiKey)sourceOptions.push({id:key,label:ex.name,color:ex.color})});
@@ -5856,12 +5858,13 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,setConfig,ac
     </Section>}
 
     {/* Hindsight-exit — only for missed trades, optional */}
-    {isMissed&&(()=>{
-      // v12.112+v12.113: per simType context. Exit is auto-afleidbaar uit 100% hit-TPs;
-      // hindsightExit is fallback. Section toont alleen amber-warn als BEIDE ontbreken.
-      const isBT=isBacktest,isPa=isPaper,isMR=isMissedReal;
-      const title=isBT?"🎯 Backtest Exit":isPa?"🎯 Paper Exit":"🔮 Hindsight (optioneel)";
-      const inputLbl=isBT?"BACKTEST EXIT (alternatief — TPs aanvinken werkt ook)":isPa?"PAPER EXIT (alternatief — TPs aanvinken werkt ook)":"HINDSIGHT EXIT (prijs waar je uit had kunnen stappen)";
+    {/* v12.115: voor BT/paper is EXIT-veld nu in main form fields, dus hindsightExit-section
+        is alleen relevant voor isMissedReal (real-time gespotte trades, niet daadwerkelijk
+        getradet). Title blijft daar "🔮 Hindsight (optioneel)". */}
+    {isMissedReal&&(()=>{
+      const title="🔮 Hindsight (optioneel)";
+      const inputLbl="HINDSIGHT EXIT (prijs waar je uit had kunnen stappen)";
+      const isBT=false,isPa=false;
       // Check if 100% TP-hit gives us derived exit
       const tps=trade.tpLevels||[];
       const hitPctSum=tps.filter(tp=>tp&&tp.status==="hit"&&parseFloat(tp.price)>0).reduce((s,tp)=>s+(parseFloat(tp.pct)||0),0);

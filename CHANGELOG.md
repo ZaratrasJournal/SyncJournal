@@ -6,6 +6,33 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.115] — 2026-05-08
+
+EXIT-veld nu zichtbaar voor backtest/paper trades. Simpelste UX: vul exit-prijs in → analytics werkt. Geen hindsightExit of TP-toggling meer nodig.
+
+### Toegevoegd
+- **EXIT-veld voor backtest/paper trades** *(2026-05-08, gemeld door Denny — "Misschien een exit in de backtest gemist? En dan winst berekenen op basis van exit-prijs?")* — Voor `simType="backtest"` en `simType="paper"` is het EXIT-veld nu zichtbaar in het hoofd-formulier (naast ENTRY en STOP LOSS). Vul de exit-prijs in (waar trade ook werkelijk gesloten is in jouw replay/demo) en analytics werkt direct. Voor `isMissedReal` (real-time gespotte trades, niet daadwerkelijk getradet) blijft EXIT verborgen — daar is hindsightExit nog steeds de juiste field.
+
+### Gewijzigd
+- **`_simTradeExit` priority chain uitgebreid**: `trade.exit` is nu de **primaire** bron voor BT/paper trades. Volgorde:
+  1. **NIEUW**: `trade.exit` (directe replay/demo-exit) — winnt altijd
+  2. 100% hit TPs → weighted exit
+  3. hit + missed = 100% → mixed weighted (hit op TP, missed op SL)
+  4. Alle TPs missed → SL hit, R = -1
+  5. hindsightExit fallback (legacy)
+  6. null
+- **hindsightExit-section verborgen voor BT/paper** — voorheen verscheen er een aparte "🎯 Backtest Exit" sectie met `hindsightExit` veld. Nu redundant want EXIT-veld is in main form. Section verschijnt nog wel voor `isMissedReal` als "🔮 Hindsight (optioneel)".
+
+### Aanpak
+- Backwards compatible: bestaande BT/paper trades met alleen `hindsightExit` blijven werken via fallback chain. Bij nieuwe trades vult gebruiker EXIT direct.
+- Test-suite uitgebreid 15 → 18 cases — `trade.exit` priority, SL-hit short via direct exit, fallback wanneer exit leeg.
+
+### Voor de community
+- **Voor je 4 BT trades zonder W/L**: open de trade → vul EXIT-prijs in (waar je sloot in je replay, kan SL-prijs zijn voor verlies-trades) → analytics werkt direct.
+- Voor BT/paper trades met TP-grid: je kunt nu kiezen — vul EXIT in (snelste) OF vink TPs aan (mooiere R-distribution per pattern). Beide werken.
+
+---
+
 ## [v12.114] — 2026-05-08
 
 Verlies-trades met SL-hit kunnen nu in 1 klik gemarkeerd worden + mixed-outcome (sommige TPs hit, rest naar SL) wordt automatisch correct afgeleid.
