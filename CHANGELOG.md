@@ -6,6 +6,31 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.109] — 2026-05-08
+
+Win/Loss zichtbaar maken op backtest/paper/missed trades + Playbook Analytics werkt nu ook zonder hindsightExit (toont count + hint).
+
+### Toegevoegd
+- **W/L-indicator op trade-rij voor BT/paper/missed** *(2026-05-08, gemeld door Denny)* — Trades met `status="missed"` (= backtest/paper/missed) hadden voorheen alleen het bron-badge (🔬 BT / 📝 PAPER / 👻 MISS) maar geen win/loss-aanduiding. **Nu**: badge krijgt een ✓ (groen) of ✗ (rood) icon op basis van theoretische R uit `hindsightExit`. Tooltip toont exacte R-waarde. Vereist dat user `hindsightExit` invult.
+- **Theoretische PnL + R-multiple in trade-tabel** — PnL-kolom toont `~+$28.57` (italic, theoretisch label) voor missed trades met hindsightExit. R-multiple kolom idem `+2.0R` italic. EXIT-kolom toont `~72000` (italic) als hindsightExit beschikbaar.
+- **Twee nieuwe helpers**: `calcTheoreticalR(trade)` en `calcTheoreticalPnl(trade)` — apart van `calcRMultiple` zodat real-edge-stats voor closed trades NIET gevuld worden door theoretische missed-data.
+
+### Fixed
+- **Playbook Analytics toonde "Geen backtest trades" terwijl source-pill 10 zei** *(2026-05-08, gemeld door Denny)* — Mismatch tussen twee functies: `_pbBucketBySource` (voor source-pill counts) telde puur op status+simType, terwijl `playbookErosionStats` (voor KPI's) ook `hindsightExit` vereiste om R te kunnen berekenen. Resultaat: 10 BT trades ingevuld zonder hindsightExit → pill toont 10, KPI's tonen "geen trades". **Fix**: `_srcStats` gebruikt nu count uit `_pbBucketBySource`. Stats (wr/avgR) komen alsnog uit erosion — als die 0 zijn omdat hindsightExit ontbreekt, toont KPI "—" met goud-amber hint:
+  > 💡 Stats nog niet beschikbaar. Vul hindsightExit in op je 10 backtest trades om Win-rate, Avg R en theoretische PnL te zien.
+- Geldt identiek voor paper en missed trades.
+
+### Aanpak
+- Test-suite: 8 logic-cases in `tests/theoretical-r-logic.js` — long/short, win/loss, missing fields, edge-cases.
+- Status-badge-render: tooltip op ✓/✗ icon toont de exacte theoretische R.
+- Cum.PnL-kolom: blijft "theor." labelled bij BT/missed wanneer wExit beschikbaar — nu uitgebreid met hint wanneer hindsightExit ontbreekt.
+
+### Voor de community
+- Geen actie nodig voor **closed trades** met PnL (= real). Werkt zoals voorheen.
+- **Heb je backtest/paper/missed trades?** Vul `hindsightExit` (in trade-modal onder "🔮 Hindsight (optioneel)") in om W/L badges te zien + Playbook Analytics KPI's te ontgrendelen. Zonder hindsightExit: trades blijven zichtbaar maar zonder win/loss-data.
+
+---
+
 ## [v12.108] — 2026-05-08
 
 Uitbreiding op v12.107 close-button: dezelfde knop verschijnt nu ook bij **al-gesloten** handmatige trades wanneer de opgeslagen PnL afwijkt van wat de hit-TPs samen suggereren. Klik = bijwerken, met manualOverrides-bescherming.
