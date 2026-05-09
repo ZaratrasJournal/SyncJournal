@@ -1082,7 +1082,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.121",released:"2026-05-09"};
+const APP_VERSION={version:"v12.122",released:"2026-05-09"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -5517,6 +5517,9 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,setConfig,ac
       //  - mode='close': trade is open/partial → "✓ Trade sluiten" (groen bij winst, amber bij verlies)
       //  - mode='update': trade is closed maar opgeslagen PnL wijkt > $1 af van TP-totaal
       //                   → "🔄 PnL bijwerken naar TPs" (amber suggestie)
+      // v12.122: spiegelbeeld voor all-missed (= SL hit):
+      //  - mode='close-loss': open/partial → "🛑 Trade sluiten op SL" (rood)
+      //  - mode='update-loss': closed met pnl-drift → "🔄 PnL bijwerken naar SL" (rood)
       // Geen auto-close — gebruiker behoudt controle. Reopen-logic niet nodig:
       // verwijder/toggle-uit een TP zodat sum<100%, dan verdwijnt de knop gewoon.
       const isManual=trade.source==="manual";
@@ -5524,13 +5527,15 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,setConfig,ac
       if(isManual&&tps.length>0&&entryN>0&&sizeN>0){
         const hitTps=tps.filter(tp=>tp.status==="hit"&&parseFloat(tp.price)>0);
         const hitPctSum=hitTps.reduce((s,tp)=>s+(parseFloat(tp.pct)||0),0);
+        const missedTps=tps.filter(tp=>tp.status==="missed");
+        const missedPctSum=missedTps.reduce((s,tp)=>s+(parseFloat(tp.pct)||0),0);
+        const fees=parseFloat(trade.fees)||0;
         if(hitPctSum>=99.99&&hitTps.length>0){
           const wExit=hitTps.reduce((s,tp)=>s+parseFloat(tp.price)*parseFloat(tp.pct||0),0)/hitPctSum;
           const grossPnl=hitTps.reduce((s,tp)=>{
             const tpPrice=parseFloat(tp.price),pct=parseFloat(tp.pct)/100;
             return s+(isLong?(tpPrice-entryN)*sizeN*pct/entryN:(entryN-tpPrice)*sizeN*pct/entryN);
           },0);
-          const fees=parseFloat(trade.fees)||0;
           const netPnl=grossPnl-fees;
           if(trade.status==="open"||trade.status==="partial"){
             closeData={mode:"close",netPnl,wExit,hitCount:hitTps.length};
@@ -5541,24 +5546,42 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,setConfig,ac
               closeData={mode:"update",netPnl,wExit,hitCount:hitTps.length,currentPnl};
             }
           }
+        }else if(missedPctSum>=99.99&&missedTps.length>0&&slN>0){
+          // v12.122: alle TPs gemist + SL bekend → close-flow op SL met negatieve pnl.
+          // Werkt mits SL aan de "verkeerde" kant van entry staat (long: SL<entry; short: SL>entry).
+          const grossPnl=isLong?(slN-entryN)*sizeN/entryN:(entryN-slN)*sizeN/entryN;
+          const netPnl=grossPnl-fees;
+          if(trade.status==="open"||trade.status==="partial"){
+            closeData={mode:"close-loss",netPnl,wExit:slN,hitCount:0};
+          }else if(trade.status==="closed"){
+            const currentPnl=parseFloat(trade.pnl)||0;
+            if(Math.abs(netPnl-currentPnl)>1){
+              closeData={mode:"update-loss",netPnl,wExit:slN,hitCount:0,currentPnl};
+            }
+          }
         }
       }
       const closeManualTrade=()=>{
         if(!closeData)return;
+        const isClose=closeData.mode==="close"||closeData.mode==="close-loss";
         setTrade(p=>{
           const ovr=p.manualOverrides||[];
           const upd={};
-          if(closeData.mode==="close")upd.status="closed";
+          if(isClose)upd.status="closed";
           if(!ovr.includes("pnl"))upd.pnl=closeData.netPnl.toFixed(2);
           if(!ovr.includes("exit"))upd.exit=String(parseFloat(closeData.wExit.toFixed(8)));
-          if(!p.closeTime&&closeData.mode==="close")upd.closeTime=String(Date.now());
+          if(!p.closeTime&&isClose)upd.closeTime=String(Date.now());
           return{...p,...upd};
         });
         if(typeof showToast==="function"){
           if(closeData.mode==="close"){
             showToast(`✓ Trade gesloten — PnL: ${closeData.netPnl>=0?"+":""}$${fmt(closeData.netPnl)}`,"success");
-          }else{
+          }else if(closeData.mode==="close-loss"){
+            showToast(`🛑 Trade gesloten op SL — PnL: $${fmt(closeData.netPnl)}`,"success");
+          }else if(closeData.mode==="update"){
             showToast(`🔄 PnL bijgewerkt — was $${fmt(closeData.currentPnl)}, nu $${fmt(closeData.netPnl)}`,"success");
+          }else{
+            showToast(`🔄 PnL bijgewerkt naar SL — was $${fmt(closeData.currentPnl)}, nu $${fmt(closeData.netPnl)}`,"success");
           }
         }
       };
@@ -5630,10 +5653,10 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,setConfig,ac
           <div style={{fontSize:"11px",color:"var(--gold)",textTransform:"uppercase",letterSpacing:"0.12em",fontWeight:700}}>Take Profit niveaus</div>
           <div style={{display:"flex",gap:"6px",flexWrap:"wrap",alignItems:"center"}}>
             {/* v12.114+v12.115: quick-action knoppen voor sim-trades. v12.116: state-indicator + actie-label */}
-            {isMissed&&tps.length>0&&allHit&&<span title="Alle TPs gemarkeerd als hit" style={{fontSize:"10px",padding:"4px 8px",borderRadius:"5px",background:"var(--green-dim)",color:"var(--green)",fontFamily:"inherit",fontWeight:600,border:"1px solid var(--green-border)"}}>✓ Win gemarkeerd</span>}
-            {isMissed&&tps.length>0&&allMissed&&<span title="Alle TPs gemarkeerd als missed (= SL hit)" style={{fontSize:"10px",padding:"4px 8px",borderRadius:"5px",background:"var(--red-dim)",color:"var(--red)",fontFamily:"inherit",fontWeight:600,border:"1px solid var(--red-border)"}}>🛑 Verlies gemarkeerd</span>}
-            {isMissed&&tps.length>0&&!allHit&&<button onClick={markAllHit} title="Markeer alle TPs als hit (= trade volledig in winst gesloten op TPs)" style={{fontSize:"10px",padding:"4px 8px",borderRadius:"5px",border:"1px solid var(--green-border)",background:"var(--green-dim)",color:"var(--green)",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>✓ Mark als win</button>}
-            {isMissed&&tps.length>0&&!allMissed&&<button onClick={markAllMissed} title="Markeer alle TPs als missed (= trade hit SL, volledig verlies)" style={{fontSize:"10px",padding:"4px 8px",borderRadius:"5px",border:"1px solid var(--red-border)",background:"var(--red-dim)",color:"var(--red)",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>🛑 Mark als verlies</button>}
+            {tps.length>0&&allHit&&<span title="Alle TPs gemarkeerd als bereikt" style={{fontSize:"10px",padding:"4px 8px",borderRadius:"5px",background:"var(--green-dim)",color:"var(--green)",fontFamily:"inherit",fontWeight:600,border:"1px solid var(--green-border)"}}>✓ Win gemarkeerd</span>}
+            {tps.length>0&&allMissed&&<span title="Alle TPs gemarkeerd als gemist (= SL hit)" style={{fontSize:"10px",padding:"4px 8px",borderRadius:"5px",background:"var(--red-dim)",color:"var(--red)",fontFamily:"inherit",fontWeight:600,border:"1px solid var(--red-border)"}}>🛑 Verlies gemarkeerd</span>}
+            {tps.length>0&&!allHit&&<button onClick={markAllHit} title="Markeer alle TPs als bereikt (= win)" style={{fontSize:"10px",padding:"4px 8px",borderRadius:"5px",border:"1px solid var(--green-border)",background:"var(--green-dim)",color:"var(--green)",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>✓ Mark als win</button>}
+            {tps.length>0&&!allMissed&&<button onClick={markAllMissed} title="Markeer alle TPs als gemist (= SL hit / verlies)" style={{fontSize:"10px",padding:"4px 8px",borderRadius:"5px",border:"1px solid var(--red-border)",background:"var(--red-dim)",color:"var(--red)",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>🛑 Mark als verlies</button>}
             {tps.length<4&&<button onClick={addTP} style={{fontSize:"11px",padding:"4px 10px",borderRadius:"5px",border:"1px dashed var(--border5)",background:"transparent",color:"var(--gold)",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>+ TP toevoegen</button>}
           </div>
         </div>
@@ -5681,15 +5704,26 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,setConfig,ac
             <span style={{color:"var(--text4)"}}>{tps.filter(tp=>tp.status==="hit").length}/{tps.length} bereikt</span>
           </div>
 
-          {/* v12.107+v12.108: knop bij handmatige trade — sluit (open→closed) of update PnL (closed mismatch) */}
+          {/* v12.107+v12.108: knop bij handmatige trade — sluit (open→closed) of update PnL (closed mismatch).
+              v12.122: ook close-loss / update-loss modes (all-missed → SL). */}
           {closeData&&(()=>{
-            const isClose=closeData.mode==="close";
+            const isClose=closeData.mode==="close"||closeData.mode==="close-loss";
+            const isLossMode=closeData.mode==="close-loss"||closeData.mode==="update-loss";
             const isWin=closeData.netPnl>=0;
-            // Close+winst → groen. Close+verlies of update → amber.
-            const useGreen=isClose&&isWin;
-            const accent=useGreen?"var(--green)":"var(--amber)";
-            const accentBg=useGreen?"var(--green-dim)":"rgba(212,168,83,0.12)";
-            const shadow=useGreen?"rgba(46,170,111,0.18)":"rgba(212,168,83,0.18)";
+            // Verlies-mode → rood. Close+winst → groen. Anders amber (update of close+verlies).
+            let accent,accentBg,shadow,icon,label;
+            if(isLossMode){
+              accent="var(--red)";accentBg="var(--red-dim)";shadow="rgba(224,85,85,0.18)";
+              icon=isClose?"🛑":"🔄";
+              label=isClose?"Trade sluiten op SL":"PnL bijwerken naar SL";
+            }else if(isClose&&isWin){
+              accent="var(--green)";accentBg="var(--green-dim)";shadow="rgba(46,170,111,0.18)";
+              icon="✓";label="Trade sluiten";
+            }else{
+              accent="var(--amber)";accentBg="rgba(212,168,83,0.12)";shadow="rgba(212,168,83,0.18)";
+              icon=isClose?"✓":"🔄";
+              label=isClose?"Trade sluiten":"PnL bijwerken naar TPs";
+            }
             return(<button onClick={closeManualTrade} style={{
               marginTop:"10px",width:"100%",padding:"11px 16px",borderRadius:"8px",
               border:`1px solid ${accent}`,background:accentBg,color:accent,
@@ -5697,8 +5731,8 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,setConfig,ac
               display:"flex",alignItems:"center",justifyContent:"center",gap:"10px",
               boxShadow:`0 2px 10px ${shadow}`,transition:"all 0.15s"
             }}>
-              <span style={{fontSize:"15px"}}>{isClose?"✓":"🔄"}</span>
-              <span>{isClose?"Trade sluiten":"PnL bijwerken naar TPs"}</span>
+              <span style={{fontSize:"15px"}}>{icon}</span>
+              <span>{label}</span>
               {isClose?<>
                 <span style={{fontFamily:"var(--mono)",fontWeight:800}}>· PnL: {isWin?"+":""}${fmt(closeData.netPnl)}</span>
                 <span style={{fontFamily:"var(--mono)",fontSize:"11px",opacity:0.85}}>· Exit: ${fmt(closeData.wExit)}</span>

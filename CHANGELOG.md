@@ -6,6 +6,23 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.122] — 2026-05-09
+
+Quick-action knoppen "Mark als win" / "Mark als verlies" zijn nu beschikbaar voor *alle* trades — handmatig én exchange-imports — naast BT/paper/missed.
+
+### Toegevoegd
+- **Quick-actions voor manuele + exchange trades** *(2026-05-09, op verzoek van Denny)* — De knoppen "✓ Mark als win" / "🛑 Mark als verlies" naast Take Profit niveaus waren tot nu toe alleen zichtbaar bij missed/BT/paper trades. Nu verschijnen ze voor élke trade met TPs:
+  - **Handmatige trades** (open/partial): "Mark als win" → zet alle TPs op hit + de bestaande "Trade sluiten"-knop verschijnt voor auto-close op TP-weighted exit. **NIEUW**: "Mark als verlies" → zet alle TPs op missed + nieuwe "🛑 Trade sluiten op SL" knop verschijnt voor auto-close op SL met negatieve pnl.
+  - **Handmatige trades** (closed): bij pnl-drift toont een suggestie-knop "PnL bijwerken naar TPs" (win) of **NIEUW** "PnL bijwerken naar SL" (verlies).
+  - **Exchange trades** (Blofin / MEXC / Kraken / Hyperliquid / FTMO): knoppen werken puur als TP-status marker — exchange-pnl blijft onaangetast (bron-van-waarheid). Handig voor playbook-analytics.
+  - **BT/paper/missed**: gedrag onveranderd — TP-status drijft `_simTradeExit` voor analytics.
+- **Tooltips** zijn neutraler geformuleerd ("Markeer alle TPs als bereikt / gemist") zodat ze voor alle trade-types kloppen.
+
+### Gewijzigd
+- **`closeManualTrade`-flow uitgebreid** — naast `mode:"close"` (open→sluit op TPs) en `mode:"update"` (closed pnl-drift) zijn er nu `mode:"close-loss"` (open→sluit op SL) en `mode:"update-loss"` (closed pnl-drift naar SL). Knop-styling: rood voor verlies-flows, groen voor close+win, amber voor close+verlies of pnl-update.
+
+---
+
 ## [v12.121] — 2026-05-09
 
 Mindset-toast theme-aware gemaakt — was altijd donker met onleesbare tekst in lichte thema's.
