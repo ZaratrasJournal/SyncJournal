@@ -6,6 +6,15 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.121] — 2026-05-09
+
+Mindset-toast theme-aware gemaakt — was altijd donker met onleesbare tekst in lichte thema's.
+
+### Fixed
+- **Mindset-quote toast onleesbaar in lichte thema's** *(2026-05-09, gemeld door Denny met screenshot)* — De mindset-reminder toast (rechtsonder, post-loss) had een hardcoded donkere achtergrond `rgba(10,12,18,.97)` terwijl de tekstkleur `var(--text2)` per-thema schakelt. Resultaat in light/parchment/daylight: donkere tekst op donkere bg = onleesbaar én visueel inconsistent met de rest van de app. **Fix**: achtergrond gebruikt nu `var(--bg2)` (theme-aware) en de drop-shadow is iets zachter (`rgba(0,0,0,.25)` ipv `.5`) zodat hij ook op lichte thema's natuurlijk oogt.
+
+---
+
 ## [v12.120] — 2026-05-08
 
 Trust-Score visueel gemoderniseerd + drempel-labels gecorrigeerd. Iconen per stage, continue progress-bar, status-samenvatting in header.
