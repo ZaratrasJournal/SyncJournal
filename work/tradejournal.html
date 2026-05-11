@@ -11490,7 +11490,204 @@ function DonationSection(){
   </div>);
 }
 
-function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,setTrades,importTrades,syncOpenPositions,exportTrades,setTagConfig,tagConfig,tradingRules,setTradingRules,goals,setGoals,mindsetPrefs,setMindsetPrefs,lastSyncTimes,setTab}){
+// v12.123: TP-template manager — UI voor beheer van templates + default-per-count picker.
+// Inline edit-modal (toont overlay over de Settings-pagina). Pre-built templates kunnen
+// worden bewerkt én verwijderd; "Reset to defaults" upsert by-id zonder custom te raken.
+function TpTemplateManager({tpTemplates,setTpTemplates,tpDefaults,setTpDefaults,showToast}){
+  const[editing,setEditing]=useState(null); // null | template-object (clone)
+  const[isNew,setIsNew]=useState(false);
+  const[deleteTarget,setDeleteTarget]=useState(null);
+  const tplList=Array.isArray(tpTemplates)?tpTemplates:[];
+
+  const openNew=()=>{
+    setIsNew(true);
+    setEditing({id:"tpl_"+Date.now().toString(36)+Math.random().toString(36).slice(2,6),name:"",distributions:{"3":[34,33,33]}});
+  };
+  const openEdit=(tpl)=>{
+    setIsNew(false);
+    // Deep clone om edits te isoleren
+    setEditing({id:tpl.id,name:tpl.name,distributions:JSON.parse(JSON.stringify(tpl.distributions||{}))});
+  };
+  const saveEdit=(tpl)=>{
+    const errors=validateTpTemplate(tpl,tplList,tpl.id);
+    if(Object.keys(errors).length>0){
+      showToast&&showToast("Kan niet opslaan: "+Object.values(errors)[0],"error");
+      return false;
+    }
+    setTpTemplates(prev=>{
+      const arr=Array.isArray(prev)?prev:[];
+      const exists=arr.some(t=>t.id===tpl.id);
+      return exists?arr.map(t=>t.id===tpl.id?tpl:t):[...arr,tpl];
+    });
+    setEditing(null);
+    showToast&&showToast(isNew?`Template "${tpl.name}" aangemaakt`:`Template "${tpl.name}" bijgewerkt`,"success");
+    return true;
+  };
+  const doDelete=()=>{
+    if(!deleteTarget)return;
+    setTpTemplates(prev=>(Array.isArray(prev)?prev:[]).filter(t=>t.id!==deleteTarget.id));
+    showToast&&showToast(`Template "${deleteTarget.name}" verwijderd`,"success");
+    setDeleteTarget(null);
+  };
+  const resetDefaults=()=>{
+    setTpTemplates(prev=>{
+      const arr=Array.isArray(prev)?prev.slice():[];
+      // Upsert pre-builts by id (overschrijft bewerkte pre-builts, behoudt custom).
+      for(const pb of PRE_BUILT_TP_TEMPLATES){
+        const idx=arr.findIndex(t=>t.id===pb.id);
+        if(idx>=0)arr[idx]={...pb,distributions:JSON.parse(JSON.stringify(pb.distributions))};
+        else arr.push({...pb,distributions:JSON.parse(JSON.stringify(pb.distributions))});
+      }
+      return arr;
+    });
+    showToast&&showToast("Pre-built templates hersteld","success");
+  };
+
+  return(<>
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"14px"}}>
+      <div>
+        <div style={{fontSize:"11px",color:"var(--gold)",textTransform:"uppercase",letterSpacing:"0.12em",fontWeight:700,marginBottom:"4px"}}>TP-templates</div>
+        <div style={{fontSize:"11px",color:"var(--text4)",lineHeight:1.5}}>Verdelingspatronen voor Take Profits. Pre-built (Equal / Front-loaded / Runner) + eigen templates. Geldt alleen voor nieuwe trades — bestaande trades blijven ongewijzigd.</div>
+      </div>
+      <div style={{display:"flex",gap:"6px",flexShrink:0}}>
+        <button onClick={resetDefaults} title="Herstel Equal / Front-loaded / Runner (upsert-by-id, custom blijft)" style={{padding:"6px 12px",borderRadius:"6px",border:"1px solid var(--border3)",background:"transparent",color:"var(--text3)",fontSize:"11px",fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>↻ Reset to defaults</button>
+        <button onClick={openNew} style={{padding:"6px 14px",borderRadius:"6px",border:"1px solid var(--gold-border)",background:"var(--gold-dim)",color:"var(--gold)",fontSize:"11px",fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>+ Nieuwe template</button>
+      </div>
+    </div>
+
+    {tplList.length===0&&<div style={{padding:"16px",borderRadius:"8px",border:"1px dashed var(--border3)",fontSize:"12px",color:"var(--text4)",textAlign:"center"}}>Geen templates — klik "↻ Reset to defaults" om pre-builts toe te voegen of "+ Nieuwe template".</div>}
+
+    {tplList.length>0&&<div style={{display:"flex",flexDirection:"column",gap:"8px",marginBottom:"18px"}}>
+      {tplList.map(tpl=>{
+        const counts=[1,2,3,4,5];
+        return(<div key={tpl.id} style={{padding:"12px 14px",borderRadius:"8px",border:"1px solid var(--border2)",background:"var(--bg3)",display:"flex",alignItems:"center",gap:"14px"}}>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontSize:"13px",fontWeight:700,color:"var(--text)",marginBottom:"6px"}}>{tpl.name}</div>
+            <div style={{display:"flex",gap:"6px",flexWrap:"wrap"}}>
+              {counts.map(c=>{
+                const dist=tpl.distributions?.[String(c)];
+                if(!Array.isArray(dist)||dist.length===0){
+                  return<span key={c} style={{fontSize:"9px",fontFamily:"var(--mono)",color:"var(--text5)",padding:"2px 6px",borderRadius:"3px",border:"1px dashed var(--border3)"}}>{c}TP: —</span>;
+                }
+                return<span key={c} style={{fontSize:"9px",fontFamily:"var(--mono)",color:"var(--text3)",padding:"2px 6px",borderRadius:"3px",background:"var(--bg4)"}}>{c}TP: {dist.join("/")}</span>;
+              })}
+            </div>
+          </div>
+          <button onClick={()=>openEdit(tpl)} title="Bewerk template" style={{background:"none",border:"1px solid var(--border3)",borderRadius:"5px",padding:"5px 10px",color:"var(--text2)",cursor:"pointer",fontSize:"11px",fontFamily:"inherit"}}>✎ Edit</button>
+          <button onClick={()=>setDeleteTarget(tpl)} title="Verwijder template" style={{background:"none",border:"1px solid var(--red-border)",borderRadius:"5px",padding:"5px 10px",color:"var(--red)",cursor:"pointer",fontSize:"11px",fontFamily:"inherit"}}>🗑</button>
+        </div>);
+      })}
+    </div>}
+
+    {/* Default-per-count picker */}
+    <div style={{padding:"12px 14px",borderRadius:"8px",border:"1px solid var(--border2)",background:"var(--bg3)",marginBottom:"14px"}}>
+      <div style={{fontSize:"11px",color:"var(--gold)",textTransform:"uppercase",letterSpacing:"0.08em",fontWeight:700,marginBottom:"8px"}}>Default-template per aantal TPs</div>
+      <div style={{fontSize:"10px",color:"var(--text4)",marginBottom:"10px",lineHeight:1.5}}>Welke template wordt automatisch toegepast bij toevoegen van TP N? Bij ontbrekende verdeling of verwijderde template valt het terug op een gelijke verdeling.</div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:"6px"}}>
+        {[1,2,3,4,5].map(c=>(<div key={c} style={{display:"flex",flexDirection:"column",gap:"4px"}}>
+          <div style={{fontSize:"10px",color:"var(--text4)",fontFamily:"var(--mono)",textAlign:"center"}}>{c} TP{c>1?"s":""}</div>
+          <select value={tpDefaults?.[String(c)]||""} onChange={(e)=>setTpDefaults(p=>({...(p||{}),[String(c)]:e.target.value}))} style={{padding:"5px 6px",fontSize:"11px",border:"1px solid var(--border3)",borderRadius:"4px",background:"var(--bg)",color:"var(--text2)",fontFamily:"inherit"}}>
+            <option value="">— Gelijk (fallback) —</option>
+            {tplList.map(t=>{
+              // Toon alleen templates die een verdeling voor dit count hebben.
+              const has=Array.isArray(t.distributions?.[String(c)])&&t.distributions[String(c)].length===c;
+              return<option key={t.id} value={t.id} disabled={!has}>{t.name}{!has?" (geen "+c+"TP-verdeling)":""}</option>;
+            })}
+          </select>
+        </div>))}
+      </div>
+    </div>
+
+    {/* Edit modal */}
+    {editing&&<TpTemplateEditModal initial={editing} isNew={isNew} allTemplates={tplList} onCancel={()=>setEditing(null)} onSave={saveEdit}/>}
+
+    {/* Delete confirm */}
+    {deleteTarget&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:10000,display:"flex",alignItems:"center",justifyContent:"center",animation:"fadeIn .15s ease"}}>
+      <div style={{background:"var(--bg2,var(--bg))",border:"1px solid var(--red-border)",borderRadius:"12px",padding:"22px 24px",maxWidth:"420px",width:"90%",boxShadow:"0 20px 60px rgba(0,0,0,.6)"}}>
+        <div style={{fontSize:"15px",fontWeight:700,color:"var(--text)",marginBottom:"6px"}}>🗑 Template verwijderen</div>
+        <div style={{fontSize:"13px",color:"var(--text3)",lineHeight:1.5,marginBottom:"18px"}}>Verwijder "<strong>{deleteTarget.name}</strong>"? Trades die deze template gebruiken blijven werken (vallen terug op gelijke verdeling bij volgende +TP).</div>
+        <div style={{display:"flex",gap:"8px"}}>
+          <button onClick={doDelete} style={{flex:1,padding:"10px 14px",borderRadius:"8px",border:"1px solid var(--red-border)",background:"var(--red-dim)",color:"var(--red)",fontSize:"13px",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Verwijderen</button>
+          <button onClick={()=>setDeleteTarget(null)} style={{padding:"10px 14px",borderRadius:"8px",border:"1px solid var(--border3)",background:"transparent",color:"var(--text3)",fontSize:"13px",cursor:"pointer",fontFamily:"inherit"}}>Annuleren</button>
+        </div>
+      </div>
+    </div>}
+  </>);
+}
+
+function TpTemplateEditModal({initial,isNew,allTemplates,onCancel,onSave}){
+  const[draft,setDraft]=useState(initial);
+  const errors=validateTpTemplate(draft,allTemplates,draft.id);
+  const toggleCount=(count)=>{
+    setDraft(d=>{
+      const dists={...d.distributions};
+      const key=String(count);
+      if(Array.isArray(dists[key])&&dists[key].length>0)delete dists[key];
+      else dists[key]=equalDistribution(count);
+      return{...d,distributions:dists};
+    });
+  };
+  const updateValue=(count,idx,val)=>{
+    const v=parseInt(val,10);
+    setDraft(d=>{
+      const dists={...d.distributions};
+      const arr=Array.isArray(dists[String(count)])?dists[String(count)].slice():equalDistribution(count);
+      arr[idx]=Number.isFinite(v)?v:0;
+      dists[String(count)]=arr;
+      return{...d,distributions:dists};
+    });
+  };
+  const autoFill=(count)=>{
+    setDraft(d=>({...d,distributions:{...d.distributions,[String(count)]:equalDistribution(count)}}));
+  };
+  return(<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:10000,display:"flex",alignItems:"center",justifyContent:"center",animation:"fadeIn .15s ease",overflowY:"auto",padding:"24px 0"}}>
+    <div style={{background:"var(--bg2,var(--bg))",border:"1px solid var(--gold-border)",borderRadius:"12px",padding:"22px 24px",maxWidth:"560px",width:"94%",boxShadow:"0 20px 60px rgba(0,0,0,.6)",maxHeight:"90vh",overflowY:"auto"}}>
+      <div style={{fontSize:"15px",fontWeight:700,color:"var(--text)",marginBottom:"14px"}}>{isNew?"+ Nieuwe TP-template":"✎ Template bewerken"}</div>
+
+      <div style={{marginBottom:"14px"}}>
+        <div style={{fontSize:"10px",color:"var(--text4)",textTransform:"uppercase",letterSpacing:"0.08em",fontWeight:600,marginBottom:"4px"}}>Naam</div>
+        <input type="text" value={draft.name} onChange={(e)=>setDraft(d=>({...d,name:e.target.value}))} placeholder="bv. Aggressief 50/30/20" style={{width:"100%",padding:"8px 10px",fontSize:"12px",border:"1px solid "+(errors.name?"var(--red-border)":"var(--border3)"),borderRadius:"5px",background:"var(--bg)",color:"var(--text)",fontFamily:"inherit"}}/>
+        {errors.name&&<div style={{fontSize:"10px",color:"var(--red)",marginTop:"4px"}}>{errors.name}</div>}
+      </div>
+
+      <div style={{fontSize:"10px",color:"var(--text4)",textTransform:"uppercase",letterSpacing:"0.08em",fontWeight:600,marginBottom:"8px"}}>Verdelingen</div>
+      <div style={{fontSize:"10px",color:"var(--text4)",marginBottom:"10px",lineHeight:1.5}}>Definieer per aantal TPs hoe de positie verdeeld wordt. Niet alle aantallen hoeven ingevuld — leeg = fallback op equal-verdeling.</div>
+
+      {[1,2,3,4,5].map(count=>{
+        const dist=draft.distributions?.[String(count)];
+        const active=Array.isArray(dist)&&dist.length>0;
+        const err=errors["dist_"+count];
+        return(<div key={count} style={{marginBottom:"10px",padding:"10px 12px",borderRadius:"6px",border:"1px solid "+(err?"var(--red-border)":"var(--border2)"),background:active?"var(--bg3)":"transparent"}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:active?"8px":0}}>
+            <label style={{display:"flex",alignItems:"center",gap:"8px",cursor:"pointer",fontSize:"11px",color:"var(--text2)",fontWeight:600}}>
+              <input type="checkbox" checked={active} onChange={()=>toggleCount(count)} style={{cursor:"pointer"}}/>
+              <span>Definieer voor {count} TP{count>1?"s":""}</span>
+            </label>
+            {active&&<button onClick={()=>autoFill(count)} style={{fontSize:"10px",padding:"3px 8px",borderRadius:"4px",border:"1px dashed var(--border3)",background:"transparent",color:"var(--gold)",cursor:"pointer",fontFamily:"inherit"}}>Vul gelijk ({equalDistribution(count).join("/")})</button>}
+          </div>
+          {active&&<div style={{display:"flex",gap:"6px",alignItems:"center",flexWrap:"wrap"}}>
+            {dist.map((v,i)=>(<div key={i} style={{display:"flex",alignItems:"center",gap:"3px"}}>
+              <span style={{fontSize:"9px",fontFamily:"var(--mono)",color:"var(--text4)"}}>TP{i+1}</span>
+              <input type="number" value={v} onChange={(e)=>updateValue(count,i,e.target.value)} min={1} max={100} style={{width:"56px",padding:"4px 6px",fontSize:"11px",border:"1px solid var(--border3)",borderRadius:"4px",background:"var(--bg)",color:"var(--text)",fontFamily:"var(--mono)"}}/>
+              <span style={{fontSize:"9px",color:"var(--text4)"}}>%</span>
+            </div>))}
+            <span style={{fontSize:"10px",color:"var(--text4)",fontFamily:"var(--mono)",marginLeft:"6px"}}>= {dist.reduce((s,v)=>s+(parseInt(v,10)||0),0)}%</span>
+          </div>}
+          {err&&<div style={{fontSize:"10px",color:"var(--red)",marginTop:"6px"}}>{err}</div>}
+        </div>);
+      })}
+
+      {errors.distributions&&<div style={{fontSize:"10px",color:"var(--red)",marginBottom:"10px"}}>{errors.distributions}</div>}
+
+      <div style={{display:"flex",gap:"8px",marginTop:"6px"}}>
+        <button onClick={()=>onSave(draft)} disabled={Object.keys(errors).length>0} style={{flex:1,padding:"10px 14px",borderRadius:"8px",border:"1px solid var(--gold-border)",background:Object.keys(errors).length>0?"transparent":"var(--gold-dim)",color:"var(--gold)",fontSize:"13px",fontWeight:700,cursor:Object.keys(errors).length>0?"not-allowed":"pointer",fontFamily:"inherit",opacity:Object.keys(errors).length>0?0.5:1}}>{isNew?"Aanmaken":"Opslaan"}</button>
+        <button onClick={onCancel} style={{padding:"10px 14px",borderRadius:"8px",border:"1px solid var(--border3)",background:"transparent",color:"var(--text3)",fontSize:"13px",cursor:"pointer",fontFamily:"inherit"}}>Annuleren</button>
+      </div>
+    </div>
+  </div>);
+}
+
+function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,setTrades,importTrades,syncOpenPositions,exportTrades,setTagConfig,tagConfig,tradingRules,setTradingRules,goals,setGoals,mindsetPrefs,setMindsetPrefs,lastSyncTimes,setTab,tpTemplates,setTpTemplates,tpDefaults,setTpDefaults}){
   const csvRef=useRef();const csvAcctRef=useRef(null);
   const backupRef=useRef();
   // Visual confirmation for displayName auto-save (flashes after 400ms debounce, fades after 1800ms)
@@ -12598,7 +12795,7 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,set
   // Sidebar-config — sync met section-IDs. Volgorde komt overeen met de cards in DOM.
   const SETTINGS_NAV=[
     {cat:"🔌 Account & Data",items:[{id:"sec-accounts",label:"Mijn accounts"},{id:"sec-backup",label:"Backup & Restore"}]},
-    {cat:"🔧 App",items:[{id:"sec-general",label:"Voorkeuren"},{id:"sec-layout",label:"Layout"},{id:"sec-theme",label:"Thema"},{id:"sec-donate",label:"Vrijwillige donatie"}]},
+    {cat:"🔧 App",items:[{id:"sec-general",label:"Voorkeuren"},{id:"sec-layout",label:"Layout"},{id:"sec-theme",label:"Thema"},{id:"sec-tp-templates",label:"TP-templates"},{id:"sec-donate",label:"Vrijwillige donatie"}]},
     {cat:"⚙️ Geavanceerd",items:[{id:"sec-data",label:"Data wissen"},{id:"sec-storage",label:"Storage"}]},
   ];
   // Scroll-spy: pak meest-zichtbare sectie en highlight in sidebar.
@@ -13277,6 +13474,10 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,set
     </div>
 
     </div>{/* /sec-theme */}
+
+    <div className="settings-section" id="sec-tp-templates">
+    <TpTemplateManager tpTemplates={tpTemplates} setTpTemplates={setTpTemplates} tpDefaults={tpDefaults} setTpDefaults={setTpDefaults} showToast={showToast}/>
+    </div>{/* /sec-tp-templates */}
 
     <div className="settings-section" id="sec-donate">
     {/* Vrijwillige donatie — onderaan de Instellingen-pagina, optioneel */}
@@ -14917,7 +15118,7 @@ function App(){
             settings-onderdelen die in de hoofdpagina horen (Accounts/Backup/App-
             voorkeuren/Geavanceerd). Trading Rules / Goals / Tags blijven hun eigen
             tab + pagina, om die niet onnodig in de scroll-spy te proppen. */}
-        {tab==="accounts"&&<AccountsHub config={config} setConfig={setConfig} accounts={accounts} setAccounts={setAccounts} showToast={showToast} trades={trades} setTrades={setTrades} importTrades={importTrades} syncOpenPositions={syncOpenPositions} exportTrades={exportTrades} setTagConfig={setTagConfig} tagConfig={tagConfig} tradingRules={tradingRules} setTradingRules={setTradingRules} goals={goals} setGoals={setGoals} mindsetPrefs={mindsetPrefs} setMindsetPrefs={setMindsetPrefs} lastSyncTimes={lastSyncTimes} setTab={navigate}/>}
+        {tab==="accounts"&&<AccountsHub config={config} setConfig={setConfig} accounts={accounts} setAccounts={setAccounts} showToast={showToast} trades={trades} setTrades={setTrades} importTrades={importTrades} syncOpenPositions={syncOpenPositions} exportTrades={exportTrades} setTagConfig={setTagConfig} tagConfig={tagConfig} tradingRules={tradingRules} setTradingRules={setTradingRules} goals={goals} setGoals={setGoals} mindsetPrefs={mindsetPrefs} setMindsetPrefs={setMindsetPrefs} lastSyncTimes={lastSyncTimes} setTab={navigate} tpTemplates={tpTemplates} setTpTemplates={setTpTemplates} tpDefaults={tpDefaults} setTpDefaults={setTpDefaults}/>}
         {tab==="rules"&&<TradingRulesPage tradingRules={tradingRules} setTradingRules={setTradingRules}/>}
         {tab==="goals"&&<GoalsPage goals={goals} setGoals={setGoals} trades={trades}/>}
         {tab==="tags"&&<TagManager tagConfig={tagConfig} setTagConfig={setTagConfig} trades={trades} setTrades={setTrades} showToast={showToast} config={config}/>}
