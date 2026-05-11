@@ -222,6 +222,8 @@ input[type=date]::-webkit-calendar-picker-indicator{filter:invert(0.5)}
 @keyframes slideRight{from{opacity:0;transform:translateX(20px)}to{opacity:1;transform:translateX(0)}}
 @keyframes spin{to{transform:rotate(360deg)}}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
+/* v12.123: TP-pct auto-recalc highlight — gele flash op cascade-aangepaste TPs */
+@keyframes tpHighlight{0%{background:rgba(201,168,76,0.35)}100%{background:transparent}}
 @keyframes slideIn{from{transform:translateX(-100%)}to{transform:translateX(0)}}
 @keyframes logoShimmer{0%{background-position:-200% center}100%{background-position:200% center}}
 @keyframes logoPulse{0%,100%{filter:drop-shadow(0 0 3px rgba(201,168,76,0.1))}50%{filter:drop-shadow(0 0 12px rgba(46,170,111,0.4))}}
@@ -807,6 +809,114 @@ const TF_ORDER=["1m","3m","5m","15m","30m","1h","2h","4h","6h","8h","12h","1d","
 const EMPTY_LAYER={id:"",timeframe:"",setups:[],fillPlayType:undefined,confirmation:"",confirmations:[],notes:""};
 const EMPTY_TP={id:"",price:"",pct:"25",status:"open",actualPrice:""};
 
+// v12.123: TP-distribution templates (zie BACKLOG.md "Feature Spec: Slimme TP-verdeling").
+// Pre-built templates hebben vaste IDs zodat "Reset to defaults" upsert-by-id kan doen.
+// Templates zijn deletable, edit-baar en bewerkbaar gelijk aan custom templates.
+const PRE_BUILT_TP_TEMPLATES=[
+  {id:"equal_default",name:"Equal",distributions:{"1":[100],"2":[50,50],"3":[34,33,33],"4":[25,25,25,25],"5":[20,20,20,20,20]}},
+  {id:"frontloaded_default",name:"Front-loaded",distributions:{"1":[100],"2":[70,30],"3":[50,30,20],"4":[40,30,20,10],"5":[40,25,15,10,10]}},
+  {id:"runner_default",name:"Runner",distributions:{"1":[100],"2":[30,70],"3":[20,30,50],"4":[10,20,30,40],"5":[10,15,20,25,30]}},
+];
+// Default per aantal TPs. Gebruiker kan dit overrulen in Instellingen.
+const DEFAULT_TP_DEFAULTS={"1":"equal_default","2":"equal_default","3":"frontloaded_default","4":"runner_default","5":"equal_default"};
+
+// Equal-verdeling als fallback wanneer een template niet bestaat of geen verdeling voor `count` heeft.
+// 3 TPs → 34/33/33 (eerste krijgt remainder), 4 → 25*4, 5 → 20*5.
+function equalDistribution(count){
+  if(!Number.isInteger(count)||count<=0)return[];
+  if(count===1)return[100];
+  const base=Math.floor(100/count);
+  const remainder=100-base*count;
+  return Array.from({length:count},(_,i)=>i<remainder?base+1:base);
+}
+
+// Vraag de verdeling op voor `count` TPs uit een template. Fallback op equal als template
+// niet bestaat of geen verdeling voor dat aantal heeft (per spec: templates mogen partial zijn).
+function getDistributionForCount(templateId,count,templates){
+  if(!templateId||!Array.isArray(templates))return equalDistribution(count);
+  const tpl=templates.find(t=>t&&t.id===templateId);
+  if(!tpl||!tpl.distributions)return equalDistribution(count);
+  const dist=tpl.distributions[String(count)];
+  if(!Array.isArray(dist)||dist.length!==count)return equalDistribution(count);
+  return dist.slice();
+}
+
+// Pas een verdeling toe op een tpLevels-array. Behoudt id/price/status/actualPrice, overschrijft alleen pct.
+function applyDistributionToTps(tps,distribution){
+  if(!Array.isArray(tps))return[];
+  return tps.map((tp,i)=>({...tp,pct:String(distribution[i]??Math.floor(100/tps.length))}));
+}
+
+// Check of de huidige TP-distributie afwijkt van wat de template voorschrijft voor dit aantal.
+// Lege templateId betekent "Custom" — afwijking. Niet-bestaande template → afwijking.
+function isManualDistribution(tps,templateId,templates){
+  if(!Array.isArray(tps)||tps.length===0)return false;
+  if(!templateId)return true;
+  const expected=getDistributionForCount(templateId,tps.length,templates);
+  return tps.some((tp,i)=>(parseInt(tp.pct,10)||0)!==expected[i]);
+}
+
+// Recalculate distribution wanneer gebruiker handmatig een TP-pct wijzigt.
+// Methode B (Last absorbs cascade): TPn absorbeert het verschil; bij overflow cascadet
+// het van achter naar voren met ondergrens 1% per TP. Als cascade uitgeput raakt
+// (alle anderen op 1%), corrigeert de modifying TP zichzelf terug.
+function recalcLastAbsorbs(tps,idx,newPctRaw){
+  if(!Array.isArray(tps)||tps.length===0)return tps;
+  const n=tps.length;
+  if(idx<0||idx>=n)return tps;
+  let newPct=parseInt(newPctRaw,10);
+  if(!Number.isFinite(newPct)||newPct<0)newPct=0;
+  if(newPct>100)newPct=100;
+  if(n===1)return[{...tps[0],pct:"100"}];
+
+  const result=tps.map(tp=>({...tp,_pct:parseInt(tp.pct,10)||0}));
+  result[idx]._pct=newPct;
+  let diff=result.reduce((s,tp)=>s+tp._pct,0)-100;
+
+  // Cascade vanaf laatste TP terug, sla modifying-index over.
+  for(let j=n-1;j>=0&&diff!==0;j--){
+    if(j===idx)continue;
+    if(diff>0){
+      // Te veel: pak weg van deze TP, min 1%.
+      const canTake=Math.max(0,result[j]._pct-1);
+      const take=Math.min(canTake,diff);
+      result[j]._pct-=take;
+      diff-=take;
+    }else{
+      // Te weinig: voeg alles aan deze (laatste) TP toe.
+      result[j]._pct+=-diff;
+      diff=0;
+    }
+  }
+  // Cascade uitgeput, modifying-TP terug corrigeren zodat som=100.
+  if(diff>0){result[idx]._pct-=diff;}
+  return result.map(({_pct,...tp})=>({...tp,pct:String(_pct)}));
+}
+
+// Validatie voor templates die via Instellingen worden opgeslagen.
+// Returns {} bij geldig, anders {fieldKey: errorMsg}. Partial-distributies (alleen 3+4 bv.) zijn OK.
+function validateTpTemplate(tpl,allTemplates,currentId){
+  const errors={};
+  const name=(tpl?.name||"").trim();
+  if(!name){errors.name="Naam is verplicht";}
+  else if(Array.isArray(allTemplates)&&allTemplates.some(t=>t&&t.id!==currentId&&(t.name||"").trim().toLowerCase()===name.toLowerCase())){
+    errors.name="Naam moet uniek zijn";
+  }
+  let hasAnyDistribution=false;
+  for(const count of[1,2,3,4,5]){
+    const dist=tpl?.distributions?.[String(count)];
+    if(!Array.isArray(dist)||dist.length===0)continue;
+    hasAnyDistribution=true;
+    if(dist.length!==count){errors["dist_"+count]=`Verdeling moet ${count} waarde(n) hebben`;continue;}
+    if(dist.some(v=>!Number.isInteger(v))){errors["dist_"+count]="Alleen hele getallen toegestaan";continue;}
+    if(dist.some(v=>v<=0)){errors["dist_"+count]="Geen 0%-waarden toegestaan";continue;}
+    const sum=dist.reduce((s,v)=>s+v,0);
+    if(sum!==100){errors["dist_"+count]=`Som moet 100 zijn (nu ${sum})`;}
+  }
+  if(!hasAnyDistribution){errors.distributions="Minimaal 1 verdeling vereist (bijv. voor 3 TPs)";}
+  return errors;
+}
+
 // v12.74: defaults afgestemd op de community-baseline die Denny/Sebas hanteren.
 // Alleen nieuwe users zonder bestaande tj_tags-localStorage krijgen deze set —
 // huidige users behouden hun eigen tag-config (ook als die nog op de oude defaults stond).
@@ -1082,7 +1192,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.122",released:"2026-05-09"};
+const APP_VERSION={version:"v12.123",released:"2026-05-11"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -1381,7 +1491,7 @@ const EMPTY_TRADE={
   // wanneer een open positie closed-siblings heeft via dezelfde positionId.
   // Behandeld als "open" voor exit-fields (verborgen), maar krijgt visueel een
   // amber badge + realizedPnl-display.
-  status:"closed",manualOverrides:[],tpLevels:[],
+  status:"closed",manualOverrides:[],tpLevels:[],tpTemplateId:"",
   realizedPnl:"",     // v12.62: voor status="partial" — sum(pnl) van closed-siblings met zelfde positionId
   originalSizeAsset:"",// v12.62: voor status="partial" — origineel size in base currency (= rest + alle closed siblings); gebruikt voor correcte TP-winst-calc
   entryNote:"",
@@ -5107,7 +5217,7 @@ function Section({title,storeKey,defaultOpen=true,hint,children}){
   </details>);
 }
 
-function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,setConfig,accounts,showToast,isDraft,playbooks,setTab}){
+function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,setConfig,accounts,showToast,isDraft,playbooks,setTab,tpTemplates,tpDefaults}){
   const[showCard,setShowCard]=useState(false);
   const[sizeEditOpen,setSizeEditOpen]=useState(false);// v12.61: inline edit voor Bellafiore account-saldo
   // Auto-persist to tj_trade_draft so unsaved input survives accidental modal-close, tab-close, crash, etc.
@@ -5126,6 +5236,12 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,setConfig,ac
     return q;
   });
   const toggle=(f,tag)=>setTrade(p=>({...p,[f]:p[f].includes(tag)?p[f].filter(t=>t!==tag):[...p[f],tag]}));
+  // v12.123: TP-template UI state. highlightedTpIds = set van tp.id's die kort gele flash krijgen
+  // na auto-recalc. pendingTpAction = payload voor "overschrijven?" confirm-modal.
+  const[highlightedTpIds,setHighlightedTpIds]=useState(()=>new Set());
+  const[pendingTpAction,setPendingTpAction]=useState(null);
+  const tpHighlightTimer=useRef(null);
+  const tpRecalcDebounce=useRef(null);
   const fRef=useRef();
   const[ssInfo,setSsInfo]=useState(null);
   // Lightbox state: index van zichtbare screenshot of null. ←/→ navigeert, Esc sluit.
@@ -5501,17 +5617,99 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,setConfig,ac
         met een ruwe formule-schatting. Sinds v12.94. */}
     {!isOpen&&trade.source==="manual"&&(()=>{const e=parseFloat(trade.entry);const ex=parseFloat(trade.exit);const sz=parseFloat(trade.positionSize);const fees=parseFloat(trade.fees)||0;if(e>0&&ex>0&&sz>0&&!(trade.manualOverrides||[]).includes("pnl")){const raw=trade.direction==="long"?(ex-e)*sz/e:(e-ex)*sz/e;const net2=raw-fees;if(trade.pnl!==""&&Math.abs(parseFloat(trade.pnl)-net2)>0.01||trade.pnl===""){return(<div style={{marginBottom:"12px"}}><button onClick={()=>setTrade(p=>({...p,pnl:net2.toFixed(2)}))} style={{fontSize:"10px",padding:"4px 12px",borderRadius:"5px",border:"1px solid var(--blue2)",background:"rgba(201,168,76,0.12)",color:"var(--gold)",cursor:"pointer",fontFamily:"inherit",fontWeight:500}}>💡 PNL berekenen: {net2>=0?"+":""}${fmt(net2)} {fees>0?`(na $${fmt(fees)} fees)`:""} → Toepassen</button></div>)}}return null;})()}
 
-    {/* TP Levels (multi-TP with percentages) — ported from v4_14 */}
+    {/* TP Levels (multi-TP with percentages) — ported from v4_14.
+        v12.123: template-driven distribution (Equal/Front-loaded/Runner + custom). */}
     {(()=>{
       const tps=trade.tpLevels||[];
       const totalPct=tps.reduce((s,tp)=>s+parseFloat(tp.pct||0),0);
       const entryN=parseFloat(trade.entry);const slN=parseFloat(trade.stopLoss);const sizeN=parseFloat(trade.positionSize);
       const isLong=trade.direction==="long";
 
-      const addTP=()=>{const remaining=Math.max(0,100-totalPct);setTrade(p=>({...p,tpLevels:[...(p.tpLevels||[]),{...EMPTY_TP,id:uid(),pct:String(remaining>0?Math.min(remaining,25):25)}]}))};
-      const updateTP=(id,field,val)=>setTrade(p=>({...p,tpLevels:(p.tpLevels||[]).map(tp=>tp.id===id?{...tp,[field]:val}:tp)}));
-      const removeTP=(id)=>setTrade(p=>({...p,tpLevels:(p.tpLevels||[]).filter(tp=>tp.id!==id)}));
+      // v12.123: template-aware TP-mgmt
+      const tplList=Array.isArray(tpTemplates)?tpTemplates:[];
+      const tplDefaults=tpDefaults||{};
+      const currentTplId=trade.tpTemplateId||"";
+      const isManualTpl=isManualDistribution(tps,currentTplId,tplList);
+      // Default template id voor `count` TPs; valt terug op equal_default of de eerste pre-built.
+      const defaultIdForCount=(count)=>{
+        const id=tplDefaults[String(count)];
+        if(id&&tplList.some(t=>t.id===id))return id;
+        if(tplList.some(t=>t.id==="equal_default"))return"equal_default";
+        return tplList[0]?.id||"";
+      };
+      // Highlight `ids` voor 200ms na 300ms debounce — visuele "settled"-flash.
+      const flashTps=(ids)=>{
+        if(tpHighlightTimer.current)clearTimeout(tpHighlightTimer.current);
+        setHighlightedTpIds(new Set(ids));
+        tpHighlightTimer.current=setTimeout(()=>setHighlightedTpIds(new Set()),200);
+      };
+      // Apply een template-distributie op de huidige tps voor het huidige aantal.
+      const applyTemplate=(templateId)=>{
+        const dist=getDistributionForCount(templateId,tps.length,tplList);
+        const newTps=applyDistributionToTps(tps,dist);
+        setTrade(p=>({...p,tpLevels:newTps,tpTemplateId:templateId}));
+        flashTps(newTps.map(tp=>tp.id).filter(Boolean));
+      };
+
+      const addTP=()=>{
+        const newCount=tps.length+1;
+        // Bij manual deviation: vraag bevestiging vóór templaat-overschrijving.
+        const proceed=()=>{
+          const tplId=defaultIdForCount(newCount);
+          const dist=getDistributionForCount(tplId,newCount,tplList);
+          const fresh={...EMPTY_TP,id:uid(),pct:String(dist[newCount-1]||0)};
+          const reweighted=tps.map((tp,i)=>({...tp,pct:String(dist[i]||0)}));
+          setTrade(p=>({...p,tpLevels:[...reweighted,fresh],tpTemplateId:tplId}));
+          flashTps([...reweighted.map(t=>t.id),fresh.id].filter(Boolean));
+        };
+        if(isManualTpl&&tps.length>0){
+          setPendingTpAction({title:"Je handmatige verdeling wordt overschreven. Doorgaan?",onConfirm:proceed});
+        }else proceed();
+      };
+      const removeTP=(id)=>{
+        const remaining=tps.filter(tp=>tp.id!==id);
+        const newCount=remaining.length;
+        const proceed=()=>{
+          if(newCount===0){
+            setTrade(p=>({...p,tpLevels:[],tpTemplateId:""}));
+            return;
+          }
+          // Bij geactiveerd template: herverdeel volgens template-of-count.
+          const tplId=currentTplId&&!isManualTpl?currentTplId:defaultIdForCount(newCount);
+          const dist=getDistributionForCount(tplId,newCount,tplList);
+          const reweighted=remaining.map((tp,i)=>({...tp,pct:String(dist[i]||0)}));
+          setTrade(p=>({...p,tpLevels:reweighted,tpTemplateId:tplId}));
+          flashTps(reweighted.map(t=>t.id).filter(Boolean));
+        };
+        if(isManualTpl&&remaining.length>0){
+          setPendingTpAction({title:"Je handmatige verdeling wordt overschreven. Doorgaan?",onConfirm:proceed});
+        }else proceed();
+      };
+      const updateTP=(id,field,val)=>{
+        if(field==="pct"){
+          // Auto-recalc via Option B (last absorbs cascade). Markeer als Custom.
+          const idx=tps.findIndex(tp=>tp.id===id);
+          if(idx<0)return;
+          const next=recalcLastAbsorbs(tps,idx,val);
+          setTrade(p=>({...p,tpLevels:next,tpTemplateId:""}));
+          // Debounced highlight van álle TPs behalve degene die wordt getypet.
+          if(tpRecalcDebounce.current)clearTimeout(tpRecalcDebounce.current);
+          tpRecalcDebounce.current=setTimeout(()=>{
+            flashTps(next.filter((tp,i)=>i!==idx).map(tp=>tp.id).filter(Boolean));
+          },300);
+          return;
+        }
+        setTrade(p=>({...p,tpLevels:(p.tpLevels||[]).map(tp=>tp.id===id?{...tp,[field]:val}:tp)}));
+      };
       const toggleStatus=(id)=>setTrade(p=>({...p,tpLevels:(p.tpLevels||[]).map(tp=>tp.id===id?{...tp,status:tp.status==="hit"?"open":tp.status==="open"?"missed":"hit"}:tp)}));
+      const changeTemplate=(newId)=>{
+        if(!newId||newId==="__custom"||newId===currentTplId)return;
+        if(isManualTpl&&tps.length>0){
+          setPendingTpAction({title:"Je handmatige verdeling wordt overschreven. Doorgaan?",onConfirm:()=>applyTemplate(newId)});
+        }else{
+          applyTemplate(newId);
+        }
+      };
 
       // v12.107+v12.108: voor handmatige trades met 100% TP-hit toont de UI een knop:
       //  - mode='close': trade is open/partial → "✓ Trade sluiten" (groen bij winst, amber bij verlies)
@@ -5661,6 +5859,18 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,setConfig,ac
           </div>
         </div>
 
+        {/* v12.123: template-dropdown — toont alleen wanneer er templates beschikbaar zijn én er ten minste 1 TP bestaat
+            (anders is er niks om een verdeling op toe te passen — eerste add pakt automatisch de default). */}
+        {tps.length>0&&tplList.length>0&&<div style={{display:"flex",alignItems:"center",gap:"10px",marginBottom:"10px",fontSize:"11px",color:"var(--text3)"}}>
+          <span style={{fontSize:"10px",color:"var(--text4)",textTransform:"uppercase",letterSpacing:"0.08em",fontWeight:600}}>Template:</span>
+          <select value={isManualTpl?"__custom":(currentTplId||"")} onChange={(e)=>changeTemplate(e.target.value)} style={{...iStyle,padding:"4px 8px",fontSize:"11px",width:"auto",minWidth:"140px"}}>
+            {!currentTplId&&!isManualTpl&&<option value="">— Kies template —</option>}
+            {tplList.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
+            {isManualTpl&&<option value="__custom" disabled>Custom (handmatig)</option>}
+          </select>
+          {isManualTpl&&<span style={{fontSize:"9px",color:"var(--amber)",fontStyle:"italic"}}>handmatige verdeling actief — kies template om te overschrijven</span>}
+        </div>}
+
         {tps.length>0&&<>
           <div style={{display:"grid",gridTemplateColumns:"32px 1fr 70px 80px 70px 60px 28px",gap:"6px",marginBottom:"4px",padding:"0 2px"}}>
             <span style={{fontSize:"9px",color:"var(--text5)"}}></span>
@@ -5676,7 +5886,8 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,setConfig,ac
             const profit=calcProfit(tp);const rr=calcRR(tp);
             const statusColor=tp.status==="hit"?"var(--green)":tp.status==="missed"?"var(--red)":"var(--gold)";
             const statusIcon=tp.status==="hit"?<GlowCheck size={14}/>:tp.status==="missed"?<GlowCross size={14}/>:"◔";
-            return(<div key={tp.id} style={{display:"grid",gridTemplateColumns:"32px 1fr 70px 80px 70px 60px 28px",gap:"6px",alignItems:"center",marginBottom:"4px"}}>
+            const isHighlighted=highlightedTpIds.has(tp.id);
+            return(<div key={tp.id} style={{display:"grid",gridTemplateColumns:"32px 1fr 70px 80px 70px 60px 28px",gap:"6px",alignItems:"center",marginBottom:"4px",borderRadius:"4px",animation:isHighlighted?"tpHighlight 200ms ease-out":"none"}}>
               <span style={{fontSize:"11px",fontWeight:700,color:"var(--gold)",textAlign:"center"}}>TP{i+1}</span>
               <input type="text" value={fmtPriceDisplay(tp.price)} onChange={e=>updateTP(tp.id,"price",e.target.value)} placeholder="Prijs" style={{...iStyle,padding:"6px 8px",fontSize:"12px"}}/>
               <div style={{position:"relative"}}>
@@ -5956,6 +6167,17 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,setConfig,ac
       {showCard&&<TradeCardExport trade={trade} onClose={()=>setShowCard(false)}/>}
       {onCancel&&<button onClick={onCancel} style={{padding:"12px 24px",borderRadius:"8px",border:"1px solid var(--border4)",background:"transparent",color:"var(--text2)",cursor:"pointer",fontFamily:"inherit",fontSize:"14px"}}>Annuleren</button>}
     </div>
+    {/* v12.123: confirm-modal voor TP-template overschrijving */}
+    {pendingTpAction&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:10000,display:"flex",alignItems:"center",justifyContent:"center",animation:"fadeIn .15s ease"}}>
+      <div style={{background:"var(--bg2,var(--bg))",border:"1px solid var(--gold-border)",borderRadius:"12px",padding:"22px 24px",maxWidth:"420px",width:"90%",boxShadow:"0 20px 60px rgba(0,0,0,.6)"}}>
+        <div style={{fontSize:"15px",fontWeight:700,color:"var(--text)",marginBottom:"6px"}}>⚠ Verdeling overschrijven</div>
+        <div style={{fontSize:"13px",color:"var(--text3)",lineHeight:1.5,marginBottom:"18px"}}>{pendingTpAction.title}</div>
+        <div style={{display:"flex",gap:"8px"}}>
+          <button onClick={()=>{const fn=pendingTpAction.onConfirm;setPendingTpAction(null);if(typeof fn==="function")fn();}} style={{flex:1,padding:"10px 14px",borderRadius:"8px",border:"1px solid var(--gold-border)",background:"var(--gold-dim)",color:"var(--gold)",fontSize:"13px",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Doorgaan</button>
+          <button onClick={()=>setPendingTpAction(null)} style={{padding:"10px 14px",borderRadius:"8px",border:"1px solid var(--border3)",background:"transparent",color:"var(--text3)",fontSize:"13px",cursor:"pointer",fontFamily:"inherit"}}>Annuleren</button>
+        </div>
+      </div>
+    </div>}
   </div>);
 }
 
@@ -11268,7 +11490,204 @@ function DonationSection(){
   </div>);
 }
 
-function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,setTrades,importTrades,syncOpenPositions,exportTrades,setTagConfig,tagConfig,tradingRules,setTradingRules,goals,setGoals,mindsetPrefs,setMindsetPrefs,lastSyncTimes,setTab}){
+// v12.123: TP-template manager — UI voor beheer van templates + default-per-count picker.
+// Inline edit-modal (toont overlay over de Settings-pagina). Pre-built templates kunnen
+// worden bewerkt én verwijderd; "Reset to defaults" upsert by-id zonder custom te raken.
+function TpTemplateManager({tpTemplates,setTpTemplates,tpDefaults,setTpDefaults,showToast}){
+  const[editing,setEditing]=useState(null); // null | template-object (clone)
+  const[isNew,setIsNew]=useState(false);
+  const[deleteTarget,setDeleteTarget]=useState(null);
+  const tplList=Array.isArray(tpTemplates)?tpTemplates:[];
+
+  const openNew=()=>{
+    setIsNew(true);
+    setEditing({id:"tpl_"+Date.now().toString(36)+Math.random().toString(36).slice(2,6),name:"",distributions:{"3":[34,33,33]}});
+  };
+  const openEdit=(tpl)=>{
+    setIsNew(false);
+    // Deep clone om edits te isoleren
+    setEditing({id:tpl.id,name:tpl.name,distributions:JSON.parse(JSON.stringify(tpl.distributions||{}))});
+  };
+  const saveEdit=(tpl)=>{
+    const errors=validateTpTemplate(tpl,tplList,tpl.id);
+    if(Object.keys(errors).length>0){
+      showToast&&showToast("Kan niet opslaan: "+Object.values(errors)[0],"error");
+      return false;
+    }
+    setTpTemplates(prev=>{
+      const arr=Array.isArray(prev)?prev:[];
+      const exists=arr.some(t=>t.id===tpl.id);
+      return exists?arr.map(t=>t.id===tpl.id?tpl:t):[...arr,tpl];
+    });
+    setEditing(null);
+    showToast&&showToast(isNew?`Template "${tpl.name}" aangemaakt`:`Template "${tpl.name}" bijgewerkt`,"success");
+    return true;
+  };
+  const doDelete=()=>{
+    if(!deleteTarget)return;
+    setTpTemplates(prev=>(Array.isArray(prev)?prev:[]).filter(t=>t.id!==deleteTarget.id));
+    showToast&&showToast(`Template "${deleteTarget.name}" verwijderd`,"success");
+    setDeleteTarget(null);
+  };
+  const resetDefaults=()=>{
+    setTpTemplates(prev=>{
+      const arr=Array.isArray(prev)?prev.slice():[];
+      // Upsert pre-builts by id (overschrijft bewerkte pre-builts, behoudt custom).
+      for(const pb of PRE_BUILT_TP_TEMPLATES){
+        const idx=arr.findIndex(t=>t.id===pb.id);
+        if(idx>=0)arr[idx]={...pb,distributions:JSON.parse(JSON.stringify(pb.distributions))};
+        else arr.push({...pb,distributions:JSON.parse(JSON.stringify(pb.distributions))});
+      }
+      return arr;
+    });
+    showToast&&showToast("Pre-built templates hersteld","success");
+  };
+
+  return(<>
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"14px"}}>
+      <div>
+        <div style={{fontSize:"11px",color:"var(--gold)",textTransform:"uppercase",letterSpacing:"0.12em",fontWeight:700,marginBottom:"4px"}}>TP-templates</div>
+        <div style={{fontSize:"11px",color:"var(--text4)",lineHeight:1.5}}>Verdelingspatronen voor Take Profits. Pre-built (Equal / Front-loaded / Runner) + eigen templates. Geldt alleen voor nieuwe trades — bestaande trades blijven ongewijzigd.</div>
+      </div>
+      <div style={{display:"flex",gap:"6px",flexShrink:0}}>
+        <button onClick={resetDefaults} title="Herstel Equal / Front-loaded / Runner (upsert-by-id, custom blijft)" style={{padding:"6px 12px",borderRadius:"6px",border:"1px solid var(--border3)",background:"transparent",color:"var(--text3)",fontSize:"11px",fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>↻ Reset to defaults</button>
+        <button onClick={openNew} style={{padding:"6px 14px",borderRadius:"6px",border:"1px solid var(--gold-border)",background:"var(--gold-dim)",color:"var(--gold)",fontSize:"11px",fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>+ Nieuwe template</button>
+      </div>
+    </div>
+
+    {tplList.length===0&&<div style={{padding:"16px",borderRadius:"8px",border:"1px dashed var(--border3)",fontSize:"12px",color:"var(--text4)",textAlign:"center"}}>Geen templates — klik "↻ Reset to defaults" om pre-builts toe te voegen of "+ Nieuwe template".</div>}
+
+    {tplList.length>0&&<div style={{display:"flex",flexDirection:"column",gap:"8px",marginBottom:"18px"}}>
+      {tplList.map(tpl=>{
+        const counts=[1,2,3,4,5];
+        return(<div key={tpl.id} style={{padding:"12px 14px",borderRadius:"8px",border:"1px solid var(--border2)",background:"var(--bg3)",display:"flex",alignItems:"center",gap:"14px"}}>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontSize:"13px",fontWeight:700,color:"var(--text)",marginBottom:"6px"}}>{tpl.name}</div>
+            <div style={{display:"flex",gap:"6px",flexWrap:"wrap"}}>
+              {counts.map(c=>{
+                const dist=tpl.distributions?.[String(c)];
+                if(!Array.isArray(dist)||dist.length===0){
+                  return<span key={c} style={{fontSize:"9px",fontFamily:"var(--mono)",color:"var(--text5)",padding:"2px 6px",borderRadius:"3px",border:"1px dashed var(--border3)"}}>{c}TP: —</span>;
+                }
+                return<span key={c} style={{fontSize:"9px",fontFamily:"var(--mono)",color:"var(--text3)",padding:"2px 6px",borderRadius:"3px",background:"var(--bg4)"}}>{c}TP: {dist.join("/")}</span>;
+              })}
+            </div>
+          </div>
+          <button onClick={()=>openEdit(tpl)} title="Bewerk template" style={{background:"none",border:"1px solid var(--border3)",borderRadius:"5px",padding:"5px 10px",color:"var(--text2)",cursor:"pointer",fontSize:"11px",fontFamily:"inherit"}}>✎ Edit</button>
+          <button onClick={()=>setDeleteTarget(tpl)} title="Verwijder template" style={{background:"none",border:"1px solid var(--red-border)",borderRadius:"5px",padding:"5px 10px",color:"var(--red)",cursor:"pointer",fontSize:"11px",fontFamily:"inherit"}}>🗑</button>
+        </div>);
+      })}
+    </div>}
+
+    {/* Default-per-count picker */}
+    <div style={{padding:"12px 14px",borderRadius:"8px",border:"1px solid var(--border2)",background:"var(--bg3)",marginBottom:"14px"}}>
+      <div style={{fontSize:"11px",color:"var(--gold)",textTransform:"uppercase",letterSpacing:"0.08em",fontWeight:700,marginBottom:"8px"}}>Default-template per aantal TPs</div>
+      <div style={{fontSize:"10px",color:"var(--text4)",marginBottom:"10px",lineHeight:1.5}}>Welke template wordt automatisch toegepast bij toevoegen van TP N? Bij ontbrekende verdeling of verwijderde template valt het terug op een gelijke verdeling.</div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:"6px"}}>
+        {[1,2,3,4,5].map(c=>(<div key={c} style={{display:"flex",flexDirection:"column",gap:"4px"}}>
+          <div style={{fontSize:"10px",color:"var(--text4)",fontFamily:"var(--mono)",textAlign:"center"}}>{c} TP{c>1?"s":""}</div>
+          <select value={tpDefaults?.[String(c)]||""} onChange={(e)=>setTpDefaults(p=>({...(p||{}),[String(c)]:e.target.value}))} style={{padding:"5px 6px",fontSize:"11px",border:"1px solid var(--border3)",borderRadius:"4px",background:"var(--bg)",color:"var(--text2)",fontFamily:"inherit"}}>
+            <option value="">— Gelijk (fallback) —</option>
+            {tplList.map(t=>{
+              // Toon alleen templates die een verdeling voor dit count hebben.
+              const has=Array.isArray(t.distributions?.[String(c)])&&t.distributions[String(c)].length===c;
+              return<option key={t.id} value={t.id} disabled={!has}>{t.name}{!has?" (geen "+c+"TP-verdeling)":""}</option>;
+            })}
+          </select>
+        </div>))}
+      </div>
+    </div>
+
+    {/* Edit modal */}
+    {editing&&<TpTemplateEditModal initial={editing} isNew={isNew} allTemplates={tplList} onCancel={()=>setEditing(null)} onSave={saveEdit}/>}
+
+    {/* Delete confirm */}
+    {deleteTarget&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:10000,display:"flex",alignItems:"center",justifyContent:"center",animation:"fadeIn .15s ease"}}>
+      <div style={{background:"var(--bg2,var(--bg))",border:"1px solid var(--red-border)",borderRadius:"12px",padding:"22px 24px",maxWidth:"420px",width:"90%",boxShadow:"0 20px 60px rgba(0,0,0,.6)"}}>
+        <div style={{fontSize:"15px",fontWeight:700,color:"var(--text)",marginBottom:"6px"}}>🗑 Template verwijderen</div>
+        <div style={{fontSize:"13px",color:"var(--text3)",lineHeight:1.5,marginBottom:"18px"}}>Verwijder "<strong>{deleteTarget.name}</strong>"? Trades die deze template gebruiken blijven werken (vallen terug op gelijke verdeling bij volgende +TP).</div>
+        <div style={{display:"flex",gap:"8px"}}>
+          <button onClick={doDelete} style={{flex:1,padding:"10px 14px",borderRadius:"8px",border:"1px solid var(--red-border)",background:"var(--red-dim)",color:"var(--red)",fontSize:"13px",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Verwijderen</button>
+          <button onClick={()=>setDeleteTarget(null)} style={{padding:"10px 14px",borderRadius:"8px",border:"1px solid var(--border3)",background:"transparent",color:"var(--text3)",fontSize:"13px",cursor:"pointer",fontFamily:"inherit"}}>Annuleren</button>
+        </div>
+      </div>
+    </div>}
+  </>);
+}
+
+function TpTemplateEditModal({initial,isNew,allTemplates,onCancel,onSave}){
+  const[draft,setDraft]=useState(initial);
+  const errors=validateTpTemplate(draft,allTemplates,draft.id);
+  const toggleCount=(count)=>{
+    setDraft(d=>{
+      const dists={...d.distributions};
+      const key=String(count);
+      if(Array.isArray(dists[key])&&dists[key].length>0)delete dists[key];
+      else dists[key]=equalDistribution(count);
+      return{...d,distributions:dists};
+    });
+  };
+  const updateValue=(count,idx,val)=>{
+    const v=parseInt(val,10);
+    setDraft(d=>{
+      const dists={...d.distributions};
+      const arr=Array.isArray(dists[String(count)])?dists[String(count)].slice():equalDistribution(count);
+      arr[idx]=Number.isFinite(v)?v:0;
+      dists[String(count)]=arr;
+      return{...d,distributions:dists};
+    });
+  };
+  const autoFill=(count)=>{
+    setDraft(d=>({...d,distributions:{...d.distributions,[String(count)]:equalDistribution(count)}}));
+  };
+  return(<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:10000,display:"flex",alignItems:"center",justifyContent:"center",animation:"fadeIn .15s ease",overflowY:"auto",padding:"24px 0"}}>
+    <div style={{background:"var(--bg2,var(--bg))",border:"1px solid var(--gold-border)",borderRadius:"12px",padding:"22px 24px",maxWidth:"560px",width:"94%",boxShadow:"0 20px 60px rgba(0,0,0,.6)",maxHeight:"90vh",overflowY:"auto"}}>
+      <div style={{fontSize:"15px",fontWeight:700,color:"var(--text)",marginBottom:"14px"}}>{isNew?"+ Nieuwe TP-template":"✎ Template bewerken"}</div>
+
+      <div style={{marginBottom:"14px"}}>
+        <div style={{fontSize:"10px",color:"var(--text4)",textTransform:"uppercase",letterSpacing:"0.08em",fontWeight:600,marginBottom:"4px"}}>Naam</div>
+        <input type="text" value={draft.name} onChange={(e)=>setDraft(d=>({...d,name:e.target.value}))} placeholder="bv. Aggressief 50/30/20" style={{width:"100%",padding:"8px 10px",fontSize:"12px",border:"1px solid "+(errors.name?"var(--red-border)":"var(--border3)"),borderRadius:"5px",background:"var(--bg)",color:"var(--text)",fontFamily:"inherit"}}/>
+        {errors.name&&<div style={{fontSize:"10px",color:"var(--red)",marginTop:"4px"}}>{errors.name}</div>}
+      </div>
+
+      <div style={{fontSize:"10px",color:"var(--text4)",textTransform:"uppercase",letterSpacing:"0.08em",fontWeight:600,marginBottom:"8px"}}>Verdelingen</div>
+      <div style={{fontSize:"10px",color:"var(--text4)",marginBottom:"10px",lineHeight:1.5}}>Definieer per aantal TPs hoe de positie verdeeld wordt. Niet alle aantallen hoeven ingevuld — leeg = fallback op equal-verdeling.</div>
+
+      {[1,2,3,4,5].map(count=>{
+        const dist=draft.distributions?.[String(count)];
+        const active=Array.isArray(dist)&&dist.length>0;
+        const err=errors["dist_"+count];
+        return(<div key={count} style={{marginBottom:"10px",padding:"10px 12px",borderRadius:"6px",border:"1px solid "+(err?"var(--red-border)":"var(--border2)"),background:active?"var(--bg3)":"transparent"}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:active?"8px":0}}>
+            <label style={{display:"flex",alignItems:"center",gap:"8px",cursor:"pointer",fontSize:"11px",color:"var(--text2)",fontWeight:600}}>
+              <input type="checkbox" checked={active} onChange={()=>toggleCount(count)} style={{cursor:"pointer"}}/>
+              <span>Definieer voor {count} TP{count>1?"s":""}</span>
+            </label>
+            {active&&<button onClick={()=>autoFill(count)} style={{fontSize:"10px",padding:"3px 8px",borderRadius:"4px",border:"1px dashed var(--border3)",background:"transparent",color:"var(--gold)",cursor:"pointer",fontFamily:"inherit"}}>Vul gelijk ({equalDistribution(count).join("/")})</button>}
+          </div>
+          {active&&<div style={{display:"flex",gap:"6px",alignItems:"center",flexWrap:"wrap"}}>
+            {dist.map((v,i)=>(<div key={i} style={{display:"flex",alignItems:"center",gap:"3px"}}>
+              <span style={{fontSize:"9px",fontFamily:"var(--mono)",color:"var(--text4)"}}>TP{i+1}</span>
+              <input type="number" value={v} onChange={(e)=>updateValue(count,i,e.target.value)} min={1} max={100} style={{width:"56px",padding:"4px 6px",fontSize:"11px",border:"1px solid var(--border3)",borderRadius:"4px",background:"var(--bg)",color:"var(--text)",fontFamily:"var(--mono)"}}/>
+              <span style={{fontSize:"9px",color:"var(--text4)"}}>%</span>
+            </div>))}
+            <span style={{fontSize:"10px",color:"var(--text4)",fontFamily:"var(--mono)",marginLeft:"6px"}}>= {dist.reduce((s,v)=>s+(parseInt(v,10)||0),0)}%</span>
+          </div>}
+          {err&&<div style={{fontSize:"10px",color:"var(--red)",marginTop:"6px"}}>{err}</div>}
+        </div>);
+      })}
+
+      {errors.distributions&&<div style={{fontSize:"10px",color:"var(--red)",marginBottom:"10px"}}>{errors.distributions}</div>}
+
+      <div style={{display:"flex",gap:"8px",marginTop:"6px"}}>
+        <button onClick={()=>onSave(draft)} disabled={Object.keys(errors).length>0} style={{flex:1,padding:"10px 14px",borderRadius:"8px",border:"1px solid var(--gold-border)",background:Object.keys(errors).length>0?"transparent":"var(--gold-dim)",color:"var(--gold)",fontSize:"13px",fontWeight:700,cursor:Object.keys(errors).length>0?"not-allowed":"pointer",fontFamily:"inherit",opacity:Object.keys(errors).length>0?0.5:1}}>{isNew?"Aanmaken":"Opslaan"}</button>
+        <button onClick={onCancel} style={{padding:"10px 14px",borderRadius:"8px",border:"1px solid var(--border3)",background:"transparent",color:"var(--text3)",fontSize:"13px",cursor:"pointer",fontFamily:"inherit"}}>Annuleren</button>
+      </div>
+    </div>
+  </div>);
+}
+
+function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,setTrades,importTrades,syncOpenPositions,exportTrades,setTagConfig,tagConfig,tradingRules,setTradingRules,goals,setGoals,mindsetPrefs,setMindsetPrefs,lastSyncTimes,setTab,tpTemplates,setTpTemplates,tpDefaults,setTpDefaults}){
   const csvRef=useRef();const csvAcctRef=useRef(null);
   const backupRef=useRef();
   // Visual confirmation for displayName auto-save (flashes after 400ms debounce, fades after 1800ms)
@@ -11335,6 +11754,9 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,set
         if(d.tagConfig&&typeof d.tagConfig==="object"&&setTagConfig)setTagConfig(d.tagConfig);
         if(Array.isArray(d.accounts))setAccounts(d.accounts);
         if(d.config&&typeof d.config==="object")setConfig(p=>({...p,...d.config}));
+        // v12.123: TP-templates + defaults restore (Settings → Backup-knop pad)
+        if(Array.isArray(d.tpTemplates)&&setTpTemplates)setTpTemplates(d.tpTemplates);
+        if(d.tpDefaults&&typeof d.tpDefaults==="object"&&setTpDefaults)setTpDefaults(p=>({...DEFAULT_TP_DEFAULTS,...d.tpDefaults}));
         showToast("Backup hersteld");
       }catch(err){showToast("Fout bij importeren: "+err.message,"error")}
     };
@@ -12376,7 +12798,7 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,set
   // Sidebar-config — sync met section-IDs. Volgorde komt overeen met de cards in DOM.
   const SETTINGS_NAV=[
     {cat:"🔌 Account & Data",items:[{id:"sec-accounts",label:"Mijn accounts"},{id:"sec-backup",label:"Backup & Restore"}]},
-    {cat:"🔧 App",items:[{id:"sec-general",label:"Voorkeuren"},{id:"sec-layout",label:"Layout"},{id:"sec-theme",label:"Thema"},{id:"sec-donate",label:"Vrijwillige donatie"}]},
+    {cat:"🔧 App",items:[{id:"sec-general",label:"Voorkeuren"},{id:"sec-layout",label:"Layout"},{id:"sec-theme",label:"Thema"},{id:"sec-tp-templates",label:"TP-templates"},{id:"sec-donate",label:"Vrijwillige donatie"}]},
     {cat:"⚙️ Geavanceerd",items:[{id:"sec-data",label:"Data wissen"},{id:"sec-storage",label:"Storage"}]},
   ];
   // Scroll-spy: pak meest-zichtbare sectie en highlight in sidebar.
@@ -13055,6 +13477,10 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,set
     </div>
 
     </div>{/* /sec-theme */}
+
+    <div className="settings-section" id="sec-tp-templates">
+    <TpTemplateManager tpTemplates={tpTemplates} setTpTemplates={setTpTemplates} tpDefaults={tpDefaults} setTpDefaults={setTpDefaults} showToast={showToast}/>
+    </div>{/* /sec-tp-templates */}
 
     <div className="settings-section" id="sec-donate">
     {/* Vrijwillige donatie — onderaan de Instellingen-pagina, optioneel */}
@@ -13867,6 +14293,11 @@ function App(){
 
   // Playbook — gestructureerde catalogus van bewezen setups (v12.38)
   const[playbooks,setPlaybooks]=useState(()=>{try{const d=localStorage.getItem("tj_playbooks");return migratePlaybooks(d?JSON.parse(d):[]);}catch{return[]}});
+  // v12.123: TP-distribution templates + default-per-count. Pre-builts worden ge-seed bij eerste boot.
+  const[tpTemplates,setTpTemplates]=useState(()=>{try{const d=localStorage.getItem("tj_tpTemplates");return d?JSON.parse(d):PRE_BUILT_TP_TEMPLATES.slice()}catch{return PRE_BUILT_TP_TEMPLATES.slice()}});
+  useEffect(()=>{try{localStorage.setItem("tj_tpTemplates",JSON.stringify(tpTemplates))}catch{}},[tpTemplates]);
+  const[tpDefaults,setTpDefaults]=useState(()=>{try{const d=localStorage.getItem("tj_tpDefaults");return d?{...DEFAULT_TP_DEFAULTS,...JSON.parse(d)}:{...DEFAULT_TP_DEFAULTS}}catch{return{...DEFAULT_TP_DEFAULTS}}});
+  useEffect(()=>{try{localStorage.setItem("tj_tpDefaults",JSON.stringify(tpDefaults))}catch{}},[tpDefaults]);
   // v12.99: laatste sync-tijden per exchange voor "Laatst gesynchroniseerd: X geleden" indicator.
   const[lastSyncTimes,setLastSyncTimes]=useState(()=>{try{const d=localStorage.getItem("tj_last_sync_times");return d?JSON.parse(d):{};}catch{return{}}});
   useEffect(()=>{try{localStorage.setItem("tj_playbooks",JSON.stringify(playbooks))}catch{}},[playbooks]);
@@ -14422,13 +14853,16 @@ function App(){
     if(Array.isArray(d.accounts))setAccounts(d.accounts);
     if(d.config&&typeof d.config==="object")setConfig(p=>({...p,...d.config}));
     if(Array.isArray(d.playbooks))setPlaybooks(migratePlaybooks(d.playbooks));
+    // v12.123: TP-templates + defaults restore (drag-drop pad)
+    if(Array.isArray(d.tpTemplates))setTpTemplates(d.tpTemplates);
+    if(d.tpDefaults&&typeof d.tpDefaults==="object")setTpDefaults(p=>({...DEFAULT_TP_DEFAULTS,...d.tpDefaults}));
   }catch(err){showToast("Fout bij importeren","error")}};r.readAsText(f)},[trades]);
   const handleDragOver=useCallback((e)=>{e.preventDefault();setImportDragOver(true)},[]);
   const handleDragLeave=useCallback(()=>setImportDragOver(false),[]);
 
   // Volledige backup: trades + tags + accounts + config (proxy-URL / thema / quote / sync-interval / exchange-keys)
   const exportTrades=()=>{
-    const payload={version:12,schemaVersion:CURRENT_SCHEMA_VERSION,exportDate:new Date().toISOString(),trades,tagConfig,accounts,config,playbooks};
+    const payload={version:12,schemaVersion:CURRENT_SCHEMA_VERSION,exportDate:new Date().toISOString(),trades,tagConfig,accounts,config,playbooks,tpTemplates,tpDefaults};
     const blob=new Blob([JSON.stringify(payload,null,2)],{type:"application/json"});
     const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;
     a.download=`syncjournal-backup-${new Date().toISOString().split("T")[0]}.json`;a.click();URL.revokeObjectURL(url);
@@ -14649,7 +15083,7 @@ function App(){
               <div style={{fontSize:"16px",fontWeight:700}}>Nieuwe trade</div>
               <button onClick={tryCloseNew} style={{background:"none",border:"none",color:"var(--text4)",cursor:"pointer",fontSize:"14px"}}>✕</button>
             </div>
-            <TradeForm trade={newTrade} setTrade={setNewTrade} onSave={()=>saveTrade(newTrade)} onCancel={tryCloseNew} tagConfig={tagConfig} config={config} setConfig={setConfig} accounts={accounts} showToast={showToast} isDraft={true} playbooks={playbooks} setTab={setTab}/>
+            <TradeForm trade={newTrade} setTrade={setNewTrade} onSave={()=>saveTrade(newTrade)} onCancel={tryCloseNew} tagConfig={tagConfig} config={config} setConfig={setConfig} accounts={accounts} showToast={showToast} isDraft={true} playbooks={playbooks} setTab={setTab} tpTemplates={tpTemplates} tpDefaults={tpDefaults}/>
           </>;
         })()}
 
@@ -14670,7 +15104,7 @@ function App(){
                 <button onClick={tryCloseEdit} style={{background:"none",border:"none",color:"var(--text4)",cursor:"pointer",fontSize:"14px",padding:"4px"}}>✕</button>
               </div>
             </div>
-            <TradeForm trade={editTrade} setTrade={setEditTrade} onSave={()=>saveTrade(editTrade)} onCancel={tryCloseEdit} tagConfig={tagConfig} config={config} setConfig={setConfig} accounts={accounts} showToast={showToast} playbooks={playbooks} setTab={setTab}/>
+            <TradeForm trade={editTrade} setTrade={setEditTrade} onSave={()=>saveTrade(editTrade)} onCancel={tryCloseEdit} tagConfig={tagConfig} config={config} setConfig={setConfig} accounts={accounts} showToast={showToast} playbooks={playbooks} setTab={setTab} tpTemplates={tpTemplates} tpDefaults={tpDefaults}/>
             <TPTimeline trade={editTrade} config={config} setTrade={setEditTrade} showToast={showToast}/>
           </div>
         </div>;
@@ -14690,7 +15124,7 @@ function App(){
             settings-onderdelen die in de hoofdpagina horen (Accounts/Backup/App-
             voorkeuren/Geavanceerd). Trading Rules / Goals / Tags blijven hun eigen
             tab + pagina, om die niet onnodig in de scroll-spy te proppen. */}
-        {tab==="accounts"&&<AccountsHub config={config} setConfig={setConfig} accounts={accounts} setAccounts={setAccounts} showToast={showToast} trades={trades} setTrades={setTrades} importTrades={importTrades} syncOpenPositions={syncOpenPositions} exportTrades={exportTrades} setTagConfig={setTagConfig} tagConfig={tagConfig} tradingRules={tradingRules} setTradingRules={setTradingRules} goals={goals} setGoals={setGoals} mindsetPrefs={mindsetPrefs} setMindsetPrefs={setMindsetPrefs} lastSyncTimes={lastSyncTimes} setTab={navigate}/>}
+        {tab==="accounts"&&<AccountsHub config={config} setConfig={setConfig} accounts={accounts} setAccounts={setAccounts} showToast={showToast} trades={trades} setTrades={setTrades} importTrades={importTrades} syncOpenPositions={syncOpenPositions} exportTrades={exportTrades} setTagConfig={setTagConfig} tagConfig={tagConfig} tradingRules={tradingRules} setTradingRules={setTradingRules} goals={goals} setGoals={setGoals} mindsetPrefs={mindsetPrefs} setMindsetPrefs={setMindsetPrefs} lastSyncTimes={lastSyncTimes} setTab={navigate} tpTemplates={tpTemplates} setTpTemplates={setTpTemplates} tpDefaults={tpDefaults} setTpDefaults={setTpDefaults}/>}
         {tab==="rules"&&<TradingRulesPage tradingRules={tradingRules} setTradingRules={setTradingRules}/>}
         {tab==="goals"&&<GoalsPage goals={goals} setGoals={setGoals} trades={trades}/>}
         {tab==="tags"&&<TagManager tagConfig={tagConfig} setTagConfig={setTagConfig} trades={trades} setTrades={setTrades} showToast={showToast} config={config}/>}

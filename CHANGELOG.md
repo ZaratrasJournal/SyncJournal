@@ -6,6 +6,41 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.123] — 2026-05-11
+
+Slimme TP-verdeling met templates — Take Profit positiegroottes worden automatisch verdeeld volgens gekozen template, handmatige TP-edits triggeren auto-recalc zodat de som altijd 100% blijft.
+
+### Toegevoegd
+- **3 Pre-built templates** *(2026-05-11, op verzoek van Denny)*: Equal (gelijke verdeling), Front-loaded (zwaar op eerste TP), Runner (zwaar op laatste TP). Werken voor 1 t/m 5 TPs.
+- **Template-dropdown** in de trade-modal, boven de TP-grid. Selecteer een template → percentages worden automatisch overschreven. "Custom" verschijnt automatisch wanneer percentages afwijken van de actieve template.
+- **Auto-verdeling** bij `+ TP toevoegen` / TP verwijderen — gebruikt de default-template voor het nieuwe aantal TPs. Bij handmatige afwijking verschijnt een "Verdeling overschrijven?" bevestigingsdialoog.
+- **Auto-recalc cascade** *(Optie B: Last absorbs)* — wanneer je een TP-percentage handmatig wijzigt absorbeert de laatste TP het verschil. Bij overflow cascadet het terug naar TP n-1, etc., met een minimum van 1% per TP. Som blijft altijd exact 100%.
+- **Visuele highlight** — 300ms debounced gele flash op cascade-aangepaste TPs zodat je ziet waar het verschil landt.
+- **Settings-UI** in Instellingen → 🔧 App → **TP-templates**:
+  - Lijst van alle templates (pre-built + custom) met distributie-preview per count
+  - Bewerk / verwijder per template (pre-builts kunnen ook worden bewerkt)
+  - **"↻ Reset to defaults"** knop herstelt de 3 pre-builts via upsert-by-id zonder custom templates te raken
+  - **+ Nieuwe template** edit-modal met validatie (unieke naam, geen 0%, alleen integers, som=100, partial-distributies toegestaan)
+  - **Default-per-count picker** — kies per aantal TPs (1-5) welke template default wordt gebruikt
+- **Backup integratie** — templates + defaults zijn opgenomen in de JSON-export en worden hersteld bij import (zowel via drag-drop als via "Backup importeren" knop in Settings).
+
+### Gewijzigd
+- **Trade-schema**: `EMPTY_TRADE.tpTemplateId=""` toegevoegd. Bestaande trades zonder dit veld worden als "Custom" geladen (geen on-load wijziging van pcts).
+- **localStorage keys**: `tj_tpTemplates` en `tj_tpDefaults` toegevoegd. Eerste-keer-init laadt pre-builts.
+
+### Niet aangeraakt (regressie-veilig)
+- Bestaande trades met handmatige TP-distributies (bv. 70/30) — `tpTemplateId=""` betekent "Custom" → geen on-load overschrijving.
+- Exchange-fetch tpLevels (non-integer pcts uit fills) — automatisch als "Custom" gemarkeerd, exchange-pnl blijft bron-van-waarheid.
+- `_simTradeExit`, `calcRMultiple`, `playbookErosionStats` analytics — onveranderd.
+- v12.122 closeManualTrade flow + markAllHit/markAllMissed — ongewijzigd.
+
+### Tests
+- 44 logica-tests voor helpers (equalDistribution, getDistributionForCount, applyDistributionToTps, isManualDistribution, **recalcLastAbsorbs met 100-iteraties fuzz**, validateTpTemplate)
+- 4 backup round-trip tests (export → serialize → import → state intact)
+- Smoke + 6-thema regressie groen
+
+---
+
 ## [v12.122] — 2026-05-09
 
 Quick-action knoppen "Mark als win" / "Mark als verlies" zijn nu beschikbaar voor *alle* trades — handmatig én exchange-imports — naast BT/paper/missed.
