@@ -6,6 +6,13 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.124] — 2026-05-11
+
+### Fixed
+- **"+ TP toevoegen" knop verdween na 4 TPs** *(2026-05-11, gemeld door Denny)* — De pre-existing cap was `tps.length<4`, maar v12.123 templates ondersteunen tot 5 TPs. Cap opgehoogd naar `tps.length<5` zodat je tot 5 TPs kunt toevoegen.
+
+---
+
 ## [v12.123] — 2026-05-11
 
 Slimme TP-verdeling met templates — Take Profit positiegroottes worden automatisch verdeeld volgens gekozen template, handmatige TP-edits triggeren auto-recalc zodat de som altijd 100% blijft.
