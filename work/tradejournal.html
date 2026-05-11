@@ -807,6 +807,114 @@ const TF_ORDER=["1m","3m","5m","15m","30m","1h","2h","4h","6h","8h","12h","1d","
 const EMPTY_LAYER={id:"",timeframe:"",setups:[],fillPlayType:undefined,confirmation:"",confirmations:[],notes:""};
 const EMPTY_TP={id:"",price:"",pct:"25",status:"open",actualPrice:""};
 
+// v12.123: TP-distribution templates (zie BACKLOG.md "Feature Spec: Slimme TP-verdeling").
+// Pre-built templates hebben vaste IDs zodat "Reset to defaults" upsert-by-id kan doen.
+// Templates zijn deletable, edit-baar en bewerkbaar gelijk aan custom templates.
+const PRE_BUILT_TP_TEMPLATES=[
+  {id:"equal_default",name:"Equal",distributions:{"1":[100],"2":[50,50],"3":[34,33,33],"4":[25,25,25,25],"5":[20,20,20,20,20]}},
+  {id:"frontloaded_default",name:"Front-loaded",distributions:{"1":[100],"2":[70,30],"3":[50,30,20],"4":[40,30,20,10],"5":[40,25,15,10,10]}},
+  {id:"runner_default",name:"Runner",distributions:{"1":[100],"2":[30,70],"3":[20,30,50],"4":[10,20,30,40],"5":[10,15,20,25,30]}},
+];
+// Default per aantal TPs. Gebruiker kan dit overrulen in Instellingen.
+const DEFAULT_TP_DEFAULTS={"1":"equal_default","2":"equal_default","3":"frontloaded_default","4":"runner_default","5":"equal_default"};
+
+// Equal-verdeling als fallback wanneer een template niet bestaat of geen verdeling voor `count` heeft.
+// 3 TPs → 34/33/33 (eerste krijgt remainder), 4 → 25*4, 5 → 20*5.
+function equalDistribution(count){
+  if(!Number.isInteger(count)||count<=0)return[];
+  if(count===1)return[100];
+  const base=Math.floor(100/count);
+  const remainder=100-base*count;
+  return Array.from({length:count},(_,i)=>i<remainder?base+1:base);
+}
+
+// Vraag de verdeling op voor `count` TPs uit een template. Fallback op equal als template
+// niet bestaat of geen verdeling voor dat aantal heeft (per spec: templates mogen partial zijn).
+function getDistributionForCount(templateId,count,templates){
+  if(!templateId||!Array.isArray(templates))return equalDistribution(count);
+  const tpl=templates.find(t=>t&&t.id===templateId);
+  if(!tpl||!tpl.distributions)return equalDistribution(count);
+  const dist=tpl.distributions[String(count)];
+  if(!Array.isArray(dist)||dist.length!==count)return equalDistribution(count);
+  return dist.slice();
+}
+
+// Pas een verdeling toe op een tpLevels-array. Behoudt id/price/status/actualPrice, overschrijft alleen pct.
+function applyDistributionToTps(tps,distribution){
+  if(!Array.isArray(tps))return[];
+  return tps.map((tp,i)=>({...tp,pct:String(distribution[i]??Math.floor(100/tps.length))}));
+}
+
+// Check of de huidige TP-distributie afwijkt van wat de template voorschrijft voor dit aantal.
+// Lege templateId betekent "Custom" — afwijking. Niet-bestaande template → afwijking.
+function isManualDistribution(tps,templateId,templates){
+  if(!Array.isArray(tps)||tps.length===0)return false;
+  if(!templateId)return true;
+  const expected=getDistributionForCount(templateId,tps.length,templates);
+  return tps.some((tp,i)=>(parseInt(tp.pct,10)||0)!==expected[i]);
+}
+
+// Recalculate distribution wanneer gebruiker handmatig een TP-pct wijzigt.
+// Methode B (Last absorbs cascade): TPn absorbeert het verschil; bij overflow cascadet
+// het van achter naar voren met ondergrens 1% per TP. Als cascade uitgeput raakt
+// (alle anderen op 1%), corrigeert de modifying TP zichzelf terug.
+function recalcLastAbsorbs(tps,idx,newPctRaw){
+  if(!Array.isArray(tps)||tps.length===0)return tps;
+  const n=tps.length;
+  if(idx<0||idx>=n)return tps;
+  let newPct=parseInt(newPctRaw,10);
+  if(!Number.isFinite(newPct)||newPct<0)newPct=0;
+  if(newPct>100)newPct=100;
+  if(n===1)return[{...tps[0],pct:"100"}];
+
+  const result=tps.map(tp=>({...tp,_pct:parseInt(tp.pct,10)||0}));
+  result[idx]._pct=newPct;
+  let diff=result.reduce((s,tp)=>s+tp._pct,0)-100;
+
+  // Cascade vanaf laatste TP terug, sla modifying-index over.
+  for(let j=n-1;j>=0&&diff!==0;j--){
+    if(j===idx)continue;
+    if(diff>0){
+      // Te veel: pak weg van deze TP, min 1%.
+      const canTake=Math.max(0,result[j]._pct-1);
+      const take=Math.min(canTake,diff);
+      result[j]._pct-=take;
+      diff-=take;
+    }else{
+      // Te weinig: voeg alles aan deze (laatste) TP toe.
+      result[j]._pct+=-diff;
+      diff=0;
+    }
+  }
+  // Cascade uitgeput, modifying-TP terug corrigeren zodat som=100.
+  if(diff>0){result[idx]._pct-=diff;}
+  return result.map(({_pct,...tp})=>({...tp,pct:String(_pct)}));
+}
+
+// Validatie voor templates die via Instellingen worden opgeslagen.
+// Returns {} bij geldig, anders {fieldKey: errorMsg}. Partial-distributies (alleen 3+4 bv.) zijn OK.
+function validateTpTemplate(tpl,allTemplates,currentId){
+  const errors={};
+  const name=(tpl?.name||"").trim();
+  if(!name){errors.name="Naam is verplicht";}
+  else if(Array.isArray(allTemplates)&&allTemplates.some(t=>t&&t.id!==currentId&&(t.name||"").trim().toLowerCase()===name.toLowerCase())){
+    errors.name="Naam moet uniek zijn";
+  }
+  let hasAnyDistribution=false;
+  for(const count of[1,2,3,4,5]){
+    const dist=tpl?.distributions?.[String(count)];
+    if(!Array.isArray(dist)||dist.length===0)continue;
+    hasAnyDistribution=true;
+    if(dist.length!==count){errors["dist_"+count]=`Verdeling moet ${count} waarde(n) hebben`;continue;}
+    if(dist.some(v=>!Number.isInteger(v))){errors["dist_"+count]="Alleen hele getallen toegestaan";continue;}
+    if(dist.some(v=>v<=0)){errors["dist_"+count]="Geen 0%-waarden toegestaan";continue;}
+    const sum=dist.reduce((s,v)=>s+v,0);
+    if(sum!==100){errors["dist_"+count]=`Som moet 100 zijn (nu ${sum})`;}
+  }
+  if(!hasAnyDistribution){errors.distributions="Minimaal 1 verdeling vereist (bijv. voor 3 TPs)";}
+  return errors;
+}
+
 // v12.74: defaults afgestemd op de community-baseline die Denny/Sebas hanteren.
 // Alleen nieuwe users zonder bestaande tj_tags-localStorage krijgen deze set —
 // huidige users behouden hun eigen tag-config (ook als die nog op de oude defaults stond).
@@ -1381,7 +1489,7 @@ const EMPTY_TRADE={
   // wanneer een open positie closed-siblings heeft via dezelfde positionId.
   // Behandeld als "open" voor exit-fields (verborgen), maar krijgt visueel een
   // amber badge + realizedPnl-display.
-  status:"closed",manualOverrides:[],tpLevels:[],
+  status:"closed",manualOverrides:[],tpLevels:[],tpTemplateId:"",
   realizedPnl:"",     // v12.62: voor status="partial" — sum(pnl) van closed-siblings met zelfde positionId
   originalSizeAsset:"",// v12.62: voor status="partial" — origineel size in base currency (= rest + alle closed siblings); gebruikt voor correcte TP-winst-calc
   entryNote:"",
@@ -13867,6 +13975,11 @@ function App(){
 
   // Playbook — gestructureerde catalogus van bewezen setups (v12.38)
   const[playbooks,setPlaybooks]=useState(()=>{try{const d=localStorage.getItem("tj_playbooks");return migratePlaybooks(d?JSON.parse(d):[]);}catch{return[]}});
+  // v12.123: TP-distribution templates + default-per-count. Pre-builts worden ge-seed bij eerste boot.
+  const[tpTemplates,setTpTemplates]=useState(()=>{try{const d=localStorage.getItem("tj_tpTemplates");return d?JSON.parse(d):PRE_BUILT_TP_TEMPLATES.slice()}catch{return PRE_BUILT_TP_TEMPLATES.slice()}});
+  useEffect(()=>{try{localStorage.setItem("tj_tpTemplates",JSON.stringify(tpTemplates))}catch{}},[tpTemplates]);
+  const[tpDefaults,setTpDefaults]=useState(()=>{try{const d=localStorage.getItem("tj_tpDefaults");return d?{...DEFAULT_TP_DEFAULTS,...JSON.parse(d)}:{...DEFAULT_TP_DEFAULTS}}catch{return{...DEFAULT_TP_DEFAULTS}}});
+  useEffect(()=>{try{localStorage.setItem("tj_tpDefaults",JSON.stringify(tpDefaults))}catch{}},[tpDefaults]);
   // v12.99: laatste sync-tijden per exchange voor "Laatst gesynchroniseerd: X geleden" indicator.
   const[lastSyncTimes,setLastSyncTimes]=useState(()=>{try{const d=localStorage.getItem("tj_last_sync_times");return d?JSON.parse(d):{};}catch{return{}}});
   useEffect(()=>{try{localStorage.setItem("tj_playbooks",JSON.stringify(playbooks))}catch{}},[playbooks]);
