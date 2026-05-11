@@ -222,6 +222,8 @@ input[type=date]::-webkit-calendar-picker-indicator{filter:invert(0.5)}
 @keyframes slideRight{from{opacity:0;transform:translateX(20px)}to{opacity:1;transform:translateX(0)}}
 @keyframes spin{to{transform:rotate(360deg)}}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
+/* v12.123: TP-pct auto-recalc highlight — gele flash op cascade-aangepaste TPs */
+@keyframes tpHighlight{0%{background:rgba(201,168,76,0.35)}100%{background:transparent}}
 @keyframes slideIn{from{transform:translateX(-100%)}to{transform:translateX(0)}}
 @keyframes logoShimmer{0%{background-position:-200% center}100%{background-position:200% center}}
 @keyframes logoPulse{0%,100%{filter:drop-shadow(0 0 3px rgba(201,168,76,0.1))}50%{filter:drop-shadow(0 0 12px rgba(46,170,111,0.4))}}
@@ -5215,7 +5217,7 @@ function Section({title,storeKey,defaultOpen=true,hint,children}){
   </details>);
 }
 
-function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,setConfig,accounts,showToast,isDraft,playbooks,setTab}){
+function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,setConfig,accounts,showToast,isDraft,playbooks,setTab,tpTemplates,tpDefaults}){
   const[showCard,setShowCard]=useState(false);
   const[sizeEditOpen,setSizeEditOpen]=useState(false);// v12.61: inline edit voor Bellafiore account-saldo
   // Auto-persist to tj_trade_draft so unsaved input survives accidental modal-close, tab-close, crash, etc.
@@ -5234,6 +5236,12 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,setConfig,ac
     return q;
   });
   const toggle=(f,tag)=>setTrade(p=>({...p,[f]:p[f].includes(tag)?p[f].filter(t=>t!==tag):[...p[f],tag]}));
+  // v12.123: TP-template UI state. highlightedTpIds = set van tp.id's die kort gele flash krijgen
+  // na auto-recalc. pendingTpAction = payload voor "overschrijven?" confirm-modal.
+  const[highlightedTpIds,setHighlightedTpIds]=useState(()=>new Set());
+  const[pendingTpAction,setPendingTpAction]=useState(null);
+  const tpHighlightTimer=useRef(null);
+  const tpRecalcDebounce=useRef(null);
   const fRef=useRef();
   const[ssInfo,setSsInfo]=useState(null);
   // Lightbox state: index van zichtbare screenshot of null. ←/→ navigeert, Esc sluit.
@@ -5609,17 +5617,99 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,setConfig,ac
         met een ruwe formule-schatting. Sinds v12.94. */}
     {!isOpen&&trade.source==="manual"&&(()=>{const e=parseFloat(trade.entry);const ex=parseFloat(trade.exit);const sz=parseFloat(trade.positionSize);const fees=parseFloat(trade.fees)||0;if(e>0&&ex>0&&sz>0&&!(trade.manualOverrides||[]).includes("pnl")){const raw=trade.direction==="long"?(ex-e)*sz/e:(e-ex)*sz/e;const net2=raw-fees;if(trade.pnl!==""&&Math.abs(parseFloat(trade.pnl)-net2)>0.01||trade.pnl===""){return(<div style={{marginBottom:"12px"}}><button onClick={()=>setTrade(p=>({...p,pnl:net2.toFixed(2)}))} style={{fontSize:"10px",padding:"4px 12px",borderRadius:"5px",border:"1px solid var(--blue2)",background:"rgba(201,168,76,0.12)",color:"var(--gold)",cursor:"pointer",fontFamily:"inherit",fontWeight:500}}>💡 PNL berekenen: {net2>=0?"+":""}${fmt(net2)} {fees>0?`(na $${fmt(fees)} fees)`:""} → Toepassen</button></div>)}}return null;})()}
 
-    {/* TP Levels (multi-TP with percentages) — ported from v4_14 */}
+    {/* TP Levels (multi-TP with percentages) — ported from v4_14.
+        v12.123: template-driven distribution (Equal/Front-loaded/Runner + custom). */}
     {(()=>{
       const tps=trade.tpLevels||[];
       const totalPct=tps.reduce((s,tp)=>s+parseFloat(tp.pct||0),0);
       const entryN=parseFloat(trade.entry);const slN=parseFloat(trade.stopLoss);const sizeN=parseFloat(trade.positionSize);
       const isLong=trade.direction==="long";
 
-      const addTP=()=>{const remaining=Math.max(0,100-totalPct);setTrade(p=>({...p,tpLevels:[...(p.tpLevels||[]),{...EMPTY_TP,id:uid(),pct:String(remaining>0?Math.min(remaining,25):25)}]}))};
-      const updateTP=(id,field,val)=>setTrade(p=>({...p,tpLevels:(p.tpLevels||[]).map(tp=>tp.id===id?{...tp,[field]:val}:tp)}));
-      const removeTP=(id)=>setTrade(p=>({...p,tpLevels:(p.tpLevels||[]).filter(tp=>tp.id!==id)}));
+      // v12.123: template-aware TP-mgmt
+      const tplList=Array.isArray(tpTemplates)?tpTemplates:[];
+      const tplDefaults=tpDefaults||{};
+      const currentTplId=trade.tpTemplateId||"";
+      const isManualTpl=isManualDistribution(tps,currentTplId,tplList);
+      // Default template id voor `count` TPs; valt terug op equal_default of de eerste pre-built.
+      const defaultIdForCount=(count)=>{
+        const id=tplDefaults[String(count)];
+        if(id&&tplList.some(t=>t.id===id))return id;
+        if(tplList.some(t=>t.id==="equal_default"))return"equal_default";
+        return tplList[0]?.id||"";
+      };
+      // Highlight `ids` voor 200ms na 300ms debounce — visuele "settled"-flash.
+      const flashTps=(ids)=>{
+        if(tpHighlightTimer.current)clearTimeout(tpHighlightTimer.current);
+        setHighlightedTpIds(new Set(ids));
+        tpHighlightTimer.current=setTimeout(()=>setHighlightedTpIds(new Set()),200);
+      };
+      // Apply een template-distributie op de huidige tps voor het huidige aantal.
+      const applyTemplate=(templateId)=>{
+        const dist=getDistributionForCount(templateId,tps.length,tplList);
+        const newTps=applyDistributionToTps(tps,dist);
+        setTrade(p=>({...p,tpLevels:newTps,tpTemplateId:templateId}));
+        flashTps(newTps.map(tp=>tp.id).filter(Boolean));
+      };
+
+      const addTP=()=>{
+        const newCount=tps.length+1;
+        // Bij manual deviation: vraag bevestiging vóór templaat-overschrijving.
+        const proceed=()=>{
+          const tplId=defaultIdForCount(newCount);
+          const dist=getDistributionForCount(tplId,newCount,tplList);
+          const fresh={...EMPTY_TP,id:uid(),pct:String(dist[newCount-1]||0)};
+          const reweighted=tps.map((tp,i)=>({...tp,pct:String(dist[i]||0)}));
+          setTrade(p=>({...p,tpLevels:[...reweighted,fresh],tpTemplateId:tplId}));
+          flashTps([...reweighted.map(t=>t.id),fresh.id].filter(Boolean));
+        };
+        if(isManualTpl&&tps.length>0){
+          setPendingTpAction({title:"Je handmatige verdeling wordt overschreven. Doorgaan?",onConfirm:proceed});
+        }else proceed();
+      };
+      const removeTP=(id)=>{
+        const remaining=tps.filter(tp=>tp.id!==id);
+        const newCount=remaining.length;
+        const proceed=()=>{
+          if(newCount===0){
+            setTrade(p=>({...p,tpLevels:[],tpTemplateId:""}));
+            return;
+          }
+          // Bij geactiveerd template: herverdeel volgens template-of-count.
+          const tplId=currentTplId&&!isManualTpl?currentTplId:defaultIdForCount(newCount);
+          const dist=getDistributionForCount(tplId,newCount,tplList);
+          const reweighted=remaining.map((tp,i)=>({...tp,pct:String(dist[i]||0)}));
+          setTrade(p=>({...p,tpLevels:reweighted,tpTemplateId:tplId}));
+          flashTps(reweighted.map(t=>t.id).filter(Boolean));
+        };
+        if(isManualTpl&&remaining.length>0){
+          setPendingTpAction({title:"Je handmatige verdeling wordt overschreven. Doorgaan?",onConfirm:proceed});
+        }else proceed();
+      };
+      const updateTP=(id,field,val)=>{
+        if(field==="pct"){
+          // Auto-recalc via Option B (last absorbs cascade). Markeer als Custom.
+          const idx=tps.findIndex(tp=>tp.id===id);
+          if(idx<0)return;
+          const next=recalcLastAbsorbs(tps,idx,val);
+          setTrade(p=>({...p,tpLevels:next,tpTemplateId:""}));
+          // Debounced highlight van álle TPs behalve degene die wordt getypet.
+          if(tpRecalcDebounce.current)clearTimeout(tpRecalcDebounce.current);
+          tpRecalcDebounce.current=setTimeout(()=>{
+            flashTps(next.filter((tp,i)=>i!==idx).map(tp=>tp.id).filter(Boolean));
+          },300);
+          return;
+        }
+        setTrade(p=>({...p,tpLevels:(p.tpLevels||[]).map(tp=>tp.id===id?{...tp,[field]:val}:tp)}));
+      };
       const toggleStatus=(id)=>setTrade(p=>({...p,tpLevels:(p.tpLevels||[]).map(tp=>tp.id===id?{...tp,status:tp.status==="hit"?"open":tp.status==="open"?"missed":"hit"}:tp)}));
+      const changeTemplate=(newId)=>{
+        if(!newId||newId==="__custom"||newId===currentTplId)return;
+        if(isManualTpl&&tps.length>0){
+          setPendingTpAction({title:"Je handmatige verdeling wordt overschreven. Doorgaan?",onConfirm:()=>applyTemplate(newId)});
+        }else{
+          applyTemplate(newId);
+        }
+      };
 
       // v12.107+v12.108: voor handmatige trades met 100% TP-hit toont de UI een knop:
       //  - mode='close': trade is open/partial → "✓ Trade sluiten" (groen bij winst, amber bij verlies)
@@ -5769,6 +5859,18 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,setConfig,ac
           </div>
         </div>
 
+        {/* v12.123: template-dropdown — toont alleen wanneer er templates beschikbaar zijn én er ten minste 1 TP bestaat
+            (anders is er niks om een verdeling op toe te passen — eerste add pakt automatisch de default). */}
+        {tps.length>0&&tplList.length>0&&<div style={{display:"flex",alignItems:"center",gap:"10px",marginBottom:"10px",fontSize:"11px",color:"var(--text3)"}}>
+          <span style={{fontSize:"10px",color:"var(--text4)",textTransform:"uppercase",letterSpacing:"0.08em",fontWeight:600}}>Template:</span>
+          <select value={isManualTpl?"__custom":(currentTplId||"")} onChange={(e)=>changeTemplate(e.target.value)} style={{...iStyle,padding:"4px 8px",fontSize:"11px",width:"auto",minWidth:"140px"}}>
+            {!currentTplId&&!isManualTpl&&<option value="">— Kies template —</option>}
+            {tplList.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
+            {isManualTpl&&<option value="__custom" disabled>Custom (handmatig)</option>}
+          </select>
+          {isManualTpl&&<span style={{fontSize:"9px",color:"var(--amber)",fontStyle:"italic"}}>handmatige verdeling actief — kies template om te overschrijven</span>}
+        </div>}
+
         {tps.length>0&&<>
           <div style={{display:"grid",gridTemplateColumns:"32px 1fr 70px 80px 70px 60px 28px",gap:"6px",marginBottom:"4px",padding:"0 2px"}}>
             <span style={{fontSize:"9px",color:"var(--text5)"}}></span>
@@ -5784,7 +5886,8 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,setConfig,ac
             const profit=calcProfit(tp);const rr=calcRR(tp);
             const statusColor=tp.status==="hit"?"var(--green)":tp.status==="missed"?"var(--red)":"var(--gold)";
             const statusIcon=tp.status==="hit"?<GlowCheck size={14}/>:tp.status==="missed"?<GlowCross size={14}/>:"◔";
-            return(<div key={tp.id} style={{display:"grid",gridTemplateColumns:"32px 1fr 70px 80px 70px 60px 28px",gap:"6px",alignItems:"center",marginBottom:"4px"}}>
+            const isHighlighted=highlightedTpIds.has(tp.id);
+            return(<div key={tp.id} style={{display:"grid",gridTemplateColumns:"32px 1fr 70px 80px 70px 60px 28px",gap:"6px",alignItems:"center",marginBottom:"4px",borderRadius:"4px",animation:isHighlighted?"tpHighlight 200ms ease-out":"none"}}>
               <span style={{fontSize:"11px",fontWeight:700,color:"var(--gold)",textAlign:"center"}}>TP{i+1}</span>
               <input type="text" value={fmtPriceDisplay(tp.price)} onChange={e=>updateTP(tp.id,"price",e.target.value)} placeholder="Prijs" style={{...iStyle,padding:"6px 8px",fontSize:"12px"}}/>
               <div style={{position:"relative"}}>
@@ -6064,6 +6167,17 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,setConfig,ac
       {showCard&&<TradeCardExport trade={trade} onClose={()=>setShowCard(false)}/>}
       {onCancel&&<button onClick={onCancel} style={{padding:"12px 24px",borderRadius:"8px",border:"1px solid var(--border4)",background:"transparent",color:"var(--text2)",cursor:"pointer",fontFamily:"inherit",fontSize:"14px"}}>Annuleren</button>}
     </div>
+    {/* v12.123: confirm-modal voor TP-template overschrijving */}
+    {pendingTpAction&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:10000,display:"flex",alignItems:"center",justifyContent:"center",animation:"fadeIn .15s ease"}}>
+      <div style={{background:"var(--bg2,var(--bg))",border:"1px solid var(--gold-border)",borderRadius:"12px",padding:"22px 24px",maxWidth:"420px",width:"90%",boxShadow:"0 20px 60px rgba(0,0,0,.6)"}}>
+        <div style={{fontSize:"15px",fontWeight:700,color:"var(--text)",marginBottom:"6px"}}>⚠ Verdeling overschrijven</div>
+        <div style={{fontSize:"13px",color:"var(--text3)",lineHeight:1.5,marginBottom:"18px"}}>{pendingTpAction.title}</div>
+        <div style={{display:"flex",gap:"8px"}}>
+          <button onClick={()=>{const fn=pendingTpAction.onConfirm;setPendingTpAction(null);if(typeof fn==="function")fn();}} style={{flex:1,padding:"10px 14px",borderRadius:"8px",border:"1px solid var(--gold-border)",background:"var(--gold-dim)",color:"var(--gold)",fontSize:"13px",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Doorgaan</button>
+          <button onClick={()=>setPendingTpAction(null)} style={{padding:"10px 14px",borderRadius:"8px",border:"1px solid var(--border3)",background:"transparent",color:"var(--text3)",fontSize:"13px",cursor:"pointer",fontFamily:"inherit"}}>Annuleren</button>
+        </div>
+      </div>
+    </div>}
   </div>);
 }
 
@@ -14762,7 +14876,7 @@ function App(){
               <div style={{fontSize:"16px",fontWeight:700}}>Nieuwe trade</div>
               <button onClick={tryCloseNew} style={{background:"none",border:"none",color:"var(--text4)",cursor:"pointer",fontSize:"14px"}}>✕</button>
             </div>
-            <TradeForm trade={newTrade} setTrade={setNewTrade} onSave={()=>saveTrade(newTrade)} onCancel={tryCloseNew} tagConfig={tagConfig} config={config} setConfig={setConfig} accounts={accounts} showToast={showToast} isDraft={true} playbooks={playbooks} setTab={setTab}/>
+            <TradeForm trade={newTrade} setTrade={setNewTrade} onSave={()=>saveTrade(newTrade)} onCancel={tryCloseNew} tagConfig={tagConfig} config={config} setConfig={setConfig} accounts={accounts} showToast={showToast} isDraft={true} playbooks={playbooks} setTab={setTab} tpTemplates={tpTemplates} tpDefaults={tpDefaults}/>
           </>;
         })()}
 
@@ -14783,7 +14897,7 @@ function App(){
                 <button onClick={tryCloseEdit} style={{background:"none",border:"none",color:"var(--text4)",cursor:"pointer",fontSize:"14px",padding:"4px"}}>✕</button>
               </div>
             </div>
-            <TradeForm trade={editTrade} setTrade={setEditTrade} onSave={()=>saveTrade(editTrade)} onCancel={tryCloseEdit} tagConfig={tagConfig} config={config} setConfig={setConfig} accounts={accounts} showToast={showToast} playbooks={playbooks} setTab={setTab}/>
+            <TradeForm trade={editTrade} setTrade={setEditTrade} onSave={()=>saveTrade(editTrade)} onCancel={tryCloseEdit} tagConfig={tagConfig} config={config} setConfig={setConfig} accounts={accounts} showToast={showToast} playbooks={playbooks} setTab={setTab} tpTemplates={tpTemplates} tpDefaults={tpDefaults}/>
             <TPTimeline trade={editTrade} config={config} setTrade={setEditTrade} showToast={showToast}/>
           </div>
         </div>;
