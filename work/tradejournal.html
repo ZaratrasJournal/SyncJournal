@@ -3498,8 +3498,11 @@ function Dashboard({trades,config,accounts,storageUsage,setFilters,setTab}){
       {key:"sessionPerf",label:"Sessie Performance"},{key:"foutenPerf",label:"Top Fouten"}
     ]}
   ];
-  const priv=!lp.accountValue;
-  const fmtP=(v)=>priv?"***,**":(typeof v==="number"?`$${fmt(v)}`:v);
+  // v12.127: privacy-mode is nu globaal via PrivacyContext (gold-toggle in top-bar).
+  // De oude lp.accountValue-toggle is opgeofferd voor één canonieke bron — Dashboard's
+  // 👁-knop hieronder togglet sindsdien de globale state via usePrivacy().toggle.
+  const{enabled:priv,toggle:togglePrivacy}=usePrivacy();
+  const fmtP=(v)=>priv?"$***,**":(typeof v==="number"?`$${fmt(v)}`:v);
 
   const fetchBalances=useCallback(async()=>{
     if(balLoading)return;setBalLoading(true);
@@ -3565,7 +3568,7 @@ function Dashboard({trades,config,accounts,storageUsage,setFilters,setTab}){
       return(<div style={{background:"rgba(201,168,76,0.04)",borderRadius:"var(--radius-lg)",padding:"20px 24px",marginBottom:"1.5rem",border:"1px solid rgba(201,168,76,0.15)"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
           <div>
-            <div style={{fontSize:"10px",color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:600,marginBottom:"6px",display:"flex",alignItems:"center",gap:"8px"}}>Account waarde (live) <button onClick={()=>lpToggle("accountValue")} style={{background:"none",border:"none",cursor:"pointer",fontSize:"13px",color:"var(--text4)",padding:"0",lineHeight:1}} title={priv?"Toon bedragen":"Verberg bedragen"}>{priv?"👁‍🗨":"👁"}</button></div>
+            <div style={{fontSize:"10px",color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:600,marginBottom:"6px",display:"flex",alignItems:"center",gap:"8px"}}>Account waarde (live) <button onClick={togglePrivacy} style={{background:"none",border:"none",cursor:"pointer",fontSize:"13px",color:priv?"var(--gold)":"var(--text4)",padding:"0",lineHeight:1}} title={priv?"Privacy aan (klik om uit te zetten)":"Klik om bedragen te verbergen"}>{priv?"👁‍🗨":"👁"}</button></div>
             {totalBal!==null?<div style={{fontSize:"32px",fontWeight:700,fontFamily:"var(--mono)",color:"var(--text)",letterSpacing:"-0.03em"}}>{priv?"$***,**":`$${fmt(totalBal)}`}</div>
               :<div style={{fontSize:"20px",fontWeight:600,color:"var(--text4)"}}>{balLoading?<span style={{display:"inline-flex",alignItems:"center",gap:"8px"}}><span className="spinner"/>Ophalen...</span>:(closed.length>0?"Account-balans niet geconfigureerd":"Voeg een account toe")}</div>}
             <div style={{fontSize:"10px",color:"var(--text4)",marginTop:"4px"}}>Gerealiseerde winst: <span style={{color:priv?"var(--text4)":net>=0?"var(--green)":"var(--red)",fontWeight:600}}>{priv?"***,**":`${net>=0?"+":"−"}$${fmt(Math.abs(net))}`}</span> · {closed.length} trades</div>
@@ -15025,6 +15028,16 @@ function App(){
         </div>
         <div className="tj-right-btns" style={{display:"flex",alignItems:"center",gap:"8px"}}>
           <button onClick={()=>{setNewTrade(newEmptyTrade());navigate("new")}} style={{padding:"7px 14px",borderRadius:"var(--radius)",border:"1px solid var(--blue2)",background:"rgba(201,168,76,0.12)",color:"#C9A84C",fontSize:"12px",cursor:"pointer",fontFamily:"inherit",fontWeight:600,display:"flex",alignItems:"center",gap:"6px"}}><span>+</span> Trade <span className="kbd" style={{fontSize:"9px",borderColor:"rgba(201,168,76,0.4)"}}>N</span></button>
+          {/* v12.127: globale privacy-toggle. Verbergt alle $/€ bedragen op alle pagina's.
+              Synced met Dashboard's 👁-knop via PrivacyContext. */}
+          <button
+            onClick={()=>setPrivacyMode(p=>!p)}
+            title={privacyMode?"Privacy-modus uit (bedragen tonen)":"Privacy-modus aan (bedragen verbergen)"}
+            aria-label={privacyMode?"Toon bedragen":"Verberg bedragen"}
+            style={{padding:"7px 11px",borderRadius:"var(--radius)",border:`1px solid ${privacyMode?"var(--gold-border)":"var(--border3)"}`,background:privacyMode?"var(--gold-dim)":"transparent",color:privacyMode?"var(--gold)":"var(--text2)",fontSize:"14px",cursor:"pointer",fontFamily:"inherit",lineHeight:1,display:"inline-flex",alignItems:"center",justifyContent:"center"}}
+          >
+            {privacyMode?"👁‍🗨":"👁"}
+          </button>
           {/* v12.84: light↔classic snel-toggle. Voorheen wisselde 'ie tussen morani/purple
               die niet meer bestaan — knop deed dus niets. Andere thema's blijven kiesbaar
               via Instellingen → Thema. */}
