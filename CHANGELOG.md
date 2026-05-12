@@ -6,10 +6,17 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.126] — 2026-05-12
+
+### Fixed
+- **Refresh respecteerde een al-ingestelde "Sync vanaf" niet** *(2026-05-12, follow-up op v12.125)* — De vorige fix wist alleen `tj_lastsync_<ex>` bij wijziging van de date-input. Voor users die syncFrom al hadden ingesteld vóór de fix (of die de datum niet opnieuw aanraakten), bleef de bug bestaan. **Nieuwe fix in refresh-flow zelf**: als `c.syncFrom` expliciet is gevuld door de user, gebruik altijd die datum als startTime — incremental-optimization (`lastSync - 1u`) geldt nu alleen wanneer syncFrom op de default staat. Werkt onmiddellijk na update zonder dat user de input opnieuw hoeft te selecteren.
+
+---
+
 ## [v12.125] — 2026-05-12
 
 ### Fixed
-- **Refresh-knop negeerde "Sync vanaf" wijziging** *(2026-05-12, gemeld door Denny, gediagnosticeerd via Blofin snapshot)* — Wanneer je "Sync vanaf" verlaagde (bv. 1 mei → 1 april) en op Refresh klikte, kreeg je maar 2 trades binnen i.p.v. de verwachte ~21. **Oorzaak**: Refresh's incremental-optimization gebruikte `Math.max(configuredStart, lastSync-1u)` — `lastSync` (gisteren) wint van `configuredStart` (1 april), dus alleen records sinds gisteren worden gefetcht. **Fix**: bij wijziging van de "Sync vanaf"-datum reset de incremental-cursor (`tj_lastsync_<ex>` localStorage), zodat de volgende Refresh respecteert wat je hebt ingesteld. Geldt voor alle exchanges met API-sync (Blofin / MEXC / Kraken / Hyperliquid). Bestaande trades worden gededupliceerd via `importTrades` — geen duplicates.
+- **Refresh-knop negeerde "Sync vanaf" wijziging** *(2026-05-12, gemeld door Denny, gediagnosticeerd via Blofin snapshot)* — Wanneer je "Sync vanaf" verlaagde (bv. 1 mei → 1 april) en op Refresh klikte, kreeg je maar 2 trades binnen i.p.v. de verwachte ~21. **Oorzaak**: Refresh's incremental-optimization gebruikte `Math.max(configuredStart, lastSync-1u)` — `lastSync` (gisteren) wint van `configuredStart` (1 april), dus alleen records sinds gisteren worden gefetcht. **Fix**: bij wijziging van de "Sync vanaf"-datum reset de incremental-cursor (`tj_lastsync_<ex>` localStorage), zodat de volgende Refresh respecteert wat je hebt ingesteld. Geldt voor alle exchanges met API-sync (Blofin / MEXC / Kraken / Hyperliquid). Bestaande trades worden gededupliceerd via `importTrades` — geen duplicates. **Note**: deze fix was incompleet voor users die syncFrom al hadden ingesteld vóór update — zie v12.126.
 
 ---
 

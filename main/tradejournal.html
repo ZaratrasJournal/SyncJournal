@@ -1192,7 +1192,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.125",released:"2026-05-12"};
+const APP_VERSION={version:"v12.126",released:"2026-05-12"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -12404,13 +12404,26 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,set
       // (oude default = 1e van deze maand). v12.89: detect ook "user heeft trades gewist"
       // door te checken of de journal trades van deze exchange bevat — anders zou
       // tj_lastsync de fetch-window naar 0 trades verkleinen.
+      // v12.126: als user EXPLICIET een syncFrom heeft gezet via de UI-input
+      // (`c.syncFrom` gevuld), ALTIJD die respecteren — ook als lastSync recenter is.
+      // Voorheen won lastSync via Math.max waardoor "syncFrom op 1 april" maar 2 trades
+      // opleverde omdat lastSync van gisteren overschreef. Incremental-optimization geldt
+      // nu alleen wanneer user de default niet heeft aangeraakt.
       let startTime;
       try{
         const lastSyncStr=localStorage.getItem(`tj_lastsync_${ex}`);
         const lastSync=lastSyncStr?parseInt(lastSyncStr,10):0;
-        const configuredStart=c.syncFrom?new Date(c.syncFrom).getTime():new Date(new Date().getFullYear(),new Date().getMonth(),1).getTime();
         const hasTradesForEx=(trades||[]).some(t=>t.source===ex);
-        startTime=(lastSync>0&&hasTradesForEx)?Math.max(configuredStart,lastSync-3600*1000):configuredStart;
+        if(c.syncFrom){
+          // Expliciete user-keuze wint altijd.
+          startTime=new Date(c.syncFrom).getTime();
+        }else if(lastSync>0&&hasTradesForEx){
+          // Default syncFrom + we hebben al gesynced → incremental.
+          startTime=lastSync-3600*1000;
+        }else{
+          // Eerste sync / journal-wipe / geen lastSync → 1e van deze maand.
+          startTime=new Date(new Date().getFullYear(),new Date().getMonth(),1).getTime();
+        }
       }catch{startTime=new Date(new Date().getFullYear(),new Date().getMonth(),1).getTime();}
       let newTrades;
       if(api.walletOnly){
