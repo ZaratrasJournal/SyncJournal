@@ -3729,6 +3729,7 @@ function Dashboard({trades,config,accounts,storageUsage,setFilters,setTab}){
 
 // ============ TRADE LIST (v7: with search) ============
 function TradeList({trades,onEdit,onDelete,onQuickTag,onBulkDelete,onBulkTag,onBulkUntag,onBulkAddLayer,showToast,tagConfig,config,accounts}){
+  const{enabled:priv}=usePrivacy();
   const[sortField,setSortField]=useState("date");
   const[sortDir,setSortDir]=useState("desc");
   const[selected,setSelected]=useState(new Set());
@@ -3750,7 +3751,7 @@ function TradeList({trades,onEdit,onDelete,onQuickTag,onBulkDelete,onBulkTag,onB
       if(entry>0){const assetSize=sz/entry;return `${parseFloat(assetSize.toFixed(8))} ${asset}`}
       return `${parseFloat(sz.toFixed(8))} ${asset}`;
     }
-    return `$${fmt(sz)}`;
+    return priv?"$***,**":`$${fmt(sz)}`;
   };
 
   if(!trades.length)return(<div style={{textAlign:"center",padding:"4rem 2rem",color:"var(--text3)"}}>
@@ -4010,6 +4011,7 @@ function TradeList({trades,onEdit,onDelete,onQuickTag,onBulkDelete,onBulkTag,onB
                 <span style={{padding:"3px 10px",borderRadius:"4px",fontSize:"10px",fontWeight:700,background:t.direction==="long"?"rgba(46,170,111,0.12)":"rgba(224,85,85,0.12)",color:t.direction==="long"?"#2eaa6f":"#e05555"}}>{t.direction.toUpperCase()}</span>
               </td>
               <td style={{...tdStyle,fontFamily:"var(--mono)",fontWeight:700,fontSize:"12px",color:isW?"var(--green)":isL?"var(--red)":"var(--text3)"}}>{(()=>{
+                if(priv)return"$***,**";
                 // v12.117: voor missed/BT/paper toon trade.pnl met ~ prefix (theoretical) als ingevuld
                 if(t.status==="missed"&&!isNaN(pnlRaw)){
                   return<span title="Theoretische PnL — niet gerealiseerd" style={{color:pnlRaw>=0?"var(--green)":"var(--red)",opacity:0.85,fontSize:"11px",fontStyle:"italic"}}>~{pnlRaw>=0?"+":""}${fmt(pnlRaw)}</span>;
@@ -4054,8 +4056,8 @@ function TradeList({trades,onEdit,onDelete,onQuickTag,onBulkDelete,onBulkTag,onB
                 <div style={{display:"flex",gap:"20px",flexWrap:"wrap",marginBottom:(t.entryNote||t.notes)?"10px":"0"}}>
                   {slN>0&&<div><div style={sm}>Stop-loss</div><div style={{...mv,color:"var(--red)"}}>{fmt(slN)}</div></div>}
                   {lev&&lev!=="1"&&<div><div style={sm}>Leverage</div><div style={{...mv,color:"var(--text2)"}}>{lev}x</div></div>}
-                  {t.riskUsd&&<div><div style={sm}>Risk</div><div style={{...mv,color:"var(--red)"}}>${fmt(parseFloat(t.riskUsd))}{t.riskPct&&<span style={{color:"var(--text4)",fontWeight:500,fontSize:"10px"}}> ({t.riskPct}%)</span>}</div></div>}
-                  {feesN>0&&<div><div style={sm}>Fees</div><div style={{...mv,color:"var(--text3)"}}>${fmt(feesN)}</div></div>}
+                  {t.riskUsd&&<div><div style={sm}>Risk</div><div style={{...mv,color:"var(--red)"}}>{priv?"$***,**":`$${fmt(parseFloat(t.riskUsd))}`}{t.riskPct&&<span style={{color:"var(--text4)",fontWeight:500,fontSize:"10px"}}> ({t.riskPct}%)</span>}</div></div>}
+                  {feesN>0&&<div><div style={sm}>Fees</div><div style={{...mv,color:"var(--text3)"}}>{priv?"$***,**":`$${fmt(feesN)}`}</div></div>}
                   {holdStr&&<div><div style={sm}>Hold</div><div style={{...mv,color:"var(--text2)"}}>{holdStr}</div></div>}
                   {pnlPctCalc!==null&&<div><div style={sm}>PnL %</div><div style={{...mv,color:pnlPctCalc>=0?"var(--green)":"var(--red)"}}>{pnlPctCalc>=0?"+":""}{pnlPctCalc.toFixed(2)}%</div></div>}
                   {rMult!==null&&<div><div style={sm}>R-mult</div><div style={{...mv,color:rMult>=0?"var(--green)":"var(--red)"}}>{rMult>=0?"+":""}{rMult.toFixed(2)}R</div></div>}
@@ -4085,7 +4087,7 @@ function TradeList({trades,onEdit,onDelete,onQuickTag,onBulkDelete,onBulkTag,onB
     </div>
     <div style={{display:"flex",justifyContent:"space-between",padding:"8px 0",fontSize:"11px",color:"var(--text4)",fontFamily:"var(--mono)"}}>
       <span>Trades: {sorted.length}{search?` (gefilterd)`:""}</span>
-      <span>Return: <span style={{color:totalPnl>=0?"var(--green)":"var(--red)",fontWeight:600}}>{totalPnl>=0?"+":""}${fmt(totalPnl)}</span></span>
+      <span>Return: <span style={{color:totalPnl>=0?"var(--green)":"var(--red)",fontWeight:600}}>{priv?"$***,**":`${totalPnl>=0?"+":""}$${fmt(totalPnl)}`}</span></span>
     </div>
   </div>);
 }
@@ -5249,6 +5251,7 @@ function Section({title,storeKey,defaultOpen=true,hint,children}){
 }
 
 function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,setConfig,accounts,showToast,isDraft,playbooks,setTab,tpTemplates,tpDefaults}){
+  const{enabled:priv}=usePrivacy();
   const[showCard,setShowCard]=useState(false);
   const[sizeEditOpen,setSizeEditOpen]=useState(false);// v12.61: inline edit voor Bellafiore account-saldo
   // Auto-persist to tj_trade_draft so unsaved input survives accidental modal-close, tab-close, crash, etc.
@@ -5635,7 +5638,7 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,setConfig,ac
       const riskPct=(risk!=null&&capital>0)?risk/capital*100:null;
       const riskPctColor=riskPct==null?"var(--text5)":riskPct<=1?"var(--green)":riskPct<=2?"var(--gold)":riskPct<=4?"var(--amber)":"var(--red)";
       return(<div className="tj-kpi-strip">
-        <div className="tj-kpi"><span className="tj-kpi-label">Risk $</span><span className={"tj-kpi-val"+(risk==null?" muted":"")} style={risk!=null?{color:"var(--red)"}:{}}>{risk!=null?"$"+fmt(risk):"—"}</span></div>
+        <div className="tj-kpi"><span className="tj-kpi-label">Risk $</span><span className={"tj-kpi-val"+(risk==null?" muted":"")} style={risk!=null?{color:"var(--red)"}:{}}>{risk!=null?(priv?"$***,**":"$"+fmt(risk)):"—"}</span></div>
         <div className="tj-kpi"><span className="tj-kpi-label">Risk %</span><span className={"tj-kpi-val"+(riskPct==null?" muted":"")} style={{color:riskPctColor}}>{riskPct!=null?riskPct.toFixed(2)+"%":"—"}</span></div>
         <div className="tj-kpi"><span className="tj-kpi-label">R:R</span><span className={"tj-kpi-val"+(weightedRR==null?" muted":"")} style={weightedRR!=null?{color:weightedRR>=1?"var(--green)":"var(--amber)"}:{}}>{weightedRR!=null?"1:"+weightedRR.toFixed(2):"—"}</span></div>
         <div className="tj-kpi"><span className="tj-kpi-label">Qty ({asset})</span><span className={"tj-kpi-val"+(qty==null?" muted":"")}>{qty!=null?qty.toFixed(6).replace(/\.?0+$/,""):"—"}</span></div>
@@ -5646,7 +5649,7 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,setConfig,ac
         hebben de exchange als bron-van-waarheid voor PnL (MEXC `realised`, Blofin
         `pnl`, etc., zijn al netto). Knop daar tonen zou correcte data overschrijven
         met een ruwe formule-schatting. Sinds v12.94. */}
-    {!isOpen&&trade.source==="manual"&&(()=>{const e=parseFloat(trade.entry);const ex=parseFloat(trade.exit);const sz=parseFloat(trade.positionSize);const fees=parseFloat(trade.fees)||0;if(e>0&&ex>0&&sz>0&&!(trade.manualOverrides||[]).includes("pnl")){const raw=trade.direction==="long"?(ex-e)*sz/e:(e-ex)*sz/e;const net2=raw-fees;if(trade.pnl!==""&&Math.abs(parseFloat(trade.pnl)-net2)>0.01||trade.pnl===""){return(<div style={{marginBottom:"12px"}}><button onClick={()=>setTrade(p=>({...p,pnl:net2.toFixed(2)}))} style={{fontSize:"10px",padding:"4px 12px",borderRadius:"5px",border:"1px solid var(--blue2)",background:"rgba(201,168,76,0.12)",color:"var(--gold)",cursor:"pointer",fontFamily:"inherit",fontWeight:500}}>💡 PNL berekenen: {net2>=0?"+":""}${fmt(net2)} {fees>0?`(na $${fmt(fees)} fees)`:""} → Toepassen</button></div>)}}return null;})()}
+    {!isOpen&&trade.source==="manual"&&(()=>{const e=parseFloat(trade.entry);const ex=parseFloat(trade.exit);const sz=parseFloat(trade.positionSize);const fees=parseFloat(trade.fees)||0;if(e>0&&ex>0&&sz>0&&!(trade.manualOverrides||[]).includes("pnl")){const raw=trade.direction==="long"?(ex-e)*sz/e:(e-ex)*sz/e;const net2=raw-fees;if(trade.pnl!==""&&Math.abs(parseFloat(trade.pnl)-net2)>0.01||trade.pnl===""){return(<div style={{marginBottom:"12px"}}><button onClick={()=>setTrade(p=>({...p,pnl:net2.toFixed(2)}))} style={{fontSize:"10px",padding:"4px 12px",borderRadius:"5px",border:"1px solid var(--blue2)",background:"rgba(201,168,76,0.12)",color:"var(--gold)",cursor:"pointer",fontFamily:"inherit",fontWeight:500}}>💡 PNL berekenen: {priv?"$***,**":`${net2>=0?"+":""}$${fmt(net2)}`} {fees>0?(priv?"(na $***,** fees)":`(na $${fmt(fees)} fees)`):""} → Toepassen</button></div>)}}return null;})()}
 
     {/* TP Levels (multi-TP with percentages) — ported from v4_14.
         v12.123: template-driven distribution (Equal/Front-loaded/Runner + custom). */}
@@ -5925,7 +5928,7 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,setConfig,ac
                 <input type="text" value={tp.pct} onChange={e=>updateTP(tp.id,"pct",e.target.value)} style={{...iStyle,padding:"6px 8px",fontSize:"12px",paddingRight:"18px"}}/>
                 <span style={{position:"absolute",right:"8px",top:"50%",transform:"translateY(-50%)",fontSize:"10px",color:"var(--text4)"}}>%</span>
               </div>
-              <span style={{fontSize:"11px",fontFamily:"var(--mono)",color:profit!==null?(profit>=0?"var(--green)":"var(--red)"):"var(--text5)"}}>{profit!==null?`${profit>=0?"+":""}$${fmt(profit)}`:<NA/>}</span>
+              <span style={{fontSize:"11px",fontFamily:"var(--mono)",color:profit!==null?(profit>=0?"var(--green)":"var(--red)"):"var(--text5)"}}>{profit!==null?(priv?"$***,**":`${profit>=0?"+":""}$${fmt(profit)}`):<NA/>}</span>
               <span style={{fontSize:"11px",fontFamily:"var(--mono)",color:rr!==null?"var(--text2)":"var(--text5)"}}>{rr!==null?rr.toFixed(2)+"R":<NA/>}</span>
               <button onClick={()=>toggleStatus(tp.id)} style={{padding:"3px 8px",borderRadius:"5px",border:"none",background:tp.status==="hit"?"var(--green2)":tp.status==="missed"?"var(--red2)":"rgba(201,168,76,0.12)",color:statusColor,fontSize:"10px",fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{statusIcon}</button>
               <button onClick={()=>removeTP(tp.id)} style={{background:"none",border:"none",color:"var(--text5)",cursor:"pointer",fontSize:"12px",padding:"2px"}}>✕</button>
@@ -5938,7 +5941,7 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,setConfig,ac
                 Totaal: {totalPct}% {totalPct!==100&&<span style={{fontSize:"9px"}}>{totalPct>100?"⚠ >100%":"⚠ <100%"}</span>}
               </span>
               {(()=>{const totalProfit=tps.reduce((s,tp)=>{const p=calcProfit(tp);return s+(p||0)},0);
-                return totalProfit!==0&&<span style={{fontFamily:"var(--mono)",color:totalProfit>=0?"var(--green)":"var(--red)"}}>Verwacht: {totalProfit>=0?"+":""}${fmt(totalProfit)}</span>})()}
+                return totalProfit!==0&&<span style={{fontFamily:"var(--mono)",color:totalProfit>=0?"var(--green)":"var(--red)"}}>Verwacht: {priv?"$***,**":`${totalProfit>=0?"+":""}$${fmt(totalProfit)}`}</span>})()}
               {(()=>{const rrs=tps.map(tp=>({rr:calcRR(tp),pct:parseFloat(tp.pct||0)})).filter(x=>x.rr!==null);
                 if(rrs.length===0)return null;const weighted=rrs.reduce((s,x)=>s+x.rr*x.pct,0)/rrs.reduce((s,x)=>s+x.pct,0);
                 return <span style={{fontFamily:"var(--mono)",color:"var(--text2)"}}>Gem R:R: {weighted.toFixed(2)}R</span>})()}
@@ -5976,10 +5979,10 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,setConfig,ac
               <span style={{fontSize:"15px"}}>{icon}</span>
               <span>{label}</span>
               {isClose?<>
-                <span style={{fontFamily:"var(--mono)",fontWeight:800}}>· PnL: {isWin?"+":""}${fmt(closeData.netPnl)}</span>
+                <span style={{fontFamily:"var(--mono)",fontWeight:800}}>· PnL: {priv?"$***,**":`${isWin?"+":""}$${fmt(closeData.netPnl)}`}</span>
                 <span style={{fontFamily:"var(--mono)",fontSize:"11px",opacity:0.85}}>· Exit: ${fmt(closeData.wExit)}</span>
               </>:<>
-                <span style={{fontFamily:"var(--mono)",fontWeight:800}}>· was {closeData.currentPnl>=0?"+":""}${fmt(closeData.currentPnl)} → {isWin?"+":""}${fmt(closeData.netPnl)}</span>
+                <span style={{fontFamily:"var(--mono)",fontWeight:800}}>· was {priv?"$***,**":`${closeData.currentPnl>=0?"+":""}$${fmt(closeData.currentPnl)}`} → {priv?"$***,**":`${isWin?"+":""}$${fmt(closeData.netPnl)}`}</span>
               </>}
             </button>);
           })()}
