@@ -6,6 +6,13 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.125] — 2026-05-12
+
+### Fixed
+- **Refresh-knop negeerde "Sync vanaf" wijziging** *(2026-05-12, gemeld door Denny, gediagnosticeerd via Blofin snapshot)* — Wanneer je "Sync vanaf" verlaagde (bv. 1 mei → 1 april) en op Refresh klikte, kreeg je maar 2 trades binnen i.p.v. de verwachte ~21. **Oorzaak**: Refresh's incremental-optimization gebruikte `Math.max(configuredStart, lastSync-1u)` — `lastSync` (gisteren) wint van `configuredStart` (1 april), dus alleen records sinds gisteren worden gefetcht. **Fix**: bij wijziging van de "Sync vanaf"-datum reset de incremental-cursor (`tj_lastsync_<ex>` localStorage), zodat de volgende Refresh respecteert wat je hebt ingesteld. Geldt voor alle exchanges met API-sync (Blofin / MEXC / Kraken / Hyperliquid). Bestaande trades worden gededupliceerd via `importTrades` — geen duplicates.
+
+---
+
 ## [v12.124] — 2026-05-11
 
 ### Fixed
