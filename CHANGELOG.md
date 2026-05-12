@@ -6,6 +6,50 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.127] — 2026-05-12
+
+Globale privacy-modus — verbergt alle $/€ bedragen met één klik. Voor stream-veilig delen, screen-sharing, of over-de-schouder-context.
+
+### Toegevoegd
+- **👁 privacy-toggle in de top-bar** *(2026-05-12, op verzoek van Denny — vervangt de Dashboard-only toggle die alleen account-saldo verborg)* — Naast de Theme-knop in de top-bar staat nu een 👁 (oog-icoon) die alle dollar/euro-bedragen vervangt door `$***,**`. Werkt op elke pagina, persisteert via `tj_privacy_mode` localStorage. Active state: 👁‍🗨 + gold accent.
+- **Dashboard's bestaande 👁 togglet nu globaal** — voorheen verborg die alleen het account-saldo-blok bovenin, maar alle PnL-cards/KPIs/charts bleven zichtbaar (privacy-leek). Nu synced met de top-bar via React Context — beide togglen dezelfde state.
+
+### Maskerings-scope
+Verborgen wanneer privacy aan staat:
+- **Dashboard**: BALANS, DD/limiet, account-balances per exchange, alle 6 KPI-cards (Netto PNL / R:R sub / Expectancy / Gem. Win / Gem. Loss / Fees), Setup performance bars, Session performance bars, Emotie performance bars, Setup ranking widget
+- **Trades-lijst**: PnL-kolom (alle 4 branches: real / theoretical missed / unrealized / theoretical-fallback), sub-row Risk + Fees, footer Return, fmtSize $-fallback
+- **TradeForm modal**: Live KPI strip "Risk $", 💡 PNL berekenen-knop, TPs Verwacht-totaal + per-TP winst, close-data buttons (PnL/Exit/was→nu)
+- **Analytics**: 4-stat insight cards, Expectancy, lek-warning, HIGH-stat, edge/emotion-insight cards
+- **Review**: 6-stat grid (Netto PNL / Profit factor / Gem. winst+verlies / Expectancy), Max DD, Best/Worst trade + day
+- **Calendar**: cal-stat Net jaar + Gem. winst, dag-cell PnL, side-totals, year-view monthly tiles, month-view day tiles
+- **DashboardPremium**: HIGH cumulatief, recent trades PnL kolom
+- **Charts**: EquityCurveChart + PnlBarChart + MistakeImpactChart Y-axis ticks + tooltip labels
+
+Bewust NIET gemaskt:
+- **Toasts** ("✓ Trade gesloten — PnL: +$X") — bewuste user-actie feedback, 3 sec zichtbaar
+- **Entry/exit prijzen** in trade-rows — markt-data, geen positie-info
+- **Position-size in asset** (0.0312 BTC) — belangrijk voor playbook-fit analyse
+- **R-multiples / win-rates % / counts / dates** — privacy-vriendelijk maar nog leesbaar
+- **TradeReport (Rapport-modal)** — bewust onaangetast om PDF-export niet te raken
+- **PDF/JSON exports** — export is bewuste actie, volledige data behouden
+- **RMultDistChart** — toont alleen R-buckets, geen $
+
+### Onder de motorkap
+- React Context (`PrivacyContext` + `usePrivacy()` hook) als single-source-of-truth
+- `<Money value={v} sign={true} prefix="$"/>` component voor JSX-rendering (toekomstig gebruik)
+- `fmtMoney(v, privacy, opts)` helper voor template-strings/chart-callbacks
+- Chart.js callbacks krijgen `priv` als useEffect-dep zodat charts rebuilden bij toggle
+- Theme-token hook compatible (geen hardcoded kleuren in nieuwe code)
+
+### Tests
+- `tests/privacy-mode.spec.js` — Playwright spec verifieert toggle + masking + localStorage persist
+- Smoke + 6 thema's blijven groen (8/8 tests pass)
+
+### Migratie
+Geen breaking change. Nieuwe localStorage key `tj_privacy_mode` (default `"0"`). Bestaande Dashboard `lp.accountValue`-pref blijft in de layout-prefs maar wordt niet meer gebruikt voor masking-state.
+
+---
+
 ## [v12.126] — 2026-05-12
 
 ### Fixed
