@@ -6,6 +6,13 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.130] — 2026-05-14
+
+### Fixed
+- **BT-trade verliest "missed" TPs én loss-marking na reload** *(2026-05-14, gemeld door Denny, autonoom gediagnosticeerd)* — Wanneer je in een backtest-trade een TP-prijs invult op SL-niveau (om een SL-hit te modelleren) en die TP markeert als missed, verdween die TP-rij bij de eerstvolgende reload. Daardoor verdween ook de "🛑 Verlies gemarkeerd"-pill omdat de remaining TPs niet meer 100% missed waren. **Oorzaak**: de v12.104 self-heal in `normalizeTrade` ([line ~1665](work/tradejournal.html#L1665)) verwijderde elke niet-hit TP die aan de "verkeerde" kant van entry zat (LONG: prijs < entry, SHORT: prijs > entry) omdat dat een typisch teken was van Blofin/MEXC Worker-bug waarbij pending stop-loss orders per ongeluk als TP-rij werden gestuurd. Voor BT-trades is dat een misclassificatie — user vult bewust SL-prijzen in om verlies-scenarios te modelleren. **Fix**: heal-scope beperkt naar exchange-source (`source !== "manual"`). Manual trades (BT / paper / handmatige real-trades) blijven onaangetast. Worker-bug fix blijft actief voor Blofin/MEXC/Kraken/Hyperliquid imports. Autonoom geverifieerd via 2 Playwright-tests (Blofin heal werkt nog + manual heal skipt).
+
+---
+
 ## [v12.129] — 2026-05-14
 
 ### Fixed
