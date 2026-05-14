@@ -10,49 +10,95 @@ Basis kwam uit de feature-diff v4_14 → v9 onderaan. Inmiddels werken we op **v
 
 <!-- Denny stuurt bugs 1 voor 1 — elk item krijgt datum + korte reproductiestap. -->
 
-- [ ] **Analytics: "Setup lagen performance" labels worden afgekapt met "..."** *(2026-05-14, gemeld door Denny met screenshot)* — Onder "Setup lagen performance" tonen de layer-pattern labels (bv. `Daily → 1H+BOS`, `4H → 1H+BOS+OB`) afgekapt met ellipsis: `Daily → 1H+...` / `4H → 1H+B...` / `Daily+SFP ...`. Hierdoor zie je niet welke layer-combinatie bij welke bar hoort.
+- [ ] **Analytics: "Setup lagen performance" labels worden afgekapt met "..."** *(2026-05-14, gemeld door Denny met screenshot · autonoom onderzocht 2026-05-14)* — Onder "Setup lagen performance" tonen de layer-pattern labels (bv. `Daily → 1H+BOS`, `4H → 1H+BOS+OB`) afgekapt met ellipsis: `Daily → 1H+...` / `4H → 1H+B...` / `Daily+SFP ...`. Hierdoor zie je niet welke layer-combinatie bij welke bar hoort.
 
-  **Root cause**: `barRow` helper in Analytics ([line ~10076-10077](work/tradejournal.html#L10076-L10077)) gebruikt vaste **70px** label-kolom met `overflow:hidden; textOverflow:ellipsis; whiteSpace:nowrap`. Layer-pattern strings zoals `Daily → 1H+BOS` zijn 14+ karakters en passen niet in 70px.
+  **Root cause bevestigd** ([line 10076-10077](work/tradejournal.html#L10076-L10077)): `barRow` helper gebruikt vaste **70px** label-kolom met `overflow:hidden; textOverflow:ellipsis; whiteSpace:nowrap`.
 
-  **Fix-opties**:
-  - **A) Label-kolom breder** (bv. 140-180px) — simpelste maar maakt de bar narrower. Effort: trivial.
-  - **B) Wrap toestaan** (`whiteSpace:"normal", minHeight: variabel`) — meerdere regels per row als nodig. Effort: trivial, layout iets minder strak.
-  - **C) Label boven de bar i.p.v. ernaast** — volledige breedte beschikbaar, compactere layout. Effort: S. Doorbreekt het row-grid van andere widgets die `barRow` gebruiken (setupPerf, sessionPerf, foutAnalyse, emotionImpact, longShort, perPair, perDay) — moet ofwel voor alle widgets aangepast of alleen voor layerAnalysis.
-  - **D) `barRow` accepteert optionele `wideLabel`-param** — alleen layerAnalysis krijgt brede labels, andere blijven compact. Effort: S, schoonst.
+  **Concrete metingen** (via [tests/setup-layer-labels-research.js](tests/setup-layer-labels-research.js)):
+  ```
+  "London AM"                  →  70px nodig  ✓ past
+  "4H+SFP → 1H+BOS+OB"         → 118px nodig  ⚠ TRUNCATED
+  "1H+BOS"                     →  70px nodig  ✓ past
+  "Daily+BOS → 1H+BOS+SFP"     → 135px nodig  ⚠ TRUNCATED
+  "Daily+SFP → 15M+BOS"        → 115px nodig  ⚠ TRUNCATED
+  "Daily+MSB → 1H+BOS"         → 110px nodig  ⚠ TRUNCATED
+  ```
+  Layer-labels nodigen **110-135px** voor volledig leesbaar. Korte labels (Pair / Session / Day / tags) passen al binnen 70px.
 
-  **Aanbeveling**: **D** (wide-label opt-in). Layer-strings zijn structureel langer dan single-tag labels, dus rechtvaardigt eigen styling. Andere widgets blijven onveranderd.
+  **barRow wordt door 5 widgets gebruikt** ([grep](work/tradejournal.html)):
+  - Line 10272: pairData (`BTC/USDT`) — past
+  - Line 10277: dayData (date / weekday) — past
+  - Line 10282: sessData (`London AM`) — past
+  - Line 10372: filter-bars (`Long` / `BOS` / tags) — past
+  - **Line 10393: layerSets** (`Daily → 1H+BOS+SFP`) — **PROBLEEM**
+
+  Alleen layerAnalysis heeft het issue. Andere widgets zijn fine zoals ze zijn.
+
+  **Aanbevolen fix** (Optie D — wide-label opt-in):
+  ```js
+  // barRow signature uitbreiden:
+  const barRow=(label,wins2,losses2,pnl2,maxAbs,color,sub,wide)=>{
+    ...
+    <div style={{width:wide?"160px":"70px", ...}}>{label}</div>
+    ...
+  };
+  // layerAnalysis call wordt:
+  barRow(summary,d.w,d.n-d.w,d.pnl,maxAbs,"var(--purple)",null,true)
+  ```
 
   **Acceptatie**:
-  - Layer-labels zijn volledig leesbaar zonder ellipsis bij standaard viewport (≥1400px)
-  - Smalle viewports (mobile, <600px) hebben fallback: nog steeds leesbaar of wrap
-  - Andere `barRow`-gebruikers (setupPerf, sessionPerf, etc.) blijven compact zoals nu
-  - 6 thema's blijven goed
+  - Layer-labels van max 135px volledig leesbaar zonder ellipsis bij ≥1400px viewport
+  - Title-tooltip blijft behouden voor hover-fallback (al aanwezig)
+  - Andere 4 `barRow`-widgets pixel-identiek aan voor (70px behouden)
+  - 6 thema's groen
+  - Mobile viewport (<900px) — layer-bar mag wrappen of horizontaal scrollen; acceptabel zolang label leesbaar is
 
-  **Effort**: S (~20 min werk + thema-check).
+  **Effort**: S (~20 min werk + thema-check + visual-vergelijking met huidige baseline).
 
-- [ ] **Analytics: data van trades buiten datum-filter "lekt" door in sommige widgets** *(2026-05-14, gemeld door Denny)* — Wanneer je op Analytics een datum-filter zet (bv. "Deze week"), zie je in delen van de pagina data van trades buiten dat window. Verwachting: alle Analytics-secties respecteren de actieve FilterBar (datum, type, source, etc.).
+  **Onderzochte alternatieven (afgewezen)**:
+  - Universeel 160px voor alle widgets → bars worden te smal in andere secties
+  - Wrap-allow (`whiteSpace:normal`) → variable row-heights breken layout-grid
+  - Label boven de bar → werkt maar breekt visueel-grid consistency met andere bar-widgets
 
-  **Reproductie**: Open Analytics → klap Geavanceerde filters open → klik "Deze week" → bekijk de verschillende secties. Sommige cards/charts tonen waardes die niet kunnen komen uit alleen de week-trades.
+- [ ] **Analytics: data van trades buiten datum-filter "lekt" door in sommige widgets** *(2026-05-14, gemeld door Denny · autonoom onderzocht 2026-05-14)* — Wanneer je op Analytics een datum-filter zet (bv. "Deze week"), zie je in delen van de pagina data van trades buiten dat window. Verwachting: alle Analytics-secties respecteren de actieve FilterBar (datum, type, source, etc.).
 
-  **Vermoedelijke root cause** (hypothese, te bevestigen):
-  - `<Analytics>` krijgt **twee trade-props**: `trades={filteredTrades}` en `allTrades={trades}` ([line ~14921](work/tradejournal.html#L14921))
-  - Verschillende widgets gebruiken bewust `allTrades` voor globale context (bv. detect-tendencies, edge-gap, stress-leak — die zijn ontworpen om over de volle dataset te kijken)
-  - User verwacht dat **alle** secties de filter respecteren
-  - Misverstand zit tussen: a) Analytics-secties die per-design `allTrades` gebruiken vs b) user-verwachting van "filter geldt overal"
+  **Onderzoek findings**:
 
-  **Te onderzoeken**:
-  1. Grep in Analytics op `allTrades` — welke widgets gebruiken het en waarom?
-  2. Per widget bepalen: hoort die "global" te zijn (= negeert filter) of "filtered" (= respecteert filter)?
-  3. Mogelijk fix-richting: widgets die per ontwerp global zijn een **visueel label** ("Over alle trades") krijgen zodat het niet aanvoelt als bug. OF default naar filtered en alleen op specifiek opt-in toggle global.
-  4. Mogelijk alternatief: aparte sectie/tab "Trends over alle tijd" waar de global-widgets in geclusterd staan, los van de filter-respecting secties.
+  Audit via grep — **slechts 2 plekken** in Analytics gebruiken `allTrades` (= full pre-filter set):
+  - **Line 10189: `<EdgeGap allTrades={...}/>`** — "👻 Edge Gap — missed trades. Captured ratio per setup + theoretical edge-leak"
+  - **Line 10190: `<StressLeakWidget allTrades={...}/>`** — "💢 Stress-Leak Detector — paper vs. real discipline"
+
+  Beide widgets zijn **alleen zichtbaar** wanneer `config.trackMissedTrades=true` (opt-in feature) én er respectievelijk missed/paper-trades bestaan.
+
+  **De rest van Analytics gebruikt `trades` (= filteredTrades)** — getest via [tests/analytics-filter-leak-research.js](tests/analytics-filter-leak-research.js):
+  - 10 trades geseed (5 vorige week + 5 deze week)
+  - Filter "Deze week" actief
+  - Discipline-aggregaat zonder filter: **10 trades** | met filter: **4 trades** ✓ correct gefilterd
+  - Sample-size waarschuwing volgt dezelfde count
+
+  **Conclusie**: het is **geen bug in de filter zelf**. De filter werkt voor 95% van Analytics. Het probleem is dat EdgeGap + StressLeak by design `allTrades` gebruiken (omdat hun analyse — "wat heb ik gemist" + "paper vs real discipline" — alleen zinvol is over de **volle history**, niet over 1 week). User verwacht filter overal, maar zonder visueel signaal dat deze 2 widgets de filter negeren, voelt het als bug.
+
+  **Aanbevolen fix** (visual label + opt-in respect):
+  - **A) Subtle label-prefix** op EdgeGap + StressLeak: `"📊 Over alle trades — datum-filter genegeerd voor deze analyse"` als zachte muted-tekst onder de widget-titel
+  - **B) Optioneel: lokale toggle per widget** ("Respecteer filter | Over alle trades") zodat user kan kiezen — meer flex maar meer UI
+  - Aanbeveling: **A** voor v1, B alleen als user erom vraagt
+
+  **Te bouwen**:
+  - Voeg `style={...font:11px,color:var(--text5),fontStyle:italic}` zin toe in EdgeGap-header ([line ~6889-6894](work/tradejournal.html#L6889-L6894)) en StressLeak-header ([line ~7811](work/tradejournal.html#L7811))
+  - Tekst: "Toont over alle trades, niet beperkt door datum-filter"
 
   **Acceptatie-criteria**:
-  - Alle dollar-cijfers/KPIs in Analytics matchen met de actieve FilterBar
-  - Widgets die bewust global blijven hebben een zichtbaar "alle trades"-label
-  - Test: zet filter "Deze week" met N trades → Analytics-aggregates (Net PNL, Profit Factor, count) reflecteren exact die N trades
-  - Geen regressie in tendencies/edge-gap die mogelijk per-design global moeten blijven
+  - EdgeGap + StressLeak hebben zichtbaar label dat ze filter negeren
+  - Filter werkt correct voor rest van Analytics (al bevestigd)
+  - Geen functioneel verschil — alleen UX-clarification
+  - 6 thema's: label-kleur leesbaar zonder hardcoded colors
 
-  **Effort**: S-M (auditing + besluitvorming + labeling — 1-2u). Daadwerkelijke fix afhankelijk van uitkomst audit.
+  **Effort**: XS (~10 min — 2× label-string + theme-check).
+
+  **Onderzochte alternatieven (afgewezen)**:
+  - Default naar filtered → breekt fundamenteel hun nut ("edge gap" over 1 week zegt niks)
+  - Aparte tab "Globaal" → over-engineering voor 2 widgets
+  - Filter respecteren maar tonen "ALL"-toggle → meer code voor weinig winst
 
 - [ ] **MEXC partial-close: TP-winst-totaal wijkt ~factor 8 af van werkelijke PnL** *(2026-05-06, gemeld door Denny op een ander profiel met v12.95 + Worker v6)* — In edit-modal van een gesloten BTC short trade: entry=80282.5, exit=79857.5, positionSize=$336, qty=0.004185 BTC, **PnL=$14.27**. Drie TPs (39.9% / 30.1% / 30.1% — totaal 100.1% met "⚠ >100%" flag) tonen individuele winsten +$0.49 / +$0.69 / +$0.60, **Verwacht totaal: $1.78**. Discrepantie $14.27 vs $1.78 = **factor 8.02**.
 
