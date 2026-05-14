@@ -6,6 +6,23 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.129] — 2026-05-14
+
+### Fixed
+- **BT/paper-trades zonder handmatige pnl niet meegerekend in Analytics** *(2026-05-14, autonoom gediagnosticeerd na Denny's melding "ik zie nog steeds geen data")* — Vervolg op v12.128. Twee onderliggende oorzaken:
+  1. **`netPnl()` returnde altijd 0** voor `status="missed"` trades, ook met handmatige pnl ingevuld. Alle aggregaten (Net PNL / Profit Factor / Expectancy / setup-bars) waren dus 0 voor BT/paper-trades zelfs als de data er was.
+  2. **Analytics's `closed`-filter** vereiste `t.pnl !== ""` — BT-trades waar gebruiker alleen TPs of hindsightExit had ingevuld (geen handmatige pnl) vielen weg.
+  
+  **Fix**:
+  - `netPnl()` doet nu fallback voor missed-trades: eerst `t.pnl` proberen, dan `calcTheoreticalPnl(t)` (uit TPs / hindsightExit / exit-chain), dan 0.
+  - Analytics's filter accepteert nu ook trades met theoretical PnL.
+  
+  **Autonoom verifieerd via Playwright**: 5 BT-trades geseed (verschillende invul-patronen), filter "Backtest" actief — vóór de fix 2 trades zichtbaar, nu 4 (5e zonder enige data wordt terecht weggefilterd).
+  
+  **Default tradeType-filter blijft `"real"`** dus Dashboard voor real-only users is onaangetast — alleen wanneer je actief naar Sim / Backtest / Paper / Alles wisselt zie je je simulaties.
+
+---
+
 ## [v12.128] — 2026-05-12
 
 ### Fixed
