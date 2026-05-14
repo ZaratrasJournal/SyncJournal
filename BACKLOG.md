@@ -10,6 +10,30 @@ Basis kwam uit de feature-diff v4_14 → v9 onderaan. Inmiddels werken we op **v
 
 <!-- Denny stuurt bugs 1 voor 1 — elk item krijgt datum + korte reproductiestap. -->
 
+- [ ] **Analytics: data van trades buiten datum-filter "lekt" door in sommige widgets** *(2026-05-14, gemeld door Denny)* — Wanneer je op Analytics een datum-filter zet (bv. "Deze week"), zie je in delen van de pagina data van trades buiten dat window. Verwachting: alle Analytics-secties respecteren de actieve FilterBar (datum, type, source, etc.).
+
+  **Reproductie**: Open Analytics → klap Geavanceerde filters open → klik "Deze week" → bekijk de verschillende secties. Sommige cards/charts tonen waardes die niet kunnen komen uit alleen de week-trades.
+
+  **Vermoedelijke root cause** (hypothese, te bevestigen):
+  - `<Analytics>` krijgt **twee trade-props**: `trades={filteredTrades}` en `allTrades={trades}` ([line ~14921](work/tradejournal.html#L14921))
+  - Verschillende widgets gebruiken bewust `allTrades` voor globale context (bv. detect-tendencies, edge-gap, stress-leak — die zijn ontworpen om over de volle dataset te kijken)
+  - User verwacht dat **alle** secties de filter respecteren
+  - Misverstand zit tussen: a) Analytics-secties die per-design `allTrades` gebruiken vs b) user-verwachting van "filter geldt overal"
+
+  **Te onderzoeken**:
+  1. Grep in Analytics op `allTrades` — welke widgets gebruiken het en waarom?
+  2. Per widget bepalen: hoort die "global" te zijn (= negeert filter) of "filtered" (= respecteert filter)?
+  3. Mogelijk fix-richting: widgets die per ontwerp global zijn een **visueel label** ("Over alle trades") krijgen zodat het niet aanvoelt als bug. OF default naar filtered en alleen op specifiek opt-in toggle global.
+  4. Mogelijk alternatief: aparte sectie/tab "Trends over alle tijd" waar de global-widgets in geclusterd staan, los van de filter-respecting secties.
+
+  **Acceptatie-criteria**:
+  - Alle dollar-cijfers/KPIs in Analytics matchen met de actieve FilterBar
+  - Widgets die bewust global blijven hebben een zichtbaar "alle trades"-label
+  - Test: zet filter "Deze week" met N trades → Analytics-aggregates (Net PNL, Profit Factor, count) reflecteren exact die N trades
+  - Geen regressie in tendencies/edge-gap die mogelijk per-design global moeten blijven
+
+  **Effort**: S-M (auditing + besluitvorming + labeling — 1-2u). Daadwerkelijke fix afhankelijk van uitkomst audit.
+
 - [ ] **MEXC partial-close: TP-winst-totaal wijkt ~factor 8 af van werkelijke PnL** *(2026-05-06, gemeld door Denny op een ander profiel met v12.95 + Worker v6)* — In edit-modal van een gesloten BTC short trade: entry=80282.5, exit=79857.5, positionSize=$336, qty=0.004185 BTC, **PnL=$14.27**. Drie TPs (39.9% / 30.1% / 30.1% — totaal 100.1% met "⚠ >100%" flag) tonen individuele winsten +$0.49 / +$0.69 / +$0.60, **Verwacht totaal: $1.78**. Discrepantie $14.27 vs $1.78 = **factor 8.02**.
 
   **Mogelijke root cause** (nog niet bevestigd, vereist snapshot-analyse):
@@ -327,6 +351,7 @@ In [tests/](tests/) staan 4 real-data specs (`<exchange>-real-data.spec.js`) die
 - [ ] **Blofin — R:R live berekening** — nu SL/TP meekomt van API kunnen we live R:R tonen in trade-detail. Trivial UI-toevoeging (R:R computed uit entry/SL/TP).
 - [ ] **Hyperliquid toevoegen** — kan volledig client-side (public info-endpoint, geen proxy). Zie `Agent` onderzoek van 2026-04-14.
 - [ ] **MAE-to-Stop ratio per setup** (idee #12) — uitbreiding op Setup Insights tabel als we MAE data hebben.
+- [ ] **Self-review reflex inbouwen vóór commit** *(2026-05-06, gevraagd door Denny na v12.101 Kraken-fix)* — Claude doet code-changes en commit ze direct. Logica-bugs (zoals de Kraken `side==="buy"` mismatch) glippen erdoor heen. **Fix**: voor élke user-facing diff vóór de commit automatisch `pr-reviewer-nl` subagent draaien op de gewijzigde regels. Out-of-the-box geconfigureerd voor onze single-file HTML stack (globale state-leaks, duplicate IDs, localStorage-collisions, schemaVersion, theme-tokens, API-keys-in-browser). Krijg dus een tweede paar ogen vóórdat de fix de release-flow ingaat. **Variant**: voor multi-file/grotere refactors `/ultrareview` als optie aanbieden (door Denny te triggeren — kost geld). **Niet vergeten**: `claude-pr-review.yml` Action draait al op GitHub PRs zodra die open zijn — deze backlog-item gaat over het *lokale* review-stap vóór de eerste push. **Effort**: ~5 min config in CLAUDE.md "Standaard-reflexen" sectie + voorbeeld-prompt voor de subagent.
 - [ ] **Parallel fetchFills bij refresh (concurrency cap)** *(2026-05-04, deferred — sequentieel werkt nu prima)* — huidige refresh-flow doet `for(t of needsTPs) await api.fetchFills(...)` sequentieel. Voor 1-5 trades neemt 1-2 sec/trade = 2-10 sec. Voor users met 20+ open MEXC trades wordt het merkbaar (40+ sec). **Fix**: parallel fetchen met max 3 concurrent (= ~3× sneller, ver onder MEXC's 20 req/sec rate-limit). Pseudocode + impact-analyse staan in conversation 2026-05-04 (Denny's vraag over rate-limit). Per-exchange refresh-knop bestaat al — geen UI-change nodig, alleen code in [work/tradejournal.html refresh-handler](work/tradejournal.html#L10643). Helper-pattern: `pMap(items, fn, concurrency=3)`.
 
 - [ ] **MEXC contractSize via proxy (community-proof voor exotic coins)** *(2026-05-06, follow-up op v12.89 fallback-map)* — In v12.89 hebben we hardcoded contractSizes voor de top-12 pairs (BTC/ETH/SOL/DOGE/XRP/ADA/DOT/MATIC/LINK/AVAX/LTC/BNB) als CORS-fallback omdat `contract.mexc.com/api/v1/contract/detail` vanaf `file://` (origin=null) geblokkeerd wordt. **Probleem**: voor community-leden die exotic coins traden (alles buiten de top-12) is `contractSize=0` → `positionSize` klopt niet. Niet user-blocking voor Denny zelf (BTC-only), wel voor anderen. **Fix**: routeer via Cloudflare Worker — die heeft geen CORS-issue server-side. Eén bulk-call per sessie haalt alle ~700 MEXC contracts, cachet alles in `_ctvCache`.
