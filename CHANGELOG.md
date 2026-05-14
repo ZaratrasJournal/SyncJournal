@@ -6,6 +6,13 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.128] — 2026-05-12
+
+### Fixed
+- **Backtests/paper-trades verborgen in Analytics zonder zichtbare toggle** *(2026-05-12, gemeld door Denny)* — De globale FilterBar `tradeType` default = `"real"`, wat alle BT/paper/missed trades onzichtbaar maakt (Dashboard, Analytics, Trades, Review, Calendar). De "👻 Type"-toggle om dat te wisselen was alleen zichtbaar wanneer `config.trackMissedTrades` aanstond — een opt-in waar veel users niet vanaf weten. **Fix**: type-filter staat nu altijd in de FilterBar onder "Geavanceerde filters". Default-gedrag blijft `"real"` (geen verrassing voor bestaande users), maar je kunt nu altijd wisselen naar **🔬 Backtest / 📝 Paper / 👻 Gemist / Sim (alle) / Alles** om je simulaties in te zien.
+
+---
+
 ## [v12.127] — 2026-05-12
 
 Globale privacy-modus — verbergt alle $/€ bedragen met één klik. Voor stream-veilig delen, screen-sharing, of over-de-schouder-context.
