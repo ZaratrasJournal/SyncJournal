@@ -10,6 +10,26 @@ Basis kwam uit de feature-diff v4_14 → v9 onderaan. Inmiddels werken we op **v
 
 <!-- Denny stuurt bugs 1 voor 1 — elk item krijgt datum + korte reproductiestap. -->
 
+- [ ] **Analytics: "Setup lagen performance" labels worden afgekapt met "..."** *(2026-05-14, gemeld door Denny met screenshot)* — Onder "Setup lagen performance" tonen de layer-pattern labels (bv. `Daily → 1H+BOS`, `4H → 1H+BOS+OB`) afgekapt met ellipsis: `Daily → 1H+...` / `4H → 1H+B...` / `Daily+SFP ...`. Hierdoor zie je niet welke layer-combinatie bij welke bar hoort.
+
+  **Root cause**: `barRow` helper in Analytics ([line ~10076-10077](work/tradejournal.html#L10076-L10077)) gebruikt vaste **70px** label-kolom met `overflow:hidden; textOverflow:ellipsis; whiteSpace:nowrap`. Layer-pattern strings zoals `Daily → 1H+BOS` zijn 14+ karakters en passen niet in 70px.
+
+  **Fix-opties**:
+  - **A) Label-kolom breder** (bv. 140-180px) — simpelste maar maakt de bar narrower. Effort: trivial.
+  - **B) Wrap toestaan** (`whiteSpace:"normal", minHeight: variabel`) — meerdere regels per row als nodig. Effort: trivial, layout iets minder strak.
+  - **C) Label boven de bar i.p.v. ernaast** — volledige breedte beschikbaar, compactere layout. Effort: S. Doorbreekt het row-grid van andere widgets die `barRow` gebruiken (setupPerf, sessionPerf, foutAnalyse, emotionImpact, longShort, perPair, perDay) — moet ofwel voor alle widgets aangepast of alleen voor layerAnalysis.
+  - **D) `barRow` accepteert optionele `wideLabel`-param** — alleen layerAnalysis krijgt brede labels, andere blijven compact. Effort: S, schoonst.
+
+  **Aanbeveling**: **D** (wide-label opt-in). Layer-strings zijn structureel langer dan single-tag labels, dus rechtvaardigt eigen styling. Andere widgets blijven onveranderd.
+
+  **Acceptatie**:
+  - Layer-labels zijn volledig leesbaar zonder ellipsis bij standaard viewport (≥1400px)
+  - Smalle viewports (mobile, <600px) hebben fallback: nog steeds leesbaar of wrap
+  - Andere `barRow`-gebruikers (setupPerf, sessionPerf, etc.) blijven compact zoals nu
+  - 6 thema's blijven goed
+
+  **Effort**: S (~20 min werk + thema-check).
+
 - [ ] **Analytics: data van trades buiten datum-filter "lekt" door in sommige widgets** *(2026-05-14, gemeld door Denny)* — Wanneer je op Analytics een datum-filter zet (bv. "Deze week"), zie je in delen van de pagina data van trades buiten dat window. Verwachting: alle Analytics-secties respecteren de actieve FilterBar (datum, type, source, etc.).
 
   **Reproductie**: Open Analytics → klap Geavanceerde filters open → klik "Deze week" → bekijk de verschillende secties. Sommige cards/charts tonen waardes die niet kunnen komen uit alleen de week-trades.
