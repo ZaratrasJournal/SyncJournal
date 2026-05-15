@@ -1219,7 +1219,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.131",released:"2026-05-15"};
+const APP_VERSION={version:"v12.132",released:"2026-05-15"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -9109,18 +9109,36 @@ function PlaybookAnalyticsView({playbooks,allTrades}){
   const[pbId,setPbId]=useState(playbooks[0]?.id||"");
   const[source,setSource]=useState("real");
   const[eqSources,setEqSources]=useState(["real"]);
+  // v12.132: date-filter voor playbook analytics (mirror van main FilterBar). Lege strings
+  // = geen filter ("Alles"). Filter geldt op ALLE breakdowns incl. Trust-Score / erosion /
+  // realStats — consistent met main Analytics-gedrag. Reset bij playbook-switch behouden we
+  // NIET zodat user dezelfde periode over verschillende playbooks kan vergelijken.
+  const[dateFrom,setDateFrom]=useState("");
+  const[dateTo,setDateTo]=useState("");
 
   const pb=playbooks.find(p=>p.id===pbId);
 
+  // Filtered subset van allTrades, gebruikt voor alle playbook-helpers zodat één bron
+  // van waarheid geldt voor Trust, erosion, stats, breakdowns en equity-curves.
+  const filteredAllTrades=useMemo(()=>{
+    if(!dateFrom&&!dateTo)return allTrades;
+    return(allTrades||[]).filter(t=>{
+      if(dateFrom&&t.date<dateFrom)return false;
+      if(dateTo&&t.date>dateTo)return false;
+      return true;
+    });
+  },[allTrades,dateFrom,dateTo]);
+
   const data=useMemo(()=>{
     if(!pb)return null;
-    const linked=tradesForPlaybook(pb,allTrades);
+    const linked=tradesForPlaybook(pb,filteredAllTrades);
+    const linkedAll=tradesForPlaybook(pb,allTrades);// voor "X van Y trades"-hint
     const buckets=_pbBucketBySource(linked);
     const counts={real:buckets.real.length,bt:buckets.bt.length,paper:buckets.paper.length,missed:buckets.missed.length};
     const total=counts.real+counts.bt+counts.paper+counts.missed;
-    const erosion=playbookErosionStats(pb,allTrades);
-    const trust=classifyTrust(pb,allTrades);
-    const realStats=playbookStats(pb,allTrades);
+    const erosion=playbookErosionStats(pb,filteredAllTrades);
+    const trust=classifyTrust(pb,filteredAllTrades);
+    const realStats=playbookStats(pb,filteredAllTrades);
     const eqCurves={real:_pbEquityReal(buckets.real),bt:_pbEquityTheoretical(buckets.bt),paper:_pbEquityTheoretical(buckets.paper),missed:_pbEquityTheoretical(buckets.missed)};
     // v12.119 Phase 2: aggregate analyses voor breakdowns
     // Pool: alle trades met R-data (real PnL OR sim met derivable exit)
@@ -9147,8 +9165,8 @@ function PlaybookAnalyticsView({playbooks,allTrades}){
     }
     const missedReasons=_pbTagFreq(buckets.missed,t=>t.missedReasonTags).sort((a,b)=>b.n-a.n);
     const insights=_pbAutoInsights(null,layerStats,sessionGrid,mistakeStats,emotionStats);
-    return{linked,buckets,counts,total,erosion,trust,realStats,eqCurves,analyzable,realOnly,layerStats,sessionGrid,hourStats,gradeStats,pairStats,directionStats,mistakeStats,emotionStats,criteriaImpact,complianceSplit,missedTheor,missedReasons,insights};
-  },[pb,allTrades]);
+    return{linked,linkedAll,buckets,counts,total,erosion,trust,realStats,eqCurves,analyzable,realOnly,layerStats,sessionGrid,hourStats,gradeStats,pairStats,directionStats,mistakeStats,emotionStats,criteriaImpact,complianceSplit,missedTheor,missedReasons,insights};
+  },[pb,filteredAllTrades,allTrades]);
 
   useEffect(()=>{
     if(!data)return;
@@ -9203,7 +9221,8 @@ function PlaybookAnalyticsView({playbooks,allTrades}){
     }
     if(src==="missed"){
       if(!data.counts.missed)return null;
-      const m=playbookMissedStats(pb,allTrades);
+      // v12.132: gebruik filteredAllTrades zodat missed-stats óók de date-filter respecteren
+      const m=playbookMissedStats(pb,filteredAllTrades);
       const hasStats=m.n>0;
       const theorPnl=sumTheorPnl(data.buckets.missed);
       return{n:data.counts.missed,wr:hasStats?(m.wr||0):null,avgR:hasStats?(m.avgR||0):null,pnl:theorPnl||(hasStats?(m.theorPnl||null):null),statsAvail:hasStats,needHindsight:!hasStats};
@@ -9227,8 +9246,8 @@ function PlaybookAnalyticsView({playbooks,allTrades}){
       <span style={{fontSize:10.5,fontFamily:"var(--mono)",fontWeight:600,padding:"5px 10px",borderRadius:5,background:"var(--gold-dim)",color:"var(--gold)",border:"1px solid var(--gold-border)"}}>{pb.status||"testing"}</span>
     </div>
 
-    <div style={{display:"flex",alignItems:"center",padding:"0 18px",background:"var(--bg3)",border:"1px solid var(--gold-border)",borderTop:"1px solid var(--border1)",borderRadius:"0 0 12px 12px",flexWrap:"wrap",marginBottom:22}}>
-      <span style={{fontSize:9,fontFamily:"var(--mono)",fontWeight:700,color:"var(--text4)",letterSpacing:".12em",textTransform:"uppercase",padding:"11px 0",marginRight:14}}>Bekijken:</span>
+    <div style={{display:"flex",alignItems:"center",padding:"0 18px",background:"var(--bg3)",border:"1px solid var(--gold-border)",borderTop:"1px solid var(--border1)",borderRadius:"0 0 12px 12px",flexWrap:"wrap",gap:"10px",marginBottom:22}}>
+      <span style={{fontSize:9,fontFamily:"var(--mono)",fontWeight:700,color:"var(--text4)",letterSpacing:".12em",textTransform:"uppercase",padding:"11px 0"}}>Bekijken:</span>
       <div style={{display:"flex",gap:0,padding:"7px 0"}}>
         {PB_SRC.map((s,i)=>{
           const cnt=s.id==="all"?data.total:data.counts[s.id];
@@ -9248,6 +9267,28 @@ function PlaybookAnalyticsView({playbooks,allTrades}){
             <span style={{fontFamily:"var(--mono)",fontWeight:700,fontSize:10.5,color:active?"var(--gold)":"var(--text4)",marginLeft:2}}>{cnt}</span>
           </button>);
         })}
+      </div>
+      {/* v12.132: date-filter — mirror van main FilterBar's date-row. Rechts-aligned via
+          marginLeft:auto. Filter geldt op alle breakdowns (Trust/erosion/stats/grafieken). */}
+      <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:"6px",padding:"7px 0",flexWrap:"wrap"}}>
+        <span style={{fontSize:9,fontFamily:"var(--mono)",fontWeight:700,color:"var(--text4)",letterSpacing:".12em",textTransform:"uppercase"}}>Datum:</span>
+        <input type="date" aria-label="Filter datum vanaf" value={dateFrom} onChange={e=>setDateFrom(e.target.value)} style={{padding:"4px 6px",fontSize:"11px",borderRadius:"5px",border:"1px solid var(--border3)",background:"var(--bg2)",color:"var(--text)",fontFamily:"var(--mono)"}}/>
+        <span style={{fontSize:"11px",color:"var(--text4)"}}>t/m</span>
+        <input type="date" aria-label="Filter datum tot en met" value={dateTo} onChange={e=>setDateTo(e.target.value)} style={{padding:"4px 6px",fontSize:"11px",borderRadius:"5px",border:"1px solid var(--border3)",background:"var(--bg2)",color:"var(--text)",fontFamily:"var(--mono)"}}/>
+        {(()=>{
+          const today=new Date().toISOString().split("T")[0];
+          const day=new Date();const startWeek=new Date(day);startWeek.setDate(day.getDate()-((day.getDay()+6)%7));
+          const startMonth=new Date(day.getFullYear(),day.getMonth(),1);
+          const mk=(label,from)=>{const active=dateFrom===from&&dateTo===today;return(<button key={label} onClick={()=>{setDateFrom(from);setDateTo(today)}} style={{padding:"4px 10px",borderRadius:"5px",fontSize:"10px",fontWeight:600,border:`1px solid ${active?"var(--gold)":"var(--border3)"}`,background:active?"var(--gold-dim)":"transparent",color:active?"var(--gold)":"var(--text4)",cursor:"pointer",fontFamily:"inherit"}}>{label}</button>);};
+          const allActive=!dateFrom&&!dateTo;
+          return(<>
+            {mk("Vandaag",today)}
+            {mk("Deze week",startWeek.toISOString().split("T")[0])}
+            {mk("Deze maand",startMonth.toISOString().split("T")[0])}
+            <button onClick={()=>{setDateFrom("");setDateTo("")}} style={{padding:"4px 10px",borderRadius:"5px",fontSize:"10px",fontWeight:600,border:`1px solid ${allActive?"var(--gold)":"var(--border3)"}`,background:allActive?"var(--gold-dim)":"transparent",color:allActive?"var(--gold)":"var(--text4)",cursor:"pointer",fontFamily:"inherit"}}>Alles</button>
+          </>);
+        })()}
+        {(dateFrom||dateTo)&&data.linkedAll.length>data.linked.length&&<span style={{fontSize:"10px",color:"var(--amber)",fontFamily:"var(--mono)",letterSpacing:".04em"}}>{data.linked.length}/{data.linkedAll.length} trades</span>}
       </div>
     </div>
 

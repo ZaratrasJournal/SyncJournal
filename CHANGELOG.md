@@ -6,6 +6,13 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.132] — 2026-05-15
+
+### Toegevoegd
+- **Date-filter op Playbook Analytics** *(2026-05-15, op verzoek van Denny)* — De Playbook Analytics-tab heeft nu z'n eigen datum-filter, mirror van de main FilterBar's date-row. Inputs voor van/tot + presets **Vandaag** / **Deze week** / **Deze maand** / **Alles**. Filter geldt op álle breakdowns: Trust-Score, Erosion, KPIs, equity-curves, layer/session/grade/pair/mistake/emotion-stats, missed-opportunities. Wanneer de filter actief is en trades wegfiltert verschijnt een amber hint "X/Y trades" rechts naast de presets. Filter blijft behouden bij wisselen tussen playbooks (zodat je dezelfde periode over verschillende setups kunt vergelijken). Reset door op "Alles" te klikken. Geen interactie met main FilterBar — Playbook Analytics heeft eigen lokale state.
+
+---
+
 ## [v12.131] — 2026-05-15
 
 ### Fixed
