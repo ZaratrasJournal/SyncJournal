@@ -6,6 +6,16 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.131] — 2026-05-15
+
+### Fixed
+- **Analytics "Setup lagen performance" labels worden afgekapt met "..."** *(2026-05-14, gemeld door Denny met screenshot)* — Labels zoals `Daily → 1H+BOS+SFP` werden afgekapt naar `Daily → 1H+B...` waardoor je niet zag welke layer-combinatie bij welke bar hoort. **Oorzaak**: `barRow` helper gebruikte vaste 70px label-kolom met ellipsis. Layer-pattern strings nodigen 110-135px (gemeten via Playwright). **Fix**: `barRow` accepteert nu een optionele `wide`-param die de label-kolom verbreedt naar 160px. Alleen layerAnalysis gebruikt deze opt-in — andere bar-widgets (pair / dag / sessie / fouten / emoties / long-short) blijven compact (70px). Geverifieerd: alle layer-labels passen nu volledig zonder ellipsis.
+
+### Toegevoegd
+- **EdgeGap + StressLeak: zichtbaar label dat ze datum-filter negeren** *(2026-05-14, gemeld door Denny "data van andere trades lekt door bij Analytics filter")* — Onderzoek toonde aan dat 95% van Analytics de FilterBar correct respecteert. Alleen **EdgeGap** (👻 missed trades) en **StressLeakWidget** (💢 paper vs real) gebruiken `allTrades` by design — hun analyses zijn alleen zinvol over volle history. Zonder visueel signaal leek dit een bug. **Fix**: kleine cursieve subtitel `📊 Over alle trades — datum-filter genegeerd voor deze analyse` onder beide widget-headers. Geen functionele verandering — pure UX-clarification.
+
+---
+
 ## [v12.130] — 2026-05-14
 
 ### Fixed

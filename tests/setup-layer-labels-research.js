@@ -57,7 +57,7 @@ for(let i=0;i<5;i++){
     const section=headers[0].closest("[style*='border']")||headers[0].parentElement;
     const labelDivs=[...section.querySelectorAll("div")].filter(d=>{
       const style=getComputedStyle(d);
-      return style.width==="70px"&&style.textOverflow==="ellipsis";
+      return style.textOverflow==="ellipsis"&&style.whiteSpace==="nowrap";
     });
     // Voor elk label-div: meet wat scrollWidth zou zijn zonder truncatie
     const measurements=labelDivs.map(d=>({
