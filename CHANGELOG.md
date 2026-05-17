@@ -6,6 +6,13 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.134] — 2026-05-17
+
+### Fixed
+- **Setup-voorbeeld afbeeldingen openden lege tab bij klikken** *(2026-05-17, gemeld door Denny met screenshot)* — Klik op een setup-voorbeeld in Playbook Detail-modal opende een nieuwe browser-tab die leeg bleef. **Oorzaak**: `window.open(ex.dataUrl, "_blank")` met een `data:image/...;base64,...` URL. Chrome (en de meeste browsers) **blokkeren sinds 2017 het openen van data-URLs via window.open** vanwege security (phishing-risico met spoofed pages). **Fix**: in-app lightbox-overlay i.p.v. nieuwe tab — zelfde pattern als trade-screenshots in TradeForm. Voordelen: werkt overal (geen browser-blokkering), keyboard-navigatie (Esc om te sluiten, ← → om door voorbeelden te bladeren bij meerdere), kind-label (✓ School / ✗ Vals / ⚡ Marginal) en caption blijven zichtbaar onder de afbeelding. Nieuwe `.tj-lightbox-btn` CSS-class voor sluit/navigatie-knoppen (theme-agnostic: overlay is altijd donker zodat foto helder oogt).
+
+---
+
 ## [v12.133] — 2026-05-17
 
 ### Fixed

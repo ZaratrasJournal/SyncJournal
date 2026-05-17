@@ -224,6 +224,10 @@ input[type=date]::-webkit-calendar-picker-indicator{filter:invert(0.5)}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
 /* v12.123: TP-pct auto-recalc highlight — gele flash op cascade-aangepaste TPs */
 @keyframes tpHighlight{0%{background:rgba(201,168,76,0.35)}100%{background:transparent}}
+/* v12.134: lightbox-controls (sluit/vorige/volgende). Theme-agnostic want overlay is altijd donker. */
+.tj-lightbox-btn{background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);color:#fff;font-family:inherit;cursor:pointer}
+.tj-lightbox-btn:hover{background:rgba(255,255,255,0.18)}
+.tj-lightbox-info{background:rgba(0,0,0,0.6);color:#fff;font-family:var(--mono)}
 @keyframes slideIn{from{transform:translateX(-100%)}to{transform:translateX(0)}}
 @keyframes logoShimmer{0%{background-position:-200% center}100%{background-position:200% center}}
 @keyframes logoPulse{0%,100%{filter:drop-shadow(0 0 3px rgba(201,168,76,0.1))}50%{filter:drop-shadow(0 0 12px rgba(46,170,111,0.4))}}
@@ -1219,7 +1223,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.133",released:"2026-05-17"};
+const APP_VERSION={version:"v12.134",released:"2026-05-17"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -8308,6 +8312,21 @@ function PlaybookForm({initial,onSave,onClose,tagConfig,setTab}){
 
 // ─── PlaybookDetailModal — full view ─────────────────────────────────────────
 function PlaybookDetailModal({pb,allTrades,setFilters,setTab,onClose,onEdit,onDelete,onShare}){
+  // v12.134: lightbox-state voor setup-voorbeelden. Voorheen opende klik op image
+  // window.open(data:URL) — browsers blokkeren data-URLs voor security → lege tab.
+  // Nu: in-app lightbox-overlay (zelfde pattern als TradeForm screenshots).
+  const[lightboxExIdx,setLightboxExIdx]=useState(null);
+  useEffect(()=>{
+    if(lightboxExIdx===null)return;
+    const onKey=(e)=>{
+      const arr=pb?.examples||[];
+      if(e.key==="Escape")setLightboxExIdx(null);
+      else if(e.key==="ArrowLeft"&&arr.length>1)setLightboxExIdx(i=>(i-1+arr.length)%arr.length);
+      else if(e.key==="ArrowRight"&&arr.length>1)setLightboxExIdx(i=>(i+1)%arr.length);
+    };
+    document.addEventListener("keydown",onKey);
+    return()=>document.removeEventListener("keydown",onKey);
+  },[lightboxExIdx,pb?.examples]);
   const s=playbookStats(pb,allTrades);
   // v12.86: edge-breakdown — per session/dag/grade/confirmation. Pure helper.
   const edge=playbookEdgeBreakdown(pb,allTrades);
@@ -8374,13 +8393,13 @@ function PlaybookDetailModal({pb,allTrades,setFilters,setTab,onClose,onEdit,onDe
         {(pb.examples||[]).length>0&&<div>
           <div style={{fontSize:11,color:"var(--gold)",fontFamily:"var(--mono)",fontWeight:700,letterSpacing:".18em",textTransform:"uppercase",marginBottom:10}}>📸 Setup-voorbeelden</div>
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:12}}>
-            {pb.examples.map(ex=>{
+            {pb.examples.map((ex,idx)=>{
               const kindCol=ex.kind==="win"?"var(--green)":ex.kind==="fail"?"var(--red)":"var(--amber)";
               const kindBg=ex.kind==="win"?"var(--green-dim)":ex.kind==="fail"?"var(--red-dim)":"var(--gold-dim)";
               const kindLbl=ex.kind==="win"?"✓ School":ex.kind==="fail"?"✗ Vals":"⚡ Marginal";
               return(<div key={ex.id} style={{background:"var(--bg3)",border:"1px solid var(--border1)",borderLeft:`2px solid ${kindCol}`,borderRadius:8,overflow:"hidden"}}>
                 <div style={{height:130,background:"var(--bg4)",position:"relative"}}>
-                  {ex.dataUrl&&<img src={ex.dataUrl} alt={ex.caption} style={{width:"100%",height:"100%",objectFit:"cover",cursor:"zoom-in"}} onClick={()=>window.open(ex.dataUrl,"_blank")}/>}
+                  {ex.dataUrl&&<img src={ex.dataUrl} alt={ex.caption} style={{width:"100%",height:"100%",objectFit:"cover",cursor:"zoom-in"}} onClick={()=>setLightboxExIdx(idx)} title="Klik voor grote weergave"/>}
                   <span style={{position:"absolute",top:8,left:8,fontSize:9,fontFamily:"var(--mono)",fontWeight:700,padding:"2px 7px",borderRadius:3,letterSpacing:".06em",textTransform:"uppercase",background:kindBg,color:kindCol,border:`1px solid ${kindCol}55`}}>{kindLbl}</span>
                 </div>
                 {ex.caption&&<div style={{padding:"10px 12px",fontSize:11.5,color:"var(--text2)",lineHeight:1.45}}>{ex.caption}</div>}
@@ -8704,6 +8723,23 @@ function PlaybookDetailModal({pb,allTrades,setFilters,setTab,onClose,onEdit,onDe
         </div>
       </div>
     </div>
+    {/* v12.134: Setup-voorbeeld lightbox-overlay. zIndex hoger dan PlaybookDetailModal.
+        Buttons gebruiken .tj-lightbox-btn class (theme-agnostic — overlay is altijd donker). */}
+    {lightboxExIdx!==null&&(pb.examples||[])[lightboxExIdx]&&(()=>{
+      const arr=pb.examples||[];
+      const ex=arr[lightboxExIdx];
+      const total=arr.length;
+      return(<div onClick={()=>setLightboxExIdx(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.92)",zIndex:10001,display:"flex",alignItems:"center",justifyContent:"center",cursor:"zoom-out",animation:"fadeIn .15s ease"}}>
+        <button className="tj-lightbox-btn" onClick={e=>{e.stopPropagation();setLightboxExIdx(null);}} title="Sluit (Esc)" style={{position:"absolute",top:"16px",right:"20px",borderRadius:"6px",padding:"6px 14px",fontSize:"13px",fontWeight:600}}>✕ Sluit</button>
+        {total>1&&<>
+          <button className="tj-lightbox-btn" onClick={e=>{e.stopPropagation();setLightboxExIdx((lightboxExIdx-1+total)%total);}} title="Vorige (←)" style={{position:"absolute",left:"20px",top:"50%",transform:"translateY(-50%)",borderRadius:"50%",width:"48px",height:"48px",fontSize:"22px",fontWeight:700}}>‹</button>
+          <button className="tj-lightbox-btn" onClick={e=>{e.stopPropagation();setLightboxExIdx((lightboxExIdx+1)%total);}} title="Volgende (→)" style={{position:"absolute",right:"20px",top:"50%",transform:"translateY(-50%)",borderRadius:"50%",width:"48px",height:"48px",fontSize:"22px",fontWeight:700}}>›</button>
+          <div className="tj-lightbox-info" style={{position:"absolute",bottom:"20px",left:"50%",transform:"translateX(-50%)",borderRadius:"4px",padding:"4px 12px",fontSize:"12px"}}>{lightboxExIdx+1} / {total}{ex.kind?` · ${ex.kind==="win"?"✓ School":ex.kind==="fail"?"✗ Vals":"⚡ Marginal"}`:""}</div>
+        </>}
+        <img src={ex.dataUrl} alt={ex.caption||""} onClick={e=>e.stopPropagation()} style={{maxWidth:"94vw",maxHeight:"90vh",borderRadius:"8px",boxShadow:"0 20px 60px rgba(0,0,0,0.5)",cursor:"default"}}/>
+        {ex.caption&&<div className="tj-lightbox-info" style={{position:"absolute",bottom:total>1?"56px":"20px",left:"50%",transform:"translateX(-50%)",borderRadius:"6px",padding:"8px 14px",fontSize:"12px",maxWidth:"80vw",lineHeight:1.5,background:"rgba(0,0,0,0.7)"}}>{ex.caption}</div>}
+      </div>);
+    })()}
   </div>);
 }
 
