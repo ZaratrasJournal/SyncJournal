@@ -124,7 +124,8 @@ Claude mag (en moet) deze tools proactief inzetten. Denny hoeft er niet steeds o
 - Bij nieuwe exchange: start met `exchange-integrator` (die gebruikt intern `web-search-agent`).
 - Vóór een merge naar `main`: `pr-reviewer-nl` over de diff.
 - **Demo-first voor grote UI-features**: gebruik `/prototype` (mattpocock skill) — formaliseert ons bestaande `demos/*-demo.html` patroon. Bouw 1-3 radically different UI variations, toggleable. Itereer met Denny. Pas als UX zit, integreer in `work/tradejournal.html`. Bespaart herwerk en houdt de grote file schoon.
-- **Bij bug-melding van Denny**: gebruik `/diagnose` — disciplined loop (reproduce → minimise → hypothesise → instrument → fix → regression-test). Voorkomt ad-hoc grep-en-gokken bij hardnekkige Blofin/MEXC/BT-bugs. Skip fasen alleen met expliciete reden.
+- **Bij bug-melding van Denny**: gebruik `/systematic-debugging` (Superpowers — 4-phase root cause, completer dan mattpocock's `/diagnose`). Voorkomt ad-hoc grep-en-gokken bij hardnekkige Blofin/MEXC/BT-bugs. Bij ≥3 mislukte fixes: ga naar Phase 4.5 (architectuur-twijfel).
+- **Voor "klaar"/"fixed"/"werkt"-claims**: gebruik `/verification-before-completion` (Superpowers). Run verificatie-commando's eerst (Playwright spec / Node-snippet / smoke), bevestig output, dan pas claim. Geen "should work"-aannames.
 - **Bij "denk er over na" / nieuwe-feature plan**: gebruik `/grill-me` — interview-modus met decision-tree branches, één vraag tegelijk. Voorkomt onvolledige plannen voor grote features.
 - **Bij onbekend deel van `tradejournal.html` (5500+ LOC)**: gebruik `/zoom-out` — geeft module-map + callers met domain-vocabulaire. Sneller oriënteren dan blind grep'en.
 - **Changelog-discipline**: elke user-facing commit hoort in de release-flow (zie boven). Refactor/test/docs hoeven niet in changelog.
