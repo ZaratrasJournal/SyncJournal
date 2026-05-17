@@ -447,6 +447,28 @@ In [tests/](tests/) staan 4 real-data specs (`<exchange>-real-data.spec.js`) die
 
 ## 🔬 Onderzoek / te besluiten
 
+- [ ] **Playbook-coaching AI — competitive research nodig** *(2026-05-17, gevraagd door Denny)* — We hebben op de backlog **🥇 AI Trade Autopsy** (per trade) en **🥈 AI Super-Prompt "Wat heeft prioriteit?"** (aggregaat over 10 autopsies + tendencies). Wat we **NIET** hebben overwogen is **playbook-niveau coaching**: feedback op de hele setup-strategie i.p.v. individuele trades. Voorbeelden van ideeën die we nog niet hebben uitgewerkt:
+  - "Hoe verbeter ik deze playbook?" — AI analyseert alle trades onder een playbook + criteria + voorbeelden → concrete verbetersuggesties
+  - **Playbook A/B-vergelijking** — "Setup X werkt op US-session, Setup Y op Asia — focus accordingly"
+  - **Edge-leak detection per playbook** — "Sinds 2 weken degradeert je BOS-setup, mogelijke oorzaken: …"
+  - **Pre-trade compliance AI** — "Voldoet deze trade aan playbook X criteria?" (vóór entry, niet post-mortem)
+  - **Playbook-evolutie over tijd** — diff tussen je playbook 3 maanden geleden vs nu, suggesties voor refinement
+  - **Auto-criteria-suggesties** — AI leest alle trades onder een playbook en stelt mandatory criteria voor die je nog niet had
+  - **Setup-discovery** — AI detecteert clusters in je winning trades die nog geen playbook hebben
+
+  **Te onderzoeken**:
+  1. **Hoe doen andere journals dit?** Tradezella, TraderSync (Cypher AI), Edgewonk (Edge Finder), Tradervue, TradesViz, Chartlog, MM Platinum, Deltalytix
+  2. **Welke gaten zijn er?** Iets bestaat al? Of is dit een witte vlek?
+  3. **Welke combo werkt voor crypto?** US-stocks-journals hebben veel features (earnings/news/etc) die niet 1-op-1 vertalen
+  4. **Stack-keuze**: opt-in user API-key vs shared Cloudflare Worker (zie bestaande Autopsy-backlog item) geldt ook hier
+  5. **Privacy**: hoe ga je om met playbook-data + trade-history naar AI sturen? Anonimiseren? Local-only met user's eigen key?
+  6. **Wanneer triggeren?** Wekelijks auto-run? Knop in playbook detail-modal? Sub-tab op Playbook-pagina?
+  7. **Output-formaat**: 1 prioriteit-zin + 3 acties (zoals Super-Prompt)? Volledige paragraaf? Structured findings table?
+
+  **Voorgestelde onderzoeksweg**: research-deep skill (Claude Code) over alle 8 competitors + Steenbarger/Douglas/Tharp coaching-frameworks + Anthropic's coaching-use-cases. Output: `docs/research-playbook-coaching-2026-MM-DD.md` met findings + aanbevolen feature-shortlist + scope-schatting per item.
+
+  **Wacht op groen licht voor research-start.**
+
 - [ ] **MFE/MAE-analyse toevoegen** *(2026-05-01, onderzoek klaar — zie [docs/research-mfe-mae.md](docs/research-mfe-mae.md))* — Maximum Favorable / Adverse Excursion is de #1 metric-gap voor een serieus journal. Geen enkele crypto-native journal heeft het topnotch (Tradervue=US-aandelen, TradesViz=futures, Edgewonk=manual-only). **Wat we nu hebben:** niets behalve één CSS-comment `/* v7 NEW: MAE/MFE badge */` op [work/tradejournal.html](work/tradejournal.html#L335) regel 335. **Aanbeveling:** bouw Path A (manual entry, 2 velden in trade-form, ~2 dagen) + Path B (auto-fetch via public Binance/Bybit/Blofin klines API, ~1-2 weken) parallel. **Storage:** 2 raw velden per trade (`mfePrice`, `maePrice`), alle metrics on-the-fly. **Integratie met Trade Performance Report (v12.65):** vervangt lege R-distributie-fallback op page 5 door 4 echte MFE/MAE-cards. **Volgende stap:** demo-first — `demos/mfe-mae-demo.html` met Path A bouwen, dan iteratie met Denny voordat we naar `work/` integreren. Volledig verslag (10 secties, 30+ bronnen incl. Tradervue/TradesViz/Edgewonk docs, Binance/Bybit kline specs, Curtis Faith E-Ratio): [docs/research-mfe-mae.md](docs/research-mfe-mae.md).
 - [ ] **Welke exchanges prioriteit?** — lijst afstemmen met community. Bybit, Binance, MEXC, Blofin, Kraken, Hyperliquid?
 - [ ] **Later: backend ja/nee?** — pas relevant als community direct-API-sync wil. Voorlopig blijft keuze: lokaal + CSV.
