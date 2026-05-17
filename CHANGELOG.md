@@ -6,6 +6,15 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.133] — 2026-05-17
+
+### Fixed
+- **BT-trade verliest SL-prijs TP na reload — vervolg op v12.130** *(2026-05-17, gemeld door Denny: "weer dat SL na reload wordt verwijderd")* — v12.130 scopte de self-heal naar `source !== "manual"`, maar BT-trades die gekoppeld zijn aan een **custom account** (bv. een eigen "BT Account" toegevoegd in Settings → Accounts) krijgen `source = account.name` — niet `"manual"`. De heal triggerde dan nog wel. **Fix**: scope verfijnd naar **alleen exchange-API sources** (Blofin / MEXC / Kraken / Hyperliquid / FTMO via `ExchangeAPI[source]` check). Manual trades én trades gekoppeld aan een custom account skipen nu allemaal de heal. Worker-bug fix blijft actief voor de 5 exchange-sources. Autonoom geverifieerd met 3 scenarios (Blofin heal werkt nog ✓ · manual skipt ✓ · custom account-naam skipt ✓).
+
+  **Note**: als je vóór deze versie BT-trades had waar de heal al heeft toegeslagen (TPs zijn al uit localStorage gewist), dan komen die niet vanzelf terug. Vul handmatig de TP-rij opnieuw aan en bij volgende reload blijft hij staan.
+
+---
+
 ## [v12.132] — 2026-05-15
 
 ### Toegevoegd
