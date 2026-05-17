@@ -123,7 +123,10 @@ Claude mag (en moet) deze tools proactief inzetten. Denny hoeft er niet steeds o
 - Bij werken aan beide HTML-versies: start met `html-feature-diff`.
 - Bij nieuwe exchange: start met `exchange-integrator` (die gebruikt intern `web-search-agent`).
 - Vóór een merge naar `main`: `pr-reviewer-nl` over de diff.
-- **Demo-first voor grote UI-features**: bouw eerst een losse `demos/<feature>-demo.html` (patroon zoals `demos/discipline-heatmap-demo.html`, `demos/mindset-reminders-demo.html`, `demos/personalized-greeting-demo.html`). Itereer op het visuele met Denny. Pas als de UX zit, integreer in `work/tradejournal.html`. Bespaart herwerk en houdt de grote file schoon tijdens experimenten.
+- **Demo-first voor grote UI-features**: gebruik `/prototype` (mattpocock skill) — formaliseert ons bestaande `demos/*-demo.html` patroon. Bouw 1-3 radically different UI variations, toggleable. Itereer met Denny. Pas als UX zit, integreer in `work/tradejournal.html`. Bespaart herwerk en houdt de grote file schoon.
+- **Bij bug-melding van Denny**: gebruik `/diagnose` — disciplined loop (reproduce → minimise → hypothesise → instrument → fix → regression-test). Voorkomt ad-hoc grep-en-gokken bij hardnekkige Blofin/MEXC/BT-bugs. Skip fasen alleen met expliciete reden.
+- **Bij "denk er over na" / nieuwe-feature plan**: gebruik `/grill-me` — interview-modus met decision-tree branches, één vraag tegelijk. Voorkomt onvolledige plannen voor grote features.
+- **Bij onbekend deel van `tradejournal.html` (5500+ LOC)**: gebruik `/zoom-out` — geeft module-map + callers met domain-vocabulaire. Sneller oriënteren dan blind grep'en.
 - **Changelog-discipline**: elke user-facing commit hoort in de release-flow (zie boven). Refactor/test/docs hoeven niet in changelog.
 - **Bij bug-fix op theme-gerelateerd gedrag**: altijd alle 6 thema's checken (sync / classic / aurora / light / parchment / daylight).
 
