@@ -6,6 +6,26 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.138] — 2026-05-18
+
+### Toegevoegd
+- **Weekly digest live (AI-coach, BETA — `?ai=1`)** *(2026-05-18)* — Vervangt placeholder in **📅 Weekly digest** met volwaardige wekelijkse coaching-samenvatting:
+  - **Stats-preview** van afgelopen 7 dagen: trade-count, W/L/Scratch, win-rate, totale PnL, avg R-multiple, profit factor, gemiste-TP-count, top symbolen
+  - **"Genereer nu"-knop** — pakt stats + top 8 samples (sorted by abs PnL met playbook/grade/setups/notes), bouwt prompt met Steenbarger + Douglas system context, vraagt Claude om JSON-digest
+  - **Digest renderer** met 5 vakken: Summary · ✓ Best trade (groen) · ✗ Worst trade (rood) · ⚠ Missed-TP-patroon (amber, optioneel) · Discipline-trend (kleur per trend: improving/stable/declining) · → Actie (gold)
+  - **Recente digests** — accordion-list (cap 26 = half jaar), click-to-expand, header toont week + trade-count + cost
+  - **Instellingen**: voorkeursdag (zo/ma/di/…/za) + auto-banner toggle
+  - **Cost-tracking**: weekly call telt mee in maand-budget via dezelfde `recordAICost` + hard-cap guard
+  - **Privacy-filter**: tickers in stats + samples worden geanonimiseerd vóór payload wanneer toggle aan
+- **AIWeeklyIndicator topbar** — klein 📅 due-knopje verschijnt **alleen** wanneer master+weekly+autoTrigger aan **en** ≥7 dagen sinds laatste digest (of nooit). Klik → springt naar AI-coach → Weekly. Verdwijnt zodra digest gegenereerd. Geen pollutie wanneer up-to-date.
+- **Storage `tj_ai_weeklies`** — JSON-array van digest-records (id, generatedAt, periodStart/End, tradeCount, cost, model, content), auto-cap op 26 entries (oudste wordt afgeknipt bij save). Eigen custom event `tj-ai-weeklies-change` voor realtime UI-sync.
+- **5-spec Playwright suite** (`tests/aicoach-weekly.spec.js`): section render · generate→API→parse→save→render flow · topbar indicator due bij ≥7d · indicator verborgen <7d · indicator verborgen wanneer autoTrigger uit.
+
+### Gewijzigd
+- `DEFAULT_AI_CONFIG.weekly` toegevoegd: `{dayOfWeek:1, autoTrigger:true, lastGeneratedAt:0}` — backwards-compatible (oude configs krijgen defaults via spread in `loadAIConfig`).
+
+---
+
 ## [v12.137] — 2026-05-18
 
 ### Toegevoegd

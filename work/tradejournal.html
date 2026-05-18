@@ -1230,7 +1230,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.137",released:"2026-05-18"};
+const APP_VERSION={version:"v12.138",released:"2026-05-18"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -2216,7 +2216,8 @@ const DEFAULT_AI_CONFIG={
   enabled:false,
   byok:{key:"",model:"claude-sonnet-4-6",connected:false,lastTest:0,lastError:""},
   features:{pretrade:true,budget:true,weekly:true,privacy:true},
-  budget:{monthlyLimit:5,alertThreshold:0.8,spent:0,lastResetMonth:""}
+  budget:{monthlyLimit:5,alertThreshold:0.8,spent:0,lastResetMonth:""},
+  weekly:{dayOfWeek:1,autoTrigger:true,lastGeneratedAt:0}
 };
 function loadAIConfig(){
   try{
@@ -2227,7 +2228,8 @@ function loadAIConfig(){
       ...DEFAULT_AI_CONFIG,...parsed,
       byok:{...DEFAULT_AI_CONFIG.byok,...(parsed.byok||{})},
       features:{...DEFAULT_AI_CONFIG.features,...(parsed.features||{})},
-      budget:{...DEFAULT_AI_CONFIG.budget,...(parsed.budget||{})}
+      budget:{...DEFAULT_AI_CONFIG.budget,...(parsed.budget||{})},
+      weekly:{...DEFAULT_AI_CONFIG.weekly,...(parsed.weekly||{})}
     };
   }catch(e){return{...DEFAULT_AI_CONFIG};}
 }
@@ -14826,6 +14828,109 @@ function PreTradeSection({cfg,playbooks,showToast,setCfg}){
   </div>);
 }
 
+// v12.138 — Weekly-digest storage helpers. Apart van tj_ai_config zodat
+// digests groot kunnen worden zonder de config-blob te bloaten. Cap op
+// laatste 26 (half jaar) — oudere worden bij save afgekapt.
+function loadWeeklies(){
+  try{const raw=localStorage.getItem("tj_ai_weeklies");return raw?JSON.parse(raw):[];}catch(e){return[];}
+}
+function saveWeeklies(arr){
+  try{
+    const trimmed=(arr||[]).slice(0,26);
+    localStorage.setItem("tj_ai_weeklies",JSON.stringify(trimmed));
+    window.dispatchEvent(new CustomEvent("tj-ai-weeklies-change",{detail:trimmed}));
+  }catch(e){}
+}
+function appendWeekly(rec){
+  const arr=loadWeeklies();
+  arr.unshift(rec);
+  saveWeeklies(arr);
+  return arr;
+}
+
+// v12.138 — Bouw stats-snapshot voor de afgelopen 7 dagen (of arbitrary window).
+// Returnt zowel summary-cijfers als geanonimiseerde trade-lijst voor AI input.
+function buildWeeklyStats(trades,daysBack){
+  const days=Number(daysBack)||7;
+  const now=Date.now();
+  const cutoff=now-days*86400000;
+  const periodStart=new Date(cutoff).toISOString().split("T")[0];
+  const periodEnd=new Date(now).toISOString().split("T")[0];
+  const inWindow=(trades||[]).filter(t=>{
+    if(!t)return false;
+    const dt=t.exitDate||t.entryDate||t.date;
+    if(!dt)return false;
+    const ts=typeof dt==="string"?Date.parse(dt+(/T\d/.test(dt)?"":"T12:00:00")):dt;
+    return ts>=cutoff&&ts<=now;
+  });
+  let wins=0,losses=0,scratch=0,totalPnl=0,totalR=0,withR=0,missedTpCount=0,winSum=0,lossSum=0;
+  const symbols={};const playbookHits={};
+  inWindow.forEach(t=>{
+    const pnl=Number(t.pnl)||0;
+    totalPnl+=pnl;
+    if(pnl>5){wins++;winSum+=pnl;}
+    else if(pnl<-5){losses++;lossSum+=Math.abs(pnl);}
+    else scratch++;
+    if(t.rMultiple){const r=Number(t.rMultiple);if(!isNaN(r)){totalR+=r;withR++;}}
+    const tps=Array.isArray(t.tpLevels)?t.tpLevels:[];
+    if(tps.some(tp=>tp&&tp.status==="missed"))missedTpCount++;
+    const sym=t.symbol||t.ticker||"?";
+    symbols[sym]=(symbols[sym]||0)+1;
+    if(t.playbook)playbookHits[t.playbook]=(playbookHits[t.playbook]||0)+1;
+  });
+  const winRate=inWindow.length?(wins/inWindow.length)*100:0;
+  const avgR=withR?totalR/withR:null;
+  const profitFactor=lossSum>0?winSum/lossSum:(winSum>0?Infinity:0);
+  const topSymbols=Object.entries(symbols).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  // Top 5 trades by abs(pnl) — geven AI context voor best/worst
+  const samples=inWindow.slice().sort((a,b)=>Math.abs(Number(b.pnl)||0)-Math.abs(Number(a.pnl)||0)).slice(0,8).map(t=>({
+    sym:t.symbol||t.ticker||"?",
+    dir:t.direction||"?",
+    pnl:Number(t.pnl)||0,
+    r:t.rMultiple?Number(t.rMultiple):null,
+    playbook:t.playbook||"",
+    setups:(t.setupTags||[]).slice(0,3),
+    missedTps:(Array.isArray(t.tpLevels)?t.tpLevels.filter(tp=>tp&&tp.status==="missed").length:0),
+    grade:t.grade||"",
+    notes:(t.notes||"").slice(0,120)
+  }));
+  return{
+    periodStart,periodEnd,
+    tradeCount:inWindow.length,
+    wins,losses,scratch,
+    winRate:Number(winRate.toFixed(1)),
+    totalPnl:Number(totalPnl.toFixed(2)),
+    avgR:avgR!=null?Number(avgR.toFixed(2)):null,
+    profitFactor:isFinite(profitFactor)?Number(profitFactor.toFixed(2)):"∞",
+    missedTpCount,
+    topSymbols,
+    samples
+  };
+}
+
+// v12.138 — System prompt voor weekly digest. JSON-only output zodat parsing
+// betrouwbaar is. Stats + samples gaan in user message; system zet rol + schema.
+function buildWeeklySystemPrompt(){
+  return`Je bent een ervaren trading coach in stijl van Steenbarger (process-over-PnL) en Douglas (probabilistic mindset).
+Je geeft een wekelijkse digest op basis van de trade-data die de gebruiker aanlevert.
+Output ALTIJD geldig JSON, geen markdown, geen prose buiten JSON.
+
+JSON schema:
+{
+  "summary": "2-3 zinnen overall — toon eerlijk maar constructief, geen valse positiviteit bij slechte week",
+  "best_trade": { "label": "ticker + dir", "pnl": "+X", "lesson": "1 zin: wat ging hier goed dat repliceerbaar is" } OR null als geen,
+  "worst_trade": { "label": "ticker + dir", "pnl": "-X", "lesson": "1 zin: welk proces-issue zat erin" } OR null,
+  "missed_tp_pattern": "string als patroon herkend (bv 'TP1 hit maar TP2 voor te laat'), anders null",
+  "discipline_trend": "improving | stable | declining + 1 zin context",
+  "action": "1 specifieke meetbare actie voor komende week (max 2 zinnen) — geen 'wees disciplined'-cliche maar iets uitvoerbaar"
+}
+
+Belangrijke regels:
+- Bij <3 trades: zeg dat eerlijk in summary, geef GEEN harde conclusies
+- Focus op proces (was setup A+/A/B/C, wel/niet aan playbook gehouden, R-multiple), NIET alleen op PnL
+- Action moet specifiek/meetbaar zijn (bv 'plak elke TP1 op exit at 1R unless funding flip')`;
+}
+
 // v12.137 — Subtle topbar-indicator. Verschijnt ALLEEN wanneer IS_AI + master
 // aan + budget-feature aan + spent ≥ alertThreshold van limit. Klik → springt
 // naar AI-coach tab + budget-sectie. Subscribed via custom events op cost-change.
@@ -14947,7 +15052,244 @@ function BudgetSection({cfg,setCfg,showToast}){
   </div>);
 }
 
-function AICoachPage({showToast,playbooks}){
+// v12.138 — Weekly-due indicator in topbar. Verschijnt alleen wanneer
+// IS_AI + master + weekly feature + autoTrigger aan + ≥7d geleden (of nooit).
+// Klik → springt naar AI-coach → Weekly-sectie.
+function AIWeeklyIndicator({navigate}){
+  const[cfg,setCfg]=useState(()=>loadAIConfig());
+  useEffect(()=>{
+    const handler=()=>setCfg(loadAIConfig());
+    window.addEventListener("tj-ai-config-change",handler);
+    window.addEventListener("tj-ai-weeklies-change",handler);
+    return()=>{
+      window.removeEventListener("tj-ai-config-change",handler);
+      window.removeEventListener("tj-ai-weeklies-change",handler);
+    };
+  },[]);
+  if(!IS_AI||!cfg.enabled||!cfg.features.weekly||!cfg.weekly.autoTrigger)return null;
+  const last=Number(cfg.weekly.lastGeneratedAt)||0;
+  const daysSince=last?Math.floor((Date.now()-last)/86400000):999;
+  if(daysSince<7)return null;
+  return(<button
+    onClick={()=>{navigate&&navigate("aicoach");setTimeout(()=>{const el=document.getElementById("sec-weekly");if(el)el.scrollIntoView({behavior:"smooth",block:"start"});},150);}}
+    title={last?`Weekly digest is ${daysSince} dagen oud — genereer nieuwe`:`Geen weekly digest nog — genereer eerste`}
+    aria-label="Weekly digest due"
+    style={{padding:"6px 10px",borderRadius:"var(--radius)",border:"1px solid var(--gold-border)",background:"var(--gold-dim)",color:"var(--gold)",fontSize:"11px",fontWeight:700,cursor:"pointer",fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:"6px",lineHeight:1}}
+  >
+    <span>📅</span><span>due</span>
+  </button>);
+}
+
+// v12.138 — Weekly digest sectie. Gebruikt buildWeeklyStats() voor data,
+// callClaude() voor generatie, appendWeekly() voor opslag. Recent-list met
+// click-to-expand. Auto-trigger banner (in AICoachPage / topbar) reageert
+// op tj-ai-weeklies-change event.
+function WeeklyDigestSection({cfg,setCfg,trades,showToast}){
+  const[weeklies,setWeeklies]=useState(()=>loadWeeklies());
+  const[loading,setLoading]=useState(false);
+  const[error,setError]=useState("");
+  const[expandedId,setExpandedId]=useState(null);
+
+  useEffect(()=>{
+    const handler=()=>setWeeklies(loadWeeklies());
+    window.addEventListener("tj-ai-weeklies-change",handler);
+    return()=>window.removeEventListener("tj-ai-weeklies-change",handler);
+  },[]);
+
+  const updateWeekly=(patch)=>{const next={...cfg,weekly:{...cfg.weekly,...patch}};saveAIConfig(next);setCfg(next);};
+
+  const stats=React.useMemo(()=>buildWeeklyStats(trades||[],7),[trades]);
+
+  const generate=async()=>{
+    setLoading(true);setError("");
+    try{
+      const maskMap=cfg.features.privacy?buildTickerMask(JSON.stringify(stats)):null;
+      const safeStats=maskMap?JSON.parse(applyMask(JSON.stringify(stats),maskMap)):stats;
+      const userMsg=`Hier is mijn trade-data van de afgelopen 7 dagen (${safeStats.periodStart} → ${safeStats.periodEnd}):\n\n`+
+        `STATS:\n`+
+        `- Trades totaal: ${safeStats.tradeCount} (W:${safeStats.wins} L:${safeStats.losses} S:${safeStats.scratch})\n`+
+        `- Win rate: ${safeStats.winRate}%\n`+
+        `- Totale PnL: $${safeStats.totalPnl}\n`+
+        (safeStats.avgR!=null?`- Gem. R-multiple: ${safeStats.avgR}R\n`:``)+
+        `- Profit factor: ${safeStats.profitFactor}\n`+
+        `- Trades met gemiste TPs: ${safeStats.missedTpCount}\n`+
+        `- Top symbolen: ${safeStats.topSymbols.map(s=>s[0]+":"+s[1]).join(", ")||"geen"}\n\n`+
+        `SAMPLES (top ${safeStats.samples.length} by abs PnL):\n`+
+        safeStats.samples.map((t,i)=>`${i+1}. ${t.sym} ${t.dir} PnL=$${t.pnl}${t.r!=null?" R="+t.r:""} pb=${t.playbook||"-"} grade=${t.grade||"-"} setups=${t.setups.join(",")||"-"} missedTPs=${t.missedTps}${t.notes?" notes='"+t.notes+"'":""}`).join("\n")+
+        `\n\nMaak een wekelijkse digest volgens het JSON-schema.`;
+      const res=await callClaude({
+        apiKey:cfg.byok.key,
+        model:cfg.byok.model||"claude-sonnet-4-6",
+        systemPrompt:buildWeeklySystemPrompt(),
+        userMessage:userMsg,
+        maxTokens:1500
+      });
+      const newSpent=recordAICost(res.cost);
+      setCfg&&setCfg(loadAIConfig());
+      const displayText=maskMap?reverseMask(res.text,maskMap):res.text;
+      let parsed=null;
+      try{
+        const clean=displayText.replace(/^```(?:json)?\s*/i,"").replace(/```\s*$/,"").trim();
+        parsed=JSON.parse(clean);
+      }catch(pe){
+        parsed={summary:displayText,best_trade:null,worst_trade:null,missed_tp_pattern:null,discipline_trend:"-",action:"(AI-response kon niet geparsed worden als JSON)"};
+      }
+      const rec={
+        id:String(Date.now())+Math.random().toString(36).slice(2,8),
+        generatedAt:new Date().toISOString(),
+        periodStart:stats.periodStart,
+        periodEnd:stats.periodEnd,
+        tradeCount:stats.tradeCount,
+        cost:res.cost,
+        model:cfg.byok.model||"claude-sonnet-4-6",
+        content:parsed
+      };
+      appendWeekly(rec);
+      updateWeekly({lastGeneratedAt:Date.now()});
+      setExpandedId(rec.id);
+      showToast&&showToast("✓ Weekly digest gegenereerd","success");
+    }catch(e){
+      setError(String(e.message||e));
+      showToast&&showToast("Weekly mislukt: "+(e.message||e),"error");
+    }finally{setLoading(false);}
+  };
+
+  if(!cfg.enabled){
+    return(<div style={{padding:"24px",border:"1px dashed var(--border3)",borderRadius:"10px",background:"var(--glass)",textAlign:"center",color:"var(--text3)",fontSize:"13px"}}>
+      Zet eerst de <strong>master-schakelaar</strong> aan.
+    </div>);
+  }
+  if(!cfg.features.weekly){
+    return(<div style={{padding:"24px",border:"1px dashed var(--border3)",borderRadius:"10px",background:"var(--glass)",textAlign:"center",color:"var(--text3)",fontSize:"13px"}}>
+      Weekly digest staat uit. Activeer de toggle in de Algemeen-sectie.
+    </div>);
+  }
+  if(!cfg.byok.key){
+    return(<div style={{padding:"24px",border:"1px dashed var(--border3)",borderRadius:"10px",background:"var(--glass)",textAlign:"center",color:"var(--text3)",fontSize:"13px"}}>
+      Geen API-key ingevuld. Vul je Anthropic key in onder <strong>API-key (BYOK)</strong>.
+    </div>);
+  }
+
+  const trendColor=(trend)=>{
+    const t=String(trend||"").toLowerCase();
+    if(t.startsWith("improving"))return"var(--green)";
+    if(t.startsWith("declining"))return"var(--red)";
+    return"var(--text3)";
+  };
+  const dayLabels=["zo","ma","di","wo","do","vr","za"];
+  const inputStyle={padding:"8px 10px",fontSize:"13px",borderRadius:"6px",border:"1px solid var(--border3)",background:"var(--bg)",color:"var(--text)",fontFamily:"inherit"};
+  const labelStyle={display:"block",fontSize:"10px",fontWeight:600,color:"var(--text4)",textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:"4px"};
+
+  const lastGen=cfg.weekly.lastGeneratedAt?new Date(cfg.weekly.lastGeneratedAt):null;
+  const daysSinceLast=lastGen?Math.floor((Date.now()-lastGen.getTime())/86400000):null;
+  const dueSoon=lastGen==null||daysSinceLast>=7;
+
+  return(<div>
+    <p style={{fontSize:"12px",color:"var(--text3)",lineHeight:1.6,marginBottom:"16px",maxWidth:"640px"}}>
+      AI-samenvatting van je trade-week: best/worst trade-lessen, gemiste-TP-patroon, discipline-trend en één concrete actie. Kosten per digest: ~$0.02–0.05.
+    </p>
+
+    {/* Stats-preview + generatie-knop */}
+    <div style={{padding:"16px 18px",border:"1px solid "+(dueSoon?"var(--gold-border)":"var(--border2)"),borderRadius:"12px",background:dueSoon?"var(--gold-dim)":"var(--glass)",marginBottom:"18px"}}>
+      <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:"16px",flexWrap:"wrap"}}>
+        <div>
+          <div style={{fontSize:"11px",fontWeight:700,color:"var(--text4)",textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:"6px"}}>Afgelopen 7 dagen</div>
+          <div style={{fontSize:"13px",color:"var(--text2)",lineHeight:1.6}}>
+            <strong style={{color:"var(--text)"}}>{stats.tradeCount} trades</strong> · W:{stats.wins} L:{stats.losses} · WR <strong>{stats.winRate}%</strong> · PnL <strong style={{color:stats.totalPnl>=0?"var(--green)":"var(--red)"}}>${stats.totalPnl}</strong>
+          </div>
+          {lastGen&&<div style={{fontSize:"11px",color:"var(--text4)",marginTop:"6px"}}>Vorige digest: {lastGen.toLocaleDateString("nl-NL")} ({daysSinceLast}d geleden)</div>}
+          {!lastGen&&<div style={{fontSize:"11px",color:"var(--gold)",marginTop:"6px",fontWeight:600}}>Nog geen digest gegenereerd</div>}
+        </div>
+        <button onClick={generate} disabled={loading||stats.tradeCount===0} style={{padding:"10px 18px",fontSize:"13px",fontWeight:700,borderRadius:"8px",border:"1px solid var(--gold-border)",background:(loading||stats.tradeCount===0)?"var(--border3)":"var(--gold)",color:(loading||stats.tradeCount===0)?"var(--text4)":"var(--bg)",cursor:(loading||stats.tradeCount===0)?"not-allowed":"pointer",opacity:(loading||stats.tradeCount===0)?0.6:1,fontFamily:"inherit"}}>
+          {loading?"⏳ AI denkt na…":(lastGen?"📅 Genereer nu":"📅 Eerste digest")}
+        </button>
+      </div>
+      {stats.tradeCount===0&&<div style={{fontSize:"11px",color:"var(--text4)",marginTop:"8px"}}>Geen trades in afgelopen 7 dagen — niets om over te coachen.</div>}
+    </div>
+
+    {error&&<div style={{padding:"12px 14px",background:"rgba(224,85,85,0.08)",border:"1px solid var(--red)",borderRadius:"8px",color:"var(--red)",fontSize:"12px",marginBottom:"16px"}}>
+      ✗ {error}
+    </div>}
+
+    {/* Scheduler instellingen */}
+    <div style={{padding:"14px 16px",border:"1px solid var(--border2)",borderRadius:"10px",background:"var(--glass)",marginBottom:"18px"}}>
+      <div style={{fontSize:"11px",fontWeight:700,color:"var(--text4)",textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:"10px"}}>Instellingen</div>
+      <div style={{display:"flex",gap:"20px",flexWrap:"wrap",alignItems:"flex-end"}}>
+        <div>
+          <label style={labelStyle}>Voorkeursdag</label>
+          <select value={cfg.weekly.dayOfWeek||1} onChange={e=>updateWeekly({dayOfWeek:Number(e.target.value)})} style={inputStyle}>
+            {[1,2,3,4,5,6,0].map(d=><option key={d} value={d}>{["zondag","maandag","dinsdag","woensdag","donderdag","vrijdag","zaterdag"][d]}</option>)}
+          </select>
+        </div>
+        <div>
+          <label style={labelStyle}>Auto-banner</label>
+          <label style={{display:"flex",alignItems:"center",gap:"8px",fontSize:"12px",color:"var(--text2)",cursor:"pointer"}}>
+            <input type="checkbox" checked={!!cfg.weekly.autoTrigger} onChange={e=>updateWeekly({autoTrigger:e.target.checked})}/>
+            Toon banner wanneer ≥7d geleden
+          </label>
+        </div>
+      </div>
+    </div>
+
+    {/* Recente digests */}
+    {weeklies.length>0&&<div>
+      <div style={{fontSize:"11px",fontWeight:700,color:"var(--text4)",textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:"10px"}}>Recente digests ({weeklies.length})</div>
+      <div style={{display:"grid",gap:"10px"}}>
+        {weeklies.map(w=>{
+          const open=expandedId===w.id;
+          const c=w.content||{};
+          return(<div key={w.id} style={{border:"1px solid var(--border2)",borderRadius:"10px",background:"var(--glass)",overflow:"hidden"}}>
+            <button onClick={()=>setExpandedId(open?null:w.id)} style={{display:"flex",width:"100%",padding:"12px 14px",alignItems:"center",justifyContent:"space-between",gap:"12px",background:"transparent",border:"none",cursor:"pointer",fontFamily:"inherit",color:"var(--text)",textAlign:"left"}}>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:"12px",fontWeight:700,color:"var(--text)",marginBottom:"3px"}}>
+                  Week {w.periodStart} → {w.periodEnd}
+                </div>
+                <div style={{fontSize:"11px",color:"var(--text3)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                  {c.summary||"(geen samenvatting)"}
+                </div>
+              </div>
+              <div style={{fontSize:"10px",color:"var(--text4)",fontFamily:"var(--mono)",flexShrink:0}}>
+                {w.tradeCount}t · ${(w.cost||0).toFixed(3)}
+              </div>
+              <div style={{fontSize:"10px",color:"var(--text4)",flexShrink:0,transform:open?"rotate(90deg)":"none",transition:"transform 0.15s"}}>▸</div>
+            </button>
+            {open&&<div style={{padding:"4px 16px 16px",borderTop:"1px solid var(--border1)"}}>
+              <div style={{fontSize:"13px",color:"var(--text2)",lineHeight:1.6,marginTop:"10px",marginBottom:"14px"}}>{c.summary||"-"}</div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"10px",marginBottom:"12px"}}>
+                {c.best_trade&&<div style={{padding:"10px 12px",background:"rgba(46,170,111,0.06)",border:"1px solid var(--green)",borderRadius:"8px"}}>
+                  <div style={{fontSize:"10px",fontWeight:700,color:"var(--green)",textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:"4px"}}>✓ Best</div>
+                  <div style={{fontSize:"12px",fontWeight:700,color:"var(--text)",marginBottom:"3px"}}>{c.best_trade.label} <span style={{color:"var(--green)",fontWeight:600}}>{c.best_trade.pnl}</span></div>
+                  <div style={{fontSize:"11px",color:"var(--text3)",lineHeight:1.5}}>{c.best_trade.lesson}</div>
+                </div>}
+                {c.worst_trade&&<div style={{padding:"10px 12px",background:"rgba(224,85,85,0.06)",border:"1px solid var(--red)",borderRadius:"8px"}}>
+                  <div style={{fontSize:"10px",fontWeight:700,color:"var(--red)",textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:"4px"}}>✗ Worst</div>
+                  <div style={{fontSize:"12px",fontWeight:700,color:"var(--text)",marginBottom:"3px"}}>{c.worst_trade.label} <span style={{color:"var(--red)",fontWeight:600}}>{c.worst_trade.pnl}</span></div>
+                  <div style={{fontSize:"11px",color:"var(--text3)",lineHeight:1.5}}>{c.worst_trade.lesson}</div>
+                </div>}
+              </div>
+              {c.missed_tp_pattern&&<div style={{padding:"10px 12px",background:"rgba(255,180,40,0.06)",border:"1px solid var(--amber)",borderRadius:"8px",marginBottom:"10px"}}>
+                <div style={{fontSize:"10px",fontWeight:700,color:"var(--amber)",textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:"4px"}}>⚠ TP-patroon</div>
+                <div style={{fontSize:"12px",color:"var(--text2)",lineHeight:1.5}}>{c.missed_tp_pattern}</div>
+              </div>}
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"10px",marginBottom:"10px"}}>
+                <div style={{padding:"10px 12px",background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:"8px"}}>
+                  <div style={{fontSize:"10px",fontWeight:700,color:"var(--text4)",textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:"4px"}}>Discipline</div>
+                  <div style={{fontSize:"12px",color:trendColor(c.discipline_trend),lineHeight:1.5,fontWeight:600}}>{c.discipline_trend||"-"}</div>
+                </div>
+                <div style={{padding:"10px 12px",background:"var(--gold-dim)",border:"1px solid var(--gold-border)",borderRadius:"8px"}}>
+                  <div style={{fontSize:"10px",fontWeight:700,color:"var(--gold)",textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:"4px"}}>→ Actie</div>
+                  <div style={{fontSize:"12px",color:"var(--text)",lineHeight:1.5,fontWeight:500}}>{c.action||"-"}</div>
+                </div>
+              </div>
+            </div>}
+          </div>);
+        })}
+      </div>
+    </div>}
+  </div>);
+}
+
+function AICoachPage({showToast,playbooks,trades}){
   const[cfg,setCfg]=useState(()=>loadAIConfig());
   const[active,setActive]=useState("sec-general");
   const[testing,setTesting]=useState(false);
@@ -15145,11 +15487,10 @@ function AICoachPage({showToast,playbooks}){
         <BudgetSection cfg={cfg} setCfg={setCfg} showToast={showToast}/>
       </div>
 
-      {/* ─── WEEKLY (placeholder) ─── */}
+      {/* ─── WEEKLY ─── */}
       <div className="ai-section" id="sec-weekly">
         <h3 style={{fontSize:"16px",fontWeight:700,color:"var(--text)",marginBottom:"16px"}}>📅 Weekly digest</h3>
-        <Placeholder version="v12.136" title="Wekelijkse coaching-samenvatting"
-          body="Elke maandag (of moment van je keuze) genereert AI een digest: best trade van de week, slechtste, gemiste-TP-patroon, discipline-trend, één concrete actie voor komende week. Opgeslagen in tj_ai_weeklies — terugbladeren wanneer je wilt."/>
+        <WeeklyDigestSection cfg={cfg} setCfg={setCfg} trades={trades} showToast={showToast}/>
       </div>
 
       {/* ─── PRIVACY (placeholder) ─── */}
@@ -15905,6 +16246,8 @@ function App(){
         </div>
         <div className="tj-right-btns" style={{display:"flex",alignItems:"center",gap:"8px"}}>
           <button onClick={()=>{setNewTrade(newEmptyTrade());navigate("new")}} style={{padding:"7px 14px",borderRadius:"var(--radius)",border:"1px solid var(--blue2)",background:"rgba(201,168,76,0.12)",color:"#C9A84C",fontSize:"12px",cursor:"pointer",fontFamily:"inherit",fontWeight:600,display:"flex",alignItems:"center",gap:"6px"}}><span>+</span> Trade <span className="kbd" style={{fontSize:"9px",borderColor:"rgba(201,168,76,0.4)"}}>N</span></button>
+          {/* v12.138: Weekly-digest due indicator — verschijnt alleen ≥7d */}
+          <AIWeeklyIndicator navigate={navigate}/>
           {/* v12.137: AI-budget waarschuwing — verschijnt alleen ≥alertThreshold */}
           <AIBudgetIndicator navigate={navigate}/>
           {/* v12.127: globale privacy-toggle. Verbergt alle $/€ bedragen op alle pagina's.
@@ -16073,7 +16416,7 @@ function App(){
         {tab==="goals"&&<GoalsPage goals={goals} setGoals={setGoals} trades={trades}/>}
         {tab==="tags"&&<TagManager tagConfig={tagConfig} setTagConfig={setTagConfig} trades={trades} setTrades={setTrades} showToast={showToast} config={config}/>}
         {tab==="validation"&&<ValidationChecklistPage setTab={setTab}/>}
-        {tab==="aicoach"&&IS_AI&&<AICoachPage showToast={showToast} playbooks={playbooks}/>}
+        {tab==="aicoach"&&IS_AI&&<AICoachPage showToast={showToast} playbooks={playbooks} trades={trades}/>}
         {tab==="help"&&<HelpPage trades={trades} setTab={setTab}/>}
       </div>
 
