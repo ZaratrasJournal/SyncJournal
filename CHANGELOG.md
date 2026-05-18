@@ -6,6 +6,24 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.148] — 2026-05-18
+
+### Toegevoegd
+- **Mori-popup krijgt collapsible chat-history sidebar (links)** *(2026-05-18, gevraagd door Denny: "ik wil de geschiedenis gesprekken zichtbaar hebben of uitklapbaar aan de rechter of linkerkant")* — Vervangt de oude dropdown-switcher door een volwaardige sidebar zoals in de AI-coach tab. WhatsApp/email-style: alle conversaties zichtbaar naast de actieve chat, één klik om te wisselen.
+  - **☰ toggle** links in header — toont/verbergt sidebar. Gold-highlight wanneer aan.
+  - **Popup-breedte responsief**: 560px wanneer sidebar aan, 420px wanneer uit. Smooth transition (0.18s).
+  - **Sidebar 140px breed** met chat-items: titel + bericht-count + datum + delete-knop (✕). Active chat krijgt gold-dim background + gold border (zelfde `.ai-chat-item` class als tab-sidebar — visueel consistent).
+  - **Toggle-state persistent** in `tj_ai_popup_history` localStorage. Eerst-keer-open = sidebar aan (zodat user ziet wat er is); daarna respect je laatste keuze.
+  - **Empty-state in sidebar**: "Geen conversaties. Klik + om te starten."
+- **Header header opgeschoond** — dropdown-switcher verwijderd (overbodig met sidebar). Chat-titel staat nu inline naast MORI-tag zonder klikbaar te zijn. + nieuwe chat en ✕ sluit blijven rechts.
+- **5-spec Playwright suite** (`tests/aicoach-popup-sidebar.spec.js`): sidebar default zichtbaar bij open · ☰ toggle verbergt + width shrinkt naar 420px + localStorage persist · klik chat-item switcht active · delete-knop verwijdert · toggle-state persist over re-open.
+
+### Notities
+- `min(560px, calc(100vw - 48px))` zorgt dat de popup ook op smalle viewports (mobile-portret) past door clamping.
+- De popup-sidebar dupliceert geen logica met ChatSection-sidebar — beide renderen alleen UI uit dezelfde `chats` state. Bron-van-waarheid = `tj_ai_chats` localStorage met `upsertChat` / `deleteChatById` helpers.
+
+---
+
 ## [v12.147] — 2026-05-18
 
 ### Gewijzigd
