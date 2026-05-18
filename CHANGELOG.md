@@ -6,6 +6,26 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.136] — 2026-05-18
+
+### Toegevoegd
+- **Pre-trade validatie live (AI-coach, BETA — `?ai=1`)** *(2026-05-18)* — Eerste functionele AI-feature. In de **🛡 Pre-trade validatie**-sectie kun je nu een geplande trade beschrijven (ticker, richting, entry, stop, TP's, risk%, gekozen playbook, optionele notities). AI valideert in <3s tegen je playbook + Bellafiore-5-decision-framework. Output:
+  - **Severity-oordeel** in 4 niveaus met visuele styling: ✓ Positief (groen) · ○ Neutraal · ⚠ Waarschuwing (amber) · ✗ Severe — SKIP (rood)
+  - **Headline + concreet advies** (wat te DOEN of NIET doen)
+  - **Bellafiore-5 scores** (intel-edge / tape / story / risk / execution) elk met score 1-5 + 1-zin toelichting
+  - **Playbook-fit** score 1-10
+  - **Concerns** (specifieke zorgen, 0-3 items)
+- **Cost-tracking foundation** — Per Claude API call worden input/output tokens vermenigvuldigd met model-pricing (Sonnet 4.6 = $3/$15 per M, Opus 4.7 = $15/$75, Haiku 4.5 = $0.80/$4) en geaccumuleerd in `tj_ai_config.budget.spent`. Reset automatisch eerste van de maand. Per-call cost + maand-totaal zichtbaar rechts onder de Valideer-knop.
+- **Privacy-filter actief (default aan)** — Wanneer `cfg.features.privacy` aan staat (default in foundation): ticker-namen (BTC, ETH, SOL, +40 anderen) worden vervangen door `COIN_A`, `COIN_B`, … vóór de payload naar Claude gaat. AI-output wordt na ontvangst weer terug-gemapt naar echte tickers. Anthropic ziet alleen geanonimiseerde data. Autonoom getest: ticker komt niet meer in outgoing payload (`tests/aicoach-pretrade.spec.js`).
+- **Playbook-context builder** — Pakt automatisch je gekozen playbook (name, oneLiner, defaultGrade, setupTags, timeframes, confirmations, sessions, bigPicture/tape/intuition als enabled, criteria, anti-criteria, stop/target/minRR, mistakePatterns) en bouwt een gestructureerde system-prompt-context. Hoe vollediger je playbook, hoe scherper het advies.
+- **Helpful empty-states** — Zonder master aan / zonder pretrade-toggle / zonder API-key: duidelijke melding wat je moet doen ipv leeg form.
+- **3-spec Playwright suite** (`tests/aicoach-pretrade.spec.js`): fetch-mock verifieert form-submit → juiste API-call (model, prompt, ticker) · severity-render · cost-tracking write · privacy-mask werkt · zonder-key empty-state.
+
+### Gewijzigd
+- AI-coach sidebar beta-badge toont nu **dynamisch APP_VERSION.version** ipv hardcoded v12.135 (auto-update bij volgende releases).
+
+---
+
 ## [v12.135] — 2026-05-18
 
 ### Toegevoegd

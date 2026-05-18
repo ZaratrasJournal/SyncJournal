@@ -1230,7 +1230,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.135",released:"2026-05-18"};
+const APP_VERSION={version:"v12.136",released:"2026-05-18"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -14470,7 +14470,342 @@ function TPTimeline({trade}){
 // via JSON-backup om accidental key-leakage te voorkomen — zie exportTrades).
 // Alle Claude API-calls via anthropic-dangerous-direct-browser-access header.
 // Per-feature toggle: pretrade/budget/weekly/privacy onafhankelijk aan/uit.
-function AICoachPage({showToast}){
+
+// v12.136 — Pricing per million tokens (in USD). Houd in sync met Anthropic's
+// public pricing page. Gebruikt door costForUsage() voor budget-tracking.
+const AI_PRICING={
+  "claude-sonnet-4-6":{in:3.00,out:15.00},
+  "claude-opus-4-7":{in:15.00,out:75.00},
+  "claude-haiku-4-5-20251001":{in:0.80,out:4.00}
+};
+function costForUsage(model,inputTok,outputTok){
+  const p=AI_PRICING[model]||AI_PRICING["claude-sonnet-4-6"];
+  return(inputTok*p.in+outputTok*p.out)/1e6;
+}
+
+// v12.136 — Privacy-filter: anonimiseer ticker-namen vóór outgoing prompt.
+// Mapping per request (stable binnen één call): BTC→COIN_A, ETH→COIN_B, …
+// Plus aliases met /USDT, /USDC, -PERP, USDT-PERP suffix.
+const TICKER_PATTERNS=[
+  /\b(BTC|ETH|SOL|XRP|ADA|DOT|AVAX|LINK|MATIC|ARB|OP|DOGE|SHIB|PEPE|WIF|BONK|TIA|SUI|APT|SEI|INJ|NEAR|FTM|ATOM|UNI|AAVE|LDO|RNDR|FET|HBAR|TRX|TON|BNB|LTC|BCH|ETC|XLM|ALGO|FIL|ICP|VET|EOS)\b/gi,
+];
+function buildTickerMask(text){
+  const map={};let counter=0;
+  TICKER_PATTERNS.forEach(re=>{
+    String(text).replace(re,(m)=>{
+      const up=m.toUpperCase();
+      if(!map[up])map[up]="COIN_"+String.fromCharCode(65+(counter++%26));
+      return m;
+    });
+  });
+  return map;
+}
+function applyMask(text,map){
+  if(!map||!Object.keys(map).length)return text;
+  let out=String(text);
+  Object.entries(map).forEach(([orig,mask])=>{
+    out=out.replace(new RegExp("\\b"+orig+"\\b","gi"),mask);
+  });
+  return out;
+}
+function reverseMask(text,map){
+  if(!map||!Object.keys(map).length)return text;
+  let out=String(text);
+  Object.entries(map).forEach(([orig,mask])=>{
+    out=out.replace(new RegExp("\\b"+mask+"\\b","g"),orig);
+  });
+  return out;
+}
+
+// v12.136 — Claude API helper. Throws on HTTP error. Returns {text, usage, cost, raw}.
+// Caller is verantwoordelijk voor budget-check vóór de call en cost-update na.
+async function callClaude({apiKey,model,systemPrompt,userMessage,maxTokens=1024}){
+  const resp=await fetch("https://api.anthropic.com/v1/messages",{
+    method:"POST",
+    headers:{
+      "Content-Type":"application/json",
+      "x-api-key":apiKey,
+      "anthropic-version":"2023-06-01",
+      "anthropic-dangerous-direct-browser-access":"true"
+    },
+    body:JSON.stringify({
+      model:model||"claude-sonnet-4-6",
+      max_tokens:maxTokens,
+      system:systemPrompt||undefined,
+      messages:[{role:"user",content:userMessage}]
+    })
+  });
+  const data=await resp.json();
+  if(!resp.ok){
+    const msg=(data&&data.error&&data.error.message)||("HTTP "+resp.status);
+    throw new Error(msg);
+  }
+  const text=(data.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("\n");
+  const usage=data.usage||{input_tokens:0,output_tokens:0};
+  const cost=costForUsage(model||"claude-sonnet-4-6",usage.input_tokens||0,usage.output_tokens||0);
+  return{text,usage,cost,raw:data};
+}
+
+// v12.136 — Track API-cost in tj_ai_config.budget.spent. Resets first of month.
+function recordAICost(cost){
+  try{
+    const cfg=loadAIConfig();
+    const now=new Date();
+    const monthKey=now.getFullYear()+"-"+String(now.getMonth()+1).padStart(2,"0");
+    let spent=Number(cfg.budget.spent)||0;
+    if(cfg.budget.lastResetMonth&&cfg.budget.lastResetMonth!==monthKey)spent=0;
+    cfg.budget.spent=spent+(Number(cost)||0);
+    cfg.budget.lastResetMonth=monthKey;
+    saveAIConfig(cfg);
+    return cfg.budget.spent;
+  }catch(e){return 0;}
+}
+
+// v12.136 — Bouw playbook-context string voor system prompt.
+function buildPlaybookContext(pb){
+  if(!pb)return"Geen playbook gekozen.";
+  const lines=[];
+  lines.push("# Playbook: "+(pb.name||"naamloos"));
+  if(pb.oneLiner)lines.push("Beschrijving: "+pb.oneLiner);
+  if(pb.defaultGrade)lines.push("Default grade: "+pb.defaultGrade);
+  if(pb.setupTags&&pb.setupTags.length)lines.push("Setup-tags: "+pb.setupTags.join(", "));
+  if(pb.timeframes&&pb.timeframes.length)lines.push("Timeframes: "+pb.timeframes.join(", "));
+  if(pb.confirmations&&pb.confirmations.length)lines.push("Confluence: "+pb.confirmations.join(", "));
+  if(pb.sessions&&pb.sessions.length)lines.push("Sessies: "+pb.sessions.join(", "));
+  if(pb.bigPictureEnabled){
+    if(pb.bigPicture)lines.push("Big-picture context: "+pb.bigPicture);
+    if(pb.tape)lines.push("Tape / order-flow: "+pb.tape);
+    if(pb.intuition)lines.push("Intuition / pattern: "+pb.intuition);
+  }
+  const crit=(pb.criteria||[]).filter(c=>c&&c.text);
+  if(crit.length){
+    lines.push("\n## Criteria (wanneer WEL):");
+    crit.forEach(c=>lines.push("- "+(c.mandatory?"[VERPLICHT] ":"")+c.text));
+  }
+  const anti=(pb.antiCriteria||[]).filter(c=>c&&c.text);
+  if(anti.length){
+    lines.push("\n## Anti-criteria (wanneer NIET):");
+    anti.forEach(c=>lines.push("- "+(c.mandatory?"[BLOCKER] ":"")+c.text));
+  }
+  if(pb.stop)lines.push("\nStop-regel: "+pb.stop);
+  if(pb.target)lines.push("Target-regel: "+pb.target);
+  if(pb.minRR)lines.push("Min R:R: "+pb.minRR);
+  if(pb.mistakePatterns&&pb.mistakePatterns.length)lines.push("\nVeel-gemaakte fouten: "+pb.mistakePatterns.join(", "));
+  return lines.join("\n");
+}
+
+// v12.136 — System prompt voor pre-trade validatie. JSON-only response om
+// parsing simpel te houden. Severity-enum dwingt structuur af. Bellafiore-5
+// = vijf decision-indicators (intel-edge / tape / story / risk / execution).
+function buildPreTradeSystemPrompt(playbookContext){
+  return`Je bent een doorgewinterde trading coach voor een crypto-perp dagtrader.
+Je werkt in stijl van Steenbarger (process-focus) en Bellafiore (5-decision-indicators).
+Output ALTIJD geldig JSON, geen markdown, geen prose buiten JSON.
+
+JSON schema:
+{
+  "severity": "positive" | "neutral" | "warning" | "severe",
+  "headline": "1-zin oordeel (max 80 chars)",
+  "advice": "concreet advies in 2-4 zinnen — wat te DOEN of NIET doen, niet alleen analyse",
+  "bellafiore": {
+    "intel_edge": "score 1-5 + 1 zin",
+    "tape": "score 1-5 + 1 zin",
+    "story": "score 1-5 + 1 zin",
+    "risk": "score 1-5 + 1 zin",
+    "execution": "score 1-5 + 1 zin"
+  },
+  "playbook_fit": "score 1-10 — past trade bij de gekozen playbook?",
+  "concerns": ["string", ...] // 0-3 specifieke zorgen, of leeg array
+}
+
+Severity-keuze:
+- positive: trade past 100% bij playbook, alle Bellafiore ≥3, geen anti-criteria geraakt
+- neutral: trade past matig, 1-2 zwakke punten, geen blockers
+- warning: 1-2 anti-criteria of belangrijke Bellafiore <3 — overweeg trade kleiner
+- severe: blocker-anti-criterion geraakt OF risk-management gevaarlijk (riskPct>4%, geen stop, R:R<1) — SKIP
+
+Context van de trader:
+${playbookContext}`;
+}
+
+// v12.136 — Pre-trade validatie sectie. Trade-input form + Claude API call
+// + severity-rendered output. Cost-tracking + privacy-filter respecteert
+// cfg.features.privacy en cfg.features.budget.
+function PreTradeSection({cfg,playbooks,showToast,setCfg}){
+  const[ticker,setTicker]=useState("");
+  const[direction,setDirection]=useState("long");
+  const[playbookId,setPlaybookId]=useState("");
+  const[entry,setEntry]=useState("");
+  const[stop,setStop]=useState("");
+  const[tp1,setTp1]=useState("");
+  const[tp2,setTp2]=useState("");
+  const[riskPct,setRiskPct]=useState("");
+  const[notes,setNotes]=useState("");
+  const[loading,setLoading]=useState(false);
+  const[result,setResult]=useState(null);
+  const[error,setError]=useState("");
+  const[lastCost,setLastCost]=useState(0);
+
+  const selectedPb=(playbooks||[]).find(p=>p.id===playbookId);
+  const canRun=cfg.enabled&&cfg.byok.key&&ticker&&entry&&stop&&!loading;
+
+  const reset=()=>{setResult(null);setError("");setLastCost(0);};
+
+  const runValidation=async()=>{
+    setLoading(true);setError("");setResult(null);
+    try{
+      const tps=[tp1,tp2].filter(Boolean);
+      // Bouw trade-beschrijving
+      let userMsg=`Ik plan deze trade:\n`+
+        `- Ticker: ${ticker}\n`+
+        `- Richting: ${direction}\n`+
+        `- Entry: ${entry}\n`+
+        `- Stop: ${stop}\n`+
+        (tps.length?`- TPs: ${tps.join(", ")}\n`:`- TPs: nog niet bepaald\n`)+
+        (riskPct?`- Geplande risk: ${riskPct}%\n`:``)+
+        (notes?`\nNotities: ${notes}\n`:``)+
+        `\nValideer deze trade tegen mijn playbook. Output strikt JSON.`;
+      // Privacy mask indien aan
+      const maskMap=cfg.features.privacy?buildTickerMask(userMsg+" "+(selectedPb?JSON.stringify(selectedPb):"")):null;
+      const safeUserMsg=maskMap?applyMask(userMsg,maskMap):userMsg;
+      const safePbContext=maskMap?applyMask(buildPlaybookContext(selectedPb),maskMap):buildPlaybookContext(selectedPb);
+      const systemPrompt=buildPreTradeSystemPrompt(safePbContext);
+      const res=await callClaude({
+        apiKey:cfg.byok.key,
+        model:cfg.byok.model||"claude-sonnet-4-6",
+        systemPrompt,
+        userMessage:safeUserMsg,
+        maxTokens:1024
+      });
+      // Cost-tracking
+      const newSpent=recordAICost(res.cost);
+      setLastCost(res.cost);
+      // Trigger state refresh in parent (cfg gets stale)
+      setCfg&&setCfg(loadAIConfig());
+      // Reverse mask op de response text
+      const displayText=maskMap?reverseMask(res.text,maskMap):res.text;
+      // Parse JSON. Sommige modellen kunnen ```json wrap toevoegen — stripping.
+      let parsed=null;
+      try{
+        const clean=displayText.replace(/^```(?:json)?\s*/i,"").replace(/```\s*$/,"").trim();
+        parsed=JSON.parse(clean);
+      }catch(pe){
+        // Fallback: presenteer raw text
+        parsed={severity:"neutral",headline:"AI-respons (raw)",advice:displayText,bellafiore:{},playbook_fit:"-",concerns:[]};
+      }
+      setResult(parsed);
+    }catch(e){
+      setError(String(e.message||e));
+      showToast&&showToast("Validatie mislukt: "+(e.message||e),"error");
+    }finally{setLoading(false);}
+  };
+
+  const severityStyle={
+    positive:{bg:"rgba(46,170,111,0.10)",border:"var(--green)",label:"✓ Positief",color:"var(--green)"},
+    neutral:{bg:"var(--glass)",border:"var(--border3)",label:"○ Neutraal",color:"var(--text2)"},
+    warning:{bg:"rgba(255,180,40,0.08)",border:"var(--amber)",label:"⚠ Waarschuwing",color:"var(--amber)"},
+    severe:{bg:"rgba(224,85,85,0.08)",border:"var(--red)",label:"✗ Severe — SKIP",color:"var(--red)"}
+  };
+
+  const inputStyle={width:"100%",padding:"8px 10px",fontSize:"13px",borderRadius:"6px",border:"1px solid var(--border3)",background:"var(--bg)",color:"var(--text)",fontFamily:"inherit",boxSizing:"border-box"};
+  const labelStyle={display:"block",fontSize:"10px",fontWeight:600,color:"var(--text4)",textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:"4px"};
+
+  if(!cfg.enabled){
+    return(<div style={{padding:"24px",border:"1px dashed var(--border3)",borderRadius:"10px",background:"var(--glass)",textAlign:"center",color:"var(--text3)",fontSize:"13px"}}>
+      Zet eerst de <strong>master-schakelaar</strong> aan in de Algemeen-sectie.
+    </div>);
+  }
+  if(!cfg.features.pretrade){
+    return(<div style={{padding:"24px",border:"1px dashed var(--border3)",borderRadius:"10px",background:"var(--glass)",textAlign:"center",color:"var(--text3)",fontSize:"13px"}}>
+      Pre-trade validatie staat uit. Activeer de toggle in de Algemeen-sectie.
+    </div>);
+  }
+  if(!cfg.byok.key){
+    return(<div style={{padding:"24px",border:"1px dashed var(--border3)",borderRadius:"10px",background:"var(--glass)",textAlign:"center",color:"var(--text3)",fontSize:"13px"}}>
+      Geen API-key ingevuld. Vul je Anthropic key in onder <strong>API-key (BYOK)</strong>.
+    </div>);
+  }
+
+  return(<div>
+    <p style={{fontSize:"12px",color:"var(--text3)",lineHeight:1.6,marginBottom:"16px",maxWidth:"640px"}}>
+      Beschrijf je geplande trade. AI valideert tegen je playbook + Bellafiore-5-decision-framework + risk-management. <em>Geen blocker</em> — alleen advies. Kosten per check: ~$0.01–0.03.
+    </p>
+
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:"10px",marginBottom:"10px"}}>
+      <div><label style={labelStyle}>Ticker</label><input value={ticker} onChange={e=>setTicker(e.target.value.toUpperCase())} placeholder="BTC" style={inputStyle}/></div>
+      <div><label style={labelStyle}>Richting</label>
+        <select value={direction} onChange={e=>setDirection(e.target.value)} style={inputStyle}>
+          <option value="long">Long</option>
+          <option value="short">Short</option>
+        </select>
+      </div>
+      <div><label style={labelStyle}>Entry</label><input type="number" step="any" value={entry} onChange={e=>setEntry(e.target.value)} placeholder="65000" style={inputStyle}/></div>
+      <div><label style={labelStyle}>Stop</label><input type="number" step="any" value={stop} onChange={e=>setStop(e.target.value)} placeholder="64200" style={inputStyle}/></div>
+    </div>
+
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:"10px",marginBottom:"10px"}}>
+      <div><label style={labelStyle}>TP1</label><input type="number" step="any" value={tp1} onChange={e=>setTp1(e.target.value)} placeholder="66200" style={inputStyle}/></div>
+      <div><label style={labelStyle}>TP2 (optioneel)</label><input type="number" step="any" value={tp2} onChange={e=>setTp2(e.target.value)} placeholder="67500" style={inputStyle}/></div>
+      <div><label style={labelStyle}>Risk %</label><input type="number" step="any" value={riskPct} onChange={e=>setRiskPct(e.target.value)} placeholder="1.0" style={inputStyle}/></div>
+      <div><label style={labelStyle}>Playbook</label>
+        <select value={playbookId} onChange={e=>setPlaybookId(e.target.value)} style={inputStyle}>
+          <option value="">— Kies playbook —</option>
+          {(playbooks||[]).map(p=><option key={p.id} value={p.id}>{p.name||"naamloos"}</option>)}
+        </select>
+      </div>
+    </div>
+
+    <div style={{marginBottom:"14px"}}>
+      <label style={labelStyle}>Notities / context (optioneel)</label>
+      <textarea value={notes} onChange={e=>setNotes(e.target.value)} rows={2} placeholder="Bv. FVG retest na London-open, funding +0.01%, BTC.D dalend" style={{...inputStyle,resize:"vertical",fontFamily:"inherit"}}/>
+    </div>
+
+    <div style={{display:"flex",gap:"10px",alignItems:"center",marginBottom:"18px"}}>
+      <button onClick={runValidation} disabled={!canRun} style={{padding:"10px 22px",fontSize:"13px",fontWeight:700,borderRadius:"8px",border:"1px solid var(--gold-border)",background:canRun?"var(--gold)":"var(--border3)",color:canRun?"var(--bg)":"var(--text4)",cursor:canRun?"pointer":"not-allowed",opacity:canRun?1:0.6,fontFamily:"inherit"}}>
+        {loading?"⏳ AI denkt na…":"🛡 Valideer trade"}
+      </button>
+      {result&&<button onClick={reset} style={{padding:"10px 14px",fontSize:"12px",fontWeight:600,borderRadius:"8px",border:"1px solid var(--border3)",background:"transparent",color:"var(--text3)",cursor:"pointer",fontFamily:"inherit"}}>Reset</button>}
+      {lastCost>0&&<div style={{fontSize:"11px",color:"var(--text4)",marginLeft:"auto"}}>
+        Laatste call: <strong style={{color:"var(--text2)"}}>${lastCost.toFixed(4)}</strong> · Maand: <strong style={{color:"var(--text2)"}}>${(cfg.budget.spent||0).toFixed(2)}</strong>
+      </div>}
+    </div>
+
+    {error&&<div style={{padding:"12px 14px",background:"rgba(224,85,85,0.08)",border:"1px solid var(--red)",borderRadius:"8px",color:"var(--red)",fontSize:"12px",marginBottom:"16px"}}>
+      ✗ {error}
+    </div>}
+
+    {result&&(()=>{
+      const sty=severityStyle[result.severity]||severityStyle.neutral;
+      return(<div style={{padding:"18px 20px",background:sty.bg,border:"1px solid "+sty.border,borderRadius:"12px"}}>
+        <div style={{display:"flex",alignItems:"center",gap:"10px",marginBottom:"10px"}}>
+          <div style={{fontSize:"11px",fontWeight:800,color:sty.color,letterSpacing:"0.12em"}}>{sty.label}</div>
+          {result.playbook_fit&&<div style={{fontSize:"10px",color:"var(--text4)",marginLeft:"auto"}}>Playbook-fit: <strong style={{color:"var(--text2)"}}>{result.playbook_fit}/10</strong></div>}
+        </div>
+        <div style={{fontSize:"15px",fontWeight:700,color:"var(--text)",lineHeight:1.45,marginBottom:"10px"}}>{result.headline}</div>
+        <div style={{fontSize:"13px",color:"var(--text2)",lineHeight:1.6,marginBottom:"14px"}}>{result.advice}</div>
+
+        {result.bellafiore&&Object.keys(result.bellafiore).length>0&&<div style={{marginBottom:"12px"}}>
+          <div style={{fontSize:"10px",fontWeight:700,color:"var(--text4)",letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:"8px"}}>Bellafiore-5</div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:"8px"}}>
+            {Object.entries(result.bellafiore).map(([k,v])=>(<div key={k} style={{padding:"8px 10px",background:"var(--glass)",border:"1px solid var(--border2)",borderRadius:"6px"}}>
+              <div style={{fontSize:"10px",fontWeight:700,color:"var(--text4)",textTransform:"capitalize",marginBottom:"3px"}}>{k.replace(/_/g," ")}</div>
+              <div style={{fontSize:"11px",color:"var(--text2)",lineHeight:1.4}}>{String(v)}</div>
+            </div>))}
+          </div>
+        </div>}
+
+        {Array.isArray(result.concerns)&&result.concerns.length>0&&<div>
+          <div style={{fontSize:"10px",fontWeight:700,color:"var(--text4)",letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:"6px"}}>Concerns</div>
+          <ul style={{margin:0,paddingLeft:"18px",fontSize:"12px",color:"var(--text2)",lineHeight:1.6}}>
+            {result.concerns.map((c,i)=><li key={i}>{c}</li>)}
+          </ul>
+        </div>}
+      </div>);
+    })()}
+  </div>);
+}
+
+function AICoachPage({showToast,playbooks}){
   const[cfg,setCfg]=useState(()=>loadAIConfig());
   const[active,setActive]=useState("sec-general");
   const[testing,setTesting]=useState(false);
@@ -14566,8 +14901,8 @@ function AICoachPage({showToast}){
         <span style={{opacity:0.7,marginRight:"6px"}}>{it.icon}</span>{it.label}
       </a>))}
       <div style={{marginTop:"16px",padding:"10px 12px",background:"var(--gold-dim)",border:"1px solid var(--gold-border)",borderRadius:"8px",fontSize:"10px",color:"var(--gold)",lineHeight:1.5}}>
-        <div style={{fontWeight:700,marginBottom:"4px"}}>BETA · v12.135</div>
-        <div style={{color:"var(--text3)",fontWeight:500}}>Foundation-release. Functionele features volgen in v12.136–138.</div>
+        <div style={{fontWeight:700,marginBottom:"4px"}}>BETA · {APP_VERSION.version}</div>
+        <div style={{color:"var(--text3)",fontWeight:500}}>Pre-trade live. Budget + Weekly + Chat volgen in v12.137–138.</div>
       </div>
     </aside>
     <main className="settings-content">
@@ -14656,11 +14991,10 @@ function AICoachPage({showToast}){
         </div>
       </div>
 
-      {/* ─── PRE-TRADE (placeholder) ─── */}
+      {/* ─── PRE-TRADE ─── */}
       <div className="ai-section" id="sec-pretrade">
         <h3 style={{fontSize:"16px",fontWeight:700,color:"var(--text)",marginBottom:"16px"}}>🛡 Pre-trade validatie</h3>
-        <Placeholder version="v12.136" title="AI valideert je trade vóór entry"
-          body="Beschrijf je geplande trade (ticker, setup, entry, stop, TP's). AI vergelijkt met je playbook + Bellafiore-5-check + live funding-rate context. Score + concreet advies in <3 seconden. Geen blocker — alleen voor jou."/>
+        <PreTradeSection cfg={cfg} setCfg={setCfg} playbooks={playbooks} showToast={showToast}/>
       </div>
 
       {/* ─── BUDGET (placeholder) ─── */}
@@ -15596,7 +15930,7 @@ function App(){
         {tab==="goals"&&<GoalsPage goals={goals} setGoals={setGoals} trades={trades}/>}
         {tab==="tags"&&<TagManager tagConfig={tagConfig} setTagConfig={setTagConfig} trades={trades} setTrades={setTrades} showToast={showToast} config={config}/>}
         {tab==="validation"&&<ValidationChecklistPage setTab={setTab}/>}
-        {tab==="aicoach"&&IS_AI&&<AICoachPage showToast={showToast}/>}
+        {tab==="aicoach"&&IS_AI&&<AICoachPage showToast={showToast} playbooks={playbooks}/>}
         {tab==="help"&&<HelpPage trades={trades} setTab={setTab}/>}
       </div>
 
