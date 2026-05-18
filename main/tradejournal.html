@@ -1235,7 +1235,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.144",released:"2026-05-18"};
+const APP_VERSION={version:"v12.145",released:"2026-05-18"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -15776,11 +15776,13 @@ function ChatSection({cfg,setCfg,playbooks,trades,showToast}){
 
     <div style={{display:"grid",gridTemplateColumns:"220px 1fr",gap:"14px",height:"540px",border:"1px solid var(--border2)",borderRadius:"12px",overflow:"hidden",background:"var(--glass)"}}>
       {/* Sidebar */}
-      <aside style={{borderRight:"1px solid var(--border2)",display:"flex",flexDirection:"column",background:"var(--bg2)"}}>
-        <div style={{padding:"10px 12px",borderBottom:"1px solid var(--border2)"}}>
+      {/* v12.145: minHeight:0 op aside zodat flex:1 op inner scroll-div werkt
+          (anders pushen lange chat-lijsten de sidebar uit beeld). */}
+      <aside style={{borderRight:"1px solid var(--border2)",display:"flex",flexDirection:"column",background:"var(--bg2)",minHeight:0}}>
+        <div style={{padding:"10px 12px",borderBottom:"1px solid var(--border2)",flexShrink:0}}>
           <button onClick={newChat} style={{width:"100%",padding:"8px 12px",fontSize:"12px",fontWeight:700,borderRadius:"6px",border:"1px solid var(--gold-border)",background:"var(--gold-dim)",color:"var(--gold)",cursor:"pointer",fontFamily:"inherit"}}>+ Nieuwe chat</button>
         </div>
-        <div style={{flex:1,overflowY:"auto",padding:"6px"}}>
+        <div style={{flex:1,overflowY:"auto",padding:"6px",minHeight:0}}>
           {chats.length===0&&<div style={{padding:"14px 8px",fontSize:"11px",color:"var(--text4)",textAlign:"center",lineHeight:1.5}}>Nog geen conversaties. Klik "Nieuwe chat" om te beginnen.</div>}
           {chats.map(c=>{
             const isActive=c.id===activeId;
@@ -15800,8 +15802,14 @@ function ChatSection({cfg,setCfg,playbooks,trades,showToast}){
       </aside>
 
       {/* Main chat pane */}
-      <main style={{display:"flex",flexDirection:"column",minWidth:0}}>
-        <div ref={scrollRef} style={{flex:1,overflowY:"auto",padding:"16px 18px"}}>
+      {/* v12.145: KRITIEKE FIX — bug 1 was niet alleen state-sync maar primair
+          een flex-layout issue. minHeight:0 op main forceert dat de grid-cel
+          (540px) gerespecteerd wordt; zonder dat duwt lange content de input
+          uit beeld. minHeight:0 op scroll-div is nodig om overflow:auto te
+          activeren binnen flex-context. flexShrink:0 op input-area garandeert
+          dat hij altijd zichtbaar blijft, ook bij grote responses. */}
+      <main style={{display:"flex",flexDirection:"column",minWidth:0,minHeight:0}}>
+        <div ref={scrollRef} style={{flex:1,overflowY:"auto",overflowX:"hidden",padding:"16px 18px",minHeight:0}}>
           {!active&&<div style={{padding:"40px 20px",textAlign:"center",color:"var(--text4)",fontSize:"13px"}}>
             <div style={{fontSize:"32px",marginBottom:"10px"}}>💬</div>
             Geen chat geselecteerd. Klik <strong>"Nieuwe chat"</strong> of selecteer een bestaande conversatie.
@@ -15814,7 +15822,7 @@ function ChatSection({cfg,setCfg,playbooks,trades,showToast}){
           {msgs.map((m,i)=>{
             const isUser=m.role==="user";
             return(<div key={i} style={{display:"flex",justifyContent:isUser?"flex-end":"flex-start",marginBottom:"12px"}}>
-              <div style={{maxWidth:"75%",padding:"10px 14px",borderRadius:"12px",background:isUser?"var(--gold-dim)":"var(--bg2)",border:"1px solid "+(isUser?"var(--gold-border)":"var(--border2)")}}>
+              <div style={{maxWidth:"75%",padding:"10px 14px",borderRadius:"12px",background:isUser?"var(--gold-dim)":"var(--bg2)",border:"1px solid "+(isUser?"var(--gold-border)":"var(--border2)"),wordBreak:"break-word",overflowWrap:"break-word"}}>
                 <div style={{fontSize:"10px",fontWeight:700,color:isUser?"var(--gold)":"var(--text4)",letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:"4px"}}>{isUser?"Jij":"AI-coach"}</div>
                 {isUser
                   ?<div style={{fontSize:"13px",color:"var(--text)",lineHeight:1.55,whiteSpace:"pre-wrap"}}>{m.content}</div>
@@ -15832,7 +15840,7 @@ function ChatSection({cfg,setCfg,playbooks,trades,showToast}){
             ✗ {error}
           </div>}
         </div>
-        <div style={{borderTop:"1px solid var(--border2)",padding:"10px 14px",background:"var(--bg)"}}>
+        <div style={{borderTop:"1px solid var(--border2)",padding:"10px 14px",background:"var(--bg)",flexShrink:0}}>
           <div style={{display:"flex",gap:"8px",alignItems:"flex-end"}}>
             <textarea ref={inputRef} value={input} onChange={e=>setInput(e.target.value)} onKeyDown={onKey} rows={2} placeholder={active?"Typ je vraag… (Enter om te sturen, Shift+Enter voor nieuwe regel)":"Klik 'Nieuwe chat' om te beginnen…"} disabled={loading} style={{flex:1,padding:"8px 10px",fontSize:"13px",borderRadius:"6px",border:"1px solid var(--border3)",background:"var(--bg2)",color:"var(--text)",fontFamily:"inherit",resize:"none",boxSizing:"border-box"}}/>
             <button onClick={sendMessage} disabled={loading||!input.trim()} style={{padding:"10px 18px",fontSize:"13px",fontWeight:700,borderRadius:"6px",border:"1px solid var(--gold-border)",background:(loading||!input.trim())?"var(--border3)":"var(--gold)",color:(loading||!input.trim())?"var(--text4)":"var(--bg)",cursor:(loading||!input.trim())?"not-allowed":"pointer",opacity:(loading||!input.trim())?0.6:1,fontFamily:"inherit",whiteSpace:"nowrap"}}>

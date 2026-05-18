@@ -6,6 +6,29 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.145] — 2026-05-18
+
+### Fixed
+- **Chat-input verdween bij lange responses + geen scroll mogelijk** *(2026-05-18, gemeld door Denny met screenshot: lege ruimte onder de assistant-bubble, geen input zichtbaar)* — Hieronder lag de ECHTE root-cause van "bug 1" uit v12.143/144: een klassieke **flex+overflow CSS-valkuil**. Mijn chat-shell had `height:540px` met inner flex column (scroll-div + input-area), maar zonder `minHeight:0` op flex-children kan een lange child de container uitduwen — de scroll-div werkt dan niet (`overflow:auto` activeert niet) en de input-area wordt door de assistant-bubble onder de container weggeschoven. Bij Denny's 800-token markdown-response was de bubble ~700px hoog, dus de input zat ~150px onder de "chat-shell" en daardoor onzichtbaar (overflow:hidden clipt 'm). De fixes uit v12.143/144 (state-sync + event-listener verwijderen) waren technisch wel correct, maar de **visuele symptoom** kwam van deze layout-bug.
+- **Concrete CSS-fixes**:
+  - `minHeight:0` op `<aside>` + sidebar scroll-div (anders pushen lange chat-lijsten de sidebar weg)
+  - `minHeight:0` op `<main>` (zodat de grid-cel van 540px gerespecteerd wordt)
+  - `minHeight:0` + `overflowX:hidden` op de scroll-div (zodat `overflow:auto` activeert binnen flex-context)
+  - `flexShrink:0` op input-area (input blijft altijd zichtbaar, niet wegduwbaar door content)
+  - `flexShrink:0` op sidebar "+ Nieuwe chat" header (zelfde principe)
+  - `wordBreak:break-word` + `overflowWrap:break-word` op bubbles (lange tokens/URLs wrappen ipv horizontale overflow)
+
+### Test
+- Nieuwe `tests/aicoach-chat-layout.spec.js`: stuurt een 30-secties markdown-response (~800 tokens, ~700px hoog), verifieert dan:
+  1. Chat-shell respecteert nog steeds height 540px
+  2. Textarea zichtbaar in viewport (width>100px, height>20px)
+  3. Verstuur-knop zichtbaar
+  4. Scroll-div heeft `scrollHeight > clientHeight` (er VALT te scrollen) en `clientHeight < 540` (input neemt z'n share)
+
+**Volledige chat test-suite na deze release**: 13 specs / 13 passed (2msg + context×3 + layout + markdown×2 + switch + chat×4 + smoke).
+
+---
+
 ## [v12.144] — 2026-05-18
 
 ### Fixed
