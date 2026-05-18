@@ -32,9 +32,9 @@ test.describe('AI-coach foundation',()=>{
     });
     await page.waitForTimeout(300);
 
-    // Alle 5 secties + Algemeen = 6
+    // Algemeen + BYOK + Pre-trade + Budget + Weekly + Chat + Privacy = 7
     const sections=await page.locator('.ai-section').count();
-    expect(sections).toBe(6);
+    expect(sections).toBe(7);
 
     // Sidebar nav-items aanwezig
     const navItems=await page.locator('.settings-sidebar a.settings-nav-item').allTextContents();
@@ -43,6 +43,7 @@ test.describe('AI-coach foundation',()=>{
     expect(navItems.join(' ')).toMatch(/Pre-trade/);
     expect(navItems.join(' ')).toMatch(/Budget/);
     expect(navItems.join(' ')).toMatch(/Weekly/);
+    expect(navItems.join(' ')).toMatch(/Chat/);
     expect(navItems.join(' ')).toMatch(/Privacy/);
 
     // Screenshot voor visuele review

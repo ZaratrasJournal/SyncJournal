@@ -1230,7 +1230,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.138",released:"2026-05-18"};
+const APP_VERSION={version:"v12.139",released:"2026-05-18"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -14931,6 +14931,121 @@ Belangrijke regels:
 - Action moet specifiek/meetbaar zijn (bv 'plak elke TP1 op exit at 1R unless funding flip')`;
 }
 
+// v12.139 — Chat storage. Conversaties met message-history. Cap op 50 chats
+// (oudste afgeknipt bij save). Per chat geen hard-cap op messages (eenvoud
+// boven over-engineering; user kan zelf delete bij excess).
+function loadChats(){
+  try{const raw=localStorage.getItem("tj_ai_chats");return raw?JSON.parse(raw):[];}catch(e){return[];}
+}
+function saveChats(arr){
+  try{
+    const trimmed=(arr||[]).slice(0,50);
+    localStorage.setItem("tj_ai_chats",JSON.stringify(trimmed));
+    window.dispatchEvent(new CustomEvent("tj-ai-chats-change",{detail:trimmed}));
+  }catch(e){}
+}
+function upsertChat(chat){
+  const arr=loadChats();
+  const idx=arr.findIndex(c=>c.id===chat.id);
+  if(idx>=0)arr[idx]=chat;
+  else arr.unshift(chat);
+  saveChats(arr);
+  return arr;
+}
+function deleteChatById(id){
+  const arr=loadChats().filter(c=>c.id!==id);
+  saveChats(arr);
+  return arr;
+}
+
+// v12.139 — Auto-title chat vanaf eerste user message. Max 60 chars.
+function autoTitle(text){
+  const t=String(text||"").trim().split("\n")[0];
+  if(t.length<=60)return t;
+  return t.slice(0,57)+"…";
+}
+
+// v12.139 — System prompt voor chat. Cross-feature context: top playbooks,
+// laatste weekly digest (als bestaat), 7-dag stats. Geen volledige trade-list
+// (te lang). User kan in messages specifieke trades noemen — model gebruikt
+// dan z'n eigen redenering op basis van wat de user vertelt.
+function buildChatSystemPrompt(opts){
+  const{playbooks=[],trades=[],weeklies=[]}=opts||{};
+  const stats=buildWeeklyStats(trades,7);
+  const lines=[];
+  lines.push(`Je bent een ervaren trading coach (Steenbarger + Douglas + Bellafiore-stijl) voor een crypto-perp dagtrader.`);
+  lines.push(`Beantwoord vragen direct, gebruik specifieke cijfers, geen filler. Stel verduidelijkingsvragen alleen wanneer écht nodig.`);
+  lines.push(`Schrijf in het Nederlands tenzij de user expliciet een andere taal gebruikt.`);
+  lines.push(``);
+  lines.push(`## Trader-context`);
+  lines.push(`Afgelopen 7 dagen: ${stats.tradeCount} trades · W:${stats.wins} L:${stats.losses} · WR ${stats.winRate}% · PnL $${stats.totalPnl}${stats.avgR!=null?` · avg R ${stats.avgR}`:""}${stats.profitFactor!="∞"?` · PF ${stats.profitFactor}`:""}`);
+  if(stats.missedTpCount>0)lines.push(`Gemiste TPs deze week: ${stats.missedTpCount}`);
+  if(stats.topSymbols.length)lines.push(`Top symbolen: ${stats.topSymbols.map(s=>s[0]+"("+s[1]+")").join(", ")}`);
+  if(playbooks&&playbooks.length){
+    lines.push(``);
+    lines.push(`## Playbooks (${playbooks.length} totaal)`);
+    playbooks.slice(0,5).forEach(p=>{
+      lines.push(`- **${p.name||"naamloos"}**${p.oneLiner?": "+p.oneLiner:""}${p.defaultGrade?" [grade "+p.defaultGrade+"]":""}`);
+    });
+    if(playbooks.length>5)lines.push(`(+${playbooks.length-5} meer — beschikbaar wanneer user vraagt)`);
+  }
+  if(weeklies&&weeklies.length){
+    const last=weeklies[0];
+    if(last&&last.content){
+      lines.push(``);
+      lines.push(`## Laatste weekly digest (${last.periodStart} → ${last.periodEnd})`);
+      if(last.content.summary)lines.push(`Summary: ${last.content.summary}`);
+      if(last.content.action)lines.push(`Actie van vorige week: ${last.content.action}`);
+      if(last.content.discipline_trend)lines.push(`Discipline-trend: ${last.content.discipline_trend}`);
+    }
+  }
+  return lines.join("\n");
+}
+
+// v12.139 — Multi-turn call. Behoudt history (last N messages) zodat de
+// conversatie context-aware blijft. messages = volledige history; helper
+// roept gewoon callClaude maar geeft messages-array door ipv 1 userMessage.
+async function callClaudeChat({apiKey,model,systemPrompt,messages,maxTokens=1024}){
+  // Pre-call budget guard (identiek aan callClaude). Duplicaat omdat
+  // callClaude alleen 1-message support heeft; refactor kan later.
+  try{
+    const cfg=loadAIConfig();
+    if(cfg.features.budget){
+      const now=new Date();
+      const monthKey=now.getFullYear()+"-"+String(now.getMonth()+1).padStart(2,"0");
+      const spent=(cfg.budget.lastResetMonth&&cfg.budget.lastResetMonth!==monthKey)?0:(Number(cfg.budget.spent)||0);
+      const limit=Number(cfg.budget.monthlyLimit)||0;
+      if(limit>0&&spent>=limit){
+        throw new Error("Maandlimiet bereikt: $"+spent.toFixed(2)+" van $"+limit.toFixed(2)+". Verhoog in Budget & kosten of wacht tot 1e van de maand.");
+      }
+    }
+  }catch(e){if(/Maandlimiet/.test(e.message))throw e;}
+  const resp=await fetch("https://api.anthropic.com/v1/messages",{
+    method:"POST",
+    headers:{
+      "Content-Type":"application/json",
+      "x-api-key":apiKey,
+      "anthropic-version":"2023-06-01",
+      "anthropic-dangerous-direct-browser-access":"true"
+    },
+    body:JSON.stringify({
+      model:model||"claude-sonnet-4-6",
+      max_tokens:maxTokens,
+      system:systemPrompt||undefined,
+      messages:messages
+    })
+  });
+  const data=await resp.json();
+  if(!resp.ok){
+    const msg=(data&&data.error&&data.error.message)||("HTTP "+resp.status);
+    throw new Error(msg);
+  }
+  const text=(data.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("\n");
+  const usage=data.usage||{input_tokens:0,output_tokens:0};
+  const cost=costForUsage(model||"claude-sonnet-4-6",usage.input_tokens||0,usage.output_tokens||0);
+  return{text,usage,cost,raw:data};
+}
+
 // v12.137 — Subtle topbar-indicator. Verschijnt ALLEEN wanneer IS_AI + master
 // aan + budget-feature aan + spent ≥ alertThreshold van limit. Klik → springt
 // naar AI-coach tab + budget-sectie. Subscribed via custom events op cost-change.
@@ -15289,6 +15404,196 @@ function WeeklyDigestSection({cfg,setCfg,trades,showToast}){
   </div>);
 }
 
+// v12.139 — Multi-turn chat sectie. 2-pane layout: sidebar met
+// conversations-list (links) + chat-pane (rechts). Send-flow gebruikt
+// callClaudeChat met volledige message-history + cross-feature context.
+function ChatSection({cfg,setCfg,playbooks,trades,showToast}){
+  const[chats,setChats]=useState(()=>loadChats());
+  const[activeId,setActiveId]=useState(()=>{const c=loadChats();return c[0]?c[0].id:null;});
+  const[input,setInput]=useState("");
+  const[loading,setLoading]=useState(false);
+  const[error,setError]=useState("");
+  const[renamingId,setRenamingId]=useState(null);
+  const[renameText,setRenameText]=useState("");
+  const scrollRef=useRef(null);
+  const inputRef=useRef(null);
+  const weeklies=React.useMemo(()=>loadWeeklies(),[]);
+
+  useEffect(()=>{
+    const handler=()=>setChats(loadChats());
+    window.addEventListener("tj-ai-chats-change",handler);
+    return()=>window.removeEventListener("tj-ai-chats-change",handler);
+  },[]);
+
+  const active=chats.find(c=>c.id===activeId)||null;
+
+  // Auto-scroll naar bottom bij nieuwe message
+  useEffect(()=>{
+    if(scrollRef.current)scrollRef.current.scrollTop=scrollRef.current.scrollHeight;
+  },[active&&active.messages.length,loading]);
+
+  const newChat=()=>{
+    const id=String(Date.now())+Math.random().toString(36).slice(2,8);
+    const chat={id,title:"Nieuwe chat",createdAt:Date.now(),updatedAt:Date.now(),messages:[]};
+    upsertChat(chat);
+    setActiveId(id);
+    setTimeout(()=>{inputRef.current&&inputRef.current.focus();},50);
+  };
+
+  const deleteChat=(id)=>{
+    if(!confirm("Verwijder deze conversatie?"))return;
+    deleteChatById(id);
+    if(activeId===id){
+      const remaining=loadChats();
+      setActiveId(remaining[0]?remaining[0].id:null);
+    }
+  };
+
+  const startRename=(c)=>{setRenamingId(c.id);setRenameText(c.title||"");};
+  const commitRename=()=>{
+    if(!renamingId)return;
+    const c=loadChats().find(x=>x.id===renamingId);
+    if(c){upsertChat({...c,title:(renameText||"naamloos").trim(),updatedAt:Date.now()});}
+    setRenamingId(null);setRenameText("");
+  };
+
+  const sendMessage=async()=>{
+    const txt=input.trim();
+    if(!txt||loading)return;
+    let chat=active;
+    if(!chat){
+      const id=String(Date.now())+Math.random().toString(36).slice(2,8);
+      chat={id,title:autoTitle(txt),createdAt:Date.now(),updatedAt:Date.now(),messages:[]};
+      setActiveId(id);
+    }else if(chat.messages.length===0&&(chat.title==="Nieuwe chat"||!chat.title)){
+      chat={...chat,title:autoTitle(txt)};
+    }
+    // Voeg user message toe
+    const userMsg={role:"user",content:txt,ts:Date.now()};
+    const updated={...chat,messages:[...chat.messages,userMsg],updatedAt:Date.now()};
+    upsertChat(updated);
+    setInput("");
+    setLoading(true);setError("");
+
+    try{
+      // Privacy mask voor outgoing messages (ticker-namen)
+      const fullText=updated.messages.map(m=>m.content).join("\n");
+      const maskMap=cfg.features.privacy?buildTickerMask(fullText+" "+JSON.stringify(playbooks||[])):null;
+      const safeMessages=updated.messages.map(m=>({role:m.role,content:maskMap?applyMask(m.content,maskMap):m.content}));
+      const safePlaybooks=maskMap?(playbooks||[]).map(p=>JSON.parse(applyMask(JSON.stringify(p),maskMap))):(playbooks||[]);
+      const safeTrades=maskMap?(trades||[]).map(t=>({...t,symbol:applyMask(t.symbol||"",maskMap)})):(trades||[]);
+      const safeWeeklies=maskMap?weeklies.map(w=>JSON.parse(applyMask(JSON.stringify(w),maskMap))):weeklies;
+      const systemPrompt=buildChatSystemPrompt({playbooks:safePlaybooks,trades:safeTrades,weeklies:safeWeeklies});
+      const res=await callClaudeChat({
+        apiKey:cfg.byok.key,
+        model:cfg.byok.model||"claude-sonnet-4-6",
+        systemPrompt,
+        messages:safeMessages,
+        maxTokens:1024
+      });
+      recordAICost(res.cost);
+      setCfg&&setCfg(loadAIConfig());
+      const displayText=maskMap?reverseMask(res.text,maskMap):res.text;
+      const aMsg={role:"assistant",content:displayText,cost:res.cost,ts:Date.now()};
+      const final={...updated,messages:[...updated.messages,aMsg],updatedAt:Date.now()};
+      upsertChat(final);
+    }catch(e){
+      setError(String(e.message||e));
+      showToast&&showToast("Chat mislukt: "+(e.message||e),"error");
+    }finally{setLoading(false);}
+  };
+
+  const onKey=(e)=>{
+    if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendMessage();}
+  };
+
+  if(!cfg.enabled){
+    return(<div style={{padding:"24px",border:"1px dashed var(--border3)",borderRadius:"10px",background:"var(--glass)",textAlign:"center",color:"var(--text3)",fontSize:"13px"}}>
+      Zet eerst de <strong>master-schakelaar</strong> aan.
+    </div>);
+  }
+  if(!cfg.byok.key){
+    return(<div style={{padding:"24px",border:"1px dashed var(--border3)",borderRadius:"10px",background:"var(--glass)",textAlign:"center",color:"var(--text3)",fontSize:"13px"}}>
+      Geen API-key ingevuld. Vul je Anthropic key in onder <strong>API-key (BYOK)</strong>.
+    </div>);
+  }
+
+  const msgs=active?active.messages:[];
+
+  return(<div>
+    <p style={{fontSize:"12px",color:"var(--text3)",lineHeight:1.6,marginBottom:"14px",maxWidth:"640px"}}>
+      Stel vragen over je trading. AI heeft context van je playbooks, recente trade-stats en laatste weekly digest. Multi-turn: vorige messages blijven onthouden binnen deze chat. Kosten per bericht: ~$0.01–0.05.
+    </p>
+
+    <div style={{display:"grid",gridTemplateColumns:"220px 1fr",gap:"14px",height:"540px",border:"1px solid var(--border2)",borderRadius:"12px",overflow:"hidden",background:"var(--glass)"}}>
+      {/* Sidebar */}
+      <aside style={{borderRight:"1px solid var(--border2)",display:"flex",flexDirection:"column",background:"var(--bg2)"}}>
+        <div style={{padding:"10px 12px",borderBottom:"1px solid var(--border2)"}}>
+          <button onClick={newChat} style={{width:"100%",padding:"8px 12px",fontSize:"12px",fontWeight:700,borderRadius:"6px",border:"1px solid var(--gold-border)",background:"var(--gold-dim)",color:"var(--gold)",cursor:"pointer",fontFamily:"inherit"}}>+ Nieuwe chat</button>
+        </div>
+        <div style={{flex:1,overflowY:"auto",padding:"6px"}}>
+          {chats.length===0&&<div style={{padding:"14px 8px",fontSize:"11px",color:"var(--text4)",textAlign:"center",lineHeight:1.5}}>Nog geen conversaties. Klik "Nieuwe chat" om te beginnen.</div>}
+          {chats.map(c=>{
+            const isActive=c.id===activeId;
+            const isRen=renamingId===c.id;
+            return(<div key={c.id} style={{padding:"8px 10px",borderRadius:"6px",background:isActive?"var(--gold-dim)":"transparent",border:"1px solid "+(isActive?"var(--gold-border)":"transparent"),cursor:"pointer",marginBottom:"4px"}} onClick={()=>!isRen&&setActiveId(c.id)}>
+              {isRen?(<input autoFocus value={renameText} onChange={e=>setRenameText(e.target.value)} onBlur={commitRename} onKeyDown={e=>{if(e.key==="Enter")commitRename();if(e.key==="Escape"){setRenamingId(null);setRenameText("");}}} style={{width:"100%",padding:"2px 4px",fontSize:"12px",border:"1px solid var(--gold-border)",borderRadius:"4px",background:"var(--bg)",color:"var(--text)",fontFamily:"inherit",boxSizing:"border-box"}}/>):(<>
+                <div style={{fontSize:"12px",fontWeight:600,color:isActive?"var(--gold)":"var(--text2)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.title||"naamloos"}</div>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:"3px",gap:"6px"}}>
+                  <div style={{fontSize:"10px",color:"var(--text4)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>{c.messages.length} berichten · {new Date(c.updatedAt).toLocaleDateString("nl-NL")}</div>
+                  <button onClick={e=>{e.stopPropagation();startRename(c);}} title="Hernoem" style={{padding:"2px 5px",fontSize:"10px",border:"none",background:"transparent",color:"var(--text4)",cursor:"pointer"}}>✎</button>
+                  <button onClick={e=>{e.stopPropagation();deleteChat(c.id);}} title="Verwijder" style={{padding:"2px 5px",fontSize:"10px",border:"none",background:"transparent",color:"var(--text4)",cursor:"pointer"}}>✕</button>
+                </div>
+              </>)}
+            </div>);
+          })}
+        </div>
+      </aside>
+
+      {/* Main chat pane */}
+      <main style={{display:"flex",flexDirection:"column",minWidth:0}}>
+        <div ref={scrollRef} style={{flex:1,overflowY:"auto",padding:"16px 18px"}}>
+          {!active&&<div style={{padding:"40px 20px",textAlign:"center",color:"var(--text4)",fontSize:"13px"}}>
+            <div style={{fontSize:"32px",marginBottom:"10px"}}>💬</div>
+            Geen chat geselecteerd. Klik <strong>"Nieuwe chat"</strong> of selecteer een bestaande conversatie.
+          </div>}
+          {active&&msgs.length===0&&<div style={{padding:"40px 20px",textAlign:"center",color:"var(--text4)",fontSize:"13px",lineHeight:1.6}}>
+            <div style={{fontSize:"28px",marginBottom:"10px"}}>💬</div>
+            Stel je eerste vraag.<br/>
+            <span style={{fontSize:"11px",color:"var(--text5)"}}>Voorbeelden: "Wat is mijn beste setup deze maand?" · "Waarom mis ik zoveel TP2?" · "Hoe zou Steenbarger naar mijn discipline kijken?"</span>
+          </div>}
+          {msgs.map((m,i)=>{
+            const isUser=m.role==="user";
+            return(<div key={i} style={{display:"flex",justifyContent:isUser?"flex-end":"flex-start",marginBottom:"12px"}}>
+              <div style={{maxWidth:"75%",padding:"10px 14px",borderRadius:"12px",background:isUser?"var(--gold-dim)":"var(--bg2)",border:"1px solid "+(isUser?"var(--gold-border)":"var(--border2)")}}>
+                <div style={{fontSize:"10px",fontWeight:700,color:isUser?"var(--gold)":"var(--text4)",letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:"4px"}}>{isUser?"Jij":"AI-coach"}</div>
+                <div style={{fontSize:"13px",color:"var(--text)",lineHeight:1.55,whiteSpace:"pre-wrap"}}>{m.content}</div>
+                {!isUser&&m.cost!=null&&<div style={{fontSize:"9px",color:"var(--text5)",marginTop:"6px",fontFamily:"var(--mono)"}}>${m.cost.toFixed(4)}</div>}
+              </div>
+            </div>);
+          })}
+          {loading&&<div style={{display:"flex",justifyContent:"flex-start",marginBottom:"12px"}}>
+            <div style={{padding:"10px 14px",borderRadius:"12px",background:"var(--bg2)",border:"1px solid var(--border2)",fontSize:"12px",color:"var(--text3)"}}>
+              <span style={{display:"inline-block",animation:"pulse 1.4s ease-in-out infinite"}}>● ● ●</span>
+            </div>
+          </div>}
+          {error&&<div style={{padding:"10px 14px",background:"rgba(224,85,85,0.08)",border:"1px solid var(--red)",borderRadius:"8px",color:"var(--red)",fontSize:"11px",marginTop:"6px"}}>
+            ✗ {error}
+          </div>}
+        </div>
+        <div style={{borderTop:"1px solid var(--border2)",padding:"10px 14px",background:"var(--bg)"}}>
+          <div style={{display:"flex",gap:"8px",alignItems:"flex-end"}}>
+            <textarea ref={inputRef} value={input} onChange={e=>setInput(e.target.value)} onKeyDown={onKey} rows={2} placeholder={active?"Typ je vraag… (Enter om te sturen, Shift+Enter voor nieuwe regel)":"Klik 'Nieuwe chat' om te beginnen…"} disabled={loading} style={{flex:1,padding:"8px 10px",fontSize:"13px",borderRadius:"6px",border:"1px solid var(--border3)",background:"var(--bg2)",color:"var(--text)",fontFamily:"inherit",resize:"none",boxSizing:"border-box"}}/>
+            <button onClick={sendMessage} disabled={loading||!input.trim()} style={{padding:"10px 18px",fontSize:"13px",fontWeight:700,borderRadius:"6px",border:"1px solid var(--gold-border)",background:(loading||!input.trim())?"var(--border3)":"var(--gold)",color:(loading||!input.trim())?"var(--text4)":"var(--bg)",cursor:(loading||!input.trim())?"not-allowed":"pointer",opacity:(loading||!input.trim())?0.6:1,fontFamily:"inherit",whiteSpace:"nowrap"}}>
+              {loading?"⏳":"Verstuur"}
+            </button>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>);
+}
+
 function AICoachPage({showToast,playbooks,trades}){
   const[cfg,setCfg]=useState(()=>loadAIConfig());
   const[active,setActive]=useState("sec-general");
@@ -15354,6 +15659,7 @@ function AICoachPage({showToast,playbooks,trades}){
     {id:"sec-pretrade",label:"Pre-trade validatie",icon:"🛡"},
     {id:"sec-budget",label:"Budget & kosten",icon:"💰"},
     {id:"sec-weekly",label:"Weekly digest",icon:"📅"},
+    {id:"sec-chat",label:"Chat",icon:"💬"},
     {id:"sec-privacy",label:"Privacy",icon:"🔒"},
   ];
 
@@ -15386,7 +15692,7 @@ function AICoachPage({showToast,playbooks,trades}){
       </a>))}
       <div style={{marginTop:"16px",padding:"10px 12px",background:"var(--gold-dim)",border:"1px solid var(--gold-border)",borderRadius:"8px",fontSize:"10px",color:"var(--gold)",lineHeight:1.5}}>
         <div style={{fontWeight:700,marginBottom:"4px"}}>BETA · {APP_VERSION.version}</div>
-        <div style={{color:"var(--text3)",fontWeight:500}}>Pre-trade live. Budget + Weekly + Chat volgen in v12.137–138.</div>
+        <div style={{color:"var(--text3)",fontWeight:500}}>Alle features live. Geef feedback in Discord.</div>
       </div>
     </aside>
     <main className="settings-content">
@@ -15491,6 +15797,12 @@ function AICoachPage({showToast,playbooks,trades}){
       <div className="ai-section" id="sec-weekly">
         <h3 style={{fontSize:"16px",fontWeight:700,color:"var(--text)",marginBottom:"16px"}}>📅 Weekly digest</h3>
         <WeeklyDigestSection cfg={cfg} setCfg={setCfg} trades={trades} showToast={showToast}/>
+      </div>
+
+      {/* ─── CHAT ─── */}
+      <div className="ai-section" id="sec-chat">
+        <h3 style={{fontSize:"16px",fontWeight:700,color:"var(--text)",marginBottom:"16px"}}>💬 Chat met je coach</h3>
+        <ChatSection cfg={cfg} setCfg={setCfg} playbooks={playbooks} trades={trades} showToast={showToast}/>
       </div>
 
       {/* ─── PRIVACY (placeholder) ─── */}

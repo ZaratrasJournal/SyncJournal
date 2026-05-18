@@ -6,6 +6,27 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.139] — 2026-05-18
+
+### Toegevoegd
+- **Multi-turn chat live (AI-coach, BETA — `?ai=1`)** *(2026-05-18)* — Sluitsteen van de AI-coach feature: een volwaardige chat-interface met behoud van conversation-history. Nieuwe sectie **💬 Chat met je coach** tussen Weekly en Privacy.
+  - **2-pane layout** (220px sidebar + main pane, 540px hoog) — net als een email-client / WhatsApp web
+  - **Conversations-list** in sidebar: nieuwe chat-knop, klikbare lijst met titel + bericht-count + laatste-update-datum, hernoem-knop (✎) + verwijder-knop (✕) per chat. Active chat gold-highlighted.
+  - **Chat-pane**: user-messages rechts (gold), assistant-messages links (neutral), auto-scroll naar bottom bij nieuwe message, typing-indicator (● ● ●) tijdens loading, error-banner bij failure
+  - **Multi-turn context**: bij elke send wordt de **volledige message-history** naar Claude gestuurd zodat vervolgvragen context behouden. De helper `callClaudeChat` heeft dezelfde budget-guard als `callClaude`
+  - **Cross-feature system prompt**: per chat-call wordt een rijke context geïnjecteerd: laatste 7-dag stats (W/L/WR/PnL/avgR/PF), top-5 playbooks met one-liner + grade, laatste weekly digest (summary + action + discipline-trend). Coach kan dus refereren naar je echte data zonder dat je het hoeft uit te leggen.
+  - **Auto-title** vanaf eerste user message (max 60 chars, ellipsis bij langer). Bij rename: inline-edit veld in sidebar.
+  - **Cost per message** zichtbaar onder elke assistant-bubble (\\$0.0xxx, mono-font). Totale maand-cost loopt via dezelfde `recordAICost` als pre-trade + weekly.
+  - **Privacy-filter** actief op messages + playbooks + trades + weeklies vóór payload wanneer toggle aan. Reverse-mask op response zodat UI gewoon "BTC" toont.
+  - **Keyboard**: Enter = verstuur · Shift+Enter = nieuwe regel · Esc bij rename = annuleer
+  - **Storage `tj_ai_chats`** — JSON-array van chat-records (id, title, createdAt, updatedAt, messages[]), auto-cap 50 chats (oudste wordt afgeknipt). Custom event `tj-ai-chats-change`.
+- **4-spec Playwright suite** (`tests/aicoach-chat.spec.js`): empty-state + nieuwe chat · send-flow (API payload check + storage + cost-tracking + auto-title) · **multi-turn payload bevat volledige history** (3 messages na 2e send) · delete-knop verwijdert chat.
+
+### Gewijzigd
+- AI-coach sidebar beta-badge tekst geupdate naar **"Alle features live. Geef feedback in Discord."** (was "Pre-trade live. Budget + Weekly + Chat volgen in v12.137–138.").
+
+---
+
 ## [v12.138] — 2026-05-18
 
 ### Toegevoegd
