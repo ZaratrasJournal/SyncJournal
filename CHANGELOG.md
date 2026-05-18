@@ -6,6 +6,21 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.144] — 2026-05-18
+
+### Fixed
+- **Chat-input bleef na 1 antwoord onbruikbaar — v12.143 fix was incompleet** *(2026-05-18, gemeld door Denny: "Ik kan na 1 antwoord niks meer met de chat. niet opnieuw typen of scrollen.")* — Root-cause: ik had in v12.143 directe `setChats(arr)` toegevoegd in mutaties, MAAR de oude event-listener `tj-ai-chats-change` bleef óók luisteren en deed alsnog een tweede `setChats(loadChats())` na de `saveChats` dispatch. De async event-handler-render kwam soms ná `setLoading(false)` met een stale snapshot binnen → input bleef effectief disabled tot een unrelated page-interaction. **Fix**: event-listener verwijderd uit ChatSection. We doen sinds v12.143 al direct setChats overal — cross-tab sync gebeurt nog via browser Storage-event als nodig. **Nieuwe Playwright-test** (`tests/aicoach-chat-2msg.spec.js`) reproduceert exact het bug-scenario: 2 messages sequentieel sturen → input enabled blijft + scroll-pane onderaan staat na 2e response. Test was vóór deze fix rood, nu groen.
+- **AI vergeleek avgR (1.94) met playbook.minRR (3.0) en concludeerde "onder minimum, niet winstgevend"** *(2026-05-18, gemeld door Denny: "1.7R en hij zegt onder 1R. hoe berekent hij dit?")* — De aggregator gaf alleen `avgR` mee als R-metric. AI vergeleek dat direct met playbook.minRR (een entry-criterium) en concludeerde dat de playbook tekortschoot. Maar:
+  - `avgR` is het gemiddelde over **alle** trades (winners + losers); losers @ -1R trekken het omlaag
+  - `playbook.minRR` is een ENTRY-criterium (welke setups je vóór entry mag nemen), niet een target voor avgR achteraf
+  - Met multi-TP partial closes worden veel trades vroeg gesloten op 0.5–1.5R bij TP1 — dat is by design, niet "tekortschieten"
+  - Edge-metric is **expectancy** = WR × avgWinR − (1−WR) × avgLossR. Positief expectancy = winstgevende playbook
+- **Fix**: per-playbook breakdown rapporteert nu `WR · avgR · avgWinR · avgLossR · expectancy`. Plus een nieuwe sectie in system prompt **"Hoe je de R-metrics juist leest (KRITIEK — voorkomt foute conclusies)"** met expliciete uitleg + voorbeeld + expliciete instructie *"NIET zeggen 'avgR 1.9 ligt onder minRR 3.0 dus playbook tekortschiet'. Wel zeggen 'expectancy +0.8R per trade = winstgevend, gegeven 75% WR + 2.9R avgWin'."*
+
+**Test-suite**: 28 + 2 nieuwe (chat-2msg + interne updates) = 30 specs / 30 passed.
+
+---
+
 ## [v12.143] — 2026-05-18
 
 ### Fixed

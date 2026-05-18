@@ -1235,7 +1235,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.143",released:"2026-05-18"};
+const APP_VERSION={version:"v12.144",released:"2026-05-18"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -15068,6 +15068,7 @@ function aggregatePlaybookStats(trades,playbooks){
   const summarize=(arr)=>{
     if(!arr.length)return null;
     let w=0,l=0,pnl=0,r=0,withR=0;
+    let winSumR=0,winCountR=0,lossSumR=0,lossCountR=0;
     arr.forEach(t=>{
       // v12.142: netPnl() resolves backtest theoretical pnl uit TPs/hindsightExit
       const p=netPnl(t);
@@ -15078,13 +15079,33 @@ function aggregatePlaybookStats(trades,playbooks){
       if(t.rMultiple){const v=Number(t.rMultiple);if(!isNaN(v))theR=v;}
       else if(t.status==="missed"){const tr=calcTheoreticalR(t);if(tr!=null)theR=tr;}
       if(theR!=null){
-        if(theR>0)w++;else if(theR<0)l++;
+        if(theR>0){w++;winSumR+=theR;winCountR++;}
+        else if(theR<0){l++;lossSumR+=Math.abs(theR);lossCountR++;}
         r+=theR;withR++;
       }else{
         if(p>0)w++;else if(p<0)l++;
       }
     });
-    return{count:arr.length,wins:w,losses:l,wr:arr.length?Number((w/arr.length*100).toFixed(1)):0,pnl:Number(pnl.toFixed(2)),avgR:withR?Number((r/withR).toFixed(2)):null};
+    // v12.144: avgWinR/avgLossR/expectancy — AI vergeleek voorheen avgR direct
+    // met playbook.minRR (entry-criterium) en concludeerde "onder minimum"
+    // terwijl playbook winstgevend was. Expectancy = WR*avgWinR - (1-WR)*avgLossR
+    // is de juiste edge-metric. Verzonden in prompt zodat AI exact kan reden.
+    const wr=arr.length?w/arr.length:0;
+    const avgWinR=winCountR?Number((winSumR/winCountR).toFixed(2)):null;
+    const avgLossR=lossCountR?Number((lossSumR/lossCountR).toFixed(2)):null;
+    let expectancy=null;
+    if(avgWinR!=null&&avgLossR!=null){
+      expectancy=Number((wr*avgWinR-(1-wr)*avgLossR).toFixed(2));
+    }else if(avgWinR!=null&&l===0){
+      expectancy=Number((wr*avgWinR).toFixed(2));
+    }
+    return{
+      count:arr.length,wins:w,losses:l,
+      wr:Number((wr*100).toFixed(1)),
+      pnl:Number(pnl.toFixed(2)),
+      avgR:withR?Number((r/withR).toFixed(2)):null,
+      avgWinR,avgLossR,expectancy
+    };
   };
   // Map pb-id → pb-name
   const nameOf={};
@@ -15114,9 +15135,17 @@ function buildChatSystemPrompt(opts){
   lines.push(``);
   lines.push(`## Hoe de data is opgebouwd (lees dit eerst!)`);
   lines.push(`- Trade-types: real = live uitgevoerd. [BT] = backtest (chart-replay). [PAPER] = demo-account. [MISSED] = real-time gespot maar niet genomen.`);
-  lines.push(`- Per-playbook breakdown: gesplitst per type. WR + avg-R zijn berekend op basis van \`rMultiple\` (preferred) of theoretische R uit TPs/hindsightExit voor backtests. Dus 75% WR + R 1.8 op een backtest = winstgevend playbook, ook al staat "PnL$0".`);
-  lines.push(`- "PnL" voor backtests is theoretisch (berekend uit entry/stop/exit), kan $0 zijn als geen positionSize is ingevuld. Wat telt is **rMultiple/R**, niet PnL.`);
-  lines.push(`- Een playbook met bv "backtest: 20t WR 65% R 1.5" is winstgevend (expectancy positief), ook al is PnL$ laag of nul.`);
+  lines.push(`- "PnL" voor backtests is theoretisch (uit entry/stop/exit), kan $0 zijn als geen positionSize is ingevuld. Wat telt is **rMultiple/R**, niet PnL.`);
+  lines.push(``);
+  lines.push(`### Hoe je de R-metrics juist leest (KRITIEK — voorkomt foute conclusies)`);
+  lines.push(`Per playbook geef ik je: \`WR · avgR · avgWinR · avgLossR · expectancy\`.`);
+  lines.push(`- **avgR** = gemiddelde R over **ALLE** trades incl losers. Losers trekken dit getal omlaag. avgR is GEEN target, het is een outcome.`);
+  lines.push(`- **avgWinR** = alleen gemiddelde van winnaars. Dit is wat je per winning-trade pakt.`);
+  lines.push(`- **avgLossR** = gemiddelde absolute R van losers (vaak ~1R bij conservatief risk).`);
+  lines.push(`- **expectancy** = WR×avgWinR − (1−WR)×avgLossR. Dit is de **enige juiste edge-metric**. Als expectancy positief is → playbook is winstgevend, punt.`);
+  lines.push(`- **playbook minRR** (uit de playbook-definitie) is een ENTRY-criterium (welke setups je VÓÓR entry mag nemen), GEEN target voor avgR achteraf.`);
+  lines.push(`  Voorbeeld: minRR 3.0 + multi-TP partial closes → veel trades worden onderweg gesloten op 0.5-1.5R bij TP1. Dat is by design. avgR komt dan onder 3.0 te liggen — dit is geen "tekortschieten", maar correct risk-management.`);
+  lines.push(`- **NIET zeggen** "avgR 1.9 ligt onder minRR 3.0 dus playbook tekortschiet". Wel zeggen "expectancy +0.8R per trade = winstgevend, gegeven 75% WR + 2.9R avgWin".`);
   lines.push(``);
   lines.push(`## Trader-data: laatste 7 dagen`);
   lines.push(`${stats.tradeCount} trades · W:${stats.wins} L:${stats.losses} · WR ${stats.winRate}% · PnL $${stats.totalPnl}${stats.avgR!=null?` · avg R ${stats.avgR}`:""}${stats.profitFactor!="∞"?` · PF ${stats.profitFactor}`:""}`);
@@ -15124,14 +15153,29 @@ function buildChatSystemPrompt(opts){
   if(stats.topSymbols.length)lines.push(`Top symbolen: ${stats.topSymbols.map(s=>s[0]+"("+s[1]+")").join(", ")}`);
 
   // Per-playbook breakdown
+  // v12.144: voeg avgWinR / avgLossR / expectancy toe zodat AI de juiste
+  // edge-metric kan gebruiken ipv direct avgR met playbook.minRR vergelijken.
+  const fmtBucket=(b,label)=>{
+    if(!b||b.count===0)return null;
+    const parts=[`${label}: ${b.count}t WR${b.wr}%`];
+    if(b.pnl!==undefined&&Math.abs(b.pnl)>0.005)parts.push(`PnL$${b.pnl}`);
+    if(b.avgR!=null)parts.push(`avgR${b.avgR}`);
+    if(b.avgWinR!=null)parts.push(`avgWin${b.avgWinR}R`);
+    if(b.avgLossR!=null)parts.push(`avgLoss-${b.avgLossR}R`);
+    if(b.expectancy!=null)parts.push(`exp${b.expectancy>=0?"+":""}${b.expectancy}R`);
+    return parts.join(" ");
+  };
   if(pbStats.length){
     lines.push(``);
     lines.push(`## Trader-data: per playbook (alle trades, niet alleen 7 dagen)`);
     pbStats.slice(0,15).forEach(p=>{
       const parts=[];
-      parts.push(`real: ${p.real?`${p.real.count}t WR${p.real.wr}% PnL$${p.real.pnl}${p.real.avgR!=null?` R${p.real.avgR}`:""}`:"0t"}`);
-      if(p.backtest&&p.backtest.count>0)parts.push(`backtest: ${p.backtest.count}t WR${p.backtest.wr}%${p.backtest.avgR!=null?` R${p.backtest.avgR}`:""}`);
-      if(p.paper&&p.paper.count>0)parts.push(`paper: ${p.paper.count}t WR${p.paper.wr}%${p.paper.avgR!=null?` R${p.paper.avgR}`:""}`);
+      const realFmt=fmtBucket(p.real,"real");
+      if(realFmt)parts.push(realFmt);else parts.push("real: 0t");
+      const btFmt=fmtBucket(p.backtest,"backtest");
+      if(btFmt)parts.push(btFmt);
+      const paperFmt=fmtBucket(p.paper,"paper");
+      if(paperFmt)parts.push(paperFmt);
       if(p.missed&&p.missed.count>0)parts.push(`missed-real: ${p.missed.count}t`);
       lines.push(`- **${p.name}** — ${parts.join(" · ")}`);
     });
@@ -15618,12 +15662,13 @@ function ChatSection({cfg,setCfg,playbooks,trades,showToast}){
   const inputRef=useRef(null);
   const weeklies=React.useMemo(()=>loadWeeklies(),[]);
 
-  useEffect(()=>{
-    const handler=()=>setChats(loadChats());
-    window.addEventListener("tj-ai-chats-change",handler);
-    return()=>window.removeEventListener("tj-ai-chats-change",handler);
-  },[]);
-
+  // v12.144 — geen event-listener voor tj-ai-chats-change in ChatSection:
+  // we doen sinds v12.143 al direct setChats(arr) op alle mutaties (newChat /
+  // sendMessage / deleteChat). Dubbele update via event veroorzaakte een race
+  // waarbij de tweede setChats soms na setLoading(false) arriveerde met een
+  // stale snapshot → input bleef effectief disabled tot een onbedoelde page-
+  // interaction. Externe stores blijven syncen via Storage event (cross-tab),
+  // maar binnen één tab is direct state-update voldoende en betrouwbaarder.
   const active=chats.find(c=>c.id===activeId)||null;
 
   // Auto-scroll naar bottom bij nieuwe message
