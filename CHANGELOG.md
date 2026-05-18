@@ -6,6 +6,21 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.143] — 2026-05-18
+
+### Fixed
+- **AI-coach chat hing in loading-state — assistant-message kwam binnen maar UI bleef "1 berichten" tonen** *(2026-05-18, gemeld door Denny met screenshot: chat-pane leeg met loading-dots na response)* — Race-conditie tussen async event-listener `tj-ai-chats-change` en `setLoading(false)`. State-update via event arriveerde soms ná de re-render → chat-storage had assistant-msg wel, maar React-state nog niet. UI bleef hangen op user-msg + dots, input box disabled. **Fix**: `sendMessage` + `newChat` + `deleteChat` doen nu **direct `setChats(arr)`** met de return-value van `upsertChat`/`deleteChatById` ipv te wachten op event. Plus force-scroll na assistant-render (`setTimeout 80ms` zodat de pane naar bottom scrollt en niet half-leeg lijkt).
+- **Chat-messages waren onleesbaar — markdown werd raw getoond** *(2026-05-18, gemeld door Denny: "De opmaak van de tekst is slecht te lezen")* — Claude antwoordt vaak in markdown (`# headers`, `**bold**`, `> quotes`, `` `code` ``, lists). De chat-pane toonde alleen `whiteSpace: pre-wrap` waardoor `## Wat de data zegt` en `**winstgevend**` als raw tekst met sterretjes verschenen. **Fix**: nieuwe lichte markdown-renderer **`renderChatMarkdown(text)`** die ondersteunt: `# / ## / ### / ####` headers (4 sizes), `**bold**`, `*italic*`, `` `code` ``, code-fences (```` ```...``` ````), `> blockquote` (gouden border-left), ordered/unordered lists (`- * • / 1.`), horizontale lijnen (`---`), paragraph-breaks. Wordt alleen op assistant-messages toegepast via `dangerouslySetInnerHTML`. **User-messages blijven raw** (security: alleen gegenereerde content trusten we, niet user-input).
+- **AI kreeg te weinig trade-detail om patronen te zien** *(2026-05-18, gemeld door Denny: "data wordt niet goed opgehaald", AI vroeg om "tijd van dag, sessie, trend vs range")* — De `Recente trades`-sectie in system prompt had alleen 15 trades met basis-info (datum, sym, pnl, R, pb, grade). Geen tijd, geen sessie, geen notes → AI kon niet vragen als "welke setups op London-open vs NY werkten beter?" beantwoorden zonder extra info aan user te vragen. **Fix**: sample verhoogd naar **25 trades** + per trade extra: `entryTime`, **sessie-bucket** (Asia / London / London-NY / NY, op basis van uur), eerste 60 chars van `notes`. AI kan nu direct patroon-analyses doen zonder verduidelijking.
+
+### Test
+- Nieuwe `tests/aicoach-chat-markdown.spec.js` (2 specs): verifieert dat assistant-message markdown rendert naar `<strong>`/`<blockquote>`/`<ul>`/`<code>`/`<pre>` etc. én dat user-message raw blijft (geen XSS-vector via markdown in user-input).
+- Bestaande chat tests blijven groen (4 + switch + context = 6) na directe state-sync wijziging.
+
+**Volledige test-suite na deze release**: 28 specs / 28 passed / 0 failed (smoke + foundation + pretrade + budget + weekly + chat × 5).
+
+---
+
 ## [v12.142] — 2026-05-18
 
 ### Fixed

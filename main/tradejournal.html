@@ -1235,7 +1235,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.142",released:"2026-05-18"};
+const APP_VERSION={version:"v12.143",released:"2026-05-18"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -14963,6 +14963,60 @@ function deleteChatById(id){
   return arr;
 }
 
+// v12.143 — Markdown-renderer voor chat-messages. Claude antwoordt vaak in
+// markdown (## headers, **bold**, lists, > quotes, `code`). Voorheen toonde
+// chat raw tekst met sterretjes — onleesbaar. Hier een lichte parser die
+// HTML genereert zonder externe deps. Voor user-messages NIET gebruiken
+// (security: alleen assistant trust we want we hebben hem zelf aangeroepen).
+function renderChatMarkdown(text){
+  const esc=s=>String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  const inline=s=>esc(s)
+    .replace(/`([^`\n]+)`/g,'<code style="background:var(--bg3);padding:1px 5px;border-radius:3px;font-size:0.9em;font-family:var(--mono)">$1</code>')
+    .replace(/\*\*([^*\n]+)\*\*/g,"<strong>$1</strong>")
+    .replace(/(^|[^a-zA-Z*])\*([^*\n]+?)\*(?!\*)/g,'$1<em>$2</em>');
+  // Code fence (```lang\n...```) → preformatted block
+  const fenceRe=/```(?:\w+)?\n([\s\S]*?)```/g;
+  const fences=[];let cleanText=text;
+  cleanText=cleanText.replace(fenceRe,(_,code)=>{
+    const idx=fences.push(code)-1;
+    return`@@FENCE_${idx}@@`;
+  });
+  const blocks=cleanText.split(/\n\n+/).map(block=>{
+    if(/@@FENCE_(\d+)@@/.test(block)){
+      const idx=Number(block.match(/@@FENCE_(\d+)@@/)[1]);
+      return`<pre style="background:var(--bg3);padding:10px 12px;border-radius:6px;overflow-x:auto;font-size:11px;font-family:var(--mono);margin:8px 0;line-height:1.45">${esc(fences[idx])}</pre>`;
+    }
+    const lines=block.split("\n").map(l=>l).filter(l=>l.length>0);
+    if(!lines.length)return"";
+    // Heading
+    if(lines.length===1&&/^#{1,4}\s/.test(lines[0].trim())){
+      const m=lines[0].trim().match(/^(#+)\s+(.*)$/);
+      const level=m[1].length;
+      const sizes={1:"17px",2:"15px",3:"14px",4:"13px"};
+      return`<div style="font-weight:700;color:var(--text);font-size:${sizes[level]||"13px"};margin:10px 0 4px">${inline(m[2])}</div>`;
+    }
+    // Horizontal rule
+    if(lines.length===1&&/^---+$/.test(lines[0].trim())){
+      return`<hr style="border:none;border-top:1px solid var(--border2);margin:10px 0">`;
+    }
+    // Blockquote
+    if(lines.every(l=>/^\s*>\s?/.test(l))){
+      return'<blockquote style="border-left:3px solid var(--gold);padding:4px 12px;margin:6px 0;color:var(--text3);background:var(--bg3);border-radius:0 4px 4px 0">'+lines.map(l=>inline(l.replace(/^\s*>\s?/,""))).join("<br>")+"</blockquote>";
+    }
+    // Ordered list
+    if(lines.every(l=>/^\s*\d+\.\s/.test(l))){
+      return'<ol style="margin:6px 0;padding-left:22px;line-height:1.55">'+lines.map(l=>"<li>"+inline(l.replace(/^\s*\d+\.\s+/,""))+"</li>").join("")+"</ol>";
+    }
+    // Unordered list (- * •)
+    if(lines.every(l=>/^\s*[-*•]\s/.test(l))){
+      return'<ul style="margin:6px 0;padding-left:22px;line-height:1.55">'+lines.map(l=>"<li>"+inline(l.replace(/^\s*[-*•]\s+/,""))+"</li>").join("")+"</ul>";
+    }
+    // Paragraph
+    return'<p style="margin:6px 0;line-height:1.55">'+lines.map(inline).join("<br>")+"</p>";
+  });
+  return blocks.join("");
+}
+
 // v12.139 — Auto-title chat vanaf eerste user message. Max 60 chars.
 function autoTitle(text){
   const t=String(text||"").trim().split("\n")[0];
@@ -15093,29 +15147,44 @@ function buildChatSystemPrompt(opts){
     });
   }
 
-  // Recente 15 trades sample (incl backtest/paper/real mix).
+  // Recente 25 trades sample (incl backtest/paper/real mix).
   // v12.140-fix: playbook-naam via id-lookup (foreign-key t.playbookId).
+  // v12.143: vergroot 15→25, voeg sessie + tijd toe zodat AI tijd-of-dag patronen
+  // kan herkennen, en notitie-snippet (max 60 chars) voor context.
   const pbNameById={};
   (playbooks||[]).forEach(p=>{pbNameById[p.id]=p.name||"naamloos";});
+  // Session bucket (Amsterdam-tijd) — globaal 4 sessies + overlap
+  const sessionOf=(timeStr)=>{
+    if(!timeStr)return"";
+    const h=parseInt(String(timeStr).split(":")[0],10);
+    if(isNaN(h))return"";
+    if(h>=0&&h<8)return"Asia";
+    if(h>=8&&h<13)return"London";
+    if(h>=13&&h<17)return"London-NY";
+    if(h>=17&&h<22)return"NY";
+    return"Asia"; // 22-24
+  };
   const recent=(trades||[]).slice().filter(t=>t&&(t.exitDate||t.entryDate||t.date)).sort((a,b)=>{
     const da=Date.parse((a.exitDate||a.entryDate||a.date)+"T12:00:00")||0;
     const db=Date.parse((b.exitDate||b.entryDate||b.date)+"T12:00:00")||0;
     return db-da;
-  }).slice(0,15);
+  }).slice(0,25);
   if(recent.length){
     lines.push(``);
-    lines.push(`## Recente trades (top 15 by datum, alle types)`);
+    lines.push(`## Recente trades (top ${recent.length} by datum, alle types)`);
     recent.forEach((t,i)=>{
       const cat=categorizeTradeType(t);
       const tag=cat==="real"?"":cat==="backtest"?"[BT]":cat==="paper"?"[PAPER]":"[MISSED]";
-      // v12.142: netPnl + theoretical R voor backtest met TPs maar zonder pnl
       const pnl=netPnl(t);
       let r=t.rMultiple?Number(t.rMultiple):null;
       if(r==null&&t.status==="missed"){const tr=calcTheoreticalR(t);if(tr!=null)r=tr;}
       const date=(t.exitDate||t.entryDate||t.date||"").split("T")[0];
+      const time=t.time||"";
+      const sess=sessionOf(time);
       const pbName=pbNameById[t.playbookId]||(t.playbookId?`pb-id ${t.playbookId.slice(0,6)}`:"-");
       const setups=(t.setupTags||[]).slice(0,3).join(",");
-      lines.push(`${i+1}. ${date} ${tag} ${t.symbol||t.ticker||"?"} ${t.direction||"?"} PnL=$${(pnl||0).toFixed(2)}${r!=null?" R="+r.toFixed(2):""} pb=${pbName}${setups?" setups="+setups:""}${t.grade?" grade="+t.grade:""}`);
+      const notes=(t.notes||"").trim().split("\n")[0].slice(0,60);
+      lines.push(`${i+1}. ${date}${time?" "+time:""}${sess?" ["+sess+"]":""} ${tag} ${t.symbol||t.ticker||"?"} ${t.direction||"?"} PnL=$${(pnl||0).toFixed(2)}${r!=null?" R="+r.toFixed(2):""} pb=${pbName}${setups?" setups="+setups:""}${t.grade?" grade="+t.grade:""}${notes?" notes='"+notes+"'":""}`);
     });
   }
 
@@ -15565,16 +15634,16 @@ function ChatSection({cfg,setCfg,playbooks,trades,showToast}){
   const newChat=()=>{
     const id=String(Date.now())+Math.random().toString(36).slice(2,8);
     const chat={id,title:"Nieuwe chat",createdAt:Date.now(),updatedAt:Date.now(),messages:[]};
-    upsertChat(chat);
+    setChats(upsertChat(chat));
     setActiveId(id);
     setTimeout(()=>{inputRef.current&&inputRef.current.focus();},50);
   };
 
   const deleteChat=(id)=>{
     if(!confirm("Verwijder deze conversatie?"))return;
-    deleteChatById(id);
+    const remaining=deleteChatById(id);
+    setChats(remaining);
     if(activeId===id){
-      const remaining=loadChats();
       setActiveId(remaining[0]?remaining[0].id:null);
     }
   };
@@ -15598,10 +15667,11 @@ function ChatSection({cfg,setCfg,playbooks,trades,showToast}){
     }else if(chat.messages.length===0&&(chat.title==="Nieuwe chat"||!chat.title)){
       chat={...chat,title:autoTitle(txt)};
     }
-    // Voeg user message toe
+    // Voeg user message toe — direct setChats sync (event-listener kan na await
+    // arriveren wat een visible delay/freeze geeft).
     const userMsg={role:"user",content:txt,ts:Date.now()};
     const updated={...chat,messages:[...chat.messages,userMsg],updatedAt:Date.now()};
-    upsertChat(updated);
+    setChats(upsertChat(updated));
     setInput("");
     setLoading(true);setError("");
 
@@ -15626,7 +15696,11 @@ function ChatSection({cfg,setCfg,playbooks,trades,showToast}){
       const displayText=maskMap?reverseMask(res.text,maskMap):res.text;
       const aMsg={role:"assistant",content:displayText,cost:res.cost,ts:Date.now()};
       const final={...updated,messages:[...updated.messages,aMsg],updatedAt:Date.now()};
-      upsertChat(final);
+      // v12.143: directe setChats + force-scroll na render. Anders bleef de
+      // UI hangen op loading-state met user-msg zichtbaar maar assistant niet
+      // (race tussen async setChats van event-listener en setLoading(false)).
+      setChats(upsertChat(final));
+      setTimeout(()=>{if(scrollRef.current)scrollRef.current.scrollTop=scrollRef.current.scrollHeight;},80);
     }catch(e){
       setError(String(e.message||e));
       showToast&&showToast("Chat mislukt: "+(e.message||e),"error");
@@ -15697,7 +15771,9 @@ function ChatSection({cfg,setCfg,playbooks,trades,showToast}){
             return(<div key={i} style={{display:"flex",justifyContent:isUser?"flex-end":"flex-start",marginBottom:"12px"}}>
               <div style={{maxWidth:"75%",padding:"10px 14px",borderRadius:"12px",background:isUser?"var(--gold-dim)":"var(--bg2)",border:"1px solid "+(isUser?"var(--gold-border)":"var(--border2)")}}>
                 <div style={{fontSize:"10px",fontWeight:700,color:isUser?"var(--gold)":"var(--text4)",letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:"4px"}}>{isUser?"Jij":"AI-coach"}</div>
-                <div style={{fontSize:"13px",color:"var(--text)",lineHeight:1.55,whiteSpace:"pre-wrap"}}>{m.content}</div>
+                {isUser
+                  ?<div style={{fontSize:"13px",color:"var(--text)",lineHeight:1.55,whiteSpace:"pre-wrap"}}>{m.content}</div>
+                  :<div style={{fontSize:"13px",color:"var(--text)"}} dangerouslySetInnerHTML={{__html:renderChatMarkdown(m.content)}}/>}
                 {!isUser&&m.cost!=null&&<div style={{fontSize:"9px",color:"var(--text5)",marginTop:"6px",fontFamily:"var(--mono)"}}>${m.cost.toFixed(4)}</div>}
               </div>
             </div>);
