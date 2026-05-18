@@ -180,3 +180,89 @@ Vier coaching-frameworks geven gestructureerde substraat voor onze AI-prompts:
 - Cost-controle: hard-cap default $10/mo met user-override + dagelijkse usage-summary
 
 **Volgende stap**: `/to-prd` (mattpocock skill) om dit document tot een formele PRD om te zetten, OF direct `/grill-me` om de 5 open beslissingen door te lopen voor we bouwen.
+
+---
+
+## ✅ Finalized v1-spec (post-grill 2026-05-18)
+
+Na grill-me sessie zijn alle open beslissingen + 3 second-order vragen vastgelegd. Spec is **klaar voor bouw**.
+
+### Locked-in decisions
+
+| # | Decision | Keuze | Rationale |
+|---|---|---|---|
+| 1 | Scheduler weekly digest | **On-app-open check + manuele knop**, Settings-configurable (frequency/day/trigger-style) | Single-file HTML constraint: geen écht background mogelijk. On-app-open + manual = realistisch. Settings-config geeft user controle. |
+| 2 | Cold-start drempel | **Dynamic per simType**: 10 trades BT/paper, 20 trades real | BT-iteratie moet snel, real-trades duurder dus hogere bar. Past bij type-agnostic Trust-Score philosophy. |
+| 3 | Funding-rate scope | **Top-3 v1**: Blofin / MEXC / Hyperliquid. Kraken Futures v1.5. FTMO geen funding-concept. | Dit is Denny's hoofd-trio + partial-close trio. 6u extra Worker-werk dat onze defensible niche-claim concreet maakt. |
+| 4 | AI-output storage | **Hybrid**: `trade.aiAutopsy` + `trade.aiPreTradeContext` op trade-object. Weekly digests in nieuwe `tj_ai_weeklies` localStorage-key. | Trade-context hoort bij trade. Weekly digests hebben geen trade-mapping. Schema-impact: 2 nieuwe fields op trade + 1 nieuwe key. |
+| 5 | Budget warning + cap | **Tiered**: $5 warning + $15 hard-cap, beide Settings-configurable. Realtime usage-display per feature. | $5 informatief, $15 blokkerend (instelbaar). UX-buffer voor de Anthropic-bill schrik bij user. |
+| 6 | Ship-strategie | **Progressive**: v12.135 → v12.136 → v12.137 over 3 weken | Feedback-loops na elke release informeren volgende. Past bij onze rapid-iteration cultuur. |
+| 7 | Pre-trade tone | **Hybrid op severity**: green (positive signals) / blue (neutral context) / amber+red (rule-violation) | Spiegelt onze bestaande trade-row coloring. User-respect: niet onnodig alarmistisch, wel duidelijk bij echte schendingen. |
+| 8 | Settings-UI plek | **Nieuwe scroll-spy cat `🤖 AI-coach`** in AccountsHub met 5 subsecties | Past bij TP-templates patroon (v12.123 precedent). Discoverable via sidebar. Geen extra tabs (we hebben er al veel). |
+
+### v12.135 — BYOK + Pre-trade validation (~25u, ~10 dagen)
+
+**Scope**:
+- `AccountsHub` sidebar krijgt `🤖 AI-coach` scroll-spy cat met subsecties:
+  1. **BYOK setup** — Anthropic API key input + test-knop + model-keuze (default `claude-sonnet-4-6`)
+  2. **Pre-trade validation** — toggle on/off + tone-preview (green/blue/amber/red severity)
+  3. **Budget** — $5 warning + $15 hard-cap sliders + realtime usage-display per feature
+- Anthropic SDK client (browser-side fetch, `anthropic-dangerous-direct-browser-access: true` header)
+- Worker endpoints voor funding-rate: Blofin + MEXC + Hyperliquid (~6u)
+- Pre-trade validation block in TradeForm:
+  - Trigger: bij open van form wanneer `playbookId` is gevuld
+  - Cold-start gate: 10 BT/paper, 20 real per playbook
+  - Output: hybrid-severity block (green/blue/amber/red) met R-stats + funding + Bellafiore-5-check
+  - Cost-tracker per call (zichtbaar in Settings → AI-coach → Budget)
+- Tests: Playwright spec voor BYOK-flow + mock Anthropic response
+- CHANGELOG entry + nieuwe sectie in `CLAUDE.md` "AI-coach privacy model"
+
+### v12.136 — Weekly digest (~15u, ~6 dagen na .135)
+
+**Scope**:
+- `tj_ai_weeklies` storage (JSON array van digests met metadata)
+- Settings → AI-coach krijgt 4e subsectie: **Weekly digest config** (frequency: weekly/bi-weekly/monthly, day-of-week, trigger-style: auto-popup/silent/manual-only)
+- On-app-open check: als >7d sinds laatste digest → toast notification "📅 Weekly digest #N — bekijk"
+- Dashboard krijgt nieuwe card "Weekly digest" (laatste 4 weken zichtbaar, klikbaar)
+- Modal met digest-render: per-playbook breakdown (R-stats / WR / session-context) + Steenbarger best-trade-of-week + 3 vragen
+- Knop "Genereer nu" in Dashboard card
+- Cost-call: ~10K tokens in + 2K out = $0.05-0.10 per digest
+
+### v12.137 — Per-trade autopsy + polish (~10u, ~4 dagen na .136)
+
+**Scope**:
+- TradeDetailModal krijgt knop "🔍 AI Autopsy" (alleen voor closed trades)
+- Output opgeslagen in `trade.aiAutopsy` field
+- Settings → AI-coach krijgt 5e subsectie: **Privacy**
+  - Anonimisatie-toggle (trade-IDs hashed vóór API-call, default OFF)
+  - Export-opt-out voor weekly digests (default IN, kan UIT)
+- Settings → Budget: cost-breakdown chart per feature × per week
+- BYOK onboarding-wizard polish (stap-voor-stap met screenshots)
+
+### Niet in v1 (parking lot)
+
+- Voice-pre-trade journaling (à la Process Trader) — v1.5
+- Playbook-promotion-systeem (à la TSB core/testing) — v1.5
+- Mentor mode (à la Tradezella) — v2
+- Setup × session breakdown 2D-grid in Analytics — v1.5
+- Liquidation cluster context — v1.5
+- Kraken Futures funding-rate — v1.5
+- Pre-trade pressure-test button (zware on-demand analyse) — v1.5
+
+### Open tijdens bouwen (geen strategische beslissing)
+
+- Cache-window funding-rate (start: 5 min)
+- Model-fallback (Sonnet als Opus rate-limited)
+- Mobile UX edge-cases (test iOS Safari met Anthropic-key paste-flow)
+- BYOK onboarding-wizard tekst/copywriting
+
+### Acceptatie-criteria voor v12.135 release
+
+- Anthropic key kan in Settings worden gezet + getest (geldige call met "hallo")
+- Funding-rate worker endpoints werken voor 3 exchanges (curl test)
+- Pre-trade validation toont juiste severity-block voor 4 scenarios (no-rule-violation / mild / severe / positive-signal)
+- Cold-start gate werkt: weiger gracefully bij <10 BT trades op playbook met "X/10 trades — coach activeert vanaf 10"
+- Cost-tracker telt correct (binnen 5% van Anthropic's eigen usage-display)
+- Budget hard-cap blokt API-calls correct bij $15 (instelbaar)
+- 6 thema's groen (Settings-UI + pre-trade block)
+- Privacy-sectie in CLAUDE.md documenteert dataflow + no-train flag
