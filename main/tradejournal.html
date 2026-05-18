@@ -1230,7 +1230,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.140",released:"2026-05-18"};
+const APP_VERSION={version:"v12.141",released:"2026-05-18"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -14987,11 +14987,15 @@ function categorizeTradeType(t){
 }
 
 // Aggregate stats per playbook met split per trade-type.
+// v12.140-fix: trades zijn gekoppeld via t.playbookId (foreign-key naar
+// playbook.id), niet t.playbook. Niet-gekoppelde trades komen in "untagged"
+// bucket zodat AI ze ook ziet (en kan adviseren om te taggen).
 function aggregatePlaybookStats(trades,playbooks){
   const byPb={};
+  const UNTAGGED="__untagged";
   (trades||[]).forEach(t=>{
-    if(!t||!t.playbook)return;
-    const key=t.playbook;
+    if(!t)return;
+    const key=t.playbookId||UNTAGGED;
     if(!byPb[key])byPb[key]={all:[],real:[],backtest:[],paper:[],missed:[]};
     const cat=categorizeTradeType(t);
     byPb[key].all.push(t);
@@ -15008,12 +15012,14 @@ function aggregatePlaybookStats(trades,playbooks){
     });
     return{count:arr.length,wins:w,losses:l,wr:arr.length?Number((w/arr.length*100).toFixed(1)):0,pnl:Number(pnl.toFixed(2)),avgR:withR?Number((r/withR).toFixed(2)):null};
   };
-  // Map pb-id → pb-name, lookup tabel
+  // Map pb-id → pb-name
   const nameOf={};
-  (playbooks||[]).forEach(p=>{nameOf[p.id]=p.name||"naamloos";nameOf[p.name]=p.name||"naamloos";});
+  (playbooks||[]).forEach(p=>{nameOf[p.id]=p.name||"naamloos";});
+  nameOf[UNTAGGED]="(geen playbook gekoppeld)";
   return Object.entries(byPb).map(([key,buckets])=>({
     key,
     name:nameOf[key]||key,
+    untagged:key===UNTAGGED,
     all:summarize(buckets.all),
     real:summarize(buckets.real),
     backtest:summarize(buckets.backtest),
@@ -15061,7 +15067,10 @@ function buildChatSystemPrompt(opts){
     });
   }
 
-  // Recente 15 trades sample (incl backtest/paper/real mix)
+  // Recente 15 trades sample (incl backtest/paper/real mix).
+  // v12.140-fix: playbook-naam via id-lookup (foreign-key t.playbookId).
+  const pbNameById={};
+  (playbooks||[]).forEach(p=>{pbNameById[p.id]=p.name||"naamloos";});
   const recent=(trades||[]).slice().filter(t=>t&&(t.exitDate||t.entryDate||t.date)).sort((a,b)=>{
     const da=Date.parse((a.exitDate||a.entryDate||a.date)+"T12:00:00")||0;
     const db=Date.parse((b.exitDate||b.entryDate||b.date)+"T12:00:00")||0;
@@ -15076,7 +15085,9 @@ function buildChatSystemPrompt(opts){
       const pnl=Number(t.pnl)||0;
       const r=t.rMultiple?Number(t.rMultiple):null;
       const date=(t.exitDate||t.entryDate||t.date||"").split("T")[0];
-      lines.push(`${i+1}. ${date} ${tag} ${t.symbol||t.ticker||"?"} ${t.direction||"?"} PnL=$${pnl.toFixed(2)}${r!=null?" R="+r.toFixed(2):""} pb=${t.playbook||"-"}${t.grade?" grade="+t.grade:""}`);
+      const pbName=pbNameById[t.playbookId]||(t.playbookId?`pb-id ${t.playbookId.slice(0,6)}`:"-");
+      const setups=(t.setupTags||[]).slice(0,3).join(",");
+      lines.push(`${i+1}. ${date} ${tag} ${t.symbol||t.ticker||"?"} ${t.direction||"?"} PnL=$${pnl.toFixed(2)}${r!=null?" R="+r.toFixed(2):""} pb=${pbName}${setups?" setups="+setups:""}${t.grade?" grade="+t.grade:""}`);
     });
   }
 

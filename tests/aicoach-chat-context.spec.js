@@ -16,7 +16,7 @@ const mkTrade=(i,opts)=>({
   exitDate:opts.date,
   pnl:opts.pnl,
   rMultiple:opts.r,
-  playbook:opts.pb||'pb1',
+  playbookId:opts.pb!==undefined?opts.pb:'pb1',
   setupTags:['MSB','BOS'],
   grade:opts.grade||'B',
   status:opts.status||'closed',
@@ -63,6 +63,79 @@ async function seedRich(page){
     localStorage.setItem('tj_trades',JSON.stringify(trades));
   },{trades:FAKE_TRADES,playbooks:FAKE_PLAYBOOKS});
 }
+
+test('untagged trades (geen playbookId) verschijnen ook in prompt',async({page})=>{
+  // Scenario: 10 trades zonder playbookId — moeten samen in "untagged" bucket
+  const untaggedTrades=Array.from({length:10},(_,i)=>mkTrade('u'+i,{
+    date:'2026-05-1'+(i%9),pnl:i%2?-50:80,r:i%2?-0.5:1.2,pb:'',
+    status:i%3===0?'missed':'closed',sim:i%3===0?'backtest':''
+  }));
+  await page.addInitScript(({trades,playbooks})=>{
+    localStorage.setItem('tj_welcomed','1');
+    localStorage.setItem('tj_ai_flag','1');
+    const now=new Date();
+    const monthKey=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
+    localStorage.setItem('tj_ai_config',JSON.stringify({
+      enabled:true,
+      byok:{key:"sk-ant-test",model:"claude-sonnet-4-6",connected:true,lastTest:Date.now(),lastError:""},
+      features:{pretrade:true,budget:true,weekly:true,privacy:false},
+      budget:{monthlyLimit:5,alertThreshold:0.8,spent:0,lastResetMonth:monthKey},
+      weekly:{dayOfWeek:1,autoTrigger:true,lastGeneratedAt:0}
+    }));
+    localStorage.setItem('tj_ai_chats',JSON.stringify([]));
+    localStorage.setItem('tj_playbooks',JSON.stringify(playbooks));
+    localStorage.setItem('tj_trades',JSON.stringify(trades));
+  },{trades:untaggedTrades,playbooks:FAKE_PLAYBOOKS});
+
+  let captured=null;
+  await page.route('https://api.anthropic.com/v1/messages',async(route,req)=>{
+    captured=JSON.parse(req.postData()||'{}');
+    route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({
+      content:[{type:"text",text:"ok"}],usage:{input_tokens:100,output_tokens:10}
+    })});
+  });
+
+  await page.goto(FILE_URL+'?ai=1',{waitUntil:'networkidle'});
+  await page.waitForTimeout(500);
+  await page.evaluate(()=>{
+    const btns=Array.from(document.querySelectorAll('.tj-tabs button.tj-tab'));
+    const b=btns.find(b=>b.textContent.includes('AI-coach'));
+    if(b)b.click();
+  });
+  await page.waitForTimeout(300);
+  await page.evaluate(()=>{
+    const el=document.getElementById('sec-chat');
+    if(el)el.scrollIntoView({block:'start'});
+  });
+  await page.evaluate(()=>{
+    const sec=document.getElementById('sec-chat');
+    const b=Array.from(sec.querySelectorAll('button')).find(b=>/Nieuwe chat/i.test(b.textContent));
+    if(b)b.click();
+  });
+  await page.waitForTimeout(150);
+  await page.evaluate(()=>{
+    const ta=document.querySelector('#sec-chat textarea');
+    const setter=Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype,'value').set;
+    setter.call(ta,'analyse mijn trades');
+    ta.dispatchEvent(new Event('input',{bubbles:true}));
+  });
+  await page.evaluate(()=>{
+    const sec=document.getElementById('sec-chat');
+    const b=Array.from(sec.querySelectorAll('button')).find(b=>/Verstuur/.test(b.textContent));
+    if(b)b.click();
+  });
+  await page.waitForFunction(()=>{
+    const sec=document.getElementById('sec-chat');
+    return sec&&/ok/.test(sec.textContent);
+  },{timeout:5000});
+
+  const sys=captured.system||'';
+  // Untagged trades moeten als (geen playbook gekoppeld) verschijnen
+  expect(sys).toMatch(/geen playbook gekoppeld/);
+  // Splits: i%3===0 → backtest (i=0,3,6,9 = 4 trades), rest real (= 6)
+  expect(sys).toMatch(/real:\s*6t/);
+  expect(sys).toMatch(/backtest:\s*4t/);
+});
 
 test('chat system prompt bevat per-playbook backtest-data',async({page})=>{
   await seedRich(page);

@@ -6,6 +6,22 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.141] — 2026-05-18
+
+### Fixed
+- **AI-coach chat zag nog steeds geen trade-data, ondanks v12.140 fix** *(2026-05-18, gemeld door Denny met screenshot: "38 live trades deze week, geen enkele getagd met playbook-naam")* — Root-cause: in dit project zijn trades gekoppeld aan playbooks via **`t.playbookId`** (foreign-key naar `playbook.id`), niet via `t.playbook`. Mijn v12.140 `aggregatePlaybookStats` skipte alle trades omdat `t.playbook` overal leeg was. Twee gevolgschades:
+  1. Per-playbook breakdown was **leeg** in system prompt (geen enkele playbook getoond)
+  2. Recent-trades sample toonde `pb=-` voor alles
+- **Fix v12.141**:
+  - **`aggregatePlaybookStats`** gebruikt nu `t.playbookId` als groep-key en mapt naar playbook-naam via `playbooks.find(p=>p.id===playbookId).name` lookup
+  - **Untagged trades** (geen `playbookId`) komen nu in een `(geen playbook gekoppeld)` bucket — AI ziet dat ze bestaan en kan adviseren om te taggen, ipv ze stilletjes te negeren
+  - **Recent-trades sample** doet pb-naam-lookup en toont nu óók `setupTags` per trade (bv. `setups=MSB,BOS`), zodat AI kan inferreren welk setup-pattern bij welke playbook hoort, zelfs zonder expliciete `playbookId`
+- **Nieuwe test** (`tests/aicoach-chat-context.spec.js`): nieuw scenario verifieert dat 10 untagged trades (5 real + 4 backtest split via `i%3===0`) correct in `(geen playbook gekoppeld)`-bucket verschijnen met juiste counts. Bestaande test bijgewerkt: fake-trades hebben nu `playbookId` ipv `playbook`.
+
+  **Probeer dezelfde vraag opnieuw in chat** — als jouw trades wél `playbookId` gekoppeld hebben, krijg je nu de echte breakdown. Als ze geen `playbookId` hebben, krijgt AI tenminste de untagged-info + setupTags zodat hij niet zegt "geen data".
+
+---
+
 ## [v12.140] — 2026-05-18
 
 ### Gewijzigd
