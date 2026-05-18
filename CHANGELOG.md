@@ -6,6 +6,20 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.135] — 2026-05-18
+
+### Toegevoegd
+- **AI-coach foundation (BETA — feature-flag `?ai=1`)** *(2026-05-18, na grondig onderzoek + 9-decisions grill-me + demo-iteratie)* — Eerste increment van de AI-coach feature. **Activeren**: open de app met `?ai=1` of `#ai=1` achter de URL (persistent in localStorage zoals `?dev=1`). Daarna verschijnt een **🤖 AI-coach** tab in de topbar tussen Playbook en Instellingen. **Wat er nu in zit**:
+  - **Master-schakelaar** + **4 per-feature toggles** (Pre-trade validatie / Budget-monitor / Weekly digest / Privacy-filter) — alles individueel aan/uit.
+  - **BYOK (Bring Your Own Key)** — plak je eigen Anthropic API-key (`sk-ant-…`), kies model (Sonnet 4.6 default, Opus 4.7 of Haiku 4.5), test verbinding met één klik. Key blijft in `tj_ai_config` localStorage (NIET in JSON-backup export).
+  - **5 sub-secties** met scroll-spy sidebar: Algemeen / API-key / Pre-trade / Budget / Weekly / Privacy.
+  - **Placeholders** voor Pre-trade / Budget / Weekly met 🚧 BINNENKORT badge + versie-targeting (v12.136–137).
+  - Security-waarschuwing in BYOK-sectie: key niet exporteren, niet committen, wissen vóór browser-data delen.
+
+  **Functionaliteit volgt**: v12.136 = pre-trade validatie + weekly digest. v12.137 = budget-tracking + privacy-filter. v12.138 = multi-turn chat. Tot dan: alleen de tab + BYOK-skeleton zichtbaar voor beta-users met `?ai=1`. Anderen merken niets — geen UI, geen storage-pollutie, geen kosten. Autonoom getest met 4-spec Playwright suite (`tests/aicoach-foundation.spec.js`): tab-flag respecteert, alle 6 secties renderen, master-toggle persistent, BYOK key toon/verberg werkt.
+
+---
+
 ## [v12.134] — 2026-05-17
 
 ### Fixed

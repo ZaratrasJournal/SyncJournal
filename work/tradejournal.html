@@ -781,6 +781,13 @@ body.theme-light .confirm-card input.confirm-text,body.theme-parchment .confirm-
   .settings-nav-item{padding:5px 10px;border-radius:14px;border:1px solid var(--border3);border-left:1px solid var(--border3);font-size:11px;flex-shrink:0}
   .settings-nav-item.active{border-color:var(--gold)}
 }
+/* v12.135 — AI-coach UI primitives (theme-neutral). Toggle-knob blijft wit op
+   álle thema's omdat de slider-rail al gekleurd is (gold/green). Button-on-gold
+   gebruikt --bg voor leesbare contrast in alle thema's. */
+.ai-toggle-thumb{background:#ffffff;box-shadow:0 1px 3px rgba(0,0,0,.3)}
+body.theme-light .ai-toggle-thumb,body.theme-parchment .ai-toggle-thumb,body.theme-daylight .ai-toggle-thumb{background:#fafafa}
+.ai-section{scroll-margin-top:80px;padding:24px 4px;border-bottom:1px solid var(--border1)}
+.ai-section:last-child{border-bottom:none}
 </style>
 </head>
 <body>
@@ -1223,7 +1230,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.134",released:"2026-05-17"};
+const APP_VERSION={version:"v12.135",released:"2026-05-18"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -2189,6 +2196,44 @@ const IS_DEV=(()=>{try{
   else if(dev0)localStorage.removeItem("tj_dev_mode");
   return localStorage.getItem("tj_dev_mode")==="1";
 }catch(err){return false;}})();
+
+// v12.135: AI-coach feature-flag (beta). Toggle via ?ai=1 of #ai=1 (persistent).
+// Wanneer aan: AI-coach top-level tab + AICoachPage zichtbaar. Anders volledig
+// verborgen — geen storage-pollutie of UI-overhead voor niet-beta-users.
+const IS_AI=(()=>{try{
+  const url=location.href||"";
+  const ai1=/[?#&]ai=1\b/.test(url);
+  const ai0=/[?#&]ai=0\b/.test(url);
+  if(ai1)localStorage.setItem("tj_ai_flag","1");
+  else if(ai0)localStorage.removeItem("tj_ai_flag");
+  return localStorage.getItem("tj_ai_flag")==="1";
+}catch(err){return false;}})();
+
+// AI-coach config — master enable + 5 sub-toggles + BYOK state.
+// Master "enabled" = false → AI-coach tab toont alleen welkom + activeer-knop.
+// Per-feature toggle = onafhankelijk aan/uit (gebruiker keuze).
+const DEFAULT_AI_CONFIG={
+  enabled:false,
+  byok:{key:"",model:"claude-sonnet-4-6",connected:false,lastTest:0,lastError:""},
+  features:{pretrade:true,budget:true,weekly:true,privacy:true},
+  budget:{monthlyLimit:5,alertThreshold:0.8,spent:0,lastResetMonth:""}
+};
+function loadAIConfig(){
+  try{
+    const raw=localStorage.getItem("tj_ai_config");
+    if(!raw)return{...DEFAULT_AI_CONFIG};
+    const parsed=JSON.parse(raw);
+    return{
+      ...DEFAULT_AI_CONFIG,...parsed,
+      byok:{...DEFAULT_AI_CONFIG.byok,...(parsed.byok||{})},
+      features:{...DEFAULT_AI_CONFIG.features,...(parsed.features||{})},
+      budget:{...DEFAULT_AI_CONFIG.budget,...(parsed.budget||{})}
+    };
+  }catch(e){return{...DEFAULT_AI_CONFIG};}
+}
+function saveAIConfig(cfg){
+  try{localStorage.setItem("tj_ai_config",JSON.stringify(cfg));}catch(e){}
+}
 
 async function proxyCall(payload){
   const url=getProxyUrl();
@@ -14419,6 +14464,231 @@ function TPTimeline({trade}){
 }
 
 
+// ============ AI-COACH (v12.135 — feature-flag ?ai=1) ============
+// BYOK-architectuur: gebruiker brengt eigen Anthropic API-key (sk-ant-…).
+// Key blijft in localStorage onder tj_ai_config.byok.key (NIET geëxporteerd
+// via JSON-backup om accidental key-leakage te voorkomen — zie exportTrades).
+// Alle Claude API-calls via anthropic-dangerous-direct-browser-access header.
+// Per-feature toggle: pretrade/budget/weekly/privacy onafhankelijk aan/uit.
+function AICoachPage({showToast}){
+  const[cfg,setCfg]=useState(()=>loadAIConfig());
+  const[active,setActive]=useState("sec-general");
+  const[testing,setTesting]=useState(false);
+  const[showKey,setShowKey]=useState(false);
+  const update=(patch)=>{const next={...cfg,...patch};setCfg(next);saveAIConfig(next);};
+  const updateByok=(patch)=>update({byok:{...cfg.byok,...patch}});
+  const updateFeatures=(patch)=>update({features:{...cfg.features,...patch}});
+
+  // Scroll-spy
+  useEffect(()=>{
+    const sections=document.querySelectorAll(".ai-section[id]");
+    if(!sections.length)return;
+    const visible=new Map();
+    const obs=new IntersectionObserver(entries=>{
+      entries.forEach(e=>visible.set(e.target.id,e.intersectionRatio));
+      let bestId=null,bestRatio=0;
+      visible.forEach((r,id)=>{if(r>bestRatio){bestRatio=r;bestId=id;}});
+      if(bestId)setActive(bestId);
+    },{rootMargin:"-15% 0px -55% 0px",threshold:[0,0.1,0.25,0.5,0.75,1]});
+    sections.forEach(s=>obs.observe(s));
+    return()=>obs.disconnect();
+  },[]);
+
+  const testConnection=async()=>{
+    const key=(cfg.byok.key||"").trim();
+    if(!key){updateByok({connected:false,lastError:"Geen API-key ingevuld"});showToast&&showToast("Geen API-key ingevuld","error");return;}
+    setTesting(true);
+    try{
+      const resp=await fetch("https://api.anthropic.com/v1/messages",{
+        method:"POST",
+        headers:{
+          "Content-Type":"application/json",
+          "x-api-key":key,
+          "anthropic-version":"2023-06-01",
+          "anthropic-dangerous-direct-browser-access":"true"
+        },
+        body:JSON.stringify({
+          model:cfg.byok.model||"claude-sonnet-4-6",
+          max_tokens:20,
+          messages:[{role:"user",content:"Reply with only the word OK."}]
+        })
+      });
+      const data=await resp.json();
+      if(!resp.ok){
+        const msg=(data&&data.error&&data.error.message)||("HTTP "+resp.status);
+        updateByok({connected:false,lastTest:Date.now(),lastError:msg});
+        showToast&&showToast("Verbinding mislukt: "+msg,"error");
+      }else{
+        updateByok({connected:true,lastTest:Date.now(),lastError:""});
+        showToast&&showToast("✓ Verbinding gelukt — API-key werkt","success");
+      }
+    }catch(e){
+      const msg=String(e.message||e);
+      updateByok({connected:false,lastTest:Date.now(),lastError:msg});
+      showToast&&showToast("Verbinding mislukt: "+msg,"error");
+    }finally{setTesting(false);}
+  };
+
+  const NAV=[
+    {id:"sec-general",label:"Algemeen",icon:"⚙"},
+    {id:"sec-byok",label:"API-key (BYOK)",icon:"🔑"},
+    {id:"sec-pretrade",label:"Pre-trade validatie",icon:"🛡"},
+    {id:"sec-budget",label:"Budget & kosten",icon:"💰"},
+    {id:"sec-weekly",label:"Weekly digest",icon:"📅"},
+    {id:"sec-privacy",label:"Privacy",icon:"🔒"},
+  ];
+
+  const featureLabel={
+    pretrade:"Pre-trade validatie",
+    budget:"Budget-monitor",
+    weekly:"Weekly digest",
+    privacy:"Privacy-filter (ticker-mask)"
+  };
+  const featureDesc={
+    pretrade:"AI checkt elke geplande trade tegen je playbook + Bellafiore-5 vóór entry.",
+    budget:"Houdt API-kosten bij, waarschuwt bij 80% van maandlimiet, blokkeert bij 100%.",
+    weekly:"Wekelijkse coaching-samenvatting in je inbox elke maandag.",
+    privacy:"Anonimiseer ticker-namen vóór ze naar Claude gaan (BTC→COIN_A enz.). Aanbevolen aan."
+  };
+
+  const Placeholder=({title,body,version})=>(<div style={{padding:"32px",border:"1px dashed var(--border3)",borderRadius:"12px",background:"var(--glass)",textAlign:"center"}}>
+    <div style={{fontSize:"11px",fontWeight:700,color:"var(--gold)",letterSpacing:"0.12em",marginBottom:"10px"}}>🚧 BINNENKORT · {version}</div>
+    <div style={{fontSize:"15px",fontWeight:700,color:"var(--text)",marginBottom:"8px"}}>{title}</div>
+    <div style={{fontSize:"12px",color:"var(--text3)",lineHeight:1.6,maxWidth:"480px",margin:"0 auto"}}>{body}</div>
+  </div>);
+
+  const toggleKnob=(on,big)=>(<span className="ai-toggle-thumb" style={{position:"absolute",top:"3px",left:on?(big?"25px":"22px"):"3px",width:big?"20px":"16px",height:big?"20px":"16px",borderRadius:"50%",transition:"left 0.2s"}}/>);
+
+  return(<div className="settings-shell">
+    <aside className="settings-sidebar">
+      <div className="settings-cat-label">🤖 AI-coach</div>
+      {NAV.map(it=>(<a key={it.id} href={"#"+it.id} className={"settings-nav-item"+(active===it.id?" active":"")} onClick={(e)=>{e.preventDefault();const el=document.getElementById(it.id);if(el)el.scrollIntoView({behavior:"smooth",block:"start"});}}>
+        <span style={{opacity:0.7,marginRight:"6px"}}>{it.icon}</span>{it.label}
+      </a>))}
+      <div style={{marginTop:"16px",padding:"10px 12px",background:"var(--gold-dim)",border:"1px solid var(--gold-border)",borderRadius:"8px",fontSize:"10px",color:"var(--gold)",lineHeight:1.5}}>
+        <div style={{fontWeight:700,marginBottom:"4px"}}>BETA · v12.135</div>
+        <div style={{color:"var(--text3)",fontWeight:500}}>Foundation-release. Functionele features volgen in v12.136–138.</div>
+      </div>
+    </aside>
+    <main className="settings-content">
+
+      {/* ─── ALGEMEEN ─── */}
+      <div className="ai-section" id="sec-general">
+        <h2 style={{fontSize:"20px",fontWeight:800,color:"var(--text)",marginBottom:"6px",fontFamily:"var(--font)"}}>🤖 AI-coach</h2>
+        <p style={{fontSize:"13px",color:"var(--text3)",lineHeight:1.6,marginBottom:"20px",maxWidth:"640px"}}>
+          Persoonlijke trading-coach op basis van Claude. Bring-Your-Own-Key (BYOK) — jij betaalt Anthropic direct, geen middleman, geen subscription. Geschat: $1–5/maand voor normaal gebruik.
+        </p>
+
+        <div style={{padding:"18px 20px",border:"1px solid "+(cfg.enabled?"var(--gold-border)":"var(--border3)"),borderRadius:"12px",background:cfg.enabled?"var(--gold-dim)":"var(--glass)",marginBottom:"20px"}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:"16px"}}>
+            <div>
+              <div style={{fontSize:"14px",fontWeight:700,color:cfg.enabled?"var(--gold)":"var(--text)",marginBottom:"4px"}}>Master-schakelaar</div>
+              <div style={{fontSize:"12px",color:"var(--text3)",lineHeight:1.5}}>Zet AI-coach in z'n geheel aan of uit. Bij uit: geen API-calls, geen kosten, geen UI-prompts.</div>
+            </div>
+            <label style={{position:"relative",display:"inline-block",width:"48px",height:"26px",flexShrink:0,cursor:"pointer"}}>
+              <input type="checkbox" checked={!!cfg.enabled} onChange={e=>update({enabled:e.target.checked})} style={{opacity:0,width:0,height:0}}/>
+              <span style={{position:"absolute",inset:0,background:cfg.enabled?"var(--gold)":"var(--border4)",borderRadius:"13px",transition:"background 0.2s"}}>
+                {toggleKnob(cfg.enabled,true)}
+              </span>
+            </label>
+          </div>
+        </div>
+
+        <div style={{fontSize:"11px",fontWeight:700,color:"var(--text4)",textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:"12px"}}>Per-feature toggles</div>
+        <div style={{display:"grid",gap:"10px"}}>
+          {Object.keys(featureLabel).map(fk=>{
+            const on=!!cfg.features[fk];
+            const disabled=!cfg.enabled;
+            return(<div key={fk} style={{padding:"14px 16px",border:"1px solid var(--border2)",borderRadius:"10px",background:"var(--glass)",display:"flex",alignItems:"center",justifyContent:"space-between",gap:"16px",opacity:disabled?0.5:1}}>
+              <div>
+                <div style={{fontSize:"13px",fontWeight:600,color:"var(--text)",marginBottom:"3px"}}>{featureLabel[fk]}</div>
+                <div style={{fontSize:"11px",color:"var(--text3)",lineHeight:1.5,maxWidth:"540px"}}>{featureDesc[fk]}</div>
+              </div>
+              <label style={{position:"relative",display:"inline-block",width:"42px",height:"22px",flexShrink:0,cursor:disabled?"not-allowed":"pointer"}}>
+                <input type="checkbox" disabled={disabled} checked={on} onChange={e=>updateFeatures({[fk]:e.target.checked})} style={{opacity:0,width:0,height:0}}/>
+                <span style={{position:"absolute",inset:0,background:on?"var(--green)":"var(--border4)",borderRadius:"11px",transition:"background 0.2s"}}>
+                  {toggleKnob(on,false)}
+                </span>
+              </label>
+            </div>);
+          })}
+        </div>
+      </div>
+
+      {/* ─── BYOK ─── */}
+      <div className="ai-section" id="sec-byok">
+        <h3 style={{fontSize:"16px",fontWeight:700,color:"var(--text)",marginBottom:"6px"}}>🔑 API-key (Bring Your Own Key)</h3>
+        <p style={{fontSize:"12px",color:"var(--text3)",lineHeight:1.6,marginBottom:"16px",maxWidth:"640px"}}>
+          Maak een Anthropic API-key aan op <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener noreferrer" style={{color:"var(--gold)"}}>console.anthropic.com</a>, plak hieronder. Begint met <code style={{background:"var(--border1)",padding:"1px 6px",borderRadius:"4px",fontSize:"11px"}}>sk-ant-</code>.
+        </p>
+
+        <div style={{padding:"12px 14px",background:"rgba(255,165,0,0.06)",border:"1px solid rgba(255,165,0,0.25)",borderRadius:"8px",fontSize:"11px",color:"var(--amber)",lineHeight:1.5,marginBottom:"16px"}}>
+          ⚠ <strong>Security</strong>: key wordt lokaal opgeslagen in localStorage. Niet exporteren via JSON-backup. Wis de key handmatig vóór je je browser-data deelt of de app uploadt naar publieke hosting.
+        </div>
+
+        <div style={{display:"grid",gap:"12px",maxWidth:"640px"}}>
+          <div>
+            <label style={{display:"block",fontSize:"11px",fontWeight:600,color:"var(--text4)",textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:"6px"}}>Anthropic API-key</label>
+            <div style={{position:"relative"}}>
+              <input type={showKey?"text":"password"} value={cfg.byok.key||""} onChange={e=>updateByok({key:e.target.value,connected:false})} placeholder="sk-ant-…" style={{width:"100%",padding:"10px 70px 10px 12px",fontSize:"13px",fontFamily:"var(--mono)",borderRadius:"8px",border:"1px solid var(--border3)",background:"var(--bg)",color:"var(--text)",boxSizing:"border-box"}}/>
+              <button onClick={()=>setShowKey(s=>!s)} style={{position:"absolute",right:"6px",top:"50%",transform:"translateY(-50%)",padding:"4px 10px",fontSize:"10px",borderRadius:"5px",border:"1px solid var(--border3)",background:"var(--glass)",color:"var(--text3)",cursor:"pointer",fontFamily:"var(--font)"}}>{showKey?"verberg":"toon"}</button>
+            </div>
+          </div>
+
+          <div>
+            <label style={{display:"block",fontSize:"11px",fontWeight:600,color:"var(--text4)",textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:"6px"}}>Model</label>
+            <select value={cfg.byok.model||"claude-sonnet-4-6"} onChange={e=>updateByok({model:e.target.value,connected:false})} style={{width:"100%",padding:"10px 12px",fontSize:"13px",borderRadius:"8px",border:"1px solid var(--border3)",background:"var(--bg)",color:"var(--text)",fontFamily:"inherit"}}>
+              <option value="claude-sonnet-4-6">Claude Sonnet 4.6 (aanbevolen — beste price/perf)</option>
+              <option value="claude-opus-4-7">Claude Opus 4.7 (krachtigst, ~5× duurder)</option>
+              <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5 (snelst, goedkoopst)</option>
+            </select>
+          </div>
+
+          <div style={{display:"flex",gap:"10px",alignItems:"center"}}>
+            <button onClick={testConnection} disabled={testing||!cfg.byok.key} style={{padding:"10px 18px",fontSize:"13px",fontWeight:700,borderRadius:"8px",border:"1px solid var(--gold-border)",background:"var(--gold)",color:"var(--bg)",cursor:(testing||!cfg.byok.key)?"not-allowed":"pointer",opacity:(testing||!cfg.byok.key)?0.5:1,fontFamily:"inherit"}}>
+              {testing?"⏳ Testen…":"🧪 Test verbinding"}
+            </button>
+            {cfg.byok.connected&&<div style={{display:"flex",alignItems:"center",gap:"6px",fontSize:"12px",color:"var(--green)",fontWeight:600}}>
+              ✓ Verbonden{cfg.byok.lastTest?<span style={{color:"var(--text4)",fontWeight:500}}> · {new Date(cfg.byok.lastTest).toLocaleDateString("nl-NL")}</span>:null}
+            </div>}
+            {cfg.byok.lastError&&!cfg.byok.connected&&<div style={{fontSize:"11px",color:"var(--red)",maxWidth:"280px"}}>✗ {cfg.byok.lastError}</div>}
+          </div>
+        </div>
+      </div>
+
+      {/* ─── PRE-TRADE (placeholder) ─── */}
+      <div className="ai-section" id="sec-pretrade">
+        <h3 style={{fontSize:"16px",fontWeight:700,color:"var(--text)",marginBottom:"16px"}}>🛡 Pre-trade validatie</h3>
+        <Placeholder version="v12.136" title="AI valideert je trade vóór entry"
+          body="Beschrijf je geplande trade (ticker, setup, entry, stop, TP's). AI vergelijkt met je playbook + Bellafiore-5-check + live funding-rate context. Score + concreet advies in <3 seconden. Geen blocker — alleen voor jou."/>
+      </div>
+
+      {/* ─── BUDGET (placeholder) ─── */}
+      <div className="ai-section" id="sec-budget">
+        <h3 style={{fontSize:"16px",fontWeight:700,color:"var(--text)",marginBottom:"16px"}}>💰 Budget & kosten</h3>
+        <Placeholder version="v12.137" title="Maandelijkse cost-tracking + alerts"
+          body="Stel een maandlimiet in ($5 / $15 / custom). App houdt cumulatieve API-kosten bij. Bij 80% waarschuwing in topbar, bij 100% AI-features tijdelijk uit tot reset. Per-feature cost-breakdown."/>
+      </div>
+
+      {/* ─── WEEKLY (placeholder) ─── */}
+      <div className="ai-section" id="sec-weekly">
+        <h3 style={{fontSize:"16px",fontWeight:700,color:"var(--text)",marginBottom:"16px"}}>📅 Weekly digest</h3>
+        <Placeholder version="v12.136" title="Wekelijkse coaching-samenvatting"
+          body="Elke maandag (of moment van je keuze) genereert AI een digest: best trade van de week, slechtste, gemiste-TP-patroon, discipline-trend, één concrete actie voor komende week. Opgeslagen in tj_ai_weeklies — terugbladeren wanneer je wilt."/>
+      </div>
+
+      {/* ─── PRIVACY (placeholder) ─── */}
+      <div className="ai-section" id="sec-privacy">
+        <h3 style={{fontSize:"16px",fontWeight:700,color:"var(--text)",marginBottom:"16px"}}>🔒 Privacy</h3>
+        <Placeholder version="v12.135 (basis al actief)" title="Ticker-anonimisering vóór API-call"
+          body="Wanneer Privacy-filter aan staat (default): ticker-namen worden vervangen door COIN_A / COIN_B / … vóór de payload naar Claude gaat. AI-output wordt na ontvangst weer terug-gemapt naar echte tickers in de UI. Geen account-saldi of API-keys gaan ooit naar Claude."/>
+      </div>
+
+    </main>
+  </div>);
+}
+
+
 // ============ MAIN APP (v7: storage warning + keyboard shortcuts) ============
 function App(){
   const[trades,setTrades]=useState([]);
@@ -15094,6 +15364,7 @@ function App(){
     {id:"calendar",label:"Kalender",icon:"📅"},
     {id:"tendencies",label:"Tendencies",icon:"🎯"},
     {id:"playbook",label:"Playbook",icon:"📘"},
+    ...(IS_AI?[{id:"aicoach",label:"AI-coach",icon:"🤖"}]:[]),
     {id:"accounts",label:"Accounts",icon:"🔗"},
     {id:"tags",label:"Tags",icon:"🏷"},
     {id:"help",label:"Help",icon:"❓"},
@@ -15153,7 +15424,7 @@ function App(){
             </div>
           </a>
           <nav className="tj-tabs" aria-label="Main navigation">
-            {TABS.slice(0,7).map(t=>(<button key={t.id} className={`tj-tab${tab===t.id?" active":""}`} onClick={()=>navigate(t.id)}><span>{t.icon}</span>{t.label}</button>))}
+            {TABS.slice(0,IS_AI?8:7).map(t=>(<button key={t.id} className={`tj-tab${tab===t.id?" active":""}`} onClick={()=>navigate(t.id)}><span>{t.icon}</span>{t.label}</button>))}
             <button className={`tj-tab${["accounts","rules","tags","help"].includes(tab)?" active":""}`} onClick={()=>navigate("accounts")}><span>⚙</span>Instellingen</button>
           </nav>
         </div>
@@ -15325,6 +15596,7 @@ function App(){
         {tab==="goals"&&<GoalsPage goals={goals} setGoals={setGoals} trades={trades}/>}
         {tab==="tags"&&<TagManager tagConfig={tagConfig} setTagConfig={setTagConfig} trades={trades} setTrades={setTrades} showToast={showToast} config={config}/>}
         {tab==="validation"&&<ValidationChecklistPage setTab={setTab}/>}
+        {tab==="aicoach"&&IS_AI&&<AICoachPage showToast={showToast}/>}
         {tab==="help"&&<HelpPage trades={trades} setTab={setTab}/>}
       </div>
 
