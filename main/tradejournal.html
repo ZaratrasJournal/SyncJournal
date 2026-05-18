@@ -1235,7 +1235,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.148",released:"2026-05-18"};
+const APP_VERSION={version:"v12.149",released:"2026-05-18"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -2222,7 +2222,11 @@ const DEFAULT_AI_CONFIG={
   byok:{key:"",model:"claude-sonnet-4-6",connected:false,lastTest:0,lastError:""},
   features:{pretrade:true,budget:true,weekly:true,privacy:true,floatingChat:true},
   budget:{monthlyLimit:5,alertThreshold:0.8,spent:0,lastResetMonth:""},
-  weekly:{dayOfWeek:1,autoTrigger:true,lastGeneratedAt:0}
+  weekly:{dayOfWeek:1,autoTrigger:true,lastGeneratedAt:0},
+  // v12.149 — Fijn-instellingen voor privacy-filter (ticker-mask blijft via
+  // features.privacy aan/uit). amountMode: "off" = bedragen onveranderd,
+  // "labels" = $340 → $X1 (per-call mapping), "buckets" = $340 → "$middel".
+  privacy:{amountMode:"off",customTickers:[],logLastPrompt:true}
 };
 function loadAIConfig(){
   try{
@@ -2234,7 +2238,8 @@ function loadAIConfig(){
       byok:{...DEFAULT_AI_CONFIG.byok,...(parsed.byok||{})},
       features:{...DEFAULT_AI_CONFIG.features,...(parsed.features||{})},
       budget:{...DEFAULT_AI_CONFIG.budget,...(parsed.budget||{})},
-      weekly:{...DEFAULT_AI_CONFIG.weekly,...(parsed.weekly||{})}
+      weekly:{...DEFAULT_AI_CONFIG.weekly,...(parsed.weekly||{})},
+      privacy:{...DEFAULT_AI_CONFIG.privacy,...(parsed.privacy||{})}
     };
   }catch(e){return{...DEFAULT_AI_CONFIG};}
 }
@@ -14496,18 +14501,24 @@ function costForUsage(model,inputTok,outputTok){
 
 // v12.136 — Privacy-filter: anonimiseer ticker-namen vóór outgoing prompt.
 // Mapping per request (stable binnen één call): BTC→COIN_A, ETH→COIN_B, …
-// Plus aliases met /USDT, /USDC, -PERP, USDT-PERP suffix.
-const TICKER_PATTERNS=[
-  /\b(BTC|ETH|SOL|XRP|ADA|DOT|AVAX|LINK|MATIC|ARB|OP|DOGE|SHIB|PEPE|WIF|BONK|TIA|SUI|APT|SEI|INJ|NEAR|FTM|ATOM|UNI|AAVE|LDO|RNDR|FET|HBAR|TRX|TON|BNB|LTC|BCH|ETC|XLM|ALGO|FIL|ICP|VET|EOS)\b/gi,
-];
+// v12.149: cfg.privacy.customTickers worden bij elke build toegevoegd aan
+// de hardcoded lijst zodat user obscure altcoins kan toevoegen.
+const TICKER_HARDCODED=["BTC","ETH","SOL","XRP","ADA","DOT","AVAX","LINK","MATIC","ARB","OP","DOGE","SHIB","PEPE","WIF","BONK","TIA","SUI","APT","SEI","INJ","NEAR","FTM","ATOM","UNI","AAVE","LDO","RNDR","FET","HBAR","TRX","TON","BNB","LTC","BCH","ETC","XLM","ALGO","FIL","ICP","VET","EOS","MEW","JUP","JTO","RAY"];
+function getTickerList(){
+  try{
+    const cfg=loadAIConfig();
+    const custom=(cfg.privacy.customTickers||[]).map(t=>String(t).toUpperCase().trim()).filter(Boolean);
+    return[...new Set([...TICKER_HARDCODED,...custom])];
+  }catch{return TICKER_HARDCODED;}
+}
 function buildTickerMask(text){
   const map={};let counter=0;
-  TICKER_PATTERNS.forEach(re=>{
-    String(text).replace(re,(m)=>{
-      const up=m.toUpperCase();
-      if(!map[up])map[up]="COIN_"+String.fromCharCode(65+(counter++%26));
-      return m;
-    });
+  const list=getTickerList();
+  const re=new RegExp("\\b("+list.join("|")+")\\b","gi");
+  String(text).replace(re,(m)=>{
+    const up=m.toUpperCase();
+    if(!map[up])map[up]="COIN_"+String.fromCharCode(65+(counter++%26));
+    return m;
   });
   return map;
 }
@@ -14528,6 +14539,80 @@ function reverseMask(text,map){
   return out;
 }
 
+// v12.149 — Amount-masking. Vervangt $-bedragen in outgoing payload.
+// Modes:
+//  - "off": geen masking (default — bedragen blijven volledig zichtbaar)
+//  - "labels": $340 → $X1, $-180 → $-X2 (per-call mapping, reverse-mapbaar)
+//  - "buckets": $340 → "$middel", $-180 → "-$klein" (bucket-based, NIET reverse-bar)
+// Matcht: $123.45, $-50, +$10, $1,234.56 — met optioneel teken en decimalen.
+const AMOUNT_RE=/([+-]?\$-?[0-9][0-9,]*(?:\.[0-9]+)?)/g;
+function bucketFor(num){
+  const abs=Math.abs(num);
+  if(abs<50)return"klein";
+  if(abs<500)return"middel";
+  if(abs<5000)return"groot";
+  return"zeer-groot";
+}
+function buildAmountMask(text,mode){
+  if(!mode||mode==="off"||mode==="buckets")return{};
+  const map={};let counter=0;
+  String(text).replace(AMOUNT_RE,(m)=>{
+    if(!map[m])map[m]="$X"+(++counter);
+    return m;
+  });
+  return map;
+}
+function applyAmountMask(text,mode,map){
+  if(!mode||mode==="off")return text;
+  if(mode==="buckets"){
+    return String(text).replace(AMOUNT_RE,(m)=>{
+      const cleaned=m.replace(/[+\$,]/g,"");
+      const n=parseFloat(cleaned);
+      if(isNaN(n))return m;
+      const sign=n<0?"-":(m.startsWith("+")?"+":"");
+      return sign+"$"+bucketFor(n);
+    });
+  }
+  // labels mode
+  if(!map||!Object.keys(map).length)return text;
+  let out=String(text);
+  Object.entries(map).forEach(([orig,mask])=>{
+    out=out.split(orig).join(mask);
+  });
+  return out;
+}
+function reverseAmountMask(text,mode,map){
+  if(!mode||mode==="off"||mode==="buckets")return text;
+  if(!map||!Object.keys(map).length)return text;
+  let out=String(text);
+  Object.entries(map).forEach(([orig,mask])=>{
+    out=out.split(mask).join(orig);
+  });
+  return out;
+}
+
+// v12.149 — Last-prompt log. Slaat de meest recente outgoing system+user
+// payload op in localStorage zodat de Privacy-sectie 'Wat is er verstuurd?'
+// kan tonen. Maximaal 1 record (overschrijft). Alleen wanneer
+// cfg.privacy.logLastPrompt aan (default true).
+function logLastPrompt(payload){
+  try{
+    const cfg=loadAIConfig();
+    if(!cfg.privacy.logLastPrompt)return;
+    const rec={
+      ts:Date.now(),
+      model:payload.model||"",
+      systemPrompt:payload.system||"",
+      messages:payload.messages||[],
+      maxTokens:payload.max_tokens||0
+    };
+    localStorage.setItem("tj_ai_last_prompt",JSON.stringify(rec));
+  }catch(e){}
+}
+function loadLastPrompt(){
+  try{const raw=localStorage.getItem("tj_ai_last_prompt");return raw?JSON.parse(raw):null;}catch{return null;}
+}
+
 // v12.136 — Claude API helper. Throws on HTTP error. Returns {text, usage, cost, raw}.
 // v12.137 — Hard-cap guard: throws BEFORE call wanneer maand-budget overschreden,
 // tenzij budget-feature uitstaat. Voorkomt runaway-kosten en geeft user controle.
@@ -14545,6 +14630,13 @@ async function callClaude({apiKey,model,systemPrompt,userMessage,maxTokens=1024}
       }
     }
   }catch(e){if(/Maandlimiet/.test(e.message))throw e;}
+  const payload={
+    model:model||"claude-sonnet-4-6",
+    max_tokens:maxTokens,
+    system:systemPrompt||undefined,
+    messages:[{role:"user",content:userMessage}]
+  };
+  logLastPrompt(payload);
   const resp=await fetch("https://api.anthropic.com/v1/messages",{
     method:"POST",
     headers:{
@@ -14553,12 +14645,7 @@ async function callClaude({apiKey,model,systemPrompt,userMessage,maxTokens=1024}
       "anthropic-version":"2023-06-01",
       "anthropic-dangerous-direct-browser-access":"true"
     },
-    body:JSON.stringify({
-      model:model||"claude-sonnet-4-6",
-      max_tokens:maxTokens,
-      system:systemPrompt||undefined,
-      messages:[{role:"user",content:userMessage}]
-    })
+    body:JSON.stringify(payload)
   });
   const data=await resp.json();
   if(!resp.ok){
@@ -15265,6 +15352,13 @@ async function callClaudeChat({apiKey,model,systemPrompt,messages,maxTokens=1024
       }
     }
   }catch(e){if(/Maandlimiet/.test(e.message))throw e;}
+  const payload={
+    model:model||"claude-sonnet-4-6",
+    max_tokens:maxTokens,
+    system:systemPrompt||undefined,
+    messages:messages
+  };
+  logLastPrompt(payload);
   const resp=await fetch("https://api.anthropic.com/v1/messages",{
     method:"POST",
     headers:{
@@ -15273,12 +15367,7 @@ async function callClaudeChat({apiKey,model,systemPrompt,messages,maxTokens=1024
       "anthropic-version":"2023-06-01",
       "anthropic-dangerous-direct-browser-access":"true"
     },
-    body:JSON.stringify({
-      model:model||"claude-sonnet-4-6",
-      max_tokens:maxTokens,
-      system:systemPrompt||undefined,
-      messages:messages
-    })
+    body:JSON.stringify(payload)
   });
   const data=await resp.json();
   if(!resp.ok){
@@ -15289,6 +15378,192 @@ async function callClaudeChat({apiKey,model,systemPrompt,messages,maxTokens=1024
   const usage=data.usage||{input_tokens:0,output_tokens:0};
   const cost=costForUsage(model||"claude-sonnet-4-6",usage.input_tokens||0,usage.output_tokens||0);
   return{text,usage,cost,raw:data};
+}
+
+// v12.149 — Privacy-sectie. Volledige UI voor de privacy-controls + transparantie:
+// status van ticker-mask, amount-mask mode, custom-tickers, live-preview en
+// "Bekijk laatste prompt" zodat user kan zien wat er feitelijk naar Claude ging.
+function PrivacySection({cfg,setCfg,showToast}){
+  const update=(patch)=>{const next={...cfg,privacy:{...cfg.privacy,...patch}};saveAIConfig(next);setCfg(next);};
+  const[previewInput,setPreviewInput]=useState("Wat vind je van mijn BTC long met +$420 winst en ETH short -$180?");
+  const[customInput,setCustomInput]=useState("");
+  const[lastPrompt,setLastPrompt]=useState(()=>loadLastPrompt());
+  const[showLast,setShowLast]=useState(false);
+
+  const refreshLast=()=>setLastPrompt(loadLastPrompt());
+
+  const buildPreview=()=>{
+    const tickerMap=cfg.features.privacy?buildTickerMask(previewInput):null;
+    const amountMode=cfg.privacy.amountMode||"off";
+    let out=previewInput;
+    if(tickerMap)out=applyMask(out,tickerMap);
+    if(amountMode==="labels"){
+      const amap=buildAmountMask(out,amountMode);
+      out=applyAmountMask(out,amountMode,amap);
+    }else if(amountMode==="buckets"){
+      out=applyAmountMask(out,amountMode,null);
+    }
+    return{
+      original:previewInput,
+      sent:out,
+      tickerCount:tickerMap?Object.keys(tickerMap).length:0,
+      amountMode
+    };
+  };
+  const preview=buildPreview();
+
+  const addCustom=()=>{
+    const t=customInput.toUpperCase().trim();
+    if(!t)return;
+    if(!/^[A-Z0-9]{2,10}$/.test(t)){showToast&&showToast("Ticker moet 2-10 letters/cijfers zijn","error");return;}
+    if(TICKER_HARDCODED.includes(t)){showToast&&showToast(t+" zit al in de standaard-lijst","info");return;}
+    const current=cfg.privacy.customTickers||[];
+    if(current.includes(t)){showToast&&showToast(t+" is al toegevoegd","info");return;}
+    update({customTickers:[...current,t]});
+    setCustomInput("");
+  };
+  const removeCustom=(t)=>{
+    update({customTickers:(cfg.privacy.customTickers||[]).filter(x=>x!==t)});
+  };
+  const clearLastPrompt=()=>{
+    if(!confirm("Wis de log van de laatste prompt?"))return;
+    try{localStorage.removeItem("tj_ai_last_prompt");}catch{}
+    setLastPrompt(null);
+    setShowLast(false);
+  };
+
+  const tickerOn=!!cfg.features.privacy;
+  const amountMode=cfg.privacy.amountMode||"off";
+  const customCount=(cfg.privacy.customTickers||[]).length;
+
+  const inputStyle={width:"100%",padding:"8px 10px",fontSize:"13px",borderRadius:"6px",border:"1px solid var(--border3)",background:"var(--bg)",color:"var(--text)",fontFamily:"inherit",boxSizing:"border-box"};
+  const labelStyle={display:"block",fontSize:"10px",fontWeight:600,color:"var(--text4)",textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:"6px"};
+  const modeBtn=(val,label,desc)=>{
+    const sel=amountMode===val;
+    return(<button key={val} onClick={()=>update({amountMode:val})} style={{flex:1,padding:"10px 12px",fontSize:"12px",fontWeight:600,borderRadius:"8px",border:"1px solid "+(sel?"var(--gold-border)":"var(--border3)"),background:sel?"var(--gold-dim)":"transparent",color:sel?"var(--gold)":"var(--text3)",cursor:"pointer",fontFamily:"inherit",textAlign:"left",lineHeight:1.4}}>
+      <div style={{fontWeight:700,marginBottom:"2px"}}>{label}</div>
+      <div style={{fontSize:"10px",color:"var(--text4)",fontWeight:500}}>{desc}</div>
+    </button>);
+  };
+
+  return(<div>
+    <p style={{fontSize:"12px",color:"var(--text3)",lineHeight:1.6,marginBottom:"18px",maxWidth:"640px"}}>
+      Controleer + verifieer welke data naar Claude gaat. <strong>Ticker-mask</strong> vervangt coin-namen door <code>COIN_A</code>/<code>B</code>/…, <strong>bedrag-mask</strong> kan dollar-bedragen anonimiseren. Niets blokkeert AI-coaching — alleen extra defense-in-depth bovenop Anthropic's policy.
+    </p>
+
+    {/* Status-blok */}
+    <div style={{padding:"14px 16px",border:"1px solid "+(tickerOn?"var(--green)":"var(--amber)"),borderRadius:"10px",background:tickerOn?"rgba(46,170,111,0.05)":"rgba(255,180,40,0.05)",marginBottom:"22px"}}>
+      <div style={{display:"flex",alignItems:"center",gap:"10px"}}>
+        <div style={{fontSize:"18px"}}>{tickerOn?"🔒":"⚠"}</div>
+        <div style={{flex:1}}>
+          <div style={{fontSize:"13px",fontWeight:700,color:tickerOn?"var(--green)":"var(--amber)"}}>
+            {tickerOn?"Ticker-mask actief":"Ticker-mask UIT — coins gaan onbewerkt naar Claude"}
+          </div>
+          <div style={{fontSize:"11px",color:"var(--text3)",marginTop:"2px"}}>
+            {tickerOn?`${TICKER_HARDCODED.length} standaard tickers + ${customCount} custom · amount-mode: ${amountMode}`:`Zet aan in Algemeen-sectie → Privacy-filter`}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {/* Bedrag-mask mode */}
+    <div style={{marginBottom:"22px"}}>
+      <label style={labelStyle}>Bedrag-masking</label>
+      <div style={{display:"flex",gap:"8px"}}>
+        {modeBtn("off","Uit","Bedragen onveranderd naar Claude (default)")}
+        {modeBtn("labels","Labels","$340 → $X1, $-180 → $X2 (reverse-bar)")}
+        {modeBtn("buckets","Buckets","$340 → \"$middel\", $-180 → \"-$klein\" (irreversible)")}
+      </div>
+      <div style={{fontSize:"11px",color:"var(--text4)",marginTop:"8px",lineHeight:1.5}}>
+        💡 Buckets ({"<"}50=klein · 50-500=middel · 500-5k=groot · {">"}5k=zeer-groot) is sterkste anonimisering maar AI kan exacte trade-grootte niet meer benoemen. Labels behoudt vergelijkbaarheid binnen 1 chat. <strong>Werkt alleen in chat-flows</strong> — pretrade/weekly hebben bedragen nodig voor analyse.
+      </div>
+    </div>
+
+    {/* Custom tickers */}
+    <div style={{marginBottom:"22px"}}>
+      <label style={labelStyle}>Custom tickers ({customCount})</label>
+      <div style={{fontSize:"11px",color:"var(--text4)",marginBottom:"8px"}}>Voeg obscure altcoins toe die niet in de standaard 46 zitten. Worden ook gemaskeerd als ticker-mask aan staat.</div>
+      <div style={{display:"flex",gap:"8px",marginBottom:"10px"}}>
+        <input value={customInput} onChange={e=>setCustomInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")addCustom();}} placeholder="bv. HYPE, FARTCOIN" style={{...inputStyle,flex:1}}/>
+        <button onClick={addCustom} style={{padding:"8px 18px",fontSize:"12px",fontWeight:700,borderRadius:"6px",border:"1px solid var(--gold-border)",background:"var(--gold-dim)",color:"var(--gold)",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>+ Voeg toe</button>
+      </div>
+      {customCount>0&&<div style={{display:"flex",flexWrap:"wrap",gap:"6px"}}>
+        {(cfg.privacy.customTickers||[]).map(t=>(<span key={t} style={{display:"inline-flex",alignItems:"center",gap:"4px",padding:"4px 10px",fontSize:"11px",fontWeight:600,borderRadius:"12px",border:"1px solid var(--border3)",background:"var(--bg3)",color:"var(--text2)",fontFamily:"var(--mono)"}}>
+          {t}
+          <button onClick={()=>removeCustom(t)} title={"Verwijder "+t} style={{padding:"0 4px",border:"none",background:"transparent",color:"var(--text4)",cursor:"pointer",fontSize:"12px",lineHeight:1}}>×</button>
+        </span>))}
+      </div>}
+    </div>
+
+    {/* Live preview */}
+    <div style={{marginBottom:"22px",padding:"14px 16px",border:"1px solid var(--border2)",borderRadius:"10px",background:"var(--glass)"}}>
+      <div style={{fontSize:"11px",fontWeight:700,color:"var(--text4)",textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:"10px"}}>🔍 Live preview — wat ziet Claude?</div>
+      <div style={{marginBottom:"10px"}}>
+        <label style={labelStyle}>Jouw test-tekst</label>
+        <textarea value={previewInput} onChange={e=>setPreviewInput(e.target.value)} rows={2} style={{...inputStyle,resize:"vertical",fontFamily:"inherit"}}/>
+      </div>
+      <div style={{padding:"10px 12px",background:"var(--bg)",border:"1px solid var(--border3)",borderRadius:"6px"}}>
+        <div style={{fontSize:"9px",fontWeight:700,color:"var(--text4)",letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:"4px"}}>Wat er feitelijk naar Anthropic gaat:</div>
+        <div style={{fontSize:"12px",color:"var(--text)",fontFamily:"var(--mono)",lineHeight:1.5,wordBreak:"break-word"}}>{preview.sent}</div>
+      </div>
+      <div style={{fontSize:"10px",color:"var(--text4)",marginTop:"8px"}}>
+        {preview.tickerCount} tickers vervangen · amount-mode: <strong style={{color:"var(--text3)"}}>{preview.amountMode}</strong>
+      </div>
+    </div>
+
+    {/* Wat WEL/NIET gedeeld */}
+    <div style={{marginBottom:"22px",display:"grid",gridTemplateColumns:"1fr 1fr",gap:"10px"}}>
+      <div style={{padding:"12px 14px",background:"rgba(46,170,111,0.05)",border:"1px solid var(--green)",borderRadius:"8px"}}>
+        <div style={{fontSize:"10px",fontWeight:700,color:"var(--green)",textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:"6px"}}>✓ Wel gedeeld</div>
+        <ul style={{margin:0,paddingLeft:"16px",fontSize:"11px",color:"var(--text2)",lineHeight:1.6}}>
+          <li>Setup-tags (MSB, BOS, FVG)</li>
+          <li>Playbook-namen + rules</li>
+          <li>Trade-stats (WR, R, count)</li>
+          <li>Tickers (gemaskeerd indien aan)</li>
+          <li>Bedragen (afhankelijk van mode)</li>
+        </ul>
+      </div>
+      <div style={{padding:"12px 14px",background:"rgba(224,85,85,0.05)",border:"1px solid var(--red)",borderRadius:"8px"}}>
+        <div style={{fontSize:"10px",fontWeight:700,color:"var(--red)",textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:"6px"}}>✗ NIET gedeeld</div>
+        <ul style={{margin:0,paddingLeft:"16px",fontSize:"11px",color:"var(--text2)",lineHeight:1.6}}>
+          <li>API-keys (gaat via header)</li>
+          <li>Account-saldi</li>
+          <li>Custom account-namen</li>
+          <li>Screenshots</li>
+          <li>Tradingrules + goals</li>
+        </ul>
+      </div>
+    </div>
+
+    {/* Last-prompt logger */}
+    <div style={{padding:"14px 16px",border:"1px solid var(--border2)",borderRadius:"10px",background:"var(--glass)"}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:"10px",marginBottom:"10px",flexWrap:"wrap"}}>
+        <div>
+          <div style={{fontSize:"12px",fontWeight:700,color:"var(--text)",marginBottom:"2px"}}>📜 Laatste prompt (transparantie)</div>
+          <div style={{fontSize:"10px",color:"var(--text4)"}}>{lastPrompt?`Laatst verstuurd: ${new Date(lastPrompt.ts).toLocaleString("nl-NL")} · ${(lastPrompt.messages||[]).length} messages`:"Nog geen prompt verstuurd."}</div>
+        </div>
+        <div style={{display:"flex",gap:"6px"}}>
+          {lastPrompt&&<button onClick={()=>{refreshLast();setShowLast(s=>!s);}} style={{padding:"6px 12px",fontSize:"11px",fontWeight:600,borderRadius:"6px",border:"1px solid var(--border3)",background:"transparent",color:"var(--text3)",cursor:"pointer",fontFamily:"inherit"}}>{showLast?"Verberg":"Bekijk"}</button>}
+          {lastPrompt&&<button onClick={clearLastPrompt} style={{padding:"6px 10px",fontSize:"11px",fontWeight:600,borderRadius:"6px",border:"1px solid var(--border3)",background:"transparent",color:"var(--text4)",cursor:"pointer",fontFamily:"inherit"}}>Wis</button>}
+        </div>
+      </div>
+      <label style={{display:"flex",alignItems:"center",gap:"6px",fontSize:"11px",color:"var(--text3)",cursor:"pointer"}}>
+        <input type="checkbox" checked={!!cfg.privacy.logLastPrompt} onChange={e=>update({logLastPrompt:e.target.checked})}/>
+        Log laatste prompt voor verificatie (lokaal opslag, niet gedeeld)
+      </label>
+      {showLast&&lastPrompt&&<div style={{marginTop:"12px",padding:"10px 12px",background:"var(--bg)",border:"1px solid var(--border3)",borderRadius:"6px",maxHeight:"320px",overflowY:"auto"}}>
+        <div style={{fontSize:"10px",fontWeight:700,color:"var(--text4)",marginBottom:"4px"}}>MODEL</div>
+        <div style={{fontSize:"11px",color:"var(--text2)",fontFamily:"var(--mono)",marginBottom:"10px"}}>{lastPrompt.model}</div>
+        <div style={{fontSize:"10px",fontWeight:700,color:"var(--text4)",marginBottom:"4px"}}>SYSTEM PROMPT</div>
+        <pre style={{fontSize:"10px",color:"var(--text2)",fontFamily:"var(--mono)",whiteSpace:"pre-wrap",wordBreak:"break-word",margin:0,marginBottom:"10px",lineHeight:1.45,maxHeight:"180px",overflowY:"auto",padding:"6px 8px",background:"var(--bg3)",borderRadius:"4px"}}>{lastPrompt.systemPrompt||"(leeg)"}</pre>
+        <div style={{fontSize:"10px",fontWeight:700,color:"var(--text4)",marginBottom:"4px"}}>MESSAGES ({(lastPrompt.messages||[]).length})</div>
+        {(lastPrompt.messages||[]).map((m,i)=>(<div key={i} style={{marginBottom:"6px"}}>
+          <div style={{fontSize:"9px",fontWeight:700,color:m.role==="user"?"var(--gold)":"var(--text3)",letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:"2px"}}>{m.role}</div>
+          <pre style={{fontSize:"10px",color:"var(--text2)",fontFamily:"var(--mono)",whiteSpace:"pre-wrap",wordBreak:"break-word",margin:0,lineHeight:1.45,padding:"6px 8px",background:"var(--bg3)",borderRadius:"4px"}}>{typeof m.content==="string"?m.content:JSON.stringify(m.content,null,2)}</pre>
+        </div>))}
+      </div>}
+    </div>
+  </div>);
 }
 
 // v12.137 — Subtle topbar-indicator. Verschijnt ALLEEN wanneer IS_AI + master
@@ -15723,13 +15998,25 @@ function ChatSection({cfg,setCfg,playbooks,trades,showToast}){
     setLoading(true);setError("");
 
     try{
-      // Privacy mask voor outgoing messages (ticker-namen)
+      // Privacy mask voor outgoing messages (ticker-namen + optioneel bedragen)
       const fullText=updated.messages.map(m=>m.content).join("\n");
-      const maskMap=cfg.features.privacy?buildTickerMask(fullText+" "+JSON.stringify(playbooks||[])):null;
-      const safeMessages=updated.messages.map(m=>({role:m.role,content:maskMap?applyMask(m.content,maskMap):m.content}));
-      const safePlaybooks=maskMap?(playbooks||[]).map(p=>JSON.parse(applyMask(JSON.stringify(p),maskMap))):(playbooks||[]);
-      const safeTrades=maskMap?(trades||[]).map(t=>({...t,symbol:applyMask(t.symbol||"",maskMap)})):(trades||[]);
-      const safeWeeklies=maskMap?weeklies.map(w=>JSON.parse(applyMask(JSON.stringify(w),maskMap))):weeklies;
+      const tickerMap=cfg.features.privacy?buildTickerMask(fullText+" "+JSON.stringify(playbooks||[])):null;
+      const amountMode=cfg.privacy&&cfg.privacy.amountMode||"off";
+      // Stap 1: ticker-mask
+      const tMaskMsg=tickerMap?(s)=>applyMask(s,tickerMap):(s)=>s;
+      const tMaskObj=tickerMap?(o)=>JSON.parse(applyMask(JSON.stringify(o),tickerMap)):(o)=>o;
+      // Stap 2: amount-mask (per-call mapping wanneer "labels")
+      const fullForAmount=tMaskMsg(fullText)+" "+tMaskMsg(JSON.stringify(playbooks||[]))+" "+tMaskMsg(JSON.stringify(trades||[]));
+      const amountMap=amountMode==="labels"?buildAmountMask(fullForAmount,amountMode):{};
+      const aMaskStr=(s)=>applyAmountMask(s,amountMode,amountMap);
+      const aMaskObj=(o)=>{try{return JSON.parse(applyAmountMask(JSON.stringify(o),amountMode,amountMap));}catch{return o;}};
+      const fullMask=(s)=>aMaskStr(tMaskMsg(s));
+      const fullMaskObj=(o)=>aMaskObj(tMaskObj(o));
+
+      const safeMessages=updated.messages.map(m=>({role:m.role,content:fullMask(m.content)}));
+      const safePlaybooks=fullMaskObj(playbooks||[]);
+      const safeTrades=(trades||[]).map(t=>fullMaskObj({...t,symbol:tickerMap?applyMask(t.symbol||"",tickerMap):t.symbol||""}));
+      const safeWeeklies=weeklies.map(w=>fullMaskObj(w));
       const systemPrompt=buildChatSystemPrompt({playbooks:safePlaybooks,trades:safeTrades,weeklies:safeWeeklies});
       const res=await callClaudeChat({
         apiKey:cfg.byok.key,
@@ -15740,7 +16027,9 @@ function ChatSection({cfg,setCfg,playbooks,trades,showToast}){
       });
       recordAICost(res.cost);
       setCfg&&setCfg(loadAIConfig());
-      const displayText=maskMap?reverseMask(res.text,maskMap):res.text;
+      // Reverse mask: ticker (altijd) + amount (alleen labels-mode)
+      let displayText=tickerMap?reverseMask(res.text,tickerMap):res.text;
+      displayText=reverseAmountMask(displayText,amountMode,amountMap);
       const aMsg={role:"assistant",content:displayText,cost:res.cost,ts:Date.now()};
       const final={...updated,messages:[...updated.messages,aMsg],updatedAt:Date.now()};
       // v12.143: directe setChats + force-scroll na render. Anders bleef de
@@ -15936,11 +16225,19 @@ function AIChatPopup({playbooks,trades,showToast}){
     setLoading(true);setError("");
     try{
       const fullText=updated.messages.map(m=>m.content).join("\n");
-      const maskMap=cfg.features.privacy?buildTickerMask(fullText+" "+JSON.stringify(playbooks||[])):null;
-      const safeMessages=updated.messages.map(m=>({role:m.role,content:maskMap?applyMask(m.content,maskMap):m.content}));
-      const safePlaybooks=maskMap?(playbooks||[]).map(p=>JSON.parse(applyMask(JSON.stringify(p),maskMap))):(playbooks||[]);
-      const safeTrades=maskMap?(trades||[]).map(t=>({...t,symbol:applyMask(t.symbol||"",maskMap)})):(trades||[]);
-      const safeWeeklies=maskMap?weeklies.map(w=>JSON.parse(applyMask(JSON.stringify(w),maskMap))):weeklies;
+      const tickerMap=cfg.features.privacy?buildTickerMask(fullText+" "+JSON.stringify(playbooks||[])):null;
+      const amountMode=cfg.privacy&&cfg.privacy.amountMode||"off";
+      const tMaskMsg=tickerMap?(s)=>applyMask(s,tickerMap):(s)=>s;
+      const tMaskObj=tickerMap?(o)=>JSON.parse(applyMask(JSON.stringify(o),tickerMap)):(o)=>o;
+      const fullForAmount=tMaskMsg(fullText)+" "+tMaskMsg(JSON.stringify(playbooks||[]))+" "+tMaskMsg(JSON.stringify(trades||[]));
+      const amountMap=amountMode==="labels"?buildAmountMask(fullForAmount,amountMode):{};
+      const fullMask=(s)=>applyAmountMask(tMaskMsg(s),amountMode,amountMap);
+      const fullMaskObj=(o)=>{try{return JSON.parse(applyAmountMask(JSON.stringify(tMaskObj(o)),amountMode,amountMap));}catch{return o;}};
+
+      const safeMessages=updated.messages.map(m=>({role:m.role,content:fullMask(m.content)}));
+      const safePlaybooks=fullMaskObj(playbooks||[]);
+      const safeTrades=(trades||[]).map(t=>fullMaskObj({...t,symbol:tickerMap?applyMask(t.symbol||"",tickerMap):t.symbol||""}));
+      const safeWeeklies=weeklies.map(w=>fullMaskObj(w));
       const systemPrompt=buildChatSystemPrompt({playbooks:safePlaybooks,trades:safeTrades,weeklies:safeWeeklies});
       const res=await callClaudeChat({
         apiKey:cfg.byok.key,
@@ -15951,7 +16248,8 @@ function AIChatPopup({playbooks,trades,showToast}){
       });
       recordAICost(res.cost);
       setCfg(loadAIConfig());
-      const displayText=maskMap?reverseMask(res.text,maskMap):res.text;
+      let displayText=tickerMap?reverseMask(res.text,tickerMap):res.text;
+      displayText=reverseAmountMask(displayText,amountMode,amountMap);
       const aMsg={role:"assistant",content:displayText,cost:res.cost,ts:Date.now()};
       const final={...updated,messages:[...updated.messages,aMsg],updatedAt:Date.now()};
       setChats(upsertChat(final));
@@ -16288,11 +16586,10 @@ function AICoachPage({showToast,playbooks,trades}){
         <ChatSection cfg={cfg} setCfg={setCfg} playbooks={playbooks} trades={trades} showToast={showToast}/>
       </div>
 
-      {/* ─── PRIVACY (placeholder) ─── */}
+      {/* ─── PRIVACY ─── */}
       <div className="ai-section" id="sec-privacy">
         <h3 style={{fontSize:"16px",fontWeight:700,color:"var(--text)",marginBottom:"16px"}}>🔒 Privacy</h3>
-        <Placeholder version="v12.135 (basis al actief)" title="Ticker-anonimisering vóór API-call"
-          body="Wanneer Privacy-filter aan staat (default): ticker-namen worden vervangen door COIN_A / COIN_B / … vóór de payload naar Claude gaat. AI-output wordt na ontvangst weer terug-gemapt naar echte tickers in de UI. Geen account-saldi of API-keys gaan ooit naar Claude."/>
+        <PrivacySection cfg={cfg} setCfg={setCfg} showToast={showToast}/>
       </div>
 
     </main>

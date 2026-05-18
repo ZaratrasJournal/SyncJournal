@@ -6,6 +6,45 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.149] — 2026-05-18
+
+### Toegevoegd
+- **Privacy-sectie volwaardig** *(2026-05-18, gevraagd door Denny na uitleg over privacy-filter)* — Vervangt de oude placeholder met een complete transparantie + control panel. AI-coach laatste placeholder is nu live.
+  - **Status-blok** met groene/amber visual + telling: "Ticker-mask actief · 46 standaard tickers + N custom · amount-mode: ..."
+  - **Bedrag-masking** — nieuwe `cfg.privacy.amountMode` met 3 keuzes via segment-buttons:
+    - `off` (default): bedragen onveranderd naar Claude
+    - `labels`: `$340` → `$X1`, `$-180` → `$X2` (per-call mapping, reverse-bar zodat AI-output weer echte bedragen toont)
+    - `buckets`: `$340` → `$middel`, `$-180` → `-$klein` (≤50 = klein, 50–500 = middel, 500–5k = groot, >5k = zeer-groot — irreversibel, sterkste anonimisering)
+    - **Scope-keuze**: amount-mask werkt alleen in **chat-flows** (ChatSection + popup). Pretrade/weekly behouden bedragen omdat ze analytisch relevant zijn voor coaching. Documentatie-tip in UI.
+  - **Custom tickers** — nieuwe `cfg.privacy.customTickers[]`. Toevoegen via inputveld + Enter/knop, verwijderen via tag-chip. Validatie: 2–10 letters/cijfers, niet dubbel, niet in standaard-46. Werkt direct in alle outgoing mask-calls (chat + pretrade + weekly).
+  - **🔍 Live preview "Wat ziet Claude?"** — textarea waar je test-tekst typt, daaronder real-time output zoals die naar Anthropic gaat. Telt aantal gemaskeerde tickers + toont actieve amount-mode. Demonstreert masking transparant zonder dat je een API-call hoeft te doen.
+  - **WEL/NIET-gedeeld lijst** — 2-kolommen overview:
+    - ✓ Wel: setup-tags, playbook-namen, trade-stats, gemaskeerde tickers, bedragen (afhankelijk van mode)
+    - ✗ Niet: API-keys, account-saldi, custom account-namen, screenshots, tradingrules + goals
+  - **📜 Laatste prompt logger** — `cfg.privacy.logLastPrompt` (default aan) bewaart de meest recente outgoing `system` + `messages` in `tj_ai_last_prompt` localStorage. "Bekijk"-knop toont volledige payload (model, system prompt, alle messages met user/assistant labels). Verifieerbare transparantie — je ziet exact wat Mori naar Claude stuurt. "Wis"-knop verwijdert log.
+- **Integratie van amount-masking in chat-flows** — Zowel `ChatSection.sendMessage` als `AIChatPopup.sendMessage` passen nu ticker-mask + amount-mask toe op messages/playbooks/trades/weeklies vóór payload, met reverse-mask op response (labels-mode only — buckets is irreversibel).
+- **`logLastPrompt(payload)` in `callClaude` + `callClaudeChat`** — Elke outgoing API-call wordt geregistreerd in localStorage zodat de Privacy-sectie "wat is verstuurd" kan tonen. Alleen wanneer toggle aan.
+- **6-spec Playwright suite** (`tests/aicoach-privacy.spec.js`): sectie rendert + status-blok · live preview toont COIN_-mask · labels-mode `$X1` · buckets-mode `$middel` · custom ticker toevoegen → masking actief · last-prompt log opgeslagen na chat-send.
+
+### Gewijzigd
+- `DEFAULT_AI_CONFIG.privacy` toegevoegd: `{amountMode:"off", customTickers:[], logLastPrompt:true}` — backwards-compatible (oude configs krijgen defaults via spread in `loadAIConfig`).
+- Ticker-list verplaatst van regex-constant naar `TICKER_HARDCODED` array + nieuwe `getTickerList()` helper die custom tickers mergt bij elke mask-build.
+
+### AI-coach feature-tracker — alle subsecties live ✓
+| Sectie | Versie | Status |
+|---|---|---|
+| Foundation | v12.135 | ✓ |
+| Pre-trade validatie | v12.136 | ✓ |
+| Budget & kosten | v12.137 | ✓ |
+| Weekly digest | v12.138 | ✓ |
+| Chat (tab + popup) | v12.139–148 | ✓ |
+| **Privacy** | **v12.149** | **✓** |
+| Naam: Mori | v12.147 | ✓ |
+
+**Volledige test-suite na deze release**: 26+ specs (smoke + foundation + pretrade + budget + weekly + chat × 5 + popup × 2 + privacy).
+
+---
+
 ## [v12.148] — 2026-05-18
 
 ### Toegevoegd
