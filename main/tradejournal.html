@@ -1230,7 +1230,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.136",released:"2026-05-18"};
+const APP_VERSION={version:"v12.137",released:"2026-05-18"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -2232,7 +2232,11 @@ function loadAIConfig(){
   }catch(e){return{...DEFAULT_AI_CONFIG};}
 }
 function saveAIConfig(cfg){
-  try{localStorage.setItem("tj_ai_config",JSON.stringify(cfg));}catch(e){}
+  try{
+    localStorage.setItem("tj_ai_config",JSON.stringify(cfg));
+    // v12.137: broadcast naar topbar-indicator + andere subscribers
+    window.dispatchEvent(new CustomEvent("tj-ai-config-change",{detail:cfg}));
+  }catch(e){}
 }
 
 async function proxyCall(payload){
@@ -14518,8 +14522,22 @@ function reverseMask(text,map){
 }
 
 // v12.136 — Claude API helper. Throws on HTTP error. Returns {text, usage, cost, raw}.
-// Caller is verantwoordelijk voor budget-check vóór de call en cost-update na.
+// v12.137 — Hard-cap guard: throws BEFORE call wanneer maand-budget overschreden,
+// tenzij budget-feature uitstaat. Voorkomt runaway-kosten en geeft user controle.
 async function callClaude({apiKey,model,systemPrompt,userMessage,maxTokens=1024}){
+  // Pre-call budget guard (skip wanneer budget-feature uit staat)
+  try{
+    const cfg=loadAIConfig();
+    if(cfg.features.budget){
+      const now=new Date();
+      const monthKey=now.getFullYear()+"-"+String(now.getMonth()+1).padStart(2,"0");
+      const spent=(cfg.budget.lastResetMonth&&cfg.budget.lastResetMonth!==monthKey)?0:(Number(cfg.budget.spent)||0);
+      const limit=Number(cfg.budget.monthlyLimit)||0;
+      if(limit>0&&spent>=limit){
+        throw new Error("Maandlimiet bereikt: $"+spent.toFixed(2)+" van $"+limit.toFixed(2)+". Verhoog in Budget & kosten of wacht tot 1e van de maand.");
+      }
+    }
+  }catch(e){if(/Maandlimiet/.test(e.message))throw e;}
   const resp=await fetch("https://api.anthropic.com/v1/messages",{
     method:"POST",
     headers:{
@@ -14547,6 +14565,8 @@ async function callClaude({apiKey,model,systemPrompt,userMessage,maxTokens=1024}
 }
 
 // v12.136 — Track API-cost in tj_ai_config.budget.spent. Resets first of month.
+// v12.137 — Dispatched custom event 'tj-ai-budget-change' zodat topbar-indicator
+// realtime updatet (events binnen één tab; storage-event triggert alleen cross-tab).
 function recordAICost(cost){
   try{
     const cfg=loadAIConfig();
@@ -14557,6 +14577,7 @@ function recordAICost(cost){
     cfg.budget.spent=spent+(Number(cost)||0);
     cfg.budget.lastResetMonth=monthKey;
     saveAIConfig(cfg);
+    try{window.dispatchEvent(new CustomEvent("tj-ai-budget-change",{detail:cfg.budget}));}catch(e){}
     return cfg.budget.spent;
   }catch(e){return 0;}
 }
@@ -14805,6 +14826,127 @@ function PreTradeSection({cfg,playbooks,showToast,setCfg}){
   </div>);
 }
 
+// v12.137 — Subtle topbar-indicator. Verschijnt ALLEEN wanneer IS_AI + master
+// aan + budget-feature aan + spent ≥ alertThreshold van limit. Klik → springt
+// naar AI-coach tab + budget-sectie. Subscribed via custom events op cost-change.
+function AIBudgetIndicator({navigate}){
+  const[cfg,setCfg]=useState(()=>loadAIConfig());
+  useEffect(()=>{
+    const handler=()=>setCfg(loadAIConfig());
+    window.addEventListener("tj-ai-budget-change",handler);
+    window.addEventListener("tj-ai-config-change",handler);
+    return()=>{
+      window.removeEventListener("tj-ai-budget-change",handler);
+      window.removeEventListener("tj-ai-config-change",handler);
+    };
+  },[]);
+  if(!IS_AI||!cfg.enabled||!cfg.features.budget)return null;
+  const spent=Number(cfg.budget.spent)||0;
+  const limit=Number(cfg.budget.monthlyLimit)||0;
+  if(limit<=0)return null;
+  const pct=(spent/limit)*100;
+  const threshold=(Number(cfg.budget.alertThreshold)||0.8)*100;
+  if(pct<threshold)return null;
+  const over=pct>=100;
+  const color=over?"var(--red)":"var(--amber)";
+  const bg=over?"rgba(224,85,85,0.10)":"rgba(255,180,40,0.10)";
+  const border=over?"var(--red)":"var(--amber)";
+  return(<button
+    onClick={()=>{navigate&&navigate("aicoach");setTimeout(()=>{const el=document.getElementById("sec-budget");if(el)el.scrollIntoView({behavior:"smooth",block:"start"});},150);}}
+    title={over?`AI-budget BLOCKED: $${spent.toFixed(2)} / $${limit.toFixed(2)} — verhoog in AI-coach → Budget`:`AI-budget waarschuwing: $${spent.toFixed(2)} / $${limit.toFixed(2)} (${pct.toFixed(0)}%)`}
+    aria-label="AI budget waarschuwing"
+    style={{padding:"6px 10px",borderRadius:"var(--radius)",border:"1px solid "+border,background:bg,color:color,fontSize:"11px",fontWeight:700,cursor:"pointer",fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:"6px",lineHeight:1}}
+  >
+    <span>💰</span><span style={{fontFamily:"var(--mono)"}}>{pct.toFixed(0)}%</span>
+  </button>);
+}
+
+// v12.137 — Budget-monitor sectie. Maandlimiet + alert-threshold configureerbaar,
+// realtime spent-bar, reset-knop. Hard-cap guard zit in callClaude() (zie boven).
+function BudgetSection({cfg,setCfg,showToast}){
+  const update=(patch)=>{const next={...cfg,budget:{...cfg.budget,...patch}};saveAIConfig(next);setCfg(next);};
+  const spent=Number(cfg.budget.spent)||0;
+  const limit=Number(cfg.budget.monthlyLimit)||0;
+  const pct=limit>0?Math.min(100,(spent/limit)*100):0;
+  const thresholdPct=(Number(cfg.budget.alertThreshold)||0.8)*100;
+  const overLimit=limit>0&&spent>=limit;
+  const overThreshold=pct>=thresholdPct;
+  const barColor=overLimit?"var(--red)":overThreshold?"var(--amber)":"var(--green)";
+
+  const presetBtn=(val,label)=>{
+    const sel=Math.abs(limit-val)<0.01;
+    return(<button key={val} onClick={()=>update({monthlyLimit:val})} style={{padding:"6px 14px",fontSize:"12px",fontWeight:600,borderRadius:"6px",border:"1px solid "+(sel?"var(--gold-border)":"var(--border3)"),background:sel?"var(--gold-dim)":"transparent",color:sel?"var(--gold)":"var(--text3)",cursor:"pointer",fontFamily:"inherit"}}>${val} {label}</button>);
+  };
+  const resetSpent=()=>{
+    if(!confirm("Reset maand-totaal naar $0? (Doe dit alleen na succesvolle eind-maand-afsluiting.)"))return;
+    update({spent:0});
+    showToast&&showToast("Maand-totaal reset","success");
+  };
+
+  const inputStyle={width:"120px",padding:"8px 10px",fontSize:"13px",borderRadius:"6px",border:"1px solid var(--border3)",background:"var(--bg)",color:"var(--text)",fontFamily:"inherit"};
+  const labelStyle={display:"block",fontSize:"10px",fontWeight:600,color:"var(--text4)",textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:"6px"};
+
+  if(!cfg.enabled){
+    return(<div style={{padding:"24px",border:"1px dashed var(--border3)",borderRadius:"10px",background:"var(--glass)",textAlign:"center",color:"var(--text3)",fontSize:"13px"}}>
+      Zet eerst de <strong>master-schakelaar</strong> aan.
+    </div>);
+  }
+
+  return(<div>
+    <p style={{fontSize:"12px",color:"var(--text3)",lineHeight:1.6,marginBottom:"20px",maxWidth:"640px"}}>
+      Houd cumulatieve API-kosten per maand bij. Bij <strong>{thresholdPct.toFixed(0)}%</strong> van limiet verschijnt waarschuwing. Bij <strong>100%</strong> blokkeert de app verdere AI-calls tot je de limiet verhoogt of de 1e van de maand komt (auto-reset).
+    </p>
+
+    {/* Spent-display met progress bar */}
+    <div style={{padding:"18px 20px",border:"1px solid "+(overLimit?"var(--red)":overThreshold?"var(--amber)":"var(--border2)"),borderRadius:"12px",background:overLimit?"rgba(224,85,85,0.04)":overThreshold?"rgba(255,180,40,0.04)":"var(--glass)",marginBottom:"24px"}}>
+      <div style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",marginBottom:"10px"}}>
+        <div>
+          <div style={{fontSize:"10px",fontWeight:700,color:"var(--text4)",textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:"4px"}}>Deze maand</div>
+          <div style={{fontSize:"28px",fontWeight:800,color:"var(--text)",fontFamily:"var(--mono)"}}>
+            ${spent.toFixed(2)}{limit>0&&<span style={{fontSize:"15px",color:"var(--text4)",fontWeight:600}}> / ${limit.toFixed(2)}</span>}
+          </div>
+        </div>
+        <div style={{textAlign:"right"}}>
+          <div style={{fontSize:"22px",fontWeight:800,color:barColor,fontFamily:"var(--mono)"}}>{pct.toFixed(0)}%</div>
+          {overLimit&&<div style={{fontSize:"10px",color:"var(--red)",fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginTop:"2px"}}>BLOCKED</div>}
+        </div>
+      </div>
+      <div style={{height:"8px",borderRadius:"4px",background:"var(--border1)",overflow:"hidden"}}>
+        <div style={{width:pct.toFixed(2)+"%",height:"100%",background:barColor,transition:"width 0.3s, background 0.3s"}}/>
+      </div>
+      {cfg.budget.lastResetMonth&&<div style={{fontSize:"10px",color:"var(--text4)",marginTop:"8px"}}>
+        Periode: {cfg.budget.lastResetMonth} · Auto-reset op 1e van volgende maand
+      </div>}
+    </div>
+
+    {/* Maandlimiet */}
+    <div style={{marginBottom:"20px"}}>
+      <label style={labelStyle}>Maandelijkse limiet (USD)</label>
+      <div style={{display:"flex",gap:"8px",alignItems:"center",flexWrap:"wrap"}}>
+        {[5,10,15,25,50].map(v=>presetBtn(v,""))}
+        <span style={{fontSize:"11px",color:"var(--text4)",margin:"0 6px"}}>of custom:</span>
+        <input type="number" step="1" min="0" value={limit||""} onChange={e=>update({monthlyLimit:Number(e.target.value)||0})} placeholder="0 = geen limiet" style={inputStyle}/>
+      </div>
+      <div style={{fontSize:"11px",color:"var(--text4)",marginTop:"6px"}}>0 = geen hard-cap (alleen tracking, geen blokkade)</div>
+    </div>
+
+    {/* Alert threshold */}
+    <div style={{marginBottom:"20px"}}>
+      <label style={labelStyle}>Waarschuwing bij (% van limiet)</label>
+      <div style={{display:"flex",alignItems:"center",gap:"12px"}}>
+        <input type="range" min="50" max="95" step="5" value={(cfg.budget.alertThreshold||0.8)*100} onChange={e=>update({alertThreshold:Number(e.target.value)/100})} style={{flex:1,maxWidth:"360px"}}/>
+        <div style={{fontSize:"14px",fontWeight:700,color:"var(--text)",fontFamily:"var(--mono)",minWidth:"50px"}}>{thresholdPct.toFixed(0)}%</div>
+      </div>
+    </div>
+
+    {/* Reset */}
+    <div style={{paddingTop:"16px",borderTop:"1px solid var(--border2)"}}>
+      <button onClick={resetSpent} style={{padding:"8px 16px",fontSize:"12px",fontWeight:600,borderRadius:"6px",border:"1px solid var(--border3)",background:"transparent",color:"var(--text3)",cursor:"pointer",fontFamily:"inherit"}}>↻ Reset maand-totaal handmatig</button>
+      <div style={{fontSize:"11px",color:"var(--text4)",marginTop:"6px"}}>Auto-reset gebeurt op 1e van de maand. Manueel resetten alleen na bewuste eind-maand check.</div>
+    </div>
+  </div>);
+}
+
 function AICoachPage({showToast,playbooks}){
   const[cfg,setCfg]=useState(()=>loadAIConfig());
   const[active,setActive]=useState("sec-general");
@@ -14997,11 +15139,10 @@ function AICoachPage({showToast,playbooks}){
         <PreTradeSection cfg={cfg} setCfg={setCfg} playbooks={playbooks} showToast={showToast}/>
       </div>
 
-      {/* ─── BUDGET (placeholder) ─── */}
+      {/* ─── BUDGET ─── */}
       <div className="ai-section" id="sec-budget">
         <h3 style={{fontSize:"16px",fontWeight:700,color:"var(--text)",marginBottom:"16px"}}>💰 Budget & kosten</h3>
-        <Placeholder version="v12.137" title="Maandelijkse cost-tracking + alerts"
-          body="Stel een maandlimiet in ($5 / $15 / custom). App houdt cumulatieve API-kosten bij. Bij 80% waarschuwing in topbar, bij 100% AI-features tijdelijk uit tot reset. Per-feature cost-breakdown."/>
+        <BudgetSection cfg={cfg} setCfg={setCfg} showToast={showToast}/>
       </div>
 
       {/* ─── WEEKLY (placeholder) ─── */}
@@ -15764,6 +15905,8 @@ function App(){
         </div>
         <div className="tj-right-btns" style={{display:"flex",alignItems:"center",gap:"8px"}}>
           <button onClick={()=>{setNewTrade(newEmptyTrade());navigate("new")}} style={{padding:"7px 14px",borderRadius:"var(--radius)",border:"1px solid var(--blue2)",background:"rgba(201,168,76,0.12)",color:"#C9A84C",fontSize:"12px",cursor:"pointer",fontFamily:"inherit",fontWeight:600,display:"flex",alignItems:"center",gap:"6px"}}><span>+</span> Trade <span className="kbd" style={{fontSize:"9px",borderColor:"rgba(201,168,76,0.4)"}}>N</span></button>
+          {/* v12.137: AI-budget waarschuwing — verschijnt alleen ≥alertThreshold */}
+          <AIBudgetIndicator navigate={navigate}/>
           {/* v12.127: globale privacy-toggle. Verbergt alle $/€ bedragen op alle pagina's.
               Synced met Dashboard's 👁-knop via PrivacyContext. */}
           <button

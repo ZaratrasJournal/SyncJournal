@@ -6,6 +6,25 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.137] — 2026-05-18
+
+### Toegevoegd
+- **Budget-monitor live (AI-coach, BETA — `?ai=1`)** *(2026-05-18)* — Volledige cost-control voor je AI-coach. Vervangt de placeholder in **💰 Budget & kosten**. Features:
+  - **Maandelijkse limiet** met presets ($5 / $10 / $15 / $25 / $50) + custom input (0 = geen hard-cap, alleen tracking)
+  - **Alert-threshold slider** (50–95%, default 80%) — bij overschrijden verschijnt topbar-indicator
+  - **Spent-display** met kleurgecodeerde progress bar: groen <80%, amber 80–99%, rood ≥100% (BLOCKED-badge)
+  - **Periode + auto-reset info** — toont huidige maand-key, auto-reset op 1e van maand
+  - **Handmatige reset-knop** met confirmation (alleen na bewuste eind-maand-check)
+- **Hard-cap guard in `callClaude`** — vóór elke API-call wordt budget gecheckt; bij `spent >= limit` throwt de helper meteen met duidelijke melding ("Maandlimiet bereikt: $X / $Y. Verhoog in Budget & kosten of wacht tot 1e van de maand.") — geen API-call, geen kosten, geen verrassingen. Skipt wanneer budget-feature uitstaat.
+- **Topbar-indicator (subtle)** — wanneer `?ai=1` + master aan + budget-feature aan + `spent >= alertThreshold`: een klein 💰-icoontje met percentage verschijnt in de topbar-rechts, tussen de Trade-knop en Privacy-toggle. Amber bij 80–99%, rood bij ≥100%. **Klik** → springt direct naar AI-coach → Budget-sectie voor actie. Verdwijnt onder threshold (geen visuele clutter wanneer alles oké is).
+- **Realtime sync via custom events** — `tj-ai-budget-change` (op cost-record) + `tj-ai-config-change` (op save) dispatched naar `window` zodat topbar-indicator + andere subscribers binnen één tab updaten zonder polling.
+- **5-spec Playwright suite** (`tests/aicoach-budget.spec.js`): spent+pct+bar render · indicator zichtbaar ≥80% · indicator verborgen <80% · hard-cap blokkeert fetch volledig · reset-knop zet spent op 0.
+
+### Gewijzigd
+- `saveAIConfig` broadcastet nu `tj-ai-config-change` event — backwards-compatible (oude subscribers worden gewoon niets-doend, nieuwe luisteren).
+
+---
+
 ## [v12.136] — 2026-05-18
 
 ### Toegevoegd
