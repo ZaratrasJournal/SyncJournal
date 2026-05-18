@@ -467,7 +467,24 @@ In [tests/](tests/) staan 4 real-data specs (`<exchange>-real-data.spec.js`) die
 
   **Voorgestelde onderzoeksweg**: research-deep skill (Claude Code) over alle 8 competitors + Steenbarger/Douglas/Tharp coaching-frameworks + Anthropic's coaching-use-cases. Output: `docs/research-playbook-coaching-2026-MM-DD.md` met findings + aanbevolen feature-shortlist + scope-schatting per item.
 
-  **Wacht op groen licht voor research-start.**
+  **✅ Research VOLTOOID 2026-05-18** — zie:
+  - [docs/research-playbook-coaching-2026-05-18.md](docs/research-playbook-coaching-2026-05-18.md) — synthesis + v1-spec aanbeveling
+  - [playbook-coaching-ai/report.md](playbook-coaching-ai/report.md) — raw research over 28 items (10 Tier-1 + 11 Tier-2 + 7 Tier-3)
+  - [playbook-coaching-ai/results/](playbook-coaching-ai/results/) — per-item JSON's met fields-coverage
+
+  **Belangrijkste findings**:
+  - Gap bevestigd: niemand combineert structured-playbook + LLM narrative + crypto-perp + partial-close
+  - 6-12 month window voor competitors catch-up
+  - 4 moderne AI-journals gebruiken Claude (TradeJournal.AI, MRT, TradeOS, Chartlog.ai) — onze Anthropic-keuze zit in juiste kamp
+  - Pre-trade validation NIET volledig green-field: Tradexis + TradeJournal.AI hebben het, maar niet voor crypto-perp
+  - Unique combo voor v1: **auto pre-trade validation + crypto-perp + multi-TP partial-close + funding-rate context + session-aware cadence**
+
+  **v1-spec aanbeveling** (3 weken werk, ~51u):
+  - Tier-A (must-have v12.140): auto pre-trade validation + weekly digest + crypto-context augmentation
+  - Stack: Claude **BYOK** (Bring Your Own Key) — Anthropic API key in Settings, privacy door user-side data, gevalideerde trend
+  - Cold-start: weiger gracefully bij <20 trades per playbook
+
+  **5 open beslissingen** vóór bouw — zie research-doc sectie "Open beslissingen". Trigger `/grill-me` voor stress-test van plan.
 
 - [ ] **MFE/MAE-analyse toevoegen** *(2026-05-01, onderzoek klaar — zie [docs/research-mfe-mae.md](docs/research-mfe-mae.md))* — Maximum Favorable / Adverse Excursion is de #1 metric-gap voor een serieus journal. Geen enkele crypto-native journal heeft het topnotch (Tradervue=US-aandelen, TradesViz=futures, Edgewonk=manual-only). **Wat we nu hebben:** niets behalve één CSS-comment `/* v7 NEW: MAE/MFE badge */` op [work/tradejournal.html](work/tradejournal.html#L335) regel 335. **Aanbeveling:** bouw Path A (manual entry, 2 velden in trade-form, ~2 dagen) + Path B (auto-fetch via public Binance/Bybit/Blofin klines API, ~1-2 weken) parallel. **Storage:** 2 raw velden per trade (`mfePrice`, `maePrice`), alle metrics on-the-fly. **Integratie met Trade Performance Report (v12.65):** vervangt lege R-distributie-fallback op page 5 door 4 echte MFE/MAE-cards. **Volgende stap:** demo-first — `demos/mfe-mae-demo.html` met Path A bouwen, dan iteratie met Denny voordat we naar `work/` integreren. Volledig verslag (10 secties, 30+ bronnen incl. Tradervue/TradesViz/Edgewonk docs, Binance/Bybit kline specs, Curtis Faith E-Ratio): [docs/research-mfe-mae.md](docs/research-mfe-mae.md).
 - [ ] **Welke exchanges prioriteit?** — lijst afstemmen met community. Bybit, Binance, MEXC, Blofin, Kraken, Hyperliquid?
