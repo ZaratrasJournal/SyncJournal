@@ -137,6 +137,94 @@ test('untagged trades (geen playbookId) verschijnen ook in prompt',async({page})
   expect(sys).toMatch(/backtest:\s*4t/);
 });
 
+test('v12.142: backtests met R-multiple maar pnl=0 worden correct als winnaars geteld',async({page})=>{
+  // Realistisch scenario voor Denny: 20 backtest-trades, allemaal met
+  // rMultiple ingevuld (uit chart-replay), MAAR t.pnl = "" of "0" omdat
+  // positionSize niet is ingevuld bij backtesten. Voorheen: WR = 0% (bug).
+  // Nu: WR moet ~75% zijn (15 winners op rMultiple>0).
+  const winners=Array.from({length:15},(_,i)=>({
+    id:'bt_w'+i,symbol:'BTC',direction:'long',
+    entryDate:'2026-05-0'+(1+i%9),exitDate:'2026-05-0'+(1+i%9),
+    pnl:'',rMultiple:1.8,playbookId:'pb1',
+    setupTags:['MSB','BOS'],grade:'A',status:'missed',simType:'backtest'
+  }));
+  const losers=Array.from({length:5},(_,i)=>({
+    id:'bt_l'+i,symbol:'BTC',direction:'long',
+    entryDate:'2026-05-1'+i,exitDate:'2026-05-1'+i,
+    pnl:'',rMultiple:-1.0,playbookId:'pb1',
+    setupTags:['MSB','BOS'],grade:'B',status:'missed',simType:'backtest'
+  }));
+  const allTrades=[...winners,...losers];
+
+  await page.addInitScript(({trades,playbooks})=>{
+    localStorage.setItem('tj_welcomed','1');
+    localStorage.setItem('tj_ai_flag','1');
+    const now=new Date();
+    const monthKey=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
+    localStorage.setItem('tj_ai_config',JSON.stringify({
+      enabled:true,
+      byok:{key:"sk-ant-test",model:"claude-sonnet-4-6",connected:true,lastTest:Date.now(),lastError:""},
+      features:{pretrade:true,budget:true,weekly:true,privacy:false},
+      budget:{monthlyLimit:5,alertThreshold:0.8,spent:0,lastResetMonth:monthKey},
+      weekly:{dayOfWeek:1,autoTrigger:true,lastGeneratedAt:0}
+    }));
+    localStorage.setItem('tj_ai_chats',JSON.stringify([]));
+    localStorage.setItem('tj_playbooks',JSON.stringify(playbooks));
+    localStorage.setItem('tj_trades',JSON.stringify(trades));
+  },{trades:allTrades,playbooks:FAKE_PLAYBOOKS});
+
+  let captured=null;
+  await page.route('https://api.anthropic.com/v1/messages',async(route,req)=>{
+    captured=JSON.parse(req.postData()||'{}');
+    route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({
+      content:[{type:"text",text:"ok"}],usage:{input_tokens:100,output_tokens:10}
+    })});
+  });
+
+  await page.goto(FILE_URL+'?ai=1',{waitUntil:'networkidle'});
+  await page.waitForTimeout(500);
+  await page.evaluate(()=>{
+    const btns=Array.from(document.querySelectorAll('.tj-tabs button.tj-tab'));
+    const b=btns.find(b=>b.textContent.includes('AI-coach'));
+    if(b)b.click();
+  });
+  await page.waitForTimeout(300);
+  await page.evaluate(()=>{
+    const el=document.getElementById('sec-chat');
+    if(el)el.scrollIntoView({block:'start'});
+  });
+  await page.evaluate(()=>{
+    const sec=document.getElementById('sec-chat');
+    const b=Array.from(sec.querySelectorAll('button')).find(b=>/Nieuwe chat/i.test(b.textContent));
+    if(b)b.click();
+  });
+  await page.waitForTimeout(150);
+  await page.evaluate(()=>{
+    const ta=document.querySelector('#sec-chat textarea');
+    const setter=Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype,'value').set;
+    setter.call(ta,'analyse backtest MSB BOS');
+    ta.dispatchEvent(new Event('input',{bubbles:true}));
+  });
+  await page.evaluate(()=>{
+    const sec=document.getElementById('sec-chat');
+    const b=Array.from(sec.querySelectorAll('button')).find(b=>/Verstuur/.test(b.textContent));
+    if(b)b.click();
+  });
+  await page.waitForFunction(()=>{
+    const sec=document.getElementById('sec-chat');
+    return sec&&/ok/.test(sec.textContent);
+  },{timeout:5000});
+
+  const sys=captured.system||'';
+  // 1h MSB BOS playbook moet verschijnen met backtest stats
+  expect(sys).toMatch(/1h MSB BOS/);
+  // 15 winners / 20 total = 75% WR (gebaseerd op rMultiple, niet pnl)
+  expect(sys).toMatch(/backtest:\s*20t\s+WR\s*75/);
+  // Data-format uitleg-sectie aanwezig
+  expect(sys).toMatch(/Hoe de data is opgebouwd/);
+  expect(sys).toMatch(/theoretisch|rMultiple|R-multiple/i);
+});
+
 test('chat system prompt bevat per-playbook backtest-data',async({page})=>{
   await seedRich(page);
   let captured=null;

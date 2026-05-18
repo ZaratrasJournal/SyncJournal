@@ -788,6 +788,11 @@ body.theme-light .confirm-card input.confirm-text,body.theme-parchment .confirm-
 body.theme-light .ai-toggle-thumb,body.theme-parchment .ai-toggle-thumb,body.theme-daylight .ai-toggle-thumb{background:#fafafa}
 .ai-section{scroll-margin-top:80px;padding:24px 4px;border-bottom:1px solid var(--border1)}
 .ai-section:last-child{border-bottom:none}
+/* v12.142 — chat sidebar: duidelijker hover + active state zodat user direct
+   ziet welke conversation actief is en kan switchen. */
+.ai-chat-item{transition:background .12s, border-color .12s}
+.ai-chat-item:hover{background:var(--bg3) !important;border-color:var(--border3) !important}
+.ai-chat-item.active{background:var(--gold-dim) !important;border-color:var(--gold-border) !important;border-left:3px solid var(--gold) !important;padding-left:7px !important}
 </style>
 </head>
 <body>
@@ -1230,7 +1235,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.141",released:"2026-05-18"};
+const APP_VERSION={version:"v12.142",released:"2026-05-18"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -14990,6 +14995,11 @@ function categorizeTradeType(t){
 // v12.140-fix: trades zijn gekoppeld via t.playbookId (foreign-key naar
 // playbook.id), niet t.playbook. Niet-gekoppelde trades komen in "untagged"
 // bucket zodat AI ze ook ziet (en kan adviseren om te taggen).
+// v12.142-fix: gebruik netPnl(t) (al bestaande helper) ipv direct t.pnl.
+// Reden: backtest-trades hebben vaak GEEN expliciete pnl maar wel TPs/
+// hindsightExit ingevuld — netPnl() berekent dan theoretische pnl via
+// calcTheoreticalPnl(). Voorheen telde mijn aggregator die als pnl=0 →
+// noch win noch loss → WR=0% terwijl playbook winstgevend was.
 function aggregatePlaybookStats(trades,playbooks){
   const byPb={};
   const UNTAGGED="__untagged";
@@ -15005,10 +15015,20 @@ function aggregatePlaybookStats(trades,playbooks){
     if(!arr.length)return null;
     let w=0,l=0,pnl=0,r=0,withR=0;
     arr.forEach(t=>{
-      const p=Number(t.pnl)||0;
+      // v12.142: netPnl() resolves backtest theoretical pnl uit TPs/hindsightExit
+      const p=netPnl(t);
       pnl+=p;
-      if(p>5)w++;else if(p<-5)l++;
-      if(t.rMultiple){const v=Number(t.rMultiple);if(!isNaN(v)){r+=v;withR++;}}
+      // v12.142: win/loss bepaling — eerst R-multiple (meest betrouwbaar voor
+      // backtests), dan pnl als fallback voor real trades zonder R
+      let theR=null;
+      if(t.rMultiple){const v=Number(t.rMultiple);if(!isNaN(v))theR=v;}
+      else if(t.status==="missed"){const tr=calcTheoreticalR(t);if(tr!=null)theR=tr;}
+      if(theR!=null){
+        if(theR>0)w++;else if(theR<0)l++;
+        r+=theR;withR++;
+      }else{
+        if(p>0)w++;else if(p<0)l++;
+      }
     });
     return{count:arr.length,wins:w,losses:l,wr:arr.length?Number((w/arr.length*100).toFixed(1)):0,pnl:Number(pnl.toFixed(2)),avgR:withR?Number((r/withR).toFixed(2)):null};
   };
@@ -15037,6 +15057,12 @@ function buildChatSystemPrompt(opts){
   lines.push(`Beantwoord vragen direct, gebruik specifieke cijfers uit de data hieronder. Geen filler.`);
   lines.push(`Schrijf in het Nederlands tenzij de user expliciet een andere taal gebruikt.`);
   lines.push(`BELANGRIJK: gebruik de Trader-data hieronder als bron van waarheid. Vraag GEEN trades opnieuw als ze er al staan.`);
+  lines.push(``);
+  lines.push(`## Hoe de data is opgebouwd (lees dit eerst!)`);
+  lines.push(`- Trade-types: real = live uitgevoerd. [BT] = backtest (chart-replay). [PAPER] = demo-account. [MISSED] = real-time gespot maar niet genomen.`);
+  lines.push(`- Per-playbook breakdown: gesplitst per type. WR + avg-R zijn berekend op basis van \`rMultiple\` (preferred) of theoretische R uit TPs/hindsightExit voor backtests. Dus 75% WR + R 1.8 op een backtest = winstgevend playbook, ook al staat "PnL$0".`);
+  lines.push(`- "PnL" voor backtests is theoretisch (berekend uit entry/stop/exit), kan $0 zijn als geen positionSize is ingevuld. Wat telt is **rMultiple/R**, niet PnL.`);
+  lines.push(`- Een playbook met bv "backtest: 20t WR 65% R 1.5" is winstgevend (expectancy positief), ook al is PnL$ laag of nul.`);
   lines.push(``);
   lines.push(`## Trader-data: laatste 7 dagen`);
   lines.push(`${stats.tradeCount} trades · W:${stats.wins} L:${stats.losses} · WR ${stats.winRate}% · PnL $${stats.totalPnl}${stats.avgR!=null?` · avg R ${stats.avgR}`:""}${stats.profitFactor!="∞"?` · PF ${stats.profitFactor}`:""}`);
@@ -15082,12 +15108,14 @@ function buildChatSystemPrompt(opts){
     recent.forEach((t,i)=>{
       const cat=categorizeTradeType(t);
       const tag=cat==="real"?"":cat==="backtest"?"[BT]":cat==="paper"?"[PAPER]":"[MISSED]";
-      const pnl=Number(t.pnl)||0;
-      const r=t.rMultiple?Number(t.rMultiple):null;
+      // v12.142: netPnl + theoretical R voor backtest met TPs maar zonder pnl
+      const pnl=netPnl(t);
+      let r=t.rMultiple?Number(t.rMultiple):null;
+      if(r==null&&t.status==="missed"){const tr=calcTheoreticalR(t);if(tr!=null)r=tr;}
       const date=(t.exitDate||t.entryDate||t.date||"").split("T")[0];
       const pbName=pbNameById[t.playbookId]||(t.playbookId?`pb-id ${t.playbookId.slice(0,6)}`:"-");
       const setups=(t.setupTags||[]).slice(0,3).join(",");
-      lines.push(`${i+1}. ${date} ${tag} ${t.symbol||t.ticker||"?"} ${t.direction||"?"} PnL=$${pnl.toFixed(2)}${r!=null?" R="+r.toFixed(2):""} pb=${pbName}${setups?" setups="+setups:""}${t.grade?" grade="+t.grade:""}`);
+      lines.push(`${i+1}. ${date} ${tag} ${t.symbol||t.ticker||"?"} ${t.direction||"?"} PnL=$${(pnl||0).toFixed(2)}${r!=null?" R="+r.toFixed(2):""} pb=${pbName}${setups?" setups="+setups:""}${t.grade?" grade="+t.grade:""}`);
     });
   }
 
@@ -15638,7 +15666,7 @@ function ChatSection({cfg,setCfg,playbooks,trades,showToast}){
           {chats.map(c=>{
             const isActive=c.id===activeId;
             const isRen=renamingId===c.id;
-            return(<div key={c.id} style={{padding:"8px 10px",borderRadius:"6px",background:isActive?"var(--gold-dim)":"transparent",border:"1px solid "+(isActive?"var(--gold-border)":"transparent"),cursor:"pointer",marginBottom:"4px"}} onClick={()=>!isRen&&setActiveId(c.id)}>
+            return(<div key={c.id} className={"ai-chat-item"+(isActive?" active":"")} style={{padding:"8px 10px",borderRadius:"6px",background:isActive?"var(--gold-dim)":"transparent",border:"1px solid "+(isActive?"var(--gold-border)":"transparent"),cursor:"pointer",marginBottom:"4px"}} onClick={()=>!isRen&&setActiveId(c.id)}>
               {isRen?(<input autoFocus value={renameText} onChange={e=>setRenameText(e.target.value)} onBlur={commitRename} onKeyDown={e=>{if(e.key==="Enter")commitRename();if(e.key==="Escape"){setRenamingId(null);setRenameText("");}}} style={{width:"100%",padding:"2px 4px",fontSize:"12px",border:"1px solid var(--gold-border)",borderRadius:"4px",background:"var(--bg)",color:"var(--text)",fontFamily:"inherit",boxSizing:"border-box"}}/>):(<>
                 <div style={{fontSize:"12px",fontWeight:600,color:isActive?"var(--gold)":"var(--text2)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.title||"naamloos"}</div>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:"3px",gap:"6px"}}>

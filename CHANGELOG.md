@@ -6,6 +6,21 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.142] — 2026-05-18
+
+### Fixed
+- **AI-coach gaf "WR 7.1% niet winstgevend" terwijl playbook winstgevend is** *(2026-05-18, gemeld door Denny met screenshot, root-cause:	backtest-trades hebben `t.pnl=""` maar wél `rMultiple` of TPs)* — De aggregator gebruikte direct `Number(t.pnl) || 0`. Backtests die alleen TPs/hindsightExit ingevuld hadden (zonder positionSize / pnl) werden geteld als pnl=0 → noch win noch loss → WR=0% terwijl het 75% had moeten zijn.
+  - **Fix**: `aggregatePlaybookStats` gebruikt nu de bestaande `netPnl(t)` helper (die voor backtests `calcTheoreticalPnl()` aanroept). Win/loss-bepaling werkt nu primair op **`rMultiple`** (preferred voor backtests), fallback naar `calcTheoreticalR()` voor missed-trades zonder R, dan pas `pnl`. Eindelijk klopt de WR voor playbooks met theoretische backtests.
+  - **Recent-trades sample** doet dezelfde correctie + toont R-multiple ook als die uit `calcTheoreticalR` komt (was alleen `t.rMultiple` voorheen).
+- **AI mixede data-interpretatie** — Naast bovenstaande bug zat de model óók geen context te hebben over **hoe** de data is opgebouwd. Nieuwe sectie in system prompt: **"Hoe de data is opgebouwd (lees dit eerst!)"** met expliciete uitleg over trade-types ([BT]/[PAPER]/[MISSED]/real), dat WR + avg-R primair uit `rMultiple` komen, dat "PnL$0" op backtests klopt wanneer positionSize leeg is, en dat een playbook met "backtest: 20t WR 65% R 1.5" winstgevend is ondanks $0 PnL.
+- **Chat sidebar: active state was te subtiel om makkelijk te switchen** — Nieuwe CSS-class `.ai-chat-item` + `.active` voor duidelijkere visual feedback: hover-state (lichter bg), active-state krijgt nu een **3px gouden border-left** + verlaagde padding zodat het ge-highlighte item visueel "ingedrukt" oogt. Switchen tussen chats voelt nu meer responsief, ook al was de onderliggende logica al correct (geverifieerd in `tests/aicoach-chat-switch.spec.js`).
+
+### Test
+- Nieuwe scenario in `tests/aicoach-chat-context.spec.js`: 20 backtest-trades met `pnl=""` maar `rMultiple` (15 winners @ 1.8R + 5 losers @ -1.0R) — verifieert dat system prompt nu `backtest: 20t WR 75%` toont en dat de data-format-uitleg-sectie aanwezig is.
+- Nieuwe `tests/aicoach-chat-switch.spec.js` — confirmeert dat chat-switching technisch werkt (zodat we de visuele upgrade niet als logica-bug aanzien).
+
+---
+
 ## [v12.141] — 2026-05-18
 
 ### Fixed
