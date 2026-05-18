@@ -1235,7 +1235,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.145",released:"2026-05-18"};
+const APP_VERSION={version:"v12.146",released:"2026-05-18"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -2220,7 +2220,7 @@ const IS_AI=(()=>{try{
 const DEFAULT_AI_CONFIG={
   enabled:false,
   byok:{key:"",model:"claude-sonnet-4-6",connected:false,lastTest:0,lastError:""},
-  features:{pretrade:true,budget:true,weekly:true,privacy:true},
+  features:{pretrade:true,budget:true,weekly:true,privacy:true,floatingChat:true},
   budget:{monthlyLimit:5,alertThreshold:0.8,spent:0,lastResetMonth:""},
   weekly:{dayOfWeek:1,autoTrigger:true,lastGeneratedAt:0}
 };
@@ -15853,6 +15853,194 @@ function ChatSection({cfg,setCfg,playbooks,trades,showToast}){
   </div>);
 }
 
+// v12.146 — Floating chat-popup (FAB rechtsonder + popup boven). Werkt op
+// élke pagina wanneer IS_AI + master enabled + features.floatingChat. Deelt
+// storage (tj_ai_chats) met ChatSection — wijzigingen syncen via Storage-event
+// + direct setChats binnen popup-state. Gebruik dezelfde callClaudeChat +
+// buildChatSystemPrompt + renderChatMarkdown helpers (geen code-dup).
+function AIChatPopup({playbooks,trades,showToast}){
+  const[cfg,setCfg]=useState(()=>loadAIConfig());
+  const[open,setOpen]=useState(false);
+  const[chats,setChats]=useState(()=>loadChats());
+  const[activeId,setActiveId]=useState(()=>{const c=loadChats();return c[0]?c[0].id:null;});
+  const[input,setInput]=useState("");
+  const[loading,setLoading]=useState(false);
+  const[error,setError]=useState("");
+  const[showSwitcher,setShowSwitcher]=useState(false);
+  const scrollRef=useRef(null);
+  const inputRef=useRef(null);
+  const weeklies=React.useMemo(()=>loadWeeklies(),[open]);
+
+  // Sync cfg + chats via custom events (cross-component, geen polling)
+  useEffect(()=>{
+    const cfgHandler=()=>setCfg(loadAIConfig());
+    window.addEventListener("tj-ai-config-change",cfgHandler);
+    return()=>window.removeEventListener("tj-ai-config-change",cfgHandler);
+  },[]);
+
+  // Auto-scroll bij open + nieuwe message
+  const active=chats.find(c=>c.id===activeId)||null;
+  useEffect(()=>{
+    if(open&&scrollRef.current)scrollRef.current.scrollTop=scrollRef.current.scrollHeight;
+  },[open,active&&active.messages.length,loading]);
+
+  // Bij open: ververs chats uit storage (kunnen elders gewijzigd zijn)
+  useEffect(()=>{
+    if(open){
+      const fresh=loadChats();
+      setChats(fresh);
+      if(!fresh.find(c=>c.id===activeId)){
+        setActiveId(fresh[0]?fresh[0].id:null);
+      }
+      setTimeout(()=>{inputRef.current&&inputRef.current.focus();},80);
+    }
+  },[open]);
+
+  // Niets renderen als feature uit staat
+  if(!IS_AI||!cfg.enabled||!cfg.features.floatingChat)return null;
+
+  const newChat=()=>{
+    const id=String(Date.now())+Math.random().toString(36).slice(2,8);
+    const chat={id,title:"Nieuwe chat",createdAt:Date.now(),updatedAt:Date.now(),messages:[]};
+    setChats(upsertChat(chat));
+    setActiveId(id);
+    setShowSwitcher(false);
+    setTimeout(()=>{inputRef.current&&inputRef.current.focus();},50);
+  };
+
+  const sendMessage=async()=>{
+    const txt=input.trim();
+    if(!txt||loading)return;
+    let chat=active;
+    if(!chat){
+      const id=String(Date.now())+Math.random().toString(36).slice(2,8);
+      chat={id,title:autoTitle(txt),createdAt:Date.now(),updatedAt:Date.now(),messages:[]};
+      setActiveId(id);
+    }else if(chat.messages.length===0&&(chat.title==="Nieuwe chat"||!chat.title)){
+      chat={...chat,title:autoTitle(txt)};
+    }
+    const userMsg={role:"user",content:txt,ts:Date.now()};
+    const updated={...chat,messages:[...chat.messages,userMsg],updatedAt:Date.now()};
+    setChats(upsertChat(updated));
+    setInput("");
+    setLoading(true);setError("");
+    try{
+      const fullText=updated.messages.map(m=>m.content).join("\n");
+      const maskMap=cfg.features.privacy?buildTickerMask(fullText+" "+JSON.stringify(playbooks||[])):null;
+      const safeMessages=updated.messages.map(m=>({role:m.role,content:maskMap?applyMask(m.content,maskMap):m.content}));
+      const safePlaybooks=maskMap?(playbooks||[]).map(p=>JSON.parse(applyMask(JSON.stringify(p),maskMap))):(playbooks||[]);
+      const safeTrades=maskMap?(trades||[]).map(t=>({...t,symbol:applyMask(t.symbol||"",maskMap)})):(trades||[]);
+      const safeWeeklies=maskMap?weeklies.map(w=>JSON.parse(applyMask(JSON.stringify(w),maskMap))):weeklies;
+      const systemPrompt=buildChatSystemPrompt({playbooks:safePlaybooks,trades:safeTrades,weeklies:safeWeeklies});
+      const res=await callClaudeChat({
+        apiKey:cfg.byok.key,
+        model:cfg.byok.model||"claude-sonnet-4-6",
+        systemPrompt,
+        messages:safeMessages,
+        maxTokens:1024
+      });
+      recordAICost(res.cost);
+      setCfg(loadAIConfig());
+      const displayText=maskMap?reverseMask(res.text,maskMap):res.text;
+      const aMsg={role:"assistant",content:displayText,cost:res.cost,ts:Date.now()};
+      const final={...updated,messages:[...updated.messages,aMsg],updatedAt:Date.now()};
+      setChats(upsertChat(final));
+      setTimeout(()=>{if(scrollRef.current)scrollRef.current.scrollTop=scrollRef.current.scrollHeight;},80);
+    }catch(e){
+      setError(String(e.message||e));
+      showToast&&showToast("Chat mislukt: "+(e.message||e),"error");
+    }finally{setLoading(false);}
+  };
+
+  const onKey=(e)=>{
+    if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendMessage();}
+  };
+
+  const fab=(<button
+    onClick={()=>setOpen(o=>!o)}
+    title={open?"Sluit AI-chat":"Open AI-chat"}
+    aria-label={open?"Sluit chat":"Open chat"}
+    style={{position:"fixed",bottom:"24px",right:"24px",width:"54px",height:"54px",borderRadius:"50%",border:"1px solid var(--gold-border)",background:open?"var(--gold)":"var(--gold-dim)",color:open?"var(--bg)":"var(--gold)",fontSize:"22px",cursor:"pointer",zIndex:998,boxShadow:"0 4px 16px rgba(0,0,0,0.35)",display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.15s"}}
+  >{open?"✕":"💬"}</button>);
+
+  if(!open)return fab;
+
+  const noKey=!cfg.byok.key;
+  const msgs=active?active.messages:[];
+
+  return(<>
+    {fab}
+    <div style={{position:"fixed",bottom:"92px",right:"24px",width:"420px",height:"min(580px, calc(100vh - 120px))",background:"var(--bg2)",border:"1px solid var(--gold-border)",borderRadius:"14px",boxShadow:"0 12px 40px rgba(0,0,0,0.5)",zIndex:997,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+      {/* Header */}
+      <div style={{padding:"10px 12px",borderBottom:"1px solid var(--border2)",display:"flex",alignItems:"center",gap:"8px",background:"var(--bg)",flexShrink:0}}>
+        <div style={{flex:1,minWidth:0,position:"relative"}}>
+          <button
+            onClick={()=>setShowSwitcher(s=>!s)}
+            title="Wissel of bekijk conversaties"
+            style={{display:"flex",alignItems:"center",gap:"6px",width:"100%",padding:"4px 6px",border:"none",background:"transparent",cursor:"pointer",fontFamily:"inherit",color:"var(--text)",textAlign:"left"}}
+          >
+            <span style={{fontSize:"14px",flexShrink:0}}>💬</span>
+            <span style={{fontSize:"12px",fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1,minWidth:0}}>{active?active.title:"Geen chat"}</span>
+            <span style={{fontSize:"10px",color:"var(--text4)",flexShrink:0}}>{showSwitcher?"▲":"▼"}</span>
+          </button>
+          {showSwitcher&&<div style={{position:"absolute",top:"100%",left:0,right:0,marginTop:"4px",background:"var(--bg)",border:"1px solid var(--border3)",borderRadius:"8px",boxShadow:"0 8px 24px rgba(0,0,0,0.4)",maxHeight:"240px",overflowY:"auto",zIndex:10}}>
+            {chats.length===0&&<div style={{padding:"12px",fontSize:"11px",color:"var(--text4)",textAlign:"center"}}>Geen conversaties — klik + om te starten.</div>}
+            {chats.map(c=>(<button key={c.id} onClick={()=>{setActiveId(c.id);setShowSwitcher(false);}} style={{display:"block",width:"100%",padding:"8px 10px",border:"none",background:c.id===activeId?"var(--gold-dim)":"transparent",color:c.id===activeId?"var(--gold)":"var(--text2)",cursor:"pointer",fontFamily:"inherit",textAlign:"left",borderBottom:"1px solid var(--border1)"}}>
+              <div style={{fontSize:"11px",fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.title||"naamloos"}</div>
+              <div style={{fontSize:"9px",color:"var(--text4)",marginTop:"2px"}}>{c.messages.length} berichten</div>
+            </button>))}
+          </div>}
+        </div>
+        <button onClick={newChat} title="Nieuwe chat" style={{padding:"6px 10px",fontSize:"14px",borderRadius:"6px",border:"1px solid var(--border3)",background:"transparent",color:"var(--text3)",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>+</button>
+        <button onClick={()=>setOpen(false)} title="Sluit" aria-label="Sluit chat-popup" style={{padding:"6px 10px",fontSize:"14px",borderRadius:"6px",border:"1px solid var(--border3)",background:"transparent",color:"var(--text3)",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>✕</button>
+      </div>
+
+      {/* Body */}
+      {noKey?(<div style={{flex:1,padding:"24px 20px",textAlign:"center",color:"var(--text3)",fontSize:"12px",display:"flex",flexDirection:"column",justifyContent:"center",gap:"10px"}}>
+        <div style={{fontSize:"28px"}}>🔑</div>
+        <div>Geen API-key. Vul je Anthropic key in onder<br/><strong>AI-coach → API-key (BYOK)</strong>.</div>
+      </div>):(<>
+        <div ref={scrollRef} style={{flex:1,overflowY:"auto",overflowX:"hidden",padding:"12px 14px",minHeight:0}}>
+          {(!active||msgs.length===0)&&<div style={{padding:"30px 12px",textAlign:"center",color:"var(--text4)",fontSize:"12px",lineHeight:1.55}}>
+            <div style={{fontSize:"26px",marginBottom:"8px"}}>💬</div>
+            {active?"Stel je eerste vraag.":"Klik + voor een nieuwe chat."}
+            {active&&<div style={{fontSize:"10px",color:"var(--text5)",marginTop:"8px"}}>"Wat is mijn beste setup?" · "Waarom mis ik TP2?"</div>}
+          </div>}
+          {msgs.map((m,i)=>{
+            const isUser=m.role==="user";
+            return(<div key={i} style={{display:"flex",justifyContent:isUser?"flex-end":"flex-start",marginBottom:"10px"}}>
+              <div style={{maxWidth:"85%",padding:"8px 12px",borderRadius:"10px",background:isUser?"var(--gold-dim)":"var(--bg)",border:"1px solid "+(isUser?"var(--gold-border)":"var(--border2)"),wordBreak:"break-word",overflowWrap:"break-word"}}>
+                <div style={{fontSize:"9px",fontWeight:700,color:isUser?"var(--gold)":"var(--text4)",letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:"3px"}}>{isUser?"Jij":"AI-coach"}</div>
+                {isUser
+                  ?<div style={{fontSize:"12px",color:"var(--text)",lineHeight:1.5,whiteSpace:"pre-wrap"}}>{m.content}</div>
+                  :<div style={{fontSize:"12px",color:"var(--text)"}} dangerouslySetInnerHTML={{__html:renderChatMarkdown(m.content)}}/>}
+                {!isUser&&m.cost!=null&&<div style={{fontSize:"9px",color:"var(--text5)",marginTop:"4px",fontFamily:"var(--mono)"}}>${m.cost.toFixed(4)}</div>}
+              </div>
+            </div>);
+          })}
+          {loading&&<div style={{display:"flex",justifyContent:"flex-start",marginBottom:"10px"}}>
+            <div style={{padding:"8px 12px",borderRadius:"10px",background:"var(--bg)",border:"1px solid var(--border2)",fontSize:"11px",color:"var(--text3)"}}>
+              <span style={{display:"inline-block",animation:"pulse 1.4s ease-in-out infinite"}}>● ● ●</span>
+            </div>
+          </div>}
+          {error&&<div style={{padding:"8px 12px",background:"rgba(224,85,85,0.08)",border:"1px solid var(--red)",borderRadius:"6px",color:"var(--red)",fontSize:"10px",marginTop:"4px"}}>
+            ✗ {error}
+          </div>}
+        </div>
+        <div style={{borderTop:"1px solid var(--border2)",padding:"8px 10px",background:"var(--bg)",flexShrink:0}}>
+          <div style={{display:"flex",gap:"6px",alignItems:"flex-end"}}>
+            <textarea ref={inputRef} value={input} onChange={e=>setInput(e.target.value)} onKeyDown={onKey} rows={2} placeholder="Typ je vraag…" disabled={loading} style={{flex:1,padding:"6px 8px",fontSize:"12px",borderRadius:"6px",border:"1px solid var(--border3)",background:"var(--bg2)",color:"var(--text)",fontFamily:"inherit",resize:"none",boxSizing:"border-box"}}/>
+            <button onClick={sendMessage} disabled={loading||!input.trim()} style={{padding:"8px 12px",fontSize:"11px",fontWeight:700,borderRadius:"6px",border:"1px solid var(--gold-border)",background:(loading||!input.trim())?"var(--border3)":"var(--gold)",color:(loading||!input.trim())?"var(--text4)":"var(--bg)",cursor:(loading||!input.trim())?"not-allowed":"pointer",opacity:(loading||!input.trim())?0.6:1,fontFamily:"inherit",whiteSpace:"nowrap"}}>
+              {loading?"⏳":"↑"}
+            </button>
+          </div>
+        </div>
+      </>)}
+    </div>
+  </>);
+}
+
+
 function AICoachPage({showToast,playbooks,trades}){
   const[cfg,setCfg]=useState(()=>loadAIConfig());
   const[active,setActive]=useState("sec-general");
@@ -15926,12 +16114,14 @@ function AICoachPage({showToast,playbooks,trades}){
     pretrade:"Pre-trade validatie",
     budget:"Budget-monitor",
     weekly:"Weekly digest",
+    floatingChat:"Floating chat-knop",
     privacy:"Privacy-filter (ticker-mask)"
   };
   const featureDesc={
     pretrade:"AI checkt elke geplande trade tegen je playbook + Bellafiore-5 vóór entry.",
     budget:"Houdt API-kosten bij, waarschuwt bij 80% van maandlimiet, blokkeert bij 100%.",
     weekly:"Wekelijkse coaching-samenvatting in je inbox elke maandag.",
+    floatingChat:"Toont een 💬-knop rechtsonder op elke pagina voor snelle chat-toegang.",
     privacy:"Anonimiseer ticker-namen vóór ze naar Claude gaan (BTC→COIN_A enz.). Aanbevolen aan."
   };
 
@@ -16996,6 +17186,9 @@ function App(){
         <span className="kbd">N</span> Nieuw &nbsp; <span className="kbd">T</span> Trades &nbsp; <span className="kbd">D</span> Dashboard &nbsp; Drag & drop JSON om te importeren
       </div>
       </div>{/* /scroll wrapper */}
+      {/* v12.146: floating AI-chat (alle pagina's). Render zelf bepaalt of
+          ie zichtbaar is (IS_AI + master + features.floatingChat). */}
+      <AIChatPopup playbooks={playbooks} trades={trades} showToast={showToast}/>
     </div>
     </PrivacyContext.Provider>
   );

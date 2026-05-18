@@ -6,6 +6,30 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.146] — 2026-05-18
+
+### Toegevoegd
+- **Floating AI-chat popup (FAB rechtsonder, overal in app)** *(2026-05-18, gevraagd door Denny: "is het ook mogelijk om een interactieve chat te openen via een knopje dat je een soort pop krijgt?")* — Vanaf elke pagina (Dashboard / Trades / Analytics / Playbook / etc.) is er nu een 💬 floating action button (FAB) rechtsonder die een compacte chat-popup opent. Verschijnt alleen wanneer **`?ai=1`** + master enabled + nieuwe toggle **`features.floatingChat`** aan.
+  - **FAB**: 54px ronde knop, fixed rechtsonder, gold-dim achtergrond → gold solid wanneer popup open (toont ✕ ipv 💬)
+  - **Popup**: 420×580px (clamped op `min(580px, calc(100vh - 120px))`), gold border, donker bg, drop-shadow. Boven de FAB gepositioneerd.
+  - **Header**: chat-titel als dropdown (klik → toont alle conversaties met active-highlight + bericht-count) · `+` knop voor nieuwe chat · `✕` sluit
+  - **Body**: zelfde markdown-rendering als AI-coach tab chat-sectie (headers, bold, lists, blockquotes, code, code-fences via `renderChatMarkdown`)
+  - **Input**: compacte textarea (rows=2) + ↑ verstuur. Enter = send, Shift+Enter = newline.
+  - **Empty-state**: geen API-key → vriendelijke melding "Vul je Anthropic key in onder AI-coach → API-key (BYOK)"
+  - **Geen API-key** = popup wel zichtbaar (knop werkt) maar body toont enkel de empty-state, geen input.
+- **Storage gedeeld** met `ChatSection`: zelfde `tj_ai_chats` localStorage + dezelfde `callClaudeChat` + `buildChatSystemPrompt` + `recordAICost` + privacy-filter. Een chat starten via popup, dan voortzetten in AI-coach tab → werkt naadloos (refresh van data bij open). Eén chat-conversatie tegelijk getoond per locatie.
+- **Per-feature toggle** in AI-coach → Algemeen sectie: "Floating chat-knop" met beschrijving *"Toont een 💬-knop rechtsonder op elke pagina voor snelle chat-toegang."* Default aan (bij eerste keer activeren AI-coach).
+- **6-spec Playwright suite** (`tests/aicoach-popup.spec.js`): FAB zichtbaar op Dashboard wanneer feature aan · verborgen wanneer feature uit · verborgen wanneer master uit · verborgen zonder `?ai=1` · klik FAB → popup opent + send-message + cost-tracking write + sluit-knop werkt · FAB **beschikbaar op Trades-tab** (verifieert dat popup overal werkt, niet alleen AI-coach tab).
+
+### Notities
+- Popup gebruikt `position:fixed` met `z-index:997` (FAB op 998), zodat het altijd boven content blijft maar onder modals/welkom-overlay (zIndex 9998+) — geen UX-conflict.
+- Geen drag/resize voor v1 (vaste positie rechtsonder, vaste afmetingen) — als de community dat wil, kan in latere release.
+- ChatSection in AI-coach tab blijft de volledige experience (sidebar met alle conversaties, grote chat-pane). Popup is de quick-access variant.
+
+**Volledige test-suite na deze release**: 19 specs / 19 passed (chat + popup + smoke).
+
+---
+
 ## [v12.145] — 2026-05-18
 
 ### Fixed
