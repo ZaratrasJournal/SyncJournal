@@ -6,6 +6,28 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.150] — 2026-05-18
+
+### Toegevoegd
+- **Mori: handleiding + FAQ-sectie** *(2026-05-18, gevraagd door Denny)* — Documentatie zodat community-users zelf aan de slag kunnen met Mori zonder hulp uit Discord.
+  - **Nieuwe lesson `L23`** in Help → Handleiding: *"Mori — je AI-coach (BETA)"* (advanced, 14 min). Bevat: TL;DR · Setup in 3 stappen (feature-flag + BYOK + master-toggle) · alle 5 sub-features uitgelegd (pre-trade / weekly / chat / budget / privacy) · Wat Mori NIET kan (live data, charts, tools, garanties) · 5 sterke voorbeeld-vragen · Wanneer ChatGPT/Claude direct beter is · Beta-disclaimer. Met "Open AI-coach →" jump-link.
+  - **Nieuwe FAQ-categorie `🤖 Mori (AI-coach)`** met 8 entries:
+    1. *"Wat is Mori?"* — wie/wat/welke 4 features
+    2. *"Hoe activeer ik Mori?"* — 3-stap: ?ai=1 + tab + BYOK
+    3. *"Wat kost Mori me?"* — BYOK uitleg + model-vergelijking (Sonnet/Opus/Haiku) + hard-cap
+    4. *"Waar haal ik een Anthropic API-key?"* — console.anthropic.com stap-voor-stap + security-tip
+    5. *"Is mijn data veilig met Mori?"* — 3 privacy-lagen + Anthropic policy + verifiëren via 📜 Laatste prompt
+    6. *"Waarom Mori en niet gewoon ChatGPT?"* — context-injectie + workflow-integratie + wanneer ChatGPT wel beter is
+    7. *"Mori antwoordt vreemd — wat nu?"* — 5-punt troubleshoot-checklist (playbookId, setupTags, R-multiple, privacy-filter, model)
+    8. *"Floating chat-knop verwijderen?"* — toggle uit + sidebar-tip (☰)
+
+### Status: Mori v1 documentatie compleet
+- Code: v12.135-149 (15 releases)
+- Tests: 27+ Playwright-specs
+- Docs: 1 lesson (L23) + 8 FAQ-entries + dit changelog
+
+---
+
 ## [v12.149] — 2026-05-18
 
 ### Toegevoegd
