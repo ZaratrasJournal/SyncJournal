@@ -6,6 +6,20 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.140] — 2026-05-18
+
+### Gewijzigd
+- **AI-coach chat krijgt veel rijkere trader-context** *(2026-05-18, gemeld door Denny: "deze vraag zou hij moeten kunnen ophalen uit de data die in de journal zit toch?")* — De v12.139 chat-system-prompt gaf alleen 7-dag aggregated stats + top-5 playbook-namen. Bij vragen als *"wat vind je van mijn 1h MSB BOS backtest trades?"* antwoordde de AI dat hij geen data had ontvangen. **Fix**: system-prompt is nu drastisch uitgebreid met:
+  - **Per-playbook breakdown** voor álle playbooks (gesorteerd op trade-count), gesplitst per type: `real: 12t WR 58% PnL $340 R 1.2 · backtest: 8t WR 75% R 1.8 · paper: 3t · missed-real: 2t`. AI kan nu direct vergelijken: real-vs-backtest-discrepancy, welk playbook de meeste edge heeft, of er paper-experimenten lopen.
+  - **Top-15 recente trades** met datum + type-tag (`[BT]` / `[PAPER]` / `[MISSED]` / leeg=real) + sym + dir + PnL + R + playbook + grade. AI ziet de daadwerkelijke trades, niet alleen geaggregeerde cijfers.
+  - **Expliciete instructie** in system prompt: "BELANGRIJK: gebruik de Trader-data hieronder als bron van waarheid. Vraag GEEN trades opnieuw als ze er al staan." Voorkomt de "ik heb geen data ontvangen"-respons wanneer de data wél in de payload zit.
+  - Geüpdatete labels: secties heten nu *"Trader-data: laatste 7 dagen"* en *"Trader-data: per playbook (alle trades, niet alleen 7 dagen)"* zodat AI begrijpt dat het z'n bron-van-waarheid is.
+- **Nieuwe helper `categorizeTradeType(t)`** mapt trade naar `"real"|"backtest"|"paper"|"missed"` op basis van `status` + `simType`. Hergebruikbaar voor toekomstige features.
+- **Nieuwe helper `aggregatePlaybookStats(trades, playbooks)`** bouwt per-playbook breakdown met type-split. Geeft array gesorteerd op total count.
+- **Test**: nieuwe `tests/aicoach-chat-context.spec.js` valideert dat een chat-call over backtests van een specifieke playbook de juiste counts (4 backtest · 2 real · 1 paper) en `[BT]`/`[PAPER]`-tags in de system prompt heeft.
+
+---
+
 ## [v12.139] — 2026-05-18
 
 ### Toegevoegd

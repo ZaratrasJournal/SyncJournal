@@ -1230,7 +1230,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.139",released:"2026-05-18"};
+const APP_VERSION={version:"v12.140",released:"2026-05-18"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -14965,30 +14965,121 @@ function autoTitle(text){
   return t.slice(0,57)+"…";
 }
 
-// v12.139 — System prompt voor chat. Cross-feature context: top playbooks,
-// laatste weekly digest (als bestaat), 7-dag stats. Geen volledige trade-list
-// (te lang). User kan in messages specifieke trades noemen — model gebruikt
-// dan z'n eigen redenering op basis van wat de user vertelt.
+// v12.139 — System prompt voor chat. Cross-feature context.
+// v12.140 — Verrijkt met per-playbook breakdown (real/backtest/paper split)
+// + top-15 recente trades sample zodat AI kan beantwoorden:
+//   "wat vind je van mijn 1h MSB BOS playbook?"
+//   "hoe lopen mijn backtest-trades?"
+//   "welk setup heeft de beste WR?"
+// Trade-categorie via t.status + t.simType:
+//   - status:"closed" = real trade
+//   - status:"missed" + simType:"backtest" = backtest
+//   - status:"missed" + simType:"paper" = paper
+//   - status:"missed" + simType=="" of "missed" = niet-genomen real
+function categorizeTradeType(t){
+  if(!t)return"unknown";
+  if(t.status==="missed"){
+    if(t.simType==="backtest")return"backtest";
+    if(t.simType==="paper")return"paper";
+    return"missed";
+  }
+  return"real";
+}
+
+// Aggregate stats per playbook met split per trade-type.
+function aggregatePlaybookStats(trades,playbooks){
+  const byPb={};
+  (trades||[]).forEach(t=>{
+    if(!t||!t.playbook)return;
+    const key=t.playbook;
+    if(!byPb[key])byPb[key]={all:[],real:[],backtest:[],paper:[],missed:[]};
+    const cat=categorizeTradeType(t);
+    byPb[key].all.push(t);
+    if(byPb[key][cat])byPb[key][cat].push(t);
+  });
+  const summarize=(arr)=>{
+    if(!arr.length)return null;
+    let w=0,l=0,pnl=0,r=0,withR=0;
+    arr.forEach(t=>{
+      const p=Number(t.pnl)||0;
+      pnl+=p;
+      if(p>5)w++;else if(p<-5)l++;
+      if(t.rMultiple){const v=Number(t.rMultiple);if(!isNaN(v)){r+=v;withR++;}}
+    });
+    return{count:arr.length,wins:w,losses:l,wr:arr.length?Number((w/arr.length*100).toFixed(1)):0,pnl:Number(pnl.toFixed(2)),avgR:withR?Number((r/withR).toFixed(2)):null};
+  };
+  // Map pb-id → pb-name, lookup tabel
+  const nameOf={};
+  (playbooks||[]).forEach(p=>{nameOf[p.id]=p.name||"naamloos";nameOf[p.name]=p.name||"naamloos";});
+  return Object.entries(byPb).map(([key,buckets])=>({
+    key,
+    name:nameOf[key]||key,
+    all:summarize(buckets.all),
+    real:summarize(buckets.real),
+    backtest:summarize(buckets.backtest),
+    paper:summarize(buckets.paper),
+    missed:summarize(buckets.missed)
+  })).filter(r=>r.all&&r.all.count>0).sort((a,b)=>b.all.count-a.all.count);
+}
+
 function buildChatSystemPrompt(opts){
   const{playbooks=[],trades=[],weeklies=[]}=opts||{};
   const stats=buildWeeklyStats(trades,7);
+  const pbStats=aggregatePlaybookStats(trades,playbooks);
   const lines=[];
   lines.push(`Je bent een ervaren trading coach (Steenbarger + Douglas + Bellafiore-stijl) voor een crypto-perp dagtrader.`);
-  lines.push(`Beantwoord vragen direct, gebruik specifieke cijfers, geen filler. Stel verduidelijkingsvragen alleen wanneer écht nodig.`);
+  lines.push(`Beantwoord vragen direct, gebruik specifieke cijfers uit de data hieronder. Geen filler.`);
   lines.push(`Schrijf in het Nederlands tenzij de user expliciet een andere taal gebruikt.`);
+  lines.push(`BELANGRIJK: gebruik de Trader-data hieronder als bron van waarheid. Vraag GEEN trades opnieuw als ze er al staan.`);
   lines.push(``);
-  lines.push(`## Trader-context`);
-  lines.push(`Afgelopen 7 dagen: ${stats.tradeCount} trades · W:${stats.wins} L:${stats.losses} · WR ${stats.winRate}% · PnL $${stats.totalPnl}${stats.avgR!=null?` · avg R ${stats.avgR}`:""}${stats.profitFactor!="∞"?` · PF ${stats.profitFactor}`:""}`);
+  lines.push(`## Trader-data: laatste 7 dagen`);
+  lines.push(`${stats.tradeCount} trades · W:${stats.wins} L:${stats.losses} · WR ${stats.winRate}% · PnL $${stats.totalPnl}${stats.avgR!=null?` · avg R ${stats.avgR}`:""}${stats.profitFactor!="∞"?` · PF ${stats.profitFactor}`:""}`);
   if(stats.missedTpCount>0)lines.push(`Gemiste TPs deze week: ${stats.missedTpCount}`);
   if(stats.topSymbols.length)lines.push(`Top symbolen: ${stats.topSymbols.map(s=>s[0]+"("+s[1]+")").join(", ")}`);
+
+  // Per-playbook breakdown
+  if(pbStats.length){
+    lines.push(``);
+    lines.push(`## Trader-data: per playbook (alle trades, niet alleen 7 dagen)`);
+    pbStats.slice(0,15).forEach(p=>{
+      const parts=[];
+      parts.push(`real: ${p.real?`${p.real.count}t WR${p.real.wr}% PnL$${p.real.pnl}${p.real.avgR!=null?` R${p.real.avgR}`:""}`:"0t"}`);
+      if(p.backtest&&p.backtest.count>0)parts.push(`backtest: ${p.backtest.count}t WR${p.backtest.wr}%${p.backtest.avgR!=null?` R${p.backtest.avgR}`:""}`);
+      if(p.paper&&p.paper.count>0)parts.push(`paper: ${p.paper.count}t WR${p.paper.wr}%${p.paper.avgR!=null?` R${p.paper.avgR}`:""}`);
+      if(p.missed&&p.missed.count>0)parts.push(`missed-real: ${p.missed.count}t`);
+      lines.push(`- **${p.name}** — ${parts.join(" · ")}`);
+    });
+    if(pbStats.length>15)lines.push(`(+${pbStats.length-15} meer playbooks — vraag specifiek als nodig)`);
+  }
+
+  // Playbook-definities (rules) — top 5 zoals voorheen
   if(playbooks&&playbooks.length){
     lines.push(``);
-    lines.push(`## Playbooks (${playbooks.length} totaal)`);
+    lines.push(`## Playbook-definities (top ${Math.min(5,playbooks.length)} van ${playbooks.length})`);
     playbooks.slice(0,5).forEach(p=>{
-      lines.push(`- **${p.name||"naamloos"}**${p.oneLiner?": "+p.oneLiner:""}${p.defaultGrade?" [grade "+p.defaultGrade+"]":""}`);
+      lines.push(`- **${p.name||"naamloos"}**${p.oneLiner?": "+p.oneLiner:""}${p.defaultGrade?" [grade "+p.defaultGrade+"]":""}${p.minRR?" minRR "+p.minRR:""}`);
     });
-    if(playbooks.length>5)lines.push(`(+${playbooks.length-5} meer — beschikbaar wanneer user vraagt)`);
   }
+
+  // Recente 15 trades sample (incl backtest/paper/real mix)
+  const recent=(trades||[]).slice().filter(t=>t&&(t.exitDate||t.entryDate||t.date)).sort((a,b)=>{
+    const da=Date.parse((a.exitDate||a.entryDate||a.date)+"T12:00:00")||0;
+    const db=Date.parse((b.exitDate||b.entryDate||b.date)+"T12:00:00")||0;
+    return db-da;
+  }).slice(0,15);
+  if(recent.length){
+    lines.push(``);
+    lines.push(`## Recente trades (top 15 by datum, alle types)`);
+    recent.forEach((t,i)=>{
+      const cat=categorizeTradeType(t);
+      const tag=cat==="real"?"":cat==="backtest"?"[BT]":cat==="paper"?"[PAPER]":"[MISSED]";
+      const pnl=Number(t.pnl)||0;
+      const r=t.rMultiple?Number(t.rMultiple):null;
+      const date=(t.exitDate||t.entryDate||t.date||"").split("T")[0];
+      lines.push(`${i+1}. ${date} ${tag} ${t.symbol||t.ticker||"?"} ${t.direction||"?"} PnL=$${pnl.toFixed(2)}${r!=null?" R="+r.toFixed(2):""} pb=${t.playbook||"-"}${t.grade?" grade="+t.grade:""}`);
+    });
+  }
+
   if(weeklies&&weeklies.length){
     const last=weeklies[0];
     if(last&&last.content){
