@@ -199,6 +199,7 @@ Na grill-me sessie zijn alle open beslissingen + 3 second-order vragen vastgeleg
 | 6 | Ship-strategie | **Progressive**: v12.135 → v12.136 → v12.137 over 3 weken | Feedback-loops na elke release informeren volgende. Past bij onze rapid-iteration cultuur. |
 | 7 | Pre-trade tone | **Hybrid op severity**: green (positive signals) / blue (neutral context) / amber+red (rule-violation) | Spiegelt onze bestaande trade-row coloring. User-respect: niet onnodig alarmistisch, wel duidelijk bij echte schendingen. |
 | 8 | Settings-UI plek | **Nieuwe scroll-spy cat `🤖 AI-coach`** in AccountsHub met 5 subsecties | Past bij TP-templates patroon (v12.123 precedent). Discoverable via sidebar. Geen extra tabs (we hebben er al veel). |
+| 9 | Multi-turn chat | **Volledige chat als v12.138** (eigen top-level tab) | Power-feature, JournalPlus/TradesViz/MRT pattern. Cross-feature context (chat heeft toegang tot weeklies + autopsies) — daar zit de toegevoegde waarde t.o.v. eenrichtings AI. |
 
 ### v12.135 — BYOK + Pre-trade validation (~25u, ~10 dagen)
 
@@ -239,6 +240,33 @@ Na grill-me sessie zijn alle open beslissingen + 3 second-order vragen vastgeleg
 - Settings → Budget: cost-breakdown chart per feature × per week
 - BYOK onboarding-wizard polish (stap-voor-stap met screenshots)
 
+### v12.138 — Multi-turn Chat (~20u, ~8 dagen na .137)
+
+**Toegevoegd post-grill** (decision 9: chat in v1 = ja, volledige multi-turn).
+
+**Scope**:
+- Nieuwe top-level tab **`🤖 Chat`** (tussen Playbook en Instellingen) — eigen full-screen chat UI
+- Layout: sidebar met conversation-lijst (pin/archive/delete) + main chat-pane
+- Multi-turn conversations:
+  - Save per-conversation in nieuwe `tj_ai_chats` localStorage key
+  - Shape: `[{id, title, createdAt, updatedAt, messages: [{role, content, timestamp, costCents}]}]`
+  - Auto-title via Claude bij eerste message (1-zin samenvatting)
+- Context-strategie:
+  - Standaard: laatste 50 trades + actieve playbooks + laatste weekly digest in system-prompt
+  - Optioneel: per-playbook focus dropdown ("Chat over alleen BOS+FVG trades")
+  - Optioneel: tijdrange-filter (laatste 7d / 30d / alle)
+- Cost-management:
+  - Per-message cost-display vóór send ("Geschatte kosten: $0.04")
+  - Per-conversation running total in sidebar
+  - Auto-summarize bij >20 messages (Claude compresses oudere turns)
+  - Warning bij conversation > $1
+- Cross-feature integratie:
+  - "Wat zegt mijn weekly digest deze week?" → AI heeft context van laatste `tj_ai_weeklies` entry
+  - "Wat was je advies bij m'n laatste BTC trade?" → AI heeft context van `trade.aiAutopsy`
+  - "Vergelijk m'n BOS+FVG op London vs NY" → AI doet ad-hoc analyse over filtered trades
+- Cold-start: weiger als <10 trades totaal in journal (chat zonder data = zinloos)
+- Tone: conversational (anders dan pre-trade severity-blocks)
+
 ### Niet in v1 (parking lot)
 
 - Voice-pre-trade journaling (à la Process Trader) — v1.5
@@ -248,6 +276,8 @@ Na grill-me sessie zijn alle open beslissingen + 3 second-order vragen vastgeleg
 - Liquidation cluster context — v1.5
 - Kraken Futures funding-rate — v1.5
 - Pre-trade pressure-test button (zware on-demand analyse) — v1.5
+- Voice-input in chat — v2 (Web Speech API integratie)
+- Shared chat-templates community-driven — v2
 
 ### Open tijdens bouwen (geen strategische beslissing)
 
