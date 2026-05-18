@@ -6,6 +6,27 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.147] — 2026-05-18
+
+### Gewijzigd
+- **De AI-coach heeft een naam: Mori** *(2026-05-18, naam gekozen door Denny uit 4 opties)* — Afgeleid van Morani, warm en persoonlijk, voelt als een trading-buddy ipv een tool. De feature/tab heet nog steeds "AI-coach" (categorische naam in topbar) maar in alle user-facing chat-copy is het nu Mori:
+  - **Message-bubble label**: was "AI-COACH", nu "Mori" (in zowel ChatSection als floating popup)
+  - **Section-titel** in AI-coach tab: "💬 Chat met je coach" → "💬 Chat met Mori"
+  - **Intro-paragraph**: "Stel vragen aan **Mori** over je trading. Hij heeft context van je playbooks..."
+  - **Empty-states**:
+    - "Stel je eerste vraag." → "Stel je eerste vraag aan Mori."
+    - "Klik + voor een chat met Mori." (popup)
+    - "Mori heeft een API-key nodig. Vul 'm in onder AI-coach → API-key (BYOK)." (no-key state)
+  - **Popup header**: bevat nu een **MORI**-tag (gold) als brand-prefix vóór de chat-titel (bv. "**MORI** · chat over backtests")
+  - **FAB tooltip**: "Open Mori (AI-coach)" / "Sluit Mori"
+  - **System prompt** introduceert AI als Mori: *"Je bent **Mori**, de persoonlijke trading-coach in deze Morani Trading Journal."* + *"Wanneer je jezelf moet introduceren of refereren: je heet Mori."*
+  - **Beta-badge** in sidebar: "**MORI · BETA · v12.147** — Je AI-coach. Alle features live. Geef feedback in Discord."
+
+### Test
+- 15/15 chat + popup + smoke groen na rename — geen test-selectors gebroken (alle tests matchen op tab-label "AI-coach" wat onveranderd is, niet op message-labels).
+
+---
+
 ## [v12.146] — 2026-05-18
 
 ### Toegevoegd
