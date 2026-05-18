@@ -9,8 +9,17 @@ const path=require('path');
 const FILE_URL='file:///'+path.resolve(__dirname,'../work/tradejournal.html').replace(/\\/g,'/');
 
 test.describe('AI-coach foundation',()=>{
-  test('tab verborgen zonder ?ai=1',async({page})=>{
+  // v12.151: tab is nu standaard zichtbaar (geen ?ai=1 meer nodig).
+  // Opt-out via ?ai=0 voor screenshots/demo's zonder AI-context.
+  test('tab standaard zichtbaar zonder URL-flag',async({page})=>{
     await page.goto(FILE_URL,{waitUntil:'networkidle'});
+    await page.waitForTimeout(500);
+    const tabs=await page.locator('.tj-tabs button.tj-tab').allTextContents();
+    expect(tabs.join(' ')).toMatch(/AI-coach/);
+  });
+
+  test('tab verborgen wanneer ?ai=0 (opt-out)',async({page})=>{
+    await page.goto(FILE_URL+'?ai=0',{waitUntil:'networkidle'});
     await page.waitForTimeout(500);
     const tabs=await page.locator('.tj-tabs button.tj-tab').allTextContents();
     expect(tabs.join(' ')).not.toMatch(/AI-coach/);

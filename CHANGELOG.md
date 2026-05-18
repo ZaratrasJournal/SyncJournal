@@ -6,6 +6,22 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.151] — 2026-05-18
+
+### Gewijzigd
+- **Mori is publiek beschikbaar — `?ai=1` flag-gating verwijderd** *(2026-05-18)* — Tot v12.150 was Mori verborgen achter een feature-flag `?ai=1` in de URL voor staged rollout. Nu de feature compleet is + documentatie staat, hoeft die flag niet meer:
+  - **🤖 AI-coach tab** staat nu standaard in de topbar voor alle gebruikers
+  - **💬 Floating chat-knop** verschijnt zodra master + features.floatingChat aan
+  - **Opt-in blijft via master-toggle + BYOK API-key** — Mori doet niets totdat user dat expliciet aanzet
+  - **`?ai=0` als opt-out** — voor screenshots, demo's of als de community-user echt niets van Mori wil zien
+- **`IS_AI` constante** is nu default `true` (was: false zonder URL-flag). Backwards-compatible — alle bestaande checks in code blijven werken (evalueren altijd waar tenzij `?ai=0`).
+- **Handleiding L23 + FAQ-entry "Hoe activeer ik Mori?"** geupdate — geen `?ai=1` meer noemen. Setup is nu: klik tab → vul API-key in → master aan.
+- **Foundation + popup tests** geupdate naar nieuwe semantiek: was *"tab verborgen zonder ?ai=1"*, is nu *"tab standaard zichtbaar"* + nieuwe *"tab verborgen wanneer ?ai=0"* spec voor opt-out coverage.
+
+**Volledige test-suite**: 12/12 foundation + popup + smoke groen na switch.
+
+---
+
 ## [v12.150] — 2026-05-18
 
 ### Toegevoegd

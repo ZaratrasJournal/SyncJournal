@@ -53,17 +53,18 @@ test('FAB verborgen wanneer master uit',async({page})=>{
   expect(fab).toBe(0);
 });
 
-test('FAB verborgen wanneer ?ai=1 niet aan',async({page})=>{
+// v12.151: FAB is nu standaard zichtbaar zodra master + features.floatingChat
+// aan. Opt-out gaat via ?ai=0 voor screenshots/demo's zonder AI-context.
+test('FAB verborgen wanneer ?ai=0 (opt-out)',async({page})=>{
   await page.addInitScript(()=>{
     localStorage.setItem('tj_welcomed','1');
-    // Geen tj_ai_flag set
     localStorage.setItem('tj_ai_config',JSON.stringify({
       enabled:true,
       byok:{key:"sk-ant-test"},
       features:{floatingChat:true}
     }));
   });
-  await page.goto(FILE_URL,{waitUntil:'networkidle'});
+  await page.goto(FILE_URL+'?ai=0',{waitUntil:'networkidle'});
   await page.waitForTimeout(400);
   const fab=await page.locator('button[aria-label="Open chat"]').count();
   expect(fab).toBe(0);
