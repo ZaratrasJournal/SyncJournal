@@ -6,6 +6,16 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.152] — 2026-05-21
+
+### Fixed
+- **Backup-knop importeerde geen playbooks** *(2026-05-21, gemeld door Denny bij demo-data import)* — De "↑ Backup importeren"-knop (Instellingen → Backup & Restore) herstelde wel trades, tags, accounts, config en TP-templates, maar **niet de playbooks**. Drag & drop van een JSON-bestand deed dat wél — een inconsistentie tussen de twee import-paden. Een backup-restore hoort álles te herstellen.
+  - **Oorzaak**: `handleBackup` in AccountsHub had geen `setPlaybooks` (werd niet als prop doorgegeven) en miste de playbooks-import-regel die `handleDrop` wel had.
+  - **Fix**: `playbooks` + `setPlaybooks` doorgegeven aan AccountsHub; `handleBackup` herstelt nu `d.playbooks` via `migratePlaybooks()`, identiek aan het drag-drop pad.
+  - Geverifieerd met een nieuwe test die de **echte file-upload flow** doorloopt (niet localStorage-seed): `tests/demo-backup-import.spec.js` uploadt een 6-playbook backup via de Backup-knop en bevestigt dat alle 6 playbooks + tags + accounts laden.
+
+---
+
 ## [v12.151] — 2026-05-18
 
 ### Gewijzigd
