@@ -6,6 +6,22 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.159] — 2026-06-02
+
+### Gewijzigd
+- **TP-templates kaart-inhoud — TP1-5 onder elkaar, label bold, waarde regular** *(2026-06-02, gevraagd door Denny: "TPs wel onder elkaar, dik gedrukt TP1, niet dik gedrukt de waarde, goed gealigneerd")* — Per-template kaart toonde de 5 TP-verdelingen als horizontaal wrappende pills. Nu een verticale 2-koloms grid:
+  - Linker kolom: `TP1` t/m `TP5` in monospaced bold (`fontWeight:700`, `color:var(--text2)`)
+  - Rechter kolom: waardes (`100`, `50 / 50`, `34 / 33 / 33`, etc.) regular (`fontWeight:400`, `color:var(--text3)`)
+  - Beide kolommen monospaced (`var(--mono)`) zodat alle waardes pixel-perfect onder elkaar uitlijnen
+  - Lege verdeling (custom template zonder N-TP definitie) toont `—` in `var(--text5)`
+  - Slash-separator nu met spaties (`50 / 50`) ipv (`50/50`) voor leesbaarheid
+
+### Test
+- Smoke groen — pure layout-wijziging, geen runtime-impact
+- Visueel geverifieerd: alle waardes alignen exact, TP-labels duidelijk leesbaar
+
+---
+
 ## [v12.158] — 2026-06-02
 
 ### Gewijzigd
