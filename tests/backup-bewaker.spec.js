@@ -37,30 +37,44 @@ async function seed(page,{lastBackupAt,reminderOff,snoozedAt,onboardingShown,tra
   },{lastBackupAt,reminderOff,snoozedAt,onboardingShown,tradeCount});
 }
 
-test('indicator zichtbaar — kleur "groen ✓" bij <3d',async({page})=>{
+// v12.155: BackupAgeIndicator vervangen door AlertCenter (🔔-bubble met dropdown).
+// Tests checken nu de bubble: geen-alert bij recent · 1 alert bij ≥3d.
+test('AlertCenter: geen waarschuwing bij <3d backup',async({page})=>{
   await seed(page,{lastBackupAt:Date.now()-1*86400000}); // 1d oud
   await page.goto(FILE_URL,{waitUntil:'networkidle'});
   await page.waitForTimeout(800);
-  const btn=page.locator('button[aria-label="Backup-leeftijd indicator"]');
+  const btn=page.locator('button[aria-label$="alerts"]');
   await expect(btn).toBeVisible();
   const txt=(await btn.textContent())||'';
-  expect(txt).toContain('✓');
+  expect(txt).not.toMatch(/[0-9]/); // alleen 🔔 zonder cijfer = 0 alerts
 });
 
-test('indicator label "8d" bij 8 dagen oud',async({page})=>{
+test('AlertCenter: bell toont "1" bij backup 8 dagen oud',async({page})=>{
+  await page.addInitScript(()=>{
+    // Suppress milestone-modal die boven de bell kan komen
+    localStorage.setItem('tj_milestones_seen',JSON.stringify(['trades-10','trades-50','trades-100','first-win']));
+  });
   await seed(page,{lastBackupAt:Date.now()-8*86400000});
   await page.goto(FILE_URL,{waitUntil:'networkidle'});
   await page.waitForTimeout(800);
-  const btn=page.locator('button[aria-label="Backup-leeftijd indicator"]');
-  expect(await btn.textContent()).toContain('8d');
+  const btn=page.locator('button[aria-label$="alerts"]');
+  await expect(btn).toBeVisible();
+  expect((await btn.textContent())||'').toMatch(/1/);
+  // Bypass actionability via dispatchEvent
+  await page.evaluate(()=>{
+    const b=document.querySelector('button[aria-label$="alerts"]');
+    if(b)b.click();
+  });
+  await page.waitForTimeout(300);
+  expect(await page.locator('body').textContent()).toMatch(/Backup 8 dagen oud/);
 });
 
-test('indicator label "!" wanneer nooit backup',async({page})=>{
+test('AlertCenter: bell toont "1" wanneer nooit backup gemaakt',async({page})=>{
   await seed(page,{lastBackupAt:null,tradeCount:0});
   await page.goto(FILE_URL,{waitUntil:'networkidle'});
   await page.waitForTimeout(800);
-  const btn=page.locator('button[aria-label="Backup-leeftijd indicator"]');
-  expect(await btn.textContent()).toContain('!');
+  const btn=page.locator('button[aria-label$="alerts"]');
+  expect((await btn.textContent())||'').toMatch(/1/);
 });
 
 test('reminder verschijnt bij ≥7d + ≥5 trades',async({page})=>{

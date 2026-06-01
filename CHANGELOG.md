@@ -6,6 +6,45 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.155] — 2026-06-02
+
+### Toegevoegd / Gewijzigd
+- **UX-audit fase 1: 5 quick wins** *(2026-06-02, gebaseerd op UX-audit rapport `docs/ux-audit-2026-06-01.md`)* — Eerste van een 3-release-traject (v12.155–v12.157) om de app weer samenhangend te laten aanvoelen na de feature-explosie van Q1.
+
+#### QW1 — Milestone-modal stop blokkeren bij grote import
+Bij elke import (drag-drop of Backup-knop) markeren we nu alle reeds-behaalde milestones automatisch als seen. Een import van 1000 trades hoort niet de "10 trades!"-modal te tonen — die was duizend trades geleden voorbij. Nieuwe helper `markAchievedMilestonesAsSeen(trades)` evalueert na elke import welke `MILESTONE_DEFS` qua trade-count voldaan zijn en update `tj_milestones_seen` zonder modal te triggeren. **Fixt severity-4 issue uit de audit**: de modal die de demo-data screenshots blokkeerde.
+
+#### QW2 — FilterBar default compact
+`FilterBar` opent niet meer automatisch wanneer er actieve filters zijn. Default is nu `expanded: false`. De disclosure-knop "▾ Filters · N" laat user opklappen wanneer ze meer willen zien. Resultaat: van 7 rijen filter-overhead naar 2-3 rijen default. Search-input + result-summary blijven primair zichtbaar.
+
+#### QW3 — Type-scale token-systeem
+6 nieuwe CSS-tokens ipv 23 hardcoded font-sizes:
+
+```css
+--text-xs:11px;   --text-sm:12px;   --text-base:13px;
+--text-lg:15px;   --text-xl:18px;   --text-2xl:24px;  --text-3xl:32px;
+```
+
+Toegepast op Dashboard KEY METRICS sidebar (was `10/11.5/13px` → `xs/sm/base`) en Analytics KPI-tegels (was `10/26px` → `xs/2xl`). Sub-stats zijn nu **leesbaar bij normale viewing-distance** (was hopeloos op 10px). Migratie van overige schermen volgt in v12.156.
+
+#### QW4 — "+ Account toevoegen"-knop zichtbaar
+Was `1px dashed transparent border` + `color: var(--text3)` — bijna onzichtbaar tussen exchange-pills. Nu: `gold-dim background` + `gold border` + duidelijkere label *"+ Handmatig account toevoegen"*.
+
+#### QW5 — AlertCenter consolideert 3 topbar-indicators
+Nieuwe `<AlertCenter>` component vervangt `<BackupAgeIndicator>` + `<AIWeeklyIndicator>` + `<AIBudgetIndicator>` in `tj-right-btns`. Eén 🔔-bubble met aantal-tag en dropdown bij klik. Severity-kleuren: rood (high — backup ≥7d / budget ≥100%), amber (med — backup 3-7d / budget ≥80% / weekly due), neutral (geen alerts).
+
+**Topbar gaat van 6 elementen rechts naar 4**: `[+ Trade] [🔔 N] [👁] [☀]`. Schaalbaar voor toekomstige alerts (geen extra knoppen meer per indicator). De oude individuele indicators blijven beschikbaar in de codebase voor mogelijke andere gebruiks-contexten.
+
+### Test
+- **3 bestaande backup-tests bijgewerkt** naar AlertCenter-asserties (was `button[aria-label="Backup-leeftijd indicator"]`, nu `button[aria-label$="alerts"]`). De BackupAgeIndicator-component blijft bestaan voor niet-topbar gebruik.
+- Regressie: 12/12 backup-suite + smoke groen.
+
+### Volgende fasen (uit audit)
+- **v12.156** (~4u): spacing-tokens + borderRadius-tokens + button-tier-consolidation + token-uitrol naar overige schermen
+- **v12.157** (~3u): Empty-state component + Analytics section-TOC
+
+---
+
 ## [v12.154] — 2026-06-01
 
 ### Toegevoegd
