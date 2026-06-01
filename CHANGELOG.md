@@ -6,6 +6,43 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.153] — 2026-06-01
+
+### Toegevoegd
+- **Backup-bewaker** — voorkomt onbedoeld data-verlies door browser-wissen *(2026-06-01, gevraagd door Denny na Discord-issue van NielsB die zijn Chrome-profiel leegmaakte met 2-weken-oude backup)*
+  - **📦 Topbar-indicator** rechts in de topbar, altijd zichtbaar. Kleur op basis van laatste-backup-leeftijd:
+    - Groen ✓ wanneer <3 dagen
+    - Amber Xd wanneer 3-7 dagen
+    - Rood + pulse Xd wanneer ≥7 dagen
+    - Rood + pulse ! wanneer nooit een backup
+    - **Klik = directe export** (geen tussenstap)
+  - **Reminder-modal** verschijnt bij app-open wanneer ≥7 dagen sinds laatste backup + ≥5 trades. Vriendelijk maar duidelijk: *"Tijd voor je wekelijkse backup"* + waarom-uitleg (data staat in browser, kan weg bij profiel-wissen).
+    - **⬇ Download backup nu** — directe export, 1 klik
+    - **Herinner morgen** — 24u snooze (gebruikt `tj_backup_reminder_snoozed_at`)
+    - **Nooit meer tonen** — `tj_backup_reminder_off=1`, terug-aan-zetten kan via Instellingen
+  - **Onboarding-modal** eenmalig na 5 trades wanneer er nog NOOIT een backup is gemaakt. Educatief, geen download-prompt — leert nieuwe users dat data lokaal staat en hoe ze 'm veilig houden. State opgeslagen in `tj_backup_onboarding_shown`.
+  - **Soft recovery** — confirmation-dialog bij destructive import: wanneer huidige journal ≥10 trades heeft EN nieuwe payload <50% van huidige → vraagt expliciete bevestiging *"Je gaat huidige X trades vervangen door Y trades. Weet je het zeker?"*. Voorkomt het *"ik importeerde per ongeluk een oude/verkeerde backup"*-scenario. Werkt in zowel drag-drop als de Backup-knop in Instellingen.
+  - **Import herstelt timestamp** — bij import wordt `tj_last_backup_at` gezet uit `payload.exportDate` zodat de reminder niet direct na import triggert (anders had je net een verse import en kreeg je toch een "doe een backup"-reminder).
+  - **Instellingen-stat + toggle** in Instellingen → Backup & Restore: toont *"Laatste backup: X dagen geleden"* in kleurcode + checkbox om de reminder aan/uit te zetten (handig om "Nooit meer" terug te zetten).
+
+### Storage-keys
+| Key | Doel |
+|---|---|
+| `tj_last_backup_at` | Unix ms van laatste export/import |
+| `tj_backup_reminder_snoozed_at` | Unix ms van "Herinner morgen" |
+| `tj_backup_reminder_off` | "1" wanneer "Nooit meer" gekozen |
+| `tj_backup_onboarding_shown` | "1" na eerste-keer educatieve modal |
+
+### Test
+- **12 nieuwe Playwright-specs** (`tests/backup-bewaker.spec.js`): indicator-kleur per leeftijd · indicator label "8d" · indicator "!" bij nooit · reminder triggert bij ≥7d · reminder NIET bij <7d · reminder NIET bij off=1 · snooze + state · reminder NIET binnen 24u snooze · download triggert export + timestamp · onboarding eenmalig · onboarding NIET na shown · soft recovery confirm bij destructive import.
+- Regressie: 6/6 smoke + AI-coach foundation groen.
+
+### Volgende fasen
+- **v12.154 Fase 2** — File System Access API voor stille auto-write naar door-user-gekozen folder (Chrome/Edge), fallback voor Firefox/Safari.
+- **v12.155+ Fase 3** — Cloud-opties (GitHub Gist auto-push / S3 BYOK / WebDAV) op community-vraag.
+
+---
+
 ## [v12.152] — 2026-05-21
 
 ### Fixed

@@ -793,6 +793,8 @@ body.theme-light .ai-toggle-thumb,body.theme-parchment .ai-toggle-thumb,body.the
 .ai-chat-item{transition:background .12s, border-color .12s}
 .ai-chat-item:hover{background:var(--bg3) !important;border-color:var(--border3) !important}
 .ai-chat-item.active{background:var(--gold-dim) !important;border-color:var(--gold-border) !important;border-left:3px solid var(--gold) !important;padding-left:7px !important}
+/* v12.153 — Backup-bewaker: subtiele pulse voor 'urgent' staat (>7d / nooit) */
+@keyframes backupPulse{0%,100%{opacity:1}50%{opacity:0.55}}
 </style>
 </head>
 <body>
@@ -1235,7 +1237,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.152",released:"2026-05-21"};
+const APP_VERSION={version:"v12.153",released:"2026-06-01"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -2249,6 +2251,35 @@ function saveAIConfig(cfg){
     // v12.137: broadcast naar topbar-indicator + andere subscribers
     window.dispatchEvent(new CustomEvent("tj-ai-config-change",{detail:cfg}));
   }catch(e){}
+}
+
+// v12.153 — Backup-bewaker: helpers voor backup-age tracking + reminder-logica.
+// Storage-keys:
+//   tj_last_backup_at — Unix ms van laatste export of import
+//   tj_backup_reminder_snoozed_at — Unix ms van "Herinner morgen" klik
+//   tj_backup_reminder_off — "1" als user "Nooit meer tonen" koos
+//   tj_backup_onboarding_shown — "1" na eerste-keer educatieve modal
+function getLastBackupAt(){
+  try{const v=localStorage.getItem("tj_last_backup_at");return v?parseInt(v,10):null;}catch{return null;}
+}
+function setLastBackupAt(ts){
+  try{
+    localStorage.setItem("tj_last_backup_at",String(ts||Date.now()));
+    window.dispatchEvent(new CustomEvent("tj-backup-saved"));
+  }catch{}
+}
+function backupAgeDays(){
+  const t=getLastBackupAt();
+  if(!t)return Infinity;
+  return Math.floor((Date.now()-t)/86400000);
+}
+function shouldShowBackupReminder(){
+  try{
+    if(localStorage.getItem("tj_backup_reminder_off")==="1")return false;
+    const snoozed=parseInt(localStorage.getItem("tj_backup_reminder_snoozed_at")||"0",10);
+    if(snoozed&&(Date.now()-snoozed)<86400000)return false; // <24u snooze
+    return backupAgeDays()>=7;
+  }catch{return false;}
 }
 
 async function proxyCall(payload){
@@ -11972,6 +12003,14 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,set
         const d=JSON.parse(ev.target.result);
         const trList=d.trades||d;
         if(!Array.isArray(trList)){showToast("Ongeldig formaat","error");return}
+        // v12.153: soft recovery — voorkom destructive overwrite
+        const currentCount=(trades||[]).length;
+        const newCount=trList.length;
+        if(currentCount>=10&&newCount<currentCount*0.5){
+          if(!confirm(`Je gaat huidige ${currentCount} trades vervangen door ${newCount} trades.\n\nWeet je het zeker? Dit overschrijft ook je tags, accounts en playbooks.`)){
+            showToast("Import geannuleerd","info");e.target.value="";return;
+          }
+        }
         importTrades(trList.map(t=>({...EMPTY_TRADE,...t,id:t.id||uid()})));
         if(d.tagConfig&&typeof d.tagConfig==="object"&&setTagConfig)setTagConfig(d.tagConfig);
         if(Array.isArray(d.accounts))setAccounts(d.accounts);
@@ -11982,6 +12021,8 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,set
         // v12.152: playbooks restore — was alleen in drag-drop pad (handleDrop),
         // ontbrak in de Backup-knop. Backup-restore hoort ALLES te herstellen.
         if(Array.isArray(d.playbooks)&&setPlaybooks)setPlaybooks(migratePlaybooks(d.playbooks));
+        // v12.153: timestamp uit payload zodat reminder niet direct triggert
+        if(d.exportDate){const ts=Date.parse(d.exportDate);if(!isNaN(ts))setLastBackupAt(ts);}
         showToast("Backup hersteld");
       }catch(err){showToast("Fout bij importeren: "+err.message,"error")}
     };
@@ -13467,6 +13508,8 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,set
         <input type="file" ref={backupRef} accept=".json" onChange={handleBackup} style={{display:"none"}}/>
       </div>
       <div style={{fontSize:"10px",color:"var(--text5)",marginTop:"8px"}}>Bevat: {trades.length} trades, {Object.keys(config.exchanges||{}).filter(k=>(config.exchanges[k]||{}).apiKey).length} exchange-verbindingen, {(accounts||[]).length} handmatige accounts, {Object.keys(tagConfig||{}).length} tag-categorieën.</div>
+      {/* v12.153: Backup-bewaker — laatste backup leeftijd + reminder-toggle */}
+      <BackupBewakerControls/>
     </div>
 
     </div>{/* /sec-backup */}
@@ -16611,10 +16654,110 @@ function AICoachPage({showToast,playbooks,trades}){
 }
 
 
+// ============ BACKUP-BEWAKER (v12.153) ============
+// Topbar-indicator + 2 modals. Voorkomt onbedoeld data-verlies door browser-wissen.
+
+// 📦-indicator rechtsin topbar. Kleur op basis van leeftijd:
+//   <3d groen, 3-7d amber, >7d rood + pulse, nooit rood + sterke pulse.
+// Klik = directe export (geen tussenstap).
+function BackupAgeIndicator({onClick}){
+  const[age,setAge]=useState(backupAgeDays());
+  useEffect(()=>{
+    const refresh=()=>setAge(backupAgeDays());
+    window.addEventListener("tj-backup-saved",refresh);
+    const iv=setInterval(refresh,60000); // 1× per min hercheck (voor lange sessies)
+    return()=>{window.removeEventListener("tj-backup-saved",refresh);clearInterval(iv);};
+  },[]);
+  const never=age===Infinity;
+  let color,bg,border,label,pulse=false;
+  if(never){color="var(--red)";bg="rgba(224,85,85,0.10)";border="var(--red)";label="!";pulse=true;}
+  else if(age>=7){color="var(--red)";bg="rgba(224,85,85,0.08)";border="var(--red)";label=age+"d";pulse=true;}
+  else if(age>=3){color="var(--amber)";bg="rgba(255,180,40,0.08)";border="var(--amber)";label=age+"d";}
+  else{color="var(--green)";bg="rgba(46,170,111,0.06)";border="rgba(46,170,111,0.3)";label="✓";}
+  return(<button onClick={onClick}
+    title={never?"Nooit een backup gemaakt — klik om nu te exporteren":`Laatste backup: ${age} dag${age===1?"":"en"} geleden — klik om nu te exporteren`}
+    aria-label="Backup-leeftijd indicator"
+    style={{padding:"6px 10px",borderRadius:"var(--radius)",border:"1px solid "+border,background:bg,color:color,fontSize:"11px",fontWeight:700,cursor:"pointer",fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:"6px",lineHeight:1,animation:pulse?"backupPulse 2s ease-in-out infinite":undefined}}>
+    <span>📦</span><span style={{fontFamily:"var(--mono)"}}>{label}</span>
+  </button>);
+}
+
+// Reminder-modal — verschijnt bij app-open na ≥7d sinds laatste backup.
+function BackupReminderModal({onExport,onSnooze,onNever,onClose}){
+  const age=backupAgeDays();
+  const txt=age===Infinity
+    ?"Je hebt nog geen backup gemaakt."
+    :`Je laatste backup is ${age} dag${age===1?"":"en"} geleden.`;
+  return(<div onClick={e=>{if(e.target===e.currentTarget)onClose();}} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:9000,display:"flex",alignItems:"center",justifyContent:"center",padding:"20px"}}>
+    <div style={{background:"var(--bg2)",border:"1px solid var(--gold-border)",borderRadius:"14px",padding:"28px 32px",width:"100%",maxWidth:"460px",boxShadow:"0 20px 60px rgba(0,0,0,0.5)"}}>
+      <div style={{fontSize:"32px",marginBottom:"10px",textAlign:"center"}}>📦</div>
+      <h3 style={{margin:"0 0 8px",fontSize:"18px",fontWeight:700,color:"var(--text)",textAlign:"center"}}>Tijd voor je wekelijkse backup</h3>
+      <p style={{margin:"0 0 18px",fontSize:"13px",color:"var(--text3)",lineHeight:1.55,textAlign:"center"}}>{txt}<br/>Je trades, playbooks, tags en accounts blijven veilig zolang je af en toe een <code>.json</code>-backup downloadt.</p>
+      <div style={{padding:"10px 12px",background:"rgba(255,180,40,0.06)",border:"1px solid var(--amber)",borderRadius:"8px",fontSize:"11px",color:"var(--text2)",lineHeight:1.5,marginBottom:"18px"}}>
+        💡 <strong>Waarom?</strong> Je data staat in je browser. Wis je je browser-profiel of cache, dan ben je alles kwijt.
+      </div>
+      <button onClick={onExport} aria-label="Download backup nu" style={{display:"block",width:"100%",padding:"12px 16px",fontSize:"13px",fontWeight:700,borderRadius:"8px",border:"1px solid var(--gold-border)",background:"var(--gold)",color:"var(--bg)",cursor:"pointer",fontFamily:"inherit",marginBottom:"8px"}}>⬇ Download backup nu</button>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"8px"}}>
+        <button onClick={onSnooze} style={{padding:"10px 12px",fontSize:"12px",fontWeight:600,borderRadius:"8px",border:"1px solid var(--border3)",background:"transparent",color:"var(--text3)",cursor:"pointer",fontFamily:"inherit"}}>Herinner morgen</button>
+        <button onClick={onNever} style={{padding:"10px 12px",fontSize:"12px",fontWeight:600,borderRadius:"8px",border:"1px solid var(--border3)",background:"transparent",color:"var(--text5)",cursor:"pointer",fontFamily:"inherit"}}>Nooit meer tonen</button>
+      </div>
+      <div style={{fontSize:"10px",color:"var(--text5)",textAlign:"center",marginTop:"12px",lineHeight:1.5}}>"Nooit meer" terugzetten kan via Instellingen → Backup &amp; Restore</div>
+    </div>
+  </div>);
+}
+
+// Settings-controls voor Backup-bewaker: laatste-backup-stat + reminder-toggle.
+// Standalone component zodat hij eigen state heeft binnen AccountsHub.
+function BackupBewakerControls(){
+  const[age,setAge]=useState(()=>backupAgeDays());
+  const[reminderOn,setReminderOn]=useState(()=>{try{return localStorage.getItem("tj_backup_reminder_off")!=="1";}catch{return true;}});
+  useEffect(()=>{
+    const refresh=()=>setAge(backupAgeDays());
+    window.addEventListener("tj-backup-saved",refresh);
+    return()=>window.removeEventListener("tj-backup-saved",refresh);
+  },[]);
+  const lastTxt=age===Infinity?"nooit":age===0?"vandaag":age===1?"gisteren":`${age} dagen geleden`;
+  const lastColor=age===Infinity?"var(--red)":age>=7?"var(--red)":age>=3?"var(--amber)":"var(--green)";
+  return(<div style={{marginTop:"14px",paddingTop:"14px",borderTop:"1px solid var(--border2)"}}>
+    <div style={{fontSize:"11px",color:"var(--text4)",marginBottom:"10px"}}>
+      Laatste backup: <strong style={{color:lastColor}}>{lastTxt}</strong>
+    </div>
+    <label style={{display:"flex",alignItems:"center",gap:"8px",fontSize:"12px",color:"var(--text3)",cursor:"pointer"}}>
+      <input type="checkbox" checked={reminderOn} onChange={e=>{
+        if(e.target.checked){try{localStorage.removeItem("tj_backup_reminder_off");localStorage.removeItem("tj_backup_reminder_snoozed_at");}catch{}setReminderOn(true);}
+        else{try{localStorage.setItem("tj_backup_reminder_off","1");}catch{}setReminderOn(false);}
+      }}/>
+      Toon backup-reminder als ≥7 dagen sinds laatste backup
+    </label>
+  </div>);
+}
+
+// Onboarding-modal — eenmalig na 5 trades als er nog NOOIT een backup is gemaakt.
+function BackupOnboardingModal({onClose}){
+  return(<div onClick={e=>{if(e.target===e.currentTarget)onClose();}} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:9000,display:"flex",alignItems:"center",justifyContent:"center",padding:"20px"}}>
+    <div style={{background:"var(--bg2)",border:"1px solid var(--gold-border)",borderRadius:"14px",padding:"28px 32px",width:"100%",maxWidth:"460px",boxShadow:"0 20px 60px rgba(0,0,0,0.5)"}}>
+      <div style={{fontSize:"32px",marginBottom:"10px",textAlign:"center"}}>📦</div>
+      <h3 style={{margin:"0 0 8px",fontSize:"18px",fontWeight:700,color:"var(--text)",textAlign:"center"}}>Even iets belangrijks</h3>
+      <p style={{margin:"0 0 14px",fontSize:"13px",color:"var(--text3)",lineHeight:1.55,textAlign:"center"}}>Je hebt nu <strong>5 trades</strong> — top dat je begonnen bent!</p>
+      <div style={{padding:"12px 14px",background:"rgba(255,180,40,0.06)",border:"1px solid var(--amber)",borderRadius:"8px",fontSize:"12px",color:"var(--text2)",lineHeight:1.6,marginBottom:"12px"}}>
+        ⚠ <strong>Onthoud dit één ding:</strong> je data staat in je browser. Wis je per ongeluk je browser-profiel of cache → alles weg, geen recovery mogelijk.
+      </div>
+      <div style={{padding:"12px 14px",background:"rgba(46,170,111,0.06)",border:"1px solid var(--green)",borderRadius:"8px",fontSize:"12px",color:"var(--text2)",lineHeight:1.6,marginBottom:"18px"}}>
+        ✓ <strong>De oplossing:</strong> elke 1-2 weken op de 📦-knop rechtsboven klikken. Bestand belandt in Downloads, klaar voor noodgeval.
+      </div>
+      <button onClick={onClose} style={{display:"block",width:"100%",padding:"12px 16px",fontSize:"13px",fontWeight:700,borderRadius:"8px",border:"1px solid var(--gold-border)",background:"var(--gold)",color:"var(--bg)",cursor:"pointer",fontFamily:"inherit"}}>Begrepen, ga door</button>
+    </div>
+  </div>);
+}
+
+
 // ============ MAIN APP (v7: storage warning + keyboard shortcuts) ============
 function App(){
   const[trades,setTrades]=useState([]);
   const[tradesLoaded,setTradesLoaded]=useState(false);
+  // v12.153: Backup-bewaker state
+  const[showBackupReminder,setShowBackupReminder]=useState(false);
+  const[showBackupOnboarding,setShowBackupOnboarding]=useState(false);
 
   // v9: Laad trades uit IndexedDB bij start (migreer van localStorage indien nodig)
   useEffect(function(){
@@ -16697,6 +16840,22 @@ function App(){
   // v7 NEW: storage usage tracking
   const[storageUsage,setStorageUsage]=useState(()=>getStorageUsage());
   const[showWelcome,setShowWelcome]=useState(function(){try{return!localStorage.getItem("tj_welcomed");}catch(e){return false;}});
+
+  // v12.153: Backup-bewaker triggers. Reminder verschijnt na app-load wanneer
+  // trades geladen + ≥5 + reminder-condities matchen (≥7d, niet snoozed, niet
+  // 'nooit meer'). Onboarding eenmalig na 5 trades wanneer er nog NOOIT een
+  // backup is gemaakt. Welcome-modal heeft voorrang — wacht tot die weg is.
+  useEffect(()=>{
+    if(!tradesLoaded||showWelcome)return;
+    if(trades.length<5)return;
+    // Onboarding eerst (educatief, voor first-time users zonder backup)
+    if(!getLastBackupAt()&&localStorage.getItem("tj_backup_onboarding_shown")!=="1"){
+      setShowBackupOnboarding(true);
+      return;
+    }
+    // Reminder (alleen als ≥7d en niet snoozed/uit)
+    if(shouldShowBackupReminder())setShowBackupReminder(true);
+  },[tradesLoaded,showWelcome,trades.length]);
   const[demoMode,setDemoMode]=useState(function(){try{return localStorage.getItem("tj_demo_mode")==="1";}catch(e){return false;}});
   // Update check moved to Instellingen → Accounts (user-initiated, not auto-banner).
   // See checkForUpdates in AccountsHub.
@@ -17224,6 +17383,15 @@ function App(){
   const handleDrop=useCallback((e)=>{e.preventDefault();setImportDragOver(false);const f=e.dataTransfer.files[0];if(!f||!f.name.endsWith(".json"))return;const r=new FileReader();r.onload=ev=>{try{
     const d=JSON.parse(ev.target.result);const trList=d.trades||d;
     if(!Array.isArray(trList)){showToast("Ongeldig formaat","error");return}
+    // v12.153: soft recovery — voorkom destructive overwrite van grote journal
+    // met kleine backup. Drempel: huidige ≥10 én nieuwe <50% van huidige.
+    const currentCount=trades.length;
+    const newCount=trList.length;
+    if(currentCount>=10&&newCount<currentCount*0.5){
+      if(!confirm(`Je gaat huidige ${currentCount} trades vervangen door ${newCount} trades.\n\nWeet je het zeker? Dit overschrijft ook je tags, accounts en playbooks.`)){
+        showToast("Import geannuleerd","info");return;
+      }
+    }
     importTrades(trList.map(t=>({...EMPTY_TRADE,...t,id:t.id||uid(),highestPrice:t.highestPrice||"",lowestPrice:t.lowestPrice||""})));
     // Volledige backup? Herstel dan ook tags/accounts/config
     if(d.tagConfig&&typeof d.tagConfig==="object")setTagConfig(d.tagConfig);
@@ -17233,6 +17401,8 @@ function App(){
     // v12.123: TP-templates + defaults restore (drag-drop pad)
     if(Array.isArray(d.tpTemplates))setTpTemplates(d.tpTemplates);
     if(d.tpDefaults&&typeof d.tpDefaults==="object")setTpDefaults(p=>({...DEFAULT_TP_DEFAULTS,...d.tpDefaults}));
+    // v12.153: timestamp uit payload zodat reminder niet direct na import triggert
+    if(d.exportDate){const ts=Date.parse(d.exportDate);if(!isNaN(ts))setLastBackupAt(ts);}
   }catch(err){showToast("Fout bij importeren","error")}};r.readAsText(f)},[trades]);
   const handleDragOver=useCallback((e)=>{e.preventDefault();setImportDragOver(true)},[]);
   const handleDragLeave=useCallback(()=>setImportDragOver(false),[]);
@@ -17243,6 +17413,7 @@ function App(){
     const blob=new Blob([JSON.stringify(payload,null,2)],{type:"application/json"});
     const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;
     a.download=`syncjournal-backup-${new Date().toISOString().split("T")[0]}.json`;a.click();URL.revokeObjectURL(url);
+    setLastBackupAt(Date.now()); // v12.153: backup-bewaker timestamp
     showToast(`Backup geëxporteerd: ${trades.length} trades, ${(accounts||[]).length} accounts`);
   };
 
@@ -17352,6 +17523,8 @@ function App(){
         </div>
         <div className="tj-right-btns" style={{display:"flex",alignItems:"center",gap:"8px"}}>
           <button onClick={()=>{setNewTrade(newEmptyTrade());navigate("new")}} style={{padding:"7px 14px",borderRadius:"var(--radius)",border:"1px solid var(--blue2)",background:"rgba(201,168,76,0.12)",color:"#C9A84C",fontSize:"12px",cursor:"pointer",fontFamily:"inherit",fontWeight:600,display:"flex",alignItems:"center",gap:"6px"}}><span>+</span> Trade <span className="kbd" style={{fontSize:"9px",borderColor:"rgba(201,168,76,0.4)"}}>N</span></button>
+          {/* v12.153: Backup-bewaker indicator — altijd zichtbaar */}
+          <BackupAgeIndicator onClick={exportTrades}/>
           {/* v12.138: Weekly-digest due indicator — verschijnt alleen ≥7d */}
           <AIWeeklyIndicator navigate={navigate}/>
           {/* v12.137: AI-budget waarschuwing — verschijnt alleen ≥alertThreshold */}
@@ -17534,6 +17707,13 @@ function App(){
       {/* v12.146: floating AI-chat (alle pagina's). Render zelf bepaalt of
           ie zichtbaar is (IS_AI + master + features.floatingChat). */}
       <AIChatPopup playbooks={playbooks} trades={trades} showToast={showToast}/>
+      {/* v12.153: Backup-bewaker modals */}
+      {showBackupOnboarding&&<BackupOnboardingModal onClose={()=>{try{localStorage.setItem("tj_backup_onboarding_shown","1");}catch{}setShowBackupOnboarding(false);}}/>}
+      {showBackupReminder&&<BackupReminderModal
+        onExport={()=>{exportTrades();setShowBackupReminder(false);}}
+        onSnooze={()=>{try{localStorage.setItem("tj_backup_reminder_snoozed_at",String(Date.now()));}catch{}setShowBackupReminder(false);}}
+        onNever={()=>{try{localStorage.setItem("tj_backup_reminder_off","1");}catch{}setShowBackupReminder(false);showToast("Reminder uit. Aanzetten kan via Instellingen → Backup");}}
+        onClose={()=>setShowBackupReminder(false)}/>}
     </div>
     </PrivacyContext.Provider>
   );
