@@ -6,6 +6,24 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.158] — 2026-06-02
+
+### Gewijzigd
+- **TP-templates sectie krijgt card-wrapper + 3-kolommen grid** *(2026-06-02, gemeld door Denny: header stond los van content)* — De TP-templates sectie was de enige in Instellingen waarvan de header (titel + sub-text + Reset/+Nieuwe template knoppen) **buiten een card-container** stond, terwijl alle andere secties (VRIJWILLIGE DONATIE, BACKUP & RESTORE, DEFAULT-TEMPLATE PER AANTAL TPS) hun header **binnen** een card hebben. Visuele inconsistentie nu opgelost:
+  - **Card-wrapper** rond hele TP-templates blok met `var(--glass)` background + `var(--border1)` border (zelfde patroon als VRIJWILLIGE DONATIE)
+  - **📐 icon-prefix** in de header voor consistentie met `📣 VRIJWILLIGE DONATIE`
+  - **3-kolommen grid** voor Equal / Front-loaded / Runner cards (`repeat(auto-fit, minmax(280px, 1fr))`) — direct visueel vergelijkbaar ipv onder elkaar
+  - Per-template-card layout: titel + Edit/Delete knoppen op één rij boven, pills (1TP-5TP) gewikkeld eronder
+  - Custom templates schalen mee in dezelfde grid (auto-fit zorgt voor extra rijen)
+  - Responsief: viewport <860px stapelt automatisch (minmax 280px)
+- **Token-uitrol**: Reset-knop = `.tj-btn-tertiary .tj-btn-sm`, +Nieuwe template = `.tj-btn-secondary .tj-btn-sm`. Alle font-sizes, padding, gaps en borderRadius via tokens. Sub-text van `--text4` naar `--text3` (leesbaarder).
+
+### Test
+- Smoke groen — geen runtime-impact (alleen JSX-structuur + CSS-tokens)
+- Visueel geverifieerd via screenshot
+
+---
+
 ## [v12.157] — 2026-06-02
 
 ### Fixed
