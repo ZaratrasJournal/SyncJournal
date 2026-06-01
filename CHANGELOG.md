@@ -6,6 +6,33 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.160] — 2026-06-02
+
+### Toegevoegd
+- **`EmptyState` component** — canonieke "geen data"-weergave voor page-level lege schermen. Eén component, één layout, één type-spacing — alle eerdere ad-hoc varianten gebruikten subtiel andere fontsizes, padding en margins:
+  - **Props**: `icon` (emoji), `title`, `body`, `action` (JSX), `hint` (kbd-shortcuts), `variant` (`page` default of `card`)
+  - **Tokens**: `--text-lg` titel, `--text-sm` body, `--text-xs` hint, spacing via `--space-N`
+  - Body max 40ch breed gecentreerd voor goede leesbaarheid
+  - Icon 48px (page) / 32px (card) met opacity 0.3 — niet schreeuwerig
+
+### Gewijzigd (UX-audit fase 3)
+- **5 page-level empty-states gemigreerd** naar EmptyState component:
+  - Dashboard "Nog geen trades" (📊 + kbd-hints)
+  - Trades-overzicht "Geen trades gevonden" (📋)
+  - Tendencies "Nog geen closed trades" (🎯)
+  - Analytics "Nog geen closed trades" (📈)
+  - Review "Geen trades voor review" (📋)
+- Alle 5 hadden voorheen hand-gerolde markup met subtiele afwijkingen (16px vs 13px, 4rem vs 24px padding, marginBottom 8px vs none, etc.). Nu pixel-identiek over alle schermen.
+
+### Niet aangeraakt
+- Inline micro-emptiness in widget-cellen (calendar-cel "geen trades op deze dag", linked-trades counter, etc.) — die zijn micro-context en passen niet in een full-page component
+- Print-rapport empty-state (regel 5071) — heeft eigen `tr-empty` class voor PDF-styling
+
+### Test
+- Smoke groen + 5 screenshots geverifieerd: alle empty-states zien er nu identiek uit qua hiërarchie, spacing en typografie
+
+---
+
 ## [v12.159] — 2026-06-02
 
 ### Gewijzigd

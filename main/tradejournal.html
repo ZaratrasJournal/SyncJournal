@@ -1276,7 +1276,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.159",released:"2026-06-02"};
+const APP_VERSION={version:"v12.160",released:"2026-06-02"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -3074,6 +3074,30 @@ function Stars({value,onChange}){
   ))}</div>);
 }
 
+// v12.160 (UX fase 3): Eén canonieke EmptyState voor page-level "leeg"-schermen.
+// Vervangt ~5 ad-hoc varianten (Dashboard/Trades/Tendencies/Analytics/Review)
+// die allemaal hetzelfde patroon kopieerden met subtiele verschillen (48px icon
+// opacity 0.3, 16px title, 13px body, optionele kbd-hint). Inline micro-emptiness
+// in widget-cellen blijft per-context (te klein voor deze schaal).
+//
+// Props:
+//  icon    - emoji string (rendered 48px met opacity 0.3)
+//  title   - bold headline (text-lg, text2 kleur)
+//  body    - sub-line (text-sm, text3 kleur, max 40ch breed)
+//  action  - optioneel JSX (button, link) onder body
+//  hint    - optioneel kleine grijze tekst (kbd-shortcuts, etc.) onder action
+//  variant - "page" (default, 4rem padding) | "card" (24px padding, 32px icon)
+function EmptyState({icon,title,body,action,hint,variant}){
+  const isCard=variant==="card";
+  return(<div style={{textAlign:"center",padding:isCard?"24px 16px":"4rem 2rem",color:"var(--text3)"}}>
+    {icon&&<div style={{fontSize:isCard?"32px":"48px",marginBottom:"1rem",opacity:0.3,lineHeight:1}}>{icon}</div>}
+    {title&&<div style={{fontSize:"var(--text-lg)",fontWeight:500,marginBottom:"var(--space-2)",color:"var(--text2)"}}>{title}</div>}
+    {body&&<div style={{fontSize:"var(--text-sm)",lineHeight:1.5,maxWidth:"40ch",margin:"0 auto"}}>{body}</div>}
+    {action&&<div style={{marginTop:"var(--space-4)"}}>{action}</div>}
+    {hint&&<div style={{marginTop:"var(--space-3)",fontSize:"var(--text-xs)",color:"var(--text4)"}}>{hint}</div>}
+  </div>);
+}
+
 function Stat({label,value,sub,color}){
   const safeVal=typeof value==="object"?JSON.stringify(value):value;
   const safeSub=typeof sub==="object"?JSON.stringify(sub):sub;
@@ -3817,12 +3841,12 @@ function Dashboard({trades,config,accounts,storageUsage,setFilters,setTab}){
   const[pgExchanges,setPgExchanges]=useState(["all"]);
   const[pgPeriod,setPgPeriod]=useState("all");
   const[pgUnit,setPgUnit]=useState("usdt");
-    if(!trades.length)return(<div style={{textAlign:"center",padding:"4rem 2rem",color:"var(--text3)"}}>
-    <div style={{fontSize:"48px",marginBottom:"1rem",opacity:0.3}}>📊</div>
-    <div style={{fontSize:"16px",fontWeight:500,marginBottom:"8px"}}>Nog geen trades</div>
-    <div style={{fontSize:"13px"}}>Voeg je eerste trade toe of importeer via API.</div>
-    <div style={{marginTop:"12px",fontSize:"11px",color:"var(--text4)"}}>Sneltoetsen: <span className="kbd">N</span> Nieuwe trade · <span className="kbd">T</span> Trades · <span className="kbd">D</span> Dashboard</div>
-  </div>);
+    if(!trades.length)return<EmptyState
+      icon="📊"
+      title="Nog geen trades"
+      body="Voeg je eerste trade toe of importeer via API."
+      hint={<>Sneltoetsen: <span className="kbd">N</span> Nieuwe trade · <span className="kbd">T</span> Trades · <span className="kbd">D</span> Dashboard</>}
+    />;
 
   const closed=trades.filter(t=>t.pnl!==""&&!isNaN(parseFloat(t.pnl)));
   const totalPnl=closed.reduce((s,t)=>s+netPnl(t),0);
@@ -4050,11 +4074,12 @@ function TradeList({trades,onEdit,onDelete,onQuickTag,onBulkDelete,onBulkTag,onB
     return priv?"$***,**":`$${fmt(sz)}`;
   };
 
-  if(!trades.length)return(<div style={{textAlign:"center",padding:"4rem 2rem",color:"var(--text3)"}}>
-    <div style={{fontSize:"48px",marginBottom:"1rem",opacity:0.3}}>📋</div>
-    <div style={{fontSize:"16px",fontWeight:500,marginBottom:"8px"}}>Geen trades gevonden</div>
-    <div style={{marginTop:"8px",fontSize:"11px",color:"var(--text4)"}}><span className="kbd">N</span> Nieuwe trade toevoegen</div>
-  </div>);
+  if(!trades.length)return<EmptyState
+    icon="📋"
+    title="Geen trades gevonden"
+    body="Pas je filters aan of voeg een nieuwe trade toe."
+    hint={<><span className="kbd">N</span> Nieuwe trade toevoegen</>}
+  />;
 
   // v12.62: Hide closed-records die sibling zijn van een open/partial trade (zelfde
   // source, pair, direction, entry-prijs op 8 decimalen). Reden: de sibling vertelt
@@ -10232,11 +10257,11 @@ function TendenciesPage({trades,allTrades,setFilters,setTab}){
     });
   },[tendencies,filter]);
 
-  if(allClosed.length===0)return(<div style={{textAlign:"center",padding:"4rem 2rem",color:"var(--text3)"}}>
-    <div style={{fontSize:"48px",marginBottom:"1rem",opacity:0.3}}>🎯</div>
-    <div style={{fontSize:"16px",fontWeight:500,marginBottom:"8px"}}>Nog geen closed trades</div>
-    <div style={{fontSize:"13px"}}>Tendencies verschijnen zodra je 10+ trades hebt opgeslagen.</div>
-  </div>);
+  if(allClosed.length===0)return<EmptyState
+    icon="🎯"
+    title="Nog geen closed trades"
+    body="Tendencies verschijnen zodra je 10+ trades hebt opgeslagen."
+  />;
   if(allClosed.length<10)return(<div style={{animation:"fadeIn .3s ease",padding:"24px"}}>
     <div style={{fontSize:"10px",color:"var(--gold)",letterSpacing:".22em",fontWeight:700,marginBottom:"6px",fontFamily:"var(--mono)",textTransform:"uppercase"}}>🎯 Tendencies · Patroon-detectie</div>
     <div style={{fontSize:"22px",fontWeight:800,letterSpacing:"-.02em",marginBottom:"6px"}}>Nog te weinig data</div>
@@ -10372,7 +10397,11 @@ function Analytics({trades,tradingRules,allTrades,config,accounts,setFilters,set
   const wins=closed.filter(t=>netPnl(t)>0);
   const losses=closed.filter(t=>netPnl(t)<0);
 
-  if(!closed.length)return(<div style={{textAlign:"center",padding:"4rem 2rem",color:"var(--text3)"}}><div style={{fontSize:"48px",marginBottom:"1rem",opacity:0.3}}>📈</div><div style={{fontSize:"16px",fontWeight:500,marginBottom:"8px"}}>Nog geen closed trades</div><div style={{fontSize:"13px"}}>Analytics zijn beschikbaar zodra je trades hebt opgeslagen.</div></div>);
+  if(!closed.length)return<EmptyState
+    icon="📈"
+    title="Nog geen closed trades"
+    body="Analytics zijn beschikbaar zodra je trades hebt opgeslagen."
+  />;
 
   // v7 NEW: R-multiple distribution data
   const rMultDist={};const rBuckets=[-3,-2,-1,0,0.5,1,1.5,2,3,4];const rLabels=["-3R+","-2R","-1R","0","+0.5R","+1R","+1.5R","+2R","+3R","+4R+"];
@@ -11685,7 +11714,11 @@ function ReviewDashboard({trades}){
   const[editMode,setEditMode]=useState(false);
   const LP_SECTIONS=[{label:"Secties",items:[{key:"scorecard",label:"Score card"},{key:"equityCurve",label:"Equity curve"},{key:"pnlPerDay",label:"PNL per dag"},{key:"donuts",label:"Donut grafieken"},{key:"streaks",label:"Streaks"},{key:"highlights",label:"Beste / Slechtste"}]}];
   const closed=trades.filter(t=>t.pnl!==""&&!isNaN(parseFloat(t.pnl)));
-  if(!closed.length)return(<div style={{textAlign:"center",padding:"4rem 2rem",color:"var(--text3)"}}><div style={{fontSize:"48px",marginBottom:"1rem",opacity:0.3}}>📋</div><div style={{fontSize:"16px",fontWeight:500}}>Geen trades voor review</div></div>);
+  if(!closed.length)return<EmptyState
+    icon="📋"
+    title="Geen trades voor review"
+    body="Sluit een trade om hier feedback en stats te zien."
+  />;
   const wins=closed.filter(t=>netPnl(t)>0);const losses=closed.filter(t=>netPnl(t)<0);
   const totalPnl=closed.reduce((s,t)=>s+netPnl(t),0);
   const wr=closed.length?wins.length/closed.length*100:0;
