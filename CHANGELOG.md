@@ -6,6 +6,54 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.156] — 2026-06-02
+
+### Toegevoegd / Gewijzigd
+- **UX-audit fase 2: design-system fundering** *(2026-06-02, vervolg op v12.155)*. Spacing-tokens, borderRadius-tokens en button-tier-classes geïntroduceerd. Selectieve uitrol naar Dashboard Maand-doelen, Trade-form bottom-buttons en Instellingen sub-headers — mechanische mass-replace bewust vermeden om regressie-risico te vermijden.
+
+#### Spacing-scale tokens (`--space-1` t/m `--space-6`)
+4pt-grid, 6 niveaus. Vervangt de 10 historische gap-waarden en 13 padding-waarden:
+```css
+--space-1:4px;   --space-2:8px;   --space-3:12px;
+--space-4:16px;  --space-5:24px;  --space-6:32px;
+```
+
+#### borderRadius-tokens (`--radius-sm/md/pill`)
+Voegt 3 tokens toe naast de bestaande `--radius` (12px) en `--radius-lg` (16px). Reduceert de 13 historische `borderRadius`-varianten naar een 5-niveau systeem:
+```css
+--radius-sm:6px;     /* buttons, inputs, badges */
+--radius-md:10px;    /* cards, modals */
+--radius-pill:999px; /* status-badges, pills */
+```
+
+#### Button-tier-classes (`.tj-btn-primary/secondary/tertiary`)
+Drie strikte tiers vervangen de 15+ ad-hoc button-bg-varianten:
+- **Primary** (`.tj-btn .tj-btn-primary`) — `var(--gold)` solid, gold-border. Max 1 zichtbaar per scherm.
+- **Secondary** (`.tj-btn .tj-btn-secondary`) — `var(--gold-dim)` background, gold border. Voor sub-acties.
+- **Tertiary** (`.tj-btn .tj-btn-tertiary`) — transparant, neutral border. Voor cancel/dismiss.
+
+Plus `.tj-btn-sm` modifier voor compacte variant in toolbars.
+
+#### Selectieve token-uitrol
+- **Dashboard Maand-doelen card**: padding/gap/font-sizes → tokens
+- **Trade-form bottom-buttons**: `📸 Deel kaart` naar `.tj-btn-secondary`; `Annuleren` naar `.tj-btn-tertiary` met `color:var(--text4)` (visueel-lichter — audit issue #12 over button-hiërarchie)
+- **Instellingen sub-headers**: `.settings-cat-label` van `11px` → `--text-xs`; `.settings-cat-banner h2` van `11px` → `--text-sm`; backup-sectie header van `11px` → `--text-sm` + body van `12px` + `text4` → `--text-base` + `text3` (leesbaarheid)
+- Volledige mass-replace door alle 18000 regels bewust niet gedaan — risico vs benefit te ongunstig. Tokens zijn beschikbaar voor incrementele migratie en NIEUWE features.
+
+### Niet veranderd
+- Bestaande individuele indicators (`BackupAgeIndicator`, `AIBudgetIndicator`, etc.) blijven in code voor backwards-compat. Topbar gebruikt sinds v12.155 `AlertCenter`.
+- onSave-knop in Trade-form behoudt zijn gradient-logic voor BT/Paper/Missed-states (special case, geen tier).
+- Theme-tokens (`--text/text2-5`, `--bg/bg2-4`, `--border1-6`) onveranderd — die zaten al goed.
+
+### Test
+- Regressie: 18/18 smoke + backup-suite + foundation groen
+- Geen nieuwe tests — alleen design-system tokens (geen runtime-impact bij correct gebruik)
+
+### Volgende fase
+- **v12.157** (~3u): Empty-state component (consolideren 9 ad-hoc varianten) + Analytics section-TOC
+
+---
+
 ## [v12.155] — 2026-06-02
 
 ### Toegevoegd / Gewijzigd
