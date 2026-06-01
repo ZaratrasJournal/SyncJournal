@@ -1237,7 +1237,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.153",released:"2026-06-01"};
+const APP_VERSION={version:"v12.154",released:"2026-06-01"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -2280,6 +2280,128 @@ function shouldShowBackupReminder(){
     if(snoozed&&(Date.now()-snoozed)<86400000)return false; // <24u snooze
     return backupAgeDays()>=7;
   }catch{return false;}
+}
+
+// v12.154 — Backup-bewaker fase 2: File System Access API helpers.
+// Schrijft stil naar een door-user gekozen folder. Chrome/Edge/Opera/Brave.
+// Firefox/Safari = unsupported → fallback op fase 1 (handmatige reminder).
+const FSA_SUPPORTED=(typeof window!=="undefined"&&typeof window.showDirectoryPicker==="function");
+const AB_DB="tj_autobackup",AB_STORE="handles",AB_KEY="directory";
+
+function abOpenDb(){
+  return new Promise((res,rej)=>{
+    try{
+      const req=indexedDB.open(AB_DB,1);
+      req.onupgradeneeded=()=>{try{req.result.createObjectStore(AB_STORE);}catch{}};
+      req.onsuccess=()=>res(req.result);
+      req.onerror=()=>rej(req.error||new Error("idb open faalde"));
+    }catch(e){rej(e);}
+  });
+}
+// In-memory fallback voor handles die NIET structured-cloneable zijn (test-
+// mocks). Echte FileSystemDirectoryHandle-objects gaan via IDB; voor mocks
+// houden we 'm in een module-level slot. Productie-gedrag is identiek.
+let __abMemHandle=null;
+async function abSaveHandle(handle){
+  try{
+    const db=await abOpenDb();
+    await new Promise((res,rej)=>{
+      const tx=db.transaction(AB_STORE,"readwrite");
+      try{tx.objectStore(AB_STORE).put(handle,AB_KEY);}catch(e){rej(e);return;}
+      tx.oncomplete=()=>res();
+      tx.onerror=()=>rej(tx.error);
+    });
+    __abMemHandle=handle; // ook in memory voor snelle re-load binnen sessie
+  }catch{__abMemHandle=handle;} // structured-clone fail → memory-only
+}
+async function abLoadHandle(){
+  if(__abMemHandle)return __abMemHandle;
+  // Test-hook: laat addInitScript een handle injecteren die reload overleeft.
+  // Geen-op in productie (window.__abInjectedHandle is undefined).
+  if(typeof window!=="undefined"&&window.__abInjectedHandle){
+    __abMemHandle=window.__abInjectedHandle;
+    return __abMemHandle;
+  }
+  try{
+    const db=await abOpenDb();
+    const h=await new Promise((res)=>{
+      const tx=db.transaction(AB_STORE,"readonly");
+      const req=tx.objectStore(AB_STORE).get(AB_KEY);
+      req.onsuccess=()=>res(req.result||null);
+      req.onerror=()=>res(null);
+    });
+    if(h)__abMemHandle=h;
+    return h;
+  }catch{return null;}
+}
+async function abClearHandle(){
+  __abMemHandle=null;
+  try{
+    const db=await abOpenDb();
+    await new Promise((res)=>{
+      const tx=db.transaction(AB_STORE,"readwrite");
+      tx.objectStore(AB_STORE).delete(AB_KEY);
+      tx.oncomplete=()=>res();
+      tx.onerror=()=>res();
+    });
+  }catch{}
+}
+async function abPickFolder(){
+  if(!FSA_SUPPORTED)throw new Error("Browser ondersteunt geen File System Access API");
+  const handle=await window.showDirectoryPicker({mode:"readwrite",startIn:"documents"});
+  const perm=await handle.requestPermission({mode:"readwrite"});
+  if(perm!=="granted")throw new Error("Geen schrijf-permissie gegeven");
+  await abSaveHandle(handle);
+  try{localStorage.setItem("tj_autobackup_folder_name",handle.name||"backup-folder");}catch{}
+  return handle;
+}
+async function abVerifyPermission(handle){
+  if(!handle)return"no-handle";
+  try{
+    const q=await handle.queryPermission({mode:"readwrite"});
+    if(q==="granted")return"granted";
+    const r=await handle.requestPermission({mode:"readwrite"});
+    return r||"prompt";
+  }catch{return"denied";}
+}
+function abIntervalDays(){
+  const v=parseInt(localStorage.getItem("tj_autobackup_interval_days")||"7",10);
+  return isNaN(v)?7:Math.max(1,Math.min(60,v));
+}
+function abRotateKeep(){
+  const v=parseInt(localStorage.getItem("tj_autobackup_rotate_keep")||"4",10);
+  return isNaN(v)?4:Math.max(1,Math.min(52,v));
+}
+function abEnabled(){
+  try{return localStorage.getItem("tj_autobackup_enabled")==="1";}catch{return false;}
+}
+function abDueForWrite(){
+  if(!abEnabled())return false;
+  const last=parseInt(localStorage.getItem("tj_autobackup_last_write_at")||"0",10);
+  if(!last)return true;
+  return(Date.now()-last)>=(abIntervalDays()*86400000);
+}
+async function abWriteBackup(handle,payloadString){
+  const date=new Date().toISOString().split("T")[0];
+  const fname=`syncjournal-backup-${date}.json`;
+  const fh=await handle.getFileHandle(fname,{create:true});
+  const w=await fh.createWritable();
+  await w.write(payloadString);
+  await w.close();
+  return fname;
+}
+async function abRotateOldFiles(handle,keep){
+  const matches=[];
+  try{
+    for await(const[name,entry] of handle.entries()){
+      if(entry&&entry.kind!=="file")continue;
+      if(/^syncjournal-backup-\d{4}-\d{2}-\d{2}\.json$/.test(name))matches.push(name);
+    }
+  }catch{return{kept:0,deleted:0};}
+  matches.sort(); // ISO-datum in naam → alfabetisch = chronologisch
+  const toDelete=matches.slice(0,Math.max(0,matches.length-keep));
+  for(const n of toDelete){try{await handle.removeEntry(n);}catch{}}
+  return{kept:matches.length-toDelete.length,deleted:toDelete.length};
 }
 
 async function proxyCall(payload){
@@ -13510,6 +13632,8 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,set
       <div style={{fontSize:"10px",color:"var(--text5)",marginTop:"8px"}}>Bevat: {trades.length} trades, {Object.keys(config.exchanges||{}).filter(k=>(config.exchanges[k]||{}).apiKey).length} exchange-verbindingen, {(accounts||[]).length} handmatige accounts, {Object.keys(tagConfig||{}).length} tag-categorieën.</div>
       {/* v12.153: Backup-bewaker — laatste backup leeftijd + reminder-toggle */}
       <BackupBewakerControls/>
+      {/* v12.154: Auto-backup naar folder (Chrome/Edge/Opera/Brave) */}
+      <AutoBackupSettings showToast={showToast}/>
     </div>
 
     </div>{/* /sec-backup */}
@@ -16732,6 +16856,198 @@ function BackupBewakerControls(){
   </div>);
 }
 
+// v12.154 — Auto-backup naar folder (File System Access API). Stand-alone
+// settings-component; 4 states: unsupported / none / active / permission-lost.
+function AutoBackupSettings({showToast}){
+  const[handle,setHandle]=useState(null);
+  const[folderName,setFolderName]=useState(()=>{try{return localStorage.getItem("tj_autobackup_folder_name")||"";}catch{return"";}});
+  const[enabled,setEnabled]=useState(()=>abEnabled());
+  const[intervalDays,setIntervalDays]=useState(abIntervalDays());
+  const[keep,setKeep]=useState(abRotateKeep());
+  const[permState,setPermState]=useState("checking");
+  const[lastErr,setLastErr]=useState(()=>{try{return localStorage.getItem("tj_autobackup_last_error")||"";}catch{return"";}});
+  const[lastWriteAt,setLastWriteAt]=useState(()=>{try{return parseInt(localStorage.getItem("tj_autobackup_last_write_at")||"0",10);}catch{return 0;}});
+  const[busy,setBusy]=useState(false);
+
+  useEffect(()=>{(async()=>{
+    if(!FSA_SUPPORTED){setPermState("unsupported");return;}
+    const h=await abLoadHandle();
+    if(!h){setPermState("none");return;}
+    setHandle(h);
+    const p=await abVerifyPermission(h);
+    setPermState(p);
+  })();},[]);
+
+  const pickFolder=async()=>{
+    setBusy(true);
+    try{
+      const h=await abPickFolder();
+      setHandle(h);
+      setFolderName(h.name||"backup-folder");
+      setPermState("granted");
+      setLastErr("");
+      try{localStorage.removeItem("tj_autobackup_last_error");}catch{}
+      // Standaard direct aanzetten bij eerste folder-keuze
+      if(!enabled){try{localStorage.setItem("tj_autobackup_enabled","1");}catch{}setEnabled(true);}
+      showToast&&showToast("Folder ingesteld — auto-backup actief","success");
+    }catch(e){
+      const msg=String(e.message||e);
+      if(!/abort|cancel/i.test(msg))showToast&&showToast("Folder kiezen mislukt: "+msg,"error");
+    }finally{setBusy(false);}
+  };
+
+  const clearFolder=async()=>{
+    if(!confirm("Verwijder de auto-backup folder-koppeling? Bestaande bestanden blijven staan."))return;
+    await abClearHandle();
+    setHandle(null);setFolderName("");setPermState("none");
+    try{
+      localStorage.removeItem("tj_autobackup_folder_name");
+      localStorage.removeItem("tj_autobackup_last_error");
+      localStorage.removeItem("tj_autobackup_last_write_at");
+    }catch{}
+    setLastErr("");setLastWriteAt(0);
+    showToast&&showToast("Folder-koppeling verwijderd","info");
+  };
+
+  const restorePermission=async()=>{
+    if(!handle)return;
+    setBusy(true);
+    try{
+      const p=await abVerifyPermission(handle);
+      setPermState(p);
+      if(p==="granted")showToast&&showToast("Permissie hersteld","success");
+      else showToast&&showToast("Permissie nog niet gegeven","info");
+    }finally{setBusy(false);}
+  };
+
+  // Helper voor de test-write + reuse door trigger-flow logic
+  const testWrite=async()=>{
+    if(!handle)return;
+    setBusy(true);
+    try{
+      const payload={version:12,test:true,date:new Date().toISOString(),note:"Test-backup via Instellingen"};
+      const fname=await abWriteBackup(handle,JSON.stringify(payload,null,2));
+      const now=Date.now();
+      try{localStorage.setItem("tj_autobackup_last_write_at",String(now));}catch{}
+      setLastWriteAt(now);setLastErr("");
+      try{localStorage.removeItem("tj_autobackup_last_error");}catch{}
+      showToast&&showToast("Test-backup geschreven: "+fname,"success");
+    }catch(e){
+      const msg=String(e.message||e);
+      try{localStorage.setItem("tj_autobackup_last_error",msg);}catch{}
+      setLastErr(msg);
+      showToast&&showToast("Test mislukt: "+msg,"error");
+    }finally{setBusy(false);}
+  };
+
+  const onIntervalChange=(v)=>{
+    const n=parseInt(v,10)||7;
+    setIntervalDays(n);
+    try{localStorage.setItem("tj_autobackup_interval_days",String(n));}catch{}
+  };
+  const onKeepChange=(v)=>{
+    const n=parseInt(v,10)||4;
+    setKeep(n);
+    try{localStorage.setItem("tj_autobackup_rotate_keep",String(n));}catch{}
+  };
+  const onEnabledToggle=(v)=>{
+    setEnabled(v);
+    try{if(v)localStorage.setItem("tj_autobackup_enabled","1");else localStorage.setItem("tj_autobackup_enabled","0");}catch{}
+  };
+
+  const lastWriteTxt=lastWriteAt?(()=>{
+    const ageMs=Date.now()-lastWriteAt;
+    const days=Math.floor(ageMs/86400000);
+    if(days===0){const hrs=Math.floor(ageMs/3600000);return hrs<=1?"net":`vandaag, ${hrs}u geleden`;}
+    if(days===1)return"gisteren";
+    return`${days} dagen geleden`;
+  })():"nooit";
+
+  const wrap={marginTop:"14px",paddingTop:"14px",borderTop:"1px solid var(--border2)"};
+  const labelStyle={display:"block",fontSize:"10px",fontWeight:600,color:"var(--text4)",textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:"6px"};
+  const selStyle={padding:"6px 10px",fontSize:"12px",borderRadius:"6px",border:"1px solid var(--border3)",background:"var(--bg)",color:"var(--text)",fontFamily:"inherit"};
+
+  // ── State 1: Unsupported (Firefox/Safari)
+  if(permState==="unsupported"){
+    return(<div style={wrap}>
+      <div style={{fontSize:"12px",fontWeight:700,color:"var(--text2)",marginBottom:"6px"}}>🛡 Auto-backup naar folder</div>
+      <div style={{padding:"10px 12px",background:"var(--bg3)",border:"1px solid var(--border2)",borderRadius:"8px",fontSize:"11px",color:"var(--text3)",lineHeight:1.55}}>
+        ℹ Deze browser ondersteunt het niet (Chrome / Edge / Opera / Brave vereist). De reminder blijft actief — je krijgt elke {abIntervalDays()} dagen een herinnering om handmatig op de 📦-knop te klikken.
+      </div>
+    </div>);
+  }
+
+  // ── State 2: Supported, geen folder gekozen
+  if(permState==="none"||permState==="checking"){
+    return(<div style={wrap}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:"10px",marginBottom:"8px"}}>
+        <div style={{fontSize:"12px",fontWeight:700,color:"var(--text2)"}}>🛡 Auto-backup naar folder</div>
+        <span style={{fontSize:"10px",color:"var(--text5)",fontFamily:"var(--mono)"}}>niet actief</span>
+      </div>
+      <div style={{fontSize:"11px",color:"var(--text4)",lineHeight:1.55,marginBottom:"10px"}}>Kies een folder waar SyncJournal automatisch backups naartoe schrijft. Werkt stil op de achtergrond — je hoeft nergens meer op te klikken.</div>
+      <button onClick={pickFolder} disabled={busy} aria-label="Kies auto-backup folder" style={{padding:"8px 14px",fontSize:"12px",fontWeight:600,borderRadius:"6px",border:"1px solid var(--gold-border)",background:"var(--gold-dim)",color:"var(--gold)",cursor:busy?"wait":"pointer",fontFamily:"inherit"}}>📁 Kies folder</button>
+    </div>);
+  }
+
+  // ── State 3: Folder gekozen, permissie verloren
+  if(permState!=="granted"){
+    return(<div style={wrap}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:"10px",marginBottom:"8px"}}>
+        <div style={{fontSize:"12px",fontWeight:700,color:"var(--text2)"}}>🛡 Auto-backup naar folder</div>
+        <span style={{fontSize:"10px",color:"var(--amber)",fontFamily:"var(--mono)"}}>⚠ permissie verlopen</span>
+      </div>
+      <div style={{padding:"10px 12px",background:"rgba(255,180,40,0.06)",border:"1px solid var(--amber)",borderRadius:"8px",fontSize:"11px",color:"var(--text3)",lineHeight:1.55,marginBottom:"10px"}}>Browsers vragen soms opnieuw om toestemming (vooral na een restart). Klik om te herstellen:</div>
+      <div style={{display:"flex",gap:"8px",flexWrap:"wrap"}}>
+        <button onClick={restorePermission} disabled={busy} aria-label="Herstel permissie" style={{padding:"8px 14px",fontSize:"12px",fontWeight:600,borderRadius:"6px",border:"1px solid var(--gold-border)",background:"var(--gold-dim)",color:"var(--gold)",cursor:busy?"wait":"pointer",fontFamily:"inherit"}}>🔓 Herstel permissie</button>
+        <button onClick={clearFolder} style={{padding:"8px 14px",fontSize:"12px",fontWeight:600,borderRadius:"6px",border:"1px solid var(--border3)",background:"transparent",color:"var(--text4)",cursor:"pointer",fontFamily:"inherit"}}>🗑 Verwijder koppeling</button>
+      </div>
+    </div>);
+  }
+
+  // ── State 4: Volledig actief
+  return(<div style={wrap}>
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:"10px",marginBottom:"10px"}}>
+      <div style={{fontSize:"12px",fontWeight:700,color:"var(--text2)"}}>🛡 Auto-backup naar folder</div>
+      <span style={{fontSize:"10px",color:"var(--green)",fontFamily:"var(--mono)"}}>✓ actief</span>
+    </div>
+    <div style={{fontSize:"11px",color:"var(--text3)",lineHeight:1.7,marginBottom:"10px"}}>
+      Folder: <strong style={{color:"var(--text2)"}}>{folderName||"backup-folder"}</strong><br/>
+      Laatste write: <strong style={{color:"var(--text2)"}}>{lastWriteTxt}</strong>
+    </div>
+    <div style={{display:"flex",gap:"16px",flexWrap:"wrap",marginBottom:"12px"}}>
+      <div>
+        <label style={labelStyle}>Frequentie</label>
+        <select value={intervalDays} onChange={e=>onIntervalChange(e.target.value)} style={selStyle} aria-label="Auto-backup frequentie">
+          <option value="1">Elke dag</option>
+          <option value="3">Elke 3 dagen</option>
+          <option value="7">Elke 7 dagen</option>
+          <option value="14">Elke 14 dagen</option>
+          <option value="30">Elke 30 dagen</option>
+        </select>
+      </div>
+      <div>
+        <label style={labelStyle}>Bewaar</label>
+        <select value={keep} onChange={e=>onKeepChange(e.target.value)} style={selStyle} aria-label="Aantal bestanden bewaren">
+          <option value="2">Laatste 2 bestanden</option>
+          <option value="4">Laatste 4 bestanden</option>
+          <option value="8">Laatste 8 bestanden</option>
+          <option value="12">Laatste 12 bestanden</option>
+        </select>
+      </div>
+    </div>
+    {lastErr&&<div style={{padding:"8px 10px",background:"rgba(224,85,85,0.06)",border:"1px solid var(--red)",borderRadius:"6px",fontSize:"11px",color:"var(--red)",marginBottom:"10px"}}>⚠ Laatste poging mislukt: {lastErr}</div>}
+    <div style={{display:"flex",gap:"8px",flexWrap:"wrap",marginBottom:"10px"}}>
+      <button onClick={testWrite} disabled={busy} aria-label="Test auto-backup nu" style={{padding:"7px 12px",fontSize:"11px",fontWeight:600,borderRadius:"6px",border:"1px solid var(--border3)",background:"transparent",color:"var(--text3)",cursor:busy?"wait":"pointer",fontFamily:"inherit"}}>🧪 Test nu</button>
+      <button onClick={clearFolder} style={{padding:"7px 12px",fontSize:"11px",fontWeight:600,borderRadius:"6px",border:"1px solid var(--border3)",background:"transparent",color:"var(--text4)",cursor:"pointer",fontFamily:"inherit"}}>🗑 Verwijder koppeling</button>
+    </div>
+    <label style={{display:"flex",alignItems:"center",gap:"8px",fontSize:"12px",color:"var(--text3)",cursor:"pointer"}}>
+      <input type="checkbox" checked={enabled} onChange={e=>onEnabledToggle(e.target.checked)} aria-label="Auto-backup aan"/>
+      Auto-backup aan
+    </label>
+  </div>);
+}
+
+
 // Onboarding-modal — eenmalig na 5 trades als er nog NOOIT een backup is gemaakt.
 function BackupOnboardingModal({onClose}){
   return(<div onClick={e=>{if(e.target===e.currentTarget)onClose();}} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:9000,display:"flex",alignItems:"center",justifyContent:"center",padding:"20px"}}>
@@ -16856,6 +17172,43 @@ function App(){
     // Reminder (alleen als ≥7d en niet snoozed/uit)
     if(shouldShowBackupReminder())setShowBackupReminder(true);
   },[tradesLoaded,showWelcome,trades.length]);
+
+  // v12.154 — Auto-backup trigger bij app-open. Stille FSA-write naar de
+  // door-user gekozen folder. Skipt bij unsupported browser, geen handle,
+  // niet enabled, niet due, of permissie verloren (toast + UI nudge).
+  useEffect(()=>{
+    if(!tradesLoaded||showWelcome)return;
+    if(!FSA_SUPPORTED)return;
+    if(!abDueForWrite())return;
+    let cancelled=false;
+    (async()=>{
+      try{
+        const handle=await abLoadHandle();
+        if(!handle||cancelled)return;
+        const perm=await abVerifyPermission(handle);
+        if(perm!=="granted"){
+          try{localStorage.setItem("tj_autobackup_last_error","permissie verlopen — open Instellingen om te herstellen");}catch{}
+          showToast&&showToast("⚠ Auto-backup permissie verlopen — herstel via Instellingen","error");
+          return;
+        }
+        const payload={version:12,schemaVersion:CURRENT_SCHEMA_VERSION,exportDate:new Date().toISOString(),trades,tagConfig,accounts,config,playbooks,tpTemplates,tpDefaults};
+        const fname=await abWriteBackup(handle,JSON.stringify(payload,null,2));
+        const rot=await abRotateOldFiles(handle,abRotateKeep());
+        const now=Date.now();
+        try{
+          localStorage.setItem("tj_autobackup_last_write_at",String(now));
+          localStorage.removeItem("tj_autobackup_last_error");
+        }catch{}
+        setLastBackupAt(now); // fase 1 indicator wordt ook groen
+        showToast&&showToast(`📦 Auto-backup: ${fname}${rot.deleted?` (${rot.kept} bewaard, ${rot.deleted} oude gewist)`:` (${rot.kept} bewaard)`}`,"success");
+      }catch(e){
+        const msg=String((e&&e.message)||e);
+        try{localStorage.setItem("tj_autobackup_last_error",msg);}catch{}
+        showToast&&showToast("⚠ Auto-backup mislukt — check Instellingen → Backup","error");
+      }
+    })();
+    return()=>{cancelled=true;};
+  },[tradesLoaded,showWelcome]);
   const[demoMode,setDemoMode]=useState(function(){try{return localStorage.getItem("tj_demo_mode")==="1";}catch(e){return false;}});
   // Update check moved to Instellingen → Accounts (user-initiated, not auto-banner).
   // See checkForUpdates in AccountsHub.

@@ -6,6 +6,49 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.154] — 2026-06-01
+
+### Toegevoegd
+- **Backup-bewaker fase 2 — auto-backup naar folder** (File System Access API) *(2026-06-01)*. Bouwt voort op fase 1 (v12.153). Voor Chrome/Edge/Opera/Brave: stille auto-write naar een door-user gekozen folder. Geen modals, geen klikken — bestand belandt direct op disk bij app-open.
+  - **🛡 Sub-sectie "Auto-backup naar folder"** in Instellingen → Backup & Restore. Vier UI-states:
+    1. *Niet ondersteund* (Firefox/Safari) — vriendelijke uitleg + nudge naar fase 1
+    2. *Niet actief* — knop `📁 Kies folder` opent native picker
+    3. *Actief* — folder-naam + frequentie-selector (1/3/7/14/30d, default 7) + bewaar-selector (2/4/8/12 bestanden, default 4) + laatste-write info + `🧪 Test nu` + `🗑 Verwijder koppeling` + master-toggle
+    4. *Permissie verlopen* — knop `🔓 Herstel permissie` (komt voor na browser-restart, ~1×/maand)
+  - **Trigger-flow** in App `useEffect` bij app-open: skip wanneer unsupported / geen handle / niet enabled / interval niet due. Anders: verify permissie → schrijf `syncjournal-backup-YYYY-MM-DD.json` → roteer (behoud laatste N) → update `tj_autobackup_last_write_at` + `tj_last_backup_at` → toast met bestandsnaam.
+  - **Stille roteer-logica** — oudere bestanden met patroon `syncjournal-backup-YYYY-MM-DD.json` worden alfabetisch (=chronologisch) gesorteerd; oudste worden gewist tot `keep`-aantal over is. Andere bestanden in de folder blijven onaangeroerd.
+  - **Foutafhandeling** — `tj_autobackup_last_error` logged write-fouten; UI toont rode banner in de actieve-state met de message. Toast meldt "⚠ Auto-backup mislukt — check Instellingen → Backup" zodat user weet wat te doen.
+  - **Memory + IDB persistence** — `FileSystemDirectoryHandle` wordt in IndexedDB store `tj_autobackup.handles` opgeslagen + in module-level memory cache voor snelle access binnen dezelfde sessie. Werkt na browser-restart (mits permissie weer "granted" wordt).
+
+### Storage-keys (alle `tj_autobackup_*`)
+| Key | Doel |
+|---|---|
+| `tj_autobackup_enabled` | "1" als feature aan |
+| `tj_autobackup_folder_name` | folder-display-naam |
+| `tj_autobackup_interval_days` | "1"/"3"/"7"/"14"/"30" |
+| `tj_autobackup_rotate_keep` | "2"/"4"/"8"/"12" |
+| `tj_autobackup_last_write_at` | Unix ms van laatste succesvolle write |
+| `tj_autobackup_last_error` | laatste error-message (diagnostics) |
+
+Plus IndexedDB: database `tj_autobackup` met store `handles` (key `directory` → FSA-handle).
+
+### Browser-ondersteuning
+| Browser | Ondersteund |
+|---|---|
+| Chrome 86+, Edge 86+, Opera 72+, Brave (Chromium) | ✓ volledig |
+| Firefox, Safari | ✗ — graceful fallback op fase 1 reminder |
+
+### Test
+- **10 nieuwe Playwright-specs** (`tests/backup-autobackup.spec.js`) met FSA-mock:
+  - UI-state per scenario (4) · pick folder triggert state-change · auto-write bij due (8d) · NIET bij interval niet due · NIET bij disabled · rotate keep=2 wist 3 oude (3+1→2) · permission "prompt" → toast + last-error · test-knop schrijft direct · verwijder-koppeling herstart state
+- **Regressie**: 18/18 smoke + fase-1 + AI-coach foundation groen.
+- Test-only hook `window.__abInjectedHandle` laat mocks de page-reload overleven (productie negeert 'm).
+
+### Bonus
+- Helpers (`abSaveHandle`/`abLoadHandle`) hebben memory-fallback voor wanneer een handle niet structured-clone-baar is (test-mocks) zonder productie-gedrag te raken.
+
+---
+
 ## [v12.153] — 2026-06-01
 
 ### Toegevoegd
