@@ -6,6 +6,29 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.161] — 2026-06-02
+
+### Toegevoegd
+- **Analytics sticky TOC (section-nav)** — Boven de Analytics-feed staat nu een sticky "Spring naar:"-bar met jump-knoppen naar de 5 belangrijkste secties. Voorheen moest je 20+ widgets doorscrollen zonder oriëntatie:
+  - **🧠 Proces** — naar process KPI's (plan / SL / journal / consistency)
+  - **💰 Winst** — naar winst KPI row
+  - **📈 R-Multiple** — naar R-multiple distributie
+  - **🎯 Setups** — naar setup insights tabel
+  - **💭 Fout & Emotie** — naar fout-analyse sectie
+  - Klik = `scrollIntoView` met smooth-behavior; offset houdt de TOC zelf in beeld
+  - **Smart filtering**: knoppen die naar verborgen widgets verwijzen (uitgezet in Layout-prefs of buiten huidige viewMode proces/winst/both) worden automatisch niet getoond
+  - **Sticky positioning** met `position:sticky; top:0` — blijft bovenin viewport bij scrollen
+  - **Auto-hide bij <2 sections** — als maar 1 section over is na filter is TOC overbodig
+
+### Effect (UX-audit fase 3b)
+- Analytics had 21 widgets in `seq()`-rendering zonder oriëntatie-hulp. Met de TOC kun je direct naar de sectie die je nodig hebt — geen scroll-fatigue meer
+- Discoverability +1: nieuwe gebruikers zien direct welke domeinen (proces/winst/setups/emotie) Analytics bevat
+
+### Test
+- Smoke groen + screenshot geverifieerd (TOC zichtbaar boven KPI cards, filtert correct op viewMode)
+
+---
+
 ## [v12.160] — 2026-06-02
 
 ### Toegevoegd
