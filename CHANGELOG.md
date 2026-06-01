@@ -6,6 +6,32 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.157] — 2026-06-02
+
+### Fixed
+- **TP-template "Front-loaded" 5TP-verdeling was inconsistent** *(2026-06-02, gemeld door Denny met screenshot)* — Was `[40, 25, 15, 10, 10]` (laatste twee gelijk → patroon breekt). Vergelijking met de andere Front-loaded varianten:
+  - 2TP: `[70, 30]` (strict-aflopend −40)
+  - 3TP: `[50, 30, 20]` (strict-aflopend −20/−10)
+  - 4TP: `[40, 30, 20, 10]` (strict-aflopend −10 lineair)
+  - 5TP: was `[40, 25, 15, 10, 10]` ✗
+  - 5TP: nu `[30, 25, 20, 15, 10]` ✓ — strict-aflopend −5 lineair, perfecte spiegel van Runner 5TP `[10, 15, 20, 25, 30]`
+- **DEFAULT_TP_DEFAULTS voor 5 TPs was `Equal`** — terwijl 3 TPs → Front-loaded en 4 TPs → Runner. Geen logische trend. Gefixt naar `Front-loaded` zodat de defaults een consistenter patroon volgen:
+  - 1 TP: Equal (vanzelfsprekend, [100])
+  - 2 TPs: Equal ([50, 50])
+  - 3 TPs: Front-loaded ([50, 30, 20])
+  - 4 TPs: Runner ([10, 20, 30, 40])
+  - 5 TPs: was Equal → nu **Front-loaded** ([30, 25, 20, 15, 10])
+
+### Migratie
+- Bestaande users die de pre-built templates nooit hebben aangepast: **klik "↻ Reset to defaults"** in Instellingen → TP-templates om de gefixte verdeling op te halen.
+- Users met custom-aanpassingen: huidige distributie blijft staan (upsert-by-id raakt alleen pre-built `frontloaded_default`).
+- Users die hun `tj_ai_config.weekly.dayOfWeek` / TP-template-defaults expliciet hebben aangepast: hun keuze blijft persistent in `tj_tp_defaults`.
+
+### Test
+- Smoke groen — `MILESTONE_DEFS`, `PRE_BUILT_TP_TEMPLATES`, `DEFAULT_TP_DEFAULTS` zijn const-initialisaties zonder runtime-test-impact
+
+---
+
 ## [v12.156] — 2026-06-02
 
 ### Toegevoegd / Gewijzigd
