@@ -1276,7 +1276,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.163",released:"2026-06-02"};
+const APP_VERSION={version:"v12.164",released:"2026-06-02"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -1613,15 +1613,15 @@ const netPnl=(t)=>{
 };
 
 // Sample-size waarschuwingsbanner: toont alleen wanneer N onder de threshold is.
-// Pro-trader-conventie: ratio's (PF, Avg R, Expectancy, WR per setup) zijn statistisch
-// onbetrouwbaar onder ~30 trades. Eén canonical component zodat Dashboard / Review / Analytics
-// / Rapport allemaal dezelfde drempel + framing gebruiken.
+// v12.164 (UX fase 4): tekst compacter — was 156-woord tirade die op Dashboard + Analytics
+// + Review identiek verscheen (3× ruis). Nu 1-regel essentie. Plus: alleen op Dashboard
+// gerenderd (zie de SampleSizeBanner-calls). Detail/uitleg verplaatst naar title-tooltip.
 function SampleSizeBanner({n,threshold,style}){
   const t=threshold||30;
   if(n>=t)return null;
-  return(<div style={{display:"flex",alignItems:"center",gap:"10px",padding:"10px 14px",borderRadius:"var(--radius)",background:"rgba(212,168,83,0.10)",border:"1px solid rgba(212,168,83,0.30)",borderLeft:"3px solid var(--amber,#d4a853)",fontSize:"11.5px",color:"var(--text2)",lineHeight:1.55,marginBottom:"14px",...(style||{})}}>
+  return(<div title={`Onder ${t} trades zijn ratio's (Profit Factor, Expectancy, WR per setup) statistisch onbetrouwbaar — behandel ze als richting, niet als feit.`} style={{display:"flex",alignItems:"center",gap:"10px",padding:"8px 14px",borderRadius:"var(--radius)",background:"rgba(212,168,83,0.10)",border:"1px solid rgba(212,168,83,0.30)",borderLeft:"3px solid var(--amber,#d4a853)",fontSize:"11.5px",color:"var(--text2)",lineHeight:1.4,marginBottom:"14px",...(style||{})}}>
     <span style={{fontSize:"13px",lineHeight:1}}>⚠</span>
-    <span><b style={{color:"var(--text)",fontWeight:600}}>Sample-size waarschuwing:</b> {n} trade{n===1?"":"s"} — onder de {t}-drempel voor statistisch betrouwbare conclusies. Profit Factor, Expectancy, WR per setup zijn indicatief; behandel als richting, niet als feit.</span>
+    <span><b style={{color:"var(--text)",fontWeight:600}}>{n} trade{n===1?"":"s"}</b> — onder {t}-drempel, stats indicatief.</span>
   </div>);
 }
 
@@ -10518,7 +10518,8 @@ function Analytics({trades,tradingRules,allTrades,config,accounts,setFilters,set
       </div>
     </div>
     {showReport&&<TradeReport trades={allTrades||trades} config={config} accounts={accounts} onClose={()=>setShowReport(false)}/>}
-    <SampleSizeBanner n={closed.length}/>
+    {/* v12.164: SampleSizeBanner verwijderd hier — Dashboard toont 'm al. Anders 2× hetzelfde
+        bij tab-switch Dashboard→Analytics. */}
     {showP&&<div style={{padding:"10px 14px",borderRadius:"var(--radius)",background:"rgba(138,159,192,0.06)",borderLeft:"2px solid #8a9fc0",marginBottom:"14px",fontSize:"11px",color:"var(--text3)",lineHeight:1.55}}>
       <b style={{color:"var(--text2)",fontWeight:600}}>Proces-metrics meten <em style={{color:"var(--text)",fontStyle:"normal"}}>trade-data-compleetheid</em></b> — hoe vaak vul je de relevante velden in (thesis, SL, post-trade notes). Dat is iets anders dan Kalender's "Trading Rules" die je <em style={{color:"var(--text2)"}}>dagelijkse regels</em> per sessie tracken (max risk, pauze na losses, etc). Beide zijn nuttig: dit blok helpt je consistent journalen, Kalender helpt je consistent gedrag handhaven.
     </div>}
@@ -11875,7 +11876,8 @@ function ReviewDashboard({trades}){
   return(<div style={{animation:"fadeIn .3s ease"}}>
     <EditModeBar editMode={editMode} setEditMode={setEditMode} onReset={()=>setOrder(DEFAULT_ORDER)} gear={<LayoutGear onClick={()=>setLpOpen(true)}/>}/>
     <LayoutPanel open={lpOpen} onClose={()=>setLpOpen(false)} sections={LP_SECTIONS} prefs={lp} toggle={lpToggle} reset={lpReset}/>
-    <SampleSizeBanner n={closed.length}/>
+    {/* v12.164: SampleSizeBanner verwijderd — Dashboard toont 'm bij dezelfde data al.
+        Drie-keer-zien op Dashboard → Analytics → Review was ruis. */}
     <SortableSections sections={sections} defaultOrder={DEFAULT_ORDER} order={lp.order} setOrder={setOrder} editMode={editMode}/>
   </div>);
 }
@@ -17471,15 +17473,31 @@ function App(){
   useEffect(()=>{try{localStorage.setItem("tj_mindset_prefs",JSON.stringify(mindsetPrefs))}catch{}},[mindsetPrefs]);
   const[morningQuote,setMorningQuote]=useState(null);
   const[mindsetToast,setMindsetToast]=useState(null);
-  // Rotating mindset banner: alleen op Dashboard + Review (vroeger op elke pagina = te veel).
-  // Pro-trader review feedback: banner op iedere tab is afleidend; reflectie hoort bij review-momenten.
+  // v12.164 (UX fase 4): mindset-banner alleen op Dashboard (vroeger ook Review = te veel
+  // op-elke-page tax voor returning users). Plus: dismiss-once-per-day persisted in localStorage
+  // zodat een klik op X voor de rest van de dag rust geeft.
   useEffect(()=>{
     if(!mindsetPrefs.master||!mindsetPrefs.morning){setMorningQuote(null);return}
-    if(tab!=="dashboard"&&tab!=="review"){setMorningQuote(null);return}
+    if(tab!=="dashboard"){setMorningQuote(null);return}
+    // Check dismiss-until timestamp: wanneer in de toekomst, niet tonen.
+    try{
+      const until=parseInt(localStorage.getItem("tj_mindset_dismissed_until")||"0",10);
+      if(until>Date.now()){setMorningQuote(null);return}
+    }catch{}
     const q=pickMindsetQuote("page");
     if(q){setMorningQuote(q);markMindsetSeen(q.id)}
   },[tab,mindsetPrefs.master,mindsetPrefs.morning]);
-  const dismissMorningQuote=()=>setMorningQuote(null);
+  const dismissMorningQuote=()=>{
+    // v12.164: persist dismiss tot middernacht Amsterdam-tijd. Eén klik = de rest van de
+    // dag geen quote-tax. Bij volgende dag verschijnt 'm normaal weer.
+    try{
+      const now=new Date();
+      const tomorrow=new Date(now);
+      tomorrow.setHours(24,0,0,0); // middernacht aanstaande nacht
+      localStorage.setItem("tj_mindset_dismissed_until",String(tomorrow.getTime()));
+    }catch{}
+    setMorningQuote(null);
+  };
 
   // Unsaved-changes tracking for Edit + New trade close flows
   const[editOriginal,setEditOriginal]=useState(null);

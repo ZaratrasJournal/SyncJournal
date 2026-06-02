@@ -6,6 +6,29 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.164] — 2026-06-02
+
+### Gewijzigd (UX-audit fase 4a)
+- **Mindset-quote: dismiss-once-per-day + alleen op Dashboard** *(geleerd uit deep UX-audit: banner verscheen ook op Review en kwam steeds terug bij elke pageload)*
+  - Klik X = quote verberg tot middernacht (Amsterdam-tijd). Volgende dag verschijnt 'm automatisch weer
+  - Persisted via `tj_mindset_dismissed_until` localStorage timestamp
+  - Niet meer op Review (was 2-page tax; eerder voor reflectie-momenten gedacht, maar dubbel-tonen werd ruis)
+- **Sample-size waarschuwing: van 156 woorden naar 8** *(zelfde tekst verscheen 3× over Dashboard/Analytics/Review)*
+  - **Voor**: "⚠ Sample-size waarschuwing: 25 trades — onder de 30-drempel voor statistisch betrouwbare conclusies. Profit Factor, Expectancy, WR per setup zijn indicatief; behandel als richting, niet als feit."
+  - **Na**: "⚠ 25 trades — onder 30-drempel, stats indicatief."
+  - Detail-uitleg verplaatst naar hover-tooltip op de banner
+  - Banner verwijderd uit Analytics en Review — alleen Dashboard toont 'm nog (1× per sessie i.p.v. 3×)
+
+### Effect
+- Dashboard top-fold met dismissed mindset: KPI cards 1 fold hoger in viewport
+- Analytics top-fold: ~30px verticaal gewonnen (geen sample-size banner meer)
+- Review: KPI cards en Trade Score direct na filter-bar
+
+### Test
+- Smoke groen + 4 screenshots geverifieerd (dashboard normaal, dashboard met dismissed quote, analytics zonder banner, review zonder banner+quote)
+
+---
+
 ## [v12.163] — 2026-06-02
 
 ### Verwijderd
