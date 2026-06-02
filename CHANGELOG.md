@@ -6,6 +6,20 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.162] — 2026-06-02
+
+### Gewijzigd
+- **Analytics TOC — Proces/Winst-knoppen verwijderd om dubbel-op te vermijden** *(gemeld door Denny: "bij analytics heb je het nu dubbel")* — De v12.161 sticky TOC bevatte 🧠 Proces en 💰 Winst-knoppen, maar dezelfde labels stonden ook in de viewMode-control erboven (Proces / Winst / Beide). Visueel dubbel-op + verwarrend over functie-verschil.
+  - **Nieuwe TOC**: 📅 Discipline · 📈 R-Multiple · 🎯 Setups · 💭 Fout & Emotie
+  - Bewust geen Proces/Winst-labels meer in TOC — die staan in viewMode (filter "wat zie ik")
+  - TOC blijft een scroll-shortcut voor diepere widgets die anders ondersneeuwen
+  - Functie-verschil nu helder: **viewMode** filtert wat zichtbaar is, **TOC** scrolt erbinnen
+
+### Test
+- Smoke groen + screenshot geverifieerd: viewMode-bar en TOC-bar hebben geen overlap meer
+
+---
+
 ## [v12.161] — 2026-06-02
 
 ### Toegevoegd
