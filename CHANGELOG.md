@@ -6,6 +6,25 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.168] — 2026-06-02
+
+### Verwijderd (UX-audit fase 4e — polish)
+- **Mark Douglas-quote naast Analytics "Genereer rapport"-knop** *(deep audit: filler-element naast functionele knop)*
+  - "Focus on the process, the outcome takes care of itself." — Mark Douglas (proces-mode)
+  - "Resultaten van je trading. Uitkomst." (winst-mode)
+  - "Proces én uitkomst naast elkaar." (beide-mode)
+  - viewMode-buttons hebben al `title=` tooltips met deze exacte uitleg — quote was duplicate visuele claim
+  - Verticale balans rechts-bovenhoek opgeschoond — alleen "📄 Genereer rapport"-knop blijft
+
+### Regressie-validatie
+- **Themes**: 6/6 thema's (sync/classic/aurora/light/parchment/daylight) laden zonder JS-errors
+- **Backup-bewaker**: alle 11 tests groen (AlertCenter, reminder-flow, snooze, onboarding, soft recovery, autobackup)
+- **Blofin partial-close**: alle 2 tests groen (sibling-detector + UI-rendering)
+- **Smoke**: groen
+- Geen regressies door v12.164-v12.167 wijzigingen
+
+---
+
 ## [v12.167] — 2026-06-02
 
 ### Gewijzigd (UX-audit fase 4d)
