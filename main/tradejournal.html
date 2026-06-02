@@ -371,10 +371,12 @@ body.theme-light .tj-logo-text,body.theme-parchment .tj-logo-text,body.theme-day
 .storage-bar.critical{background:rgba(239,83,80,0.1);border-color:rgba(239,83,80,0.25);color:var(--red)}
 /* v7 NEW: MAE/MFE badge */
 /* v7 NEW: R-multiple chip */
-.r-chip{display:inline-block;font-size:10px;padding:2px 7px;border-radius:4px;font-family:var(--mono);font-weight:700}
-.r-pos{background:rgba(46,170,111,0.15);color:var(--green)}
-.r-neg{background:rgba(239,83,80,0.15);color:var(--red)}
-.r-zero{background:rgba(255,255,255,0.08);color:var(--text4)}
+/* v12.165 (UX fase 4b): r-chip pill → tekst-only (kleur signaleert, geen background-noise).
+   De Trades-tabel had 6+ gekleurde pills per rij = visuele lawaai. */
+.r-chip{display:inline-block;font-size:11px;padding:0;font-family:var(--mono);font-weight:700}
+.r-pos{color:var(--green)}
+.r-neg{color:var(--red)}
+.r-zero{color:var(--text4)}
 /* v7 NEW: expectancy highlight */
 .exp-positive{color:#2eaa6f;font-weight:700}
 .exp-negative{color:#e05555;font-weight:700}
@@ -1276,7 +1278,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.164",released:"2026-06-02"};
+const APP_VERSION={version:"v12.165",released:"2026-06-02"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -4312,7 +4314,10 @@ function TradeList({trades,onEdit,onDelete,onQuickTag,onBulkDelete,onBulkTag,onB
                 })()
                 :t.status==="partial"?(()=>{const r=parseFloat(t.realizedPnl);const rTxt=isFinite(r)&&r!==0?` ${r>=0?"+":""}$${r.toFixed(2)}`:"";return<span title={"Partial close — restant nog open"+(rTxt?", realized "+rTxt.trim():"")} style={{padding:"3px 8px",borderRadius:"4px",fontSize:"10px",fontWeight:700,background:"rgba(212,168,83,0.14)",color:"var(--amber)",display:"inline-flex",alignItems:"center",gap:"5px"}}><span style={{width:"6px",height:"6px",borderRadius:"50%",background:"var(--amber)",animation:"pulse 2s ease-in-out infinite"}}/>PARTIAL{rTxt}</span>;})()
                 :t.status==="open"?<span style={{padding:"3px 8px",borderRadius:"4px",fontSize:"10px",fontWeight:700,background:"rgba(201,168,76,0.1)",color:"#C9A84C",display:"inline-flex",alignItems:"center",gap:"5px"}}><span style={{width:"6px",height:"6px",borderRadius:"50%",background:"#C9A84C",animation:"pulse 2s ease-in-out infinite"}}/>OPEN</span>
-                :<span style={{padding:"3px 8px",borderRadius:"4px",fontSize:"10px",fontWeight:700,background:isW?"rgba(46,170,111,0.12)":isL?"rgba(224,85,85,0.12)":"rgba(255,255,255,0.04)",color:isW?"#2eaa6f":isL?"#e05555":"rgba(255,255,255,0.4)"}}>{isW?"WIN":isL?"LOSS":"--"}</span>}
+                /* v12.165: WIN/LOSS-pill dupliceerde PnL-kleur (zelfde info, twee plekken).
+                   Vervangen door subtiele icoon zonder background. Kolom blijft bestaan voor
+                   open/partial/missed indicators die wel info toevoegen. */
+                :<span title={isW?"Winnende trade":isL?"Verliezende trade":"Geen P&L"} style={{display:"inline-block",fontSize:"14px",fontWeight:700,color:isW?"var(--green)":isL?"var(--red)":"var(--text5)",lineHeight:1}}>{isW?"✓":isL?"✗":"–"}</span>}
               </td>
               <td style={{...tdStyle,fontFamily:"var(--mono)",color:"var(--text2)",fontSize:"11px",whiteSpace:"nowrap"}}>{fmtNL(t.date)}{isNew&&<span style={{marginLeft:"6px",fontSize:"8px",padding:"1px 5px",borderRadius:"3px",background:"rgba(201,168,76,0.15)",color:"#d4b85c",fontWeight:700,verticalAlign:"middle",letterSpacing:"0.04em"}}>NEW</span>}<br/><span style={{color:"var(--text4)"}}>{t.time}</span></td>
               <td style={{...tdStyle,fontWeight:600,color:"var(--text)"}}><div style={{display:"flex",alignItems:"center",gap:"8px"}}><div style={{position:"relative",flexShrink:0}}><CryptoIcon pair={t.pair} size={24}/>{t.source&&t.source!=="manual"&&<div style={{position:"absolute",bottom:"-2px",right:"-4px",borderRadius:"3px",overflow:"hidden",border:"1.5px solid var(--bg3)"}}><ExchangeIcon name={t.source} size={11}/></div>}</div><div><span>{t.pair}</span>{(()=>{const lbl=resolveAccountLabel(t.source,config,accounts);return lbl?<div style={{fontSize:"9px",color:"var(--gold)",fontWeight:600,letterSpacing:".04em",marginTop:"1px"}}>{lbl}</div>:null})()}</div></div></td>
@@ -4355,9 +4360,12 @@ function TradeList({trades,onEdit,onDelete,onQuickTag,onBulkDelete,onBulkTag,onB
                   return<span style={{color:"var(--text5)",fontSize:"9px"}}>–</span>;
                 })()}
               </td>
-              <td style={tdStyle}>{hasLayers?layers.map((l,li)=>{const confs=(l.confirmations||[l.confirmation].filter(Boolean));const ss=(l.setups||[]).join("+");const fpLabel=(l.setups||[]).includes("Fill Play")&&l.fillPlayType?` · ${l.fillPlayType}`:"";return <span key={li} style={{...tagStyle2("rgba(201,168,76,0.1)","#C9A84C")}}>{l.timeframe}{ss?" · "+ss:""}{fpLabel}{confs.length>0?" · "+confs.join("+"):""}</span>}):(t.setupTags||[]).length>0?(t.setupTags||[]).map(s=><span key={s} style={tagStyle2("rgba(201,168,76,0.08)","#C9A84C")}>{s}</span>):<button onClick={e=>{e.stopPropagation();onQuickTag&&onQuickTag(t)}} style={{fontSize:"10px",padding:"2px 8px",borderRadius:"3px",border:"1px dashed var(--border4)",background:"transparent",color:"var(--text4)",cursor:"pointer",fontFamily:"inherit"}}>+ tag</button>}</td>
-              <td style={tdStyle}>{getSessionTags(t.date,t.time).map(s=>{const c=SESSION_COLORS[s]||SESSION_COLORS["US Late"];return <span key={s} style={tagStyle2(c.bg,c.text)}>{s}</span>})}</td>
-              <td style={tdStyle}>{(t.emotionTags||[]).map(s=><span key={s} style={tagStyle2(isNegEmotion(s)?"var(--red2)":"var(--green2)",isNegEmotion(s)?"var(--red)":"var(--green)")}>{s}</span>)}</td>
+              {/* v12.165: Setup/Sessie/Emoties van pill naar tekst (kleur signaleert, geen pill-noise).
+                  De tabel had 6+ gekleurde pills per rij = "fruit-salad" effect. Nu rusten kleuren
+                  op tekst, niet op backgrounds. PnL en open/partial/missed status blijven prominent. */}
+              <td style={tdStyle}>{hasLayers?layers.map((l,li)=>{const confs=(l.confirmations||[l.confirmation].filter(Boolean));const ss=(l.setups||[]).join("+");const fpLabel=(l.setups||[]).includes("Fill Play")&&l.fillPlayType?` · ${l.fillPlayType}`:"";return <span key={li} style={{display:"inline-block",fontSize:"10px",color:"var(--gold)",fontWeight:600,marginRight:"6px",whiteSpace:"nowrap"}}>{l.timeframe}{ss?" · "+ss:""}{fpLabel}{confs.length>0?" · "+confs.join("+"):""}</span>}):(t.setupTags||[]).length>0?(t.setupTags||[]).map(s=><span key={s} style={{display:"inline-block",fontSize:"10px",color:"var(--gold)",fontWeight:600,marginRight:"6px",whiteSpace:"nowrap"}}>{s}</span>):<button onClick={e=>{e.stopPropagation();onQuickTag&&onQuickTag(t)}} style={{fontSize:"10px",padding:"2px 8px",borderRadius:"3px",border:"1px dashed var(--border4)",background:"transparent",color:"var(--text4)",cursor:"pointer",fontFamily:"inherit"}}>+ tag</button>}</td>
+              <td style={tdStyle}>{getSessionTags(t.date,t.time).map(s=>{const c=SESSION_COLORS[s]||SESSION_COLORS["US Late"];return <span key={s} style={{display:"inline-block",fontSize:"10px",color:c.text,fontWeight:500,marginRight:"6px",whiteSpace:"nowrap"}}>{s}</span>})}</td>
+              <td style={tdStyle}>{(t.emotionTags||[]).map(s=><span key={s} style={{display:"inline-block",fontSize:"10px",color:isNegEmotion(s)?"var(--red)":"var(--green)",fontWeight:500,marginRight:"6px",whiteSpace:"nowrap"}}>{s}</span>)}</td>
               <td style={tdStyle}><button onClick={e=>{e.stopPropagation();onDelete(t.id)}} style={{background:"none",border:"none",color:"var(--text5)",cursor:"pointer",fontSize:"12px",padding:"2px 4px"}}>✕</button></td>
             </tr>
             {hoveredId===t.id&&(()=>{

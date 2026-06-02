@@ -6,6 +6,26 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.165] — 2026-06-02
+
+### Gewijzigd (UX-audit fase 4b)
+- **Trades-tabel "fruit-salad" pill-overload weg** *(deep audit: 6+ verschillend gekleurde pills per rij = visuele lawaai)*
+  - **STATUS-kolom voor closed trades**: van WIN/LOSS-pill naar subtiel ✓ (groen) / ✗ (rood) icoon. Dupliceerde PnL-kleur — twee plekken zelfde info. Open/Partial/Missed indicators blijven full-pill (voegen wel info toe).
+  - **R-MULT-kolom**: pill (background + color) → gewoon gekleurde tekst (`+1.5R` groen / `-2.3R` rood), monospaced. `.r-pos`/`.r-neg`/`.r-zero` classes verloren hun background.
+  - **SETUP-kolom**: van gold-on-gold-dim pill naar gold-gekleurde tekst, geen background, geen border.
+  - **SESSIE-kolom**: van per-sessie gekleurde pill naar per-sessie gekleurde tekst, geen background.
+  - **EMOTIES-kolom**: van rood/groen pill naar rood/groen tekst.
+
+### Effect
+- Per rij van **6+ gekleurde pills** naar **2** (alleen SIDE pill + PnL-tekst). Tabel kan rusten.
+- Symbol-pill (BTC/ETH/SOL met crypto-icon) blijft — visueel necessary disambiguation.
+- Scanbaarheid + 1: oog vindt PnL en R-mult sneller zonder competing backgrounds.
+
+### Test
+- Smoke groen + screenshot geverifieerd (8 rijen zichtbaar, alle status-indicators + setup-tags + sessies correct gerenderd)
+
+---
+
 ## [v12.164] — 2026-06-02
 
 ### Gewijzigd (UX-audit fase 4a)
