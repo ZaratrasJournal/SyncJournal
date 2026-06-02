@@ -6,6 +6,15 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.163] — 2026-06-02
+
+### Verwijderd
+- **Analytics TOC ("Spring naar:" sticky bar) verwijderd** *(gemeld door Denny: "ik zie nog steeds beide. dat is overbodig")* — De v12.161+v12.162 TOC kwam pal onder de viewMode-control (Proces/Winst/Beide) te staan. Twee bars boven elkaar bleek visueel overladen, ook na het ontdubbelen van labels in v12.162. viewMode dekt de navigatiebehoefte voldoende — Analytics is met de filter "wat zie ik" al voldoende beheersbaar.
+  - Code helemaal verwijderd (geen `display:none` of feature-flag)
+  - Geen impact op widgets zelf: `data-sortkey` attributes blijven voor drag-reorder
+
+---
+
 ## [v12.162] — 2026-06-02
 
 ### Gewijzigd
