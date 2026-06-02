@@ -6,6 +6,32 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.167] — 2026-06-02
+
+### Gewijzigd (UX-audit fase 4d)
+- **Tendencies + Playbook page-headers gedetoxt** *(deep audit: beide schermen begonnen met onderwijzende paragrafen die voor returning users ruis zijn)*
+
+  **Tendencies**
+  - **Voor**: H1 "Wat moet je weten?" + 44-woord ondertitel "Cross-dimensionele patronen over je laatste 30 dagen. Klik op een card om door te springen naar de gefilterde trades. Sterktes om te repliceren, pijnpunten om te omzeilen."
+  - **Na**: H1 "Tendencies" (zoals scherm-naam) + 14-woord sub "Patronen over je laatste 30 dagen — klik op een card om naar de trades te springen."
+  - Full uitleg over "sterktes/pijnpunten" verschoven naar eyebrow-tooltip
+  - H1 "Wat moet je weten?" voelde paternalistisch — app sprak gebruiker als kind aan
+
+  **Playbook**
+  - **Voor**: H1 "Jouw bewezen setups, geformaliseerd" + 57-woord intro "Een journal logt élke trade. Een playbook bevat alleen je A+ setups, gestructureerd en herhaalbaar. Pre-market scan je alleen op deze setups; alles daarbuiten = no-trade. Stats worden automatisch berekend uit trades met overlappende setup-tag."
+  - **Na**: H1 "Playbook" + 18-woord sub "Je **A+ setups**, geformaliseerd. Stats worden auto-berekend uit trades met matching setup-tag."
+  - Full journal-vs-playbook uitleg verschoven naar eyebrow-tooltip
+  - Eerste-bezoek uitleg is nuttig; permanent staan is ruis
+
+### Effect
+- Beide schermen krijgen Stripe/Linear-stijl page-header (gewoon de scherm-naam als H1) — direct content-focus i.p.v. marketing-tagline
+- Returning users zien geen herhaalde les meer; nieuwe users vinden uitleg op hover van eyebrow
+
+### Test
+- Smoke groen + 2 screenshots geverifieerd (Tendencies headlines + Playbook empty-state)
+
+---
+
 ## [v12.166] — 2026-06-02
 
 ### Gewijzigd (UX-audit fase 4c)
