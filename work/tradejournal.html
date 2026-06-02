@@ -1278,7 +1278,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.165",released:"2026-06-02"};
+const APP_VERSION={version:"v12.166",released:"2026-06-02"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -10366,6 +10366,9 @@ function Analytics({trades,tradingRules,allTrades,config,accounts,setFilters,set
   // View mode: "proces" | "winst" | "both". Default "proces" for beginners (<100 trades).
   const[viewMode,setViewMode]=useState(()=>{try{return localStorage.getItem("tj_analytics_view")||(trades.length<100?"proces":"both")}catch{return"both"}});
   useEffect(()=>{try{localStorage.setItem("tj_analytics_view",viewMode)}catch{}},[viewMode]);
+  // v12.166: dismissable hint voor "Proces-metrics" — was 95-woord permanente info-block.
+  const[procesHintHidden,setProcesHintHidden]=useState(()=>{try{return localStorage.getItem("tj_analytics_proces_hint_dismissed")==="1"}catch{return false}});
+  const dismissProcesHint=()=>{try{localStorage.setItem("tj_analytics_proces_hint_dismissed","1")}catch{};setProcesHintHidden(true)};
   // Hooks voor drag-reorder MUST be BEFORE any early return (React rule: same hooks elke render)
   const analyticsContainerRef=useRef(null);
   useSortable(analyticsContainerRef,editMode,(newOrder)=>setOrder(newOrder));
@@ -10526,10 +10529,14 @@ function Analytics({trades,tradingRules,allTrades,config,accounts,setFilters,set
       </div>
     </div>
     {showReport&&<TradeReport trades={allTrades||trades} config={config} accounts={accounts} onClose={()=>setShowReport(false)}/>}
-    {/* v12.164: SampleSizeBanner verwijderd hier — Dashboard toont 'm al. Anders 2× hetzelfde
-        bij tab-switch Dashboard→Analytics. */}
-    {showP&&<div style={{padding:"10px 14px",borderRadius:"var(--radius)",background:"rgba(138,159,192,0.06)",borderLeft:"2px solid #8a9fc0",marginBottom:"14px",fontSize:"11px",color:"var(--text3)",lineHeight:1.55}}>
-      <b style={{color:"var(--text2)",fontWeight:600}}>Proces-metrics meten <em style={{color:"var(--text)",fontStyle:"normal"}}>trade-data-compleetheid</em></b> — hoe vaak vul je de relevante velden in (thesis, SL, post-trade notes). Dat is iets anders dan Kalender's "Trading Rules" die je <em style={{color:"var(--text2)"}}>dagelijkse regels</em> per sessie tracken (max risk, pauze na losses, etc). Beide zijn nuttig: dit blok helpt je consistent journalen, Kalender helpt je consistent gedrag handhaven.
+    {/* v12.164: SampleSizeBanner verwijderd hier — Dashboard toont 'm al. */}
+    {/* v12.166 (UX fase 4c): 95-woord info-block over "Proces-metrics vs Trading Rules"
+        was permanent zichtbaar bij viewMode=Proces/Beide. Nuttig bij eerste bezoek,
+        ruis voor returning users. Nu dismissable hint die persist via localStorage —
+        één keer lezen → voor altijd weg. Detail-uitleg verschoven naar tooltip. */}
+    {showP&&!procesHintHidden&&<div title={"Proces-metrics meten trade-data-compleetheid (thesis, SL, post-trade notes). Kalender's Trading Rules tracken dagelijkse gedrags-regels (max risk, pauze na losses). Beide nuttig — dit blok meet hoe consistent je journalt."} style={{padding:"8px 14px",borderRadius:"var(--radius)",background:"rgba(138,159,192,0.06)",borderLeft:"2px solid #8a9fc0",marginBottom:"14px",fontSize:"11px",color:"var(--text3)",lineHeight:1.4,display:"flex",alignItems:"center",justifyContent:"space-between",gap:"8px"}}>
+      <span><b style={{color:"var(--text2)",fontWeight:600}}>Proces-metrics</b> meten trade-data-compleetheid — niet Kalender's dagelijkse Trading Rules. <span style={{color:"var(--text5)",fontStyle:"italic"}}>(hover voor detail)</span></span>
+      <button onClick={dismissProcesHint} title="Sluit deze uitleg permanent" style={{background:"none",border:"none",color:"var(--text4)",cursor:"pointer",fontSize:"14px",lineHeight:1,padding:"0 2px",flexShrink:0}}>×</button>
     </div>}
 
     <div ref={analyticsContainerRef} className={editMode?"edit-mode":""}>
@@ -10550,13 +10557,16 @@ function Analytics({trades,tradingRules,allTrades,config,accounts,setFilters,set
           ?{label:"Consistency",value:"—",sub:totalPnlCalc<=0?`Geen winstgevende periode (FTMO formule)`:`Wacht op meerdere winst-dagen`,color:"var(--text4)",icon:"⚖️",empty:true}
           :{label:"Consistency",value:consistencyPct.toFixed(0)+"%",sub:"1 − grootste dag ÷ totaal",color:consistencyPct>=80?"var(--green)":consistencyPct>=60?"var(--gold)":"var(--red)",icon:"⚖️"},
       ].map(m=>(
-        <div key={m.label} className="card-glow" style={{background:"var(--glass)",border:"1px solid var(--border2)",borderRadius:"14px",padding:"16px",position:"relative"}}>
+        /* v12.166: lege KPI cards waren visueel even prominent als gevulde — onbalans.
+           Nu krijgt de hele card opacity 0.5 wanneer empty, zodat gevulde cards prominent
+           blijven en lege "achteraan staan". Border en background dimmer. */
+        <div key={m.label} className="card-glow" style={{background:"var(--glass)",border:"1px solid var(--border2)",borderRadius:"14px",padding:"16px",position:"relative",opacity:m.empty?0.5:1}}>
           <div style={{position:"absolute",top:0,left:0,right:0,height:"1px",background:"linear-gradient(90deg,transparent,var(--gold-border),transparent)",opacity:.5}}/>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"10px"}}>
             <span style={{fontSize:"var(--text-xs)",color:"var(--text4)",textTransform:"uppercase",letterSpacing:".14em",fontWeight:700}}>{m.label}</span>
             <div style={{width:"28px",height:"28px",borderRadius:"8px",background:"var(--gold-dim)",border:"1px solid var(--gold-border)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"var(--text-base)"}}>{m.icon}</div>
           </div>
-          <div style={{fontFamily:"var(--mono)",fontSize:"var(--text-2xl)",fontWeight:800,letterSpacing:"-.02em",lineHeight:1,marginBottom:"6px",color:m.color,opacity:m.empty?0.55:1}}>{m.value}</div>
+          <div style={{fontFamily:"var(--mono)",fontSize:"var(--text-2xl)",fontWeight:800,letterSpacing:"-.02em",lineHeight:1,marginBottom:"6px",color:m.color}}>{m.value}</div>
           <div style={{fontSize:"var(--text-sm)",color:"var(--text4)",fontStyle:m.empty?"italic":"normal"}}>{m.sub}</div>
           {!m.empty&&<div style={{width:"100%",height:"4px",background:"var(--bg4)",borderRadius:"2px",marginTop:"8px",overflow:"hidden"}}>
             <div style={{height:"100%",width:Math.min(parseFloat(m.value),100)+"%",background:m.color,borderRadius:"2px",transition:"width .4s"}}/>

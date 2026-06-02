@@ -6,6 +6,28 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.166] — 2026-06-02
+
+### Gewijzigd (UX-audit fase 4c)
+- **Analytics "Proces-metrics" 95-woord info-block → dismissable 1-regel hint** *(deep audit: permanent 3-regel uitleg over "Proces-metrics vs Trading Rules" — nuttig bij eerste bezoek, ruis voor returning users)*
+  - Hint nu compact: "**Proces-metrics** meten trade-data-compleetheid — niet Kalender's dagelijkse Trading Rules. *(hover voor detail)*"
+  - Full uitleg over thesis/SL/post-trade notes verschoven naar `title` hover-tooltip
+  - X-knop rechts dismist permanent via `tj_analytics_proces_hint_dismissed` localStorage
+  - Geen rules-of-hooks-violation: state lift naar Analytics top-level
+- **Lege Proces-KPI cards: opacity 0.5** *(was: even prominent als gevulde KPI's = onbalans)*
+  - Hele card (border, background, value, sub, icon) krijgt opacity 0.5 wanneer empty
+  - Gevulde KPI's blijven prominent; lege "staan achteraan"
+  - Geen layout-shift: card-size identiek (drag-sortable grid stabiel)
+
+### Effect
+- Analytics top-fold krijgt extra ademruimte. Met hint dismissed: Discipline heatmap (footer-feature) komt direct mee in viewport
+- Visuele hiërarchie: oog gaat naar prominent gevulde KPI's; lege KPI's signalen wat nog te trackmen valt zonder schreeuwen
+
+### Test
+- Smoke groen + 2 screenshots geverifieerd (hint on, hint dismissed)
+
+---
+
 ## [v12.165] — 2026-06-02
 
 ### Gewijzigd (UX-audit fase 4b)
