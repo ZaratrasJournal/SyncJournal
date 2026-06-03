@@ -6,6 +6,32 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.172] — 2026-06-03
+
+### Gewijzigd
+- **Bar-charts: divergent design (vanuit center, niet vanaf links)** *(gemeld door Denny: "rood rechts is niet echt heel duidelijk voor me")*
+  - **Voor**: bars groeiden allemaal vanaf links — rode bars (negatief) waren rechts-uitgelijnd, groene bars (positief) links-uitgelijnd. Verwarrend bij mix van winnaars/verliezers en bij chart waar bijna alles negatief is.
+  - **Na**: bars groeien VANUIT zero-line in het midden. Positief = rechts (groen), negatief = links (rood). Center-line altijd visueel zichtbaar als 1px verticaal lijntje.
+  - **Geraakt**:
+    - `barRow` helper in Analytics → 5 charts: Performance per Pair / Per Dag / Per Sessie / R:R / Layer Setups
+    - Per Pair / Per Grade / Per Direction cards in SetupInsightsView (Playbook → Analytics) — eigen helper `RBar`
+    - `MistakeImpactChart` (Chart.js) → x-axis nu symmetric `min=-maxAbs, max=+maxAbs` met 0-grid-line dikker zichtbaar (1.5px ipv 1px)
+
+- **Cryptische "+0.6R · 244" notatie verduidelijkt** *(gemeld door Denny: "ik vind door de hele journal maar is onduidelijk")*
+  - **Voor**: `+0.6R · 244` — wat is R? wat is 244?
+  - **Na**: Twee-regel label:
+    - Regel 1: `+0.6R avg` (met "avg" in kleinere grijze suffix)
+    - Regel 2: `244 trades` (volledig uitgeschreven, klein font)
+  - Plus `title` hover-tooltip op de bar: *"Gemiddeld +0.6R per trade. R = winst gedeeld door risk. 0R = break-even, +1R = je verdiende je risk-bedrag."*
+  - `barRow` `30x` → `30t` (compact maar duidelijker als "trades")
+
+### Test
+- Smoke groen
+- Visueel geverifieerd op Performance Per Pair (Analytics): BTC/ETH groen rechts van center, LINK/SOL/AVAX rood links van center
+- Fout-impact Chart.js: symmetric x-axis (-$111 ... +$0 ... +$111)
+
+---
+
 ## [v12.171] — 2026-06-03
 
 ### Fixed
