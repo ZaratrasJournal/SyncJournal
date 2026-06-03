@@ -6,6 +6,20 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.169] — 2026-06-03
+
+### Gewijzigd
+- **Trades-tabel: numerieke kolommen rechts-uitgelijnd** *(gemeld door Denny: "kolommen wijken wat af")*
+  - **Voor**: Entry / Exit / Size / R-Mult kolommen waren `textAlign:"center"`. Met variabele-width getallen (`3,09` vs `67.327,40`) wijken decimalen visueel af. PnL was zonder explicit align (default left), inconsistent met andere numerieke kolommen.
+  - **Na**: Entry / Exit / Size / PnL / R-Mult → `textAlign:"right"` + `paddingRight:"12px"`. Headers en body matchen. Duizenden-separators, decimal-punten en `+/-`-tekens lijnen pixel-perfect onder elkaar.
+  - **Pro-trader-best-practice**: numerieke data right-aligned, categorische data left-aligned. Status / Datum / Symbol / Setup / Sessie / Emoties blijven links. Side blijft center (pill).
+  - LIQ-price flex-column nu `alignItems:"flex-end"` matchend met right-align van de Exit-cel.
+
+### Test
+- Smoke groen + screenshot geverifieerd op breed viewport (1600px) met variabele-width data: alle decimal-punten staan onder elkaar
+
+---
+
 ## [v12.168] — 2026-06-02
 
 ### Verwijderd (UX-audit fase 4e — polish)
