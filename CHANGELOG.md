@@ -6,6 +6,24 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.174] — 2026-06-04
+
+### Fixed
+- **Playbook Analytics: paarse rij-achtergrond Missed-impact niet meer theme-consistent** *(gemeld door Denny met screenshot: "gaat niet meer in het thema")*
+  - **Oorzaak**: 4 rijen in Missed-impact card hadden hardcoded `rgba(180,140,200,0.12)` background + `rgba(180,140,200,0.32)` border (paarse "ghost trades" tint). Bij donker thema werd dat een paars-zwaar blok dat niet matchte met de Mistake-tags / Emotion-impact rijen ernaast.
+  - **Fix**: backgrounds + borders genormaliseerd naar `var(--bg3)` + `var(--border1)` — zelfde patroon als de andere kaart-rijen.
+  - **Behouden**: paarse tekst-kleur (`#b48cc8`) op de cijfers blijft als semantisch signaal voor missed/ghost-trades.
+
+### Niet aangeraakt (bewust)
+- Edge Gap section in Analytics (regel 7224+) — dedicated "missed trades" view; paars-tint past hier semantisch
+- 👻 MISS-pill in Trades-tabel (regel 4320) — status-indicator, paars is functioneel
+- Trade-form `👻 Type` filter-buttons + `👻 Gemist?` toggle — input-controls, paars is hun signaal
+
+### Test
+- Smoke groen — pure CSS/styling-wijziging, geen runtime-impact
+
+---
+
 ## [v12.173] — 2026-06-03
 
 ### Gewijzigd
