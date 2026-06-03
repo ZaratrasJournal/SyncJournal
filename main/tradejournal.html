@@ -1278,7 +1278,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.169",released:"2026-06-03"};
+const APP_VERSION={version:"v12.170",released:"2026-06-03"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -3717,6 +3717,7 @@ function TagManager({tagConfig,setTagConfig,trades,setTrades,showToast,config}){
 
 // ============ DASHBOARD EQUITY CHART ============
 function DashboardEquityChart({allDates,totalLine,exLines,exColors,showPerEx,pgExchanges}){
+  const{enabled:priv}=usePrivacy(); // v12.170: respect privacy-mode in y-axis ticks + tooltip
   const canvasRef=React.useRef(null);const chartRef=React.useRef(null);
   const fmtDate2=(d)=>{const p=(d||"").split("-");return p.length===3?`${p[2]}/${p[1]}`:d};
   React.useEffect(()=>{
@@ -3738,10 +3739,10 @@ function DashboardEquityChart({allDates,totalLine,exLines,exColors,showPerEx,pgE
         segment:{borderColor:function(c2){const v0=c2.p0.parsed.y;const v1=c2.p1.parsed.y;if(v0>=0&&v1>=0)return CHART_COLORS.win;if(v0<0&&v1<0)return"#d46a6a";return v1>=0?CHART_COLORS.win:CHART_COLORS.loss}}});
     }
     chartRef.current=new Chart(ctx,{type:"line",data:{labels,datasets},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:"index",intersect:false},
-      plugins:{legend:{display:false},tooltip:{backgroundColor:"rgba(10,12,18,0.9)",borderColor:"rgba(54,58,69,0.9)",borderWidth:1,titleFont:{family:"'JetBrains Mono',monospace",size:11},bodyFont:{family:"'JetBrains Mono',monospace",size:11},titleColor:"#c0c5cd",bodyColor:"#f5f5f7",padding:10,cornerRadius:6,filter:function(item){return!item.dataset.label.startsWith("_")},callbacks:{label:function(c2){const v=c2.parsed.y;return` ${c2.dataset.label}: ${v>=0?"+":""}$${v.toLocaleString("nl-NL",{minimumFractionDigits:2,maximumFractionDigits:2})}`}}}},
-      scales:{x:{grid:{color:"rgba(255,255,255,0.10)"},ticks:{color:"#939aa5",font:{family:"'JetBrains Mono',monospace",size:9},maxTicksLimit:8,maxRotation:0},border:{display:false}},y:{grid:{color:"rgba(255,255,255,0.10)"},ticks:{color:"#939aa5",font:{family:"'JetBrains Mono',monospace",size:9},callback:function(v){return"$"+v.toLocaleString("nl-NL",{minimumFractionDigits:0,maximumFractionDigits:0})}},border:{display:false}}}}});
+      plugins:{legend:{display:false},tooltip:{backgroundColor:"rgba(10,12,18,0.9)",borderColor:"rgba(54,58,69,0.9)",borderWidth:1,titleFont:{family:"'JetBrains Mono',monospace",size:11},bodyFont:{family:"'JetBrains Mono',monospace",size:11},titleColor:"#c0c5cd",bodyColor:"#f5f5f7",padding:10,cornerRadius:6,filter:function(item){return!item.dataset.label.startsWith("_")},callbacks:{label:function(c2){const v=c2.parsed.y;if(priv)return` ${c2.dataset.label}: $***,**`;return` ${c2.dataset.label}: ${v>=0?"+":""}$${v.toLocaleString("nl-NL",{minimumFractionDigits:2,maximumFractionDigits:2})}`}}}},
+      scales:{x:{grid:{color:"rgba(255,255,255,0.10)"},ticks:{color:"#939aa5",font:{family:"'JetBrains Mono',monospace",size:9},maxTicksLimit:8,maxRotation:0},border:{display:false}},y:{grid:{color:"rgba(255,255,255,0.10)"},ticks:{color:"#939aa5",font:{family:"'JetBrains Mono',monospace",size:9},callback:function(v){if(priv)return"$***";return"$"+v.toLocaleString("nl-NL",{minimumFractionDigits:0,maximumFractionDigits:0})}},border:{display:false}}}}});
     return()=>{if(chartRef.current){try{chartRef.current.destroy()}catch(err){}chartRef.current=null}};
-  },[JSON.stringify(allDates),showPerEx,JSON.stringify(pgExchanges)]);
+  },[JSON.stringify(allDates),showPerEx,JSON.stringify(pgExchanges),priv]);
   return(<div style={{height:"220px",position:"relative"}}><canvas ref={canvasRef}/></div>);
 }
 
@@ -3966,7 +3967,8 @@ function Dashboard({trades,config,accounts,storageUsage,setFilters,setTab}){
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:"16px"}}>
           <div>
             <div style={{fontSize:"11px",color:"var(--gold)",textTransform:"uppercase",letterSpacing:"0.12em",fontWeight:700,marginBottom:"4px"}}>Gerealiseerde winst</div>
-            <div style={{fontSize:"28px",fontWeight:700,fontFamily:"var(--mono)",color:totalFiltered>=0?"var(--green)":"var(--red)",letterSpacing:"-0.02em"}}>{totalFiltered>=0?"+":""}{unitLabel}{unitFmt(toUnit(totalFiltered))}</div>
+            {/* v12.170: privacy-leak gefixed — bedrag was niet gemaskeerd ondanks priv-toggle. */}
+            <div style={{fontSize:"28px",fontWeight:700,fontFamily:"var(--mono)",color:priv?"var(--text4)":totalFiltered>=0?"var(--green)":"var(--red)",letterSpacing:"-0.02em"}}>{priv?`${unitLabel}***,**`:`${totalFiltered>=0?"+":""}${unitLabel}${unitFmt(toUnit(totalFiltered))}`}</div>
             <div style={{fontSize:"11px",color:"var(--text4)",fontFamily:"var(--mono)",marginTop:"2px"}}>{filteredByEx.length} trades{pgPeriod!=="all"?` · ${pgPeriod.toUpperCase()}`:""}</div>
           </div>
           <button onClick={()=>setPgUnit(p=>p==="usdt"?"btc":"usdt")} style={{padding:"4px 10px",borderRadius:"5px",fontSize:"10px",fontWeight:700,border:"1px solid var(--border3)",background:pgUnit==="btc"?"rgba(201,168,76,0.15)":"transparent",color:pgUnit==="btc"?"#c9a84c":"var(--text4)",cursor:"pointer",fontFamily:"var(--mono)"}}>{pgUnit==="usdt"?"₿ BTC":"$ USD"}</button>
@@ -3987,7 +3989,8 @@ function Dashboard({trades,config,accounts,storageUsage,setFilters,setTab}){
             <div key={s} style={{display:"flex",alignItems:"center",gap:"6px"}}>
               {isActive?<div style={{width:"16px",height:"3px",borderRadius:"2px",background:exColors[s]||"#C9A84C"}}/>:<div style={{width:"8px",height:"8px",borderRadius:"2px",background:exColors[s]||"#C9A84C"}}/>}
               <span style={{fontSize:"11px",color:isActive?exColors[s]||"#C9A84C":"var(--text3)",fontWeight:isActive?600:400}}>{exName(s)}</span>
-              <span style={{fontSize:"11px",fontFamily:"var(--mono)",fontWeight:600,color:v>=0?"var(--green)":"var(--red)"}}>{v>=0?"+":""}{unitLabel}{unitFmt(toUnit(v))}</span>
+              {/* v12.170: per-exchange totals waren niet gemaskeerd. */}
+              <span style={{fontSize:"11px",fontFamily:"var(--mono)",fontWeight:600,color:priv?"var(--text4)":v>=0?"var(--green)":"var(--red)"}}>{priv?`${unitLabel}***,**`:`${v>=0?"+":""}${unitLabel}${unitFmt(toUnit(v))}`}</span>
             </div>
           )})}
         </div>}
@@ -4154,7 +4157,8 @@ function TradeList({trades,onEdit,onDelete,onQuickTag,onBulkDelete,onBulkTag,onB
       <div style={{fontSize:"12px",color:"var(--text3)"}}>
         {sorted.length}{search?` van ${trades.length}`:""} trades
         <span style={{margin:"0 8px",color:"var(--text5)"}}>|</span>
-        <span style={{color:totalPnl>=0?"var(--green)":"var(--red)",fontFamily:"var(--mono)",fontWeight:600}}>{totalPnl>=0?"+":""}${fmt(totalPnl)}</span>
+        {/* v12.170: priv-leak gefixed — mini-stats toonde totalPnl ongemaskeerd */}
+        <span style={{color:priv?"var(--text4)":totalPnl>=0?"var(--green)":"var(--red)",fontFamily:"var(--mono)",fontWeight:600}}>{priv?"$***,**":`${totalPnl>=0?"+":""}$${fmt(totalPnl)}`}</span>
         <span style={{margin:"0 8px",color:"var(--text5)"}}>|</span>
         WR: {closedSorted.length>0?((wins/closedSorted.length)*100).toFixed(1):"0.0"}%
       </div>
@@ -6141,14 +6145,17 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,setConfig,ac
           return{...p,...upd};
         });
         if(typeof showToast==="function"){
+          // v12.170: priv-leak gefixed — toasts toonden netto-PnL ongemaskeerd
+          const pnlNew=fmtMoney(closeData.netPnl,priv,{sign:true});
+          const pnlOld=fmtMoney(closeData.currentPnl,priv,{sign:true});
           if(closeData.mode==="close"){
-            showToast(`✓ Trade gesloten — PnL: ${closeData.netPnl>=0?"+":""}$${fmt(closeData.netPnl)}`,"success");
+            showToast(`✓ Trade gesloten — PnL: ${pnlNew}`,"success");
           }else if(closeData.mode==="close-loss"){
-            showToast(`🛑 Trade gesloten op SL — PnL: $${fmt(closeData.netPnl)}`,"success");
+            showToast(`🛑 Trade gesloten op SL — PnL: ${pnlNew}`,"success");
           }else if(closeData.mode==="update"){
-            showToast(`🔄 PnL bijgewerkt — was $${fmt(closeData.currentPnl)}, nu $${fmt(closeData.netPnl)}`,"success");
+            showToast(`🔄 PnL bijgewerkt — was ${pnlOld}, nu ${pnlNew}`,"success");
           }else{
-            showToast(`🔄 PnL bijgewerkt naar SL — was $${fmt(closeData.currentPnl)}, nu $${fmt(closeData.netPnl)}`,"success");
+            showToast(`🔄 PnL bijgewerkt naar SL — was ${pnlOld}, nu ${pnlNew}`,"success");
           }
         }
       };
@@ -6751,7 +6758,8 @@ function Calendar({trades,setFilters,setTab,onEdit,dailyNotes,setDailyNotes,trad
     const rect=e.target.getBoundingClientRect();
     tip.style.left=Math.max(8,Math.min(window.innerWidth-200,rect.left+rect.width/2-90))+"px";
     tip.style.top=Math.max(8,rect.top-70)+"px";
-    tip.innerHTML=`<div style="color:var(--gold);font-size:10px;text-transform:uppercase;letter-spacing:.1em;font-weight:600;margin-bottom:4px">${fmtNL(date)}</div><div style="font-size:16px;font-weight:800;color:${d.pnl>=0?"var(--green)":"var(--red)"};font-variant-numeric:tabular-nums">${d.pnl>=0?"+":""}$${fmt(d.pnl)}</div><div style="font-size:11px;color:var(--text3)">${d.n} trades · ${d.n?Math.round(d.wins/d.n*100):0}% win</div>`;
+    /* v12.170: priv-leak gefixed — heatmap-tooltip toonde dag-PnL ongemaskeerd */
+    tip.innerHTML=`<div style="color:var(--gold);font-size:10px;text-transform:uppercase;letter-spacing:.1em;font-weight:600;margin-bottom:4px">${fmtNL(date)}</div><div style="font-size:16px;font-weight:800;color:${priv?"var(--text4)":d.pnl>=0?"var(--green)":"var(--red)"};font-variant-numeric:tabular-nums">${fmtMoney(d.pnl,priv,{sign:true})}</div><div style="font-size:11px;color:var(--text3)">${d.n} trades · ${d.n?Math.round(d.wins/d.n*100):0}% win</div>`;
     tip.classList.add("show");
   };
 
@@ -6805,7 +6813,8 @@ function Calendar({trades,setFilters,setTab,onEdit,dailyNotes,setDailyNotes,trad
     {/* Stats bar */}
     <div className="cal-stats">
       <div className="cal-stat"><div className="cal-stat-label">Net {year}</div><div className="cal-stat-value" style={{color:stats.pnl>=0?"var(--green)":"var(--red)"}}>{priv?"$***,**":`${stats.pnl>=0?"+":"-"}$${fmt(Math.abs(stats.pnl))}`}</div><div className="cal-stat-sub">{stats.total} trades</div></div>
-      <div className="cal-stat"><div className="cal-stat-label">Best dag</div><div className="cal-stat-value" style={{color:"var(--gold)"}}>{stats.best?(stats.best[1].pnl>=0?"+":"")+"$"+fmt(stats.best[1].pnl):"–"}</div><div className="cal-stat-sub">{stats.best?fmtNL(stats.best[0]):""}</div></div>
+      {/* v12.170: priv-leak gefixed — Best dag bedrag was ongemaskeerd */}
+      <div className="cal-stat"><div className="cal-stat-label">Best dag</div><div className="cal-stat-value" style={{color:priv?"var(--text4)":"var(--gold)"}}>{stats.best?(priv?"$***,**":(stats.best[1].pnl>=0?"+":"")+"$"+fmt(stats.best[1].pnl)):"–"}</div><div className="cal-stat-sub">{stats.best?fmtNL(stats.best[0]):""}</div></div>
       <div className="cal-stat"><div className="cal-stat-label">Win-rate</div><div className="cal-stat-value" style={{color:stats.wr>=50?"var(--green)":"var(--red)"}}>{stats.wr.toFixed(0)}%</div><div className="cal-stat-sub">{stats.greens}g / {stats.reds}r dagen</div></div>
       <div className="cal-stat"><div className="cal-stat-label">Gem. winst</div><div className="cal-stat-value" style={{color:"var(--green)"}}>{priv?"$***,**":`$${fmt(stats.winnersAvg)}`}</div><div className="cal-stat-sub">per winning trade</div></div>
       <div className="cal-stat"><div className="cal-stat-label">🔥 Streak</div><div className="cal-stat-value" style={{color:"var(--gold)"}}>{stats.streak}</div><div className="cal-stat-sub">winning days</div></div>
@@ -7666,6 +7675,7 @@ function TendencySparkline({trades}){
 // gedimd. Klik op cel → filtert trades-tab.
 const SETUP_SESSION_MATRIX_KEY="tj_matrix_open";
 function SetupSessionMatrix({closed,setFilters,setTab}){
+  const{enabled:priv}=usePrivacy(); // v12.170: matrix cells toonden PnL bedragen ongemaskeerd
   const[open,setOpen]=useState(()=>{try{const v=localStorage.getItem(SETUP_SESSION_MATRIX_KEY);return v===null?true:v==="1";}catch{return true;}});
   useEffect(()=>{try{localStorage.setItem(SETUP_SESSION_MATRIX_KEY,open?"1":"0");}catch{}},[open]);
   const{setups,buckets,cells}=useMemo(()=>buildSetupSessionMatrix(closed),[closed]);
@@ -7705,7 +7715,8 @@ function SetupSessionMatrix({closed,setFilters,setTab}){
               const m=cellMeta(c);
               const wrColor=m.dim?"var(--text5)":(c.wr>=50?"var(--green)":"var(--red)");
               const pnlColor=c.pnlSum>=0?"var(--green)":"var(--red)";
-              const pnlStr=(c.pnlSum>=0?"+":"−")+"$"+Math.abs(c.pnlSum).toFixed(0);
+              /* v12.170: priv-leak gefixed — matrix-cellen toonden PnL ongemaskeerd */
+              const pnlStr=priv?"$***":(c.pnlSum>=0?"+":"−")+"$"+Math.abs(c.pnlSum).toFixed(0);
               const onClick=()=>{if(setFilters&&setTab){setFilters(p=>({...p,setupTags:[s]}));setTab("trades");}};
               return(<td key={b} onClick={onClick} style={{padding:"8px 10px",textAlign:"center",border:"1px solid var(--border1)",background:m.bg,opacity:m.dim?0.4:1,position:"relative",cursor:setFilters?"pointer":"default"}} title={`${s} in ${b}: ${c.n} trades, ${c.wr.toFixed(0)}% WR, ${pnlStr}`}>
                 {m.flag&&<span style={{position:"absolute",top:"2px",right:"4px",fontSize:"10px"}}>{m.flag}</span>}
@@ -10251,6 +10262,7 @@ function PlaybookPage({playbooks,setPlaybooks,allTrades,setFilters,setTab,showTo
 // eigen periode-controls (los van globale FilterBar), en ruimere lay-out met
 // extra meta per card (eerste/laatste trade-datum + "Toon trades →" link).
 function TendenciesPage({trades,allTrades,setFilters,setTab}){
+  const{enabled:priv}=usePrivacy(); // v12.170: tendency-card Cumulatief was ongemaskeerd
   const allClosed=(trades||[]).filter(t=>t.pnl!==""&&!isNaN(parseFloat(t.pnl)));
   const[period,setPeriod]=useState("30");
   const[filter,setFilter]=useState("all");
@@ -10353,7 +10365,8 @@ function TendenciesPage({trades,allTrades,setFilters,setTab}){
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"14px",padding:"12px 0",borderTop:"1px solid var(--border1)",borderBottom:"1px solid var(--border1)",marginBottom:"14px"}}>
               <div style={{textAlign:"center"}}><div style={{fontSize:"9.5px",color:"var(--text5)",textTransform:"uppercase",letterSpacing:".08em",fontWeight:600,marginBottom:"3px"}}>Trades</div><div style={{fontFamily:"var(--mono)",fontWeight:700,fontSize:"16px",color:"var(--text)"}}>{t.n}</div></div>
               <div style={{textAlign:"center"}}><div style={{fontSize:"9.5px",color:"var(--text5)",textTransform:"uppercase",letterSpacing:".08em",fontWeight:600,marginBottom:"3px"}}>Win-rate</div><div style={{fontFamily:"var(--mono)",fontWeight:700,fontSize:"16px",color:t.wr>=50?"var(--green)":"var(--red)"}}>{t.wr.toFixed(0)}%</div></div>
-              <div style={{textAlign:"center"}}><div style={{fontSize:"9.5px",color:"var(--text5)",textTransform:"uppercase",letterSpacing:".08em",fontWeight:600,marginBottom:"3px"}}>Cumulatief</div><div style={{fontFamily:"var(--mono)",fontWeight:700,fontSize:"16px",color:pnlPos?"var(--green)":"var(--red)"}}>{(pnlPos?"+":"-")+"$"+fmt(Math.abs(t.pnlSum))}</div></div>
+              {/* v12.170: priv-leak gefixed — tendency-card Cumulatief was ongemaskeerd */}
+              <div style={{textAlign:"center"}}><div style={{fontSize:"9.5px",color:"var(--text5)",textTransform:"uppercase",letterSpacing:".08em",fontWeight:600,marginBottom:"3px"}}>Cumulatief</div><div style={{fontFamily:"var(--mono)",fontWeight:700,fontSize:"16px",color:priv?"var(--text4)":pnlPos?"var(--green)":"var(--red)"}}>{priv?"$***,**":(pnlPos?"+":"-")+"$"+fmt(Math.abs(t.pnlSum))}</div></div>
             </div>
             <div style={{height:"48px",marginBottom:"14px"}}><TendencySparkline trades={t.trades}/></div>
             <div style={{fontSize:"12px",color:"var(--text3)",lineHeight:1.55,padding:"10px 12px",background:"rgba(201,168,76,0.04)",borderLeft:"3px solid var(--gold-border)",borderRadius:"0 6px 6px 0",marginBottom:"12px"}}><strong style={{color:"var(--gold)"}}>{tendencyRecommendation(t).split(":")[0]}:</strong>{tendencyRecommendation(t).split(":").slice(1).join(":")}</div>
@@ -11815,7 +11828,8 @@ function ReviewDashboard({trades}){
         {[[totalPnl,"Net PNL",totalPnl>=0?"var(--green)":"var(--red)"],[maxDD>0?-maxDD:0,"Max Drawdown","var(--red)"],[eq[eq.length-1]?.cum||0,"Huidige cumulatief",totalPnl>=0?"var(--green)":"var(--red)"],[dailyPnl.length,"Trading dagen","var(--gold)"]].map(([v,l,c])=>(
           <div key={l} style={{background:"var(--bg4)",borderRadius:"6px",padding:"10px",textAlign:"center",border:"1px solid var(--border1)"}}>
             <div style={{fontSize:"9px",color:"var(--text4)",textTransform:"uppercase",fontWeight:600,marginBottom:"4px"}}>{l}</div>
-            <div style={{fontSize:"14px",fontWeight:700,fontFamily:"var(--mono)",color:c}}>{typeof v==="number"&&l!=="Trading dagen"?(v>=0?"+":"-")+"$"+fmt(Math.abs(v)):v}</div>
+            {/* v12.170: priv-leak gefixed — Equity Stats sub-cards toonden bedragen ongemaskeerd */}
+            <div style={{fontSize:"14px",fontWeight:700,fontFamily:"var(--mono)",color:priv&&l!=="Trading dagen"?"var(--text4)":c}}>{typeof v==="number"&&l!=="Trading dagen"?(priv?"$***,**":(v>=0?"+":"-")+"$"+fmt(Math.abs(v))):v}</div>
           </div>
         ))}
       </div>

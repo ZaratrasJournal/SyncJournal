@@ -6,6 +6,47 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.170] — 2026-06-03
+
+### Fixed (Privacy-mode leak-audit)
+- **10 privacy-leaks gefixed** *(gemeld door Denny: "als ik de prijzen hide dan zie ik bij gerealiseerde winst nog steeds de winsten en geen sterren. loop alles nog even door")*
+
+  **Dashboard**
+  - `DashboardEquityChart` y-axis ticks + tooltip — toonden equity-bedragen ongemaskeerd (callback functie checked geen `priv`)
+  - "Gerealiseerde winst" header in Portfolio-card — 28px groot bedrag was zichtbaar
+  - Per-exchange totals onder chart (Blofin +$X, Kraken +$Y) — niet gemaskeerd
+
+  **Trades**
+  - Mini-stats strip "25 trades | +$132,50 | WR: 64.0%" — totalPnl was niet gemaskeerd
+  - `closeData` toasts ("✓ Trade gesloten — PnL: +$X") — 4 toast-varianten lekten netto-PnL
+
+  **Review**
+  - Equity Stats sub-cards (NET PNL / MAX DRAWDOWN / HUIDIGE CUMULATIEF / TRADING DAGEN) — 3 bedragen ongemaskeerd. Trading dagen blijft zichtbaar (geen $ bedrag)
+
+  **Kalender**
+  - "Best dag" KPI label — bedrag ongemaskeerd
+  - Heatmap-tooltip (hover dag-cell) — `tip.innerHTML` toonde dag-PnL ongemaskeerd
+
+  **Tendencies**
+  - Setup × Sessie matrix-cellen — `pnlStr` toonde cumulatieve PnL per cell ongemaskeerd
+  - Tendency-card "CUMULATIEF" KPI — bedrag ongemaskeerd (rules-of-hooks: `usePrivacy` toegevoegd aan `TendenciesPage`)
+  - Setup×Sessie matrix `usePrivacy` toegevoegd aan `SetupSessionMatrix` component
+
+### Open / lower-prio (documented voor toekomstige pass)
+- Tendency-card body-descriptions bevatten nog "cumulatief +$X" in lopende tekst (9 desc-strings in `getTendencies()` — vereist function-signature uitbreiding)
+- BTC live-feed + ticker (publieke market-price) — bewust niet gemaskeerd, geen user-private data
+- Entry/Exit prices in Trades-tabel — market prices van trade-moment, niet account-balans (consistent met BTC ticker beleid)
+- Trade-cards (share-cards / PDF-rapport) — user kiest expliciet om te delen, eigen workflow
+
+### Test
+- Smoke groen
+- Themes regressie 6/6 groen
+- Backup-bewaker regressie 11/11 groen
+- Visueel geverifieerd via 8 priv=on screenshots (Dashboard, Trades, Analytics, Review, Kalender, Tendencies, Playbook)
+- React error gefixed in TendenciesPage (`priv is not defined`)
+
+---
+
 ## [v12.169] — 2026-06-03
 
 ### Gewijzigd
