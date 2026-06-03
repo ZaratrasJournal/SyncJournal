@@ -1278,7 +1278,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.172",released:"2026-06-03"};
+const APP_VERSION={version:"v12.173",released:"2026-06-03"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -9868,20 +9868,14 @@ function PlaybookAnalyticsView({playbooks,allTrades}){
 
     {/* === Phase 2: Per Grade / Pair / Direction (3-col) === */}
     {(data.gradeStats.length>0||data.pairStats.length>0||data.directionStats.length>0)&&<div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:14,marginTop:18}}>
-      {/* v12.172: divergent-bar helper — bars groeien VANUIT center, niet vanaf zijkant.
-          Positief = rechts (groen), negatief = links (rood). Center-line visueel zichtbaar.
-          Label-notatie cleaner: "+0.6R avg" + apart "244 trades" sub-label voor leesbaarheid. */}
+      {/* v12.173: bars terug naar simple LEFT-ALIGNED (zoals barRow). Bar groeit vanaf
+          links naar rechts. Kleur signaleert + of −. Bar-lengte = magnitude (abs).
+          Label rechts (+0.6R avg / 244 trades) blijft. */}
       {(()=>{const RBar=({value,scale=40,minW=8})=>{
         const pct=Math.min(95,Math.max(minW,Math.abs(value)*scale));
         const pos=value>=0;
-        return(<div title={`Gemiddeld ${pos?"+":""}${value.toFixed(2)}R per trade. R = winst gedeeld door risk. 0R = break-even, +1R = je verdiende je risk-bedrag.`} style={{height:14,background:"var(--bg3)",borderRadius:3,border:"1px solid var(--border1)",display:"flex",alignItems:"center",overflow:"hidden",cursor:"help"}}>
-          <div style={{flex:1,height:"100%",display:"flex",justifyContent:"flex-end",alignItems:"center"}}>
-            {!pos&&<div style={{height:"100%",width:`${pct}%`,background:"var(--red)",opacity:0.72}}/>}
-          </div>
-          <div style={{width:1,height:"70%",background:"var(--border3)"}}/>
-          <div style={{flex:1,height:"100%",display:"flex",justifyContent:"flex-start",alignItems:"center"}}>
-            {pos&&<div style={{height:"100%",width:`${pct}%`,background:"var(--green)",opacity:0.72}}/>}
-          </div>
+        return(<div title={`Gemiddeld ${pos?"+":""}${value.toFixed(2)}R per trade. R = winst gedeeld door risk. 0R = break-even, +1R = je verdiende je risk-bedrag.`} style={{height:14,background:"var(--bg3)",borderRadius:3,border:"1px solid var(--border1)",position:"relative",overflow:"hidden",cursor:"help"}}>
+          <div style={{height:"100%",width:`${pct}%`,background:pos?"var(--green)":"var(--red)",opacity:0.7,borderRadius:2}}/>
         </div>);
       };
       const RLabel=({value,n})=>(<div style={{textAlign:"right",fontFamily:"var(--mono)",lineHeight:1.2}}>
@@ -10518,11 +10512,10 @@ function Analytics({trades,tradingRules,allTrades,config,accounts,setFilters,set
   // strings "Daily+BOS → 1H+SFP+OB"). Default 70px voor compacte labels (pair / session /
   // tag / weekdag); wide=160px voor layer-analyse. Metingen tonen 110-135px nodig voor de
   // typische layer-pattern; 160px geeft marge zonder de bar te smal te maken.
-  /* v12.172: barRow divergent design — bar groeit VANUIT center (zero-line), niet vanaf
-      links. Positief = rechts groen, negatief = links rood. Veel duidelijker bij mix
-      van winnaars/verliezers. Label staat aan outer-edge (waar bar naartoe groeit).
-      Theme-tokens: --border3 voor track-bg, --border2 voor center-line, kleur-rgba's
-      blijven hardcoded (bewust — kleur-coding is universeel rood/groen voor alle thema's). */
+  /* v12.173: bars terug naar simple LEFT-ALIGNED — alles groeit vanaf links naar rechts.
+      Kleur signaleert positief (groen) of negatief (rood). Bar-lengte = magnitude (abs).
+      Veel intuïtiever dan divergent (v172): één leesrichting voor het oog. Tooltip-info
+      en helder 30t/% labels behouden. */
   const barRow=(label,wins2,losses2,pnl2,maxAbs,color,sub,wide)=>{
     const w=Math.abs(pnl2)/maxAbs*100;
     const pos=pnl2>=0;
@@ -10530,19 +10523,9 @@ function Analytics({trades,tradingRules,allTrades,config,accounts,setFilters,set
     const pnlLabel=priv?"$***,**":`${pnl2>=0?"+":""}$${fmt(pnl2)}`;
     return(<div style={{display:"flex",alignItems:"center",gap:"10px",marginBottom:"8px"}}>
       <div style={{width:wide?"160px":"70px",fontSize:"11px",color:"var(--text2)",fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flexShrink:0}} title={label}>{label}</div>
-      <div style={{flex:1,height:"22px",background:"var(--bg4)",borderRadius:"4px",display:"flex",alignItems:"center",overflow:"hidden",position:"relative"}}>
-        {/* Left half — negatieve bars groeien naar links vanaf center */}
-        <div style={{flex:1,height:"100%",position:"relative"}}>
-          {!pos&&<div style={{position:"absolute",right:0,top:0,bottom:0,width:`${Math.max(w,4)}%`,background:"rgba(220,122,122,0.32)"}}/>}
-          {!pos&&<div style={{position:"absolute",left:"8px",top:0,bottom:0,display:"flex",alignItems:"center",fontSize:"10px",fontFamily:"var(--mono)",color:"var(--red)",fontWeight:700,zIndex:2,whiteSpace:"nowrap"}}>{pnlLabel}</div>}
-        </div>
-        {/* Center zero-line */}
-        <div style={{width:"1px",height:"65%",background:"var(--border2)",flexShrink:0}}/>
-        {/* Right half — positieve bars groeien naar rechts vanaf center */}
-        <div style={{flex:1,height:"100%",position:"relative"}}>
-          {pos&&<div style={{position:"absolute",left:0,top:0,bottom:0,width:`${Math.max(w,4)}%`,background:"rgba(46,170,111,0.32)"}}/>}
-          {pos&&<div style={{position:"absolute",right:"8px",top:0,bottom:0,display:"flex",alignItems:"center",fontSize:"10px",fontFamily:"var(--mono)",color:"var(--green)",fontWeight:700,zIndex:2,whiteSpace:"nowrap"}}>{pnlLabel}</div>}
-        </div>
+      <div style={{flex:1,height:"22px",background:"var(--bg4)",borderRadius:"4px",position:"relative",overflow:"hidden"}}>
+        <div style={{height:"100%",width:`${Math.max(w,2)}%`,background:pos?"rgba(46,170,111,0.32)":"rgba(220,122,122,0.32)",borderRadius:"4px"}}/>
+        <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",paddingLeft:"8px",fontSize:"10px",fontFamily:"var(--mono)",color:pos?"var(--green)":"var(--red)",fontWeight:700}}>{pnlLabel}</div>
       </div>
       <div style={{width:"36px",fontSize:"9.5px",color:"var(--text4)",textAlign:"right",fontFamily:"var(--mono)"}} title="Aantal trades">{wins2+losses2}t</div>
       <div style={{width:"38px",fontSize:"9.5px",color:wr2>=50?"var(--green)":"var(--red)",textAlign:"right",fontFamily:"var(--mono)"}} title="Win-rate %">{wr2.toFixed(0)}%</div>
@@ -11709,13 +11692,14 @@ function MistakeImpactChart({trades}){
     (trades||[]).forEach(t=>(t.mistakeTags||[]).forEach(m=>{impact[m]=(impact[m]||0)+(netPnl(t))}));
     const entries=Object.entries(impact).sort((a,b)=>a[1]-b[1]);
     if(entries.length===0)return;
-    const labels=entries.map(e=>e[0]),data=entries.map(e=>e[1]);
-    const colors=data.map(v=>v<0?"rgba(224,85,85,0.85)":"rgba(46,170,111,0.85)");
-    /* v12.172: symmetric x-axis scale (min=-maxAbs, max=+maxAbs) zodat bars DIVERGENT
-        zijn rond 0. Voor v172: alle bars groeiden vanaf links wat verwarrend was bij
-        bijna-alle negatieve waardes. Nu: rood naar links, groen naar rechts, vanuit 0. */
-    const maxAbs=Math.max(...data.map(v=>Math.abs(v)),1);
-    chartRef.current=new Chart(canvasRef.current,{type:"bar",data:{labels,datasets:[{data,backgroundColor:colors,borderRadius:4,borderSkipped:false}]},options:{indexAxis:"y",responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{backgroundColor:"rgba(10,12,18,0.9)",borderColor:"rgba(54,58,69,0.9)",borderWidth:1,padding:10,cornerRadius:6,titleColor:"#c0c5cd",bodyColor:"#f5f5f7",callbacks:{label:c=>priv?"$***,**":`${c.parsed.x>=0?"+":""}$${Math.abs(c.parsed.x).toLocaleString("nl-NL",{minimumFractionDigits:2,maximumFractionDigits:2})}`}}},scales:{x:{min:-maxAbs*1.05,max:maxAbs*1.05,grid:{color:v=>v.tick.value===0?"rgba(255,255,255,0.25)":"rgba(255,255,255,0.05)",lineWidth:v=>v.tick.value===0?1.5:1},ticks:{color:"#939aa5",font:{family:"var(--mono)",size:9},callback:v=>priv?"$***":(v>=0?"+":"")+"$"+Math.round(v)},border:{display:false}},y:{grid:{display:false},ticks:{color:"#939aa5",font:{size:11}}}}}});
+    /* v12.173: alle bars groeien vanaf 0 links naar rechts. Bar-lengte = |waarde| (magnitude),
+        kleur signaleert oorspronkelijke teken (rood = kost je geld, groen = leverde op). Tooltip
+        toont ± met originele teken. Simpeler dan v172 divergent — één leesrichting. */
+    const labels=entries.map(e=>e[0]);
+    const rawValues=entries.map(e=>e[1]);
+    const data=rawValues.map(v=>Math.abs(v));
+    const colors=rawValues.map(v=>v<0?"rgba(224,85,85,0.85)":"rgba(46,170,111,0.85)");
+    chartRef.current=new Chart(canvasRef.current,{type:"bar",data:{labels,datasets:[{data,backgroundColor:colors,borderRadius:4,borderSkipped:false}]},options:{indexAxis:"y",responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{backgroundColor:"rgba(10,12,18,0.9)",borderColor:"rgba(54,58,69,0.9)",borderWidth:1,padding:10,cornerRadius:6,titleColor:"#c0c5cd",bodyColor:"#f5f5f7",callbacks:{label:c=>{const raw=rawValues[c.dataIndex];if(priv)return"$***,**";return`${raw>=0?"+":"−"}$${Math.abs(raw).toLocaleString("nl-NL",{minimumFractionDigits:2,maximumFractionDigits:2})}`}}}},scales:{x:{beginAtZero:true,grid:{color:"rgba(255,255,255,0.05)"},ticks:{color:"#939aa5",font:{family:"var(--mono)",size:9},callback:v=>priv?"$***":"$"+Math.round(v)},border:{display:false}},y:{grid:{display:false},ticks:{color:"#939aa5",font:{size:11}}}}}});
     return()=>{if(chartRef.current){try{chartRef.current.destroy()}catch{}chartRef.current=null}};
   },[trades.length,JSON.stringify(trades.flatMap(t=>t.mistakeTags||[]).slice(-10)),priv]);
   return(<div style={{height:"240px",position:"relative"}}><canvas ref={canvasRef}/></div>);

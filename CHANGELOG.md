@@ -6,6 +6,27 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.173] — 2026-06-03
+
+### Gewijzigd
+- **Bar-charts: uniform links-uitgelijnd (revert van v172 divergent)** *(gemeld door Denny: "alles van links naar rechts is beter lijkt me")*
+  - V172 divergent design (bars vanuit center) bleek tegenintuïtief — twee leesrichtingen voor het oog (rechts voor positief, links voor negatief).
+  - **Nu**: alle bars starten links bij 0 en groeien naar rechts. Bar-lengte = magnitude (|waarde|), kleur = signaal (groen=positief, rood=negatief).
+  - Eén leesrichting: hoe verder de bar uitsteekt, hoe groter de impact (of het nu winst of verlies is).
+- **MistakeImpactChart (Chart.js)**: nu `beginAtZero:true` met `abs` values. X-axis vanaf $0 links naar +$X rechts. Tooltip toont oorspronkelijk teken (`+$X` of `−$X`). Geen symmetric scale meer nodig.
+- **`barRow` + `RBar` helpers**: terug naar simple left-aligned + positive width. Geen center-line, geen flex-halves.
+
+### Behouden uit v172
+- 2-regel label-notatie: `+0.6R avg` + `244 trades` (niet meer cryptisch `+0.6R · 244`)
+- Hover-tooltip op bars die R uitlegt
+- `30t` ipv `30x` voor trade-count
+
+### Test
+- Smoke groen
+- Visueel geverifieerd: Performance Per Pair (BTC/ETH/LINK/SOL/AVAX) toont één rij ETH groen + 4 rode (oplopende lengte). Fout-impact: 7 rode + 1 groene, allemaal vanaf $0 links.
+
+---
+
 ## [v12.172] — 2026-06-03
 
 ### Gewijzigd
