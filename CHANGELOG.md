@@ -6,6 +6,18 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.171] — 2026-06-03
+
+### Fixed
+- **Geen ruimte tussen Thema- en TP-templates-card in Instellingen** *(gemeld door Denny met screenshot)*
+  - **Oorzaak**: Layout-card en Thema-card hebben `marginTop:"16px"` op hun inner-wrap-div, maar TpTemplateManager wrap-card had alleen `marginBottom`, geen `marginTop`. Daardoor stond TP-templates direct tegen het Thema-card.
+  - **Fix**: `marginTop:"16px"` toegevoegd aan TpTemplateManager wrap-card, matchend met Layout/Thema spacing-patroon.
+
+### Test
+- Smoke groen + screenshot geverifieerd: duidelijke 16px gap tussen Thema en TP-templates
+
+---
+
 ## [v12.170] — 2026-06-03
 
 ### Fixed (Privacy-mode leak-audit)
