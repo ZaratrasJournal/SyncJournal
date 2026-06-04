@@ -6,6 +6,25 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.181] — 2026-06-04
+
+### Fixed
+- **Layer-Pattern + Tijd-van-dag bars: uniform left-aligned + 2-regel R-label** *(gemeld door Denny: "hier zijn de bars niet links zoals bij de andere bars — kan je dit overal in het document doen?")*
+
+  **Oorzaak**: in `PlaybookAnalyticsView` hadden 2 bar-secties nog de oude rendering met `justifyContent: isWin ? "flex-start" : "flex-end"` — positieve bars groeiden vanaf links, negatieve van rechts. Plus cryptische label `+0.8R · 50` (was al verbeterd in andere secties).
+
+  **Fix**:
+  - **Layer-Pattern** (regel ~10186) + **Tijd-van-dag (CET)** (regel ~10237): `justifyContent` swap verwijderd, bars groeien nu uniform vanaf links voor zowel positief als negatief (kleur signaleert teken).
+  - 2-regel R-label notatie (`+0.8R avg` boven, `50 trades` eronder) — matched met `RBar`/`RLabel` in Per Pair/Grade/Direction cards.
+  - Hover-tooltip op bar legt R-multiple uit (consistency).
+
+  **Globale audit**: grep door hele file voor `justifyContent.*?flex-end.*?flex-start` → enige overige hits zijn chat-bubble alignment in AI-coach (geen bars). Geen andere right-aligned bars meer in document.
+
+### Test
+- Smoke groen — pure CSS/JSX-wijziging op 2 bar-secties
+
+---
+
 ## [v12.180] — 2026-06-04
 
 ### Fixed
