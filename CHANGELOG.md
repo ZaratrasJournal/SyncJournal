@@ -6,6 +6,36 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.178] — 2026-06-04
+
+### Gewijzigd (UX fase 5d — equity-curve consolidatie afgerond)
+- **DashboardPremium equity-curve** vervangen door SyncEquityCurve (laatste caller van oude EquityCurveChart). DD-pill rechtsboven naast HIGH/END labels (compact "● DD"). State persisted in `tj_premium_dd`.
+
+### Verwijderd
+- **Oude Chart.js `DashboardEquityChart` function** (~30 regels) — geen callers meer
+- **Oude Chart.js `EquityCurveChart` function** (~25 regels) — alle callers vervangen
+
+### Effect
+- **Eén consistente equity-curve** door de hele app: Dashboard, Review, DashboardPremium, Playbook-cards, Tendency-cards. Allemaal via `SyncEquityCurve` met de clean defaults (smooth, geen HWM, subtle grid, drawdown via pill).
+- **Chart.js library** blijft staan — nog 4 niet-equity charts gebruiken het (RMultDist, MistakeImpact, RollingEdge, TradeReport PDF charts). Library-verwijdering buiten scope.
+
+### Regressie-validatie
+- Smoke groen
+- Themes: 6/6 thema's groen
+- Backup-bewaker: 11/11 groen
+- Blofin partial-close + andere kritieke tests: groen
+- Geen regressies door v12.175-v12.178 wijzigingen
+
+### UX-fase 5 totaal-overzicht
+| Release | Wat |
+|---------|-----|
+| **v12.175** | EquityCurve.js inline + SyncEquityCurve wrapper + Dashboard equity (Variant A clean) |
+| **v12.176** | Review equity-curve naar SyncEquityCurve |
+| **v12.177** | Playbook + Tendency sparklines naar SyncEquityCurve mini-mode |
+| **v12.178** | DashboardPremium equity-curve + cleanup oude Chart.js code |
+
+---
+
 ## [v12.177] — 2026-06-04
 
 ### Gewijzigd (UX fase 5c — equity-curve consolidatie)
