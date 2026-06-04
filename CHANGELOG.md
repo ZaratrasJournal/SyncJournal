@@ -6,6 +6,26 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.180] — 2026-06-04
+
+### Fixed
+- **PlaybookCard: uniforme hoogte + geen status-kleur links** *(gemeld door Denny: "size van playbook-tegels niet gelijk + kleur status links geeft onrust")*
+
+  **Oorzaak**:
+  - Cards hadden `borderLeft: 3px solid statusColor` — groen voor active, amber voor testing, grijs voor retired. Plus de bestaande status-pill rechtsboven = dubbele status-signaal + visuele drukte.
+  - Variabele content (one-liner / aantal tags / sparkline / "Nog geen linked trades"-tekst) maakte cards verschillend hoog binnen dezelfde grid-rij.
+
+  **Fix**:
+  - **borderLeft verwijderd** — status-pill rechtsboven blijft enige status-signaal.
+  - **`display: flex; flex-direction: column; height: 100%`** op de card-root.
+  - **Spacer-div** (`flex: 1`) net vóór Trust-Score sectie zodat de progress-bar altijd onderaan blijft, ongeacht hoeveel content erboven staat.
+  - Grid wrapper-divs per card krijgen `height: 100%` zodat de card de hele cell vult. Plus `alignItems: stretch` op de grid.
+
+### Test
+- Smoke groen + 4-cards screenshot (Breakout A+ / Range Fade / Pullback Continuation Long / Retired Setup) — 3 cards in bovenste rij nu pixel-identiek hoog, Trust-Score onderaan uitgelijnd
+
+---
+
 ## [v12.179] — 2026-06-04
 
 ### Gewijzigd (UX fase 5e — alle equity-curves nu echt consistent)
