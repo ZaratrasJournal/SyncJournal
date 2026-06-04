@@ -6,6 +6,20 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.176] — 2026-06-04
+
+### Gewijzigd (UX fase 5b — equity-curve consolidatie)
+- **Review equity-curve** vervangen door SyncEquityCurve met clean defaults
+  - Oude `<EquityCurveChart line={eq}/>` (Chart.js) → `<SyncEquityCurve trades={trades}/>` (vanilla SVG)
+  - Same look-and-feel als Dashboard equity-curve (smooth, no HWM, subtle grid)
+  - DD-pill in card-header naast "EQUITY CURVE" label
+  - Drawdown-state persisted in `tj_review_dd` localStorage
+
+### Test
+- Smoke groen + visueel geverifieerd op Review-tab (curve van 02-01 tot 03-13, DD-pill rechts)
+
+---
+
 ## [v12.175] — 2026-06-04
 
 ### Toegevoegd (UX fase 5a — equity-curve consolidatie)

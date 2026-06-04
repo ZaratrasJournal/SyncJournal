@@ -1573,7 +1573,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.175",released:"2026-06-04"};
+const APP_VERSION={version:"v12.176",released:"2026-06-04"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -12206,6 +12206,9 @@ function ReviewDashboard({trades}){
   const{prefs:lp,toggle:lpToggle,reset:lpReset,setOrder}=useLayoutPrefs("review");
   const[lpOpen,setLpOpen]=useState(false);
   const[editMode,setEditMode]=useState(false);
+  // v12.176: drawdown-toggle persisted per-Review
+  const[ddOn,setDdOn]=useState(()=>{try{return localStorage.getItem("tj_review_dd")==="1"}catch{return false}});
+  const toggleDd=()=>{const next=!ddOn;setDdOn(next);try{localStorage.setItem("tj_review_dd",next?"1":"0")}catch{}};
   const LP_SECTIONS=[{label:"Secties",items:[{key:"scorecard",label:"Score card"},{key:"equityCurve",label:"Equity curve"},{key:"pnlPerDay",label:"PNL per dag"},{key:"donuts",label:"Donut grafieken"},{key:"streaks",label:"Streaks"},{key:"highlights",label:"Beste / Slechtste"}]}];
   const closed=trades.filter(t=>t.pnl!==""&&!isNaN(parseFloat(t.pnl)));
   if(!closed.length)return<EmptyState
@@ -12287,9 +12290,13 @@ function ReviewDashboard({trades}){
       </div>
     </div>)},
     equityChart:{visible:lp.equityCurve&&eq.length>1,render:()=>(
+      /* v12.176: vervangen door SyncEquityCurve met clean defaults + DD-pill. */
       <div style={sectStyle}>
-        <div style={{fontSize:"11px",color:"var(--gold)",textTransform:"uppercase",letterSpacing:"0.12em",fontWeight:700,marginBottom:"12px"}}>Equity curve</div>
-        <EquityCurveChart line={eq}/>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"12px"}}>
+          <div style={{fontSize:"11px",color:"var(--gold)",textTransform:"uppercase",letterSpacing:"0.12em",fontWeight:700}}>Equity curve</div>
+          <button onClick={toggleDd} title={ddOn?"Drawdown-strip uitzetten":"Drawdown-strip tonen"} style={{padding:"4px 10px",borderRadius:"999px",fontSize:"10px",fontWeight:600,border:`1px solid ${ddOn?"rgba(246,86,111,0.45)":"var(--border3)"}`,background:ddOn?"rgba(246,86,111,0.06)":"transparent",color:ddOn?"var(--red)":"var(--text4)",cursor:"pointer",fontFamily:"var(--mono)",letterSpacing:"0.04em",transition:".15s"}}><span style={{display:"inline-block",width:"5px",height:"5px",borderRadius:"50%",background:"currentColor",marginRight:"4px",verticalAlign:"middle"}}/>DRAWDOWN</button>
+        </div>
+        <SyncEquityCurve trades={trades} drawdown={ddOn} height="280px"/>
       </div>
     )},
     pnlPerDay:{visible:lp.pnlPerDay&&dailyPnl.length>0,render:()=>(
