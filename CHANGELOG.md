@@ -6,6 +6,19 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.188] — 2026-06-04
+
+### Fixed
+- **Dashboard "Account waarde" telde stale capital i.p.v. live equity** *(gemeld door Jordy in Discord: "balance van handmatige accounts wordt wel bijgewerkt bij settings, maar niet bij het dashboard")*
+
+  **Oorzaak**: het Dashboard las het oude `a.balance`-veld (= start-capital van het account) i.p.v. de echte equity (capital + mutaties + trade-PnL). Settings → Accounts toonde dus $24.396 EQUITY terwijl het Dashboard $20.000 als ACCOUNT WAARDE liet zien — diezelfde stale capital deed `+10.000 → $10.000 / +10.000 → $10.000` zonder ooit de stortingen, opnames of gerealiseerde winst van gesloten trades mee te tellen.
+
+  **Fix**: Dashboard rekent nu `equity = computeAccountCapital(transactions) + sumTradePnl(closed, account.name)` — exact dezelfde helpers die Settings ook gebruikt. Geldt voor het totaal in de header én voor het per-account regeltje rechts. Legacy accounts zonder `transactions`-array vallen terug op het oude `a.balance`-veld zodat hun startwaarde niet plots op $0 valt.
+
+  **Effect**: stortingen / opnames / correcties via de Settings → Accounts knoppen + alle gesloten trades op dat account werken nu direct door in de Dashboard-header. Geen refresh of re-import nodig.
+
+---
+
 ## [v12.187] — 2026-06-04
 
 ### Fixed

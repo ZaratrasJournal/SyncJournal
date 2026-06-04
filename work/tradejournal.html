@@ -1573,7 +1573,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.187",released:"2026-06-04"};
+const APP_VERSION={version:"v12.188",released:"2026-06-04"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -4272,7 +4272,15 @@ function Dashboard({trades,config,accounts,storageUsage,setFilters,setTab}){
     {/* Portfolio waarde header */}
     {(()=>{
       const exColors2={"mexc":"#00b897","blofin":"#6366f1","kraken":"#7b61ff"};
-      const manualBal=(accounts||[]).reduce((s,a)=>s+a.balance,0);
+      // v12.188 fix: gebruik live equity (capital + mutaties + trade-PnL) i.p.v. stale a.balance.
+      // Settings toonde al de juiste equity; Dashboard liep achter zodra een handmatige mutatie
+      // (storting/opname/correctie) of een gesloten trade het account-saldo bewoog.
+      // Fallback naar a.balance voor legacy accounts zonder transactions-array.
+      const accountEquity=a=>{
+        const cap=(a.transactions&&a.transactions.length)?computeAccountCapital(a.transactions):(parseFloat(a.balance)||0);
+        return cap+sumTradePnl(closed,a.name);
+      };
+      const manualBal=(accounts||[]).reduce((s,a)=>s+accountEquity(a),0);
       const totalBal=balances?Object.values(balances).reduce((s,v)=>s+v,0)+manualBal:((accounts||[]).length>0?manualBal:null);
       return(<div style={{background:"rgba(201,168,76,0.04)",borderRadius:"var(--radius-lg)",padding:"20px 24px",marginBottom:"1.5rem",border:"1px solid rgba(201,168,76,0.15)"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
@@ -4296,7 +4304,7 @@ function Dashboard({trades,config,accounts,storageUsage,setFilters,setTab}){
               <div key={a.id} style={{display:"flex",alignItems:"center",gap:"8px",justifyContent:"flex-end",marginBottom:"4px"}}>
                 <span style={{fontSize:"12px"}}>✏️</span>
                 <span style={{fontSize:"11px",color:"var(--text3)"}}>{a.name}</span>
-                <span style={{fontSize:"13px",fontFamily:"var(--mono)",fontWeight:600,color:"var(--text)"}}>{priv?"$***,**":`$${fmt(a.balance)}`}</span>
+                <span style={{fontSize:"13px",fontFamily:"var(--mono)",fontWeight:600,color:"var(--text)"}}>{priv?"$***,**":`$${fmt(accountEquity(a))}`}</span>
               </div>
             ))}
             {balances&&<button onClick={fetchBalances} disabled={balLoading} style={{marginTop:"6px",fontSize:"9px",padding:"3px 8px",borderRadius:"4px",border:"1px solid var(--border3)",background:"transparent",color:"var(--text4)",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:"4px",marginLeft:"auto"}}>{balLoading?<span className="spinner" style={{width:"10px",height:"10px"}}/>:"⟳"} Ververs</button>}
