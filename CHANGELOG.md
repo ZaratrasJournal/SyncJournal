@@ -6,6 +6,31 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.183] — 2026-06-04
+
+### Fixed
+- **Edge-Breakdown bars + Per Confirmation-tag card** *(gemeld door Denny: "bars beginnen ook hier weer in het midden · rechter gedeelte niet duidelijk leesbaar")*
+
+  **Edge-Breakdown bars** (Per dag / Per grade / Per sessie):
+  - **Was**: divergent bar met center-lijn op 50% — positief groeide rechts, negatief links. Verwarrend en inconsistent met alle andere bars in de app.
+  - **Nu**: uniform vanaf links. Bar-lengte = magnitude, kleur signaleert teken. Same look-and-feel als Layer-Pattern, Tijd-van-dag, Performance Per Pair, etc.
+  - Bar-hoogte 6 → 8px, met border voor betere zichtbaarheid in light themas.
+  - Hover-tooltip met volledige info.
+
+  **Per Confirmation-tag card** (rechter card "MET VS ZONDER"):
+  - **Was**: 2-koloms layout met groene + rode tinted boxes naast elkaar (mét/zonder), losse Δ-regel onderaan. Niet duidelijk wat "mét"/"zonder" betekenden, kleuren hardcoded ongeacht teken.
+  - **Nu**: per tag een **stacked layout**:
+    - Tag-naam prominent + delta-badge rechts (`-0.25R delta`)
+    - Visuele bar die magnitude van delta toont (kleur per teken)
+    - 2 sub-regels: `met deze tag: +0.47R · 150 trades` / `zonder deze tag: +0.72R · 150 trades`
+    - Kleuren nu **per R-teken** (positief = groen, negatief = rood) — niet hardcoded per "met/zonder" positie
+  - Card-header subtitle uitleg: *"Verschil in R-multiple wanneer je deze tag wel of niet had bij entry. Positief = tag voegt edge toe."*
+
+### Test
+- Smoke groen + visueel geverifieerd met seed-playbook (300 trades, varied confirmation-tags)
+
+---
+
 ## [v12.182] — 2026-06-04
 
 ### Gewijzigd

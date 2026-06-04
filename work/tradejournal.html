@@ -1573,7 +1573,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.182",released:"2026-06-04"};
+const APP_VERSION={version:"v12.183",released:"2026-06-04"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -9175,6 +9175,9 @@ function PlaybookDetailModal({pb,allTrades,setFilters,setTab,onClose,onEdit,onDe
           <PDH icon="🎯" title="Edge-breakdown" hint="waar zit jouw voordeel?"/>
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(280px,1fr))",gap:14}}>
             {(()=>{
+              /* v12.183: divergent bar (vanuit midden) → uniform LEFT-ALIGNED matching
+                 alle andere bars in app (Layer-Pattern, Tijd-van-dag, Per Pair etc).
+                 Bar groeit altijd van links, kleur signaleert teken. */
               const Card=({title,rows,bestInsight})=>{
                 if(!rows||rows.length===0)return null;
                 const max=Math.max(...rows.map(r=>Math.abs(r.avgR)),0.5);
@@ -9182,12 +9185,11 @@ function PlaybookDetailModal({pb,allTrades,setFilters,setTab,onClose,onEdit,onDe
                   <h4 style={{margin:"0 0 10px",fontSize:11,fontFamily:"var(--mono)",fontWeight:700,letterSpacing:".1em",textTransform:"uppercase",color:"var(--text3)"}}>{title}</h4>
                   {rows.map(r=>{
                     const isPos=r.avgR>=0;
-                    const fillW=Math.min(50,(Math.abs(r.avgR)/max)*50);
-                    return(<div key={r.label} style={{display:"grid",gridTemplateColumns:"100px 1fr 60px 50px",gap:10,alignItems:"center",padding:"6px 0",fontSize:12,borderTop:"1px solid var(--border2)"}}>
+                    const fillW=Math.min(95,Math.max(4,(Math.abs(r.avgR)/max)*95));
+                    return(<div key={r.label} title={`${r.label}: gemiddeld ${isPos?"+":""}${r.avgR.toFixed(2)}R per trade · ${r.n} trades · ${r.wr.toFixed(0)}% WR`} style={{display:"grid",gridTemplateColumns:"60px 1fr 64px 56px",gap:10,alignItems:"center",padding:"7px 0",fontSize:12,borderTop:"1px solid var(--border2)",cursor:"help"}}>
                       <span style={{color:"var(--text2)",fontWeight:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{r.label}</span>
-                      <div style={{height:6,background:"var(--bg4)",borderRadius:3,overflow:"hidden",position:"relative"}}>
-                        <div style={{position:"absolute",top:0,left:"50%",width:1,height:"100%",background:"var(--text5)"}}/>
-                        <div style={{position:"absolute",top:0,height:"100%",width:fillW+"%",background:isPos?"var(--green)":"var(--red)",[isPos?"left":"right"]:"50%",borderRadius:3}}/>
+                      <div style={{height:8,background:"var(--bg4)",borderRadius:4,overflow:"hidden",position:"relative",border:"1px solid var(--border1)"}}>
+                        <div style={{height:"100%",width:fillW+"%",background:isPos?"var(--green)":"var(--red)",opacity:0.75,borderRadius:3}}/>
                       </div>
                       <span style={{fontFamily:"var(--mono)",fontWeight:700,textAlign:"right",fontSize:12.5,color:isPos?"var(--green)":"var(--red)"}}>{isPos?"+":""}{r.avgR.toFixed(2)}R</span>
                       <span style={{fontFamily:"var(--mono)",textAlign:"right",fontSize:10.5,color:"var(--text4)"}}>{r.n}·{r.wr.toFixed(0)}%</span>
@@ -9212,18 +9214,34 @@ function PlaybookDetailModal({pb,allTrades,setFilters,setTab,onClose,onEdit,onDe
                 const insight=`Hogere grades = betere R. ${sorted[0].label} = ${sorted[0].avgR>=0?"+":""}${sorted[0].avgR.toFixed(2)}R, ${sorted[sorted.length-1].label} = ${sorted[sorted.length-1].avgR.toFixed(2)}R.`;
                 out.push(<Card key="grade" title="Per grade (A+/A/B/C)" rows={edge.byGrade} bestInsight={insight}/>);
               }
+              /* v12.183: Per confirmation-tag card herontworpen — was 2-kolom met getinted
+                  boxes "mét/zonder" + losse Δ-regel = onduidelijk + rommelig.
+                  Nu: tag-naam prominent + 2-regel sub-data (mét vs zonder)
+                  + visuele bar die "extra R" toont. Labels in volzin ipv mono-codenotatie. */
               if(edge.byConfirmation.length>0){
+                const maxDelta=Math.max(...edge.byConfirmation.map(c=>Math.abs(c.with.avgR-c.without.avgR)),0.3);
                 out.push(<div key="conf" style={{background:"var(--bg3)",border:"1px solid var(--border1)",borderRadius:10,padding:"14px 16px"}}>
-                  <h4 style={{margin:"0 0 10px",fontSize:11,fontFamily:"var(--mono)",fontWeight:700,letterSpacing:".1em",textTransform:"uppercase",color:"var(--text3)"}}>Per confirmation-tag (mét vs zonder)</h4>
-                  {edge.byConfirmation.map(c=>{
+                  <h4 style={{margin:"0 0 4px",fontSize:11,fontFamily:"var(--mono)",fontWeight:700,letterSpacing:".1em",textTransform:"uppercase",color:"var(--text3)"}}>Per confirmation-tag</h4>
+                  <div style={{fontSize:10.5,color:"var(--text5)",marginBottom:10,fontStyle:"italic",lineHeight:1.5}}>Verschil in R-multiple wanneer je deze tag wel of niet had bij entry. Positief = tag voegt edge toe.</div>
+                  {edge.byConfirmation.map((c,idx)=>{
                     const delta=c.with.avgR-c.without.avgR;
-                    return(<div key={c.label} style={{padding:"8px 0",borderTop:"1px solid var(--border2)"}}>
-                      <div style={{fontSize:12,color:"var(--text2)",fontWeight:600,marginBottom:4}}>{c.label}</div>
-                      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,fontSize:11,fontFamily:"var(--mono)"}}>
-                        <div style={{padding:"4px 8px",background:"var(--green-dim)",border:"1px solid var(--green-border)",borderRadius:4}}><span style={{color:"var(--text4)"}}>mét: </span><strong style={{color:"var(--green)"}}>{c.with.avgR>=0?"+":""}{c.with.avgR.toFixed(2)}R</strong> <span style={{color:"var(--text5)"}}>· {c.with.n}</span></div>
-                        <div style={{padding:"4px 8px",background:"var(--red-dim)",border:"1px solid var(--red-border)",borderRadius:4}}><span style={{color:"var(--text4)"}}>zonder: </span><strong style={{color:"var(--red)"}}>{c.without.avgR>=0?"+":""}{c.without.avgR.toFixed(2)}R</strong> <span style={{color:"var(--text5)"}}>· {c.without.n}</span></div>
+                    const deltaPos=delta>=0;
+                    const fillW=Math.min(95,Math.max(8,(Math.abs(delta)/maxDelta)*95));
+                    return(<div key={c.label} style={{padding:"12px 0",borderTop:idx===0?"none":"1px solid var(--border2)"}}>
+                      {/* Tag-naam + delta-badge in 1 rij */}
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:8,marginBottom:8}}>
+                        <span style={{fontSize:13,color:"var(--text)",fontWeight:700}}>{c.label}</span>
+                        <span style={{fontSize:13,fontFamily:"var(--mono)",fontWeight:700,color:deltaPos?"var(--green)":"var(--red)",whiteSpace:"nowrap"}}>{deltaPos?"+":""}{delta.toFixed(2)}R<span style={{fontSize:9,color:"var(--text5)",fontWeight:500,marginLeft:3}}>delta</span></span>
                       </div>
-                      <div style={{fontSize:10.5,color:"var(--gold)",fontFamily:"var(--mono)",marginTop:4}}>Δ {delta>=0?"+":""}{delta.toFixed(2)}R per trade</div>
+                      {/* Visuele bar — kleur per teken, lengte = magnitude delta */}
+                      <div style={{height:6,background:"var(--bg4)",borderRadius:3,overflow:"hidden",border:"1px solid var(--border1)",marginBottom:8}}>
+                        <div style={{height:"100%",width:fillW+"%",background:deltaPos?"var(--green)":"var(--red)",opacity:0.75,borderRadius:2}}/>
+                      </div>
+                      {/* Sub-data 2-regel ipv 2-kolom — kleur per R-teken, niet hardcoded */}
+                      <div style={{fontSize:11,color:"var(--text3)",lineHeight:1.6,fontFamily:"var(--mono)"}}>
+                        <div>met deze tag: <strong style={{color:c.with.avgR>=0?"var(--green)":"var(--red)"}}>{c.with.avgR>=0?"+":""}{c.with.avgR.toFixed(2)}R</strong> <span style={{color:"var(--text5)"}}>· {c.with.n} trades</span></div>
+                        <div>zonder deze tag: <strong style={{color:c.without.avgR>=0?"var(--green)":"var(--red)"}}>{c.without.avgR>=0?"+":""}{c.without.avgR.toFixed(2)}R</strong> <span style={{color:"var(--text5)"}}>· {c.without.n} trades</span></div>
+                      </div>
                     </div>);
                   })}
                 </div>);
