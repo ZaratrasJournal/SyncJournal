@@ -1573,7 +1573,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.176",released:"2026-06-04"};
+const APP_VERSION={version:"v12.177",released:"2026-06-04"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -8067,26 +8067,12 @@ function tendencyRecommendation(t){
   return"Blijf monitoren — meer data nodig voor een harde regel.";
 }
 
+// v12.177 (UX fase 5c): vervangen door SyncEquityCurve in mini-mode voor consistente
+// look met Dashboard/Review equity-curves. Oude SVG-impl met dashed zero-line en
+// rood-bij-verlies kleur is weg — mini default is pure groene curve, drawdown uit.
 function TendencySparkline({trades}){
-  if(trades.length<2)return null;
-  const sorted=[...trades].sort((a,b)=>((a.date||"")+(a.time||"")).localeCompare((b.date||"")+(b.time||"")));
-  let cum=0;const pts=sorted.map(t=>{cum+=netPnl(t);return cum;});
-  const min=Math.min(0,...pts),max=Math.max(0,...pts);
-  const range=max-min||1;
-  const W=320,H=32,pad=2;
-  const xy=(i,v)=>[(i/(pts.length-1))*W,H-pad-((v-min)/range)*(H-pad*2)];
-  const linePts=pts.map((v,i)=>xy(i,v));
-  const linePath=linePts.map((p,i)=>(i?"L":"M")+p[0].toFixed(1)+","+p[1].toFixed(1)).join(" ");
-  const areaPath=linePath+` L ${W},${H} L 0,${H} Z`;
-  const isUp=pts[pts.length-1]>=0;
-  const color=isUp?"var(--green)":"var(--red)";
-  const colorRgba=isUp?"rgba(46,170,111,0.18)":"rgba(224,85,85,0.18)";
-  const zeroY=xy(0,0)[1].toFixed(1);
-  return(<svg width="100%" height="32" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{display:"block"}}>
-    <line x1="0" y1={zeroY} x2={W} y2={zeroY} stroke="rgba(255,255,255,0.1)" strokeDasharray="2,3"/>
-    <path d={areaPath} fill={colorRgba}/>
-    <path d={linePath} fill="none" stroke={color} strokeWidth="1.4" strokeLinejoin="round" vectorEffect="non-scaling-stroke"/>
-  </svg>);
+  if(!trades||trades.length<2)return null;
+  return<SyncEquityCurve trades={trades} size="mini" drawdown={false} aggregateDaily={false} height="100%"/>;
 }
 
 // ─── SetupSessionMatrix — heatmap-tabel die elke setup uitsplitst over de 8
@@ -8366,23 +8352,11 @@ function playbookMissedStats(pb,allTrades,subTypeFilter){
   };
 }
 
-// Playbook sparkline (cum R over tijd) — hergebruikt patroon van TendencySparkline
+// v12.177: Playbook sparkline ook naar SyncEquityCurve mini-mode. Was cum-R per trade,
+// nu cum-PnL voor consistency met de rest van de app. Pure groene curve, drawdown uit.
 function PlaybookSparkline({trades}){
   if(!trades||trades.length<2)return null;
-  const sorted=[...trades].sort((a,b)=>((a.date||"")+(a.time||"")).localeCompare((b.date||"")+(b.time||"")));
-  let cum=0;const pts=sorted.map(t=>{cum+=_trR(t);return cum;});
-  const min=Math.min(0,...pts),max=Math.max(0,...pts);const range=max-min||1;
-  const W=320,H=32,pad=2;
-  const xy=(i,v)=>[(i/(pts.length-1))*W,H-pad-((v-min)/range)*(H-pad*2)];
-  const linePath=pts.map((v,i)=>{const[x,y]=xy(i,v);return(i?"L":"M")+x.toFixed(1)+","+y.toFixed(1);}).join(" ");
-  const areaPath=linePath+` L ${W},${H} L 0,${H} Z`;
-  const isUp=pts[pts.length-1]>=0;
-  const color=isUp?"var(--green)":"var(--red)";
-  const colorRgba=isUp?"rgba(46,170,111,0.18)":"rgba(224,85,85,0.18)";
-  return(<svg width="100%" height="32" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{display:"block"}}>
-    <path d={areaPath} fill={colorRgba}/>
-    <path d={linePath} fill="none" stroke={color} strokeWidth="1.4" strokeLinejoin="round" vectorEffect="non-scaling-stroke"/>
-  </svg>);
+  return<SyncEquityCurve trades={trades} size="mini" drawdown={false} aggregateDaily={false} height="100%"/>;
 }
 
 // SVG histogram (20 × 5%-bins) voor missed-trades. Reflects demo design.

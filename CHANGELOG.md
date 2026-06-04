@@ -6,6 +6,21 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.177] — 2026-06-04
+
+### Gewijzigd (UX fase 5c — equity-curve consolidatie)
+- **PlaybookSparkline + TendencySparkline** vervangen door SyncEquityCurve in `size='mini'`
+  - Eén consistente look door de hele app (Dashboard / Review / Playbook / Tendencies)
+  - PlaybookSparkline switcht van cum-R-multiple naar cum-PnL (consistency boven specificity)
+  - Default `drawdown:false` = pure groene curve, geen rood-bij-verlies kleur switch meer
+  - `aggregateDaily:false` voor sparklines — alle trades als individuele punten zichtbaar
+  - Externe wrap-divs (`height:36px` / `height:48px`) blijven het hoog-formaat aansturen
+
+### Test
+- Smoke groen + visueel geverifieerd op Playbook (Breakout A+ card met smooth groene sparkline)
+
+---
+
 ## [v12.176] — 2026-06-04
 
 ### Gewijzigd (UX fase 5b — equity-curve consolidatie)
