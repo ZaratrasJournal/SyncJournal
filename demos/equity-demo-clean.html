@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>EquityCurve · Clean · SyncJournal</title>
+  <style>
+    :root {
+      --bg: #0a0c12;
+      --bg2: #0e151d;
+      --bg3: #131a24;
+      --border: rgba(120,140,160,0.16);
+      --border-soft: rgba(120,140,160,0.08);
+      --text: #c9d3e0;
+      --text-dim: #8995a6;
+      --text-mute: #56657a;
+      --green: #34d8a0;
+      --green-bright: #4ee8b0;
+      --gold: #e0b341;
+      --red: #f6566f;
+    }
+    * { box-sizing: border-box; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      padding: 32px 24px 80px;
+      margin: 0;
+      line-height: 1.5;
+    }
+    header { max-width: 1280px; margin: 0 auto 32px; }
+    section { max-width: 1280px; margin: 0 auto 40px; }
+    h1 { font-size: 26px; color: var(--green-bright); margin: 0 0 6px; letter-spacing: -0.01em; }
+    h2 {
+      font-size: 13px; color: var(--gold); text-transform: uppercase; letter-spacing: 0.14em;
+      font-weight: 700; margin: 0 0 14px;
+      padding-bottom: 10px; border-bottom: 1px solid var(--border);
+    }
+    h2 .num { color: var(--text-mute); margin-right: 10px; font-family: 'JetBrains Mono', monospace; }
+    p.lead { color: var(--text-dim); max-width: 880px; font-size: 14px; margin: 0 0 18px; }
+    p.lead code { background: rgba(120,140,160,0.12); padding: 1px 6px; border-radius: 4px;
+      font: 600 12px 'JetBrains Mono', monospace; color: var(--gold); }
+    p.lead strong { color: var(--text); }
+    .grid { display: grid; gap: 18px; }
+    .grid-3 { grid-template-columns: 1fr 1fr 1fr; }
+    .grid-2 { grid-template-columns: 1fr 1fr; }
+    .grid-5 { grid-template-columns: repeat(5, 1fr); }
+    @media (max-width: 1100px) {
+      .grid-3, .grid-5 { grid-template-columns: 1fr 1fr; }
+      .grid-2 { grid-template-columns: 1fr; }
+    }
+    .card {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 18px;
+      position: relative;
+    }
+    .card-label {
+      font-size: 10.5px; color: var(--gold); text-transform: uppercase;
+      letter-spacing: 0.12em; font-weight: 700;
+      margin-bottom: 12px;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .card-label .ex { font-family: 'JetBrains Mono', monospace; font-size: 11px; }
+
+    /* === Subtiele drawdown-pill: dichtbij de chart, klein, niet schreeuwerig === */
+    .dd-pill {
+      font: 600 10px 'JetBrains Mono', monospace;
+      color: var(--text-mute);
+      background: transparent;
+      border: 1px solid var(--border);
+      padding: 3px 10px;
+      border-radius: 999px;
+      cursor: pointer;
+      transition: .15s;
+      letter-spacing: 0.04em;
+      text-transform: none;
+    }
+    .dd-pill:hover { color: var(--text-dim); border-color: rgba(120,140,160,0.32); }
+    .dd-pill.active {
+      color: var(--red);
+      border-color: rgba(246,86,111,0.45);
+      background: rgba(246,86,111,0.06);
+    }
+    .dd-pill .dot {
+      display: inline-block; width: 5px; height: 5px; border-radius: 50%;
+      background: currentColor; margin-right: 4px; vertical-align: middle;
+    }
+
+    .toggle-bar {
+      display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px;
+    }
+    .toggle-bar button {
+      padding: 6px 12px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text);
+      border-radius: 8px;
+      cursor: pointer;
+      font: 600 12px system-ui, sans-serif;
+      transition: .15s;
+    }
+    .toggle-bar button:hover { border-color: rgba(120,140,160,0.32); }
+    .toggle-bar button.active {
+      background: rgba(52,216,160,0.08);
+      border-color: rgba(52,216,160,0.5);
+      color: var(--green-bright);
+    }
+    .chart-host { background: #080b10; border-radius: 10px; padding: 6px; }
+    .h-large { height: 380px; }
+    .h-panel { height: 240px; }
+    .h-panel-sm { height: 180px; }
+    .h-mini { height: 60px; }
+    .meta {
+      font-size: 11px; color: var(--text-dim); font-family: 'JetBrains Mono', monospace;
+      padding: 8px 12px; background: rgba(120,140,160,0.05); border-radius: 6px;
+      margin-top: 10px; line-height: 1.5;
+    }
+    .badge {
+      display: inline-block; padding: 2px 8px; border-radius: 10px;
+      font-size: 10px; font-weight: 700; letter-spacing: 0.06em;
+      text-transform: uppercase; margin-right: 6px;
+    }
+    .badge-A { background: rgba(52,216,160,0.12); color: var(--green-bright); }
+    .badge-D { background: rgba(224,179,65,0.12); color: var(--gold); }
+    .badge-rich { background: rgba(120,140,160,0.12); color: var(--text-dim); }
+    .badge-clean { background: rgba(52,216,160,0.12); color: var(--green-bright); }
+    .badge-ultra { background: rgba(224,179,65,0.12); color: var(--gold); }
+    .recommendation {
+      background: rgba(52,216,160,0.08);
+      border-left: 3px solid var(--green);
+      padding: 12px 16px;
+      border-radius: 8px;
+      margin: 14px 0;
+      font-size: 13px;
+    }
+    .recommendation strong { color: var(--green-bright); }
+    .pill-row { display: flex; gap: 6px; align-items: center; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>📈 EquityCurve · Clean</h1>
+  <p class="lead">
+    Op basis van je feedback: drawdown standaard <strong>UIT</strong>, geen HWM-stippellijn, geen dashed grid, smooth curves. Plus een subtiele <span class="dd-pill" style="cursor:default"><span class="dot"></span>DD</span> toggle ernaast die je per chart kunt aanklikken.
+  </p>
+  <p class="lead">
+    <strong>Sectie 1</strong> toont 3 stijl-niveaus naast elkaar (rich / clean / ultra-minimal) zodat je kunt vergelijken. Andere secties gebruiken de "clean" defaults.
+  </p>
+</header>
+
+<!-- ============================================================ -->
+<!-- 1. STIJL-NIVEAUS — referentie + 2 clean varianten             -->
+<!-- ============================================================ -->
+<section>
+  <h2><span class="num">1.</span>Drie stijl-niveaus — kies welke je het schoonst vindt</h2>
+  <p class="lead">
+    Dezelfde data, drie defaults. <strong>Rich</strong> = vorige demo (drawdown aan, HWM-lijn, dashed grid). <strong>Clean</strong> = smooth curve, subtle solid grid, geen HWM, drawdown uit. <strong>Ultra-minimal</strong> = smooth curve, geen grid, geen HWM, drawdown uit.
+  </p>
+  <div class="grid grid-3">
+    <div class="card">
+      <div class="card-label">
+        <span><span class="badge badge-rich">RICH</span>Vorige default</span>
+      </div>
+      <div id="s1-rich" class="chart-host h-large"></div>
+      <div class="meta">drawdown: true · hwm: true · sharp + dashed grid</div>
+    </div>
+    <div class="card">
+      <div class="card-label">
+        <span><span class="badge badge-clean">CLEAN</span>Nieuwe default</span>
+      </div>
+      <div id="s1-clean" class="chart-host h-large"></div>
+      <div class="meta">drawdown: false · hwm: false · smooth + subtle grid</div>
+    </div>
+    <div class="card">
+      <div class="card-label">
+        <span><span class="badge badge-ultra">ULTRA</span>Minimal</span>
+      </div>
+      <div id="s1-ultra" class="chart-host h-large"></div>
+      <div class="meta">drawdown: false · hwm: false · smooth · geen grid</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- 2. SUBTIELE DRAWDOWN-TOGGLE                                   -->
+<!-- ============================================================ -->
+<section>
+  <h2><span class="num">2.</span>Subtiele drawdown-toggle</h2>
+  <p class="lead">
+    Drawdown standaard uit. Kleine pill-knop rechts in de card-header — klik om aan/uit. Niet prominent, niet afleidend. Geen wijziging als 'm uit blijft staan.
+  </p>
+  <div class="card">
+    <div class="card-label">
+      <span>📊 Equity curve · clean default</span>
+      <button class="dd-pill" id="dd-pill-main"><span class="dot"></span>DRAWDOWN</button>
+    </div>
+    <div id="s2-main" class="chart-host h-large"></div>
+    <div class="meta">Pill activeert <code>chart.setDrawdown(true)</code> · default rendert pure curve</div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- 3. PRIVACY                                                    -->
+<!-- ============================================================ -->
+<section>
+  <h2><span class="num">3.</span>Privacy-mode integratie</h2>
+  <p class="lead">
+    Met <code>formatValue</code> patch. Bedragen maskeren naar <code>$***</code> op y-as + tooltip. Pure curve blijft zichtbaar — geen extra UI-clutter.
+  </p>
+  <div class="toggle-bar">
+    <button id="priv-off" class="active">Privacy UIT</button>
+    <button id="priv-on">Privacy AAN ($***)</button>
+  </div>
+  <div class="card">
+    <div class="card-label">
+      <span>🔒 Privacy + clean</span>
+      <button class="dd-pill" id="dd-pill-priv"><span class="dot"></span>DRAWDOWN</button>
+    </div>
+    <div id="s3-priv" class="chart-host h-large"></div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- 4. USD / BTC                                                  -->
+<!-- ============================================================ -->
+<section>
+  <h2><span class="num">4.</span>USD ↔ BTC unit-toggle</h2>
+  <p class="lead">Data + symbol omschakeling. Pure curve blijft, geen visuele rommel.</p>
+  <div class="toggle-bar">
+    <button id="unit-usd" class="active">$ USD</button>
+    <button id="unit-btc">₿ BTC</button>
+  </div>
+  <div class="card">
+    <div class="card-label">
+      <span>💱 Unit · clean</span>
+      <button class="dd-pill" id="dd-pill-unit"><span class="dot"></span>DRAWDOWN</button>
+    </div>
+    <div id="s4-unit" class="chart-host h-large"></div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- 5. AGGREGATIE                                                 -->
+<!-- ============================================================ -->
+<section>
+  <h2><span class="num">5.</span>Aggregatie: per trade vs per dag</h2>
+  <p class="lead">
+    Beide clean default. Per-dag-aggregatie wordt nog rustiger zonder de visuele drukte van strip + grid. Mijn advies blijft: <strong>per dag standaard</strong>.
+  </p>
+  <div class="grid grid-2">
+    <div class="card">
+      <div class="card-label">
+        <span><span class="badge badge-rich">PER TRADE</span>245 punten</span>
+        <button class="dd-pill" data-toggle="agg-trade"><span class="dot"></span>DRAWDOWN</button>
+      </div>
+      <div id="s5-trade" class="chart-host h-large"></div>
+    </div>
+    <div class="card">
+      <div class="card-label">
+        <span><span class="badge badge-clean">PER DAG</span>~140 punten</span>
+        <button class="dd-pill" data-toggle="agg-day"><span class="dot"></span>DRAWDOWN</button>
+      </div>
+      <div id="s5-day" class="chart-host h-large"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- 6. VARIANT A — chip-filter                                    -->
+<!-- ============================================================ -->
+<section>
+  <h2><span class="num">6.</span><span class="badge badge-A">Variant A</span>Multi-account · chips filteren</h2>
+  <p class="lead">Eén totaal-curve, chips filteren welke exchanges meetellen. Clean default — geen drawdown, geen HWM. Pill in de card-header voor wanneer je drawdown wel wil zien.</p>
+  <div class="toggle-bar" id="chips-A">
+    <button data-ex="blofin" class="active">● Blofin</button>
+    <button data-ex="mexc" class="active">● MEXC</button>
+    <button data-ex="hyperliquid" class="active">● Hyperliquid</button>
+    <button data-ex="kraken" class="active">● Kraken</button>
+    <button data-ex="ftmo" class="active">● FTMO</button>
+  </div>
+  <div class="card">
+    <div class="card-label">
+      <span>🟢 Totaal · clean</span>
+      <button class="dd-pill" id="dd-pill-A"><span class="dot"></span>DRAWDOWN</button>
+    </div>
+    <div id="s6-multiA" class="chart-host h-large"></div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- 7. VARIANT D — per-exchange panels                            -->
+<!-- ============================================================ -->
+<section>
+  <h2><span class="num">7.</span><span class="badge badge-D">Variant D</span>Multi-account · per-exchange panels</h2>
+  <p class="lead">Per-exchange in eigen panel, eigen accent-kleur. Totaal-curve eronder. Alles clean — geen overlay-spaghetti, geen drukte.</p>
+  <div class="grid grid-5" style="margin-bottom: 14px;">
+    <div class="card"><div class="card-label" style="color:#4ee8b0">● BLOFIN</div><div id="s7-blofin" class="chart-host h-panel-sm"></div></div>
+    <div class="card"><div class="card-label" style="color:#b4a4e0">● MEXC</div><div id="s7-mexc" class="chart-host h-panel-sm"></div></div>
+    <div class="card"><div class="card-label" style="color:#94c4e0">● HYPERLIQUID</div><div id="s7-hyperliquid" class="chart-host h-panel-sm"></div></div>
+    <div class="card"><div class="card-label" style="color:#f0c361">● KRAKEN</div><div id="s7-kraken" class="chart-host h-panel-sm"></div></div>
+    <div class="card"><div class="card-label" style="color:#c4a0d8">● FTMO</div><div id="s7-ftmo" class="chart-host h-panel-sm"></div></div>
+  </div>
+  <div class="card">
+    <div class="card-label">
+      <span style="color: var(--green-bright)">● TOTAAL ALLE EXCHANGES</span>
+      <button class="dd-pill" id="dd-pill-Dtotal"><span class="dot"></span>DRAWDOWN</button>
+    </div>
+    <div id="s7-total" class="chart-host h-large"></div>
+  </div>
+  <div class="recommendation">
+    <strong>Vergelijk met sectie 6 (variant A)</strong>: welke vind je clean/rustiger? Mijn voorkeur blijft variant A — minder schermreal-estate, één visueel zwaartepunt.
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section>
+  <h2><span class="num">∞</span>Wat is "clean" in deze demo</h2>
+  <p class="lead">
+    <strong>Drawdown</strong>: <code>drawdown: false</code> default. Pill activeert <code>setDrawdown(true)</code> tijdelijk.<br>
+    <strong>Geen HWM-stippellijn</strong>: <code>hwm: false</code>. De gouden stippellijn langs pieken weg.<br>
+    <strong>Smooth curves</strong>: <code>smooth: true</code>. Bezier-paden ipv hoekige segmenten. Plus: bij smooth wordt het grid <strong>solid</strong> (geen dashed).<br>
+    <strong>Subtle grid</strong>: theme-override met lichte transparency. Optie ultra-minimal: <code>theme.grid: 'transparent'</code> = volledig geen grid-lijnen.<br>
+    <strong>Geen moving average</strong>: <code>movingAverage: false</code>. Eén lijn, niet twee.
+  </p>
+</section>
+
+<script src="../grafieken/equity-curve.js"></script>
+<script>
+'use strict';
+
+// === Seeded trade data (zelfde als equity-demo.html) ============
+
+function seedRandom(seed) {
+  return function() { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; };
+}
+function netPnl(t) { return parseFloat(t.pnl) || 0; }
+
+function generateTrades() {
+  var rand = seedRandom(42);
+  var exchanges = ['blofin', 'mexc', 'hyperliquid', 'kraken', 'ftmo'];
+  var pairs = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'AVAX/USDT', 'LINK/USDT', 'XAUUSD'];
+  var trades = [];
+  var exBias = {
+    blofin:      { winChance: 0.62, avgWin: 65, avgLoss: 35 },
+    mexc:        { winChance: 0.54, avgWin: 50, avgLoss: 45 },
+    hyperliquid: { winChance: 0.58, avgWin: 75, avgLoss: 40 },
+    kraken:      { winChance: 0.48, avgWin: 45, avgLoss: 55 },
+    ftmo:        { winChance: 0.60, avgWin: 55, avgLoss: 30 }
+  };
+  var day = 0;
+  while (trades.length < 250 && day < 365) {
+    var tradesToday = Math.floor(rand() * 3);
+    for (var k = 0; k < tradesToday; k++) {
+      var ex = exchanges[Math.floor(rand() * exchanges.length)];
+      var bias = exBias[ex];
+      var pair = pairs[Math.floor(rand() * pairs.length)];
+      var phaseModifier = 1;
+      if (day >= 90 && day < 130) phaseModifier = 0.55;
+      if (day >= 200 && day < 230) phaseModifier = 0.50;
+      var win = rand() < (bias.winChance * phaseModifier);
+      var pnl = win
+        ? bias.avgWin + (rand() - 0.5) * 40
+        : -(bias.avgLoss + (rand() - 0.5) * 30);
+      var date = new Date(2025, 5, 1);
+      date.setDate(date.getDate() + day);
+      trades.push({
+        id: 't' + trades.length,
+        date: date.toISOString().split('T')[0],
+        time: (10 + Math.floor(rand() * 8)) + ':' + String(Math.floor(rand() * 60)).padStart(2, '0'),
+        pair: pair, direction: rand() < 0.5 ? 'long' : 'short',
+        pnl: pnl.toFixed(2), fees: '0.50', source: ex, status: 'closed'
+      });
+    }
+    day++;
+  }
+  return trades;
+}
+
+function tradesToEquity(trades, opts) {
+  opts = opts || {};
+  var start = opts.startBalance || 0;
+  var sorted = trades
+    .filter(function(t){ return t.status === 'closed'; })
+    .sort(function(a, b){ return (a.date + (a.time || '')).localeCompare(b.date + (b.time || '')); });
+  var cum = start;
+  return sorted.map(function(t){ cum += netPnl(t); return { t: t.date, v: cum }; });
+}
+
+function aggregateDaily(equity) {
+  var byDay = {};
+  equity.forEach(function(p){ byDay[p.t] = p.v; });
+  return Object.keys(byDay).sort().map(function(day){ return { t: day, v: byDay[day] }; });
+}
+
+var ALL_TRADES = generateTrades();
+var baseEquity = aggregateDaily(tradesToEquity(ALL_TRADES));
+
+// === THEMES ====================================================
+
+// RICH = oude theme (subtle dashed grid)
+var THEME_RICH = {
+  line:'#34d8a0', lineBright:'#4ee8b0',
+  fillTop:'rgba(52,216,160,0.34)', fillBot:'rgba(52,216,160,0)',
+  down:'#f6566f',
+  downFillTop:'rgba(246,86,111,0.42)', downFillBot:'rgba(246,86,111,0.05)',
+  hwm:'rgba(224,179,65,0.55)', ma:'rgba(224,179,65,0.55)',
+  grid:'rgba(120,140,160,0.10)', gridStrong:'rgba(120,140,160,0.16)',
+  axis:'#56657a', axisDim:'#3a4658',
+  text:'#c9d3e0', textDim:'#8995a6',
+  panelBg:'#0e151d', tooltipBg:'rgba(10,15,21,0.96)'
+};
+
+// CLEAN = subtle solid grid (alleen mogelijk via smooth:true), iets lichter
+var THEME_CLEAN = Object.assign({}, THEME_RICH, {
+  grid: 'rgba(120,140,160,0.08)',         // subtle
+  gridStrong: 'rgba(120,140,160,0.14)'
+});
+
+// ULTRA = geen grid (transparent), alleen y-labels
+var THEME_ULTRA = Object.assign({}, THEME_RICH, {
+  grid: 'rgba(0,0,0,0)',
+  gridStrong: 'rgba(0,0,0,0)'
+});
+
+// === Drawdown-pill helper ======================================
+
+function bindDdPill(pillEl, chart) {
+  var on = false;
+  pillEl.addEventListener('click', function(){
+    on = !on;
+    chart.setDrawdown(on);
+    pillEl.classList.toggle('active', on);
+  });
+}
+
+// === SECTION 1: 3 stijl-niveaus ================================
+
+EquityCurve('#s1-rich', {
+  data: baseEquity, size:'large',
+  drawdown: true, hwm: true, smooth: false,
+  ranges: true, movingAverage: 14,
+  currency: '$', theme: THEME_RICH
+});
+
+EquityCurve('#s1-clean', {
+  data: baseEquity, size:'large',
+  drawdown: false, hwm: false, smooth: true,
+  ranges: true, movingAverage: false,
+  currency: '$', theme: THEME_CLEAN
+});
+
+EquityCurve('#s1-ultra', {
+  data: baseEquity, size:'large',
+  drawdown: false, hwm: false, smooth: true,
+  ranges: true, movingAverage: false,
+  currency: '$', theme: THEME_ULTRA
+});
+
+// === SECTION 2: drawdown-toggle subtle ========================
+
+var s2Chart = EquityCurve('#s2-main', {
+  data: baseEquity, size:'large',
+  drawdown: false, hwm: false, smooth: true,
+  ranges: true, currency:'$', theme: THEME_CLEAN
+});
+bindDdPill(document.getElementById('dd-pill-main'), s2Chart);
+
+// === SECTION 3: privacy ========================================
+
+var privOn = false;
+function privacyFormatter(v, mode) {
+  if (privOn) return '$***';
+  var a = Math.abs(v); var s = v < 0 ? '-' : '+';
+  if (mode === 'full') return s + '$' + Math.round(a).toLocaleString('en-US');
+  if (a >= 1000) return s + '$' + (a/1000).toFixed(a >= 10000 ? 0 : 1) + 'k';
+  return s + '$' + Math.round(a);
+}
+
+var s3Chart = EquityCurve('#s3-priv', {
+  data: baseEquity, size:'large',
+  drawdown: false, hwm: false, smooth: true,
+  ranges: true, currency:'$', theme: THEME_CLEAN,
+  formatValue: privacyFormatter
+});
+bindDdPill(document.getElementById('dd-pill-priv'), s3Chart);
+
+document.getElementById('priv-off').onclick = function() {
+  privOn = false; s3Chart.setData(baseEquity);
+  this.classList.add('active'); document.getElementById('priv-on').classList.remove('active');
+};
+document.getElementById('priv-on').onclick = function() {
+  privOn = true; s3Chart.setData(baseEquity);
+  this.classList.add('active'); document.getElementById('priv-off').classList.remove('active');
+};
+
+// === SECTION 4: USD/BTC ========================================
+
+var BTC_PRICE = 67000;
+var s4Chart = EquityCurve('#s4-unit', {
+  data: baseEquity, size:'large',
+  drawdown: false, hwm: false, smooth: true,
+  ranges: true, currency:'$', theme: THEME_CLEAN
+});
+bindDdPill(document.getElementById('dd-pill-unit'), s4Chart);
+
+document.getElementById('unit-usd').onclick = function() {
+  s4Chart.o.currency = '$';
+  s4Chart.setData(baseEquity);
+  this.classList.add('active'); document.getElementById('unit-btc').classList.remove('active');
+};
+document.getElementById('unit-btc').onclick = function() {
+  var btcData = baseEquity.map(function(d){ return { t: d.t, v: d.v / BTC_PRICE }; });
+  s4Chart.o.currency = '₿';
+  s4Chart.setData(btcData);
+  this.classList.add('active'); document.getElementById('unit-usd').classList.remove('active');
+};
+
+// === SECTION 5: aggregatie =====================================
+
+var perTradeEquity = tradesToEquity(ALL_TRADES);
+
+var s5Trade = EquityCurve('#s5-trade', {
+  data: perTradeEquity, size:'large',
+  drawdown: false, hwm: false, smooth: true,
+  ranges: true, currency:'$', theme: THEME_CLEAN
+});
+var s5Day = EquityCurve('#s5-day', {
+  data: baseEquity, size:'large',
+  drawdown: false, hwm: false, smooth: true,
+  ranges: true, currency:'$', theme: THEME_CLEAN
+});
+bindDdPill(document.querySelector('[data-toggle="agg-trade"]'), s5Trade);
+bindDdPill(document.querySelector('[data-toggle="agg-day"]'), s5Day);
+
+// === SECTION 6: variant A — chip filter ========================
+
+var activeExchanges = new Set(['blofin', 'mexc', 'hyperliquid', 'kraken', 'ftmo']);
+
+var s6Chart = EquityCurve('#s6-multiA', {
+  data: baseEquity, size:'large',
+  drawdown: false, hwm: false, smooth: true,
+  ranges: true, currency:'$', theme: THEME_CLEAN
+});
+bindDdPill(document.getElementById('dd-pill-A'), s6Chart);
+
+function updateVariantA() {
+  var filtered = ALL_TRADES.filter(function(t){ return activeExchanges.has(t.source); });
+  s6Chart.setData(aggregateDaily(tradesToEquity(filtered)));
+}
+document.querySelectorAll('#chips-A button').forEach(function(chip){
+  chip.onclick = function() {
+    var ex = this.dataset.ex;
+    if (activeExchanges.has(ex)) { activeExchanges.delete(ex); this.classList.remove('active'); }
+    else { activeExchanges.add(ex); this.classList.add('active'); }
+    updateVariantA();
+  };
+});
+
+// === SECTION 7: variant D — per-exchange panels ================
+
+var EX_COLORS = {
+  blofin:      { line:'#4ee8b0', lineBright:'#6ef8c0', fillTop:'rgba(78,232,176,0.30)',  fillBot:'rgba(78,232,176,0)' },
+  mexc:        { line:'#9a8acc', lineBright:'#b4a4e0', fillTop:'rgba(154,138,204,0.30)', fillBot:'rgba(154,138,204,0)' },
+  hyperliquid: { line:'#7ab4d2', lineBright:'#94c4e0', fillTop:'rgba(122,180,210,0.30)', fillBot:'rgba(122,180,210,0)' },
+  kraken:      { line:'#e0b341', lineBright:'#f0c361', fillTop:'rgba(224,179,65,0.30)',  fillBot:'rgba(224,179,65,0)' },
+  ftmo:        { line:'#b48cc8', lineBright:'#c4a0d8', fillTop:'rgba(180,140,200,0.30)', fillBot:'rgba(180,140,200,0)' }
+};
+
+['blofin', 'mexc', 'hyperliquid', 'kraken', 'ftmo'].forEach(function(ex){
+  var exTrades = ALL_TRADES.filter(function(t){ return t.source === ex; });
+  var exEquity = aggregateDaily(tradesToEquity(exTrades));
+  EquityCurve('#s7-' + ex, {
+    data: exEquity, size:'panel',
+    drawdown: false, hwm: false, smooth: true,
+    currency:'$',
+    theme: Object.assign({}, THEME_CLEAN, EX_COLORS[ex])
+  });
+});
+
+var s7Total = EquityCurve('#s7-total', {
+  data: baseEquity, size:'large',
+  drawdown: false, hwm: false, smooth: true,
+  ranges: true, currency:'$', theme: THEME_CLEAN
+});
+bindDdPill(document.getElementById('dd-pill-Dtotal'), s7Total);
+
+console.log('Clean demo initialized.');
+</script>
+
+</body>
+</html>

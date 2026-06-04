@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>EquityCurve · Integratie-demo · SyncJournal</title>
+  <style>
+    :root {
+      --bg: #0a0c12;
+      --bg2: #0e151d;
+      --bg3: #131a24;
+      --border: rgba(120,140,160,0.16);
+      --border-soft: rgba(120,140,160,0.08);
+      --text: #c9d3e0;
+      --text-dim: #8995a6;
+      --text-mute: #56657a;
+      --green: #34d8a0;
+      --green-bright: #4ee8b0;
+      --gold: #e0b341;
+      --red: #f6566f;
+    }
+    * { box-sizing: border-box; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      padding: 32px 24px 80px;
+      margin: 0;
+      line-height: 1.5;
+    }
+    header { max-width: 1280px; margin: 0 auto 32px; }
+    section { max-width: 1280px; margin: 0 auto 40px; }
+    h1 { font-size: 26px; color: var(--green-bright); margin: 0 0 6px; letter-spacing: -0.01em; }
+    h2 {
+      font-size: 13px; color: var(--gold); text-transform: uppercase; letter-spacing: 0.14em;
+      font-weight: 700; margin: 0 0 14px;
+      padding-bottom: 10px; border-bottom: 1px solid var(--border);
+    }
+    h2 .num { color: var(--text-mute); margin-right: 10px; font-family: 'JetBrains Mono', monospace; }
+    p.lead { color: var(--text-dim); max-width: 880px; font-size: 14px; margin: 0 0 18px; }
+    p.lead code { background: rgba(120,140,160,0.12); padding: 1px 6px; border-radius: 4px;
+      font: 600 12px 'JetBrains Mono', monospace; color: var(--gold); }
+    p.lead strong { color: var(--text); }
+    .grid { display: grid; gap: 18px; }
+    .grid-3 { grid-template-columns: 1fr 1fr 1fr; }
+    .grid-2 { grid-template-columns: 1fr 1fr; }
+    .grid-5 { grid-template-columns: repeat(5, 1fr); }
+    @media (max-width: 1100px) {
+      .grid-3, .grid-5 { grid-template-columns: 1fr 1fr; }
+      .grid-2 { grid-template-columns: 1fr; }
+    }
+    .card {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 18px;
+    }
+    .card-label {
+      font-size: 10.5px; color: var(--gold); text-transform: uppercase;
+      letter-spacing: 0.12em; font-weight: 700; margin-bottom: 12px;
+    }
+    .card-label .ex { font-family: 'JetBrains Mono', monospace; font-size: 11px; }
+    .toggle-bar {
+      display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px;
+    }
+    .toggle-bar button {
+      padding: 6px 12px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text);
+      border-radius: 8px;
+      cursor: pointer;
+      font: 600 12px system-ui, sans-serif;
+      transition: .15s;
+    }
+    .toggle-bar button:hover { border-color: rgba(120,140,160,0.32); }
+    .toggle-bar button.active {
+      background: rgba(52,216,160,0.08);
+      border-color: rgba(52,216,160,0.5);
+      color: var(--green-bright);
+    }
+    .chart-host { background: #080b10; border-radius: 10px; padding: 6px; }
+    .h-large { height: 380px; }
+    .h-panel { height: 240px; }
+    .h-panel-sm { height: 180px; }
+    .h-mini { height: 60px; }
+    .meta {
+      font-size: 11px; color: var(--text-dim); font-family: 'JetBrains Mono', monospace;
+      padding: 8px 12px; background: rgba(120,140,160,0.05); border-radius: 6px;
+      margin-top: 10px; line-height: 1.5;
+    }
+    .badge {
+      display: inline-block; padding: 2px 8px; border-radius: 10px;
+      font-size: 10px; font-weight: 700; letter-spacing: 0.06em;
+      text-transform: uppercase; margin-right: 6px;
+    }
+    .badge-A { background: rgba(52,216,160,0.12); color: var(--green-bright); }
+    .badge-D { background: rgba(224,179,65,0.12); color: var(--gold); }
+    .recommendation {
+      background: rgba(52,216,160,0.08);
+      border-left: 3px solid var(--green);
+      padding: 12px 16px;
+      border-radius: 8px;
+      margin: 14px 0;
+      font-size: 13px;
+    }
+    .recommendation strong { color: var(--green-bright); }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>📈 EquityCurve · Integratie-demo</h1>
+  <p class="lead">
+    Demo van het nieuwe <code>equity-curve.js</code> component met seeded realistische data (~250 trades over 12 maanden, 5 exchanges, drawdowns + recoveries). Alle interactieve toggles werken live. Probeer hover-tooltip op de curves.
+  </p>
+  <p class="lead">
+    <strong>Wat je hier evalueert</strong>: passen alle gebruikte features (drawdown-toggle, privacy-mode, BTC-unit, aggregatie) goed in jouw workflow? En welke multi-account-variant past beter (sectie 6 vs 7)?
+  </p>
+</header>
+
+<!-- ============================================================ -->
+<!-- 1. SIZES                                                      -->
+<!-- ============================================================ -->
+<section>
+  <h2><span class="num">1.</span>Drie maten — <code>large</code> · <code>panel</code> · <code>mini</code></h2>
+  <p class="lead">Vergelijkbare data in elk formaat. <code>large</code> = Dashboard/Review (volledige assen, range-knoppen, drawdown-strip). <code>panel</code> = TradeReport/zij-secties. <code>mini</code> = Playbook-card sparklines (drawdown inline in de lijn, geen assen).</p>
+  <div class="grid grid-3">
+    <div class="card">
+      <div class="card-label">🟢 large · Dashboard/Review</div>
+      <div id="size-large" class="chart-host h-large"></div>
+      <div class="meta">size: 'large' · drawdown: true · ranges: true · MA(14)</div>
+    </div>
+    <div class="card">
+      <div class="card-label">🟡 panel · TradeReport</div>
+      <div id="size-panel" class="chart-host h-panel"></div>
+      <div class="meta">size: 'panel' · drawdown: true · geen range-knoppen</div>
+    </div>
+    <div class="card">
+      <div class="card-label">⚪ mini · Playbook-card</div>
+      <div id="size-mini" class="chart-host h-mini"></div>
+      <div class="meta">size: 'mini' · drawdown: true (inline) · geen assen/tooltip</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- 2. DRAWDOWN TOGGLE                                            -->
+<!-- ============================================================ -->
+<section>
+  <h2><span class="num">2.</span>Drawdown-toggle</h2>
+  <p class="lead">De rode "underwater" strip is optioneel. Per chart bepaal je <code>drawdown: true|false</code>. Hier kun je live togglen — kijk wat je instinctief prettiger vindt.</p>
+  <div class="toggle-bar">
+    <button id="dd-on" class="active">Drawdown AAN</button>
+    <button id="dd-off">Drawdown UIT</button>
+  </div>
+  <div class="card">
+    <div id="drawdown-chart" class="chart-host h-large"></div>
+    <div class="meta">Toggle gebruikt <code>chart.setDrawdown(bool)</code> — geen rebuild, alleen rerender.</div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- 3. PRIVACY                                                    -->
+<!-- ============================================================ -->
+<section>
+  <h2><span class="num">3.</span>Privacy-mode integratie · met <code>formatValue</code> patch</h2>
+  <p class="lead">
+    Het component had geen privacy-hook. Mini-patch (4 regels) toegevoegd: <code>formatValue(v, mode)</code> callback overschrijft y-axis ticks + tooltip. Bij <code>priv=true</code> retourneert hij <code>'$***'</code>. <strong>Test</strong>: toggle privacy en hover over de curve — alle bedragen op de y-as en in de tooltip maskeren.
+  </p>
+  <div class="toggle-bar">
+    <button id="priv-off" class="active">Privacy UIT</button>
+    <button id="priv-on">Privacy AAN ($***)</button>
+  </div>
+  <div class="card">
+    <div id="privacy-chart" class="chart-host h-large"></div>
+    <div class="meta">Patch: <code>this.o.formatValue = opts.formatValue || null</code> + 2 inline checks in _render() en _hover(). Default behavior identiek.</div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- 4. USD / BTC TOGGLE                                           -->
+<!-- ============================================================ -->
+<section>
+  <h2><span class="num">4.</span>USD ↔ BTC unit-toggle</h2>
+  <p class="lead">Component zelf doet geen unit-conversie — wrapper-laag converteert <code>data.map(d =&gt; ({t, v: d.v / btcPrice}))</code> + zet <code>currency</code> property. Bij toggle: <code>chart.setData(newData)</code>. Behoud van de huidige BTC-unit-feature in Dashboard.</p>
+  <div class="toggle-bar">
+    <button id="unit-usd" class="active">$ USD</button>
+    <button id="unit-btc">₿ BTC</button>
+  </div>
+  <div class="card">
+    <div id="unit-chart" class="chart-host h-large"></div>
+    <div class="meta">BTC-prijs hardcoded $67.000 voor demo. In productie: live ticker uit AppStatusBar.</div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- 5. AGGREGATIE                                                 -->
+<!-- ============================================================ -->
+<section>
+  <h2><span class="num">5.</span>Aggregatie: 1 punt per trade vs 1 punt per dag</h2>
+  <p class="lead">Bij high-frequency trading wordt 1-punt-per-trade druk en visueel druk. Aggregatie per dag-eind = rustigere curve, sneller te scannen, drawdown-strip ademruimt. <strong>Mijn voorstel</strong>: standaard aan op Dashboard, optionele toggle voor power-users.</p>
+  <div class="grid grid-2">
+    <div class="card">
+      <div class="card-label">🔴 1 punt per trade · 245 punten</div>
+      <div id="agg-trade" class="chart-host h-large"></div>
+      <div class="meta">Druk, ruis-gevoelig bij meerdere trades op dezelfde dag</div>
+    </div>
+    <div class="card">
+      <div class="card-label">🟢 1 punt per dag-eind · ~140 punten</div>
+      <div id="agg-day" class="chart-host h-large"></div>
+      <div class="meta">Rustig, equity-evolutie duidelijker. Sortering gebruikt date+time intern.</div>
+    </div>
+  </div>
+  <div class="recommendation">
+    <strong>Mijn advies</strong>: per-dag-aggregatie standaard aan op Dashboard. Per-trade toegestaan als toggle voor wie elke entry/exit op de curve wil zien (zeldzaam in praktijk).
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- 6. VARIANT A — chip-filter                                    -->
+<!-- ============================================================ -->
+<section>
+  <h2><span class="num">6.</span><span class="badge badge-A">Variant A</span>Multi-account · chips filteren totaal-lijn</h2>
+  <p class="lead">
+    Klik exchange-chips on/off — <strong>één totaal-curve</strong> updates op basis van geselecteerde exchanges. Visueel schoon, consistent met rest van app, hover-tooltip blijft scherp. Verlies: geen per-exchange divergentie zichtbaar in dezelfde view.
+  </p>
+  <div class="toggle-bar" id="chips-A">
+    <button data-ex="blofin" class="active">● Blofin</button>
+    <button data-ex="mexc" class="active">● MEXC</button>
+    <button data-ex="hyperliquid" class="active">● Hyperliquid</button>
+    <button data-ex="kraken" class="active">● Kraken</button>
+    <button data-ex="ftmo" class="active">● FTMO</button>
+  </div>
+  <div class="card">
+    <div id="multi-a-chart" class="chart-host h-large"></div>
+    <div class="meta">1 <code>EquityCurve</code>-instance · filter past <code>setData()</code> toe op gefilterde subset</div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- 7. VARIANT D — per-exchange panels + totaal                   -->
+<!-- ============================================================ -->
+<section>
+  <h2><span class="num">7.</span><span class="badge badge-D">Variant D</span>Multi-account · per-exchange panels + totaal eronder</h2>
+  <p class="lead">
+    Per-exchange in eigen <code>panel</code>-mode (5 kleine curves naast elkaar), totaal-curve eronder in <code>large</code>. <strong>Behoud van per-exchange divergentie</strong>, geen overlay-spaghetti. Elke exchange krijgt eigen accent-kleur. Component is single-line — stacking ipv overlay.
+  </p>
+  <div class="grid grid-5" style="margin-bottom: 14px;">
+    <div class="card">
+      <div class="card-label" style="color:#4ee8b0">● BLOFIN</div>
+      <div id="d-blofin" class="chart-host h-panel-sm"></div>
+    </div>
+    <div class="card">
+      <div class="card-label" style="color:#b4a4e0">● MEXC</div>
+      <div id="d-mexc" class="chart-host h-panel-sm"></div>
+    </div>
+    <div class="card">
+      <div class="card-label" style="color:#94c4e0">● HYPERLIQUID</div>
+      <div id="d-hyperliquid" class="chart-host h-panel-sm"></div>
+    </div>
+    <div class="card">
+      <div class="card-label" style="color:#f0c361">● KRAKEN</div>
+      <div id="d-kraken" class="chart-host h-panel-sm"></div>
+    </div>
+    <div class="card">
+      <div class="card-label" style="color:#c4a0d8">● FTMO</div>
+      <div id="d-ftmo" class="chart-host h-panel-sm"></div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-label" style="color: var(--green-bright)">● TOTAAL ALLE EXCHANGES</div>
+    <div id="d-total" class="chart-host h-large"></div>
+    <div class="meta">6 <code>EquityCurve</code>-instances (5 panel + 1 large) · per-exchange thema-override voor kleur</div>
+  </div>
+  <div class="recommendation">
+    <strong>Vergelijk visueel met sectie 6</strong>: welke variant geeft jou sneller inzicht? A = clean + filter. D = behoud per-exchange info maar meer schermreal-estate.
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- Footer info                                                   -->
+<!-- ============================================================ -->
+<section>
+  <h2><span class="num">∞</span>Technische notes</h2>
+  <p class="lead">
+    <strong>Patch</strong>: equity-curve.js kreeg <code>formatValue(v, mode)</code> callback-option (4 regels, default behavior identiek).<br>
+    <strong>Data-formaat</strong>: <code>{t, v}</code> waar <code>t</code> = ISO-string of Date, <code>v</code> = cumulatief saldo of PnL.<br>
+    <strong>Helper</strong>: <code>tradesToEquity(trades)</code> filtert closed + sorteert op date+time + cumuleert via <code>netPnl()</code>.<br>
+    <strong>Privacy</strong>: één <code>formatValue</code> callback met React state of localStorage check.<br>
+    <strong>Themes</strong>: <code>setTheme({line, fillTop, axis, ...})</code> per chart, ook na render. Per-thema overrides via theme-detect.<br>
+    <strong>Niet vervangen (out-of-scope)</strong>: RollingEdgeChart (dual-axis), RMultDistChart (histogram), MistakeImpactChart (bar), TradeReport PDF charts.
+  </p>
+</section>
+
+<!-- ============================================================ -->
+<!-- COMPONENT + DEMO JS                                           -->
+<!-- ============================================================ -->
+<script src="../grafieken/equity-curve.js"></script>
+<script>
+'use strict';
+
+// ============================================================
+// SEEDED REALISTIC TRADE DATA
+// ============================================================
+// ~250 trades over 12 months, 5 exchanges, realistic patterns:
+// drawdown periods at day 90-130 + 200-230, recoveries in between.
+// Per-exchange bias zodat variant D (per-exchange panels) zinvol is.
+// ============================================================
+
+function seedRandom(seed) {
+  return function() {
+    seed = (seed * 9301 + 49297) % 233280;
+    return seed / 233280;
+  };
+}
+
+function netPnl(t) { return parseFloat(t.pnl) || 0; }
+
+function generateTrades() {
+  var rand = seedRandom(42);
+  var exchanges = ['blofin', 'mexc', 'hyperliquid', 'kraken', 'ftmo'];
+  var pairs = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'AVAX/USDT', 'LINK/USDT', 'XAUUSD'];
+  var trades = [];
+
+  // Per-exchange bias: Blofin best, FTMO consistent, Kraken volatile.
+  var exBias = {
+    blofin:      { winChance: 0.62, avgWin: 65, avgLoss: 35 },
+    mexc:        { winChance: 0.54, avgWin: 50, avgLoss: 45 },
+    hyperliquid: { winChance: 0.58, avgWin: 75, avgLoss: 40 },
+    kraken:      { winChance: 0.48, avgWin: 45, avgLoss: 55 },
+    ftmo:        { winChance: 0.60, avgWin: 55, avgLoss: 30 }
+  };
+
+  var day = 0;
+  while (trades.length < 250 && day < 365) {
+    var tradesToday = Math.floor(rand() * 3); // 0-2 per day
+    for (var k = 0; k < tradesToday; k++) {
+      var ex = exchanges[Math.floor(rand() * exchanges.length)];
+      var bias = exBias[ex];
+      var pair = pairs[Math.floor(rand() * pairs.length)];
+
+      // Phase-based modifier — twee drawdown-periodes
+      var phaseModifier = 1;
+      if (day >= 90 && day < 130) phaseModifier = 0.55; // first drawdown
+      if (day >= 200 && day < 230) phaseModifier = 0.50; // second drawdown
+
+      var win = rand() < (bias.winChance * phaseModifier);
+      var pnl = win
+        ? bias.avgWin + (rand() - 0.5) * 40
+        : -(bias.avgLoss + (rand() - 0.5) * 30);
+
+      var date = new Date(2025, 5, 1); // June 1, 2025
+      date.setDate(date.getDate() + day);
+      var iso = date.toISOString().split('T')[0];
+
+      trades.push({
+        id: 't' + trades.length,
+        date: iso,
+        time: (10 + Math.floor(rand() * 8)) + ':' + String(Math.floor(rand() * 60)).padStart(2, '0'),
+        pair: pair,
+        direction: rand() < 0.5 ? 'long' : 'short',
+        pnl: pnl.toFixed(2),
+        fees: '0.50',
+        source: ex,
+        status: 'closed'
+      });
+    }
+    day++;
+  }
+  return trades;
+}
+
+var ALL_TRADES = generateTrades();
+console.log('Generated', ALL_TRADES.length, 'trades over 12 months');
+
+// ============================================================
+// HELPERS — tradesToEquity + aggregateDaily
+// ============================================================
+
+function tradesToEquity(trades, opts) {
+  opts = opts || {};
+  var start = opts.startBalance || 0;
+  var sorted = trades
+    .filter(function(t){ return t.status === 'closed'; })
+    .sort(function(a, b){
+      return (a.date + (a.time || '')).localeCompare(b.date + (b.time || ''));
+    });
+  var cum = start;
+  return sorted.map(function(t){
+    cum += netPnl(t);
+    return { t: t.date, v: cum };
+  });
+}
+
+function aggregateDaily(equity) {
+  // Voor elke dag: laatste cumulatieve waarde van die dag
+  var byDay = {};
+  equity.forEach(function(p){ byDay[p.t] = p.v; });
+  return Object.keys(byDay).sort().map(function(day){
+    return { t: day, v: byDay[day] };
+  });
+}
+
+// ============================================================
+// SyncJournal sync-thema kleuren
+// ============================================================
+
+var SYNC_THEME = {
+  line:       '#34d8a0',
+  lineBright: '#4ee8b0',
+  fillTop:    'rgba(52,216,160,0.34)',
+  fillBot:    'rgba(52,216,160,0)',
+  down:       '#f6566f',
+  downFillTop:'rgba(246,86,111,0.42)',
+  downFillBot:'rgba(246,86,111,0.05)',
+  hwm:        'rgba(224,179,65,0.55)',
+  ma:         'rgba(224,179,65,0.55)',
+  grid:       'rgba(120,140,160,0.10)',
+  gridStrong: 'rgba(120,140,160,0.16)',
+  axis:       '#56657a',
+  axisDim:    '#3a4658',
+  text:       '#c9d3e0',
+  textDim:    '#8995a6',
+  panelBg:    '#0e151d',
+  tooltipBg:  'rgba(10,15,21,0.96)'
+};
+
+// ============================================================
+// SECTION 1: SIZES
+// ============================================================
+
+var baseEquity = aggregateDaily(tradesToEquity(ALL_TRADES));
+
+EquityCurve('#size-large', {
+  data: baseEquity,
+  size: 'large',
+  drawdown: true,
+  ranges: true,
+  movingAverage: 14,
+  currency: '$',
+  theme: SYNC_THEME
+});
+
+EquityCurve('#size-panel', {
+  data: baseEquity,
+  size: 'panel',
+  drawdown: true,
+  currency: '$',
+  theme: SYNC_THEME
+});
+
+EquityCurve('#size-mini', {
+  data: baseEquity,
+  size: 'mini',
+  drawdown: true,
+  currency: '$',
+  theme: SYNC_THEME
+});
+
+// ============================================================
+// SECTION 2: DRAWDOWN TOGGLE
+// ============================================================
+
+var ddChart = EquityCurve('#drawdown-chart', {
+  data: baseEquity,
+  size: 'large',
+  drawdown: true,
+  ranges: true,
+  currency: '$',
+  theme: SYNC_THEME
+});
+
+document.getElementById('dd-on').onclick = function() {
+  ddChart.setDrawdown(true);
+  this.classList.add('active');
+  document.getElementById('dd-off').classList.remove('active');
+};
+document.getElementById('dd-off').onclick = function() {
+  ddChart.setDrawdown(false);
+  this.classList.add('active');
+  document.getElementById('dd-on').classList.remove('active');
+};
+
+// ============================================================
+// SECTION 3: PRIVACY (formatValue patch)
+// ============================================================
+
+var privOn = false;
+
+function privacyFormatter(v, mode) {
+  if (privOn) return '$***';
+  var a = Math.abs(v);
+  var s = v < 0 ? '-' : '+';
+  if (mode === 'full') return s + '$' + Math.round(a).toLocaleString('en-US');
+  if (a >= 1000) return s + '$' + (a / 1000).toFixed(a >= 10000 ? 0 : 1) + 'k';
+  return s + '$' + Math.round(a);
+}
+
+var privChart = EquityCurve('#privacy-chart', {
+  data: baseEquity,
+  size: 'large',
+  drawdown: true,
+  ranges: true,
+  currency: '$',
+  theme: SYNC_THEME,
+  formatValue: privacyFormatter
+});
+
+document.getElementById('priv-off').onclick = function() {
+  privOn = false;
+  privChart.setData(baseEquity); // trigger re-render
+  this.classList.add('active');
+  document.getElementById('priv-on').classList.remove('active');
+};
+document.getElementById('priv-on').onclick = function() {
+  privOn = true;
+  privChart.setData(baseEquity);
+  this.classList.add('active');
+  document.getElementById('priv-off').classList.remove('active');
+};
+
+// ============================================================
+// SECTION 4: USD / BTC TOGGLE
+// ============================================================
+
+var BTC_PRICE = 67000;
+
+var unitChart = EquityCurve('#unit-chart', {
+  data: baseEquity,
+  size: 'large',
+  drawdown: true,
+  ranges: true,
+  currency: '$',
+  theme: SYNC_THEME
+});
+
+document.getElementById('unit-usd').onclick = function() {
+  unitChart.o.currency = '$';
+  unitChart.setData(baseEquity);
+  this.classList.add('active');
+  document.getElementById('unit-btc').classList.remove('active');
+};
+document.getElementById('unit-btc').onclick = function() {
+  var btcData = baseEquity.map(function(d){ return { t: d.t, v: d.v / BTC_PRICE }; });
+  unitChart.o.currency = '₿';
+  unitChart.setData(btcData);
+  this.classList.add('active');
+  document.getElementById('unit-usd').classList.remove('active');
+};
+
+// ============================================================
+// SECTION 5: AGGREGATIE
+// ============================================================
+
+// Per-trade: alle 245 punten (geen daily aggregation)
+var perTradeEquity = tradesToEquity(ALL_TRADES);
+// Per-dag: ~140 punten (1 punt per dag-eind)
+var perDayEquity = aggregateDaily(perTradeEquity);
+
+EquityCurve('#agg-trade', {
+  data: perTradeEquity,
+  size: 'large',
+  drawdown: true,
+  ranges: true,
+  currency: '$',
+  theme: SYNC_THEME
+});
+
+EquityCurve('#agg-day', {
+  data: perDayEquity,
+  size: 'large',
+  drawdown: true,
+  ranges: true,
+  currency: '$',
+  theme: SYNC_THEME
+});
+
+console.log('Per-trade points:', perTradeEquity.length, '· Per-day points:', perDayEquity.length);
+
+// ============================================================
+// SECTION 6: VARIANT A — chip-filter totaal-lijn
+// ============================================================
+
+var activeExchanges = new Set(['blofin', 'mexc', 'hyperliquid', 'kraken', 'ftmo']);
+
+var multiAChart = EquityCurve('#multi-a-chart', {
+  data: baseEquity,
+  size: 'large',
+  drawdown: true,
+  ranges: true,
+  currency: '$',
+  theme: SYNC_THEME
+});
+
+function updateVariantA() {
+  var filtered = ALL_TRADES.filter(function(t){ return activeExchanges.has(t.source); });
+  var equity = aggregateDaily(tradesToEquity(filtered));
+  multiAChart.setData(equity);
+}
+
+document.querySelectorAll('#chips-A button').forEach(function(chip){
+  chip.onclick = function() {
+    var ex = this.dataset.ex;
+    if (activeExchanges.has(ex)) {
+      activeExchanges.delete(ex);
+      this.classList.remove('active');
+    } else {
+      activeExchanges.add(ex);
+      this.classList.add('active');
+    }
+    updateVariantA();
+  };
+});
+
+// ============================================================
+// SECTION 7: VARIANT D — per-exchange panels + totaal
+// ============================================================
+
+var EXCHANGE_COLORS = {
+  blofin: {
+    line:'#4ee8b0', lineBright:'#6ef8c0',
+    fillTop:'rgba(78,232,176,0.30)', fillBot:'rgba(78,232,176,0)'
+  },
+  mexc: {
+    line:'#9a8acc', lineBright:'#b4a4e0',
+    fillTop:'rgba(154,138,204,0.30)', fillBot:'rgba(154,138,204,0)'
+  },
+  hyperliquid: {
+    line:'#7ab4d2', lineBright:'#94c4e0',
+    fillTop:'rgba(122,180,210,0.30)', fillBot:'rgba(122,180,210,0)'
+  },
+  kraken: {
+    line:'#e0b341', lineBright:'#f0c361',
+    fillTop:'rgba(224,179,65,0.30)', fillBot:'rgba(224,179,65,0)'
+  },
+  ftmo: {
+    line:'#b48cc8', lineBright:'#c4a0d8',
+    fillTop:'rgba(180,140,200,0.30)', fillBot:'rgba(180,140,200,0)'
+  }
+};
+
+['blofin', 'mexc', 'hyperliquid', 'kraken', 'ftmo'].forEach(function(ex){
+  var exTrades = ALL_TRADES.filter(function(t){ return t.source === ex; });
+  var exEquity = aggregateDaily(tradesToEquity(exTrades));
+  var colors = EXCHANGE_COLORS[ex];
+
+  EquityCurve('#d-' + ex, {
+    data: exEquity,
+    size: 'panel',
+    drawdown: false,
+    currency: '$',
+    theme: Object.assign({}, SYNC_THEME, colors)
+  });
+});
+
+EquityCurve('#d-total', {
+  data: baseEquity,
+  size: 'large',
+  drawdown: true,
+  ranges: true,
+  currency: '$',
+  theme: SYNC_THEME
+});
+
+console.log('Demo initialized — all 7 sections rendered.');
+</script>
+
+</body>
+</html>

@@ -6,6 +6,39 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.175] — 2026-06-04
+
+### Toegevoegd (UX fase 5a — equity-curve consolidatie)
+- **Nieuwe `SyncEquityCurve` React-wrapper** rond een framework-vrije SVG equity-curve component (`window.EquityCurve`, inline vóór Babel-blok). Eén consistente look door de hele app, met clean defaults:
+  - **drawdown standaard UIT** (subtiele pill-toggle per chart)
+  - **geen HWM-stippellijn** (de gouden gestippelde lijn langs pieken weg)
+  - **smooth curves** (bezier-paden, geen hoekige knikken)
+  - **subtle solid grid** (geen dashed)
+- **Helpers**:
+  - `tradesToEquity(trades, startBalance)` — closed-only, sorteert op date+time, cumuleert netPnl
+  - `aggregateDailyEq(equity)` — 1 punt per dag-eind (rustigere curve bij high-freq trading)
+  - `buildEquityTheme()` — leest CSS-vars (--green/--red/--text*/--bg2) en mapt naar EquityCurve theme-schema
+- **Privacy-mode**: via `formatValue` callback maskeert bedragen naar `$***` op y-axis ticks + tooltip. Patch op vendor-component (4 regels).
+
+### Gewijzigd
+- **Dashboard equity-curve vervangen** door SyncEquityCurve (Variant A — chip-filter geeft één totaal-lijn, geen multi-line overlay meer).
+  - Bestaande `DashboardEquityChart` (Chart.js) blijft staan tot v12.178 cleanup
+  - Period-buttons + exchange-chips behouden (filteren trades vóór doorgeven)
+  - BTC↔USD unit-toggle behouden (transformeer pnl door 1/btcPrice + currency-prop swap)
+  - **Subtiele DD-pill** rechtsboven in card-header (`● DRAWDOWN`) — klein, monospaced, grijs default. Klik = rood actief, drawdown-strip verschijnt onder de curve. Persisted in `tj_dashboard_dd` localStorage.
+
+### Niet aangeraakt (Out-of-scope deze release)
+- Review equity-curve (volgt v12.176)
+- Playbook + Tendency mini-sparklines (volgen v12.177)
+- Oude DashboardEquityChart code (cleanup v12.178)
+- Chart.js library zelf (nog 4 niet-equity charts in gebruik: RMultDist / MistakeImpact / RollingEdge / TradeReport PDF)
+
+### Test
+- Smoke groen
+- Visueel geverifieerd: clean curve zonder drawdown (default), met drawdown via pill-toggle
+
+---
+
 ## [v12.174] — 2026-06-04
 
 ### Fixed
