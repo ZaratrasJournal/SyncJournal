@@ -6,6 +6,27 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.187] — 2026-06-04
+
+### Fixed
+- **Trades-tabel kolommen niet goed aligned** *(gemeld door Denny: "kolommen en invoer niet goed aligend · meerdere kolommen · kan je dit eens goed nalopen?")*
+
+  **Oorzaak**: header-cells (`thStyle`) hadden `padding:"8px 6px"`, body-cells (`tdStyle`) hadden `padding:"10px 6px"`. Verschillende vertical-paddings = visuele mismatch tussen header-labels en kolom-content. Plus header had geen eigen achtergrond → visueel niet duidelijk gescheiden van body.
+
+  **Fix**:
+  - **Padding uniform**: header + body beide nu `padding:"12px 10px"` (was 8/6 + 10/6 mixed). Body-cell content staat nu pixel-perfect onder header-labels.
+  - **Header krijgt eigen achtergrond**: `background:"var(--bg3)"` → duidelijke scheiding met body-rijen.
+  - **Header iets prominenter**: `fontWeight 600 → 700`, `letterSpacing 0.04em → 0.06em`.
+  - **`verticalAlign:"middle"`** expliciet op header (was default maar nu garantie).
+  - PaddingRight 12px op numerieke kolommen (Entry/Exit/Size/PnL/R-Mult) blijft consistent tussen header + body.
+
+  **Effect**: Tabel ziet er nu strakker uit. Headers duidelijk afgescheiden. Numerieke waarden exact onder hun labels.
+
+### Test
+- Smoke groen + visueel geverifieerd: alle 12 kolommen netjes aligned, getallen onder header-labels uitgelijnd
+
+---
+
 ## [v12.186] — 2026-06-04
 
 ### Fixed
