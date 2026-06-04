@@ -6,6 +6,36 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.182] — 2026-06-04
+
+### Gewijzigd
+- **PlaybookDetailModal grondig hertekend** *(gemeld door Denny: "niet leesbaar en overzichtelijk · breder paneel · beter ontwerp · zelfde grootte fonts · alles loopt door elkaar")*
+
+  **Layout**:
+  - Modal **maxWidth 920 → 1240** (35% breder, veel meer adem)
+  - Body **padding uniform 32px** (was 22-28 mixed)
+  - **Section gap 24 → 32** (consistente verticale ademruimte tussen blokken)
+  - Header padding uniform 28-32 (was 22-28)
+
+  **Typografie consolidatie**:
+  - Nieuwe `PDH` (Playbook Detail Header) helper component — vervangt **12 inline kopieën** van section-eyebrows met subtiele variaties (margin-bottom 10, soms hint-rendering, soms niet, etc.). Eén uniforme stijl voor alle: 11px mono gold uppercase + 14px margin-bottom + italic hint optioneel.
+  - Toegepast op: Setup-lagen / Setup-voorbeelden / Referenties / Stats / Edge-breakdown / Markt-context / Entry-criteria / Anti-criteria / Rules / Hoe verpest jij dit setup? / Edge-Erosion Funnel / Simulated Trades / Recent gelinkte trades
+  - **Tag-chip fontSize uniform naar 11px** (was 10-11.5 wisselend) op header pairs/timeframes/sessions
+  - Stat-cards **groter en duidelijker**: padding 12→18, fontSize 18→22, border-radius 8→10, gap 10→12, label-letterspacing+weight bumped
+
+  **Theme-tokens**:
+  - Stat-cards `rgba(255,255,255,0.02)` → `var(--bg3)` (theme-aware)
+
+### Effect
+- Modal voelt nu **ruim en georganiseerd**. Een uniforme leesritme per sectie (eyebrow + content), niet 12 verschillende sub-variaties.
+- Belangrijke nummers (TRADES 271, WIN-RATE 80%, etc) zijn echt prominent — voorheen klein en weggedrukt.
+- Tag-chips in header consistent qua hoogte → één visuele rij, geen "trapeze".
+
+### Test
+- Smoke groen + visueel geverifieerd met Daily Bias Pullback seed-playbook (271 trades, 80% WR, +0.67R avg, +$12632 cum)
+
+---
+
 ## [v12.181] — 2026-06-04
 
 ### Fixed
