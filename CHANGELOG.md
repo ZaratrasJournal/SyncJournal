@@ -6,6 +6,22 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.185] — 2026-06-04
+
+### Gewijzigd
+- **SetupSessionMatrix compacter** *(gemeld door Denny: "ziet er goed uit maar mag een tikje compacter")*
+  - `border-spacing`: 3 → 2 (kleiner gat tussen tiles)
+  - Cell paddings krimpen: header 8/10 → 6/8, body 8/12 → 6/10, lege cellen 12 → 10
+  - Fonts 1px kleiner over de hele linie: WR% 14→13, PnL 10→9.5, header 10→9.5
+  - `n trades` sub-label terug naar compacte `Xt` notatie (was "X trades")
+  - Border-radius 6 → 5 voor cellen (subtieler)
+  - Min-width tabel 800 → 780
+
+### Test
+- Smoke groen — pure sizing-tweak
+
+---
+
 ## [v12.184] — 2026-06-04
 
 ### Gewijzigd
