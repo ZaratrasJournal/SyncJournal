@@ -6,6 +6,35 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.179] — 2026-06-04
+
+### Gewijzigd (UX fase 5e — alle equity-curves nu echt consistent)
+- **PlaybookEquityCurve consolideerd naar SyncEquityCurve** *(gemeld door Denny: "de curve in playbook en de curve in de dashboard zijn verschillende types")*
+  - Was: eigen multi-line SVG-impl met HWM-stippellijn + dashed grid + dashed zero-line + multi-overlay (Real/Backtest/Paper/Missed tegelijk als verschillende dash-patterns)
+  - Nu: **single-line SyncEquityCurve met chip-filter** (Variant A — klik bron = die curve, switchen ipv overlay). Match met Dashboard/Review look.
+  - HIGH / END labels behouden in card-header
+  - **Compacte DD-pill** rechtsboven (`● DD`)
+  - State persisted in `tj_playbook_dd`
+
+### Toegevoegd in SyncEquityCurve
+- **`data` prop** (bypass `tradesToEquity`) voor pre-berekende equity-arrays `[{t,v}]`. Use-case: PlaybookEquityCurve heeft `{date,cum}[]` per simType → simpele map naar `{t,v}` en doorgeven.
+
+### Effect — UX fase 5 nu écht afgerond
+**Eén consistente equity-curve in ALLE 6 locaties**:
+1. Dashboard `SyncEquityCurve` (Variant A, exchange-chips)
+2. Review `SyncEquityCurve`
+3. DashboardPremium `SyncEquityCurve`
+4. Playbook-card sparklines `SyncEquityCurve` mini-mode
+5. Tendency-card sparklines `SyncEquityCurve` mini-mode
+6. **Playbook Analytics view** `SyncEquityCurve` (Variant A, simType-chips) ← v12.179
+
+Geen multi-line overlays meer. Geen HWM-stippellijnen. Geen dashed grids. Allemaal smooth + clean.
+
+### Test
+- Smoke groen — pure component refactor
+
+---
+
 ## [v12.178] — 2026-06-04
 
 ### Gewijzigd (UX fase 5d — equity-curve consolidatie afgerond)

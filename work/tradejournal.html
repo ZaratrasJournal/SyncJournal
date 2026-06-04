@@ -1573,7 +1573,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.178",released:"2026-06-04"};
+const APP_VERSION={version:"v12.179",released:"2026-06-04"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -4068,16 +4068,19 @@ function buildEquityTheme(){
   };
 }
 
-function SyncEquityCurve({trades, size = "large", drawdown = false, hwm = false, smooth = true, ranges = false, currency = "$", startBalance = 0, aggregateDaily = true, height = "260px"}){
+function SyncEquityCurve({trades, data: dataProp, size = "large", drawdown = false, hwm = false, smooth = true, ranges = false, currency = "$", startBalance = 0, aggregateDaily = true, height = "260px"}){
   const{enabled:priv} = usePrivacy();
   const ref = useRef(null);
   const chartRef = useRef(null);
 
-  // Equity data — memoized op trades/aggregateDaily/size/startBalance
+  // Equity data — gebruik dataProp direct als gegeven (al pre-berekend {t,v}[]),
+  // anders bouw uit trades via tradesToEquity + optionele dag-aggregatie.
+  // v12.179: dataProp bypass — voor PlaybookEquityCurve die {date,cum}[] heeft.
   const data = useMemo(() => {
+    if (dataProp) return dataProp; // pre-built [{t,v}]
     const eq = tradesToEquity(trades || [], startBalance);
     return (aggregateDaily && size !== "mini") ? aggregateDailyEq(eq) : eq;
-  }, [trades, startBalance, aggregateDaily, size]);
+  }, [trades, dataProp, startBalance, aggregateDaily, size]);
 
   // Privacy-aware formatter. Bij priv=true masker bedragen naar '$***'.
   const formatValue = useMemo(() => {
@@ -10407,113 +10410,65 @@ function PlaybookAnalyticsView({playbooks,allTrades}){
   </div>);
 }
 
+// v12.179 (UX fase 5e): PlaybookEquityCurve geconsolideerd naar SyncEquityCurve.
+// Was eigen multi-line SVG-impl met HWM-stippellijn + dashed grid. Nu single-line
+// SyncEquityCurve met chip-filter (Variant A — klik bron = die curve, switchen ipv
+// overlay). Consistent met Dashboard/Review look-and-feel.
 function PlaybookEquityCurve({eqCurves,eqSources,setEqSources}){
-  const W=800,H=280,padL=56,padR=28,padT=18,padB=36;
-  const plotW=W-padL-padR,plotH=H-padT-padB;
-
-  const active=eqSources.filter(s=>eqCurves[s]&&eqCurves[s].length>0);
-  const meta={real:{lbl:"Real",ico:"●",color:"var(--green)",bg:"var(--green-dim)",dash:""},bt:{lbl:"Backtest",ico:"🔬",color:"#7ab4d2",bg:"rgba(122,180,210,0.14)",dash:"5 4"},paper:{lbl:"Paper",ico:"📝",color:"#9a8acc",bg:"rgba(154,138,204,0.14)",dash:"2 3"},missed:{lbl:"Missed",ico:"👻",color:"#b48cc8",bg:"rgba(180,140,200,0.14)",dash:"1 3"}};
-
-  const togglePill=(src)=>{
-    const has=eqCurves[src]&&eqCurves[src].length>0;
-    if(!has)return;
-    const idx=eqSources.indexOf(src);
-    if(idx>=0){if(eqSources.length>1)setEqSources(eqSources.filter(s=>s!==src));}
-    else setEqSources([...eqSources,src]);
+  const{enabled:priv}=usePrivacy();
+  const[ddOn,setDdOn]=useState(()=>{try{return localStorage.getItem("tj_playbook_dd")==="1"}catch{return false}});
+  const toggleDd=()=>{const next=!ddOn;setDdOn(next);try{localStorage.setItem("tj_playbook_dd",next?"1":"0")}catch{}};
+  const meta={
+    real:    {lbl:"Real",     ico:"●",  color:"var(--green)"},
+    bt:      {lbl:"Backtest", ico:"🔬", color:"#7ab4d2"},
+    paper:   {lbl:"Paper",    ico:"📝", color:"#9a8acc"},
+    missed:  {lbl:"Missed",   ico:"👻", color:"#b48cc8"}
   };
+  // Single-select: pak eerste actieve bron (of "real" als default). Klik chip = switch.
+  const active=eqSources.filter(s=>eqCurves[s]&&eqCurves[s].length>0);
+  const selected=active[0]||"real";
+  const selectSource=(src)=>{
+    if(!eqCurves[src]||eqCurves[src].length===0)return;
+    setEqSources([src]);
+  };
+  // Convert {date,cum}[] → {t,v}[] voor SyncEquityCurve data-prop
+  const curveData=eqCurves[selected]?eqCurves[selected].map(p=>({t:p.date,v:p.cum})):null;
+  const high=curveData&&curveData.length?Math.max(...curveData.map(d=>d.v)):0;
+  const end=curveData&&curveData.length?curveData[curveData.length-1].v:0;
+  const empty=!curveData||curveData.length<2;
+  // Privacy-aware getal-format voor HIGH/END labels
+  const fmtVal=(v)=>{if(priv)return"$***";const a=Math.abs(v),s=v<0?"-":"+";return s+"$"+(a>=1000?(a/1000).toFixed(a>=10000?0:1)+"k":Math.round(a));};
 
-  let inner;
-  if(!active.length){
-    inner=<div style={{padding:"40px",textAlign:"center",color:"var(--text4)",fontSize:12,fontFamily:"var(--mono)"}}>Selecteer minstens één bron hierboven</div>;
-  }else{
-    const allY=active.flatMap(s=>eqCurves[s].map(p=>p.cum)).concat([0]);
-    let yMin=Math.min(...allY),yMax=Math.max(...allY);
-    const range=yMax-yMin;
-    yMin-=range*0.08;yMax+=range*0.08;
-    if(yMin>0)yMin=-range*0.05;
-    const yToSvg=(y)=>padT+plotH*(1-(y-yMin)/(yMax-yMin));
-    const zeroY=yToSvg(0);
-    const longest=active.reduce((a,s)=>eqCurves[s].length>eqCurves[a].length?s:a,active[0]);
-    const xData=eqCurves[longest];
-    const xCount=xData.length;
-    const xToSvg=(i,total)=>padL+plotW*(total>1?i/(total-1):0.5);
-    const seriesPaths=active.map(src=>{
-      const data=eqCurves[src];
-      const points=data.map((d,i)=>({x:xToSvg(i,data.length),y:yToSvg(d.cum),cum:d.cum,date:d.date}));
-      return{src,points,smooth:_pbSmoothPath(points)};
-    });
-    const realSeries=seriesPaths.find(s=>s.src==="real");
-    let realFill="";
-    if(realSeries){
-      const pts=realSeries.points;
-      realFill=_pbSmoothPath(pts)+` L${pts[pts.length-1].x.toFixed(1)},${zeroY.toFixed(1)} L${pts[0].x.toFixed(1)},${zeroY.toFixed(1)} Z`;
+  return(<div style={{padding:"18px 20px",background:"var(--bg2)",border:"1px solid var(--border1)",borderRadius:12}}>
+    <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",marginBottom:12}}>
+      <h4 style={{margin:0,fontSize:11,color:"var(--gold)",fontFamily:"var(--mono)",fontWeight:700,letterSpacing:".18em",textTransform:"uppercase",display:"flex",alignItems:"center",gap:8}}><span style={{width:8,height:8,borderRadius:"50%",background:"var(--gold)",boxShadow:"0 0 8px rgba(201,168,76,0.6)"}}/>Equity Curve · USD</h4>
+      {!empty&&<div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:14,fontSize:10.5,fontFamily:"var(--mono)",fontWeight:700,color:"var(--text4)",textTransform:"uppercase",letterSpacing:".08em"}}>
+        <span>HIGH <b style={{fontSize:13,color:priv?"var(--text4)":high>=0?"var(--green)":"var(--red)"}}>{fmtVal(high)}</b></span>
+        <span>END <b style={{fontSize:13,color:priv?"var(--text4)":end>=0?"var(--green)":"var(--red)"}}>{fmtVal(end)}</b></span>
+        {/* v12.179: DD-pill — clean default, klik = drawdown-strip eronder */}
+        <button onClick={toggleDd} title={ddOn?"Drawdown-strip uitzetten":"Drawdown-strip tonen"} style={{padding:"3px 9px",borderRadius:"999px",fontSize:9,fontWeight:600,border:`1px solid ${ddOn?"rgba(246,86,111,0.45)":"var(--border3)"}`,background:ddOn?"rgba(246,86,111,0.06)":"transparent",color:ddOn?"var(--red)":"var(--text4)",cursor:"pointer",fontFamily:"var(--mono)",letterSpacing:"0.04em",transition:".15s"}}><span style={{display:"inline-block",width:"4px",height:"4px",borderRadius:"50%",background:"currentColor",marginRight:"4px",verticalAlign:"middle"}}/>DD</button>
+      </div>}
+    </div>
+    {/* Filter-chips: single-select tussen Real / Backtest / Paper / Missed */}
+    <div style={{display:"flex",gap:6,marginBottom:10,flexWrap:"wrap"}}>
+      {Object.entries(meta).map(([src,m])=>{
+        const has=eqCurves[src]&&eqCurves[src].length>0;
+        const isOn=selected===src&&has;
+        return(<button key={src} disabled={!has} onClick={()=>selectSource(src)} style={{
+          padding:"5px 11px",fontFamily:"var(--font)",fontSize:11,fontWeight:600,
+          border:`1px solid ${isOn?m.color:"var(--border2)"}`,
+          background:isOn?"rgba(46,170,111,0.08)":"transparent",
+          color:isOn?m.color:(has?"var(--text3)":"var(--text5)"),
+          cursor:has?"pointer":"not-allowed",borderRadius:5,display:"flex",alignItems:"center",gap:5,
+          opacity:has?1:0.4,letterSpacing:".02em"
+        }}><span style={{fontSize:11,color:m.color}}>{m.ico}</span>{m.lbl}{has&&eqCurves[src]?<span style={{color:"var(--text5)",marginLeft:3,fontSize:10}}>({eqCurves[src].length})</span>:null}</button>);
+      })}
+    </div>
+    {empty
+      ? <div style={{padding:"40px",textAlign:"center",color:"var(--text4)",fontSize:12,fontFamily:"var(--mono)"}}>Selecteer een bron hierboven</div>
+      : <SyncEquityCurve data={curveData} drawdown={ddOn} height="280px"/>
     }
-    const ticks=[];for(let i=0;i<6;i++){const y=yMin+(yMax-yMin)*(i/5);ticks.push({y,svgY:yToSvg(y)});}
-    const xStep=Math.max(1,Math.floor(xCount/6));
-    const xTicks=[];for(let i=0;i<xCount;i+=xStep)xTicks.push({i,label:xData[i].date});
-    if(xTicks[xTicks.length-1].i!==xCount-1)xTicks.push({i:xCount-1,label:xData[xCount-1].date});
-    const primary=realSeries||seriesPaths[0];
-    const high=Math.max(...primary.points.map(p=>p.cum));
-    const end=primary.points[primary.points.length-1].cum;
-
-    inner=(<>
-      <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",marginBottom:12}}>
-        <h4 style={{margin:0,fontSize:11,color:"var(--gold)",fontFamily:"var(--mono)",fontWeight:700,letterSpacing:".18em",textTransform:"uppercase",display:"flex",alignItems:"center",gap:8}}><span style={{width:8,height:8,borderRadius:"50%",background:"var(--gold)",boxShadow:"0 0 8px rgba(201,168,76,0.6)"}}/>Equity Curve · USD</h4>
-        <div style={{marginLeft:"auto",display:"flex",gap:18,fontSize:10.5,fontFamily:"var(--mono)",fontWeight:700,color:"var(--text4)",textTransform:"uppercase",letterSpacing:".08em"}}>
-          <span>HIGH <b style={{fontSize:13,color:high>=0?"var(--green)":"var(--red)"}}>{_pbFmtUsd(high)}</b></span>
-          <span>END <b style={{fontSize:13,color:end>=0?"var(--green)":"var(--red)"}}>{_pbFmtUsd(end)}</b></span>
-        </div>
-      </div>
-      <div style={{display:"flex",gap:6,marginBottom:10,flexWrap:"wrap"}}>
-        {Object.entries(meta).map(([src,m])=>{
-          const has=eqCurves[src]&&eqCurves[src].length>0;
-          const isOn=eqSources.includes(src)&&has;
-          return(<button key={src} disabled={!has} onClick={()=>togglePill(src)} style={{
-            padding:"5px 11px",fontFamily:"var(--font)",fontSize:11,fontWeight:600,
-            border:`1px solid ${isOn?m.color:"var(--border2)"}`,
-            background:isOn?m.bg:"transparent",
-            color:isOn?m.color:(has?"var(--text3)":"var(--text5)"),
-            cursor:has?"pointer":"not-allowed",borderRadius:5,display:"flex",alignItems:"center",gap:5,
-            opacity:has?1:0.4,letterSpacing:".02em"
-          }}><span style={{fontSize:11,color:m.color}}>{m.ico}</span>{m.lbl}</button>);
-        })}
-      </div>
-      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet" style={{width:"100%",height:"auto",display:"block"}}>
-        <defs>
-          <linearGradient id="pbEqGreen" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="var(--green)" stopOpacity="0.32"/><stop offset="100%" stopColor="var(--green)" stopOpacity="0"/></linearGradient>
-          <linearGradient id="pbEqRed" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="var(--red)" stopOpacity="0"/><stop offset="100%" stopColor="var(--red)" stopOpacity="0.32"/></linearGradient>
-          <pattern id="pbGridPat" x="0" y="0" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M 40 0 L 0 0 0 40" fill="none" stroke="var(--border1)" strokeWidth="0.5"/></pattern>
-          <clipPath id="pbAboveZero"><rect x={padL} y={padT} width={plotW} height={zeroY-padT}/></clipPath>
-          <clipPath id="pbBelowZero"><rect x={padL} y={zeroY} width={plotW} height={H-padB-zeroY}/></clipPath>
-        </defs>
-        <rect x={padL} y={padT} width={plotW} height={plotH} fill="url(#pbGridPat)" opacity="0.4"/>
-        {ticks.map((t,i)=>(<g key={i}>
-          <line x1={padL} y1={t.svgY} x2={W-padR} y2={t.svgY} stroke="var(--border1)" strokeWidth="1" strokeDasharray="2 3" opacity="0.6"/>
-          <text x={padL-8} y={t.svgY+3} textAnchor="end" style={{fill:"var(--text4)",fontSize:9.5,fontFamily:"var(--mono)",fontWeight:500}}>{_pbFmtUsd(t.y)}</text>
-        </g>))}
-        <line x1={padL} y1={zeroY} x2={W-padR} y2={zeroY} stroke="var(--text4)" strokeWidth="1" strokeDasharray="3 3" opacity="0.5"/>
-        {xTicks.map((t,i)=>{const x=xToSvg(t.i,xCount);return(<g key={i}>
-          <text x={x} y={H-padB+18} textAnchor="middle" style={{fill:"var(--text4)",fontSize:9.5,fontFamily:"var(--mono)",fontWeight:500}}>{t.label}</text>
-          <line x1={x} y1={padT} x2={x} y2={H-padB} stroke="var(--border1)" strokeWidth="0.5" strokeDasharray="1 4" opacity="0.4"/>
-        </g>);})}
-        {realFill&&<>
-          <path d={realFill} fill="url(#pbEqGreen)" clipPath="url(#pbAboveZero)"/>
-          <path d={realFill} fill="url(#pbEqRed)" clipPath="url(#pbBelowZero)"/>
-        </>}
-        {seriesPaths.filter(s=>s.src!=="real").map(s=><path key={s.src} d={s.smooth} fill="none" stroke={meta[s.src].color} strokeWidth="1.8" strokeDasharray={meta[s.src].dash} strokeLinecap="round" strokeLinejoin="round" opacity="0.9"/>)}
-        {realSeries&&<path d={realSeries.smooth} fill="none" stroke="var(--green)" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"/>}
-        {seriesPaths.map(s=>{const last=s.points[s.points.length-1];return(<circle key={s.src} cx={last.x.toFixed(1)} cy={last.y.toFixed(1)} r="4" fill={meta[s.src].color} stroke="var(--bg2)" strokeWidth="2"/>);})}
-      </svg>
-      <div style={{display:"flex",gap:14,fontSize:10,fontFamily:"var(--mono)",color:"var(--text3)",marginTop:8,flexWrap:"wrap"}}>
-        {active.map(src=>{const data=eqCurves[src],end=data[data.length-1].cum,m=meta[src];return(<span key={src} style={{display:"inline-flex",alignItems:"center",gap:5}}>
-          <span style={{width:14,height:2,display:"inline-block",background:m.color,backgroundImage:m.dash?`repeating-linear-gradient(90deg,${m.color} 0,${m.color} 3px,transparent 3px,transparent 6px)`:"none"}}/>
-          {m.lbl} ({data.length}) — {_pbFmtUsd(end)}
-        </span>);})}
-      </div>
-    </>);
-  }
-
-  return(<div style={{padding:"18px 20px",background:"var(--bg2)",border:"1px solid var(--border1)",borderRadius:12}}>{inner}</div>);
+  </div>);
 }
 
 // ─── PlaybookPage — hoofdtab ────────────────────────────────────────────────
