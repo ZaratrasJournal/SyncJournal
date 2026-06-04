@@ -6,6 +6,32 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.189] — 2026-06-04
+
+### Gewijzigd
+- **Trades-tabel kolom-volgorde overgenomen uit trades-merge-demo** *(gevraagd door Denny: "de volgorde van de kolom overzicht in de demo beter dan die van ons · vind het duidelijker te lezen")*
+
+  **Voor**: `☑ · Status · Datum · Symbol · Entry · Exit · Size · Side · PNL · R-mult · Setup · Sessie · Emoties`
+
+  **Na**: `☑ · Datum · Symbol · Side · Entry · Exit · Size · PNL · R-mult · Status · Setup · Sessie · Emoties`
+
+  Drie verschuivingen:
+  - **Datum** wordt eerste data-kolom (was positie 3, nu positie 2)
+  - **Side** direct na Symbol (was positie 8, nu positie 4) — direction zichtbaar meteen na ticker, niet pas na entry/exit/size
+  - **Status** verhuist naar achter R-mult (was positie 2, nu positie 10) — eerst de nummer-info (entry → exit → size → PnL → R), dan het status-label
+
+  Lezen wordt natuurlijker: links-naar-rechts vertel je het verhaal van een trade (wanneer · wat · welke kant · entry · exit · size · uitkomst · R · status · context). Status helemaal vooraan was minder logisch omdat closed-trades (98%) gewoon een ✓/✗ tonen.
+
+### Cleanup
+- Status-cel "OPEN" gebruikte nog hardcoded `#C9A84C` + `rgba(201,168,76,0.1)` — vervangen door `var(--gold)` + `var(--gold-dim)` (theme-aware in alle 6 thema's).
+- NEW-badge in datum-cel idem (was `#d4b85c`, nu `var(--gold)`).
+- Side-pill long/short kleuren van `#2eaa6f`/`#e05555` naar `var(--green)`/`var(--red)`.
+
+### Test
+- Smoke groen — pure kolom-reorder + theme-token cleanup, geen logica gewijzigd
+
+---
+
 ## [v12.188] — 2026-06-04
 
 ### Fixed

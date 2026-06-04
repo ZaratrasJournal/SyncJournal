@@ -1573,7 +1573,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.188",released:"2026-06-04"};
+const APP_VERSION={version:"v12.189",released:"2026-06-04"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -4677,19 +4677,21 @@ function TradeList({trades,onEdit,onDelete,onQuickTag,onBulkDelete,onBulkTag,onB
             <th style={{...thStyle,width:"30px",cursor:"pointer"}} onClick={toggleAll}>
               <div style={{width:"14px",height:"14px",borderRadius:"3px",border:`1px solid ${selCount===sorted.length&&selCount>0?"#C9A84C":"var(--border4)"}`,background:selCount===sorted.length&&selCount>0?"#C9A84C":"transparent",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"9px",color:"#fff",margin:"0 auto"}}>{selCount===sorted.length&&selCount>0?"✓":""}</div>
             </th>
-            <th style={thStyle}>Status</th>
+            {/* v12.189 (gevraagd door Denny — kolom-volgorde uit trades-merge-demo overnemen):
+                Datum eerste data-kolom · Side direct na Symbol (direction zien meteen) ·
+                Status verhuist naar achter R-mult (eerst nummer-info, dan status-label). */}
             <th style={thStyle} onClick={()=>toggleSort("date")}>Datum{arrow("date")}</th>
             <th style={thStyle} onClick={()=>toggleSort("pair")}>Symbol{arrow("pair")}</th>
+            <th style={{...thStyle,textAlign:"center"}}>Side</th>
             {/* v12.169 (UX polish): numerieke kolommen right-aligned zodat duizenden-separators
-                en decimal-punten onder elkaar staan. Centered numbers met variabele width
-                (3,09 vs 67.327,40) wijken visueel af. Pro-trader-best-practice. */}
+                en decimal-punten onder elkaar staan. */}
             <th style={{...thStyle,textAlign:"right",paddingRight:"12px"}}>Entry</th>
             <th style={{...thStyle,textAlign:"right",paddingRight:"12px"}}>Exit</th>
             <th style={{...thStyle,textAlign:"right",paddingRight:"12px"}}>Size</th>
-            <th style={{...thStyle,textAlign:"center"}}>Side</th>
             <th style={{...thStyle,textAlign:"right",paddingRight:"12px"}} onClick={()=>toggleSort("pnl")}>PNL{arrow("pnl")}</th>
             {/* v7 NEW: R-multiple column */}
             <th style={{...thStyle,textAlign:"right",paddingRight:"12px"}}>R-mult</th>
+            <th style={thStyle}>Status</th>
             <th style={thStyle}>Setup</th>
             <th style={thStyle}>Sessie</th>
             <th style={thStyle}>Emoties</th>
@@ -4721,25 +4723,12 @@ function TradeList({trades,onEdit,onDelete,onQuickTag,onBulkDelete,onBulkTag,onB
               <td style={tdStyle} onClick={e=>toggleSelect(t.id,e)}>
                 <div style={{width:"14px",height:"14px",borderRadius:"3px",border:`1px solid ${isSel?"#C9A84C":"var(--border4)"}`,background:isSel?"#C9A84C":"transparent",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"9px",color:"#fff",margin:"0 auto",cursor:"pointer"}}>{isSel?"✓":""}</div>
               </td>
-              <td style={tdStyle}>
-                {t.status==="missed"?(()=>{
-                  // v12.109: badge + theoretische W/L indicator uit hindsightExit.
-                  const tR=calcTheoreticalR(t);
-                  const wlIcon=tR>0?<span title={`Theoretisch +${tR.toFixed(1)}R`} style={{color:"var(--green)",fontWeight:700,fontSize:"11px"}}>✓</span>:tR<0?<span title={`Theoretisch ${tR.toFixed(1)}R`} style={{color:"var(--red)",fontWeight:700,fontSize:"11px"}}>✗</span>:null;
-                  const baseStyle={padding:"3px 8px",borderRadius:"4px",fontSize:"10px",fontWeight:700,display:"inline-flex",alignItems:"center",gap:"5px"};
-                  if(t.simType==="backtest")return<span style={{...baseStyle,background:"rgba(122,180,210,0.15)",color:"#7ab4d2"}}>🔬 BT{wlIcon}</span>;
-                  if(t.simType==="paper")return<span style={{...baseStyle,background:"rgba(154,138,204,0.15)",color:"#9a8acc"}}>📝 PAPER{wlIcon}</span>;
-                  return<span style={{...baseStyle,background:"rgba(180,140,200,0.15)",color:"#b48cc8"}}>👻 MISS{wlIcon}</span>;
-                })()
-                :t.status==="partial"?(()=>{const r=parseFloat(t.realizedPnl);const rTxt=isFinite(r)&&r!==0?` ${r>=0?"+":""}$${r.toFixed(2)}`:"";return<span title={"Partial close — restant nog open"+(rTxt?", realized "+rTxt.trim():"")} style={{padding:"3px 8px",borderRadius:"4px",fontSize:"10px",fontWeight:700,background:"rgba(212,168,83,0.14)",color:"var(--amber)",display:"inline-flex",alignItems:"center",gap:"5px"}}><span style={{width:"6px",height:"6px",borderRadius:"50%",background:"var(--amber)",animation:"pulse 2s ease-in-out infinite"}}/>PARTIAL{rTxt}</span>;})()
-                :t.status==="open"?<span style={{padding:"3px 8px",borderRadius:"4px",fontSize:"10px",fontWeight:700,background:"rgba(201,168,76,0.1)",color:"#C9A84C",display:"inline-flex",alignItems:"center",gap:"5px"}}><span style={{width:"6px",height:"6px",borderRadius:"50%",background:"#C9A84C",animation:"pulse 2s ease-in-out infinite"}}/>OPEN</span>
-                /* v12.165: WIN/LOSS-pill dupliceerde PnL-kleur (zelfde info, twee plekken).
-                   Vervangen door subtiele icoon zonder background. Kolom blijft bestaan voor
-                   open/partial/missed indicators die wel info toevoegen. */
-                :<span title={isW?"Winnende trade":isL?"Verliezende trade":"Geen P&L"} style={{display:"inline-block",fontSize:"14px",fontWeight:700,color:isW?"var(--green)":isL?"var(--red)":"var(--text5)",lineHeight:1}}>{isW?"✓":isL?"✗":"–"}</span>}
-              </td>
-              <td style={{...tdStyle,fontFamily:"var(--mono)",color:"var(--text2)",fontSize:"11px",whiteSpace:"nowrap"}}>{fmtNL(t.date)}{isNew&&<span style={{marginLeft:"6px",fontSize:"8px",padding:"1px 5px",borderRadius:"3px",background:"rgba(201,168,76,0.15)",color:"#d4b85c",fontWeight:700,verticalAlign:"middle",letterSpacing:"0.04em"}}>NEW</span>}<br/><span style={{color:"var(--text4)"}}>{t.time}</span></td>
+              {/* v12.189 (cell-volgorde uit trades-merge-demo): Datum · Symbol · Side · Entry · Exit · Size · PnL · R-mult · Status · Setup · Sessie · Emoties */}
+              <td style={{...tdStyle,fontFamily:"var(--mono)",color:"var(--text2)",fontSize:"11px",whiteSpace:"nowrap"}}>{fmtNL(t.date)}{isNew&&<span style={{marginLeft:"6px",fontSize:"8px",padding:"1px 5px",borderRadius:"3px",background:"var(--gold-dim)",color:"var(--gold)",fontWeight:700,verticalAlign:"middle",letterSpacing:"0.04em"}}>NEW</span>}<br/><span style={{color:"var(--text4)"}}>{t.time}</span></td>
               <td style={{...tdStyle,fontWeight:600,color:"var(--text)"}}><div style={{display:"flex",alignItems:"center",gap:"8px"}}><div style={{position:"relative",flexShrink:0}}><CryptoIcon pair={t.pair} size={24}/>{t.source&&t.source!=="manual"&&<div style={{position:"absolute",bottom:"-2px",right:"-4px",borderRadius:"3px",overflow:"hidden",border:"1.5px solid var(--bg3)"}}><ExchangeIcon name={t.source} size={11}/></div>}</div><div><span>{t.pair}</span>{(()=>{const lbl=resolveAccountLabel(t.source,config,accounts);return lbl?<div style={{fontSize:"9px",color:"var(--gold)",fontWeight:600,letterSpacing:".04em",marginTop:"1px"}}>{lbl}</div>:null})()}</div></div></td>
+              <td style={{...tdStyle,textAlign:"center"}}>
+                <span style={{padding:"3px 10px",borderRadius:"4px",fontSize:"10px",fontWeight:700,background:t.direction==="long"?"rgba(46,170,111,0.12)":"rgba(224,85,85,0.12)",color:t.direction==="long"?"var(--green)":"var(--red)"}}>{t.direction.toUpperCase()}</span>
+              </td>
               {/* v12.169: numerieke cellen right-aligned matchen th. Tabular-nums via mono-font
                   zorgt voor character-width consistency. Padding-right matched de th. */}
               <td style={{...tdStyle,fontFamily:"var(--mono)",fontSize:"11px",color:"var(--text2)",textAlign:"right",paddingRight:"12px"}}>{t.entry&&parseFloat(t.entry)?fmt(t.entry):<NA/>}</td>
@@ -4754,9 +4743,6 @@ function TradeList({trades,onEdit,onDelete,onQuickTag,onBulkDelete,onBulkTag,onB
                 return<NA/>;
               })()}</td>
               <td style={{...tdStyle,fontFamily:"var(--mono)",fontSize:"10px",color:"var(--text3)",textAlign:"right",paddingRight:"12px"}}>{fmtSize(t)||<NA/>}</td>
-              <td style={{...tdStyle,textAlign:"center"}}>
-                <span style={{padding:"3px 10px",borderRadius:"4px",fontSize:"10px",fontWeight:700,background:t.direction==="long"?"rgba(46,170,111,0.12)":"rgba(224,85,85,0.12)",color:t.direction==="long"?"#2eaa6f":"#e05555"}}>{t.direction.toUpperCase()}</span>
-              </td>
               <td style={{...tdStyle,fontFamily:"var(--mono)",fontWeight:700,fontSize:"12px",textAlign:"right",paddingRight:"12px",color:isW?"var(--green)":isL?"var(--red)":"var(--text3)"}}>{(()=>{
                 if(priv)return"$***,**";
                 // v12.117: voor missed/BT/paper toon trade.pnl met ~ prefix (theoretical) als ingevuld
@@ -4781,6 +4767,23 @@ function TradeList({trades,onEdit,onDelete,onQuickTag,onBulkDelete,onBulkTag,onB
                   if(tR!==null)return<span className={`r-chip ${tR>0?"r-pos":tR<0?"r-neg":"r-zero"}`} title="Theoretische R uit hindsightExit" style={{opacity:0.85,fontStyle:"italic"}}>{tR>=0?"+":""}{tR.toFixed(1)}R</span>;
                   return<span style={{color:"var(--text5)",fontSize:"9px"}}>–</span>;
                 })()}
+              </td>
+              <td style={tdStyle}>
+                {t.status==="missed"?(()=>{
+                  // v12.109: badge + theoretische W/L indicator uit hindsightExit.
+                  const tR=calcTheoreticalR(t);
+                  const wlIcon=tR>0?<span title={`Theoretisch +${tR.toFixed(1)}R`} style={{color:"var(--green)",fontWeight:700,fontSize:"11px"}}>✓</span>:tR<0?<span title={`Theoretisch ${tR.toFixed(1)}R`} style={{color:"var(--red)",fontWeight:700,fontSize:"11px"}}>✗</span>:null;
+                  const baseStyle={padding:"3px 8px",borderRadius:"4px",fontSize:"10px",fontWeight:700,display:"inline-flex",alignItems:"center",gap:"5px"};
+                  if(t.simType==="backtest")return<span style={{...baseStyle,background:"rgba(122,180,210,0.15)",color:"#7ab4d2"}}>🔬 BT{wlIcon}</span>;
+                  if(t.simType==="paper")return<span style={{...baseStyle,background:"rgba(154,138,204,0.15)",color:"#9a8acc"}}>📝 PAPER{wlIcon}</span>;
+                  return<span style={{...baseStyle,background:"rgba(180,140,200,0.15)",color:"#b48cc8"}}>👻 MISS{wlIcon}</span>;
+                })()
+                :t.status==="partial"?(()=>{const r=parseFloat(t.realizedPnl);const rTxt=isFinite(r)&&r!==0?` ${r>=0?"+":""}$${r.toFixed(2)}`:"";return<span title={"Partial close — restant nog open"+(rTxt?", realized "+rTxt.trim():"")} style={{padding:"3px 8px",borderRadius:"4px",fontSize:"10px",fontWeight:700,background:"rgba(212,168,83,0.14)",color:"var(--amber)",display:"inline-flex",alignItems:"center",gap:"5px"}}><span style={{width:"6px",height:"6px",borderRadius:"50%",background:"var(--amber)",animation:"pulse 2s ease-in-out infinite"}}/>PARTIAL{rTxt}</span>;})()
+                :t.status==="open"?<span style={{padding:"3px 8px",borderRadius:"4px",fontSize:"10px",fontWeight:700,background:"var(--gold-dim)",color:"var(--gold)",display:"inline-flex",alignItems:"center",gap:"5px"}}><span style={{width:"6px",height:"6px",borderRadius:"50%",background:"var(--gold)",animation:"pulse 2s ease-in-out infinite"}}/>OPEN</span>
+                /* v12.165: WIN/LOSS-pill dupliceerde PnL-kleur (zelfde info, twee plekken).
+                   Vervangen door subtiele icoon zonder background. Kolom blijft bestaan voor
+                   open/partial/missed indicators die wel info toevoegen. */
+                :<span title={isW?"Winnende trade":isL?"Verliezende trade":"Geen P&L"} style={{display:"inline-block",fontSize:"14px",fontWeight:700,color:isW?"var(--green)":isL?"var(--red)":"var(--text5)",lineHeight:1}}>{isW?"✓":isL?"✗":"–"}</span>}
               </td>
               {/* v12.165: Setup/Sessie/Emoties van pill naar tekst (kleur signaleert, geen pill-noise).
                   De tabel had 6+ gekleurde pills per rij = "fruit-salad" effect. Nu rusten kleuren
