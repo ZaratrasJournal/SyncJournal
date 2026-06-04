@@ -6,6 +6,20 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.186] — 2026-06-04
+
+### Fixed
+- **Matrix-cellen slecht leesbaar** *(gemeld door Denny: "waarom zijn er zoveel zo slecht leesbaar?")*
+  - Wat Denny opmerkte: dat is de `minN=3` drempel-instelling. Cellen met **<3 trades** (1 of 2 trades) krijgen opacity-dim omdat ze statistisch onbetrouwbaar zijn — één enkele trade van +$70 zegt niets over edge.
+  - **Probleem**: opacity 0.4 was te aggressief, vooral in light/parchment thema waar tekst sowieso subtieler is. Tekst werd bijna onleesbaar terwijl de data wel relevant kan zijn (lower-confidence indicator).
+  - **Fix**: opacity 0.4 → **0.7**. Visueel onderscheid blijft (signaal dat data lage confidence is), maar tekst is nu leesbaar in alle themas.
+  - **Header-uitleg duidelijker**: "Cellen met < 3 trades zijn gedimd" → "Cellen met < 3 trades zijn iets transparant (te weinig data voor betrouwbare conclusie)".
+
+### Test
+- Smoke groen — pure opacity-tweak
+
+---
+
 ## [v12.185] — 2026-06-04
 
 ### Gewijzigd
