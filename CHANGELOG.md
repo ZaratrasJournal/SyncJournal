@@ -6,6 +6,54 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.190] — 2026-06-05
+
+### Toegevoegd
+- **Trades samenvoegen — FTMO MT5 partial-workaround** *(gevraagd door Denny, na demo in [demos/trades-merge-demo.html](demos/trades-merge-demo.html))*
+
+  **Het probleem**: FTMO MT5 web staat geen partial-TPs toe — je opent meerdere losse trades als workaround. Het journal toonde dan 3-4 aparte rijen i.p.v. 1 positie met 3-4 TPs. Trade-count, win-rate per setup en PnL-spreiding werden scheef.
+
+  **De oplossing**: meerdere trades selecteren in de Trades-tabel → knop **🔗 Samenvoegen** → ze worden 1 logische master-trade met N TP-niveaus. De originelen blijven bewaard (soft-merge — niet destructief).
+
+  **UI-flow**:
+  1. **Selecteer ≥2 FTMO-trades** in de Trades-tabel (checkbox-kolom). Bulk-bar verschijnt.
+  2. **Klik 🔗 Samenvoegen**. De modal toont:
+     - **Master-preview** (gewogen entry, totale size, Σ PnL, conservatiefste SL)
+     - **Validatie-checks** (✓ zelfde pair / direction / source · ⚠ tijdsspreiding >24u · ✗ blocks bij conflict)
+     - **Conflict-vragen** voor velden die verschillen tussen children (tradeGrade / playbookId / notes / entryNote) — jij kiest welke waarde op de master komt; voor notes is "concat" een optie
+     - **Children-overzicht** met PnL per child
+  3. **Bevestig** → master-trade verschijnt bovenaan met 🔗 N-badge naast de pair. Children verdwijnen uit alle lijsten + analytics.
+  4. **Open master detail** → 🧩-sectie toont TP1-TPN met child-data, exit, size%, PnL per niveau.
+  5. **Splits weer uit** → master verdwijnt, children krijgen hun originele status terug (`_preMergeStatus` bewaard voor exact-restore).
+
+  **Scope v1**: alleen `source==="ftmo"`. Voor crypto-exchanges herkent de app partials automatisch via `getConsumedSiblings`. De knop verschijnt dus niet bij Blofin/MEXC/Kraken/Hyperliquid-selecties.
+
+  **Data-shape** (additief, geen schemaVersion-bump):
+  - Master: `mergedFrom: [id1,id2,...]` · `_mergeSource: "manual"` · `_mergeTimestamp: ISO`
+  - Children: `status: "merged-child"` · `mergedInto: masterId` · `_preMergeStatus` (voor restore)
+  - Pure helpers: `filterMergedChildren()` · `buildMergePreview()` · `detectMergeConflicts()` · `validateMerge()`
+
+  **Filter-discipline**: één centrale `filterMergedChildren()` wordt App-niveau toegepast via de `mergedTrades` memo. Dashboard / TradeList / Analytics / Calendar / Review / Rapport zien automatisch alleen de master, nooit dubbeltel-bug.
+
+  **Master-velden** (auto-berekend uit children):
+  | Veld | Berekening |
+  |---|---|
+  | `entry` | gewogen avg op positionSize |
+  | `exit` | gewogen avg van closed children |
+  | `positionSize`, `positionSizeAsset` | Σ |
+  | `pnl`, `fees` | Σ |
+  | `stopLoss` | conservatiefst (long: max, short: min) |
+  | `status` | "closed" als alle children closed, anders "partial" |
+  | `realizedPnl` (bij partial) | Σ PnL closed children |
+  | `setupTags`, `confirmationTags`, etc. | unie + dedupe |
+
+### Tests
+- **`tests/run-merge-helpers.js`** — pure Node-runner met 38 assertions over `filterMergedChildren`, `buildMergePreview`, `validateMerge`, `detectMergeConflicts`. Edge-cases: lege array, partial (1 open child), conflict-overrides, concat-notes, merged-child in selectie, master-in-selectie.
+- **`tests/merge-trades.spec.js`** — UI-smoke. Seed met 1 master + 4 merged-children → bevestigt 4 verborgen, 1 zichtbaar met 🔗 4-badge, helpers in window-scope, geen JS-errors.
+- Regressie 4/4 groen: smoke + blofin-partial + merge + helpers.
+
+---
+
 ## [v12.189] — 2026-06-04
 
 ### Gewijzigd

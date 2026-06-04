@@ -1573,7 +1573,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.189",released:"2026-06-04"};
+const APP_VERSION={version:"v12.190",released:"2026-06-05"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -1877,7 +1877,12 @@ const EMPTY_TRADE={
   originalSizeAsset:"",// v12.62: voor status="partial" — origineel size in base currency (= rest + alle closed siblings); gebruikt voor correcte TP-winst-calc
   entryNote:"",
   riskUsd:"",riskPct:"",
-  hindsightExit:""// optional: where did price actually go after a missed trade
+  hindsightExit:"",// optional: where did price actually go after a missed trade
+  // v12.190: Merge-feature (FTMO MT5 partial-workaround). Soft-merge architectuur — zie demos/trades-merge-demo.html.
+  // Op master-trade: mergedFrom = [child-ids], _mergeSource = "manual", _mergeTimestamp = ISO.
+  // Op merged-children: mergedInto = master-id, _preMergeStatus = oorspronkelijke status (voor exact-restore bij de-merge).
+  // status="merged-child" wordt door filterMergedChildren() helper uit alle UI-lists + analytics gefilterd.
+  mergedFrom:null,mergedInto:null,_preMergeStatus:null,_mergeSource:null,_mergeTimestamp:null
 };
 
 // v12.51: Net PnL helper — voor aggregation/display gebruik. Manuele trades
@@ -1921,6 +1926,153 @@ function SampleSizeBanner({n,threshold,style}){
     <span><b style={{color:"var(--text)",fontWeight:600}}>{n} trade{n===1?"":"s"}</b> — onder {t}-drempel, stats indicatief.</span>
   </div>);
 }
+
+// v12.190: filter merged-children uit een trades-array. Master + losse trades blijven zichtbaar.
+// Apply overal waar trades worden geteld/getoond: TradeList, Dashboard, Analytics, Calendar,
+// Review, Rapport. Zonder deze filter telt elke gemergde trade dubbel (master + 4 children = 5x).
+// Pure helper — geen exchange-specifieke aannames.
+const filterMergedChildren=(trades)=>(trades||[]).filter(t=>t.status!=="merged-child");
+
+// v12.190: Bereken master-trade preview uit N children + conflict-keuzes van user.
+// `conflictChoices` is een dict {fieldName: childId | "concat"}; default "concat" voor notes,
+// meest-voorkomende non-empty voor andere velden.
+// Pure functie — geen side effects. Returnt master-shape object (zonder id/mergedFrom/timestamps).
+const buildMergePreview=(children,conflictChoices)=>{
+  if(!children||children.length===0)return null;
+  const cc=conflictChoices||{};
+  // Numeric aggregates
+  const totalSize=children.reduce((s,c)=>s+(parseFloat(c.positionSize)||0),0);
+  const totalSizeAsset=children.reduce((s,c)=>s+(parseFloat(c.positionSizeAsset)||0),0);
+  const totalPnl=children.reduce((s,c)=>s+(parseFloat(c.pnl)||0),0);
+  const totalFees=children.reduce((s,c)=>s+(parseFloat(c.fees)||0),0);
+  // Gewogen entry (op positionSize-USD)
+  const wEntry=totalSize>0
+    ?children.reduce((s,c)=>s+((parseFloat(c.entry)||0)*(parseFloat(c.positionSize)||0)),0)/totalSize
+    :children[0].entry;
+  // Gewogen exit (alleen closed children)
+  const closedChildren=children.filter(c=>c.status==="closed"&&c.exit&&parseFloat(c.exit)>0);
+  const closedSize=closedChildren.reduce((s,c)=>s+(parseFloat(c.positionSize)||0),0);
+  const wExit=closedSize>0
+    ?closedChildren.reduce((s,c)=>s+((parseFloat(c.exit)||0)*(parseFloat(c.positionSize)||0)),0)/closedSize
+    :"";
+  // Conservatiefste SL — voor long = highest, voor short = lowest
+  const dir=children[0].direction;
+  const sls=children.map(c=>parseFloat(c.stopLoss)).filter(v=>isFinite(v)&&v>0);
+  const sl=sls.length?(dir==="long"?Math.max(...sls):Math.min(...sls)):"";
+  // Status
+  const allClosed=children.every(c=>c.status==="closed");
+  const status=allClosed?"closed":"partial";
+  // realizedPnl bij partial = som PnL van closed children
+  const realizedPnl=allClosed?"":closedChildren.reduce((s,c)=>s+(parseFloat(c.pnl)||0),0).toFixed(2);
+  // Vroegste date+time
+  const sorted=[...children].sort((a,b)=>{
+    const aT=`${a.date||""}T${a.time||"00:00"}`;
+    const bT=`${b.date||""}T${b.time||"00:00"}`;
+    return aT.localeCompare(bT);
+  });
+  // Conflict-resolution helper
+  const resolveField=(field,multiValueOk)=>{
+    const choice=cc[field];
+    if(choice&&choice!=="concat"){
+      const src=children.find(c=>c.id===choice);
+      return src?(src[field]||""):"";
+    }
+    if(choice==="concat"&&multiValueOk){
+      return children.map(c=>c[field]).filter(Boolean).join("\n———\n");
+    }
+    // Default: meest voorkomende non-empty
+    const values=children.map(c=>c[field]||"").filter(Boolean);
+    if(values.length===0)return "";
+    const counts={};
+    values.forEach(v=>counts[v]=(counts[v]||0)+1);
+    return Object.entries(counts).sort((a,b)=>b[1]-a[1])[0][0];
+  };
+  // Tags — unie + dedupe
+  const uniqueArr=(field)=>{
+    const all=children.flatMap(c=>c[field]||[]);
+    return [...new Set(all)];
+  };
+  return {
+    pair:children[0].pair,
+    direction:dir,
+    source:children[0].source,
+    date:sorted[0].date,
+    time:sorted[0].time,
+    entry:wEntry.toFixed(8).replace(/\.?0+$/,""),
+    exit:wExit?wExit.toFixed(8).replace(/\.?0+$/,""):"",
+    stopLoss:sl?String(sl):"",
+    positionSize:totalSize?totalSize.toFixed(8).replace(/\.?0+$/,""):"",
+    positionSizeAsset:totalSizeAsset?totalSizeAsset.toFixed(8).replace(/\.?0+$/,""):"",
+    pnl:totalPnl.toFixed(2),
+    fees:totalFees.toFixed(4),
+    realizedPnl,
+    status,
+    tradeGrade:resolveField("tradeGrade"),
+    playbookId:resolveField("playbookId"),
+    notes:resolveField("notes",true),
+    entryNote:resolveField("entryNote",true),
+    setupTags:uniqueArr("setupTags"),
+    confirmationTags:uniqueArr("confirmationTags"),
+    timeframeTags:uniqueArr("timeframeTags"),
+    emotionTags:uniqueArr("emotionTags"),
+    mistakeTags:uniqueArr("mistakeTags"),
+    customTags:uniqueArr("customTags"),
+    childCount:children.length,
+    closedCount:closedChildren.length,
+  };
+};
+
+// v12.190: detecteer welke velden verschillende waarden hebben tussen children → conflict-vragen.
+// Returnt array van {field, label, values:[{id,val}], multiValueOk}.
+const detectMergeConflicts=(children)=>{
+  if(!children||children.length<2)return [];
+  const conflicts=[];
+  const check=(field,label,multiValueOk)=>{
+    const vals=children.map(c=>c[field]||"");
+    if(new Set(vals).size>1){
+      conflicts.push({field,label,multiValueOk:!!multiValueOk,values:children.map(c=>({id:c.id,val:c[field]||""}))});
+    }
+  };
+  check("tradeGrade","Trade-grade",false);
+  check("playbookId","Playbook",false);
+  check("notes","Review notes",true);
+  check("entryNote","Thesis (entry-note)",true);
+  return conflicts;
+};
+
+// v12.190: validatie-checks voor merge. Returnt array van {level: "ok"|"warn"|"fail", msg}.
+// fail = block merge; warn = toon banner; ok = positief signaal.
+const validateMerge=(children)=>{
+  const checks=[];
+  if(!children||children.length<2){
+    checks.push({level:"fail",msg:"Selecteer minimaal 2 trades."});
+    return checks;
+  }
+  const pairs=new Set(children.map(c=>c.pair));
+  const dirs=new Set(children.map(c=>c.direction));
+  const srcs=new Set(children.map(c=>c.source));
+  if(pairs.size>1)checks.push({level:"fail",msg:`Verschillende pairs (${[...pairs].join(", ")}) — kan niet samenvoegen.`});
+  else checks.push({level:"ok",msg:`Alle ${children.length} trades op zelfde pair (${children[0].pair})`});
+  if(dirs.size>1)checks.push({level:"fail",msg:`Verschillende directions (${[...dirs].join(", ")}) — kan niet samenvoegen.`});
+  else checks.push({level:"ok",msg:`Alle trades zelfde direction (${children[0].direction})`});
+  if(srcs.size>1)checks.push({level:"fail",msg:`Verschillende sources — niet toegestaan.`});
+  if(children.some(c=>c.mergedInto))checks.push({level:"fail",msg:`Een geselecteerde trade is al gemerged. Splits eerst uit.`});
+  if(children.some(c=>c.mergedFrom))checks.push({level:"fail",msg:`Een geselecteerde trade is al een master. Geen 2-laag merges.`});
+  // Tijd-spreiding
+  const dts=children.map(c=>new Date(`${c.date}T${c.time||"00:00"}`).getTime()).filter(t=>!isNaN(t)).sort();
+  if(dts.length>=2){
+    const spreadH=(dts[dts.length-1]-dts[0])/36e5;
+    if(spreadH>24)checks.push({level:"warn",msg:`Trades zitten ${spreadH.toFixed(1)}u uit elkaar (>24u). Bewust?`});
+    else{
+      const spreadStr=spreadH<1?`${Math.round(spreadH*60)} min`:`${spreadH.toFixed(1)}u`;
+      checks.push({level:"ok",msg:`Tijd-spreiding entries: ${spreadStr}`});
+    }
+  }
+  const openCount=children.filter(c=>c.status!=="closed").length;
+  if(openCount>0)checks.push({level:"warn",msg:`${openCount} trade(s) nog niet closed — master krijgt status "partial".`});
+  else checks.push({level:"ok",msg:`Alle trades closed — master wordt "closed".`});
+  return checks;
+};
 
 // Partial-close sibling-detector: closed records die mergebaar zijn met een open/partial trade
 // op (source, pair, direction, entry-price) worden als "consumed" gemarkeerd. App-niveau filter
@@ -4457,8 +4609,134 @@ function Dashboard({trades,config,accounts,storageUsage,setFilters,setTab}){
 }
 
 
+// ============ MERGE MODAL (v12.190 — FTMO MT5 partial-workaround) ============
+// Open via TradeList wanneer ≥2 trades geselecteerd. Toont preview van master-trade,
+// validation-checks, conflict-vragen voor tradeGrade/playbookId/notes/entryNote.
+// Bevestiging calls onConfirm({master-shape, childIds, conflictChoices}).
+function MergeModal({children:childTrades,onClose,onConfirm}){
+  const[conflictChoices,setConflictChoices]=useState(()=>{
+    // Defaults: voor elk conflict-veld de meest voorkomende non-empty waarde
+    const conflicts=detectMergeConflicts(childTrades);
+    const init={};
+    conflicts.forEach(c=>{
+      const nonEmpty=c.values.filter(v=>v.val);
+      if(nonEmpty.length>0)init[c.field]=nonEmpty[0].id;
+    });
+    return init;
+  });
+  const preview=React.useMemo(()=>buildMergePreview(childTrades,conflictChoices),[childTrades,conflictChoices]);
+  const checks=React.useMemo(()=>validateMerge(childTrades),[childTrades]);
+  const conflicts=React.useMemo(()=>detectMergeConflicts(childTrades),[childTrades]);
+  const hasFail=checks.some(c=>c.level==="fail");
+  if(!preview)return null;
+
+  const fmtNum=(n,d=2)=>Number(n||0).toLocaleString("nl-NL",{minimumFractionDigits:d,maximumFractionDigits:d});
+  const pnlNum=parseFloat(preview.pnl)||0;
+  const pdh={font:"700 11px var(--mono)",color:"var(--gold)",textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:"12px",paddingBottom:"8px",borderBottom:"1px solid var(--border1)"};
+  const stat={background:"var(--bg3)",border:"1px solid var(--border1)",borderRadius:"10px",padding:"14px"};
+  const statLabel={fontFamily:"var(--mono)",fontSize:"9.5px",color:"var(--text4)",textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:"4px",fontWeight:700};
+  const statVal={fontFamily:"var(--mono)",fontSize:"20px",color:"var(--text)",letterSpacing:"-0.01em",fontWeight:700};
+  const statSub={fontFamily:"var(--mono)",fontSize:"10.5px",color:"var(--text4)",marginTop:"2px"};
+
+  return(<div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(5,7,12,0.85)",backdropFilter:"blur(6px)",WebkitBackdropFilter:"blur(6px)",zIndex:1000,display:"flex",alignItems:"flex-start",justifyContent:"center",padding:"48px 24px",overflowY:"auto"}}>
+    <div onClick={e=>e.stopPropagation()} style={{background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:"14px",maxWidth:"880px",width:"100%",boxShadow:"0 24px 80px rgba(0,0,0,0.7)"}}>
+      <div style={{padding:"24px 28px 18px",borderBottom:"1px solid var(--border1)",display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+        <div>
+          <h2 style={{margin:0,fontSize:"18px",letterSpacing:"-0.01em",color:"var(--text)"}}>🔗 Samenvoegen tot 1 trade</h2>
+          <div style={{fontSize:"12.5px",color:"var(--text4)",marginTop:"4px"}}>{childTrades.length} trades worden 1 master-positie met {childTrades.length} TP-niveaus. De originelen blijven bewaard.</div>
+        </div>
+        <button onClick={onClose} style={{background:"none",border:"none",color:"var(--text4)",fontSize:"18px",cursor:"pointer",padding:"4px 8px"}}>✕</button>
+      </div>
+
+      <div style={{padding:"24px 28px"}}>
+        <div style={pdh}>Master-trade preview <span style={{fontStyle:"italic",fontWeight:400,color:"var(--text4)",textTransform:"none",letterSpacing:0,marginLeft:"8px"}}>automatisch berekend</span></div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:"10px",marginBottom:"24px"}}>
+          <div style={stat}>
+            <div style={statLabel}>Entry (gewogen)</div>
+            <div style={statVal}>{preview.entry||"—"}</div>
+            <div style={statSub}>{preview.pair} · {preview.direction.toUpperCase()}</div>
+          </div>
+          <div style={stat}>
+            <div style={statLabel}>Exit (gewogen)</div>
+            <div style={statVal}>{preview.exit||"—"}</div>
+            <div style={statSub}>{preview.closedCount}/{preview.childCount} closed</div>
+          </div>
+          <div style={stat}>
+            <div style={statLabel}>Totale size</div>
+            <div style={statVal}>{preview.positionSizeAsset||preview.positionSize||"—"}</div>
+            <div style={statSub}>SL: {preview.stopLoss||"—"}</div>
+          </div>
+          <div style={stat}>
+            <div style={statLabel}>Net PnL</div>
+            <div style={{...statVal,color:pnlNum>=0?"var(--green)":"var(--red)"}}>{pnlNum>=0?"+":"−"}${fmtNum(Math.abs(pnlNum))}</div>
+            <div style={statSub}>{preview.status} · fees ${fmtNum(preview.fees,2)}</div>
+          </div>
+        </div>
+
+        <div style={pdh}>Validatie</div>
+        <div style={{marginBottom:"24px"}}>
+          {checks.map((c,i)=>{
+            const bg=c.level==="ok"?"rgba(52,216,160,0.06)":c.level==="warn"?"rgba(244,176,66,0.07)":"rgba(246,86,111,0.08)";
+            const ic=c.level==="ok"?"✓":c.level==="warn"?"⚠":"✗";
+            const icCol=c.level==="ok"?"var(--green)":c.level==="warn"?"var(--amber)":"var(--red)";
+            return<div key={i} style={{display:"flex",alignItems:"center",gap:"10px",padding:"8px 12px",borderRadius:"6px",fontSize:"12.5px",marginBottom:"4px",background:bg,color:"var(--text2)"}}>
+              <span style={{flex:"0 0 16px",fontSize:"13px",color:icCol}}>{ic}</span>
+              <span>{c.msg}</span>
+            </div>;
+          })}
+        </div>
+
+        {conflicts.length>0&&<>
+          <div style={pdh}>Conflicten — welke waarde wil je op de master?</div>
+          {conflicts.map(c=>(<div key={c.field} style={{background:"var(--bg3)",border:"1px solid rgba(244,176,66,0.18)",borderRadius:"10px",padding:"14px 16px",marginBottom:"10px"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"10px"}}>
+              <span style={{font:"700 11px var(--mono)",color:"var(--amber)",textTransform:"uppercase",letterSpacing:"0.08em"}}>{c.label}</span>
+              <span style={{font:"500 10.5px var(--mono)",color:"var(--text4)"}}>{c.values.length} children — verschillende waarden</span>
+            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:"6px"}}>
+              {c.values.map((v,i)=>{
+                const isEmpty=!v.val;
+                const isSel=conflictChoices[c.field]===v.id;
+                return<label key={v.id} style={{display:"flex",alignItems:"center",gap:"10px",padding:"8px 12px",borderRadius:"6px",border:`1px solid ${isSel?"var(--gold)":"var(--border1)"}`,background:isSel?"var(--gold-dim)":"var(--bg2)",cursor:"pointer"}}>
+                  <input type="radio" name={`conflict-${c.field}`} checked={isSel} onChange={()=>setConflictChoices(p=>({...p,[c.field]:v.id}))} style={{accentColor:"var(--gold)",margin:0}}/>
+                  <span style={{font:"500 10px var(--mono)",color:"var(--text4)",marginRight:"auto"}}>child {i+1}</span>
+                  <span style={{fontSize:"12.5px",color:isEmpty?"var(--text5)":"var(--text2)",fontStyle:isEmpty?"italic":"normal",maxWidth:"500px",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{isEmpty?"(leeg)":v.val}</span>
+                </label>;
+              })}
+              {c.multiValueOk&&<label style={{display:"flex",alignItems:"center",gap:"10px",padding:"8px 12px",borderRadius:"6px",border:`1px solid ${conflictChoices[c.field]==="concat"?"var(--gold)":"var(--border1)"}`,background:conflictChoices[c.field]==="concat"?"var(--gold-dim)":"var(--bg2)",cursor:"pointer"}}>
+                <input type="radio" name={`conflict-${c.field}`} checked={conflictChoices[c.field]==="concat"} onChange={()=>setConflictChoices(p=>({...p,[c.field]:"concat"}))} style={{accentColor:"var(--gold)",margin:0}}/>
+                <span style={{font:"500 10px var(--mono)",color:"var(--text4)",marginRight:"auto"}}>concat</span>
+                <span style={{fontSize:"12.5px",color:"var(--text2)"}}>Alle non-lege waarden combineren (met scheidingslijn)</span>
+              </label>}
+            </div>
+          </div>))}
+        </>}
+
+        <div style={{...pdh,marginTop:"24px"}}>Children-overzicht</div>
+        <div style={{display:"flex",flexDirection:"column",gap:"6px"}}>
+          {childTrades.map((c,i)=>{
+            const pnl=parseFloat(c.pnl)||0;
+            return<div key={c.id} style={{display:"grid",gridTemplateColumns:"40px 1fr 140px 100px 100px",alignItems:"center",gap:"10px",padding:"8px 12px",borderRadius:"6px",background:"var(--bg3)",border:"1px solid var(--border1)",fontSize:"12px"}}>
+              <span style={{font:"700 10px var(--mono)",color:"var(--text4)"}}>#{i+1}</span>
+              <span style={{font:"500 11px var(--mono)",color:"var(--text3)"}}>{c.date} {c.time}</span>
+              <span style={{textAlign:"right",fontFamily:"var(--mono)",fontSize:"11.5px",color:"var(--text2)"}}>{c.entry} → {c.exit||"—"}</span>
+              <span style={{textAlign:"right",fontFamily:"var(--mono)",fontSize:"11.5px",color:"var(--text3)"}}>{c.positionSizeAsset||c.positionSize}</span>
+              <span style={{textAlign:"right",fontFamily:"var(--mono)",fontWeight:700,color:pnl>=0?"var(--green)":"var(--red)"}}>{pnl>=0?"+":"−"}${fmtNum(Math.abs(pnl))}</span>
+            </div>;
+          })}
+        </div>
+      </div>
+
+      <div style={{padding:"18px 28px",borderTop:"1px solid var(--border1)",display:"flex",justifyContent:"flex-end",gap:"10px",background:"var(--bg3)",borderRadius:"0 0 14px 14px"}}>
+        <button onClick={onClose} style={{font:"600 12px var(--mono)",padding:"8px 14px",borderRadius:"6px",cursor:"pointer",background:"transparent",color:"var(--text3)",border:"1px solid var(--border3)",fontFamily:"inherit"}}>Annuleren</button>
+        <button onClick={()=>!hasFail&&onConfirm({preview,childIds:childTrades.map(c=>c.id),conflictChoices})} disabled={hasFail} style={{font:"600 12px var(--mono)",padding:"8px 14px",borderRadius:"6px",cursor:hasFail?"not-allowed":"pointer",background:hasFail?"var(--bg4)":"var(--gold)",color:hasFail?"var(--text5)":"#1a1308",border:`1px solid ${hasFail?"var(--border3)":"var(--gold)"}`,fontFamily:"inherit",opacity:hasFail?0.5:1}}>🔗 Bevestig samenvoegen</button>
+      </div>
+    </div>
+  </div>);
+}
+
 // ============ TRADE LIST (v7: with search) ============
-function TradeList({trades,onEdit,onDelete,onQuickTag,onBulkDelete,onBulkTag,onBulkUntag,onBulkAddLayer,showToast,tagConfig,config,accounts}){
+function TradeList({trades,onEdit,onDelete,onQuickTag,onBulkDelete,onBulkTag,onBulkUntag,onBulkAddLayer,onMergeTrades,onUnmergeMaster,showToast,tagConfig,config,accounts}){
   const{enabled:priv}=usePrivacy();
   const[sortField,setSortField]=useState("date");
   const[sortDir,setSortDir]=useState("desc");
@@ -4542,6 +4820,20 @@ function TradeList({trades,onEdit,onDelete,onQuickTag,onBulkDelete,onBulkTag,onB
   const toggleAll=()=>{if(selected.size===sorted.length)setSelected(new Set());else setSelected(new Set(sorted.map(t=>t.id)))};
   const selCount=selected.size;
 
+  // v12.190: merge-feature (FTMO MT5 partial-workaround). Knop alleen zichtbaar wanneer
+  // selectie ≥2 trades is met source==="ftmo". Voor crypto-exchanges herkent de app partials
+  // automatisch via getConsumedSiblings, dus geen handmatige merge nodig.
+  const[mergeOpen,setMergeOpen]=useState(false);
+  const selectedTrades=sorted.filter(t=>selected.has(t.id));
+  const isAllFtmo=selectedTrades.length>=2&&selectedTrades.every(t=>t.source==="ftmo");
+  const canMerge=isAllFtmo&&!selectedTrades.some(t=>t.mergedInto||t.mergedFrom);
+  const doMerge=({preview,childIds,conflictChoices})=>{
+    if(!onMergeTrades)return;
+    onMergeTrades({preview,childIds,conflictChoices});
+    setMergeOpen(false);
+    setSelected(new Set());
+  };
+
   const bulkDelete=()=>{if(!confirm(`${selCount} trades verwijderen?`))return;onBulkDelete([...selected]);setSelected(new Set());showToast(`${selCount} trades verwijderd`)};
   const bulkExportJSON=()=>{const data=sorted.filter(t=>selected.has(t.id));const blob=new Blob([JSON.stringify({version:7,exportDate:new Date().toISOString(),trades:data},null,2)],{type:"application/json"});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download=`trades-${data.length}-${new Date().toISOString().split("T")[0]}.json`;a.click();URL.revokeObjectURL(url);showToast(`${data.length} trades geëxporteerd`)};
   const bulkExportCSV=()=>{const data=sorted.filter(t=>selected.has(t.id));const headers=["date","time","pair","direction","entry","exit","pnl","fees","leverage","source","setupTags","emotionTags","mistakeTags","highestPrice","lowestPrice"];const rows=data.map(t=>headers.map(h=>Array.isArray(t[h])?(t[h]||[]).join(";"):String(t[h]||"")).join(","));const csv=[headers.join(","),...rows].join("\n");const blob=new Blob([csv],{type:"text/csv"});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download=`trades-${data.length}-${new Date().toISOString().split("T")[0]}.csv`;a.click();URL.revokeObjectURL(url);showToast(`${data.length} trades geëxporteerd (CSV)`)};
@@ -4584,6 +4876,7 @@ function TradeList({trades,onEdit,onDelete,onQuickTag,onBulkDelete,onBulkTag,onB
       {false&&<button onClick={()=>setBulkAction(bulkAction==="tag"?null:"tag")} style={{fontSize:"11px",padding:"5px 12px",borderRadius:"5px",border:"1px solid rgba(201,168,76,0.3)",background:bulkAction==="tag"?"rgba(201,168,76,0.15)":"transparent",color:"var(--gold)",cursor:"pointer",fontFamily:"inherit",fontWeight:500}}>Tags toevoegen</button>}
       <button onClick={bulkExportJSON} style={{fontSize:"11px",padding:"5px 12px",borderRadius:"5px",border:"1px solid var(--border3)",background:"transparent",color:"var(--text3)",cursor:"pointer",fontFamily:"inherit",fontWeight:500}}>Export JSON</button>
       <button onClick={bulkExportCSV} style={{fontSize:"11px",padding:"5px 12px",borderRadius:"5px",border:"1px solid var(--border3)",background:"transparent",color:"var(--text3)",cursor:"pointer",fontFamily:"inherit",fontWeight:500}}>Export CSV</button>
+      {canMerge&&<button onClick={()=>setMergeOpen(true)} title="Voeg deze FTMO-trades samen tot 1 master-trade met N TP-niveaus" style={{fontSize:"11px",padding:"5px 12px",borderRadius:"5px",border:"1px solid var(--gold-border)",background:"var(--gold-dim)",color:"var(--gold)",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>🔗 Samenvoegen</button>}
       <button onClick={bulkDelete} style={{fontSize:"11px",padding:"5px 12px",borderRadius:"5px",border:"1px solid rgba(220,122,122,0.28)",background:"transparent",color:"var(--red)",cursor:"pointer",fontFamily:"inherit",fontWeight:500}}>Verwijderen</button>
       <div style={{flex:1}}/>
       <button onClick={()=>{setSelected(new Set());setBulkAction(null)}} style={{fontSize:"10px",color:"var(--text4)",background:"none",border:"none",cursor:"pointer",fontFamily:"inherit"}}>Deselecteer</button>
@@ -4725,7 +5018,7 @@ function TradeList({trades,onEdit,onDelete,onQuickTag,onBulkDelete,onBulkTag,onB
               </td>
               {/* v12.189 (cell-volgorde uit trades-merge-demo): Datum · Symbol · Side · Entry · Exit · Size · PnL · R-mult · Status · Setup · Sessie · Emoties */}
               <td style={{...tdStyle,fontFamily:"var(--mono)",color:"var(--text2)",fontSize:"11px",whiteSpace:"nowrap"}}>{fmtNL(t.date)}{isNew&&<span style={{marginLeft:"6px",fontSize:"8px",padding:"1px 5px",borderRadius:"3px",background:"var(--gold-dim)",color:"var(--gold)",fontWeight:700,verticalAlign:"middle",letterSpacing:"0.04em"}}>NEW</span>}<br/><span style={{color:"var(--text4)"}}>{t.time}</span></td>
-              <td style={{...tdStyle,fontWeight:600,color:"var(--text)"}}><div style={{display:"flex",alignItems:"center",gap:"8px"}}><div style={{position:"relative",flexShrink:0}}><CryptoIcon pair={t.pair} size={24}/>{t.source&&t.source!=="manual"&&<div style={{position:"absolute",bottom:"-2px",right:"-4px",borderRadius:"3px",overflow:"hidden",border:"1.5px solid var(--bg3)"}}><ExchangeIcon name={t.source} size={11}/></div>}</div><div><span>{t.pair}</span>{(()=>{const lbl=resolveAccountLabel(t.source,config,accounts);return lbl?<div style={{fontSize:"9px",color:"var(--gold)",fontWeight:600,letterSpacing:".04em",marginTop:"1px"}}>{lbl}</div>:null})()}</div></div></td>
+              <td style={{...tdStyle,fontWeight:600,color:"var(--text)"}}><div style={{display:"flex",alignItems:"center",gap:"8px"}}><div style={{position:"relative",flexShrink:0}}><CryptoIcon pair={t.pair} size={24}/>{t.source&&t.source!=="manual"&&<div style={{position:"absolute",bottom:"-2px",right:"-4px",borderRadius:"3px",overflow:"hidden",border:"1.5px solid var(--bg3)"}}><ExchangeIcon name={t.source} size={11}/></div>}</div><div><span>{t.pair}</span>{Array.isArray(t.mergedFrom)&&t.mergedFrom.length>0&&<span title={`Samengevoegd uit ${t.mergedFrom.length} trades`} style={{display:"inline-flex",alignItems:"center",gap:"3px",marginLeft:"6px",padding:"1px 5px",borderRadius:"3px",background:"rgba(90,169,255,0.12)",color:"var(--blue,#5aa9ff)",font:"700 9px var(--mono)",letterSpacing:"0.04em",border:"1px solid rgba(90,169,255,0.25)",verticalAlign:"middle"}}>🔗 {t.mergedFrom.length}</span>}{(()=>{const lbl=resolveAccountLabel(t.source,config,accounts);return lbl?<div style={{fontSize:"9px",color:"var(--gold)",fontWeight:600,letterSpacing:".04em",marginTop:"1px"}}>{lbl}</div>:null})()}</div></div></td>
               <td style={{...tdStyle,textAlign:"center"}}>
                 <span style={{padding:"3px 10px",borderRadius:"4px",fontSize:"10px",fontWeight:700,background:t.direction==="long"?"rgba(46,170,111,0.12)":"rgba(224,85,85,0.12)",color:t.direction==="long"?"var(--green)":"var(--red)"}}>{t.direction.toUpperCase()}</span>
               </td>
@@ -4843,6 +5136,7 @@ function TradeList({trades,onEdit,onDelete,onQuickTag,onBulkDelete,onBulkTag,onB
       <span>Trades: {sorted.length}{search?` (gefilterd)`:""}</span>
       <span>Return: <span style={{color:totalPnl>=0?"var(--green)":"var(--red)",fontWeight:600}}>{priv?"$***,**":`${totalPnl>=0?"+":""}$${fmt(totalPnl)}`}</span></span>
     </div>
+    {mergeOpen&&<MergeModal children={selectedTrades} onClose={()=>setMergeOpen(false)} onConfirm={doMerge}/>}
   </div>);
 }
 
@@ -6004,7 +6298,7 @@ function Section({title,storeKey,defaultOpen=true,hint,children}){
   </details>);
 }
 
-function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,setConfig,accounts,showToast,isDraft,playbooks,setTab,tpTemplates,tpDefaults}){
+function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,setConfig,accounts,showToast,isDraft,playbooks,setTab,tpTemplates,tpDefaults,allTrades,onUnmergeMaster}){
   const{enabled:priv}=usePrivacy();
   const[showCard,setShowCard]=useState(false);
   const[sizeEditOpen,setSizeEditOpen]=useState(false);// v12.61: inline edit voor Bellafiore account-saldo
@@ -6190,6 +6484,36 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,setConfig,ac
   })();
 
   return(<div style={{animation:"fadeIn .3s ease",background:"var(--glass)",backdropFilter:"var(--glass-blur)",WebkitBackdropFilter:"var(--glass-blur)",borderRadius:"var(--radius-lg)",padding:"24px",border:"1px solid var(--glass-border)"}}>
+    {/* v12.190: 🧩 Master-trade banner — toon TP-breakdown + Splits-knop wanneer trade.mergedFrom bestaat */}
+    {Array.isArray(trade.mergedFrom)&&trade.mergedFrom.length>0&&(()=>{
+      const children=(allTrades||[]).filter(t=>trade.mergedFrom.includes(t.id));
+      if(children.length===0)return null;
+      const totalSize=children.reduce((s,c)=>s+(parseFloat(c.positionSizeAsset||c.positionSize)||0),0);
+      const fmtN=(n,d=2)=>Number(n||0).toLocaleString("nl-NL",{minimumFractionDigits:d,maximumFractionDigits:d});
+      return(<div style={{padding:"16px 18px",marginBottom:"18px",background:"linear-gradient(180deg, rgba(90,169,255,0.06), transparent)",border:"1px solid rgba(90,169,255,0.22)",borderRadius:"var(--radius-md, 10px)"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:"12px",gap:"12px"}}>
+          <div>
+            <div style={{font:"700 11px var(--mono)",color:"var(--blue,#5aa9ff)",textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:"4px"}}>🧩 Samengevoegd uit {children.length} trades</div>
+            <div style={{fontSize:"12px",color:"var(--text3)"}}>Master-trade — gewogen entry, totale size, Σ PnL. Elke child = TP-niveau. <span style={{color:"var(--text4)"}}>Originelen blijven bewaard (verborgen in lijsten + analytics).</span></div>
+          </div>
+          {onUnmergeMaster&&<button onClick={()=>onUnmergeMaster(trade.id)} style={{flex:"0 0 auto",fontSize:"11px",padding:"6px 12px",borderRadius:"6px",border:"1px solid rgba(246,86,111,0.32)",background:"transparent",color:"var(--red)",cursor:"pointer",fontFamily:"inherit",fontWeight:600,whiteSpace:"nowrap"}}>🔓 Splits weer uit</button>}
+        </div>
+        <div style={{display:"flex",flexDirection:"column",gap:"6px"}}>
+          {children.sort((a,b)=>`${a.date}T${a.time||""}`.localeCompare(`${b.date}T${b.time||""}`)).map((c,i)=>{
+            const sizeN=parseFloat(c.positionSizeAsset||c.positionSize)||0;
+            const pct=totalSize>0?(sizeN/totalSize*100).toFixed(0):0;
+            const pnl=parseFloat(c.pnl)||0;
+            return(<div key={c.id} style={{display:"grid",gridTemplateColumns:"60px 1fr 130px 110px 100px",alignItems:"center",gap:"12px",padding:"8px 12px",borderRadius:"6px",background:"var(--bg3)",border:"1px solid var(--border1)"}}>
+              <span style={{font:"800 10px var(--mono)",letterSpacing:"0.06em",color:"var(--gold)",background:"var(--gold-dim)",padding:"3px 8px",borderRadius:"4px",textAlign:"center",border:"1px solid var(--gold-border)"}}>TP{i+1}</span>
+              <span style={{fontSize:"12px",color:"var(--text3)"}}>{c.date} {c.time||""} <span style={{color:"var(--text4)"}}>· exit {c.exit||"—"} · {pct}%</span></span>
+              <span style={{textAlign:"right",fontFamily:"var(--mono)",fontSize:"11.5px",color:"var(--text3)"}}>size {c.positionSizeAsset||c.positionSize}</span>
+              <span style={{textAlign:"right",fontFamily:"var(--mono)",fontWeight:700,fontSize:"12px",color:pnl>=0?"var(--green)":"var(--red)"}}>{pnl>=0?"+":"−"}${fmtN(Math.abs(pnl))}</span>
+              <span style={{textAlign:"right",fontFamily:"var(--mono)",fontSize:"11px",color:"var(--text4)"}}>{c.source}</span>
+            </div>);
+          })}
+        </div>
+      </div>);
+    })()}
     {/* Mindset — pre-trade italic nudge (only on new trade, once per form-open) */}
     {preTradeQuote&&<div style={{padding:"8px 12px",marginBottom:"14px",borderLeft:"2px solid var(--gold-border)",fontSize:"12px",color:"var(--text3)",fontStyle:"italic",lineHeight:1.5,background:"rgba(201,168,76,.03)"}}>
       "{preTradeQuote.text}" <span style={{color:"var(--text5)",fontStyle:"normal",fontSize:"10px",fontFamily:"var(--mono)",letterSpacing:".06em",marginLeft:"4px"}}>— {preTradeQuote.src}</span>
@@ -18170,6 +18494,67 @@ function App(){
 
   const deleteTrade=(id)=>{const t=trades.find(x=>x.id===id);setTrades(p=>p.filter(x=>x.id!==id));showToast("Trade verwijderd","error",t)};
   const bulkDelete=(ids)=>setTrades(p=>p.filter(t=>!ids.includes(t.id)));
+
+  // v12.190: merge-handler. Creëert master-trade uit children + markeert children als merged-child.
+  // De-merge is reversible via unmergeMaster (master verwijderd, children krijgen oorspronkelijke status terug).
+  const mergeTrades=({preview,childIds,conflictChoices})=>{
+    const childTrades=trades.filter(t=>childIds.includes(t.id));
+    if(childTrades.length<2)return;
+    const masterId="m"+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+    const master={
+      ...EMPTY_TRADE,
+      id:masterId,
+      date:preview.date,
+      time:preview.time||"",
+      pair:preview.pair,
+      direction:preview.direction,
+      entry:preview.entry,
+      exit:preview.exit,
+      stopLoss:preview.stopLoss,
+      positionSize:preview.positionSize,
+      positionSizeAsset:preview.positionSizeAsset,
+      pnl:preview.pnl,
+      fees:preview.fees,
+      realizedPnl:preview.realizedPnl,
+      status:preview.status,
+      tradeGrade:preview.tradeGrade,
+      playbookId:preview.playbookId,
+      notes:preview.notes,
+      entryNote:preview.entryNote,
+      setupTags:preview.setupTags||[],
+      confirmationTags:preview.confirmationTags||[],
+      timeframeTags:preview.timeframeTags||[],
+      emotionTags:preview.emotionTags||[],
+      mistakeTags:preview.mistakeTags||[],
+      customTags:preview.customTags||[],
+      source:preview.source,
+      mergedFrom:[...childIds],
+      _mergeSource:"manual",
+      _mergeTimestamp:new Date().toISOString(),
+    };
+    setTrades(p=>{
+      const updated=p.map(t=>{
+        if(!childIds.includes(t.id))return t;
+        return{...t,_preMergeStatus:t.status,status:"merged-child",mergedInto:masterId};
+      });
+      return[master,...updated];
+    });
+    showToast(`🔗 ${childIds.length} trades samengevoegd · ${preview.pair} ${preview.direction} · ${parseFloat(preview.pnl)>=0?"+":"−"}$${Math.abs(parseFloat(preview.pnl)).toFixed(2)}`,"success");
+  };
+
+  const unmergeMaster=(masterId)=>{
+    const master=trades.find(t=>t.id===masterId&&t.mergedFrom);
+    if(!master)return;
+    if(!confirm(`Splitsen ongedaan maken? Master verdwijnt en ${master.mergedFrom.length} originele trades komen terug.`))return;
+    setTrades(p=>{
+      const restored=p.map(t=>{
+        if(!master.mergedFrom.includes(t.id))return t;
+        return{...t,status:t._preMergeStatus||"closed",mergedInto:null,_preMergeStatus:null};
+      });
+      return restored.filter(t=>t.id!==masterId);
+    });
+    showToast(`🔓 Master gesplitst — ${master.mergedFrom.length} originele trades hersteld`,"info");
+  };
   // Layer-aware bulk-tag: voor trades met layers[] (multi-entry / multi-TF setups)
   // schrijft 'ie de tag naar de EERSTE laag — anders zou syncTradeFlatFields het bij
   // de volgende load weer wegvegen (layers winnen). Voor flat-only categorieën
@@ -18532,9 +18917,11 @@ function App(){
   // TradeList, Analytics, Review, Calendar, Rapport) dezelfde set zien en cijfers consistent
   // zijn. Voorheen had alleen TradeList deze filter — daardoor toonde Dashboard $-8,37 / WR 33%
   // en Trades-pagina $-11,63 / WR 27% voor dezelfde dataset (verschil = PARTIAL trade).
+  // v12.190: óók merged-children excluderen — master-trade vervangt de N originelen in elke view.
   const mergedTrades=React.useMemo(()=>{
     const consumed=getConsumedSiblings(trades);
-    return consumed.size>0?trades.filter(t=>!consumed.has(t.id)):trades;
+    const base=consumed.size>0?trades.filter(t=>!consumed.has(t.id)):trades;
+    return filterMergedChildren(base);
   },[trades]);
   const filteredTrades=applyFilters(mergedTrades,filters);
 
@@ -18755,7 +19142,7 @@ function App(){
                 <button onClick={tryCloseEdit} style={{background:"none",border:"none",color:"var(--text4)",cursor:"pointer",fontSize:"14px",padding:"4px"}}>✕</button>
               </div>
             </div>
-            <TradeForm trade={editTrade} setTrade={setEditTrade} onSave={()=>saveTrade(editTrade)} onCancel={tryCloseEdit} tagConfig={tagConfig} config={config} setConfig={setConfig} accounts={accounts} showToast={showToast} playbooks={playbooks} setTab={setTab} tpTemplates={tpTemplates} tpDefaults={tpDefaults}/>
+            <TradeForm trade={editTrade} setTrade={setEditTrade} onSave={()=>saveTrade(editTrade)} onCancel={tryCloseEdit} tagConfig={tagConfig} config={config} setConfig={setConfig} accounts={accounts} showToast={showToast} playbooks={playbooks} setTab={setTab} tpTemplates={tpTemplates} tpDefaults={tpDefaults} allTrades={trades} onUnmergeMaster={(id)=>{unmergeMaster(id);tryCloseEdit()}}/>
             <TPTimeline trade={editTrade} config={config} setTrade={setEditTrade} showToast={showToast}/>
           </div>
         </div>;
@@ -18765,7 +19152,7 @@ function App(){
         {tab==="dashboard"&&(layout==="premium"
           ?<DashboardPremium trades={filteredTrades} config={config} accounts={accounts} tradingRules={tradingRules} dailyNotes={dailyNotes} goals={goals} setTab={navigate} setNewTrade={setNewTrade} newEmptyTrade={newEmptyTrade} setFilters={setFilters}/>
           :<Dashboard trades={filteredTrades} config={config} accounts={accounts} storageUsage={storageUsage} setFilters={setFilters} setTab={navigate}/>)}
-        {tab==="trades"&&!editTrade&&<TradeList trades={filteredTrades} onEdit={setEditTrade} onDelete={deleteTrade} onBulkDelete={bulkDelete} onBulkTag={bulkTag} onBulkUntag={bulkUntag} onBulkAddLayer={bulkAddLayer} showToast={showToast} tagConfig={tagConfig} config={config} accounts={accounts}/>}
+        {tab==="trades"&&!editTrade&&<TradeList trades={filteredTrades} onEdit={setEditTrade} onDelete={deleteTrade} onBulkDelete={bulkDelete} onBulkTag={bulkTag} onBulkUntag={bulkUntag} onBulkAddLayer={bulkAddLayer} onMergeTrades={mergeTrades} onUnmergeMaster={unmergeMaster} showToast={showToast} tagConfig={tagConfig} config={config} accounts={accounts}/>}
         {tab==="analytics"&&<Analytics trades={filteredTrades} tradingRules={tradingRules} allTrades={trades} config={config} accounts={accounts} setFilters={setFilters} setTab={setTab}/>}
         {tab==="tendencies"&&<TendenciesPage trades={filteredTrades} allTrades={trades} setFilters={setFilters} setTab={setTab}/>}
         {tab==="playbook"&&<PlaybookPage playbooks={playbooks} setPlaybooks={setPlaybooks} allTrades={trades} setFilters={setFilters} setTab={setTab} showToast={showToast} pendingImport={pendingPbImport} clearPendingImport={()=>setPendingPbImport("")} tagConfig={tagConfig}/>}

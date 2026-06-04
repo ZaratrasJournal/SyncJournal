@@ -1,0 +1,1197 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Trades samenvoegen · FTMO MT5 partial-workaround · SyncJournal</title>
+<style>
+  :root{
+    --bg:#0a0c12; --bg2:#0e151d; --bg3:#131a24; --bg4:#19222e;
+    --border1:rgba(120,140,160,0.10);
+    --border2:rgba(120,140,160,0.18);
+    --border3:rgba(120,140,160,0.28);
+    --text:#e3e8ef; --text2:#c9d3e0; --text3:#94a1b4; --text4:#6f7d92; --text5:#54627a;
+    --gold:#e0b341; --gold-dim:rgba(224,179,65,0.10); --gold-border:rgba(224,179,65,0.28);
+    --green:#34d8a0; --red:#f6566f; --amber:#f4b042; --blue:#5aa9ff; --purple:#b48cc8;
+    --mono:'JetBrains Mono','SF Mono',ui-monospace,monospace;
+    --radius-sm:6px; --radius-md:10px; --radius-lg:14px;
+  }
+  *{box-sizing:border-box}
+  body{
+    background:var(--bg); color:var(--text); margin:0; padding:0;
+    font-family:system-ui,-apple-system,"Segoe UI",sans-serif;
+    line-height:1.5;
+  }
+  .wrap{max-width:1280px; margin:0 auto; padding:32px 24px 96px;}
+  header.page{margin-bottom:28px;}
+  h1{font-size:24px; margin:0 0 6px; letter-spacing:-0.01em; color:var(--text);}
+  h1 .tag{font:600 10px var(--mono); background:var(--gold-dim); color:var(--gold); padding:3px 8px; border-radius:var(--radius-sm); margin-left:10px; vertical-align:middle; letter-spacing:0.06em; text-transform:uppercase;}
+  p.lead{color:var(--text3); font-size:13.5px; max-width:780px; margin:0;}
+  p.lead strong{color:var(--text2)}
+  p.lead code{background:var(--bg3); padding:1px 6px; border-radius:4px; font:600 12px var(--mono); color:var(--gold)}
+
+  .step-banner{
+    display:flex; align-items:center; gap:12px;
+    padding:14px 18px; margin:24px 0 16px;
+    background:linear-gradient(90deg, var(--gold-dim) 0%, transparent 100%);
+    border:1px solid var(--gold-border); border-left:3px solid var(--gold);
+    border-radius:var(--radius-md);
+  }
+  .step-banner .num{
+    width:28px; height:28px; border-radius:50%; background:var(--gold); color:#1a1308;
+    display:flex; align-items:center; justify-content:center; font-weight:800; font-size:13px;
+  }
+  .step-banner .label{
+    font:600 11px var(--mono); color:var(--gold); text-transform:uppercase; letter-spacing:0.08em;
+  }
+  .step-banner .desc{color:var(--text2); font-size:13px;}
+
+  .controls{display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:18px;}
+  .btn{
+    font:600 12px var(--mono); padding:8px 14px; border-radius:var(--radius-sm); cursor:pointer;
+    background:transparent; color:var(--text3); border:1px solid var(--border3);
+    transition:.15s; font-family:inherit; display:inline-flex; align-items:center; gap:6px;
+  }
+  .btn:hover{color:var(--text); border-color:var(--text4);}
+  .btn-gold{background:var(--gold-dim); border-color:var(--gold-border); color:var(--gold);}
+  .btn-gold:hover{background:rgba(224,179,65,0.18); color:#f0c14d;}
+  .btn-primary{background:var(--gold); border-color:var(--gold); color:#1a1308;}
+  .btn-primary:hover{background:#f0c14d;}
+  .btn-danger{color:var(--red); border-color:rgba(246,86,111,0.32);}
+  .btn-danger:hover{background:rgba(246,86,111,0.1);}
+
+  /* === Trades-tabel (matched naar v12.187) === */
+  .trades-card{
+    background:var(--bg2); border:1px solid var(--border2);
+    border-radius:var(--radius-lg); overflow:hidden;
+  }
+  .trades-meta{
+    padding:12px 18px; border-bottom:1px solid var(--border1);
+    display:flex; justify-content:space-between; align-items:center;
+    background:var(--bg3);
+  }
+  .trades-meta .src{display:flex; align-items:center; gap:10px;}
+  .src-badge{
+    display:inline-flex; align-items:center; gap:6px;
+    padding:4px 10px; border-radius:var(--radius-sm);
+    background:rgba(90,169,255,0.10); border:1px solid rgba(90,169,255,0.28);
+    color:var(--blue); font:600 11px var(--mono); letter-spacing:0.04em;
+  }
+  .trades-meta .count{font:600 11px var(--mono); color:var(--text4); letter-spacing:0.06em; text-transform:uppercase;}
+
+  table.trades{
+    width:100%; border-collapse:collapse;
+  }
+  table.trades th{
+    padding:12px 10px; font-size:10px; color:var(--text4); font-weight:700;
+    text-transform:uppercase; letter-spacing:0.06em;
+    background:var(--bg3); border-bottom:1px solid var(--border2);
+    vertical-align:middle; white-space:nowrap; text-align:left;
+  }
+  table.trades td{
+    padding:12px 10px; border-bottom:1px solid var(--border1);
+    vertical-align:middle; font-size:13px;
+  }
+  table.trades tr:last-child td{border-bottom:none;}
+  table.trades .num{text-align:right; font-family:var(--mono); padding-right:14px;}
+  table.trades .num.th{text-align:right; padding-right:14px;}
+
+  /* checkbox kolom */
+  .cb-col{width:36px; padding:0 0 0 14px !important;}
+  .cb{
+    width:16px; height:16px; border-radius:4px;
+    border:1.5px solid var(--border3); background:transparent;
+    cursor:pointer; appearance:none; -webkit-appearance:none;
+    position:relative; transition:.12s;
+  }
+  .cb:hover{border-color:var(--gold);}
+  .cb:checked{background:var(--gold); border-color:var(--gold);}
+  .cb:checked::after{
+    content:""; position:absolute; left:4px; top:1px;
+    width:4px; height:8px; border:solid #1a1308; border-width:0 2px 2px 0;
+    transform:rotate(45deg);
+  }
+  tr.row-selected{background:rgba(224,179,65,0.05);}
+
+  /* pair-cel met 🔗-badge */
+  .pair-cell{display:inline-flex; align-items:center; gap:8px;}
+  .pair{font-weight:600; color:var(--text);}
+  .merged-badge{
+    display:inline-flex; align-items:center; gap:3px;
+    background:rgba(90,169,255,0.12); color:var(--blue);
+    padding:2px 6px; border-radius:4px;
+    font:700 9.5px var(--mono); letter-spacing:0.04em;
+    border:1px solid rgba(90,169,255,0.25);
+    cursor:help;
+  }
+
+  .side-pill{
+    display:inline-block; padding:2px 7px; border-radius:var(--radius-sm);
+    font:700 10px var(--mono); letter-spacing:0.04em;
+    background:rgba(52,216,160,0.12); color:var(--green);
+    border:1px solid rgba(52,216,160,0.25);
+  }
+  .side-pill.short{background:rgba(246,86,111,0.12); color:var(--red); border-color:rgba(246,86,111,0.25);}
+
+  .status-pill{display:inline-flex; align-items:center; gap:4px; font:700 10px var(--mono); letter-spacing:0.04em;}
+  .status-pill.closed{color:var(--green);}
+  .status-pill.partial{color:var(--amber);}
+  .status-pill.open{color:var(--blue);}
+
+  .pnl-pos{color:var(--green); font-weight:700;}
+  .pnl-neg{color:var(--red); font-weight:700;}
+  .r-pos{color:var(--green);}
+  .r-neg{color:var(--red);}
+
+  .grade{
+    display:inline-block; padding:2px 6px; border-radius:4px;
+    font:700 10px var(--mono); letter-spacing:0.04em;
+    background:var(--gold-dim); color:var(--gold);
+    border:1px solid var(--gold-border);
+  }
+  .grade.B{background:rgba(244,176,66,0.10); color:var(--amber); border-color:rgba(244,176,66,0.28);}
+  .grade.A{background:rgba(52,216,160,0.10); color:var(--green); border-color:rgba(52,216,160,0.28);}
+
+  /* === Floating action-bar === */
+  .action-bar{
+    position:fixed; bottom:24px; left:50%; transform:translateX(-50%);
+    background:var(--bg2); border:1px solid var(--gold-border);
+    box-shadow:0 12px 48px rgba(0,0,0,0.6), 0 0 0 1px rgba(224,179,65,0.08);
+    border-radius:var(--radius-lg);
+    padding:10px 14px; display:flex; gap:12px; align-items:center;
+    z-index:50;
+    animation:slide-up .2s ease;
+  }
+  @keyframes slide-up{from{opacity:0; transform:translate(-50%, 20px);} to{opacity:1; transform:translate(-50%, 0);}}
+  .action-bar .count{
+    display:inline-flex; align-items:center; gap:6px;
+    font:700 12px var(--mono); color:var(--gold);
+    padding:6px 12px; background:var(--gold-dim); border-radius:var(--radius-sm);
+    border:1px solid var(--gold-border);
+  }
+  .action-bar .div{width:1px; height:24px; background:var(--border2);}
+
+  /* === Modal === */
+  .modal-overlay{
+    position:fixed; inset:0; background:rgba(5,7,12,0.85);
+    backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px);
+    z-index:100; display:flex; align-items:flex-start; justify-content:center;
+    padding:48px 24px; overflow-y:auto;
+    animation:fade .15s ease;
+  }
+  @keyframes fade{from{opacity:0} to{opacity:1}}
+  .modal{
+    background:var(--bg2); border:1px solid var(--border2);
+    border-radius:var(--radius-lg);
+    max-width:880px; width:100%;
+    box-shadow:0 24px 80px rgba(0,0,0,0.7);
+  }
+  .modal-header{
+    padding:24px 28px 18px; border-bottom:1px solid var(--border1);
+    display:flex; justify-content:space-between; align-items:flex-start;
+  }
+  .modal-header h2{margin:0; font-size:18px; letter-spacing:-0.01em;}
+  .modal-header .sub{font-size:12.5px; color:var(--text4); margin-top:4px;}
+  .modal-close{
+    background:none; border:none; color:var(--text4); font-size:18px;
+    cursor:pointer; padding:4px 8px;
+  }
+  .modal-close:hover{color:var(--text);}
+  .modal-body{padding:24px 28px;}
+  .modal-footer{
+    padding:18px 28px; border-top:1px solid var(--border1);
+    display:flex; justify-content:flex-end; gap:10px;
+    background:var(--bg3); border-radius:0 0 var(--radius-lg) var(--radius-lg);
+  }
+
+  .pdh{
+    font:700 11px var(--mono); color:var(--gold);
+    text-transform:uppercase; letter-spacing:0.08em;
+    margin-bottom:12px; padding-bottom:8px;
+    border-bottom:1px solid var(--border1);
+  }
+  .pdh .hint{
+    font-style:italic; font-weight:400; color:var(--text4); text-transform:none;
+    letter-spacing:0; margin-left:8px;
+  }
+
+  /* Preview master stats grid */
+  .stats-grid{
+    display:grid; grid-template-columns:repeat(4,1fr); gap:10px;
+    margin-bottom:24px;
+  }
+  .stat{
+    background:var(--bg3); border:1px solid var(--border1);
+    border-radius:var(--radius-md); padding:14px;
+  }
+  .stat .label{font:700 9.5px var(--mono); color:var(--text4); text-transform:uppercase; letter-spacing:0.08em; margin-bottom:4px;}
+  .stat .value{font:700 20px var(--mono); color:var(--text); letter-spacing:-0.01em;}
+  .stat .sub{font:500 10.5px var(--mono); color:var(--text4); margin-top:2px;}
+
+  /* Validatie-checks */
+  .checks{margin-bottom:24px;}
+  .check-row{
+    display:flex; align-items:center; gap:10px;
+    padding:8px 12px; border-radius:var(--radius-sm);
+    font-size:12.5px; margin-bottom:4px;
+  }
+  .check-row.ok{background:rgba(52,216,160,0.06); color:var(--text2);}
+  .check-row.warn{background:rgba(244,176,66,0.07); color:var(--text2);}
+  .check-row.fail{background:rgba(246,86,111,0.08); color:var(--text2);}
+  .check-icon{flex:0 0 16px; font-size:13px;}
+  .check-row.ok .check-icon{color:var(--green);}
+  .check-row.warn .check-icon{color:var(--amber);}
+  .check-row.fail .check-icon{color:var(--red);}
+
+  /* Conflicten */
+  .conflict{
+    background:var(--bg3); border:1px solid rgba(244,176,66,0.18);
+    border-radius:var(--radius-md); padding:14px 16px; margin-bottom:10px;
+  }
+  .conflict-head{display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;}
+  .conflict-head .field{font:700 11px var(--mono); color:var(--amber); text-transform:uppercase; letter-spacing:0.08em;}
+  .conflict-head .count{font:500 10.5px var(--mono); color:var(--text4);}
+  .conflict-options{display:flex; flex-direction:column; gap:6px;}
+  .conflict-opt{
+    display:flex; align-items:center; gap:10px;
+    padding:8px 12px; border-radius:var(--radius-sm);
+    border:1px solid var(--border1); background:var(--bg2);
+    cursor:pointer; transition:.12s;
+  }
+  .conflict-opt:hover{border-color:var(--gold-border);}
+  .conflict-opt.selected{border-color:var(--gold); background:var(--gold-dim);}
+  .conflict-opt input{accent-color:var(--gold); margin:0;}
+  .conflict-opt .src{font:500 10px var(--mono); color:var(--text4); margin-right:auto;}
+  .conflict-opt .val{font-size:12.5px; color:var(--text2);}
+  .conflict-opt .val.empty{font-style:italic; color:var(--text5);}
+
+  /* Children-preview list */
+  .children-list{display:flex; flex-direction:column; gap:6px;}
+  .child-row{
+    display:grid; grid-template-columns:40px 1fr 110px 90px 80px 90px;
+    align-items:center; gap:10px;
+    padding:8px 12px; border-radius:var(--radius-sm);
+    background:var(--bg3); border:1px solid var(--border1);
+    font-size:12px;
+  }
+  .child-row .idx{font:700 10px var(--mono); color:var(--text4);}
+  .child-row .time{font:500 11px var(--mono); color:var(--text3);}
+  .child-row .num{text-align:right; font-family:var(--mono);}
+  .child-row .pnl{text-align:right; font-weight:700; font-family:var(--mono);}
+
+  /* Master detail modal sectie 🧩 */
+  .merge-section{
+    background:linear-gradient(180deg, rgba(90,169,255,0.04), transparent);
+    border:1px solid rgba(90,169,255,0.18);
+    border-radius:var(--radius-md);
+    padding:18px; margin-top:18px;
+  }
+  .merge-section .tp-list{display:flex; flex-direction:column; gap:8px;}
+  .tp-row{
+    display:grid; grid-template-columns:50px 1fr 100px 80px 90px;
+    align-items:center; gap:12px;
+    padding:10px 12px; border-radius:var(--radius-sm);
+    background:var(--bg3); border:1px solid var(--border1);
+  }
+  .tp-row .tp-tag{
+    font:800 10px var(--mono); letter-spacing:0.06em;
+    color:var(--gold); background:var(--gold-dim);
+    padding:3px 8px; border-radius:4px; text-align:center;
+    border:1px solid var(--gold-border);
+  }
+  .tp-row .tp-meta{font-size:12px; color:var(--text3);}
+  .tp-row .tp-meta strong{color:var(--text); font-weight:600;}
+  .tp-row .num{text-align:right; font-family:var(--mono); font-size:12.5px;}
+
+  /* Toast */
+  .toast{
+    position:fixed; top:24px; right:24px; z-index:200;
+    background:var(--bg2); border:1px solid var(--green); border-left:3px solid var(--green);
+    border-radius:var(--radius-md); padding:12px 16px;
+    box-shadow:0 12px 40px rgba(0,0,0,0.6);
+    font-size:13px; color:var(--text2);
+    animation:toast-in .25s ease;
+    max-width:380px;
+  }
+  @keyframes toast-in{from{opacity:0; transform:translateX(20px);} to{opacity:1; transform:translateX(0);}}
+
+  /* Tech-notes footer */
+  .tech-notes{
+    margin-top:48px; padding:24px;
+    background:var(--bg2); border:1px solid var(--border1);
+    border-radius:var(--radius-lg);
+  }
+  .tech-notes h3{font-size:13px; color:var(--gold); text-transform:uppercase; letter-spacing:0.08em; margin:0 0 16px;}
+  .tech-notes .col2{display:grid; grid-template-columns:1fr 1fr; gap:24px;}
+  .tech-notes h4{font-size:12px; color:var(--text2); margin:0 0 8px; font-weight:600;}
+  .tech-notes ul{margin:0 0 16px; padding-left:18px; color:var(--text3); font-size:12.5px;}
+  .tech-notes li{margin-bottom:4px;}
+  .tech-notes code{background:var(--bg3); padding:1px 6px; border-radius:4px; font:500 11.5px var(--mono); color:var(--gold);}
+
+  .empty-state{
+    padding:48px 24px; text-align:center; color:var(--text4);
+    font-size:13px;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="page">
+    <h1>Trades samenvoegen <span class="tag">FTMO MT5 partial-workaround</span></h1>
+    <p class="lead">
+      FTMO web staat geen partial-TPs toe — je opent meerdere losse trades als workaround,
+      maar het journal ziet er dan 3-4 aparte trades i.p.v. 1 positie met 3-4 TPs.
+      Deze feature voegt geselecteerde trades samen tot één <strong>master-trade</strong> met
+      <code>mergedFrom: [id1,id2,id3,id4]</code>. De originelen blijven bewaard (soft-merge),
+      worden uit lijsten + analytics gefilterd, en de master krijgt een <code>🔗</code>-badge.
+    </p>
+  </header>
+
+  <div class="controls">
+    <button class="btn" id="btn-reset">↻ Reset demo</button>
+    <button class="btn" id="btn-toggle-all">☑ Selecteer alle 4 FTMO-trades</button>
+    <span style="flex:1"></span>
+    <span style="font:500 11px var(--mono); color:var(--text4); letter-spacing:0.04em;">
+      Stap <span id="step-num">1</span> / 5
+    </span>
+  </div>
+
+  <div class="step-banner" id="step-banner">
+    <div class="num">1</div>
+    <div>
+      <div class="label" id="step-label">Initiële state</div>
+      <div class="desc" id="step-desc">4 FTMO XAUUSD-long trades binnen via CSV-import. Functioneel was dit 1 positie met 4 TP-levels.</div>
+    </div>
+  </div>
+
+  <div class="trades-card">
+    <div class="trades-meta">
+      <div class="src">
+        <span class="src-badge">📊 FTMO (MT5)</span>
+        <span style="font-size:12px; color:var(--text4);">14 trades</span>
+      </div>
+      <div class="count" id="vis-count">14 zichtbaar</div>
+    </div>
+    <table class="trades">
+      <thead>
+        <tr>
+          <th class="cb-col"></th>
+          <th>Datum</th>
+          <th>Pair</th>
+          <th>Side</th>
+          <th class="num th">Entry</th>
+          <th class="num th">Exit</th>
+          <th class="num th">Size</th>
+          <th class="num th">PnL</th>
+          <th class="num th">R</th>
+          <th>Status</th>
+          <th>Grade</th>
+          <th>Setup</th>
+        </tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+
+  <div class="tech-notes">
+    <h3>🔧 Tech-notes — wat slaat de app op?</h3>
+    <div class="col2">
+      <div>
+        <h4>Master-trade velden</h4>
+        <ul>
+          <li><code>entry</code> = Σ(child.entry · size) / Σ(size) — gewogen avg</li>
+          <li><code>size</code> = Σ(child.size) — totale notional</li>
+          <li><code>exit</code> = gewogen avg van closed-children exits</li>
+          <li><code>pnl</code> = Σ(child.pnl) — netto winst alle children</li>
+          <li><code>fees</code> = Σ(child.fees)</li>
+          <li><code>sl</code> = conservatiefste SL (min afstand per direction)</li>
+          <li><code>date</code> = vroegste child.date</li>
+          <li><code>status</code> = closed als alle children closed; partial anders</li>
+          <li><code>mergedFrom: [id, id, ...]</code></li>
+          <li><code>_mergeSource: "manual"</code></li>
+        </ul>
+
+        <h4>Children-velden bij merge</h4>
+        <ul>
+          <li><code>status</code> → <code>"merged-child"</code></li>
+          <li><code>mergedInto: masterId</code></li>
+          <li><code>_preMergeStatus</code> bewaard voor exact restore</li>
+        </ul>
+      </div>
+
+      <div>
+        <h4>Filter-discipline</h4>
+        <ul>
+          <li>Nieuwe helper <code>visibleTrades(trades)</code> excludeert <code>status==="merged-child"</code></li>
+          <li><strong>Overal toepassen</strong>: Trades-tabel, Dashboard, Analytics, Calendar — anders dubbeltel-bug zodra eerste merge bestaat</li>
+        </ul>
+
+        <h4>Validatie (block / warn)</h4>
+        <ul>
+          <li><strong>Block</strong>: verschillende pair / direction / source / ≥2 master-trades / merged-child al gemerged</li>
+          <li><strong>Warn (overrulebaar)</strong>: tijdspreiding &gt;24u, deels open trades</li>
+          <li><strong>Vraag</strong>: conflict op tradeGrade / playbookId / notes</li>
+        </ul>
+
+        <h4>De-merge</h4>
+        <ul>
+          <li>Master <strong>verwijderen</strong> (geen zombie-state)</li>
+          <li>Children krijgen <code>mergedInto:null</code> + status restored via <code>_preMergeStatus</code></li>
+          <li>Knop in master-detail: "🔓 Splits weer uit"</li>
+        </ul>
+
+        <h4>Scope v1</h4>
+        <ul>
+          <li>Knop verschijnt alleen bij <code>source==="ftmo"</code></li>
+          <li>Banner in modal: "voor crypto-exchanges herkent de app partials automatisch"</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Floating action-bar (hidden when no selection) -->
+<div class="action-bar" id="action-bar" style="display:none;">
+  <span class="count">🔗 <span id="sel-count">0</span> trade(s) geselecteerd</span>
+  <span class="div"></span>
+  <button class="btn btn-gold" id="btn-merge">Samenvoegen tot 1 trade</button>
+  <button class="btn" id="btn-clear">❌ Wis selectie</button>
+</div>
+
+<!-- Merge confirmation modal -->
+<div class="modal-overlay" id="merge-modal" style="display:none;">
+  <div class="modal">
+    <div class="modal-header">
+      <div>
+        <h2>🔗 Samenvoegen tot 1 trade</h2>
+        <div class="sub">4 FTMO-trades worden 1 master-positie met 4 TP-niveaus. De originelen blijven bewaard.</div>
+      </div>
+      <button class="modal-close" onclick="closeMergeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+
+      <div class="pdh">Master-trade preview <span class="hint">automatisch berekend</span></div>
+      <div class="stats-grid" id="master-preview"></div>
+
+      <div class="pdh">Validatie</div>
+      <div class="checks" id="checks"></div>
+
+      <div class="pdh">Conflicten — welke waarde wil je op de master?</div>
+      <div id="conflicts"></div>
+
+      <div class="pdh" style="margin-top:24px;">Children-overzicht</div>
+      <div class="children-list" id="children-list"></div>
+
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeMergeModal()">Annuleren</button>
+      <button class="btn btn-primary" onclick="confirmMerge()">🔗 Bevestig samenvoegen</button>
+    </div>
+  </div>
+</div>
+
+<!-- Master detail modal -->
+<div class="modal-overlay" id="detail-modal" style="display:none;">
+  <div class="modal">
+    <div class="modal-header">
+      <div>
+        <h2 id="detail-title">Trade detail</h2>
+        <div class="sub" id="detail-sub"></div>
+      </div>
+      <button class="modal-close" onclick="closeDetailModal()">✕</button>
+    </div>
+    <div class="modal-body" id="detail-body"></div>
+    <div class="modal-footer" id="detail-footer"></div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toast-wrap"></div>
+
+<script>
+// === Seed data ===========================================================
+// 10 historische FTMO-trades + 4 nieuwe XAUUSD-long trades die functioneel
+// 1 partial-positie waren (verschillende TPs, zelfde entry-tijd-window)
+const SEED = [
+  // Achtergrond (vorige dagen)
+  {id:"t1",date:"2026-05-28 09:14",pair:"EURUSD",direction:"long",entry:"1.08240",exit:"1.08410",size:"0.5",pnl:"85.00",sl:"1.08140",status:"closed",grade:"A",setup:"London Open",source:"ftmo",fees:"2.00"},
+  {id:"t2",date:"2026-05-28 14:02",pair:"GBPUSD",direction:"short",entry:"1.27180",exit:"1.27040",size:"0.5",pnl:"70.00",sl:"1.27280",status:"closed",grade:"B",setup:"NY Reversal",source:"ftmo",fees:"2.00"},
+  {id:"t3",date:"2026-05-29 10:32",pair:"XAUUSD",direction:"long",entry:"2008.40",exit:"2003.20",size:"0.3",pnl:"-78.00",sl:"2002.00",status:"closed",grade:"B",setup:"London Open",source:"ftmo",fees:"1.50"},
+  {id:"t4",date:"2026-05-30 11:48",pair:"USDJPY",direction:"long",entry:"154.620",exit:"154.840",size:"0.5",pnl:"110.00",sl:"154.420",status:"closed",grade:"A+",setup:"NY Trend",source:"ftmo",fees:"2.00"},
+  {id:"t5",date:"2026-05-31 09:08",pair:"EURUSD",direction:"long",entry:"1.08510",exit:"1.08620",size:"0.5",pnl:"55.00",sl:"1.08440",status:"closed",grade:"A",setup:"London Open",source:"ftmo",fees:"2.00"},
+  {id:"t6",date:"2026-06-01 13:20",pair:"GBPJPY",direction:"long",entry:"195.840",exit:"196.180",size:"0.3",pnl:"102.00",sl:"195.640",status:"closed",grade:"A+",setup:"London Trend",source:"ftmo",fees:"1.50"},
+  {id:"t7",date:"2026-06-02 10:14",pair:"BTCUSD",direction:"long",entry:"68420",exit:"68930",size:"0.05",pnl:"25.50",sl:"68180",status:"closed",grade:"B",setup:"Range Bounce",source:"ftmo",fees:"1.00"},
+  {id:"t8",date:"2026-06-02 15:42",pair:"NAS100",direction:"short",entry:"18920",exit:"18840",size:"0.2",pnl:"160.00",sl:"18980",status:"closed",grade:"A",setup:"NY Reversal",source:"ftmo",fees:"2.50"},
+  {id:"t9",date:"2026-06-03 09:00",pair:"EURUSD",direction:"short",entry:"1.08820",exit:"1.08920",size:"0.5",pnl:"-50.00",sl:"1.08920",status:"closed",grade:"C",setup:"London Open",source:"ftmo",fees:"2.00"},
+  {id:"t10",date:"2026-06-03 14:18",pair:"XAUUSD",direction:"short",entry:"2032.40",exit:"2028.60",size:"0.2",pnl:"38.00",sl:"2034.40",status:"closed",grade:"A",setup:"NY Reversal",source:"ftmo",fees:"1.00"},
+
+  // === De 4 "samen 1 trade"-trades — XAUUSD long, 4 juni, partial-workaround ===
+  // Entry-window: 09:42:18 → 09:42:51 (33 seconden — duidelijk simultane positie-opbouw)
+  // Allemaal entry ~$2018.50, SL ~$2014.50 ($4 oz risk × 50 oz/lot × 0.5 = $100/lot)
+  // Exits gespreid (de "TPs"): 2022 / 2025 / 2028 / 2032 — runner laatste
+  {id:"m1",date:"2026-06-04 09:42",time:"09:42:18",pair:"XAUUSD",direction:"long",
+    entry:"2018.50",exit:"2022.00",size:"0.5",pnl:"87.50",sl:"2014.50",fees:"1.50",
+    status:"closed",grade:"A+",setup:"London Breakout Long",
+    notes:"Clean ICT breakout boven Asia high. Volume profile bevestigd. Eerste TP bij 0.5R.",
+    source:"ftmo",playbookId:"london-breakout-long"},
+  {id:"m2",date:"2026-06-04 09:42",time:"09:42:29",pair:"XAUUSD",direction:"long",
+    entry:"2018.50",exit:"2025.00",size:"0.5",pnl:"162.50",sl:"2014.50",fees:"1.50",
+    status:"closed",grade:"A",setup:"London Breakout Long",
+    notes:"",
+    source:"ftmo",playbookId:"london-breakout-long"},
+  {id:"m3",date:"2026-06-04 09:42",time:"09:42:42",pair:"XAUUSD",direction:"long",
+    entry:"2018.50",exit:"2028.00",size:"0.5",pnl:"237.50",sl:"2014.50",fees:"1.50",
+    status:"closed",grade:"A+",setup:"London Breakout Long",
+    notes:"",
+    source:"ftmo",playbookId:"london-breakout-long"},
+  {id:"m4",date:"2026-06-04 09:42",time:"09:42:51",pair:"XAUUSD",direction:"long",
+    entry:"2018.50",exit:"2032.00",size:"0.5",pnl:"337.50",sl:"2014.50",fees:"1.50",
+    status:"closed",grade:"B",setup:"London Breakout Long",
+    notes:"Runner. Trail boven 2026 manual move tot LDN close hit.",
+    source:"ftmo",playbookId:""},
+];
+
+const MERGEABLE_IDS = ["m1","m2","m3","m4"]; // de 4 trades die de demo uitnodigt te mergen
+
+// === State machine =======================================================
+let state = {
+  trades: deepCopy(SEED),
+  selected: new Set(),
+  step: 1,
+  conflictChoices: {}, // {fieldName: source-childId or "concat"}
+};
+
+function deepCopy(o){return JSON.parse(JSON.stringify(o));}
+
+function reset(){
+  state = {trades:deepCopy(SEED), selected:new Set(), step:1, conflictChoices:{}};
+  closeMergeModal(); closeDetailModal();
+  render();
+  toast("Demo gereset", "info");
+}
+
+// === Helpers =============================================================
+const fmt = (n) => Number(n).toLocaleString("nl-NL",{minimumFractionDigits:2, maximumFractionDigits:2});
+const fmt0 = (n) => Number(n).toLocaleString("nl-NL",{minimumFractionDigits:0, maximumFractionDigits:0});
+const fmtPrice = (n) => Number(n).toLocaleString("nl-NL",{minimumFractionDigits:2, maximumFractionDigits:5});
+const sum = (arr, f=x=>x) => arr.reduce((s,x)=>s+f(x),0);
+
+function visibleTrades(){
+  return state.trades.filter(t => t.status !== "merged-child");
+}
+
+// Risk per child = |entry - sl| × size × multiplier
+// Per-pair multipliers gekalibreerd zodat R-multiples realistisch zijn op FTMO MT5
+const PAIR_MULT = {
+  "XAUUSD": 50,      // 50 oz per 0.5 std lot
+  "EURUSD": 100000,  // FX major: 100k notional per lot → ~$10/pip per std lot
+  "GBPUSD": 100000,
+  "USDJPY": 650,     // JPY-paar: 100k × 0.01 / 154.5 ≈ $6.5/pip per std lot
+  "GBPJPY": 500,     // 100k × 0.01 / 196 ≈ $5/pip per std lot
+  "NAS100": 1,       // index: $1 per punt per std lot
+  "BTCUSD": 1,       // crypto-CFD: 1 BTC per lot
+};
+function riskUSD(t){
+  const mult = PAIR_MULT[t.pair] || 1;
+  return Math.abs(parseFloat(t.entry) - parseFloat(t.sl)) * parseFloat(t.size) * mult;
+}
+function rMultiple(t){
+  const r = riskUSD(t);
+  if(!r) return 0;
+  return parseFloat(t.pnl) / r;
+}
+
+// === Master-trade berekening =============================================
+function buildMasterPreview(children, conflictChoices){
+  const totalSize = sum(children, c=>parseFloat(c.size));
+  const wEntry = sum(children, c=>parseFloat(c.entry)*parseFloat(c.size)) / totalSize;
+
+  const closedChildren = children.filter(c=>c.status==="closed");
+  const wExit = closedChildren.length
+    ? sum(closedChildren, c=>parseFloat(c.exit)*parseFloat(c.size)) / sum(closedChildren, c=>parseFloat(c.size))
+    : null;
+
+  const totalPnl = sum(children, c=>parseFloat(c.pnl));
+  const totalFees = sum(children, c=>parseFloat(c.fees||0));
+  // SL: conservatiefste — voor long = highest SL (kleinste afstand vanaf entry)
+  // voor short = lowest SL
+  const direction = children[0].direction;
+  const sl = direction === "long"
+    ? Math.max(...children.map(c=>parseFloat(c.sl)))
+    : Math.min(...children.map(c=>parseFloat(c.sl)));
+
+  const allClosed = children.every(c=>c.status==="closed");
+  const status = allClosed ? "closed" : "partial";
+
+  // R-multiple op master: (avg exit - wEntry) × totalSize × mult / total-risk
+  const mult = children[0].pair === "XAUUSD" ? 50 : 1;
+  const masterRisk = Math.abs(wEntry - sl) * totalSize * mult;
+  const masterR = masterRisk ? totalPnl / masterRisk : 0;
+
+  // Conflict-resolution: tradeGrade / playbookId / notes
+  const resolveConflict = (field, multiValueOk=false) => {
+    const choice = conflictChoices[field];
+    if(choice && choice !== "concat"){
+      const src = children.find(c=>c.id===choice);
+      return src ? (src[field] || "") : "";
+    }
+    if(choice === "concat" && multiValueOk){
+      return children.map(c=>c[field]).filter(Boolean).join("\n———\n");
+    }
+    // Default: meest voorkomende non-empty
+    const values = children.map(c=>c[field]||"").filter(Boolean);
+    if(values.length===0) return "";
+    const counts = {};
+    values.forEach(v=>counts[v]=(counts[v]||0)+1);
+    return Object.entries(counts).sort((a,b)=>b[1]-a[1])[0][0];
+  };
+
+  return {
+    pair: children[0].pair,
+    direction,
+    source: children[0].source,
+    date: children[0].date,
+    entry: wEntry.toFixed(2),
+    exit: wExit ? wExit.toFixed(2) : null,
+    size: totalSize.toFixed(2),
+    pnl: totalPnl.toFixed(2),
+    fees: totalFees.toFixed(2),
+    sl: sl.toFixed(2),
+    status,
+    grade: resolveConflict("grade"),
+    setup: resolveConflict("setup"),
+    playbookId: resolveConflict("playbookId"),
+    notes: resolveConflict("notes", true),
+    rMultiple: masterR,
+    childCount: children.length,
+    closedCount: closedChildren.length,
+  };
+}
+
+// === Conflict-detection ==================================================
+function detectConflicts(children){
+  const conflicts = [];
+  // tradeGrade
+  const grades = [...new Set(children.map(c=>c.grade).filter(Boolean))];
+  if(grades.length>1){
+    conflicts.push({field:"grade", label:"Trade-grade", values: children.map(c=>({id:c.id, val:c.grade||""}))});
+  }
+  // playbookId
+  const pbs = [...new Set(children.map(c=>c.playbookId).filter(Boolean))];
+  const pbsAll = children.map(c=>c.playbookId||"");
+  if(new Set(pbsAll).size > 1){
+    conflicts.push({field:"playbookId", label:"Playbook", values: children.map(c=>({id:c.id, val:c.playbookId||""}))});
+  }
+  // notes
+  const notes = children.map(c=>c.notes||"");
+  const nonEmptyNotes = notes.filter(Boolean);
+  if(nonEmptyNotes.length >= 2 || (nonEmptyNotes.length >= 1 && new Set(notes).size > 1)){
+    conflicts.push({field:"notes", label:"Notes", multiValueOk:true, values: children.map(c=>({id:c.id, val:c.notes||""}))});
+  }
+  return conflicts;
+}
+
+// === Validatie ===========================================================
+function validateMerge(children){
+  const checks = [];
+  const sourcesSet = new Set(children.map(c=>c.source));
+  const pairsSet = new Set(children.map(c=>c.pair));
+  const dirsSet = new Set(children.map(c=>c.direction));
+
+  // Block checks
+  if(pairsSet.size > 1){
+    checks.push({level:"fail", msg:`Verschillende pairs (${[...pairsSet].join(", ")}) — kan niet samenvoegen.`});
+  } else {
+    checks.push({level:"ok", msg:`Alle ${children.length} trades op zelfde pair (${children[0].pair})`});
+  }
+  if(dirsSet.size > 1){
+    checks.push({level:"fail", msg:`Verschillende directions (${[...dirsSet].join(", ")}) — kan niet samenvoegen.`});
+  } else {
+    checks.push({level:"ok", msg:`Alle trades zelfde direction (${children[0].direction})`});
+  }
+  if(sourcesSet.size > 1){
+    checks.push({level:"fail", msg:`Verschillende sources — niet toegestaan.`});
+  } else {
+    checks.push({level:"ok", msg:`Allemaal source: ${children[0].source}`});
+  }
+  // Scope-v1 check
+  if(children[0].source !== "ftmo"){
+    checks.push({level:"warn", msg:`Source is niet FTMO/MT5. Voor crypto-exchanges herkent de app partials automatisch.`});
+  }
+  // Reeds gemerged
+  const alreadyMerged = children.some(c=>c.mergedInto);
+  if(alreadyMerged){
+    checks.push({level:"fail", msg:`Een van de geselecteerde trades is al gemerged. Splits eerst uit.`});
+  }
+  // Master in selection
+  const hasMaster = children.some(c=>c.mergedFrom);
+  if(hasMaster){
+    checks.push({level:"fail", msg:`Een geselecteerde trade is al een master. Geen 2-laag merges.`});
+  }
+  // Tijd-spreiding
+  const dates = children.map(c=>new Date(c.date).getTime()).sort();
+  const spreadH = (dates[dates.length-1] - dates[0]) / 36e5;
+  if(spreadH > 24){
+    checks.push({level:"warn", msg:`Trades zitten ${spreadH.toFixed(1)}u uit elkaar (>24u). Bewust?`});
+  } else if(children.length > 1) {
+    const spreadStr = spreadH < 1 ? `${Math.round(spreadH*60)} min` : `${spreadH.toFixed(1)}u`;
+    checks.push({level:"ok", msg:`Tijd-spreiding entries: ${spreadStr}`});
+  }
+  // Open trades
+  const openCount = children.filter(c=>c.status!=="closed").length;
+  if(openCount > 0){
+    checks.push({level:"warn", msg:`${openCount} trade(s) nog niet closed — master krijgt status "partial".`});
+  } else if(children.length > 1){
+    checks.push({level:"ok", msg:`Alle trades closed — master wordt "closed".`});
+  }
+
+  return checks;
+}
+
+// === Render ==============================================================
+function render(){
+  renderTable();
+  renderActionBar();
+  renderStepBanner();
+  document.getElementById("vis-count").textContent = `${visibleTrades().length} zichtbaar`;
+}
+
+function renderTable(){
+  const tbody = document.getElementById("tbody");
+  const vis = visibleTrades();
+  if(vis.length === 0){
+    tbody.innerHTML = `<tr><td colspan="12" class="empty-state">Geen trades zichtbaar</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = vis.map(t => {
+    const isMaster = !!t.mergedFrom;
+    const isSel = state.selected.has(t.id);
+    const pnl = parseFloat(t.pnl);
+    const r = rMultiple(t);
+    const isXAU = t.pair === "XAUUSD";
+    const isToday = t.date.startsWith("2026-06-04");
+    const highlight = isToday && MERGEABLE_IDS.includes(t.id);
+    return `
+      <tr class="${isSel?'row-selected':''}" data-id="${t.id}">
+        <td class="cb-col">
+          <input type="checkbox" class="cb" ${isSel?'checked':''} onclick="toggleSelect('${t.id}')"/>
+        </td>
+        <td style="font-family:var(--mono); font-size:12px; color:var(--text3); white-space:nowrap;">${t.date}${t.time?'<br><span style="font-size:10px; color:var(--text5);">'+t.time+'</span>':''}</td>
+        <td>
+          <span class="pair-cell">
+            <span class="pair">${t.pair}</span>
+            ${isMaster ? `<span class="merged-badge" onclick="openDetail('${t.id}')" title="Samengevoegd uit ${t.mergedFrom.length} trades">🔗 ${t.mergedFrom.length}</span>` : ''}
+          </span>
+        </td>
+        <td><span class="side-pill ${t.direction==='short'?'short':''}">${t.direction==='long'?'LONG':'SHORT'}</span></td>
+        <td class="num">${fmtPrice(t.entry)}</td>
+        <td class="num">${t.exit?fmtPrice(t.exit):'—'}</td>
+        <td class="num">${t.size}</td>
+        <td class="num"><span class="${pnl>=0?'pnl-pos':'pnl-neg'}">${pnl>=0?'+':'−'}$${fmt(Math.abs(pnl))}</span></td>
+        <td class="num"><span class="${r>=0?'r-pos':'r-neg'}">${r>=0?'+':''}${r.toFixed(2)}R</span></td>
+        <td><span class="status-pill ${t.status}">● ${t.status.toUpperCase()}</span></td>
+        <td>${t.grade?`<span class="grade ${t.grade.startsWith('B')?'B':t.grade.startsWith('A')?'A':''}">${t.grade}</span>`:''}</td>
+        <td style="font-size:12px; color:var(--text3); max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${t.setup||''}</td>
+      </tr>
+    `;
+  }).join("");
+}
+
+function renderActionBar(){
+  const bar = document.getElementById("action-bar");
+  const n = state.selected.size;
+  if(n === 0){ bar.style.display = "none"; return; }
+  bar.style.display = "flex";
+  document.getElementById("sel-count").textContent = n;
+  document.getElementById("btn-merge").disabled = n < 2;
+}
+
+function renderStepBanner(){
+  const steps = {
+    1: {label:"Initiële state", desc:"4 FTMO XAUUSD-long trades binnen via CSV-import. Functioneel was dit 1 positie met 4 TP-levels."},
+    2: {label:"Trades aanvinken", desc:"Vink alle 4 XAUUSD-trades van 4 juni aan via de checkbox-kolom. Een floating action-bar verschijnt onderaan."},
+    3: {label:"Merge-modal openen", desc:"Klik op 'Samenvoegen tot 1 trade'. De modal toont de berekende master-trade + conflict-vragen."},
+    4: {label:"Na merge", desc:"De 4 trades zijn nu verborgen, 1 master-trade verschijnt met 🔗-badge. Klik 'm aan voor detail."},
+    5: {label:"De-merge mogelijk", desc:"In de master-detail kun je via '🔓 Splits weer uit' terug naar de oorspronkelijke 4 trades."},
+  };
+  const s = steps[state.step] || steps[1];
+  document.getElementById("step-num").textContent = state.step;
+  document.querySelector("#step-banner .num").textContent = state.step;
+  document.getElementById("step-label").textContent = s.label;
+  document.getElementById("step-desc").textContent = s.desc;
+}
+
+// === Event handlers ======================================================
+function toggleSelect(id){
+  if(state.selected.has(id)) state.selected.delete(id);
+  else state.selected.add(id);
+  if(state.selected.size > 0 && state.step === 1) state.step = 2;
+  if(state.selected.size === 0 && state.step === 2) state.step = 1;
+  render();
+}
+
+function selectAllMergeable(){
+  state.selected = new Set(MERGEABLE_IDS);
+  state.step = 2;
+  render();
+}
+
+function clearSelection(){
+  state.selected.clear();
+  state.step = 1;
+  render();
+}
+
+// === Merge modal =========================================================
+function openMergeModal(){
+  const children = [...state.selected].map(id => state.trades.find(t=>t.id===id));
+  state.conflictChoices = {};
+  // Init defaults: meest voorkomende non-empty
+  const conflicts = detectConflicts(children);
+  conflicts.forEach(c => {
+    const nonEmpty = c.values.filter(v=>v.val);
+    if(nonEmpty.length > 0){
+      state.conflictChoices[c.field] = nonEmpty[0].id;
+    }
+  });
+
+  state.step = 3;
+  renderStepBanner();
+  renderMergeModalContent();
+  document.getElementById("merge-modal").style.display = "flex";
+}
+
+function renderMergeModalContent(){
+  const children = [...state.selected].map(id => state.trades.find(t=>t.id===id));
+  const preview = buildMasterPreview(children, state.conflictChoices);
+  const checks = validateMerge(children);
+  const conflicts = detectConflicts(children);
+
+  // Master preview stats
+  document.getElementById("master-preview").innerHTML = `
+    <div class="stat">
+      <div class="label">Entry (gewogen)</div>
+      <div class="value">$${fmtPrice(preview.entry)}</div>
+      <div class="sub">${preview.pair} · ${preview.direction.toUpperCase()}</div>
+    </div>
+    <div class="stat">
+      <div class="label">Exit (gewogen)</div>
+      <div class="value">${preview.exit?'$'+fmtPrice(preview.exit):'—'}</div>
+      <div class="sub">${preview.closedCount}/${preview.childCount} closed</div>
+    </div>
+    <div class="stat">
+      <div class="label">Totale size</div>
+      <div class="value">${preview.size}</div>
+      <div class="sub">SL: $${fmtPrice(preview.sl)} (conservatiefst)</div>
+    </div>
+    <div class="stat">
+      <div class="label">Net PnL</div>
+      <div class="value" style="color:${parseFloat(preview.pnl)>=0?'var(--green)':'var(--red)'};">
+        ${parseFloat(preview.pnl)>=0?'+':'−'}$${fmt(Math.abs(parseFloat(preview.pnl)))}
+      </div>
+      <div class="sub">${preview.rMultiple>=0?'+':''}${preview.rMultiple.toFixed(2)}R · ${preview.status}</div>
+    </div>
+  `;
+
+  // Checks
+  document.getElementById("checks").innerHTML = checks.map(c=>`
+    <div class="check-row ${c.level}">
+      <span class="check-icon">${c.level==='ok'?'✓':c.level==='warn'?'⚠':'✗'}</span>
+      <span>${c.msg}</span>
+    </div>
+  `).join("");
+
+  // Conflicts
+  const cEl = document.getElementById("conflicts");
+  if(conflicts.length === 0){
+    cEl.innerHTML = `<div style="font-size:12.5px; color:var(--text4); padding:8px 0; font-style:italic;">Geen conflicten — alle velden mergebaar zonder keuze.</div>`;
+  } else {
+    cEl.innerHTML = conflicts.map(c => {
+      const opts = c.values.map((v,i) => {
+        const isEmpty = !v.val;
+        const isSelected = state.conflictChoices[c.field] === v.id;
+        return `
+          <label class="conflict-opt ${isSelected?'selected':''}">
+            <input type="radio" name="conflict-${c.field}" value="${v.id}" ${isSelected?'checked':''}
+              onchange="setConflictChoice('${c.field}','${v.id}')"/>
+            <span class="src">child ${i+1}</span>
+            <span class="val ${isEmpty?'empty':''}">${isEmpty?'(leeg)':escapeHtml(v.val)}</span>
+          </label>
+        `;
+      }).join("");
+      const concatOption = c.multiValueOk ? `
+        <label class="conflict-opt ${state.conflictChoices[c.field]==='concat'?'selected':''}">
+          <input type="radio" name="conflict-${c.field}" value="concat" ${state.conflictChoices[c.field]==='concat'?'checked':''}
+            onchange="setConflictChoice('${c.field}','concat')"/>
+          <span class="src">concat</span>
+          <span class="val">Alle non-lege waarden combineren (met scheidingslijn)</span>
+        </label>
+      ` : "";
+      return `
+        <div class="conflict">
+          <div class="conflict-head">
+            <span class="field">${c.label}</span>
+            <span class="count">${c.values.length} children — verschillende waarden</span>
+          </div>
+          <div class="conflict-options">${opts}${concatOption}</div>
+        </div>
+      `;
+    }).join("");
+  }
+
+  // Children list
+  document.getElementById("children-list").innerHTML = children.map((c,i)=>`
+    <div class="child-row">
+      <span class="idx">#${i+1}</span>
+      <span class="time">${c.time || c.date.split(" ")[1] || c.date}</span>
+      <span class="num">${fmtPrice(c.entry)} → ${fmtPrice(c.exit)}</span>
+      <span class="num">${c.size}</span>
+      <span class="pnl ${parseFloat(c.pnl)>=0?'pnl-pos':'pnl-neg'}">${parseFloat(c.pnl)>=0?'+':'−'}$${fmt(Math.abs(parseFloat(c.pnl)))}</span>
+      <span class="num" style="color:var(--text3);">${(rMultiple(c)>=0?'+':'')+rMultiple(c).toFixed(2)}R</span>
+    </div>
+  `).join("");
+
+  // Disable confirm if any "fail" check
+  const hasFail = checks.some(c=>c.level==="fail");
+  const confirmBtn = document.querySelector("#merge-modal .btn-primary");
+  confirmBtn.disabled = hasFail;
+  confirmBtn.style.opacity = hasFail ? "0.5" : "1";
+  confirmBtn.style.cursor = hasFail ? "not-allowed" : "pointer";
+}
+
+function setConflictChoice(field, id){
+  state.conflictChoices[field] = id;
+  renderMergeModalContent();
+}
+
+function closeMergeModal(){
+  document.getElementById("merge-modal").style.display = "none";
+  if(state.step === 3) state.step = 2;
+  renderStepBanner();
+}
+
+function confirmMerge(){
+  const children = [...state.selected].map(id => state.trades.find(t=>t.id===id));
+  const checks = validateMerge(children);
+  if(checks.some(c=>c.level==="fail")) return;
+
+  const preview = buildMasterPreview(children, state.conflictChoices);
+
+  // Maak master-trade
+  const masterId = "master-"+Date.now();
+  const master = {
+    id: masterId,
+    date: preview.date,
+    pair: preview.pair,
+    direction: preview.direction,
+    entry: preview.entry,
+    exit: preview.exit,
+    size: preview.size,
+    pnl: preview.pnl,
+    fees: preview.fees,
+    sl: preview.sl,
+    status: preview.status,
+    grade: preview.grade,
+    setup: preview.setup,
+    playbookId: preview.playbookId,
+    notes: preview.notes,
+    source: preview.source,
+    mergedFrom: children.map(c=>c.id),
+    _mergeSource: "manual",
+    _mergeTimestamp: new Date().toISOString(),
+  };
+
+  // Markeer children
+  children.forEach(c => {
+    const t = state.trades.find(x=>x.id===c.id);
+    t._preMergeStatus = t.status;
+    t.status = "merged-child";
+    t.mergedInto = masterId;
+  });
+
+  // Voeg master toe (op chronologische positie)
+  state.trades.unshift(master);
+
+  state.selected.clear();
+  state.conflictChoices = {};
+  closeMergeModal();
+  state.step = 4;
+  render();
+  toast(`🔗 ${children.length} trades samengevoegd tot 1 master-trade · ${preview.pair} ${preview.direction} · ${parseFloat(preview.pnl)>=0?'+':'−'}$${fmt(Math.abs(parseFloat(preview.pnl)))}`, "success");
+}
+
+// === Detail modal ========================================================
+function openDetail(id){
+  const t = state.trades.find(x=>x.id===id);
+  if(!t) return;
+  state.step = 5;
+  renderStepBanner();
+
+  const isMaster = !!t.mergedFrom;
+  document.getElementById("detail-title").textContent = `${t.pair} ${t.direction.toUpperCase()} ${isMaster?'· master':''}`;
+  document.getElementById("detail-sub").textContent = `${t.date} · ${t.source}${isMaster?' · 🔗 samengevoegd uit '+t.mergedFrom.length+' trades':''}`;
+
+  let body = `
+    <div class="stats-grid">
+      <div class="stat">
+        <div class="label">Entry</div>
+        <div class="value">$${fmtPrice(t.entry)}</div>
+        <div class="sub">SL: $${fmtPrice(t.sl)}</div>
+      </div>
+      <div class="stat">
+        <div class="label">Exit</div>
+        <div class="value">${t.exit?'$'+fmtPrice(t.exit):'—'}</div>
+        <div class="sub">${t.status}</div>
+      </div>
+      <div class="stat">
+        <div class="label">Size</div>
+        <div class="value">${t.size}</div>
+        <div class="sub">Fees: $${fmt(t.fees||0)}</div>
+      </div>
+      <div class="stat">
+        <div class="label">Net PnL</div>
+        <div class="value" style="color:${parseFloat(t.pnl)>=0?'var(--green)':'var(--red)'};">
+          ${parseFloat(t.pnl)>=0?'+':'−'}$${fmt(Math.abs(parseFloat(t.pnl)))}
+        </div>
+        <div class="sub">${(rMultiple(t)>=0?'+':'')+rMultiple(t).toFixed(2)}R</div>
+      </div>
+    </div>
+  `;
+
+  if(t.grade || t.setup || t.notes){
+    body += `<div class="pdh">Metadata</div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:18px; font-size:13px;">
+        ${t.grade?`<div><span style="color:var(--text4); font-size:11px;">GRADE</span><br><span class="grade ${t.grade.startsWith('B')?'B':t.grade.startsWith('A')?'A':''}">${t.grade}</span></div>`:''}
+        ${t.setup?`<div><span style="color:var(--text4); font-size:11px;">SETUP</span><br><span style="color:var(--text2);">${t.setup}</span></div>`:''}
+        ${t.playbookId?`<div style="grid-column:span 2;"><span style="color:var(--text4); font-size:11px;">PLAYBOOK</span><br><span style="color:var(--gold); font:600 12px var(--mono);">${t.playbookId}</span></div>`:''}
+        ${t.notes?`<div style="grid-column:span 2;"><span style="color:var(--text4); font-size:11px;">NOTES</span><br><span style="color:var(--text3); white-space:pre-wrap; font-size:12.5px;">${escapeHtml(t.notes)}</span></div>`:''}
+      </div>`;
+  }
+
+  // 🧩 Merge-section
+  if(isMaster){
+    const children = t.mergedFrom.map(cid => state.trades.find(x=>x.id===cid)).filter(Boolean);
+    const totalSize = sum(children, c=>parseFloat(c.size));
+
+    body += `
+      <div class="merge-section">
+        <div class="pdh" style="color:var(--blue); border-color:rgba(90,169,255,0.18);">🧩 Samengevoegd uit ${children.length} trades <span class="hint">elk een TP-niveau</span></div>
+        <div class="tp-list">
+          ${children.map((c,i)=>{
+            const sizePct = (parseFloat(c.size)/totalSize*100).toFixed(0);
+            return `
+              <div class="tp-row">
+                <span class="tp-tag">TP${i+1}</span>
+                <span class="tp-meta">
+                  <strong>${c.time || c.date.split(" ")[1] || c.date}</strong>
+                  · exit $${fmtPrice(c.exit)}
+                  · ${sizePct}% van totaal
+                </span>
+                <span class="num" style="color:var(--text3);">size ${c.size}</span>
+                <span class="num ${parseFloat(c.pnl)>=0?'pnl-pos':'pnl-neg'}">
+                  ${parseFloat(c.pnl)>=0?'+':'−'}$${fmt(Math.abs(parseFloat(c.pnl)))}
+                </span>
+                <span class="num" style="color:var(--text3);">${(rMultiple(c)>=0?'+':'')+rMultiple(c).toFixed(2)}R</span>
+              </div>
+            `;
+          }).join("")}
+        </div>
+        <div style="margin-top:14px; padding:10px 12px; background:var(--bg3); border-radius:var(--radius-sm); font-size:12px; color:var(--text4);">
+          <strong style="color:var(--text2);">_preMergeStatus</strong> per child bewaard voor exact-restore.
+          <strong style="color:var(--text2);">mergedFrom</strong> = <code style="font:600 11px var(--mono); color:var(--gold);">[${t.mergedFrom.join(", ")}]</code>
+        </div>
+      </div>
+    `;
+  } else if(t.mergedInto){
+    body += `<div style="margin-top:18px; padding:12px 16px; background:rgba(90,169,255,0.06); border:1px solid rgba(90,169,255,0.18); border-radius:var(--radius-sm); font-size:13px; color:var(--text3);">
+      🔗 Deze trade is een child van master <code style="font:600 12px var(--mono); color:var(--gold);">${t.mergedInto}</code>. Normaal verborgen in lijsten + analytics.
+    </div>`;
+  }
+
+  document.getElementById("detail-body").innerHTML = body;
+
+  // Footer
+  let footer = `<button class="btn" onclick="closeDetailModal()">Sluiten</button>`;
+  if(isMaster){
+    footer = `<button class="btn btn-danger" onclick="demerge('${t.id}')">🔓 Splits weer uit</button>` + footer;
+  }
+  document.getElementById("detail-footer").innerHTML = footer;
+
+  document.getElementById("detail-modal").style.display = "flex";
+}
+
+function closeDetailModal(){
+  document.getElementById("detail-modal").style.display = "none";
+}
+
+function demerge(masterId){
+  const master = state.trades.find(t=>t.id===masterId);
+  if(!master || !master.mergedFrom) return;
+  if(!confirm("Splitsen ongedaan maken? De master wordt verwijderd en de "+master.mergedFrom.length+" originele trades komen terug.")) return;
+
+  // Restore children
+  master.mergedFrom.forEach(cid => {
+    const c = state.trades.find(t=>t.id===cid);
+    if(!c) return;
+    c.status = c._preMergeStatus || "closed";
+    delete c.mergedInto;
+    delete c._preMergeStatus;
+  });
+
+  // Verwijder master
+  state.trades = state.trades.filter(t=>t.id!==masterId);
+
+  closeDetailModal();
+  state.step = 1;
+  render();
+  toast(`🔓 Master gesplitst — ${master.mergedFrom.length} originele trades hersteld`, "info");
+}
+
+// === Util ================================================================
+function escapeHtml(s){
+  return String(s||"").replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[m]);
+}
+
+function toast(msg, type){
+  const el = document.createElement("div");
+  el.className = "toast";
+  if(type === "info"){ el.style.borderColor = "var(--blue)"; el.style.borderLeftColor = "var(--blue)"; }
+  el.innerHTML = msg;
+  document.getElementById("toast-wrap").appendChild(el);
+  setTimeout(()=>{
+    el.style.transition = ".25s";
+    el.style.opacity = "0";
+    el.style.transform = "translateX(20px)";
+    setTimeout(()=>el.remove(), 250);
+  }, 3000);
+}
+
+// === Wire events =========================================================
+document.getElementById("btn-reset").onclick = reset;
+document.getElementById("btn-toggle-all").onclick = selectAllMergeable;
+document.getElementById("btn-clear").onclick = clearSelection;
+document.getElementById("btn-merge").onclick = openMergeModal;
+
+// Close modals on overlay click
+document.getElementById("merge-modal").onclick = (e) => {
+  if(e.target.id === "merge-modal") closeMergeModal();
+};
+document.getElementById("detail-modal").onclick = (e) => {
+  if(e.target.id === "detail-modal") closeDetailModal();
+};
+
+// Escape key
+document.addEventListener("keydown", (e)=>{
+  if(e.key === "Escape"){
+    closeMergeModal();
+    closeDetailModal();
+  }
+});
+
+// Initial render
+render();
+</script>
+</body>
+</html>

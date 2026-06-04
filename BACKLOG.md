@@ -10,6 +10,30 @@ Basis kwam uit de feature-diff v4_14 → v9 onderaan. Inmiddels werken we op **v
 
 <!-- Denny stuurt bugs 1 voor 1 — elk item krijgt datum + korte reproductiestap. -->
 
+- [ ] **Blofin API-koppeling: "Application Name" CCXT-keuze niet duidelijk in onze flow** *(2026-05-22, gemeld door Denny — community-user CryptoTiger liep vast in Discord met screenshot)* — Sinds Blofin's API-Management UI moet je bij het aanmaken van een nieuwe API-key een **"Application Name"** kiezen uit een dropdown van third-party apps (Apirone / 24-7 Terminal / Xin Traders / CryptoRobotics / Sequence / CCXT / etc.). Voor SyncJournal moet je **CCXT** selecteren (we gebruiken die library/protocol). Onze lesson L18 (Blofin koppelen) noemt dit nergens, en het in-app koppel-formulier ook niet — gevolg: nieuwe users blijven steken bij dat dropdown en moeten in Discord vragen.
+
+  **Fix-richtingen** (kies één):
+  - **A) In-app hint bij Blofin koppel-flow** (Accounts → Blofin → API-key invoer): voeg een muted-tekst toe boven de Key/Secret/Passphrase velden: *"💡 Op Blofin: kies bij 'Application Name' → **CCXT**. Read-only permissions, geen Trade/Withdrawal."*
+  - **B) Update lesson L18** (Help → Handleiding → Blofin): stap 2 van "Pad B — API-koppeling" expliciet maken: *"Naam: SyncJournal. **Application Name (dropdown): CCXT**. Permissions: alleen Read..."*
+  - **C) Beide** (aanbevolen — in-app hint + uitgebreide lesson). Effort: XS (~15 min). De CCXT-keuze is een Blofin-eigenaardigheid die meer users gaat raken naarmate de community groeit.
+
+  **Acceptatie**: nieuwe user kan zonder Discord-hulp een Blofin-key aanmaken; CCXT is duidelijk gedocumenteerd op het moment dat de keuze gemaakt moet worden.
+
+- [ ] **Kraken Futures API geeft 1970-timestamps (mogelijk API-format wijziging)** *(2026-05-22, gemeld door Denny)* — Bij het ophalen van trades via de Kraken Futures API toont SyncJournal nu **1970-01-01** als trade-datum (Unix epoch 0). Suggereert dat ons time-veld leeg of in nieuw format binnenkomt en de parser fallt back op `0` → epoch.
+
+  **Te onderzoeken**:
+  - Welke endpoint(s) raken het? (fills / orders / openpositions?)
+  - Heeft Kraken een API-versie-bump gehad? (check Kraken Futures changelog / news)
+  - Welk veld levert de timestamp aan: `fillTime` / `time` / `timestamp` / `executionTimestamp`? Is dat veld er nog, of vervangen door iets nieuws?
+  - Format-shift: was het ISO-string, nu Unix ms? Of vice versa?
+  - Reproduceer met snapshot-fixture (zie CLAUDE.md "Snapshot-fixture pattern") — kopieer huidige raw response, vergelijk met oude fixture als die er is.
+
+  **Locatie code**: `ExchangeAPI.kraken.fetchTrades` (en gerelateerde positionsHistory). Grep op `kraken.*time` en `parseKrakenDate` o.i.d.
+
+  **Fix-richting**: parser uitbreiden zodat zowel oude als nieuwe field-names worden geprobeerd; zachte fallback naar "vandaag" met warning ipv 1970 (1970 is een rode vlag dat we 't fout zien). **Effort**: M (~1u — onderzoek + parser-update + snapshot-test).
+
+  **Acceptatie**: Kraken-trades komen binnen met correcte datum; bestaande Kraken-trades met 1970-datum krijgen optioneel een one-shot heal-script.
+
 - [ ] **Analytics: "Setup lagen performance" labels worden afgekapt met "..."** *(2026-05-14, gemeld door Denny met screenshot · autonoom onderzocht 2026-05-14)* — Onder "Setup lagen performance" tonen de layer-pattern labels (bv. `Daily → 1H+BOS`, `4H → 1H+BOS+OB`) afgekapt met ellipsis: `Daily → 1H+...` / `4H → 1H+B...` / `Daily+SFP ...`. Hierdoor zie je niet welke layer-combinatie bij welke bar hoort.
 
   **Root cause bevestigd** ([line 10076-10077](work/tradejournal.html#L10076-L10077)): `barRow` helper gebruikt vaste **70px** label-kolom met `overflow:hidden; textOverflow:ellipsis; whiteSpace:nowrap`.
@@ -200,7 +224,9 @@ Basis kwam uit de feature-diff v4_14 → v9 onderaan. Inmiddels werken we op **v
 
 ## 📋 Onderzocht — wacht op go (geen code geschreven)
 
-- [ ] **Combined trades — meerdere trades als één behandelen** *(2026-05-02, onderzoek afgerond — zie [docs/combined-trades-research-2026-05-02.md](docs/combined-trades-research-2026-05-02.md))* — Feature-request van Denny: trades selecteren in TradeList → klik "Combineer" → 4 trades worden één logische trade met aggregate entry/SL/exit/PnL/fees + de 4 individuele trades als TP-niveaus. Use-case voorbeeld: 4× 0.25 BTC long met verschillende TP-targets samen behandelen als 1× 1 BTC long met 4 TPs.
+- [ ] **Combined trades — meerdere trades als één behandelen** *(2026-05-02, onderzoek afgerond — zie [docs/combined-trades-research-2026-05-02.md](docs/combined-trades-research-2026-05-02.md) · ✅ go gegeven 2026-06-04 · demo gebouwd in [demos/trades-merge-demo.html](demos/trades-merge-demo.html) · inbouw v12.189 in uitvoering)* — Feature-request van Denny: trades selecteren in TradeList → klik "Combineer" → 4 trades worden één logische trade met aggregate entry/SL/exit/PnL/fees + de 4 individuele trades als TP-niveaus. Use-case voorbeeld: 4× 0.25 BTC long met verschillende TP-targets samen behandelen als 1× 1 BTC long met 4 TPs.
+
+  **Architectuur-update 2026-06-04**: research-doc shape (`tradeGroupId` + `tradeGroupRole`) is bij implementatie vervangen door demo-shape (`mergedFrom: [ids]` op master + `mergedInto: masterId` op children + `_preMergeStatus` voor exact-restore). Reden: master heeft expliciete child-lijst, geen filter-lookup nodig om children te vinden, eenvoudiger te visualiseren. Scope v1 FTMO-only — knop verschijnt alleen bij `source==="ftmo"`.
 
   **Wat onderzocht is**:
   - **Aanname-correctie**: Denny dacht dat FTMO/MT5 geen partial TPs ondersteunt — dat klopt **niet helemaal**. MT5 hedging-mode (standaard FTMO niet-US) ondersteunt het natief. Alleen FTMO **US** (netting + FIFO) is anders. De "splits in N trades"-praktijk is dus een keuze, geen verplichting.
@@ -487,6 +513,45 @@ In [tests/](tests/) staan 4 real-data specs (`<exchange>-real-data.spec.js`) die
   **5 open beslissingen** vóór bouw — zie research-doc sectie "Open beslissingen". Trigger `/grill-me` voor stress-test van plan.
 
 - [ ] **MFE/MAE-analyse toevoegen** *(2026-05-01, onderzoek klaar — zie [docs/research-mfe-mae.md](docs/research-mfe-mae.md))* — Maximum Favorable / Adverse Excursion is de #1 metric-gap voor een serieus journal. Geen enkele crypto-native journal heeft het topnotch (Tradervue=US-aandelen, TradesViz=futures, Edgewonk=manual-only). **Wat we nu hebben:** niets behalve één CSS-comment `/* v7 NEW: MAE/MFE badge */` op [work/tradejournal.html](work/tradejournal.html#L335) regel 335. **Aanbeveling:** bouw Path A (manual entry, 2 velden in trade-form, ~2 dagen) + Path B (auto-fetch via public Binance/Bybit/Blofin klines API, ~1-2 weken) parallel. **Storage:** 2 raw velden per trade (`mfePrice`, `maePrice`), alle metrics on-the-fly. **Integratie met Trade Performance Report (v12.65):** vervangt lege R-distributie-fallback op page 5 door 4 echte MFE/MAE-cards. **Volgende stap:** demo-first — `demos/mfe-mae-demo.html` met Path A bouwen, dan iteratie met Denny voordat we naar `work/` integreren. Volledig verslag (10 secties, 30+ bronnen incl. Tradervue/TradesViz/Edgewonk docs, Binance/Bybit kline specs, Curtis Faith E-Ratio): [docs/research-mfe-mae.md](docs/research-mfe-mae.md).
+- [ ] **TP-niveaus met datum + tijdstip (avg time-in-trade)** *(2026-06-04, gevraagd door Denny)* — Per TP-level in een trade ook **datum + tijdstip van fill** kunnen vastleggen, zodat we kunnen berekenen hoe lang je gemiddeld in een trade zit (entry → laatste TP / SL). Vandaag heeft een trade alleen één entry-time + één exit-time; bij partials wordt de exit-time geforceerd naar de laatste fill.
+
+  **Use-cases**:
+  - **Avg time-in-trade per setup** — "London Breakout houd ik gemiddeld 47 min vast, Asia Range 4u" → laat scheve setups zien (te kort = winst missen, te lang = exposure-bloat)
+  - **Time-to-TP1 als edge-metric** — snelle TP1 = sterke momentum (continueren?), trage TP1 = gemiddeld marginal (volgende keer skip?)
+  - **Holding-period histogram** — distribution-plot van trade-duraties per playbook
+
+  **Te ontwerpen**:
+  - **Schema**: trade krijgt `tpLevels[]` met `{level, size, price, ts}`. Bestaande `tpLevels`-veld al aanwezig (v12.62 partial-systeem) — alleen `ts` toevoegen.
+  - **Auto vs manual**: bij API-sync (Blofin/MEXC/Kraken/HL) komt fill-timestamp al binnen — gewoon mee-opslaan. Bij FTMO CSV en manual entry: extra invoer-veld in trade-form (date-picker per TP-rij).
+  - **Migratie**: bestaande trades zonder TP-timestamps → `ts: null` of trade.date als fallback. Avg time-in-trade-statistic skipt nulls.
+  - **Display**: in trade-detail "🎯 TP-timeline" sectie met `entry → TP1 (5 min) → TP2 (32 min) → TP3 (1u 12min)` chips.
+  - **Analytics-widget**: "⏱ Avg holding-period per setup" naast bestaande Performance-per-Setup cards.
+
+  **Scope-keuze**: alleen partial-trades (waar TPs daadwerkelijk apart sluiten) of óók single-exit trades (waar TP1-time = exit-time)? Voor consistentie: altijd `tpLevels[]` vullen, ook bij single-exit (`tpLevels:[{level:1, size:100, price:exit, ts:exitTime}]`).
+
+  **Effort**: M (~half dag schema + API-mapping per exchange + UI form-fields + 1 analytics-widget).
+
+- [ ] **Bias per layer (HTF bullish / LTF bearish detection)** *(2026-06-04, gevraagd door Denny)* — In de trade-form bij elke setup-laag kunnen aangeven of die laag **bullish of bearish** is. Zodat je bv. HTF (Daily/4H) bullish-structuur + LTF (15M/5M) bearish-structuur kan vastleggen — vandaag staat dat impliciet in setup-tags maar is niet machine-leesbaar.
+
+  **Use-cases**:
+  - **Counter-trend trade detection** — trade-direction = LONG maar LTF layer = bearish → "je traded tegen je LTF-bias in" badge. Edge-metric: hoe vaak werk je tegen LTF + wat is je WR daarbij?
+  - **Multi-timeframe alignment score** — alle layers zelfde bias = "all aligned" (groen badge), mixed = "discordant" (amber) → kan correleren met WR per playbook
+  - **Analytics "MTF-bias mismatch"-card** — % trades tegen HTF/LTF bias + bijbehorende edge-impact. Steenbarger-stijl framework: counter-trend trades vereisen ander R-management
+
+  **Te ontwerpen**:
+  - **Schema**: `trade.layers[i]` krijgt `bias: "bullish" | "bearish" | "neutral" | ""` veld. Bestaande `layers[]` shape al actief (v12.54).
+  - **UI**: per laag-rij in trade-form 3-knops segmented control (🟢 Bullish / ⚪ Neutraal / 🔴 Bearish). Default neutraal (backwards-compat).
+  - **Trade-direction relatie**: long-trade + alle layers bearish = visuele waarschuwing tijdens entry-form ("⚠ Tegen alle layers in"). Niet blokkerend.
+  - **Counter-trend tag**: auto-derived flag `trade._counterTrend = (direction==='long' && layers.some(l=>l.bias==='bearish')) || (direction==='short' && layers.some(l=>l.bias==='bullish'))` voor analytics-filtering.
+  - **Migratie**: lege string default = neutraal, backwards-compat. Geen schemaVersion-bump nodig.
+
+  **Analytics-uitbreidingen** (later, na schema):
+  - "MTF-alignment heatmap" — rows=playbooks, cols={all-bull, HTF-bull-LTF-bear, etc.}, WR per cell
+  - Counter-trend filter in Trades-tabel + Analytics
+  - Playbook detail-modal: "X% van trades was counter-LTF — WR %Y daar vs Z totaal"
+
+  **Effort**: S (~2-3u schema + form-control + 1 analytics-derivation, geen Analytics-widget in v1).
+
 - [ ] **Welke exchanges prioriteit?** — lijst afstemmen met community. Bybit, Binance, MEXC, Blofin, Kraken, Hyperliquid?
 - [ ] **Later: backend ja/nee?** — pas relevant als community direct-API-sync wil. Voorlopig blijft keuze: lokaal + CSV.
 - [ ] **Distributiemodel** — GitHub `/main/` folder nu. Overwegen: GitHub Pages (paid private) of Cloudflare Pages + Access (gratis, email-gate).
