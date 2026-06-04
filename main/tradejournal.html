@@ -1573,7 +1573,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.183",released:"2026-06-04"};
+const APP_VERSION={version:"v12.184",released:"2026-06-04"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -8061,17 +8061,40 @@ function SetupSessionMatrix({closed,setFilters,setTab}){
   const{enabled:priv}=usePrivacy(); // v12.170: matrix cells toonden PnL bedragen ongemaskeerd
   const[open,setOpen]=useState(()=>{try{const v=localStorage.getItem(SETUP_SESSION_MATRIX_KEY);return v===null?true:v==="1";}catch{return true;}});
   useEffect(()=>{try{localStorage.setItem(SETUP_SESSION_MATRIX_KEY,open?"1":"0");}catch{}},[open]);
-  const{setups,buckets,cells}=useMemo(()=>buildSetupSessionMatrix(closed),[closed]);
+  // v12.184: sort-mode persisted — setups op cum-PnL desc (beste edge bovenaan) of alfabetisch
+  const[sortMode,setSortMode]=useState(()=>{try{return localStorage.getItem("tj_matrix_sort")||"edge"}catch{return"edge"}});
+  const setSort=(m)=>{setSortMode(m);try{localStorage.setItem("tj_matrix_sort",m)}catch{}};
+  const{setups:setupsRaw,buckets,cells}=useMemo(()=>buildSetupSessionMatrix(closed),[closed]);
+  // v12.184: setups sorteren op overall cum-PnL (desc) zodat best-performing setup bovenaan staat.
+  const setups=useMemo(()=>{
+    if(sortMode==="alpha")return[...setupsRaw].sort();
+    // Bereken cum-PnL per setup over alle buckets
+    const setupTotals={};
+    setupsRaw.forEach(s=>{
+      setupTotals[s]=0;
+      buckets.forEach(b=>{const c=cells[s+"|"+b];if(c)setupTotals[s]+=c.pnlSum;});
+    });
+    return[...setupsRaw].sort((a,b)=>setupTotals[b]-setupTotals[a]);
+  },[setupsRaw,buckets,cells,sortMode]);
   if(setups.length===0)return null;
-  const minN=3;// drempel voor "significant" — onder = gedimd weergegeven
-  const cellMeta=(c)=>{
-    if(!c||c.n<minN)return{bg:"transparent",flag:"",dim:true};
-    if(c.wr>=65&&c.pnlSum>150)return{bg:"rgba(46,170,111,0.18)",flag:"🎯",dim:false};
-    if(c.wr<=30&&c.pnlSum<-100)return{bg:"rgba(224,85,85,0.20)",flag:"🕒",dim:false};
-    if(c.wr<=45&&c.pnlSum<-50)return{bg:"rgba(212,168,83,0.18)",flag:"⏰",dim:false};
-    if(c.wr>=55)return{bg:"rgba(46,170,111,0.06)",flag:"",dim:false};
-    if(c.wr<=45)return{bg:"rgba(224,85,85,0.06)",flag:"",dim:false};
-    return{bg:"transparent",flag:"",dim:false};
+  const minN=3;// drempel voor "significant"
+  /* v12.184 (gemeld door Denny: "matrix niet overzichtelijk — denk goed na"):
+     Continue heat-color scale ipv 3 buckets. Score = combinatie van WR-afwijking
+     van 50% (centerpoint) + PnL-magnitude. Range -1.0 (slechtst) tot +1.0 (beste).
+     Cellen onder minN trades blijven gedimd. Vlaggetjes blijven als badges. */
+  const cellHeat=(c)=>{
+    if(!c||c.n<minN)return{bg:"transparent",flag:"",dim:true,strength:0};
+    // Score: WR-offset (50→0%, normalized) + PnL-magnitude (boundend op ±$500 → ±1.0)
+    const wrScore=(c.wr-50)/50; // -1 to +1
+    const pnlScore=Math.max(-1,Math.min(1,c.pnlSum/500));
+    const score=(wrScore*0.55)+(pnlScore*0.45); // weighted
+    let flag="";
+    if(c.wr>=65&&c.pnlSum>150)flag="🎯";
+    else if(c.wr<=30&&c.pnlSum<-100)flag="🕒";
+    else if(c.wr<=45&&c.pnlSum<-50)flag="⏰";
+    const alpha=Math.min(0.28,Math.abs(score)*0.28);
+    const bg=score>=0?`rgba(46,170,111,${alpha})`:`rgba(224,85,85,${alpha})`;
+    return{bg,flag,dim:false,strength:Math.abs(score)};
   };
   return(<div style={{marginBottom:"22px",background:"var(--glass)",border:"1px solid var(--border2)",borderRadius:"12px",overflow:"hidden"}}>
     <div onClick={()=>setOpen(v=>!v)} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"14px 18px",cursor:"pointer",userSelect:"none",borderBottom:open?"1px solid var(--border1)":"none"}}>
@@ -8081,39 +8104,60 @@ function SetupSessionMatrix({closed,setFilters,setTab}){
       </div>
       <div style={{fontSize:"14px",color:"var(--text4)",fontFamily:"var(--mono)",transition:"transform .2s",transform:open?"rotate(0deg)":"rotate(-90deg)"}}>▾</div>
     </div>
-    {open&&<div style={{padding:"14px 18px 18px",overflowX:"auto"}}>
-      <table style={{borderCollapse:"collapse",width:"100%",fontFamily:"var(--mono)",fontSize:"11px",minWidth:"760px"}}>
+    {open&&<div style={{padding:"16px 18px 18px"}}>
+      {/* v12.184: sort-toggle */}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"12px",flexWrap:"wrap",gap:"10px"}}>
+        <div style={{display:"flex",gap:"4px",alignItems:"center"}}>
+          <span style={{fontSize:"10px",color:"var(--text5)",fontFamily:"var(--mono)",letterSpacing:".08em",textTransform:"uppercase",marginRight:"6px"}}>Sorteer setups:</span>
+          {[["edge","Op edge"],["alpha","A–Z"]].map(([k,l])=>(
+            <button key={k} onClick={(e)=>{e.stopPropagation();setSort(k)}} style={{padding:"4px 10px",fontSize:"10px",fontWeight:600,fontFamily:"var(--mono)",border:`1px solid ${sortMode===k?"var(--gold-border)":"var(--border3)"}`,background:sortMode===k?"var(--gold-dim)":"transparent",color:sortMode===k?"var(--gold)":"var(--text4)",borderRadius:"4px",cursor:"pointer",letterSpacing:".04em"}}>{l}</button>
+          ))}
+        </div>
+      </div>
+      <div style={{overflowX:"auto"}}>
+      {/* v12.184 heatmap-style matrix:
+          - border-collapse:separate + border-spacing voor "gap" tussen cellen (geen zware borders)
+          - cellen krijgen borderRadius:4 → afgeronde heat-tiles
+          - Lege cellen: zeer subtiel, klein puntje ipv "—"
+          - Cellen met data: WR% prominent, PnL middel, n klein
+          - Heat-color: continue scale */}
+      <table style={{borderCollapse:"separate",borderSpacing:"3px",width:"100%",fontFamily:"var(--mono)",fontSize:"11px",minWidth:"800px"}}>
         <thead>
           <tr>
-            <th style={{padding:"8px 10px",textAlign:"left",border:"1px solid var(--border1)",fontSize:"10px",color:"var(--text4)",textTransform:"uppercase",letterSpacing:".08em",fontWeight:600,background:"rgba(255,255,255,0.02)",minWidth:"140px"}}>Setup ↓ / Sessie →</th>
-            {buckets.map(b=><th key={b} style={{padding:"8px 10px",textAlign:"center",border:"1px solid var(--border1)",fontSize:"10px",color:"var(--text4)",textTransform:"uppercase",letterSpacing:".08em",fontWeight:600,background:"rgba(255,255,255,0.02)"}}>{b}</th>)}
+            <th style={{padding:"8px 12px",textAlign:"left",fontSize:"10px",color:"var(--text4)",textTransform:"uppercase",letterSpacing:".1em",fontWeight:700,background:"var(--bg3)",minWidth:"160px",borderRadius:"6px"}}>Setup ↓ / Sessie →</th>
+            {buckets.map(b=><th key={b} style={{padding:"8px 6px",textAlign:"center",fontSize:"10px",color:"var(--text4)",textTransform:"uppercase",letterSpacing:".08em",fontWeight:700,background:"var(--bg3)",borderRadius:"6px"}}>{b}</th>)}
           </tr>
         </thead>
         <tbody>
           {setups.map(s=>(<tr key={s}>
-            <th style={{padding:"8px 10px",textAlign:"left",border:"1px solid var(--border1)",color:"var(--text2)",fontWeight:600}}>{s}</th>
+            <th style={{padding:"10px 12px",textAlign:"left",color:"var(--text2)",fontWeight:700,background:"var(--bg3)",borderRadius:"6px",fontSize:"11.5px"}}>{s}</th>
             {buckets.map(b=>{
               const c=cells[s+"|"+b];
-              if(!c)return<td key={b} style={{padding:"8px 10px",textAlign:"center",border:"1px solid var(--border1)",color:"var(--text5)",fontStyle:"italic"}}>—</td>;
-              const m=cellMeta(c);
+              if(!c)return<td key={b} style={{padding:"12px 6px",textAlign:"center",color:"var(--text5)",opacity:0.35,background:"var(--bg4)",borderRadius:"4px",fontSize:"12px",lineHeight:1}}>·</td>;
+              const m=cellHeat(c);
               const wrColor=m.dim?"var(--text5)":(c.wr>=50?"var(--green)":"var(--red)");
               const pnlColor=c.pnlSum>=0?"var(--green)":"var(--red)";
-              /* v12.170: priv-leak gefixed — matrix-cellen toonden PnL ongemaskeerd */
               const pnlStr=priv?"$***":(c.pnlSum>=0?"+":"−")+"$"+Math.abs(c.pnlSum).toFixed(0);
               const onClick=()=>{if(setFilters&&setTab){setFilters(p=>({...p,setupTags:[s]}));setTab("trades");}};
-              return(<td key={b} onClick={onClick} style={{padding:"8px 10px",textAlign:"center",border:"1px solid var(--border1)",background:m.bg,opacity:m.dim?0.4:1,position:"relative",cursor:setFilters?"pointer":"default"}} title={`${s} in ${b}: ${c.n} trades, ${c.wr.toFixed(0)}% WR, ${pnlStr}`}>
-                {m.flag&&<span style={{position:"absolute",top:"2px",right:"4px",fontSize:"10px"}}>{m.flag}</span>}
-                <div style={{fontWeight:700,fontSize:"12px",color:wrColor}}>{c.wr.toFixed(0)}%</div>
-                <div style={{fontSize:"9px",color:"var(--text4)",marginTop:"2px"}}>{c.n}t · <span style={{color:pnlColor}}>{pnlStr}</span></div>
+              return(<td key={b} onClick={onClick} style={{padding:"8px 6px",textAlign:"center",background:m.bg,opacity:m.dim?0.4:1,position:"relative",cursor:setFilters?"pointer":"default",borderRadius:"6px",border:m.flag?`1px solid ${c.wr>=65?"rgba(46,170,111,0.4)":c.wr<=30?"rgba(224,85,85,0.4)":"rgba(212,168,83,0.4)"}`:"1px solid var(--border1)",transition:"transform .12s, box-shadow .12s"}} onMouseEnter={e=>{e.currentTarget.style.transform="scale(1.04)";e.currentTarget.style.boxShadow="0 4px 12px rgba(0,0,0,0.25)";e.currentTarget.style.zIndex="2";e.currentTarget.style.position="relative"}} onMouseLeave={e=>{e.currentTarget.style.transform="";e.currentTarget.style.boxShadow="";e.currentTarget.style.zIndex=""}} title={`${s} in ${b}: ${c.n} trades · ${c.wr.toFixed(0)}% WR · ${pnlStr}${m.flag?` · ${m.flag==="🎯"?"Edge bevestigd":m.flag==="🕒"?"Edge weg":"Aandacht"}`:""}`}>
+                {m.flag&&<span style={{position:"absolute",top:"3px",right:"4px",fontSize:"10px",opacity:0.85}}>{m.flag}</span>}
+                <div style={{fontWeight:800,fontSize:"14px",color:wrColor,lineHeight:1.1,letterSpacing:"-.01em"}}>{c.wr.toFixed(0)}%</div>
+                <div style={{fontSize:"10px",color:pnlColor,fontWeight:700,marginTop:"3px"}}>{pnlStr}</div>
+                <div style={{fontSize:"8.5px",color:"var(--text5)",marginTop:"1px",letterSpacing:".02em"}}>{c.n} {c.n===1?"trade":"trades"}</div>
               </td>);
             })}
           </tr>))}
         </tbody>
       </table>
-      <div style={{marginTop:"10px",fontSize:"10px",color:"var(--text5)",fontFamily:"var(--mono)",display:"flex",gap:"14px",flexWrap:"wrap"}}>
-        <span>🎯 Edge bevestigd (WR ≥ 65% · PnL &gt; +$150)</span>
-        <span>🕒 Edge weg (WR ≤ 30% · PnL &lt; −$100)</span>
-        <span>⏰ Aandacht (WR ≤ 45% · PnL &lt; −$50)</span>
+      </div>
+      {/* v12.184: legenda compacter + tweede regel met heat-color explanation */}
+      <div style={{marginTop:"14px",display:"flex",flexDirection:"column",gap:"6px"}}>
+        <div style={{fontSize:"10px",color:"var(--text5)",fontFamily:"var(--mono)",display:"flex",gap:"14px",flexWrap:"wrap"}}>
+          <span>🎯 Edge bevestigd (WR ≥ 65% · PnL &gt; +$150)</span>
+          <span>🕒 Edge weg (WR ≤ 30% · PnL &lt; −$100)</span>
+          <span>⏰ Aandacht (WR ≤ 45% · PnL &lt; −$50)</span>
+        </div>
+        <div style={{fontSize:"10px",color:"var(--text5)",fontFamily:"var(--mono)",fontStyle:"italic"}}>Cel-kleur = heat-map van edge-sterkte (donkergroen = sterke positieve edge, donkerrood = sterke negatieve). Klik op cel om trades te filteren.</div>
       </div>
     </div>}
   </div>);

@@ -6,6 +6,42 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.184] — 2026-06-04
+
+### Gewijzigd
+- **SetupSessionMatrix grondig herontworpen — heatmap-stijl** *(gemeld door Denny: "matrix niet overzichtelijk · hoe aantrekkelijker en beter lezen · denk goed na")*
+
+  **Vorige design**:
+  - Spreadsheet-look met 1px borders rondom elke cel (zware tabel)
+  - 3 discrete kleur-buckets (groen / amber / rood / lichtgroen / lichtrood / transparent) op basis van WR + PnL drempels
+  - Lege cellen met "—" centered, witte achtergrond, full border (visueel net zo prominent als data-cellen)
+  - WR% klein (12px), n + $ samen op 1 regel (9px), flag in corner
+
+  **Nieuwe design**:
+  - **`border-collapse: separate` + `border-spacing: 3px`** voor visuele "tiles" met gap — geen zware borders meer
+  - **`borderRadius: 6px`** per cel — heatmap-stijl
+  - **Continue heat-color scale** ipv 3 discrete buckets:
+    - Score = `wrScore * 0.55 + pnlScore * 0.45` (WR-offset van 50% + PnL-magnitude tot ±$500)
+    - Alpha-intensiteit gebaseerd op |score| (0 → 0.28)
+    - Donker groen voor sterke positieve edge → lichter → minimal → lichter rood → donker rood
+  - **Lege cellen subtieler**: opacity 0.35, kleine "·" puntje ipv "—", `var(--bg4)` achtergrond → visueel terug op achtergrond
+  - **Cell typografie hiërarchie**:
+    - WR% prominent: 14px / fontWeight 800 / -.01em letterspacing
+    - PnL middel: 10px / fontWeight 700 / kleur per teken
+    - n trades sub: 8.5px / "n trades" volledig uitgeschreven
+  - **Hover-effect**: `scale(1.04)` + box-shadow + z-index 2 (interactieve feedback)
+  - **Flag-cellen**: gekleurde border per categorie (🎯 groene border / 🕒 rode border / ⏰ amber border) ipv alleen icon-badge
+  - **Setup-rij headers**: prominenter (11.5px fontWeight 700) met eigen rounded card
+
+  **Nieuwe features**:
+  - **Sort-toggle**: "Op edge" (default — beste edge bovenaan op basis van cum-PnL) of "A–Z" (alfabetisch). State persisted in `tj_matrix_sort`.
+  - **Legenda uitgebreid** met 2e regel uitleg: *"Cel-kleur = heat-map van edge-sterkte (donkergroen = sterke positieve edge, donkerrood = sterke negatieve). Klik op cel om trades te filteren."*
+
+### Test
+- Smoke groen — pure styling refactor
+
+---
+
 ## [v12.183] — 2026-06-04
 
 ### Fixed
