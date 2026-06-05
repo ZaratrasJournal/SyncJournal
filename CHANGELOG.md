@@ -6,6 +6,22 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.191] — 2026-06-05
+
+### Fixed
+- **React error #310 in TradeList bij lege trades-state** *(gemeld door Denny met error-screenshot, hook-order violation in v12.190)*
+
+  **Oorzaak**: in v12.190 voegde ik `const[mergeOpen,setMergeOpen]=useState(false);` toe op een plek **ná** de early-return `if(!trades.length)return<EmptyState/>;` in TradeList. Bij gevulde state (trades aanwezig) wordt de hook uitgevoerd, bij lege state (welcome screen, fresh install, alle trades verwijderd) wordt 'ie overgeslagen. React vereist dat het aantal hook-calls **identiek** is over alle renders — Error #310 = "Rendered fewer hooks than expected".
+
+  **Fix**: `useState(mergeOpen)` verplaatst naar bovenaan TradeList, samen met de 9 andere `useState`-hooks, vóór de `if(!trades.length)` check. Hook-order is nu consistent ongeacht of `trades` leeg of gevuld is.
+
+  **Effect**: app crasht niet meer bij fresh install of nadat alle trades verwijderd zijn. Trades-tab toont normaal de "Geen trades gevonden"-EmptyState i.p.v. een witte pagina + console-error.
+
+### Test
+- Smoke + merge-trades spec groen — `mergeOpen` state werkt nog steeds correct, alleen plek is verplaatst
+
+---
+
 ## [v12.190] — 2026-06-05
 
 ### Toegevoegd
