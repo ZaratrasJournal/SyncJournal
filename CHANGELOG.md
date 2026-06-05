@@ -6,6 +6,35 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.206] — 2026-06-05
+
+### Toegevoegd
+- **Analytics: 🎯 Alignment-patronen widget** (fase 3 van bias-traject)
+
+  Nieuwe widget `AlignmentInsightsWidget` in Analytics — KPI-strip + WR-bar-chart per alignment-pattern. Direct zien waar je geld verdient en waar je verliest.
+
+  **KPI-strip**: 4-5 cards (Continuation/Pullback/Reversal/Counter + Unclassified als er trades zijn) met:
+  - Pattern-label (gekleurd top-border)
+  - Aantal trades
+  - WR% (groen ≥60%, gold ≥40%, rood <40%)
+  - Avg R-multiple + totaal PnL
+
+  **Klikbare cards**: klik op een KPI-card → filter Trades-tab op die pattern. Direct edge-review mogelijk. Hover-effect (subtle translateY + box-shadow).
+
+  **Bar-chart**: WR% per pattern als horizontale bars in pattern-kleur. Geeft visuele vergelijking.
+
+  **Empty-state**: als er nog geen trades met bias-tags zijn, toont een hint dat user eerst bias per laag moet invullen om pattern-analyse te activeren.
+
+  **Layout-prefs**: nieuwe toggle `🎯 Alignment-patronen (HTF/LTF bias-flow)` in Analytics layout-paneel. Default zichtbaar. User kan widget verbergen via gear-icon.
+
+  **Render-positie**: tussen "Rolling 20-trade edge" en "Setup insights tabel" — past bij de winst-categorie widgets.
+
+### Tests
+- Smoke + themes 6/6 groen
+- AlignmentInsightsWidget gebruikt bestaande helpers (`getTradeAlignmentPattern`, `getPatternColor`, `netPnl`, `calcRMultiple`) — getest in v12.205 via `tests/run-alignment-pattern.js`
+
+---
+
 ## [v12.205] — 2026-06-05
 
 ### Toegevoegd

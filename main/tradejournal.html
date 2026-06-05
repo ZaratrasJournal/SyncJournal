@@ -1652,7 +1652,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.205",released:"2026-06-05"};
+const APP_VERSION={version:"v12.206",released:"2026-06-05"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -11489,6 +11489,79 @@ function TendenciesPage({trades,allTrades,setFilters,setTab}){
   </div>);
 }
 
+// ============ ALIGNMENT INSIGHTS WIDGET (v12.206) ============
+// KPI-strip per alignment-pattern (Continuation/Pullback/Reversal/Counter/Unclassified)
+// + bar-chart van WR% per pattern. Klikbaar → filter Trades op die pattern.
+function AlignmentInsightsWidget({trades,setFilters,setTab}){
+  // Aggregeer per pattern. Gebruik closed-trades met pnl voor stats (sluit open trades uit).
+  const closed=trades.filter(t=>t.pnl!==""&&!isNaN(parseFloat(t.pnl))&&t.status!=="missed");
+  const stats={};
+  TRADE_PATTERNS.forEach(p=>{stats[p]={count:0,wins:0,losses:0,sumPnl:0,sumR:0,nR:0}});
+  closed.forEach(t=>{
+    const p=getTradeAlignmentPattern(t);
+    const s=stats[p];if(!s)return;
+    s.count++;
+    const pnl=netPnl(t);
+    s.sumPnl+=pnl;
+    if(pnl>0)s.wins++;else if(pnl<0)s.losses++;
+    const r=calcRMultiple(t);
+    if(r!==null&&isFinite(r)){s.sumR+=r;s.nR++}
+  });
+  // Filtere Unclassified weg als die nul/leeg is om de focus op de 4 echte patterns te leggen
+  const visible=TRADE_PATTERNS.filter(p=>p!=="Unclassified"||stats[p].count>0);
+  const fmtNum=(n,d=2)=>Number(n||0).toLocaleString("nl-NL",{minimumFractionDigits:d,maximumFractionDigits:d});
+  const totalClassified=visible.reduce((s,p)=>s+stats[p].count,0);
+  if(totalClassified===0){
+    return(<div style={{padding:"24px",textAlign:"center",fontSize:"12.5px",color:"var(--text4)",background:"var(--bg3)",borderRadius:"10px",border:"1px dashed var(--border3)"}}>
+      Nog geen trades met bias-tags. Voeg bias toe per setup-laag (HTF/LTF) om patroon-analyse te activeren.
+    </div>);
+  }
+  const onCardClick=(pattern)=>{
+    if(setFilters)setFilters(p=>({...p,alignmentPattern:pattern}));
+    if(setTab)setTab("trades");
+  };
+  // KPI-strip cards
+  const kpiCards=visible.map(p=>{
+    const s=stats[p];
+    const decided=s.wins+s.losses;
+    const wr=decided>0?(s.wins/decided)*100:0;
+    const avgR=s.nR>0?s.sumR/s.nR:0;
+    const col=getPatternColor(p);
+    const wrCol=wr>=60?"var(--green)":wr>=40?"var(--gold)":"var(--red)";
+    return(<div key={p} onClick={()=>onCardClick(p)} title={`Klik om Trades te filteren op ${p}`} style={{background:"var(--bg3)",border:"1px solid var(--border1)",borderTop:`3px solid ${col}`,borderRadius:"10px",padding:"16px",cursor:"pointer",transition:"transform .15s,box-shadow .15s"}} onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-2px)";e.currentTarget.style.boxShadow="0 6px 16px rgba(0,0,0,0.15)"}} onMouseLeave={e=>{e.currentTarget.style.transform="";e.currentTarget.style.boxShadow=""}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"8px"}}>
+        <span style={{font:"700 10px var(--mono)",color:col,textTransform:"uppercase",letterSpacing:"0.08em"}}>{getPatternLabel(p).replace(/^[✓↻⇄⚠—]\s*/,"")}</span>
+        <span style={{font:"500 10px var(--mono)",color:"var(--text4)"}}>{s.count} trades</span>
+      </div>
+      <div style={{font:"700 26px var(--mono)",color:wrCol,letterSpacing:"-0.01em",marginBottom:"2px"}}>{wr.toFixed(0)}%</div>
+      <div style={{font:"600 11px var(--mono)",color:"var(--text3)"}}>{avgR>=0?"+":""}{avgR.toFixed(2)}R avg · {s.sumPnl>=0?"+":"−"}${fmtNum(Math.abs(s.sumPnl))}</div>
+    </div>);
+  });
+  // Bar-chart: WR% per pattern
+  const barRows=visible.filter(p=>stats[p].count>0).map(p=>{
+    const s=stats[p];
+    const decided=s.wins+s.losses;
+    const wr=decided>0?(s.wins/decided)*100:0;
+    const col=getPatternColor(p);
+    return(<div key={p} style={{display:"grid",gridTemplateColumns:"140px 1fr 140px",gap:"12px",alignItems:"center",marginBottom:"8px"}}>
+      <span style={{font:"600 11px var(--mono)",color:"var(--text2)",letterSpacing:"0.02em"}}>{getPatternLabel(p)}</span>
+      <div style={{height:"22px",background:"var(--bg4)",borderRadius:"4px",overflow:"hidden",position:"relative"}}>
+        <div style={{height:"100%",width:`${wr}%`,background:col,borderRadius:"4px",transition:"width .3s"}}/>
+      </div>
+      <span style={{font:"600 11px var(--mono)",textAlign:"right",color:col}}>{wr.toFixed(0)}% · {s.count}t</span>
+    </div>);
+  });
+  return(<div>
+    <div style={{display:"grid",gridTemplateColumns:`repeat(${visible.length},1fr)`,gap:"12px",marginBottom:"18px"}}>
+      {kpiCards}
+    </div>
+    <div style={{padding:"16px",background:"var(--bg3)",border:"1px solid var(--border1)",borderRadius:"10px"}}>
+      <div style={{font:"700 12px var(--mono)",color:"var(--text2)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:"14px"}}>Win-rate per alignment-patroon</div>
+      {barRows}
+    </div>
+  </div>);
+}
+
 function Analytics({trades,tradingRules,allTrades,config,accounts,setFilters,setTab}){
   const{enabled:priv}=usePrivacy();
   const{prefs:lp,toggle:lpToggle,reset:lpReset,setOrder}=useLayoutPrefs("analytics");
@@ -11520,6 +11593,7 @@ function Analytics({trades,tradingRules,allTrades,config,accounts,setFilters,set
       {key:"holdtime",label:"Holdtijd analyse"},{key:"heatmap",label:"Dagelijkse heatmap"},{key:"streaks",label:"Streaks"},
       {key:"rMultipleDist",label:"R-Multiple distributie"},
       {key:"rollingEdge",label:"Rolling 20-trade edge"},
+      {key:"alignmentInsights",label:"🎯 Alignment-patronen (HTF/LTF bias-flow)"},
       {key:"setupInsights",label:"Setup insights tabel"},
       {key:"setupEdge",label:"Setup edge (compacte tabel)"},
     ]},
@@ -11769,6 +11843,13 @@ function Analytics({trades,tradingRules,allTrades,config,accounts,setFilters,set
       {secH("Rolling 20-trade edge")}
       <div style={{marginBottom:"12px",fontSize:"12px",color:"var(--text3)"}}>Voortschrijdend gemiddelde over laatste 20 trades. Toont of je edge <strong>degradeert</strong> of <strong>verbetert</strong> — lifetime averages liegen.</div>
       <RollingEdgeChart trades={closed} window={20}/>
+    </div>)}
+
+    {/* v12.206: Alignment-patronen (HTF/LTF bias-flow) */}
+    {showW&&seq("alignmentInsights",lp.alignmentInsights!==false&&closed.length>0,<div style={sectStyle}>
+      {secH("🎯 Alignment-patronen · HTF/LTF bias-flow")}
+      <div style={{marginBottom:"14px",fontSize:"12px",color:"var(--text3)"}}>WR + R-multiple per patroon (Continuation / Pullback / Reversal / Counter). Bias per laag bepaalt classificatie. <em style={{color:"var(--text4)"}}>Klik op een kaart om Trades te filteren.</em></div>
+      <AlignmentInsightsWidget trades={closed} setFilters={setFilters} setTab={setTab}/>
     </div>)}
 
     {/* Setup insights table — NEW, richer than old barchart */}
