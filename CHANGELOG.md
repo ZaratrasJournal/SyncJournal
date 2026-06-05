@@ -6,6 +6,43 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.197] — 2026-06-05
+
+### Toegevoegd
+- **Gemergde trades vullen automatisch `tpLevels[]` met child-exits** *(gevraagd door Denny: "kan je de TP's ook verwerken in de take profit niveaus?")*
+
+  Bij een merge wordt elke child nu vertaald naar een TP-niveau in de master-trade:
+  ```js
+  {
+    id: "merge_tp_<childId>",
+    price: child.exit,           // = waar de TP geraakt werd
+    pct: (child.size / totalSize × 100).toFixed(2),
+    status: child closed ? "hit" : "open",
+    actualPrice: child.exit,
+    ts: child.closeTime || `${date} ${time}`,
+  }
+  ```
+  TPs zijn chronologisch gesorteerd (TP1 = eerste close, TP2 = tweede, etc.). Pct = pro-rata op size, dus 4× 0.5 lot levert 4 TPs van 25% each; ongelijke sizes leveren correcte percentages.
+
+  **Effect**:
+  - TP-Timeline-component (`TPTimeline`) in trade-detail toont nu de visuele timeline van entry → TP1 → TP2 → ... → TP-N
+  - Analytics-widgets die `tpLevels` consumeren (TP-Breakdown, TP-Distribution) zien deze gemergde positions als multi-TP trades
+  - 🧩-sectie blijft tonen (visuele duplicatie qua child-rijen) — die is rijker want toont source/account; tpLevels is gestructureerde data voor analytics
+
+- **Eenmalige migratie voor legacy-masters** *(jouw eerste merge vóór v12.197 zonder tpLevels)*
+
+  `useEffect` in App detecteert masters met `mergedFrom` maar lege `tpLevels`, bouwt ze on-the-fly via `deriveTpLevelsFromChildren()` en slaat persistent op. Self-terminating: na 1× migratie returnt de needs-check false. Geen actie van user nodig — refresh de app en de legacy-master heeft direct tpLevels.
+
+### Tests
+- **`tests/run-tp-from-merge.js`** — 15 assertions over:
+  - 4 children → 4 TPs (25% elk)
+  - Pro-rata pct bij ongelijke sizes (1+3 → 25%/75%)
+  - Partial: open child → status="open" voor die TP
+  - Edges: lege array, null, totaal size 0 → []
+- Smoke + merge regression: 2/2 groen
+
+---
+
 ## [v12.196] — 2026-06-05
 
 ### Fixed

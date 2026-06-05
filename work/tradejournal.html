@@ -1620,7 +1620,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.196",released:"2026-06-05"};
+const APP_VERSION={version:"v12.197",released:"2026-06-05"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -1979,6 +1979,38 @@ function SampleSizeBanner({n,threshold,style}){
 // Review, Rapport. Zonder deze filter telt elke gemergde trade dubbel (master + 4 children = 5x).
 // Pure helper — geen exchange-specifieke aannames.
 const filterMergedChildren=(trades)=>(trades||[]).filter(t=>t.status!=="merged-child");
+
+// v12.197: Genereer tpLevels[] uit gemergde children. Elke child = 1 TP-niveau met:
+//   price       = child.exit (= waar het TP gerakt werd)
+//   pct         = (child.size / totalSize) × 100
+//   status      = "hit" als child closed, anders "open"
+//   actualPrice = child.exit (idem aan price omdat trade is gerealiseerd)
+//   ts          = child.closeTime of fallback date+time
+// Pure helper — geen side effects. Sorteert children chronologisch (eerste TP = vroegste close).
+const deriveTpLevelsFromChildren=(children)=>{
+  if(!Array.isArray(children)||children.length===0)return[];
+  const totalSize=children.reduce((s,c)=>s+(parseFloat(c.positionSizeAsset||c.positionSize)||0),0);
+  if(totalSize<=0)return[];
+  const sorted=[...children].sort((a,b)=>{
+    const aT=a.closeTime||`${a.date||""}T${a.time||"00:00"}`;
+    const bT=b.closeTime||`${b.date||""}T${b.time||"00:00"}`;
+    return String(aT).localeCompare(String(bT));
+  });
+  return sorted.map((c,i)=>{
+    const sz=parseFloat(c.positionSizeAsset||c.positionSize)||0;
+    const pct=(sz/totalSize)*100;
+    const exit=c.exit||"";
+    const isClosed=c.status==="closed"||c.status==="merged-child";
+    return{
+      id:"merge_tp_"+(c.id||i),
+      price:exit,
+      pct:pct.toFixed(2),
+      status:isClosed&&exit?"hit":"open",
+      actualPrice:exit,
+      ts:c.closeTime||`${c.date||""} ${c.time||""}`.trim(),
+    };
+  });
+};
 
 // v12.190: Bereken master-trade preview uit N children + conflict-keuzes van user.
 // `conflictChoices` is een dict {fieldName: childId | "concat"}; default "concat" voor notes,
@@ -18565,12 +18597,28 @@ function App(){
   const deleteTrade=(id)=>{const t=trades.find(x=>x.id===id);setTrades(p=>p.filter(x=>x.id!==id));showToast("Trade verwijderd","error",t)};
   const bulkDelete=(ids)=>setTrades(p=>p.filter(t=>!ids.includes(t.id)));
 
+  // v12.197: éénmalige migratie voor legacy-masters (gemerged vóór v12.197 zonder tpLevels).
+  // Wordt 1× actief uitgevoerd zodra zo'n master gevonden is; daarna terminate de needs-check.
+  React.useEffect(()=>{
+    const needs=trades.some(t=>Array.isArray(t.mergedFrom)&&t.mergedFrom.length>0&&(!Array.isArray(t.tpLevels)||t.tpLevels.length===0));
+    if(!needs)return;
+    setTrades(p=>p.map(t=>{
+      if(!Array.isArray(t.mergedFrom)||t.mergedFrom.length===0)return t;
+      if(Array.isArray(t.tpLevels)&&t.tpLevels.length>0)return t;
+      const children=p.filter(c=>t.mergedFrom.includes(c.id));
+      if(children.length===0)return t;
+      return{...t,tpLevels:deriveTpLevelsFromChildren(children)};
+    }));
+  },[trades]);
+
   // v12.190: merge-handler. Creëert master-trade uit children + markeert children als merged-child.
   // De-merge is reversible via unmergeMaster (master verwijderd, children krijgen oorspronkelijke status terug).
   const mergeTrades=({preview,childIds,conflictChoices})=>{
     const childTrades=trades.filter(t=>childIds.includes(t.id));
     if(childTrades.length<2)return;
     const masterId="m"+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+    // v12.197: TPs uit children — elke child = 1 TP-niveau met price/pct/status/ts.
+    const masterTpLevels=deriveTpLevelsFromChildren(childTrades);
     const master={
       ...EMPTY_TRADE,
       id:masterId,
@@ -18598,6 +18646,7 @@ function App(){
       mistakeTags:preview.mistakeTags||[],
       customTags:preview.customTags||[],
       source:preview.source,
+      tpLevels:masterTpLevels,
       mergedFrom:[...childIds],
       _mergeSource:"manual",
       _mergeTimestamp:new Date().toISOString(),
