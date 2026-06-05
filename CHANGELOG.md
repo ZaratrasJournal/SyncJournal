@@ -6,6 +6,52 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.192] — 2026-06-05
+
+### Fixed
+- **FTMO CSV re-import dupliceerde alle trades (existed sinds v12.62, ontdekt bij merge-feature)** *(gevraagd door Denny: "heb je ook nagedacht als ik een csv opnieuw importeer later · dat er geen dubbelingen komen?")*
+
+  **Oorzaak**: de FTMO MetriX CSV-parser maakte voor elke trade een random ID via `"ftmo_csv_"+uid()`. Random IDs match nooit tussen twee importsessies, dus `importTrades`' dedup-key (`existingById = Map(t.id)`) zag elke re-import als 100% fresh trades. Resultaat: dubbele records bij elke re-import. Probleem werd extra zichtbaar met de merge-feature: bij re-import na een merge ontstonden er 3 lagen (master + verborgen children + nieuwe random-ID duplicaten).
+
+  **Fix in 3 lagen**:
+
+  1. **Stable FTMO ID** ([line 13432](work/tradejournal.html#L13432)):
+     ```js
+     id:"ftmo_csv_"+ticket+"_"+(openDt.full||"").replace(/[^\d]/g,"")
+     ```
+     Ticket = MT5 order-ID (uniek + stabiel over re-imports). Open-time erin opgenomen als extra safety voor recycled tickets.
+
+  2. **Compound-fallback dedup voor FTMO** ([line 18636](work/tradejournal.html#L18636)) — voor users met OUDE random-ID trades in storage:
+     ```js
+     existingFtmoByCompound = Map(`ftmo|${positionId}|${openTime}`, trade)
+     ```
+     Bij re-import met nieuwe stable IDs herkent dit de oude random-ID trades alsnog als duplicaten (positionId + openTime matched).
+
+  3. **Merge-aware skip** ([line 18649](work/tradejournal.html#L18649)) — als een incoming trade-id al voorkomt in `master.mergedFrom`, skip 'm:
+     ```js
+     if(mergedChildIds.has(t.id)){alreadyMergedCount++;return}
+     ```
+     Voorkomt de drievoudige boekhouding (master + merged-child + nieuwe import).
+
+  **Toast** aangepast om de skip-counter te tonen:
+  ```
+  3 nieuw · 12 al aanwezig · 4 al samengevoegd ✓
+  ```
+
+  **Scope v1**: alleen FTMO (Blofin/MEXC/Kraken/Hyperliquid hebben hun eigen stable IDs via API).
+
+### Tests
+- **`tests/run-reimport-dedup.js`** — 10 assertions over 4 scenarios:
+  1. Re-import met stable IDs → 4× alreadyMerged, 0 fresh
+  2. Legacy random-ID state + re-import nieuwe stable IDs → compound-fallback skip
+  3. State zonder merge → standaard dup-detectie
+  4. Mixed import (4 oude + 1 nieuwe) → alleen nieuwe wordt fresh
+
+  Geen browser nodig — pure logic-test.
+- Smoke + merge-trades regression: 2/2 groen.
+
+---
+
 ## [v12.191] — 2026-06-05
 
 ### Fixed

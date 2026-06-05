@@ -1573,7 +1573,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.191",released:"2026-06-05"};
+const APP_VERSION={version:"v12.192",released:"2026-06-05"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -13429,7 +13429,11 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,set
             const netPnl=profit+swap+commissions;
             const direction=typeRaw==="buy"?"long":"short";
             csvTrades.push({...EMPTY_TRADE,
-              id:"ftmo_csv_"+uid(),
+              // v12.192: stable dedup-key uit ticket + open-timestamp i.p.v. random uid.
+              // Ticket is MT5's order-ID (uniek per trade, stabiel over re-imports). Open-time
+              // erin opgenomen als extra safety voor recycled tickets. Re-import van zelfde
+              // CSV detecteert duplicaten nu correct via existingById in importTrades.
+              id:"ftmo_csv_"+ticket+"_"+(openDt.full||"").replace(/[^\d]/g,""),
               date:openDt.date,time:openDt.time,
               pair:ftmoPair(symbol),
               direction,
@@ -18620,9 +18624,23 @@ function App(){
   };
   const importTrades=(newOnes)=>{
     const total=newOnes.length;
-    let freshCount=0;let dupCount=0;let finalizedCount=0;let healedCount=0;
+    let freshCount=0;let dupCount=0;let finalizedCount=0;let healedCount=0;let alreadyMergedCount=0;
     setTrades(p=>{
       const existingById=new Map(p.map(t=>[t.id,t]));
+      // v12.192: merge-aware dedup. Bouw set van trade-IDs die al onderdeel zijn van een
+      // master.mergedFrom. Bij re-import van zo'n trade (zelfde stable id) skippen we 'm —
+      // de master vervangt 'm al. Voorkomt 3-laag boekhouding (master + child + nieuwe import).
+      const mergedChildIds=new Set();
+      p.forEach(t=>{
+        if(Array.isArray(t.mergedFrom))t.mergedFrom.forEach(cid=>mergedChildIds.add(cid));
+      });
+      // v12.192: secundaire compound dedup-key (source, positionId) — vangt OUDE FTMO-trades
+      // met random ftmo_csv_<uid>-ID die nu door dezelfde positionId-ticket geïdentificeerd
+      // kunnen worden. Alleen voor source==="ftmo" om geen onbedoelde dedup-conflicten op
+      // andere exchanges te triggeren (Blofin etc. hebben hun eigen stable IDs).
+      const existingFtmoByCompound=new Map(
+        p.filter(t=>t.source==="ftmo"&&t.positionId).map(t=>[`ftmo|${t.positionId}|${t.openTime||""}`,t])
+      );
       // v12.100 community-friendly heal: voor source=kraken trades waar bestaande
       // versie buggy is (size leeg/0/"0.00000000" of exit leeg/0) maar incoming data
       // wel correct is, overschrijf alleen de fix-velden (size/positionSize/exit/
@@ -18641,6 +18659,25 @@ function App(){
       };
       const fresh=[];
       newOnes.forEach(t=>{
+        // v12.192: merge-aware skip — als de incoming trade-id al in een master.mergedFrom zit,
+        // negeer 'm. De master vervangt deze trade al; bij heim-import zou 'ie als nieuwe trade
+        // verschijnen die niet door de master wordt geteld → drievoudige boekhouding.
+        if(mergedChildIds.has(t.id)){alreadyMergedCount++;return}
+        // v12.192: FTMO compound-fallback dedup. Voor oude trades met random ftmo_csv_<uid>-ID
+        // die nu een ticket-based stable ID krijgen (bv. ftmo_csv_<ticket>_<ts>): match via
+        // positionId+openTime → herken als duplicate. Voorkomt double-import bij de eerste
+        // re-import na de v12.192 stable-id-fix.
+        if(t.source==="ftmo"&&t.positionId&&!existingById.has(t.id)){
+          const compoundKey=`ftmo|${t.positionId}|${t.openTime||""}`;
+          const oldRecord=existingFtmoByCompound.get(compoundKey);
+          if(oldRecord){
+            // Match op compound — was random-ID-trade in storage. Check of die nu in een
+            // mergedFrom zit (dan skip want master telt 'm al).
+            if(mergedChildIds.has(oldRecord.id)){alreadyMergedCount++;return}
+            dupCount++;
+            return;
+          }
+        }
         if(!existingById.has(t.id)){fresh.push(t);return}
         const existing=existingById.get(t.id);
         if(isKrakenBuggy(existing)&&hasValidFreshData(t)){
@@ -18736,9 +18773,10 @@ function App(){
       if(freshCount)parts.push(`${freshCount} nieuw`);
       if(healedCount)parts.push(`${healedCount} bijgewerkt`);
       if(dupCount)parts.push(`${dupCount} al aanwezig`);
+      if(alreadyMergedCount)parts.push(`${alreadyMergedCount} al samengevoegd`);
       if(finalizedCount)parts.push(`${finalizedCount} afgerond`);
       if(!parts.length&&dupCount===0)showToast(`Geen trades om te importeren`,"info");
-      else if(freshCount===0&&dupCount>0&&!finalizedCount&&!healedCount)showToast(`Alle ${dupCount} trades bestonden al — niets toegevoegd`,"info");
+      else if(freshCount===0&&(dupCount>0||alreadyMergedCount>0)&&!finalizedCount&&!healedCount)showToast(`Alle ${dupCount+alreadyMergedCount} trades bestonden al${alreadyMergedCount?` (waarvan ${alreadyMergedCount} in een samengevoegde positie)`:""} — niets toegevoegd`,"info");
       else showToast(parts.join(" · ")+" ✓","success");
     },0);
   };
