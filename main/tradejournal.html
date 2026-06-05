@@ -55,6 +55,11 @@
 --radius-md:10px;    /* cards, modals */
 --radius-pill:999px; /* status-badges, fully rounded pills */
 --gold:#C9A84C;--gold-dim:rgba(201,168,76,0.07);--gold-border:rgba(201,168,76,0.28);
+/* v12.202: Setup-laag kleur-tokens per timeframe-groep (HTF/MTF/LTF).
+   Kleur = wat de laag betekent (context/actie/trigger), niet welke positie.
+   Donkere thema's krijgen brighter accents; lichte thema's krijgen darker variants
+   per thema-override hieronder zodat WCAG-AA contrast altijd gehaald wordt. */
+--layer-htf:#5aa9ff;--layer-mtf:var(--gold);--layer-ltf:var(--green);
 --stat-fs:clamp(18px,2vw,26px);--stat-label-fs:clamp(10px,1vw,12px);
 --content-pad:clamp(16px,2vw,28px);
 --c-win:#2eaa6f;--c-loss:#e05555;--c-long:#2eaa6f;--c-short:#e05555;
@@ -80,6 +85,7 @@ body.theme-classic{
 --red:#ff7b7b;--red2:rgba(255,123,123,0.14);--red3:rgba(255,123,123,0.28);
 --gold:#d4b45c;--gold-dim:rgba(212,180,92,0.12);--gold-border:rgba(212,180,92,0.25);
 --border1:rgba(255,255,255,0.06);--border2:rgba(255,255,255,0.09);--border3:rgba(255,255,255,0.13);--border4:rgba(255,255,255,0.16);--border5:rgba(255,255,255,0.19);--border6:rgba(255,255,255,0.22);
+--layer-htf:#7eb6ff;
 background:#10111a}
 body.theme-classic::before,body.theme-classic::after{display:none}
 /* ═══ LIGHT THEME — schoon, licht, hoog contrast ═══ */
@@ -94,6 +100,7 @@ body.theme-light{
 --glass-blur:none;
 --border1:rgba(26,26,26,0.10);--border2:rgba(26,26,26,0.12);--border3:rgba(26,26,26,0.16);--border4:rgba(26,26,26,0.22);--border5:rgba(141,111,31,0.4);--border6:rgba(141,111,31,0.5);
 --gold:#8d6f1f;--gold-dim:rgba(141,111,31,0.12);--gold-border:rgba(141,111,31,0.42);
+--layer-htf:#1e4080;
 background:#f7f6f2;color:#1a1a1a}
 body.theme-light::before,body.theme-light::after{display:none}
 body.theme-light input,body.theme-light textarea,body.theme-light select{background:#ffffff!important;color:#1a1a1a!important;border-color:rgba(26,26,26,0.15)!important}
@@ -110,6 +117,7 @@ body.theme-parchment{
 --glass-blur:none;
 --border1:rgba(76,55,30,0.12);--border2:rgba(76,55,30,0.16);--border3:rgba(217,209,188,1);--border4:rgba(196,184,160,1);--border5:rgba(126,100,32,0.4);--border6:rgba(126,100,32,0.5);
 --gold:#7e6420;--gold-dim:rgba(126,100,32,0.13);--gold-border:rgba(126,100,32,0.42);
+--layer-htf:#2c4e7d;
 background:#F6F3EC;color:#1d1813}
 body.theme-parchment::before,body.theme-parchment::after{display:none}
 body.theme-parchment input,body.theme-parchment textarea,body.theme-parchment select{background:#FFFFFF!important;color:#1C1A17!important;border-color:#E8E2D4!important}
@@ -126,6 +134,7 @@ body.theme-daylight{
 --glass-blur:none;
 --border1:rgba(10,37,64,0.10);--border2:rgba(10,37,64,0.14);--border3:#D6DDE6;--border4:#B7C2CF;--border5:rgba(134,96,31,0.4);--border6:rgba(134,96,31,0.5);
 --gold:#86601f;--gold-dim:rgba(134,96,31,0.10);--gold-border:rgba(134,96,31,0.40);
+--layer-htf:#1e51a0;
 background:#F6F9FC;color:#0F1620}
 body.theme-daylight::before,body.theme-daylight::after{display:none}
 body.theme-daylight input,body.theme-daylight textarea,body.theme-daylight select{background:#FFFFFF!important;color:#0A2540!important;border-color:#E3E8EF!important}
@@ -1624,7 +1633,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.201",released:"2026-06-05"};
+const APP_VERSION={version:"v12.202",released:"2026-06-05"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -1983,6 +1992,31 @@ function SampleSizeBanner({n,threshold,style}){
 // Review, Rapport. Zonder deze filter telt elke gemergde trade dubbel (master + 4 children = 5x).
 // Pure helper — geen exchange-specifieke aannames.
 const filterMergedChildren=(trades)=>(trades||[]).filter(t=>t.status!=="merged-child");
+
+// v12.202: setup-laag kleur-mapping op basis van timeframe-rol (Jordy's request).
+// HTF (Daily/12H/4H+) = context · MTF (1H/15M/30M) = actie · LTF (5M/1M) = trigger.
+// Kleur volgt rol, niet positie — een trade met "Daily → 5M" en een trade met "4H → 1M"
+// hebben beide dezelfde HTF→LTF kleur-flow ongeacht het aantal lagen.
+const TF_GROUPS={
+  HTF:["1W","W","WEEK","WEEKLY","1D","D","DAILY","12H","8H","6H","4H"],
+  MTF:["1H","60M","30M","15M"],
+  LTF:["10M","5M","3M","1M"],
+};
+function getLayerTimeframeGroup(timeframe){
+  const tf=String(timeframe||"").trim().toUpperCase().replace(/\s+/g,"");
+  if(!tf)return "OTHER";
+  for(const[group,tfs]of Object.entries(TF_GROUPS)){
+    if(tfs.includes(tf))return group;
+  }
+  return "OTHER";
+}
+function getLayerColor(layer){
+  const g=getLayerTimeframeGroup(layer&&layer.timeframe);
+  if(g==="HTF")return "var(--layer-htf)";
+  if(g==="MTF")return "var(--layer-mtf)";
+  if(g==="LTF")return "var(--layer-ltf)";
+  return "var(--text3)";// onbekende TF = neutraal
+}
 
 // v12.197: Genereer tpLevels[] uit gemergde children. Elke child = 1 TP-niveau met:
 //   price       = child.exit (= waar het TP gerakt werd)
@@ -5196,7 +5230,9 @@ function TradeList({trades,onEdit,onDelete,onQuickTag,onBulkDelete,onBulkTag,onB
               {/* v12.165: Setup/Sessie/Emoties van pill naar tekst (kleur signaleert, geen pill-noise).
                   De tabel had 6+ gekleurde pills per rij = "fruit-salad" effect. Nu rusten kleuren
                   op tekst, niet op backgrounds. PnL en open/partial/missed status blijven prominent. */}
-              <td style={tdStyle}>{hasLayers?layers.map((l,li)=>{const confs=(l.confirmations||[l.confirmation].filter(Boolean));const ss=(l.setups||[]).join("+");const fpLabel=(l.setups||[]).includes("Fill Play")&&l.fillPlayType?` · ${l.fillPlayType}`:"";return <span key={li} style={{display:"inline-block",fontSize:"10px",color:"var(--gold)",fontWeight:600,marginRight:"6px",whiteSpace:"nowrap"}}>{l.timeframe}{ss?" · "+ss:""}{fpLabel}{confs.length>0?" · "+confs.join("+"):""}</span>}):(t.setupTags||[]).length>0?(t.setupTags||[]).map(s=><span key={s} style={{display:"inline-block",fontSize:"10px",color:"var(--gold)",fontWeight:600,marginRight:"6px",whiteSpace:"nowrap"}}>{s}</span>):<button onClick={e=>{e.stopPropagation();onQuickTag&&onQuickTag(t)}} style={{fontSize:"10px",padding:"2px 8px",borderRadius:"3px",border:"1px dashed var(--border4)",background:"transparent",color:"var(--text4)",cursor:"pointer",fontFamily:"inherit"}}>+ tag</button>}</td>
+              {/* v12.202: per-laag kleur op basis van timeframe-groep (HTF=blauw/MTF=goud/LTF=groen)
+                  via getLayerColor(). Setup-tags zonder layers blijven gold (geen TF-context). */}
+              <td style={tdStyle}>{hasLayers?layers.map((l,li)=>{const confs=(l.confirmations||[l.confirmation].filter(Boolean));const ss=(l.setups||[]).join("+");const fpLabel=(l.setups||[]).includes("Fill Play")&&l.fillPlayType?` · ${l.fillPlayType}`:"";return <span key={li} style={{display:"inline-block",fontSize:"10px",color:getLayerColor(l),fontWeight:600,marginRight:"6px",whiteSpace:"nowrap"}}>{l.timeframe}{ss?" · "+ss:""}{fpLabel}{confs.length>0?" · "+confs.join("+"):""}</span>}):(t.setupTags||[]).length>0?(t.setupTags||[]).map(s=><span key={s} style={{display:"inline-block",fontSize:"10px",color:"var(--gold)",fontWeight:600,marginRight:"6px",whiteSpace:"nowrap"}}>{s}</span>):<button onClick={e=>{e.stopPropagation();onQuickTag&&onQuickTag(t)}} style={{fontSize:"10px",padding:"2px 8px",borderRadius:"3px",border:"1px dashed var(--border4)",background:"transparent",color:"var(--text4)",cursor:"pointer",fontFamily:"inherit"}}>+ tag</button>}</td>
               <td style={tdStyle}>{getSessionTags(t.date,t.time).map(s=>{const c=SESSION_COLORS[s]||SESSION_COLORS["US Late"];return <span key={s} style={{display:"inline-block",fontSize:"10px",color:c.text,fontWeight:500,marginRight:"6px",whiteSpace:"nowrap"}}>{s}</span>})}</td>
               <td style={tdStyle}>{(t.emotionTags||[]).map(s=><span key={s} style={{display:"inline-block",fontSize:"10px",color:isNegEmotion(s)?"var(--red)":"var(--green)",fontWeight:500,marginRight:"6px",whiteSpace:"nowrap"}}>{s}</span>)}</td>
               <td style={tdStyle}><button onClick={e=>{e.stopPropagation();onDelete(t.id)}} style={{background:"none",border:"none",color:"var(--text5)",cursor:"pointer",fontSize:"12px",padding:"2px 4px"}}>✕</button></td>
@@ -5232,7 +5268,14 @@ function TradeList({trades,onEdit,onDelete,onQuickTag,onBulkDelete,onBulkTag,onB
                 </div>}
                 {/* Row 3: Layers + TPs + meta badges */}
                 <div style={{display:"flex",gap:"16px",alignItems:"center",flexWrap:"wrap",fontSize:"10px"}}>
-                  {layerStr&&<div style={{display:"flex",alignItems:"center",gap:"4px"}}><span style={{color:"var(--text5)"}}>📐</span><span style={{color:"var(--text3)",fontFamily:"var(--mono)"}}>{layerStr}</span></div>}
+                  {/* v12.202: kleur per laag in expand-row, gescheiden door → arrow. */}
+                  {layers.length>0&&<div style={{display:"flex",alignItems:"center",gap:"4px",flexWrap:"wrap"}}>
+                    <span style={{color:"var(--text5)"}}>📐</span>
+                    {layers.map((l,li)=>{const ss=(l.setups||[]).join("+");const txt=[l.timeframe,ss].filter(Boolean).join(" ");if(!txt)return null;return<React.Fragment key={li}>
+                      <span style={{color:getLayerColor(l),fontFamily:"var(--mono)",fontWeight:600}}>{txt}</span>
+                      {li<layers.length-1&&<span style={{color:"var(--text5)"}}>→</span>}
+                    </React.Fragment>;})}
+                  </div>}
                   {tps.length>0&&<div style={{display:"flex",alignItems:"center",gap:"4px"}}><span style={{color:"var(--text5)"}}>🎯</span><span style={{color:"var(--text3)",fontFamily:"var(--mono)"}}>{tps.length} TP{tps.length>1?"s":""} · {tps.filter(tp=>tp.status==="hit").length} hit</span></div>}
                   {rating>0&&<div style={{display:"flex",alignItems:"center",gap:"2px"}}>{[1,2,3,4,5].map(s=>(<span key={s} style={{color:s<=rating?"var(--gold)":"var(--text5)",fontSize:"11px"}}>{s<=rating?"★":"☆"}</span>))}</div>}
                   {links.length>0&&<div style={{display:"flex",alignItems:"center",gap:"4px"}}><span style={{color:"var(--text5)"}}>📎</span><span style={{color:"var(--text4)"}}>{links.length} link{links.length>1?"s":""}</span></div>}
@@ -7206,17 +7249,22 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,setConfig,ac
         const tfIdx=TF_ORDER.indexOf(layer.timeframe);
         const prevTfIdx=i>0?TF_ORDER.indexOf((trade.layers||[])[i-1]?.timeframe):-1;
         const orderWarn=i>0&&tfIdx>=0&&prevTfIdx>=0&&tfIdx<prevTfIdx;
-        return(<div key={layer.id||i} style={{background:orderWarn?"rgba(201,168,76,0.06)":"var(--bg3)",borderRadius:"10px",border:`1px solid ${orderWarn?"rgba(201,168,76,0.25)":"var(--border3)"}`,padding:"14px",marginBottom:"8px",boxShadow:"0 1px 3px rgba(0,0,0,0.04),0 1px 2px rgba(0,0,0,0.02)"}}>
+        // v12.202: layer-card border-left toont laag-rol kleur (HTF/MTF/LTF). Updates live als
+        // user de timeframe wijzigt — geen save nodig. Voor lege TF (= "OTHER") blijft 't subtiel grijs.
+        const layerColor=getLayerColor(layer);
+        const layerGroup=getLayerTimeframeGroup(layer.timeframe);
+        return(<div key={layer.id||i} style={{background:orderWarn?"rgba(201,168,76,0.06)":"var(--bg3)",borderRadius:"10px",border:`1px solid ${orderWarn?"rgba(201,168,76,0.25)":"var(--border3)"}`,borderLeft:`3px solid ${layerColor}`,padding:"14px",marginBottom:"8px",boxShadow:"0 1px 3px rgba(0,0,0,0.04),0 1px 2px rgba(0,0,0,0.02)"}}>
           <div style={{display:"flex",alignItems:"center",gap:"6px",marginBottom:"8px"}}>
             <span style={{fontSize:"11px",color:"var(--text4)",fontWeight:700,fontFamily:"var(--mono)",width:"20px"}}>{i+1}.</span>
             {i>0&&<button onClick={()=>setTrade(p=>{const l=[...(p.layers||[])];[l[i-1],l[i]]=[l[i],l[i-1]];return{...p,layers:l}})} style={{background:"none",border:"none",color:"var(--text4)",cursor:"pointer",fontSize:"13px",padding:"2px"}}>▲</button>}
             {i<(trade.layers||[]).length-1&&<button onClick={()=>setTrade(p=>{const l=[...(p.layers||[])];[l[i],l[i+1]]=[l[i+1],l[i]];return{...p,layers:l}})} style={{background:"none",border:"none",color:"var(--text4)",cursor:"pointer",fontSize:"13px",padding:"2px"}}>▼</button>}
+            {layerGroup!=="OTHER"&&<span style={{fontSize:"9px",fontFamily:"var(--mono)",fontWeight:700,letterSpacing:"0.08em",color:layerColor,padding:"2px 6px",borderRadius:"3px",border:`1px solid ${layerColor}`,opacity:0.9}}>{layerGroup}</span>}
             <div style={{flex:1}}/>
             {orderWarn&&<span style={{fontSize:"10px",color:"var(--amber)",fontWeight:500}}>⚠ Niet top-down</span>}
             <button onClick={()=>setTrade(p=>({...p,layers:(p.layers||[]).filter((_,j)=>j!==i)}))} style={{background:"none",border:"none",color:"var(--text5)",cursor:"pointer",fontSize:"13px",padding:"2px"}}>✕</button>
           </div>
           <div style={{display:"grid",gap:"10px"}}>
-            <div><div style={{fontSize:"9px",color:"var(--gold)",marginBottom:"6px",fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase"}}>Timeframe</div><div style={{display:"flex",flexWrap:"wrap",gap:"5px"}}>{gt("timeframeTags").map(tf=>{const sel=layer.timeframe===tf;return(<button key={tf} onClick={()=>setTrade(p=>{const l=[...(p.layers||[])];l[i]={...l[i],timeframe:sel?"":tf};return{...p,layers:l}})} style={{padding:"4px 10px",borderRadius:"5px",fontSize:"10.5px",fontWeight:600,border:`1px solid ${sel?"#7c3aed":"var(--border3)"}`,background:sel?"rgba(124,58,237,0.18)":"var(--bg4)",color:sel?"#a78bfa":"var(--text2)",cursor:"pointer",fontFamily:"inherit",transition:"all .15s"}}>{tf}</button>)})}</div></div>
+            <div><div style={{fontSize:"9px",color:"var(--gold)",marginBottom:"6px",fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase"}}>Timeframe</div><div style={{display:"flex",flexWrap:"wrap",gap:"5px"}}>{gt("timeframeTags").map(tf=>{const sel=layer.timeframe===tf;const tfBtnColor=getLayerColor({timeframe:tf});return(<button key={tf} onClick={()=>setTrade(p=>{const l=[...(p.layers||[])];l[i]={...l[i],timeframe:sel?"":tf};return{...p,layers:l}})} style={{padding:"4px 10px",borderRadius:"5px",fontSize:"10.5px",fontWeight:600,border:`1px solid ${sel?tfBtnColor:"var(--border3)"}`,background:"var(--bg4)",color:sel?tfBtnColor:"var(--text2)",cursor:"pointer",fontFamily:"inherit",transition:"all .15s"}}>{tf}</button>)})}</div></div>
             <div>
                 <div style={{fontSize:"9px",color:"var(--gold)",marginBottom:"6px",fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase"}}>Setup <span style={{color:"var(--text5)",fontWeight:500,letterSpacing:".04em",textTransform:"none",fontSize:"9.5px"}}>— meerdere mogelijk (bv. MSB + SFP op dezelfde laag)</span></div>
                 <div style={{display:"flex",flexWrap:"wrap",gap:"5px",marginBottom:"4px"}}>{gt("setupTags").map(s=>{const sel=(layer.setups||[]).includes(s);return(<button key={s} onClick={()=>setTrade(p=>{const l=[...(p.layers||[])];const cur=l[i].setups||[];const next=sel?cur.filter(x=>x!==s):[...cur,s];const fp=next.includes("Fill Play")?l[i].fillPlayType:undefined;l[i]={...l[i],setups:next,fillPlayType:fp};return{...p,layers:l}})} style={{padding:"4px 11px",borderRadius:"6px",fontSize:"10.5px",fontWeight:600,border:`1px solid ${sel?"var(--gold-border)":"var(--border3)"}`,background:sel?"var(--gold-dim)":"var(--bg4)",color:sel?"var(--gold)":"var(--text2)",cursor:"pointer",fontFamily:"inherit",transition:"all .15s"}}>{s}</button>)})}</div>

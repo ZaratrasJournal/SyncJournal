@@ -6,6 +6,48 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.202] — 2026-06-05
+
+### Toegevoegd
+- **Setup-lagen krijgen kleur per timeframe-groep** *(gevraagd door Jordy via Discord, demo + thema-validatie samen met Denny)*
+
+  Een trade-laag staat in 1 van 3 timeframe-rollen:
+
+  | Groep | Timeframes | Kleur | Wat 't betekent |
+  |---|---|---|---|
+  | **HTF** | Daily, 12H, 8H, 6H, 4H, 1W | `var(--layer-htf)` (blauw) | Big-picture context, planning |
+  | **MTF** | 1H, 30M, 15M | `var(--layer-mtf)` (goud) | De "actie", normale focus |
+  | **LTF** | 10M, 5M, 3M, 1M | `var(--layer-ltf)` (groen) | Entry-trigger, momentum |
+
+  **Kleur = wat de laag DOET, niet welke positie**. Een trade met "Daily → 5M" en eentje met "4H → 1M" hebben beide visueel dezelfde HTF→LTF-flow ongeacht aantal lagen.
+
+  **Live update**: kleur wordt op render-moment afgeleid uit `layer.timeframe`. Wijzig in TradeForm de TF van "5M" naar "4H" → de Setup-cel + expand-row tonen meteen de nieuwe kleur. Geen extra storage, geen migratie.
+
+  **Toegepast op 3 plekken**:
+  1. **TradeList Setup-kolom** — per-laag kleur in de tekst (Jordy's directe vraag)
+  2. **Expand-row** (`📐 4H · BOS → 1H · F2L → 5M · MSB`) — elke laag in eigen kleur, gescheiden met `→`
+  3. **TradeForm layer-cards** (Optie B) — `borderLeft:3px` in de laag-kleur + kleine `HTF`/`MTF`/`LTF`-tag boven de TF-keuze + TF-buttons krijgen active-state in de kleur van die TF. Hardcoded `#7c3aed` (paars) bij geselecteerde TF vervangen door dynamische kleur — direct feedback tijdens invoer welke laag-rol je opbouwt.
+
+  **Theme-aware via 6 nieuwe tokens** (`--layer-htf` defaults voor donker, overrides voor light/parchment/daylight + iets lichter blauw voor classic):
+  ```css
+  :root { --layer-htf: #5aa9ff; --layer-mtf: var(--gold); --layer-ltf: var(--green); }
+  body.theme-classic { --layer-htf: #7eb6ff; }
+  body.theme-light { --layer-htf: #1e4080; }
+  body.theme-parchment { --layer-htf: #2c4e7d; }
+  body.theme-daylight { --layer-htf: #1e51a0; }
+  ```
+  MTF + LTF gebruiken de bestaande `--gold` en `--green` tokens — die zijn al per thema gedefinieerd met WCAG-conforme contrasten.
+
+### Tests
+- **`tests/run-layer-color.js`** — 23 assertions over `getLayerTimeframeGroup` (case + whitespace-insensitive) + `getLayerColor` (alle 3 groepen + edge-cases)
+- **Theme regression** 6/6 groen (sync/classic/aurora/light/parchment/daylight)
+- Smoke + merge spec groen
+
+### Demo (gecommit eerder vandaag)
+[`demos/layer-colors-demo.html`](demos/layer-colors-demo.html) — visualiseert alle 6 thema's naast elkaar met dezelfde 3-laag setup-trades. Eindbeoordeling voor mapping + kleurkeuze.
+
+---
+
 ## [v12.201] — 2026-06-05
 
 ### Fixed
