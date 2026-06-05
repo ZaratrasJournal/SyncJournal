@@ -6,6 +6,45 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.195] — 2026-06-05
+
+### Gewijzigd
+- **R-multiple outlier-clamp in Trades-tabel** *(gemeld door Denny met screenshot: "+1926.1R, +750.3R, +257.2R, gaat nog niet goed bij alle trades")*
+
+  **Onderzoek loopt**: v12.194 fix de absurde miljoenen-R waardes door pnl/price-move-formule, maar voor sommige FTMO-trades blijft R extreem hoog (100-2000R). Vermoedelijke oorzaak: FTMO MetriX SL-kolom logt de **uiteindelijke (trailing) SL** voor winning trades, niet het oorspronkelijke initial risk. Wanneer de SL naar break-even of dichtbij entry getrailed wordt, is `|entry-sl|` bijna 0 → R schiet door het dak terwijl het wiskundig klopt maar praktisch onzin is.
+
+  **Tussentijdse fix (display-only)**: trades met `|R| > 20` tonen `>20R` of `<−20R` (cursief, gedimde opacity) i.p.v. de schreeuwende +1926R-waarde. **Tooltip toont de raw R + diagnose**:
+  ```
+  Raw R: +1926.1R · waarschijnlijk SL-data issue (trailing-stop of klein initial risk in FTMO CSV)
+  ```
+  De raw R-waarde blijft beschikbaar via `calcRMultiple()` voor analytics-aggregaten (avgR per setup, etc.) — alleen de tabel-display wordt geclampt.
+
+  **Permanente fix volgt** na user-confirmatie van wat in de CSV staat. Diagnose-snippet voor console:
+  ```js
+  JSON.parse(localStorage.getItem("tj_trades"))
+    .filter(t => t.source === "ftmo" && t.stopLoss && t.entry)
+    .filter(t => Math.abs(parseFloat(t.entry) - parseFloat(t.stopLoss)) / parseFloat(t.entry) < 0.005)
+    .slice(0, 5)
+    .map(t => ({
+      date: t.date, pair: t.pair, dir: t.direction,
+      entry: t.entry, sl: t.stopLoss, exit: t.exit, pnl: t.pnl,
+      slDistance: (parseFloat(t.entry) - parseFloat(t.stopLoss)).toFixed(2),
+      slPct: ((Math.abs(parseFloat(t.entry) - parseFloat(t.stopLoss)) / parseFloat(t.entry)) * 100).toFixed(3) + "%"
+    }))
+  ```
+  Toont SL-afstand + % van entry voor verdachte outliers. Een SL van $1-10 op een $73.000 BTC-trade = 0.001-0.014% = vrijwel zeker trailing-SL.
+
+### Test
+- Smoke groen — pure display-logic, `calcRMultiple` ongewijzigd
+
+### Open
+- **v12.196 vervolg**: definitief fix na CSV-data-confirmatie. Mogelijke routes:
+  - Account-risk-based R (gebruik `account.balance × riskPercent` als constant denominator)
+  - SL-floor op 0.1% van entry voor FTMO (conservatief realistic minimum)
+  - Optie in Settings: "Bereken R o.b.v. CSV-SL / account-risk / initial SL"
+
+---
+
 ## [v12.194] — 2026-06-05
 
 ### Fixed
