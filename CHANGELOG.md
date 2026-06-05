@@ -6,6 +6,54 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.207] — 2026-06-05 — Slotrelease bias-traject ✓
+
+### Toegevoegd
+- **Analytics: ♨ HTF × LTF bias-heatmap** (fase 4 van bias-traject)
+
+  Nieuwe widget `BiasHeatmapWidget` — 3×3 grid waar rows = HTF dominante bias, cols = LTF dominante bias. Per cell:
+  - Pattern-label (Bull-aligned / Bear-aligned / Pull / Rev / Neutraal)
+  - WR% van trades in die bias-combo
+  - Aantal trades + avg R
+
+  **Visualisatie**: cell-background in pattern-kleur met **alpha proportioneel aan |avg R|** — donkere cellen = grootste edge (positief of negatief). Past stilistisch bij de v12.184 SetupSessionMatrix heatmap.
+
+  **Layout-pref**: nieuwe toggle `♨ HTF × LTF bias-heatmap` — default zichtbaar.
+
+  **Render-positie**: net na de Alignment-patronen widget (zelfde "bias-analyse" cluster).
+
+- **Playbook bias-signature + pattern-distributie** in PlaybookAnalyticsView (fase 5)
+
+  Per playbook detecteert nieuwe widget `PlaybookBiasSignatureWidget`:
+
+  **Bias-signature**: dominante bias per laag-rol (HTF/MTF/LTF) over alle trades onder dat playbook. Bv. `HTF ▲ Bullish (75%) → MTF ● Neutraal (60%) → LTF ▼ Bearish (50%)`.
+
+  **Pattern-distributie**: horizontale stacked bar met % Continuation / Pullback / Reversal / Counter per playbook. Hover toont WR per pattern. Direct zien waar het playbook lekt: bijvoorbeeld "70% Reversal-patroon, 25% Counter (WR 30%) → daar lekt het".
+
+  **Plek**: onderaan PlaybookAnalyticsView, na Auto-Insights. Alleen tonen als playbook ≥1 closed trade heeft.
+
+### Recap bias-traject (v12.203 → v12.207)
+| Release | Wat |
+|---------|-----|
+| **v12.203** | Range-based TF parser (vervangt whitelist, ondersteunt 2H, 90M, custom) |
+| **v12.204** | Schema (`layer.bias`) + mini-control rechtsboven + TF-tint hele card |
+| **v12.205** | `getTradeAlignmentPattern` classifier + badge in Trades + filter |
+| **v12.206** | Analytics KPI-strip + alignment-vs-WR bar-chart |
+| **v12.207** | HTF×LTF heatmap + Playbook bias-signature ← *jij staat hier* |
+
+### Tests
+- Smoke + themes 6/6 groen
+- Helpers getest via v12.205's `tests/run-alignment-pattern.js` (29 assertions)
+
+### Buiten scope (toekomstig)
+- **Pre-trade compliance** — realtime "deze trade wordt counter-trend, jouw WR is 22%" warning tijdens entry. Past beter na maanden bias-data verzamelen.
+- **Cell-klik in heatmap** filter-doorgeleiding naar Trades (vereist bias-combo filter — niet trivial want huidige filter is op pattern).
+
+### Demo
+[`demos/layer-bias-demo.html`](demos/layer-bias-demo.html) — visualisatie van alle 5 fases is grotendeels representatief voor wat nu in `work/` zit. Live app kan iets variëren in micro-details.
+
+---
+
 ## [v12.206] — 2026-06-05
 
 ### Toegevoegd
