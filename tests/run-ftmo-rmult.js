@@ -71,9 +71,26 @@ console.log("[calcRMultiple — FTMO source met realistic SL]");
   assert(ctx.calcRMultiple(t) === null, "exit == entry → null");
 }
 {
-  // Edge: geen SL → null
-  const t = { source: "ftmo", entry: "73000", exit: "73500", stopLoss: "", pnl: "100" };
-  assert(ctx.calcRMultiple(t) === null, "geen SL → null");
+  // v12.201: FTMO trade ZONDER SL — fallback op mediaan/0.4% i.p.v. null
+  // Denny's BTC short: entry 77659, exit 77787 (verlies), pnl -19.62, geen SL
+  // Met fallback 0.4%: slDistance = 77659 × 0.004 = 310.6
+  // dpp = 19.62/127.83 ≈ 0.1535. risk = 310.6 × 0.1535 = $47.68. R = -19.62/47.68 ≈ -0.41
+  const t = { source: "ftmo", entry: "77659.01", exit: "77786.84", stopLoss: "", pnl: "-19.62" };
+  const r = ctx.calcRMultiple(t);
+  assert(r !== null && approx(r, -0.41, 0.05), `FTMO loser zonder SL R ≈ -0.41 (fallback) (got ${r?.toFixed(2)})`);
+}
+{
+  // FTMO winner zonder SL — entry 79086.86, exit 77195.77, pnl +166.57
+  // dpp = 166.57/1891.09 ≈ 0.0881. slDistance fallback = 79086.86 × 0.004 = 316.35
+  // riskDollars = 316.35 × 0.0881 = 27.87. R = +5.98
+  const t = { source: "ftmo", entry: "79086.86", exit: "77195.77", stopLoss: "", pnl: "166.57" };
+  const r = ctx.calcRMultiple(t);
+  assert(r !== null && approx(r, 5.98, 0.1), `FTMO winner zonder SL R ≈ +5.98 (fallback) (got ${r?.toFixed(2)})`);
+}
+{
+  // Crypto BLIJFT null als SL ontbreekt (linear formule heeft SL nodig)
+  const t = { source: "blofin", entry: "73000", exit: "73500", stopLoss: "", pnl: "100", positionSize: "7300" };
+  assert(ctx.calcRMultiple(t) === null, "crypto zonder SL → null (geen fallback voor linear)");
 }
 
 console.log("\n[v12.196 — getrailede SL valt terug op mediaan-loser-SL%]");

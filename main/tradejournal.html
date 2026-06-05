@@ -1507,27 +1507,27 @@ function computeFtmoMedianLoserSlPct(trades){
 
 function calcRMultiple(trade,ftmoCtx){
   const entry=parseFloat(trade.entry);
-  const sl=parseFloat(trade.stopLoss);
   const pnlVal=parseFloat(trade.pnl);
-  if(!entry||!sl||sl===entry||isNaN(pnlVal))return null;
-  // v12.194: FTMO/MT5 lot-based instruments hebben positionSize leeg (lot zit in positionSizeAsset)
-  // en gebruiken geen linear-contract pricing. De crypto-formule (risk × size / entry) geeft
-  // onzin (risk ≈ 0 / 73894 → R = miljoenen). In plaats daarvan: leid dollars-per-point af uit
-  // de werkelijke pnl/price-move van de trade. Werkt voor elke instrument-type (BTC-CFD, XAUUSD,
+  if(!entry||isNaN(pnlVal))return null;
+  // v12.194/v12.196/v12.201: FTMO/MT5 lot-based instruments hebben positionSize leeg
+  // (lot zit in positionSizeAsset) en gebruiken geen linear-contract pricing. De crypto-formule
+  // (risk × size / entry) geeft onzin. In plaats daarvan: leid dollars-per-point af uit de
+  // werkelijke pnl/price-move van de trade. Werkt voor elke instrument-type (BTC-CFD, XAUUSD,
   // FX-majors, indices) zolang exit + pnl gevuld zijn.
   if(trade.source==="ftmo"){
     const exit=parseFloat(trade.exit);
     if(!isFinite(exit)||exit<=0||exit===entry)return null;
     const dollarsPerPoint=Math.abs(pnlVal)/Math.abs(exit-entry);
     if(!isFinite(dollarsPerPoint)||dollarsPerPoint<=0)return null;
-    // v12.196: FTMO MetriX CSV logt de UITEINDELIJKE SL (na trailing) i.p.v. de initiële.
-    // Voor winning trades is afstand bijna 0 → R wordt onzin (+1926R, +750R, etc.).
-    // Fix: als CSV-SL-distance < 0.1% van entry (waarschijnlijk getrailed), gebruik mediaan-SL%
-    // van FTMO-losers als proxy voor initial risk. Losers' SLs werden ECHT geraakt dus reflecteren
-    // de werkelijke risk. Fallback: 0.4% van entry (typical scalper-stijl) als geen losers beschikbaar.
-    let slDistance=Math.abs(entry-sl);
-    const slPct=slDistance/entry;
-    if(slPct<0.001){
+    // SL-distance bepalen met 3-niveau fallback:
+    //   1. CSV-SL > 0.1% van entry → realistic, gebruik die (v12.194 pad)
+    //   2. CSV-SL < 0.1% van entry → waarschijnlijk getrailed (v12.196), fallback op mediaan/0.4%
+    //   3. CSV-SL ontbreekt (=0, leeg, =entry) → geen SL ingesteld in MT5 (v12.201), fallback idem
+    //   Zonder fallback returned calcRMultiple voor pad #3 vroeger null → "—" in tabel.
+    const slNum=parseFloat(trade.stopLoss);
+    const hasValidSl=isFinite(slNum)&&slNum>0&&slNum!==entry;
+    let slDistance=hasValidSl?Math.abs(entry-slNum):0;
+    if(!hasValidSl||slDistance/entry<0.001){
       const fallbackPct=(ftmoCtx&&ftmoCtx.medianLoserSlPct>0)?ftmoCtx.medianLoserSlPct:0.004;
       slDistance=entry*fallbackPct;
     }
@@ -1536,6 +1536,9 @@ function calcRMultiple(trade,ftmoCtx){
     return pnlVal/riskDollars;
   }
   // Linear crypto contracts (Blofin/MEXC/Kraken/Hyperliquid): positionSize in USDT.
+  // Crypto vereist nog wel een SL (geen fallback want positionSize geeft accurate risk).
+  const sl=parseFloat(trade.stopLoss);
+  if(!sl||sl===entry)return null;
   const size=parseFloat(trade.positionSize)||1;
   const risk=Math.abs(entry-sl);
   // Risk in USDT = risk × size / entry (for linear contracts)
@@ -1621,7 +1624,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.200",released:"2026-06-05"};
+const APP_VERSION={version:"v12.201",released:"2026-06-05"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.

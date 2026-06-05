@@ -6,6 +6,31 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.201] — 2026-06-05
+
+### Fixed
+- **R-multiple "—" voor FTMO trades zonder SL** *(gemeld door Denny: "bij een aantal trades zie ik geen R/multiple hoe komt dat?")*
+
+  **Oorzaak**: FTMO MetriX CSV-kolom 6 (SL) is leeg voor trades waar de user geen stop in MT5 had ingesteld. De parser zet dan `stopLoss:""`. `calcRMultiple`'s early-return `if(!entry||!sl||...)` triggert dan → `null` → "—" in de tabel.
+
+  **Fix**: 3-niveau SL-fallback voor FTMO (uitbreiding van v12.196):
+  1. **CSV-SL ≥ 0.1% van entry** → realistic, gebruik die (= losers met SL-hit krijgen -1R)
+  2. **CSV-SL < 0.1% van entry** → vermoedelijk getrailed (v12.196 pad), fallback op mediaan-loser-SL%
+  3. **CSV-SL ontbreekt** (`""` of `0` of `=entry`) → geen SL ingesteld, **nieuwe fallback** op mediaan / 0.4% default
+
+  Voor jouw 20-21 mei BTC short losers zonder SL: krijgen nu R rond -0.4R (= verlies was ~40% van een typische risk). De 15-05 winner +$166,57 zonder SL: krijgt R ~+5.98 (mooie multiple op haar typical risk).
+
+  **Crypto pad blijft** vereisen dat SL is ingevuld (`linear`-formule heeft het echt nodig — positionSize geeft accurate risk, geen reden voor fallback).
+
+### Tests
+- **`tests/run-ftmo-rmult.js`** uitgebreid met 3 nieuwe assertions:
+  - FTMO loser zonder SL → fallback geeft -0.41R
+  - FTMO winner zonder SL → fallback geeft +5.98R
+  - Crypto zonder SL → blijft null (geen fallback)
+- Smoke + merge regression: 2/2 groen
+
+---
+
 ## [v12.200] — 2026-06-05
 
 ### Fixed
