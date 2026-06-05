@@ -39,6 +39,19 @@ console.log("[deriveTpLevelsFromChildren]");
   assert(tps.every(tp => tp.actualPrice === tp.price), "actualPrice = price (gerealiseerd)");
   assert(tps.every(tp => tp.ts), "elke TP heeft timestamp");
   assert(tps.every(tp => tp.id && tp.id.startsWith("merge_tp_")), "tpLevel-IDs zijn deterministic uit child-id");
+  // v12.200 marker veld
+  assert(tps.every(tp => tp._sizeAsset !== undefined), "_sizeAsset marker veld aanwezig (v12.200 marker)");
+}
+{
+  // v12.200: child.pnl wordt op tpLevel gepersisteerd voor accurate Winst-display
+  const children = [
+    { id:"f1", date:"2026-06-04", time:"09:42", closeTime:"2026-06-04T10:00:00Z", exit:"2022.00", positionSizeAsset:"0.5", status:"closed", pnl:"87.50" },
+    { id:"f2", date:"2026-06-04", time:"09:42", closeTime:"2026-06-04T10:15:00Z", exit:"2025.00", positionSizeAsset:"0.5", status:"closed", pnl:"162.50" },
+  ];
+  const tps = ctx.deriveTpLevelsFromChildren(children);
+  assert(tps[0].pnl === "87.50", "TP1 pnl = child[0].pnl");
+  assert(tps[1].pnl === "162.50", "TP2 pnl = child[1].pnl");
+  assert(tps[0]._sizeAsset === "0.50", "TP1 _sizeAsset = 0.50");
 }
 {
   // Ongelijke sizes — pct moet pro-rata zijn

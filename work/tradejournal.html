@@ -1621,7 +1621,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.199",released:"2026-06-05"};
+const APP_VERSION={version:"v12.200",released:"2026-06-05"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -2009,6 +2009,11 @@ const deriveTpLevelsFromChildren=(children)=>{
       status:isClosed&&exit?"hit":"open",
       actualPrice:exit,
       ts:c.closeTime||`${c.date||""} ${c.time||""}`.trim(),
+      // v12.200: child.pnl op TP-niveau opslaan zodat calcProfit niet hoeft te herberekenen.
+      // Voor FTMO werkt de standaard size-based formule niet (positionSize leeg, lot-based mult).
+      // De child-pnl is de werkelijke gerealiseerde winst voor dit deel — direct bruikbaar.
+      pnl:(c.pnl!==undefined&&c.pnl!=="")?String(c.pnl):"",
+      _sizeAsset:sz?sz.toFixed(2):"",// voor display in 🧩-sectie
     };
   });
 };
@@ -7007,6 +7012,13 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,setConfig,ac
       };
 
       const calcProfit=(tp)=>{
+        // v12.200: voor master-TPs uit deriveTpLevelsFromChildren (merge-feature) is de echte
+        // child-pnl al bekend. Direct gebruiken voorkomt size-based herberekening die voor
+        // FTMO mislukt (positionSize leeg) en sowieso accurater is dan price×size×pct/entry.
+        if(tp.pnl!==undefined&&tp.pnl!==""&&tp.pnl!==null){
+          const p=parseFloat(tp.pnl);
+          if(isFinite(p))return p;
+        }
         if(!entryN||!parseFloat(tp.price))return null;
         const pct=parseFloat(tp.pct||0)/100;const tpPrice=parseFloat(tp.price);
         // v12.62/v12.89: gebruik ORIGINELE size (niet de huidige rest) voor pct-pnl-berekening.
@@ -18606,14 +18618,19 @@ function App(){
   const deleteTrade=(id)=>{const t=trades.find(x=>x.id===id);setTrades(p=>p.filter(x=>x.id!==id));showToast("Trade verwijderd","error",t)};
   const bulkDelete=(ids)=>setTrades(p=>p.filter(t=>!ids.includes(t.id)));
 
-  // v12.197: éénmalige migratie voor legacy-masters (gemerged vóór v12.197 zonder tpLevels).
-  // Wordt 1× actief uitgevoerd zodra zo'n master gevonden is; daarna terminate de needs-check.
+  // v12.197/v12.200: éénmalige migratie voor legacy-masters. v12.197 backfilled tpLevels;
+  // v12.200 voegt `pnl` en `_sizeAsset` toe op TP-niveau (voor accurate Winst-kolom).
+  // Marker: tpLevels zonder _sizeAsset veld = pre-v12.200 → regenereer.
+  // Self-terminating: na 1× regen returnt de needs-check false.
   React.useEffect(()=>{
-    const needs=trades.some(t=>Array.isArray(t.mergedFrom)&&t.mergedFrom.length>0&&(!Array.isArray(t.tpLevels)||t.tpLevels.length===0));
+    const needs=trades.some(t=>{
+      if(!Array.isArray(t.mergedFrom)||t.mergedFrom.length===0)return false;
+      if(!Array.isArray(t.tpLevels)||t.tpLevels.length===0)return true;
+      return t.tpLevels.some(tp=>tp&&tp._sizeAsset===undefined);
+    });
     if(!needs)return;
     setTrades(p=>p.map(t=>{
       if(!Array.isArray(t.mergedFrom)||t.mergedFrom.length===0)return t;
-      if(Array.isArray(t.tpLevels)&&t.tpLevels.length>0)return t;
       const children=p.filter(c=>t.mergedFrom.includes(c.id));
       if(children.length===0)return t;
       return{...t,tpLevels:deriveTpLevelsFromChildren(children)};

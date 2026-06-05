@@ -6,6 +6,36 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.200] — 2026-06-05
+
+### Fixed
+- **TP-niveaus toonden "N/A" in de Winst-kolom voor gemergde FTMO-trades** *(gemeld door Denny: "ik zie nu wel de TP's maar niet de winsten")*
+
+  **Oorzaak**: `calcProfit` herberekende winst via `(tpPrice − entry) × size × pct / entry`. Voor FTMO is `positionSize` leeg en de crypto-formule (linear contracts) klopt sowieso niet voor MT5 lot-based instruments. Resultaat: `null` → "N/A".
+
+  **Fix**: child-pnl wordt nu op TP-niveau gepersisteerd door `deriveTpLevelsFromChildren`:
+  ```js
+  tpLevels: [{
+    ...
+    pnl: c.pnl,         // ← werkelijke gerealiseerde winst van die child
+    _sizeAsset: ...,    // ← lot-grootte voor display
+  }]
+  ```
+  `calcProfit` checkt eerst `tp.pnl` — als gevuld, gebruik direct (klopt voor elke instrument, geen size-formule nodig). Anders fallback naar oude herberekening voor handmatige TPs zonder pnl.
+
+- **Eenmalige migratie voor legacy-masters bijgewerkt** *(jouw bestaande merge vóór v12.200)*
+
+  De useEffect-migratie detecteert nu masters met tpLevels zonder het v12.200 `_sizeAsset`-marker-veld en regenereert ze. Bij refresh van de app krijgt jouw bestaande merge automatisch de nieuwe TP-shape met `pnl` velden → Winst-kolom toont direct de juiste bedragen.
+
+### Over de TP%
+Pct is **pro-rata op `positionSizeAsset`** (lot-grootte voor FTMO, base-coin voor crypto). Voor 3 trades met gelijke lot → 33.33% elk. Met verschillende lot-sizes → echte pro-rata: bv. (0.5 + 0.3 + 0.2) lot → 50% / 30% / 20%. Klopt voor alle scenario's; tests bevestigen dit.
+
+### Tests
+- **`tests/run-tp-from-merge.js`** uitgebreid: 22 assertions over derivation incl. `pnl` persistence + `_sizeAsset` marker
+- Smoke + merge regression: 2/2 groen
+
+---
+
 ## [v12.199] — 2026-06-05
 
 ### Gewijzigd
