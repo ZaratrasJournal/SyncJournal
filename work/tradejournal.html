@@ -1620,7 +1620,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.197",released:"2026-06-05"};
+const APP_VERSION={version:"v12.198",released:"2026-06-05"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -2019,21 +2019,25 @@ const deriveTpLevelsFromChildren=(children)=>{
 const buildMergePreview=(children,conflictChoices)=>{
   if(!children||children.length===0)return null;
   const cc=conflictChoices||{};
+  // v12.198: effSize helper — voor crypto = positionSize (USDT), voor FTMO = positionSizeAsset (lot).
+  // Voorheen viel wEntry terug op `children[0].entry` (string) als positionSize 0 was → .toFixed crash.
+  const effSize=(c)=>parseFloat(c.positionSize)||parseFloat(c.positionSizeAsset)||0;
   // Numeric aggregates
-  const totalSize=children.reduce((s,c)=>s+(parseFloat(c.positionSize)||0),0);
+  const totalSize=children.reduce((s,c)=>s+effSize(c),0);
+  const totalSizeUsdt=children.reduce((s,c)=>s+(parseFloat(c.positionSize)||0),0);
   const totalSizeAsset=children.reduce((s,c)=>s+(parseFloat(c.positionSizeAsset)||0),0);
   const totalPnl=children.reduce((s,c)=>s+(parseFloat(c.pnl)||0),0);
   const totalFees=children.reduce((s,c)=>s+(parseFloat(c.fees)||0),0);
-  // Gewogen entry (op positionSize-USD)
+  // Gewogen entry — op effSize (USDT voor crypto, lot voor FTMO). Altijd number via parseFloat fallback.
   const wEntry=totalSize>0
-    ?children.reduce((s,c)=>s+((parseFloat(c.entry)||0)*(parseFloat(c.positionSize)||0)),0)/totalSize
-    :children[0].entry;
+    ?children.reduce((s,c)=>s+((parseFloat(c.entry)||0)*effSize(c)),0)/totalSize
+    :(parseFloat(children[0].entry)||0);
   // Gewogen exit (alleen closed children)
   const closedChildren=children.filter(c=>c.status==="closed"&&c.exit&&parseFloat(c.exit)>0);
-  const closedSize=closedChildren.reduce((s,c)=>s+(parseFloat(c.positionSize)||0),0);
+  const closedSize=closedChildren.reduce((s,c)=>s+effSize(c),0);
   const wExit=closedSize>0
-    ?closedChildren.reduce((s,c)=>s+((parseFloat(c.exit)||0)*(parseFloat(c.positionSize)||0)),0)/closedSize
-    :"";
+    ?closedChildren.reduce((s,c)=>s+((parseFloat(c.exit)||0)*effSize(c)),0)/closedSize
+    :0;
   // Conservatiefste SL — voor long = highest, voor short = lowest
   const dir=children[0].direction;
   const sls=children.map(c=>parseFloat(c.stopLoss)).filter(v=>isFinite(v)&&v>0);
@@ -2077,11 +2081,11 @@ const buildMergePreview=(children,conflictChoices)=>{
     source:children[0].source,
     date:sorted[0].date,
     time:sorted[0].time,
-    entry:wEntry.toFixed(8).replace(/\.?0+$/,""),
-    exit:wExit?wExit.toFixed(8).replace(/\.?0+$/,""):"",
+    entry:isFinite(wEntry)?wEntry.toFixed(8).replace(/\.?0+$/,""):"",
+    exit:isFinite(wExit)&&wExit>0?wExit.toFixed(8).replace(/\.?0+$/,""):"",
     stopLoss:sl?String(sl):"",
-    positionSize:totalSize?totalSize.toFixed(8).replace(/\.?0+$/,""):"",
-    positionSizeAsset:totalSizeAsset?totalSizeAsset.toFixed(8).replace(/\.?0+$/,""):"",
+    positionSize:totalSizeUsdt>0?totalSizeUsdt.toFixed(8).replace(/\.?0+$/,""):"",
+    positionSizeAsset:totalSizeAsset>0?totalSizeAsset.toFixed(8).replace(/\.?0+$/,""):"",
     pnl:totalPnl.toFixed(2),
     fees:totalFees.toFixed(4),
     realizedPnl,

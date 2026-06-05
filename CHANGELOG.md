@@ -6,6 +6,23 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.198] — 2026-06-05
+
+### Fixed
+- **React error `wEntry.toFixed is not a function` bij merge van FTMO-trades** *(gemeld door Denny met error-screenshot)*
+
+  **Oorzaak**: `buildMergePreview` gebruikte `c.positionSize` (USDT-notional voor crypto) als size-basis voor gewogen entry/exit. FTMO-trades hebben `positionSize:""` (lot zit in `positionSizeAsset`), dus `totalSize=0` → fallback `wEntry=children[0].entry` (STRING zoals "2018.50") → `.toFixed(8)` crasht omdat strings die methode niet hebben.
+
+  **Fix**: nieuwe `effSize(c)` helper die voor crypto `positionSize` (USDT) en voor FTMO `positionSizeAsset` (lot) pakt. Gewogen entry/exit gebruiken nu altijd een non-zero size. Plus fallback `parseFloat(children[0].entry) || 0` garandeert dat `wEntry` altijd een number is. `isFinite()`-guards op toFixed-calls als extra safety.
+
+  Return-object splitst `totalSizeUsdt` (positionSize-field) en `totalSizeAsset` (positionSizeAsset-field) zodat de master de juiste exchange-specifieke shape behoudt: FTMO master heeft `positionSize:""` + `positionSizeAsset:"1.0"`, crypto master heeft beide gevuld.
+
+### Tests
+- **`tests/run-merge-helpers.js`** uitgebreid met FTMO-regression: 2 children met `positionSize:""` → preview returnt zonder crash, gewogen entry/exit kloppen, `positionSize` blijft leeg, `positionSizeAsset` is som van lots. 7 nieuwe assertions.
+- Smoke + merge UI-spec: 2/2 groen
+
+---
+
 ## [v12.197] — 2026-06-05
 
 ### Toegevoegd

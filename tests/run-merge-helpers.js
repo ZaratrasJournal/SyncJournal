@@ -113,6 +113,33 @@ console.log("\n[buildMergePreview]");
   assert(preview.notes.includes("———"), "concat scheidingslijn aanwezig");
 }
 {
+  // v12.198 regression: FTMO trades hebben positionSize="" en positionSizeAsset=lot.
+  // Voorheen crashte buildMergePreview met "wEntry.toFixed is not a function" omdat
+  // totalSize=0 leidde tot wEntry=children[0].entry (string).
+  const children = [
+    { id: "f1", date: "2026-06-04", time: "09:42", pair: "XAUUSD", direction: "long",
+      entry: "2018.50", exit: "2022.00", stopLoss: "2014.50",
+      positionSize: "", positionSizeAsset: "0.5",  // FTMO shape
+      pnl: "87.50", fees: "1.50", status: "closed", source: "ftmo",
+      tradeGrade: "A+", playbookId: "", notes: "",
+      setupTags: [], confirmationTags: [], timeframeTags: [], emotionTags: [], mistakeTags: [], customTags: [] },
+    { id: "f2", date: "2026-06-04", time: "09:42", pair: "XAUUSD", direction: "long",
+      entry: "2018.50", exit: "2025.00", stopLoss: "2014.50",
+      positionSize: "", positionSizeAsset: "0.5",
+      pnl: "162.50", fees: "1.50", status: "closed", source: "ftmo",
+      tradeGrade: "A", playbookId: "", notes: "",
+      setupTags: [], confirmationTags: [], timeframeTags: [], emotionTags: [], mistakeTags: [], customTags: [] },
+  ];
+  const preview = ctx.buildMergePreview(children, {});
+  assert(preview !== null, "FTMO preview returnt niet null");
+  assert(parseFloat(preview.entry) === 2018.5, "FTMO wEntry = 2018.50 (geen crash door string-fallback)");
+  assert(parseFloat(preview.exit) === 2023.5, "FTMO wExit = avg 2022+2025 = 2023.50");
+  assert(preview.positionSize === "", "FTMO positionSize blijft leeg in master");
+  assert(parseFloat(preview.positionSizeAsset) === 1.0, "FTMO totale lot = 1.0");
+  assert(parseFloat(preview.pnl) === 250, "Σ pnl = 250");
+  assert(preview.status === "closed", "alle closed → closed");
+}
+{
   // Partial: 3 closed + 1 open
   const children = [
     { id: "a", date: "2026-06-01", time: "10:00", pair: "XAUUSD", direction: "long",
