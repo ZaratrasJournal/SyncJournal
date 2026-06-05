@@ -10,13 +10,15 @@ const path = require("path");
 const vm = require("vm");
 
 const html = fs.readFileSync(path.resolve(__dirname, "..", "work", "tradejournal.html"), "utf8");
-const startIdx = html.indexOf("function calcRMultiple(trade){");
-const endIdx = html.indexOf("\n}", startIdx) + 2;
-const code = html.slice(startIdx, endIdx);
+// v12.196: óók de helper computeFtmoMedianLoserSlPct extracten
+const helperStart = html.indexOf("function computeFtmoMedianLoserSlPct(trades){");
+const rMultStart = html.indexOf("function calcRMultiple(trade,ftmoCtx){");
+const rMultEnd = html.indexOf("\n}", rMultStart) + 2;
+const code = html.slice(helperStart, rMultEnd);
 
 const ctx = { console };
 vm.createContext(ctx);
-vm.runInContext(code + "\nthis.calcRMultiple=calcRMultiple;", ctx);
+vm.runInContext(code + "\nthis.calcRMultiple=calcRMultiple;\nthis.computeFtmoMedianLoserSlPct=computeFtmoMedianLoserSlPct;", ctx);
 
 let failed = 0;
 function assert(cond, msg) {
@@ -27,44 +29,36 @@ function approx(a, b, tol = 0.05) {
   return Math.abs(a - b) <= tol;
 }
 
-console.log("[calcRMultiple — FTMO source]");
+console.log("[calcRMultiple — FTMO source met realistic SL]");
 {
-  // Denny's BTC/USD short trade: entry 73895.95, exit 73897.02, pnl -1.96
-  // Realistische SL: 73900 (4.05 points risk)
-  // dollarsPerPoint = |-1.96| / |73897.02-73895.95| = 1.96/1.07 ≈ 1.832
-  // riskDollars = |73895.95-73900| × 1.832 = 4.05 × 1.832 ≈ 7.42
-  // R = -1.96 / 7.42 ≈ -0.26
-  const t = { source: "ftmo", entry: "73895.95", exit: "73897.02", stopLoss: "73900", pnl: "-1.96" };
+  // Loser met SL geraakt op 0.4% afstand. dpp = 50/300=0.1667. risk = 300×0.1667=50. R=-1.
+  const t = { source: "ftmo", entry: "73000", exit: "73300", stopLoss: "73300", pnl: "-50", direction: "short" };
   const r = ctx.calcRMultiple(t);
-  assert(r !== null && approx(r, -0.26, 0.05), `BTC/USD short losing trade R ≈ -0.26 (got ${r?.toFixed(2)})`);
+  assert(r !== null && approx(r, -1, 0.05), `loser SL-hit R ≈ -1 (got ${r?.toFixed(2)})`);
 }
 {
-  // BTC/USD short winning: entry 73894.30, exit 63375.80 (10518 points), pnl +289.76
-  // SL aanname 74400 (505.70 points risk)
-  // dollarsPerPoint = 289.76 / 10518.50 ≈ 0.02755
-  // riskDollars = 505.70 × 0.02755 ≈ 13.93
-  // R = 289.76 / 13.93 ≈ 20.80
-  const t = { source: "ftmo", entry: "73894.30", exit: "63375.80", stopLoss: "74400", pnl: "289.76" };
-  const r = ctx.calcRMultiple(t);
-  assert(r !== null && approx(r, 20.8, 0.5), `BTC short big winner R ≈ +20.8 (got ${r?.toFixed(2)})`);
-}
-{
-  // XAUUSD long: entry 2018.50, exit 2022.00, SL 2014.50, pnl +87.50, size 0.5 lot
-  // dollarsPerPoint = 87.50/3.50 = 25
-  // riskDollars = 4.00 × 25 = 100
-  // R = 87.50 / 100 = +0.875
+  // XAUUSD TP1: entry 2018.50, sl 2014.50 (4 pt = 0.2% > 0.1%), exit 2022, pnl +87.50
+  // dpp = 87.50/3.5 = 25. risk = 4×25 = 100. R = +0.875
   const t = { source: "ftmo", entry: "2018.50", exit: "2022.00", stopLoss: "2014.50", pnl: "87.50" };
   const r = ctx.calcRMultiple(t);
-  assert(r !== null && approx(r, 0.875, 0.01), `XAUUSD TP1 R ≈ +0.875 (got ${r?.toFixed(3)})`);
+  assert(r !== null && approx(r, 0.875, 0.01), `XAUUSD TP1 (realistic SL) R ≈ +0.875 (got ${r?.toFixed(3)})`);
 }
 {
-  // EURUSD long: entry 1.08240, exit 1.08410 (17 pips), SL 1.08140 (10 pip risk), pnl +85
-  // dollarsPerPoint = 85 / 0.0017 = 50000
-  // riskDollars = 0.001 × 50000 = 50
-  // R = 85 / 50 = +1.7
-  const t = { source: "ftmo", entry: "1.08240", exit: "1.08410", stopLoss: "1.08140", pnl: "85" };
+  // BTC short winner met REALISTIC SL: entry 73894, sl 74400 (506 pt = 0.68% > 0.1%), exit 63375, pnl +289.76
+  // dpp = 289.76/10519 = 0.02755. risk = 506 × 0.02755 = 13.94. R = +20.8
+  const t = { source: "ftmo", entry: "73894.30", exit: "63375.80", stopLoss: "74400", pnl: "289.76" };
   const r = ctx.calcRMultiple(t);
-  assert(r !== null && approx(r, 1.7, 0.05), `EURUSD R ≈ +1.7 (got ${r?.toFixed(2)})`);
+  assert(r !== null && approx(r, 20.8, 0.5), `BTC big winner met realistic SL R ≈ +20.8 (got ${r?.toFixed(2)})`);
+}
+{
+  // EURUSD met realistic SL 10 pips (0.092% van 1.08240 = onder 0.1% drempel → fallback default)
+  // Met fallback 0.4%: slDistance = 1.08240 × 0.004 = 0.004330
+  // dpp = 85/0.0017 = 50000. risk = 0.00433 × 50000 = 216.5. R = +0.39
+  // Voor 1.7R verwachting moet SL > 0.1% staan: gebruik sl 1.075 (0.68% afstand)
+  const t = { source: "ftmo", entry: "1.08240", exit: "1.08410", stopLoss: "1.07500", pnl: "85" };
+  const r = ctx.calcRMultiple(t);
+  // dpp = 85/0.0017 = 50000. risk = 0.00740 × 50000 = 370. R = +0.23
+  assert(r !== null && approx(r, 0.23, 0.05), `EURUSD met 0.68% SL R ≈ +0.23 (got ${r?.toFixed(2)})`);
 }
 {
   // Edge: open trade (geen exit) → null
@@ -72,14 +66,60 @@ console.log("[calcRMultiple — FTMO source]");
   assert(ctx.calcRMultiple(t) === null, "geen exit → null");
 }
 {
-  // Edge: break-even (exit = entry) → null (geen price-move om dollarsPerPoint te derive)
+  // Edge: break-even (exit = entry) → null
   const t = { source: "ftmo", entry: "73000", exit: "73000", stopLoss: "72800", pnl: "0" };
   assert(ctx.calcRMultiple(t) === null, "exit == entry → null");
 }
 {
-  // Edge: geen SL → null (al pre-existing pad)
+  // Edge: geen SL → null
   const t = { source: "ftmo", entry: "73000", exit: "73500", stopLoss: "", pnl: "100" };
   assert(ctx.calcRMultiple(t) === null, "geen SL → null");
+}
+
+console.log("\n[v12.196 — getrailede SL valt terug op mediaan-loser-SL%]");
+{
+  // Bouw een dataset met 3 losers (initial SL = 0.4% van entry) + 1 winner met getrailede SL (0.01%)
+  const trades = [
+    // 3 losers, allemaal SL geraakt op 0.4% afstand
+    { source: "ftmo", entry: "73000", stopLoss: "73292", exit: "73292", pnl: "-40", direction: "short" },
+    { source: "ftmo", entry: "74000", stopLoss: "74296", exit: "74296", pnl: "-40", direction: "short" },
+    { source: "ftmo", entry: "75000", stopLoss: "75300", exit: "75300", pnl: "-40", direction: "short" },
+  ];
+  const medianPct = ctx.computeFtmoMedianLoserSlPct(trades);
+  // Verwacht ~0.004 (0.4%)
+  assert(medianPct !== null && approx(medianPct, 0.004, 0.0001), `mediaan loser SL% ≈ 0.4% (got ${(medianPct*100).toFixed(3)}%)`);
+
+  // Winner met getrailede SL (0.01% afstand) — moet fallback gebruiken op mediaan
+  const winner = { source: "ftmo", entry: "73894", stopLoss: "73901", exit: "59987", pnl: "545.61", direction: "short" };
+  const rWithCtx = ctx.calcRMultiple(winner, { medianLoserSlPct: medianPct });
+  // Met mediaan 0.004: slDistance = 73894 × 0.004 = 295.58, dpp = 545.61/13907 = 0.0392
+  // riskDollars = 295.58 × 0.0392 = 11.59. R = 545.61/11.59 ≈ +47R
+  assert(rWithCtx !== null && approx(rWithCtx, 47, 2), `winner met trail-SL + mediaan-fallback R ≈ +47 (got ${rWithCtx?.toFixed(1)})`);
+
+  // Zonder ftmoCtx: fallback naar 0.4% default — zelfde resultaat
+  const rNoCtx = ctx.calcRMultiple(winner);
+  assert(rNoCtx !== null && approx(rNoCtx, 47, 2), `winner zonder ctx valt terug op default 0.4% R ≈ +47 (got ${rNoCtx?.toFixed(1)})`);
+
+  // Verlies trade met realistic SL: blijft werken zoals voorheen
+  const loser = trades[0]; // entry 73000, sl 73292, exit 73292, pnl -40
+  const rLoser = ctx.calcRMultiple(loser, { medianLoserSlPct: medianPct });
+  assert(rLoser !== null && approx(rLoser, -1, 0.05), `loser met realistic SL R ≈ -1 (got ${rLoser?.toFixed(2)})`);
+}
+{
+  // Edge: <3 losers → mediaan = null
+  const trades = [
+    { source: "ftmo", entry: "73000", stopLoss: "73300", exit: "73300", pnl: "-40", direction: "short" },
+  ];
+  const m = ctx.computeFtmoMedianLoserSlPct(trades);
+  assert(m === null, "< 3 losers → mediaan null");
+}
+{
+  // Edge: alleen winners → mediaan null
+  const trades = [
+    { source: "ftmo", entry: "73000", stopLoss: "73005", exit: "60000", pnl: "500", direction: "short" },
+  ];
+  const m = ctx.computeFtmoMedianLoserSlPct(trades);
+  assert(m === null, "alleen winners → mediaan null");
 }
 
 console.log("\n[calcRMultiple — crypto source blijft werken]");

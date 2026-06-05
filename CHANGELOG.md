@@ -6,6 +6,47 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.196] — 2026-06-05
+
+### Fixed
+- **R-multiple voor FTMO trades nu zelf-tunend op basis van losers** *(gemeld door Denny: "ik zie nu >20R? dan klopt ook niet")*
+
+  **Bevestigde root cause** (via diagnose-snippet output):
+  - Verliezende FTMO-trades hebben SL-afstand 0.286-0.463% van entry — **realistische initial SL** die werd geraakt
+  - Winnende trades met outlier-R hebben SL-afstand ~0.01% van entry — **vrijwel zeker getrailede stops** die naar break-even verschoven zijn vóór close
+  - FTMO MetriX logt de UITEINDELIJKE SL bij close, niet de initiële → voor winners is `|entry-sl|` bijna 0 → R schiet door het dak
+
+  **Industry-standaard fix** (gebaseerd op hoe Tradervue, Edgewonk, TraderSync omgaan met getrailede stops):
+
+  Nieuwe pure helper `computeFtmoMedianLoserSlPct(trades)` berekent de **mediaan SL%** van alle losing FTMO-trades. Deze SLs werden ECHT geraakt, dus reflecteren de werkelijke initial risk van jouw trading-stijl. Voor winners met onrealistisch kleine SL-afstand (<0.1% van entry = vrijwel zeker trailed) gebruikt `calcRMultiple` deze mediaan als initial-risk-proxy i.p.v. de CSV-SL.
+
+  **Fallback-chain**:
+  1. CSV-SL met afstand ≥ 0.1% van entry → gebruik die (= realistic, niet getrailed)
+  2. CSV-SL < 0.1% + ≥3 losers in data → gebruik mediaan-loser-SL%
+  3. CSV-SL < 0.1% + <3 losers → fallback default 0.4% (typical scalper SL)
+
+  **Resultaat in jouw screenshot**:
+  - +1926R trade (entry $73894, exit $59987, pnl +$545): met mediaan 0.4% → **~+47R**
+  - +750R / +257R outliers → realistic +20-30R-range
+  - Verliezers (-1.0R, -0.3R) → ongewijzigd (CSV-SL was al accuraat)
+
+  **Zelf-tunend**: hoe meer losers in jouw dataset, hoe accurater de mediaan. App leert jouw trading-stijl over tijd. Geen Settings-config nodig — als jouw risk-% verandert, schuift de mediaan automatisch mee.
+
+- **v12.195 display-clamp verwijderd** — niet meer nodig, R-waardes zijn nu inherent realistisch.
+
+### Tests
+- **`tests/run-ftmo-rmult.js`** uitgebreid: 15 assertions over:
+  - Realistic SL → bestaande v12.194 formule (4 instrumenten)
+  - Mediaan-derivation uit losers (0.4% groep → mediaan 0.4%)
+  - Winner met trailed SL + mediaan-fallback → realistisch
+  - Edge cases (<3 losers, alleen winners → mediaan null + default 0.4%)
+- Crypto regression: Blofin/MEXC/HL/Kraken paden ongewijzigd
+
+### Open scope (later)
+- Analytics aggregaten (avgR per setup) gebruiken nu nog `calcRMultiple(t)` zonder ftmoCtx → fallback default 0.4%. Voor v12.197 kunnen we ftmoCtx ook door analytics doorgeven voor maximale precisie. Voor nu acceptabel want default 0.4% is realistisch voor jouw stijl.
+
+---
+
 ## [v12.195] — 2026-06-05
 
 ### Gewijzigd
