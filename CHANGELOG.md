@@ -6,6 +6,38 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.203] — 2026-06-05
+
+### Gewijzigd
+- **Layer-color mapping nu range-based i.p.v. whitelist** *(gevraagd door Denny: "kan je dat een van/tot maken? want ik gebruik de 2h bijvoorbeeld ook")*
+
+  v12.202 gebruikte een vaste whitelist (`TF_GROUPS.HTF = ["Daily","12H","4H",...]`). Custom timeframes als **2H** (Denny's case) of **90M / 45M / 200M** vielen in "OTHER" → geen kleur. Nu **automatische detectie** voor elke timeframe:
+
+  **Nieuwe parser** `parseTimeframeMinutes(tf)` converteert elke shape naar minuten:
+  - `"1m" / "5M" / "15min" / "30 min"` → 1 / 5 / 15 / 30
+  - `"1h" / "2H" / "4h"` → 60 / 120 / 240
+  - `"1d" / "Daily" / "1D"` → 1440
+  - `"1w" / "Weekly"` → 10080
+  - Garbage / leeg → `null`
+
+  **Range-cutoffs** (configuratie centraal in `TF_CUTOFFS` constant):
+  ```js
+  LTF: < 15 min
+  MTF: 15 min – 3 uur (15-179 min)
+  HTF: ≥ 3 uur (180+ min)
+  ```
+
+  **Effect op jouw use-case**: 2H valt nu in MTF (= intraday actie, goud-kleur). Custom 90M / 45M / 200M / 4H allemaal automatisch correct geclassificeerd. Geen handmatige whitelist-uitbreiding meer nodig bij nieuwe timeframes.
+
+### Tests
+- **`tests/run-layer-color.js`** uitgebreid: 43 assertions over `parseTimeframeMinutes` (14) + `getLayerTimeframeGroup` met range-checks (23) + `getLayerColor` (6). Incl. boundaries (3H exact = HTF, 15M exact = MTF) + custom timeframes (2H, 90M, 45M).
+- Smoke + themes regression 6/6 groen
+
+### Demo
+- [`demos/layer-colors-demo.html`](demos/layer-colors-demo.html) — mapping-tabel bijgewerkt naar de nieuwe ranges met voorbeelden van custom TFs
+
+---
+
 ## [v12.202] — 2026-06-05
 
 ### Toegevoegd

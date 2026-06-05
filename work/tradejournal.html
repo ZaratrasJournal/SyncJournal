@@ -1633,7 +1633,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.202",released:"2026-06-05"};
+const APP_VERSION={version:"v12.203",released:"2026-06-05"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -1993,22 +1993,40 @@ function SampleSizeBanner({n,threshold,style}){
 // Pure helper — geen exchange-specifieke aannames.
 const filterMergedChildren=(trades)=>(trades||[]).filter(t=>t.status!=="merged-child");
 
-// v12.202: setup-laag kleur-mapping op basis van timeframe-rol (Jordy's request).
-// HTF (Daily/12H/4H+) = context · MTF (1H/15M/30M) = actie · LTF (5M/1M) = trigger.
+// v12.202/v12.203: setup-laag kleur-mapping op basis van timeframe-rol (Jordy's request).
+// HTF (≥3h) = context · MTF (15min-3h) = actie · LTF (<15min) = trigger.
 // Kleur volgt rol, niet positie — een trade met "Daily → 5M" en een trade met "4H → 1M"
 // hebben beide dezelfde HTF→LTF kleur-flow ongeacht het aantal lagen.
-const TF_GROUPS={
-  HTF:["1W","W","WEEK","WEEKLY","1D","D","DAILY","12H","8H","6H","4H"],
-  MTF:["1H","60M","30M","15M"],
-  LTF:["10M","5M","3M","1M"],
-};
-function getLayerTimeframeGroup(timeframe){
-  const tf=String(timeframe||"").trim().toUpperCase().replace(/\s+/g,"");
-  if(!tf)return "OTHER";
-  for(const[group,tfs]of Object.entries(TF_GROUPS)){
-    if(tfs.includes(tf))return group;
+//
+// v12.203: range-based i.p.v. whitelist. Werkt voor ELKE timeframe (2H, 45M, 90M, custom).
+// Parser converteert "1m"/"5M"/"15min"/"1h"/"2H"/"4h"/"1d"/"Daily"/"1w"/"Weekly" → minuten.
+function parseTimeframeMinutes(timeframe){
+  const s=String(timeframe||"").trim().toLowerCase();
+  if(!s)return null;
+  // Match "<num><unit>" patterns: 1m, 5M, 15min, 30 min, 1h, 2H, 1d, 1w
+  const m=s.match(/^(\d+(?:\.\d+)?)\s*(mo(?:nth)?|m(?:in)?|h(?:our)?|d(?:ay)?|w(?:eek)?)?$/i);
+  if(m){
+    const num=parseFloat(m[1]);
+    const unitRaw=(m[2]||"").toLowerCase();
+    if(unitRaw.startsWith("mo"))return num*60*24*30;// monthly
+    if(unitRaw.startsWith("w"))return num*60*24*7;  // weekly
+    if(unitRaw.startsWith("d"))return num*60*24;    // daily
+    if(unitRaw.startsWith("h"))return num*60;       // hourly
+    if(unitRaw.startsWith("m")||!unitRaw)return num;// minutes (default)
   }
-  return "OTHER";
+  // Named aliases zonder cijfer
+  if(/^(monthly|month)$/i.test(s))return 60*24*30;
+  if(/^(weekly|week)$/i.test(s))return 60*24*7;
+  if(/^(daily|day)$/i.test(s))return 60*24;
+  return null;
+}
+const TF_CUTOFFS={LTF_MAX:15,MTF_MAX:180};// LTF<15min · MTF 15-180min · HTF≥180min (3h)
+function getLayerTimeframeGroup(timeframe){
+  const mins=parseTimeframeMinutes(timeframe);
+  if(mins===null)return "OTHER";
+  if(mins<TF_CUTOFFS.LTF_MAX)return "LTF";
+  if(mins<TF_CUTOFFS.MTF_MAX)return "MTF";
+  return "HTF";
 }
 function getLayerColor(layer){
   const g=getLayerTimeframeGroup(layer&&layer.timeframe);
