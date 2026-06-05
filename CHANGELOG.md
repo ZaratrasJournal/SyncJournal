@@ -6,6 +6,45 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.205] — 2026-06-05
+
+### Toegevoegd
+- **Alignment-pattern classifier + badge + filter** (fase 2 van bias-traject)
+
+  Nieuwe pure helper `getTradeAlignmentPattern(trade)` classificeert elke trade in 5 buckets op basis van HTF/LTF bias-flow vs direction:
+  - **Continuation** ✓ — HTF + LTF aligned met direction (trend-volger)
+  - **Pullback** ↻ — HTF aligned, LTF tegen direction (ICT/SMC retracement-entry)
+  - **Reversal** ⇄ — HTF tegen direction, LTF aligned (turn-call op LTF)
+  - **Counter** ⚠ — beide tegen direction (counter-trend)
+  - **Unclassified** — onvoldoende bias-data of mixed signaal binnen één groep
+
+  **MTF wordt bewust genegeerd** voor classificatie — die is overgangsgebied. Past bij ICT/SMC-trader-denken waar HTF en LTF de hoofdvragen zijn.
+
+  **Badge in Trades-tabel**: kleine pill na de lagen in de Setup-cel:
+  ```
+  ▲ 4H · BOS · ▲ 1H · F2L · ▲ 5M · MSB  [✓ Cont]
+  ```
+  Alleen tonen als pattern ≠ Unclassified — geen visuele drukte voor legacy-trades zonder bias.
+
+  **Filter in FilterBar** (Patroon-rij): chips "Alle / ✓ Cont / ↻ Pull / ⇄ Rev / ⚠ Counter / — Uncls" gekleurd per pattern. Apply via `applyFilters` met `alignmentPattern` key. `clearAll()` resette ook deze filter.
+
+### Helpers (nieuwe pure functies)
+- `biasMatchesDirection(bias, direction)` — returnt true/false/null (null = neutral/empty)
+- `getTradeAlignmentPattern(trade)` — returnt een van 5 patterns
+- `getPatternColor(pattern)` — theme-aware token
+- `getPatternLabel(pattern)` — display-string met icon
+- Constant `TRADE_PATTERNS` — array van alle 5 patronen voor iteratie
+
+### Tests
+- **`tests/run-alignment-pattern.js`** — 29 assertions over:
+  - `biasMatchesDirection` (6 cases, incl. neutral/empty → null)
+  - Happy paths (5 cases: 4 patterns + short variant)
+  - Edge cases (13 cases: null/empty trade, no layers, no direction, no bias, only MTF, single HTF/LTF, mixed HTF, MTF wordt genegeerd)
+  - `TRADE_PATTERNS` constant integriteit
+- Smoke + themes 6/6 groen
+
+---
+
 ## [v12.204] — 2026-06-05
 
 ### Toegevoegd

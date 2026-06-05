@@ -1652,7 +1652,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.204",released:"2026-06-05"};
+const APP_VERSION={version:"v12.205",released:"2026-06-05"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -2075,6 +2075,69 @@ function getBiasColor(bias){
   if(bias==="bearish")return "var(--red)";
   if(bias==="neutral")return "var(--text3)";
   return null;
+}
+
+// v12.205: classify trade naar alignment-pattern o.b.v. bias-flow vs trade-direction.
+//   "Continuation" — alle HTF + alle LTF aligned met direction
+//   "Pullback"    — HTF aligned, LTF tegen direction (retracement-entry, klassieke ICT/SMC)
+//   "Reversal"    — HTF tegen direction, LTF aligned (turn-call op LTF)
+//   "Counter"     — beide tegen direction (counter-trend)
+//   "Unclassified"— geen of mixed bias-signaal (verzamelt legacy + lopende trades)
+// Helper biasMatchesDirection returnt true/false/null (null = neutral/empty, telt niet mee).
+function biasMatchesDirection(bias,direction){
+  if(!bias||bias==="neutral")return null;
+  if(bias==="bullish")return direction==="long";
+  if(bias==="bearish")return direction==="short";
+  return null;
+}
+function getTradeAlignmentPattern(trade){
+  if(!trade)return "Unclassified";
+  const layers=Array.isArray(trade.layers)?trade.layers:[];
+  if(layers.length===0)return "Unclassified";
+  const direction=trade.direction;
+  if(direction!=="long"&&direction!=="short")return "Unclassified";
+  // Splits in HTF/LTF buckets (MTF telt niet voor pattern — die is overgangsgebied)
+  const htfBiased=layers.filter(l=>getLayerTimeframeGroup(l.timeframe)==="HTF"&&biasMatchesDirection(l.bias,direction)!==null);
+  const ltfBiased=layers.filter(l=>getLayerTimeframeGroup(l.timeframe)==="LTF"&&biasMatchesDirection(l.bias,direction)!==null);
+  if(htfBiased.length===0&&ltfBiased.length===0)return "Unclassified";
+  // Compute group-level alignment: alle aligned, alle against, of mixed (= unclassified)
+  const groupAligned=(arr)=>{
+    if(arr.length===0)return null;
+    const matches=arr.map(l=>biasMatchesDirection(l.bias,direction));
+    if(matches.every(m=>m===true))return "aligned";
+    if(matches.every(m=>m===false))return "against";
+    return "mixed";
+  };
+  const htfState=groupAligned(htfBiased);
+  const ltfState=groupAligned(ltfBiased);
+  if(htfState==="mixed"||ltfState==="mixed")return "Unclassified";
+  // Pattern-matrix
+  if(htfState==="aligned"&&ltfState==="aligned")return "Continuation";
+  if(htfState==="aligned"&&ltfState==="against")return "Pullback";
+  if(htfState==="against"&&ltfState==="aligned")return "Reversal";
+  if(htfState==="against"&&ltfState==="against")return "Counter";
+  // Single-group fallback
+  if(htfState==="aligned"&&ltfState===null)return "Continuation";
+  if(htfState==="against"&&ltfState===null)return "Counter";
+  if(ltfState==="aligned"&&htfState===null)return "Continuation";
+  if(ltfState==="against"&&htfState===null)return "Counter";
+  return "Unclassified";
+}
+// Pattern-rendering helpers
+const TRADE_PATTERNS=["Continuation","Pullback","Reversal","Counter","Unclassified"];
+function getPatternColor(pattern){
+  if(pattern==="Continuation")return "var(--green)";
+  if(pattern==="Pullback")return "var(--gold)";
+  if(pattern==="Reversal")return "var(--layer-htf)";
+  if(pattern==="Counter")return "var(--red)";
+  return "var(--text4)";
+}
+function getPatternLabel(pattern){
+  if(pattern==="Continuation")return "✓ Cont";
+  if(pattern==="Pullback")return "↻ Pull";
+  if(pattern==="Reversal")return "⇄ Rev";
+  if(pattern==="Counter")return "⚠ Counter";
+  return "— Uncls";
 }
 
 // v12.197: Genereer tpLevels[] uit gemergde children. Elke child = 1 TP-niveau met:
@@ -5289,11 +5352,17 @@ function TradeList({trades,onEdit,onDelete,onQuickTag,onBulkDelete,onBulkTag,onB
               {/* v12.165: Setup/Sessie/Emoties van pill naar tekst (kleur signaleert, geen pill-noise).
                   De tabel had 6+ gekleurde pills per rij = "fruit-salad" effect. Nu rusten kleuren
                   op tekst, niet op backgrounds. PnL en open/partial/missed status blijven prominent. */}
-              {/* v12.202: per-laag kleur op basis van timeframe-groep (HTF=blauw/MTF=goud/LTF=groen)
-                  via getLayerColor(). Setup-tags zonder layers blijven gold (geen TF-context).
-                  v12.204: bias-pijl (▲/●/▼) in bias-kleur vóór de timeframe-tekst — direct zien
-                  welke laag bullish/bearish bias heeft. Subtiel; geen pijl = bias leeg. */}
-              <td style={tdStyle}>{hasLayers?layers.map((l,li)=>{const confs=(l.confirmations||[l.confirmation].filter(Boolean));const ss=(l.setups||[]).join("+");const fpLabel=(l.setups||[]).includes("Fill Play")&&l.fillPlayType?` · ${l.fillPlayType}`:"";const biasIc=getBiasIcon(l.bias);const biasCol=getBiasColor(l.bias);return <span key={li} style={{display:"inline-block",fontSize:"10px",color:getLayerColor(l),fontWeight:600,marginRight:"6px",whiteSpace:"nowrap"}}>{biasIc&&<span style={{color:biasCol,marginRight:"3px",fontSize:"10px"}}>{biasIc}</span>}{l.timeframe}{ss?" · "+ss:""}{fpLabel}{confs.length>0?" · "+confs.join("+"):""}</span>}):(t.setupTags||[]).length>0?(t.setupTags||[]).map(s=><span key={s} style={{display:"inline-block",fontSize:"10px",color:"var(--gold)",fontWeight:600,marginRight:"6px",whiteSpace:"nowrap"}}>{s}</span>):<button onClick={e=>{e.stopPropagation();onQuickTag&&onQuickTag(t)}} style={{fontSize:"10px",padding:"2px 8px",borderRadius:"3px",border:"1px dashed var(--border4)",background:"transparent",color:"var(--text4)",cursor:"pointer",fontFamily:"inherit"}}>+ tag</button>}</td>
+              {/* v12.202: per-laag kleur o.b.v. TF-groep (HTF=blauw/MTF=goud/LTF=groen).
+                  v12.204: bias-pijl (▲/●/▼) in bias-kleur vóór timeframe-tekst.
+                  v12.205: pattern-badge (Continuation/Pullback/Reversal/Counter/Unclassified)
+                  na de lagen — alleen tonen als classifier iets anders teruggeeft dan Unclassified
+                  zodat legacy trades zonder bias geen visuele drukte krijgen. */}
+              <td style={tdStyle}>{(()=>{
+                const pattern=hasLayers?getTradeAlignmentPattern(t):"Unclassified";
+                const showPattern=pattern!=="Unclassified";
+                const patternEl=showPattern&&<span style={{display:"inline-flex",alignItems:"center",padding:"1.5px 6px",borderRadius:"3px",fontSize:"9px",fontWeight:700,fontFamily:"var(--mono)",letterSpacing:"0.04em",color:getPatternColor(pattern),border:`1px solid ${getPatternColor(pattern)}`,opacity:0.85,marginLeft:"4px",whiteSpace:"nowrap"}} title={`Alignment-patroon: ${pattern}`}>{getPatternLabel(pattern)}</span>;
+                return hasLayers?<>{layers.map((l,li)=>{const confs=(l.confirmations||[l.confirmation].filter(Boolean));const ss=(l.setups||[]).join("+");const fpLabel=(l.setups||[]).includes("Fill Play")&&l.fillPlayType?` · ${l.fillPlayType}`:"";const biasIc=getBiasIcon(l.bias);const biasCol=getBiasColor(l.bias);return <span key={li} style={{display:"inline-block",fontSize:"10px",color:getLayerColor(l),fontWeight:600,marginRight:"6px",whiteSpace:"nowrap"}}>{biasIc&&<span style={{color:biasCol,marginRight:"3px",fontSize:"10px"}}>{biasIc}</span>}{l.timeframe}{ss?" · "+ss:""}{fpLabel}{confs.length>0?" · "+confs.join("+"):""}</span>})}{patternEl}</>:((t.setupTags||[]).length>0?(t.setupTags||[]).map(s=><span key={s} style={{display:"inline-block",fontSize:"10px",color:"var(--gold)",fontWeight:600,marginRight:"6px",whiteSpace:"nowrap"}}>{s}</span>):<button onClick={e=>{e.stopPropagation();onQuickTag&&onQuickTag(t)}} style={{fontSize:"10px",padding:"2px 8px",borderRadius:"3px",border:"1px dashed var(--border4)",background:"transparent",color:"var(--text4)",cursor:"pointer",fontFamily:"inherit"}}>+ tag</button>);
+              })()}</td>
               <td style={tdStyle}>{getSessionTags(t.date,t.time).map(s=>{const c=SESSION_COLORS[s]||SESSION_COLORS["US Late"];return <span key={s} style={{display:"inline-block",fontSize:"10px",color:c.text,fontWeight:500,marginRight:"6px",whiteSpace:"nowrap"}}>{s}</span>})}</td>
               <td style={tdStyle}>{(t.emotionTags||[]).map(s=><span key={s} style={{display:"inline-block",fontSize:"10px",color:isNegEmotion(s)?"var(--red)":"var(--green)",fontWeight:500,marginRight:"6px",whiteSpace:"nowrap"}}>{s}</span>)}</td>
               <td style={tdStyle}><button onClick={e=>{e.stopPropagation();onDelete(t.id)}} style={{background:"none",border:"none",color:"var(--text5)",cursor:"pointer",fontSize:"12px",padding:"2px 4px"}}>✕</button></td>
@@ -7574,7 +7643,7 @@ function FilterBar({trades,allTrades,filters,setFilters,config,accounts}){
   const[expanded,setExpanded]=useState(false);
   const chip=(label,field,value)=>{const active=filters[field]===value;return <button key={value} onClick={()=>setFilters(p=>({...p,[field]:active?"all":value}))} style={{padding:"4px 10px",borderRadius:"5px",fontSize:"11px",fontWeight:500,border:`1px solid ${active?"#C9A84C":"var(--border3)"}`,background:active?"rgba(201,168,76,0.12)":"transparent",color:active?"#C9A84C":"var(--text3)",cursor:"pointer",fontFamily:"inherit",transition:"all .12s"}}>{label}</button>};
   const multiChip=(label,field,value)=>{const arr=filters[field]||[];const active=arr.includes(value);return <button key={value} onClick={()=>setFilters(p=>{const cur=p[field]||[];return{...p,[field]:active?cur.filter(v=>v!==value):[...cur,value]}})} style={{padding:"4px 10px",borderRadius:"5px",fontSize:"11px",fontWeight:500,border:`1px solid ${active?"#C9A84C":"var(--border3)"}`,background:active?"rgba(201,168,76,0.12)":"transparent",color:active?"#C9A84C":"var(--text3)",cursor:"pointer",fontFamily:"inherit",transition:"all .12s"}}>{label}</button>};
-  const clearAll=()=>setFilters({source:"all",pair:"all",quote:"all",direction:"all",status:"all",dateFrom:"",dateTo:"",setupTags:[],confirmationTags:[],emotionTags:[],mistakeTags:[],timeframeTags:[],sessionTags:[],dayOfWeek:[],tradeIds:[],leverage:"all",result:"all"});
+  const clearAll=()=>setFilters({source:"all",pair:"all",quote:"all",direction:"all",status:"all",dateFrom:"",dateTo:"",setupTags:[],confirmationTags:[],emotionTags:[],mistakeTags:[],timeframeTags:[],sessionTags:[],dayOfWeek:[],tradeIds:[],leverage:"all",result:"all",alignmentPattern:"all"});
   // Quick-filter pill helpers
   const qPill=(label,field,value)=>{const active=filters[field]===value;return(<button key={field+value} onClick={()=>setFilters(p=>({...p,[field]:active?"all":value}))} className={"pill"+(active?" active":"")}>{label}</button>)};
   const qDate=(label,from)=>{const today=new Date().toISOString().split("T")[0];const active=filters.dateFrom===from&&filters.dateTo===today;return(<button key={label} onClick={()=>setFilters(p=>active?{...p,dateFrom:"",dateTo:""}:{...p,dateFrom:from,dateTo:today})} className={"pill"+(active?" active":"")}>{label}</button>)};
@@ -7632,6 +7701,8 @@ function FilterBar({trades,allTrades,filters,setFilters,config,accounts}){
       <div style={{display:"flex",alignItems:"center",gap:"8px",flexWrap:"wrap"}}><span style={{fontSize:"10px",color:"var(--text4)",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em",minWidth:"65px"}}>Richting</span>{chip("Alle","direction","all")}{chip("Long","direction","long")}{chip("Short","direction","short")}</div>
       <div style={{display:"flex",alignItems:"center",gap:"8px",flexWrap:"wrap"}}><span style={{fontSize:"10px",color:"var(--text4)",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em",minWidth:"65px"}}>Status</span>{chip("Alle","status","all")}<button onClick={()=>setFilters(p=>({...p,status:p.status==="open"?"all":"open"}))} style={{padding:"4px 10px",borderRadius:"5px",fontSize:"11px",fontWeight:500,border:`1px solid ${filters.status==="open"?"#C9A84C":"var(--border3)"}`,background:filters.status==="open"?"rgba(201,168,76,0.12)":"transparent",color:filters.status==="open"?"#C9A84C":"var(--text3)",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:"5px"}}>{filters.status==="open"&&<span style={{width:"5px",height:"5px",borderRadius:"50%",background:"#C9A84C"}}/>}Open</button>{chip("Closed","status","closed")}</div>
       <div style={{display:"flex",alignItems:"center",gap:"8px",flexWrap:"wrap"}}><span style={{fontSize:"10px",color:"var(--text4)",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em",minWidth:"65px"}}>Resultaat</span>{chip("Alle","result","all")}{chip("Winners","result","win")}{chip("Losers","result","loss")}</div>
+      {/* v12.205: alignment-pattern filter — classificeert trades op HTF/LTF bias-flow vs direction. */}
+      <div style={{display:"flex",alignItems:"center",gap:"8px",flexWrap:"wrap"}}><span style={{fontSize:"10px",color:"var(--text4)",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em",minWidth:"65px"}}>Patroon</span>{chip("Alle","alignmentPattern","all")}{TRADE_PATTERNS.map(p=>chip(<span style={{color:getPatternColor(p)}}>{getPatternLabel(p)}</span>,"alignmentPattern",p))}</div>
       {/* v12.128: Type-filter altijd zichtbaar (was gated op config.trackMissedTrades).
           Anders konden users met BT/paper trades hun simulaties niet in Analytics zien
           omdat default tradeType="real" alle simulated trades verbergt en de toggle om
@@ -7689,6 +7760,10 @@ function applyFilters(trades,filters){
       if(dow<0||!filters.dayOfWeek.includes(dow))return false;
     }
     if(filters.tradeIds?.length>0&&!filters.tradeIds.includes(t.id))return false;
+    // v12.205: alignment-pattern filter (Continuation/Pullback/Reversal/Counter/Unclassified)
+    if(filters.alignmentPattern&&filters.alignmentPattern!=="all"){
+      if(getTradeAlignmentPattern(t)!==filters.alignmentPattern)return false;
+    }
     return true;
   });
 }
