@@ -6,6 +6,17 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.193] — 2026-06-05
+
+### Gewijzigd
+- **Trades-tabel Status-kolom gecentreerd** *(gevraagd door Denny: "status mag gecentreerd")*
+  - Header + body-cell beide `textAlign:"center"`. ✓/✗ icoons en OPEN/PARTIAL/MISS-pills komen nu netjes in het midden van de kolom.
+
+### Test
+- Smoke groen — pure CSS-tweak
+
+---
+
 ## [v12.192] — 2026-06-05
 
 ### Fixed
