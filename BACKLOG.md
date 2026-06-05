@@ -473,6 +473,39 @@ In [tests/](tests/) staan 4 real-data specs (`<exchange>-real-data.spec.js`) die
 
 ## 🔬 Onderzoek / te besluiten
 
+- [ ] **Bruto PnL en netto PnL — beide tonen, transparant onderscheid** *(2026-06-05, gevraagd door Denny: "we moeten nog wel eerst uitzoeken hoe we dit willen implementeren")* — Op dit moment heeft elke trade één `pnl`-veld dat **per exchange inconsistent gevuld** wordt:
+  - **FTMO CSV**: parser zet `pnl = profit + swap + commissions` (= netto). Bruto verloren.
+  - **Blofin / MEXC / Kraken / Hyperliquid API**: `realizedPnl` komt vaak al netto binnen van de exchange. Soms bruto (varieert per endpoint).
+  - **Manual trades**: user weet meestal niet of 'ie bruto of netto invoert.
+  - Helper `netPnl()` returnt al **netto** via `pnl − fees`, maar als `pnl` al netto is wordt 't dubbel-getrokken. Pragmatisch behandeld via [line 1885+ comment](work/tradejournal.html#L1885) maar fragiel.
+
+  **Waarom dit ertoe doet**: voor échte edge-analyse wil je weten wat de strategie verdient (bruto) **én** wat na alle kosten overblijft (netto). Bij scalper-stijl op FTMO kan de spread + commissie 30-50% van de edge weghalen — dat zie je nu niet expliciet. Funding fees op crypto-perp (zie aparte backlog-entry) is een vergelijkbare cost-categorie die nog niet getrackt wordt.
+
+  **Te ontwerpen** (vóór implementatie):
+  1. **Schema-keuze** — drie opties:
+     - A: 2 aparte velden `pnlGross` + `pnlNet`. Migratie: backfill via `fees`. Display: beide tonen, toggleable.
+     - B: 1 veld `pnl` (bruto) + Σ van cost-velden (`fees`, `swap`, `funding`, `commission`) → netto on-the-fly. Schoner data-model.
+     - C: 1 veld `pnl` (canonical, exchange-keuze: bruto bij FTMO, netto bij crypto-API) + flag `pnlIsNet:true|false`. Backwards-compat. Minder ingrijpend.
+  2. **Cost-categorieën uit elkaar trekken**: nu zit alles in één `fees`-veld. Voor FTMO: `swap + commission` apart in 2 velden? Voor crypto-perp: `tradeFee + fundingFee` apart? Granulair maakt analytics rijker maar parser-werk groter.
+  3. **Per-exchange parser-audit**: voor elk van de 5 exchanges (Blofin/MEXC/Kraken/HL/FTMO) checken welk veld bruto vs netto is, met fixture-tests. Documenteren in CLAUDE.md "Exchange-architectuur".
+  4. **Display-strategy**: tabel-kolom toont nu PnL ongeclassificeerd. Opties:
+     - Default = netto (= conservatief, "echte winst"), tooltip toont bruto + breakdown
+     - Toggle in topbar of FilterBar voor bruto-mode
+     - Stat-row onder tabel: `Bruto Σ · Netto Σ · Δ kosten`
+  5. **Analytics-impact**: alle aggregaten (avgPnl, profit-factor, expectancy) zouden netto moeten zijn, met optioneel bruto-vergelijk. Maar als we splitsen krijgen we 2× zoveel widgets.
+  6. **Migratie van bestaande trades**: backfill rule per source. Wat doen we met manual trades waar fees=0 en de user "weet niet" of 'ie bruto/netto invoerde?
+  7. **Trade-form**: aparte invoer-velden of auto-calculation? Bij ingevoerde `pnl + fees` → toon afgeleid netto in real-time?
+  8. **Export/import compat**: backup-JSON moet beide kunnen ronddragen zonder dataloss.
+
+  **Te onderzoeken — hoe doen andere journals dit?**
+  - **Tradervue / Edgewonk / TraderSync**: hebben ze aparte bruto/netto-display? Toggleable?
+  - **MyFXBook / FXBlue (MT4/5-focus)**: standaard voor FX-traders — wat zien ze als canonical?
+  - **TradesViz / TradeZilla**: crypto-perp specifiek — hoe handlen ze funding?
+
+  **Aanbevolen onderzoeksweg**: `research-deep` skill over 6 competitors + bekijk hoe ProRealTime, NinjaTrader, cTrader het in hun journals doen. Output: `docs/gross-vs-net-pnl-research-2026-MM-DD.md` met aanbevolen schema-keuze + migratie-plan + per-exchange audit-checklist.
+
+  **Wacht op groen licht van Denny voordat we Sprint 1 starten.**
+
 - [ ] **Playbook-coaching AI — competitive research nodig** *(2026-05-17, gevraagd door Denny)* — We hebben op de backlog **🥇 AI Trade Autopsy** (per trade) en **🥈 AI Super-Prompt "Wat heeft prioriteit?"** (aggregaat over 10 autopsies + tendencies). Wat we **NIET** hebben overwogen is **playbook-niveau coaching**: feedback op de hele setup-strategie i.p.v. individuele trades. Voorbeelden van ideeën die we nog niet hebben uitgewerkt:
   - "Hoe verbeter ik deze playbook?" — AI analyseert alle trades onder een playbook + criteria + voorbeelden → concrete verbetersuggesties
   - **Playbook A/B-vergelijking** — "Setup X werkt op US-session, Setup Y op Asia — focus accordingly"
