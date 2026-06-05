@@ -6,6 +6,44 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.194] — 2026-06-05
+
+### Fixed
+- **R-multiple onzin voor FTMO MT5 trades (+15.162R, +5.584.137R, etc.)** *(gemeld door Denny met screenshot na CSV-import)*
+
+  **Oorzaak**: `calcRMultiple` ([line 1485](work/tradejournal.html#L1485)) gebruikt de formule voor **linear crypto contracts**:
+  ```js
+  const size=parseFloat(trade.positionSize)||1;     // ← fallback naar 1
+  const riskUsdt=risk*size/entry;                    // ← crypto-formule
+  ```
+  FTMO CSV-parser zet `positionSize:""` (leeg) en `positionSizeAsset:volume` (MT5-lot). Voor BTC/USD trade met entry ~73895 en kleine SL-afstand werd `riskUsdt ≈ |entry-sl| × 1 / 73895 ≈ 0.00001` → `R = pnl / 0.00001 = miljoenen`.
+
+  **Fix**: voor `source==="ftmo"` gebruiken we een **pnl/price-move-afgeleide formule** die instrument-onafhankelijk is (werkt voor BTC-CFD, XAUUSD, FX-majors, indices, alles):
+  ```js
+  const dollarsPerPoint = |pnl| / |exit - entry|;
+  const riskDollars     = |entry - sl| × dollarsPerPoint;
+  R = pnl / riskDollars;
+  ```
+  Geverifieerd met 4 instrumenten:
+  - BTC/USD short loser (1.07 punt move): R ≈ -0.26 ✓
+  - BTC/USD short winner (10518 punt move): R ≈ +20.8 ✓
+  - XAUUSD long TP1 (3.5 punt move): R ≈ +0.875 ✓
+  - EURUSD long (17 pips): R ≈ +1.7 ✓
+
+  Crypto-pad (Blofin/MEXC/Kraken/HL) blijft onveranderd — die hebben altijd `positionSize` in USDT via API-import.
+
+- **Size-kolom toonde `N/A` voor FTMO-trades**
+
+  **Oorzaak**: `fmtSize` in TradeList ([line 4770](work/tradejournal.html#L4770)) returnt `null` (→ UI toont N/A) als `positionSize` leeg is. FTMO heeft `positionSize:""` en lot in `positionSizeAsset`.
+
+  **Fix**: voor `source==="ftmo"` toon nu `<lot> lot` (bv. `0.5 lot`). Werkt in beide size-modes (USDT en Asset toggle) want lot is de natuurlijke MT5-eenheid, niet USDT-notional.
+
+### Tests
+- **`tests/run-ftmo-rmult.js`** — 9 assertions over 4 FTMO-instrumenten (BTC, XAUUSD, EURUSD, edges) + 2 crypto-regression-cases.
+- Smoke + merge-trades regression: 2/2 groen.
+
+---
+
 ## [v12.193] — 2026-06-05
 
 ### Gewijzigd

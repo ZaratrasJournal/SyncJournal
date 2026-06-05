@@ -1487,7 +1487,21 @@ function calcRMultiple(trade){
   const sl=parseFloat(trade.stopLoss);
   const pnlVal=parseFloat(trade.pnl);
   if(!entry||!sl||sl===entry||isNaN(pnlVal))return null;
-  // Position size in base currency (contracts or lots)
+  // v12.194: FTMO/MT5 lot-based instruments hebben positionSize leeg (lot zit in positionSizeAsset)
+  // en gebruiken geen linear-contract pricing. De crypto-formule (risk × size / entry) geeft
+  // onzin (risk ≈ 0 / 73894 → R = miljoenen). In plaats daarvan: leid dollars-per-point af uit
+  // de werkelijke pnl/price-move van de trade. Werkt voor elke instrument-type (BTC-CFD, XAUUSD,
+  // FX-majors, indices) zolang exit + pnl gevuld zijn.
+  if(trade.source==="ftmo"){
+    const exit=parseFloat(trade.exit);
+    if(!isFinite(exit)||exit<=0||exit===entry)return null;
+    const dollarsPerPoint=Math.abs(pnlVal)/Math.abs(exit-entry);
+    if(!isFinite(dollarsPerPoint)||dollarsPerPoint<=0)return null;
+    const riskDollars=Math.abs(entry-sl)*dollarsPerPoint;
+    if(riskDollars<=0)return null;
+    return pnlVal/riskDollars;
+  }
+  // Linear crypto contracts (Blofin/MEXC/Kraken/Hyperliquid): positionSize in USDT.
   const size=parseFloat(trade.positionSize)||1;
   const risk=Math.abs(entry-sl);
   // Risk in USDT = risk × size / entry (for linear contracts)
@@ -1573,7 +1587,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.193",released:"2026-06-05"};
+const APP_VERSION={version:"v12.194",released:"2026-06-05"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -4754,6 +4768,13 @@ function TradeList({trades,onEdit,onDelete,onQuickTag,onBulkDelete,onBulkTag,onB
 
   const toggleSizeMode=()=>{const next=sizeMode==="usdt"?"asset":"usdt";setSizeMode(next);localStorage.setItem("tj_sizeMode",next)};
   const fmtSize=(t)=>{
+    // v12.194: FTMO/MT5 lot-based — positionSize is leeg, lot zit in positionSizeAsset.
+    // Toon `<lot> lot` in beide modes (USDT en Asset) zodat de Size-kolom niet als N/A blijft.
+    if(t.source==="ftmo"){
+      const lot=parseFloat(t.positionSizeAsset);
+      if(lot>0)return `${parseFloat(lot.toFixed(2))} lot`;
+      return null;
+    }
     const sz=parseFloat(t.positionSize);if(!sz||isNaN(sz))return null;
     if(sizeMode==="asset"){
       const asset=(t.pair||"").split("/")[0]||"";
