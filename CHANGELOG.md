@@ -6,6 +6,29 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.199] — 2026-06-05
+
+### Gewijzigd
+- **Bulk-action-bar wordt floating onderaan viewport** *(gemeld door Denny: "na selecteren moet ik naar boven scrollen om de samenvoegen knop te klikken")*
+
+  De bulk-bar zat bovenaan de tabel — bij selecteren van trades 30 rijen naar beneden moest je eerst scrollen naar boven om de actie te kiezen. Nu een **floating action-bar onderaan het scherm**:
+
+  - `position:fixed; bottom:24px` — altijd zichtbaar tijdens scrollen
+  - Centered: `left:50%; transform:translateX(-50%)`
+  - Slide-up animation bij verschijnen (nieuwe `@keyframes slideUp`)
+  - Box-shadow + gold border voor visuele prominence
+  - z-index 50 — boven tabel-content
+  - `maxWidth:calc(100vw - 48px)` zodat 'ie op smalle viewports niet de rand raakt
+
+  Selectie-label kreeg een eigen **🔗 N trades geselecteerd**-pill met gold-border. Stijl matched de demo (`demos/trades-merge-demo.html`) die je al goedkeurde.
+
+  Hardcoded `#C9A84C` + `rgba(201,168,76,0.2)` vervangen door `var(--gold)` / `var(--gold-dim)` / `var(--border2)` — theme-aware in alle 6 thema's.
+
+### Test
+- Smoke + merge regression: 2/2 groen
+
+---
+
 ## [v12.198] — 2026-06-05
 
 ### Fixed
