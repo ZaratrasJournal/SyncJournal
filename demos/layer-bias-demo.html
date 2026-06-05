@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Setup-laag bias — feature-plan demo · SyncJournal</title>
+<style>
+  :root{
+    --bg:#0a0c12; --bg2:#0e151d; --bg3:#131a24; --bg4:#19222e;
+    --border1:rgba(120,140,160,0.10);
+    --border2:rgba(120,140,160,0.18);
+    --border3:rgba(120,140,160,0.28);
+    --text:#e3e8ef; --text2:#c9d3e0; --text3:#94a1b4; --text4:#6f7d92; --text5:#54627a;
+    --gold:#e0b341; --gold-dim:rgba(224,179,65,0.10); --gold-border:rgba(224,179,65,0.28);
+    --green:#34d8a0; --red:#f6566f; --amber:#f4b042; --blue:#5aa9ff;
+    --layer-htf:#5aa9ff; --layer-mtf:#e0b341; --layer-ltf:#34d8a0;
+    --bias-bull:#34d8a0; --bias-bull-dim:rgba(52,216,160,0.15);
+    --bias-neut:#94a1b4; --bias-neut-dim:rgba(148,161,180,0.12);
+    --bias-bear:#f6566f; --bias-bear-dim:rgba(246,86,111,0.15);
+    --mono:'JetBrains Mono','SF Mono',ui-monospace,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",sans-serif;padding:32px 24px 96px;line-height:1.5}
+  .wrap{max-width:1280px;margin:0 auto}
+  h1{font-size:26px;margin:0 0 8px;letter-spacing:-0.01em}
+  h2{font-size:18px;margin:32px 0 14px;color:var(--gold);letter-spacing:-0.01em;display:flex;align-items:center;gap:10px}
+  h2 .v{font:600 11px var(--mono);background:var(--gold-dim);color:var(--gold);padding:3px 8px;border-radius:5px;letter-spacing:0.04em;text-transform:uppercase;border:1px solid var(--gold-border)}
+  h3{font-size:14px;margin:20px 0 10px;color:var(--text2);letter-spacing:0.02em}
+  p.lead{color:var(--text3);font-size:13.5px;max-width:880px;margin:0 0 18px;line-height:1.6}
+  p.lead strong{color:var(--text2)}
+  p.lead code{background:var(--bg3);padding:1px 6px;border-radius:4px;font:600 12px var(--mono);color:var(--gold)}
+
+  .phase{background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:24px;margin-bottom:24px}
+  .phase-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px;gap:18px}
+  .phase-meta{font:500 11px var(--mono);color:var(--text4);text-transform:uppercase;letter-spacing:0.08em}
+
+  /* === LAYER-CARD MOCKUP (Fase 1) === */
+  .layer-card{background:var(--bg3);border:1px solid var(--border2);border-radius:10px;padding:16px;margin-bottom:10px}
+  .layer-card.htf{border-left:3px solid var(--layer-htf)}
+  .layer-card.mtf{border-left:3px solid var(--layer-mtf)}
+  .layer-card.ltf{border-left:3px solid var(--layer-ltf)}
+  .layer-head{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+  .layer-num{font:700 11px var(--mono);color:var(--text4);width:18px}
+  .tf-tag{font:700 9.5px var(--mono);letter-spacing:0.08em;padding:2px 7px;border-radius:3px}
+  .tf-tag.htf{color:var(--layer-htf);border:1px solid var(--layer-htf)}
+  .tf-tag.mtf{color:var(--layer-mtf);border:1px solid var(--layer-mtf)}
+  .tf-tag.ltf{color:var(--layer-ltf);border:1px solid var(--layer-ltf)}
+
+  .form-section{margin-bottom:12px}
+  .form-label{font:700 9.5px var(--mono);color:var(--gold);text-transform:uppercase;letter-spacing:0.12em;margin-bottom:6px}
+  .form-btns{display:flex;gap:5px;flex-wrap:wrap}
+  .form-btn{padding:5px 11px;border-radius:5px;font:600 11px var(--mono);border:1px solid var(--border3);background:var(--bg4);color:var(--text2);cursor:pointer;font-family:inherit;transition:all .15s}
+  .form-btn.active.tf-htf{border-color:var(--layer-htf);color:var(--layer-htf)}
+  .form-btn.active.tf-mtf{border-color:var(--layer-mtf);color:var(--layer-mtf)}
+  .form-btn.active.tf-ltf{border-color:var(--layer-ltf);color:var(--layer-ltf)}
+  .form-btn.active.setup{border-color:var(--gold-border);background:var(--gold-dim);color:var(--gold)}
+  .form-btn.active.conf{border-color:rgba(13,148,136,0.5);background:rgba(46,170,111,0.18);color:var(--green)}
+
+  /* Bias 3-knops segmented control */
+  .bias-control{display:inline-flex;gap:6px;padding:4px;background:var(--bg4);border:1px solid var(--border2);border-radius:8px}
+  .bias-btn{padding:6px 14px;border-radius:5px;font:600 11px var(--mono);border:1px solid transparent;background:transparent;color:var(--text3);cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:5px;transition:all .15s}
+  .bias-btn:hover{color:var(--text2)}
+  .bias-btn.active.bull{background:var(--bias-bull-dim);color:var(--bias-bull);border-color:var(--bias-bull)}
+  .bias-btn.active.neut{background:var(--bias-neut-dim);color:var(--text2);border-color:var(--bias-neut)}
+  .bias-btn.active.bear{background:var(--bias-bear-dim);color:var(--bias-bear);border-color:var(--bias-bear)}
+
+  /* === ALIGNMENT-PATTERN DISPLAY (Fase 2) === */
+  .trades-tbl{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:12px}
+  .trades-tbl th{padding:10px 12px;font:700 10px var(--mono);letter-spacing:0.06em;text-transform:uppercase;text-align:left;color:var(--text4);background:var(--bg3);border-bottom:1px solid var(--border2)}
+  .trades-tbl td{padding:14px 12px;border-bottom:1px solid var(--border1);vertical-align:middle}
+  .trades-tbl tr:hover td{background:rgba(255,255,255,0.02)}
+  .pair-cell{font-weight:600}
+  .side-pill{display:inline-block;padding:2px 7px;border-radius:4px;font:700 9.5px var(--mono);letter-spacing:0.04em}
+  .side-pill.long{background:rgba(52,216,160,0.12);color:var(--green)}
+  .side-pill.short{background:rgba(246,86,111,0.12);color:var(--red)}
+  .num{font-family:var(--mono);text-align:right}
+  .num.pnl-pos{color:var(--green);font-weight:700}
+  .num.pnl-neg{color:var(--red);font-weight:700}
+  .layer{display:inline-block;font:600 10.5px var(--mono);margin-right:6px;white-space:nowrap}
+  .layer.htf{color:var(--layer-htf)}
+  .layer.mtf{color:var(--layer-mtf)}
+  .layer.ltf{color:var(--layer-ltf)}
+  .layer .bias-arrow{font-size:10px;margin-right:2px}
+  .layer .bias-arrow.bull{color:var(--bias-bull)}
+  .layer .bias-arrow.neut{color:var(--bias-neut)}
+  .layer .bias-arrow.bear{color:var(--bias-bear)}
+
+  /* Pattern badges */
+  .pattern{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:5px;font:700 10px var(--mono);letter-spacing:0.04em;border:1px solid}
+  .pattern.continuation{background:rgba(52,216,160,0.10);color:var(--green);border-color:rgba(52,216,160,0.30)}
+  .pattern.pullback{background:rgba(224,179,65,0.10);color:var(--gold);border-color:var(--gold-border)}
+  .pattern.reversal{background:rgba(90,169,255,0.10);color:var(--blue);border-color:rgba(90,169,255,0.30)}
+  .pattern.counter{background:rgba(246,86,111,0.10);color:var(--red);border-color:rgba(246,86,111,0.30)}
+  .pattern.unclassified{background:var(--bg4);color:var(--text4);border-color:var(--border3)}
+
+  /* === KPI STRIP (Fase 3a) === */
+  .kpi-strip{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px}
+  .kpi-card{background:var(--bg3);border:1px solid var(--border2);border-radius:10px;padding:16px}
+  .kpi-card.continuation{border-top:3px solid var(--green)}
+  .kpi-card.pullback{border-top:3px solid var(--gold)}
+  .kpi-card.reversal{border-top:3px solid var(--blue)}
+  .kpi-card.counter{border-top:3px solid var(--red)}
+  .kpi-label{font:700 10px var(--mono);color:var(--text4);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center}
+  .kpi-label .count{color:var(--text3);font-weight:500}
+  .kpi-wr{font:700 26px var(--mono);letter-spacing:-0.01em;margin-bottom:2px}
+  .kpi-wr.win-high{color:var(--green)}
+  .kpi-wr.win-mid{color:var(--gold)}
+  .kpi-wr.win-low{color:var(--red)}
+  .kpi-r{font:600 11px var(--mono);color:var(--text3)}
+
+  /* === ALIGNMENT BAR-CHART (Fase 3b) === */
+  .align-chart{padding:16px;background:var(--bg3);border:1px solid var(--border2);border-radius:10px;margin-bottom:18px}
+  .chart-title{font:700 12px var(--mono);color:var(--text2);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:14px}
+  .chart-row{display:grid;grid-template-columns:140px 1fr 100px;gap:12px;align-items:center;margin-bottom:8px}
+  .chart-label{font:600 11px var(--mono);color:var(--text2)}
+  .chart-bar-wrap{height:22px;background:var(--bg4);border-radius:4px;overflow:hidden;position:relative}
+  .chart-bar{height:100%;border-radius:4px;transition:width .3s}
+  .chart-bar.continuation{background:var(--green)}
+  .chart-bar.pullback{background:var(--gold)}
+  .chart-bar.reversal{background:var(--blue)}
+  .chart-bar.counter{background:var(--red)}
+  .chart-meta{font:600 11px var(--mono);text-align:right}
+
+  /* === HTF×LTF HEATMAP (Fase 3c) === */
+  .heatmap{border-collapse:separate;border-spacing:3px;margin-top:12px}
+  .heatmap th{padding:10px 14px;font:700 10px var(--mono);color:var(--text4);text-transform:uppercase;letter-spacing:0.06em}
+  .heatmap td.hdr{padding:10px 14px;font:700 10px var(--mono);color:var(--text4);text-transform:uppercase;letter-spacing:0.06em;text-align:right;background:var(--bg3);border-radius:5px}
+  .heatmap td.cell{padding:14px 18px;border-radius:6px;min-width:140px;text-align:center}
+  .heatmap td.cell.empty{background:var(--bg4);color:var(--text5);font-style:italic}
+  .cell-pattern{font:700 9.5px var(--mono);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;opacity:0.9}
+  .cell-wr{font:700 16px var(--mono);letter-spacing:-0.01em}
+  .cell-meta{font:500 10px var(--mono);opacity:0.7;margin-top:2px}
+
+  /* === PLAYBOOK SIGNATURE (Fase 4) === */
+  .pb-card{background:var(--bg3);border:1px solid var(--border2);border-radius:10px;padding:18px;margin-bottom:14px}
+  .pb-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+  .pb-name{font:700 14px var(--mono);color:var(--text);letter-spacing:-0.01em}
+  .pb-stats{font:500 11px var(--mono);color:var(--text3)}
+  .pb-signature{display:flex;gap:8px;align-items:center;margin-bottom:14px;padding:10px 14px;background:var(--bg4);border-radius:6px}
+  .pb-sig-label{font:700 9.5px var(--mono);color:var(--text4);text-transform:uppercase;letter-spacing:0.08em}
+  .pb-sig-flow{display:flex;align-items:center;gap:6px;font:600 11px var(--mono);color:var(--text2)}
+  .pb-sig-flow .arrow{color:var(--text5)}
+  .pb-distribution{display:flex;gap:0;height:32px;border-radius:6px;overflow:hidden;margin-bottom:8px}
+  .pb-bucket{display:flex;flex-direction:column;justify-content:center;align-items:center;font:700 10px var(--mono);color:#1a1308;padding:0 8px}
+  .pb-bucket.continuation{background:var(--green)}
+  .pb-bucket.pullback{background:var(--gold)}
+  .pb-bucket.reversal{background:var(--blue)}
+  .pb-bucket.counter{background:var(--red)}
+  .pb-bucket.legacy{background:var(--text5);color:var(--bg)}
+  .pb-bucket-wr{font-weight:500;font-size:9px;opacity:0.85}
+  .pb-distribution-legend{display:flex;gap:14px;flex-wrap:wrap;font:500 10.5px var(--mono);color:var(--text4)}
+  .pb-distribution-legend span{display:inline-flex;align-items:center;gap:5px}
+  .pb-distribution-legend .sw{width:10px;height:10px;border-radius:2px}
+
+  /* Tech-notes */
+  .tech-notes{padding:18px;background:var(--bg3);border:1px solid var(--border1);border-radius:10px;font-size:12px;color:var(--text3);line-height:1.6}
+  .tech-notes code{background:var(--bg4);padding:1px 5px;border-radius:3px;font:500 11px var(--mono);color:var(--gold)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Setup-laag bias — 5-fasen feature-plan</h1>
+  <p class="lead">
+    Visualiseert wat we gaan bouwen over v12.203 → v12.207. Per laag krijg je een <strong>bullish/neutraal/bearish</strong>-bias.
+    De app classifeert dan automatisch <code>Continuation / Pullback / Reversal / Counter</code> op basis van hoe de bias-flow zich verhoudt tot de trade-direction.
+    Analytics + playbook-stats laten dan zien <strong>welke patronen voor jou werken</strong> en welke je moet vermijden.
+  </p>
+
+  <!-- ====================================================================== -->
+  <h2>Fase 1 <span class="v">v12.203</span> &nbsp;Bias-control per laag in TradeForm</h2>
+  <p class="lead">3-knops segmented control direct onder de Timeframe-keuze, vóór Setup-tags. Theme-aware kleuren (groen/grijs/rood). Backwards-compat: bestaande trades hebben <code>bias:""</code> = leeg = "Unclassified".</p>
+
+  <div class="phase">
+    <div class="phase-head">
+      <h3 style="margin:0">Voorbeeld trade-form: XAUUSD long, 3 lagen</h3>
+      <span class="phase-meta">Schema · UI · No analytics yet</span>
+    </div>
+
+    <!-- HTF layer -->
+    <div class="layer-card htf">
+      <div class="layer-head">
+        <span class="layer-num">1.</span>
+        <span class="tf-tag htf">HTF</span>
+      </div>
+      <div class="form-section">
+        <div class="form-label">Timeframe</div>
+        <div class="form-btns">
+          <button class="form-btn">15M</button>
+          <button class="form-btn">30M</button>
+          <button class="form-btn">1H</button>
+          <button class="form-btn active tf-htf">4H</button>
+          <button class="form-btn">Daily</button>
+        </div>
+      </div>
+      <div class="form-section">
+        <div class="form-label">Bias</div>
+        <div class="bias-control">
+          <button class="bias-btn active bull">🟢 Bullish</button>
+          <button class="bias-btn">⚪ Neutraal</button>
+          <button class="bias-btn">🔴 Bearish</button>
+        </div>
+      </div>
+      <div class="form-section">
+        <div class="form-label">Setup</div>
+        <div class="form-btns">
+          <button class="form-btn active setup">BOS</button>
+          <button class="form-btn">MSB</button>
+          <button class="form-btn">OB</button>
+          <button class="form-btn">Trend</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- MTF layer -->
+    <div class="layer-card mtf">
+      <div class="layer-head">
+        <span class="layer-num">2.</span>
+        <span class="tf-tag mtf">MTF</span>
+      </div>
+      <div class="form-section">
+        <div class="form-label">Timeframe</div>
+        <div class="form-btns">
+          <button class="form-btn">15M</button>
+          <button class="form-btn">30M</button>
+          <button class="form-btn active tf-mtf">1H</button>
+          <button class="form-btn">4H</button>
+        </div>
+      </div>
+      <div class="form-section">
+        <div class="form-label">Bias</div>
+        <div class="bias-control">
+          <button class="bias-btn">🟢 Bullish</button>
+          <button class="bias-btn active neut">⚪ Neutraal</button>
+          <button class="bias-btn">🔴 Bearish</button>
+        </div>
+      </div>
+      <div class="form-section">
+        <div class="form-label">Setup</div>
+        <div class="form-btns">
+          <button class="form-btn active setup">F2L</button>
+          <button class="form-btn active setup">SFP</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- LTF layer -->
+    <div class="layer-card ltf">
+      <div class="layer-head">
+        <span class="layer-num">3.</span>
+        <span class="tf-tag ltf">LTF</span>
+      </div>
+      <div class="form-section">
+        <div class="form-label">Timeframe</div>
+        <div class="form-btns">
+          <button class="form-btn active tf-ltf">5M</button>
+          <button class="form-btn">10M</button>
+          <button class="form-btn">15M</button>
+        </div>
+      </div>
+      <div class="form-section">
+        <div class="form-label">Bias</div>
+        <div class="bias-control">
+          <button class="bias-btn">🟢 Bullish</button>
+          <button class="bias-btn">⚪ Neutraal</button>
+          <button class="bias-btn active bear">🔴 Bearish</button>
+        </div>
+      </div>
+      <div class="form-section">
+        <div class="form-label">Setup</div>
+        <div class="form-btns">
+          <button class="form-btn active setup">MSB</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="tech-notes" style="margin-top:18px">
+      <strong>Schema:</strong> <code>layer.bias = "bullish" | "neutral" | "bearish" | ""</code> — additive, geen migratie.<br>
+      Geen analytics-impact in deze release. Volgende fases bouwen voort op deze data.
+    </div>
+  </div>
+
+  <!-- ====================================================================== -->
+  <h2>Fase 2 <span class="v">v12.204</span> &nbsp;Pattern-classificatie + badge in Trades-tabel</h2>
+  <p class="lead">
+    Helper <code>getTradeAlignmentPattern(trade)</code> classifeert elke trade als <strong>Continuation / Pullback / Reversal / Counter / Unclassified</strong> op basis van hoe HTF + LTF lagen zich verhouden tot trade-direction.
+    Badge naast de Setup-kolom toont direct welk patroon. Trades-filter: "Toon alleen [pattern]".
+  </p>
+
+  <div class="phase">
+    <div class="phase-head">
+      <h3 style="margin:0">Trades-overzicht met pattern-classificatie</h3>
+      <span class="phase-meta">TF-rol gevoelig (Optie II) · Legacy-bucket apart</span>
+    </div>
+
+    <table class="trades-tbl">
+      <thead>
+        <tr><th>Datum</th><th>Pair</th><th>Side</th><th class="num">PnL</th><th>Setup-lagen + bias</th><th>Patroon</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>05-06 09:15</td><td class="pair-cell">BTC/USD</td><td><span class="side-pill long">LONG</span></td><td class="num pnl-pos">+$289</td>
+          <td>
+            <span class="layer htf"><span class="bias-arrow bull">▲</span>4H · BOS</span>
+            <span class="layer mtf"><span class="bias-arrow bull">▲</span>1H · F2L</span>
+            <span class="layer ltf"><span class="bias-arrow bull">▲</span>5M · MSB</span>
+          </td>
+          <td><span class="pattern continuation">✓ Continuation</span></td>
+        </tr>
+        <tr>
+          <td>04-06 14:32</td><td class="pair-cell">XAU/USD</td><td><span class="side-pill long">LONG</span></td><td class="num pnl-pos">+$165</td>
+          <td>
+            <span class="layer htf"><span class="bias-arrow bull">▲</span>Daily · Trend</span>
+            <span class="layer mtf"><span class="bias-arrow neut">●</span>1H · Pullback</span>
+            <span class="layer ltf"><span class="bias-arrow bear">▼</span>5M · MSB</span>
+          </td>
+          <td><span class="pattern pullback">↻ Pullback</span></td>
+        </tr>
+        <tr>
+          <td>03-06 11:08</td><td class="pair-cell">BTC/USD</td><td><span class="side-pill short">SHORT</span></td><td class="num pnl-pos">+$110</td>
+          <td>
+            <span class="layer htf"><span class="bias-arrow bull">▲</span>4H · BOS</span>
+            <span class="layer ltf"><span class="bias-arrow bear">▼</span>15M · MSB</span>
+          </td>
+          <td><span class="pattern reversal">⇄ Reversal</span></td>
+        </tr>
+        <tr>
+          <td>02-06 16:48</td><td class="pair-cell">BTC/USD</td><td><span class="side-pill long">LONG</span></td><td class="num pnl-neg">−$78</td>
+          <td>
+            <span class="layer htf"><span class="bias-arrow bear">▼</span>4H · MSB</span>
+            <span class="layer ltf"><span class="bias-arrow bear">▼</span>5M · OB</span>
+          </td>
+          <td><span class="pattern counter">⚠ Counter</span></td>
+        </tr>
+        <tr>
+          <td>01-06 10:24</td><td class="pair-cell">XAU/USD</td><td><span class="side-pill long">LONG</span></td><td class="num pnl-pos">+$87</td>
+          <td>
+            <span class="layer mtf">1H · F2L</span>
+            <span class="layer ltf">5M · MSB</span>
+          </td>
+          <td><span class="pattern unclassified">— Unclassified</span></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="tech-notes" style="margin-top:18px">
+      <strong>Classifier-logica (Optie II — TF-rol gevoelig):</strong><br>
+      • <strong>Continuation</strong>: alle HTF + alle LTF bias matched met trade-direction.<br>
+      • <strong>Pullback</strong>: HTF aligned met direction, LTF tegen direction (= klassieke retracement-entry).<br>
+      • <strong>Reversal</strong>: HTF tegen direction, LTF aligned (= turn-call op LTF).<br>
+      • <strong>Counter</strong>: zowel HTF als LTF tegen direction.<br>
+      • <strong>Unclassified</strong>: geen HTF-lagen OF geen bias-velden ingevuld.<br>
+      Filter "Toon alleen [pattern]" in de FilterBar — direct edge-analyse mogelijk.
+    </div>
+  </div>
+
+  <!-- ====================================================================== -->
+  <h2>Fase 3a <span class="v">v12.205</span> &nbsp;Analytics — KPI-strip per alignment-pattern</h2>
+  <p class="lead">Bovenaan Analytics: 4-card strip met direct overzicht waar je geld verdient en waar je verliest. Dit is <strong>het kritische inzicht</strong>.</p>
+
+  <div class="phase">
+    <div class="kpi-strip">
+      <div class="kpi-card continuation">
+        <div class="kpi-label">CONTINUATION <span class="count">45 trades</span></div>
+        <div class="kpi-wr win-high">71%</div>
+        <div class="kpi-r">+0.82R avg · +$2.347 totaal</div>
+      </div>
+      <div class="kpi-card pullback">
+        <div class="kpi-label">PULLBACK <span class="count">23 trades</span></div>
+        <div class="kpi-wr win-high">65%</div>
+        <div class="kpi-r">+0.61R avg · +$894 totaal</div>
+      </div>
+      <div class="kpi-card reversal">
+        <div class="kpi-label">REVERSAL <span class="count">12 trades</span></div>
+        <div class="kpi-wr win-mid">50%</div>
+        <div class="kpi-r">+0.12R avg · +$148 totaal</div>
+      </div>
+      <div class="kpi-card counter">
+        <div class="kpi-label">COUNTER <span class="count">8 trades</span></div>
+        <div class="kpi-wr win-low">25%</div>
+        <div class="kpi-r">−0.43R avg · −$487 totaal</div>
+      </div>
+    </div>
+
+    <div class="tech-notes">
+      <strong>Wat dit oplost:</strong> direct zien dat je in <code>Counter</code> $487 verliest met 25% WR — een trader-discipline-signaal om counter-trades structureel te skippen.
+      Per-card klik → filter Trades op dat patroon voor diepere review.
+    </div>
+  </div>
+
+  <!-- ====================================================================== -->
+  <h2>Fase 3b <span class="v">v12.205</span> &nbsp;Alignment-vs-WR bar-chart</h2>
+  <p class="lead">Visualisatie van WR per patroon. Klikbaar → filter Trades.</p>
+
+  <div class="phase">
+    <div class="align-chart">
+      <div class="chart-title">Win-rate per alignment-patroon</div>
+
+      <div class="chart-row">
+        <span class="chart-label">Continuation</span>
+        <div class="chart-bar-wrap"><div class="chart-bar continuation" style="width:71%"></div></div>
+        <span class="chart-meta" style="color:var(--green)">71% · 45t</span>
+      </div>
+      <div class="chart-row">
+        <span class="chart-label">Pullback</span>
+        <div class="chart-bar-wrap"><div class="chart-bar pullback" style="width:65%"></div></div>
+        <span class="chart-meta" style="color:var(--gold)">65% · 23t</span>
+      </div>
+      <div class="chart-row">
+        <span class="chart-label">Reversal</span>
+        <div class="chart-bar-wrap"><div class="chart-bar reversal" style="width:50%"></div></div>
+        <span class="chart-meta" style="color:var(--blue)">50% · 12t</span>
+      </div>
+      <div class="chart-row">
+        <span class="chart-label">Counter</span>
+        <div class="chart-bar-wrap"><div class="chart-bar counter" style="width:25%"></div></div>
+        <span class="chart-meta" style="color:var(--red)">25% · 8t</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====================================================================== -->
+  <h2>Fase 3c <span class="v">v12.206</span> &nbsp;HTF × LTF bias-heatmap</h2>
+  <p class="lead">Granulaire analyse: per HTF-bias × LTF-bias combo zien wat de patroon-classificatie is + jouw historische WR. Helpt zien welke combinaties écht renderen.</p>
+
+  <div class="phase">
+    <table class="heatmap">
+      <thead>
+        <tr>
+          <th></th>
+          <th style="color:var(--bias-bull)">LTF Bullish ▲</th>
+          <th style="color:var(--bias-neut)">LTF Neutraal ●</th>
+          <th style="color:var(--bias-bear)">LTF Bearish ▼</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="hdr" style="color:var(--bias-bull)">▲ HTF Bullish</td>
+          <td class="cell" style="background:rgba(52,216,160,0.30)">
+            <div class="cell-pattern" style="color:var(--green)">Continuation</div>
+            <div class="cell-wr" style="color:var(--green)">71%</div>
+            <div class="cell-meta">45t · +0.82R</div>
+          </td>
+          <td class="cell" style="background:rgba(52,216,160,0.18)">
+            <div class="cell-pattern" style="color:var(--green)">Aligned</div>
+            <div class="cell-wr">62%</div>
+            <div class="cell-meta">18t · +0.55R</div>
+          </td>
+          <td class="cell" style="background:rgba(224,179,65,0.18)">
+            <div class="cell-pattern" style="color:var(--gold)">Pullback</div>
+            <div class="cell-wr">65%</div>
+            <div class="cell-meta">23t · +0.61R</div>
+          </td>
+        </tr>
+        <tr>
+          <td class="hdr" style="color:var(--bias-neut)">● HTF Neutraal</td>
+          <td class="cell empty">—</td>
+          <td class="cell empty">Geen bias-signaal · 4t</td>
+          <td class="cell empty">—</td>
+        </tr>
+        <tr>
+          <td class="hdr" style="color:var(--bias-bear)">▼ HTF Bearish</td>
+          <td class="cell" style="background:rgba(90,169,255,0.18)">
+            <div class="cell-pattern" style="color:var(--blue)">Reversal</div>
+            <div class="cell-wr">50%</div>
+            <div class="cell-meta">12t · +0.12R</div>
+          </td>
+          <td class="cell empty">3t · −0.10R</td>
+          <td class="cell" style="background:rgba(246,86,111,0.22)">
+            <div class="cell-pattern" style="color:var(--red)">Counter</div>
+            <div class="cell-wr" style="color:var(--red)">25%</div>
+            <div class="cell-meta">8t · −0.43R</div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="tech-notes" style="margin-top:18px">
+      <strong>Inzicht:</strong> cell-hue = WR, intensiteit = absolute edge (R-gewogen). Klik op cell → filter Trades op die bias-combo.
+      Past stilistisch bij bestaande <code>SetupSessionMatrix</code> (v12.184 heatmap-redesign).
+    </div>
+  </div>
+
+  <!-- ====================================================================== -->
+  <h2>Fase 4 <span class="v">v12.207</span> &nbsp;Playbook bias-signature + pattern-distributie</h2>
+  <p class="lead">Per playbook detecteren: wat is de typische bias-stijl, en welke patronen ondersteunt dit playbook eigenlijk?</p>
+
+  <div class="phase">
+
+    <div class="pb-card">
+      <div class="pb-head">
+        <span class="pb-name">📘 London Breakout Long</span>
+        <span class="pb-stats">62 trades · WR 68% · +$3.840 totaal</span>
+      </div>
+      <div class="pb-signature">
+        <span class="pb-sig-label">Typische bias-flow:</span>
+        <span class="pb-sig-flow">
+          <span style="color:var(--layer-htf)">HTF ▲ Bullish</span>
+          <span class="arrow">→</span>
+          <span style="color:var(--layer-mtf)">MTF ▲ Bullish</span>
+          <span class="arrow">→</span>
+          <span style="color:var(--layer-ltf)">LTF ● Neutraal</span>
+        </span>
+      </div>
+      <div class="pb-distribution">
+        <div class="pb-bucket continuation" style="width:60%">60% Continuation<div class="pb-bucket-wr">WR 75%</div></div>
+        <div class="pb-bucket pullback" style="width:25%">25% Pullback<div class="pb-bucket-wr">WR 60%</div></div>
+        <div class="pb-bucket reversal" style="width:10%">10% Rev<div class="pb-bucket-wr">WR 50%</div></div>
+        <div class="pb-bucket counter" style="width:5%">5%<div class="pb-bucket-wr">WR 0%</div></div>
+      </div>
+      <div class="pb-distribution-legend">
+        <span><span class="sw" style="background:var(--green)"></span>Continuation 60%</span>
+        <span><span class="sw" style="background:var(--gold)"></span>Pullback 25%</span>
+        <span><span class="sw" style="background:var(--blue)"></span>Reversal 10%</span>
+        <span><span class="sw" style="background:var(--red)"></span>Counter 5% ← skip aanbevolen</span>
+      </div>
+    </div>
+
+    <div class="pb-card">
+      <div class="pb-head">
+        <span class="pb-name">📘 NY Reversal Short</span>
+        <span class="pb-stats">28 trades · WR 54% · +$612 totaal</span>
+      </div>
+      <div class="pb-signature">
+        <span class="pb-sig-label">Typische bias-flow:</span>
+        <span class="pb-sig-flow">
+          <span style="color:var(--layer-htf)">HTF ▲ Bullish</span>
+          <span class="arrow">→</span>
+          <span style="color:var(--layer-ltf)">LTF ▼ Bearish</span>
+        </span>
+      </div>
+      <div class="pb-distribution">
+        <div class="pb-bucket reversal" style="width:70%">70% Reversal<div class="pb-bucket-wr">WR 60%</div></div>
+        <div class="pb-bucket counter" style="width:25%">25% Counter<div class="pb-bucket-wr">WR 30%</div></div>
+        <div class="pb-bucket pullback" style="width:5%">5%<div class="pb-bucket-wr">100%</div></div>
+      </div>
+      <div class="pb-distribution-legend">
+        <span><span class="sw" style="background:var(--blue)"></span>Reversal 70%</span>
+        <span><span class="sw" style="background:var(--red)"></span>Counter 25% ← grote zwakte</span>
+        <span><span class="sw" style="background:var(--gold)"></span>Pullback 5%</span>
+      </div>
+    </div>
+
+    <div class="tech-notes" style="margin-top:8px">
+      <strong>Inzicht per playbook:</strong> de bias-signature is de dominante (mode) bias per laag-rol. <strong>De distributie laat zien</strong> hoe vaak je in elk patroon zit
+      en wat de WR is. Voor <em>NY Reversal Short</em> klopt het playbook als reversal-spel (70%, 60% WR), maar 25% van je trades drift naar Counter — dat is waar het lekt.
+      Direct actionable: skip Counter-versies van deze setup.
+    </div>
+  </div>
+
+  <!-- ====================================================================== -->
+  <h2>Recap — wat de 5 fases samen opleveren</h2>
+  <div class="phase">
+    <ul style="padding-left:20px;color:var(--text3);font-size:13px;line-height:1.8">
+      <li><strong>v12.203</strong>: bias-veld + UI (cosmetic, geen analytics)</li>
+      <li><strong>v12.204</strong>: classifier + badge + filter (zonder data nog visueel onderscheid)</li>
+      <li><strong>v12.205</strong>: KPI-strip + WR-chart (eerste echte edge-inzicht)</li>
+      <li><strong>v12.206</strong>: HTF×LTF heatmap (granulaire combinatie-analyse)</li>
+      <li><strong>v12.207</strong>: playbook bias-signature + distributie (per setup zien waar de lekken zitten)</li>
+    </ul>
+    <p style="margin-top:14px;color:var(--text4);font-size:12px">
+      Elke release op zichzelf shippable. Fase 1 = laag risico (puur schema). Fases 3-4 = analytics-uitbreidingen (middel risico, theme-tests vereist).
+      Pre-trade compliance (real-time warning) blijft expliciet buiten dit plan — eerst data verzamelen, dan slim worden.
+    </p>
+  </div>
+
+</div>
+</body>
+</html>
