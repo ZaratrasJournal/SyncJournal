@@ -60,6 +60,11 @@
    Donkere thema's krijgen brighter accents; lichte thema's krijgen darker variants
    per thema-override hieronder zodat WCAG-AA contrast altijd gehaald wordt. */
 --layer-htf:#5aa9ff;--layer-mtf:var(--gold);--layer-ltf:var(--green);
+/* v12.204: Card-tints — subtiele bg-kleur op de hele layer-card als de TF gekozen is.
+   Donker thema: rgba met ~7% opacity. Light themes overrijden hieronder. */
+--layer-htf-tint:rgba(90,169,255,0.07);
+--layer-mtf-tint:rgba(201,168,76,0.07);
+--layer-ltf-tint:rgba(46,170,111,0.07);
 --stat-fs:clamp(18px,2vw,26px);--stat-label-fs:clamp(10px,1vw,12px);
 --content-pad:clamp(16px,2vw,28px);
 --c-win:#2eaa6f;--c-loss:#e05555;--c-long:#2eaa6f;--c-short:#e05555;
@@ -86,6 +91,9 @@ body.theme-classic{
 --gold:#d4b45c;--gold-dim:rgba(212,180,92,0.12);--gold-border:rgba(212,180,92,0.25);
 --border1:rgba(255,255,255,0.06);--border2:rgba(255,255,255,0.09);--border3:rgba(255,255,255,0.13);--border4:rgba(255,255,255,0.16);--border5:rgba(255,255,255,0.19);--border6:rgba(255,255,255,0.22);
 --layer-htf:#7eb6ff;
+--layer-htf-tint:rgba(126,182,255,0.06);
+--layer-mtf-tint:rgba(212,180,92,0.08);
+--layer-ltf-tint:rgba(92,224,160,0.06);
 background:#10111a}
 body.theme-classic::before,body.theme-classic::after{display:none}
 /* ═══ LIGHT THEME — schoon, licht, hoog contrast ═══ */
@@ -101,6 +109,9 @@ body.theme-light{
 --border1:rgba(26,26,26,0.10);--border2:rgba(26,26,26,0.12);--border3:rgba(26,26,26,0.16);--border4:rgba(26,26,26,0.22);--border5:rgba(141,111,31,0.4);--border6:rgba(141,111,31,0.5);
 --gold:#8d6f1f;--gold-dim:rgba(141,111,31,0.12);--gold-border:rgba(141,111,31,0.42);
 --layer-htf:#1e4080;
+--layer-htf-tint:rgba(30,64,128,0.05);
+--layer-mtf-tint:rgba(141,111,31,0.06);
+--layer-ltf-tint:rgba(31,107,69,0.05);
 background:#f7f6f2;color:#1a1a1a}
 body.theme-light::before,body.theme-light::after{display:none}
 body.theme-light input,body.theme-light textarea,body.theme-light select{background:#ffffff!important;color:#1a1a1a!important;border-color:rgba(26,26,26,0.15)!important}
@@ -118,6 +129,9 @@ body.theme-parchment{
 --border1:rgba(76,55,30,0.12);--border2:rgba(76,55,30,0.16);--border3:rgba(217,209,188,1);--border4:rgba(196,184,160,1);--border5:rgba(126,100,32,0.4);--border6:rgba(126,100,32,0.5);
 --gold:#7e6420;--gold-dim:rgba(126,100,32,0.13);--gold-border:rgba(126,100,32,0.42);
 --layer-htf:#2c4e7d;
+--layer-htf-tint:rgba(44,78,125,0.05);
+--layer-mtf-tint:rgba(126,100,32,0.07);
+--layer-ltf-tint:rgba(25,107,67,0.05);
 background:#F6F3EC;color:#1d1813}
 body.theme-parchment::before,body.theme-parchment::after{display:none}
 body.theme-parchment input,body.theme-parchment textarea,body.theme-parchment select{background:#FFFFFF!important;color:#1C1A17!important;border-color:#E8E2D4!important}
@@ -135,6 +149,9 @@ body.theme-daylight{
 --border1:rgba(10,37,64,0.10);--border2:rgba(10,37,64,0.14);--border3:#D6DDE6;--border4:#B7C2CF;--border5:rgba(134,96,31,0.4);--border6:rgba(134,96,31,0.5);
 --gold:#86601f;--gold-dim:rgba(134,96,31,0.10);--gold-border:rgba(134,96,31,0.40);
 --layer-htf:#1e51a0;
+--layer-htf-tint:rgba(30,81,160,0.05);
+--layer-mtf-tint:rgba(134,96,31,0.06);
+--layer-ltf-tint:rgba(22,104,63,0.05);
 background:#F6F9FC;color:#0F1620}
 body.theme-daylight::before,body.theme-daylight::after{display:none}
 body.theme-daylight input,body.theme-daylight textarea,body.theme-daylight select{background:#FFFFFF!important;color:#0A2540!important;border-color:#E3E8EF!important}
@@ -1197,7 +1214,9 @@ function fmtMoney(value,privacy,opts){
 
 // ============ CONSTANTS & HELPERS ============
 const TF_ORDER=["1m","3m","5m","15m","30m","1h","2h","4h","6h","8h","12h","1d","3d","1w","1M"];
-const EMPTY_LAYER={id:"",timeframe:"",setups:[],fillPlayType:undefined,confirmation:"",confirmations:[],notes:""};
+// v12.204: bias-veld toegevoegd (additief, backwards-compat via lege string).
+//   "bullish" | "neutral" | "bearish" | "" (= niet ingevuld, = "Unclassified" in v12.205 classifier)
+const EMPTY_LAYER={id:"",timeframe:"",setups:[],fillPlayType:undefined,confirmation:"",confirmations:[],notes:"",bias:""};
 const EMPTY_TP={id:"",price:"",pct:"25",status:"open",actualPrice:""};
 
 // v12.123: TP-distribution templates (zie BACKLOG.md "Feature Spec: Slimme TP-verdeling").
@@ -1633,7 +1652,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.203",released:"2026-06-05"};
+const APP_VERSION={version:"v12.204",released:"2026-06-05"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -1758,6 +1777,7 @@ const EMPTY_PLAYBOOK_LAYER={
   timeframe:"",          // single TF tag
   setups:[],             // multi: bv. ["SFP","MSB"]
   confirmations:[],      // multi confluence per laag
+  bias:"",               // v12.204: "bullish" | "neutral" | "bearish" | "" — dominante bias-keuze per playbook-laag
 };
 const EMPTY_PLAYBOOK={
   id:"",
@@ -2034,6 +2054,27 @@ function getLayerColor(layer){
   if(g==="MTF")return "var(--layer-mtf)";
   if(g==="LTF")return "var(--layer-ltf)";
   return "var(--text3)";// onbekende TF = neutraal
+}
+// v12.204: subtiele bg-tint voor de hele layer-card o.b.v. TF-groep. Null = geen tint (TF leeg).
+function getLayerCardTint(layer){
+  const g=getLayerTimeframeGroup(layer&&layer.timeframe);
+  if(g==="HTF")return "var(--layer-htf-tint)";
+  if(g==="MTF")return "var(--layer-mtf-tint)";
+  if(g==="LTF")return "var(--layer-ltf-tint)";
+  return null;
+}
+// v12.204: bias-helpers. Pijl-symbool + kleur o.b.v. bias-keuze.
+function getBiasIcon(bias){
+  if(bias==="bullish")return "▲";
+  if(bias==="bearish")return "▼";
+  if(bias==="neutral")return "●";
+  return "";
+}
+function getBiasColor(bias){
+  if(bias==="bullish")return "var(--green)";
+  if(bias==="bearish")return "var(--red)";
+  if(bias==="neutral")return "var(--text3)";
+  return null;
 }
 
 // v12.197: Genereer tpLevels[] uit gemergde children. Elke child = 1 TP-niveau met:
@@ -5249,8 +5290,10 @@ function TradeList({trades,onEdit,onDelete,onQuickTag,onBulkDelete,onBulkTag,onB
                   De tabel had 6+ gekleurde pills per rij = "fruit-salad" effect. Nu rusten kleuren
                   op tekst, niet op backgrounds. PnL en open/partial/missed status blijven prominent. */}
               {/* v12.202: per-laag kleur op basis van timeframe-groep (HTF=blauw/MTF=goud/LTF=groen)
-                  via getLayerColor(). Setup-tags zonder layers blijven gold (geen TF-context). */}
-              <td style={tdStyle}>{hasLayers?layers.map((l,li)=>{const confs=(l.confirmations||[l.confirmation].filter(Boolean));const ss=(l.setups||[]).join("+");const fpLabel=(l.setups||[]).includes("Fill Play")&&l.fillPlayType?` · ${l.fillPlayType}`:"";return <span key={li} style={{display:"inline-block",fontSize:"10px",color:getLayerColor(l),fontWeight:600,marginRight:"6px",whiteSpace:"nowrap"}}>{l.timeframe}{ss?" · "+ss:""}{fpLabel}{confs.length>0?" · "+confs.join("+"):""}</span>}):(t.setupTags||[]).length>0?(t.setupTags||[]).map(s=><span key={s} style={{display:"inline-block",fontSize:"10px",color:"var(--gold)",fontWeight:600,marginRight:"6px",whiteSpace:"nowrap"}}>{s}</span>):<button onClick={e=>{e.stopPropagation();onQuickTag&&onQuickTag(t)}} style={{fontSize:"10px",padding:"2px 8px",borderRadius:"3px",border:"1px dashed var(--border4)",background:"transparent",color:"var(--text4)",cursor:"pointer",fontFamily:"inherit"}}>+ tag</button>}</td>
+                  via getLayerColor(). Setup-tags zonder layers blijven gold (geen TF-context).
+                  v12.204: bias-pijl (▲/●/▼) in bias-kleur vóór de timeframe-tekst — direct zien
+                  welke laag bullish/bearish bias heeft. Subtiel; geen pijl = bias leeg. */}
+              <td style={tdStyle}>{hasLayers?layers.map((l,li)=>{const confs=(l.confirmations||[l.confirmation].filter(Boolean));const ss=(l.setups||[]).join("+");const fpLabel=(l.setups||[]).includes("Fill Play")&&l.fillPlayType?` · ${l.fillPlayType}`:"";const biasIc=getBiasIcon(l.bias);const biasCol=getBiasColor(l.bias);return <span key={li} style={{display:"inline-block",fontSize:"10px",color:getLayerColor(l),fontWeight:600,marginRight:"6px",whiteSpace:"nowrap"}}>{biasIc&&<span style={{color:biasCol,marginRight:"3px",fontSize:"10px"}}>{biasIc}</span>}{l.timeframe}{ss?" · "+ss:""}{fpLabel}{confs.length>0?" · "+confs.join("+"):""}</span>}):(t.setupTags||[]).length>0?(t.setupTags||[]).map(s=><span key={s} style={{display:"inline-block",fontSize:"10px",color:"var(--gold)",fontWeight:600,marginRight:"6px",whiteSpace:"nowrap"}}>{s}</span>):<button onClick={e=>{e.stopPropagation();onQuickTag&&onQuickTag(t)}} style={{fontSize:"10px",padding:"2px 8px",borderRadius:"3px",border:"1px dashed var(--border4)",background:"transparent",color:"var(--text4)",cursor:"pointer",fontFamily:"inherit"}}>+ tag</button>}</td>
               <td style={tdStyle}>{getSessionTags(t.date,t.time).map(s=>{const c=SESSION_COLORS[s]||SESSION_COLORS["US Late"];return <span key={s} style={{display:"inline-block",fontSize:"10px",color:c.text,fontWeight:500,marginRight:"6px",whiteSpace:"nowrap"}}>{s}</span>})}</td>
               <td style={tdStyle}>{(t.emotionTags||[]).map(s=><span key={s} style={{display:"inline-block",fontSize:"10px",color:isNegEmotion(s)?"var(--red)":"var(--green)",fontWeight:500,marginRight:"6px",whiteSpace:"nowrap"}}>{s}</span>)}</td>
               <td style={tdStyle}><button onClick={e=>{e.stopPropagation();onDelete(t.id)}} style={{background:"none",border:"none",color:"var(--text5)",cursor:"pointer",fontSize:"12px",padding:"2px 4px"}}>✕</button></td>
@@ -5286,11 +5329,15 @@ function TradeList({trades,onEdit,onDelete,onQuickTag,onBulkDelete,onBulkTag,onB
                 </div>}
                 {/* Row 3: Layers + TPs + meta badges */}
                 <div style={{display:"flex",gap:"16px",alignItems:"center",flexWrap:"wrap",fontSize:"10px"}}>
-                  {/* v12.202: kleur per laag in expand-row, gescheiden door → arrow. */}
+                  {/* v12.202: kleur per laag in expand-row, gescheiden door → arrow.
+                      v12.204: bias-pijl vóór elke laag-tekst in bias-kleur. */}
                   {layers.length>0&&<div style={{display:"flex",alignItems:"center",gap:"4px",flexWrap:"wrap"}}>
                     <span style={{color:"var(--text5)"}}>📐</span>
-                    {layers.map((l,li)=>{const ss=(l.setups||[]).join("+");const txt=[l.timeframe,ss].filter(Boolean).join(" ");if(!txt)return null;return<React.Fragment key={li}>
-                      <span style={{color:getLayerColor(l),fontFamily:"var(--mono)",fontWeight:600}}>{txt}</span>
+                    {layers.map((l,li)=>{const ss=(l.setups||[]).join("+");const txt=[l.timeframe,ss].filter(Boolean).join(" ");if(!txt)return null;const biasIc=getBiasIcon(l.bias);const biasCol=getBiasColor(l.bias);return<React.Fragment key={li}>
+                      <span style={{display:"inline-flex",alignItems:"center",gap:"3px"}}>
+                        {biasIc&&<span style={{color:biasCol,fontSize:"10px"}}>{biasIc}</span>}
+                        <span style={{color:getLayerColor(l),fontFamily:"var(--mono)",fontWeight:600}}>{txt}</span>
+                      </span>
                       {li<layers.length-1&&<span style={{color:"var(--text5)"}}>→</span>}
                     </React.Fragment>;})}
                   </div>}
@@ -7269,9 +7316,19 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,setConfig,ac
         const orderWarn=i>0&&tfIdx>=0&&prevTfIdx>=0&&tfIdx<prevTfIdx;
         // v12.202: layer-card border-left toont laag-rol kleur (HTF/MTF/LTF). Updates live als
         // user de timeframe wijzigt — geen save nodig. Voor lege TF (= "OTHER") blijft 't subtiel grijs.
+        // v12.204: hele card-bg krijgt subtiele tint in de TF-kleur (Denny's wens: "hele laag krijgt
+        // de tijdframe kleur"). Mini bias-control rechtsboven (3-knops Bull/Neut/Bear).
         const layerColor=getLayerColor(layer);
         const layerGroup=getLayerTimeframeGroup(layer.timeframe);
-        return(<div key={layer.id||i} style={{background:orderWarn?"rgba(201,168,76,0.06)":"var(--bg3)",borderRadius:"10px",border:`1px solid ${orderWarn?"rgba(201,168,76,0.25)":"var(--border3)"}`,borderLeft:`3px solid ${layerColor}`,padding:"14px",marginBottom:"8px",boxShadow:"0 1px 3px rgba(0,0,0,0.04),0 1px 2px rgba(0,0,0,0.02)"}}>
+        const cardTint=getLayerCardTint(layer);
+        const setBias=(b)=>setTrade(p=>{const l=[...(p.layers||[])];l[i]={...l[i],bias:l[i].bias===b?"":b};return{...p,layers:l}});
+        const biasBtn=(b,label,col)=>{
+          const active=layer.bias===b;
+          return(<button onClick={()=>setBias(b)} title={`${label} bias`} style={{padding:"4px 9px",height:"24px",border:`1px solid ${active?col:"transparent"}`,background:active?`color-mix(in srgb, ${col} 15%, transparent)`:"transparent",color:active?col:"var(--text4)",cursor:"pointer",borderRadius:"3px",font:"600 10px var(--mono)",letterSpacing:"0.04em",fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:"4px",whiteSpace:"nowrap",transition:"all .15s"}}>
+            <span style={{fontSize:"10px",lineHeight:1}}>{getBiasIcon(b)}</span>{label}
+          </button>);
+        };
+        return(<div key={layer.id||i} style={{background:orderWarn?"rgba(201,168,76,0.06)":(cardTint||"var(--bg3)"),borderRadius:"10px",border:`1px solid ${orderWarn?"rgba(201,168,76,0.25)":"var(--border3)"}`,borderLeft:`3px solid ${layerColor}`,padding:"14px",marginBottom:"8px",boxShadow:"0 1px 3px rgba(0,0,0,0.04),0 1px 2px rgba(0,0,0,0.02)",transition:"background .2s"}}>
           <div style={{display:"flex",alignItems:"center",gap:"6px",marginBottom:"8px"}}>
             <span style={{fontSize:"11px",color:"var(--text4)",fontWeight:700,fontFamily:"var(--mono)",width:"20px"}}>{i+1}.</span>
             {i>0&&<button onClick={()=>setTrade(p=>{const l=[...(p.layers||[])];[l[i-1],l[i]]=[l[i],l[i-1]];return{...p,layers:l}})} style={{background:"none",border:"none",color:"var(--text4)",cursor:"pointer",fontSize:"13px",padding:"2px"}}>▲</button>}
@@ -7279,7 +7336,14 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,setConfig,ac
             {layerGroup!=="OTHER"&&<span style={{fontSize:"9px",fontFamily:"var(--mono)",fontWeight:700,letterSpacing:"0.08em",color:layerColor,padding:"2px 6px",borderRadius:"3px",border:`1px solid ${layerColor}`,opacity:0.9}}>{layerGroup}</span>}
             <div style={{flex:1}}/>
             {orderWarn&&<span style={{fontSize:"10px",color:"var(--amber)",fontWeight:500}}>⚠ Niet top-down</span>}
-            <button onClick={()=>setTrade(p=>({...p,layers:(p.layers||[]).filter((_,j)=>j!==i)}))} style={{background:"none",border:"none",color:"var(--text5)",cursor:"pointer",fontSize:"13px",padding:"2px"}}>✕</button>
+            {/* v12.204: bias mini-control (▲ Bull / ● Neut / ▼ Bear). Klik op active = uitzetten. */}
+            <span style={{fontSize:"10px",fontFamily:"var(--mono)",color:"var(--text4)",letterSpacing:"0.04em",textTransform:"uppercase",marginRight:"4px"}}>Bias</span>
+            <div style={{display:"inline-flex",gap:"2px",padding:"2px",background:"var(--bg4)",border:"1px solid var(--border1)",borderRadius:"5px"}}>
+              {biasBtn("bullish","Bull","var(--green)")}
+              {biasBtn("neutral","Neut","var(--text3)")}
+              {biasBtn("bearish","Bear","var(--red)")}
+            </div>
+            <button onClick={()=>setTrade(p=>({...p,layers:(p.layers||[]).filter((_,j)=>j!==i)}))} style={{background:"none",border:"none",color:"var(--text5)",cursor:"pointer",fontSize:"13px",padding:"2px 4px",marginLeft:"4px"}}>✕</button>
           </div>
           <div style={{display:"grid",gap:"10px"}}>
             <div><div style={{fontSize:"9px",color:"var(--gold)",marginBottom:"6px",fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase"}}>Timeframe</div><div style={{display:"flex",flexWrap:"wrap",gap:"5px"}}>{gt("timeframeTags").map(tf=>{const sel=layer.timeframe===tf;const tfBtnColor=getLayerColor({timeframe:tf});return(<button key={tf} onClick={()=>setTrade(p=>{const l=[...(p.layers||[])];l[i]={...l[i],timeframe:sel?"":tf};return{...p,layers:l}})} style={{padding:"4px 10px",borderRadius:"5px",fontSize:"10.5px",fontWeight:600,border:`1px solid ${sel?tfBtnColor:"var(--border3)"}`,background:"var(--bg4)",color:sel?tfBtnColor:"var(--text2)",cursor:"pointer",fontFamily:"inherit",transition:"all .15s"}}>{tf}</button>)})}</div></div>

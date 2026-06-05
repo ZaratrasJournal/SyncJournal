@@ -6,6 +6,68 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.204] — 2026-06-05
+
+### Toegevoegd
+- **Bias per setup-laag (bullish/neutraal/bearish)** *(gevraagd door Denny + community — bias per-laag concept uit ICT/SMC trading)*
+
+  Eerste van een 5-release-traject (v12.204-v12.207) voor multi-timeframe-bias-analyse. Deze release = **schema + UI** (geen analytics nog — die volgen in v12.205-207).
+
+  **Schema** (additief, geen migratie):
+  - `EMPTY_LAYER.bias = ""` — kan worden gezet op `"bullish" | "neutral" | "bearish"`
+  - `EMPTY_PLAYBOOK_LAYER.bias = ""` — idem voor playbook-lagen
+  - Backwards-compat: bestaande trades hebben `bias:""` = leeg = "Unclassified"
+
+  **Mini-control in layer-card**: rechtsboven naast HTF/MTF/LTF-tag verschijnt een compacte 3-knops segmented control:
+  ```
+  Bias [ ▲ Bull ] [ ● Neut ] [ ▼ Bear ]
+  ```
+  - Theme-aware kleuren via bestaande tokens (`var(--green)` / `var(--text3)` / `var(--red)`)
+  - Active-state krijgt `color-mix` background voor subtiele tint
+  - Klik op active = uitzetten (toggle back to `""`)
+  - Geen extra storage-footprint — leeg veld backwards-compat
+
+  **Bias-pijl in TradeList**:
+  - **Setup-cel** (compact view): kleine pijl ▲/●/▼ in bias-kleur vóór elke layer-tekst
+  - **Expand-row** (hover-detail): bias-pijl vóór elke `TF · Setup → TF · Setup` flow
+  - Geen pijl = bias leeg (geen visuele drukte voor legacy trades)
+
+### Gewijzigd
+- **Hele layer-card krijgt TF-tint zodra TF gekozen is** *(gevraagd door Denny: "ik wil ook dat het de hele laag de tijdframe kleur krijgt")*
+
+  Was: alleen `borderLeft:3px` in de TF-kleur.
+
+  Nu: hele card-achtergrond krijgt subtiele tint in de TF-kleur. HTF = lichte blauw-tint, MTF = lichte goud-tint, LTF = lichte groen-tint. Geen TF gekozen = neutrale `var(--bg3)`.
+
+  **Nieuwe tokens** (per thema gedefinieerd voor WCAG-conform contrast):
+  ```css
+  --layer-htf-tint: rgba(90,169,255,0.07);   /* default donker */
+  --layer-mtf-tint: rgba(201,168,76,0.07);
+  --layer-ltf-tint: rgba(46,170,111,0.07);
+  ```
+  Light/parchment/daylight thema's overriden met lagere alpha (0.05-0.06) om bleek-op-wit te voorkomen. Classic krijgt iets aangepaste tints voor de iets lichtere bg.
+
+  Smooth transition (0.2s) bij TF-wijziging — voelt levendig.
+
+### Helpers (nieuwe pure functies)
+- `getLayerCardTint(layer)` — returnt `var(--layer-X-tint)` of `null`
+- `getBiasIcon(bias)` — returnt `▲ / ● / ▼` of `""`
+- `getBiasColor(bias)` — returnt theme-aware token of `null`
+
+### Tests
+- **`tests/run-layer-color.js`** uitgebreid: 57 assertions (14 over `parseTimeframeMinutes`, 23 over `getLayerTimeframeGroup` met range-checks, 6 over `getLayerColor`, 5 over `getLayerCardTint`, 9 over bias-helpers)
+- Smoke + themes 6/6 + merge regression: 8/8 groen
+
+### Volgende fases (planned)
+- **v12.205**: `getTradeAlignmentPattern(trade)` helper (Continuation/Pullback/Reversal/Counter/Unclassified) + badge in Trades-tabel + filter
+- **v12.206**: Analytics KPI-strip + alignment-vs-WR chart
+- **v12.207**: HTF×LTF heatmap + Playbook bias-signature
+
+### Demo (commit eerder vandaag)
+[`demos/layer-bias-demo.html`](demos/layer-bias-demo.html) visualiseert het complete 5-fasen plan.
+
+---
+
 ## [v12.203] — 2026-06-05
 
 ### Gewijzigd

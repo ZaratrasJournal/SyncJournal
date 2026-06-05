@@ -8,13 +8,14 @@ const vm = require("vm");
 
 const html = fs.readFileSync(path.resolve(__dirname, "..", "work", "tradejournal.html"), "utf8");
 // v12.203: range-based parser i.p.v. whitelist — extract parseTimeframeMinutes + TF_CUTOFFS + groups + color
+// v12.204: óók getLayerCardTint + getBiasIcon + getBiasColor (eindigt na getBiasColor)
 const startIdx = html.indexOf("function parseTimeframeMinutes(");
-const endIdx = html.indexOf("\n}", html.indexOf("function getLayerColor")) + 2;
+const endIdx = html.indexOf("\n}", html.indexOf("function getBiasColor")) + 2;
 const code = html.slice(startIdx, endIdx);
 
 const ctx = { console };
 vm.createContext(ctx);
-vm.runInContext(code.replace(/^const /gm, "var ") + "\nthis.parseTimeframeMinutes=parseTimeframeMinutes;this.getLayerTimeframeGroup=getLayerTimeframeGroup;this.getLayerColor=getLayerColor;this.TF_CUTOFFS=TF_CUTOFFS;", ctx);
+vm.runInContext(code.replace(/^const /gm, "var ") + "\nthis.parseTimeframeMinutes=parseTimeframeMinutes;this.getLayerTimeframeGroup=getLayerTimeframeGroup;this.getLayerColor=getLayerColor;this.getLayerCardTint=getLayerCardTint;this.getBiasIcon=getBiasIcon;this.getBiasColor=getBiasColor;this.TF_CUTOFFS=TF_CUTOFFS;", ctx);
 
 let failed = 0;
 function assert(cond, msg) {
@@ -80,6 +81,28 @@ console.log("\n[getLayerColor]");
   assert(ctx.getLayerColor({ timeframe: "" }) === "var(--text3)", "empty → var(--text3)");
   assert(ctx.getLayerColor({}) === "var(--text3)", "no timeframe → var(--text3)");
   assert(ctx.getLayerColor(null) === "var(--text3)", "null layer → var(--text3)");
+}
+
+console.log("\n[v12.204 getLayerCardTint]");
+{
+  assert(ctx.getLayerCardTint({ timeframe: "4H" }) === "var(--layer-htf-tint)", "4H → htf-tint");
+  assert(ctx.getLayerCardTint({ timeframe: "2H" }) === "var(--layer-mtf-tint)", "2H → mtf-tint");
+  assert(ctx.getLayerCardTint({ timeframe: "5M" }) === "var(--layer-ltf-tint)", "5M → ltf-tint");
+  assert(ctx.getLayerCardTint({ timeframe: "" }) === null, "leeg → null (geen tint)");
+  assert(ctx.getLayerCardTint({}) === null, "no timeframe → null");
+}
+
+console.log("\n[v12.204 bias helpers]");
+{
+  assert(ctx.getBiasIcon("bullish") === "▲", "bullish → ▲");
+  assert(ctx.getBiasIcon("bearish") === "▼", "bearish → ▼");
+  assert(ctx.getBiasIcon("neutral") === "●", "neutral → ●");
+  assert(ctx.getBiasIcon("") === "", "leeg → empty string");
+  assert(ctx.getBiasIcon(undefined) === "", "undefined → empty");
+  assert(ctx.getBiasColor("bullish") === "var(--green)", "bullish → green token");
+  assert(ctx.getBiasColor("bearish") === "var(--red)", "bearish → red token");
+  assert(ctx.getBiasColor("neutral") === "var(--text3)", "neutral → text3");
+  assert(ctx.getBiasColor("") === null, "leeg → null");
 }
 
 console.log("\n" + (failed === 0 ? "✓ All layer-color tests pass" : `✗ ${failed} assertion(s) failed`));
