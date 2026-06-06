@@ -6,6 +6,19 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.223] — 2026-06-06
+
+### Gewijzigd
+- **Setup-insights tabel — vereenvoudigd naar demo-vorm** *(Denny: "bij de per setup wil ik ook trades / WR / Avg R / PnL hebben net als in de demo")*
+
+  Van 8 naar 6 kolommen: `Setup | Trades | WR | Avg R | PnL | Advies`. Verwijderd uit de tabel:
+  - "Avg $" (gemiddelde PnL per trade) — verschoven naar de row-tooltip (hover toont avg + best + worst)
+  - "Best / Worst" (extreme R-multiples) — verschoven naar dezelfde row-tooltip
+
+  Compactere tabel die past in alle kolombreedtes, identiek aan de redesign-demo. De info blijft beschikbaar via hover.
+
+---
+
 ## [v12.222] — 2026-06-06
 
 ### Gewijzigd
