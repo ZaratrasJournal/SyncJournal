@@ -6,6 +6,26 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.209] — 2026-06-06
+
+### Gewijzigd
+- **Pattern-badge verplaatst van hoofdrij naar hover-detail-rij** *(gevraagd door Denny: "de counter badge wil ik wel bij de hover zien, niet in de trades overzicht")*
+
+  Was: pattern-badge (✓ Cont / ↻ Pull / ⇄ Rev / ⚠ Counter) verscheen in de Setup-cel van elke Trades-tabel rij. Bij veel trades met bias-tags = veel extra visuele drukte naast de bias-pijlen en TF-tags.
+
+  Nu: pattern-badge zit alleen in de **expand-row** die verschijnt bij hover op een trade-rij — naast de `📐` setup-lagen flow:
+  ```
+  📐 ▲ Daily F2R+OB → ▼ 2H Structuur → ▲ 5M MSB   [⚠ Counter]
+  ```
+  Trades-overzicht blijft schoon. Bias-pijl-icons per laag blijven wel in de hoofdrij (= klein en informatief, geen drukte).
+
+  Analytics-widgets (KPI-strip + heatmap + Playbook bias-signature) blijven onveranderd — pattern-info zit prominent in Analytics.
+
+### Test
+- Smoke groen — pure JSX-verplaatsing, geen logica-wijziging
+
+---
+
 ## [v12.208] — 2026-06-06
 
 ### Gewijzigd
