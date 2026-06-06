@@ -6,6 +6,29 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.226] — 2026-06-06
+
+### Toegevoegd
+- **PnL chart — Wekelijks / Maandelijks toggle** *(Denny: "ik wil dat de Maandelijkse PnL ook een toggle naar wekelijks mag")*
+
+  Naast de titel staan nu twee knoppen `[Wekelijks][Maandelijks]`. Wekelijks toont de laatste 16 ISO-weken (label `wk 32`); maandelijks blijft de laatste 12 maanden (label `mrt`/`apr`). Keuze persisteert in `tj_pnl_period`. Titel + subtitel + tooltip-tekst veranderen mee naargelang de periode.
+
+### Gewijzigd
+- **Info-tooltips overal werken nu ook bij hover op titel-tekst** *(Denny: "ik zie niet overal een i-info-icon — en als ik hover krijg ik geen informatie")*
+
+  De `secH()` en `widgetHead()` helpers zetten `title=` nu op de **hele kop-wrapper** ipv alleen op het ⓘ-icoontje. Hover-target is daarmee veel groter — de tooltip verschijnt nu bij hover op het titel-blok in zijn geheel.
+
+  Het ⓘ-icoon zelf is ook duidelijker: 16×16 ipv 14×14, goud-tinted background ipv neutraal grijs, met goud-border zodat het visueel opvalt.
+
+- **Tooltips toegevoegd aan widgets die er nog geen hadden**:
+  - HTF × LTF bias-heatmap
+  - Performance per pair
+  - Performance per dag
+  - R:R analyse (zowel lege state als gevulde view)
+  - Killzone × Setup matrix (lege state)
+
+---
+
 ## [v12.225] — 2026-06-06
 
 ### Verwijderd

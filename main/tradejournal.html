@@ -1680,7 +1680,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.225",released:"2026-06-06"};
+const APP_VERSION={version:"v12.226",released:"2026-06-06"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -11826,6 +11826,9 @@ function Analytics({trades,tradingRules,allTrades,config,accounts,setFilters,set
   const[analyticsMode,setAnalyticsMode]=useState(()=>{try{return localStorage.getItem("tj_analytics_mode")||"basic"}catch{return"basic"}});
   useEffect(()=>{try{localStorage.setItem("tj_analytics_mode",analyticsMode)}catch{}},[analyticsMode]);
   const isPro=analyticsMode==="pro"||analyticsMode==="custom";
+  // v12.226: PnL chart period toggle (week/month).
+  const[pnlPeriod,setPnlPeriod]=useState(()=>{try{return localStorage.getItem("tj_pnl_period")||"month"}catch{return"month"}});
+  useEffect(()=>{try{localStorage.setItem("tj_pnl_period",pnlPeriod)}catch{}},[pnlPeriod]);
   // v12.213: Sectie-definities voor sticky TOC + sectie-headers.
   // Mapping: widget-key → sectie-id (eerste widget van die sectie krijgt header gerenderd).
   const SECTIONS_DEF=[
@@ -11996,18 +11999,17 @@ function Analytics({trades,tradingRules,allTrades,config,accounts,setFilters,set
   closed.forEach(t=>{const layers=t.layers||[];if(layers.length>0){const summary=layers.map(l=>{const ss=(l.setups||[]).join("+");return[l.timeframe,ss].filter(Boolean).join("+")}).join(" → ");if(!layerSets[summary])layerSets[summary]={n:0,pnl:0,w:0};layerSets[summary].n++;layerSets[summary].pnl+=netPnl(t);if(netPnl(t)>0)layerSets[summary].w++}});
 
   const sectStyle={background:"var(--glass)",backdropFilter:"var(--glass-blur)",WebkitBackdropFilter:"var(--glass-blur)",borderRadius:"var(--radius-lg)",padding:"20px",marginBottom:"16px",border:"1px solid var(--border1)",transition:"border-color .25s,box-shadow .25s,transform .2s"};
-  // v12.219: secH ondersteunt optionele tooltip via ⓘ-icoon naast titel.
-  const secH=(t,tip)=>(<div style={{display:"flex",alignItems:"center",gap:"7px",marginBottom:"14px"}}>
+  // v12.226: secH zet title= op de hele kop-wrapper zodat het hele goud-uppercase titel-blok hover-target is
+  // (niet alleen het kleine ⓘ-icoon). Icoon zelf is ook iets groter (16x16) voor zichtbaarheid.
+  const secH=(t,tip)=>(<div title={tip||undefined} style={{display:"flex",alignItems:"center",gap:"7px",marginBottom:"14px",cursor:tip?"help":"default"}}>
     <span style={{fontSize:"11px",color:"var(--gold)",textTransform:"uppercase",letterSpacing:"0.12em",fontWeight:700}}>{t}</span>
-    {tip&&<span title={tip} style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:"14px",height:"14px",borderRadius:"50%",border:"1px solid var(--border3)",color:"var(--text4)",fontSize:"9px",fontWeight:700,cursor:"help",fontFamily:"serif",lineHeight:1,fontStyle:"italic"}}>i</span>}
+    {tip&&<span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:"16px",height:"16px",borderRadius:"50%",border:"1px solid var(--gold-border)",background:"var(--gold-dim)",color:"var(--gold)",fontSize:"10px",fontWeight:700,fontFamily:"serif",lineHeight:1,fontStyle:"italic"}}>i</span>}
   </div>);
-  // v12.224: widgetHead — zelfde goud-uppercase titel als secH, maar met optionele subtitel-tekst
-  // ernaast in grijs. Gebruikt door nieuwe v12.219+ widgets (Equity curve, Maandelijkse PnL, Pro-widgets)
-  // zodat alle widget-titels consistent goud-uppercase zijn op de hele Analytics-pagina.
-  const widgetHead=(t,sub,tip)=>(<div style={{display:"flex",alignItems:"baseline",gap:"10px",marginBottom:"14px",flexWrap:"wrap"}}>
+  // v12.226: widgetHead — zelfde aanpassing, hele kop is hover-target + iconen leesbaarder.
+  const widgetHead=(t,sub,tip)=>(<div title={tip||undefined} style={{display:"flex",alignItems:"baseline",gap:"10px",marginBottom:"14px",flexWrap:"wrap",cursor:tip?"help":"default"}}>
     <span style={{fontSize:"11px",color:"var(--gold)",textTransform:"uppercase",letterSpacing:"0.12em",fontWeight:700,whiteSpace:"nowrap"}}>{t}</span>
     {sub&&<span style={{fontSize:"10.5px",color:"var(--text4)",fontStyle:"italic"}}>{sub}</span>}
-    {tip&&<span title={tip} style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:"14px",height:"14px",borderRadius:"50%",border:"1px solid var(--border3)",color:"var(--text4)",fontSize:"9px",fontWeight:700,cursor:"help",fontFamily:"serif",lineHeight:1,fontStyle:"italic"}}>i</span>}
+    {tip&&<span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:"16px",height:"16px",borderRadius:"50%",border:"1px solid var(--gold-border)",background:"var(--gold-dim)",color:"var(--gold)",fontSize:"10px",fontWeight:700,fontFamily:"serif",lineHeight:1,fontStyle:"italic"}}>i</span>}
   </div>);
 
   // v12.131: `wide` opt-in voor labels die structureel langer zijn (zoals layer-pattern
@@ -12191,21 +12193,38 @@ function Analytics({trades,tradingRules,allTrades,config,accounts,setFilters,set
       <SyncEquityCurve trades={closed} drawdown={false} height="220px"/>
     </div>)}
 
-    {/* v12.220: Monthly PnL chart — redesigned. Brede bars met gradient-fill, value-label boven elke
-        bar, gemiddelde-lijn (dashed goud), zero-line, best/worst maand highlighted met glow-border,
-        trade-count + WR onder elke maand, totaal-summary rechtsboven. Tradezella/Edgewonk patroon. */}
+    {/* v12.220/26: PnL chart — toggle wekelijks/maandelijks (v12.226). Brede bars met gradient-fill,
+        value-label boven elke bar, value + trade-count + WR onder elke periode, totaal-summary rechtsboven. */}
     {seq("monthlyPnl",lp.monthlyPnl!==false&&closed.length>0,(()=>{
-      const byMonth={},byMonthStats={};
+      // ISO-week helper voor week-grouping
+      const getISOWeek=(date)=>{
+        const d=new Date(Date.UTC(date.getFullYear(),date.getMonth(),date.getDate()));
+        const dayNum=(d.getUTCDay()+6)%7;
+        d.setUTCDate(d.getUTCDate()-dayNum+3);
+        const firstThursday=d.valueOf();
+        d.setUTCMonth(0,1);
+        if(d.getUTCDay()!==4)d.setUTCMonth(0,1+((4-d.getUTCDay())+7)%7);
+        return{year:new Date(firstThursday).getUTCFullYear(),week:1+Math.ceil((firstThursday-d)/604800000)};
+      };
+      const byBucket={},byBucketStats={};
       closed.forEach(t=>{
         const d=t.exitDate||t.date;if(!d)return;
-        const ym=d.slice(0,7);
-        if(!byMonth[ym])byMonth[ym]=0;
-        if(!byMonthStats[ym])byMonthStats[ym]={count:0,wins:0};
-        const p=netPnl(t);byMonth[ym]+=p;byMonthStats[ym].count++;if(p>0)byMonthStats[ym].wins++;
+        let key;
+        if(pnlPeriod==="week"){
+          const dt=new Date(d);if(isNaN(dt))return;
+          const{year,week}=getISOWeek(dt);
+          key=`${year}-W${String(week).padStart(2,"0")}`;
+        }else{
+          key=d.slice(0,7);
+        }
+        if(!byBucket[key])byBucket[key]=0;
+        if(!byBucketStats[key])byBucketStats[key]={count:0,wins:0};
+        const p=netPnl(t);byBucket[key]+=p;byBucketStats[key].count++;if(p>0)byBucketStats[key].wins++;
       });
-      const months=Object.keys(byMonth).sort().slice(-12);
-      if(months.length<2)return null;
-      const vals=months.map(m=>byMonth[m]);
+      const limit=pnlPeriod==="week"?16:12;
+      const buckets=Object.keys(byBucket).sort().slice(-limit);
+      if(buckets.length<2)return null;
+      const vals=buckets.map(b=>byBucket[b]);
       const mxPos=Math.max(...vals,0);
       const mxNeg=Math.min(...vals,0);
       const hasNeg=mxNeg<0;
@@ -12214,24 +12233,34 @@ function Analytics({trades,tradingRules,allTrades,config,accounts,setFilters,set
       const mean=total/vals.length;
       const posCount=vals.filter(v=>v>0).length;
       const negCount=vals.filter(v=>v<0).length;
-      const bestM=months[vals.indexOf(mxPos)],worstM=hasNeg?months[vals.indexOf(mxNeg)]:null;
       const chartH=180;
-      // Zero-line position als % from top: bij geen negs = bottom (100%), bij negs = proportioneel
       const zeroLinePct=hasNeg?(mxPos/(mxPos-mxNeg))*100:100;
-      // Mean-line position
-      const meanPct=hasNeg?((mxPos-mean)/(mxPos-mxNeg))*100:((mxPos-mean)/mxPos)*100;
+      const NL_MONTHS=["jan","feb","mrt","apr","mei","jun","jul","aug","sep","okt","nov","dec"];
+      const labelFor=(k)=>pnlPeriod==="week"?`wk ${k.slice(-2)}`:NL_MONTHS[parseInt(k.slice(5,7))-1];
+      const title=pnlPeriod==="week"?"📅 Wekelijkse PnL":"📅 Maandelijkse PnL";
+      const subLabel=pnlPeriod==="week"?`laatste ${buckets.length} weken`:`laatste ${buckets.length} maanden`;
+      const tip=pnlPeriod==="week"
+        ?"PnL per ISO-week. Granulair zicht op edge-stabiliteit: 2-3 rode weken op rij = signal voor pauze + review."
+        :"PnL per maand. Consistent groene maanden = stabiele edge; één diepe rode maand = signal voor weekly/monthly review (Steenbarger).";
       return <div style={sectStyle}>
-        {/* Header met summary rechts */}
+        {/* Header met summary rechts + toggle */}
         <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:"14px",gap:"16px"}}>
           <div style={{flex:1,minWidth:0}}>
-            {widgetHead("📅 Maandelijkse PnL",`laatste ${months.length} maanden`,"PnL per maand. Consistent groene maanden = stabiele edge; één diepe rode maand = signal voor weekly/monthly review (Steenbarger).")}
+            {widgetHead(title,subLabel,tip)}
             <div style={{fontSize:"11px",color:"var(--text4)",marginTop:"-6px"}}>
               <span style={{color:"var(--green)"}}>{posCount}× winst</span>{negCount>0&&<> · <span style={{color:"var(--red)"}}>{negCount}× verlies</span></>} · gem. <span style={{color:"var(--text2)",fontFamily:"monospace"}}>{fmtMoney(mean,false,{sign:true})}</span>
             </div>
           </div>
-          <div style={{textAlign:"right",flexShrink:0}}>
-            <div style={{fontSize:"9.5px",color:"var(--text4)",textTransform:"uppercase",letterSpacing:".06em",fontWeight:700,marginBottom:"2px"}}>Totaal</div>
-            <div style={{fontSize:"20px",fontWeight:700,fontFamily:"monospace",color:total>=0?"var(--green)":"var(--red)",lineHeight:1}}>{fmtMoney(total,false,{sign:true})}</div>
+          <div style={{display:"flex",alignItems:"flex-start",gap:"12px",flexShrink:0}}>
+            <div style={{display:"inline-flex",padding:"3px",borderRadius:"8px",background:"var(--bg4)",border:"1px solid var(--border2)",gap:"2px"}}>
+              {[["week","Wekelijks"],["month","Maandelijks"]].map(([k,l])=>(
+                <button key={k} onClick={()=>setPnlPeriod(k)} style={{padding:"5px 10px",borderRadius:"6px",border:"none",background:pnlPeriod===k?"var(--gold-dim)":"transparent",color:pnlPeriod===k?"var(--gold)":"var(--text4)",fontSize:"10.5px",fontWeight:700,cursor:"pointer",fontFamily:"inherit",transition:"all .15s"}}>{l}</button>
+              ))}
+            </div>
+            <div style={{textAlign:"right"}}>
+              <div style={{fontSize:"9.5px",color:"var(--text4)",textTransform:"uppercase",letterSpacing:".06em",fontWeight:700,marginBottom:"2px"}}>Totaal</div>
+              <div style={{fontSize:"20px",fontWeight:700,fontFamily:"monospace",color:total>=0?"var(--green)":"var(--red)",lineHeight:1}}>{fmtMoney(total,false,{sign:true})}</div>
+            </div>
           </div>
         </div>
         {/* Chart area */}
@@ -12240,20 +12269,15 @@ function Analytics({trades,tradingRules,allTrades,config,accounts,setFilters,set
           <div style={{position:"absolute",left:0,right:0,top:`${zeroLinePct}%`,height:"1px",background:"var(--border3)",zIndex:1}}/>
           {/* Bars */}
           <div style={{display:"flex",alignItems:"stretch",gap:"5px",height:"100%",position:"relative",zIndex:3}}>
-            {months.map(ym=>{
-              const v=byMonth[ym],st=byMonthStats[ym];
+            {buckets.map(k=>{
+              const v=byBucket[k],st=byBucketStats[k];
               const wr=st.count>0?(st.wins/st.count)*100:0;
               const isPos=v>=0;
-              const isBest=ym===bestM&&v>0;
-              const isWorst=ym===worstM;
               const barHpct=Math.abs(v)/range*(hasNeg?(isPos?zeroLinePct:100-zeroLinePct):100);
               const color=isPos?"var(--green)":"var(--red)";
               const colorRgba=isPos?"rgba(52,216,160,0.15)":"rgba(246,86,111,0.15)";
-              const highlight=isBest||isWorst;
-              return <div key={ym} title={`${ym} — ${fmtMoney(v,false,{sign:true})} · ${st.count} trades · WR ${wr.toFixed(0)}%`} style={{flex:1,position:"relative",cursor:"help",minWidth:0}}>
-                {/* Value label boven (positive) of onder (negative) */}
+              return <div key={k} title={`${labelFor(k)} (${k}) — ${fmtMoney(v,false,{sign:true})} · ${st.count} trades · WR ${wr.toFixed(0)}%`} style={{flex:1,position:"relative",cursor:"help",minWidth:0}}>
                 <div style={{position:"absolute",left:0,right:0,top:isPos?`calc(${zeroLinePct-barHpct}% - 16px)`:`calc(${zeroLinePct+barHpct}% + 4px)`,fontSize:"9.5px",fontFamily:"monospace",fontWeight:700,color,textAlign:"center",lineHeight:1,zIndex:4,pointerEvents:"none"}}>{v>=0?"+":""}{Math.abs(v)>=1000?(v/1000).toFixed(1)+"k":Math.round(v)}</div>
-                {/* De bar zelf */}
                 <div style={{position:"absolute",left:"6%",right:"6%",...(isPos?{top:`${zeroLinePct-barHpct}%`,height:`${barHpct}%`,borderRadius:"3px 3px 0 0"}:{top:`${zeroLinePct}%`,height:`${barHpct}%`,borderRadius:"0 0 3px 3px"}),background:`linear-gradient(${isPos?"180deg":"0deg"},${color} 0%,${colorRgba} 100%)`,transition:"background .2s"}}/>
               </div>;
             })}
@@ -12261,11 +12285,11 @@ function Analytics({trades,tradingRules,allTrades,config,accounts,setFilters,set
         </div>
         {/* X-axis labels onder bars */}
         <div style={{display:"flex",gap:"5px",marginTop:"4px"}}>
-          {months.map(ym=>{
-            const st=byMonthStats[ym];
+          {buckets.map(k=>{
+            const st=byBucketStats[k];
             const wr=st.count>0?(st.wins/st.count)*100:0;
-            return <div key={ym} style={{flex:1,textAlign:"center",minWidth:0}}>
-              <div style={{fontSize:"10px",color:"var(--text3)",fontFamily:"monospace",fontWeight:600}}>{["jan","feb","mrt","apr","mei","jun","jul","aug","sep","okt","nov","dec"][parseInt(ym.slice(5,7))-1]}</div>
+            return <div key={k} style={{flex:1,textAlign:"center",minWidth:0}}>
+              <div style={{fontSize:"10px",color:"var(--text3)",fontFamily:"monospace",fontWeight:600}}>{labelFor(k)}</div>
               <div style={{fontSize:"9px",color:"var(--text5)",fontFamily:"monospace",marginTop:"1px"}}>{st.count}t·{wr.toFixed(0)}%</div>
             </div>;
           })}
@@ -12368,7 +12392,7 @@ function Analytics({trades,tradingRules,allTrades,config,accounts,setFilters,set
 
     {/* v12.207: HTF×LTF bias-heatmap */}
     {showW&&seq("biasHeatmap",lp.biasHeatmap!==false&&closed.length>0,<div style={sectStyle}>
-      {secH("♨ HTF × LTF bias-heatmap")}
+      {secH("♨ HTF × LTF bias-heatmap","HTF-bias × LTF-bias matrix. Per combinatie: aantal trades + WR. Voor ICT/SMC-traders: hoogste WR-cellen zijn je 'sweet spot' configuraties — Daily HTF bullish + 15M LTF bullish = sterkste continuation-cluster.")}
       <div style={{marginBottom:"14px",fontSize:"12px",color:"var(--text3)"}}>Granulaire combinatie-analyse: per HTF-bias × LTF-bias zien wat de WR en R-edge is. Kleur-intensiteit = absolute edge-grootte. Vul bias-tags in op HTF + LTF lagen om data te genereren.</div>
       <BiasHeatmapWidget trades={closed} setFilters={setFilters} setTab={setTab}/>
     </div>)}
@@ -12399,12 +12423,12 @@ function Analytics({trades,tradingRules,allTrades,config,accounts,setFilters,set
     </div>)}
 
     {/* Per pair */}
-    {showW&&seq("perPair",lp.perPair&&Object.keys(pairData).length>0,<div style={sectStyle}>{secH("Performance per pair")}
+    {showW&&seq("perPair",lp.perPair&&Object.keys(pairData).length>0,<div style={sectStyle}>{secH("Performance per pair","PnL + WR per asset/pair (BTC, ETH, etc.). Identificeert je sterkste en zwakste markten — vaak heb je edge in 1-2 assets en break-even in de rest. Edgewonk: focus op je top-2, drop de bottom-3.")}
       {(()=>{const maxAbs=Math.max(...Object.values(pairData).map(d=>Math.abs(d.pnl)),1);return Object.entries(pairData).sort((a,b)=>b[1].pnl-a[1].pnl).map(([p,d])=>barRow(p,d.w,d.l,d.pnl,maxAbs,"#C9A84C"))})()}
     </div>)}
 
     {/* Per day of week */}
-    {showW&&seq("perDay",lp.perDay,<div style={sectStyle}>{secH("Performance per dag")}
+    {showW&&seq("perDay",lp.perDay,<div style={sectStyle}>{secH("Performance per dag","PnL + WR per weekdag (Ma t/m Zo). Identificeert je beste en slechtste trading-dagen. Steenbarger #2 leak: trades op slechte dagen (vaak vrijdag-middag of na-FOMC) trekken cumulatieve PnL omlaag.")}
       {(()=>{const maxAbs=Math.max(...Object.values(dayData).map(d=>Math.abs(d.pnl)),1);return Object.entries(dayData).filter(([,d])=>d.n>0).map(([day,d])=>barRow(day,d.w,d.l,d.pnl,maxAbs,"#C9A84C"))})()}
     </div>)}
 
@@ -12458,7 +12482,7 @@ function Analytics({trades,tradingRules,allTrades,config,accounts,setFilters,set
         const risk=Math.abs(e-sl);const isLong=t.direction==="long";
         return{...t,plannedRR:tp>0?Math.abs(tp-e)/risk:null,realizedRR:ex>0?((isLong?ex-e:e-ex)/risk):null};
       });
-      if(rrTrades.length<2)return(<div style={sectStyle}>{secH("R:R analyse")}<div style={{fontSize:"12px",color:"var(--text4)"}}>Vul entry + stop loss in op min. 2 trades om R:R-analyse te zien.</div></div>);
+      if(rrTrades.length<2)return(<div style={sectStyle}>{secH("R:R analyse","Risk:reward ratio per trade — verhouding tussen potentiele winst en risico. Gem. R:R ≥1.5 = gezond. Combineer met WR voor expectancy: 50% WR + 2:1 R:R = +0.5R per trade.")}<div style={{fontSize:"12px",color:"var(--text4)"}}>Vul entry + stop loss in op min. 2 trades om R:R-analyse te zien.</div></div>);
       const wP=rrTrades.filter(t=>t.plannedRR!==null);const wR=rrTrades.filter(t=>t.realizedRR!==null);
       const avgP=wP.length?wP.reduce((s,t)=>s+t.plannedRR,0)/wP.length:0;
       const avgR=wR.length?wR.reduce((s,t)=>s+t.realizedRR,0)/wR.length:0;
@@ -12475,7 +12499,7 @@ function Analytics({trades,tradingRules,allTrades,config,accounts,setFilters,set
         </div>
         <div style={{width:"30px",fontSize:"9px",color:"var(--text4)",textAlign:"right",fontFamily:"var(--mono)"}}>{n}x</div>
       </div>)};
-      return(<div style={sectStyle}>{secH("R:R analyse")}
+      return(<div style={sectStyle}>{secH("R:R analyse","Risk:reward ratio per trade — verhouding tussen potentiele winst en risico. Gem. R:R ≥1.5 = gezond. Combineer met WR voor expectancy: 50% WR + 2:1 R:R = +0.5R per trade.")}
         <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:"10px",marginBottom:"16px"}}>
           <Stat label="Gem. gepland" value={wP.length?avgP.toFixed(2)+"R":"–"} sub={wP.length+" trades"}/>
           <Stat label="Gem. gerealiseerd" value={wR.length?(avgR>=0?"+":"")+avgR.toFixed(2)+"R":"–"} color={avgR>=1?"var(--green)":avgR>=0?"var(--amber)":"var(--red)"} sub={wR.length+" trades"}/>
@@ -12543,7 +12567,7 @@ function Analytics({trades,tradingRules,allTrades,config,accounts,setFilters,set
       const topSetups=Object.entries(setupCounts).sort((a,b)=>b[1]-a[1]).slice(0,7).map(e=>e[0]);
       if(topSetups.length===0){
         return <div style={sectStyle}>
-          {widgetHead("🎯 Killzone × Setup matrix","ICT/SMC")}
+          {widgetHead("🎯 Killzone × Setup matrix","ICT/SMC","Per (setup × sessie) cel: WR + aantal trades. Identificeert waar je setups het beste werken. Voeg setup-tags toe op trades om matrix te activeren.")}
           <div style={{padding:"24px",textAlign:"center",fontSize:"12px",color:"var(--text4)"}}>Geen setup-tags op trades — voeg setup-tags toe om matrix te activeren.</div>
         </div>;
       }
