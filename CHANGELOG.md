@@ -6,6 +6,28 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.216] — 2026-06-06
+
+### Gewijzigd
+- **Analytics — lens-toggles boven de KPI-strip** *(Denny: "de keuzes misschien boven de data zetten?")*
+
+  Proces/Winst/Beide + Basic/Pro/Custom + Genereer rapport-knop staan nu **boven** de KPI-strip in plaats van eronder. Volgt het mental model "kies eerst de lens, dán kijk je rond" (Chartlog/Tradezella-conventie). Geen functionele wijziging — alleen volgorde.
+
+### Toegevoegd
+- **Pro-widget — Behavioral tilt-panel** *(Sectie 06 Risk & Sizing — naast Hold-time asymmetry)*
+
+  Detecteert drie emotionele leak-patterns en vergelijkt hun WR + PnL met de baseline (alle trades):
+
+  - **🔥 Revenge trades** — entry <15 min na een verlies. Steenbarger's hoogste leak-trigger bij overactieve traders.
+  - **👻 Size-creep** — trades met size >25% boven mediane size. Edgewonk: overconfidence-marker, vaak rond winning-streaks.
+  - **🌀 Post-3-loss** — trades direct na ≥3 verliezen op rij. Tradezella's tilt-cascade criterium (conviction-after-loss).
+
+  Card wordt **rood** wanneer het patroon significant slechter presteert dan baseline (WR −5pt of negatieve PnL-delta). Baseline-strook onderaan toont WR + avg PnL ter vergelijking. Vereist alleen bestaande velden (openTime, closeTime, size, pnl).
+
+  De twee Risk-widgets renderen nu naast elkaar in een 2-kolom grid (gebruikt de extra breedte van het 1920px layout).
+
+---
+
 ## [v12.215] — 2026-06-06
 
 ### Toegevoegd
