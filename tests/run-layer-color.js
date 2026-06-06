@@ -50,14 +50,14 @@ console.log("\n[getLayerTimeframeGroup — range-based]");
   assert(ctx.getLayerTimeframeGroup("4H") === "HTF", "4H → HTF");
   assert(ctx.getLayerTimeframeGroup("3H") === "HTF", "3H → HTF (boundary)");
   assert(ctx.getLayerTimeframeGroup("1W") === "HTF", "1W → HTF");
-  // MTF (15-179 min)
+  // MTF (16-179 min)
   assert(ctx.getLayerTimeframeGroup("1H") === "MTF", "1H → MTF");
   assert(ctx.getLayerTimeframeGroup("2H") === "MTF", "2H → MTF (Denny's case)");
   assert(ctx.getLayerTimeframeGroup("90M") === "MTF", "90M → MTF (custom)");
   assert(ctx.getLayerTimeframeGroup("45M") === "MTF", "45M → MTF (custom)");
   assert(ctx.getLayerTimeframeGroup("30M") === "MTF", "30M → MTF");
-  assert(ctx.getLayerTimeframeGroup("15M") === "MTF", "15M → MTF (boundary)");
-  // LTF (<15 min)
+  // LTF (≤15 min) — v12.208: 15M valt nu onder LTF (Denny's wens)
+  assert(ctx.getLayerTimeframeGroup("15M") === "LTF", "15M → LTF (v12.208 wijziging)");
   assert(ctx.getLayerTimeframeGroup("10M") === "LTF", "10M → LTF");
   assert(ctx.getLayerTimeframeGroup("5M") === "LTF", "5M → LTF");
   assert(ctx.getLayerTimeframeGroup("1M") === "LTF", "1M → LTF");

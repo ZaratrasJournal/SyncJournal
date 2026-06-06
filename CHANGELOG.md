@@ -6,6 +6,41 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.208] — 2026-06-06
+
+### Gewijzigd
+- **15M valt nu onder LTF i.p.v. MTF** *(gevraagd door Denny: "kan je de 15m ook onder LTF plaatsen?")*
+
+  Cutoff `LTF_MAX` verschoven van `15` naar `16` minuten. Effect op `getLayerTimeframeGroup`:
+
+  | TF | Was | Wordt |
+  |---|---|---|
+  | 15M (15 min) | MTF | **LTF** |
+  | 30M (30 min) | MTF | MTF (ongewijzigd) |
+  | 1H (60 min) | MTF | MTF (ongewijzigd) |
+  | 2H (120 min) | MTF | MTF (ongewijzigd) |
+
+  **Nieuwe ranges**:
+  | Groep | Range | Voorbeelden |
+  |---|---|---|
+  | **LTF** | ≤ 15 min | 1M, 3M, 5M, 10M, **15M** |
+  | **MTF** | 16 min – 3 uur | 30M, 45M, 1H, 2H, 90M custom |
+  | **HTF** | ≥ 3 uur | 3H, 4H, 6H, 8H, 12H, Daily, 1W |
+
+  Past beter bij scalper-/SMC-stijl waar 15M onder de entry-trigger-categorie hoort.
+
+### Effect op bias-traject
+- Bestaande trades met 15M-laag krijgen automatisch groene LTF-kleur i.p.v. goud
+- Alignment-classifier (v12.205) zal nu meer trades met 15M-bias als LTF beoordelen → kan jouw pattern-distributie verschuiven (meer trades classifiable als Continuation/Pullback/etc.)
+- KPI-strip + heatmap + Playbook bias-signature pakken dit automatisch mee — geen rebuild nodig
+
+### Tests
+- **`tests/run-layer-color.js`** geüpdatet: assertion `15M → MTF` veranderd naar `15M → LTF`. 43 assertions allemaal groen.
+- **`demos/layer-colors-demo.html`** mapping-tabel bijgewerkt naar nieuwe ranges
+- Smoke groen — pure config-tweak, geen widget-logica gewijzigd
+
+---
+
 ## [v12.207] — 2026-06-05 — Slotrelease bias-traject ✓
 
 ### Toegevoegd
