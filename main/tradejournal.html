@@ -1680,7 +1680,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.224",released:"2026-06-06"};
+const APP_VERSION={version:"v12.225",released:"2026-06-06"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -11842,7 +11842,7 @@ function Analytics({trades,tradingRules,allTrades,config,accounts,setFilters,set
   ];
   const WIDGET_TO_SECTION={
     equityCurve:"sec-overview", monthlyPnl:"sec-overview", procesKPIs:"sec-overview", winstKPIs:"sec-overview",
-    setupInsights:"sec-setup", setupEdge:"sec-setup", longShort:"sec-setup", perPair:"sec-setup",
+    setupInsights:"sec-setup", longShort:"sec-setup", perPair:"sec-setup",
     alignmentInsights:"sec-setup", biasHeatmap:"sec-setup", layerAnalysis:"sec-setup", killzoneMatrix:"sec-setup",
     heatmap:"sec-timing", perDay:"sec-timing", sessionPerf:"sec-timing", holdtime:"sec-timing",
     rrAnalysis:"sec-timing", disciplineHeatmap:"sec-timing",
@@ -11890,7 +11890,6 @@ function Analytics({trades,tradingRules,allTrades,config,accounts,setFilters,set
       {key:"alignmentInsights",label:"🎯 Alignment-patronen (HTF/LTF bias-flow)"},
       {key:"biasHeatmap",label:"♨ HTF × LTF bias-heatmap"},
       {key:"setupInsights",label:"Setup insights tabel"},
-      {key:"setupEdge",label:"Setup edge (compacte tabel)"},
     ]},
     {label:"Overige secties",items:[
       {key:"foutAnalyse",label:"Fout analyse"},{key:"emotionImpact",label:"Emotie impact"},
@@ -12058,7 +12057,7 @@ function Analytics({trades,tradingRules,allTrades,config,accounts,setFilters,set
   const withMistakes=closed.filter(t=>(t.mistakeTags||[]).length>0);
   const violationPct=closed.length?withMistakes.length/closed.length*100:0;
 
-  const DEFAULT_ANALYTICS_ORDER=["procesKPIs","procesDetail","winstKPIs","rMultipleDist","rollingEdge","setupInsights","setupEdge","longShort","perPair","perDay","sessionPerf","foutAnalyse","emotionImpact","streaks","rrAnalysis","holdtime","heatmap","layerAnalysis"];
+  const DEFAULT_ANALYTICS_ORDER=["procesKPIs","procesDetail","winstKPIs","rMultipleDist","rollingEdge","setupInsights","longShort","perPair","perDay","sessionPerf","foutAnalyse","emotionImpact","streaks","rrAnalysis","holdtime","heatmap","layerAnalysis"];
   // Helper: wrap elke analytics-sectie in een sort-row met drag-handle
   // v12.213/14: seq() injecteert sectie-header en geeft elke widget een CSS-order (flex)
   // op basis van zijn sectie. Container is flex-column in Basic/Pro mode, dus widgets renderen
@@ -12381,36 +12380,8 @@ function Analytics({trades,tradingRules,allTrades,config,accounts,setFilters,set
       <SetupInsightsTable trades={closed}/>
     </div>)}
 
-    {/* Setup Edge — SyncJournal-stijl compacte tabel met progress bar per setup */}
-    {seq("setupEdge",lp.setupEdge!==false&&closed.length>0,(()=>{
-      const setupPerf={};
-      closed.forEach(t=>(t.setupTags||[]).forEach(tag=>{
-        if(!setupPerf[tag])setupPerf[tag]={n:0,w:0,pnl:0};
-        setupPerf[tag].n++;
-        setupPerf[tag].pnl+=netPnl(t);
-        if(netPnl(t)>0)setupPerf[tag].w++;
-      }));
-      const rows=Object.entries(setupPerf).map(([name,v])=>({name,...v,wr:v.n?v.w/v.n*100:0})).sort((a,b)=>b.pnl-a.pnl);
-      if(rows.length===0)return null;
-      return(<div style={sectStyle}>{secH("⚡ Setup edge")}
-        <div style={{fontFamily:"var(--mono)",fontSize:"11px"}}>
-          <div style={{display:"grid",gridTemplateColumns:"1.5fr 40px 55px 80px 110px",gap:"10px",padding:"6px 2px",fontSize:"9.5px",color:"var(--text5)",borderBottom:"1px solid var(--border2)",letterSpacing:".08em",textTransform:"uppercase",fontWeight:700}}>
-            <span>Setup</span><span style={{textAlign:"right"}}>n</span><span style={{textAlign:"right"}}>WR</span><span style={{textAlign:"right"}}>P&amp;L</span><span>Bar</span>
-          </div>
-          {rows.map(st=>(
-            <div key={st.name} onClick={()=>{if(setFilters&&setTab){setFilters(p=>({...p,setupTags:[st.name]}));setTab("trades")}}} style={{display:"grid",gridTemplateColumns:"1.5fr 40px 55px 80px 110px",gap:"10px",padding:"9px 2px",borderBottom:"1px dashed var(--border2)",alignItems:"center",cursor:"pointer",borderRadius:"4px",transition:"background .15s"}} onMouseEnter={e=>e.currentTarget.style.background="rgba(201,168,76,0.04)"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-              <span style={{color:"var(--text)",fontWeight:600,fontFamily:"var(--font)"}}>{st.name}</span>
-              <span style={{textAlign:"right",color:"var(--text3)"}}>{st.n}</span>
-              <span style={{textAlign:"right",color:st.wr>=50?"var(--green)":"var(--red)",fontWeight:700}}>{st.wr.toFixed(0)}%</span>
-              <span style={{textAlign:"right",color:st.pnl>=0?"var(--green)":"var(--red)",fontWeight:700}}>{(st.pnl>=0?"+":"-")+"$"+fmt(Math.abs(st.pnl))}</span>
-              <div style={{height:"5px",background:"rgba(255,255,255,0.04)",borderRadius:"2px",overflow:"hidden"}}>
-                <div style={{width:Math.min(100,st.wr)+"%",height:"100%",background:st.pnl>=0?"linear-gradient(90deg,#2eaa6f,#4fcf8f)":"var(--red)"}}/>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>);
-    })())}
+    {/* v12.225: Setup Edge widget verwijderd — volledig samengevoegd in Setup Insights table.
+        De visuele PnL-bar uit Setup Edge zit nu als subtiele background-gradient achter de PnL-cell. */}
 
 
 
@@ -13669,6 +13640,8 @@ function SetupInsightsTable({trades,onSetupClick}){
     else if(wr>=55&&avgR!==null&&avgR>=0.5){advice="✓ Consistent";adviceColor="var(--teal)"}
     return{tag,n:d.n,wr,avgR,avgPnl,totalPnl:d.pnl,best:d.best,worst:d.worst,advice,adviceColor};
   }).sort((a,b)=>(b.avgR??-999)-(a.avgR??-999));
+  // v12.225: maxAbsPnl voor visuele PnL-bar achter de cell (uit oude Setup Edge widget).
+  const maxAbsPnl=Math.max(...rows.map(r=>Math.abs(r.totalPnl)),1);
   if(rows.length===0)return(<div style={{fontSize:"12px",color:"var(--text4)",textAlign:"center",padding:"20px"}}>Minimaal {MIN_N} trades per setup nodig voor insights.</div>);
   const th={padding:"10px 12px",textAlign:"left",color:"var(--text4)",fontSize:"10px",textTransform:"uppercase",letterSpacing:".08em",fontWeight:700,borderBottom:"1px solid var(--border2)"};
   const td={padding:"10px 12px",borderBottom:"1px solid var(--border2)",fontSize:"12px"};
@@ -13686,7 +13659,7 @@ function SetupInsightsTable({trades,onSetupClick}){
       <td style={{...td,textAlign:"center",fontFamily:"var(--mono)",color:"var(--text3)"}}>{r.n}</td>
       <td style={{...td,textAlign:"center"}}><span style={{padding:"2px 8px",borderRadius:"10px",fontSize:"10px",fontWeight:700,fontFamily:"var(--mono)",background:r.wr>=50?"rgba(46,170,111,.15)":"rgba(224,85,85,.15)",color:r.wr>=50?"var(--green)":"var(--red)"}}>{r.wr.toFixed(0)}%</span></td>
       <td style={{...td,textAlign:"center",fontFamily:"var(--mono)",fontWeight:700,color:r.avgR===null?"var(--text5)":r.avgR>=1?"var(--green)":r.avgR>=0?"var(--gold)":"var(--red)"}}>{r.avgR===null?"—":(r.avgR>=0?"+":"")+r.avgR.toFixed(2)+"R"}</td>
-      <td style={{...td,textAlign:"right",fontFamily:"var(--mono)",fontWeight:700,color:r.totalPnl>=0?"var(--green)":"var(--red)"}}>{r.totalPnl>=0?"+":""}${fmt(Math.abs(r.totalPnl))}</td>
+      <td style={{...td,textAlign:"right",fontFamily:"var(--mono)",fontWeight:700,color:r.totalPnl>=0?"var(--green)":"var(--red)",position:"relative",backgroundImage:`linear-gradient(to ${r.totalPnl>=0?"left":"right"},${r.totalPnl>=0?"rgba(52,216,160,0.10)":"rgba(246,86,111,0.10)"} ${(Math.abs(r.totalPnl)/maxAbsPnl*100).toFixed(0)}%,transparent ${(Math.abs(r.totalPnl)/maxAbsPnl*100).toFixed(0)}%)`}}>{r.totalPnl>=0?"+":""}${fmt(Math.abs(r.totalPnl))}</td>
       <td style={{...td,textAlign:"right",color:r.adviceColor,fontSize:"11px",fontWeight:600}}>{r.advice}</td>
     </tr>))}</tbody>
   </table></div>);

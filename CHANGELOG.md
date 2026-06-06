@@ -6,6 +6,21 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.225] — 2026-06-06
+
+### Verwijderd
+- **Setup Edge widget verwijderd, volledig samengevoegd in Setup Insights** *(Denny: "kunnen we dit niet samenvoegen?")*
+
+  De twee setup-widgets overlapten grotendeels:
+  - Setup Insights had: Setup · Trades · WR · Avg R · PnL · Advies (min 3 trades, sortering op Avg R)
+  - Setup Edge had: Setup · n · WR · PnL · visuele bar (geen min, sortering op PnL)
+
+  Het enige unieke aan Setup Edge — de visuele PnL-bar — zit nu als subtiele background-gradient achter de PnL-cell in Setup Insights. Bar-lengte = relatieve magnitude vs grootste PnL-row. Groen achter winnaars, rood achter verliezers, met 10% opacity zodat het de tekst niet stoort.
+
+  Setup Edge entry verwijderd uit `LP_SECTIONS`, `DEFAULT_ANALYTICS_ORDER` en `WIDGET_TO_SECTION`. Bestaande user-layouts met `setupEdge: true` blijven werken — de seq()-call rendert gewoon niet meer.
+
+---
+
 ## [v12.224] — 2026-06-06
 
 ### Gewijzigd
