@@ -6,6 +6,39 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.210] — 2026-06-06
+
+### Toegevoegd
+- **Blofin CCXT-hint bij API-key form** *(gemeld door CryptoTiger in Discord 2026-05-22 via Denny — bug-audit 2026-06-06)*
+
+  Wanneer je `Settings → Accounts → Blofin` opent verschijnt nu **boven de API Key / Secret / Passphrase velden** een blauw-getinte hint-box:
+  > 💡 **Blofin API-key aanmaken**
+  > Op Blofin krijg je een dropdown "Application Name". Kies daar **CCXT**.
+  > Permissions: alleen Read aanzetten. Geen Trade, geen Withdrawal.
+
+  Nieuwe users zonder Discord-hulp kunnen nu direct de juiste keuze maken bij Blofin's API-management UI.
+
+### Fixed
+- **Floating-point precision in trade-detail modal** *(gemeld door pro-trader 2026-05-02, deels opgelost, nu volledig)*
+
+  Was: `normalizeTrade` (= `normPrice` op entry/stopLoss/takeProfit/exit/hindsightExit) werd alleen toegepast bij **app-load**, niet bij **save**. Gevolg: user typt entry, slaat op, opent modal opnieuw — ziet `2255.5805555555557` (16 decimalen floating-point ruis) tot volgende reload.
+
+  Nu: `enriched = normalizeTrade(enriched)` toegevoegd na `syncTradeFlatFields` in `saveTrade`. Floats worden direct opgeschoond na elke save. Geen reload-truc meer nodig.
+
+### Backlog cleanup
+Audit van 6 quick-win-bugs op huidige code-status. **4 bleken al opgelost** in eerdere releases (kwamen niet als changelog-entry mee maar wel als incidentele fix):
+- Setup-lagen labels afgekapt — `barRow` heeft `wide=true` param actief op layerSets
+- EdgeGap/StressLeak datum-filter "lekt" — v12.131 voegde zichtbaar label "📊 Over alle trades" toe aan beide widgets
+- Trades-pagina vs Dashboard PnL/WR inconsistentie — comment line 5077 bevestigt dat alle paginas via `netPnl()` aggregeren met consistent filter
+- Privacy-toggle 👁 maskt alleen account-waarde — 57 plekken met `priv?"$***..."` masking, alle Dashboard KPI-cards inbegrepen
+
+Backlog "🐛 Bugs"-sectie ingekrompen, opgeloste items naar "✅ Done" verplaatst.
+
+### Test
+- Smoke groen — pure UI/utility-wijzigingen
+
+---
+
 ## [v12.209] — 2026-06-06
 
 ### Gewijzigd

@@ -10,14 +10,7 @@ Basis kwam uit de feature-diff v4_14 → v9 onderaan. Inmiddels werken we op **v
 
 <!-- Denny stuurt bugs 1 voor 1 — elk item krijgt datum + korte reproductiestap. -->
 
-- [ ] **Blofin API-koppeling: "Application Name" CCXT-keuze niet duidelijk in onze flow** *(2026-05-22, gemeld door Denny — community-user CryptoTiger liep vast in Discord met screenshot)* — Sinds Blofin's API-Management UI moet je bij het aanmaken van een nieuwe API-key een **"Application Name"** kiezen uit een dropdown van third-party apps (Apirone / 24-7 Terminal / Xin Traders / CryptoRobotics / Sequence / CCXT / etc.). Voor SyncJournal moet je **CCXT** selecteren (we gebruiken die library/protocol). Onze lesson L18 (Blofin koppelen) noemt dit nergens, en het in-app koppel-formulier ook niet — gevolg: nieuwe users blijven steken bij dat dropdown en moeten in Discord vragen.
-
-  **Fix-richtingen** (kies één):
-  - **A) In-app hint bij Blofin koppel-flow** (Accounts → Blofin → API-key invoer): voeg een muted-tekst toe boven de Key/Secret/Passphrase velden: *"💡 Op Blofin: kies bij 'Application Name' → **CCXT**. Read-only permissions, geen Trade/Withdrawal."*
-  - **B) Update lesson L18** (Help → Handleiding → Blofin): stap 2 van "Pad B — API-koppeling" expliciet maken: *"Naam: SyncJournal. **Application Name (dropdown): CCXT**. Permissions: alleen Read..."*
-  - **C) Beide** (aanbevolen — in-app hint + uitgebreide lesson). Effort: XS (~15 min). De CCXT-keuze is een Blofin-eigenaardigheid die meer users gaat raken naarmate de community groeit.
-
-  **Acceptatie**: nieuwe user kan zonder Discord-hulp een Blofin-key aanmaken; CCXT is duidelijk gedocumenteerd op het moment dat de keuze gemaakt moet worden.
+⮕ Blofin CCXT-hint opgelost in v12.210. Lesson L18 update blijft optioneel (B) — overweeg later voor docs-update.
 
 - [ ] **Kraken Futures API geeft 1970-timestamps (mogelijk API-format wijziging)** *(2026-05-22, gemeld door Denny)* — Bij het ophalen van trades via de Kraken Futures API toont SyncJournal nu **1970-01-01** als trade-datum (Unix epoch 0). Suggereert dat ons time-veld leeg of in nieuw format binnenkomt en de parser fallt back op `0` → epoch.
 
@@ -590,6 +583,14 @@ In [tests/](tests/) staan 4 real-data specs (`<exchange>-real-data.spec.js`) die
 - [ ] **Distributiemodel** — GitHub `/main/` folder nu. Overwegen: GitHub Pages (paid private) of Cloudflare Pages + Access (gratis, email-gate).
 
 ## ✅ Done
+
+- [x] 2026-06-06 — **Bug-audit quick wins: 4 al opgelost + 2 nieuwe fixes (v12.210)** — Audit van 6 backlog-bugs op huidige code-status:
+  - ✅ **Setup-lagen labels afgekapt** — al opgelost: `barRow` heeft `wide=true` param op layerSets-call (label-kolom 160px ipv 70px)
+  - ✅ **EdgeGap/StressLeak datum-filter "lekt"** — al opgelost v12.131: beide widgets hebben zichtbaar label "📊 Over alle trades — datum-filter genegeerd voor deze analyse"
+  - ✅ **Trades-pagina vs Dashboard PnL/WR inconsistentie** — al opgelost: Trades-pagina stat-line gebruikt `netPnl()` voor totaal + wins-telling, comment line 5077 bevestigt "consistent met Dashboard/Review/Calendar/Rapport"
+  - ✅ **Privacy-toggle 👁 maskt alleen account-waarde** — al opgelost (v12.170 + opvolger): 57 plekken in de codebase met `priv?"$***,**":...` masking, alle Dashboard PnL-cards (Netto PNL, Gem. winst, Gem. verlies, Totaal fees) gebruiken priv-conditie
+  - 🆕 **Blofin CCXT-hint** v12.210: in-app hint-box boven API-key form bij Blofin-koppeling — "kies Application Name → CCXT" met permissions-note
+  - 🆕 **Floating-point precision modal** v12.210: `normalizeTrade` (= `normPrice` op entry/sl/tp/exit/hindsightExit) wordt nu ook bij `saveTrade` aangeroepen, niet alleen bij load. Voorkomt dat user-input met float-ruis ("2255.5805555555557") tot volgende app-reload zichtbaar blijft.
 
 - [x] 2026-05-04 — **MEXC stale-open trade + 18 stale tpLevels + CORS contractSize-fallback** (v12.89) — Community-bug: gesloten positie staat nog als OPEN in app met 18 TP-niveaus uit andere posities, plus positionSize klopt niet. Drie root causes geïdentificeerd via reproductie-spec met echte IDB-export + verse API-snapshot: (1) `detectPartialFromSiblings` rebuildde `tpLevels` niet als ze al bestonden — bij elke sync stapelden nieuwe siblings bovenop oude. (2) Finalize-flow (`syncOpenPositions`) liep VÓÓR closed siblings in journal stonden — kon stale-open dus niet matchen + finalizen. (3) `contract.mexc.com` is CORS-blocked vanaf `file://`, contractSize fallback was 0 → positionSize 0. Fixes: rebuild tpLevels altijd (behoud alleen user-status≠"hit"), finalize-pass in `importTrades` (atomair na closed records), hardcoded contractSize-map voor 12 populaire pairs. Tests: [tests/mexc-stale-open.spec.js](tests/mexc-stale-open.spec.js).
 

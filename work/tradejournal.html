@@ -1652,7 +1652,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.209",released:"2026-06-06"};
+const APP_VERSION={version:"v12.210",released:"2026-06-06"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -14874,6 +14874,14 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,set
               const masked=addr.length>10?`${addr.slice(0,6)}…${addr.slice(-4)}`:addr;
               return(<div><div style={{fontSize:"11px",color:"var(--text3)",marginBottom:"6px",fontWeight:500,textTransform:"uppercase",letterSpacing:"0.06em"}}>Wallet-adres</div><input type="text" value={walletFocused?addr:masked} onChange={e=>setField("walletAddress",e.target.value)} onFocus={()=>setWalletFocused(true)} onBlur={()=>setWalletFocused(false)} placeholder="0x..." style={{...iStyle,fontFamily:"var(--mono)"}}/><div style={{fontSize:"10px",color:"var(--text5)",marginTop:"4px"}}>{addr&&!walletFocused?"Klik om te bewerken — middenstuk verborgen tegen shoulder-surfen":" "}</div><div style={{fontSize:"10px",color:"var(--amber)",marginTop:"6px",lineHeight:1.5}}>⚠ Je Hyperliquid-trades zijn public on-chain. Iedereen met je wallet-adres kan ze inzien.</div></div>);
             })()}
+            {/* v12.210: Blofin CCXT-hint (gemeld door CryptoTiger in Discord 2026-05-22). Bij het
+                aanmaken van een Blofin API-key moet je in de "Application Name"-dropdown CCXT kiezen.
+                Wij gebruiken de CCXT-protocol-keuze; zonder die selectie werkt de key niet. */}
+            {ex==="blofin"&&<div style={{padding:"10px 14px",background:"rgba(99,102,241,0.08)",border:"1px solid rgba(99,102,241,0.30)",borderLeft:"3px solid #6366f1",borderRadius:"6px",fontSize:"11.5px",color:"var(--text2)",lineHeight:1.55}}>
+              <strong style={{color:"#6366f1"}}>💡 Blofin API-key aanmaken</strong><br/>
+              Op Blofin krijg je een dropdown <strong>"Application Name"</strong>. Kies daar <strong>CCXT</strong>.<br/>
+              <span style={{color:"var(--text4)",fontSize:"11px"}}>Permissions: alleen <strong>Read</strong> aanzetten. Geen Trade, geen Withdrawal.</span>
+            </div>}
             {!ExchangeAPI[ex].csvOnly&&!ExchangeAPI[ex].walletOnly&&[["apiKey","API Key","text"],["apiSecret","API Secret","password"],...(ExchangeAPI[ex].needsPassphrase?[["passphrase","Passphrase","password"]]:[])] .map(([field,label,type])=>(<div key={field}><div style={{fontSize:"11px",color:"var(--text3)",marginBottom:"6px",fontWeight:500,textTransform:"uppercase",letterSpacing:"0.06em"}}>{label}</div><input type={type} value={exCfg()[field]||""} onChange={e=>setField(field,e.target.value)} placeholder={field==="apiKey"?"Plak je API key...":field==="passphrase"?"Passphrase...":"Plak je API secret..."} style={{...iStyle,fontFamily:field!=="passphrase"?"var(--mono)":"var(--font)"}}/></div>))}
             {!ExchangeAPI[ex].csvOnly&&<div><div style={{fontSize:"11px",color:"var(--text3)",marginBottom:"6px",fontWeight:500,textTransform:"uppercase",letterSpacing:"0.06em"}}>Sync vanaf</div><input type="date" aria-label="Sync trades vanaf datum" value={exCfg().syncFrom||new Date(new Date().getFullYear(),new Date().getMonth(),1).toISOString().split("T")[0]} onChange={e=>{
               setField("syncFrom",e.target.value);
@@ -19082,6 +19090,9 @@ function App(){
     // zodat FilterBar, Analytics, detectTendencies en TagManager up-to-date zijn
     // direct nadat de user opslaat.
     enriched=syncTradeFlatFields(enriched);
+    // v12.210: normalizeTrade ook bij save zodat user-input met floating-point ruis
+    // ("2255.5805555555557") meteen wordt geschoond, niet pas bij volgende app-load.
+    enriched=normalizeTrade(enriched);
     setTrades(p=>{if(isNew){return[enriched,...p]}else{return p.map(t=>t.id===enriched.id?enriched:t)}});
     setEditTrade(null);setNewTrade(null);
     // Draft was saved successfully; clear persisted draft so we don't prompt to restore it next session
