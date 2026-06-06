@@ -1680,7 +1680,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.216",released:"2026-06-06"};
+const APP_VERSION={version:"v12.217",released:"2026-06-06"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -2165,7 +2165,7 @@ function getPatternLabel(pattern){
   if(pattern==="Pullback")return "↻ Pull";
   if(pattern==="Reversal")return "⇄ Rev";
   if(pattern==="Counter")return "⚠ Counter";
-  return "— Uncls";
+  return "— Geen bias";
 }
 
 // v12.197: Genereer tpLevels[] uit gemergde children. Elke child = 1 TP-niveau met:
@@ -11843,7 +11843,7 @@ function Analytics({trades,tradingRules,allTrades,config,accounts,setFilters,set
   const WIDGET_TO_SECTION={
     procesKPIs:"sec-overview", winstKPIs:"sec-overview",
     setupInsights:"sec-setup", setupEdge:"sec-setup", longShort:"sec-setup", perPair:"sec-setup",
-    alignmentInsights:"sec-setup", biasHeatmap:"sec-setup", layerAnalysis:"sec-setup",
+    alignmentInsights:"sec-setup", biasHeatmap:"sec-setup", layerAnalysis:"sec-setup", killzoneMatrix:"sec-setup",
     heatmap:"sec-timing", perDay:"sec-timing", sessionPerf:"sec-timing", holdtime:"sec-timing",
     rrAnalysis:"sec-timing", disciplineHeatmap:"sec-timing",
     procesDetail:"sec-discipline", emotionImpact:"sec-discipline", foutAnalyse:"sec-discipline",
@@ -12436,6 +12436,71 @@ function Analytics({trades,tradingRules,allTrades,config,accounts,setFilters,set
     {seq("layerAnalysis",lp.layerAnalysis&&Object.keys(layerSets).length>0,<div style={sectStyle}>{secH("Setup lagen performance")}
       {(()=>{const maxAbs=Math.max(...Object.values(layerSets).map(d=>Math.abs(d.pnl)),1);return Object.entries(layerSets).sort((a,b)=>b[1].pnl-a[1].pnl).map(([summary,d])=>barRow(summary,d.w,d.n-d.w,d.pnl,maxAbs,"var(--purple)",null,true))})()}
     </div>)}
+
+    {/* v12.217: Killzone × Setup matrix — Pro-only widget in sec-setup. WR + count per (session, setup) cell.
+        Toont waar je edge écht zit. ICT-traders standaard, maar werkt voor elke setup-getagde trader. */}
+    {analyticsMode!=="basic" && seq("killzoneMatrix",true,(()=>{
+      const matrix={};const setupCounts={};
+      closed.forEach(t=>{
+        const sess=getSessionTags(t.date,t.time)[0];if(!sess)return;
+        const tags=(t.setupTags||t.tags||[]).filter(x=>x);
+        tags.forEach(setup=>{
+          if(!matrix[setup])matrix[setup]={};
+          if(!matrix[setup][sess])matrix[setup][sess]={count:0,wins:0,sumPnl:0,sumR:0,nR:0};
+          const cell=matrix[setup][sess];
+          cell.count++;const p=netPnl(t);if(p>0)cell.wins++;cell.sumPnl+=p;
+          const r=calcRMultiple(t);if(r!==null&&isFinite(r)){cell.sumR+=r;cell.nR++;}
+          setupCounts[setup]=(setupCounts[setup]||0)+1;
+        });
+      });
+      const topSetups=Object.entries(setupCounts).sort((a,b)=>b[1]-a[1]).slice(0,7).map(e=>e[0]);
+      if(topSetups.length===0){
+        return <div style={{padding:"16px",background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:"10px"}}>
+          <div style={{fontSize:"13px",fontWeight:700,color:"var(--text)",marginBottom:"4px"}}>🎯 Killzone × Setup matrix <span style={{fontSize:"10px",fontWeight:500,color:"var(--text4)",marginLeft:"6px"}}>(ICT/SMC)</span></div>
+          <div style={{padding:"24px",textAlign:"center",fontSize:"12px",color:"var(--text4)"}}>Geen setup-tags op trades — voeg setup-tags toe om matrix te activeren.</div>
+        </div>;
+      }
+      const cellClick=(setup,sess)=>{if(setFilters&&setTab){setFilters(p=>({...p,setupTags:[setup]}));setTab("trades");}};
+      return <div style={{padding:"16px",background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:"10px",overflowX:"auto"}}>
+        <div style={{marginBottom:"14px"}}>
+          <div title="Voor elke (setup × sessie) combinatie: aantal trades + win-rate. Groen ≥55% WR, geel 45-55%, rood <45%. Identificeert waar je setups het beste werken (en waar niet). ICT/SMC-school noemt dit 'killzone alignment'." style={{cursor:"help"}}>
+            <div style={{fontSize:"13px",fontWeight:700,color:"var(--text)",marginBottom:"4px"}}>🎯 Killzone × Setup matrix <span style={{fontSize:"10px",fontWeight:500,color:"var(--text4)",marginLeft:"6px"}}>(ICT/SMC)</span></div>
+            <div style={{fontSize:"11px",color:"var(--text4)"}}>Top-{topSetups.length} setups × 8 sessies — WR + count per cel</div>
+          </div>
+        </div>
+        <table style={{width:"100%",borderCollapse:"separate",borderSpacing:"3px",fontSize:"11px",fontFamily:"monospace"}}>
+          <thead>
+            <tr>
+              <th style={{textAlign:"left",padding:"6px 8px",color:"var(--text4)",fontWeight:600,fontSize:"10px",textTransform:"uppercase",letterSpacing:".05em"}}>Setup ↓ / Sessie →</th>
+              {ALL_SESSIONS.map(s=>(
+                <th key={s} style={{textAlign:"center",padding:"6px 4px",color:SESSION_COLORS[s]?.text||"var(--text3)",fontWeight:700,fontSize:"10px",letterSpacing:".03em",whiteSpace:"nowrap"}}>{s}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {topSetups.map(setup=>(
+              <tr key={setup}>
+                <td style={{padding:"4px 8px",color:"var(--text2)",fontWeight:600,textTransform:"capitalize",whiteSpace:"nowrap",fontSize:"11px"}}>{setup}</td>
+                {ALL_SESSIONS.map(sess=>{
+                  const cell=matrix[setup]?.[sess];
+                  if(!cell||cell.count===0)return <td key={sess} style={{padding:"6px 4px",textAlign:"center",color:"var(--text5)",background:"var(--bg3)",borderRadius:"4px"}}>—</td>;
+                  const wr=(cell.wins/cell.count)*100;
+                  const wrCol=wr>=55?"var(--green)":wr>=45?"var(--gold)":"var(--red)";
+                  const bg=wr>=55?"var(--green2)":wr>=45?"var(--gold-dim)":"var(--red2)";
+                  return <td key={sess} title={`${setup} in ${sess}: ${cell.count} trades, ${wr.toFixed(0)}% WR, ${cell.nR>0?(cell.sumR/cell.nR>=0?"+":"")+(cell.sumR/cell.nR).toFixed(2)+"R avg":"—"}, ${fmtMoney(cell.sumPnl,false,{sign:true})}`} onClick={()=>cellClick(setup,sess)} style={{padding:"6px 4px",textAlign:"center",background:bg,borderRadius:"4px",cursor:"pointer"}}>
+                    <div style={{color:wrCol,fontWeight:700,fontSize:"12px"}}>{wr.toFixed(0)}%</div>
+                    <div style={{color:"var(--text4)",fontSize:"9px",marginTop:"1px"}}>{cell.count}t</div>
+                  </td>;
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <div style={{marginTop:"12px",padding:"8px 12px",borderRadius:"6px",background:"var(--bg3)",borderLeft:"3px solid var(--gold)",fontSize:"11px",color:"var(--text3)",lineHeight:1.5}}>
+          <strong style={{color:"var(--text2)"}}>Tip:</strong> klik op een cel om Trades te filteren op die setup. Groene cellen met ≥10t = sterke signal van je edge.
+        </div>
+      </div>;
+    })())}
 
     {/* v12.215: Pro-only widgets — Hold-time asymmetry / Fee-impact / Single-day concentration. */}
     {analyticsMode==="pro" && PRO_SECTIONS_DEF.map(s=>{

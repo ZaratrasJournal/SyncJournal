@@ -6,6 +6,30 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.217] — 2026-06-06
+
+### Toegevoegd
+- **Analytics — Killzone × Setup matrix** *(Pro-widget in sectie 02 Per setup)*
+
+  Tabel met je top-7 setups (op aantal trades) × 8 sessies (Asia AM/PM, London AM/PM, US AM/PM/Late, Weekend). Per cel: WR + aantal trades. Kleur-coded:
+  - Groen ≥55% WR (groene tint background)
+  - Geel 45–55% WR
+  - Rood <45% WR
+  - Grijs "—" voor cellen zonder data
+
+  Klik op een cel → filtert Trades-tab op die setup. Hover tonen tooltip met WR, R-avg, totale PnL.
+
+  Voor ICT/SMC-traders is dit de "killzone alignment"-check; voor andere stijlen detecteert het waar je setups écht presteren (en waar je beter kunt skippen).
+
+  Zichtbaar in Pro en Custom mode, niet in Basic. Vereist alleen bestaande `setupTags` en `time` velden.
+
+### Gewijzigd
+- **Alignment-patroon "Uncls" label vervangen door "Geen bias"** *(Denny: "de afkorting uncls is niet heel duidelijk")*
+
+  De vijfde categorie in de alignment-patronen widget heette voorheen `Uncls` (afkorting van `Unclassified`). Nu staat er `Geen bias` in zowel de KPI-strip card als de WR-bar-row. Geen functionele wijziging — duidelijker label voor trades waar nog geen bias-data per laag is ingevuld.
+
+---
+
 ## [v12.216] — 2026-06-06
 
 ### Gewijzigd
