@@ -1680,7 +1680,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.219",released:"2026-06-06"};
+const APP_VERSION={version:"v12.220",released:"2026-06-06"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -12188,32 +12188,84 @@ function Analytics({trades,tradingRules,allTrades,config,accounts,setFilters,set
       <SyncEquityCurve trades={closed} drawdown={false} height="220px"/>
     </div>)}
 
-    {/* v12.219: Monthly PnL bar chart — staven per maand, groen voor winst rood voor verlies. */}
+    {/* v12.220: Monthly PnL chart — redesigned. Brede bars met gradient-fill, value-label boven elke
+        bar, gemiddelde-lijn (dashed goud), zero-line, best/worst maand highlighted met glow-border,
+        trade-count + WR onder elke maand, totaal-summary rechtsboven. Tradezella/Edgewonk patroon. */}
     {seq("monthlyPnl",lp.monthlyPnl!==false&&closed.length>0,(()=>{
-      const byMonth={};
-      closed.forEach(t=>{const d=t.exitDate||t.date;if(!d)return;const ym=d.slice(0,7);byMonth[ym]=(byMonth[ym]||0)+netPnl(t);});
+      const byMonth={},byMonthStats={};
+      closed.forEach(t=>{
+        const d=t.exitDate||t.date;if(!d)return;
+        const ym=d.slice(0,7);
+        if(!byMonth[ym])byMonth[ym]=0;
+        if(!byMonthStats[ym])byMonthStats[ym]={count:0,wins:0};
+        const p=netPnl(t);byMonth[ym]+=p;byMonthStats[ym].count++;if(p>0)byMonthStats[ym].wins++;
+      });
       const months=Object.keys(byMonth).sort().slice(-12);
       if(months.length<2)return null;
       const vals=months.map(m=>byMonth[m]);
-      const maxAbs=Math.max(...vals.map(Math.abs),1);
-      const chartH=120,zeroY=chartH/2;
-      const barW=Math.max(20,Math.min(60,(100/months.length)*0.8));
-      return <div style={{padding:"16px",background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:"10px"}}>
-        <div title="PnL per maand over de laatste 12 maanden. Goud-standaard ritme: opeenvolgende groene maanden = consistente edge. Een diepe rode maand = focus voor weekly/monthly review (Steenbarger framework)." style={{cursor:"help",marginBottom:"14px"}}>
-          <div style={{fontSize:"13px",fontWeight:700,color:"var(--text)",marginBottom:"4px"}}>📅 Maandelijkse PnL <span style={{fontSize:"10px",fontWeight:500,color:"var(--text4)",marginLeft:"6px"}}>laatste {months.length} maanden</span></div>
+      const mxPos=Math.max(...vals,0);
+      const mxNeg=Math.min(...vals,0);
+      const hasNeg=mxNeg<0;
+      const range=Math.max(mxPos,Math.abs(mxNeg))||1;
+      const total=vals.reduce((s,v)=>s+v,0);
+      const mean=total/vals.length;
+      const posCount=vals.filter(v=>v>0).length;
+      const negCount=vals.filter(v=>v<0).length;
+      const bestM=months[vals.indexOf(mxPos)],worstM=hasNeg?months[vals.indexOf(mxNeg)]:null;
+      const chartH=180;
+      // Zero-line position als % from top: bij geen negs = bottom (100%), bij negs = proportioneel
+      const zeroLinePct=hasNeg?(mxPos/(mxPos-mxNeg))*100:100;
+      // Mean-line position
+      const meanPct=hasNeg?((mxPos-mean)/(mxPos-mxNeg))*100:((mxPos-mean)/mxPos)*100;
+      return <div style={{padding:"18px 20px 14px",background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:"10px"}}>
+        {/* Header met summary rechts */}
+        <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:"18px",gap:"16px"}}>
+          <div title="PnL per maand over de laatste 12 maanden. Consistent groene maanden = stabiele edge; één diepe rode maand = signal voor weekly/monthly review (Steenbarger). Gemiddelde-lijn (goud-dashed) toont je baseline." style={{cursor:"help",flex:1,minWidth:0}}>
+            <div style={{fontSize:"13px",fontWeight:700,color:"var(--text)",marginBottom:"4px",display:"flex",alignItems:"center",gap:"6px"}}>📅 Maandelijkse PnL <span style={{fontSize:"10px",fontWeight:500,color:"var(--text4)"}}>laatste {months.length} maanden</span></div>
+            <div style={{fontSize:"11px",color:"var(--text4)"}}>
+              <span style={{color:"var(--green)"}}>{posCount}× winst</span>{negCount>0&&<> · <span style={{color:"var(--red)"}}>{negCount}× verlies</span></>} · gem. <span style={{color:"var(--text2)",fontFamily:"monospace"}}>{fmtMoney(mean,false,{sign:true})}</span>
+            </div>
+          </div>
+          <div style={{textAlign:"right",flexShrink:0}}>
+            <div style={{fontSize:"9.5px",color:"var(--text4)",textTransform:"uppercase",letterSpacing:".06em",fontWeight:700,marginBottom:"2px"}}>Totaal</div>
+            <div style={{fontSize:"20px",fontWeight:700,fontFamily:"monospace",color:total>=0?"var(--green)":"var(--red)",lineHeight:1}}>{fmtMoney(total,false,{sign:true})}</div>
+          </div>
         </div>
-        <div style={{display:"flex",alignItems:"center",justifyContent:"space-around",height:chartH+30,padding:"0 8px",position:"relative"}}>
-          <div style={{position:"absolute",left:0,right:0,top:zeroY,height:"1px",background:"var(--border3)"}}/>
+        {/* Chart area */}
+        <div style={{position:"relative",height:chartH,marginBottom:"6px"}}>
+          {/* Zero line */}
+          <div style={{position:"absolute",left:0,right:0,top:`${zeroLinePct}%`,height:"1px",background:"var(--border3)",zIndex:1}}/>
+          {/* Mean line — dashed goud */}
+          {Math.abs(mean)>range*0.05&&<div title={`Gemiddeld: ${fmtMoney(mean,false,{sign:true})}/mnd`} style={{position:"absolute",left:0,right:0,top:`${meanPct}%`,height:"0",borderTop:"1px dashed var(--gold)",opacity:.6,zIndex:2,cursor:"help"}}/>}
+          {/* Bars */}
+          <div style={{display:"flex",alignItems:"stretch",gap:"5px",height:"100%",position:"relative",zIndex:3}}>
+            {months.map(ym=>{
+              const v=byMonth[ym],st=byMonthStats[ym];
+              const wr=st.count>0?(st.wins/st.count)*100:0;
+              const isPos=v>=0;
+              const isBest=ym===bestM&&v>0;
+              const isWorst=ym===worstM;
+              const barHpct=Math.abs(v)/range*(hasNeg?(isPos?zeroLinePct:100-zeroLinePct):100);
+              const color=isPos?"var(--green)":"var(--red)";
+              const colorRgba=isPos?"rgba(52,216,160,0.15)":"rgba(246,86,111,0.15)";
+              const highlight=isBest||isWorst;
+              return <div key={ym} title={`${ym} — ${fmtMoney(v,false,{sign:true})} · ${st.count} trades · WR ${wr.toFixed(0)}%`} style={{flex:1,position:"relative",cursor:"help",minWidth:0}}>
+                {/* Value label boven (positive) of onder (negative) */}
+                <div style={{position:"absolute",left:0,right:0,top:isPos?`calc(${zeroLinePct-barHpct}% - 16px)`:`calc(${zeroLinePct+barHpct}% + 4px)`,fontSize:"9.5px",fontFamily:"monospace",fontWeight:700,color,textAlign:"center",lineHeight:1,zIndex:4,pointerEvents:"none"}}>{v>=0?"+":""}{Math.abs(v)>=1000?(v/1000).toFixed(1)+"k":Math.round(v)}</div>
+                {/* De bar zelf */}
+                <div style={{position:"absolute",left:"6%",right:"6%",...(isPos?{top:`${zeroLinePct-barHpct}%`,height:`${barHpct}%`,borderRadius:"3px 3px 0 0"}:{top:`${zeroLinePct}%`,height:`${barHpct}%`,borderRadius:"0 0 3px 3px"}),background:`linear-gradient(${isPos?"180deg":"0deg"},${color} 0%,${colorRgba} 100%)`,border:highlight?`1px solid ${color}`:"none",boxShadow:highlight?`0 0 12px ${isPos?"rgba(52,216,160,0.35)":"rgba(246,86,111,0.35)"}`:"none",transition:"all .2s"}}/>
+              </div>;
+            })}
+          </div>
+        </div>
+        {/* X-axis labels onder bars */}
+        <div style={{display:"flex",gap:"5px",marginTop:"4px"}}>
           {months.map(ym=>{
-            const v=byMonth[ym];
-            const h=Math.abs(v)/maxAbs*(chartH/2-4);
-            const isPos=v>=0;
-            return <div key={ym} title={`${ym}: ${fmtMoney(v,false,{sign:true})}`} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",cursor:"help"}}>
-              <div style={{height:chartH,width:"100%",display:"flex",alignItems:"flex-end",justifyContent:"center",position:"relative"}}>
-                {isPos&&<div style={{width:`${barW}%`,maxWidth:"40px",height:`${h}px`,background:"var(--green)",borderRadius:"3px 3px 0 0",position:"absolute",bottom:zeroY,opacity:.9}}/>}
-                {!isPos&&<div style={{width:`${barW}%`,maxWidth:"40px",height:`${h}px`,background:"var(--red)",borderRadius:"0 0 3px 3px",position:"absolute",top:zeroY,opacity:.9}}/>}
-              </div>
-              <div style={{fontSize:"9px",color:"var(--text4)",marginTop:"6px",fontFamily:"monospace"}}>{ym.slice(5)}/{ym.slice(2,4)}</div>
+            const st=byMonthStats[ym];
+            const wr=st.count>0?(st.wins/st.count)*100:0;
+            return <div key={ym} style={{flex:1,textAlign:"center",minWidth:0}}>
+              <div style={{fontSize:"10px",color:"var(--text3)",fontFamily:"monospace",fontWeight:600}}>{["jan","feb","mrt","apr","mei","jun","jul","aug","sep","okt","nov","dec"][parseInt(ym.slice(5,7))-1]}</div>
+              <div style={{fontSize:"9px",color:"var(--text5)",fontFamily:"monospace",marginTop:"1px"}}>{st.count}t·{wr.toFixed(0)}%</div>
             </div>;
           })}
         </div>

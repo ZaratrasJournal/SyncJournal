@@ -6,6 +6,27 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.220] — 2026-06-06
+
+### Gewijzigd
+- **Maandelijkse PnL chart — volledig redesign** *(Denny: "de maandelijkse PNL chart ziet er niet uit, kan je een betere maken?")*
+
+  Het Edgewonk/Tradezella patroon. Verbeteringen vs v12.219:
+  - **Bredere bars** met gradient-fill (van vol-kleur bovenaan naar 15% opacity onderaan)
+  - **Value-labels boven elke bar** (`+186`, `-450` of `+1.2k` voor grote bedragen) — geen hover meer nodig
+  - **Maand-labels in NL** (jan/feb/mrt…) ipv `05/26`
+  - **Trade-count + WR onder elke maand** (`6t · 50%`) — extra context zonder hover
+  - **TOTAAL-summary rechtsboven** — groot, kleur-gecodeerd
+  - **Submetric onder titel**: "X× winst · Y× verlies · gem. +$Z"
+  - **Gemiddelde-lijn** als goud-dashed horizontale streep — toont waar je baseline zit
+  - **Best maand** krijgt groene glow-border, **worst maand** rode glow-border
+  - **Zero-line** subtiel zichtbaar wanneer er verlies-maanden zijn (proportioneel positioneerd)
+  - **Bar-uitlijning** richting zero-line: positief naar boven, negatief naar beneden (klassieke financial chart)
+
+  Schaalt netjes mee bij 2 maanden (demo) tot 12 maanden (volledige periode).
+
+---
+
 ## [v12.219] — 2026-06-06
 
 ### Toegevoegd
