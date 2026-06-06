@@ -6,6 +6,36 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.219] — 2026-06-06
+
+### Toegevoegd
+- **Analytics — twee echte grafieken in Overview** *(Denny: "ik mis grafieken, ik zie heel veel bars maar geen grafieken — visueel ingestelde mensen vinden dit fijn")*
+
+  Onderzoek naar mainstream journals (Tradervue / Tradezella / Edgewonk / Chartlog) wees uit dat de twee meest universele grafieken die in élk pro-journal staan ontbraken in onze Analytics:
+
+  - **📈 Equity curve** (bovenaan Overview) — cumulatieve PnL over tijd met area-fill. Gebruikt dezelfde `SyncEquityCurve` als Dashboard/Review zodat het consistent oogt. Steenbarger: "de waarheid van je trading" — #1 chart bij élke pro-coach.
+  - **📅 Maandelijkse PnL** (onder equity curve) — staven per maand over de laatste 12 maanden. Groen voor winst, rood voor verlies, hover toont exact bedrag. Klassieke Edgewonk/Tradezella weergave.
+
+- **Per-widget info-tooltips** *(Denny: "zodra je klaar bent mag je de per widget info-tooltip erinbouwen")*
+
+  `secH()` helper uitgebreid met optionele tooltip-parameter. Naast de widget-titel verschijnt een `i`-icoontje (cirkel met cursief 'i') dat een hover-tooltip toont met "wat is dit?"-uitleg + pro-coach bronvermelding waar relevant. Eerste batch geplaatst op de meest-gebruikte widgets:
+  - R-Multiple distributie (Tharp)
+  - Rolling 20-trade edge (PF-trend)
+  - Alignment-patronen (ICT/SMC)
+  - Setup insights (Edgewonk)
+  - Long vs Short (Steenbarger bias-detection)
+  - Sessie performance (killzones)
+  - Fout impact (Tradezella edge-drains)
+  - Emotie impact (Mark Douglas)
+  - Streaks (tilt-cascade)
+  - Holdtijd analyse (Steenbarger)
+  - Uur heatmap
+  - Setup lagen performance
+
+  Resterende widgets volgen in v12.220+.
+
+---
+
 ## [v12.218] — 2026-06-06
 
 ### Gewijzigd

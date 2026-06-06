@@ -1680,7 +1680,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.218",released:"2026-06-06"};
+const APP_VERSION={version:"v12.219",released:"2026-06-06"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -11841,7 +11841,7 @@ function Analytics({trades,tradingRules,allTrades,config,accounts,setFilters,set
     {id:"sec-propfirm", num:"08",icon:"🏛️",title:"Propfirm compliance",hint:"FTMO/Topstep regel-tracker",pro:true},
   ];
   const WIDGET_TO_SECTION={
-    procesKPIs:"sec-overview", winstKPIs:"sec-overview",
+    equityCurve:"sec-overview", monthlyPnl:"sec-overview", procesKPIs:"sec-overview", winstKPIs:"sec-overview",
     setupInsights:"sec-setup", setupEdge:"sec-setup", longShort:"sec-setup", perPair:"sec-setup",
     alignmentInsights:"sec-setup", biasHeatmap:"sec-setup", layerAnalysis:"sec-setup", killzoneMatrix:"sec-setup",
     heatmap:"sec-timing", perDay:"sec-timing", sessionPerf:"sec-timing", holdtime:"sec-timing",
@@ -11997,7 +11997,11 @@ function Analytics({trades,tradingRules,allTrades,config,accounts,setFilters,set
   closed.forEach(t=>{const layers=t.layers||[];if(layers.length>0){const summary=layers.map(l=>{const ss=(l.setups||[]).join("+");return[l.timeframe,ss].filter(Boolean).join("+")}).join(" → ");if(!layerSets[summary])layerSets[summary]={n:0,pnl:0,w:0};layerSets[summary].n++;layerSets[summary].pnl+=netPnl(t);if(netPnl(t)>0)layerSets[summary].w++}});
 
   const sectStyle={background:"var(--glass)",backdropFilter:"var(--glass-blur)",WebkitBackdropFilter:"var(--glass-blur)",borderRadius:"var(--radius-lg)",padding:"20px",marginBottom:"16px",border:"1px solid var(--border1)",transition:"border-color .25s,box-shadow .25s,transform .2s"};
-  const secH=(t)=>(<div style={{fontSize:"11px",color:"var(--gold)",textTransform:"uppercase",letterSpacing:"0.12em",fontWeight:700,marginBottom:"14px"}}>{t}</div>);
+  // v12.219: secH ondersteunt optionele tooltip via ⓘ-icoon naast titel.
+  const secH=(t,tip)=>(<div style={{display:"flex",alignItems:"center",gap:"7px",marginBottom:"14px"}}>
+    <span style={{fontSize:"11px",color:"var(--gold)",textTransform:"uppercase",letterSpacing:"0.12em",fontWeight:700}}>{t}</span>
+    {tip&&<span title={tip} style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:"14px",height:"14px",borderRadius:"50%",border:"1px solid var(--border3)",color:"var(--text4)",fontSize:"9px",fontWeight:700,cursor:"help",fontFamily:"serif",lineHeight:1,fontStyle:"italic"}}>i</span>}
+  </div>);
 
   // v12.131: `wide` opt-in voor labels die structureel langer zijn (zoals layer-pattern
   // strings "Daily+BOS → 1H+SFP+OB"). Default 70px voor compacte labels (pair / session /
@@ -12173,6 +12177,49 @@ function Analytics({trades,tradingRules,allTrades,config,accounts,setFilters,set
 
     <div ref={analyticsContainerRef} className={editMode?"edit-mode":""} style={analyticsMode!=="custom"?{display:"flex",flexDirection:"column",gap:"12px",minWidth:0}:{minWidth:0}}>
 
+    {/* v12.219: Equity curve bovenaan Overview — visuele trend van cumulatieve PnL over tijd.
+        Gebruikt bestaande SyncEquityCurve (zelfde rendering als Dashboard) zodat het consistent oogt. */}
+    {seq("equityCurve",lp.equityCurve!==false&&closed.length>0,<div style={{padding:"16px",background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:"10px"}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"12px"}}>
+        <div title="Cumulatieve PnL over tijd. Steile stijging = winning streak; vlakke stukken = consolidatie; dalingen = drawdowns. De #1 chart van élke pro-coach — Steenbarger noemt dit 'de waarheid van je trading'." style={{cursor:"help"}}>
+          <div style={{fontSize:"13px",fontWeight:700,color:"var(--text)",marginBottom:"4px"}}>📈 Equity curve <span style={{fontSize:"10px",fontWeight:500,color:"var(--text4)",marginLeft:"6px"}}>cumulatieve PnL over tijd</span></div>
+        </div>
+      </div>
+      <SyncEquityCurve trades={closed} drawdown={false} height="220px"/>
+    </div>)}
+
+    {/* v12.219: Monthly PnL bar chart — staven per maand, groen voor winst rood voor verlies. */}
+    {seq("monthlyPnl",lp.monthlyPnl!==false&&closed.length>0,(()=>{
+      const byMonth={};
+      closed.forEach(t=>{const d=t.exitDate||t.date;if(!d)return;const ym=d.slice(0,7);byMonth[ym]=(byMonth[ym]||0)+netPnl(t);});
+      const months=Object.keys(byMonth).sort().slice(-12);
+      if(months.length<2)return null;
+      const vals=months.map(m=>byMonth[m]);
+      const maxAbs=Math.max(...vals.map(Math.abs),1);
+      const chartH=120,zeroY=chartH/2;
+      const barW=Math.max(20,Math.min(60,(100/months.length)*0.8));
+      return <div style={{padding:"16px",background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:"10px"}}>
+        <div title="PnL per maand over de laatste 12 maanden. Goud-standaard ritme: opeenvolgende groene maanden = consistente edge. Een diepe rode maand = focus voor weekly/monthly review (Steenbarger framework)." style={{cursor:"help",marginBottom:"14px"}}>
+          <div style={{fontSize:"13px",fontWeight:700,color:"var(--text)",marginBottom:"4px"}}>📅 Maandelijkse PnL <span style={{fontSize:"10px",fontWeight:500,color:"var(--text4)",marginLeft:"6px"}}>laatste {months.length} maanden</span></div>
+        </div>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-around",height:chartH+30,padding:"0 8px",position:"relative"}}>
+          <div style={{position:"absolute",left:0,right:0,top:zeroY,height:"1px",background:"var(--border3)"}}/>
+          {months.map(ym=>{
+            const v=byMonth[ym];
+            const h=Math.abs(v)/maxAbs*(chartH/2-4);
+            const isPos=v>=0;
+            return <div key={ym} title={`${ym}: ${fmtMoney(v,false,{sign:true})}`} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",cursor:"help"}}>
+              <div style={{height:chartH,width:"100%",display:"flex",alignItems:"flex-end",justifyContent:"center",position:"relative"}}>
+                {isPos&&<div style={{width:`${barW}%`,maxWidth:"40px",height:`${h}px`,background:"var(--green)",borderRadius:"3px 3px 0 0",position:"absolute",bottom:zeroY,opacity:.9}}/>}
+                {!isPos&&<div style={{width:`${barW}%`,maxWidth:"40px",height:`${h}px`,background:"var(--red)",borderRadius:"0 0 3px 3px",position:"absolute",top:zeroY,opacity:.9}}/>}
+              </div>
+              <div style={{fontSize:"9px",color:"var(--text4)",marginTop:"6px",fontFamily:"monospace"}}>{ym.slice(5)}/{ym.slice(2,4)}</div>
+            </div>;
+          })}
+        </div>
+      </div>;
+    })())}
+
     {/* PROCES KPI grid — Plan / SL / Journal / Consistency */}
     {showP&&seq("procesKPIs",lp.procesKPIs!==false,<div style={{display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:"12px"}}>
       {[
@@ -12245,7 +12292,7 @@ function Analytics({trades,tradingRules,allTrades,config,accounts,setFilters,set
     </div>)}
     {/* R-Multiple Distribution — Chart.js histogram (upgraded) */}
     {showW&&seq("rMultipleDist",lp.rMultipleDist&&rMultHasData,<div style={sectStyle}>
-      {secH("R-Multiple distributie")}
+      {secH("R-Multiple distributie","Verdeling van je R-multiples per trade-bucket. Bell-curve = consistente risk; lange right-tail = je laat winnaars lopen (gewenst); cluster bij −1R = stops worden hit zoals gepland.")}
       <div style={{marginBottom:"12px",fontSize:"12px",color:"var(--text3)"}}>Op basis van {rMultAll.length} trades met entry + stop loss. Gemiddeld R-multiple: <strong style={{color:avgRMult>=1?"var(--green)":avgRMult>=0?"var(--amber)":"var(--red)",fontFamily:"var(--mono)"}}>{avgRMult>=0?"+":""}{avgRMult?.toFixed(2)}R</strong></div>
       <RMultDistChart trades={closed}/>
       {avgRMult!==null&&avgRMult<1&&<div style={{marginTop:"12px",padding:"8px 12px",background:"rgba(201,168,76,0.08)",border:"1px solid rgba(201,168,76,0.15)",borderRadius:"6px",fontSize:"11px",color:"var(--amber)"}}>💡 Gemiddeld R-multiple is onder 1R. Focus op het vasthouden van winnaars langer, of striktere SL op verliezers.</div>}
@@ -12254,14 +12301,14 @@ function Analytics({trades,tradingRules,allTrades,config,accounts,setFilters,set
 
     {/* Rolling 20-trade edge — NEW */}
     {showW&&seq("rollingEdge",lp.rollingEdge!==false&&closed.length>=20,<div style={sectStyle}>
-      {secH("Rolling 20-trade edge")}
+      {secH("Rolling 20-trade edge","Win-rate + profit-factor over een schuivend venster van 20 trades. Daalt het = edge slijt of markt verandert; stijgt het = je leert. Stop trading bij ≥3 opeenvolgende vensters met PF<1.")}
       <div style={{marginBottom:"12px",fontSize:"12px",color:"var(--text3)"}}>Voortschrijdend gemiddelde over laatste 20 trades. Toont of je edge <strong>degradeert</strong> of <strong>verbetert</strong> — lifetime averages liegen.</div>
       <RollingEdgeChart trades={closed} window={20}/>
     </div>)}
 
     {/* v12.206: Alignment-patronen (HTF/LTF bias-flow) */}
     {showW&&seq("alignmentInsights",lp.alignmentInsights!==false&&closed.length>0,<div style={sectStyle}>
-      {secH("🎯 Alignment-patronen · HTF/LTF bias-flow")}
+      {secH("🎯 Alignment-patronen · HTF/LTF bias-flow","Classificeert elke trade als Continuation / Pullback / Reversal / Counter / Geen bias op basis van HTF + LTF bias-data. ICT/SMC-school: Continuation in HTF-trend = hoogste WR-cluster.")}
       <div style={{marginBottom:"14px",fontSize:"12px",color:"var(--text3)"}}>WR + R-multiple per patroon (Continuation / Pullback / Reversal / Counter). Bias per laag bepaalt classificatie. <em style={{color:"var(--text4)"}}>Klik op een kaart om Trades te filteren.</em></div>
       <AlignmentInsightsWidget trades={closed} setFilters={setFilters} setTab={setTab}/>
     </div>)}
@@ -12275,7 +12322,7 @@ function Analytics({trades,tradingRules,allTrades,config,accounts,setFilters,set
 
     {/* Setup insights table — NEW, richer than old barchart */}
     {seq("setupInsights",lp.setupInsights!==false&&closed.length>0,<div style={sectStyle}>
-      {secH("Setup insights · advies per setup")}
+      {secH("Setup insights · advies per setup","Per setup-tag: aantal trades, WR, expectancy. Edgewonk's #1 metric — leert je welke setup je écht moet schalen en welke je beter dropt. Min. 3 trades per setup voor display.")}
       <div style={{marginBottom:"12px",fontSize:"12px",color:"var(--text3)"}}>Minimaal 3 trades per setup. <em style={{color:"var(--text4)"}}>Klik op een rij om te filteren in Trades.</em></div>
       <SetupInsightsTable trades={closed}/>
     </div>)}
@@ -12314,7 +12361,7 @@ function Analytics({trades,tradingRules,allTrades,config,accounts,setFilters,set
 
 
     {/* Long vs Short */}
-    {showW&&seq("longShort",lp.longShort,<div style={sectStyle}>{secH("Long vs Short")}
+    {showW&&seq("longShort",lp.longShort,<div style={sectStyle}>{secH("Long vs Short","Splitst je edge tussen long- en short-trades. Grote skew = je bent eenzijdig (vaak een bias-blind-spot). Steenbarger: 'long-bias in downtrend' = vroege diagnose-marker.")}
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"12px"}}>
         {[["Long",longs,longPnl,"var(--green)"],["Short",shorts,shortPnl,"var(--red)"]].map(([label,ts,pnl2,color])=>{const w2=ts.filter(t=>netPnl(t)>0).length;const l2=ts.filter(t=>netPnl(t)<0).length;const wr2=ts.length?w2/ts.length*100:0;
           return(<div key={label} style={{background:"var(--bg4)",borderRadius:"8px",padding:"16px",border:`1px solid ${color}25`}}>
@@ -12337,12 +12384,12 @@ function Analytics({trades,tradingRules,allTrades,config,accounts,setFilters,set
     </div>)}
 
     {/* Session performance */}
-    {seq("sessionPerf",lp.sessionPerf&&Object.values(sessData).some(d=>d.n>0),<div style={sectStyle}>{secH("Sessie performance (CET)")}
+    {seq("sessionPerf",lp.sessionPerf&&Object.values(sessData).some(d=>d.n>0),<div style={sectStyle}>{secH("Sessie performance (CET)","PnL + WR per trading-sessie (Asia/London/US AM/PM/Late + Weekend). ICT-school: 'killzones' — bepaalde sessies hebben hogere institutional flow. Steenbarger #2 leak: trades in slechte sessies.")}
       {(()=>{const maxAbs=Math.max(...Object.values(sessData).map(d=>Math.abs(d.pnl)),1);return ALL_SESSIONS.filter(s=>sessData[s].n>0).map(s=>{const d=sessData[s];const c=SESSION_COLORS[s];return barRow(s,d.w,d.l,d.pnl,maxAbs,c.text)})})()}
     </div>)}
 
     {/* Fouten — upgraded to Chart.js horizontal bar chart */}
-    {seq("foutAnalyse",lp.foutAnalyse&&Object.keys(mistakeImpact).length>0,<div style={sectStyle}>{secH("Fout impact op PNL")}
+    {seq("foutAnalyse",lp.foutAnalyse&&Object.keys(mistakeImpact).length>0,<div style={sectStyle}>{secH("Fout impact op PNL","Cumulatieve $-impact per fout-tag. Welke fout kost je het meest? Tradezella's 'edge-drains' framework: één fout-categorie verwijderen geeft vaak meer winst dan een nieuwe setup leren.")}
       <div style={{marginBottom:"12px",fontSize:"12px",color:"var(--text3)"}}>Totale PnL-impact per mistake-tag. Negatieve balk = geld dat je fout je kost.</div>
       <MistakeImpactChart trades={closed}/>
       {(()=>{
@@ -12353,7 +12400,7 @@ function Analytics({trades,tradingRules,allTrades,config,accounts,setFilters,set
     </div>)}
 
     {/* Emotions — SyncJournal-stijl 2-kolom grid */}
-    {seq("emotionImpact",lp.emotionImpact&&Object.keys(emoImpact).length>0,<div style={sectStyle}>{secH("🧠 Emotie impact")}
+    {seq("emotionImpact",lp.emotionImpact&&Object.keys(emoImpact).length>0,<div style={sectStyle}>{secH("🧠 Emotie impact","PnL + WR per emotie-tag (Gedisciplineerd / Kalm / Geduldig / FOMO / Onzeker / Gefrustreerd). Mark Douglas: emoties zijn zichtbaar in resultaten — track ze om gedragsverandering te zien.")}
       <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:"10px"}}>
         {Object.entries(emoImpact).sort((a,b)=>b[1].pnl-a[1].pnl).map(([e,d])=>{
           const pos=d.pnl>=0;
@@ -12370,7 +12417,7 @@ function Analytics({trades,tradingRules,allTrades,config,accounts,setFilters,set
     </div>)}
 
     {/* Streaks */}
-    {showW&&seq("streaks",lp.streaks,<div style={sectStyle}>{secH("Streaks")}
+    {showW&&seq("streaks",lp.streaks,<div style={sectStyle}>{secH("Streaks","Langste win-streak en loss-streak. Lange win-streaks correleren met overconfidence (size-creep risico); lange loss-streaks met tilt-cascade (Tradezella). Plan een trading-pauze na 5 consecutive losses.")}
       <div style={{display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:"12px"}}>
         <Stat label="Huidige streak" value={streak+"×"} color={lastIsWin?"var(--green)":"var(--red)"} sub={lastIsWin?"winst":"verlies"}/>
         <Stat label="Max. winstreek" value={maxWin+"×"} color="var(--green)"/>
@@ -12427,7 +12474,7 @@ function Analytics({trades,tradingRules,allTrades,config,accounts,setFilters,set
       const b=buckets.map(bk=>({...bk,n:0,pnl:0,w:0}));
       tradeHold.forEach(t=>{const idx=buckets.findIndex(bk=>t.h<=bk.max);const i=idx<0?buckets.length-1:idx;b[i].n++;b[i].pnl+=t.pnl;if(t.pnl>0)b[i].w++});
       const maxAbs=Math.max(...b.map(x=>Math.abs(x.pnl)),1);
-      return(<div style={sectStyle}>{secH("Holdtijd analyse")}
+      return(<div style={sectStyle}>{secH("Holdtijd analyse","Gemiddelde holdtijd per uitkomst. Mediaan winnaar / mediaan verliezer geeft snel zicht op timing. Combineer met Hold-time asymmetry (Pro) voor diepere Steenbarger-leak detectie.")}
         {b.filter(x=>x.n>0).map(x=>barRow(x.l,x.w,x.n-x.w,x.pnl,maxAbs,"#C9A84C"))}
       </div>);
     })())}
@@ -12437,7 +12484,7 @@ function Analytics({trades,tradingRules,allTrades,config,accounts,setFilters,set
       const hrs=Array(24).fill(0).map(()=>({n:0,pnl:0,w:0}));
       closed.forEach(t=>{const h=parseInt((t.time||"00:00").split(":")[0],10);if(isNaN(h))return;hrs[h].n++;hrs[h].pnl+=netPnl(t);if(netPnl(t)>0)hrs[h].w++});
       const maxAbs=Math.max(...hrs.map(h=>Math.abs(h.pnl)),1);
-      return(<div style={sectStyle}>{secH("Uur heatmap (lokale tijd)")}
+      return(<div style={sectStyle}>{secH("Uur heatmap (lokale tijd)","Cumulatieve PnL per uur van de dag, 24-uurs heatmap. Identificeert je 'edge windows' — uren waar je consistent winst maakt vs verlies. Combineer met Sessie performance voor de waarom.")}
         <div style={{display:"grid",gridTemplateColumns:"repeat(12,1fr)",gap:"3px"}}>
           {hrs.map((h,i)=>{const intensity=h.n>0?Math.min(Math.abs(h.pnl)/maxAbs,1):0;const bg=h.n===0?"rgba(255,255,255,0.03)":h.pnl>=0?`rgba(46,170,111,${0.15+intensity*0.5})`:`rgba(224,85,85,${0.15+intensity*0.5})`;const col=h.n===0?"var(--text5)":h.pnl>=0?"var(--green)":"var(--red)";return(
             <div key={i} title={`${String(i).padStart(2,"0")}:00 — ${h.n} trades${h.n?`, $${fmt(h.pnl)}, WR ${(h.w/h.n*100).toFixed(0)}%`:""}`} style={{height:"36px",borderRadius:"3px",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"10px",fontFamily:"var(--mono)",background:bg,color:col,fontWeight:h.n>0?600:400}}>{String(i).padStart(2,"0")}h</div>
@@ -12448,7 +12495,7 @@ function Analytics({trades,tradingRules,allTrades,config,accounts,setFilters,set
     })())}
 
     {/* Layer analysis */}
-    {seq("layerAnalysis",lp.layerAnalysis&&Object.keys(layerSets).length>0,<div style={sectStyle}>{secH("Setup lagen performance")}
+    {seq("layerAnalysis",lp.layerAnalysis&&Object.keys(layerSets).length>0,<div style={sectStyle}>{secH("Setup lagen performance","PnL per combinatie van HTF/MTF/LTF setup-lagen. Welke laag-stack levert je edge? Sync-methodologie: HTF context + LTF trigger = hoogste conviction-trades.")}
       {(()=>{const maxAbs=Math.max(...Object.values(layerSets).map(d=>Math.abs(d.pnl)),1);return Object.entries(layerSets).sort((a,b)=>b[1].pnl-a[1].pnl).map(([summary,d])=>barRow(summary,d.w,d.n-d.w,d.pnl,maxAbs,"var(--purple)",null,true))})()}
     </div>)}
 
