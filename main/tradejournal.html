@@ -1652,7 +1652,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.211",released:"2026-06-06"};
+const APP_VERSION={version:"v12.212",released:"2026-06-06"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -11793,6 +11793,11 @@ function Analytics({trades,tradingRules,allTrades,config,accounts,setFilters,set
   // View mode: "proces" | "winst" | "both". Default "proces" for beginners (<100 trades).
   const[viewMode,setViewMode]=useState(()=>{try{return localStorage.getItem("tj_analytics_view")||(trades.length<100?"proces":"both")}catch{return"both"}});
   useEffect(()=>{try{localStorage.setItem("tj_analytics_view",viewMode)}catch{}},[viewMode]);
+  // v12.212: Analytics-redesign mode (basic / pro / custom). Basic = essentials voor <100 trades,
+  // Pro = pro-coach metrics + extra secties (Risk/Sizing, Funding, Propfirm), Custom = user-toggleable.
+  const[analyticsMode,setAnalyticsMode]=useState(()=>{try{return localStorage.getItem("tj_analytics_mode")||"basic"}catch{return"basic"}});
+  useEffect(()=>{try{localStorage.setItem("tj_analytics_mode",analyticsMode)}catch{}},[analyticsMode]);
+  const isPro=analyticsMode==="pro"||analyticsMode==="custom";
   // v12.166: dismissable hint voor "Proces-metrics" — was 95-woord permanente info-block.
   const[procesHintHidden,setProcesHintHidden]=useState(()=>{try{return localStorage.getItem("tj_analytics_proces_hint_dismissed")==="1"}catch{return false}});
   const dismissProcesHint=()=>{try{localStorage.setItem("tj_analytics_proces_hint_dismissed","1")}catch{};setProcesHintHidden(true)};
@@ -11862,9 +11867,33 @@ function Analytics({trades,tradingRules,allTrades,config,accounts,setFilters,set
   const rMultHasData=rMultAll.length>0;
   const avgRMult=rMultAll.length?rMultAll.reduce((a,b)=>a+b,0)/rMultAll.length:null;
 
-  
+
   // Expectancy
   const expectancy=calcExpectancy(closed);
+
+  // v12.212: KPI-strip data — 5 cards Basic, 7 cards Pro (extra: SQN + Max DD).
+  const totalPnl=closed.reduce((s,t)=>s+netPnl(t),0);
+  const winCount=wins.length;const lossCount=losses.length;
+  const winRate=closed.length?(winCount/(winCount+lossCount||1))*100:0;
+  const grossWin=wins.reduce((s,t)=>s+netPnl(t),0);
+  const grossLoss=Math.abs(losses.reduce((s,t)=>s+netPnl(t),0));
+  const profitFactor=grossLoss>0?grossWin/grossLoss:(grossWin>0?Infinity:0);
+  // Plan-adherence: % trades with thesis + sl + post-notes filled
+  const planAdh=closed.length?(closed.filter(t=>(t.entryNote||"").trim()&&(t.stopLoss||"")!==""&&(t.notes||"").trim()).length/closed.length)*100:0;
+  // SQN (Tharp): (E / σR) × √n. Only meaningful for n≥30.
+  const sqn=(()=>{
+    if(rMultAll.length<30)return null;
+    const m=rMultAll.reduce((s,r)=>s+r,0)/rMultAll.length;
+    const v=rMultAll.reduce((s,r)=>s+(r-m)**2,0)/rMultAll.length;
+    const sd=Math.sqrt(v);
+    if(sd<=0)return null;
+    return (m/sd)*Math.sqrt(rMultAll.length);
+  })();
+  // Max DD from sorted-by-date equity curve
+  const ddByDate={};closed.forEach(t=>{if(!t.date)return;ddByDate[t.date]=(ddByDate[t.date]||0)+netPnl(t)});
+  const sortedDates=Object.keys(ddByDate).sort();
+  let cum=0,peak=0,maxDD=0;
+  for(const d of sortedDates){cum+=ddByDate[d];if(cum>peak)peak=cum;const dd=cum-peak;if(dd<maxDD)maxDD=dd}
 
   // Long vs Short
   const longs=closed.filter(t=>t.direction==="long");const shorts=closed.filter(t=>t.direction==="short");
@@ -11958,12 +11987,44 @@ function Analytics({trades,tradingRules,allTrades,config,accounts,setFilters,set
     <EditModeBar editMode={editMode} setEditMode={setEditMode} onReset={()=>setOrder(DEFAULT_ANALYTICS_ORDER)} gear={<LayoutGear onClick={()=>setLpOpen(true)}/>}/>
     <LayoutPanel open={lpOpen} onClose={()=>setLpOpen(false)} sections={LP_SECTIONS} prefs={lp} toggle={lpToggle} reset={lpReset}/>
 
-    {/* View mode segmented control — user kiest focus: proces / winst / beide */}
+    {/* v12.212: Analytics KPI-strip — primary metrics always visible bovenaan (Stripe/Datadog progressive disclosure-patroon).
+        5 cards Basic / 7 cards Pro (extra: SQN — Tharp na ≥30 trades; Max DD — peak-trough drawdown). */}
+    {(()=>{
+      const cards=[
+        {label:"Net PnL",val:totalPnl,fmt:v=>fmtMoneyAbsForChart(v),color:totalPnl>=0?"var(--green)":"var(--red)",tip:"Som van alle gesloten trade-PnL's (inclusief fees & funding). Belangrijkste resultaat — maar verbergt 1-trade-helden, kijk altijd naast Profit Factor."},
+        {label:"Win-rate",val:winRate,fmt:v=>(v||0).toFixed(1)+"%",color:winRate>=50?"var(--green)":"var(--text)",tip:"% winnende trades van het totaal. ALLEEN nuttig in combinatie met payoff-ratio — 40% WR + 2:1 payoff = winstgevend; 70% WR + 0.4:1 = verliesgevend."},
+        {label:"Profit Factor",val:profitFactor,fmt:v=>(!isFinite(v)?"∞":(v||0).toFixed(2)),color:profitFactor>=1.5?"var(--green)":(profitFactor>=1?"var(--amber)":"var(--red)"),tip:"Totaal-winst ÷ totaal-verlies. >1.5 = solide edge, >2 = sterk, <1 = verliesgevend. Tharp/Steenbarger noemen dit de #1 quick-check metric."},
+        {label:"Expectancy",val:expectancy?.expR,fmt:v=>(v==null?"—":(v>=0?"+":"")+v.toFixed(2)+"R"),color:expectancy?.expR>=0?"var(--green)":"var(--red)",tip:"Gemiddeld R-multiple per trade. Positief = edge. Tharp: 'Trade Your Way' — combineer met sample-size voor statistische zekerheid (≥30 trades)."},
+        {label:"Plan-adherence",val:planAdh,fmt:v=>(v||0).toFixed(0)+"%",color:planAdh>=70?"var(--green)":(planAdh>=40?"var(--amber)":"var(--red)"),tip:"% trades met volledig ingevuld plan (thesis + SL + post-notes). Steenbarger #3 leak — onvolledig plan = onleerbare resultaten."},
+        ...(isPro?[
+          {label:"SQN",val:sqn,fmt:v=>(v==null?"n/a":v.toFixed(2)),color:sqn==null?"var(--text3)":(sqn>=2.5?"var(--green)":(sqn>=1.6?"var(--amber)":"var(--red)")),tip:"System Quality Number (Tharp) = (E ÷ σR) × √n. >1.6 solide, >2.5 zeer goed, >7 overfit-verdacht. Minimum 30 trades voor display, 100 voor zekerheid."},
+          {label:"Max DD",val:maxDD,fmt:v=>fmtMoneyAbsForChart(v||0),color:"var(--red)",tip:"Grootste peak-to-trough drawdown over de tijdlijn. Propfirms (FTMO/Topstep) hebben harde DD-limieten — track dit boven alles."},
+        ]:[])
+      ];
+      return <div style={{display:"grid",gridTemplateColumns:`repeat(${cards.length},minmax(0,1fr))`,gap:"10px",marginBottom:"14px"}}>
+        {cards.map(c=>(
+          <div key={c.label} title={c.tip} style={{padding:"12px 14px",borderRadius:"var(--radius)",background:"var(--bg2)",border:"1px solid var(--border2)",cursor:"help"}}>
+            <div style={{fontSize:"10px",color:"var(--text4)",textTransform:"uppercase",letterSpacing:".05em",fontWeight:700,marginBottom:"6px"}}>{c.label}</div>
+            <div style={{fontSize:"18px",fontWeight:700,color:c.color,fontFamily:"monospace"}}>{c.fmt(c.val)}</div>
+          </div>
+        ))}
+      </div>;
+    })()}
+
+    {/* View mode segmented control — user kiest focus: proces / winst / beide.
+        v12.212: Mode-toggle (Basic/Pro/Custom) erbij gezet. */}
     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"16px",gap:"12px",flexWrap:"wrap"}}>
+      <div style={{display:"flex",gap:"10px",flexWrap:"wrap",alignItems:"center"}}>
       <div style={{display:"inline-flex",padding:"4px",borderRadius:"10px",background:"var(--bg4)",border:"1px solid var(--border2)",gap:"2px"}}>
         {[["proces","🧠 Proces","Focus op discipline, plan, regels"],["winst","💰 Winst","Focus op PnL, R-multiple, setups"],["both","📊 Beide","Alles tonen"]].map(([k,l,tip])=>(
-          <button key={k} onClick={()=>setViewMode(k)} title={tip} style={{padding:"7px 16px",borderRadius:"8px",border:"none",background:viewMode===k?"var(--gold)":"transparent",color:viewMode===k?"#fff":"var(--text3)",fontSize:"12px",fontWeight:700,cursor:"pointer",fontFamily:"inherit",transition:"all .15s"}}>{l}</button>
+          <button key={k} onClick={()=>setViewMode(k)} title={tip} style={{padding:"7px 16px",borderRadius:"8px",border:"none",background:viewMode===k?"var(--gold)":"transparent",color:viewMode===k?"var(--text)":"var(--text3)",fontSize:"12px",fontWeight:700,cursor:"pointer",fontFamily:"inherit",transition:"all .15s"}}>{l}</button>
         ))}
+      </div>
+      <div style={{display:"inline-flex",padding:"4px",borderRadius:"10px",background:"var(--bg4)",border:"1px solid var(--border2)",gap:"2px"}}>
+        {[["basic","🌱 Basic","Essentials: 5 KPI's + kern-widgets. Default voor <100 trades."],["pro","🚀 Pro","Pro-coach metrics: SQN, Max DD + diepere analyse. Voor ervaren traders."],["custom","🛠 Custom","Toggle alles handmatig (via Layout-tandwiel rechtsboven)."]].map(([k,l,tip])=>(
+          <button key={k} onClick={()=>setAnalyticsMode(k)} title={tip} style={{padding:"7px 14px",borderRadius:"8px",border:"none",background:analyticsMode===k?"var(--gold)":"transparent",color:analyticsMode===k?"var(--text)":"var(--text3)",fontSize:"12px",fontWeight:700,cursor:"pointer",fontFamily:"inherit",transition:"all .15s"}}>{l}</button>
+        ))}
+      </div>
       </div>
       {/* v12.168 (UX polish): Mark Douglas-quote naast Genereer-rapport-knop was filler.
           Verwijderd — viewMode-buttons hebben al tooltip-tips voor de uitleg. */}

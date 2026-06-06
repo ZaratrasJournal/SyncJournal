@@ -6,6 +6,34 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.212] — 2026-06-06
+
+### Toegevoegd
+- **Analytics — KPI-strip bovenaan** *(gevraagd door Denny: "ik zit een beetje met de analytics pagina... het moet voor beginners en gevorderde traders belangrijk zijn")*
+
+  Vóór elke widget: een rij met de 5 primary metrics altijd zichtbaar (Stripe/Datadog progressive-disclosure-patroon). Hover op een card voor uitleg + waarom-het-telt.
+
+  **Basic mode (5 cards)**:
+  - Net PnL — som van alle gesloten trades inclusief fees/funding
+  - Win-rate % — alleen nuttig naast payoff-ratio
+  - Profit Factor — winst ÷ verlies, >1.5 solide edge
+  - Expectancy R — gemiddeld R-multiple per trade (Tharp)
+  - Plan-adherence % — % trades met thesis + SL + post-notes (Steenbarger #3 leak)
+
+  **Pro mode (+2 cards)**:
+  - SQN — System Quality Number (Tharp): `(E ÷ σR) × √n`. >1.6 solide, >2.5 zeer goed
+  - Max DD — grootste peak-to-trough drawdown (propfirm-kritisch)
+
+- **Analytics — Basic / Pro / Custom mode-toggle** naast de Proces/Winst/Beide-toggle. Persisteert in `tj_analytics_mode`.
+  - 🌱 **Basic** — default voor <100 trades, essentials only
+  - 🚀 **Pro** — pro-coach metrics (SQN + Max DD in KPI-strip), bouwt verder uit in komende releases
+  - 🛠 **Custom** — toggle alles handmatig via het Layout-tandwiel rechtsboven
+
+### Toelichting
+Deze release is fase 1 van de Analytics-redesign. Volgt in v12.213+: TOC met sectie-navigatie, info-tooltips per widget, en 5 unieke pro-widgets uit het onderzoek (hold-time asymmetry — Steenbarger #1 leak, behavioral tilt-panel, funding-cost ledger, killzone × Setup matrix, FTMO/Topstep propfirm-compliance dashboard).
+
+---
+
 ## [v12.211] — 2026-06-06
 
 ### Toegevoegd
