@@ -1680,7 +1680,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.214",released:"2026-06-06"};
+const APP_VERSION={version:"v12.215",released:"2026-06-06"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -12439,19 +12439,126 @@ function Analytics({trades,tradingRules,allTrades,config,accounts,setFilters,set
       {(()=>{const maxAbs=Math.max(...Object.values(layerSets).map(d=>Math.abs(d.pnl)),1);return Object.entries(layerSets).sort((a,b)=>b[1].pnl-a[1].pnl).map(([summary,d])=>barRow(summary,d.w,d.n-d.w,d.pnl,maxAbs,"var(--purple)",null,true))})()}
     </div>)}
 
-    {/* v12.213: Pro-only placeholder-secties — krijgen echte widgets in v12.215+. */}
+    {/* v12.215: Pro-only widgets — Hold-time asymmetry / Fee-impact / Single-day concentration. */}
     {analyticsMode==="pro" && PRO_SECTIONS_DEF.map(s=>{
       const ord=SECTION_ORDER[s.id]||9;
+      let content=null;
+      if(s.id==="sec-risk"){
+        // Hold-time asymmetry (Steenbarger #1 leak): avg loser-duration / avg winner-duration. >1 = leak.
+        const dur=t=>{
+          if(t.openTime&&t.closeTime)return Math.abs(parseInt(t.closeTime)-parseInt(t.openTime))/60000;
+          const start=new Date((t.date||"")+"T"+(t.time||"00:00")+":00").getTime();
+          const end=new Date((t.exitDate||t.date||"")+"T"+(t.exitTime||t.time||"00:00")+":00").getTime();
+          if(isFinite(start)&&isFinite(end)&&end>start)return (end-start)/60000;
+          return null;
+        };
+        const wDur=wins.map(dur).filter(v=>v!=null&&v>0);
+        const lDur=losses.map(dur).filter(v=>v!=null&&v>0);
+        const avgW=wDur.length?wDur.reduce((a,b)=>a+b,0)/wDur.length:0;
+        const avgL=lDur.length?lDur.reduce((a,b)=>a+b,0)/lDur.length:0;
+        const ratio=avgW>0?avgL/avgW:null;
+        const fmtMin=m=>!m?"—":m<60?`${m.toFixed(0)} min`:m<1440?`${(m/60).toFixed(1)} u`:`${(m/1440).toFixed(1)} d`;
+        const diag=ratio==null?"Te weinig data":ratio>1.5?"⚠ Significant leak — je houdt verliezers veel langer dan winnaars vast":ratio>1?"⚠ Verliezers houden langer aan dan winnaars":ratio>0.8?"✓ Gezonde balans":"✓ Cut losers fast, runners free — perfect";
+        const ratioColor=ratio==null?"var(--text3)":ratio>1.5?"var(--red)":ratio>1?"var(--amber)":"var(--green)";
+        const maxBar=Math.max(avgW,avgL,1);
+        content=<div style={{padding:"16px",background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:"10px"}}>
+          <div style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",marginBottom:"14px"}}>
+            <div title="Steenbarger's #1 lek: gemiddelde hold-tijd verliezers gedeeld door gemiddelde hold-tijd winnaars. Ratio >1 = je houdt verliezers langer dan winners — klassiek 'hope it comes back'-patroon." style={{cursor:"help"}}>
+              <div style={{fontSize:"13px",fontWeight:700,color:"var(--text)",marginBottom:"4px"}}>⏱ Hold-time asymmetry <span style={{fontSize:"10px",fontWeight:500,color:"var(--text4)",marginLeft:"6px"}}>(Steenbarger)</span></div>
+              <div style={{fontSize:"11px",color:"var(--text4)"}}>avg-verlies-duur ÷ avg-winst-duur</div>
+            </div>
+            <div style={{fontSize:"28px",fontWeight:700,fontFamily:"monospace",color:ratioColor}}>{ratio==null?"—":ratio.toFixed(2)+"×"}</div>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"60px 1fr 80px",gap:"10px",alignItems:"center",marginBottom:"8px"}}>
+            <div style={{fontSize:"11px",color:"var(--text3)"}}>Winnaars</div>
+            <div style={{height:"14px",borderRadius:"4px",background:"var(--bg4)",position:"relative",overflow:"hidden"}}>
+              <div style={{position:"absolute",inset:0,width:`${(avgW/maxBar)*100}%`,background:"var(--green)",borderRadius:"4px"}}/>
+            </div>
+            <div style={{fontSize:"11px",fontFamily:"monospace",color:"var(--text2)",textAlign:"right"}}>{fmtMin(avgW)}</div>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"60px 1fr 80px",gap:"10px",alignItems:"center",marginBottom:"12px"}}>
+            <div style={{fontSize:"11px",color:"var(--text3)"}}>Verliezers</div>
+            <div style={{height:"14px",borderRadius:"4px",background:"var(--bg4)",position:"relative",overflow:"hidden"}}>
+              <div style={{position:"absolute",inset:0,width:`${(avgL/maxBar)*100}%`,background:"var(--red)",borderRadius:"4px"}}/>
+            </div>
+            <div style={{fontSize:"11px",fontFamily:"monospace",color:"var(--text2)",textAlign:"right"}}>{fmtMin(avgL)}</div>
+          </div>
+          <div style={{padding:"10px 12px",borderRadius:"6px",background:"var(--bg3)",borderLeft:`3px solid ${ratioColor}`,fontSize:"11.5px",color:"var(--text2)",lineHeight:1.5}}>{diag}</div>
+        </div>;
+      }
+      else if(s.id==="sec-funding"){
+        // Fee/Funding-impact: totale fees als % van gross-pnl + per-account breakdown.
+        const totalFees=closed.reduce((s,t)=>s+Math.abs(parseFloat(t.fees||t.fee||0)||0),0);
+        const grossPnl=closed.reduce((s,t)=>s+Math.abs(netPnl(t)+Math.abs(parseFloat(t.fees||t.fee||0)||0)),0);
+        const feePct=grossPnl>0?(totalFees/grossPnl)*100:0;
+        const bySource={};
+        closed.forEach(t=>{const k=t.source||"manual";const f=Math.abs(parseFloat(t.fees||t.fee||0)||0);if(!bySource[k])bySource[k]={fees:0,trades:0,net:0};bySource[k].fees+=f;bySource[k].trades++;bySource[k].net+=netPnl(t);});
+        const sourceRows=Object.entries(bySource).sort((a,b)=>b[1].fees-a[1].fees);
+        const maxFee=Math.max(...sourceRows.map(([,d])=>d.fees),1);
+        const feeColor=feePct<5?"var(--green)":feePct<15?"var(--amber)":"var(--red)";
+        content=<div style={{padding:"16px",background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:"10px"}}>
+          <div style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",marginBottom:"14px"}}>
+            <div title="Totale fees + funding als % van gross-pnl. >15% = serieuze drain — overweeg lagere fee-tier of minder frequente trades. Funding-fees zijn extra kritisch bij high-leverage perps." style={{cursor:"help"}}>
+              <div style={{fontSize:"13px",fontWeight:700,color:"var(--text)",marginBottom:"4px"}}>💸 Fee & funding impact</div>
+              <div style={{fontSize:"11px",color:"var(--text4)"}}>cumulatief vs gross-pnl, per exchange</div>
+            </div>
+            <div style={{textAlign:"right"}}>
+              <div style={{fontSize:"22px",fontWeight:700,fontFamily:"monospace",color:feeColor}}>{feePct.toFixed(1)}%</div>
+              <div style={{fontSize:"10px",color:"var(--text4)",fontFamily:"monospace"}}>{fmtMoney(totalFees,false)} totaal</div>
+            </div>
+          </div>
+          {sourceRows.length===0 ? <div style={{padding:"10px 12px",fontSize:"11.5px",color:"var(--text4)",textAlign:"center"}}>Geen fee-data beschikbaar</div> :
+            sourceRows.map(([src,d])=>(
+              <div key={src} style={{display:"grid",gridTemplateColumns:"100px 1fr 120px",gap:"10px",alignItems:"center",marginBottom:"6px"}}>
+                <div style={{fontSize:"11px",color:"var(--text2)",textTransform:"capitalize"}}>{src}</div>
+                <div style={{height:"10px",borderRadius:"4px",background:"var(--bg4)",position:"relative",overflow:"hidden"}}>
+                  <div style={{position:"absolute",inset:0,width:`${(d.fees/maxFee)*100}%`,background:"var(--gold)",borderRadius:"4px"}}/>
+                </div>
+                <div style={{fontSize:"10.5px",fontFamily:"monospace",color:"var(--text3)",textAlign:"right"}}>{fmtMoney(d.fees,false)} <span style={{color:"var(--text5)"}}>· {d.trades}t</span></div>
+              </div>
+            ))
+          }
+        </div>;
+      }
+      else if(s.id==="sec-propfirm"){
+        // Single-day concentration (Topstep ≤40% rule) + Max-day vs total.
+        const byDay={};closed.forEach(t=>{const d=t.exitDate||t.date;if(!d)return;byDay[d]=(byDay[d]||0)+netPnl(t);});
+        const days=Object.entries(byDay).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]);
+        const totalProfit=closed.reduce((s,t)=>{const p=netPnl(t);return p>0?s+p:s;},0);
+        const biggestDay=days[0]||["—",0];
+        const concPct=totalProfit>0?(biggestDay[1]/totalProfit)*100:0;
+        const concColor=concPct<=40?"var(--green)":concPct<=50?"var(--amber)":"var(--red)";
+        const concStatus=concPct<=40?"✓ Topstep-compliant":concPct<=50?"⚠ Combine-only (≤50%)":"✗ Topstep-rule schending";
+        // Daily DD-tracker
+        const dayKeys=Object.keys(byDay).sort();
+        let cum=0,peak=0,maxDD=0;
+        dayKeys.forEach(k=>{cum+=byDay[k];if(cum>peak)peak=cum;const dd=cum-peak;if(dd<maxDD)maxDD=dd;});
+        content=<div style={{padding:"16px",background:"var(--bg2)",border:"1px solid var(--border2)",borderRadius:"10px"}}>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"16px",marginBottom:"14px"}}>
+            <div title="Topstep's consistency-rule: één enkele dag mag niet >40% van je totaal-winst zijn (50% in Combine). Verhindert 'lucky one-shot' funded-accounts. Apex hanteert strenger ≤30%." style={{cursor:"help"}}>
+              <div style={{fontSize:"11px",fontWeight:700,color:"var(--text4)",textTransform:"uppercase",letterSpacing:".05em",marginBottom:"6px"}}>🏛️ Single-day concentratie</div>
+              <div style={{fontSize:"22px",fontWeight:700,fontFamily:"monospace",color:concColor}}>{concPct.toFixed(1)}%</div>
+              <div style={{fontSize:"10.5px",color:"var(--text4)",fontFamily:"monospace",marginTop:"2px"}}>{biggestDay[0]} · {fmtMoney(biggestDay[1],false)}</div>
+              <div style={{fontSize:"11px",color:concColor,marginTop:"6px",fontWeight:600}}>{concStatus}</div>
+            </div>
+            <div title="Grootste peak-to-trough drawdown over de complete tijdlijn. FTMO houdt max-DD per account hard tegen. Track dit naast equity-curve om over-leveraging te detecteren.">
+              <div style={{fontSize:"11px",fontWeight:700,color:"var(--text4)",textTransform:"uppercase",letterSpacing:".05em",marginBottom:"6px"}}>📉 Max drawdown</div>
+              <div style={{fontSize:"22px",fontWeight:700,fontFamily:"monospace",color:"var(--red)"}}>{fmtMoney(maxDD,false)}</div>
+              <div style={{fontSize:"10.5px",color:"var(--text4)",fontFamily:"monospace",marginTop:"2px"}}>over {dayKeys.length} dagen</div>
+            </div>
+          </div>
+          <div style={{padding:"10px 12px",borderRadius:"6px",background:"var(--bg3)",borderLeft:`3px solid ${concColor}`,fontSize:"11.5px",color:"var(--text2)",lineHeight:1.5}}>
+            <strong style={{color:"var(--text)"}}>Propfirm-grens:</strong> Topstep ≤40% · Apex ≤30% · FTMO geen concentration-rule maar wel daily DD-limit. Bij &gt;40% concentratie loop je risico op funded-account afkeuring.
+          </div>
+        </div>;
+      }
       return <div key={s.id} id={s.id} className="tj-analytics-section" style={{order:ord*100}}>
         <div className="tj-analytics-section-head" style={{marginTop:"28px"}}>
           <span className="tj-analytics-section-num">{s.num}</span>
           <span className="tj-analytics-section-title">{s.icon} {s.title}</span>
           <span className="tj-analytics-section-hint">{s.hint}</span>
         </div>
-        <div className="tj-analytics-pro-placeholder">
-          <strong>Binnenkort beschikbaar</strong>
-          Deze sectie krijgt unieke widgets uit het Steenbarger/Tharp/Bellafiore-onderzoek (hold-time asymmetry, behavioral tilt-panel, funding-cost ledger, killzone × Setup matrix, FTMO/Topstep compliance). Volgt in v12.215+.
-        </div>
+        {content||<div className="tj-analytics-pro-placeholder"><strong>Binnenkort</strong>Widget volgt in latere release.</div>}
       </div>;
     })}
     </div>

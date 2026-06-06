@@ -6,6 +6,27 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.215] — 2026-06-06
+
+### Toegevoegd
+- **Analytics — drie Pro-widgets** *(Denny: "ga je nu ook de pro gedeelte bouwen?")*
+
+  De drie Pro-only secties (06–08) krijgen hun eerste echte widgets, gebaseerd op het Steenbarger/Tharp/FTMO-onderzoek:
+
+  - **06 ⚖️ Risk & Sizing — Hold-time asymmetry (Steenbarger #1 leak)**
+    Ratio = gemiddelde-verlies-duur ÷ gemiddelde-winst-duur. >1.5 = significant leak (je houdt verliezers veel langer vast dan winners — klassiek "hope it comes back"-patroon). 0.8–1.0 = gezonde balans. <0.8 = perfect cut-losers-fast.
+    Twee bars (groen = winners, rood = losers) + diagnose-tekst kleur-gecodeerd.
+
+  - **07 💸 Funding & Costs — Fee & funding impact**
+    Totale fees + funding als % van gross-pnl. <5% groen, 5–15% amber, >15% rood (serieuze drain). Breakdown per exchange-source met staaf + bedrag + trade-count. Cruciaal voor crypto-perp traders met high-leverage.
+
+  - **08 🏛️ Propfirm compliance — Single-day concentration + Max DD**
+    Topstep's consistency-rule: één enkele dag mag niet >40% van totaal-winst zijn (50% in Combine, Apex ≤30%). Concentration % met kleur-coded compliance-status + datum + bedrag van piek-dag. Plus max peak-to-trough drawdown over de tijdlijn.
+
+  Alle drie inline-tooltips met formules en pro-coach bronvermelding. Widgets staan in flex-order 600/700/800, dus verschijnen automatisch onder de Basic-secties.
+
+---
+
 ## [v12.214] — 2026-06-06
 
 ### Gewijzigd
