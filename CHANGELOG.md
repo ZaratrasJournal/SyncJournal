@@ -6,6 +6,34 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.214] — 2026-06-06
+
+### Gewijzigd
+- **Analytics — vaste sectie-volgorde in Basic/Pro mode** *(opvolger v12.213 — sectie-headers verschenen door elkaar omdat ze DEFAULT_ANALYTICS_ORDER volgden)*
+
+  Widgets worden nu via CSS `flex order` op de juiste sectie-positie gerenderd:
+  - 01 📊 Overview → procesKPIs, winstKPIs
+  - 02 🎯 Per setup → setupInsights, setupEdge, longShort, perPair, alignmentInsights, biasHeatmap, layerAnalysis
+  - 03 🕒 Per timing → heatmap, perDay, sessionPerf, holdtime, rrAnalysis, disciplineHeatmap
+  - 04 🧠 Emotie & Discipline → procesDetail, emotionImpact, foutAnalyse
+  - 05 💧 Edge-drains → rollingEdge, edgeGap, stressLeak, rMultipleDist, streaks
+  - 06–08 Pro-only placeholders blijven onderaan
+
+  **Custom mode** (drag-reorder) behoudt onveranderd het flat-gedrag — daar bepaalt de gebruiker zelf de volgorde.
+
+- **Donkere thema's krijgen demo-palette** *(gevraagd door Denny: "kleuren opmaak uit demo erg prettig — doorvoeren in de thema's")*
+
+  Subtiele verschuiving voor sync / classic / aurora:
+  - `--gold`: `#C9A84C` → `#e0b341` (warmer goud, vergelijkbaar met Notion-accent)
+  - `--green`: `#2eaa6f` (sync) / `#5ce0a0` (classic) → `#34d8a0` (mint-teal, frisser)
+  - `--red`: `#e05555` (sync) / `#ff7b7b` (classic) → `#f6566f` (koraal, minder rauw)
+  - Bijbehorende rgba-derivaten (`--green2/3`, `--red2/3`, `--gold-dim/border`, `--c-win/loss/long/short`) mee aangepast
+  - **Light/parchment/daylight ongewijzigd** — die hebben eigen WCAG-AA-tuned waarden die niet moeten verschuiven
+
+  Aurora erft de :root-waarden dus krijgt automatisch de update; mesh-gradient orbs en glas-effect blijven gelijk.
+
+---
+
 ## [v12.213] — 2026-06-06
 
 ### Toegevoegd
