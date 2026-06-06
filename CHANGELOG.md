@@ -6,6 +6,16 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.222] — 2026-06-06
+
+### Gewijzigd
+- **Maandelijkse PnL chart — visueel rustiger** *(Denny: "de horizontale lijn mag wel weg en het gloei-effect van de bars hoeft niet")*
+  - Goud-dashed gemiddelde-lijn over de bars verwijderd
+  - Glow-border + box-shadow op best/worst maand verwijderd
+  - Bars hebben nu alleen nog het gradient-fill — strakker, minder visuele ruis
+
+---
+
 ## [v12.221] — 2026-06-06
 
 ### Fixed
