@@ -1652,7 +1652,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.210",released:"2026-06-06"};
+const APP_VERSION={version:"v12.211",released:"2026-06-06"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -2290,6 +2290,30 @@ const detectMergeConflicts=(children)=>{
 
 // v12.190: validatie-checks voor merge. Returnt array van {level: "ok"|"warn"|"fail", msg}.
 // fail = block merge; warn = toon banner; ok = positief signaal.
+// v12.211: bepaal of een source-string mag mergen. Whitelist:
+//   - "ftmo" (CSV-only, partial-workaround uit v12.190)
+//   - "manual" (handmatige trades zonder gekoppeld account)
+//   - elke string die exacte match is met een account.name in accounts[]
+// Crypto-exchanges (blofin/mexc/kraken/hyperliquid) zijn EXCLUDED — die hebben
+// getConsumedSiblings voor auto-partial detectie.
+// Account verwijderd? canMergeSource returnt false — voorkomt zombie-references.
+function canMergeSource(src,accounts){
+  if(typeof src!=="string"||src.length===0)return false;
+  if(src==="ftmo")return true;
+  if(src==="manual")return true;
+  return Array.isArray(accounts)&&accounts.some(a=>a&&a.name===src);
+}
+// v12.211: human-readable label voor source — gebruikt in MergeModal copy + tooltip.
+function getSourceLabel(src,accounts){
+  if(src==="ftmo")return "FTMO";
+  if(src==="manual")return "handmatige trades";
+  if(Array.isArray(accounts)){
+    const acc=accounts.find(a=>a&&a.name===src);
+    if(acc)return acc.name;
+  }
+  return src||"";
+}
+
 const validateMerge=(children)=>{
   const checks=[];
   if(!children||children.length<2){
@@ -4861,7 +4885,7 @@ function Dashboard({trades,config,accounts,storageUsage,setFilters,setTab}){
 // Open via TradeList wanneer ≥2 trades geselecteerd. Toont preview van master-trade,
 // validation-checks, conflict-vragen voor tradeGrade/playbookId/notes/entryNote.
 // Bevestiging calls onConfirm({master-shape, childIds, conflictChoices}).
-function MergeModal({children:childTrades,onClose,onConfirm}){
+function MergeModal({children:childTrades,onClose,onConfirm,accounts}){
   const[conflictChoices,setConflictChoices]=useState(()=>{
     // Defaults: voor elk conflict-veld de meest voorkomende non-empty waarde
     const conflicts=detectMergeConflicts(childTrades);
@@ -4891,7 +4915,7 @@ function MergeModal({children:childTrades,onClose,onConfirm}){
       <div style={{padding:"24px 28px 18px",borderBottom:"1px solid var(--border1)",display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
         <div>
           <h2 style={{margin:0,fontSize:"18px",letterSpacing:"-0.01em",color:"var(--text)"}}>🔗 Samenvoegen tot 1 trade</h2>
-          <div style={{fontSize:"12.5px",color:"var(--text4)",marginTop:"4px"}}>{childTrades.length} trades worden 1 master-positie met {childTrades.length} TP-niveaus. De originelen blijven bewaard.</div>
+          <div style={{fontSize:"12.5px",color:"var(--text4)",marginTop:"4px"}}>{childTrades.length} trades van <strong style={{color:"var(--text2)"}}>{getSourceLabel(childTrades[0]&&childTrades[0].source,accounts)}</strong> worden 1 master-positie met {childTrades.length} TP-niveaus. De originelen blijven bewaard.</div>
         </div>
         <button onClick={onClose} style={{background:"none",border:"none",color:"var(--text4)",fontSize:"18px",cursor:"pointer",padding:"4px 8px"}}>✕</button>
       </div>
@@ -5083,13 +5107,20 @@ function TradeList({trades,onEdit,onDelete,onQuickTag,onBulkDelete,onBulkTag,onB
   const toggleAll=()=>{if(selected.size===sorted.length)setSelected(new Set());else setSelected(new Set(sorted.map(t=>t.id)))};
   const selCount=selected.size;
 
-  // v12.190: merge-feature (FTMO MT5 partial-workaround). Knop alleen zichtbaar wanneer
-  // selectie ≥2 trades is met source==="ftmo". Voor crypto-exchanges herkent de app partials
-  // automatisch via getConsumedSiblings, dus geen handmatige merge nodig.
+  // v12.190 + v12.211: merge-feature. Voorwaarden voor knop:
+  //   (1) ≥2 trades geselecteerd
+  //   (2) Allemaal dezelfde source (geen cross-account/cross-exchange merge)
+  //   (3) Source is whitelisted: ftmo / manual / matched account-name. Crypto-exchanges
+  //       (blofin/mexc/kraken/hyperliquid) uitgesloten — die hebben getConsumedSiblings
+  //       voor auto-partial-detectie.
+  //   (4) Geen geselecteerde trade is al merged-child of master (geen 2-laag merges)
   // (useState voor mergeOpen staat bovenaan, vóór de early-return — hook-order constraint.)
   const selectedTrades=sorted.filter(t=>selected.has(t.id));
-  const isAllFtmo=selectedTrades.length>=2&&selectedTrades.every(t=>t.source==="ftmo");
-  const canMerge=isAllFtmo&&!selectedTrades.some(t=>t.mergedInto||t.mergedFrom);
+  const uniqueSources=new Set(selectedTrades.map(t=>t.source));
+  const oneSource=selectedTrades.length>=2&&uniqueSources.size===1;
+  const sourceAllowed=oneSource&&canMergeSource([...uniqueSources][0],accounts);
+  const canMerge=sourceAllowed&&!selectedTrades.some(t=>t.mergedInto||t.mergedFrom);
+  const mergeSourceLabel=oneSource?getSourceLabel([...uniqueSources][0],accounts):"";
   const doMerge=({preview,childIds,conflictChoices})=>{
     if(!onMergeTrades)return;
     onMergeTrades({preview,childIds,conflictChoices});
@@ -5143,7 +5174,7 @@ function TradeList({trades,onEdit,onDelete,onQuickTag,onBulkDelete,onBulkTag,onB
       {false&&<button onClick={()=>setBulkAction(bulkAction==="tag"?null:"tag")} style={{fontSize:"11px",padding:"5px 12px",borderRadius:"5px",border:"1px solid rgba(201,168,76,0.3)",background:bulkAction==="tag"?"rgba(201,168,76,0.15)":"transparent",color:"var(--gold)",cursor:"pointer",fontFamily:"inherit",fontWeight:500}}>Tags toevoegen</button>}
       <button onClick={bulkExportJSON} style={{fontSize:"11px",padding:"5px 12px",borderRadius:"5px",border:"1px solid var(--border3)",background:"transparent",color:"var(--text3)",cursor:"pointer",fontFamily:"inherit",fontWeight:500}}>Export JSON</button>
       <button onClick={bulkExportCSV} style={{fontSize:"11px",padding:"5px 12px",borderRadius:"5px",border:"1px solid var(--border3)",background:"transparent",color:"var(--text3)",cursor:"pointer",fontFamily:"inherit",fontWeight:500}}>Export CSV</button>
-      {canMerge&&<button onClick={()=>setMergeOpen(true)} title="Voeg deze FTMO-trades samen tot 1 master-trade met N TP-niveaus" style={{fontSize:"11px",padding:"5px 12px",borderRadius:"5px",border:"1px solid var(--gold-border)",background:"var(--gold-dim)",color:"var(--gold)",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>🔗 Samenvoegen</button>}
+      {canMerge&&<button onClick={()=>setMergeOpen(true)} title={`Voeg deze ${selectedTrades.length} trades van ${mergeSourceLabel} samen tot 1 master-trade met ${selectedTrades.length} TP-niveaus`} style={{fontSize:"11px",padding:"5px 12px",borderRadius:"5px",border:"1px solid var(--gold-border)",background:"var(--gold-dim)",color:"var(--gold)",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>🔗 Samenvoegen</button>}
       <button onClick={bulkDelete} style={{fontSize:"11px",padding:"5px 12px",borderRadius:"5px",border:"1px solid rgba(220,122,122,0.28)",background:"transparent",color:"var(--red)",cursor:"pointer",fontFamily:"inherit",fontWeight:500}}>Verwijderen</button>
       <div style={{flex:1}}/>
       <button onClick={()=>{setSelected(new Set());setBulkAction(null)}} style={{fontSize:"10px",color:"var(--text4)",background:"none",border:"none",cursor:"pointer",fontFamily:"inherit"}}>Deselecteer</button>
@@ -5425,7 +5456,7 @@ function TradeList({trades,onEdit,onDelete,onQuickTag,onBulkDelete,onBulkTag,onB
       <span>Trades: {sorted.length}{search?` (gefilterd)`:""}</span>
       <span>Return: <span style={{color:totalPnl>=0?"var(--green)":"var(--red)",fontWeight:600}}>{priv?"$***,**":`${totalPnl>=0?"+":""}$${fmt(totalPnl)}`}</span></span>
     </div>
-    {mergeOpen&&<MergeModal children={selectedTrades} onClose={()=>setMergeOpen(false)} onConfirm={doMerge}/>}
+    {mergeOpen&&<MergeModal children={selectedTrades} accounts={accounts} onClose={()=>setMergeOpen(false)} onConfirm={doMerge}/>}
   </div>);
 }
 

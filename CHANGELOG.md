@@ -6,6 +6,60 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.211] — 2026-06-06
+
+### Toegevoegd
+- **Merge-feature uitgebreid naar handmatige accounts** *(gevraagd door Denny: "het samenvoegen van trades wil ik verder doortrekken naar alle trades")*
+
+  Was: 🔗 Samenvoegen-knop verscheen alleen bij selectie van trades met `source==="ftmo"`. Crypto-exchanges (Blofin/MEXC/Kraken/Hyperliquid) blijven uitgesloten — die hebben `getConsumedSiblings` voor automatische partial-detectie.
+
+  Nu: knop verschijnt ook bij **handmatige trades** (3-niveau whitelist):
+  1. `source === "ftmo"` (bestaand)
+  2. `source === "manual"` (generieke handmatige zonder gekoppeld account)
+  3. `source === <accountName>` waar accountName matched een entry in `accounts[]`
+
+  **Crypto-exchanges blijven excluded** in deze release. Volgt mogelijk in v12.212+.
+
+  **Voorwaarden voor knop** (alle moeten WAAR zijn):
+  - ≥2 trades geselecteerd
+  - Allemaal dezelfde source (geen cross-account/cross-exchange merge)
+  - Source is whitelisted (zie boven)
+  - Geen geselecteerde trade is al merged-child of master
+
+  **Zombie-protection**: account verwijderd → trades die er nog naar verwijzen kunnen niet meer gemerged worden. `canMergeSource(src, accounts)` returnt `false`. Voorkomt master-trades met dode references.
+
+### Nieuwe helpers (pure functies)
+- `canMergeSource(src, accounts)` — bepaalt of source mag mergen
+- `getSourceLabel(src, accounts)` — human-readable label voor UI (`"FTMO"`, `"handmatige trades"`, account-name)
+
+### UI-changes
+- **Knop-tooltip** dynamisch: `"Voeg deze 3 trades van MyDemoAccount samen tot 1 master-trade met 3 TP-niveaus"` i.p.v. hardcoded "FTMO-trades"
+- **MergeModal header copy** generiek: `"3 trades van **<source-label>** worden 1 master-positie met 3 TP-niveaus"` met source-label bold
+- **MergeModal accepteert `accounts` prop** voor label-resolving
+
+### Tests
+- **`tests/run-merge-source-gate.js`** — 24 helper-assertions (whitelist matches, crypto-exclusions, zombie-protect, edge-cases als account-naam = "mexc")
+- **`tests/merge-manual-account.spec.js`** — 4 Playwright scenarios:
+  - 3 manual trades zelfde account → gate allows
+  - Cross-account → 2 unique sources, gate blocks
+  - Manual + crypto → crypto niet whitelist, gate blocks
+  - Account verwijderd → zombie-protect blocks
+- Regression: FTMO-merge spec (v12.190) blijft groen
+- Smoke + nieuwe spec 6/6 groen
+
+### Edge-cases die werken
+- Account-naam met spaties / getallen / emoji → exacte string-match
+- User heeft account met naam `"mexc"` (= zelfde naam als crypto-exchange) → account wint, merge toegestaan
+- `source="manual"` zonder enkele accounts → merge toegestaan (generieke handmatige trades)
+- Master-trade source blijft `<oudeAccountNaam>` als account later wordt hernoemd — bewuste keuze: matched via source-string, niet via account-id
+
+### Buiten scope (toekomstig)
+- **v12.212+**: crypto-exchanges (Blofin/MEXC/Kraken/Hyperliquid). Vereist beslissing: getConsumedSiblings disablen voor source met merge-childs? Of beide systemen naast elkaar?
+- Cross-account merge — blijft expliciet geblocked
+- Cross-source merge (manual + FTMO) — blijft expliciet geblocked
+
+---
+
 ## [v12.210] — 2026-06-06
 
 ### Toegevoegd
