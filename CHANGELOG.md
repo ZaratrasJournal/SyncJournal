@@ -6,6 +6,30 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.227] — 2026-06-06
+
+### Gewijzigd
+- **Setup Insights — visuele PnL-bar terug als aparte kolom** *(Denny: "de groene bar van winst mag wel apart zoals de oude Setup Insight — dat vond ik mooier")*
+
+  In v12.225 was de visuele PnL-bar als subtiele background-gradient achter de PnL-cell gezet (toen Setup Edge werd opgenomen in Setup Insights). Denny vond dat minder mooi. Nu staat de bar weer als aparte 120px-kolom met label "Bar" naast Advies, met een echt zichtbare gradient-balk (groen voor winst, rood voor verlies). De PnL-cell zelf is weer schoon — alleen het bedrag, geen background.
+
+### Geverifieerd (geen wijzigingen nodig)
+- **Filter-doorvoering op Analytics werkt al voor alle types** *(Denny: "loop de filter even langs op alle types — datum / type / coins etc")*
+
+  Geautomatiseerde test draait alle quick-filters door en bevestigt dat Net PnL netjes herrekent bij elke wijziging:
+  - Baseline: +$221,17
+  - Long-filter: +$282,31 (alleen long-trades)
+  - Short-filter: −$61,14 (alleen shorts)
+  - Winners: +$285,79
+  - Losers: −$64,62
+  - Datum vanaf 2026-06-01: +$185,83
+
+  Alle Analytics-widgets ontvangen `filteredTrades` uit `applyFilters(trades, filters)`, dus elke aanpassing in de filter-bar werkt door op KPI-strip, Equity curve, Maandelijkse PnL, Setup Insights én alle Pro-widgets. Geavanceerde filters (geavanceerde panel: exchange, pair, status, tradeType, alignmentPattern, sessieTags, dayOfWeek, setupTags, emotionTags, mistakeTags) gebruiken dezelfde `setFilters` state en werken via hetzelfde mechanisme.
+
+  Test toegevoegd in `tests/run-filter-check.js` voor regressie-detectie.
+
+---
+
 ## [v12.226] — 2026-06-06
 
 ### Toegevoegd
