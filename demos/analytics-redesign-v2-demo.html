@@ -1,0 +1,884 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Analytics redesign v2 · SyncJournal — beginner/advanced</title>
+<style>
+  :root{
+    --bg:#0a0c12; --bg2:#0e151d; --bg3:#131a24; --bg4:#19222e; --bg5:#1f2a38;
+    --border1:rgba(120,140,160,0.10);
+    --border2:rgba(120,140,160,0.18);
+    --border3:rgba(120,140,160,0.28);
+    --text:#e3e8ef; --text2:#c9d3e0; --text3:#94a1b4; --text4:#6f7d92; --text5:#54627a;
+    --gold:#e0b341; --gold-dim:rgba(224,179,65,0.10); --gold-border:rgba(224,179,65,0.28);
+    --green:#34d8a0; --red:#f6566f; --amber:#f4b042; --blue:#5aa9ff; --purple:#b48cc8;
+    --mono:'JetBrains Mono','SF Mono',ui-monospace,monospace;
+    --radius-sm:6px; --radius-md:10px; --radius-lg:14px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);min-height:100vh;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;line-height:1.5}
+
+  /* Top hero — uitleg van demo */
+  .hero{padding:20px 32px 14px;border-bottom:1px solid var(--border1);background:var(--bg2)}
+  .hero h1{font-size:20px;letter-spacing:-0.01em;margin:0 0 4px}
+  .hero h1 .tag{font:600 10px var(--mono);background:var(--gold-dim);color:var(--gold);padding:3px 8px;border-radius:5px;margin-left:10px;vertical-align:middle;letter-spacing:0.06em;text-transform:uppercase;border:1px solid var(--gold-border)}
+  .hero p{color:var(--text3);font-size:12.5px;max-width:980px;margin-top:4px;line-height:1.6}
+  .hero p strong{color:var(--text2)}
+
+  /* LAYOUT: sticky TOC + main */
+  .layout{display:grid;grid-template-columns:220px 1fr;max-width:1680px;margin:0 auto}
+
+  /* === STICKY TOC === */
+  .toc{position:sticky;top:0;height:100vh;padding:20px 12px;border-right:1px solid var(--border1);background:var(--bg2);overflow-y:auto}
+  .toc-label{font:700 10px var(--mono);color:var(--text4);text-transform:uppercase;letter-spacing:0.10em;margin:0 0 12px 8px}
+  .toc-label.sub{margin-top:22px;font-size:9.5px}
+  .toc-section{display:flex;align-items:center;gap:9px;padding:9px 11px;border-radius:var(--radius-sm);cursor:pointer;margin-bottom:2px;text-decoration:none;color:var(--text3);font-size:12px;font-weight:500;transition:.15s;border-left:2px solid transparent}
+  .toc-section:hover{background:var(--bg3);color:var(--text)}
+  .toc-section.active{background:var(--bg3);color:var(--gold);border-left-color:var(--gold);font-weight:600}
+  .toc-section.locked{opacity:0.45;cursor:not-allowed}
+  .toc-section.locked:hover{background:transparent;color:var(--text3)}
+  .toc-section .num{font:700 9px var(--mono);color:var(--text5);background:var(--bg4);padding:2px 5px;border-radius:3px;letter-spacing:0.04em;min-width:18px;text-align:center}
+  .toc-section.active .num{color:var(--gold);background:var(--gold-dim);border:1px solid var(--gold-border)}
+  .toc-section .icon{font-size:13px}
+  .toc-section .count{margin-left:auto;font:600 9.5px var(--mono);color:var(--text5)}
+  .toc-section.active .count{color:var(--gold)}
+  .toc-section .lock{margin-left:auto;font-size:10px;opacity:0.7}
+
+  .toc-note{padding:10px 11px;font-size:10.5px;color:var(--text4);line-height:1.55;background:var(--bg3);border-radius:var(--radius-sm);margin-top:8px}
+  .toc-note strong{color:var(--text2)}
+
+  /* === MAIN === */
+  .main{padding:20px 28px 96px;min-width:0}
+
+  /* === Mode toggle banner === */
+  .mode-bar{display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-md);margin-bottom:16px;flex-wrap:wrap}
+  .mode-bar .label{font:700 10px var(--mono);color:var(--text4);text-transform:uppercase;letter-spacing:0.08em}
+  .mode-seg{display:inline-flex;gap:2px;padding:2px;background:var(--bg4);border:1px solid var(--border1);border-radius:5px}
+  .mode-btn{padding:7px 14px;border-radius:3px;font:600 11.5px var(--mono);border:1px solid transparent;background:transparent;color:var(--text3);cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px;letter-spacing:0.02em}
+  .mode-btn:hover{color:var(--text2);background:rgba(255,255,255,0.04)}
+  .mode-btn.active{background:var(--gold-dim);color:var(--gold);border-color:var(--gold-border)}
+  .mode-btn .badge{font-size:9.5px;background:rgba(255,255,255,0.08);padding:2px 5px;border-radius:3px;font-weight:500}
+  .mode-btn.active .badge{background:rgba(224,179,65,0.18);color:var(--gold)}
+  .mode-hint{margin-left:auto;font:500 11px var(--mono);color:var(--text4);font-style:italic}
+
+  /* === KPI-STRIP === */
+  .kpi-strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:14px}
+  .kpi-card{background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-md);padding:13px 15px;position:relative}
+  .kpi-label{display:flex;align-items:center;gap:5px;font:700 9.5px var(--mono);color:var(--text4);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:7px}
+  .kpi-value{font:700 22px var(--mono);letter-spacing:-0.01em}
+  .kpi-value.pos{color:var(--green)}
+  .kpi-value.neg{color:var(--red)}
+  .kpi-value.amber{color:var(--gold)}
+  .kpi-value.warn{color:var(--red)}
+  .kpi-sub{font:500 10px var(--mono);color:var(--text4);margin-top:2px}
+  .kpi-card.advanced{position:relative;border-color:rgba(90,169,255,0.25);background:linear-gradient(135deg,var(--bg2),rgba(90,169,255,0.04))}
+  .kpi-card.advanced::after{content:'PRO';position:absolute;top:8px;right:8px;font:700 8.5px var(--mono);color:var(--blue);background:rgba(90,169,255,0.12);padding:2px 5px;border-radius:3px;letter-spacing:0.06em}
+
+  /* === STICKY FILTER === */
+  .filter-strip{position:sticky;top:0;z-index:10;background:rgba(14,21,29,0.96);border:1px solid var(--border2);border-radius:var(--radius-md);padding:9px 13px;margin-bottom:16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;backdrop-filter:blur(10px)}
+  .fs-label{font:700 9.5px var(--mono);color:var(--text4);text-transform:uppercase;letter-spacing:0.08em;margin-right:3px}
+  .fs-seg{display:inline-flex;gap:2px;padding:2px;background:var(--bg4);border:1px solid var(--border1);border-radius:5px}
+  .fs-btn{padding:5px 11px;border-radius:3px;font:600 10.5px var(--mono);border:1px solid transparent;background:transparent;color:var(--text3);cursor:pointer;font-family:inherit}
+  .fs-btn:hover{color:var(--text2);background:rgba(255,255,255,0.04)}
+  .fs-btn.active{background:var(--gold-dim);color:var(--gold);border-color:var(--gold-border)}
+  .fs-divider{width:1px;height:18px;background:var(--border2)}
+  .fs-input{padding:5px 9px;border-radius:5px;border:1px solid var(--border3);background:var(--bg3);color:var(--text);font:500 10.5px var(--mono);outline:none;width:120px}
+
+  /* === SECTIES === */
+  .section{margin-bottom:32px;scroll-margin-top:80px}
+  .section-head{display:flex;align-items:center;gap:10px;margin-bottom:12px;padding-bottom:9px;border-bottom:1px solid var(--border1)}
+  .section-num{font:800 11px var(--mono);background:var(--gold-dim);color:var(--gold);padding:4px 9px;border-radius:5px;letter-spacing:0.06em;border:1px solid var(--gold-border)}
+  .section-title{font-size:16px;font-weight:700;letter-spacing:-0.01em}
+  .section-hint{margin-left:auto;font:500 11px var(--mono);color:var(--text4);font-style:italic}
+  .section.advanced-only::before{content:'';display:inline-block}
+  .section .pro-badge{font:700 9px var(--mono);color:var(--blue);background:rgba(90,169,255,0.12);padding:2px 6px;border-radius:3px;letter-spacing:0.06em;margin-left:6px}
+
+  /* === WIDGET === */
+  .widget{background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-md);padding:16px;margin-bottom:12px;position:relative}
+  .widget.pro{border-color:rgba(90,169,255,0.20);background:linear-gradient(180deg,var(--bg2),rgba(90,169,255,0.02))}
+  .widget.pro .widget-title::after{content:'PRO';margin-left:8px;font-size:8.5px;color:var(--blue);background:rgba(90,169,255,0.12);padding:2px 5px;border-radius:3px;letter-spacing:0.06em;font-weight:700}
+  .widget-head{display:flex;align-items:center;gap:8px;margin-bottom:11px}
+  .widget-title{font:700 11px var(--mono);color:var(--gold);text-transform:uppercase;letter-spacing:0.08em}
+  .widget-toggle{margin-left:auto;font:500 10px var(--mono);color:var(--text5);cursor:pointer;padding:3px 7px;border-radius:3px;border:1px solid var(--border3);background:transparent}
+  .widget-toggle:hover{color:var(--text3);border-color:var(--text5)}
+
+  /* === i-tooltip === */
+  .info-btn{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:var(--bg4);border:1px solid var(--border3);color:var(--text4);font:700 10px var(--mono);cursor:help;transition:.15s;flex-shrink:0}
+  .info-btn:hover, .info-btn:focus{background:var(--gold-dim);color:var(--gold);border-color:var(--gold-border);outline:none}
+  .info-btn-wrap{position:relative;display:inline-block}
+  .info-tip{position:absolute;left:0;top:24px;width:340px;padding:12px 14px;background:var(--bg3);border:1px solid var(--border3);border-radius:var(--radius-sm);box-shadow:0 8px 32px rgba(0,0,0,0.6);z-index:20;font-size:11.5px;color:var(--text2);line-height:1.55;pointer-events:none;display:none}
+  .info-tip strong{color:var(--gold);font-weight:700;display:block;margin-bottom:6px;font-size:11px;text-transform:uppercase;letter-spacing:0.06em}
+  .info-tip code{background:var(--bg4);padding:1px 5px;border-radius:3px;font:600 11px var(--mono);color:var(--gold)}
+  .info-tip .formula{margin-top:8px;padding:8px 10px;background:var(--bg4);border-radius:4px;font:600 10.5px var(--mono);color:var(--text3)}
+  .info-tip .example{margin-top:6px;padding:6px 9px;background:rgba(52,216,160,0.06);border-radius:3px;font-size:10.5px;color:var(--text3);border-left:2px solid var(--green)}
+
+  /* === Placeholders + grids === */
+  .placeholder{background:var(--bg3);border:1px dashed var(--border3);border-radius:var(--radius-sm);padding:24px;text-align:center;color:var(--text4);font:500 12px var(--mono)}
+  .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+  .grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+
+  /* tabel */
+  .table{width:100%;border-collapse:collapse;font-size:12px}
+  .table th{font:700 9.5px var(--mono);color:var(--text4);text-transform:uppercase;letter-spacing:0.06em;text-align:left;padding:8px 10px;background:var(--bg3);border-bottom:1px solid var(--border2)}
+  .table td{padding:10px;border-bottom:1px solid var(--border1)}
+  .table .num{font-family:var(--mono);text-align:right}
+  .table .pos{color:var(--green);font-weight:700}
+  .table .neg{color:var(--red);font-weight:700}
+
+  /* Heatmap mockup */
+  .heatmap-mock{display:grid;grid-template-columns:60px repeat(24,1fr);gap:2px;font-size:9px;font-family:var(--mono)}
+  .heatmap-mock .day{padding:6px 4px;color:var(--text4);text-align:right}
+  .heatmap-mock .cell{padding:5px;text-align:center;border-radius:3px;font-weight:600;font-size:8.5px}
+
+  /* Doughnut */
+  .doughnut{display:flex;align-items:center;gap:18px;padding:16px;background:var(--bg3);border-radius:var(--radius-sm)}
+  .doughnut-ring{width:80px;height:80px;border-radius:50%;background:conic-gradient(var(--green) 0% 78%, var(--red) 78% 92%, var(--gold) 92% 100%);display:flex;align-items:center;justify-content:center;flex-shrink:0;position:relative}
+  .doughnut-ring::before{content:'';width:60px;height:60px;border-radius:50%;background:var(--bg3);position:absolute}
+  .doughnut-ring-inner{position:relative;font:800 18px var(--mono);color:var(--green)}
+
+  /* Asymmetry / bar comparison */
+  .compare-bar{display:flex;height:36px;border-radius:6px;overflow:hidden;margin:8px 0}
+  .compare-bar > div{display:flex;align-items:center;justify-content:center;font:700 11px var(--mono);color:#1a1308;padding:0 10px}
+
+  /* Behavioral tilt panel */
+  .tilt-cell{padding:14px;background:var(--bg3);border-radius:var(--radius-sm);text-align:center;position:relative}
+  .tilt-cell .tilt-icon{font-size:22px;margin-bottom:4px}
+  .tilt-cell .tilt-val{font:700 20px var(--mono);letter-spacing:-0.01em;margin-bottom:2px}
+  .tilt-cell .tilt-label{font:600 9.5px var(--mono);color:var(--text4);text-transform:uppercase;letter-spacing:0.06em}
+  .tilt-cell.warn{background:rgba(244,176,66,0.08);border:1px solid rgba(244,176,66,0.30)}
+  .tilt-cell.alert{background:rgba(246,86,111,0.08);border:1px solid rgba(246,86,111,0.35)}
+  .tilt-cell.ok{background:rgba(52,216,160,0.06);border:1px solid rgba(52,216,160,0.25)}
+
+  /* Killzone matrix */
+  .km{border-collapse:separate;border-spacing:3px;width:100%}
+  .km th{font:700 9.5px var(--mono);color:var(--text4);text-transform:uppercase;letter-spacing:0.06em;padding:8px;text-align:center}
+  .km td.hdr{font:700 9.5px var(--mono);color:var(--text4);text-transform:uppercase;letter-spacing:0.06em;text-align:right;padding:8px 10px;background:var(--bg4);border-radius:5px}
+  .km td.cell{padding:10px;border-radius:5px;text-align:center;font-family:var(--mono)}
+  .km .cell-wr{font:700 14px var(--mono);letter-spacing:-0.01em}
+  .km .cell-meta{font:500 9.5px var(--mono);opacity:0.75;margin-top:2px}
+
+  /* Funding ledger */
+  .funding-row{display:grid;grid-template-columns:80px 1fr 100px 90px;gap:10px;padding:9px 12px;border-bottom:1px solid var(--border1);font-size:11.5px;align-items:center}
+  .funding-row.head{font:700 9.5px var(--mono);color:var(--text4);text-transform:uppercase;letter-spacing:0.06em;border-bottom:1px solid var(--border2);background:var(--bg3)}
+
+  /* Daily Review CTA */
+  .review-cta{background:linear-gradient(135deg,rgba(180,140,200,0.08),rgba(90,169,255,0.05));border:1px solid rgba(180,140,200,0.30);border-radius:var(--radius-md);padding:14px 18px;margin-bottom:14px;display:flex;align-items:center;gap:14px}
+  .review-cta-icon{font-size:28px;flex-shrink:0}
+  .review-cta-body{flex:1;min-width:0}
+  .review-cta-title{font:700 12px var(--mono);color:var(--purple);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:3px}
+  .review-cta-desc{font-size:12px;color:var(--text3);line-height:1.5}
+  .review-cta-btn{font:600 11px var(--mono);padding:8px 14px;border-radius:5px;border:1px solid var(--purple);background:rgba(180,140,200,0.12);color:var(--purple);cursor:pointer;flex-shrink:0}
+  .review-cta-btn:hover{background:rgba(180,140,200,0.20)}
+
+  /* Demo banner */
+  .demo-banner{background:linear-gradient(90deg, var(--gold-dim), transparent);padding:9px 14px;border-left:3px solid var(--gold);margin-bottom:14px;border-radius:var(--radius-sm);font-size:11.5px;color:var(--text2);line-height:1.5}
+  .demo-banner strong{color:var(--gold)}
+
+  /* Section that's only in advanced mode */
+  .advanced-only{display:none}
+  body[data-mode="advanced"] .advanced-only{display:block}
+  body[data-mode="custom"] .advanced-only{display:block}
+
+  /* Process grade A+/A/B/C */
+  .grade-row{display:grid;grid-template-columns:60px 1fr 80px;gap:10px;align-items:center;padding:8px 0}
+  .grade-tag{font:800 11px var(--mono);text-align:center;padding:4px;border-radius:4px;letter-spacing:0.04em}
+  .grade-tag.A-plus{background:rgba(52,216,160,0.18);color:var(--green);border:1px solid var(--green)}
+  .grade-tag.A{background:rgba(52,216,160,0.10);color:var(--green);border:1px solid rgba(52,216,160,0.40)}
+  .grade-tag.B{background:rgba(244,176,66,0.10);color:var(--gold);border:1px solid var(--gold-border)}
+  .grade-tag.C{background:rgba(246,86,111,0.10);color:var(--red);border:1px solid rgba(246,86,111,0.30)}
+  .grade-bar-wrap{height:16px;background:var(--bg4);border-radius:3px;overflow:hidden}
+  .grade-bar{height:100%;border-radius:3px}
+
+  /* Propfirm compliance widget */
+  .compliance-ring{display:flex;align-items:center;gap:16px;padding:16px;background:var(--bg3);border-radius:var(--radius-sm)}
+  .compliance-meter{flex:1;min-width:0}
+  .compliance-bar-wrap{height:22px;background:var(--bg4);border-radius:4px;overflow:hidden;margin-bottom:6px;position:relative}
+  .compliance-bar{height:100%;border-radius:4px}
+  .compliance-threshold{position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--red)}
+  .compliance-threshold::after{content:'40%';position:absolute;top:-18px;left:-15px;font:700 9px var(--mono);color:var(--red);white-space:nowrap}
+
+</style>
+</head>
+<body data-mode="beginner">
+
+<div class="hero">
+  <h1>Analytics-redesign v2 <span class="tag">deep research · beginner+advanced</span></h1>
+  <p>
+    Op basis van research bij <strong>Steenbarger / Tharp / Bellafiore / FTMO / Topstep / ICT-community</strong>. Drie modes: <strong>Beginner</strong> (12 widgets, rijke tooltips), <strong>Advanced</strong> (21+ widgets, 8 secties, technische tooltips), <strong>Custom</strong> (alles toggleable). Breder layout (1680px). Vijf unieke widgets die mainstream journals niet hebben: <em>hold-time asymmetry, behavioral tilt, funding-ledger, killzone matrix, propfirm-compliance</em>.
+  </p>
+</div>
+
+<div class="layout">
+
+  <!-- ========================================================== STICKY TOC -->
+  <nav class="toc">
+    <div class="toc-label">Analyse-secties</div>
+    <a href="#sec-overview" class="toc-section active" data-sec="sec-overview">
+      <span class="num">01</span><span class="icon">📊</span><span>Overview</span><span class="count">3</span>
+    </a>
+    <a href="#sec-setup" class="toc-section" data-sec="sec-setup">
+      <span class="num">02</span><span class="icon">🎯</span><span>Per setup</span><span class="count">3</span>
+    </a>
+    <a href="#sec-timing" class="toc-section" data-sec="sec-timing">
+      <span class="num">03</span><span class="icon">🕒</span><span>Per timing</span><span class="count">3</span>
+    </a>
+    <a href="#sec-discipline" class="toc-section" data-sec="sec-discipline">
+      <span class="num">04</span><span class="icon">🧠</span><span>Emotie & discipline</span><span class="count">3</span>
+    </a>
+    <a href="#sec-drains" class="toc-section" data-sec="sec-drains">
+      <span class="num">05</span><span class="icon">💧</span><span>Edge-drains</span><span class="count">3</span>
+    </a>
+
+    <div class="toc-label sub">Advanced-only</div>
+    <a href="#sec-risk" class="toc-section advanced-only-link" data-sec="sec-risk" data-advanced>
+      <span class="num">06</span><span class="icon">⚖️</span><span>Risk & Sizing</span><span class="count">4</span>
+    </a>
+    <a href="#sec-funding" class="toc-section advanced-only-link" data-sec="sec-funding" data-advanced>
+      <span class="num">07</span><span class="icon">💸</span><span>Funding & Costs</span><span class="count">3</span>
+    </a>
+    <a href="#sec-propfirm" class="toc-section advanced-only-link" data-sec="sec-propfirm" data-advanced>
+      <span class="num">08</span><span class="icon">🏛️</span><span>Propfirm</span><span class="count">2</span>
+    </a>
+
+    <div class="toc-note">
+      <strong>💡 Mode-toggle</strong> bepaalt welke secties zichtbaar zijn. <strong>Custom</strong> = alle 21+ widgets aan/uit per stuk.
+    </div>
+  </nav>
+
+  <!-- ========================================================== MAIN -->
+  <main class="main">
+
+    <div class="demo-banner">
+      💡 <strong>Demo-tip:</strong> klik op <strong>Mode-toggle</strong> hieronder om de pagina te verbergen of uit te breiden. Hover op elke <span class="info-btn" style="cursor:help">i</span> voor uitleg + formule + voorbeeld.
+    </div>
+
+    <!-- MODE-TOGGLE BANNER -->
+    <div class="mode-bar">
+      <span class="label">Mode</span>
+      <div class="mode-seg">
+        <button class="mode-btn active" data-mode="beginner">🌱 Beginner <span class="badge">12</span></button>
+        <button class="mode-btn" data-mode="advanced">🚀 Advanced <span class="badge">21+</span></button>
+        <button class="mode-btn" data-mode="custom">🛠 Custom</button>
+      </div>
+      <span class="mode-hint">Beginner = essentials + extra educatieve tooltips. Advanced = pro-coach metrics + propfirm + crypto-funding. Custom = jouw eigen layout.</span>
+    </div>
+
+    <!-- KPI STRIP -->
+    <div class="kpi-strip">
+      <div class="kpi-card">
+        <div class="kpi-label">
+          Netto PnL
+          <span class="info-btn-wrap" tabindex="0"><span class="info-btn">i</span>
+            <div class="info-tip"><strong>Wat is dit?</strong>Som van alle gerealiseerde winsten en verliezen op closed trades, fees inbegrepen.
+              <div class="formula">Σ (pnl − fees) over alle closed trades</div>
+              <div class="example">Voorbeeld: 100 trades à +$50 - 60 trades à -$30 - fees $200 = $1.000</div>
+            </div></span>
+        </div>
+        <div class="kpi-value pos">+$8.247</div>
+        <div class="kpi-sub">over 142 trades</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Win-rate
+          <span class="info-btn-wrap" tabindex="0"><span class="info-btn">i</span>
+            <div class="info-tip"><strong>Wat is dit?</strong>% winnende trades. <strong>Let op</strong>: WR alleen zegt niets — kijk altijd naar Payoff ratio erbij.
+              <div class="formula">wins / (wins + losses) × 100</div>
+              <div class="example">⚠ Amateur-trap: focus op hoge WR maakt je winners te vroeg sluiten.</div>
+            </div></span>
+        </div>
+        <div class="kpi-value">62%</div>
+        <div class="kpi-sub">88W / 54L</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Profit factor
+          <span class="info-btn-wrap" tabindex="0"><span class="info-btn">i</span>
+            <div class="info-tip"><strong>Wat is dit?</strong>Bruto winst / bruto verlies. <code>&gt;1.5</code> = solide, <code>&gt;2</code> = sterk, <code>&gt;3</code> = uitzonderlijk.
+              <div class="formula">Σ winsten / |Σ verliezen|</div>
+            </div></span>
+        </div>
+        <div class="kpi-value pos">2.14</div>
+        <div class="kpi-sub">solide edge</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Expectancy (Tharp)
+          <span class="info-btn-wrap" tabindex="0"><span class="info-btn">i</span>
+            <div class="info-tip"><strong>Wat is dit?</strong>Verwachte winst per trade. <strong>Pro-metric volgens Van Tharp</strong>. Positief = edge.
+              <div class="formula">(WR × avg_win) − ((1−WR) × avg_loss)</div>
+              <div class="example">+$58/trade × 100 trades = +$5.800 over de tijd</div>
+            </div></span>
+        </div>
+        <div class="kpi-value pos">+$58</div>
+        <div class="kpi-sub">per trade</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Plan-adherence
+          <span class="info-btn-wrap" tabindex="0"><span class="info-btn">i</span>
+            <div class="info-tip"><strong>Wat is dit?</strong>% trades met SL + thesis + post-notes ingevuld. <strong>Steenbarger's discipline-maatstaf</strong>.
+              <div class="formula">trades met SL+thesis+notes / totaal</div>
+            </div></span>
+        </div>
+        <div class="kpi-value amber">81%</div>
+        <div class="kpi-sub">115 / 142</div>
+      </div>
+
+      <!-- Advanced-only KPI's -->
+      <div class="kpi-card advanced advanced-only">
+        <div class="kpi-label">SQN (Tharp)
+          <span class="info-btn-wrap" tabindex="0"><span class="info-btn">i</span>
+            <div class="info-tip"><strong>Wat is dit?</strong>System Quality Number. <strong>Van Tharp's hoofdmetric</strong>. >1.6 solide, >2.5 zeer goed, >7 overfit-verdacht.
+              <div class="formula">(expectancy / σR) × √n</div>
+              <div class="example">⚠ Min 100 trades nodig voor betrouwbaarheid.</div>
+            </div></span>
+        </div>
+        <div class="kpi-value pos">2.34</div>
+        <div class="kpi-sub">zeer goed</div>
+      </div>
+      <div class="kpi-card advanced advanced-only">
+        <div class="kpi-label">Max DD
+          <span class="info-btn-wrap" tabindex="0"><span class="info-btn">i</span>
+            <div class="info-tip"><strong>Wat is dit?</strong>Diepste piek-tot-dal drawdown. <strong>Critical voor propfirm-survival</strong>.</div></span>
+        </div>
+        <div class="kpi-value warn">-$1.847</div>
+        <div class="kpi-sub">-12.3% piek</div>
+      </div>
+    </div>
+
+    <!-- STICKY FILTER -->
+    <div class="filter-strip">
+      <span class="fs-label">Lens</span>
+      <div class="fs-seg">
+        <button class="fs-btn active">📊 Beide</button>
+        <button class="fs-btn">🧠 Proces</button>
+        <button class="fs-btn">💰 Winst</button>
+      </div>
+      <span class="fs-divider"></span>
+      <span class="fs-label">Periode</span>
+      <input type="date" class="fs-input" value="2026-01-01"/>
+      <span style="color:var(--text5);font-size:10.5px">t/m</span>
+      <input type="date" class="fs-input" value="2026-06-06"/>
+      <button class="fs-btn active">Alles</button>
+      <button class="fs-btn">Maand</button>
+      <button class="fs-btn">Week</button>
+      <span style="margin-left:auto;font:500 10.5px var(--mono);color:var(--text4)">Globaal — geen per-widget toggles</span>
+    </div>
+
+    <!-- ============================== SECTIE 1: OVERVIEW -->
+    <section class="section" id="sec-overview">
+      <div class="section-head">
+        <span class="section-num">01</span>
+        <span class="section-title">📊 Overview</span>
+        <span class="section-hint">"Hoe heb ik het in totaal gedaan?"</span>
+      </div>
+
+      <!-- Daily Review CTA -->
+      <div class="review-cta">
+        <div class="review-cta-icon">🧘</div>
+        <div class="review-cta-body">
+          <div class="review-cta-title">Daily Review beschikbaar</div>
+          <div class="review-cta-desc"><strong>Steenbarger 10-vragen checklist</strong> (10 min): hoe heb je gehandeld vs je plan? Pre-trade discipline, position-sizing, loss-handling, motivatie.</div>
+        </div>
+        <button class="review-cta-btn">▸ Start review</button>
+      </div>
+
+      <div class="widget">
+        <div class="widget-head">
+          <span class="widget-title">Equity curve</span>
+          <span class="info-btn-wrap" tabindex="0"><span class="info-btn">i</span>
+            <div class="info-tip"><strong>Wat zie ik hier?</strong>Cumulatieve PnL over de tijd. Stijgende lijn = consistente winst. Vlakke periode = stagnatie. Diepe dips = drawdown.
+              <div class="example">⚠ Een 1-day-hero pattern (één enorme winstdag) is verdacht — check single-day concentratie in sectie 8.</div>
+            </div></span>
+          <span class="widget-toggle">⚙ Verberg</span>
+        </div>
+        <div class="placeholder" style="height:170px">📈 SyncEquityCurve (smooth bezier, optional drawdown-pill)</div>
+      </div>
+
+      <div class="grid-2">
+        <div class="widget">
+          <div class="widget-head">
+            <span class="widget-title">Calendar PnL</span>
+            <span class="info-btn-wrap" tabindex="0"><span class="info-btn">i</span><div class="info-tip"><strong>Wat zie ik hier?</strong>PnL per dag in een kalender-grid. Klik op een dag om die trades te isoleren.</div></span>
+          </div>
+          <div class="placeholder" style="height:140px">📅 7×6 grid heatmap</div>
+        </div>
+        <div class="widget">
+          <div class="widget-head">
+            <span class="widget-title">Sample-size status</span>
+            <span class="info-btn-wrap" tabindex="0"><span class="info-btn">i</span><div class="info-tip"><strong>Wat zie ik hier?</strong>Onder 30 trades zijn stats statistisch indicatief, niet hard. Boven 100 = robuust. <strong>Tharp's SQN vereist ≥100 trades</strong>.</div></span>
+          </div>
+          <div style="padding:24px;text-align:center;font:700 22px var(--mono);color:var(--green)">142 trades<br/><span style="font-size:11px;color:var(--text4);font-weight:500">robuust voor SQN-analyse ✓</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================== SECTIE 2: PER SETUP -->
+    <section class="section" id="sec-setup">
+      <div class="section-head">
+        <span class="section-num">02</span>
+        <span class="section-title">🎯 Per setup</span>
+        <span class="section-hint">"Welke setup heeft mijn beste edge?"</span>
+      </div>
+
+      <div class="widget">
+        <div class="widget-head">
+          <span class="widget-title">Setup-insights tabel</span>
+          <span class="info-btn-wrap" tabindex="0"><span class="info-btn">i</span><div class="info-tip"><strong>Wat zie ik hier?</strong>Per setup-tag: # trades, WR, gem R, totaal PnL. Klik op rij om te filteren in Trades.<div class="example">💡 Bellafiore: track <em>per-setup edge</em>, niet alleen totaal.</div></div></span>
+        </div>
+        <table class="table">
+          <thead><tr><th>Setup</th><th>Trades</th><th>WR</th><th>Avg R</th><th class="num">PnL</th><th>Advies</th></tr></thead>
+          <tbody>
+            <tr><td>London Breakout</td><td>34</td><td class="pos">71%</td><td>+1.4R</td><td class="num pos">+$3.812</td><td>🟢 Repliceren</td></tr>
+            <tr><td>NY Reversal</td><td>22</td><td class="pos">68%</td><td>+1.1R</td><td class="num pos">+$2.145</td><td>🟢 Repliceren</td></tr>
+            <tr><td>Asia Range Fade</td><td>18</td><td>50%</td><td>+0.2R</td><td class="num">+$184</td><td>🟡 Tweaken</td></tr>
+            <tr><td>FOMO Entry</td><td>12</td><td class="neg">25%</td><td>−0.8R</td><td class="num neg">−$987</td><td>🔴 Skippen</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="widget">
+        <div class="widget-head">
+          <span class="widget-title">🎯 Alignment-patronen (HTF/LTF bias-flow)</span>
+          <span class="info-btn-wrap" tabindex="0"><span class="info-btn">i</span><div class="info-tip"><strong>Wat zie ik hier?</strong>Trades classified op HTF/LTF bias vs direction. <strong>ICT/SMC-traders-favoriet</strong>.<div class="formula">getTradeAlignmentPattern(trade)</div></div></span>
+        </div>
+        <div class="grid-4" style="gap:10px">
+          <div style="background:var(--bg3);border-top:3px solid var(--green);border-radius:5px;padding:12px"><div style="font:700 9.5px var(--mono);color:var(--green)">CONTINUATION · 45t</div><div style="font:700 22px var(--mono);color:var(--green);margin:6px 0">71%</div><div style="font:600 10px var(--mono);color:var(--text3)">+0.82R</div></div>
+          <div style="background:var(--bg3);border-top:3px solid var(--gold);border-radius:5px;padding:12px"><div style="font:700 9.5px var(--mono);color:var(--gold)">PULLBACK · 23t</div><div style="font:700 22px var(--mono);color:var(--gold);margin:6px 0">65%</div><div style="font:600 10px var(--mono);color:var(--text3)">+0.61R</div></div>
+          <div style="background:var(--bg3);border-top:3px solid var(--blue);border-radius:5px;padding:12px"><div style="font:700 9.5px var(--mono);color:var(--blue)">REVERSAL · 12t</div><div style="font:700 22px var(--mono);color:var(--blue);margin:6px 0">50%</div><div style="font:600 10px var(--mono);color:var(--text3)">+0.12R</div></div>
+          <div style="background:var(--bg3);border-top:3px solid var(--red);border-radius:5px;padding:12px"><div style="font:700 9.5px var(--mono);color:var(--red)">COUNTER · 8t</div><div style="font:700 22px var(--mono);color:var(--red);margin:6px 0">25%</div><div style="font:600 10px var(--mono);color:var(--text3)">−0.43R</div></div>
+        </div>
+      </div>
+
+      <!-- Process-grade distribution (Advanced-only, Bellafiore) -->
+      <div class="widget pro advanced-only">
+        <div class="widget-head">
+          <span class="widget-title">Process grade distributie (Bellafiore A+/A/B/C)</span>
+          <span class="info-btn-wrap" tabindex="0"><span class="info-btn">i</span><div class="info-tip"><strong>Wat zie ik hier?</strong>% trades per grade. <strong>SMB Capital's framework</strong>: grade op proces, niet P&L.<div class="example">Een verloren trade kan A+ zijn als alle setup-criteria klopten.</div></div></span>
+        </div>
+        <div class="grade-row"><span class="grade-tag A-plus">A+</span><div class="grade-bar-wrap"><div class="grade-bar" style="width:18%;background:var(--green)"></div></div><span style="font:600 11.5px var(--mono);color:var(--green)">18% · 26t</span></div>
+        <div class="grade-row"><span class="grade-tag A">A</span><div class="grade-bar-wrap"><div class="grade-bar" style="width:42%;background:var(--green);opacity:0.7"></div></div><span style="font:600 11.5px var(--mono);color:var(--text2)">42% · 60t</span></div>
+        <div class="grade-row"><span class="grade-tag B">B</span><div class="grade-bar-wrap"><div class="grade-bar" style="width:28%;background:var(--gold)"></div></div><span style="font:600 11.5px var(--mono);color:var(--text2)">28% · 40t</span></div>
+        <div class="grade-row"><span class="grade-tag C">C</span><div class="grade-bar-wrap"><div class="grade-bar" style="width:12%;background:var(--red)"></div></div><span style="font:600 11.5px var(--mono);color:var(--red)">12% · 17t</span></div>
+        <div style="margin-top:10px;padding:10px;background:rgba(244,176,66,0.06);border-radius:5px;font-size:11.5px;color:var(--text3);border-left:2px solid var(--gold)">
+          ⚠ 12% C-grade trades = setup-discipline-leak. Focus volgende week: alleen A+ en A.
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================== SECTIE 3: PER TIMING -->
+    <section class="section" id="sec-timing">
+      <div class="section-head">
+        <span class="section-num">03</span>
+        <span class="section-title">🕒 Per timing</span>
+        <span class="section-hint">"Wanneer presteer ik best?"</span>
+      </div>
+
+      <div class="widget">
+        <div class="widget-head">
+          <span class="widget-title">Day × Hour heatmap (Amsterdam-tijd)</span>
+          <span class="info-btn-wrap" tabindex="0"><span class="info-btn">i</span><div class="info-tip"><strong>Wat zie ik hier?</strong>Avg R per dag × uur. <strong>Steenbarger pattern #3</strong>: time-of-day edge.</div></span>
+        </div>
+        <div class="heatmap-mock">
+          <span class="day">Ma</span>
+          <span class="cell" style="background:rgba(52,216,160,0.25)">+0.8</span>
+          <span class="cell" style="background:rgba(52,216,160,0.15)">+0.4</span>
+          <span class="cell" style="background:rgba(120,140,160,0.08)">—</span>
+          <span class="cell" style="background:rgba(52,216,160,0.35)">+1.2</span>
+          <span class="cell" style="background:rgba(120,140,160,0.08)">—</span>
+          <span class="cell" style="background:rgba(246,86,111,0.15)">−0.3</span>
+          <span class="cell" style="background:rgba(52,216,160,0.45)">+1.7</span>
+          <span class="cell" style="background:rgba(52,216,160,0.20)">+0.5</span>
+          <span class="cell" style="background:rgba(52,216,160,0.20)">+0.6</span>
+          <span class="cell" style="background:rgba(120,140,160,0.08)">—</span>
+          <span class="cell" style="background:rgba(120,140,160,0.08)">—</span>
+          <span class="cell" style="background:rgba(120,140,160,0.08)">—</span>
+          <span class="cell" style="background:rgba(120,140,160,0.08)">—</span>
+          <span class="cell" style="background:rgba(120,140,160,0.08)">—</span>
+          <span class="cell" style="background:rgba(52,216,160,0.30)">+0.9</span>
+          <span class="cell" style="background:rgba(246,86,111,0.10)">−0.1</span>
+          <span class="cell" style="background:rgba(246,86,111,0.25)">−0.7</span>
+          <span class="cell" style="background:rgba(120,140,160,0.08)">—</span>
+          <span class="cell" style="background:rgba(120,140,160,0.08)">—</span>
+          <span class="cell" style="background:rgba(120,140,160,0.08)">—</span>
+          <span class="cell" style="background:rgba(120,140,160,0.08)">—</span>
+          <span class="cell" style="background:rgba(120,140,160,0.08)">—</span>
+          <span class="cell" style="background:rgba(120,140,160,0.08)">—</span>
+          <span class="cell" style="background:rgba(120,140,160,0.08)">—</span>
+        </div>
+        <div style="margin-top:12px;font:500 11px var(--mono);color:var(--text4)">🟢 Beste edge: <strong style="color:var(--green)">Ma 09:00</strong> (+1.7R) · 🔴 Worst: <strong style="color:var(--red)">Ma 16:00</strong> (−0.7R)</div>
+      </div>
+
+      <div class="grid-2">
+        <div class="widget">
+          <div class="widget-head">
+            <span class="widget-title">Per sessie</span>
+            <span class="info-btn-wrap" tabindex="0"><span class="info-btn">i</span><div class="info-tip"><strong>Wat zie ik hier?</strong>WR + PnL per major sessie. Crypto handelt 24/7 — sessies relevant voor liquidity.</div></span>
+          </div>
+          <div class="placeholder" style="height:130px">📊 5 bars (Asia / London AM / London PM / NY AM / US PM)</div>
+        </div>
+        <div class="widget">
+          <div class="widget-head">
+            <span class="widget-title">Holdtijd-analyse</span>
+            <span class="info-btn-wrap" tabindex="0"><span class="info-btn">i</span><div class="info-tip"><strong>Wat zie ik hier?</strong>Trade-duur per bucket. <strong>Setup voor de Hold-time asymmetry analyse</strong> in Edge-drains.</div></span>
+          </div>
+          <div class="placeholder" style="height:130px">⏱️ Bar-chart (5min / 30min / 1h / 4h / 1d+)</div>
+        </div>
+      </div>
+
+      <!-- Killzone × Setup matrix (Advanced, ICT/SMC) -->
+      <div class="widget pro advanced-only">
+        <div class="widget-head">
+          <span class="widget-title">Killzone × Setup matrix (ICT/SMC)</span>
+          <span class="info-btn-wrap" tabindex="0"><span class="info-btn">i</span><div class="info-tip"><strong>Wat zie ik hier?</strong>2D-grid van killzone-tijd × ICT setup-type. <strong>Differentiator</strong> — geen ander journal heeft dit.<div class="example">Bijv: Order Block in London Open killzone = 78% WR · Order Block in Asia = 32% WR. Skip Asia.</div></div></span>
+        </div>
+        <table class="km">
+          <thead><tr><th></th><th>London Open</th><th>NY AM</th><th>NY PM</th><th>Asia</th></tr></thead>
+          <tbody>
+            <tr><td class="hdr">Order Block</td>
+              <td class="cell" style="background:rgba(52,216,160,0.32)"><div class="cell-wr" style="color:var(--green)">78%</div><div class="cell-meta">23t · +1.5R</div></td>
+              <td class="cell" style="background:rgba(52,216,160,0.22)"><div class="cell-wr">68%</div><div class="cell-meta">18t · +0.9R</div></td>
+              <td class="cell" style="background:rgba(52,216,160,0.10)"><div class="cell-wr">55%</div><div class="cell-meta">9t · +0.3R</div></td>
+              <td class="cell" style="background:rgba(246,86,111,0.25)"><div class="cell-wr" style="color:var(--red)">32%</div><div class="cell-meta">7t · -0.6R</div></td>
+            </tr>
+            <tr><td class="hdr">FVG</td>
+              <td class="cell" style="background:rgba(52,216,160,0.18)"><div class="cell-wr">63%</div><div class="cell-meta">14t · +0.7R</div></td>
+              <td class="cell" style="background:rgba(52,216,160,0.30)"><div class="cell-wr" style="color:var(--green)">72%</div><div class="cell-meta">22t · +1.1R</div></td>
+              <td class="cell" style="background:rgba(244,176,66,0.18)"><div class="cell-wr">50%</div><div class="cell-meta">6t · +0.1R</div></td>
+              <td class="cell" style="background:rgba(120,140,160,0.05)"><div style="font:600 10px var(--mono);color:var(--text5)">—</div></td>
+            </tr>
+            <tr><td class="hdr">Liquidity Sweep</td>
+              <td class="cell" style="background:rgba(52,216,160,0.45)"><div class="cell-wr" style="color:var(--green)">82%</div><div class="cell-meta">11t · +2.1R</div></td>
+              <td class="cell" style="background:rgba(52,216,160,0.18)"><div class="cell-wr">60%</div><div class="cell-meta">10t · +0.6R</div></td>
+              <td class="cell" style="background:rgba(120,140,160,0.05)"><div style="font:600 10px var(--mono);color:var(--text5)">—</div></td>
+              <td class="cell" style="background:rgba(246,86,111,0.10)"><div class="cell-wr">42%</div><div class="cell-meta">5t · -0.2R</div></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ============================== SECTIE 4: EMOTIE & DISCIPLINE -->
+    <section class="section" id="sec-discipline">
+      <div class="section-head">
+        <span class="section-num">04</span>
+        <span class="section-title">🧠 Emotie & Discipline</span>
+        <span class="section-hint">"Volgde ik m'n plan?"</span>
+      </div>
+
+      <div class="widget">
+        <div class="widget-head">
+          <span class="widget-title">Plan-adherence snapshot</span>
+          <span class="info-btn-wrap" tabindex="0"><span class="info-btn">i</span><div class="info-tip"><strong>Wat zie ik hier?</strong>Verdeling van trades met volledig plan vs partial vs geen.</div></span>
+        </div>
+        <div class="doughnut">
+          <div class="doughnut-ring"><span class="doughnut-ring-inner">78%</span></div>
+          <div>
+            <div style="font:600 12px var(--mono);color:var(--text2);margin-bottom:6px">Plan-adherence verdeling</div>
+            <div style="display:flex;gap:14px;font:500 11px var(--mono);color:var(--text3)">
+              <span><span style="display:inline-block;width:10px;height:10px;background:var(--green);border-radius:2px;vertical-align:middle;margin-right:5px"></span>Full plan 78%</span>
+              <span><span style="display:inline-block;width:10px;height:10px;background:var(--red);border-radius:2px;vertical-align:middle;margin-right:5px"></span>No plan 14%</span>
+              <span><span style="display:inline-block;width:10px;height:10px;background:var(--gold);border-radius:2px;vertical-align:middle;margin-right:5px"></span>Partial 8%</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="widget">
+        <div class="widget-head">
+          <span class="widget-title">Emotie-impact</span>
+          <span class="info-btn-wrap" tabindex="0"><span class="info-btn">i</span><div class="info-tip"><strong>Wat zie ik hier?</strong>Avg PnL per emotie-tag. FOMO/Tilt/Frustratie = typische negative indicators.</div></span>
+        </div>
+        <table class="table">
+          <thead><tr><th>Emotie</th><th>Trades</th><th>WR</th><th class="num">Avg PnL</th></tr></thead>
+          <tbody>
+            <tr><td>Gedisciplineerd</td><td>58</td><td class="pos">74%</td><td class="num pos">+$84</td></tr>
+            <tr><td>Geduldig</td><td>42</td><td class="pos">71%</td><td class="num pos">+$68</td></tr>
+            <tr><td>FOMO</td><td>14</td><td class="neg">28%</td><td class="num neg">−$67</td></tr>
+            <tr><td>Frustratie</td><td>9</td><td class="neg">22%</td><td class="num neg">−$104</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Behavioral Tilt Panel (Advanced — differentiator) -->
+      <div class="widget pro advanced-only">
+        <div class="widget-head">
+          <span class="widget-title">🚨 Behavioral tilt-panel</span>
+          <span class="info-btn-wrap" tabindex="0"><span class="info-btn">i</span><div class="info-tip"><strong>Wat zie ik hier?</strong>3 verborgen metrics die pro's van amateurs scheiden: revenge-trading, size-creep, conviction-after-loss. <strong>Geen ander journal heeft deze combo</strong>.<div class="example">Pro-tip: vink elke trade na een loss → "was dit een revenge?" Steenbarger toont dat dit de #1 destroyer is.</div></div></span>
+        </div>
+        <div class="grid-3">
+          <div class="tilt-cell alert">
+            <div class="tilt-icon">⏱️</div>
+            <div class="tilt-val" style="color:var(--red)">12</div>
+            <div class="tilt-label">Revenge-trades<br/>(&lt; 15 min na loss)</div>
+          </div>
+          <div class="tilt-cell warn">
+            <div class="tilt-icon">📈</div>
+            <div class="tilt-val" style="color:var(--gold)">8</div>
+            <div class="tilt-label">Size-creep<br/>(&gt; 25% boven baseline)</div>
+          </div>
+          <div class="tilt-cell ok">
+            <div class="tilt-icon">🎯</div>
+            <div class="tilt-val" style="color:var(--green)">3</div>
+            <div class="tilt-label">Conviction-after-loss<br/>(size verhoogd na 3L)</div>
+          </div>
+        </div>
+        <div style="margin-top:12px;padding:10px 14px;background:rgba(246,86,111,0.06);border-left:3px solid var(--red);border-radius:5px;font-size:11.5px;color:var(--text2);line-height:1.55">
+          ⚠ <strong>12 revenge-trades</strong> = 8.5% van totaal. Steenbarger: dit is meestal de #1 leak bij ongoing-loss-pattern. Volgende stap: forceer 15-min cooldown na elke loss.
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================== SECTIE 5: EDGE-DRAINS -->
+    <section class="section" id="sec-drains">
+      <div class="section-head">
+        <span class="section-num">05</span>
+        <span class="section-title">💧 Edge-drains</span>
+        <span class="section-hint">"Wat lekt mijn edge?"</span>
+      </div>
+
+      <div class="widget">
+        <div class="widget-head">
+          <span class="widget-title">Rolling 20-trade edge</span>
+          <span class="info-btn-wrap" tabindex="0"><span class="info-btn">i</span><div class="info-tip"><strong>Wat zie ik hier?</strong>Voortschrijdend gemiddelde over laatste 20 trades. Toont edge-degradatie of -verbetering. <strong>Lifetime averages liegen.</strong><div class="formula">window(20) → avg(R) per trade</div></div></span>
+        </div>
+        <div class="placeholder" style="height:160px">📉 Lijn-chart rolling avg</div>
+      </div>
+
+      <div class="widget">
+        <div class="widget-head">
+          <span class="widget-title">⭐ Hold-time asymmetry (Steenbarger #1 leak)</span>
+          <span class="info-btn-wrap" tabindex="0"><span class="info-btn">i</span><div class="info-tip"><strong>Wat zie ik hier?</strong><strong>De #1 leak-indicator volgens Steenbarger</strong>. Hou je verliezers langer dan winnaars? Klassieke fout: hopen-op-omkering vs winsten-pakken.<div class="formula">avg duur losers / avg duur winners. &lt;1 = gezond</div><div class="example">Ratio 1.69 = je houdt losers 69% LANGER vast dan winners. Pak winners later, cut losers sneller.</div></div></span>
+        </div>
+        <div class="compare-bar">
+          <div style="background:var(--green);width:38%">⏱ Winners 42 min</div>
+          <div style="background:var(--red);width:62%">⏱ Losers 71 min</div>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
+          <div style="font:500 11px var(--mono);color:var(--text3)">Asymmetrie ratio: <strong style="color:var(--red)">1.69</strong> (verliezers 69% langer)</div>
+          <div style="font:600 11px var(--mono);color:var(--red)">⚠ Steenbarger pattern: leak</div>
+        </div>
+        <div style="margin-top:10px;padding:10px;background:rgba(244,176,66,0.06);border-radius:5px;font-size:11.5px;color:var(--text3);border-left:2px solid var(--amber)">
+          💡 <strong>Tip</strong>: forceer een tijd-stop op losers — bv. "exit als trade > 30 min en niet in winst is".
+        </div>
+      </div>
+
+      <div class="widget">
+        <div class="widget-head">
+          <span class="widget-title">Fout-impact (mistake-tags)</span>
+          <span class="info-btn-wrap" tabindex="0"><span class="info-btn">i</span><div class="info-tip"><strong>Wat zie ik hier?</strong>Σ PnL per fout-tag. Top-3 sturen je oefening: welke fout kost meeste geld?</div></span>
+        </div>
+        <table class="table">
+          <thead><tr><th>Fout</th><th>Trades</th><th class="num">Verloren PnL</th><th>Leak-rank</th></tr></thead>
+          <tbody>
+            <tr><td>SL te krap</td><td>18</td><td class="num neg">−$1.245</td><td>⚠ Top-1</td></tr>
+            <tr><td>FOMO entry</td><td>14</td><td class="num neg">−$987</td><td>⚠ Top-2</td></tr>
+            <tr><td>Geen plan</td><td>9</td><td class="num neg">−$612</td><td>⚠ Top-3</td></tr>
+            <tr><td>Te vroeg gesloten</td><td>11</td><td class="num neg">−$348</td><td></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ============================== SECTIE 6: RISK & SIZING (advanced) -->
+    <section class="section advanced-only" id="sec-risk">
+      <div class="section-head">
+        <span class="section-num">06</span>
+        <span class="section-title">⚖️ Risk & Sizing <span class="pro-badge">ADVANCED</span></span>
+        <span class="section-hint">"Beheers ik mijn risk?"</span>
+      </div>
+
+      <div class="grid-2">
+        <div class="widget pro">
+          <div class="widget-head">
+            <span class="widget-title">R-multiple distributie</span>
+            <span class="info-btn-wrap" tabindex="0"><span class="info-btn">i</span><div class="info-tip"><strong>Wat zie ik hier?</strong>Histogram van R-multiples. Pro-trader heeft veel kleine -1R / -0.5R losses en occasional +3R/+5R winners.<div class="example">Tharp's wenslijst: rechtertail dik, linkertail dun en kort.</div></div></span>
+          </div>
+          <div class="placeholder" style="height:160px">📊 Histogram (-3R tot +5R buckets)</div>
+        </div>
+        <div class="widget pro">
+          <div class="widget-head">
+            <span class="widget-title">Position-size distributie</span>
+            <span class="info-btn-wrap" tabindex="0"><span class="info-btn">i</span><div class="info-tip"><strong>Wat zie ik hier?</strong>Histogram van trade sizes. Consistent = goed (Minervini's 1.25-2.5% rule). Spreidde verticaal = tilt-signaal.</div></span>
+          </div>
+          <div class="placeholder" style="height:160px">📊 Histogram + 25th/median/75th percentile</div>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="widget pro">
+          <div class="widget-head">
+            <span class="widget-title">MFE/MAE per trade</span>
+            <span class="info-btn-wrap" tabindex="0"><span class="info-btn">i</span><div class="info-tip"><strong>Wat zie ik hier?</strong>Max Favorable / Adverse Excursion. <strong>Curtis Faith framework</strong>. Tonen of je winners op de top sluit (goed) of te vroeg (lek).<div class="formula">E-Ratio = avg-MFE / avg-MAE</div></div></span>
+          </div>
+          <div class="placeholder" style="height:160px">📊 Scatter MFE × MAE per trade</div>
+        </div>
+        <div class="widget pro">
+          <div class="widget-head">
+            <span class="widget-title">E-Ratio + Capture-ratio</span>
+            <span class="info-btn-wrap" tabindex="0"><span class="info-btn">i</span><div class="info-tip"><strong>Wat zie ik hier?</strong>E-Ratio >1 = edge ongeacht WR. Capture-ratio = realized / MFE — sluit je winners te vroeg?<div class="formula">Capture = realized_R / MFE_R. 100% = perfect</div></div></span>
+          </div>
+          <div class="grid-2" style="gap:14px">
+            <div style="padding:16px;background:var(--bg3);border-radius:5px"><div style="font:700 9.5px var(--mono);color:var(--text4);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px">E-Ratio</div><div style="font:700 24px var(--mono);color:var(--green)">1.47</div><div style="font:500 10.5px var(--mono);color:var(--text4)">solide edge</div></div>
+            <div style="padding:16px;background:var(--bg3);border-radius:5px"><div style="font:700 9.5px var(--mono);color:var(--text4);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px">Capture-ratio</div><div style="font:700 24px var(--mono);color:var(--amber)">52%</div><div style="font:500 10.5px var(--mono);color:var(--text4)">winners te vroeg!</div></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================== SECTIE 7: FUNDING & COSTS (advanced, crypto) -->
+    <section class="section advanced-only" id="sec-funding">
+      <div class="section-head">
+        <span class="section-num">07</span>
+        <span class="section-title">💸 Funding & Costs <span class="pro-badge">CRYPTO-PRO</span></span>
+        <span class="section-hint">"Hoeveel kost overnight holden?"</span>
+      </div>
+
+      <div class="widget pro">
+        <div class="widget-head">
+          <span class="widget-title">Funding-cost ledger</span>
+          <span class="info-btn-wrap" tabindex="0"><span class="info-btn">i</span><div class="info-tip"><strong>Wat zie ik hier?</strong>Cumulatieve funding-cost per trade. <strong>Geen ander journal heeft dit</strong>. Crypto-only.<div class="example">Voorbeeld: $10k long BTC bij 0.51%/8h funding × 90 dagen = $13.770 funding-cost (27% margin).</div></div></span>
+        </div>
+        <div class="grid-3">
+          <div style="padding:14px;background:var(--bg3);border-radius:5px;text-align:center"><div style="font:700 9.5px var(--mono);color:var(--text4);margin-bottom:4px">Totaal funding paid</div><div style="font:700 22px var(--mono);color:var(--red)">-$412</div></div>
+          <div style="padding:14px;background:var(--bg3);border-radius:5px;text-align:center"><div style="font:700 9.5px var(--mono);color:var(--text4);margin-bottom:4px">Totaal funding received</div><div style="font:700 22px var(--mono);color:var(--green)">+$87</div></div>
+          <div style="padding:14px;background:var(--bg3);border-radius:5px;text-align:center"><div style="font:700 9.5px var(--mono);color:var(--text4);margin-bottom:4px">% van PnL weggehapt</div><div style="font:700 22px var(--mono);color:var(--gold)">3.9%</div></div>
+        </div>
+        <div style="margin-top:12px">
+          <div class="funding-row head"><span>Datum</span><span>Symbol</span><span style="text-align:right">Hold-uren</span><span style="text-align:right">Funding $</span></div>
+          <div class="funding-row"><span style="font:500 11px var(--mono);color:var(--text3)">04-06 14:00</span><span>BTC/USDT long</span><span style="text-align:right;font-family:var(--mono)">16h (2× settl.)</span><span style="text-align:right;font-family:var(--mono);color:var(--red);font-weight:700">-$24.50</span></div>
+          <div class="funding-row"><span style="font:500 11px var(--mono);color:var(--text3)">03-06 22:00</span><span>ETH/USDT short</span><span style="text-align:right;font-family:var(--mono)">9h (1× settl.)</span><span style="text-align:right;font-family:var(--mono);color:var(--green);font-weight:700">+$8.20</span></div>
+          <div class="funding-row"><span style="font:500 11px var(--mono);color:var(--text3)">02-06 18:00</span><span>SOL/USDT long</span><span style="text-align:right;font-family:var(--mono)">26h (3× settl.)</span><span style="text-align:right;font-family:var(--mono);color:var(--red);font-weight:700">-$41.30</span></div>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="widget pro">
+          <div class="widget-head">
+            <span class="widget-title">Per-exchange funding split</span>
+            <span class="info-btn-wrap" tabindex="0"><span class="info-btn">i</span><div class="info-tip"><strong>Wat zie ik hier?</strong>Funding-cost per exchange. Blofin/MEXC/Bybit 8h, Hyperliquid 1h.</div></span>
+          </div>
+          <div class="placeholder" style="height:130px">🏛️ Stacked bar (Blofin / MEXC / HL)</div>
+        </div>
+        <div class="widget pro">
+          <div class="widget-head">
+            <span class="widget-title">Settlement-timing awareness</span>
+            <span class="info-btn-wrap" tabindex="0"><span class="info-btn">i</span><div class="info-tip"><strong>Wat zie ik hier?</strong>Hoeveel trades sluiten vlak vóór settlement (= $0 funding) vs trades die door cycle gaan.<div class="example">Pro-tip: scalpers sluiten <em>vóór</em> 00:00/08:00/16:00 UTC bij Binance/Bybit.</div></div></span>
+          </div>
+          <div class="placeholder" style="height:130px">📊 % vóór settlement vs door cycle</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================== SECTIE 8: PROPFIRM COMPLIANCE (advanced) -->
+    <section class="section advanced-only" id="sec-propfirm">
+      <div class="section-head">
+        <span class="section-num">08</span>
+        <span class="section-title">🏛️ Propfirm compliance <span class="pro-badge">FTMO/TOPSTEP</span></span>
+        <span class="section-hint">"Pass ik de prop-firm regels?"</span>
+      </div>
+
+      <div class="widget pro">
+        <div class="widget-head">
+          <span class="widget-title">Single-day concentration ratio</span>
+          <span class="info-btn-wrap" tabindex="0"><span class="info-btn">i</span><div class="info-tip"><strong>Wat zie ik hier?</strong>(Beste dag winst / totaal winst). <strong>Topstep: ≤40% · Apex: ≤30%</strong>. Boven drempel = consistency-fail.<div class="formula">max(daily_pnl) / total_pnl × 100</div><div class="example">⚠ 1-day-hero pattern = grootste reden voor propfirm-rejection.</div></div></span>
+        </div>
+        <div class="compliance-ring">
+          <div style="font:700 36px var(--mono);color:var(--green);min-width:80px;text-align:center">28%</div>
+          <div class="compliance-meter">
+            <div class="compliance-bar-wrap"><div class="compliance-bar" style="width:28%;background:var(--green)"></div><div class="compliance-threshold" style="left:30%"></div></div>
+            <div style="display:flex;justify-content:space-between;font:500 10.5px var(--mono);color:var(--text4)"><span>0%</span><span style="color:var(--red);font-weight:700">Apex 30%</span><span style="color:var(--amber)">Topstep 40%</span><span>100%</span></div>
+            <div style="margin-top:8px;font:500 11.5px var(--mono);color:var(--green)">✓ Pass voor Topstep · ✓ Pass voor Apex · beste dag $2.312 = 28% van totaal</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="widget pro">
+        <div class="widget-head">
+          <span class="widget-title">FTMO compliance dashboard</span>
+          <span class="info-btn-wrap" tabindex="0"><span class="info-btn">i</span><div class="info-tip"><strong>Wat zie ik hier?</strong>Live status van alle FTMO objectives (profit target, daily DD, max DD, trading days).</div></span>
+        </div>
+        <div class="grid-4">
+          <div style="padding:14px;background:rgba(52,216,160,0.06);border:1px solid rgba(52,216,160,0.25);border-radius:5px;text-align:center"><div style="font:700 9.5px var(--mono);color:var(--text4);margin-bottom:4px">Profit target</div><div style="font:700 18px var(--mono);color:var(--green)">8.2%</div><div style="font:500 10.5px var(--mono);color:var(--text4)">van 8% ✓</div></div>
+          <div style="padding:14px;background:rgba(52,216,160,0.06);border:1px solid rgba(52,216,160,0.25);border-radius:5px;text-align:center"><div style="font:700 9.5px var(--mono);color:var(--text4);margin-bottom:4px">Max daily DD</div><div style="font:700 18px var(--mono);color:var(--green)">-3.2%</div><div style="font:500 10.5px var(--mono);color:var(--text4)">limit -5% ✓</div></div>
+          <div style="padding:14px;background:rgba(244,176,66,0.08);border:1px solid rgba(244,176,66,0.25);border-radius:5px;text-align:center"><div style="font:700 9.5px var(--mono);color:var(--text4);margin-bottom:4px">Max DD</div><div style="font:700 18px var(--mono);color:var(--amber)">-7.8%</div><div style="font:500 10.5px var(--mono);color:var(--text4)">limit -10% ⚠</div></div>
+          <div style="padding:14px;background:rgba(52,216,160,0.06);border:1px solid rgba(52,216,160,0.25);border-radius:5px;text-align:center"><div style="font:700 9.5px var(--mono);color:var(--text4);margin-bottom:4px">Trading days</div><div style="font:700 18px var(--mono);color:var(--green)">7</div><div style="font:500 10.5px var(--mono);color:var(--text4)">min 5 ✓</div></div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<script>
+// === Mode toggle ===
+const modeButtons = document.querySelectorAll(".mode-btn");
+const body = document.body;
+modeButtons.forEach(btn => {
+  btn.addEventListener("click", () => {
+    modeButtons.forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    body.dataset.mode = btn.dataset.mode;
+    // Update TOC: in beginner mode, advanced links disabled
+    const advLinks = document.querySelectorAll(".advanced-only-link");
+    advLinks.forEach(a => {
+      if (btn.dataset.mode === "beginner") {
+        a.classList.add("locked");
+        a.querySelector(".count")?.remove();
+        if (!a.querySelector(".lock")) {
+          const lock = document.createElement("span");
+          lock.className = "lock"; lock.textContent = "🔒";
+          a.appendChild(lock);
+        }
+      } else {
+        a.classList.remove("locked");
+        a.querySelector(".lock")?.remove();
+        if (!a.querySelector(".count")) {
+          const c = document.createElement("span");
+          c.className = "count";
+          const num = a.dataset.sec === "sec-risk" ? "4" : a.dataset.sec === "sec-funding" ? "3" : "2";
+          c.textContent = num;
+          a.appendChild(c);
+        }
+      }
+    });
+  });
+});
+// Init beginner mode → lock advanced TOC links
+document.querySelector('.mode-btn[data-mode="beginner"]').click();
+
+// === Sticky TOC scroll-detection ===
+const sections = document.querySelectorAll(".section");
+const tocItems = document.querySelectorAll(".toc-section");
+window.addEventListener("scroll", () => {
+  let current = "";
+  sections.forEach(sec => {
+    if (sec.classList.contains("advanced-only") && body.dataset.mode === "beginner") return;
+    const rect = sec.getBoundingClientRect();
+    if (rect.top <= 120) current = sec.id;
+  });
+  tocItems.forEach(item => item.classList.toggle("active", item.dataset.sec === current));
+});
+
+// === Tooltip op hover/focus ===
+document.querySelectorAll(".info-btn-wrap").forEach(wrap => {
+  const tip = wrap.querySelector(".info-tip");
+  if (!tip) return;
+  const show = () => { tip.style.display = "block"; };
+  const hide = () => { tip.style.display = "none"; };
+  wrap.addEventListener("mouseenter", show);
+  wrap.addEventListener("mouseleave", hide);
+  wrap.addEventListener("focus", show);
+  wrap.addEventListener("blur", hide);
+});
+
+// === Smooth-scroll TOC ===
+document.querySelectorAll(".toc-section").forEach(a => {
+  a.addEventListener("click", e => {
+    e.preventDefault();
+    if (a.classList.contains("locked")) return;
+    document.getElementById(a.dataset.sec)?.scrollIntoView({behavior:"smooth", block:"start"});
+  });
+});
+</script>
+
+</body>
+</html>
