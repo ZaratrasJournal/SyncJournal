@@ -6,6 +6,15 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.221] — 2026-06-06
+
+### Fixed
+- **Discipline Heatmap — sessies view toonde cellen verschoven over dag-rijen** *(Denny: "de discipline heatmap sessies zijn de dagen door elkaar")*
+
+  `gridTemplateColumns` stond op `repeat(5,1fr)` voor de Sessies-view, terwijl er **7 sessies** zijn (Asia AM/PM, London AM/PM, US AM/PM/Late — Weekend is uitgesloten van de heatmap). Daardoor overflowden de 7 cellen per dag-rij naar de volgende rij en kwamen US PM + US Late labels op een willekeurige plek terecht, met dag-labels (Ma/Di/Wo…) midden in de cel-grid. Nu dynamisch op `repeat(${SESSIONS.length},1fr)` — de Sessies-view rendert 7 nette kolommen die strak onder hun headers staan.
+
+---
+
 ## [v12.220] — 2026-06-06
 
 ### Gewijzigd
