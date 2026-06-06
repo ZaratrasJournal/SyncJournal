@@ -1680,7 +1680,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.217",released:"2026-06-06"};
+const APP_VERSION={version:"v12.218",released:"2026-06-06"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -12082,9 +12082,50 @@ function Analytics({trades,tradingRules,allTrades,config,accounts,setFilters,set
   return(<div style={{animation:"fadeIn .3s ease"}}>
     <EditModeBar editMode={editMode} setEditMode={setEditMode} onReset={()=>setOrder(DEFAULT_ANALYTICS_ORDER)} gear={<LayoutGear onClick={()=>setLpOpen(true)}/>}/>
     <LayoutPanel open={lpOpen} onClose={()=>setLpOpen(false)} sections={LP_SECTIONS} prefs={lp} toggle={lpToggle} reset={lpReset}/>
+    {showReport&&<TradeReport trades={allTrades||trades} config={config} accounts={accounts} onClose={()=>setShowReport(false)}/>}
 
-    {/* v12.216: Lens-keuzes (viewMode + analyticsMode) BOVEN de KPI-strip — mental model
-        "kies eerst de lens, dan kijk je rond" (Denny: "de keuzes misschien boven de data zetten?"). */}
+    {/* v12.218: Layout-grid wrapt ALLES (toggles + KPI + widgets). TOC sidebar zit links vanaf de top
+        en is altijd zichtbaar — ook in Custom mode. Mental model: links wat je bekijkt, rechts de data. */}
+    <div className="tj-analytics-layout">
+    <aside className="tj-analytics-toc">
+      {analyticsMode==="custom" ? <>
+        <div className="tj-analytics-toc-label">🛠 Layout aanpassen</div>
+        <div style={{padding:"0 10px 10px",fontSize:"10.5px",color:"var(--text4)",lineHeight:1.5}}>Vink widgets aan of uit voor je eigen layout.</div>
+        {LP_SECTIONS.map(sec=>(
+          <React.Fragment key={sec.label}>
+            <div className="tj-analytics-toc-label sub">{sec.label}</div>
+            {sec.items.map(it=>{
+              const isOn=lp[it.key]!==false;
+              return <label key={it.key} className="tj-analytics-toc-item" style={{cursor:"pointer",userSelect:"none"}}>
+                <input type="checkbox" checked={isOn} onChange={()=>lpToggle(it.key)} style={{margin:0,width:"13px",height:"13px",accentColor:"var(--gold)",cursor:"pointer",flexShrink:0}}/>
+                <span style={{flex:1,fontSize:"11.5px",color:isOn?"var(--text2)":"var(--text4)",lineHeight:1.3}}>{it.label}</span>
+              </label>;
+            })}
+          </React.Fragment>
+        ))}
+        <button onClick={lpReset} style={{margin:"14px 8px 6px",padding:"7px 12px",borderRadius:"6px",border:"1px solid var(--border3)",background:"var(--bg3)",color:"var(--text3)",fontSize:"11px",fontWeight:600,cursor:"pointer",fontFamily:"inherit",width:"calc(100% - 16px)"}}>↺ Reset naar default</button>
+      </> : <>
+        <div className="tj-analytics-toc-label">Secties</div>
+        {SECTIONS_DEF.map(s=>(
+          <button key={s.id} type="button" className={"tj-analytics-toc-item"+(activeSection===s.id?" active":"")} onClick={()=>scrollToSection(s.id)}>
+            <span className="tj-analytics-toc-num">{s.num}</span>
+            <span>{s.icon} {s.title}</span>
+          </button>
+        ))}
+        <div className="tj-analytics-toc-label sub">Pro</div>
+        {PRO_SECTIONS_DEF.map(s=>{
+          const locked=analyticsMode==="basic";
+          return <button key={s.id} type="button" title={locked?"Schakel naar Pro mode om deze sectie te zien":""} className={"tj-analytics-toc-item"+(locked?" locked":"")+(activeSection===s.id?" active":"")} onClick={()=>!locked&&scrollToSection(s.id)}>
+            <span className="tj-analytics-toc-num">{s.num}</span>
+            <span>{s.icon} {s.title}</span>
+            {locked&&<span className="tj-analytics-toc-lock">🔒</span>}
+          </button>;
+        })}
+      </>}
+    </aside>
+    <div className="tj-analytics-main" style={{minWidth:0}}>
+
+    {/* v12.216: Lens-keuzes BOVEN de KPI-strip. */}
     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"14px",gap:"12px",flexWrap:"wrap"}}>
       <div style={{display:"flex",gap:"10px",flexWrap:"wrap",alignItems:"center"}}>
       <div style={{display:"inline-flex",padding:"4px",borderRadius:"10px",background:"var(--bg4)",border:"1px solid var(--border2)",gap:"2px"}}>
@@ -12093,7 +12134,7 @@ function Analytics({trades,tradingRules,allTrades,config,accounts,setFilters,set
         ))}
       </div>
       <div style={{display:"inline-flex",padding:"4px",borderRadius:"10px",background:"var(--bg4)",border:"1px solid var(--border2)",gap:"2px"}}>
-        {[["basic","🌱 Basic","Essentials: 5 KPI's + kern-widgets. Default voor <100 trades."],["pro","🚀 Pro","Pro-coach metrics: SQN, Max DD + diepere analyse. Voor ervaren traders."],["custom","🛠 Custom","Toggle alles handmatig (via Layout-tandwiel rechtsboven)."]].map(([k,l,tip])=>(
+        {[["basic","🌱 Basic","Essentials: 5 KPI's + kern-widgets. Default voor <100 trades."],["pro","🚀 Pro","Pro-coach metrics: SQN, Max DD + diepere analyse. Voor ervaren traders."],["custom","🛠 Custom","Kies zelf welke widgets je ziet — checkboxen in de sidebar links."]].map(([k,l,tip])=>(
           <button key={k} onClick={()=>setAnalyticsMode(k)} title={tip} style={{padding:"7px 14px",borderRadius:"8px",border:"none",background:analyticsMode===k?"var(--gold)":"transparent",color:analyticsMode===k?"var(--text)":"var(--text3)",fontSize:"12px",fontWeight:700,cursor:"pointer",fontFamily:"inherit",transition:"all .15s"}}>{l}</button>
         ))}
       </div>
@@ -12101,8 +12142,7 @@ function Analytics({trades,tradingRules,allTrades,config,accounts,setFilters,set
       <button onClick={()=>setShowReport(true)} title="Open Trade Performance Report" style={{padding:"8px 16px",borderRadius:"10px",border:"1px solid var(--gold-border)",background:"var(--gold-dim)",color:"var(--gold)",fontSize:"12px",fontWeight:700,cursor:"pointer",fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:"6px",letterSpacing:".02em"}}>📄 Genereer rapport</button>
     </div>
 
-    {/* v12.212: Analytics KPI-strip — primary metrics always visible (Stripe/Datadog progressive disclosure).
-        5 cards Basic / 7 cards Pro (extra: SQN — Tharp na ≥30 trades; Max DD — peak-trough drawdown). */}
+    {/* v12.212: Analytics KPI-strip — primary metrics always visible. */}
     {(()=>{
       const cards=[
         {label:"Net PnL",val:totalPnl,fmt:v=>fmtMoney(v,false,{sign:true}),color:totalPnl>=0?"var(--green)":"var(--red)",tip:"Som van alle gesloten trade-PnL's (inclusief fees & funding). Belangrijkste resultaat — maar verbergt 1-trade-helden, kijk altijd naast Profit Factor."},
@@ -12124,38 +12164,13 @@ function Analytics({trades,tradingRules,allTrades,config,accounts,setFilters,set
         ))}
       </div>;
     })()}
-    {showReport&&<TradeReport trades={allTrades||trades} config={config} accounts={accounts} onClose={()=>setShowReport(false)}/>}
-    {/* v12.164: SampleSizeBanner verwijderd hier — Dashboard toont 'm al. */}
-    {/* v12.166 (UX fase 4c): 95-woord info-block over "Proces-metrics vs Trading Rules"
-        was permanent zichtbaar bij viewMode=Proces/Beide. Nuttig bij eerste bezoek,
-        ruis voor returning users. Nu dismissable hint die persist via localStorage —
-        één keer lezen → voor altijd weg. Detail-uitleg verschoven naar tooltip. */}
+
+    {/* v12.166: Proces-metrics dismissable hint. */}
     {showP&&!procesHintHidden&&<div title={"Proces-metrics meten trade-data-compleetheid (thesis, SL, post-trade notes). Kalender's Trading Rules tracken dagelijkse gedrags-regels (max risk, pauze na losses). Beide nuttig — dit blok meet hoe consistent je journalt."} style={{padding:"8px 14px",borderRadius:"var(--radius)",background:"rgba(138,159,192,0.06)",borderLeft:"2px solid #8a9fc0",marginBottom:"14px",fontSize:"11px",color:"var(--text3)",lineHeight:1.4,display:"flex",alignItems:"center",justifyContent:"space-between",gap:"8px"}}>
       <span><b style={{color:"var(--text2)",fontWeight:600}}>Proces-metrics</b> meten trade-data-compleetheid — niet Kalender's dagelijkse Trading Rules. <span style={{color:"var(--text5)",fontStyle:"italic"}}>(hover voor detail)</span></span>
       <button onClick={dismissProcesHint} title="Sluit deze uitleg permanent" style={{background:"none",border:"none",color:"var(--text4)",cursor:"pointer",fontSize:"14px",lineHeight:1,padding:"0 2px",flexShrink:0}}>×</button>
     </div>}
 
-    {/* v12.213/14: Basic/Pro mode → sticky TOC + main grid + CSS-order sectie-groepering.
-        Custom mode → flat (geen TOC, geen sectie-orde, drag-reorder actief). */}
-    <div className={analyticsMode==="custom"?"":"tj-analytics-layout"}>
-    {analyticsMode!=="custom" && <aside className="tj-analytics-toc">
-      <div className="tj-analytics-toc-label">Secties</div>
-      {SECTIONS_DEF.map(s=>(
-        <button key={s.id} type="button" className={"tj-analytics-toc-item"+(activeSection===s.id?" active":"")} onClick={()=>scrollToSection(s.id)}>
-          <span className="tj-analytics-toc-num">{s.num}</span>
-          <span>{s.icon} {s.title}</span>
-        </button>
-      ))}
-      <div className="tj-analytics-toc-label sub">Pro</div>
-      {PRO_SECTIONS_DEF.map(s=>{
-        const locked=analyticsMode==="basic";
-        return <button key={s.id} type="button" title={locked?"Schakel naar Pro mode om deze sectie te zien":""} className={"tj-analytics-toc-item"+(locked?" locked":"")+(activeSection===s.id?" active":"")} onClick={()=>!locked&&scrollToSection(s.id)}>
-          <span className="tj-analytics-toc-num">{s.num}</span>
-          <span>{s.icon} {s.title}</span>
-          {locked&&<span className="tj-analytics-toc-lock">🔒</span>}
-        </button>;
-      })}
-    </aside>}
     <div ref={analyticsContainerRef} className={editMode?"edit-mode":""} style={analyticsMode!=="custom"?{display:"flex",flexDirection:"column",gap:"12px",minWidth:0}:{minWidth:0}}>
 
     {/* PROCES KPI grid — Plan / SL / Journal / Consistency */}
@@ -12675,8 +12690,9 @@ function Analytics({trades,tradingRules,allTrades,config,accounts,setFilters,set
         {content||<div className="tj-analytics-pro-placeholder"><strong>Binnenkort</strong>Widget volgt in latere release.</div>}
       </div>;
     })}
-    </div>
-    </div>
+    </div>{/* analyticsContainerRef */}
+    </div>{/* tj-analytics-main */}
+    </div>{/* tj-analytics-layout */}
   </div>);
 }
 

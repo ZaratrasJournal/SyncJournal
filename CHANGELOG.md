@@ -6,6 +6,21 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.218] — 2026-06-06
+
+### Gewijzigd
+- **Analytics — TOC sidebar vanaf de top + Custom-mode krijgt eigen sidebar** *(Denny: "de custom pagina mist een sidebar — ik heb geen idee hoe ik hier iets custom van kan maken")*
+
+  Layout-grid wrapt nu de hele Analytics-pagina (toggles + KPI-strip + widgets). Resultaat:
+  - **TOC sidebar links** begint vanaf de top, op gelijke hoogte met de toggle-bar — niet meer onder de KPI-strip.
+  - **Net PnL en eerste sectie (Overview) zijn nu netjes aligned** met de rechterkant van de sidebar — links sidebar, rechts data.
+  - **Custom mode krijgt nu een functionele sidebar**: in plaats van "geen TOC" toont de sidebar nu álle widgets gegroepeerd per LP_SECTIONS-categorie (Proces / Grafieken / Overige), elk met een checkbox. Aan-/uitvinken = widget tonen/verbergen. Onderaan een "↺ Reset naar default"-knop.
+  - **Basic/Pro mode** behouden de sectie-jumps zoals voorheen (5 secties + 3 Pro-secties).
+
+  Tooltip op Custom-mode knop bijgewerkt naar "Kies zelf welke widgets je ziet — checkboxen in de sidebar links".
+
+---
+
 ## [v12.217] — 2026-06-06
 
 ### Toegevoegd
