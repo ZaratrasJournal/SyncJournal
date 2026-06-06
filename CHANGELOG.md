@@ -6,6 +6,26 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.213] — 2026-06-06
+
+### Toegevoegd
+- **Analytics — sticky TOC sidebar + bredere layout** *(gevraagd door Denny: "ik mis de opmaak, breedte en sticky side bar van de demo in de journal")*
+
+  Layout-shell zoals in de redesign-demo:
+  - **Max-width naar 1920px** voor Analytics-tab (andere tabs blijven 1520px). Bredere kolommen → meer ruimte voor widgets.
+  - **Sticky TOC links** (220px sidebar): 5 Basic-secties (📊 Overview / 🎯 Per setup / 🕒 Per timing / 🧠 Emotie & Discipline / 💧 Edge-drains) + 3 Pro-only secties (⚖️ Risk & Sizing / 💸 Funding & Costs / 🏛️ Propfirm). In Basic mode zijn Pro-items grijs (🔒-icoon).
+  - **Sectie-headers** met genummerd badge (01-08), icon + titel + hint. Scroll-spy: TOC-item kleurt goud zodra je in die sectie scrollt.
+  - **Klik op TOC-item** → smooth-scroll naar de sectie.
+  - **Pro mode**: 3 extra sectie-placeholders onderaan met "Binnenkort beschikbaar" — krijgen unieke widgets in v12.214+.
+  - **Custom mode**: behoudt het flat drag-reorder gedrag uit eerdere versies — geen TOC, alle widgets open en draggable.
+
+  **Mobile fallback** (<1100px): TOC valt boven de content en wordt horizontaal scrollbaar.
+
+### Toelichting
+Dit is fase 2 van de Analytics-redesign (na v12.212 KPI-strip + mode-toggle). Sectie-headers verschijnen op de plek waar de eerste widget van die sectie staat in de render-volgorde — bij bestaande drag-order kunnen secties dus door elkaar lopen. Volgt in v12.214: vaste sectie-volgorde voor Basic/Pro mode + demo-kleuren doortrekken naar sync/classic/aurora thema's.
+
+---
+
 ## [v12.212] — 2026-06-06
 
 ### Toegevoegd

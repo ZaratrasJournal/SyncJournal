@@ -388,6 +388,32 @@ body.theme-light .tj-logo-text,body.theme-parchment .tj-logo-text,body.theme-day
 @media(pointer:coarse){button{min-height:44px}.tj-tab{min-height:48px}.mm-item{min-height:48px}}
 .morani-link{text-decoration:none;transition:filter .2s}
 .morani-link:hover{filter:drop-shadow(0 0 6px rgba(201,168,76,0.4))}
+/* v12.213: Analytics-pagina layout — sticky TOC + main grid (220px + 1fr).
+   Geactiveerd in Basic/Pro mode via .tj-analytics-layout wrapper. */
+.tj-analytics-layout{display:grid;grid-template-columns:220px 1fr;gap:24px;align-items:start}
+.tj-analytics-toc{position:sticky;top:8px;align-self:start;padding:14px 8px;border:1px solid var(--border1);background:var(--bg2);border-radius:10px;max-height:calc(100vh - 110px);overflow-y:auto}
+.tj-analytics-toc-label{font-size:9.5px;font-weight:700;color:var(--text4);text-transform:uppercase;letter-spacing:.10em;margin:0 0 10px 8px;font-family:var(--mono,'JetBrains Mono','SF Mono',monospace)}
+.tj-analytics-toc-label.sub{margin-top:18px;font-size:9px}
+.tj-analytics-toc-item{display:flex;align-items:center;gap:9px;padding:9px 11px;border-radius:6px;color:var(--text3);font-size:12px;font-weight:500;cursor:pointer;border:none;border-left:2px solid transparent;background:transparent;width:100%;text-align:left;margin-bottom:2px;font-family:inherit;transition:.15s}
+.tj-analytics-toc-item:hover{background:var(--bg3);color:var(--text)}
+.tj-analytics-toc-item.active{background:var(--bg3);color:var(--gold);border-left-color:var(--gold);font-weight:600}
+.tj-analytics-toc-item.locked{opacity:.45;cursor:not-allowed}
+.tj-analytics-toc-item.locked:hover{background:transparent;color:var(--text3)}
+.tj-analytics-toc-num{font-size:9px;font-weight:700;color:var(--text5);background:var(--bg4);padding:2px 5px;border-radius:3px;min-width:18px;text-align:center;font-family:var(--mono,monospace)}
+.tj-analytics-toc-item.active .tj-analytics-toc-num{color:var(--gold);background:var(--gold-dim);border:1px solid var(--gold-border)}
+.tj-analytics-toc-lock{margin-left:auto;font-size:10px;opacity:.7}
+.tj-analytics-section{margin-bottom:28px;scroll-margin-top:16px}
+.tj-analytics-section-head{display:flex;align-items:center;gap:10px;margin-bottom:14px;padding-bottom:9px;border-bottom:1px solid var(--border1)}
+.tj-analytics-section-num{font-size:11px;font-weight:800;background:var(--gold-dim);color:var(--gold);padding:4px 9px;border-radius:5px;letter-spacing:.06em;border:1px solid var(--gold-border);font-family:var(--mono,monospace)}
+.tj-analytics-section-title{font-size:16px;font-weight:700;letter-spacing:-.01em;color:var(--text)}
+.tj-analytics-section-hint{margin-left:auto;font-size:11px;color:var(--text4);font-style:italic}
+.tj-analytics-section.pro-locked{opacity:.55;pointer-events:none}
+.tj-analytics-pro-placeholder{padding:24px;border:1px dashed var(--border3);border-radius:8px;background:var(--bg2);color:var(--text3);font-size:12px;text-align:center;line-height:1.6}
+.tj-analytics-pro-placeholder strong{display:block;color:var(--text2);font-size:13px;margin-bottom:6px}
+@media(max-width:1100px){
+  .tj-analytics-layout{grid-template-columns:1fr}
+  .tj-analytics-toc{position:relative;top:auto;max-height:none}
+}
 /* v7 NEW: search bar */
 .search-bar{width:100%;padding:10px 14px 10px 38px;border-radius:var(--radius);border:1px solid var(--border3);background:var(--glass);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);color:var(--text);font-size:13px;font-family:var(--font);outline:none;transition:border-color .15s}
 .search-bar:focus{border-color:var(--gold-border)}
@@ -1652,7 +1678,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.212",released:"2026-06-06"};
+const APP_VERSION={version:"v12.213",released:"2026-06-06"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -11798,6 +11824,45 @@ function Analytics({trades,tradingRules,allTrades,config,accounts,setFilters,set
   const[analyticsMode,setAnalyticsMode]=useState(()=>{try{return localStorage.getItem("tj_analytics_mode")||"basic"}catch{return"basic"}});
   useEffect(()=>{try{localStorage.setItem("tj_analytics_mode",analyticsMode)}catch{}},[analyticsMode]);
   const isPro=analyticsMode==="pro"||analyticsMode==="custom";
+  // v12.213: Sectie-definities voor sticky TOC + sectie-headers.
+  // Mapping: widget-key → sectie-id (eerste widget van die sectie krijgt header gerenderd).
+  const SECTIONS_DEF=[
+    {id:"sec-overview",num:"01",icon:"📊",title:"Overview",hint:"Hoofdmetrics & momentum"},
+    {id:"sec-setup",   num:"02",icon:"🎯",title:"Per setup",hint:"Welke setup geeft jouw edge?"},
+    {id:"sec-timing",  num:"03",icon:"🕒",title:"Per timing",hint:"Wanneer is je edge het sterkst?"},
+    {id:"sec-discipline",num:"04",icon:"🧠",title:"Emotie & Discipline",hint:"Plan-adherence, mindset, fouten"},
+    {id:"sec-leaks",   num:"05",icon:"💧",title:"Edge-drains",hint:"Waar lekt je edge?"},
+  ];
+  const PRO_SECTIONS_DEF=[
+    {id:"sec-risk",     num:"06",icon:"⚖️",title:"Risk & Sizing",hint:"Position-sizing & R-discipline",pro:true},
+    {id:"sec-funding",  num:"07",icon:"💸",title:"Funding & Costs",hint:"Crypto funding & fee-impact",pro:true},
+    {id:"sec-propfirm", num:"08",icon:"🏛️",title:"Propfirm compliance",hint:"FTMO/Topstep regel-tracker",pro:true},
+  ];
+  const WIDGET_TO_SECTION={
+    procesKPIs:"sec-overview", winstKPIs:"sec-overview",
+    setupInsights:"sec-setup", setupEdge:"sec-setup", longShort:"sec-setup", perPair:"sec-setup",
+    alignmentInsights:"sec-setup", biasHeatmap:"sec-setup", layerAnalysis:"sec-setup",
+    heatmap:"sec-timing", perDay:"sec-timing", sessionPerf:"sec-timing", holdtime:"sec-timing",
+    rrAnalysis:"sec-timing", disciplineHeatmap:"sec-timing",
+    procesDetail:"sec-discipline", emotionImpact:"sec-discipline", foutAnalyse:"sec-discipline",
+    rollingEdge:"sec-leaks", edgeGap:"sec-leaks", stressLeak:"sec-leaks",
+    rMultipleDist:"sec-leaks", streaks:"sec-leaks", showTips:"sec-leaks",
+  };
+  // Scroll-spy: highlight TOC-item van de sectie die het meest zichtbaar is.
+  const[activeSection,setActiveSection]=useState("sec-overview");
+  useEffect(()=>{
+    if(analyticsMode==="custom")return;
+    const obs=new IntersectionObserver(entries=>{
+      const visible=entries.filter(e=>e.isIntersecting).sort((a,b)=>b.intersectionRatio-a.intersectionRatio);
+      if(visible.length)setActiveSection(visible[0].target.id);
+    },{rootMargin:"-10% 0px -60% 0px",threshold:[0,0.1,0.25,0.5]});
+    [...SECTIONS_DEF,...PRO_SECTIONS_DEF].forEach(s=>{const el=document.getElementById(s.id);if(el)obs.observe(el)});
+    return()=>obs.disconnect();
+  },[analyticsMode,viewMode]);
+  const scrollToSection=id=>{
+    const el=document.getElementById(id);
+    if(el)el.scrollIntoView({behavior:"smooth",block:"start"});
+  };
   // v12.166: dismissable hint voor "Proces-metrics" — was 95-woord permanente info-block.
   const[procesHintHidden,setProcesHintHidden]=useState(()=>{try{return localStorage.getItem("tj_analytics_proces_hint_dismissed")==="1"}catch{return false}});
   const dismissProcesHint=()=>{try{localStorage.setItem("tj_analytics_proces_hint_dismissed","1")}catch{};setProcesHintHidden(true)};
@@ -11981,7 +12046,27 @@ function Analytics({trades,tradingRules,allTrades,config,accounts,setFilters,set
 
   const DEFAULT_ANALYTICS_ORDER=["procesKPIs","procesDetail","winstKPIs","rMultipleDist","rollingEdge","setupInsights","setupEdge","longShort","perPair","perDay","sessionPerf","foutAnalyse","emotionImpact","streaks","rrAnalysis","holdtime","heatmap","layerAnalysis"];
   // Helper: wrap elke analytics-sectie in een sort-row met drag-handle
-  const seq=(key,visible,children)=>visible?<div key={key} data-sortkey={key} className="sort-row">{editMode&&<div className="drag-handle">≡</div>}{children}</div>:null;
+  // v12.213: seq() injecteert sectie-header (uit SECTIONS_DEF) vóór de eerste widget van elke sectie wanneer
+  // analyticsMode!=="custom". Custom mode = oude gedrag (flat drag-reorder, geen sectie-headers).
+  const renderedSections={};
+  const seq=(key,visible,children)=>{
+    if(!visible)return null;
+    const widget=<div key={key} data-sortkey={key} className="sort-row">{editMode&&<div className="drag-handle">≡</div>}{children}</div>;
+    if(analyticsMode==="custom")return widget;
+    const secId=WIDGET_TO_SECTION[key];
+    if(!secId||renderedSections[secId])return widget;
+    renderedSections[secId]=true;
+    const def=SECTIONS_DEF.find(s=>s.id===secId);
+    if(!def)return widget;
+    return <React.Fragment key={key}>
+      <div id={def.id} className="tj-analytics-section-head" style={Object.keys(renderedSections).length>1?{marginTop:"28px"}:{}}>
+        <span className="tj-analytics-section-num">{def.num}</span>
+        <span className="tj-analytics-section-title">{def.icon} {def.title}</span>
+        <span className="tj-analytics-section-hint">{def.hint}</span>
+      </div>
+      {widget}
+    </React.Fragment>;
+  };
 
   return(<div style={{animation:"fadeIn .3s ease"}}>
     <EditModeBar editMode={editMode} setEditMode={setEditMode} onReset={()=>setOrder(DEFAULT_ANALYTICS_ORDER)} gear={<LayoutGear onClick={()=>setLpOpen(true)}/>}/>
@@ -12041,6 +12126,26 @@ function Analytics({trades,tradingRules,allTrades,config,accounts,setFilters,set
       <button onClick={dismissProcesHint} title="Sluit deze uitleg permanent" style={{background:"none",border:"none",color:"var(--text4)",cursor:"pointer",fontSize:"14px",lineHeight:1,padding:"0 2px",flexShrink:0}}>×</button>
     </div>}
 
+    {/* v12.213: Basic/Pro mode → sticky TOC + main grid. Custom mode → flat (geen TOC). */}
+    <div className={analyticsMode==="custom"?"":"tj-analytics-layout"}>
+    {analyticsMode!=="custom" && <aside className="tj-analytics-toc">
+      <div className="tj-analytics-toc-label">Secties</div>
+      {SECTIONS_DEF.map(s=>(
+        <button key={s.id} type="button" className={"tj-analytics-toc-item"+(activeSection===s.id?" active":"")} onClick={()=>scrollToSection(s.id)}>
+          <span className="tj-analytics-toc-num">{s.num}</span>
+          <span>{s.icon} {s.title}</span>
+        </button>
+      ))}
+      <div className="tj-analytics-toc-label sub">Pro</div>
+      {PRO_SECTIONS_DEF.map(s=>{
+        const locked=analyticsMode==="basic";
+        return <button key={s.id} type="button" title={locked?"Schakel naar Pro mode om deze sectie te zien":""} className={"tj-analytics-toc-item"+(locked?" locked":"")+(activeSection===s.id?" active":"")} onClick={()=>!locked&&scrollToSection(s.id)}>
+          <span className="tj-analytics-toc-num">{s.num}</span>
+          <span>{s.icon} {s.title}</span>
+          {locked&&<span className="tj-analytics-toc-lock">🔒</span>}
+        </button>;
+      })}
+    </aside>}
     <div ref={analyticsContainerRef} className={editMode?"edit-mode":""}>
 
     {/* PROCES KPI grid — Plan / SL / Journal / Consistency */}
@@ -12321,6 +12426,22 @@ function Analytics({trades,tradingRules,allTrades,config,accounts,setFilters,set
     {seq("layerAnalysis",lp.layerAnalysis&&Object.keys(layerSets).length>0,<div style={sectStyle}>{secH("Setup lagen performance")}
       {(()=>{const maxAbs=Math.max(...Object.values(layerSets).map(d=>Math.abs(d.pnl)),1);return Object.entries(layerSets).sort((a,b)=>b[1].pnl-a[1].pnl).map(([summary,d])=>barRow(summary,d.w,d.n-d.w,d.pnl,maxAbs,"var(--purple)",null,true))})()}
     </div>)}
+
+    {/* v12.213: Pro-only placeholder-secties — krijgen echte widgets in v12.214+. */}
+    {analyticsMode==="pro" && PRO_SECTIONS_DEF.map(s=>(
+      <div key={s.id} id={s.id} className="tj-analytics-section">
+        <div className="tj-analytics-section-head" style={{marginTop:"28px"}}>
+          <span className="tj-analytics-section-num">{s.num}</span>
+          <span className="tj-analytics-section-title">{s.icon} {s.title}</span>
+          <span className="tj-analytics-section-hint">{s.hint}</span>
+        </div>
+        <div className="tj-analytics-pro-placeholder">
+          <strong>Binnenkort beschikbaar</strong>
+          Deze sectie krijgt unieke widgets uit het Steenbarger/Tharp/Bellafiore-onderzoek (hold-time asymmetry, behavioral tilt-panel, funding-cost ledger, killzone × Setup matrix, FTMO/Topstep compliance). Volgt in v12.214+.
+        </div>
+      </div>
+    ))}
+    </div>
     </div>
   </div>);
 }
@@ -19854,7 +19975,7 @@ function App(){
 
       {/* Content — flex child met interne scroll zodat topbar altijd zichtbaar blijft */}
       <div style={{flex:1,overflow:"auto",minHeight:0}}>
-      <div className="tj-content" style={{padding:"28px 40px",maxWidth:"1520px",margin:"0 auto"}}>
+      <div className="tj-content" style={{padding:"28px 40px",maxWidth:tab==="analytics"?"1920px":"1520px",margin:"0 auto"}}>
         {demoMode&&<div style={{display:"flex",alignItems:"center",gap:"12px",padding:"10px 16px",marginBottom:"18px",borderRadius:"10px",background:"rgba(0,194,255,0.08)",border:"1px solid rgba(0,194,255,0.3)",fontSize:"12px",color:"var(--text2)"}}>
           <span style={{fontSize:"18px"}}>📊</span>
           <div style={{flex:1,lineHeight:1.5}}>
