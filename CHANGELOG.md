@@ -6,6 +6,19 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.224] — 2026-06-06
+
+### Gewijzigd
+- **Analytics — consistent goud-uppercase widget-titels overal** *(Denny: "de kop-titels van elk onderwerp zijn gelig, maar de bovenste weer wit — trek de hele pagina goed qua kleuren")*
+
+  Nieuwe v12.219+ widgets (Equity curve, Maandelijkse PnL, Hold-time asymmetry, Behavioral tilt-panel, Fee & funding impact, Propfirm compliance, Killzone × Setup matrix) hadden eigen inline witte titels — afwijkend van de oudere widgets die via `secH()` goud-uppercase titels kregen.
+
+  Nieuwe `widgetHead(title, sub, tip)` helper toegevoegd die de exacte secH-stijl (goud, uppercase, 0.12em letter-spacing) gebruikt + ondersteunt een subtitel naast de titel en een hover-tooltip. Alle nieuwe widgets gebruiken nu deze helper. Resultaat: één consistente visuele taal over de hele Analytics-pagina.
+
+  Ook de widget-containers van de nieuwe widgets gebruiken nu `sectStyle` (zelfde glass-background + border-radius) ipv hun eigen variant — past beter bij de rest van de pagina.
+
+---
+
 ## [v12.223] — 2026-06-06
 
 ### Gewijzigd
