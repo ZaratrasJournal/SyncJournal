@@ -6,6 +6,19 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.229] — 2026-06-07
+
+### Fixed
+- **Hyperliquid: dezelfde open positie verscheen na elke handmatige refresh als nieuwe trade** *(gemeld door ChangeMaker in Discord)*
+
+  Bij het ophalen van trades voor Hyperliquid werd dezelfde openstaande positie elke keer als een extra trade toegevoegd — na 3× refreshen stonden er 3 identieke open trades (zelfde pair, entry en size). De journal dacht zo dat je in meerdere posities zat terwijl het er één was.
+
+  **Oorzaak**: de open-positie kreeg een ID met een tijdstempel (`hyperliquid_open_<coin>_<Date.now()>`), dus elke refresh gaf een nieuw ID. De dedup-logica matchte de nieuwe op de bestaande niet meer en voegde 'm als nieuwe open toe.
+
+  **Fix**: stabiel ID per positie (`hyperliquid_open_<coin>`), gelijk aan hoe MEXC en Blofin het al deden. Bij een volgende refresh wordt dezelfde positie nu herkend en bijgewerkt i.p.v. gedupliceerd. Regressietest toegevoegd ([tests/hyperliquid-open-dedup.js](tests/hyperliquid-open-dedup.js)).
+
+  **Let op (Kraken)**: een vergelijkbare melding voor Kraken wordt apart onderzocht — Kraken's open-ID is bewust stabiel, dus een eventuele duplicatie daar heeft een andere oorzaak (mogelijk gekoppeld aan de bekende Kraken 1970-timestamp-kwestie). Nog niet meegenomen in deze release.
+
 ## [v12.228] — 2026-06-07
 
 ### Fixed
