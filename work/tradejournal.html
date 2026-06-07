@@ -1680,7 +1680,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.227",released:"2026-06-06"};
+const APP_VERSION={version:"v12.228",released:"2026-06-07"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -2900,6 +2900,29 @@ function getCapitalForSource(source,config,accounts){
   return 0;
 }
 
+// Canonieke totaal-balans — GEDEELD door TopBar én Dashboard zodat ze nooit divergeren.
+// Model (zie ook Settings-uitleg): BALANS = per manual-account (capital-tracker + linked trade-PnL)
+//   + per exchange (live API-balance + capital-tracker als add-on; zonder live API: tracker + linked PnL)
+//   + orphan trade-PnL (trades wiens source niet aan een account/exchange gekoppeld is).
+// liveBalances = {exchangeKey: number} of null. Capital-tracker kan nooit negatief bijdragen.
+function computeTotalBalance(accounts,config,liveBalances,closed){
+  let total=0;const counted=new Set();
+  (accounts||[]).forEach(a=>{
+    total+=Math.max(0,computeAccountCapital(a.transactions||[]));
+    total+=sumTradePnl(closed,a.name);
+    counted.add(a.name);
+  });
+  Object.entries(config?.exchanges||{}).forEach(([key,ex])=>{
+    const txCap=Math.max(0,computeAccountCapital(ex.transactions||[]));
+    const live=liveBalances?liveBalances[key]:null;
+    if(live!=null&&live>0)total+=live+txCap;
+    else total+=txCap+sumTradePnl(closed,key);
+    counted.add(key);
+  });
+  (closed||[]).forEach(t=>{if(!counted.has(t.source||"manual"))total+=netPnl(t);});
+  return total;
+}
+
 // ── Custom goals system ───────────────────────────────────────────────────
 // Available metrics: {id, label, unit, hint, inverted (lower-is-better), fmt}
 const GOAL_METRICS=[
@@ -4093,29 +4116,7 @@ function AppStatusBar({trades,accounts,config,goals}){
   // Voorkomt dubbel-tellen: live-balance bevat al alle PnL, dus daar geen losse trade-pnl bovenop.
   const closed=(trades||[]).filter(t=>t.pnl!==""&&!isNaN(parseFloat(t.pnl)));
   const liveBalances=useLiveExchangeBalances(config);
-  const bal=useMemo(()=>{
-    let total=0;const counted=new Set();
-    // Capital tracker = Math.max(0, ...) — kan nooit negatief zijn.
-    (accounts||[]).forEach(a=>{
-      total+=Math.max(0,computeAccountCapital(a.transactions||[]));
-      total+=sumTradePnl(closed,a.name);
-      counted.add(a.name);
-    });
-    Object.entries(config?.exchanges||{}).forEach(([key,ex])=>{
-      // Definitief model: BALANS = Live API + Capital Tracker. Tracker is een add-on bovenop API,
-      // geen vervanger. Voor exchanges zonder API (csv/wallet-only): tracker + linked PnL.
-      const txCap=Math.max(0,computeAccountCapital(ex.transactions||[]));
-      if(liveBalances[key]!=null&&liveBalances[key]>0){
-        total+=liveBalances[key]+txCap;
-      }else{
-        total+=txCap+sumTradePnl(closed,key);
-      }
-      counted.add(key);
-    });
-    // Orphan trades (source niet gekoppeld aan account/exchange) tellen we los mee
-    closed.forEach(t=>{if(!counted.has(t.source||"manual"))total+=netPnl(t);});
-    return total;
-  },[accounts,config?.exchanges,closed,liveBalances]);
+  const bal=useMemo(()=>computeTotalBalance(accounts,config,liveBalances,closed),[accounts,config?.exchanges,closed,liveBalances]);
   // Drawdown gebruikt nog steeds de pure trade-PnL curve
   const totalPnl=closed.reduce((s,t)=>s+netPnl(t),0);
   // Drawdown: max peak-to-trough over equity curve
@@ -4723,17 +4724,22 @@ function Dashboard({trades,config,accounts,storageUsage,setFilters,setTab}){
 
     {/* Portfolio waarde header */}
     {(()=>{
-      const exColors2={"mexc":"#00b897","blofin":"#6366f1","kraken":"#7b61ff"};
-      // v12.188 fix: gebruik live equity (capital + mutaties + trade-PnL) i.p.v. stale a.balance.
-      // Settings toonde al de juiste equity; Dashboard liep achter zodra een handmatige mutatie
-      // (storting/opname/correctie) of een gesloten trade het account-saldo bewoog.
-      // Fallback naar a.balance voor legacy accounts zonder transactions-array.
+      // v12.228 fix: Dashboard-totaal miste de exchange capital-tracker — het telde alleen live
+      // API-balances + manual accounts, maar niet config.exchanges[ex].transactions (een handmatige
+      // storting op een exchange) en geen tracker-only exchanges. Nu via de gedeelde
+      // computeTotalBalance() zodat het Dashboard exact de TopBar-balans volgt.
       const accountEquity=a=>{
         const cap=(a.transactions&&a.transactions.length)?computeAccountCapital(a.transactions):(parseFloat(a.balance)||0);
         return cap+sumTradePnl(closed,a.name);
       };
-      const manualBal=(accounts||[]).reduce((s,a)=>s+accountEquity(a),0);
-      const totalBal=balances?Object.values(balances).reduce((s,v)=>s+v,0)+manualBal:((accounts||[]).length>0?manualBal:null);
+      const exchangeBal=(key,ex)=>{
+        const txCap=Math.max(0,computeAccountCapital(ex.transactions||[]));
+        const live=balances?balances[key]:null;
+        return (live!=null&&live>0)?live+txCap:txCap+sumTradePnl(closed,key);
+      };
+      const exLines=Object.entries(config?.exchanges||{}).filter(([key,ex])=>(balances&&balances[key]!=null)||(ex.transactions&&ex.transactions.length));
+      const hasAny=Object.keys(config?.exchanges||{}).length>0||(accounts||[]).length>0;
+      const totalBal=hasAny?computeTotalBalance(accounts,config,balances,closed):null;
       return(<div style={{background:"rgba(201,168,76,0.04)",borderRadius:"var(--radius-lg)",padding:"20px 24px",marginBottom:"1.5rem",border:"1px solid rgba(201,168,76,0.15)"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
           <div>
@@ -4745,11 +4751,11 @@ function Dashboard({trades,config,accounts,storageUsage,setFilters,setTab}){
             {expectancy!==null&&<div style={{fontSize:"10px",color:"var(--text4)",marginTop:"2px"}}>Expectancy: <span style={{color:expectancy>=0?"var(--green)":"var(--red)",fontWeight:600,fontFamily:"var(--mono)"}}>{priv?"$***,**":`${expectancy>=0?"+":""}$${fmt(expectancy)}`}</span> / trade</div>}
           </div>
           <div style={{textAlign:"right"}}>
-            {balances&&Object.entries(balances).map(([ex,bal])=>(
-              <div key={ex} style={{display:"flex",alignItems:"center",gap:"8px",justifyContent:"flex-end",marginBottom:"4px"}}>
-                <ExchangeIcon name={ex} size={16}/>
-                <span style={{fontSize:"11px",color:"var(--text3)"}}>{exName(ex)}</span>
-                <span style={{fontSize:"13px",fontFamily:"var(--mono)",fontWeight:600,color:"var(--text)"}}>{priv?"$***,**":`$${fmt(bal)}`}</span>
+            {exLines.map(([key,ex])=>(
+              <div key={key} style={{display:"flex",alignItems:"center",gap:"8px",justifyContent:"flex-end",marginBottom:"4px"}}>
+                <ExchangeIcon name={key} size={16}/>
+                <span style={{fontSize:"11px",color:"var(--text3)"}}>{exName(key)}</span>
+                <span style={{fontSize:"13px",fontFamily:"var(--mono)",fontWeight:600,color:"var(--text)"}}>{priv?"$***,**":`$${fmt(exchangeBal(key,ex))}`}</span>
               </div>
             ))}
             {(accounts||[]).map(a=>(

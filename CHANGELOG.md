@@ -6,6 +6,17 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.228] — 2026-06-07
+
+### Fixed
+- **Handmatige storting op een exchange verscheen niet in het Dashboard-totaal** *(gemeld door Denny)*
+
+  Een storting (of opname) via de **capital-tracker van een exchange** (Instellingen → exchange → 💰 Capital tracking) werd wél meegeteld in de BALANS bovenin de app en in Instellingen, maar **niet** in het "Account waarde (live)"-totaal op het Dashboard. Ook exchanges zónder API-koppeling (alleen een tracker) verschenen er niet. Een storting op een *handmatig account* werkte wél — alleen het exchange-pad was kapot.
+
+  **Oorzaak**: het Dashboard had een eigen balansberekening die alleen live API-balances + handmatige accounts optelde, los van de canonieke formule in de top-balk. De `config.exchanges[ex].transactions` (exchange-tracker) werd daar overgeslagen.
+
+  **Fix**: één gedeelde `computeTotalBalance()`-helper voor zowel de top-balk als het Dashboard, zodat ze nooit meer uit elkaar lopen. Het Dashboard toont de exchange-tracker nu mee in het totaal én als eigen regel in de breakdown. Regressietest toegevoegd ([tests/dashboard-balance.spec.js](tests/dashboard-balance.spec.js)).
+
 ## [v12.227] — 2026-06-06
 
 ### Gewijzigd
