@@ -2990,6 +2990,15 @@ function scopeToAccount(records,account){
   if(!account||typeof account!=="object")return records||[];
   return (records||[]).map(r=>({...r,source:account.id,id:account.id+"_"+(r.id||"")}));
 }
+// v12.231: source-only scope voor GESLOTEN trades — zet source=account.id maar BEHOUDT de rauwe
+// adapter-id (mexc_<posId>, hyperliquid_<fill>, ...). Cruciaal: dedup-by-id in importTrades/auto-sync
+// matcht zo nog tegen bestaande trades. scopeToAccount (id-namespace) is ALLEEN voor open posities,
+// waar syncOpenPositions stale-opruimt; namespacing van closed trades gaf duplicaten na migratie
+// (bestaand id=raw vs fresh id=account.id_raw → geen match → dubbel). Bug gevonden in review 2026-06-10.
+function scopeSource(records,account){
+  if(!account||typeof account!=="object")return records||[];
+  return (records||[]).map(r=>({...r,source:account.id}));
+}
 
 // ── Custom goals system ───────────────────────────────────────────────────
 // Available metrics: {id, label, unit, hint, inverted (lower-is-better), fmt}
@@ -6874,9 +6883,9 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,setConfig,ac
   const sourceOptions=[{id:"manual",label:"✏️ Handmatig",color:"var(--text3)",type:"manual"}];
   (accounts||[]).forEach(a=>{
     if(a.type==="manual")sourceOptions.push({id:a.id,label:"✏️ "+(a.label||a.name||"Account"),color:"var(--text3)",type:"manual"});
-    else{const ex=ExchangeAPI[a.type];sourceOptions.push({id:a.id,label:(ex?.name||a.type)+(a.label?" · "+a.label:""),color:ex?.color||"#C9A84C",type:a.type});}
+    else{const ex=ExchangeAPI[a.type];sourceOptions.push({id:a.id,label:(ex?.name||a.type)+(a.label?" · "+a.label:""),color:ex?.color||null,type:a.type});}
   });
-  Object.entries(config?.exchanges||{}).forEach(([type,c])=>{if(c&&(c.apiKey||c.walletAddress)&&!sourceOptions.some(s=>s.type===type))sourceOptions.push({id:type,label:ExchangeAPI[type]?.name||type,color:ExchangeAPI[type]?.color||"#C9A84C",type})});
+  Object.entries(config?.exchanges||{}).forEach(([type,c])=>{if(c&&(c.apiKey||c.walletAddress)&&!sourceOptions.some(s=>s.type===type))sourceOptions.push({id:type,label:ExchangeAPI[type]?.name||type,color:ExchangeAPI[type]?.color||null,type})});
 
   // v12.49: Auto-recalc PnL voor manuele closed trades waar pnl niet handmatig
   // is overschreven. Fixt Morani's bug: "vul een fee in en het rekent niet door
@@ -7113,7 +7122,7 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,setConfig,ac
     <div style={{marginBottom:"1rem"}}>
       <div style={{fontSize:"11px",color:"var(--text3)",marginBottom:"6px",fontWeight:500}}>ACCOUNT / EXCHANGE</div>
       <div style={{display:"flex",gap:"4px",flexWrap:"wrap"}}>
-        {sourceOptions.map(opt=>{const active=(trade.source||"manual")===opt.id;return(<button key={opt.id} onClick={()=>setTrade(p=>({...p,source:opt.id}))} style={{padding:"5px 12px",borderRadius:"6px",fontSize:"11px",fontWeight:600,border:`1px solid ${active?opt.color||"#C9A84C":"var(--border3)"}`,background:active?`${opt.color||"#C9A84C"}15`:"transparent",color:active?opt.color||"#C9A84C":"var(--text4)",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:"5px"}}>{opt.type&&opt.type!=="manual"&&<ExchangeIcon name={opt.type} size={14}/>}{opt.label}</button>);})}
+        {sourceOptions.map(opt=>{const active=(trade.source||"manual")===opt.id;return(<button key={opt.id} onClick={()=>setTrade(p=>({...p,source:opt.id}))} style={{padding:"5px 12px",borderRadius:"6px",fontSize:"11px",fontWeight:600,border:`1px solid ${active?(opt.color||"var(--gold)"):"var(--border3)"}`,background:active?(opt.color?`${opt.color}15`:"var(--gold-dim)"):"transparent",color:active?(opt.color||"var(--gold)"):"var(--text4)",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:"5px"}}>{opt.type&&opt.type!=="manual"&&<ExchangeIcon name={opt.type} size={14}/>}{opt.label}</button>);})}
       </div>
     </div>
 
@@ -14377,11 +14386,22 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,set
             showToast("Import geannuleerd","info");e.target.value="";return;
           }
         }
-        importTrades(trList.map(t=>({...EMPTY_TRADE,...t,id:t.id||uid()})));
+        // v12.231: pre-migratie backup? Migreer naar het unified accounts-model vóór restore. Anders
+        // blijven exchange-trades als losse string-source achter — config.accountsSchema blijft 2 door de
+        // merge hieronder, dus de migratie-useEffect draait niet meer op de teruggezette data. (review 2026-06-10)
+        let accForRestore=Array.isArray(d.accounts)?d.accounts:null;
+        let trForRestore=trList;
+        let cfgForRestore=(d.config&&typeof d.config==="object")?d.config:null;
+        if(cfgForRestore&&!(cfgForRestore.accountsSchema>=2)){
+          const rmig=buildUnifiedAccounts(cfgForRestore,d.accounts||[],trList);
+          accForRestore=rmig.accounts;trForRestore=rmig.trades;
+          cfgForRestore={...cfgForRestore,exchanges:{},accountsSchema:2};
+        }
+        importTrades(trForRestore.map(t=>({...EMPTY_TRADE,...t,id:t.id||uid()})));
         markAchievedMilestonesAsSeen(trList); // v12.155: stop blokkerende milestone bij grote import
         if(d.tagConfig&&typeof d.tagConfig==="object"&&setTagConfig)setTagConfig(d.tagConfig);
-        if(Array.isArray(d.accounts))setAccounts(d.accounts);
-        if(d.config&&typeof d.config==="object")setConfig(p=>({...p,...d.config}));
+        if(accForRestore)setAccounts(accForRestore);
+        if(cfgForRestore)setConfig(p=>({...p,...cfgForRestore}));
         // v12.123: TP-templates + defaults restore (Settings → Backup-knop pad)
         if(Array.isArray(d.tpTemplates)&&setTpTemplates)setTpTemplates(d.tpTemplates);
         if(d.tpDefaults&&typeof d.tpDefaults==="object"&&setTpDefaults)setTpDefaults(p=>({...DEFAULT_TP_DEFAULTS,...d.tpDefaults}));
@@ -14769,25 +14789,17 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,set
     if(isXlsx)reader.readAsArrayBuffer(file); else reader.readAsText(file);
     e.target.value="";
   };
-  const isExConnected=(key)=>{const a=ExchangeAPI[key];if(!a)return false;const c=config?.exchanges?.[key]||{};return a.walletOnly?!!c.walletAddress:!!(c.apiKey&&c.apiSecret)};
   // v12.231: master-detail. selAcct = geselecteerde account.id; ex (exchange-type voor
   // adapter-dispatch) + exCfg/setField worden afgeleid van die account i.p.v. config.exchanges,
   // zodat de bestaande detail-/refresh-handlers per-account werken.
   const[selAcct,setSelAcct]=useState(()=>(accounts&&accounts[0]&&accounts[0].id)||null);
   const acct=(accounts||[]).find(a=>a.id===selAcct)||null;
   const ex=acct?acct.type:"";
-  const setEx=()=>{};
   // Houd de selectie geldig: na verwijderen/migratie terug naar het eerste account.
   React.useEffect(()=>{if(selAcct&&!acct&&accounts&&accounts.length)setSelAcct(accounts[0].id);},[selAcct,acct,accounts]);
   // v12.231: verwijder-bevestiging — delAcct = account dat verwijderd wordt; delWipe = trades óók weg.
   const[delAcct,setDelAcct]=useState(null);
   const[delWipe,setDelWipe]=useState(false);
-  const connectedExchanges=Object.keys(ExchangeAPI).filter(isExConnected);
-  const availableExchanges=Object.keys(ExchangeAPI).filter(k=>!isExConnected(k));
-  const[showAvailable,setShowAvailable]=useState(()=>{
-    const keys=Object.keys(ExchangeAPI);
-    return keys.filter(k=>{const a=ExchangeAPI[k];const c=config?.exchanges?.[k]||{};return a.walletOnly?!!c.walletAddress:!!(c.apiKey&&c.apiSecret)}).length===0;
-  });
   const[testing,setTesting]=useState(null);
   const[syncing,setSyncing]=useState(null);
   const[syncResult,setSyncResult]=useState(null);
@@ -15021,7 +15033,7 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,set
   const exCfg=()=>acct||{};
   const setField=(k,v)=>{if(!acct)return;setAccounts(p=>p.map(x=>x.id===acct.id?{...x,[k]:v}:x));};
   const test=async()=>{setTesting(ex);setSyncResult(null);try{const api=ExchangeAPI[ex];const c=exCfg();if(api.walletOnly){if(!c.walletAddress){showToast("Voer wallet-adres in","error");return}const r=await api.testConnection(c.walletAddress);if(r.success){setSyncResult({ok:true,msg:`✓ Verbonden. Account value: $${parseFloat(r.balance||"0").toFixed(2)}`});showToast(`${api.name} verbonden`)}return}if(!c.apiKey||!c.apiSecret){showToast("Voer API key en secret in","error");return}const r=api.needsPassphrase?await api.testConnection(c.apiKey,c.apiSecret,c.passphrase):await api.testConnection(c.apiKey,c.apiSecret);if(r.success){setSyncResult({ok:true,msg:`✓ Verbonden. Balance: $${parseFloat(r.balance||"0").toFixed(2)} USDT`});showToast(`${ExchangeAPI[ex].name} verbonden`)}else{setSyncResult({ok:false,msg:"Verbinding mislukt"});showToast("Verbinding mislukt","error")}}catch(e){setSyncResult({ok:false,msg:e.message||"Verbinding mislukt"});showToast(e.message||"Verbinding mislukt","error")}finally{setTesting(null)}};
-  const sync=async()=>{setSyncing(ex);setSyncResult(null);try{const api=ExchangeAPI[ex];const c=exCfg();const startTime=c.syncFrom?new Date(c.syncFrom).getTime():new Date(new Date().getFullYear(),new Date().getMonth(),1).getTime();let newTrades;if(api.walletOnly){if(!c.walletAddress){showToast("Voer wallet-adres in","error");return}newTrades=await api.fetchTrades(c.walletAddress,null,null,startTime)}else{if(!c.apiKey||!c.apiSecret){showToast("Voer API key in","error");return}newTrades=api.needsPassphrase?await api.fetchTrades(c.apiKey,c.apiSecret,c.passphrase,startTime):await api.fetchTrades(c.apiKey,c.apiSecret,null,startTime)}newTrades=scopeToAccount(newTrades||[],acct);if(newTrades.length){setPreview({exchange:ex,trades:newTrades,source:"api"});setSelected(new Set(newTrades.map(t=>t.id)));setPrevFilter({direction:"all",result:"all"});showToast(`${newTrades.length} trades gevonden — kies welke te importeren`);}else{showToast("Geen trades gevonden","info");}setSyncResult({ok:true,count:(newTrades||[]).length,trades:newTrades||[]})}catch(e){setSyncResult({ok:false,msg:e.message});showToast(e.message||"Sync mislukt","error")}finally{setSyncing(null)}};
+  const sync=async()=>{setSyncing(ex);setSyncResult(null);try{const api=ExchangeAPI[ex];const c=exCfg();const startTime=c.syncFrom?new Date(c.syncFrom).getTime():new Date(new Date().getFullYear(),new Date().getMonth(),1).getTime();let newTrades;if(api.walletOnly){if(!c.walletAddress){showToast("Voer wallet-adres in","error");return}newTrades=await api.fetchTrades(c.walletAddress,null,null,startTime)}else{if(!c.apiKey||!c.apiSecret){showToast("Voer API key in","error");return}newTrades=api.needsPassphrase?await api.fetchTrades(c.apiKey,c.apiSecret,c.passphrase,startTime):await api.fetchTrades(c.apiKey,c.apiSecret,null,startTime)}newTrades=scopeSource(newTrades||[],acct);if(newTrades.length){setPreview({exchange:ex,trades:newTrades,source:"api"});setSelected(new Set(newTrades.map(t=>t.id)));setPrevFilter({direction:"all",result:"all"});showToast(`${newTrades.length} trades gevonden — kies welke te importeren`);}else{showToast("Geen trades gevonden","info");}setSyncResult({ok:true,count:(newTrades||[]).length,trades:newTrades||[]})}catch(e){setSyncResult({ok:false,msg:e.message});showToast(e.message||"Sync mislukt","error")}finally{setSyncing(null)}};
   const syncOpen=async()=>{setSyncing(ex);setSyncResult(null);try{const api=ExchangeAPI[ex];const c=exCfg();if(!api.fetchOpenPositions){showToast(`${api.name} ondersteunt open posities niet`,"error");return}let opens;if(api.walletOnly){if(!c.walletAddress){showToast("Voer wallet-adres in","error");return}opens=await api.fetchOpenPositions(c.walletAddress)}else{if(!c.apiKey||!c.apiSecret){showToast("Voer API key in","error");return}opens=api.needsPassphrase?await api.fetchOpenPositions(c.apiKey,c.apiSecret,c.passphrase):await api.fetchOpenPositions(c.apiKey,c.apiSecret)}const list=scopeToAccount(opens||[],acct);syncOpenPositions(acct,list);setSyncResult({ok:true,count:list.length,trades:list,kind:"open"})}catch(e){setSyncResult({ok:false,msg:e.message});showToast(e.message||"Open posities ophalen mislukt","error")}finally{setSyncing(null)}};
   // v12.87: 1 Refresh-knop combineert syncOpen + sync (incrementeel).
   // Volgorde: eerst open posities ophalen (zodat stale-opens worden gefinaliseerd
@@ -15062,7 +15074,7 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,set
       try{
         const lastSyncStr=localStorage.getItem(`tj_lastsync_${acct?acct.id:ex}`);
         const lastSync=lastSyncStr?parseInt(lastSyncStr,10):0;
-        const hasTradesForEx=(trades||[]).some(t=>t.source===ex);
+        const hasTradesForEx=(trades||[]).some(t=>t.source===(acct?acct.id:ex));
         if(c.syncFrom){
           // Expliciete user-keuze wint altijd.
           startTime=new Date(c.syncFrom).getTime();
@@ -15082,7 +15094,7 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,set
         if(!c.apiKey||!c.apiSecret){setSyncing(null);return}
         newTrades=api.needsPassphrase?await api.fetchTrades(c.apiKey,c.apiSecret,c.passphrase,startTime):await api.fetchTrades(c.apiKey,c.apiSecret,null,startTime);
       }
-      newTrades=scopeToAccount(newTrades||[],acct);
+      newTrades=scopeSource(newTrades||[],acct);
       // Bewaar timestamp voor volgende incremental (per account.id)
       try{localStorage.setItem(`tj_lastsync_${acct?acct.id:ex}`,String(Date.now()));}catch{}
       // v12.89: auto-import — geen preview meer, alles in 1 klik. Refresh = volledig
@@ -15503,25 +15515,6 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,set
     <div style={{display:"grid",gridTemplateColumns:"240px 1fr",gap:"20px",alignItems:"start"}}>
       <div style={{background:"var(--glass)",backdropFilter:"var(--glass-blur)",WebkitBackdropFilter:"var(--glass-blur)",borderRadius:"var(--radius-lg)",padding:"16px",border:"1px solid var(--border1)"}}>
         <button onClick={()=>setAcctAdd({type:"ftmo",label:""})} style={{width:"100%",padding:"10px",borderRadius:"6px",border:"1px solid var(--gold-border)",background:"var(--gold-dim)",color:"var(--gold)",cursor:"pointer",fontSize:"12px",fontWeight:700,fontFamily:"inherit",marginBottom:"12px"}}>+ Account toevoegen</button>
-        {false&&(()=>{
-          const renderExBtn=(key)=>{const api=ExchangeAPI[key];const connected=isExConnected(key);return(<div key={key} style={{display:"flex",alignItems:"center",gap:"4px",marginBottom:"4px"}}>
-            <button onClick={()=>{setEx(key);setSyncResult(null)}} style={{display:"flex",alignItems:"center",gap:"10px",flex:1,padding:"10px 12px",borderRadius:"8px",border:`1px solid ${ex===key?"rgba(201,168,76,0.25)":"transparent"}`,background:ex===key?"var(--gold-dim)":"transparent",cursor:"pointer",fontFamily:"inherit"}}>
-              <ExchangeIcon name={key} size={20}/>
-              <div style={{textAlign:"left",flex:1}}><div style={{fontSize:"12px",fontWeight:600,color:ex===key?"var(--gold)":"var(--text2)"}}>{api.name}</div>{connected&&<div style={{fontSize:"9px",color:"var(--green)",display:"flex",alignItems:"center",gap:"4px"}}><div style={{width:"5px",height:"5px",borderRadius:"50%",background:"var(--green)",animation:"pulse 2s ease-in-out infinite"}}/> Actief</div>}</div>
-            </button>
-          </div>);};
-          return(<>
-            {connectedExchanges.length===0&&<div style={{fontSize:"11px",color:"var(--text5)",padding:"8px 4px 10px",fontStyle:"italic",lineHeight:1.4}}>Nog geen verbindingen — kies hieronder een exchange om te koppelen.</div>}
-            {connectedExchanges.map(renderExBtn)}
-            {availableExchanges.length>0&&<>
-              <button onClick={()=>setShowAvailable(s=>!s)} style={{width:"100%",padding:"7px 12px",borderRadius:"6px",border:"1px dashed var(--border5)",background:"transparent",color:"var(--text4)",cursor:"pointer",fontSize:"10.5px",fontFamily:"inherit",marginTop:connectedExchanges.length?"8px":"0",marginBottom:"6px",display:"flex",alignItems:"center",justifyContent:"space-between",letterSpacing:".02em"}}>
-                <span>+ Meer exchanges ({availableExchanges.length})</span>
-                <span style={{fontSize:"9px",opacity:.7,transition:"transform .15s",display:"inline-block",transform:showAvailable?"rotate(90deg)":"rotate(0deg)"}}>▸</span>
-              </button>
-              {showAvailable&&availableExchanges.map(renderExBtn)}
-            </>}
-          </>);
-        })()}
         <input type="file" ref={csvRef} accept=".csv,.tsv,.txt,.xlsx,.xls" onChange={e=>handleCSV(e,csvAcctRef.current)} style={{display:"none"}}/>
         <div style={{height:"1px",background:"var(--border2)",margin:"12px 0"}}/>
         <div style={{fontSize:"10px",color:"var(--text4)",textTransform:"uppercase",fontWeight:600,marginBottom:"12px",letterSpacing:"0.08em"}}>Accounts</div>
@@ -15573,9 +15566,8 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,set
           const title=delAcct.label||exName(delAcct.type)||delAcct.name||"Account";
           const closeM=()=>{setDelAcct(null);setDelWipe(false);};
           const doDelete=()=>{
-            setAccounts(p=>(p||[]).filter(x=>x.id!==id));
+            setAccounts(p=>{const na=(p||[]).filter(x=>x.id!==id);setSelAcct(na[0]?.id||null);return na;});
             if(setTrades)setTrades(p=>delWipe?(p||[]).filter(t=>t.source!==id):(p||[]).map(t=>t.source===id?{...t,source:"manual"}:t));
-            setSelAcct((accounts||[]).filter(x=>x.id!==id)[0]?.id||null);
             closeM();
             showToast&&showToast(delWipe&&n?`Account + ${n} trade${n===1?"":"s"} verwijderd`:(n?`Account verwijderd — ${n} trade${n===1?"":"s"} → Handmatig`:"Account verwijderd"),"success");
           };
@@ -19792,7 +19784,7 @@ function App(){
             :api.needsPassphrase
               ?await api.fetchTrades(a.apiKey,a.apiSecret,a.passphrase,startTime)
               :await api.fetchTrades(a.apiKey,a.apiSecret,null,startTime);
-          const scoped=scopeToAccount(Array.isArray(fetched)?fetched:[],a);
+          const scoped=scopeSource(Array.isArray(fetched)?fetched:[],a);
           if(scoped.length){
             setTrades(prev=>{const ex=new Set(prev.map(t=>t.id));const fresh=scoped.filter(t=>!ex.has(t.id));return fresh.length?[...fresh,...prev]:prev;});
           }
@@ -19936,9 +19928,12 @@ function App(){
   // VANGNET: schrijft eerst een compact + volledig omkeerbaar pre-migratie-backup weg
   // (config + accounts + per-trade {id,source}) in tj_premigration_backup. Draait pas als
   // trades uit IDB geladen zijn, zodat de remap de volledige trade-set raakt.
+  const migratedRef=React.useRef(false);
   React.useEffect(()=>{
     if(!tradesLoaded)return;
     if(config?.accountsSchema>=2)return;
+    if(migratedRef.current)return; // one-shot: voorkom dubbel-run vóór setConfig(accountsSchema=2) commit (strict-mode/hot-reload race)
+    migratedRef.current=true;
     try{
       localStorage.setItem("tj_premigration_backup",JSON.stringify({
         backedUpAt:new Date().toISOString(),
