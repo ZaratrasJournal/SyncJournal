@@ -2983,6 +2983,14 @@ function buildUnifiedAccounts(config, accounts, trades, genId){
   return {accounts:out,trades:newTrades,sourceMap};
 }
 
+// v12.231: scope adapter-records (trades/opens) naar een account → source=account.id + id-namespace,
+// zodat meerdere accounts van hetzelfde type niet botsen (open-ids/matchKeys). Re-fetch van dezelfde
+// record geeft dezelfde scoped id → dedup blijft werken. Legacy string-account → ongewijzigd.
+function scopeToAccount(records,account){
+  if(!account||typeof account!=="object")return records||[];
+  return (records||[]).map(r=>({...r,source:account.id,id:account.id+"_"+(r.id||"")}));
+}
+
 // ── Custom goals system ───────────────────────────────────────────────────
 // Available metrics: {id, label, unit, hint, inverted (lower-is-better), fmt}
 const GOAL_METRICS=[
@@ -14984,8 +14992,8 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,set
   const exCfg=()=>acct||{};
   const setField=(k,v)=>{if(!acct)return;setAccounts(p=>p.map(x=>x.id===acct.id?{...x,[k]:v}:x));};
   const test=async()=>{setTesting(ex);setSyncResult(null);try{const api=ExchangeAPI[ex];const c=exCfg();if(api.walletOnly){if(!c.walletAddress){showToast("Voer wallet-adres in","error");return}const r=await api.testConnection(c.walletAddress);if(r.success){setSyncResult({ok:true,msg:`✓ Verbonden. Account value: $${parseFloat(r.balance||"0").toFixed(2)}`});showToast(`${api.name} verbonden`)}return}if(!c.apiKey||!c.apiSecret){showToast("Voer API key en secret in","error");return}const r=api.needsPassphrase?await api.testConnection(c.apiKey,c.apiSecret,c.passphrase):await api.testConnection(c.apiKey,c.apiSecret);if(r.success){setSyncResult({ok:true,msg:`✓ Verbonden. Balance: $${parseFloat(r.balance||"0").toFixed(2)} USDT`});showToast(`${ExchangeAPI[ex].name} verbonden`)}else{setSyncResult({ok:false,msg:"Verbinding mislukt"});showToast("Verbinding mislukt","error")}}catch(e){setSyncResult({ok:false,msg:e.message||"Verbinding mislukt"});showToast(e.message||"Verbinding mislukt","error")}finally{setTesting(null)}};
-  const sync=async()=>{setSyncing(ex);setSyncResult(null);try{const api=ExchangeAPI[ex];const c=exCfg();const startTime=c.syncFrom?new Date(c.syncFrom).getTime():new Date(new Date().getFullYear(),new Date().getMonth(),1).getTime();let newTrades;if(api.walletOnly){if(!c.walletAddress){showToast("Voer wallet-adres in","error");return}newTrades=await api.fetchTrades(c.walletAddress,null,null,startTime)}else{if(!c.apiKey||!c.apiSecret){showToast("Voer API key in","error");return}newTrades=api.needsPassphrase?await api.fetchTrades(c.apiKey,c.apiSecret,c.passphrase,startTime):await api.fetchTrades(c.apiKey,c.apiSecret,null,startTime)}if(newTrades&&newTrades.length){setPreview({exchange:ex,trades:newTrades,source:"api"});setSelected(new Set(newTrades.map(t=>t.id)));setPrevFilter({direction:"all",result:"all"});showToast(`${newTrades.length} trades gevonden — kies welke te importeren`);}else{showToast("Geen trades gevonden","info");}setSyncResult({ok:true,count:(newTrades||[]).length,trades:newTrades||[]})}catch(e){setSyncResult({ok:false,msg:e.message});showToast(e.message||"Sync mislukt","error")}finally{setSyncing(null)}};
-  const syncOpen=async()=>{setSyncing(ex);setSyncResult(null);try{const api=ExchangeAPI[ex];const c=exCfg();if(!api.fetchOpenPositions){showToast(`${api.name} ondersteunt open posities niet`,"error");return}let opens;if(api.walletOnly){if(!c.walletAddress){showToast("Voer wallet-adres in","error");return}opens=await api.fetchOpenPositions(c.walletAddress)}else{if(!c.apiKey||!c.apiSecret){showToast("Voer API key in","error");return}opens=api.needsPassphrase?await api.fetchOpenPositions(c.apiKey,c.apiSecret,c.passphrase):await api.fetchOpenPositions(c.apiKey,c.apiSecret)}const list=opens||[];syncOpenPositions(ex,list);setSyncResult({ok:true,count:list.length,trades:list,kind:"open"})}catch(e){setSyncResult({ok:false,msg:e.message});showToast(e.message||"Open posities ophalen mislukt","error")}finally{setSyncing(null)}};
+  const sync=async()=>{setSyncing(ex);setSyncResult(null);try{const api=ExchangeAPI[ex];const c=exCfg();const startTime=c.syncFrom?new Date(c.syncFrom).getTime():new Date(new Date().getFullYear(),new Date().getMonth(),1).getTime();let newTrades;if(api.walletOnly){if(!c.walletAddress){showToast("Voer wallet-adres in","error");return}newTrades=await api.fetchTrades(c.walletAddress,null,null,startTime)}else{if(!c.apiKey||!c.apiSecret){showToast("Voer API key in","error");return}newTrades=api.needsPassphrase?await api.fetchTrades(c.apiKey,c.apiSecret,c.passphrase,startTime):await api.fetchTrades(c.apiKey,c.apiSecret,null,startTime)}newTrades=scopeToAccount(newTrades||[],acct);if(newTrades.length){setPreview({exchange:ex,trades:newTrades,source:"api"});setSelected(new Set(newTrades.map(t=>t.id)));setPrevFilter({direction:"all",result:"all"});showToast(`${newTrades.length} trades gevonden — kies welke te importeren`);}else{showToast("Geen trades gevonden","info");}setSyncResult({ok:true,count:(newTrades||[]).length,trades:newTrades||[]})}catch(e){setSyncResult({ok:false,msg:e.message});showToast(e.message||"Sync mislukt","error")}finally{setSyncing(null)}};
+  const syncOpen=async()=>{setSyncing(ex);setSyncResult(null);try{const api=ExchangeAPI[ex];const c=exCfg();if(!api.fetchOpenPositions){showToast(`${api.name} ondersteunt open posities niet`,"error");return}let opens;if(api.walletOnly){if(!c.walletAddress){showToast("Voer wallet-adres in","error");return}opens=await api.fetchOpenPositions(c.walletAddress)}else{if(!c.apiKey||!c.apiSecret){showToast("Voer API key in","error");return}opens=api.needsPassphrase?await api.fetchOpenPositions(c.apiKey,c.apiSecret,c.passphrase):await api.fetchOpenPositions(c.apiKey,c.apiSecret)}const list=scopeToAccount(opens||[],acct);syncOpenPositions(acct,list);setSyncResult({ok:true,count:list.length,trades:list,kind:"open"})}catch(e){setSyncResult({ok:false,msg:e.message});showToast(e.message||"Open posities ophalen mislukt","error")}finally{setSyncing(null)}};
   // v12.87: 1 Refresh-knop combineert syncOpen + sync (incrementeel).
   // Volgorde: eerst open posities ophalen (zodat stale-opens worden gefinaliseerd
   // door de nieuwe v12.87 finalize-flow), dan trade history vanaf laatste sync.
@@ -15007,8 +15015,8 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,set
             if(!c.apiKey||!c.apiSecret){showToast("Voer API key in","error");setSyncing(null);return}
             opens=api.needsPassphrase?await api.fetchOpenPositions(c.apiKey,c.apiSecret,c.passphrase):await api.fetchOpenPositions(c.apiKey,c.apiSecret);
           }
-          opensFetched=opens||[];
-          syncOpenPositions(ex,opensFetched);
+          opensFetched=scopeToAccount(opens||[],acct);
+          syncOpenPositions(acct,opensFetched);
         }catch(e){console.warn("refresh: open posities fetch faalde",e);}
       }
       // Stap 2: trade history — incrementeel vanaf laatste succesvolle sync (-1u buffer).
@@ -15023,7 +15031,7 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,set
       // nu alleen wanneer user de default niet heeft aangeraakt.
       let startTime;
       try{
-        const lastSyncStr=localStorage.getItem(`tj_lastsync_${ex}`);
+        const lastSyncStr=localStorage.getItem(`tj_lastsync_${acct?acct.id:ex}`);
         const lastSync=lastSyncStr?parseInt(lastSyncStr,10):0;
         const hasTradesForEx=(trades||[]).some(t=>t.source===ex);
         if(c.syncFrom){
@@ -15045,8 +15053,9 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,set
         if(!c.apiKey||!c.apiSecret){setSyncing(null);return}
         newTrades=api.needsPassphrase?await api.fetchTrades(c.apiKey,c.apiSecret,c.passphrase,startTime):await api.fetchTrades(c.apiKey,c.apiSecret,null,startTime);
       }
-      // Bewaar timestamp voor volgende incremental
-      try{localStorage.setItem(`tj_lastsync_${ex}`,String(Date.now()));}catch{}
+      newTrades=scopeToAccount(newTrades||[],acct);
+      // Bewaar timestamp voor volgende incremental (per account.id)
+      try{localStorage.setItem(`tj_lastsync_${acct?acct.id:ex}`,String(Date.now()));}catch{}
       // v12.89: auto-import — geen preview meer, alles in 1 klik. Refresh = volledig
       // automatisch: open posities → finalize stale-opens → trades importeren → TP-fills fetchen.
       // User-protected velden (notes, setupTags, screenshot, etc) blijven via importTrades-merge.
@@ -15555,7 +15564,7 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,set
               // Refresh gebruikt Math.max(configuredStart, lastSync-1u) — als lastSync recenter is dan
               // de nieuwe syncFrom, wint lastSync en negeert Refresh effectief je input. Door tj_lastsync
               // te wissen valt Refresh terug op configuredStart en haalt records vanaf de nieuwe datum.
-              try{localStorage.removeItem(`tj_lastsync_${ex}`)}catch{}
+              try{localStorage.removeItem(`tj_lastsync_${acct?acct.id:ex}`)}catch{}
             }} style={{...iStyle,width:"auto"}}/><div style={{fontSize:"10px",color:"var(--text5)",marginTop:"4px"}}>Default: 1e van deze maand</div></div>}
             {/* Strategie-label (bijv. "Swing", "Scalp") + preset-suggesties */}
             <div>
@@ -15623,7 +15632,7 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,set
             {IS_DEV&&ex==="blofin"&&<label title="Drop een blofin-snapshot.json om partial-detectie offline te testen" style={{padding:"10px 16px",borderRadius:"var(--radius)",border:"1px dashed var(--text5)",background:"transparent",color:"var(--text4)",cursor:"pointer",fontFamily:"inherit",fontSize:"12px",fontWeight:500,display:"flex",alignItems:"center",gap:"6px"}}>🔬 Test fixture<input type="file" accept=".json" onChange={e=>{if(e.target.files&&e.target.files[0])runFixtureTest(e.target.files[0]);e.target.value="";}} style={{display:"none"}}/></label>}
             {/* v12.94 laag 4: TP-coverage diagnostics — dev-only, alle exchanges met fetchFills */}
             {IS_DEV&&ExchangeAPI[ex]?.fetchFills&&<button onClick={()=>setTpCoverage({ex,data:computeTpCoverage(ex)})} title={`Toon TP-coverage stats voor ${ExchangeAPI[ex].name}: hoeveel trades met echte TPs, fallback-only, missing, etc.`} style={{padding:"10px 16px",borderRadius:"var(--radius)",border:"1px dashed var(--text5)",background:"transparent",color:"var(--text4)",cursor:"pointer",fontFamily:"inherit",fontSize:"12px",fontWeight:500,display:"flex",alignItems:"center",gap:"6px"}}>📊 TP-coverage</button>}
-            <button onClick={()=>{csvAcctRef.current=ex;csvRef.current.click()}} title="CSV of Excel (.xlsx) bestand uploaden" style={{padding:"10px 20px",borderRadius:"var(--radius)",border:ExchangeAPI[ex].csvOnly?"none":"1px dashed var(--border5)",background:ExchangeAPI[ex].csvOnly?"#C9A84C":"transparent",color:ExchangeAPI[ex].csvOnly?"#000":"var(--text2)",cursor:"pointer",fontFamily:"inherit",fontSize:"13px",fontWeight:ExchangeAPI[ex].csvOnly?700:500,display:"flex",alignItems:"center",gap:"8px"}}>📄 Importeer CSV / XLSX</button>
+            <button onClick={()=>{csvAcctRef.current=selAcct;csvRef.current.click()}} title="CSV of Excel (.xlsx) bestand uploaden — wordt geïmporteerd in dit account" style={{padding:"10px 20px",borderRadius:"var(--radius)",border:ExchangeAPI[ex].csvOnly?"none":"1px dashed var(--border5)",background:ExchangeAPI[ex].csvOnly?"var(--gold)":"transparent",color:ExchangeAPI[ex].csvOnly?"var(--bg)":"var(--text2)",cursor:"pointer",fontFamily:"inherit",fontSize:"13px",fontWeight:ExchangeAPI[ex].csvOnly?700:500,display:"flex",alignItems:"center",gap:"8px"}}>📄 Importeer CSV / XLSX</button>
           </div>
           {/* v12.94 laag 4: TP-coverage diagnostics panel */}
           {IS_DEV&&tpCoverage&&tpCoverage.ex===ex&&(()=>{
@@ -19690,37 +19699,41 @@ function App(){
     // Wallet-only exchanges (Hyperliquid) zijn "gekoppeld" via walletAddress, niet apiKey/secret.
     // Voorheen filterde dit op apiKey&&apiSecret → Hyperliquid viel eruit → auto-sync startte nooit
     // (bug Denny 2026-06-09). Nu: walletOnly → walletAddress, anders → apiKey+secret.
-    const connected=Object.entries(config.exchanges||{}).filter(([k,c])=>{
-      if(!c||!ExchangeAPI[k])return false;
-      return ExchangeAPI[k].walletOnly?!!c.walletAddress:!!(c.apiKey&&c.apiSecret);
+    // v12.231: itereer over unified accounts[] met een live-adapter + creds. Per account fetchen
+    // met de account-creds, scopen (source=account.id) en syncOpenPositions(account,...) + import.
+    const connected=(accounts||[]).filter(a=>{
+      const api=ExchangeAPI[a.type];
+      if(!api||!api.fetchTrades)return false;
+      return api.walletOnly?!!a.walletAddress:!!(a.apiKey&&a.apiSecret);
     });
     if(!connected.length)return;
     const refreshAll=async()=>{
       if(document.hidden)return;
       const newTimes={...lastSyncTimes};
-      for(const[key,cfg] of connected){
+      for(const a of connected){
         try{
-          const api=ExchangeAPI[key];
-          // Open posities (live PnL/SL/TP/LIQ). Wallet-only (Hyperliquid) → walletAddress.
+          const api=ExchangeAPI[a.type];
+          // Open posities (live PnL/SL/TP/LIQ) → gescoped op account.id.
           if(api.fetchOpenPositions){
             const opens=api.walletOnly
-              ?await api.fetchOpenPositions(cfg.walletAddress)
+              ?await api.fetchOpenPositions(a.walletAddress)
               :api.needsPassphrase
-                ?await api.fetchOpenPositions(cfg.apiKey,cfg.apiSecret,cfg.passphrase)
-                :await api.fetchOpenPositions(cfg.apiKey,cfg.apiSecret);
-            if(Array.isArray(opens))syncOpenPositions(key,opens);
+                ?await api.fetchOpenPositions(a.apiKey,a.apiSecret,a.passphrase)
+                :await api.fetchOpenPositions(a.apiKey,a.apiSecret);
+            if(Array.isArray(opens))syncOpenPositions(a,scopeToAccount(opens,a));
           }
-          // Nieuwe historische trades (laatste 7 dagen — interval is iv min, ruim genoeg)
+          // Nieuwe historische trades (laatste 7 dagen) → gescoped + dedup op id.
           const startTime=Date.now()-7*86400000;
           const fetched=api.walletOnly
-            ?await api.fetchTrades(cfg.walletAddress,null,null,startTime)
+            ?await api.fetchTrades(a.walletAddress,null,null,startTime)
             :api.needsPassphrase
-              ?await api.fetchTrades(cfg.apiKey,cfg.apiSecret,cfg.passphrase,startTime)
-              :await api.fetchTrades(cfg.apiKey,cfg.apiSecret,null,startTime);
-          if(Array.isArray(fetched)&&fetched.length){
-            setTrades(prev=>{const ex=new Set(prev.map(t=>t.id));const fresh=fetched.filter(t=>!ex.has(t.id));return fresh.length?[...fresh,...prev]:prev;});
+              ?await api.fetchTrades(a.apiKey,a.apiSecret,a.passphrase,startTime)
+              :await api.fetchTrades(a.apiKey,a.apiSecret,null,startTime);
+          const scoped=scopeToAccount(Array.isArray(fetched)?fetched:[],a);
+          if(scoped.length){
+            setTrades(prev=>{const ex=new Set(prev.map(t=>t.id));const fresh=scoped.filter(t=>!ex.has(t.id));return fresh.length?[...fresh,...prev]:prev;});
           }
-          newTimes[key]=Date.now();
+          newTimes[a.id]=Date.now();
         }catch(e){/* silent — user wil geen toasts bij elke cyclus */}
       }
       setLastSyncTimes(newTimes);
@@ -19735,7 +19748,7 @@ function App(){
       intervalTimer=setInterval(refreshAll,iv*60*1000);
     },jitterMs);
     return()=>{clearTimeout(startupTimer);if(intervalTimer)clearInterval(intervalTimer);};
-  },[config.autoSyncMin,config.exchanges]);
+  },[config.autoSyncMin,accounts]);
   useEffect(()=>{try{localStorage.setItem("tj_accounts",JSON.stringify(accounts))}catch(err){}},[accounts]);
   useEffect(()=>{try{localStorage.setItem("tj_tags",JSON.stringify(tagConfig))}catch(err){}},[tagConfig]);
 
@@ -20166,7 +20179,11 @@ function App(){
   // - ALWAYS_PROTECT: user-owned fields, never overwritten by API
   // - PROTECT_IF_INCOMING_EMPTY: fields some exchanges populate (Blofin SL/TP) but others
   //   don't (MEXC). If the API brings a value, we update; if empty, we keep what's there.
-  const syncOpenPositions=(exchangeKey,opens)=>{
+  const syncOpenPositions=(accountOrKey,opens)=>{
+    // v12.231: accepteert een account-object {id,type} (per-account scoping) óf een legacy
+    // exchange-type-string. srcKey = waar trade.source op matcht; exType = adapter-dispatch.
+    const srcKey=(accountOrKey&&typeof accountOrKey==="object")?accountOrKey.id:accountOrKey;
+    const exType=(accountOrKey&&typeof accountOrKey==="object")?accountOrKey.type:accountOrKey;
     const ALWAYS_PROTECT=["notes","setupTags","confirmationTags","timeframeTags","emotionTags","mistakeTags","customTags","rating","screenshot","links","layers","highestPrice","lowestPrice","manualOverrides"];
     const PROTECT_IF_INCOMING_EMPTY=["stopLoss","takeProfit"];
     let freshCount=0,updatedCount=0,removedCount=0,finalizedCount=0;
@@ -20181,13 +20198,13 @@ function App(){
       const matchKey=(t)=>{const e=parseFloat(t.entry);if(!isFinite(e)||e<=0)return null;return `${t.pair}|${t.direction}|${e.toFixed(8)}`;};
       const consumedSiblingIds=new Set();
       for(const t of prev){
-        const isStaleOpenOrPartial=t.source===exchangeKey&&(t.status==="open"||t.status==="partial")&&!freshIds.has(t.id);
+        const isStaleOpenOrPartial=t.source===srcKey&&(t.status==="open"||t.status==="partial")&&!freshIds.has(t.id);
         if(isStaleOpenOrPartial){
           // Vind closed-siblings met dezelfde matchKey (skip al-geconsumeerde)
           const tKey=matchKey(t);
           // v12.89: Blofin positionId-guard
-          const blofinPidOk=(s)=>(exchangeKey!=="blofin"||!t.positionId||!s.positionId||String(s.positionId)===String(t.positionId));
-          const siblings=tKey?prev.filter(s=>s.source===exchangeKey&&s.status==="closed"&&s.id!==t.id&&!consumedSiblingIds.has(s.id)&&matchKey(s)===tKey&&blofinPidOk(s)):[];
+          const blofinPidOk=(s)=>(exType!=="blofin"||!t.positionId||!s.positionId||String(s.positionId)===String(t.positionId));
+          const siblings=tKey?prev.filter(s=>s.source===srcKey&&s.status==="closed"&&s.id!==t.id&&!consumedSiblingIds.has(s.id)&&matchKey(s)===tKey&&blofinPidOk(s)):[];
           if(siblings.length===0){
             kept.push(t);continue;
           }
@@ -20257,7 +20274,7 @@ function App(){
       const updated=finalKept.map(t=>byId.get(t.id)||t);
       const merged=fresh.length?[...fresh,...updated]:updated;
       // v12.85: route via adapter — elke exchange heeft eigen detectPartials.
-      const adapter=ExchangeAPI[exchangeKey];
+      const adapter=ExchangeAPI[exType];
       return adapter&&adapter.detectPartials?adapter.detectPartials(merged):merged;
     });
     setTimeout(()=>{
