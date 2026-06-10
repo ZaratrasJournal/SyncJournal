@@ -19794,6 +19794,28 @@ function App(){
     }));
   },[trades]);
 
+  // v12.231: éénmalige multi-account migratie — oud model (config.exchanges keyed-by-type +
+  // losse manual accounts) → unified accounts[] met opake ids + `type`; trade.source hermapt
+  // naar account.id (zie buildUnifiedAccounts). Self-terminating via config.accountsSchema=2.
+  // VANGNET: schrijft eerst een compact + volledig omkeerbaar pre-migratie-backup weg
+  // (config + accounts + per-trade {id,source}) in tj_premigration_backup. Draait pas als
+  // trades uit IDB geladen zijn, zodat de remap de volledige trade-set raakt.
+  React.useEffect(()=>{
+    if(!tradesLoaded)return;
+    if(config?.accountsSchema>=2)return;
+    try{
+      localStorage.setItem("tj_premigration_backup",JSON.stringify({
+        backedUpAt:new Date().toISOString(),
+        config,accounts,
+        tradeSources:(trades||[]).map(t=>({id:t.id,source:t.source||""})),
+      }));
+    }catch(e){/* quota — IDB houdt de originele trades, migratie gaat door */}
+    const r=buildUnifiedAccounts(config,accounts,trades);
+    setAccounts(r.accounts);
+    setTrades(r.trades);
+    setConfig(c=>({...c,exchanges:{},accountsSchema:2}));
+  },[tradesLoaded,config?.accountsSchema]);
+
   // v12.190: merge-handler. Creëert master-trade uit children + markeert children als merged-child.
   // De-merge is reversible via unmergeMaster (master verwijderd, children krijgen oorspronkelijke status terug).
   const mergeTrades=({preview,childIds,conflictChoices})=>{
