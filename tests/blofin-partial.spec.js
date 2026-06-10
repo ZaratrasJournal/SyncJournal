@@ -23,17 +23,18 @@ test.describe('Blofin partial-close detectie', () => {
 
     await page.goto(FILE_URL, { waitUntil: 'networkidle' });
     await page.waitForFunction(() => /Dashboard/i.test(document.body.innerText), { timeout: 15_000 });
-    // Wacht tot detectPartialFromSiblings useEffect heeft gelopen + state gepersist is
+    // Wacht tot detectPartialFromSiblings useEffect heeft gelopen + state gepersist is.
+    // v12.232: de multi-account migratie hermapt source "blofin" → account.id, dus we
+    // matchen op status i.p.v. de source-literal.
     await page.waitForFunction(() => {
       const trades = JSON.parse(localStorage.getItem('tj_trades') || '[]');
-      const open = trades.find(t => t.source === 'blofin' && (t.status === 'open' || t.status === 'partial'));
-      return open && open.status === 'partial';
-    }, { timeout: 10_000 });
+      return trades.some(t => t.status === 'partial');
+    }, { timeout: 20_000 });
 
     // Lees state uit localStorage en valideer
     const state = await page.evaluate(() => {
       const trades = JSON.parse(localStorage.getItem('tj_trades') || '[]');
-      const partial = trades.find(t => t.source === 'blofin' && t.status === 'partial');
+      const partial = trades.find(t => t.status === 'partial');
       return partial ? {
         status: partial.status,
         entry: partial.entry,

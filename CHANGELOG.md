@@ -6,6 +6,24 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.232] — 2026-06-10
+
+Hotfix-release bovenop de multi-account update: overal waar de app nog aannam dat `trade.source` een exchange-naam was, wordt nu correct omgegaan met account-id's.
+
+### Fixed
+- **Filterchips toonden rauwe account-id's** *(gemeld door Denny, 2026-06-10)* — chips in de Trades-filterbalk toonden codes als "Dmpffy2es5xo9a4" i.p.v. "Hyperliquid · Scalp", plus een lege chip. Alle chips (filterbalk, geavanceerde filters, Dashboard PnL-grafiek, fee-breakdown in Analytics, auto-sync status) tonen nu exchange-naam + accountlabel via een centrale resolver ([work/tradejournal.html:2928](work/tradejournal.html#L2928)).
+- **FTMO-logica werkte niet meer voor account-gescopete trades** — R-multiple berekening, mediaan-SL en lot-weergave checkten op `source === "ftmo"`; na de migratie is de source een account-id. Nu type-gebaseerd.
+- **PnL van handmatige-account trades trok fees niet af** — `netPnl` zag een manual-account-id als exchange-import. Idem voor de auto-PnL-knop en TP-sluit-suggesties in het trade-formulier.
+- **Partial-close detectie sloeg account-gescopete trades over** — de adapter-dispatch (Blofin/MEXC/Kraken/Hyperliquid) matcht nu op de werkelijke trade-source, met behoud van de Blofin positionId-guard ([work/tradejournal.html:1716](work/tradejournal.html#L1716)).
+- **TP-fills werden niet meer opgehaald na Refresh** — de fetch-queue filterde op exchange-type i.p.v. account-id.
+- **Migratie gooide exchange-herkomst weg bij backup-restore** — trades met een bekende exchange-source zonder geconfigureerd account werden naar "Handmatig" hermapt; ze behouden nu hun herkomst. Plus een reparatie-pass die zulke trades alsnog aan het juiste account koppelt zodra dat (eenduidig) bestaat.
+- **Race in de migratie kon partial-detectie van de eerste load overschrijven** — opgelost met een functionele state-update.
+
+### Tests
+- Nieuwe spec `tests/multi-account-sources.spec.js` (chips, hermapping, lot-weergave); `tests/blofin-partial.spec.js` aangepast aan het account-id-model en weer groen.
+
+---
+
 ## [v12.231] — 2026-06-10
 
 Grote update: **meerdere accounts per exchange** + een vernieuwde Accounts-pagina, plus de verzamelde fixes sinds v12.229.

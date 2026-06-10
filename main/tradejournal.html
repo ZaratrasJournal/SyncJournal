@@ -1547,7 +1547,7 @@ function computeFtmoMedianLoserSlPct(trades){
   if(!Array.isArray(trades))return null;
   const slPcts=[];
   for(const t of trades){
-    if(t.source!=="ftmo")continue;
+    if(sourceTypeOf(t.source)!=="ftmo")continue; // v12.232: source kan account.id zijn
     if(t.status==="merged-child")continue;
     const e=parseFloat(t.entry),s=parseFloat(t.stopLoss),p=parseFloat(t.pnl);
     if(!isFinite(e)||!isFinite(s)||!isFinite(p)||p>=0)continue;// losers only
@@ -1570,7 +1570,7 @@ function calcRMultiple(trade,ftmoCtx){
   // (risk × size / entry) geeft onzin. In plaats daarvan: leid dollars-per-point af uit de
   // werkelijke pnl/price-move van de trade. Werkt voor elke instrument-type (BTC-CFD, XAUUSD,
   // FX-majors, indices) zolang exit + pnl gevuld zijn.
-  if(trade.source==="ftmo"){
+  if(sourceTypeOf(trade.source)==="ftmo"){
     const exit=parseFloat(trade.exit);
     if(!isFinite(exit)||exit<=0||exit===entry)return null;
     const dollarsPerPoint=Math.abs(pnlVal)/Math.abs(exit-entry);
@@ -1680,7 +1680,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.231",released:"2026-06-10"};
+const APP_VERSION={version:"v12.232",released:"2026-06-10"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -1710,26 +1710,30 @@ const DEFAULT_GRADE_RISK_PCT={"A+":2,"A":1.5,"B":1,"C":0.5};
 // Geëxtraheerd uit syncOpenPositions zodat 'ie testbaar is via fixture-import zonder
 // React state of API-calls. Belangrijk: positionId is GEEN match-key — Blofin hergebruikt
 // 'm over verschillende posities heen (empirisch via Denny's data: 1 posId voor 8 BTC trades).
-function detectPartialFromSiblings(trades,exchangeKey){
+// v12.232: tweede param heet nu sourceKey — kan een account.id zijn (post-multi-account) óf
+// legacy exchange-type. exchangeType (3e param, default afgeleid) blijft het TYPE en stuurt
+// type-specifieke logica zoals de Blofin positionId-guard.
+function detectPartialFromSiblings(trades,sourceKey,exchangeType){
   if(!Array.isArray(trades))return trades;
+  const exType=exchangeType||sourceTypeOf(sourceKey);
   const matchKey=(t)=>{
     const e=parseFloat(t.entry);
     if(!isFinite(e)||e<=0)return null;
     return `${t.pair}|${t.direction}|${e.toFixed(8)}`;
   };
   return trades.map(t=>{
-    if(t.source!==exchangeKey)return t;
+    if(t.source!==sourceKey)return t;
     if(t.status!=="open"&&t.status!=="partial")return t;
     const tKey=matchKey(t);
     if(!tKey)return t;
     // v12.89: voor Blofin extra positionId-check zodat stale-trades van andere posities op
     // dezelfde entry-prijs niet als sibling gemerged worden. Voor MEXC/HL/Kraken: matchKey volstaat.
     const blofinPidGuard=(s)=>{
-      if(exchangeKey!=="blofin")return true;
+      if(exType!=="blofin")return true;
       if(!t.positionId||!s.positionId)return true; // legacy data zonder positionId: geen extra check
       return String(s.positionId)===String(t.positionId);
     };
-    const siblings=trades.filter(s=>s.source===exchangeKey&&s.status==="closed"&&s.id!==t.id&&matchKey(s)===tKey&&blofinPidGuard(s));
+    const siblings=trades.filter(s=>s.source===sourceKey&&s.status==="closed"&&s.id!==t.id&&matchKey(s)===tKey&&blofinPidGuard(s));
     if(siblings.length===0){
       if(t.status==="partial")return{...t,status:"open",realizedPnl:""};
       return t;
@@ -2016,7 +2020,8 @@ const netPnl=(t)=>{
   const p=parseFloat(_pnlStr);
   if(isNaN(p))return 0;
   // Exchange-imports: pnl is al netto, fees zijn ter informatie
-  if(t.source&&t.source!=="manual")return p;
+  // v12.232: type-check i.p.v. literal — trades op een manual ACCOUNT (source=account.id) zijn óók handmatig
+  if(t.source&&sourceTypeOf(t.source)!=="manual")return p;
   // Manual trades: trek fees af. Geldt ook voor lege/onbekende source.
   const f=parseFloat(t.fees)||0;
   return p-f;
@@ -2330,19 +2335,21 @@ const detectMergeConflicts=(children)=>{
 // Account verwijderd? canMergeSource returnt false — voorkomt zombie-references.
 function canMergeSource(src,accounts){
   if(typeof src!=="string"||src.length===0)return false;
-  if(src==="ftmo")return true;
-  if(src==="manual")return true;
-  return Array.isArray(accounts)&&accounts.some(a=>a&&a.name===src);
+  // v12.232: type-based — src kan account.id zijn. Merge alleen voor FTMO + manual
+  // (API-exchanges hebben getConsumedSiblings voor auto-partial-detectie).
+  const ty=sourceTypeOf(src);
+  if(ty==="ftmo"||ty==="manual")return true;
+  return Array.isArray(accounts)&&accounts.some(a=>a&&(a.name===src||a.id===src)&&(a.type||"manual")==="manual");
 }
 // v12.211: human-readable label voor source — gebruikt in MergeModal copy + tooltip.
 function getSourceLabel(src,accounts){
-  if(src==="ftmo")return "FTMO";
   if(src==="manual")return "handmatige trades";
   if(Array.isArray(accounts)){
-    const acc=accounts.find(a=>a&&a.name===src);
-    if(acc)return acc.name;
+    const acc=accounts.find(a=>a&&(a.id===src||a.name===src));
+    if(acc)return acc.label||acc.name||sourceDisplayName(src);
   }
-  return src||"";
+  if(sourceTypeOf(src)==="ftmo")return "FTMO";
+  return sourceDisplayName(src)||src||"";
 }
 
 const validateMerge=(children)=>{
@@ -2479,7 +2486,10 @@ const normalizeTrade=(t)=>{
     // namen (bv. "Mijn BT Account") hebben source = accountnaam — niet "manual" — waardoor
     // de heal opnieuw triggerde voor BT-trades met die source. Nu strict: heal alleen
     // wanneer source een echte exchange-API key is (Blofin/MEXC/Kraken/Hyperliquid/FTMO).
-    const isExchangeSrc=out.source&&typeof ExchangeAPI!=="undefined"&&!!ExchangeAPI[out.source];
+    // v12.232: source kan account.id zijn → resolve naar type; manual-type accounts (en
+    // legacy custom namen) blijven uitgesloten, exchange-accounts healen weer.
+    const _srcTy=sourceTypeOf(out.source);
+    const isExchangeSrc=out.source&&typeof ExchangeAPI!=="undefined"&&_srcTy!=="manual"&&!!ExchangeAPI[_srcTy];
     if(out.tpLevels.length&&out.entry&&out.direction&&isExchangeSrc){
       const entry=parseFloat(out.entry);
       const isShort=out.direction==="short";
@@ -2889,6 +2899,37 @@ function resolveAccountType(source,config,accounts){
   return source;
 }
 
+// v12.232: module-level account-registry — gevuld door App bij elke accounts-update.
+// Nodig omdat pure helpers (calcRMultiple, netPnl, importTrades-dedup, detectPartials-dispatch)
+// trade.source moeten kunnen vertalen naar een exchange-type zonder accounts-prop.
+// trade.source kan een account.id zijn (post-v12.231) óf een legacy type-string ("ftmo") óf
+// een legacy manual-accountnaam — sourceTypeOf normaliseert alle drie naar het type.
+const KNOWN_SOURCE_TYPES=new Set(["mexc","blofin","kraken","hyperliquid","ftmo","manual","csv"]);
+let __acctRegistry={};
+function registerAccountsRegistry(accounts){
+  const m={};
+  (accounts||[]).forEach(a=>{if(a&&a.id)m[a.id]=a;});
+  __acctRegistry=m;
+}
+function sourceTypeOf(source){
+  if(!source)return"manual";
+  const a=__acctRegistry[source];
+  if(a)return a.type||"manual";
+  const s=String(source).toLowerCase();
+  if(KNOWN_SOURCE_TYPES.has(s))return s; // legacy: source = exchange-type
+  return"manual"; // legacy manual-accountnaam of onbekend → behandel als handmatig
+}
+function sourceLabelOf(source){
+  if(!source||source==="manual")return"";
+  const a=__acctRegistry[source];
+  return a?(a.label||""):"";
+}
+// Display-string voor een trade-source: "Hyperliquid · Scalp" / "FTMO (MT5)" / "Handmatig"
+function sourceDisplayName(source){
+  const lbl=sourceLabelOf(source);
+  return exName(sourceTypeOf(source))+(lbl?" · "+lbl:"");
+}
+
 // Compute per-account capital = net of transactions. Corrections are absolute setpoints.
 function computeAccountCapital(transactions){
   const tx=transactions||[];
@@ -2978,7 +3019,12 @@ function buildUnifiedAccounts(config, accounts, trades, genId){
     if(src==="manual")return t;            // gereserveerd literal — geen account
     if(knownIds.has(src))return t;          // al een account.id (idempotent)
     const mapped=sourceMap[src];
-    return mapped?{...t,source:mapped}:{...t,source:"manual"};
+    if(mapped)return{...t,source:mapped};
+    // v12.232: bekende exchange-type-string ZONDER geconfigureerd account (backup-restore,
+    // fixture, gewiste config) → source behouden. Alles resolved sindsdien via sourceTypeOf;
+    // naar "manual" hermappen gooide exchange-attributie (FTMO R-mult, partial-detectie) weg.
+    if(KNOWN_SOURCE_TYPES.has(String(src).toLowerCase()))return t;
+    return{...t,source:"manual"};
   });
   return {accounts:out,trades:newTrades,sourceMap};
 }
@@ -3920,10 +3966,12 @@ ExchangeAPI.hyperliquid.captureSnapshot=async function(creds){
 //     gebaseerd. Voor nu shared helper; bij toekomstige bugs splitsen.
 // Dispatcher gebruikt: `(ExchangeAPI[ex]?.detectPartials || (t=>t))(trades)`.
 // ─────────────────────────────────────────────────────────────────────────────
-ExchangeAPI.blofin.detectPartials=function(trades){return detectPartialFromSiblings(trades,"blofin")};
-ExchangeAPI.mexc.detectPartials=function(trades){return detectPartialFromSiblings(trades,"mexc")};
-ExchangeAPI.kraken.detectPartials=function(trades){return detectPartialFromSiblings(trades,"kraken")};
-ExchangeAPI.hyperliquid.detectPartials=function(trades){return detectPartialFromSiblings(trades,"hyperliquid")};
+// v12.232: optionele sourceKey-param — dispatcher geeft de werkelijke trade.source door
+// (account.id post-multi-account); zonder param valt 'ie terug op de legacy type-string.
+ExchangeAPI.blofin.detectPartials=function(trades,sourceKey){return detectPartialFromSiblings(trades,sourceKey||"blofin","blofin")};
+ExchangeAPI.mexc.detectPartials=function(trades,sourceKey){return detectPartialFromSiblings(trades,sourceKey||"mexc","mexc")};
+ExchangeAPI.kraken.detectPartials=function(trades,sourceKey){return detectPartialFromSiblings(trades,sourceKey||"kraken","kraken")};
+ExchangeAPI.hyperliquid.detectPartials=function(trades,sourceKey){return detectPartialFromSiblings(trades,sourceKey||"hyperliquid","hyperliquid")};
 ExchangeAPI.ftmo.detectPartials=function(trades){return trades};
 
 // ============ SMALL COMPONENTS ============
@@ -4952,7 +5000,7 @@ function Dashboard({trades,config,accounts,storageUsage,setFilters,setTab}){
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"12px",flexWrap:"wrap",gap:"8px"}}>
           <div style={{display:"flex",gap:"4px",flexWrap:"wrap"}}>
             <button onClick={()=>toggleEx("all")} style={chipStyle(pgExchanges.includes("all"))}>Alle</button>
-            {sources.map(s=><button key={s} onClick={()=>toggleEx(s)} style={{...chipStyle(pgExchanges.includes(s)),borderColor:pgExchanges.includes(s)?exColors[s]||"#C9A84C":"var(--border3)",color:pgExchanges.includes(s)?exColors[s]||"#C9A84C":"var(--text4)",background:pgExchanges.includes(s)?`${exColors[s]||"#C9A84C"}15`:"transparent"}}>{s}</button>)}
+            {sources.map(s=>{const hex=exColors[sourceTypeOf(s)];const c=hex||"var(--gold)";const on=pgExchanges.includes(s);return(<button key={s} onClick={()=>toggleEx(s)} style={{...chipStyle(on),borderColor:on?c:"var(--border3)",color:on?c:"var(--text4)",background:on?(hex?hex+"15":"var(--gold-dim)"):"transparent"}}>{sourceDisplayName(s)}</button>)})}
           </div>
           <div style={{display:"flex",gap:"3px"}}>
             {[["1w","1W"],["1m","1M"],["mtd","Maand"],["3m","3M"],["ytd","YTD"],["all","All"]].map(([k,l])=>(
@@ -4961,10 +5009,10 @@ function Dashboard({trades,config,accounts,storageUsage,setFilters,setTab}){
           </div>
         </div>
         {sources.length>1&&<div style={{display:"flex",gap:"16px",marginBottom:"12px",flexWrap:"wrap",alignItems:"center"}}>
-          {sources.filter(s=>pgExchanges.includes("all")||pgExchanges.includes(s)).map(s=>{const v=exPnl[s]||0;const isActive=showPerEx&&pgExchanges.includes(s);return(
+          {sources.filter(s=>pgExchanges.includes("all")||pgExchanges.includes(s)).map(s=>{const v=exPnl[s]||0;const isActive=showPerEx&&pgExchanges.includes(s);const c=exColors[sourceTypeOf(s)]||"var(--gold)";return(
             <div key={s} style={{display:"flex",alignItems:"center",gap:"6px"}}>
-              {isActive?<div style={{width:"16px",height:"3px",borderRadius:"2px",background:exColors[s]||"#C9A84C"}}/>:<div style={{width:"8px",height:"8px",borderRadius:"2px",background:exColors[s]||"#C9A84C"}}/>}
-              <span style={{fontSize:"11px",color:isActive?exColors[s]||"#C9A84C":"var(--text3)",fontWeight:isActive?600:400}}>{exName(s)}</span>
+              {isActive?<div style={{width:"16px",height:"3px",borderRadius:"2px",background:c}}/>:<div style={{width:"8px",height:"8px",borderRadius:"2px",background:c}}/>}
+              <span style={{fontSize:"11px",color:isActive?c:"var(--text3)",fontWeight:isActive?600:400}}>{sourceDisplayName(s)}</span>
               {/* v12.170: per-exchange totals waren niet gemaskeerd. */}
               <span style={{fontSize:"11px",fontFamily:"var(--mono)",fontWeight:600,color:priv?"var(--text4)":v>=0?"var(--green)":"var(--red)"}}>{priv?`${unitLabel}***,**`:`${v>=0?"+":""}${unitLabel}${unitFmt(toUnit(v))}`}</span>
             </div>
@@ -5188,7 +5236,7 @@ function TradeList({trades,onEdit,onDelete,onQuickTag,onBulkDelete,onBulkTag,onB
   const fmtSize=(t)=>{
     // v12.194: FTMO/MT5 lot-based — positionSize is leeg, lot zit in positionSizeAsset.
     // Toon `<lot> lot` in beide modes (USDT en Asset) zodat de Size-kolom niet als N/A blijft.
-    if(t.source==="ftmo"){
+    if(sourceTypeOf(t.source)==="ftmo"){
       const lot=parseFloat(t.positionSizeAsset);
       if(lot>0)return `${parseFloat(lot.toFixed(2))} lot`;
       return null;
@@ -5472,7 +5520,7 @@ function TradeList({trades,onEdit,onDelete,onQuickTag,onBulkDelete,onBulkTag,onB
               </td>
               {/* v12.189 (cell-volgorde uit trades-merge-demo): Datum · Symbol · Side · Entry · Exit · Size · PnL · R-mult · Status · Setup · Sessie · Emoties */}
               <td style={{...tdStyle,fontFamily:"var(--mono)",color:"var(--text2)",fontSize:"11px",whiteSpace:"nowrap"}}>{fmtNL(t.date)}{isNew&&<span style={{marginLeft:"6px",fontSize:"8px",padding:"1px 5px",borderRadius:"3px",background:"var(--gold-dim)",color:"var(--gold)",fontWeight:700,verticalAlign:"middle",letterSpacing:"0.04em"}}>NEW</span>}<br/><span style={{color:"var(--text4)"}}>{t.time}</span></td>
-              <td style={{...tdStyle,fontWeight:600,color:"var(--text)"}}><div style={{display:"flex",alignItems:"center",gap:"8px"}}><div style={{position:"relative",flexShrink:0}}><CryptoIcon pair={t.pair} size={24}/>{t.source&&t.source!=="manual"&&<div style={{position:"absolute",bottom:"-2px",right:"-4px",borderRadius:"3px",overflow:"hidden",border:"1.5px solid var(--bg3)"}}><ExchangeIcon name={t.source} size={11}/></div>}</div><div><span>{t.pair}</span>{Array.isArray(t.mergedFrom)&&t.mergedFrom.length>0&&<span title={`Samengevoegd uit ${t.mergedFrom.length} trades`} style={{display:"inline-flex",alignItems:"center",gap:"3px",marginLeft:"6px",padding:"1px 5px",borderRadius:"3px",background:"rgba(90,169,255,0.12)",color:"var(--blue,#5aa9ff)",font:"700 9px var(--mono)",letterSpacing:"0.04em",border:"1px solid rgba(90,169,255,0.25)",verticalAlign:"middle"}}>🔗 {t.mergedFrom.length}</span>}{(()=>{const lbl=resolveAccountLabel(t.source,config,accounts);return lbl?<div style={{fontSize:"9px",color:"var(--gold)",fontWeight:600,letterSpacing:".04em",marginTop:"1px"}}>{lbl}</div>:null})()}</div></div></td>
+              <td style={{...tdStyle,fontWeight:600,color:"var(--text)"}}><div style={{display:"flex",alignItems:"center",gap:"8px"}}><div style={{position:"relative",flexShrink:0}}><CryptoIcon pair={t.pair} size={24}/>{(()=>{const ty=sourceTypeOf(t.source);return ty!=="manual"&&<div style={{position:"absolute",bottom:"-2px",right:"-4px",borderRadius:"3px",overflow:"hidden",border:"1.5px solid var(--bg3)"}}><ExchangeIcon name={ty} size={11}/></div>})()}</div><div><span>{t.pair}</span>{Array.isArray(t.mergedFrom)&&t.mergedFrom.length>0&&<span title={`Samengevoegd uit ${t.mergedFrom.length} trades`} style={{display:"inline-flex",alignItems:"center",gap:"3px",marginLeft:"6px",padding:"1px 5px",borderRadius:"3px",background:"rgba(90,169,255,0.12)",color:"var(--blue,#5aa9ff)",font:"700 9px var(--mono)",letterSpacing:"0.04em",border:"1px solid rgba(90,169,255,0.25)",verticalAlign:"middle"}}>🔗 {t.mergedFrom.length}</span>}{(()=>{const lbl=resolveAccountLabel(t.source,config,accounts);return lbl?<div style={{fontSize:"9px",color:"var(--gold)",fontWeight:600,letterSpacing:".04em",marginTop:"1px"}}>{lbl}</div>:null})()}</div></div></td>
               <td style={{...tdStyle,textAlign:"center"}}>
                 <span style={{padding:"3px 10px",borderRadius:"4px",fontSize:"10px",fontWeight:700,background:t.direction==="long"?"rgba(46,170,111,0.12)":"rgba(224,85,85,0.12)",color:t.direction==="long"?"var(--green)":"var(--red)"}}>{t.direction.toUpperCase()}</span>
               </td>
@@ -6894,7 +6942,7 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,setConfig,ac
   // worden geskipt — die geven al netto pnl terug.
   useEffect(()=>{
     if(trade.status!=="closed")return;
-    if(trade.source&&trade.source!=="manual")return;
+    if(trade.source&&sourceTypeOf(trade.source)!=="manual")return; // v12.232: manual-account id telt ook als handmatig
     if((trade.manualOverrides||[]).includes("pnl"))return;
     const e=parseFloat(trade.entry);
     const ex=parseFloat(trade.exit);
@@ -7208,7 +7256,7 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,setConfig,ac
         hebben de exchange als bron-van-waarheid voor PnL (MEXC `realised`, Blofin
         `pnl`, etc., zijn al netto). Knop daar tonen zou correcte data overschrijven
         met een ruwe formule-schatting. Sinds v12.94. */}
-    {!isOpen&&trade.source==="manual"&&(()=>{const e=parseFloat(trade.entry);const ex=parseFloat(trade.exit);const sz=parseFloat(trade.positionSize);const fees=parseFloat(trade.fees)||0;if(e>0&&ex>0&&sz>0&&!(trade.manualOverrides||[]).includes("pnl")){const raw=trade.direction==="long"?(ex-e)*sz/e:(e-ex)*sz/e;const net2=raw-fees;if(trade.pnl!==""&&Math.abs(parseFloat(trade.pnl)-net2)>0.01||trade.pnl===""){return(<div style={{marginBottom:"12px"}}><button onClick={()=>setTrade(p=>({...p,pnl:net2.toFixed(2)}))} style={{fontSize:"10px",padding:"4px 12px",borderRadius:"5px",border:"1px solid var(--blue2)",background:"rgba(201,168,76,0.12)",color:"var(--gold)",cursor:"pointer",fontFamily:"inherit",fontWeight:500}}>💡 PNL berekenen: {priv?"$***,**":`${net2>=0?"+":""}$${fmt(net2)}`} {fees>0?(priv?"(na $***,** fees)":`(na $${fmt(fees)} fees)`):""} → Toepassen</button></div>)}}return null;})()}
+    {!isOpen&&sourceTypeOf(trade.source||"manual")==="manual"&&(()=>{const e=parseFloat(trade.entry);const ex=parseFloat(trade.exit);const sz=parseFloat(trade.positionSize);const fees=parseFloat(trade.fees)||0;if(e>0&&ex>0&&sz>0&&!(trade.manualOverrides||[]).includes("pnl")){const raw=trade.direction==="long"?(ex-e)*sz/e:(e-ex)*sz/e;const net2=raw-fees;if(trade.pnl!==""&&Math.abs(parseFloat(trade.pnl)-net2)>0.01||trade.pnl===""){return(<div style={{marginBottom:"12px"}}><button onClick={()=>setTrade(p=>({...p,pnl:net2.toFixed(2)}))} style={{fontSize:"10px",padding:"4px 12px",borderRadius:"5px",border:"1px solid var(--blue2)",background:"rgba(201,168,76,0.12)",color:"var(--gold)",cursor:"pointer",fontFamily:"inherit",fontWeight:500}}>💡 PNL berekenen: {priv?"$***,**":`${net2>=0?"+":""}$${fmt(net2)}`} {fees>0?(priv?"(na $***,** fees)":`(na $${fmt(fees)} fees)`):""} → Toepassen</button></div>)}}return null;})()}
 
     {/* TP Levels (multi-TP with percentages) — ported from v4_14.
         v12.123: template-driven distribution (Equal/Front-loaded/Runner + custom). */}
@@ -7313,7 +7361,7 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,setConfig,ac
       //  - mode='update-loss': closed met pnl-drift → "🔄 PnL bijwerken naar SL" (rood)
       // Geen auto-close — gebruiker behoudt controle. Reopen-logic niet nodig:
       // verwijder/toggle-uit een TP zodat sum<100%, dan verdwijnt de knop gewoon.
-      const isManual=trade.source==="manual";
+      const isManual=sourceTypeOf(trade.source||"manual")==="manual"; // v12.232: incl. manual-account ids
       let closeData=null;
       if(isManual&&tps.length>0&&entryN>0&&sizeN>0){
         const hitTps=tps.filter(tp=>tp.status==="hit"&&parseFloat(tp.price)>0);
@@ -7410,9 +7458,12 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,setConfig,ac
       };
 
       // Fetch TPs vanuit exchange API (alleen als trade source een exchange met fetchFills is én die is geconfigureerd)
-      const tpSrcKey=(trade.source||"").toLowerCase();
+      // v12.232: source = account.id → type via registry; creds uit het account-record
+      // (unified model) met legacy config.exchanges als fallback.
+      const tpSrcKey=sourceTypeOf(trade.source||"");
       const tpExApi=ExchangeAPI[tpSrcKey];
-      const tpExCfg=config?.exchanges?.[tpSrcKey]||{};
+      const tpAcct=(accounts||[]).find(a=>a.id===trade.source);
+      const tpExCfg=tpAcct||config?.exchanges?.[tpSrcKey]||{};
       const tpCanFetch=!!(tpExApi&&tpExApi.fetchFills&&tpExCfg.apiKey&&tpExCfg.apiSecret);
       const fetchTPsInline=async()=>{
         if(!tpCanFetch)return;
@@ -7814,9 +7865,12 @@ function FilterBar({trades,allTrades,filters,setFilters,config,accounts}){
   const at=allTrades||trades;
   const exchanges=config?.exchanges||{};
   const connectedSources=Object.keys(exchanges).filter(k=>(exchanges[k]||{}).apiKey);
-  const manualSources=(accounts||[]).map(a=>a.name);
+  // v12.232: unified accounts[] → chip per account.id (was a.name; exchange-accounts hebben
+  // geen name → gaf lege chips, en trades matchen op id, niet naam).
+  const accountSources=(accounts||[]).map(a=>a.id).filter(Boolean);
   const tradeSources=[...new Set((at||[]).map(t=>t.source||"manual"))];
-  const sources=[...new Set([...tradeSources,...connectedSources,...manualSources])].sort();
+  // Sorteer op display-naam zodat accounts van dezelfde exchange naast elkaar staan.
+  const sources=[...new Set([...tradeSources,...connectedSources,...accountSources])].filter(Boolean).sort((a,b)=>sourceDisplayName(a).localeCompare(sourceDisplayName(b)));
   const pairs=[...new Set(at.map(t=>t.pair))].sort();
   const allSetups=[...new Set(at.flatMap(t=>t.setupTags||[]))].sort();
   const allConfs=[...new Set(at.flatMap(t=>t.confirmationTags||[]))].sort();
@@ -7866,7 +7920,7 @@ function FilterBar({trades,allTrades,filters,setFilters,config,accounts}){
       </div>
       {/* Row 2: Exchanges + account-labels + reset */}
       <div className="pill-bar">
-        {sources.map(s=>{const active=filters.source===s;const lbl=resolveAccountLabel(s,config,accounts);return(<button key={s} onClick={()=>setFilters(p=>({...p,source:active?"all":s}))} className={"pill"+(active?" active":"")} style={active?{}:{display:"inline-flex",alignItems:"center",gap:"5px"}}>{s!=="manual"&&<ExchangeIcon name={s} size={13}/>}<span>{exName(s)}{lbl?" · "+lbl:""}</span></button>)})}
+        {sources.map(s=>{const active=filters.source===s;const ty=sourceTypeOf(s);const lbl=resolveAccountLabel(s,config,accounts);return(<button key={s} onClick={()=>setFilters(p=>({...p,source:active?"all":s}))} className={"pill"+(active?" active":"")} style={active?{}:{display:"inline-flex",alignItems:"center",gap:"5px"}}>{ty!=="manual"&&<ExchangeIcon name={ty} size={13}/>}<span>{exName(ty)}{lbl?" · "+lbl:""}</span></button>)})}
         {filters.tradeIds?.length>0&&<><span style={{width:"1px",height:"20px",background:"var(--border1)",flexShrink:0}}/><button onClick={()=>setFilters(p=>({...p,tradeIds:[]}))} className="pill active" style={{borderColor:"var(--gold-border)",color:"var(--gold)",display:"inline-flex",alignItems:"center",gap:"5px"}} title="Specifieke trades-filter (van een tendency-cluster). Klik om te verwijderen.">🔍 {filters.tradeIds.length} specifieke trades ✕</button></>}
         {activeCount>0&&<><span style={{width:"1px",height:"20px",background:"var(--border1)",flexShrink:0}}/><button onClick={clearAll} className="pill" style={{borderColor:"rgba(248,113,113,.3)",color:"var(--red)"}}>✕ Reset</button></>}
       </div>
@@ -7887,7 +7941,7 @@ function FilterBar({trades,allTrades,filters,setFilters,config,accounts}){
             <button onClick={()=>setFilters(p=>({...p,dateFrom:"",dateTo:""}))} style={{padding:"4px 10px",borderRadius:"5px",fontSize:"10px",fontWeight:600,border:`1px solid ${allActive?"var(--gold)":"var(--border3)"}`,background:allActive?"var(--gold-dim)":"transparent",color:allActive?"var(--gold)":"var(--text4)",cursor:"pointer",fontFamily:"inherit"}}>Alles</button>
           </>);})()}
       </div>
-      {sources.length>0&&<div style={{display:"flex",alignItems:"center",gap:"8px",flexWrap:"wrap"}}><span style={{fontSize:"10px",color:"var(--text4)",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em",minWidth:"65px"}}>Exchange</span>{chip("Alle","source","all")}{sources.map(s=>chip(<span style={{display:"inline-flex",alignItems:"center",gap:"5px"}}><ExchangeIcon name={s} size={14}/>{exName(s)}</span>,"source",s))}</div>}
+      {sources.length>0&&<div style={{display:"flex",alignItems:"center",gap:"8px",flexWrap:"wrap"}}><span style={{fontSize:"10px",color:"var(--text4)",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em",minWidth:"65px"}}>Account</span>{chip("Alle","source","all")}{sources.map(s=>{const ty=sourceTypeOf(s);const lbl=resolveAccountLabel(s,config,accounts);return chip(<span style={{display:"inline-flex",alignItems:"center",gap:"5px"}}>{ty!=="manual"&&<ExchangeIcon name={ty} size={14}/>}{exName(ty)}{lbl?" · "+lbl:""}</span>,"source",s)})}</div>}
       <div style={{display:"flex",alignItems:"center",gap:"8px",flexWrap:"wrap"}}><span style={{fontSize:"10px",color:"var(--text4)",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em",minWidth:"65px"}}>Pair</span>{chip("Alle","pair","all")}{pairs.map(p=>chip(p,"pair",p))}</div>
       <div style={{display:"flex",alignItems:"center",gap:"8px",flexWrap:"wrap"}}><span style={{fontSize:"10px",color:"var(--text4)",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em",minWidth:"65px"}}>Richting</span>{chip("Alle","direction","all")}{chip("Long","direction","long")}{chip("Short","direction","short")}</div>
       <div style={{display:"flex",alignItems:"center",gap:"8px",flexWrap:"wrap"}}><span style={{fontSize:"10px",color:"var(--text4)",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em",minWidth:"65px"}}>Status</span>{chip("Alle","status","all")}<button onClick={()=>setFilters(p=>({...p,status:p.status==="open"?"all":"open"}))} style={{padding:"4px 10px",borderRadius:"5px",fontSize:"11px",fontWeight:500,border:`1px solid ${filters.status==="open"?"#C9A84C":"var(--border3)"}`,background:filters.status==="open"?"rgba(201,168,76,0.12)":"transparent",color:filters.status==="open"?"#C9A84C":"var(--text3)",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:"5px"}}>{filters.status==="open"&&<span style={{width:"5px",height:"5px",borderRadius:"50%",background:"#C9A84C"}}/>}Open</button>{chip("Closed","status","closed")}</div>
@@ -12862,7 +12916,7 @@ function Analytics({trades,tradingRules,allTrades,config,accounts,setFilters,set
           {sourceRows.length===0 ? <div style={{padding:"10px 12px",fontSize:"11.5px",color:"var(--text4)",textAlign:"center"}}>Geen fee-data beschikbaar</div> :
             sourceRows.map(([src,d])=>(
               <div key={src} style={{display:"grid",gridTemplateColumns:"100px 1fr 120px",gap:"10px",alignItems:"center",marginBottom:"6px"}}>
-                <div style={{fontSize:"11px",color:"var(--text2)",textTransform:"capitalize"}}>{src}</div>
+                <div style={{fontSize:"11px",color:"var(--text2)"}}>{sourceDisplayName(src)}</div>
                 <div style={{height:"10px",borderRadius:"4px",background:"var(--bg4)",position:"relative",overflow:"hidden"}}>
                   <div style={{position:"absolute",inset:0,width:`${(d.fees/maxFee)*100}%`,background:"var(--gold)",borderRadius:"4px"}}/>
                 </div>
@@ -15117,7 +15171,7 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,set
         console.log(`[refresh ${ex}] candidate pool: ${candidatePool.length} trades (${(newTrades||[]).length} new + ${(trades||[]).length} existing)`);
         const needsTPs=candidatePool.filter(t=>{
           if(seen.has(t.id))return false;seen.add(t.id);
-          if(t.source!==ex||!t.positionId)return false;
+          if(t.source!==(acct?acct.id:ex)||!t.positionId)return false; // v12.232: trades zijn account-scoped
           if(t.status==="open"||t.status==="partial")return true;
           if(t.status==="closed"){
             // v12.94 self-heal: marker is een hint, niet de autoriteit. We bouwen
@@ -15686,7 +15740,7 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,set
             {IS_DEV&&ExchangeAPI[ex]?.captureSnapshot&&<button onClick={captureSnapshot} disabled={debugging} title={`Download raw ${ExchangeAPI[ex].name} API response als JSON-fixture voor offline testen`} style={{padding:"10px 16px",borderRadius:"var(--radius)",border:"1px dashed var(--text5)",background:"transparent",color:"var(--text4)",cursor:"pointer",fontFamily:"inherit",fontSize:"12px",fontWeight:500,display:"flex",alignItems:"center",gap:"6px"}}>{debugging?"…":"📥 Snapshot"}</button>}
             {IS_DEV&&ex==="blofin"&&<label title="Drop een blofin-snapshot.json om partial-detectie offline te testen" style={{padding:"10px 16px",borderRadius:"var(--radius)",border:"1px dashed var(--text5)",background:"transparent",color:"var(--text4)",cursor:"pointer",fontFamily:"inherit",fontSize:"12px",fontWeight:500,display:"flex",alignItems:"center",gap:"6px"}}>🔬 Test fixture<input type="file" accept=".json" onChange={e=>{if(e.target.files&&e.target.files[0])runFixtureTest(e.target.files[0]);e.target.value="";}} style={{display:"none"}}/></label>}
             {/* v12.94 laag 4: TP-coverage diagnostics — dev-only, alle exchanges met fetchFills */}
-            {IS_DEV&&ExchangeAPI[ex]?.fetchFills&&<button onClick={()=>setTpCoverage({ex,data:computeTpCoverage(ex)})} title={`Toon TP-coverage stats voor ${ExchangeAPI[ex].name}: hoeveel trades met echte TPs, fallback-only, missing, etc.`} style={{padding:"10px 16px",borderRadius:"var(--radius)",border:"1px dashed var(--text5)",background:"transparent",color:"var(--text4)",cursor:"pointer",fontFamily:"inherit",fontSize:"12px",fontWeight:500,display:"flex",alignItems:"center",gap:"6px"}}>📊 TP-coverage</button>}
+            {IS_DEV&&ExchangeAPI[ex]?.fetchFills&&<button onClick={()=>setTpCoverage({ex,data:computeTpCoverage(acct?acct.id:ex)})} title={`Toon TP-coverage stats voor ${ExchangeAPI[ex].name}: hoeveel trades met echte TPs, fallback-only, missing, etc.`} style={{padding:"10px 16px",borderRadius:"var(--radius)",border:"1px dashed var(--text5)",background:"transparent",color:"var(--text4)",cursor:"pointer",fontFamily:"inherit",fontSize:"12px",fontWeight:500,display:"flex",alignItems:"center",gap:"6px"}}>📊 TP-coverage</button>}
             <button onClick={()=>{csvAcctRef.current=selAcct;csvRef.current.click()}} title="CSV of Excel (.xlsx) bestand uploaden — wordt geïmporteerd in dit account" style={{padding:"10px 20px",borderRadius:"var(--radius)",border:ExchangeAPI[ex].csvOnly?"none":"1px dashed var(--border5)",background:ExchangeAPI[ex].csvOnly?"var(--gold)":"transparent",color:ExchangeAPI[ex].csvOnly?"var(--bg)":"var(--text2)",cursor:"pointer",fontFamily:"inherit",fontSize:"13px",fontWeight:ExchangeAPI[ex].csvOnly?700:500,display:"flex",alignItems:"center",gap:"8px"}}>📄 Importeer CSV / XLSX</button>
           </div>
           {/* v12.94 laag 4: TP-coverage diagnostics panel */}
@@ -16002,7 +16056,7 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,set
           if(!times.length)return(<div style={{fontSize:"10px",color:"var(--text4)",marginTop:"4px",fontFamily:"var(--mono)",opacity:0.7}}>Laatst gesynchroniseerd: nog niet — wacht op eerste cyclus</div>);
           const latest=Math.max(...times);
           const ago=Math.floor((Date.now()-latest)/60000);
-          const exNames=Object.entries(lastSyncTimes||{}).filter(([k,v])=>v).map(([k])=>ExchangeAPI[k]?.name||k).join(' · ');
+          const exNames=Object.entries(lastSyncTimes||{}).filter(([k,v])=>v).map(([k])=>sourceDisplayName(k)).join(' · ');
           const agoStr=ago<1?"net":ago<60?`${ago} min geleden`:`${Math.floor(ago/60)}u ${ago%60}m geleden`;
           return(<div style={{fontSize:"10px",color:"var(--text4)",marginTop:"4px",fontFamily:"var(--mono)"}}>Laatst gesynchroniseerd: <strong style={{color:"var(--text3)"}}>{agoStr}</strong> — {exNames}</div>);
         })()}
@@ -19516,6 +19570,10 @@ function App(){
   },[]);
   const[config,setConfig]=useState(()=>{try{const d=localStorage.getItem("tj_config");return d?JSON.parse(d):{defaultQuote:"USDT",exchanges:{},theme:"sync"}}catch(err){return{defaultQuote:"USDT",exchanges:{},theme:"sync"}}});
   const[accounts,setAccounts]=useState(()=>{try{const d=localStorage.getItem("tj_accounts");return d?JSON.parse(d):[]}catch(err){return[]}});
+  // v12.232: registry synchroon bijwerken (in render, vóór children renderen) zodat pure
+  // helpers (calcRMultiple/netPnl/fmtSize/importTrades) account-id sources kunnen resolven.
+  // Idempotent + goedkoop; een useEffect zou één render te laat zijn voor de eerste paint.
+  registerAccountsRegistry(accounts);
   // v12.127: globale privacy-modus — verbergt $/€ bedragen op alle schermen.
   const[privacyMode,setPrivacyMode]=useState(()=>{try{return localStorage.getItem("tj_privacy_mode")==="1"}catch{return false}});
   useEffect(()=>{try{localStorage.setItem("tj_privacy_mode",privacyMode?"1":"0")}catch{}},[privacyMode]);
@@ -19645,12 +19703,13 @@ function App(){
   useEffect(()=>{
     if(!tradesLoaded)return;
     setTrades(prev=>{
-      const exchanges=[...new Set(prev.filter(t=>t.source&&t.source!=="manual"&&t.source!=="csv").map(t=>t.source))];
+      const sourceKeys=[...new Set(prev.filter(t=>t.source&&t.source!=="manual"&&t.source!=="csv").map(t=>t.source))];
       let result=prev;
-      for(const ex of exchanges){
+      for(const srcKey of sourceKeys){
         // v12.85: route via adapter zodat een Blofin-fix MEXC niet raakt.
-        const adapter=ExchangeAPI[ex];
-        result=adapter&&adapter.detectPartials?adapter.detectPartials(result):result;
+        // v12.232: srcKey kan account.id zijn → adapter op TYPE, filter op srcKey.
+        const adapter=ExchangeAPI[sourceTypeOf(srcKey)];
+        result=adapter&&adapter.detectPartials?adapter.detectPartials(result,srcKey):result;
       }
       // Alleen wijzigen als er iets veranderd is (voorkom onnodige re-renders).
       // Check ook tpLevels en originalSizeAsset — eerder gemiste die niet werden
@@ -19941,11 +20000,48 @@ function App(){
         tradeSources:(trades||[]).map(t=>({id:t.id,source:t.source||""})),
       }));
     }catch(e){/* quota — IDB houdt de originele trades, migratie gaat door */}
+    // v12.232: functionele setTrades met r.sourceMap — de oude `setTrades(r.trades)` zette een
+    // STALE snapshot terug en overschreef daarmee de partial-detectie die het eerdere
+    // detectPartials-effect in dezelfde cycle al had toegepast (race op eerste load).
     const r=buildUnifiedAccounts(config,accounts,trades);
     setAccounts(r.accounts);
-    setTrades(r.trades);
+    const knownIds=new Set(r.accounts.map(a=>a.id));
+    setTrades(prev=>prev.map(t=>{
+      const src=t.source||"manual";
+      if(src==="manual"||knownIds.has(src))return t;
+      const mapped=r.sourceMap[src];
+      if(mapped)return{...t,source:mapped};
+      if(KNOWN_SOURCE_TYPES.has(String(src).toLowerCase()))return t; // type-string zonder account: behouden
+      return{...t,source:"manual"};
+    }));
     setConfig(c=>({...c,exchanges:{},accountsSchema:2}));
   },[tradesLoaded,config?.accountsSchema]);
+
+  // v12.232: ná-migratie reparatie. Trades met legacy type-string source ("ftmo",
+  // "hyperliquid", ...) die de v12.231-migratie misten (CSV-import in de overgangsperiode,
+  // backup-restore van vóór de migratie) worden hermapt naar het account van dat type —
+  // alléén als er precies één account van dat type is (anders ambigu → laten staan; de UI
+  // toont ze dan generiek via sourceTypeOf). Idempotent en goedkoop.
+  useEffect(()=>{
+    if(!tradesLoaded)return;
+    if(!(config?.accountsSchema>=2))return;
+    if(!(accounts||[]).length)return;
+    const byType={};
+    (accounts||[]).forEach(a=>{if(a&&a.id){(byType[a.type||"manual"]=byType[a.type||"manual"]||[]).push(a);}});
+    const knownIds=new Set((accounts||[]).map(a=>a.id));
+    setTrades(prev=>{
+      let changed=false;
+      const next=prev.map(t=>{
+        const src=t.source;
+        if(!src||src==="manual"||src==="csv")return t;
+        if(knownIds.has(src))return t; // al account-scoped
+        const matches=byType[String(src).toLowerCase()];
+        if(matches&&matches.length===1){changed=true;return{...t,source:matches[0].id};}
+        return t;
+      });
+      return changed?next:prev;
+    });
+  },[tradesLoaded,config?.accountsSchema,accounts]);
 
   // v12.190: merge-handler. Creëert master-trade uit children + markeert children als merged-child.
   // De-merge is reversible via unmergeMaster (master verwijderd, children krijgen oorspronkelijke status terug).
@@ -20086,8 +20182,9 @@ function App(){
       // met random ftmo_csv_<uid>-ID die nu door dezelfde positionId-ticket geïdentificeerd
       // kunnen worden. Alleen voor source==="ftmo" om geen onbedoelde dedup-conflicten op
       // andere exchanges te triggeren (Blofin etc. hebben hun eigen stable IDs).
+      // v12.232: type-based (source kan account.id van een FTMO-account zijn)
       const existingFtmoByCompound=new Map(
-        p.filter(t=>t.source==="ftmo"&&t.positionId).map(t=>[`ftmo|${t.positionId}|${t.openTime||""}`,t])
+        p.filter(t=>sourceTypeOf(t.source)==="ftmo"&&t.positionId).map(t=>[`ftmo|${t.positionId}|${t.openTime||""}`,t])
       );
       // v12.100 community-friendly heal: voor source=kraken trades waar bestaande
       // versie buggy is (size leeg/0/"0.00000000" of exit leeg/0) maar incoming data
@@ -20095,7 +20192,7 @@ function App(){
       // tpLevels/fillTime). Notes/tags/screenshots/playbook-koppelingen blijven
       // intact zodat community-leden niets verliezen bij re-import.
       const isKrakenBuggy=(t)=>{
-        if(!t||t.source!=="kraken")return false;
+        if(!t||sourceTypeOf(t.source)!=="kraken")return false;
         const asset=parseFloat(t.positionSizeAsset||"0")||0;
         const exit=parseFloat(t.exit||"0")||0;
         return asset<=0||exit<=0;
@@ -20115,7 +20212,7 @@ function App(){
         // die nu een ticket-based stable ID krijgen (bv. ftmo_csv_<ticket>_<ts>): match via
         // positionId+openTime → herken als duplicate. Voorkomt double-import bij de eerste
         // re-import na de v12.192 stable-id-fix.
-        if(t.source==="ftmo"&&t.positionId&&!existingById.has(t.id)){
+        if(sourceTypeOf(t.source)==="ftmo"&&t.positionId&&!existingById.has(t.id)){
           const compoundKey=`ftmo|${t.positionId}|${t.openTime||""}`;
           const oldRecord=existingFtmoByCompound.get(compoundKey);
           if(oldRecord){
@@ -20179,7 +20276,7 @@ function App(){
           const tKey=matchKeyOf(t);
           if(!tKey)return t;
           // v12.89: Blofin positionId-guard tegen stale-trade besmetting (zie detectPartialFromSiblings)
-          const blofinPidOk=(s)=>(t.source!=="blofin"||!t.positionId||!s.positionId||String(s.positionId)===String(t.positionId));
+          const blofinPidOk=(s)=>(sourceTypeOf(t.source)!=="blofin"||!t.positionId||!s.positionId||String(s.positionId)===String(t.positionId));
           const siblings=merged.filter(s=>s.source===t.source&&s.status==="closed"&&s.id!==t.id&&!consumedByFinalize.has(s.id)&&matchKeyOf(s)===tKey&&blofinPidOk(s));
           if(siblings.length===0)return t;
           // Mark siblings als consumed — verwijderen na de map-pass
@@ -20332,8 +20429,9 @@ function App(){
       const updated=finalKept.map(t=>byId.get(t.id)||t);
       const merged=fresh.length?[...fresh,...updated]:updated;
       // v12.85: route via adapter — elke exchange heeft eigen detectPartials.
+      // v12.232: srcKey (account.id of legacy type) doorgeven zodat account-scoped trades matchen.
       const adapter=ExchangeAPI[exType];
-      return adapter&&adapter.detectPartials?adapter.detectPartials(merged):merged;
+      return adapter&&adapter.detectPartials?adapter.detectPartials(merged,srcKey):merged;
     });
     setTimeout(()=>{
       const parts=[];
