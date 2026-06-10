@@ -2926,12 +2926,18 @@ function getCapitalForSource(source,config,accounts){
 // liveBalances = {exchangeKey: number} of null. Capital-tracker kan nooit negatief bijdragen.
 function computeTotalBalance(accounts,config,liveBalances,closed){
   let total=0;const counted=new Set();
+  // v12.231: unified accounts[] — per account.id. Exchange-type: live API + tracker (add-on),
+  // of (geen live) tracker + linked PnL. Manual: tracker + linked PnL. liveBalances keyed by account.id.
   (accounts||[]).forEach(a=>{
-    total+=Math.max(0,computeAccountCapital(a.transactions||[]));
-    total+=sumTradePnl(closed,a.name);
-    counted.add(a.name);
+    const txCap=Math.max(0,computeAccountCapital(a.transactions||[]));
+    const live=liveBalances?liveBalances[a.id]:null;
+    if(a.type&&a.type!=="manual"&&live!=null&&live>0)total+=live+txCap;
+    else total+=txCap+sumTradePnl(closed,a.id);
+    counted.add(a.id);
   });
+  // Legacy-fallback vóór de migratie: config.exchanges nog gevuld + geen account van dat type.
   Object.entries(config?.exchanges||{}).forEach(([key,ex])=>{
+    if((accounts||[]).some(a=>a.type===key))return;
     const txCap=Math.max(0,computeAccountCapital(ex.transactions||[]));
     const live=liveBalances?liveBalances[key]:null;
     if(live!=null&&live>0)total+=live+txCap;
@@ -4134,27 +4140,30 @@ function getSession(date){
 // Cache in localStorage zodat eerste render niet "verkeerd" is bij refresh.
 // Returns {[exchangeKey]: numericBalance}. Exchanges zonder testConnection (csvOnly) staan niet in de map.
 const LIVE_BAL_CACHE_KEY="tj_live_exchange_balances";
-function useLiveExchangeBalances(config){
+function useLiveExchangeBalances(accounts){
   const[balances,setBalances]=useState(()=>{
     try{return JSON.parse(localStorage.getItem(LIVE_BAL_CACHE_KEY)||"{}");}catch{return{};}
   });
+  // v12.231: per account.id (niet per type) → meerdere accounts van hetzelfde type krijgen
+  // elk hun eigen live-balance. Dep-key = stabiele hash van id+type+creds zodat de fetch
+  // her-runt als een account/creds wijzigt.
+  const depKey=(accounts||[]).map(a=>a.id+":"+a.type+":"+(a.walletAddress||a.apiKey||"")).join("|");
   useEffect(()=>{
     let cancelled=false;
     const fetchAll=async()=>{
       const results={};
-      for(const[exKey,ex]of Object.entries(ExchangeAPI)){
-        const cfg=config?.exchanges?.[exKey]||{};
-        if(!ex.testConnection)continue;
-        // walletOnly = adres ipv key/secret
-        if(ex.walletOnly){if(!cfg.walletAddress)continue;}
-        else{if(!cfg.apiKey||!cfg.apiSecret)continue;}
+      for(const a of(accounts||[])){
+        const ex=ExchangeAPI[a.type];
+        if(!ex||!ex.testConnection)continue; // csv-only (FTMO) / manual → geen live fetch
+        if(ex.walletOnly){if(!a.walletAddress)continue;}
+        else{if(!a.apiKey||!a.apiSecret)continue;}
         try{
           const r=ex.walletOnly
-            ?await ex.testConnection(cfg.walletAddress)
+            ?await ex.testConnection(a.walletAddress)
             :ex.needsPassphrase
-              ?await ex.testConnection(cfg.apiKey,cfg.apiSecret,cfg.passphrase)
-              :await ex.testConnection(cfg.apiKey,cfg.apiSecret);
-          if(r.success){const v=parseFloat(r.balance)||0;if(v>0)results[exKey]=v;}
+              ?await ex.testConnection(a.apiKey,a.apiSecret,a.passphrase)
+              :await ex.testConnection(a.apiKey,a.apiSecret);
+          if(r.success){const v=parseFloat(r.balance)||0;if(v>0)results[a.id]=v;}
         }catch{}
       }
       if(cancelled)return;
@@ -4164,7 +4173,7 @@ function useLiveExchangeBalances(config){
     fetchAll();
     const id=setInterval(fetchAll,60000);
     return()=>{cancelled=true;clearInterval(id);};
-  },[config?.exchanges]);
+  },[depKey]);
   return balances;
 }
 
@@ -4189,7 +4198,7 @@ function AppStatusBar({trades,accounts,config,goals}){
   // Balance: per account de juiste bron pakken (live API > transactions+linked-PnL).
   // Voorkomt dubbel-tellen: live-balance bevat al alle PnL, dus daar geen losse trade-pnl bovenop.
   const closed=(trades||[]).filter(t=>t.pnl!==""&&!isNaN(parseFloat(t.pnl)));
-  const liveBalances=useLiveExchangeBalances(config);
+  const liveBalances=useLiveExchangeBalances(accounts);
   const bal=useMemo(()=>computeTotalBalance(accounts,config,liveBalances,closed),[accounts,config?.exchanges,closed,liveBalances]);
   // Drawdown gebruikt nog steeds de pure trade-PnL curve
   const totalPnl=closed.reduce((s,t)=>s+netPnl(t),0);
@@ -4743,15 +4752,19 @@ function Dashboard({trades,config,accounts,storageUsage,setFilters,setTab}){
   const fetchBalances=useCallback(async()=>{
     if(balLoading)return;setBalLoading(true);
     const results={};
-    for(const[exKey,ex]of Object.entries(ExchangeAPI)){
-      const cfg=config?.exchanges?.[exKey]||{};
-      if(!cfg.apiKey||!cfg.apiSecret)continue;
-      try{const r=ex.needsPassphrase?await ex.testConnection(cfg.apiKey,cfg.apiSecret,cfg.passphrase):await ex.testConnection(cfg.apiKey,cfg.apiSecret);if(r.success)results[exKey]=parseFloat(r.balance)||0}catch(err){}
+    // v12.231: per account.id (incl. wallet-only zoals Hyperliquid).
+    for(const a of(accounts||[])){
+      const ex=ExchangeAPI[a.type];
+      if(!ex||!ex.testConnection)continue;
+      try{
+        if(ex.walletOnly){if(!a.walletAddress)continue;const r=await ex.testConnection(a.walletAddress);if(r.success)results[a.id]=parseFloat(r.balance)||0;}
+        else{if(!a.apiKey||!a.apiSecret)continue;const r=ex.needsPassphrase?await ex.testConnection(a.apiKey,a.apiSecret,a.passphrase):await ex.testConnection(a.apiKey,a.apiSecret);if(r.success)results[a.id]=parseFloat(r.balance)||0;}
+      }catch(err){}
     }
     setBalances(Object.keys(results).length>0?results:null);setBalLoading(false);
-  },[config]);
+  },[accounts]);
 
-  useEffect(()=>{if(config?.exchanges)fetchBalances()},[]);
+  useEffect(()=>{if((accounts||[]).length)fetchBalances()},[]);
 
   const[pgExchanges,setPgExchanges]=useState(["all"]);
   const[pgPeriod,setPgPeriod]=useState("all");
@@ -4802,17 +4815,12 @@ function Dashboard({trades,config,accounts,storageUsage,setFilters,setTab}){
       // API-balances + manual accounts, maar niet config.exchanges[ex].transactions (een handmatige
       // storting op een exchange) en geen tracker-only exchanges. Nu via de gedeelde
       // computeTotalBalance() zodat het Dashboard exact de TopBar-balans volgt.
-      const accountEquity=a=>{
-        const cap=(a.transactions&&a.transactions.length)?computeAccountCapital(a.transactions):(parseFloat(a.balance)||0);
-        return cap+sumTradePnl(closed,a.name);
-      };
-      const exchangeBal=(key,ex)=>{
-        const txCap=Math.max(0,computeAccountCapital(ex.transactions||[]));
-        const live=balances?balances[key]:null;
-        return (live!=null&&live>0)?live+txCap:txCap+sumTradePnl(closed,key);
-      };
-      const exLines=Object.entries(config?.exchanges||{}).filter(([key,ex])=>(balances&&balances[key]!=null)||(ex.transactions&&ex.transactions.length));
-      const hasAny=Object.keys(config?.exchanges||{}).length>0||(accounts||[]).length>0;
+      // v12.231: per-account balans-regel (unified accounts[]). Exchange-type: live API + tracker;
+      // anders: tracker + linked PnL. `balances` (live) is keyed by account.id.
+      const acctBal=a=>{const txCap=Math.max(0,computeAccountCapital(a.transactions||[]));const live=balances?balances[a.id]:null;return (a.type&&a.type!=="manual"&&live!=null&&live>0)?live+txCap:txCap+sumTradePnl(closed,a.id);};
+      const exchangeBal=(key,ex)=>{const txCap=Math.max(0,computeAccountCapital(ex.transactions||[]));const live=balances?balances[key]:null;return (live!=null&&live>0)?live+txCap:txCap+sumTradePnl(closed,key);};
+      const exLegacy=Object.entries(config?.exchanges||{}).filter(([type,c])=>c&&!(accounts||[]).some(a=>a.type===type)); // alleen vóór de migratie
+      const hasAny=(accounts||[]).length>0||exLegacy.length>0;
       const totalBal=hasAny?computeTotalBalance(accounts,config,balances,closed):null;
       return(<div style={{background:"rgba(201,168,76,0.04)",borderRadius:"var(--radius-lg)",padding:"20px 24px",marginBottom:"1.5rem",border:"1px solid rgba(201,168,76,0.15)"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
@@ -4825,18 +4833,18 @@ function Dashboard({trades,config,accounts,storageUsage,setFilters,setTab}){
             {expectancy!==null&&<div style={{fontSize:"10px",color:"var(--text4)",marginTop:"2px"}}>Expectancy: <span style={{color:expectancy>=0?"var(--green)":"var(--red)",fontWeight:600,fontFamily:"var(--mono)"}}>{priv?"$***,**":`${expectancy>=0?"+":""}$${fmt(expectancy)}`}</span> / trade</div>}
           </div>
           <div style={{textAlign:"right"}}>
-            {exLines.map(([key,ex])=>(
+            {(accounts||[]).map(a=>(
+              <div key={a.id} style={{display:"flex",alignItems:"center",gap:"8px",justifyContent:"flex-end",marginBottom:"4px"}}>
+                {a.type&&a.type!=="manual"?<ExchangeIcon name={a.type} size={16}/>:<span style={{fontSize:"12px"}}>✏️</span>}
+                <span style={{fontSize:"11px",color:"var(--text3)"}}>{a.label||exName(a.type)||a.name||"Account"}</span>
+                <span style={{fontSize:"13px",fontFamily:"var(--mono)",fontWeight:600,color:"var(--text)"}}>{priv?"$***,**":`$${fmt(acctBal(a))}`}</span>
+              </div>
+            ))}
+            {exLegacy.map(([key,ex])=>(
               <div key={key} style={{display:"flex",alignItems:"center",gap:"8px",justifyContent:"flex-end",marginBottom:"4px"}}>
                 <ExchangeIcon name={key} size={16}/>
                 <span style={{fontSize:"11px",color:"var(--text3)"}}>{exName(key)}</span>
                 <span style={{fontSize:"13px",fontFamily:"var(--mono)",fontWeight:600,color:"var(--text)"}}>{priv?"$***,**":`$${fmt(exchangeBal(key,ex))}`}</span>
-              </div>
-            ))}
-            {(accounts||[]).map(a=>(
-              <div key={a.id} style={{display:"flex",alignItems:"center",gap:"8px",justifyContent:"flex-end",marginBottom:"4px"}}>
-                <span style={{fontSize:"12px"}}>✏️</span>
-                <span style={{fontSize:"11px",color:"var(--text3)"}}>{a.name}</span>
-                <span style={{fontSize:"13px",fontFamily:"var(--mono)",fontWeight:600,color:"var(--text)"}}>{priv?"$***,**":`$${fmt(accountEquity(a))}`}</span>
               </div>
             ))}
             {balances&&<button onClick={fetchBalances} disabled={balLoading} style={{marginTop:"6px",fontSize:"9px",padding:"3px 8px",borderRadius:"4px",border:"1px solid var(--border3)",background:"transparent",color:"var(--text4)",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:"4px",marginLeft:"auto"}}>{balLoading?<span className="spinner" style={{width:"10px",height:"10px"}}/>:"⟳"} Ververs</button>}
