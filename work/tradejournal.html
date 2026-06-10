@@ -2231,10 +2231,13 @@ const buildMergePreview=(children,conflictChoices)=>{
   const wExit=closedSize>0
     ?closedChildren.reduce((s,c)=>s+((parseFloat(c.exit)||0)*effSize(c)),0)/closedSize
     :0;
-  // Conservatiefste SL — voor long = highest, voor short = lowest
+  // Initiële (breedste) SL = het werkelijk genomen risico → voor long = laagste, short = hoogste.
+  // Voorheen werd de SL DICHTST bij entry gekozen (Math.max voor long). Bij scale-out trail je je
+  // SL vaak naar break-even na TP1, dus de children hebben verschillende SLs; de tightste pakken
+  // maakt risk |entry-SL| ≈ 0 → R-multiple explodeert in de R:R-analyse (bug Denny 2026-06-09).
   const dir=children[0].direction;
   const sls=children.map(c=>parseFloat(c.stopLoss)).filter(v=>isFinite(v)&&v>0);
-  const sl=sls.length?(dir==="long"?Math.max(...sls):Math.min(...sls)):"";
+  const sl=sls.length?(dir==="long"?Math.min(...sls):Math.max(...sls)):"";
   // Status
   const allClosed=children.every(c=>c.status==="closed");
   const status=allClosed?"closed":"partial";
@@ -2923,6 +2926,41 @@ function computeTotalBalance(accounts,config,liveBalances,closed){
   return total;
 }
 
+// ── v12.231: Multi-account migratie ───────────────────────────────────────
+// Migreert het oude model (config.exchanges keyed-by-type + losse manual accounts[])
+// naar één unified accounts[] met opake ids + `type`, en hermapt elke trade.source naar
+// de nieuwe account.id. Pure functie → {accounts, trades, sourceMap}. Geen dataverlies:
+// - exchange-config per type → account-record (type = exchange-key, nieuwe opake id)
+// - manual account → type:"manual" (behoud bestaande id; oude source = de NAAM)
+// - trade.source: via sourceMap omgezet; al-een-account.id blijft; "manual" gereserveerd;
+//   onbekende source → "manual" fallback (geen orphan).
+// Exchange wint bij naam-collisie (matcht huidige resolveAccountLabel-precedentie).
+function buildUnifiedAccounts(config, accounts, trades, genId){
+  const mkId=genId||(()=>"acc_"+uid());
+  const out=[]; const sourceMap={};
+  Object.entries(config?.exchanges||{}).forEach(([type,cfg])=>{
+    if(!cfg)return;
+    const id=mkId();
+    out.push({id,type,label:cfg.label||"",apiKey:cfg.apiKey||"",apiSecret:cfg.apiSecret||"",passphrase:cfg.passphrase||"",walletAddress:cfg.walletAddress||"",syncFrom:cfg.syncFrom||"",transactions:Array.isArray(cfg.transactions)?cfg.transactions:[]});
+    sourceMap[type]=id; sourceMap[id]=id;
+  });
+  (accounts||[]).forEach(a=>{
+    const id=a.id||mkId();
+    out.push({id,type:"manual",label:a.label||a.name||"",name:a.name||"",transactions:Array.isArray(a.transactions)?a.transactions:[],balance:a.balance});
+    if(a.name&&!(a.name in sourceMap))sourceMap[a.name]=id; // exchange-type wint bij collisie
+    sourceMap[id]=id;
+  });
+  const knownIds=new Set(out.map(a=>a.id));
+  const newTrades=(trades||[]).map(t=>{
+    const src=t.source||"manual";
+    if(src==="manual")return t;            // gereserveerd literal — geen account
+    if(knownIds.has(src))return t;          // al een account.id (idempotent)
+    const mapped=sourceMap[src];
+    return mapped?{...t,source:mapped}:{...t,source:"manual"};
+  });
+  return {accounts:out,trades:newTrades,sourceMap};
+}
+
 // ── Custom goals system ───────────────────────────────────────────────────
 // Available metrics: {id, label, unit, hint, inverted (lower-is-better), fmt}
 const GOAL_METRICS=[
@@ -3554,7 +3592,23 @@ const ExchangeAPI = {
     name:"Kraken Futures",color:"#7b61ff",needsPassphrase:false,
     _pair(sym){let s=(sym||"").toUpperCase().replace("PF_","").replace("PI_","").replace("FF_","");s=s.replace("XBT","BTC");if(s.endsWith("USDC"))return s.slice(0,-4)+"/USDC";if(s.endsWith("USDT"))return s.slice(0,-4)+"/USDT";if(s.endsWith("USD"))return s.slice(0,-3)+"/USD";if(s.includes("/"))return s;return s+"/USD"},
     _normalise(t){
-      const ft=t.fillTime||t.open_time||"";const closeT=t.fillTime||"";
+      // v12.230: defensieve timestamp-guard. Kraken's history-endpoints geven `timestamp` /
+      // `lastUpdateTimestamp` als ms-integer i.p.v. ISO `fillTime` (zie docs-onderzoek 2026-06-09).
+      // Accepteer ISO-string ÉN numeriek epoch (ms of s), val terug op de history-veldnamen, en
+      // val NOOIT terug op epoch 0 → bij ongeldige/ontbrekende tijd blijft de datum leeg i.p.v. 1970.
+      const toIso=(v)=>{
+        if(v===null||v===undefined||v==="")return"";
+        if(typeof v==="number"||/^\d{9,}$/.test(String(v).trim())){
+          let n=Number(typeof v==="number"?v:String(v).trim());
+          if(!isFinite(n)||n<=0)return"";
+          if(n<1e12)n*=1000;// seconden → ms
+          const dt=new Date(n);return(isNaN(dt.getTime())||dt.getTime()<=0)?"":dt.toISOString();
+        }
+        const dt=new Date(v);
+        return(isNaN(dt.getTime())||dt.getTime()<=0)?"":(String(v).includes("T")?String(v):dt.toISOString());
+      };
+      const rawFt=(t.fillTime!=null&&t.fillTime!=="")?t.fillTime:(t.timestamp!=null?t.timestamp:t.lastUpdateTimestamp);
+      const ft=toIso(rawFt)||toIso(t.open_time);const closeT=toIso(rawFt);
       const pair=t.pair_clean||this._pair(t.symbol||"");const status=t.status||"closed";
       const pnlRaw=t.pnl;const pnlVal=(pnlRaw!==null&&pnlRaw!==undefined&&pnlRaw!=="")?String(pnlRaw):"";
       // v12.100 fix #1: positionSize = size × entry_price (USD-notional), niet de raw size.
@@ -6761,7 +6815,10 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,setConfig,ac
   const hideExitFields=isOpen||isMissedReal;
 
   const sourceOptions=[{id:"manual",label:"✏️ Handmatig",color:"var(--text3)"}];
-  Object.entries(ExchangeAPI).forEach(([key,ex])=>{if(config?.exchanges?.[key]?.apiKey)sourceOptions.push({id:key,label:ex.name,color:ex.color})});
+  // Een exchange is "gekoppeld" als 'ie een apiKey heeft, OF (wallet-only zoals Hyperliquid) een
+  // walletAddress. Voorheen werd alleen op apiKey gecheckt → Hyperliquid-trades toonden "Handmatig"
+  // in de account/exchange-selector i.p.v. Hyperliquid (bug Denny 2026-06-09).
+  Object.entries(ExchangeAPI).forEach(([key,ex])=>{const c=config?.exchanges?.[key];if(c&&(c.apiKey||c.walletAddress))sourceOptions.push({id:key,label:ex.name,color:ex.color})});
   (accounts||[]).forEach(a=>{if(!sourceOptions.find(s=>s.id===a.name))sourceOptions.push({id:a.name,label:"✏️ "+a.name,color:"var(--text3)"})});
 
   // v12.49: Auto-recalc PnL voor manuele closed trades waar pnl niet handmatig
@@ -7662,8 +7719,10 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,setConfig,ac
     </Section>
 
     <div style={{marginBottom:"1rem"}}/>
-    {/* Actions — sticky so Save is always reachable in long forms / scrolled modals */}
-    <div style={{display:"flex",gap:"12px",position:"sticky",bottom:0,background:"var(--bg)",padding:"12px 0",marginTop:"1rem",borderTop:"1px solid var(--border2)",zIndex:10}}>
+    {/* Actions — sticky so Save is always reachable in long forms / scrolled modals.
+        background = var(--glass) zodat de balk naadloos op het form-paneel ligt (dat ook
+        var(--glass) is). var(--bg) gaf in classic een donkere band (bg #10111a vs paneel #1e2030). */}
+    <div style={{display:"flex",gap:"12px",position:"sticky",bottom:0,background:"var(--glass)",backdropFilter:"var(--glass-blur)",WebkitBackdropFilter:"var(--glass-blur)",padding:"12px 0",marginTop:"1rem",borderTop:"1px solid var(--border2)",zIndex:10}}>
       <button onClick={onSave} style={{flex:1,padding:"12px",borderRadius:"8px",border:"none",fontSize:"14px",fontWeight:700,background:isBacktest?"linear-gradient(135deg,#a4cce0,#7ab4d2,#4d8aa8)":isPaper?"linear-gradient(135deg,#bca9e0,#9a8acc,#6b569e)":isMissedReal?"linear-gradient(135deg,#c8a0e0,#b48cc8,#8a6ba0)":"#C9A84C",color:isMissed?"#fff":"#000000",cursor:"pointer",fontFamily:"inherit"}}>{isBacktest?"🔬 Backtest opslaan":isPaper?"📝 Paper trade opslaan":isMissedReal?"👻 Gemiste trade opslaan":"Trade opslaan"}</button>
       <button onClick={()=>setShowCard(true)} title="Deel als kaart" className="tj-btn tj-btn-secondary" style={{padding:"var(--space-3) var(--space-4)"}}>📸 Deel kaart</button>
       {showCard&&<TradeCardExport trade={trade} onClose={()=>setShowCard(false)}/>}
@@ -19568,7 +19627,13 @@ function App(){
   useEffect(()=>{
     const iv=config.autoSyncMin||0;
     if(!iv)return;
-    const connected=Object.entries(config.exchanges||{}).filter(([k,c])=>c&&c.apiKey&&c.apiSecret&&ExchangeAPI[k]);
+    // Wallet-only exchanges (Hyperliquid) zijn "gekoppeld" via walletAddress, niet apiKey/secret.
+    // Voorheen filterde dit op apiKey&&apiSecret → Hyperliquid viel eruit → auto-sync startte nooit
+    // (bug Denny 2026-06-09). Nu: walletOnly → walletAddress, anders → apiKey+secret.
+    const connected=Object.entries(config.exchanges||{}).filter(([k,c])=>{
+      if(!c||!ExchangeAPI[k])return false;
+      return ExchangeAPI[k].walletOnly?!!c.walletAddress:!!(c.apiKey&&c.apiSecret);
+    });
     if(!connected.length)return;
     const refreshAll=async()=>{
       if(document.hidden)return;
@@ -19576,18 +19641,22 @@ function App(){
       for(const[key,cfg] of connected){
         try{
           const api=ExchangeAPI[key];
-          // Open posities (live PnL/SL/TP/LIQ)
+          // Open posities (live PnL/SL/TP/LIQ). Wallet-only (Hyperliquid) → walletAddress.
           if(api.fetchOpenPositions){
-            const opens=api.needsPassphrase
-              ?await api.fetchOpenPositions(cfg.apiKey,cfg.apiSecret,cfg.passphrase)
-              :await api.fetchOpenPositions(cfg.apiKey,cfg.apiSecret);
+            const opens=api.walletOnly
+              ?await api.fetchOpenPositions(cfg.walletAddress)
+              :api.needsPassphrase
+                ?await api.fetchOpenPositions(cfg.apiKey,cfg.apiSecret,cfg.passphrase)
+                :await api.fetchOpenPositions(cfg.apiKey,cfg.apiSecret);
             if(Array.isArray(opens))syncOpenPositions(key,opens);
           }
           // Nieuwe historische trades (laatste 7 dagen — interval is iv min, ruim genoeg)
           const startTime=Date.now()-7*86400000;
-          const fetched=api.needsPassphrase
-            ?await api.fetchTrades(cfg.apiKey,cfg.apiSecret,cfg.passphrase,startTime)
-            :await api.fetchTrades(cfg.apiKey,cfg.apiSecret,null,startTime);
+          const fetched=api.walletOnly
+            ?await api.fetchTrades(cfg.walletAddress,null,null,startTime)
+            :api.needsPassphrase
+              ?await api.fetchTrades(cfg.apiKey,cfg.apiSecret,cfg.passphrase,startTime)
+              :await api.fetchTrades(cfg.apiKey,cfg.apiSecret,null,startTime);
           if(Array.isArray(fetched)&&fetched.length){
             setTrades(prev=>{const ex=new Set(prev.map(t=>t.id));const fresh=fetched.filter(t=>!ex.has(t.id));return fresh.length?[...fresh,...prev]:prev;});
           }
@@ -19697,6 +19766,31 @@ function App(){
       const children=p.filter(c=>t.mergedFrom.includes(c.id));
       if(children.length===0)return t;
       return{...t,tpLevels:deriveTpLevelsFromChildren(children)};
+    }));
+  },[trades]);
+
+  // v12.230: heal bestaande masters waarvan stopLoss op de getrailde/break-even-SL stond i.p.v.
+  // de initiële (breedste) stop → gaf absurde R-multiples in de R:R-analyse. Recompute naar de
+  // breedste child-SL (long=laagste, short=hoogste), tenzij de user 'm handmatig overschreef.
+  // Self-terminating: na heal is stopLoss al gelijk aan de breedste → needs-check returnt false.
+  React.useEffect(()=>{
+    const widestSL=(t,kids)=>{
+      const sls=kids.map(c=>parseFloat(c.stopLoss)).filter(v=>isFinite(v)&&v>0);
+      if(!sls.length)return null;
+      return t.direction==="short"?Math.max(...sls):Math.min(...sls);
+    };
+    const needs=trades.some(t=>{
+      if(!Array.isArray(t.mergedFrom)||t.mergedFrom.length===0)return false;
+      if((t.manualOverrides||[]).includes("stopLoss"))return false;
+      const w=widestSL(t,trades.filter(c=>t.mergedFrom.includes(c.id)));
+      return w!=null&&t.stopLoss!==String(w);
+    });
+    if(!needs)return;
+    setTrades(p=>p.map(t=>{
+      if(!Array.isArray(t.mergedFrom)||t.mergedFrom.length===0)return t;
+      if((t.manualOverrides||[]).includes("stopLoss"))return t;
+      const w=widestSL(t,p.filter(c=>t.mergedFrom.includes(c.id)));
+      return (w!=null&&t.stopLoss!==String(w))?{...t,stopLoss:String(w)}:t;
     }));
   },[trades]);
 

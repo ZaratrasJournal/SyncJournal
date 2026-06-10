@@ -12,6 +12,8 @@ Basis kwam uit de feature-diff v4_14 → v9 onderaan. Inmiddels werken we op **v
 
 ⮕ Blofin CCXT-hint opgelost in v12.210. Lesson L18 update blijft optioneel (B) — overweeg later voor docs-update.
 
+- [ ] **Kraken: open positie mogelijk gedupliceerd bij elke refresh (te bevestigen)** *(2026-06-07, gemeld door member via Denny)* — Zelfde symptoom als de Hyperliquid-bug (gefixt in v12.229): dezelfde open positie verschijnt na elke handmatige refresh als nieuwe trade. **Verschil**: Kraken's open-ID is in v12.101 bewust stabiel gemaakt (`open_${symbol}_${fillTime||"0"}_${side}`, [work/tradejournal.html:3575](work/tradejournal.html#L3575)), dus dit kan alleen optreden als **`fillTime` per refresh verandert** — wat direct raakt aan de bug hieronder (1970-timestamps / API-format-shift). **Te bevestigen vóór fix** (systematic-debugging Iron Law): (a) hebben de dubbele Kraken-trades verschillende tijdstippen? (b) Kraken-snapshot via `?dev=1` → check of `/openpositions` een stabiele `fillTime` levert. **Fix-richting indien bevestigd**: open-ID losmaken van `fillTime` → `open_${symbol}_${side}` (net-mode = 1 open positie per symbool+richting, zoals Hyperliquid's coin-id). Niet blind patchen — eerst bewijs.
+
 - [ ] **Kraken Futures API geeft 1970-timestamps (mogelijk API-format wijziging)** *(2026-05-22, gemeld door Denny)* — Bij het ophalen van trades via de Kraken Futures API toont SyncJournal nu **1970-01-01** als trade-datum (Unix epoch 0). Suggereert dat ons time-veld leeg of in nieuw format binnenkomt en de parser fallt back op `0` → epoch.
 
   **Te onderzoeken**:
@@ -396,7 +398,13 @@ In [tests/](tests/) staan 4 real-data specs (`<exchange>-real-data.spec.js`) die
 - [ ] **MFE/MAE exit-efficiency scatter** — vereist MFE/MAE data uit exchange-fills.
 - [ ] **PnL Calendar Heatmap** — 13-weken grid, GitHub-stijl.
 - [ ] **Scratch segmentation donut** — "True Win-rate" los van scratch trades.
-- [ ] **Funding-fees per trade tracken** *(2026-05-03, plan na Blofin-bug-sprint v12.87)* — Voor crypto-futures is funding-fee een aparte cost-component naast trade-fees (open/close commissies). Op exchanges met perpetuals (Blofin, MEXC, Bybit, Hyperliquid, Kraken Futures) wordt funding elke 1/4/8 uur afgerekend op open posities. Nu telt SyncJournal die kosten nergens mee — True PnL is dus onnauwkeurig voor swing-trades die een funding-cycle overspannen.
+- [ ] **Funding-fees per trade tracken** *(2026-05-03, plan na Blofin-bug-sprint v12.87 · ✅ API-research afgerond 2026-06-06 — zie [docs/research-funding-fees-2026-06-06.md](docs/research-funding-fees-2026-06-06.md))* — Voor crypto-futures is funding-fee een aparte cost-component naast trade-fees (open/close commissies). Op exchanges met perpetuals (Blofin, MEXC, Bybit, Hyperliquid, Kraken Futures) wordt funding elke 1/4/8 uur afgerekend op open posities. Nu telt SyncJournal die kosten nergens mee — True PnL is dus onnauwkeurig voor swing-trades die een funding-cycle overspannen.
+
+  **⚠️ Research-update 2026-06-06 (corrigeert aannames hieronder)**:
+  - **Volgorde omgedraaid**: bouw **Hyperliquid → MEXC → Kraken → Blofin** (niet Blofin-first). Hyperliquid is proxy-vrij (public `userFunding`, signed `usdc`-veld) en bewijst schema+matching end-to-end zonder Worker-deploy.
+  - **MEXC beter dan gedacht**: dedicated endpoint `GET /api/v1/private/position/funding_records` bestaat (niet `account/history?type=FUNDING_FEE`).
+  - **Blofin slechter dan gedacht**: géén dedicated funding-endpoint gevonden (`asset/bills?type=funding` bestaat niet zoals aangenomen). Uitwegen: CSV-export uit Blofin-UI (eerst checken óf die er is) óf reconstructie `posSize×rate×markPrice` (benadering). → Blofin als laatste, niet "½ dag werk".
+  - **Open validaties** (live snapshot): HL CORS-test, MEXC sign-conventie + position_id-match, Kraken exacte `info`-string + side-veld, Blofin CSV-export. Detail in research-doc.
 
   **Ontwerp-keuze**: per-trade matching (niet aggregate-only). Funding-events worden gekoppeld aan de open trade die op dat moment bestond, zodat True PnL = `realizedPnl − tradeFees − fundingFees` per trade klopt. Aggregate-card "💸 Funding fees" in Analytics is bonus.
 
