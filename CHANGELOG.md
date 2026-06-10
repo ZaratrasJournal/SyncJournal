@@ -6,6 +6,30 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.231] — 2026-06-10
+
+Grote update: **meerdere accounts per exchange** + een vernieuwde Accounts-pagina, plus de verzamelde fixes sinds v12.229.
+
+### Toegevoegd
+- **Meerdere accounts per exchange.** Houd nu meerdere Hyperliquid-wallets, meerdere FTMO-challenges en meerdere handmatige accounts naast elkaar bij — elk met eigen label, capital-tracker en trades. Overige exchanges (MEXC/Blofin/Kraken) voorlopig max 1.
+- **Vernieuwde Accounts-pagina** (Instellingen → Accounts): één overzichtelijke lijst links, detail rechts. "+ Account toevoegen" opent een nette pop-up met type-keuze. CSV-import gaat nu naar het gekozen account.
+- **Account verwijderen met keuze**: behoud de trades (worden 'Handmatig') óf verwijder ze definitief mee — met duidelijke waarschuwing.
+
+### Gewijzigd
+- **Hyperliquid-balans toont nu je volledige portfolio** (spot + perps) i.p.v. alleen je perps-margin. Stond je geld grotendeels in spot-USDC, dan zag je voorheen een veel te laag bedrag. *(gemeld door ChangeMaker)*
+
+### Fixed
+- **Footer-balk donker in het classic-thema** — opgelost.
+- **R:R-analyse klopte niet voor samengevoegde (merged) trades** — gebruikte de krapste i.p.v. de initiële stop, waardoor R absurd hoog kon uitvallen. Bestaande merged-trades worden automatisch hersteld.
+- **Hyperliquid (wallet-only)**: auto-sync liep niet en de bron toonde "Handmatig" in de edit-modal — beide opgelost; wallet-accounts tellen nu volwaardig mee.
+- **Kraken timestamp-guard**: ISO- én ms-timestamps worden nu robuust geparset (nooit meer een terugval naar 1970).
+- **Dubbele trades na sync** *(gevonden in de pre-release review)*: na de account-migratie konden recente trades bij elke sync/refresh gedupliceerd worden. Opgelost vóór release.
+- **Account-waarde klopte niet na het verwijderen van een account** — losse trades verschijnen nu als aparte "Handmatig"-regel zodat het totaal weer klopt.
+- **Balans in de top-bar telde een open order dubbel** *(gemeld door ChangeMaker)* — top-bar en Dashboard delen nu exact dezelfde berekening.
+
+### Belangrijk
+- Bij het eerste openen migreert je bestaande data automatisch naar het nieuwe accounts-model (met een interne veilige backup). Je hoeft niks te doen. **Tip**: maak voor de zekerheid even een JSON-backup (Instellingen → Backup & Restore) — goede gewoonte bij een grotere update.
+
 ## [v12.229] — 2026-06-07
 
 ### Fixed
