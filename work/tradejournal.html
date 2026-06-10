@@ -3777,8 +3777,20 @@ const ExchangeAPI = {
     async testConnection(walletAddress){
       const addr=this._validateAddress(walletAddress);
       const state=await this._post({type:"clearinghouseState",user:addr});
-      const equity=parseFloat(state?.marginSummary?.accountValue||"0");
-      return{success:true,balance:equity.toFixed(2)};
+      // v12.231: marginSummary.accountValue = ALLEEN de perps-margin. Het meeste geld staat vaak
+      // in SPOT (bv. USDC), met een deel "hold" als perps-collateral. Echte Portfolio Value =
+      // vrije spot-stables + perps-accountValue (de held-collateral zit in beide, dus tel vrij + perps).
+      // Matcht Hyperliquid's "Portfolio Value". Bug: journal toonde 14,47 i.p.v. 78,82 (Denny 2026-06-10).
+      const perps=parseFloat(state?.marginSummary?.accountValue||"0")||0;
+      let spotFree=0;
+      try{
+        const spot=await this._post({type:"spotClearinghouseState",user:addr});
+        const STABLES=new Set(["USDC","USDT","USDT0","USDE","USDH","USD","DAI","USDD","FEUSD"]);
+        for(const b of(spot?.balances||[])){
+          if(STABLES.has(String(b.coin||"").toUpperCase()))spotFree+=Math.max(0,(parseFloat(b.total||"0")||0)-(parseFloat(b.hold||"0")||0));
+        }
+      }catch(e){/* spot optioneel — perps-waarde blijft staan */}
+      return{success:true,balance:(perps+spotFree).toFixed(2)};
     },
     async fetchTrades(walletAddress,_unused1,_unused2,startTime){
       const addr=this._validateAddress(walletAddress);
