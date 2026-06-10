@@ -14301,9 +14301,13 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,set
   // v12.231: unified account-toevoegen (flat Accounts-lijst + type-dropdown). null = dicht.
   const[acctAdd,setAcctAdd]=useState(null);
   const ACCT_TYPES=[["ftmo","FTMO (MT5) — CSV import"],["hyperliquid","Hyperliquid — wallet-adres"],["mexc","MEXC — API key"],["blofin","Blofin — API key"],["kraken","Kraken Futures — API key"],["manual","Handmatig — geen koppeling"]];
+  // v12.231: meerdere accounts toegestaan voor hyperliquid/ftmo/manual; overige exchanges hard-cap 1 (voorlopig).
+  const MULTI_TYPES=new Set(["hyperliquid","ftmo","manual"]);
+  const typeAtCap=(type)=>!MULTI_TYPES.has(type)&&(accounts||[]).some(a=>a.type===type);
   const addAccount=()=>{
     const a=acctAdd;if(!a)return;
     if(!(a.label||"").trim()){showToast&&showToast("Geef een label op","error");return;}
+    if(typeAtCap(a.type)){showToast&&showToast(`${ExchangeAPI[a.type]?.name||a.type} heeft al een account (max 1 voorlopig)`,"error");return;}
     const rec={id:"acc_"+uid(),type:a.type,label:a.label.trim(),transactions:[]};
     if(a.type==="hyperliquid")rec.walletAddress=(a.walletAddress||"").trim();
     else if(["mexc","blofin","kraken"].includes(a.type)){rec.apiKey=(a.apiKey||"").trim();rec.apiSecret=(a.apiSecret||"").trim();if(a.passphrase)rec.passphrase=a.passphrase.trim();}
@@ -15544,7 +15548,7 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,set
           <div style={{background:"var(--bg3)",border:"1px solid var(--gold-border)",borderRadius:"12px",padding:"22px 24px",maxWidth:"440px",width:"100%",boxShadow:"0 20px 60px var(--glass)"}}>
           <div style={{fontSize:"11px",color:"var(--gold)",textTransform:"uppercase",letterSpacing:".12em",fontWeight:700,marginBottom:"16px"}}>➕ Nieuw account</div>
             <div style={{marginBottom:"10px"}}><div style={lab}>Type</div>
-              <select value={t} onChange={e=>setAcctAdd(p=>({...p,type:e.target.value}))} style={{...iA,color:"var(--gold)",fontWeight:600,cursor:"pointer"}}>{ACCT_TYPES.map(([v,l])=>(<option key={v} value={v}>{l}</option>))}</select>
+              <select value={t} onChange={e=>setAcctAdd(p=>({...p,type:e.target.value}))} style={{...iA,color:"var(--gold)",fontWeight:600,cursor:"pointer"}}>{ACCT_TYPES.map(([v,l])=>{const capped=typeAtCap(v);return(<option key={v} value={v} disabled={capped}>{capped?l+" — al toegevoegd":l}</option>);})}</select>
             </div>
             <div style={{marginBottom:"10px"}}><div style={lab}>Label <span style={{color:"var(--red)"}}>*</span></div>
               <input value={acctAdd.label} onChange={e=>setAcctAdd(p=>({...p,label:e.target.value}))} placeholder="bijv. Challenge 200k, Main, Degen" style={iA}/>
