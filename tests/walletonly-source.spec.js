@@ -39,7 +39,7 @@ test('wallet-only exchange (Hyperliquid) verschijnt als bron in trade-form', asy
   const info = await page.evaluate(() => {
     const btns = [...document.querySelectorAll('button')].map(b => b.textContent.trim()).filter(Boolean);
     return {
-      hasHyperliquidBtn: btns.some(t => /^Hyperliquid$/.test(t)),
+      hasHyperliquidBtn: btns.some(t => /Hyperliquid/.test(t)),
       hasHandmatigBtn: btns.some(t => /Handmatig/.test(t)),
       shortBtns: btns.filter(t => t.length < 24),
     };

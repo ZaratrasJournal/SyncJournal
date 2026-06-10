@@ -2869,10 +2869,24 @@ const TX_TYPES={deposit:{label:"Storting",sign:1,color:"var(--green)",icon:"➕"
 // Resolve label for any trade source (manual account name, exchange key, or bare source string)
 function resolveAccountLabel(source,config,accounts){
   if(!source||source==="manual")return"";
+  // v12.231: source = account.id (unified model). Fallback naar legacy (config.exchanges[type] / manual-naam)
+  // zodat dit ook klopt tijdens de transitie / vóór de migratie heeft gedraaid.
+  const a=(accounts||[]).find(x=>x.id===source);
+  if(a)return a.label||"";
   const ex=config?.exchanges?.[source];
   if(ex?.label)return ex.label;
-  const acct=(accounts||[]).find(a=>a.name===source);
+  const acct=(accounts||[]).find(x=>x.name===source);
   return acct?.label||"";
+}
+// v12.231: resolve het exchange-TYPE van een trade-source (account.id). Voor icoon/naam-weergave.
+// Legacy: source was zelf het type (bv. "hyperliquid") of een manual-naam → "manual".
+function resolveAccountType(source,config,accounts){
+  if(!source||source==="manual")return"manual";
+  const a=(accounts||[]).find(x=>x.id===source);
+  if(a)return a.type||"manual";
+  if(config?.exchanges?.[source])return source;        // legacy: source = exchange-type
+  if((accounts||[]).some(x=>x.name===source))return"manual"; // legacy manual-naam
+  return source;
 }
 
 // Compute per-account capital = net of transactions. Corrections are absolute setpoints.
@@ -2896,9 +2910,11 @@ function sumTradePnl(trades,source){
 // Lookup capital for a trade-source (manual account name or exchange key)
 function getCapitalForSource(source,config,accounts){
   if(!source||source==="manual")return 0;
+  const a=(accounts||[]).find(x=>x.id===source);   // v12.231: source = account.id
+  if(a?.transactions)return computeAccountCapital(a.transactions);
   const ex=config?.exchanges?.[source];
   if(ex?.transactions)return computeAccountCapital(ex.transactions);
-  const acct=(accounts||[]).find(a=>a.name===source);
+  const acct=(accounts||[]).find(x=>x.name===source);
   if(acct?.transactions)return computeAccountCapital(acct.transactions);
   return 0;
 }
@@ -6814,12 +6830,15 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,setConfig,ac
   // exit-prijs invullen). Alleen real-time gemiste trades (isMissedReal) houden exit verborgen.
   const hideExitFields=isOpen||isMissedReal;
 
-  const sourceOptions=[{id:"manual",label:"✏️ Handmatig",color:"var(--text3)"}];
-  // Een exchange is "gekoppeld" als 'ie een apiKey heeft, OF (wallet-only zoals Hyperliquid) een
-  // walletAddress. Voorheen werd alleen op apiKey gecheckt → Hyperliquid-trades toonden "Handmatig"
-  // in de account/exchange-selector i.p.v. Hyperliquid (bug Denny 2026-06-09).
-  Object.entries(ExchangeAPI).forEach(([key,ex])=>{const c=config?.exchanges?.[key];if(c&&(c.apiKey||c.walletAddress))sourceOptions.push({id:key,label:ex.name,color:ex.color})});
-  (accounts||[]).forEach(a=>{if(!sourceOptions.find(s=>s.id===a.name))sourceOptions.push({id:a.name,label:"✏️ "+a.name,color:"var(--text3)"})});
+  // v12.231: bron-opties uit het unified accounts[]-model (id + type + label). Elke account
+  // (exchange óf manual) is een aparte optie → meerdere accounts per type werken automatisch.
+  // Display = exchange-naam + " · label". Legacy config.exchanges als fallback vóór de migratie.
+  const sourceOptions=[{id:"manual",label:"✏️ Handmatig",color:"var(--text3)",type:"manual"}];
+  (accounts||[]).forEach(a=>{
+    if(a.type==="manual")sourceOptions.push({id:a.id,label:"✏️ "+(a.label||a.name||"Account"),color:"var(--text3)",type:"manual"});
+    else{const ex=ExchangeAPI[a.type];sourceOptions.push({id:a.id,label:(ex?.name||a.type)+(a.label?" · "+a.label:""),color:ex?.color||"#C9A84C",type:a.type});}
+  });
+  Object.entries(config?.exchanges||{}).forEach(([type,c])=>{if(c&&(c.apiKey||c.walletAddress)&&!sourceOptions.some(s=>s.type===type))sourceOptions.push({id:type,label:ExchangeAPI[type]?.name||type,color:ExchangeAPI[type]?.color||"#C9A84C",type})});
 
   // v12.49: Auto-recalc PnL voor manuele closed trades waar pnl niet handmatig
   // is overschreven. Fixt Morani's bug: "vul een fee in en het rekent niet door
@@ -7056,7 +7075,7 @@ function TradeForm({trade,setTrade,onSave,onCancel,tagConfig,config,setConfig,ac
     <div style={{marginBottom:"1rem"}}>
       <div style={{fontSize:"11px",color:"var(--text3)",marginBottom:"6px",fontWeight:500}}>ACCOUNT / EXCHANGE</div>
       <div style={{display:"flex",gap:"4px",flexWrap:"wrap"}}>
-        {sourceOptions.map(opt=>{const active=(trade.source||"manual")===opt.id;return(<button key={opt.id} onClick={()=>setTrade(p=>({...p,source:opt.id}))} style={{padding:"5px 12px",borderRadius:"6px",fontSize:"11px",fontWeight:600,border:`1px solid ${active?opt.color||"#C9A84C":"var(--border3)"}`,background:active?`${opt.color||"#C9A84C"}15`:"transparent",color:active?opt.color||"#C9A84C":"var(--text4)",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:"5px"}}>{!opt.id.startsWith("✏")&&opt.id!=="manual"&&<ExchangeIcon name={opt.id} size={14}/>}{opt.label}</button>);})}
+        {sourceOptions.map(opt=>{const active=(trade.source||"manual")===opt.id;return(<button key={opt.id} onClick={()=>setTrade(p=>({...p,source:opt.id}))} style={{padding:"5px 12px",borderRadius:"6px",fontSize:"11px",fontWeight:600,border:`1px solid ${active?opt.color||"#C9A84C":"var(--border3)"}`,background:active?`${opt.color||"#C9A84C"}15`:"transparent",color:active?opt.color||"#C9A84C":"var(--text4)",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:"5px"}}>{opt.type&&opt.type!=="manual"&&<ExchangeIcon name={opt.type} size={14}/>}{opt.label}</button>);})}
       </div>
     </div>
 
