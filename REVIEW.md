@@ -247,6 +247,51 @@ Criteria: complex × ongetest × directe invloed op trading-beslissingen.
 
 ---
 
+## Fase 4 — resultaat (2026-06-11)
+
+Regels gevolgd: alleen test-gedekte code geraakt, gedrag ongewijzigd (één bewuste uitzondering: een regressie-fix), na elke stap tests gedraaid.
+
+### Code-kwaliteit
+
+| Wat | Details |
+|---|---|
+| **Flaky-cluster opgelost** (fase-1 vondst) | De overlay die ~28 specs liet click-timeouten was niet de milestone-popup maar de **backup-onboarding modal** ("Even iets belangrijks", triggert bij ≥5 trades zonder backup) — gevonden via failure-screenshot. `tests/helpers/seed.js` onderdrukt nu beide modal-families (opt-out via `fixture.backupModals/milestonesSeen === false` voor specs die ze wél testen). `tag-delete-modal` (7) + `tendencies-untagged` (2) van reproduceerbaar-rood naar groen. |
+| **Regressie gevonden & gefixt: zombie-merge** | `merge-manual-account` spec ving 'm: mijn v12.232 `canMergeSource`-wijziging liet trades van een VERWIJDERD account weer mergen (sourceTypeOf geeft "manual" voor elke onbekende source). Nu: manual-type merget alleen als het account echt nog bestaat; `"manual"`-literal en bekende type-strings behouden hun gedrag. Waarde van de spec-suite bewezen. |
+| **Duplicatie geconsolideerd** | `profitFactorOf()` + `maxDrawdownOf()` (±1690): 7 PF-kopieën en 5 maxDD-loops vervangen door de helpers (incl. de twee negatieve-conventie widgets via `-maxDrawdownOf(...)`). 3 nieuwe unit-tests in `calc-unit.spec.js` (nu 32). Eén PF-variant bewust gelaten: Review-dashboard gebruikt `999` i.p.v. `Infinity` als display-cap (±13951) — vervangen zou de weergave veranderen. |
+| **Dode code verwijderd** | `resolveAccountType` (vervangen door `sourceTypeOf` in v12.232, nergens meer aangeroepen). |
+
+### Performance (gemeten, 1000 trades — `tests/perf-measure.js`, 2 runs)
+
+```
+app-start → interactief : ~10.1–10.3s   (Babel-in-browser compile ≈ 5s + load/normalize 1000 trades)
+tab-switch  Trades      : 1.4–2.1s  ← bottleneck (alle 1000 rijen renderen, geen paginatie)
+tab-switch  Dashboard   : 1.3–1.4s  ← bottleneck (charts + KPI-aggregaten mounten)
+tab-switch  Analytics   : ~0.5s     · overige tabs 0.08–0.24s — prima
+```
+
+**Bewust NIET gefixt:** de twee bottlenecks vragen paginatie/virtualisatie (Trades) en lazy-mounting (Dashboard-charts) — dat zijn zichtbare UI/gedrags-keuzes, geen audit-refactors. Het moet via het demo-first proces met Denny. De meet-tooling blijft staan (`node tests/perf-measure.js`) als baseline voor die discussie.
+
+### Eindsamenvatting van de hele audit (fase 1–4)
+
+**Veranderd:**
+- 17 bugs gefixt over 3 fases: 5 reken-bugs (R-multiple size-fallback, expectancy/BE, ghost-partial runner-collapse, Review-maxDD, report per-account tabel), 7 integriteit/datum-bugs (kalender dag-shift, UTC-"vandaag" ×14 plekken, ts2date/ts2time paar, backup-rommel-import, stille IDB-failure, dubbel-klik save, draft-restore), de v12.232 multi-account source-laag (aanleiding), 1 zombie-merge regressie, plus test-infra (overlay-suppressie).
+- Testfundament: **+38 unit/integriteit-tests** met handmatig narekenbare waardes (`calc-unit` 32, `integrity-edge` 3, `multi-account-sources` 1, aangescherpte `blofin-partial`), flaky-cluster gestabiliseerd.
+- Consolidatie: gedeelde `profitFactorOf`/`maxDrawdownOf`/`sourceTypeOf`/`localDateISO`-helpers vervangen ~20 inline kopieën.
+
+**Bewust gelaten:** Sharpe/Sortino kalenderdag-definitie + Calmar-eenheden (gedocumenteerde "rough" metrics), PF-999 display-variant, finalize-logica 3× (importTrades/syncOpenPositions/detectPartialFromSiblings — zwaarste refactor, sterke specs eromheen, apart project), CSV-vs-API dedup-gat (niche), multi-step restore-atomiciteit, DST-randjes in week-iteraties.
+
+**Aanbevelingen voor later:**
+1. **Trades-paginatie of -virtualisatie** (grootste gemeten winst; demo-first met Denny).
+2. **Dashboard: charts lazy mounten** na first paint.
+3. **`ftmoCtx` doorgeven aan álle `calcRMultiple`-callers** (avgR-metric en playbook-stats gebruiken nu de 0.4%-default waar de Trades-tabel de mediaan gebruikt — inconsistent tussen schermen; bewuste gedragswijziging, dus niet in deze audit gedaan).
+4. Finalize-aggregatie (3 kopieën) extraheren zodra er een aanleiding is — mét de bestaande exchange-cluster specs als vangnet.
+5. Babel-in-browser blijft ~5s opstartkost; pre-compile (esbuild one-shot naar een tweede file) zou kunnen zonder de single-file filosofie op te geven — alleen als de community erover klaagt.
+6. `aicoach-weekly` "topbar indicator due" structureel maken (pre-existing failure, los van deze audit).
+
+**Release-notitie:** alle fase 2–4 fixes staan op `review/journal-audit`; bij merge naar main één release (v12.233) met gebundelde CHANGELOG-entry via de release-flow.
+
+---
+
 ## Run-log
 
 - 2026-06-10 (avond): v12.232 gereleased (lokaal, niet gepusht) met multi-account source-fixes; `smoke`, `themes` (6), `blofin-partial` (2), `multi-account-sources` (1) groen.

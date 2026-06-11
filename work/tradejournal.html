@@ -1686,6 +1686,19 @@ function calcExpectancy(trades){
   const exp=closed.reduce(function(s,t){return s+netPnl(t);},0)/closed.length;
   return Math.round(exp*100)/100;
 }
+// v12.233 (fase-4): gedeelde aggregaat-helpers. Profit-factor en max-drawdown stonden
+// 5-7× inline gekopieerd (Dashboard/Report/Analytics/Review/Goals) en konden stilletjes
+// divergeren — de Review-maxDD deed dat al (peak=-Infinity bug, fase 2).
+function profitFactorOf(grossWin,grossLoss){
+  return grossLoss>0?grossWin/grossLoss:(grossWin>0?Infinity:0);
+}
+// Max peak-to-trough drawdown over chronologische PnL-bedragen.
+// Peak start op 0 (= equity vóór de eerste trade). Output ≥ 0 (0 = geen drawdown).
+function maxDrawdownOf(pnls){
+  let peak=0,dd=0,cum=0;
+  for(const v of(pnls||[])){cum+=v;if(cum>peak)peak=cum;const d=peak-cum;if(d>dd)dd=d;}
+  return dd;
+}
 
 
 
@@ -2367,9 +2380,16 @@ function canMergeSource(src,accounts){
   if(typeof src!=="string"||src.length===0)return false;
   // v12.232: type-based — src kan account.id zijn. Merge alleen voor FTMO + manual
   // (API-exchanges hebben getConsumedSiblings voor auto-partial-detectie).
-  const ty=sourceTypeOf(src);
-  if(ty==="ftmo"||ty==="manual")return true;
-  return Array.isArray(accounts)&&accounts.some(a=>a&&(a.name===src||a.id===src)&&(a.type||"manual")==="manual");
+  // v12.233 (fase-4 regressie-fix): sourceTypeOf geeft "manual" voor ELKE onbekende source,
+  // dus ook voor een VERWIJDERD account — daarmee lekte de zombie-protect weg. Manual-type
+  // merget alleen als het account nog echt bestaat (id of legacy naam); "manual" literal
+  // en KNOWN type-strings ("ftmo") blijven altijd toegestaan.
+  if(src==="manual")return true;
+  if(KNOWN_SOURCE_TYPES.has(src.toLowerCase()))return src.toLowerCase()==="ftmo";
+  const a=Array.isArray(accounts)?accounts.find(x=>x&&(x.id===src||x.name===src)):null;
+  if(!a)return false; // zombie: account bestaat niet meer
+  const ty=a.type||"manual";
+  return ty==="ftmo"||ty==="manual";
 }
 // v12.211: human-readable label voor source — gebruikt in MergeModal copy + tooltip.
 function getSourceLabel(src,accounts){
@@ -2918,16 +2938,8 @@ function resolveAccountLabel(source,config,accounts){
   const acct=(accounts||[]).find(x=>x.name===source);
   return acct?.label||"";
 }
-// v12.231: resolve het exchange-TYPE van een trade-source (account.id). Voor icoon/naam-weergave.
-// Legacy: source was zelf het type (bv. "hyperliquid") of een manual-naam → "manual".
-function resolveAccountType(source,config,accounts){
-  if(!source||source==="manual")return"manual";
-  const a=(accounts||[]).find(x=>x.id===source);
-  if(a)return a.type||"manual";
-  if(config?.exchanges?.[source])return source;        // legacy: source = exchange-type
-  if((accounts||[]).some(x=>x.name===source))return"manual"; // legacy manual-naam
-  return source;
-}
+// v12.233 (fase-4): resolveAccountType verwijderd — dode code; sourceTypeOf (registry,
+// hieronder) is sinds v12.232 de enige source→type resolver.
 
 // v12.232: module-level account-registry — gevuld door App bij elke accounts-update.
 // Nodig omdat pure helpers (calcRMultiple, netPnl, importTrades-dedup, detectPartials-dispatch)
@@ -3118,8 +3130,8 @@ function computeGoalMetric(metric,trades,period){
     case "winningDays":{const byDay={};scoped.forEach(t=>{byDay[t.date]=(byDay[t.date]||0)+netPnl(t)});return Object.values(byDay).filter(p=>p>0).length}
     case "avgR":{const rs=scoped.map(t=>calcRMultiple(t)).filter(r=>r!==null&&!isNaN(r));return rs.length?rs.reduce((s,r)=>s+r,0)/rs.length:0}
     case "grossProfit":return scoped.filter(t=>netPnl(t)>0).reduce((s,t)=>s+netPnl(t),0);
-    case "maxDD":{const sorted=[...scoped].sort((a,b)=>(a.date+(a.time||"")).localeCompare(b.date+(b.time||"")));let peak=0,dd=0,cum=0;sorted.forEach(t=>{cum+=netPnl(t);if(cum>peak)peak=cum;const d=peak-cum;if(d>dd)dd=d});return dd}
-    case "profitFactor":{const gw=scoped.filter(t=>netPnl(t)>0).reduce((s,t)=>s+netPnl(t),0);const gl=Math.abs(scoped.filter(t=>netPnl(t)<0).reduce((s,t)=>s+netPnl(t),0));return gl>0?gw/gl:(gw>0?Infinity:0)}
+    case "maxDD":{const sorted=[...scoped].sort((a,b)=>(a.date+(a.time||"")).localeCompare(b.date+(b.time||"")));return maxDrawdownOf(sorted.map(t=>netPnl(t)))}
+    case "profitFactor":{const gw=scoped.filter(t=>netPnl(t)>0).reduce((s,t)=>s+netPnl(t),0);const gl=Math.abs(scoped.filter(t=>netPnl(t)<0).reduce((s,t)=>s+netPnl(t),0));return profitFactorOf(gw,gl)}
     case "expectancy":return scoped.reduce((s,t)=>s+netPnl(t),0)/scoped.length;
     default:return 0;
   }
@@ -4311,8 +4323,7 @@ function AppStatusBar({trades,accounts,config,goals}){
   const totalPnl=closed.reduce((s,t)=>s+netPnl(t),0);
   // Drawdown: max peak-to-trough over equity curve
   const byDay={};closed.forEach(t=>{byDay[t.date]=(byDay[t.date]||0)+netPnl(t);});
-  let cum=0,peak=0,maxDd=0;
-  Object.keys(byDay).sort().forEach(d=>{cum+=byDay[d];if(cum>peak)peak=cum;const dd=peak-cum;if(dd>maxDd)maxDd=dd;});
+  const maxDd=maxDrawdownOf(Object.keys(byDay).sort().map(d=>byDay[d]));
   // Risk vandaag: som van riskPct van trades vandaag
   const today=localDateISO();
   const todayRisk=closed.filter(t=>t.date===today).reduce((s,t)=>s+(parseFloat(t.riskPct)||0),0);
@@ -4894,7 +4905,7 @@ function Dashboard({trades,config,accounts,storageUsage,setFilters,setTab}){
   const avgL=losses.length?Math.abs(losses.reduce((s,t)=>s+netPnl(t),0)/losses.length):0;
   const grossW=wins.reduce((s,t)=>s+netPnl(t),0);
   const grossL=Math.abs(losses.reduce((s,t)=>s+netPnl(t),0));
-  const pf=grossL>0?grossW/grossL:(wins.length>0?Infinity:0);
+  const pf=profitFactorOf(grossW,grossL);
   const rr=avgL>0?(avgW/avgL):(avgW>0?Infinity:0);
   const rated=trades.filter(t=>t.rating>0);
   const avgR=rated.length?rated.reduce((s,t)=>s+t.rating,0)/rated.length:0;
@@ -5082,7 +5093,7 @@ function Dashboard({trades,config,accounts,storageUsage,setFilters,setTab}){
           const d=sessPerf[s];const wr=d.n>0?d.w/d.n*100:0;
           const grossW=closed.filter(t=>getSessionTags(t.date,t.time).includes(s)&&netPnl(t)>0).reduce((a,t)=>a+netPnl(t),0);
           const grossL=Math.abs(closed.filter(t=>getSessionTags(t.date,t.time).includes(s)&&netPnl(t)<0).reduce((a,t)=>a+netPnl(t),0));
-          const profitFactor=grossL>0?grossW/grossL:(grossW>0?Infinity:0);
+          const profitFactor=profitFactorOf(grossW,grossL);
           const w=Math.abs(d.pnl)/sessMax*100;const pos=d.pnl>=0;
           const c=SESSION_COLORS[s]||SESSION_COLORS["US Late"];
           return(<div key={s} style={{display:"flex",alignItems:"center",gap:"12px",marginBottom:"8px"}}>
@@ -6238,7 +6249,7 @@ function TradeReport({trades,config,accounts,onClose}){
     const grossL=Math.abs(losses.reduce((s,t)=>s+netPnl(t),0));
     const net=grossW-grossL;
     const winRate=closed.length?wins.length/closed.length*100:0;
-    const pf=grossL>0?grossW/grossL:(grossW>0?Infinity:0);
+    const pf=profitFactorOf(grossW,grossL);
     const avgWin=wins.length?grossW/wins.length:0;
     const avgLoss=losses.length?grossL/losses.length:0;
     const expMoney=closed.length?(grossW-grossL)/closed.length:0;
@@ -12167,7 +12178,7 @@ function Analytics({trades,tradingRules,allTrades,config,accounts,setFilters,set
   const winRate=closed.length?(winCount/(winCount+lossCount||1))*100:0;
   const grossWin=wins.reduce((s,t)=>s+netPnl(t),0);
   const grossLoss=Math.abs(losses.reduce((s,t)=>s+netPnl(t),0));
-  const profitFactor=grossLoss>0?grossWin/grossLoss:(grossWin>0?Infinity:0);
+  const profitFactor=profitFactorOf(grossWin,grossLoss);
   // Plan-adherence: % trades with thesis + sl + post-notes filled
   const planAdh=closed.length?(closed.filter(t=>(t.entryNote||"").trim()&&(t.stopLoss||"")!==""&&(t.notes||"").trim()).length/closed.length)*100:0;
   // SQN (Tharp): (E / σR) × √n. Only meaningful for n≥30.
@@ -12182,8 +12193,7 @@ function Analytics({trades,tradingRules,allTrades,config,accounts,setFilters,set
   // Max DD from sorted-by-date equity curve
   const ddByDate={};closed.forEach(t=>{if(!t.date)return;ddByDate[t.date]=(ddByDate[t.date]||0)+netPnl(t)});
   const sortedDates=Object.keys(ddByDate).sort();
-  let cum=0,peak=0,maxDD=0;
-  for(const d of sortedDates){cum+=ddByDate[d];if(cum>peak)peak=cum;const dd=cum-peak;if(dd<maxDD)maxDD=dd}
+  const maxDD=-maxDrawdownOf(sortedDates.map(d=>ddByDate[d])); // negatieve conventie van dit scherm behouden
 
   // Long vs Short
   const longs=closed.filter(t=>t.direction==="long");const shorts=closed.filter(t=>t.direction==="short");
@@ -12969,8 +12979,7 @@ function Analytics({trades,tradingRules,allTrades,config,accounts,setFilters,set
         const concStatus=concPct<=40?"✓ Topstep-compliant":concPct<=50?"⚠ Combine-only (≤50%)":"✗ Topstep-rule schending";
         // Daily DD-tracker
         const dayKeys=Object.keys(byDay).sort();
-        let cum=0,peak=0,maxDD=0;
-        dayKeys.forEach(k=>{cum+=byDay[k];if(cum>peak)peak=cum;const dd=cum-peak;if(dd<maxDD)maxDD=dd;});
+        const maxDD=-maxDrawdownOf(dayKeys.map(k=>byDay[k])); // negatieve conventie van dit widget behouden
         content=<div style={sectStyle}>
           {widgetHead("🏛️ Propfirm compliance","Topstep / FTMO / Apex regels","Single-day concentratie + max drawdown. Topstep ≤40%, Apex ≤30%, FTMO geen concentration-rule maar wel daily DD-limiet.")}
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"16px",marginBottom:"14px"}}>
@@ -13306,7 +13315,7 @@ function DashboardPremium({trades,config,accounts,tradingRules,dailyNotes,goals,
   const totalPnl=closed.reduce((s,t)=>s+netPnl(t),0);
   const wr=closed.length?wins.length/closed.length*100:0;
   const gw=wins.reduce((s,t)=>s+netPnl(t),0);const gl=Math.abs(losses.reduce((s,t)=>s+netPnl(t),0));
-  const pf=gl>0?gw/gl:(wins.length>0?Infinity:0);
+  const pf=profitFactorOf(gw,gl);
   const avgWin=wins.length?gw/wins.length:0;
   const avgLoss=losses.length?gl/losses.length:0;
   const rr=avgLoss>0?avgWin/avgLoss:0;
@@ -13941,10 +13950,8 @@ function ReviewDashboard({trades}){
   const byDay={};closed.forEach(t=>{if(!byDay[t.date])byDay[t.date]=[];byDay[t.date].push(t)});
   const dailyPnl=Object.entries(byDay).sort((a,b)=>a[0].localeCompare(b[0])).map(([d,ts])=>({date:d,pnl:ts.reduce((s,t)=>s+netPnl(t),0),n:ts.length}));
   let cum=0;const eq=dailyPnl.map(d=>{cum+=d.pnl;return{...d,cum}});
-  // Max DD — v12.233 (fase-2 audit): peak start op 0 (= equity vóór de eerste trade),
-  // consistent met de andere 5 maxDD-implementaties. peak=-Infinity miste drawdown
-  // wanneer de periode met netto verlies begint (eerste dal werd zelf de peak).
-  let peak=0,maxDD=0;eq.forEach(d=>{if(d.cum>peak)peak=d.cum;const dd=peak-d.cum;if(dd>maxDD)maxDD=dd});
+  // Max DD — v12.233: gedeelde helper (fase-2 fixte hier al peak=-Infinity → 0).
+  const maxDD=maxDrawdownOf(dailyPnl.map(d=>d.pnl));
   // Best/worst
   const bestDay=dailyPnl.reduce((a,b)=>b.pnl>a.pnl?b:a,{pnl:-Infinity,date:""});const worstDay=dailyPnl.reduce((a,b)=>b.pnl<a.pnl?b:a,{pnl:Infinity,date:""});
   const bestTrade=closed.reduce((a,b)=>netPnl(b)>netPnl(a)?b:a,{pnl:"-9999"});const worstTrade=closed.reduce((a,b)=>netPnl(b)<netPnl(a)?b:a,{pnl:"9999"});
@@ -17553,7 +17560,7 @@ function buildWeeklyStats(trades,daysBack){
   });
   const winRate=inWindow.length?(wins/inWindow.length)*100:0;
   const avgR=withR?totalR/withR:null;
-  const profitFactor=lossSum>0?winSum/lossSum:(winSum>0?Infinity:0);
+  const profitFactor=profitFactorOf(winSum,lossSum);
   const topSymbols=Object.entries(symbols).sort((a,b)=>b[1]-a[1]).slice(0,5);
   // Top 5 trades by abs(pnl) — geven AI context voor best/worst
   const samples=inWindow.slice().sort((a,b)=>Math.abs(Number(b.pnl)||0)-Math.abs(Number(a.pnl)||0)).slice(0,8).map(t=>({

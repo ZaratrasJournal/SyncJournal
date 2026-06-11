@@ -266,6 +266,33 @@ test('calcExpectancy: manual fees beïnvloeden win/verlies-classificatie', async
   expect(r).toBeCloseTo(49.5, 10);
 });
 
+// ───────────────────────── profitFactorOf / maxDrawdownOf (v12.233 fase-4 consolidatie) ─────────────────────────
+test('profitFactorOf: gross winst/verlies, Infinity bij 0 verlies, 0 bij 0 winst', async () => {
+  const r = await page.evaluate(() => [
+    profitFactorOf(300, 150),  // 2.0
+    profitFactorOf(100, 0),    // alleen winners → Infinity
+    profitFactorOf(0, 0),      // geen trades → 0
+    profitFactorOf(0, 50),     // alleen losers → 0
+  ]);
+  expect(r[0]).toBeCloseTo(2, 10);
+  expect(r[1]).toBe(Infinity);
+  expect(r[2]).toBe(0);
+  expect(r[3]).toBe(0);
+});
+
+test('maxDrawdownOf: peak-to-trough vanaf start-equity 0', async () => {
+  const r = await page.evaluate(() => [
+    maxDrawdownOf([100, -30, -40, 50]),  // peak 100 → dal 30 ⇒ DD 70
+    maxDrawdownOf([-100, -50]),          // direct verlies vanaf start ⇒ DD 150 (peak=0!)
+    maxDrawdownOf([10, 20, 30]),         // alleen stijgend ⇒ 0
+    maxDrawdownOf([]),                   // leeg ⇒ 0
+  ]);
+  expect(r[0]).toBeCloseTo(70, 10);
+  expect(r[1]).toBeCloseTo(150, 10);
+  expect(r[2]).toBe(0);
+  expect(r[3]).toBe(0);
+});
+
 // ───────────────────────── computeAccountCapital ─────────────────────────
 test('computeAccountCapital: deposits/withdrawals/correcties', async () => {
   const r = await page.evaluate(() => [
