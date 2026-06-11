@@ -29,7 +29,7 @@ Basis kwam uit de feature-diff v4_14 → v9 onderaan. Inmiddels werken we op **v
 
   **Acceptatie**: Kraken-trades komen binnen met correcte datum; bestaande Kraken-trades met 1970-datum krijgen optioneel een one-shot heal-script.
 
-- [ ] **Analytics: "Setup lagen performance" labels worden afgekapt met "..."** *(2026-05-14, gemeld door Denny met screenshot · autonoom onderzocht 2026-05-14)* — Onder "Setup lagen performance" tonen de layer-pattern labels (bv. `Daily → 1H+BOS`, `4H → 1H+BOS+OB`) afgekapt met ellipsis: `Daily → 1H+...` / `4H → 1H+B...` / `Daily+SFP ...`. Hierdoor zie je niet welke layer-combinatie bij welke bar hoort.
+- [x] **Analytics: "Setup lagen performance" labels worden afgekapt met "..."** ✅ *Opgelost in v12.131 — barRow heeft `wide`-param (160px), layerSets-call geeft `true` mee ([work/tradejournal.html:12779](work/tradejournal.html#L12779)). Stond per abuis nog open.* *(2026-05-14, gemeld door Denny met screenshot · autonoom onderzocht 2026-05-14)* — Onder "Setup lagen performance" tonen de layer-pattern labels (bv. `Daily → 1H+BOS`, `4H → 1H+BOS+OB`) afgekapt met ellipsis: `Daily → 1H+...` / `4H → 1H+B...` / `Daily+SFP ...`. Hierdoor zie je niet welke layer-combinatie bij welke bar hoort.
 
   **Root cause bevestigd** ([line 10076-10077](work/tradejournal.html#L10076-L10077)): `barRow` helper gebruikt vaste **70px** label-kolom met `overflow:hidden; textOverflow:ellipsis; whiteSpace:nowrap`.
 
@@ -79,7 +79,7 @@ Basis kwam uit de feature-diff v4_14 → v9 onderaan. Inmiddels werken we op **v
   - Wrap-allow (`whiteSpace:normal`) → variable row-heights breken layout-grid
   - Label boven de bar → werkt maar breekt visueel-grid consistency met andere bar-widgets
 
-- [ ] **Analytics: data van trades buiten datum-filter "lekt" door in sommige widgets** *(2026-05-14, gemeld door Denny · autonoom onderzocht 2026-05-14)* — Wanneer je op Analytics een datum-filter zet (bv. "Deze week"), zie je in delen van de pagina data van trades buiten dat window. Verwachting: alle Analytics-secties respecteren de actieve FilterBar (datum, type, source, etc.).
+- [x] **Analytics: data van trades buiten datum-filter "lekt" door in sommige widgets** ✅ *Opgelost in v12.131 — EdgeGap + StressLeak tonen nu het label "📊 Over alle trades — datum-filter genegeerd voor deze analyse" ([work/tradejournal.html:8581](work/tradejournal.html#L8581), [9542](work/tradejournal.html#L9542)). Stond per abuis nog open.* *(2026-05-14, gemeld door Denny · autonoom onderzocht 2026-05-14)* — Wanneer je op Analytics een datum-filter zet (bv. "Deze week"), zie je in delen van de pagina data van trades buiten dat window. Verwachting: alle Analytics-secties respecteren de actieve FilterBar (datum, type, source, etc.).
 
   **Onderzoek findings**:
 
