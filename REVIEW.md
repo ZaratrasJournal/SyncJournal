@@ -183,6 +183,37 @@ Criteria: complex × ongetest × directe invloed op trading-beslissingen.
 
 ---
 
+## Fase 2 — resultaat (2026-06-11)
+
+**Aanpak:** nieuwe spec [tests/calc-unit.spec.js](tests/calc-unit.spec.js) — 30 unit-tests die de pure reken-functies rechtstreeks in de geladen app aanroepen (één pageload, `page.evaluate`), met **handmatig narekende verwachtingswaardes** (berekening per case in de comments). Dekt: `netPnl`, `calcRMultiple` (crypto- én FTMO-pad incl. alle drie SL-fallback-niveaus), `computeFtmoMedianLoserSlPct`, `calcTheoreticalR/Pnl` (hit/missed/mix-TPs), `calcExpectancy`, `computeAccountCapital`, `computeTradeRisk`, `sourceTypeOf` en de aggregatie-math van `detectPartialFromSiblings` (incl. ghost-geval). Edge-cases: 0/1/n trades, long vs short, break-even, entry==SL, lege/ongeldige velden, ontbrekende size.
+
+### Gevonden bugs (test eerst rood → analyse → fix → groen)
+
+| # | Bug | Waar | Analyse & impact op cijfers tot nu toe |
+|---|---|---|---|
+| 1 | **`calcRMultiple`: `size \|\| 1`-fallback** | ±1598 | Trade zonder positionSize kreeg R = pnl/(risk×1/entry) → waardes in de duizenden. Vervuilde avgR, R-distributie en playbook-stats zodra een (meestal handmatige) trade size miste. Nu: geen size → `null` ("—"), consistent met ontbrekende SL. |
+| 2 | **`calcExpectancy`: break-evens gewogen als verliezers** | ±1668 | Klassieke formule `(WR×avgWin)−((1−WR)×avgLoss)` stopt break-even trades in de verlieskans mét avgLoss-gewicht: [+100, 0, −50] gaf 0 i.p.v. 16.67. Week ook af van de GOAL_METRICS-definitie ("gemiddelde PnL per trade") én van de goals-compute die al som/n deed. Nu som/n — wiskundig identiek zodra er geen break-evens zijn, dus bestaande cijfers zonder BE-trades veranderen niet. |
+| 3 | **Ghost-partial heuristiek nulde runners weg** | ±1770 | `closedAsset ≥ rest×0.99` vuurde ook bij legitiem >50% gesloten posities (TP1 50% + TP2 25% hit, 25% runner open) → `originalSizeAsset` te klein en TP-percentages opgeblazen (66.7/33.3 i.p.v. 50/25). Geld (realizedPnl/fees/status) was correct; de TP-breakdown-weergave niet. Nu alleen ghost bij ≈gelijkheid (±1% band); exact-50%-dicht blijft inherent ambigu → bewust ghost-interpretatie (gedocumenteerd in test + comment). |
+| 4 | **Review-dashboard maxDD: `peak = −Infinity`** | ±13923 | Wanneer de periode met netto verlies begint werd het eerste dal zelf de peak → drawdown onderschat (bv. −100, −50 → DD 50 i.p.v. 150). De andere 5 maxDD-implementaties starten op 0 (= equity vóór de eerste trade). Nu consistent. |
+| 5 | **TradeReport per-account tabel las niet-bestaande velden** | ±6240 | Bucketing op `t.accountId`/`t.exchange` — velden die niet op het trade-schema bestaan → álles werd "Manual". Tabel was feitelijk dood. Nu via `sourceDisplayName(t.source)`. |
+
+### Bewust NIET gewijzigd (gedocumenteerde quirks)
+
+- **Sharpe/Sortino in TradeReport (±6264)**: daily returns over álle kalenderdagen in het venster (niet-handelsdagen = 0) gecombineerd met √252-annualisatie — definitie is "rough" (eigen comment) en wijzigen verschuift user-zichtbare cijfers zonder bug-bewijs. Genoteerd voor evt. fase 4.
+- **Calmar (±6264)**: `net ($) / maxDD (%)` — eenheden kloppen formeel niet (ratio-score, geen echte Calmar). Zelfde afweging.
+- **FTMO break-even (pnl=0)**: R = `null` i.p.v. 0 — dollars-per-point is niet afleidbaar zonder pnl; inherente beperking van de afleiding (test gedocumenteerd).
+- **`computeTradeRisk` rondt riskUsd af vóór riskPct** — afwijking < $0.005, verwaarloosbaar.
+
+### Teststand na fase 2
+
+- `calc-unit.spec.js`: **30/30 groen**.
+- Regressie op alle financieel-relevante clusters: blofin (4 specs), mexc (4), kraken/hyperliquid 3-way, scenarios-klmn, balance (3), merged-rr, pnl-calc-button, multi-account-sources, smoke → **97/97 groen**.
+- Ghost-band-wijziging (bug 3) expliciet geregresseerd tegen alle exchange-pipeline specs — geen gedragsverschil buiten het gefixte pad.
+
+**Release-notitie:** fixes staan op branch `review/journal-audit`. Version-bump (v12.233) + CHANGELOG + `cp work → main` volgens release-flow uitvoeren **bij merge naar main** — niet vanaf deze branch.
+
+---
+
 ## Run-log
 
 - 2026-06-10 (avond): v12.232 gereleased (lokaal, niet gepusht) met multi-account source-fixes; `smoke`, `themes` (6), `blofin-partial` (2), `multi-account-sources` (1) groen.

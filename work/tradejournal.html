@@ -1595,7 +1595,11 @@ function calcRMultiple(trade,ftmoCtx){
   // Crypto vereist nog wel een SL (geen fallback want positionSize geeft accurate risk).
   const sl=parseFloat(trade.stopLoss);
   if(!sl||sl===entry)return null;
-  const size=parseFloat(trade.positionSize)||1;
+  // v12.233 (fase-2 audit): voorheen `size || 1` — een trade zónder positionSize kreeg
+  // daardoor een absurde R (risk×1/entry ≈ 0 → R in de duizenden) die avgR en
+  // playbook-stats vervuilde. Zonder size is het risico onbepaalbaar → null ("—").
+  const size=parseFloat(trade.positionSize);
+  if(!isFinite(size)||size<=0)return null;
   const risk=Math.abs(entry-sl);
   // Risk in USDT = risk × size / entry (for linear contracts)
   const riskUsdt=risk*size/entry;
@@ -1665,12 +1669,11 @@ function calcExpectancy(trades){
   if(!trades||!trades.length)return null;
   const closed=trades.filter(function(t){return t.pnl!==''&&!isNaN(parseFloat(t.pnl));});
   if(!closed.length)return null;
-  const wins=closed.filter(function(t){return netPnl(t)>0;});
-  const losses=closed.filter(function(t){return netPnl(t)<0;});
-  const winRate=wins.length/closed.length;
-  const avgWin=wins.length?wins.reduce(function(s,t){return s+netPnl(t);},0)/wins.length:0;
-  const avgLoss=losses.length?Math.abs(losses.reduce(function(s,t){return s+netPnl(t);},0)/losses.length):0;
-  const exp=(winRate*avgWin)-((1-winRate)*avgLoss);
+  // v12.233 (fase-2 audit): expectancy = gemiddelde netto-PnL per trade (som/n), conform
+  // de GOAL_METRICS-hint. De oude klassieke formule (WR×avgWin − (1−WR)×avgLoss) is
+  // identiek zolang elke trade wint óf verliest, maar telde break-even trades mee in de
+  // verlieskans mét avgLoss-gewicht → te lage expectancy zodra er BE-trades zijn.
+  const exp=closed.reduce(function(s,t){return s+netPnl(t);},0)/closed.length;
   return Math.round(exp*100)/100;
 }
 
@@ -1763,10 +1766,17 @@ function detectPartialFromSiblings(trades,sourceKey,exchangeType){
       }
       return Math.abs(parseFloat(rec.positionSizeAsset)||0);
     };
-    // v12.87 ghost-partial detectie zoals voorheen
+    // v12.87 ghost-partial detectie: een stale open-record toont de ORIGINELE size terwijl
+    // de positie al volledig dicht is → closedAsset ≈ rawRest → behandel rest als 0.
+    // v12.233 (fase-2 audit): voorheen vuurde dit op closedAsset >= rest×0.99, dus óók bij
+    // legitiem >50% gesloten posities (TP1 50% + TP2 25% hit, 25% runner open: closed 0.75 ≥
+    // rest 0.25). Daardoor werd de runner weggenuld → originalSizeAsset te klein en TP-pcts
+    // opgeblazen. Nu alleen ghost bij ≈gelijkheid (±1%). Closed == rest (exact 50% dicht)
+    // blijft inherent ambigu en houdt de ghost-interpretatie (status-quo).
     const rawRest=Math.abs(parseFloat(t.positionSizeAsset)||0);
     const closedAsset=sortedSiblings.reduce((s,c)=>s+sizeOf(c),0);
-    const restAsset=(rawRest>0&&closedAsset>=rawRest*0.99)?0:rawRest;
+    const isGhost=rawRest>0&&closedAsset>=rawRest*0.99&&closedAsset<=rawRest*1.01;
+    const restAsset=isGhost?0:rawRest;
     const totalAsset=restAsset+closedAsset;
     if(totalAsset>0)next.originalSizeAsset=String(totalAsset);
     // v12.89 (stale-tpLevels fix): voorheen werden tpLevels NIET rebuilt als de open
@@ -6227,8 +6237,10 @@ function TradeReport({trades,config,accounts,onClose}){
     const bySetup={};closed.forEach(t=>{const setups=trGetSetups(t);const k=setups.length?setups[0]:"(geen setup)";if(!bySetup[k])bySetup[k]={n:0,w:0,pnl:0,rs:[]};bySetup[k].n++;bySetup[k].pnl+=netPnl(t);if(netPnl(t)>0)bySetup[k].w++;const r=trGetR(t);if(r!==null&&isFinite(r))bySetup[k].rs.push(r);});
     const setups=Object.entries(bySetup).map(([k,v])=>({setup:k,n:v.n,wr:v.n?v.w/v.n*100:0,pnl:v.pnl,avgR:v.rs.length?v.rs.reduce((s,r)=>s+r,0)/v.rs.length:null})).sort((a,b)=>b.pnl-a.pnl);
     // Per-exchange (account)
-    const accMap={};(accounts||[]).forEach(a=>{accMap[a.id]=a.name||a.exchange||a.id;});
-    const byEx={};closed.forEach(t=>{const k=accMap[t.accountId]||t.exchange||"Manual";if(!byEx[k])byEx[k]={n:0,pnl:0,fees:0};byEx[k].n++;byEx[k].pnl+=netPnl(t);byEx[k].fees+=parseFloat(t.fees)||0;});
+    // v12.233 (fase-2 audit): trades hebben `source` (account.id of legacy type) — de oude
+    // lookup op t.accountId/t.exchange bestond niet op het trade-schema, waardoor élke trade
+    // als "Manual" werd gebucket en de per-account tabel in het report nutteloos was.
+    const byEx={};closed.forEach(t=>{const k=sourceDisplayName(t.source||"manual");if(!byEx[k])byEx[k]={n:0,pnl:0,fees:0};byEx[k].n++;byEx[k].pnl+=netPnl(t);byEx[k].fees+=parseFloat(t.fees)||0;});
     const exchanges=Object.entries(byEx).map(([k,v])=>({ex:k,n:v.n,pnl:v.pnl,fees:v.fees})).sort((a,b)=>b.pnl-a.pnl);
     // R-distribution buckets [-3,-2,-1,0,+1,+2,+3,+4,+5]
     const bins=[0,0,0,0,0,0,0,0,0];
@@ -13909,8 +13921,10 @@ function ReviewDashboard({trades}){
   const byDay={};closed.forEach(t=>{if(!byDay[t.date])byDay[t.date]=[];byDay[t.date].push(t)});
   const dailyPnl=Object.entries(byDay).sort((a,b)=>a[0].localeCompare(b[0])).map(([d,ts])=>({date:d,pnl:ts.reduce((s,t)=>s+netPnl(t),0),n:ts.length}));
   let cum=0;const eq=dailyPnl.map(d=>{cum+=d.pnl;return{...d,cum}});
-  // Max DD
-  let peak=-Infinity,maxDD=0;eq.forEach(d=>{if(d.cum>peak)peak=d.cum;const dd=peak-d.cum;if(dd>maxDD)maxDD=dd});
+  // Max DD — v12.233 (fase-2 audit): peak start op 0 (= equity vóór de eerste trade),
+  // consistent met de andere 5 maxDD-implementaties. peak=-Infinity miste drawdown
+  // wanneer de periode met netto verlies begint (eerste dal werd zelf de peak).
+  let peak=0,maxDD=0;eq.forEach(d=>{if(d.cum>peak)peak=d.cum;const dd=peak-d.cum;if(dd>maxDD)maxDD=dd});
   // Best/worst
   const bestDay=dailyPnl.reduce((a,b)=>b.pnl>a.pnl?b:a,{pnl:-Infinity,date:""});const worstDay=dailyPnl.reduce((a,b)=>b.pnl<a.pnl?b:a,{pnl:Infinity,date:""});
   const bestTrade=closed.reduce((a,b)=>netPnl(b)>netPnl(a)?b:a,{pnl:"-9999"});const worstTrade=closed.reduce((a,b)=>netPnl(b)<netPnl(a)?b:a,{pnl:"9999"});
