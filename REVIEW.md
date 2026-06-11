@@ -214,8 +214,42 @@ Criteria: complex × ongetest × directe invloed op trading-beslissingen.
 
 ---
 
+## Fase 3 — resultaat (2026-06-11)
+
+**Aanpak:** twee parallelle audits (datum/tijdzone-gebruik; opslag/error-handling/data-integriteit) over de hele file, daarna fixes op de dataverlies- en verkeerde-dag-categorie met nieuwe spec [tests/integrity-edge.spec.js](tests/integrity-edge.spec.js) (3 tests, o.a. met gemockte klok op 00:30 lokale tijd).
+
+### Gevonden & gefixt
+
+| # | Bug | Ernst | Details |
+|---|---|---|---|
+| 1 | **Kalender structureel één dag verschoven** | Hoog | Jaar-heatmap + maandkalender bouwden dag-keys via `new Date(j,m,d).toISOString()` → voor elke tijdzone oost van UTC (heel NL) droeg cel "11 juni" de key van 10 juni: dag-PnL onder het verkeerde dagnummer, "vandaag"-highlight op morgen. Geverifieerd met Node vóór de fix. |
+| 2 | **"Vandaag" was de UTC-dag** | Hoog | `new Date().toISOString().split("T")[0]` op ±14 plekken (EMPTY_TRADE-default, `newEmptyTrade`, FilterBar Vandaag/Week/Maand-pills, Dashboard/TopBar dag-stats, goals, kapitaal-transacties, rapport-bereik, backup-bestandsnamen): tussen 00:00 en 01:00/02:00 lokale tijd werden trades op GISTEREN geboekt en pakten dag-filters de verkeerde dag. Nieuwe helpers `localDateISO()`/`localTimeHM()` (±1424), overal doorgevoerd. |
+| 3 | **`ts2date`/`ts2time` inconsistent paar** | Hoog | date was UTC, time was lokaal → een exchange-fill om 23:30Z kreeg `date=gisteren` met `time=01:30`. Nu beide lokaal (zelfde patroon als de CSV-import-paden al deden). Raakt Blofin/Kraken API-imports; bestaande trades behouden hun opgeslagen datum (geen migratie — alleen nieuwe imports). |
+| 4 | **Backup-import accepteerde rommel** | Hoog | Een JSON-array met niet-trade items (`[1,"x",null]`) werd over `EMPTY_TRADE` gespread → lege "vandaag"-trades in de journal. Nieuwe pure helper `sanitizeBackupTrades()` in beide restore-paden (drag-drop + Instellingen-knop): filtert, rapporteert geskipte regels, weigert bestanden zonder één geldige trade. |
+| 5 | **IndexedDB-save faalde stil** | Hoog | `idbSaveAllTrades` → `false` → alleen `console.warn`; localStorage-fallback faalt óók stil bij quota. User dacht dat alles opgeslagen was. Nu één duidelijke toast ("maak nu een backup") bij de eerste failure, zonder spam (ref-guard, reset bij herstel). |
+| 6 | **Dubbel-klik op Opslaan → trade 2× in state** | Midden | `isNew` werd buiten de state-updater berekend op een stale closure. Insert is nu idempotent op id bínnen de updater. |
+| 7 | **Draft-restore zonder normalize/id** | Midden | Een crash-draft kon zonder id en met floating-point-ruis de journal in. Draft gaat nu door `normalizeTrade` + id-garantie vóór de restore-prompt. |
+
+### Bewust uitgesteld (genoteerd, geen fix nu)
+
+- **CSV-`source:"csv"` vs API-id dedup-gat** (zelfde positie via generieke CSV én API = mogelijk dubbel) — niche-pad; vereist per-exchange compound-keys. → backlog.
+- **Multi-step restore niet atomair** (trades/tags/accounts via losse setters) — laag praktisch risico (sync setters in één handler), grote refactor. → fase 4-kandidaat.
+- **Week-start/`setDate`-iteraties rond DST** — max 1 uur/jaar effect, cosmetisch in rapport-buckets.
+- **Auto-backup FSA-write**: `createWritable()` staget al en commit pas op `close()` — half-geschreven-file-risico is kleiner dan de audit suggereerde; error-pad zit in bestaande try/catch van de bewaker.
+- **ErrorBoundary dekt geen event-handlers/effects** — inherent aan React; crash-melding komt via console. → documentatie.
+
+### Teststand na fase 3
+
+- `integrity-edge.spec.js`: **3/3 groen** — middernacht-klok (00:30 lokaal: EMPTY_TRADE/kalender/ts2date allemaal 11 juni terwijl UTC nog 10 juni zegt), sanitize-unit, en E2E garbage-import (3 geseedde trades blijven onaangeroerd + fout-toast).
+- Brede regressie over smoke, calc-unit, exchange real-data (blofin/kraken/HL/mexc), backup-specs, multi-account, AI-coach weekly: zie Run-log.
+
+**Flaky-cluster quick-win uit fase 1 (milestone-popup blokkeert clicks in specs) is NIET in deze fase opgepakt** — aparte, puur test-infrastructurele wijziging; staat op de fase-4 lijst.
+
+---
+
 ## Run-log
 
 - 2026-06-10 (avond): v12.232 gereleased (lokaal, niet gepusht) met multi-account source-fixes; `smoke`, `themes` (6), `blofin-partial` (2), `multi-account-sources` (1) groen.
 - 2026-06-10 (nacht): volledige suite — **311 passed / 12 skipped / 0 failed in 1.0 uur** (zie §2.1, incl. flaky-cluster-analyse).
 - Flaky-verificatie: `tag-delete-modal` Pad A faalt reproduceerbaar standalone op zowel v12.232 als v12.231 → pre-existing overlay-probleem, geen regressie.
+- 2026-06-11 (fase 3): regressie na datum/integriteit-fixes — **84 passed / 2 skipped** over smoke, calc-unit, exchange real-data (blofin/kraken/HL/mexc), backup-specs, multi-account, integrity-edge. Eén failure: `aicoach-weekly` "topbar indicator due" — **pre-existing** (reproduceert identiek op pre-fase-3 commit), staat los van de datum-fixes.
