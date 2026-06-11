@@ -1421,7 +1421,17 @@ const pct=(n)=>{const v=parseFloat(n);return isNaN(v)?"--":v.toFixed(1)+"%"};
 const isEmpty=(v)=>v===undefined||v===null||v===""||v==="0"||v===0;
 const NA=()=>React.createElement("span",{style:{color:"#939aa5",fontStyle:"italic",fontSize:"10px"}},"N/A");
 const valOrNA=(v,formatter)=>isEmpty(v)?React.createElement(NA):formatter?formatter(v):v;
-const ts2date=(ms)=>{const d=new Date(parseInt(ms));return d.toISOString().split("T")[0]};
+// v12.233 (fase-3 audit): LOKALE dag/tijd-helpers. `new Date(...).toISOString()` geeft de
+// UTC-dag — voor Amsterdam (UTC+1/+2) is dat tussen 00:00 en 02:00 de dag van GISTEREN, en
+// voor een lokale-middernacht Date (bv. new Date(jaar,maand,dag) in de kalender) ALTIJD de
+// dag ervoor. Gevolgen vóór deze fix: trades ná middernacht op de verkeerde dag geboekt,
+// "Vandaag"-filters die gisteren pakten, en kalendercellen die structureel één dag verschoven
+// PnL toonden. sv-SE formatteert als YYYY-MM-DD (zelfde formaat als trade.date, sorteerbaar).
+const localDateISO=(d)=>new Intl.DateTimeFormat("sv-SE").format(d||new Date());
+const localTimeHM=(d)=>{const x=d||new Date();return String(x.getHours()).padStart(2,"0")+":"+String(x.getMinutes()).padStart(2,"0")};
+// ts → datum/tijd van de USER-klok (consistent paar). ts2time was altijd al lokaal;
+// ts2date was UTC → een exchange-fill om 23:30Z kreeg date=gisteren met time=01:30.
+const ts2date=(ms)=>{const d=new Date(parseInt(ms));return isNaN(d)?"":localDateISO(d)};
 const ts2time=(ms)=>{const d=new Date(parseInt(ms));return d.toTimeString().slice(0,5)};
 // Nederlandse datumweergave: 2026-04-14 → 14-04-2026. Storage blijft ISO voor sortering.
 const fmtNL=(iso)=>{if(!iso||typeof iso!=="string")return iso||"";const p=iso.split("-");return p.length===3?`${p[2]}-${p[1]}-${p[0]}`:iso;};
@@ -1595,7 +1605,11 @@ function calcRMultiple(trade,ftmoCtx){
   // Crypto vereist nog wel een SL (geen fallback want positionSize geeft accurate risk).
   const sl=parseFloat(trade.stopLoss);
   if(!sl||sl===entry)return null;
-  const size=parseFloat(trade.positionSize)||1;
+  // v12.233 (fase-2 audit): voorheen `size || 1` — een trade zónder positionSize kreeg
+  // daardoor een absurde R (risk×1/entry ≈ 0 → R in de duizenden) die avgR en
+  // playbook-stats vervuilde. Zonder size is het risico onbepaalbaar → null ("—").
+  const size=parseFloat(trade.positionSize);
+  if(!isFinite(size)||size<=0)return null;
   const risk=Math.abs(entry-sl);
   // Risk in USDT = risk × size / entry (for linear contracts)
   const riskUsdt=risk*size/entry;
@@ -1665,13 +1679,25 @@ function calcExpectancy(trades){
   if(!trades||!trades.length)return null;
   const closed=trades.filter(function(t){return t.pnl!==''&&!isNaN(parseFloat(t.pnl));});
   if(!closed.length)return null;
-  const wins=closed.filter(function(t){return netPnl(t)>0;});
-  const losses=closed.filter(function(t){return netPnl(t)<0;});
-  const winRate=wins.length/closed.length;
-  const avgWin=wins.length?wins.reduce(function(s,t){return s+netPnl(t);},0)/wins.length:0;
-  const avgLoss=losses.length?Math.abs(losses.reduce(function(s,t){return s+netPnl(t);},0)/losses.length):0;
-  const exp=(winRate*avgWin)-((1-winRate)*avgLoss);
+  // v12.233 (fase-2 audit): expectancy = gemiddelde netto-PnL per trade (som/n), conform
+  // de GOAL_METRICS-hint. De oude klassieke formule (WR×avgWin − (1−WR)×avgLoss) is
+  // identiek zolang elke trade wint óf verliest, maar telde break-even trades mee in de
+  // verlieskans mét avgLoss-gewicht → te lage expectancy zodra er BE-trades zijn.
+  const exp=closed.reduce(function(s,t){return s+netPnl(t);},0)/closed.length;
   return Math.round(exp*100)/100;
+}
+// v12.233 (fase-4): gedeelde aggregaat-helpers. Profit-factor en max-drawdown stonden
+// 5-7× inline gekopieerd (Dashboard/Report/Analytics/Review/Goals) en konden stilletjes
+// divergeren — de Review-maxDD deed dat al (peak=-Infinity bug, fase 2).
+function profitFactorOf(grossWin,grossLoss){
+  return grossLoss>0?grossWin/grossLoss:(grossWin>0?Infinity:0);
+}
+// Max peak-to-trough drawdown over chronologische PnL-bedragen.
+// Peak start op 0 (= equity vóór de eerste trade). Output ≥ 0 (0 = geen drawdown).
+function maxDrawdownOf(pnls){
+  let peak=0,dd=0,cum=0;
+  for(const v of(pnls||[])){cum+=v;if(cum>peak)peak=cum;const d=peak-cum;if(d>dd)dd=d;}
+  return dd;
 }
 
 
@@ -1680,7 +1706,7 @@ function calcExpectancy(trades){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.232",released:"2026-06-10"};
+const APP_VERSION={version:"v12.233",released:"2026-06-11"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -1763,10 +1789,17 @@ function detectPartialFromSiblings(trades,sourceKey,exchangeType){
       }
       return Math.abs(parseFloat(rec.positionSizeAsset)||0);
     };
-    // v12.87 ghost-partial detectie zoals voorheen
+    // v12.87 ghost-partial detectie: een stale open-record toont de ORIGINELE size terwijl
+    // de positie al volledig dicht is → closedAsset ≈ rawRest → behandel rest als 0.
+    // v12.233 (fase-2 audit): voorheen vuurde dit op closedAsset >= rest×0.99, dus óók bij
+    // legitiem >50% gesloten posities (TP1 50% + TP2 25% hit, 25% runner open: closed 0.75 ≥
+    // rest 0.25). Daardoor werd de runner weggenuld → originalSizeAsset te klein en TP-pcts
+    // opgeblazen. Nu alleen ghost bij ≈gelijkheid (±1%). Closed == rest (exact 50% dicht)
+    // blijft inherent ambigu en houdt de ghost-interpretatie (status-quo).
     const rawRest=Math.abs(parseFloat(t.positionSizeAsset)||0);
     const closedAsset=sortedSiblings.reduce((s,c)=>s+sizeOf(c),0);
-    const restAsset=(rawRest>0&&closedAsset>=rawRest*0.99)?0:rawRest;
+    const isGhost=rawRest>0&&closedAsset>=rawRest*0.99&&closedAsset<=rawRest*1.01;
+    const restAsset=isGhost?0:rawRest;
     const totalAsset=restAsset+closedAsset;
     if(totalAsset>0)next.originalSizeAsset=String(totalAsset);
     // v12.89 (stale-tpLevels fix): voorheen werden tpLevels NIET rebuilt als de open
@@ -1963,8 +1996,18 @@ function migratePlaybooks(arr){
   });
 }
 
+// v12.233 (fase-3 audit): valideer een backup/import-payload vóór hij de journal in gaat.
+// Een JSON-array met rommel ([1,2,3], strings, null's) werd voorheen klakkeloos over
+// EMPTY_TRADE gespread → tientallen lege "vandaag"-trades in de journal. Houdt alleen
+// object-items met minstens één herkenbaar trade-veld; rapporteert hoeveel er zijn geskipt.
+function sanitizeBackupTrades(list){
+  if(!Array.isArray(list))return{trades:[],skipped:0};
+  const ok=list.filter(t=>t&&typeof t==="object"&&!Array.isArray(t)&&(t.id||t.date||t.pair||t.entry||t.pnl||t.openTime));
+  return{trades:ok,skipped:list.length-ok.length};
+}
+
 const EMPTY_TRADE={
-  id:"",date:new Date().toISOString().split("T")[0],
+  id:"",date:localDateISO(),
   time:new Date().toTimeString().slice(0,5),
   pair:"BTC/USDT",direction:"long",
   entry:"",stopLoss:"",takeProfit:"",exit:"",
@@ -2337,9 +2380,16 @@ function canMergeSource(src,accounts){
   if(typeof src!=="string"||src.length===0)return false;
   // v12.232: type-based — src kan account.id zijn. Merge alleen voor FTMO + manual
   // (API-exchanges hebben getConsumedSiblings voor auto-partial-detectie).
-  const ty=sourceTypeOf(src);
-  if(ty==="ftmo"||ty==="manual")return true;
-  return Array.isArray(accounts)&&accounts.some(a=>a&&(a.name===src||a.id===src)&&(a.type||"manual")==="manual");
+  // v12.233 (fase-4 regressie-fix): sourceTypeOf geeft "manual" voor ELKE onbekende source,
+  // dus ook voor een VERWIJDERD account — daarmee lekte de zombie-protect weg. Manual-type
+  // merget alleen als het account nog echt bestaat (id of legacy naam); "manual" literal
+  // en KNOWN type-strings ("ftmo") blijven altijd toegestaan.
+  if(src==="manual")return true;
+  if(KNOWN_SOURCE_TYPES.has(src.toLowerCase()))return src.toLowerCase()==="ftmo";
+  const a=Array.isArray(accounts)?accounts.find(x=>x&&(x.id===src||x.name===src)):null;
+  if(!a)return false; // zombie: account bestaat niet meer
+  const ty=a.type||"manual";
+  return ty==="ftmo"||ty==="manual";
 }
 // v12.211: human-readable label voor source — gebruikt in MergeModal copy + tooltip.
 function getSourceLabel(src,accounts){
@@ -2795,7 +2845,7 @@ function buildInsightContext(closed,goals,tradingRules){
   if(days.length){const last=new Date(days[days.length-1]).getTime();ctx.daysSinceLastTrade=isNaN(last)?0:Math.floor((now-last)/86400000)}else ctx.daysSinceLastTrade=0;
   // Best-week-in-months: current-week PnL vs the max weekly PnL in the prior 12 weeks
   const weeklyBuckets={};
-  for(const d of days){const dt=new Date(d);if(isNaN(dt))continue;const wkStart=new Date(dt);wkStart.setDate(dt.getDate()-dt.getDay());const key=wkStart.toISOString().slice(0,10);weeklyBuckets[key]=(weeklyBuckets[key]||0)+byDay[d]}
+  for(const d of days){const dt=new Date(d);if(isNaN(dt))continue;const wkStart=new Date(dt);wkStart.setDate(dt.getDate()-dt.getDay());const key=localDateISO(wkStart);weeklyBuckets[key]=(weeklyBuckets[key]||0)+byDay[d]}
   const wkKeysSorted=Object.keys(weeklyBuckets).sort();
   if(wkKeysSorted.length>=4){
     const thisWeek=weeklyBuckets[wkKeysSorted[wkKeysSorted.length-1]];
@@ -2888,16 +2938,8 @@ function resolveAccountLabel(source,config,accounts){
   const acct=(accounts||[]).find(x=>x.name===source);
   return acct?.label||"";
 }
-// v12.231: resolve het exchange-TYPE van een trade-source (account.id). Voor icoon/naam-weergave.
-// Legacy: source was zelf het type (bv. "hyperliquid") of een manual-naam → "manual".
-function resolveAccountType(source,config,accounts){
-  if(!source||source==="manual")return"manual";
-  const a=(accounts||[]).find(x=>x.id===source);
-  if(a)return a.type||"manual";
-  if(config?.exchanges?.[source])return source;        // legacy: source = exchange-type
-  if((accounts||[]).some(x=>x.name===source))return"manual"; // legacy manual-naam
-  return source;
-}
+// v12.233 (fase-4): resolveAccountType verwijderd — dode code; sourceTypeOf (registry,
+// hieronder) is sinds v12.232 de enige source→type resolver.
 
 // v12.232: module-level account-registry — gevuld door App bij elke accounts-update.
 // Nodig omdat pure helpers (calcRMultiple, netPnl, importTrades-dedup, detectPartials-dispatch)
@@ -3088,8 +3130,8 @@ function computeGoalMetric(metric,trades,period){
     case "winningDays":{const byDay={};scoped.forEach(t=>{byDay[t.date]=(byDay[t.date]||0)+netPnl(t)});return Object.values(byDay).filter(p=>p>0).length}
     case "avgR":{const rs=scoped.map(t=>calcRMultiple(t)).filter(r=>r!==null&&!isNaN(r));return rs.length?rs.reduce((s,r)=>s+r,0)/rs.length:0}
     case "grossProfit":return scoped.filter(t=>netPnl(t)>0).reduce((s,t)=>s+netPnl(t),0);
-    case "maxDD":{const sorted=[...scoped].sort((a,b)=>(a.date+(a.time||"")).localeCompare(b.date+(b.time||"")));let peak=0,dd=0,cum=0;sorted.forEach(t=>{cum+=netPnl(t);if(cum>peak)peak=cum;const d=peak-cum;if(d>dd)dd=d});return dd}
-    case "profitFactor":{const gw=scoped.filter(t=>netPnl(t)>0).reduce((s,t)=>s+netPnl(t),0);const gl=Math.abs(scoped.filter(t=>netPnl(t)<0).reduce((s,t)=>s+netPnl(t),0));return gl>0?gw/gl:(gw>0?Infinity:0)}
+    case "maxDD":{const sorted=[...scoped].sort((a,b)=>(a.date+(a.time||"")).localeCompare(b.date+(b.time||"")));return maxDrawdownOf(sorted.map(t=>netPnl(t)))}
+    case "profitFactor":{const gw=scoped.filter(t=>netPnl(t)>0).reduce((s,t)=>s+netPnl(t),0);const gl=Math.abs(scoped.filter(t=>netPnl(t)<0).reduce((s,t)=>s+netPnl(t),0));return profitFactorOf(gw,gl)}
     case "expectancy":return scoped.reduce((s,t)=>s+netPnl(t),0)/scoped.length;
     default:return 0;
   }
@@ -3334,7 +3376,7 @@ function abDueForWrite(){
   return(Date.now()-last)>=(abIntervalDays()*86400000);
 }
 async function abWriteBackup(handle,payloadString){
-  const date=new Date().toISOString().split("T")[0];
+  const date=localDateISO();
   const fname=`syncjournal-backup-${date}.json`;
   const fh=await handle.getFileHandle(fname,{create:true});
   const w=await fh.createWritable();
@@ -4281,10 +4323,9 @@ function AppStatusBar({trades,accounts,config,goals}){
   const totalPnl=closed.reduce((s,t)=>s+netPnl(t),0);
   // Drawdown: max peak-to-trough over equity curve
   const byDay={};closed.forEach(t=>{byDay[t.date]=(byDay[t.date]||0)+netPnl(t);});
-  let cum=0,peak=0,maxDd=0;
-  Object.keys(byDay).sort().forEach(d=>{cum+=byDay[d];if(cum>peak)peak=cum;const dd=peak-cum;if(dd>maxDd)maxDd=dd;});
+  const maxDd=maxDrawdownOf(Object.keys(byDay).sort().map(d=>byDay[d]));
   // Risk vandaag: som van riskPct van trades vandaag
-  const today=new Date().toISOString().split("T")[0];
+  const today=localDateISO();
   const todayRisk=closed.filter(t=>t.date===today).reduce((s,t)=>s+(parseFloat(t.riskPct)||0),0);
   // Open posities
   const opens=(trades||[]).filter(t=>t.status==="open").length;
@@ -4864,7 +4905,7 @@ function Dashboard({trades,config,accounts,storageUsage,setFilters,setTab}){
   const avgL=losses.length?Math.abs(losses.reduce((s,t)=>s+netPnl(t),0)/losses.length):0;
   const grossW=wins.reduce((s,t)=>s+netPnl(t),0);
   const grossL=Math.abs(losses.reduce((s,t)=>s+netPnl(t),0));
-  const pf=grossL>0?grossW/grossL:(wins.length>0?Infinity:0);
+  const pf=profitFactorOf(grossW,grossL);
   const rr=avgL>0?(avgW/avgL):(avgW>0?Infinity:0);
   const rated=trades.filter(t=>t.rating>0);
   const avgR=rated.length?rated.reduce((s,t)=>s+t.rating,0)/rated.length:0;
@@ -5052,7 +5093,7 @@ function Dashboard({trades,config,accounts,storageUsage,setFilters,setTab}){
           const d=sessPerf[s];const wr=d.n>0?d.w/d.n*100:0;
           const grossW=closed.filter(t=>getSessionTags(t.date,t.time).includes(s)&&netPnl(t)>0).reduce((a,t)=>a+netPnl(t),0);
           const grossL=Math.abs(closed.filter(t=>getSessionTags(t.date,t.time).includes(s)&&netPnl(t)<0).reduce((a,t)=>a+netPnl(t),0));
-          const profitFactor=grossL>0?grossW/grossL:(grossW>0?Infinity:0);
+          const profitFactor=profitFactorOf(grossW,grossL);
           const w=Math.abs(d.pnl)/sessMax*100;const pos=d.pnl>=0;
           const c=SESSION_COLORS[s]||SESSION_COLORS["US Late"];
           return(<div key={s} style={{display:"flex",alignItems:"center",gap:"12px",marginBottom:"8px"}}>
@@ -5332,8 +5373,8 @@ function TradeList({trades,onEdit,onDelete,onQuickTag,onBulkDelete,onBulkTag,onB
   };
 
   const bulkDelete=()=>{if(!confirm(`${selCount} trades verwijderen?`))return;onBulkDelete([...selected]);setSelected(new Set());showToast(`${selCount} trades verwijderd`)};
-  const bulkExportJSON=()=>{const data=sorted.filter(t=>selected.has(t.id));const blob=new Blob([JSON.stringify({version:7,exportDate:new Date().toISOString(),trades:data},null,2)],{type:"application/json"});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download=`trades-${data.length}-${new Date().toISOString().split("T")[0]}.json`;a.click();URL.revokeObjectURL(url);showToast(`${data.length} trades geëxporteerd`)};
-  const bulkExportCSV=()=>{const data=sorted.filter(t=>selected.has(t.id));const headers=["date","time","pair","direction","entry","exit","pnl","fees","leverage","source","setupTags","emotionTags","mistakeTags","highestPrice","lowestPrice"];const rows=data.map(t=>headers.map(h=>Array.isArray(t[h])?(t[h]||[]).join(";"):String(t[h]||"")).join(","));const csv=[headers.join(","),...rows].join("\n");const blob=new Blob([csv],{type:"text/csv"});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download=`trades-${data.length}-${new Date().toISOString().split("T")[0]}.csv`;a.click();URL.revokeObjectURL(url);showToast(`${data.length} trades geëxporteerd (CSV)`)};
+  const bulkExportJSON=()=>{const data=sorted.filter(t=>selected.has(t.id));const blob=new Blob([JSON.stringify({version:7,exportDate:new Date().toISOString(),trades:data},null,2)],{type:"application/json"});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download=`trades-${data.length}-${localDateISO()}.json`;a.click();URL.revokeObjectURL(url);showToast(`${data.length} trades geëxporteerd`)};
+  const bulkExportCSV=()=>{const data=sorted.filter(t=>selected.has(t.id));const headers=["date","time","pair","direction","entry","exit","pnl","fees","leverage","source","setupTags","emotionTags","mistakeTags","highestPrice","lowestPrice"];const rows=data.map(t=>headers.map(h=>Array.isArray(t[h])?(t[h]||[]).join(";"):String(t[h]||"")).join(","));const csv=[headers.join(","),...rows].join("\n");const blob=new Blob([csv],{type:"text/csv"});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download=`trades-${data.length}-${localDateISO()}.csv`;a.click();URL.revokeObjectURL(url);showToast(`${data.length} trades geëxporteerd (CSV)`)};
 
   const gt=(k)=>tagConfig?.[k]||DEFAULT_TAGS[k]||[];
 
@@ -6184,8 +6225,8 @@ function trPeriodLabel(period,w){if(period==="week"){const wn=Math.ceil(((w.e-ne
 
 function TradeReport({trades,config,accounts,onClose}){
   const [period,setPeriod]=useState(()=>{try{return localStorage.getItem("tj_report_period")||"quarter";}catch{return"quarter";}});
-  const [customFrom,setCustomFrom]=useState(()=>{const d=new Date();d.setDate(d.getDate()-89);return d.toISOString().slice(0,10);});
-  const [customTo,setCustomTo]=useState(()=>new Date().toISOString().slice(0,10));
+  const [customFrom,setCustomFrom]=useState(()=>{const d=new Date();d.setDate(d.getDate()-89);return localDateISO(d);});
+  const [customTo,setCustomTo]=useState(()=>localDateISO());
   const [togglePop,setTogglePop]=useState(false);
   const [sect,setSect]=useState({exec:true,perf:true,risk:true,stats:true,seg:true,time:true,proc:true,refl:true,find:true,gloss:true});
   const [refl,setRefl]=useState({1:"",2:"",3:"",4:"",5:""});
@@ -6208,7 +6249,7 @@ function TradeReport({trades,config,accounts,onClose}){
     const grossL=Math.abs(losses.reduce((s,t)=>s+netPnl(t),0));
     const net=grossW-grossL;
     const winRate=closed.length?wins.length/closed.length*100:0;
-    const pf=grossL>0?grossW/grossL:(grossW>0?Infinity:0);
+    const pf=profitFactorOf(grossW,grossL);
     const avgWin=wins.length?grossW/wins.length:0;
     const avgLoss=losses.length?grossL/losses.length:0;
     const expMoney=closed.length?(grossW-grossL)/closed.length:0;
@@ -6227,8 +6268,10 @@ function TradeReport({trades,config,accounts,onClose}){
     const bySetup={};closed.forEach(t=>{const setups=trGetSetups(t);const k=setups.length?setups[0]:"(geen setup)";if(!bySetup[k])bySetup[k]={n:0,w:0,pnl:0,rs:[]};bySetup[k].n++;bySetup[k].pnl+=netPnl(t);if(netPnl(t)>0)bySetup[k].w++;const r=trGetR(t);if(r!==null&&isFinite(r))bySetup[k].rs.push(r);});
     const setups=Object.entries(bySetup).map(([k,v])=>({setup:k,n:v.n,wr:v.n?v.w/v.n*100:0,pnl:v.pnl,avgR:v.rs.length?v.rs.reduce((s,r)=>s+r,0)/v.rs.length:null})).sort((a,b)=>b.pnl-a.pnl);
     // Per-exchange (account)
-    const accMap={};(accounts||[]).forEach(a=>{accMap[a.id]=a.name||a.exchange||a.id;});
-    const byEx={};closed.forEach(t=>{const k=accMap[t.accountId]||t.exchange||"Manual";if(!byEx[k])byEx[k]={n:0,pnl:0,fees:0};byEx[k].n++;byEx[k].pnl+=netPnl(t);byEx[k].fees+=parseFloat(t.fees)||0;});
+    // v12.233 (fase-2 audit): trades hebben `source` (account.id of legacy type) — de oude
+    // lookup op t.accountId/t.exchange bestond niet op het trade-schema, waardoor élke trade
+    // als "Manual" werd gebucket en de per-account tabel in het report nutteloos was.
+    const byEx={};closed.forEach(t=>{const k=sourceDisplayName(t.source||"manual");if(!byEx[k])byEx[k]={n:0,pnl:0,fees:0};byEx[k].n++;byEx[k].pnl+=netPnl(t);byEx[k].fees+=parseFloat(t.fees)||0;});
     const exchanges=Object.entries(byEx).map(([k,v])=>({ex:k,n:v.n,pnl:v.pnl,fees:v.fees})).sort((a,b)=>b.pnl-a.pnl);
     // R-distribution buckets [-3,-2,-1,0,+1,+2,+3,+4,+5]
     const bins=[0,0,0,0,0,0,0,0,0];
@@ -6239,11 +6282,11 @@ function TradeReport({trades,config,accounts,onClose}){
     const topLosers=sortedByPnl.slice(-5).reverse();
     // Calendar heatmap (per day of period)
     const dayPnl={};closed.forEach(t=>{const d=t.exitDate||t.date;if(d){dayPnl[d]=(dayPnl[d]||0)+netPnl(t);}});
-    const days=[];const cur=new Date(win.s);while(cur<=win.e){const k=cur.toISOString().slice(0,10);days.push({date:k,pnl:dayPnl[k]||0,had:dayPnl[k]!==undefined});cur.setDate(cur.getDate()+1);}
+    const days=[];const cur=new Date(win.s);while(cur<=win.e){const k=localDateISO(cur);days.push({date:k,pnl:dayPnl[k]||0,had:dayPnl[k]!==undefined});cur.setDate(cur.getDate()+1);}
     // Per weekday
     const wkLabels=["Zondag","Maandag","Dinsdag","Woensdag","Donderdag","Vrijdag","Zaterdag"];
     const byWk=Array.from({length:7},()=>({n:0,w:0,pnl:0,sessions:new Set()}));
-    closed.forEach(t=>{const d=new Date(t.exitDate||t.date||0);if(isNaN(d))return;const w=d.getDay();byWk[w].n++;byWk[w].pnl+=netPnl(t);byWk[w].sessions.add(d.toISOString().slice(0,10));if(netPnl(t)>0)byWk[w].w++;});
+    closed.forEach(t=>{const d=new Date(t.exitDate||t.date||0);if(isNaN(d))return;const w=d.getDay();byWk[w].n++;byWk[w].pnl+=netPnl(t);byWk[w].sessions.add(localDateISO(d));if(netPnl(t)>0)byWk[w].w++;});
     const wkRows=byWk.map((v,i)=>({day:wkLabels[i],sessions:v.sessions.size,wins:v.w,pnl:v.pnl,avg:v.sessions.size?v.pnl/v.sessions.size:0}));
     // Period-buckets for fig 2 (week=days, month=weeks, quarter=months, year=months, custom=auto)
     let buckets=[];const totalDays=Math.round((win.e-win.s)/86400000)+1;
@@ -6314,7 +6357,7 @@ function TradeReport({trades,config,accounts,onClose}){
   useEffect(()=>{const charts=[eqChart,ddChart,barChart,sparkChart];const resize=()=>{charts.forEach(c=>{try{c.current&&c.current.resize();c.current&&c.current.update();}catch{}});};window.addEventListener("beforeprint",resize);window.addEventListener("afterprint",resize);return()=>{window.removeEventListener("beforeprint",resize);window.removeEventListener("afterprint",resize);};},[]);
   // Set document.title to a meaningful filename for "Save as PDF" — Chrome uses page title as default filename.
   // Restore original on unmount/close.
-  useEffect(()=>{if(!onClose)return;const original=document.title;const periodLbl=trPeriodLabel(period,trWindow(period,customFrom,customTo)).replace(/\s+/g," ").trim();const dateStr=new Date().toISOString().slice(0,10);document.title="Rapport · "+periodLbl+" · "+dateStr;return()=>{document.title=original;};},[onClose,period,customFrom,customTo]);
+  useEffect(()=>{if(!onClose)return;const original=document.title;const periodLbl=trPeriodLabel(period,trWindow(period,customFrom,customTo)).replace(/\s+/g," ").trim();const dateStr=localDateISO();document.title="Rapport · "+periodLbl+" · "+dateStr;return()=>{document.title=original;};},[onClose,period,customFrom,customTo]);
 
   return(<div className={"tr-wrap"+(onClose?" tr-modal":"")}>
     <style dangerouslySetInnerHTML={{__html:TR_STYLE}}/>
@@ -7891,8 +7934,8 @@ function FilterBar({trades,allTrades,filters,setFilters,config,accounts}){
   const clearAll=()=>setFilters({source:"all",pair:"all",quote:"all",direction:"all",status:"all",dateFrom:"",dateTo:"",setupTags:[],confirmationTags:[],emotionTags:[],mistakeTags:[],timeframeTags:[],sessionTags:[],dayOfWeek:[],tradeIds:[],leverage:"all",result:"all",alignmentPattern:"all"});
   // Quick-filter pill helpers
   const qPill=(label,field,value)=>{const active=filters[field]===value;return(<button key={field+value} onClick={()=>setFilters(p=>({...p,[field]:active?"all":value}))} className={"pill"+(active?" active":"")}>{label}</button>)};
-  const qDate=(label,from)=>{const today=new Date().toISOString().split("T")[0];const active=filters.dateFrom===from&&filters.dateTo===today;return(<button key={label} onClick={()=>setFilters(p=>active?{...p,dateFrom:"",dateTo:""}:{...p,dateFrom:from,dateTo:today})} className={"pill"+(active?" active":"")}>{label}</button>)};
-  const today=new Date().toISOString().split("T")[0];
+  const qDate=(label,from)=>{const today=localDateISO();const active=filters.dateFrom===from&&filters.dateTo===today;return(<button key={label} onClick={()=>setFilters(p=>active?{...p,dateFrom:"",dateTo:""}:{...p,dateFrom:from,dateTo:today})} className={"pill"+(active?" active":"")}>{label}</button>)};
+  const today=localDateISO();
   const day=new Date();const startWeek=new Date(day);startWeek.setDate(day.getDate()-((day.getDay()+6)%7));
   const startMonth=new Date(day.getFullYear(),day.getMonth(),1);
   // Account labels for quick-filter pills
@@ -7908,8 +7951,8 @@ function FilterBar({trades,allTrades,filters,setFilters,config,accounts}){
         <span style={{fontSize:"10px",color:"var(--text5)",flexShrink:0}}>t/m</span>
         <input type="date" aria-label="Filter datum tot en met" value={filters.dateTo||""} onChange={e=>setFilters(p=>({...p,dateTo:e.target.value}))} style={{padding:"5px 8px",borderRadius:"999px",border:"1px solid var(--border3)",background:"rgba(255,255,255,.03)",color:"var(--text)",fontSize:"11px",fontFamily:"var(--mono)",outline:"none",width:"125px",flexShrink:0}}/>
         {qDate("Vandaag",today)}
-        {qDate("Week",startWeek.toISOString().split("T")[0])}
-        {qDate("Maand",startMonth.toISOString().split("T")[0])}
+        {qDate("Week",localDateISO(startWeek))}
+        {qDate("Maand",localDateISO(startMonth))}
         <span style={{width:"1px",height:"20px",background:"var(--border1)",flexShrink:0}}/>
         {qPill("Long","direction","long")}
         {qPill("Short","direction","short")}
@@ -7931,13 +7974,13 @@ function FilterBar({trades,allTrades,filters,setFilters,config,accounts}){
     </div>
     {expanded&&<div style={{marginTop:"12px",display:"grid",gap:"10px"}}>
       <div style={{display:"flex",alignItems:"center",gap:"8px",flexWrap:"wrap"}}><span style={{fontSize:"10px",color:"var(--text4)",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em",minWidth:"65px"}}>Datum</span><input type="date" aria-label="Filter datum vanaf" value={filters.dateFrom||""} onChange={e=>setFilters(p=>({...p,dateFrom:e.target.value}))} style={{...iStyle,width:"140px",padding:"5px 8px",fontSize:"11px"}}/><span style={{fontSize:"11px",color:"var(--text4)"}}>t/m</span><input type="date" aria-label="Filter datum tot en met" value={filters.dateTo||""} onChange={e=>setFilters(p=>({...p,dateTo:e.target.value}))} style={{...iStyle,width:"140px",padding:"5px 8px",fontSize:"11px"}}/>
-        {(()=>{const today=new Date().toISOString().split("T")[0];const mk=(label,from)=>{const active=filters.dateFrom===from&&filters.dateTo===today;return(<button key={label} onClick={()=>setFilters(p=>({...p,dateFrom:from,dateTo:today}))} style={{padding:"4px 10px",borderRadius:"5px",fontSize:"10px",fontWeight:600,border:`1px solid ${active?"var(--gold)":"var(--border3)"}`,background:active?"var(--gold-dim)":"transparent",color:active?"var(--gold)":"var(--text4)",cursor:"pointer",fontFamily:"inherit"}}>{label}</button>);};
+        {(()=>{const today=localDateISO();const mk=(label,from)=>{const active=filters.dateFrom===from&&filters.dateTo===today;return(<button key={label} onClick={()=>setFilters(p=>({...p,dateFrom:from,dateTo:today}))} style={{padding:"4px 10px",borderRadius:"5px",fontSize:"10px",fontWeight:600,border:`1px solid ${active?"var(--gold)":"var(--border3)"}`,background:active?"var(--gold-dim)":"transparent",color:active?"var(--gold)":"var(--text4)",cursor:"pointer",fontFamily:"inherit"}}>{label}</button>);};
           const day=new Date();const startWeek=new Date(day);startWeek.setDate(day.getDate()-((day.getDay()+6)%7));const startMonth=new Date(day.getFullYear(),day.getMonth(),1);
           const allActive=!filters.dateFrom&&!filters.dateTo;
           return(<>
             {mk("Vandaag",today)}
-            {mk("Deze week",startWeek.toISOString().split("T")[0])}
-            {mk("Deze maand",startMonth.toISOString().split("T")[0])}
+            {mk("Deze week",localDateISO(startWeek))}
+            {mk("Deze maand",localDateISO(startMonth))}
             <button onClick={()=>setFilters(p=>({...p,dateFrom:"",dateTo:""}))} style={{padding:"4px 10px",borderRadius:"5px",fontSize:"10px",fontWeight:600,border:`1px solid ${allActive?"var(--gold)":"var(--border3)"}`,background:allActive?"var(--gold-dim)":"transparent",color:allActive?"var(--gold)":"var(--text4)",cursor:"pointer",fontFamily:"inherit"}}>Alles</button>
           </>);})()}
       </div>
@@ -8085,7 +8128,7 @@ function Calendar({trades,setFilters,setTab,onEdit,dailyNotes,setDailyNotes,trad
       const dt=new Date(year,0,idx+1);
       if(dt.getFullYear()!==year){heatmapCells.push(null);continue;}
       if(d===0&&dt.getMonth()!==prevMo){heatmapMonths.push({w,name:monthsAbbr[dt.getMonth()]});prevMo=dt.getMonth();}
-      const iso=dt.toISOString().split("T")[0];
+      const iso=localDateISO(dt);
       heatmapCells.push({date:iso,...dayMap[iso]});
     }
   }
@@ -8098,11 +8141,11 @@ function Calendar({trades,setFilters,setTab,onEdit,dailyNotes,setDailyNotes,trad
   const lastDay=new Date(year,month+1,0).getDate();
   const monthEntries=Object.entries(dayMap).filter(([d])=>d.startsWith(`${year}-${String(month+1).padStart(2,"0")}`));
   const bestOfMonth=monthEntries.reduce((a,b)=>b[1].pnl>(a?.[1]?.pnl??-Infinity)?b:a,null);
-  const todayISO=today.toISOString().split("T")[0];
+  const todayISO=localDateISO(today);
   const weeks=[];let week=Array(sd).fill(null);
   for(let dn=1;dn<=lastDay;dn++){
     const dt=new Date(year,month,dn);
-    const iso=dt.toISOString().split("T")[0];
+    const iso=localDateISO(dt);
     week.push({day:dn,iso,info:dayMap[iso]||null,isWeekend:[5,6].includes((dt.getDay()+6)%7),isToday:iso===todayISO,isBest:bestOfMonth&&iso===bestOfMonth[0]});
     if(week.length===7){weeks.push(week);week=[];}
   }
@@ -11018,15 +11061,15 @@ function PlaybookAnalyticsView({playbooks,allTrades}){
         <span style={{fontSize:"11px",color:"var(--text4)"}}>t/m</span>
         <input type="date" aria-label="Filter datum tot en met" value={dateTo} onChange={e=>setDateTo(e.target.value)} style={{padding:"4px 6px",fontSize:"11px",borderRadius:"5px",border:"1px solid var(--border3)",background:"var(--bg2)",color:"var(--text)",fontFamily:"var(--mono)"}}/>
         {(()=>{
-          const today=new Date().toISOString().split("T")[0];
+          const today=localDateISO();
           const day=new Date();const startWeek=new Date(day);startWeek.setDate(day.getDate()-((day.getDay()+6)%7));
           const startMonth=new Date(day.getFullYear(),day.getMonth(),1);
           const mk=(label,from)=>{const active=dateFrom===from&&dateTo===today;return(<button key={label} onClick={()=>{setDateFrom(from);setDateTo(today)}} style={{padding:"4px 10px",borderRadius:"5px",fontSize:"10px",fontWeight:600,border:`1px solid ${active?"var(--gold)":"var(--border3)"}`,background:active?"var(--gold-dim)":"transparent",color:active?"var(--gold)":"var(--text4)",cursor:"pointer",fontFamily:"inherit"}}>{label}</button>);};
           const allActive=!dateFrom&&!dateTo;
           return(<>
             {mk("Vandaag",today)}
-            {mk("Deze week",startWeek.toISOString().split("T")[0])}
-            {mk("Deze maand",startMonth.toISOString().split("T")[0])}
+            {mk("Deze week",localDateISO(startWeek))}
+            {mk("Deze maand",localDateISO(startMonth))}
             <button onClick={()=>{setDateFrom("");setDateTo("")}} style={{padding:"4px 10px",borderRadius:"5px",fontSize:"10px",fontWeight:600,border:`1px solid ${allActive?"var(--gold)":"var(--border3)"}`,background:allActive?"var(--gold-dim)":"transparent",color:allActive?"var(--gold)":"var(--text4)",cursor:"pointer",fontFamily:"inherit"}}>Alles</button>
           </>);
         })()}
@@ -12135,7 +12178,7 @@ function Analytics({trades,tradingRules,allTrades,config,accounts,setFilters,set
   const winRate=closed.length?(winCount/(winCount+lossCount||1))*100:0;
   const grossWin=wins.reduce((s,t)=>s+netPnl(t),0);
   const grossLoss=Math.abs(losses.reduce((s,t)=>s+netPnl(t),0));
-  const profitFactor=grossLoss>0?grossWin/grossLoss:(grossWin>0?Infinity:0);
+  const profitFactor=profitFactorOf(grossWin,grossLoss);
   // Plan-adherence: % trades with thesis + sl + post-notes filled
   const planAdh=closed.length?(closed.filter(t=>(t.entryNote||"").trim()&&(t.stopLoss||"")!==""&&(t.notes||"").trim()).length/closed.length)*100:0;
   // SQN (Tharp): (E / σR) × √n. Only meaningful for n≥30.
@@ -12150,8 +12193,7 @@ function Analytics({trades,tradingRules,allTrades,config,accounts,setFilters,set
   // Max DD from sorted-by-date equity curve
   const ddByDate={};closed.forEach(t=>{if(!t.date)return;ddByDate[t.date]=(ddByDate[t.date]||0)+netPnl(t)});
   const sortedDates=Object.keys(ddByDate).sort();
-  let cum=0,peak=0,maxDD=0;
-  for(const d of sortedDates){cum+=ddByDate[d];if(cum>peak)peak=cum;const dd=cum-peak;if(dd<maxDD)maxDD=dd}
+  const maxDD=-maxDrawdownOf(sortedDates.map(d=>ddByDate[d])); // negatieve conventie van dit scherm behouden
 
   // Long vs Short
   const longs=closed.filter(t=>t.direction==="long");const shorts=closed.filter(t=>t.direction==="short");
@@ -12937,8 +12979,7 @@ function Analytics({trades,tradingRules,allTrades,config,accounts,setFilters,set
         const concStatus=concPct<=40?"✓ Topstep-compliant":concPct<=50?"⚠ Combine-only (≤50%)":"✗ Topstep-rule schending";
         // Daily DD-tracker
         const dayKeys=Object.keys(byDay).sort();
-        let cum=0,peak=0,maxDD=0;
-        dayKeys.forEach(k=>{cum+=byDay[k];if(cum>peak)peak=cum;const dd=cum-peak;if(dd<maxDD)maxDD=dd;});
+        const maxDD=-maxDrawdownOf(dayKeys.map(k=>byDay[k])); // negatieve conventie van dit widget behouden
         content=<div style={sectStyle}>
           {widgetHead("🏛️ Propfirm compliance","Topstep / FTMO / Apex regels","Single-day concentratie + max drawdown. Topstep ≤40%, Apex ≤30%, FTMO geen concentration-rule maar wel daily DD-limiet.")}
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"16px",marginBottom:"14px"}}>
@@ -13269,12 +13310,12 @@ function DashboardPremium({trades,config,accounts,tradingRules,dailyNotes,goals,
   const btc=useBtcTicker();
   const hour=new Date().getHours();
   const greeting=hour<12?"Goedemorgen":hour<18?"Goedemiddag":"Goedenavond";
-  const today=new Date().toISOString().split("T")[0];
+  const today=localDateISO();
   const wins=closed.filter(t=>netPnl(t)>0);const losses=closed.filter(t=>netPnl(t)<0);
   const totalPnl=closed.reduce((s,t)=>s+netPnl(t),0);
   const wr=closed.length?wins.length/closed.length*100:0;
   const gw=wins.reduce((s,t)=>s+netPnl(t),0);const gl=Math.abs(losses.reduce((s,t)=>s+netPnl(t),0));
-  const pf=gl>0?gw/gl:(wins.length>0?Infinity:0);
+  const pf=profitFactorOf(gw,gl);
   const avgWin=wins.length?gw/wins.length:0;
   const avgLoss=losses.length?gl/losses.length:0;
   const rr=avgLoss>0?avgWin/avgLoss:0;
@@ -13706,7 +13747,7 @@ function TradingRulesPage({tradingRules,setTradingRules}){
 
 // ── Trading Rules compliance widget (inklapbaar + handmatige override) ──
 function TradingRulesWidget({rules,trades}){
-  const today=new Date().toISOString().split("T")[0];
+  const today=localDateISO();
   const[collapsed,setCollapsed]=useState(()=>{try{return localStorage.getItem("tj_rules_collapsed")==="1"}catch{return false}});
   const[manual,setManual]=useState(()=>{try{return JSON.parse(localStorage.getItem("tj_rules_manual")||"{}")}catch{return{}}});
   useEffect(()=>{try{localStorage.setItem("tj_rules_collapsed",collapsed?"1":"0")}catch{}},[collapsed]);
@@ -13909,8 +13950,8 @@ function ReviewDashboard({trades}){
   const byDay={};closed.forEach(t=>{if(!byDay[t.date])byDay[t.date]=[];byDay[t.date].push(t)});
   const dailyPnl=Object.entries(byDay).sort((a,b)=>a[0].localeCompare(b[0])).map(([d,ts])=>({date:d,pnl:ts.reduce((s,t)=>s+netPnl(t),0),n:ts.length}));
   let cum=0;const eq=dailyPnl.map(d=>{cum+=d.pnl;return{...d,cum}});
-  // Max DD
-  let peak=-Infinity,maxDD=0;eq.forEach(d=>{if(d.cum>peak)peak=d.cum;const dd=peak-d.cum;if(dd>maxDD)maxDD=dd});
+  // Max DD — v12.233: gedeelde helper (fase-2 fixte hier al peak=-Infinity → 0).
+  const maxDD=maxDrawdownOf(dailyPnl.map(d=>d.pnl));
   // Best/worst
   const bestDay=dailyPnl.reduce((a,b)=>b.pnl>a.pnl?b:a,{pnl:-Infinity,date:""});const worstDay=dailyPnl.reduce((a,b)=>b.pnl<a.pnl?b:a,{pnl:Infinity,date:""});
   const bestTrade=closed.reduce((a,b)=>netPnl(b)>netPnl(a)?b:a,{pnl:"-9999"});const worstTrade=closed.reduce((a,b)=>netPnl(b)<netPnl(a)?b:a,{pnl:"9999"});
@@ -14097,7 +14138,7 @@ function promptCapitalTx({type,label,currentCapital,accountLabel}){
   }
   const note=prompt("Notitie (optioneel):")||"";
   return{
-    transaction:{id:uid(),type,amount:amount.toString(),date:new Date().toISOString().split("T")[0],note},
+    transaction:{id:uid(),type,amount:amount.toString(),date:localDateISO(),note},
     newCapital:newCap,
   };
 }
@@ -14430,8 +14471,13 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,set
     r.onload=ev=>{
       try{
         const d=JSON.parse(ev.target.result);
-        const trList=d.trades||d;
-        if(!Array.isArray(trList)){showToast("Ongeldig formaat","error");return}
+        const rawList=d.trades||d;
+        if(!Array.isArray(rawList)){showToast("Ongeldig formaat","error");return}
+        // v12.233 (fase-3 audit): rommel-items eruit vóór ze als lege trades binnenkomen
+        const san=sanitizeBackupTrades(rawList);
+        const trList=san.trades;
+        if(!trList.length){showToast("Geen geldige trades in dit bestand — niets geïmporteerd","error");e.target.value="";return}
+        if(san.skipped)showToast(`${san.skipped} ongeldige regel${san.skipped===1?"":"s"} overgeslagen`,"info");
         // v12.153: soft recovery — voorkom destructive overwrite
         const currentCount=(trades||[]).length;
         const newCount=trList.length;
@@ -15667,7 +15713,7 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,set
               <span style={{color:"var(--text4)",fontSize:"11px"}}>Permissions: alleen <strong>Read</strong> aanzetten. Geen Trade, geen Withdrawal.</span>
             </div>}
             {!ExchangeAPI[ex].csvOnly&&!ExchangeAPI[ex].walletOnly&&[["apiKey","API Key","text"],["apiSecret","API Secret","password"],...(ExchangeAPI[ex].needsPassphrase?[["passphrase","Passphrase","password"]]:[])] .map(([field,label,type])=>(<div key={field}><div style={{fontSize:"11px",color:"var(--text3)",marginBottom:"6px",fontWeight:500,textTransform:"uppercase",letterSpacing:"0.06em"}}>{label}</div><input type={type} value={exCfg()[field]||""} onChange={e=>setField(field,e.target.value)} placeholder={field==="apiKey"?"Plak je API key...":field==="passphrase"?"Passphrase...":"Plak je API secret..."} style={{...iStyle,fontFamily:field!=="passphrase"?"var(--mono)":"var(--font)"}}/></div>))}
-            {!ExchangeAPI[ex].csvOnly&&<div><div style={{fontSize:"11px",color:"var(--text3)",marginBottom:"6px",fontWeight:500,textTransform:"uppercase",letterSpacing:"0.06em"}}>Sync vanaf</div><input type="date" aria-label="Sync trades vanaf datum" value={exCfg().syncFrom||new Date(new Date().getFullYear(),new Date().getMonth(),1).toISOString().split("T")[0]} onChange={e=>{
+            {!ExchangeAPI[ex].csvOnly&&<div><div style={{fontSize:"11px",color:"var(--text3)",marginBottom:"6px",fontWeight:500,textTransform:"uppercase",letterSpacing:"0.06em"}}>Sync vanaf</div><input type="date" aria-label="Sync trades vanaf datum" value={exCfg().syncFrom||localDateISO(new Date(new Date().getFullYear(),new Date().getMonth(),1))} onChange={e=>{
               setField("syncFrom",e.target.value);
               // v12.125: reset incremental-cursor zodat Refresh-knop deze nieuwe syncFrom respecteert.
               // Refresh gebruikt Math.max(configuredStart, lastSync-1u) — als lastSync recenter is dan
@@ -17488,8 +17534,8 @@ function buildWeeklyStats(trades,daysBack){
   const days=Number(daysBack)||7;
   const now=Date.now();
   const cutoff=now-days*86400000;
-  const periodStart=new Date(cutoff).toISOString().split("T")[0];
-  const periodEnd=new Date(now).toISOString().split("T")[0];
+  const periodStart=localDateISO(new Date(cutoff));
+  const periodEnd=localDateISO(new Date(now));
   const inWindow=(trades||[]).filter(t=>{
     if(!t)return false;
     const dt=t.exitDate||t.entryDate||t.date;
@@ -17514,7 +17560,7 @@ function buildWeeklyStats(trades,daysBack){
   });
   const winRate=inWindow.length?(wins/inWindow.length)*100:0;
   const avgR=withR?totalR/withR:null;
-  const profitFactor=lossSum>0?winSum/lossSum:(winSum>0?Infinity:0);
+  const profitFactor=profitFactorOf(winSum,lossSum);
   const topSymbols=Object.entries(symbols).sort((a,b)=>b[1]-a[1]).slice(0,5);
   // Top 5 trades by abs(pnl) — geven AI context voor best/worst
   const samples=inWindow.slice().sort((a,b)=>Math.abs(Number(b.pnl)||0)-Math.abs(Number(a.pnl)||0)).slice(0,8).map(t=>({
@@ -19777,20 +19823,34 @@ function App(){
       // Only offer recovery if the draft has actual content (not a blank freshly-opened form)
       const t=parsed.trade||{};
       const hasContent=(t.entry||t.exit||t.pnl||t.notes||t.entryNote||(t.setupTags||[]).length||(t.links||[]).length||t.screenshot||(t.screenshots||[]).length>0);
-      if(hasContent)setPendingDraft({trade:t,savedAt:parsed.savedAt});
+      // v12.233 (fase-3 audit): draft door normalizeTrade + id-garantie halen vóór restore —
+      // een draft zonder id kon bij opslaan een trade zonder id opleveren (dedup kapot),
+      // en ongenormaliseerde velden ("2255.5805555555557") kwamen rauw de journal in.
+      if(hasContent)setPendingDraft({trade:normalizeTrade({...EMPTY_TRADE,...t,id:t.id||uid()}),savedAt:parsed.savedAt});
       else localStorage.removeItem("tj_trade_draft");
     }catch(err){}
   },[]);
 
   const showToast=(msg,type="success",data=null)=>{setToast({msg,type,data,id:Date.now()});setTimeout(()=>setToast(null),5000)};
 
-  const newEmptyTrade=()=>({...EMPTY_TRADE,id:uid(),date:new Date().toISOString().split("T")[0],time:new Date().toTimeString().slice(0,5)});
+  const newEmptyTrade=()=>({...EMPTY_TRADE,id:uid(),date:localDateISO(),time:localTimeHM()});
 
   // v9: IndexedDB als primaire opslag (onbeperkt), localStorage als fallback
+  // v12.233 (fase-3 audit): stil-falende opslag is dataverlies-risico — waarschuw de user
+  // één keer (geen toast-spam bij elke trades-wijziging) zodra IndexedDB-save faalt.
+  const storageFailWarnedRef=React.useRef(false);
   useEffect(()=>{
     if(!tradesLoaded)return;
     idbSaveAllTrades(trades).then(function(ok){
-      if(!ok)console.warn("IndexedDB save mislukt, val terug op localStorage");
+      if(!ok){
+        console.warn("IndexedDB save mislukt, val terug op localStorage");
+        if(!storageFailWarnedRef.current){
+          storageFailWarnedRef.current=true;
+          showToast("⚠ Opslaan in de browser-database mislukt — maak nu een backup via Instellingen → Backup","error");
+        }
+      }else{
+        storageFailWarnedRef.current=false;
+      }
     });
     // Probeer ook localStorage als backup (faalt stil bij vol)
     try{
@@ -19913,7 +19973,10 @@ function App(){
     // v12.210: normalizeTrade ook bij save zodat user-input met floating-point ruis
     // ("2255.5805555555557") meteen wordt geschoond, niet pas bij volgende app-load.
     enriched=normalizeTrade(enriched);
-    setTrades(p=>{if(isNew){return[enriched,...p]}else{return p.map(t=>t.id===enriched.id?enriched:t)}});
+    // v12.233 (fase-3 audit): idempotent op id BINNEN de updater. `isNew` wordt buiten de
+    // updater berekend op een mogelijk stale `trades`-closure — bij dubbel-klik op Opslaan
+    // voegden beide clicks dezelfde trade toe (2× zelfde id in state).
+    setTrades(p=>{const exists=p.some(t=>t.id===enriched.id);return exists?p.map(t=>t.id===enriched.id?enriched:t):[enriched,...p]});
     setEditTrade(null);setNewTrade(null);
     // Draft was saved successfully; clear persisted draft so we don't prompt to restore it next session
     if(isNew){try{localStorage.removeItem("tj_trade_draft")}catch(err){}}
@@ -20445,8 +20508,13 @@ function App(){
   };
 
   const handleDrop=useCallback((e)=>{e.preventDefault();setImportDragOver(false);const f=e.dataTransfer.files[0];if(!f||!f.name.endsWith(".json"))return;const r=new FileReader();r.onload=ev=>{try{
-    const d=JSON.parse(ev.target.result);const trList=d.trades||d;
-    if(!Array.isArray(trList)){showToast("Ongeldig formaat","error");return}
+    const d=JSON.parse(ev.target.result);const rawList=d.trades||d;
+    if(!Array.isArray(rawList)){showToast("Ongeldig formaat","error");return}
+    // v12.233 (fase-3 audit): rommel-items eruit vóór ze als lege trades binnenkomen
+    const san=sanitizeBackupTrades(rawList);
+    const trList=san.trades;
+    if(!trList.length){showToast("Geen geldige trades in dit bestand — niets geïmporteerd","error");return}
+    if(san.skipped)showToast(`${san.skipped} ongeldige regel${san.skipped===1?"":"s"} overgeslagen`,"info");
     // v12.153: soft recovery — voorkom destructive overwrite van grote journal
     // met kleine backup. Drempel: huidige ≥10 én nieuwe <50% van huidige.
     const currentCount=trades.length;
@@ -20477,7 +20545,7 @@ function App(){
     const payload={version:12,schemaVersion:CURRENT_SCHEMA_VERSION,exportDate:new Date().toISOString(),trades,tagConfig,accounts,config,playbooks,tpTemplates,tpDefaults};
     const blob=new Blob([JSON.stringify(payload,null,2)],{type:"application/json"});
     const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;
-    a.download=`syncjournal-backup-${new Date().toISOString().split("T")[0]}.json`;a.click();URL.revokeObjectURL(url);
+    a.download=`syncjournal-backup-${localDateISO()}.json`;a.click();URL.revokeObjectURL(url);
     setLastBackupAt(Date.now()); // v12.153: backup-bewaker timestamp
     showToast(`Backup geëxporteerd: ${trades.length} trades, ${(accounts||[]).length} accounts`);
   };

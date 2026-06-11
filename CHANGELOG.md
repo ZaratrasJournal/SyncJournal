@@ -6,6 +6,33 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.233] — 2026-06-11
+
+Grote onderhouds-release: een volledige code-audit (4 fases) over berekeningen, data-integriteit en datums. 15 fixes — een aantal zat er al langer in en raakte cijfers die je dagelijks ziet. Alle reken-fixes zijn vastgelegd met unit-tests met handmatig narekenbare waardes.
+
+### Fixed — berekeningen
+- **R-multiple bij ontbrekende position-size** — een trade zonder size kreeg een absurde R (in de duizenden) die je gemiddelde R en playbook-stats vervuilde. Nu netjes "—".
+- **Expectancy bij break-even trades** — break-evens telden mee als verliezers, waardoor je expectancy te laag uitviel. Nu: gemiddelde netto-PnL per trade.
+- **TP-verdeling bij >50% gesloten posities** — sloot je meer dan de helft (bv. TP1 50% + TP2 25% met een runner open), dan werd de runner weggenuld en toonden de TP-percentages opgeblazen waardes. PnL was altijd correct; de verdeling nu ook.
+- **Max drawdown op het Review-scherm** onderschatte de drawdown wanneer een periode met verlies begon.
+- **Per-account tabel in het Trade-rapport** toonde alles als "Manual" — doet nu echt per account.
+- Winrate/profit-factor/drawdown worden nu overal door dezelfde gedeelde functies berekend — schermen kunnen niet meer stilletjes van elkaar afwijken.
+
+### Fixed — datums & integriteit
+- **Kalender stond één dag verschoven** — dag-PnL verscheen onder het verkeerde dagnummer en de "vandaag"-markering stond op morgen. Gold voor de jaar-heatmap én de maandkalender.
+- **Trades ná middernacht** (00:00–02:00) werden op de dag ervóór geboekt; "Vandaag/Week/Maand"-filters en dagstatistieken pakten in dat venster de verkeerde dag. Datum/tijd komt nu overal van jouw lokale klok.
+- **Exchange-imports rond middernacht** kregen een datum en tijd die niet bij elkaar hoorden (datum van gisteren, tijd van vannacht).
+- **Backup-import** accepteerde bestanden met rommel erin en maakte daar lege trades van — wordt nu gevalideerd en gerapporteerd.
+- **Opslaan in de browser-database kon stil mislukken** — je krijgt nu één duidelijke waarschuwing om een backup te maken.
+- **Dubbel-klikken op "Trade opslaan"** kon dezelfde trade twee keer toevoegen.
+- **Crash-herstel van een concept-trade** kon een trade zonder id opleveren.
+- **Trades van een verwijderd account** konden onbedoeld weer samengevoegd worden (regressie uit v12.232).
+
+### Gewijzigd
+- Versnelde test-suite en een performance-baseline met 1000 trades; aanbevelingen (o.a. paginatie van de trades-tabel) staan in REVIEW.md voor een volgende release.
+
+---
+
 ## [v12.232] — 2026-06-10
 
 Hotfix-release bovenop de multi-account update: overal waar de app nog aannam dat `trade.source` een exchange-naam was, wordt nu correct omgegaan met account-id's.
