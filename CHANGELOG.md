@@ -6,6 +6,13 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.234] — 2026-06-11
+
+### Gewijzigd
+- **Trades-pagina is fors sneller bij grote journals** *(2026-06-11)* — De tabel rendert nu de eerste 100 trades direct, met onderaan **"Toon meer (100)"** en **"Toon alles"**. Bij 1000 trades ging het openen van de Trades-tab van ~1.5–2 seconden bevriezen naar ~0.45s (gemeten). Zoeken, filteren, sorteren, selecteren en de statistieken bovenaan werken onveranderd over ál je trades — alleen het tekenen van de rijen is gepagineerd. Bij zoeken/sorteren spring je automatisch terug naar de eerste pagina. Gekozen via [demos/trades-paginatie-demo.html](demos/trades-paginatie-demo.html) (variant A), geborgd met [tests/trades-pagination.spec.js](tests/trades-pagination.spec.js).
+
+---
+
 ## [v12.233] — 2026-06-11
 
 Grote onderhouds-release: een volledige code-audit (4 fases) over berekeningen, data-integriteit en datums. 15 fixes — een aantal zat er al langer in en raakte cijfers die je dagelijks ziet. Alle reken-fixes zijn vastgelegd met unit-tests met handmatig narekenbare waardes.
