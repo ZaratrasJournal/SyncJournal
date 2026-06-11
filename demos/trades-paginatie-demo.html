@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Demo — Trades-tabel paginatie (A/B/C) · 1000 trades</title>
+<style>
+  :root{
+    --bg:#0e0f15;--bg2:#15161f;--bg3:#1a1c27;--bg4:#222533;
+    --glass:rgba(255,255,255,0.03);--border1:rgba(255,255,255,0.06);--border3:rgba(255,255,255,0.12);
+    --text:#e8e6e1;--text2:#c5c3bd;--text3:#9a988f;--text4:#6e6d66;--text5:#4a4944;
+    --gold:#C9A84C;--gold-dim:rgba(201,168,76,0.12);--green:#2eaa6f;--red:#e05555;--mono:'Consolas','JetBrains Mono',monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 'Segoe UI',system-ui,sans-serif;padding:24px}
+  h1{font-size:18px;margin:0 0 4px}
+  .sub{color:var(--text4);font-size:12px;margin-bottom:18px}
+  .variant-bar{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}
+  .vbtn{padding:10px 18px;border-radius:8px;border:1px solid var(--border3);background:transparent;color:var(--text3);cursor:pointer;font:600 13px inherit}
+  .vbtn.active{border-color:var(--gold);background:var(--gold-dim);color:var(--gold)}
+  .vbtn small{display:block;font-weight:400;font-size:10px;color:var(--text4)}
+  .statbar{display:flex;gap:18px;align-items:center;background:var(--glass);border:1px solid var(--border1);border-radius:10px;padding:10px 16px;margin-bottom:14px;font-family:var(--mono);font-size:12px;flex-wrap:wrap}
+  .statbar b{color:var(--gold)}
+  .statbar .ok{color:var(--green)} .statbar .warn{color:var(--red)}
+  input.search{width:320px;padding:8px 12px;border-radius:8px;border:1px solid var(--border3);background:var(--bg2);color:var(--text);font:13px inherit;outline:none}
+  input.search:focus{border-color:var(--gold)}
+  .tablewrap{background:var(--glass);border:1px solid var(--border1);border-radius:12px;overflow:hidden}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th{position:sticky;top:0;background:var(--bg3);color:var(--text4);font-size:10px;letter-spacing:.08em;text-transform:uppercase;text-align:left;padding:10px 12px;z-index:2}
+  td{padding:9px 12px;border-top:1px solid var(--border1);white-space:nowrap}
+  tr.row:hover td{background:rgba(255,255,255,0.025)}
+  .pair{font-weight:600}
+  .sub2{font-size:9px;color:var(--gold);font-weight:600;letter-spacing:.04em}
+  .side{padding:2px 9px;border-radius:4px;font-size:10px;font-weight:700}
+  .side.long{background:rgba(46,170,111,.12);color:var(--green)} .side.short{background:rgba(224,85,85,.12);color:var(--red)}
+  .num{font-family:var(--mono);text-align:right}
+  .pos{color:var(--green)} .neg{color:var(--red)}
+  .status{font-size:13px}
+  .loadmore{display:block;margin:14px auto;padding:11px 26px;border-radius:8px;border:1px solid var(--gold);background:var(--gold-dim);color:var(--gold);font:700 13px inherit;cursor:pointer}
+  .sentinel{height:1px}
+  .endnote{text-align:center;color:var(--text4);font-size:11px;padding:14px;font-family:var(--mono)}
+  /* C: virtualisatie */
+  #scrollC{height:640px;overflow-y:auto;position:relative}
+  #scrollAB{max-height:640px;overflow-y:auto}
+  .vheader{display:grid;grid-template-columns:110px 150px 70px 95px 95px 90px 95px 70px 60px;gap:0;background:var(--bg3);color:var(--text4);font-size:10px;letter-spacing:.08em;text-transform:uppercase;padding:10px 12px;position:sticky;top:0;z-index:2}
+  .vrow{display:grid;grid-template-columns:110px 150px 70px 95px 95px 90px 95px 70px 60px;align-items:center;padding:0 12px;border-top:1px solid var(--border1);font-size:12.5px;height:44px}
+  .vrow:hover{background:rgba(255,255,255,0.025)}
+  .hint{margin-top:12px;color:var(--text4);font-size:12px;background:var(--glass);border:1px solid var(--border1);border-radius:10px;padding:12px 16px}
+  .hint b{color:var(--text2)}
+</style>
+</head>
+<body>
+<h1>🧪 Demo — Trades-tabel met 1000 trades</h1>
+<div class="sub">Drie oplossingen voor de trage Trades-tab (nu: alle rijen ineens = 1.4–2.1s freeze). Klik, scroll en zoek in elke variant — let op het render-tijdje linksboven.</div>
+
+<div class="variant-bar">
+  <button class="vbtn" data-v="A">A · "Toon meer"-knop<small>100 per keer, knop onderaan</small></button>
+  <button class="vbtn" data-v="B">B · Infinite scroll<small>laadt automatisch bij scrollen</small></button>
+  <button class="vbtn" data-v="C">C · Virtualisatie<small>scrollbar = hele lijst, rendert alleen zichtbaar</small></button>
+</div>
+
+<div class="statbar">
+  <span>Render: <b id="renderMs">—</b></span>
+  <span>Rijen in DOM: <b id="domRows">—</b></span>
+  <span>Dataset: <b>1000</b> trades</span>
+  <input class="search" id="search" placeholder="Zoek op pair / setup / sessie… (filtert ALLE 1000, in elke variant)"/>
+  <span id="filterInfo"></span>
+</div>
+
+<div id="stage"></div>
+
+<div class="hint" id="hintBox"></div>
+
+<script>
+// ── 1000 deterministische demo-trades ───────────────────────────────────────
+const PAIRS=["BTC/USDT","ETH/USDT","SOL/USDT","BTC/USD","XAUUSD","AVAX/USDT","LINK/USDT","DOGE/USDT"];
+const SETUPS=["BOS","SFP","Breakout","Pullback","OB tap","Sweep","MSB"];
+const SESSIES=["Asia AM","Asia PM","London AM","London PM","US AM","US PM"];
+const ACCTS=[["Hyperliquid","Scalp"],["Kraken","Swing"],["FTMO (MT5)","Challenge"],["Handmatig",""]];
+let seed=42;const rnd=()=>{seed=(seed*1103515245+12345)%2147483648;return seed/2147483648};
+const TRADES=Array.from({length:1000},(_,i)=>{
+  const win=rnd()>0.46, short=rnd()>0.5, entry=20000+rnd()*60000;
+  const move=entry*(0.002+rnd()*0.02)*(win?1:-1)*(short?-1:1);
+  const day=1+Math.floor(i/8), mo=1+Math.floor(day/28)%12;
+  const acct=ACCTS[Math.floor(rnd()*ACCTS.length)];
+  return{
+    n:1000-i, date:`2026-${String(mo).padStart(2,"0")}-${String(1+(day%28)).padStart(2,"0")}`,
+    time:`${String(Math.floor(rnd()*24)).padStart(2,"0")}:${String(Math.floor(rnd()*60)).padStart(2,"0")}`,
+    pair:PAIRS[Math.floor(rnd()*PAIRS.length)], acct:acct[0], lbl:acct[1],
+    short, entry, exit:entry+(short?-move:move),
+    size:200+rnd()*4000, pnl:(rnd()*180+5)*(win?1:-1), r:((rnd()*3+0.2)*(win?1:-1)),
+    setup:SETUPS[Math.floor(rnd()*SETUPS.length)], sessie:SESSIES[Math.floor(rnd()*SESSIES.length)], win,
+  };
+});
+const fmt=n=>n.toLocaleString("nl-NL",{minimumFractionDigits:2,maximumFractionDigits:2});
+
+// ── gedeelde row-templates ─────────────────────────────────────────────────
+const rowHtml=t=>`<tr class="row">
+  <td><span style="font-family:var(--mono);font-size:11px;color:var(--text2)">${t.date.split("-").reverse().join("-")}</span><br/><span style="color:var(--text4);font-size:10px">${t.time}</span></td>
+  <td><span class="pair">${t.pair}</span><br/><span class="sub2">${t.lbl||t.acct}</span></td>
+  <td><span class="side ${t.short?"short":"long"}">${t.short?"SHORT":"LONG"}</span></td>
+  <td class="num">${fmt(t.entry)}</td><td class="num">${fmt(t.exit)}</td>
+  <td class="num" style="color:var(--text3)">$${fmt(t.size)}</td>
+  <td class="num ${t.win?"pos":"neg"}">${t.win?"+":""}$${fmt(t.pnl)}</td>
+  <td class="num ${t.win?"pos":"neg"}">${t.r>0?"+":""}${t.r.toFixed(1)}R</td>
+  <td class="status">${t.win?"✓":"✗"}</td></tr>`;
+const vRowHtml=t=>`<div class="vrow">
+  <div><span style="font-family:var(--mono);font-size:11px;color:var(--text2)">${t.date.split("-").reverse().join("-")}</span> <span style="color:var(--text4);font-size:10px">${t.time}</span></div>
+  <div><span class="pair">${t.pair}</span> <span class="sub2">${t.lbl||t.acct}</span></div>
+  <div><span class="side ${t.short?"short":"long"}">${t.short?"SHORT":"LONG"}</span></div>
+  <div class="num">${fmt(t.entry)}</div><div class="num">${fmt(t.exit)}</div>
+  <div class="num" style="color:var(--text3)">$${fmt(t.size)}</div>
+  <div class="num ${t.win?"pos":"neg"}">${t.win?"+":""}$${fmt(t.pnl)}</div>
+  <div class="num ${t.win?"pos":"neg"}">${t.r>0?"+":""}${t.r.toFixed(1)}R</div>
+  <div class="status">${t.win?"✓":"✗"}</div></div>`;
+const THEAD=`<thead><tr><th>Datum</th><th>Symbol</th><th>Side</th><th style="text-align:right">Entry</th><th style="text-align:right">Exit</th><th style="text-align:right">Size</th><th style="text-align:right">PnL</th><th style="text-align:right">R</th><th>St</th></tr></thead>`;
+
+// ── state ──────────────────────────────────────────────────────────────────
+const stage=document.getElementById("stage");
+let variant=null, shown=100, query="", io=null;
+const data=()=>{const q=query.toLowerCase();return q?TRADES.filter(t=>(t.pair+" "+t.setup+" "+t.sessie+" "+t.acct+" "+t.lbl).toLowerCase().includes(q)):TRADES;};
+const setStats=(ms,rows,total)=>{
+  document.getElementById("renderMs").textContent=ms.toFixed(0)+" ms";
+  document.getElementById("renderMs").className=ms<120?"ok":"warn";
+  document.getElementById("domRows").textContent=rows;
+  document.getElementById("filterInfo").textContent=query?`${total} van 1000 matchen`:"";
+};
+const HINTS={
+  A:`<b>Variant A — "Toon meer".</b> Eerste 100 rijen direct, knop onderaan laadt er 100 bij. Voorspelbaar en simpel. Probeer: scroll naar onder → klik 2× → zoek "FTMO" (zoekt door alle 1000). Nadeel om te voelen: 900 oude trades bereiken = 9× klikken.`,
+  B:`<b>Variant B — Infinite scroll.</b> Zelfde als A maar zonder knop: tegen de onderkant scrollen laadt automatisch +100. Voelt naadloos. Nadeel om te voelen: je hebt geen "einde" en de scrollbar verspringt tijdens laden.`,
+  C:`<b>Variant C — Virtualisatie.</b> De scrollbar representeert ALLE 1000 rijen — sleep 'm in één beweging naar het midden van je history. Er staan er maar ~25 echt in de DOM (zie teller). Snelste optie, alles direct bereikbaar. Let op of het scrollen soepel voelt — dit is de variant met het meeste techniek-risico.`,
+};
+
+// ── Variant A: Toon meer ───────────────────────────────────────────────────
+function renderA(){
+  const d=data();const t0=performance.now();
+  stage.innerHTML=`<div class="tablewrap"><div id="scrollAB"><table>${THEAD}<tbody id="tb">${d.slice(0,shown).map(rowHtml).join("")}</tbody></table>
+    ${shown<d.length?`<button class="loadmore" id="more">Toon meer (${Math.min(100,d.length-shown)} van de ${d.length-shown} resterende)</button>`:`<div class="endnote">— einde · ${d.length} trades —</div>`}</div></div>`;
+  const ms=performance.now()-t0;
+  setStats(ms,Math.min(shown,d.length),d.length);
+  const btn=document.getElementById("more");
+  if(btn)btn.onclick=()=>{shown+=100;renderA();};
+}
+
+// ── Variant B: Infinite scroll ─────────────────────────────────────────────
+function renderB(){
+  const d=data();const t0=performance.now();
+  stage.innerHTML=`<div class="tablewrap"><div id="scrollAB"><table>${THEAD}<tbody id="tb">${d.slice(0,shown).map(rowHtml).join("")}</tbody></table>
+    ${shown<d.length?`<div class="sentinel" id="sent"></div><div class="endnote">scroll voor meer…</div>`:`<div class="endnote">— einde · ${d.length} trades —</div>`}</div></div>`;
+  const ms=performance.now()-t0;
+  setStats(ms,Math.min(shown,d.length),d.length);
+  if(io)io.disconnect();
+  const sent=document.getElementById("sent");
+  if(sent){
+    io=new IntersectionObserver(es=>{if(es[0].isIntersecting){shown+=100;
+      // alleen tbody aanvullen — geen volledige re-render (scrollpositie blijft)
+      const t1=performance.now();
+      const tb=document.getElementById("tb");
+      const dd=data();
+      tb.insertAdjacentHTML("beforeend",dd.slice(shown-100,shown).map(rowHtml).join(""));
+      setStats(performance.now()-t1,Math.min(shown,dd.length),dd.length);
+      if(shown>=dd.length)renderB();else io.observe(document.getElementById("sent")||sent);
+    }},{root:document.getElementById("scrollAB"),rootMargin:"400px"});
+    io.observe(sent);
+  }
+}
+
+// ── Variant C: Virtualisatie ───────────────────────────────────────────────
+const ROW_H=44, BUFFER=8;
+function renderC(){
+  const d=data();const t0=performance.now();
+  stage.innerHTML=`<div class="tablewrap"><div class="vheader"><div>Datum</div><div>Symbol</div><div>Side</div><div style="text-align:right">Entry</div><div style="text-align:right">Exit</div><div style="text-align:right">Size</div><div style="text-align:right">PnL</div><div style="text-align:right">R</div><div>St</div></div>
+    <div id="scrollC"><div id="spacer" style="height:${d.length*ROW_H}px;position:relative"><div id="win" style="position:absolute;left:0;right:0;top:0"></div></div></div></div>`;
+  const sc=document.getElementById("scrollC"), win=document.getElementById("win");
+  let lastStart=-1;
+  const paint=()=>{
+    const start=Math.max(0,Math.floor(sc.scrollTop/ROW_H)-BUFFER);
+    if(start===lastStart)return;lastStart=start;
+    const count=Math.ceil(sc.clientHeight/ROW_H)+BUFFER*2;
+    const t1=performance.now();
+    win.style.top=(start*ROW_H)+"px";
+    win.innerHTML=d.slice(start,start+count).map(vRowHtml).join("");
+    setStats(performance.now()-t1,Math.min(count,d.length),d.length);
+  };
+  sc.onscroll=()=>requestAnimationFrame(paint);
+  paint();
+  setStats(performance.now()-t0,win.children.length,d.length);
+}
+
+// ── wiring ─────────────────────────────────────────────────────────────────
+const render=()=>{if(io){io.disconnect();io=null;} ({A:renderA,B:renderB,C:renderC})[variant]();
+  document.getElementById("hintBox").innerHTML=HINTS[variant];};
+document.querySelectorAll(".vbtn").forEach(b=>b.onclick=()=>{
+  variant=b.dataset.v;shown=100;
+  document.querySelectorAll(".vbtn").forEach(x=>x.classList.toggle("active",x===b));
+  render();
+});
+document.getElementById("search").addEventListener("input",e=>{query=e.target.value;shown=100;render();});
+// start op A
+document.querySelector('.vbtn[data-v="A"]').click();
+</script>
+</body>
+</html>
