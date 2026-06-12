@@ -1706,7 +1706,7 @@ function maxDrawdownOf(pnls){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.234",released:"2026-06-11"};
+const APP_VERSION={version:"v12.235",released:"2026-06-12"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -4015,6 +4015,30 @@ ExchangeAPI.mexc.detectPartials=function(trades,sourceKey){return detectPartialF
 ExchangeAPI.kraken.detectPartials=function(trades,sourceKey){return detectPartialFromSiblings(trades,sourceKey||"kraken","kraken")};
 ExchangeAPI.hyperliquid.detectPartials=function(trades,sourceKey){return detectPartialFromSiblings(trades,sourceKey||"hyperliquid","hyperliquid")};
 ExchangeAPI.ftmo.detectPartials=function(trades){return trades};
+
+// v12.235: Hyperliquid + Kraken leveren via fetchTrades COMPLETE round-trips (FIFO/server-side
+// gereconstrueerd uit fills), niet losse partial-close records zoals Blofin/MEXC. Hun open-trade
+// is dus slechts een live-PLACEHOLDER (met sync-moment als date/time). De finalize-flow mag voor
+// deze exchanges de fills-trade NIET consumeren en de placeholder promoveren — dat gaf:
+//  (1) een closed trade met een niet-bestaande open-tijd en geaggregeerde (dubbele) size, en
+//  (2) een permanent duplicaat zodra fetchTrades dezelfde round-trip opnieuw binnenbracht
+//      (het geconsumeerde id bestond niet meer → dedup miste 'm). Bug: jordy/Discord 2026-06-12.
+// In plaats daarvan: placeholder VERWIJDEREN en de fills-trade behouden (id blijft stabiel),
+// met overname van user-velden die op de placeholder zijn gezet.
+ExchangeAPI.hyperliquid.openIsPlaceholder=true;
+ExchangeAPI.kraken.openIsPlaceholder=true;
+const PLACEHOLDER_USER_FIELDS=["notes","entryNote","setupTags","confirmationTags","timeframeTags","emotionTags","mistakeTags","customTags","rating","screenshot","screenshots","links","layers","playbookId","complianceChecks","complianceScore","tradeGrade","stopLoss","takeProfit"];
+function adoptPlaceholderFields(target,placeholder){
+  const out={...target};
+  for(const f of PLACEHOLDER_USER_FIELDS){
+    const pv=placeholder[f];
+    const pvHas=Array.isArray(pv)?pv.length>0:(pv!==undefined&&pv!==null&&pv!==""&&pv!==0);
+    const cur=out[f];
+    const curEmpty=Array.isArray(cur)?cur.length===0:(cur===undefined||cur===null||cur===""||cur===0);
+    if(pvHas&&curEmpty)out[f]=pv;
+  }
+  return out;
+}
 
 // ============ SMALL COMPONENTS ============
 let _iconId=0;
@@ -20350,6 +20374,9 @@ function App(){
         // verwijderen. Anders blijft de oude open-trade (gefinalized naar closed) ÉN de
         // nieuwe closed-record uit fetchTrades naast elkaar staan = duplicate trade.
         const consumedByFinalize=new Set();
+        // v12.235: placeholder-exchanges (HL/Kraken) — open-trade weg, fills-trade behouden
+        const placeholderRemoved=new Set();
+        const placeholderAdopt=new Map();// sibling-id → placeholder (donor van user-velden)
         merged=merged.map(t=>{
           if(!exchangesTouched.has(t.source))return t;
           if(t.status!=="open"&&t.status!=="partial")return t;
@@ -20359,6 +20386,17 @@ function App(){
           const blofinPidOk=(s)=>(sourceTypeOf(t.source)!=="blofin"||!t.positionId||!s.positionId||String(s.positionId)===String(t.positionId));
           const siblings=merged.filter(s=>s.source===t.source&&s.status==="closed"&&s.id!==t.id&&!consumedByFinalize.has(s.id)&&matchKeyOf(s)===tKey&&blofinPidOk(s));
           if(siblings.length===0)return t;
+          // v12.235: voor round-trip exchanges is de binnengekomen fills-trade de waarheid —
+          // verwijder de open-placeholder (sync-tijdstip, geen echte fill-data) en neem zijn
+          // user-velden over op de nieuwste sibling. Siblings NIET consumeren (id's blijven
+          // bestaan zodat een re-fetch netjes dedupt i.p.v. duplicaten maakt).
+          if(ExchangeAPI[sourceTypeOf(t.source)]?.openIsPlaceholder){
+            const newest=[...siblings].sort((a,b)=>(parseFloat(b.closeTime||"0")||0)-(parseFloat(a.closeTime||"0")||0))[0];
+            placeholderAdopt.set(newest.id,t);
+            placeholderRemoved.add(t.id);
+            finalizedCount++;
+            return t;// wordt hieronder weggefilterd
+          }
           // Mark siblings als consumed — verwijderen na de map-pass
           for(const s of siblings)consumedByFinalize.add(s.id);
           // Aggregeer
@@ -20389,6 +20427,11 @@ function App(){
         // Verwijder de geconsumeerde siblings uit de array
         if(consumedByFinalize.size){
           merged=merged.filter(t=>!consumedByFinalize.has(t.id));
+        }
+        // v12.235: placeholders verwijderen + hun user-velden overzetten op de fills-trade
+        if(placeholderRemoved.size){
+          merged=merged.filter(t=>!placeholderRemoved.has(t.id))
+                       .map(t=>placeholderAdopt.has(t.id)?adoptPlaceholderFields(t,placeholderAdopt.get(t.id)):t);
         }
       }
       return merged;
@@ -20432,6 +20475,8 @@ function App(){
       // markeer status partial → closed wanneer de positie volledig dicht is.
       const matchKey=(t)=>{const e=parseFloat(t.entry);if(!isFinite(e)||e<=0)return null;return `${t.pair}|${t.direction}|${e.toFixed(8)}`;};
       const consumedSiblingIds=new Set();
+      // v12.235: placeholder-exchanges (HL/Kraken) — zie comment bij openIsPlaceholder
+      const placeholderAdopt=new Map();// sibling-id → placeholder (donor van user-velden)
       for(const t of prev){
         const isStaleOpenOrPartial=t.source===srcKey&&(t.status==="open"||t.status==="partial")&&!freshIds.has(t.id);
         if(isStaleOpenOrPartial){
@@ -20442,6 +20487,14 @@ function App(){
           const siblings=tKey?prev.filter(s=>s.source===srcKey&&s.status==="closed"&&s.id!==t.id&&!consumedSiblingIds.has(s.id)&&matchKey(s)===tKey&&blofinPidOk(s)):[];
           if(siblings.length===0){
             kept.push(t);continue;
+          }
+          // v12.235: round-trip exchanges — placeholder NIET promoveren maar laten vallen;
+          // de fills-trade (sibling) is de waarheid en behoudt zijn stabiele id.
+          if(ExchangeAPI[exType]?.openIsPlaceholder){
+            const newest=[...siblings].sort((a,b)=>(parseFloat(b.closeTime||"0")||0)-(parseFloat(a.closeTime||"0")||0))[0];
+            placeholderAdopt.set(newest.id,t);
+            finalizedCount++;
+            continue;// placeholder niet in kept → verwijderd
           }
           // v12.89 dup-fix: mark siblings consumed zodat ze NIET dubbel verschijnen na finalize
           for(const s of siblings)consumedSiblingIds.add(s.id);
@@ -20485,7 +20538,11 @@ function App(){
         kept.push(t);
       }
       // v12.89 dup-fix: verwijder consumed siblings (closed records die door finalize zijn opgenomen)
-      const finalKept=consumedSiblingIds.size?kept.filter(t=>!consumedSiblingIds.has(t.id)):kept;
+      let finalKept=consumedSiblingIds.size?kept.filter(t=>!consumedSiblingIds.has(t.id)):kept;
+      // v12.235: user-velden van verwijderde placeholders overzetten op hun fills-trade
+      if(placeholderAdopt.size){
+        finalKept=finalKept.map(t=>placeholderAdopt.has(t.id)?adoptPlaceholderFields(t,placeholderAdopt.get(t.id)):t);
+      }
       const byId=new Map(finalKept.map(t=>[t.id,t]));
       const fresh=[];
       for(const incoming of(opens||[])){

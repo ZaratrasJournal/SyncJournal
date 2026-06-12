@@ -6,6 +6,13 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.235] — 2026-06-12
+
+### Fixed
+- **Hyperliquid/Kraken: dubbele trades na refresh** *(gemeld door jordy, 2026-06-12)* — Een gesloten positie kon twee keer in je journal verschijnen: één keer met de echte open-tijd, en één keer met het moment waarop de app 'm als open positie had gezien (plus soms een dubbele size). Oorzaak: voor exchanges die complete round-trips leveren (Hyperliquid, Kraken) behandelde de afrond-logica de live "open positie"-regel als de echte trade en gooide de correcte versie weg — waarna de volgende refresh 'm opnieuw binnenhaalde. Nu wint altijd de echte trade uit de exchange-historie (juiste tijden, size en PnL); je notities/tags/SL van tijdens de open positie verhuizen automatisch mee. Bestaande duplicaten: verwijder de versie met de afwijkende tijd — die komt niet meer terug.
+
+---
+
 ## [v12.234] — 2026-06-11
 
 ### Gewijzigd
