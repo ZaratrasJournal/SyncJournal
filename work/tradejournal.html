@@ -1706,7 +1706,7 @@ function maxDrawdownOf(pnls){
 // Bump `version` at each release (semver: major.minor[.patch], prefix "v").
 // `released` is for internal tracking only (shown as tooltip in Instellingen).
 // Auto-check compares against main/version.json on GitHub raw — see App's useEffect.
-const APP_VERSION={version:"v12.235",released:"2026-06-12"};
+const APP_VERSION={version:"v12.237",released:"2026-06-18"};
 // Bumpen wanneer trade-/config-shape niet meer backwards-compat is met oudere exports.
 const CURRENT_SCHEMA_VERSION=12;
 // Compare two semver strings like "v12.1" / "v12.2.3". Returns true if A is newer than B.
@@ -2946,7 +2946,7 @@ function resolveAccountLabel(source,config,accounts){
 // trade.source moeten kunnen vertalen naar een exchange-type zonder accounts-prop.
 // trade.source kan een account.id zijn (post-v12.231) óf een legacy type-string ("ftmo") óf
 // een legacy manual-accountnaam — sourceTypeOf normaliseert alle drie naar het type.
-const KNOWN_SOURCE_TYPES=new Set(["mexc","blofin","kraken","hyperliquid","ftmo","manual","csv"]);
+const KNOWN_SOURCE_TYPES=new Set(["mexc","blofin","kraken","hyperliquid","okx","ftmo","manual","csv"]);
 let __acctRegistry={};
 function registerAccountsRegistry(accounts){
   const m={};
@@ -3951,6 +3951,138 @@ const ExchangeAPI = {
     // read-only MT5 investor-password route zou MetaApi.cloud vereisen (~$30/mnd boven dev-tier).
     // Auto-sync is bewust weggelaten om community-kosten te vermijden.
     name:"FTMO (MT5)",color:"#00a0e9",needsPassphrase:false,csvOnly:true,
+  },
+  okx:{
+    // OKX v5 perpetual swaps (USDT-margined SWAP). Auth = key+secret+PASSPHRASE (zoals Blofin),
+    // maar private calls lopen via de Cloudflare Worker (proxyCall) — net als MEXC/Kraken, want
+    // OKX's authenticated endpoints zijn niet CORS-enabled in de browser en de secret hoort niet
+    // client-side gesigned te worden. De Worker tekent OK-ACCESS-SIGN server-side.
+    // positions-history geeft 1 geaggregeerd round-trip-record per gesloten positie (zoals Kraken),
+    // dus openIsPlaceholder=true + detectPartials via de shared helper. TP-breakdown (tpLevels)
+    // wordt Kraken-stijl door de Worker uit fills-history opgebouwd en hier passthrough doorgegeven.
+    name:"OKX",color:"#1a1a1a",needsPassphrase:true,
+    // ctVal-lookup: OKX's positions-history `closeTotalPos`/`pos` staan in CONTRACTS, niet base.
+    // 1 BTC-USDT-SWAP contract = 0.01 BTC. Het publieke /instruments endpoint is CORS-enabled
+    // (geen auth) → 1× ophalen + 15 min cachen. Fallback-map als vangnet; PnL-cross-check in
+    // _normalise corrigeert alsnog wanneer ctVal ontbreekt voor een exotic coin.
+    _ctvCache:null,_ctvCacheTs:0,
+    _ctvFallback:{"BTC-USDT-SWAP":0.01,"ETH-USDT-SWAP":0.1,"SOL-USDT-SWAP":1,"XRP-USDT-SWAP":100,"DOGE-USDT-SWAP":1000,"LTC-USDT-SWAP":1,"ADA-USDT-SWAP":100,"AVAX-USDT-SWAP":1,"LINK-USDT-SWAP":1,"DOT-USDT-SWAP":1,"BNB-USDT-SWAP":0.01,"MATIC-USDT-SWAP":10,"TON-USDT-SWAP":1,"TRX-USDT-SWAP":1000},
+    async _loadContractValues(){
+      const now=Date.now();
+      if(this._ctvCache&&now-this._ctvCacheTs<15*60*1000)return this._ctvCache;
+      try{
+        const res=await fetch("https://www.okx.com/api/v5/public/instruments?instType=SWAP",{cache:"no-cache"});
+        const data=await res.json();
+        const map={};
+        (data.data||[]).forEach(i=>{const cv=(parseFloat(i.ctVal)||0)*(parseFloat(i.ctMult)||1);if(i.instId&&isFinite(cv)&&cv>0)map[i.instId]=cv;});
+        if(Object.keys(map).length){this._ctvCache=map;this._ctvCacheTs=now;}
+      }catch{this._ctvCache=this._ctvCache||{};}
+      return this._ctvCache||{};
+    },
+    _ctVal(instId){return(this._ctvCache||{})[instId]||this._ctvFallback[instId]||1;},
+    _instId(symbol){return String(symbol||"").replace("/","-").replace(/-SWAP$/i,"")+"-SWAP";},
+    // Eén OKX positions-history record → intern round-trip trade.
+    _normalise(t){
+      const instId=String(t.instId||"");
+      const pair=instId?instId.replace(/-SWAP$/i,"").replace("-","/"):"BTC/USDT";
+      const openMs=Number(t.cTime)||0,closeMs=Number(t.uTime)||0;
+      const closeT=closeMs||openMs||Date.now();
+      const entryN=parseFloat(t.openAvgPx)||0,exitN=parseFloat(t.closeAvgPx)||0;
+      const ctVal=this._ctVal(instId);
+      const contracts=Math.abs(parseFloat(t.closeTotalPos)||0);
+      let assetQty=contracts*ctVal;
+      // OKX realizedPnl is GROSS (excl. fees). fee + fundingFee komen NEGATIEF binnen.
+      const gross=parseFloat((t.realizedPnl!=null&&t.realizedPnl!=="")?t.realizedPnl:t.pnl)||0;
+      const feeN=parseFloat(t.fee)||0,fundingN=parseFloat(t.fundingFee)||0;
+      // PnL-cross-check (zoals Blofin/MEXC): impliedAsset = |gross| / |exit-entry|. Kies tussen
+      // contracts×ctVal en raw contracts; bij grove mismatch op beide → vertrouw de PnL-afgeleide.
+      const priceDiff=Math.abs(exitN-entryN);
+      if(priceDiff>0&&Math.abs(gross)>1e-6){
+        const implied=Math.abs(gross)/priceDiff;
+        const rScaled=assetQty>0?Math.abs(implied-assetQty)/implied:Infinity;
+        const rRaw=contracts>0?Math.abs(implied-contracts)/implied:Infinity;
+        if(rRaw<0.05&&rRaw<rScaled)assetQty=contracts;
+        else if(rScaled>0.25&&rRaw>0.25&&isFinite(implied)&&implied>0)assetQty=implied;
+      }
+      const netPnl=gross+feeN+fundingN;
+      const feeAbs=Math.abs(feeN)+Math.abs(fundingN);
+      const usdNotional=(entryN>0&&assetQty>0)?(entryN*assetQty).toFixed(2):"";
+      let direction;const ps=String(t.posSide||"").toLowerCase();
+      if(ps==="long")direction="long";
+      else if(ps==="short")direction="short";
+      else{const dir=String(t.direction||"").toLowerCase();if(dir==="long"||dir==="short")direction=dir;else direction=((exitN-entryN)*gross>=0)?"long":"short";}
+      const tpLevels=Array.isArray(t.tpLevels)?t.tpLevels:[];
+      return{...EMPTY_TRADE,
+        id:"okx_"+(t.posId||uid())+"_"+closeT,
+        positionId:String(t.posId||""),
+        openTime:openMs?String(openMs):"",closeTime:String(closeT),
+        date:ts2date(closeT),time:ts2time(closeT),
+        pair,direction,
+        entry:normPrice(entryN||t.openAvgPx||""),exit:normPrice(exitN||t.closeAvgPx||""),
+        positionSize:usdNotional||(assetQty>0?normPrice(assetQty):""),
+        positionSizeAsset:assetQty>0?normPrice(assetQty):"",
+        pnl:String(netPnl.toFixed(4)),
+        fees:feeAbs.toFixed(4),
+        leverage:String(t.lever||"10"),
+        source:"okx",status:"closed",
+        tpLevels,
+      };
+    },
+    _normaliseOpen(p){
+      const instId=String(p.instId||"");
+      const pair=instId?instId.replace(/-SWAP$/i,"").replace("-","/"):"BTC/USDT";
+      const ctVal=this._ctVal(instId);
+      const contracts=Math.abs(parseFloat(p.pos)||0);
+      const entryN=parseFloat(p.avgPx)||0,markN=parseFloat(p.markPx)||0;
+      let assetQty=contracts*ctVal;
+      const upl=parseFloat(p.upl)||0;
+      const markDiff=Math.abs(markN-entryN);
+      if(markDiff>0&&Math.abs(upl)>1e-6){
+        const implied=Math.abs(upl)/markDiff;
+        const rScaled=assetQty>0?Math.abs(implied-assetQty)/implied:Infinity;
+        const rRaw=contracts>0?Math.abs(implied-contracts)/implied:Infinity;
+        if(rRaw<0.05&&rRaw<rScaled)assetQty=contracts;
+      }
+      const openMs=Number(p.cTime)||Date.now();
+      const usdNotional=(entryN>0&&assetQty>0)?(entryN*assetQty).toFixed(2):"";
+      let direction;const ps=String(p.posSide||"").toLowerCase();
+      if(ps==="long")direction="long";else if(ps==="short")direction="short";
+      else direction=parseFloat(p.pos)>=0?"long":"short";
+      return{...EMPTY_TRADE,
+        id:"okx_open_"+(p.posId||p.instId||uid()),
+        positionId:String(p.posId||""),
+        openTime:String(openMs),closeTime:"",
+        date:ts2date(openMs),time:ts2time(openMs),
+        pair,direction,
+        entry:normPrice(entryN||p.avgPx||""),exit:"",
+        positionSize:usdNotional||(assetQty>0?normPrice(assetQty):""),
+        positionSizeAsset:assetQty>0?normPrice(assetQty):"",
+        pnl:"",fees:"0",
+        leverage:String(p.lever||"10"),
+        source:"okx",status:"open",
+        unrealizedPnl:normPrice(p.upl||""),
+        liquidationPrice:normPrice(p.liqPx||""),
+      };
+    },
+    async fetchTrades(apiKey,apiSecret,passphrase,startTime){
+      const data=await proxyCall({exchange:"okx",action:"trades",apiKey,apiSecret,passphrase,startTime});
+      await this._loadContractValues();
+      return(data.trades||[]).map(t=>this._normalise(t));
+    },
+    async testConnection(apiKey,apiSecret,passphrase){
+      const data=await proxyCall({exchange:"okx",action:"test",apiKey,apiSecret,passphrase});
+      if(data.success===false)throw new Error(data.error||"OKX verbinding mislukt");
+      return{success:true,balance:data.balance||"0"};
+    },
+    async fetchOpenPositions(apiKey,apiSecret,passphrase){
+      const data=await proxyCall({exchange:"okx",action:"open_positions",apiKey,apiSecret,passphrase});
+      await this._loadContractValues();
+      return(data.positions||[]).map(p=>this._normaliseOpen(p));
+    },
+    async fetchFills(apiKey,apiSecret,passphrase,symbol,startTime,endTime){
+      const data=await proxyCall({exchange:"okx",action:"fills",apiKey,apiSecret,passphrase,symbol:this._instId(symbol),startTime,endTime});
+      return{fills:data.fills||[],total:(data.fills||[]).length};
+    }
   }
 };
 
@@ -3992,6 +4124,14 @@ ExchangeAPI.hyperliquid.captureSnapshot=async function(creds){
   const stateRaw=await this._post({type:"clearinghouseState",user:walletAddress});
   return{type:"hyperliquid-snapshot",positionsHistory:Array.isArray(fillsRaw)?fillsRaw:(fillsRaw?.fills||[]),openPositions:stateRaw?.assetPositions||[],raw:{fills:fillsRaw,state:stateRaw}};
 };
+ExchangeAPI.okx.captureSnapshot=async function(creds){
+  const{apiKey,apiSecret,passphrase}=creds||{};
+  if(!apiKey||!apiSecret||!passphrase)throw new Error("API key, secret en passphrase nodig");
+  const startTime=new Date(new Date().getFullYear(),new Date().getMonth()-2,1).getTime();
+  const tradesRaw=await proxyCall({exchange:"okx",action:"trades",apiKey,apiSecret,passphrase,startTime});
+  const openRaw=await proxyCall({exchange:"okx",action:"open_positions",apiKey,apiSecret,passphrase});
+  return{type:"okx-snapshot",positionsHistory:tradesRaw.trades||tradesRaw.data||[],openPositions:openRaw.positions||openRaw.data||[],raw:{trades:tradesRaw,open:openRaw}};
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // v12.85: Per-exchange `detectPartials` adapter-methode. Voorheen werd
@@ -4014,6 +4154,7 @@ ExchangeAPI.blofin.detectPartials=function(trades,sourceKey){return detectPartia
 ExchangeAPI.mexc.detectPartials=function(trades,sourceKey){return detectPartialFromSiblings(trades,sourceKey||"mexc","mexc")};
 ExchangeAPI.kraken.detectPartials=function(trades,sourceKey){return detectPartialFromSiblings(trades,sourceKey||"kraken","kraken")};
 ExchangeAPI.hyperliquid.detectPartials=function(trades,sourceKey){return detectPartialFromSiblings(trades,sourceKey||"hyperliquid","hyperliquid")};
+ExchangeAPI.okx.detectPartials=function(trades,sourceKey){return detectPartialFromSiblings(trades,sourceKey||"okx","okx")};
 ExchangeAPI.ftmo.detectPartials=function(trades){return trades};
 
 // v12.235: Hyperliquid + Kraken leveren via fetchTrades COMPLETE round-trips (FIFO/server-side
@@ -4027,6 +4168,8 @@ ExchangeAPI.ftmo.detectPartials=function(trades){return trades};
 // met overname van user-velden die op de placeholder zijn gezet.
 ExchangeAPI.hyperliquid.openIsPlaceholder=true;
 ExchangeAPI.kraken.openIsPlaceholder=true;
+// OKX positions-history = geaggregeerde round-trips (zoals Kraken), niet losse partial-records.
+ExchangeAPI.okx.openIsPlaceholder=true;
 const PLACEHOLDER_USER_FIELDS=["notes","entryNote","setupTags","confirmationTags","timeframeTags","emotionTags","mistakeTags","customTags","rating","screenshot","screenshots","links","layers","playbookId","complianceChecks","complianceScore","tradeGrade","stopLoss","takeProfit"];
 function adoptPlaceholderFields(target,placeholder){
   const out={...target};
@@ -4103,11 +4246,11 @@ function Stat({label,value,sub,color}){
   </div>);
 }
 
-const exName=(n)=>{if(!n)return"";const map={mexc:"MEXC",blofin:"Blofin",kraken:"Kraken",hyperliquid:"Hyperliquid",ftmo:"FTMO (MT5)",manual:"Handmatig",csv:"CSV"};return map[n.toLowerCase()]||n.charAt(0).toUpperCase()+n.slice(1)};
+const exName=(n)=>{if(!n)return"";const map={mexc:"MEXC",blofin:"Blofin",kraken:"Kraken",hyperliquid:"Hyperliquid",okx:"OKX",ftmo:"FTMO (MT5)",manual:"Handmatig",csv:"CSV"};return map[n.toLowerCase()]||n.charAt(0).toUpperCase()+n.slice(1)};
 
 function ExchangeIcon({name,size=16}){
   const n=(name||"").toLowerCase();
-  const logos={mexc:"https://www.google.com/s2/favicons?domain=mexc.com&sz=64",blofin:"https://www.google.com/s2/favicons?domain=blofin.com&sz=64",kraken:"https://www.google.com/s2/favicons?domain=kraken.com&sz=64",hyperliquid:"https://www.google.com/s2/favicons?domain=hyperliquid.xyz&sz=64",ftmo:"https://www.google.com/s2/favicons?domain=ftmo.com&sz=64"};
+  const logos={mexc:"https://www.google.com/s2/favicons?domain=mexc.com&sz=64",blofin:"https://www.google.com/s2/favicons?domain=blofin.com&sz=64",kraken:"https://www.google.com/s2/favicons?domain=kraken.com&sz=64",hyperliquid:"https://www.google.com/s2/favicons?domain=hyperliquid.xyz&sz=64",okx:"https://www.google.com/s2/favicons?domain=okx.com&sz=64",ftmo:"https://www.google.com/s2/favicons?domain=ftmo.com&sz=64"};
   if(logos[n])return(<img src={logos[n]} alt={n} style={{width:size,height:size,borderRadius:"3px",objectFit:"contain",flexShrink:0}} title={exName(n)}/>);
   if(n==="csv")return(<div style={{width:size,height:size,borderRadius:"4px",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:size*0.55,fontWeight:800,fontFamily:"var(--mono)",background:"#4B5563",color:"#fff",flexShrink:0}} title="CSV">C</div>);
   if(n==="manual"||n==="handmatig")return(<span style={{fontSize:size*0.85,flexShrink:0}} title="Handmatig">✏️</span>);
@@ -5302,6 +5445,11 @@ function TradeList({trades,onEdit,onDelete,onQuickTag,onBulkDelete,onBulkTag,onB
     const m=computeFtmoMedianLoserSlPct(trades);
     return m?{medianLoserSlPct:m}:null;
   },[trades]);
+  // v12.234: terug naar pagina 1 zodra de zichtbare set verandert (zoeken/sorteren/filteren).
+  // v12.236: MOET vóór de early-return (`if(!trades.length)`) staan — anders verschilt het
+  // hook-aantal tussen lege en gevulde trades-state → React error #310 (gemeld door lid via
+  // Discord, 2026-06-18, na uren inactieve tab). Zelfde constraint als mergeOpen hierboven.
+  useEffect(()=>{setVisibleCount(PAGE_SIZE);},[search,sortField,sortDir,trades.length]);
 
   const toggleSizeMode=()=>{const next=sizeMode==="usdt"?"asset":"usdt";setSizeMode(next);localStorage.setItem("tj_sizeMode",next)};
   const fmtSize=(t)=>{
@@ -5364,8 +5512,6 @@ function TradeList({trades,onEdit,onDelete,onQuickTag,onBulkDelete,onBulkTag,onB
   });
 
   const toggleSort=f=>{if(sortField===f)setSortDir(p=>p==="asc"?"desc":"asc");else{setSortField(f);setSortDir("desc")}};
-  // v12.234: terug naar pagina 1 zodra de zichtbare set verandert (zoeken/sorteren/filteren).
-  useEffect(()=>{setVisibleCount(PAGE_SIZE);},[search,sortField,sortDir,trades.length]);
   /* v12.187 (gemeld door Denny: "kolommen en invoer niet goed aligend"):
      header padding 8/6 + body padding 10/6 = visuele mismatch. Plus headers
      en bodies hadden verschillende vertical-spacing waardoor numbers niet
@@ -14445,7 +14591,7 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,set
   const[downloading,setDownloading]=useState(false);
   // v12.231: unified account-toevoegen (flat Accounts-lijst + type-dropdown). null = dicht.
   const[acctAdd,setAcctAdd]=useState(null);
-  const ACCT_TYPES=[["ftmo","FTMO (MT5) — CSV import"],["hyperliquid","Hyperliquid — wallet-adres"],["mexc","MEXC — API key"],["blofin","Blofin — API key"],["kraken","Kraken Futures — API key"],["manual","Handmatig — geen koppeling"]];
+  const ACCT_TYPES=[["ftmo","FTMO (MT5) — CSV import"],["hyperliquid","Hyperliquid — wallet-adres"],["mexc","MEXC — API key"],["blofin","Blofin — API key"],["kraken","Kraken Futures — API key"],["okx","OKX — API key + passphrase"],["manual","Handmatig — geen koppeling"]];
   // v12.231: meerdere accounts toegestaan voor hyperliquid/ftmo/manual; overige exchanges hard-cap 1 (voorlopig).
   const MULTI_TYPES=new Set(["hyperliquid","ftmo","manual"]);
   const typeAtCap=(type)=>!MULTI_TYPES.has(type)&&(accounts||[]).some(a=>a.type===type);
@@ -14455,7 +14601,7 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,set
     if(typeAtCap(a.type)){showToast&&showToast(`${ExchangeAPI[a.type]?.name||a.type} heeft al een account (max 1 voorlopig)`,"error");return;}
     const rec={id:"acc_"+uid(),type:a.type,label:a.label.trim(),transactions:[]};
     if(a.type==="hyperliquid")rec.walletAddress=(a.walletAddress||"").trim();
-    else if(["mexc","blofin","kraken"].includes(a.type)){rec.apiKey=(a.apiKey||"").trim();rec.apiSecret=(a.apiSecret||"").trim();if(a.passphrase)rec.passphrase=a.passphrase.trim();}
+    else if(["mexc","blofin","kraken","okx"].includes(a.type)){rec.apiKey=(a.apiKey||"").trim();rec.apiSecret=(a.apiSecret||"").trim();if(a.passphrase)rec.passphrase=a.passphrase.trim();}
     setAccounts(p=>[...(p||[]),rec]);
     setAcctAdd(null);
     showToast&&showToast(`${(ExchangeAPI[a.type]?.name||a.type)} · ${rec.label} toegevoegd`,"success");
@@ -14586,6 +14732,15 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,set
         // Hyperliquid compact CSV export: time,coin,dir,px,sz,ntl,fee,closedPnl
         // FIFO match open→close per coin+direction om round-trip trades te reconstrueren.
         const isHyperliquidFills=headers[0]==="time"&&headers.includes("coin")&&headers.includes("closedPnl")&&headers.includes("dir")&&headers.includes("ntl");
+        // OKX Position History export — 1 rij per gesloten perp-positie (geaggregeerd). OKX-kolomnamen
+        // verschillen per UI-taal/versie, dus detectie op structuur: een instrument-kolom (of "-SWAP"
+        // in de data) + een PnL-kolom + een prijs-kolom. Flexibele header-resolver in de branch.
+        // LET OP: gevalideerd tegen verwachte kolomnamen uit de v5-docs; bij Denny's echte export
+        // mogelijk fijn-tunen (zie docs/exchange-research-okx-perps-2026-06-17.md, sectie 7).
+        const lcH=headers.map(h=>h.toLowerCase());
+        const isOkxPosition=(lcH.some(h=>/instrument/.test(h))||lines.slice(1,6).some(l=>/-SWAP/i.test(l)))
+          &&lcH.some(h=>/(realized|realised).*pnl|^pnl$|\bpnl\b/.test(h))
+          &&lcH.some(h=>/avg|average|price|px/.test(h));
         let csvTrades=[];
         if(isBlofinOrder){
           // Blofin Order History → FIFO positie-reconstructie (one-way mode verondersteld).
@@ -14917,7 +15072,56 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,set
             });
           }
         }
-        if(!isKrakenLog&&!isBlofinOrder&&!isMexcPosition&&!isMexcFutures&&!isFtmoMetriX&&!isHyperliquidFills){
+        if(isOkxPosition&&!isKrakenLog&&!isBlofinOrder&&!isMexcPosition&&!isMexcFutures&&!isFtmoMetriX&&!isHyperliquidFills){
+          // OKX Position History → geaggregeerde round-trips. Flexibele header-resolver (col).
+          const col=(...res)=>{for(const re of res){const h=headers.find(hh=>re.test(hh.toLowerCase()));if(h)return h;}return null;};
+          const cPair=col(/instrument|underlying|contract|symbol/);
+          const cDir=col(/direction|pos.*side|side|type/);
+          const cOpen=col(/open.*(avg|average).*(price|px)|avg.*open|open.*price|entry/);
+          const cClose=col(/close.*(avg|average).*(price|px)|avg.*close|close.*price|exit/);
+          const cQty=col(/closed.*pos|close.*total|closed.*qty|position(?!.*side)|quantity|qty|size|filled/);
+          const cPnl=col(/(realized|realised).*pnl|^pnl$|\bpnl\b|profit/);
+          const cFee=col(/^fee$|trading.*fee|^fees$/);
+          const cFund=col(/funding/);
+          const cLev=col(/lever/);
+          const cOpenT=col(/open.*time|create.*time|^ctime$/);
+          const cCloseT=col(/close.*time|update.*time|^utime$/);
+          const num=(s)=>{const n=parseFloat(String(s||"").replace(/"/g,"").replace(/,/g,"").replace(/[^\d.+\-eE]/g,""));return isNaN(n)?0:n;};
+          const splitDt=(dt)=>{const c=String(dt||"").replace(/"/g,"").trim();const[d,t]=c.split(/[ T]/);return{date:d||"",time:(t||"00:00").slice(0,5),full:c};};
+          const okxPair=(s)=>{let up=String(s||"").toUpperCase().replace(/-SWAP$/,"").replace(/[-_]/,"/");if(up.includes("/"))return up;if(up.endsWith("USDT"))return up.slice(0,-4)+"/USDT";if(up.endsWith("USDC"))return up.slice(0,-4)+"/USDC";if(up.endsWith("USD"))return up.slice(0,-3)+"/USD";return up;};
+          for(let i=1;i<lines.length;i++){
+            const vals=parseCSVLine(lines[i]);const row={};headers.forEach((h,idx)=>row[h]=vals[idx]||"");
+            const entryN=cOpen?num(row[cOpen]):0,exitN=cClose?num(row[cClose]):0;
+            const gross=cPnl?num(row[cPnl]):0;
+            if(!entryN&&!exitN&&!gross)continue;
+            const feeN=cFee?Math.abs(num(row[cFee])):0,fundN=cFund?Math.abs(num(row[cFund])):0;
+            // CSV's PnL = GROSS (excl. fees, zoals de API). Netto = gross − fees − funding.
+            const netPnl=gross-feeN-fundN;
+            const qtyRaw=cQty?Math.abs(num(row[cQty])):0;
+            // ctVal-correctie: staat qty in contracts, leidt size af uit |gross|/|exit-entry| (PnL-cross-check).
+            let assetQty=qtyRaw;
+            const pd=Math.abs(exitN-entryN);
+            if(pd>0&&Math.abs(gross)>1e-6){const implied=Math.abs(gross)/pd;if(qtyRaw<=0||Math.abs(implied-qtyRaw)/implied>0.25)assetQty=implied;}
+            const usd=(entryN>0&&assetQty>0)?(entryN*assetQty).toFixed(2):"";
+            const dirRaw=String(cDir?row[cDir]:"").toLowerCase();
+            const direction=dirRaw.includes("long")?"long":dirRaw.includes("short")?"short":dirRaw.includes("buy")?"long":dirRaw.includes("sell")?"short":((exitN-entryN)*gross>=0?"long":"short");
+            const oT=cOpenT?splitDt(row[cOpenT]):{date:"",time:"",full:""};
+            const cT=cCloseT?splitDt(row[cCloseT]):{date:"",time:"",full:""};
+            csvTrades.push({...EMPTY_TRADE,
+              id:"okx_csv_"+uid(),
+              date:oT.date||cT.date||"",time:oT.time||cT.time||"00:00",
+              pair:okxPair(cPair?row[cPair]:""),direction,
+              entry:entryN>0?normPrice(entryN):"",exit:exitN>0?normPrice(exitN):"",
+              positionSize:usd||(assetQty>0?normPrice(assetQty):""),
+              positionSizeAsset:assetQty>0?normPrice(assetQty):"",
+              pnl:String(netPnl.toFixed(4)),fees:(feeN+fundN).toFixed(4),
+              leverage:cLev?String(num(row[cLev])||"10"):"10",
+              source:forExchange||"okx",status:"closed",
+              openTime:oT.full,closeTime:cT.full,
+            });
+          }
+        }
+        if(!isKrakenLog&&!isBlofinOrder&&!isMexcPosition&&!isMexcFutures&&!isFtmoMetriX&&!isHyperliquidFills&&!isOkxPosition){
           for(let i=1;i<lines.length;i++){const vals=parseCSVLine(lines[i]).map(v=>v.replace(/"/g,""));const row={};headers.forEach((h,idx)=>row[h.toLowerCase()]=vals[idx]||"");const pairRaw=row.symbol||row.pair||row.contract||"";const pair=pairRaw?(pairRaw.includes("/")?pairRaw:pairRaw):"BTC/"+(config.defaultQuote||"USDT");const trade={...EMPTY_TRADE,id:"csv_"+uid(),date:row.date||(row.time||"").split(" ")[0]||(row.closetime||"").split(" ")[0]||"",time:((row.time||"").split(" ")[1]||(row.closetime||"").split(" ")[1]||"00:00").slice(0,5),pair,direction:((row.side||row.direction||row.type||"").toLowerCase().includes("buy")||(row.side||"").toLowerCase().includes("long"))?"long":"short",entry:row.openprice||row.entryprice||row.entry||row.price||"",exit:row.closeprice||row.exitprice||row.exit||"",positionSize:row.volume||row.size||row.quantity||row.amount||"",pnl:row.pnl||row.profit||row.realizedpnl||row.realised_pnl||"",fees:row.fee||row.fees||row.commission||"0",leverage:row.leverage||"10",source:forExchange||"csv",status:"closed"};if(trade.date)csvTrades.push(trade)}
         }
         if(!csvTrades.length){showToast("Geen trades gevonden in CSV","error");return}
@@ -15688,10 +15892,10 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,set
               <input value={acctAdd.label} onChange={e=>setAcctAdd(p=>({...p,label:e.target.value}))} placeholder="bijv. Challenge 200k, Main, Degen" style={iA}/>
             </div>
             {t==="hyperliquid"&&<div style={{marginBottom:"10px"}}><div style={lab}>Wallet-adres</div><input value={acctAdd.walletAddress||""} onChange={e=>setAcctAdd(p=>({...p,walletAddress:e.target.value}))} placeholder="0x…" style={{...iA,fontFamily:"var(--mono)"}}/></div>}
-            {["mexc","blofin","kraken"].includes(t)&&<>
+            {["mexc","blofin","kraken","okx"].includes(t)&&<>
               <div style={{marginBottom:"10px"}}><div style={lab}>API Key</div><input value={acctAdd.apiKey||""} onChange={e=>setAcctAdd(p=>({...p,apiKey:e.target.value}))} placeholder="Plak je API key…" style={{...iA,fontFamily:"var(--mono)"}}/></div>
               <div style={{marginBottom:"10px"}}><div style={lab}>API Secret</div><input type="password" value={acctAdd.apiSecret||""} onChange={e=>setAcctAdd(p=>({...p,apiSecret:e.target.value}))} placeholder="Plak je API secret…" style={iA}/></div>
-              {t==="blofin"&&<div style={{marginBottom:"10px"}}><div style={lab}>Passphrase</div><input type="password" value={acctAdd.passphrase||""} onChange={e=>setAcctAdd(p=>({...p,passphrase:e.target.value}))} style={iA}/></div>}
+              {(t==="blofin"||t==="okx")&&<div style={{marginBottom:"10px"}}><div style={lab}>Passphrase</div><input type="password" value={acctAdd.passphrase||""} onChange={e=>setAcctAdd(p=>({...p,passphrase:e.target.value}))} style={iA}/></div>}
             </>}
             {t==="ftmo"&&<div style={{fontSize:"11px",color:"var(--text4)",lineHeight:1.5,padding:"8px 10px",background:"rgba(0,194,255,.06)",borderLeft:"2px solid #00c2ff",borderRadius:"3px",marginBottom:"10px"}}>📄 FTMO is CSV-only — na aanmaken importeer je de MT5/MetriX-CSV in dit account.</div>}
             {t==="manual"&&<div style={{fontSize:"11px",color:"var(--text4)",lineHeight:1.5,padding:"8px 10px",background:"var(--glass)",borderLeft:"2px solid var(--border3)",borderRadius:"3px",marginBottom:"10px"}}>✏️ Handmatig account — log trades met de hand.</div>}

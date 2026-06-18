@@ -483,6 +483,14 @@ In [tests/](tests/) staan 4 real-data specs (`<exchange>-real-data.spec.js`) die
 
 ## 🔬 Onderzoek / te besluiten
 
+- [ ] **Laadtijd ~10s — Babel transpileert de hele app in de browser bij elke load** *(2026-06-18, gemeld door Denny: "in Chrome duurt het ~10 seconden tot hij laadt")* — Gemeten met [tests/run-adhoc-perf.js](tests/run-adhoc-perf.js): `goto → "Dashboard" zichtbaar = ~10.4s`, waarvan DOMContentLoaded zelf al ~10.3s. De CDN-scripts (React/Chart/XLSX/Babel/…) laden samen in ~0.5s — **niet** de bottleneck. Oorzaak: `<script type="text/babel">` ([work/tradejournal.html:1212](work/tradejournal.html#L1212)) met **~19.900 regels JSX** wordt door `babel-standalone` ([regel 916](work/tradejournal.html#L916)) bij élke pagina-load opnieuw getranspileerd, synchroon op de main-thread. Verergerend: de 7 base64-share-cards (**1.7 MB**, o.a. [regel 5899](work/tradejournal.html#L5899)) staan binnen het babel-blok, dus Babel parst die ook.
+
+  **Opties (raakt de "single-file, geen bundler"-keuze — Denny's beslissing):**
+  - **A — quick win, workflow blijft (direct JSX editen):** (1) compile-cache: Babel-output in localStorage cachen met source-hash → warme loads vrijwel instant; (2) de 7 base64-constanten uit het babel-blok halen naar een gewoon `<script>` → Babel parst 1.7 MB minder. Volledig reversibel.
+  - **B — echte fix, workflow-wijziging:** JSX één keer vooraf compileren met een klein scriptje, gewone JS uitleveren, `babel-standalone` eruit. Élke load (ook de eerste) near-instant. Nadeel: geen direct-JSX-editen-en-herladen meer; er komt een transpile-stap.
+
+  **Advies:** begin met A (compile-cache = grootste merkbare winst, nul workflow-impact), B achter de hand. Effort A: M (~2-3u + meting). **Verplaatst hierheen toen het OKX-incident (#310) prioriteit kreeg, 2026-06-18.**
+
 - [ ] **Bruto PnL en netto PnL — beide tonen, transparant onderscheid** *(2026-06-05, gevraagd door Denny: "we moeten nog wel eerst uitzoeken hoe we dit willen implementeren")* — Op dit moment heeft elke trade één `pnl`-veld dat **per exchange inconsistent gevuld** wordt:
   - **FTMO CSV**: parser zet `pnl = profit + swap + commissions` (= netto). Bruto verloren.
   - **Blofin / MEXC / Kraken / Hyperliquid API**: `realizedPnl` komt vaak al netto binnen van de exchange. Soms bruto (varieert per endpoint).
