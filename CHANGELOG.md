@@ -6,6 +6,22 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v12.237] — nog niet uitgebracht
+
+### Toegevoegd
+- **OKX-koppeling (perpetual swaps)** — Je kunt nu een OKX-account toevoegen onder Instellingen → Accounts. OKX gebruikt een **API key + secret + passphrase** (zelfde stijl als Blofin). De app haalt je gesloten posities, open posities en USDT-balans op, met automatische omrekening van OKX-contracts naar de echte coin-hoeveelheid en netto-PnL (handelskosten + funding meegerekend). Daarnaast werkt **CSV-import** van OKX's Position History-export. Net als bij Hyperliquid/Kraken levert OKX complete round-trips per positie.
+  - ⚠ **API-sync vereist een Worker-update** die buiten de app wordt uitgerold — tot die live is werkt OKX via CSV-import.
+  - ℹ De TP-breakdown per positie (meerdere take-profits zichtbaar) volgt in een latere update; voor nu wordt elke positie als één afgeronde trade getoond.
+
+---
+
+## [v12.236] — 2026-06-18
+
+### Fixed
+- **Witte/foutmelding-scherm op de Trades-pagina** *(gemeld via Discord, 2026-06-18)* — Sommige leden kregen een React-foutmelding (error #310), vaak nadat de Chrome-tab een paar uur inactief was geweest; je moest dan het .html-bestand opnieuw openen. Oorzaak: een stukje paginatie-logica uit v12.234 stond op de verkeerde plek, waardoor de Trades-lijst kon crashen op het moment dat 'ie wisselde tussen "geen trades zichtbaar" (bv. door een filter) en "trades zichtbaar". Opgelost; geborgd met [tests/tradelist-hooks.spec.js](tests/tradelist-hooks.spec.js).
+
+---
+
 ## [v12.235] — 2026-06-12
 
 ### Fixed
