@@ -6,12 +6,19 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
-## [v12.237] — nog niet uitgebracht
+## [v12.238] — nog niet uitgebracht
 
 ### Toegevoegd
 - **OKX-koppeling (perpetual swaps)** — Je kunt nu een OKX-account toevoegen onder Instellingen → Accounts. OKX gebruikt een **API key + secret + passphrase** (zelfde stijl als Blofin). De app haalt je gesloten posities, open posities en USDT-balans op, met automatische omrekening van OKX-contracts naar de echte coin-hoeveelheid en netto-PnL (handelskosten + funding meegerekend). Daarnaast werkt **CSV-import** van OKX's Position History-export. Net als bij Hyperliquid/Kraken levert OKX complete round-trips per positie.
   - ⚠ **API-sync vereist een Worker-update** die buiten de app wordt uitgerold — tot die live is werkt OKX via CSV-import.
   - ℹ De TP-breakdown per positie (meerdere take-profits zichtbaar) volgt in een latere update; voor nu wordt elke positie als één afgeronde trade getoond.
+
+---
+
+## [v12.237] — 2026-06-18
+
+### Gewijzigd
+- **App laadt fors sneller** *(2026-06-18)* — De journal opende in Chrome soms pas na ~10 seconden. Oorzaak: de ingebouwde code-omzetter (Babel) zette bij élke load onnodig álle moderne JavaScript om naar een oudere variant. Door 'm te vertellen dat alleen de schermopbouw (JSX) omgezet hoeft te worden, daalt de laadtijd naar ~3 seconden — gemeten ~73% sneller, zonder iets aan de functionaliteit te veranderen. (Geborgd met [tests/perf-research.js](tests/perf-research.js); werkt op alle moderne browsers, die de app sowieso al vereist.)
 
 ---
 

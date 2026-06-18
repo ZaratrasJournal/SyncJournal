@@ -483,13 +483,23 @@ In [tests/](tests/) staan 4 real-data specs (`<exchange>-real-data.spec.js`) die
 
 ## 🔬 Onderzoek / te besluiten
 
-- [ ] **Laadtijd ~10s — Babel transpileert de hele app in de browser bij elke load** *(2026-06-18, gemeld door Denny: "in Chrome duurt het ~10 seconden tot hij laadt")* — Gemeten met [tests/run-adhoc-perf.js](tests/run-adhoc-perf.js): `goto → "Dashboard" zichtbaar = ~10.4s`, waarvan DOMContentLoaded zelf al ~10.3s. De CDN-scripts (React/Chart/XLSX/Babel/…) laden samen in ~0.5s — **niet** de bottleneck. Oorzaak: `<script type="text/babel">` ([work/tradejournal.html:1212](work/tradejournal.html#L1212)) met **~19.900 regels JSX** wordt door `babel-standalone` ([regel 916](work/tradejournal.html#L916)) bij élke pagina-load opnieuw getranspileerd, synchroon op de main-thread. Verergerend: de 7 base64-share-cards (**1.7 MB**, o.a. [regel 5899](work/tradejournal.html#L5899)) staan binnen het babel-blok, dus Babel parst die ook.
+- [ ] **Laadtijd ~10s — Babel transpileert de hele app in de browser bij elke load** *(2026-06-18, gemeld door Denny: "in Chrome duurt het ~10 seconden tot hij laadt")* — Oorzaak: `<script type="text/babel">` ([work/tradejournal.html:1212](work/tradejournal.html#L1212), ~19.900 regels JSX) wordt door `babel-standalone` ([regel 916](work/tradejournal.html#L916)) bij élke load synchroon getranspileerd. CDN-scripts (~0.5s) zijn NIET de bottleneck.
 
-  **Opties (raakt de "single-file, geen bundler"-keuze — Denny's beslissing):**
-  - **A — quick win, workflow blijft (direct JSX editen):** (1) compile-cache: Babel-output in localStorage cachen met source-hash → warme loads vrijwel instant; (2) de 7 base64-constanten uit het babel-blok halen naar een gewoon `<script>` → Babel parst 1.7 MB minder. Volledig reversibel.
-  - **B — echte fix, workflow-wijziging:** JSX één keer vooraf compileren met een klein scriptje, gewone JS uitleveren, `babel-standalone` eruit. Élke load (ook de eerste) near-instant. Nadeel: geen direct-JSX-editen-en-herladen meer; er komt een transpile-stap.
+  **Empirisch gemeten** ([tests/perf-research.js](tests/perf-research.js) + [tests/perf-presets.js](tests/perf-presets.js), 2026-06-18):
+  | Variant | goto→Dashboard | wijziging |
+  |---|---|---|
+  | Baseline (huidig) | **~9.8s** | — |
+  | `data-presets="react"` op de script-tag | **~2.7s** (−73%) | **1 regel**, geen workflow-impact, reversibel |
+  | Vooraf-gecompileerd (geen babel in browser) | **~0.37s** (−96%) | build-stap, babel-standalone eruit |
 
-  **Advies:** begin met A (compile-cache = grootste merkbare winst, nul workflow-impact), B achter de hand. Effort A: M (~2-3u + meting). **Verplaatst hierheen toen het OKX-incident (#310) prioriteit kreeg, 2026-06-18.**
+  **Kernbevinding:** de pure JSX-transpile is maar ~1.5s. Het gat naar 9.8s komt doordat babel-standalone **zonder `data-presets` zware default-presets** toepast (downlevelt alle moderne JS — onnodig voor moderne Chrome). De 7 base64-share-cards in het blok kosten maar ~126ms — verwaarloosbaar, géén actie nodig. De gecompileerde versie draaide foutloos (alle JSX → `React.createElement`, moderne JS draait native in Chrome).
+
+  **Aanpak (raakt "single-file, geen bundler" — Denny's beslissing):**
+  - **Stap 1 — nu doen, triviaal:** voeg `data-presets="react"` toe aan de `<script type="text/babel">`-tag → ~9.8s naar ~2.7s. Eén regel, single-file blijft, direct-JSX-editen blijft. Caveat: gaat uit van een moderne browser (die de app sowieso al vereist: React 18 + moderne JS). Alle 6 thema's + schermen even checken.
+  - **Stap 2 — optioneel, grootste winst:** JSX vooraf compileren (klein build-scriptje), gewone JS uitleveren, babel-standalone eruit → ~0.37s op élke load. Nadeel: transpile-stap vóór testen i.p.v. direct JSX editen-en-herladen.
+  - (Compile-cache in localStorage is niet meer nodig: stap 1 haalt al 73% zonder cache-complexiteit; stap 2 maakt élke load snel.)
+
+  **Advies:** Stap 1 direct uitrollen (gratis 73%); Stap 2 als aparte beslissing wanneer er appetijt is voor een build-stap. **Verplaatst hierheen toen het OKX-incident (#310) prioriteit kreeg, 2026-06-18.**
 
 - [ ] **Bruto PnL en netto PnL — beide tonen, transparant onderscheid** *(2026-06-05, gevraagd door Denny: "we moeten nog wel eerst uitzoeken hoe we dit willen implementeren")* — Op dit moment heeft elke trade één `pnl`-veld dat **per exchange inconsistent gevuld** wordt:
   - **FTMO CSV**: parser zet `pnl = profit + swap + commissions` (= netto). Bruto verloren.
