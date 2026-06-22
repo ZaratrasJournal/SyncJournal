@@ -11,7 +11,10 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 ### Toegevoegd
 - **OKX-koppeling (perpetual swaps)** — Je kunt nu een OKX-account toevoegen onder Instellingen → Accounts. OKX gebruikt een **API key + secret + passphrase** (zelfde stijl als Blofin). De app haalt je gesloten posities, open posities en USDT-balans op, met automatische omrekening van OKX-contracts naar de echte coin-hoeveelheid en netto-PnL (handelskosten + funding meegerekend). Daarnaast werkt **CSV-import** van OKX's Position History-export. Net als bij Hyperliquid/Kraken levert OKX complete round-trips per positie.
   - ⚠ **API-sync vereist een Worker-update** die buiten de app wordt uitgerold — tot die live is werkt OKX via CSV-import.
-  - ℹ De TP-breakdown per positie (meerdere take-profits zichtbaar) volgt in een latere update; voor nu wordt elke positie als één afgeronde trade getoond.
+- **OKX TP-breakdown (meerdere take-profits)** — Een OKX-positie die je in stukken sluit (TP1/TP2/…) toont nu de afzonderlijke take-profit-niveaus met percentages, net als bij de andere exchanges. De app leest de losse close-fills uit OKX's fills-history en bouwt daar de TP-tijdlijn van. (Geen Worker-update nodig; geborgd met [tests/okx-tp-fills.spec.js](tests/okx-tp-fills.spec.js).)
+
+### Fixed
+- **Account-balans in Instellingen klopte niet voor exchange-accounts** — De accountkaart onder Instellingen → Accounts toonde de som van je trade-PnL i.p.v. je live exchange-balans, terwijl de balk bovenin wél de juiste (live) balans liet zien. Hierdoor kon een OKX-kaart bv. −$0,13 tonen terwijl je werkelijke saldo $22,33 was. De kaart volgt nu dezelfde live-balans als de bovenbalk. (Geborgd met [tests/account-tile-balance.spec.js](tests/account-tile-balance.spec.js).)
 
 ---
 

@@ -4037,7 +4037,26 @@ const ExchangeAPI = {
         fees:feeAbs.toFixed(4),
         leverage:String(t.lever||"10"),
         source:"okx",status:"closed",
+        _okxInstId:instId,
         tpLevels,
+      };
+    },
+    // Eén ruwe OKX fills-history record → genormaliseerd fill-object voor de TP-builder.
+    // De generieke TP-flow (fetchTPsInline + refresh-stap-3) leest `price`/`size`/`pnl`/`ts`,
+    // maar OKX levert `fillPx`/`fillSz`/`fillPnl`. We mappen die + behouden de ruwe velden
+    // (spread) zodat bestaande fallback-lezers blijven werken. Size = contracten × ctVal (base),
+    // zodat percentages kloppen ongeacht contract-multiplier.
+    _normaliseFill(f){
+      const instId=String(f.instId||"");
+      const ctVal=this._ctVal(instId);
+      const contracts=Math.abs(parseFloat(f.fillSz)||0);
+      const pnl=parseFloat(f.fillPnl!=null?f.fillPnl:f.fillPnL)||0;
+      return{...f,
+        price:String(f.fillPx||""),
+        size:String(contracts*ctVal),
+        side:f.side,posSide:f.posSide,
+        pnl:String(pnl),
+        ts:Number(f.ts)||0,
       };
     },
     _normaliseOpen(p){
@@ -4085,8 +4104,27 @@ const ExchangeAPI = {
       return(data.positions||[]).map(p=>this._normaliseOpen(p));
     },
     async fetchFills(apiKey,apiSecret,passphrase,symbol,startTime,endTime){
-      const data=await proxyCall({exchange:"okx",action:"fills",apiKey,apiSecret,passphrase,symbol:this._instId(symbol),startTime,endTime});
-      return{fills:data.fills||[],total:(data.fills||[]).length};
+      // symbol komt als "BTC_USDC" (pair→_). De échte X-Perp instId (BTC-USD_UM_XPERP-040431)
+      // is NIET uit de pair te reconstrueren, dus sturen we GEEN instId naar de Worker (die
+      // skipt het filter bij ontbrekend symbol) en filteren client-side op base + close-side.
+      // Tijdvenster (startTime/endTime) scopet de fills al tot deze positie. Geen Worker-redeploy
+      // nodig: de bestaande `fills`-action filtert alleen op instId wanneer meegegeven.
+      const base=String(symbol||"").split(/[/_-]/)[0].toUpperCase(); // "BTC"
+      const data=await proxyCall({exchange:"okx",action:"fills",apiKey,apiSecret,passphrase,startTime,endTime});
+      await this._loadContractValues();
+      const raw=Array.isArray(data.fills)?data.fills:[];
+      const fills=raw.filter(f=>{
+        const inst=String(f.instId||"").toUpperCase();
+        if(base&&inst&&!inst.startsWith(base+"-"))return false; // andere coin → weg
+        // close-fill: long sluit met side=sell, short met side=buy. Net-mode (geen posSide):
+        // val terug op fillPnl≠0 (een open-fill heeft geen gerealiseerde PnL).
+        const side=String(f.side||"").toLowerCase();
+        const ps=String(f.posSide||"").toLowerCase();
+        if(ps==="long")return side==="sell";
+        if(ps==="short")return side==="buy";
+        return Math.abs(parseFloat(f.fillPnl!=null?f.fillPnl:f.fillPnL)||0)>0;
+      }).map(f=>this._normaliseFill(f));
+      return{fills,total:fills.length};
     }
   }
 };
@@ -14588,6 +14626,9 @@ function TpTemplateEditModal({initial,isNew,allTemplates,onCancel,onSave}){
 function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,setTrades,importTrades,syncOpenPositions,exportTrades,setTagConfig,tagConfig,tradingRules,setTradingRules,goals,setGoals,mindsetPrefs,setMindsetPrefs,lastSyncTimes,setTab,tpTemplates,setTpTemplates,tpDefaults,setTpDefaults,playbooks,setPlaybooks}){
   const csvRef=useRef();const csvAcctRef=useRef(null);
   const backupRef=useRef();
+  // v12.238: account-tiles tonen dezelfde balans als de TopBar — live API-balans (indien beschikbaar)
+  //          i.p.v. alleen tracker + trade-PnL. Anders divergeert de tile van de balk bovenin.
+  const liveBalances=useLiveExchangeBalances(accounts);
   // Visual confirmation for displayName auto-save (flashes after 400ms debounce, fades after 1800ms)
   const[nameSaved,setNameSaved]=useState(false);
   const nameTimerRef=useRef(null);const nameHideTimerRef=useRef(null);
@@ -15871,7 +15912,9 @@ function AccountsHub({config,setConfig,accounts,setAccounts,showToast,trades,set
         {(accounts||[]).map(a=>{
           const isManual=!a.type||a.type==="manual";
           const title=a.label||exName(a.type)||a.name||"Account";
-          const equity=computeAccountCapital(a.transactions)+sumTradePnl(trades,a.id);
+          const txCap=Math.max(0,computeAccountCapital(a.transactions||[]));
+          const live=liveBalances?liveBalances[a.id]:null;
+          const equity=(a.type&&a.type!=="manual"&&live!=null&&live>0)?live+txCap:txCap+sumTradePnl(trades,a.id);
           const isSel=selAcct===a.id;
           return(<div key={a.id} onClick={()=>{setSelAcct(a.id);setSyncResult(null);}} style={{display:"flex",alignItems:"center",gap:"10px",padding:"10px 12px",borderRadius:"8px",border:`1px solid ${isSel?"var(--gold-border)":"var(--border1)"}`,marginBottom:"6px",background:isSel?"rgba(224,179,65,0.06)":"var(--bg4)",cursor:"pointer"}}>
             {isManual?<span style={{fontSize:"14px"}}>✏️</span>:<ExchangeIcon name={a.type} size={18}/>}
