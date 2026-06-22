@@ -3970,47 +3970,59 @@ const ExchangeAPI = {
     async _loadContractValues(){
       const now=Date.now();
       if(this._ctvCache&&now-this._ctvCacheTs<15*60*1000)return this._ctvCache;
-      try{
-        const res=await fetch("https://www.okx.com/api/v5/public/instruments?instType=SWAP",{cache:"no-cache"});
-        const data=await res.json();
-        const map={};
-        (data.data||[]).forEach(i=>{const cv=(parseFloat(i.ctVal)||0)*(parseFloat(i.ctMult)||1);if(i.instId&&isFinite(cv)&&cv>0)map[i.instId]=cv;});
-        if(Object.keys(map).length){this._ctvCache=map;this._ctvCacheTs=now;}
-      }catch{this._ctvCache=this._ctvCache||{};}
+      const map={};
+      const load=async(url)=>{try{const r=await fetch(url,{cache:"no-cache"});const d=await r.json();(d.data||[]).forEach(i=>{const cv=(parseFloat(i.ctVal)||0)*(parseFloat(i.ctMult)||1);if(i.instId&&isFinite(cv)&&cv>0)map[i.instId]=cv;});}catch{}};
+      // SWAP (globaal) + FUTURES incl. OKX EEA X-Perps (instFamily BTC-USD_UM). X-Perps staan op de
+      // EEA-host, dus FUTURES daar ophalen. Beide publiek, geen auth/CORS-block.
+      await load("https://www.okx.com/api/v5/public/instruments?instType=SWAP");
+      await load("https://eea.okx.com/api/v5/public/instruments?instType=FUTURES");
+      if(Object.keys(map).length){this._ctvCache=map;this._ctvCacheTs=now;}
       return this._ctvCache||{};
     },
-    _ctVal(instId){return(this._ctvCache||{})[instId]||this._ctvFallback[instId]||1;},
+    _ctVal(instId){
+      const m=this._ctvCache||{};
+      if(m[instId]!=null)return m[instId];
+      if(this._ctvFallback[instId]!=null)return this._ctvFallback[instId];
+      // OKX EEA X-Perp UM-familie als de live /instruments-fetch faalt (bv. file:// CORS).
+      // EU-contractspec: 0.0001 BTC/contract (bevestigd via Denny's 0.0008 BTC = 8 contracten).
+      if(/^BTC-USD_UM/i.test(instId))return 0.0001;
+      return 1;
+    },
     _instId(symbol){return String(symbol||"").replace("/","-").replace(/-SWAP$/i,"")+"-SWAP";},
+    // instId → leesbaar pair. OKX EEA X-Perp (BTC-USD_UM_XPERP-040431, instFamily BTC-USD_UM)
+    // → base vóór de eerste "-", quote uit settleCcy (USDC/USDG) of "USD". Gewone SWAP/FUTURES
+    // → strip suffix + "-"→"/".
+    _pairOf(instId,settleCcy){
+      if(!instId)return"BTC/USDT";
+      if(/_UM|_XPERP/i.test(instId)){
+        const base=instId.split("-")[0]||"BTC";
+        return `${base}/${String(settleCcy||"USD").toUpperCase()}`;
+      }
+      return instId.replace(/-SWAP$/i,"").replace("-","/");
+    },
     // Eén OKX positions-history record → intern round-trip trade.
     _normalise(t){
       const instId=String(t.instId||"");
-      const pair=instId?instId.replace(/-SWAP$/i,"").replace("-","/"):"BTC/USDT";
+      const pair=this._pairOf(instId,t.settleCcy||t.ccy);
       const openMs=Number(t.cTime)||0,closeMs=Number(t.uTime)||0;
       const closeT=closeMs||openMs||Date.now();
       const entryN=parseFloat(t.openAvgPx)||0,exitN=parseFloat(t.closeAvgPx)||0;
       const ctVal=this._ctVal(instId);
       const contracts=Math.abs(parseFloat(t.closeTotalPos)||0);
-      let assetQty=contracts*ctVal;
-      // OKX realizedPnl is GROSS (excl. fees). fee + fundingFee komen NEGATIEF binnen.
-      const gross=parseFloat((t.realizedPnl!=null&&t.realizedPnl!=="")?t.realizedPnl:t.pnl)||0;
+      // Size = contracten × ctVal (OKX /public/instruments ctVal is autoritatief). GEEN PnL-heuristiek:
+      // de PnL-formule van USD-margined UM-contracten (X-Perp) is niet lineair, dus |pnl|/koersverschil
+      // gaf onzin (bv. 0.50 i.p.v. 0.0008 BTC). Voor SWAP klopt ctVal sowieso al exact.
+      const assetQty=contracts*ctVal;
+      // OKX `realizedPnl` = pnl + fee + fundingFee + liqPenalty = NETTO (incl. kosten). Direct gebruiken;
+      // val terug op pnl+fee+funding als realizedPnl ontbreekt. (fee/fundingFee komen negatief binnen.)
       const feeN=parseFloat(t.fee)||0,fundingN=parseFloat(t.fundingFee)||0;
-      // PnL-cross-check (zoals Blofin/MEXC): impliedAsset = |gross| / |exit-entry|. Kies tussen
-      // contracts×ctVal en raw contracts; bij grove mismatch op beide → vertrouw de PnL-afgeleide.
-      const priceDiff=Math.abs(exitN-entryN);
-      if(priceDiff>0&&Math.abs(gross)>1e-6){
-        const implied=Math.abs(gross)/priceDiff;
-        const rScaled=assetQty>0?Math.abs(implied-assetQty)/implied:Infinity;
-        const rRaw=contracts>0?Math.abs(implied-contracts)/implied:Infinity;
-        if(rRaw<0.05&&rRaw<rScaled)assetQty=contracts;
-        else if(rScaled>0.25&&rRaw>0.25&&isFinite(implied)&&implied>0)assetQty=implied;
-      }
-      const netPnl=gross+feeN+fundingN;
+      const netPnl=(t.realizedPnl!=null&&t.realizedPnl!=="")?(parseFloat(t.realizedPnl)||0):((parseFloat(t.pnl)||0)+feeN+fundingN);
       const feeAbs=Math.abs(feeN)+Math.abs(fundingN);
       const usdNotional=(entryN>0&&assetQty>0)?(entryN*assetQty).toFixed(2):"";
       let direction;const ps=String(t.posSide||"").toLowerCase();
       if(ps==="long")direction="long";
       else if(ps==="short")direction="short";
-      else{const dir=String(t.direction||"").toLowerCase();if(dir==="long"||dir==="short")direction=dir;else direction=((exitN-entryN)*gross>=0)?"long":"short";}
+      else{const dir=String(t.direction||"").toLowerCase();if(dir==="long"||dir==="short")direction=dir;else direction=((exitN-entryN)*netPnl>=0)?"long":"short";}
       const tpLevels=Array.isArray(t.tpLevels)?t.tpLevels:[];
       return{...EMPTY_TRADE,
         id:"okx_"+(t.posId||uid())+"_"+closeT,
@@ -4030,19 +4042,12 @@ const ExchangeAPI = {
     },
     _normaliseOpen(p){
       const instId=String(p.instId||"");
-      const pair=instId?instId.replace(/-SWAP$/i,"").replace("-","/"):"BTC/USDT";
+      const pair=this._pairOf(instId,p.settleCcy||p.ccy);
       const ctVal=this._ctVal(instId);
       const contracts=Math.abs(parseFloat(p.pos)||0);
-      const entryN=parseFloat(p.avgPx)||0,markN=parseFloat(p.markPx)||0;
-      let assetQty=contracts*ctVal;
-      const upl=parseFloat(p.upl)||0;
-      const markDiff=Math.abs(markN-entryN);
-      if(markDiff>0&&Math.abs(upl)>1e-6){
-        const implied=Math.abs(upl)/markDiff;
-        const rScaled=assetQty>0?Math.abs(implied-assetQty)/implied:Infinity;
-        const rRaw=contracts>0?Math.abs(implied-contracts)/implied:Infinity;
-        if(rRaw<0.05&&rRaw<rScaled)assetQty=contracts;
-      }
+      const entryN=parseFloat(p.avgPx)||0;
+      // Size = contracten × ctVal (autoritatief); geen upl-heuristiek (zelfde reden als _normalise).
+      const assetQty=contracts*ctVal;
       const openMs=Number(p.cTime)||Date.now();
       const usdNotional=(entryN>0&&assetQty>0)?(entryN*assetQty).toFixed(2):"";
       let direction;const ps=String(p.posSide||"").toLowerCase();
