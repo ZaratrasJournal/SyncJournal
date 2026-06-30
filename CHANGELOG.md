@@ -6,11 +6,18 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
-## [v12.238] — nog niet uitgebracht
+## [v12.239] — 2026-06-30
+
+### Toegevoegd
+- **Hoofdstuk-navigatie in het trade-formulier** — Bij het toevoegen of bewerken van een trade staat er nu een meelopend zijmenu met de secties van het formulier (Prijzen & richting, Take Profit, Setup & Psychologie, Media & Links, Notities — en waar relevant Entry-criteria en "Waarom niet genomen"). Tijdens het scrollen licht het hoofdstuk op waar je bent; klik je een hoofdstuk aan dan spring je er direct heen met een korte goud-puls op die sectie. Geeft meer overzicht en duidelijkheid in het lange trade-formulier.
+
+---
+
+## [v12.238] — 2026-06-30
 
 ### Toegevoegd
 - **OKX-koppeling (perpetual swaps)** — Je kunt nu een OKX-account toevoegen onder Instellingen → Accounts. OKX gebruikt een **API key + secret + passphrase** (zelfde stijl als Blofin). De app haalt je gesloten posities, open posities en USDT-balans op, met automatische omrekening van OKX-contracts naar de echte coin-hoeveelheid en netto-PnL (handelskosten + funding meegerekend). Daarnaast werkt **CSV-import** van OKX's Position History-export. Net als bij Hyperliquid/Kraken levert OKX complete round-trips per positie.
-  - ⚠ **API-sync vereist een Worker-update** die buiten de app wordt uitgerold — tot die live is werkt OKX via CSV-import.
+  - De **API-sync werkt direct** via de gedeelde Morani-proxy — geen extra installatie nodig. CSV-import blijft ook beschikbaar.
 - **OKX TP-breakdown (meerdere take-profits)** — Een OKX-positie die je in stukken sluit (TP1/TP2/…) toont nu de afzonderlijke take-profit-niveaus met percentages, net als bij de andere exchanges. De app leest de losse close-fills uit OKX's fills-history en bouwt daar de TP-tijdlijn van. (Geen Worker-update nodig; geborgd met [tests/okx-tp-fills.spec.js](tests/okx-tp-fills.spec.js).)
 
 ### Fixed

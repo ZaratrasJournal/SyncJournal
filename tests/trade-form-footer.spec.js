@@ -25,7 +25,11 @@ for (const theme of ['classic', 'sync', 'parchment']) {
     const r = await page.evaluate(() => {
       const btn = [...document.querySelectorAll('button')].find(b => /Trade opslaan/.test(b.textContent));
       const footer = btn.parentElement;
-      return { footerBg: getComputedStyle(footer).backgroundColor, parentBg: getComputedStyle(footer.parentElement).backgroundColor };
+      // v12.239: footer zit nu in de content-kolom (tf-form-col) binnen het form-paneel
+      // (.tf-form-grid). De content-kolom is transparant, dus de footer-glass ligt naadloos
+      // over de paneel-glass — vergelijk daarom met het paneel, niet de transparante wrapper.
+      const panel = footer.closest('.tf-form-grid') || footer.parentElement;
+      return { footerBg: getComputedStyle(footer).backgroundColor, parentBg: getComputedStyle(panel).backgroundColor };
     });
 
     expect(errors, 'geen JS-errors').toHaveLength(0);
