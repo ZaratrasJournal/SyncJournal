@@ -4013,7 +4013,13 @@ const ExchangeAPI = {
       // de PnL-formule van USD-margined UM-contracten (X-Perp) is niet lineair, dus |pnl|/koersverschil
       // gaf onzin (bv. 0.50 i.p.v. 0.0008 BTC). Voor SWAP klopt ctVal sowieso al exact.
       const assetQty=contracts*ctVal;
-      // OKX `realizedPnl` = pnl + fee + fundingFee + liqPenalty = NETTO (incl. kosten). Direct gebruiken;
+      // v12.238: OKX positions-history geeft NIET alleen complete round-trips — een gedeeltelijke
+      // sluiting van een nog-open positie komt als record met `type:"1"` en `closeTotalPos < openMaxPos`
+      // (`openMaxPos` = originele positiegrootte in contracten). Markeer die als partial-close zodat de
+      // finalize-flow de open-placeholder (= het echte restant) NIET wegruimt en detectPartialFromSiblings
+      // 'm correct linkt (TP-pct = closeTotalPos/openMaxPos, originalSize = restant + gesloten).
+      const openMaxContracts=Math.abs(parseFloat(t.openMaxPos)||0);
+      const isPartialClose=openMaxContracts>0&&contracts>0&&openMaxContracts>contracts+1e-9;
       // val terug op pnl+fee+funding als realizedPnl ontbreekt. (fee/fundingFee komen negatief binnen.)
       const feeN=parseFloat(t.fee)||0,fundingN=parseFloat(t.fundingFee)||0;
       const netPnl=(t.realizedPnl!=null&&t.realizedPnl!=="")?(parseFloat(t.realizedPnl)||0):((parseFloat(t.pnl)||0)+feeN+fundingN);
@@ -4038,6 +4044,8 @@ const ExchangeAPI = {
         leverage:String(t.lever||"10"),
         source:"okx",status:"closed",
         _okxInstId:instId,
+        _rawCloseSize:assetQty>0?String(assetQty):"",
+        ...(isPartialClose?{_okxPartialClose:true}:{}),
         tpLevels,
       };
     },
@@ -20643,7 +20651,13 @@ function App(){
           // user-velden over op de nieuwste sibling. Siblings NIET consumeren (id's blijven
           // bestaan zodat een re-fetch netjes dedupt i.p.v. duplicaten maakt).
           if(ExchangeAPI[sourceTypeOf(t.source)]?.openIsPlaceholder){
-            const newest=[...siblings].sort((a,b)=>(parseFloat(b.closeTime||"0")||0)-(parseFloat(a.closeTime||"0")||0))[0];
+            // v12.238: OKX-partials (closeTotalPos < openMaxPos) zijn GEEN complete round-trip —
+            // de positie staat nog open en deze placeholder is het echte restant. Verwijder 'm dan
+            // NIET; laat detectPartialFromSiblings 'm als partial linken. Marker `_okxPartialClose`
+            // bestaat alleen op OKX-records → Kraken/HL onaangeroerd (finalSibs === siblings).
+            const finalSibs=siblings.filter(s=>!s._okxPartialClose);
+            if(finalSibs.length===0)return t;// alleen partial-closes → placeholder behouden
+            const newest=[...finalSibs].sort((a,b)=>(parseFloat(b.closeTime||"0")||0)-(parseFloat(a.closeTime||"0")||0))[0];
             placeholderAdopt.set(newest.id,t);
             placeholderRemoved.add(t.id);
             finalizedCount++;
