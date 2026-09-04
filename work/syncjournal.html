@@ -803,7 +803,7 @@ body.dark .toast{box-shadow:0 10px 34px rgba(0,0,0,.5)}
 <div class="toasts" id="toasts"></div>
 
 <div class="scrim" id="scrim"></div>
-<div class="modal" id="modal"></div>
+<div class="modal" id="modal" role="dialog" aria-modal="true" aria-label="Dialoogvenster"></div>
 <div class="lightbox" id="lightbox" onclick="closeLightbox()"></div>
 <div class="welcome" id="welcome"></div>
 
@@ -1235,7 +1235,7 @@ const SEEDVER=13;
 // Setup-grade (A/B/C) — pre-trade kwaliteitsinschatting, vervangt de oude 1-5 zekerheid.
 const GRADES=[{k:'A',color:'var(--green)',desc:'A+ conviction · alles lijnt uit'},{k:'B',color:'var(--amber)',desc:'Degelijk · kleine twijfel'},{k:'C',color:'var(--red)',desc:'Marginaal · discretionair'}];
 function gradeOf(t){return t.grade||({5:'A',4:'A',3:'B',2:'C',1:'C'}[t.confidence])||'';}
-function gradeBadge(g){return `<span class="gbadge g-${g}">${g}</span>`;}
+function gradeBadge(g){g=esc(g);return `<span class="gbadge g-${g}">${g}</span>`;}
 /* trade-soorten: live (echt geld) + oefentrades (gemist/paper/backtest) */
 const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Gemist',color:'#8a92a3',emoji:'👻'},paper:{label:'Paper',color:'#3b6ef5',emoji:'📄'},backtest:{label:'Backtest',color:'#a78bfa',emoji:'⏲'}};
 function isLive(t){return !t.kind||t.kind==='live';}
@@ -1244,7 +1244,14 @@ function isLive(t){return !t.kind||t.kind==='live';}
 const APP_VERSION='v0.9.0';
 const SCHEMA_VERSION=1;
 const DB={
-  load(k,fb){ try{const v=localStorage.getItem('sj_'+k);return v?JSON.parse(v):fb;}catch(e){return fb;} },
+  // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
+  // ander type dan verwacht (bv. sj_manual='null' of een array waar een object hoort).
+  // Voorkomt crash-on-boot bij handmatig geëditte of half-geschreven localStorage.
+  load(k,fb){ try{const v=localStorage.getItem('sj_'+k);if(v==null)return fb;const parsed=JSON.parse(v);
+    if(parsed==null)return fb;
+    if(Array.isArray(fb)!==Array.isArray(parsed))return fb;
+    if(typeof parsed!==typeof fb)return fb;
+    return parsed;}catch(e){return fb;} },
   save(k,v){ try{localStorage.setItem('sj_'+k,JSON.stringify(v));}catch(e){} },
 };
 // IndexedDB voor trades + playbooks (mét ingesloten screenshots) — omzeilt de ~5MB localStorage-limiet.
@@ -1390,7 +1397,7 @@ function dateFilterDD(){const presets=[['week','Deze week'],['month','Deze maand
       <div class="dd-custom"><span>Van</span><input type="date" value="${FILTER.dateFrom||''}" onchange="setDateFrom(this.value)"/><span>tot</span><input type="date" value="${FILTER.dateTo||''}" onchange="setDateTo(this.value)"/></div>
     </div></div>`;}
 function filterBar(){
-  const sel=(key,label,opts)=>`<select class="fsel" onchange="setFilter('${key}',this.value)"><option value="">${label}</option>${opts.map(o=>{const val=Array.isArray(o)?o[0]:o,lab=Array.isArray(o)?o[1]:o;return `<option value="${esc(val)}" ${FILTER[key]===val?'selected':''}>${esc(lab)}</option>`;}).join('')}</select>`;
+  const sel=(key,label,opts)=>`<select class="fsel" aria-label="${esc(label)}" onchange="setFilter('${key}',this.value)"><option value="">${label}</option>${opts.map(o=>{const val=Array.isArray(o)?o[0]:o,lab=Array.isArray(o)?o[1]:o;return `<option value="${esc(val)}" ${FILTER[key]===val?'selected':''}>${esc(lab)}</option>`;}).join('')}</select>`;
   const pairs=[...new Set(T.map(t=>t.pair))].sort();
   const tags=[...new Set(T.flatMap(t=>t.tags||[]))].sort();
   const active=countActive();
@@ -1402,7 +1409,7 @@ function filterBar(){
     ${sel('session','Alle sessies',SESSIONS)}
     ${sel('dir','Long & short',[['long','Long'],['short','Short']])}
     ${sel('tag','Alle tags',tags)}
-    <select class="fsel kindsel" onchange="setFilter('kind',this.value)">${[['live','Live trades'],['oefen','Oefentrades'],['alle','Alle soorten']].map(([v,l])=>`<option value="${v}" ${FILTER.kind===v?'selected':''}>${l}</option>`).join('')}</select>
+    <select class="fsel kindsel" aria-label="Soort trades" onchange="setFilter('kind',this.value)">${[['live','Live trades'],['oefen','Oefentrades'],['alle','Alle soorten']].map(([v,l])=>`<option value="${v}" ${FILTER.kind===v?'selected':''}>${l}</option>`).join('')}</select>
     ${dateFilterDD()}
     ${active?`<button class="fclear" onclick="clearGFilter()">✕ Wis (${active})</button>`:''}
   </div>`;
@@ -1416,7 +1423,8 @@ const eur=v=>CURSYM()+' '+Math.round(Math.abs(v)).toLocaleString('nl-NL');
 const eurS=v=>(v<0?'−':'+')+eur(v);
 const cls=v=>v>=0?'g':'r';
 const arr=v=>v>=0?'▲':'▼';
-const esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const jsarg=s=>String(s).replace(/[\\'"<>]/g,'');  // veilige arg voor inline on*-handlers (geen quote-/tag-breakout)
 const fmtD=d=>d.slice(8)+'-'+d.slice(5,7);
 function agg(){
   const wins=CLOSED.filter(t=>t.pnl>0),losses=CLOSED.filter(t=>t.pnl<0);
@@ -1454,12 +1462,12 @@ function kpiBlock(key,ns){
     <div class="kspark">${miniSpark(spark,dUp)}</div></div>`;
 }
 function pnlCell(pnl,pct){pnl=+pnl||0;pct=+pct||0;return `<span style="display:inline-flex;flex-direction:column;align-items:flex-end;line-height:1.25"><span class="num ${cls(pnl)} mask" style="white-space:nowrap">${eurS(pnl)}</span><span class="num ${cls(pnl)}" style="font-size:11px;opacity:.8;white-space:nowrap">${arr(pnl)}${Math.abs(pct).toFixed(2).replace('.',',')}%</span></span>`;}
-function assetCell(p){const b=p.split('/')[0];return `<div class="asset"><span class="ic" style="background:${PAIRC[b]||'#888'}">${b[0]}</span>${p}</div>`;}
+function assetCell(p){p=String(p||'');const b=p.split('/')[0];return `<div class="asset"><span class="ic" style="background:${PAIRC[b]||'#888'}">${esc(b[0]||'?')}</span>${esc(p)}</div>`;}
 function exBadge(id){const e=acctOf(id);if(!e)return '';return `<span class="exb" style="color:${e.c};background:color-mix(in srgb,${e.c} 14%,transparent)">${esc(e.name)}</span>`;}
 function accAvatar(id,sz){const e=acctOf(id);if(!e)return '';const ini=(e.abbr||e.name.slice(0,2)).toUpperCase();const st=sz?`width:${sz}px;height:${sz}px;font-size:${Math.round(sz*0.4)}px;`:'';return `<span class="acav" style="background:${e.c};${st}" title="${esc(e.name)} · ${e.acct}">${e.manual?'✎':esc(ini)}</span>`;}
 function exCell(id){const e=acctOf(id);if(!e)return '';return `<div class="excell">${accAvatar(id)}<div class="ext"><b>${esc(e.name)}</b><small>${e.acct}</small></div></div>`;}
 function tagColor(tag){for(const c of TAG_CATS){if((tagConfig[c.key]||[]).includes(tag))return c.color;}return '';}
-function tagChips(tags,click){return (tags||[]).map(t=>{const col=tagColor(t);return `<span class="tagchip${col?' col':''}${click?' click':''}" ${col?`style="--tc:${col}"`:''} ${click?`onclick="event.stopPropagation();setFilter('tag','${esc(t)}')"`:''}>${esc(t)}</span>`;}).join('');}
+function tagChips(tags,click){return (tags||[]).map(t=>{const col=tagColor(t);return `<span class="tagchip${col?' col':''}${click?' click':''}" ${col?`style="--tc:${col}"`:''} ${click?`onclick="event.stopPropagation();setFilter('tag','${jsarg(t)}')"`:''}>${esc(t)}</span>`;}).join('');}
 function statusB(s){const c=s==='partial'?'part':s==='open'?'open':'closed';return `<span class="status ${c}"><span class="sdot"></span>${s==='partial'?'Partial':s==='open'?'Open':'Gesloten'}</span>`;}
 function kindBadge(t){if(isLive(t))return '';const k=KINDS[t.kind]||{label:t.kind,color:'var(--muted)',emoji:''};return `<span class="kbadge" style="--kc:${k.color}">${k.emoji?k.emoji+' ':''}${k.label}</span>`;}
 const SESSC={'London':'#7c6cf0','New York':'#12b39b','US AM':'#12b39b','US PM':'#3b6ef5','Asia':'#c0821c','Tokyo':'#c0821c'};
@@ -1604,7 +1612,7 @@ function pgTrades(){
   const pStart=tPage*PAGE,pageRows=rows.slice(pStart,pStart+PAGE);
   const tabs=[['all','Alle',FT.length],['closed','Gesloten',FT.filter(t=>t.status==='closed').length],['open','Open/partial',FT.filter(t=>t.status!=='closed').length]];
   const cols=[['date','Datum',''],['exchange','Exchange',''],['pair','Pair',''],['dir','Richting',''],['entry','Entry','rt'],['exit','Exit','rt'],['size','Size','rt'],['pnl','P&L','rt'],['r','R','ct'],['status','Status',''],['setup','Setup',''],['session','Sessie',''],[null,'Tags','']];
-  const th=cols.map(([k,l,c])=>{const act=k===sc;return `<th scope="col" class="${c}" ${act?`aria-sort="${sd>0?'ascending':'descending'}"`:''} ${k?`onclick="sortBy('${k}')" onkeydown="if(event.key==='Enter')sortBy('${k}')" tabindex="0" role="button" style="cursor:pointer;user-select:none"`:''}>${l}${act?(sd>0?' ▲':' ▼'):''}</th>`;}).join('');
+  const th=cols.map(([k,l,c])=>{const act=k===sc;return `<th scope="col" class="${c}" ${act?`aria-sort="${sd>0?'ascending':'descending'}"`:''} ${k?`onclick="sortBy('${k}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();sortBy('${k}')}" tabindex="0" aria-label="Sorteer op ${esc(l)}" style="cursor:pointer;user-select:none"`:''}>${l}${act?(sd>0?' ▲':' ▼'):''}</th>`;}).join('');
   // active-filter chips
   const chips=[];
   if(STATE.tradeTab!=='all')chips.push(`<span class="fchip">Status: ${STATE.tradeTab==='closed'?'Gesloten':'Open/partial'}<button onclick="STATE.tradeTab='all';STATE.tradePage=0;render()" aria-label="wis">×</button></span>`);
@@ -1624,9 +1632,9 @@ function pgTrades(){
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px"><div class="tabs" id="trTabs">${tabs.map(([k,l,n])=>`<button data-tab="${k}" class="${STATE.tradeTab===k?'on':''}">${l} <span style="opacity:.55;font-weight:500">${n}</span></button>`).join('')}</div><span class="sp" style="flex:1"></span>${curStreakBadge()}</div>
     ${chipbar}${bulk}
     ${rows.length?`<div class="panel"><div class="tblwrap scroll"><table class="tbl${dens}">
-      <thead><tr><th class="cbx" scope="col"><span class="cb ${allSel?'on':''}" role="checkbox" aria-checked="${allSel}" tabindex="0" onclick="toggleSelAll()" onkeydown="if(event.key==='Enter'||event.key===' ')toggleSelAll()">${allSel?'✓':''}</span></th>${th}</tr></thead>
+      <thead><tr><th class="cbx" scope="col"><span class="cb ${allSel?'on':''}" role="checkbox" aria-checked="${allSel}" aria-label="Alle trades selecteren" tabindex="0" onclick="toggleSelAll()" onkeydown="if(event.key==='Enter'||event.key===' ')toggleSelAll()">${allSel?'✓':''}</span></th>${th}</tr></thead>
       <tbody>${pageRows.map(t=>{const sel=selSet.has(t.id);return `<tr tabindex="0" style="cursor:pointer" onclick="openForm(${t.id})" onkeydown="if(event.key==='Enter')openForm(${t.id})">
-        <td class="cbx" data-l="" onclick="event.stopPropagation()"><span class="cb ${sel?'on':''}" role="checkbox" aria-checked="${sel}" tabindex="0" onclick="toggleSel(${t.id})" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleSel(${t.id})}">${sel?'✓':''}</span></td>
+        <td class="cbx" data-l="" onclick="event.stopPropagation()"><span class="cb ${sel?'on':''}" role="checkbox" aria-checked="${sel}" aria-label="Selecteer trade" tabindex="0" onclick="toggleSel(${t.id})" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleSel(${t.id})}">${sel?'✓':''}</span></td>
         <td class="tag num" data-l="Datum">${fmtD(t.date)}</td>
         <td data-l="Exchange">${exCell(t.exchange)}</td>
         <td data-l="Pair"><div class="paircell">${assetCell(t.pair)}${kindBadge(t)}${newBadge(t)}</div></td><td data-l="Richting"><span class="pill ${t.dir}">${t.dir==='long'?'LONG':'SHORT'}</span></td>
@@ -1929,7 +1937,7 @@ function pgInstellingen(){
       <div class="section-sub">🔄 Synchronisatie</div>
       <div class="panel">
         <div class="setrow"><div class="txt"><b>Automatisch synchroniseren</b><small>Haalt periodiek nieuwe trades op bij verbonden exchanges</small></div><div class="sw ${SYNC.auto?'on':''}" onclick="toggleAutoSync()"></div></div>
-        <div class="setrow"><div class="txt"><b>Sync-interval</b><small>Hoe vaak we controleren op nieuwe trades</small></div><select class="fsel" onchange="setSyncInterval(this.value)">${[['5m','Elke 5 min'],['15m','Elke 15 min'],['30m','Elke 30 min'],['1u','Elk uur']].map(([v,l])=>`<option value="${v}" ${SYNC.interval===v?'selected':''}>${l}</option>`).join('')}</select></div>
+        <div class="setrow"><div class="txt"><b>Sync-interval</b><small>Hoe vaak we controleren op nieuwe trades</small></div><select class="fsel" aria-label="Sync-interval" onchange="setSyncInterval(this.value)">${[['5m','Elke 5 min'],['15m','Elke 15 min'],['30m','Elke 30 min'],['1u','Elk uur']].map(([v,l])=>`<option value="${v}" ${SYNC.interval===v?'selected':''}>${l}</option>`).join('')}</select></div>
         <div class="setrow"><div class="txt"><b>Nu synchroniseren</b><small>Handmatig een sync starten</small></div><button class="btn" onclick="syncNow()">Sync nu</button></div>
       </div>`,
     weergave:`<p class="setintro">Uiterlijk en weergave van de app.</p>
@@ -2061,7 +2069,7 @@ function pbAntiTxt(i,v){pbAnti[i].text=v;}
 function pbAntiReq(i){pbAnti[i].mandatory=!pbAnti[i].mandatory;renderPbAnti();}
 function pbAntiRm(i){pbAnti.splice(i,1);renderPbAnti();}
 function renderPbExamples(){const c=document.getElementById('pbexamples');if(!c)return;
-  const thumbs=pbExamples.map((ex,i)=>`<div class="shotbox exbox ex-${ex.kind}"><button class="shotdel" onclick="rmPbExample(${i})">×</button><img src="${ex.dataUrl}" alt="voorbeeld ${i+1}"><select class="exkind" onchange="setPbExKind(${i},this.value)">${PB_EXKINDS.map(([k,l])=>`<option value="${k}" ${ex.kind===k?'selected':''}>${l}</option>`).join('')}</select></div>`).join('');
+  const thumbs=pbExamples.map((ex,i)=>`<div class="shotbox exbox ex-${ex.kind}"><button class="shotdel" onclick="rmPbExample(${i})">×</button><img src="${ex.dataUrl}" alt="voorbeeld ${i+1}"><select class="exkind" aria-label="Voorbeeld-type" onchange="setPbExKind(${i},this.value)">${PB_EXKINDS.map(([k,l])=>`<option value="${k}" ${ex.kind===k?'selected':''}>${l}</option>`).join('')}</select></div>`).join('');
   const add=pbExamples.length<6?`<div class="shotadd" onclick="pickPbExample()"><div style="font-size:24px;line-height:1">＋</div><div style="font-size:10.5px;color:var(--muted);margin-top:5px;text-align:center;line-height:1.35">Upload of plak<br>(Ctrl/⌘+V)</div></div>`:'';
   c.innerHTML=`<div class="shotgrid shotbuilder-grid">${thumbs}${add}</div>`;}
 async function addPbExample(file){if(!file||!(file.type||'').startsWith('image/'))return;if(pbExamples.length>=6){toast('Max 6 voorbeelden','info');return;}try{pbExamples.push({id:'ex'+Date.now(),dataUrl:await compressImg(file),caption:'',kind:'win'});renderPbExamples();}catch(e){toast('Kon afbeelding niet laden','info');}}
@@ -2435,6 +2443,7 @@ function pgFaq(){
 let AIMSGS=[{r:'ai',t:'Hoi Denny 👋 Ik ben je AI-coach. Ik ken al je trades — vraag me gerust waar je edge zit, waar je geld lekt, of hoe je periode ging.'}];
 // Coach-voorkeuren (demo). Stuurt toon, focus-chips en of bedragen zichtbaar zijn.
 let AIPREFS=DB.load('ai_prefs',{enabled:true,tone:'neutraal',focus:{discipline:true,risk:true,psychologie:false},hideAmounts:false});
+AIPREFS.focus=Object.assign({discipline:true,risk:true,psychologie:false},AIPREFS.focus||{});  // borg focus-subobject
 const AI_TONES=[['mild','Mild'],['neutraal','Neutraal'],['direct','Direct']];
 const AI_FOCUS=[['discipline','Discipline'],['risk','Risk'],['psychologie','Psychologie']];
 function persistAIPrefs(){DB.save('ai_prefs',AIPREFS);}
@@ -2683,17 +2692,17 @@ function openForm(id){
     <div class="mhead"><h3>${id!=null?'Trade bewerken':'Nieuwe trade'}</h3><button class="xbtn" onclick="closeForm()">×</button></div>
     <div class="mbody">
       <div class="msub s1"><span class="msn">1</span> Basis</div>
-      <div class="field"><label>Exchange</label><select id="f_exchange">${exOpt}</select></div>
+      <div class="field"><label>Exchange</label><select id="f_exchange" aria-label="Exchange">${exOpt}</select></div>
       <div class="field"><label>Pair</label><input id="f_pair" value="${esc(t.pair)}" placeholder="BTC/USDC"></div>
       <div class="field"><label>Datum</label><input type="date" id="f_date" value="${t.date}"></div>
       <div class="field"><label>Tijd</label><input id="f_time" value="${t.time||''}" placeholder="14:30"></div>
-      <div class="field"><label>Richting</label><select id="f_dir" onchange="calcTrade(true)"><option value="long" ${t.dir==='long'?'selected':''}>Long</option><option value="short" ${t.dir==='short'?'selected':''}>Short</option></select></div>
-      <div class="field"><label>Status</label><select id="f_status"><option value="closed" ${t.status==='closed'?'selected':''}>Gesloten</option><option value="partial" ${t.status==='partial'?'selected':''}>Partial</option><option value="open" ${t.status==='open'?'selected':''}>Open</option></select></div>
-      <div class="field"><label>Soort <span class="hint">(Live of oefentrade)</span></label><select id="f_kind" onchange="onKindChange()">${Object.entries(KINDS).map(([v,k])=>`<option value="${v}" ${(t.kind||'live')===v?'selected':''}>${k.emoji?k.emoji+' ':''}${k.label}</option>`).join('')}</select></div>
+      <div class="field"><label>Richting</label><select id="f_dir" aria-label="Richting" onchange="calcTrade(true)"><option value="long" ${t.dir==='long'?'selected':''}>Long</option><option value="short" ${t.dir==='short'?'selected':''}>Short</option></select></div>
+      <div class="field"><label>Status</label><select id="f_status" aria-label="Status"><option value="closed" ${t.status==='closed'?'selected':''}>Gesloten</option><option value="partial" ${t.status==='partial'?'selected':''}>Partial</option><option value="open" ${t.status==='open'?'selected':''}>Open</option></select></div>
+      <div class="field"><label>Soort <span class="hint">(Live of oefentrade)</span></label><select id="f_kind" aria-label="Soort trade" onchange="onKindChange()">${Object.entries(KINDS).map(([v,k])=>`<option value="${v}" ${(t.kind||'live')===v?'selected':''}>${k.emoji?k.emoji+' ':''}${k.label}</option>`).join('')}</select></div>
 
       <div class="msub s2"><span class="msn">2</span> Context</div>
-      <div class="field"><label>Sessie</label><select id="f_session">${opt(SESSIONS,t.session)}</select></div>
-      <div class="field"><label>Marktconditie</label><select id="f_market">${opt(MARKETS,t.market||'Trending')}</select></div>
+      <div class="field"><label>Sessie</label><select id="f_session" aria-label="Sessie">${opt(SESSIONS,t.session)}</select></div>
+      <div class="field"><label>Marktconditie</label><select id="f_market" aria-label="Marktconditie">${opt(MARKETS,t.market||'Trending')}</select></div>
       <div class="field full"><label>Setup-grade <span class="hint">(optioneel · A = hoogste kwaliteit · C = marginaal)</span></label>
         <div class="confseg gradeseg" id="gradeseg">${GRADES.map(g=>`<button data-g="${g.k}" class="g-${g.k} ${formGrade===g.k?'on':''}" onclick="setFormGrade('${g.k}')" title="${g.desc}">${g.k}</button>`).join('')}</div></div>
 
