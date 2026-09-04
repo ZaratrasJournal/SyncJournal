@@ -45,5 +45,12 @@
 ## Kortste veilige pad
 Fase 0 → 1 → 2 = veilige, volledige overstap met vangnet. Fase 3 = toekomstbestendiging. Fase 4 loopt mee.
 
-## Nog nodig van Denny
-- Eén echte export uit de oude app om de veld-mapping tegen echte data te valideren.
+## Status (2026-09-04) — ALLE FASES AFGEROND ✅
+- ✅ **Fase 0** — ErrorCenter (zichtbare/herstelbare meldingen + diagnostics), geverifieerd opslaan (persist), quota-afhandeling, globale crash-vangnetten. Test: 15/15.
+- ✅ **Fase 1** — Snapshots-module (auto vóór risicovolle acties, laatste 3) + 1-klik herstel-UI. Bugfix: `clearAllData` wiste `sjdemo_` i.p.v. `sj_`. Test: 14/14.
+- ✅ **Fase 2** — TJMigrate: auto-detectie oude `tj_`-data + wizard (aanbod + rapport), volledige mapping (trades incl. source→account-koppeling, manual→MANUAL, exchange→CONNS, tags, playbooks, thema/valuta/privacy), snapshot-vóór, integriteitscheck, idempotent. Test: 20/20.
+- ✅ **Fase 3** — geversioneerd migratie-framework (`MIGRATIONS=[{v,up}]`, snapshot-vóór + rollback) + boot-time self-check. Test: 11/11.
+- ✅ **Fase 4** — volledige regressie groen over álle suites (~392 checks).
+
+## Nog nodig van Denny (enige open punt)
+- Eén echte export/localStorage-dump uit de oude app om de veld-mapping tegen jouw echte data te valideren (accounts, mae/mfe, sessie-grenzen). De mapping is getest tegen realistische synthetische data; validatie tegen één echte set sluit de laatste onzekerheid.

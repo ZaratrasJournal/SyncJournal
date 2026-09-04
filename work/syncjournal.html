@@ -1316,10 +1316,41 @@ const IDB={db:null,
   clearAll(){return IDB.open().then(db=>new Promise(res=>{const tx=db.transaction('kv','readwrite');tx.objectStore('kv').clear();tx.oncomplete=()=>res(true);tx.onerror=()=>res(false);})).catch(()=>false);},
   del(k){return IDB.open().then(db=>new Promise(res=>{const tx=db.transaction('kv','readwrite');tx.objectStore('kv').delete(k);tx.oncomplete=()=>res(true);tx.onerror=()=>res(false);})).catch(()=>false);},
 };
-/* schema-migratie: draai vóór data-load zodat oude structuren meegroeien */
-(function migrate(){const from=DB.load('schema',0);if(from>=SCHEMA_VERSION)return;
-  // v0→v1: nog geen breaking changes; hier komen toekomstige migraties (bv. veld-hernoemingen)
-  DB.save('schema',SCHEMA_VERSION);})();
+/* Geversioneerde schema-migratie: elke toekomstige breaking change krijgt een {v, up}-stap.
+   up() transformeert de al-geladen live-staat (T, PBOOK, tagConfig, …) in-place.
+   runMigrations() draait in boot() ná de data-load, maakt eerst een snapshot en rolt terug bij fouten. */
+const MIGRATIONS=[
+  // Voorbeeld voor later:
+  // {v:2, note:'hernoem veld X→Y', up(){ T.forEach(t=>{ t.y=t.x; delete t.x; }); }},
+];
+async function runMigrations(){
+  const from=DB.load('schema',0);
+  if(from>=SCHEMA_VERSION){return {ran:0};}
+  const pending=MIGRATIONS.filter(m=>m.v>from && m.v<=SCHEMA_VERSION).sort((a,b)=>a.v-b.v);
+  if(!pending.length){DB.save('schema',SCHEMA_VERSION);return {ran:0};}  // niets te doen (bv. verse install)
+  await Snapshots.create('vóór schema-update');
+  try{
+    for(const m of pending){ m.up(); }
+    persist(); persistPbook(); persistTagConfig();
+    DB.save('schema',SCHEMA_VERSION);
+    return {ran:pending.length};
+  }catch(e){
+    const pre=SNAP_META.find(s=>s.label==='vóór schema-update');
+    if(pre)await Snapshots.restore(pre.id);
+    ErrorCenter.report('migrate',e,{severity:'critical',userMsg:'Het bijwerken van je data naar de nieuwe versie ging mis. Je vorige staat is automatisch teruggezet.',actions:[{label:'Details',fn:()=>ErrorCenter.diagnostics()}]});
+    return {ran:0,error:true};
+  }
+}
+// Lichte self-check bij boot: detecteert grove corruptie en biedt herstel aan.
+function selfCheck(){
+  const bad=[];
+  if(!Array.isArray(T))bad.push('trades-lijst');
+  else if(T.some(t=>!t||typeof t!=='object'))bad.push('trade-record');
+  if(!PBOOK||typeof PBOOK!=='object'||Array.isArray(PBOOK))bad.push('playbooks');
+  if(!tagConfig||typeof tagConfig!=='object')bad.push('tags');
+  if(bad.length){ ErrorCenter.report('load',new Error('self-check: '+bad.join(', ')),{severity:'error',userMsg:'Er lijkt iets mis met je opgeslagen data ('+bad.join(', ')+'). Je kunt een veiligheidskopie terugzetten via Instellingen → Data.',actions:[{label:'Naar herstel',fn:()=>{ErrorCenter.dismiss();go('instellingen');setSetTab('data');}}]}); return false; }
+  return true;
+}
 // Work-variant: NOOIT auto-overschrijven. Laad opgeslagen trades; leeg bij eerste start.
 // Voorbeelddata laden is een bewuste actie (loadDemoData), geen automatische reseed.
 let T=[]; // geladen in boot() uit IndexedDB (async)
@@ -3039,6 +3070,8 @@ async function boot(){
     PBOOK={};Object.entries(pb||PBRULES).forEach(([k,v])=>PBOOK[k]=pbNormalize(k,v));
   }catch(e){T=DB.load('trades',[]);PBOOK={};Object.entries(DB.load('pbook',PBRULES)).forEach(([k,v])=>PBOOK[k]=pbNormalize(k,v));}
   try{const sm=await IDB.get('snapshots');SNAP_META=Array.isArray(sm)?sm:[];}catch(e){SNAP_META=[];}
+  try{await runMigrations();}catch(e){}   // geversioneerde schema-updates (snapshot + rollback ingebouwd)
+  selfCheck();                            // grove corruptie → herstel-aanbod
   render();
   // Eerste-start: migratie-aanbod (oude tj_-data) heeft voorrang op het welkomscherm.
   if((T||[]).length===0 && !DB.load('migrated_from_tj',null) && !DB.load('mig_declined',false) && TJMigrate.detect()){ migOffer(); }
