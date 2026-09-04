@@ -495,6 +495,7 @@ table.tbl{width:100%;border-collapse:collapse;font-size:13px}
 .modal .mhead{display:flex;align-items:center;gap:12px;padding:18px 26px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--surface);z-index:2}
 .modal .mhead h3{font-size:17px}
 .modal .mbody{padding:22px 26px;display:grid;grid-template-columns:repeat(4,1fr);gap:15px 20px}
+.modal .mbody.mbody-wiz{display:flex;flex-direction:column;gap:12px}
 .modal .mfoot{display:flex;align-items:center;gap:10px;padding:16px 26px;border-top:1px solid var(--line);position:sticky;bottom:0;background:var(--surface)}
 @media(max-width:1080px){.modal .mbody{grid-template-columns:repeat(3,1fr)}}
 @media(max-width:820px){.modal .mbody{grid-template-columns:1fr 1fr}}
@@ -2030,6 +2031,7 @@ function pgInstellingen(){
       </div>`,
     updates:`<p class="setintro">Hou SyncJournal up-to-date. Bij een update blijft je lokale data altijd bewaard.</p>${updateSection()}`,
     data:`<p class="setintro">Back-up en beheer van je journal-data. Alles blijft lokaal in je browser.</p>
+      ${(()=>{const det=TJMigrate.detect();return det?`<div class="section-sub">🛟 Overzetten uit oude TradeJournal</div><div class="panel"><div class="setrow"><div class="txt"><b>${det.trades} trades gevonden in je oude app</b><small>Zet je data veilig over naar SyncJournal — er wordt eerst een veiligheidskopie gemaakt${DB.load('migrated_from_tj',null)?' · <span style="color:var(--green)">al eerder gemigreerd</span>':''}</small></div><button class="btn pri" onclick="migRun()">Overzetten</button></div></div>`:'';})()}
       <div class="panel"><div class="setrow"><div class="txt"><b>Back-up</b><small>Exporteer of importeer je journal als JSON — echt werkend</small></div>
       <button class="btn" onclick="importJSON()">Importeer</button><button class="btn pri" onclick="exportJSON()">Exporteer JSON</button></div>
       <div class="setrow"><div class="txt"><b>Voorbeelddata laden</b><small>Vul de app met voorbeeld-trades om te verkennen — overschrijft je huidige trades</small></div><button class="btn" onclick="resetDemo()">Laden</button></div>
@@ -2689,6 +2691,70 @@ function migrateOldTrade(ot){
 function looksOldExport(arr){return arr.length>0 && !('dir' in arr[0]) && (('direction' in arr[0])||('stopLoss' in arr[0])||('setupTags' in arr[0])||('simType' in arr[0]));}
 function mergeOldTags(arr){const merge=(cat,vals)=>{const cur=new Set(tagConfig[cat]||[]);(vals||[]).forEach(v=>v&&cur.add(v));tagConfig[cat]=[...cur];};
   arr.forEach(t=>{merge('setupTags',t.setupTags);merge('confirmationTags',t.confirmationTags);merge('timeframeTags',t.timeframeTags);merge('emotionTags',t.emotionTags);merge('mistakeTags',t.mistakeTags);});persistTagConfig();}
+// ═══ Fase 2: migratie oude TradeJournal (localStorage tj_) → SyncJournal ═══
+const TJ_THEME={sync:'dark',classic:'dark',aurora:'dark',light:'light',parchment:'light',daylight:'light'};
+const TJMigrate={
+  _get(k,fb){try{const v=localStorage.getItem(k);return v==null?fb:JSON.parse(v);}catch(e){return fb;}},
+  detect(){ try{ const trades=this._get('tj_trades',null); if(!Array.isArray(trades)||!trades.length)return null;
+    const accounts=this._get('tj_accounts',[]),playbooks=this._get('tj_playbooks',[]);
+    return {trades:trades.length,accounts:Array.isArray(accounts)?accounts.length:0,playbooks:Array.isArray(playbooks)?playbooks.length:0}; }catch(e){return null;} },
+  readOld(){ return {trades:this._get('tj_trades',[]),accounts:this._get('tj_accounts',[]),tags:this._get('tj_tags',{}),playbooks:this._get('tj_playbooks',[]),config:this._get('tj_config',{}),privacy:localStorage.getItem('tj_privacy_mode')==='1'}; },
+  map(old){
+    const warnings=[]; const acctById={}; (old.accounts||[]).forEach(a=>{if(a&&a.id)acctById[a.id]=a;});
+    const manual=[],conns={};
+    (old.accounts||[]).forEach(a=>{ if(!a)return; const isManual=!a.type||a.type==='manual';
+      if(isManual){ manual.push({id:a.id||('m'+Date.now()+Math.random().toString(36).slice(2,6)),name:a.label||a.name||'Account',transactions:(a.transactions||[]).map(tx=>({id:tx.id||('tx'+Math.random().toString(36).slice(2,8)),type:tx.type,amount:String(tx.amount),date:tx.date||'',note:tx.note||''}))}); }
+      else if(EXMAP[a.type]){ conns[a.type]={connected:true,autoSync:false,hint:(a.apiKey||'').slice(-4)}; if((a.transactions||[]).length)warnings.push('Kapitaal-mutaties van exchange-account "'+(a.label||a.type)+'" zijn niet overgezet (SyncJournal koppelt exchanges live).'); }
+      else warnings.push('Exchange "'+a.type+'" wordt door SyncJournal nog niet ondersteund — de trades blijven behouden, de koppeling niet.');
+    });
+    const trades=(old.trades||[]).map((ot,i)=>{ const t={...migrateOldTrade(ot),id:i}; const src=ot.source;
+      if(src&&src!=='manual'){ const a=acctById[src];
+        if(a)t.exchange=(!a.type||a.type==='manual')?a.id:(EXMAP[a.type]?a.type:'');
+        else if(EXMAP[src])t.exchange=src; else if(OLD_EXMAP[src])t.exchange=OLD_EXMAP[src]; else t.exchange='';
+      } else t.exchange=''; return t; });
+    const tagConfigOut=JSON.parse(JSON.stringify(tagConfig));
+    ['setupTags','confirmationTags','timeframeTags','emotionTags','mistakeTags','missedReasonTags'].forEach(cat=>{ const cur=new Set(tagConfigOut[cat]||[]); ((old.tags&&old.tags[cat])||[]).forEach(v=>v&&cur.add(v)); tagConfigOut[cat]=[...cur]; });
+    const pbook={}; (old.playbooks||[]).forEach(pb=>{ if(pb&&pb.name)pbook[pb.name]=pbNormalize(pb.name,pb); });
+    const theme=TJ_THEME[(old.config||{}).theme]||'light';
+    const settings={theme,currency:'USD',priv:!!old.privacy,density:STATE.density};
+    const report={trades:trades.length,playbooks:Object.keys(pbook).length,manual:manual.length,conns:Object.keys(conns).length,tags:['setupTags','confirmationTags','timeframeTags','emotionTags','mistakeTags'].reduce((s,c)=>s+(((old.tags&&old.tags[c])||[]).length),0)};
+    return {payload:{trades,tagConfig:tagConfigOut,pbook,manual,conns,settings},report,warnings};
+  },
+  verify(payload){ const issues=[];
+    if(!Array.isArray(T)||T.length!==payload.trades.length)issues.push('Aantal trades komt niet overeen na overzetten.');
+    if((T||[]).some(t=>t&&(t.pnl===undefined||isNaN(+t.pnl))))issues.push('Sommige trades hebben een ongeldige P&L.');
+    if((T||[]).some(t=>!t||!t.date))issues.push('Sommige trades missen een datum.');
+    return issues; },
+  async run(){ try{
+    const old=this.readOld(); const {payload,report,warnings}=this.map(old);
+    await Snapshots.create('vóór migratie');
+    applyBackup(payload);
+    const issues=this.verify(payload);
+    DB.save('migrated_from_tj',{when:new Date().toISOString(),trades:report.trades});
+    showMigrationReport(report,warnings,issues);
+  }catch(e){ ErrorCenter.report('migrate',e,{severity:'error',userMsg:'De migratie is mislukt. Je bestaande data is ongewijzigd — probeer opnieuw of importeer een JSON-back-up.',actions:[{label:'Details',fn:()=>ErrorCenter.diagnostics()}]}); } },
+};
+function openModalHTML(html){ const m=document.getElementById('modal'); m.innerHTML=html; m.classList.add('on'); document.getElementById('scrim').classList.add('on'); }
+function migOffer(){ const det=TJMigrate.detect(); if(!det)return; openModalHTML(`
+  <div class="mhead"><h3>🛟 Je TradeJournal-data gevonden</h3><button class="xbtn" onclick="migLater()">×</button></div>
+  <div class="mbody mbody-wiz">
+    <p class="setintro">We vonden gegevens uit je oude TradeJournal in deze browser. Wil je die veilig overzetten naar SyncJournal? Je oude app blijft ongewijzigd.</p>
+    <div class="panel"><div class="setrow"><div class="txt"><b>Gevonden</b><small>${det.trades} trades${det.accounts?' · '+det.accounts+' accounts':''}${det.playbooks?' · '+det.playbooks+' playbooks':''}</small></div></div></div>
+    <p class="hint" style="padding:0 2px">Vóór het overzetten maken we automatisch een veiligheidskopie, zodat je altijd kunt terug.</p>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px"><button class="btn" onclick="migLater()">Later</button><button class="btn pri" onclick="migRun()">Veilig overzetten</button></div>
+  </div>`); }
+function migLater(){ DB.save('mig_declined',true); closeForm(); if(!DB.load('welcomed',false))showWelcome(); }
+async function migRun(){ closeForm(); await TJMigrate.run(); }
+function showMigrationReport(report,warnings,issues){ const okAll=!issues.length; openModalHTML(`
+  <div class="mhead"><h3>${okAll?'✓ Migratie afgerond':'⚠ Migratie afgerond met aandachtspunten'}</h3><button class="xbtn" onclick="migReportClose()">×</button></div>
+  <div class="mbody mbody-wiz">
+    <div class="panel"><div class="setrow"><div class="txt"><b>Overgezet</b><small>${report.trades} trades · ${report.playbooks} playbooks · ${report.manual} handmatige accounts · ${report.conns} exchange-koppelingen · ${report.tags} tags</small></div></div></div>
+    ${warnings.length?`<div class="section-sub">Aandachtspunten</div><div class="panel">${warnings.map(w=>`<div class="setrow"><div class="txt" style="font-size:12.5px">⚠ ${esc(w)}</div></div>`).join('')}</div>`:''}
+    ${issues.length?`<div class="section-sub" style="color:var(--red)">Integriteit</div><div class="panel">${issues.map(w=>`<div class="setrow"><div class="txt" style="font-size:12.5px;color:var(--red)">⛔ ${esc(w)}</div></div>`).join('')}<div class="setrow"><div class="txt"><b>Klopt er iets niet?</b><small>Zet je vorige staat in één klik terug</small></div><button class="btn danger" onclick="migRestorePre()">Herstel vorige staat</button></div></div>`:`<p class="hint" style="padding:6px 2px">Alles gecontroleerd — je kunt aan de slag. Een veiligheidskopie van je vorige staat staat in Instellingen → Data.</p>`}
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px"><button class="btn pri" onclick="migReportClose()">Klaar</button></div>
+  </div>`); }
+function migReportClose(){ closeForm(); render(); toast('✓ Migratie afgerond','ok'); }
+async function migRestorePre(){ const pre=SNAP_META.find(s=>s.label==='vóór migratie'); closeForm(); if(pre){await Snapshots.restore(pre.id);toast('Vorige staat hersteld','info');} }
 function importJSON(){ const inp=document.createElement('input');inp.type='file';inp.accept='.json';
   inp.onchange=e=>{const f=e.target.files[0];if(!f)return;const rd=new FileReader();
     rd.onload=async ()=>{try{
@@ -2956,8 +3022,7 @@ document.addEventListener('paste',e=>{const items=e.clipboardData&&e.clipboardDa
   if(!formOpen&&pasteTargetId==null)return;
   for(const it of items){if(it.type&&it.type.startsWith('image/')){e.preventDefault();const f=it.getAsFile();if(f){if(formOpen){if(document.getElementById('pbexamples'))addPbExample(f);else addFormShot(f);}else addScreenshot(pasteTargetId,f);}return;}}});
 render();
-boot();
-if(!DB.load('welcomed',false))showWelcome();
+boot();  // async: laadt data, biedt daarna migratie of welkom aan
 // Laad trades + playbooks uit IndexedDB (async). Eenmalige migratie vanuit het
 // oude localStorage-model (Fase 1) zodat bestaande data niet verloren gaat.
 async function boot(){
@@ -2975,6 +3040,9 @@ async function boot(){
   }catch(e){T=DB.load('trades',[]);PBOOK={};Object.entries(DB.load('pbook',PBRULES)).forEach(([k,v])=>PBOOK[k]=pbNormalize(k,v));}
   try{const sm=await IDB.get('snapshots');SNAP_META=Array.isArray(sm)?sm:[];}catch(e){SNAP_META=[];}
   render();
+  // Eerste-start: migratie-aanbod (oude tj_-data) heeft voorrang op het welkomscherm.
+  if((T||[]).length===0 && !DB.load('migrated_from_tj',null) && !DB.load('mig_declined',false) && TJMigrate.detect()){ migOffer(); }
+  else if(!DB.load('welcomed',false)){ showWelcome(); }
 }
 function readBundled(){try{const el=document.getElementById('sj-bundled');if(!el)return null;const d=JSON.parse(el.textContent||'null');return (d&&Array.isArray(d.trades)&&d.trades.length)?d:null;}catch(e){return null;}}
 function seedBundled(d){
