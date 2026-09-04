@@ -773,6 +773,20 @@ details.faq .faq-a b{color:var(--ink)}
 .toast{background:var(--surface);border:1px solid var(--line);border-left-width:3px;border-radius:10px;box-shadow:0 10px 34px rgba(20,30,60,.18);padding:11px 16px;font-size:13px;font-weight:600;color:var(--ink);opacity:0;transform:translateY(12px);transition:opacity .28s,transform .28s;white-space:nowrap}
 body.dark .toast{box-shadow:0 10px 34px rgba(0,0,0,.5)}
 .toast.on{opacity:1;transform:translateY(0)}
+/* Error-balk (ErrorCenter) — zichtbare, herstelbare foutmeldingen */
+.errbar{position:fixed;left:50%;bottom:0;transform:translate(-50%,120%);width:min(720px,96vw);z-index:210;display:flex;gap:12px;align-items:flex-start;padding:14px 16px;border-radius:14px 14px 0 0;background:var(--surface);border:1px solid var(--line);border-bottom:none;box-shadow:0 -14px 44px -14px rgba(10,20,50,.4);transition:transform .28s;font-size:13px}
+.errbar.on{transform:translate(-50%,0)}
+.errbar.crit,.errbar.err{border-top:3px solid var(--red)}
+.errbar.warn{border-top:3px solid var(--amber)}
+.errbar .eb-ic{font-size:20px;line-height:1.1;flex:none}
+.errbar .eb-txt{flex:1;display:flex;flex-direction:column;gap:2px;min-width:0}
+.errbar .eb-txt b{font-size:13.5px;color:var(--ink)}
+.errbar .eb-txt span{color:var(--muted);font-size:12px;word-break:break-word}
+.errbar .eb-acts{display:flex;gap:6px;align-items:center;flex-wrap:wrap;flex:none}
+.eb-btn{border:1px solid var(--line);background:var(--sink);color:var(--ink);border-radius:8px;padding:6px 10px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap}
+.eb-btn:hover{border-color:var(--accent)}
+.eb-btn.ghost{background:transparent;color:var(--muted)}
+.eb-x{border:none;background:transparent;color:var(--muted);font-size:18px;cursor:pointer;padding:0 4px;line-height:1;flex:none}
 .toast.ok{border-left-color:var(--green)}
 .toast.err{border-left-color:var(--red)}
 .toast.info{border-left-color:var(--accent)}
@@ -801,6 +815,7 @@ body.dark .toast{box-shadow:0 10px 34px rgba(0,0,0,.5)}
 <div id="live" class="sr" aria-live="polite"></div>
 <div class="navscrim" id="navscrim"></div>
 <div class="toasts" id="toasts"></div>
+<div class="errbar" id="errbar" role="alert" aria-live="assertive"></div>
 
 <div class="scrim" id="scrim"></div>
 <div class="modal" id="modal" role="dialog" aria-modal="true" aria-label="Dialoogvenster"></div>
@@ -1252,8 +1267,45 @@ const DB={
     if(Array.isArray(fb)!==Array.isArray(parsed))return fb;
     if(typeof parsed!==typeof fb)return fb;
     return parsed;}catch(e){return fb;} },
-  save(k,v){ try{localStorage.setItem('sj_'+k,JSON.stringify(v));}catch(e){} },
+  save(k,v){ try{localStorage.setItem('sj_'+k,JSON.stringify(v));}catch(e){
+    // Quota vol → geen stil verlies: meld het en bied backup aan.
+    if(e&&(e.name==='QuotaExceededError'||e.code===22||e.code===1014)){try{ErrorCenter.report('quota',e,{severity:'warn',userMsg:'Je browseropslag zit vol. Je laatste instelling is mogelijk niet bewaard — maak een back-up en ruim ruimte op.',actions:[{label:'Exporteer backup',fn:()=>exportJSON()}]});}catch(_){}}
+  } },
 };
+// ── ErrorCenter: centrale, zichtbare foutafhandeling + herstelacties + diagnostics ──
+const EB_TITLES={save:'Opslaan mislukt',quota:'Opslag bijna vol',load:'Data laden mislukt',migrate:'Migratie-probleem',import:'Import mislukt',crash:'Er ging iets mis'};
+const ErrorCenter={
+  log:[], _actions:[],
+  _persist(){ try{localStorage.setItem('sj_errlog',JSON.stringify(this.log.slice(0,30)));}catch(e){} },
+  report(ctx,err,opts){ opts=opts||{};
+    const entry={ts:new Date().toISOString(),ctx,msg:(err&&err.message)||String(err||'onbekende fout'),userMsg:opts.userMsg||'',sev:opts.severity||'error'};
+    this.log.unshift(entry); if(this.log.length>30)this.log.length=30; this._persist();
+    try{console.warn('[SyncJournal]',ctx,err);}catch(e){}
+    this.show(entry,opts.actions||[]);
+  },
+  show(entry,actions){ const bar=document.getElementById('errbar'); if(!bar)return; this._actions=actions;
+    const acts=actions.map((a,i)=>`<button class="eb-btn" onclick="ErrorCenter.act(${i})">${esc(a.label)}</button>`).join('');
+    bar.className='errbar on '+(entry.sev==='critical'?'crit':entry.sev==='warn'?'warn':'err');
+    bar.innerHTML=`<div class="eb-ic">${entry.sev==='warn'?'⚠️':'⛔'}</div>
+      <div class="eb-txt"><b>${esc(EB_TITLES[entry.ctx]||'Er ging iets mis')}</b><span>${esc(entry.userMsg||entry.msg)}</span></div>
+      <div class="eb-acts">${acts}<button class="eb-btn ghost" onclick="ErrorCenter.diagnostics()">Details</button><button class="eb-x" onclick="ErrorCenter.dismiss()" aria-label="Sluiten">×</button></div>`;
+  },
+  act(i){ const a=this._actions[i]; this.dismiss(); if(a&&typeof a.fn==='function')try{a.fn();}catch(e){} },
+  dismiss(){ const bar=document.getElementById('errbar'); if(bar){bar.className='errbar';bar.innerHTML='';} },
+  diagnostics(){ try{
+    const data={app:'SyncJournal',version:(typeof APP_VERSION!=='undefined'?APP_VERSION:'?'),when:new Date().toISOString(),trades:(typeof T!=='undefined'&&Array.isArray(T))?T.length:null,userAgent:navigator.userAgent,log:this.log};
+    const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});const u=URL.createObjectURL(blob);const a=document.createElement('a');a.href=u;a.download='syncjournal-diagnostics-'+new Date().toISOString().slice(0,10)+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(u),1500);
+  }catch(e){} },
+};
+try{ErrorCenter.log=DB.load('errlog',[]);if(!Array.isArray(ErrorCenter.log))ErrorCenter.log=[];}catch(e){ErrorCenter.log=[];}
+// Globale vangnetten: onverwachte fouten → nette melding i.p.v. wit scherm.
+window.addEventListener('error',e=>{ if(e&&e.target&&e.target!==window)return; /* resource-load errors negeren */
+  try{ErrorCenter.report('crash',(e&&e.error)||new Error((e&&e.message)||'Onbekende fout'),{severity:'critical',userMsg:'Er ging iets onverwachts mis. Je data is nog opgeslagen — exporteer voor de zekerheid een back-up.',actions:[{label:'Exporteer backup',fn:()=>exportJSON()}]});}catch(_){}
+});
+window.addEventListener('unhandledrejection',e=>{ try{ErrorCenter.report('crash',(e&&e.reason)||new Error('Onafgehandelde belofte-fout'),{severity:'error',userMsg:'Een achtergrondactie mislukte. Als dit blijft gebeuren, exporteer een back-up.',actions:[{label:'Exporteer backup',fn:()=>exportJSON()}]});}catch(_){}
+});
+// Quota-vooruitblik: waarschuw bij >90% opslaggebruik vóór het te laat is.
+try{ if(navigator.storage&&navigator.storage.estimate){navigator.storage.estimate().then(est=>{ if(est&&est.quota&&est.usage/est.quota>0.9)ErrorCenter.report('quota',new Error('Opslag bijna vol'),{severity:'warn',userMsg:'Je browseropslag is bijna vol ('+Math.round(est.usage/est.quota*100)+'%). Exporteer een back-up en ruim ruimte op om dataverlies te voorkomen.',actions:[{label:'Exporteer backup',fn:()=>exportJSON()}]}); }).catch(()=>{}); } }catch(e){}
 // IndexedDB voor trades + playbooks (mét ingesloten screenshots) — omzeilt de ~5MB localStorage-limiet.
 // Config/tags/instellingen blijven in localStorage (klein). Key-value store 'kv'.
 const IDB={db:null,
@@ -1270,7 +1322,7 @@ const IDB={db:null,
 // Voorbeelddata laden is een bewuste actie (loadDemoData), geen automatische reseed.
 let T=[]; // geladen in boot() uit IndexedDB (async)
 let CLOSED=[];
-function persist(){ IDB.set('trades',T); }
+function persist(){ IDB.set('trades',T).then(okr=>{ if(okr===false)ErrorCenter.report('save',new Error('IndexedDB weigerde de schrijfactie voor trades.'),{severity:'critical',userMsg:'Je laatste wijziging kon niet worden opgeslagen. Ze staat nog in beeld — exporteer een back-up en probeer opnieuw.',actions:[{label:'Exporteer backup',fn:()=>exportJSON()},{label:'Opnieuw proberen',fn:()=>persist()}]}); }); }
 function nextId(){ return T.reduce((m,t)=>Math.max(m,t.id),-1)+1; }
 /* Tag-categorieën — zoals het originele TagManager-overzicht uit de journal */
 const TAG_CATS=[
@@ -2005,7 +2057,7 @@ const PB_STATUS=[['testing','🧪 Testen','var(--amber)'],['active','✓ Actief'
 const PB_EXKINDS=[['win','Schoolvoorbeeld'],['marginal','Marginaal'],['fail','Mislukt']];
 function pbNormalize(name,v){if(Array.isArray(v))return{...EMPTY_PB,name,criteria:v.map(t=>({text:t,mandatory:false})),status:'active'};return{...EMPTY_PB,...(v||{}),name};}
 let PBOOK={}; // geladen in boot() uit IndexedDB (async)
-function persistPbook(){IDB.set('pbook',PBOOK);}
+function persistPbook(){IDB.set('pbook',PBOOK).then(okr=>{ if(okr===false)ErrorCenter.report('save',new Error('IndexedDB weigerde de schrijfactie voor playbooks.'),{severity:'error',userMsg:'Je playbook-wijziging kon niet worden opgeslagen. Exporteer een back-up en probeer opnieuw.',actions:[{label:'Exporteer backup',fn:()=>exportJSON()}]}); }); }
 let pbEditOrig='',pbForm={},pbCrit=[],pbAnti=[],pbExamples=[];
 function openPbEdit(setup){pbEditOrig=setup||'';const isNew=!setup;const pb=isNew?{...EMPTY_PB}:(PBOOK[setup]||{...EMPTY_PB,name:setup});
   pbForm={...EMPTY_PB,...pb};
