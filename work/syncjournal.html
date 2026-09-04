@@ -1507,7 +1507,7 @@ function filterBar(){
     ${sel('session','Alle sessies',SESSIONS)}
     ${sel('dir','Long & short',[['long','Long'],['short','Short']])}
     ${sel('tag','Alle tags',tags)}
-    <select class="fsel kindsel" aria-label="Soort trades" onchange="setFilter('kind',this.value)">${[['live','Live trades'],['oefen','Oefentrades'],['alle','Alle soorten']].map(([v,l])=>`<option value="${v}" ${FILTER.kind===v?'selected':''}>${l}</option>`).join('')}</select>
+    <select class="fsel kindsel" aria-label="Soort trades" onchange="setFilter('kind',this.value)">${[['live','Live trades'],['oefen','Oefentrades (alle)'],['backtest','⏲ Backtest'],['paper','📄 Paper'],['gemist','👻 Gemist'],['alle','Alle soorten']].map(([v,l])=>`<option value="${v}" ${FILTER.kind===v?'selected':''}>${l}</option>`).join('')}</select>
     ${dateFilterDD()}
     ${active?`<button class="fclear" onclick="clearGFilter()">✕ Wis (${active})</button>`:''}
   </div>`;
@@ -1536,7 +1536,7 @@ const fmtD=d=>d.slice(8)+'-'+d.slice(5,7);
 function agg(){
   const wins=CLOSED.filter(t=>t.pnl>0),losses=CLOSED.filter(t=>t.pnl<0);
   const net=CLOSED.reduce((s,t)=>s+t.pnl,0),gW=wins.reduce((s,t)=>s+t.pnl,0),gL=Math.abs(losses.reduce((s,t)=>s+t.pnl,0));
-  return {net,wr:wins.length/CLOSED.length*100,pf:gW/gL,exp:net/CLOSED.length,avgR:CLOSED.reduce((s,t)=>s+t.r,0)/CLOSED.length,n:CLOSED.length,wins:wins.length,losses:losses.length};
+  return {net,wr:wins.length/CLOSED.length*100,pf:gW/gL,exp:net/CLOSED.length,avgR:CLOSED.reduce((s,t)=>s+tradeR(t),0)/CLOSED.length,n:CLOSED.length,wins:wins.length,losses:losses.length};
 }
 /* ── periode-filter (per-kaart datum-dropdown, Tabler-stijl) ── */
 let KPIPER={net:'all',wr:'all',pf:'all',exp:'all',eq:'all'};
@@ -1544,7 +1544,7 @@ const PERIODS=[['7d','Laatste 7 dagen'],['30d','Laatste 30 dagen'],['3m','Laatst
 const PERLBL={'7d':'7 dagen','30d':'30 dagen','3m':'3 maanden','all':'Alles'};
 const PERDAYS={'7d':7,'30d':30,'3m':90};
 function periodTrades(list,per){if(per==='all'||!PERDAYS[per]||!list.length)return list;const ref=Math.max(...list.map(t=>+new Date(t.date)));const from=ref-PERDAYS[per]*864e5;return list.filter(t=>+new Date(t.date)>=from);}
-function aggOf(list){const wins=list.filter(t=>t.pnl>0),losses=list.filter(t=>t.pnl<0),net=list.reduce((s,t)=>s+t.pnl,0),gW=wins.reduce((s,t)=>s+t.pnl,0),gL=Math.abs(losses.reduce((s,t)=>s+t.pnl,0)),n=list.length||1;return {net,wr:wins.length/n*100,pf:gL?gW/gL:(gW>0?99:0),exp:net/n,avgR:list.reduce((s,t)=>s+(+t.r||0),0)/n,n:list.length};}
+function aggOf(list){const wins=list.filter(t=>t.pnl>0),losses=list.filter(t=>t.pnl<0),net=list.reduce((s,t)=>s+t.pnl,0),gW=wins.reduce((s,t)=>s+t.pnl,0),gL=Math.abs(losses.reduce((s,t)=>s+t.pnl,0)),n=list.length||1;return {net,wr:wins.length/n*100,pf:gL?gW/gL:(gW>0?99:0),exp:net/n,avgR:list.reduce((s,t)=>s+tradeR(t),0)/n,n:list.length};}
 function perDD(key){const cur=KPIPER[key]||'all';return `<div class="dd" data-dd="${key}"><button class="dd-btn" onclick="ddToggle(this)">${PERLBL[cur]}<span class="cv">▾</span></button><div class="dd-menu">${PERIODS.map(([v,l])=>`<button class="${v===cur?'on':''}" onclick="setPer('${key}','${v}')">${l}</button>`).join('')}</div></div>`;}
 function ddToggle(btn){const dd=btn.closest('.dd'),open=dd.classList.contains('open');document.querySelectorAll('.dd.open').forEach(d=>d.classList.remove('open'));if(!open)dd.classList.add('open');}
 function setPer(key,v){KPIPER[key]=v;render();}
@@ -1682,7 +1682,7 @@ function barsPnl(data,unit='k'){
 function hbars(items){return `<div class="hbars">`+items.map(r=>`<div class="hbar"><div class="lbl">${esc(r.label)}</div>
   <div class="track"></div><div class="fill" style="width:${r.val}%;background:${r.color}"></div>
   <div class="val">${r.disp}</div><div class="sub">${r.sub}</div></div>`).join('')+`</div>`;}
-function groupRows(field){const o={};CLOSED.forEach(t=>{const k=t[field];(o[k]=o[k]||{n:0,w:0,pnl:0,r:0});o[k].n++;o[k].pnl+=t.pnl;o[k].r+=t.r;if(t.pnl>0)o[k].w++;});
+function groupRows(field){const o={};CLOSED.forEach(t=>{const k=t[field];(o[k]=o[k]||{n:0,w:0,pnl:0,r:0});o[k].n++;o[k].pnl+=t.pnl;o[k].r+=tradeR(t);if(t.pnl>0)o[k].w++;});
   return Object.entries(o).map(([k,v])=>{const wr=Math.round(v.w/v.n*100);return {label:k,val:wr,disp:wr+'%',pnl:v.pnl,n:v.n,r:v.r/v.n,sub:`${v.n} trades · netto <b class="${cls(v.pnl)}">${eurS(v.pnl)}</b>`,color:v.pnl>=0?'var(--green)':'var(--red)'};});}
 
 /* ═══ PAGES ═══ */
@@ -2210,7 +2210,7 @@ function playbookDetail(setup){
   const src=(FT.length?FT:T).filter(x=>x.setup===setup);
   const closed=src.filter(x=>x.status!=='open');
   const n=closed.length,w=closed.filter(x=>x.pnl>0).length,wr=n?Math.round(w/n*100):0;
-  const net=closed.reduce((a,x)=>a+x.pnl,0),avgR=n?closed.reduce((a,x)=>a+x.r,0)/n:0,exp=n?net/n:0;
+  const net=closed.reduce((a,x)=>a+x.pnl,0),avgR=n?closed.reduce((a,x)=>a+tradeR(x),0)/n:0,exp=n?net/n:0;
   const grossW=closed.filter(x=>x.pnl>0).reduce((a,x)=>a+x.pnl,0),grossL=Math.abs(closed.filter(x=>x.pnl<0).reduce((a,x)=>a+x.pnl,0)),pf=grossL?grossW/grossL:(grossW>0?99:0);
   const best=closed.length?Math.max(...closed.map(x=>x.pnl)):0,worst=closed.length?Math.min(...closed.map(x=>x.pnl)):0;
   const bySes={};closed.forEach(x=>{(bySes[x.session]=bySes[x.session]||{v:0,n:0});bySes[x.session].v+=x.pnl;bySes[x.session].n++;});
@@ -2311,9 +2311,10 @@ function pgPlaybook(){
 
 /* ═══ Analytics chart-helpers ═══ */
 function histoR(rows){
-  const B=[['≤−1',t=>t.r<=-1,0],['−1–0',t=>t.r>-1&&t.r<0,0],['0–1',t=>t.r>=0&&t.r<1,1],['1–2',t=>t.r>=1&&t.r<2,1],['2–3',t=>t.r>=2&&t.r<3,1],['3+',t=>t.r>=3,1]];
+  const rs=rows.map(tradeR);
+  const B=[['≤−1',r=>r<=-1,0],['−1–0',r=>r>-1&&r<0,0],['0–1',r=>r>=0&&r<1,1],['1–2',r=>r>=1&&r<2,1],['2–3',r=>r>=2&&r<3,1],['3+',r=>r>=3,1]];
   const t=themeColors(),H=React.createElement,R=Recharts;
-  const rd=B.map(([lbl,fn,pos])=>({x:lbl+'R',y:rows.filter(fn).length,fill:pos?t.green:t.red}));
+  const rd=B.map(([lbl,fn,pos])=>({x:lbl+'R',y:rs.filter(fn).length,fill:pos?t.green:t.red}));
   return rcChart(()=>H(R.ResponsiveContainer,{width:'100%',height:'100%'},
     H(R.BarChart,{data:rd,margin:{top:20,right:8,left:8,bottom:2}},
       rcGrid(t),rcXAxis(t),H(R.YAxis,{hide:true}),
@@ -2488,7 +2489,7 @@ function pgAnalytics(){
   const mistBars=Object.entries(mistBy).sort((x,y)=>x[1]-y[1]).map(([m,v])=>({m:m.length>11?m.slice(0,10)+'…':m,v:Math.round(v)}));
   const avgHoldW=wins.length?Math.round(wins.reduce((s,t)=>s+(+t.durationMin||0),0)/wins.length):0,avgHoldL=losses.length?Math.round(losses.reduce((s,t)=>s+(+t.durationMin||0),0)/losses.length):0,maxHold=Math.max(1,avgHoldW,avgHoldL);
   const holdRows=[{label:'Winst',val:Math.round(avgHoldW/maxHold*100),disp:fmtDur(avgHoldW),sub:`${wins.length} trades`,color:'var(--green)'},{label:'Verlies',val:Math.round(avgHoldL/maxHold*100),disp:fmtDur(avgHoldL),sub:`${losses.length} trades`,color:'var(--red)'}];
-  const gData=GRADES.map(g=>{const gt=CLOSED.filter(x=>gradeOf(x)===g.k);const w=gt.filter(x=>x.pnl>0).length;const wr=gt.length?Math.round(w/gt.length*100):0;const net=gt.reduce((s,x)=>s+x.pnl,0);const avgR=gt.length?gt.reduce((s,x)=>s+x.r,0)/gt.length:0;return {g,n:gt.length,w,l:gt.length-w,wr,net,avgR};});
+  const gData=GRADES.map(g=>{const gt=CLOSED.filter(x=>gradeOf(x)===g.k);const w=gt.filter(x=>x.pnl>0).length;const wr=gt.length?Math.round(w/gt.length*100):0;const net=gt.reduce((s,x)=>s+x.pnl,0);const avgR=gt.length?gt.reduce((s,x)=>s+tradeR(x),0)/gt.length:0;return {g,n:gt.length,w,l:gt.length-w,wr,net,avgR};});
   const gChart=gradeStackChart(gData.map(d=>({x:'Grade '+d.g.k,win:d.w,loss:d.l})));
   const gLegend=`<span class="chip gr-legend"><i style="background:var(--green)"></i>winst<i style="background:var(--red);margin-left:9px"></i>verlies</span>`;
   const gRows=gData.map(d=>`<div class="graderow"><span class="gbadge g-${d.g.k}">${d.g.k}</span><div class="gr-main"><div class="gr-top"><span><b>${d.n}</b> trades</span><b class="gr-net num ${cls(d.net)}">${eurS(d.net)}</b></div><div class="gr-meter"><div class="gr-track"><div class="gr-fill" style="width:${d.wr}%;background:${d.wr>=50?'var(--green)':d.wr>=35?'var(--amber)':'var(--red)'}"></div></div><span class="gr-wr">${d.wr}%</span></div><div class="gr-sub">gem. ${d.avgR>=0?'+':''}${d.avgR.toFixed(2)}R · ${d.w}W / ${d.l}V</div></div></div>`).join('');
