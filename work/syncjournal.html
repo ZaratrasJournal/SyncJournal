@@ -625,6 +625,13 @@ table.tbl{width:100%;border-collapse:collapse;font-size:13px}
 .pbk{background:var(--surface);border:1px solid var(--line);border-radius:11px;padding:11px 13px;box-shadow:var(--sh)}
 .pbk-l{font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:700}
 .pbk-v{font-family:var(--fn);font-weight:700;font-size:15px;margin-top:3px}
+/* Edge-erosion (real vs paper vs backtest) */
+.erosion{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.ero-col{background:var(--sink);border:1px solid var(--line);border-radius:10px;padding:12px 10px;text-align:center}
+.ero-h{font-size:11.5px;font-weight:800;margin-bottom:6px}
+.ero-r{font-size:20px;font-weight:800;line-height:1}
+.ero-sub{font-size:11px;color:var(--muted);margin-top:4px}
+.ero-hint{font-size:12px;color:var(--muted);margin-top:11px;line-height:1.45}
 .pbdetail-grid{display:grid;grid-template-columns:320px minmax(0,1fr);gap:14px;align-items:start}
 @media(max-width:1024px){.pbk-row{grid-template-columns:repeat(4,1fr)}}
 @media(max-width:820px){.pbdetail-grid{grid-template-columns:1fr}.pbk-row{grid-template-columns:repeat(2,1fr)}}
@@ -1509,6 +1516,15 @@ function filterBar(){
 /* ═══ Helpers ═══ */
 const SZ=t=>Number(String(t.size).replace(/\./g,''));
 const numOrDash=v=>{const n=+v;return isNaN(n)?'—':n.toLocaleString('nl-NL');};  // leeg/undefined veld → em-dash i.p.v. NaN
+// Theoretische R voor sim-trades (backtest/paper/gemist) zonder echte pnl: (exit−entry)·richting / |entry−stop|.
+// Exit uit hindsightExit → echte exit → laatste TP → tp. Prijs-gebaseerd (size-onafhankelijk), zoals het origineel.
+function theoR(t){const entry=+t.entry,stop=+t.stop;if(!(entry>0)||!(stop>0)||stop===entry)return null;
+  const dir=t.dir==='short'?-1:1;let exit=+t.hindsightExit||+t.exit||0;
+  if(!exit&&Array.isArray(t.tps)&&t.tps.length){exit=+((t.tps[t.tps.length-1]||{}).price)||0;}
+  if(!exit)exit=+t.tp||0; if(!exit)return null;
+  return +(((exit-entry)*dir)/Math.abs(entry-stop)).toFixed(2);}
+// R van een trade: opgeslagen r (real + geseede sim), anders theoretische R (gemigreerde sim zonder r).
+function tradeR(t){const r=+t.r;if(r)return r;const th=theoR(t);return th==null?0:th;}
 const CURSYM=()=>STATE.currency==='USD'?'$':'€';
 const eur=v=>CURSYM()+' '+Math.round(Math.abs(v)).toLocaleString('nl-NL');
 const eurS=v=>(v<0?'−':'+')+eur(v);
@@ -2201,6 +2217,14 @@ function playbookDetail(setup){
   const sesBars=Object.entries(bySes).sort((a,b)=>b[1].v-a[1].v).map(([k,v])=>({m:k,v:Math.round(v.v)}));
   const tagCount={};closed.forEach(x=>(x.tags||[]).forEach(tg=>tagCount[tg]=(tagCount[tg]||0)+1));
   const topTags=Object.entries(tagCount).sort((a,b)=>b[1]-a[1]).slice(0,6);
+  // Edge-erosion: real vs paper vs backtest — over ALLE kinds voor deze setup (los van de Live/Oefen-filter).
+  const eroSrc=(T||[]).filter(x=>x.setup===setup&&x.status!=='open');
+  const eroBuck={backtest:[],paper:[],real:[]};
+  eroSrc.forEach(x=>{const k=x.kind==='backtest'?'backtest':x.kind==='paper'?'paper':(isLive(x)?'real':null);if(k)eroBuck[k].push(x);});
+  const eroStat=arr=>{const nn=arr.length,rs=arr.map(tradeR);return {n:nn,wr:nn?Math.round(arr.filter(x=>tradeR(x)>0).length/nn*100):0,avgR:nn?rs.reduce((a,b)=>a+b,0)/nn:0};};
+  const ero={backtest:eroStat(eroBuck.backtest),paper:eroStat(eroBuck.paper),real:eroStat(eroBuck.real)};
+  const eroHas=ero.backtest.n||ero.paper.n;  // alleen zinvol als er sim-trades zijn
+  const eroPanel=eroHas?`<div class="panel"><div class="phead"><h3>Real vs Paper vs Backtest</h3><span class="chip" title="edge-erosion">edge-check</span><span class="sp"></span><button class="chip a" style="font-weight:700" onclick="toggleErosion()">${STATE.pbErosion?'Verbergen':'Tonen'}</button></div>${STATE.pbErosion?`<div class="pbody">${erosionBody(ero)}</div>`:''}</div>`:'';
   const list=src.map(x=>`<div class="revitem" onclick="openForm(${x.id})">
     <div style="min-width:0;flex:1"><div style="display:flex;align-items:center;gap:6px">${assetCell(x.pair)}${kindBadge(x)}</div><div style="font-size:10.5px;color:var(--muted);margin-top:2px">${accAvatar(x.exchange,15)} <span class="num">${fmtD(x.date)}</span> · ${esc(x.session)}</div></div>
     <span class="m ${cls(x.pnl)} mask">${eurS(x.pnl)}</span></div>`).join('');
@@ -2240,6 +2264,7 @@ function playbookDetail(setup){
           ${panel('R-verdeling','waar landen je trades',histoR(closed))}
           ${panel('Win / verlies','verdeling',donutPanel([{name:'Winst',value:w,fill:'var(--green)'},{name:'Verlies',value:n-w,fill:'var(--red)'}],{big:wr+'%',sub:'win-rate'}))}
         </div>
+        ${eroPanel}
         ${sesBars.length?panel('Netto per sessie','waar werkt deze setup het best',barsPnl(sesBars,'e')):''}
         ${exGallery}
         <div class="panel"><div class="phead"><h3>Playbook</h3><span class="sp"></span><span class="chip">definitie</span></div><div class="pbody">
@@ -2247,6 +2272,17 @@ function playbookDetail(setup){
           ${topTags.length?`<div class="pbsec"><div class="pbsec-h">Meest gebruikte tags</div><div style="display:flex;flex-wrap:wrap;gap:6px">${topTags.map(([tg,c])=>`<span class="tagchip col" style="--tc:${tagColor(tg)}">${esc(tg)} <b style="opacity:.7">${c}</b></span>`).join('')}</div></div>`:''}
         </div></div>
       </div></div>`;
+}
+function toggleErosion(){STATE.pbErosion=!STATE.pbErosion;render();}
+function erosionBody(ero){
+  const col={backtest:['⏲ Backtest','#a78bfa'],paper:['📄 Paper','#3b6ef5'],real:['Real','var(--green)']};
+  const rTxt=v=>(v>=0?'+':'')+v.toFixed(2).replace('.',',')+'R';
+  const cell=k=>{const b=ero[k],[lbl,c]=col[k];return `<div class="ero-col"><div class="ero-h" style="color:${c}">${lbl}</div><div class="ero-r num ${b.n?cls(b.avgR):''}">${b.n?rTxt(b.avgR):'—'}</div><div class="ero-sub">${b.n?b.wr+'% win · '+b.n+(b.n===1?' trade':' trades'):'geen'}</div></div>`;};
+  let hint='';
+  if(ero.backtest.n&&ero.real.n){const d=ero.backtest.avgR-ero.real.avgR;
+    hint=`<div class="ero-hint">${d>0.15?`⚠ Je edge zakt van <b>${rTxt(ero.backtest.avgR)}</b> (backtest) naar <b>${rTxt(ero.real.avgR)}</b> (real) — enige erosie is normaal, maar hou de kloof in de gaten.`:`✓ Je real-resultaten volgen je backtest (${rTxt(ero.backtest.avgR)} → ${rTxt(ero.real.avgR)}) — betrouwbare edge.`}</div>`;}
+  else hint=`<div class="ero-hint">Voeg real-trades toe om de erosie t.o.v. je backtest/paper te zien. Sim-R is theoretisch (100% TP of hindsight-exit).</div>`;
+  return `<div class="erosion">${['backtest','paper','real'].map(cell).join('')}</div>${hint}`;
 }
 function pgPlaybook(){
   if(STATE.pbSel)return playbookDetail(STATE.pbSel);
@@ -2707,11 +2743,17 @@ function migrateOldTrade(ot){
   const entry=+ot.entry||0,stop=+(ot.stopLoss!=null?ot.stopLoss:ot.stop)||0,size=+(ot.positionSize!=null?ot.positionSize:ot.size)||0,pnl=+ot.pnl||0;
   let r=+ot.r||0;
   if(!r&&entry&&stop&&size){const risk=Math.abs(entry-stop)/entry*size;if(risk)r=+(pnl/risk).toFixed(2);}
+  const hindsightExit=+ot.hindsightExit||0;
+  // Sim-trades (backtest/paper/gemist) zonder echte pnl: theoretische R uit hindsight/TP.
+  if(!r&&(kind==='backtest'||kind==='paper'||kind==='gemist')&&entry&&stop&&stop!==entry){
+    const ex=hindsightExit||(+ot.exit||0)||(+(ot.takeProfit!=null?ot.takeProfit:ot.tp)||0);
+    if(ex){const d=dir==='short'?-1:1;r=+(((ex-entry)*d)/Math.abs(entry-stop)).toFixed(2);}
+  }
   const scr=ot.screenshots&&ot.screenshots.length?ot.screenshots:(ot.screenshot?[ot.screenshot]:[]);
   return {date:ot.date||'',time:ot.time||'',exchange,account:'',pair:ot.pair||'',dir,
     setup:setupTags[0]||ot.setup||'',session:ot.session||sessionFromTime(ot.time),
     timeframe:(layers[layers.length-1]||{}).timeframe||ot.timeframe||'',market:ot.market||'',grade,
-    entry,exit:+ot.exit||0,stop,tp:+(ot.takeProfit!=null?ot.takeProfit:ot.tp)||0,
+    entry,exit:+ot.exit||0,stop,tp:+(ot.takeProfit!=null?ot.takeProfit:ot.tp)||0,hindsightExit,
     size:String(size||0),leverage:+ot.leverage||0,fees:+ot.fees||0,risk:+ot.risk||0,rrPlanned:+ot.rrPlanned||0,
     pnl,pnlPct:+(pnl/ACCT*100).toFixed(2),r,status:ot.status||'closed',
     emotions:[...(ot.emotionTags||ot.emotions||[])],emotion:(ot.emotionTags||ot.emotions||[])[0]||'',
