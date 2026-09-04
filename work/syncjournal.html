@@ -1313,6 +1313,7 @@ const IDB={db:null,
   get(k){return IDB.open().then(db=>new Promise(res=>{const t=db.transaction('kv','readonly').objectStore('kv').get(k);t.onsuccess=()=>res(t.result);t.onerror=()=>res(undefined);})).catch(()=>undefined);},
   set(k,v){return IDB.open().then(db=>new Promise(res=>{const tx=db.transaction('kv','readwrite');tx.objectStore('kv').put(v,k);tx.oncomplete=()=>res(true);tx.onerror=()=>res(false);})).catch(()=>false);},
   clearAll(){return IDB.open().then(db=>new Promise(res=>{const tx=db.transaction('kv','readwrite');tx.objectStore('kv').clear();tx.oncomplete=()=>res(true);tx.onerror=()=>res(false);})).catch(()=>false);},
+  del(k){return IDB.open().then(db=>new Promise(res=>{const tx=db.transaction('kv','readwrite');tx.objectStore('kv').delete(k);tx.oncomplete=()=>res(true);tx.onerror=()=>res(false);})).catch(()=>false);},
 };
 /* schema-migratie: draai vóór data-load zodat oude structuren meegroeien */
 (function migrate(){const from=DB.load('schema',0);if(from>=SCHEMA_VERSION)return;
@@ -1408,8 +1409,11 @@ function delAcctTx(id,txid){const m=MANUAL.find(x=>x.id===id);if(!m)return;if(!c
 function toggleAutoSync(){SYNC.auto=!SYNC.auto;persistSync();render();}
 function setSyncInterval(v){SYNC.interval=v;persistSync();}
 function syncNow(){toast('Sync gestart — 0 nieuwe trades (demo)','info');}
-function clearTrades(){if(confirm('Al je trades verwijderen? Dit kan niet ongedaan worden gemaakt.')){T=[];persist();render();toast('Alle trades gewist','info');}}
-function clearAllData(){if(confirm('ÁLLE lokale data wissen — trades, tags, accounts én voorkeuren? Dit is onomkeerbaar.')){try{Object.keys(localStorage).filter(k=>k.indexOf('sjdemo_')===0).forEach(k=>localStorage.removeItem(k));}catch(e){}location.reload();}}
+async function clearTrades(){if(!confirm('Al je trades verwijderen? Er wordt eerst automatisch een veiligheidskopie gemaakt, zodat je kunt herstellen.'))return; if((T||[]).length)await Snapshots.create('vóór trades wissen'); T=[];persist();render();toast('Alle trades gewist — herstelbaar via Instellingen → Data','info');}
+async function clearAllData(){ if(!confirm('ÁLLE lokale data wissen — trades, tags, accounts én voorkeuren? Dit is onomkeerbaar. Exporteer eerst een back-up als je twijfelt.'))return;
+  try{Object.keys(localStorage).filter(k=>k.indexOf('sj_')===0).forEach(k=>localStorage.removeItem(k));}catch(e){}
+  try{await IDB.clearAll();}catch(e){}
+  location.reload(); }
 
 /* ═══ State ═══ */
 const STATE=Object.assign({page:'dashboard',theme:'light',priv:false,tradeTab:'all',density:'comfy',tend:'sessie',revSel:0,revQuery:'',revFilter:'all',
@@ -2029,7 +2033,12 @@ function pgInstellingen(){
       <div class="panel"><div class="setrow"><div class="txt"><b>Back-up</b><small>Exporteer of importeer je journal als JSON — echt werkend</small></div>
       <button class="btn" onclick="importJSON()">Importeer</button><button class="btn pri" onclick="exportJSON()">Exporteer JSON</button></div>
       <div class="setrow"><div class="txt"><b>Voorbeelddata laden</b><small>Vul de app met voorbeeld-trades om te verkennen — overschrijft je huidige trades</small></div><button class="btn" onclick="resetDemo()">Laden</button></div>
-      <div class="setrow"><div class="txt"><b>Versie</b><small>SyncJournal ${APP_VERSION} · dataschema v${SCHEMA_VERSION} · ${T.length} trades lokaal opgeslagen</small></div></div></div>`,
+      <div class="setrow"><div class="txt"><b>Versie</b><small>SyncJournal ${APP_VERSION} · dataschema v${SCHEMA_VERSION} · ${T.length} trades lokaal opgeslagen</small></div></div></div>
+      <div class="section-sub">🛟 Veiligheidskopieën <span class="hint">(automatisch vóór risicovolle acties · laatste 3)</span></div>
+      <div class="panel">
+        ${SNAP_META.length?SNAP_META.map(s=>`<div class="setrow"><div class="txt"><b>${esc(snapWhen(s.ts))}</b><small>${esc(s.label)} · ${s.trades} trades · ${s.playbooks} playbooks</small></div><button class="btn" onclick="snapRestore('${s.id}')">Herstel</button><button class="btn danger" onclick="snapDel('${s.id}')" title="verwijderen" style="padding:8px 10px">×</button></div>`).join(''):`<div class="setrow"><div class="txt" style="color:var(--muted);font-size:12.5px">Nog geen veiligheidskopieën. Ze worden automatisch gemaakt vóór import, voorbeelddata laden of wissen — of maak er nu handmatig één.</div></div>`}
+        <div class="setrow"><div class="txt"><b>Nu een veiligheidskopie maken</b><small>Legt de huidige staat vast, zodat je er altijd naar terug kunt</small></div><button class="btn pri" onclick="snapNow()">Maak kopie</button></div>
+      </div>`,
     wissen:`<p class="setintro" style="color:var(--red)">⚠ Onomkeerbaar. Maak eerst een back-up via het <b>Data</b>-tabje.</p>
       <div class="panel dangerzone">
         <div class="setrow"><div class="txt"><b>Alle trades wissen</b><small>Verwijdert al je trades — je instellingen, tags en accounts blijven staan</small></div><button class="btn danger" onclick="clearTrades()">Trades wissen</button></div>
@@ -2602,8 +2611,52 @@ function setTheme(t){STATE.theme=t;document.body.classList.toggle('dark',t==='da
 function togglePriv(){STATE.priv=!STATE.priv;document.body.classList.toggle('priv',STATE.priv);document.getElementById('btnEye').style.color=STATE.priv?'var(--accent)':'';persistState();render();}
 function setCurrency(c){STATE.currency=c;persistState();render();}
 /* trades CRUD + import/export */
-function exportJSON(){ const blob=new Blob([JSON.stringify({app:'SyncJournal',appVersion:APP_VERSION,schemaVersion:SCHEMA_VERSION,exported:new Date().toISOString(),tagConfig,pbook:PBOOK,conns:CONNS,manual:MANUAL,sync:SYNC,aiPrefs:AIPREFS,sections:STATE.sections,settings:{theme:STATE.theme,currency:STATE.currency,priv:STATE.priv,density:STATE.density},trades:T},null,2)],{type:'application/json'});
+// Volledige staat-payload — gedeeld door export, snapshots en herstel.
+function snapshotPayload(){ return {app:'SyncJournal',appVersion:APP_VERSION,schemaVersion:SCHEMA_VERSION,exported:new Date().toISOString(),tagConfig,pbook:PBOOK,conns:CONNS,manual:MANUAL,sync:SYNC,aiPrefs:AIPREFS,sections:STATE.sections,settings:{theme:STATE.theme,currency:STATE.currency,priv:STATE.priv,density:STATE.density},trades:T}; }
+// Zet een volledige backup-payload (nieuw formaat) terug in de live-staat.
+function applyBackup(d){
+  T=(d.trades||[]).map((t,i)=>({rating:0,checks:[],...t,id:i}));
+  if(d.tagConfig){tagConfig=d.tagConfig;persistTagConfig();}
+  PBOOK={};Object.entries(d.pbook||{}).forEach(([k,v])=>PBOOK[k]=pbNormalize(k,v));persistPbook();
+  if(d.conns){CONNS=d.conns;persistConns();}
+  if(d.manual){MANUAL=d.manual;MANUAL.forEach(m=>{if(!Array.isArray(m.transactions))m.transactions=[];});persistManual();}
+  if(d.sync){SYNC=d.sync;persistSync();}
+  if(d.aiPrefs){AIPREFS={...AIPREFS,...d.aiPrefs,focus:{...AIPREFS.focus,...(d.aiPrefs.focus||{})}};persistAIPrefs();}
+  if(d.sections)STATE.sections=d.sections;
+  if(d.settings){STATE.theme=d.settings.theme||STATE.theme;STATE.currency=d.settings.currency||STATE.currency;STATE.priv=!!d.settings.priv;STATE.density=d.settings.density||STATE.density;document.body.classList.toggle('dark',STATE.theme==='dark');document.body.classList.toggle('priv',STATE.priv);}
+  persistState();persist();render();
+}
+function exportJSON(){ const blob=new Blob([JSON.stringify(snapshotPayload(),null,2)],{type:'application/json'});
   const u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download='syncjournal-backup.json';a.click();URL.revokeObjectURL(u);toast('✓ Back-up geëxporteerd','ok'); }
+// ── Snapshots: automatische veiligheidskopie vóór risicovolle acties, laatste 3 in IndexedDB ──
+let SNAP_META=[];  // {id, ts, label, trades, playbooks} — in-memory cache voor de UI
+const Snapshots={ MAX:3,
+  async create(label){
+    try{
+      const id='s'+Date.now().toString(36);
+      const okData=await IDB.set('snap_'+id,snapshotPayload());
+      if(okData===false){ErrorCenter.report('save',new Error('snapshot kon niet worden opgeslagen'),{severity:'warn',userMsg:'De automatische veiligheidskopie kon niet worden gemaakt. Exporteer handmatig een back-up voordat je doorgaat.',actions:[{label:'Exporteer backup',fn:()=>exportJSON()}]});return null;}
+      const meta={id,ts:new Date().toISOString(),label:label||'handmatig',trades:(T||[]).length,playbooks:Object.keys(PBOOK||{}).length};
+      SNAP_META=[meta,...SNAP_META];
+      while(SNAP_META.length>this.MAX){const old=SNAP_META.pop();await IDB.del('snap_'+old.id);}
+      await IDB.set('snapshots',SNAP_META);
+      return meta;
+    }catch(e){ErrorCenter.report('save',e,{severity:'warn',userMsg:'De veiligheidskopie kon niet worden gemaakt.'});return null;}
+  },
+  async restore(id){
+    const data=await IDB.get('snap_'+id);
+    if(!data||!Array.isArray(data.trades)){ErrorCenter.report('load',new Error('snapshot ontbreekt'),{severity:'error',userMsg:'Deze veiligheidskopie kon niet worden geladen.'});return false;}
+    await this.create('vóór herstel');  // herstel is óók risicovol → eerst huidige staat vastleggen
+    applyBackup(data);
+    return true;
+  },
+  async del(id){ SNAP_META=SNAP_META.filter(m=>m.id!==id); await IDB.set('snapshots',SNAP_META); await IDB.del('snap_'+id); },
+};
+// UI-wrappers (async → daarna render + toast)
+async function snapNow(){ const m=await Snapshots.create('handmatig'); render(); if(m)toast('✓ Veiligheidskopie gemaakt','ok'); }
+async function snapRestore(id){ const m=SNAP_META.find(x=>x.id===id); if(!m)return; if(!confirm('Herstel de staat van '+snapWhen(m.ts)+' ('+m.trades+' trades)? Je huidige staat wordt eerst als veiligheidskopie bewaard.'))return; const okr=await Snapshots.restore(id); if(okr)toast('✓ Hersteld naar '+snapWhen(m.ts),'ok'); }
+async function snapDel(id){ if(!confirm('Deze veiligheidskopie verwijderen?'))return; await Snapshots.del(id); render(); toast('Veiligheidskopie verwijderd','info'); }
+function snapWhen(ts){try{return new Date(ts).toLocaleString('nl-NL',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});}catch(e){return ts;}}
 // ─── Migratie: oude TradeJournal-export ({version, trades:[...]}) → SyncJournal-schema ───
 function sessionFromTime(time){const h=parseInt((time||'12:00').split(':')[0],10);if(isNaN(h))return 'London';if(h>=2&&h<8)return 'Asia';if(h>=8&&h<13)return 'London';if(h>=13&&h<18)return 'US AM';if(h>=18&&h<23)return 'US PM';return 'London';}
 const OLD_EXMAP={mexc:'mexc',blofin:'blofin',okx:'okx',hyperliquid:'hyperliquid',kraken:'kraken',ftmo:'ftmo'};
@@ -2638,10 +2691,19 @@ function mergeOldTags(arr){const merge=(cat,vals)=>{const cur=new Set(tagConfig[
   arr.forEach(t=>{merge('setupTags',t.setupTags);merge('confirmationTags',t.confirmationTags);merge('timeframeTags',t.timeframeTags);merge('emotionTags',t.emotionTags);merge('mistakeTags',t.mistakeTags);});persistTagConfig();}
 function importJSON(){ const inp=document.createElement('input');inp.type='file';inp.accept='.json';
   inp.onchange=e=>{const f=e.target.files[0];if(!f)return;const rd=new FileReader();
-    rd.onload=()=>{try{const d=JSON.parse(rd.result);const arr=Array.isArray(d)?d:d.trades;if(Array.isArray(arr)){const _old=looksOldExport(arr);if(_old){mergeOldTags(arr);T=arr.map((t,i)=>({...migrateOldTrade(t),id:i}));}else{T=arr.map((t,i)=>({rating:0,checks:[],...t,id:i}));}if(d.tagConfig){tagConfig=d.tagConfig;persistTagConfig();}if(d.pbook){PBOOK={};Object.entries(d.pbook).forEach(([k,v])=>PBOOK[k]=pbNormalize(k,v));persistPbook();}if(d.conns){CONNS=d.conns;persistConns();}if(d.manual){MANUAL=d.manual;MANUAL.forEach(m=>{if(!Array.isArray(m.transactions))m.transactions=[];});persistManual();}if(d.sync){SYNC=d.sync;persistSync();}if(d.aiPrefs){AIPREFS={...AIPREFS,...d.aiPrefs,focus:{...AIPREFS.focus,...(d.aiPrefs.focus||{})}};persistAIPrefs();}if(d.sections)STATE.sections=d.sections;if(d.settings){STATE.theme=d.settings.theme||STATE.theme;STATE.currency=d.settings.currency||STATE.currency;STATE.priv=!!d.settings.priv;STATE.density=d.settings.density||STATE.density;document.body.classList.toggle('dark',STATE.theme==='dark');document.body.classList.toggle('priv',STATE.priv);}persistState();persist();render();toast('✓ '+T.length+' trades geïmporteerd'+(_old?' (uit oude app)':''),'ok');}else toast('Geen trades gevonden in bestand','err');}catch(err){toast('Ongeldig JSON-bestand','err');}};
+    rd.onload=async ()=>{try{
+      const d=JSON.parse(rd.result);
+      const arr=Array.isArray(d)?d:d.trades;
+      if(!Array.isArray(arr)){toast('Geen trades gevonden in bestand','err');return;}
+      await Snapshots.create('vóór import');  // vangnet: huidige staat eerst veiligstellen
+      const _old=looksOldExport(arr);
+      if(_old){ mergeOldTags(arr); T=arr.map((t,i)=>({...migrateOldTrade(t),id:i})); persist(); render(); }
+      else { applyBackup(d); }
+      toast('✓ '+T.length+' trades geïmporteerd'+(_old?' (uit oude app)':''),'ok');
+    }catch(err){ ErrorCenter.report('import',err,{severity:'error',userMsg:'Het bestand kon niet worden geïmporteerd — is het een geldige SyncJournal- of TradeJournal-back-up? Je bestaande data is ongewijzigd.',actions:[{label:'Details',fn:()=>ErrorCenter.diagnostics()}]}); }};
     rd.readAsText(f);};inp.click(); }
 function loadDemoData(){T=SEED.map(t=>({...t}));persist();render();}
-function resetDemo(){ if(confirm('Voorbeelddata laden? Dit OVERSCHRIJFT je huidige trades — maak eerst een back-up.')){loadDemoData();toast('Voorbeelddata geladen','info');} }
+async function resetDemo(){ if(!confirm('Voorbeelddata laden? Dit OVERSCHRIJFT je huidige trades. Er wordt eerst automatisch een veiligheidskopie gemaakt.'))return; if((T||[]).length)await Snapshots.create('vóór voorbeelddata'); loadDemoData(); toast('Voorbeelddata geladen','info'); }
 function delTrade(id){ if(confirm('Deze trade verwijderen?')){T=T.filter(t=>t.id!==id);persist();if(STATE.revSel===id)STATE.revSel=(T[0]||{}).id||0;closeForm();render();toast('Trade verwijderd','info');} }
 function saveReview(id,patch){ const t=T.find(x=>x.id===id);if(t){Object.assign(t,patch);persist();} }
 let formTags=[],formGrade='',formLayers=[],formEmotions=[],formMistakes=[];
@@ -2911,6 +2973,7 @@ async function boot(){
     T=Array.isArray(t)?t:[];
     PBOOK={};Object.entries(pb||PBRULES).forEach(([k,v])=>PBOOK[k]=pbNormalize(k,v));
   }catch(e){T=DB.load('trades',[]);PBOOK={};Object.entries(DB.load('pbook',PBRULES)).forEach(([k,v])=>PBOOK[k]=pbNormalize(k,v));}
+  try{const sm=await IDB.get('snapshots');SNAP_META=Array.isArray(sm)?sm:[];}catch(e){SNAP_META=[];}
   render();
 }
 function readBundled(){try{const el=document.getElementById('sj-bundled');if(!el)return null;const d=JSON.parse(el.textContent||'null');return (d&&Array.isArray(d.trades)&&d.trades.length)?d:null;}catch(e){return null;}}
