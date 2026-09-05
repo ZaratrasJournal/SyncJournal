@@ -469,6 +469,26 @@ table.tbl{width:100%;border-collapse:collapse;font-size:13px}
 .revitem.done{opacity:.66}
 .revitem.done.on,.revitem.done:hover{opacity:1}
 .revempty{padding:26px 14px;text-align:center;color:var(--muted);font-size:12.5px;line-height:1.5}
+/* deel met coach — selectie-modus */
+.revshare-btn{font-size:11.5px;font-weight:700;color:var(--accent);border:1px solid var(--accent-line);background:var(--accent-soft);border-radius:8px;padding:5px 10px}
+.revshare-btn:hover{background:color-mix(in srgb,var(--accent) 14%,transparent)}
+.rev-selbox{width:19px;height:19px;border-radius:6px;border:1.5px solid var(--line);background:var(--surface);display:grid;place-items:center;font-size:11px;font-weight:800;color:transparent;flex:none;transition:all .12s}
+.revitem.selmode{cursor:pointer}
+.revitem.selmode:hover .rev-selbox{border-color:var(--accent)}
+.revitem.selmode.sel{background:var(--accent-soft)}
+.revitem.selmode.sel .rev-selbox{background:var(--accent);border-color:var(--accent);color:#fff}
+.revsharebar{display:flex;align-items:center;gap:6px;padding:10px 12px;border-bottom:1px solid var(--line2);background:var(--sink);font-size:12px}
+.revsharebar .rsb-c{color:var(--ink2)}.revsharebar .rsb-c b{color:var(--ink);font-family:var(--fn)}
+.revsharebar button{border:1px solid var(--line);background:var(--surface);border-radius:7px;padding:5px 9px;font-size:11.5px;font-weight:600;color:var(--ink2);cursor:pointer}
+.revsharebar button:hover:not(:disabled){background:var(--hover)}
+.revsharebar button:disabled{opacity:.45;cursor:default}
+.revsharebar .rsb-go{background:var(--accent);color:#fff;border-color:var(--accent)}
+.revsharebar .rsb-go:hover:not(:disabled){filter:brightness(1.05)}
+.shareopt{display:flex;align-items:flex-start;gap:9px;font-size:13px;color:var(--ink2);background:var(--sink);border:1px solid var(--line2);border-radius:10px;padding:11px 13px;cursor:pointer;margin-top:4px}
+.shareopt input{margin-top:2px;flex:none;width:16px;height:16px;accent-color:var(--accent)}
+.shareopt b{color:var(--ink)}
+.shareinp{width:100%;border:1px solid var(--line);border-radius:9px;background:var(--sink);color:var(--ink);padding:9px 12px;font-size:13.5px;font-family:inherit;outline:none}
+.shareinp:focus{border-color:var(--accent)}
 .revbtn{font-size:11.5px;padding:5px 11px}
 .revbtn.on{color:var(--green);border-color:color-mix(in srgb,var(--green) 40%,transparent);background:var(--green-soft)}
 .note{width:100%;min-height:90px;border:1px solid var(--line);border-radius:10px;background:var(--sink);padding:11px 13px;color:var(--ink);font-size:13px;resize:vertical}
@@ -1366,7 +1386,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.7';
+const APP_VERSION='v0.9.8';
 const SCHEMA_VERSION=1;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -1557,10 +1577,11 @@ async function clearAllData(){ if(!confirm('ÁLLE lokale data wissen — trades,
   location.reload(); }
 
 /* ═══ State ═══ */
-const STATE=Object.assign({page:'dashboard',theme:'light',priv:false,tradeTab:'all',density:'comfy',tend:'sessie',revSel:0,revQuery:'',revFilter:'all',
+const STATE=Object.assign({page:'dashboard',theme:'light',priv:false,tradeTab:'all',density:'comfy',tend:'sessie',revSel:0,revQuery:'',revFilter:'all',revPeriod:'all',
   sortCol:'date',sortDir:-1,query:'',calMonth:'2026-08',currency:'EUR',selected:[],pbSel:'',
   sections:{hero:true,kpis:true,equity:true,monthly:true,edge:true,recent:true}}, DB.load('state',{}));
 STATE.selected=[];
+STATE.revShareMode=false; STATE.revShareSel=[]; STATE.shareHide=true;  // "deel met coach": selectie-modus, geselecteerde trade-ids, bedragen verbergen
 function persistState(){ DB.save('state',{theme:STATE.theme,priv:STATE.priv,density:STATE.density,currency:STATE.currency,sections:STATE.sections}); }
 
 /* ═══ Globale filter (elke pagina) ═══ */
@@ -2058,6 +2079,182 @@ function revNav(d){const src=reviewItems();if(!src.length)return;let i=src.findI
 function setRevFilter(f){STATE.revFilter=f;render();}
 function setRevPeriod(p){STATE.revPeriod=p;render();}
 function toggleReviewed(id){const t=T.find(x=>x.id===id);if(!t)return;t.reviewed=!t.reviewed;persist();render();toast(t.reviewed?'✓ Gemarkeerd als gereviewed':'Markering verwijderd','info');}
+
+// ── Coach-pakket: inlined CSS + JS (self-contained, geen externe fonts/CDN) ──
+const COACH_CSS=`
+:root{--bg:#F4F6FA;--surface:#FFFFFF;--raise:#FBFCFE;--sink:#F7F9FC;--ink:#191E2A;--ink2:#525A6B;--muted:#8A92A3;--faint:#AAB1C0;--line:#E8EBF2;--line2:#F0F2F7;--accent:#3B5BD9;--accent-soft:#EDF0FD;--accent-line:#CDD6F7;--green:#12946A;--green-soft:#E3F4EC;--red:#D64259;--red-soft:#FBE8EC;--amber:#C0821C;--amber-soft:#F8EFDD;--violet:#7C5CE0;--track:#EEF1F6;--sh:0 1px 2px rgba(20,30,60,.05);--shl:0 12px 40px -12px rgba(20,30,60,.28);--fb:'Inter',-apple-system,'Segoe UI',Roboto,sans-serif;--fd:'Plus Jakarta Sans',var(--fb);--fn:'IBM Plex Mono','SF Mono',Consolas,monospace}
+:root[data-theme=dark]{--bg:#0E1218;--surface:#141A22;--raise:#171E28;--sink:#10151c;--ink:#F4F7FB;--ink2:#C7CFDB;--muted:#939CAC;--faint:#6C7583;--line:#232B36;--line2:#1C232D;--accent:#6E86F0;--accent-soft:#1B2436;--accent-line:#2E3B57;--green:#37C48B;--green-soft:#12261F;--red:#F0637A;--red-soft:#2A1820;--amber:#E0A63C;--amber-soft:#28210F;--track:#1E2732;--sh:0 1px 2px rgba(0,0,0,.25);--shl:0 12px 40px -12px rgba(0,0,0,.6)}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#0E1218;--surface:#141A22;--raise:#171E28;--sink:#10151c;--ink:#F4F7FB;--ink2:#C7CFDB;--muted:#939CAC;--faint:#6C7583;--line:#232B36;--line2:#1C232D;--accent:#6E86F0;--accent-soft:#1B2436;--accent-line:#2E3B57;--green:#37C48B;--green-soft:#12261F;--red:#F0637A;--red-soft:#2A1820;--amber:#E0A63C;--amber-soft:#28210F;--track:#1E2732}}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--fb);font-size:14px;line-height:1.55;-webkit-font-smoothing:antialiased}
+.num{font-family:var(--fn);font-variant-numeric:tabular-nums;letter-spacing:-.01em}.g{color:var(--green)}.r{color:var(--red)}.hid{color:var(--faint)}
+h1,h3{font-family:var(--fd);font-weight:700;letter-spacing:-.01em}
+button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
+.wrap{max-width:1000px;margin:0 auto;padding:0 20px 70px}
+.bar{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 86%,transparent);backdrop-filter:blur(8px);border-bottom:1px solid var(--line);margin-bottom:26px}
+.bar-in{max-width:1000px;margin:0 auto;padding:11px 20px;display:flex;align-items:center;gap:12px}
+.brand{display:flex;align-items:center;gap:9px;font-family:var(--fd);font-weight:800;font-size:15px}
+.logo{width:26px;height:26px;border-radius:7px;background:linear-gradient(135deg,var(--accent),var(--violet));display:grid;place-items:center;color:#fff;font-weight:800;font-size:13px}
+.brand small{font-family:var(--fn);font-size:9px;font-weight:600;color:var(--muted);letter-spacing:.14em;text-transform:uppercase;display:block;margin-top:-2px}
+.spacer{flex:1}.tbtn{padding:6px 11px;border:1px solid var(--line);border-radius:8px;background:var(--surface);font-size:12px;font-weight:600;color:var(--ink2)}
+.rhead{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:22px 24px;box-shadow:var(--sh);margin-bottom:22px}
+.rhead .kick{font-family:var(--fn);font-size:10.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--accent)}
+.rhead h1{font-size:22px;margin:5px 0 3px}.rhead .who{color:var(--ink2);font-size:13px}.rhead .who b{color:var(--ink)}
+.sumrow{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-top:20px}
+.sumc{background:var(--sink);border:1px solid var(--line2);border-radius:11px;padding:12px 13px}
+.sumc .l{font-size:9.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:700}
+.sumc .v{font-family:var(--fn);font-variant-numeric:tabular-nums;font-weight:800;font-size:18px;margin-top:4px}.sumc .s{font-size:11px;color:var(--muted);margin-top:1px}
+@media(max-width:720px){.sumrow{grid-template-columns:repeat(2,1fr)}}
+.tcard{background:var(--surface);border:1px solid var(--line);border-radius:16px;box-shadow:var(--sh);margin-bottom:22px;overflow:hidden}
+.tc-head{display:flex;align-items:center;gap:12px;padding:16px 20px;border-bottom:1px solid var(--line2);flex-wrap:wrap}
+.tc-idx{width:26px;height:26px;border-radius:8px;background:var(--sink);border:1px solid var(--line);display:grid;place-items:center;font-family:var(--fn);font-size:12px;font-weight:700;color:var(--muted);flex:none}
+.tc-pair{font-family:var(--fd);font-size:17px;font-weight:800}.tc-sub{color:var(--muted);font-size:12.5px}
+.pill{font-size:10px;font-weight:800;padding:3px 9px;border-radius:999px;text-transform:uppercase;letter-spacing:.03em}
+.pill.long{background:var(--green-soft);color:var(--green)}.pill.short{background:var(--red-soft);color:var(--red)}
+.chip{font-size:11px;font-weight:600;color:var(--ink2);background:var(--sink);border:1px solid var(--line2);border-radius:999px;padding:3px 10px}
+.tc-out{margin-left:auto;text-align:right}.tc-out .rv{font-family:var(--fn);font-weight:800;font-size:20px}.tc-out .p{font-size:11.5px;color:var(--muted)}
+.tc-body{padding:18px 20px}.sect-l{font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:0 0 10px}
+.shots{display:grid;grid-template-columns:1fr;gap:12px;margin-bottom:20px}
+.shot{position:relative;border:1px solid var(--line2);border-radius:12px;overflow:hidden;background:var(--sink);cursor:zoom-in}
+.shot .media{display:block}.shot .media img,.shot .media svg,.chartimg{width:100%;height:auto;display:block;max-height:520px;object-fit:contain}
+.shot .cap{position:absolute;left:10px;bottom:10px;font-size:11px;font-weight:700;background:color-mix(in srgb,var(--surface) 90%,transparent);border:1px solid var(--line);border-radius:7px;padding:3px 10px;color:var(--ink2);backdrop-filter:blur(4px)}
+.shot .zoom{position:absolute;right:10px;top:10px;font-size:11px;background:color-mix(in srgb,var(--surface) 90%,transparent);border:1px solid var(--line);border-radius:7px;padding:3px 9px;color:var(--muted);opacity:0;transition:opacity .15s}
+.shot:hover .zoom{opacity:1}
+.plan{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.pc{background:var(--sink);border:1px solid var(--line2);border-radius:10px;padding:10px 12px}
+.pc .l{font-size:9.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:700}
+.pc .v{font-family:var(--fn);font-variant-numeric:tabular-nums;font-weight:700;font-size:14.5px;margin-top:3px}
+@media(max-width:720px){.plan{grid-template-columns:repeat(2,1fr)}}
+.rrbadge{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--ink2);background:var(--accent-soft);border:1px solid var(--accent-line);border-radius:9px;padding:8px 12px;margin-top:12px}.rrbadge b{font-family:var(--fn)}
+.block{margin-top:20px}.qt{background:var(--sink);border-left:3px solid var(--accent);border-radius:0 10px 10px 0;padding:11px 14px;color:var(--ink);font-size:13.5px;white-space:pre-wrap}.qt.warn{border-left-color:var(--amber)}
+.metarow{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.tag{font-size:11px;font-weight:600;border:1px solid var(--line);border-radius:999px;padding:3px 10px;color:var(--ink2);background:var(--surface)}
+.tag.emo{background:var(--accent-soft);color:var(--accent);border-color:var(--accent-line)}.tag.mis{background:var(--red-soft);color:var(--red);border-color:color-mix(in srgb,var(--red) 30%,transparent)}
+.stars{color:var(--amber);font-size:14px;letter-spacing:1px}
+.checks{display:grid;grid-template-columns:repeat(2,1fr);gap:6px 16px;margin-top:12px}
+.ck{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--ink2)}.ck .b{width:16px;height:16px;border-radius:5px;border:1.5px solid var(--line);display:grid;place-items:center;font-size:10px;font-weight:800;flex:none}
+.ck.on .b{background:var(--green);border-color:var(--green);color:#fff}.ck.on{color:var(--ink)}
+.fbnote{margin-top:18px;border:1px dashed var(--line);border-radius:11px;padding:13px 15px;background:var(--raise);color:var(--muted);font-size:12.5px;display:flex;gap:10px;align-items:flex-start}.fbnote b{color:var(--ink2)}
+.foot{text-align:center;color:var(--muted);font-size:11.5px;margin-top:26px;line-height:1.7}.foot .fn{font-family:var(--fn)}
+.lb{position:fixed;inset:0;background:rgba(8,12,20,.86);z-index:100;display:none;align-items:center;justify-content:center;padding:40px}.lb.on{display:flex}
+.lb-in{max-width:94vw;max-height:90vh;position:relative}#lbSlot img{max-width:94vw;max-height:82vh;width:auto;height:auto;border-radius:8px;background:var(--surface);box-shadow:var(--shl)}
+#lbSlot svg{width:min(90vw,1100px);height:auto;border-radius:8px;background:var(--surface);box-shadow:var(--shl)}
+.lb-cap{color:#eaeef6;font-size:13px;text-align:center;margin-top:12px;font-family:var(--fn)}
+.lb-x{position:absolute;top:-38px;right:0;color:#fff;font-size:26px;background:none;border:none;cursor:pointer}
+.lb-nav{position:fixed;top:50%;transform:translateY(-50%);width:48px;height:48px;border-radius:50%;background:rgba(255,255,255,.12);color:#fff;font-size:24px;border:none;cursor:pointer}.lb-nav.prev{left:24px}.lb-nav.next{right:24px}
+`;
+const COACH_JS=`(function(){var lb=document.getElementById('lb'),slot=document.getElementById('lbSlot'),cap=document.getElementById('lbCap');var cur=[],ci=0,caps=[];
+window.__open=function(card,i){var els=card.querySelectorAll('.media');cur=[];caps=[];els.forEach(function(e){cur.push(e.innerHTML);caps.push(e.getAttribute('data-cap')||'');});ci=i;show();lb.classList.add('on');};
+function show(){slot.innerHTML=cur[ci];cap.textContent=caps[ci]+'  ('+(ci+1)+'/'+cur.length+')';}
+window.__mv=function(d){ci=(ci+d+cur.length)%cur.length;show();};window.__close=function(){lb.classList.remove('on');};
+document.addEventListener('keydown',function(e){if(!lb.classList.contains('on'))return;if(e.key==='Escape')__close();if(e.key==='ArrowLeft')__mv(-1);if(e.key==='ArrowRight')__mv(1);});
+var st=null;try{st=localStorage.getItem('sjpkg_theme');}catch(e){}if(st)document.documentElement.setAttribute('data-theme',st);
+function isDark(){var a=document.documentElement.getAttribute('data-theme');if(a)return a==='dark';return window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)').matches;}
+window.__theme=function(){var d=isDark()?'light':'dark';document.documentElement.setAttribute('data-theme',d);try{localStorage.setItem('sjpkg_theme',d);}catch(e){}document.getElementById('themeBtn').textContent=d==='dark'?'\\u2600 Licht':'\\u263e Donker';};
+document.getElementById('themeBtn').textContent=isDark()?'\\u2600 Licht':'\\u263e Donker';})();`;
+
+// ── Deel met coach — selectie-modus (los van het gereviewd-rondje) ──
+function toggleShareMode(){STATE.revShareMode=!STATE.revShareMode;if(!STATE.revShareMode)STATE.revShareSel=[];render();}
+function shareToggleSel(id){const i=STATE.revShareSel.indexOf(id);if(i>=0)STATE.revShareSel.splice(i,1);else STATE.revShareSel.push(id);render();}
+function shareSelectAllVisible(){STATE.revShareSel=reviewItems().map(x=>x.id);render();}
+function shareClearSel(){STATE.revShareSel=[];render();}
+function openShareDialog(ids){
+  if(ids){STATE.revShareSel=ids.slice();STATE.revShareMode=true;}
+  const n=STATE.revShareSel.length; if(!n){toast('Selecteer eerst één of meer trades','info');return;}
+  const nm=esc(DB.load('share_name','')||'');
+  openModalHTML(`<div class="mhead"><h3>⤴ Deel met coach</h3><button class="xbtn" onclick="closeForm()">×</button></div>
+   <div class="mbody mbody-wiz">
+     <p class="setintro"><b>${n}</b> trade${n>1?'s':''} worden gebundeld in één HTML-bestand mét je screenshots. Je coach opent het gewoon in de browser — geen account of installatie nodig.</p>
+     <div class="field"><label>Jouw naam <span class="hint">(verschijnt als "gedeeld door")</span></label><input id="shareName" class="shareinp" placeholder="bv. Denny" value="${nm}"></div>
+     <label class="shareopt"><input type="checkbox" id="shareHide" ${STATE.shareHide?'checked':''} onchange="STATE.shareHide=this.checked"> <span><b>Verberg bedragen</b> — de coach ziet R-multiples + %, niet je €/$-bedragen</span></label>
+     <p class="hint" style="padding:2px 2px 0">Screenshots worden automatisch verkleind voor een compact, deelbaar bestand.</p>
+     <div id="shareBusy" class="hint" style="display:none;padding:6px 2px 0">⏳ Pakket wordt gebouwd…</div>
+     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px"><button class="btn" onclick="closeForm()">Annuleren</button><button class="btn pri" id="shareGo" onclick="downloadCoachPackage()">⬇ Download coach-pakket</button></div>
+   </div>`);
+}
+// verklein/hercodeer een base64-screenshot → compacter bestand (max 1600px, JPEG q0.82)
+function resizeShot(url){return new Promise(res=>{const img=new Image();
+  img.onload=()=>{try{const max=1600;let w=img.naturalWidth||img.width,h=img.naturalHeight||img.height;if(!w||!h){res(url);return;}if(w>max||h>max){const s=max/Math.max(w,h);w=Math.round(w*s);h=Math.round(h*s);}const c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d').drawImage(img,0,0,w,h);res(c.toDataURL('image/jpeg',0.82));}catch(e){res(url);}};
+  img.onerror=()=>res(url);img.src=url;});}
+async function downloadCoachPackage(){
+  const ids=STATE.revShareSel.slice(); if(!ids.length)return;
+  const nameEl=document.getElementById('shareName'); const name=(nameEl?nameEl.value:'').trim(); DB.save('share_name',name);
+  const hide=STATE.shareHide, go=document.getElementById('shareGo'), busy=document.getElementById('shareBusy');
+  if(go)go.disabled=true; if(busy)busy.style.display='block';
+  try{
+    const trades=ids.map(id=>T.find(x=>x.id===id)).filter(Boolean);
+    const shotMap={};
+    for(const t of trades){const arr=[];for(const u of (t.screenshots||[])){arr.push(await resizeShot(u));}shotMap[t.id]=arr;}
+    const html=coachPkgHTML(trades,{name,hide,shotMap});
+    const blob=new Blob([html],{type:'text/html'}),url=URL.createObjectURL(blob),a=document.createElement('a');
+    a.href=url;a.download='trade-review-'+new Date().toISOString().slice(0,10)+'.html';a.click();setTimeout(()=>URL.revokeObjectURL(url),2000);
+    closeForm();STATE.revShareMode=false;STATE.revShareSel=[];render();
+    toast('✓ Coach-pakket gedownload ('+trades.length+' trade'+(trades.length>1?'s':'')+')','ok');
+  }catch(e){if(go)go.disabled=false;if(busy)busy.style.display='none';toast('Kon pakket niet bouwen: '+(e&&e.message||e),'err');}
+}
+// bouwt het self-contained coach-pakket (HTML). Alle user-tekst via esc() → geen self-XSS in het gedeelde bestand.
+function coachPkgHTML(trades,opts){
+  const hide=opts.hide, name=esc(opts.name||'een trader'), shotMap=opts.shotMap||{};
+  const rTxt=r=>(r>=0?'+':'')+(+r||0).toFixed(1)+'R', pctTxt=p=>((+p||0)>=0?'+':'')+(+p||0).toFixed(2).replace('.',',')+'%';
+  const cl=v=>v>=0?'g':'r', amt=v=>hide?'<span class="hid">•••</span>':v;
+  const dates=trades.map(t=>t.date).filter(Boolean).sort();
+  const per=dates.length?(fmtD(dates[0])+(dates.length>1?' – '+fmtD(dates[dates.length-1]):'')):'—';
+  const n=trades.length, wins=trades.filter(t=>tradeR(t)>=0).length, avgR=n?trades.reduce((s,t)=>s+tradeR(t),0)/n:0;
+  const net=trades.reduce((s,t)=>s+(+t.pnl||0),0), adh=n?Math.round(trades.reduce((s,t)=>s+revChecks(t).filter(Boolean).length,0)/(n*5)*100):0;
+  const sum=[['Trades',n,''],['Win-rate',n?Math.round(wins/n*100)+'%':'—',wins+'W · '+(n-wins)+'V'],['Gem. R',(avgR>=0?'+':'')+avgR.toFixed(2)+'R','over '+n+' trades'],['Netto',hide?'R-only':eurS(net),hide?'bedragen verborgen':''],['Plan-adherence',adh+'%','checklist gemiddeld']];
+  const sumHtml=sum.map(([l,v,s])=>`<div class="sumc"><div class="l">${l}</div><div class="v ${l==='Netto'&&!hide?cl(net):''}">${v}</div><div class="s">${esc(s)}</div></div>`).join('');
+  const shotBlock=(inner,cap)=>`<div class="shot" onclick="__open(this.closest('.tcard'),Array.prototype.indexOf.call(this.parentNode.children,this))"><span class="zoom">🔍 vergroot</span><div class="media" data-cap="${esc(cap)}">${inner}</div><span class="cap">${esc(cap)}</span></div>`;
+  const cards=trades.map((t,ti)=>{
+    const rr=tradeR(t), grd=(typeof gradeOf==='function'?gradeOf(t):t.grade)||'—';
+    const emos=[...new Set((t.emotions&&t.emotions.length?t.emotions:[t.emotion]).filter(Boolean))];
+    const miss=[...new Set((t.mistakes&&t.mistakes.length?t.mistakes:[t.mistake]).filter(Boolean))];
+    const rating=t.rating||(['Kalm','Zelfverzekerd'].includes(t.emotion)?(t.pnl>0?5:4):(t.pnl>0?3:2));
+    const checks=revChecks(t), chkLabels=(typeof CHECKLIST!=='undefined'?CHECKLIST:['','','','','']);
+    const shotsArr=shotMap[t.id]||[];
+    const media=(shotsArr.length?shotsArr.map((u,i)=>shotBlock('<img src="'+u+'" alt="screenshot">','Screenshot '+(i+1)+' / '+shotsArr.length)):[shotBlock(chartThumb(t,1),'Auto-chart · geen screenshot geüpload')]).join('');
+    const szTxt=(typeof SZ==='function'&&!isNaN(SZ(t)))?CURSYM()+' '+SZ(t).toLocaleString('nl-NL'):'—';
+    const num=v=>numOrDash(v);
+    return `<div class="tcard">
+      <div class="tc-head"><span class="tc-idx">${ti+1}</span>
+        <div style="min-width:0"><div class="tc-pair">${esc(t.pair)} <span class="pill ${t.dir}">${t.dir==='long'?'LONG':'SHORT'}</span></div>
+          <div class="tc-sub">${esc(fmtD(t.date))}${t.time?' '+esc(t.time):''} · ${esc(sessionOf(t)||'—')} · ${esc(t.timeframe||'—')} · ${esc(t.market||'—')} · ${esc(t.exchange||'')}</div></div>
+        <span class="chip">Grade ${esc(grd)}</span>
+        <div class="tc-out"><div class="${cl(rr)}"><span class="rv">${rTxt(rr)}</span></div><div class="p">${hide?pctTxt(t.pnlPct):esc(eurS(t.pnl))+' · '+pctTxt(t.pnlPct)}</div></div></div>
+      <div class="tc-body">
+        <p class="sect-l">Charts / screenshots</p><div class="shots">${media}</div>
+        <p class="sect-l">Plan vs. uitvoering</p>
+        <div class="plan">
+          <div class="pc"><div class="l">Entry</div><div class="v">${num(t.entry)}</div></div>
+          <div class="pc"><div class="l">Stop-loss</div><div class="v r">${num(t.stop)}</div></div>
+          <div class="pc"><div class="l">Take-profit</div><div class="v g">${num(t.tp)}</div></div>
+          <div class="pc"><div class="l">Exit</div><div class="v">${num(t.exit)}</div></div>
+          <div class="pc"><div class="l">Size</div><div class="v">${amt(szTxt)}</div></div>
+          <div class="pc"><div class="l">Risk</div><div class="v">${t.risk?esc(t.risk)+'%':'—'}</div></div>
+          <div class="pc"><div class="l">Hefboom</div><div class="v">${(t.leverage||'—')}×</div></div>
+          <div class="pc"><div class="l">Resultaat</div><div class="v ${cl(rr)}">${hide?rTxt(rr):esc(eurS(t.pnl))}</div></div>
+        </div>
+        <div class="rrbadge">Geplande R:R <b>${t.rrPlanned?esc(t.rrPlanned)+':1':'—'}</b> → behaald <b class="${cl(rr)}">${rTxt(rr)}</b></div>
+        ${t.notes?`<div class="block"><p class="sect-l">Notities</p><div class="qt">${esc(t.notes)}</div></div>`:''}
+        ${t.lessons?`<div class="block"><p class="sect-l">Leerpunt</p><div class="qt warn">${esc(t.lessons)}</div></div>`:''}
+        <div class="block"><p class="sect-l">Reflectie</p><div class="metarow">
+          ${emos.map(e=>`<span class="tag emo">🧠 ${esc(e)}</span>`).join('')}
+          ${miss.map(m=>`<span class="tag mis">⚠ ${esc(m)}</span>`).join('')}
+          <span class="tag">Self-rating: <span class="stars">${'★'.repeat(rating)}${'☆'.repeat(5-rating)}</span></span></div>
+          <div class="checks">${chkLabels.map((l,i)=>`<div class="ck ${checks[i]?'on':''}"><span class="b">${checks[i]?'✓':''}</span>${esc(l)}</div>`).join('')}</div>
+        </div>
+        <div class="fbnote">💬 <div><b>Feedback van de coach</b> bespreek je via je gebruikelijke kanaal (Discord/gesprek). Terug-importeerbare feedback komt in een volgende versie.</div></div>
+      </div></div>`;
+  }).join('');
+  const title=`Trade-review — ${n} trade${n>1?'s':''} ter beoordeling`;
+  return '<!DOCTYPE html><html lang="nl"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+esc(title)+'</title><style>'+COACH_CSS+'</style></head><body>'
+    +'<div class="bar"><div class="bar-in"><div class="brand"><span class="logo">S</span><div>SyncJournal<small>Trade-review</small></div></div><div class="spacer"></div><button class="tbtn" id="themeBtn" onclick="__theme()">☾ Donker</button></div></div>'
+    +'<div class="wrap"><div class="rhead"><div class="kick">Read-only review-pakket</div><h1>'+esc(title)+'</h1>'
+    +'<div class="who">Gedeeld door <b>'+name+'</b> · gegenereerd <span class="num">'+new Date().toLocaleDateString('nl-NL')+'</span> · periode <span class="num">'+esc(per)+'</span></div>'
+    +'<div class="sumrow">'+sumHtml+'</div></div>'+cards
+    +'<div class="foot">Gegenereerd met <b>SyncJournal</b> · read-only review-pakket — niets wordt online opgeslagen.<br><span class="fn">Screenshots klikbaar voor volledig scherm · ←/→ bladeren · Esc sluiten</span></div></div>'
+    +'<div class="lb" id="lb" onclick="__close()"><button class="lb-nav prev" onclick="event.stopPropagation();__mv(-1)">‹</button><div class="lb-in" onclick="event.stopPropagation()"><button class="lb-x" onclick="__close()">×</button><div id="lbSlot"></div><div class="lb-cap" id="lbCap"></div></div><button class="lb-nav next" onclick="event.stopPropagation();__mv(1)">›</button></div>'
+    +'<script>'+COACH_JS+'</scr'+'ipt></body></html>';
+}
 let revSearchFocused=false;
 let pasteTargetId=null;
 function compressImg(file,maxW=1400,maxH=1000,q=0.82){return new Promise((res,rej)=>{const rd=new FileReader();rd.onerror=()=>rej();rd.onload=e=>{const img=new Image();img.onerror=()=>rej();img.onload=()=>{let w=img.width,h=img.height;if(w>maxW||h>maxH){const r=Math.min(maxW/w,maxH/h);w=Math.round(w*r);h=Math.round(h*r);}const c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d').drawImage(img,0,0,w,h);res(c.toDataURL('image/jpeg',q));};img.src=e.target.result;};rd.readAsDataURL(file);});}
@@ -2119,22 +2316,29 @@ function pgReview(){
   const items=reviewItems();
   const pos=items.findIndex(x=>x.id===t.id);
   const rq=STATE.revQuery||'',rf=STATE.revFilter||'all',rp=STATE.revPeriod||'all';
-  const list=items.length?items.map(x=>`<div class="revitem ${x.id===t.id?'on':''} ${x.reviewed?'done':''}" onclick="selRev(${x.id})">
-    <button class="rev-check" onclick="event.stopPropagation();toggleReviewed(${x.id})" title="${x.reviewed?'Gereviewed — klik om te demarkeren':'Klik om als gereviewd te markeren'}" aria-label="${x.reviewed?'gereviewed':'nog te reviewen'}">${x.reviewed?'✓':''}</button>
-    <div style="min-width:0;flex:1"><div style="display:flex;align-items:center;gap:6px">${assetCell(x.pair)}${kindBadge(x)}</div><div style="font-size:10.5px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${accAvatar(x.exchange,15)} <span class="num">${fmtD(x.date)}</span> · ${esc(x.setup)}</div></div>
-    <span class="m ${cls(x.pnl)} mask">${eurS(x.pnl)}</span></div>`).join(''):'<div class="revempty">Geen trades gevonden — pas je zoekopdracht of filter aan.</div>';
+  const sm=STATE.revShareMode, selSet=new Set(STATE.revShareSel), nSel=STATE.revShareSel.length;
+  const rowInner=x=>`<div style="min-width:0;flex:1"><div style="display:flex;align-items:center;gap:6px">${assetCell(x.pair)}${kindBadge(x)}</div><div style="font-size:10.5px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${accAvatar(x.exchange,15)} <span class="num">${fmtD(x.date)}</span> · ${esc(x.setup)}</div></div><span class="m ${cls(x.pnl)} mask">${eurS(x.pnl)}</span>`;
+  const list=items.length?items.map(x=>sm
+    ?`<div class="revitem selmode ${selSet.has(x.id)?'sel':''}" onclick="shareToggleSel(${x.id})"><span class="rev-selbox">${selSet.has(x.id)?'✓':''}</span>${rowInner(x)}</div>`
+    :`<div class="revitem ${x.id===t.id?'on':''} ${x.reviewed?'done':''}" onclick="selRev(${x.id})"><button class="rev-check" onclick="event.stopPropagation();toggleReviewed(${x.id})" title="${x.reviewed?'Gereviewed — klik om te demarkeren':'Klik om als gereviewd te markeren'}" aria-label="${x.reviewed?'gereviewed':'nog te reviewen'}">${x.reviewed?'✓':''}</button>${rowInner(x)}</div>`
+  ).join(''):`<div class="revempty">Geen trades gevonden — pas je ${sm?'periode/filter':'zoekopdracht of filter'} aan.</div>`;
   const pc=(l,v,c)=>`<div class="pc"><div class="l">${l}</div><div class="v ${c||''}">${v}</div></div>`;
   const won=t.pnl>=0;
+  const phead=sm
+    ? `<div class="phead"><h3>Selecteer trades</h3><span class="sp"></span><button class="xbtn" onclick="toggleShareMode()" title="Annuleren" aria-label="Annuleren" style="font-size:18px;line-height:1">×</button></div>`
+    : `<div class="phead"><h3>Trades</h3><span class="sp"></span><button class="revshare-btn" onclick="toggleShareMode()" title="Selecteer trades om met je coach te delen">⤴ Deel</button><span class="chip" title="gereviewed van totaal">${done}/${total} ✓</span></div>`;
+  const shareBar=sm?`<div class="revsharebar"><span class="rsb-c"><b>${nSel}</b> geselecteerd</span><span class="sp"></span><button onclick="shareSelectAllVisible()">Alles (${items.length})</button><button onclick="shareClearSel()" ${nSel?'':'disabled'}>Wis</button><button class="btn pri rsb-go" ${nSel?'':'disabled'} onclick="openShareDialog()">Deel ▸</button></div>`:'';
   return `${filterBar()}<div class="rev3">
 
     <div class="panel revlistpanel" style="align-self:start">
-      <div class="phead"><h3>Trades</h3><span class="sp"></span><span class="chip" title="gereviewed van totaal">${done}/${total} ✓</span></div>
+      ${phead}
       <div class="revtools">
         <div class="revsearch"><span class="sic">${svg(IC.search,15)}</span><input id="revSearch" placeholder="Zoek pair, setup, sessie, emotie…" value="${esc(rq)}" oninput="STATE.revQuery=this.value;render()" aria-label="Zoek trades om te reviewen"></div>
         <div class="revperiod">${[['all','Alle'],['week','Deze week'],['month','Deze maand'],['year','Dit jaar']].map(([k,l])=>`<button class="${rp===k?'on':''}" onclick="setRevPeriod('${k}')">${l}</button>`).join('')}</div>
         <div class="revfilters">${[['all','Alle',total],['todo','Te doen',total-done],['done','Gereviewed',done]].map(([k,l,n])=>`<button class="${rf===k?'on':''}" onclick="setRevFilter('${k}')">${l} <span class="cnt">${n}</span></button>`).join('')}</div>
       </div>
-      <div class="revlist" style="max-height:64vh;overflow:auto">${list}</div></div>
+      ${shareBar}
+      <div class="revlist" style="max-height:${sm?'58vh':'64vh'};overflow:auto">${list}</div></div>
 
     <div class="revmid">
       <div class="panel">
@@ -2143,6 +2347,7 @@ function pgReview(){
           <span class="chip">${pos>=0?pos+1:'–'}/${items.length}</span>
           <button class="iconbtn" onclick="revNav(-1)" aria-label="vorige" title="vorige" style="width:30px;height:30px">‹</button>
           <button class="iconbtn" onclick="revNav(1)" aria-label="volgende" title="volgende" style="width:30px;height:30px">›</button>
+          <button class="iconbtn" onclick="openShareDialog([${t.id}])" aria-label="deel met coach" title="Deel deze trade met je coach" style="width:30px;height:30px">⤴</button>
           <button class="iconbtn" onclick="openForm(${t.id})" aria-label="bewerken" title="bewerken" style="width:30px;height:30px">✎</button></div>
         <div class="pbody">
           <div style="display:flex;align-items:center;gap:8px">${exBadge(t.exchange)}<span class="pill ${t.dir}">${t.dir==='long'?'LONG':'SHORT'}</span>${statusB(t.status)}</div>
