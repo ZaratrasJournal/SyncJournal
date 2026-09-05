@@ -452,13 +452,20 @@ table.tbl{width:100%;border-collapse:collapse;font-size:13px}
 .revsearch{display:flex;align-items:center;gap:7px;background:var(--sink);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:13px;color:var(--muted)}
 .sic{display:inline-flex;align-items:center;color:var(--muted);flex-shrink:0}
 .revsearch input{border:none;background:none;outline:none;flex:1;font-size:12.5px;color:var(--ink);font-family:inherit;min-width:0}
+.revperiod{display:flex;gap:5px;margin-top:8px;flex-wrap:wrap}
+.revperiod button{flex:1 1 auto;border:1px solid var(--line);background:var(--surface);border-radius:7px;padding:5px 8px;font-size:11px;font-weight:600;color:var(--ink2);cursor:pointer;white-space:nowrap}
+.revperiod button:hover{background:var(--sink)}
+.revperiod button.on{background:var(--ink);color:var(--surface);border-color:var(--ink)}
 .revfilters{display:flex;gap:5px;margin-top:8px}
 .revfilters button{flex:1;border:1px solid var(--line);background:var(--surface);border-radius:7px;padding:5px 6px;font-size:11.5px;font-weight:600;color:var(--ink2);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:5px}
 .revfilters button:hover{background:var(--sink)}
 .revfilters button.on{background:var(--accent-soft);color:var(--accent);border-color:var(--accent-line)}
 .revfilters .cnt{font-family:var(--fn);font-size:10px;opacity:.65}
-.rev-check{width:18px;height:18px;border-radius:50%;border:1.5px solid var(--line);display:grid;place-items:center;font-size:10px;font-weight:800;color:var(--muted);flex:none}
+.rev-check{width:19px;height:19px;border-radius:50%;border:1.5px solid var(--line);background:var(--surface);display:grid;place-items:center;font-size:10px;font-weight:800;color:var(--muted);flex:none;cursor:pointer;padding:0;transition:border-color .12s,background .12s,color .12s}
+.rev-check:hover{border-color:var(--green);background:var(--green-soft);color:var(--green)}
+.revitem:not(.done) .rev-check:hover::before{content:'✓';opacity:.45}
 .revitem.done .rev-check{background:var(--green);border-color:var(--green);color:#fff}
+.revitem.done .rev-check:hover{background:var(--red-soft);border-color:var(--red);color:var(--red)}
 .revitem.done{opacity:.66}
 .revitem.done.on,.revitem.done:hover{opacity:1}
 .revempty{padding:26px 14px;text-align:center;color:var(--muted);font-size:12.5px;line-height:1.5}
@@ -1359,7 +1366,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.6';
+const APP_VERSION='v0.9.7';
 const SCHEMA_VERSION=1;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -2036,10 +2043,20 @@ function setRating(id,n){saveReview(id,{rating:n});render();}
 function setEmotion(id,e){saveReview(id,{emotion:e});render();}
 function saveNote(id,v){saveReview(id,{notes:v});}
 function saveLessons(id,v){saveReview(id,{lessons:v});}
-function reviewItems(){const listSrc=FT.length?FT:T;const rq=(STATE.revQuery||'').toLowerCase(),rf=STATE.revFilter||'all';
-  return listSrc.filter(x=>(rf==='all'||(rf==='done'?x.reviewed:!x.reviewed))&&(!rq||(x.pair+' '+x.setup+' '+x.session+' '+(x.emotion||'')+' '+(x.tags||[]).join(' ')).toLowerCase().includes(rq)));}
+// Periode-filter voor de review-lijst (relatief t.o.v. vandaag, Amsterdam-week ma–zo).
+function revInPeriod(dateStr){const p=STATE.revPeriod||'all';if(p==='all')return true;if(!dateStr)return false;
+  const now=new Date(),d=new Date(dateStr+'T12:00:00');
+  if(p==='year')return d.getFullYear()===now.getFullYear();
+  if(p==='month')return d.getFullYear()===now.getFullYear()&&d.getMonth()===now.getMonth();
+  if(p==='week'){const day=(now.getDay()+6)%7,mon=new Date(now);mon.setHours(0,0,0,0);mon.setDate(now.getDate()-day);const sun=new Date(mon);sun.setDate(mon.getDate()+7);return d>=mon&&d<sun;}
+  return true;}
+// Basis-set voor de review-lijst na periode-filter (telkens vóór de reviewed/zoek-filters).
+function reviewScope(){const listSrc=FT.length?FT:T;return listSrc.filter(x=>revInPeriod(x.date));}
+function reviewItems(){const rq=(STATE.revQuery||'').toLowerCase(),rf=STATE.revFilter||'all';
+  return reviewScope().filter(x=>(rf==='all'||(rf==='done'?x.reviewed:!x.reviewed))&&(!rq||(x.pair+' '+x.setup+' '+x.session+' '+(x.emotion||'')+' '+(x.tags||[]).join(' ')).toLowerCase().includes(rq)));}
 function revNav(d){const src=reviewItems();if(!src.length)return;let i=src.findIndex(x=>x.id===STATE.revSel);if(i<0)i=0;STATE.revSel=src[(i+d+src.length)%src.length].id;render();}
 function setRevFilter(f){STATE.revFilter=f;render();}
+function setRevPeriod(p){STATE.revPeriod=p;render();}
 function toggleReviewed(id){const t=T.find(x=>x.id===id);if(!t)return;t.reviewed=!t.reviewed;persist();render();toast(t.reviewed?'✓ Gemarkeerd als gereviewed':'Markering verwijderd','info');}
 let revSearchFocused=false;
 let pasteTargetId=null;
@@ -2097,13 +2114,13 @@ function pgReview(){
   pasteTargetId=t.id;
   const checks=revChecks(t);
   const rating=t.rating||(['Kalm','Zelfverzekerd'].includes(t.emotion)?(t.pnl>0?5:4):(t.pnl>0?3:2));
-  const listSrc=FT.length?FT:T;
-  const total=listSrc.length,done=listSrc.filter(x=>x.reviewed).length;
+  const scope=reviewScope();  // periode-gefilterde basis
+  const total=scope.length,done=scope.filter(x=>x.reviewed).length;
   const items=reviewItems();
   const pos=items.findIndex(x=>x.id===t.id);
-  const rq=STATE.revQuery||'',rf=STATE.revFilter||'all';
+  const rq=STATE.revQuery||'',rf=STATE.revFilter||'all',rp=STATE.revPeriod||'all';
   const list=items.length?items.map(x=>`<div class="revitem ${x.id===t.id?'on':''} ${x.reviewed?'done':''}" onclick="selRev(${x.id})">
-    <span class="rev-check" title="${x.reviewed?'gereviewed':'nog te reviewen'}">${x.reviewed?'✓':''}</span>
+    <button class="rev-check" onclick="event.stopPropagation();toggleReviewed(${x.id})" title="${x.reviewed?'Gereviewed — klik om te demarkeren':'Klik om als gereviewd te markeren'}" aria-label="${x.reviewed?'gereviewed':'nog te reviewen'}">${x.reviewed?'✓':''}</button>
     <div style="min-width:0;flex:1"><div style="display:flex;align-items:center;gap:6px">${assetCell(x.pair)}${kindBadge(x)}</div><div style="font-size:10.5px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${accAvatar(x.exchange,15)} <span class="num">${fmtD(x.date)}</span> · ${esc(x.setup)}</div></div>
     <span class="m ${cls(x.pnl)} mask">${eurS(x.pnl)}</span></div>`).join(''):'<div class="revempty">Geen trades gevonden — pas je zoekopdracht of filter aan.</div>';
   const pc=(l,v,c)=>`<div class="pc"><div class="l">${l}</div><div class="v ${c||''}">${v}</div></div>`;
@@ -2114,6 +2131,7 @@ function pgReview(){
       <div class="phead"><h3>Trades</h3><span class="sp"></span><span class="chip" title="gereviewed van totaal">${done}/${total} ✓</span></div>
       <div class="revtools">
         <div class="revsearch"><span class="sic">${svg(IC.search,15)}</span><input id="revSearch" placeholder="Zoek pair, setup, sessie, emotie…" value="${esc(rq)}" oninput="STATE.revQuery=this.value;render()" aria-label="Zoek trades om te reviewen"></div>
+        <div class="revperiod">${[['all','Alle'],['week','Deze week'],['month','Deze maand'],['year','Dit jaar']].map(([k,l])=>`<button class="${rp===k?'on':''}" onclick="setRevPeriod('${k}')">${l}</button>`).join('')}</div>
         <div class="revfilters">${[['all','Alle',total],['todo','Te doen',total-done],['done','Gereviewed',done]].map(([k,l,n])=>`<button class="${rf===k?'on':''}" onclick="setRevFilter('${k}')">${l} <span class="cnt">${n}</span></button>`).join('')}</div>
       </div>
       <div class="revlist" style="max-height:64vh;overflow:auto">${list}</div></div>
