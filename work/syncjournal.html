@@ -602,12 +602,20 @@ table.tbl{width:100%;border-collapse:collapse;font-size:13px}
 .gr-wr{font-size:12px;font-weight:700;font-family:var(--fn);color:var(--ink2);min-width:34px;text-align:right}
 .gr-sub{font-size:11px;color:var(--muted)}
 .gr-legend i{display:inline-block;width:9px;height:9px;border-radius:2px;vertical-align:middle;margin-right:4px}
-.yh-wrap{overflow-x:auto;padding:6px 2px 4px}
-.yh-svg{display:block;width:100%;min-width:680px;height:auto}
+.yh-wrap{overflow-x:auto;padding:6px 2px 4px;text-align:center}
+.yh-svg{display:block;height:auto;max-width:100%;margin:0 auto}
 .yh-mlabel{fill:var(--muted);font-size:8px;font-family:var(--fn);text-transform:capitalize}
 .yh-dlabel{fill:var(--muted);font-size:7px;font-family:var(--fn)}
 .yh-svg rect{stroke:var(--line2);stroke-width:.5;transition:stroke .12s}
+.yh-svg rect{cursor:pointer}
 .yh-svg rect:hover{stroke:var(--accent);stroke-width:1.5}
+.yhtip{position:fixed;z-index:220;pointer-events:none;background:var(--surface);border:1px solid var(--line);border-radius:10px;box-shadow:0 10px 30px -8px rgba(10,20,50,.45);padding:10px 13px;font-size:12px;min-width:186px;opacity:0;transition:opacity .1s}
+body.dark .yhtip{box-shadow:0 10px 30px -8px rgba(0,0,0,.55)}
+.yhtip.on{opacity:1}
+.yhtip .yht-d{font-weight:800;font-size:12px;text-transform:capitalize;margin-bottom:6px;color:var(--ink)}
+.yhtip .yht-row{display:flex;justify-content:space-between;gap:18px;color:var(--muted);font-size:11.5px;line-height:1.7}
+.yhtip .yht-row b{color:var(--ink);font-family:var(--fn)}
+.yhtip .yht-pnl{margin-top:6px;padding-top:6px;border-top:1px solid var(--line2);font-size:15px;font-weight:800;font-family:var(--fn)}
 .rrbadge{grid-column:1/-1;display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);background:var(--sink);border:1px solid var(--line2);border-radius:9px;padding:9px 12px}
 .rrbadge b{font-family:var(--fn);color:var(--ink)}
 
@@ -869,6 +877,7 @@ body.dark .toast{box-shadow:0 10px 34px rgba(0,0,0,.5)}
 <div class="navscrim" id="navscrim"></div>
 <div class="toasts" id="toasts"></div>
 <div class="errbar" id="errbar" role="alert" aria-live="assertive"></div>
+<div class="yhtip" id="yhtip"></div>
 
 <div class="scrim" id="scrim"></div>
 <div class="modal" id="modal" role="dialog" aria-modal="true" aria-label="Dialoogvenster"></div>
@@ -2539,13 +2548,26 @@ function yearHeatmap(year,byDay){
     const iso=`${year}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`,dd=byDay[iso];
     let fill='var(--track)';
     if(dd&&dd.v){const inten=Math.round(Math.min(1,Math.abs(dd.v)/maxAbs)*58+22);fill=`color-mix(in srgb,var(--${dd.v>=0?'green':'red'}) ${inten}%,transparent)`;}
-    const title=dd?`${fmtD(iso)} · ${eurS(dd.v)} · ${dd.n} trades · ${Math.round(dd.w/dd.n*100)}% win`:`${fmtD(iso)} · geen trades`;
-    rects+=`<rect x="${leftPad+w*step}" y="${topPad+d*step}" width="${cell}" height="${cell}" rx="2.5" style="fill:${fill}"><title>${title}</title></rect>`;
+    rects+=`<rect x="${leftPad+w*step}" y="${topPad+d*step}" width="${cell}" height="${cell}" rx="2.5" style="fill:${fill}" data-iso="${iso}" data-v="${dd?dd.v:0}" data-n="${dd?dd.n:0}" data-w="${dd?dd.w:0}"></rect>`;
   }}
   let dlabels='';[0,1,2,3,4,5,6].forEach(d=>{dlabels+=`<text x="0" y="${topPad+d*step+cell-2}" class="yh-dlabel">${dLbl[d]}</text>`;});
   const W=leftPad+53*step,H=topPad+7*step+2;
-  return `<div class="yh-wrap"><svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" class="yh-svg" role="img" aria-label="Jaarheatmap ${year}">${mlabels}${dlabels}${rects}</svg></div>`;
+  return `<div class="yh-wrap" onmousemove="yhMove(event)" onmouseleave="yhHide()"><svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" class="yh-svg" role="img" aria-label="Jaarheatmap ${year}">${mlabels}${dlabels}${rects}</svg></div>`;
 }
+function fmtLong(iso){try{return new Date(iso+'T12:00:00Z').toLocaleDateString('nl-NL',{weekday:'short',day:'numeric',month:'short',year:'numeric'});}catch(e){return iso;}}
+function yhMove(e){const tip=document.getElementById('yhtip');if(!tip)return;const r=e.target;
+  if(!r||r.tagName!=='rect'||r.dataset.iso===undefined){yhHide();return;}
+  const iso=r.dataset.iso,n=+r.dataset.n,v=+r.dataset.v,w=+r.dataset.w,l=n-w;
+  tip.innerHTML=n>0
+    ?`<div class="yht-d">${esc(fmtLong(iso))}</div><div class="yht-row"><span>Trades</span><b>${n}</b></div><div class="yht-row"><span>Winst / verlies</span><b><span class="g">${w}</span> / <span class="r">${l}</span></b></div><div class="yht-row"><span>Win-rate</span><b>${Math.round(w/n*100)}%</b></div><div class="yht-pnl ${cls(v)} mask">${eurS(v)}</div>`
+    :`<div class="yht-d">${esc(fmtLong(iso))}</div><div class="yht-row" style="color:var(--muted)">Geen trades</div>`;
+  tip.classList.add('on');
+  const cr=r.getBoundingClientRect(),tw=tip.offsetWidth,th=tip.offsetHeight;
+  let x=Math.max(8,Math.min(window.innerWidth-tw-8,cr.left+cr.width/2-tw/2));
+  let y=cr.top-th-8; if(y<8)y=cr.bottom+8;
+  tip.style.left=x+'px';tip.style.top=y+'px';
+}
+function yhHide(){const t=document.getElementById('yhtip');if(t)t.classList.remove('on');}
 function sample(arr,n){if(!arr||arr.length<=n)return arr||[];const out=[];for(let i=0;i<n;i++)out.push(arr[Math.round(i/(n-1)*(arr.length-1))]);return out;}
 function miniSpark(vals,up){if(!vals||vals.length<2)return '';const t=themeColors(),H=React.createElement,R=Recharts,col=up?t.green:t.red,gid='grad'+(_gid++);
   const data=vals.map((v,i)=>({x:i,y:Math.round(v*100)/100}));
