@@ -36,7 +36,7 @@ const mk = (date, pnl, i) => ({ id: i, date, time: '10:00', pair: 'BTC/USDT', di
     return { cw: cr.width, ch: cr.height, yhW: Math.round(yr.width), panelW: Math.round(pr.width), mAuto: cs.marginLeft === cs.marginRight, maxW: cs.maxWidth };
   });
   ok('cellen zijn vierkant', Math.abs(size.cw - size.ch) < 1.5, `${size.cw}×${size.ch}`);
-  ok('celgrootte binnen clamp 13–22px', size.cw >= 12.5 && size.cw <= 22.5, `cw=${size.cw}`);
+  ok('celgrootte binnen clamp 14–26px', size.cw >= 13.5 && size.cw <= 26.5, `cw=${size.cw}`);
   ok('heatmap past binnen paneel (geen overflow)', size.yhW <= size.panelW, `yh=${size.yhW} panel=${size.panelW}`);
   ok('heatmap gecentreerd (auto-marges) + max-width cap', size.mAuto && /px|calc/.test(size.maxW), `mAuto=${size.mAuto} maxW=${size.maxW}`);
 
