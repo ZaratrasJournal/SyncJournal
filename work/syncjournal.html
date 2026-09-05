@@ -1401,7 +1401,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.16';
+const APP_VERSION='v0.9.17';
 const SCHEMA_VERSION=1;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -1980,12 +1980,30 @@ function setupSessionMatrix(){
 function tmMove(e){const tip=document.getElementById('yhtip');if(!tip)return;const t=e.target.closest&&e.target.closest('.tm-tile');
   if(!t){yhHide();return;}
   const n=+t.dataset.n,w=+t.dataset.w,l=n-w,v=+t.dataset.pnl,wr=Math.round(w/n*100);
-  tip.innerHTML=`<div class="yht-d">${esc(t.dataset.su)} · ${esc(t.dataset.se)}</div><div class="yht-row"><span>Trades</span><b>${n}</b></div><div class="yht-row"><span>Winst / verlies</span><b><span class="g">${w}</span> / <span class="r">${l}</span></b></div><div class="yht-row"><span>Win-rate</span><b>${wr}%</b></div><div class="yht-pnl ${cls(v)} mask">${eurS(v)}</div>`;
+  tip.innerHTML=`<div class="yht-d">${esc(t.dataset.su)}${t.dataset.se?' · '+esc(t.dataset.se):''}</div><div class="yht-row"><span>Trades</span><b>${n}</b></div><div class="yht-row"><span>Winst / verlies</span><b><span class="g">${w}</span> / <span class="r">${l}</span></b></div><div class="yht-row"><span>Win-rate</span><b>${wr}%</b></div><div class="yht-pnl ${cls(v)} mask">${eurS(v)}</div>`;
   tip.classList.add('on');
   const tw=tip.offsetWidth,th=tip.offsetHeight;
   let x=Math.max(8,Math.min(window.innerWidth-tw-8,e.clientX-tw/2));
   let y=e.clientY-th-14; if(y<8)y=e.clientY+16;
   tip.style.left=x+'px';tip.style.top=y+'px';
+}
+// Winst-per-pair heatmap: tegel groter = grotere |netto P&L|, kleur = winst/verlies. Klik = filter op pair.
+function pairCell(pair){FILTER.pair=pair;STATE.selected=[];STATE.tradePage=0;yhHide();go('trades');}
+function pairProfitHeatmap(){
+  const by={};
+  CLOSED.forEach(t=>{const pr=t.pair||'—';(by[pr]=by[pr]||{n:0,w:0,pnl:0});by[pr].n++;by[pr].pnl+=t.pnl;if(t.pnl>0)by[pr].w++;});
+  const pairs=Object.entries(by).filter(([p])=>p&&p!=='—').map(([pair,c])=>({pair,c,value:Math.abs(c.pnl)||0.0001}));
+  if(!pairs.length)return `<div style="padding:26px 18px;color:var(--muted);font-size:12.5px">Geen trades in beeld.</div>`;
+  let maxAbs=1;pairs.forEach(x=>maxAbs=Math.max(maxAbs,Math.abs(x.c.pnl)));
+  const tint=pnl=>{if(!pnl)return 'var(--track)';const inten=Math.round(Math.min(1,Math.abs(pnl)/maxAbs)*40+48);return `color-mix(in srgb,var(--${pnl>=0?'green':'red'}) ${inten}%,transparent)`;};
+  const H=Math.round(Math.max(320,Math.min(600,240+pairs.length*24)));
+  const tiles=squarify(pairs,{x:0,y:0,w:1000,h:H}).map(r=>{const {pair,c}=r.item,wr=c.n?Math.round(c.w/c.n*100):0;
+    const cls2=(r.w<80||r.h<46)?' small':'',cls3=(r.w<46||r.h<26)?' tiny':'';
+    return `<div class="tm-tile${cls2}${cls3}" style="left:${(r.x+1)/1000*100}%;top:${(r.y+1)/H*100}%;width:${(r.w-2)/1000*100}%;height:${(r.h-2)/H*100}%;background:${tint(c.pnl)}" onclick="pairCell('${jsarg(pair)}')" data-su="${esc(pair)}" data-n="${c.n}" data-w="${c.w}" data-pnl="${c.pnl}"><span class="ts">${esc(pair)}</span><span class="tv mask">${eurK(c.pnl)} · ${wr}%</span></div>`;
+  }).join('');
+  const sw=bg=>`<span class="mxsw" style="background:${bg}"></span>`;
+  return `<div class="tm" style="aspect-ratio:1000/${H}" onmousemove="tmMove(event)" onmouseleave="yhHide()">${tiles}</div>
+    <div class="mx-legend"><span class="g1">verlies ${sw(tint(-maxAbs*0.3))}${sw(tint(-maxAbs))}</span><span class="g1">winst ${sw(tint(maxAbs*0.3))}${sw(tint(maxAbs))}</span><span style="color:var(--faint)">← klein · groot →</span><span style="margin-left:auto;font-style:italic">grootte = |netto P&L| · kleur = winst/verlies · klik = filter</span></div>`;
 }
 function pgTendencies(){
   const field={sessie:'session',setup:'setup',emotie:'emotion',grade:'grade'}[STATE.tend];
@@ -3053,15 +3071,17 @@ function pgAnalytics(){
   const eroA=eroBuckets(applyFilterNoKind(T));
   const eroAPanel=(eroA.backtest.n||eroA.paper.n)?`<div class="panel"><div class="phead"><h3>Real vs Paper vs Backtest</h3><span class="sp"></span><span class="chip" title="edge-erosion — over alle soorten, los van de Live/Oefen-filter">edge-check · alle soorten</span></div><div class="pbody">${erosionBody(eroA)}</div></div><div style="height:13px"></div>`:'';
   return `${filterBar()}${tiles}<div style="height:13px"></div>${kpis}<div style="height:13px"></div>
-    ${eroAPanel}
     <div class="grid" style="grid-template-columns:2fr 1fr;align-items:stretch">
       ${panelHead('Equity-curve',perDD('eq'),equity(214,periodTrades(CLOSED,KPIPER.eq)))}
       ${panel('Reeks &amp; vorm','momentum van je edge',streakBody)}
     </div><div style="height:13px"></div>
-    <div class="grid" style="grid-template-columns:1fr 1fr 1fr;align-items:stretch">
-      ${panel('Trade-score','samengestelde kwaliteit',scoreDonut(a.wr,pfv,payoff))}
-      ${panel('Win / verlies','verdeling gesloten trades',donutPanel([{name:'Winst',value:winN,fill:'var(--green)'},{name:'Verlies',value:lossN,fill:'var(--red)'}],{big:Math.round(a.wr)+'%',sub:'win-rate'}))}
-      ${panel('Long / short','richtingsverdeling',donutPanel([{name:'Long',value:longN,fill:'var(--accent)'},{name:'Short',value:shortN,fill:'var(--violet)'}],{big:CLOSED.length,sub:'trades'}))}
+    <div class="grid" style="grid-template-columns:2fr 1fr;align-items:start">
+      ${panelHead('Winst per pair','<span class="chip" title="grootte = netto P&L per pair · klik = filter">per pair · klik = filter</span>',pairProfitHeatmap())}
+      <div style="display:flex;flex-direction:column;gap:13px">
+        ${panel('Long / short','richtingsverdeling',donutPanel([{name:'Long',value:longN,fill:'var(--accent)'},{name:'Short',value:shortN,fill:'var(--violet)'}],{big:CLOSED.length,sub:'trades'}))}
+        ${panel('Trade-score','samengestelde kwaliteit',scoreDonut(a.wr,pfv,payoff))}
+        ${panel('Win / verlies','verdeling gesloten trades',donutPanel([{name:'Winst',value:winN,fill:'var(--green)'},{name:'Verlies',value:lossN,fill:'var(--red)'}],{big:Math.round(a.wr)+'%',sub:'win-rate'}))}
+      </div>
     </div><div style="height:13px"></div>
     <div class="grid" style="grid-template-columns:1fr 1fr;align-items:stretch">
       ${panelHead('Setup-grade — win/verlies per klasse',gLegend,gChart)}
@@ -3084,7 +3104,8 @@ function pgAnalytics(){
       ${panelRaw('Per pair','top 6 · gesorteerd op netto',hbars(pairRows))}
       ${panel('Kerncijfers','gem. per trade',wl)}
     </div><div style="height:13px"></div>
-    ${panel('Prestatie per uur','wanneer op de dag presteer je',hourHeat(CLOSED))}`;
+    ${panel('Prestatie per uur','wanneer op de dag presteer je',hourHeat(CLOSED))}<div style="height:13px"></div>
+    ${eroAPanel}`;
 }
 
 /* ═══ FAQ ═══ */
