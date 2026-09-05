@@ -1194,7 +1194,12 @@ function acctOf(id){const e=EXMAP[id];if(e)return {id,name:e.name,acct:e.acct,c:
 const PAIRC={BTC:'#f7931a',ETH:'#627eea',SOL:'#14e0a0',XRP:'#23a7de',DOGE:'#c3a634',LINK:'#2a5ada',AVAX:'#e84142',BNB:'#f0b90b',ARB:'#28a0f0',OP:'#ff0420'};
 const PRICES={BTC:60000,ETH:3200,SOL:180,XRP:0.61,DOGE:0.1,LINK:14,AVAX:28,BNB:580,ARB:0.9,OP:1.8};
 const SETUPS=['London SFP','Trend-pullback','BOS-retest','Range-fade','Reclaim','News trade','Liquidity grab','VWAP-bounce'];
-const SESSIONS=['Asia','London','US AM','US PM'];
+const SESSIONS=['Asia','London','US AM','US PM','Weekend'];
+// Weekend als aparte sessie — dag-van-de-week heeft VOORRANG op het tijdstip (zoals de originele journal).
+// DST-veilig: de datum-string is de kalenderdag; UTC-noon → getUTCDay is tijdzone-onafhankelijk.
+function dowMon(d){try{return (new Date((d||'2000-01-03')+'T12:00:00Z').getUTCDay()+6)%7;}catch(e){return 0;}}  // 0=ma .. 6=zo
+function isWeekendDate(d){return dowMon(d)>=5;}  // 5=za, 6=zo
+function sessionOf(t){return t&&isWeekendDate(t.date)?'Weekend':((t&&t.session)||'');}
 const EMOTIONS=['Kalm','Zelfverzekerd','Gefocust','FOMO','Twijfel','Gehaast','Revenge'];
 const TFLIST=['Daily','4H','2H','1H','30M','15M','5M','1M'];/* top-down volgorde */
 const TIMEFRAMES=TFLIST;
@@ -1211,7 +1216,7 @@ function genTrades(n){
   const sesT={Asia:[2,7],London:[8,12],'US AM':[14,18],'US PM':[18,22]};const out=[];
   for(let i=0;i<n;i++){
     const ex=pick(EXCHANGES),base=pick(Object.keys(PRICES)),pair=base+'/'+(base==='BTC'?'USDC':'USDT');
-    const setup=pick(SETUPS),session=pick(SESSIONS),dir=rnd()<0.6?'long':'short';
+    const setup=pick(SETUPS),session=pick(Object.keys(sesT)),dir=rnd()<0.6?'long':'short';
     const good=['London SFP','Trend-pullback','BOS-retest','VWAP-bounce'].includes(setup),win=rnd()<(good?0.66:0.47);
     let r,emotion,mistake='';
     if(win){r=+(0.8+rnd()*2.7).toFixed(1);emotion=pick(['Kalm','Zelfverzekerd','Gefocust','Kalm','Gefocust']);}
@@ -1468,7 +1473,7 @@ function persistState(){ DB.save('state',{theme:STATE.theme,priv:STATE.priv,dens
 const FILTER={exchange:'',pair:'',setup:'',session:'',dir:'',tag:'',dateFrom:'',dateTo:'',datePreset:'',kind:'live'};
 function kindMatch(t,k){const tk=t.kind||'live';if(!k||k==='alle')return true;if(k==='oefen')return tk!=='live';return tk===k;}
 let FT=[];
-function applyFilter(rows){const f=FILTER;return rows.filter(t=>kindMatch(t,f.kind)&&(!f.exchange||t.exchange===f.exchange)&&(!f.pair||t.pair===f.pair)&&(!f.setup||t.setup===f.setup)&&(!f.session||t.session===f.session)&&(!f.dir||t.dir===f.dir)&&(!f.tag||(t.tags||[]).includes(f.tag))&&(!f.dateFrom||t.date>=f.dateFrom)&&(!f.dateTo||t.date<=f.dateTo));}
+function applyFilter(rows){const f=FILTER;return rows.filter(t=>kindMatch(t,f.kind)&&(!f.exchange||t.exchange===f.exchange)&&(!f.pair||t.pair===f.pair)&&(!f.setup||t.setup===f.setup)&&(!f.session||sessionOf(t)===f.session)&&(!f.dir||t.dir===f.dir)&&(!f.tag||(t.tags||[]).includes(f.tag))&&(!f.dateFrom||t.date>=f.dateFrom)&&(!f.dateTo||t.date<=f.dateTo));}
 function countActive(){return ['exchange','pair','setup','session','dir','tag'].filter(k=>FILTER[k]).length+((FILTER.dateFrom||FILTER.dateTo)?1:0)+((FILTER.kind&&FILTER.kind!=='live')?1:0);}
 function setFilter(k,v){FILTER[k]=v;STATE.selected=[];STATE.tradePage=0;render();}
 function clearGFilter(){['exchange','pair','setup','session','dir','tag','dateFrom','dateTo','datePreset'].forEach(k=>FILTER[k]='');FILTER.kind='live';STATE.tradePage=0;render();}
@@ -1577,7 +1582,7 @@ function tagColor(tag){for(const c of TAG_CATS){if((tagConfig[c.key]||[]).includ
 function tagChips(tags,click){return (tags||[]).map(t=>{const col=tagColor(t);return `<span class="tagchip${col?' col':''}${click?' click':''}" ${col?`style="--tc:${col}"`:''} ${click?`onclick="event.stopPropagation();setFilter('tag','${jsarg(t)}')"`:''}>${esc(t)}</span>`;}).join('');}
 function statusB(s){const c=s==='partial'?'part':s==='open'?'open':'closed';return `<span class="status ${c}"><span class="sdot"></span>${s==='partial'?'Partial':s==='open'?'Open':'Gesloten'}</span>`;}
 function kindBadge(t){if(isLive(t))return '';const k=KINDS[t.kind]||{label:t.kind,color:'var(--muted)',emoji:''};return `<span class="kbadge" style="--kc:${k.color}">${k.emoji?k.emoji+' ':''}${k.label}</span>`;}
-const SESSC={'London':'#7c6cf0','New York':'#12b39b','US AM':'#12b39b','US PM':'#3b6ef5','Asia':'#c0821c','Tokyo':'#c0821c'};
+const SESSC={'London':'#7c6cf0','New York':'#12b39b','US AM':'#12b39b','US PM':'#3b6ef5','Asia':'#c0821c','Tokyo':'#c0821c','Weekend':'#b07090'};
 function setupBadge(s){return s?`<span class="mbadge" style="--mc:#5aa9ff">${esc(s)}</span>`:'<span class="tag" style="color:var(--muted)">—</span>';}
 function sessBadge(s){return s?`<span class="mbadge" style="--mc:${SESSC[s]||'#8a92a3'}">${esc(s)}</span>`:'';}
 function rBadge(r){r=+r||0;return `<span class="rbadge ${r>=0?'g':'r'}">${(r>=0?'+':'')+r.toFixed(1)}R</span>`;}
@@ -1685,7 +1690,7 @@ function barsPnl(data,unit='k'){
 function hbars(items){return `<div class="hbars">`+items.map(r=>`<div class="hbar"><div class="lbl">${esc(r.label)}</div>
   <div class="track"></div><div class="fill" style="width:${r.val}%;background:${r.color}"></div>
   <div class="val">${r.disp}</div><div class="sub">${r.sub}</div></div>`).join('')+`</div>`;}
-function groupRows(field){const o={};CLOSED.forEach(t=>{const k=t[field];(o[k]=o[k]||{n:0,w:0,pnl:0,r:0});o[k].n++;o[k].pnl+=t.pnl;o[k].r+=tradeR(t);if(t.pnl>0)o[k].w++;});
+function groupRows(field){const o={};CLOSED.forEach(t=>{const k=field==='session'?sessionOf(t):t[field];(o[k]=o[k]||{n:0,w:0,pnl:0,r:0});o[k].n++;o[k].pnl+=t.pnl;o[k].r+=tradeR(t);if(t.pnl>0)o[k].w++;});
   return Object.entries(o).map(([k,v])=>{const wr=Math.round(v.w/v.n*100);return {label:k,val:wr,disp:wr+'%',pnl:v.pnl,n:v.n,r:v.r/v.n,sub:`${v.n} trades · netto <b class="${cls(v.pnl)}">${eurS(v.pnl)}</b>`,color:v.pnl>=0?'var(--green)':'var(--red)'};});}
 
 /* ═══ PAGES ═══ */
@@ -1751,7 +1756,7 @@ function pgTrades(){
         <td class="rt num" data-l="Entry">${numOrDash(t.entry)}</td><td class="rt num" data-l="Exit">${numOrDash(t.exit)}</td>
         <td class="rt num mask" data-l="Size">${isNaN(SZ(t))?'—':CURSYM()+' '+SZ(t).toLocaleString('nl-NL')}</td><td class="rt" data-l="P&L">${pnlCell(t.pnl,t.pnlPct)}</td>
         <td class="ct" data-l="R">${rBadge(t.r)}</td><td data-l="Status">${statusB(t.status)}</td>
-        <td data-l="Setup">${setupBadge(t.setup)}</td><td data-l="Sessie">${sessBadge(t.session)}</td>
+        <td data-l="Setup">${setupBadge(t.setup)}</td><td data-l="Sessie">${sessBadge(sessionOf(t))}</td>
         <td data-l="Tags" style="max-width:170px">${tagChips(t.tags)}</td></tr>`;}).join('')}</tbody>
       <tfoot><tr><td class="cbx"></td><td colspan="7">Totaal (${rows.length})</td><td class="rt">${pnlCell(net,net/ACCT*100)}</td><td colspan="5"></td></tr></tfoot>
     </table></div>${pageCount>1?`<div class="pager">
@@ -1777,7 +1782,7 @@ function pgTendencies(){
   const rows=groupRows(field).sort((a,b)=>b.pnl-a.pnl);
   if(!rows.length)return `${filterBar()}${emptyState(countActive()?'trades-none':'tendencies')}`;
   // day of week
-  const dow=['Ma','Di','Wo','Do','Vr','Za','Zo'];const dd={};CLOSED.forEach(t=>{const wd=(new Date(t.date).getDay()+6)%7;(dd[wd]=dd[wd]||{v:0,n:0,w:0});dd[wd].v+=t.pnl;dd[wd].n++;if(t.pnl>0)dd[wd].w++;});
+  const dow=['Ma','Di','Wo','Do','Vr','Za','Zo'];const dd={};CLOSED.forEach(t=>{const wd=dowMon(t.date);(dd[wd]=dd[wd]||{v:0,n:0,w:0});dd[wd].v+=t.pnl;dd[wd].n++;if(t.pnl>0)dd[wd].w++;});
   const dowArr=[0,1,2,3,4,5,6].map(i=>({i,label:dow[i],v:dd[i]?dd[i].v:0,n:dd[i]?dd[i].n:0}));
   const dowData=dowArr.slice(0,5).map(d=>({m:d.label,v:d.v}));
   const bestDay=dowArr.filter(d=>d.n).sort((a,b)=>b.v-a.v)[0];
@@ -1964,7 +1969,7 @@ function pgReview(){
             <span style="font-size:12px;color:var(--muted)">${won?'winst':'verlies'} · ${t.pnlPct>=0?'+':''}${(+t.pnlPct).toFixed(2).replace('.',',')}%</span>
           </div>
           <div class="rev-basics">
-            ${[['Datum',fmtD(t.date)+(t.time?' '+t.time:'')],['Sessie',esc(t.session)],['Timeframe',esc(t.timeframe||'—')],['Marktconditie',esc(t.market||'—')],['Grade',gradeOf(t)?gradeBadge(gradeOf(t)):'—'],['Hefboom',(t.leverage||'—')+'×']].map(([k,v])=>`<div><div class="bk">${k}</div><div class="bv">${v}</div></div>`).join('')}
+            ${[['Datum',fmtD(t.date)+(t.time?' '+t.time:'')],['Sessie',esc(sessionOf(t))],['Timeframe',esc(t.timeframe||'—')],['Marktconditie',esc(t.market||'—')],['Grade',gradeOf(t)?gradeBadge(gradeOf(t)):'—'],['Hefboom',(t.leverage||'—')+'×']].map(([k,v])=>`<div><div class="bk">${k}</div><div class="bv">${v}</div></div>`).join('')}
           </div>
         </div>
       </div>
@@ -2217,7 +2222,7 @@ function playbookDetail(setup){
   const net=closed.reduce((a,x)=>a+x.pnl,0),avgR=n?closed.reduce((a,x)=>a+tradeR(x),0)/n:0,exp=n?net/n:0;
   const grossW=closed.filter(x=>x.pnl>0).reduce((a,x)=>a+x.pnl,0),grossL=Math.abs(closed.filter(x=>x.pnl<0).reduce((a,x)=>a+x.pnl,0)),pf=grossL?grossW/grossL:(grossW>0?99:0);
   const best=closed.length?Math.max(...closed.map(x=>x.pnl)):0,worst=closed.length?Math.min(...closed.map(x=>x.pnl)):0;
-  const bySes={};closed.forEach(x=>{(bySes[x.session]=bySes[x.session]||{v:0,n:0});bySes[x.session].v+=x.pnl;bySes[x.session].n++;});
+  const bySes={};closed.forEach(x=>{const s=sessionOf(x);(bySes[s]=bySes[s]||{v:0,n:0});bySes[s].v+=x.pnl;bySes[s].n++;});
   const sesBars=Object.entries(bySes).sort((a,b)=>b[1].v-a[1].v).map(([k,v])=>({m:k,v:Math.round(v.v)}));
   const tagCount={};closed.forEach(x=>(x.tags||[]).forEach(tg=>tagCount[tg]=(tagCount[tg]||0)+1));
   const topTags=Object.entries(tagCount).sort((a,b)=>b[1]-a[1]).slice(0,6);
@@ -2230,7 +2235,7 @@ function playbookDetail(setup){
   const eroHas=ero.backtest.n||ero.paper.n;  // alleen zinvol als er sim-trades zijn
   const eroPanel=eroHas?`<div class="panel"><div class="phead"><h3>Real vs Paper vs Backtest</h3><span class="chip" title="edge-erosion">edge-check</span><span class="sp"></span><button class="chip a" style="font-weight:700" onclick="toggleErosion()">${STATE.pbErosion?'Verbergen':'Tonen'}</button></div>${STATE.pbErosion?`<div class="pbody">${erosionBody(ero)}</div>`:''}</div>`:'';
   const list=src.map(x=>`<div class="revitem" onclick="openForm(${x.id})">
-    <div style="min-width:0;flex:1"><div style="display:flex;align-items:center;gap:6px">${assetCell(x.pair)}${kindBadge(x)}</div><div style="font-size:10.5px;color:var(--muted);margin-top:2px">${accAvatar(x.exchange,15)} <span class="num">${fmtD(x.date)}</span> · ${esc(x.session)}</div></div>
+    <div style="min-width:0;flex:1"><div style="display:flex;align-items:center;gap:6px">${assetCell(x.pair)}${kindBadge(x)}</div><div style="font-size:10.5px;color:var(--muted);margin-top:2px">${accAvatar(x.exchange,15)} <span class="num">${fmtD(x.date)}</span> · ${esc(sessionOf(x))}</div></div>
     <span class="m ${cls(x.pnl)} mask">${eurS(x.pnl)}</span></div>`).join('');
   const kpi=(l,v,c)=>`<div class="pbk"><div class="pbk-l">${l}</div><div class="pbk-v ${c||''}">${v}</div></div>`;
   const wrCol=wr>=60?'var(--green)':wr>=45?'var(--amber)':'var(--red)';
@@ -2864,6 +2869,8 @@ function renderFormTags(){const c=document.getElementById('tagpick');if(!c)retur
   c.innerHTML=`<div class="tg-chips">${custom.map(t=>chip(t,'#8a92a3')).join('')}${loose.map(t=>chip(t,'var(--muted)')).join('')}</div>`;}
 function setFormGrade(g){formGrade=(formGrade===g?'':g);document.querySelectorAll('#gradeseg button').forEach(b=>b.classList.toggle('on',b.dataset.g===formGrade));}
 function onPlaybookPick(){const sel=document.getElementById('f_playbook');if(!sel)return;const pb=PBOOK[sel.value];if(pb&&pb.defaultGrade&&!formGrade){formGrade=pb.defaultGrade;document.querySelectorAll('#gradeseg button').forEach(b=>b.classList.toggle('on',b.dataset.g===formGrade));}}
+// Datum-wissel: houd de sessie-dropdown in sync met weekend (dag-van-week wint).
+function onDateChange(){const d=document.getElementById('f_date'),s=document.getElementById('f_session');if(!d||!s)return;if(isWeekendDate(d.value))s.value='Weekend';else if(s.value==='Weekend')s.value=sessionFromTime((document.getElementById('f_time')||{}).value);}
 /* setup-lagen (top-down) — zoals origineel */
 function addLayer(){formLayers.push({timeframe:'',bias:'',setups:[],confirmations:[]});renderLayers();}
 function removeLayer(i){formLayers.splice(i,1);renderLayers();}
@@ -2958,14 +2965,14 @@ function openForm(id){
       <div class="msub s1"><span class="msn">1</span> Basis</div>
       <div class="field"><label>Exchange</label><select id="f_exchange" aria-label="Exchange">${exOpt}</select></div>
       <div class="field"><label>Pair</label><input id="f_pair" value="${esc(t.pair)}" placeholder="BTC/USDC"></div>
-      <div class="field"><label>Datum</label><input type="date" id="f_date" value="${t.date}"></div>
+      <div class="field"><label>Datum</label><input type="date" id="f_date" value="${t.date}" onchange="onDateChange()"></div>
       <div class="field"><label>Tijd</label><input id="f_time" value="${t.time||''}" placeholder="14:30"></div>
       <div class="field"><label>Richting</label><select id="f_dir" aria-label="Richting" onchange="calcTrade(true)"><option value="long" ${t.dir==='long'?'selected':''}>Long</option><option value="short" ${t.dir==='short'?'selected':''}>Short</option></select></div>
       <div class="field"><label>Status</label><select id="f_status" aria-label="Status"><option value="closed" ${t.status==='closed'?'selected':''}>Gesloten</option><option value="partial" ${t.status==='partial'?'selected':''}>Partial</option><option value="open" ${t.status==='open'?'selected':''}>Open</option></select></div>
       <div class="field"><label>Soort <span class="hint">(Live of oefentrade)</span></label><select id="f_kind" aria-label="Soort trade" onchange="onKindChange()">${Object.entries(KINDS).map(([v,k])=>`<option value="${v}" ${(t.kind||'live')===v?'selected':''}>${k.emoji?k.emoji+' ':''}${k.label}</option>`).join('')}</select></div>
 
       <div class="msub s2"><span class="msn">2</span> Context</div>
-      <div class="field"><label>Sessie</label><select id="f_session" aria-label="Sessie">${opt(SESSIONS,t.session)}</select></div>
+      <div class="field"><label>Sessie</label><select id="f_session" aria-label="Sessie">${opt(SESSIONS,sessionOf(t)||t.session)}</select></div>
       <div class="field"><label>Marktconditie</label><select id="f_market" aria-label="Marktconditie">${opt(MARKETS,t.market||'Trending')}</select></div>
       <div class="field"><label>Playbook <span class="hint">(koppel deze trade aan een setup)</span></label><select id="f_playbook" aria-label="Playbook" onchange="onPlaybookPick()"><option value="">— geen —</option>${Object.keys(PBOOK).sort().map(nm=>`<option value="${esc(nm)}" ${t.setup===nm?'selected':''}>${esc(nm)}</option>`).join('')}</select></div>
       <div class="field full"><label>Setup-grade <span class="hint">(optioneel · A = hoogste kwaliteit · C = marginaal)</span></label>
