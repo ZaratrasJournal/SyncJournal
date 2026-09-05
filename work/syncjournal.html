@@ -727,14 +727,12 @@ body.dark .yhtip{box-shadow:0 10px 30px -8px rgba(0,0,0,.55)}
 .ml-empty{color:var(--muted);font-size:12.5px;padding:8px 2px}
 /* Setup × sessie treemap (TradingView-style) */
 .mx-intro{font-size:12px;color:var(--muted);margin:0 0 12px}
-.tm{display:flex;flex-direction:column;gap:6px;width:100%;height:clamp(420px,32vw,520px)}
-.tm-row{display:flex;gap:6px;flex:1;min-height:0}
-.tm-grp{flex:1;min-width:0;display:flex;flex-direction:column;background:var(--sink);border:1px solid var(--line2);border-radius:11px;overflow:hidden}
-.tm-ghead{display:flex;align-items:center;gap:6px;padding:5px 9px;font-size:10px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--ink);background:color-mix(in srgb,var(--ink) 6%,transparent);flex:none}
+.tm{position:relative;width:100%;max-width:1240px;margin:0 auto;aspect-ratio:1000/560;min-height:420px;max-height:720px;background:var(--sink);border:1px solid var(--line2);border-radius:12px;overflow:hidden}
+.tm-grp{position:absolute;overflow:hidden}
+.tm-ghead{position:absolute;left:0;right:0;top:0;height:19px;display:flex;align-items:center;gap:6px;padding:0 8px;font-size:10px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--ink);background:color-mix(in srgb,var(--ink) 6%,transparent);z-index:2;pointer-events:none}
 body.dark .tm-ghead{background:rgba(255,255,255,.05)}
 .tm-ghead .gn{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tm-ghead .gv{margin-left:auto;font-family:var(--fn);font-weight:700}
-.tm-inner{position:relative;flex:1;min-height:0}
 .tm-tile{position:absolute;border-radius:5px;cursor:pointer;overflow:hidden;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;padding:3px;transition:filter .1s,outline .1s;outline:0 solid transparent}
 .tm-tile:hover{filter:brightness(1.06);outline:2px solid var(--ink);outline-offset:-2px;z-index:3}
 body.dark .tm-tile:hover{outline-color:#fff}
@@ -1390,7 +1388,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.11';
+const APP_VERSION='v0.9.12';
 const SCHEMA_VERSION=1;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -1926,7 +1924,7 @@ function squarify(items,rect){
   return out;
 }
 function setupSessionMatrix(){
-  const SESS=SESSIONS;
+  const SESS=SESSIONS;const W=1000,H=560,GAP=3,HEAD=19;
   const mode=STATE.matrixSize||'n';  // 'n' = # trades, 'pnl' = |P&L|
   const bySess={};let any=false;
   CLOSED.forEach(t=>{const su=t.setup||'—',se=sessionOf(t)||'—';if(su==='—'||se==='—')return;any=true;
@@ -1936,22 +1934,25 @@ function setupSessionMatrix(){
   const wOf=c=>(mode==='n'?c.n:Math.abs(c.pnl))||0;
   let maxAbs=1;Object.values(bySess).forEach(g=>Object.values(g.setups).forEach(c=>{if(c.n>=3)maxAbs=Math.max(maxAbs,Math.abs(c.pnl));}));
   const tint=(pnl,faded)=>{if(!pnl)return 'var(--track)';const inten=Math.round(Math.min(1,Math.abs(pnl)/maxAbs)*40+48);return `color-mix(in srgb,var(--${pnl>=0?'green':'red'}) ${faded?16:inten}%,transparent)`;};
-  // sessies gelijk verdeeld over 2 rijen (spreiding), setups per paneel als mini-treemap
-  const sessList=SESS.filter(se=>bySess[se]&&Object.values(bySess[se].setups).reduce((s,c)=>s+wOf(c),0)>0);
-  const half=Math.ceil(sessList.length/2);
-  const rows=[sessList.slice(0,half),sessList.slice(half)].filter(r=>r.length);
-  const panel=se=>{
-    const g=bySess[se];
+  // sessies proportioneel op handelsvolume (drukke sessie = groter), setups als sub-treemap
+  const sess=SESS.filter(se=>bySess[se]).map(se=>({value:Object.values(bySess[se].setups).reduce((s,c)=>s+wOf(c),0),se})).filter(s=>s.value>0);
+  const grects=squarify(sess,{x:0,y:0,w:W,h:H});
+  let groups='';
+  grects.forEach(gr=>{
+    const se=gr.item.se,g=bySess[se];
+    const gx=gr.x+GAP/2,gy=gr.y+GAP/2,gw=gr.w-GAP,gh=gr.h-GAP;
     const items=Object.entries(g.setups).map(([su,c])=>({value:wOf(c)||0.0001,su,c}));
-    const tiles=squarify(items,{x:0,y:0,w:100,h:100}).map(r=>{
-      const {su,c}=r.item,wr=Math.round(c.w/c.n*100),faded=c.n<3;
-      const cls2=(r.w<26||r.h<24)?' small':'',cls3=(r.w<16||r.h<16)?' tiny':'';
-      let badge='';if(wr>=65&&c.pnl>150)badge='🎯';else if(wr<=30&&c.pnl<-100)badge='⊘';else if(wr<=45&&c.pnl<-50)badge='⏱';
-      return `<div class="tm-tile${cls2}${cls3}" style="left:${(r.x+0.6).toFixed(2)}%;top:${(r.y+0.6).toFixed(2)}%;width:${Math.max(0,r.w-1.2).toFixed(2)}%;height:${Math.max(0,r.h-1.2).toFixed(2)}%;background:${tint(c.pnl,faded)}" onclick="matrixCell('${jsarg(su)}','${jsarg(se)}')" data-su="${esc(su)}" data-se="${esc(se)}" data-n="${c.n}" data-w="${c.w}" data-pnl="${c.pnl}">${badge?`<span class="tb">${badge}</span>`:''}<span class="ts">${esc(su)}</span><span class="tv mask">${eurK(c.pnl)} · ${wr}%</span></div>`;
-    }).join('');
-    return `<div class="tm-grp"><div class="tm-ghead"><span class="gn">${esc(se)}</span><span class="gv ${cls(g.tot.pnl)} mask">${eurK(g.tot.pnl)}</span></div><div class="tm-inner">${tiles}</div></div>`;
-  };
-  const groups=rows.map(r=>`<div class="tm-row">${r.map(panel).join('')}</div>`).join('');
+    const trects=squarify(items,{x:0,y:HEAD,w:gw,h:gh-HEAD});
+    let tiles='';
+    trects.forEach(tr=>{
+      const {su,c}=tr.item;const wr=Math.round(c.w/c.n*100),faded=c.n<3;
+      const tw=tr.w-2,th=tr.h-2;const cls2=tw<48||th<22?' small':'',cls3=tw<30||th<15?' tiny':'';
+      let badge='';
+      if(wr>=65&&c.pnl>150)badge='🎯';else if(wr<=30&&c.pnl<-100)badge='⊘';else if(wr<=45&&c.pnl<-50)badge='⏱';
+      tiles+=`<div class="tm-tile${cls2}${cls3}" style="left:${(tr.x+1)/gw*100}%;top:${(tr.y+1)/gh*100}%;width:${tw/gw*100}%;height:${th/gh*100}%;background:${tint(c.pnl,faded)}" onclick="matrixCell('${jsarg(su)}','${jsarg(se)}')" data-su="${esc(su)}" data-se="${esc(se)}" data-n="${c.n}" data-w="${c.w}" data-pnl="${c.pnl}">${badge?`<span class="tb">${badge}</span>`:''}<span class="ts">${esc(su)}</span><span class="tv mask">${eurK(c.pnl)} · ${wr}%</span></div>`;
+    });
+    groups+=`<div class="tm-grp" style="left:${gx/W*100}%;top:${gy/H*100}%;width:${gw/W*100}%;height:${gh/H*100}%"><div class="tm-ghead"><span class="gn">${esc(se)}</span><span class="gv ${cls(g.tot.pnl)} mask">${eurK(g.tot.pnl)}</span></div>${tiles}</div>`;
+  });
   const sw=(pnl,f)=>`<span class="sw" style="background:${tint(pnl,f)}"></span>`;
   return `<div class="panel"><div class="phead"><h3>🎯 Setup × sessie</h3><span class="sp"></span>
     <div class="seg"><button class="${mode==='n'?'on':''}" onclick="setMatrixSize('n')"># trades</button><button class="${mode==='pnl'?'on':''}" onclick="setMatrixSize('pnl')">|P&L|</button></div></div>
