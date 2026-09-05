@@ -631,6 +631,7 @@ table.tbl{width:100%;border-collapse:collapse;font-size:13px}
 .ero-h{font-size:11.5px;font-weight:800;margin-bottom:6px}
 .ero-r{font-size:20px;font-weight:800;line-height:1}
 .ero-sub{font-size:11px;color:var(--muted);margin-top:4px}
+.ero-net{font-size:12px;font-weight:700;margin-top:5px}
 .ero-hint{font-size:12px;color:var(--muted);margin-top:11px;line-height:1.45}
 .pbdetail-grid{display:grid;grid-template-columns:320px minmax(0,1fr);gap:14px;align-items:start}
 @media(max-width:1024px){.pbk-row{grid-template-columns:repeat(4,1fr)}}
@@ -1474,6 +1475,12 @@ const FILTER={exchange:'',pair:'',setup:'',session:'',dir:'',tag:'',dateFrom:'',
 function kindMatch(t,k){const tk=t.kind||'live';if(!k||k==='alle')return true;if(k==='oefen')return tk!=='live';return tk===k;}
 let FT=[];
 function applyFilter(rows){const f=FILTER;return rows.filter(t=>kindMatch(t,f.kind)&&(!f.exchange||t.exchange===f.exchange)&&(!f.pair||t.pair===f.pair)&&(!f.setup||t.setup===f.setup)&&(!f.session||sessionOf(t)===f.session)&&(!f.dir||t.dir===f.dir)&&(!f.tag||(t.tags||[]).includes(f.tag))&&(!f.dateFrom||t.date>=f.dateFrom)&&(!f.dateTo||t.date<=f.dateTo));}
+// Zelfde filters MAAR zonder de kind-filter — voor de real/paper/backtest-vergelijking (moet alle soorten zien).
+function applyFilterNoKind(rows){const f=FILTER;return rows.filter(t=>(!f.exchange||t.exchange===f.exchange)&&(!f.pair||t.pair===f.pair)&&(!f.setup||t.setup===f.setup)&&(!f.session||sessionOf(t)===f.session)&&(!f.dir||t.dir===f.dir)&&(!f.tag||(t.tags||[]).includes(f.tag))&&(!f.dateFrom||t.date>=f.dateFrom)&&(!f.dateTo||t.date<=f.dateTo));}
+// Buckets voor edge-erosion (real vs paper vs backtest) — gedeeld door analytics + playbook-detail.
+function eroBuckets(rows){const b={backtest:[],paper:[],real:[]};(rows||[]).forEach(x=>{if(x.status==='open')return;const k=x.kind==='backtest'?'backtest':x.kind==='paper'?'paper':(isLive(x)?'real':null);if(k)b[k].push(x);});
+  const stat=arr=>{const n=arr.length,rs=arr.map(tradeR);return {n,wr:n?Math.round(arr.filter(x=>tradeR(x)>0).length/n*100):0,avgR:n?rs.reduce((a,c)=>a+c,0)/n:0,net:arr.reduce((a,c)=>a+(+c.pnl||0),0)};};
+  return {backtest:stat(b.backtest),paper:stat(b.paper),real:stat(b.real)};}
 function countActive(){return ['exchange','pair','setup','session','dir','tag'].filter(k=>FILTER[k]).length+((FILTER.dateFrom||FILTER.dateTo)?1:0)+((FILTER.kind&&FILTER.kind!=='live')?1:0);}
 function setFilter(k,v){FILTER[k]=v;STATE.selected=[];STATE.tradePage=0;render();}
 function clearGFilter(){['exchange','pair','setup','session','dir','tag','dateFrom','dateTo','datePreset'].forEach(k=>FILTER[k]='');FILTER.kind='live';STATE.tradePage=0;render();}
@@ -2227,13 +2234,10 @@ function playbookDetail(setup){
   const tagCount={};closed.forEach(x=>(x.tags||[]).forEach(tg=>tagCount[tg]=(tagCount[tg]||0)+1));
   const topTags=Object.entries(tagCount).sort((a,b)=>b[1]-a[1]).slice(0,6);
   // Edge-erosion: real vs paper vs backtest — over ALLE kinds voor deze setup (los van de Live/Oefen-filter).
-  const eroSrc=(T||[]).filter(x=>x.setup===setup&&x.status!=='open');
-  const eroBuck={backtest:[],paper:[],real:[]};
-  eroSrc.forEach(x=>{const k=x.kind==='backtest'?'backtest':x.kind==='paper'?'paper':(isLive(x)?'real':null);if(k)eroBuck[k].push(x);});
-  const eroStat=arr=>{const nn=arr.length,rs=arr.map(tradeR);return {n:nn,wr:nn?Math.round(arr.filter(x=>tradeR(x)>0).length/nn*100):0,avgR:nn?rs.reduce((a,b)=>a+b,0)/nn:0};};
-  const ero={backtest:eroStat(eroBuck.backtest),paper:eroStat(eroBuck.paper),real:eroStat(eroBuck.real)};
+  const ero=eroBuckets((T||[]).filter(x=>x.setup===setup));
   const eroHas=ero.backtest.n||ero.paper.n;  // alleen zinvol als er sim-trades zijn
-  const eroPanel=eroHas?`<div class="panel"><div class="phead"><h3>Real vs Paper vs Backtest</h3><span class="chip" title="edge-erosion">edge-check</span><span class="sp"></span><button class="chip a" style="font-weight:700" onclick="toggleErosion()">${STATE.pbErosion?'Verbergen':'Tonen'}</button></div>${STATE.pbErosion?`<div class="pbody">${erosionBody(ero)}</div>`:''}</div>`:'';
+  const eroOpen=STATE.pbErosion!==false;  // standaard OPEN (Denny wil de vergelijking direct zien)
+  const eroPanel=eroHas?`<div class="panel"><div class="phead"><h3>Real vs Paper vs Backtest</h3><span class="chip" title="edge-erosion">edge-check</span><span class="sp"></span><button class="chip a" style="font-weight:700" onclick="toggleErosion()">${eroOpen?'Verbergen':'Tonen'}</button></div>${eroOpen?`<div class="pbody">${erosionBody(ero)}</div>`:''}</div>`:'';
   const list=src.map(x=>`<div class="revitem" onclick="openForm(${x.id})">
     <div style="min-width:0;flex:1"><div style="display:flex;align-items:center;gap:6px">${assetCell(x.pair)}${kindBadge(x)}</div><div style="font-size:10.5px;color:var(--muted);margin-top:2px">${accAvatar(x.exchange,15)} <span class="num">${fmtD(x.date)}</span> · ${esc(sessionOf(x))}</div></div>
     <span class="m ${cls(x.pnl)} mask">${eurS(x.pnl)}</span></div>`).join('');
@@ -2282,11 +2286,11 @@ function playbookDetail(setup){
         </div></div>
       </div></div>`;
 }
-function toggleErosion(){STATE.pbErosion=!STATE.pbErosion;render();}
+function toggleErosion(){STATE.pbErosion=(STATE.pbErosion===false);render();}  // default open → eerste klik sluit
 function erosionBody(ero){
   const col={backtest:['⏲ Backtest','#a78bfa'],paper:['📄 Paper','#3b6ef5'],real:['Real','var(--green)']};
   const rTxt=v=>(v>=0?'+':'')+v.toFixed(2).replace('.',',')+'R';
-  const cell=k=>{const b=ero[k],[lbl,c]=col[k];return `<div class="ero-col"><div class="ero-h" style="color:${c}">${lbl}</div><div class="ero-r num ${b.n?cls(b.avgR):''}">${b.n?rTxt(b.avgR):'—'}</div><div class="ero-sub">${b.n?b.wr+'% win · '+b.n+(b.n===1?' trade':' trades'):'geen'}</div></div>`;};
+  const cell=k=>{const b=ero[k],[lbl,c]=col[k];return `<div class="ero-col"><div class="ero-h" style="color:${c}">${lbl}</div><div class="ero-r num ${b.n?cls(b.avgR):''}">${b.n?rTxt(b.avgR):'—'}</div><div class="ero-sub">${b.n?b.wr+'% win · '+b.n+(b.n===1?' trade':' trades'):'geen'}</div>${b.n&&b.net!=null?`<div class="ero-net num ${cls(b.net)} mask">${eurS(b.net)}</div>`:''}</div>`;};
   let hint='';
   if(ero.backtest.n&&ero.real.n){const d=ero.backtest.avgR-ero.real.avgR;
     hint=`<div class="ero-hint">${d>0.15?`⚠ Je edge zakt van <b>${rTxt(ero.backtest.avgR)}</b> (backtest) naar <b>${rTxt(ero.real.avgR)}</b> (real) — enige erosie is normaal, maar hou de kloof in de gaten.`:`✓ Je real-resultaten volgen je backtest (${rTxt(ero.backtest.avgR)} → ${rTxt(ero.real.avgR)}) — betrouwbare edge.`}</div>`;}
@@ -2518,7 +2522,10 @@ function pgAnalytics(){
     ${statTile('🎯',mw+' op rij','Beste winst-reeks','g')}
     ${statTile('⚡',avgMfe.toFixed(2)+'R',captured+'% van MFE benut','g')}
     ${statTile('🛡️',eurS(maxDD),'Max drawdown','r')}</div>`;
+  const eroA=eroBuckets(applyFilterNoKind(T));
+  const eroAPanel=(eroA.backtest.n||eroA.paper.n)?`<div class="panel"><div class="phead"><h3>Real vs Paper vs Backtest</h3><span class="sp"></span><span class="chip" title="edge-erosion — over alle soorten, los van de Live/Oefen-filter">edge-check · alle soorten</span></div><div class="pbody">${erosionBody(eroA)}</div></div><div style="height:13px"></div>`:'';
   return `${filterBar()}${tiles}<div style="height:13px"></div>${kpis}<div style="height:13px"></div>
+    ${eroAPanel}
     <div class="grid" style="grid-template-columns:2fr 1fr;align-items:stretch">
       ${panelHead('Equity-curve',perDD('eq'),equity(214,periodTrades(CLOSED,KPIPER.eq)))}
       ${panel('Reeks &amp; vorm','momentum van je edge',streakBody)}
