@@ -51,10 +51,11 @@ const mk = (setup, session, pnl, date) => ({ setup, session, pnl, r: pnl > 0 ? 1
   ok('weekend-trades in eigen groep (4)', t.wkN === 4);
 
   console.log('─── Grootte-toggle (# trades ↔ |P&L|) ───');
-  const areaN = await p.evaluate(() => { const a = [...document.querySelectorAll('.tm-tile')].find(x => x.dataset.su === 'AlphaSetup' && x.dataset.se === 'London'); const r = a.getBoundingClientRect(); return r.width * r.height; });
+  // US AM heeft 2 setups (BetaSetup 5t/−1000 + AlphaSetup 2t/+80) → ratio verandert tussen #trades en |P&L|
+  const areaN = await p.evaluate(() => { const a = [...document.querySelectorAll('.tm-tile')].find(x => x.dataset.su === 'BetaSetup' && x.dataset.se === 'US AM'); const r = a.getBoundingClientRect(); return r.width * r.height; });
   await p.evaluate(() => setMatrixSize('pnl')); await p.waitForTimeout(300);
   ok('|P&L|-modus actief', await p.evaluate(() => STATE.matrixSize === 'pnl'));
-  ok('tegels herschikt op |P&L|', await p.evaluate(([an]) => { const a = [...document.querySelectorAll('.tm-tile')].find(x => x.dataset.su === 'AlphaSetup' && x.dataset.se === 'London'); const r = a.getBoundingClientRect(); return Math.abs(r.width * r.height - an) > 1; }, [areaN]));
+  ok('tegels herschikt op |P&L|', await p.evaluate(([an]) => { const a = [...document.querySelectorAll('.tm-tile')].find(x => x.dataset.su === 'BetaSetup' && x.dataset.se === 'US AM'); const r = a.getBoundingClientRect(); return Math.abs(r.width * r.height - an) > 1; }, [areaN]));
   await p.evaluate(() => setMatrixSize('n')); await p.waitForTimeout(200);
 
   console.log('─── Hover-tooltip + klik-filter ───');
