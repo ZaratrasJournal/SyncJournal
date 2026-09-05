@@ -694,22 +694,25 @@ body.dark .yhtip{box-shadow:0 10px 30px -8px rgba(0,0,0,.55)}
 .ml-msg{font-size:11px;color:var(--muted);margin-top:6px;line-height:1.35}
 .ml-foot{font-size:11px;color:var(--muted);margin-top:11px}
 .ml-empty{color:var(--muted);font-size:12.5px;padding:8px 2px}
-/* Setup × sessie matrix */
+/* Setup × sessie treemap (TradingView-style) */
 .mx-intro{font-size:12px;color:var(--muted);margin:0 0 12px}
-.mx-wrap{overflow-x:auto}
-.mx-table{border-collapse:separate;border-spacing:5px;width:100%;min-width:720px}
-.mx-table th{font-size:9.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:700;text-align:center;padding:2px 4px;white-space:nowrap}
-.mx-table th.mx-setup,.mx-table td.mx-setup{text-align:left;font-weight:700;font-size:12.5px;white-space:nowrap;padding-right:12px;color:var(--ink)}
-.mx-cell{position:relative;text-align:center;border-radius:9px;padding:9px 6px;border:1px solid var(--line2);cursor:pointer;transition:transform .1s,border-color .1s;min-width:76px}
-.mx-cell:hover{border-color:var(--accent);transform:translateY(-1px)}
-.mx-cell.mx-empty{background:transparent!important;border-color:transparent;color:var(--muted);cursor:default}
-.mx-cell.mx-empty:hover{transform:none}
-.mx-cell.faded{opacity:.5}
-.mx-wr{font-size:14px;font-weight:800;line-height:1.1}
-.mx-pnl{font-size:11px;font-weight:700;margin-top:1px}
-.mx-n{font-size:9.5px;color:var(--muted);margin-top:1px}
-.mx-b{position:absolute;top:3px;right:4px;font-size:10px}
+.tm{position:relative;width:100%;aspect-ratio:1000/560;background:var(--sink);border:1px solid var(--line2);border-radius:12px;overflow:hidden}
+.tm-grp{position:absolute;overflow:hidden}
+.tm-ghead{position:absolute;left:0;right:0;top:0;height:19px;display:flex;align-items:center;gap:6px;padding:0 8px;font-size:10px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--ink);background:color-mix(in srgb,var(--ink) 6%,transparent);z-index:2;pointer-events:none}
+body.dark .tm-ghead{background:rgba(255,255,255,.05)}
+.tm-ghead .gn{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tm-ghead .gv{margin-left:auto;font-family:var(--fn);font-weight:700}
+.tm-tile{position:absolute;border-radius:5px;cursor:pointer;overflow:hidden;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;padding:3px;transition:filter .1s,outline .1s;outline:0 solid transparent}
+.tm-tile:hover{filter:brightness(1.06);outline:2px solid var(--ink);outline-offset:-2px;z-index:3}
+body.dark .tm-tile:hover{outline-color:#fff}
+.tm-tile .ts{font-weight:800;font-size:12px;line-height:1.1;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.4);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tm-tile .tv{font-family:var(--fn);font-size:10.5px;font-weight:700;color:rgba(255,255,255,.92);text-shadow:0 1px 2px rgba(0,0,0,.4);margin-top:1px}
+.tm-tile .tb{position:absolute;top:2px;right:3px;font-size:10px}
+.tm-tile.small .ts{font-size:9px} .tm-tile.small .tv{display:none}
+.tm-tile.tiny .ts,.tm-tile.tiny .tv{display:none}
 .mx-legend{display:flex;flex-wrap:wrap;align-items:center;gap:14px;margin-top:13px;font-size:11px;color:var(--muted)}
+.mx-legend .g1{display:inline-flex;align-items:center;gap:5px}
+.mx-legend .sw{width:20px;height:11px;border-radius:3px;display:inline-block}
 @media(max-width:640px){.funrow{grid-template-columns:1fr;gap:8px}.fun-r{text-align:left}.ml-grid{grid-template-columns:1fr}}
 .ero-hint{font-size:12px;color:var(--muted);margin-top:11px;line-height:1.45}
 .pbdetail-grid{display:grid;grid-template-columns:320px minmax(0,1fr);gap:14px;align-items:start}
@@ -1353,7 +1356,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.1';
+const APP_VERSION='v0.9.2';
 const SCHEMA_VERSION=1;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -1866,36 +1869,73 @@ function curTradeRows(){ let r=FT.filter(t=>STATE.tradeTab==='all'||(STATE.trade
   const q=STATE.query.toLowerCase();if(q)r=r.filter(t=>(t.pair+' '+t.setup+' '+t.session+' '+t.emotion+' '+(t.tags||[]).join(' ')).toLowerCase().includes(q));return r; }
 function announce(){ const l=document.getElementById('live');if(l&&STATE.page==='trades')l.textContent=curTradeRows().length+' trades, gesorteerd op '+STATE.sortCol; }
 
-// Setup × sessie matrix — edge per setup over de sessies (zoals de originele journal).
-function setMatrixSort(v){STATE.matrixSort=v;render();}
+// Setup × sessie — TradingView-stijl treemap: sessie = groep, setup = tegel (grootte = hoeveelheid, kleur = netto P&L).
 function matrixCell(su,se){FILTER.setup=su;FILTER.session=se;STATE.selected=[];STATE.tradePage=0;go('trades');}
+function setMatrixSize(v){STATE.matrixSize=v;render();}
+// Squarified treemap (Bruls e.a.) — items:[{value,...}] in rechthoek → [{item,x,y,w,h}].
+function squarify(items,rect){
+  const arr=items.filter(d=>d.value>0).sort((a,b)=>b.value-a.value);
+  const total=arr.reduce((s,d)=>s+d.value,0);const out=[];let{x,y,w,h}=rect;
+  if(!arr.length||total<=0||w<=0||h<=0)return out;
+  const scale=(w*h)/total,vals=arr.map(d=>d.value*scale);
+  const worst=(row,side)=>{const s=row.reduce((a,b)=>a+b,0),mx=Math.max(...row),mn=Math.min(...row);return Math.max((side*side*mx)/(s*s),(s*s)/(side*side*mn));};
+  let i=0;
+  while(i<vals.length){
+    const side=Math.min(w,h);let row=[vals[i]],ri=[arr[i]],j=i+1;
+    while(j<vals.length){const test=row.concat(vals[j]);if(worst(test,side)<=worst(row,side)){row=test;ri.push(arr[j]);j++;}else break;}
+    const sum=row.reduce((a,b)=>a+b,0);
+    if(w>=h){const colW=sum/h;let oy=y;for(let k=0;k<row.length;k++){const ch=row[k]/colW;out.push({item:ri[k],x,y:oy,w:colW,h:ch});oy+=ch;}x+=colW;w-=colW;}
+    else{const rowH=sum/w;let ox=x;for(let k=0;k<row.length;k++){const cw=row[k]/rowH;out.push({item:ri[k],x:ox,y,w:cw,h:rowH});ox+=cw;}y+=rowH;h-=rowH;}
+    i=j;
+  }
+  return out;
+}
 function setupSessionMatrix(){
-  const SESS=SESSIONS;  // Asia · London · US AM · US PM · Weekend
-  const by={};
-  CLOSED.forEach(t=>{const su=t.setup||'—',se=sessionOf(t)||'—';(by[su]=by[su]||{tot:{n:0,pnl:0},cells:{}});
-    const c=(by[su].cells[se]=by[su].cells[se]||{n:0,w:0,pnl:0});c.n++;c.pnl+=t.pnl;if(t.pnl>0)c.w++;by[su].tot.n++;by[su].tot.pnl+=t.pnl;});
-  let setups=Object.keys(by).filter(s=>s&&s!=='—'); if(!setups.length)return '';
-  const sort=STATE.matrixSort||'edge';
-  if(sort==='az')setups.sort((a,b)=>a.localeCompare(b)); else setups.sort((a,b)=>by[b].tot.pnl-by[a].tot.pnl);
-  let maxAbs=1; setups.forEach(su=>SESS.forEach(se=>{const c=by[su].cells[se];if(c&&c.n>=3)maxAbs=Math.max(maxAbs,Math.abs(c.pnl));}));
-  const cell=(su,se)=>{const c=by[su].cells[se];
-    if(!c||!c.n)return `<td class="mx-cell mx-empty">·</td>`;
-    const wr=Math.round(c.w/c.n*100),faded=c.n<3,inten=Math.round(Math.min(1,Math.abs(c.pnl)/maxAbs)*46+14);
-    const bg=`color-mix(in srgb,var(--${c.pnl>=0?'green':'red'}) ${faded?6:inten}%,transparent)`;
-    let badge='';
-    if(wr>=65&&c.pnl>150)badge='<span class="mx-b" title="Edge bevestigd">🎯</span>';
-    else if(wr<=30&&c.pnl<-100)badge='<span class="mx-b" title="Edge weg">⊘</span>';
-    else if(wr<=45&&c.pnl<-50)badge='<span class="mx-b" title="Aandacht">⏱</span>';
-    return `<td class="mx-cell${faded?' faded':''}" style="background:${bg}" onclick="matrixCell('${jsarg(su)}','${jsarg(se)}')" title="${esc(su)} · ${esc(se)} — klik om te filteren">
-      <div class="mx-wr ${cls(c.pnl)}">${wr}%</div><div class="mx-pnl num ${cls(c.pnl)} mask">${eurS(c.pnl)}</div><div class="mx-n num">${c.n}t</div>${badge}</td>`;};
-  const head=`<tr><th class="mx-setup">Setup ↓ / Sessie →</th>${SESS.map(s=>`<th>${esc(s)}</th>`).join('')}</tr>`;
-  const body=setups.map(su=>`<tr><td class="mx-setup">${esc(su)}</td>${SESS.map(se=>cell(su,se)).join('')}</tr>`).join('');
-  return `<div class="panel"><div class="phead"><h3>🎯 Setup × sessie matrix</h3><span class="sp"></span>
-    <div class="seg mx-sort"><button class="${sort==='edge'?'on':''}" onclick="setMatrixSort('edge')">Op edge</button><button class="${sort==='az'?'on':''}" onclick="setMatrixSort('az')">A–Z</button></div></div>
-    <div class="pbody"><p class="mx-intro">Edge per setup, uitgesplitst over de sessies. Cellen met &lt;3 trades zijn transparant (te weinig data voor een betrouwbare conclusie) · klik een cel om te filteren.</p>
-    <div class="mx-wrap"><table class="mx-table">${head}${body}</table></div>
-    <div class="mx-legend"><span>🎯 Edge bevestigd (WR≥65% · PnL>+150)</span><span>⊘ Edge weg (WR≤30% · PnL<−100)</span><span>⏱ Aandacht (WR≤45% · PnL<−50)</span><span style="margin-left:auto;font-style:italic">kleur = edge-sterkte (groen = positief, rood = negatief)</span></div>
+  const SESS=SESSIONS;const W=1000,H=560,GAP=3,HEAD=19;
+  const mode=STATE.matrixSize||'n';  // 'n' = # trades, 'pnl' = |P&L|
+  const bySess={};let any=false;
+  CLOSED.forEach(t=>{const su=t.setup||'—',se=sessionOf(t)||'—';if(su==='—'||se==='—')return;any=true;
+    (bySess[se]=bySess[se]||{setups:{},tot:{n:0,pnl:0}});
+    const c=(bySess[se].setups[su]=bySess[se].setups[su]||{n:0,w:0,pnl:0});c.n++;c.pnl+=t.pnl;if(t.pnl>0)c.w++;bySess[se].tot.n++;bySess[se].tot.pnl+=t.pnl;});
+  if(!any)return '';
+  const wOf=c=>(mode==='n'?c.n:Math.abs(c.pnl))||0;
+  let maxAbs=1;Object.values(bySess).forEach(g=>Object.values(g.setups).forEach(c=>{if(c.n>=3)maxAbs=Math.max(maxAbs,Math.abs(c.pnl));}));
+  const tint=(pnl,faded)=>{if(!pnl)return 'var(--track)';const inten=Math.round(Math.min(1,Math.abs(pnl)/maxAbs)*52+20);return `color-mix(in srgb,var(--${pnl>=0?'green':'red'}) ${faded?8:inten}%,transparent)`;};
+  const sess=SESS.filter(se=>bySess[se]).map(se=>({value:Object.values(bySess[se].setups).reduce((s,c)=>s+wOf(c),0),se})).filter(s=>s.value>0);
+  const grects=squarify(sess,{x:0,y:0,w:W,h:H});
+  let groups='';
+  grects.forEach(gr=>{
+    const se=gr.item.se,g=bySess[se];
+    const gx=gr.x+GAP/2,gy=gr.y+GAP/2,gw=gr.w-GAP,gh=gr.h-GAP;
+    const items=Object.entries(g.setups).map(([su,c])=>({value:wOf(c)||0.0001,su,c}));
+    const trects=squarify(items,{x:0,y:HEAD,w:gw,h:gh-HEAD});
+    let tiles='';
+    trects.forEach(tr=>{
+      const {su,c}=tr.item;const wr=Math.round(c.w/c.n*100),faded=c.n<3;
+      const tw=tr.w-2,th=tr.h-2;const cls2=tw<64||th<34?' small':'',cls3=tw<40||th<24?' tiny':'';
+      let badge='';
+      if(wr>=65&&c.pnl>150)badge='🎯';else if(wr<=30&&c.pnl<-100)badge='⊘';else if(wr<=45&&c.pnl<-50)badge='⏱';
+      tiles+=`<div class="tm-tile${cls2}${cls3}" style="left:${(tr.x+1)/gw*100}%;top:${(tr.y+1)/gh*100}%;width:${tw/gw*100}%;height:${th/gh*100}%;background:${tint(c.pnl,faded)}" onclick="matrixCell('${jsarg(su)}','${jsarg(se)}')" data-su="${esc(su)}" data-se="${esc(se)}" data-n="${c.n}" data-w="${c.w}" data-pnl="${c.pnl}">${badge?`<span class="tb">${badge}</span>`:''}<span class="ts">${esc(su)}</span><span class="tv mask">${eurK(c.pnl)} · ${wr}%</span></div>`;
+    });
+    groups+=`<div class="tm-grp" style="left:${gx/W*100}%;top:${gy/H*100}%;width:${gw/W*100}%;height:${gh/H*100}%"><div class="tm-ghead"><span class="gn">${esc(se)}</span><span class="gv ${cls(g.tot.pnl)} mask">${eurK(g.tot.pnl)}</span></div>${tiles}</div>`;
+  });
+  const sw=(pnl,f)=>`<span class="sw" style="background:${tint(pnl,f)}"></span>`;
+  return `<div class="panel"><div class="phead"><h3>🎯 Setup × sessie</h3><span class="sp"></span>
+    <div class="seg"><button class="${mode==='n'?'on':''}" onclick="setMatrixSize('n')"># trades</button><button class="${mode==='pnl'?'on':''}" onclick="setMatrixSize('pnl')">|P&L|</button></div></div>
+    <div class="pbody"><p class="mx-intro">Elke sessie is een groep, elke setup een tegel. Grootte = ${mode==='n'?'aantal trades':'€-impact (|P&L|)'} · kleur = netto P&L · klik een tegel om te filteren.</p>
+    <div class="tm" onmousemove="tmMove(event)" onmouseleave="yhHide()">${groups}</div>
+    <div class="mx-legend"><span class="g1">verlies ${sw(-maxAbs)}${sw(-maxAbs*0.35)}</span><span class="g1">winst ${sw(maxAbs*0.35)}${sw(maxAbs)}</span><span>🎯 edge bevestigd · ⊘ edge weg · ⏱ aandacht</span><span style="margin-left:auto;font-style:italic">grootte = hoeveelheid · kleur = netto P&L</span></div>
     </div></div>`;
+}
+function tmMove(e){const tip=document.getElementById('yhtip');if(!tip)return;const t=e.target.closest&&e.target.closest('.tm-tile');
+  if(!t){yhHide();return;}
+  const n=+t.dataset.n,w=+t.dataset.w,l=n-w,v=+t.dataset.pnl,wr=Math.round(w/n*100);
+  tip.innerHTML=`<div class="yht-d">${esc(t.dataset.su)} · ${esc(t.dataset.se)}</div><div class="yht-row"><span>Trades</span><b>${n}</b></div><div class="yht-row"><span>Winst / verlies</span><b><span class="g">${w}</span> / <span class="r">${l}</span></b></div><div class="yht-row"><span>Win-rate</span><b>${wr}%</b></div><div class="yht-pnl ${cls(v)} mask">${eurS(v)}</div>`;
+  tip.classList.add('on');
+  const tw=tip.offsetWidth,th=tip.offsetHeight;
+  let x=Math.max(8,Math.min(window.innerWidth-tw-8,e.clientX-tw/2));
+  let y=e.clientY-th-14; if(y<8)y=e.clientY+16;
+  tip.style.left=x+'px';tip.style.top=y+'px';
 }
 function pgTendencies(){
   const field={sessie:'session',setup:'setup',emotie:'emotion',grade:'grade'}[STATE.tend];

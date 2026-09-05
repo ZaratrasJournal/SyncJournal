@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SyncJournal — Setup × sessie treemap (prototype)</title>
+<style>
+:root{
+  --bg:#F4F6FA; --surface:#FFFFFF; --raise:#FBFCFE; --sink:#F7F9FC;
+  --ink:#191E2A; --ink2:#525A6B; --muted:#8A92A3; --faint:#AAB1C0;
+  --line:#E8EBF2; --line2:#F0F2F7;
+  --accent:#3B5BD9; --accent-soft:#EDF0FD; --accent-line:#CDD6F7;
+  --green:#12946A; --green-soft:#E3F4EC; --red:#D64259; --red-soft:#FBE8EC; --amber:#C0821C; --amber-soft:#F8EFDD;
+  --grid:#EDEFF5; --hover:#F6F8FC; --track:#EEF1F6; --zebra:#FAFBFD;
+  --fb:'Inter',-apple-system,'Segoe UI',sans-serif; --fd:'Plus Jakarta Sans',var(--fb); --fn:'IBM Plex Mono','SF Mono',Consolas,monospace;
+  --sh:0 1px 2px rgba(20,30,60,.05);
+}
+body.dark{
+  --bg:#0E1218; --surface:#141A22; --raise:#171E28; --sink:#10151c;
+  --ink:#F4F7FB; --ink2:#C7CFDB; --muted:#939CAC; --faint:#6C7583;
+  --line:#232B36; --line2:#1C232D;
+  --accent:#6E86F0; --accent-soft:#1B2436; --accent-line:#2E3B57;
+  --green:#37C48B; --green-soft:#12261F; --red:#F0637A; --red-soft:#2A1820; --amber:#E0A63C; --amber-soft:#28210F;
+  --grid:#1B222C; --hover:#19212B; --track:#1E2732; --zebra:#12171f;
+  --sh:0 1px 2px rgba(0,0,0,.25);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--fb);font-size:13.5px;line-height:1.5;-webkit-font-smoothing:antialiased}
+.num{font-family:var(--fn);font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.g{color:var(--green)} .r{color:var(--red)}
+h1,h3{font-family:var(--fd);font-weight:700;letter-spacing:-.01em}
+button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
+.wrap{max-width:1400px;margin:0 auto;padding:24px 28px 80px}
+.topbar{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:6px}
+.topbar h1{font-size:20px}.spacer{flex:1}
+.mini{padding:6px 11px;border:1px solid var(--line);border-radius:8px;background:var(--surface);font-size:12px;font-weight:600;color:var(--ink2)}
+.sub{color:var(--ink2);font-size:13px;margin-bottom:20px;max-width:80ch}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:18px 20px 20px;box-shadow:var(--sh);margin-bottom:22px}
+.phead{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+.phead h3{font-size:15px}
+.seg{display:inline-flex;background:var(--sink);border:1px solid var(--line);border-radius:9px;padding:3px;gap:2px}
+.seg button{padding:6px 12px;font-size:12px;font-weight:600;border-radius:6px;color:var(--ink2)}
+.seg button.on{background:var(--accent);color:#fff}
+.intro{color:var(--ink2);font-size:12.5px;margin:2px 0 14px;max-width:90ch}
+
+/* ===== treemap ===== */
+.tm{position:relative;width:100%;aspect-ratio:1000/560;background:var(--sink);border-radius:12px;overflow:hidden}
+.tm-grp{position:absolute;overflow:hidden}
+.tm-ghead{position:absolute;left:0;right:0;top:0;height:19px;display:flex;align-items:center;gap:6px;padding:0 8px;font-size:10px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--ink);background:color-mix(in srgb,var(--ink) 6%,transparent);z-index:2;pointer-events:none}
+body.dark .tm-ghead{background:rgba(255,255,255,.05)}
+.tm-ghead .gn{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tm-ghead .gv{margin-left:auto;font-family:var(--fn);font-weight:700}
+.tm-tile{position:absolute;border-radius:5px;cursor:pointer;overflow:hidden;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;padding:3px;transition:filter .1s,outline .1s;outline:0 solid transparent}
+.tm-tile:hover{filter:brightness(1.06);outline:2px solid var(--ink);outline-offset:-2px;z-index:3}
+body.dark .tm-tile:hover{outline-color:#fff}
+.tm-tile .ts{font-weight:800;font-size:12px;line-height:1.1;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.35);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tm-tile .tv{font-family:var(--fn);font-size:10.5px;font-weight:700;color:rgba(255,255,255,.92);text-shadow:0 1px 2px rgba(0,0,0,.35);margin-top:1px}
+.tm-tile .tb{position:absolute;top:2px;right:3px;font-size:10px}
+.tm-tile.small .ts{font-size:9px} .tm-tile.small .tv{display:none}
+.tm-tile.tiny .ts,.tm-tile.tiny .tv{display:none}
+.tmleg{display:flex;align-items:center;gap:14px;font-size:11px;color:var(--muted);margin-top:12px;flex-wrap:wrap}
+.tmleg .g1{display:inline-flex;align-items:center;gap:5px}
+.tmleg .sw{width:22px;height:12px;border-radius:3px;display:inline-block}
+.tip{position:fixed;pointer-events:none;background:var(--surface);border:1px solid var(--line);border-radius:10px;box-shadow:0 10px 30px -8px rgba(10,20,50,.45);padding:10px 13px;font-size:12px;min-width:190px;opacity:0;transition:opacity .1s;z-index:50}
+body.dark .tip{box-shadow:0 10px 30px -8px rgba(0,0,0,.55)}
+.tip.on{opacity:1}
+.tip .td{font-weight:800;margin-bottom:6px}.tip .td small{color:var(--muted);font-weight:600}
+.tip .row{display:flex;justify-content:space-between;gap:18px;color:var(--muted);font-size:11.5px;line-height:1.7}
+.tip .row b{color:var(--ink);font-family:var(--fn)}
+.tip .pnl{margin-top:6px;padding-top:6px;border-top:1px solid var(--line2);font-size:15px;font-weight:800;font-family:var(--fn)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <h1>Setup × sessie — treemap (prototype)</h1>
+    <div class="spacer"></div>
+    <div class="seg" id="sizeSeg">
+      <button data-s="n" class="on">Grootte = # trades</button>
+      <button data-s="pnl">Grootte = |P&amp;L|</button>
+    </div>
+    <button class="mini" id="themeBtn">☾ Donker</button>
+  </div>
+  <p class="sub">TradingView-stijl: elke <b>sessie</b> is een groep, elke <b>setup</b> een tegel. Tegelgrootte = hoeveelheid (aantal trades of |P&amp;L|), kleur = netto winst/verlies (dieper = grotere P&amp;L). Hover voor stats, klik zou filteren op setup+sessie.</p>
+
+  <div class="panel">
+    <div class="phead"><h3>🎯 Setup × sessie</h3></div>
+    <p class="intro">Grote groene tegels = veel volume mét edge · grote rode tegels = waar je geld lekt · badges markeren bevestigde/verdwenen edge.</p>
+    <div class="tm" id="tm" onmousemove="tmMove(event)" onmouseleave="tmHide()"></div>
+    <div class="tmleg">
+      <span class="g1">verlies <span class="sw" id="lg1"></span><span class="sw" id="lg2"></span></span>
+      <span class="g1">winst <span class="sw" id="lg3"></span><span class="sw" id="lg4"></span></span>
+      <span>🎯 edge bevestigd · ⊘ edge weg · ⏱ aandacht</span>
+      <span style="margin-left:auto;font-style:italic">grootte = hoeveelheid · kleur = netto P&amp;L</span>
+    </div>
+  </div>
+</div>
+<div class="tip" id="tip"></div>
+
+<script>
+// ---------- synthetic setup×session data ----------
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+const SETUPS=['Breakout','Pullback','Reversal','Range fade','Trend cont.','News spike','VWAP bounce','Liq. sweep'];
+const SESSIONS=['Asia','London','US AM','US PM','Weekend'];
+// bias: some setups strong in some sessions
+function genData(){
+  const rnd=mulberry32(424242);
+  const by={}; // by[session] = {setups:{setup:{n,w,pnl}}, tot:{n,pnl}}
+  SESSIONS.forEach((se,si)=>{
+    by[se]={setups:{},tot:{n:0,pnl:0}};
+    SETUPS.forEach((su,ui)=>{
+      const active=rnd()< (se==='Weekend'?0.5:0.85);
+      if(!active) return;
+      const n=1+Math.floor(rnd()*(se==='Weekend'?7:26));
+      // edge bias
+      const edge=Math.sin(si*1.7+ui*0.9)*0.5+ (rnd()-0.5)*0.6; // -1..1
+      let w=0,pnl=0;
+      for(let i=0;i<n;i++){
+        const win=rnd()< (0.5+edge*0.22);
+        const mag=Math.round((rnd()*rnd())*220)+15;
+        if(win){w++;pnl+=mag;}else{pnl-=Math.round(mag*0.9);}
+      }
+      by[se].setups[su]={n,w,pnl:Math.round(pnl)};
+      by[se].tot.n+=n; by[se].tot.pnl+=Math.round(pnl);
+    });
+  });
+  return by;
+}
+let DATA=genData(), SIZEMODE='n';
+function eur(v){const s=v<0?'−':'+';return s+'€'+Math.abs(Math.round(v)).toLocaleString('nl-NL');}
+function eurK(v){const a=Math.abs(v),s=v<0?'−':'+';return s+'€'+(a>=1000?(a/1000).toFixed(a>=10000?0:1).replace('.',',')+'k':Math.round(a));}
+
+// ---------- squarified treemap ----------
+function squarify(items, rect){
+  const arr=items.filter(d=>d.value>0).sort((a,b)=>b.value-a.value);
+  const total=arr.reduce((s,d)=>s+d.value,0);
+  const out=[];
+  let {x,y,w,h}=rect;
+  if(!arr.length||total<=0||w<=0||h<=0) return out;
+  const scale=(w*h)/total;
+  const vals=arr.map(d=>d.value*scale);
+  const worst=(row,side)=>{const s=row.reduce((a,b)=>a+b,0),mx=Math.max(...row),mn=Math.min(...row);return Math.max((side*side*mx)/(s*s),(s*s)/(side*side*mn));};
+  let i=0;
+  while(i<vals.length){
+    const side=Math.min(w,h);
+    let row=[vals[i]], ri=[arr[i]], j=i+1;
+    while(j<vals.length){const test=row.concat(vals[j]); if(worst(test,side)<=worst(row,side)){row=test;ri.push(arr[j]);j++;} else break;}
+    const sum=row.reduce((a,b)=>a+b,0);
+    if(w>=h){const colW=sum/h;let oy=y;for(let k=0;k<row.length;k++){const ch=row[k]/colW;out.push({item:ri[k],x,y:oy,w:colW,h:ch});oy+=ch;}x+=colW;w-=colW;}
+    else{const rowH=sum/w;let ox=x;for(let k=0;k<row.length;k++){const cw=row[k]/rowH;out.push({item:ri[k],x:ox,y,w:cw,h:rowH});ox+=cw;}y+=rowH;h-=rowH;}
+    i=j;
+  }
+  return out;
+}
+const W=1000,H=560,GAP=3,HEAD=19;
+function tint(pnl,maxAbs,faded){
+  if(!pnl) return 'var(--track)';
+  const inten=Math.round(Math.min(1,Math.abs(pnl)/maxAbs)*52+20);
+  return `color-mix(in srgb,var(--${pnl>=0?'green':'red'}) ${faded?8:inten}%,transparent)`;
+}
+function render(){
+  const tm=document.getElementById('tm'); tm.innerHTML='';
+  // session weights
+  const sess=SESSIONS.map(se=>{
+    const g=DATA[se]; const weight=Object.values(g.setups).reduce((s,c)=>s+(SIZEMODE==='n'?c.n:Math.abs(c.pnl)),0);
+    return {value:weight, se};
+  }).filter(s=>s.value>0);
+  // global maxAbs for color
+  let maxAbs=1;
+  SESSIONS.forEach(se=>Object.values(DATA[se].setups).forEach(c=>{if(c.n>=3)maxAbs=Math.max(maxAbs,Math.abs(c.pnl));}));
+  const grects=squarify(sess,{x:0,y:0,w:W,h:H});
+  grects.forEach(gr=>{
+    const se=gr.item.se, g=DATA[se];
+    const gx=gr.x+GAP/2, gy=gr.y+GAP/2, gw=gr.w-GAP, gh=gr.h-GAP;
+    const grp=document.createElement('div'); grp.className='tm-grp';
+    grp.style.cssText=`left:${gx/W*100}%;top:${gy/H*100}%;width:${gw/W*100}%;height:${gh/H*100}%`;
+    grp.innerHTML=`<div class="tm-ghead"><span class="gn">${se}</span><span class="gv ${g.tot.pnl>=0?'g':'r'}">${eurK(g.tot.pnl)}</span></div>`;
+    // setup tiles
+    const items=Object.entries(g.setups).map(([su,c])=>({value:(SIZEMODE==='n'?c.n:Math.abs(c.pnl))||0.0001, su, c}));
+    const innerH=gh-HEAD;
+    const trects=squarify(items,{x:0,y:HEAD,w:gw,h:innerH});
+    trects.forEach(tr=>{
+      const {su,c}=tr.item; const wr=Math.round(c.w/c.n*100), faded=c.n<3;
+      const tw=tr.w-2, th=tr.h-2;
+      const px=tw/gw*100, py=(tr.y)/gh*100, pw=tw/gw*100, ph=th/gh*100;
+      const t=document.createElement('div'); t.className='tm-tile'+(tw<64||th<34?' small':'')+(tw<40||th<24?' tiny':'');
+      t.style.cssText=`left:${(tr.x+1)/gw*100}%;top:${(tr.y+1)/gh*100}%;width:${pw}%;height:${ph}%;background:${tint(c.pnl,maxAbs,faded)}`;
+      t.dataset.su=su; t.dataset.se=se; t.dataset.n=c.n; t.dataset.w=c.w; t.dataset.pnl=c.pnl;
+      let badge='';
+      if(wr>=65&&c.pnl>150)badge='🎯'; else if(wr<=30&&c.pnl<-100)badge='⊘'; else if(wr<=45&&c.pnl<-50)badge='⏱';
+      t.innerHTML=`${badge?`<span class="tb">${badge}</span>`:''}<span class="ts">${su}</span><span class="tv">${eurK(c.pnl)} · ${wr}%</span>`;
+      grp.appendChild(t);
+    });
+    tm.appendChild(grp);
+  });
+  // legend swatches
+  document.getElementById('lg1').style.background=tint(-maxAbs,maxAbs,false);
+  document.getElementById('lg2').style.background=tint(-maxAbs*0.35,maxAbs,false);
+  document.getElementById('lg3').style.background=tint(maxAbs*0.35,maxAbs,false);
+  document.getElementById('lg4').style.background=tint(maxAbs,maxAbs,false);
+}
+function tmMove(e){const tip=document.getElementById('tip');const t=e.target.closest('.tm-tile');
+  if(!t){tmHide();return;}
+  const n=+t.dataset.n,w=+t.dataset.w,l=n-w,pnl=+t.dataset.pnl,wr=Math.round(w/n*100);
+  tip.innerHTML=`<div class="td">${t.dataset.su} <small>· ${t.dataset.se}</small></div>
+    <div class="row"><span>Trades</span><b>${n}</b></div>
+    <div class="row"><span>Winst / verlies</span><b><span class="g">${w}</span> / <span class="r">${l}</span></b></div>
+    <div class="row"><span>Win-rate</span><b>${wr}%</b></div>
+    <div class="pnl ${pnl>=0?'g':'r'}">${eur(pnl)}</div>`;
+  tip.classList.add('on');
+  let x=e.clientX+14; if(x+200>innerWidth)x=e.clientX-206;
+  tip.style.left=x+'px'; tip.style.top=(e.clientY+12)+'px';
+}
+function tmHide(){document.getElementById('tip').classList.remove('on');}
+document.getElementById('sizeSeg').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;SIZEMODE=b.dataset.s;document.querySelectorAll('#sizeSeg button').forEach(x=>x.classList.toggle('on',x===b));render();});
+document.getElementById('themeBtn').addEventListener('click',()=>{document.body.classList.toggle('dark');document.getElementById('themeBtn').textContent=document.body.classList.contains('dark')?'☀ Licht':'☾ Donker';render();});
+render();
+</script>
+</body>
+</html>
