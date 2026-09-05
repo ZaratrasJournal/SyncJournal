@@ -602,13 +602,27 @@ table.tbl{width:100%;border-collapse:collapse;font-size:13px}
 .gr-wr{font-size:12px;font-weight:700;font-family:var(--fn);color:var(--ink2);min-width:34px;text-align:right}
 .gr-sub{font-size:11px;color:var(--muted)}
 .gr-legend i{display:inline-block;width:9px;height:9px;border-radius:2px;vertical-align:middle;margin-right:4px}
-.yh-wrap{overflow-x:auto;padding:6px 2px 4px;text-align:center}
-.yh-svg{display:block;height:auto;max-width:100%;margin:0 auto}
-.yh-mlabel{fill:var(--muted);font-size:8px;font-family:var(--fn);text-transform:capitalize}
-.yh-dlabel{fill:var(--muted);font-size:7px;font-family:var(--fn)}
-.yh-svg rect{stroke:var(--line2);stroke-width:.5;transition:stroke .12s}
-.yh-svg rect{cursor:pointer}
-.yh-svg rect:hover{stroke:var(--accent);stroke-width:1.5}
+/* year strip (12 months) */
+.ystrip{display:grid;grid-template-columns:repeat(12,1fr);gap:7px;margin-bottom:16px}
+.ymc{border:1px solid var(--line);border-radius:10px;padding:9px 5px 8px;text-align:center;cursor:pointer;transition:transform .1s,border-color .1s,background .1s}
+.ymc:hover{transform:translateY(-2px);border-color:var(--accent-line)}
+.ymc.on{border-color:var(--accent);background:var(--accent-soft)}
+.ymc .ymn{font-size:10px;font-weight:700;color:var(--ink2);letter-spacing:.03em;text-transform:uppercase}
+.ymc .ymv{font-family:var(--fn);font-variant-numeric:tabular-nums;font-size:12px;font-weight:800;margin-top:2px}
+.ymc .ymb{height:4px;border-radius:3px;margin-top:6px;background:var(--track);position:relative;overflow:hidden}
+.ymc .ymb i{position:absolute;top:0;bottom:0;border-radius:3px}
+@media(max-width:720px){.ystrip{grid-template-columns:repeat(6,1fr)}}
+/* year heatmap — fixed square cells (clamped), container centres to content */
+.yh-wrap{overflow-x:auto;padding:6px 2px 4px}
+.yh{--yc:clamp(11px,1.15vw,16px);--yg:3px;max-width:calc(53 * (var(--yc) + var(--yg)) + 30px);margin:0 auto}
+.yh-grid{display:grid;grid-template-columns:24px 1fr;gap:5px;align-items:start}
+.yh-mrow{display:grid;grid-template-columns:repeat(53,var(--yc));gap:var(--yg);height:12px}
+.yh-mrow span{grid-row:1;font-size:9px;color:var(--muted);font-family:var(--fn);text-transform:capitalize;white-space:nowrap}
+.yh-days{display:grid;grid-template-rows:repeat(7,var(--yc));gap:var(--yg)}
+.yh-days span{font-size:8px;color:var(--muted);font-family:var(--fn);line-height:var(--yc)}
+.yh-cells{display:grid;grid-template-columns:repeat(53,var(--yc));grid-template-rows:repeat(7,var(--yc));gap:var(--yg)}
+.yh-cells .yc{aspect-ratio:1;border-radius:3px;background:var(--track);border:.5px solid var(--line2);cursor:pointer;transition:transform .08s,outline .08s}
+.yh-cells .yc:hover{transform:scale(1.3);outline:1.5px solid var(--accent);z-index:2}
 .yhtip{position:fixed;z-index:220;pointer-events:none;background:var(--surface);border:1px solid var(--line);border-radius:10px;box-shadow:0 10px 30px -8px rgba(10,20,50,.45);padding:10px 13px;font-size:12px;min-width:186px;opacity:0;transition:opacity .1s}
 body.dark .yhtip{box-shadow:0 10px 30px -8px rgba(0,0,0,.55)}
 .yhtip.on{opacity:1}
@@ -1339,7 +1353,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.0';
+const APP_VERSION='v0.9.1';
 const SCHEMA_VERSION=1;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -1606,6 +1620,8 @@ function tradeR(t){const r=+t.r;if(r)return r;const th=theoR(t);return th==null?
 const CURSYM=()=>STATE.currency==='USD'?'$':'€';
 const eur=v=>CURSYM()+' '+Math.round(Math.abs(v)).toLocaleString('nl-NL');
 const eurS=v=>(v<0?'−':'+')+eur(v);
+// Compact signed amount for tight labels (year-strip): +€8,8k / −€420
+const eurK=v=>{const a=Math.abs(v),s=v<0?'−':'+';return s+CURSYM()+(a>=1000?(a/1000).toFixed(a>=10000?0:1).replace('.',',')+'k':Math.round(a));};
 const cls=v=>v>=0?'g':'r';
 const arr=v=>v>=0?'▲':'▼';
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -2584,28 +2600,63 @@ function hourHeat(rows){
   return `<div class="hourgrid">${cells}</div><div class="heatlegend">0–23 uur (Amsterdam) · kleur = netto</div>`;
 }
 function yearHeatmap(year,byDay){
-  const cell=11,step=14,leftPad=24,topPad=18;
   const mAbbr=['jan','feb','mrt','apr','mei','jun','jul','aug','sep','okt','nov','dec'];
-  const dLbl=['ma','di','wo','do','vr','za','zo'];
   const maxAbs=Math.max(1,...Object.values(byDay).map(d=>Math.abs(d.v)));
-  const yStart=new Date(year,0,1),startDow=(yStart.getDay()+6)%7;
-  let rects='',mlabels='',prevMo=-1;
-  for(let w=0;w<53;w++){for(let d=0;d<7;d++){
-    const idx=w*7+d-startDow,dt=new Date(year,0,idx+1);
-    if(dt.getFullYear()!==year)continue;
-    if(d===0&&dt.getMonth()!==prevMo){prevMo=dt.getMonth();mlabels+=`<text x="${leftPad+w*step}" y="11" class="yh-mlabel">${mAbbr[dt.getMonth()]}</text>`;}
-    const iso=`${year}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`,dd=byDay[iso];
-    let fill='var(--track)';
-    if(dd&&dd.v){const inten=Math.round(Math.min(1,Math.abs(dd.v)/maxAbs)*58+22);fill=`color-mix(in srgb,var(--${dd.v>=0?'green':'red'}) ${inten}%,transparent)`;}
-    rects+=`<rect x="${leftPad+w*step}" y="${topPad+d*step}" width="${cell}" height="${cell}" rx="2.5" style="fill:${fill}" data-iso="${iso}" data-v="${dd?dd.v:0}" data-n="${dd?dd.n:0}" data-w="${dd?dd.w:0}"></rect>`;
-  }}
-  let dlabels='';[0,1,2,3,4,5,6].forEach(d=>{dlabels+=`<text x="0" y="${topPad+d*step+cell-2}" class="yh-dlabel">${dLbl[d]}</text>`;});
-  const W=leftPad+53*step,H=topPad+7*step+2;
-  return `<div class="yh-wrap" onmousemove="yhMove(event)" onmouseleave="yhHide()"><svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" class="yh-svg" role="img" aria-label="Jaarheatmap ${year}">${mlabels}${dlabels}${rects}</svg></div>`;
+  const heatFill=v=>{if(!v)return 'var(--track)';const inten=Math.round(Math.min(1,Math.abs(v)/maxAbs)*58+22);return `color-mix(in srgb,var(--${v>=0?'green':'red'}) ${inten}%,transparent)`;};
+  // --- 12-month strip (shape of the year) ---
+  const byMonth=Array.from({length:12},()=>({v:0,n:0,w:0}));
+  for(const iso in byDay){const mo=+iso.slice(5,7)-1,d=byDay[iso];byMonth[mo].v+=d.v;byMonth[mo].n+=d.n;byMonth[mo].w+=d.w;}
+  const curMo=(STATE.calMonth.slice(0,4)===String(year))?+STATE.calMonth.slice(5,7)-1:-1;
+  const mMax=Math.max(1,...byMonth.map(m=>Math.abs(m.v)));
+  let strip='';
+  byMonth.forEach((m,i)=>{
+    const pos=m.v>=0,wpct=Math.max(m.v?6:0,Math.round(Math.abs(m.v)/mMax*100));
+    const col=pos?'var(--green)':'var(--red)';
+    const bar=m.v?(pos?`left:50%;width:${wpct/2}%;background:${col}`:`right:50%;width:${wpct/2}%;background:${col}`):'';
+    strip+=`<div class="ymc${i===curMo?' on':''}" onclick="calGoMonth(${i})" data-mo="${i}" data-mn="${mAbbr[i]}" data-mv="${m.v}" data-mn2="${m.n}" data-mw="${m.w}">
+      <div class="ymn">${mAbbr[i]}</div>
+      <div class="ymv ${m.n?cls(m.v):''}" ${m.n?'':'style="color:var(--faint)"'}>${m.n?eurK(m.v):'—'}</div>
+      <div class="ymb">${bar?`<i style="${bar}"></i>`:''}</div></div>`;
+  });
+  // --- daily heatmap (fixed square cells via CSS grid) ---
+  const startDow=(new Date(Date.UTC(year,0,1)).getUTCDay()+6)%7;
+  let cells='',mlabels='',prevMo=-1;
+  const dayMs=86400000,base=Date.UTC(year,0,1);
+  for(let dt=new Date(Date.UTC(year,0,1));dt.getUTCFullYear()===year;dt.setUTCDate(dt.getUTCDate()+1)){
+    const dow=(dt.getUTCDay()+6)%7,dayIdx=Math.round((dt-base)/dayMs),col=Math.floor((startDow+dayIdx)/7);
+    const mo=dt.getUTCMonth();
+    if(mo!==prevMo){prevMo=mo;mlabels+=`<span style="grid-column:${col+1}">${mAbbr[mo]}</span>`;}
+    const iso=`${year}-${String(mo+1).padStart(2,'0')}-${String(dt.getUTCDate()).padStart(2,'0')}`,dd=byDay[iso];
+    cells+=`<div class="yc" style="grid-column:${col+1};grid-row:${dow+1};background:${heatFill(dd?dd.v:0)}" data-iso="${iso}" data-v="${dd?dd.v:0}" data-n="${dd?dd.n:0}" data-w="${dd?dd.w:0}"></div>`;
+  }
+  const dLbl=['ma','','wo','','vr','','zo'].map(x=>`<span>${x}</span>`).join('');
+  return `<div class="ystrip" onmousemove="ymMove(event)" onmouseleave="yhHide()">${strip}</div>
+    <div class="yh-wrap" onmousemove="yhMove(event)" onmouseleave="yhHide()">
+      <div class="yh" role="img" aria-label="Jaarheatmap ${year}"><div class="yh-grid">
+        <div></div><div class="yh-mrow">${mlabels}</div>
+        <div class="yh-days">${dLbl}</div>
+        <div class="yh-cells">${cells}</div>
+      </div></div></div>`;
 }
+// month-strip tooltip (reuses #yhtip)
+function ymMove(e){const tip=document.getElementById('yhtip');if(!tip)return;const c=e.target.closest&&e.target.closest('[data-mo]');
+  if(!c){yhHide();return;}
+  const n=+c.dataset.mn2,w=+c.dataset.mw,l=n-w,v=+c.dataset.mv,mo=+c.dataset.mo;
+  tip.innerHTML=n>0
+    ?`<div class="yht-d">${MNAMES[mo]}</div><div class="yht-row"><span>Trades</span><b>${n}</b></div><div class="yht-row"><span>Win-rate</span><b>${Math.round(w/n*100)}%</b></div><div class="yht-pnl ${cls(v)} mask">${eurS(v)}</div>`
+    :`<div class="yht-d">${MNAMES[mo]}</div><div class="yht-row" style="color:var(--muted)">Geen trades</div>`;
+  tip.classList.add('on');
+  const cr=c.getBoundingClientRect(),tw=tip.offsetWidth,th=tip.offsetHeight;
+  let x=Math.max(8,Math.min(window.innerWidth-tw-8,cr.left+cr.width/2-tw/2));
+  let y=cr.bottom+8; if(y+th>window.innerHeight-8)y=cr.top-th-8;
+  tip.style.left=x+'px';tip.style.top=y+'px';
+}
+// click a strip month → jump the month calendar below
+function calGoMonth(mo){const y=STATE.calMonth.slice(0,4);STATE.calMonth=`${y}-${String(mo+1).padStart(2,'0')}`;render();
+  setTimeout(()=>{const el=document.querySelector('.calwrap');if(el&&el.closest('.panel'))el.closest('.panel').scrollIntoView({behavior:'smooth',block:'start'});},60);}
 function fmtLong(iso){try{return new Date(iso+'T12:00:00Z').toLocaleDateString('nl-NL',{weekday:'short',day:'numeric',month:'short',year:'numeric'});}catch(e){return iso;}}
-function yhMove(e){const tip=document.getElementById('yhtip');if(!tip)return;const r=e.target;
-  if(!r||r.tagName!=='rect'||r.dataset.iso===undefined){yhHide();return;}
+function yhMove(e){const tip=document.getElementById('yhtip');if(!tip)return;const r=e.target.closest&&e.target.closest('[data-iso]');
+  if(!r){yhHide();return;}
   const iso=r.dataset.iso,n=+r.dataset.n,v=+r.dataset.v,w=+r.dataset.w,l=n-w;
   tip.innerHTML=n>0
     ?`<div class="yht-d">${esc(fmtLong(iso))}</div><div class="yht-row"><span>Trades</span><b>${n}</b></div><div class="yht-row"><span>Winst / verlies</span><b><span class="g">${w}</span> / <span class="r">${l}</span></b></div><div class="yht-row"><span>Win-rate</span><b>${Math.round(w/n*100)}%</b></div><div class="yht-pnl ${cls(v)} mask">${eurS(v)}</div>`
