@@ -1669,13 +1669,16 @@ function equity(h,list){
 function barsPnl(data,unit='k'){
   const t=themeColors(),H=React.createElement,R=Recharts;
   const fmt=unit==='k'?(v=>(v>=0?'+':'−')+Math.abs(v/1000).toFixed(Math.abs(v)%1000?1:0)+'k'):(v=>eurS(v));
+  // Compacte waarde-label ON de bar (per rij), zodat je niet hoeft te hoveren.
+  const lbl=v=>{const a=Math.abs(v);const s=v>=0?'+':'−';return a>=1000?s+(a/1000).toFixed(a>=10000?0:1).replace('.',',')+'k':s+Math.round(a);};
   const rows=data.map(d=>({x:d.m,y:Math.round(d.v)}));
   return rcChart(()=>H(R.ResponsiveContainer,{width:'100%',height:'100%'},
-    H(R.BarChart,{data:rows,margin:{top:10,right:8,left:8,bottom:2}},
+    H(R.BarChart,{data:rows,margin:{top:22,right:8,left:8,bottom:2}},
       rcGrid(t),rcXAxis(t),H(R.YAxis,{hide:true}),
       H(R.Tooltip,{content:shadTip(fmt),cursor:{fill:isDark()?'rgba(255,255,255,.05)':'rgba(20,30,60,.045)'}}),
       H(R.Bar,{dataKey:'y',name:'Netto',radius:[8,8,0,0],maxBarSize:62},
-        rows.map((d,i)=>H(R.Cell,{key:i,fill:d.y>=0?t.green:t.red})))
+        rows.map((d,i)=>H(R.Cell,{key:i,fill:d.y>=0?t.green:t.red})),
+        H(R.LabelList,{dataKey:'y',position:'top',formatter:lbl,style:{fontSize:10.5,fontWeight:700,fill:t.ink2}}))
     )
   ),'ch-bar',150);
 }
@@ -2097,7 +2100,7 @@ function pgInstellingen(){
         <div class="setrow"><div class="txt"><b>Alles wissen</b><small>Verwijdert álle lokale data: trades, tags, accounts én voorkeuren. De app start als nieuw.</small></div><button class="btn danger" onclick="clearAllData()">Alles wissen</button></div>
       </div>`,
   };
-  return `<div style="max-width:${tab==='tags'?'1120px':'820px'};transition:max-width .2s">
+  return `<div style="max-width:${tab==='tags'?'1120px':'1000px'};transition:max-width .2s">
     <div class="tabs settabs" id="setTabs">${tabs.map(([k,ic,l])=>`<button data-t="${k}" class="${tab===k?'on':''}" onclick="setSetTab('${k}')"><span class="tico2">${ic}</span>${l}</button>`).join('')}</div>
     <div style="height:18px"></div>
     ${panes[tab]||panes.accounts}
@@ -2166,6 +2169,7 @@ function openPbEdit(setup){pbEditOrig=setup||'';const isNew=!setup;const pb=isNe
     <div class="mfoot">${isNew?'':`<button class="btn danger" onclick="deletePbook()">Verwijderen</button>`}<span class="form-err" id="pbErr"></span><span style="flex:1"></span><button class="btn" onclick="closeForm()">Annuleren</button><button class="btn pri" onclick="savePbook()">Opslaan</button></div>`;
   document.getElementById('modal').classList.add('on');document.getElementById('scrim').classList.add('on');
   renderLayers();renderPbCrit();renderPbAnti();renderPbExamples();
+  modalKind='pb';formDirty=false;
   setTimeout(()=>{const el=document.getElementById('pb_name');if(el&&isNew)el.focus();},60);}
 function setPbField(k,v,btn){pbForm[k]=v;if(btn){[...btn.parentElement.children].forEach(b=>b.classList.remove('on'));btn.classList.add('on');}}
 function setPbGrade(g){pbForm.defaultGrade=pbForm.defaultGrade===g?'':g;document.querySelectorAll('#pb_grade button').forEach(b=>b.classList.toggle('on',b.textContent===pbForm.defaultGrade));}
@@ -2201,8 +2205,8 @@ function savePbook(){const g=id=>{const el=document.getElementById(id);return el
   if(pbEditOrig&&pbEditOrig!==name)delete PBOOK[pbEditOrig];
   PBOOK[name]=obj;persistPbook();
   if(!(tagConfig.setupTags||[]).includes(name)){tagConfig.setupTags=[...(tagConfig.setupTags||[]),name];persistTagConfig();}
-  closeForm();if(pbEditOrig&&STATE.pbSel===pbEditOrig)STATE.pbSel=name;render();toast(pbEditOrig?'✓ Playbook bijgewerkt':'✓ Playbook aangemaakt','ok');}
-function deletePbook(){if(!confirm('Deze playbook verwijderen? (je trades blijven staan)'))return;delete PBOOK[pbEditOrig];persistPbook();closeForm();if(STATE.pbSel===pbEditOrig)STATE.pbSel='';render();toast('Playbook verwijderd','info');}
+  formDirty=false;closeForm();if(pbEditOrig&&STATE.pbSel===pbEditOrig)STATE.pbSel=name;render();toast(pbEditOrig?'✓ Playbook bijgewerkt':'✓ Playbook aangemaakt','ok');}
+function deletePbook(){if(!confirm('Deze playbook verwijderen? (je trades blijven staan)'))return;formDirty=false;delete PBOOK[pbEditOrig];persistPbook();closeForm();if(STATE.pbSel===pbEditOrig)STATE.pbSel='';render();toast('Playbook verwijderd','info');}
 function zoomPbExamples(setup,idx){const pb=PBOOK[setup];if(!pb||!(pb.examples||[]).length)return;lbShots=pb.examples.map(e=>e.dataUrl);lbIdx=idx;lbTradeId=null;renderLightbox();document.getElementById('lightbox').classList.add('on');document.getElementById('scrim').classList.add('on');}
 function playbookDetail(setup){
   const panel=(title,chip,body)=>`<div class="panel"><div class="phead"><h3>${title}</h3><span class="sp"></span>${chip?`<span class="chip">${chip}</span>`:''}</div><div class="pbody">${body}</div></div>`;
@@ -2332,7 +2336,8 @@ function gradeStackChart(chartRows){
       rcGrid(t),rcXAxis(t),H(R.YAxis,{hide:true}),
       H(R.Tooltip,{content:shadTip(v=>v+' trades'),cursor:{fill:isDark()?'rgba(255,255,255,.05)':'rgba(20,30,60,.045)'}}),
       H(R.Bar,{dataKey:'win',name:'Winst',stackId:'s',fill:t.green,maxBarSize:88}),
-      H(R.Bar,{dataKey:'loss',name:'Verlies',stackId:'s',fill:t.red,radius:[8,8,0,0],maxBarSize:88})
+      H(R.Bar,{dataKey:'loss',name:'Verlies',stackId:'s',fill:t.red,radius:[8,8,0,0],maxBarSize:88},
+        H(R.LabelList,{dataKey:'loss',content:pr=>{const row=chartRows[pr.index]||{};const tot=(row.win||0)+(row.loss||0);return tot?H('text',{x:pr.x+pr.width/2,y:pr.y-7,textAnchor:'middle',style:{fontSize:11,fontWeight:700,fill:t.ink2}},tot):null;}}))
     )
   ),'ch-bar',180);
 }
@@ -2811,7 +2816,7 @@ const TJMigrate={
     showMigrationReport(report,warnings,issues);
   }catch(e){ ErrorCenter.report('migrate',e,{severity:'error',userMsg:'De migratie is mislukt. Je bestaande data is ongewijzigd — probeer opnieuw of importeer een JSON-back-up.',actions:[{label:'Details',fn:()=>ErrorCenter.diagnostics()}]}); } },
 };
-function openModalHTML(html){ const m=document.getElementById('modal'); m.innerHTML=html; m.classList.add('on'); document.getElementById('scrim').classList.add('on'); }
+function openModalHTML(html){ const m=document.getElementById('modal'); m.innerHTML=html; m.classList.add('on'); document.getElementById('scrim').classList.add('on'); modalKind='wizard';formDirty=false; }
 function migOffer(){ const det=TJMigrate.detect(); if(!det)return; openModalHTML(`
   <div class="mhead"><h3>🛟 Je TradeJournal-data gevonden</h3><button class="xbtn" onclick="migLater()">×</button></div>
   <div class="mbody mbody-wiz">
@@ -2847,9 +2852,10 @@ function importJSON(){ const inp=document.createElement('input');inp.type='file'
     rd.readAsText(f);};inp.click(); }
 function loadDemoData(){T=SEED.map(t=>({...t}));persist();render();}
 async function resetDemo(){ if(!confirm('Voorbeelddata laden? Dit OVERSCHRIJFT je huidige trades. Er wordt eerst automatisch een veiligheidskopie gemaakt.'))return; if((T||[]).length)await Snapshots.create('vóór voorbeelddata'); loadDemoData(); toast('Voorbeelddata geladen','info'); }
-function delTrade(id){ if(confirm('Deze trade verwijderen?')){T=T.filter(t=>t.id!==id);persist();if(STATE.revSel===id)STATE.revSel=(T[0]||{}).id||0;closeForm();render();toast('Trade verwijderd','info');} }
+function delTrade(id){ if(confirm('Deze trade verwijderen?')){formDirty=false;T=T.filter(t=>t.id!==id);persist();if(STATE.revSel===id)STATE.revSel=(T[0]||{}).id||0;closeForm();render();toast('Trade verwijderd','info');} }
 function saveReview(id,patch){ const t=T.find(x=>x.id===id);if(t){Object.assign(t,patch);persist();} }
 let formTags=[],formGrade='',formLayers=[],formEmotions=[],formMistakes=[];
+let formDirty=false,modalKind='';  // dirty-guard: waarschuw bij niet-opgeslagen wijzigingen in trade-/playbook-formulier
 function toggleFormTag(tag){const i=formTags.indexOf(tag);if(i<0)formTags.push(tag);else formTags.splice(i,1);renderFormTags();}
 function renderFormTags(){const c=document.getElementById('tagpick');if(!c)return;
   const chip=(tg,col)=>{const on=formTags.includes(tg);const sel=on?`style="border-color:color-mix(in srgb,${col} 55%,transparent);background:color-mix(in srgb,${col} 14%,transparent);color:${col}"`:'';return `<span class="tagopt ${on?'on':''}" ${sel} onclick="toggleFormTag('${esc(tg).replace(/'/g,'')}')">${esc(tg)}</span>`;};
@@ -2857,6 +2863,7 @@ function renderFormTags(){const c=document.getElementById('tagpick');if(!c)retur
   const loose=[...new Set([...formTags,...T.flatMap(t=>t.tags||[])])].filter(t=>!known.has(t));
   c.innerHTML=`<div class="tg-chips">${custom.map(t=>chip(t,'#8a92a3')).join('')}${loose.map(t=>chip(t,'var(--muted)')).join('')}</div>`;}
 function setFormGrade(g){formGrade=(formGrade===g?'':g);document.querySelectorAll('#gradeseg button').forEach(b=>b.classList.toggle('on',b.dataset.g===formGrade));}
+function onPlaybookPick(){const sel=document.getElementById('f_playbook');if(!sel)return;const pb=PBOOK[sel.value];if(pb&&pb.defaultGrade&&!formGrade){formGrade=pb.defaultGrade;document.querySelectorAll('#gradeseg button').forEach(b=>b.classList.toggle('on',b.dataset.g===formGrade));}}
 /* setup-lagen (top-down) — zoals origineel */
 function addLayer(){formLayers.push({timeframe:'',bias:'',setups:[],confirmations:[]});renderLayers();}
 function removeLayer(i){formLayers.splice(i,1);renderLayers();}
@@ -2960,6 +2967,7 @@ function openForm(id){
       <div class="msub s2"><span class="msn">2</span> Context</div>
       <div class="field"><label>Sessie</label><select id="f_session" aria-label="Sessie">${opt(SESSIONS,t.session)}</select></div>
       <div class="field"><label>Marktconditie</label><select id="f_market" aria-label="Marktconditie">${opt(MARKETS,t.market||'Trending')}</select></div>
+      <div class="field"><label>Playbook <span class="hint">(koppel deze trade aan een setup)</span></label><select id="f_playbook" aria-label="Playbook" onchange="onPlaybookPick()"><option value="">— geen —</option>${Object.keys(PBOOK).sort().map(nm=>`<option value="${esc(nm)}" ${t.setup===nm?'selected':''}>${esc(nm)}</option>`).join('')}</select></div>
       <div class="field full"><label>Setup-grade <span class="hint">(optioneel · A = hoogste kwaliteit · C = marginaal)</span></label>
         <div class="confseg gradeseg" id="gradeseg">${GRADES.map(g=>`<button data-g="${g.k}" class="g-${g.k} ${formGrade===g.k?'on':''}" onclick="setFormGrade('${g.k}')" title="${g.desc}">${g.k}</button>`).join('')}</div></div>
 
@@ -2998,8 +3006,12 @@ function openForm(id){
       <span class="form-err" id="formErr"></span><span style="flex:1"></span><button class="btn" onclick="closeForm()">Annuleren</button><button class="btn pri" onclick="submitForm(${id!=null?id:'null'})">Opslaan</button></div>`;
   renderLayers();renderEmotions();renderMistakes();renderMissed();renderTPs();renderFormShots();calcTrade(false);onKindChange();
   document.getElementById('modal').classList.add('on');document.getElementById('scrim').classList.add('on');
+  modalKind='trade';formDirty=false;
 }
-function closeForm(){ if(document.activeElement&&document.activeElement.closest&&document.activeElement.closest('#modal'))document.activeElement.blur();document.getElementById('modal').classList.remove('on');document.getElementById('scrim').classList.remove('on'); }
+function closeForm(){
+  if((modalKind==='trade'||modalKind==='pb')&&formDirty){ if(!confirm('Je hebt niet-opgeslagen wijzigingen. Sluiten zonder opslaan?'))return; }
+  formDirty=false;modalKind='';
+  if(document.activeElement&&document.activeElement.closest&&document.activeElement.closest('#modal'))document.activeElement.blur();document.getElementById('modal').classList.remove('on');document.getElementById('scrim').classList.remove('on'); }
 function submitForm(id){
   const g=x=>{const el=document.getElementById('f_'+x);return el?el.value:'';};
   const num=x=>{const v=parseFloat(String(g(x)).trim().replace(',','.'));return isNaN(v)?0:v;};
@@ -3019,7 +3031,8 @@ function submitForm(id){
   // setup-lagen: schoon opslaan; platte setup/timeframe afleiden uit de entry-laag (voor analytics)
   const layers=formLayers.map(L=>({timeframe:L.timeframe,bias:L.bias||'',setups:[...L.setups],confirmations:[...L.confirmations]})).filter(L=>L.timeframe||L.bias||L.setups.length||L.confirmations.length);
   const entryLayer=layers.length?layers[layers.length-1]:null;
-  const setup=entryLayer&&entryLayer.setups.length?entryLayer.setups[0]:'';
+  // Playbook-koppeling wint: gekozen playbook is de setup; anders afgeleid uit de entry-laag.
+  const setup=g('playbook')||(entryLayer&&entryLayer.setups.length?entryLayer.setups[0]:'');
   const timeframe=entryLayer?entryLayer.timeframe:'';
   const obj={date:g('date'),time:g('time'),exchange:g('exchange'),account:ex?ex.acct:'',pair:g('pair').toUpperCase().trim(),dir:g('dir'),session:g('session'),
     market:g('market'),grade:formGrade,layers,setup,timeframe,
@@ -3031,7 +3044,7 @@ function submitForm(id){
     screenshots:[...formShots],tags:[...formTags],notes:g('notes'),lessons:g('lessons')};
   if(id!=null&&id!=='null'){const t=T.find(x=>x.id===id);Object.assign(t,obj);}
   else{T.unshift({id:nextId(),rating:0,checks:[],screenshots:[],...obj});}
-  persist();closeForm();render();toast(id!=null&&id!=='null'?'✓ Trade bijgewerkt':'✓ Trade toegevoegd','ok');
+  formDirty=false;persist();closeForm();render();toast(id!=null&&id!=='null'?'✓ Trade bijgewerkt':'✓ Trade toegevoegd','ok');
 }
 
 /* ═══ Welkom-/landing-scherm (getemperde template-stijl) ═══ */
@@ -3077,6 +3090,8 @@ document.body.classList.toggle('dark',STATE.theme==='dark');
 document.body.classList.toggle('priv',STATE.priv);
 document.getElementById('btnEye').style.color=STATE.priv?'var(--accent)':'';
 document.getElementById('scrim').onclick=()=>{closeForm();closeLightbox();};
+// Dirty-tracking: markeer het trade-/playbook-formulier als gewijzigd bij invoer of interactie in de body.
+(function(){const m=document.getElementById('modal');const mark=e=>{if((modalKind==='trade'||modalKind==='pb')&&e.target.closest&&e.target.closest('.mbody'))formDirty=true;};m.addEventListener('input',mark);m.addEventListener('change',mark);m.addEventListener('click',mark);})();
 document.getElementById('btnMenu').onclick=()=>document.body.classList.toggle('nav-open');
 document.getElementById('navscrim').onclick=()=>document.body.classList.remove('nav-open');
 document.addEventListener('keydown',e=>{
