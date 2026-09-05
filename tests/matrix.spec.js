@@ -80,7 +80,11 @@ const mk = (setup, session, pnl, date) => ({ setup, session, pnl, r: pnl > 0 ? 1
     return t.classList.contains('on') && /AlphaSetup/.test(t.innerText) && /London/.test(t.innerText) && /100%/.test(t.innerText);
   }));
   ok('yhHide verbergt tooltip', await p.evaluate(() => { yhHide(); return !document.getElementById('yhtip').classList.contains('on'); }));
+  // bug: tooltip aan laten → tegel klikken (navigeert) → tooltip mag NIET blijven hangen
+  await p.evaluate(() => { const el = [...document.querySelectorAll('.tm-tile')].find(x => x.dataset.su === 'AlphaSetup' && x.dataset.se === 'London'); tmMove({ target: el }); });
+  ok('tooltip staat aan vóór klik', await p.evaluate(() => document.getElementById('yhtip').classList.contains('on')));
   await p.evaluate(() => matrixCell('AlphaSetup', 'London')); await p.waitForTimeout(300);
+  ok('tooltip verdwijnt na klik+navigatie (geen hangend scherm)', await p.evaluate(() => !document.getElementById('yhtip').classList.contains('on')));
   ok('tegel-klik filtert setup+sessie → trades', await p.evaluate(() => STATE.page === 'trades' && FILTER.setup === 'AlphaSetup' && FILTER.session === 'London'));
   ok('gefilterde trades = alleen London/AlphaSetup (8)', await p.evaluate(() => CLOSED.length === 8 && CLOSED.every(t => t.setup === 'AlphaSetup' && sessionOf(t) === 'London')));
 
