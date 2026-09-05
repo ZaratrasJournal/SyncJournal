@@ -361,6 +361,19 @@ table.tbl{width:100%;border-collapse:collapse;font-size:13px}
 @media(max-width:820px){.rev3{grid-template-columns:1fr}.revshots-col{flex-direction:column!important}}
 .revmid{display:flex;flex-direction:column;gap:16px;min-width:0}
 .revshots-col{display:flex;flex-direction:column;gap:16px}
+/* TradingView-links (trade-form chips + review buttons) */
+.tvinrow{display:flex;gap:8px}
+.tvinput{flex:1;min-width:0;border:1px solid var(--line);border-radius:9px;background:var(--sink);color:var(--ink);padding:9px 12px;font-size:13.5px;font-family:inherit;outline:none}
+.tvinput:focus{border-color:var(--accent)}
+.tvlinks{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.tvchip{display:inline-flex;align-items:center;background:var(--sink);border:1px solid var(--line);border-radius:999px;font-size:12px;max-width:100%}
+.tvchip a{display:inline-flex;align-items:center;gap:6px;padding:6px 6px 6px 12px;color:var(--accent);text-decoration:none;font-weight:600;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tvchip a:hover{text-decoration:underline}
+.tvchip button{width:22px;height:22px;margin-right:3px;border-radius:50%;border:none;background:transparent;color:var(--muted);cursor:pointer;font-size:11px;flex:none}
+.tvchip button:hover{background:var(--hover);color:var(--red)}
+.tvlink{display:inline-flex;align-items:center;gap:7px;background:var(--accent-soft);border:1px solid var(--accent-line);border-radius:9px;padding:9px 13px;color:var(--accent);text-decoration:none;font-weight:600;font-size:13px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tvlink:hover{background:color-mix(in srgb,var(--accent) 15%,transparent)}
+.tvlink .ext{color:var(--muted);font-weight:400}
 .shotbox{position:relative;border-radius:10px;overflow:hidden;border:1px solid var(--line2);background:var(--sink);cursor:zoom-in}
 .shotbox svg{width:100%;height:auto;display:block}
 .shotbox img{width:100%;height:auto;display:block;max-height:420px;object-fit:cover}
@@ -1388,7 +1401,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.14';
+const APP_VERSION='v0.9.15';
 const SCHEMA_VERSION=1;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -2120,6 +2133,9 @@ button{font-family:inherit;cursor:pointer;border:none;background:none;color:inhe
 .chip{font-size:11px;font-weight:600;color:var(--ink2);background:var(--sink);border:1px solid var(--line2);border-radius:999px;padding:3px 10px}
 .tc-out{margin-left:auto;text-align:right}.tc-out .rv{font-family:var(--fn);font-weight:800;font-size:20px}.tc-out .p{font-size:11.5px;color:var(--muted)}
 .tc-body{padding:18px 20px}.sect-l{font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:0 0 10px}
+.tvlinks{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px}
+.tvlink{display:inline-flex;align-items:center;gap:7px;background:var(--accent-soft);border:1px solid var(--accent-line);border-radius:9px;padding:9px 13px;color:var(--accent);text-decoration:none;font-weight:600;font-size:13px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tvlink:hover{background:color-mix(in srgb,var(--accent) 15%,transparent)}
 .shots{display:grid;grid-template-columns:1fr;gap:12px;margin-bottom:20px}
 .shot{position:relative;border:1px solid var(--line2);border-radius:12px;overflow:hidden;background:var(--sink);cursor:zoom-in}
 .shot .media{display:block}.shot .media img,.shot .media svg,.chartimg{width:100%;height:auto;display:block;max-height:520px;object-fit:contain}
@@ -2227,6 +2243,7 @@ function coachPkgHTML(trades,opts){
         <span class="chip">Grade ${esc(grd)}</span>
         <div class="tc-out"><div class="${cl(rr)}"><span class="rv">${rTxt(rr)}</span></div><div class="p">${hide?pctTxt(t.pnlPct):esc(eurS(t.pnl))+' · '+pctTxt(t.pnlPct)}</div></div></div>
       <div class="tc-body">
+        ${(t.tvLinks&&t.tvLinks.length)?`<p class="sect-l">TradingView</p><div class="tvlinks">${t.tvLinks.map(u=>`<a class="tvlink" href="${esc(u)}" target="_blank" rel="noopener noreferrer">📈 ${esc(tvShort(u))} ↗</a>`).join('')}</div>`:''}
         <p class="sect-l">Charts / screenshots</p><div class="shots">${media}</div>
         <p class="sect-l">Plan vs. uitvoering</p>
         <div class="plan">
@@ -2278,6 +2295,14 @@ async function addFormShot(file){if(!file||!(file.type||'').startsWith('image/')
 function pickFormShot(){const inp=document.createElement('input');inp.type='file';inp.accept='image/*';inp.onchange=e=>{const f=e.target.files[0];if(f)addFormShot(f);};inp.click();}
 function removeFormShot(i){formShots.splice(i,1);renderFormShots();}
 function zoomFormShot(i){lbShots=formShots.slice();lbIdx=i;lbTradeId=null;renderLightbox();document.getElementById('lightbox').classList.add('on');document.getElementById('scrim').classList.add('on');}
+// ── TradingView-links per trade ──
+let formTvLinks=[];
+const isHttpUrl=u=>{try{const x=new URL(u);return x.protocol==='http:'||x.protocol==='https:';}catch(e){return false;}};
+const tvShort=u=>{try{const x=new URL(u);const p=x.pathname.length>1?x.pathname:'';return x.hostname.replace(/^www\./,'')+p;}catch(e){return u;}};
+function addFormTvLink(){const inp=document.getElementById('f_tvlink');if(!inp)return;let v=inp.value.trim();if(!v)return;if(!/^https?:\/\//i.test(v))v='https://'+v;if(!isHttpUrl(v)){toast('Ongeldige link (alleen http/https)','info');return;}if(formTvLinks.length>=8){toast('Max 8 links per trade','info');return;}if(formTvLinks.includes(v)){toast('Deze link staat er al','info');inp.value='';return;}formTvLinks.push(v);inp.value='';formDirty=true;renderFormTvLinks();inp.focus();}
+function removeFormTvLink(i){formTvLinks.splice(i,1);formDirty=true;renderFormTvLinks();}
+function renderFormTvLinks(){const c=document.getElementById('tvlinkbuilder');if(!c)return;
+  c.innerHTML=formTvLinks.length?formTvLinks.map((u,i)=>`<span class="tvchip"><a href="${esc(u)}" target="_blank" rel="noopener noreferrer" title="${esc(u)}">📈 ${esc(tvShort(u))}</a><button type="button" onclick="removeFormTvLink(${i})" aria-label="verwijderen">✕</button></span>`).join(''):'<span class="hint">Nog geen links — plak een TradingView-URL en klik Toevoegen.</span>';}
 function screenshotGallery(t){const shots=t.screenshots||[];
   const thumbs=shots.map((s,i)=>`<div class="shotbox" onclick="zoomShots(${t.id},${i})"><button class="shotdel" onclick="event.stopPropagation();removeScreenshot(${t.id},${i})" title="verwijderen">×</button><img src="${s}" alt="screenshot ${i+1}"><span class="zoom">🔍</span></div>`).join('');
   const auto=!shots.length?`<div class="shotbox" onclick="zoomShots(${t.id},-1)" title="auto-chart (voorbeeld)">${chartThumb(t,0)}<span class="shotlbl">📈 auto-chart</span></div>`:'';
@@ -2396,6 +2421,7 @@ function pgReview(){
     </div>
 
     <div class="revshots-col">
+      ${(t.tvLinks||[]).length?`<div class="panel"><div class="phead"><h3>📈 TradingView</h3><span class="sp"></span><span class="chip">${t.tvLinks.length}</span></div><div class="pbody"><div class="tvlinks">${t.tvLinks.map(u=>`<a class="tvlink" href="${esc(u)}" target="_blank" rel="noopener noreferrer" title="${esc(u)}">📈 ${esc(tvShort(u))} <span class="ext">↗</span></a>`).join('')}</div></div></div>`:''}
       <div class="panel"><div class="phead"><h3>Screenshots</h3><span class="sp"></span><span class="chip">${(t.screenshots||[]).length}/8</span></div><div class="pbody">${screenshotGallery(t)}</div></div>
     </div>
   </div>`;
@@ -3460,7 +3486,7 @@ function calcTrade(fill){
 }
 function openForm(id){
   const t=id!=null?T.find(x=>x.id===id):{date:new Date().toISOString().slice(0,10),time:'',exchange:'mexc',pair:'BTC/USDC',dir:'long',setup:'London SFP',session:'London',timeframe:'15m',market:'Trending',grade:'',entry:'',stop:'',tp:'',exit:'',size:'',leverage:10,fees:'',risk:'',rrPlanned:'',pnl:'',r:'',status:'closed',emotion:'',mistake:'',emotions:[],mistakes:[],layers:[],tags:[],notes:'',lessons:'',durationMin:'',mae:'',mfe:''};
-  formTags=[...(t.tags||[])];formGrade=gradeOf(t);formShots=[...(t.screenshots||[])];
+  formTags=[...(t.tags||[])];formGrade=gradeOf(t);formShots=[...(t.screenshots||[])];formTvLinks=[...(t.tvLinks||[])];
   formLayers=(t.layers||[]).map(L=>({timeframe:L.timeframe||'',bias:L.bias||'',setups:[...(L.setups||[])],confirmations:[...(L.confirmations||[])]}));
   formEmotions=[...(t.emotions||(t.emotion?[t.emotion]:[]))];
   formMistakes=[...(t.mistakes||(t.mistake?[t.mistake]:[]))];
@@ -3516,11 +3542,14 @@ function openForm(id){
       <div class="msub s6"><span class="msn">6</span> Notities</div>
       <div class="field full"><label>Wat gebeurde er?</label><textarea id="f_notes" rows="3">${esc(t.notes||'')}</textarea></div>
       <div class="field full"><label>Leerpunt / volgende keer</label><textarea id="f_lessons" rows="2">${esc(t.lessons||'')}</textarea></div>
+      <div class="field full"><label>TradingView-links <span class="hint">(chart-links · openen in nieuw tabblad · max 8)</span></label>
+        <div class="tvinrow"><input id="f_tvlink" class="tvinput" placeholder="https://www.tradingview.com/x/…" onkeydown="if(event.key==='Enter'){event.preventDefault();addFormTvLink();}"><button type="button" class="btn" onclick="addFormTvLink()">Toevoegen</button></div>
+        <div id="tvlinkbuilder" class="tvlinks"></div></div>
       <div class="field full"><label>Screenshots <span class="hint">(upload of plak · Ctrl/⌘+V · max 8)</span></label><div id="shotbuilder" class="shotbuilder"></div></div>
     </div>
     <div class="mfoot">${id!=null?`<button class="btn" style="color:var(--red);border-color:color-mix(in srgb,var(--red) 35%,transparent)" onclick="delTrade(${id})">Verwijderen</button>`:''}
       <span class="form-err" id="formErr"></span><span style="flex:1"></span><button class="btn" onclick="closeForm()">Annuleren</button><button class="btn pri" onclick="submitForm(${id!=null?id:'null'})">Opslaan</button></div>`;
-  renderLayers();renderEmotions();renderMistakes();renderMissed();renderTPs();renderFormShots();calcTrade(false);onKindChange();
+  renderLayers();renderEmotions();renderMistakes();renderMissed();renderTPs();renderFormShots();renderFormTvLinks();calcTrade(false);onKindChange();
   document.getElementById('modal').classList.add('on');document.getElementById('scrim').classList.add('on');
   modalKind='trade';formDirty=false;
 }
@@ -3557,7 +3586,7 @@ function submitForm(id){
     pnl,pnlPct:+(pnl/ACCT*100).toFixed(2),r:num('r'),status:g('status'),
     emotions:[...formEmotions],emotion:formEmotions[0]||'',mistakes:[...formMistakes],mistake:formMistakes[0]||'',
     kind:g('kind')||'live',missedReasons:g('kind')==='gemist'?[...formMissed]:[],
-    screenshots:[...formShots],tags:[...formTags],notes:g('notes'),lessons:g('lessons')};
+    screenshots:[...formShots],tvLinks:[...formTvLinks],tags:[...formTags],notes:g('notes'),lessons:g('lessons')};
   if(id!=null&&id!=='null'){const t=T.find(x=>x.id===id);Object.assign(t,obj);}
   else{T.unshift({id:nextId(),rating:0,checks:[],screenshots:[],...obj});}
   formDirty=false;persist();closeForm();render();toast(id!=null&&id!=='null'?'✓ Trade bijgewerkt':'✓ Trade toegevoegd','ok');
