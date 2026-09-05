@@ -58,6 +58,21 @@ const mk = (setup, session, pnl, date) => ({ setup, session, pnl, r: pnl > 0 ? 1
   ok('tegels herschikt op |P&L|', await p.evaluate(([an]) => { const a = [...document.querySelectorAll('.tm-tile')].find(x => x.dataset.su === 'BetaSetup' && x.dataset.se === 'US AM'); const r = a.getBoundingClientRect(); return Math.abs(r.width * r.height - an) > 1; }, [areaN]));
   await p.evaluate(() => setMatrixSize('n')); await p.waitForTimeout(200);
 
+  console.log('─── Hoogte groeit met aantal opties ───');
+  const smallH = await p.evaluate(() => document.querySelector('.tm').getBoundingClientRect().height);
+  const smallAR = await p.evaluate(() => document.querySelector('.tm').style.aspectRatio);
+  ok('treemap heeft inline aspect-ratio', /1000\s*\/\s*\d+/.test(smallAR), smallAR);
+  // veel meer tegels seeden (6 setups × 4 sessies) — mk(setup,session,pnl,date)
+  const many = [];
+  ['Asia', 'London', 'US AM', 'US PM'].forEach(se => ['S1', 'S2', 'S3', 'S4', 'S5', 'S6'].forEach(su => { for (let i = 0; i < 4; i++) many.push(mk(su, se, 100, '2026-05-04')); }));
+  await p.evaluate((rows) => { T = rows.map((r, i) => ({ ...r, id: i })); persist(); clearGFilter(); go('tendencies'); }, many);
+  await p.waitForTimeout(300);
+  const bigH = await p.evaluate(() => document.querySelector('.tm').getBoundingClientRect().height);
+  ok('meer opties → grotere treemap', bigH > smallH + 20, `small=${Math.round(smallH)} big=${Math.round(bigH)}`);
+  // terug naar originele seed voor de resterende tests
+  await p.evaluate((rows) => { T = rows.map((r, i) => ({ ...r, id: i })); persist(); clearGFilter(); go('tendencies'); }, rows);
+  await p.waitForTimeout(300);
+
   console.log('─── Hover-tooltip + klik-filter ───');
   ok('tooltip via tmMove', await p.evaluate(() => {
     const el = [...document.querySelectorAll('.tm-tile')].find(x => x.dataset.su === 'AlphaSetup' && x.dataset.se === 'London');
