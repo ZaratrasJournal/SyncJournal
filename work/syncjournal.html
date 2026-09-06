@@ -738,6 +738,9 @@ body.dark .yhtip{box-shadow:0 10px 30px -8px rgba(0,0,0,.55)}
 .ml-msg{font-size:11px;color:var(--muted);margin-top:6px;line-height:1.35}
 .ml-foot{font-size:11px;color:var(--muted);margin-top:11px}
 .ml-empty{color:var(--muted);font-size:12.5px;padding:8px 2px}
+/* Analytics-sectiekop */
+.sect-h{font-family:var(--fn);font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:20px 2px 11px;display:flex;align-items:center;gap:9px}
+.sect-h::after{content:"";flex:1;height:1px;background:var(--line)}
 /* Setup × sessie treemap (TradingView-style) */
 .mx-intro{font-size:12px;color:var(--muted);margin:0 0 12px}
 .tm{position:relative;width:100%;max-width:1240px;margin:0 auto;aspect-ratio:1000/560;min-height:360px;max-height:840px;background:var(--sink);border:1px solid var(--line2);border-radius:12px;overflow:hidden}
@@ -1431,7 +1434,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.21';
+const APP_VERSION='v0.9.22';
 const SCHEMA_VERSION=1;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -3046,6 +3049,20 @@ function gauge(pct){const t=themeColors(),H=React.createElement,R=Recharts,v=Mat
       H('div',{style:{fontSize:12,color:t.muted,fontWeight:600,marginTop:2}},'win-rate'))
   ),'ch-gauge',214);}
 
+// MFE/MAE-efficiency scatter: x = MFE (R), y = behaalde R. Diagonaal = perfecte exit.
+function mfeScatter(pts){const H=React.createElement,R=Recharts;
+  return rcChart(()=>{const t=themeColors();
+    const maxX=Math.max(3,...pts.map(p=>p.mfe)),ys=pts.map(p=>p.r),minY=Math.min(0,...ys),maxY=Math.max(3,...ys,maxX),dom=Math.ceil(Math.max(maxX,maxY));
+    return H(R.ResponsiveContainer,{width:'100%',height:'100%'},
+      H(R.ScatterChart,{margin:{top:10,right:16,left:2,bottom:16}},
+        H(R.CartesianGrid,{stroke:t.grid,strokeDasharray:'3 3'}),
+        H(R.XAxis,{type:'number',dataKey:'mfe',domain:[0,dom],tick:{fontSize:10,fill:t.muted},tickLine:false,axisLine:{stroke:t.line},label:{value:'MFE (R) — hoe ver ging het je kant op →',position:'insideBottom',offset:-8,fontSize:10,fill:t.muted}}),
+        H(R.YAxis,{type:'number',dataKey:'r',domain:[Math.floor(minY),dom],tick:{fontSize:10,fill:t.muted},tickLine:false,axisLine:{stroke:t.line},width:30}),
+        H(R.ReferenceLine,{segment:[{x:0,y:0},{x:dom,y:dom}],stroke:t.accent,strokeWidth:1.4,strokeDasharray:'5 4'}),
+        H(R.Scatter,{data:pts.filter(p=>p.win),fill:t.green,fillOpacity:.5,shape:'circle'}),
+        H(R.Scatter,{data:pts.filter(p=>!p.win),fill:t.red,fillOpacity:.5,shape:'circle'})
+      ));
+  },'ch-scatter',230);}
 function pgAnalytics(){
   if(!CLOSED.length)return `${filterBar()}${emptyState('analytics')}`;
   const a=agg();
@@ -3096,48 +3113,89 @@ function pgAnalytics(){
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;border-top:1px solid var(--line2);padding-top:13px">
       <div style="text-align:center"><div style="font-size:9px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:700;margin-bottom:3px">Beste winst-reeks</div><b class="num g" style="font-size:17px">${mw}</b></div>
       <div style="text-align:center"><div style="font-size:9px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:700;margin-bottom:3px">Langste verlies-reeks</div><b class="num r" style="font-size:17px">${ml}</b></div></div></div>`;
+  // ── nieuwe metrics (verbeterplan) ──
+  const rsArr=chron.map(t=>tradeR(t));
+  const meanR=rsArr.length?rsArr.reduce((s,x)=>s+x,0)/rsArr.length:0;
+  const stdR=rsArr.length>1?Math.sqrt(rsArr.reduce((s,x)=>s+(x-meanR)**2,0)/(rsArr.length-1)):0;
+  const sqn=stdR?(meanR/stdR)*Math.sqrt(Math.min(rsArr.length,100)):0;
+  const sqnLbl=sqn>=3?'uitstekend':sqn>=2.5?'goed':sqn>=1.6?'gemiddeld':'zwak';
+  const sqnTone=sqn>=2.5?'g':sqn>=1.6?'a':'r';
+  const netAll=eqV[eqV.length-1];
+  const recovery=maxDD?netAll/Math.abs(maxDD):(netAll>0?99:0);
+  let _pk=0,_dl=0,ddLen=0;chron.forEach((t,i)=>{const v=eqV[i+1];if(v>=_pk){_pk=v;_dl=0;}else{_dl++;ddLen=Math.max(ddLen,_dl);}});
+  const capTrades=CLOSED.filter(t=>(+t.mfe||0)>0.05);
+  const capture=capTrades.length?Math.round(capTrades.reduce((s,t)=>s+Math.max(0,tradeR(t))/(+t.mfe),0)/capTrades.length*100):0;
+  const mfePts=CLOSED.filter(t=>(+t.mfe||0)>0).map(t=>({mfe:+(+t.mfe).toFixed(2),r:+tradeR(t).toFixed(2),win:t.pnl>=0})).slice(0,400);
+  const rrBy={};CLOSED.forEach(t=>{const su=t.setup||'—';if(su==='—')return;(rrBy[su]=rrBy[su]||{p:0,a:0,n:0});rrBy[su].p+=(+t.rrPlanned||0);rrBy[su].a+=tradeR(t);rrBy[su].n++;});
+  const rrRows=Object.entries(rrBy).map(([su,o])=>({su,p:o.p/o.n,a:o.a/o.n})).filter(x=>x.p>0).sort((a,b)=>b.p-a.p);
+  const byDayNet={};CLOSED.forEach(t=>{byDayNet[t.date]=(byDayNet[t.date]||0)+t.pnl;});
+  const posDays=Object.values(byDayNet).filter(v=>v>0).sort((a,b)=>b-a);const top5=posDays.slice(0,5).reduce((s,v)=>s+v,0);
+  const paretoWin=netAll>0?Math.round(bigW/netAll*100):0,top5pct=netAll>0?Math.round(top5/netAll*100):0;
+  const sampleWarn=CLOSED.length<30;
+  const sampleBadge=`<div style="display:flex;justify-content:flex-end;margin-top:9px"><span class="chip" style="font-weight:700;${sampleWarn?'color:var(--amber);background:var(--amber-soft);border-color:color-mix(in srgb,var(--amber) 30%,transparent)':'color:var(--green);background:var(--green-soft);border-color:color-mix(in srgb,var(--green) 25%,transparent)'}">${sampleWarn?'⚠ n<'+30+' · te weinig trades, cijfers kunnen ruis zijn':'✓ '+CLOSED.length+' trades in beeld · betrouwbaar'}</span></div>`;
+  // MFE/MAE-efficiency paneel
+  const mfePanel=`<div class="pbody">${mfePts.length?mfeScatter(mfePts):'<div style="padding:22px;color:var(--muted);font-size:12.5px">Nog geen MFE-data.</div>'}<div class="ero-hint">Elke stip = een trade. <b>Diagonaal = perfecte exit</b> (volledige beweging gepakt); ver eronder = winst laten liggen. Gezonde capture: 60–75% · jij: <b>${capture}%</b>.</div></div>`;
+  // Gepland vs behaald R:R paneel
+  const rrMax=Math.max(1,...rrRows.map(r=>Math.max(r.p,r.a)));
+  const rrBody=`<div class="pbody"><div style="display:flex;flex-direction:column;gap:11px">`+rrRows.map(r=>{const pw=r.p/rrMax*100,aw=Math.max(0,r.a)/rrMax*100,leak=r.a<r.p*0.55;
+    return `<div><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px"><span>${esc(r.su)}</span><span class="num" style="color:${leak?'var(--red)':'var(--ink2)'}">${r.p.toFixed(1)}R → ${r.a.toFixed(2)}R${leak?' ⚠':''}</span></div><div style="position:relative;height:9px;background:var(--track);border-radius:5px"><div style="position:absolute;top:0;bottom:0;left:0;width:${pw}%;background:var(--accent-line);border-radius:5px"></div><div style="position:absolute;top:0;bottom:0;left:0;width:${aw}%;background:${r.a>=0?'var(--green)':'var(--red)'};border-radius:5px"></div></div></div>`;}).join('')
+    +`</div><div class="mx-legend" style="margin-top:12px"><span class="g1"><span class="mxsw" style="background:var(--accent-line)"></span>gepland R:R</span><span class="g1"><span class="mxsw" style="background:var(--green)"></span>behaald (gem. R)</span><span>⚠ = winners te vroeg dicht</span></div></div>`;
+  // Consistentie / Pareto paneel
+  const prow=(l,v,c)=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:11px 0;border-bottom:1px solid var(--line2);font-size:12.5px"><span style="color:var(--ink2)">${l}</span><b class="num ${c||''}">${v}</b></div>`;
+  const paretoBody=`<div class="pbody">${prow('Grootste winst als % van netto',netAll>0?paretoWin+'%':'—',paretoWin>40?'r':'g')}${prow('Top-5 dagen als % van netto',netAll>0?top5pct+'%':'—',top5pct>80?'r':'')}${prow('Grootste enkele verlies',eurS(bigL),'r')}<div class="ero-hint" style="margin-top:11px">${(paretoWin>40||top5pct>80)?'⚠ Je winst leunt zwaar op een paar trades/dagen — kwetsbaar voor een terugval.':'Winst is gespreid over veel trades — gezonde consistentie.'}</div></div>`;
   const tiles=`<div class="grid" style="grid-template-columns:repeat(4,1fr)">
     ${statTile('📊',CLOSED.length,'Trades in beeld','')}
-    ${statTile('🎯',mw+' op rij','Beste winst-reeks','g')}
-    ${statTile('⚡',avgMfe.toFixed(2)+'R',captured+'% van MFE benut','g')}
-    ${statTile('🛡️',eurS(maxDD),'Max drawdown','r')}</div>`;
+    ${statTile('🎯',sqn.toFixed(2),'SQN · '+sqnLbl,sqnTone)}
+    ${statTile('🛡️',eurS(maxDD),'Max drawdown','r')}
+    ${statTile('⚡',capture+'%','MFE benut (capture)','')}</div>`;
   const eroA=eroBuckets(applyFilterNoKind(T));
   const eroAPanel=(eroA.backtest.n||eroA.paper.n)?`<div class="panel"><div class="phead"><h3>Real vs Paper vs Backtest</h3><span class="sp"></span><span class="chip" title="edge-erosion — over alle soorten, los van de Live/Oefen-filter">edge-check · alle soorten</span></div><div class="pbody">${erosionBody(eroA)}</div></div><div style="height:13px"></div>`:'';
-  return `${filterBar()}${tiles}<div style="height:13px"></div>${kpis}<div style="height:13px"></div>
+  return `${filterBar()}${sampleBadge}<div style="height:11px"></div>${tiles}<div style="height:13px"></div>${kpis}<div style="height:13px"></div>
+    <div class="sect-h">Traject &amp; risico</div>
     <div class="grid" style="grid-template-columns:2fr 1fr;align-items:stretch">
       ${panelHead('Equity-curve',perDD('eq'),equity(214,periodTrades(CLOSED,KPIPER.eq)))}
       ${panel('Reeks &amp; vorm','momentum van je edge',streakBody)}
+    </div><div style="height:13px"></div>
+    <div class="grid" style="grid-template-columns:1fr 1fr;align-items:start">
+      ${panelHead('Drawdown + herstel','<span class="chip" title="recovery factor = netto ÷ max drawdown · duur = trades onder vorige piek">recovery '+(recovery>=99?'∞':recovery.toFixed(1))+' · onder piek '+ddLen+'t</span>',lineSeries(ddV,{id:'dd',col:'var(--red)',fmt:v=>Math.round(v)}))}
+      ${panel('Cumulatieve R','som van R',lineSeries(crV,{id:'cr',line:true,fmt:v=>v.toFixed(0)+'R',col:'var(--accent)'}))}
+    </div><div style="height:13px"></div>
+    <div class="sect-h">Kwaliteit van je trades</div>
+    <div class="grid" style="grid-template-columns:1fr 1fr;align-items:start">
+      ${panel('R-verdeling','waar landen je trades',histoR(CLOSED))}
+      <div class="panel"><div class="phead"><h3>MFE / MAE-efficiency</h3><span class="sp"></span><span class="chip">capture ${capture}%</span></div>${mfePanel}</div>
+    </div><div style="height:13px"></div>
+    <div class="grid" style="grid-template-columns:1fr 1fr;align-items:start">
+      <div class="panel"><div class="phead"><h3>Gepland vs. behaald R:R</h3><span class="sp"></span><span class="chip">per setup</span></div>${rrBody}</div>
+      <div class="panel"><div class="phead"><h3>Consistentie / Pareto</h3><span class="sp"></span><span class="chip">concentratie-risico</span></div>${paretoBody}</div>
+    </div><div style="height:13px"></div>
+    <div class="sect-h">Per dimensie — waar zit je edge</div>
+    <div class="grid" style="grid-template-columns:1fr 1fr;align-items:stretch">
+      ${panelHead('Setup-grade — win/verlies per klasse',gLegend,gChart)}
+      ${panelRaw('Grade-breakdown','aantal · win% · gem. R · netto',`<div class="gradebreak">${gRows}</div>`)}
     </div><div style="height:13px"></div>
     <div class="grid" style="grid-template-columns:2fr 1fr;align-items:stretch">
       <div class="panel tmpanel"><div class="phead"><h3>Winst per pair</h3><span class="sp"></span><span class="chip" title="grootte = netto P&L per pair · klik = filter">per pair · klik = filter</span></div><div class="pbody">${pairProfitHeatmap()}</div></div>
       <div style="display:flex;flex-direction:column;gap:13px">
         ${panel('Long / short','richtingsverdeling',donutPanel([{name:'Long',value:longN,fill:'var(--accent)'},{name:'Short',value:shortN,fill:'var(--violet)'}],{big:CLOSED.length,sub:'trades'}))}
-        ${panel('Trade-score','samengestelde kwaliteit',scoreDonut(a.wr,pfv,payoff))}
+        ${panel('Trade-score','proces-kwaliteit',scoreDonut(a.wr,pfv,payoff))}
         ${panel('Win / verlies','verdeling gesloten trades',donutPanel([{name:'Winst',value:winN,fill:'var(--green)'},{name:'Verlies',value:lossN,fill:'var(--red)'}],{big:Math.round(a.wr)+'%',sub:'win-rate'}))}
       </div>
     </div><div style="height:13px"></div>
-    <div class="grid" style="grid-template-columns:1fr 1fr;align-items:stretch">
-      ${panelHead('Setup-grade — win/verlies per klasse',gLegend,gChart)}
-      ${panelRaw('Grade-breakdown','aantal · win% · gem. R · netto',`<div class="gradebreak">${gRows}</div>`)}
-    </div><div style="height:13px"></div>
-    <div class="grid" style="grid-template-columns:1fr 1fr 1fr;align-items:start">
-      ${panel('R-verdeling','waar landen je trades',histoR(CLOSED))}
-      ${panel('Drawdown','afstand tot piek',lineSeries(ddV,{id:'dd',col:'var(--red)',fmt:v=>Math.round(v)}))}
-      ${panel('Cumulatieve R','som van R',lineSeries(crV,{id:'cr',line:true,fmt:v=>v.toFixed(0)+'R',col:'var(--accent)'}))}
-    </div><div style="height:13px"></div>
     <div class="grid" style="grid-template-columns:1fr 1fr;align-items:start">
       ${panel('Netto per sessie','gesorteerd op netto',barsPnl(sessBars,'e'))}
-      ${mistBars.length?panel('Fout-analyse','netto-impact per fout',barsPnl(mistBars,'e')):panelRaw('Fout-analyse','',`<div style="padding:24px 18px;color:var(--muted);font-size:12.5px">Geen fouten getagd in beeld 🎉</div>`)}
-    </div><div style="height:13px"></div>
-    <div class="grid" style="grid-template-columns:1fr 1fr;align-items:start">
       ${panelRaw('Long vs. short','win-rate · netto',hbars(dirRows))}
-      ${panelRaw('Gem. hold-tijd','winst vs. verlies',hbars(holdRows))}
     </div><div style="height:13px"></div>
     <div class="grid" style="grid-template-columns:2fr 1fr;align-items:start">
       ${panelRaw('Per pair','top 6 · gesorteerd op netto',hbars(pairRows))}
       ${panel('Kerncijfers','gem. per trade',wl)}
     </div><div style="height:13px"></div>
     ${panel('Prestatie per uur','wanneer op de dag presteer je',hourHeat(CLOSED))}<div style="height:13px"></div>
+    <div class="sect-h">Gedrag &amp; edge-check</div>
+    <div class="grid" style="grid-template-columns:1fr 1fr;align-items:start">
+      ${mistBars.length?panel('Fout-analyse','netto-impact per fout',barsPnl(mistBars,'e')):panelRaw('Fout-analyse','',`<div style="padding:24px 18px;color:var(--muted);font-size:12.5px">Geen fouten getagd in beeld 🎉</div>`)}
+      ${panelRaw('Gem. hold-tijd','winst vs. verlies',hbars(holdRows))}
+    </div><div style="height:13px"></div>
     ${eroAPanel}`;
 }
 
