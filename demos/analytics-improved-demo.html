@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SyncJournal — Analytics verbeterplan (prototype)</title>
+<style>
+:root{
+  --bg:#F4F6FA;--surface:#FFFFFF;--raise:#FBFCFE;--sink:#F7F9FC;
+  --ink:#191E2A;--ink2:#525A6B;--muted:#8A92A3;--faint:#AAB1C0;
+  --line:#E8EBF2;--line2:#F0F2F7;
+  --accent:#3B5BD9;--accent-soft:#EDF0FD;--accent-line:#CDD6F7;
+  --green:#12946A;--green-soft:#E3F4EC;--red:#D64259;--red-soft:#FBE8EC;--amber:#C0821C;--amber-soft:#F8EFDD;--violet:#7C5CE0;
+  --track:#EEF1F6;--grid:#EDEFF5;
+  --fb:'Inter',-apple-system,'Segoe UI',sans-serif;--fd:'Plus Jakarta Sans',var(--fb);--fn:'IBM Plex Mono','SF Mono',Consolas,monospace;
+  --sh:0 1px 2px rgba(20,30,60,.05);
+}
+:root[data-theme="dark"]{
+  --bg:#0E1218;--surface:#141A22;--raise:#171E28;--sink:#10151c;
+  --ink:#F4F7FB;--ink2:#C7CFDB;--muted:#939CAC;--faint:#6C7583;
+  --line:#232B36;--line2:#1C232D;
+  --accent:#6E86F0;--accent-soft:#1B2436;--accent-line:#2E3B57;
+  --green:#37C48B;--green-soft:#12261F;--red:#F0637A;--red-soft:#2A1820;--amber:#E0A63C;--amber-soft:#28210F;--violet:#A78BFA;
+  --track:#1E2732;--grid:#1B222C;
+  --sh:0 1px 2px rgba(0,0,0,.25);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--fb);font-size:13.5px;line-height:1.5;-webkit-font-smoothing:antialiased}
+.num{font-family:var(--fn);font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.g{color:var(--green)}.r{color:var(--red)}.a{color:var(--accent)}
+h1,h2,h3{font-family:var(--fd);font-weight:700;letter-spacing:-.01em}
+button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
+.wrap{max-width:1500px;margin:0 auto;padding:18px 22px 80px}
+.top{display:flex;align-items:center;gap:14px;margin-bottom:6px}
+.top h1{font-size:19px}.top .sp{flex:1}
+.mini{padding:6px 11px;border:1px solid var(--line);border-radius:8px;background:var(--surface);font-size:12px;font-weight:600;color:var(--ink2)}
+.badge-new{font-size:9px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#fff;background:var(--accent);border-radius:5px;padding:2px 6px;vertical-align:middle;margin-left:7px}
+.sub{color:var(--ink2);font-size:12.5px;margin-bottom:18px;max-width:95ch}
+.sect{font-family:var(--fn);font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:22px 2px 10px;display:flex;align-items:center;gap:8px}
+.sect::after{content:"";flex:1;height:1px;background:var(--line)}
+
+.filterbar{display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px;box-shadow:var(--sh);flex-wrap:wrap}
+.fpill{font-size:12px;color:var(--ink2);border:1px solid var(--line);border-radius:8px;padding:6px 11px;background:var(--sink)}
+.samplebadge{margin-left:auto;font-size:11.5px;font-weight:700;border-radius:999px;padding:5px 11px;display:inline-flex;align-items:center;gap:6px}
+.samplebadge.ok{color:var(--green);background:var(--green-soft)}
+.samplebadge.warn{color:var(--amber);background:var(--amber-soft)}
+
+.grid{display:grid;gap:14px}
+.g4{grid-template-columns:repeat(4,1fr)} .g3{grid-template-columns:repeat(3,1fr)}
+.g21{grid-template-columns:2fr 1fr} .g11{grid-template-columns:1fr 1fr}
+@media(max-width:980px){.g4{grid-template-columns:repeat(2,1fr)}.g3,.g21,.g11{grid-template-columns:1fr}}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:var(--sh);padding:15px 17px}
+.panel.hl{border-color:var(--accent-line);box-shadow:0 0 0 1px var(--accent-line),var(--sh)}
+.phead{display:flex;align-items:center;gap:9px;margin-bottom:12px}
+.phead h3{font-size:13.5px}.phead .sp{flex:1}
+.chip{font-size:10.5px;font-weight:600;color:var(--ink2);background:var(--sink);border:1px solid var(--line2);border-radius:999px;padding:2px 9px}
+
+.tile{background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:var(--sh);padding:13px 15px;display:flex;align-items:center;gap:12px}
+.tile .ic{width:34px;height:34px;border-radius:9px;display:grid;place-items:center;font-size:16px;background:var(--sink);flex:none}
+.tile .tv{font-family:var(--fn);font-weight:800;font-size:18px;line-height:1}
+.tile .tl{font-size:11px;color:var(--muted);margin-top:3px}
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:var(--sh);padding:14px 16px;position:relative;overflow:hidden}
+.kpi .kl{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:700}
+.kpi .kv{font-family:var(--fn);font-weight:800;font-size:22px;margin-top:6px}
+.kpi .spark{position:absolute;right:0;bottom:0;left:0;height:34px;opacity:.5}
+
+.big{font-family:var(--fn);font-weight:800;font-size:30px;line-height:1}
+.mut{color:var(--muted);font-size:11.5px}
+.statgrid{display:grid;grid-template-columns:1fr 1fr;gap:11px 16px}
+.st .l{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:700}
+.st .v{font-family:var(--fn);font-weight:700;font-size:15px;margin-top:2px}
+.gauge{display:flex;align-items:center;gap:16px}
+.svgwrap{width:100%}
+svg{display:block;width:100%;height:auto;overflow:visible}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:11px;color:var(--muted);margin-top:9px}
+.legend i{width:10px;height:10px;border-radius:3px;display:inline-block;margin-right:5px;vertical-align:-1px}
+.note{font-size:11.5px;color:var(--muted);margin-top:9px;line-height:1.5}
+.explain{background:var(--accent-soft);border:1px solid var(--accent-line);border-radius:9px;padding:8px 11px;font-size:11.5px;color:var(--ink2);margin-top:10px}
+.explain b{color:var(--ink)}
+.ghost{opacity:.62}
+.ghost .phead h3::after{content:" · bestaand paneel";color:var(--faint);font-weight:600;font-size:11px}
+.pareto-row{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--line2);font-size:12.5px}
+.pareto-row:last-child{border-bottom:none}
+.pareto-row b{font-family:var(--fn)}
+.bar-track{height:7px;background:var(--track);border-radius:5px;overflow:hidden;margin-top:5px}
+.bar-fill{height:100%;border-radius:5px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <h1>Analytics — verbeterplan</h1><span class="badge-new">prototype</span>
+    <span class="sp"></span>
+    <button class="mini" id="dataBtn">Dataset: 420 trades</button>
+    <button class="mini" id="themeBtn">☀ Licht</button>
+  </div>
+  <p class="sub">Voorstel voor de vernieuwde Analytics-pagina: nieuwe volgorde (risk/traject vóór dimensies) + <b>5 nieuwe panelen</b> (blauw gemarkeerd, <span class="badge-new" style="margin:0">nieuw</span>). Bestaande panelen staan lichter/compacter zodat je vooral de <b>nieuwe opbouw</b> ziet. Alle cijfers zijn echt berekend uit synthetische trades (R, MFE, MAE, gepland/behaald R:R, P&amp;L, datum).</p>
+
+  <div id="app"></div>
+</div>
+
+<script>
+// ---------- synthetische trades ----------
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+const SETUPS=['Trend-pullback','London SFP','BOS-retest','Range-fade','Reclaim','VWAP-bounce'];
+const EDGE={'Trend-pullback':0.25,'London SFP':0.15,'BOS-retest':0.05,'Range-fade':-0.05,'Reclaim':-0.11,'VWAP-bounce':-0.19};
+function genTrades(n){
+  const rnd=mulberry32(20260906);const T=[];const start=new Date('2026-01-02').getTime();
+  for(let i=0;i<n;i++){
+    const setup=SETUPS[Math.floor(rnd()*SETUPS.length)];const wr=0.46+(EDGE[setup])*0.5;
+    const win=rnd()<wr;const rPlanned=+(1.8+rnd()*1.8).toFixed(1);
+    // behaalde R: winners ~ deel v/d target (management), losers ~ -1
+    let r;if(win){r=+ (rPlanned*(0.5+rnd()*0.6)).toFixed(2); r=Math.min(r,rPlanned*1.1);} else {const roll=rnd();r=roll<0.15?-+(0.2+rnd()*0.5).toFixed(2):-+(0.9+rnd()*0.25).toFixed(2);}
+    const risk=180+rnd()*90;const pnl=Math.round(r*risk);
+    // MFE (in R): altijd >= behaalde R voor winners; MAE (in R, positief getal)
+    const mfe=win?+(Math.max(r, r*(1+rnd()*0.7))).toFixed(2):+(rnd()*0.9).toFixed(2);
+    const mae=win?+(rnd()*0.6).toFixed(2):+(Math.abs(r)*(0.9+rnd()*0.5)).toFixed(2);
+    const d=new Date(start+i* (1+Math.floor(rnd()*2))*3600*1000*6);
+    T.push({i,setup,win,r,rPlanned,mfeR:mfe,maeR:mae,pnl,risk,date:d.toISOString().slice(0,10)});
+  }
+  return T;
+}
+let N=420, T=genTrades(N);
+
+// ---------- stat helpers ----------
+const sum=a=>a.reduce((s,x)=>s+x,0);
+const mean=a=>a.length?sum(a)/a.length:0;
+const std=a=>{if(a.length<2)return 0;const m=mean(a);return Math.sqrt(sum(a.map(x=>(x-m)**2))/(a.length-1));};
+function eur(v){const s=v<0?'−':'+';return s+'$'+Math.abs(Math.round(v)).toLocaleString('en-US');}
+function money(v){return (v<0?'−$':'$')+Math.abs(Math.round(v)).toLocaleString('en-US');}
+function cls(v){return v>=0?'g':'r';}
+
+function computeStats(T){
+  const N=T.length;const rs=T.map(t=>t.r);const pnls=T.map(t=>t.pnl);
+  const wins=T.filter(t=>t.pnl>0),losses=T.filter(t=>t.pnl<0);
+  const net=sum(pnls);const wr=N?wins.length/N*100:0;
+  const grossW=sum(wins.map(t=>t.pnl)),grossL=Math.abs(sum(losses.map(t=>t.pnl)));
+  const pf=grossL?grossW/grossL:99;
+  const avgW=mean(wins.map(t=>t.pnl)),avgL=Math.abs(mean(losses.map(t=>t.pnl)));
+  const expc=mean(pnls);const avgR=mean(rs);
+  // equity + drawdown
+  let cum=0,peak=0,maxDD=0,ddStartIdx=0,curDDlen=0,maxDDlen=0;const eq=[0];
+  T.forEach((t,idx)=>{cum+=t.pnl;if(cum>=peak){peak=cum;curDDlen=0;}else{curDDlen++;maxDDlen=Math.max(maxDDlen,curDDlen);}maxDD=Math.min(maxDD,cum-peak);eq.push(cum);});
+  const recovery=maxDD?net/Math.abs(maxDD):99;
+  // SQN
+  const sqn=std(rs)?(avgR/std(rs))*Math.sqrt(Math.min(N,100)):0;
+  // consistency / pareto
+  const biggestWin=Math.max(0,...pnls),biggestLoss=Math.min(0,...pnls);
+  const byDay={};T.forEach(t=>byDay[t.date]=(byDay[t.date]||0)+t.pnl);
+  const dayVals=Object.values(byDay).filter(v=>v>0).sort((a,b)=>b-a);
+  const top5=sum(dayVals.slice(0,5));
+  return {N,net,wr,pf,avgW,avgL,expc,avgR,eq,maxDD,maxDDlen,recovery,sqn,biggestWin,biggestLoss,top5,rs};
+}
+
+// ---------- SVG charts ----------
+function areaChart(vals,{col,h=150}={}){
+  const W=600,pad=6,min=Math.min(...vals),max=Math.max(...vals),rng=(max-min)||1;
+  const X=i=>pad+i/(vals.length-1)*(W-pad*2),Y=v=>pad+(1-(v-min)/rng)*(h-pad*2);
+  const line=vals.map((v,i)=>`${i?'L':'M'}${X(i).toFixed(1)} ${Y(v).toFixed(1)}`).join(' ');
+  const area=`${line} L${X(vals.length-1)} ${h-pad} L${X(0)} ${h-pad} Z`;
+  return `<svg viewBox="0 0 ${W} ${h}"><defs><linearGradient id="ag" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="${col}" stop-opacity=".28"/><stop offset="1" stop-color="${col}" stop-opacity="0"/></linearGradient></defs><path d="${area}" fill="url(#ag)"/><path d="${line}" fill="none" stroke="${col}" stroke-width="2"/></svg>`;
+}
+function ddChart(eq,{h=150}={}){
+  // drawdown series (afstand tot piek)
+  let peak=-1e9;const dd=eq.map(v=>{peak=Math.max(peak,v);return v-peak;});
+  const W=600,pad=6,min=Math.min(...dd),rng=Math.abs(min)||1;
+  const X=i=>pad+i/(dd.length-1)*(W-pad*2),Y=v=>pad+(-v/rng)*(h-pad*2);
+  const line=dd.map((v,i)=>`${i?'L':'M'}${X(i).toFixed(1)} ${Y(v).toFixed(1)}`).join(' ');
+  const area=`${line} L${X(dd.length-1)} ${pad} L${X(0)} ${pad} Z`;
+  const c=getComputedStyle(document.body).getPropertyValue('--red').trim()||'#d64259';
+  return `<svg viewBox="0 0 ${W} ${h}"><path d="${area}" fill="${c}" fill-opacity=".16"/><path d="${line}" fill="none" stroke="${c}" stroke-width="2"/></svg>`;
+}
+function histR(rs,{h=160}={}){
+  const bins=[-2,-1.5,-1,-0.5,0,0.5,1,1.5,2,2.5,3,99];const labels=['≤-1.5','-1.5','-1','-0.5','0','+0.5','+1','+1.5','+2','+2.5','+3+'];
+  const counts=new Array(labels.length).fill(0);
+  rs.forEach(r=>{let k=labels.length-1;for(let b=0;b<bins.length-1;b++){if(r<bins[b+1]){k=b;break;}}counts[k]++;});
+  const W=600,pad=18,bw=(W-pad*2)/counts.length,max=Math.max(...counts,1);
+  const g=getComputedStyle(document.body).getPropertyValue('--green').trim(),r=getComputedStyle(document.body).getPropertyValue('--red').trim();
+  let bars='';counts.forEach((c,i)=>{const bh=(c/max)*(h-30);const x=pad+i*bw;const neg=i<4;bars+=`<rect x="${x+2}" y="${h-24-bh}" width="${bw-4}" height="${bh}" rx="3" fill="${neg?r:g}" opacity=".85"/><text x="${x+bw/2}" y="${h-9}" font-size="9" fill="var(--muted)" text-anchor="middle" font-family="var(--fn)">${labels[i]}</text>`;});
+  return `<svg viewBox="0 0 ${W} ${h}">${bars}</svg>`;
+}
+function scatterMFE(T,{h=240}={}){
+  const W=560,pad=34;const maxV=Math.max(3,...T.map(t=>Math.max(t.mfeR,t.r,0.5)));
+  const X=v=>pad+(v/maxV)*(W-pad*2),Y=v=>h-pad-(v/maxV)*(h-pad*2);
+  const g=getComputedStyle(document.body).getPropertyValue('--green').trim(),red=getComputedStyle(document.body).getPropertyValue('--red').trim(),ln=getComputedStyle(document.body).getPropertyValue('--line').trim();
+  const diag=`<line x1="${X(0)}" y1="${Y(0)}" x2="${X(maxV)}" y2="${Y(maxV)}" stroke="var(--accent)" stroke-width="1.4" stroke-dasharray="5 4" opacity=".8"/>`;
+  const dots=T.filter(t=>t.mfeR>0).slice(0,300).map(t=>{const cx=X(t.mfeR),cy=Y(Math.max(0,t.r));return `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="3" fill="${t.r>=0?g:red}" opacity=".55"/>`;}).join('');
+  const ax=`<line x1="${pad}" y1="${h-pad}" x2="${W-pad}" y2="${h-pad}" stroke="${ln}"/><line x1="${pad}" y1="${pad}" x2="${pad}" y2="${h-pad}" stroke="${ln}"/>`+
+    `<text x="${W-pad}" y="${h-pad+16}" font-size="9.5" fill="var(--muted)" text-anchor="end" font-family="var(--fn)">MFE (R) — hoe ver ging het je kant op →</text>`+
+    `<text x="${pad-8}" y="${pad+4}" font-size="9.5" fill="var(--muted)" text-anchor="end" font-family="var(--fn)" transform="rotate(-90 ${pad-8} ${pad+4})">behaalde R ↑</text>`;
+  return `<svg viewBox="0 0 ${W} ${h}">${ax}${diag}${dots}</svg>`;
+}
+function plannedVsAchieved(T,{h=200}={}){
+  // per setup: gem gepland R:R vs gem behaalde R
+  const by={};T.forEach(t=>{(by[t.setup]=by[t.setup]||{p:[],a:[]});by[t.setup].p.push(t.rPlanned);by[t.setup].a.push(t.r);});
+  const rows=Object.entries(by).map(([s,o])=>({s,p:mean(o.p),a:mean(o.a)}));
+  const max=Math.max(...rows.map(r=>Math.max(r.p,r.a)),1);
+  const g=getComputedStyle(document.body).getPropertyValue('--accent').trim();
+  let html='<div style="display:flex;flex-direction:column;gap:12px">';
+  rows.forEach(r=>{const pw=r.p/max*100,aw=Math.max(0,r.a)/max*100;const leak=r.a<r.p*0.55;
+    html+=`<div><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px"><span>${r.s}</span><span class="num" style="color:${leak?'var(--red)':'var(--ink2)'}">gepland ${r.p.toFixed(1)}R → behaald ${r.a.toFixed(2)}R${leak?' ⚠':''}</span></div>
+      <div style="position:relative;height:9px;background:var(--track);border-radius:5px">
+        <div style="position:absolute;left:0;top:0;height:100%;width:${pw}%;background:var(--accent-line);border-radius:5px"></div>
+        <div style="position:absolute;left:0;top:0;height:100%;width:${aw}%;background:${r.a>=0?'var(--green)':'var(--red)'};border-radius:5px"></div>
+      </div></div>`;});
+  html+='</div>';return html;
+}
+
+// ---------- render ----------
+function sqnLabel(s){return s>=3?['uitstekend','var(--green)']:s>=2.5?['goed','var(--green)']:s>=1.6?['gemiddeld','var(--amber)']:['zwak','var(--red)'];}
+function render(){
+  const s=computeStats(T);const A=document.getElementById('app');
+  const nWarn=s.N<30;
+  const [sqnL,sqnC]=sqnLabel(s.sqn);
+  const capture=Math.round(mean(T.filter(t=>t.mfeR>0.05).map(t=>Math.max(0,t.r)/t.mfeR))*100);
+  const ddPct=s.net?Math.round(Math.abs(s.maxDD)/(Math.max(...s.eq)||1)*100):0;
+  const paretoWin=s.net>0?Math.round(s.biggestWin/s.net*100):0;
+  const top5pct=s.net>0?Math.round(s.top5/s.net*100):0;
+  const kpi=(l,v,c)=>`<div class="kpi"><div class="kl">${l}</div><div class="kv ${c||''}">${v}</div></div>`;
+  const tile=(ic,v,l,c)=>`<div class="tile"><div class="ic">${ic}</div><div><div class="tv ${c||''}">${v}</div><div class="tl">${l}</div></div></div>`;
+  A.innerHTML=`
+  <div class="filterbar">
+    <span class="fpill">Alle accounts ▾</span><span class="fpill">Alle pairs ▾</span><span class="fpill">Alle setups ▾</span><span class="fpill">Alle sessies ▾</span><span class="fpill">Alle soorten ▾</span>
+    <span class="samplebadge ${nWarn?'warn':'ok'}">${nWarn?'⚠ n<30 · cijfers zijn ruis':'✓ '+s.N+' trades · betrouwbaar'} <span class="badge-new" style="margin-left:4px">nieuw</span></span>
+  </div>
+
+  <div class="sect">Overzicht — hoe sta ik ervoor</div>
+  <div class="grid g4">
+    ${tile('📊',s.N,'Trades in beeld','')}
+    <div class="tile hl" style="border-color:var(--accent-line)"><div class="ic" style="color:${sqnC}">🎯</div><div><div class="tv" style="color:${sqnC}">${s.sqn.toFixed(2)} <span class="badge-new">nieuw</span></div><div class="tl">SQN · ${sqnL} <span title="System Quality Number">ⓘ</span></div></div></div>
+    ${tile('🛡️',money(s.maxDD),'Max drawdown · '+ddPct+'%','r')}
+    ${tile('⚡',capture+'%','MFE benut (capture)','')}
+  </div>
+  <div class="grid g4" style="margin-top:14px">
+    ${kpi('Netto P&L',eur(s.net),cls(s.net))}
+    ${kpi('Win-rate',Math.round(s.wr)+'%','')}
+    ${kpi('Profit factor',s.pf>=99?'∞':s.pf.toFixed(2),'')}
+    ${kpi('Expectancy',eur(s.expc)+' · '+s.avgR.toFixed(2)+'R',cls(s.expc))}
+  </div>
+
+  <div class="sect">Traject & risico</div>
+  <div class="grid g21">
+    <div class="panel ghost"><div class="phead"><h3>Equity-curve</h3></div><div class="svgwrap">${areaChart(s.eq,{col:getComputedStyle(document.body).getPropertyValue('--accent').trim()})}</div></div>
+    <div class="panel ghost"><div class="phead"><h3>Reeks & vorm</h3></div><p class="mut">huidige reeks, laatste trades, beste/langste reeks — <b>samengevoegd met de losse "beste winst-reeks"-tegel</b>.</p></div>
+  </div>
+  <div class="grid g11" style="margin-top:14px">
+    <div class="panel hl"><div class="phead"><h3>Drawdown + herstel</h3><span class="badge-new">nieuw</span><span class="sp"></span><span class="chip">recovery ${s.recovery>=99?'∞':s.recovery.toFixed(1)} · onder piek ${s.maxDDlen} trades</span></div>
+      <div class="svgwrap">${ddChart(s.eq)}</div>
+      <div class="explain"><b>Recovery factor ${s.recovery>=99?'∞':s.recovery.toFixed(1)}</b> (netto ÷ max DD; >2 gezond, >5 sterk) · je zat max <b>${s.maxDDlen} trades</b> onder je vorige piek. Nu tonen we niet alleen hóé diep, maar ook hóé lang.</div></div>
+    <div class="panel ghost"><div class="phead"><h3>Cumulatieve R</h3></div><div class="svgwrap">${areaChart(T.reduce((a,t)=>{a.push((a[a.length-1]||0)+t.r);return a;},[0]),{col:getComputedStyle(document.body).getPropertyValue('--accent').trim()})}</div></div>
+  </div>
+
+  <div class="sect">Kwaliteit van je trades</div>
+  <div class="grid g11">
+    <div class="panel ghost"><div class="phead"><h3>R-verdeling</h3></div><div class="svgwrap">${histR(s.rs)}</div></div>
+    <div class="panel hl"><div class="phead"><h3>MFE / MAE-efficiency</h3><span class="badge-new">nieuw</span><span class="sp"></span><span class="chip">capture ${capture}%</span></div>
+      <div class="svgwrap">${scatterMFE(T)}</div>
+      <div class="explain">Elke stip = een trade. <b>Diagonaal = perfecte exit</b> (je pakte de volledige beweging). Ver onder de lijn = winst laten liggen. Gezonde capture: 60–75%. Jij: <b>${capture}%</b>. Vervangt de losse "% van MFE benut"-tegel.</div></div>
+  </div>
+  <div class="grid g11" style="margin-top:14px">
+    <div class="panel hl"><div class="phead"><h3>Gepland vs. behaald R:R</h3><span class="badge-new">nieuw</span></div>
+      ${plannedVsAchieved(T)}
+      <div class="legend"><span><i style="background:var(--accent-line)"></i>gepland R:R</span><span><i style="background:var(--green)"></i>behaald (gem. R)</span><span>⚠ = winners te vroeg dicht</span></div></div>
+    <div class="panel hl"><div class="phead"><h3>Consistentie / Pareto</h3><span class="badge-new">nieuw</span></div>
+      <div class="pareto-row"><span>Grootste winst als % van netto</span><b class="${paretoWin>40?'r':'g'}">${paretoWin}%</b></div>
+      <div class="pareto-row"><span>Top-5 dagen als % van netto</span><b class="${top5pct>80?'r':''}">${top5pct}%</b></div>
+      <div class="pareto-row"><span>Grootste enkele verlies</span><b class="r">${money(s.biggestLoss)}</b></div>
+      <div class="explain">${paretoWin>40||top5pct>80?'⚠ Je winst leunt zwaar op een paar trades/dagen — kwetsbaar.':'Winst is gespreid over veel trades — gezonde consistentie.'} Flags "één lucky trade droeg alles" en blow-up-risico.</div></div>
+  </div>
+
+  <div class="sect">Per dimensie — waar zit je edge</div>
+  <div class="grid g11">
+    <div class="panel ghost"><div class="phead"><h3>Setup-grade A/B/C</h3></div><p class="mut">win/verlies per klasse + grade-breakdown (ongewijzigd).</p></div>
+    <div class="panel ghost"><div class="phead"><h3>Winst per pair</h3></div><p class="mut">heatmap met coin-logo's (ongewijzigd).</p></div>
+  </div>
+  <div class="grid g3" style="margin-top:14px">
+    <div class="panel ghost"><div class="phead"><h3>Netto per sessie</h3></div><p class="mut">ongewijzigd.</p></div>
+    <div class="panel ghost"><div class="phead"><h3>Long vs short</h3></div><p class="mut">ongewijzigd.</p></div>
+    <div class="panel ghost"><div class="phead"><h3>Prestatie per uur</h3></div><p class="mut">uur-heatmap (ongewijzigd).</p></div>
+  </div>
+
+  <div class="sect">Gedrag & edge-check</div>
+  <div class="grid g11">
+    <div class="panel ghost"><div class="phead"><h3>Fout-analyse + discipline%</h3></div><p class="mut">netto-impact per mistake-tag · <b>discipline-% erbij (nice-to-have)</b>.</p></div>
+    <div class="panel ghost"><div class="phead"><h3>Real vs Paper vs Backtest</h3></div><p class="mut">edge-erosion — <b>uniek, geen concurrent heeft dit</b>. Blijft onderaan.</p></div>
+  </div>
+  `;
+}
+document.getElementById('themeBtn').addEventListener('click',()=>{const d=document.documentElement.getAttribute('data-theme')==='dark';document.documentElement.setAttribute('data-theme',d?'light':'dark');document.getElementById('themeBtn').textContent=d?'☾ Donker':'☀ Licht';render();});
+document.getElementById('dataBtn').addEventListener('click',()=>{N=N===420?18:420;T=genTrades(N);document.getElementById('dataBtn').textContent='Dataset: '+N+' trades';render();});
+document.documentElement.setAttribute('data-theme','dark');document.getElementById('themeBtn').textContent='☀ Licht';
+render();
+</script>
+</body>
+</html>
