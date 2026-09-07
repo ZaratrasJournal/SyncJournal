@@ -31,10 +31,11 @@ function seed(n) { const rows = []; for (let i = 0; i < n; i++) { const win = i 
   ok('Gepland vs. behaald R:R paneel', H.some(h => /Gepland vs\. behaald/.test(h)));
   ok('Consistentie / Pareto paneel', H.some(h => /Consistentie \/ Pareto/.test(h)));
 
-  console.log('─── Volgorde: risk vóór dimensies ───');
+  console.log('─── Volgorde: risk vóór dimensies · Kwaliteit onderaan ───');
   ok('Drawdown vóór Setup-grade', await p.evaluate(() => { const t = [...document.querySelectorAll('#main .panel h3, #main .sect-h')].map(x => x.textContent); const dd = t.findIndex(x => /Drawdown \+ herstel/.test(x)); const sg = t.findIndex(x => /Setup-grade/.test(x)); return dd >= 0 && sg >= 0 && dd < sg; }));
-  ok('MFE/MAE vóór Winst per pair', await p.evaluate(() => { const t = [...document.querySelectorAll('#main .panel h3')].map(x => x.textContent); return t.findIndex(x => /MFE \/ MAE/.test(x)) < t.findIndex(x => /Winst per pair/.test(x)); }));
-  ok('Real vs Paper vs Backtest onderaan', await p.evaluate(() => { const t = [...document.querySelectorAll('#main .panel h3')].map(x => x.textContent); const e = t.findIndex(x => /Real vs Paper/.test(x)); return e === t.length - 1; }));
+  ok('Kwaliteit onderaan: MFE/MAE ná Winst per pair', await p.evaluate(() => { const t = [...document.querySelectorAll('#main .panel h3')].map(x => x.textContent); return t.findIndex(x => /MFE \/ MAE/.test(x)) > t.findIndex(x => /Winst per pair/.test(x)); }));
+  ok('Real vs Paper vs Backtest vóór Kwaliteit', await p.evaluate(() => { const t = [...document.querySelectorAll('#main .panel h3')].map(x => x.textContent); return t.findIndex(x => /Real vs Paper/.test(x)) < t.findIndex(x => /MFE \/ MAE/.test(x)); }));
+  ok('Consistentie / Pareto is laatste paneel', await p.evaluate(() => { const t = [...document.querySelectorAll('#main .panel h3')].map(x => x.textContent); return /Consistentie \/ Pareto/.test(t[t.length - 1]); }));
 
   console.log('─── SQN-berekening klopt ───');
   // seed: 30 winners @ +1.5R, 30 losers @ -1R → meanR=0.25, stdR≈1.269, sqn≈0.25/1.269*sqrt(60)
