@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SyncJournal — Tendencies verbeterplan (prototype)</title>
+<style>
+:root{
+  --bg:#F4F6FA;--surface:#FFFFFF;--raise:#FBFCFE;--sink:#F7F9FC;
+  --ink:#191E2A;--ink2:#525A6B;--muted:#8A92A3;--faint:#AAB1C0;
+  --line:#E8EBF2;--line2:#F0F2F7;
+  --accent:#3B5BD9;--accent-soft:#EDF0FD;--accent-line:#CDD6F7;
+  --green:#12946A;--green-soft:#E3F4EC;--red:#D64259;--red-soft:#FBE8EC;--amber:#C0821C;--amber-soft:#F8EFDD;--violet:#7C5CE0;
+  --track:#EEF1F6;--grid:#EDEFF5;
+  --fb:'Inter',-apple-system,'Segoe UI',sans-serif;--fd:'Plus Jakarta Sans',var(--fb);--fn:'IBM Plex Mono','SF Mono',Consolas,monospace;
+  --sh:0 1px 2px rgba(20,30,60,.05);
+}
+:root[data-theme="dark"]{
+  --bg:#0E1218;--surface:#141A22;--raise:#171E28;--sink:#10151c;
+  --ink:#F4F7FB;--ink2:#C7CFDB;--muted:#939CAC;--faint:#6C7583;
+  --line:#232B36;--line2:#1C232D;
+  --accent:#6E86F0;--accent-soft:#1B2436;--accent-line:#2E3B57;
+  --green:#37C48B;--green-soft:#12261F;--red:#F0637A;--red-soft:#2A1820;--amber:#E0A63C;--amber-soft:#28210F;--violet:#A78BFA;
+  --track:#1E2732;--grid:#1B222C;--sh:0 1px 2px rgba(0,0,0,.25);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--fb);font-size:13.5px;line-height:1.5;-webkit-font-smoothing:antialiased}
+.num{font-family:var(--fn);font-variant-numeric:tabular-nums}.g{color:var(--green)}.r{color:var(--red)}
+h1,h2,h3{font-family:var(--fd);font-weight:700;letter-spacing:-.01em}
+button,select{font-family:inherit;cursor:pointer}
+.wrap{max-width:1400px;margin:0 auto;padding:18px 22px 80px}
+.top{display:flex;align-items:center;gap:14px;margin-bottom:6px}.top h1{font-size:19px}.top .sp{flex:1}
+.badge-new{font-size:9px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#fff;background:var(--accent);border-radius:5px;padding:2px 6px;margin-left:7px}
+.mini{padding:6px 11px;border:1px solid var(--line);border-radius:8px;background:var(--surface);font-size:12px;font-weight:600;color:var(--ink2)}
+.sub{color:var(--ink2);font-size:12.5px;margin-bottom:16px;max-width:96ch}
+.sect-h{font-family:var(--fn);font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:22px 2px 11px;display:flex;align-items:center;gap:9px}
+.sect-h::after{content:"";flex:1;height:1px;background:var(--line)}
+.grid{display:grid;gap:14px}.g2{grid-template-columns:1fr 1fr}
+@media(max-width:900px){.g2{grid-template-columns:1fr}}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:var(--sh);padding:15px 17px}
+.phead{display:flex;align-items:center;gap:9px;margin-bottom:12px}.phead h3{font-size:13.5px}.phead .sp{flex:1}
+.chip{font-size:10.5px;font-weight:600;color:var(--ink2);background:var(--sink);border:1px solid var(--line2);border-radius:999px;padding:2px 9px}
+
+/* verdict cards */
+.vcard{border-radius:14px;padding:16px 18px;border:1px solid}
+.vcard.edge{background:var(--green-soft);border-color:color-mix(in srgb,var(--green) 30%,transparent)}
+.vcard.leak{background:var(--red-soft);border-color:color-mix(in srgb,var(--red) 30%,transparent)}
+.vcard .kick{font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;display:flex;align-items:center;gap:6px}
+.vcard.edge .kick{color:var(--green)}.vcard.leak .kick{color:var(--red)}
+.vcard .combo{font-family:var(--fd);font-weight:800;font-size:19px;margin:8px 0 3px;line-height:1.2}
+.vcard .stats{display:flex;gap:16px;flex-wrap:wrap;font-size:12.5px;color:var(--ink2);margin-top:8px}
+.vcard .stats b{font-family:var(--fn)}
+.vcard .expl{font-size:11.5px;color:var(--ink2);margin-top:9px;opacity:.9}
+
+/* cross heatmap */
+.ctrls{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.ctrls select{border:1px solid var(--line);border-radius:8px;background:var(--sink);color:var(--ink);padding:6px 9px;font-size:12.5px;font-weight:600}
+.ctrls .x{color:var(--muted);font-weight:700}
+.hmwrap{overflow-x:auto}
+.hm{border-collapse:separate;border-spacing:4px}
+.hm th{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;padding:3px 6px;white-space:nowrap;text-align:center}
+.hm th.rowh{text-align:right;padding-right:10px;color:var(--ink);text-transform:none;font-size:12px;font-weight:700}
+.hm td{width:74px;height:46px;border-radius:8px;text-align:center;cursor:pointer;position:relative;border:1px solid var(--line2);transition:transform .08s,outline .08s;outline:0 solid transparent}
+.hm td:hover{transform:scale(1.06);outline:2px solid var(--ink);z-index:2}
+.hm td .v{font-family:var(--fn);font-weight:800;font-size:12.5px;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.45)}
+.hm td .n{font-family:var(--fn);font-size:9px;color:rgba(255,255,255,.85);text-shadow:0 1px 2px rgba(0,0,0,.4)}
+.hm td.faded{opacity:.35;cursor:default}.hm td.faded:hover{transform:none;outline:0}
+.hm td.empty{background:var(--sink);border-color:transparent;cursor:default}.hm td.empty:hover{transform:none;outline:0}
+
+/* weekday x hour */
+.wh{display:grid;grid-template-columns:34px repeat(24,1fr);gap:3px;font-size:9px}
+.wh .hl{color:var(--muted);text-align:center;font-family:var(--fn)}
+.wh .dl{color:var(--ink2);font-weight:700;display:flex;align-items:center;justify-content:flex-end;padding-right:6px;font-size:11px}
+.wh .cell{aspect-ratio:1;border-radius:3px;background:var(--track);cursor:pointer;transition:transform .08s}
+.wh .cell:hover{transform:scale(1.4);outline:1.5px solid var(--accent);z-index:2}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:11px;color:var(--muted);margin-top:12px;align-items:center}
+.legend .sw{width:22px;height:12px;border-radius:3px;display:inline-block;box-shadow:inset 0 0 0 1px rgba(0,0,0,.08)}
+.ghost{opacity:.6}.ghost .phead h3::after{content:" · behouden";color:var(--faint);font-weight:600;font-size:11px}
+.note{font-size:11.5px;color:var(--muted);margin-top:8px}
+.tip{position:fixed;pointer-events:none;background:var(--ink);color:var(--surface);border-radius:9px;padding:8px 11px;font-size:11.5px;box-shadow:0 8px 24px rgba(0,0,0,.3);opacity:0;transition:opacity .1s;z-index:50;min-width:150px}
+:root[data-theme="dark"] .tip{background:#000;color:#F4F7FB;border:1px solid var(--line)}
+.tip.on{opacity:1}.tip .td{font-weight:800;margin-bottom:4px}
+.tip .row{display:flex;justify-content:space-between;gap:16px}.tip .row span:first-child{color:var(--faint)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <h1>Tendencies — verbeterplan</h1><span class="badge-new">prototype</span>
+    <span class="sp"></span>
+    <button class="mini" id="themeBtn">☀ Licht</button>
+  </div>
+  <p class="sub">Voorstel: 3 lagen van <b>conclusie → verkenning</b>. Nieuw (blauw <span class="badge-new" style="margin:0">nieuw</span>): auto <b>Edge/Lek-kaart</b> (met minimum-sample), een <b>Dim×Dim kruis-heatmap</b> (kies twee dimensies, klik = filter), en een <b>Weekdag×uur heatmap</b>. Echte berekeningen op synthetische trades.</p>
+
+  <div class="sect-h">Verdict — jouw sweet spot & je lek <span class="badge-new" style="margin:0">nieuw</span></div>
+  <div class="grid g2" id="verdict"></div>
+
+  <div class="sect-h">Kruis-analyse — waar zit het verband <span class="badge-new" style="margin:0">nieuw</span></div>
+  <div class="panel">
+    <div class="ctrls">
+      <span style="font-size:12px;color:var(--muted);font-weight:600">Kruis</span>
+      <select id="rowDim"></select><span class="x">×</span><select id="colDim"></select>
+      <span class="sp" style="flex:1"></span>
+      <span class="chip" id="minNchip">min. 8 trades/cel</span>
+    </div>
+    <div class="hmwrap"><table class="hm" id="hm"></table></div>
+    <div class="legend">
+      <span>verlies</span><span class="sw" id="lg0"></span><span class="sw" id="lg1"></span><span class="sw" id="lg2"></span><span class="sw" id="lg3"></span><span class="sw" id="lg4"></span><span>winst</span>
+      <span style="margin-left:10px;color:var(--faint)">grijs = &lt;8 trades (te weinig data)</span>
+      <span style="margin-left:auto;font-style:italic">cel = gem. R · klik = filter</span>
+    </div>
+    <div class="note">De bestaande <b>Setup × sessie treemap</b> blijft als aparte "money-map" eronder staan (niet in deze demo).</div>
+  </div>
+
+  <div class="sect-h">Tijd — wanneer presteer je <span class="badge-new" style="margin:0">nieuw</span></div>
+  <div class="panel">
+    <div class="phead"><h3>Weekdag × uur</h3><span class="sp"></span><span class="chip">netto per dag-uur · 0–23u</span></div>
+    <div class="wh" id="wh"></div>
+    <div class="note">Vervangt de losse "P&amp;L per dag" bars + losse uur-heatmap door één 2D-view. Radar (win-rate per dimensie) + prestatie-breakdown blijven onderaan als detail.</div>
+  </div>
+</div>
+<div class="tip" id="tip"></div>
+
+<script>
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+const SETUPS=['Trend-pullback','London SFP','BOS-retest','Range-fade','Reclaim','VWAP-bounce'];
+const SESSIONS=['Asia','London','US AM','US PM','Weekend'];
+const EMOS=['Kalm','Zelfverzekerd','Gefocust','FOMO','Gehaast','Twijfel'];
+const GRADES=['A','B','C'];
+const DOW=['Ma','Di','Wo','Do','Vr','Za','Zo'];
+// edge per (setup, session) — bewust een paar sterke + zwakke combinaties
+const EDGE={'Trend-pullback':0.28,'London SFP':0.16,'BOS-retest':0.06,'Range-fade':-0.06,'Reclaim':-0.12,'VWAP-bounce':-0.2};
+const SESSADJ={'London':0.08,'US AM':0.05,'US PM':-0.02,'Asia':-0.05,'Weekend':-0.12};
+const EMOADJ={'Kalm':0.1,'Gefocust':0.08,'Zelfverzekerd':0.03,'Twijfel':-0.05,'Gehaast':-0.12,'FOMO':-0.2};
+function genTrades(n){
+  const rnd=mulberry32(20260907);const T=[];const start=new Date('2026-02-01').getTime();
+  for(let i=0;i<n;i++){
+    const setup=SETUPS[Math.floor(rnd()*SETUPS.length)];
+    const dow=Math.floor(rnd()*7); const weekend=dow>=5;
+    const session=weekend?'Weekend':['Asia','London','US AM','US PM'][Math.floor(rnd()*4)];
+    const hour=session==='Asia'?2+Math.floor(rnd()*6):session==='London'?8+Math.floor(rnd()*5):session==='US AM'?13+Math.floor(rnd()*5):session==='US PM'?18+Math.floor(rnd()*5):Math.floor(rnd()*24);
+    const emo=EMOS[Math.floor(rnd()*EMOS.length)];
+    const E=(EDGE[setup]||0)+(SESSADJ[session]||0)+(EMOADJ[emo]||0);
+    const wr=Math.max(0.28,Math.min(0.7,0.48+E*0.55));
+    const win=rnd()<wr; const rPlanned=+(1.8+rnd()*1.5).toFixed(1);
+    let r; if(win){r=+(rPlanned*(0.5+rnd()*0.6)).toFixed(2);} else {r=rnd()<0.15?-+(0.2+rnd()*0.5).toFixed(2):-+(0.9+rnd()*0.25).toFixed(2);}
+    const risk=170+rnd()*80; const pnl=Math.round(r*risk);
+    const grade=win?(rnd()<0.5?'A':'B'):(rnd()<0.5?'C':'B');
+    const dir=rnd()<0.6?'long':'short';
+    const d=new Date(start+i*4*3600*1000); const date=new Date(d.getFullYear(),d.getMonth(),d.getDate()).toISOString().slice(0,10);
+    T.push({setup,session,hour,dow,emo,grade,dir,r,pnl,win,date});
+  }
+  return T;
+}
+const T=genTrades(520);
+const MINN=8;
+function eur(v){return (v<0?'−$':'+$')+Math.abs(Math.round(v)).toLocaleString('en-US');}
+function fmtR(r){return (r>=0?'+':'')+r.toFixed(2)+'R';}
+// dimensie-accessor
+const HB=h=>{const b=Math.floor(h/4)*4;return String(b).padStart(2,'0')+'-'+String(b+4).padStart(2,'0')+'u';};
+const DIMS={setup:{label:'Setup',get:t=>t.setup,vals:SETUPS},session:{label:'Sessie',get:t=>t.session,vals:SESSIONS},
+  hour:{label:'Uur-blok',get:t=>HB(t.hour),vals:['00-04u','04-08u','08-12u','12-16u','16-20u','20-24u']},
+  dow:{label:'Dag',get:t=>DOW[t.dow],vals:DOW},emo:{label:'Emotie',get:t=>t.emo,vals:EMOS},
+  grade:{label:'Grade',get:t=>t.grade,vals:GRADES},dir:{label:'Richting',get:t=>t.dir==='long'?'Long':'Short',vals:['Long','Short']}};
+// tint op gem. R
+let maxAbsR=0.6;
+function tint(avgR){if(avgR==null)return 'var(--track)';const inten=Math.round(Math.min(1,Math.abs(avgR)/maxAbsR)*46+40);return `color-mix(in srgb,var(--${avgR>=0?'green':'red'}) ${inten}%,transparent)`;}
+
+// ---- Verdict: beste & slechtste 2-dim combinatie op gem. R (min-N) ----
+function bestCombos(){
+  const pairs=[['setup','session'],['setup','hour'],['session','dow'],['setup','emo']];
+  const combos=[];
+  pairs.forEach(([a,bd])=>{const m={};T.forEach(t=>{const k=DIMS[a].get(t)+' · '+DIMS[bd].get(t);(m[k]=m[k]||{n:0,w:0,pnl:0,r:0,a,bd,va:DIMS[a].get(t),vb:DIMS[bd].get(t)});const c=m[k];c.n++;c.pnl+=t.pnl;c.r+=t.r;if(t.win)c.w++;});
+    Object.values(m).forEach(c=>{if(c.n>=MINN)combos.push({...c,avgR:c.r/c.n,wr:Math.round(c.w/c.n*100)});});});
+  combos.sort((x,y)=>y.avgR-x.avgR);
+  return {edge:combos[0],leak:combos[combos.length-1]};
+}
+function renderVerdict(){
+  const {edge,leak}=bestCombos();
+  const card=(c,type)=>`<div class="vcard ${type}"><div class="kick">${type==='edge'?'🎯 Jouw sterkste combinatie':'⚠ Structureel lek'}</div>
+    <div class="combo">${c?`${c.va} · ${c.vb}`:'—'}</div>
+    ${c?`<div class="stats"><span>gem. <b class="${c.avgR>=0?'g':'r'}">${fmtR(c.avgR)}</b></span><span>win <b>${c.wr}%</b></span><span>netto <b class="${c.pnl>=0?'g':'r'}">${eur(c.pnl)}</b></span><span>n=<b>${c.n}</b></span></div>
+    <div class="expl">${type==='edge'?'Hier ligt je edge — zoek deze condities actief op.':'Deze combinatie kost structureel geld — vermijden of herzien.'}</div>`:'<div class="expl">Te weinig data.</div>'}</div>`;
+  document.getElementById('verdict').innerHTML=card(edge,'edge')+card(leak,'leak');
+}
+
+// ---- Cross heatmap ----
+function renderHeat(){
+  const rd=DIMS[document.getElementById('rowDim').value],cd=DIMS[document.getElementById('colDim').value];
+  const cells={};let mx=0.3;
+  T.forEach(t=>{const rv=rd.get(t),cv=cd.get(t),k=rv+'||'+cv;(cells[k]=cells[k]||{n:0,w:0,pnl:0,r:0});const c=cells[k];c.n++;c.pnl+=t.pnl;c.r+=t.r;if(t.win)c.w++;});
+  Object.values(cells).forEach(c=>{if(c.n>=MINN)mx=Math.max(mx,Math.abs(c.r/c.n));});maxAbsR=mx;
+  let html='<tr><th></th>'+cd.vals.map(v=>`<th>${v}</th>`).join('')+'</tr>';
+  rd.vals.forEach(rv=>{html+=`<tr><th class="rowh">${rv}</th>`+cd.vals.map(cv=>{const c=cells[rv+'||'+cv];
+    if(!c||!c.n)return '<td class="empty"></td>';
+    const avgR=c.r/c.n,faded=c.n<MINN,wr=Math.round(c.w/c.n*100);
+    return `<td class="${faded?'faded':''}" style="background:${faded?'var(--track)':tint(avgR)}" data-t="${rv} · ${cv}" data-r="${avgR.toFixed(2)}" data-wr="${wr}" data-pnl="${c.pnl}" data-n="${c.n}">${faded?`<div class="n" style="color:var(--muted)">n=${c.n}</div>`:`<div class="v">${fmtR(avgR)}</div><div class="n">n=${c.n}</div>`}</td>`;}).join('')+'</tr>';});
+  document.getElementById('hm').innerHTML=html;
+  // legend swatches
+  [-.9,-.4,0.0001,.4,.9].forEach((f,i)=>document.getElementById('lg'+i).style.background=tint(f*mx));
+  bindTips(document.querySelectorAll('#hm td[data-t]'), el=>({d:el.dataset.t,rows:[['Trades',el.dataset.n],['Win-rate',el.dataset.wr+'%'],['Gem. R',el.dataset.r+'R'],['Netto',eur(+el.dataset.pnl)]]}));
+}
+// ---- Weekday x hour ----
+function renderWH(){
+  const m={};let mx=1;
+  T.forEach(t=>{const k=t.dow+'|'+t.hour;(m[k]=m[k]||{n:0,pnl:0,w:0});m[k].pnl+=t.pnl;m[k].n++;if(t.win)m[k].w++;});
+  Object.values(m).forEach(c=>mx=Math.max(mx,Math.abs(c.pnl)));
+  const tintP=v=>{if(!v)return 'var(--track)';const inten=Math.round(Math.min(1,Math.abs(v)/mx)*55+25);return `color-mix(in srgb,var(--${v>=0?'green':'red'}) ${inten}%,transparent)`;};
+  let html='<div></div>';for(let h=0;h<24;h++)html+=`<div class="hl">${h%3===0?h:''}</div>`;
+  for(let d=0;d<7;d++){html+=`<div class="dl">${DOW[d]}</div>`;for(let h=0;h<24;h++){const c=m[d+'|'+h];const v=c?c.pnl:0;
+    html+=`<div class="cell" style="background:${c?tintP(v):'var(--track)'}" data-t="${DOW[d]} · ${String(h).padStart(2,'0')}u" data-n="${c?c.n:0}" data-pnl="${v}" data-wr="${c?Math.round(c.w/c.n*100):0}"></div>`;}}
+  document.getElementById('wh').innerHTML=html;
+  bindTips(document.querySelectorAll('#wh .cell'), el=>({d:el.dataset.t,rows:+el.dataset.n?[['Trades',el.dataset.n],['Win-rate',el.dataset.wr+'%'],['Netto',eur(+el.dataset.pnl)]]:[['Geen trades','']]}));
+}
+// tooltips
+const tip=document.getElementById('tip');
+function bindTips(els,fn){els.forEach(el=>{el.addEventListener('mousemove',e=>{const d=fn(el);tip.innerHTML=`<div class="td">${d.d}</div>`+d.rows.map(([a,b])=>`<div class="row"><span>${a}</span><span class="num">${b}</span></div>`).join('');tip.classList.add('on');let x=e.clientX+14;if(x+180>innerWidth)x=e.clientX-190;tip.style.left=x+'px';tip.style.top=(e.clientY+12)+'px';});el.addEventListener('mouseleave',()=>tip.classList.remove('on'));});}
+
+// dropdowns
+function fillSel(id,def){const s=document.getElementById(id);s.innerHTML=Object.entries(DIMS).map(([k,d])=>`<option value="${k}" ${k===def?'selected':''}>${d.label}</option>`).join('');s.addEventListener('change',renderHeat);}
+fillSel('rowDim','setup');fillSel('colDim','session');
+document.getElementById('themeBtn').addEventListener('click',()=>{const d=document.documentElement.getAttribute('data-theme')==='dark';document.documentElement.setAttribute('data-theme',d?'light':'dark');document.getElementById('themeBtn').textContent=d?'☾ Donker':'☀ Licht';renderVerdict();renderHeat();renderWH();});
+document.documentElement.setAttribute('data-theme','dark');document.getElementById('themeBtn').textContent='☀ Licht';
+renderVerdict();renderHeat();renderWH();
+</script>
+</body>
+</html>
