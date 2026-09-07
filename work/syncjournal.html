@@ -1470,7 +1470,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.28';
+const APP_VERSION='v0.9.29';
 const SCHEMA_VERSION=1;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -1821,8 +1821,9 @@ let _rcQueue=[],_rcRoots=[],_mountToken=0,_gid=0;
 function themeColors(){const s=getComputedStyle(document.body),g=n=>s.getPropertyValue(n).trim();
   return {accent:g('--accent'),green:g('--green'),red:g('--red'),amber:g('--amber'),ink:g('--ink'),ink2:g('--ink2'),muted:g('--muted'),grid:g('--grid'),surface:g('--surface'),line:g('--line'),line2:g('--line2'),track:g('--track')};}
 function isDark(){return document.body.classList.contains('dark');}
-// heatmap-cel/tegel leesbaarheid: donkere thema-tekst op lichte cellen (alleen in licht thema; in dark blijft alles donker genoeg voor wit).
-function liteText(inten){return (!isDark()&&inten<66)?' lite':'';}
+// heatmap-cel/tegel leesbaarheid: uniform per thema — donkere thema-tekst in licht thema (cellen zijn licht→medium),
+// wit in dark thema (cellen op donkere achtergrond). Geen cel-tot-cel-verschil, dus geen "betekenis" gesuggereerd.
+function liteText(){return isDark()?'':' lite';}
 function cvar(c){if(!c||typeof c!=='string')return c;const m=c.match(/^var\((--[a-z0-9-]+)\)$/i);if(m){const v=getComputedStyle(document.body).getPropertyValue(m[1]).trim();return v||c;}return c;}
 function rcChart(factory,cls,height){const id='rc'+_rcQueue.length;_rcQueue.push({id,factory});return `<div id="${id}" class="apx ${cls||''}" style="height:${height||150}px"></div>`;}
 function destroyCharts(){_mountToken++;const roots=_rcRoots;_rcRoots=[];roots.forEach(r=>{try{r.unmount();}catch(e){}});}
@@ -2035,7 +2036,7 @@ function setupSessionMatrix(){
     trects.forEach(tr=>{
       const {su,c}=tr.item;const wr=Math.round(c.w/c.n*100),faded=c.n<3;
       const tw=tr.w-2,th=tr.h-2;const cls2=tw<48||th<22?' small':'',cls3=tw<30||th<15?' tiny':'';
-      const inten=!c.pnl?0:(faded?16:Math.round(Math.min(1,Math.abs(c.pnl)/maxAbs)*40+48)),lite=liteText(inten);
+      const lite=liteText();
       let badge='';
       if(wr>=65&&c.pnl>150)badge='🎯';else if(wr<=30&&c.pnl<-100)badge='⊘';else if(wr<=45&&c.pnl<-50)badge='⏱';
       tiles+=`<div class="tm-tile${cls2}${cls3}${lite}" style="left:${(tr.x+1)/gw*100}%;top:${(tr.y+1)/gh*100}%;width:${tw/gw*100}%;height:${th/gh*100}%;background:${tint(c.pnl,faded)}" onclick="matrixCell('${jsarg(su)}','${jsarg(se)}')" data-su="${esc(su)}" data-se="${esc(se)}" data-n="${c.n}" data-w="${c.w}" data-pnl="${c.pnl}">${badge?`<span class="tb">${badge}</span>`:''}<span class="ts">${esc(su)}</span><span class="tv mask">${eurK(c.pnl)} · ${wr}%</span></div>`;
@@ -2074,7 +2075,7 @@ function pairProfitHeatmap(){
   const H=Math.round(Math.max(320,Math.min(600,240+pairs.length*24)));
   const tiles=squarify(pairs,{x:0,y:0,w:1000,h:H}).map(r=>{const {pair,c}=r.item,wr=c.n?Math.round(c.w/c.n*100):0;
     const cls2=(r.w<80||r.h<46)?' small':'',cls3=(r.w<46||r.h<26)?' tiny':'';
-    const inten=!c.pnl?0:Math.round(Math.min(1,Math.abs(c.pnl)/maxAbs)*40+48),lite=liteText(inten);
+    const lite=liteText();
     return `<div class="tm-tile${cls2}${cls3}${lite}" style="left:${(r.x+1)/1000*100}%;top:${(r.y+1)/H*100}%;width:${(r.w-2)/1000*100}%;height:${(r.h-2)/H*100}%;background:${tint(c.pnl)}" onclick="pairCell('${jsarg(pair)}')" data-su="${esc(pair)}" data-n="${c.n}" data-w="${c.w}" data-pnl="${c.pnl}"><span class="tlogo">${coinLogo(pair)}</span><span class="ts">${esc(pair)}</span><span class="tv mask">${eurK(c.pnl)} · ${wr}%</span></div>`;
   }).join('');
   const sw=bg=>`<span class="mxsw" style="background:${bg}"></span>`;
@@ -2130,7 +2131,7 @@ function crossHeat(){
   const body=rvals.map(rv=>`<tr><th class="rowh" title="${esc(rv)}">${esc(rv)}</th>`+cvals.map(cv=>{const c=cells[rv+'||'+cv];
     if(!c||!c.n)return '<td class="thm-empty"></td>';
     const avgR=c.r/c.n,faded=c.n<TEND_MINN,wr=Math.round(c.w/c.n*100);
-    const inten=Math.round(Math.min(1,Math.abs(avgR)/mx)*46+40),lite=faded?'':liteText(inten);
+    const lite=faded?'':liteText();
     return `<td class="${faded?'faded':''}${lite}" style="background:${faded?'var(--track)':tint(avgR)}" ${faded?'':`onclick="crossCell('${rd}','${jsarg(rv)}','${cd}','${jsarg(cv)}')"`} data-t="${esc(rv)} · ${esc(cv)}" data-r="${avgR.toFixed(2)}" data-wr="${wr}" data-pnl="${c.pnl}" data-n="${c.n}" onmousemove="crossMove(event)" onmouseleave="yhHide()">${faded?`<div class="thm-n" style="color:var(--muted)">n=${c.n}</div>`:`<div class="thm-v">${(avgR>=0?'+':'')+avgR.toFixed(2)}R</div><div class="thm-n">${wr}% · n=${c.n}</div>`}</td>`;}).join('')+'</tr>').join('');
   const sw=f=>`<span class="mxsw" style="background:${tint(f*mx)}"></span>`;
   return `<div class="panel"><div class="phead"><h3>🔀 Kruis-analyse</h3>
