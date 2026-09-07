@@ -741,6 +741,37 @@ body.dark .yhtip{box-shadow:0 10px 30px -8px rgba(0,0,0,.55)}
 /* Analytics-sectiekop */
 .sect-h{font-family:var(--fn);font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:20px 2px 11px;display:flex;align-items:center;gap:9px}
 .sect-h::after{content:"";flex:1;height:1px;background:var(--line)}
+/* Tendencies: verdict-kaarten */
+.vcard{border-radius:14px;padding:16px 18px;border:1px solid;box-shadow:var(--sh)}
+.vcard.edge{background:var(--green-soft);border-color:color-mix(in srgb,var(--green) 30%,transparent)}
+.vcard.leak{background:var(--red-soft);border-color:color-mix(in srgb,var(--red) 30%,transparent)}
+.vcard .vkick{font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase}
+.vcard.edge .vkick{color:var(--green)}.vcard.leak .vkick{color:var(--red)}
+.vcard .vcombo{font-family:var(--fd);font-weight:800;font-size:19px;margin:8px 0 3px;line-height:1.2}
+.vcard .vstats{display:flex;gap:16px;flex-wrap:wrap;font-size:12.5px;color:var(--ink2);margin-top:8px}.vcard .vstats b{font-family:var(--fn)}
+.vcard .vexpl{font-size:11.5px;color:var(--ink2);margin-top:9px;opacity:.9}
+/* Tendencies: kruis-heatmap */
+.crossctrl{display:inline-flex;align-items:center;gap:7px}
+.crossctrl select{border:1px solid var(--line);border-radius:8px;background:var(--sink);color:var(--ink);padding:5px 8px;font-size:12px;font-weight:600;font-family:inherit}
+.crossctrl .x{color:var(--muted);font-weight:700}
+.thm-wrap{overflow-x:auto}
+.thm{border-collapse:separate;border-spacing:4px;margin:0 auto}
+.thm th{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;padding:3px 6px;white-space:nowrap;text-align:center}
+.thm th.rowh{text-align:right;padding-right:10px;color:var(--ink);text-transform:none;font-size:12px;font-weight:700}
+.thm td{min-width:72px;height:44px;border-radius:8px;text-align:center;cursor:pointer;border:1px solid var(--line2);transition:transform .08s,outline .08s;outline:0 solid transparent}
+.thm td:hover{transform:scale(1.06);outline:2px solid var(--ink);z-index:2}
+body.dark .thm td:hover{outline-color:#fff}
+.thm td .thm-v{font-family:var(--fn);font-weight:800;font-size:12.5px;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.45)}
+.thm td .thm-n{font-family:var(--fn);font-size:9px;color:rgba(255,255,255,.85);text-shadow:0 1px 2px rgba(0,0,0,.4)}
+.thm td.faded{cursor:default;border-style:dashed}.thm td.faded:hover{transform:none;outline:0}
+.thm td.faded .thm-n{color:var(--muted)}
+.thm td.thm-empty{background:var(--sink);border-color:transparent;cursor:default}.thm td.thm-empty:hover{transform:none;outline:0}
+/* Tendencies: weekdag × uur */
+.whm{display:grid;grid-template-columns:34px repeat(24,1fr);gap:3px}
+.whm .whm-hl{color:var(--muted);text-align:center;font-family:var(--fn);font-size:9px}
+.whm .whm-dl{color:var(--ink2);font-weight:700;display:flex;align-items:center;justify-content:flex-end;padding-right:6px;font-size:11px}
+.whm .whm-cell{aspect-ratio:1;border-radius:3px;background:var(--track);cursor:pointer;transition:transform .08s,outline .08s;outline:0 solid transparent}
+.whm .whm-cell:hover{transform:scale(1.35);outline:1.5px solid var(--accent);z-index:2}
 /* Setup × sessie treemap (TradingView-style) */
 .mx-intro{font-size:12px;color:var(--muted);margin:0 0 12px}
 .tm{position:relative;width:100%;max-width:1240px;margin:0 auto;aspect-ratio:1000/560;min-height:360px;max-height:840px;background:var(--sink);border:1px solid var(--line2);border-radius:12px;overflow:hidden}
@@ -1434,7 +1465,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.24';
+const APP_VERSION='v0.9.25';
 const SCHEMA_VERSION=1;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -1630,6 +1661,7 @@ const STATE=Object.assign({page:'dashboard',theme:'light',priv:false,tradeTab:'a
   sections:{hero:true,kpis:true,equity:true,monthly:true,edge:true,recent:true}}, DB.load('state',{}));
 STATE.selected=[];
 STATE.revShareMode=false; STATE.revShareSel=[]; STATE.shareHide=true;  // "deel met coach": selectie-modus, geselecteerde trade-ids, bedragen verbergen
+STATE.tendRow=STATE.tendRow||'setup'; STATE.tendCol=STATE.tendCol||'session';  // Tendencies kruis-heatmap dimensies
 function persistState(){ DB.save('state',{theme:STATE.theme,priv:STATE.priv,density:STATE.density,currency:STATE.currency,sections:STATE.sections}); }
 
 /* ═══ Globale filter (elke pagina) ═══ */
@@ -2040,31 +2072,96 @@ function pairProfitHeatmap(){
   return `<div class="tm" style="aspect-ratio:1000/${H}" onmousemove="tmMove(event)" onmouseleave="yhHide()">${tiles}</div>
     <div class="mx-legend"><span class="g1">verlies ${sw(tint(-maxAbs*0.3))}${sw(tint(-maxAbs))}</span><span class="g1">winst ${sw(tint(maxAbs*0.3))}${sw(tint(maxAbs))}</span><span style="color:var(--faint)">← klein · groot →</span><span style="margin-left:auto;font-style:italic">grootte = |netto P&L| · kleur = winst/verlies · klik = filter</span></div>`;
 }
+// ── Tendencies: dimensies, kruis-heatmap, edge/lek-kaart, weekdag×uur ──
+const TEND_MINN=8;
+const TDIM={
+  setup:{label:'Setup',get:t=>t.setup||'—'},
+  session:{label:'Sessie',get:t=>sessionOf(t)||'—'},
+  hour:{label:'Uur-blok',get:t=>{const h=parseInt(String(t.time||'').slice(0,2));if(isNaN(h))return '—';const b=Math.floor(h/4)*4;return String(b).padStart(2,'0')+'-'+String(b+4).padStart(2,'0')+'u';}},
+  dow:{label:'Dag',get:t=>['Ma','Di','Wo','Do','Vr','Za','Zo'][dowMon(t.date)]||'—'},
+  emo:{label:'Emotie',get:t=>t.emotion||'—'},
+  grade:{label:'Grade',get:t=>gradeOf(t)||'—'},
+  dir:{label:'Richting',get:t=>t.dir==='long'?'Long':'Short'},
+};
+const TDIM_ORDER=['setup','session','hour','dow','emo','grade','dir'];
+function tdimVals(dim){const set=new Map();CLOSED.forEach(t=>{const v=TDIM[dim].get(t);if(v==='—')return;const e=set.get(v)||{n:0,pnl:0};e.n++;e.pnl+=t.pnl;set.set(v,e);});
+  let arr=[...set.keys()];
+  if(dim==='hour')arr.sort();
+  else if(dim==='dow'){const o=['Ma','Di','Wo','Do','Vr','Za','Zo'];arr.sort((a,b)=>o.indexOf(a)-o.indexOf(b));}
+  else if(dim==='grade')arr.sort();
+  else arr.sort((a,b)=>set.get(b).pnl-set.get(a).pnl);
+  return arr;}
+function tendEdgeLeak(){
+  const pairs=[['setup','session'],['setup','hour'],['session','dow'],['setup','emo']];const combos=[];
+  pairs.forEach(([a,bd])=>{const m={};CLOSED.forEach(t=>{const va=TDIM[a].get(t),vb=TDIM[bd].get(t);if(va==='—'||vb==='—')return;const k=va+'||'+vb;(m[k]=m[k]||{n:0,w:0,pnl:0,r:0,va,vb});const c=m[k];c.n++;c.pnl+=t.pnl;c.r+=tradeR(t);if(t.pnl>0)c.w++;});
+    Object.values(m).forEach(c=>{if(c.n>=TEND_MINN)combos.push({...c,avgR:c.r/c.n,wr:Math.round(c.w/c.n*100)});});});
+  if(!combos.length)return {edge:null,leak:null};
+  combos.sort((x,y)=>y.avgR-x.avgR);
+  return {edge:combos[0],leak:combos[combos.length-1]};
+}
+function tendVerdict(){
+  const {edge,leak}=tendEdgeLeak();
+  const card=(c,type)=>`<div class="vcard ${type}"><div class="vkick">${type==='edge'?'🎯 Jouw sterkste combinatie':'⚠ Structureel lek'}</div>
+    <div class="vcombo">${c?esc(c.va)+' · '+esc(c.vb):'—'}</div>
+    ${c?`<div class="vstats"><span>gem. <b class="${c.avgR>=0?'g':'r'}">${(c.avgR>=0?'+':'')+c.avgR.toFixed(2)}R</b></span><span>win <b>${c.wr}%</b></span><span>netto <b class="${cls(c.pnl)} mask">${eurS(c.pnl)}</b></span><span>n=<b>${c.n}</b></span></div>
+    <div class="vexpl">${type==='edge'?'Hier ligt je edge — zoek deze condities actief op.':'Deze combinatie kost structureel geld — vermijden of herzien.'}</div>`:'<div class="vexpl">Te weinig data (min. '+TEND_MINN+' trades per combinatie).</div>'}</div>`;
+  return `<div class="grid" style="grid-template-columns:1fr 1fr;align-items:stretch">${card(edge,'edge')}${card(leak,'leak')}</div>`;
+}
+function setCrossDim(which,val){STATE[which==='row'?'tendRow':'tendCol']=val;render();}
+function crossCell(rd,rv,cd,cv){const apply=(dim,val)=>{if(dim==='setup')FILTER.setup=val;else if(dim==='session')FILTER.session=val;else if(dim==='dir')FILTER.dir=(val==='Long'?'long':'short');};
+  apply(rd,rv);apply(cd,cv);STATE.selected=[];STATE.tradePage=0;yhHide();go('trades');}
+function crossHeat(){
+  let rd=STATE.tendRow||'setup',cd=STATE.tendCol||'session';if(rd===cd)cd=(rd==='session'?'setup':'session');
+  const rvals=tdimVals(rd),cvals=tdimVals(cd);const cells={};let mx=0.3;
+  CLOSED.forEach(t=>{const rv=TDIM[rd].get(t),cv=TDIM[cd].get(t);if(rv==='—'||cv==='—')return;const k=rv+'||'+cv;(cells[k]=cells[k]||{n:0,w:0,pnl:0,r:0});const c=cells[k];c.n++;c.pnl+=t.pnl;c.r+=tradeR(t);if(t.pnl>0)c.w++;});
+  Object.values(cells).forEach(c=>{if(c.n>=TEND_MINN)mx=Math.max(mx,Math.abs(c.r/c.n));});
+  const tint=avgR=>`color-mix(in srgb,var(--${avgR>=0?'green':'red'}) ${Math.round(Math.min(1,Math.abs(avgR)/mx)*46+40)}%,transparent)`;
+  const sel=(which,cur)=>`<select onchange="setCrossDim('${which}',this.value)" aria-label="${which} dimensie">${TDIM_ORDER.map(k=>`<option value="${k}" ${k===cur?'selected':''}>${TDIM[k].label}</option>`).join('')}</select>`;
+  const head='<tr><th></th>'+cvals.map(v=>`<th>${esc(v)}</th>`).join('')+'</tr>';
+  const body=rvals.map(rv=>`<tr><th class="rowh">${esc(rv)}</th>`+cvals.map(cv=>{const c=cells[rv+'||'+cv];
+    if(!c||!c.n)return '<td class="thm-empty"></td>';
+    const avgR=c.r/c.n,faded=c.n<TEND_MINN,wr=Math.round(c.w/c.n*100);
+    return `<td class="${faded?'faded':''}" style="background:${faded?'var(--track)':tint(avgR)}" ${faded?'':`onclick="crossCell('${rd}','${jsarg(rv)}','${cd}','${jsarg(cv)}')"`} data-t="${esc(rv)} · ${esc(cv)}" data-r="${avgR.toFixed(2)}" data-wr="${wr}" data-pnl="${c.pnl}" data-n="${c.n}" onmousemove="crossMove(event)" onmouseleave="yhHide()">${faded?`<div class="thm-n" style="color:var(--muted)">n=${c.n}</div>`:`<div class="thm-v">${(avgR>=0?'+':'')+avgR.toFixed(2)}R</div><div class="thm-n">n=${c.n}</div>`}</td>`;}).join('')+'</tr>').join('');
+  const sw=f=>`<span class="mxsw" style="background:${tint(f*mx)}"></span>`;
+  return `<div class="panel"><div class="phead"><h3>🔀 Kruis-analyse</h3><span class="sp"></span>
+    <div class="crossctrl">${sel('row',rd)}<span class="x">×</span>${sel('col',cd)}</div>
+    <span class="chip" title="cellen met minder trades zijn te onbetrouwbaar">min. ${TEND_MINN} trades/cel</span></div>
+    <div class="pbody"><div class="thm-wrap"><table class="thm">${head}${body}</table></div>
+    <div class="mx-legend"><span class="g1">verlies ${sw(-.9)}${sw(-.4)}</span><span class="g1">winst ${sw(.4)}${sw(.9)}</span><span style="color:var(--faint)">grijs = &lt;${TEND_MINN} trades</span><span style="margin-left:auto;font-style:italic">cel = gem. R · klik = filter naar trades</span></div></div></div>`;
+}
+function crossMove(e){const tip=document.getElementById('yhtip');if(!tip)return;const t=e.target.closest&&e.target.closest('td[data-t]');if(!t){yhHide();return;}
+  tip.innerHTML=`<div class="yht-d">${esc(t.dataset.t)}</div><div class="yht-row"><span>Trades</span><b>${t.dataset.n}</b></div><div class="yht-row"><span>Win-rate</span><b>${t.dataset.wr}%</b></div><div class="yht-row"><span>Gem. R</span><b class="${+t.dataset.r>=0?'g':'r'}">${(+t.dataset.r>=0?'+':'')+(+t.dataset.r).toFixed(2)}R</b></div><div class="yht-pnl ${cls(+t.dataset.pnl)} mask">${eurS(+t.dataset.pnl)}</div>`;
+  tip.classList.add('on');const tw=tip.offsetWidth,th=tip.offsetHeight;let x=Math.max(8,Math.min(window.innerWidth-tw-8,e.clientX-tw/2)),y=e.clientY-th-14;if(y<8)y=e.clientY+16;tip.style.left=x+'px';tip.style.top=y+'px';}
+function weekHourHeat(){
+  const m={};let mx=1;
+  CLOSED.forEach(t=>{const h=parseInt(String(t.time||'').slice(0,2));if(isNaN(h))return;const d=dowMon(t.date);const k=d+'|'+h;(m[k]=m[k]||{n:0,w:0,pnl:0});m[k].pnl+=t.pnl;m[k].n++;if(t.pnl>0)m[k].w++;});
+  Object.values(m).forEach(c=>mx=Math.max(mx,Math.abs(c.pnl)));
+  const tint=v=>v?`color-mix(in srgb,var(--${v>=0?'green':'red'}) ${Math.round(Math.min(1,Math.abs(v)/mx)*55+25)}%,transparent)`:'var(--track)';
+  const DOW=['Ma','Di','Wo','Do','Vr','Za','Zo'];
+  let html='<div></div>';for(let h=0;h<24;h++)html+=`<div class="whm-hl">${h%3===0?h:''}</div>`;
+  for(let d=0;d<7;d++){html+=`<div class="whm-dl">${DOW[d]}</div>`;for(let h=0;h<24;h++){const c=m[d+'|'+h];const v=c?c.pnl:0;
+    html+=`<div class="whm-cell" style="background:${c?tint(v):'var(--track)'}" data-t="${DOW[d]} · ${String(h).padStart(2,'0')}u" data-n="${c?c.n:0}" data-pnl="${v}" data-wr="${c?Math.round(c.w/c.n*100):0}" onmousemove="whMove(event)" onmouseleave="yhHide()"></div>`;}}
+  return `<div class="whm">${html}</div>`;
+}
+function whMove(e){const tip=document.getElementById('yhtip');if(!tip)return;const t=e.target.closest&&e.target.closest('.whm-cell');if(!t){yhHide();return;}const n=+t.dataset.n;
+  tip.innerHTML=`<div class="yht-d">${esc(t.dataset.t)}</div>`+(n?`<div class="yht-row"><span>Trades</span><b>${n}</b></div><div class="yht-row"><span>Win-rate</span><b>${t.dataset.wr}%</b></div><div class="yht-pnl ${cls(+t.dataset.pnl)} mask">${eurS(+t.dataset.pnl)}</div>`:`<div class="yht-row" style="color:var(--muted)">Geen trades</div>`);
+  tip.classList.add('on');const tw=tip.offsetWidth,th=tip.offsetHeight;let x=Math.max(8,Math.min(window.innerWidth-tw-8,e.clientX-tw/2)),y=e.clientY-th-14;if(y<8)y=e.clientY+16;tip.style.left=x+'px';tip.style.top=y+'px';}
 function pgTendencies(){
   const field={sessie:'session',setup:'setup',emotie:'emotion',grade:'grade'}[STATE.tend];
   const rows=groupRows(field).sort((a,b)=>b.pnl-a.pnl);
   if(!rows.length)return `${filterBar()}${emptyState(countActive()?'trades-none':'tendencies')}`;
-  // day of week
-  const dow=['Ma','Di','Wo','Do','Vr','Za','Zo'];const dd={};CLOSED.forEach(t=>{const wd=dowMon(t.date);(dd[wd]=dd[wd]||{v:0,n:0,w:0});dd[wd].v+=t.pnl;dd[wd].n++;if(t.pnl>0)dd[wd].w++;});
-  const dowArr=[0,1,2,3,4,5,6].map(i=>({i,label:dow[i],v:dd[i]?dd[i].v:0,n:dd[i]?dd[i].n:0}));
-  const dowData=dowArr.slice(0,7).map(d=>({m:d.label,v:d.v}));  // incl. Za + Zo (weekend telt mee)
-  const bestDay=dowArr.filter(d=>d.n).sort((a,b)=>b.v-a.v)[0];
   const tabs=[['sessie','Per sessie'],['setup','Per setup'],['grade','Per grade'],['emotie','Per emotie']];
-  const best=rows[0],worst=rows[rows.length-1],most=[...rows].sort((a,b)=>b.n-a.n)[0];
-  const tiles=`<div class="grid" style="grid-template-columns:repeat(4,1fr)">
-    ${statTile('🏆',esc(best.label),'Beste '+STATE.tend+' · '+eurS(best.pnl),'g')}
-    ${statTile('📉',esc(worst.label),'Zwakste '+STATE.tend+' · '+eurS(worst.pnl),cls(worst.pnl))}
-    ${statTile('📅',bestDay?bestDay.label:'—','Beste dag'+(bestDay?' · '+eurS(bestDay.v):''),'g')}
-    ${statTile('🔥',esc(most.label),'Meeste trades · '+most.n+'x','')}</div>`;
   const mxPanel=setupSessionMatrix();
-  return `${filterBar()}${tiles}<div style="height:13px"></div>
-    <div class="grid" style="grid-template-columns:1.1fr 1fr;align-items:start">
-      <div class="panel"><div class="phead"><h3>P&L per dag van de week</h3><span class="sp"></span><span class="chip">wanneer presteer je</span></div><div class="pbody">${barsPnl(dowData,'e')}</div></div>
-      <div class="panel"><div class="phead"><h3>Netto per ${STATE.tend}</h3></div><div class="pbody">${barsPnl(rows.map(r=>({m:r.label.length>9?r.label.slice(0,8)+'…':r.label,v:Math.round(r.pnl)})),'e')}</div></div>
-    </div><div style="height:13px"></div>
-    <div class="panel"><div class="phead"><h3>Prestatie per uur</h3><span class="sp"></span><span class="chip">wanneer op de dag</span></div><div class="pbody">${hourHeat(CLOSED)}</div></div><div style="height:13px"></div>
+  return `${filterBar()}
+    <div class="sect-h">Verdict — jouw sweet spot &amp; je lek</div>
+    ${tendVerdict()}<div style="height:13px"></div>
+    <div class="sect-h">Kruis-analyse — waar zit het verband</div>
+    ${crossHeat()}<div style="height:13px"></div>
     ${mxPanel}${mxPanel?'<div style="height:13px"></div>':''}
-    <div class="grid" style="grid-template-columns:1fr 1.2fr;align-items:start">
+    <div class="sect-h">Tijd — wanneer presteer je</div>
+    <div class="panel"><div class="phead"><h3>Weekdag × uur</h3><span class="sp"></span><span class="chip">netto per dag-uur · 0–23u (Amsterdam)</span></div><div class="pbody">${weekHourHeat()}</div></div><div style="height:13px"></div>
+    <div class="sect-h">Detail — per dimensie</div>
+    <div class="grid" style="grid-template-columns:1fr 1.2fr;align-items:stretch">
       <div class="panel"><div class="phead"><h3>Win-rate per ${STATE.tend}</h3><span class="sp"></span><span class="chip">radar</span></div><div class="pbody">${radar(rows.map(r=>r.label.length>10?r.label.slice(0,9)+'…':r.label),rows.map(r=>r.val),{name:'Win-rate',fmt:v=>v+'%',h:288})}</div></div>
       <div class="panel"><div class="phead"><h3>Prestatie-breakdown</h3><span class="sp"></span>
         <div class="subtabs" id="tendTabs">${tabs.map(([k,l])=>`<button data-t="${k}" class="${STATE.tend===k?'on':''}">${l}</button>`).join('')}</div></div>
