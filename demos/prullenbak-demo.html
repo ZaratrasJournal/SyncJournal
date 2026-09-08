@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>SyncJournal · Prullenbak-demo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#F4F6FA; --surface:#FFFFFF; --raise:#FBFCFE; --sink:#F7F9FC;
+  --ink:#191E2A; --ink2:#525A6B; --muted:#8A92A3; --faint:#AAB1C0;
+  --line:#E8EBF2; --line2:#F0F2F7;
+  --accent:#3B5BD9; --accent-soft:#EDF0FD; --accent-line:#CDD6F7;
+  --green:#12946A; --green-soft:#E3F4EC; --red:#D64259; --red-soft:#FBE8EC; --amber:#C0821C; --amber-soft:#F8EFDD;
+  --hover:#F6F8FC; --zebra:#FAFBFD;
+  --fb:'Inter',sans-serif; --fd:'Plus Jakarta Sans',sans-serif; --fn:'IBM Plex Mono',monospace;
+  --sh:0 1px 2px rgba(20,30,60,.05);
+}
+body.dark{
+  --bg:#0E1218; --surface:#141A22; --raise:#171E28; --sink:#10151c;
+  --ink:#F4F7FB; --ink2:#C7CFDB; --muted:#939CAC; --faint:#6C7583;
+  --line:#232B36; --line2:#1C232D;
+  --accent:#6E86F0; --accent-soft:#1B2436; --accent-line:#2E3B57;
+  --green:#37C48B; --green-soft:#12261F; --red:#F0637A; --red-soft:#2A1820; --amber:#E0A63C; --amber-soft:#28210F;
+  --hover:#19212B; --zebra:#12171f;
+  --sh:0 1px 2px rgba(0,0,0,.25);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--fb);font-size:13.5px;line-height:1.5;-webkit-font-smoothing:antialiased;transition:background .35s,color .35s;padding:30px 26px 80px}
+.num{font-family:var(--fn);font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.g{color:var(--green)} .r{color:var(--red)}
+button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
+h1,h2,h3{font-family:var(--fd);font-weight:700;letter-spacing:-.01em}
+
+.wrap{max-width:1180px;margin:0 auto}
+.demohead{display:flex;align-items:flex-start;gap:14px;margin-bottom:22px}
+.demohead h1{font-size:21px;margin-bottom:4px}
+.demohead p{color:var(--ink2);font-size:13px;max-width:640px}
+.demohead .sp{flex:1}
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:9px;padding:8px 14px;font-size:12.5px;font-weight:600;color:var(--ink2);box-shadow:var(--sh)}
+.btn:hover{color:var(--ink);border-color:var(--accent-line)}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.danger{color:var(--red);border-color:color-mix(in srgb,var(--red) 35%,transparent)}
+.btn.danger:hover{background:var(--red-soft)}
+.btn:disabled{opacity:.45;cursor:default}
+
+.cols{display:grid;grid-template-columns:1.25fr 1fr;gap:18px;align-items:start}
+@media(max-width:900px){.cols{grid-template-columns:1fr}}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:13px;box-shadow:var(--sh);overflow:hidden}
+.phead{display:flex;align-items:center;gap:10px;padding:13px 17px;border-bottom:1px solid var(--line2)}
+.phead h3{font-size:14px}
+.phead .sp{flex:1}
+.pbody{padding:14px 17px}
+.chip{font-size:11px;font-weight:700;padding:3px 9px;border-radius:20px;background:var(--sink);border:1px solid var(--line);color:var(--muted)}
+.chip.warn{background:var(--amber-soft);border-color:color-mix(in srgb,var(--amber) 30%,transparent);color:var(--amber)}
+
+/* trade-rows */
+.trow{display:flex;align-items:center;gap:11px;padding:9px 10px;border-radius:9px;border:1px solid transparent}
+.trow:hover{background:var(--hover)}
+.trow .cb{width:16px;height:16px;border:1.5px solid var(--line);border-radius:5px;background:var(--sink);flex:none;display:grid;place-items:center;font-size:10px;color:#fff;cursor:pointer}
+.trow .cb.on{background:var(--accent);border-color:var(--accent)}
+.trow .pair{font-weight:700;font-size:13px;min-width:86px}
+.trow .meta{color:var(--muted);font-size:11.5px;min-width:118px}
+.trow .res{font-weight:700;margin-left:auto}
+.trow .del{width:28px;height:28px;border-radius:7px;display:grid;place-items:center;color:var(--faint);font-size:14px;flex:none}
+.trow .del:hover{color:var(--red);background:var(--red-soft)}
+.bulkbar{display:flex;align-items:center;gap:10px;padding:9px 12px;margin-bottom:8px;background:var(--accent-soft);border:1px solid var(--accent-line);border-radius:9px;font-size:12.5px;font-weight:600}
+.empty{padding:26px;text-align:center;color:var(--muted);font-size:12.5px}
+
+/* prullenbak */
+.trashrow{display:flex;align-items:center;gap:11px;padding:10px;border-radius:9px;border:1px dashed var(--line);margin-bottom:7px;background:var(--sink)}
+.trashrow .pair{font-weight:700;font-size:12.5px;min-width:80px}
+.trashrow .meta{color:var(--muted);font-size:11px;line-height:1.4}
+.trashrow .meta .left{color:var(--amber);font-weight:600}
+.trashrow .meta .left.urgent{color:var(--red)}
+.trashrow .res{font-weight:700;font-size:12.5px;margin-left:auto}
+.trashrow .acts{display:flex;gap:6px;flex:none}
+.tbtn{font-size:11px;font-weight:700;padding:5px 9px;border-radius:7px;border:1px solid var(--line);background:var(--surface)}
+.tbtn.restore{color:var(--green);border-color:color-mix(in srgb,var(--green) 35%,transparent)}
+.tbtn.restore:hover{background:var(--green-soft)}
+.tbtn.kill{color:var(--red);border-color:color-mix(in srgb,var(--red) 30%,transparent)}
+.tbtn.kill:hover{background:var(--red-soft)}
+.trash-note{font-size:11.5px;color:var(--muted);padding:10px 2px 2px;line-height:1.55}
+.badge{min-width:19px;height:19px;border-radius:10px;background:var(--red);color:#fff;font-size:10.5px;font-weight:800;display:inline-grid;place-items:center;padding:0 5px}
+
+/* stats-strip: laat zien dat verwijderde trades NIET meer meetellen */
+.statstrip{display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap}
+.stat{flex:1;min-width:130px;background:var(--surface);border:1px solid var(--line);border-radius:11px;padding:11px 15px;box-shadow:var(--sh)}
+.stat .l{font-size:9.5px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:700}
+.stat .v{font-size:19px;font-weight:800;font-family:var(--fd)}
+
+/* undo-toast */
+#toastwrap{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:99;display:flex;flex-direction:column;gap:8px;align-items:center}
+.toast{display:flex;align-items:center;gap:13px;background:var(--ink);color:var(--bg);padding:11px 16px;border-radius:11px;font-size:13px;font-weight:600;box-shadow:0 8px 28px rgba(0,0,0,.28);animation:up .25s both;position:relative;overflow:hidden}
+body.dark .toast{background:#F4F7FB;color:#0E1218}
+@keyframes up{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.toast .undo{font-weight:800;color:var(--amber);padding:4px 8px;border-radius:7px}
+body.dark .toast .undo{color:#B8860B}
+.toast .undo:hover{background:rgba(255,255,255,.12)}
+body.dark .toast .undo:hover{background:rgba(0,0,0,.08)}
+.toast .bar{position:absolute;left:0;bottom:0;height:2.5px;background:var(--amber);animation:shrink 7s linear both}
+@keyframes shrink{from{width:100%}to{width:0}}
+
+.timejump{display:flex;align-items:center;gap:10px;margin-top:16px;padding:12px 15px;background:var(--surface);border:1px solid var(--line);border-radius:11px;box-shadow:var(--sh)}
+.timejump .txt{font-size:12px;color:var(--ink2)}
+.timejump b{display:block;font-size:12.5px;color:var(--ink)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="demohead">
+    <div style="font-size:30px">🗑️</div>
+    <div>
+      <h1>Prullenbak — demo</h1>
+      <p>Verwijderde trades gaan 30 dagen in de prullenbak in plaats van definitief weg. Probeer: verwijder een trade (🗑 of bulk-selectie), klik <b>Ongedaan maken</b> in de toast, of zet 'm terug via het prullenbak-paneel rechts. De KPI-strip laat zien dat trades in de bak <b>niet meer meetellen</b> in je stats.</p>
+    </div>
+    <span class="sp"></span>
+    <button class="btn" onclick="document.body.classList.toggle('dark')">◐ Thema</button>
+    <button class="btn" onclick="resetDemo()">↺ Reset demo</button>
+  </div>
+
+  <div class="statstrip" id="stats"></div>
+
+  <div class="cols">
+    <div class="panel">
+      <div class="phead"><h3>Trades</h3><span class="chip" id="tcount"></span><span class="sp"></span><span class="chip">zoals op de Trades-pagina</span></div>
+      <div class="pbody" id="tradelist"></div>
+    </div>
+
+    <div>
+      <div class="panel">
+        <div class="phead"><h3>🗑️ Prullenbak</h3><span class="badge" id="trashbadge" style="display:none">0</span><span class="sp"></span><button class="btn danger" id="emptybtn" onclick="emptyTrash()" style="padding:5px 10px;font-size:11.5px">Prullenbak legen</button></div>
+        <div class="pbody" id="trashlist"></div>
+        <div class="pbody" style="padding-top:0"><div class="trash-note">💡 Trades blijven <b>30 dagen</b> bewaard en verdwijnen daarna automatisch. Terugzetten kan altijd binnen die periode — ook gesyncte trades komen niet terug via een nieuwe sync zolang ze in de bak zitten. In de echte app vind je dit paneel onder <b>Instellingen → Data</b>.</div></div>
+      </div>
+
+      <div class="timejump">
+        <div style="font-size:20px">⏩</div>
+        <div class="txt"><b>Simuleer het verstrijken van tijd</b>Kijk wat er met de bewaartermijn en de automatische opruiming gebeurt.</div>
+        <span class="sp" style="flex:1"></span>
+        <button class="btn" onclick="jumpDays(14)">+14 dagen</button>
+        <button class="btn" onclick="jumpDays(31)">+31 dagen</button>
+      </div>
+    </div>
+  </div>
+</div>
+<div id="toastwrap"></div>
+
+<script>
+'use strict';
+/* ── demo-data ── */
+const SEED=[
+  {id:1,pair:'BTC/USDT',dir:'long', date:'2026-09-05',setup:'Trend-pullback',r: 2.1,pnl: 420},
+  {id:2,pair:'ETH/USDT',dir:'short',date:'2026-09-05',setup:'BOS-retest',   r:-1.0,pnl:-180},
+  {id:3,pair:'SOL/USDT',dir:'long', date:'2026-09-04',setup:'VWAP-bounce',  r: 1.4,pnl: 265},
+  {id:4,pair:'XAU/USD', dir:'long', date:'2026-09-03',setup:'Trend-pullback',r: 3.2,pnl: 610},
+  {id:5,pair:'BTC/USDT',dir:'short',date:'2026-09-02',setup:'Range-fade',   r:-1.0,pnl:-155},
+  {id:6,pair:'LINK/USDT',dir:'long',date:'2026-09-01',setup:'BOS-retest',   r: 0.8,pnl: 130},
+  {id:7,pair:'ETH/USDT',dir:'long', date:'2026-08-29',setup:'Trend-pullback',r:-1.0,pnl:-200},
+  {id:8,pair:'DOGE/USDT',dir:'short',date:'2026-08-28',setup:'VWAP-bounce', r: 1.9,pnl: 240},
+];
+const TRASH_DAYS=30, DAY=864e5;
+let T=[],TRASH=[],SEL=[],NOW=Date.now();
+
+function resetDemo(){T=SEED.map(t=>({...t}));TRASH=[];SEL=[];NOW=Date.now();render();toast('Demo teruggezet naar beginstand');}
+
+/* ── kern: verwijderen = verhuizen naar TRASH (zoals in de echte app) ── */
+function delTrade(id){
+  const i=T.findIndex(t=>t.id===id);if(i<0)return;
+  const t=T.splice(i,1)[0];t.deletedAt=NOW;TRASH.unshift(t);
+  SEL=SEL.filter(x=>x!==id);render();
+  undoToast('Trade verwijderd',[id]);
+}
+function bulkDelete(){
+  const ids=[...SEL];if(!ids.length)return;
+  ids.forEach(id=>{const i=T.findIndex(t=>t.id===id);if(i>=0){const t=T.splice(i,1)[0];t.deletedAt=NOW;TRASH.unshift(t);}});
+  SEL=[];render();
+  undoToast(ids.length+' trades verwijderd',ids);
+}
+function restoreTrade(id){
+  const i=TRASH.findIndex(t=>t.id===id);if(i<0)return;
+  const t=TRASH.splice(i,1)[0];delete t.deletedAt;T.push(t);T.sort((a,b)=>b.date.localeCompare(a.date)||b.id-a.id);
+  render();toast('✓ Trade teruggezet');
+}
+function killTrade(id){
+  if(!confirm('Deze trade definitief verwijderen? Dit kan niet ongedaan worden gemaakt.'))return;
+  TRASH=TRASH.filter(t=>t.id!==id);render();toast('Trade definitief verwijderd');
+}
+function emptyTrash(){
+  if(!TRASH.length)return;
+  if(!confirm('Prullenbak legen ('+TRASH.length+' trades)? Dit kan niet ongedaan worden gemaakt.'))return;
+  TRASH=[];render();toast('Prullenbak geleegd');
+}
+function purgeExpired(){
+  const before=TRASH.length;
+  TRASH=TRASH.filter(t=>NOW-t.deletedAt<TRASH_DAYS*DAY);
+  const n=before-TRASH.length;
+  if(n)toast('🧹 '+n+' trade'+(n>1?'s':'')+' automatisch opgeruimd (ouder dan 30 dagen)');
+}
+function jumpDays(d){NOW+=d*DAY;purgeExpired();render();}
+
+/* ── undo-toast ── */
+let toastTimer=null;
+function toast(msg){showToast('<span>'+msg+'</span>',3200);}
+function undoToast(msg,ids){
+  showToast('<span>🗑️ '+msg+'</span><button class="undo" onclick="undoDelete(['+ids.join(',')+'])">Ongedaan maken</button><div class="bar"></div>',7000);
+}
+function showToast(html,ms){
+  const w=document.getElementById('toastwrap');w.innerHTML='<div class="toast">'+html+'</div>';
+  clearTimeout(toastTimer);toastTimer=setTimeout(()=>w.innerHTML='',ms);
+}
+function undoDelete(ids){
+  ids.forEach(id=>{const i=TRASH.findIndex(t=>t.id===id);if(i>=0){const t=TRASH.splice(i,1)[0];delete t.deletedAt;T.push(t);}});
+  T.sort((a,b)=>b.date.localeCompare(a.date)||b.id-a.id);
+  document.getElementById('toastwrap').innerHTML='';render();toast('✓ Teruggezet');
+}
+
+/* ── render ── */
+const eur=n=>(n<0?'−':'+')+'€'+Math.abs(n).toLocaleString('nl-NL');
+function toggleSel(id){SEL=SEL.includes(id)?SEL.filter(x=>x!==id):[...SEL,id];render();}
+function daysLeft(t){return Math.max(0,Math.ceil(TRASH_DAYS-(NOW-t.deletedAt)/DAY));}
+
+function render(){
+  /* stats — bewijst dat prullenbak-trades niet meetellen */
+  const net=T.reduce((s,t)=>s+t.pnl,0),wins=T.filter(t=>t.pnl>0).length;
+  document.getElementById('stats').innerHTML=
+    stat('Trades',T.length)+stat('Netto P&L','<span class="'+(net>=0?'g':'r')+' num">'+eur(net)+'</span>')+
+    stat('Win-rate',T.length?Math.round(wins/T.length*100)+'%':'—')+
+    stat('In prullenbak',TRASH.length||'0');
+  document.getElementById('tcount').textContent=T.length+' trades';
+
+  /* trades-lijst */
+  const bulk=SEL.length?'<div class="bulkbar"><span>'+SEL.length+' geselecteerd</span><span style="flex:1"></span><button class="btn danger" style="padding:5px 11px;font-size:11.5px" onclick="bulkDelete()">🗑 Verwijderen</button><button class="btn" style="padding:5px 11px;font-size:11.5px" onclick="SEL=[];render()">Annuleren</button></div>':'';
+  document.getElementById('tradelist').innerHTML=bulk+(T.length?T.map(t=>
+    '<div class="trow"><div class="cb '+(SEL.includes(t.id)?'on':'')+'" onclick="toggleSel('+t.id+')">'+(SEL.includes(t.id)?'✓':'')+'</div>'+
+    '<span class="pair">'+t.pair+'</span><span class="meta">'+t.date+' · '+t.setup+'</span>'+
+    '<span class="res num '+(t.pnl>=0?'g':'r')+'">'+(t.r>=0?'+':'−')+Math.abs(t.r).toFixed(1)+'R</span>'+
+    '<button class="del" title="Naar prullenbak" onclick="delTrade('+t.id+')">🗑</button></div>').join('')
+    :'<div class="empty">Geen trades — zet er een terug vanuit de prullenbak, of reset de demo.</div>');
+
+  /* prullenbak */
+  const badge=document.getElementById('trashbadge');
+  badge.style.display=TRASH.length?'inline-grid':'none';badge.textContent=TRASH.length;
+  document.getElementById('emptybtn').disabled=!TRASH.length;
+  document.getElementById('trashlist').innerHTML=TRASH.length?TRASH.map(t=>{
+    const left=daysLeft(t);
+    return '<div class="trashrow"><span class="pair">'+t.pair+'</span>'+
+    '<span class="meta">'+t.date+' · '+t.setup+'<br><span class="left '+(left<=7?'urgent':'')+'">nog '+left+' dag'+(left===1?'':'en')+'</span></span>'+
+    '<span class="res num '+(t.pnl>=0?'g':'r')+'">'+(t.r>=0?'+':'−')+Math.abs(t.r).toFixed(1)+'R</span>'+
+    '<span class="acts"><button class="tbtn restore" onclick="restoreTrade('+t.id+')">↩ Terugzetten</button><button class="tbtn kill" onclick="killTrade('+t.id+')">✕</button></span></div>';}).join('')
+    :'<div class="empty">De prullenbak is leeg.<br>Verwijder links een trade om te zien hoe het werkt.</div>';
+}
+function stat(l,v){return '<div class="stat"><div class="l">'+l+'</div><div class="v">'+v+'</div></div>';}
+resetDemo();
+</script>
+</body>
+</html>
