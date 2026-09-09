@@ -978,6 +978,12 @@ body.dark .toast{box-shadow:0 10px 34px rgba(0,0,0,.5)}
 .toast.ok{border-left-color:var(--green)}
 .toast.err{border-left-color:var(--red)}
 .toast.info{border-left-color:var(--accent)}
+/* actie-toast (undo): knop + aflopende timer-balk */
+.toast{position:relative;overflow:hidden}
+.toast .tact{margin-left:13px;font-weight:800;color:var(--amber);padding:3px 8px;border-radius:7px;font-size:12.5px}
+.toast .tact:hover{background:var(--amber-soft)}
+.toast .tbar{position:absolute;left:0;bottom:0;height:2.5px;background:var(--amber);animation:tshrink 7s linear both}
+@keyframes tshrink{from{width:100%}to{width:0}}
 </style>
 </head>
 <body>
@@ -1473,7 +1479,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.30';
+const APP_VERSION='v0.9.31';
 const SCHEMA_VERSION=1;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -1572,7 +1578,41 @@ function selfCheck(){
 let T=[]; // geladen in boot() uit IndexedDB (async)
 let CLOSED=[];
 function persist(){ IDB.set('trades',T).then(okr=>{ if(okr===false)ErrorCenter.report('save',new Error('IndexedDB weigerde de schrijfactie voor trades.'),{severity:'critical',userMsg:'Je laatste wijziging kon niet worden opgeslagen. Ze staat nog in beeld — exporteer een back-up en probeer opnieuw.',actions:[{label:'Exporteer backup',fn:()=>exportJSON()},{label:'Opnieuw proberen',fn:()=>persist()}]}); }); }
-function nextId(){ return T.reduce((m,t)=>Math.max(m,t.id),-1)+1; }
+// ── Prullenbak: verwijderde trades gaan 30 dagen in een APARTE lijst (niet als vlag op de
+//    trade — zo tellen ze gegarandeerd nergens mee). Screenshots zitten erin, dus IndexedDB.
+const TRASH_DAYS=30;
+let TRASH=[];  // geladen in boot(); [{...trade, deletedAt:ms}]
+function persistTrash(){ IDB.set('trash',TRASH); }
+function trashDelete(ids){  // T → TRASH (nieuwste bovenaan)
+  const set=new Set(ids),moved=[];
+  T=T.filter(t=>{ if(set.has(t.id)){t.deletedAt=Date.now();moved.push(t);return false;} return true; });
+  TRASH=[...moved,...TRASH]; persist(); persistTrash();
+}
+function trashRestore(ids){  // TRASH → T; bij id-botsing (nieuwe trade kreeg dat id) een vers id
+  const set=new Set(ids),back=[];
+  TRASH=TRASH.filter(t=>{ if(set.has(t.id)){back.push(t);return false;} return true; });
+  back.forEach(t=>{ delete t.deletedAt; if(T.some(x=>x.id===t.id))t.id=nextId(); T.push(t); });
+  persist(); persistTrash(); return back.length;
+}
+function purgeTrash(){  // stil bij boot: alles ouder dan 30 dagen definitief weg
+  const n0=TRASH.length;
+  TRASH=TRASH.filter(t=>Date.now()-(t.deletedAt||0)<TRASH_DAYS*864e5);
+  if(TRASH.length!==n0)persistTrash();
+  return n0-TRASH.length;
+}
+function trashDaysLeft(t){ return Math.max(0,Math.ceil(TRASH_DAYS-(Date.now()-(t.deletedAt||0))/864e5)); }
+// Sync-guard: toekomstige échte sync voegt trades ALTIJD via addSyncedTrades toe.
+// Trades die in de prullenbak liggen komen dan niet als "nieuw" terug — verwijderd
+// blijft verwijderd totdat de gebruiker zelf terugzet.
+function trashKey(t){ return [t.exchange||'',t.pair||'',t.date||'',t.time||'',t.dir||''].join('|'); }
+function addSyncedTrades(list){
+  const dead=new Set(TRASH.map(trashKey));
+  const add=(list||[]).filter(t=>!dead.has(trashKey(t)));
+  add.forEach(t=>{ t.id=nextId(); T.push(t); });
+  if(add.length)persist();
+  return add.length;
+}
+function nextId(){ return [...T,...TRASH].reduce((m,t)=>Math.max(m,t.id),-1)+1; }
 /* Tag-categorieën — zoals het originele TagManager-overzicht uit de journal */
 const TAG_CATS=[
   {key:'setupTags',label:'Setup-type',color:'#5aa9ff'},
@@ -1656,7 +1696,7 @@ function addAcctTx(id){const m=MANUAL.find(x=>x.id===id);if(!m||!STATE.txOpen)re
 function delAcctTx(id,txid){const m=MANUAL.find(x=>x.id===id);if(!m)return;if(!confirm('Deze mutatie verwijderen?'))return;m.transactions=m.transactions.filter(t=>t.id!==txid);persistManual();render();toast('Mutatie verwijderd','info');}
 function toggleAutoSync(){SYNC.auto=!SYNC.auto;persistSync();render();}
 function setSyncInterval(v){SYNC.interval=v;persistSync();}
-function syncNow(){toast('Sync gestart — 0 nieuwe trades (demo)','info');}
+function syncNow(){const n=addSyncedTrades([]);toast('Sync gestart — '+n+' nieuwe trades (demo)','info');}
 async function clearTrades(){if(!confirm('Al je trades verwijderen? Er wordt eerst automatisch een veiligheidskopie gemaakt, zodat je kunt herstellen.'))return; if((T||[]).length)await Snapshots.create('vóór trades wissen'); T=[];persist();render();toast('Alle trades gewist — herstelbaar via Instellingen → Data','info');}
 async function clearAllData(){ if(!confirm('ÁLLE lokale data wissen — trades, tags, accounts én voorkeuren? Dit is onomkeerbaar. Exporteer eerst een back-up als je twijfelt.'))return;
   try{Object.keys(localStorage).filter(k=>k.indexOf('sj_')===0).forEach(k=>localStorage.removeItem(k));}catch(e){}
@@ -1986,7 +2026,7 @@ function toggleSel(id){ const i=STATE.selected.indexOf(id);if(i<0)STATE.selected
 function toggleSelAll(){ const rows=curTradeRows();const ids=rows.map(t=>t.id);const all=ids.every(id=>STATE.selected.includes(id));
   STATE.selected=all?STATE.selected.filter(id=>!ids.includes(id)):[...new Set([...STATE.selected,...ids])];render(); }
 function clearSel(){ STATE.selected=[];render(); }
-function bulkDelete(){ if(confirm(STATE.selected.length+' trades verwijderen?')){T=T.filter(t=>!STATE.selected.includes(t.id));STATE.selected=[];persist();render();} }
+function bulkDelete(){ const ids=[...STATE.selected];if(!ids.length)return;trashDelete(ids);STATE.selected=[];render();toast('🗑 '+ids.length+' trades naar prullenbak','info',{label:'Ongedaan maken',fn:()=>undoTrash(ids)}); }
 function curTradeRows(){ let r=FT.filter(t=>STATE.tradeTab==='all'||(STATE.tradeTab==='open'&&t.status!=='closed')||(STATE.tradeTab==='closed'&&t.status==='closed'));
   const q=STATE.query.toLowerCase();if(q)r=r.filter(t=>(t.pair+' '+t.setup+' '+t.session+' '+t.emotion+' '+(t.tags||[]).join(' ')).toLowerCase().includes(q));return r; }
 function announce(){ const l=document.getElementById('live');if(l&&STATE.page==='trades')l.textContent=curTradeRows().length+' trades, gesorteerd op '+STATE.sortCol; }
@@ -2678,6 +2718,11 @@ function pgInstellingen(){
       <button class="btn" onclick="importJSON()">Importeer</button><button class="btn pri" onclick="exportJSON()">Exporteer JSON</button></div>
       <div class="setrow"><div class="txt"><b>Voorbeelddata laden</b><small>Vul de app met voorbeeld-trades om te verkennen — overschrijft je huidige trades</small></div><button class="btn" onclick="resetDemo()">Laden</button></div>
       <div class="setrow"><div class="txt"><b>Versie</b><small>SyncJournal ${APP_VERSION} · dataschema v${SCHEMA_VERSION} · ${T.length} trades lokaal opgeslagen</small></div></div></div>
+      <div class="section-sub">🗑️ Prullenbak${TRASH.length?` · ${TRASH.length}`:''} <span class="hint">(verwijderde trades · ${TRASH_DAYS} dagen bewaard, daarna automatisch weg)</span></div>
+      <div class="panel">
+        ${TRASH.length?TRASH.map(t=>{const left=trashDaysLeft(t);return `<div class="setrow"><div class="txt"><b>${esc(t.pair||'?')} · ${t.dir==='short'?'short':'long'} <span class="num ${(t.r||0)>=0?'g':'r'}" style="font-weight:700">${(t.r||0)>=0?'+':'−'}${Math.abs(t.r||0).toFixed(1)}R</span></b><small>${esc(t.date||'')}${t.setup?' · '+esc(t.setup):''} · <span style="color:${left<=7?'var(--red)':'var(--amber)'};font-weight:600">nog ${left} dag${left===1?'':'en'}</span></small></div><button class="btn" onclick="trashRestoreOne(${t.id})">↩ Terugzetten</button><button class="btn danger" onclick="trashKill(${t.id})" title="definitief verwijderen" style="padding:8px 10px">×</button></div>`;}).join('')+`<div class="setrow"><div class="txt" style="color:var(--muted);font-size:12.5px">Terugzetten kan altijd binnen ${TRASH_DAYS} dagen — ook een sync haalt verwijderde trades niet opnieuw binnen.</div><button class="btn danger" onclick="trashEmpty()">Prullenbak legen</button></div>`
+        :`<div class="setrow"><div class="txt" style="color:var(--muted);font-size:12.5px">De prullenbak is leeg. Verwijder je een trade, dan komt hij hier ${TRASH_DAYS} dagen te staan zodat je hem kunt terugzetten.</div></div>`}
+      </div>
       <div class="section-sub">🛟 Veiligheidskopieën <span class="hint">(automatisch vóór risicovolle acties · laatste 3)</span></div>
       <div class="panel">
         ${SNAP_META.length?SNAP_META.map(s=>`<div class="setrow"><div class="txt"><b>${esc(snapWhen(s.ts))}</b><small>${esc(s.label)} · ${s.trades} trades · ${s.playbooks} playbooks</small></div><button class="btn" onclick="snapRestore('${s.id}')">Herstel</button><button class="btn danger" onclick="snapDel('${s.id}')" title="verwijderen" style="padding:8px 10px">×</button></div>`).join(''):`<div class="setrow"><div class="txt" style="color:var(--muted);font-size:12.5px">Nog geen veiligheidskopieën. Ze worden automatisch gemaakt vóór import, voorbeelddata laden of wissen — of maak er nu handmatig één.</div></div>`}
@@ -3367,7 +3412,7 @@ const FAQS=[
     ['Hoe wissel ik tussen licht en donker thema?','Klik op het maan/zon-icoon rechtsboven, of kies je thema via <b>Instellingen</b>. Je keuze wordt onthouden.'],
     ['Kan ik mijn Dashboard aanpassen?','Ja — via <b>Instellingen → Dashboard</b> zet je secties aan of uit (hero, KPI-tegels, equity-curve, enz.). Zo maak je het zo rustig of uitgebreid als jij wilt.'],
     ['Iets doet het niet of ziet er vreemd uit — wat nu?','Stap 1: ververs de pagina (F5). Stap 2: check je filters bovenaan (datum + type) — 9 van de 10 "bugs" zijn een filter. Nog steeds raar? Vraag de <b>AI-coach</b> of meld het ons — daar worden we alleen maar beter van.'],
-    ['Ik heb per ongeluk een trade verwijderd — kan die terug?','Alleen via een back-up: importeer je laatste export via <b>Instellingen → Data → Importeer</b>. Er is geen prullenbak — nóg een reden om regelmatig te exporteren.'],
+    ['Ik heb per ongeluk een trade verwijderd — kan die terug?','Ja! Direct na het verwijderen klik je onderin op <b>Ongedaan maken</b>. Later terughalen kan ook: verwijderde trades staan <b>30 dagen</b> in de prullenbak onder <b>Instellingen → Data</b> — klik daar op <b>↩ Terugzetten</b>. Na 30 dagen wordt de prullenbak automatisch geleegd.'],
   ]],
 ];
 function pgFaq(){
@@ -3456,7 +3501,15 @@ const PAGEC={dashboard:'#3b5bd9',trades:'#0e9d8a',analytics:'#12b39b',tendencies
 function go(p){STATE.page=p;if(p==='playbook')STATE.pbSel='';document.body.classList.remove('nav-open');render();}
 function openPlaybook(s){STATE.page='playbook';STATE.pbSel=s;render();try{window.scrollTo(0,0);}catch(e){}}
 function closePlaybook(){STATE.pbSel='';render();}
-function toast(msg,type){const c=document.getElementById('toasts');if(!c)return;const el=document.createElement('div');el.className='toast '+(type||'info');el.textContent=msg;c.appendChild(el);requestAnimationFrame(()=>el.classList.add('on'));setTimeout(()=>{el.classList.remove('on');setTimeout(()=>el.remove(),320);},2600);}
+function toast(msg,type,act){const c=document.getElementById('toasts');if(!c)return;const el=document.createElement('div');el.className='toast '+(type||'info');
+  const span=document.createElement('span');span.textContent=msg;el.appendChild(span);
+  if(act){ // actie-toast (bv. "Ongedaan maken"): langer zichtbaar + aflopend balkje
+    const b=document.createElement('button');b.className='tact';b.textContent=act.label;
+    b.onclick=()=>{el.remove();try{act.fn();}catch(e){}};el.appendChild(b);
+    const bar=document.createElement('div');bar.className='tbar';el.appendChild(bar);
+  }
+  c.appendChild(el);requestAnimationFrame(()=>el.classList.add('on'));
+  setTimeout(()=>{el.classList.remove('on');setTimeout(()=>el.remove(),320);},act?7000:2600);}
 function render(){
   pasteTargetId=null;
   yhHide();  // ruim een eventueel hangende hover-tooltip op (bv. na klik op treemap-tegel → navigatie)
@@ -3507,10 +3560,11 @@ function togglePriv(){STATE.priv=!STATE.priv;document.body.classList.toggle('pri
 function setCurrency(c){STATE.currency=c;persistState();render();}
 /* trades CRUD + import/export */
 // Volledige staat-payload — gedeeld door export, snapshots en herstel.
-function snapshotPayload(){ return {app:'SyncJournal',appVersion:APP_VERSION,schemaVersion:SCHEMA_VERSION,exported:new Date().toISOString(),tagConfig,pbook:PBOOK,conns:CONNS,manual:MANUAL,sync:SYNC,aiPrefs:AIPREFS,sections:STATE.sections,settings:{theme:STATE.theme,currency:STATE.currency,priv:STATE.priv,density:STATE.density},trades:T}; }
+function snapshotPayload(){ return {app:'SyncJournal',appVersion:APP_VERSION,schemaVersion:SCHEMA_VERSION,exported:new Date().toISOString(),tagConfig,pbook:PBOOK,conns:CONNS,manual:MANUAL,sync:SYNC,aiPrefs:AIPREFS,sections:STATE.sections,settings:{theme:STATE.theme,currency:STATE.currency,priv:STATE.priv,density:STATE.density},trades:T,trash:TRASH}; }
 // Zet een volledige backup-payload (nieuw formaat) terug in de live-staat.
 function applyBackup(d){
   T=(d.trades||[]).map((t,i)=>({rating:0,checks:[],...t,id:i}));
+  TRASH=Array.isArray(d.trash)?d.trash:[];persistTrash();  // tolerant: oude back-ups hebben geen trash-veld
   if(d.tagConfig){tagConfig=d.tagConfig;persistTagConfig();}
   PBOOK={};Object.entries(d.pbook||{}).forEach(([k,v])=>PBOOK[k]=pbNormalize(k,v));persistPbook();
   if(d.conns){CONNS=d.conns;persistConns();}
@@ -3669,7 +3723,12 @@ function importJSON(){ const inp=document.createElement('input');inp.type='file'
     rd.readAsText(f);};inp.click(); }
 function loadDemoData(){T=SEED.map(t=>({...t}));persist();render();}
 async function resetDemo(){ if(!confirm('Voorbeelddata laden? Dit OVERSCHRIJFT je huidige trades. Er wordt eerst automatisch een veiligheidskopie gemaakt.'))return; if((T||[]).length)await Snapshots.create('vóór voorbeelddata'); loadDemoData(); toast('Voorbeelddata geladen','info'); }
-function delTrade(id){ if(confirm('Deze trade verwijderen?')){formDirty=false;T=T.filter(t=>t.id!==id);persist();if(STATE.revSel===id)STATE.revSel=(T[0]||{}).id||0;closeForm();render();toast('Trade verwijderd','info');} }
+// Verwijderen is omkeerbaar (prullenbak + undo-toast) → geen confirm-dialoog meer nodig.
+function delTrade(id){ formDirty=false;trashDelete([id]);if(STATE.revSel===id)STATE.revSel=(T[0]||{}).id||0;closeForm();render();toast('🗑 Trade naar prullenbak','info',{label:'Ongedaan maken',fn:()=>undoTrash([id])}); }
+function undoTrash(ids){ trashRestore(ids);render();toast('✓ Teruggezet','ok'); }
+function trashKill(id){ if(!confirm('Deze trade definitief verwijderen? Dit kan niet ongedaan worden gemaakt.'))return;TRASH=TRASH.filter(t=>t.id!==id);persistTrash();render();toast('Trade definitief verwijderd','info'); }
+function trashEmpty(){ if(!TRASH.length)return;if(!confirm('Prullenbak legen ('+TRASH.length+' trade'+(TRASH.length>1?'s':'')+')? Dit kan niet ongedaan worden gemaakt.'))return;TRASH=[];persistTrash();render();toast('Prullenbak geleegd','info'); }
+function trashRestoreOne(id){ trashRestore([id]);render();toast('✓ Trade teruggezet','ok'); }
 function saveReview(id,patch){ const t=T.find(x=>x.id===id);if(t){Object.assign(t,patch);persist();} }
 let formTags=[],formGrade='',formLayers=[],formEmotions=[],formMistakes=[];
 let formDirty=false,modalKind='';  // dirty-guard: waarschuw bij niet-opgeslagen wijzigingen in trade-/playbook-formulier
@@ -3953,6 +4012,7 @@ async function boot(){
     PBOOK={};Object.entries(pb||PBRULES).forEach(([k,v])=>PBOOK[k]=pbNormalize(k,v));
   }catch(e){T=DB.load('trades',[]);PBOOK={};Object.entries(DB.load('pbook',PBRULES)).forEach(([k,v])=>PBOOK[k]=pbNormalize(k,v));}
   try{const sm=await IDB.get('snapshots');SNAP_META=Array.isArray(sm)?sm:[];}catch(e){SNAP_META=[];}
+  try{const tr=await IDB.get('trash');TRASH=Array.isArray(tr)?tr:[];purgeTrash();}catch(e){TRASH=[];}
   try{await runMigrations();}catch(e){}   // geversioneerde schema-updates (snapshot + rollback ingebouwd)
   selfCheck();                            // grove corruptie → herstel-aanbod
   render();
