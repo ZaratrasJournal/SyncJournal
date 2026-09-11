@@ -24,7 +24,7 @@ const mk = (id) => { const setup = ['Trend', 'VWAP', 'BOS'][id % 3]; const sess 
   await p.waitForTimeout(500);
 
   console.log('─── 3-lagen-volgorde ───');
-  ok('sectiekoppen Verdict/Kruis/Tijd/Detail', await p.evaluate(() => { const s = [...document.querySelectorAll('.sect-h')].map(x => x.textContent); return /Verdict/.test(s[0]) && /Kruis/.test(s[1]) && /Tijd/.test(s.join('|')) && /Detail/.test(s.join('|')); }));
+  ok('sectiekoppen Conclusie/Kruis/Tijd/Detail', await p.evaluate(() => { const s = [...document.querySelectorAll('.sect-h')].map(x => x.textContent); return /Conclusie/.test(s[0]) && /Kruis/.test(s[1]) && /Tijd/.test(s.join('|')) && /Detail/.test(s.join('|')); }));
 
   console.log('─── Verdict: Edge/Lek-kaart ───');
   ok('edge- en lek-kaart aanwezig', await p.evaluate(() => document.querySelector('.vcard.edge') && document.querySelector('.vcard.leak')));
