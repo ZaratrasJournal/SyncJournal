@@ -857,6 +857,12 @@ body.dark .mx-legend .mxsw{box-shadow:inset 0 0 0 1px rgba(255,255,255,.12)}
 .faqsearch{width:100%;margin-top:11px;border:1px solid var(--line);border-radius:9px;background:var(--sink);color:var(--ink);padding:9px 13px;font-size:13.5px;font-family:inherit;outline:none}
 .faqsearch:focus{border-color:var(--accent)}
 .faqnone{background:var(--surface);border:1px dashed var(--line);border-radius:10px;padding:18px;text-align:center;font-size:13px;color:var(--muted)}
+/* Size-veld: unit-toggle $ ↔ asset */
+.szrow{display:flex;gap:6px;align-items:stretch}
+.szrow input{flex:1;min-width:0}
+.szseg{display:flex;border:1px solid var(--line);border-radius:9px;overflow:hidden;flex:none}
+.szseg button{font-size:11px;font-weight:800;padding:0 10px;background:var(--sink);color:var(--muted);cursor:pointer;font-family:var(--fn)}
+.szseg button.on{background:var(--accent);color:#fff}
 .linklike{border:none;background:none;color:var(--accent);font-weight:700;cursor:pointer;padding:0;font-size:inherit;font-family:inherit}
 .faqcat{margin-bottom:22px}
 .faqcat-h{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;margin:0 0 9px 2px}
@@ -1481,7 +1487,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.41';
+const APP_VERSION='v0.9.42';
 const SCHEMA_VERSION=1;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -1771,6 +1777,8 @@ function filterBar(){
 
 /* ═══ Helpers ═══ */
 const SZ=t=>Number(String(t.size).replace(/\./g,''));
+// Asset-hoeveelheid (alleen aanwezig als de trade in asset-eenheden is ingevoerd)
+function qtySub(t){return (t.sizeUnit==='asset'&&t.qty>0)?`<div class="num" style="font-size:11px;color:var(--muted);white-space:nowrap">${(+t.qty).toLocaleString('nl-NL',{maximumFractionDigits:6})} ${esc(String(t.pair||'').split('/')[0])}</div>`:'';}
 const numOrDash=v=>{const n=+v;return isNaN(n)?'—':n.toLocaleString('nl-NL');};  // leeg/undefined veld → em-dash i.p.v. NaN
 // Theoretische R voor sim-trades (backtest/paper/gemist) zonder echte pnl: (exit−entry)·richting / |entry−stop|.
 // Exit uit hindsightExit → echte exit → laatste TP → tp. Prijs-gebaseerd (size-onafhankelijk), zoals het origineel.
@@ -2026,7 +2034,7 @@ function pgTrades(){
         <td data-l="Exchange">${exCell(t.exchange)}</td>
         <td data-l="Pair"><div class="paircell">${assetCell(t.pair)}${kindBadge(t)}${newBadge(t)}</div></td><td data-l="Richting"><span class="pill ${t.dir}">${t.dir==='long'?'LONG':'SHORT'}</span></td>
         <td class="rt num" data-l="Entry">${numOrDash(t.entry)}</td><td class="rt num" data-l="Exit">${numOrDash(t.exit)}</td>
-        <td class="rt num mask" data-l="Size">${isNaN(SZ(t))?'—':CURSYM()+' '+SZ(t).toLocaleString('nl-NL')}</td><td class="rt" data-l="P&L">${pnlCell(t.pnl,t.pnlPct)}</td>
+        <td class="rt num mask" data-l="Size">${isNaN(SZ(t))?'—':CURSYM()+' '+SZ(t).toLocaleString('nl-NL')}${qtySub(t)}</td><td class="rt" data-l="P&L">${pnlCell(t.pnl,t.pnlPct)}</td>
         <td class="ct" data-l="R">${rBadge(t.r)}</td><td data-l="Status">${statusB(t.status)}</td>
         <td data-l="Setup">${setupBadge(t.setup)}</td><td data-l="Sessie">${sessBadge(sessionOf(t))}</td>
         <td data-l="Tags" style="max-width:170px">${tagChips(t.tags)}</td></tr>`;}).join('')}</tbody>
@@ -2621,7 +2629,7 @@ function pgReview(){
           ${pc('Stop-loss',t.stop?(+t.stop).toLocaleString('nl-NL'):'—','r')}
           ${pc('Take-profit',t.tp?(+t.tp).toLocaleString('nl-NL'):'—','g')}
           ${pc('Exit',numOrDash(t.exit))}
-          ${pc('Size','<span class="mask">'+(isNaN(SZ(t))?'—':CURSYM()+' '+SZ(t).toLocaleString('nl-NL'))+'</span>')}
+          ${pc('Size','<span class="mask">'+(isNaN(SZ(t))?'—':CURSYM()+' '+SZ(t).toLocaleString('nl-NL'))+((t.sizeUnit==='asset'&&t.qty>0)?' <span style="color:var(--muted);font-size:11px">· '+(+t.qty).toLocaleString('nl-NL',{maximumFractionDigits:6})+' '+esc(String(t.pair||'').split('/')[0])+'</span>':'')+'</span>')}
           ${pc('Hefboom',(t.leverage||'—')+'×')}
           ${pc('Risk','<span class="mask">'+(t.risk||'—')+'%</span>')}
           ${pc('Fees','<span class="mask">'+eur(t.fees||0)+'</span>')}
@@ -3820,8 +3828,16 @@ function tpBreakdown(t){const s=tpStats(t);if(!s)return '<div style="color:var(-
   const foot=s.wExit!=null?`<div class="tpfoot"><span>Gewogen exit <b class="num">${(+s.wExit).toLocaleString('nl-NL')}</b></span><span class="sp" style="flex:1"></span><span>Hit <b class="num g">${Math.round(s.hitPct)}%</b> · gerealiseerd <b class="num ${cls(s.wR)}">${(s.wR>=0?'+':'')+(+s.wR).toFixed(1)}R</b></span></div>`:'';
   return `<div class="tplist">${rows}</div>${foot}`;}
 function fnum(id){const el=document.getElementById(id);if(!el)return NaN;const v=parseFloat(String(el.value).trim().replace(',','.'));return isNaN(v)?NaN:v;}
+// ── Positie-grootte in $ óf in de asset zelf (bv. 0,5 BTC) — omrekening via entry ──
+let formSizeUnit='usd';
+function pairBase(p){return String(p||'').split('/')[0].trim();}
+function updSzBtn(){const b=document.getElementById('szAssetBtn');if(b){const base=pairBase((document.getElementById('f_pair')||{}).value);b.textContent=base||'coin';}}
+function formSizeUsd(){const v=fnum('f_size');if(isNaN(v))return NaN;if(formSizeUnit!=='asset')return v;const entry=fnum('f_entry');return entry>0?v*entry:NaN;}
+function setSizeUnit(u){if(u===formSizeUnit)return;const entry=fnum('f_entry'),v=fnum('f_size'),el=document.getElementById('f_size');
+  if(!isNaN(v)&&entry>0&&el){el.value=u==='asset'?String(+(v/entry).toFixed(6)):String(Math.round(v*entry));}
+  formSizeUnit=u;document.querySelectorAll('#szseg button').forEach(b=>b.classList.toggle('on',(b.id==='szAssetBtn')===(u==='asset')));calcTrade(true);}
 function calcTrade(fill){
-  const entry=fnum('f_entry'),exit=fnum('f_exit'),stop=fnum('f_stop'),tp=fnum('f_tp'),size=fnum('f_size'),fees=fnum('f_fees')||0;
+  const entry=fnum('f_entry'),exit=fnum('f_exit'),stop=fnum('f_stop'),tp=fnum('f_tp'),size=formSizeUsd(),fees=fnum('f_fees')||0;
   const dirEl=document.getElementById('f_dir'),dir=dirEl&&dirEl.value==='short'?-1:1;
   let pnl=NaN,r=NaN,rr=NaN,pct=NaN;
   if(entry>0&&!isNaN(exit)&&!isNaN(size))pnl=Math.round((exit-entry)/entry*size*dir-fees);
@@ -3830,8 +3846,9 @@ function calcTrade(fill){
   if(!isNaN(pnl))pct=+(pnl/ACCT*100).toFixed(2);
   if(fill){if(!isNaN(pnl))document.getElementById('f_pnl').value=pnl;if(!isNaN(r))document.getElementById('f_r').value=r;if(!isNaN(rr))document.getElementById('f_rrPlanned').value=rr;}
   const prev=document.getElementById('calcPrev');if(!prev)return;
-  if(isNaN(pnl)&&isNaN(r)&&isNaN(rr)){prev.innerHTML='<span class="calc-ic">∑</span><span style="color:var(--muted)">Vul <b>entry</b>, <b>exit</b>, <b>stop</b> &amp; <b>size</b> in — P&amp;L, R en R:R rekenen we automatisch uit.</span>';return;}
   const parts=[];
+  if(formSizeUnit==='asset'&&!isNaN(size))parts.push(`Size <b class="num">≈ ${CURSYM()} ${Math.round(size).toLocaleString('nl-NL')}</b>`);
+  if(isNaN(pnl)&&isNaN(r)&&isNaN(rr)&&!parts.length){prev.innerHTML='<span class="calc-ic">∑</span><span style="color:var(--muted)">Vul <b>entry</b>, <b>exit</b>, <b>stop</b> &amp; <b>size</b> in — P&amp;L, R en R:R rekenen we automatisch uit.</span>';return;}
   if(!isNaN(pnl))parts.push(`P&L <b class="num ${pnl>=0?'g':'r'}">${eurS(pnl)}</b>`);
   if(!isNaN(pct))parts.push(`<b class="num ${pct>=0?'g':'r'}">${(pct>=0?'+':'')+pct.toFixed(2).replace('.',',')}%</b>`);
   if(!isNaN(r))parts.push(`R <b class="num ${r>=0?'g':'r'}">${(r>=0?'+':'')+r.toFixed(2).replace('.',',')}R</b>`);
@@ -3840,6 +3857,7 @@ function calcTrade(fill){
 }
 function openForm(id){
   const t=id!=null?T.find(x=>x.id===id):{date:new Date().toISOString().slice(0,10),time:'',exchange:'mexc',pair:'BTC/USDC',dir:'long',setup:'London SFP',session:'London',timeframe:'15m',market:'Trending',grade:'',entry:'',stop:'',tp:'',exit:'',size:'',leverage:10,fees:'',risk:'',rrPlanned:'',pnl:'',r:'',status:'closed',emotion:'',mistake:'',emotions:[],mistakes:[],layers:[],tags:[],notes:'',lessons:'',durationMin:'',mae:'',mfe:''};
+  formSizeUnit=(t.sizeUnit==='asset'&&t.qty>0)?'asset':'usd';
   formTags=[...(t.tags||[])];formGrade=gradeOf(t);formShots=[...(t.screenshots||[])];formTvLinks=[...(t.tvLinks||[])];
   formLayers=(t.layers||[]).map(L=>({timeframe:L.timeframe||'',bias:L.bias||'',setups:[...(L.setups||[])],confirmations:[...(L.confirmations||[])]}));
   formEmotions=[...(t.emotions||(t.emotion?[t.emotion]:[]))];
@@ -3853,7 +3871,7 @@ function openForm(id){
     <div class="mbody">
       <div class="msub s1"><span class="msn">1</span> Basis</div>
       <div class="field"><label>Exchange</label><select id="f_exchange" aria-label="Exchange">${exOpt}</select></div>
-      <div class="field"><label>Pair</label><input id="f_pair" value="${esc(t.pair)}" placeholder="BTC/USDC"></div>
+      <div class="field"><label>Pair</label><input id="f_pair" value="${esc(t.pair)}" placeholder="BTC/USDC" oninput="updSzBtn()"></div>
       <div class="field"><label>Datum</label><input type="date" id="f_date" value="${t.date}" onchange="onDateChange()"></div>
       <div class="field"><label>Tijd</label><input id="f_time" value="${t.time||''}" placeholder="14:30"></div>
       <div class="field"><label>Richting</label><select id="f_dir" aria-label="Richting" onchange="calcTrade(true)"><option value="long" ${t.dir==='long'?'selected':''}>Long</option><option value="short" ${t.dir==='short'?'selected':''}>Short</option></select></div>
@@ -3872,7 +3890,9 @@ function openForm(id){
       <div class="field"><label>Exit</label><input id="f_exit" value="${t.exit}" inputmode="decimal" oninput="calcTrade(true)"></div>
       <div class="field"><label>Stop-loss</label><input id="f_stop" value="${t.stop||''}" inputmode="decimal" oninput="calcTrade(true)"></div>
       <div class="field"><label>Take-profit</label><input id="f_tp" value="${t.tp||''}" inputmode="decimal" oninput="calcTrade(true)"></div>
-      <div class="field"><label>Size (${CURSYM()})</label><input id="f_size" value="${t.size}" inputmode="decimal" oninput="calcTrade(true)"></div>
+      <div class="field"><label>Size <span class="hint">(in ${CURSYM()} of in de asset)</span></label>
+        <div class="szrow"><input id="f_size" value="${formSizeUnit==='asset'?(t.qty||''):t.size}" inputmode="decimal" oninput="calcTrade(true)">
+        <div class="szseg" id="szseg"><button type="button" class="${formSizeUnit==='usd'?'on':''}" onclick="setSizeUnit('usd')">${CURSYM()}</button><button type="button" id="szAssetBtn" class="${formSizeUnit==='asset'?'on':''}" onclick="setSizeUnit('asset')">${esc(pairBase(t.pair)||'coin')}</button></div></div></div>
       <div class="field"><label>Hefboom</label><input id="f_leverage" value="${t.leverage||''}" inputmode="numeric" placeholder="10"></div>
       <div class="field"><label>Risk (%)</label><input id="f_risk" value="${t.risk||''}" inputmode="decimal" placeholder="1.0"></div>
       <div class="field"><label>Geplande R:R</label><input id="f_rrPlanned" value="${t.rrPlanned||''}" inputmode="decimal" placeholder="2.0"></div>
@@ -3935,7 +3955,12 @@ function submitForm(id){
   const timeframe=entryLayer?entryLayer.timeframe:'';
   const obj={date:g('date'),time:g('time'),exchange:g('exchange'),account:ex?ex.acct:'',pair:g('pair').toUpperCase().trim(),dir:g('dir'),session:g('session'),
     market:g('market'),grade:formGrade,layers,setup,timeframe,
-    entry:num('entry'),exit:num('exit'),stop:num('stop'),tp:num('tp'),tps:formTPs.map(x=>({price:+x.price||0,pct:+x.pct||0,r:x.r,hit:!!x.hit})).filter(x=>x.price>0),size:String(g('size')||'0'),leverage:num('leverage'),risk:num('risk'),rrPlanned:num('rrPlanned'),fees:num('fees'),
+    entry:num('entry'),exit:num('exit'),stop:num('stop'),tp:num('tp'),tps:formTPs.map(x=>({price:+x.price||0,pct:+x.pct||0,r:x.r,hit:!!x.hit})).filter(x=>x.price>0),
+    // size blijft ALTIJD in $ opgeslagen (alle stats rekenen daarop); in asset-modus bewaren we
+    // daarnaast qty + sizeUnit zodat het formulier en de tabel de asset-hoeveelheid tonen.
+    size:formSizeUnit==='asset'?String(Math.round(num('size')*num('entry'))):String(g('size')||'0'),
+    sizeUnit:formSizeUnit==='asset'?'asset':'usd',qty:formSizeUnit==='asset'?num('size'):0,
+    leverage:num('leverage'),risk:num('risk'),rrPlanned:num('rrPlanned'),fees:num('fees'),
     durationMin:num('durationMin'),mae:num('mae'),mfe:num('mfe'),
     pnl,pnlPct:+(pnl/ACCT*100).toFixed(2),r:num('r'),status:g('status'),
     emotions:[...formEmotions],emotion:formEmotions[0]||'',mistakes:[...formMistakes],mistake:formMistakes[0]||'',
