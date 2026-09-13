@@ -1365,10 +1365,14 @@ const svg=(p,w=18)=>`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" 
 /* ═══ Seed ═══ */
 const ACCT=24663;
 const EXCHANGES=[
-  {id:'mexc',name:'MEXC',abbr:'MX',c:'#3b6ef5',acct:'Scalp',val:13011},
+  // MEXC: API-koppeling gestopt — geen MiCA-licentie, verlaat NL per nov 2026 (offboarding
+  // aangekondigd 2026-08-12). Oude trades blijven zichtbaar; import via CSV/back-up blijft.
+  {id:'mexc',name:'MEXC',abbr:'MX',c:'#3b6ef5',acct:'Scalp',val:13011,deprecated:'MEXC stopt met Nederlandse klanten (nov 2026) en heeft geen MiCA-licentie'},
   {id:'blofin',name:'Blofin',abbr:'BF',c:'#10b3a3',acct:'Swing',val:10527},
   {id:'okx',name:'OKX',abbr:'OK',c:'#7b8794',acct:'OKX',val:1049},
   {id:'hyperliquid',name:'Hyperliquid',abbr:'HL',c:'#a78bfa',acct:'HL',val:76},
+  // Kraken Futures: de aangewezen route voor NL na de MEXC-offboarding (MiFID II via CySEC).
+  {id:'kraken',name:'Kraken Futures',abbr:'KF',c:'#7c5ce0',acct:'Kraken',val:0},
 ];
 const EXMAP=Object.fromEntries(EXCHANGES.map(e=>[e.id,e]));
 // Netto ingelegd kapitaal uit het ledger (deposit +, withdrawal −, correction = absoluut setpoint).
@@ -1487,7 +1491,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.43';
+const APP_VERSION='v0.9.44';
 const SCHEMA_VERSION=1;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -1679,6 +1683,7 @@ function persistManual(){DB.save('manual',MANUAL);}
 function persistSync(){DB.save('sync',SYNC);}
 function connExpand(id){STATE.connOpen=STATE.connOpen===id?'':id;render();}
 function connectEx(id){
+  if(EXMAP[id]&&EXMAP[id].deprecated){toast('Koppelen kan niet meer: '+EXMAP[id].deprecated,'err');return;}
   const ad=(typeof ExchangeAPI!=='undefined'&&ExchangeAPI[id])||{};
   const gv=p=>{const el=document.getElementById(p+'_'+id);return el?el.value.trim():'';};
   const wallet=gv('cw'),key=gv('ck'),sec=gv('cs'),pass=gv('cp'),from=gv('cf');
@@ -2671,6 +2676,9 @@ function pgInstellingen(){
   const exRows=EXCHANGES.map(e=>{const c=CONNS[e.id],open=STATE.connOpen===e.id;
     const ad=(typeof ExchangeAPI!=='undefined'&&ExchangeAPI[e.id])||{};
     const lastS=c&&c.lastSync?new Date(c.lastSync).toLocaleString('nl-NL',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'';
+    if(e.deprecated)return `<div class="setrow" style="opacity:.75">${accAvatar(e.id,30)}
+      <div class="txt"><b>${e.name} <span class="chip warnc" style="background:var(--amber-soft);border:1px solid color-mix(in srgb,var(--amber) 35%,transparent);color:var(--amber);font-weight:700;padding:2px 8px;border-radius:20px;font-size:10.5px;vertical-align:middle">API gestopt</span></b>
+      <small>${esc(e.deprecated)}. Je bestaande ${e.name}-trades blijven gewoon zichtbaar en tellen mee; oude exports importeren kan via CSV/back-up.</small></div></div>`;
     return `<div class="setrow">${accAvatar(e.id,30)}
       <div class="txt"><b>${e.name}</b><small><span class="dotc" style="display:inline-block;vertical-align:middle;margin-right:4px;background:${c&&c.connected?'var(--green)':'var(--muted)'}"></span>${c&&c.connected?'verbonden · '+(ad.walletOnly?'wallet':'key')+' •••'+c.hint+(lastS?' · laatste sync '+lastS:'')+(c.autoSync?' · auto-sync aan':''):'niet verbonden'}</small></div>
       ${c&&c.connected?`<button class="btn" onclick="syncExchange('${e.id}')">↻ Sync nu</button>`:''}
@@ -3421,7 +3429,7 @@ const FAQS=[
     ['Wat is het Playbook?','Je verzameling setups mét regels: wanneer stap je in, waar ligt je stop, wanneer blijf je weg. Per setup rekent SyncJournal automatisch win-rate en verwachting uit. Nieuwe playbook maken doe je op de <b>Playbook</b>-pagina.'],
   ]],
   ['🔄 Exchanges koppelen',[
-    ['Welke exchanges worden ondersteund?','Blofin, MEXC, OKX, Hyperliquid en Kraken Futures via API. Daarnaast werkt <b>CSV-import voor élke exchange</b> — je exporteert je trade-history als CSV-bestand en leest die in.'],
+    ['Welke exchanges worden ondersteund?','Blofin, OKX, Hyperliquid en Kraken Futures via API. Daarnaast werkt <b>CSV-import voor élke exchange</b> — je exporteert je trade-history als CSV-bestand en leest die in. <b>MEXC</b> is alleen nog via import beschikbaar: de API-koppeling is gestopt omdat MEXC geen MiCA-licentie heeft en Nederland verlaat — je oude MEXC-trades blijven gewoon zichtbaar.'],
     ['Hoe koppel ik een exchange?','Via <b>Instellingen → Accounts → + Account toevoegen</b>. Voor CSV-import heb je geen keys nodig. Voor live sync maak je op je exchange een <b>read-only API-key</b> aan (alleen-lezen: kan nooit handelen of geld opnemen) en plak je die hier.'],
     ['Zijn mijn API-keys veilig?','Ja — gebruik altijd read-only keys (die kunnen alléén meekijken, nooit handelen). De app praat rechtstreeks met de exchange; je keys gaan niet naar een externe server.'],
     ['Mijn exchange staat er niet tussen — wat nu?','Gebruik CSV-import: vrijwel elke exchange kan je trade-history als CSV-bestand exporteren, en dat bestand lees je in via <b>Instellingen → Accounts</b>. Werkt voor alles, van crypto tot forex.'],
@@ -4771,6 +4779,7 @@ async function testConn(exId){
 // de prullenbak wint: een verwijderde trade komt niet terug via sync (srcId-guard).
 async function syncExchange(exId,opts){
   const quiet=opts&&opts.quiet;
+  if(EXMAP[exId]&&EXMAP[exId].deprecated){if(!quiet)toast('Sync niet meer mogelijk: '+EXMAP[exId].deprecated+'. Je oude trades blijven gewoon zichtbaar.','err');return -1;}
   const ad=ExchangeAPI[exId],c=CONNS[exId];
   if(!ad||!c||!c.connected){if(!quiet)toast('Eerst verbinden via Instellingen → Accounts','err');return -1;}
   const last=+c.lastSync||0;
@@ -4789,7 +4798,7 @@ async function syncExchange(exId,opts){
   render();return mapped.length;
 }
 async function syncNow(){
-  const conn=EXCHANGES.filter(e=>CONNS[e.id]&&CONNS[e.id].connected);
+  const conn=EXCHANGES.filter(e=>!e.deprecated&&CONNS[e.id]&&CONNS[e.id].connected);
   if(!conn.length){toast('Geen exchanges verbonden — koppel er eerst een via Accounts','info');return;}
   toast('Sync gestart ('+conn.map(e=>e.name).join(', ')+')…','info');
   let n=0,fail=0;
@@ -4804,7 +4813,7 @@ function startAutoSync(){
   const ms={'5m':300e3,'15m':900e3,'30m':1800e3,'1u':3600e3}[SYNC.interval]||900e3;
   _autoSyncTimer=setInterval(async()=>{
     if(!SYNC.auto)return;
-    for(const e of EXCHANGES){const c=CONNS[e.id];if(c&&c.connected&&c.autoSync)await syncExchange(e.id,{quiet:true});}
+    for(const e of EXCHANGES){if(e.deprecated)continue;const c=CONNS[e.id];if(c&&c.connected&&c.autoSync)await syncExchange(e.id,{quiet:true});}
   },ms);
 }
 
@@ -5142,6 +5151,8 @@ async function boot(){
   }catch(e){T=DB.load('trades',[]);PBOOK={};Object.entries(DB.load('pbook',PBRULES)).forEach(([k,v])=>PBOOK[k]=pbNormalize(k,v));}
   try{const sm=await IDB.get('snapshots');SNAP_META=Array.isArray(sm)?sm:[];}catch(e){SNAP_META=[];}
   try{const tr=await IDB.get('trash');TRASH=Array.isArray(tr)?tr:[];purgeTrash();}catch(e){TRASH=[];}
+  // Deprecated exchanges: eventuele opgeslagen keys opruimen (koppeling bestaat niet meer; trades blijven).
+  try{EXCHANGES.filter(e=>e.deprecated&&CONNS[e.id]).forEach(e=>{delete CONNS[e.id];});persistConns();}catch(e){}
   try{await runMigrations();}catch(e){}   // geversioneerde schema-updates (snapshot + rollback ingebouwd)
   selfCheck();                            // grove corruptie → herstel-aanbod
   try{startAutoSync();}catch(e){}         // exchange auto-sync-timer (doet niets zolang SYNC.auto uit staat)
