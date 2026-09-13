@@ -54,6 +54,31 @@ _scratch/    - GITIGNORED: oude varianten (v4_14, dragdrop-test, design-handoff)
 - **React hooks**: `useState` / `useEffect` / `useRef` / `useMemo` / `useCallback` zijn globaal gedestructureerd bovenin het bestand (`const {useState,...} = React`). Geen `React.useState` nodig.
 - **Amsterdam-tijd voor user-facing datums**: gebruik `Intl.DateTimeFormat("sv-SE", {timeZone:"Europe/Amsterdam", ...})` voor dag-of-week / uur berekeningen (DST-aware). Zie DisciplineHeatmap als voorbeeld.
 
+## Code-stijl (voor Claude)
+
+- **Kleinste heldere wijziging** die de taak volledig oplost. Geen speculatieve
+  abstracties, flexibiliteit of dependencies "voor later" — bouw wat de taak vraagt.
+- **Vóór het bewerken**: begrijp de geraakte flow en check of bestaande code of een
+  bestaande helper het al oplost (voorkomt duplicaten in de grote single-file).
+- **Bij bugfixes**: fix de wortel-oorzaak, niet het symptoom. Inspecteer elke caller
+  van de functie die je wijzigt en loop de sibling-paden na (zie ook de
+  exchange-isolatie-regel en de graphify-impact-check elders in dit document).
+- **Liever verwijderen en hergebruiken** dan toevoegen. Maar offer nooit correctheid
+  of leesbaarheid op voor een kleinere diff.
+- **Magic values**: benoem elke literal waarvan de betekenis niet op de plek zelf
+  duidelijk is (const met naam, of comment).
+- **Simpeler alternatief?** Stel het voor als het aan dezelfde eisen voldoet.
+  Routinebeslissingen neem je zelf, zonder goedkeuring te vragen.
+- **Comments** alleen voor niet-voor-de-hand-liggende intentie of constraints —
+  geen "wat de volgende regel doet". Bewuste shortcuts markeer je met een comment
+  die de beperking én het upgrade-pad benoemt.
+- **Single-file blijft de architectuur** (géén 1000-regel-limiet per bestand), maar
+  houd fúncties klein en gescheiden; splits een functie vóór hij onleesbaar wordt.
+- **Tests**: alleen een test toevoegen als het falen ervan iets écht kapots aanwijst.
+  Geen asserts op interne structuur of toevallige styling-waarden — met één bewuste
+  uitzondering: onze theme-pixel-diffs en de theme-token-hook zijn regressie-vangnetten
+  en blijven (theme-bugs zijn historisch onze grootste regressiecategorie).
+
 ## Cloudflare Worker proxy (productie — enige actieve proxy)
 
 De app praat met exchange-API's via een **online Cloudflare Worker**, niet via `proxy-local/`. Die laatste is historisch en niet meer in gebruik — wijzigingen daaraan hebben geen productie-effect.
