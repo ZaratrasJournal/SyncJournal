@@ -1487,7 +1487,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.42';
+const APP_VERSION='v0.9.43';
 const SCHEMA_VERSION=1;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -1678,9 +1678,16 @@ function persistConns(){DB.save('conns',CONNS);}
 function persistManual(){DB.save('manual',MANUAL);}
 function persistSync(){DB.save('sync',SYNC);}
 function connExpand(id){STATE.connOpen=STATE.connOpen===id?'':id;render();}
-function connectEx(id){const k=document.getElementById('ck_'+id),s=document.getElementById('cs_'+id),key=k?k.value.trim():'',sec=s?s.value.trim():'';
-  if(!key||!sec){toast('Vul zowel API-key als secret in','err');return;}
-  CONNS[id]={connected:true,autoSync:(CONNS[id]&&CONNS[id].autoSync)||false,hint:key.slice(-4)};persistConns();STATE.connOpen='';render();toast('✓ '+EXMAP[id].name+' verbonden','ok');}
+function connectEx(id){
+  const ad=(typeof ExchangeAPI!=='undefined'&&ExchangeAPI[id])||{};
+  const gv=p=>{const el=document.getElementById(p+'_'+id);return el?el.value.trim():'';};
+  const wallet=gv('cw'),key=gv('ck'),sec=gv('cs'),pass=gv('cp'),from=gv('cf');
+  if(ad.walletOnly){ if(!wallet){toast('Vul je wallet-adres in (0x…)','err');return;} }
+  else{ if(!key||!sec){toast('Vul zowel API-key als secret in','err');return;}
+        if(ad.needsPassphrase&&!pass){toast(EXMAP[id].name+' vereist ook een passphrase','err');return;} }
+  CONNS[id]={...(CONNS[id]||{}),connected:true,autoSync:(CONNS[id]&&CONNS[id].autoSync)||false,
+    hint:(ad.walletOnly?wallet:key).slice(-4),apiKey:key,apiSecret:sec,passphrase:pass,wallet,syncFrom:from};
+  persistConns();STATE.connOpen='';render();toast('✓ '+EXMAP[id].name+' verbonden — test de verbinding of start een sync','ok');}
 function disconnectEx(id){delete CONNS[id];persistConns();render();toast(EXMAP[id].name+' losgekoppeld','info');}
 function toggleExSync(id){if(CONNS[id]){CONNS[id].autoSync=!CONNS[id].autoSync;persistConns();render();}}
 function addManual(){const n=document.getElementById('ma_name'),bal=document.getElementById('ma_bal'),name=n?n.value.trim():'',b=bal?parseFloat(String(bal.value).replace(',','.'))||0:0;
@@ -1702,9 +1709,9 @@ function addAcctTx(id){const m=MANUAL.find(x=>x.id===id);if(!m||!STATE.txOpen)re
   m.transactions.push({id:'tx'+Date.now().toString(36),type,amount:String(amt),date:new Date().toISOString().slice(0,10),note:(noteEl?noteEl.value:'').trim()});
   persistManual();STATE.txOpen=null;render();toast('✓ '+TX_TYPES[type].label+' · ingelegd nu '+eur(acctCapital(m.transactions)),'ok');}
 function delAcctTx(id,txid){const m=MANUAL.find(x=>x.id===id);if(!m)return;if(!confirm('Deze mutatie verwijderen?'))return;m.transactions=m.transactions.filter(t=>t.id!==txid);persistManual();render();toast('Mutatie verwijderd','info');}
-function toggleAutoSync(){SYNC.auto=!SYNC.auto;persistSync();render();}
-function setSyncInterval(v){SYNC.interval=v;persistSync();}
-function syncNow(){const n=addSyncedTrades([]);toast('Sync gestart — '+n+' nieuwe trades (demo)','info');}
+function toggleAutoSync(){SYNC.auto=!SYNC.auto;persistSync();if(typeof startAutoSync==='function')startAutoSync();render();}
+function setSyncInterval(v){SYNC.interval=v;persistSync();if(typeof startAutoSync==='function')startAutoSync();}
+// syncNow: echte implementatie staat bij de Exchange-API sectie (geport uit tradejournal)
 async function clearTrades(){if(!confirm('Al je trades verwijderen? Er wordt eerst automatisch een veiligheidskopie gemaakt, zodat je kunt herstellen.'))return; if((T||[]).length)await Snapshots.create('vóór trades wissen'); T=[];persist();render();toast('Alle trades gewist — herstelbaar via Instellingen → Data','info');}
 async function clearAllData(){ if(!confirm('ÁLLE lokale data wissen — trades, tags, accounts én voorkeuren? Dit is onomkeerbaar. Exporteer eerst een back-up als je twijfelt.'))return;
   try{Object.keys(localStorage).filter(k=>k.indexOf('sj_')===0).forEach(k=>localStorage.removeItem(k));}catch(e){}
@@ -2662,14 +2669,21 @@ function pgInstellingen(){
   const tab=STATE.setTab||'accounts';
   const tabs=[['accounts','🔗','Accounts'],['weergave','🎨','Weergave'],['dashboard','📊','Dashboard'],['tags','🏷️','Tags'],['ai','🤖','AI-coach'],['data','💾','Data'],['updates','🔄','Updates'],['wissen','🗑️','Wissen']];
   const exRows=EXCHANGES.map(e=>{const c=CONNS[e.id],open=STATE.connOpen===e.id;
+    const ad=(typeof ExchangeAPI!=='undefined'&&ExchangeAPI[e.id])||{};
+    const lastS=c&&c.lastSync?new Date(c.lastSync).toLocaleString('nl-NL',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'';
     return `<div class="setrow">${accAvatar(e.id,30)}
-      <div class="txt"><b>${e.name}</b><small><span class="dotc" style="display:inline-block;vertical-align:middle;margin-right:4px;background:${c&&c.connected?'var(--green)':'var(--muted)'}"></span>${c&&c.connected?'verbonden · key •••'+c.hint+(c.autoSync?' · auto-sync aan':''):'niet verbonden'}</small></div>
+      <div class="txt"><b>${e.name}</b><small><span class="dotc" style="display:inline-block;vertical-align:middle;margin-right:4px;background:${c&&c.connected?'var(--green)':'var(--muted)'}"></span>${c&&c.connected?'verbonden · '+(ad.walletOnly?'wallet':'key')+' •••'+c.hint+(lastS?' · laatste sync '+lastS:'')+(c.autoSync?' · auto-sync aan':''):'niet verbonden'}</small></div>
+      ${c&&c.connected?`<button class="btn" onclick="syncExchange('${e.id}')">↻ Sync nu</button>`:''}
       <button class="btn" onclick="connExpand('${e.id}')">${open?'Sluiten':(c&&c.connected?'Beheren':'Verbinden')}</button></div>
       ${open?`<div class="conncfg">
-        <div class="ccfield"><label>API-key <span class="hint">(read-only)</span></label><input id="ck_${e.id}" placeholder="Plak je read-only API-key"></div>
-        <div class="ccfield"><label>API-secret</label><input id="cs_${e.id}" type="password" placeholder="••••••••••••"></div>
-        <div class="connnote">🔒 Gebruik <b>read-only</b> keys. In de demo bewaren we alleen de verbindingsstatus lokaal — je echte sleutels lopen straks via de beveiligde proxy en staan nooit los in de browser.</div>
-        <div class="connrow">${c&&c.connected?`<label class="swrow"><span>Auto-sync voor dit account</span><div class="sw ${c.autoSync?'on':''}" onclick="toggleExSync('${e.id}')"></div></label>`:''}<span class="sp" style="flex:1"></span>${c&&c.connected?`<button class="btn danger" onclick="disconnectEx('${e.id}')">Loskoppelen</button>`:''}<button class="btn pri" onclick="connectEx('${e.id}')">${c&&c.connected?'Bijwerken':'Verbinden'}</button></div>
+        ${ad.walletOnly
+          ?`<div class="ccfield"><label>Wallet-adres <span class="hint">(publiek — geen keys nodig)</span></label><input id="cw_${e.id}" value="${esc((c&&c.wallet)||'')}" placeholder="0x…"></div>`
+          :`<div class="ccfield"><label>API-key <span class="hint">(read-only)</span></label><input id="ck_${e.id}" value="${esc((c&&c.apiKey)||'')}" placeholder="Plak je read-only API-key"></div>
+        <div class="ccfield"><label>API-secret</label><input id="cs_${e.id}" type="password" value="${esc((c&&c.apiSecret)||'')}" placeholder="••••••••••••"></div>
+        ${ad.needsPassphrase?`<div class="ccfield"><label>Passphrase</label><input id="cp_${e.id}" type="password" value="${esc((c&&c.passphrase)||'')}" placeholder="API-passphrase"></div>`:''}`}
+        <div class="ccfield"><label>Sync vanaf <span class="hint">(optioneel — eerste sync haalt anders 30 dagen op)</span></label><input type="date" id="cf_${e.id}" value="${esc((c&&c.syncFrom)||'')}"></div>
+        <div class="connnote">🔒 Gebruik <b>read-only</b> keys (kunnen nooit handelen of geld opnemen). Sleutels blijven lokaal in deze browser; ${e.id==='blofin'?'Blofin wordt direct vanuit de browser ondertekend':e.id==='hyperliquid'?'Hyperliquid gebruikt alleen publieke wallet-data':'aanvragen lopen via de beveiligde proxy'}.</div>
+        <div class="connrow">${c&&c.connected?`<label class="swrow"><span>Auto-sync voor dit account</span><div class="sw ${c.autoSync?'on':''}" onclick="toggleExSync('${e.id}')"></div></label>`:''}<span class="sp" style="flex:1"></span>${c&&c.connected?`<button class="btn danger" onclick="disconnectEx('${e.id}')">Loskoppelen</button><button class="btn" id="ct_${e.id}" onclick="testConn('${e.id}')">Test verbinding</button>`:''}<button class="btn pri" onclick="connectEx('${e.id}')">${c&&c.connected?'Bijwerken':'Verbinden'}</button></div>
       </div>`:''}`;}).join('');
   const txLegend=`<div class="txlegend">${Object.entries(TX_TYPES).map(([k,v])=>`<span class="txlg"><span class="txic" style="color:${v.color}">${v.icon}</span>${v.label}${k==='deposit'?' (erbij)':k==='withdrawal'?' (eraf)':' (setpoint)'}</span>`).join('')}</div>`;
   const manRows=(MANUAL.length?MANUAL.map(m=>{
@@ -3723,6 +3737,1078 @@ function migOffer(){ const det=TJMigrate.detect(); if(!det)return; openModalHTML
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px"><button class="btn" onclick="migLater()">Later</button><button class="btn pri" onclick="migRun()">Veilig overzetten</button></div>
   </div>`); }
 function migLater(){ DB.save('mig_declined',true); closeForm(); if(!DB.load('welcomed',false))showWelcome(); }
+
+/* ═══ Exchange-API — geport uit work/tradejournal.html (v12.235) ═══
+   Fase 1: verbinding testen + gesloten trades syncen. De adapters hieronder zijn
+   1-op-1 overgenomen (React-vrij); alleen getProxyUrl gebruikt hier sj_proxy_url.
+   Fase 2 (nog niet geport): open-posities/placeholders, TP-backfill via fetchFills,
+   partial-merge (syncOpenPositions/importTrades-finalize uit het origineel). */
+// -- helpers die de geporte adapters verwachten (namen 1-op-1 uit tradejournal) --
+function uid(){return 'x'+Date.now().toString(36)+Math.random().toString(36).slice(2,8);}
+function ts2date(ms){const d=new Date(+ms||Date.now());return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
+function ts2time(ms){const d=new Date(+ms||Date.now());return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;}
+function localDateISO(){return ts2date(Date.now());}
+function sourceTypeOf(src){if(!src)return 'manual';if(EXMAP[src])return src;return MANUAL.some(m=>m.id===src)?'manual':String(src);}
+
+// -- EMPTY_TRADE (TJ-schema; het formaat dat de adapters uitspugen) --
+const EMPTY_TRADE={
+  id:"",date:localDateISO(),
+  time:new Date().toTimeString().slice(0,5),
+  pair:"BTC/USDT",direction:"long",
+  entry:"",stopLoss:"",takeProfit:"",exit:"",
+  leverage:"10",positionSize:"",positionSizeAsset:"",
+  pnl:"",fees:"",
+  setupTags:[],confirmationTags:[],timeframeTags:[],
+  emotionTags:[],mistakeTags:[],customTags:[],
+  missedReasonTags:[],// voor status:"missed" trades
+  simType:"",         // "missed" (real-time gespot, niet genomen) of "backtest" (chart-replay). Leeg = legacy "missed".
+  playbookId:"",      // v12.50: FK naar playbook-id; auto-fill bron + compliance-tracking
+  complianceChecks:[],// v12.50: array van criteria-text die afgevinkt waren bij entry
+  complianceScore:null,// v12.50: % mandatory criteria afgevinkt (cached voor analytics)
+  tradeGrade:"",      // v12.61: A+/A/B/C — overschrijft pb.defaultGrade per trade (Bellafiore Tier-systeem)
+  rating:0,screenshot:null,screenshots:[],notes:"",links:[],layers:[],
+  source:"manual",positionId:"",openTime:"",closeTime:"",
+  // v12.62: status uitgebreid met "partial" — gederiveerd door syncOpenPositions
+  // wanneer een open positie closed-siblings heeft via dezelfde positionId.
+  // Behandeld als "open" voor exit-fields (verborgen), maar krijgt visueel een
+  // amber badge + realizedPnl-display.
+  status:"closed",manualOverrides:[],tpLevels:[],tpTemplateId:"",
+  realizedPnl:"",     // v12.62: voor status="partial" — sum(pnl) van closed-siblings met zelfde positionId
+  originalSizeAsset:"",// v12.62: voor status="partial" — origineel size in base currency (= rest + alle closed siblings); gebruikt voor correcte TP-winst-calc
+  entryNote:"",
+  riskUsd:"",riskPct:"",
+  hindsightExit:"",// optional: where did price actually go after a missed trade
+  // v12.190: Merge-feature (FTMO MT5 partial-workaround). Soft-merge architectuur — zie demos/trades-merge-demo.html.
+  // Op master-trade: mergedFrom = [child-ids], _mergeSource = "manual", _mergeTimestamp = ISO.
+  // Op merged-children: mergedInto = master-id, _preMergeStatus = oorspronkelijke status (voor exact-restore bij de-merge).
+  // status="merged-child" wordt door filterMergedChildren() helper uit alle UI-lists + analytics gefilterd.
+  mergedFrom:null,mergedInto:null,_preMergeStatus:null,_mergeSource:null,_mergeTimestamp:null
+};
+// -- detectPartialFromSiblings (1745-1840) --
+// v12.62: pure helper voor partial-status detectie. Pakt een trades-array, returnt
+// dezelfde array maar met `status="partial"` + `realizedPnl=sum` toegepast op open
+// trades die closed-siblings hebben op (pair, direction, entry-prijs op 8 decimalen).
+// Geëxtraheerd uit syncOpenPositions zodat 'ie testbaar is via fixture-import zonder
+// React state of API-calls. Belangrijk: positionId is GEEN match-key — Blofin hergebruikt
+// 'm over verschillende posities heen (empirisch via Denny's data: 1 posId voor 8 BTC trades).
+// v12.232: tweede param heet nu sourceKey — kan een account.id zijn (post-multi-account) óf
+// legacy exchange-type. exchangeType (3e param, default afgeleid) blijft het TYPE en stuurt
+// type-specifieke logica zoals de Blofin positionId-guard.
+function detectPartialFromSiblings(trades,sourceKey,exchangeType){
+  if(!Array.isArray(trades))return trades;
+  const exType=exchangeType||sourceTypeOf(sourceKey);
+  const matchKey=(t)=>{
+    const e=parseFloat(t.entry);
+    if(!isFinite(e)||e<=0)return null;
+    return `${t.pair}|${t.direction}|${e.toFixed(8)}`;
+  };
+  return trades.map(t=>{
+    if(t.source!==sourceKey)return t;
+    if(t.status!=="open"&&t.status!=="partial")return t;
+    const tKey=matchKey(t);
+    if(!tKey)return t;
+    // v12.89: voor Blofin extra positionId-check zodat stale-trades van andere posities op
+    // dezelfde entry-prijs niet als sibling gemerged worden. Voor MEXC/HL/Kraken: matchKey volstaat.
+    const blofinPidGuard=(s)=>{
+      if(exType!=="blofin")return true;
+      if(!t.positionId||!s.positionId)return true; // legacy data zonder positionId: geen extra check
+      return String(s.positionId)===String(t.positionId);
+    };
+    const siblings=trades.filter(s=>s.source===sourceKey&&s.status==="closed"&&s.id!==t.id&&matchKey(s)===tKey&&blofinPidGuard(s));
+    if(siblings.length===0){
+      if(t.status==="partial")return{...t,status:"open",realizedPnl:""};
+      return t;
+    }
+    const realizedPnl=siblings.reduce((sum,c)=>sum+(parseFloat(c.pnl)||0),0);
+    // v12.87 (bug 2 fix): aggregeer fees van alle siblings + de open-trade zelf.
+    // Voorheen werden geconsumeerde sibling-fees onzichtbaar (omdat closed
+    // siblings via getConsumedSiblings worden gefilterd uit de UI). Door fees
+    // op de partial te zetten blijven ze zichtbaar in totalen + per-trade.
+    const sumFees=siblings.reduce((s,c)=>s+(Math.abs(parseFloat(c.fees||"0"))||0),0)+(Math.abs(parseFloat(t.fees||"0"))||0);
+    let next={...t,status:"partial",realizedPnl:realizedPnl.toFixed(2),fees:sumFees.toFixed(4)};
+    const sortedSiblings=[...siblings].sort((a,b)=>{
+      const at=parseInt((a.id||"").split("_").pop()||"0",10);
+      const bt=parseInt((b.id||"").split("_").pop()||"0",10);
+      return at-bt;
+    });
+    // v12.62 size-resolutie zoals voorheen
+    const sizeOf=(rec)=>{
+      const raw=parseFloat(rec._rawCloseSize);
+      if(isFinite(raw)&&raw>0)return raw;
+      const pnl=parseFloat(rec.pnl);
+      const exit=parseFloat(rec.exit);
+      const entry=parseFloat(rec.entry);
+      if(isFinite(pnl)&&isFinite(exit)&&isFinite(entry)&&Math.abs(exit-entry)>0){
+        const sz=Math.abs(pnl)/Math.abs(exit-entry);
+        if(sz>0)return sz;
+      }
+      return Math.abs(parseFloat(rec.positionSizeAsset)||0);
+    };
+    // v12.87 ghost-partial detectie: een stale open-record toont de ORIGINELE size terwijl
+    // de positie al volledig dicht is → closedAsset ≈ rawRest → behandel rest als 0.
+    // v12.233 (fase-2 audit): voorheen vuurde dit op closedAsset >= rest×0.99, dus óók bij
+    // legitiem >50% gesloten posities (TP1 50% + TP2 25% hit, 25% runner open: closed 0.75 ≥
+    // rest 0.25). Daardoor werd de runner weggenuld → originalSizeAsset te klein en TP-pcts
+    // opgeblazen. Nu alleen ghost bij ≈gelijkheid (±1%). Closed == rest (exact 50% dicht)
+    // blijft inherent ambigu en houdt de ghost-interpretatie (status-quo).
+    const rawRest=Math.abs(parseFloat(t.positionSizeAsset)||0);
+    const closedAsset=sortedSiblings.reduce((s,c)=>s+sizeOf(c),0);
+    const isGhost=rawRest>0&&closedAsset>=rawRest*0.99&&closedAsset<=rawRest*1.01;
+    const restAsset=isGhost?0:rawRest;
+    const totalAsset=restAsset+closedAsset;
+    if(totalAsset>0)next.originalSizeAsset=String(totalAsset);
+    // v12.89 (stale-tpLevels fix): voorheen werden tpLevels NIET rebuilt als de open
+    // trade al tpLevels had — bij elke nieuwe sync stapelden auto-gegenereerde "hit"
+    // levels op (gemeld 2026-05-04: 18 stale TPs op 1 trade die er max 3 zou hebben).
+    // Nu: behoud alleen user-toegevoegde TPs (status !== "hit"), rebuild de auto-hits
+    // van scratch op basis van huidige siblings.
+    const userTps=(Array.isArray(t.tpLevels)?t.tpLevels:[]).filter(tp=>tp&&tp.status!=="hit");
+    const hitTps=sortedSiblings.map(c=>{
+      const cAsset=sizeOf(c);
+      const pct=totalAsset>0?(cAsset/totalAsset*100):0;
+      return{
+        id:"tp_"+c.id,
+        price:c.exit||"",
+        pct:pct.toFixed(2),
+        status:"hit",
+        actualPrice:c.exit||"",
+        ts:Number(c.closeTime)||0,
+      };
+    });
+    // v12.89: sorteer hit-TPs chronologisch op closeTime zodat TP1 = oudste close
+    hitTps.sort((a,b)=>(a.ts||0)-(b.ts||0));
+    next.tpLevels=[...userTps,...hitTps];
+    return next;
+  });
+}
+// -- normPrice (2500-2508) --
+const normPrice=(v)=>{
+  if(v===null||v===undefined||v==="")return"";
+  const s=String(v).trim();
+  if(!s)return"";
+  const n=parseFloat(s);
+  if(!isFinite(n))return"";
+  // JS default toString() gebruikt minimale representatie (2335, niet 2335.000000000000)
+  return String(n);
+};
+// ═══ EXTRACT uit work/tradejournal.html — exchange-API kern ═══
+// -- getProxyUrl (3185-3195) --
+function getProxyUrl(){
+  const WORKER="https://morani-proxy.moranitraden.workers.dev";
+  try{
+    const saved=localStorage.getItem("sj_proxy_url");
+    if(!saved){
+      localStorage.setItem("sj_proxy_url",WORKER);
+      return WORKER;
+    }
+    return saved;
+  }catch(err){return WORKER;}
+}
+// -- rate-limit + proxyCall (3413-3441) --
+// S2 (v12.240): rate-limit backoff per exchange. Een 429 / Cloudflare 1015 (van onze gratis Worker
+// óf van de exchange via de Worker) zet een OPLOPENDE cooldown op die exchange. proxyCall slaat
+// verzoeken tijdens die cooldown PROACTIEF over (geen netwerk) → de polls (balans/auto-sync) no-oppen
+// stil (ze catch'en al), en een manuele actie krijgt een nette melding i.p.v. de exchange te blijven
+// overvragen. Bij succes reset de backoff. Zo blijven we binnen de free-tier + OKX's IP-limiet.
+const _rlBackoff={};// {exchange:{until:ts,tries:n}}
+function _rlWaitSec(ex){const b=_rlBackoff[ex];return(b&&b.until>Date.now())?Math.ceil((b.until-Date.now())/1000):0;}
+function _rlBump(ex){const tries=((_rlBackoff[ex]&&_rlBackoff[ex].tries)||0)+1;const delay=Math.min(10*60*1000,30000*Math.pow(2,tries-1));_rlBackoff[ex]={until:Date.now()+delay,tries};}
+function _rlIsLimit(status,msg){return status===429||/(^|[^0-9])429([^0-9]|$)|1015|rate.?limit|too many request/i.test(String(msg||""));}
+function _rlError(ex){const s=_rlWaitSec(ex);const when=s>60?`~${Math.ceil(s/60)} min`:`~${s||30}s`;const e=new Error(`${(ex||"exchange").toUpperCase()} is even druk (rate-limit) — probeer over ${when} opnieuw.`);e.rateLimited=true;return e;}
+async function proxyCall(payload){
+  const ex=(payload&&payload.exchange)||"";
+  // Proactief overslaan tijdens een actieve backoff — bespaart de Worker + exchange.
+  if(_rlWaitSec(ex)>0)throw _rlError(ex);
+  const url=getProxyUrl();
+  const resp=await fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
+  if(!resp.ok){
+    var bodyTxt="";try{bodyTxt=await resp.text();}catch(ex1){}
+    if(_rlIsLimit(resp.status,bodyTxt)){_rlBump(ex);throw _rlError(ex);}
+    var errMsg="Worker fout ("+resp.status+")";
+    try{var ed=JSON.parse(bodyTxt);if(ed.error)errMsg="Fout: "+ed.error;}catch(ex2){}
+    throw new Error(errMsg);
+  }
+  const data=await resp.json();
+  if(data.error){if(_rlIsLimit(0,data.error)){_rlBump(ex);throw _rlError(ex);}throw new Error(data.error);}
+  _rlBackoff[ex]&&delete _rlBackoff[ex];// succes → reset backoff voor deze exchange
+  return data;
+}
+
+// -- ExchangeAPI adapters (3444-4166) --
+const ExchangeAPI = {
+  mexc:{
+    name:"MEXC",color:"#00b897",needsPassphrase:false,
+    // contractSize lookup — MEXC futures geven `vol` in contracts (BTC_USDT = 0.0001 BTC per contract,
+    // ETH_USDT = 0.01 ETH, SOL_USDT = 1 SOL, etc). Public endpoint api.mexc.com (host-migratie jan 2026; was contract.mexc.com) is in
+    // browser-context geen CORS-allowed (geen Access-Control-Allow-Origin header voor file://).
+    // v12.89: hardcoded fallback-map voor de meest-gebruikte pairs zodat positionSize-conversie
+    // werkt zonder de fetch — vooral relevant voor file:// (lokaal geserveerd zonder proxy).
+    _ctvFallback:{
+      BTC_USDT:0.0001,ETH_USDT:0.01,SOL_USDT:1,
+      DOGE_USDT:1000,XRP_USDT:10,ADA_USDT:10,DOT_USDT:1,MATIC_USDT:10,
+      LINK_USDT:1,AVAX_USDT:1,LTC_USDT:0.1,BNB_USDT:0.01,
+    },
+    _ctvCache:{},
+    async _getContractSize(symbol){
+      if(!symbol)return 0;
+      if(this._ctvCache[symbol]!=null)return this._ctvCache[symbol];
+      try{
+        const r=await fetch(`https://api.mexc.com/api/v1/contract/detail?symbol=${symbol}`,{cache:"no-cache"});
+        if(!r.ok){const fb=this._ctvFallback[symbol];if(fb){this._ctvCache[symbol]=fb;return fb;}return 0;}
+        const d=await r.json();
+        const size=parseFloat(d?.data?.contractSize)||this._ctvFallback[symbol]||0;
+        this._ctvCache[symbol]=size;
+        return size;
+      }catch{
+        const fb=this._ctvFallback[symbol];
+        if(fb){this._ctvCache[symbol]=fb;return fb;}
+        return 0;
+      }
+    },
+    // Helpt fetchTrades + fetchOpenPositions met converteren van contracts → assetQty + USD notional.
+    // v12.97: ook _ctvFallback consulteren als cache leeg is (race-condition-vrij).
+    // Voorheen: alleen this._ctvCache → bij race waar _getContractSize nog niet gerund is
+    // returnt deze 0 → positionSize valt terug naar raw closeVol = bug-state.
+    _convertContracts(symbol,vol,price){
+      const ctSize=this._ctvCache[symbol]||this._ctvFallback[symbol]||0;
+      const contracts=parseFloat(vol)||0;
+      const assetQty=ctSize>0?contracts*ctSize:0;
+      const p=parseFloat(price)||0;
+      const usdNotional=assetQty*p;
+      return{assetQty,usdNotional,ctSize};
+    },
+    async fetchTrades(apiKey,apiSecret,_pp,startTime){
+      const data=await proxyCall({exchange:"mexc",action:"trades",apiKey,apiSecret,startTime});
+      const trades=data.trades||[];
+      // Warm contract-size cache voor alle symbolen in batch
+      const symbols=[...new Set(trades.map(t=>t.symbol).filter(Boolean))];
+      await Promise.all(symbols.map(s=>this._getContractSize(s)));
+      return trades.map(t=>{
+        const closeTime=t.updateTime||t.closeTime||Date.now();
+        const conv=this._convertContracts(t.symbol,t.closeVol||t.vol,t.openAvgPrice||t.closeAvgPrice);
+        // v12.97: laatste vangnet — als ctSize 0 blijft (exotic coin niet in fallback-map),
+        // derive asset uit pnl-math als entry/exit/realised aanwezig zijn. PnL is autoritatief
+        // (= MEXC realised, netto sinds v12.88). Voorkomt bug-state waar positionSize = raw
+        // closeVol als USD wordt opgeslagen.
+        let positionSize=conv.usdNotional>0?conv.usdNotional.toFixed(2):"";
+        let positionSizeAsset=conv.assetQty>0?String(conv.assetQty):"";
+        if(!positionSizeAsset){
+          const entryN=parseFloat(t.openAvgPrice)||0;
+          const exitN=parseFloat(t.closeAvgPrice)||0;
+          const realisedN=parseFloat(t.realised)||0;
+          const feeAbs2=Math.abs(parseFloat(t.fee)||0);
+          // Relatieve drempel zodat dit ook werkt voor microcap coins (PEPE etc.)
+          // waar absolute prijs-verschil < $0.001 kan zijn.
+          const priceMove=Math.abs(exitN-entryN);
+          if(entryN>0&&exitN>0&&Math.abs(realisedN)>0.001&&priceMove>entryN*1e-9){
+            const grossPnl=Math.abs(realisedN)+feeAbs2;
+            const derivedAsset=grossPnl/priceMove;
+            if(derivedAsset>0&&Number.isFinite(derivedAsset)){
+              positionSizeAsset=String(derivedAsset);
+              positionSize=(derivedAsset*entryN).toFixed(2);
+            }
+          }
+        }
+        // Allerlaatste fallback (alleen als pnl-derivation ook niet kon): raw closeVol-string
+        if(!positionSize)positionSize=String(t.closeVol||t.vol||"");
+        // v12.88 (2nd fix): MEXC's `realised` is NETTO PnL (al fee-afgetrokken).
+        // Verified via 3-way validation tegen xlsx export:
+        //   - xlsx ClosingPNL = GROSS per fill (Σ over positie = positie-gross-PnL)
+        //   - snap realised = NET per positie (= xlsx-Σ-gross − Σ-fee)
+        //   - Empirische check 134 records: fee=0 → realised=gross; fee≠0 → realised=gross−|fee|
+        // Eerdere v12.88 fix (1st: trok fees nóg een keer af) was dus fout. Hier: pnl=realised
+        // direct (al netto), fees=|fee| (voor display-consistency met andere exchanges).
+        // MEXC's `fee` komt negatief uit de API (uitgaand vanuit account) — Math.abs voor display.
+        const feeAbs=Math.abs(parseFloat(t.fee)||0);
+        return{id:"mexc_"+t.positionId+"_"+closeTime,positionId:String(t.positionId||""),openTime:String(t.openTime||t.createTime||""),closeTime:String(closeTime),date:ts2date(closeTime),time:ts2time(closeTime),pair:(t.symbol||"BTC_USDT").replace("_","/"),direction:t.positionType===1?"long":"short",entry:String(t.openAvgPrice||""),exit:String(t.closeAvgPrice||""),positionSize,positionSizeAsset,pnl:String(t.realised||""),fees:feeAbs.toFixed(4),leverage:String(t.leverage||"10"),source:"mexc",status:"closed",stopLoss:"",takeProfit:"",highestPrice:"",lowestPrice:"",setupTags:[],confirmationTags:[],timeframeTags:[],emotionTags:[],mistakeTags:[],customTags:[],rating:0,screenshot:null,notes:""};
+      });
+    },
+    async testConnection(apiKey,apiSecret){const data=await proxyCall({exchange:"mexc",action:"test",apiKey,apiSecret});return{success:true,balance:data.balance||"0"}},
+    async fetchOpenPositions(apiKey,apiSecret){
+      const data=await proxyCall({exchange:"mexc",action:"open_positions",apiKey,apiSecret});
+      const positions=data.positions||[];
+      const symbols=[...new Set(positions.map(p=>p.symbol).filter(Boolean))];
+      await Promise.all(symbols.map(s=>this._getContractSize(s)));
+      return positions.map(p=>{
+        // v12.103: bij partial-close-still-open positions levert MEXC `holdVol` (resterend) en
+        // `closeVol` (al gesloten). Origineel = som. Vorige versie gebruikte alleen holdVol →
+        // positionSizeAsset werd te klein → TP-percentages > 100% (bv. TP2 = 199.2%) en TP-winst
+        // berekening factor-fout. Reconciliatie via mexc-partial-open-fix.js validatietest.
+        const totalVol=(parseFloat(p.holdVol)||0)+(parseFloat(p.closeVol)||0);
+        const conv=this._convertContracts(p.symbol,totalVol,p.openAvgPrice||p.holdAvgPrice);
+        const positionSize=conv.usdNotional>0?conv.usdNotional.toFixed(2):String(totalVol||"");
+        const positionSizeAsset=conv.assetQty>0?String(conv.assetQty):"";
+        return{id:"mexc_open_"+p.positionId,positionId:String(p.positionId||""),openTime:String(p.createTime||""),closeTime:"",date:ts2date(p.createTime||Date.now()),time:ts2time(p.createTime||Date.now()),pair:(p.symbol||"BTC_USDT").replace("_","/"),direction:p.positionType===1?"long":"short",entry:String(p.openAvgPrice||p.holdAvgPrice||""),exit:"",positionSize,positionSizeAsset,pnl:"",fees:String(p.holdFee||"0"),leverage:String(p.leverage||"10"),source:"mexc",status:"open",unrealizedPnl:String(p.unrealized||p.realised||""),liquidationPrice:String(p.liquidatePrice||""),stopLoss:"",takeProfit:"",highestPrice:"",lowestPrice:"",setupTags:[],confirmationTags:[],timeframeTags:[],emotionTags:[],mistakeTags:[],customTags:[],rating:0,screenshot:null,notes:"",links:[],layers:[],_rawHoldVol:String(p.holdVol||""),_rawCloseVol:String(p.closeVol||"")};
+      });
+    },
+    async fetchFills(apiKey,apiSecret,symbol,positionId,startTime,endTime){const data=await proxyCall({exchange:"mexc",action:"fills",apiKey,apiSecret,symbol:symbol.replace("/","_"),positionId,startTime,endTime});return{fills:data.fills||[],debug:data.debug||null,unfiltered:data.unfiltered||false,total:data.total||0}}
+  },
+  blofin:{
+    name:"Blofin",color:"#6366f1",needsPassphrase:true,
+    // contractValue lookup — Blofin's /positions en /positions-history geven qty in
+    // CONTRACTS (niet base currency). 1 BTC-USDT contract = 0.001 BTC, 1 DOGE-USDT = 1000 DOGE.
+    // Zonder deze conversie zou een positie van 2.9 contracten als 2.9 BTC (1000× te groot) in
+    // de journal belanden. Cache 15 min zodat we niet bij elke sync opnieuw fetchen.
+    _ctvCache:null,_ctvCacheTs:0,
+    async _getContractValue(instId){
+      const now=Date.now();
+      if(!this._ctvCache||now-this._ctvCacheTs>15*60*1000){
+        try{
+          const res=await fetch("https://openapi.blofin.com/api/v1/market/instruments?instType=SWAP");
+          const data=await res.json();
+          const map={};
+          (data.data||[]).forEach(i=>{
+            const cv=parseFloat(i.contractValue);
+            if(i.instId&&isFinite(cv)&&cv>0)map[i.instId]=cv;
+          });
+          this._ctvCache=map;this._ctvCacheTs=now;
+        }catch{this._ctvCache=this._ctvCache||{};}
+      }
+      return this._ctvCache[instId]||1;// fallback 1 (spot-like, geen conversie)
+    },
+    // Directe call (geen Worker) — Blofin API is CORS-enabled.
+    async _direct(apiKey,apiSecret,passphrase,path,params={}){
+      const qs=new URLSearchParams(params).toString();
+      const pathWithQs=path+(qs?"?"+qs:"");
+      const ts=Date.now().toString();
+      const nonce=ts+Math.random().toString(36).slice(2,10);
+      // Blofin signing v2: prehash = pathWithQs + method + ts + nonce + body
+      const prehash=pathWithQs+"GET"+ts+nonce+"";
+      const enc=new TextEncoder();
+      const key=await crypto.subtle.importKey("raw",enc.encode(apiSecret),{name:"HMAC",hash:"SHA-256"},false,["sign"]);
+      const sig=await crypto.subtle.sign("HMAC",key,enc.encode(prehash));
+      // Blofin vereist: base64(hex(hmac)) — niet base64(raw)
+      const hex=Array.from(new Uint8Array(sig)).map(b=>b.toString(16).padStart(2,"0")).join("");
+      const signature=btoa(hex);
+      const res=await fetch("https://openapi.blofin.com"+pathWithQs,{
+        method:"GET",
+        headers:{"ACCESS-KEY":apiKey,"ACCESS-SIGN":signature,"ACCESS-TIMESTAMP":ts,"ACCESS-NONCE":nonce,"ACCESS-PASSPHRASE":passphrase,"Content-Type":"application/json"},
+      });
+      const data=await res.json();
+      if(data.code&&String(data.code)!=="0")throw new Error(`Blofin: ${data.msg||data.code}`);
+      return data;
+    },
+    async fetchTrades(apiKey,apiSecret,passphrase,startTime){
+      const data=await this._direct(apiKey,apiSecret,passphrase,"/api/v1/account/positions-history",{limit:100});
+      // Client-side filter op startTime (Blofin's begin-param werkt niet op dit endpoint)
+      if(startTime){
+        data.data=(data.data||[]).filter(t=>{const ts=Number(t.updateTime||t.createTime||0);return ts>=Number(startTime);});
+      }
+      data.trades=data.data||[];
+      data.source="positions-history";
+      const source=data.source||"orders-history";
+      if(source==="positions-history"){
+        // Warm up contractValue cache vóór mapping
+        await this._getContractValue("BTC-USDT");
+        const ctvMap=this._ctvCache||{};
+        // Elk close-record = 1 trade (géén aggregatie). Size = closePositions (qty gesloten in DIT event).
+        return(data.trades||[]).filter(t=>{const pnl=parseFloat(t.realizedPnl||t.pnl||"0");const sz=Math.abs(parseFloat(t.closePositions||t.closeTotalPos||"0"));return pnl!==0||sz>0}).map(t=>{
+          const posSide=(t.positionSide||"net").toLowerCase();
+          const closeTime=t.updateTime||t.createTime||Date.now();
+          const entryPrice=t.openAveragePrice||t.averagePrice||t.openPrice||"";
+          const exitPrice=t.closeAveragePrice||t.avgClosePrice||t.closePrice||"";
+          // Size per record = closePositions. Blofin's API is INCONSISTENT met docs:
+          //  - Officiële docs: closePositions = QUANTITY IN CONTRACTS (1 contract = ctVal base)
+          //  - Empirisch (CCXT-research 2026-05-04): voor sommige records is het AL in base currency
+          // v12.89 robuste heuristiek: bereken impliedSize uit PnL-formule:
+          //    realizedPnl + fee = (exit - entry) × size × dirSign
+          //    → size = |realizedPnl + fee| / |exit - entry|
+          // Vergelijk met raw vs raw×ctVal en pak welke matcht (binnen 5%).
+          const rawContracts=t.closePositions||t.closeTotalPos||t.positions||t.size||"";
+          const contractsN=Math.abs(parseFloat(rawContracts)||0);
+          const ctVal=ctvMap[t.instId]||1;
+          const entryN=parseFloat(entryPrice)||0;
+          const exitN=parseFloat(exitPrice)||0;
+          let assetQty=contractsN*ctVal;
+          // PnL-cross-check: bereken implied size uit realizedPnl + fee
+          const realPnl=parseFloat(t.realizedPnl||t.pnl||"0")||0;
+          const feeAbs=Math.abs(parseFloat(t.fee||"0"))||0;
+          const priceDiff=Math.abs(exitN-entryN);
+          if(priceDiff>0&&Math.abs(realPnl)>0.0001){
+            const impliedSize=Math.abs(realPnl+feeAbs)/priceDiff;
+            const ratioRaw=contractsN>0?Math.abs(impliedSize-contractsN)/impliedSize:Infinity;
+            const ratioScaled=assetQty>0?Math.abs(impliedSize-assetQty)/impliedSize:Infinity;
+            if(ratioRaw<0.05&&ratioRaw<ratioScaled){
+              assetQty=contractsN; // raw was al in base currency
+            }
+          }
+          const sizeUsdt=(entryN>0&&assetQty>0)?(entryN*assetQty).toFixed(2):"";
+          let direction;
+          if(posSide==="long")direction="long";
+          else if(posSide==="short")direction="short";
+          else{
+            // v12.89: gebruik GROSS PnL (= net + |fee|) voor direction-detect.
+            // Anders bij short trades met klein gross-winst maar fee > winst → net loss
+            // → heuristic detecteert verkeerd LONG. Gross is robuust voor fee-impact.
+            const xN=parseFloat(exitPrice)||0;
+            const netPn=parseFloat(t.realizedPnl||t.pnl||"0")||0;
+            const feePn=Math.abs(parseFloat(t.fee||"0"))||0;
+            const grossPn=netPn+feePn; // assume realizedPnl is NET
+            direction=((xN-entryN)*grossPn>=0)?"long":"short";
+          }
+          return{id:"blofin_"+t.positionId+"_"+closeTime,date:ts2date(closeTime),time:ts2time(closeTime),pair:(t.instId||"").replace("-","/"),direction,entry:normPrice(entryPrice),exit:normPrice(exitPrice),positionSize:sizeUsdt||normPrice(assetQty),positionSizeAsset:assetQty>0?normPrice(assetQty):"",pnl:t.realizedPnl||t.pnl||"",fees:t.fee?Math.abs(parseFloat(t.fee)).toString():"0",leverage:t.leverage||"10",source:"blofin",status:"closed",stopLoss:"",takeProfit:"",highestPrice:"",lowestPrice:"",setupTags:[],confirmationTags:[],timeframeTags:[],emotionTags:[],mistakeTags:[],customTags:[],rating:0,screenshot:null,notes:"",links:[],layers:[],positionId:t.positionId||"",openTime:t.createTime||"",closeTime:String(closeTime),
+            // v12.62: raw close-size in base currency (Blofin geeft closePositions in BTC voor BTC-USDT, niet in contracts).
+            // Gebruikt door detectPartialFromSiblings voor correcte pct-berekening op tpLevels — anders krijg je 0.05% i.p.v. 34%.
+            // v12.90: sla _rawCloseSize op als BASE currency (= assetQty na heuristic), niet
+            // de raw contracts. detectPartialFromSiblings's sizeOf gebruikt dit veld voor
+            // pct-berekening — moet dus consistent zijn met restAsset (= positionSizeAsset, ook base).
+            // Anders: mixed units → 99.8% pct ipv 49.8% bij 50%-partial.
+            _rawCloseSize:String(assetQty||rawContracts||"")};
+        });
+      }
+      return(data.trades||[]).filter(t=>parseFloat(t.pnl||"0")!==0).map(t=>{
+        const side=(t.side||"").toLowerCase();
+        const direction=side==="buy"?"short":"long";
+        const closeTime=t.updateTime||t.createTime||Date.now();
+        const exitPrice=parseFloat(t.averagePrice||t.price||"0");
+        const pnlVal=parseFloat(t.pnl||"0");
+        const sizeVal=parseFloat(t.filledSize||t.size||"0");
+        let entryPrice="";
+        if(exitPrice>0&&sizeVal>0){const ppu=pnlVal/sizeVal;const calc=direction==="long"?exitPrice-ppu:exitPrice+ppu;if(calc>0)entryPrice=calc.toString()}
+        return{id:"blofin_"+t.orderId,date:ts2date(closeTime),time:ts2time(closeTime),pair:(t.instId||"").replace("-","/"),direction,entry:normPrice(entryPrice),exit:normPrice(t.averagePrice||t.price||""),positionSize:normPrice(t.filledSize||t.size||""),pnl:t.pnl||"",fees:t.fee?Math.abs(parseFloat(t.fee)).toString():"0",leverage:t.leverage||"10",source:"blofin",status:"closed",stopLoss:"",takeProfit:"",highestPrice:"",lowestPrice:"",setupTags:[],confirmationTags:[],timeframeTags:[],emotionTags:[],mistakeTags:[],customTags:[],rating:0,screenshot:null,notes:"",links:[],layers:[],positionId:t.positionId||"",openTime:t.createTime||"",closeTime:String(closeTime)};
+      });
+    },
+    async testConnection(apiKey,apiSecret,passphrase){
+      const data=await this._direct(apiKey,apiSecret,passphrase,"/api/v1/asset/balances",{accountType:"futures"});
+      const usdt=(data.data||[]).find(a=>a.currency==="USDT");
+      return{success:true,balance:usdt?String(usdt.balance||usdt.equity||"0"):"0"};
+    },
+    async fetchOpenPositions(apiKey,apiSecret,passphrase){
+      const data=await this._direct(apiKey,apiSecret,passphrase,"/api/v1/account/positions");
+      // Warm up contractValue cache vóór mapping
+      await this._getContractValue("BTC-USDT");
+      const ctvMap=this._ctvCache||{};
+      const positions=(data.data||[]).map(p=>{
+        const contracts=Math.abs(parseFloat(p.positions||"0"));
+        const ctVal=ctvMap[p.instId]||1;
+        const avgPrice=parseFloat(p.averagePrice||"0");
+        // v12.89: voor open positions is geen realizedPnl/exit bekend, dus PnL-formule niet bruikbaar.
+        // Gebruik unrealizedPnl als beschikbaar via marker-prijs voor cross-check.
+        // Anders: USD-notional plausibility check (raw is base currency als raw×price tussen $5 en $1M
+        // én scaled×price < $5).
+        let assetQty=contracts*ctVal;
+        const unrealPnl=parseFloat(p.unrealizedPnl||"0")||0;
+        const markPrice=parseFloat(p.markPrice||"0")||avgPrice;
+        const markDiff=Math.abs(markPrice-avgPrice);
+        if(markDiff>0&&Math.abs(unrealPnl)>0.0001){
+          // size ≈ |unrealizedPnl| / |markPrice - entry|
+          const impliedSize=Math.abs(unrealPnl)/markDiff;
+          const ratioRaw=contracts>0?Math.abs(impliedSize-contracts)/impliedSize:Infinity;
+          const ratioScaled=assetQty>0?Math.abs(impliedSize-assetQty)/impliedSize:Infinity;
+          if(ratioRaw<0.05&&ratioRaw<ratioScaled){
+            assetQty=contracts;
+          }
+        }else{
+          // Fallback: USD-notional plausibility — raw is base als raw×entry > $5 én scaled×entry < $5
+          const usdScaled=assetQty*avgPrice;
+          const usdRaw=contracts*avgPrice;
+          if(usdScaled>0&&usdScaled<5&&usdRaw>=5&&usdRaw<1e6){
+            assetQty=contracts;
+          }
+        }
+        const usdNotional=avgPrice>0&&assetQty>0?(avgPrice*assetQty).toFixed(2):"";
+        return{id:"blofin_open_"+p.positionId,positionId:String(p.positionId||""),instId:String(p.instId||""),positionSide:String(p.positionSide||""),openTime:String(p.createTime||""),closeTime:"",date:ts2date(p.createTime||Date.now()),time:ts2time(p.createTime||Date.now()),pair:(p.instId||"").replace("-","/"),direction:parseFloat(p.positions||"0")>0?"long":"short",entry:normPrice(p.averagePrice||""),exit:"",positionSize:usdNotional||normPrice(assetQty),positionSizeAsset:assetQty>0?normPrice(assetQty):"",pnl:"",fees:"0",leverage:String(p.leverage||"10"),source:"blofin",status:"open",unrealizedPnl:normPrice(p.unrealizedPnl||""),liquidationPrice:normPrice(p.liquidationPrice||""),stopLoss:"",takeProfit:"",highestPrice:"",lowestPrice:"",setupTags:[],confirmationTags:[],timeframeTags:[],emotionTags:[],mistakeTags:[],customTags:[],rating:0,screenshot:null,notes:"",links:[],layers:[]};
+      });
+      // Enrich with active TP/SL orders (second API call). Silent on failure — positions still usable without SL/TP.
+      try{
+        const tpslData=await this._direct(apiKey,apiSecret,passphrase,"/api/v1/trade/orders-tpsl-pending");
+        const orders=tpslData.data||[];
+        for(const pos of positions){
+          const sideMatches=(o)=>{
+            const ps=(o.positionSide||"net").toLowerCase();
+            if(ps==="net")return true;// one-way mode: any order for this instId applies
+            return(ps==="long"&&pos.direction==="long")||(ps==="short"&&pos.direction==="short");
+          };
+          const related=orders.filter(o=>String(o.instId||"")===pos.instId&&sideMatches(o));
+          const slOrder=related.find(o=>parseFloat(o.slTriggerPrice||"0")>0);
+          const tpOrder=related.find(o=>parseFloat(o.tpTriggerPrice||"0")>0);
+          if(slOrder)pos.stopLoss=normPrice(slOrder.slTriggerPrice);
+          if(tpOrder)pos.takeProfit=normPrice(tpOrder.tpTriggerPrice);
+        }
+      }catch(e){/* silent — positions still usable */}
+      return positions;
+    },
+    async fetchFills(apiKey,apiSecret,passphrase,symbol,startTime,endTime){
+      const params={limit:100};
+      if(symbol)params.instId=String(symbol).replace("_","-").replace("/","-");
+      if(startTime)params.begin=startTime;
+      if(endTime)params.end=endTime;
+      const data=await this._direct(apiKey,apiSecret,passphrase,"/api/v1/trade/fills-history",params);
+      return{fills:data.data||[],total:(data.data||[]).length};
+    }
+  },
+  kraken:{
+    name:"Kraken Futures",color:"#7b61ff",needsPassphrase:false,
+    _pair(sym){let s=(sym||"").toUpperCase().replace("PF_","").replace("PI_","").replace("FF_","");s=s.replace("XBT","BTC");if(s.endsWith("USDC"))return s.slice(0,-4)+"/USDC";if(s.endsWith("USDT"))return s.slice(0,-4)+"/USDT";if(s.endsWith("USD"))return s.slice(0,-3)+"/USD";if(s.includes("/"))return s;return s+"/USD"},
+    _normalise(t){
+      // v12.230: defensieve timestamp-guard. Kraken's history-endpoints geven `timestamp` /
+      // `lastUpdateTimestamp` als ms-integer i.p.v. ISO `fillTime` (zie docs-onderzoek 2026-06-09).
+      // Accepteer ISO-string ÉN numeriek epoch (ms of s), val terug op de history-veldnamen, en
+      // val NOOIT terug op epoch 0 → bij ongeldige/ontbrekende tijd blijft de datum leeg i.p.v. 1970.
+      const toIso=(v)=>{
+        if(v===null||v===undefined||v==="")return"";
+        if(typeof v==="number"||/^\d{9,}$/.test(String(v).trim())){
+          let n=Number(typeof v==="number"?v:String(v).trim());
+          if(!isFinite(n)||n<=0)return"";
+          if(n<1e12)n*=1000;// seconden → ms
+          const dt=new Date(n);return(isNaN(dt.getTime())||dt.getTime()<=0)?"":dt.toISOString();
+        }
+        const dt=new Date(v);
+        return(isNaN(dt.getTime())||dt.getTime()<=0)?"":(String(v).includes("T")?String(v):dt.toISOString());
+      };
+      const rawFt=(t.fillTime!=null&&t.fillTime!=="")?t.fillTime:(t.timestamp!=null?t.timestamp:t.lastUpdateTimestamp);
+      const ft=toIso(rawFt)||toIso(t.open_time);const closeT=toIso(rawFt);
+      const pair=t.pair_clean||this._pair(t.symbol||"");const status=t.status||"closed";
+      const pnlRaw=t.pnl;const pnlVal=(pnlRaw!==null&&pnlRaw!==undefined&&pnlRaw!=="")?String(pnlRaw):"";
+      // v12.100 fix #1: positionSize = size × entry_price (USD-notional), niet de raw size.
+      // Voorheen: positionSize = size (BTC qty) wat gelijk was aan positionSizeAsset → onmogelijk
+      // klein USD-bedrag in modal. Nu: USD-notional voor display, BTC voor asset-veld.
+      const sizeBase=parseFloat(t.size)||0;
+      const entryNum=parseFloat(t.entry_price||t.price)||0;
+      const usdNotional=sizeBase*entryNum;
+      // v12.100 fix #2: passthrough tpLevels van Worker v11+ (Kraken trades hebben geen
+      // positionId dus standaard fetchFills-pad werkt niet — Worker bouwt tpLevels al
+      // uit close-fills). Voor v6-v10 Worker: array niet aanwezig → fallback []
+      const tpLevels=Array.isArray(t.tpLevels)?t.tpLevels:[];
+      const originalSizeAsset=t.originalSizeAsset||(sizeBase>0?String(sizeBase):"");
+      // v12.101: stable id voor open positions (geen fill_id van Kraken /openpositions endpoint)
+      // → bouw uit symbol + fillTime + side zodat re-sync dezelfde id geeft (geen duplicaten).
+      // v12.101: direction-fix — Kraken /openpositions geeft side="long"/"short" (niet "buy"/"sell").
+      const sideLc=String(t.side||"").toLowerCase();
+      const stableId=t.fill_id||(status==="open"?`open_${t.symbol||"?"}_${t.fillTime||"0"}_${sideLc||"?"}`:uid());
+      return{id:"kraken_"+stableId,openTime:t.open_time||ft,closeTime:closeT,date:closeT?closeT.split("T")[0]:(ft?ft.split("T")[0]:""),time:closeT?(closeT.split("T")[1]||"").slice(0,5):(ft?(ft.split("T")[1]||"").slice(0,5):""),pair,direction:t.direction||(sideLc==="buy"||sideLc==="long"?"long":"short"),entry:String(t.entry_price||t.price||""),exit:status==="closed"?String(t.exit_price||""):"",positionSize:usdNotional>0?usdNotional.toFixed(2):String(t.size||""),positionSizeAsset:String(t.size||""),pnl:status==="closed"?pnlVal:"",unrealizedPnl:status==="open"?String(t.unrealized_pnl||""):"",liquidationPrice:String(t.liquidation_price||""),fees:t.fee?String(Math.abs(parseFloat(t.fee)||0).toFixed(4)):"0",leverage:"1",source:"kraken",status,stopLoss:"",takeProfit:"",highestPrice:"",lowestPrice:"",setupTags:[],confirmationTags:[],timeframeTags:[],emotionTags:[],mistakeTags:[],customTags:[],rating:0,screenshot:null,notes:"",links:[],layers:[],manualOverrides:[],tpLevels,originalSizeAsset};
+    },
+    async fetchTrades(apiKey,apiSecret,_pp,startTime){const data=await proxyCall({exchange:"kraken",action:"trades",apiKey,apiSecret,startTime});return(data.trades||[]).filter(t=>t.pair_clean||t.symbol||t.direction).map(t=>this._normalise(t))},
+    async testConnection(apiKey,apiSecret){const data=await proxyCall({exchange:"kraken",action:"test",apiKey,apiSecret});if(!data.success)throw new Error(data.error||"Kraken verbinding mislukt");return{success:true,balance:data.balance||"0"}},
+    async fetchOpenPositions(apiKey,apiSecret){const data=await proxyCall({exchange:"kraken",action:"open_positions",apiKey,apiSecret});return(data.positions||[]).map(t=>({...this._normalise({...t,status:"open"}),status:"open"}))},
+    async fetchFills(apiKey,apiSecret,_pp,symbol,startTime,endTime){const data=await proxyCall({exchange:"kraken",action:"fills",apiKey,apiSecret,symbol,startTime,endTime});return{fills:(data.fills||[]).map(t=>this._normalise(t)),total:data.total||0}}
+  },
+  hyperliquid:{
+    // Wallet-only exchange — geen API-keys, alleen wallet-adres (public on-chain data).
+    // Directe browser-calls naar /info endpoint (CORS-enabled), geen Worker nodig, geen signing.
+    // User data via wallet-adres als parameter; iedereen die dit adres kent kan de trades zien.
+    name:"Hyperliquid",color:"#00c2ff",needsPassphrase:false,walletOnly:true,
+    _base:"https://api.hyperliquid.xyz/info",
+    async _post(body){
+      const res=await fetch(this._base,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+      if(!res.ok)throw new Error(`Hyperliquid HTTP ${res.status}`);
+      return res.json();
+    },
+    _validateAddress(addr){
+      if(!addr||typeof addr!=="string"||!/^0x[0-9a-fA-F]{40}$/.test(addr.trim()))throw new Error("Ongeldig wallet-adres — verwacht 0x gevolgd door 40 hex-tekens");
+      return addr.trim();
+    },
+    // coin → pair: perps zijn USDC-gemargined ("BTC" → "BTC/USDC"). Spot (@107-notatie) wordt
+    // as-is weergegeven in fase 1; spotMeta-lookup komt later.
+    _toPair(coin){
+      if(!coin)return"";
+      if(coin.startsWith("@"))return coin+" (spot)";
+      return coin+"/USDC";
+    },
+    // Aggregeer sub-fills op (ms, coin, dir) — Hyperliquid's API levert één logische order
+    // vaak als meerdere fills op dezelfde ms (bv. 0.00017 + 0.00207 BTC op dezelfde sec).
+    // Hun eigen CSV-export doet die consolidatie al server-side; wij doen het voor de API zodat
+    // beide paden identiek uitkomen. Sz wordt gesommeerd, px = size-weighted average, fee +
+    // closedPnl gesommeerd. Tid van de eerste sub-fill behouden voor dedup.
+    _aggregateSubFills(fills){
+      const g={};
+      for(const f of fills){
+        const k=(f.ms||0)+"|"+(f.coin||"")+"|"+(f.dir||"");
+        const sz=Math.abs(parseFloat(f.sz)||0);
+        const px=parseFloat(f.px)||0;
+        const fee=Math.abs(parseFloat(f.fee)||0);
+        const pnl=parseFloat(f.closedPnl)||0;
+        if(!g[k]){g[k]={ms:f.ms,coin:f.coin,dir:f.dir,tid:f.tid,_szSum:0,_pxW:0,_feeSum:0,_pnlSum:0};}
+        g[k]._szSum+=sz;g[k]._pxW+=px*sz;g[k]._feeSum+=fee;g[k]._pnlSum+=pnl;
+        if(!g[k].tid&&f.tid)g[k].tid=f.tid;
+      }
+      return Object.values(g).map(o=>({ms:o.ms,coin:o.coin,dir:o.dir,tid:o.tid,sz:String(o._szSum),px:o._szSum>0?String(o._pxW/o._szSum):"0",fee:String(o._feeSum),closedPnl:String(o._pnlSum)}));
+    },
+    // Gedeelde FIFO-reconstructie voor API + CSV. Input: array van fills met
+    // {coin, dir, px, sz, fee, closedPnl, ms, tid?}. Sub-fills op zelfde ms+coin+dir worden
+    // eerst geaggregeerd. Elke close-fill wordt gematcht met oudste opens per coin+richting
+    // → gewogen entry, netto PnL (closedPnl − openFees), totale fees = close-fee + opens-fees.
+    _reconstructTrades(fills,idPrefix){
+      const aggregated=this._aggregateSubFills(fills);
+      const opens={};// key "COIN:side" → [{px,sz,fee,ms}, ...]
+      const out=[];
+      const sorted=[...aggregated].sort((a,b)=>(a.ms||0)-(b.ms||0));
+      for(const f of sorted){
+        let side,isOpen;
+        if(f.dir==="Open Long"){side="long";isOpen=true;}
+        else if(f.dir==="Close Long"){side="long";isOpen=false;}
+        else if(f.dir==="Open Short"){side="short";isOpen=true;}
+        else if(f.dir==="Close Short"){side="short";isOpen=false;}
+        else if(f.dir==="Buy"){side="long";isOpen=true;}// spot open long
+        else if(f.dir==="Sell"){side="long";isOpen=false;}// spot close long
+        else continue;// flip-fills "Long > Short" / "Short > Long" — MVP skip
+        const szN=Math.abs(parseFloat(f.sz)||0);
+        const pxN=parseFloat(f.px)||0;
+        const feeN=Math.abs(parseFloat(f.fee)||0);
+        const pnlN=parseFloat(f.closedPnl)||0;
+        const key=f.coin+":"+side;
+        if(isOpen){
+          if(!opens[key])opens[key]=[];
+          opens[key].push({px:pxN,sz:szN,fee:feeN,ms:Number(f.ms)||0});
+        }else{
+          const q=opens[key]||[];
+          let remaining=szN,entryW=0,entrySize=0,openFees=0,openMs=0;
+          while(remaining>1e-9&&q.length){
+            const lot=q[0];
+            if(!openMs)openMs=lot.ms;
+            if(lot.sz<=remaining+1e-9){entryW+=lot.px*lot.sz;entrySize+=lot.sz;openFees+=lot.fee;remaining-=lot.sz;q.shift();}
+            else{const ratio=remaining/lot.sz;const feeShare=lot.fee*ratio;entryW+=lot.px*remaining;entrySize+=remaining;openFees+=feeShare;lot.fee-=feeShare;lot.sz-=remaining;remaining=0;}
+          }
+          const avgEntry=entrySize>0?entryW/entrySize:0;
+          // closedPnl (API-stijl, na pre-aggregatie) = GROSS PnL zonder fees afgetrokken.
+          // Echte netto = gross − close_fee − Σ(open_fees). CSV-parser normaliseert zijn
+          // eigen "closedPnl − close_fee" convention naar API-stijl vóór de helper.
+          const totalFee=feeN+openFees;
+          const netPnl=pnlN-totalFee;
+          const partial=entrySize<szN-1e-9;
+          const usdNotional=avgEntry>0?(avgEntry*szN).toFixed(2):"";
+          const closeMs=Number(f.ms)||0;
+          const fingerprint=f.tid||(openMs+"_"+f.coin+"_"+side+"_"+closeMs);
+          out.push({...EMPTY_TRADE,
+            id:idPrefix+"_"+fingerprint,
+            date:openMs?ts2date(openMs):ts2date(closeMs),
+            time:openMs?ts2time(openMs):ts2time(closeMs),
+            openTime:openMs?String(openMs):"",
+            closeTime:String(closeMs),
+            pair:this._toPair(f.coin),
+            direction:side,
+            entry:avgEntry>0?normPrice(avgEntry):"",
+            exit:normPrice(pxN),
+            positionSize:usdNotional,
+            positionSizeAsset:szN>0?normPrice(szN):"",
+            pnl:String(netPnl.toFixed(4)),
+            fees:String(totalFee.toFixed(4)),
+            leverage:"",
+            source:"hyperliquid",
+            status:"closed",
+            positionId:f.tid?String(f.tid):"",
+            notes:partial?"⚠ Partial data: opening fills buiten range":"",
+          });
+        }
+      }
+      return out;
+    },
+    async testConnection(walletAddress){
+      const addr=this._validateAddress(walletAddress);
+      const state=await this._post({type:"clearinghouseState",user:addr});
+      // v12.231: marginSummary.accountValue = ALLEEN de perps-margin. Het meeste geld staat vaak
+      // in SPOT (bv. USDC), met een deel "hold" als perps-collateral. Echte Portfolio Value =
+      // vrije spot-stables + perps-accountValue (de held-collateral zit in beide, dus tel vrij + perps).
+      // Matcht Hyperliquid's "Portfolio Value". Bug: journal toonde 14,47 i.p.v. 78,82 (Denny 2026-06-10).
+      const perps=parseFloat(state?.marginSummary?.accountValue||"0")||0;
+      let spotFree=0;
+      try{
+        const spot=await this._post({type:"spotClearinghouseState",user:addr});
+        const STABLES=new Set(["USDC","USDT","USDT0","USDE","USDH","USD","DAI","USDD","FEUSD"]);
+        for(const b of(spot?.balances||[])){
+          if(STABLES.has(String(b.coin||"").toUpperCase()))spotFree+=Math.max(0,(parseFloat(b.total||"0")||0)-(parseFloat(b.hold||"0")||0));
+        }
+      }catch(e){/* spot optioneel — perps-waarde blijft staan */}
+      return{success:true,balance:(perps+spotFree).toFixed(2)};
+    },
+    async fetchTrades(walletAddress,_unused1,_unused2,startTime){
+      const addr=this._validateAddress(walletAddress);
+      // Pagineer userFillsByTime in batches van 2000. Hyperliquid cap = laatste 10k fills totaal.
+      const fromTs=startTime?Number(startTime):new Date(Date.now()-90*24*60*60*1000).getTime();// default 90d
+      const allFills=[];let cursor=fromTs;let guard=0;
+      while(guard++<20){
+        const batch=await this._post({type:"userFillsByTime",user:addr,startTime:cursor});
+        if(!Array.isArray(batch)||batch.length===0)break;
+        allFills.push(...batch);
+        if(batch.length<2000)break;
+        const lastTs=batch[batch.length-1].time;
+        if(!lastTs||lastTs<=cursor)break;
+        cursor=lastTs+1;
+      }
+      // FIFO-reconstructie via gedeelde helper — haalt open-fills op, weegt entry-price,
+      // trekt open-fees af van closedPnl voor echte netto-PnL.
+      const fills=allFills.map(f=>({coin:f.coin,dir:f.dir,px:f.px,sz:f.sz,fee:f.fee,closedPnl:f.closedPnl,ms:Number(f.time)||0,tid:f.tid}));
+      return this._reconstructTrades(fills,"hyperliquid");
+    },
+    async fetchOpenPositions(walletAddress){
+      const addr=this._validateAddress(walletAddress);
+      const state=await this._post({type:"clearinghouseState",user:addr});
+      const positions=state?.assetPositions||[];
+      return positions.map(ap=>{
+        const p=ap.position||{};
+        const szi=parseFloat(p.szi||"0");// signed size: positief=long, negatief=short
+        const sz=Math.abs(szi);
+        const entryPx=parseFloat(p.entryPx||"0");
+        const usdNotional=(sz>0&&entryPx>0)?(sz*entryPx).toFixed(2):"";
+        return{
+          // Stabiel id per positie (net-mode = 1 open positie per coin tegelijk), net als
+          // mexc_open_<positionId> / blofin_open_<positionId>. Géén Date.now() — anders krijgt
+          // dezelfde open positie bij elke refresh een nieuw id en dedupliceert syncOpenPositions
+          // niet → duplicaten (ChangeMaker-bug, Discord 2026-06-07).
+          id:"hyperliquid_open_"+p.coin,
+          positionId:p.coin||"",
+          openTime:"",closeTime:"",
+          date:ts2date(Date.now()),time:ts2time(Date.now()),
+          pair:this._toPair(p.coin),
+          direction:szi>0?"long":"short",
+          entry:normPrice(entryPx),exit:"",
+          positionSize:usdNotional,
+          positionSizeAsset:sz>0?normPrice(sz):"",
+          pnl:"",
+          fees:"0",
+          leverage:String(p.leverage?.value||""),
+          source:"hyperliquid",status:"open",
+          unrealizedPnl:normPrice(p.unrealizedPnl||""),
+          liquidationPrice:normPrice(p.liquidationPx||""),
+          stopLoss:"",takeProfit:"",
+          setupTags:[],confirmationTags:[],timeframeTags:[],emotionTags:[],mistakeTags:[],customTags:[],
+          rating:0,screenshot:null,notes:"",
+          links:[],layers:[],
+        };
+      });
+    }
+  },
+  ftmo:{
+    // CSV-only exchange — MT5 / FTMO MetriX export. Geen API (FTMO heeft er geen publieke),
+    // read-only MT5 investor-password route zou MetaApi.cloud vereisen (~$30/mnd boven dev-tier).
+    // Auto-sync is bewust weggelaten om community-kosten te vermijden.
+    name:"FTMO (MT5)",color:"#00a0e9",needsPassphrase:false,csvOnly:true,
+  },
+  okx:{
+    // OKX v5 perpetual swaps (USDT-margined SWAP). Auth = key+secret+PASSPHRASE (zoals Blofin),
+    // maar private calls lopen via de Cloudflare Worker (proxyCall) — net als MEXC/Kraken, want
+    // OKX's authenticated endpoints zijn niet CORS-enabled in de browser en de secret hoort niet
+    // client-side gesigned te worden. De Worker tekent OK-ACCESS-SIGN server-side.
+    // positions-history geeft 1 geaggregeerd round-trip-record per gesloten positie (zoals Kraken),
+    // dus openIsPlaceholder=true + detectPartials via de shared helper. TP-breakdown (tpLevels)
+    // wordt Kraken-stijl door de Worker uit fills-history opgebouwd en hier passthrough doorgegeven.
+    name:"OKX",color:"#1a1a1a",needsPassphrase:true,
+    // ctVal-lookup: OKX's positions-history `closeTotalPos`/`pos` staan in CONTRACTS, niet base.
+    // 1 BTC-USDT-SWAP contract = 0.01 BTC. Het publieke /instruments endpoint is CORS-enabled
+    // (geen auth) → 1× ophalen + 15 min cachen. Fallback-map als vangnet; PnL-cross-check in
+    // _normalise corrigeert alsnog wanneer ctVal ontbreekt voor een exotic coin.
+    _ctvCache:null,_ctvCacheTs:0,
+    _ctvFallback:{"BTC-USDT-SWAP":0.01,"ETH-USDT-SWAP":0.1,"SOL-USDT-SWAP":1,"XRP-USDT-SWAP":100,"DOGE-USDT-SWAP":1000,"LTC-USDT-SWAP":1,"ADA-USDT-SWAP":100,"AVAX-USDT-SWAP":1,"LINK-USDT-SWAP":1,"DOT-USDT-SWAP":1,"BNB-USDT-SWAP":0.01,"MATIC-USDT-SWAP":10,"TON-USDT-SWAP":1,"TRX-USDT-SWAP":1000},
+    async _loadContractValues(){
+      const now=Date.now();
+      if(this._ctvCache&&now-this._ctvCacheTs<15*60*1000)return this._ctvCache;
+      const map={};
+      const load=async(url)=>{try{const r=await fetch(url,{cache:"no-cache"});const d=await r.json();(d.data||[]).forEach(i=>{const cv=(parseFloat(i.ctVal)||0)*(parseFloat(i.ctMult)||1);if(i.instId&&isFinite(cv)&&cv>0)map[i.instId]=cv;});}catch{}};
+      // SWAP (globaal) + FUTURES incl. OKX EEA X-Perps (instFamily BTC-USD_UM). X-Perps staan op de
+      // EEA-host, dus FUTURES daar ophalen. Beide publiek, geen auth/CORS-block.
+      await load("https://www.okx.com/api/v5/public/instruments?instType=SWAP");
+      await load("https://eea.okx.com/api/v5/public/instruments?instType=FUTURES");
+      if(Object.keys(map).length){this._ctvCache=map;this._ctvCacheTs=now;}
+      return this._ctvCache||{};
+    },
+    _ctVal(instId){
+      const m=this._ctvCache||{};
+      if(m[instId]!=null)return m[instId];
+      if(this._ctvFallback[instId]!=null)return this._ctvFallback[instId];
+      // OKX EEA X-Perp UM-familie als de live /instruments-fetch faalt (bv. file:// CORS).
+      // EU-contractspec: 0.0001 BTC/contract (bevestigd via Denny's 0.0008 BTC = 8 contracten).
+      if(/^BTC-USD_UM/i.test(instId))return 0.0001;
+      return 1;
+    },
+    _instId(symbol){return String(symbol||"").replace("/","-").replace(/-SWAP$/i,"")+"-SWAP";},
+    // instId → leesbaar pair. OKX EEA X-Perp (BTC-USD_UM_XPERP-040431, instFamily BTC-USD_UM)
+    // → base vóór de eerste "-", quote uit settleCcy (USDC/USDG) of "USD". Gewone SWAP/FUTURES
+    // → strip suffix + "-"→"/".
+    _pairOf(instId,settleCcy){
+      if(!instId)return"BTC/USDT";
+      if(/_UM|_XPERP/i.test(instId)){
+        const base=instId.split("-")[0]||"BTC";
+        return `${base}/${String(settleCcy||"USD").toUpperCase()}`;
+      }
+      return instId.replace(/-SWAP$/i,"").replace("-","/");
+    },
+    // Eén OKX positions-history record → intern round-trip trade.
+    _normalise(t){
+      const instId=String(t.instId||"");
+      const pair=this._pairOf(instId,t.settleCcy||t.ccy);
+      const openMs=Number(t.cTime)||0,closeMs=Number(t.uTime)||0;
+      const closeT=closeMs||openMs||Date.now();
+      const entryN=parseFloat(t.openAvgPx)||0,exitN=parseFloat(t.closeAvgPx)||0;
+      const ctVal=this._ctVal(instId);
+      const contracts=Math.abs(parseFloat(t.closeTotalPos)||0);
+      // Size = contracten × ctVal (OKX /public/instruments ctVal is autoritatief). GEEN PnL-heuristiek:
+      // de PnL-formule van USD-margined UM-contracten (X-Perp) is niet lineair, dus |pnl|/koersverschil
+      // gaf onzin (bv. 0.50 i.p.v. 0.0008 BTC). Voor SWAP klopt ctVal sowieso al exact.
+      const assetQty=contracts*ctVal;
+      // v12.238: OKX positions-history geeft NIET alleen complete round-trips — een gedeeltelijke
+      // sluiting van een nog-open positie komt als record met `type:"1"` en `closeTotalPos < openMaxPos`
+      // (`openMaxPos` = originele positiegrootte in contracten). Markeer die als partial-close zodat de
+      // finalize-flow de open-placeholder (= het echte restant) NIET wegruimt en detectPartialFromSiblings
+      // 'm correct linkt (TP-pct = closeTotalPos/openMaxPos, originalSize = restant + gesloten).
+      const openMaxContracts=Math.abs(parseFloat(t.openMaxPos)||0);
+      const isPartialClose=openMaxContracts>0&&contracts>0&&openMaxContracts>contracts+1e-9;
+      // val terug op pnl+fee+funding als realizedPnl ontbreekt. (fee/fundingFee komen negatief binnen.)
+      const feeN=parseFloat(t.fee)||0,fundingN=parseFloat(t.fundingFee)||0;
+      const netPnl=(t.realizedPnl!=null&&t.realizedPnl!=="")?(parseFloat(t.realizedPnl)||0):((parseFloat(t.pnl)||0)+feeN+fundingN);
+      const feeAbs=Math.abs(feeN)+Math.abs(fundingN);
+      const usdNotional=(entryN>0&&assetQty>0)?(entryN*assetQty).toFixed(2):"";
+      let direction;const ps=String(t.posSide||"").toLowerCase();
+      if(ps==="long")direction="long";
+      else if(ps==="short")direction="short";
+      else{const dir=String(t.direction||"").toLowerCase();if(dir==="long"||dir==="short")direction=dir;else direction=((exitN-entryN)*netPnl>=0)?"long":"short";}
+      const tpLevels=Array.isArray(t.tpLevels)?t.tpLevels:[];
+      return{...EMPTY_TRADE,
+        id:"okx_"+(t.posId||uid())+"_"+closeT,
+        positionId:String(t.posId||""),
+        openTime:openMs?String(openMs):"",closeTime:String(closeT),
+        date:ts2date(closeT),time:ts2time(closeT),
+        pair,direction,
+        entry:normPrice(entryN||t.openAvgPx||""),exit:normPrice(exitN||t.closeAvgPx||""),
+        positionSize:usdNotional||(assetQty>0?normPrice(assetQty):""),
+        positionSizeAsset:assetQty>0?normPrice(assetQty):"",
+        pnl:String(netPnl.toFixed(4)),
+        fees:feeAbs.toFixed(4),
+        leverage:String(t.lever||"10"),
+        source:"okx",status:"closed",
+        _okxInstId:instId,
+        _rawCloseSize:assetQty>0?String(assetQty):"",
+        ...(isPartialClose?{_okxPartialClose:true}:{}),
+        tpLevels,
+      };
+    },
+    // Eén ruwe OKX fills-history record → genormaliseerd fill-object voor de TP-builder.
+    // De generieke TP-flow (fetchTPsInline + refresh-stap-3) leest `price`/`size`/`pnl`/`ts`,
+    // maar OKX levert `fillPx`/`fillSz`/`fillPnl`. We mappen die + behouden de ruwe velden
+    // (spread) zodat bestaande fallback-lezers blijven werken. Size = contracten × ctVal (base),
+    // zodat percentages kloppen ongeacht contract-multiplier.
+    _normaliseFill(f){
+      const instId=String(f.instId||"");
+      const ctVal=this._ctVal(instId);
+      const contracts=Math.abs(parseFloat(f.fillSz)||0);
+      const pnl=parseFloat(f.fillPnl!=null?f.fillPnl:f.fillPnL)||0;
+      return{...f,
+        price:String(f.fillPx||""),
+        size:String(contracts*ctVal),
+        side:f.side,posSide:f.posSide,
+        pnl:String(pnl),
+        ts:Number(f.ts)||0,
+      };
+    },
+    _normaliseOpen(p){
+      const instId=String(p.instId||"");
+      const pair=this._pairOf(instId,p.settleCcy||p.ccy);
+      const ctVal=this._ctVal(instId);
+      const contracts=Math.abs(parseFloat(p.pos)||0);
+      const entryN=parseFloat(p.avgPx)||0;
+      // Size = contracten × ctVal (autoritatief); geen upl-heuristiek (zelfde reden als _normalise).
+      const assetQty=contracts*ctVal;
+      const openMs=Number(p.cTime)||Date.now();
+      const usdNotional=(entryN>0&&assetQty>0)?(entryN*assetQty).toFixed(2):"";
+      let direction;const ps=String(p.posSide||"").toLowerCase();
+      if(ps==="long")direction="long";else if(ps==="short")direction="short";
+      else direction=parseFloat(p.pos)>=0?"long":"short";
+      return{...EMPTY_TRADE,
+        id:"okx_open_"+(p.posId||p.instId||uid()),
+        positionId:String(p.posId||""),
+        openTime:String(openMs),closeTime:"",
+        date:ts2date(openMs),time:ts2time(openMs),
+        pair,direction,
+        entry:normPrice(entryN||p.avgPx||""),exit:"",
+        positionSize:usdNotional||(assetQty>0?normPrice(assetQty):""),
+        positionSizeAsset:assetQty>0?normPrice(assetQty):"",
+        pnl:"",fees:"0",
+        leverage:String(p.lever||"10"),
+        source:"okx",status:"open",
+        unrealizedPnl:normPrice(p.upl||""),
+        liquidationPrice:normPrice(p.liqPx||""),
+      };
+    },
+    async fetchTrades(apiKey,apiSecret,passphrase,startTime){
+      const data=await proxyCall({exchange:"okx",action:"trades",apiKey,apiSecret,passphrase,startTime});
+      await this._loadContractValues();
+      return(data.trades||[]).map(t=>this._normalise(t));
+    },
+    async testConnection(apiKey,apiSecret,passphrase){
+      const data=await proxyCall({exchange:"okx",action:"test",apiKey,apiSecret,passphrase});
+      if(data.success===false)throw new Error(data.error||"OKX verbinding mislukt");
+      return{success:true,balance:data.balance||"0"};
+    },
+    async fetchOpenPositions(apiKey,apiSecret,passphrase){
+      const data=await proxyCall({exchange:"okx",action:"open_positions",apiKey,apiSecret,passphrase});
+      await this._loadContractValues();
+      return(data.positions||[]).map(p=>this._normaliseOpen(p));
+    },
+    async fetchFills(apiKey,apiSecret,passphrase,symbol,startTime,endTime){
+      // symbol komt als "BTC_USDC" (pair→_). De échte X-Perp instId (BTC-USD_UM_XPERP-040431)
+      // is NIET uit de pair te reconstrueren, dus sturen we GEEN instId naar de Worker (die
+      // skipt het filter bij ontbrekend symbol) en filteren client-side op base + close-side.
+      // Tijdvenster (startTime/endTime) scopet de fills al tot deze positie. Geen Worker-redeploy
+      // nodig: de bestaande `fills`-action filtert alleen op instId wanneer meegegeven.
+      const base=String(symbol||"").split(/[/_-]/)[0].toUpperCase(); // "BTC"
+      const data=await proxyCall({exchange:"okx",action:"fills",apiKey,apiSecret,passphrase,startTime,endTime});
+      await this._loadContractValues();
+      const raw=Array.isArray(data.fills)?data.fills:[];
+      const fills=raw.filter(f=>{
+        const inst=String(f.instId||"").toUpperCase();
+        if(base&&inst&&!inst.startsWith(base+"-"))return false; // andere coin → weg
+        // close-fill: long sluit met side=sell, short met side=buy. Net-mode (geen posSide):
+        // val terug op fillPnl≠0 (een open-fill heeft geen gerealiseerde PnL).
+        const side=String(f.side||"").toLowerCase();
+        const ps=String(f.posSide||"").toLowerCase();
+        if(ps==="long")return side==="sell";
+        if(ps==="short")return side==="buy";
+        return Math.abs(parseFloat(f.fillPnl!=null?f.fillPnl:f.fillPnL)||0)>0;
+      }).map(f=>this._normaliseFill(f));
+      return{fills,total:fills.length};
+    }
+  }
+};
+// -- captureSnapshot patches (4168-4213) --
+// ─────────────────────────────────────────────────────────────────────────────
+// v12.88: Per-exchange `captureSnapshot` voor dev-mode debugging.
+// Returnt {type, version, capturedAt, raw}. Wordt aangeroepen vanuit AccountsHub
+// dev-knop. Geen credentials in snapshot — alleen API-response data.
+// FTMO heeft er geen want CSV-only (geen API-call).
+// ─────────────────────────────────────────────────────────────────────────────
+ExchangeAPI.blofin.captureSnapshot=async function(creds){
+  const{apiKey,apiSecret,passphrase}=creds||{};
+  if(!apiKey||!apiSecret||!passphrase)throw new Error("API key, secret en passphrase nodig");
+  const histRaw=await this._direct(apiKey,apiSecret,passphrase,"/api/v1/account/positions-history",{limit:100});
+  const openRaw=await this._direct(apiKey,apiSecret,passphrase,"/api/v1/account/positions",{});
+  return{type:"blofin-snapshot",positionsHistory:histRaw.data||[],openPositions:openRaw.data||[]};
+};
+ExchangeAPI.mexc.captureSnapshot=async function(creds){
+  const{apiKey,apiSecret}=creds||{};
+  if(!apiKey||!apiSecret)throw new Error("API key en secret nodig");
+  const startTime=new Date(new Date().getFullYear(),new Date().getMonth()-2,1).getTime();
+  const tradesRaw=await proxyCall({exchange:"mexc",action:"trades",apiKey,apiSecret,startTime});
+  const openRaw=await proxyCall({exchange:"mexc",action:"open_positions",apiKey,apiSecret});
+  return{type:"mexc-snapshot",positionsHistory:tradesRaw.trades||tradesRaw.data||[],openPositions:openRaw.positions||openRaw.data||[],raw:{trades:tradesRaw,open:openRaw}};
+};
+ExchangeAPI.kraken.captureSnapshot=async function(creds){
+  const{apiKey,apiSecret}=creds||{};
+  if(!apiKey||!apiSecret)throw new Error("API key en secret nodig");
+  const startTime=new Date(new Date().getFullYear(),new Date().getMonth()-2,1).getTime();
+  const tradesRaw=await proxyCall({exchange:"kraken",action:"trades",apiKey,apiSecret,startTime});
+  const openRaw=await proxyCall({exchange:"kraken",action:"open_positions",apiKey,apiSecret});
+  return{type:"kraken-snapshot",positionsHistory:tradesRaw.trades||tradesRaw.data||[],openPositions:openRaw.positions||openRaw.data||[],raw:{trades:tradesRaw,open:openRaw}};
+};
+ExchangeAPI.hyperliquid.captureSnapshot=async function(creds){
+  const{walletAddress}=creds||{};
+  if(!walletAddress)throw new Error("Wallet-adres nodig");
+  // Eén batch userFillsByTime van 60 dagen terug — voldoende voor de meeste users.
+  const startTime=Date.now()-60*24*3600*1000;
+  const fillsRaw=await this._post({type:"userFillsByTime",user:walletAddress,startTime});
+  const stateRaw=await this._post({type:"clearinghouseState",user:walletAddress});
+  return{type:"hyperliquid-snapshot",positionsHistory:Array.isArray(fillsRaw)?fillsRaw:(fillsRaw?.fills||[]),openPositions:stateRaw?.assetPositions||[],raw:{fills:fillsRaw,state:stateRaw}};
+};
+ExchangeAPI.okx.captureSnapshot=async function(creds){
+  const{apiKey,apiSecret,passphrase}=creds||{};
+  if(!apiKey||!apiSecret||!passphrase)throw new Error("API key, secret en passphrase nodig");
+  const startTime=new Date(new Date().getFullYear(),new Date().getMonth()-2,1).getTime();
+  const tradesRaw=await proxyCall({exchange:"okx",action:"trades",apiKey,apiSecret,passphrase,startTime});
+  const openRaw=await proxyCall({exchange:"okx",action:"open_positions",apiKey,apiSecret,passphrase});
+  return{type:"okx-snapshot",positionsHistory:tradesRaw.trades||tradesRaw.data||[],openPositions:openRaw.positions||openRaw.data||[],raw:{trades:tradesRaw,open:openRaw}};
+};
+// -- detectPartials patches + placeholder (4227-4265) --
+//     gebaseerd. Voor nu shared helper; bij toekomstige bugs splitsen.
+// Dispatcher gebruikt: `(ExchangeAPI[ex]?.detectPartials || (t=>t))(trades)`.
+// ─────────────────────────────────────────────────────────────────────────────
+// v12.232: optionele sourceKey-param — dispatcher geeft de werkelijke trade.source door
+// (account.id post-multi-account); zonder param valt 'ie terug op de legacy type-string.
+ExchangeAPI.blofin.detectPartials=function(trades,sourceKey){return detectPartialFromSiblings(trades,sourceKey||"blofin","blofin")};
+ExchangeAPI.mexc.detectPartials=function(trades,sourceKey){return detectPartialFromSiblings(trades,sourceKey||"mexc","mexc")};
+ExchangeAPI.kraken.detectPartials=function(trades,sourceKey){return detectPartialFromSiblings(trades,sourceKey||"kraken","kraken")};
+ExchangeAPI.hyperliquid.detectPartials=function(trades,sourceKey){return detectPartialFromSiblings(trades,sourceKey||"hyperliquid","hyperliquid")};
+ExchangeAPI.okx.detectPartials=function(trades,sourceKey){return detectPartialFromSiblings(trades,sourceKey||"okx","okx")};
+ExchangeAPI.ftmo.detectPartials=function(trades){return trades};
+
+// v12.235: Hyperliquid + Kraken leveren via fetchTrades COMPLETE round-trips (FIFO/server-side
+// gereconstrueerd uit fills), niet losse partial-close records zoals Blofin/MEXC. Hun open-trade
+// is dus slechts een live-PLACEHOLDER (met sync-moment als date/time). De finalize-flow mag voor
+// deze exchanges de fills-trade NIET consumeren en de placeholder promoveren — dat gaf:
+//  (1) een closed trade met een niet-bestaande open-tijd en geaggregeerde (dubbele) size, en
+//  (2) een permanent duplicaat zodra fetchTrades dezelfde round-trip opnieuw binnenbracht
+//      (het geconsumeerde id bestond niet meer → dedup miste 'm). Bug: jordy/Discord 2026-06-12.
+// In plaats daarvan: placeholder VERWIJDEREN en de fills-trade behouden (id blijft stabiel),
+// met overname van user-velden die op de placeholder zijn gezet.
+ExchangeAPI.hyperliquid.openIsPlaceholder=true;
+ExchangeAPI.kraken.openIsPlaceholder=true;
+// OKX positions-history = geaggregeerde round-trips (zoals Kraken), niet losse partial-records.
+ExchangeAPI.okx.openIsPlaceholder=true;
+const PLACEHOLDER_USER_FIELDS=["notes","entryNote","setupTags","confirmationTags","timeframeTags","emotionTags","mistakeTags","customTags","rating","screenshot","screenshots","links","layers","playbookId","complianceChecks","complianceScore","tradeGrade","stopLoss","takeProfit"];
+function adoptPlaceholderFields(target,placeholder){
+  const out={...target};
+  for(const f of PLACEHOLDER_USER_FIELDS){
+    const pv=placeholder[f];
+    const pvHas=Array.isArray(pv)?pv.length>0:(pv!==undefined&&pv!==null&&pv!==""&&pv!==0);
+    const cur=out[f];
+    const curEmpty=Array.isArray(cur)?cur.length===0:(cur===undefined||cur===null||cur===""||cur===0);
+    if(pvHas&&curEmpty)out[f]=pv;
+  }
+  return out;
+}
+
+// ============ SMALL COMPONENTS ============
+/* ═══ Sync-orkestratie (fase 1: verbinding testen + gesloten trades) ═══ */
+// Adapter-output (TradeJournal-schema) → SyncJournal-trade. migrateOldTrade is de
+// bestaande schema-brug; we bewaren daarnaast de bron-id's voor dedupe bij re-sync.
+function sjFromTj(tj){
+  // LET OP: id wordt door de aanroeper gezet (nextId() hier zou binnen één map-batch
+  // hetzelfde id aan álle trades geven — ze zitten immers nog niet in T).
+  const tps=(tj.tpLevels||[]).map(x=>({...x,hit:!!(x.hit||x.status==='hit')}));
+  const t=migrateOldTrade({...tj,tpLevels:tps});
+  t.srcId=String(tj.id||'');t.positionId=String(tj.positionId||'');
+  const ty=sourceTypeOf(tj.source);if(EXMAP[ty])t.exchange=ty;
+  return t;
+}
+async function testConn(exId){
+  const ad=ExchangeAPI[exId],c=CONNS[exId]||{};if(!ad)return;
+  const btn=document.getElementById('ct_'+exId);if(btn){btn.disabled=true;btn.textContent='Testen…';}
+  try{
+    const r=ad.walletOnly?await ad.testConnection(c.wallet):await ad.testConnection(c.apiKey,c.apiSecret,c.passphrase);
+    const balV=r&&typeof r==='object'?(r.balance!=null?r.balance:r.equity):null;
+    toast('✓ Verbinding met '+ad.name+' werkt'+(balV!=null&&isFinite(+balV)?' · saldo '+(+balV).toLocaleString('nl-NL',{maximumFractionDigits:2}):''),'ok');
+  }catch(e){toast('✗ '+ad.name+': '+((e&&e.message)||e),'err');}
+  render();
+}
+// Fase 1 haalt alleen GESLOTEN trades op. Dedupe op bron-id (stabiel per adapter);
+// de prullenbak wint: een verwijderde trade komt niet terug via sync (srcId-guard).
+async function syncExchange(exId,opts){
+  const quiet=opts&&opts.quiet;
+  const ad=ExchangeAPI[exId],c=CONNS[exId];
+  if(!ad||!c||!c.connected){if(!quiet)toast('Eerst verbinden via Instellingen → Accounts','err');return -1;}
+  const last=+c.lastSync||0;
+  const startTime=last?last-3600e3:(c.syncFrom?+new Date(c.syncFrom):Date.now()-30*864e5);
+  let raw;
+  try{raw=ad.walletOnly?await ad.fetchTrades(c.wallet,null,null,startTime):await ad.fetchTrades(c.apiKey,c.apiSecret,c.passphrase,startTime);}
+  catch(e){if(!quiet)toast('✗ Sync '+ad.name+' mislukt: '+((e&&e.message)||e),'err');return -1;}
+  const have=new Set(T.map(t=>t.srcId&&String(t.srcId)).filter(Boolean));
+  const dead=new Set(TRASH.map(t=>t.srcId&&String(t.srcId)).filter(Boolean));
+  const fresh=(raw||[]).filter(t=>t&&t.status==='closed'&&t.id&&!have.has(String(t.id))&&!dead.has(String(t.id)));
+  const mapped=fresh.map(sjFromTj);
+  const base=nextId();mapped.forEach((t,i)=>t.id=base+i);
+  if(mapped.length){T=[...T,...mapped];persist();}
+  CONNS[exId]={...c,lastSync:Date.now()};persistConns();
+  if(!quiet)toast(mapped.length?('✓ '+ad.name+': '+mapped.length+' nieuwe trade'+(mapped.length>1?'s':'')):('✓ '+ad.name+': geen nieuwe trades'),mapped.length?'ok':'info');
+  render();return mapped.length;
+}
+async function syncNow(){
+  const conn=EXCHANGES.filter(e=>CONNS[e.id]&&CONNS[e.id].connected);
+  if(!conn.length){toast('Geen exchanges verbonden — koppel er eerst een via Accounts','info');return;}
+  toast('Sync gestart ('+conn.map(e=>e.name).join(', ')+')…','info');
+  let n=0,fail=0;
+  for(const e of conn){const r=await syncExchange(e.id,{quiet:true});if(r>=0)n+=r;else fail++;}
+  toast(fail?('Sync klaar — '+n+' nieuwe trades · '+fail+' exchange'+(fail>1?'s':'')+' faalde (zie Accounts)'):('✓ Sync klaar — '+n+' nieuwe trade'+(n===1?'':'s')),fail?'err':'ok');
+  render();
+}
+// Auto-sync: respecteert SYNC.auto + interval; alleen accounts met autoSync aan.
+let _autoSyncTimer=null;
+function startAutoSync(){
+  if(_autoSyncTimer)clearInterval(_autoSyncTimer);
+  const ms={'5m':300e3,'15m':900e3,'30m':1800e3,'1u':3600e3}[SYNC.interval]||900e3;
+  _autoSyncTimer=setInterval(async()=>{
+    if(!SYNC.auto)return;
+    for(const e of EXCHANGES){const c=CONNS[e.id];if(c&&c.connected&&c.autoSync)await syncExchange(e.id,{quiet:true});}
+  },ms);
+}
+
+
 async function migRun(){ closeForm(); await TJMigrate.run(); }
 function showMigrationReport(report,warnings,issues){ const okAll=!issues.length; openModalHTML(`
   <div class="mhead"><h3>${okAll?'✓ Migratie afgerond':'⚠ Migratie afgerond met aandachtspunten'}</h3><button class="xbtn" onclick="migReportClose()">×</button></div>
@@ -4058,6 +5144,7 @@ async function boot(){
   try{const tr=await IDB.get('trash');TRASH=Array.isArray(tr)?tr:[];purgeTrash();}catch(e){TRASH=[];}
   try{await runMigrations();}catch(e){}   // geversioneerde schema-updates (snapshot + rollback ingebouwd)
   selfCheck();                            // grove corruptie → herstel-aanbod
+  try{startAutoSync();}catch(e){}         // exchange auto-sync-timer (doet niets zolang SYNC.auto uit staat)
   render();
   // Eerste-start: migratie-aanbod (oude tj_-data) heeft voorrang op het welkomscherm.
   if((T||[]).length===0 && !DB.load('migrated_from_tj',null) && !DB.load('mig_declined',false) && TJMigrate.detect()){ migOffer(); }
