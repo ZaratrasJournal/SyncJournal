@@ -1491,7 +1491,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.44';
+const APP_VERSION='v0.9.45';
 const SCHEMA_VERSION=1;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -2046,7 +2046,7 @@ function pgTrades(){
         <td data-l="Exchange">${exCell(t.exchange)}</td>
         <td data-l="Pair"><div class="paircell">${assetCell(t.pair)}${kindBadge(t)}${newBadge(t)}</div></td><td data-l="Richting"><span class="pill ${t.dir}">${t.dir==='long'?'LONG':'SHORT'}</span></td>
         <td class="rt num" data-l="Entry">${numOrDash(t.entry)}</td><td class="rt num" data-l="Exit">${numOrDash(t.exit)}</td>
-        <td class="rt num mask" data-l="Size">${isNaN(SZ(t))?'—':CURSYM()+' '+SZ(t).toLocaleString('nl-NL')}${qtySub(t)}</td><td class="rt" data-l="P&L">${pnlCell(t.pnl,t.pnlPct)}</td>
+        <td class="rt num mask" data-l="Size">${isNaN(SZ(t))?'—':CURSYM()+' '+SZ(t).toLocaleString('nl-NL')}${qtySub(t)}</td><td class="rt" data-l="P&L">${t.status==='open'&&t.unrealizedPnl?`<span class="num ${cls(t.unrealizedPnl)} mask" title="niet-gerealiseerde P&L">~${eurS(t.unrealizedPnl)}</span>`:t.status==='partial'&&t.realizedPnl?`<span class="num ${cls(t.realizedPnl)} mask" title="gerealiseerd deel — rest loopt nog">${eurS(t.realizedPnl)}<div style="font-size:10.5px;color:var(--amber)">deels dicht</div></span>`:pnlCell(t.pnl,t.pnlPct)}</td>
         <td class="ct" data-l="R">${rBadge(t.r)}</td><td data-l="Status">${statusB(t.status)}</td>
         <td data-l="Setup">${setupBadge(t.setup)}</td><td data-l="Sessie">${sessBadge(sessionOf(t))}</td>
         <td data-l="Tags" style="max-width:170px">${tagChips(t.tags)}</td></tr>`;}).join('')}</tbody>
@@ -4367,7 +4367,17 @@ const ExchangeAPI = {
             if(lot.sz<=remaining+1e-9){entryW+=lot.px*lot.sz;entrySize+=lot.sz;openFees+=lot.fee;remaining-=lot.sz;q.shift();}
             else{const ratio=remaining/lot.sz;const feeShare=lot.fee*ratio;entryW+=lot.px*remaining;entrySize+=remaining;openFees+=feeShare;lot.fee-=feeShare;lot.sz-=remaining;remaining=0;}
           }
-          const avgEntry=entrySize>0?entryW/entrySize:0;
+          let avgEntry=entrySize>0?entryW/entrySize:0;
+          // Fase 2 (onderzoek 2026-09-14): lone close — open-fills buiten het sync-venster.
+          // HL houdt de entry constant bij partial closes, dus de entry is exact terug te
+          // rekenen uit de close-fill zelf: entry = px − richting × closedPnl/sz.
+          // (closedPnl is bruto, exclusief fees — live geverifieerd op echte fills.)
+          let entryDerived=false;
+          if(!(avgEntry>0)&&pxN>0&&szN>0){
+            const dirSign=side==="long"?1:-1;
+            const calc=pxN-dirSign*(pnlN/szN);
+            if(isFinite(calc)&&calc>0){avgEntry=calc;entryDerived=true;}
+          }
           // closedPnl (API-stijl, na pre-aggregatie) = GROSS PnL zonder fees afgetrokken.
           // Echte netto = gross − close_fee − Σ(open_fees). CSV-parser normaliseert zijn
           // eigen "closedPnl − close_fee" convention naar API-stijl vóór de helper.
@@ -4395,7 +4405,7 @@ const ExchangeAPI = {
             source:"hyperliquid",
             status:"closed",
             positionId:f.tid?String(f.tid):"",
-            notes:partial?"⚠ Partial data: opening fills buiten range":"",
+            notes:entryDerived?"⚠ Entry afgeleid uit closedPnl — open-fill lag buiten het sync-venster":(partial?"⚠ Partial data: opening fills buiten range":""),
           });
         }
       }
@@ -4763,6 +4773,12 @@ function sjFromTj(tj){
   const t=migrateOldTrade({...tj,tpLevels:tps});
   t.srcId=String(tj.id||'');t.positionId=String(tj.positionId||'');
   const ty=sourceTypeOf(tj.source);if(EXMAP[ty])t.exchange=ty;
+  // Fase 2: velden die de partial-detectie en open-positie-weergave nodig hebben.
+  t.qtyAsset=parseFloat(tj.positionSizeAsset)||0;
+  if(tj._rawCloseSize!=null)t._rawCloseSize=String(tj._rawCloseSize);
+  t.openTime=String(tj.openTime||'');t.closeTime=String(tj.closeTime||'');
+  if(tj.unrealizedPnl!==undefined)t.unrealizedPnl=parseFloat(tj.unrealizedPnl)||0;
+  if(tj.liquidationPrice!==undefined)t.liq=parseFloat(tj.liquidationPrice)||0;
   return t;
 }
 async function testConn(exId){
@@ -4782,6 +4798,8 @@ async function syncExchange(exId,opts){
   if(EXMAP[exId]&&EXMAP[exId].deprecated){if(!quiet)toast('Sync niet meer mogelijk: '+EXMAP[exId].deprecated+'. Je oude trades blijven gewoon zichtbaar.','err');return -1;}
   const ad=ExchangeAPI[exId],c=CONNS[exId];
   if(!ad||!c||!c.connected){if(!quiet)toast('Eerst verbinden via Instellingen → Accounts','err');return -1;}
+  // Fase 2 stap 1: open posities eerst (maakt/ververst open rijen en placeholders).
+  await syncOpenTrades(exId,{quiet:true});
   const last=+c.lastSync||0;
   const startTime=last?last-3600e3:(c.syncFrom?+new Date(c.syncFrom):Date.now()-30*864e5);
   let raw;
@@ -4793,6 +4811,11 @@ async function syncExchange(exId,opts){
   const mapped=fresh.map(sjFromTj);
   const base=nextId();mapped.forEach((t,i)=>t.id=base+i);
   if(mapped.length){T=[...T,...mapped];persist();}
+  // Fase 2 stap 2+3: placeholders en stale opens vervangen door de echte trades,
+  // daarna pas de partial-status bepalen.
+  finalizePlaceholders(exId,mapped);
+  finalizeStaleOpens(exId);
+  runPartialDetect(exId);
   CONNS[exId]={...c,lastSync:Date.now()};persistConns();
   if(!quiet)toast(mapped.length?('✓ '+ad.name+': '+mapped.length+' nieuwe trade'+(mapped.length>1?'s':'')):('✓ '+ad.name+': geen nieuwe trades'),mapped.length?'ok':'info');
   render();return mapped.length;
@@ -4815,6 +4838,109 @@ function startAutoSync(){
     if(!SYNC.auto)return;
     for(const e of EXCHANGES){if(e.deprecated)continue;const c=CONNS[e.id];if(c&&c.connected&&c.autoSync)await syncExchange(e.id,{quiet:true});}
   },ms);
+}
+
+/* ═══ Fase 2: open posities, placeholders & partial-detectie ═══
+   - Open posities verschijnen als open trade (entry/size/SL/TP/liq/unrealized).
+   - Round-trip-exchanges (openIsPlaceholder: HL/Kraken/OKX) krijgen een PLACEHOLDER-rij
+     die verdwijnt zodra de echte trade uit de historie binnenkomt — de echte trade wint,
+     user-velden verhuizen mee (v12.235-mechanisme uit het origineel).
+   - Partial-detectie hergebruikt de geporte detectPartialFromSiblings via een TJ-view-shim.
+   - Een partial houdt pnl 0 (de gesloten siblings dragen de gerealiseerde PnL in de stats —
+     zo telt er nooit iets dubbel); realizedPnl is een apart weergaveveld. */
+// Eén matchKey-definitie (in het origineel stonden er drie identieke).
+function exMatchKey(t){const e=parseFloat(t.entry);if(!isFinite(e)||e<=0)return null;return `${t.pair}|${t.dir||t.direction}|${e.toFixed(8)}`;}
+// User-velden die van een placeholder/verouderde open rij meeverhuizen naar de echte trade.
+const SJ_USER_FIELDS=['notes','lessons','tags','emotions','mistakes','emotion','mistake','grade','setup','rating','screenshots','tvLinks','checks','stop','tp','risk','rrPlanned'];
+function adoptUserFieldsSJ(target,src){
+  SJ_USER_FIELDS.forEach(k=>{const v=src[k];const has=Array.isArray(v)?v.length>0:(v!==undefined&&v!==''&&v!==0);
+    const tHas=Array.isArray(target[k])?target[k].length>0:(target[k]!==undefined&&target[k]!==''&&target[k]!==0);
+    if(has&&!tHas)target[k]=Array.isArray(v)?[...v]:v;});
+  const userTps=(src.tps||[]).filter(x=>!x.hit);
+  if(userTps.length&&!(target.tps||[]).some(x=>!x.hit))target.tps=[...userTps,...(target.tps||[])];
+}
+async function syncOpenTrades(exId,opts){
+  const quiet=opts&&opts.quiet;
+  if(EXMAP[exId]&&EXMAP[exId].deprecated)return -1;
+  const ad=ExchangeAPI[exId],c=CONNS[exId];
+  if(!ad||typeof ad.fetchOpenPositions!=='function'||!c||!c.connected)return -1;
+  let opens;
+  try{opens=ad.walletOnly?await ad.fetchOpenPositions(c.wallet):await ad.fetchOpenPositions(c.apiKey,c.apiSecret,c.passphrase);}
+  catch(e){if(!quiet)toast('✗ Open posities '+ad.name+': '+((e&&e.message)||e),'err');return -1;}
+  opens=Array.isArray(opens)?opens:[];
+  const isPh=!!ad.openIsPlaceholder;
+  const mine=T.filter(t=>t.exchange===exId&&(t.status==='open'||t.status==='partial'));
+  const seen=new Set();let added=0;
+  for(const o of opens){
+    const sj=sjFromTj(o);sj.status='open';
+    const key=exMatchKey(sj);
+    const ex=mine.find(t=>(t.srcId&&sj.srcId&&t.srcId===sj.srcId)||(key&&exMatchKey(t)===key&&(!t.positionId||!sj.positionId||String(t.positionId)===String(sj.positionId))));
+    if(ex){seen.add(ex.id);
+      // live velden verversen; SL/TP alleen overschrijven met een échte waarde (user-invoer beschermen)
+      ex.entry=sj.entry;ex.size=sj.size;ex.qtyAsset=sj.qtyAsset;if(sj.leverage)ex.leverage=sj.leverage;
+      if(sj.stop)ex.stop=sj.stop;if(sj.tp)ex.tp=sj.tp;
+      ex.unrealizedPnl=sj.unrealizedPnl;ex.liq=sj.liq;
+      if(!ex.openTime&&sj.openTime){ex.openTime=sj.openTime;ex.date=sj.date||ex.date;ex.time=sj.time||ex.time;}
+    }else{
+      sj.id=nextId();sj.placeholder=isPh;T.push(sj);mine.push(sj);seen.add(sj.id);added++;
+    }
+  }
+  // Verouderde open rijen markeren: positie bestaat niet meer op de exchange. De cleanup
+  // zelf gebeurt in finalizeStaleOpens ná de closed-import (dan pas is de sluiting binnen).
+  mine.forEach(t=>{ if(seen.has(t.id))delete t._stale; else t._stale=true; });
+  persist();return added;
+}
+// Stale open rijen opruimen zodra de historie de sluiting geleverd heeft: user-velden
+// adopteren op de nieuwste sibling, rij weg. Zonder historie blijft de rij (nog) staan.
+function finalizeStaleOpens(exId){
+  let n=0;
+  for(const s of T.filter(t=>t.exchange===exId&&t._stale&&(t.status==='open'||t.status==='partial'))){
+    const key=exMatchKey(s);
+    const sib=T.filter(t=>t.exchange===exId&&t.status==='closed'&&t.id!==s.id&&((s.positionId&&t.positionId&&String(t.positionId)===String(s.positionId))||(key&&exMatchKey(t)===key)));
+    if(sib.length){
+      const newest=sib.slice().sort((a,b)=>String(a.closeTime||'').localeCompare(String(b.closeTime||''))).pop();
+      adoptUserFieldsSJ(newest,s);
+      T=T.filter(t=>t.id!==s.id);n++;
+    }
+  }
+  if(n)persist();
+  return n;
+}
+// Placeholder-finalize: nieuwe gesloten trades vervangen hun placeholder (echte trade wint).
+function finalizePlaceholders(exId,newClosed){
+  const ad=ExchangeAPI[exId];
+  if(!ad||!ad.openIsPlaceholder||!newClosed||!newClosed.length)return 0;
+  let n=0;
+  for(const cT of newClosed){
+    const key=exMatchKey(cT);if(!key)continue;
+    const ph=T.find(t=>t.exchange===exId&&t.placeholder&&(t.status==='open'||t.status==='partial')&&exMatchKey(t)===key);
+    if(ph){adoptUserFieldsSJ(cT,ph);T=T.filter(t=>t.id!==ph.id);n++;}
+  }
+  if(n)persist();
+  return n;
+}
+// TJ-view-shim: SJ-trade → het veldformaat dat detectPartialFromSiblings verwacht.
+function tjViewOf(t){return {id:t.srcId||('sj_'+t.id),source:t.exchange,status:t.status,pair:t.pair,direction:t.dir,
+  entry:String(t.entry||''),exit:String(t.exit||''),pnl:String(t.pnl!=null?t.pnl:''),fees:String(t.fees||'0'),
+  positionSizeAsset:t.qtyAsset?String(t.qtyAsset):'',_rawCloseSize:t._rawCloseSize,
+  positionId:t.positionId||'',closeTime:String(t.closeTime||''),
+  tpLevels:(t.tps||[]).map(x=>({price:String(x.price),pct:String(x.pct),status:x.hit?'hit':'user',actualPrice:x.hit?String(x.price):'',ts:0}))};}
+function runPartialDetect(exId){
+  const idx={};const views=[];
+  T.forEach(t=>{if(t.exchange!==exId)return;const v=tjViewOf(t);idx[v.id]=t;views.push(v);});
+  if(!views.length)return;
+  const out=detectPartialFromSiblings(views,exId,exId);
+  let changed=false;
+  out.forEach(v=>{const t=idx[v.id];if(!t)return;
+    if(v.status!==t.status){t.status=v.status;changed=true;}
+    if(v.status==='partial'){
+      t.realizedPnl=parseFloat(v.realizedPnl)||0;
+      const f=parseFloat(v.fees);if(isFinite(f))t.fees=f;
+      t.tps=(v.tpLevels||[]).map(x=>({price:+x.price||0,pct:+(+x.pct||0).toFixed(2),r:'',hit:x.status==='hit'}));
+      changed=true;
+    }else if(t.realizedPnl!==undefined){delete t.realizedPnl;changed=true;}
+  });
+  if(changed)persist();
 }
 
 
