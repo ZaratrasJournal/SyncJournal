@@ -857,6 +857,11 @@ body.dark .mx-legend .mxsw{box-shadow:inset 0 0 0 1px rgba(255,255,255,.12)}
 .faqsearch{width:100%;margin-top:11px;border:1px solid var(--line);border-radius:9px;background:var(--sink);color:var(--ink);padding:9px 13px;font-size:13.5px;font-family:inherit;outline:none}
 .faqsearch:focus{border-color:var(--accent)}
 .faqnone{background:var(--surface);border:1px dashed var(--line);border-radius:10px;padding:18px;text-align:center;font-size:13px;color:var(--muted)}
+.tpin.tptime{max-width:70px;flex:none}
+/* Globale filter-indicator (app-balk) */
+.gfbadge{display:inline-flex;align-items:center;gap:8px;margin-left:12px;padding:5px 12px;border-radius:20px;background:var(--amber-soft);border:1px solid color-mix(in srgb,var(--amber) 38%,transparent);color:var(--amber);font-size:11.5px;font-weight:700;white-space:nowrap}
+.gfbadge button{font-size:11px;font-weight:800;padding:2px 9px;border-radius:12px;background:var(--amber);color:#fff;cursor:pointer}
+@media(max-width:1100px){.gfbadge{display:none}}
 /* Trade-tijdlijn (Review-detail) */
 .tline{display:flex;flex-wrap:wrap;align-items:center;gap:7px;margin-top:11px;padding:8px 11px;background:var(--sink);border:1px solid var(--line2);border-radius:9px;font-size:12px}
 .tline .tlc{white-space:nowrap;color:var(--ink2)}
@@ -1010,7 +1015,7 @@ body.dark .toast{box-shadow:0 10px 34px rgba(0,0,0,.5)}
   <div class="body">
     <header class="appbar">
       <button class="hamb" id="btnMenu" aria-label="Menu">☰</button>
-      <span class="ptbar" id="ptbar"></span><h1 id="ptitle">Dashboard</h1><span class="sub" id="psub"></span>
+      <span class="ptbar" id="ptbar"></span><h1 id="ptitle">Dashboard</h1><span class="sub" id="psub"></span><span class="gfbadge" id="gfBadge" hidden></span>
       <div class="sp"></div>
       <button class="iconbtn" id="btnEye" title="Privacy">${''}</button>
       <button class="iconbtn" id="btnTheme" title="Thema">${''}</button>
@@ -1499,7 +1504,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.48';
+const APP_VERSION='v0.9.49';
 const SCHEMA_VERSION=2;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -1745,19 +1750,19 @@ STATE.tendRow=STATE.tendRow||'setup'; STATE.tendCol=STATE.tendCol||'session';  /
 function persistState(){ DB.save('state',{theme:STATE.theme,priv:STATE.priv,density:STATE.density,currency:STATE.currency,sections:STATE.sections}); }
 
 /* ═══ Globale filter (elke pagina) ═══ */
-const FILTER={exchange:'',pair:'',setup:'',session:'',dir:'',tag:'',dateFrom:'',dateTo:'',datePreset:'',kind:'live'};
+const FILTER={exchange:'',pair:'',setup:'',session:'',dir:'',tag:'',status:'',dateFrom:'',dateTo:'',datePreset:'',kind:'live'};
 function kindMatch(t,k){const tk=t.kind||'live';if(!k||k==='alle')return true;if(k==='oefen')return tk!=='live';return tk===k;}
 let FT=[];
-function applyFilter(rows){const f=FILTER;return rows.filter(t=>kindMatch(t,f.kind)&&(!f.exchange||t.exchange===f.exchange)&&(!f.pair||t.pair===f.pair)&&(!f.setup||t.setup===f.setup)&&(!f.session||sessionOf(t)===f.session)&&(!f.dir||t.dir===f.dir)&&(!f.tag||tradeTagsAll(t).includes(f.tag))&&(!f.dateFrom||t.date>=f.dateFrom)&&(!f.dateTo||t.date<=f.dateTo));}
+function applyFilter(rows){const f=FILTER;return rows.filter(t=>kindMatch(t,f.kind)&&(!f.exchange||t.exchange===f.exchange)&&(!f.pair||t.pair===f.pair)&&(!f.setup||t.setup===f.setup)&&(!f.session||sessionOf(t)===f.session)&&(!f.dir||t.dir===f.dir)&&(!f.tag||tradeTagsAll(t).includes(f.tag))&&(!f.status||t.status===f.status)&&(!f.dateFrom||t.date>=f.dateFrom)&&(!f.dateTo||t.date<=f.dateTo));}
 // Zelfde filters MAAR zonder de kind-filter — voor de real/paper/backtest-vergelijking (moet alle soorten zien).
 function applyFilterNoKind(rows){const f=FILTER;return rows.filter(t=>(!f.exchange||t.exchange===f.exchange)&&(!f.pair||t.pair===f.pair)&&(!f.setup||t.setup===f.setup)&&(!f.session||sessionOf(t)===f.session)&&(!f.dir||t.dir===f.dir)&&(!f.tag||tradeTagsAll(t).includes(f.tag))&&(!f.dateFrom||t.date>=f.dateFrom)&&(!f.dateTo||t.date<=f.dateTo));}
 // Buckets voor edge-erosion (real vs paper vs backtest) — gedeeld door analytics + playbook-detail.
 function eroBuckets(rows){const b={backtest:[],paper:[],real:[]};(rows||[]).forEach(x=>{if(x.status==='open')return;const k=x.kind==='backtest'?'backtest':x.kind==='paper'?'paper':(isLive(x)?'real':null);if(k)b[k].push(x);});
   const stat=arr=>{const n=arr.length,rs=arr.map(tradeR);return {n,wr:n?Math.round(arr.filter(x=>tradeR(x)>0).length/n*100):0,avgR:n?rs.reduce((a,c)=>a+c,0)/n:0,net:arr.reduce((a,c)=>a+(+c.pnl||0),0)};};
   return {backtest:stat(b.backtest),paper:stat(b.paper),real:stat(b.real)};}
-function countActive(){return ['exchange','pair','setup','session','dir','tag'].filter(k=>FILTER[k]).length+((FILTER.dateFrom||FILTER.dateTo)?1:0)+((FILTER.kind&&FILTER.kind!=='live')?1:0);}
+function countActive(){return ['exchange','pair','setup','session','dir','tag','status'].filter(k=>FILTER[k]).length+((FILTER.dateFrom||FILTER.dateTo)?1:0)+((FILTER.kind&&FILTER.kind!=='live')?1:0);}
 function setFilter(k,v){FILTER[k]=v;STATE.selected=[];STATE.tradePage=0;render();}
-function clearGFilter(){['exchange','pair','setup','session','dir','tag','dateFrom','dateTo','datePreset'].forEach(k=>FILTER[k]='');FILTER.kind='live';STATE.tradePage=0;render();}
+function clearGFilter(){['exchange','pair','setup','session','dir','tag','status','dateFrom','dateTo','datePreset'].forEach(k=>FILTER[k]='');FILTER.kind='live';STATE.tradePage=0;render();}
 /* ── datum-filter: presets + van/tot ── */
 const isoD=dt=>dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0')+'-'+String(dt.getDate()).padStart(2,'0');
 function refNow(){const ds=T.map(t=>t.date).filter(Boolean);return ds.length?ds.reduce((a,b)=>a>b?a:b):new Date().toISOString().slice(0,10);}
@@ -1795,6 +1800,7 @@ function filterBar(){
     ${sel('setup','Alle setups',setups)}
     ${sel('session','Alle sessies',SESSIONS)}
     ${sel('dir','Long & short',[['long','Long'],['short','Short']])}
+    ${sel('status','Alle statussen',[['open','Open'],['partial','Partial'],['closed','Gesloten']])}
     ${sel('tag','Alle tags',tags)}
     <select class="fsel kindsel" aria-label="Soort trades" onchange="setFilter('kind',this.value)">${[['live','Live trades'],['oefen','Oefentrades (alle)'],['backtest','⏲ Backtest'],['paper','📄 Paper'],['gemist','👻 Gemist'],['alle','Alle soorten']].map(([v,l])=>`<option value="${v}" ${FILTER.kind===v?'selected':''}>${l}</option>`).join('')}</select>
     ${dateFilterDD()}
@@ -3422,7 +3428,10 @@ function pgAnalytics(){
     ${statTile('⚡',capture+'%','MFE benut (capture)','')}</div>`;
   const eroA=eroBuckets(applyFilterNoKind(T));
   const eroAPanel=(eroA.backtest.n||eroA.paper.n)?`<div class="panel"><div class="phead"><h3>Live vs Paper vs Backtest</h3><span class="sp"></span><span class="chip" title="edge-verval — over alle soorten, los van de Live/Oefen-filter">edge-bewaking · alle soorten</span></div><div class="pbody">${erosionBody(eroA)}</div></div><div style="height:13px"></div>`:'';
-  return `${filterBar()}${sampleBadge}<div style="height:11px"></div>${tiles}<div style="height:13px"></div>${kpis}<div style="height:13px"></div>
+  // B2 (ChangeMaker): leg uit waarom het aantal ≠ totaal — analytics rekent zonder open trades.
+  const nOpenA=FT.filter(t=>t.status==='open').length,nPartA=FT.filter(t=>t.status==='partial').length;
+  const scopeChip=`<div style="margin-top:9px"><span class="chip" style="background:var(--sink);border:1px solid var(--line);padding:4px 11px;border-radius:20px">📊 ${CLOSED.length.toLocaleString('nl-NL')} trades in de berekening (gesloten${nPartA?` + ${nPartA} partial`:''})${nOpenA?` · ${nOpenA} open niet meegerekend`:''}</span></div>`;
+  return `${filterBar()}${scopeChip}${sampleBadge}<div style="height:11px"></div>${tiles}<div style="height:13px"></div>${kpis}<div style="height:13px"></div>
     <div class="sect-h">Traject &amp; risico</div>
     <div class="grid" style="grid-template-columns:2fr 1fr;align-items:stretch">
       ${panelHead('Equity-curve',perDD('eq'),equity(214,periodTrades(CLOSED,KPIPER.eq)))}
@@ -3496,6 +3505,7 @@ const FAQS=[
     ['Wat zijn TradingView-links en hoe gebruik ik ze?','In TradingView maak je met het camera-icoon een deelbare link van je chart ("Copy link to the chart image"). Plak die in het trade-formulier bij <b>TradingView-links</b>. Op de Review-pagina open je ze dan met één klik in een nieuw tabblad — ideaal om later precies de chart van dat moment terug te zien.'],
     ['Wat is een "setup" en waarom zou ik die invullen?','Een setup is jouw recept voor een trade — bv. "Trend-pullback" of "Breakout". Vul je bij elke trade de setup in, dan ziet de app vanzelf welk recept geld verdient en welk recept geld kost. Dat is de kern van beter worden.'],
     ['Wat is het Playbook?','Je verzameling setups mét regels: wanneer stap je in, waar ligt je stop, wanneer blijf je weg. Per setup rekent SyncJournal automatisch win-rate en verwachting uit. Nieuwe playbook maken doe je op de <b>Playbook</b>-pagina.'],
+    ['Wat betekent de status "partial"?','Een <b>deels gesloten</b> positie: één of meer take-profits zijn geraakt (dat deel van je winst staat vast), maar de rest van de positie loopt nog. Zodra alles dicht is, wordt de trade gewoon "gesloten". Je vindt ze via het status-filter bovenaan (Open / Partial / Gesloten).'],
   ]],
   ['🔄 Exchanges koppelen',[
     ['Welke exchanges worden ondersteund?','Blofin, OKX, Hyperliquid en Kraken Futures via API. Daarnaast werkt <b>CSV-import voor élke exchange</b> — je exporteert je trade-history als CSV-bestand en leest die in. <b>MEXC</b> is alleen nog via import beschikbaar: de API-koppeling is gestopt omdat MEXC geen MiCA-licentie heeft en Nederland verlaat — je oude MEXC-trades blijven gewoon zichtbaar.'],
@@ -3636,6 +3646,12 @@ function render(){
   try{const _ae=document.activeElement;if(_ae&&_ae.id&&(_ae.tagName==='INPUT'||_ae.tagName==='TEXTAREA')){_fid=_ae.id;if(typeof _ae.selectionStart==='number'){_fs=_ae.selectionStart;_fe=_ae.selectionEnd;}}}catch(e){}
   FT=applyFilter(T);
   CLOSED=FT.filter(t=>t.status!=='open');
+  // B1 (ChangeMaker): filters gelden bewust app-breed — maak dat op élke pagina zichtbaar,
+  // zodat "al mijn trades zijn weg" nooit meer een mysterie is.
+  const gfb=document.getElementById('gfBadge');
+  if(gfb){const nAct=countActive();
+    if(nAct){gfb.hidden=false;gfb.innerHTML=`🔍 ${FT.length.toLocaleString('nl-NL')} van ${T.length.toLocaleString('nl-NL')} trades — filter geldt voor de hele app <button onclick="clearGFilter()" aria-label="Alle filters wissen">Wis</button>`;}
+    else gfb.hidden=true;}
   const [title,sub,fn]=PAGES[STATE.page];
   document.getElementById('ptitle').textContent=title;
   document.getElementById('psub').textContent=sub?'— '+sub:'';
@@ -5115,6 +5131,7 @@ function renderTPs(){const c=document.getElementById('tpbuilder');if(!c)return;
     <input class="tpin" placeholder="prijs" value="${tp.price}" inputmode="decimal" oninput="formTPs[${i}].price=this.value">
     <input class="tpin pct" placeholder="%" value="${tp.pct}" inputmode="numeric" oninput="formTPs[${i}].pct=+this.value||0;tpSum()">
     <button type="button" class="tphit ${tp.hit?'on':''}" onclick="toggleTPHit(${i})">${tp.hit?'✓ hit':'open'}</button>
+    ${tp.hit?`<input class="tpin tptime" placeholder="tijd" value="${esc(tp.tsTime||'')}" oninput="formTPs[${i}].tsTime=this.value" title="Sluittijd van deze TP (HH:MM) — zichtbaar in de tijdlijn">`:''}
     <button type="button" class="xlayer" onclick="removeTP(${i})" title="verwijderen">×</button></div>`).join('');
   c.innerHTML=`<div class="tptmpl">${formTPs.length>1?`<button type="button" class="btn" onclick="evenTPs();renderTPs()">Gelijk verdelen</button>`:''}<span class="sp" style="flex:1"></span><button type="button" class="btn pri" onclick="addTP()">+ TP toevoegen</button></div>
     ${formTPs.length?`<div class="tprows">${rows}</div><div class="tptot">Verdeeld: <b id="tpsum" class="num ${sum===100?'g':'r'}">${sum}%</b> ${sum===100?'✓ volledig':'— moet samen 100% zijn'}</div>`:`<div class="layerhint">Voeg take-profit-niveaus toe — we verdelen je positie automatisch gelijk (1 TP = 100%, 2 = 50/50, 3 = 34/33/33…). Pas het % zelf aan als je anders wilt, en markeer welke TP's geraakt zijn (partial closes).</div>`}`;}
@@ -5139,7 +5156,9 @@ function setSizeUnit(u){if(u===formSizeUnit)return;const entry=fnum('f_entry'),v
   if(!isNaN(v)&&entry>0&&el){el.value=u==='asset'?String(+(v/entry).toFixed(6)):String(Math.round(v*entry));}
   formSizeUnit=u;document.querySelectorAll('#szseg button').forEach(b=>b.classList.toggle('on',(b.id==='szAssetBtn')===(u==='asset')));calcTrade(true);}
 function calcTrade(fill){
-  const entry=fnum('f_entry'),exit=fnum('f_exit'),stop=fnum('f_stop'),tp=fnum('f_tp'),size=formSizeUsd(),fees=fnum('f_fees')||0;
+  // C3: het losse TP-veld is vervallen — R:R rekent met TP1 uit de niveaus-bouwer.
+  const entry=fnum('f_entry'),exit=fnum('f_exit'),stop=fnum('f_stop'),size=formSizeUsd(),fees=fnum('f_fees')||0;
+  const tp=(typeof formTPs!=='undefined'&&formTPs.length&&+String(formTPs[0].price).replace(',','.')>0)?+String(formTPs[0].price).replace(',','.'):NaN;
   const dirEl=document.getElementById('f_dir'),dir=dirEl&&dirEl.value==='short'?-1:1;
   let pnl=NaN,r=NaN,rr=NaN,pct=NaN;
   if(entry>0&&!isNaN(exit)&&!isNaN(size))pnl=Math.round((exit-entry)/entry*size*dir-fees);
@@ -5169,7 +5188,7 @@ function openForm(id){
   formEmotions=[...(t.emotions||(t.emotion?[t.emotion]:[]))];
   formMistakes=[...(t.mistakes||(t.mistake?[t.mistake]:[]))];
   formMissed=[...(t.missedReasons||[])];
-  formTPs=(t.tps||[]).map(x=>({price:x.price,pct:x.pct,r:x.r||'',hit:!!x.hit}));
+  formTPs=(t.tps||[]).map(x=>({price:x.price,pct:x.pct,r:x.r||'',hit:!!x.hit,ts:+x.ts||0,tsTime:+x.ts?ts2time(+x.ts):''}));
   const opt=(arr,sel)=>arr.map(x=>`<option ${x===sel?'selected':''}>${esc(x)}</option>`).join('');
   const _cMs0=+t.closeTime||0,closeD0=_cMs0?ts2date(_cMs0):'',closeT0=_cMs0?ts2time(_cMs0):'';
   const exOpt=[...EXCHANGES.map(e=>[e.id,e.name]),...MANUAL.map(m=>[m.id,m.name+' (handmatig)'])].map(([id,nm])=>`<option value="${id}" ${t.exchange===id?'selected':''}>${esc(nm)}</option>`).join('');
@@ -5196,7 +5215,6 @@ function openForm(id){
       <div class="field"><label>Entry</label><input id="f_entry" value="${t.entry}" inputmode="decimal" oninput="calcTrade(true)"></div>
       <div class="field"><label>Exit</label><input id="f_exit" value="${t.exit}" inputmode="decimal" oninput="calcTrade(true)"></div>
       <div class="field"><label>Stop-loss</label><input id="f_stop" value="${t.stop||''}" inputmode="decimal" oninput="calcTrade(true)"></div>
-      <div class="field"><label>Take-profit</label><input id="f_tp" value="${t.tp||''}" inputmode="decimal" oninput="calcTrade(true)"></div>
       <div class="field"><label>Size <span class="hint">(in ${CURSYM()} of in de asset)</span></label>
         <div class="szrow"><input id="f_size" value="${formSizeUnit==='asset'?(t.qty||''):t.size}" inputmode="decimal" oninput="calcTrade(true)">
         <div class="szseg" id="szseg"><button type="button" class="${formSizeUnit==='usd'?'on':''}" onclick="setSizeUnit('usd')">${CURSYM()}</button><button type="button" id="szAssetBtn" class="${formSizeUnit==='asset'?'on':''}" onclick="setSizeUnit('asset')">${esc(pairBase(t.pair)||'coin')}</button></div></div></div>
@@ -5267,7 +5285,17 @@ function submitForm(id){
   const timeframe=entryLayer?entryLayer.timeframe:'';
   const obj={date:g('date'),time:g('time'),exchange:g('exchange'),account:ex?ex.acct:'',pair:g('pair').toUpperCase().trim(),dir:g('dir'),session:g('session'),
     market:g('market'),grade:formGrade,layers,setup,timeframe,
-    entry:num('entry'),exit:num('exit'),stop:num('stop'),tp:num('tp'),tps:formTPs.map(x=>({price:+x.price||0,pct:+x.pct||0,r:x.r,hit:!!x.hit})).filter(x=>x.price>0),
+    entry:num('entry'),exit:num('exit'),stop:num('stop'),
+    // C3: tp = TP1 uit de niveaus (het losse veld is weg); bestaand tp blijft staan als er geen niveaus zijn.
+    tp:(formTPs.length?(+String(formTPs[0].price).replace(',','.')||0):((id!=null&&id!=='null'?(T.find(x=>x.id===id)||{}).tp:0)||0)),
+    // C4: TP-sluittijden — HH:MM t.o.v. de open-datum (vóór open-tijd = volgende dag);
+    // seconde-precisie van gesyncte ts blijft behouden als de minuut niet wijzigt.
+    tps:(()=>{const o=formMomentMs('f_date','f_time');const d=g('date');
+      return formTPs.map(x=>{let ts=+x.ts||0;let tm=String(x.tsTime||'').trim();
+        if(/^\d{1,2}:\d{2}$/.test(tm)){if(tm.length===4)tm='0'+tm;
+          if(!(ts&&ts2time(ts)===tm)&&d){let c=+new Date(d+'T'+tm);if(o&&c<o)c+=86400000;if(isFinite(c))ts=c;}}
+        else if(!tm)ts=0;
+        return {price:+String(x.price).replace(',','.')||0,pct:+x.pct||0,r:x.r,hit:!!x.hit,ts};}).filter(x=>x.price>0);})(),
     // size blijft ALTIJD in $ opgeslagen (alle stats rekenen daarop); in asset-modus bewaren we
     // daarnaast qty + sizeUnit zodat het formulier en de tabel de asset-hoeveelheid tonen.
     size:formSizeUnit==='asset'?String(Math.round(num('size')*num('entry'))):String(g('size')||'0'),

@@ -86,8 +86,60 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
   ok('formulier berekent geen R bij stop ≈ entry', await p.evaluate(() => { openForm(null); document.getElementById('f_entry').value = '62.1'; document.getElementById('f_stop').value = '62.0999'; document.getElementById('f_exit').value = '62.2'; document.getElementById('f_size').value = '20388'; document.getElementById('f_r').value = ''; calcTrade(true); const v = document.getElementById('f_r').value; closeForm(); return v === ''; }));
   ok('waarschuwing bij onrealistische R in rekenbalk', await p.evaluate(() => { openForm(null); document.getElementById('f_entry').value = '100'; document.getElementById('f_stop').value = '99.99'; document.getElementById('f_exit').value = '110'; document.getElementById('f_size').value = '10000'; calcTrade(true); const warn = /onrealistisch/.test(document.getElementById('calcPrev').textContent); closeForm(); return warn; }));
 
+  console.log('─── B1: globale filter-indicator in de app-balk ───');
+  const b1 = await p.evaluate(() => {
+    setFilter('setup', 'Trend-pullback');
+    const badge = document.getElementById('gfBadge');
+    const shown = !badge.hidden && / van /.test(badge.textContent) && /hele app/.test(badge.textContent);
+    go('kalender'); const onOtherPage = !document.getElementById('gfBadge').hidden;
+    badge.querySelector('button').click();
+    const cleared = document.getElementById('gfBadge').hidden && !FILTER.setup;
+    go('trades'); return { shown, onOtherPage, cleared };
+  });
+  ok('indicator toont aantallen + uitleg bij actief filter', b1.shown, JSON.stringify(b1));
+  ok('indicator zichtbaar op andere pagina\'s', b1.onOtherPage);
+  ok('Wis-knop in de indicator wist alle filters', b1.cleared);
+
+  console.log('─── B2: analytics-teller ───');
+  ok('scope-chip legt gesloten/open-telling uit', await p.evaluate(() => { T.push({ id: 800, date: '2026-09-07', time: '10:00', pair: 'BTC/USDT', dir: 'long', setup: '', session: 'London', status: 'open', kind: 'live', exchange: '', entry: 100, exit: 0, stop: 95, size: '100', pnl: 0, r: 0, tps: [], tags: [], layers: [], emotions: [], mistakes: [], checks: [], screenshots: [], tvLinks: [] }); persist(); go('analytics'); const txt = document.getElementById('main').textContent; return /trades in de berekening/.test(txt) && /open niet meegerekend/.test(txt); }));
+
+  console.log('─── C1: status-filter ───');
+  const c1 = await p.evaluate(() => { go('trades'); const hasSel = [...document.querySelectorAll('.filtbar select')].some(s => [...s.options].some(o => o.value === 'partial')); setFilter('status', 'open'); const allOpen = FT.length > 0 && FT.every(t => t.status === 'open'); setFilter('status', ''); return { hasSel, allOpen }; });
+  ok('status-dropdown aanwezig + filtert op open', c1.hasSel && c1.allOpen, JSON.stringify(c1));
+
+  console.log('─── C2: FAQ partial ───');
+  ok('FAQ legt "partial" uit', await p.evaluate(() => { go('faq'); return /deels gesloten/i.test(document.querySelector('.faqwrap').textContent); }));
+
+  console.log('─── C3: TP-veld weg, R:R via TP1 ───');
+  const c3 = await p.evaluate(() => {
+    openForm(null);
+    const noField = !document.getElementById('f_tp');
+    document.getElementById('f_entry').value = '100'; document.getElementById('f_stop').value = '95';
+    formTPs = [{ price: '110', pct: 100, r: '', hit: false, ts: 0, tsTime: '' }]; renderTPs(); calcTrade(true);
+    const rr = document.getElementById('f_rrPlanned').value;
+    closeForm(); return { noField, rr };
+  });
+  ok('los Take-profit-veld is weg', c3.noField);
+  ok('geplande R:R berekend uit TP1 (110 → 2:1)', c3.rr === '2', JSON.stringify(c3));
+
+  console.log('─── C4: TP-sluittijden ───');
+  const c4 = await p.evaluate(() => {
+    openForm(null);
+    document.getElementById('f_pair').value = 'ATOM/USDT'; document.getElementById('f_date').value = '2026-09-12'; document.getElementById('f_time').value = '10:00';
+    document.getElementById('f_entry').value = '10'; document.getElementById('f_exit').value = '11'; document.getElementById('f_pnl').value = '5';
+    formTPs = [{ price: '10.5', pct: 50, r: '', hit: true, ts: 0, tsTime: '12:30' }, { price: '11', pct: 50, r: '', hit: true, ts: 0, tsTime: '08:15' }]; renderTPs();
+    const hasTimeInput = !!document.querySelector('.tpin.tptime');
+    submitForm(null);
+    const t = T.find(x => x.pair === 'ATOM/USDT');
+    return { hasTimeInput, ts1: t.tps[0].ts, ts2: t.tps[1].ts, sameDay: new Date(t.tps[0].ts).getDate(), nextDay: new Date(t.tps[1].ts).getDate() };
+  });
+  ok('tijd-veld zichtbaar bij geraakte TP', c4.hasTimeInput);
+  ok('TP-tijd opgeslagen (12:30 zelfde dag)', c4.ts1 === +new Date('2026-09-12T12:30'), JSON.stringify(c4));
+  ok('TP-tijd vóór open-tijd → volgende dag (overnight)', c4.ts2 === +new Date('2026-09-13T08:15'), JSON.stringify(c4));
+  ok('tijdlijn toont handmatige TP-tijd', await p.evaluate(() => { const t = T.find(x => x.pair === 'ATOM/USDT'); STATE.revSel = t.id; go('review'); const tl = document.querySelector('.tline'); return tl && /12:30/.test(tl.textContent); }));
+
   ok('geen JS-errors totaal', errs.length === 0, errs.slice(0, 3).join(' | '));
-  console.log(`\n=== ChangeMaker-feedback (blok A): ${pass}/${pass + fail} ===`);
+  console.log(`\n=== ChangeMaker-feedback (A+B+C): ${pass}/${pass + fail} ===`);
   await b.close();
   process.exit(fail ? 1 : 0);
 })();
