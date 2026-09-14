@@ -56,13 +56,24 @@ th.rt,td.rt{text-align:right}
 .presetbar button{border:1px solid var(--line);background:var(--surface);border-radius:7px;padding:5px 13px;font-size:11.5px;font-weight:700;color:var(--ink2)}
 .presetbar button.on{background:var(--ink);color:var(--surface);border-color:var(--ink)}
 .presetbar .hint{margin-left:auto;font-size:11px;color:var(--muted);align-self:center}
-/* D: hover-kaart */
-.hcard{position:fixed;z-index:99;background:var(--surface);border:1px solid var(--line);border-radius:11px;box-shadow:0 12px 34px rgba(0,0,0,.30);padding:12px 15px;font-size:12px;pointer-events:none;opacity:0;transition:opacity .12s;min-width:250px}
-.hcard.on{opacity:1}
-.hcard .hrow{display:flex;justify-content:space-between;gap:18px;padding:2.5px 0}
-.hcard .hrow b{font-family:var(--fn)}
-.hcard .htl{border-top:1px solid var(--line2);margin-top:7px;padding-top:7px;color:var(--ink2)}
-.hcard .htl .tp{color:var(--muted)}
+/* D: hover-uitklaprij (patroon originele journal) */
+.mrow{cursor:pointer}
+.drow>td{background:var(--sink);border-bottom:1px solid var(--line);padding:11px 18px 13px 52px}
+.drow:hover>td{background:var(--sink)}
+.dstats{display:flex;gap:24px;flex-wrap:wrap}
+.dstat .lb{font-size:9px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--muted);margin-bottom:2px}
+.dstat .vl{font-family:var(--fn);font-weight:700;font-size:12px}
+.dstat .vl .xtra{color:var(--muted);font-weight:500;font-size:10px;font-family:var(--fb)}
+.dnotes{display:flex;gap:14px;flex-wrap:wrap;margin-top:10px}
+.dnote{flex:1 1 240px;min-width:0;padding:7px 12px;border-left:2px solid var(--accent);background:color-mix(in srgb,var(--accent) 5%,transparent);border-radius:0 7px 7px 0;font-size:11.5px;color:var(--ink2);line-height:1.55}
+.dnote .lb{font-size:9px;text-transform:uppercase;letter-spacing:.09em;font-weight:800;color:var(--accent);margin-bottom:2px}
+.dnote.rev{border-left-color:var(--muted);background:color-mix(in srgb,var(--muted) 6%,transparent)}
+.dnote.rev .lb{color:var(--muted)}
+.dmeta{display:flex;gap:18px;align-items:center;flex-wrap:wrap;margin-top:10px;font-size:11px;color:var(--ink2)}
+.dmeta .lay{font-family:var(--fn);font-weight:600;color:var(--accent)}
+.dmeta .arr{color:var(--faint)}
+.dmeta .star{color:var(--amber)}.dmeta .staro{color:var(--faint)}
+.dmeta .mchip{padding:1px 7px;border-radius:4px;background:color-mix(in srgb,var(--red) 12%,transparent);color:var(--red);font-size:10px;font-weight:700;margin-left:3px}
 .dhint{font-size:10px;color:var(--faint);margin-left:6px}
 </style>
 </head>
@@ -127,22 +138,49 @@ const VARIANTS={
    return `<div class="presetbar">${[['compact','Compact'],['standaard','Standaard'],['alles','Alles']].map(([k,l])=>`<button class="${p===k?'on':''}" onclick="window.__preset='${k}';show('C')">${l}</button>`).join('')}<span class="hint">keuze wordt onthouden per gebruiker</span></div>
      <table><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table>`;}},
 };
-VARIANTS.D={name:'D · Hover',note:'Zo compact als de oude tabel: één Datum-kolom (open-moment). Beweeg je muis over een rij en een zwevende kaart toont het volledige tijd-verhaal: open → TP’s → close → duur. Niets in de tabel erbij, alles op afroep.',
- html(){return `<table><thead><tr><th>Datum ▾</th>${commonHead}</tr></thead><tbody>
-  ${T.map((t,i)=>`<tr onmousemove="hMove(event,${i})" onmouseleave="hHide()"><td class="num">${two(t.o)}${t.open?' <span class="status-open">● OPEN</span>':''}<span class="dhint">⏱</span></td>${common(t)}</tr>`).join('')}</tbody></table>
-  <div class="hcard" id="hcard"></div>`;}};
-function hMove(ev,i){const t=T[i];const c=document.getElementById('hcard');if(!c)return;
-  const tps=t.open?'' : (i%2? '<div class="tp">🎯 TP1 '+(t.o.split(' ')[1])+' → 43% · 🎯 TP2 → 57%</div>':'');
-  c.innerHTML=`<div class="hrow"><span>🚀 Open</span><b>${t.o}</b></div>
-    ${t.open?'<div class="hrow"><span>Status</span><b style="color:var(--amber)">loopt nog</b></div>':`<div class="hrow"><span>🏁 Close</span><b>${t.c}</b></div>`}
-    <div class="hrow"><span>⏱ Duur</span><b>${t.d}</b></div>
-    ${tps?`<div class="htl">${tps}</div>`:''}`;
-  c.classList.add('on');
-  const w=c.offsetWidth,h=c.offsetHeight;
-  let x=ev.clientX+16,y=ev.clientY+14;
-  if(x+w>innerWidth-10)x=ev.clientX-w-16;if(y+h>innerHeight-10)y=ev.clientY-h-14;
-  c.style.left=x+'px';c.style.top=y+'px';}
-function hHide(){const c=document.getElementById('hcard');if(c)c.classList.remove('on');}
+// D: extra detail-data per trade (index-parallel aan T) — vult de uitklap-rij
+const DX=[
+ {sl:'17,26',risk:'220',riskPct:'1,0',fees:'4,10',rating:4,layers:['4H Range-high','15m Reclaim'],tps:'2 TP’s · 2 hit',acct:'MEXC · Main',
+  thesis:'Sweep van range-high met directe reclaim eronder; short mee met US PM momentum.',review:'Volgens plan uitgevoerd, TP2 had iets verder gekund.'},
+ {sl:'58.840',risk:'90',riskPct:'0,5',fees:'6,20',rating:5,layers:['1D Weerstand','1H London SFP'],tps:'2 TP’s · 2 hit',acct:'Blofin · Main',
+  thesis:'SFP van London-high recht in 1D-weerstand. A+ setup, halve risk vanwege nieuwsweek.',review:'Perfecte uitvoering — dit is het playbook.'},
+ {sl:'1,079',risk:'110',riskPct:'0,5',fees:'1,90',rating:4,layers:['4H BOS','5m London SFP'],tps:'1 TP · 1 hit',acct:'OKX',
+  thesis:'Snelle scalp op London SFP; target de equal highs erboven.'},
+ {sl:'3.135',risk:'115',riskPct:'1,0',rating:0,layers:['4H Steun','15m BOS-retest'],tps:'2 TP’s · 0 hit',acct:'MEXC · Main',
+  thesis:'BOS-retest op 4H steun; swing-target de weekly open erboven.'},
+ {sl:'3.845',risk:'420',riskPct:'2,0',fees:'9,80',rating:2,layers:['1H Reclaim'],tps:'2 TP’s · 0 hit',acct:'Hyperliquid',mistakes:['Te vroeg ingestapt','SL verruimd'],
+  thesis:'Reclaim-short op 1H, maar zonder HTF-bevestiging.',review:'Stop verruimd onder druk — dubbele risk verloren. Grootste fout deze week.'},
+ {sl:'3.664',risk:'42',riskPct:'0,25',fees:'2,30',rating:3,layers:['4H Trend','15m BOS-retest'],tps:'3 TP’s · 2 hit',acct:'Blofin · Sub'},
+ {rating:3,acct:'OKX'},
+ {sl:'546,10',risk:'160',riskPct:'0,8',fees:'3,40',rating:2,layers:['1D Trend','4H Pullback'],tps:'2 TP’s · 0 hit',acct:'FTMO · Challenge',
+  review:'Weekend-gap tegen de positie in; swing over het weekend heroverwegen.'}];
+function dDetail(t,d){
+  const stat=(lb,vl,cls)=>`<div class="dstat"><div class="lb">${lb}</div><div class="vl ${cls||''}">${vl}</div></div>`;
+  let s='';
+  if(d.sl)s+=stat('Stop-loss',d.sl,'r');
+  if(d.risk)s+=stat('Risk',`$ ${d.risk} <span class="xtra">(${d.riskPct}%)</span>`,'r');
+  if(d.fees)s+=stat('Fees','$ '+d.fees);
+  s+=stat('Duur',t.d,t.open?'':undefined)+(t.open?stat('Status','loopt nog',''):'');
+  if(!t.open)s+=stat('PnL %',(t.pnl>=0?'+':'−')+t.pct+'%',t.pnl>=0?'g':'r');
+  if(d.acct)s+=stat('Account',d.acct);
+  let notes='';
+  if(d.thesis)notes+=`<div class="dnote"><div class="lb">Thesis</div>${d.thesis}</div>`;
+  if(d.review)notes+=`<div class="dnote rev"><div class="lb">Review</div>${d.review}</div>`;
+  let meta='';
+  if(d.layers)meta+=`<span>📐 ${d.layers.map(l=>`<span class="lay">${l}</span>`).join(' <span class="arr">→</span> ')}</span>`;
+  if(d.tps)meta+=`<span>🎯 <span class="num">${d.tps}</span></span>`;
+  if(d.rating)meta+=`<span>${[1,2,3,4,5].map(n=>`<span class="${n<=d.rating?'star':'staro'}">${n<=d.rating?'★':'☆'}</span>`).join('')}</span>`;
+  if(d.mistakes)meta+=`<span>⚠${d.mistakes.map(m=>`<span class="mchip">${m}</span>`).join('')}</span>`;
+  if(!s&&!notes&&!meta)return '<span class="sub" style="font-style:italic">Klik om meer details toe te voegen</span>';
+  return `<div class="dstats">${s}</div>${notes?`<div class="dnotes">${notes}</div>`:''}${meta?`<div class="dmeta">${meta}</div>`:''}`;
+}
+VARIANTS.D={name:'D · Hover-uitklap',note:'Het patroon van de originele journal: compacte tabel met één Datum-kolom. Hover over een rij en er klapt een detail-rij onder open met duur, stop-loss, risk, fees, thesis/review, lagen, TP’s, rating en fouten-tags. Niets permanent in de tabel — alles op afroep.',
+ html(){return `<table><thead><tr><th>Datum ▾</th>${commonHead}</tr></thead><tbody onmouseleave="dHide()">
+  ${T.map((t,i)=>`<tr class="mrow" onmouseenter="dShow(${i})"><td class="num">${two(t.o)}${t.open?' <span class="status-open">● OPEN</span>':''}<span class="dhint">⌄</span></td>${common(t)}</tr>
+  <tr class="drow" id="drow${i}" hidden><td colspan="11">${dDetail(t,DX[i]||{})}</td></tr>`).join('')}</tbody></table>`;}};
+let dCur=-1;
+function dShow(i){if(dCur===i)return;dHide();const r=document.getElementById('drow'+i);if(r){r.hidden=false;dCur=i;}}
+function dHide(){if(dCur<0)return;const r=document.getElementById('drow'+dCur);if(r)r.hidden=true;dCur=-1;}
 function show(k){window.__v=k;
   document.getElementById('vsw').innerHTML=Object.entries(VARIANTS).map(([key,v])=>`<button class="${key===k?'on':''}" onclick="show('${key}')">${v.name}</button>`).join('');
   document.getElementById('vnote').textContent=VARIANTS[k].note;
