@@ -857,6 +857,11 @@ body.dark .mx-legend .mxsw{box-shadow:inset 0 0 0 1px rgba(255,255,255,.12)}
 .faqsearch{width:100%;margin-top:11px;border:1px solid var(--line);border-radius:9px;background:var(--sink);color:var(--ink);padding:9px 13px;font-size:13.5px;font-family:inherit;outline:none}
 .faqsearch:focus{border-color:var(--accent)}
 .faqnone{background:var(--surface);border:1px dashed var(--line);border-radius:10px;padding:18px;text-align:center;font-size:13px;color:var(--muted)}
+/* Trade-tijdlijn (Review-detail) */
+.tline{display:flex;flex-wrap:wrap;align-items:center;gap:7px;margin-top:11px;padding:8px 11px;background:var(--sink);border:1px solid var(--line2);border-radius:9px;font-size:12px}
+.tline .tlc{white-space:nowrap;color:var(--ink2)}
+.tline .tlc b{font-weight:700;color:var(--ink)}
+.tline .tla{color:var(--faint)}
 /* Size-veld: unit-toggle $ ↔ asset */
 .szrow{display:flex;gap:6px;align-items:stretch}
 .szrow input{flex:1;min-width:0}
@@ -1491,8 +1496,8 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.45';
-const SCHEMA_VERSION=1;
+const APP_VERSION='v0.9.46';
+const SCHEMA_VERSION=2;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
   // ander type dan verwacht (bv. sj_manual='null' of een array waar een object hoort).
@@ -1554,8 +1559,12 @@ const IDB={db:null,
    up() transformeert de al-geladen live-staat (T, PBOOK, tagConfig, …) in-place.
    runMigrations() draait in boot() ná de data-load, maakt eerst een snapshot en rolt terug bij fouten. */
 const MIGRATIONS=[
-  // Voorbeeld voor later:
-  // {v:2, note:'hernoem veld X→Y', up(){ T.forEach(t=>{ t.y=t.x; delete t.x; }); }},
+  // v2 (2026-09-14): open-moment wordt de canonieke trade-datum/tijd/sessie voor gesyncte
+  // trades. Adapters stempelden dit wisselend (MEXC/Blofin op sluitmoment, HL op open),
+  // wat sessie- en weekdag-analyses stilletjes vertroebelde.
+  {v:2,note:'open-moment = canonieke datum voor synced trades',up(){
+    T.forEach(t=>{const o=+t.openTime||0;if(o){t.date=ts2date(o);t.time=ts2time(o);t.session=sessionFromTime(t.time);}});
+  }},
 ];
 async function runMigrations(){
   const from=DB.load('schema',0);
@@ -1789,6 +1798,41 @@ function filterBar(){
 
 /* ═══ Helpers ═══ */
 const SZ=t=>Number(String(t.size).replace(/\./g,''));
+// ── Open/Close/Duur: openTime+closeTime (ms) zijn de bron van waarheid; durationMin is
+//    de handmatige fallback. Open trades krijgen een live-teller. null = onbekend.
+function tradeDurationMin(t){
+  const o=+t.openTime||0,c=+t.closeTime||0;
+  if(o&&c&&c>o)return Math.round((c-o)/60000);
+  if(o&&t.status!=='closed')return Math.round((Date.now()-o)/60000);
+  const d=+t.durationMin||0;return d>0?d:null;
+}
+function fmtDurMin(m){if(m==null)return '—';if(m>=1440)return `${Math.floor(m/1440)}d ${Math.floor((m%1440)/60)}u`;if(m>=60)return `${Math.floor(m/60)}u ${m%60}m`;return `${m}m`;}
+function closeCell(t){
+  if(t.status!=='closed')return statusB(t.status);
+  const c=+t.closeTime||0;
+  if(!c)return '<span style="color:var(--muted)">—</span>';
+  const d=ts2date(c),tm=ts2time(c);
+  return d===t.date?`<span>${tm}</span>`:`${fmtD(d)}<div style="font-size:10.5px;color:var(--muted)">${tm}</div>`;
+}
+function durCell(t){
+  const m=tradeDurationMin(t);if(m==null)return '<span style="color:var(--muted)">—</span>';
+  const live=t.status!=='closed';
+  return `<span class="num"${live?' style="color:var(--amber)" title="loopt nog"':''}>${live?'~':''}${fmtDurMin(m)}</span>`;
+}
+// Mini-tijdlijn voor het Review-detail: Open → TP-hits (met tijd) → Close · totale duur.
+function tradeTimeline(t){
+  const o=+t.openTime||0;if(!o)return '';
+  const fmtMoment=ms=>`${fmtD(ts2date(ms))} ${ts2time(ms)}`;
+  const chips=[`<span class="tlc">🚀 Open <b class="num">${fmtMoment(o)}</b></span>`];
+  (t.tps||[]).filter(x=>x.hit&&+x.ts>0).sort((a,b)=>a.ts-b.ts).forEach((x,i)=>{
+    chips.push(`<span class="tlc">🎯 TP${i+1} <b class="num">${ts2time(+x.ts)}</b>${+x.pct?` <span style="color:var(--muted)">(${Math.round(+x.pct)}%)</span>`:''}</span>`);
+  });
+  const c=+t.closeTime||0;
+  if(t.status==='closed'&&c)chips.push(`<span class="tlc">🏁 Close <b class="num">${fmtMoment(c)}</b></span>`);
+  const m=tradeDurationMin(t);
+  if(m!=null)chips.push(`<span class="tlc">⏱ <b class="num">${t.status!=='closed'?'~':''}${fmtDurMin(m)}</b>${t.status!=='closed'?' <span style="color:var(--amber)">loopt</span>':''}</span>`);
+  return `<div class="tline">${chips.join('<span class="tla">→</span>')}</div>`;
+}
 // Asset-hoeveelheid (alleen aanwezig als de trade in asset-eenheden is ingevoerd)
 function qtySub(t){return (t.sizeUnit==='asset'&&t.qty>0)?`<div class="num" style="font-size:11px;color:var(--muted);white-space:nowrap">${(+t.qty).toLocaleString('nl-NL',{maximumFractionDigits:6})} ${esc(String(t.pair||'').split('/')[0])}</div>`:'';}
 const numOrDash=v=>{const n=+v;return isNaN(n)?'—':n.toLocaleString('nl-NL');};  // leeg/undefined veld → em-dash i.p.v. NaN
@@ -2011,14 +2055,14 @@ function pgTrades(){
   const q=STATE.query.toLowerCase();
   if(q)rows=rows.filter(t=>(t.pair+' '+t.setup+' '+t.session+' '+t.emotion+' '+(t.tags||[]).join(' ')).toLowerCase().includes(q));
   const sc=STATE.sortCol,sd=STATE.sortDir;
-  rows=rows.slice().sort((a,b)=>{let x=a[sc],y=b[sc];if(sc==='size'){x=SZ(a);y=SZ(b);}if(typeof x==='string'){return x<y?-sd:x>y?sd:0;}return (x-y)*sd;});
+  rows=rows.slice().sort((a,b)=>{let x=a[sc],y=b[sc];if(sc==='size'){x=SZ(a);y=SZ(b);}if(sc==='close'){x=+a.closeTime||0;y=+b.closeTime||0;}if(sc==='dur'){x=tradeDurationMin(a)??-1;y=tradeDurationMin(b)??-1;}if(typeof x==='string'){return x<y?-sd:x>y?sd:0;}return (x-y)*sd;});
   const maxS=Math.max(1,...rows.map(SZ)),net=rows.reduce((s,t)=>s+t.pnl,0);
   // Paginatie: render alleen de huidige pagina (houdt de DOM klein bij duizenden trades).
   const PAGE=100;let tPage=STATE.tradePage||0;const pageCount=Math.max(1,Math.ceil(rows.length/PAGE));
   if(tPage>=pageCount)tPage=pageCount-1;if(tPage<0)tPage=0;STATE.tradePage=tPage;
   const pStart=tPage*PAGE,pageRows=rows.slice(pStart,pStart+PAGE);
   const tabs=[['all','Alle',FT.length],['closed','Gesloten',FT.filter(t=>t.status==='closed').length],['open','Open/partial',FT.filter(t=>t.status!=='closed').length]];
-  const cols=[['date','Datum',''],['exchange','Exchange',''],['pair','Pair',''],['dir','Richting',''],['entry','Entry','rt'],['exit','Exit','rt'],['size','Size','rt'],['pnl','P&L','rt'],['r','R','ct'],['status','Status',''],['setup','Setup',''],['session','Sessie',''],[null,'Tags','']];
+  const cols=[['date','Open',''],['close','Close',''],['dur','Duur','rt'],['exchange','Exchange',''],['pair','Pair',''],['dir','Richting',''],['entry','Entry','rt'],['exit','Exit','rt'],['size','Size','rt'],['pnl','P&L','rt'],['r','R','ct'],['setup','Setup',''],['session','Sessie',''],[null,'Tags','']];
   const th=cols.map(([k,l,c])=>{const act=k===sc;return `<th scope="col" class="${c}" ${act?`aria-sort="${sd>0?'ascending':'descending'}"`:''} ${k?`onclick="sortBy('${k}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();sortBy('${k}')}" tabindex="0" aria-label="Sorteer op ${esc(l)}" style="cursor:pointer;user-select:none"`:''}>${l}${act?(sd>0?' ▲':' ▼'):''}</th>`;}).join('');
   // active-filter chips
   const chips=[];
@@ -2042,15 +2086,17 @@ function pgTrades(){
       <thead><tr><th class="cbx" scope="col"><span class="cb ${allSel?'on':''}" role="checkbox" aria-checked="${allSel}" aria-label="Alle trades selecteren" tabindex="0" onclick="toggleSelAll()" onkeydown="if(event.key==='Enter'||event.key===' ')toggleSelAll()">${allSel?'✓':''}</span></th>${th}</tr></thead>
       <tbody>${pageRows.map(t=>{const sel=selSet.has(t.id);return `<tr tabindex="0" style="cursor:pointer" onclick="openForm(${t.id})" onkeydown="if(event.key==='Enter')openForm(${t.id})">
         <td class="cbx" data-l="" onclick="event.stopPropagation()"><span class="cb ${sel?'on':''}" role="checkbox" aria-checked="${sel}" aria-label="Selecteer trade" tabindex="0" onclick="toggleSel(${t.id})" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleSel(${t.id})}">${sel?'✓':''}</span></td>
-        <td class="tag num" data-l="Datum">${fmtD(t.date)}</td>
+        <td class="tag num" data-l="Open">${fmtD(t.date)}${t.time?`<div style="font-size:10.5px;color:var(--muted)">${esc(t.time)}</div>`:''}</td>
+        <td class="tag num" data-l="Close">${closeCell(t)}</td>
+        <td class="rt num" data-l="Duur">${durCell(t)}</td>
         <td data-l="Exchange">${exCell(t.exchange)}</td>
         <td data-l="Pair"><div class="paircell">${assetCell(t.pair)}${kindBadge(t)}${newBadge(t)}</div></td><td data-l="Richting"><span class="pill ${t.dir}">${t.dir==='long'?'LONG':'SHORT'}</span></td>
         <td class="rt num" data-l="Entry">${numOrDash(t.entry)}</td><td class="rt num" data-l="Exit">${numOrDash(t.exit)}</td>
         <td class="rt num mask" data-l="Size">${isNaN(SZ(t))?'—':CURSYM()+' '+SZ(t).toLocaleString('nl-NL')}${qtySub(t)}</td><td class="rt" data-l="P&L">${t.status==='open'&&t.unrealizedPnl?`<span class="num ${cls(t.unrealizedPnl)} mask" title="niet-gerealiseerde P&L">~${eurS(t.unrealizedPnl)}</span>`:t.status==='partial'&&t.realizedPnl?`<span class="num ${cls(t.realizedPnl)} mask" title="gerealiseerd deel — rest loopt nog">${eurS(t.realizedPnl)}<div style="font-size:10.5px;color:var(--amber)">deels dicht</div></span>`:pnlCell(t.pnl,t.pnlPct)}</td>
-        <td class="ct" data-l="R">${rBadge(t.r)}</td><td data-l="Status">${statusB(t.status)}</td>
+        <td class="ct" data-l="R">${rBadge(t.r)}</td>
         <td data-l="Setup">${setupBadge(t.setup)}</td><td data-l="Sessie">${sessBadge(sessionOf(t))}</td>
         <td data-l="Tags" style="max-width:170px">${tagChips(t.tags)}</td></tr>`;}).join('')}</tbody>
-      <tfoot><tr><td class="cbx"></td><td colspan="7">Totaal (${rows.length})</td><td class="rt">${pnlCell(net,net/ACCT*100)}</td><td colspan="5"></td></tr></tfoot>
+      <tfoot><tr><td class="cbx"></td><td colspan="9">Totaal (${rows.length})</td><td class="rt">${pnlCell(net,net/ACCT*100)}</td><td colspan="4"></td></tr></tfoot>
     </table></div>${pageCount>1?`<div class="pager">
       <button class="btn" ${tPage===0?'disabled':''} onclick="setTradePage(${tPage-1})">‹ Vorige</button>
       <span class="pageinfo"><b>${pStart+1}–${Math.min(pStart+PAGE,rows.length)}</b> van ${rows.length} · pagina ${tPage+1}/${pageCount}</span>
@@ -2624,6 +2670,7 @@ function pgReview(){
           <button class="iconbtn" onclick="openForm(${t.id})" aria-label="bewerken" title="bewerken" style="width:30px;height:30px">✎</button></div>
         <div class="pbody">
           <div style="display:flex;align-items:center;gap:8px">${exBadge(t.exchange)}<span class="pill ${t.dir}">${t.dir==='long'?'LONG':'SHORT'}</span>${statusB(t.status)}</div>
+          ${tradeTimeline(t)}
           <div style="display:flex;align-items:baseline;gap:12px;margin-top:12px">
             <span class="pnlbig ${cls(t.pnl)} mask">${eurS(t.pnl)}</span>
             <span class="num ${cls(t.r)}" style="font-weight:700;font-size:16px">${(t.r>=0?'+':'')+(+t.r).toFixed(1)}R</span>
@@ -3301,7 +3348,15 @@ function pgAnalytics(){
   const sessBars=groupRows('session').sort((x,y)=>y.pnl-x.pnl).map(s=>({m:s.label,v:Math.round(s.pnl)}));
   const mistBy={};CLOSED.filter(t=>t.mistake).forEach(t=>{mistBy[t.mistake]=(mistBy[t.mistake]||0)+t.pnl;});
   const mistBars=Object.entries(mistBy).sort((x,y)=>x[1]-y[1]).map(([m,v])=>({m:m.length>11?m.slice(0,10)+'…':m,v:Math.round(v)}));
-  const avgHoldW=wins.length?Math.round(wins.reduce((s,t)=>s+(+t.durationMin||0),0)/wins.length):0,avgHoldL=losses.length?Math.round(losses.reduce((s,t)=>s+(+t.durationMin||0),0)/losses.length):0,maxHold=Math.max(1,avgHoldW,avgHoldL);
+  // Duur nu op echte timestamps (openTime/closeTime) met durationMin als fallback.
+  const _hd=t=>tradeDurationMin(t)||0;
+  const avgHoldW=wins.length?Math.round(wins.reduce((s,t)=>s+_hd(t),0)/wins.length):0,avgHoldL=losses.length?Math.round(losses.reduce((s,t)=>s+_hd(t),0)/losses.length):0,maxHold=Math.max(1,avgHoldW,avgHoldL);
+  // Duur → resultaat: gem. R per duur-bucket (scalps vs swings)
+  const _durAll=[...wins,...losses].map(t=>({m:tradeDurationMin(t),r:tradeR(t)})).filter(x=>x.m!=null);
+  const DURB=[[15,'<15m'],[60,'15m–1u'],[240,'1–4u'],[1440,'4–24u'],[Infinity,'>1 dag']];
+  const durRows=DURB.map(([max,label],i)=>{const min=i?DURB[i-1][0]:0;const g=_durAll.filter(x=>x.m>=min&&x.m<max);const avg=g.length?g.reduce((s,x)=>s+x.r,0)/g.length:0;return {label,n:g.length,avg};}).filter(x=>x.n>0);
+  const _maxAbsDurR=Math.max(0.01,...durRows.map(x=>Math.abs(x.avg)));
+  const durBody=durRows.length?hbars(durRows.map(x=>({label:x.label,val:Math.round(Math.abs(x.avg)/_maxAbsDurR*100),disp:(x.avg>=0?'+':'')+x.avg.toFixed(2).replace('.',',')+'R',sub:x.n+' trades',color:x.avg>=0?'var(--green)':'var(--red)'}))):'<div style="padding:18px;color:var(--muted);font-size:12.5px">Nog geen trades met een bekende duur.</div>';
   const holdRows=[{label:'Winst',val:Math.round(avgHoldW/maxHold*100),disp:fmtDur(avgHoldW),sub:`${wins.length} trades`,color:'var(--green)'},{label:'Verlies',val:Math.round(avgHoldL/maxHold*100),disp:fmtDur(avgHoldL),sub:`${losses.length} trades`,color:'var(--red)'}];
   const gData=GRADES.map(g=>{const gt=CLOSED.filter(x=>gradeOf(x)===g.k);const w=gt.filter(x=>x.pnl>0).length;const wr=gt.length?Math.round(w/gt.length*100):0;const net=gt.reduce((s,x)=>s+x.pnl,0);const avgR=gt.length?gt.reduce((s,x)=>s+tradeR(x),0)/gt.length:0;return {g,n:gt.length,w,l:gt.length-w,wr,net,avgR};});
   const gChart=gradeStackChart(gData.map(d=>({x:'Grade '+d.g.k,win:d.w,loss:d.l})));
@@ -3387,9 +3442,10 @@ function pgAnalytics(){
     </div><div style="height:13px"></div>
     ${panel('Prestatie per uur','wanneer op de dag presteer je',hourHeat(CLOSED))}<div style="height:13px"></div>
     <div class="sect-h">Gedrag &amp; edge-bewaking</div>
-    <div class="grid" style="grid-template-columns:1fr 1fr;align-items:stretch">
+    <div class="grid" style="grid-template-columns:1fr 1fr 1fr;align-items:stretch">
       ${mistBars.length?panel('Fout-analyse','netto-impact per fout',barsPnl(mistBars,'e')):panelRaw('Fout-analyse','',`<div style="padding:24px 18px;color:var(--muted);font-size:12.5px">Geen fouten getagd in beeld 🎉</div>`)}
       ${panelRaw('Gem. tijd in trade','winst vs. verlies',hbars(holdRows))}
+      ${panelRaw('Duur → resultaat','gem. R per duur-bucket',durBody)}
     </div><div style="height:13px"></div>
     ${eroAPanel}
     <div class="sect-h">Kwaliteit van je trades</div>
@@ -4777,6 +4833,9 @@ function sjFromTj(tj){
   t.qtyAsset=parseFloat(tj.positionSizeAsset)||0;
   if(tj._rawCloseSize!=null)t._rawCloseSize=String(tj._rawCloseSize);
   t.openTime=String(tj.openTime||'');t.closeTime=String(tj.closeTime||'');
+  // Canoniek: het OPEN-moment bepaalt datum/tijd/sessie (besluit 2026-09-14) — je beslissing
+  // valt bij entry. Adapters stempelden dit wisselend (MEXC/Blofin op close, HL op open).
+  if(+t.openTime){t.date=ts2date(+t.openTime);t.time=ts2time(+t.openTime);t.session=sessionFromTime(t.time);}
   if(tj.unrealizedPnl!==undefined)t.unrealizedPnl=parseFloat(tj.unrealizedPnl)||0;
   if(tj.liquidationPrice!==undefined)t.liq=parseFloat(tj.liquidationPrice)||0;
   return t;
@@ -4924,7 +4983,7 @@ function tjViewOf(t){return {id:t.srcId||('sj_'+t.id),source:t.exchange,status:t
   entry:String(t.entry||''),exit:String(t.exit||''),pnl:String(t.pnl!=null?t.pnl:''),fees:String(t.fees||'0'),
   positionSizeAsset:t.qtyAsset?String(t.qtyAsset):'',_rawCloseSize:t._rawCloseSize,
   positionId:t.positionId||'',closeTime:String(t.closeTime||''),
-  tpLevels:(t.tps||[]).map(x=>({price:String(x.price),pct:String(x.pct),status:x.hit?'hit':'user',actualPrice:x.hit?String(x.price):'',ts:0}))};}
+  tpLevels:(t.tps||[]).map(x=>({price:String(x.price),pct:String(x.pct),status:x.hit?'hit':'user',actualPrice:x.hit?String(x.price):'',ts:Number(x.ts)||0}))};}
 function runPartialDetect(exId){
   const idx={};const views=[];
   T.forEach(t=>{if(t.exchange!==exId)return;const v=tjViewOf(t);idx[v.id]=t;views.push(v);});
@@ -4936,7 +4995,7 @@ function runPartialDetect(exId){
     if(v.status==='partial'){
       t.realizedPnl=parseFloat(v.realizedPnl)||0;
       const f=parseFloat(v.fees);if(isFinite(f))t.fees=f;
-      t.tps=(v.tpLevels||[]).map(x=>({price:+x.price||0,pct:+(+x.pct||0).toFixed(2),r:'',hit:x.status==='hit'}));
+      t.tps=(v.tpLevels||[]).map(x=>({price:+x.price||0,pct:+(+x.pct||0).toFixed(2),r:'',hit:x.status==='hit',ts:Number(x.ts)||0}));
       changed=true;
     }else if(t.realizedPnl!==undefined){delete t.realizedPnl;changed=true;}
   });
@@ -5052,6 +5111,7 @@ function fnum(id){const el=document.getElementById(id);if(!el)return NaN;const v
 // ── Positie-grootte in $ óf in de asset zelf (bv. 0,5 BTC) — omrekening via entry ──
 let formSizeUnit='usd';
 function pairBase(p){return String(p||'').split('/')[0].trim();}
+function formMomentMs(dId,tId){const d=((document.getElementById(dId)||{}).value||'').trim();if(!d)return 0;let tm=((document.getElementById(tId)||{}).value||'').trim();if(!/^\d{1,2}:\d{2}$/.test(tm))tm='00:00';if(tm.length===4)tm='0'+tm;const ms=+new Date(d+'T'+tm);return isFinite(ms)?ms:0;}
 function updSzBtn(){const b=document.getElementById('szAssetBtn');if(b){const base=pairBase((document.getElementById('f_pair')||{}).value);b.textContent=base||'coin';}}
 function formSizeUsd(){const v=fnum('f_size');if(isNaN(v))return NaN;if(formSizeUnit!=='asset')return v;const entry=fnum('f_entry');return entry>0?v*entry:NaN;}
 function setSizeUnit(u){if(u===formSizeUnit)return;const entry=fnum('f_entry'),v=fnum('f_size'),el=document.getElementById('f_size');
@@ -5065,7 +5125,9 @@ function calcTrade(fill){
   if(entry>0&&!isNaN(stop)&&!isNaN(size)&&!isNaN(pnl)){const risk=Math.abs(entry-stop)/entry*size;if(risk>0)r=+(pnl/risk).toFixed(2);}
   if(entry>0&&!isNaN(stop)&&!isNaN(tp)&&Math.abs(entry-stop)>0)rr=+(Math.abs(tp-entry)/Math.abs(entry-stop)).toFixed(2);
   if(!isNaN(pnl))pct=+(pnl/ACCT*100).toFixed(2);
-  if(fill){if(!isNaN(pnl))document.getElementById('f_pnl').value=pnl;if(!isNaN(r))document.getElementById('f_r').value=r;if(!isNaN(rr))document.getElementById('f_rrPlanned').value=rr;}
+  if(fill){if(!isNaN(pnl))document.getElementById('f_pnl').value=pnl;if(!isNaN(r))document.getElementById('f_r').value=r;if(!isNaN(rr))document.getElementById('f_rrPlanned').value=rr;
+    const _o=formMomentMs('f_date','f_time'),_c=formMomentMs('f_closeDate','f_closeTime');
+    if(_o&&_c&&_c>_o){const el=document.getElementById('f_durationMin');if(el)el.value=Math.round((_c-_o)/60000);}}
   const prev=document.getElementById('calcPrev');if(!prev)return;
   const parts=[];
   if(formSizeUnit==='asset'&&!isNaN(size))parts.push(`Size <b class="num">≈ ${CURSYM()} ${Math.round(size).toLocaleString('nl-NL')}</b>`);
@@ -5086,6 +5148,7 @@ function openForm(id){
   formMissed=[...(t.missedReasons||[])];
   formTPs=(t.tps||[]).map(x=>({price:x.price,pct:x.pct,r:x.r||'',hit:!!x.hit}));
   const opt=(arr,sel)=>arr.map(x=>`<option ${x===sel?'selected':''}>${esc(x)}</option>`).join('');
+  const _cMs0=+t.closeTime||0,closeD0=_cMs0?ts2date(_cMs0):'',closeT0=_cMs0?ts2time(_cMs0):'';
   const exOpt=[...EXCHANGES.map(e=>[e.id,e.name]),...MANUAL.map(m=>[m.id,m.name+' (handmatig)'])].map(([id,nm])=>`<option value="${id}" ${t.exchange===id?'selected':''}>${esc(nm)}</option>`).join('');
   document.getElementById('modal').innerHTML=`
     <div class="mhead"><h3>${id!=null?'Trade bewerken':'Nieuwe trade'}</h3><button class="xbtn" onclick="closeForm()">×</button></div>
@@ -5124,7 +5187,9 @@ function openForm(id){
       <div class="field"><label>P&L (${CURSYM()})</label><input id="f_pnl" value="${t.pnl}" inputmode="decimal"></div>
       <div class="field"><label>R-multiple</label><input id="f_r" value="${t.r}" inputmode="decimal"></div>
       <div class="field"><label>Fees (${CURSYM()})</label><input id="f_fees" value="${t.fees||''}" inputmode="decimal" oninput="calcTrade(true)"></div>
-      <div class="field"><label>Tijd in trade (min)</label><input id="f_durationMin" value="${t.durationMin||''}" inputmode="numeric"></div>
+      <div class="field"><label>Sluit-datum <span class="hint">(optioneel)</span></label><input type="date" id="f_closeDate" value="${closeD0}" onchange="calcTrade(true)"></div>
+      <div class="field"><label>Sluit-tijd</label><input id="f_closeTime" value="${closeT0}" placeholder="16:45" oninput="calcTrade(true)"></div>
+      <div class="field"><label>Tijd in trade (min) <span class="hint">(auto bij sluit-tijd)</span></label><input id="f_durationMin" value="${t.durationMin||''}" inputmode="numeric"></div>
       <div class="field"><label>MAE (R) <span class="hint">(max tegen je in)</span></label><input id="f_mae" value="${t.mae||''}" inputmode="decimal"></div>
       <div class="field"><label>MFE (R) <span class="hint">(max vóór je)</span></label><input id="f_mfe" value="${t.mfe||''}" inputmode="decimal"></div>
 
@@ -5182,12 +5247,18 @@ function submitForm(id){
     size:formSizeUnit==='asset'?String(Math.round(num('size')*num('entry'))):String(g('size')||'0'),
     sizeUnit:formSizeUnit==='asset'?'asset':'usd',qty:formSizeUnit==='asset'?num('size'):0,
     leverage:num('leverage'),risk:num('risk'),rrPlanned:num('rrPlanned'),fees:num('fees'),
-    durationMin:num('durationMin'),mae:num('mae'),mfe:num('mfe'),
+    openTime:(()=>{const ms=formMomentMs('f_date','f_time');return ms?String(ms):'';})(),
+    closeTime:(()=>{const ms=formMomentMs('f_closeDate','f_closeTime');return ms?String(ms):'';})(),
+    durationMin:(()=>{const o=formMomentMs('f_date','f_time'),c=formMomentMs('f_closeDate','f_closeTime');return (o&&c&&c>o)?Math.round((c-o)/60000):num('durationMin');})(),
+    mae:num('mae'),mfe:num('mfe'),
     pnl,pnlPct:+(pnl/ACCT*100).toFixed(2),r:num('r'),status:g('status'),
     emotions:[...formEmotions],emotion:formEmotions[0]||'',mistakes:[...formMistakes],mistake:formMistakes[0]||'',
     kind:g('kind')||'live',missedReasons:g('kind')==='gemist'?[...formMissed]:[],
     screenshots:[...formShots],tvLinks:[...formTvLinks],tags:[...formTags],notes:g('notes'),lessons:g('lessons')};
-  if(id!=null&&id!=='null'){const t=T.find(x=>x.id===id);Object.assign(t,obj);}
+  if(id!=null&&id!=='null'){const t=T.find(x=>x.id===id);const oldO=+t.openTime||0,oldC=+t.closeTime||0;Object.assign(t,obj);
+    // seconde-precisie van gesyncte timestamps behouden als de minuut niet is gewijzigd
+    if(oldO&&Math.floor(oldO/60000)===Math.floor((+t.openTime||0)/60000))t.openTime=String(oldO);
+    if(oldC&&Math.floor(oldC/60000)===Math.floor((+t.closeTime||0)/60000))t.closeTime=String(oldC);}
   else{T.unshift({id:nextId(),rating:0,checks:[],screenshots:[],...obj});}
   formDirty=false;persist();closeForm();render();toast(id!=null&&id!=='null'?'✓ Trade bijgewerkt':'✓ Trade toegevoegd','ok');
 }
