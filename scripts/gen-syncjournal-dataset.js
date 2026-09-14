@@ -166,7 +166,13 @@ function genTrade(id,kind,dateMs){
   const mfe=+(win?r*rf(1.02,1.5):rf(0.15,0.9)).toFixed(2);
   // ~2% live open (geen exit/pnl)
   const isOpen=kind==='live'&&chance(0.02);
+  // Open/Close-timestamps (v0.9.46): open = datum+tijd, close = open + duur.
+  const openMs=+new Date(`${date}T${time}:00`);
+  const closeMs=isOpen?0:openMs+durationMin*60000;
+  // TP-hits krijgen een tijdstip verdeeld over de looptijd (voor de review-tijdlijn).
+  if(closeMs)tps.forEach((tp,k)=>{if(tp.hit)tp.ts=openMs+Math.round(durationMin*60000*(k+1)/(tps.length+1));});
   return {
+    openTime:String(openMs),closeTime:closeMs?String(closeMs):'',
     id,date,time,pair,dir,setup:pbName,session,timeframe:pb.tf[0],market:pick(MARKETS),grade:pb.grade&&chance(0.85)?pb.grade:pick(['A','B','C']),
     entry,exit:isOpen?'':exit,stop,tp:tpPrice,tps,hindsightExit,
     size,leverage:pick([3,5,10,20,25]),fees:isOpen?'':fees,risk:+risk$.toFixed(0),rrPlanned,
