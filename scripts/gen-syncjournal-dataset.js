@@ -39,7 +39,8 @@ const NEG_EMO=['FOMO','Gehaast','Twijfels'];
 const MISTAKES=['Te vroeg in','SL te krap','SL te wijd','Geen plan','Overtrading','TP te vroeg','Positie te groot','Revenge trade'];
 const CONFIRM=['Liquidity Sweep','OB','FVG','EQL/EQH','Flat candle','Session sweep','VAH / VAL / POC','Range retest','Spot koop'];
 const TF=['5M','15M','30M','1H','4H'];
-const CUSTOM=['A+ setup','herhaalbaar','nieuwsdag','weekend','high conviction'];
+// 'weekend' verwijderd: dubbelop met de sessie "Weekend" (feedback Denny 2026-09-14).
+const CUSTOM=['A+ setup','herhaalbaar','nieuwsdag','high conviction'];
 
 // ── playbooks (naam = setup) ──
 // baseWR/E = werkelijke LIVE win-rate en verwachting (in R) per setup.
