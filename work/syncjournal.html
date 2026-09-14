@@ -1383,7 +1383,10 @@ const EXMAP=Object.fromEntries(EXCHANGES.map(e=>[e.id,e]));
 // Netto ingelegd kapitaal uit het ledger (deposit +, withdrawal −, correction = absoluut setpoint).
 function acctCapital(txs){let c=0;(txs||[]).forEach(t=>{const a=parseFloat(t.amount)||0;if(t.type==='deposit')c+=a;else if(t.type==='withdrawal')c-=a;else if(t.type==='correction')c=a;});return c;}
 // Gerealiseerde P&L van gesloten trades gekoppeld aan dit account (via t.exchange === account.id).
-function acctPnl(id){return (typeof CLOSED!=='undefined'?CLOSED:T.filter(t=>t.status!=='open')).filter(t=>t.exchange===id).reduce((s,t)=>s+t.pnl,0);}
+// A1 (ChangeMaker): balans is werkelijkheid — ALTIJD op alle trades rekenen, nooit op de
+// gefilterde lijst. Voorheen liep dit via CLOSED (gefilterd) waardoor de totale balans
+// mee veranderde met setup/account-filters (120K → 127K bij filteren op een winnende setup).
+function acctPnl(id){return T.filter(t=>t&&t.status==='closed'&&t.exchange===id).reduce((s,t)=>s+(+t.pnl||0),0);}
 // Saldo handmatig account = max(0, ingelegd kapitaal) + gerealiseerde trade-P&L.
 function manualBalance(m){return Math.max(0,acctCapital(m.transactions))+acctPnl(m.id);}
 // Totaalbalans over alle accounts (exchanges = mock-seedwaarde tot live-API; handmatig = berekend).
@@ -1496,7 +1499,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.47';
+const APP_VERSION='v0.9.48';
 const SCHEMA_VERSION=2;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -1745,9 +1748,9 @@ function persistState(){ DB.save('state',{theme:STATE.theme,priv:STATE.priv,dens
 const FILTER={exchange:'',pair:'',setup:'',session:'',dir:'',tag:'',dateFrom:'',dateTo:'',datePreset:'',kind:'live'};
 function kindMatch(t,k){const tk=t.kind||'live';if(!k||k==='alle')return true;if(k==='oefen')return tk!=='live';return tk===k;}
 let FT=[];
-function applyFilter(rows){const f=FILTER;return rows.filter(t=>kindMatch(t,f.kind)&&(!f.exchange||t.exchange===f.exchange)&&(!f.pair||t.pair===f.pair)&&(!f.setup||t.setup===f.setup)&&(!f.session||sessionOf(t)===f.session)&&(!f.dir||t.dir===f.dir)&&(!f.tag||(t.tags||[]).includes(f.tag))&&(!f.dateFrom||t.date>=f.dateFrom)&&(!f.dateTo||t.date<=f.dateTo));}
+function applyFilter(rows){const f=FILTER;return rows.filter(t=>kindMatch(t,f.kind)&&(!f.exchange||t.exchange===f.exchange)&&(!f.pair||t.pair===f.pair)&&(!f.setup||t.setup===f.setup)&&(!f.session||sessionOf(t)===f.session)&&(!f.dir||t.dir===f.dir)&&(!f.tag||tradeTagsAll(t).includes(f.tag))&&(!f.dateFrom||t.date>=f.dateFrom)&&(!f.dateTo||t.date<=f.dateTo));}
 // Zelfde filters MAAR zonder de kind-filter — voor de real/paper/backtest-vergelijking (moet alle soorten zien).
-function applyFilterNoKind(rows){const f=FILTER;return rows.filter(t=>(!f.exchange||t.exchange===f.exchange)&&(!f.pair||t.pair===f.pair)&&(!f.setup||t.setup===f.setup)&&(!f.session||sessionOf(t)===f.session)&&(!f.dir||t.dir===f.dir)&&(!f.tag||(t.tags||[]).includes(f.tag))&&(!f.dateFrom||t.date>=f.dateFrom)&&(!f.dateTo||t.date<=f.dateTo));}
+function applyFilterNoKind(rows){const f=FILTER;return rows.filter(t=>(!f.exchange||t.exchange===f.exchange)&&(!f.pair||t.pair===f.pair)&&(!f.setup||t.setup===f.setup)&&(!f.session||sessionOf(t)===f.session)&&(!f.dir||t.dir===f.dir)&&(!f.tag||tradeTagsAll(t).includes(f.tag))&&(!f.dateFrom||t.date>=f.dateFrom)&&(!f.dateTo||t.date<=f.dateTo));}
 // Buckets voor edge-erosion (real vs paper vs backtest) — gedeeld door analytics + playbook-detail.
 function eroBuckets(rows){const b={backtest:[],paper:[],real:[]};(rows||[]).forEach(x=>{if(x.status==='open')return;const k=x.kind==='backtest'?'backtest':x.kind==='paper'?'paper':(isLive(x)?'real':null);if(k)b[k].push(x);});
   const stat=arr=>{const n=arr.length,rs=arr.map(tradeR);return {n,wr:n?Math.round(arr.filter(x=>tradeR(x)>0).length/n*100):0,avgR:n?rs.reduce((a,c)=>a+c,0)/n:0,net:arr.reduce((a,c)=>a+(+c.pnl||0),0)};};
@@ -1780,13 +1783,16 @@ function dateFilterDD(){const presets=[['week','Deze week'],['month','Deze maand
 function filterBar(){
   const sel=(key,label,opts)=>`<select class="fsel" aria-label="${esc(label)}" onchange="setFilter('${key}',this.value)"><option value="">${label}</option>${opts.map(o=>{const val=Array.isArray(o)?o[0]:o,lab=Array.isArray(o)?o[1]:o;return `<option value="${esc(val)}" ${FILTER[key]===val?'selected':''}>${esc(lab)}</option>`;}).join('')}</select>`;
   const pairs=[...new Set(T.map(t=>t.pair))].sort();
-  const tags=[...new Set(T.flatMap(t=>t.tags||[]))].sort();
+  // A4+A5: filteropties dynamisch uit config + data — eigen setups/tags verschijnen direct,
+  // ook als er nog geen trade mee bestaat.
+  const setups=[...new Set([...Object.keys(PBOOK||{}),...(tagConfig.setupTags||[]),...T.map(t=>t.setup).filter(Boolean)])].sort();
+  const tags=[...new Set([...(tagConfig.confirmationTags||[]),...T.flatMap(tradeTagsAll)])].sort();
   const active=countActive();
   return `<div class="filtbar">
     <span class="fico">⛃</span>
     ${sel('exchange','Alle accounts',[...EXCHANGES.map(e=>[e.id,e.name]),...MANUAL.map(m=>[m.id,m.name])])}
     ${sel('pair','Alle pairs',pairs)}
-    ${sel('setup','Alle setups',SETUPS)}
+    ${sel('setup','Alle setups',setups)}
     ${sel('session','Alle sessies',SESSIONS)}
     ${sel('dir','Long & short',[['long','Long'],['short','Short']])}
     ${sel('tag','Alle tags',tags)}
@@ -1798,6 +1804,10 @@ function filterBar(){
 
 /* ═══ Helpers ═══ */
 const SZ=t=>Number(String(t.size).replace(/\./g,''));
+// A3 (ChangeMaker + Denny): tags leven op twee plekken (los tags-veld + laag-confirmaties).
+// Dit is DE bron voor de tags-kolom en het tag-filter, zodat de tabel altijd exact toont
+// wat er in de trade zit — waar de tag ook geselecteerd is.
+function tradeTagsAll(t){return [...new Set([...(t.tags||[]),...(t.layers||[]).flatMap(L=>L.confirmations||[])])];}
 // ── Open/Close/Duur: openTime+closeTime (ms) zijn de bron van waarheid; durationMin is
 //    de handmatige fallback. Open trades krijgen een live-teller. null = onbekend.
 function tradeDurationMin(t){
@@ -1844,7 +1854,10 @@ function theoR(t){const entry=+t.entry,stop=+t.stop;if(!(entry>0)||!(stop>0)||st
   if(!exit)exit=+t.tp||0; if(!exit)return null;
   return +(((exit-entry)*dir)/Math.abs(entry-stop)).toFixed(2);}
 // R van een trade: opgeslagen r (real + geseede sim), anders theoretische R (gemigreerde sim zonder r).
-function tradeR(t){const r=+t.r;if(r)return r;const th=theoR(t);return th==null?0:th;}
+// A6: |R| > 100 is per definitie een datafout (stop ≈ entry → delen door bijna nul).
+// Zo'n waarde telt nergens mee — één kapotte trade mag nooit alle gemiddelden slopen.
+const R_SANE_MAX=100;
+function tradeR(t){const r=+t.r;if(r)return Math.abs(r)<=R_SANE_MAX?r:0;const th=theoR(t);return (th==null||Math.abs(th)>R_SANE_MAX)?0:th;}
 const CURSYM=()=>STATE.currency==='USD'?'$':'€';
 const eur=v=>CURSYM()+' '+Math.round(Math.abs(v)).toLocaleString('nl-NL');
 const eurS=v=>(v<0?'−':'+')+eur(v);
@@ -1876,7 +1889,7 @@ function kpiBlock(key,ns){
   const cfg={net:{label:'Netto P&L'},wr:{label:'Win-rate'},pf:{label:'Profit factor'},exp:{label:'Expectancy'},r:{label:'Gem. R'}}[key];
   const per=KPIPER[sk],lst=periodTrades(CLOSED,per),chr=lst.slice().sort((x,y)=>(x.date+x.time)<(y.date+y.time)?-1:1),ag=aggOf(lst);
   let cum=0,w=0,gw=0,gl=0,rs=0;const sp=[];
-  chr.forEach((t,i)=>{cum+=t.pnl;rs+=(+t.r||0);if(t.pnl>0){w++;gw+=t.pnl;}else gl+=Math.abs(t.pnl);sp.push(key==='net'?cum:key==='wr'?w/(i+1)*100:key==='pf'?(gl?gw/gl:(gw>0?4:0)):key==='r'?rs/(i+1):cum/(i+1));});
+  chr.forEach((t,i)=>{cum+=t.pnl;rs+=tradeR(t);if(t.pnl>0){w++;gw+=t.pnl;}else gl+=Math.abs(t.pnl);sp.push(key==='net'?cum:key==='wr'?w/(i+1)*100:key==='pf'?(gl?gw/gl:(gw>0?4:0)):key==='r'?rs/(i+1):cum/(i+1));});
   const mid=Math.floor(chr.length/2),pa=aggOf(chr.slice(0,mid)),ca=aggOf(chr.slice(mid));
   let dTxt='',dUp=true;
   if(chr.length>=4){if(key==='net'||key==='exp'){if(pa[key]){dTxt=Math.abs(Math.round((ca[key]-pa[key])/Math.abs(pa[key])*100))+'%';}dUp=ca[key]>=pa[key];}
@@ -2095,7 +2108,7 @@ function pgTrades(){
         <td class="rt num mask" data-l="Size">${isNaN(SZ(t))?'—':CURSYM()+' '+SZ(t).toLocaleString('nl-NL')}${qtySub(t)}</td><td class="rt" data-l="P&L">${t.status==='open'&&t.unrealizedPnl?`<span class="num ${cls(t.unrealizedPnl)} mask" title="niet-gerealiseerde P&L">~${eurS(t.unrealizedPnl)}</span>`:t.status==='partial'&&t.realizedPnl?`<span class="num ${cls(t.realizedPnl)} mask" title="gerealiseerd deel — rest loopt nog">${eurS(t.realizedPnl)}<div style="font-size:10.5px;color:var(--amber)">deels dicht</div></span>`:pnlCell(t.pnl,t.pnlPct)}</td>
         <td class="ct" data-l="R">${rBadge(t.r)}</td>
         <td data-l="Setup">${setupBadge(t.setup)}</td><td data-l="Sessie">${sessBadge(sessionOf(t))}</td>
-        <td data-l="Tags" style="max-width:170px">${tagChips(t.tags)}</td></tr>`;}).join('')}</tbody>
+        <td data-l="Tags" style="max-width:170px">${tagChips(tradeTagsAll(t))}</td></tr>`;}).join('')}</tbody>
       <tfoot><tr><td class="cbx"></td><td colspan="9">Totaal (${rows.length})</td><td class="rt">${pnlCell(net,net/ACCT*100)}</td><td colspan="4"></td></tr></tfoot>
     </table></div>${pageCount>1?`<div class="pager">
       <button class="btn" ${tPage===0?'disabled':''} onclick="setTradePage(${tPage-1})">‹ Vorige</button>
@@ -2700,7 +2713,7 @@ function pgReview(){
         <textarea class="note" onblur="saveNote(${t.id},this.value)" placeholder="Wat gebeurde er? Wat ging goed, wat kan beter?">${esc(t.notes||'')}</textarea>
         <textarea class="note" style="min-height:60px;margin-top:10px" onblur="saveLessons(${t.id},this.value)" placeholder="Leerpunt / volgende keer…">${esc(t.lessons||'')}</textarea>
         <div style="margin-top:14px"><div class="section-title" style="margin:0 0 8px">Emotie</div><div class="emos">${EMOTIONS.map(e=>`<span class="emo ${e===t.emotion?'on':''}" onclick="setEmotion(${t.id},'${e}')">${e}</span>`).join('')}</div></div>
-        <div style="margin-top:14px"><div class="section-title" style="margin:0 0 8px">Tags</div><div>${(t.tags||[]).length?tagChips(t.tags,true):'<span style="color:var(--muted);font-size:12px">Geen tags — voeg toe via ✎ Bewerken</span>'}</div></div></div></div>
+        <div style="margin-top:14px"><div class="section-title" style="margin:0 0 8px">Tags</div><div>${tradeTagsAll(t).length?tagChips(tradeTagsAll(t),true):'<span style="color:var(--muted);font-size:12px">Geen tags — voeg toe via ✎ Bewerken</span>'}</div></div></div></div>
 
       <div class="grid" style="grid-template-columns:1.2fr 1fr">
         <div class="panel"><div class="phead"><h3>Discipline-checklist</h3><span class="sp"></span><span class="chip">${checks.filter(Boolean).length}/5</span></div><div class="pbody">${CHECKLIST.map((l,i)=>`<div class="check ${checks[i]?'done':''}" style="cursor:pointer" onclick="toggleCheck(${t.id},${i})"><span class="box">${checks[i]?'✓':''}</span><span class="lbl">${l}</span></div>`).join('')}</div></div>
@@ -3723,7 +3736,8 @@ function migrateOldTrade(ot){
   const exchange=(ot.source&&ot.source!=='manual')?(OLD_EXMAP[ot.source]||''):(ot.exchange||'');
   const entry=+ot.entry||0,stop=+(ot.stopLoss!=null?ot.stopLoss:ot.stop)||0,size=+(ot.positionSize!=null?ot.positionSize:ot.size)||0,pnl=+ot.pnl||0;
   let r=+ot.r||0;
-  if(!r&&entry&&stop&&size){const risk=Math.abs(entry-stop)/entry*size;if(risk)r=+(pnl/risk).toFixed(2);}
+  // A6: alleen R afleiden bij een betekenisvol risico (stop niet vrijwel gelijk aan entry).
+  if(!r&&entry&&stop&&size&&Math.abs(entry-stop)>=entry*1e-4){const risk=Math.abs(entry-stop)/entry*size;if(risk)r=+(pnl/risk).toFixed(2);}
   const hindsightExit=+ot.hindsightExit||0;
   // Sim-trades (backtest/paper/gemist) zonder echte pnl: theoretische R uit hindsight/TP.
   if(!r&&(kind==='backtest'||kind==='paper'||kind==='gemist')&&entry&&stop&&stop!==entry){
@@ -5041,11 +5055,18 @@ let formDirty=false,modalKind='';  // dirty-guard: waarschuw bij niet-opgeslagen
 function toggleFormTag(tag){const i=formTags.indexOf(tag);if(i<0)formTags.push(tag);else formTags.splice(i,1);renderFormTags();}
 function renderFormTags(){const c=document.getElementById('tagpick');if(!c)return;
   const chip=(tg,col)=>{const on=formTags.includes(tg);const sel=on?`style="border-color:color-mix(in srgb,${col} 55%,transparent);background:color-mix(in srgb,${col} 14%,transparent);color:${col}"`:'';return `<span class="tagopt ${on?'on':''}" ${sel} onclick="toggleFormTag('${esc(tg).replace(/'/g,'')}')">${esc(tg)}</span>`;};
-  const custom=tagConfig.customTags||[];const known=new Set(Object.values(tagConfig).flat());
+  // A3-fix: de picker las het verwijderde tagConfig.customTags (altijd leeg) — daardoor
+  // verschenen tags uit Instellingen hier nooit. Nu: confirmatie-tags uit de config
+  // (dé vrije-label-categorie van de picker) + losse tags uit bestaande trades.
+  const conf=tagConfig.confirmationTags||[];const confCol=(TAG_CATS.find(x=>x.key==='confirmationTags')||{}).color||'#12b39b';
+  const known=new Set(Object.values(tagConfig).flat());
   const loose=[...new Set([...formTags,...T.flatMap(t=>t.tags||[])])].filter(t=>!known.has(t));
-  c.innerHTML=`<div class="tg-chips">${custom.map(t=>chip(t,'#8a92a3')).join('')}${loose.map(t=>chip(t,'var(--muted)')).join('')}</div>`;}
+  c.innerHTML=`<div class="tg-chips">${conf.map(t=>chip(t,confCol)).join('')}${loose.map(t=>chip(t,'var(--muted)')).join('')}</div>`;}
 function setFormGrade(g){formGrade=(formGrade===g?'':g);document.querySelectorAll('#gradeseg button').forEach(b=>b.classList.toggle('on',b.dataset.g===formGrade));}
-function onPlaybookPick(){const sel=document.getElementById('f_playbook');if(!sel)return;const pb=PBOOK[sel.value];if(pb&&pb.defaultGrade&&!formGrade){formGrade=pb.defaultGrade;document.querySelectorAll('#gradeseg button').forEach(b=>b.classList.toggle('on',b.dataset.g===formGrade));}}
+// A2: onthoud of de gebruiker het playbook-veld heeft aangeraakt — een expliciete keuze
+// (ook "— geen —") wint dan altijd; alleen een onaangeraakt leeg veld valt terug op de lagen.
+let formPbTouched=false;
+function onPlaybookPick(){formPbTouched=true;const sel=document.getElementById('f_playbook');if(!sel)return;const pb=PBOOK[sel.value];if(pb&&pb.defaultGrade&&!formGrade){formGrade=pb.defaultGrade;document.querySelectorAll('#gradeseg button').forEach(b=>b.classList.toggle('on',b.dataset.g===formGrade));}}
 // Datum-wissel: houd de sessie-dropdown in sync met weekend (dag-van-week wint).
 function onDateChange(){const d=document.getElementById('f_date'),s=document.getElementById('f_session');if(!d||!s)return;if(isWeekendDate(d.value))s.value='Weekend';else if(s.value==='Weekend')s.value=sessionFromTime((document.getElementById('f_time')||{}).value);}
 /* setup-lagen (top-down) — zoals origineel */
@@ -5122,7 +5143,8 @@ function calcTrade(fill){
   const dirEl=document.getElementById('f_dir'),dir=dirEl&&dirEl.value==='short'?-1:1;
   let pnl=NaN,r=NaN,rr=NaN,pct=NaN;
   if(entry>0&&!isNaN(exit)&&!isNaN(size))pnl=Math.round((exit-entry)/entry*size*dir-fees);
-  if(entry>0&&!isNaN(stop)&&!isNaN(size)&&!isNaN(pnl)){const risk=Math.abs(entry-stop)/entry*size;if(risk>0)r=+(pnl/risk).toFixed(2);}
+  // A6: R alleen bij betekenisvol risico — stop ≈ entry (of duizendtal-typefout) gaf R's van miljarden.
+  if(entry>0&&!isNaN(stop)&&!isNaN(size)&&!isNaN(pnl)&&Math.abs(entry-stop)>=entry*1e-4){const risk=Math.abs(entry-stop)/entry*size;if(risk>0)r=+(pnl/risk).toFixed(2);}
   if(entry>0&&!isNaN(stop)&&!isNaN(tp)&&Math.abs(entry-stop)>0)rr=+(Math.abs(tp-entry)/Math.abs(entry-stop)).toFixed(2);
   if(!isNaN(pnl))pct=+(pnl/ACCT*100).toFixed(2);
   if(fill){if(!isNaN(pnl))document.getElementById('f_pnl').value=pnl;if(!isNaN(r))document.getElementById('f_r').value=r;if(!isNaN(rr))document.getElementById('f_rrPlanned').value=rr;
@@ -5135,12 +5157,13 @@ function calcTrade(fill){
   if(!isNaN(pnl))parts.push(`P&L <b class="num ${pnl>=0?'g':'r'}">${eurS(pnl)}</b>`);
   if(!isNaN(pct))parts.push(`<b class="num ${pct>=0?'g':'r'}">${(pct>=0?'+':'')+pct.toFixed(2).replace('.',',')}%</b>`);
   if(!isNaN(r))parts.push(`R <b class="num ${r>=0?'g':'r'}">${(r>=0?'+':'')+r.toFixed(2).replace('.',',')}R</b>`);
+  if(!isNaN(r)&&Math.abs(r)>50)parts.push(`<span style="color:var(--amber);font-weight:700">⚠ R lijkt onrealistisch — check entry/stop (duizendtallen zónder punt typen)</span>`);
   if(!isNaN(rr))parts.push(`R:R <b class="num">${rr.toFixed(1).replace('.',',')}:1</b>`);
   prev.innerHTML='<span class="calc-ic">∑</span><span>'+parts.join(' · ')+'</span>';
 }
 function openForm(id){
   const t=id!=null?T.find(x=>x.id===id):{date:new Date().toISOString().slice(0,10),time:'',exchange:'mexc',pair:'BTC/USDC',dir:'long',setup:'London SFP',session:'London',timeframe:'15m',market:'Trending',grade:'',entry:'',stop:'',tp:'',exit:'',size:'',leverage:10,fees:'',risk:'',rrPlanned:'',pnl:'',r:'',status:'closed',emotion:'',mistake:'',emotions:[],mistakes:[],layers:[],tags:[],notes:'',lessons:'',durationMin:'',mae:'',mfe:''};
-  formSizeUnit=(t.sizeUnit==='asset'&&t.qty>0)?'asset':'usd';
+  formSizeUnit=(t.sizeUnit==='asset'&&t.qty>0)?'asset':'usd';formPbTouched=false;
   formTags=[...(t.tags||[])];formGrade=gradeOf(t);formShots=[...(t.screenshots||[])];formTvLinks=[...(t.tvLinks||[])];
   formLayers=(t.layers||[]).map(L=>({timeframe:L.timeframe||'',bias:L.bias||'',setups:[...(L.setups||[])],confirmations:[...(L.confirmations||[])]}));
   formEmotions=[...(t.emotions||(t.emotion?[t.emotion]:[]))];
@@ -5197,6 +5220,7 @@ function openForm(id){
       <div class="field full"><div class="lt-head"><label style="margin:0">Setup-lagen (top-down)</label><button type="button" class="btn" onclick="addLayer()">+ Laag toevoegen</button></div><div id="layerbuilder" class="layerbuilder"></div></div>
       <div class="field full"><label>Emoties</label><div id="emobuilder" class="emobuilder"></div></div>
       <div class="field full"><label>Fouten</label><div id="mistakebuilder"></div></div>
+      <div class="field full"><label>Tags <span class="hint">(confirmaties &amp; eigen labels — filterbaar in de hele app)</span></label><div id="tagpick" class="tagpick"></div></div>
       <div class="field full missedfield" id="missedfield"><label>👻 Missed-reden <span class="hint">(waarom niet genomen)</span></label><div id="missedbuilder"></div></div>
 
       <div class="msub s6"><span class="msn">6</span> Notities</div>
@@ -5209,7 +5233,7 @@ function openForm(id){
     </div>
     <div class="mfoot">${id!=null?`<button class="btn" style="color:var(--red);border-color:color-mix(in srgb,var(--red) 35%,transparent)" onclick="delTrade(${id})">Verwijderen</button>`:''}
       <span class="form-err" id="formErr"></span><span style="flex:1"></span><button class="btn" onclick="closeForm()">Annuleren</button><button class="btn pri" onclick="submitForm(${id!=null?id:'null'})">Opslaan</button></div>`;
-  renderLayers();renderEmotions();renderMistakes();renderMissed();renderTPs();renderFormShots();renderFormTvLinks();calcTrade(false);onKindChange();
+  renderLayers();renderEmotions();renderMistakes();renderMissed();renderTPs();renderFormShots();renderFormTvLinks();renderFormTags();calcTrade(false);onKindChange();
   document.getElementById('modal').classList.add('on');document.getElementById('scrim').classList.add('on');
   modalKind='trade';formDirty=false;
 }
@@ -5237,7 +5261,9 @@ function submitForm(id){
   const layers=formLayers.map(L=>({timeframe:L.timeframe,bias:L.bias||'',setups:[...L.setups],confirmations:[...L.confirmations]})).filter(L=>L.timeframe||L.bias||L.setups.length||L.confirmations.length);
   const entryLayer=layers.length?layers[layers.length-1]:null;
   // Playbook-koppeling wint: gekozen playbook is de setup; anders afgeleid uit de entry-laag.
-  const setup=g('playbook')||(entryLayer&&entryLayer.setups.length?entryLayer.setups[0]:'');
+  // A2: aangeraakt playbook-veld wint altijd — óók bij "— geen —" (setup echt leeg).
+  // Onaangeraakt en leeg → afleiden uit de entry-laag (gedrag voor nieuwe trades).
+  const setup=formPbTouched?g('playbook'):(g('playbook')||(entryLayer&&entryLayer.setups.length?entryLayer.setups[0]:''));
   const timeframe=entryLayer?entryLayer.timeframe:'';
   const obj={date:g('date'),time:g('time'),exchange:g('exchange'),account:ex?ex.acct:'',pair:g('pair').toUpperCase().trim(),dir:g('dir'),session:g('session'),
     market:g('market'),grade:formGrade,layers,setup,timeframe,
