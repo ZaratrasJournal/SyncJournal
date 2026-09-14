@@ -176,7 +176,8 @@ function genTrade(id,kind,dateMs){
     openTime:String(openMs),closeTime:closeMs?String(closeMs):'',
     id,date,time,pair,dir,setup:pbName,session,timeframe:pb.tf[0],market:pick(MARKETS),grade:pb.grade&&chance(0.85)?pb.grade:pick(['A','B','C']),
     entry,exit:isOpen?'':exit,stop,tp:tpPrice,tps,hindsightExit,
-    size,leverage:pick([3,5,10,20,25]),fees:isOpen?'':fees,risk:+risk$.toFixed(0),rrPlanned,
+    // risk = percentage van het account (zoals het formulier-veld "Risk (%)"), niet een $-bedrag
+    size,leverage:pick([3,5,10,20,25]),fees:isOpen?'':fees,risk:+(risk$/24663*100).toFixed(2),rrPlanned,
     pnl:isOpen?'':pnl,pnlPct:isOpen?0:+(pnl/24663*100).toFixed(2),r:isOpen?0:rActual,
     status:isOpen?'open':(win&&chance(0.12)?'partial':'closed'),
     emotion:emotions[0],emotions,mistake:mistakes[0]||'',mistakes,

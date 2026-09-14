@@ -30,7 +30,7 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
   ok('sjFromTj: datum/tijd/sessie van het OPEN-moment', canon.date === '2026-09-10' && canon.time === '08:14' && canon.session === 'London', JSON.stringify(canon));
   ok('migratie v2 corrigeert bestaande trades', await p.evaluate(() => { const o = +new Date('2026-09-01T09:30:00'); const t = { id: 1, date: '2026-09-02', time: '23:00', session: 'US PM', status: 'closed', openTime: String(o) }; T = [t]; MIGRATIONS.find(m => m.v === 2).up(); return t.date === '2026-09-01' && t.time === '09:30' && t.session === 'London'; }));
 
-  console.log('─── Tabel: Open / Close / Duur ───');
+  console.log('─── Tabel: Datum-kolom + hover-uitklap ───');
   await p.evaluate(() => {
     const o1 = +new Date('2026-09-12T10:00:00'), c1 = +new Date('2026-09-12T14:26:00');
     T = [
@@ -40,11 +40,18 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
     ]; persist(); go('trades');
   });
   await p.waitForTimeout(400);
-  ok('kolomkoppen Open + Close + Duur, geen Status-kolom', await p.evaluate(() => { const hs = [...document.querySelectorAll('thead th')].map(x => x.textContent.trim()); return hs.some(x => /^Open/.test(x)) && hs.some(x => /^Close/.test(x)) && hs.some(x => /^Duur/.test(x)) && !hs.some(x => /^Status/.test(x)); }));
-  ok('gesloten rij: sluit-tijd + duur 4u 26m', await p.evaluate(() => { const r = [...document.querySelectorAll('tbody tr')].find(x => /BTC\/USDT/.test(x.textContent)); return r && /14:26/.test(r.textContent) && /4u 26m/.test(r.textContent); }));
-  ok('open rij: OPEN-badge in Close-cel + live ~duur', await p.evaluate(() => { const r = [...document.querySelectorAll('tbody tr')].find(x => /SOL\/USDT/.test(x.textContent)); return r && /Open/i.test(r.querySelector('td[data-l="Close"]').textContent) && /~2u/.test(r.querySelector('td[data-l="Duur"]').textContent); }));
-  ok('fallback-rij: duur uit durationMin (15m), close —', await p.evaluate(() => { const r = [...document.querySelectorAll('tbody tr')].find(x => /ETH\/USDT/.test(x.textContent)); return r && /15m/.test(r.querySelector('td[data-l="Duur"]').textContent) && /—/.test(r.querySelector('td[data-l="Close"]').textContent); }));
-  ok('sorteren op duur werkt', await p.evaluate(() => { sortBy('dur'); const first = document.querySelector('tbody tr td[data-l="Duur"]'); const t1 = first.textContent; sortBy('dur'); const t2 = document.querySelector('tbody tr td[data-l="Duur"]').textContent; return t1 !== t2; }));
+  ok('één Datum-kolom, geen aparte Open/Close/Duur/Status-kolommen', await p.evaluate(() => { const hs = [...document.querySelectorAll('thead th')].map(x => x.textContent.trim()); return hs.some(x => /^Datum/.test(x)) && !hs.some(x => /^Open/.test(x)) && !hs.some(x => /^Close/.test(x)) && !hs.some(x => /^Duur/.test(x)) && !hs.some(x => /^Status/.test(x)); }));
+  ok('open rij: OPEN-badge in Datum-cel', await p.evaluate(() => { const r = [...document.querySelectorAll('tbody tr.mrow')].find(x => /SOL\/USDT/.test(x.textContent)); return r && /Open/i.test(r.querySelector('td[data-l="Datum"]').textContent); }));
+  // hover-uitklap: echte mouseenter via Playwright — test de wiring, niet alleen de functie
+  await p.locator('tbody tr.mrow', { hasText: 'BTC/USDT' }).hover(); await p.waitForTimeout(150);
+  ok('hover gesloten trade → uitklap met close-tijd + duur (tijdlijn)', await p.evaluate(() => { const d = document.getElementById('drow-1'); return d && !d.hidden && /14:26/.test(d.textContent) && /4u 26m/.test(d.textContent) && /Open/.test(d.textContent); }));
+  ok('stats in uitklap: stop-loss zichtbaar', await p.evaluate(() => { const d = document.getElementById('drow-1'); return /Stop-loss/i.test(d.textContent) && /95/.test(d.textContent); }));
+  await p.locator('tbody tr.mrow', { hasText: 'ETH/USDT' }).hover(); await p.waitForTimeout(150);
+  ok('hover volgende rij: vorige klapt dicht, fallback-duur 15m zichtbaar', await p.evaluate(() => { const d1 = document.getElementById('drow-1'), d3 = document.getElementById('drow-3'); return d1.hidden && d3 && !d3.hidden && /15m/.test(d3.textContent); }));
+  await p.locator('tbody tr.mrow', { hasText: 'SOL/USDT' }).hover(); await p.waitForTimeout(150);
+  ok('open trade in uitklap: live ~duur + loopt', await p.evaluate(() => { const d = document.getElementById('drow-2'); return d && !d.hidden && /~2u/.test(d.textContent) && /loopt/.test(d.textContent); }));
+  await p.evaluate(() => { const w = document.querySelector('#main .tblwrap'); if (w) w.dispatchEvent(new Event('mouseleave')); });
+  ok('sorteren op datum werkt', await p.evaluate(() => { sortBy('date'); const t1 = document.querySelector('tbody tr td[data-l="Datum"]').textContent; sortBy('date'); const t2 = document.querySelector('tbody tr td[data-l="Datum"]').textContent; return t1 !== t2; }));
 
   console.log('─── Formulier: sluit-datum/tijd + autofill ───');
   await p.evaluate(() => openForm(null)); await p.waitForTimeout(250);

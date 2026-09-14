@@ -216,6 +216,29 @@ table.tbl{width:100%;border-collapse:collapse;font-size:14px}
 .tbl.compact tbody td{padding:5px 14px}
 .tbl.ruim tbody td{padding:14px 14px}
 .tbl tbody tr[tabindex]:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;border-radius:4px}
+/* Trades: hover-uitklaprij (patroon originele journal). Zebra loopt hier via een
+   .even-klasse: de (verborgen) detail-rijen zitten tussen de rijen in en zouden
+   nth-child-striping breken. Volgorde bewust: even → hover → drow (laatste wint). */
+.tbl tbody tr.mrow.even td{background:var(--zebra)}
+.tbl tbody tr.mrow:hover td{background:var(--hover)}
+.tbl tbody tr.drow td{background:var(--sink);border-bottom:1px solid var(--line);padding:10px 16px 12px 50px;cursor:pointer}
+.tbl tbody tr.drow[hidden]{display:none!important}
+.drow .tline{margin-top:0}
+.drow .dstats{display:flex;gap:22px;flex-wrap:wrap;margin-top:9px}
+.drow .dstats:first-child{margin-top:0}
+.drow .dstat .lb{font-size:9px;text-transform:uppercase;letter-spacing:.09em;font-weight:700;color:var(--muted);margin-bottom:2px}
+.drow .dstat .vl{font-family:var(--fn);font-weight:700;font-size:12.5px}
+.drow .dnotes{display:flex;gap:14px;flex-wrap:wrap;margin-top:10px}
+.drow .dnote{flex:1 1 240px;min-width:0;padding:7px 12px;border-left:2px solid var(--accent);background:var(--accent-soft);border-radius:0 7px 7px 0;font-size:12px;color:var(--ink2);line-height:1.55}
+.drow .dnote .lb{font-size:9px;text-transform:uppercase;letter-spacing:.09em;font-weight:800;color:var(--accent);margin-bottom:1px}
+.drow .dnote .tx{overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.drow .dnote.les{border-left-color:var(--amber);background:color-mix(in srgb,var(--amber) 7%,transparent)}
+.drow .dnote.les .lb{color:var(--amber)}
+.drow .dmeta{display:flex;gap:18px;align-items:center;flex-wrap:wrap;margin-top:10px;font-size:11.5px;color:var(--ink2)}
+.drow .dmeta .lay{font-family:var(--fn);font-weight:600;color:var(--accent)}
+.drow .dmeta .arr{color:var(--faint)}
+.drow .dmeta .star{color:var(--amber)}.drow .dmeta .staro{color:var(--faint)}
+.drow .drow-empty{color:var(--muted);font-style:italic;font-size:12px}
 .tblwrap.scroll{max-height:calc(100vh - 232px);overflow:auto}
 .cbx{width:38px;text-align:center!important}
 .cb{width:17px;height:17px;border-radius:5px;border:1.5px solid var(--line);display:inline-grid;place-items:center;cursor:pointer;vertical-align:middle;color:#fff;font-size:11px;line-height:1}
@@ -269,6 +292,7 @@ table.tbl{width:100%;border-collapse:collapse;font-size:14px}
   .tbl tbody td{border:none;padding:5px 4px;display:flex;justify-content:space-between;align-items:center}
   .tbl tbody td::before{content:attr(data-l);font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:700}
   .tbl tbody td.cbx,.tbl tfoot{display:none}
+  .tbl tbody tr.drow{display:none!important} /* geen hover op touch — detail via klik → formulier */
   .rev3,.rev2{grid-template-columns:1fr!important}
   .streakbadge{display:none}
   #trTabs{overflow-x:auto}
@@ -1516,7 +1540,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.54';
+const APP_VERSION='v0.9.55';
 const SCHEMA_VERSION=2;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -1861,20 +1885,7 @@ function tradeDurationMin(t){
   const d=+t.durationMin||0;return d>0?d:null;
 }
 function fmtDurMin(m){if(m==null)return '—';if(m>=1440)return `${Math.floor(m/1440)}d ${Math.floor((m%1440)/60)}u`;if(m>=60)return `${Math.floor(m/60)}u ${m%60}m`;return `${m}m`;}
-function closeCell(t){
-  if(t.status!=='closed')return statusB(t.status);
-  const c=+t.closeTime||0;
-  if(!c)return '<span style="color:var(--muted)">—</span>';
-  // Altijd hetzelfde formaat als de Open-kolom (datum + tijd) — "alleen tijd bij zelfde
-  // dag" las als inconsistente data (feedback Denny 2026-09-14).
-  return `${fmtD(ts2date(c))}<div style="font-size:10.5px;color:var(--muted)">${ts2time(c)}</div>`;
-}
-function durCell(t){
-  const m=tradeDurationMin(t);if(m==null)return '<span style="color:var(--muted)">—</span>';
-  const live=t.status!=='closed';
-  return `<span class="num"${live?' style="color:var(--amber)" title="loopt nog"':''}>${live?'~':''}${fmtDurMin(m)}</span>`;
-}
-// Mini-tijdlijn voor het Review-detail: Open → TP-hits (met tijd) → Close · totale duur.
+// Mini-tijdlijn voor Review-detail én hover-uitklap: Open → TP-hits (met tijd) → Close · duur.
 function tradeTimeline(t){
   const o=+t.openTime||0;if(!o)return '';
   const fmtMoment=ms=>`${fmtD(ts2date(ms))} ${ts2time(ms)}`;
@@ -1888,6 +1899,50 @@ function tradeTimeline(t){
   if(m!=null)chips.push(`<span class="tlc">⏱ <b class="num">${t.status!=='closed'?'~':''}${fmtDurMin(m)}</b>${t.status!=='closed'?' <span style="color:var(--amber)">loopt</span>':''}</span>`);
   return `<div class="tline">${chips.join('<span class="tla">→</span>')}</div>`;
 }
+// ── Hover-uitklap in de trades-tabel (patroon originele journal): Close/Duur zijn geen
+//    kolommen meer maar leven in een detail-rij die openklapt onder de rij waar je op hovert.
+//    Rij 1 hergebruikt tradeTimeline (zelfde component als het Review-detail); daarna
+//    risk-stats, notities en meta — elk blok verschijnt alleen als het veld gevuld is.
+function tradeHoverDetail(t){
+  const stat=(lb,vl,st)=>vl?`<div class="dstat"><div class="lb">${lb}</div><div class="vl"${st?` style="${st}"`:''}>${vl}</div></div>`:'';
+  let tl=tradeTimeline(t);
+  if(!tl){ // geen openTime (oude CSV-trades): toon wat er wél is
+    const m=tradeDurationMin(t),c=+t.closeTime||0,bits=[];
+    if(t.status==='closed'&&c)bits.push(`<span class="tlc">🏁 Close <b class="num">${fmtD(ts2date(c))} ${ts2time(c)}</b></span>`);
+    if(m!=null)bits.push(`<span class="tlc">⏱ <b class="num">${t.status!=='closed'?'~':''}${fmtDurMin(m)}</b>${t.status!=='closed'?' <span style="color:var(--amber)">loopt</span>':''}</span>`);
+    if(bits.length)tl=`<div class="tline">${bits.join('<span class="tla">→</span>')}</div>`;
+  }
+  let s='';
+  s+=stat('Stop-loss',+t.stop>0?numOrDash(t.stop):'','color:var(--red)');
+  s+=stat('Take-profit',(!t.tps||!t.tps.length)&&+t.tp>0?numOrDash(t.tp):'');
+  s+=stat('Risk',+t.risk>0?String(+t.risk).replace('.',',')+'%':'');
+  s+=stat('Geplande R:R',+t.rrPlanned>0?'1 : '+String(+t.rrPlanned).replace('.',','):'');
+  s+=stat('Leverage',+t.leverage>1?(+t.leverage)+'×':'');
+  s+=stat('Fees',+t.fees>0?`<span class="mask">${CURSYM()} ${(+t.fees).toLocaleString('nl-NL',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>`:'');
+  s+=stat('Account',t.account?esc(t.account):'');
+  let notes='';
+  if(t.notes)notes+=`<div class="dnote"><div class="lb">Notities</div><div class="tx">${esc(t.notes)}</div></div>`;
+  if(t.lessons)notes+=`<div class="dnote les"><div class="lb">Les</div><div class="tx">${esc(t.lessons)}</div></div>`;
+  const meta=[];
+  const lays=(t.layers||[]).map(L=>{const txt=[L.timeframe,(L.setups||[]).join('+')].filter(Boolean).join(' ');return txt?`<span class="lay">${esc(txt)}</span>`:'';}).filter(Boolean);
+  if(lays.length)meta.push(`<span>📐 ${lays.join(' <span class="arr">→</span> ')}</span>`);
+  const tps=t.tps||[];
+  if(tps.length)meta.push(`<span>🎯 <span class="num">${tps.filter(x=>x.hit).length} van ${tps.length}</span> TP's geraakt</span>`);
+  const emos=(t.emotions&&t.emotions.length)?t.emotions:(t.emotion?[t.emotion]:[]);
+  if(emos.length)meta.push(`<span>💭 ${emos.map(e=>`<span class="tagchip">${esc(e)}</span>`).join('')}</span>`);
+  const mis=(t.mistakes&&t.mistakes.length)?t.mistakes:(t.mistake?[t.mistake]:[]);
+  if(mis.length)meta.push(`<span>⚠ ${mis.map(m=>`<span class="tagchip col" style="--tc:var(--red)">${esc(m)}</span>`).join('')}</span>`);
+  if(+t.rating>0)meta.push(`<span>${[1,2,3,4,5].map(n=>`<span class="${n<=+t.rating?'star':'staro'}">${n<=+t.rating?'★':'☆'}</span>`).join('')}</span>`);
+  if((t.screenshots||[]).length)meta.push(`<span>📸 ${t.screenshots.length} screenshot${t.screenshots.length>1?'s':''}</span>`);
+  if((t.missedReasons||[]).length)meta.push(`<span>👻 ${t.missedReasons.map(esc).join(' · ')}</span>`);
+  const out=[tl,s?`<div class="dstats">${s}</div>`:'',notes?`<div class="dnotes">${notes}</div>`:'',meta.length?`<div class="dmeta">${meta.join('')}</div>`:''].filter(Boolean).join('');
+  return out||`<span class="drow-empty">Klik om stop-loss, notities en meer toe te voegen</span>`;
+}
+// Togglet alleen het hidden-attribuut — geen re-render, dus goedkoop bij 100 rijen/pagina.
+// Na een render() staan alle detail-rijen weer dicht; trDrowHide vangt de verdwenen node op.
+let DROW_CUR=null;
+function trDrowShow(id){trDrowHide();const r=document.getElementById('drow-'+id);if(r){r.hidden=false;DROW_CUR=id;}}
+function trDrowHide(){if(DROW_CUR==null)return;const r=document.getElementById('drow-'+DROW_CUR);if(r)r.hidden=true;DROW_CUR=null;}
 // Asset-hoeveelheid (alleen aanwezig als de trade in asset-eenheden is ingevoerd)
 function qtySub(t){return (t.sizeUnit==='asset'&&t.qty>0)?`<div class="num" style="font-size:11px;color:var(--muted);white-space:nowrap">${(+t.qty).toLocaleString('nl-NL',{maximumFractionDigits:6})} ${esc(String(t.pair||'').split('/')[0])}</div>`:'';}
 const numOrDash=v=>{const n=+v;return isNaN(n)?'—':n.toLocaleString('nl-NL');};  // leeg/undefined veld → em-dash i.p.v. NaN
@@ -2117,14 +2172,15 @@ function pgTrades(){
   const q=STATE.query.toLowerCase();
   if(q)rows=rows.filter(t=>(t.pair+' '+t.setup+' '+t.session+' '+t.emotion+' '+(t.tags||[]).join(' ')).toLowerCase().includes(q));
   const sc=STATE.sortCol,sd=STATE.sortDir;
-  rows=rows.slice().sort((a,b)=>{let x=a[sc],y=b[sc];if(sc==='size'){x=SZ(a);y=SZ(b);}if(sc==='close'){x=+a.closeTime||0;y=+b.closeTime||0;}if(sc==='dur'){x=tradeDurationMin(a)??-1;y=tradeDurationMin(b)??-1;}if(typeof x==='string'){return x<y?-sd:x>y?sd:0;}return (x-y)*sd;});
+  rows=rows.slice().sort((a,b)=>{let x=a[sc],y=b[sc];if(sc==='size'){x=SZ(a);y=SZ(b);}if(typeof x==='string'){return x<y?-sd:x>y?sd:0;}return (x-y)*sd;});
   const maxS=Math.max(1,...rows.map(SZ)),net=rows.reduce((s,t)=>s+t.pnl,0);
   // Paginatie: render alleen de huidige pagina (houdt de DOM klein bij duizenden trades).
   const PAGE=100;let tPage=STATE.tradePage||0;const pageCount=Math.max(1,Math.ceil(rows.length/PAGE));
   if(tPage>=pageCount)tPage=pageCount-1;if(tPage<0)tPage=0;STATE.tradePage=tPage;
   const pStart=tPage*PAGE,pageRows=rows.slice(pStart,pStart+PAGE);
   const tabs=[['all','Alle',FT.length],['closed','Gesloten',FT.filter(t=>t.status==='closed').length],['open','Open/partial',FT.filter(t=>t.status!=='closed').length]];
-  const cols=[['date','Open',''],['close','Close',''],['dur','Duur','rt'],['exchange','Exchange',''],['pair','Pair',''],['dir','Richting',''],['entry','Entry','rt'],['exit','Exit','rt'],['size','Size','rt'],['pnl','P&L','rt'],['r','R','ct'],['setup','Setup',''],['session','Sessie',''],[null,'Tags','']];
+  // Eén Datum-kolom (open-moment); Close/Duur/status leven in de hover-uitklaprij (variant D).
+  const cols=[['date','Datum',''],['exchange','Exchange',''],['pair','Pair',''],['dir','Richting',''],['entry','Entry','rt'],['exit','Exit','rt'],['size','Size','rt'],['pnl','P&L','rt'],['r','R','ct'],['setup','Setup',''],['session','Sessie',''],[null,'Tags','']];
   const th=cols.map(([k,l,c])=>{const act=k===sc;return `<th scope="col" class="${c}" ${act?`aria-sort="${sd>0?'ascending':'descending'}"`:''} ${k?`onclick="sortBy('${k}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();sortBy('${k}')}" tabindex="0" aria-label="Sorteer op ${esc(l)}" style="cursor:pointer;user-select:none"`:''}>${l}${act?(sd>0?' ▲':' ▼'):''}</th>`;}).join('');
   // active-filter chips
   const chips=[];
@@ -2146,19 +2202,18 @@ function pgTrades(){
     ${chipbar}${bulk}
     ${rows.length?`<div class="panel"><div class="tblwrap scroll"><table class="tbl${dens}">
       <thead><tr><th class="cbx" scope="col"><span class="cb ${allSel?'on':''}" role="checkbox" aria-checked="${allSel}" aria-label="Alle trades selecteren" tabindex="0" onclick="toggleSelAll()" onkeydown="if(event.key==='Enter'||event.key===' ')toggleSelAll()">${allSel?'✓':''}</span></th>${th}</tr></thead>
-      <tbody>${pageRows.map(t=>{const sel=selSet.has(t.id);return `<tr tabindex="0" style="cursor:pointer" onclick="openForm(${t.id})" onkeydown="if(event.key==='Enter')openForm(${t.id})">
+      <tbody onmouseleave="trDrowHide()">${pageRows.map((t,i)=>{const sel=selSet.has(t.id);return `<tr class="mrow${i%2?' even':''}" tabindex="0" style="cursor:pointer" onclick="openForm(${t.id})" onkeydown="if(event.key==='Enter')openForm(${t.id})" onmouseenter="trDrowShow(${t.id})" onfocus="trDrowShow(${t.id})">
         <td class="cbx" data-l="" onclick="event.stopPropagation()"><span class="cb ${sel?'on':''}" role="checkbox" aria-checked="${sel}" aria-label="Selecteer trade" tabindex="0" onclick="toggleSel(${t.id})" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleSel(${t.id})}">${sel?'✓':''}</span></td>
-        <td class="tag num" data-l="Open">${fmtD(t.date)}${t.time?`<div style="font-size:10.5px;color:var(--muted)">${esc(t.time)}</div>`:''}</td>
-        <td class="tag num" data-l="Close">${closeCell(t)}</td>
-        <td class="rt num" data-l="Duur">${durCell(t)}</td>
+        <td class="tag num" data-l="Datum">${fmtD(t.date)}${t.time?`<div style="font-size:10.5px;color:var(--muted)">${esc(t.time)}</div>`:''}${t.status!=='closed'?`<div style="margin-top:3px">${statusB(t.status)}</div>`:''}</td>
         <td data-l="Exchange">${exCell(t.exchange)}</td>
         <td data-l="Pair"><div class="paircell">${assetCell(t.pair)}${kindBadge(t)}${newBadge(t)}</div></td><td data-l="Richting"><span class="pill ${t.dir}">${t.dir==='long'?'LONG':'SHORT'}</span></td>
         <td class="rt num" data-l="Entry">${numOrDash(t.entry)}</td><td class="rt num" data-l="Exit">${numOrDash(t.exit)}</td>
         <td class="rt num mask" data-l="Size">${isNaN(SZ(t))?'—':CURSYM()+' '+SZ(t).toLocaleString('nl-NL')}${qtySub(t)}</td><td class="rt" data-l="P&L">${t.status==='open'&&t.unrealizedPnl?`<span class="num ${cls(t.unrealizedPnl)} mask" title="niet-gerealiseerde P&L">~${eurS(t.unrealizedPnl)}</span>`:t.status==='partial'&&t.realizedPnl?`<span class="num ${cls(t.realizedPnl)} mask" title="gerealiseerd deel — rest loopt nog">${eurS(t.realizedPnl)}<div style="font-size:10.5px;color:var(--amber)">deels dicht</div></span>`:pnlCell(t.pnl,t.pnlPct)}</td>
         <td class="ct" data-l="R">${rBadge(t.r)}</td>
         <td data-l="Setup">${setupBadge(t.setup)}</td><td data-l="Sessie">${sessBadge(sessionOf(t))}</td>
-        <td data-l="Tags" style="max-width:170px">${tagChips(tradeTagsAll(t))}</td></tr>`;}).join('')}</tbody>
-      <tfoot><tr><td class="cbx"></td><td colspan="9">Totaal (${rows.length})</td><td class="rt">${pnlCell(net,net/ACCT*100)}</td><td colspan="4"></td></tr></tfoot>
+        <td data-l="Tags" style="max-width:170px">${tagChips(tradeTagsAll(t))}</td></tr>
+        <tr class="drow" id="drow-${t.id}" hidden onclick="openForm(${t.id})"><td colspan="13">${tradeHoverDetail(t)}</td></tr>`;}).join('')}</tbody>
+      <tfoot><tr><td class="cbx"></td><td colspan="7">Totaal (${rows.length})</td><td class="rt">${pnlCell(net,net/ACCT*100)}</td><td colspan="4"></td></tr></tfoot>
     </table></div>${pageCount>1?`<div class="pager">
       <button class="btn" ${tPage===0?'disabled':''} onclick="setTradePage(${tPage-1})">‹ Vorige</button>
       <span class="pageinfo"><b>${pStart+1}–${Math.min(pStart+PAGE,rows.length)}</b> van ${rows.length} · pagina ${tPage+1}/${pageCount}</span>
