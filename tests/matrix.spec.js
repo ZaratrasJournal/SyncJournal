@@ -85,7 +85,7 @@ const mk = (setup, session, pnl, date) => ({ setup, session, pnl, r: pnl > 0 ? 1
   ok('tooltip staat aan vóór klik', await p.evaluate(() => document.getElementById('yhtip').classList.contains('on')));
   await p.evaluate(() => matrixCell('AlphaSetup', 'London')); await p.waitForTimeout(300);
   ok('tooltip verdwijnt na klik+navigatie (geen hangend scherm)', await p.evaluate(() => !document.getElementById('yhtip').classList.contains('on')));
-  ok('tegel-klik filtert setup+sessie → trades', await p.evaluate(() => STATE.page === 'trades' && FILTER.setup === 'AlphaSetup' && FILTER.session === 'London'));
+  ok('tegel-klik filtert setup+sessie → trades', await p.evaluate(() => STATE.page === 'trades' && FILTER.setup.includes('AlphaSetup') && FILTER.session.includes('London')));
   ok('gefilterde trades = alleen London/AlphaSetup (8)', await p.evaluate(() => CLOSED.length === 8 && CLOSED.every(t => t.setup === 'AlphaSetup' && sessionOf(t) === 'London')));
 
   ok('geen JS-errors', errs.length === 0, errs.join(' | '));

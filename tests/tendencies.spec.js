@@ -57,7 +57,7 @@ const mk = (id) => { const setup = ['Trend', 'VWAP', 'BOS'][id % 3]; const sess 
   await p.evaluate(() => { STATE.tendRow = 'setup'; STATE.tendCol = 'session'; go('tendencies'); }); await p.waitForTimeout(300);
   await p.evaluate(() => { const td = [...document.querySelectorAll('.thm td[data-t]')].find(x => /Trend · London/.test(x.dataset.t) && !x.classList.contains('faded')); if (td) td.click(); });
   await p.waitForTimeout(300);
-  ok('cel-klik filtert setup+sessie → trades', await p.evaluate(() => STATE.page === 'trades' && FILTER.setup === 'Trend' && FILTER.session === 'London'));
+  ok('cel-klik filtert setup+sessie → trades', await p.evaluate(() => STATE.page === 'trades' && FILTER.setup.includes('Trend') && FILTER.session.includes('London')));
   ok('tooltip weg na klik+navigatie', await p.evaluate(() => !document.getElementById('yhtip').classList.contains('on')));
 
   ok('geen JS-errors', errs.length === 0, errs.join(' | '));

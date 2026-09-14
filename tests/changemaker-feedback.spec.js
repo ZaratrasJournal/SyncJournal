@@ -55,7 +55,7 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
     const inPicker = [...document.querySelectorAll('#tagpick .tagopt')].some(x => x.textContent === 'MijnNieuweTag');
     toggleFormTag('MijnNieuweTag'); submitForm(1);
     go('trades'); const row = [...document.querySelectorAll('tbody tr')].find(r => /BTC\/USDT/.test(r.textContent) && /MijnNieuweTag/.test(r.textContent));
-    const inFilterOpts = [...document.querySelectorAll('.filtbar select')].some(s => [...s.options].some(o => o.value === 'MijnNieuweTag'));
+    const inFilterOpts = [...document.querySelectorAll('.filtbar .ddchk span')].some(x => x.textContent === 'MijnNieuweTag');
     setFilter('tag', 'MijnNieuweTag'); const filtered = FT.length;
     setFilter('tag', '');
     return { inPicker, inRow: !!row, inFilterOpts, filtered };
@@ -72,8 +72,8 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
   ok('laag-confirmatie (FVG) zichtbaar in kolom én filterbaar', a3b.rowHasFvg && a3b.n === 1, JSON.stringify(a3b));
 
   console.log('─── A4/A5: dynamische filteropties ───');
-  ok('eigen setup (via tags-config) direct in setup-filter', await p.evaluate(() => { tagConfig.setupTags = [...(tagConfig.setupTags || []), 'Test Setup XYZ']; persistTagConfig(); render(); return [...document.querySelectorAll('.filtbar select')].some(s => [...s.options].some(o => o.value === 'Test Setup XYZ')); }));
-  ok('playbook-naam in setup-filter', await p.evaluate(() => [...document.querySelectorAll('.filtbar select')].some(s => [...s.options].some(o => o.value === 'London SFP'))));
+  ok('eigen setup (via tags-config) direct in setup-filter', await p.evaluate(() => { tagConfig.setupTags = [...(tagConfig.setupTags || []), 'Test Setup XYZ']; persistTagConfig(); render(); return [...document.querySelectorAll('.filtbar .ddchk span')].some(x => x.textContent === 'Test Setup XYZ'); }));
+  ok('playbook-naam in setup-filter', await p.evaluate(() => [...document.querySelectorAll('.filtbar .ddchk span')].some(x => x.textContent === 'London SFP')));
 
   console.log('─── A6: R-explosie-guards ───');
   ok('tradeR neutraliseert datafouten (|R|>100 → 0)', await p.evaluate(() => tradeR({ r: 430316479702.99 }) === 0 && tradeR({ r: -430316479702.99 }) === 0 && tradeR({ r: 2.5 }) === 2.5));
@@ -93,7 +93,7 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
     const shown = !badge.hidden && / van /.test(badge.textContent) && /hele app/.test(badge.textContent);
     go('kalender'); const onOtherPage = !document.getElementById('gfBadge').hidden;
     badge.querySelector('button').click();
-    const cleared = document.getElementById('gfBadge').hidden && !FILTER.setup;
+    const cleared = document.getElementById('gfBadge').hidden && FILTER.setup.length === 0;
     go('trades'); return { shown, onOtherPage, cleared };
   });
   ok('indicator toont aantallen + uitleg bij actief filter', b1.shown, JSON.stringify(b1));
@@ -104,7 +104,7 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
   ok('scope-chip legt gesloten/open-telling uit', await p.evaluate(() => { T.push({ id: 800, date: '2026-09-07', time: '10:00', pair: 'BTC/USDT', dir: 'long', setup: '', session: 'London', status: 'open', kind: 'live', exchange: '', entry: 100, exit: 0, stop: 95, size: '100', pnl: 0, r: 0, tps: [], tags: [], layers: [], emotions: [], mistakes: [], checks: [], screenshots: [], tvLinks: [] }); persist(); go('analytics'); const txt = document.getElementById('main').textContent; return /trades in de berekening/.test(txt) && /open niet meegerekend/.test(txt); }));
 
   console.log('─── C1: status-filter ───');
-  const c1 = await p.evaluate(() => { go('trades'); const hasSel = [...document.querySelectorAll('.filtbar select')].some(s => [...s.options].some(o => o.value === 'partial')); setFilter('status', 'open'); const allOpen = FT.length > 0 && FT.every(t => t.status === 'open'); setFilter('status', ''); return { hasSel, allOpen }; });
+  const c1 = await p.evaluate(() => { go('trades'); const hasSel = [...document.querySelectorAll('.filtbar .ddchk span')].some(x => x.textContent === 'Partial'); setFilter('status', 'open'); const allOpen = FT.length > 0 && FT.every(t => t.status === 'open'); setFilter('status', ''); return { hasSel, allOpen }; });
   ok('status-dropdown aanwezig + filtert op open', c1.hasSel && c1.allOpen, JSON.stringify(c1));
 
   console.log('─── C2: FAQ partial ───');

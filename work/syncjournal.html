@@ -858,6 +858,16 @@ body.dark .mx-legend .mxsw{box-shadow:inset 0 0 0 1px rgba(255,255,255,.12)}
 .faqsearch:focus{border-color:var(--accent)}
 .faqnone{background:var(--surface);border:1px dashed var(--line);border-radius:10px;padding:18px;text-align:center;font-size:13px;color:var(--muted)}
 .tpin.tptime{max-width:70px;flex:none}
+/* Multi-select filter-dropdowns */
+.dd-btn.fselbtn{background:var(--surface);color:var(--ink);border-radius:9px;padding:8px 12px;font-size:12.5px;font-weight:500}
+.dd-btn.fselbtn.on{border-color:var(--accent);color:var(--accent);font-weight:700}
+.dd-menu.ddchecks{max-height:280px;overflow:auto;min-width:190px;padding:6px}
+.ddchk{display:flex;align-items:center;gap:9px;padding:7px 10px;border-radius:7px;cursor:pointer;font-size:12.5px;color:var(--ink2)}
+.ddchk:hover{background:var(--hover)}
+.ddchk.on{color:var(--accent);font-weight:700}
+.ddchk input{accent-color:var(--accent);width:14px;height:14px;flex:none;cursor:pointer}
+.ddclear{width:100%;text-align:left;padding:7px 10px;border-radius:7px;font-size:12px;font-weight:700;color:var(--red);cursor:pointer}
+.ddclear:hover{background:var(--hover)}
 /* Globale filter-indicator (app-balk) */
 .gfbadge{display:inline-flex;align-items:center;gap:8px;margin-left:12px;padding:5px 12px;border-radius:20px;background:var(--amber-soft);border:1px solid color-mix(in srgb,var(--amber) 38%,transparent);color:var(--amber);font-size:11.5px;font-weight:700;white-space:nowrap}
 .gfbadge button{font-size:11px;font-weight:800;padding:2px 9px;border-radius:12px;background:var(--amber);color:#fff;cursor:pointer}
@@ -1504,7 +1514,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.49';
+const APP_VERSION='v0.9.50';
 const SCHEMA_VERSION=2;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -1750,19 +1760,26 @@ STATE.tendRow=STATE.tendRow||'setup'; STATE.tendCol=STATE.tendCol||'session';  /
 function persistState(){ DB.save('state',{theme:STATE.theme,priv:STATE.priv,density:STATE.density,currency:STATE.currency,sections:STATE.sections}); }
 
 /* ═══ Globale filter (elke pagina) ═══ */
-const FILTER={exchange:'',pair:'',setup:'',session:'',dir:'',tag:'',status:'',dateFrom:'',dateTo:'',datePreset:'',kind:'live'};
+// Multi-select (Denny 2026-09-14): de zes categorie-filters zijn arrays — meerdere
+// accounts/setups/etc. tegelijk. dir/kind blijven enkelvoudig (multi is daar zinloos).
+const FILTER={exchange:[],pair:[],setup:[],session:[],dir:'',tag:[],status:[],dateFrom:'',dateTo:'',datePreset:'',kind:'live'};
+const MULTI_FILTER_KEYS=['exchange','pair','setup','session','tag','status'];
 function kindMatch(t,k){const tk=t.kind||'live';if(!k||k==='alle')return true;if(k==='oefen')return tk!=='live';return tk===k;}
 let FT=[];
-function applyFilter(rows){const f=FILTER;return rows.filter(t=>kindMatch(t,f.kind)&&(!f.exchange||t.exchange===f.exchange)&&(!f.pair||t.pair===f.pair)&&(!f.setup||t.setup===f.setup)&&(!f.session||sessionOf(t)===f.session)&&(!f.dir||t.dir===f.dir)&&(!f.tag||tradeTagsAll(t).includes(f.tag))&&(!f.status||t.status===f.status)&&(!f.dateFrom||t.date>=f.dateFrom)&&(!f.dateTo||t.date<=f.dateTo));}
+function applyFilter(rows){const f=FILTER;return rows.filter(t=>kindMatch(t,f.kind)&&(!f.exchange.length||f.exchange.includes(t.exchange))&&(!f.pair.length||f.pair.includes(t.pair))&&(!f.setup.length||f.setup.includes(t.setup))&&(!f.session.length||f.session.includes(sessionOf(t)))&&(!f.dir||t.dir===f.dir)&&(!f.tag.length||tradeTagsAll(t).some(x=>f.tag.includes(x)))&&(!f.status.length||f.status.includes(t.status))&&(!f.dateFrom||t.date>=f.dateFrom)&&(!f.dateTo||t.date<=f.dateTo));}
 // Zelfde filters MAAR zonder de kind-filter — voor de real/paper/backtest-vergelijking (moet alle soorten zien).
-function applyFilterNoKind(rows){const f=FILTER;return rows.filter(t=>(!f.exchange||t.exchange===f.exchange)&&(!f.pair||t.pair===f.pair)&&(!f.setup||t.setup===f.setup)&&(!f.session||sessionOf(t)===f.session)&&(!f.dir||t.dir===f.dir)&&(!f.tag||tradeTagsAll(t).includes(f.tag))&&(!f.dateFrom||t.date>=f.dateFrom)&&(!f.dateTo||t.date<=f.dateTo));}
+function applyFilterNoKind(rows){const f=FILTER;return rows.filter(t=>(!f.exchange.length||f.exchange.includes(t.exchange))&&(!f.pair.length||f.pair.includes(t.pair))&&(!f.setup.length||f.setup.includes(t.setup))&&(!f.session.length||f.session.includes(sessionOf(t)))&&(!f.dir||t.dir===f.dir)&&(!f.tag.length||tradeTagsAll(t).some(x=>f.tag.includes(x)))&&(!f.status.length||f.status.includes(t.status))&&(!f.dateFrom||t.date>=f.dateFrom)&&(!f.dateTo||t.date<=f.dateTo));}
 // Buckets voor edge-erosion (real vs paper vs backtest) — gedeeld door analytics + playbook-detail.
 function eroBuckets(rows){const b={backtest:[],paper:[],real:[]};(rows||[]).forEach(x=>{if(x.status==='open')return;const k=x.kind==='backtest'?'backtest':x.kind==='paper'?'paper':(isLive(x)?'real':null);if(k)b[k].push(x);});
   const stat=arr=>{const n=arr.length,rs=arr.map(tradeR);return {n,wr:n?Math.round(arr.filter(x=>tradeR(x)>0).length/n*100):0,avgR:n?rs.reduce((a,c)=>a+c,0)/n:0,net:arr.reduce((a,c)=>a+(+c.pnl||0),0)};};
   return {backtest:stat(b.backtest),paper:stat(b.paper),real:stat(b.real)};}
-function countActive(){return ['exchange','pair','setup','session','dir','tag','status'].filter(k=>FILTER[k]).length+((FILTER.dateFrom||FILTER.dateTo)?1:0)+((FILTER.kind&&FILTER.kind!=='live')?1:0);}
-function setFilter(k,v){FILTER[k]=v;STATE.selected=[];STATE.tradePage=0;render();}
-function clearGFilter(){['exchange','pair','setup','session','dir','tag','status','dateFrom','dateTo','datePreset'].forEach(k=>FILTER[k]='');FILTER.kind='live';STATE.tradePage=0;render();}
+function countActive(){return MULTI_FILTER_KEYS.filter(k=>FILTER[k].length).length+(FILTER.dir?1:0)+((FILTER.dateFrom||FILTER.dateTo)?1:0)+((FILTER.kind&&FILTER.kind!=='live')?1:0);}
+// setFilter VERVANGT de selectie (klik-door vanuit heatmaps = focus op die ene waarde);
+// toggleFilter voegt toe/haalt weg (checkbox-dropdowns).
+function setFilter(k,v){if(MULTI_FILTER_KEYS.includes(k))FILTER[k]=v?[v]:[];else FILTER[k]=v;STATE.selected=[];STATE.tradePage=0;render();}
+function toggleFilter(k,v){const a=FILTER[k],i=a.indexOf(v);if(i<0)a.push(v);else a.splice(i,1);STATE.selected=[];STATE.tradePage=0;reopenDD=k;render();}
+function clearFilterKey(k){FILTER[k]=[];STATE.selected=[];STATE.tradePage=0;reopenDD=k;render();}
+function clearGFilter(){MULTI_FILTER_KEYS.forEach(k=>FILTER[k]=[]);['dir','dateFrom','dateTo','datePreset'].forEach(k=>FILTER[k]='');FILTER.kind='live';STATE.tradePage=0;render();}
 /* ── datum-filter: presets + van/tot ── */
 const isoD=dt=>dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0')+'-'+String(dt.getDate()).padStart(2,'0');
 function refNow(){const ds=T.map(t=>t.date).filter(Boolean);return ds.length?ds.reduce((a,b)=>a>b?a:b):new Date().toISOString().slice(0,10);}
@@ -1785,6 +1802,19 @@ function dateFilterDD(){const presets=[['week','Deze week'],['month','Deze maand
       <div class="dd-sep"></div>
       <div class="dd-custom"><span>Van</span><input type="date" value="${FILTER.dateFrom||''}" onchange="setDateFrom(this.value)"/><span>tot</span><input type="date" value="${FILTER.dateTo||''}" onchange="setDateTo(this.value)"/></div>
     </div></div>`;}
+// Checkbox-dropdown voor multi-select filters (zelfde .dd-patroon als het datum-filter).
+const MULTI_LABELS={exchange:['Alle accounts','accounts'],pair:['Alle pairs','pairs'],setup:['Alle setups','setups'],session:['Alle sessies','sessies'],status:['Alle statussen','statussen'],tag:['Alle tags','tags']};
+function multiDD(key,opts){
+  const [empty,many]=MULTI_LABELS[key];const cur=FILTER[key];
+  const labOf=v=>{const o=opts.find(x=>(Array.isArray(x)?x[0]:x)===v);return o?(Array.isArray(o)?o[1]:o):v;};
+  const label=cur.length===0?empty:cur.length===1?labOf(cur[0]):`${cur.length} ${many}`;
+  return `<div class="dd" data-dd="${key}"><button class="dd-btn fselbtn ${cur.length?'on':''}" onclick="ddToggle(this)">${esc(label)}<span class="cv">▾</span></button>
+    <div class="dd-menu ddchecks" onclick="event.stopPropagation()">
+      ${opts.map(o=>{const val=Array.isArray(o)?o[0]:o,lab=Array.isArray(o)?o[1]:o;const on=cur.includes(val);
+        return `<label class="ddchk ${on?'on':''}"><input type="checkbox" ${on?'checked':''} onchange="toggleFilter('${key}','${jsarg(val)}')"><span>${esc(lab)}</span></label>`;}).join('')}
+      ${cur.length?`<div class="dd-sep"></div><button class="ddclear" onclick="clearFilterKey('${key}')">✕ Wis selectie</button>`:''}
+    </div></div>`;
+}
 function filterBar(){
   const sel=(key,label,opts)=>`<select class="fsel" aria-label="${esc(label)}" onchange="setFilter('${key}',this.value)"><option value="">${label}</option>${opts.map(o=>{const val=Array.isArray(o)?o[0]:o,lab=Array.isArray(o)?o[1]:o;return `<option value="${esc(val)}" ${FILTER[key]===val?'selected':''}>${esc(lab)}</option>`;}).join('')}</select>`;
   const pairs=[...new Set(T.map(t=>t.pair))].sort();
@@ -1795,13 +1825,13 @@ function filterBar(){
   const active=countActive();
   return `<div class="filtbar">
     <span class="fico">⛃</span>
-    ${sel('exchange','Alle accounts',[...EXCHANGES.map(e=>[e.id,e.name]),...MANUAL.map(m=>[m.id,m.name])])}
-    ${sel('pair','Alle pairs',pairs)}
-    ${sel('setup','Alle setups',setups)}
-    ${sel('session','Alle sessies',SESSIONS)}
+    ${multiDD('exchange',[...EXCHANGES.map(e=>[e.id,e.name]),...MANUAL.map(m=>[m.id,m.name])])}
+    ${multiDD('pair',pairs)}
+    ${multiDD('setup',setups)}
+    ${multiDD('session',SESSIONS)}
     ${sel('dir','Long & short',[['long','Long'],['short','Short']])}
-    ${sel('status','Alle statussen',[['open','Open'],['partial','Partial'],['closed','Gesloten']])}
-    ${sel('tag','Alle tags',tags)}
+    ${multiDD('status',[['open','Open'],['partial','Partial'],['closed','Gesloten']])}
+    ${multiDD('tag',tags)}
     <select class="fsel kindsel" aria-label="Soort trades" onchange="setFilter('kind',this.value)">${[['live','Live trades'],['oefen','Oefentrades (alle)'],['backtest','⏲ Backtest'],['paper','📄 Paper'],['gemist','👻 Gemist'],['alle','Alle soorten']].map(([v,l])=>`<option value="${v}" ${FILTER.kind===v?'selected':''}>${l}</option>`).join('')}</select>
     ${dateFilterDD()}
     ${active?`<button class="fclear" onclick="clearGFilter()">✕ Wis (${active})</button>`:''}
@@ -2135,7 +2165,7 @@ function curTradeRows(){ let r=FT.filter(t=>STATE.tradeTab==='all'||(STATE.trade
 function announce(){ const l=document.getElementById('live');if(l&&STATE.page==='trades')l.textContent=curTradeRows().length+' trades, gesorteerd op '+STATE.sortCol; }
 
 // Setup × sessie — TradingView-stijl treemap: sessie = groep, setup = tegel (grootte = hoeveelheid, kleur = netto P&L).
-function matrixCell(su,se){FILTER.setup=su;FILTER.session=se;STATE.selected=[];STATE.tradePage=0;go('trades');}
+function matrixCell(su,se){FILTER.setup=su?[su]:[];FILTER.session=se?[se]:[];STATE.selected=[];STATE.tradePage=0;go('trades');}
 function setMatrixSize(v){STATE.matrixSize=v;render();}
 // Squarified treemap (Bruls e.a.) — items:[{value,...}] in rechthoek → [{item,x,y,w,h}].
 function squarify(items,rect){
@@ -2208,7 +2238,7 @@ function tmMove(e){const tip=document.getElementById('yhtip');if(!tip)return;con
   tip.style.left=x+'px';tip.style.top=y+'px';
 }
 // Winst-per-pair heatmap: tegel groter = grotere |netto P&L|, kleur = winst/verlies. Klik = filter op pair.
-function pairCell(pair){FILTER.pair=pair;STATE.selected=[];STATE.tradePage=0;yhHide();go('trades');}
+function pairCell(pair){FILTER.pair=pair?[pair]:[];STATE.selected=[];STATE.tradePage=0;yhHide();go('trades');}
 function pairProfitHeatmap(){
   const by={};
   CLOSED.forEach(t=>{const pr=t.pair||'—';(by[pr]=by[pr]||{n:0,w:0,pnl:0});by[pr].n++;by[pr].pnl+=t.pnl;if(t.pnl>0)by[pr].w++;});
@@ -2264,7 +2294,7 @@ function tendVerdict(){
   return `<div class="grid" style="grid-template-columns:1fr 1fr;align-items:stretch">${card(edge,'edge')}${card(leak,'leak')}</div>`;
 }
 function setCrossDim(which,val){STATE[which==='row'?'tendRow':'tendCol']=val;render();}
-function crossCell(rd,rv,cd,cv){const apply=(dim,val)=>{if(dim==='setup')FILTER.setup=val;else if(dim==='session')FILTER.session=val;else if(dim==='dir')FILTER.dir=(val==='Long'?'long':'short');};
+function crossCell(rd,rv,cd,cv){const apply=(dim,val)=>{if(dim==='setup')FILTER.setup=val?[val]:[];else if(dim==='session')FILTER.session=val?[val]:[];else if(dim==='dir')FILTER.dir=(val==='Long'?'long':'short');};
   apply(rd,rv);apply(cd,cv);STATE.selected=[];STATE.tradePage=0;yhHide();go('trades');}
 function crossHeat(){
   let rd=STATE.tendRow||'setup',cd=STATE.tendCol||'session';if(rd===cd)cd=(rd==='session'?'setup':'session');
