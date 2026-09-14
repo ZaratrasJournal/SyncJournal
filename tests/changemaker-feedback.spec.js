@@ -50,7 +50,7 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
 
   console.log('─── A3: tag-cirkel — Instellingen → picker → opslaan → kolom → filter ───');
   const a3 = await p.evaluate(() => {
-    tagConfig.confirmationTags = [...(tagConfig.confirmationTags || []), 'MijnNieuweTag']; persistTagConfig();
+    tagConfig.customTags = [...(tagConfig.customTags || []), 'MijnNieuweTag']; persistTagConfig();
     openForm(1); renderFormTags();
     const inPicker = [...document.querySelectorAll('#tagpick .tagopt')].some(x => x.textContent === 'MijnNieuweTag');
     toggleFormTag('MijnNieuweTag'); submitForm(1);

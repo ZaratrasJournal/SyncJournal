@@ -1516,7 +1516,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.53';
+const APP_VERSION='v0.9.54';
 const SCHEMA_VERSION=2;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -1662,6 +1662,10 @@ const TAG_CATS=[
   {key:'emotionTags',label:'Emoties',color:'#c0821c'},
   {key:'mistakeTags',label:'Fouten',color:'#e8823c'},
   {key:'missedReasonTags',label:'Missed-redenen',color:'#8a92a3',emoji:'👻'},
+  // Eigen labels (2026-09-14): vrije tags zoals "nieuwsdag" of "high conviction" — beheersbaar
+  // in Instellingen → Tags en de enige bron voor de tags-picker in het trade-formulier
+  // (confirmaties kies je in de setup-lagen; die stonden dubbel in de picker).
+  {key:'customTags',label:'Eigen labels',color:'#7a869c',emoji:'🔖'},
 ];
 const DEFAULT_TAGCONFIG={
   setupTags:['London SFP','Trend-pullback','BOS-retest','Range-fade','Reclaim','News trade','Liquidity grab','VWAP-bounce','BOS','MSB','SFP'],
@@ -1670,9 +1674,11 @@ const DEFAULT_TAGCONFIG={
   emotionTags:['Kalm','Zelfverzekerd','Gefocust','Geduldig','FOMO','Twijfel','Gehaast','Revenge'],
   mistakeTags:['Te vroeg in','Te laat in','SL te krap','SL te wijd','Geen plan','Overtrading','TP te vroeg','Positie te groot','Revenge trade'],
   missedReasonTags:['Te laat gezien','Geen bevestiging','Buiten sessie','Al in een trade','Twijfel','Setup onduidelijk','FOMO vermeden'],
+  customTags:['A+ setup','Herhaalbaar','Nieuwsdag','High conviction'],
 };
 let tagConfig=DB.load('tagconfig',JSON.parse(JSON.stringify(DEFAULT_TAGCONFIG)));
-if(!tagConfig.missedReasonTags)tagConfig.missedReasonTags=[...DEFAULT_TAGCONFIG.missedReasonTags];delete tagConfig.customTags;
+if(!tagConfig.missedReasonTags)tagConfig.missedReasonTags=[...DEFAULT_TAGCONFIG.missedReasonTags];
+if(!Array.isArray(tagConfig.customTags))tagConfig.customTags=[...DEFAULT_TAGCONFIG.customTags];
 function persistTagConfig(){ DB.save('tagconfig',tagConfig); }
 function allTags(){ return [...new Set(Object.values(tagConfig).flat())]; }
 function addTagCat(catKey,inputId){const el=document.getElementById(inputId);if(!el)return;const v=el.value.trim();if(v&&!(tagConfig[catKey]||[]).includes(v)){tagConfig[catKey]=[...(tagConfig[catKey]||[]),v];persistTagConfig();}render();}
@@ -1823,7 +1829,7 @@ function filterBar(){
   // A4+A5: filteropties dynamisch uit config + data — eigen setups/tags verschijnen direct,
   // ook als er nog geen trade mee bestaat.
   const setups=[...new Set([...Object.keys(PBOOK||{}),...(tagConfig.setupTags||[]),...T.map(t=>t.setup).filter(Boolean)])].sort();
-  const tags=[...new Set([...(tagConfig.confirmationTags||[]),...T.flatMap(tradeTagsAll)])].sort();
+  const tags=[...new Set([...(tagConfig.confirmationTags||[]),...(tagConfig.customTags||[]),...T.flatMap(tradeTagsAll)])].sort();
   const active=countActive();
   return `<div class="filtbar">
     <span class="fico">⛃</span>
@@ -5568,13 +5574,13 @@ let formDirty=false,modalKind='';  // dirty-guard: waarschuw bij niet-opgeslagen
 function toggleFormTag(tag){const i=formTags.indexOf(tag);if(i<0)formTags.push(tag);else formTags.splice(i,1);renderFormTags();}
 function renderFormTags(){const c=document.getElementById('tagpick');if(!c)return;
   const chip=(tg,col)=>{const on=formTags.includes(tg);const sel=on?`style="border-color:color-mix(in srgb,${col} 55%,transparent);background:color-mix(in srgb,${col} 14%,transparent);color:${col}"`:'';return `<span class="tagopt ${on?'on':''}" ${sel} onclick="toggleFormTag('${esc(tg).replace(/'/g,'')}')">${esc(tg)}</span>`;};
-  // A3-fix: de picker las het verwijderde tagConfig.customTags (altijd leeg) — daardoor
-  // verschenen tags uit Instellingen hier nooit. Nu: confirmatie-tags uit de config
-  // (dé vrije-label-categorie van de picker) + losse tags uit bestaande trades.
-  const conf=tagConfig.confirmationTags||[];const confCol=(TAG_CATS.find(x=>x.key==='confirmationTags')||{}).color||'#12b39b';
+  // De picker toont ALLEEN "Eigen labels" (Instellingen → Tags) + losse tags uit bestaande
+  // trades. Confirmaties staan hier bewust niet — die kies je in de setup-lagen (feedback
+  // Denny 2026-09-14: ze stonden dubbel en oogden onbeheersbaar).
+  const custom=tagConfig.customTags||[];const cCol=(TAG_CATS.find(x=>x.key==='customTags')||{}).color||'#7a869c';
   const known=new Set(Object.values(tagConfig).flat());
   const loose=[...new Set([...formTags,...T.flatMap(t=>t.tags||[])])].filter(t=>!known.has(t));
-  c.innerHTML=`<div class="tg-chips">${conf.map(t=>chip(t,confCol)).join('')}${loose.map(t=>chip(t,'var(--muted)')).join('')}</div>`;}
+  c.innerHTML=`<div class="tg-chips">${custom.map(t=>chip(t,cCol)).join('')}${loose.map(t=>chip(t,'var(--muted)')).join('')}</div>`;}
 function setFormGrade(g){formGrade=(formGrade===g?'':g);document.querySelectorAll('#gradeseg button').forEach(b=>b.classList.toggle('on',b.dataset.g===formGrade));}
 // A2: onthoud of de gebruiker het playbook-veld heeft aangeraakt — een expliciete keuze
 // (ook "— geen —") wint dan altijd; alleen een onaangeraakt leeg veld valt terug op de lagen.
@@ -5735,7 +5741,7 @@ function openForm(id){
       <div class="field full"><div class="lt-head"><label style="margin:0">Setup-lagen (top-down)</label><button type="button" class="btn" onclick="addLayer()">+ Laag toevoegen</button></div><div id="layerbuilder" class="layerbuilder"></div></div>
       <div class="field full"><label>Emoties</label><div id="emobuilder" class="emobuilder"></div></div>
       <div class="field full"><label>Fouten</label><div id="mistakebuilder"></div></div>
-      <div class="field full"><label>Tags <span class="hint">(confirmaties &amp; eigen labels — filterbaar in de hele app)</span></label><div id="tagpick" class="tagpick"></div></div>
+      <div class="field full"><label>Eigen labels <span class="hint">(beheren via Instellingen → Tags · filterbaar in de hele app)</span></label><div id="tagpick" class="tagpick"></div></div>
       <div class="field full missedfield" id="missedfield"><label>👻 Missed-reden <span class="hint">(waarom niet genomen)</span></label><div id="missedbuilder"></div></div>
 
       <div class="msub s6"><span class="msn">6</span> Notities</div>
