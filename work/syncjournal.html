@@ -243,6 +243,11 @@ table.tbl{width:100%;border-collapse:collapse;font-size:14px}
 .cbx{width:38px;text-align:center!important}
 .cb{width:17px;height:17px;border-radius:5px;border:1.5px solid var(--line);display:inline-grid;place-items:center;cursor:pointer;vertical-align:middle;color:#fff;font-size:11px;line-height:1}
 .cb.on{background:var(--accent);border-color:var(--accent)}
+/* formulier: Standaard/Pro-velden verbergbaar via weergave-presets.
+   Veld mét inhoud krijgt .vf-keep en blijft áltijd zichtbaar (regel: data verdwijnt nooit). */
+.mbody.hstd .vf-std:not(.vf-keep),.mbody.hpro .vf-pro:not(.vf-keep){display:none}
+.fmorebar{grid-column:1/-1;display:flex;align-items:center;justify-content:center;gap:8px;margin-top:4px;padding:9px;border:1px dashed var(--line);border-radius:10px;font-size:12.5px;font-weight:700;color:var(--accent);background:none;cursor:pointer;font-family:inherit}
+.fmorebar:hover{background:var(--accent-soft)}
 /* weergave-presets (Instellingen → Weergave) */
 .vpcards{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:10px}
 .vpcard{border:1.5px solid var(--line);border-radius:12px;padding:12px 14px;background:var(--sink);text-align:left;cursor:pointer;font-family:inherit}
@@ -1549,7 +1554,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.56';
+const APP_VERSION='v0.9.57';
 const SCHEMA_VERSION=2;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -2934,7 +2939,9 @@ function pgInstellingen(){
     <div class="section-sub">📊 Dashboard</div>
     <div class="panel">${vRow('dHero','Account-hero')+vRow('dKpiCore','Kern-KPI’s','netto P&L · win-rate')+vRow('dKpiPro','Pro-KPI’s','profit factor · expectancy · gem. R')+vRow('dEquity','Equity-curve')+vRow('dMonthly','Maand-P&L')+vRow('dEdge','Waar zit je edge')+vRow('dRecent','Recente trades')}</div>
     <div class="section-sub">📋 Trades-tabel</div>
-    <div class="panel">${vRow('tExchange','Exchange-kolom')+vRow('tEntryExit','Entry / Exit-kolommen')+vRow('tSize','Size-kolom')+vRow('tR','R-kolom')+vRow('tSessie','Sessie-kolom')+vRow('tTags','Tags-kolom')+vRow('tHoverFull','Volledig hover-detail','uit = alleen de tijdlijn bij hover')}</div>`;
+    <div class="panel">${vRow('tExchange','Exchange-kolom')+vRow('tEntryExit','Entry / Exit-kolommen')+vRow('tSize','Size-kolom')+vRow('tR','R-kolom')+vRow('tSessie','Sessie-kolom')+vRow('tTags','Tags-kolom')+vRow('tHoverFull','Volledig hover-detail','uit = alleen de tijdlijn bij hover')}</div>
+    <div class="section-sub">📝 Trade-formulier <span class="hint">(velden mét inhoud blijven altijd zichtbaar)</span></div>
+    <div class="panel">${vRow('fStd','Standaard-velden','stop-loss · risk · hefboom · sluit-tijd · emoties · fouten · labels')+vRow('fPro','Pro-velden','lagen · geplande R:R · marktconditie · grade · MAE/MFE · soort · TV-links')}</div>`;
   const panes={
     accounts:`<p class="setintro">Koppel je exchanges via read-only API-keys, of houd accounts handmatig bij.</p>
       <div class="section-sub">🔗 Exchange-koppelingen</div>
@@ -5793,6 +5800,25 @@ function calcTrade(fill){
   if(!isNaN(rr))parts.push(`R:R <b class="num">${rr.toFixed(1).replace('.',',')}:1</b>`);
   prev.innerHTML='<span class="calc-ic">∑</span><span>'+parts.join(' · ')+'</span>';
 }
+let formMoreOpen=false;
+// "Meer velden": toont de verborgen Standaard/Pro-velden zonder het formulier te
+// herbouwen (klassen togglen) — getypte waarden blijven dus staan.
+function toggleFormMore(){formMoreOpen=!formMoreOpen;updFormVis();}
+function updFormVis(){
+  const mb=document.querySelector('#modal .mbody');if(!mb)return;
+  mb.classList.toggle('hstd',!VV('fStd')&&!formMoreOpen);
+  mb.classList.toggle('hpro',!VV('fPro')&&!formMoreOpen);
+  // sectiekop zonder zichtbare velden eronder → ook verbergen
+  mb.querySelectorAll('.msub').forEach(h=>{let el=h.nextElementSibling,any=false;
+    while(el&&!el.classList.contains('msub')){if(!el.classList.contains('fmorebar')&&getComputedStyle(el).display!=='none'){any=true;break;}el=el.nextElementSibling;}
+    h.style.display=any?'':'none';});
+  const btn=document.getElementById('fMoreBtn');if(!btn)return;
+  let n=0;
+  if(!VV('fStd'))n+=mb.querySelectorAll('.vf-std:not(.vf-keep)').length;
+  if(!VV('fPro'))n+=mb.querySelectorAll('.vf-pro:not(.vf-keep)').length;
+  btn.hidden=n===0;
+  btn.textContent=formMoreOpen?'▴ Minder velden':`▾ Meer velden (${n})`;
+}
 function openForm(id){
   const t=id!=null?T.find(x=>x.id===id):{date:new Date().toISOString().slice(0,10),time:'',exchange:'mexc',pair:'BTC/USDC',dir:'long',setup:'London SFP',session:'London',timeframe:'15m',market:'Trending',grade:'',entry:'',stop:'',tp:'',exit:'',size:'',leverage:10,fees:'',risk:'',rrPlanned:'',pnl:'',r:'',status:'closed',emotion:'',mistake:'',emotions:[],mistakes:[],layers:[],tags:[],notes:'',lessons:'',durationMin:'',mae:'',mfe:''};
   formSizeUnit=(t.sizeUnit==='asset'&&t.qty>0)?'asset':'usd';formPbTouched=false;
@@ -5805,6 +5831,10 @@ function openForm(id){
   const opt=(arr,sel)=>arr.map(x=>`<option ${x===sel?'selected':''}>${esc(x)}</option>`).join('');
   const _cMs0=+t.closeTime||0,closeD0=_cMs0?ts2date(_cMs0):'',closeT0=_cMs0?ts2time(_cMs0):'';
   const exOpt=[...EXCHANGES.map(e=>[e.id,e.name]),...MANUAL.map(m=>[m.id,m.name+' (handmatig)'])].map(([id,nm])=>`<option value="${id}" ${t.exchange===id?'selected':''}>${esc(nm)}</option>`).join('');
+  // Weergave-presets: Standaard/Pro-velden zijn verbergbaar, maar een veld mét inhoud
+  // krijgt vf-keep en blijft altijd zichtbaar. Alles blijft in de DOM (submit/calc veilig).
+  formMoreOpen=false;
+  const vfc=(grp,filled)=>`vf-${grp}${filled?' vf-keep':''}`;
   document.getElementById('modal').innerHTML=`
     <div class="mhead"><h3>${id!=null?'Trade bewerken':'Nieuwe trade'}</h3><button class="xbtn" onclick="closeForm()">×</button></div>
     <div class="mbody">
@@ -5815,56 +5845,57 @@ function openForm(id){
       <div class="field"><label>Tijd</label><input id="f_time" value="${t.time||''}" placeholder="14:30"></div>
       <div class="field"><label>Richting</label><select id="f_dir" aria-label="Richting" onchange="calcTrade(true)"><option value="long" ${t.dir==='long'?'selected':''}>Long</option><option value="short" ${t.dir==='short'?'selected':''}>Short</option></select></div>
       <div class="field"><label>Status</label><select id="f_status" aria-label="Status"><option value="closed" ${t.status==='closed'?'selected':''}>Gesloten</option><option value="partial" ${t.status==='partial'?'selected':''}>Partial</option><option value="open" ${t.status==='open'?'selected':''}>Open</option></select></div>
-      <div class="field"><label>Soort <span class="hint">(Live of oefentrade)</span></label><select id="f_kind" aria-label="Soort trade" onchange="onKindChange()">${Object.entries(KINDS).map(([v,k])=>`<option value="${v}" ${(t.kind||'live')===v?'selected':''}>${k.emoji?k.emoji+' ':''}${k.label}</option>`).join('')}</select></div>
+      <div class="field ${vfc('pro',id!=null&&t.kind&&t.kind!=='live')}"><label>Soort <span class="hint">(Live of oefentrade)</span></label><select id="f_kind" aria-label="Soort trade" onchange="onKindChange()">${Object.entries(KINDS).map(([v,k])=>`<option value="${v}" ${(t.kind||'live')===v?'selected':''}>${k.emoji?k.emoji+' ':''}${k.label}</option>`).join('')}</select></div>
 
       <div class="msub s2"><span class="msn">2</span> Context</div>
       <div class="field"><label>Sessie</label><select id="f_session" aria-label="Sessie">${opt(SESSIONS,sessionOf(t)||t.session)}</select></div>
-      <div class="field"><label>Marktconditie</label><select id="f_market" aria-label="Marktconditie">${opt(MARKETS,t.market||'Trending')}</select></div>
+      <div class="field ${vfc('pro',id!=null&&!!t.market&&t.market!=='Trending')}"><label>Marktconditie</label><select id="f_market" aria-label="Marktconditie">${opt(MARKETS,t.market||'Trending')}</select></div>
       <div class="field"><label>Playbook <span class="hint">(koppel deze trade aan een setup)</span></label><select id="f_playbook" aria-label="Playbook" onchange="onPlaybookPick()"><option value="">— geen —</option>${Object.keys(PBOOK).sort().map(nm=>`<option value="${esc(nm)}" ${t.setup===nm?'selected':''}>${esc(nm)}</option>`).join('')}</select></div>
-      <div class="field full"><label>Setup-grade <span class="hint">(optioneel · A = hoogste kwaliteit · C = marginaal)</span></label>
+      <div class="field full ${vfc('pro',!!formGrade)}"><label>Setup-grade <span class="hint">(optioneel · A = hoogste kwaliteit · C = marginaal)</span></label>
         <div class="confseg gradeseg" id="gradeseg">${GRADES.map(g=>`<button data-g="${g.k}" class="g-${g.k} ${formGrade===g.k?'on':''}" onclick="setFormGrade('${g.k}')" title="${g.desc}">${g.k}</button>`).join('')}</div></div>
 
       <div class="msub s3"><span class="msn">3</span> Prijzen &amp; risico</div>
       <div class="field"><label>Entry</label><input id="f_entry" value="${t.entry}" inputmode="decimal" oninput="calcTrade(true)"></div>
       <div class="field"><label>Exit</label><input id="f_exit" value="${t.exit}" inputmode="decimal" oninput="calcTrade(true)"></div>
-      <div class="field"><label>Stop-loss</label><input id="f_stop" value="${t.stop||''}" inputmode="decimal" oninput="calcTrade(true)"></div>
+      <div class="field ${vfc('std',+t.stop>0)}"><label>Stop-loss</label><input id="f_stop" value="${t.stop||''}" inputmode="decimal" oninput="calcTrade(true)"></div>
       <div class="field"><label>Size <span class="hint">(in ${CURSYM()} of in de asset)</span></label>
         <div class="szrow"><input id="f_size" value="${formSizeUnit==='asset'?(t.qty||''):t.size}" inputmode="decimal" oninput="calcTrade(true)">
         <div class="szseg" id="szseg"><button type="button" class="${formSizeUnit==='usd'?'on':''}" onclick="setSizeUnit('usd')">${CURSYM()}</button><button type="button" id="szAssetBtn" class="${formSizeUnit==='asset'?'on':''}" onclick="setSizeUnit('asset')">${esc(pairBase(t.pair)||'coin')}</button></div></div></div>
-      <div class="field"><label>Hefboom</label><input id="f_leverage" value="${t.leverage||''}" inputmode="numeric" placeholder="10"></div>
-      <div class="field"><label>Risk (%)</label><input id="f_risk" value="${t.risk||''}" inputmode="decimal" placeholder="1.0"></div>
-      <div class="field"><label>Geplande R:R</label><input id="f_rrPlanned" value="${t.rrPlanned||''}" inputmode="decimal" placeholder="2.0"></div>
+      <div class="field ${vfc('std',id!=null&&+t.leverage>0)}"><label>Hefboom</label><input id="f_leverage" value="${t.leverage||''}" inputmode="numeric" placeholder="10"></div>
+      <div class="field ${vfc('std',+t.risk>0)}"><label>Risk (%)</label><input id="f_risk" value="${t.risk||''}" inputmode="decimal" placeholder="1.0"></div>
+      <div class="field ${vfc('pro',+t.rrPlanned>0)}"><label>Geplande R:R</label><input id="f_rrPlanned" value="${t.rrPlanned||''}" inputmode="decimal" placeholder="2.0"></div>
       <div class="calcprev" id="calcPrev"></div>
       <div class="field full"><div class="lt-head"><label style="margin:0">Take-profit-niveaus <span class="hint">(partial closes · verdeel je positie)</span></label></div><div id="tpbuilder" class="tpbuilder"></div></div>
 
       <div class="msub s4"><span class="msn">4</span> Resultaat</div>
       <div class="field"><label>P&L (${CURSYM()})</label><input id="f_pnl" value="${t.pnl}" inputmode="decimal"></div>
-      <div class="field"><label>R-multiple</label><input id="f_r" value="${t.r}" inputmode="decimal"></div>
+      <div class="field ${vfc('std',t.r!==''&&+t.r!==0)}"><label>R-multiple</label><input id="f_r" value="${t.r}" inputmode="decimal"></div>
       <div class="field"><label>Fees (${CURSYM()})</label><input id="f_fees" value="${t.fees||''}" inputmode="decimal" oninput="calcTrade(true)"></div>
-      <div class="field"><label>Sluit-datum <span class="hint">(optioneel)</span></label><input type="date" id="f_closeDate" value="${closeD0}" onchange="calcTrade(true)"></div>
-      <div class="field"><label>Sluit-tijd</label><input id="f_closeTime" value="${closeT0}" placeholder="16:45" oninput="calcTrade(true)"></div>
-      <div class="field"><label>Tijd in trade (min) <span class="hint">(auto bij sluit-tijd)</span></label><input id="f_durationMin" value="${t.durationMin||''}" inputmode="numeric"></div>
-      <div class="field"><label>MAE (R) <span class="hint">(max tegen je in)</span></label><input id="f_mae" value="${t.mae||''}" inputmode="decimal"></div>
-      <div class="field"><label>MFE (R) <span class="hint">(max vóór je)</span></label><input id="f_mfe" value="${t.mfe||''}" inputmode="decimal"></div>
+      <div class="field ${vfc('std',!!closeD0)}"><label>Sluit-datum <span class="hint">(optioneel)</span></label><input type="date" id="f_closeDate" value="${closeD0}" onchange="calcTrade(true)"></div>
+      <div class="field ${vfc('std',!!closeT0)}"><label>Sluit-tijd</label><input id="f_closeTime" value="${closeT0}" placeholder="16:45" oninput="calcTrade(true)"></div>
+      <div class="field ${vfc('std',!!t.durationMin)}"><label>Tijd in trade (min) <span class="hint">(auto bij sluit-tijd)</span></label><input id="f_durationMin" value="${t.durationMin||''}" inputmode="numeric"></div>
+      <div class="field ${vfc('pro',!!t.mae)}"><label>MAE (R) <span class="hint">(max tegen je in)</span></label><input id="f_mae" value="${t.mae||''}" inputmode="decimal"></div>
+      <div class="field ${vfc('pro',!!t.mfe)}"><label>MFE (R) <span class="hint">(max vóór je)</span></label><input id="f_mfe" value="${t.mfe||''}" inputmode="decimal"></div>
 
       <div class="msub s5"><span class="msn">5</span> Setup &amp; psychologie</div>
-      <div class="field full"><div class="lt-head"><label style="margin:0">Setup-lagen (top-down)</label><button type="button" class="btn" onclick="addLayer()">+ Laag toevoegen</button></div><div id="layerbuilder" class="layerbuilder"></div></div>
-      <div class="field full"><label>Emoties</label><div id="emobuilder" class="emobuilder"></div></div>
-      <div class="field full"><label>Fouten</label><div id="mistakebuilder"></div></div>
-      <div class="field full"><label>Eigen labels <span class="hint">(beheren via Instellingen → Tags · filterbaar in de hele app)</span></label><div id="tagpick" class="tagpick"></div></div>
-      <div class="field full missedfield" id="missedfield"><label>👻 Missed-reden <span class="hint">(waarom niet genomen)</span></label><div id="missedbuilder"></div></div>
+      <div class="field full ${vfc('pro',formLayers.length>0)}"><div class="lt-head"><label style="margin:0">Setup-lagen (top-down)</label><button type="button" class="btn" onclick="addLayer()">+ Laag toevoegen</button></div><div id="layerbuilder" class="layerbuilder"></div></div>
+      <div class="field full ${vfc('std',formEmotions.length>0)}"><label>Emoties</label><div id="emobuilder" class="emobuilder"></div></div>
+      <div class="field full ${vfc('std',formMistakes.length>0)}"><label>Fouten</label><div id="mistakebuilder"></div></div>
+      <div class="field full ${vfc('std',formTags.length>0)}"><label>Eigen labels <span class="hint">(beheren via Instellingen → Tags · filterbaar in de hele app)</span></label><div id="tagpick" class="tagpick"></div></div>
+      <div class="field full missedfield ${vfc('pro',formMissed.length>0||t.kind==='gemist')}" id="missedfield"><label>👻 Missed-reden <span class="hint">(waarom niet genomen)</span></label><div id="missedbuilder"></div></div>
 
       <div class="msub s6"><span class="msn">6</span> Notities</div>
       <div class="field full"><label>Wat gebeurde er?</label><textarea id="f_notes" rows="3">${esc(t.notes||'')}</textarea></div>
       <div class="field full"><label>Leerpunt / volgende keer</label><textarea id="f_lessons" rows="2">${esc(t.lessons||'')}</textarea></div>
-      <div class="field full"><label>TradingView-links <span class="hint">(chart-links · openen in nieuw tabblad · max 8)</span></label>
+      <div class="field full ${vfc('pro',formTvLinks.length>0)}"><label>TradingView-links <span class="hint">(chart-links · openen in nieuw tabblad · max 8)</span></label>
         <div class="tvinrow"><input id="f_tvlink" class="tvinput" placeholder="https://www.tradingview.com/x/…" onkeydown="if(event.key==='Enter'){event.preventDefault();addFormTvLink();}"><button type="button" class="btn" onclick="addFormTvLink()">Toevoegen</button></div>
         <div id="tvlinkbuilder" class="tvlinks"></div></div>
       <div class="field full"><label>Screenshots <span class="hint">(upload of plak · Ctrl/⌘+V · max 8)</span></label><div id="shotbuilder" class="shotbuilder"></div></div>
+      <button type="button" class="fmorebar" id="fMoreBtn" hidden onclick="toggleFormMore()"></button>
     </div>
     <div class="mfoot">${id!=null?`<button class="btn" style="color:var(--red);border-color:color-mix(in srgb,var(--red) 35%,transparent)" onclick="delTrade(${id})">Verwijderen</button>`:''}
       <span class="form-err" id="formErr"></span><span style="flex:1"></span><button class="btn" onclick="closeForm()">Annuleren</button><button class="btn pri" onclick="submitForm(${id!=null?id:'null'})">Opslaan</button></div>`;
-  renderLayers();renderEmotions();renderMistakes();renderMissed();renderTPs();renderFormShots();renderFormTvLinks();renderFormTags();calcTrade(false);onKindChange();
+  renderLayers();renderEmotions();renderMistakes();renderMissed();renderTPs();renderFormShots();renderFormTvLinks();renderFormTags();calcTrade(false);onKindChange();updFormVis();
   document.getElementById('modal').classList.add('on');document.getElementById('scrim').classList.add('on');
   modalKind='trade';formDirty=false;
 }

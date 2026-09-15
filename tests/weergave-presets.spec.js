@@ -56,6 +56,25 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
   ok('per-onderdeel toggles aanwezig (pagina\'s + dashboard + tabel)', await p.evaluate(() => { const t = document.getElementById('main').textContent; return /Tendencies/.test(t) && /Pro-KPI/.test(t) && /Entry \/ Exit/.test(t) && /hover-detail/i.test(t); }));
   ok('aparte Dashboard-tab is weg', await p.evaluate(() => ![...document.querySelectorAll('#setTabs button')].some(b => /Dashboard/.test(b.textContent))));
 
+  console.log('─── Formulier: Meer velden + gevuld-blijft-zichtbaar ───');
+  await p.evaluate(() => { viewPreset('rustig'); go('trades'); openForm(null); }); await p.waitForTimeout(300);
+  const vis = id => p.evaluate(i => { const el = document.getElementById(i); return el ? getComputedStyle(el.closest('.field')).display !== 'none' : null; }, id);
+  ok('nieuw formulier in Rustig: kernvelden zichtbaar', (await vis('f_entry')) && (await vis('f_pair')) && (await vis('f_pnl')));
+  ok('nieuw formulier in Rustig: stop/risk/MAE verborgen', !(await vis('f_stop')) && !(await vis('f_risk')) && !(await vis('f_mae')));
+  ok('sectiekop zonder zichtbare velden is weg', await p.evaluate(() => { const h = [...document.querySelectorAll('#modal .msub')].find(x => /psychologie/.test(x.textContent)); return h && getComputedStyle(h).display === 'none'; }));
+  ok('Meer velden-knop toont aantal', await p.evaluate(() => { const b = document.getElementById('fMoreBtn'); return b && !b.hidden && /Meer velden \(\d+\)/.test(b.textContent); }));
+  await p.evaluate(() => { document.getElementById('f_entry').value = '123'; toggleFormMore(); }); await p.waitForTimeout(150);
+  ok('uitklappen: stop-loss zichtbaar, getypte entry blijft staan', (await vis('f_stop')) && await p.evaluate(() => document.getElementById('f_entry').value === '123'));
+  await p.evaluate(() => { toggleFormMore(); }); await p.waitForTimeout(150);
+  ok('weer inklappen verbergt stop-loss opnieuw', !(await vis('f_stop')));
+  await p.evaluate(() => { formDirty = false; closeForm(); });
+  await p.evaluate(() => openForm(1)); await p.waitForTimeout(300); // trade 1 heeft stop=95 + notitie
+  ok('bewerken in Rustig: gevuld stop-veld blijft zichtbaar (vf-keep)', (await vis('f_stop')) && await p.evaluate(() => document.getElementById('f_stop').value === '95'));
+  ok('leeg risk-veld blijft verborgen bij bewerken', !(await vis('f_risk')));
+  await p.evaluate(() => { formDirty = false; closeForm(); viewPreset('alles'); openForm(null); }); await p.waitForTimeout(250);
+  ok('preset Alles: alles zichtbaar, geen Meer velden-knop', (await vis('f_stop')) && (await vis('f_mae')) && await p.evaluate(() => document.getElementById('fMoreBtn').hidden));
+  await p.evaluate(() => { formDirty = false; closeForm(); });
+
   console.log('─── Persist + migratie + backup ───');
   await p.evaluate(() => viewPreset('rustig'));
   await p.reload({ waitUntil: 'networkidle' }); await p.waitForTimeout(600);
