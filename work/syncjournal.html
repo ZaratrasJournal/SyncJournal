@@ -243,6 +243,15 @@ table.tbl{width:100%;border-collapse:collapse;font-size:14px}
 .cbx{width:38px;text-align:center!important}
 .cb{width:17px;height:17px;border-radius:5px;border:1.5px solid var(--line);display:inline-grid;place-items:center;cursor:pointer;vertical-align:middle;color:#fff;font-size:11px;line-height:1}
 .cb.on{background:var(--accent);border-color:var(--accent)}
+/* weergave-presets (Instellingen → Weergave) */
+.vpcards{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:10px}
+.vpcard{border:1.5px solid var(--line);border-radius:12px;padding:12px 14px;background:var(--sink);text-align:left;cursor:pointer;font-family:inherit}
+.vpcard b{display:block;font-size:13.5px;margin-bottom:3px;color:var(--ink)}
+.vpcard small{font-size:11px;color:var(--muted);line-height:1.45;display:block}
+.vpcard.on{border-color:var(--accent);background:var(--accent-soft)}
+.vpcard.on b{color:var(--accent)}
+.vpcust{font-size:10.5px;font-weight:800;padding:3px 10px;border-radius:999px;background:var(--amber-soft);color:var(--amber);margin-left:8px;vertical-align:middle}
+@media(max-width:820px){.vpcards{grid-template-columns:1fr}}
 .fchips{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px}
 .fchip{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600;padding:4px 5px 4px 11px;border-radius:999px;background:var(--accent-soft);color:var(--accent);border:1px solid var(--accent-line)}
 .fchip button{width:16px;height:16px;border-radius:50%;display:grid;place-items:center;color:var(--accent);font-size:12px;line-height:1}
@@ -1540,7 +1549,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.55';
+const APP_VERSION='v0.9.56';
 const SCHEMA_VERSION=2;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -1789,7 +1798,35 @@ const STATE=Object.assign({page:'dashboard',theme:'light',priv:false,tradeTab:'a
 STATE.selected=[];
 STATE.revShareMode=false; STATE.revShareSel=[]; STATE.shareHide=true;  // "deel met coach": selectie-modus, geselecteerde trade-ids, bedragen verbergen
 STATE.tendRow=STATE.tendRow||'setup'; STATE.tendCol=STATE.tendCol||'session';  // Tendencies kruis-heatmap dimensies
-function persistState(){ DB.save('state',{theme:STATE.theme,priv:STATE.priv,density:STATE.density,currency:STATE.currency,sections:STATE.sections}); }
+function persistState(){ DB.save('state',{theme:STATE.theme,priv:STATE.priv,density:STATE.density,currency:STATE.currency}); }
+
+/* ═══ Weergave-presets (Denny 2026-09-15): Rustig / Standaard / Alles ═══
+   Presets zijn een snelkoppeling over losse per-onderdeel toggles — geen echte "modus".
+   Elke handmatige afwijking maakt de stand "aangepast"; een preset-klik herstelt exact.
+   Harde regels: dit raakt uitsluitend rendering — nooit berekeningen, nooit door de
+   gebruiker ingevoerde data (gevulde velden blijven zichtbaar), export bevat altijd alles. */
+const VIEW_PRESETS={
+  rustig:   {pgAnalytics:0,pgTendencies:0,pgPlaybook:0,pgAI:0,dHero:1,dKpiCore:1,dKpiPro:0,dEquity:1,dMonthly:0,dEdge:0,dRecent:1,tExchange:0,tEntryExit:0,tSize:0,tR:0,tSessie:0,tTags:0,tHoverFull:0,fStd:0,fPro:0},
+  standaard:{pgAnalytics:1,pgTendencies:0,pgPlaybook:1,pgAI:0,dHero:1,dKpiCore:1,dKpiPro:1,dEquity:1,dMonthly:1,dEdge:1,dRecent:1,tExchange:1,tEntryExit:0,tSize:1,tR:1,tSessie:1,tTags:1,tHoverFull:1,fStd:1,fPro:0},
+  alles:    {pgAnalytics:1,pgTendencies:1,pgPlaybook:1,pgAI:1,dHero:1,dKpiCore:1,dKpiPro:1,dEquity:1,dMonthly:1,dEdge:1,dRecent:1,tExchange:1,tEntryExit:1,tSize:1,tR:1,tSessie:1,tTags:1,tHoverFull:1,fStd:1,fPro:1},
+};
+function viewFromSections(s){ // migratie/backup-import: oude Dashboard-toggles → VIEW-vorm
+  const v={...VIEW_PRESETS.alles};s=s||{};
+  if(s.hero===false)v.dHero=0; if(s.kpis===false){v.dKpiCore=0;v.dKpiPro=0;}
+  if(s.equity===false)v.dEquity=0; if(s.monthly===false)v.dMonthly=0;
+  if(s.edge===false)v.dEdge=0; if(s.recent===false)v.dRecent=0;
+  const custom=Object.keys(v).some(k=>v[k]!==VIEW_PRESETS.alles[k]);
+  return {preset:custom?'aangepast':'alles',v};
+}
+const VIEW=DB.load('view',null)||viewFromSections(STATE.sections);
+Object.keys(VIEW_PRESETS.alles).forEach(k=>{if(VIEW.v[k]==null)VIEW.v[k]=VIEW_PRESETS.alles[k];}); // nieuwe keys na update
+const VV=k=>!!VIEW.v[k];
+function persistView(){ DB.save('view',{preset:VIEW.preset,v:VIEW.v}); }
+function viewPreset(p){ VIEW.preset=p;VIEW.v={...VIEW_PRESETS[p]};persistView();renderNav();render(); }
+function viewTog(k){ VIEW.v[k]=VIEW.v[k]?0:1;VIEW.preset='aangepast';persistView();renderNav();render(); }
+function adoptViewBackup(d){ if(d.view&&d.view.v){VIEW.preset=d.view.preset||'aangepast';VIEW.v={...VIEW_PRESETS.alles,...d.view.v};}
+  else if(d.sections){const m=viewFromSections(d.sections);VIEW.preset=m.preset;VIEW.v=m.v;}
+  else return; persistView();try{renderNav();}catch(e){} }
 
 /* ═══ Globale filter (elke pagina) ═══ */
 // Multi-select (Denny 2026-09-14): de zes categorie-filters zijn arrays — meerdere
@@ -1935,7 +1972,9 @@ function tradeHoverDetail(t){
   if(+t.rating>0)meta.push(`<span>${[1,2,3,4,5].map(n=>`<span class="${n<=+t.rating?'star':'staro'}">${n<=+t.rating?'★':'☆'}</span>`).join('')}</span>`);
   if((t.screenshots||[]).length)meta.push(`<span>📸 ${t.screenshots.length} screenshot${t.screenshots.length>1?'s':''}</span>`);
   if((t.missedReasons||[]).length)meta.push(`<span>👻 ${t.missedReasons.map(esc).join(' · ')}</span>`);
-  const out=[tl,s?`<div class="dstats">${s}</div>`:'',notes?`<div class="dnotes">${notes}</div>`:'',meta.length?`<div class="dmeta">${meta.join('')}</div>`:''].filter(Boolean).join('');
+  // tHoverFull uit (Rustige stand): alleen het tijd-verhaal, geen stats/notities/meta
+  const full=VV('tHoverFull');
+  const out=[tl,full&&s?`<div class="dstats">${s}</div>`:'',full&&notes?`<div class="dnotes">${notes}</div>`:'',full&&meta.length?`<div class="dmeta">${meta.join('')}</div>`:''].filter(Boolean).join('');
   return out||`<span class="drow-empty">Klik om stop-loss, notities en meer toe te voegen</span>`;
 }
 // Togglet alleen het hidden-attribuut — geen re-render, dus goedkoop bij 100 rijen/pagina.
@@ -2149,18 +2188,19 @@ function groupRows(field){const o={};CLOSED.forEach(t=>{const k=field==='session
 /* ═══ PAGES ═══ */
 function pgDashboard(){
   if(!T.length)return `${filterBar()}${emptyState('trades-first')}`;
-  const a=agg(),S=STATE.sections;
+  const a=agg();
   const legend=accountList().map(x=>`<div class="row">${accAvatar(x.id,18)}<span class="lbl">${esc(x.n)}</span><span class="val mask">${eur(x.v)}</span></div>`).join('');
-  const hero=!S.hero?'':`<div class="panel hero"><div><div class="eyebrow">Totale balans</div>
+  const hero=!VV('dHero')?'':`<div class="panel hero"><div><div class="eyebrow">Totale balans</div>
     <div class="big num mask">${eur(totalBalance())}</div>
     <div class="meta">Gerealiseerd deze maand <b class="num ${cls(a.net)}">${eurS(a.net)}</b> · YTD <b class="num g">+11,4%</b></div></div>
     <div class="alloc">${donut()}<div class="legend">${legend}</div></div></div>`;
-  const kpis=!S.kpis?'':`<div class="kpis">${['net','wr','pf','exp','r'].map(k=>kpiBlock(k,'d')).join('')}</div>`;
-  const eq=!S.equity?'':`<div class="panel"><div class="phead"><h3>Equity-curve</h3><span class="sp"></span><span class="chip">year-to-date</span></div><div class="pbody">${equity()}</div></div>`;
-  const mon=!S.monthly?'':`<div class="panel"><div class="phead"><h3>Maand-P&L</h3><span class="sp"></span><span class="chip">per maand</span></div><div class="pbody">${barsPnl(monthly())}</div></div>`;
+  const kks=[...(VV('dKpiCore')?['net','wr']:[]),...(VV('dKpiPro')?['pf','exp','r']:[])];
+  const kpis=!kks.length?'':`<div class="kpis">${kks.map(k=>kpiBlock(k,'d')).join('')}</div>`;
+  const eq=!VV('dEquity')?'':`<div class="panel"><div class="phead"><h3>Equity-curve</h3><span class="sp"></span><span class="chip">year-to-date</span></div><div class="pbody">${equity()}</div></div>`;
+  const mon=!VV('dMonthly')?'':`<div class="panel"><div class="phead"><h3>Maand-P&L</h3><span class="sp"></span><span class="chip">per maand</span></div><div class="pbody">${barsPnl(monthly())}</div></div>`;
   const sess=groupRows('session').sort((a,b)=>b.val-a.val);
-  const edge=!S.edge?'':`<div class="panel"><div class="phead"><h3>Waar zit je edge</h3><span class="sp"></span><span class="chip">balk = win-rate · kleur = netto</span></div>${hbars(sess)}</div>`;
-  const recent=!S.recent?'':`<div class="panel"><div class="phead"><h3>Recente trades</h3><span class="sp"></span><button class="chip a" onclick="go('trades')" style="font-weight:700">Alle trades →</button></div>
+  const edge=!VV('dEdge')?'':`<div class="panel"><div class="phead"><h3>Waar zit je edge</h3><span class="sp"></span><span class="chip">balk = win-rate · kleur = netto</span></div>${hbars(sess)}</div>`;
+  const recent=!VV('dRecent')?'':`<div class="panel"><div class="phead"><h3>Recente trades</h3><span class="sp"></span><button class="chip a" onclick="go('trades')" style="font-weight:700">Alle trades →</button></div>
     <div class="tblwrap"><table class="tbl"><thead><tr><th>Pair</th><th>Setup</th><th>Datum</th><th class="rt">P&L</th><th class="rt">R</th><th class="rt">Status</th></tr></thead>
     <tbody>${T.slice(0,6).map(t=>`<tr><td>${assetCell(t.pair)}</td><td class="tag">${esc(t.setup)}</td><td class="tag num">${fmtD(t.date)}</td><td class="rt">${pnlCell(t.pnl,t.pnlPct)}</td><td class="rt num ${cls(t.r)}">${(t.r>=0?'+':'')+t.r.toFixed(1)}R</td><td class="rt">${statusB(t.status)}</td></tr>`).join('')}</tbody></table></div></div>`;
   return `${filterBar()}${hero}<div style="height:16px"></div>${kpis}<div style="height:16px"></div>${eq}<div style="height:16px"></div>
@@ -2180,7 +2220,9 @@ function pgTrades(){
   const pStart=tPage*PAGE,pageRows=rows.slice(pStart,pStart+PAGE);
   const tabs=[['all','Alle',FT.length],['closed','Gesloten',FT.filter(t=>t.status==='closed').length],['open','Open/partial',FT.filter(t=>t.status!=='closed').length]];
   // Eén Datum-kolom (open-moment); Close/Duur/status leven in de hover-uitklaprij (variant D).
-  const cols=[['date','Datum',''],['exchange','Exchange',''],['pair','Pair',''],['dir','Richting',''],['entry','Entry','rt'],['exit','Exit','rt'],['size','Size','rt'],['pnl','P&L','rt'],['r','R','ct'],['setup','Setup',''],['session','Sessie',''],[null,'Tags','']];
+  // 4e element = zichtbaarheids-key in VIEW (1 = altijd zichtbaar).
+  const COLDEF=[['date','Datum','',1],['exchange','Exchange','','tExchange'],['pair','Pair','',1],['dir','Richting','',1],['entry','Entry','rt','tEntryExit'],['exit','Exit','rt','tEntryExit'],['size','Size','rt','tSize'],['pnl','P&L','rt',1],['r','R','ct','tR'],['setup','Setup','',1],['session','Sessie','','tSessie'],[null,'Tags','','tTags']];
+  const cols=COLDEF.filter(c=>c[3]===1||VV(c[3]));
   const th=cols.map(([k,l,c])=>{const act=k===sc;return `<th scope="col" class="${c}" ${act?`aria-sort="${sd>0?'ascending':'descending'}"`:''} ${k?`onclick="sortBy('${k}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();sortBy('${k}')}" tabindex="0" aria-label="Sorteer op ${esc(l)}" style="cursor:pointer;user-select:none"`:''}>${l}${act?(sd>0?' ▲':' ▼'):''}</th>`;}).join('');
   // active-filter chips
   const chips=[];
@@ -2205,15 +2247,15 @@ function pgTrades(){
       <tbody onmouseleave="trDrowHide()">${pageRows.map((t,i)=>{const sel=selSet.has(t.id);return `<tr class="mrow${i%2?' even':''}" tabindex="0" style="cursor:pointer" onclick="openForm(${t.id})" onkeydown="if(event.key==='Enter')openForm(${t.id})" onmouseenter="trDrowShow(${t.id})" onfocus="trDrowShow(${t.id})">
         <td class="cbx" data-l="" onclick="event.stopPropagation()"><span class="cb ${sel?'on':''}" role="checkbox" aria-checked="${sel}" aria-label="Selecteer trade" tabindex="0" onclick="toggleSel(${t.id})" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleSel(${t.id})}">${sel?'✓':''}</span></td>
         <td class="tag num" data-l="Datum">${fmtD(t.date)}${t.time?`<div style="font-size:10.5px;color:var(--muted)">${esc(t.time)}</div>`:''}${t.status!=='closed'?`<div style="margin-top:3px">${statusB(t.status)}</div>`:''}</td>
-        <td data-l="Exchange">${exCell(t.exchange)}</td>
+        ${VV('tExchange')?`<td data-l="Exchange">${exCell(t.exchange)}</td>`:''}
         <td data-l="Pair"><div class="paircell">${assetCell(t.pair)}${kindBadge(t)}${newBadge(t)}</div></td><td data-l="Richting"><span class="pill ${t.dir}">${t.dir==='long'?'LONG':'SHORT'}</span></td>
-        <td class="rt num" data-l="Entry">${numOrDash(t.entry)}</td><td class="rt num" data-l="Exit">${numOrDash(t.exit)}</td>
-        <td class="rt num mask" data-l="Size">${isNaN(SZ(t))?'—':CURSYM()+' '+SZ(t).toLocaleString('nl-NL')}${qtySub(t)}</td><td class="rt" data-l="P&L">${t.status==='open'&&t.unrealizedPnl?`<span class="num ${cls(t.unrealizedPnl)} mask" title="niet-gerealiseerde P&L">~${eurS(t.unrealizedPnl)}</span>`:t.status==='partial'&&t.realizedPnl?`<span class="num ${cls(t.realizedPnl)} mask" title="gerealiseerd deel — rest loopt nog">${eurS(t.realizedPnl)}<div style="font-size:10.5px;color:var(--amber)">deels dicht</div></span>`:pnlCell(t.pnl,t.pnlPct)}</td>
-        <td class="ct" data-l="R">${rBadge(t.r)}</td>
-        <td data-l="Setup">${setupBadge(t.setup)}</td><td data-l="Sessie">${sessBadge(sessionOf(t))}</td>
-        <td data-l="Tags" style="max-width:170px">${tagChips(tradeTagsAll(t))}</td></tr>
-        <tr class="drow" id="drow-${t.id}" hidden onclick="openForm(${t.id})"><td colspan="13">${tradeHoverDetail(t)}</td></tr>`;}).join('')}</tbody>
-      <tfoot><tr><td class="cbx"></td><td colspan="7">Totaal (${rows.length})</td><td class="rt">${pnlCell(net,net/ACCT*100)}</td><td colspan="4"></td></tr></tfoot>
+        ${VV('tEntryExit')?`<td class="rt num" data-l="Entry">${numOrDash(t.entry)}</td><td class="rt num" data-l="Exit">${numOrDash(t.exit)}</td>`:''}
+        ${VV('tSize')?`<td class="rt num mask" data-l="Size">${isNaN(SZ(t))?'—':CURSYM()+' '+SZ(t).toLocaleString('nl-NL')}${qtySub(t)}</td>`:''}<td class="rt" data-l="P&L">${t.status==='open'&&t.unrealizedPnl?`<span class="num ${cls(t.unrealizedPnl)} mask" title="niet-gerealiseerde P&L">~${eurS(t.unrealizedPnl)}</span>`:t.status==='partial'&&t.realizedPnl?`<span class="num ${cls(t.realizedPnl)} mask" title="gerealiseerd deel — rest loopt nog">${eurS(t.realizedPnl)}<div style="font-size:10.5px;color:var(--amber)">deels dicht</div></span>`:pnlCell(t.pnl,t.pnlPct)}</td>
+        ${VV('tR')?`<td class="ct" data-l="R">${rBadge(t.r)}</td>`:''}
+        <td data-l="Setup">${setupBadge(t.setup)}</td>${VV('tSessie')?`<td data-l="Sessie">${sessBadge(sessionOf(t))}</td>`:''}
+        ${VV('tTags')?`<td data-l="Tags" style="max-width:170px">${tagChips(tradeTagsAll(t))}</td>`:''}</tr>
+        <tr class="drow" id="drow-${t.id}" hidden onclick="openForm(${t.id})"><td colspan="${cols.length+1}">${tradeHoverDetail(t)}</td></tr>`;}).join('')}</tbody>
+      <tfoot><tr><td class="cbx"></td><td colspan="${cols.findIndex(c=>c[0]==='pnl')}">Totaal (${rows.length})</td><td class="rt">${pnlCell(net,net/ACCT*100)}</td>${cols.length-cols.findIndex(c=>c[0]==='pnl')-1?`<td colspan="${cols.length-cols.findIndex(c=>c[0]==='pnl')-1}"></td>`:''}</tr></tfoot>
     </table></div>${pageCount>1?`<div class="pager">
       <button class="btn" ${tPage===0?'disabled':''} onclick="setTradePage(${tPage-1})">‹ Vorige</button>
       <span class="pageinfo"><b>${pStart+1}–${Math.min(pStart+PAGE,rows.length)}</b> van ${rows.length} · pagina ${tPage+1}/${pageCount}</span>
@@ -2835,8 +2877,9 @@ function pgReview(){
 
 function setSetTab(t){STATE.setTab=t;render();}
 function pgInstellingen(){
+  if(STATE.setTab==='dashboard')STATE.setTab='weergave'; // Dashboard-toggles zijn opgegaan in Weergave-presets
   const tab=STATE.setTab||'accounts';
-  const tabs=[['accounts','🔗','Accounts'],['weergave','🎨','Weergave'],['dashboard','📊','Dashboard'],['tags','🏷️','Tags'],['ai','🤖','AI-coach'],['data','💾','Data'],['updates','🔄','Updates'],['wissen','🗑️','Wissen']];
+  const tabs=[['accounts','🔗','Accounts'],['weergave','🎨','Weergave'],['tags','🏷️','Tags'],['ai','🤖','AI-coach'],['data','💾','Data'],['updates','🔄','Updates'],['wissen','🗑️','Wissen']];
   const exRows=EXCHANGES.map(e=>{const c=CONNS[e.id],open=STATE.connOpen===e.id;
     const ad=(typeof ExchangeAPI!=='undefined'&&ExchangeAPI[e.id])||{};
     const lastS=c&&c.lastSync?new Date(c.lastSync).toLocaleString('nl-NL',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'';
@@ -2876,8 +2919,22 @@ function pgInstellingen(){
         ${txListHtml}
       </div>`:''}`;
   }).join(''):`<div class="setrow"><div class="txt" style="color:var(--muted);font-size:12.5px">Nog geen handmatige accounts. Bijvoorbeeld een prop-firm challenge of een exchange zonder API.</div></div>`);
-  const secDef=[['hero','Account-hero'],['kpis','KPI-tegels'],['equity','Equity-curve'],['monthly','Maand-P&L'],['edge','Waar zit je edge'],['recent','Recente trades']];
-  const toggles=secDef.map(([k,l])=>`<div class="setrow"><div class="txt"><b>${l}</b></div><div class="sw ${STATE.sections[k]?'on':''}" onclick="toggleSec('${k}')"></div></div>`).join('');
+  // Weergave-presets + per-onderdeel toggles (één zichtbaarheids-laag: VIEW)
+  const vRow=(k,l,s)=>`<div class="setrow"><div class="txt"><b>${l}</b>${s?`<small>${s}</small>`:''}</div><div class="sw ${VV(k)?'on':''}" onclick="viewTog('${k}')"></div></div>`;
+  const vCard=(p,em,nm,ds)=>`<button class="vpcard ${VIEW.preset===p?'on':''}" onclick="viewPreset('${p}')"><b>${em} ${nm}</b><small>${ds}</small></button>`;
+  const presetsUI=`<div class="section-sub">👁 Weergave-presets ${VIEW.preset==='aangepast'?'<span class="vpcust">✎ Aangepast</span>':''}</div>
+    <div class="vpcards">
+      ${vCard('rustig','🌿','Rustig','Alleen de essentie: P&L, win-rate, equity en je trades. Alles wat afleidt staat uit.')}
+      ${vCard('standaard','📊','Standaard','De essentie plus playbook, tags, R-multiple en basis-analytics.')}
+      ${vCard('alles','🔬','Alles','Elke pagina, elk paneel, elke kolom. Zoals de app nu is.')}
+    </div>
+    <p class="setintro" style="margin-top:2px">Of stel het zelf samen — elke wijziging hieronder maakt je stand “Aangepast”. Dit verandert alleen wat je <i>ziet</i>: je data en berekeningen blijven overal identiek, en export bevat altijd alles.</p>
+    <div class="section-sub">📄 Pagina's</div>
+    <div class="panel">${vRow('pgAnalytics','Analytics')+vRow('pgTendencies','Tendencies')+vRow('pgPlaybook','Playbook')+vRow('pgAI','AI-coach')}</div>
+    <div class="section-sub">📊 Dashboard</div>
+    <div class="panel">${vRow('dHero','Account-hero')+vRow('dKpiCore','Kern-KPI’s','netto P&L · win-rate')+vRow('dKpiPro','Pro-KPI’s','profit factor · expectancy · gem. R')+vRow('dEquity','Equity-curve')+vRow('dMonthly','Maand-P&L')+vRow('dEdge','Waar zit je edge')+vRow('dRecent','Recente trades')}</div>
+    <div class="section-sub">📋 Trades-tabel</div>
+    <div class="panel">${vRow('tExchange','Exchange-kolom')+vRow('tEntryExit','Entry / Exit-kolommen')+vRow('tSize','Size-kolom')+vRow('tR','R-kolom')+vRow('tSessie','Sessie-kolom')+vRow('tTags','Tags-kolom')+vRow('tHoverFull','Volledig hover-detail','uit = alleen de tijdlijn bij hover')}</div>`;
   const panes={
     accounts:`<p class="setintro">Koppel je exchanges via read-only API-keys, of houd accounts handmatig bij.</p>
       <div class="section-sub">🔗 Exchange-koppelingen</div>
@@ -2902,9 +2959,8 @@ function pgInstellingen(){
           <div class="tsw ${STATE.theme==='dark'?'on':''}" onclick="setTheme('dark')" style="background:#0E1218"><div style="height:14px;background:#141A22;border-bottom:1px solid #232B36"></div></div></div></div>
       <div class="setrow"><div class="txt"><b>Bedragen verbergen</b><small>Privacy-modus voor screenshots</small></div><div class="sw ${STATE.priv?'on':''}" onclick="togglePriv()"></div></div>
       <div class="setrow"><div class="txt"><b>Valuta</b><small>Weergave-valuta</small></div><div class="seg" id="curSeg"><button class="${STATE.currency==='EUR'?'on':''}" onclick="setCurrency('EUR')">€ EUR</button><button class="${STATE.currency==='USD'?'on':''}" onclick="setCurrency('USD')">$ USD</button></div></div>
-      </div>`,
-    dashboard:`<p class="setintro">Eén indeling — zet aan wat je op je Dashboard wilt zien.</p>
-      <div class="panel">${toggles}</div>`,
+      </div>
+      ${presetsUI}`,
     ai:`<p class="setintro">Stel je AI-coach af — toon, focus en privacy. De coach draait in de demo op je zichtbare trades.</p>
       <div class="panel">
         <div class="setrow"><div class="txt"><b>AI-coach ingeschakeld</b><small>Toont de coach-pagina en beantwoordt je vragen</small></div><div class="sw ${AIPREFS.enabled?'on':''}" onclick="toggleAICoach()"></div></div>
@@ -3789,13 +3845,12 @@ document.addEventListener('keydown',e=>{
   radioRefocus={id:grp.id,i:ni};bs[ni].click();
 });
 function selRev(i){STATE.revSel=i;render();}
-function toggleSec(k){STATE.sections[k]=!STATE.sections[k];persistState();render();}
 function setTheme(t){STATE.theme=t;document.body.classList.toggle('dark',t==='dark');document.getElementById('btnTheme').innerHTML=svg(t==='dark'?IC.sun:IC.moon,16);persistState();render();}
 function togglePriv(){STATE.priv=!STATE.priv;document.body.classList.toggle('priv',STATE.priv);document.getElementById('btnEye').style.color=STATE.priv?'var(--accent)':'';persistState();render();}
 function setCurrency(c){STATE.currency=c;persistState();render();}
 /* trades CRUD + import/export */
 // Volledige staat-payload — gedeeld door export, snapshots en herstel.
-function snapshotPayload(){ return {app:'SyncJournal',appVersion:APP_VERSION,schemaVersion:SCHEMA_VERSION,exported:new Date().toISOString(),tagConfig,pbook:PBOOK,conns:CONNS,manual:MANUAL,sync:SYNC,aiPrefs:AIPREFS,sections:STATE.sections,settings:{theme:STATE.theme,currency:STATE.currency,priv:STATE.priv,density:STATE.density},trades:T,trash:TRASH}; }
+function snapshotPayload(){ return {app:'SyncJournal',appVersion:APP_VERSION,schemaVersion:SCHEMA_VERSION,exported:new Date().toISOString(),tagConfig,pbook:PBOOK,conns:CONNS,manual:MANUAL,sync:SYNC,aiPrefs:AIPREFS,view:{preset:VIEW.preset,v:VIEW.v},settings:{theme:STATE.theme,currency:STATE.currency,priv:STATE.priv,density:STATE.density},trades:T,trash:TRASH}; }
 // Zet een volledige backup-payload (nieuw formaat) terug in de live-staat.
 function applyBackup(d){
   T=(d.trades||[]).map((t,i)=>({rating:0,checks:[],...t,id:i}));
@@ -3806,7 +3861,7 @@ function applyBackup(d){
   if(d.manual){MANUAL=d.manual;MANUAL.forEach(m=>{if(!Array.isArray(m.transactions))m.transactions=[];});persistManual();}
   if(d.sync){SYNC=d.sync;persistSync();}
   if(d.aiPrefs){AIPREFS={...AIPREFS,...d.aiPrefs,focus:{...AIPREFS.focus,...(d.aiPrefs.focus||{})}};persistAIPrefs();}
-  if(d.sections)STATE.sections=d.sections;
+  adoptViewBackup(d);
   if(d.settings){STATE.theme=d.settings.theme||STATE.theme;STATE.currency=d.settings.currency||STATE.currency;STATE.priv=!!d.settings.priv;STATE.density=d.settings.density||STATE.density;document.body.classList.toggle('dark',STATE.theme==='dark');document.body.classList.toggle('priv',STATE.priv);}
   persistState();persist();render();
 }
@@ -5905,10 +5960,16 @@ function goFrom(p){hideWelcome();go(p);}
 /* privacy mask via CSS */
 const st=document.createElement('style');st.textContent='body.priv .mask{filter:blur(6px);opacity:.55}';document.head.appendChild(st);
 
-/* build nav */
+/* build nav — pagina's kunnen via de weergave-presets verborgen zijn (alleen de nav-ingang;
+   interne links zoals treemap→trades blijven werken, zodat er nooit een doodlopend pad is) */
 const navBtn=([p,l])=>`<button data-p="${p}" class="${p==='ai'?'ai':''}" onclick="go('${p}')" style="--pc:${PAGEC[p]||'var(--accent)'}"><span class="nav-ic">${svg(IC[p]||IC.dashboard,17)}</span><span>${l}</span>${p==='ai'?'<span class="aidot"></span>':''}</button>`;
-document.getElementById('nav').innerHTML=NAVDEF.map(navBtn).join('');
-document.getElementById('navbot').innerHTML=NAVBOT.map(navBtn).join('');
+const NAV_VIEWKEY={analytics:'pgAnalytics',tendencies:'pgTendencies',playbook:'pgPlaybook',ai:'pgAI'};
+function renderNav(){
+  const f=arr=>arr.filter(([p])=>!NAV_VIEWKEY[p]||VV(NAV_VIEWKEY[p]));
+  document.getElementById('nav').innerHTML=f(NAVDEF).map(navBtn).join('');
+  document.getElementById('navbot').innerHTML=f(NAVBOT).map(navBtn).join('');
+}
+renderNav();
 document.getElementById('btnEye').innerHTML=svg(IC.eye,16);
 document.getElementById('btnTheme').innerHTML=svg(STATE.theme==='dark'?IC.sun:IC.moon,16);
 document.getElementById('btnEye').onclick=togglePriv;
@@ -5978,7 +6039,7 @@ function seedBundled(d){
   PBOOK={};Object.entries(d.pbook||PBRULES).forEach(([k,v])=>PBOOK[k]=pbNormalize(k,v));persistPbook();
   if(d.manual){MANUAL=d.manual;MANUAL.forEach(m=>{if(!Array.isArray(m.transactions))m.transactions=[];});persistManual();}
   if(d.aiPrefs){AIPREFS={...AIPREFS,...d.aiPrefs,focus:{...AIPREFS.focus,...(d.aiPrefs.focus||{})}};persistAIPrefs();}
-  if(d.sections)STATE.sections=d.sections;
+  adoptViewBackup(d);
   if(d.settings){STATE.theme=d.settings.theme||STATE.theme;STATE.currency=d.settings.currency||STATE.currency;STATE.priv=!!d.settings.priv;STATE.density=d.settings.density||STATE.density;document.body.classList.toggle('dark',STATE.theme==='dark');document.body.classList.toggle('priv',STATE.priv);}
   persistState();persist();
 }
