@@ -75,6 +75,23 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
   ok('preset Alles: alles zichtbaar, geen Meer velden-knop', (await vis('f_stop')) && (await vis('f_mae')) && await p.evaluate(() => document.getElementById('fMoreBtn').hidden));
   await p.evaluate(() => { formDirty = false; closeForm(); });
 
+  console.log('─── Fase 3: ⋯-menu, nudge, welkomst-keuze ───');
+  await p.evaluate(() => { viewPreset('standaard'); go('dashboard'); }); await p.waitForTimeout(300);
+  ok('⋯-menu op paneelkoppen aanwezig', await p.evaluate(() => document.querySelectorAll('#main .pmenu').length >= 3));
+  await p.evaluate(() => hideViewPanel('dEquity', 'Equity-curve')); await p.waitForTimeout(200);
+  ok('paneel verbergen via ⋯ → weg + aangepast + toast met ongedaan', await p.evaluate(() => { const gone = ![...document.querySelectorAll('#main h3')].some(x => /Equity-curve/.test(x.textContent)); const t = document.querySelector('#toasts .tact'); return gone && VIEW.preset === 'aangepast' && t && /Ongedaan/.test(t.textContent); }));
+  await p.evaluate(() => document.querySelector('#toasts .tact').click()); await p.waitForTimeout(200);
+  ok('ongedaan maken herstelt paneel én preset', await p.evaluate(() => VIEW.preset === 'standaard' && VIEW.v.dEquity === 1 && [...document.querySelectorAll('#main h3')].some(x => /Equity-curve/.test(x.textContent))));
+  await p.evaluate(() => { for (let i = 0; i < 30; i++) T.push({ ...T[1], id: 100 + i }); persist(); viewPreset('rustig'); go('dashboard'); }); await p.waitForTimeout(300);
+  ok('nudge verschijnt in Rustig bij ≥25 trades', await p.evaluate(() => !!document.querySelector('.vnudge')));
+  await p.evaluate(() => dismissNudge(false)); await p.waitForTimeout(200);
+  ok('nudge wegklikken → blijft weg (persist)', await p.evaluate(() => !document.querySelector('.vnudge') && DB.load('view', {}).nudged === 1));
+  await p.evaluate(() => showWelcome()); await p.waitForTimeout(150);
+  ok('welkomstscherm heeft de drie start-keuzes', await p.evaluate(() => document.querySelectorAll('.wl-vopts button').length === 3));
+  await p.evaluate(() => { document.querySelectorAll('.wl-vopts button')[1].click(); }); await p.waitForTimeout(200);
+  ok('keuze op welkomstscherm zet preset (Standaard)', await p.evaluate(() => VIEW.preset === 'standaard' && document.querySelectorAll('.wl-vopts button')[1].classList.contains('on')));
+  await p.evaluate(() => hideWelcome());
+
   console.log('─── Persist + migratie + backup ───');
   await p.evaluate(() => viewPreset('rustig'));
   await p.reload({ waitUntil: 'networkidle' }); await p.waitForTimeout(600);

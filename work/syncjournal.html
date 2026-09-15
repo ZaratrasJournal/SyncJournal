@@ -248,6 +248,26 @@ table.tbl{width:100%;border-collapse:collapse;font-size:14px}
 .mbody.hstd .vf-std:not(.vf-keep),.mbody.hpro .vf-pro:not(.vf-keep){display:none}
 .fmorebar{grid-column:1/-1;display:flex;align-items:center;justify-content:center;gap:8px;margin-top:4px;padding:9px;border:1px dashed var(--line);border-radius:10px;font-size:12.5px;font-weight:700;color:var(--accent);background:none;cursor:pointer;font-family:inherit}
 .fmorebar:hover{background:var(--accent-soft)}
+/* paneel-⋯-menu: verberg dit paneel (in-context, fase 3 weergave-presets) */
+.pmenu{position:relative;flex:none}
+.pmenu>button{width:26px;height:26px;border-radius:8px;color:var(--muted);font-size:16px;line-height:1;display:grid;place-items:center}
+.pmenu>button:hover{background:var(--sink);color:var(--ink)}
+.pmenu .dd{position:absolute;right:0;top:29px;background:var(--surface);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shl,0 10px 30px rgba(0,0,0,.2));padding:4px;display:none;z-index:30;white-space:nowrap}
+.pmenu.open .dd{display:block}
+.pmenu .dd button{display:block;width:100%;text-align:left;font-size:12.5px;font-weight:600;padding:8px 13px;border-radius:7px;color:var(--ink2)}
+.pmenu .dd button:hover{background:var(--sink)}
+/* zachte hint (Rustig + genoeg trades): er staat meer klaar */
+.vnudge{display:flex;align-items:center;gap:10px;margin:14px 0;padding:10px 15px;border-radius:11px;background:var(--amber-soft);border:1px solid color-mix(in srgb,var(--amber) 30%,transparent);font-size:12.5px;color:var(--ink2)}
+.vnudge .go{font-weight:700;color:var(--accent);text-decoration:underline;cursor:pointer}
+.vnudge .x{margin-left:auto;width:22px;height:22px;border-radius:7px;color:var(--muted);font-size:14px;line-height:1}
+.vnudge .x:hover{background:color-mix(in srgb,var(--amber) 18%,transparent)}
+/* weergave-keuze op het welkomstscherm */
+.wl-view{display:flex;flex-direction:column;align-items:center;gap:9px;margin:4px 0 18px}
+.wl-vlbl{font-size:11px;text-transform:uppercase;letter-spacing:.14em;font-weight:800;color:var(--muted)}
+.wl-vopts{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+.wl-vopts button{display:flex;flex-direction:column;align-items:center;gap:1px;border:1.5px solid var(--line);background:var(--surface);border-radius:11px;padding:8px 18px;font-size:13px;font-weight:700;color:var(--ink2);cursor:pointer;font-family:inherit}
+.wl-vopts button small{font-size:10.5px;font-weight:500;color:var(--muted)}
+.wl-vopts button.on{border-color:var(--accent);background:var(--accent-soft);color:var(--accent)}
 /* weergave-presets (Instellingen → Weergave) */
 .vpcards{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:10px}
 .vpcard{border:1.5px solid var(--line);border-radius:12px;padding:12px 14px;background:var(--sink);text-align:left;cursor:pointer;font-family:inherit}
@@ -1554,7 +1574,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.57';
+const APP_VERSION='v0.9.58';
 const SCHEMA_VERSION=2;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -1826,12 +1846,22 @@ function viewFromSections(s){ // migratie/backup-import: oude Dashboard-toggles 
 const VIEW=DB.load('view',null)||viewFromSections(STATE.sections);
 Object.keys(VIEW_PRESETS.alles).forEach(k=>{if(VIEW.v[k]==null)VIEW.v[k]=VIEW_PRESETS.alles[k];}); // nieuwe keys na update
 const VV=k=>!!VIEW.v[k];
-function persistView(){ DB.save('view',{preset:VIEW.preset,v:VIEW.v}); }
+function persistView(){ DB.save('view',{preset:VIEW.preset,v:VIEW.v,nudged:VIEW.nudged||0}); }
 function viewPreset(p){ VIEW.preset=p;VIEW.v={...VIEW_PRESETS[p]};persistView();renderNav();render(); }
 function viewTog(k){ VIEW.v[k]=VIEW.v[k]?0:1;VIEW.preset='aangepast';persistView();renderNav();render(); }
 function adoptViewBackup(d){ if(d.view&&d.view.v){VIEW.preset=d.view.preset||'aangepast';VIEW.v={...VIEW_PRESETS.alles,...d.view.v};}
   else if(d.sections){const m=viewFromSections(d.sections);VIEW.preset=m.preset;VIEW.v=m.v;}
   else return; persistView();try{renderNav();}catch(e){} }
+// In-context verbergen (⋯ op de paneelkop) — met ongedaan-toast die de vórige stand
+// exact terugzet (incl. preset, dus ook "aangepast" wordt teruggedraaid).
+const pHide=(k,n)=>`<span class="pmenu"><button aria-label="Paneel-opties" onclick="event.stopPropagation();this.parentElement.classList.toggle('open')">⋯</button><span class="dd"><button onclick="hideViewPanel('${k}','${esc(n)}')">🙈 Verberg dit paneel</button></span></span>`;
+function hideViewPanel(k,n){
+  const prevP=VIEW.preset,prevV=VIEW.v[k];
+  VIEW.v[k]=0;VIEW.preset='aangepast';persistView();render();
+  toast(`“${n}” verborgen — terugzetten kan via Instellingen → Weergave`,'info',
+    {label:'Ongedaan maken',fn:()=>{VIEW.v[k]=prevV;VIEW.preset=prevP;persistView();render();}});
+}
+function dismissNudge(go){ VIEW.nudged=1;persistView(); if(go)viewPreset('standaard');else render(); }
 
 /* ═══ Globale filter (elke pagina) ═══ */
 // Multi-select (Denny 2026-09-14): de zes categorie-filters zijn arrays — meerdere
@@ -2201,14 +2231,16 @@ function pgDashboard(){
     <div class="alloc">${donut()}<div class="legend">${legend}</div></div></div>`;
   const kks=[...(VV('dKpiCore')?['net','wr']:[]),...(VV('dKpiPro')?['pf','exp','r']:[])];
   const kpis=!kks.length?'':`<div class="kpis">${kks.map(k=>kpiBlock(k,'d')).join('')}</div>`;
-  const eq=!VV('dEquity')?'':`<div class="panel"><div class="phead"><h3>Equity-curve</h3><span class="sp"></span><span class="chip">year-to-date</span></div><div class="pbody">${equity()}</div></div>`;
-  const mon=!VV('dMonthly')?'':`<div class="panel"><div class="phead"><h3>Maand-P&L</h3><span class="sp"></span><span class="chip">per maand</span></div><div class="pbody">${barsPnl(monthly())}</div></div>`;
+  const eq=!VV('dEquity')?'':`<div class="panel"><div class="phead"><h3>Equity-curve</h3><span class="sp"></span><span class="chip">year-to-date</span>${pHide('dEquity','Equity-curve')}</div><div class="pbody">${equity()}</div></div>`;
+  const mon=!VV('dMonthly')?'':`<div class="panel"><div class="phead"><h3>Maand-P&L</h3><span class="sp"></span><span class="chip">per maand</span>${pHide('dMonthly','Maand-P&L')}</div><div class="pbody">${barsPnl(monthly())}</div></div>`;
   const sess=groupRows('session').sort((a,b)=>b.val-a.val);
-  const edge=!VV('dEdge')?'':`<div class="panel"><div class="phead"><h3>Waar zit je edge</h3><span class="sp"></span><span class="chip">balk = win-rate · kleur = netto</span></div>${hbars(sess)}</div>`;
-  const recent=!VV('dRecent')?'':`<div class="panel"><div class="phead"><h3>Recente trades</h3><span class="sp"></span><button class="chip a" onclick="go('trades')" style="font-weight:700">Alle trades →</button></div>
+  const edge=!VV('dEdge')?'':`<div class="panel"><div class="phead"><h3>Waar zit je edge</h3><span class="sp"></span><span class="chip">balk = win-rate · kleur = netto</span>${pHide('dEdge','Waar zit je edge')}</div>${hbars(sess)}</div>`;
+  // zachte hint: Rustige stand + genoeg trades → wijs één keer op de rest (wegklikbaar)
+  const nudge=(VIEW.preset==='rustig'&&T.length>=25&&!VIEW.nudged)?`<div class="vnudge">💡 Er staan meer inzichten voor je klaar — profit factor, expectancy, analytics en tendencies. <span class="go" onclick="dismissNudge(true)">Bekijk Standaard</span><button class="x" onclick="dismissNudge(false)" aria-label="Hint sluiten">×</button></div>`:'';
+  const recent=!VV('dRecent')?'':`<div class="panel"><div class="phead"><h3>Recente trades</h3><span class="sp"></span><button class="chip a" onclick="go('trades')" style="font-weight:700">Alle trades →</button>${pHide('dRecent','Recente trades')}</div>
     <div class="tblwrap"><table class="tbl"><thead><tr><th>Pair</th><th>Setup</th><th>Datum</th><th class="rt">P&L</th><th class="rt">R</th><th class="rt">Status</th></tr></thead>
     <tbody>${T.slice(0,6).map(t=>`<tr><td>${assetCell(t.pair)}</td><td class="tag">${esc(t.setup)}</td><td class="tag num">${fmtD(t.date)}</td><td class="rt">${pnlCell(t.pnl,t.pnlPct)}</td><td class="rt num ${cls(t.r)}">${(t.r>=0?'+':'')+t.r.toFixed(1)}R</td><td class="rt">${statusB(t.status)}</td></tr>`).join('')}</tbody></table></div></div>`;
-  return `${filterBar()}${hero}<div style="height:16px"></div>${kpis}<div style="height:16px"></div>${eq}<div style="height:16px"></div>
+  return `${filterBar()}${hero}<div style="height:16px"></div>${kpis}${nudge}<div style="height:16px"></div>${eq}<div style="height:16px"></div>
     <div class="grid" style="grid-template-columns:1fr 1fr">${mon}${edge}</div><div style="height:16px"></div>${recent}`;
 }
 
@@ -5971,6 +6003,12 @@ function renderWelcome(){
     <div class="wl-badges"><span class="wl-badge">✦ Gratis</span><span class="wl-badge">🔒 Lokaal</span><span class="wl-badge">Geen account nodig</span></div>
     <h1 class="wl-h">Jouw trades,<br><span class="wl-mark">eindelijk</span> overzichtelijk</h1>
     <p class="wl-sub">SyncJournal koppelt je exchanges en maakt van elke trade een les. Dashboard, analytics, kalender en review — alles rustig op één plek.</p>
+    <div class="wl-view"><span class="wl-vlbl">Hoe wil je starten? <span style="text-transform:none;letter-spacing:0;font-weight:500">(later aanpasbaar bij Instellingen → Weergave)</span></span>
+      <div class="wl-vopts">
+        <button class="${VIEW.preset==='rustig'?'on':''}" onclick="viewPreset('rustig');renderWelcome()">🌿 Rustig<small>alleen de essentie</small></button>
+        <button class="${VIEW.preset==='standaard'?'on':''}" onclick="viewPreset('standaard');renderWelcome()">📊 Standaard<small>essentie + analytics</small></button>
+        <button class="${VIEW.preset==='alles'?'on':''}" onclick="viewPreset('alles');renderWelcome()">🔬 Alles<small>elke functie aan</small></button>
+      </div></div>
     <div class="wl-cta"><button class="wl-btn" onclick="hideWelcome()">Begin je journal <span class="wl-arrow">→</span></button><button class="wl-btn2" onclick="hideWelcome()">Rondkijken</button></div>
     <div class="wl-grid">
       ${wlTile('big','var(--accent)','📊','Dashboard','Je edge in één oogopslag — balans, kerncijfers & equity-curve','dashboard')}
@@ -5985,6 +6023,8 @@ function renderWelcome(){
   </div>`;
 }
 function showWelcome(){renderWelcome();document.getElementById('welcome').classList.add('on');}
+// ⋯-paneelmenu's sluiten bij klik ernaast
+document.addEventListener('click',e=>{document.querySelectorAll('.pmenu.open').forEach(m=>{if(!m.contains(e.target))m.classList.remove('open');});});
 function hideWelcome(){document.getElementById('welcome').classList.remove('on');DB.save('welcomed',true);}
 function goFrom(p){hideWelcome();go(p);}
 
