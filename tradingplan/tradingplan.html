@@ -132,6 +132,12 @@ textarea.input{resize:vertical;min-height:64px;line-height:1.5}
 .drop input{display:none}
 .savebar{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .savebar .st{font-size:12px;color:var(--muted)}
+.daynav{display:inline-flex;align-items:center;gap:7px}
+.daynav .btn{padding:4px 9px}
+/* poort ↔ dagstart-koppeling */
+.ptds{display:flex;align-items:center;gap:10px;margin:12px 16px 2px;padding:9px 13px;border-radius:10px;font-size:12.5px;font-weight:600;flex-wrap:wrap}
+.ptds.warn{background:var(--amber-soft);color:var(--amber);border:1px solid color-mix(in srgb,var(--amber) 30%,transparent)}
+.ptds.ok{background:var(--green-soft);color:var(--green);border:1px solid color-mix(in srgb,var(--green) 30%,transparent)}
 
 /* ═══ overzicht ═══ */
 .kv{display:grid;grid-template-columns:118px 1fr;gap:6px 12px;font-size:13px}
@@ -245,7 +251,8 @@ td input{width:66px;border:1px solid var(--line);border-radius:7px;padding:4px 7
         <ul class="list" id="wk-list"></ul>
       </div></div>
       <div class="col-7"><div class="card">
-        <div class="card-header"><h3 class="card-title">Deze week</h3><span class="hint" id="wk-id"></span></div>
+        <div class="card-header"><h3 class="card-title" id="wk-title">Deze week</h3>
+          <span class="daynav"><button class="btn btn-sm" id="wk-prev" title="Vorige week" aria-label="Vorige week">‹</button><span class="hint" id="wk-id"></span><button class="btn btn-sm" id="wk-next" title="Volgende week" aria-label="Volgende week">›</button><button class="btn btn-sm" id="wk-today" hidden>Naar deze week</button></span></div>
         <div class="card-body">
           <label class="form-label">Weekly bias</label>
           <div class="seg" data-segf="wk:bias"><button data-v="Bullish">Bullish</button><button data-v="Bearish">Bearish</button><button data-v="Range">Range</button></div>
@@ -284,7 +291,8 @@ td input{width:66px;border:1px solid var(--line);border-radius:7px;padding:4px 7
         <ul class="list" id="dg-list"></ul>
       </div></div>
       <div class="col-7"><div class="card">
-        <div class="card-header"><h3 class="card-title">Vandaag</h3><span class="hint" id="dg-id"></span></div>
+        <div class="card-header"><h3 class="card-title" id="dg-title">Vandaag</h3>
+          <span class="daynav"><button class="btn btn-sm" id="dg-prev" title="Vorige dag" aria-label="Vorige dag">‹</button><span class="hint" id="dg-id"></span><button class="btn btn-sm" id="dg-next" title="Volgende dag" aria-label="Volgende dag">›</button><button class="btn btn-sm" id="dg-today" hidden>Naar vandaag</button></span></div>
         <div class="card-body">
           <label class="form-label">Daily bias</label>
           <div class="seg" data-segf="dg:bias"><button data-v="Bullish">Bullish</button><button data-v="Bearish">Bearish</button><button data-v="Range">Range</button></div>
@@ -316,6 +324,7 @@ td input{width:66px;border:1px solid var(--line);border-radius:7px;padding:4px 7
     <div class="row">
       <div class="col-6"><div class="card">
         <div class="card-header"><h3 class="card-title">Pre-trade poort</h3><div class="seg" id="dir"><button aria-pressed="true" data-dir="Long">Long</button><button aria-pressed="false" data-dir="Short">Short</button></div></div>
+        <div id="pt-dagstart"></div>
         <ul class="list" id="pt-list"></ul>
         <div class="verdict v-NO" id="pt-verdict"><div class="g">Geen trade</div><div class="w" id="pt-why">Nog niets afgevinkt</div></div>
         <div class="card-body" style="padding-top:12px">
@@ -360,7 +369,7 @@ td input{width:66px;border:1px solid var(--line);border-radius:7px;padding:4px 7
         <thead><tr><th>Datum</th><th>Type</th><th>Inhoud</th><th>Grade / bias</th><th style="text-align:right">R</th><th></th></tr></thead>
         <tbody id="log-body"></tbody>
       </table></div>
-      <div class="card-footer"><button class="btn btn-sm" id="exp-csv">Kopieer trades als CSV</button><button class="btn btn-sm" id="exp-json">Kopieer alles als JSON</button></div>
+      <div class="card-footer"><button class="btn btn-sm" id="exp-csv">Kopieer trades als CSV</button><button class="btn btn-sm" id="exp-json">⬇ Download backup (JSON)</button><button class="btn btn-sm" id="imp-json">⬆ Importeer backup</button><input type="file" id="imp-file" accept="application/json,.json" style="display:none"></div>
     </div></div></div>
   </section>
     </main>
@@ -437,7 +446,6 @@ td input{width:66px;border:1px solid var(--line);border-radius:7px;padding:4px 7
   function isoWeek(d){var t=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()));var day=t.getUTCDay()||7;t.setUTCDate(t.getUTCDate()+4-day);var y0=new Date(Date.UTC(t.getUTCFullYear(),0,1));return t.getUTCFullYear()+"-W"+String(Math.ceil(((t-y0)/864e5+1)/7)).padStart(2,"0");}
   function localKey(d){return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");}
   var WK=isoWeek(now), DK=localKey(now);
-  var startTf= now.getDay()===1?"Maandag: start op de weekly": now.getDate()===1?"Nieuwe maand: start op de monthly":"Start op de daily";
 
   /* ================= thema (SyncJournal-stijl: expliciete toggle, systeem als default) ================= */
   var THEME_KEY="tp2:theme";
@@ -454,6 +462,26 @@ td input{width:66px;border:1px solid var(--line);border-radius:7px;padding:4px 7
   var LS={plans:"tp2:plans",trades:"tp2:trades",pb:"tp2:pb"};
   function lsGet(k,fb){try{var r=localStorage.getItem(k);return r?JSON.parse(r):fb;}catch(e){return fb;}}
   function lsSet(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){toast("Lokaal opslaan lukte niet (te vol?)");}}
+
+  /* Screenshots lokaal in IndexedDB i.p.v. base64 in localStorage (5MB-limiet).
+     IMG_CACHE (id → dataURL) wordt bij het laden gevuld zodat imgSrc synchroon blijft. */
+  var IDBH=null, IMG_CACHE={};
+  function idbOpen(){return new Promise(function(res){ if(!window.indexedDB)return res(null);
+    try{var r=indexedDB.open("tp2",1);
+      r.onupgradeneeded=function(){r.result.createObjectStore("img");};
+      r.onsuccess=function(){res(r.result);}; r.onerror=function(){res(null);};
+    }catch(e){res(null);} });}
+  function idbPut(id,val){return new Promise(function(res){ if(!IDBH)return res(false);
+    var tx=IDBH.transaction("img","readwrite");tx.objectStore("img").put(val,id);
+    tx.oncomplete=function(){res(true);};tx.onerror=function(){res(false);}; });}
+  function idbDel(id){ if(!IDBH)return; try{IDBH.transaction("img","readwrite").objectStore("img").delete(id);}catch(e){} }
+  function idbAll(){return new Promise(function(res){ if(!IDBH)return res({});
+    try{var st=IDBH.transaction("img","readonly").objectStore("img");
+      var ks=st.getAllKeys(), vs=st.getAll(), out={};
+      vs.onsuccess=function(){ (ks.result||[]).forEach(function(k,i){out[k]=vs.result[i];}); res(out); };
+      vs.onerror=function(){res({});};
+    }catch(e){res({});} });}
+  function newImgId(){return "im"+Date.now().toString(36)+Math.random().toString(36).slice(2,8);}
 
   var plans={}, trades=[], pb=null;
   var queues={};
@@ -486,9 +514,18 @@ td input{width:66px;border:1px solid var(--line);border-radius:7px;padding:4px 7
       });
     }
     plans=lsGet(LS.plans,{}); trades=lsGet(LS.trades,[]); pb=Object.assign({},PB_DEFAULT,lsGet(LS.pb,{}));
-    return Promise.resolve();
+    return idbOpen().then(function(db){ IDBH=db; if(!db)return;
+      return idbAll().then(function(map){ IMG_CACHE=map;
+        // migratie: inline base64-screenshots uit localStorage → IndexedDB (maakt localStorage leeg genoeg)
+        var moved=false;
+        Object.keys(plans).forEach(function(id){ (plans[id].images||[]).forEach(function(im){
+          if(im.data){var iid=newImgId();IMG_CACHE[iid]=im.data;idbPut(iid,im.data);delete im.data;im.idb=iid;moved=true;}
+        });});
+        if(moved) lsSet(LS.plans,plans);
+      });
+    });
   }
-  function imgSrc(im){ return im.id?("/_blob/"+im.id):(im.data||""); }
+  function imgSrc(im){ if(im.id)return "/_blob/"+im.id; if(im.idb)return IMG_CACHE[im.idb]||""; return im.data||""; }
 
   /* ================= plannen ================= */
   function blankPlan(type,key){ return {id:planId(type,key),type:type,key:key,checks:{},images:[],links:[],saved:false,savedAt:null,updatedAt:null}; }
@@ -540,7 +577,7 @@ td input{width:66px;border:1px solid var(--line);border-radius:7px;padding:4px 7
       var d=document.createElement("div"); d.className="thumb";
       d.innerHTML='<img src="'+esc(imgSrc(im))+'" alt="screenshot"><button class="x" title="Verwijderen">×</button>';
       q("img",d).onclick=function(){lightbox(imgSrc(im));};
-      q(".x",d).onclick=function(e){e.stopPropagation();if(!confirm("Screenshot verwijderen?"))return;p.images.splice(idx,1);if(im.id&&ASSETS)ASSETS.delete(im.id).catch(function(){});touch(p);renderAttach(prefix,p);renderOverview();};
+      q(".x",d).onclick=function(e){e.stopPropagation();if(!confirm("Screenshot verwijderen?"))return;p.images.splice(idx,1);if(im.id&&ASSETS)ASSETS.delete(im.id).catch(function(){});if(im.idb){idbDel(im.idb);delete IMG_CACHE[im.idb];}touch(p);renderAttach(prefix,p);renderOverview();};
       th.appendChild(d);
     });
     var ul=q('[data-links="'+prefix+'"]'); ul.innerHTML="";
@@ -559,7 +596,11 @@ td input{width:66px;border:1px solid var(--line);border-radius:7px;padding:4px 7
         ASSETS.upload(f).then(function(r){p.images.push({id:r.id});touch(p,true);renderAttach(prefix,p);renderOverview();toast("Screenshot opgeslagen");})
           .catch(function(e){toast("Upload mislukt: "+(e&&e.code||"onbekend"));});
       } else {
-        compress(f,function(data){p.images.push({data:data});touch(p,true);renderAttach(prefix,p);renderOverview();});
+        compress(f,function(data){
+          if(IDBH){var iid=newImgId();IMG_CACHE[iid]=data;idbPut(iid,data);p.images.push({idb:iid});}
+          else p.images.push({data:data}); // geen IndexedDB beschikbaar → oude inline-vorm
+          touch(p,true);renderAttach(prefix,p);renderOverview();
+        });
       }
     });
   }
@@ -576,7 +617,7 @@ td input{width:66px;border:1px solid var(--line);border-radius:7px;padding:4px 7
     target.innerHTML="";
     items.forEach(function(it){
       if(it.g){var g=document.createElement("li");g.className="group-title";g.textContent=it.g;target.appendChild(g);return;}
-      var li=document.createElement("li"), d=it.k==="start"&&p.type==="dag"?startTf:(it.d||"");
+      var li=document.createElement("li"), d=it.k==="start"&&p.type==="dag"?startTfFor(p.key):(it.d||"");
       li.innerHTML='<label class="chk"><input type="checkbox"'+(p.checks[it.k]?" checked":"")+'><span><span class="l">'+esc(it.t)+'</span>'+(d?'<span class="d">'+esc(d)+'</span>':'')+'</span></label>';
       q("input",li).onchange=function(ev){p.checks[it.k]=ev.target.checked;touch(p);updateProg(items,p,prog,countEl);renderOverview();};
       target.appendChild(li);
@@ -586,12 +627,32 @@ td input{width:66px;border:1px solid var(--line);border-radius:7px;padding:4px 7
   function progress(items,p){var n=items.filter(function(i){return i.k;}),d=n.filter(function(i){return p.checks[i.k];}).length;return {done:d,total:n.length};}
   function updateProg(items,p,prog,countEl){var r=progress(items,p);prog.style.width=Math.round(r.done/r.total*100)+"%";if(countEl)countEl.textContent=r.done+"/"+r.total;}
 
+  /* Dag/week-navigatie: blader met ‹ › door oudere (of komende) plannen.
+     Het Overzicht en de poort blijven altijd naar VANDAAG kijken. */
+  function startTfFor(key){var d=new Date(key+"T12:00:00");return d.getDay()===1?"Maandag: start op de weekly": d.getDate()===1?"Nieuwe maand: start op de monthly":"Start op de daily";}
+  var dgAnchor=new Date(now), wkAnchor=new Date(now);
+  function mountDag(){
+    var key=localKey(dgAnchor); cur.dg=getPlan("dag",key);
+    $("dg-id").textContent=fmtDate(key); $("dg-start").textContent=startTfFor(key);
+    $("dg-title").textContent=key===DK?"Vandaag":fmtDate(key);
+    $("dg-today").hidden=key===DK;
+    bindForm("dg",cur.dg); buildChecklist($("dg-list"),DG,cur.dg,$("dg-prog"),null);
+  }
+  function mountWk(){
+    var key=isoWeek(wkAnchor); cur.wk=getPlan("week",key);
+    $("wk-id").textContent="Week "+key.slice(6)+(key.slice(0,4)!==WK.slice(0,4)?" · "+key.slice(0,4):"");
+    $("wk-title").textContent=key===WK?"Deze week":"Week "+key.slice(6);
+    $("wk-today").hidden=key===WK;
+    bindForm("wk",cur.wk); buildChecklist($("wk-list"),WKL,cur.wk,$("wk-prog"),$("wk-count"));
+  }
   function initPlans(){
-    cur.dg=getPlan("dag",DK); cur.wk=getPlan("week",WK);
-    $("dg-id").textContent=fmtDate(DK); $("wk-id").textContent="Week "+WK.slice(6); $("dg-start").textContent=startTf;
-    bindForm("dg",cur.dg); bindForm("wk",cur.wk);
-    buildChecklist($("dg-list"),DG,cur.dg,$("dg-prog"),null);
-    buildChecklist($("wk-list"),WKL,cur.wk,$("wk-prog"),$("wk-count"));
+    $("dg-prev").onclick=function(){dgAnchor.setDate(dgAnchor.getDate()-1);mountDag();};
+    $("dg-next").onclick=function(){dgAnchor.setDate(dgAnchor.getDate()+1);mountDag();};
+    $("dg-today").onclick=function(){dgAnchor=new Date(now);mountDag();};
+    $("wk-prev").onclick=function(){wkAnchor.setDate(wkAnchor.getDate()-7);mountWk();};
+    $("wk-next").onclick=function(){wkAnchor.setDate(wkAnchor.getDate()+7);mountWk();};
+    $("wk-today").onclick=function(){wkAnchor=new Date(now);mountWk();};
+    mountDag(); mountWk();
   }
 
   /* ================= overzicht ================= */
@@ -615,12 +676,23 @@ td input{width:66px;border:1px solid var(--line);border-radius:7px;padding:4px 7
   function bindOvThumbs(root){ qa("[data-ovthumbs]",root).forEach(function(t){var p=plans[t.dataset.ovthumbs];qa(".thumb",t).forEach(function(d){d.onclick=function(){lightbox(imgSrc(p.images[+d.dataset.i]));};});}); }
   function renderOverview(){
     if(!cur.dg) return;
-    $("ov-dag").innerHTML=planHtml(cur.dg,DG,true); $("ov-dag-badge").innerHTML=planBadge(cur.dg);
-    $("ov-wk").innerHTML=planHtml(cur.wk,WKL,false); $("ov-wk-badge").innerHTML=planBadge(cur.wk);
+    // Overzicht kijkt altijd naar vandaag/deze week, óók als je in de tab terugbladert
+    var od=getPlan("dag",DK), ow=getPlan("week",WK);
+    $("ov-dag").innerHTML=planHtml(od,DG,true); $("ov-dag-badge").innerHTML=planBadge(od);
+    $("ov-wk").innerHTML=planHtml(ow,WKL,false); $("ov-wk-badge").innerHTML=planBadge(ow);
     bindOvThumbs($("ov-dag")); bindOvThumbs($("ov-wk"));
     $("ov-grades").innerHTML=[["A","gradeA","A setup"],["B","gradeB","B setup"],["C","gradeC","C setup"]].map(function(x){return '<div class="col-4"><div class="card gcard '+x[0]+'"><div class="card-header"><h3 class="card-title">'+x[2]+'</h3></div><div class="pb">'+esc(pb[x[1]])+'</div></div></div>';}).join("");
     $("ov-setup").textContent=pb.setup; $("ov-short").textContent=pb.short; $("ov-long").textContent=pb.long;
-    $("ph-right").innerHTML=(cur.dg.bias?'<span class="badge bg-azure">Vandaag '+esc(cur.dg.bias)+'</span> ':'')+(cur.wk.bias?'<span class="badge bg-primary">Week '+esc(cur.wk.bias)+'</span>':'');
+    $("ph-right").innerHTML=(od.bias?'<span class="badge bg-azure">Vandaag '+esc(od.bias)+'</span> ':'')+(ow.bias?'<span class="badge bg-primary">Week '+esc(ow.bias)+'</span>':'');
+    renderPtDagstart();
+  }
+  // Poort ↔ dagstart: laat in de poort zien of de dagstart van vandaag af is
+  function renderPtDagstart(){
+    var el=$("pt-dagstart"); if(!el) return;
+    var p=getPlan("dag",DK), r=progress(DG,p);
+    if(r.done>=r.total){ el.innerHTML='<div class="ptds ok">✓ Dagstart klaar ('+r.done+'/'+r.total+') — je mag naar de poort.</div>'; }
+    else { el.innerHTML='<div class="ptds warn">⚠ Dagstart '+r.done+'/'+r.total+' — maak eerst je dagstart af vóór je een trade beoordeelt. <button class="btn btn-sm" type="button">Naar dagplan</button></div>';
+      q(".btn",el).onclick=function(){show("dag");}; }
   }
 
   /* ================= playbook ================= */
@@ -666,7 +738,7 @@ td input{width:66px;border:1px solid var(--line);border-radius:7px;padding:4px 7
   function renderStats(){
     var tk=trades.filter(function(e){return e.taken;}), wk=tk.filter(function(e){return e.week===WK;});
     var A=tk.filter(function(e){return e.grade==="A";}),B=tk.filter(function(e){return e.grade==="B";}),N=tk.filter(function(e){return e.grade==="NO";});
-    var max=parseInt(cur.wk&&cur.wk.maxtrades)||0, net=wk.filter(function(e){return e.r!=null;}).reduce(function(s,e){return s+e.r;},0);
+    var max=parseInt(getPlan("week",WK).maxtrades)||0, net=wk.filter(function(e){return e.r!=null;}).reduce(function(s,e){return s+e.r;},0);
     function card(k,v,s,col){return '<div class="col-3"><div class="card stat"><div class="card-body"><div class="k">'+k+'</div><div class="v"'+(col?' style="color:var(--'+col+')"':'')+'>'+v+'</div><div class="s">'+s+'</div></div></div></div>';}
     $("pt-stats").innerHTML=card("Trades deze week",wk.length+(max?' <span class="hint" style="font-size:14px">/ '+max+'</span>':''),max&&wk.length>=max?'<span style="color:var(--red)">Limiet bereikt</span>':"Netto "+fR(wk.length?net:null))+card("A-trades",A.length,"gem. "+fR(avgR(A)),"green")+card("B-trades",B.length,"gem. "+fR(avgR(B)),"amber")+card("Regelbreuken",N.length,"gem. "+fR(avgR(N)),"red");
   }
@@ -702,7 +774,41 @@ td input{width:66px;border:1px solid var(--line);border-radius:7px;padding:4px 7
     function fb(){var ta=document.createElement("textarea");ta.value=text;document.body.appendChild(ta);ta.select();try{document.execCommand("copy");toast(what+" gekopieerd");}catch(e){toast("Kopiëren lukte niet");}document.body.removeChild(ta);}
     if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(text).then(function(){toast(what+" gekopieerd");},fb);else fb();
   }
-  $("exp-json").onclick=function(){var pl=Object.keys(plans).map(function(k){var p=Object.assign({},plans[k]);p.images=p.images.map(function(im){return im.id?{id:im.id}:{inline:true};});return p;});copy(JSON.stringify({trades:trades,plans:pl,playbook:pb},null,2),"JSON");};
+  /* Backup als bestand (incl. screenshots uit IndexedDB) + import — vangnet bij browserwissel */
+  function backupPayload(){
+    var imgs={};
+    Object.keys(plans).forEach(function(k){(plans[k].images||[]).forEach(function(im){if(im.idb&&IMG_CACHE[im.idb])imgs[im.idb]=IMG_CACHE[im.idb];});});
+    return {app:"TradingPlan",version:1,exported:new Date().toISOString(),trades:trades,plans:plans,playbook:pb,images:imgs};
+  }
+  $("exp-json").onclick=function(){
+    var blob=new Blob([JSON.stringify(backupPayload())],{type:"application/json"});
+    var a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="tradingplan-backup-"+DK+".json";
+    document.body.appendChild(a);a.click();
+    setTimeout(function(){URL.revokeObjectURL(a.href);a.remove();},400);
+    toast("Backup gedownload");
+  };
+  $("imp-json").onclick=function(){
+    if(DB){toast("Cloud-opslag actief — import werkt alleen in de lokale modus");return;}
+    $("imp-file").click();
+  };
+  $("imp-file").onchange=function(){
+    var f=$("imp-file").files[0];$("imp-file").value="";if(!f)return;
+    var rd=new FileReader();
+    rd.onload=function(){
+      var d; try{d=JSON.parse(rd.result);}catch(e){toast("Import mislukt: geen geldig JSON-bestand");return;}
+      if(!d||(!d.plans&&!d.trades)){toast("Dit is geen TradingPlan-backup");return;}
+      if(!confirm("Backup importeren? Dit vervangt je huidige plannen, trades en playbook."))return;
+      // annuleer uitgestelde concept-saves — anders overschrijft een pending debounce de import
+      Object.keys(timers).forEach(function(k){clearTimeout(timers[k]);});
+      plans=d.plans||{}; trades=d.trades||[]; pb=Object.assign({},PB_DEFAULT,d.playbook||{});
+      lsSet(LS.plans,plans); lsSet(LS.trades,trades); lsSet(LS.pb,pb);
+      var imgs=d.images||{}, ids=Object.keys(imgs), i=0;
+      function done(){toast("Backup geïmporteerd");setTimeout(function(){location.reload();},600);}
+      if(IDBH&&ids.length){(function next(){ if(i>=ids.length)return done(); idbPut(ids[i],imgs[ids[i]]).then(function(){i++;next();}); })();}
+      else done();
+    };
+    rd.readAsText(f);
+  };
   $("exp-csv").onclick=function(){
     var head=["datum","week","symbool","richting","tf","grade","risico_pct","genomen","R"].concat(PT.map(function(i){return i.k;})).concat(["notitie"]);
     var rows=trades.map(function(e){return [e.ts,e.week||"",e.sym,e.dir,e.tf,e.grade,e.risk,e.taken?1:0,e.r==null?"":e.r].concat(PT.map(function(i){return e.checks[i.k]?1:0;})).concat(['"'+(e.notes||"").replace(/"/g,'""')+'"']).join(",");});
