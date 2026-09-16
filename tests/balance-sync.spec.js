@@ -125,6 +125,33 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
     return hero && /2\.650|2650/.test(hero.textContent);
   }));
 
+  console.log('─── Ongekoppelde exchanges blijven overal onzichtbaar ───');
+  const rv = await p.evaluate(() => {
+    T = []; persist(); Object.keys(CONNS).forEach(k => delete CONNS[k]); persistConns();
+    EXCHANGES.forEach(e => e.val = 0); persistExMeta(); MANUAL.length = 0; persistManual();
+    go('trades');
+    const noDD = !document.querySelector('[data-dd="exchange"]');
+    openForm(null);
+    const formOpts = [...document.getElementById('f_exchange').options].map(o => o.value);
+    closeForm();
+    CONNS.hyperliquid = { connected: true, wallet: '0x1' }; persistConns(); render();
+    const dd = document.querySelector('[data-dd="exchange"]');
+    const ddOpts = dd ? [...dd.querySelectorAll('.ddchk span')].map(x => x.textContent) : [];
+    openForm(null);
+    const formOpts2 = [...document.getElementById('f_exchange').options].map(o => o.value);
+    const sel = document.getElementById('f_exchange').value;
+    closeForm();
+    return { noDD, fallbackN: formOpts.length, ddOpts, formOpts2, sel };
+  });
+  ok('niets gekoppeld → geen accounts-filter in de filterbar', rv.noDD);
+  ok('formulier valt dan terug op alle actieve exchanges', rv.fallbackN >= 4, String(rv.fallbackN));
+  ok('één koppeling → filter en formulier tonen alléén die', rv.ddOpts.join() === 'Hyperliquid' && rv.formOpts2.join() === 'hyperliquid' && rv.sel === 'hyperliquid', JSON.stringify({ dd: rv.ddOpts, f: rv.formOpts2 }));
+  ok('exchange met alleen trades blijft zichtbaar (trades nooit onvindbaar)', await p.evaluate(() => {
+    T = [{ id: 1, date: '2026-09-10', time: '10:00', pair: 'BTC/USDT', dir: 'long', setup: '', session: 'London', status: 'closed', kind: 'live', exchange: 'mexc', entry: 100, exit: 110, stop: 95, size: '1000', pnl: 50, r: 1, tps: [], tags: [], layers: [], emotions: [], mistakes: [], checks: [], screenshots: [], tvLinks: [] }]; persist(); render();
+    const dd = document.querySelector('[data-dd="exchange"]');
+    return dd && /MEXC/.test(dd.textContent);
+  }));
+
   ok('geen JS-errors totaal', errs.length === 0, errs.slice(0, 3).join(' | '));
   console.log(`\n=== Saldo & verbind-flow: ${pass}/${pass + fail} ===`);
   await b.close();
