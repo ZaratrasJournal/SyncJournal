@@ -1610,7 +1610,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.77';
+const APP_VERSION='v0.9.78';
 const SCHEMA_VERSION=2;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -6126,7 +6126,25 @@ function setFormGrade(g){formGrade=(formGrade===g?'':g);document.querySelectorAl
 // A2: onthoud of de gebruiker het playbook-veld heeft aangeraakt — een expliciete keuze
 // (ook "— geen —") wint dan altijd; alleen een onaangeraakt leeg veld valt terug op de lagen.
 let formPbTouched=false;
-function onPlaybookPick(){formPbTouched=true;const sel=document.getElementById('f_playbook');if(!sel)return;const pb=PBOOK[sel.value];if(pb&&pb.defaultGrade&&!formGrade){formGrade=pb.defaultGrade;document.querySelectorAll('#gradeseg button').forEach(b=>b.classList.toggle('on',b.dataset.g===formGrade));}}
+// Playbook kiezen neemt óók de setup-lagen (incl. tags) van dat playbook over in de trade
+// (Denny 2026-09-16: ze werden niet meegenomen). Handmatig gebouwde lagen worden nooit
+// stilletjes overschreven: dan behouden + toast met vervang-knop. formPbLayersJson onthoudt
+// wat automatisch is ingevuld, zodat wisselen van playbook onaangeraakte lagen wél vervangt.
+let formPbLayersJson='';
+function applyPbLayers(pb){
+  formLayers=(pb.layers||[]).map(L=>({timeframe:L.timeframe||'',bias:L.bias||'',setups:[...(L.setups||[])],confirmations:[...(L.confirmations||[])]}));
+  formPbLayersJson=JSON.stringify(formLayers);
+  const fld=document.getElementById('layerbuilder');if(fld){const w=fld.closest('.field');if(w)w.classList.add('vf-keep');}
+  renderLayers();try{updFormVis();}catch(e){}
+}
+function onPlaybookPick(){formPbTouched=true;const sel=document.getElementById('f_playbook');if(!sel)return;const pb=PBOOK[sel.value];
+  if(pb&&pb.defaultGrade&&!formGrade){formGrade=pb.defaultGrade;document.querySelectorAll('#gradeseg button').forEach(b=>b.classList.toggle('on',b.dataset.g===formGrade));}
+  const untouched=!formLayers.length||JSON.stringify(formLayers)===formPbLayersJson;
+  if(pb&&(pb.layers||[]).length){
+    if(untouched)applyPbLayers(pb);
+    else toast('Je eigen setup-lagen zijn behouden','info',{label:'Vervang door playbook-lagen',fn:()=>applyPbLayers(pb)});
+  } else if(!sel.value&&formLayers.length&&JSON.stringify(formLayers)===formPbLayersJson){formLayers=[];formPbLayersJson='';renderLayers();}
+}
 // Datum-wissel: houd de sessie-dropdown in sync met weekend (dag-van-week wint).
 function onDateChange(){const d=document.getElementById('f_date'),s=document.getElementById('f_session');if(!d||!s)return;if(isWeekendDate(d.value))s.value='Weekend';else if(s.value==='Weekend')s.value=sessionFromTime((document.getElementById('f_time')||{}).value);}
 /* setup-lagen (top-down) — zoals origineel */
@@ -6144,8 +6162,8 @@ function renderLayers(){const c=document.getElementById('layerbuilder');if(!c)re
     const chip=(kind,tag)=>`<span class="tagopt ${L[kind].includes(tag)?'on':''}" onclick="toggleLayerTag(${i},'${kind}','${esc(tag).replace(/'/g,'')}')">${esc(tag)}</span>`;
     return `<div class="layerrow"><div class="layerhead"><span class="layernum">${i+1}</span><span class="sp" style="flex:1"></span><div class="biaspills">${biasPills}</div><button type="button" class="xlayer" onclick="removeLayer(${i})" title="laag verwijderen">×</button></div>
       <div class="layertags"><div class="lt-lbl">Timeframe</div><div class="tg-chips">${TFLIST.map(tfChip).join('')}</div></div>
-      <div class="layertags"><div class="lt-lbl">Setups</div><div class="tg-chips">${(tagConfig.setupTags||[]).map(t=>chip('setups',t)).join('')}</div></div>
-      <div class="layertags"><div class="lt-lbl">Confirmaties</div><div class="tg-chips">${(tagConfig.confirmationTags||[]).map(t=>chip('confirmations',t)).join('')}</div></div></div>`;}).join('');}
+      <div class="layertags"><div class="lt-lbl">Setups</div><div class="tg-chips">${[...new Set([...(tagConfig.setupTags||[]),...L.setups])].map(t=>chip('setups',t)).join('')}</div></div>
+      <div class="layertags"><div class="lt-lbl">Confirmaties</div><div class="tg-chips">${[...new Set([...(tagConfig.confirmationTags||[]),...L.confirmations])].map(t=>chip('confirmations',t)).join('')}</div></div></div>`;}).join('');}
 /* emoties (negatief/positief) + fouten */
 function toggleEmotion(e){const i=formEmotions.indexOf(e);if(i<0)formEmotions.push(e);else formEmotions.splice(i,1);renderEmotions();}
 function renderEmotions(){const c=document.getElementById('emobuilder');if(!c)return;const cats=tagConfig.emotionTags||[];
@@ -6245,7 +6263,7 @@ function updFormVis(){
 }
 function openForm(id){
   const t=id!=null?T.find(x=>x.id===id):{date:new Date().toISOString().slice(0,10),time:'',exchange:'blofin',pair:'BTC/USDC',dir:'long',setup:'',session:'London',timeframe:'15m',market:'Trending',grade:'',entry:'',stop:'',tp:'',exit:'',size:'',leverage:10,fees:'',risk:'',rrPlanned:'',pnl:'',r:'',status:'closed',emotion:'',mistake:'',emotions:[],mistakes:[],layers:[],tags:[],notes:'',lessons:'',durationMin:'',mae:'',mfe:''};
-  formSizeUnit=(t.sizeUnit==='asset'&&t.qty>0)?'asset':'usd';formPbTouched=false;
+  formSizeUnit=(t.sizeUnit==='asset'&&t.qty>0)?'asset':'usd';formPbTouched=false;formPbLayersJson='';
   formTags=[...(t.tags||[])];formGrade=gradeOf(t);formShots=[...(t.screenshots||[])];formTvLinks=[...(t.tvLinks||[])];
   formLayers=(t.layers||[]).map(L=>({timeframe:L.timeframe||'',bias:L.bias||'',setups:[...(L.setups||[])],confirmations:[...(L.confirmations||[])]}));
   formEmotions=[...(t.emotions||(t.emotion?[t.emotion]:[]))];
