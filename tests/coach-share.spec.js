@@ -46,7 +46,7 @@ const mk = (id, over) => Object.assign({ id, date: '2026-08-3' + id, time: '10:0
 
   console.log('─── Pakket-inhoud + beveiliging ───');
   const pkg = await p.evaluate(() => { const t1 = T.find(x => x.id === 1), t2 = T.find(x => x.id === 2); return coachPkgHTML([t1, t2], { name: 'Denny', hide: true, shotMap: { 1: [T[0].screenshots[0]], 2: [] } }); });
-  ok('titel met aantal trades', /Trade-review — 2 trades ter beoordeling/.test(pkg));
+  ok('titel met aantal trades', /Trade-review. 2 trades ter beoordeling/.test(pkg));
   ok('"gedeeld door" naam', /Gedeeld door <b>Denny/.test(pkg));
   ok('self-contained (geen externe http-resources)', !/(src|href)="https?:/.test(pkg), 'bevat externe ref');
   ok('bevat <style> en <script>', /<style>/.test(pkg) && /<scr/.test(pkg));
