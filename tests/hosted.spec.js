@@ -37,6 +37,7 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  âœ
   ok('site/index.html en site/version.json dragen dezelfde versie', m && m[1] === vj.version, `index=${m && m[1]} json=${vj.version}`);
   ok('privacy.html aanwezig met kernpunten (lokaal, Drive, contact)', (() => { const pv = fs.readFileSync(path.resolve('site', 'privacy.html'), 'utf8'); return /eigen browser/.test(pv) && /Google Drive/.test(pv) && /info@syncjournal\.nl/.test(pv); })());
   ok('_headers: version.json wordt nooit gecachet', /\/version\.json\s*\n\s*Cache-Control: no-store/.test(fs.readFileSync(path.resolve('site', '_headers'), 'utf8')));
+  ok('demo-dataset.json staat naast de app (3000 trades, geldige backup-vorm)', (() => { try { const d = JSON.parse(fs.readFileSync(path.resolve('site', 'demo-dataset.json'), 'utf8')); return d.app === 'SyncJournal' && Array.isArray(d.trades) && d.trades.length === 3000 && !!d.exMeta; } catch (e) { return false; } })());
 
   ok('geen JS-errors totaal', errs.length === 0, errs.slice(0, 3).join(' | '));
   console.log(`\n=== Hosted (fase 2): ${pass}/${pass + fail} ===`);

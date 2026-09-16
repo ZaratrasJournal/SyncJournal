@@ -9,7 +9,7 @@ const path = require('path');
 
 const SPECS = [
   'e2e-doorloop',            // ← de grote doorloop, eerst (vangt integratie-breuken meteen)
-  'backup-guard', 'drive-backup', 'hosted', 'weergave-presets',
+  'backup-guard', 'drive-backup', 'hosted', 'weergave-presets', 'demo-dataset',
   'duration', 'changemaker-feedback', 'multifilter', 'csv-import',
   'exchange-sync', 'exchange-sync2', 'possize',
   'matrix', 'yearheatmap', 'review-list', 'coach-share', 'tv-links',

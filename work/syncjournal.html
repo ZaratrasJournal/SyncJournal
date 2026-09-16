@@ -1610,7 +1610,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.71';
+const APP_VERSION='v0.9.72';
 const SCHEMA_VERSION=2;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -3101,7 +3101,7 @@ function pgInstellingen(){
       </div>
       <div class="panel"><div class="setrow"><div class="txt"><b>Back-up</b><small>Exporteer of importeer je journal als JSON, echt werkend</small></div>
       <button class="btn" onclick="importJSON()">Importeer</button><button class="btn pri" onclick="exportJSON()">Exporteer JSON</button></div>
-      <div class="setrow"><div class="txt"><b>Voorbeelddata laden</b><small>Vul de app met voorbeeld-trades om te verkennen, overschrijft je huidige trades</small></div><button class="btn" onclick="resetDemo()">Laden</button></div>
+      <div class="setrow"><div class="txt"><b>Voorbeelddata laden</b><small>Vul de app met 3000 voorbeeld-trades incl. accounts, playbooks en tags, overschrijft je huidige journal</small></div><button class="btn" onclick="resetDemo()">Laden</button></div>
       <div class="setrow"><div class="txt"><b>Opslag-bescherming</b><small>${PERSISTED===true?'<span style="color:var(--green);font-weight:700">✓ Actief</span>, je browser heeft beloofd deze opslag niet zelf op te ruimen':PERSISTED===false?'<span style="color:var(--amber);font-weight:700">Niet actief</span>, de browser mag bij ruimtegebrek opruimen; een recente backup is extra belangrijk':'Onbekend, deze browser geeft er geen uitsluitsel over'}</small></div></div>
       <div class="setrow"><div class="txt"><b>Versie</b><small>SyncJournal ${APP_VERSION} · dataschema v${SCHEMA_VERSION} · ${T.length} trades lokaal opgeslagen</small></div></div></div>
       <div class="section-sub">🗑️ Prullenbak${TRASH.length?` · ${TRASH.length}`:''} <span class="hint">(verwijderde trades · ${TRASH_DAYS} dagen bewaard, daarna automatisch weg)</span></div>
@@ -6039,7 +6039,26 @@ function importJSON(){ const inp=document.createElement('input');inp.type='file'
     }catch(err){ ErrorCenter.report('import',err,{severity:'error',userMsg:'Het bestand kon niet worden geïmporteerd, is het een geldige SyncJournal- of TradeJournal-back-up? Je bestaande data is ongewijzigd.',actions:[{label:'Details',fn:()=>ErrorCenter.diagnostics()}]}); }};
     rd.readAsText(f);};inp.click(); }
 function loadDemoData(){T=SEED.map(t=>{const o=+new Date(`${t.date}T${t.time||'12:00'}:00`);const c=(t.status!=='open'&&+t.durationMin)?o+t.durationMin*60000:0;return {...t,openTime:isFinite(o)?String(o):'',closeTime:c?String(c):''};});persist();render();}
-async function resetDemo(){ if(!confirm('Voorbeelddata laden? Dit OVERSCHRIJFT je huidige trades. Er wordt eerst automatisch een veiligheidskopie gemaakt.'))return; if((T||[]).length)await Snapshots.create('vóór voorbeelddata'); loadDemoData(); toast('Voorbeelddata geladen','info'); }
+// Volledige voorbeeld-dataset (3000 trades, alle features) staat als los bestand naast de
+// gehoste app; het pad met ../ vangt de lokale dev-tree (server op repo-root). Op file://
+// of offline valt resetDemo terug op de compacte ingebakken SEED.
+const DEMO_URLS=['demo-dataset.json','../site/demo-dataset.json'];
+async function fetchDemoDataset(){ for(const u of DEMO_URLS){ try{ const r=await fetch(u,{cache:'no-store'}); if(r.ok){ const d=await r.json(); if(d&&Array.isArray(d.trades)&&d.trades.length)return d; } }catch(e){} } return null; }
+async function resetDemo(){
+  if((T||[]).length){
+    if(!confirm('Voorbeelddata laden? Dit OVERSCHRIJFT je huidige journal (trades, playbooks, tags en saldi). Er wordt eerst automatisch een veiligheidskopie gemaakt.'+(BK.choice==='drive'?'\n\nLet op: je automatische Drive-backup gaat daarna deze voorbeelddata bevatten. Eerdere dagbestanden blijven in je Drive-map staan.':'')))return;
+    await Snapshots.create('vóór voorbeelddata');
+  }
+  toast('Voorbeelddata ophalen…','info');
+  const d=await fetchDemoDataset();
+  if(d){
+    // de demo levert inhoud (trades, playbooks, tags, accounts) — nooit iemands echte
+    // exchange-koppelingen, sync-instellingen, thema of weergave-keuze overschrijven
+    delete d.conns;delete d.sync;delete d.settings;delete d.view;delete d.sections;delete d.aiPrefs;
+    applyBackup(d);
+    toast('✓ Voorbeelddata geladen: '+T.length+' trades','ok');
+  } else { loadDemoData(); toast('Voorbeelddata geladen (compacte set, de volledige dataset was niet bereikbaar)','info'); }
+}
 // Verwijderen is omkeerbaar (prullenbak + undo-toast) → geen confirm-dialoog meer nodig.
 function delTrade(id){ formDirty=false;trashDelete([id]);if(STATE.revSel===id)STATE.revSel=(T[0]||{}).id||0;closeForm();render();toast('🗑 Trade naar prullenbak','info',{label:'Ongedaan maken',fn:()=>undoTrash([id])}); }
 function undoTrash(ids){ trashRestore(ids);render();toast('✓ Teruggezet','ok'); }
@@ -6338,7 +6357,7 @@ function renderWelcome(){
         <button class="${VIEW.preset==='standaard'?'on':''}" onclick="viewPreset('standaard');renderWelcome()">📊 Standaard<small>essentie + analytics</small></button>
         <button class="${VIEW.preset==='alles'?'on':''}" onclick="viewPreset('alles');renderWelcome()">🔬 Alles<small>elke functie aan</small></button>
       </div></div>
-    <div class="wl-cta"><button class="wl-btn" onclick="hideWelcome()">Begin je journal <span class="wl-arrow">→</span></button><button class="wl-btn2" onclick="hideWelcome()">Rondkijken</button></div>
+    <div class="wl-cta"><button class="wl-btn" onclick="hideWelcome()">Begin je journal <span class="wl-arrow">→</span></button><button class="wl-btn2" onclick="hideWelcome();resetDemo()">Rondkijken met voorbeelddata</button></div>
     <div class="wl-grid">
       ${wlTile('big','var(--accent)','📊','Dashboard','Je edge in één oogopslag, balans, kerncijfers & equity-curve','dashboard')}
       ${wlTile('wide','#12b39b','📈','Analytics','Equity, drawdown, R-verdeling & uur-heatmap','analytics')}
