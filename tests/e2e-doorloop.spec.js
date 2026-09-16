@@ -103,7 +103,7 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
   ok('definitief verwijderen via prullenbak → echt weg', await p.evaluate((id) => { delTrade(id); trashKill(id); return T.length === 1 && TRASH.length === 0; }, eth));
 
   console.log('─── Account verwijderen + slotconsistentie ───');
-  ok('account weg → trade blijft bestaan, geen crash, balans zakt', await p.evaluate((b0) => { go('instellingen'); setSetTab('accounts'); const mid = MANUAL[0].id; removeManual(mid); go('trades'); const rowOk = document.querySelectorAll('tbody tr.mrow').length === 1; return MANUAL.length === 0 && T.length === 1 && rowOk && totalBalance() === b0; }, base));
+  ok('account weg (trades behouden gekozen) → trade blijft bestaan, geen crash, balans zakt', await p.evaluate((b0) => { go('instellingen'); setSetTab('accounts'); const mid = MANUAL[0].id; const orig = window.confirm; const seq = [true, false]; window.confirm = () => seq.shift(); removeManual(mid); window.confirm = orig; go('trades'); const rowOk = document.querySelectorAll('tbody tr.mrow').length === 1; return MANUAL.length === 0 && T.length === 1 && rowOk && totalBalance() === b0; }, base));
   ok('slotsom: tabel == dashboard == acctPnl == kalender (−105)', await p.evaluate(() => { const net = T.filter(t => t.status === 'closed').reduce((s, t) => s + t.pnl, 0); go('dashboard'); const k = document.querySelector('.kpis').textContent; go('kalender'); const cal = document.getElementById('main').textContent; return net === -105 && /105/.test(k) && /105/.test(cal); }));
   ok('geen JS-errors in de hele doorloop', errs.length === 0, errs.slice(0, 3).join(' | '));
   console.log(`\n=== E2E-doorloop: ${pass}/${pass + fail} ===`);

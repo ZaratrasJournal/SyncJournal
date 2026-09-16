@@ -1611,7 +1611,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.81';
+const APP_VERSION='v0.9.82';
 const SCHEMA_VERSION=2;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -1847,13 +1847,33 @@ function connectEx(id){
   persistConns();STATE.connOpen='';render();toast('✓ '+EXMAP[id].name+' verbonden, saldo en trades worden opgehaald…','ok');
   // direct saldo + eerste sync: het dashboard toont meteen de echte balans en trades
   (async()=>{try{await refreshBalance(id);await syncExchange(id,{});}catch(e){}render();})();}
-function disconnectEx(id){delete CONNS[id];persistConns();render();toast(EXMAP[id].name+' losgekoppeld','info');}
+// Account weg = keuze over de gekoppelde trades (Denny 2026-09-16: "data blijft erin"):
+// mee naar de prullenbak (terug te halen) of behouden als losse trades.
+function acctTradeChoice(label,linked){
+  if(!linked.length)return false;
+  return confirm('Er zijn '+linked.length+' trades gekoppeld aan '+label+'. Wil je die óók verwijderen?\n\nOK = trades naar de prullenbak ('+TRASH_DAYS+' dagen terug te halen)\nAnnuleren = trades behouden als losse trades');
+}
+function disconnectEx(id){
+  const linked=T.filter(t=>t&&t.exchange===id).map(t=>t.id);
+  if(!confirm(EXMAP[id].name+' loskoppelen?'+(linked.length?' Er zijn '+linked.length+' trades aan gekoppeld.':'')))return;
+  const killTrades=acctTradeChoice(EXMAP[id].name,linked);
+  if(killTrades)trashDelete(linked);
+  delete CONNS[id];persistConns();
+  if(EXMAP[id]){EXMAP[id].val=0;persistExMeta();}  // saldo hoort bij de koppeling
+  render();toast(EXMAP[id].name+' losgekoppeld'+(killTrades?' · '+linked.length+' trades naar de prullenbak':''),'info');}
 function toggleExSync(id){if(CONNS[id]){CONNS[id].autoSync=!CONNS[id].autoSync;persistConns();render();}}
 function addManual(){const n=document.getElementById('ma_name'),bal=document.getElementById('ma_bal'),name=n?n.value.trim():'',b=bal?parseFloat(String(bal.value).replace(',','.'))||0:0;
   if(!name){toast('Geef het account een naam','err');return;}
   const tx=b>0?[{id:'tx'+Date.now().toString(36),type:'deposit',amount:String(b),date:new Date().toISOString().slice(0,10),note:'Startsaldo'}]:[];
   MANUAL.push({id:'m'+Date.now(),name,transactions:tx});persistManual();STATE.manOpen='';render();toast('✓ Handmatig account toegevoegd','ok');}
-function removeManual(id){if(!confirm('Dit account verwijderen? Gekoppelde trades blijven bestaan (worden losse trades).'))return;MANUAL=MANUAL.filter(m=>m.id!==id);persistManual();render();toast('Account verwijderd','info');}
+function removeManual(id){
+  const m=MANUAL.find(x=>x.id===id);if(!m)return;
+  const linked=T.filter(t=>t&&t.exchange===id).map(t=>t.id);
+  if(!confirm('Account "'+m.name+'" verwijderen?'+(linked.length?' Er zijn '+linked.length+' trades aan gekoppeld.':'')))return;
+  const killTrades=acctTradeChoice('"'+m.name+'"',linked);
+  if(killTrades)trashDelete(linked);
+  MANUAL=MANUAL.filter(x=>x.id!==id);persistManual();render();
+  toast('Account verwijderd'+(killTrades?' · '+linked.length+' trades naar de prullenbak':linked.length?' · trades behouden als losse trades':''),'info');}
 // ── Kapitaal-mutaties (storten/opnemen/corrigeren) per handmatig account ──
 function toggleMan(id){STATE.manOpen=STATE.manOpen===id?'':id;STATE.txOpen=null;render();}
 function txOpen(id,type){STATE.txOpen={id,type};if(STATE.manOpen!==id)STATE.manOpen=id;render();setTimeout(()=>{const a=document.getElementById('tx_amt');if(a)a.focus();},30);}
