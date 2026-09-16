@@ -38,6 +38,11 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
   ok('pairCell → één pair', await p.evaluate(() => { pairCell('ETH/USDT'); return FILTER.pair.length === 1 && FILTER.pair[0] === 'ETH/USDT'; }));
   ok('setFilter (tagchip-klik) vervangt tag-selectie', await p.evaluate(() => { FILTER.tag = ['A', 'B']; setFilter('tag', 'C'); const one = FILTER.tag.length === 1 && FILTER.tag[0] === 'C'; setFilter('tag', ''); return one && FILTER.tag.length === 0; }));
 
+  console.log('─── Eén opmaak: ook richting + soort als dd-dropdown ───');
+  ok('geen native <select> meer in de filterbar', await p.evaluate(() => { go('trades'); return document.querySelectorAll('.filtbar select').length === 0 && !!document.querySelector('[data-dd="dir"]') && !!document.querySelector('[data-dd="kind"]'); }));
+  ok('richting kiezen via menu filtert en licht de knop op', await p.evaluate(() => { clearGFilter(); setFilter('kind', 'alle'); const before = FT.length; setFilter('dir', 'short'); const btn = document.querySelector('[data-dd="dir"] .dd-btn'); const okr = FT.length < before && FT.every(t => t.dir === 'short') && btn.classList.contains('on') && /Short/.test(btn.textContent); setFilter('dir', ''); return okr; }));
+  ok('soort-knop toont de keuze en telt mee als filter', await p.evaluate(() => { setFilter('kind', 'backtest'); const btn = document.querySelector('[data-dd="kind"] .dd-btn'); const okr = /Backtest/.test(btn.textContent) && btn.classList.contains('on') && countActive() >= 1; setFilter('kind', 'alle'); return okr; }));
+
   console.log('─── Pagina-integratie ───');
   ok('analytics rendert met multi-filter actief', await p.evaluate(() => { clearGFilter(); setFilter('kind', 'alle'); toggleFilter('exchange', 'blofin'); toggleFilter('exchange', 'kraken'); go('analytics'); return document.querySelectorAll('#main .panel').length > 3; }));
   await p.waitForTimeout(400);

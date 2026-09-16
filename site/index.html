@@ -1060,7 +1060,7 @@ details.faq .faq-a b{color:var(--ink)}
 /* oefentrades — soort-badge + filter */
 .paircell{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
 .kbadge{display:inline-flex;align-items:center;gap:3px;font-size:9.5px;font-weight:700;padding:2px 7px;border-radius:5px;color:var(--kc);background:color-mix(in srgb,var(--kc) 14%,transparent);border:1px solid color-mix(in srgb,var(--kc) 32%,transparent);white-space:nowrap;letter-spacing:.02em}
-.fsel.kindsel{font-weight:600}
+.fsel.kindsel,.dd-btn.kindsel{font-weight:600}
 /* setup/sessie/R/nieuw/streak-badges */
 .mbadge{display:inline-block;font-size:10.5px;font-weight:600;padding:2px 8px;border-radius:5px;color:var(--mc);background:color-mix(in srgb,var(--mc) 12%,transparent);border:1px solid color-mix(in srgb,var(--mc) 28%,transparent);white-space:nowrap;line-height:1.4}
 .rbadge{display:inline-block;font-family:var(--fn);font-variant-numeric:tabular-nums;font-size:11px;font-weight:700;padding:2px 8px;border-radius:5px}
@@ -1610,7 +1610,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.75';
+const APP_VERSION='v0.9.76';
 const SCHEMA_VERSION=2;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -1980,8 +1980,16 @@ function multiDD(key,opts){
       ${cur.length?`<div class="dd-sep"></div><button class="ddclear" onclick="clearFilterKey('${key}')">✕ Wis selectie</button>`:''}
     </div></div>`;
 }
+// Enkel-select in dezelfde dd-stijl als de multi-selects — de twee native <select>s
+// braken de visuele lijn van de filterbar (Denny 2026-09-16). dflt = neutrale waarde
+// (geen accent-rand); een andere keuze licht op zoals bij de multi-filters.
+function singleDD(key,opts,dflt,aria,cls){
+  const cur=FILTER[key]||dflt;
+  const o=opts.find(x=>x[0]===cur)||opts[0];
+  return `<div class="dd" data-dd="${key}"><button class="dd-btn fselbtn${cls?' '+cls:''}${cur!==dflt?' on':''}" aria-label="${esc(aria)}" onclick="ddToggle(this)">${esc(o[1])}<span class="cv">▾</span></button>
+    <div class="dd-menu">${opts.map(([v,l])=>`<button class="${v===cur?'on':''}" onclick="setFilter('${key}','${jsarg(v)}')">${esc(l)}</button>`).join('')}</div></div>`;
+}
 function filterBar(){
-  const sel=(key,label,opts)=>`<select class="fsel" aria-label="${esc(label)}" onchange="setFilter('${key}',this.value)"><option value="">${label}</option>${opts.map(o=>{const val=Array.isArray(o)?o[0]:o,lab=Array.isArray(o)?o[1]:o;return `<option value="${esc(val)}" ${FILTER[key]===val?'selected':''}>${esc(lab)}</option>`;}).join('')}</select>`;
   const pairs=[...new Set(T.map(t=>t.pair))].sort();
   // A4+A5: filteropties dynamisch uit config + data — eigen setups/tags verschijnen direct,
   // ook als er nog geen trade mee bestaat.
@@ -1995,11 +2003,11 @@ function filterBar(){
     ${multiDD('pair',pairs)}
     ${multiDD('setup',setups)}
     ${multiDD('session',SESSIONS)}
-    ${sel('dir','Long & short',[['long','Long'],['short','Short']])}
+    ${singleDD('dir',[['','Long & short'],['long','Long'],['short','Short']],'','Long of short')}
     ${multiDD('status',[['open','Open'],['partial','Partial'],['closed','Gesloten']])}
     ${multiDD('tag',tags)}
     ${multiDD('mistake',fouten)}
-    <select class="fsel kindsel" aria-label="Soort trades" onchange="setFilter('kind',this.value)">${[['live','Live trades'],['oefen','Oefentrades (alle)'],['backtest','⏲ Backtest'],['paper','📄 Paper'],['gemist','👻 Gemist'],['alle','Alle soorten']].map(([v,l])=>`<option value="${v}" ${FILTER.kind===v?'selected':''}>${l}</option>`).join('')}</select>
+    ${singleDD('kind',[['live','Live trades'],['oefen','Oefentrades (alle)'],['backtest','⏲ Backtest'],['paper','📄 Paper'],['gemist','👻 Gemist'],['alle','Alle soorten']],'live','Soort trades','kindsel')}
     ${dateFilterDD()}
     ${active?`<button class="fclear" onclick="clearGFilter()">✕ Wis (${active})</button>`:''}
   </div>`;
