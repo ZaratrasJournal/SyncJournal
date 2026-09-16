@@ -256,6 +256,14 @@ table.tbl{width:100%;border-collapse:collapse;font-size:14px}
 .updbanner b{color:var(--ink)}
 .updbanner .x{margin-left:auto;width:24px;height:24px;border-radius:8px;color:var(--muted);font-size:15px;line-height:1}
 .updbanner .x:hover{background:color-mix(in srgb,var(--accent) 18%,transparent)}
+/* backup-status-schildje in de app-balk: onzichtbaar-subtiel als alles goed is */
+.bkind.ok{color:var(--green);opacity:.5;border-color:transparent;box-shadow:none;background:transparent}
+.bkind.ok:hover{opacity:1;border-color:var(--line)}
+.bkind.warn{color:var(--amber);border-color:color-mix(in srgb,var(--amber) 45%,transparent);background:var(--amber-soft);animation:bkpulse 2s ease-in-out infinite}
+.bkind.err{color:var(--red);border-color:color-mix(in srgb,var(--red) 50%,transparent);background:var(--red-soft);animation:bkpulse 1.2s ease-in-out infinite}
+.bkind.warn .bkchk,.bkind.err .bkchk{display:none}
+@keyframes bkpulse{0%,100%{transform:scale(1)}50%{transform:scale(1.12)}}
+@media (prefers-reduced-motion:reduce){.bkind{animation:none!important}}
 /* backup-alarm (app-breed): amber na drempel, rood na 7 dagen */
 .bkbanner{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px;padding:11px 16px;border-radius:12px;background:var(--amber-soft);border:1px solid color-mix(in srgb,var(--amber) 35%,transparent);border-left:4px solid var(--amber);font-size:13px;color:var(--ink2)}
 .bkbanner.red{background:var(--red-soft);border-color:color-mix(in srgb,var(--red) 40%,transparent);border-left-color:var(--red)}
@@ -1109,6 +1117,7 @@ body.dark .toast{box-shadow:0 10px 34px rgba(0,0,0,.5)}
       <button class="hamb" id="btnMenu" aria-label="Menu">☰</button>
       <span class="ptbar" id="ptbar"></span><h1 id="ptitle">Dashboard</h1><span class="sub" id="psub"></span><span class="gfbadge" id="gfBadge" hidden></span>
       <div class="sp"></div>
+      <button class="iconbtn bkind" id="bkInd" title="Backup-status" aria-label="Backup-status"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5l7.5 2.8v5.9c0 4.6-3.2 7.9-7.5 10.3C7.7 19.1 4.5 15.8 4.5 11.2V5.3z"/><path class="bkchk" d="M8.6 12l2.4 2.4 4.4-4.6"/></svg></button>
       <button class="iconbtn" id="btnEye" title="Privacy">${''}</button>
       <button class="iconbtn" id="btnTheme" title="Thema">${''}</button>
       <div class="balpill"><span class="l">Balans</span><span class="v num mask" id="balVal">€ 24.663</span></div>
@@ -1600,7 +1609,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.67';
+const APP_VERSION='v0.9.68';
 const SCHEMA_VERSION=2;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -3076,16 +3085,17 @@ function pgInstellingen(){
     updates:`<p class="setintro">Hou SyncJournal up-to-date. Bij een update blijft je lokale data altijd bewaard.</p>${updateSection()}`,
     data:`<p class="setintro">Back-up en beheer van je journal-data. Alles blijft lokaal in je browser.</p>
       ${(()=>{const det=TJMigrate.detect();return det?`<div class="section-sub">🛟 Overzetten uit oude TradeJournal</div><div class="panel"><div class="setrow"><div class="txt"><b>${det.trades} trades gevonden in je oude app</b><small>Zet je data veilig over naar SyncJournal — er wordt eerst een veiligheidskopie gemaakt${DB.load('migrated_from_tj',null)?' · <span style="color:var(--green)">al eerder gemigreerd</span>':''}</small></div><button class="btn pri" onclick="migRun()">Overzetten</button></div></div>`:'';})()}
-      <div class="section-sub">🛡 Backups <span class="hint">(buiten je browser — beschermt tegen browserdata wissen of een kapotte computer)</span></div>
+      <div class="section-sub">🛡 Backups</div>
       <div class="panel">
-        <div class="setrow"><div class="txt"><b>${bkStatusHtml()}</b><small>We waarschuwen je in de hele app zodra je laatste backup ouder is dan ${BK.threshold} dagen.</small></div><button class="btn pri" onclick="bkNow()">Backup nu</button></div>
-        <div class="bkchoices">
-          <button class="bkchoice ${BK.choice==='map'?'on':''}" onclick="bkChoose('map')" ${bkFsaSupported()?'':'disabled title="Alleen in Chrome of Edge"'}><b>📁 Automatisch naar map${BK.choice==='map'&&BK_DIR?` · <span style="color:var(--green)">${esc(BK_DIR.name)}</span>`:''}</b><small>${bkFsaSupported()?'Kies één keer een map — daarna schrijft SyncJournal daar zelf gedateerde backups (laatste '+BK_KEEP+' bewaard). Tip: kies een map in je Google Drive/OneDrive-syncmap voor een gratis cloud-kopie.':'Deze browser ondersteunt geen automatische map-backups (alleen Chrome/Edge). Gebruik handmatige export.'}</small></button>
-          ${driveReady()?`<button class="bkchoice ${BK.choice==='drive'?'on':''}" onclick="bkChoose('drive')"><b>☁️ Google Drive${BK.choice==='drive'?' · <span style=\"color:var(--green)\">gekoppeld</span>':''}</b><small>Automatische backup naar de zichtbare map “SyncJournal” in je eigen Google Drive. Werkt op elke computer: daar herstellen, hier verder — bij een nieuwere backup elders vraagt de app of je die wilt overnemen.</small></button>`:`<button class="bkchoice" disabled title="Komt binnenkort"><b>☁️ Google Drive <span class="chip" style="margin-left:4px">binnenkort</span></b><small>Automatische backup naar je eigen Google Drive — handig op meerdere computers. In ontwikkeling.</small></button>`}
-          <button class="bkchoice ${BK.choice==='handmatig'||!BK.choice?'on':''}" onclick="bkChoose('handmatig')"><b>✋ Alleen handmatig</b><small>Jij exporteert zelf een JSON-bestand wanneer je wilt. De waarschuwing na ${BK.threshold} dagen blijft je eraan herinneren.</small></button>
-        </div>
-        ${BK.choice==='drive'?`<div class="setrow"><div class="txt"><b>Herstellen uit Google Drive</b><small>Zet de laatste backup uit je Drive-map terug — handig op een nieuwe computer. Je huidige staat wordt eerst veiliggesteld.</small></div><button class="btn" onclick="driveRestoreLatest()">Herstel laatste backup</button></div>`:''}
-        <div class="setrow"><div class="txt"><b>Waarschuwen na</b><small>Zoveel dagen zonder backup tonen we het alarm (na ${BK_RED_DAYS} dagen wordt het rood)</small></div>
+        <div class="setrow"><div class="txt"><b>${bkStatusHtml()}</b></div><button class="btn pri" onclick="bkNow()">Backup nu</button></div>
+        <div class="setrow"><div class="txt"><b>Automatisch</b><small>${bkHint()}</small></div>
+          <div class="seg" id="bkSeg">
+            <button class="${BK.choice==='map'?'on':''}" onclick="bkChoose('map')" ${bkFsaSupported()?'':'disabled'} title="${bkFsaSupported()?'Gedateerde bestanden in een map op je computer (laatste 14) — tip: kies een map in je Drive/OneDrive-syncmap':'Alleen in Chrome of Edge'}">📁 Map</button>
+            <button class="${BK.choice==='drive'?'on':''}" onclick="bkChoose('drive')" ${driveReady()?'':'disabled'} title="${driveReady()?'Naar de zichtbare map “SyncJournal” in je eigen Google Drive':'Binnenkort'}">☁️ Drive</button>
+            <button class="${(!BK.choice||BK.choice==='handmatig')?'on':''}" onclick="bkChoose('handmatig')" title="Zelf exporteren wanneer jij wilt — de app herinnert je eraan">✋ Zelf</button>
+          </div></div>
+        ${BK.choice==='drive'?`<div class="setrow"><div class="txt"><b>Herstellen uit Drive</b><small>Handig op een nieuwe computer — je huidige staat wordt eerst veiliggesteld</small></div><button class="btn" onclick="driveRestoreLatest()">Laatste backup terugzetten</button></div>`:''}
+        <div class="setrow"><div class="txt"><b>Waarschuwing na</b></div>
           <select class="fsel" aria-label="Waarschuwingsdrempel" onchange="bkSetThreshold(this.value)">${[1,2,3,5,7,14].map(d=>`<option value="${d}" ${BK.threshold===d?'selected':''}>${d} dag${d===1?'':'en'}</option>`).join('')}</select></div>
       </div>
       <div class="panel"><div class="setrow"><div class="txt"><b>Back-up</b><small>Exporteer of importeer je journal als JSON — echt werkend</small></div>
@@ -3757,7 +3767,7 @@ const FAQS=[
     ['Waar wordt mijn data opgeslagen?','Lokaal in je browser, op dít apparaat. Er gaat niets naar een externe server — jij houdt de controle. Let op: het hoort dus bij deze browser. Andere computer of browser? Zie de vraag over overzetten hieronder.'],
     ['Ik gebruik SyncJournal via syncjournal.nl — staat mijn data dan online?','Nee. De site levert alleen de app zelf (zoals een programma dat je opent); alles wat jij invoert blijft in je eigen browser en verlaat je computer niet. Daarom werkt de app na het laden ook gewoon door zonder internet. Zie de privacyverklaring op de site voor de details.'],
     ['Ik draaide SyncJournal lokaal — hoe verhuis ik naar syncjournal.nl?','De browser bewaart data per adres, dus je oude gegevens verschijnen niet vanzelf op de site. Verhuizen is twee stappen: op je oude versie <b>Instellingen → Data → Exporteer JSON</b>, daarna op syncjournal.nl <b>Instellingen → Data → Importeer</b>. Alles komt mee: trades, screenshots, playbooks en instellingen.'],
-    ['Hoe werkt de Google Drive-backup, en kan ik op een andere computer werken?','Koppel je Google Drive via <b>Instellingen → Data → Backups</b>: de app maakt dan een zichtbare map <b>“SyncJournal”</b> in jóuw Drive en zet daar automatisch backups neer — wij kunnen daar niet bij. Op een andere computer? Open syncjournal.nl (tip: in een incognito-venster, dan blijft er niets achter), koppel Drive en de app haalt je laatste backup op. Werk je daarna weer thuis, dan ziet de app dat er elders een nieuwere backup is gemaakt en vraagt hij éénmalig of je die wilt overnemen — één klik en je bent bij. Toegang intrekken kan altijd via je Google-accountinstellingen.'],
+    ['Hoe werkt de Google Drive-backup, en kan ik op een andere computer werken?','Koppel je Google Drive via <b>Instellingen → Data → Backups</b>: de app maakt dan een zichtbare map <b>“SyncJournal”</b> in jóuw Drive en zet daar automatisch backups neer — wij kunnen daar niet bij. Op een andere computer? Open syncjournal.nl (tip: in een incognito-venster, dan blijft er niets achter), koppel Drive en de app haalt je laatste backup op. Werk je daarna weer thuis, dan ziet de app dat er elders een nieuwere backup is gemaakt en vraagt hij éénmalig of je die wilt overnemen — één klik en je bent bij. Toegang intrekken kan altijd via je Google-accountinstellingen. Extra vangnet: Google Drive bewaart van elk backup-bestand 30 dagen versiegeschiedenis (bestand → Versiebeheer).'],
     ['Hoe maak ik een back-up (en waarom is dat belangrijk)?','<b>Instellingen → Data → Exporteer JSON</b>. Je krijgt één bestand dat je ergens veilig bewaart — zie het als de reservesleutel van je journal. Doe dit regelmatig, en zéker voordat je je browser opschoont of van computer wisselt.'],
     ['Hoe zet ik mijn journal over naar een andere computer of browser?','Op je oude plek: <b>Instellingen → Data → Exporteer JSON</b>. Op de nieuwe plek: open SyncJournal en kies <b>Instellingen → Data → Importeer</b>. Alles komt mee: trades, screenshots, playbooks en instellingen.'],
     ['Wat gebeurt er als ik mijn browsergegevens of cache wis?','Dan is je lokale journal weg. Met een back-up zet je alles in één minuut terug via <b>Instellingen → Data → Importeer</b>. Zonder back-up is het echt verloren — daarom: exporteer regelmatig.'],
@@ -3923,6 +3933,7 @@ function render(){
   const bv=document.getElementById('balVal');if(bv)bv.textContent=CURSYM()+' '+Math.round(totalBalance()).toLocaleString('nl-NL');
   const m=document.getElementById('main');destroyCharts();_rcQueue=[];m.innerHTML=updateBanner()+driveBanner()+backupBanner()+fn();m.style.animation='none';void m.offsetWidth;m.style.animation='';
   document.querySelectorAll('#nav button,#navbot button').forEach(b=>b.classList.toggle('on',b.dataset.p===STATE.page));
+  try{bkIndUpdate();}catch(e){}
   wire();mountCharts();
   if(_fid){const el=document.getElementById(_fid);if(el&&document.activeElement!==el){el.focus();if(_fs!=null&&el.setSelectionRange){try{el.setSelectionRange(_fs,_fe);}catch(e){}}}}
   if(reopenDD){const dd=document.querySelector('.dd[data-dd="'+reopenDD+'"]');if(dd)dd.classList.add('open');reopenDD=null;}
@@ -3978,11 +3989,11 @@ function applyBackup(d){
    Interne veiligheidskopieën (Snapshots) tellen bewust NIET — die staan óók in de browser. */
 const BK=Object.assign({ts:0,method:'',choice:'',threshold:3,snooze:0,first:0},DB.load('backup',{}));
 if(!BK.first){BK.first=Date.now();DB.save('backup',BK);} // gratieperiode: nieuwe gebruikers pas alarmeren ná de drempel
-const BK_RED_DAYS=7, BK_KEEP=14, BK_DEBOUNCE_MS=60000, BK_MAXWAIT_MS=5*60000;
+const BK_RED_DAYS=7, BK_KEEP=14, BK_DEBOUNCE_MS=60000, BK_MAXWAIT_MS=15*60000;
 function persistBK(){ DB.save('backup',{ts:BK.ts,method:BK.method,choice:BK.choice,threshold:BK.threshold,snooze:BK.snooze,first:BK.first}); }
 function bkStamp(method){ BK.ts=Date.now();BK.method=method;_bkDirtySince=0;persistBK();try{render();}catch(e){} }
 function bkAgeDays(){ const ref=BK.ts||BK.first||Date.now(); return Math.floor((Date.now()-ref)/86400e3); }
-const BK_METHOD_LBL={handmatig:'handmatige export',map:'automatische map-backup',drive:'Google Drive'};
+const BK_METHOD_LBL={handmatig:'handmatig',map:'map',drive:'Google Drive'};
 function bkSnooze(){ BK.snooze=Date.now()+86400e3;persistBK();render(); }
 function bkNow(){ if(BK.choice==='map'&&BK_DIR){ autoBackup(true).then(okr=>{ if(!okr)exportJSON(); }); } else if(BK.choice==='drive'&&driveReady()){ driveBackup(true).then(okr=>{ if(!okr)exportJSON(); }); } else exportJSON(); }
 function backupBanner(){
@@ -4035,9 +4046,9 @@ async function bkRetention(){ // bewaar de laatste BK_KEEP dagbestanden
     while(names.length>BK_KEEP){ const n=names.shift(); await BK_DIR.removeEntry(n); }
   }catch(e){}
 }
-let _bkDirtySince=0;
+let _bkDirtySince=0,_bkLastPayload='';
 // Debounce (60s rust) mét harde bovengrens: bij continu doorwerken wordt er tóch elke
-// 5 minuten geüpload — zo blijft de maximale data-gap in de backup klein.
+// 15 minuten geüpload (Actual-norm) — plus directe flush bij tab verlaten/verbergen.
 function bkQueue(){ if(BK.choice!=='map'&&BK.choice!=='drive')return;
   if(!_bkDirtySince)_bkDirtySince=Date.now();
   clearTimeout(_bkTimer);
@@ -4055,11 +4066,31 @@ function bkChoose(c){
   BK.choice=c;persistBK();render();
 }
 function bkSetThreshold(v){ BK.threshold=Math.max(1,+v||3);persistBK();render(); }
+function bkWhen(){ if(!BK.ts)return 'nog geen backup';
+  const d=new Date(BK.ts),age=bkAgeDays();
+  const dt=`${String(d.getDate()).padStart(2,'0')}-${String(d.getMonth()+1).padStart(2,'0')} ${d.toLocaleTimeString('nl-NL',{hour:'2-digit',minute:'2-digit'})}`;
+  return `${age===0?'vandaag':age===1?'gisteren':dt.split(' ')[0]} ${dt.split(' ')[1]} · ${BK_METHOD_LBL[BK.method]||BK.method}`;
+}
 function bkStatusHtml(){
   const age=bkAgeDays();
   const col=age<BK.threshold?'var(--green)':age>=BK_RED_DAYS?'var(--red)':'var(--amber)';
-  const when=BK.ts?`${age===0?'vandaag '+new Date(BK.ts).toLocaleTimeString('nl-NL',{hour:'2-digit',minute:'2-digit'}):age===1?'gisteren':age+' dagen geleden'} · via ${BK_METHOD_LBL[BK.method]||BK.method}`:'nog nooit gemaakt';
-  return `<span style="color:${col};font-weight:700">●</span> Laatste backup: <b>${when}</b>`;
+  return `<span style="color:${col};font-weight:700">●</span> Laatste backup: <b>${bkWhen()}</b>`;
+}
+function bkHint(){
+  if(BK.choice==='map')return `Map “${BK_DIR?esc(BK_DIR.name):'…'}” · dagbestanden, laatste ${BK_KEEP} bewaard`;
+  if(BK.choice==='drive')return 'Map “SyncJournal” in je eigen Drive · loopt max 15 min achter · oudere versies 30 dagen via Drive-versiebeheer';
+  return 'Kies 📁 of ☁️ voor automatische backups — of exporteer zelf via de knop hierboven';
+}
+// App-balk-schildje: groen+subtiel = vers · amber puls = ouder dan drempel of wacht op
+// toestemming · rood = ≥ 7 dagen. Klik → Instellingen → Data.
+function bkIndUpdate(){
+  const el=document.getElementById('bkInd');if(!el)return;
+  const age=bkAgeDays();
+  const warn=(T.length&&age>=BK.threshold)||(BK.choice==='drive'&&DRIVE.needsAuth);
+  const err=T.length&&age>=BK_RED_DAYS;
+  el.className='iconbtn bkind '+(err?'err':warn?'warn':'ok');
+  el.title='Backup: '+bkWhen()+(err?' — maak nu een backup!':warn?' — aandacht nodig':' ✓');
+  el.onclick=()=>{go('instellingen');setSetTab('data');};
 }
 /* ═══ Google Drive-backup (hosting-plan fase 3, 2026-09-16) ═══
    Client-side OAuth (Google Identity Services) + Drive REST met scope drive.file:
@@ -4109,12 +4140,24 @@ async function driveBackup(userGesture){
     await driveEnsureFolder(); if(!DRIVE.folderId)throw new Error('map maken mislukte');
     const name='syncjournal-backup-'+localDateISO()+'.json', body=JSON.stringify(snapshotPayload());
     const files=await driveList(); const ex=files.find(f=>f.name===name);
+    // Conflict-guard: is er elders (ander apparaat) een níeuwere backup gemaakt? Dan niet
+    // stil overschrijven maar de overneem-keuze tonen (bij handmatige actie: eerst vragen).
+    const newest=files[files.length-1];
+    if(newest){ const rts=+new Date(newest.modifiedTime||0), lts=Math.max(+BK.ts||0,+DB.load('data_ts',0)||0);
+      if(rts>lts+120000&&rts!==DRIVE.ignoredTs){
+        if(!(userGesture&&confirm('Er staat een nieuwere backup in je Drive (ander apparaat). Toch overschrijven met deze computer?'))){
+          DRIVE.adopt={id:newest.id,ts:rts};try{render();}catch(_){}
+          return false; } } }
+    // Niets gewijzigd sinds de vorige upload van vandaag? Geen ruis-upload.
+    const bodyCmp=body.replace(/"exported":"[^"]*"/,'');
+    if(!userGesture&&bodyCmp===_bkLastPayload&&bkAgeDays()===0){_bkDirtySince=0;return true;}
     let r;
     if(ex){ r=await driveFetch(DRIVE_UPLOAD+'/files/'+ex.id+'?uploadType=media',{method:'PATCH',headers:{'Content-Type':'application/json'},body}); }
     else{ const bnd='sjbnd'+Date.now();
       const mp='--'+bnd+'\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n'+JSON.stringify({name,parents:[DRIVE.folderId]})+'\r\n--'+bnd+'\r\nContent-Type: application/json\r\n\r\n'+body+'\r\n--'+bnd+'--';
       r=await driveFetch(DRIVE_UPLOAD+'/files?uploadType=multipart',{method:'POST',headers:{'Content-Type':'multipart/related; boundary='+bnd},body:mp}); }
     if(!r.ok)throw new Error('upload mislukte ('+r.status+')');
+    _bkLastPayload=bodyCmp;
     bkStamp('drive');
     driveRetention(files.filter(f=>f.name!==name));
     return true;
@@ -4167,7 +4210,7 @@ async function driveStartupCheck(){
     const newest=files[files.length-1];
     const remoteTs=+new Date(newest.modifiedTime||0);
     const localTs=Math.max(+BK.ts||0,+DB.load('data_ts',0)||0);
-    if(remoteTs>localTs+120000){DRIVE.adopt={id:newest.id,ts:remoteTs};try{render();}catch(_){}}
+    if(remoteTs>localTs+120000&&remoteTs!==DRIVE.ignoredTs){DRIVE.adopt={id:newest.id,ts:remoteTs};try{render();}catch(_){}}
     else bkQueue();
   }catch(e){}
 }
@@ -4182,7 +4225,7 @@ async function driveAdopt(){
     toast('✓ Nieuwste Drive-backup overgenomen','ok');
   }catch(e){ toast('Overnemen mislukte: '+((e&&e.message)||'onbekend'),'warn'); }
 }
-function driveDismissAdopt(){DRIVE.adopt=null;render();}
+function driveDismissAdopt(){if(DRIVE.adopt)DRIVE.ignoredTs=DRIVE.adopt.ts;DRIVE.adopt=null;render();} // wegklikken = bewust lokaal behouden
 function driveBanner(){
   if(DRIVE.adopt){const d=new Date(DRIVE.adopt.ts);
     return `<div class="updbanner" role="alert">☁️ Er staat een <b>nieuwere backup</b> in je Google Drive (${d.toLocaleString('nl-NL',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})} — ander apparaat?). Overnemen vervangt je lokale staat; er wordt eerst een veiligheidskopie gemaakt.

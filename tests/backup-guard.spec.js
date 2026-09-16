@@ -36,8 +36,8 @@ const DAY = 86400e3;
 
   console.log('─── Instellingen → Data ───');
   await p.evaluate(() => { go('instellingen'); setSetTab('data'); }); await p.waitForTimeout(200);
-  ok('status-regel + drie keuzekaarten (Drive actief sinds v0.9.66)', await p.evaluate(() => { const t = document.getElementById('main').textContent; const cards = document.querySelectorAll('.bkchoice'); const drive = [...cards].find(c => /☁️/.test(c.textContent)); return /Laatste backup/.test(t) && cards.length === 3 && drive && !drive.disabled; }));
-  ok('standaard-keuze is handmatig', await p.evaluate(() => [...document.querySelectorAll('.bkchoice')].find(c => /handmatig/i.test(c.textContent)).classList.contains('on')));
+  ok('status-regel + drie compacte keuzeknoppen (Drive actief)', await p.evaluate(() => { const t = document.getElementById('main').textContent; const seg = document.querySelectorAll('#bkSeg button'); const drive = [...seg].find(c => /☁️/.test(c.textContent)); return /Laatste backup/.test(t) && seg.length === 3 && drive && !drive.disabled; }));
+  ok('standaard-keuze is Zelf (handmatig)', await p.evaluate(() => [...document.querySelectorAll('#bkSeg button')].find(c => /Zelf/.test(c.textContent)).classList.contains('on')));
 
   console.log('─── Automatische map-backup (fake FSA-handle) ───');
   const auto = await p.evaluate(async () => {

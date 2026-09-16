@@ -16,7 +16,7 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
   await p.evaluate(() => { try { hideWelcome() } catch (e) {} });
 
   console.log('─── Productie-client-ID ingebakken ───');
-  ok('Drive-kaart is standaard actief (client-ID hardcoded sinds v0.9.66)', await p.evaluate(() => { go('instellingen'); setSetTab('data'); const c = [...document.querySelectorAll('.bkchoice')].find(x => /☁️/.test(x.textContent)); return driveReady() && c && !c.disabled; }));
+  ok('Drive-kaart is standaard actief (client-ID hardcoded sinds v0.9.66)', await p.evaluate(() => { go('instellingen'); setSetTab('data'); const c = [...document.querySelectorAll('#bkSeg button')].find(x => /☁️/.test(x.textContent)); return driveReady() && c && !c.disabled; }));
 
   console.log('─── Met client-ID + fake Drive-API ───');
   await p.evaluate(() => { localStorage.setItem('sj_drive_client_id', '"test-client-id"'); });
@@ -56,17 +56,18 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
       return J({}, 404);
     };
   });
-  ok('client-ID aanwezig → Drive-kaart is actief', await p.evaluate(() => { go('instellingen'); setSetTab('data'); const c = [...document.querySelectorAll('.bkchoice')].find(x => /☁️/.test(x.textContent)); return driveReady() && c && !c.disabled; }));
+  ok('client-ID aanwezig → Drive-kaart is actief', await p.evaluate(() => { go('instellingen'); setSetTab('data'); const c = [...document.querySelectorAll('#bkSeg button')].find(x => /☁️/.test(x.textContent)); return driveReady() && c && !c.disabled; }));
 
   console.log('─── Koppelen + uploaden ───');
   await p.evaluate(() => bkChoose('drive')); await p.waitForTimeout(400);
   const conn = await p.evaluate(() => ({ choice: BK.choice, method: BK.method, folder: DRIVE.folderId, n: Object.keys(window.__dv.files).length, name: Object.values(window.__dv.files)[0]?.name, hasTrades: /"pair":"BTC\/USDT"/.test(Object.values(window.__dv.files)[0]?.content || '') }));
   ok('koppelen: map aangemaakt + eerste backup geüpload + gestempeld', conn.choice === 'drive' && conn.method === 'drive' && conn.folder === 'fold1' && conn.n === 1 && /^syncjournal-backup-\d{4}-\d{2}-\d{2}\.json$/.test(conn.name) && conn.hasTrades, JSON.stringify(conn));
-  ok('kaart toont "gekoppeld"', await p.evaluate(() => { go('instellingen'); setSetTab('data'); return /gekoppeld/.test([...document.querySelectorAll('.bkchoice')].find(x => /☁️/.test(x.textContent)).textContent); }));
-  ok('tweede backup dezelfde dag → update, geen duplicaat', await p.evaluate(async () => { const was = Object.keys(window.__dv.files).length; const r = await driveBackup(false); return r && Object.keys(window.__dv.files).length === was; }));
-  ok('mislukte upload → geen stempel (alarm blijft eerlijk)', await p.evaluate(async () => { const was = BK.ts; window.__dv.failUpload = 1; await new Promise(r => setTimeout(r, 5)); const r = await driveBackup(false); return r === false && BK.ts === was; }));
+  ok('Drive-knop toont gekoppeld (actieve staat + hint)', await p.evaluate(() => { go('instellingen'); setSetTab('data'); const b = [...document.querySelectorAll('#bkSeg button')].find(x => /☁️/.test(x.textContent)); return b.classList.contains('on') && /SyncJournal/.test(document.getElementById('main').textContent); }));
+  ok('zelfde dag: ongewijzigde data → geen ruis-upload, gewijzigde data → update zonder duplicaat', await p.evaluate(async () => { const was = Object.keys(window.__dv.files).length; const skip = await driveBackup(false); T[0].notes = 'gewijzigd'; persist(); const r = await driveBackup(false); return skip && r && Object.keys(window.__dv.files).length === was; }));
+  ok('mislukte upload → geen stempel (alarm blijft eerlijk)', await p.evaluate(async () => { T[0].notes = 'fail-' + Date.now(); persist(); const was = BK.ts; window.__dv.failUpload = 1; await new Promise(r => setTimeout(r, 5)); const r = await driveBackup(false); return r === false && BK.ts === was; }));
   const ret = await p.evaluate(async () => {
     for (let i = 1; i <= 20; i++) { const id = 'old' + i; window.__dv.files[id] = { id, name: 'syncjournal-backup-2026-08-' + String(i).padStart(2, '0') + '.json', content: '{}', modifiedTime: '2026-08-01T00:00:00Z' }; }
+    T[0].notes = 'retentie-' + Date.now(); persist();
     const r = await driveBackup(false);
     await new Promise(res => setTimeout(res, 300)); // retentie draait bewust async na de upload
     return { r, n: Object.keys(window.__dv.files).length, names: Object.values(window.__dv.files).map(f => f.name).sort().slice(0, 3), choice: BK.choice, folder: DRIVE.folderId };
@@ -76,12 +77,12 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
   console.log('─── Gap-bewaking: max-wait + flush bij verlaten ───');
   ok('geslaagde backup reset de dirty-status', await p.evaluate(async () => { bkQueue(); const was = _bkDirtySince > 0; await driveBackup(false); return was && _bkDirtySince === 0; }));
   ok('continu doorwerken: na 5 min tóch upload (max-wait, timer ~1s)', await p.evaluate(async () => {
-    const before = BK.ts; _bkDirtySince = Date.now() - BK_MAXWAIT_MS - 1000; bkQueue(); // debounce zou 60s zijn, max-wait dwingt ~1s af
+    const before = BK.ts; T[0].notes = 'maxwait-' + Date.now(); persist(); _bkDirtySince = Date.now() - BK_MAXWAIT_MS - 1000; bkQueue(); // debounce zou 60s zijn, max-wait dwingt ~1s af
     await new Promise(r => setTimeout(r, 1800));
     return BK.ts > before && _bkDirtySince === 0;
   }));
   ok('tab verbergen met onge-backupte wijzigingen → directe upload', await p.evaluate(async () => {
-    const before = BK.ts; _bkDirtySince = Date.now();
+    const before = BK.ts; T[0].notes = 'vis-' + Date.now(); persist(); _bkDirtySince = Date.now();
     Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
     document.dispatchEvent(new Event('visibilitychange'));
     await new Promise(r => setTimeout(r, 300));
@@ -113,9 +114,19 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
   ok('…en overnemen laadt de data in', await p.evaluate(async () => { await driveAdopt(); return T.length >= 1 && !DRIVE.adopt; }));
   ok('handmatige herstel-knop zichtbaar bij gekoppelde Drive + werkt', await p.evaluate(async () => {
     go('instellingen'); setSetTab('data');
-    const btnRow = /Herstel laatste backup/.test(document.getElementById('main').textContent);
+    const btnRow = /Laatste backup terugzetten/.test(document.getElementById('main').textContent);
     T = []; persist(); await driveRestoreLatest(); // confirm auto-accept
     return btnRow && T.length >= 1;
+  }));
+
+  ok('conflict-guard: nieuwere backup elders → upload geweigerd + overneem-banner', await p.evaluate(async () => {
+    window.__dv.files['fConf'] = { id: 'fConf', name: 'syncjournal-backup-2026-09-18.json', content: JSON.stringify({ trades: [] }), modifiedTime: new Date(Date.now() + 7200e3).toISOString() };
+    DB.save('data_ts', Date.now() - 3600e3); BK.ts = Date.now() - 3600e3; DRIVE.adopt = null;
+    T[0].notes = 'conflict-' + Date.now(); persist();
+    const r = await driveBackup(false);
+    const okr = r === false && !!DRIVE.adopt;
+    delete window.__dv.files['fConf']; DRIVE.adopt = null;
+    return okr;
   }));
 
   console.log('─── Toestemming verlopen ───');
