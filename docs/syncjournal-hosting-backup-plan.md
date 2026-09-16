@@ -55,6 +55,8 @@ In de app / repo:
 
 ## Fase 3 — Google Drive-backup (de ☁️-keuze wordt actief)
 
+> ✅ **App-kant volledig gebouwd 2026-09-16 (v0.9.64)** — koppel-flow, zichtbare map, dagbestanden+retentie, nieuwere-backup-check met overneem-banner, herverbind-flow; getest via gemockte Drive-API (tests/drive-backup.spec.js, 12 checks). **Wacht alleen nog op Denny's Google Cloud client-ID** (aanmaken kan zodra privacy-pagina op het domein live is) → één regel invullen (`DRIVE_CLIENT_ID`) en de kaart springt op actief. Testen kan eerder via localStorage-key `sj_drive_client_id`.
+
 **Doel: automatische backup naar de eigen Drive van het lid + je journal meenemen naar elk systeem.**
 
 Denny (eenmalig):
