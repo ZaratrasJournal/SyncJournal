@@ -1468,10 +1468,12 @@ const ACCT=24663;
 const EXCHANGES=[
   // MEXC: API-koppeling gestopt — geen MiCA-licentie, verlaat NL per nov 2026 (offboarding
   // aangekondigd 2026-08-12). Oude trades blijven zichtbaar; import via CSV/back-up blijft.
-  {id:'mexc',name:'MEXC',abbr:'MX',c:'#3b6ef5',acct:'Scalp',val:13011,deprecated:'MEXC stopt met Nederlandse klanten (nov 2026) en heeft geen MiCA-licentie'},
-  {id:'blofin',name:'Blofin',abbr:'BF',c:'#10b3a3',acct:'Swing',val:10527},
-  {id:'okx',name:'OKX',abbr:'OK',c:'#7b8794',acct:'OKX',val:1049},
-  {id:'hyperliquid',name:'Hyperliquid',abbr:'HL',c:'#a78bfa',acct:'HL',val:76},
+  // val=0: een verse journal begint op € 0 — saldi komen uit sync, demo-data (exMeta in de
+  // backup) of handmatige accounts. Nooit meer fictieve startbedragen voor echte gebruikers.
+  {id:'mexc',name:'MEXC',abbr:'MX',c:'#3b6ef5',acct:'MEXC',val:0,deprecated:'MEXC stopt met Nederlandse klanten (nov 2026) en heeft geen MiCA-licentie'},
+  {id:'blofin',name:'Blofin',abbr:'BF',c:'#10b3a3',acct:'Blofin',val:0},
+  {id:'okx',name:'OKX',abbr:'OK',c:'#7b8794',acct:'OKX',val:0},
+  {id:'hyperliquid',name:'Hyperliquid',abbr:'HL',c:'#a78bfa',acct:'HL',val:0},
   // Kraken Futures: de aangewezen route voor NL na de MEXC-offboarding (MiFID II via CySEC).
   {id:'kraken',name:'Kraken Futures',abbr:'KF',c:'#7c5ce0',acct:'Kraken',val:0},
 ];
@@ -1488,7 +1490,9 @@ function manualBalance(m){return Math.max(0,acctCapital(m.transactions))+acctPnl
 // Totaalbalans over alle accounts (exchanges = mock-seedwaarde tot live-API; handmatig = berekend).
 function totalBalance(){return EXCHANGES.reduce((s,e)=>s+e.val,0)+MANUAL.reduce((s,m)=>s+manualBalance(m),0);}
 // Accounts voor dashboard-donut/legenda (exchanges + handmatige accounts).
-function accountList(){return [...EXCHANGES.map(e=>({n:e.acct,v:e.val,c:e.c,ex:e.name,id:e.id})),...MANUAL.map(m=>({n:m.name,v:manualBalance(m),c:cvar('var(--amber)'),ex:'handmatig',id:m.id,manual:true}))];}
+// Alleen relevante exchange-rijen tonen (gekoppeld, saldo of trades) — anders staan er
+// bij een verse journal vijf lege exchanges in de legenda/donut.
+function accountList(){return [...EXCHANGES.filter(e=>e.val>0||CONNS[e.id]||T.some(t=>t&&t.exchange===e.id)).map(e=>({n:e.acct,v:e.val,c:e.c,ex:e.name,id:e.id})),...MANUAL.map(m=>({n:m.name,v:manualBalance(m),c:cvar('var(--amber)'),ex:'handmatig',id:m.id,manual:true}))];}
 // Unified account-resolver (exchange óf handmatig) voor avatar/badge/cel.
 function acctOf(id){const e=EXMAP[id];if(e)return {id,name:e.name,acct:e.acct,c:e.c,abbr:e.abbr,manual:false};const m=MANUAL.find(x=>x.id===id);if(m)return {id,name:m.name,acct:'handmatig',c:cvar('var(--amber)'),abbr:(m.name||'??').slice(0,2),manual:true};return null;}
 const PAIRC={BTC:'#f7931a',ETH:'#627eea',SOL:'#000000',XRP:'#23292f',DOGE:'#c3a634',LINK:'#2a5ada',AVAX:'#e84142',BNB:'#f3ba2f',ARB:'#213147',OP:'#ff0420',ADA:'#0033ad',DOT:'#e6007a',MATIC:'#8247e5',POL:'#8247e5',LTC:'#345d9d',TRX:'#eb0029',ATOM:'#2e3148',UNI:'#ff007a',NEAR:'#000000',APT:'#000000',SUI:'#4da2ff',XAU:'#c69320',GOLD:'#c69320',XAG:'#8b9099',SILVER:'#8b9099'};
@@ -1595,7 +1599,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.62';
+const APP_VERSION='v0.9.63';
 const SCHEMA_VERSION=2;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -1895,6 +1899,9 @@ function viewTog(k){ VIEW.v[k]=VIEW.v[k]?0:1;VIEW.preset='aangepast';persistView
 function adoptViewBackup(d){ if(d.view&&d.view.v){VIEW.preset=d.view.preset||'aangepast';VIEW.v={...VIEW_PRESETS.alles,...d.view.v};}
   else if(d.sections){const m=viewFromSections(d.sections);VIEW.preset=m.preset;VIEW.v=m.v;}
   else return; persistView();try{renderNav();}catch(e){} }
+// Exchange-saldi/labels reizen mee in de backup (demo-dataset levert zo zijn eigen
+// bedragen — de EXCHANGES-const zelf staat op 0 voor verse journals).
+function adoptExMeta(d){ if(!d||!d.exMeta)return; EXCHANGES.forEach(e=>{const m=d.exMeta[e.id];if(m){if(m.val!=null)e.val=+m.val||0;if(m.acct)e.acct=m.acct;}}); }
 // In-context verbergen (⋯ op de paneelkop) — met ongedaan-toast die de vórige stand
 // exact terugzet (incl. preset, dus ook "aangepast" wordt teruggedraaid).
 const pHide=(k,n)=>`<span class="pmenu"><button aria-label="Paneel-opties" onclick="event.stopPropagation();this.parentElement.classList.toggle('open')">⋯</button><span class="dd"><button onclick="hideViewPanel('${k}','${esc(n)}')">🙈 Verberg dit paneel</button></span></span>`;
@@ -3946,7 +3953,7 @@ function togglePriv(){STATE.priv=!STATE.priv;document.body.classList.toggle('pri
 function setCurrency(c){STATE.currency=c;persistState();render();}
 /* trades CRUD + import/export */
 // Volledige staat-payload — gedeeld door export, snapshots en herstel.
-function snapshotPayload(){ return {app:'SyncJournal',appVersion:APP_VERSION,schemaVersion:SCHEMA_VERSION,exported:new Date().toISOString(),tagConfig,pbook:PBOOK,conns:CONNS,manual:MANUAL,sync:SYNC,aiPrefs:AIPREFS,view:{preset:VIEW.preset,v:VIEW.v},settings:{theme:STATE.theme,currency:STATE.currency,priv:STATE.priv,density:STATE.density},trades:T,trash:TRASH}; }
+function snapshotPayload(){ return {app:'SyncJournal',appVersion:APP_VERSION,schemaVersion:SCHEMA_VERSION,exported:new Date().toISOString(),tagConfig,pbook:PBOOK,conns:CONNS,manual:MANUAL,sync:SYNC,aiPrefs:AIPREFS,view:{preset:VIEW.preset,v:VIEW.v},exMeta:Object.fromEntries(EXCHANGES.map(e=>[e.id,{val:e.val,acct:e.acct}])),settings:{theme:STATE.theme,currency:STATE.currency,priv:STATE.priv,density:STATE.density},trades:T,trash:TRASH}; }
 // Zet een volledige backup-payload (nieuw formaat) terug in de live-staat.
 function applyBackup(d){
   T=(d.trades||[]).map((t,i)=>({rating:0,checks:[],...t,id:i}));
@@ -3957,7 +3964,7 @@ function applyBackup(d){
   if(d.manual){MANUAL=d.manual;MANUAL.forEach(m=>{if(!Array.isArray(m.transactions))m.transactions=[];});persistManual();}
   if(d.sync){SYNC=d.sync;persistSync();}
   if(d.aiPrefs){AIPREFS={...AIPREFS,...d.aiPrefs,focus:{...AIPREFS.focus,...(d.aiPrefs.focus||{})}};persistAIPrefs();}
-  adoptViewBackup(d);
+  adoptViewBackup(d);adoptExMeta(d);
   if(d.settings){STATE.theme=d.settings.theme||STATE.theme;STATE.currency=d.settings.currency||STATE.currency;STATE.priv=!!d.settings.priv;STATE.density=d.settings.density||STATE.density;document.body.classList.toggle('dark',STATE.theme==='dark');document.body.classList.toggle('priv',STATE.priv);}
   persistState();persist();render();
 }
@@ -5985,7 +5992,7 @@ function updFormVis(){
   btn.textContent=formMoreOpen?'▴ Minder velden':`▾ Meer velden (${n})`;
 }
 function openForm(id){
-  const t=id!=null?T.find(x=>x.id===id):{date:new Date().toISOString().slice(0,10),time:'',exchange:'mexc',pair:'BTC/USDC',dir:'long',setup:'London SFP',session:'London',timeframe:'15m',market:'Trending',grade:'',entry:'',stop:'',tp:'',exit:'',size:'',leverage:10,fees:'',risk:'',rrPlanned:'',pnl:'',r:'',status:'closed',emotion:'',mistake:'',emotions:[],mistakes:[],layers:[],tags:[],notes:'',lessons:'',durationMin:'',mae:'',mfe:''};
+  const t=id!=null?T.find(x=>x.id===id):{date:new Date().toISOString().slice(0,10),time:'',exchange:'blofin',pair:'BTC/USDC',dir:'long',setup:'London SFP',session:'London',timeframe:'15m',market:'Trending',grade:'',entry:'',stop:'',tp:'',exit:'',size:'',leverage:10,fees:'',risk:'',rrPlanned:'',pnl:'',r:'',status:'closed',emotion:'',mistake:'',emotions:[],mistakes:[],layers:[],tags:[],notes:'',lessons:'',durationMin:'',mae:'',mfe:''};
   formSizeUnit=(t.sizeUnit==='asset'&&t.qty>0)?'asset':'usd';formPbTouched=false;
   formTags=[...(t.tags||[])];formGrade=gradeOf(t);formShots=[...(t.screenshots||[])];formTvLinks=[...(t.tvLinks||[])];
   formLayers=(t.layers||[]).map(L=>({timeframe:L.timeframe||'',bias:L.bias||'',setups:[...(L.setups||[])],confirmations:[...(L.confirmations||[])]}));
@@ -6248,7 +6255,7 @@ function seedBundled(d){
   PBOOK={};Object.entries(d.pbook||PBRULES).forEach(([k,v])=>PBOOK[k]=pbNormalize(k,v));persistPbook();
   if(d.manual){MANUAL=d.manual;MANUAL.forEach(m=>{if(!Array.isArray(m.transactions))m.transactions=[];});persistManual();}
   if(d.aiPrefs){AIPREFS={...AIPREFS,...d.aiPrefs,focus:{...AIPREFS.focus,...(d.aiPrefs.focus||{})}};persistAIPrefs();}
-  adoptViewBackup(d);
+  adoptViewBackup(d);adoptExMeta(d);
   if(d.settings){STATE.theme=d.settings.theme||STATE.theme;STATE.currency=d.settings.currency||STATE.currency;STATE.priv=!!d.settings.priv;STATE.density=d.settings.density||STATE.density;document.body.classList.toggle('dark',STATE.theme==='dark');document.body.classList.toggle('priv',STATE.priv);}
   persistState();persist();
 }

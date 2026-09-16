@@ -26,8 +26,8 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
     setFilter('setup', '');
     return { before, after };
   });
-  // 126663 = demo-exchange-saldi (24663) + FTMO-inleg 100000 + netto trade-PnL 2000
-  ok('totale balans identiek mét en zonder setup-filter', bal.before === bal.after && bal.before === 126663, JSON.stringify(bal));
+  // 102000 = FTMO-inleg 100000 + netto trade-PnL 2000 (exchange-saldi zijn 0 op een verse journal sinds v0.9.63)
+  ok('totale balans identiek mét en zonder setup-filter', bal.before === bal.after && bal.before === 102000, JSON.stringify(bal));
 
   console.log('─── A2: setup wijzigen & legen ───');
   const a2 = await p.evaluate(() => {

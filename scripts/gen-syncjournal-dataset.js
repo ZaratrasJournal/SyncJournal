@@ -212,6 +212,7 @@ function build(){
     sync:{auto:true,interval:'15m'},
     aiPrefs:{enabled:true,tone:'neutraal',focus:{discipline:true,risk:true,psychologie:true},hideAmounts:false},
     sections:{hero:true,kpis:true,equity:true,monthly:true,edge:true,recent:true},
+    exMeta:{mexc:{val:13011,acct:'Scalp'},blofin:{val:10527,acct:'Swing'},okx:{val:1049,acct:'OKX'},hyperliquid:{val:76,acct:'HL'},kraken:{val:0,acct:'Kraken'}},
     settings:{theme:'dark',currency:'USD',priv:false,density:'comfy'},
     trades,
   };
