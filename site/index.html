@@ -1610,7 +1610,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.72';
+const APP_VERSION='v0.9.73';
 const SCHEMA_VERSION=2;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -1927,13 +1927,13 @@ function dismissNudge(go){ VIEW.nudged=1;persistView(); if(go)viewPreset('standa
 /* ═══ Globale filter (elke pagina) ═══ */
 // Multi-select (Denny 2026-09-14): de zes categorie-filters zijn arrays — meerdere
 // accounts/setups/etc. tegelijk. dir/kind blijven enkelvoudig (multi is daar zinloos).
-const FILTER={exchange:[],pair:[],setup:[],session:[],dir:'',tag:[],status:[],dateFrom:'',dateTo:'',datePreset:'',kind:'live'};
-const MULTI_FILTER_KEYS=['exchange','pair','setup','session','tag','status'];
+const FILTER={exchange:[],pair:[],setup:[],session:[],dir:'',tag:[],mistake:[],status:[],dateFrom:'',dateTo:'',datePreset:'',kind:'live'};
+const MULTI_FILTER_KEYS=['exchange','pair','setup','session','tag','mistake','status'];
 function kindMatch(t,k){const tk=t.kind||'live';if(!k||k==='alle')return true;if(k==='oefen')return tk!=='live';return tk===k;}
 let FT=[];
-function applyFilter(rows){const f=FILTER;return rows.filter(t=>kindMatch(t,f.kind)&&(!f.exchange.length||f.exchange.includes(t.exchange))&&(!f.pair.length||f.pair.includes(t.pair))&&(!f.setup.length||f.setup.includes(t.setup))&&(!f.session.length||f.session.includes(sessionOf(t)))&&(!f.dir||t.dir===f.dir)&&(!f.tag.length||tradeTagsAll(t).some(x=>f.tag.includes(x)))&&(!f.status.length||f.status.includes(t.status))&&(!f.dateFrom||t.date>=f.dateFrom)&&(!f.dateTo||t.date<=f.dateTo));}
+function applyFilter(rows){const f=FILTER;return rows.filter(t=>kindMatch(t,f.kind)&&(!f.exchange.length||f.exchange.includes(t.exchange))&&(!f.pair.length||f.pair.includes(t.pair))&&(!f.setup.length||f.setup.includes(t.setup))&&(!f.session.length||f.session.includes(sessionOf(t)))&&(!f.dir||t.dir===f.dir)&&(!f.tag.length||tradeTagsAll(t).some(x=>f.tag.includes(x)))&&(!f.mistake.length||tradeMistakes(t).some(x=>f.mistake.includes(x)))&&(!f.status.length||f.status.includes(t.status))&&(!f.dateFrom||t.date>=f.dateFrom)&&(!f.dateTo||t.date<=f.dateTo));}
 // Zelfde filters MAAR zonder de kind-filter — voor de real/paper/backtest-vergelijking (moet alle soorten zien).
-function applyFilterNoKind(rows){const f=FILTER;return rows.filter(t=>(!f.exchange.length||f.exchange.includes(t.exchange))&&(!f.pair.length||f.pair.includes(t.pair))&&(!f.setup.length||f.setup.includes(t.setup))&&(!f.session.length||f.session.includes(sessionOf(t)))&&(!f.dir||t.dir===f.dir)&&(!f.tag.length||tradeTagsAll(t).some(x=>f.tag.includes(x)))&&(!f.status.length||f.status.includes(t.status))&&(!f.dateFrom||t.date>=f.dateFrom)&&(!f.dateTo||t.date<=f.dateTo));}
+function applyFilterNoKind(rows){const f=FILTER;return rows.filter(t=>(!f.exchange.length||f.exchange.includes(t.exchange))&&(!f.pair.length||f.pair.includes(t.pair))&&(!f.setup.length||f.setup.includes(t.setup))&&(!f.session.length||f.session.includes(sessionOf(t)))&&(!f.dir||t.dir===f.dir)&&(!f.tag.length||tradeTagsAll(t).some(x=>f.tag.includes(x)))&&(!f.mistake.length||tradeMistakes(t).some(x=>f.mistake.includes(x)))&&(!f.status.length||f.status.includes(t.status))&&(!f.dateFrom||t.date>=f.dateFrom)&&(!f.dateTo||t.date<=f.dateTo));}
 // Buckets voor edge-erosion (real vs paper vs backtest) — gedeeld door analytics + playbook-detail.
 function eroBuckets(rows){const b={backtest:[],paper:[],real:[]};(rows||[]).forEach(x=>{if(x.status==='open')return;const k=x.kind==='backtest'?'backtest':x.kind==='paper'?'paper':(isLive(x)?'real':null);if(k)b[k].push(x);});
   const stat=arr=>{const n=arr.length,rs=arr.map(tradeR);return {n,wr:n?Math.round(arr.filter(x=>tradeR(x)>0).length/n*100):0,avgR:n?rs.reduce((a,c)=>a+c,0)/n:0,net:arr.reduce((a,c)=>a+(+c.pnl||0),0)};};
@@ -1968,7 +1968,7 @@ function dateFilterDD(){const presets=[['week','Deze week'],['month','Deze maand
       <div class="dd-custom"><span>Van</span><input type="date" value="${FILTER.dateFrom||''}" onchange="setDateFrom(this.value)"/><span>tot</span><input type="date" value="${FILTER.dateTo||''}" onchange="setDateTo(this.value)"/></div>
     </div></div>`;}
 // Checkbox-dropdown voor multi-select filters (zelfde .dd-patroon als het datum-filter).
-const MULTI_LABELS={exchange:['Alle accounts','accounts'],pair:['Alle pairs','pairs'],setup:['Alle setups','setups'],session:['Alle sessies','sessies'],status:['Alle statussen','statussen'],tag:['Alle tags','tags']};
+const MULTI_LABELS={exchange:['Alle accounts','accounts'],pair:['Alle pairs','pairs'],setup:['Alle setups','setups'],session:['Alle sessies','sessies'],status:['Alle statussen','statussen'],tag:['Alle tags','tags'],mistake:['Alle fouten','fouten']};
 function multiDD(key,opts){
   const [empty,many]=MULTI_LABELS[key];const cur=FILTER[key];
   const labOf=v=>{const o=opts.find(x=>(Array.isArray(x)?x[0]:x)===v);return o?(Array.isArray(o)?o[1]:o):v;};
@@ -1987,6 +1987,7 @@ function filterBar(){
   // ook als er nog geen trade mee bestaat.
   const setups=[...new Set([...Object.keys(PBOOK||{}),...(tagConfig.setupTags||[]),...T.map(t=>t.setup).filter(Boolean)])].sort();
   const tags=[...new Set([...(tagConfig.confirmationTags||[]),...(tagConfig.customTags||[]),...T.flatMap(tradeTagsAll)])].sort();
+  const fouten=[...new Set([...(tagConfig.mistakeTags||[]),...T.flatMap(tradeMistakes)])].sort();
   const active=countActive();
   return `<div class="filtbar">
     <span class="fico">⛃</span>
@@ -1997,6 +1998,7 @@ function filterBar(){
     ${sel('dir','Long & short',[['long','Long'],['short','Short']])}
     ${multiDD('status',[['open','Open'],['partial','Partial'],['closed','Gesloten']])}
     ${multiDD('tag',tags)}
+    ${multiDD('mistake',fouten)}
     <select class="fsel kindsel" aria-label="Soort trades" onchange="setFilter('kind',this.value)">${[['live','Live trades'],['oefen','Oefentrades (alle)'],['backtest','⏲ Backtest'],['paper','📄 Paper'],['gemist','👻 Gemist'],['alle','Alle soorten']].map(([v,l])=>`<option value="${v}" ${FILTER.kind===v?'selected':''}>${l}</option>`).join('')}</select>
     ${dateFilterDD()}
     ${active?`<button class="fclear" onclick="clearGFilter()">✕ Wis (${active})</button>`:''}
@@ -2009,6 +2011,11 @@ const SZ=t=>Number(String(t.size).replace(/\./g,''));
 // Dit is DE bron voor de tags-kolom en het tag-filter, zodat de tabel altijd exact toont
 // wat er in de trade zit — waar de tag ook geselecteerd is.
 function tradeTagsAll(t){return [...new Set([...(t.tags||[]),...(t.layers||[]).flatMap(L=>L.confirmations||[])])];}
+// Fouten/emoties leven als array (mistakes/emotions) met het oude enkelvoud als fallback.
+// DE bron voor zoeken, het fouten-filter en de fout-analyse (ChangeMaker 2026-09-14:
+// trades met een toegewezen fout waren nergens terug te vinden).
+function tradeMistakes(t){return (t.mistakes&&t.mistakes.length)?t.mistakes:(t.mistake?[t.mistake]:[]);}
+function tradeEmotions(t){return (t.emotions&&t.emotions.length)?t.emotions:(t.emotion?[t.emotion]:[]);}
 // ── Open/Close/Duur: openTime+closeTime (ms) zijn de bron van waarheid; durationMin is
 //    de handmatige fallback. Open trades krijgen een live-teller. null = onbekend.
 function tradeDurationMin(t){
@@ -2061,10 +2068,10 @@ function tradeHoverDetail(t){
   if(lays.length)meta.push(`<span>📐 ${lays.join(' <span class="arr">→</span> ')}</span>`);
   const tps=t.tps||[];
   if(tps.length)meta.push(`<span>🎯 <span class="num">${tps.filter(x=>x.hit).length} van ${tps.length}</span> TP's geraakt</span>`);
-  const emos=(t.emotions&&t.emotions.length)?t.emotions:(t.emotion?[t.emotion]:[]);
+  const emos=tradeEmotions(t);
   if(emos.length)meta.push(`<span>💭 ${emos.map(e=>`<span class="tagchip">${esc(e)}</span>`).join('')}</span>`);
-  const mis=(t.mistakes&&t.mistakes.length)?t.mistakes:(t.mistake?[t.mistake]:[]);
-  if(mis.length)meta.push(`<span>⚠ ${mis.map(m=>`<span class="tagchip col" style="--tc:var(--red)">${esc(m)}</span>`).join('')}</span>`);
+  const mis=tradeMistakes(t);
+  if(mis.length)meta.push(`<span>⚠ ${mis.map(m=>`<span class="tagchip col click" style="--tc:var(--red)" title="filter op deze fout" onclick="event.stopPropagation();setFilter('mistake','${jsarg(m)}')">${esc(m)}</span>`).join('')}</span>`);
   if(+t.rating>0)meta.push(`<span>${[1,2,3,4,5].map(n=>`<span class="${n<=+t.rating?'star':'staro'}">${n<=+t.rating?'★':'☆'}</span>`).join('')}</span>`);
   if((t.screenshots||[]).length)meta.push(`<span>📸 ${t.screenshots.length} screenshot${t.screenshots.length>1?'s':''}</span>`);
   if((t.missedReasons||[]).length)meta.push(`<span>👻 ${t.missedReasons.map(esc).join(' · ')}</span>`);
@@ -2259,18 +2266,18 @@ function equity(h,list){
   if(!data.length)data.push({x:0,y:0});
   return rcAreaChart(data,{col:themeColors().accent,gid:'gEq',yfmt:v=>(Math.round(v/100)/10)+'k',tfmt:eurS,name:'Netto P&L',h:h||188,cls:'ch-eq'});
 }
-function barsPnl(data,unit='k'){
+function barsPnl(data,unit='k',onBar){
   const t=themeColors(),H=React.createElement,R=Recharts;
   const fmt=unit==='k'?(v=>(v>=0?'+':'−')+Math.abs(v/1000).toFixed(Math.abs(v)%1000?1:0)+'k'):(v=>eurS(v));
   // Compacte waarde-label ON de bar (per rij), zodat je niet hoeft te hoveren.
   const lbl=v=>{const a=Math.abs(v);const s=v>=0?'+':'−';return a>=1000?s+(a/1000).toFixed(a>=10000?0:1).replace('.',',')+'k':s+Math.round(a);};
-  const rows=data.map(d=>({x:d.m,y:Math.round(d.v)}));
+  const rows=data.map(d=>({x:d.m,y:Math.round(d.v),f:d.f}));
   return rcChart(()=>H(R.ResponsiveContainer,{width:'100%',height:'100%'},
     H(R.BarChart,{data:rows,margin:{top:22,right:8,left:8,bottom:2}},
       rcGrid(t),rcXAxis(t),H(R.YAxis,{hide:true}),
       H(R.Tooltip,{content:shadTip(fmt),cursor:{fill:isDark()?'rgba(255,255,255,.05)':'rgba(20,30,60,.045)'}}),
-      H(R.Bar,{dataKey:'y',name:'Netto',radius:[8,8,0,0],maxBarSize:62,isAnimationActive:false},
-        rows.map((d,i)=>H(R.Cell,{key:i,fill:d.y>=0?t.green:t.red})),
+      H(R.Bar,{dataKey:'y',name:'Netto',radius:[8,8,0,0],maxBarSize:62,isAnimationActive:false,onClick:onBar?(d=>onBar(d&&(d.payload||d))):undefined},
+        rows.map((d,i)=>H(R.Cell,{key:i,fill:d.y>=0?t.green:t.red,style:onBar?{cursor:'pointer'}:undefined})),
         H(R.LabelList,{dataKey:'y',position:'top',formatter:lbl,style:{fontSize:10.5,fontWeight:700,fill:t.ink2}}))
     )
   ),'ch-bar',150);
@@ -2308,7 +2315,7 @@ function pgDashboard(){
 function pgTrades(){
   let rows=FT.filter(t=>STATE.tradeTab==='all'||(STATE.tradeTab==='open'&&t.status!=='closed')||(STATE.tradeTab==='closed'&&t.status==='closed'));
   const q=STATE.query.toLowerCase();
-  if(q)rows=rows.filter(t=>(t.pair+' '+t.setup+' '+t.session+' '+t.emotion+' '+(t.tags||[]).join(' ')).toLowerCase().includes(q));
+  if(q)rows=rows.filter(t=>(t.pair+' '+t.setup+' '+t.session+' '+tradeEmotions(t).join(' ')+' '+tradeMistakes(t).join(' ')+' '+tradeTagsAll(t).join(' ')).toLowerCase().includes(q));
   const sc=STATE.sortCol,sd=STATE.sortDir;
   rows=rows.slice().sort((a,b)=>{let x=a[sc],y=b[sc];if(sc==='size'){x=SZ(a);y=SZ(b);}if(typeof x==='string'){return x<y?-sd:x>y?sd:0;}return (x-y)*sd;});
   const maxS=Math.max(1,...rows.map(SZ)),net=rows.reduce((s,t)=>s+t.pnl,0);
@@ -2334,7 +2341,7 @@ function pgTrades(){
     <button class="btn" style="color:var(--red);border-color:color-mix(in srgb,var(--red) 35%,transparent)" onclick="bulkDelete()">Verwijderen</button></div>`:'';
   const dens=STATE.density==='compact'?' compact':STATE.density==='ruim'?' ruim':'';
   return `${filterBar()}<div class="filterbar">
-    <div class="search"><span class="sic">${svg(IC.search,16)}</span><input id="trSearch" placeholder="Zoek op pair, setup, sessie, emotie, tag…" value="${esc(STATE.query)}" aria-label="Zoek trades"/></div>
+    <div class="search"><span class="sic">${svg(IC.search,16)}</span><input id="trSearch" placeholder="Zoek op pair, setup, sessie, emotie, fout, tag…" value="${esc(STATE.query)}" aria-label="Zoek trades"/></div>
     <span class="sp" style="flex:1"></span>
     <div class="seg" id="trDen">${[['comfy','Comfortabel'],['compact','Compact'],['ruim','Ruim']].map(([k,l])=>`<button data-den="${k}" class="${STATE.density===k?'on':''}">${l}</button>`).join('')}</div>
     <button class="btn pri" onclick="openForm(null)">+ Nieuwe trade</button></div>
@@ -2369,7 +2376,7 @@ function toggleSelAll(){ const rows=curTradeRows();const ids=rows.map(t=>t.id);c
 function clearSel(){ STATE.selected=[];render(); }
 function bulkDelete(){ const ids=[...STATE.selected];if(!ids.length)return;trashDelete(ids);STATE.selected=[];render();toast('🗑 '+ids.length+' trades naar prullenbak','info',{label:'Ongedaan maken',fn:()=>undoTrash(ids)}); }
 function curTradeRows(){ let r=FT.filter(t=>STATE.tradeTab==='all'||(STATE.tradeTab==='open'&&t.status!=='closed')||(STATE.tradeTab==='closed'&&t.status==='closed'));
-  const q=STATE.query.toLowerCase();if(q)r=r.filter(t=>(t.pair+' '+t.setup+' '+t.session+' '+t.emotion+' '+(t.tags||[]).join(' ')).toLowerCase().includes(q));return r; }
+  const q=STATE.query.toLowerCase();if(q)r=r.filter(t=>(t.pair+' '+t.setup+' '+t.session+' '+tradeEmotions(t).join(' ')+' '+tradeMistakes(t).join(' ')+' '+tradeTagsAll(t).join(' ')).toLowerCase().includes(q));return r; }
 function announce(){ const l=document.getElementById('live');if(l&&STATE.page==='trades')l.textContent=curTradeRows().length+' trades, gesorteerd op '+STATE.sortCol; }
 
 // Setup × sessie — TradingView-stijl treemap: sessie = groep, setup = tegel (grootte = hoeveelheid, kleur = netto P&L).
@@ -2638,7 +2645,7 @@ function revInPeriod(dateStr){const p=STATE.revPeriod||'all';if(p==='all')return
 // Basis-set voor de review-lijst na periode-filter (telkens vóór de reviewed/zoek-filters).
 function reviewScope(){const listSrc=FT.length?FT:T;return listSrc.filter(x=>revInPeriod(x.date));}
 function reviewItems(){const rq=(STATE.revQuery||'').toLowerCase(),rf=STATE.revFilter||'all';
-  return reviewScope().filter(x=>(rf==='all'||(rf==='done'?x.reviewed:!x.reviewed))&&(!rq||(x.pair+' '+x.setup+' '+x.session+' '+(x.emotion||'')+' '+(x.tags||[]).join(' ')).toLowerCase().includes(rq)));}
+  return reviewScope().filter(x=>(rf==='all'||(rf==='done'?x.reviewed:!x.reviewed))&&(!rq||(x.pair+' '+x.setup+' '+x.session+' '+tradeEmotions(x).join(' ')+' '+tradeMistakes(x).join(' ')+' '+(x.tags||[]).join(' ')).toLowerCase().includes(rq)));}
 function revNav(d){const src=reviewItems();if(!src.length)return;let i=src.findIndex(x=>x.id===STATE.revSel);if(i<0)i=0;STATE.revSel=src[(i+d+src.length)%src.length].id;render();}
 function setRevFilter(f){STATE.revFilter=f;render();}
 function setRevPeriod(p){STATE.revPeriod=p;render();}
@@ -2909,7 +2916,7 @@ function pgReview(){
     <div class="panel revlistpanel" style="align-self:start">
       ${phead}
       <div class="revtools">
-        <div class="revsearch"><span class="sic">${svg(IC.search,15)}</span><input id="revSearch" placeholder="Zoek pair, setup, sessie, emotie…" value="${esc(rq)}" oninput="STATE.revQuery=this.value;render()" aria-label="Zoek trades om te reviewen"></div>
+        <div class="revsearch"><span class="sic">${svg(IC.search,15)}</span><input id="revSearch" placeholder="Zoek pair, setup, sessie, emotie, fout…" value="${esc(rq)}" oninput="STATE.revQuery=this.value;render()" aria-label="Zoek trades om te reviewen"></div>
         <div class="revperiod">${[['all','Alle'],['week','Deze week'],['month','Deze maand'],['year','Dit jaar']].map(([k,l])=>`<button class="${rp===k?'on':''}" onclick="setRevPeriod('${k}')">${l}</button>`).join('')}</div>
         <div class="revfilters">${[['all','Alle',total],['todo','Te doen',total-done],['done','Gereviewed',done]].map(([k,l,n])=>`<button class="${rf===k?'on':''}" onclick="setRevFilter('${k}')">${l} <span class="cnt">${n}</span></button>`).join('')}</div>
       </div>
@@ -3631,8 +3638,9 @@ function pgAnalytics(){
     return {label:d==='long'?'Long':'Short',val:wr,disp:wr+'%',sub:`${g.length} trades · netto <b class="${cls(pnl)}">${eurS(pnl)}</b>`,color:pnl>=0?'var(--green)':'var(--red)'};});
   const pairRows=groupRows('pair').sort((x,y)=>y.pnl-x.pnl).slice(0,6);
   const sessBars=groupRows('session').sort((x,y)=>y.pnl-x.pnl).map(s=>({m:s.label,v:Math.round(s.pnl)}));
-  const mistBy={};CLOSED.filter(t=>t.mistake).forEach(t=>{mistBy[t.mistake]=(mistBy[t.mistake]||0)+t.pnl;});
-  const mistBars=Object.entries(mistBy).sort((x,y)=>x[1]-y[1]).map(([m,v])=>({m:m.length>11?m.slice(0,10)+'…':m,v:Math.round(v)}));
+  // álle fouten per trade tellen mee, niet alleen de eerste (ChangeMaker 2026-09-14)
+  const mistBy={};CLOSED.forEach(t=>tradeMistakes(t).forEach(m=>{mistBy[m]=(mistBy[m]||0)+t.pnl;}));
+  const mistBars=Object.entries(mistBy).sort((x,y)=>x[1]-y[1]).map(([m,v])=>({m:m.length>11?m.slice(0,10)+'…':m,v:Math.round(v),f:m}));
   // Duur nu op echte timestamps (openTime/closeTime) met durationMin als fallback.
   const _hd=t=>tradeDurationMin(t)||0;
   const avgHoldW=wins.length?Math.round(wins.reduce((s,t)=>s+_hd(t),0)/wins.length):0,avgHoldL=losses.length?Math.round(losses.reduce((s,t)=>s+_hd(t),0)/losses.length):0,maxHold=Math.max(1,avgHoldW,avgHoldL);
@@ -3731,7 +3739,7 @@ function pgAnalytics(){
     ${panel('Prestatie per uur','wanneer op de dag presteer je',hourHeat(CLOSED))}<div style="height:13px"></div>
     <div class="sect-h">Gedrag &amp; edge-bewaking</div>
     <div class="grid" style="grid-template-columns:1fr 1fr 1fr;align-items:stretch">
-      ${mistBars.length?panel('Fout-analyse','netto-impact per fout',barsPnl(mistBars,'e')):panelRaw('Fout-analyse','',`<div style="padding:24px 18px;color:var(--muted);font-size:12.5px">Geen fouten getagd in beeld 🎉</div>`)}
+      ${mistBars.length?panel('Fout-analyse','netto-impact per fout · klik = die trades',barsPnl(mistBars,'e',d=>{if(d&&d.f){setFilter('mistake',d.f);go('trades');}})):panelRaw('Fout-analyse','',`<div style="padding:24px 18px;color:var(--muted);font-size:12.5px">Geen fouten getagd in beeld 🎉</div>`)}
       ${panelRaw('Gem. tijd in trade','winst vs. verlies',hbars(holdRows))}
       ${panelRaw('Duur → resultaat','gem. R per duur-bucket',durBody)}
     </div><div style="height:13px"></div>
