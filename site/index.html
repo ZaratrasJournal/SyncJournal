@@ -1600,7 +1600,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.66';
+const APP_VERSION='v0.9.67';
 const SCHEMA_VERSION=2;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -3084,6 +3084,7 @@ function pgInstellingen(){
           ${driveReady()?`<button class="bkchoice ${BK.choice==='drive'?'on':''}" onclick="bkChoose('drive')"><b>☁️ Google Drive${BK.choice==='drive'?' · <span style=\"color:var(--green)\">gekoppeld</span>':''}</b><small>Automatische backup naar de zichtbare map “SyncJournal” in je eigen Google Drive. Werkt op elke computer: daar herstellen, hier verder — bij een nieuwere backup elders vraagt de app of je die wilt overnemen.</small></button>`:`<button class="bkchoice" disabled title="Komt binnenkort"><b>☁️ Google Drive <span class="chip" style="margin-left:4px">binnenkort</span></b><small>Automatische backup naar je eigen Google Drive — handig op meerdere computers. In ontwikkeling.</small></button>`}
           <button class="bkchoice ${BK.choice==='handmatig'||!BK.choice?'on':''}" onclick="bkChoose('handmatig')"><b>✋ Alleen handmatig</b><small>Jij exporteert zelf een JSON-bestand wanneer je wilt. De waarschuwing na ${BK.threshold} dagen blijft je eraan herinneren.</small></button>
         </div>
+        ${BK.choice==='drive'?`<div class="setrow"><div class="txt"><b>Herstellen uit Google Drive</b><small>Zet de laatste backup uit je Drive-map terug — handig op een nieuwe computer. Je huidige staat wordt eerst veiliggesteld.</small></div><button class="btn" onclick="driveRestoreLatest()">Herstel laatste backup</button></div>`:''}
         <div class="setrow"><div class="txt"><b>Waarschuwen na</b><small>Zoveel dagen zonder backup tonen we het alarm (na ${BK_RED_DAYS} dagen wordt het rood)</small></div>
           <select class="fsel" aria-label="Waarschuwingsdrempel" onchange="bkSetThreshold(this.value)">${[1,2,3,5,7,14].map(d=>`<option value="${d}" ${BK.threshold===d?'selected':''}>${d} dag${d===1?'':'en'}</option>`).join('')}</select></div>
       </div>
@@ -3977,9 +3978,9 @@ function applyBackup(d){
    Interne veiligheidskopieën (Snapshots) tellen bewust NIET — die staan óók in de browser. */
 const BK=Object.assign({ts:0,method:'',choice:'',threshold:3,snooze:0,first:0},DB.load('backup',{}));
 if(!BK.first){BK.first=Date.now();DB.save('backup',BK);} // gratieperiode: nieuwe gebruikers pas alarmeren ná de drempel
-const BK_RED_DAYS=7, BK_KEEP=14, BK_DEBOUNCE_MS=60000;
+const BK_RED_DAYS=7, BK_KEEP=14, BK_DEBOUNCE_MS=60000, BK_MAXWAIT_MS=5*60000;
 function persistBK(){ DB.save('backup',{ts:BK.ts,method:BK.method,choice:BK.choice,threshold:BK.threshold,snooze:BK.snooze,first:BK.first}); }
-function bkStamp(method){ BK.ts=Date.now();BK.method=method;persistBK();try{render();}catch(e){} }
+function bkStamp(method){ BK.ts=Date.now();BK.method=method;_bkDirtySince=0;persistBK();try{render();}catch(e){} }
 function bkAgeDays(){ const ref=BK.ts||BK.first||Date.now(); return Math.floor((Date.now()-ref)/86400e3); }
 const BK_METHOD_LBL={handmatig:'handmatige export',map:'automatische map-backup',drive:'Google Drive'};
 function bkSnooze(){ BK.snooze=Date.now()+86400e3;persistBK();render(); }
@@ -4034,7 +4035,20 @@ async function bkRetention(){ // bewaar de laatste BK_KEEP dagbestanden
     while(names.length>BK_KEEP){ const n=names.shift(); await BK_DIR.removeEntry(n); }
   }catch(e){}
 }
-function bkQueue(){ if(BK.choice!=='map'&&BK.choice!=='drive')return; clearTimeout(_bkTimer); _bkTimer=setTimeout(()=>{ if(BK.choice==='map')autoBackup(false); else driveBackup(false); },BK_DEBOUNCE_MS); }
+let _bkDirtySince=0;
+// Debounce (60s rust) mét harde bovengrens: bij continu doorwerken wordt er tóch elke
+// 5 minuten geüpload — zo blijft de maximale data-gap in de backup klein.
+function bkQueue(){ if(BK.choice!=='map'&&BK.choice!=='drive')return;
+  if(!_bkDirtySince)_bkDirtySince=Date.now();
+  clearTimeout(_bkTimer);
+  const wait=Math.max(1000,Math.min(BK_DEBOUNCE_MS,_bkDirtySince+BK_MAXWAIT_MS-Date.now()));
+  _bkTimer=setTimeout(bkFlush,wait);
+}
+async function bkFlush(){ clearTimeout(_bkTimer); if(!_bkDirtySince)return;
+  if(BK.choice==='map')await autoBackup(false); else if(BK.choice==='drive')await driveBackup(false); }
+// Tab verbergen/verlaten met onge-backupte wijzigingen -> direct proberen te uploaden.
+document.addEventListener('visibilitychange',()=>{try{if(document.visibilityState==='hidden'&&_bkDirtySince)bkFlush();}catch(e){}});
+window.addEventListener('pagehide',()=>{try{if(_bkDirtySince)bkFlush();}catch(e){}});
 function bkChoose(c){
   if(c==='map'){ if(!bkFsaSupported()){toast('Automatische map-backup werkt alleen in Chrome of Edge','warn');return;} bkPickDir(); return; }
   if(c==='drive'){ driveConnect(); return; }
@@ -4044,7 +4058,7 @@ function bkSetThreshold(v){ BK.threshold=Math.max(1,+v||3);persistBK();render();
 function bkStatusHtml(){
   const age=bkAgeDays();
   const col=age<BK.threshold?'var(--green)':age>=BK_RED_DAYS?'var(--red)':'var(--amber)';
-  const when=BK.ts?`${age===0?'vandaag':age===1?'gisteren':age+' dagen geleden'} · via ${BK_METHOD_LBL[BK.method]||BK.method}`:'nog nooit gemaakt';
+  const when=BK.ts?`${age===0?'vandaag '+new Date(BK.ts).toLocaleTimeString('nl-NL',{hour:'2-digit',minute:'2-digit'}):age===1?'gisteren':age+' dagen geleden'} · via ${BK_METHOD_LBL[BK.method]||BK.method}`:'nog nooit gemaakt';
   return `<span style="color:${col};font-weight:700">●</span> Laatste backup: <b>${when}</b>`;
 }
 /* ═══ Google Drive-backup (hosting-plan fase 3, 2026-09-16) ═══
@@ -4115,9 +4129,33 @@ async function driveConnect(){
   try{
     await driveToken(true); await driveEnsureFolder();
     BK.choice='drive';persistBK();
+    // Bestaande backups in de map? (nieuwe computer / herinstallatie) → bied herstellen aan
+    // vóór we iets uploaden — een verse lege journal mag nooit zomaar “de nieuwste” worden.
+    const files=await driveList();
+    if(files.length){
+      const newest=files[files.length-1];
+      const remoteTs=+new Date(newest.modifiedTime||0);
+      const localTs=Math.max(+BK.ts||0,+DB.load('data_ts',0)||0);
+      if(!T.length||remoteTs>localTs+120000){
+        DRIVE.adopt={id:newest.id,ts:remoteTs};
+        toast('✓ Google Drive gekoppeld — er staat al een backup voor je klaar','ok');render();return;
+      }
+    }
     const okr=await driveBackup(true);
     toast(okr?'✓ Google Drive gekoppeld — je backups staan in de map “SyncJournal”':'Google Drive gekoppeld','ok');render();
   }catch(e){ toast('Koppelen geannuleerd of mislukt','warn'); }
+}
+// Handmatig de laatste Drive-backup terugzetten (Instellingen → Data, bij gekoppelde Drive).
+async function driveRestoreLatest(){
+  try{
+    await driveToken(true); await driveEnsureFolder();
+    const files=await driveList();
+    if(!files.length){toast('Geen backups gevonden in je Drive-map','warn');return;}
+    const newest=files[files.length-1];
+    if(!confirm('Laatste Drive-backup terugzetten ('+newest.name.replace('syncjournal-backup-','').replace('.json','')+')? Je huidige staat wordt eerst als veiligheidskopie bewaard.'))return;
+    DRIVE.adopt={id:newest.id,ts:+new Date(newest.modifiedTime||0)};
+    await driveAdopt();
+  }catch(e){ toast('Herstellen mislukte: '+((e&&e.message)||'onbekend'),'warn'); }
 }
 // Bij opstarten: staat er in Drive een nieuwere backup dan de lokale staat (ander apparaat)?
 async function driveStartupCheck(){

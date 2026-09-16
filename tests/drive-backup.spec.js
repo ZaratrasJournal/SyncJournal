@@ -73,6 +73,22 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
   });
   ok('retentie: oude dagbestanden worden opgeruimd tot 14', ret.n <= 14, JSON.stringify(ret));
 
+  console.log('─── Gap-bewaking: max-wait + flush bij verlaten ───');
+  ok('geslaagde backup reset de dirty-status', await p.evaluate(async () => { bkQueue(); const was = _bkDirtySince > 0; await driveBackup(false); return was && _bkDirtySince === 0; }));
+  ok('continu doorwerken: na 5 min tóch upload (max-wait, timer ~1s)', await p.evaluate(async () => {
+    const before = BK.ts; _bkDirtySince = Date.now() - BK_MAXWAIT_MS - 1000; bkQueue(); // debounce zou 60s zijn, max-wait dwingt ~1s af
+    await new Promise(r => setTimeout(r, 1800));
+    return BK.ts > before && _bkDirtySince === 0;
+  }));
+  ok('tab verbergen met onge-backupte wijzigingen → directe upload', await p.evaluate(async () => {
+    const before = BK.ts; _bkDirtySince = Date.now();
+    Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+    await new Promise(r => setTimeout(r, 300));
+    Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
+    return BK.ts > before;
+  }));
+
   console.log('─── Nieuwere backup op ander apparaat ───');
   const adopt = await p.evaluate(async () => {
     // simuleer: elders is een nieuwere backup gemaakt (andere trades, modifiedTime in de toekomst)
@@ -85,6 +101,22 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
   });
   ok('startup-check ziet nieuwere Drive-backup → overneem-banner', adopt.adopt && /nieuwere backup/.test(adopt.bannerText), JSON.stringify(adopt));
   ok('Overnemen: veiligheidskopie eerst, data vervangen, banner weg', await p.evaluate(async () => { const snaps = SNAP_META.length; await driveAdopt(); await new Promise(r => setTimeout(r, 200)); return !DRIVE.adopt && T.length === 1 && T[0].pair === 'SOL/USDT' && SNAP_META.length === snaps + 1; }));
+
+  console.log('─── Nieuwe locatie: koppelen herkent bestaande backups ───');
+  ok('verse journal + bestaande Drive-backup → koppelen biedt herstellen aan (geen lege upload)', await p.evaluate(async () => {
+    // simuleer een nieuwe computer: lege journal, maar de Drive-map bevat al een backup
+    T = []; persist(); BK.ts = 0; DB.save('data_ts', 0); BK.choice = 'handmatig'; persistBK(); DRIVE.adopt = null;
+    const nFiles = Object.keys(window.__dv.files).length;
+    await driveConnect(); await new Promise(r => setTimeout(r, 200));
+    return BK.choice === 'drive' && !!DRIVE.adopt && Object.keys(window.__dv.files).length === nFiles;
+  }));
+  ok('…en overnemen laadt de data in', await p.evaluate(async () => { await driveAdopt(); return T.length >= 1 && !DRIVE.adopt; }));
+  ok('handmatige herstel-knop zichtbaar bij gekoppelde Drive + werkt', await p.evaluate(async () => {
+    go('instellingen'); setSetTab('data');
+    const btnRow = /Herstel laatste backup/.test(document.getElementById('main').textContent);
+    T = []; persist(); await driveRestoreLatest(); // confirm auto-accept
+    return btnRow && T.length >= 1;
+  }));
 
   console.log('─── Toestemming verlopen ───');
   ok('geweigerde token → herverbind-banner met knop', await p.evaluate(async () => { DRIVE.token = null; DRIVE.tokenExp = 0; window.__dv.denyToken = true; const r = await driveBackup(false); render(); const bn = [...document.querySelectorAll('.bkbanner')].find(x => /toestemming/.test(x.textContent)); return r === false && DRIVE.needsAuth && bn && /Opnieuw verbinden/.test(bn.textContent); }));
