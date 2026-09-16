@@ -1610,7 +1610,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.73';
+const APP_VERSION='v0.9.74';
 const SCHEMA_VERSION=2;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -3141,6 +3141,34 @@ const EMPTY_PB={name:'',oneLiner:'',layers:[],criteria:[],antiCriteria:[],status
 const PB_STATUS=[['testing','🧪 Testen','var(--amber)'],['active','✓ Actief','var(--green)'],['retired','📦 Archief','var(--muted)']];
 const PB_EXKINDS=[['win','Schoolvoorbeeld'],['marginal','Marginaal'],['fail','Mislukt']];
 function pbNormalize(name,v){if(Array.isArray(v))return{...EMPTY_PB,name,criteria:v.map(t=>({text:t,mandatory:false})),status:'active'};return{...EMPTY_PB,...(v||{}),name};}
+// v0.9.70 stopte het zaaien van demo-playbooks bij verse journals, maar wie de app eerder
+// opende had ze al in de opslag staan (Denny op work, 2026-09-16). Deze opruiming bij het
+// opstarten verwijdert ze alsnog — alléén exact-onaangeraakte exemplaren (letterlijk de
+// oude demo-criteria, verder leeg) waar bovendien geen enkele trade de setup van gebruikt.
+// Vergelijkingsdata, geen zichtbare tekst: het em-streepje hieronder moet blijven, zo
+// stond het destijds in de zaai-lijst.
+const DEMO_PB={
+ 'London SFP':['Wacht op sweep van Londen high/low','Bevestiging via LTF break of structure','Entry op retest, SL achter de sweep','TP1 op 2R, rest laten lopen'],
+ 'Trend-pullback':['Alleen in richting van de HTF-trend','Wacht pullback naar EMA/order-block','Entry op bevestigingscandle','Risk max 1% per trade'],
+ 'BOS-retest':['Break of structure op M15','Wacht op retest van de breakzone','SL achter de structuur','Minimaal 2R doel'],
+ 'Range-fade':['Duidelijke range vereist','Fade alleen de extremen','Klein risico, snelle TP','Nooit in een trending markt'],
+ 'Reclaim':['Level reclaim én hold','Wacht bevestiging boven/onder','SL krap achter het level'],
+ 'News trade':['Alleen high-impact nieuws','Wacht tot de eerste spike eruit is','Klein risico — hoge variantie'],
+};
+function pbDemoCleanup(){
+  let removed=0;
+  Object.entries(DEMO_PB).forEach(([name,texts])=>{
+    const pb=PBOOK[name];if(!pb)return;
+    const crit=(pb.criteria||[]);
+    const untouched=crit.length===texts.length&&crit.every((c,i)=>c.text===texts[i]&&!c.mandatory)
+      &&!(pb.layers||[]).length&&!(pb.antiCriteria||[]).length&&!(pb.examples||[]).length
+      &&!pb.oneLiner&&!pb.bigPicture&&!pb.tape&&!pb.intuition&&pb.status==='active';
+    const used=T.some(t=>t.setup===name)||TRASH.some(t=>t.setup===name);
+    if(untouched&&!used){delete PBOOK[name];removed++;}
+  });
+  if(removed)persistPbook();
+  return removed;
+}
 let PBOOK={}; // geladen in boot() uit IndexedDB (async)
 function persistPbook(){IDB.set('pbook',PBOOK).then(okr=>{ if(okr===false)ErrorCenter.report('save',new Error('IndexedDB weigerde de schrijfactie voor playbooks.'),{severity:'error',userMsg:'Je playbook-wijziging kon niet worden opgeslagen. Exporteer een back-up en probeer opnieuw.',actions:[{label:'Exporteer backup',fn:()=>exportJSON()}]}); }); }
 let pbEditOrig='',pbForm={},pbCrit=[],pbAnti=[],pbExamples=[];
@@ -6448,6 +6476,7 @@ async function boot(){
   }catch(e){T=DB.load('trades',[]);PBOOK={};Object.entries(DB.load('pbook',{})).forEach(([k,v])=>PBOOK[k]=pbNormalize(k,v));}
   try{const sm=await IDB.get('snapshots');SNAP_META=Array.isArray(sm)?sm:[];}catch(e){SNAP_META=[];}
   try{const tr=await IDB.get('trash');TRASH=Array.isArray(tr)?tr:[];purgeTrash();}catch(e){TRASH=[];}
+  try{pbDemoCleanup();}catch(e){}         // achtergebleven demo-playbooks van vóór v0.9.70 (alleen onaangeraakt + ongebruikt)
   try{await bkLoadDir();}catch(e){}       // backup-map-handle (automatische map-backups)
   try{driveStartupCheck();}catch(e){}     // Drive: nieuwere backup van ander apparaat? (async)
   // hosted: opslag-bescherming aanvragen (browser ruimt IndexedDB dan niet zomaar op) + update-check (max 1×/4u)
