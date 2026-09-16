@@ -248,6 +248,8 @@ table.tbl{width:100%;border-collapse:collapse;font-size:14px}
 .mbody.hstd .vf-std:not(.vf-keep),.mbody.hpro .vf-pro:not(.vf-keep){display:none}
 .fmorebar{grid-column:1/-1;display:flex;align-items:center;justify-content:center;gap:8px;margin-top:4px;padding:9px;border:1px dashed var(--line);border-radius:10px;font-size:12.5px;font-weight:700;color:var(--accent);background:none;cursor:pointer;font-family:inherit}
 .fmorebar:hover{background:var(--accent-soft)}
+/* work.syncjournal.nl: staging-badge in de app-balk */
+.workbadge{display:inline-block;margin-left:10px;padding:3px 11px;border-radius:999px;background:var(--amber-soft);border:1px solid color-mix(in srgb,var(--amber) 45%,transparent);color:var(--amber);font-size:11px;font-weight:800;letter-spacing:.05em;vertical-align:middle;white-space:nowrap}
 /* update-banner (hosted): nieuwe versie beschikbaar */
 .updbanner{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px;padding:11px 16px;border-radius:12px;background:var(--accent-soft);border:1px solid var(--accent-line);border-left:4px solid var(--accent);font-size:13px;color:var(--ink2)}
 .updbanner b{color:var(--ink)}
@@ -1593,7 +1595,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.61';
+const APP_VERSION='v0.9.62';
 const SCHEMA_VERSION=2;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -1778,6 +1780,9 @@ let SYNC=DB.load('sync',{auto:false,interval:'15m'});
 // APP_VERSION; lokaal (file:// of localhost) is er niets te checken — updates komen daar
 // via de repo. Bij een nieuwere versie: banner app-breed, verversen haalt de nieuwe HTML op.
 const IS_HOSTED=(()=>{try{return /^https?:$/.test(location.protocol)&&!['localhost','127.0.0.1','[::1]'].includes(location.hostname);}catch(e){return false;}})();
+// work.syncjournal.nl = staging: eigen origin (dus eigen opslag, raakt live-data nooit),
+// met een onmiskenbare badge zodat niemand er per ongeluk in journalt.
+const IS_WORK=(()=>{try{return IS_HOSTED&&/^work\./.test(location.hostname);}catch(e){return false;}})();
 const RELEASED='2026-09-16';
 let UPDATE={status:'idle',remote:'',released:''};
 let PERSISTED=null;  // navigator.storage.persist(): true = browser belooft opslag niet op te ruimen
@@ -6224,6 +6229,7 @@ async function boot(){
   // hosted: opslag-bescherming aanvragen (browser ruimt IndexedDB dan niet zomaar op) + update-check (max 1×/4u)
   try{ if(navigator.storage&&navigator.storage.persist){ navigator.storage.persist().then(p=>{PERSISTED=p;}).catch(()=>{}); } }catch(e){}
   try{ if(IS_HOSTED&&Date.now()-DB.load('upd_last',0)>4*3600e3)checkUpdate(true); }catch(e){}
+  try{ if(IS_WORK){document.title='🚧 WERK · SyncJournal';const t=document.getElementById('ptitle');if(t)t.insertAdjacentHTML('afterend','<span class="workbadge">🚧 WERKVERSIE — testomgeving, aparte opslag</span>');} }catch(e){}
   // Deprecated exchanges: eventuele opgeslagen keys opruimen (koppeling bestaat niet meer; trades blijven).
   try{EXCHANGES.filter(e=>e.deprecated&&CONNS[e.id]).forEach(e=>{delete CONNS[e.id];});persistConns();}catch(e){}
   try{await runMigrations();}catch(e){}   // geversioneerde schema-updates (snapshot + rollback ingebouwd)

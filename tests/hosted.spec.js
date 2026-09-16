@@ -16,6 +16,7 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
 
   console.log('─── Hosted-detectie + versievergelijking ───');
   ok('file:// telt niet als hosted', await p.evaluate(() => IS_HOSTED === false));
+  ok('file:// telt ook niet als werkversie (IS_WORK)', await p.evaluate(() => IS_WORK === false && !document.querySelector('.workbadge')));
   ok('verNum: v0.9.60 < v0.9.61 < v0.10.0 < v1.0.0', await p.evaluate(() => verNum('v0.9.60') < verNum('v0.9.61') && verNum('v0.9.61') < verNum('v0.10.0') && verNum('v0.10.0') < verNum('v1.0.0')));
   ok('verNum: v0.10.0 > v0.9.999', await p.evaluate(() => verNum('v0.10.0') > verNum('v0.9.999')));
   ok('checkUpdate lokaal → status "local" met nette uitleg', await p.evaluate(async () => { await checkUpdate(); go('instellingen'); setSetTab('updates'); return UPDATE.status === 'local' && /lokale/.test(document.getElementById('main').textContent); }));

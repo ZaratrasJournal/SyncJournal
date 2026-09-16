@@ -23,4 +23,15 @@ Deze map is wat er live staat. Inhoud:
 3. Na de eerste deploy: **Custom domains** → `syncjournal.nl` toevoegen (en `www.syncjournal.nl` → redirect naar apex via een Bulk Redirect of Page Rule).
 4. Klaar — elke push naar main deployt automatisch.
 
-Tradingplan later: tweede Pages-project met output directory `tradingplan`, custom domain `tradingplan.syncjournal.nl`.
+## Werkversie (staging): work.syncjournal.nl
+
+Twee Pages-projecten op dezelfde deploy-repo:
+- **productie** → branch `main` → syncjournal.nl (stabiel, voor leden)
+- **werk** → branch `work` → work.syncjournal.nl (test vrijuit; eigen origin = eigen opslag, raakt live-data nooit)
+
+De app toont op een `work.*`-hostname automatisch een 🚧 WERKVERSIE-badge in de app-balk.
+Release = de work-stand naar `main` promoveren. Aanrader in Cloudflare: Transform Rule
+(hostname eq work.syncjournal.nl → response header `X-Robots-Tag: noindex`) zodat
+zoekmachines de werkversie negeren.
+
+Tradingplan later: derde Pages-project met output directory `tradingplan`, custom domain `tradingplan.syncjournal.nl`.
