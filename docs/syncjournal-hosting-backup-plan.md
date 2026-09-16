@@ -78,7 +78,7 @@ In de app:
 
 ## Beslispunten voor Denny
 
-1. Go voor **fase 1** (kan vandaag beginnen, geen afhankelijkheden)?
-2. Domeinnaam — shortlist maken?
+1. ~~Go voor fase 1?~~ ✅ **Gebouwd 2026-09-16 (v0.9.59)**: backup-status + 3-dagen-alarm (rood ≥7, drempel instelbaar), keuze map-automatisch / Drive-binnenkort / handmatig, FSA-map-backups met 14-dagen-retentie. Spec: tests/backup-guard.spec.js (20 checks).
+2. ~~Domeinnaam?~~ ✅ **Besloten 2026-09-16: `syncjournal.nl`** (registreren bij NL-registrar, naamservers → Cloudflare; www → apex redirect). Tradingplan krijgt **`tradingplan.syncjournal.nl`** — subdomeinen zijn gratis en hebben elk een eigen origin/opslag (tp2: en sj_ botsen dus nooit). Eén privacyverklaring op syncjournal.nl dekt beide voor de Google-verificatie.
 3. Alarm-drempel: 3 dagen standaard akkoord? (instelbaar per lid blijft)
 4. Fase 2b (PWA/offline) meteen meenemen of apart?
