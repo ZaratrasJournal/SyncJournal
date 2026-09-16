@@ -40,12 +40,19 @@ const FIX = 'tests/_fixtures/kraken-snapshot.json';
   await p.evaluate(() => connExpand('hyperliquid')); await p.waitForTimeout(250);
   ok('hyperliquid-formulier heeft wallet-veld (geen key)', await p.evaluate(() => !!document.getElementById('cw_hyperliquid') && !document.getElementById('ck_hyperliquid')));
   await p.evaluate(() => { connExpand('kraken'); }); await p.waitForTimeout(200);
+  // sinds v0.9.80 start connectEx zelf een eerste sync + saldo-refresh: proxy eerst
+  // stubben zodat de test nooit het echte netwerk raakt
+  await p.evaluate(() => { window.proxyCall = async (pl) => pl.action === 'test' ? { success: true, balance: 0 } : { trades: [] }; });
   await p.evaluate(() => { document.getElementById('ck_kraken').value = 'testkey-9876'; document.getElementById('cs_kraken').value = 'secret'; connectEx('kraken'); });
+  await p.waitForTimeout(250);
   ok('connectEx bewaart creds + hint', await p.evaluate(() => CONNS.kraken.connected && CONNS.kraken.apiKey === 'testkey-9876' && CONNS.kraken.hint === '9876'));
 
   if (krakenResp) {
     console.log('─── Offline sync: echte Kraken-mapper over echte Worker-snapshot (' + krakenResp.trades.length + ' rijen) ───');
     await p.evaluate((resp) => { window.__fix = resp; window.proxyCall = async (pl) => { if (pl.action === 'trades') return window.__fix; if (pl.action === 'test') return { success: true, balance: 1234.56 }; return {}; }; }, krakenResp);
+    // de auto-sync bij verbinden heeft al een lastSync gezet; terug naar 0 zodat de
+    // fixture (oudere datums) binnen het sync-venster valt
+    await p.evaluate(() => { CONNS.kraken.lastSync = 0; persistConns(); });
     const n1 = await p.evaluate(() => syncExchange('kraken'));
     ok('sync importeert trades (' + n1 + ')', n1 > 0, 'n=' + n1);
     ok('trade-velden gevuld (pair/dir/entry/pnl/date/srcId/exchange)', await p.evaluate(() => { const t = T.find(x => x.srcId); return t && /\//.test(t.pair) && (t.dir === 'long' || t.dir === 'short') && t.entry > 0 && isFinite(t.pnl) && /^\d{4}-\d{2}-\d{2}$/.test(t.date) && t.exchange === 'kraken' && t.kind === 'live'; }));

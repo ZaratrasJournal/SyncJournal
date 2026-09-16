@@ -67,6 +67,64 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
   const r5 = await p.evaluate(() => { try { hideWelcome() } catch (e) {} go('dashboard'); return { val: EXMAP.hyperliquid.val, hero: /1\.300|1300/.test((document.querySelector('#main .hero') || {}).textContent || '') }; });
   ok('saldo overleeft een herlaad en staat weer in de hero', r5.val === 1300 && r5.hero, JSON.stringify(r5));
 
+  console.log('─── Key-based exchange (Kraken): zelfde flow ───');
+  const rk = await p.evaluate(async () => {
+    window.__args = null;
+    ExchangeAPI.kraken.testConnection = async (k, s) => { window.__args = [k, s]; return { success: true, balance: '5000.4' }; };
+    ExchangeAPI.kraken.fetchTrades = async () => [];
+    ExchangeAPI.kraken.fetchOpenPositions = async () => [];
+    go('instellingen'); connExpand('kraken');
+    document.getElementById('ck_kraken').value = 'KEY123'; document.getElementById('cs_kraken').value = 'SEC456';
+    connectEx('kraken');
+    await new Promise(r => setTimeout(r, 300));
+    return { val: EXMAP.kraken.val, args: window.__args, stored: (DB.load('exmeta', {}).kraken || {}).val };
+  });
+  ok('API-key + secret bereiken de adapter en saldo landt op het account', rk.args && rk.args[0] === 'KEY123' && rk.args[1] === 'SEC456' && rk.val === 5000.4 && rk.stored === 5000.4, JSON.stringify(rk));
+
+  console.log('─── Passphrase-exchange (OKX) ───');
+  const ro = await p.evaluate(async () => {
+    window.__args = null;
+    ExchangeAPI.okx.testConnection = async (k, s, ph) => { window.__args = [k, s, ph]; return { success: true, balance: '77' }; };
+    ExchangeAPI.okx.fetchTrades = async () => [];
+    ExchangeAPI.okx.fetchOpenPositions = async () => [];
+    go('instellingen'); connExpand('okx');
+    document.getElementById('ck_okx').value = 'OK'; document.getElementById('cs_okx').value = 'OS'; document.getElementById('cp_okx').value = 'PASS9';
+    connectEx('okx');
+    await new Promise(r => setTimeout(r, 300));
+    return { val: EXMAP.okx.val, ph: window.__args && window.__args[2] };
+  });
+  ok('passphrase gaat mee en saldo landt', ro.ph === 'PASS9' && ro.val === 77, JSON.stringify(ro));
+
+  console.log('─── Gedeprecieerde exchange (MEXC) ───');
+  ok('MEXC koppelen blijft geblokkeerd en refreshBalance doet niets', await p.evaluate(async () => {
+    connectEx('mexc');
+    const notConn = !(CONNS.mexc && CONNS.mexc.connected);
+    CONNS.mexc = { connected: true, apiKey: 'x', apiSecret: 'y' }; // geforceerd oud restant
+    const r = await refreshBalance('mexc');
+    delete CONNS.mexc; persistConns();
+    return notConn && r === false && EXMAP.mexc.val === 0;
+  }));
+
+  console.log('─── Handmatig account ───');
+  const rm = await p.evaluate(() => {
+    T = []; persist(); Object.keys(CONNS).forEach(k => delete CONNS[k]); persistConns();
+    EXCHANGES.forEach(e => e.val = 0); persistExMeta();
+    MANUAL.length = 0;
+    MANUAL.push({ id: 'm_test', name: 'FTMO 100K', transactions: [{ id: 'tx1', type: 'deposit', amount: '2500', date: '2026-09-01', note: 'start' }] });
+    persistManual(); go('dashboard');
+    const m = document.getElementById('main'); const hero = m.querySelector('.hero');
+    return { hero: !!hero, txt: hero ? hero.textContent : '', legend: [...m.querySelectorAll('.legend .row')].map(x => x.textContent).join('|') };
+  });
+  ok('lege journal + alleen handmatig account → hero met dat saldo', rm.hero && /2\.500|2500/.test(rm.txt), rm.txt.slice(0, 80));
+  ok('handmatig account in de legenda', /FTMO 100K/.test(rm.legend), rm.legend);
+  ok('handmatig account op €0 toont tóch de hero (net gestart)', await p.evaluate(() => { MANUAL[0].transactions = []; persistManual(); go('dashboard'); return !!document.querySelector('#main .hero'); }));
+  ok('handmatige balans beweegt mee met trades op dat account', await p.evaluate(() => {
+    MANUAL[0].transactions = [{ id: 'tx1', type: 'deposit', amount: '2500', date: '2026-09-01', note: '' }]; persistManual();
+    T = [{ id: 1, date: '2026-09-10', time: '10:00', pair: 'EUR/USD', dir: 'long', setup: '', session: 'London', status: 'closed', kind: 'live', exchange: 'm_test', entry: 1, exit: 1.1, stop: 0.9, size: '1000', pnl: 150, r: 1, tps: [], tags: [], layers: [], emotions: [], mistakes: [], checks: [], screenshots: [], tvLinks: [] }]; persist();
+    go('dashboard'); const hero = document.querySelector('#main .hero');
+    return hero && /2\.650|2650/.test(hero.textContent);
+  }));
+
   ok('geen JS-errors totaal', errs.length === 0, errs.slice(0, 3).join(' | '));
   console.log(`\n=== Saldo & verbind-flow: ${pass}/${pass + fail} ===`);
   await b.close();
