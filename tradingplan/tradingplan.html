@@ -117,10 +117,12 @@ textarea.input{resize:vertical;min-height:64px;line-height:1.5}
 /* ═══ bijlagen ═══ */
 .thumbs{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;margin-top:8px}
 .thumb{position:relative;aspect-ratio:16/10;border:1px solid var(--line);border-radius:9px;overflow:hidden;background:var(--sink);cursor:zoom-in}
-/* grote, niet-bijgesneden weergave in het Overzicht (charts leesbaar) */
-.thumbs-lg{grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px}
-.thumbs-lg .thumb{aspect-ratio:auto;max-height:360px;display:flex;align-items:center;justify-content:center}
-.thumbs-lg .thumb img{width:100%;height:auto;max-height:360px;object-fit:contain}
+/* grote, niet-bijgesneden weergave in het Overzicht (charts leesbaar).
+   auto-fit: één chart vult de volledige kaartbreedte, twee staan naast elkaar */
+.thumbs-lg{grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:10px}
+.thumbs-lg .thumb{aspect-ratio:auto;max-height:540px;display:flex;align-items:center;justify-content:center}
+.thumbs-lg .thumb img{width:100%;height:auto;max-height:540px;object-fit:contain}
+@media (max-width:700px){.thumbs-lg{grid-template-columns:1fr}}
 /* scenario-bouwer (dagplan) */
 .sc-card{border:1px solid var(--line);border-radius:11px;padding:12px;margin-top:10px;background:var(--sink)}
 .sc-head{display:flex;gap:8px;align-items:center;margin-bottom:8px}
@@ -324,12 +326,6 @@ td input{width:66px;border:1px solid var(--line);border-radius:7px;padding:4px 7
             <div><label class="form-label">FTMO-ruimte vandaag</label><input class="input" data-f="dg:ftmo" placeholder="bv daily loss nog 3,2% over"></div>
             <div><label class="form-label">Mentaal (1 kalm – 5 onrustig)</label><input class="input" data-f="dg:mind" type="number" min="1" max="5"></div>
           </div>
-          <label class="form-label">Screenshots</label>
-          <div class="thumbs" data-thumbs="dg"></div>
-          <label class="drop" data-drop="dg">Klik, sleep of plak (Ctrl/⌘+V) een screenshot hierheen<input type="file" accept="image/*" multiple></label>
-          <label class="form-label">TradingView links</label>
-          <ul class="links" data-links="dg"></ul>
-          <div class="addlink"><input class="input" data-linkurl="dg" placeholder="https://www.tradingview.com/x/..."><input class="input" data-linklabel="dg" placeholder="Label" style="max-width:140px"><button class="btn" data-linkadd="dg">Toevoegen</button></div>
         </div>
         <div class="card-footer savebar"><button class="btn btn-primary" data-save="dg">Dagplan opslaan</button><span class="st" data-status="dg"></span></div>
       </div></div>
@@ -532,6 +528,12 @@ td input{width:66px;border:1px solid var(--line);border-radius:7px;padding:4px 7
       });
     }
     plans=lsGet(LS.plans,{}); trades=lsGet(LS.trades,[]); pb=Object.assign({},PB_DEFAULT,lsGet(LS.pb,{}));
+    // scenario-migratie (oud plan-tekstveld / plan-brede screenshots+links → scenario 1) direct persistent maken
+    var scMoved=false;
+    Object.keys(plans).forEach(function(id){var p=plans[id];
+      if(p&&p.type==="dag"&&(p.plan!=null||((p.images||[]).length)||((p.links||[]).length)||!Array.isArray(p.scenarios)))scMoved=true;
+      ensureScenarios(p);});
+    if(scMoved)lsSet(LS.plans,plans);
     return idbOpen().then(function(db){ IDBH=db; if(!db)return;
       return idbAll().then(function(map){ IMG_CACHE=map;
         // migratie: inline base64-screenshots uit localStorage → IndexedDB (maakt localStorage leeg genoeg)
@@ -551,8 +553,15 @@ td input{width:66px;border:1px solid var(--line);border-radius:7px;padding:4px 7
   // wordt eenmalig omgezet naar het eerste scenario.
   function ensureScenarios(p){
     if(!p||p.type!=="dag")return p;
-    if(!Array.isArray(p.scenarios)){ p.scenarios=p.plan?[{title:"",text:p.plan,images:[]}]:[]; delete p.plan; }
-    p.scenarios.forEach(function(s){if(!Array.isArray(s.images))s.images=[];});
+    if(!Array.isArray(p.scenarios)){ p.scenarios=p.plan?[{title:"",text:p.plan,images:[],links:[]}]:[]; delete p.plan; }
+    p.scenarios.forEach(function(s){if(!Array.isArray(s.images))s.images=[];if(!Array.isArray(s.links))s.links=[];});
+    // dagplan-brede screenshots/links bestaan niet meer → verplaats bestaande naar scenario 1
+    if((p.images&&p.images.length)||(p.links&&p.links.length)){
+      if(!p.scenarios.length)p.scenarios.push({title:"",text:"",images:[],links:[]});
+      var s0=p.scenarios[0];
+      (p.images||[]).forEach(function(im){s0.images.push(im);}); p.images=[];
+      (p.links||[]).forEach(function(l){s0.links.push(l);}); p.links=[];
+    }
     return p;
   }
   function getPlan(type,key){ var id=planId(type,key); if(!plans[id]) plans[id]=blankPlan(type,key); if(!plans[id].images)plans[id].images=[]; if(!plans[id].links)plans[id].links=[]; if(!plans[id].checks)plans[id].checks={}; return ensureScenarios(plans[id]); }
@@ -566,6 +575,18 @@ td input{width:66px;border:1px solid var(--line);border-radius:7px;padding:4px 7
     if(immediate) return savePlanDoc(p).then(function(){setStatus(p);});
     setStatus(p,"…"); timers[p.id]=setTimeout(function(){savePlanDoc(p).then(function(){setStatus(p);});},700);
   }
+  // Herladen/sluiten terwijl een concept-save (700ms debounce) nog loopt → direct wegschrijven,
+  // anders is je laatst getypte invoer weg na een snelle F5.
+  function flushPending(){
+    var ids=Object.keys(timers); if(!ids.length)return;
+    ids.forEach(function(k){clearTimeout(timers[k]);delete timers[k];});
+    if(DB){ ids.forEach(function(id){ if(plans[id]) DB.doc("plans/"+id).set(plans[id]).catch(function(){}); }); }
+    else lsSet(LS.plans,plans);
+    ids.forEach(function(id){ if(plans[id]) try{setStatus(plans[id]);}catch(e){} });
+  }
+  window.addEventListener("beforeunload",flushPending);
+  window.addEventListener("pagehide",flushPending);
+  document.addEventListener("visibilitychange",function(){if(document.visibilityState==="hidden")flushPending();});
   function setStatus(p,pending){
     var el=q('[data-status="'+(p.type==="dag"?"dg":"wk")+'"]'); if(!el) return;
     if(pending){el.textContent="Concept wordt bewaard";return;}
@@ -582,12 +603,15 @@ td input{width:66px;border:1px solid var(--line);border-radius:7px;padding:4px 7
       b.onclick=function(){p.bias=b.dataset.v;qa('[data-segf="'+prefix+':bias"] button').forEach(function(x){x.setAttribute("aria-pressed",x===b?"true":"false");});touch(p);renderOverview();};
     });
     renderAttach(prefix,p);
-    var drop=q('[data-drop="'+prefix+'"]'), file=q("input",drop);
-    file.onchange=function(){addImages(prefix,p,file.files);file.value="";};
-    drop.ondragover=function(e){e.preventDefault();drop.classList.add("over");};
-    drop.ondragleave=function(){drop.classList.remove("over");};
-    drop.ondrop=function(e){e.preventDefault();drop.classList.remove("over");addImages(prefix,p,e.dataTransfer.files);};
-    q('[data-linkadd="'+prefix+'"]').onclick=function(){
+    // dagplan heeft geen plan-brede screenshots/links meer (alles per scenario) → bindings zijn optioneel
+    var drop=q('[data-drop="'+prefix+'"]');
+    if(drop){ var file=q("input",drop);
+      file.onchange=function(){addImages(prefix,p,file.files);file.value="";};
+      drop.ondragover=function(e){e.preventDefault();drop.classList.add("over");};
+      drop.ondragleave=function(){drop.classList.remove("over");};
+      drop.ondrop=function(e){e.preventDefault();drop.classList.remove("over");addImages(prefix,p,e.dataTransfer.files);}; }
+    var lnkAdd=q('[data-linkadd="'+prefix+'"]');
+    if(lnkAdd) lnkAdd.onclick=function(){
       var u=q('[data-linkurl="'+prefix+'"]'), l=q('[data-linklabel="'+prefix+'"]'), url=u.value.trim();
       if(!/^https?:\/\//i.test(url)){toast("Plak een volledige link, met https://");return;}
       p.links.push({url:url,label:l.value.trim()||url.replace(/^https?:\/\/(www\.)?/,"").slice(0,40)}); u.value="";l.value="";
@@ -600,15 +624,16 @@ td input{width:66px;border:1px solid var(--line);border-radius:7px;padding:4px 7
     setStatus(p);
   }
   function renderAttach(prefix,p){
-    var th=q('[data-thumbs="'+prefix+'"]'); th.innerHTML="";
+    var th=q('[data-thumbs="'+prefix+'"]'); if(!th){var ul0=q('[data-links="'+prefix+'"]');if(!ul0)return;}
+    if(th){ th.innerHTML="";
     p.images.forEach(function(im,idx){
       var d=document.createElement("div"); d.className="thumb";
       d.innerHTML='<img src="'+esc(imgSrc(im))+'" alt="screenshot"><button class="x" title="Verwijderen">×</button>';
       q("img",d).onclick=function(){lightbox(imgSrc(im));};
       q(".x",d).onclick=function(e){e.stopPropagation();if(!confirm("Screenshot verwijderen?"))return;p.images.splice(idx,1);if(im.id&&ASSETS)ASSETS.delete(im.id).catch(function(){});if(im.idb){idbDel(im.idb);delete IMG_CACHE[im.idb];}touch(p);renderAttach(prefix,p);renderOverview();};
       th.appendChild(d);
-    });
-    var ul=q('[data-links="'+prefix+'"]'); ul.innerHTML="";
+    }); }
+    var ul=q('[data-links="'+prefix+'"]'); if(!ul)return; ul.innerHTML="";
     p.links.forEach(function(l,idx){
       var li=document.createElement("li");
       li.innerHTML='<span class="badge bg-muted">TV</span><a href="'+esc(l.url)+'" target="_blank" rel="noopener">'+esc(l.label)+'</a><button class="x">×</button>';
@@ -653,7 +678,9 @@ td input{width:66px;border:1px solid var(--line);border-radius:7px;padding:4px 7
         +'<button class="sc-del" title="Scenario verwijderen">×</button></div>'
         +'<textarea class="input sc-text" placeholder="Als prijs X doet, dan kijk ik naar Y. Anders niets.">'+esc(s.text||"")+'</textarea>'
         +'<div class="thumbs">'+ (s.images||[]).map(function(im,j){return '<div class="thumb" data-i="'+j+'"><img src="'+esc(imgSrc(im))+'" alt="chart"><button class="x" title="Verwijderen">×</button></div>';}).join("") +'</div>'
-        +'<label class="drop drop-sm">Klik, sleep of plak (Ctrl/⌘+V) een chart bij dit scenario<input type="file" accept="image/*" multiple></label>';
+        +'<label class="drop drop-sm">Klik, sleep of plak (Ctrl/⌘+V) een chart bij dit scenario<input type="file" accept="image/*" multiple></label>'
+        +'<ul class="links sc-links">'+ (s.links||[]).map(function(l,j){return '<li><span class="badge bg-muted">TV</span><a href="'+esc(l.url)+'" target="_blank" rel="noopener">'+esc(l.label)+'</a><button class="x" data-j="'+j+'">×</button></li>';}).join("") +'</ul>'
+        +'<div class="addlink"><input class="input sc-linkurl" placeholder="https://www.tradingview.com/x/…"><button class="btn btn-sm sc-linkadd" type="button">+ TV-link</button></div>';
       q(".sc-title",d).oninput=function(){s.title=this.value;touch(p);renderOverview();};
       q(".sc-text",d).oninput=function(){s.text=this.value;touch(p);renderOverview();};
       q(".sc-del",d).onclick=function(){ if(!confirm("Scenario "+(i+1)+" verwijderen?"))return;
@@ -670,6 +697,13 @@ td input{width:66px;border:1px solid var(--line);border-radius:7px;padding:4px 7
       drop.ondragover=function(e){e.preventDefault();drop.classList.add("over");};
       drop.ondragleave=function(){drop.classList.remove("over");};
       drop.ondrop=function(e){e.preventDefault();drop.classList.remove("over");addScImages(s,e.dataTransfer.files);};
+      q(".sc-linkadd",d).onclick=function(){
+        var u=q(".sc-linkurl",d),url=u.value.trim();
+        if(!/^https?:\/\//i.test(url)){toast("Plak een volledige link, met https://");return;}
+        s.links.push({url:url,label:url.replace(/^https?:\/\/(www\.)?/,"").slice(0,40)});u.value="";
+        touch(p);renderScenarios();renderOverview();
+      };
+      qa(".sc-links .x",d).forEach(function(x){x.onclick=function(){s.links.splice(+x.dataset.j,1);touch(p);renderScenarios();renderOverview();};});
       wrap.appendChild(d);
     });
   }
@@ -687,7 +721,13 @@ td input{width:66px;border:1px solid var(--line);border-radius:7px;padding:4px 7
       var s=cur.dg.scenarios[+scEl.dataset.sc];
       addScImages(s,files); toast("Geplakt bij scenario "+(+scEl.dataset.sc+1)); return;
     }
-    if(dagOpen){ addImages("dg",cur.dg,files); toast("Geplakt in dagplan-screenshots"); return; }
+    if(dagOpen){ // dagplan: charts leven alleen in scenario's
+      var scs=cur.dg.scenarios;
+      if(scs.length===0){ scs.push({title:"",text:"",images:[],links:[]}); renderScenarios(); addScImages(scs[0],files); toast("Nieuw scenario aangemaakt met je chart"); }
+      else if(scs.length===1){ addScImages(scs[0],files); toast("Geplakt bij scenario 1"); }
+      else toast("Klik eerst in het scenario waar de chart bij hoort");
+      return;
+    }
     if(wkOpen){ addImages("wk",cur.wk,files); toast("Geplakt in weekplan-screenshots"); return; }
     toast("Open eerst het dag- of weekplan (of een scenario) om te plakken");
   });
@@ -735,7 +775,7 @@ td input{width:66px;border:1px solid var(--line);border-radius:7px;padding:4px 7
     $("wk-prev").onclick=function(){wkAnchor.setDate(wkAnchor.getDate()-7);mountWk();};
     $("wk-next").onclick=function(){wkAnchor.setDate(wkAnchor.getDate()+7);mountWk();};
     $("wk-today").onclick=function(){wkAnchor=new Date(now);mountWk();};
-    $("sc-add").onclick=function(){ensureScenarios(cur.dg);cur.dg.scenarios.push({title:"",text:"",images:[]});touch(cur.dg);renderScenarios();
+    $("sc-add").onclick=function(){ensureScenarios(cur.dg);cur.dg.scenarios.push({title:"",text:"",images:[],links:[]});touch(cur.dg);renderScenarios();
       var last=qa("#sc-wrap .sc-card").pop();if(last)q(".sc-text",last).focus();};
     mountDag(); mountWk();
   }
@@ -760,6 +800,7 @@ td input{width:66px;border:1px solid var(--line);border-radius:7px;padding:4px 7
         return '<div class="ov-sc"><div class="ov-sc-h">Scenario '+(i+1)+(s.title?' · '+esc(s.title):'')+'</div>'
           +(s.text?'<div class="ov-sc-t">'+esc(s.text)+'</div>':'')
           +((s.images||[]).length?'<div class="thumbs thumbs-lg" data-scthumbs="'+p.id+':'+i+'">'+s.images.map(function(im,j){return '<div class="thumb" data-i="'+j+'"><img src="'+esc(imgSrc(im))+'" alt="chart"></div>';}).join("")+'</div>':'')
+          +((s.links||[]).length?'<ul class="links">'+s.links.map(function(l){return '<li><span class="badge bg-muted">TV</span><a href="'+esc(l.url)+'" target="_blank" rel="noopener">'+esc(l.label)+'</a></li>';}).join("")+'</ul>':'')
           +'</div>';
       }).join("")+'</div>';
     }
