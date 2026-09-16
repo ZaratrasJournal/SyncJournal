@@ -117,6 +117,23 @@ textarea.input{resize:vertical;min-height:64px;line-height:1.5}
 /* ═══ bijlagen ═══ */
 .thumbs{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;margin-top:8px}
 .thumb{position:relative;aspect-ratio:16/10;border:1px solid var(--line);border-radius:9px;overflow:hidden;background:var(--sink);cursor:zoom-in}
+/* grote, niet-bijgesneden weergave in het Overzicht (charts leesbaar) */
+.thumbs-lg{grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px}
+.thumbs-lg .thumb{aspect-ratio:auto;max-height:360px;display:flex;align-items:center;justify-content:center}
+.thumbs-lg .thumb img{width:100%;height:auto;max-height:360px;object-fit:contain}
+/* scenario-bouwer (dagplan) */
+.sc-card{border:1px solid var(--line);border-radius:11px;padding:12px;margin-top:10px;background:var(--sink)}
+.sc-head{display:flex;gap:8px;align-items:center;margin-bottom:8px}
+.sc-head .badge{flex:none}
+.sc-head input{flex:1;background:var(--surface)}
+.sc-del{background:none;border:0;color:var(--faint);font-size:15px;padding:0 4px;flex:none}
+.sc-del:hover{color:var(--red)}
+.sc-card textarea.input{background:var(--surface)}
+.drop.drop-sm{padding:9px;font-size:12px;margin-top:8px}
+.ov-sc{border-top:1px solid var(--line2);padding-top:10px;margin-top:10px}
+.ov-sc:first-child{border-top:0;margin-top:0;padding-top:0}
+.ov-sc-h{font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--accent);margin-bottom:4px}
+.ov-sc-t{white-space:pre-wrap;font-size:13px}
 .thumb img{width:100%;height:100%;object-fit:cover;display:block}
 .thumb .x{position:absolute;top:4px;right:4px;background:rgba(10,15,25,.65);color:#fff;border:0;border-radius:6px;width:20px;height:20px;font-size:12px;line-height:20px;padding:0}
 .links{list-style:none;padding:0;margin:8px 0 0}
@@ -272,7 +289,7 @@ td input{width:66px;border:1px solid var(--line);border-radius:7px;padding:4px 7
           <input class="input" data-f="wk:focus" placeholder="bv 'Geen entry zonder SFP'">
           <label class="form-label">Screenshots</label>
           <div class="thumbs" data-thumbs="wk"></div>
-          <label class="drop" data-drop="wk">Klik of sleep een screenshot hierheen<input type="file" accept="image/*" multiple></label>
+          <label class="drop" data-drop="wk">Klik, sleep of plak (Ctrl/⌘+V) een screenshot hierheen<input type="file" accept="image/*" multiple></label>
           <label class="form-label">TradingView links</label>
           <ul class="links" data-links="wk"></ul>
           <div class="addlink"><input class="input" data-linkurl="wk" placeholder="https://www.tradingview.com/x/..."><input class="input" data-linklabel="wk" placeholder="Label" style="max-width:140px"><button class="btn" data-linkadd="wk">Toevoegen</button></div>
@@ -300,15 +317,16 @@ td input{width:66px;border:1px solid var(--line);border-radius:7px;padding:4px 7
           <div class="form-row three"><input class="input" data-f="dg:tD" placeholder="Daily"><input class="input" data-f="dg:t4" placeholder="4h"><input class="input" data-f="dg:t1" placeholder="1h"></div>
           <label class="form-label">Levels voor vandaag</label>
           <textarea class="input" data-f="dg:levels" placeholder="POC / VAH / VAL, zones die je wilt zien reclaimen of vasthouden"></textarea>
-          <label class="form-label">Scenario's</label>
-          <textarea class="input" data-f="dg:plan" placeholder="Als prijs X doet, dan kijk ik naar Y. Anders niets."></textarea>
-          <div class="form-row">
+          <label class="form-label">Scenario's <span class="hint" style="text-transform:none;letter-spacing:0;font-weight:500">(elk met eigen tekst en charts · plak met Ctrl/⌘+V in het scenario waar je cursor staat)</span></label>
+          <div id="sc-wrap"></div>
+          <button class="btn" id="sc-add" type="button" style="margin-top:8px">+ Scenario toevoegen</button>
+          <div class="form-row" style="margin-top:4px">
             <div><label class="form-label">FTMO-ruimte vandaag</label><input class="input" data-f="dg:ftmo" placeholder="bv daily loss nog 3,2% over"></div>
             <div><label class="form-label">Mentaal (1 kalm – 5 onrustig)</label><input class="input" data-f="dg:mind" type="number" min="1" max="5"></div>
           </div>
           <label class="form-label">Screenshots</label>
           <div class="thumbs" data-thumbs="dg"></div>
-          <label class="drop" data-drop="dg">Klik of sleep een screenshot hierheen<input type="file" accept="image/*" multiple></label>
+          <label class="drop" data-drop="dg">Klik, sleep of plak (Ctrl/⌘+V) een screenshot hierheen<input type="file" accept="image/*" multiple></label>
           <label class="form-label">TradingView links</label>
           <ul class="links" data-links="dg"></ul>
           <div class="addlink"><input class="input" data-linkurl="dg" placeholder="https://www.tradingview.com/x/..."><input class="input" data-linklabel="dg" placeholder="Label" style="max-width:140px"><button class="btn" data-linkadd="dg">Toevoegen</button></div>
@@ -518,7 +536,7 @@ td input{width:66px;border:1px solid var(--line);border-radius:7px;padding:4px 7
       return idbAll().then(function(map){ IMG_CACHE=map;
         // migratie: inline base64-screenshots uit localStorage → IndexedDB (maakt localStorage leeg genoeg)
         var moved=false;
-        Object.keys(plans).forEach(function(id){ (plans[id].images||[]).forEach(function(im){
+        Object.keys(plans).forEach(function(id){ eachPlanImage(plans[id],function(im){
           if(im.data){var iid=newImgId();IMG_CACHE[iid]=im.data;idbPut(iid,im.data);delete im.data;im.idb=iid;moved=true;}
         });});
         if(moved) lsSet(LS.plans,plans);
@@ -529,7 +547,17 @@ td input{width:66px;border:1px solid var(--line);border-radius:7px;padding:4px 7
 
   /* ================= plannen ================= */
   function blankPlan(type,key){ return {id:planId(type,key),type:type,key:key,checks:{},images:[],links:[],saved:false,savedAt:null,updatedAt:null}; }
-  function getPlan(type,key){ var id=planId(type,key); if(!plans[id]) plans[id]=blankPlan(type,key); if(!plans[id].images)plans[id].images=[]; if(!plans[id].links)plans[id].links=[]; if(!plans[id].checks)plans[id].checks={}; return plans[id]; }
+  // Scenario's (dagplan): elk scenario = {title,text,images[]}. Oud vrij-tekstveld p.plan
+  // wordt eenmalig omgezet naar het eerste scenario.
+  function ensureScenarios(p){
+    if(!p||p.type!=="dag")return p;
+    if(!Array.isArray(p.scenarios)){ p.scenarios=p.plan?[{title:"",text:p.plan,images:[]}]:[]; delete p.plan; }
+    p.scenarios.forEach(function(s){if(!Array.isArray(s.images))s.images=[];});
+    return p;
+  }
+  function getPlan(type,key){ var id=planId(type,key); if(!plans[id]) plans[id]=blankPlan(type,key); if(!plans[id].images)plans[id].images=[]; if(!plans[id].links)plans[id].links=[]; if(!plans[id].checks)plans[id].checks={}; return ensureScenarios(plans[id]); }
+  // alle afbeeldingen van een plan (plan-screenshots + scenario-charts)
+  function eachPlanImage(p,fn){ (p.images||[]).forEach(fn); (p.scenarios||[]).forEach(function(s){(s.images||[]).forEach(fn);}); }
   var cur={dg:null,wk:null};
   var timers={};
   function touch(p,immediate){
@@ -588,27 +616,82 @@ td input{width:66px;border:1px solid var(--line);border-radius:7px;padding:4px 7
       ul.appendChild(li);
     });
   }
-  function addImages(prefix,p,files){
+  // Eén opslag-route voor alle afbeeldingen (plan-screenshots én scenario-charts):
+  // cb krijgt per afbeelding het image-object ({id} assets / {idb} IndexedDB / {data} inline).
+  function storeImages(files,cb){
     Array.prototype.slice.call(files||[]).forEach(function(f){
       if(!/^image\//.test(f.type)){toast("Alleen afbeeldingen");return;}
       if(ASSETS){
         toast("Uploaden…");
-        ASSETS.upload(f).then(function(r){p.images.push({id:r.id});touch(p,true);renderAttach(prefix,p);renderOverview();toast("Screenshot opgeslagen");})
+        ASSETS.upload(f).then(function(r){cb({id:r.id});toast("Screenshot opgeslagen");})
           .catch(function(e){toast("Upload mislukt: "+(e&&e.code||"onbekend"));});
       } else {
         compress(f,function(data){
-          if(IDBH){var iid=newImgId();IMG_CACHE[iid]=data;idbPut(iid,data);p.images.push({idb:iid});}
-          else p.images.push({data:data}); // geen IndexedDB beschikbaar → oude inline-vorm
-          touch(p,true);renderAttach(prefix,p);renderOverview();
+          if(IDBH){var iid=newImgId();IMG_CACHE[iid]=data;idbPut(iid,data);cb({idb:iid});}
+          else cb({data:data}); // geen IndexedDB beschikbaar → oude inline-vorm
         });
       }
     });
   }
-  function compress(file,cb){
+  function addImages(prefix,p,files){
+    storeImages(files,function(im){p.images.push(im);touch(p,true);renderAttach(prefix,p);renderOverview();});
+  }
+  function compress(file,cb){ // 1600px + hogere kwaliteit: chart-teksten blijven leesbaar in het overzicht
     var img=new Image(), url=URL.createObjectURL(file);
-    img.onload=function(){var s=Math.min(1,1100/img.width),c=document.createElement("canvas");c.width=Math.round(img.width*s);c.height=Math.round(img.height*s);c.getContext("2d").drawImage(img,0,0,c.width,c.height);URL.revokeObjectURL(url);cb(c.toDataURL("image/jpeg",.72));};
+    img.onload=function(){var s=Math.min(1,1600/img.width),c=document.createElement("canvas");c.width=Math.round(img.width*s);c.height=Math.round(img.height*s);c.getContext("2d").drawImage(img,0,0,c.width,c.height);URL.revokeObjectURL(url);cb(c.toDataURL("image/jpeg",.8));};
     img.src=url;
   }
+  /* ── scenario-bouwer (dagplan) ── */
+  function renderScenarios(){
+    var wrap=$("sc-wrap"); if(!wrap||!cur.dg) return;
+    var p=cur.dg, list=p.scenarios||[];
+    wrap.innerHTML=list.length?"":'<div class="hint" style="margin-top:6px">Nog geen scenario’s. Bijv.: “Als prijs de weekend-low sweept en 15m BoS geeft, dan long naar POC.”</div>';
+    list.forEach(function(s,i){
+      var d=document.createElement("div"); d.className="sc-card"; d.dataset.sc=i;
+      d.innerHTML='<div class="sc-head"><span class="badge bg-primary">Scenario '+(i+1)+'</span>'
+        +'<input class="input sc-title" placeholder="Korte naam — bv. ‘Sweep weekend-low’" value="'+esc(s.title||"")+'">'
+        +'<button class="sc-del" title="Scenario verwijderen">×</button></div>'
+        +'<textarea class="input sc-text" placeholder="Als prijs X doet, dan kijk ik naar Y. Anders niets.">'+esc(s.text||"")+'</textarea>'
+        +'<div class="thumbs">'+ (s.images||[]).map(function(im,j){return '<div class="thumb" data-i="'+j+'"><img src="'+esc(imgSrc(im))+'" alt="chart"><button class="x" title="Verwijderen">×</button></div>';}).join("") +'</div>'
+        +'<label class="drop drop-sm">Klik, sleep of plak (Ctrl/⌘+V) een chart bij dit scenario<input type="file" accept="image/*" multiple></label>';
+      q(".sc-title",d).oninput=function(){s.title=this.value;touch(p);renderOverview();};
+      q(".sc-text",d).oninput=function(){s.text=this.value;touch(p);renderOverview();};
+      q(".sc-del",d).onclick=function(){ if(!confirm("Scenario "+(i+1)+" verwijderen?"))return;
+        (s.images||[]).forEach(function(im){ if(im.id&&ASSETS)ASSETS.delete(im.id).catch(function(){}); if(im.idb){idbDel(im.idb);delete IMG_CACHE[im.idb];} });
+        p.scenarios.splice(i,1);touch(p,true);renderScenarios();renderOverview(); };
+      qa(".thumb",d).forEach(function(t){
+        q("img",t).onclick=function(){lightbox(imgSrc(s.images[+t.dataset.i]));};
+        q(".x",t).onclick=function(e){e.stopPropagation();if(!confirm("Chart verwijderen?"))return;
+          var im=s.images[+t.dataset.i]; if(im.id&&ASSETS)ASSETS.delete(im.id).catch(function(){}); if(im.idb){idbDel(im.idb);delete IMG_CACHE[im.idb];}
+          s.images.splice(+t.dataset.i,1);touch(p);renderScenarios();renderOverview(); };
+      });
+      var drop=q(".drop",d), file=q("input[type=file]",drop);
+      file.onchange=function(){addScImages(s,file.files);file.value="";};
+      drop.ondragover=function(e){e.preventDefault();drop.classList.add("over");};
+      drop.ondragleave=function(){drop.classList.remove("over");};
+      drop.ondrop=function(e){e.preventDefault();drop.classList.remove("over");addScImages(s,e.dataTransfer.files);};
+      wrap.appendChild(d);
+    });
+  }
+  function addScImages(s,files){ storeImages(files,function(im){s.images.push(im);touch(cur.dg,true);renderScenarios();renderOverview();}); }
+
+  /* ── Ctrl/⌘+V: plak afbeeldingen — in het scenario waar je cursor staat, anders in het open dag-/weekplan ── */
+  document.addEventListener("paste",function(e){
+    var items=(e.clipboardData&&e.clipboardData.items)||[], files=[];
+    for(var i=0;i<items.length;i++){ if(items[i].kind==="file"&&/^image\//.test(items[i].type)){var f=items[i].getAsFile();if(f)files.push(f);} }
+    if(!files.length) return;
+    e.preventDefault();
+    var dagOpen=!q('[data-panel="dag"]').hidden, wkOpen=!q('[data-panel="week"]').hidden;
+    var scEl=document.activeElement&&document.activeElement.closest?document.activeElement.closest(".sc-card"):null;
+    if(scEl&&dagOpen&&cur.dg.scenarios[+scEl.dataset.sc]){
+      var s=cur.dg.scenarios[+scEl.dataset.sc];
+      addScImages(s,files); toast("Geplakt bij scenario "+(+scEl.dataset.sc+1)); return;
+    }
+    if(dagOpen){ addImages("dg",cur.dg,files); toast("Geplakt in dagplan-screenshots"); return; }
+    if(wkOpen){ addImages("wk",cur.wk,files); toast("Geplakt in weekplan-screenshots"); return; }
+    toast("Open eerst het dag- of weekplan (of een scenario) om te plakken");
+  });
+
   function lightbox(src){$("modal-box").innerHTML='<img class="big" src="'+esc(src)+'" alt="">';$("modal").hidden=false;}
   $("modal").onclick=function(e){if(e.target===$("modal"))$("modal").hidden=true;};
   document.addEventListener("keydown",function(e){if(e.key==="Escape")$("modal").hidden=true;});
@@ -636,7 +719,7 @@ td input{width:66px;border:1px solid var(--line);border-radius:7px;padding:4px 7
     $("dg-id").textContent=fmtDate(key); $("dg-start").textContent=startTfFor(key);
     $("dg-title").textContent=key===DK?"Vandaag":fmtDate(key);
     $("dg-today").hidden=key===DK;
-    bindForm("dg",cur.dg); buildChecklist($("dg-list"),DG,cur.dg,$("dg-prog"),null);
+    bindForm("dg",cur.dg); buildChecklist($("dg-list"),DG,cur.dg,$("dg-prog"),null); renderScenarios();
   }
   function mountWk(){
     var key=isoWeek(wkAnchor); cur.wk=getPlan("week",key);
@@ -652,6 +735,8 @@ td input{width:66px;border:1px solid var(--line);border-radius:7px;padding:4px 7
     $("wk-prev").onclick=function(){wkAnchor.setDate(wkAnchor.getDate()-7);mountWk();};
     $("wk-next").onclick=function(){wkAnchor.setDate(wkAnchor.getDate()+7);mountWk();};
     $("wk-today").onclick=function(){wkAnchor=new Date(now);mountWk();};
+    $("sc-add").onclick=function(){ensureScenarios(cur.dg);cur.dg.scenarios.push({title:"",text:"",images:[]});touch(cur.dg);renderScenarios();
+      var last=qa("#sc-wrap .sc-card").pop();if(last)q(".sc-text",last).focus();};
     mountDag(); mountWk();
   }
 
@@ -659,21 +744,35 @@ td input{width:66px;border:1px solid var(--line);border-radius:7px;padding:4px 7
   function planHtml(p,items,full){
     var r=progress(items,p), rows=[];
     function add(k,v,pre){ if(v) rows.push("<b>"+k+"</b><span"+(pre?' class="pre"':'')+">"+esc(v)+"</span>"); }
+    ensureScenarios(p);
     if(p.type==="dag"){
       add("Bias",p.bias); if(p.tD||p.t4||p.t1) rows.push("<b>Trend</b><span>D "+esc(p.tD||"–")+" · 4h "+esc(p.t4||"–")+" · 1h "+esc(p.t1||"–")+"</span>");
-      add("Levels",p.levels,true); add("Scenario's",p.plan,true); add("FTMO-ruimte",p.ftmo); add("Mentaal",p.mind?p.mind+" / 5":"");
+      add("Levels",p.levels,true); add("FTMO-ruimte",p.ftmo); add("Mentaal",p.mind?p.mind+" / 5":"");
     } else {
       add("Bias",p.bias); add("Weekly open",p.open); add("Range",p.range); add("Levels",p.levels,true); add("Liquiditeit",p.liq,true); add("Nieuws",p.news); add("Max trades",p.maxtrades); add("Focus",p.focus);
     }
     var h='<div class="card-body" style="padding:12px 16px 4px"><div class="progress"><i style="width:'+Math.round(r.done/r.total*100)+'%"></i></div><div class="hint" style="margin-top:6px">'+(p.type==="dag"?"Dagstart":"Weekstart")+" "+r.done+"/"+r.total+(r.done<r.total?" · "+(r.total-r.done)+" open":" · klaar")+'</div></div>';
     if(rows.length) h+='<div class="card-body" style="padding-top:8px"><div class="kv">'+rows.join("")+'</div></div>';
-    else h+='<div class="empty">Nog niets ingevuld.</div>';
-    if(p.images.length){ h+='<div class="card-body" style="padding-top:0"><div class="thumbs" data-ovthumbs="'+p.id+'">'+p.images.map(function(im,i){return '<div class="thumb" data-i="'+i+'"><img src="'+esc(imgSrc(im))+'" alt=""></div>';}).join("")+'</div></div>'; }
+    else if(!(p.scenarios&&p.scenarios.length)) h+='<div class="empty">Nog niets ingevuld.</div>';
+    // scenario-blokken: titel + als-dan-tekst + grote (niet-bijgesneden) charts
+    if(p.type==="dag"&&p.scenarios&&p.scenarios.length){
+      h+='<div class="card-body" style="padding-top:'+(rows.length?'0':'8px')+'">'+p.scenarios.map(function(s,i){
+        return '<div class="ov-sc"><div class="ov-sc-h">Scenario '+(i+1)+(s.title?' · '+esc(s.title):'')+'</div>'
+          +(s.text?'<div class="ov-sc-t">'+esc(s.text)+'</div>':'')
+          +((s.images||[]).length?'<div class="thumbs thumbs-lg" data-scthumbs="'+p.id+':'+i+'">'+s.images.map(function(im,j){return '<div class="thumb" data-i="'+j+'"><img src="'+esc(imgSrc(im))+'" alt="chart"></div>';}).join("")+'</div>':'')
+          +'</div>';
+      }).join("")+'</div>';
+    }
+    if(p.images.length){ h+='<div class="card-body" style="padding-top:0"><div class="thumbs thumbs-lg" data-ovthumbs="'+p.id+'">'+p.images.map(function(im,i){return '<div class="thumb" data-i="'+i+'"><img src="'+esc(imgSrc(im))+'" alt=""></div>';}).join("")+'</div></div>'; }
     if(p.links.length){ h+='<div class="card-body" style="padding-top:0"><ul class="links">'+p.links.map(function(l){return '<li><span class="badge bg-muted">TV</span><a href="'+esc(l.url)+'" target="_blank" rel="noopener">'+esc(l.label)+'</a></li>';}).join("")+'</ul></div>'; }
     return h;
   }
   function planBadge(p){ return p.saved?'<span class="badge bg-green">Opgeslagen'+(p.updatedAt>p.savedAt?", gewijzigd":"")+'</span>':'<span class="badge bg-muted">Concept</span>'; }
-  function bindOvThumbs(root){ qa("[data-ovthumbs]",root).forEach(function(t){var p=plans[t.dataset.ovthumbs];qa(".thumb",t).forEach(function(d){d.onclick=function(){lightbox(imgSrc(p.images[+d.dataset.i]));};});}); }
+  function bindOvThumbs(root){
+    qa("[data-ovthumbs]",root).forEach(function(t){var p=plans[t.dataset.ovthumbs];qa(".thumb",t).forEach(function(d){d.onclick=function(){lightbox(imgSrc(p.images[+d.dataset.i]));};});});
+    qa("[data-scthumbs]",root).forEach(function(t){var parts=t.dataset.scthumbs.split(":"),p=plans[parts[0]],s=p&&p.scenarios&&p.scenarios[+parts[1]];if(!s)return;
+      qa(".thumb",t).forEach(function(d){d.onclick=function(){lightbox(imgSrc(s.images[+d.dataset.i]));};});});
+  }
   function renderOverview(){
     if(!cur.dg) return;
     // Overzicht kijkt altijd naar vandaag/deze week, óók als je in de tab terugbladert
@@ -764,7 +863,7 @@ td input{width:66px;border:1px solid var(--line);border-radius:7px;padding:4px 7
         q(".del",tr).onclick=function(){if(!confirm("Trade verwijderen?"))return;trades=trades.filter(function(x){return x.id!==e.id;});deleteTradeDoc(e.id);renderLog();renderStats();};
       } else {
         var p=r.p, isDag=p.type==="dag", items=isDag?DG:WKL, pr=progress(items,p);
-        tr.innerHTML='<td style="white-space:nowrap" class="num">'+fmt(p.savedAt)+'</td><td><span class="badge '+(isDag?"bg-azure":"bg-purple")+'">'+(isDag?"Dagplan":"Weekplan")+'</span></td><td>'+(isDag?fmtDate(p.key):"Week "+p.key.slice(6))+' · '+(isDag?"dagstart":"weekstart")+' '+pr.done+'/'+pr.total+(p.images.length?' · '+p.images.length+' screenshot'+(p.images.length>1?"s":""):"")+(p.links.length?' · '+p.links.length+' link'+(p.links.length>1?"s":""):"")+(p.focus?'<div class="hint">Focus: '+esc(p.focus)+'</div>':"")+(p.plan?'<div class="hint">'+esc(p.plan.slice(0,120))+(p.plan.length>120?"…":"")+'</div>':"")+'</td><td>'+(p.bias?'<span class="badge bg-muted">'+esc(p.bias)+'</span>':"–")+'</td><td class="num"></td><td><button class="btn btn-sm" type="button">Bekijk</button></td>';
+        tr.innerHTML='<td style="white-space:nowrap" class="num">'+fmt(p.savedAt)+'</td><td><span class="badge '+(isDag?"bg-azure":"bg-purple")+'">'+(isDag?"Dagplan":"Weekplan")+'</span></td><td>'+(isDag?fmtDate(p.key):"Week "+p.key.slice(6))+' · '+(isDag?"dagstart":"weekstart")+' '+pr.done+'/'+pr.total+(p.images.length?' · '+p.images.length+' screenshot'+(p.images.length>1?"s":""):"")+(p.links.length?' · '+p.links.length+' link'+(p.links.length>1?"s":""):"")+((p.scenarios||[]).length?' · '+p.scenarios.length+' scenario'+(p.scenarios.length>1?"'s":""):"")+(p.focus?'<div class="hint">Focus: '+esc(p.focus)+'</div>':"")+((p.scenarios||[])[0]&&p.scenarios[0].text?'<div class="hint">'+esc(p.scenarios[0].text.slice(0,120))+(p.scenarios[0].text.length>120?"…":"")+'</div>':"")+'</td><td>'+(p.bias?'<span class="badge bg-muted">'+esc(p.bias)+'</span>':"–")+'</td><td class="num"></td><td><button class="btn btn-sm" type="button">Bekijk</button></td>';
         q(".btn",tr).onclick=function(){$("modal-box").innerHTML='<div class="card-header"><h3 class="card-title">'+(isDag?"Dagplan "+fmtDate(p.key):"Weekplan "+p.key.slice(6))+'</h3><button class="btn btn-sm" id="m-close">Sluiten</button></div>'+planHtml(p,items,true);bindOvThumbs($("modal-box"));$("m-close").onclick=function(){$("modal").hidden=true;};$("modal").hidden=false;};
       }
       tb.appendChild(tr);
@@ -777,7 +876,7 @@ td input{width:66px;border:1px solid var(--line);border-radius:7px;padding:4px 7
   /* Backup als bestand (incl. screenshots uit IndexedDB) + import — vangnet bij browserwissel */
   function backupPayload(){
     var imgs={};
-    Object.keys(plans).forEach(function(k){(plans[k].images||[]).forEach(function(im){if(im.idb&&IMG_CACHE[im.idb])imgs[im.idb]=IMG_CACHE[im.idb];});});
+    Object.keys(plans).forEach(function(k){eachPlanImage(plans[k],function(im){if(im.idb&&IMG_CACHE[im.idb])imgs[im.idb]=IMG_CACHE[im.idb];});});
     return {app:"TradingPlan",version:1,exported:new Date().toISOString(),trades:trades,plans:plans,playbook:pb,images:imgs};
   }
   $("exp-json").onclick=function(){
