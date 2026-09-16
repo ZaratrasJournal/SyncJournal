@@ -248,6 +248,20 @@ table.tbl{width:100%;border-collapse:collapse;font-size:14px}
 .mbody.hstd .vf-std:not(.vf-keep),.mbody.hpro .vf-pro:not(.vf-keep){display:none}
 .fmorebar{grid-column:1/-1;display:flex;align-items:center;justify-content:center;gap:8px;margin-top:4px;padding:9px;border:1px dashed var(--line);border-radius:10px;font-size:12.5px;font-weight:700;color:var(--accent);background:none;cursor:pointer;font-family:inherit}
 .fmorebar:hover{background:var(--accent-soft)}
+/* backup-alarm (app-breed): amber na drempel, rood na 7 dagen */
+.bkbanner{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px;padding:11px 16px;border-radius:12px;background:var(--amber-soft);border:1px solid color-mix(in srgb,var(--amber) 35%,transparent);border-left:4px solid var(--amber);font-size:13px;color:var(--ink2)}
+.bkbanner.red{background:var(--red-soft);border-color:color-mix(in srgb,var(--red) 40%,transparent);border-left-color:var(--red)}
+.bkbanner b{color:var(--ink)}
+.bkbanner .x{margin-left:auto;width:24px;height:24px;border-radius:8px;color:var(--muted);font-size:15px;line-height:1}
+.bkbanner .x:hover{background:color-mix(in srgb,var(--amber) 20%,transparent)}
+.bkchoice{border:1.5px solid var(--line);border-radius:12px;padding:12px 14px;background:var(--sink);text-align:left;cursor:pointer;font-family:inherit;display:flex;flex-direction:column;gap:2px}
+.bkchoice b{font-size:13px;color:var(--ink)}
+.bkchoice small{font-size:11px;color:var(--muted);line-height:1.45}
+.bkchoice.on{border-color:var(--accent);background:var(--accent-soft)}
+.bkchoice.on b{color:var(--accent)}
+.bkchoice:disabled{opacity:.55;cursor:default}
+.bkchoices{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;padding:12px 16px}
+@media(max-width:820px){.bkchoices{grid-template-columns:1fr}}
 /* paneel-⋯-menu: verberg dit paneel (in-context, fase 3 weergave-presets) */
 .pmenu{position:relative;flex:none}
 .pmenu>button{width:26px;height:26px;border-radius:8px;color:var(--muted);font-size:16px;line-height:1;display:grid;place-items:center}
@@ -1574,7 +1588,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.58';
+const APP_VERSION='v0.9.59';
 const SCHEMA_VERSION=2;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -1676,7 +1690,7 @@ function selfCheck(){
 // Voorbeelddata laden is een bewuste actie (loadDemoData), geen automatische reseed.
 let T=[]; // geladen in boot() uit IndexedDB (async)
 let CLOSED=[];
-function persist(){ IDB.set('trades',T).then(okr=>{ if(okr===false)ErrorCenter.report('save',new Error('IndexedDB weigerde de schrijfactie voor trades.'),{severity:'critical',userMsg:'Je laatste wijziging kon niet worden opgeslagen. Ze staat nog in beeld — exporteer een back-up en probeer opnieuw.',actions:[{label:'Exporteer backup',fn:()=>exportJSON()},{label:'Opnieuw proberen',fn:()=>persist()}]}); }); }
+function persist(){ IDB.set('trades',T).then(okr=>{ if(okr===false)ErrorCenter.report('save',new Error('IndexedDB weigerde de schrijfactie voor trades.'),{severity:'critical',userMsg:'Je laatste wijziging kon niet worden opgeslagen. Ze staat nog in beeld — exporteer een back-up en probeer opnieuw.',actions:[{label:'Exporteer backup',fn:()=>exportJSON()},{label:'Opnieuw proberen',fn:()=>persist()}]}); }); try{bkQueue();}catch(e){} }
 // ── Prullenbak: verwijderde trades gaan 30 dagen in een APARTE lijst (niet als vlag op de
 //    trade — zo tellen ze gegarandeerd nergens mee). Screenshots zitten erin, dus IndexedDB.
 const TRASH_DAYS=30;
@@ -3025,6 +3039,17 @@ function pgInstellingen(){
     updates:`<p class="setintro">Hou SyncJournal up-to-date. Bij een update blijft je lokale data altijd bewaard.</p>${updateSection()}`,
     data:`<p class="setintro">Back-up en beheer van je journal-data. Alles blijft lokaal in je browser.</p>
       ${(()=>{const det=TJMigrate.detect();return det?`<div class="section-sub">🛟 Overzetten uit oude TradeJournal</div><div class="panel"><div class="setrow"><div class="txt"><b>${det.trades} trades gevonden in je oude app</b><small>Zet je data veilig over naar SyncJournal — er wordt eerst een veiligheidskopie gemaakt${DB.load('migrated_from_tj',null)?' · <span style="color:var(--green)">al eerder gemigreerd</span>':''}</small></div><button class="btn pri" onclick="migRun()">Overzetten</button></div></div>`:'';})()}
+      <div class="section-sub">🛡 Backups <span class="hint">(buiten je browser — beschermt tegen browserdata wissen of een kapotte computer)</span></div>
+      <div class="panel">
+        <div class="setrow"><div class="txt"><b>${bkStatusHtml()}</b><small>We waarschuwen je in de hele app zodra je laatste backup ouder is dan ${BK.threshold} dagen.</small></div><button class="btn pri" onclick="bkNow()">Backup nu</button></div>
+        <div class="bkchoices">
+          <button class="bkchoice ${BK.choice==='map'?'on':''}" onclick="bkChoose('map')" ${bkFsaSupported()?'':'disabled title="Alleen in Chrome of Edge"'}><b>📁 Automatisch naar map${BK.choice==='map'&&BK_DIR?` · <span style="color:var(--green)">${esc(BK_DIR.name)}</span>`:''}</b><small>${bkFsaSupported()?'Kies één keer een map — daarna schrijft SyncJournal daar zelf gedateerde backups (laatste '+BK_KEEP+' bewaard). Tip: kies een map in je Google Drive/OneDrive-syncmap voor een gratis cloud-kopie.':'Deze browser ondersteunt geen automatische map-backups (alleen Chrome/Edge). Gebruik handmatige export.'}</small></button>
+          <button class="bkchoice" disabled title="Komt in fase 3"><b>☁️ Google Drive <span class="chip" style="margin-left:4px">binnenkort</span></b><small>Automatische backup naar je eigen Google Drive — handig op meerdere computers. In ontwikkeling.</small></button>
+          <button class="bkchoice ${BK.choice==='handmatig'||!BK.choice?'on':''}" onclick="bkChoose('handmatig')"><b>✋ Alleen handmatig</b><small>Jij exporteert zelf een JSON-bestand wanneer je wilt. De waarschuwing na ${BK.threshold} dagen blijft je eraan herinneren.</small></button>
+        </div>
+        <div class="setrow"><div class="txt"><b>Waarschuwen na</b><small>Zoveel dagen zonder backup tonen we het alarm (na ${BK_RED_DAYS} dagen wordt het rood)</small></div>
+          <select class="fsel" aria-label="Waarschuwingsdrempel" onchange="bkSetThreshold(this.value)">${[1,2,3,5,7,14].map(d=>`<option value="${d}" ${BK.threshold===d?'selected':''}>${d} dag${d===1?'':'en'}</option>`).join('')}</select></div>
+      </div>
       <div class="panel"><div class="setrow"><div class="txt"><b>Back-up</b><small>Exporteer of importeer je journal als JSON — echt werkend</small></div>
       <button class="btn" onclick="importJSON()">Importeer</button><button class="btn pri" onclick="exportJSON()">Exporteer JSON</button></div>
       <div class="setrow"><div class="txt"><b>Voorbeelddata laden</b><small>Vul de app met voorbeeld-trades om te verkennen — overschrijft je huidige trades</small></div><button class="btn" onclick="resetDemo()">Laden</button></div>
@@ -3854,7 +3879,7 @@ function render(){
   document.getElementById('psub').textContent=sub?'— '+sub:'';
   document.getElementById('ptbar').style.background=PAGEC[STATE.page]||'var(--accent)';
   const bv=document.getElementById('balVal');if(bv)bv.textContent=CURSYM()+' '+Math.round(totalBalance()).toLocaleString('nl-NL');
-  const m=document.getElementById('main');destroyCharts();_rcQueue=[];m.innerHTML=fn();m.style.animation='none';void m.offsetWidth;m.style.animation='';
+  const m=document.getElementById('main');destroyCharts();_rcQueue=[];m.innerHTML=backupBanner()+fn();m.style.animation='none';void m.offsetWidth;m.style.animation='';
   document.querySelectorAll('#nav button,#navbot button').forEach(b=>b.classList.toggle('on',b.dataset.p===STATE.page));
   wire();mountCharts();
   if(_fid){const el=document.getElementById(_fid);if(el&&document.activeElement!==el){el.focus();if(_fs!=null&&el.setSelectionRange){try{el.setSelectionRange(_fs,_fe);}catch(e){}}}}
@@ -3904,8 +3929,84 @@ function applyBackup(d){
   if(d.settings){STATE.theme=d.settings.theme||STATE.theme;STATE.currency=d.settings.currency||STATE.currency;STATE.priv=!!d.settings.priv;STATE.density=d.settings.density||STATE.density;document.body.classList.toggle('dark',STATE.theme==='dark');document.body.classList.toggle('priv',STATE.priv);}
   persistState();persist();render();
 }
+/* ═══ Backup-bewaking (hosting-plan fase 1, Denny 2026-09-16) ═══
+   Eén statuslaag voor álle backup-methodes: elke geslaagde backup (handmatige export,
+   automatische map-backup, straks Google Drive) stempelt sj_backup. De banner alarmeert
+   app-breed zodra de laatste backup ouder is dan de drempel (standaard 3 dagen, rood ≥7).
+   Interne veiligheidskopieën (Snapshots) tellen bewust NIET — die staan óók in de browser. */
+const BK=Object.assign({ts:0,method:'',choice:'',threshold:3,snooze:0,first:0},DB.load('backup',{}));
+if(!BK.first){BK.first=Date.now();DB.save('backup',BK);} // gratieperiode: nieuwe gebruikers pas alarmeren ná de drempel
+const BK_RED_DAYS=7, BK_KEEP=14, BK_DEBOUNCE_MS=60000;
+function persistBK(){ DB.save('backup',{ts:BK.ts,method:BK.method,choice:BK.choice,threshold:BK.threshold,snooze:BK.snooze,first:BK.first}); }
+function bkStamp(method){ BK.ts=Date.now();BK.method=method;persistBK();try{render();}catch(e){} }
+function bkAgeDays(){ const ref=BK.ts||BK.first||Date.now(); return Math.floor((Date.now()-ref)/86400e3); }
+const BK_METHOD_LBL={handmatig:'handmatige export',map:'automatische map-backup',drive:'Google Drive'};
+function bkSnooze(){ BK.snooze=Date.now()+86400e3;persistBK();render(); }
+function bkNow(){ if(BK.choice==='map'&&BK_DIR){ autoBackup(true).then(okr=>{ if(!okr)exportJSON(); }); } else exportJSON(); }
+function backupBanner(){
+  if(!T.length)return '';                          // niets te verliezen → geen alarm
+  const age=bkAgeDays();
+  if(age<BK.threshold)return '';
+  if(Date.now()<BK.snooze)return '';               // gesnoozed: max 24u stil, daarna terug
+  const red=age>=BK_RED_DAYS;
+  const what=BK.ts?`Je laatste backup is <b>${age===Infinity?'—':age} dagen</b> oud`:`Je hebt nog <b>geen backup</b> van je journal`;
+  return `<div class="bkbanner ${red?'red':''}" role="alert">
+    <span>${red?'🚨':'⚠️'} ${what} — bij het wissen van je browserdata ben je alles kwijt.</span>
+    <button class="btn pri" onclick="bkNow()">Maak nu een backup</button>
+    <button class="btn" onclick="go('instellingen');setSetTab('data')">Automatisch instellen</button>
+    <button class="x" onclick="bkSnooze()" aria-label="Verberg 24 uur" title="Verberg 24 uur">×</button></div>`;
+}
+/* ── automatische map-backup (File System Access API, Chrome/Edge) ── */
+let BK_DIR=null, _bkTimer=null;
+const bkFsaSupported=()=>typeof window.showDirectoryPicker==='function';
+async function bkLoadDir(){ try{BK_DIR=await IDB.get('bk_dir')||null;}catch(e){BK_DIR=null;} }
+async function bkPickDir(){
+  try{
+    const h=await window.showDirectoryPicker({mode:'readwrite'});
+    BK_DIR=h; await IDB.set('bk_dir',h); BK.choice='map';persistBK();
+    const okr=await autoBackup(true);
+    toast(okr?'✓ Backup-map ingesteld — automatische backups staan aan':'Backup-map ingesteld','ok');render();
+  }catch(e){ /* picker geannuleerd */ }
+}
+async function bkPerm(mayRequest){
+  if(!BK_DIR)return 'none';
+  try{ let p=await BK_DIR.queryPermission({mode:'readwrite'});
+    if(p==='prompt'&&mayRequest)p=await BK_DIR.requestPermission({mode:'readwrite'});
+    return p; }catch(e){ return 'none'; }
+}
+async function autoBackup(userGesture){
+  if(BK.choice!=='map'||!BK_DIR)return false;
+  const perm=await bkPerm(userGesture===true);
+  if(perm!=='granted'){ if(userGesture)toast('Geen toegang meer tot de backup-map — kies hem opnieuw via Instellingen → Data','warn'); return false; }
+  try{
+    const name='syncjournal-backup-'+localDateISO()+'.json';   // 1 bestand per dag; zelfde dag = laatste stand
+    const fh=await BK_DIR.getFileHandle(name,{create:true});
+    const w=await fh.createWritable(); await w.write(JSON.stringify(snapshotPayload())); await w.close();
+    bkStamp('map'); bkRetention();
+    return true;
+  }catch(e){ if(userGesture)toast('Backup schrijven mislukte ('+((e&&e.name)||'onbekend')+')','warn'); return false; }
+}
+async function bkRetention(){ // bewaar de laatste BK_KEEP dagbestanden
+  try{ const names=[];
+    for await (const entry of BK_DIR.values()){ if(entry.kind==='file'&&/^syncjournal-backup-\d{4}-\d{2}-\d{2}\.json$/.test(entry.name))names.push(entry.name); }
+    names.sort();
+    while(names.length>BK_KEEP){ const n=names.shift(); await BK_DIR.removeEntry(n); }
+  }catch(e){}
+}
+function bkQueue(){ if(BK.choice!=='map')return; clearTimeout(_bkTimer); _bkTimer=setTimeout(()=>{autoBackup(false);},BK_DEBOUNCE_MS); }
+function bkChoose(c){
+  if(c==='map'){ if(!bkFsaSupported()){toast('Automatische map-backup werkt alleen in Chrome of Edge','warn');return;} bkPickDir(); return; }
+  BK.choice=c;persistBK();render();
+}
+function bkSetThreshold(v){ BK.threshold=Math.max(1,+v||3);persistBK();render(); }
+function bkStatusHtml(){
+  const age=bkAgeDays();
+  const col=age<BK.threshold?'var(--green)':age>=BK_RED_DAYS?'var(--red)':'var(--amber)';
+  const when=BK.ts?`${age===0?'vandaag':age===1?'gisteren':age+' dagen geleden'} · via ${BK_METHOD_LBL[BK.method]||BK.method}`:'nog nooit gemaakt';
+  return `<span style="color:${col};font-weight:700">●</span> Laatste backup: <b>${when}</b>`;
+}
 function exportJSON(){ const blob=new Blob([JSON.stringify(snapshotPayload(),null,2)],{type:'application/json'});
-  const u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download='syncjournal-backup.json';a.click();URL.revokeObjectURL(u);toast('✓ Back-up geëxporteerd','ok'); }
+  const u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download='syncjournal-backup-'+localDateISO()+'.json';a.click();URL.revokeObjectURL(u);toast('✓ Back-up geëxporteerd','ok');bkStamp('handmatig'); }
 // ── Snapshots: automatische veiligheidskopie vóór risicovolle acties, laatste 3 in IndexedDB ──
 let SNAP_META=[];  // {id, ts, label, trades, playbooks} — in-memory cache voor de UI
 const Snapshots={ MAX:3,
@@ -6092,6 +6193,7 @@ async function boot(){
   }catch(e){T=DB.load('trades',[]);PBOOK={};Object.entries(DB.load('pbook',PBRULES)).forEach(([k,v])=>PBOOK[k]=pbNormalize(k,v));}
   try{const sm=await IDB.get('snapshots');SNAP_META=Array.isArray(sm)?sm:[];}catch(e){SNAP_META=[];}
   try{const tr=await IDB.get('trash');TRASH=Array.isArray(tr)?tr:[];purgeTrash();}catch(e){TRASH=[];}
+  try{await bkLoadDir();}catch(e){}       // backup-map-handle (automatische map-backups)
   // Deprecated exchanges: eventuele opgeslagen keys opruimen (koppeling bestaat niet meer; trades blijven).
   try{EXCHANGES.filter(e=>e.deprecated&&CONNS[e.id]).forEach(e=>{delete CONNS[e.id];});persistConns();}catch(e){}
   try{await runMigrations();}catch(e){}   // geversioneerde schema-updates (snapshot + rollback ingebouwd)
