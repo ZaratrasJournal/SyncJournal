@@ -63,6 +63,23 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
   ok('BTC (−1.9k, grootste impact) staat in de top 6 bij fouten-filter', r5.hasBtc, r5.txt.slice(0, 150));
   ok('kop zegt grootste netto-impact', /grootste netto-impact/.test(r5.txt));
 
+  console.log('─── Zelfde klasse elders: alle waarden tellen mee, niet alleen de eerste ───');
+  const r6 = await p.evaluate(() => {
+    const base = { time: '10:00', pair: 'BTC/USDT', dir: 'long', setup: 'SFP', session: 'London', status: 'closed', kind: 'live', exchange: '', entry: 100, exit: 110, stop: 95, size: '1000', r: 1, tps: [], tags: [], layers: [], checks: [], screenshots: [], tvLinks: [] };
+    T = [
+      { ...base, id: 1, date: '2026-09-10', pnl: -100, emotions: ['FOMO', 'Ongeduld'], mistakes: ['Overtrading', 'Geen plan'] },
+      { ...base, id: 2, date: '2026-09-11', pnl: 50, emotions: ['Kalm'], mistakes: [] },
+    ]; persist(); clearGFilter();
+    const emoBuckets = tdimVals('emo');
+    const checks = defChecks(T.find(t => t.id === 1));
+    const kalmSecond = defChecks({ ...T[0], emotions: ['FOMO', 'Kalm'] });
+    return { emoBuckets, planCheck: checks[2], kalmSecond: kalmSecond[3] };
+  });
+  ok('tendencies-emotie telt beide emoties van een trade', r6.emoBuckets.includes('FOMO') && r6.emoBuckets.includes('Ongeduld'), JSON.stringify(r6.emoBuckets));
+  ok('checklist ziet "Geen plan" ook als tweede fout', r6.planCheck === false);
+  ok('checklist ziet "Kalm" ook als tweede emotie', r6.kalmSecond === true);
+  ok('AI-coach telt alle fouten per trade mee', await p.evaluate(() => { const t = T.find(x => x.id === 1); const mistBy = {}; CLOSED.forEach(x => tradeMistakes(x).forEach(m => { mistBy[m] = (mistBy[m] || 0) + x.pnl; })); return mistBy['Geen plan'] === -100; }));
+
   ok('geen JS-errors totaal', errs.length === 0, errs.slice(0, 3).join(' | '));
   console.log(`\n=== Fouten-filter: ${pass}/${pass + fail} ===`);
   await b.close();

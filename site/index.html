@@ -1122,7 +1122,7 @@ body.dark .toast{box-shadow:0 10px 34px rgba(0,0,0,.5)}
       <button class="iconbtn bkind" id="bkInd" title="Backup-status" aria-label="Backup-status"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5l7.5 2.8v5.9c0 4.6-3.2 7.9-7.5 10.3C7.7 19.1 4.5 15.8 4.5 11.2V5.3z"/><path class="bkchk" d="M8.6 12l2.4 2.4 4.4-4.6"/></svg></button>
       <button class="iconbtn" id="btnEye" title="Privacy">${''}</button>
       <button class="iconbtn" id="btnTheme" title="Thema">${''}</button>
-      <div class="balpill"><span class="l">Balans</span><span class="v num mask" id="balVal">€ 24.663</span></div>
+      <div class="balpill"><span class="l">Balans</span><span class="v num mask" id="balVal">€ 0</span></div>
     </header>
     <main id="main"></main>
   </div>
@@ -1611,7 +1611,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.83';
+const APP_VERSION='v0.9.84';
 const SCHEMA_VERSION=2;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -2529,12 +2529,15 @@ const TDIM={
   session:{label:'Sessie',get:t=>sessionOf(t)||'—'},
   hour:{label:'Uur-blok',get:t=>{const h=parseInt(String(t.time||'').slice(0,2));if(isNaN(h))return '—';const b=Math.floor(h/4)*4;return String(b).padStart(2,'0')+'-'+String(b+4).padStart(2,'0')+'u';}},
   dow:{label:'Dag',get:t=>['Ma','Di','Wo','Do','Vr','Za','Zo'][dowMon(t.date)]||'—'},
-  emo:{label:'Emotie',get:t=>t.emotion||'—'},
+  emo:{label:'Emotie',get:t=>tradeEmotions(t)[0]||'—',all:t=>tradeEmotions(t)},
   grade:{label:'Grade',get:t=>gradeOf(t)||'—'},
   dir:{label:'Richting',get:t=>t.dir==='long'?'Long':'Short'},
 };
 const TDIM_ORDER=['setup','session','hour','dow','emo','grade','dir'];
-function tdimVals(dim){const set=new Map();CLOSED.forEach(t=>{const v=TDIM[dim].get(t);if(v==='—')return;const e=set.get(v)||{n:0,pnl:0};e.n++;e.pnl+=t.pnl;set.set(v,e);});
+// Multi-waarde dimensies (emoties): een trade telt in élk bucket waar hij bij hoort,
+// niet alleen het eerste (zelfde klasse bug als de Fout-analyse, ChangeMaker 2026-09-14).
+function tdimAll(dim,t){const d=TDIM[dim];const vs=d.all?d.all(t):[d.get(t)];return vs.filter(v=>v&&v!=='—');}
+function tdimVals(dim){const set=new Map();CLOSED.forEach(t=>{tdimAll(dim,t).forEach(v=>{const e=set.get(v)||{n:0,pnl:0};e.n++;e.pnl+=t.pnl;set.set(v,e);});});
   let arr=[...set.keys()];
   if(dim==='hour')arr.sort();
   else if(dim==='dow'){const o=['Ma','Di','Wo','Do','Vr','Za','Zo'];arr.sort((a,b)=>o.indexOf(a)-o.indexOf(b));}
@@ -2543,7 +2546,7 @@ function tdimVals(dim){const set=new Map();CLOSED.forEach(t=>{const v=TDIM[dim].
   return arr;}
 function tendEdgeLeak(){
   const pairs=[['setup','session'],['setup','hour'],['session','dow'],['setup','emo']];const combos=[];
-  pairs.forEach(([a,bd])=>{const m={};CLOSED.forEach(t=>{const va=TDIM[a].get(t),vb=TDIM[bd].get(t);if(va==='—'||vb==='—')return;const k=va+'||'+vb;(m[k]=m[k]||{n:0,w:0,pnl:0,r:0,va,vb});const c=m[k];c.n++;c.pnl+=t.pnl;c.r+=tradeR(t);if(t.pnl>0)c.w++;});
+  pairs.forEach(([a,bd])=>{const m={};CLOSED.forEach(t=>{tdimAll(a,t).forEach(va=>tdimAll(bd,t).forEach(vb=>{const k=va+'||'+vb;(m[k]=m[k]||{n:0,w:0,pnl:0,r:0,va,vb});const c=m[k];c.n++;c.pnl+=t.pnl;c.r+=tradeR(t);if(t.pnl>0)c.w++;}));});
     Object.values(m).forEach(c=>{if(c.n>=TEND_MINN)combos.push({...c,avgR:c.r/c.n,wr:Math.round(c.w/c.n*100)});});});
   if(!combos.length)return {edge:null,leak:null};
   combos.sort((x,y)=>y.avgR-x.avgR);
@@ -2563,7 +2566,7 @@ function crossCell(rd,rv,cd,cv){const apply=(dim,val)=>{if(dim==='setup')FILTER.
 function crossHeat(){
   let rd=STATE.tendRow||'setup',cd=STATE.tendCol||'session';if(rd===cd)cd=(rd==='session'?'setup':'session');
   const rvals=tdimVals(rd),cvals=tdimVals(cd);const cells={};let mx=0.3;
-  CLOSED.forEach(t=>{const rv=TDIM[rd].get(t),cv=TDIM[cd].get(t);if(rv==='—'||cv==='—')return;const k=rv+'||'+cv;(cells[k]=cells[k]||{n:0,w:0,pnl:0,r:0});const c=cells[k];c.n++;c.pnl+=t.pnl;c.r+=tradeR(t);if(t.pnl>0)c.w++;});
+  CLOSED.forEach(t=>{tdimAll(rd,t).forEach(rv=>tdimAll(cd,t).forEach(cv=>{const k=rv+'||'+cv;(cells[k]=cells[k]||{n:0,w:0,pnl:0,r:0});const c=cells[k];c.n++;c.pnl+=t.pnl;c.r+=tradeR(t);if(t.pnl>0)c.w++;}));});
   Object.values(cells).forEach(c=>{if(c.n>=TEND_MINN)mx=Math.max(mx,Math.abs(c.r/c.n));});
   const tint=avgR=>`color-mix(in srgb,var(--${avgR>=0?'green':'red'}) ${Math.round(Math.min(1,Math.abs(avgR)/mx)*46+40)}%,transparent)`;
   const sel=(which,cur)=>`<select onchange="setCrossDim('${which}',this.value)" aria-label="${which} dimensie">${TDIM_ORDER.map(k=>`<option value="${k}" ${k===cur?'selected':''}>${TDIM[k].label}</option>`).join('')}</select>`;
@@ -2677,11 +2680,12 @@ function pgKalender(){
 }
 
 const CHECKLIST=['Setup uit playbook','Risk ≤ 1%','Plan vooraf genoteerd','Geen emotionele instap','TP/SL vooraf gezet'];
-function defChecks(t){return [true,true,t.mistake!=='Geen plan',['Kalm','Zelfverzekerd'].includes(t.emotion),t.mistake!=='SL te krap'];}
+function defChecks(t){return [true,true,!tradeMistakes(t).includes('Geen plan'),tradeEmotions(t).some(e=>['Kalm','Zelfverzekerd'].includes(e)),!tradeMistakes(t).includes('SL te krap')];}
 function revChecks(t){return (t.checks&&t.checks.length===5)?t.checks:defChecks(t);}
 function toggleCheck(id,i){const t=T.find(x=>x.id===id);const c=revChecks(t).slice();c[i]=!c[i];saveReview(id,{checks:c});render();}
 function setRating(id,n){saveReview(id,{rating:n});render();}
-function setEmotion(id,e){saveReview(id,{emotion:e});render();}
+// óók de emotions-array bijwerken — anders wint de oude array overal waar tradeEmotions kijkt
+function setEmotion(id,e){saveReview(id,{emotion:e,emotions:[e]});render();}
 function saveNote(id,v){saveReview(id,{notes:v});}
 function saveLessons(id,v){saveReview(id,{lessons:v});}
 // Periode-filter voor de review-lijst (relatief t.o.v. vandaag, Amsterdam-week ma–zo).
@@ -2831,7 +2835,7 @@ function coachPkgHTML(trades,opts){
     const rr=tradeR(t), grd=(typeof gradeOf==='function'?gradeOf(t):t.grade)||'—';
     const emos=[...new Set((t.emotions&&t.emotions.length?t.emotions:[t.emotion]).filter(Boolean))];
     const miss=[...new Set((t.mistakes&&t.mistakes.length?t.mistakes:[t.mistake]).filter(Boolean))];
-    const rating=t.rating||(['Kalm','Zelfverzekerd'].includes(t.emotion)?(t.pnl>0?5:4):(t.pnl>0?3:2));
+    const rating=t.rating||(tradeEmotions(t).some(e=>['Kalm','Zelfverzekerd'].includes(e))?(t.pnl>0?5:4):(t.pnl>0?3:2));
     const checks=revChecks(t), chkLabels=(typeof CHECKLIST!=='undefined'?CHECKLIST:['','','','','']);
     const shotsArr=shotMap[t.id]||[];
     const media=(shotsArr.length?shotsArr.map((u,i)=>shotBlock('<img src="'+u+'" alt="screenshot">','Screenshot '+(i+1)+' / '+shotsArr.length)):[shotBlock(chartThumb(t,1),'Auto-chart · geen screenshot geüpload')]).join('');
@@ -2942,7 +2946,7 @@ function pgReview(){
   if(!t)return emptyState('review');
   pasteTargetId=t.id;
   const checks=revChecks(t);
-  const rating=t.rating||(['Kalm','Zelfverzekerd'].includes(t.emotion)?(t.pnl>0?5:4):(t.pnl>0?3:2));
+  const rating=t.rating||(tradeEmotions(t).some(e=>['Kalm','Zelfverzekerd'].includes(e))?(t.pnl>0?5:4):(t.pnl>0?3:2));
   const scope=reviewScope();  // periode-gefilterde basis
   const total=scope.length,done=scope.filter(x=>x.reviewed).length;
   const items=reviewItems();
@@ -3012,13 +3016,13 @@ function pgReview(){
       <div class="panel"><div class="phead"><h3>Notities & psychologie</h3><span class="sp"></span><span class="chip">wijzigingen worden bewaard</span></div><div class="pbody">
         <textarea class="note" onblur="saveNote(${t.id},this.value)" placeholder="Wat gebeurde er? Wat ging goed, wat kan beter?">${esc(t.notes||'')}</textarea>
         <textarea class="note" style="min-height:60px;margin-top:10px" onblur="saveLessons(${t.id},this.value)" placeholder="Leerpunt / volgende keer…">${esc(t.lessons||'')}</textarea>
-        <div style="margin-top:14px"><div class="section-title" style="margin:0 0 8px">Emotie</div><div class="emos">${EMOTIONS.map(e=>`<span class="emo ${e===t.emotion?'on':''}" onclick="setEmotion(${t.id},'${e}')">${e}</span>`).join('')}</div></div>
+        <div style="margin-top:14px"><div class="section-title" style="margin:0 0 8px">Emotie</div><div class="emos">${EMOTIONS.map(e=>`<span class="emo ${tradeEmotions(t)[0]===e?'on':''}" onclick="setEmotion(${t.id},'${e}')">${e}</span>`).join('')}</div></div>
         <div style="margin-top:14px"><div class="section-title" style="margin:0 0 8px">Tags</div><div>${tradeTagsAll(t).length?tagChips(tradeTagsAll(t),true):'<span style="color:var(--muted);font-size:12px">Geen tags, voeg toe via ✎ Bewerken</span>'}</div></div></div></div>
 
       <div class="grid" style="grid-template-columns:1.2fr 1fr">
         <div class="panel"><div class="phead"><h3>Discipline-checklist</h3><span class="sp"></span><span class="chip">${checks.filter(Boolean).length}/5</span></div><div class="pbody">${CHECKLIST.map((l,i)=>`<div class="check ${checks[i]?'done':''}" style="cursor:pointer" onclick="toggleCheck(${t.id},${i})"><span class="box">${checks[i]?'✓':''}</span><span class="lbl">${l}</span></div>`).join('')}</div></div>
         <div class="panel"><div class="phead"><h3>Trade-rating</h3></div><div class="pbody"><div class="stars">${[1,2,3,4,5].map(n=>`<span style="cursor:pointer;color:${n<=rating?'var(--amber)':'var(--track)'}" onclick="setRating(${t.id},${n})">★</span>`).join('')}</div>
-          <p style="color:var(--muted);font-size:12.5px;margin-top:10px">${t.mistake?('Leerpunt: <b style="color:var(--red)">'+esc(t.mistake)+'</b>'):(won?'Schoon uitgevoerd, herhaal dit gedrag. ✅':'Verlies binnen plan, hoort erbij.')}</p></div></div>
+          <p style="color:var(--muted);font-size:12.5px;margin-top:10px">${tradeMistakes(t).length?('Leerpunt: <b style="color:var(--red)">'+tradeMistakes(t).map(esc).join(', ')+'</b>'):(won?'Schoon uitgevoerd, herhaal dit gedrag. ✅':'Verlies binnen plan, hoort erbij.')}</p></div></div>
       </div>
     </div>
 
@@ -3943,10 +3947,10 @@ function aiStyle(txt){
 function aiReply(q){
   const a=agg(),ql=q.toLowerCase();
   const sess=groupRows('session').sort((x,y)=>y.pnl-x.pnl),best=sess[0],worst=sess[sess.length-1];
-  const mistBy={};CLOSED.filter(t=>t.mistake).forEach(t=>{mistBy[t.mistake]=(mistBy[t.mistake]||0)+t.pnl;});
+  const mistBy={};CLOSED.forEach(t=>tradeMistakes(t).forEach(m=>{mistBy[m]=(mistBy[m]||0)+t.pnl;}));
   const worstMist=Object.entries(mistBy).sort((x,y)=>x[1]-y[1])[0];
   const rTxt=(a.avgR>=0?'+':'')+a.avgR.toFixed(2).replace('.',',');
-  if(/emotie|psych|gevoel|tilt/.test(ql)){const eBy={};CLOSED.filter(t=>t.emotion).forEach(t=>{eBy[t.emotion]=(eBy[t.emotion]||0)+t.pnl;});const worstE=Object.entries(eBy).sort((x,y)=>x[1]-y[1])[0];return worstE?`De emotie die je 't meest kost is <b>${esc(worstE[0])}</b> (${eurS(worstE[1])} netto). Herken 'm vroeg, dat is je grootste psychologische lek.`:`Je hebt nog weinig emoties getagd. Tag ze consequent, dan zie ik welke stemming je geld kost.`;}
+  if(/emotie|psych|gevoel|tilt/.test(ql)){const eBy={};CLOSED.forEach(t=>tradeEmotions(t).forEach(e=>{eBy[e]=(eBy[e]||0)+t.pnl;}));const worstE=Object.entries(eBy).sort((x,y)=>x[1]-y[1])[0];return worstE?`De emotie die je 't meest kost is <b>${esc(worstE[0])}</b> (${eurS(worstE[1])} netto). Herken 'm vroeg, dat is je grootste psychologische lek.`:`Je hebt nog weinig emoties getagd. Tag ze consequent, dan zie ik welke stemming je geld kost.`;}
   if(/discipline|regels|consistent|plan/.test(ql)){const byG={};CLOSED.filter(t=>t.grade).forEach(t=>{(byG[t.grade]=byG[t.grade]||{n:0,w:0}).n++;if(t.pnl>0)byG[t.grade].w++;});const aG=byG['A'];return aG?`Je A-setups winnen ${Math.round(aG.w/aG.n*100)}% (${aG.n} trades). Hoe strenger je bij A blijft, hoe stabieler je curve. Discipline = minder B/C forceren.`:`Grade je setups (A/B/C) consequent, dan meet ik of je discipline je edge volgt.`;}
   if(/risk|\br\b|rr|ratio/.test(ql))return `Je gemiddelde R is <b>${rTxt}</b> over ${a.n} trades. Profit factor ${a.pf.toFixed(2).replace('.',',')}. Houd je verliezers klein en laat winners lopen, daar valt de meeste winst te halen.`;
   if(/lek|verlies|fout|slecht|kwijt/.test(ql))return `Je grootste lek zit bij <b>${worstMist?esc(worstMist[0]):'losse fouten'}</b> (${worstMist?eurS(worstMist[1]):'—'}). Je zwakste sessie is <b>${esc(worst.label)}</b> (${worst.disp} win). Filter daar strenger, dat scheelt direct netto.`;
