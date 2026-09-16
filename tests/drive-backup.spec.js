@@ -15,8 +15,8 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
   await p.reload({ waitUntil: 'networkidle' }); await p.waitForTimeout(600);
   await p.evaluate(() => { try { hideWelcome() } catch (e) {} });
 
-  console.log('─── Zonder client-ID ───');
-  ok('Drive-kaart staat op "binnenkort" (uitgeschakeld)', await p.evaluate(() => { go('instellingen'); setSetTab('data'); const c = [...document.querySelectorAll('.bkchoice')].find(x => /☁️/.test(x.textContent)); return !driveReady() && c && c.disabled && /binnenkort/.test(c.textContent); }));
+  console.log('─── Productie-client-ID ingebakken ───');
+  ok('Drive-kaart is standaard actief (client-ID hardcoded sinds v0.9.66)', await p.evaluate(() => { go('instellingen'); setSetTab('data'); const c = [...document.querySelectorAll('.bkchoice')].find(x => /☁️/.test(x.textContent)); return driveReady() && c && !c.disabled; }));
 
   console.log('─── Met client-ID + fake Drive-API ───');
   await p.evaluate(() => { localStorage.setItem('sj_drive_client_id', '"test-client-id"'); });
