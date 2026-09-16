@@ -1610,7 +1610,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.69';
+const APP_VERSION='v0.9.70';
 const SCHEMA_VERSION=2;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -3127,14 +3127,8 @@ function pgInstellingen(){
   </div>`;
 }
 
-const PBRULES={
- 'London SFP':['Wacht op sweep van Londen high/low','Bevestiging via LTF break of structure','Entry op retest, SL achter de sweep','TP1 op 2R, rest laten lopen'],
- 'Trend-pullback':['Alleen in richting van de HTF-trend','Wacht pullback naar EMA/order-block','Entry op bevestigingscandle','Risk max 1% per trade'],
- 'BOS-retest':['Break of structure op M15','Wacht op retest van de breakzone','SL achter de structuur','Minimaal 2R doel'],
- 'Range-fade':['Duidelijke range vereist','Fade alleen de extremen','Klein risico, snelle TP','Nooit in een trending markt'],
- 'Reclaim':['Level reclaim én hold','Wacht bevestiging boven/onder','SL krap achter het level'],
- 'News trade':['Alleen high-impact nieuws','Wacht tot de eerste spike eruit is','Klein risico — hoge variantie'],
-};
+// Verse journals starten met een léég playbook-archief (demo-playbooks komen alleen
+// nog uit de voorbeelddata) — zelfde principe als de €0-startbalans (v0.9.63).
 // ─── Playbooks — volwaardig strategie-archief (gelijk aan de originele PlaybookForm) ───
 const EMPTY_PB={name:'',oneLiner:'',layers:[],criteria:[],antiCriteria:[],status:'active',defaultGrade:'',stop:'',target:'',minRR:'',bigPicture:'',tape:'',intuition:'',examples:[],tradingViewUrl:'',referenceUrl:'',referenceLabel:'',pairs:[],sessions:[]};
 const PB_STATUS=[['testing','🧪 Testen','var(--amber)'],['active','✓ Actief','var(--green)'],['retired','📦 Archief','var(--muted)']];
@@ -6184,7 +6178,7 @@ function updFormVis(){
   btn.textContent=formMoreOpen?'▴ Minder velden':`▾ Meer velden (${n})`;
 }
 function openForm(id){
-  const t=id!=null?T.find(x=>x.id===id):{date:new Date().toISOString().slice(0,10),time:'',exchange:'blofin',pair:'BTC/USDC',dir:'long',setup:'London SFP',session:'London',timeframe:'15m',market:'Trending',grade:'',entry:'',stop:'',tp:'',exit:'',size:'',leverage:10,fees:'',risk:'',rrPlanned:'',pnl:'',r:'',status:'closed',emotion:'',mistake:'',emotions:[],mistakes:[],layers:[],tags:[],notes:'',lessons:'',durationMin:'',mae:'',mfe:''};
+  const t=id!=null?T.find(x=>x.id===id):{date:new Date().toISOString().slice(0,10),time:'',exchange:'blofin',pair:'BTC/USDC',dir:'long',setup:'',session:'London',timeframe:'15m',market:'Trending',grade:'',entry:'',stop:'',tp:'',exit:'',size:'',leverage:10,fees:'',risk:'',rrPlanned:'',pnl:'',r:'',status:'closed',emotion:'',mistake:'',emotions:[],mistakes:[],layers:[],tags:[],notes:'',lessons:'',durationMin:'',mae:'',mfe:''};
   formSizeUnit=(t.sizeUnit==='asset'&&t.qty>0)?'asset':'usd';formPbTouched=false;
   formTags=[...(t.tags||[])];formGrade=gradeOf(t);formShots=[...(t.screenshots||[])];formTvLinks=[...(t.tvLinks||[])];
   formLayers=(t.layers||[]).map(L=>({timeframe:L.timeframe||'',bias:L.bias||'',setups:[...(L.setups||[])],confirmations:[...(L.confirmations||[])]}));
@@ -6420,8 +6414,8 @@ async function boot(){
     if(t===undefined){const ls=DB.load('trades',null);if(ls!=null){t=ls;IDB.set('trades',ls);}try{localStorage.removeItem('sj_trades');}catch(e){}}
     if(pb===undefined){const ls=DB.load('pbook',null);if(ls!=null){pb=ls;IDB.set('pbook',ls);}try{localStorage.removeItem('sj_pbook');}catch(e){}}
     T=Array.isArray(t)?t:[];
-    PBOOK={};Object.entries(pb||PBRULES).forEach(([k,v])=>PBOOK[k]=pbNormalize(k,v));
-  }catch(e){T=DB.load('trades',[]);PBOOK={};Object.entries(DB.load('pbook',PBRULES)).forEach(([k,v])=>PBOOK[k]=pbNormalize(k,v));}
+    PBOOK={};Object.entries(pb||{}).forEach(([k,v])=>PBOOK[k]=pbNormalize(k,v));
+  }catch(e){T=DB.load('trades',[]);PBOOK={};Object.entries(DB.load('pbook',{})).forEach(([k,v])=>PBOOK[k]=pbNormalize(k,v));}
   try{const sm=await IDB.get('snapshots');SNAP_META=Array.isArray(sm)?sm:[];}catch(e){SNAP_META=[];}
   try{const tr=await IDB.get('trash');TRASH=Array.isArray(tr)?tr:[];purgeTrash();}catch(e){TRASH=[];}
   try{await bkLoadDir();}catch(e){}       // backup-map-handle (automatische map-backups)
@@ -6445,7 +6439,7 @@ function seedBundled(d){
   const old=looksOldExport(d.trades);if(old)mergeOldTags(d.trades);
   T=d.trades.map((x,i)=>old?({...migrateOldTrade(x),id:i}):({rating:0,checks:[],...x,id:i}));
   if(d.tagConfig){tagConfig=d.tagConfig;persistTagConfig();}
-  PBOOK={};Object.entries(d.pbook||PBRULES).forEach(([k,v])=>PBOOK[k]=pbNormalize(k,v));persistPbook();
+  PBOOK={};Object.entries(d.pbook||{}).forEach(([k,v])=>PBOOK[k]=pbNormalize(k,v));persistPbook();
   if(d.manual){MANUAL=d.manual;MANUAL.forEach(m=>{if(!Array.isArray(m.transactions))m.transactions=[];});persistManual();}
   if(d.aiPrefs){AIPREFS={...AIPREFS,...d.aiPrefs,focus:{...AIPREFS.focus,...(d.aiPrefs.focus||{})}};persistAIPrefs();}
   adoptViewBackup(d);adoptExMeta(d);

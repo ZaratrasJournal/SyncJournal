@@ -31,6 +31,8 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
 
   console.log('─── A2: setup wijzigen & legen ───');
   const a2 = await p.evaluate(() => {
+    // verse journals hebben géén demo-playbooks meer (v0.9.70) → maak er zelf één, zoals een gebruiker
+    PBOOK['London SFP'] = pbNormalize('London SFP', ['test-criterium']); persistPbook();
     openForm(1); const sel = document.getElementById('f_playbook');
     sel.value = 'London SFP'; onPlaybookPick(); submitForm(1);
     const changed = T.find(x => x.id === 1).setup;
