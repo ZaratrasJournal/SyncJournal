@@ -50,6 +50,19 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
   // bars staan gesorteerd op netto: Overtrading (−80) eerst → klik = naar die 2 trades
   ok('klik op bar → Trades-pagina gefilterd op die fout', clicked.ok && clicked.page === 'trades' && clicked.filt.join() === 'Overtrading' && clicked.rows === 2, JSON.stringify(clicked));
 
+  console.log('─── Per pair top 6: grootste verliezer valt er niet meer uit ───');
+  const r5 = await p.evaluate(() => {
+    const base = { time: '10:00', dir: 'long', setup: '', session: 'London', status: 'closed', kind: 'live', exchange: '', entry: 100, exit: 110, stop: 95, size: '1000', r: 1, tps: [], tags: [], layers: [], emotions: [], mistakes: ['Overtrading'], checks: [], screenshots: [], tvLinks: [] };
+    T = ['ETH/USDT', 'SOL/USDT', 'DOGE/USDT', 'LINK/USDT', 'AVAX/USDT', 'XRP/USDT'].map((pair, i) => ({ ...base, id: i + 1, date: '2026-09-0' + (i + 1), pair, pnl: 10 + i }));
+    T.push({ ...base, id: 99, date: '2026-09-09', pair: 'BTC/USDT', pnl: -1900 });
+    persist(); clearGFilter(); setFilter('mistake', 'Overtrading'); go('analytics');
+    const pn = [...document.querySelectorAll('.panel')].find(x => /Per pair/.test(x.textContent));
+    const rows = pn ? [...pn.querySelectorAll('.hbar-row,.hrow,[class*=hbar]')].map(x => x.textContent) : [];
+    return { txt: pn ? pn.textContent : '', hasBtc: /BTC\/USDT/.test(pn ? pn.textContent : '') };
+  });
+  ok('BTC (−1.9k, grootste impact) staat in de top 6 bij fouten-filter', r5.hasBtc, r5.txt.slice(0, 150));
+  ok('kop zegt grootste netto-impact', /grootste netto-impact/.test(r5.txt));
+
   ok('geen JS-errors totaal', errs.length === 0, errs.slice(0, 3).join(' | '));
   console.log(`\n=== Fouten-filter: ${pass}/${pass + fail} ===`);
   await b.close();

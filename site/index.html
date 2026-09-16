@@ -1611,7 +1611,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.82';
+const APP_VERSION='v0.9.83';
 const SCHEMA_VERSION=2;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -3713,7 +3713,9 @@ function pgAnalytics(){
       ${wlStat('Gem. MAE',avgMae.toFixed(2)+'R','r')}${wlStat('Huidige reeks',curStreak+(curType==='w'?'W':curType==='l'?'V':''),curType==='w'?'g':curType==='l'?'r':'')}</div></div>`;
   const dirRows=['long','short'].map(d=>{const g=CLOSED.filter(t=>t.dir===d),w=g.filter(t=>t.pnl>0).length,pnl=g.reduce((s,t)=>s+t.pnl,0),wr=g.length?Math.round(w/g.length*100):0;
     return {label:d==='long'?'Long':'Short',val:wr,disp:wr+'%',sub:`${g.length} trades · netto <b class="${cls(pnl)}">${eurS(pnl)}</b>`,color:pnl>=0?'var(--green)':'var(--red)'};});
-  const pairRows=groupRows('pair').sort((x,y)=>y.pnl-x.pnl).slice(0,6);
+  // Top 6 op |netto|: grootste verliezers horen er óók in (ChangeMaker 2026-09-16 — bij een
+  // fouten-filter viel de zwaarste verliezer juist buiten de lijst); weergave winst → verlies.
+  const pairRows=groupRows('pair').sort((x,y)=>Math.abs(y.pnl)-Math.abs(x.pnl)).slice(0,6).sort((x,y)=>y.pnl-x.pnl);
   const sessBars=groupRows('session').sort((x,y)=>y.pnl-x.pnl).map(s=>({m:s.label,v:Math.round(s.pnl)}));
   // álle fouten per trade tellen mee, niet alleen de eerste (ChangeMaker 2026-09-14)
   const mistBy={};CLOSED.forEach(t=>tradeMistakes(t).forEach(m=>{mistBy[m]=(mistBy[m]||0)+t.pnl;}));
@@ -3810,7 +3812,7 @@ function pgAnalytics(){
       ${panelRaw('Long vs. short','win-rate · netto',hbars(dirRows))}
     </div><div style="height:13px"></div>
     <div class="grid" style="grid-template-columns:2fr 1fr;align-items:stretch">
-      ${panelRaw('Per pair','top 6 · gesorteerd op netto',hbars(pairRows))}
+      ${panelRaw('Per pair','top 6 · grootste netto-impact',hbars(pairRows))}
       ${panel('Kerncijfers','gem. per trade',wl)}
     </div><div style="height:13px"></div>
     ${panel('Prestatie per uur','wanneer op de dag presteer je',hourHeat(CLOSED))}<div style="height:13px"></div>
