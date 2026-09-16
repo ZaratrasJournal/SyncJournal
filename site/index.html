@@ -1611,7 +1611,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.79';
+const APP_VERSION='v0.9.80';
 const SCHEMA_VERSION=2;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -1844,7 +1844,9 @@ function connectEx(id){
         if(ad.needsPassphrase&&!pass){toast(EXMAP[id].name+' vereist ook een passphrase','err');return;} }
   CONNS[id]={...(CONNS[id]||{}),connected:true,autoSync:(CONNS[id]&&CONNS[id].autoSync)||false,
     hint:(ad.walletOnly?wallet:key).slice(-4),apiKey:key,apiSecret:sec,passphrase:pass,wallet,syncFrom:from};
-  persistConns();STATE.connOpen='';render();toast('✓ '+EXMAP[id].name+' verbonden, test de verbinding of start een sync','ok');}
+  persistConns();STATE.connOpen='';render();toast('✓ '+EXMAP[id].name+' verbonden, saldo en trades worden opgehaald…','ok');
+  // direct saldo + eerste sync: het dashboard toont meteen de echte balans en trades
+  (async()=>{try{await refreshBalance(id);await syncExchange(id,{});}catch(e){}render();})();}
 function disconnectEx(id){delete CONNS[id];persistConns();render();toast(EXMAP[id].name+' losgekoppeld','info');}
 function toggleExSync(id){if(CONNS[id]){CONNS[id].autoSync=!CONNS[id].autoSync;persistConns();render();}}
 function addManual(){const n=document.getElementById('ma_name'),bal=document.getElementById('ma_bal'),name=n?n.value.trim():'',b=bal?parseFloat(String(bal.value).replace(',','.'))||0:0;
@@ -1913,7 +1915,10 @@ function adoptViewBackup(d){ if(d.view&&d.view.v){VIEW.preset=d.view.preset||'aa
   else return; persistView();try{renderNav();}catch(e){} }
 // Exchange-saldi/labels reizen mee in de backup (demo-dataset levert zo zijn eigen
 // bedragen — de EXCHANGES-const zelf staat op 0 voor verse journals).
-function adoptExMeta(d){ if(!d||!d.exMeta)return; EXCHANGES.forEach(e=>{const m=d.exMeta[e.id];if(m){if(m.val!=null)e.val=+m.val||0;if(m.acct)e.acct=m.acct;}}); }
+function adoptExMeta(d){ if(!d||!d.exMeta)return; EXCHANGES.forEach(e=>{const m=d.exMeta[e.id];if(m){if(m.val!=null)e.val=+m.val||0;if(m.acct)e.acct=m.acct;}}); persistExMeta(); }
+// Saldi/accountnamen overleefden een herlaad niet (alleen via backups) — Denny 2026-09-16:
+// Hyperliquid verbonden, saldo nergens te zien. Nu eigen opslag + laden bij boot.
+function persistExMeta(){ DB.save('exmeta',Object.fromEntries(EXCHANGES.map(e=>[e.id,{val:e.val,acct:e.acct}]))); }
 // In-context verbergen (⋯ op de paneelkop) — met ongedaan-toast die de vórige stand
 // exact terugzet (incl. preset, dus ook "aangepast" wordt teruggedraaid).
 const pHide=(k,n)=>`<span class="pmenu"><button aria-label="Paneel-opties" onclick="event.stopPropagation();this.parentElement.classList.toggle('open')">⋯</button><span class="dd"><button onclick="hideViewPanel('${k}','${esc(n)}')">🙈 Verberg dit paneel</button></span></span>`;
@@ -2299,12 +2304,27 @@ function groupRows(field){const o={};CLOSED.forEach(t=>{const k=field==='session
 
 /* ═══ PAGES ═══ */
 function pgDashboard(){
-  if(!T.length)return `${filterBar()}${emptyState('trades-first')}`;
-  const a=agg();
   const legend=accountList().map(x=>`<div class="row">${accAvatar(x.id,18)}<span class="lbl">${esc(x.n)}</span><span class="val mask">${eur(x.v)}</span></div>`).join('');
+  // Lege journal maar wél een gekoppelde exchange of saldo (Denny 2026-09-16: HL verbonden
+  // en niets te zien) → toon de balans-hero, met daaronder de eerste-trade-uitleg.
+  if(!T.length){
+    const hasAcct=totalBalance()>0||EXCHANGES.some(e=>!e.deprecated&&CONNS[e.id]&&CONNS[e.id].connected);
+    if(!hasAcct)return `${filterBar()}${emptyState('trades-first')}`;
+    return `${filterBar()}<div class="panel hero"><div><div class="eyebrow">Totale balans</div>
+      <div class="big num mask">${eur(totalBalance())}</div>
+      <div class="meta">Nog geen gesloten trades, start een sync of voeg je eerste trade toe.</div></div>
+      <div class="alloc">${donut()}<div class="legend">${legend}</div></div></div>
+      <div style="height:13px"></div>${emptyState('trades-first')}`;
+  }
+  const a=agg();
+  // Echte YTD (voorheen stond hier een vast demo-percentage): netto dit jaar, % t.o.v. startbalans.
+  const _yr=String(new Date().getFullYear());
+  const ytd=T.filter(t=>t&&t.status==='closed'&&String(t.date||'').startsWith(_yr)).reduce((s,t)=>s+(+t.pnl||0),0);
+  const _base=totalBalance()-ytd;
+  const ytdTxt=`YTD <b class="num ${cls(ytd)}">${eurS(ytd)}${_base>0?' ('+(ytd>=0?'+':'−')+Math.abs(ytd/_base*100).toFixed(1).replace('.',',')+'%)':''}</b>`;
   const hero=!VV('dHero')?'':`<div class="panel hero"><div><div class="eyebrow">Totale balans</div>
     <div class="big num mask">${eur(totalBalance())}</div>
-    <div class="meta">Gerealiseerd deze maand <b class="num ${cls(a.net)}">${eurS(a.net)}</b> · YTD <b class="num g">+11,4%</b></div></div>
+    <div class="meta">Gerealiseerd deze maand <b class="num ${cls(a.net)}">${eurS(a.net)}</b> · ${ytdTxt}</div></div>
     <div class="alloc">${donut()}<div class="legend">${legend}</div></div></div>`;
   const kks=[...(VV('dKpiCore')?['net','wr']:[]),...(VV('dKpiPro')?['pf','exp','r']:[])];
   const kpis=!kks.length?'':`<div class="kpis">${kks.map(k=>kpiBlock(k,'d')).join('')}</div>`;
@@ -5457,9 +5477,24 @@ async function testConn(exId){
   try{
     const r=ad.walletOnly?await ad.testConnection(c.wallet):await ad.testConnection(c.apiKey,c.apiSecret,c.passphrase);
     const balV=r&&typeof r==='object'?(r.balance!=null?r.balance:r.equity):null;
+    // geteste saldo meteen vastleggen als account-saldo (voorheen alleen een toast)
+    if(balV!=null&&isFinite(+balV)&&EXMAP[exId]){EXMAP[exId].val=+(+balV).toFixed(2);persistExMeta();}
     toast('✓ Verbinding met '+ad.name+' werkt'+(balV!=null&&isFinite(+balV)?' · saldo '+(+balV).toLocaleString('nl-NL',{maximumFractionDigits:2}):''),'ok');
   }catch(e){toast('✗ '+ad.name+': '+((e&&e.message)||e),'err');}
   render();
+}
+// Saldo live van de exchange → account-saldo. Na verbinden, bij elke sync en bij een
+// verbindingstest, zodat dashboard/topbar altijd de echte balans tonen.
+async function refreshBalance(exId){
+  const ad=ExchangeAPI[exId],c=CONNS[exId],e=EXMAP[exId];
+  if(!ad||!c||!c.connected||!e||e.deprecated||typeof ad.testConnection!=='function')return false;
+  try{
+    const r=ad.walletOnly?await ad.testConnection(c.wallet):await ad.testConnection(c.apiKey,c.apiSecret,c.passphrase);
+    const bal=r&&typeof r==='object'?(r.balance!=null?r.balance:r.equity):null;
+    if(bal==null||!isFinite(+bal))return false;
+    e.val=+(+bal).toFixed(2);persistExMeta();
+    return true;
+  }catch(err){return false;}
 }
 // Fase 1 haalt alleen GESLOTEN trades op. Dedupe op bron-id (stabiel per adapter);
 // de prullenbak wint: een verwijderde trade komt niet terug via sync (srcId-guard).
@@ -5481,6 +5516,7 @@ async function syncExchange(exId,opts){
   finalizePlaceholders(exId,mapped);
   finalizeStaleOpens(exId);
   runPartialDetect(exId);
+  await refreshBalance(exId);   // saldo ververst mee met elke sync
   CONNS[exId]={...c,lastSync:Date.now()};persistConns();
   if(!quiet)toast(mapped.length?('✓ '+ad.name+': '+mapped.length+' nieuwe trade'+(mapped.length>1?'s':'')):('✓ '+ad.name+': geen nieuwe trades'),mapped.length?'ok':'info');
   render();return mapped.length;
@@ -6503,6 +6539,7 @@ async function boot(){
   }catch(e){T=DB.load('trades',[]);PBOOK={};Object.entries(DB.load('pbook',{})).forEach(([k,v])=>PBOOK[k]=pbNormalize(k,v));}
   try{const sm=await IDB.get('snapshots');SNAP_META=Array.isArray(sm)?sm:[];}catch(e){SNAP_META=[];}
   try{const tr=await IDB.get('trash');TRASH=Array.isArray(tr)?tr:[];purgeTrash();}catch(e){TRASH=[];}
+  try{const xm=DB.load('exmeta',null);if(xm)adoptExMeta({exMeta:xm});}catch(e){} // opgeslagen saldi/accountnamen terugzetten
   try{pbDemoCleanup();}catch(e){}         // achtergebleven demo-playbooks van vóór v0.9.70 (alleen onaangeraakt + ongebruikt)
   try{await bkLoadDir();}catch(e){}       // backup-map-handle (automatische map-backups)
   try{driveStartupCheck();}catch(e){}     // Drive: nieuwere backup van ander apparaat? (async)
