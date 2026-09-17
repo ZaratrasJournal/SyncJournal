@@ -1,0 +1,117 @@
+<!doctype html><html lang="nl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Demo · €/%/R-weergave</title>
+<style>
+  :root{--bg:#0b0e14;--surface:#12161f;--line:#232a38;--ink:#e8ecf4;--muted:#8b95a7;--green:#2eaa6f;--red:#d64259;--accent:#c9a84c}
+  body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 Inter,system-ui,sans-serif;padding:28px 20px;max-width:1100px;margin-inline:auto}
+  h1{font-size:17px;margin:0 0 4px} .sub{color:var(--muted);font-size:12.5px;margin-bottom:18px}
+  .panel{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px 20px;margin-bottom:14px}
+  .hero{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap}
+  .eyebrow{font-size:10.5px;letter-spacing:.12em;color:var(--muted);text-transform:uppercase;font-weight:700}
+  .big{font-size:34px;font-weight:800;font-variant-numeric:tabular-nums;margin:4px 0 6px}
+  .meta{color:var(--muted);font-size:13px} .meta b{font-variant-numeric:tabular-nums}
+  .g{color:var(--green)} .r{color:var(--red)} .mut{color:var(--muted)}
+  .seg{display:inline-flex;background:#0d1119;border:1px solid var(--line);border-radius:999px;padding:3px;gap:2px}
+  .seg button{border:0;background:none;color:var(--muted);font:600 12.5px Inter;padding:5px 14px;border-radius:999px;cursor:pointer}
+  .seg button.on{background:var(--accent);color:#14100a}
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
+  .kpi{background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:10px;padding:13px 15px}
+  .kpi .k{font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);font-weight:700}
+  .kpi .v{font-size:22px;font-weight:800;font-variant-numeric:tabular-nums;margin-top:5px}
+  .kpi .s{font-size:11.5px;color:var(--muted);margin-top:3px}
+  .bars{display:flex;gap:26px;align-items:flex-end;height:130px;padding:8px 6px 0}
+  .bcol{flex:1;display:flex;flex-direction:column;align-items:center;gap:6px}
+  .bar{width:56px;border-radius:8px 8px 0 0;background:var(--green)} .bar.neg{background:var(--red);border-radius:0 0 8px 8px}
+  .blbl{font-size:11px;color:var(--muted)} .bval{font-size:11.5px;font-weight:700;font-variant-numeric:tabular-nums}
+  table{width:100%;border-collapse:collapse;font-size:13px} td,th{padding:8px 10px;text-align:left;border-top:1px solid var(--line)}
+  th{color:var(--muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;border:0}
+  td.rt,th.rt{text-align:right;font-variant-numeric:tabular-nums}
+  .note{font-size:12px;color:var(--muted);border-left:3px solid var(--accent);padding:8px 12px;background:#10141d;border-radius:0 8px 8px 0}
+</style></head><body>
+<h1>Demo · €/%/R-weergaveschakelaar</h1>
+<div class="sub">Zelfde dashboard, drie brillen. Rekent live met het controlevoorbeeld uit het plan (balans $1.000; trade 2 heeft bewust géén stop → geen R).</div>
+
+<div class="panel hero">
+  <div>
+    <div class="eyebrow">Totale balans</div>
+    <div class="big" id="bal"></div>
+    <div class="meta">Gerealiseerd deze maand <b id="mnet"></b> · YTD <b id="ynet"></b></div>
+  </div>
+  <div class="seg" id="seg"></div>
+</div>
+
+<div class="kpis" style="margin-bottom:14px">
+  <div class="kpi"><div class="k">Netto P&L</div><div class="v" id="kNet"></div><div class="s" id="kNetS"></div></div>
+  <div class="kpi"><div class="k">Expectancy / trade</div><div class="v" id="kExp"></div><div class="s" id="kExpS"></div></div>
+  <div class="kpi"><div class="k">Win-rate</div><div class="v">67%</div><div class="s">unit-loos · verandert nooit mee</div></div>
+</div>
+
+<div class="panel"><div class="eyebrow" style="margin-bottom:6px">Maand-P&L</div><div class="bars" id="bars"></div></div>
+
+<div class="panel"><div class="eyebrow" style="margin-bottom:4px">Recente trades</div>
+<table><thead><tr><th>Datum</th><th>Pair</th><th class="rt">P&L</th></tr></thead><tbody id="rows"></tbody></table></div>
+
+<div class="note" id="note"></div>
+
+<script>
+const BAL=1000;
+// gesloten trades, nieuwste eerst — t2 heeft géén stop (r:null)
+const T=[
+  {d:'10-09',pair:'SOL/USDT',pnl:150,r:2.0,m:'sep'},
+  {d:'05-09',pair:'ETH/USDT',pnl:-30,r:null,m:'sep'},
+  {d:'01-09',pair:'BTC/USDT',pnl:80,r:2.0,m:'sep'},
+  {d:'20-08',pair:'BTC/USDT',pnl:120,r:1.5,m:'aug'},
+  {d:'08-08',pair:'ETH/USDT',pnl:-95,r:-1.0,m:'aug'},
+  {d:'12-07',pair:'SOL/USDT',pnl:60,r:0.8,m:'jul'},
+];
+let UNIT='val';
+const eur=v=>(v<0?'−$ ':'+$ ')+Math.abs(Math.round(v)).toLocaleString('nl-NL');
+const pctS=v=>(v<0?'−':'+')+Math.abs(v).toFixed(2).replace('.',',')+'%';
+const rS=v=>(v<0?'−':'+')+Math.abs(v).toFixed(1).replace('.',',')+'R';
+// basis vóór trade i = balans nu − pnl van deze en alle latere trades (lijst is nieuwste-eerst)
+function basePre(i){let later=0;for(let j=0;j<=i;j++)later+=T[j].pnl;return BAL-later;}
+const tradePct=i=>{const b=basePre(i);return b>0?T[i].pnl/b*100:null;};
+// aggregatie: netto ÷ balans-bij-start (= balans nu − pnl van alle trades in/na de periode)
+function aggPct(list){const net=list.reduce((s,t)=>s+t.pnl,0);const idx=T.indexOf(list[list.length-1]);const b=basePre(idx);return b>0?net/b*100:null;}
+function aggR(list){const withR=list.filter(t=>t.r!=null);return {sum:withR.reduce((s,t)=>s+t.r,0),n:withR.length,miss:list.length-withR.length};}
+function fmtAgg(list){
+  const net=list.reduce((s,t)=>s+t.pnl,0);
+  if(UNIT==='val')return eur(net);
+  if(UNIT==='pct'){const p=aggPct(list);return p==null?'—':pctS(p);}
+  const a=aggR(list);return rS(a.sum)+(a.miss?' <span class="mut" style="font-weight:500;font-size:.72em">· '+a.miss+' zonder R</span>':'');
+}
+function fmtTrade(i){
+  const t=T[i];
+  if(UNIT==='val')return eur(t.pnl);
+  if(UNIT==='pct'){const p=tradePct(i);return p==null?'—':pctS(p);}
+  return t.r==null?'<span class="mut">—</span>':rS(t.r);
+}
+const cls=v=>v>=0?'g':'r';
+function render(){
+  document.getElementById('seg').innerHTML=[['val','$'],['pct','%'],['r','R']].map(([u,l])=>`<button class="${UNIT===u?'on':''}" onclick="UNIT='${u}';render()">${l}</button>`).join('');
+  document.getElementById('bal').textContent='$ '+BAL.toLocaleString('nl-NL'); // balans blijft ALTIJD valuta
+  const sep=T.filter(t=>t.m==='sep'), all=T.slice();
+  const net=l=>l.reduce((s,t)=>s+t.pnl,0);
+  document.getElementById('mnet').innerHTML=`<span class="${cls(net(sep))}">${fmtAgg(sep)}</span>`;
+  document.getElementById('ynet').innerHTML=`<span class="${cls(net(all))}">${fmtAgg(all)}</span>`;
+  document.getElementById('kNet').innerHTML=`<span class="${cls(net(all))}">${fmtAgg(all)}</span>`;
+  document.getElementById('kNetS').textContent=all.length+' trades';
+  let exp,expS;
+  if(UNIT==='val'){exp=eur(net(all)/all.length);expS='gemiddeld per trade';}
+  else if(UNIT==='pct'){const p=aggPct(all);exp=p==null?'—':pctS(p/all.length);expS='periode-% ÷ aantal trades';}
+  else{const a=aggR(all);exp=rS(a.sum/a.n);expS='gemiddelde over '+a.n+' trades mét R'+(a.miss?' · '+a.miss+' zonder R telt niet mee':'');}
+  document.getElementById('kExp').innerHTML=`<span class="${cls(net(all))}">${exp}</span>`;
+  document.getElementById('kExpS').textContent=expS;
+  const months=['jul','aug','sep'];
+  const maxAbs=Math.max(...months.map(m=>Math.abs(net(T.filter(t=>t.m===m)))));
+  document.getElementById('bars').innerHTML=months.map(m=>{
+    const l=T.filter(t=>t.m===m);const n=net(l);const h=Math.max(10,Math.abs(n)/maxAbs*95);
+    return `<div class="bcol"><div class="bval ${cls(n)}">${fmtAgg(l)}</div><div class="bar ${n<0?'neg':''}" style="height:${h}px"></div><div class="blbl">${m}</div></div>`;
+  }).join('');
+  document.getElementById('rows').innerHTML=T.slice(0,4).map((t,i)=>`<tr><td class="mut">${t.d}</td><td>${t.pair}</td><td class="rt ${t.r==null&&UNIT==='r'?'':cls(t.pnl)}" style="font-weight:700">${fmtTrade(i)}</td></tr>`).join('');
+  document.getElementById('note').innerHTML=UNIT==='pct'
+    ?'Controleer mee: sep = +$200 op startbasis $800 → <b>+25,00%</b>. De losse trades zijn +10,00%, −3,41% en +17,65% (samen 24,24%) — percentages optellen is dus fout, en dat doet deze weergave bewust niet.'
+    :UNIT==='r'?'Trade 2 (−$30) had geen stop → geen R. Hij telt níet als 0R mee: september is +4,0R over 2 trades · 1 zonder R, en het gemiddelde is +2,0R (niet +1,33R).'
+    :'Klik op % of R rechtsboven — de balans zelf blijft altijd in valuta, alle P&L-waarden wisselen mee.';
+}
+render();
+</script></body></html>

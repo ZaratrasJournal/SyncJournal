@@ -49,4 +49,13 @@ for (const s of run) {
 
 const failed = results.filter(r => !r.okAll);
 console.log(`\n═══ SyncJournal-suite: ${results.length - failed.length}/${results.length} specs groen · ${((Date.now() - t0) / 60000).toFixed(1)} min ═══`);
-if (failed.length) { console.log('Gefaald: ' + failed.map(f => f.s).join(', ')); process.exit(1); }
+if (failed.length) {
+  console.log('Gefaald: ' + failed.map(f => f.s).join(', '));
+  // GitHub-annotatie: bij publieke repo's via de API leesbaar zónder in te loggen,
+  // zodat de CI-diagnose ook zonder log-screenshots op te vragen is.
+  if (process.env.GITHUB_ACTIONS) {
+    const pre1 = ((pre.stdout || '') + (pre.stderr || '')).trim().split('\n')[0] || '';
+    console.log(`::error title=SyncJournal-suite ${results.length - failed.length}/${results.length}::preflight: ${pre1} | gefaald: ${failed.map(f => f.s + '(' + f.sum + ')').slice(0, 8).join(', ')}${failed.length > 8 ? ' +' + (failed.length - 8) : ''}`);
+  }
+  process.exit(1);
+}
