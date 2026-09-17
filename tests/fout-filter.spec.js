@@ -63,6 +63,33 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
   ok('BTC (−1.9k, grootste impact) staat in de top 6 bij fouten-filter', r5.hasBtc, r5.txt.slice(0, 150));
   ok('kop zegt grootste netto-impact', /grootste netto-impact/.test(r5.txt));
 
+  console.log('─── Fout-analyse als radar bij ≥3 fouten ───');
+  const rr = await p.evaluate(async () => {
+    const base = { time: '10:00', pair: 'BTC/USDT', dir: 'long', setup: '', session: 'London', status: 'closed', kind: 'live', exchange: '', entry: 100, exit: 90, stop: 95, size: '1000', r: -1, tps: [], tags: [], layers: [], emotions: [], checks: [], screenshots: [], tvLinks: [] };
+    T = ['Overtrading', 'SL te krap', 'Geen plan', 'TP te vroeg'].map((m, i) => ({ ...base, id: i + 1, date: '2026-09-0' + (i + 1), pnl: -100 * (i + 1), mistakes: [m] }));
+    persist(); clearGFilter(); go('analytics');
+    await new Promise(r => setTimeout(r, 700));
+    const pn = [...document.querySelectorAll('.panel')].find(x => /Fout-analyse/.test(x.textContent));
+    const radar = pn && pn.querySelector('.recharts-radar');
+    const ticks = pn ? [...pn.querySelectorAll('.recharts-polar-angle-axis text')].map(x => x.textContent) : [];
+    return { radar: !!radar, ticks };
+  });
+  ok('radar met alle fouten als label rondom', rr.radar && rr.ticks.length === 4 && rr.ticks.includes('TP te vroeg'), JSON.stringify(rr.ticks));
+  const rc = await p.evaluate(() => new Promise(res => {
+    const pn = [...document.querySelectorAll('.panel')].find(x => /Fout-analyse/.test(x.textContent));
+    const tick = [...pn.querySelectorAll('.recharts-polar-angle-axis text')].find(x => x.textContent === 'Geen plan');
+    if (!tick) return res({ ok: false });
+    tick.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    setTimeout(() => res({ ok: true, page: STATE.page, filt: FILTER.mistake.slice(), rows: FT.length }), 300);
+  }));
+  ok('klik op radar-label → Trades gefilterd op die fout', rc.ok && rc.page === 'trades' && rc.filt.join() === 'Geen plan' && rc.rows === 1, JSON.stringify(rc));
+  ok('minder dan 3 fouten → staafjes-fallback', await p.evaluate(async () => {
+    clearGFilter(); T = T.slice(0, 2); persist(); go('analytics');
+    await new Promise(r => setTimeout(r, 600));
+    const pn = [...document.querySelectorAll('.panel')].find(x => /Fout-analyse/.test(x.textContent));
+    return pn && !pn.querySelector('.recharts-radar') && pn.querySelectorAll('.recharts-bar-rectangle').length === 2;
+  }));
+
   console.log('─── Zelfde klasse elders: alle waarden tellen mee, niet alleen de eerste ───');
   const r6 = await p.evaluate(() => {
     const base = { time: '10:00', pair: 'BTC/USDT', dir: 'long', setup: 'SFP', session: 'London', status: 'closed', kind: 'live', exchange: '', entry: 100, exit: 110, stop: 95, size: '1000', r: 1, tps: [], tags: [], layers: [], checks: [], screenshots: [], tvLinks: [] };
