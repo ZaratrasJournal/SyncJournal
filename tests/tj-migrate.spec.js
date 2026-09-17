@@ -125,6 +125,25 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
   }));
   ok('afgebroken preview laat geen migratie-staat achter', await p.evaluate(() => { migPreview(TJMigrate.mapExport({ trades: [{ id: 'x', date: '2026-01-01', direction: 'long', status: 'closed', pnl: '1', setupTags: [] }] }), 'file'); closeForm(); return window._migPre === null || _migPre === null; }));
 
+  console.log('─── Screenshots + TradingView-links overleven beide routes ───');
+  const media = await p.evaluate(async () => {
+    closeForm(); localStorage.clear(); try { await IDB.clearAll(); } catch (e) {}
+    const shot = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUg==';
+    const oldT = [{ id: 'bf_9', date: '2026-06-01', time: '10:00', pair: 'BTC/USDT', direction: 'long', entry: '100', exit: '110', stopLoss: '95', positionSize: '1000', pnl: '50', fees: '0', leverage: '5', source: 'blofin', status: 'closed', setupTags: ['SFP'], confirmationTags: [], emotionTags: [], mistakeTags: [], customTags: [], rating: 0, notes: 'met media', screenshot: shot, screenshots: [shot, shot], links: ['https://www.tradingview.com/x/abc123/'], layers: [], tpLevels: [], openTime: '1780000000000', closeTime: '1780003600000' }];
+    // route 1: oude export → migratie
+    migPreview(TJMigrate.mapExport({ version: 12, trades: oldT }), 'file');
+    [...document.querySelectorAll('#modal button')].find(x => /Veilig overzetten/.test(x.textContent)).click();
+    await new Promise(r => setTimeout(r, 400)); closeForm();
+    const afterMig = { shots: (T[0].screenshots || []).length, tv: [...(T[0].tvLinks || [])] };
+    // route 2: SyncJournal-export → import (lokaal → gehost brug)
+    const backup = JSON.parse(JSON.stringify(snapshotPayload()));
+    T = []; persist(); applyBackup(backup);
+    return { afterMig, shots2: (T[0].screenshots || []).length, tv2: [...(T[0].tvLinks || [])], shotData: (T[0].screenshots || [])[0] === shot };
+  });
+  ok('oude export → migratie: screenshots + TV-links mee', media.afterMig.shots === 2 && media.afterMig.tv.join() === 'https://www.tradingview.com/x/abc123/', JSON.stringify(media.afterMig));
+  ok('SyncJournal export → import: media blijft intact (byte-gelijk)', media.shots2 === 2 && media.tv2.length === 1 && media.shotData, JSON.stringify({ s: media.shots2, tv: media.tv2 }));
+
+
   ok('geen JS-errors totaal', errs.length === 0, errs.slice(0, 3).join(' | '));
   console.log(`\n=== TJ-migratie (fase 3): ${pass}/${pass + fail} ===`);
   await b.close();
