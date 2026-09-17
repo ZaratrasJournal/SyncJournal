@@ -1579,6 +1579,8 @@ const TFLIST=['Daily','4H','2H','1H','30M','15M','5M','1M'];/* top-down volgorde
 const TIMEFRAMES=TFLIST;
 const CONFIRMATIONS=['Liquidity Sweep','OB','FVG','EQL/EQH','Flat candle','Session sweep','VAH/VAL/POC','Range retest','Range acceptatie'];
 const EMO_NEG=['FOMO','Gehaast','Twijfel','Twijfels','Revenge','Onzeker','Gefrustreerd','Tilt'];
+// "kalm gebleven"-heuristiek (checklist + auto-rating): alle rustige emoties tellen
+const CALM_EMOS=['Kalm','Rustig','Zelfverzekerd','Geduldig','Gefocust'];
 const EMO_POS=['Kalm','Rustig','Zelfverzekerd','Gefocust','Geduldig','Gedisciplineerd'];
 const MARKETS=['Trending','Ranging','Volatiel','Kalm'];
 const MISTAKES=['','Te vroeg in','Te laat in','Geen plan','SL te krap','SL te wijd','Revenge trade','FOMO-instap','Overtrading','TP te vroeg','Positie te groot','Tegen trend'];
@@ -1646,7 +1648,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.89';
+const APP_VERSION='v0.9.90';
 const SCHEMA_VERSION=2;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -1797,14 +1799,16 @@ const TAG_CATS=[
   // (confirmaties kies je in de setup-lagen; die stonden dubbel in de picker).
   {key:'customTags',label:'Eigen labels',color:'#7a869c',emoji:'🔖'},
 ];
+// Standaard-tags voor een verse journal = Denny's eigen bewezen set (2026-09-17,
+// overgenomen uit zijn tag-beheer). Bestaande gebruikers behouden hun eigen lijsten.
 const DEFAULT_TAGCONFIG={
-  setupTags:['London SFP','Trend-pullback','BOS-retest','Range-fade','Reclaim','News trade','Liquidity grab','VWAP-bounce','BOS','MSB','SFP'],
-  confirmationTags:['Liquidity Sweep','OB','FVG','EQL/EQH','Flat candle','Session sweep','VAH/VAL/POC','Range retest','Range acceptatie'],
-  timeframeTags:['Daily','4H','2H','1H','30M','15M','5M','1M'],
-  emotionTags:['Kalm','Zelfverzekerd','Gefocust','Geduldig','FOMO','Twijfel','Gehaast','Revenge'],
-  mistakeTags:['Te vroeg in','Te laat in','SL te krap','SL te wijd','Geen plan','Overtrading','TP te vroeg','Positie te groot','Revenge trade'],
-  missedReasonTags:['Te laat gezien','Geen bevestiging','Buiten sessie','Al in een trade','Twijfel','Setup onduidelijk','FOMO vermeden'],
-  customTags:['A+ setup','Herhaalbaar','Nieuwsdag','High conviction'],
+  setupTags:['BOS','MSB','SFP','F2R','F2L','Structuur','MLS','Range','Bullish retest','Bearish retest'],
+  confirmationTags:['Liquidity Sweep','Support OB','Resistance OB','OB','EQL/EQH','Flat candle','Session sweep US/UK/AS','VAH / VAL / POC','Range retest','Range acceptatie','FVG','Spot koop','Spot verkoop'],
+  timeframeTags:['5M','10M','15M','30M','1H','2H','4H','12H','Daily','Weekly'],
+  emotionTags:['FOMO','Gehaast','Twijfels','Geduldig','Rustig','Zelfverzekerd'],
+  mistakeTags:['Te vroeg in','SL te krap','SL te wijd','Geen plan','Overtrading','TP te vroeg','Positie te groot','Revenge trade'],
+  missedReasonTags:['Durf','Buiten regels','Te laat gespot','Kapitaal vol','Onduidelijk','Bewuste skip','Offline'],
+  customTags:[],
 };
 let tagConfig=DB.load('tagconfig',JSON.parse(JSON.stringify(DEFAULT_TAGCONFIG)));
 if(!tagConfig.missedReasonTags)tagConfig.missedReasonTags=[...DEFAULT_TAGCONFIG.missedReasonTags];
@@ -2738,7 +2742,7 @@ function pgKalender(){
 }
 
 const CHECKLIST=['Setup uit playbook','Risk ≤ 1%','Plan vooraf genoteerd','Geen emotionele instap','TP/SL vooraf gezet'];
-function defChecks(t){return [true,true,!tradeMistakes(t).includes('Geen plan'),tradeEmotions(t).some(e=>['Kalm','Zelfverzekerd'].includes(e)),!tradeMistakes(t).includes('SL te krap')];}
+function defChecks(t){return [true,true,!tradeMistakes(t).includes('Geen plan'),tradeEmotions(t).some(e=>CALM_EMOS.includes(e)),!tradeMistakes(t).includes('SL te krap')];}
 function revChecks(t){return (t.checks&&t.checks.length===5)?t.checks:defChecks(t);}
 function toggleCheck(id,i){const t=T.find(x=>x.id===id);const c=revChecks(t).slice();c[i]=!c[i];saveReview(id,{checks:c});render();}
 function setRating(id,n){saveReview(id,{rating:n});render();}
@@ -2893,7 +2897,7 @@ function coachPkgHTML(trades,opts){
     const rr=tradeR(t), grd=(typeof gradeOf==='function'?gradeOf(t):t.grade)||'—';
     const emos=[...new Set((t.emotions&&t.emotions.length?t.emotions:[t.emotion]).filter(Boolean))];
     const miss=[...new Set((t.mistakes&&t.mistakes.length?t.mistakes:[t.mistake]).filter(Boolean))];
-    const rating=t.rating||(tradeEmotions(t).some(e=>['Kalm','Zelfverzekerd'].includes(e))?(t.pnl>0?5:4):(t.pnl>0?3:2));
+    const rating=t.rating||(tradeEmotions(t).some(e=>CALM_EMOS.includes(e))?(t.pnl>0?5:4):(t.pnl>0?3:2));
     const checks=revChecks(t), chkLabels=(typeof CHECKLIST!=='undefined'?CHECKLIST:['','','','','']);
     const shotsArr=shotMap[t.id]||[];
     const media=(shotsArr.length?shotsArr.map((u,i)=>shotBlock('<img src="'+u+'" alt="screenshot">','Screenshot '+(i+1)+' / '+shotsArr.length)):[shotBlock(chartThumb(t,1),'Auto-chart · geen screenshot geüpload')]).join('');
@@ -3004,7 +3008,7 @@ function pgReview(){
   if(!t)return emptyState('review');
   pasteTargetId=t.id;
   const checks=revChecks(t);
-  const rating=t.rating||(tradeEmotions(t).some(e=>['Kalm','Zelfverzekerd'].includes(e))?(t.pnl>0?5:4):(t.pnl>0?3:2));
+  const rating=t.rating||(tradeEmotions(t).some(e=>CALM_EMOS.includes(e))?(t.pnl>0?5:4):(t.pnl>0?3:2));
   const scope=reviewScope();  // periode-gefilterde basis
   const total=scope.length,done=scope.filter(x=>x.reviewed).length;
   const items=reviewItems();

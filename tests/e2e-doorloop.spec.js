@@ -34,7 +34,9 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
 
   console.log('─── Trade toevoegen (formulier, alles erop en eraan) ───');
   const today = await p.evaluate(() => localDateISO());
-  await p.evaluate(() => { go('trades'); openForm(null); }); await p.waitForTimeout(250);
+  // verse journals starten zonder eigen labels (v0.9.90) → de doorloop zaait er zelf twee
+  // (twee, zodat de chip-finder op '#tagpick *' niet per ongeluk de wrapper-div matcht)
+  await p.evaluate(() => { tagConfig.customTags = ['A+ setup', 'Nieuwsdag', 'High conviction']; persistTagConfig(); go('trades'); openForm(null); }); await p.waitForTimeout(250);
   await p.evaluate((today) => {
     const set = (id, v) => { const el = document.getElementById(id); el.value = v; };
     document.getElementById('f_exchange').value = MANUAL[0].id;

@@ -10,6 +10,11 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 De journal is opnieuw opgebouwd als **SyncJournal** en draait nu online op [syncjournal.nl](https://syncjournal.nl). Versienummers zijn opnieuw gestart op v0.9.x (bèta); de oude TradeJournal-releases staan verderop in dit bestand. Je data overzetten kan via Instellingen → Data → Importeer oude backup.
 
+## [v0.9.90] — 2026-09-17
+
+### Gewijzigd
+- **Nieuwe standaard-tags voor verse journals** — nieuwe gebruikers starten met een bewezen tag-set uit de community: 10 setups (BOS, MSB, SFP, F2R…), 13 confirmaties, 10 timeframes, 6 emoties, 8 fouten en 7 missed-redenen. Eigen labels beginnen leeg. Bestaande gebruikers merken niets: jouw eigen lijsten blijven exact zoals ze zijn.
+
 ## [v0.9.89] — 2026-09-17
 
 ### Gewijzigd
