@@ -1648,7 +1648,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.90';
+const APP_VERSION='v0.9.91';
 const SCHEMA_VERSION=2;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -4261,24 +4261,74 @@ const DRIVE_CLIENT_ID=String(DB.load('drive_client_id','')||'').trim()||'6252790
 const DRIVE_SCOPE='https://www.googleapis.com/auth/drive.file';
 const DRIVE_API='https://www.googleapis.com/drive/v3';
 const DRIVE_UPLOAD='https://www.googleapis.com/upload/drive/v3';
-let DRIVE={token:null,tokenExp:0,folderId:String(DB.load('drive_folder','')||''),needsAuth:false,adopt:null,ignoredTs:0};
-// Google geeft browser-apps tokens van 1 uur (langer vereist een backend). We bewaren het
-// token wel netjes, zodat een refresh binnen dat uur nooit om herverbinden vraagt.
-(()=>{try{const t=DB.load('drive_tok',null);if(t&&t.exp>Date.now()+60000){DRIVE.token=t.t;DRIVE.tokenExp=t.exp;}}catch(e){}})();
+/* Fase 4 (2026-09-17): token-broker op drive-token.syncjournal.nl. Eénmalig koppelen via
+   de Google-popup levert een refresh-token op (alleen in DEZE browser bewaard, nooit in
+   backups); daarna verlengt de app stil op de achtergrond — nooit meer "opnieuw
+   verbinden". Broker onbereikbaar of geen refresh-token → terugval op de oude 1-uur-flow. */
+const DRIVE_BROKER='https://drive-token.syncjournal.nl';
+let DRIVE={token:null,tokenExp:0,rt:'',folderId:String(DB.load('drive_folder','')||''),needsAuth:false,adopt:null,ignoredTs:0};
+(()=>{try{const t=DB.load('drive_tok',null);if(t){if(t.exp>Date.now()+60000){DRIVE.token=t.t;DRIVE.tokenExp=t.exp;}if(t.rt)DRIVE.rt=t.rt;}}catch(e){}})();
 const driveReady=()=>!!DRIVE_CLIENT_ID;
+function _driveSaveTok(d){
+  DRIVE.token=d.access_token;DRIVE.tokenExp=Date.now()+((+d.expires_in||3600)*1000);DRIVE.needsAuth=false;
+  if(d.refresh_token)DRIVE.rt=d.refresh_token;
+  try{DB.save('drive_tok',{t:DRIVE.token,exp:DRIVE.tokenExp,rt:DRIVE.rt||''});}catch(e){}
+}
+async function _driveBroker(payload){
+  const r=await fetch(DRIVE_BROKER,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
+  return await r.json();
+}
+// Stille verlenging via het refresh-token. true = nieuw uur-token staat klaar;
+// 'revoked' = koppeling ingetrokken (rt gewist); false = broker niet bereikbaar.
+async function _driveRefresh(){
+  if(!DRIVE.rt)return false;
+  try{
+    const d=await _driveBroker({refresh_token:DRIVE.rt});
+    if(d&&d.access_token){_driveSaveTok(d);return true;}
+    if(d&&(d.error==='invalid_grant'||d.error==='invalid_client')){DRIVE.rt='';try{DB.save('drive_tok',{t:'',exp:0,rt:''});}catch(e){}return 'revoked';}
+    return false;
+  }catch(e){return false;}
+}
 function driveFetch(url,opt){opt=opt||{};opt.headers=Object.assign({Authorization:'Bearer '+DRIVE.token},opt.headers||{});return fetch(url,opt);}
 function loadGsi(){return new Promise((res,rej)=>{ if(window.google&&window.google.accounts&&window.google.accounts.oauth2)return res();
   const s=document.createElement('script');s.src='https://accounts.google.com/gsi/client';s.async=true;
   s.onload=()=>res();s.onerror=()=>rej(new Error('Google-inlogscript laadde niet'));document.head.appendChild(s);});}
-function driveToken(interactive){return new Promise((res,rej)=>{
-  if(DRIVE.token&&Date.now()<DRIVE.tokenExp-60000)return res(DRIVE.token);
+// Oude 1-uur-flow (GIS token client) — terugvalpad als de broker onbereikbaar is of de
+// browser geen code-flow kan doen. Ook het pad dat de offline testsuite bewandelt.
+function _driveLegacyToken(interactive){return new Promise((res,rej)=>{
   loadGsi().then(()=>{ try{
     const tc=window.google.accounts.oauth2.initTokenClient({client_id:DRIVE_CLIENT_ID,scope:DRIVE_SCOPE,
-      callback:(r)=>{ if(r&&r.access_token){DRIVE.token=r.access_token;DRIVE.tokenExp=Date.now()+((+r.expires_in||3600)*1000);DRIVE.needsAuth=false;try{DB.save('drive_tok',{t:DRIVE.token,exp:DRIVE.tokenExp});}catch(e){}res(DRIVE.token);}
+      callback:(r)=>{ if(r&&r.access_token){_driveSaveTok({access_token:r.access_token,expires_in:r.expires_in});res(DRIVE.token);}
         else{DRIVE.needsAuth=true;rej(new Error('geen toestemming'));} },
       error_callback:()=>{DRIVE.needsAuth=true;rej(new Error('geen toestemming'));}});
     tc.requestAccessToken({prompt:interactive?'consent':''});
   }catch(e){DRIVE.needsAuth=true;rej(e);} }).catch(rej);});}
+function driveToken(interactive){return new Promise((res,rej)=>{(async()=>{
+  if(DRIVE.token&&Date.now()<DRIVE.tokenExp-60000)return res(DRIVE.token);
+  // 1) stil verlengen met het refresh-token — het normale pad na de eenmalige koppeling
+  const r=await _driveRefresh();
+  if(r===true)return res(DRIVE.token);
+  if(!interactive){ if(r==='revoked')DRIVE.needsAuth=true; if(!DRIVE.rt)DRIVE.needsAuth=true; return rej(new Error('geen geldig token')); }
+  // 2) interactief: popup-code-flow via de broker (levert het refresh-token op)
+  try{ await loadGsi(); }catch(e){ DRIVE.needsAuth=true; return rej(e); }
+  const go=(window.google&&window.google.accounts&&window.google.accounts.oauth2)||{};
+  if(typeof go.initCodeClient==='function'){
+    try{
+      go.initCodeClient({client_id:DRIVE_CLIENT_ID,scope:DRIVE_SCOPE,ux_mode:'popup',
+        callback:async(resp)=>{
+          if(!(resp&&resp.code)){DRIVE.needsAuth=true;return rej(new Error('geen toestemming'));}
+          try{
+            const d=await _driveBroker({code:resp.code});
+            if(d&&d.access_token){_driveSaveTok(d);return res(DRIVE.token);}
+            DRIVE.needsAuth=true;rej(new Error(d&&d.error_description||'koppelen mislukt'));
+          }catch(e){ _driveLegacyToken(true).then(res,rej); } // broker plat → oude uur-flow
+        },
+        error_callback:()=>{DRIVE.needsAuth=true;rej(new Error('geen toestemming'));}}).requestCode();
+      return;
+    }catch(e){}
+  }
+  _driveLegacyToken(interactive).then(res,rej);
+})().catch(rej);});}
 async function driveEnsureFolder(){
   if(DRIVE.folderId)return DRIVE.folderId;
   const q=encodeURIComponent("name='SyncJournal' and mimeType='application/vnd.google-apps.folder' and trashed=false");

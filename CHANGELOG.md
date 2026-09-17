@@ -10,6 +10,11 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 De journal is opnieuw opgebouwd als **SyncJournal** en draait nu online op [syncjournal.nl](https://syncjournal.nl). Versienummers zijn opnieuw gestart op v0.9.x (bèta); de oude TradeJournal-releases staan verderop in dit bestand. Je data overzetten kan via Instellingen → Data → Importeer oude backup.
 
+## [v0.9.91] — 2026-09-17
+
+### Gewijzigd
+- **Google Drive: één keer koppelen is genoeg** — na het (opnieuw) verbinden blijft de Drive-backup voortaan gewoon werken, ook na uren of dagen; de app verlengt de toegang stil op de achtergrond. Het "Opnieuw verbinden"-scherm verschijnt alleen nog als je de koppeling zelf intrekt bij Google. Je sleutels blijven zoals altijd uitsluitend in je eigen browser en komen nooit in backups terecht.
+
 ## [v0.9.90] — 2026-09-17
 
 ### Gewijzigd
