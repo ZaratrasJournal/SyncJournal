@@ -1615,7 +1615,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.86';
+const APP_VERSION='v0.9.87';
 const SCHEMA_VERSION=2;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -3172,7 +3172,9 @@ function pgInstellingen(){
       </div>`,
     updates:`<p class="setintro">Hou SyncJournal up-to-date. Bij een update blijft je lokale data altijd bewaard.</p>${updateSection()}`,
     data:`<p class="setintro">Back-up en beheer van je journal-data. Alles blijft lokaal in je browser.</p>
-      ${(()=>{const det=TJMigrate.detect();return det?`<div class="section-sub">🛟 Overzetten uit oude TradeJournal</div><div class="panel"><div class="setrow"><div class="txt"><b>${det.trades} trades gevonden in je oude app</b><small>Zet je data veilig over naar SyncJournal, er wordt eerst een veiligheidskopie gemaakt${DB.load('migrated_from_tj',null)?' · <span style="color:var(--green)">al eerder gemigreerd</span>':''}</small></div><button class="btn pri" onclick="migRun()">Overzetten</button></div></div>`:'';})()}
+      ${(()=>{const det=TJMigrate.detect();const done=DB.load('migrated_from_tj',null);
+        if(det)return `<div class="section-sub">🛟 Overzetten uit oude TradeJournal</div><div class="panel"><div class="setrow"><div class="txt"><b>${det.trades} trades gevonden in je oude app</b><small>Je krijgt eerst een overzicht ter controle, er wordt automatisch een veiligheidskopie gemaakt${done?' · <span style="color:var(--green)">al eerder gemigreerd</span>':''}</small></div><button class="btn pri" onclick="migRun()">Overzetten</button></div></div>`;
+        return `<div class="section-sub">🛟 Overzetten uit oude TradeJournal</div><div class="panel"><div class="setrow"><div class="txt"><b>Kom je van de oude TradeJournal?</b><small>Exporteer daar je backup (Instellingen → Exporteer JSON) en lees het bestand hier in. Je krijgt eerst een overzicht ter controle; trades, playbooks, tags én API-koppelingen gaan mee${done?' · <span style="color:var(--green)">al eerder gemigreerd</span>':''}</small></div><button class="btn pri" onclick="importJSON()">Importeer oude backup</button></div></div>`;})()}
       <div class="section-sub">🛡 Backups</div>
       <div class="panel">
         <div class="setrow"><div class="txt"><b>${bkStatusHtml()}</b></div><button class="btn pri" onclick="bkNow()">Backup nu</button></div>
@@ -4436,7 +4438,10 @@ const TJMigrate={
     const manual=[],conns={};
     (old.accounts||[]).forEach(a=>{ if(!a)return; const isManual=!a.type||a.type==='manual';
       if(isManual){ manual.push({id:a.id||('m'+Date.now()+Math.random().toString(36).slice(2,6)),name:a.label||a.name||'Account',transactions:(a.transactions||[]).map(tx=>({id:tx.id||('tx'+Math.random().toString(36).slice(2,8)),type:tx.type,amount:String(tx.amount),date:tx.date||'',note:tx.note||''}))}); }
-      else if(EXMAP[a.type]){ conns[a.type]={connected:true,autoSync:false,hint:(a.apiKey||'').slice(-4)}; if((a.transactions||[]).length)warnings.push('Kapitaal-mutaties van exchange-account "'+(a.label||a.type)+'" zijn niet overgezet (SyncJournal koppelt exchanges live).'); }
+      else if(EXMAP[a.type]&&EXMAP[a.type].deprecated){ warnings.push('Koppeling "'+(a.label||a.type)+'" is niet overgezet: '+EXMAP[a.type].deprecated+'. Je trades blijven gewoon behouden.'); }
+      else if(EXMAP[a.type]){ // API-sleutels gaan mee (fase 3, Denny 2026-09-17): direct door kunnen syncen
+        conns[a.type]={connected:true,autoSync:false,hint:String(a.apiKey||a.walletAddress||'').slice(-4),apiKey:a.apiKey||'',apiSecret:a.apiSecret||'',passphrase:a.passphrase||'',wallet:a.walletAddress||'',syncFrom:a.syncFrom||''};
+        if((a.transactions||[]).length)warnings.push('Kapitaal-mutaties van exchange-account "'+(a.label||a.type)+'" zijn niet overgezet (SyncJournal koppelt exchanges live).'); }
       else warnings.push('Exchange "'+a.type+'" wordt door SyncJournal nog niet ondersteund, de trades blijven behouden, de koppeling niet.');
     });
     const trades=(old.trades||[]).map((ot,i)=>{ const t={...migrateOldTrade(ot),id:i}; const src=ot.source;
@@ -4457,15 +4462,54 @@ const TJMigrate={
     if((T||[]).some(t=>t&&(t.pnl===undefined||isNaN(+t.pnl))))issues.push('Sommige trades hebben een ongeldige P&L.');
     if((T||[]).some(t=>!t||!t.date))issues.push('Sommige trades missen een datum.');
     return issues; },
-  async run(){ try{
-    const old=this.readOld(); const {payload,report,warnings}=this.map(old);
-    await Snapshots.create('vóór migratie');
-    applyBackup(payload);
-    const issues=this.verify(payload);
-    DB.save('migrated_from_tj',{when:new Date().toISOString(),trades:report.trades});
-    showMigrationReport(report,warnings,issues);
-  }catch(e){ ErrorCenter.report('migrate',e,{severity:'error',userMsg:'De migratie is mislukt. Je bestaande data is ongewijzigd, probeer opnieuw of importeer een JSON-back-up.',actions:[{label:'Details',fn:()=>ErrorCenter.diagnostics()}]}); } },
+  // Oud EXPORT-bestand (volledige backup: trades+tagConfig+accounts+config+playbooks,
+  // of een kale trades-export) → zelfde mapper als de zelfde-browser-route.
+  mapExport(d){
+    const obj=Array.isArray(d)?{trades:d}:(d||{});
+    let accounts=Array.isArray(obj.accounts)?obj.accounts:[];
+    if(!accounts.length&&obj.config&&obj.config.exchanges){ // pre-unified backups: keys leefden in config.exchanges
+      accounts=Object.entries(obj.config.exchanges).filter(([,c])=>c&&(c.apiKey||c.walletAddress)).map(([type,c])=>({id:'acc_'+type,type,label:c.label||'',apiKey:c.apiKey||'',apiSecret:c.apiSecret||'',passphrase:c.passphrase||'',walletAddress:c.walletAddress||'',syncFrom:c.syncFrom||'',transactions:[]}));
+    }
+    return this.map({trades:obj.trades||[],accounts,tags:obj.tagConfig||obj.tags||{},playbooks:obj.playbooks||[],config:obj.config||{},privacy:false});
+  },
 };
+/* Fase 3 (Denny 2026-09-17): eerst een controleerbaar overzicht, dán pas overzetten.
+   Zelfde scherm voor beide routes: zelfde-browser (tj_-data) én oud export-bestand. */
+let _migPre=null;
+function migPreview(pre,source){
+  _migPre={...pre,source};
+  const p=pre.payload,ts=p.trades;
+  const dates=ts.map(t=>t.date).filter(Boolean).sort();
+  const range=dates.length?fmtD(dates[0])+' – '+fmtD(dates[dates.length-1]):'geen datums';
+  const byEx={};ts.forEach(t=>{const k=t.exchange||'';byEx[k]=(byEx[k]||0)+1;});
+  const exName=k=>!k?'losse trades':(EXMAP[k]?EXMAP[k].name:((p.manual.find(m=>m.id===k)||{}).name||k));
+  const exLine=Object.entries(byEx).sort((a,b)=>b[1]-a[1]).map(([k,n])=>esc(exName(k))+' '+n).join(' · ');
+  const pbNames=Object.keys(p.pbook);
+  const connRows=Object.entries(p.conns).map(([id,c])=>`<div class="setrow"><div class="txt"><b>${esc(EXMAP[id].name)}</b><small>${(c.apiKey||c.wallet)?'API-koppeling gaat mee (eindigt op …'+esc(c.hint)+'), je kunt direct syncen':'zonder sleutels, opnieuw verbinden nodig'}</small></div></div>`).join('');
+  openModalHTML(`<div class="mhead"><h3>🛟 Controleer wat er wordt overgezet</h3><button class="xbtn" onclick="closeForm()">×</button></div>
+  <div class="mbody mbody-wiz">
+    <p class="setintro">${source==='file'?'Uit je back-upbestand van de oude TradeJournal.':'Uit je oude TradeJournal in deze browser (die blijft ongewijzigd).'} Overzetten <b>vervangt</b> je huidige SyncJournal-data; er wordt eerst automatisch een veiligheidskopie gemaakt zodat je altijd terug kunt.</p>
+    <div class="panel">
+      <div class="setrow"><div class="txt"><b>${ts.length} trades</b><small>${range}${exLine?' · '+exLine:''}</small></div></div>
+      <div class="setrow"><div class="txt"><b>${pbNames.length} playbook${pbNames.length===1?'':'s'}</b><small>${pbNames.length?esc(pbNames.slice(0,6).join(', '))+(pbNames.length>6?' …':''):'geen'}</small></div></div>
+      <div class="setrow"><div class="txt"><b>${p.manual.length} handmatig${p.manual.length===1?' account':'e accounts'}</b><small>${p.manual.length?esc(p.manual.map(m=>m.name).join(', ')):'geen'}</small></div></div>
+      <div class="setrow"><div class="txt"><b>${pre.report.tags} tags</b><small>setup-, confirmatie-, emotie- en fout-labels</small></div></div>
+    </div>
+    ${connRows?`<div class="section-sub">Exchange-koppelingen</div><div class="panel">${connRows}</div>`:''}
+    ${pre.warnings.length?`<div class="section-sub">Let op</div><div class="panel">${pre.warnings.map(w=>`<div class="setrow"><div class="txt" style="font-size:12.5px">⚠ ${esc(w)}</div></div>`).join('')}</div>`:''}
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px"><button class="btn" onclick="closeForm()">Annuleren</button><button class="btn pri" onclick="migApply()">Veilig overzetten</button></div>
+  </div>`);
+}
+async function migApply(){
+  const pre=_migPre;if(!pre)return;_migPre=null;closeForm();
+  try{
+    await Snapshots.create(pre.source==='file'?'vóór import oude backup':'vóór migratie');
+    applyBackup(pre.payload);
+    const issues=TJMigrate.verify(pre.payload);
+    DB.save('migrated_from_tj',{when:new Date().toISOString(),trades:pre.report.trades,source:pre.source});
+    showMigrationReport(pre.report,pre.warnings,issues);
+  }catch(e){ ErrorCenter.report('migrate',e,{severity:'error',userMsg:'De migratie is mislukt. Je bestaande data is ongewijzigd, probeer opnieuw of importeer een JSON-back-up.',actions:[{label:'Details',fn:()=>ErrorCenter.diagnostics()}]}); }
+}
 function openModalHTML(html){ const m=document.getElementById('modal'); m.innerHTML=html; m.classList.add('on'); document.getElementById('scrim').classList.add('on'); modalKind='wizard';formDirty=false; }
 function migOffer(){ const det=TJMigrate.detect(); if(!det)return; openModalHTML(`
   <div class="mhead"><h3>🛟 Je TradeJournal-data gevonden</h3><button class="xbtn" onclick="migLater()">×</button></div>
@@ -6150,7 +6194,7 @@ function runPartialDetect(exId){
 }
 
 
-async function migRun(){ closeForm(); await TJMigrate.run(); }
+function migRun(){ closeForm(); try{ migPreview(TJMigrate.map(TJMigrate.readOld()),'browser'); }catch(e){ ErrorCenter.report('migrate',e,{severity:'error',userMsg:'De oude data kon niet worden gelezen. Probeer een JSON-back-up te importeren.',actions:[{label:'Details',fn:()=>ErrorCenter.diagnostics()}]}); } }
 function showMigrationReport(report,warnings,issues){ const okAll=!issues.length; openModalHTML(`
   <div class="mhead"><h3>${okAll?'✓ Migratie afgerond':'⚠ Migratie afgerond met aandachtspunten'}</h3><button class="xbtn" onclick="migReportClose()">×</button></div>
   <div class="mbody mbody-wiz">
@@ -6167,11 +6211,11 @@ function importJSON(){ const inp=document.createElement('input');inp.type='file'
       const d=JSON.parse(rd.result);
       const arr=Array.isArray(d)?d:d.trades;
       if(!Array.isArray(arr)){toast('Geen trades gevonden in bestand','err');return;}
-      await Snapshots.create('vóór import');  // vangnet: huidige staat eerst veiligstellen
       const _old=looksOldExport(arr);
-      if(_old){ mergeOldTags(arr); T=arr.map((t,i)=>({...migrateOldTrade(t),id:i})); persist(); render(); }
-      else { applyBackup(d); }
-      toast('✓ '+T.length+' trades geïmporteerd'+(_old?' (uit oude app)':''),'ok');
+      if(_old){ migPreview(TJMigrate.mapExport(d),'file'); return; } // eerst controleren, dan pas overzetten (veiligheidskopie in migApply)
+      await Snapshots.create('vóór import');  // vangnet: huidige staat eerst veiligstellen
+      applyBackup(d);
+      toast('✓ '+T.length+' trades geïmporteerd','ok');
     }catch(err){ ErrorCenter.report('import',err,{severity:'error',userMsg:'Het bestand kon niet worden geïmporteerd, is het een geldige SyncJournal- of TradeJournal-back-up? Je bestaande data is ongewijzigd.',actions:[{label:'Details',fn:()=>ErrorCenter.diagnostics()}]}); }};
     rd.readAsText(f);};inp.click(); }
 function loadDemoData(){T=SEED.map(t=>{const o=+new Date(`${t.date}T${t.time||'12:00'}:00`);const c=(t.status!=='open'&&+t.durationMin)?o+t.durationMin*60000:0;return {...t,openTime:isFinite(o)?String(o):'',closeTime:c?String(c):''};});persist();render();}
