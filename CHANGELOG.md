@@ -10,6 +10,11 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 De journal is opnieuw opgebouwd als **SyncJournal** en draait nu online op [syncjournal.nl](https://syncjournal.nl). Versienummers zijn opnieuw gestart op v0.9.x (bèta); de oude TradeJournal-releases staan verderop in dit bestand. Je data overzetten kan via Instellingen → Data → Importeer oude backup.
 
+## [v0.9.89] — 2026-09-17
+
+### Gewijzigd
+- **P&L-percentages kloppen nu altijd** — het percentage naast elke trade wordt berekend met je échte accountgrootte op het moment van die trade (automatisch gereconstrueerd), in plaats van een vast voorbeeldbedrag. Wil je liever met een vast bedrag rekenen (bijv. een prop-account), stel dat in bij Instellingen → Accounts → P&L-percentage. Is je accountgrootte nog onbekend, dan tonen we géén percentage in plaats van een verzonnen getal.
+
 ## [v0.9.88] — 2026-09-17
 
 De lancerings-release: alles wat SyncJournal sinds de start heeft opgebouwd, in één overzicht.
