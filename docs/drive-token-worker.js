@@ -45,14 +45,12 @@ export default {
     try { body = await req.json(); } catch (e) { return new Response('bad json', { status: 400, headers: cors(origin) }); }
 
     // Twee smaken: { code } (eerste koppeling, popup-code-flow) of { refresh_token } (stille verlenging).
+    if (!body.code && !body.refresh_token) return new Response(JSON.stringify({ error: 'code of refresh_token vereist' }), { status: 400, headers: { 'content-type': 'application/json', ...cors(origin) } });
     const params = new URLSearchParams(
       body.code
         ? { code: body.code, client_id: env.GOOGLE_CLIENT_ID, client_secret: env.GOOGLE_CLIENT_SECRET, redirect_uri: 'postmessage', grant_type: 'authorization_code' }
-        : body.refresh_token
-          ? { refresh_token: body.refresh_token, client_id: env.GOOGLE_CLIENT_ID, client_secret: env.GOOGLE_CLIENT_SECRET, grant_type: 'refresh_token' }
-          : null
+        : { refresh_token: body.refresh_token, client_id: env.GOOGLE_CLIENT_ID, client_secret: env.GOOGLE_CLIENT_SECRET, grant_type: 'refresh_token' }
     );
-    if (![...params.keys()].length) return new Response('code of refresh_token vereist', { status: 400, headers: cors(origin) });
 
     const g = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
