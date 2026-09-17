@@ -21,6 +21,12 @@ const run = filter.length ? SPECS.filter(s => filter.some(f => s.includes(f))) :
 const env = { ...process.env, NODE_PATH: path.resolve(__dirname, '..', 'node_modules') };
 const results = []; const t0 = Date.now();
 
+// CI-preflight: één kale browser-start met zichtbare fout. Faalt dit, dan verklaart
+// deze ene regel waarom álle specs rood zijn (bv. browser-binary of systeemlib mist).
+console.log('Node', process.version, '· Playwright', (() => { try { return require('playwright/package.json').version; } catch (e) { return 'ONTBREEKT: ' + e.message; } })());
+const pre = spawnSync(process.execPath, ['-e', "const{chromium}=require('playwright');chromium.launch().then(b=>b.close()).then(()=>console.log('browser-start OK')).catch(e=>{console.log('BROWSER-START FAALT:',String(e).split('\\n').slice(0,8).join(' · '));process.exit(1)})"], { env, encoding: 'utf8', timeout: 120000 });
+console.log(((pre.stdout || '') + (pre.stderr || '')).trim().split('\n').slice(0, 8).join(' · ') || 'preflight: geen output');
+
 const runSpec = (s) => {
   const r = spawnSync(process.execPath, [path.join(__dirname, s + '.spec.js')], { env, encoding: 'utf8', timeout: 300000 });
   const out = (r.stdout || '') + (r.stderr || '');
@@ -34,7 +40,11 @@ for (const s of run) {
   if (!r.ok) { const r2 = runSpec(s); if (r2.ok) { flaky = true; r = r2; } }
   results.push({ s, okAll: r.ok, sum: r.sum, ms: Date.now() - st });
   console.log(`${r.ok ? (flaky ? '⚠️' : '✅') : '❌'} ${s.padEnd(22)} ${r.sum}${flaky ? '  (flaky: 2e poging groen)' : ''}  (${((Date.now() - st) / 1000).toFixed(1)}s)`);
-  if (!r.ok) console.log(r.out.split('\n').filter(l => l.includes('✗')).map(l => '   ' + l.trim()).join('\n'));
+  if (!r.ok) {
+    const cross = r.out.split('\n').filter(l => l.includes('✗'));
+    // geen ✗-regels = de spec crashte vóór de eerste check → toon de echte fout (CI-diagnose)
+    console.log((cross.length ? cross : r.out.split('\n').filter(l => l.trim()).slice(-14)).map(l => '   ' + l.trim()).join('\n'));
+  }
 }
 
 const failed = results.filter(r => !r.okAll);
