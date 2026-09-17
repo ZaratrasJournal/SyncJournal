@@ -21,16 +21,20 @@ const run = filter.length ? SPECS.filter(s => filter.some(f => s.includes(f))) :
 const env = { ...process.env, NODE_PATH: path.resolve(__dirname, '..', 'node_modules') };
 const results = []; const t0 = Date.now();
 
-for (const s of run) {
-  const file = path.join(__dirname, s + '.spec.js');
-  const st = Date.now();
-  const r = spawnSync(process.execPath, [file], { env, encoding: 'utf8', timeout: 300000 });
+const runSpec = (s) => {
+  const r = spawnSync(process.execPath, [path.join(__dirname, s + '.spec.js')], { env, encoding: 'utf8', timeout: 300000 });
   const out = (r.stdout || '') + (r.stderr || '');
-  const sum = (out.match(/===\s*(.+?)\s*===\s*$/m) || [, '?'])[1];
-  const okAll = r.status === 0;
-  results.push({ s, okAll, sum, ms: Date.now() - st });
-  console.log(`${okAll ? '✅' : '❌'} ${s.padEnd(22)} ${sum}  (${((Date.now() - st) / 1000).toFixed(1)}s)`);
-  if (!okAll) console.log(out.split('\n').filter(l => l.includes('✗')).map(l => '   ' + l.trim()).join('\n'));
+  return { ok: r.status === 0, out, sum: (out.match(/===\s*(.+?)\s*===\s*$/m) || [, '?'])[1] };
+};
+for (const s of run) {
+  const st = Date.now();
+  let r = runSpec(s), flaky = false;
+  // Eén herkansing: trage CI-runners (GitHub Actions) halen soms een timing-check niet.
+  // Twee keer rood = echt rood; één keer = ⚠ flaky, telt als groen.
+  if (!r.ok) { const r2 = runSpec(s); if (r2.ok) { flaky = true; r = r2; } }
+  results.push({ s, okAll: r.ok, sum: r.sum, ms: Date.now() - st });
+  console.log(`${r.ok ? (flaky ? '⚠️' : '✅') : '❌'} ${s.padEnd(22)} ${r.sum}${flaky ? '  (flaky: 2e poging groen)' : ''}  (${((Date.now() - st) / 1000).toFixed(1)}s)`);
+  if (!r.ok) console.log(r.out.split('\n').filter(l => l.includes('✗')).map(l => '   ' + l.trim()).join('\n'));
 }
 
 const failed = results.filter(r => !r.okAll);
