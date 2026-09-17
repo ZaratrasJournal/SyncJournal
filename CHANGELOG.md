@@ -6,6 +6,35 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+# SyncJournal (v0.9.x)
+
+De journal is opnieuw opgebouwd als **SyncJournal** en draait nu online op [syncjournal.nl](https://syncjournal.nl). Versienummers zijn opnieuw gestart op v0.9.x (bèta); de oude TradeJournal-releases staan verderop in dit bestand. Je data overzetten kan via Instellingen → Data → Importeer oude backup.
+
+## [v0.9.88] — 2026-09-17
+
+De lancerings-release: alles wat SyncJournal sinds de start heeft opgebouwd, in één overzicht.
+
+### Toegevoegd
+- **Online op syncjournal.nl** — geen download meer nodig; de app meldt zelf wanneer er een update is (Instellingen → Updates). Al je data blijft gewoon in je eigen browser staan.
+- **Overzetten uit de oude TradeJournal** — importeer je oude backup en krijg eérst een controle-overzicht (trades met netto-bedrag, playbooks, accounts, tags). Alles gaat mee: trades met timestamps, screenshots, TradingView-links, playbooks én je API-koppelingen. Er wordt altijd eerst een veiligheidskopie gemaakt.
+- **Weergave-presets** — kies Rustig, Standaard of Alles; elk onderdeel is ook los aan of uit te zetten via Instellingen → Weergave.
+- **Backup-systeem** — automatische backups naar een map op je computer of naar je eigen Google Drive, met een duidelijke waarschuwing zodra je laatste backup te oud is en een status-schildje in de balk.
+- **Voorbeelddata** — knop "Rondkijken met voorbeelddata" vult de app met 3000 voorbeeld-trades zodat je alles direct kunt verkennen; je eigen instellingen blijven staan.
+- **Fouten-filter en fout-analyse** — filter en zoek op fouten (zoals Overtrading), en de fout-analyse in Analytics is een klikbaar radar-profiel geworden: klik op een fout en je ziet precies die trades.
+- **Playbook in het trade-formulier** — een playbook kiezen neemt nu ook de setup-lagen met tags over in je trade; eigen lagen worden nooit stilletjes overschreven.
+- **Saldo van je exchange** — na het koppelen of testen van een exchange staat je echte saldo direct (en blijvend) in het dashboard, en het ververst mee met elke sync. Verbinden start meteen de eerste sync.
+
+### Gewijzigd
+- **Alleen relevante accounts zichtbaar** — exchanges zonder koppeling, saldo of trades verschijnen niet meer in filters, dashboard of het trade-formulier.
+- **Account verwijderen** — je kiest nu zelf wat er met de gekoppelde trades gebeurt: mee naar de prullenbak (30 dagen terug te halen) of behouden als losse trades.
+- **Leverage** — heet nu overal leverage in plaats van hefboom.
+- **Per pair top 6** — selecteert op grootste netto-impact, zodat je zwaarste verliezer er nooit meer uit valt.
+
+### Fixed
+- Verse journals starten écht leeg: € 0 balans, geen demo-playbooks (bestaande demo-restanten worden automatisch opgeruimd) en geen demo-teksten meer.
+- Alle emoties en fouten per trade tellen overal mee (zoeken, tendencies, AI-coach, checklist) in plaats van alleen de eerste.
+- Grafieken laten geen as-labels meer vallen; de Drive-koppeling blijft verbonden na een refresh.
+
 ## [v12.239] — 2026-06-30
 
 ### Toegevoegd
