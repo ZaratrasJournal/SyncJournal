@@ -1615,7 +1615,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.87';
+const APP_VERSION='v0.9.88';
 const SCHEMA_VERSION=2;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -4420,6 +4420,10 @@ function migrateOldTrade(ot){
     tags:[...new Set([...(ot.customTags||[]),...(ot.confirmationTags||[]),...(ot.tags||[])])],
     layers,tps:(ot.tpLevels||ot.tps||[]).map(x=>({price:+x.price||0,pct:+x.pct||0,r:x.r||'',hit:!!x.hit})),
     notes:ot.notes||'',lessons:ot.entryNote||ot.lessons||'',durationMin:+ot.durationMin||0,mae:+ot.mae||0,mfe:+ot.mfe||0,
+    // fase-3-audit (2026-09-17): deze velden gingen eerst verloren bij migratie —
+    // timestamps (duur + canoniek open-moment), TV-links en de asset-hoeveelheid.
+    openTime:String(ot.openTime||''),closeTime:String(ot.closeTime||''),
+    tvLinks:[...(ot.links||ot.tvLinks||[])],qtyAsset:parseFloat(ot.positionSizeAsset)||0,
     screenshots:[...scr],rating:ot.rating||0,checks:[]};
 }
 function looksOldExport(arr){return arr.length>0 && !('dir' in arr[0]) && (('direction' in arr[0])||('stopLoss' in arr[0])||('setupTags' in arr[0])||('simType' in arr[0]));}
@@ -4435,32 +4439,52 @@ const TJMigrate={
   readOld(){ return {trades:this._get('tj_trades',[]),accounts:this._get('tj_accounts',[]),tags:this._get('tj_tags',{}),playbooks:this._get('tj_playbooks',[]),config:this._get('tj_config',{}),privacy:localStorage.getItem('tj_privacy_mode')==='1'}; },
   map(old){
     const warnings=[]; const acctById={}; (old.accounts||[]).forEach(a=>{if(a&&a.id)acctById[a.id]=a;});
-    const manual=[],conns={};
+    const manual=[],conns={},exMeta={};
     (old.accounts||[]).forEach(a=>{ if(!a)return; const isManual=!a.type||a.type==='manual';
       if(isManual){ manual.push({id:a.id||('m'+Date.now()+Math.random().toString(36).slice(2,6)),name:a.label||a.name||'Account',transactions:(a.transactions||[]).map(tx=>({id:tx.id||('tx'+Math.random().toString(36).slice(2,8)),type:tx.type,amount:String(tx.amount),date:tx.date||'',note:tx.note||''}))}); }
       else if(EXMAP[a.type]&&EXMAP[a.type].deprecated){ warnings.push('Koppeling "'+(a.label||a.type)+'" is niet overgezet: '+EXMAP[a.type].deprecated+'. Je trades blijven gewoon behouden.'); }
       else if(EXMAP[a.type]){ // API-sleutels gaan mee (fase 3, Denny 2026-09-17): direct door kunnen syncen
         conns[a.type]={connected:true,autoSync:false,hint:String(a.apiKey||a.walletAddress||'').slice(-4),apiKey:a.apiKey||'',apiSecret:a.apiSecret||'',passphrase:a.passphrase||'',wallet:a.walletAddress||'',syncFrom:a.syncFrom||''};
+        if(a.label)exMeta[a.type]={acct:a.label}; // accountnaam mee (saldo volgt bij de eerste sync)
         if((a.transactions||[]).length)warnings.push('Kapitaal-mutaties van exchange-account "'+(a.label||a.type)+'" zijn niet overgezet (SyncJournal koppelt exchanges live).'); }
       else warnings.push('Exchange "'+a.type+'" wordt door SyncJournal nog niet ondersteund, de trades blijven behouden, de koppeling niet.');
     });
+    const pbById={};(old.playbooks||[]).forEach(pb=>{if(pb&&pb.id&&pb.name)pbById[pb.id]=pb.name;});
+    let compl=0;
     const trades=(old.trades||[]).map((ot,i)=>{ const t={...migrateOldTrade(ot),id:i}; const src=ot.source;
       if(src&&src!=='manual'){ const a=acctById[src];
         if(a)t.exchange=(!a.type||a.type==='manual')?a.id:(EXMAP[a.type]?a.type:'');
         else if(EXMAP[src])t.exchange=src; else if(OLD_EXMAP[src])t.exchange=OLD_EXMAP[src]; else t.exchange='';
-      } else t.exchange=''; return t; });
+      } else t.exchange='';
+      // fase-3-audit: bron-id mee voor exchange-trades — zonder dit zou de eerste sync ná
+      // migratie (keys gaan immers mee) dezelfde trades opnieuw binnenhalen (duplicaten)
+      if(EXMAP[t.exchange]&&ot.id){t.srcId=String(ot.id);t.positionId=String(ot.positionId||'');}
+      // canoniek: het open-moment bepaalt datum/tijd/sessie (besluit 2026-09-14)
+      if(+t.openTime){t.date=ts2date(+t.openTime);t.time=ts2time(+t.openTime);t.session=sessionFromTime(t.time);}
+      if(!t.setup&&ot.playbookId&&pbById[ot.playbookId])t.setup=pbById[ot.playbookId];
+      if((ot.complianceChecks||[]).length)compl++;
+      return t; });
+    if(compl)warnings.push('Playbook-compliance-afvinklijstjes ('+compl+' trades) kent SyncJournal niet; die vinkjes zijn niet overgezet, de trades zelf wel.');
     const tagConfigOut=JSON.parse(JSON.stringify(tagConfig));
     ['setupTags','confirmationTags','timeframeTags','emotionTags','mistakeTags','missedReasonTags'].forEach(cat=>{ const cur=new Set(tagConfigOut[cat]||[]); ((old.tags&&old.tags[cat])||[]).forEach(v=>v&&cur.add(v)); tagConfigOut[cat]=[...cur]; });
     const pbook={}; (old.playbooks||[]).forEach(pb=>{ if(pb&&pb.name)pbook[pb.name]=pbNormalize(pb.name,pb); });
     const theme=TJ_THEME[(old.config||{}).theme]||'light';
     const settings={theme,currency:'USD',priv:!!old.privacy,density:STATE.density};
-    const report={trades:trades.length,playbooks:Object.keys(pbook).length,manual:manual.length,conns:Object.keys(conns).length,tags:['setupTags','confirmationTags','timeframeTags','emotionTags','mistakeTags'].reduce((s,c)=>s+(((old.tags&&old.tags[c])||[]).length),0)};
-    return {payload:{trades,tagConfig:tagConfigOut,pbook,manual,conns,settings},report,warnings};
+    const report={trades:trades.length,playbooks:Object.keys(pbook).length,manual:manual.length,conns:Object.keys(conns).length,tags:['setupTags','confirmationTags','timeframeTags','emotionTags','mistakeTags'].reduce((s,c)=>s+(((old.tags&&old.tags[c])||[]).length),0),pnl:trades.reduce((s,t)=>s+(+t.pnl||0),0)};
+    return {payload:{trades,tagConfig:tagConfigOut,pbook,manual,conns,exMeta,settings},report,warnings,old};
   },
-  verify(payload){ const issues=[];
+  // Integriteit ná het overzetten: aantallen, geldige velden, én de totale P&L moet
+  // op de cent kloppen met de oude data (fase-3-audit, Denny 2026-09-17).
+  verify(payload,old){ const issues=[];
     if(!Array.isArray(T)||T.length!==payload.trades.length)issues.push('Aantal trades komt niet overeen na overzetten.');
     if((T||[]).some(t=>t&&(t.pnl===undefined||isNaN(+t.pnl))))issues.push('Sommige trades hebben een ongeldige P&L.');
     if((T||[]).some(t=>!t||!t.date))issues.push('Sommige trades missen een datum.');
+    if(old&&Array.isArray(old.trades)){
+      const sumOld=old.trades.reduce((s,t)=>s+(+t.pnl||0),0),sumNew=(T||[]).reduce((s,t)=>s+(+t.pnl||0),0);
+      if(Math.abs(sumOld-sumNew)>0.01)issues.push('Totale P&L wijkt af: oud '+eurS(sumOld)+' vs overgezet '+eurS(sumNew)+'.');
+      const clOld=old.trades.filter(t=>(t.status||'closed')==='closed').length,clNew=(T||[]).filter(t=>t.status==='closed').length;
+      if(clOld!==clNew)issues.push('Aantal gesloten trades wijkt af ('+clOld+' → '+clNew+').');
+    }
     return issues; },
   // Oud EXPORT-bestand (volledige backup: trades+tagConfig+accounts+config+playbooks,
   // of een kale trades-export) → zelfde mapper als de zelfde-browser-route.
@@ -4490,7 +4514,7 @@ function migPreview(pre,source){
   <div class="mbody mbody-wiz">
     <p class="setintro">${source==='file'?'Uit je back-upbestand van de oude TradeJournal.':'Uit je oude TradeJournal in deze browser (die blijft ongewijzigd).'} Overzetten <b>vervangt</b> je huidige SyncJournal-data; er wordt eerst automatisch een veiligheidskopie gemaakt zodat je altijd terug kunt.</p>
     <div class="panel">
-      <div class="setrow"><div class="txt"><b>${ts.length} trades</b><small>${range}${exLine?' · '+exLine:''}</small></div></div>
+      <div class="setrow"><div class="txt"><b>${ts.length} trades · netto <span class="num ${cls(pre.report.pnl)}">${eurS(pre.report.pnl)}</span></b><small>${range}${exLine?' · '+exLine:''} — controleer dit bedrag met je oude app</small></div></div>
       <div class="setrow"><div class="txt"><b>${pbNames.length} playbook${pbNames.length===1?'':'s'}</b><small>${pbNames.length?esc(pbNames.slice(0,6).join(', '))+(pbNames.length>6?' …':''):'geen'}</small></div></div>
       <div class="setrow"><div class="txt"><b>${p.manual.length} handmatig${p.manual.length===1?' account':'e accounts'}</b><small>${p.manual.length?esc(p.manual.map(m=>m.name).join(', ')):'geen'}</small></div></div>
       <div class="setrow"><div class="txt"><b>${pre.report.tags} tags</b><small>setup-, confirmatie-, emotie- en fout-labels</small></div></div>
@@ -4505,7 +4529,7 @@ async function migApply(){
   try{
     await Snapshots.create(pre.source==='file'?'vóór import oude backup':'vóór migratie');
     applyBackup(pre.payload);
-    const issues=TJMigrate.verify(pre.payload);
+    const issues=TJMigrate.verify(pre.payload,pre.old);
     DB.save('migrated_from_tj',{when:new Date().toISOString(),trades:pre.report.trades,source:pre.source});
     showMigrationReport(pre.report,pre.warnings,issues);
   }catch(e){ ErrorCenter.report('migrate',e,{severity:'error',userMsg:'De migratie is mislukt. Je bestaande data is ongewijzigd, probeer opnieuw of importeer een JSON-back-up.',actions:[{label:'Details',fn:()=>ErrorCenter.diagnostics()}]}); }
@@ -6198,7 +6222,7 @@ function migRun(){ closeForm(); try{ migPreview(TJMigrate.map(TJMigrate.readOld(
 function showMigrationReport(report,warnings,issues){ const okAll=!issues.length; openModalHTML(`
   <div class="mhead"><h3>${okAll?'✓ Migratie afgerond':'⚠ Migratie afgerond met aandachtspunten'}</h3><button class="xbtn" onclick="migReportClose()">×</button></div>
   <div class="mbody mbody-wiz">
-    <div class="panel"><div class="setrow"><div class="txt"><b>Overgezet</b><small>${report.trades} trades · ${report.playbooks} playbooks · ${report.manual} handmatige accounts · ${report.conns} exchange-koppelingen · ${report.tags} tags</small></div></div></div>
+    <div class="panel"><div class="setrow"><div class="txt"><b>Overgezet</b><small>${report.trades} trades (netto <span class="num ${cls(report.pnl||0)}">${eurS(report.pnl||0)}</span>) · ${report.playbooks} playbooks · ${report.manual} handmatige accounts · ${report.conns} exchange-koppelingen · ${report.tags} tags</small></div></div></div>
     ${warnings.length?`<div class="section-sub">Aandachtspunten</div><div class="panel">${warnings.map(w=>`<div class="setrow"><div class="txt" style="font-size:12.5px">⚠ ${esc(w)}</div></div>`).join('')}</div>`:''}
     ${issues.length?`<div class="section-sub" style="color:var(--red)">Integriteit</div><div class="panel">${issues.map(w=>`<div class="setrow"><div class="txt" style="font-size:12.5px;color:var(--red)">⛔ ${esc(w)}</div></div>`).join('')}<div class="setrow"><div class="txt"><b>Klopt er iets niet?</b><small>Zet je vorige staat in één klik terug</small></div><button class="btn danger" onclick="migRestorePre()">Herstel vorige staat</button></div></div>`:`<p class="hint" style="padding:6px 2px">Alles gecontroleerd, je kunt aan de slag. Een veiligheidskopie van je vorige staat staat in Instellingen → Data.</p>`}
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px"><button class="btn pri" onclick="migReportClose()">Klaar</button></div>
@@ -6487,6 +6511,7 @@ function openForm(id){
 function closeForm(){
   if((modalKind==='trade'||modalKind==='pb')&&formDirty){ if(!confirm('Je hebt niet-opgeslagen wijzigingen. Sluiten zonder opslaan?'))return; }
   formDirty=false;modalKind='';
+  try{_migPre=null;}catch(e){} // geannuleerde migratie-preview mag nooit alsnog toegepast kunnen worden (migApply pakt zijn kopie vóór het sluiten)
   if(document.activeElement&&document.activeElement.closest&&document.activeElement.closest('#modal'))document.activeElement.blur();document.getElementById('modal').classList.remove('on');document.getElementById('scrim').classList.remove('on'); }
 function submitForm(id){
   const g=x=>{const el=document.getElementById('f_'+x);return el?el.value:'';};

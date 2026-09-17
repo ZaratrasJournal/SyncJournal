@@ -82,6 +82,49 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
   ok('pre-unified backup (keys in config.exchanges) → koppeling gevonden', await p.evaluate(() => { const pre = TJMigrate.mapExport({ trades: [], config: { exchanges: { blofin: { apiKey: 'ZZKEY999', apiSecret: 's' } } } }); return (pre.payload.conns.blofin || {}).apiKey === 'ZZKEY999'; }));
   ok('Data-pagina toont de importeer-optie ook zonder oude data in de browser', await p.evaluate(() => { go('instellingen'); setSetTab('data'); return /Kom je van de oude TradeJournal/.test(document.getElementById('main').textContent); }));
 
+  console.log('─── Round-trip met ECHTE oude-app-data (blofin-fixture, 16 trades) ───');
+  const fs = require('fs');
+  const fix = JSON.parse(fs.readFileSync(path.resolve('tests', 'fixtures', 'blofin-partial-state.json'), 'utf8'));
+  const rt = await p.evaluate(async (fx) => {
+    closeForm(); localStorage.clear(); try { await IDB.clearAll(); } catch (e) {}
+    T = []; TRASH = []; MANUAL.length = 0; Object.keys(CONNS).forEach(k => delete CONNS[k]); PBOOK = {};
+    const oldSum = fx.trades.reduce((s, t) => s + (+t.pnl || 0), 0);
+    const pre = TJMigrate.mapExport({ version: 12, trades: fx.trades, accounts: [{ id: 'a1', type: 'blofin', label: 'Blofin Main', apiKey: 'BKEY1234', apiSecret: 's', passphrase: 'p', transactions: [] }], playbooks: fx.playbooks || [], config: fx.config || {} });
+    migPreview(pre, 'file');
+    const prevTxt = document.getElementById('modal').textContent;
+    [...document.querySelectorAll('#modal button')].find(x => /Veilig overzetten/.test(x.textContent)).click();
+    await new Promise(r => setTimeout(r, 500));
+    const newSum = T.reduce((s, t) => s + (+t.pnl || 0), 0);
+    const withSrc = T.filter(t => t.srcId).length, withOpen = T.filter(t => +t.openTime > 0).length;
+    const closed = T.filter(t => t.status === 'closed'), open = T.filter(t => t.status !== 'closed');
+    const sample = T.find(t => t.srcId && t.status === 'closed');
+    const reportTxt = document.getElementById('modal').textContent;
+    return { n: T.length, oldSum: +oldSum.toFixed(2), newSum: +newSum.toFixed(2), withSrc, withOpen, closed: closed.length, open: open.length,
+      issues: /Integriteit/.test(reportTxt), reportNet: /netto/.test(reportTxt), prevNet: /netto/.test(prevTxt),
+      acctName: EXMAP.blofin.acct, key: (CONNS.blofin || {}).apiKey,
+      sampleDur: sample ? tradeDurationMin(sample) : null, sampleEx: sample ? sample.exchange : null };
+  }, fix);
+  ok('alle 16 trades over, open én gesloten', rt.n === 16 && rt.open > 0 && rt.closed > 0, JSON.stringify(rt));
+  ok('totale P&L op de cent gelijk (' + rt.oldSum + ')', rt.oldSum === rt.newSum && !rt.issues, JSON.stringify({ o: rt.oldSum, n: rt.newSum }));
+  ok('netto-bedrag zichtbaar in overzicht én rapport (zelf verifieerbaar)', rt.prevNet && rt.reportNet);
+  ok('bron-ids en timestamps overgenomen (duur berekenbaar)', rt.withSrc === 16 && rt.withOpen === 16 && rt.sampleDur > 0, JSON.stringify({ src: rt.withSrc, open: rt.withOpen, dur: rt.sampleDur }));
+  ok('accountnaam uit oude app + key aangekomen', rt.acctName === 'Blofin Main' && rt.key === 'BKEY1234');
+
+  console.log('─── Geen duplicaten bij sync ná migratie ───');
+  ok('zelfde trades opnieuw via sync-brug → 0 nieuw (srcId-dedupe)', await p.evaluate((fx) => { closeForm(); const before = T.length; const mapped = importTjClosed(fx.trades); return mapped.length === 0 && T.length === before; }, fix));
+
+  console.log('─── Vangnetten ───');
+  ok('integriteits-check slaat aan bij gemanipuleerde P&L', await p.evaluate((fx) => { const hold = T[0].pnl; T[0].pnl = (+T[0].pnl || 0) + 500; const iss = TJMigrate.verify({ trades: T }, { trades: fx.trades }); T[0].pnl = hold; return iss.some(x => /P&L wijkt af/.test(x)); }, fix));
+  ok('veiligheidskopie kan de vorige staat écht terugzetten', await p.evaluate(async () => {
+    const preTrades = T.length;
+    const snap = SNAP_META.find(s => s.label === 'vóór import oude backup');
+    if (!snap) return false;
+    await Snapshots.restore(snap.id);
+    const restored = T.length === 0; // vóór deze import was de journal leeg
+    return restored && preTrades === 16;
+  }));
+  ok('afgebroken preview laat geen migratie-staat achter', await p.evaluate(() => { migPreview(TJMigrate.mapExport({ trades: [{ id: 'x', date: '2026-01-01', direction: 'long', status: 'closed', pnl: '1', setupTags: [] }] }), 'file'); closeForm(); return window._migPre === null || _migPre === null; }));
+
   ok('geen JS-errors totaal', errs.length === 0, errs.slice(0, 3).join(' | '));
   console.log(`\n=== TJ-migratie (fase 3): ${pass}/${pass + fail} ===`);
   await b.close();
