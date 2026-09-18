@@ -10,6 +10,12 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 De journal is opnieuw opgebouwd als **SyncJournal** en draait nu online op [syncjournal.nl](https://syncjournal.nl). Versienummers zijn opnieuw gestart op v0.9.x (bèta); de oude TradeJournal-releases staan verderop in dit bestand. Je data overzetten kan via Instellingen → Data → Importeer oude backup.
 
+## [v0.9.93] — 2026-09-18
+
+### Gewijzigd
+- **€/%/R-pillen staan nu bóven "Totale balans"** — compacter, links uitgelijnd met het bedrag, en de actieve keuze is duidelijk gemarkeerd (was in het lichte thema nauwelijks te zien). De eerste pil volgt je valuta-instelling: $ of €.
+- **Balans-blok stapelt netjes op telefoonbreedte** — balans boven, accounts eronder; de regel "Gerealiseerd deze maand …" liep daar eerst door de accountlijst heen.
+
 ## [v0.9.92] — 2026-09-18
 
 ### Toegevoegd

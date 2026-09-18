@@ -32,6 +32,24 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
   const v0 = await p.evaluate(() => { const h = document.querySelector('#main .hero'); return { seg: !!h.querySelector('.unitseg'), on: h.querySelector('.unitseg button.on').textContent, big: h.querySelector('.big').textContent, meta: h.querySelector('.meta').textContent }; });
   ok('seg staat in de hero, € actief, balans en maand in valuta', v0.seg && v0.on === '€' && /1\.050/.test(v0.big) && /\+€ 250/.test(v0.meta), JSON.stringify(v0));
 
+  console.log('─── Valuta-pil volgt de valuta-instelling ───');
+  const cur = await p.evaluate(() => {
+    const lbl = () => document.querySelector('#main .hero .unitseg button').textContent;
+    setCurrency('USD'); render(); const usd = lbl();
+    setCurrency('EUR'); render(); const eurL = lbl();
+    return { usd, eurL };
+  });
+  ok('pil toont $ bij dollar-instelling en € bij euro', cur.usd === '$' && cur.eurL === '€', JSON.stringify(cur));
+  ok('pillen staan bóven "Totale balans" (leesorde eenheid → label → bedrag)', await p.evaluate(() => {
+    const col = document.querySelector('#main .hero > div');
+    const kids = [...col.children].map(c => c.className);
+    return kids[0].includes('unitseg') && kids[1].includes('eyebrow');
+  }));
+  ok('pil-balk blijft compact (geen volle kolombreedte)', await p.evaluate(() => {
+    const seg = document.querySelector('#main .hero .unitseg'), col = document.querySelector('#main .hero > div');
+    return seg.getBoundingClientRect().width < col.getBoundingClientRect().width * 0.5;
+  }));
+
   console.log('─── %-stand: nooit percentages optellen ───');
   await p.evaluate(() => setUnit('pct')); await p.waitForTimeout(700); // Recharts mount async
   const v1 = await p.evaluate(() => { const h = document.querySelector('#main .hero'); const kpis = document.querySelector('.kpis').textContent; return { meta: h.querySelector('.meta').textContent, big: h.querySelector('.big').textContent, kpis, bar: [...document.querySelectorAll('#main .panel')].find(x => /Maand-P&L/.test(x.textContent)).textContent }; });
