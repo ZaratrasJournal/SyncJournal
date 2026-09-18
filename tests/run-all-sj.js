@@ -38,8 +38,9 @@ for (const s of run) {
   // Eén herkansing: trage CI-runners (GitHub Actions) halen soms een timing-check niet.
   // Twee keer rood = echt rood; één keer = ⚠ flaky, telt als groen.
   if (!r.ok) { const r2 = runSpec(s); if (r2.ok) { flaky = true; r = r2; } }
+  const skipped = r.ok && /overgeslagen/i.test(r.sum);
   results.push({ s, okAll: r.ok, sum: r.sum, ms: Date.now() - st });
-  console.log(`${r.ok ? (flaky ? '⚠️' : '✅') : '❌'} ${s.padEnd(22)} ${r.sum}${flaky ? '  (flaky: 2e poging groen)' : ''}  (${((Date.now() - st) / 1000).toFixed(1)}s)`);
+  console.log(`${r.ok ? (skipped ? '⏭️' : flaky ? '⚠️' : '✅') : '❌'} ${s.padEnd(22)} ${r.sum}${flaky ? '  (flaky: 2e poging groen)' : ''}  (${((Date.now() - st) / 1000).toFixed(1)}s)`);
   if (!r.ok) {
     const cross = r.out.split('\n').filter(l => l.includes('✗'));
     // geen ✗-regels = de spec crashte vóór de eerste check → toon de echte fout (CI-diagnose)

@@ -11,6 +11,13 @@ const FIX = {
 (async () => {
   const texts = {};
   for (const [k, f] of Object.entries(FIX)) { if (fs.existsSync(f)) texts[k] = fs.readFileSync(f, 'utf8'); else console.log('SKIP: ' + f + ' ontbreekt'); }
+  // tests/_fixtures/ bevat échte exchange-exports en staat daarom in .gitignore: op een
+  // schone kloon (GitHub Actions) bestaan ze niet. Dan netjes overslaan i.p.v. crashen —
+  // lokaal, waar de bestanden staan, draait de spec onverkort.
+  if (!Object.keys(texts).length) {
+    console.log('\n=== CSV-import: overgeslagen, geen export-fixtures in deze kloon ===');
+    process.exit(0);
+  }
   const url = 'file:///' + path.resolve('work/syncjournal.html').replace(/\\/g, '/');
   const b = await chromium.launch(); const p = await b.newPage(); p.on('dialog', d => d.accept());
   const errs = []; p.on('pageerror', e => errs.push(String(e)));
