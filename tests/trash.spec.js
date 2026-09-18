@@ -66,6 +66,30 @@ const mk = (id) => ({ id, date: '2026-09-0' + (1 + (id % 8)), time: '10:1' + (id
   await p.waitForTimeout(500);
   ok('analytics rekent zonder prullenbak-trades', await p.evaluate(() => { const tile = [...document.querySelectorAll('#main *')].map(x => x.textContent); return !!tile; }) && await p.evaluate(() => TRASH.length === 1));
 
+  console.log('─── Groot volume: scrollvak, paginering en bulk-acties (Denny 2026-09-18) ───');
+  const big = await p.evaluate(async () => {
+    // 2000 verwijderde trades, zoals in Denny's journal
+    TRASH = Array.from({ length: 2000 }, (_, i) => ({ id: 10000 + i, date: '2026-08-' + String(1 + (i % 28)).padStart(2, '0'), time: '10:00', pair: ['BTC/USDT', 'ETH/USDT', 'LINK/USDT'][i % 3], dir: i % 2 ? 'short' : 'long', setup: 'Reclaim', status: 'closed', kind: 'live', exchange: '', entry: 100, exit: 110, stop: 95, size: '1000', pnl: 10, r: 1.3, deletedAt: Date.now() - 864e5, tps: [], tags: [], layers: [], emotions: [], mistakes: [], checks: [], screenshots: [], tvLinks: [] }));
+    persistTrash(); trSel = new Set(); trPage = 0;
+    go('instellingen'); setSetTab('data');
+    await new Promise(r => setTimeout(r, 300));
+    const box = document.querySelector('.trashbox');
+    const rows = box ? box.querySelectorAll('.setrow').length : 0;
+    const main = document.getElementById('main');
+    return { box: !!box, rows, boxH: box ? box.getBoundingClientRect().height : 0, pageH: main.scrollHeight, pager: /pagina 1\/40/.test(main.textContent) };
+  });
+  ok('lijst zit in een scrollvak i.p.v. 2000 rijen op de pagina', big.box && big.rows === 50 && big.boxH <= 480, JSON.stringify(big));
+  ok('paginering: 50 per pagina, 40 pagina\'s', big.pager, String(big.pager));
+  ok('pagina blijft kort (geen eindeloze scroll)', big.pageH < 4000, String(big.pageH));
+  ok('volgende pagina toont de volgende 50', await p.evaluate(() => { trashPageGo(1); const t = document.getElementById('main').textContent; return /51–100/.test(t) && /pagina 2\/40/.test(t); }));
+  ok('selecteer alles op deze pagina → 50 geselecteerd', await p.evaluate(() => { trashPageGo(0); trashSelPage(); return trSel.size === 50 && /50<\/b> geselecteerd|50 geselecteerd/.test(document.getElementById('main').innerHTML.replace(/<b[^>]*>/g, '<b>')); }));
+  ok('bulk terugzetten: 50 trades in één klik terug', await p.evaluate(() => { const t0 = T.length, tr0 = TRASH.length; trashRestoreSel(); return T.length === t0 + 50 && TRASH.length === tr0 - 50 && trSel.size === 0; }));
+  ok('"alle 1950 selecteren" pakt de hele bak, niet alleen de pagina', await p.evaluate(() => { trashSelAll(); return trSel.size === TRASH.length; }));
+  ok('selectie wissen werkt', await p.evaluate(() => { trashSelClear(); return trSel.size === 0; }));
+  ok('bulk definitief verwijderen (met bevestiging) ruimt precies de selectie op', await p.evaluate(() => { trashPageGo(0); trashSelPage(); const tr0 = TRASH.length, ids = [...trSel]; trashKillSel(); return TRASH.length === tr0 - ids.length && !TRASH.some(t => ids.includes(t.id)) && trSel.size === 0; }));
+  ok('losse rij-knoppen blijven werken naast de selectie', await p.evaluate(() => { const id = TRASH[0].id, t0 = T.length; trashRestoreOne(id); return T.length === t0 + 1 && !TRASH.some(t => t.id === id); }));
+  ok('lege bak → nette uitlegtekst, geen scrollvak', await p.evaluate(() => { TRASH = []; trSel = new Set(); persistTrash(); render(); const t = document.getElementById('main').textContent; return /prullenbak is leeg/i.test(t) && !document.querySelector('.trashbox'); }));
+
   ok('geen JS-errors', errs.length === 0, errs.join(' | '));
   console.log(`\n=== Prullenbak: ${pass}/${pass + fail} ===`);
   await b.close();

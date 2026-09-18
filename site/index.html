@@ -342,6 +342,13 @@ table.tbl{width:100%;border-collapse:collapse;font-size:14px}
 .pager .btn:disabled{opacity:.4;cursor:default}
 .pager .pageinfo{font-size:12.5px;color:var(--muted)}
 .pager .pageinfo b{color:var(--ink);font-family:var(--fn)}
+/* Prullenbak: eigen scrollvak zodat 2000 verwijderde trades de pagina niet oneindig
+   maken (Denny 2026-09-18). Kop met selectie blijft staan; de lijst scrollt eronder. */
+.trashbox{max-height:min(54vh,470px);overflow-y:auto;border-top:1px solid var(--line2);border-bottom:1px solid var(--line2)}
+.trashhead{background:var(--sink);border-radius:8px 8px 0 0}
+.setrow.trsel{background:var(--accent-soft)}
+.pageinfo{font-size:12.5px;color:var(--muted)}
+.pageinfo b{color:var(--ink);font-family:var(--fn)}
 .sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);border:0}
 .hamb{display:none;width:36px;height:36px;border:1px solid var(--line);background:var(--surface);border-radius:9px;place-items:center;color:var(--ink2);cursor:pointer;flex:none}
 .navscrim{position:fixed;inset:0;background:rgba(10,20,40,.45);z-index:70;opacity:0;pointer-events:none;transition:opacity .25s}
@@ -1536,7 +1543,10 @@ function aggR(rows){let sum=0,n=0,miss=0;(rows||[]).forEach(t=>{const r=tradeROr
 // P&L van een selectie in de actieve unit (html). o.terse laat de "· n zonder R"-suffix weg.
 function unitAgg(rows,net,o){o=o||{};
   if(UNIT()==='pct'){const p=pnlPctTotal(rows,net);return p==null?'—':pctSgn(p);}
-  if(UNIT()==='r'){const a=aggR(rows);if(!a.n)return a.miss?'—':rS(0);return rS(a.sum)+(a.miss&&!o.terse?` <span style="font-weight:500;font-size:.72em;color:var(--muted)">· ${a.miss} zonder R</span>`:'');}
+  if(UNIT()==='r'){const a=aggR(rows);
+    const miss=(a.miss&&!o.terse)?` <span style="font-weight:500;font-size:.72em;color:var(--muted)">· ${a.miss} zonder R</span>`:'';
+    if(!a.n)return a.miss?'—'+miss:rS(0);   // alleen risicoloze trades → streepje mét uitleg
+    return rS(a.sum)+miss;}
   return eurS(net);
 }
 function unitTrade(t){
@@ -1692,7 +1702,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.94';
+const APP_VERSION='v0.9.95';
 const SCHEMA_VERSION=2;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -3296,10 +3306,7 @@ function pgInstellingen(){
       <div class="setrow"><div class="txt"><b>Opslag-bescherming</b><small>${PERSISTED===true?'<span style="color:var(--green);font-weight:700">✓ Actief</span>, je browser heeft beloofd deze opslag niet zelf op te ruimen':PERSISTED===false?'<span style="color:var(--amber);font-weight:700">Niet actief</span>, de browser mag bij ruimtegebrek opruimen; een recente backup is extra belangrijk':'Onbekend, deze browser geeft er geen uitsluitsel over'}</small></div></div>
       <div class="setrow"><div class="txt"><b>Versie</b><small>SyncJournal ${APP_VERSION} · dataschema v${SCHEMA_VERSION} · ${T.length} trades lokaal opgeslagen</small></div></div></div>
       <div class="section-sub">🗑️ Prullenbak${TRASH.length?` · ${TRASH.length}`:''} <span class="hint">(verwijderde trades · ${TRASH_DAYS} dagen bewaard, daarna automatisch weg)</span></div>
-      <div class="panel">
-        ${TRASH.length?TRASH.map(t=>{const left=trashDaysLeft(t);return `<div class="setrow"><div class="txt"><b>${esc(t.pair||'?')} · ${t.dir==='short'?'short':'long'} <span class="num ${(t.r||0)>=0?'g':'r'}" style="font-weight:700">${(t.r||0)>=0?'+':'−'}${Math.abs(t.r||0).toFixed(1)}R</span></b><small>${esc(t.date||'')}${t.setup?' · '+esc(t.setup):''} · <span style="color:${left<=7?'var(--red)':'var(--amber)'};font-weight:600">nog ${left} dag${left===1?'':'en'}</span></small></div><button class="btn" onclick="trashRestoreOne(${t.id})">↩ Terugzetten</button><button class="btn danger" onclick="trashKill(${t.id})" title="definitief verwijderen" style="padding:8px 10px">×</button></div>`;}).join('')+`<div class="setrow"><div class="txt" style="color:var(--muted);font-size:12.5px">Terugzetten kan altijd binnen ${TRASH_DAYS} dagen, ook een sync haalt verwijderde trades niet opnieuw binnen.</div><button class="btn danger" onclick="trashEmpty()">Prullenbak legen</button></div>`
-        :`<div class="setrow"><div class="txt" style="color:var(--muted);font-size:12.5px">De prullenbak is leeg. Verwijder je een trade, dan komt hij hier ${TRASH_DAYS} dagen te staan zodat je hem kunt terugzetten.</div></div>`}
-      </div>
+      <div class="panel">${trashPanel()}</div>
       <div class="section-sub">🛟 Veiligheidskopieën <span class="hint">(automatisch vóór risicovolle acties · laatste 3)</span></div>
       <div class="panel">
         ${SNAP_META.length?SNAP_META.map(s=>`<div class="setrow"><div class="txt"><b>${esc(snapWhen(s.ts))}</b><small>${esc(s.label)} · ${s.trades} trades · ${s.playbooks} playbooks</small></div><button class="btn" onclick="snapRestore('${s.id}')">Herstel</button><button class="btn danger" onclick="snapDel('${s.id}')" title="verwijderen" style="padding:8px 10px">×</button></div>`).join(''):`<div class="setrow"><div class="txt" style="color:var(--muted);font-size:12.5px">Nog geen veiligheidskopieën. Ze worden automatisch gemaakt vóór import, voorbeelddata laden of wissen, of maak er nu handmatig één.</div></div>`}
@@ -6419,9 +6426,49 @@ async function resetDemo(){
 // Verwijderen is omkeerbaar (prullenbak + undo-toast) → geen confirm-dialoog meer nodig.
 function delTrade(id){ formDirty=false;trashDelete([id]);if(STATE.revSel===id)STATE.revSel=(T[0]||{}).id||0;closeForm();render();toast('🗑 Trade naar prullenbak','info',{label:'Ongedaan maken',fn:()=>undoTrash([id])}); }
 function undoTrash(ids){ trashRestore(ids);render();toast('✓ Teruggezet','ok'); }
-function trashKill(id){ if(!confirm('Deze trade definitief verwijderen? Dit kan niet ongedaan worden gemaakt.'))return;TRASH=TRASH.filter(t=>t.id!==id);persistTrash();render();toast('Trade definitief verwijderd','info'); }
-function trashEmpty(){ if(!TRASH.length)return;if(!confirm('Prullenbak legen ('+TRASH.length+' trade'+(TRASH.length>1?'s':'')+')? Dit kan niet ongedaan worden gemaakt.'))return;TRASH=[];persistTrash();render();toast('Prullenbak geleegd','info'); }
-function trashRestoreOne(id){ trashRestore([id]);render();toast('✓ Trade teruggezet','ok'); }
+/* ═══ Prullenbak-paneel (Denny 2026-09-18: 2000 verwijderde trades maakten de pagina
+   eindeloos) ═══ Eigen scrollvak met paginering, plus selecteren voor bulk-acties zodat
+   je niet 2000× "Terugzetten" hoeft te klikken. Selectie leeft alleen in deze sessie. */
+const TRASH_PAGE=50;
+let trSel=new Set(),trPage=0;
+function trashRows(){ return TRASH; }
+function trashPageRows(){ const rows=trashRows();const pages=Math.max(1,Math.ceil(rows.length/TRASH_PAGE));if(trPage>=pages)trPage=pages-1;if(trPage<0)trPage=0;const s=trPage*TRASH_PAGE;return {rows:rows.slice(s,s+TRASH_PAGE),start:s,pages,total:rows.length}; }
+function trashSelToggle(id){ id=+id;if(trSel.has(id))trSel.delete(id);else trSel.add(id);render(); }
+function trashSelPage(){ const {rows}=trashPageRows();const all=rows.every(t=>trSel.has(t.id));rows.forEach(t=>all?trSel.delete(t.id):trSel.add(t.id));render(); }
+function trashSelAll(){ const rows=trashRows();const all=rows.length&&rows.every(t=>trSel.has(t.id));trSel=all?new Set():new Set(rows.map(t=>t.id));render(); }
+function trashSelClear(){ trSel=new Set();render(); }
+function trashPageGo(n){ trPage=n;render();try{const el=document.querySelector('.trashbox');if(el)el.scrollTop=0;}catch(e){} }
+function trashRestoreSel(){ const ids=[...trSel];if(!ids.length)return;trashRestore(ids);trSel=new Set();render();toast('✓ '+ids.length+' trade'+(ids.length>1?'s':'')+' teruggezet','ok'); }
+function trashKillSel(){ const ids=[...trSel];if(!ids.length)return;
+  if(!confirm(ids.length+' trade'+(ids.length>1?'s':'')+' definitief verwijderen? Dit kan niet ongedaan worden gemaakt.'))return;
+  const kill=new Set(ids);TRASH=TRASH.filter(t=>!kill.has(t.id));persistTrash();trSel=new Set();render();toast(ids.length+' definitief verwijderd','info'); }
+function trashPanel(){
+  if(!TRASH.length)return `<div class="setrow"><div class="txt" style="color:var(--muted);font-size:12.5px">De prullenbak is leeg. Verwijder je een trade, dan komt hij hier ${TRASH_DAYS} dagen te staan zodat je hem kunt terugzetten.</div></div>`;
+  const {rows,start,pages,total}=trashPageRows();
+  const pageAll=rows.length>0&&rows.every(t=>trSel.has(t.id));
+  const n=trSel.size;
+  const cb=(on,fn,label)=>`<span class="cb ${on?'on':''}" role="checkbox" aria-checked="${on}" aria-label="${esc(label)}" tabindex="0" onclick="${fn}" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();${fn}}">${on?'✓':''}</span>`;
+  const head=`<div class="setrow trashhead">
+    <div class="txt" style="display:flex;align-items:center;gap:10px">${cb(pageAll,'trashSelPage()','Alles op deze pagina selecteren')}
+      <span style="font-size:12.5px;color:var(--muted)">${n?`<b style="color:var(--ink)">${n}</b> geselecteerd`:`Selecteer om meerdere trades tegelijk terug te zetten`}</span>
+      ${total>rows.length?`<button class="linklike" onclick="trashSelAll()">alle ${total} selecteren</button>`:''}
+      ${n?`<button class="linklike" onclick="trashSelClear()">selectie wissen</button>`:''}</div>
+    ${n?`<button class="btn pri" onclick="trashRestoreSel()">↩ Terugzetten (${n})</button><button class="btn danger" onclick="trashKillSel()">Definitief (${n})</button>`:`<button class="btn danger" onclick="trashEmpty()">Prullenbak legen</button>`}</div>`;
+  const list=rows.map(t=>{const left=trashDaysLeft(t);const on=trSel.has(t.id);
+    return `<div class="setrow${on?' trsel':''}"><div class="txt" style="display:flex;align-items:center;gap:10px">${cb(on,`trashSelToggle(${t.id})`,'Selecteer trade')}
+      <span><b>${esc(t.pair||'?')} · ${t.dir==='short'?'short':'long'} <span class="num ${(t.r||0)>=0?'g':'r'}" style="font-weight:700">${(t.r||0)>=0?'+':'−'}${Math.abs(t.r||0).toFixed(1)}R</span></b>
+      <small style="display:block">${esc(t.date||'')}${t.setup?' · '+esc(t.setup):''} · <span style="color:${left<=7?'var(--red)':'var(--amber)'};font-weight:600">nog ${left} dag${left===1?'':'en'}</span></small></span></div>
+      <button class="btn" onclick="trashRestoreOne(${t.id})">↩ Terugzetten</button><button class="btn danger" onclick="trashKill(${t.id})" title="definitief verwijderen" style="padding:8px 10px">×</button></div>`;}).join('');
+  const pager=pages>1?`<div class="setrow" style="justify-content:center;gap:10px">
+    <button class="btn" ${trPage===0?'disabled':''} onclick="trashPageGo(${trPage-1})">‹ Vorige</button>
+    <span class="pageinfo"><b>${start+1}–${Math.min(start+TRASH_PAGE,total)}</b> van ${total} · pagina ${trPage+1}/${pages}</span>
+    <button class="btn" ${trPage>=pages-1?'disabled':''} onclick="trashPageGo(${trPage+1})">Volgende ›</button></div>`:'';
+  return head+`<div class="trashbox">${list}</div>`+pager+
+    `<div class="setrow"><div class="txt" style="color:var(--muted);font-size:12.5px">Terugzetten kan altijd binnen ${TRASH_DAYS} dagen, ook een sync haalt verwijderde trades niet opnieuw binnen.</div></div>`;
+}
+function trashKill(id){ if(!confirm('Deze trade definitief verwijderen? Dit kan niet ongedaan worden gemaakt.'))return;TRASH=TRASH.filter(t=>t.id!==id);trSel.delete(+id);persistTrash();render();toast('Trade definitief verwijderd','info'); }
+function trashEmpty(){ if(!TRASH.length)return;if(!confirm('Prullenbak legen ('+TRASH.length+' trade'+(TRASH.length>1?'s':'')+')? Dit kan niet ongedaan worden gemaakt.'))return;TRASH=[];trSel=new Set();persistTrash();render();toast('Prullenbak geleegd','info'); }
+function trashRestoreOne(id){ trSel.delete(+id);trashRestore([id]);render();toast('✓ Trade teruggezet','ok'); }
 function saveReview(id,patch){ const t=T.find(x=>x.id===id);if(t){Object.assign(t,patch);persist();} }
 let formTags=[],formGrade='',formLayers=[],formEmotions=[],formMistakes=[];
 let formDirty=false,modalKind='';  // dirty-guard: waarschuw bij niet-opgeslagen wijzigingen in trade-/playbook-formulier

@@ -75,6 +75,14 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
   ok('recente trades: −$30-trade toont — in plaats van 0R', /—/.test(v2.rec), v2.rec.slice(0, 160));
   ok('balans blijft valuta in R-stand', /1\.050/.test(v2.big));
 
+  ok('alleen risicoloze trades in de maand → "—" mét uitleg waarom', await p.evaluate(() => {
+    const hold = T.map(t => ({ ...t }));
+    T.forEach(t => { t.r = 0; t.stop = 0; t.exit = 0; t.tp = 0; }); persist(); go('dashboard');
+    const meta = document.querySelector('#main .hero .meta').textContent;
+    T = hold; persist(); go('dashboard');
+    return /—/.test(meta) && /zonder R/.test(meta);
+  }));
+
   console.log('─── Ook na filtering kloppend ───');
   const v3 = await p.evaluate(() => { setFilter('exchange', 'blofin'); go('dashboard'); const meta = document.querySelector('#main .hero .meta').textContent; clearFilterKey('exchange'); return meta; });
   ok('filter op Blofin → maand +4,0R · 1 zonder R (HL-trade telt niet mee)', /\+4,0R/.test(v3) && /1 zonder R/.test(v3), v3);

@@ -10,6 +10,15 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 De journal is opnieuw opgebouwd als **SyncJournal** en draait nu online op [syncjournal.nl](https://syncjournal.nl). Versienummers zijn opnieuw gestart op v0.9.x (bèta); de oude TradeJournal-releases staan verderop in dit bestand. Je data overzetten kan via Instellingen → Data → Importeer oude backup.
 
+## [v0.9.95] — 2026-09-18
+
+### Toegevoegd
+- **Prullenbak: meerdere trades tegelijk terugzetten** — vink trades aan (of "alle X selecteren") en zet ze in één klik terug, of verwijder ze definitief. Geen 2000 keer meer op "Terugzetten" klikken.
+
+### Gewijzigd
+- **Prullenbak is een scrollvak met paginering** — 50 per pagina in een eigen venster, zodat de Data-pagina niet eindeloos lang wordt als je veel trades hebt verwijderd.
+- **"Gerealiseerd deze maand —" legt zichzelf uit** — in R-weergave zie je nu ook waarom er geen R staat (bijv. "— · 3 zonder R"), in plaats van alleen een streepje.
+
 ## [v0.9.94] — 2026-09-18
 
 ### Gewijzigd
