@@ -10,6 +10,11 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 De journal is opnieuw opgebouwd als **SyncJournal** en draait nu online op [syncjournal.nl](https://syncjournal.nl). Versienummers zijn opnieuw gestart op v0.9.x (bèta); de oude TradeJournal-releases staan verderop in dit bestand. Je data overzetten kan via Instellingen → Data → Importeer oude backup.
 
+## [v0.9.94] — 2026-09-18
+
+### Gewijzigd
+- **Geselecteerde €/%/R-pil is nu duidelijk gemarkeerd** — volle accentkleur met witte tekst, dezelfde stijl als onze primaire knoppen, dus je ziet in één oogopslag in welke eenheid je kijkt. Inactieve pillen lichten op bij hover.
+
 ## [v0.9.93] — 2026-09-18
 
 ### Gewijzigd

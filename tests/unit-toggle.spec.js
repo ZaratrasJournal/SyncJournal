@@ -45,6 +45,15 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  âœ
     const kids = [...col.children].map(c => c.className);
     return kids[0].includes('unitseg') && kids[1].includes('eyebrow');
   }));
+  ok('geselecteerde pil krijgt de accent-vulling uit onze huisstijl', await p.evaluate(() => {
+    // probe met background:var(--accent) â†’ exact vergelijken zonder hex/rgb-gegoochel
+    const probe = document.createElement('div'); probe.style.background = 'var(--accent)'; document.body.appendChild(probe);
+    const accent = getComputedStyle(probe).backgroundColor; probe.remove();
+    const btns = [...document.querySelectorAll('#main .hero .unitseg button')];
+    const on = btns.find(b => b.classList.contains('on')), off = btns.find(b => !b.classList.contains('on'));
+    const bgOn = getComputedStyle(on).backgroundColor, bgOff = getComputedStyle(off).backgroundColor;
+    return bgOn === accent && bgOn !== bgOff;
+  }));
   ok('pil-balk blijft compact (geen volle kolombreedte)', await p.evaluate(() => {
     const seg = document.querySelector('#main .hero .unitseg'), col = document.querySelector('#main .hero > div');
     return seg.getBoundingClientRect().width < col.getBoundingClientRect().width * 0.5;
