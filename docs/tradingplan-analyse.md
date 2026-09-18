@@ -143,8 +143,42 @@ Edgewonk's beste feature omgezet naar jouw poort: splits je resultaat uit naar w
 Prop-firms rekenen open posities mee in de daglimiet; jouw journal kent je open posities inclusief niet-gerealiseerde P&L. Een zachte banner bij 70% en 90% van je daglimiet ("nog 0,8% ruimte vandaag") is wat een journal wél kan, en wat vrijwel niemand biedt. Blokkeren kan alleen je broker; dat moeten we ook niet willen pretenderen.
 *Inschatting: halve dag.*
 
-### 12. Plannen meenemen in de backup
+### 12. Volgorde-regels: het gat dat niemand vult
+Waarschuw (niet blokkeren) bij de patronen die traders zichzelf niet zien aandoen: een nieuwe entry binnen X minuten na een verlies, de derde verliezer op rij, of een grotere positie dan de vorige na een verlies. De journal ziet die volgorde in je eigen data; geen enkele onderzochte tool doet dit. Dit past ook bij je mentale check in de poort.
+*Inschatting: 1 dag.*
+
+### 13. Discipline zichtbaar in de kalender
+Twee aflezingen per dag: je resultaat in kleur, plus een markering of je je plan volgde. En daarnaast de vergelijking die overtuigt: gemiddelde R en win-rate op dagen mét plan versus dagen zonder.
+*Inschatting: halve dag, vereist voorstel 3.*
+
+### 14. Plannen meenemen in de backup
 Zodra het plan op hetzelfde domein draait, gaat het automatisch mee in de bestaande backup- en Drive-routine van de journal. Daarmee vervalt gat H vanzelf.
+
+---
+
+## 4b. Aanvullend onderzoek: hoe afdwinging écht werkt
+
+Er blijkt een duidelijke ladder te bestaan, en vrijwel elk product doet alsof het bovenaan staat terwijl het onderaan zit:
+
+| Niveau | Mechanisme | Wie doet dit echt |
+|---|---|---|
+| 1 | Broker sluit posities en weigert orders | Topstep, Tradovate, NinjaTrader |
+| 2 | Terminal-robot sluit alles (MT5-EA) | Prop-Firm Equity Guard e.a. |
+| 3 | Browser-extensie dekt de koopknop af | Trading Buddy |
+| 4 | Waarschuwen in realtime, niet blokkeren | PropJournal (70%/90%), ExMachina (80%) |
+| 5 | Achteraf beoordelen | TradesViz, TradeZella |
+
+**Wat dit voor ons betekent:** een journal kan per definitie geen order tegenhouden — dat moeten we ook niet pretenderen. Wat we wél kunnen is het beste van niveau 4 doen, en dat doet bijna niemand goed.
+
+Drie ideeën die het waard zijn om te stelen:
+
+1. **De "dead-line"** (PropGuard): reken je resterende dagverlies om naar iets concreets — *"nog €340 ruimte = nog één trade van 1%"*. Niet een percentage-balkje, maar het getal waar je iets mee kunt.
+2. **Twee aflezingen per dag in de kalender** (TradesViz): de kleur voor je resultaat, plús een markering of je je plan volgde. Jouw journal hééft al een kalender — dat is één extra streepje per dag.
+3. **Vergelijk dagen mét en zonder plan** (TradesViz "Rule Outcome"): laat win-rate, gemiddelde R en houdtijd zien voor dagen waarop je je regels volgde versus dagen waarop je ze brak. Dat is het overtuigendste bewijs dat een trader kan krijgen.
+
+**En één gat dat de hele markt open laat:** *volgorde-regels*. Geen enkele tool waarschuwt bij "nieuwe entry binnen 10 minuten na een verlies" (revenge), "derde verliezer op rij", of "grotere size na verlies". Op Reddit is dit juist wat traders zelf vragen: *"set a daily loss limit lockout… take the keys of the vehicle out of your hands."* Een journal kan die patronen wél zien en benoemen.
+
+Tot slot een detail over eerlijk scoren dat TradesViz goed doet: naast "gevolgd" en "gebroken" bestaat er **"niet te beoordelen"** (te weinig data). Dat voorkomt dat een lege dag je nalevingscijfer vervuilt.
 
 ---
 
