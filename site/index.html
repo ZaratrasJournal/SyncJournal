@@ -1685,7 +1685,7 @@ function genTrades(n){
 // Maand-P&L in de actieve unit: € = netto, % = t.o.v. de balans bij die maandstart
 // (per maand, bewust geen samengesteld rendement), R = som van geldige R's.
 function monthlyUnit(){const mn=['jan','feb','mrt','apr','mei','jun','jul','aug','sep','okt','nov','dec'];const by={};
-  CLOSED.forEach(t=>{const k=t.date.slice(0,7);(by[k]=by[k]||[]).push(t);});
+  CLOSED.filter(hasDate).forEach(t=>{const k=t.date.slice(0,7);(by[k]=by[k]||[]).push(t);});
   return Object.keys(by).sort().map(k=>{const rows=by[k];const net=rows.reduce((s,t)=>s+(+t.pnl||0),0);
     let v=net;
     if(UNIT()==='pct'){const p=pnlPctTotal(rows,net);v=p==null?0:p;}
@@ -1702,7 +1702,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.95';
+const APP_VERSION='v0.9.96';
 const SCHEMA_VERSION=2;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -1797,6 +1797,11 @@ function selfCheck(){
   else if(T.some(t=>!t||typeof t!=='object'))bad.push('trade-record');
   if(!PBOOK||typeof PBOOK!=='object'||Array.isArray(PBOOK))bad.push('playbooks');
   if(!tagConfig||typeof tagConfig!=='object')bad.push('tags');
+  // kapotte bedragen/datums merken we nu óók op (audit 2026-09-18): ze rekenen stil verkeerd
+  else if(Array.isArray(T)){
+    if(T.some(t=>t&&(t.pnl!==undefined&&!isFinite(+t.pnl))))bad.push('P&L-waarden');
+    if(T.some(t=>t&&typeof t.date!=='string'))bad.push('datums');
+  }
   if(bad.length){ ErrorCenter.report('load',new Error('self-check: '+bad.join(', ')),{severity:'error',userMsg:'Er lijkt iets mis met je opgeslagen data ('+bad.join(', ')+'). Je kunt een veiligheidskopie terugzetten via Instellingen → Data.',actions:[{label:'Naar herstel',fn:()=>{ErrorCenter.dismiss();go('instellingen');setSetTab('data');}}]}); return false; }
   return true;
 }
@@ -2133,7 +2138,10 @@ function filterBar(){
 }
 
 /* ═══ Helpers ═══ */
-const SZ=t=>Number(String(t.size).replace(/\./g,''));
+// Size kan als tekst binnenkomen: "8.000" (NL-duizendtal) maar ook "1000,50" (NL-decimaal).
+// Punten zijn duizendtallen, de komma is de decimaal — zonder deze omzetting werd elke
+// komma-invoer NaN (audit 2026-09-18: kolom toonde "—" en sorteren sprong door elkaar).
+const SZ=t=>Number(String(t.size).replace(/\./g,'').replace(',','.'));
 // A3 (ChangeMaker + Denny): tags leven op twee plekken (los tags-veld + laag-confirmaties).
 // Dit is DE bron voor de tags-kolom en het tag-filter, zodat de tabel altijd exact toont
 // wat er in de trade zit — waar de tag ook geselecteerd is.
@@ -2237,10 +2245,10 @@ const arr=v=>v>=0?'▲':'▼';
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const jsarg=s=>String(s).replace(/[\\'"<>]/g,'');  // veilige arg voor inline on*-handlers (geen quote-/tag-breakout)
 const fmtD=d=>d.slice(8)+'-'+d.slice(5,7);
+// Eén rekenbron: agg() was een ongeguarde kopie van aggOf() (Infinity bij nul verliezen,
+// NaN bij een lege lijst — audit 2026-09-18). Nu dezelfde, wél beveiligde berekening.
 function agg(){
-  const wins=CLOSED.filter(t=>t.pnl>0),losses=CLOSED.filter(t=>t.pnl<0);
-  const net=CLOSED.reduce((s,t)=>s+t.pnl,0),gW=wins.reduce((s,t)=>s+t.pnl,0),gL=Math.abs(losses.reduce((s,t)=>s+t.pnl,0));
-  return {net,wr:wins.length/CLOSED.length*100,pf:gW/gL,exp:net/CLOSED.length,avgR:CLOSED.reduce((s,t)=>s+tradeR(t),0)/CLOSED.length,n:CLOSED.length,wins:wins.length,losses:losses.length};
+  return {...aggOf(CLOSED),wins:CLOSED.filter(t=>t.pnl>0).length,losses:CLOSED.filter(t=>t.pnl<0).length};
 }
 /* ── periode-filter (per-kaart datum-dropdown, Tabler-stijl) ── */
 let KPIPER={net:'all',wr:'all',pf:'all',exp:'all',eq:'all'};
@@ -2761,7 +2769,7 @@ function calNav(delta){const [y,m]=STATE.calMonth.split('-').map(Number);let mm=
 function calYearNav(delta){const [y,m]=STATE.calMonth.split('-').map(Number);STATE.calMonth=`${y+delta}-${String(m).padStart(2,'0')}`;render();}
 function pgKalender(){
   const [Y,M]=STATE.calMonth.split('-').map(Number);
-  const byDay={};CLOSED.filter(t=>t.date.slice(0,7)===STATE.calMonth).forEach(t=>{(byDay[t.date]=byDay[t.date]||{v:0,n:0,w:0});byDay[t.date].v+=t.pnl;byDay[t.date].n++;if(t.pnl>0)byDay[t.date].w++;});
+  const byDay={};CLOSED.filter(t=>hasDate(t)&&t.date.slice(0,7)===STATE.calMonth).forEach(t=>{(byDay[t.date]=byDay[t.date]||{v:0,n:0,w:0});byDay[t.date].v+=t.pnl;byDay[t.date].n++;if(t.pnl>0)byDay[t.date].w++;});
   const days=Object.entries(byDay);const green=days.filter(([,d])=>d.v>0).length,redd=days.filter(([,d])=>d.v<0).length;
   const monNet=days.reduce((s,[,d])=>s+d.v,0),monTrades=days.reduce((s,[,d])=>s+d.n,0),monWins=days.reduce((s,[,d])=>s+d.w,0);
   const monWR=monTrades?Math.round(monWins/monTrades*100):0;
@@ -2786,7 +2794,7 @@ function pgKalender(){
     }).join('');
     grid+=`<div class="calrow">${row}<div class="wtot ${wkN?cls(wkNet):''}">${wkN?eurS(wkNet):'—'}<small>wk ${w+1}</small></div></div>`;
   }
-  const yByDay={};CLOSED.filter(t=>t.date.slice(0,4)===String(Y)).forEach(t=>{(yByDay[t.date]=yByDay[t.date]||{v:0,n:0,w:0});yByDay[t.date].v+=t.pnl;yByDay[t.date].n++;if(t.pnl>0)yByDay[t.date].w++;});
+  const yByDay={};CLOSED.filter(t=>hasDate(t)&&t.date.slice(0,4)===String(Y)).forEach(t=>{(yByDay[t.date]=yByDay[t.date]||{v:0,n:0,w:0});yByDay[t.date].v+=t.pnl;yByDay[t.date].n++;if(t.pnl>0)yByDay[t.date].w++;});
   const yNet=Object.values(yByDay).reduce((s,d)=>s+d.v,0),yDays=Object.keys(yByDay).length;
   const stat=(k,v,vc,sub)=>kpiCard(k,v,{vc,ctx:sub||''});
   return `${filterBar()}<div class="kpis" style="grid-template-columns:repeat(5,1fr);margin-bottom:16px">
@@ -4196,8 +4204,28 @@ function setPctRef(v){STATE.pctRef=Math.max(0,+v||0);persistState();render();}
 // Volledige staat-payload — gedeeld door export, snapshots en herstel.
 function snapshotPayload(){ return {app:'SyncJournal',appVersion:APP_VERSION,schemaVersion:SCHEMA_VERSION,exported:new Date().toISOString(),tagConfig,pbook:PBOOK,conns:CONNS,manual:MANUAL,sync:SYNC,aiPrefs:AIPREFS,view:{preset:VIEW.preset,v:VIEW.v},exMeta:Object.fromEntries(EXCHANGES.map(e=>[e.id,{val:e.val,acct:e.acct}])),settings:{theme:STATE.theme,currency:STATE.currency,priv:STATE.priv,density:STATE.density},trades:T,trash:TRASH}; }
 // Zet een volledige backup-payload (nieuw formaat) terug in de live-staat.
+/* Binnenkomende trades veilig maken (audit 2026-09-18): één ontbrekend date-veld in een
+   back-up liet het dashboard crashen — en omdat opslaan vóór tekenen gebeurt, overleefde
+   die crash een herstart. Alles wat de render-paden als vanzelfsprekend aannemen wordt
+   hier gegarandeerd: datum als string, eindige getallen, arrays als arrays. We verzinnen
+   nooit data (geen datum = leeg, geen 'vandaag'), we maken hem alleen onschadelijk. */
+const SJ_ARR_FIELDS=['tps','tags','layers','emotions','mistakes','missedReasons','checks','screenshots','tvLinks'];
+function sanitizeTrade(t,i){
+  const o=(t&&typeof t==='object')?t:{};
+  const num=(v)=>{const n=typeof v==='number'?v:parseFloat(String(v==null?'':v).replace(',','.'));return isFinite(n)?n:0;};
+  const s=(v)=>v==null?'':String(v);
+  const out={rating:0,checks:[],...o,id:i};
+  out.date=s(o.date);out.time=s(o.time);out.pair=s(o.pair);out.dir=(o.dir==='short')?'short':'long';
+  out.status=s(o.status)||'closed';out.kind=s(o.kind)||'live';out.setup=s(o.setup);out.session=s(o.session);
+  out.pnl=num(out.pnl);out.r=num(out.r);   // deze twee neemt élke weergave als vanzelfsprekend aan
+  ['entry','exit','stop','tp','fees','leverage','risk','rrPlanned','pnlPct','durationMin','mae','mfe','rating'].forEach(k=>{if(k in out)out[k]=num(out[k]);});
+  SJ_ARR_FIELDS.forEach(k=>{if(!Array.isArray(out[k]))out[k]=[];});
+  return out;
+}
+// Datum bruikbaar voor maand-/jaargroepering? (leeg of half ingevuld telt niet mee)
+const hasDate=t=>!!(t&&typeof t.date==='string'&&t.date.length>=7);
 function applyBackup(d){
-  T=(d.trades||[]).map((t,i)=>({rating:0,checks:[],...t,id:i}));
+  T=(d.trades||[]).map((t,i)=>sanitizeTrade(t,i));
   TRASH=Array.isArray(d.trash)?d.trash:[];persistTrash();  // tolerant: oude back-ups hebben geen trash-veld
   if(d.tagConfig){tagConfig=d.tagConfig;persistTagConfig();}
   PBOOK={};Object.entries(d.pbook||{}).forEach(([k,v])=>PBOOK[k]=pbNormalize(k,v));persistPbook();
@@ -6867,7 +6895,9 @@ async function boot(){
     }
     if(t===undefined){const ls=DB.load('trades',null);if(ls!=null){t=ls;IDB.set('trades',ls);}try{localStorage.removeItem('sj_trades');}catch(e){}}
     if(pb===undefined){const ls=DB.load('pbook',null);if(ls!=null){pb=ls;IDB.set('pbook',ls);}try{localStorage.removeItem('sj_pbook');}catch(e){}}
-    T=Array.isArray(t)?t:[];
+    // ook opgeslagen data langs de veiligheidscontrole: wie al een kapotte trade in de
+    // opslag heeft (bijv. uit een oudere import) komt er zo gewoon weer in
+    T=Array.isArray(t)?t.map((x,i)=>sanitizeTrade(x,x&&x.id!=null?x.id:i)):[];
     PBOOK={};Object.entries(pb||{}).forEach(([k,v])=>PBOOK[k]=pbNormalize(k,v));
   }catch(e){T=DB.load('trades',[]);PBOOK={};Object.entries(DB.load('pbook',{})).forEach(([k,v])=>PBOOK[k]=pbNormalize(k,v));}
   try{const sm=await IDB.get('snapshots');SNAP_META=Array.isArray(sm)?sm:[];}catch(e){SNAP_META=[];}
@@ -6893,7 +6923,7 @@ async function boot(){
 function readBundled(){try{const el=document.getElementById('sj-bundled');if(!el)return null;const d=JSON.parse(el.textContent||'null');return (d&&Array.isArray(d.trades)&&d.trades.length)?d:null;}catch(e){return null;}}
 function seedBundled(d){
   const old=looksOldExport(d.trades);if(old)mergeOldTags(d.trades);
-  T=d.trades.map((x,i)=>old?({...migrateOldTrade(x),id:i}):({rating:0,checks:[],...x,id:i}));
+  T=d.trades.map((x,i)=>old?({...migrateOldTrade(x),id:i}):sanitizeTrade(x,i));
   if(d.tagConfig){tagConfig=d.tagConfig;persistTagConfig();}
   PBOOK={};Object.entries(d.pbook||{}).forEach(([k,v])=>PBOOK[k]=pbNormalize(k,v));persistPbook();
   if(d.manual){MANUAL=d.manual;MANUAL.forEach(m=>{if(!Array.isArray(m.transactions))m.transactions=[];});persistManual();}

@@ -10,6 +10,14 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 De journal is opnieuw opgebouwd als **SyncJournal** en draait nu online op [syncjournal.nl](https://syncjournal.nl). Versienummers zijn opnieuw gestart op v0.9.x (bèta); de oude TradeJournal-releases staan verderop in dit bestand. Je data overzetten kan via Instellingen → Data → Importeer oude backup.
 
+## [v0.9.96] — 2026-09-18
+
+### Fixed
+- **Een beschadigde back-up kan de journal niet meer stukmaken.** Ontbrak er in een bestand bijvoorbeeld een datum, dan liep de app vast — en omdat de data al bewaard was, bleef dat zo na herladen. Binnenkomende trades worden nu eerst gecontroleerd: ontbrekende velden worden veilig aangevuld (nooit verzonnen), kapotte bedragen worden 0 en trades zonder datum tellen simpelweg niet mee in maand- en kalenderoverzichten.
+- **Bedragen met een komma werken nu overal.** Vulde je bij Size bijvoorbeeld "1000,50" in, dan bleef de kolom leeg (—) en sorteerde die trade verkeerd.
+- **Profit factor toont niet langer "oneindig"** als je nog geen verliesgevende trade hebt, en lege selecties rekenen met 0 in plaats van met niets.
+- **De zelfcontrole let nu ook op bedragen en datums**, zodat je het merkt als er iets mis is met je data in plaats van dat het stil verkeerd rekent.
+
 ## [v0.9.95] — 2026-09-18
 
 ### Toegevoegd
