@@ -10,6 +10,11 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 De journal is opnieuw opgebouwd als **SyncJournal** en draait nu online op [syncjournal.nl](https://syncjournal.nl). Versienummers zijn opnieuw gestart op v0.9.x (bèta); de oude TradeJournal-releases staan verderop in dit bestand. Je data overzetten kan via Instellingen → Data → Importeer oude backup.
 
+## [v0.9.97] — 2026-09-18
+
+### Fixed
+- **Journal open in twee tabbladen? Je werk gaat niet meer verloren.** Voorheen won simpelweg het tabblad dat het laatst opsloeg: werkte je in het ene tabblad, dan kon het andere (met oudere gegevens) dat stilletjes overschrijven. Nu merkt een tabblad het direct als er elders iets wijzigt, stopt het met opslaan en krijg je de keuze: dit tabblad verversen, of bewust hiermee verdergaan.
+
 ## [v0.9.96] — 2026-09-18
 
 ### Fixed

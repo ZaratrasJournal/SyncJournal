@@ -263,6 +263,8 @@ table.tbl{width:100%;border-collapse:collapse;font-size:14px}
 .workbadge{display:inline-block;margin-left:10px;padding:3px 11px;border-radius:999px;background:var(--amber-soft);border:1px solid color-mix(in srgb,var(--amber) 45%,transparent);color:var(--amber);font-size:11px;font-weight:800;letter-spacing:.05em;vertical-align:middle;white-space:nowrap}
 /* update-banner (hosted): nieuwe versie beschikbaar */
 .updbanner{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px;padding:11px 16px;border-radius:12px;background:var(--accent-soft);border:1px solid var(--accent-line);border-left:4px solid var(--accent);font-size:13px;color:var(--ink2)}
+/* rode variant: verouderd tabblad — mag níet wegvallen tegen de gewone update-melding */
+.updbanner.red{background:var(--red-soft);border-color:color-mix(in srgb,var(--red) 30%,transparent);border-left-color:var(--red)}
 .updbanner b{color:var(--ink)}
 .updbanner .x{margin-left:auto;width:24px;height:24px;border-radius:8px;color:var(--muted);font-size:15px;line-height:1}
 .updbanner .x:hover{background:color-mix(in srgb,var(--accent) 18%,transparent)}
@@ -1702,7 +1704,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.96';
+const APP_VERSION='v0.9.97';
 const SCHEMA_VERSION=2;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -1809,7 +1811,31 @@ function selfCheck(){
 // Voorbeelddata laden is een bewuste actie (loadDemoData), geen automatische reseed.
 let T=[]; // geladen in boot() uit IndexedDB (async)
 let CLOSED=[];
-function persist(){ IDB.set('trades',T).then(okr=>{ if(okr===false)ErrorCenter.report('save',new Error('IndexedDB weigerde de schrijfactie voor trades.'),{severity:'critical',userMsg:'Je laatste wijziging kon niet worden opgeslagen. Ze staat nog in beeld, exporteer een back-up en probeer opnieuw.',actions:[{label:'Exporteer backup',fn:()=>exportJSON()},{label:'Opnieuw proberen',fn:()=>persist()}]}); }); try{DB.save('data_ts',Date.now());bkQueue();}catch(e){} }
+/* ═══ Twee tabbladen tegelijk (audit 2026-09-18) ═══
+   Voorheen won simpelweg de laatste schrijver: had je de journal in twee tabs open, dan
+   overschreef het oudste tabblad stilletjes het werk van het andere. Elke tab houdt nu bij
+   welke opslag-versie hij kent (sj_data_ts). Schrijft een andere tab, dan krijgt deze tab
+   via het storage-event meteen die melding, stopt met opslaan (niets overschrijven!) en
+   toont een banner: verversen, of bewust doorgaan met dit tabblad. */
+let TAB_STALE=false,_dataSeen=+(DB.load('data_ts',0))||0;
+function persist(){
+  if(TAB_STALE)return;   // verouderd tabblad schrijft niet: het zou het andere werk wissen
+  IDB.set('trades',T).then(okr=>{ if(okr===false)ErrorCenter.report('save',new Error('IndexedDB weigerde de schrijfactie voor trades.'),{severity:'critical',userMsg:'Je laatste wijziging kon niet worden opgeslagen. Ze staat nog in beeld, exporteer een back-up en probeer opnieuw.',actions:[{label:'Exporteer backup',fn:()=>exportJSON()},{label:'Opnieuw proberen',fn:()=>persist()}]}); });
+  try{const ts=Date.now();DB.save('data_ts',ts);_dataSeen=ts;bkQueue();}catch(e){}
+}
+function tabMarkStale(){ if(TAB_STALE)return;TAB_STALE=true;try{render();}catch(e){} }
+// het storage-event vuurt alléén in de ándere tabbladen, precies wat we nodig hebben
+window.addEventListener('storage',e=>{ if(!e||e.key!=='sj_data_ts')return; if((+e.newValue||0)>_dataSeen)tabMarkStale(); });
+// vangnet voor gemiste events (tab stond lang op de achtergrond)
+document.addEventListener('visibilitychange',()=>{ if(document.visibilityState!=='visible')return;
+  try{ if((+DB.load('data_ts',0)||0)>_dataSeen)tabMarkStale(); }catch(e){} });
+function tabReload(){ location.reload(); }
+function tabKeepThis(){ TAB_STALE=false;_dataSeen=Date.now();persist();render();toast('Dit tabblad is nu leidend','info'); }
+function tabBanner(){
+  if(!TAB_STALE)return '';
+  return `<div class="updbanner red" role="alert">⚠️ Je journal is in een <b>ander tabblad</b> gewijzigd. Dit tabblad toont oudere gegevens en slaat daarom even niets op, zodat dat werk niet verloren gaat.
+    <button class="btn pri" onclick="tabReload()">Ververs dit tabblad</button><button class="btn" onclick="tabKeepThis()">Toch dit tabblad gebruiken</button></div>`;
+}
 // ── Prullenbak: verwijderde trades gaan 30 dagen in een APARTE lijst (niet als vlag op de
 //    trade — zo tellen ze gegarandeerd nergens mee). Screenshots zitten erin, dus IndexedDB.
 const TRASH_DAYS=30;
@@ -4165,7 +4191,7 @@ function render(){
   document.getElementById('psub').textContent=sub||'';
   document.getElementById('ptbar').style.background=PAGEC[STATE.page]||'var(--accent)';
   const bv=document.getElementById('balVal');if(bv)bv.textContent=CURSYM()+' '+Math.round(totalBalance()).toLocaleString('nl-NL');
-  const m=document.getElementById('main');destroyCharts();_rcQueue=[];m.innerHTML=updateBanner()+driveBanner()+backupBanner()+fn();m.style.animation='none';void m.offsetWidth;m.style.animation='';
+  const m=document.getElementById('main');destroyCharts();_rcQueue=[];m.innerHTML=tabBanner()+updateBanner()+driveBanner()+backupBanner()+fn();m.style.animation='none';void m.offsetWidth;m.style.animation='';
   document.querySelectorAll('#nav button,#navbot button').forEach(b=>b.classList.toggle('on',b.dataset.p===STATE.page));
   try{bkIndUpdate();}catch(e){}
   wire();mountCharts();
