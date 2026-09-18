@@ -67,6 +67,29 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
   });
   ok('offline → compacte SEED-fallback', res3.trades > 0 && res3.trades < 3000, String(res3.trades));
 
+  console.log('─── Voorbeelddata weer opruimen (Denny 2026-09-18) ───');
+  const cl = await p.evaluate(async (json) => {
+    // verse start, dan demo laden
+    T = []; PBOOK = {}; MANUAL.length = 0; persist(); persistPbook(); persistManual();
+    EXCHANGES.forEach(e => e.val = 0); persistExMeta();
+    window.fetch = async (u) => /demo-dataset/.test(String(u)) ? new Response(json, { status: 200 }) : window.__realFetch(u);
+    await resetDemo(); await new Promise(r => setTimeout(r, 300));
+    const na = { trades: T.length, pb: Object.keys(PBOOK).length, man: MANUAL.length, ex: EXMAP.mexc.val, knop: (go('instellingen'), setSetTab('data'), /Voorbeelddata opruimen/.test(document.getElementById('main').textContent)) };
+    // eigen werk toevoegen dat NIET weg mag
+    T.push({ id: 999999, date: '2026-09-18', time: '10:00', pair: 'EIGEN/USDT', dir: 'long', setup: 'London SFP', session: 'London', status: 'closed', kind: 'live', exchange: '', entry: 100, exit: 110, stop: 95, size: '1000', pnl: 42, r: 1, tps: [], tags: [], layers: [], emotions: [], mistakes: [], checks: [], screenshots: [], tvLinks: [] });
+    PBOOK['Mijn eigen'] = pbNormalize('Mijn eigen', ['eigen regel']);
+    PBOOK['BOS-retest'].oneLiner = 'zelf aangepast';   // demo-playbook dat ik bewerkte
+    persist(); persistPbook();
+    demoCleanup(); await new Promise(r => setTimeout(r, 300));
+    return { na, trades: T.length, pairs: T.map(t => t.pair), pb: Object.keys(PBOOK).sort(), man: MANUAL.length, ex: EXMAP.mexc.val, knopWeg: (setSetTab('data'), !/Voorbeelddata opruimen/.test(document.getElementById('main').textContent)) };
+  }, raw);
+  ok('na laden: 3000 trades, 6 playbooks, accounts en saldi + opruim-knop verschijnt', cl.na.trades === 3000 && cl.na.pb === 6 && cl.na.man >= 1 && cl.na.ex > 0 && cl.na.knop, JSON.stringify(cl.na));
+  ok('opruimen haalt alle voorbeeld-trades weg', cl.trades === 1 && cl.pairs.join() === 'EIGEN/USDT', JSON.stringify(cl.pairs.slice(0, 3)));
+  ok('eigen playbook blijft, bewerkt demo-playbook blijft, gebruikt demo-playbook blijft', cl.pb.includes('Mijn eigen') && cl.pb.includes('BOS-retest') && cl.pb.includes('London SFP'), JSON.stringify(cl.pb));
+  ok('ongebruikte, onaangeraakte demo-playbooks zijn weg', !cl.pb.includes('Range-fade') && !cl.pb.includes('VWAP-bounce'), JSON.stringify(cl.pb));
+  ok('demo-accounts en demo-saldi zijn opgeruimd', cl.man === 0 && cl.ex === 0, JSON.stringify({ man: cl.man, ex: cl.ex }));
+  ok('knop verdwijnt zodra er geen voorbeelddata meer is', cl.knopWeg);
+
   ok('geen JS-errors totaal', errs.length === 0, errs.slice(0, 3).join(' | '));
   console.log(`\n=== Demo-dataset: ${pass}/${pass + fail} ===`);
   await b.close();

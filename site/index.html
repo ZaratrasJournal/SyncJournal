@@ -1707,7 +1707,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.98';
+const APP_VERSION='v0.9.99';
 const SCHEMA_VERSION=2;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -3350,6 +3350,7 @@ function pgInstellingen(){
       <div class="panel"><div class="setrow"><div class="txt"><b>Back-up</b><small>Exporteer of importeer je journal als JSON, echt werkend</small></div>
       <button class="btn" onclick="importJSON()">Importeer</button><button class="btn pri" onclick="exportJSON()">Exporteer JSON</button></div>
       <div class="setrow"><div class="txt"><b>Voorbeelddata laden</b><small>Vul de app met 3000 voorbeeld-trades incl. accounts, playbooks en tags, overschrijft je huidige journal</small></div><button class="btn" onclick="resetDemo()">Laden</button></div>
+      ${demoPresent()?`<div class="setrow"><div class="txt"><b>Voorbeelddata opruimen</b><small>Haalt de demo-trades, -playbooks en -accounts weer weg. Wat je zelf hebt toegevoegd of aangepast blijft staan.</small></div><button class="btn" onclick="demoCleanup()">Opruimen</button></div>`:''}
       <div class="setrow"><div class="txt"><b>Opslag-bescherming</b><small>${PERSISTED===true?'<span style="color:var(--green);font-weight:700">✓ Actief</span>, je browser heeft beloofd deze opslag niet zelf op te ruimen':PERSISTED===false?'<span style="color:var(--amber);font-weight:700">Niet actief</span>, de browser mag bij ruimtegebrek opruimen; een recente backup is extra belangrijk':'Onbekend, deze browser geeft er geen uitsluitsel over'}</small></div></div>
       <div class="setrow"><div class="txt"><b>Versie</b><small>SyncJournal ${APP_VERSION} · dataschema v${SCHEMA_VERSION} · ${T.length} trades lokaal opgeslagen</small></div></div></div>
       <div class="section-sub">🗑️ Prullenbak${TRASH.length?` · ${TRASH.length}`:''} <span class="hint">(verwijderde trades · ${TRASH_DAYS} dagen bewaard, daarna automatisch weg)</span></div>
@@ -6490,8 +6491,45 @@ async function resetDemo(){
     // exchange-koppelingen, sync-instellingen, thema of weergave-keuze overschrijven
     delete d.conns;delete d.sync;delete d.settings;delete d.view;delete d.sections;delete d.aiPrefs;
     applyBackup(d);
+    markDemoLoaded();
     toast('✓ Voorbeelddata geladen: '+T.length+' trades','ok');
-  } else { loadDemoData(); toast('Voorbeelddata geladen (compacte set, de volledige dataset was niet bereikbaar)','info'); }
+  } else { loadDemoData(); markDemoLoaded(); toast('Voorbeelddata geladen (compacte set, de volledige dataset was niet bereikbaar)','info'); }
+}
+/* ═══ Voorbeelddata weer opruimen (Denny 2026-09-18) ═══
+   Wie de demo laadt en daarna écht wil beginnen, moest alles wissen — ook zijn eigen
+   instellingen. We onthouden daarom bij het laden precies wat de demo meebracht, zodat
+   we het later gericht kunnen weghalen. Alles wat jij daarna zelf hebt aangepast of
+   gebruikt blijft staan; bij twijfel laten we het met rust. */
+function markDemoLoaded(){
+  T.forEach(t=>{if(t)t._demo=1;});persist();
+  DB.save('demo_loaded',{when:Date.now(),
+    pb:Object.entries(PBOOK).map(([n,p])=>[n,JSON.stringify(p)]),   // hele playbook, zodat élke bewerking telt
+    manual:MANUAL.map(m=>({id:m.id,name:m.name,tx:(m.transactions||[]).length})),
+    ex:Object.fromEntries(EXCHANGES.map(e=>[e.id,e.val]))});
+}
+const demoPresent=()=>!!DB.load('demo_loaded',null)||(T||[]).some(t=>t&&t._demo);
+function demoCleanup(){
+  const mark=DB.load('demo_loaded',{}),demoTrades=(T||[]).filter(t=>t&&t._demo).length;
+  const pbList=(mark.pb||[]),manList=(mark.manual||[]);
+  if(!confirm('Voorbeelddata opruimen?\n\n'+demoTrades+' voorbeeld-trades worden verwijderd, plus de playbooks en accounts die met de demo meekwamen.\n\nAlles wat je zelf hebt toegevoegd of aangepast blijft staan.'))return;
+  T=(T||[]).filter(t=>!(t&&t._demo));persist();
+  let pbGone=0;
+  pbList.forEach(([name,snapshot])=>{const pb=PBOOK[name];if(!pb)return;
+    const gebruikt=T.some(t=>t&&t.setup===name)||TRASH.some(t=>t&&t.setup===name);
+    if(JSON.stringify(pb)===snapshot&&!gebruikt){delete PBOOK[name];pbGone++;}});   // aangepast of in gebruik → laten staan
+  if(pbGone)persistPbook();
+  let manGone=0;
+  manList.forEach(m=>{const cur=MANUAL.find(x=>x.id===m.id);if(!cur)return;
+    const gebruikt=T.some(t=>t&&t.exchange===m.id);
+    if(cur.name===m.name&&(cur.transactions||[]).length===m.tx&&!gebruikt){MANUAL=MANUAL.filter(x=>x.id!==m.id);manGone++;}});
+  if(manGone)persistManual();
+  let exGone=0;
+  Object.entries(mark.ex||{}).forEach(([id,val])=>{const e=EXMAP[id];
+    if(e&&+e.val===+val&&+val!==0&&!T.some(t=>t&&t.exchange===id)){e.val=0;exGone++;}});
+  if(exGone)persistExMeta();
+  DB.save('demo_loaded',null);
+  STATE.selected=[];render();
+  toast('✓ Opgeruimd: '+demoTrades+' trades'+(pbGone?', '+pbGone+' playbooks':'')+(manGone?', '+manGone+' account'+(manGone>1?'s':''):'')+(exGone?', saldi teruggezet':''),'ok');
 }
 // Verwijderen is omkeerbaar (prullenbak + undo-toast) → geen confirm-dialoog meer nodig.
 function delTrade(id){ formDirty=false;trashDelete([id]);if(STATE.revSel===id)STATE.revSel=(T[0]||{}).id||0;closeForm();render();toast('🗑 Trade naar prullenbak','info',{label:'Ongedaan maken',fn:()=>undoTrash([id])}); }

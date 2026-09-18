@@ -10,6 +10,11 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 De journal is opnieuw opgebouwd als **SyncJournal** en draait nu online op [syncjournal.nl](https://syncjournal.nl). Versienummers zijn opnieuw gestart op v0.9.x (bèta); de oude TradeJournal-releases staan verderop in dit bestand. Je data overzetten kan via Instellingen → Data → Importeer oude backup.
 
+## [v0.9.99] — 2026-09-18
+
+### Toegevoegd
+- **"Voorbeelddata opruimen"** (Instellingen → Data) — heb je de app verkend met de voorbeelddata en wil je daarna echt beginnen? Eén klik haalt de demo-trades, -playbooks en -accounts weer weg. Alles wat je zelf hebt toegevoegd of aangepast blijft staan, ook als je een demo-playbook hebt bewerkt of er trades aan hebt gekoppeld. De knop verschijnt alleen als er voorbeelddata in je journal staat.
+
 ## [v0.9.98] — 2026-09-18
 
 ### Gewijzigd
