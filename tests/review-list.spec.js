@@ -64,6 +64,34 @@ const mk = (id, date, reviewed) => ({ id, date, time: '10:00', pair: 'BTC/USDT',
   await p.evaluate(() => setRevFilter('done')); await p.waitForTimeout(200);
   ok('filter Gereviewed toont alleen gereviewde', await p.evaluate(() => [...document.querySelectorAll('.revitem')].every(el => el.classList.contains('done'))));
 
+  console.log('─── Grote journals: lijst in stappen (audit 2026-09-18) ───');
+  const big = await p.evaluate(async () => {
+    T = Array.from({ length: 400 }, (_, i) => ({ id: i + 1, date: '2026-0' + (1 + (i % 9)) + '-' + String(1 + (i % 28)).padStart(2, '0'), time: '10:00', pair: 'BTC/USDT', dir: 'long', setup: 'SFP', session: 'London', status: 'closed', kind: 'live', exchange: '', entry: 100, exit: 110, stop: 95, size: '1000', pnl: 50, r: 1, tps: [], tags: [], layers: [], emotions: [], mistakes: [], checks: [], screenshots: [], tvLinks: [] }));
+    persist(); STATE.revLimit = 150; STATE.revQuery = ''; setRevFilter('all'); setRevPeriod('all'); clearGFilter(); setFilter('kind', 'alle');
+    go('review'); await new Promise(r => setTimeout(r, 400));
+    const t0 = performance.now(); render(); await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+    return { rijen: document.querySelectorAll('.revitem').length, meer: !!document.querySelector('.revmore'), meerTekst: (document.querySelector('.revmore') || {}).textContent || '', ms: Math.round(performance.now() - t0), nodes: document.getElementById('main').querySelectorAll('*').length };
+  });
+  ok('toont 150 trades met een "toon meer"-knop', big.rijen === 150 && big.meer && /250/.test(big.meerTekst), JSON.stringify(big));
+  ok('pagina blijft licht en snel (was 39.000 elementen / ~600ms)', big.nodes < 6000 && big.ms < 300, JSON.stringify({ nodes: big.nodes, ms: big.ms }));
+  ok('"toon meer" laadt de volgende stap', await p.evaluate(async () => { revShowMore(); await new Promise(r => setTimeout(r, 300)); return document.querySelectorAll('.revitem').length === 300; }));
+  ok('geopende trade blijft altijd zichtbaar, ook diep in de lijst', await p.evaluate(async () => {
+    STATE.revLimit = 150; const diep = reviewItems()[380]; selRev(diep.id); await new Promise(r => setTimeout(r, 300));
+    return [...document.querySelectorAll('.revitem.on')].length === 1;
+  }));
+  ok('zoeken en filteren beginnen weer bij stap 1', await p.evaluate(async () => { STATE.revLimit = 600; render(); revSearchInput('BTC'); await new Promise(r => setTimeout(r, 300)); const na = STATE.revLimit; setRevFilter('all'); return na === 150; }));
+
+  console.log('─── Zoeken hertekent niet per toetsaanslag ───');
+  ok('snel typen geeft één hertekening in plaats van acht', await p.evaluate(async () => {
+    STATE.revQuery = ''; render(); await new Promise(r => setTimeout(r, 250));
+    let n = 0; const orig = window.render; window.render = function () { n++; return orig.apply(this, arguments); };
+    for (const ch of 'BTC/USDT') revSearchInput(ch);
+    await new Promise(r => setTimeout(r, 60)); const tijdensTypen = n;
+    await new Promise(r => setTimeout(r, 300)); const naRust = n;
+    window.render = orig; STATE.revQuery = ''; render();
+    return tijdensTypen === 0 && naRust === 1;
+  }));
+
   ok('geen JS-errors', errs.length === 0, errs.join(' | '));
   console.log(`\n=== Review-lijst (periode + markeren): ${pass}/${pass + fail} ===`);
   await b.close();

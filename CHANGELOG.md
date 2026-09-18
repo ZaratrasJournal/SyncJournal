@@ -10,6 +10,14 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 De journal is opnieuw opgebouwd als **SyncJournal** en draait nu online op [syncjournal.nl](https://syncjournal.nl). Versienummers zijn opnieuw gestart op v0.9.x (bèta); de oude TradeJournal-releases staan verderop in dit bestand. Je data overzetten kan via Instellingen → Data → Importeer oude backup.
 
+## [v0.9.98] — 2026-09-18
+
+### Gewijzigd
+- **Review opent direct, ook met duizenden trades.** De lijst laadt nu in stappen van 150 met een "Toon meer"-knop: openen ging van ruim een halve seconde naar zo'n 80 milliseconden. De trade die je open hebt staan blijft altijd zichtbaar.
+- **Zoeken voelt direct.** De pagina wordt niet langer bij elke toetsaanslag opnieuw opgebouwd, maar zodra je even stilvalt — typen bleef anders achterlopen bij grote journals.
+- **Kleine labels en hints zijn beter leesbaar.** De lichtste grijstinten waren te bleek om prettig te lezen; ze zijn iets donkerder gezet en voldoen nu aan de leesbaarheidsnorm, in beide thema's. De rustige uitstraling blijft.
+- **Nieuwe trade toevoegen? Je cursor staat meteen in het eerste veld**, dus je kunt direct typen. Bij het bewerken van een bestaande trade verandert er niets.
+
 ## [v0.9.97] — 2026-09-18
 
 ### Fixed

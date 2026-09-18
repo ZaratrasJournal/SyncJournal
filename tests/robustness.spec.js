@@ -94,6 +94,30 @@ const BAD_BACKUP = {
     return r === false && /P&L/.test(gemeld);
   }));
 
+  console.log('─── Leesbaarheid & invoergemak (audit-punten 9 en 10) ───');
+  const ct = await p.evaluate(async (theme) => {
+    const lum = (c) => { const m = (c.match(/[\d.]+/g) || []).map(Number); const f = m.slice(0, 3).map(v => { v /= 255; return v <= .03928 ? v / 12.92 : Math.pow((v + .055) / 1.055, 2.4); }); return .2126 * f[0] + .7152 * f[1] + .0722 * f[2]; };
+    const bgOf = (el) => { let n = el; while (n && n !== document.documentElement) { const c = getComputedStyle(n).backgroundColor; if (c && !/rgba\(0, 0, 0, 0\)|transparent/.test(c)) return c; n = n.parentElement; } return getComputedStyle(document.body).backgroundColor; };
+    const ratio = (sel) => { const el = document.querySelector(sel); if (!el) return null; const l1 = lum(getComputedStyle(el).color), l2 = lum(bgOf(el)); return +(((Math.max(l1, l2) + .05) / (Math.min(l1, l2) + .05))).toFixed(2); };
+    setTheme(theme); T = [{ id: 1, date: '2026-09-01', time: '10:00', pair: 'BTC/USDT', dir: 'long', setup: 'SFP', session: 'London', status: 'closed', kind: 'live', exchange: 'blofin', entry: 100, exit: 110, stop: 95, size: '1000', pnl: 50, r: 1, tps: [], tags: [], layers: [], emotions: [], mistakes: [], checks: [], screenshots: [], tvLinks: [] }];
+    persist(); EXMAP.blofin.val = 1000; persistExMeta(); clearGFilter(); viewPreset('alles'); go('dashboard');
+    await new Promise(r => setTimeout(r, 400));
+    return { kopjes: ratio('.eyebrow'), labels: ratio('.kpi .k') };
+  }, 'light');
+  ok('kleine labels zijn leesbaar in het lichte thema (≥4,5:1)', ct.kopjes >= 4.5 && ct.labels >= 4.5, JSON.stringify(ct));
+  const ctd = await p.evaluate(async () => {
+    const lum = (c) => { const m = (c.match(/[\d.]+/g) || []).map(Number); const f = m.slice(0, 3).map(v => { v /= 255; return v <= .03928 ? v / 12.92 : Math.pow((v + .055) / 1.055, 2.4); }); return .2126 * f[0] + .7152 * f[1] + .0722 * f[2]; };
+    setTheme('dark'); render(); await new Promise(r => setTimeout(r, 300));
+    const el = document.querySelector('.eyebrow'); if (!el) return null;
+    let n = el, bg = null; while (n && !bg) { const c = getComputedStyle(n).backgroundColor; if (c && !/rgba\(0, 0, 0, 0\)|transparent/.test(c)) bg = c; n = n.parentElement; }
+    const l1 = lum(getComputedStyle(el).color), l2 = lum(bg);
+    setTheme('light');
+    return +(((Math.max(l1, l2) + .05) / (Math.min(l1, l2) + .05))).toFixed(2);
+  });
+  ok('en ook in het donkere thema', ctd >= 4.5, String(ctd));
+  ok('nieuwe trade: cursor staat meteen in het eerste veld', await p.evaluate(async () => { go('trades'); openForm(null); await new Promise(r => setTimeout(r, 200)); const a = document.activeElement; const id = a && a.id; formDirty = false; closeForm(); return id === 'f_pair'; }));
+  ok('bestaande trade bewerken pakt de focus niet af', await p.evaluate(async () => { openForm(T[0].id); await new Promise(r => setTimeout(r, 200)); const id = document.activeElement && document.activeElement.id; formDirty = false; closeForm(); return id !== 'f_pair'; }));
+
   ok('geen JS-errors totaal', errs.length === 0, errs.slice(0, 3).join(' | '));
   console.log(`\n=== Robuustheid (audit-hardening): ${pass}/${pass + fail} ===`);
   await b.close();
