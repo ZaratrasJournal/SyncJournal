@@ -105,8 +105,10 @@ Dat ene besluit ontsluit alles hieronder:
 Bij "Ik neem deze trade" onthoudt de poort de beoordeling (A/B/regelbreuk + gemiste checks). Zodra die trade in de journal verschijnt (sync of handmatig), plakken we het oordeel eraan vast op tijd + pair. Daarna kan de journal tonen: *gem. R van A-setups vs B vs regelbreuken* — met echte cijfers, zonder overtypen.
 *Inschatting: 1 dag.*
 
-### 3. Naleving als één cijfer
+### 3. Naleving als één cijfer — met het bedrag erbij
 Toon in het overzicht: **"Deze week volgens plan: 9 van 11 trades (82%)"**, met de streefwaarde erbij. Plus de diagnose eronder: hoge naleving + negatieve R = het plan deugt niet; lage naleving = de uitvoering deugt niet.
+
+**Belangrijke bijstelling na het laatste onderzoek:** het percentage mag niet de hoofdmoot zijn. Een gemeten verband tussen nalevingsscore en rendement kwam uit op r = 0,21 — positief maar zwak, dus als losse score is het makkelijk weg te wuiven. Wat volgens gebruikers wél binnenkomt is het bedrag: *"these trades cost you €2.650 this month"*. Zet dus het **euro-verschil tussen je plan-trades en je regelbreuk-trades** vooraan, en het percentage eronder. Neem ook een derde uitkomst mee naast gevolgd/gebroken: **niet te beoordelen** (te weinig data), zodat lege dagen het cijfer niet vervuilen.
 *Inschatting: halve dag (bovenop 2).*
 
 ### 4. Dagplan dat zichzelf half invult
@@ -133,6 +135,8 @@ Wekelijks een voorstel: "Deze week was je beste uitvoering X. Toevoegen aan je p
 
 ### 9. Automatische regelbreuk-detectie (waar de hele markt faalt)
 Sommige regels zijn uit de tradedata af te leiden, zonder dat iemand iets hoeft aan te vinken: geen stop-loss ingevuld, risico groter dan je eigen maximum, meer trades dan je weeklimiet, entry buiten je eigen handelsvenster, of een setup die niet in je playbook staat. De journal kan die stil signaleren in het weekoverzicht: *"3 trades zonder vooraf genoteerde stop"*. Eerlijke data zonder zelfrapportage — precies wat volgens de reviews overal ontbreekt.
+
+**Harde randvoorwaarde:** elk automatisch label moet met één klik terug te draaien zijn, en nooit stilletjes bestaande handmatige labels overschrijven. Het schoolvoorbeeld hoe dit misgaat staat in de reviews van een concurrent: automatische labels die over honderden trades heen fout gingen, zónder herstelmogelijkheid — *"my statistics unreliable… no reliable undo or restore function"*, van een tot dan toe tevreden klant. Gebruikers straffen een fout label veel harder af dan een ontbrekend label.
 *Inschatting: 1 dag.*
 
 ### 10. Welke van je 7 poort-checks lonen écht?
@@ -153,6 +157,22 @@ Twee aflezingen per dag: je resultaat in kleur, plus een markering of je je plan
 
 ### 14. Plannen meenemen in de backup
 Zodra het plan op hetzelfde domein draait, gaat het automatisch mee in de bestaande backup- en Drive-routine van de journal. Daarmee vervalt gat H vanzelf.
+
+### 15. Leg vast wat je bewust niet nam
+Eén knop in de poort: **"Niet genomen"** — met de reden (buiten plan, te laat, twijfel, geen ruimte). Die overgeslagen setups verschijnen in het weekoverzicht naast je echte trades. Dat beantwoordt de vraag die traders het meest bezighoudt en die geen enkele tool beantwoordt: *ben ik te voorzichtig, of red ik mezelf?* Iemand die het drie maanden bijhield: *"I could see after 3 months that all the trades I didn't take wouldn't have turned a profit overall, so there was no second guessing myself anymore."* Ook fijn: het is precies dezelfde poort, alleen een andere uitkomstknop.
+*Inschatting: 2-3 uur, bovenop voorstel 2.*
+
+### 16. Plafond op het playbook, en steekproef zichtbaar
+Twee kleine ingrepen tegen de meest gedocumenteerde faalroute:
+- **Toon bij elke playbook-statistiek het aantal trades**, en verberg percentages onder een ondergrens (bijv. 10) met *"nog te weinig trades voor betrouwbare cijfers"*. Anders lees je ruis als edge.
+- **Waarschuw zacht boven ~8 playbooks of ~15 fout-labels**: *"je hebt nu 12 playbooks — de meeste traders komen uit op 5 tot 8; verder opsplitsen maakt de cijfers per playbook onbetrouwbaar."* Niet blokkeren, wel benoemen.
+
+De aanleiding is één van de scherpste verhalen uit het onderzoek: *"I used to have like 30 playbooks… and extremely specific mistake tags, ended up with 40+ … caused me information overload and not get much value off of it. Now I have 7 playbooks."* Verfijning voelt als vooruitgang en is het niet.
+*Inschatting: 2-3 uur.*
+
+### 17. Log het moment dat je de waarschuwing wegklikt
+Bij elke zachte waarschuwing (voorstel 11 en 12) leggen we vast dat hij verscheen én wat je vervolgens deed. Geen blokkade, geen oordeel — één regel data. Na een maand kun je zien: *"7 keer gewaarschuwd bij de derde verliezer, 6 keer toch doorgegaan, samen −€840."* Dit is de enige plek waar het echte risicopatroon zichtbaar wordt, en nota bene expliciet gevraagd door gebruikers: *"I'd log every attempted rule breach and every override, because that is where the trader's real risk pattern shows."* Niemand bouwt het.
+*Inschatting: 3-4 uur, bovenop voorstel 11.*
 
 ---
 
@@ -198,6 +218,29 @@ Twee ideeën uit die hoek die het waard zijn om te lenen:
 - **Een korte eindedag-checklist** naast je dagstart: *positiegrootte gerespecteerd · niet revenge getraden · alleen A/B-setups genomen · gestopt op mijn daglimiet · alle trades nagekeken.* Vijf vinkjes die je dag afsluiten en meteen de nalevingsscore voeden.
 
 Eén waarschuwing uit hetzelfde onderzoek, die precies past bij wat jij wilt bouwen: *"Been through a lot of them over 5 years. Excel, Notion, TradeZella, TraderSync. They all track the same stuff. Good for record keeping but none of them helped me figure out WHY I kept making the same mistakes."* Dat is de lat: niet nog een logboek, maar iets dat het patroon benoemt.
+
+---
+
+## 4d. Wat gebruikers zélf zeggen (28 discussielijnen + de 1- en 2-sterrenrecensies)
+
+De laatste onderzoekslijn keek niet naar wat tools beloven, maar naar waar gebruikers over klagen: ~28 draadjes op trader-fora plus de gefilterde negatieve recensies van TradeZella, TraderSync, TradesViz en Edgewonk. Drie dingen komen er onafhankelijk van elkaar steeds weer uit.
+
+**1. De plan-laag is precies het onderdeel dat het minst vertrouwd wordt.** Niet omdat hij ontbreekt, maar omdat hij instelwerk is dat nooit iets teruggeeft. Een recensie vat het samen als: *"every other 'feature' like strategies or plans are useless."* Bij één tool bleken zelfs de ingestelde regels regelmatig niet op te slaan — maandenlang niet opgelost. De oorzaak is structureel: een playbook is daar een etiket dat je achteraf opplakt, dus het kan de trade niet meer beïnvloeden.
+
+**2. De luidste onvervulde wens is vóór de trade, niet erna.** Twee verschillende mensen in twee verschillende draadjes formuleren het bijna identiek: *"you need enforcement, not information"* en *"if it waits until after the trade, it's basically a receipt."* Waarschuwingen op het moment zelf worden expliciet waardeloos genoemd — *"you will click through it and tell yourself this one is different."*
+
+Dat is tegelijk de nuance die ons plan bevestigt én bijstelt: een journal kan een order niet tegenhouden, dus onze winst zit in het moment **vóór de sessie** (het dagplan en de poort, waar nog niets te onderhandelen valt) en in het **achteraf zichtbaar maken van wat je wegklikte** (voorstel 17). Wat gebruikers zelf als oplossing noemen is exact jouw model: *"making the decisions before I was in the trade, so once I'm in, there's nothing to negotiate."*
+
+**3. Wat mensen doet opzeggen zijn geen ontbrekende functies maar foute cijfers.** De negatieve recensies gaan vrijwel allemaal over verkeerde P&L, verdwenen sluitingen, vastlopende koppelingen en automatische labels die de statistiek vervuilen. Eén voorbeeld dat het hele probleem vangt: een tool toonde een gemiddeld verlies van $4.500 in plaats van $160, doordat hij de som in het gemiddelde-veld zette. Dit is waarom niemand playbook-statistiek vertrouwt: de basiscijfers kloppen al niet. Voor ons betekent het dat de integriteitscontroles waar we net veel tijd in staken geen bijzaak zijn maar het fundament van deze hele feature.
+
+**Wat verder opvalt, kort:**
+- **De ochtendpagina is wat journaling doet beklijven.** Steeds opnieuw genoemd als de enige gewoonte die bleef: *"the morning prep page is what I use most… yesterday's context is right there: what worked, what I said I'd focus on today."* Dat is voorstel 4, en het verdient meer aandacht dan ik het eerst gaf.
+- **Prijs en opzegbaarheid zijn een open zenuw.** Geen proefperiode, jaarcontracten, geweigerde terugbetalingen, abonnementen die na opzegging doorlopen. Plus de moat die iedereen haat: *"I'd lose 3 years worth of data if I change."* Jouw één-klik-export is daar het directe antwoord op, en lokaal-eerst is een argument dat mensen uit zichzelf aandragen: *"data privacy was important for me."*
+- **Twee dingen waar wij toevallig al goed zitten:** meerdere accounts naast elkaar (elders *"one trader, one account"* en daarmee onbruikbaar voor prop-accounts) en partiële sluitingen die als één trade blijven tellen (elders een klassieke klacht).
+- **Twee echte gaten die ook wij niet dichten:** invoer op de telefoon (*"desktop tools squeezed onto a phone"*) en een geschiedenis van je stop- en TP-verplaatsingen — iemand ontdekte pas via die log dat hij zijn stop structureel opschoof.
+- **Statisch versus je eigen normaal.** Een scherpe kanttekening bij daglimieten: die gaan pas af als de dag al verloren is. *"Build it around the deviation from the trader's own normal, not a static rule. That's the gap nobody fills."* Dat is precies waar voorstel 12 op mikt.
+
+**Eén waarschuwing over de bron:** deze draadjes zitten vol met mensen die hun eigen tool promoten, en de negatieve recensies zijn bewust gefilterd — ze zijn een minderheid van het totaal. Ik heb klachten zwaarder gewogen naarmate de schrijver niets te verkopen had, en de patronen hierboven komen in meerdere onafhankelijke bronnen terug.
 
 ---
 
