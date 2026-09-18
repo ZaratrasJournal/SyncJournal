@@ -93,7 +93,9 @@ main{padding:26px 30px 46px;animation:rise .34s both}
 
 /* eyebrow / hero */
 .eyebrow{font-size:10px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);font-weight:700}
-.hero{display:grid;grid-template-columns:1.4fr 1fr;gap:20px;align-items:center;padding:22px 24px}
+.hero{display:grid;grid-template-columns:1.4fr 1fr;gap:20px;align-items:center;padding:22px 24px;position:relative}
+.hero .unitseg{position:absolute;top:14px;right:16px}
+.hero .unitseg button{padding:4px 12px;font-weight:700}
 .hero .big{font-family:var(--fd);font-size:38px;font-weight:800;letter-spacing:-.03em;margin:8px 0 6px}
 .hero .meta{color:var(--ink2);font-size:13px}
 .hero .meta b{font-weight:700}
@@ -1508,6 +1510,32 @@ function pnlPctTotal(rows,net){
   const oldest=closed.reduce((a,c)=>_pnlMomentKey(c)<_pnlMomentKey(a)?c:a);
   const b=pnlBaseOf(oldest);return b>0?+(net/b*100).toFixed(2):null;
 }
+/* ═══ €/%/R-weergave (Denny 2026-09-18, zoals de originele Morani-journal) ═══
+   STATE.unit bepaalt hoe P&L-waarden tonen: valuta, % (echte accountbasis via
+   pnlPctOf/pnlPctTotal — percentages worden NOOIT opgeteld) of R (trades zonder
+   geldige R tellen nooit als 0 mee, ze worden apart geteld). De balans zelf
+   blijft altijd valuta; in %/R-modus zijn bedragen al onzichtbaar (privacy). */
+function setUnit(u){STATE.unit=['val','pct','r'].includes(u)?u:'val';persistState();render();}
+const UNIT=()=>STATE.unit||'val';
+// R of null — de bestaande tradeR() geeft 0 bij onbekend (prima voor sorteren,
+// fout voor weergave/gemiddelden); deze variant maakt "onbekend" expliciet.
+function tradeROrNull(t){const r=+t.r;if(r&&Math.abs(r)<=R_SANE_MAX)return r;const th=theoR(t);return (th==null||!isFinite(th)||Math.abs(th)>R_SANE_MAX)?null:th;}
+const rS=v=>(v<0?'−':'+')+Math.abs(v).toFixed(1).replace('.',',')+'R';
+const pctSgn=v=>(v<0?'−':'+')+Math.abs(v).toFixed(2).replace('.',',')+'%';
+function aggR(rows){let sum=0,n=0,miss=0;(rows||[]).forEach(t=>{const r=tradeROrNull(t);if(r==null)miss++;else{sum+=r;n++;}});return {sum,n,miss};}
+// P&L van een selectie in de actieve unit (html). o.terse laat de "· n zonder R"-suffix weg.
+function unitAgg(rows,net,o){o=o||{};
+  if(UNIT()==='pct'){const p=pnlPctTotal(rows,net);return p==null?'—':pctSgn(p);}
+  if(UNIT()==='r'){const a=aggR(rows);if(!a.n)return a.miss?'—':rS(0);return rS(a.sum)+(a.miss&&!o.terse?` <span style="font-weight:500;font-size:.72em;color:var(--muted)">· ${a.miss} zonder R</span>`:'');}
+  return eurS(net);
+}
+function unitTrade(t){
+  if(UNIT()==='pct'){const p=pnlPctOf(t);return p==null?'—':pctSgn(p);}
+  if(UNIT()==='r'){const r=tradeROrNull(t);return r==null?'—':rS(r);}
+  return eurS(+t.pnl||0);
+}
+const unitMask=()=>UNIT()==='val'?' mask':'';
+function unitSeg(){const u=UNIT();return `<div class="seg unitseg" role="group" aria-label="Weergave-eenheid">${[['val',CURSYM()],['pct','%'],['r','R']].map(([k,l])=>`<button class="${u===k?'on':''}" onclick="setUnit('${k}')" title="${k==='val'?'Bedragen':k==='pct'?'Percentage van je account':'R-multiples'}">${l}</button>`).join('')}</div>`;}
 const EXCHANGES=[
   // MEXC: API-koppeling gestopt — geen MiCA-licentie, verlaat NL per nov 2026 (offboarding
   // aangekondigd 2026-08-12). Oude trades blijven zichtbaar; import via CSV/back-up blijft.
@@ -1634,9 +1662,15 @@ function genTrades(n){
     const grade=win?(h<0.42?'A':h<0.82?'B':'C'):(h<0.18?'A':h<0.5?'B':'C');
     return {id:i,grade,...t};});
 }
-function monthly(){const mn=['jan','feb','mrt','apr','mei','jun','jul','aug','sep','okt','nov','dec'];const by={};
-  CLOSED.forEach(t=>{const k=t.date.slice(0,7);by[k]=(by[k]||0)+t.pnl;});
-  return Object.keys(by).sort().map(k=>({m:mn[+k.slice(5,7)-1],v:Math.round(by[k])}));}
+// Maand-P&L in de actieve unit: € = netto, % = t.o.v. de balans bij die maandstart
+// (per maand, bewust geen samengesteld rendement), R = som van geldige R's.
+function monthlyUnit(){const mn=['jan','feb','mrt','apr','mei','jun','jul','aug','sep','okt','nov','dec'];const by={};
+  CLOSED.forEach(t=>{const k=t.date.slice(0,7);(by[k]=by[k]||[]).push(t);});
+  return Object.keys(by).sort().map(k=>{const rows=by[k];const net=rows.reduce((s,t)=>s+(+t.pnl||0),0);
+    let v=net;
+    if(UNIT()==='pct'){const p=pnlPctTotal(rows,net);v=p==null?0:p;}
+    else if(UNIT()==='r')v=aggR(rows).sum;
+    return {m:mn[+k.slice(5,7)-1],v};});}
 const SEED=genTrades(74);
 const SEEDVER=13;
 // Setup-grade (A/B/C) — pre-trade kwaliteitsinschatting, vervangt de oude 1-5 zekerheid.
@@ -1648,7 +1682,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.91';
+const APP_VERSION='v0.9.92';
 const SCHEMA_VERSION=2;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -1938,12 +1972,12 @@ async function clearAllData(){ if(!confirm('ÁLLE lokale data wissen, trades, ta
 
 /* ═══ State ═══ */
 const STATE=Object.assign({page:'dashboard',theme:'light',priv:false,tradeTab:'all',density:'comfy',tend:'sessie',revSel:0,revQuery:'',revFilter:'all',revPeriod:'all',
-  sortCol:'date',sortDir:-1,query:'',calMonth:new Date().toISOString().slice(0,7),currency:'EUR',selected:[],pbSel:'',pctRef:0,
+  sortCol:'date',sortDir:-1,query:'',calMonth:new Date().toISOString().slice(0,7),currency:'EUR',selected:[],pbSel:'',pctRef:0,unit:'val',
   sections:{hero:true,kpis:true,equity:true,monthly:true,edge:true,recent:true}}, DB.load('state',{}));
 STATE.selected=[];
 STATE.revShareMode=false; STATE.revShareSel=[]; STATE.shareHide=true;  // "deel met coach": selectie-modus, geselecteerde trade-ids, bedragen verbergen
 STATE.tendRow=STATE.tendRow||'setup'; STATE.tendCol=STATE.tendCol||'session';  // Tendencies kruis-heatmap dimensies
-function persistState(){ DB.save('state',{theme:STATE.theme,priv:STATE.priv,density:STATE.density,currency:STATE.currency,pctRef:STATE.pctRef||0}); }
+function persistState(){ DB.save('state',{theme:STATE.theme,priv:STATE.priv,density:STATE.density,currency:STATE.currency,pctRef:STATE.pctRef||0,unit:STATE.unit||'val'}); }
 
 /* ═══ Weergave-presets (Denny 2026-09-15): Rustig / Standaard / Alles ═══
    Presets zijn een snelkoppeling over losse per-onderdeel toggles, geen echte "modus".
@@ -2211,8 +2245,16 @@ function kpiBlock(key,ns){
     else if(key==='wr'){dTxt=Math.abs(Math.round(ca.wr-pa.wr))+'pt';dUp=ca.wr>=pa.wr;}
     else if(key==='r'){dTxt=Math.abs(ca.avgR-pa.avgR).toFixed(1).replace('.',',')+'R';dUp=ca.avgR>=pa.avgR;}
     else{dTxt=Math.abs(ca.pf-pa.pf).toFixed(1).replace('.',',');dUp=ca.pf>=pa.pf;}}
-  const val=key==='net'?eurS(ag.net):key==='wr'?Math.round(ag.wr)+'%':key==='pf'?ag.pf.toFixed(2).replace('.',','):key==='r'?(ag.avgR>=0?'+':'')+ag.avgR.toFixed(2).replace('.',','):eurS(ag.exp);
-  const vc=key==='net'?cls(ag.net):key==='exp'?cls(ag.exp):key==='r'?cls(ag.avgR):'',mask=(key==='net'||key==='exp')?' mask':'';
+  // Netto en Expectancy volgen de €/%/R-weergavekeuze; Win-rate/PF/Gem. R zijn unit-loos.
+  let val;
+  if(key==='net')val=UNIT()==='val'?eurS(ag.net):unitAgg(lst,ag.net);
+  else if(key==='exp'){
+    if(UNIT()==='pct'){const p=pnlPctTotal(lst,ag.net);val=(p==null||!lst.length)?'—':pctSgn(p/lst.length);}
+    else if(UNIT()==='r'){const aR=aggR(lst);val=aR.n?rS(aR.sum/aR.n):'—';}
+    else val=eurS(ag.exp);
+  }
+  else val=key==='wr'?Math.round(ag.wr)+'%':key==='pf'?ag.pf.toFixed(2).replace('.',','):(ag.avgR>=0?'+':'')+ag.avgR.toFixed(2).replace('.',',');
+  const vc=key==='net'?cls(ag.net):key==='exp'?cls(ag.exp):key==='r'?cls(ag.avgR):'',mask=(key==='net'||key==='exp')?unitMask():'';
   const spark=sp.length>1?sp:[ag.net||0,ag.net||0];
   return `<div class="kpi kcard"><div class="ktop"><div class="k">${cfg.label}</div>${perDD(sk)}</div>
     <div class="kv-row"><div class="v ${vc}${mask}">${val}</div>${dTxt?`<span class="ktrend ${dUp?'up':'down'}">${dTxt} ${dUp?'↗':'↘'}</span>`:''}</div>
@@ -2361,10 +2403,13 @@ function radarImpact(data,onBar){
 }
 function barsPnl(data,unit='k',onBar){
   const t=themeColors(),H=React.createElement,R=Recharts;
-  const fmt=unit==='k'?(v=>(v>=0?'+':'−')+Math.abs(v/1000).toFixed(Math.abs(v)%1000?1:0)+'k'):(v=>eurS(v));
+  const fmt=unit==='k'?(v=>(v>=0?'+':'−')+Math.abs(v/1000).toFixed(Math.abs(v)%1000?1:0)+'k'):unit==='r'?(v=>rS(v)):unit==='p'?(v=>pctSgn(v)):(v=>eurS(v));
   // Compacte waarde-label ON de bar (per rij), zodat je niet hoeft te hoveren.
-  const lbl=v=>{const a=Math.abs(v);const s=v>=0?'+':'−';return a>=1000?s+(a/1000).toFixed(a>=10000?0:1).replace('.',',')+'k':s+Math.round(a);};
-  const rows=data.map(d=>({x:d.m,y:Math.round(d.v),f:d.f}));
+  const lbl=v=>{const s=v>=0?'+':'−',a=Math.abs(v);
+    if(unit==='r')return s+a.toFixed(1).replace('.',',')+'R';
+    if(unit==='p')return s+a.toFixed(1).replace('.',',')+'%';
+    return a>=1000?s+(a/1000).toFixed(a>=10000?0:1).replace('.',',')+'k':s+Math.round(a);};
+  const rows=data.map(d=>({x:d.m,y:(unit==='r'||unit==='p')?+(+d.v).toFixed(2):Math.round(d.v),f:d.f}));
   // interval:0 — Recharts' standaard laat labels aan het BEGIN vallen bij ruimtegebrek,
   // net de grootste fout/verliezer (Denny 2026-09-17). Veel én lange categorieën → schuin.
   const tilt=rows.length>6&&rows.some(r=>String(r.x).length>5);
@@ -2399,26 +2444,32 @@ function pgDashboard(){
       <div style="height:13px"></div>${emptyState('trades-first')}`;
   }
   const a=agg();
-  // Echte YTD (voorheen stond hier een vast demo-percentage): netto dit jaar, % t.o.v. startbalans.
+  // "Deze maand" is nu écht de huidige maand (was: de hele gefilterde selectie) en YTD
+  // het lopende jaar; beide volgen de €/%/R-weergavekeuze. De balans blijft altijd valuta.
+  const _mm=new Date().toISOString().slice(0,7);
+  const mRows=CLOSED.filter(t=>String(t.date||'').startsWith(_mm));
+  const mNet=mRows.reduce((s,t)=>s+(+t.pnl||0),0);
   const _yr=String(new Date().getFullYear());
-  const ytd=T.filter(t=>t&&t.status==='closed'&&String(t.date||'').startsWith(_yr)).reduce((s,t)=>s+(+t.pnl||0),0);
-  const _base=totalBalance()-ytd;
-  const ytdTxt=`YTD <b class="num ${cls(ytd)}">${eurS(ytd)}${_base>0?' ('+(ytd>=0?'+':'−')+Math.abs(ytd/_base*100).toFixed(1).replace('.',',')+'%)':''}</b>`;
-  const hero=!VV('dHero')?'':`<div class="panel hero"><div><div class="eyebrow">Totale balans</div>
+  const yRows=T.filter(t=>t&&t.status==='closed'&&String(t.date||'').startsWith(_yr));
+  const ytd=yRows.reduce((s,t)=>s+(+t.pnl||0),0);
+  let ytdTxt;
+  if(UNIT()==='val'){const _base=totalBalance()-ytd;ytdTxt=`YTD <b class="num ${cls(ytd)} mask">${eurS(ytd)}${_base>0?' ('+(ytd>=0?'+':'−')+Math.abs(ytd/_base*100).toFixed(1).replace('.',',')+'%)':''}</b>`;}
+  else ytdTxt=`YTD <b class="num ${cls(ytd)}">${unitAgg(yRows,ytd,{terse:true})}</b>`;
+  const hero=!VV('dHero')?'':`<div class="panel hero">${unitSeg()}<div><div class="eyebrow">Totale balans</div>
     <div class="big num mask">${eur(totalBalance())}</div>
-    <div class="meta">Gerealiseerd deze maand <b class="num ${cls(a.net)}">${eurS(a.net)}</b> · ${ytdTxt}</div></div>
+    <div class="meta">Gerealiseerd deze maand <b class="num ${cls(mNet)}${unitMask()}">${unitAgg(mRows,mNet)}</b> · ${ytdTxt}</div></div>
     <div class="alloc">${donut()}<div class="legend">${legend}</div></div></div>`;
   const kks=[...(VV('dKpiCore')?['net','wr']:[]),...(VV('dKpiPro')?['pf','exp','r']:[])];
   const kpis=!kks.length?'':`<div class="kpis">${kks.map(k=>kpiBlock(k,'d')).join('')}</div>`;
   const eq=!VV('dEquity')?'':`<div class="panel"><div class="phead"><h3>Equity-curve</h3><span class="sp"></span><span class="chip">year-to-date</span>${pHide('dEquity','Equity-curve')}</div><div class="pbody">${equity()}</div></div>`;
-  const mon=!VV('dMonthly')?'':`<div class="panel"><div class="phead"><h3>Maand-P&L</h3><span class="sp"></span><span class="chip">per maand</span>${pHide('dMonthly','Maand-P&L')}</div><div class="pbody">${barsPnl(monthly())}</div></div>`;
+  const mon=!VV('dMonthly')?'':`<div class="panel"><div class="phead"><h3>Maand-P&L</h3><span class="sp"></span><span class="chip">${UNIT()==='pct'?'% t.o.v. maandstart':UNIT()==='r'?'som R per maand':'per maand'}</span>${pHide('dMonthly','Maand-P&L')}</div><div class="pbody">${barsPnl(monthlyUnit(),UNIT()==='val'?'k':UNIT()==='r'?'r':'p')}</div></div>`;
   const sess=groupRows('session').sort((a,b)=>b.val-a.val);
   const edge=!VV('dEdge')?'':`<div class="panel"><div class="phead"><h3>Waar zit je edge</h3><span class="sp"></span><span class="chip">balk = win-rate · kleur = netto</span>${pHide('dEdge','Waar zit je edge')}</div>${hbars(sess)}</div>`;
   // zachte hint: Rustige stand + genoeg trades → wijs één keer op de rest (wegklikbaar)
   const nudge=(VIEW.preset==='rustig'&&T.length>=25&&!VIEW.nudged)?`<div class="vnudge">💡 Er staan meer inzichten voor je klaar, profit factor, expectancy, analytics en tendencies. <span class="go" onclick="dismissNudge(true)">Bekijk Standaard</span><button class="x" onclick="dismissNudge(false)" aria-label="Hint sluiten">×</button></div>`:'';
   const recent=!VV('dRecent')?'':`<div class="panel"><div class="phead"><h3>Recente trades</h3><span class="sp"></span><button class="chip a" onclick="go('trades')" style="font-weight:700">Alle trades →</button>${pHide('dRecent','Recente trades')}</div>
     <div class="tblwrap"><table class="tbl"><thead><tr><th>Pair</th><th>Setup</th><th>Datum</th><th class="rt">P&L</th><th class="rt">R</th><th class="rt">Status</th></tr></thead>
-    <tbody>${T.slice(0,6).map(t=>`<tr><td>${assetCell(t.pair)}</td><td class="tag">${esc(t.setup)}</td><td class="tag num">${fmtD(t.date)}</td><td class="rt">${pnlCell(t.pnl,pnlPctOf(t))}</td><td class="rt num ${cls(t.r)}">${(t.r>=0?'+':'')+t.r.toFixed(1)}R</td><td class="rt">${statusB(t.status)}</td></tr>`).join('')}</tbody></table></div></div>`;
+    <tbody>${T.slice(0,6).map(t=>`<tr><td>${assetCell(t.pair)}</td><td class="tag">${esc(t.setup)}</td><td class="tag num">${fmtD(t.date)}</td><td class="rt">${UNIT()==='val'?pnlCell(t.pnl,pnlPctOf(t)):`<span class="num ${unitTrade(t)==='—'?'':cls(+t.pnl||0)}" style="font-weight:700">${unitTrade(t)}</span>`}</td><td class="rt num ${cls(t.r)}">${(t.r>=0?'+':'')+t.r.toFixed(1)}R</td><td class="rt">${statusB(t.status)}</td></tr>`).join('')}</tbody></table></div></div>`;
   return `${filterBar()}${hero}<div style="height:16px"></div>${kpis}${nudge}<div style="height:16px"></div>${eq}<div style="height:16px"></div>
     <div class="grid" style="grid-template-columns:1fr 1fr">${mon}${edge}</div><div style="height:16px"></div>${recent}`;
 }

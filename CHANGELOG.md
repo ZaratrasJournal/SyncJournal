@@ -10,6 +10,14 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 De journal is opnieuw opgebouwd als **SyncJournal** en draait nu online op [syncjournal.nl](https://syncjournal.nl). Versienummers zijn opnieuw gestart op v0.9.x (bèta); de oude TradeJournal-releases staan verderop in dit bestand. Je data overzetten kan via Instellingen → Data → Importeer oude backup.
 
+## [v0.9.92] — 2026-09-18
+
+### Toegevoegd
+- **€ / % / R-weergaveschakelaar op het dashboard** — rechtsboven in het balans-blok kies je waarin je je resultaten wilt zien: bedragen, percentage van je account, of R-multiples. Alle P&L-waarden op het dashboard volgen je keuze (maand, YTD, Netto, Verwachting, Maand-grafiek en de recente trades); je totale balans blijft altijd in valuta staan. Handig om je maand in R te beoordelen, of om je dashboard te delen zonder bedragen te tonen.
+  - Percentages worden per periode t.o.v. je accountgrootte berekend, nooit door losse trade-percentages op te tellen — die rekenfout maken we bewust niet.
+  - Trades zonder vastgelegd risico hebben geen R. Die tellen niet als 0R mee: je ziet ze apart geteld ("· 2 zonder R"), zodat je gemiddelden eerlijk blijven.
+  - Je keuze blijft bewaard. De Trades-lijst en Analytics volgen in een volgende update.
+
 ## [v0.9.91] — 2026-09-17
 
 ### Gewijzigd

@@ -94,7 +94,10 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  âœ
   const adopt = await p.evaluate(async () => {
     // simuleer: elders is een nieuwere backup gemaakt (andere trades, modifiedTime in de toekomst)
     const remote = JSON.stringify({ app: 'SyncJournal', trades: [{ id: 99, date: '2026-09-16', time: '20:00', pair: 'SOL/USDT', dir: 'long', setup: '', session: 'London', status: 'closed', kind: 'live', exchange: '', entry: 10, exit: 11, stop: 9, size: '100', pnl: 10, r: 1, tps: [], tags: [], layers: [], emotions: [], mistakes: [], checks: [], screenshots: [], tvLinks: [] }] });
-    window.__dv.files['fRemote'] = { id: 'fRemote', name: 'syncjournal-backup-2026-09-17.json', content: remote, modifiedTime: new Date(Date.now() + 3600e3).toISOString() };
+    // Naam = MORGEN, niet hardcoded: de app kiest het laatste dagbestand op naam, en de
+    // app maakt eerder in deze spec zelf een bestand van vandaag aan (anders wint dat).
+    const _tm = new Date(Date.now() + 864e5).toISOString().slice(0, 10);
+    window.__dv.files['fRemote'] = { id: 'fRemote', name: 'syncjournal-backup-' + _tm + '.json', content: remote, modifiedTime: new Date(Date.now() + 3600e3).toISOString() };
     DB.save('data_ts', Date.now() - 86400e3); BK.ts = Date.now() - 86400e3;
     await driveStartupCheck(); await new Promise(r => setTimeout(r, 100));
     const banner = document.querySelector('.updbanner');
