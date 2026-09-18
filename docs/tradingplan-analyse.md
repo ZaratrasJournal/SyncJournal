@@ -182,6 +182,25 @@ Tot slot een detail over eerlijk scoren dat TradesViz goed doet: naast "gevolgd"
 
 ---
 
+## 4c. Wat het onderzoek naar Notion en Obsidian oplevert
+
+Er is nog een vierde onderzoekslijn gedraaid over de "doe-het-zelf"-hoek (Notion-templates en Obsidian-vaults). Drie dingen springen eruit.
+
+**1. Scenario-denken bestaat nergens als structuur.** Over honderden templates heen: geen enkele heeft een als-dan-scenario, of zelfs maar een gekoppeld bull-/bear-geval. Iedereen heeft één `bias`-veld en een stuk vrije tekst. Terwijl traders het wél zo doen — letterlijk uit een forum: *"whenever I plan my trades before market open I have both a bearish and bullish set up, that way if either plays out I will be ready."* **Jouw scenario's met eigen charts zijn dus geen detail maar je onderscheidende functie**; als we ze de als-dan-structuur geven (voorstel 5) is er niets vergelijkbaars op de markt.
+
+**2. Lokaal opslaan is voor een deel van de markt een reden om níet voor de grote tools te kiezen.** Terugkerend geluid: *"I just don't feel comfortable handing over every detail of my strategy to any online platform — especially the free ones."* SyncJournal is lokaal-eerst; dat is geen technische keuze meer maar een verkoopargument.
+
+**3. De afhaak-curve is exact benoemd**: flexibiliteit → te veel bouwen → onderhoud kost meer dan het oplevert → men stopt met bijhouden. De twee strategieën die volgens gebruikers wél overleven: radicaal versimpelen, of automatisch importeren zodat alleen het denkwerk overblijft. Letterlijk: *"If it takes too long to log trades or review them, I just stop doing it, no matter how good the features are."* Dat is het sterkste argument voor voorstel 1, 2 en 4.
+
+Twee ideeën uit die hoek die het waard zijn om te lenen:
+
+- **Overtuiging vóór én na de trade** (1-10). Eén trader gebruikt dat verschil om zijn trades in te delen in "vermijden", "uitbuiten" en **"overmoed"**. Jouw poort geeft al een A/B-oordeel; één getal erbij maakt zichtbaar wanneer je jezelf overschat.
+- **Een korte eindedag-checklist** naast je dagstart: *positiegrootte gerespecteerd · niet revenge getraden · alleen A/B-setups genomen · gestopt op mijn daglimiet · alle trades nagekeken.* Vijf vinkjes die je dag afsluiten en meteen de nalevingsscore voeden.
+
+Eén waarschuwing uit hetzelfde onderzoek, die precies past bij wat jij wilt bouwen: *"Been through a lot of them over 5 years. Excel, Notion, TradeZella, TraderSync. They all track the same stuff. Good for record keeping but none of them helped me figure out WHY I kept making the same mistakes."* Dat is de lat: niet nog een logboek, maar iets dat het patroon benoemt.
+
+---
+
 ## 5. Wat ik zou laten zoals het is
 
 - **De 7 poort-checks.** Kort, binair, met twee harde stops — precies goed. Niet uitbreiden.
