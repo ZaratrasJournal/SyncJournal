@@ -10,6 +10,15 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 De journal is opnieuw opgebouwd als **SyncJournal** en draait nu online op [syncjournal.nl](https://syncjournal.nl). Versienummers zijn opnieuw gestart op v0.9.x (bèta); de oude TradeJournal-releases staan verderop in dit bestand. Je data overzetten kan via Instellingen → Data → Importeer oude backup.
 
+## [v0.9.100] — 2026-09-18
+
+### Fixed
+- **Automatisch synchroniseren werkt nu ook echt** (gemeld door ChangeMaker). De schakelaar in Instellingen stond aan, maar er gebeurde niets: achter "Beheren" zat per account nóg een schakelaar, en die stond standaard uit. Eén schakelaar is nu genoeg — hij geldt voor al je verbonden exchanges. Wil je één account overslaan, dan kan dat nog steeds via Beheren.
+- **Achterstand wordt meteen ingehaald.** Open je de journal na een nacht of een weekend, dan werd er voorheen eerst een heel interval gewacht voordat er gesynct werd. Nu haalt de app direct op wat er mist.
+
+### Gewijzigd
+- Bij een verbonden account staat er voortaan bij of auto-sync aan of uit is, en bij de schakelaar zelf voor hoeveel accounts hij geldt.
+
 ## [v0.9.99] — 2026-09-18
 
 ### Toegevoegd

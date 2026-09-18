@@ -1707,7 +1707,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.99';
+const APP_VERSION='v0.9.100';
 const SCHEMA_VERSION=2;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -1907,7 +1907,11 @@ function addTagCat(catKey,inputId){const el=document.getElementById(inputId);if(
 function removeTagCat(catKey,tag){tagConfig[catKey]=(tagConfig[catKey]||[]).filter(t=>t!==tag);persistTagConfig();render();}
 
 /* ═══ Accounts: exchange-koppelingen + handmatige accounts + sync ═══ */
-let CONNS=DB.load('conns',{});        // per exchange-id: {connected, autoSync, hint}
+let CONNS=DB.load('conns',{});        // per exchange-id: {connected, noAuto, hint}
+// v0.9.100: auto-sync was per account opt-in en stond standaard uit, waardoor de
+// globale schakelaar niets deed. Nu geldt hij voor alles wat verbonden is; het oude
+// veld ruimen we op zodat er geen twee waarheden naast elkaar staan.
+Object.values(CONNS).forEach(c=>{if(c&&typeof c==='object'&&'autoSync' in c)delete c.autoSync;});
 let MANUAL=DB.load('manual',[]);       // [{id,name,transactions:[{id,type,amount,date,note}]}]
 // Kapitaal-mutatie-registry (kleur/icoon/label/teken) — gedeeld door UI + berekening.
 const TX_TYPES={
@@ -1969,7 +1973,7 @@ function connectEx(id){
   if(ad.walletOnly){ if(!wallet){toast('Vul je wallet-adres in (0x…)','err');return;} }
   else{ if(!key||!sec){toast('Vul zowel API-key als secret in','err');return;}
         if(ad.needsPassphrase&&!pass){toast(EXMAP[id].name+' vereist ook een passphrase','err');return;} }
-  CONNS[id]={...(CONNS[id]||{}),connected:true,autoSync:(CONNS[id]&&CONNS[id].autoSync)||false,
+  CONNS[id]={...(CONNS[id]||{}),connected:true,
     hint:(ad.walletOnly?wallet:key).slice(-4),apiKey:key,apiSecret:sec,passphrase:pass,wallet,syncFrom:from};
   persistConns();STATE.connOpen='';render();toast('✓ '+EXMAP[id].name+' verbonden, saldo en trades worden opgehaald…','ok');
   // direct saldo + eerste sync: het dashboard toont meteen de echte balans en trades
@@ -1988,7 +1992,8 @@ function disconnectEx(id){
   delete CONNS[id];persistConns();
   if(EXMAP[id]){EXMAP[id].val=0;persistExMeta();}  // saldo hoort bij de koppeling
   render();toast(EXMAP[id].name+' losgekoppeld'+(killTrades?' · '+linked.length+' trades naar de prullenbak':''),'info');}
-function toggleExSync(id){if(CONNS[id]){CONNS[id].autoSync=!CONNS[id].autoSync;persistConns();render();}}
+// Auto-sync geldt voor élk verbonden account; deze schakelaar is een uitzondering erop.
+function toggleExSync(id){if(CONNS[id]){CONNS[id].noAuto=!CONNS[id].noAuto;persistConns();render();}}
 function addManual(){const n=document.getElementById('ma_name'),bal=document.getElementById('ma_bal'),name=n?n.value.trim():'',b=bal?parseFloat(String(bal.value).replace(',','.'))||0:0;
   if(!name){toast('Geef het account een naam','err');return;}
   const tx=b>0?[{id:'tx'+Date.now().toString(36),type:'deposit',amount:String(b),date:new Date().toISOString().slice(0,10),note:'Startsaldo'}]:[];
@@ -3218,6 +3223,7 @@ function pgInstellingen(){
   if(STATE.setTab==='dashboard')STATE.setTab='weergave'; // Dashboard-toggles zijn opgegaan in Weergave-presets
   const tab=STATE.setTab||'accounts';
   const tabs=[['accounts','🔗','Accounts'],['weergave','🎨','Weergave'],['tags','🏷️','Tags'],['ai','🤖','AI-coach'],['data','💾','Data'],['updates','🔄','Updates'],['wissen','🗑️','Wissen']];
+  const autoN=(typeof autoSyncTargets==='function'?autoSyncTargets():[]).length;
   const exRows=EXCHANGES.map(e=>{const c=CONNS[e.id],open=STATE.connOpen===e.id;
     const ad=(typeof ExchangeAPI!=='undefined'&&ExchangeAPI[e.id])||{};
     const lastS=c&&c.lastSync?new Date(c.lastSync).toLocaleString('nl-NL',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'';
@@ -3225,7 +3231,7 @@ function pgInstellingen(){
       <div class="txt"><b>${e.name} <span class="chip warnc" style="background:var(--amber-soft);border:1px solid color-mix(in srgb,var(--amber) 35%,transparent);color:var(--amber);font-weight:700;padding:2px 8px;border-radius:20px;font-size:10.5px;vertical-align:middle">API gestopt</span></b>
       <small>${esc(e.deprecated)}. Je bestaande ${e.name}-trades blijven gewoon zichtbaar en tellen mee; oude exports importeren kan via CSV/back-up.</small></div></div>`;
     return `<div class="setrow">${accAvatar(e.id,30)}
-      <div class="txt"><b>${e.name}</b><small><span class="dotc" style="display:inline-block;vertical-align:middle;margin-right:4px;background:${c&&c.connected?'var(--green)':'var(--muted)'}"></span>${c&&c.connected?'verbonden · '+(ad.walletOnly?'wallet':'key')+' •••'+c.hint+(lastS?' · laatste sync '+lastS:'')+(c.autoSync?' · auto-sync aan':''):'niet verbonden'}</small></div>
+      <div class="txt"><b>${e.name}</b><small><span class="dotc" style="display:inline-block;vertical-align:middle;margin-right:4px;background:${c&&c.connected?'var(--green)':'var(--muted)'}"></span>${c&&c.connected?'verbonden · '+(ad.walletOnly?'wallet':'key')+' •••'+c.hint+(lastS?' · laatste sync '+lastS:'')+(SYNC.auto?(c.noAuto?' · auto-sync uit':' · auto-sync aan'):''):'niet verbonden'}</small></div>
       ${c&&c.connected?`<button class="btn" onclick="syncExchange('${e.id}')">↻ Sync nu</button>`:''}
       <button class="btn" onclick="connExpand('${e.id}')">${open?'Sluiten':(c&&c.connected?'Beheren':'Verbinden')}</button></div>
       ${open?`<div class="conncfg">
@@ -3236,7 +3242,7 @@ function pgInstellingen(){
         ${ad.needsPassphrase?`<div class="ccfield"><label>Passphrase</label><input id="cp_${e.id}" type="password" value="${esc((c&&c.passphrase)||'')}" placeholder="API-passphrase"></div>`:''}`}
         <div class="ccfield"><label>Sync vanaf <span class="hint">(optioneel, eerste sync haalt anders 30 dagen op)</span></label><input type="date" id="cf_${e.id}" value="${esc((c&&c.syncFrom)||'')}"></div>
         <div class="connnote">🔒 Gebruik <b>read-only</b> keys (kunnen nooit handelen of geld opnemen). Sleutels blijven lokaal in deze browser; ${e.id==='blofin'?'Blofin wordt direct vanuit de browser ondertekend':e.id==='hyperliquid'?'Hyperliquid gebruikt alleen publieke wallet-data':'aanvragen lopen via de beveiligde proxy'}.</div>
-        <div class="connrow">${c&&c.connected?`<label class="swrow"><span>Auto-sync voor dit account</span><div class="sw ${c.autoSync?'on':''}" onclick="toggleExSync('${e.id}')"></div></label>`:''}<span class="sp" style="flex:1"></span>${c&&c.connected?`<button class="btn danger" onclick="disconnectEx('${e.id}')">Loskoppelen</button><button class="btn" id="ct_${e.id}" onclick="testConn('${e.id}')">Test verbinding</button>`:''}<button class="btn pri" onclick="connectEx('${e.id}')">${c&&c.connected?'Bijwerken':'Verbinden'}</button></div>
+        <div class="connrow">${c&&c.connected?`<label class="swrow"><span>Auto-sync voor dit account</span><div class="sw ${c.noAuto?'':'on'}" onclick="toggleExSync('${e.id}')"></div></label>`:''}<span class="sp" style="flex:1"></span>${c&&c.connected?`<button class="btn danger" onclick="disconnectEx('${e.id}')">Loskoppelen</button><button class="btn" id="ct_${e.id}" onclick="testConn('${e.id}')">Test verbinding</button>`:''}<button class="btn pri" onclick="connectEx('${e.id}')">${c&&c.connected?'Bijwerken':'Verbinden'}</button></div>
       </div>`:''}`;}).join('');
   const txLegend=`<div class="txlegend">${Object.entries(TX_TYPES).map(([k,v])=>`<span class="txlg"><span class="txic" style="color:${v.color}">${v.icon}</span>${v.label}${k==='deposit'?' (erbij)':k==='withdrawal'?' (eraf)':' (setpoint)'}</span>`).join('')}</div>`;
   const manRows=(MANUAL.length?MANUAL.map(m=>{
@@ -3294,7 +3300,7 @@ function pgInstellingen(){
         <div class="setrow maadd"><input id="ma_name" placeholder="Accountnaam (bv. FTMO Challenge)"><input id="ma_bal" placeholder="Saldo" inputmode="decimal"><button class="btn pri" onclick="addManual()">+ Toevoegen</button></div></div>
       <div class="section-sub">🔄 Synchronisatie</div>
       <div class="panel">
-        <div class="setrow"><div class="txt"><b>Automatisch synchroniseren</b><small>Haalt periodiek nieuwe trades op bij verbonden exchanges</small></div><div class="sw ${SYNC.auto?'on':''}" onclick="toggleAutoSync()"></div></div>
+        <div class="setrow"><div class="txt"><b>Automatisch synchroniseren</b><small>Haalt periodiek nieuwe trades op bij verbonden exchanges${SYNC.auto?(autoN?' · actief voor '+autoN+' account'+(autoN===1?'':'s'):' · nog geen enkel account verbonden'):''}</small></div><div class="sw ${SYNC.auto?'on':''}" onclick="toggleAutoSync()"></div></div>
         <div class="setrow"><div class="txt"><b>Sync-interval</b><small>Hoe vaak we controleren op nieuwe trades</small></div><select class="fsel" aria-label="Sync-interval" onchange="setSyncInterval(this.value)">${[['5m','Elke 5 min'],['15m','Elke 15 min'],['30m','Elke 30 min'],['1u','Elk uur']].map(([v,l])=>`<option value="${v}" ${SYNC.interval===v?'selected':''}>${l}</option>`).join('')}</select></div>
         <div class="setrow"><div class="txt"><b>Nu synchroniseren</b><small>Handmatig een sync starten</small></div><button class="btn" onclick="syncNow()">Sync nu</button></div>
       </div>`,
@@ -4279,6 +4285,9 @@ function applyBackup(d){
   adoptViewBackup(d);adoptExMeta(d);
   if(d.settings){STATE.theme=d.settings.theme||STATE.theme;STATE.currency=d.settings.currency||STATE.currency;STATE.priv=!!d.settings.priv;STATE.density=d.settings.density||STATE.density;document.body.classList.toggle('dark',STATE.theme==='dark');document.body.classList.toggle('priv',STATE.priv);}
   persistState();persist();render();
+  // Herstelde back-up kan een ander sync-interval of andere koppelingen bevatten:
+  // de lopende timer draait anders nog op de oude instellingen.
+  try{startAutoSync();}catch(e){}
 }
 /* ═══ Backup-bewaking (hosting-plan fase 1, Denny 2026-09-16) ═══
    Eén statuslaag voor álle backup-methodes: elke geslaagde backup (handmatige export,
@@ -4675,7 +4684,7 @@ const TJMigrate={
       if(isManual){ manual.push({id:a.id||('m'+Date.now()+Math.random().toString(36).slice(2,6)),name:a.label||a.name||'Account',transactions:(a.transactions||[]).map(tx=>({id:tx.id||('tx'+Math.random().toString(36).slice(2,8)),type:tx.type,amount:String(tx.amount),date:tx.date||'',note:tx.note||''}))}); }
       else if(EXMAP[a.type]&&EXMAP[a.type].deprecated){ warnings.push('Koppeling "'+(a.label||a.type)+'" is niet overgezet: '+EXMAP[a.type].deprecated+'. Je trades blijven gewoon behouden.'); }
       else if(EXMAP[a.type]){ // API-sleutels gaan mee (fase 3, Denny 2026-09-17): direct door kunnen syncen
-        conns[a.type]={connected:true,autoSync:false,hint:String(a.apiKey||a.walletAddress||'').slice(-4),apiKey:a.apiKey||'',apiSecret:a.apiSecret||'',passphrase:a.passphrase||'',wallet:a.walletAddress||'',syncFrom:a.syncFrom||''};
+        conns[a.type]={connected:true,hint:String(a.apiKey||a.walletAddress||'').slice(-4),apiKey:a.apiKey||'',apiSecret:a.apiSecret||'',passphrase:a.passphrase||'',wallet:a.walletAddress||'',syncFrom:a.syncFrom||''};
         if(a.label)exMeta[a.type]={acct:a.label}; // accountnaam mee (saldo volgt bij de eerste sync)
         if((a.transactions||[]).length)warnings.push('Kapitaal-mutaties van exchange-account "'+(a.label||a.type)+'" zijn niet overgezet (SyncJournal koppelt exchanges live).'); }
       else warnings.push('Exchange "'+a.type+'" wordt door SyncJournal nog niet ondersteund, de trades blijven behouden, de koppeling niet.');
@@ -5884,15 +5893,25 @@ async function syncNow(){
   toast(fail?('Sync klaar, '+n+' nieuwe trades · '+fail+' exchange'+(fail>1?'s':'')+' faalde (zie Accounts)'):('✓ Sync klaar, '+n+' nieuwe trade'+(n===1?'':'s')),fail?'err':'ok');
   render();
 }
-// Auto-sync: respecteert SYNC.auto + interval; alleen accounts met autoSync aan.
+// Auto-sync: de schakelaar in Instellingen geldt voor álle verbonden accounts
+// (per account uit te zetten met noAuto). Bij openen halen we achterstand meteen in —
+// anders staat de app na een nacht dicht nog een heel interval te wachten.
 let _autoSyncTimer=null;
+const SYNC_MS={'5m':300e3,'15m':900e3,'30m':1800e3,'1u':3600e3};
+function syncIntervalMs(){return SYNC_MS[SYNC.interval]||SYNC_MS['15m'];}
+function autoSyncTargets(){return EXCHANGES.filter(e=>!e.deprecated&&CONNS[e.id]&&CONNS[e.id].connected&&!CONNS[e.id].noAuto);}
+async function autoSyncRun(onlyOverdue){
+  if(!SYNC.auto||TAB_STALE)return;   // een verouderd tabblad mag niet schrijven, dus ook niet syncen
+  const overdueBefore=Date.now()-syncIntervalMs();
+  for(const e of autoSyncTargets()){
+    if(onlyOverdue&&(+CONNS[e.id].lastSync||0)>overdueBefore)continue;
+    await syncExchange(e.id,{quiet:true});
+  }
+}
 function startAutoSync(){
   if(_autoSyncTimer)clearInterval(_autoSyncTimer);
-  const ms={'5m':300e3,'15m':900e3,'30m':1800e3,'1u':3600e3}[SYNC.interval]||900e3;
-  _autoSyncTimer=setInterval(async()=>{
-    if(!SYNC.auto)return;
-    for(const e of EXCHANGES){if(e.deprecated)continue;const c=CONNS[e.id];if(c&&c.connected&&c.autoSync)await syncExchange(e.id,{quiet:true});}
-  },ms);
+  _autoSyncTimer=setInterval(()=>{autoSyncRun(false).catch(()=>{});},syncIntervalMs());
+  autoSyncRun(true).catch(()=>{});
 }
 
 /* ═══ Fase 2: open posities, placeholders & partial-detectie ═══
