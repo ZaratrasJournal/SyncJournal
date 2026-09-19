@@ -30,9 +30,12 @@ Kort: er ontbreekt een http→https-stap voor `www`.
 
 ### Stap 1 — "Always Use HTTPS" aanzetten (dit lost het op)
 
-1. Ga naar [dash.cloudflare.com](https://dash.cloudflare.com) en kies het domein **syncjournal.nl**.
-2. Linksin naar **SSL/TLS**. Klik daaronder op **Edge Certificates** (heet in de nieuwere indeling soms gewoon **Settings**).
-3. Scroll naar **Always Use HTTPS** en zet de schakelaar **aan**.
+1. Ga naar [dash.cloudflare.com](https://dash.cloudflare.com) en klik in de lijst op het domein **syncjournal.nl**. Je zit nu in dat domein; alles hieronder staat in het linkermenu.
+2. Klik op **SSL/TLS**. Het menu klapt open met daaronder o.a. *Overview* en *Edge Certificates*.
+3. Open eerst **Overview** en kijk of de encryption mode niet op **Off** staat (bij jou hoort dat *Full* of *Full (strict)* te zijn). Staat hij op Off, dan werkt stap 4 niet.
+4. Klik op **Edge Certificates**, scroll naar **Always Use HTTPS** en zet de schakelaar **aan**.
+
+Het werkt direct; er is niets om op te slaan of te deployen.
 
 Wat dit doet: Cloudflare beantwoordt élk http-verzoek meteen met een doorverwijzing naar https, nog vóórdat hij een origin-server gaat zoeken. Daarmee wordt `http://www...` eerst `https://www...`, en daar pakt je bestaande redirect-regel het weer op naar het kale domein.
 
@@ -40,8 +43,8 @@ Dit geldt voor het hele domein en verandert niets aan wat er nu al goed gaat.
 
 ### Stap 2 — de redirect-regel losmaken van https (voorkomt herhaling)
 
-1. Linksin naar **Rules** → **Redirect Rules**.
-2. Open de regel die `www` doorstuurt naar het kale domein.
+1. Klik in het linkermenu op **Rules** en dan op **Overview**. Daar staat de lijst met al je regels.
+2. Zoek de regel die `www` doorstuurt naar het kale domein en klik erop om hem te openen.
 3. Kijk bij **When incoming requests match** waar hij op matcht. Staat daar de volledige URL met `https://` erin (veld *URI Full*), zet het dan om naar:
    - Field: **Hostname**
    - Operator: **equals**
