@@ -132,6 +132,20 @@ textarea.input{resize:vertical;min-height:64px;line-height:1.5}
 .sc-del:hover{color:var(--red)}
 .sc-card textarea.input{background:var(--surface)}
 .drop.drop-sm{padding:9px;font-size:12px;margin-top:8px}
+.sc-f{margin-top:9px}
+.sc-f>label{display:block;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin-bottom:3px}
+.sc-f textarea.input{min-height:54px}
+.sc-note{background:none;border:0;color:var(--accent);font:inherit;font-size:12px;font-weight:600;cursor:pointer;padding:7px 0 0}
+.ctx{margin-bottom:15px;padding:11px 13px;border:1px solid var(--line);border-radius:11px;background:var(--sink)}
+.ctx-h{font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin-bottom:7px}
+.ctx-kv{display:flex;flex-wrap:wrap;gap:5px 16px;font-size:12.5px;color:var(--ink2)}
+.ctx-kv b{color:var(--muted);font-weight:600;margin-right:5px}
+.ctx-btns{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.nt{margin:12px 16px 0;padding:10px 13px;border-radius:10px;border:1px solid var(--line);background:var(--sink)}
+.nt-h{font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
+.nt ul{list-style:none;padding:0;margin:0}
+.nt.blocked{background:var(--red-soft);border-color:color-mix(in srgb,var(--red) 30%,transparent)}
+.nt.blocked .nt-h{color:var(--red)}
 /* scenario's naast elkaar op breed scherm — parallelle als-dan-paden lees je zij-aan-zij */
 .ov-scs{display:grid;grid-template-columns:repeat(auto-fit,minmax(480px,1fr));gap:14px;align-items:start}
 .ov-sc{border:1px solid var(--line2);border-radius:12px;padding:12px 14px;background:var(--sink)}
@@ -291,6 +305,8 @@ td input{width:66px;border:1px solid var(--line);border-radius:7px;padding:4px 7
           </div>
           <label class="form-label">Eén focuspunt voor deze week</label>
           <input class="input" data-f="wk:focus" placeholder="bv 'Geen entry zonder SFP'">
+          <label class="form-label">Deze week handel ik NIET wanneer <span class="hint" style="text-transform:none;letter-spacing:0;font-weight:500">(één per regel · komen terug als harde check in de poort)</span></label>
+          <textarea class="input" data-f="wk:notrade" placeholder="Binnen 2 minuten na high-impact nieuws&#10;Na 2 verliezers op één dag&#10;Buiten de London- of NY-sessie"></textarea>
           <label class="form-label">Screenshots</label>
           <div class="thumbs" data-thumbs="wk"></div>
           <label class="drop" data-drop="wk">Klik, sleep of plak (Ctrl/⌘+V) een screenshot hierheen<input type="file" accept="image/*" multiple></label>
@@ -315,6 +331,7 @@ td input{width:66px;border:1px solid var(--line);border-radius:7px;padding:4px 7
         <div class="card-header"><h3 class="card-title" id="dg-title">Vandaag</h3>
           <span class="daynav"><button class="btn btn-sm" id="dg-prev" title="Vorige dag" aria-label="Vorige dag">‹</button><span class="hint" id="dg-id"></span><button class="btn btn-sm" id="dg-next" title="Volgende dag" aria-label="Volgende dag">›</button><button class="btn btn-sm" id="dg-today" hidden>Naar vandaag</button></span></div>
         <div class="card-body">
+          <div id="dg-ctx"></div>
           <label class="form-label">Daily bias</label>
           <div class="seg" data-segf="dg:bias"><button data-v="Bullish">Bullish</button><button data-v="Bearish">Bearish</button><button data-v="Range">Range</button></div>
           <label class="form-label">Trend per timeframe</label>
@@ -342,6 +359,7 @@ td input{width:66px;border:1px solid var(--line);border-radius:7px;padding:4px 7
         <div class="card-header"><h3 class="card-title">Pre-trade poort</h3><div class="seg" id="dir"><button aria-pressed="true" data-dir="Long">Long</button><button aria-pressed="false" data-dir="Short">Short</button></div></div>
         <div id="pt-dagstart"></div>
         <ul class="list" id="pt-list"></ul>
+        <div id="pt-notrade"></div>
         <div class="verdict v-NO" id="pt-verdict"><div class="g">Geen trade</div><div class="w" id="pt-why">Nog niets afgevinkt</div></div>
         <div class="card-body" style="padding-top:12px">
           <textarea class="input" id="pt-notes" placeholder="Notitie. Welk punt mis je, en waarom klik je toch?"></textarea>
@@ -556,7 +574,8 @@ td input{width:66px;border:1px solid var(--line);border-radius:7px;padding:4px 7
   function ensureScenarios(p){
     if(!p||p.type!=="dag")return p;
     if(!Array.isArray(p.scenarios)){ p.scenarios=p.plan?[{title:"",text:p.plan,images:[],links:[]}]:[]; delete p.plan; }
-    p.scenarios.forEach(function(s){if(!Array.isArray(s.images))s.images=[];if(!Array.isArray(s.links))s.links=[];});
+    p.scenarios.forEach(function(s){if(!Array.isArray(s.images))s.images=[];if(!Array.isArray(s.links))s.links=[];
+      ["als","dan","ongeldig"].forEach(function(f){if(s[f]==null)s[f]="";});});
     // dagplan-brede screenshots/links bestaan niet meer → verplaats bestaande naar scenario 1
     if((p.images&&p.images.length)||(p.links&&p.links.length)){
       if(!p.scenarios.length)p.scenarios.push({title:"",text:"",images:[],links:[]});
@@ -669,6 +688,22 @@ td input{width:66px;border:1px solid var(--line);border-radius:7px;padding:4px 7
     img.src=url;
   }
   /* ── scenario-bouwer (dagplan) ── */
+  // Toelichting is optioneel: alleen zichtbaar als er tekst in staat of je hem opent.
+  var scNote={};
+  // Eén leesbare regel van een als-dan-scenario, voor het overzicht en de log.
+  function scLine(s){
+    var t=[]; if(s.als)t.push("Als "+s.als.trim()); if(s.dan)t.push("dan "+s.dan.trim());
+    var out=t.join(", ");
+    if(s.ongeldig) out+=(out?" · ":"")+"ongeldig bij "+s.ongeldig.trim();
+    return out||String(s.text||"").trim();
+  }
+  function scBlockHtml(s){
+    var h="";
+    if(s.als||s.dan) h+='<div class="ov-sc-t">'+(s.als?"<b>Als</b> "+esc(s.als):"")+(s.dan?(s.als?"<br>":"")+"<b>Dan</b> "+esc(s.dan):"")+'</div>';
+    if(s.ongeldig) h+='<div class="ov-sc-t hint">Ongeldig bij '+esc(s.ongeldig)+'</div>';
+    if(String(s.text||"").trim()) h+='<div class="ov-sc-t">'+esc(s.text)+'</div>';
+    return h;
+  }
   function renderScenarios(){
     var wrap=$("sc-wrap"); if(!wrap||!cur.dg) return;
     var p=cur.dg, list=p.scenarios||[];
@@ -678,13 +713,20 @@ td input{width:66px;border:1px solid var(--line);border-radius:7px;padding:4px 7
       d.innerHTML='<div class="sc-head"><span class="badge bg-primary">Scenario '+(i+1)+'</span>'
         +'<input class="input sc-title" placeholder="Korte naam — bv. ‘Sweep weekend-low’" value="'+esc(s.title||"")+'">'
         +'<button class="sc-del" title="Scenario verwijderen">×</button></div>'
-        +'<textarea class="input sc-text" placeholder="Als prijs X doet, dan kijk ik naar Y. Anders niets.">'+esc(s.text||"")+'</textarea>'
+        +'<div class="sc-f"><label>Als</label><textarea class="input sc-als" placeholder="De trigger. Bv. prijs sweept de weekend-low en geeft 15m BoS terug boven 74.2k">'+esc(s.als||"")+'</textarea></div>'
+        +'<div class="sc-f"><label>Dan</label><textarea class="input sc-dan" placeholder="Wat je dan doet. Bv. long vanaf de 15m OB, SL onder de sweep, TP1 op POC">'+esc(s.dan||"")+'</textarea></div>'
+        +'<div class="sc-f"><label>Ongeldig bij</label><input class="input sc-ong" placeholder="Waar dit scenario sneuvelt. Bv. 15m sluit onder 73.8k" value="'+esc(s.ongeldig||"")+'"></div>'
+        +((s.text||scNote[i])?'<div class="sc-f"><label>Toelichting</label><textarea class="input sc-text" placeholder="Vrije aantekening">'+esc(s.text||"")+'</textarea></div>':'<button class="sc-note" type="button">+ toelichting</button>')
         +'<div class="thumbs">'+ (s.images||[]).map(function(im,j){return '<div class="thumb" data-i="'+j+'"><img src="'+esc(imgSrc(im))+'" alt="chart"><button class="x" title="Verwijderen">×</button></div>';}).join("") +'</div>'
         +'<label class="drop drop-sm">Klik, sleep of plak (Ctrl/⌘+V) een chart bij dit scenario<input type="file" accept="image/*" multiple></label>'
         +'<ul class="links sc-links">'+ (s.links||[]).map(function(l,j){return '<li><span class="badge bg-muted">TV</span><a href="'+esc(l.url)+'" target="_blank" rel="noopener">'+esc(l.label)+'</a><button class="x" data-j="'+j+'">×</button></li>';}).join("") +'</ul>'
         +'<div class="addlink"><input class="input sc-linkurl" placeholder="https://www.tradingview.com/x/…"><button class="btn btn-sm sc-linkadd" type="button">+ TV-link</button></div>';
       q(".sc-title",d).oninput=function(){s.title=this.value;touch(p);renderOverview();};
-      q(".sc-text",d).oninput=function(){s.text=this.value;touch(p);renderOverview();};
+      [["sc-als","als"],["sc-dan","dan"],["sc-ong","ongeldig"],["sc-text","text"]].forEach(function(pair){
+        var el=q("."+pair[0],d); if(el) el.oninput=function(){s[pair[1]]=this.value;touch(p);renderOverview();};
+      });
+      var noteBtn=q(".sc-note",d);
+      if(noteBtn) noteBtn.onclick=function(){scNote[i]=true;renderScenarios();var c=qa("#sc-wrap .sc-card")[i];if(c)q(".sc-text",c).focus();};
       q(".sc-del",d).onclick=function(){ if(!confirm("Scenario "+(i+1)+" verwijderen?"))return;
         (s.images||[]).forEach(function(im){ if(im.id&&ASSETS)ASSETS.delete(im.id).catch(function(){}); if(im.idb){idbDel(im.idb);delete IMG_CACHE[im.idb];} });
         p.scenarios.splice(i,1);touch(p,true);renderScenarios();renderOverview(); };
@@ -761,7 +803,7 @@ td input{width:66px;border:1px solid var(--line);border-radius:7px;padding:4px 7
     $("dg-id").textContent=fmtDate(key); $("dg-start").textContent=startTfFor(key);
     $("dg-title").textContent=key===DK?"Vandaag":fmtDate(key);
     $("dg-today").hidden=key===DK;
-    bindForm("dg",cur.dg); buildChecklist($("dg-list"),DG,cur.dg,$("dg-prog"),null); renderScenarios();
+    bindForm("dg",cur.dg); buildChecklist($("dg-list"),DG,cur.dg,$("dg-prog"),null); renderScenarios(); renderDgCtx();
   }
   function mountWk(){
     var key=isoWeek(wkAnchor); cur.wk=getPlan("week",key);
@@ -770,6 +812,55 @@ td input{width:66px;border:1px solid var(--line);border-radius:7px;padding:4px 7
     $("wk-today").hidden=key===WK;
     bindForm("wk",cur.wk); buildChecklist($("wk-list"),WKL,cur.wk,$("wk-prog"),$("wk-count"));
   }
+  /* -- Voorstel 4: het dagplan vult zichzelf half in --
+     Je weekplan en je vorige dagplan staan er al. Overnemen vult ALLEEN lege velden,
+     zodat werk van vandaag nooit stilletjes wordt overschreven. De checklists vullen
+     we bewust niet automatisch: "achteraf afvinken" staat als valkuil in je playbook. */
+  function weekKeyOf(dayKey){ return isoWeek(new Date(dayKey+"T12:00:00")); }
+  function prevDayPlan(key){
+    var d=new Date(key+"T12:00:00");
+    for(var i=0;i<7;i++){ d.setDate(d.getDate()-1);
+      var p=plans[planId("dag",localKey(d))];
+      if(p&&(p.bias||p.levels||p.tD||p.t4||p.t1)) return p;
+    }
+    return null;
+  }
+  function fillEmpty(p,vals){
+    var done=[];
+    Object.keys(vals).forEach(function(k){
+      var v=String(vals[k]||"").trim();
+      if(v&&!String(p[k]||"").trim()){ p[k]=v; done.push(k); }
+    });
+    return done;
+  }
+  function autoSize(el){ if(!el)return; el.style.height="auto"; el.style.height=Math.min(el.scrollHeight+2,320)+"px"; }
+  function afterTake(done,bron){
+    if(!done.length){ toast("Niets over te nemen, deze velden zijn al ingevuld"); return; }
+    touch(cur.dg,true); mountDag(); renderOverview(); autoSize(q('[data-f="dg:levels"]'));
+    toast(done.length+(done.length===1?" veld":" velden")+" overgenomen uit "+bron);
+  }
+  function renderDgCtx(){
+    var el=$("dg-ctx"); if(!el||!cur.dg) return;
+    var wkey=weekKeyOf(cur.dg.key), w=getPlan("week",wkey), bits=[];
+    [["Bias",w.bias],["Focus",w.focus],["Max trades",w.maxtrades],["Nieuws",w.news],["Range",w.range]].forEach(function(x){
+      if(x[1]) bits.push("<span><b>"+x[0]+"</b>"+esc(x[1])+"</span>");
+    });
+    var prev=prevDayPlan(cur.dg.key);
+    el.innerHTML='<div class="ctx"><div class="ctx-h">Uit je weekplan \u00b7 week '+esc(wkey.slice(6))+'</div>'
+      +(bits.length?'<div class="ctx-kv">'+bits.join("")+'</div>':'<div class="hint">Je weekplan is nog leeg.</div>')
+      +'<div class="ctx-btns">'
+      +((w.levels||w.liq)?'<button class="btn btn-sm" type="button" id="dg-take-wk">Levels en liquiditeit overnemen</button>':'')
+      +(prev?'<button class="btn btn-sm" type="button" id="dg-take-prev">Neem '+esc(fmtDate(prev.key))+' over</button>':'')
+      +'<button class="btn btn-sm" type="button" id="dg-goto-wk">Weekplan openen</button></div></div>';
+    if($("dg-take-wk")) $("dg-take-wk").onclick=function(){
+      afterTake(fillEmpty(cur.dg,{levels:[w.levels||"",w.liq?"Liquiditeit:\n"+w.liq:""].filter(Boolean).join("\n")}),"je weekplan");
+    };
+    if($("dg-take-prev")) $("dg-take-prev").onclick=function(){
+      afterTake(fillEmpty(cur.dg,{bias:prev.bias,tD:prev.tD,t4:prev.t4,t1:prev.t1,levels:prev.levels}),fmtDate(prev.key));
+    };
+    $("dg-goto-wk").onclick=function(){show("week");};
+  }
+
   function initPlans(){
     $("dg-prev").onclick=function(){dgAnchor.setDate(dgAnchor.getDate()-1);mountDag();};
     $("dg-next").onclick=function(){dgAnchor.setDate(dgAnchor.getDate()+1);mountDag();};
@@ -778,7 +869,7 @@ td input{width:66px;border:1px solid var(--line);border-radius:7px;padding:4px 7
     $("wk-next").onclick=function(){wkAnchor.setDate(wkAnchor.getDate()+7);mountWk();};
     $("wk-today").onclick=function(){wkAnchor=new Date(now);mountWk();};
     $("sc-add").onclick=function(){ensureScenarios(cur.dg);cur.dg.scenarios.push({title:"",text:"",images:[],links:[]});touch(cur.dg);renderScenarios();
-      var last=qa("#sc-wrap .sc-card").pop();if(last)q(".sc-text",last).focus();};
+      var last=qa("#sc-wrap .sc-card").pop();if(last){var f=q(".sc-als",last);if(f)f.focus();}};
     mountDag(); mountWk();
   }
 
@@ -800,7 +891,7 @@ td input{width:66px;border:1px solid var(--line);border-radius:7px;padding:4px 7
     if(p.type==="dag"&&p.scenarios&&p.scenarios.length){
       h+='<div class="card-body" style="padding-top:'+(rows.length?'0':'8px')+'"><div class="ov-scs">'+p.scenarios.map(function(s,i){
         return '<div class="ov-sc"><div class="ov-sc-h">Scenario '+(i+1)+(s.title?' · '+esc(s.title):'')+'</div>'
-          +(s.text?'<div class="ov-sc-t">'+esc(s.text)+'</div>':'')
+          +scBlockHtml(s)
           +((s.images||[]).length?'<div class="thumbs thumbs-lg" data-scthumbs="'+p.id+':'+i+'">'+s.images.map(function(im,j){return '<div class="thumb" data-i="'+j+'"><img src="'+esc(imgSrc(im))+'" alt="chart"></div>';}).join("")+'</div>':'')
           +((s.links||[]).length?'<ul class="links">'+s.links.map(function(l){return '<li><span class="badge bg-muted">TV</span><a href="'+esc(l.url)+'" target="_blank" rel="noopener">'+esc(l.label)+'</a></li>';}).join("")+'</ul>':'')
           +'</div>';
@@ -826,7 +917,7 @@ td input{width:66px;border:1px solid var(--line);border-radius:7px;padding:4px 7
     $("ov-grades").innerHTML=[["A","gradeA","A setup"],["B","gradeB","B setup"],["C","gradeC","C setup"]].map(function(x){return '<div class="col-4"><div class="card gcard '+x[0]+'"><div class="card-header"><h3 class="card-title">'+x[2]+'</h3></div><div class="pb">'+esc(pb[x[1]])+'</div></div></div>';}).join("");
     $("ov-setup").textContent=pb.setup; $("ov-short").textContent=pb.short; $("ov-long").textContent=pb.long;
     $("ph-right").innerHTML=(od.bias?'<span class="badge bg-azure">Vandaag '+esc(od.bias)+'</span> ':'')+(ow.bias?'<span class="badge bg-primary">Week '+esc(ow.bias)+'</span>':'');
-    renderPtDagstart();
+    renderPtDagstart(); renderPtNoTrade(); renderDgCtx();
   }
   // Poort ↔ dagstart: laat in de poort zien of de dagstart van vandaag af is
   function renderPtDagstart(){
@@ -851,6 +942,30 @@ td input{width:66px;border:1px solid var(--line);border-radius:7px;padding:4px 7
   }
 
   /* ================= poort ================= */
+  /* -- Voorstel 6: je eigen no-trade-condities uit het weekplan --
+     Ze staan los van de 7 vaste checks (die bepalen A/B), maar wegen zwaarder:
+     speelt er een, dan is het oordeel "geen trade", hoe goed de rest ook staat. */
+  var NT_OK={};   // conditie-tekst -> afgevinkt; blijft staan als het blok opnieuw rendert
+  function noTradeList(){
+    return String(getPlan("week",WK).notrade||"").split("\n").map(function(x){return x.trim();}).filter(Boolean).slice(0,10);
+  }
+  function ntOpenList(){ return noTradeList().filter(function(t){return !NT_OK[t];}); }
+  function renderPtNoTrade(){
+    var el=$("pt-notrade"); if(!el) return;
+    var list=noTradeList();
+    if(!list.length){
+      el.innerHTML='<div class="nt"><div class="nt-h">Geen no-trade-condities</div><div class="hint">Zet in je weekplan wanneer je deze week <b>niet</b> handelt. Ze komen hier terug als harde check.</div></div>';
+      return;
+    }
+    var open=ntOpenList().length;
+    el.innerHTML='<div class="nt'+(open?" blocked":"")+'"><div class="nt-h">Mijn no-trade-condities \u00b7 vink af dat ze nu niet spelen</div><ul>'
+      +list.map(function(t,i){return '<li><label class="chk"><input type="checkbox" data-nt="'+i+'"'+(NT_OK[t]?" checked":"")+'><span><span class="l">'+esc(t)+'</span></span></label></li>';}).join("")
+      +'</ul></div>';
+    qa("input",el).forEach(function(inp){
+      inp.onchange=function(){ NT_OK[list[+inp.dataset.nt]]=inp.checked; renderPtNoTrade(); };
+    });
+    if(qa("#pt-list input").length) renderPt();   // oordeel meteen bijwerken, niet pas bij de volgende klik
+  }
   var dir="Long";
   function initPoort(){
     var ul=$("pt-list");
@@ -858,23 +973,25 @@ td input{width:66px;border:1px solid var(--line);border-radius:7px;padding:4px 7
     ul.addEventListener("change",renderPt); $("pt-taken").addEventListener("change",renderPt);
     qa("#dir button").forEach(function(b){b.onclick=function(){dir=b.dataset.dir;qa("#dir button").forEach(function(x){x.setAttribute("aria-pressed",x===b?"true":"false");});};});
     $("pt-clear").onclick=ptClear;
+    renderPtNoTrade();
     $("pt-save").onclick=function(){
-      var s=ptState(), t={id:Date.now(),ts:new Date().toISOString(),week:WK,day:DK,sym:($("pt-sym").value.trim()||"BTC").toUpperCase(),dir:dir,tf:$("pt-tf").value.trim(),checks:s.checks,missing:s.missing,grade:s.grade,risk:s.risk,taken:$("pt-taken").checked,r:null,notes:$("pt-notes").value.trim()};
+      var s=ptState(), t={id:Date.now(),ts:new Date().toISOString(),week:WK,day:DK,sym:($("pt-sym").value.trim()||"BTC").toUpperCase(),dir:dir,tf:$("pt-tf").value.trim(),checks:s.checks,missing:s.missing,grade:s.grade,risk:s.risk,taken:$("pt-taken").checked,r:null,noTrade:s.noTrade,notes:$("pt-notes").value.trim()};
       trades.unshift(t); saveTradeDoc(t).then(function(){toast("Opgeslagen in log");}); ptClear(); renderLog(); renderStats();
     };
     renderPt();
   }
   function ptState(){
     var c={}; qa("#pt-list input").forEach(function(i){c[i.dataset.pt]=i.checked;});
-    var miss=PT.filter(function(i){return !c[i.k];}), hard=miss.filter(function(i){return i.hard;}), g,r,w;
-    if(hard.length){g="NO";r=0;w="Harde stop: "+hard.map(function(i){return i.t;}).join(", ");}
+    var miss=PT.filter(function(i){return !c[i.k];}), hard=miss.filter(function(i){return i.hard;}), nt=ntOpenList(), g,r,w;
+    if(nt.length){g="NO";r=0;w="No-trade-conditie: "+nt.join(" \u00b7 ");}
+    else if(hard.length){g="NO";r=0;w="Harde stop: "+hard.map(function(i){return i.t;}).join(", ");}
     else if(!miss.length){g="A";r=1;w="7 van 7. Risico 1%.";}
     else if(miss.length===1){g="B";r=0.5;w="Mist: "+miss[0].t+". Risico 0,5%.";}
     else{g="NO";r=0;w="Mist "+miss.length+": "+miss.map(function(i){return i.t;}).join(", ");}
-    return {checks:c,missing:miss.map(function(i){return i.k;}),grade:g,risk:r,why:w};
+    return {checks:c,missing:miss.map(function(i){return i.k;}),noTrade:nt,grade:g,risk:r,why:w};
   }
   function renderPt(){var s=ptState(),v=$("pt-verdict");v.className="verdict v-"+s.grade;q(".g",v).textContent=s.grade==="A"?"A · 1%":s.grade==="B"?"B · 0,5%":"Geen trade";$("pt-why").textContent=s.why;$("pt-warn").hidden=!($("pt-taken").checked&&s.grade==="NO");}
-  function ptClear(){qa("#pt-list input").forEach(function(i){i.checked=false;});$("pt-notes").value="";$("pt-taken").checked=false;renderPt();}
+  function ptClear(){qa("#pt-list input").forEach(function(i){i.checked=false;});$("pt-notes").value="";$("pt-taken").checked=false;NT_OK={};renderPtNoTrade();renderPt();}
   function avgR(a){var w=a.filter(function(e){return e.r!==null&&e.r!==undefined;});return w.length?w.reduce(function(s,e){return s+e.r;},0)/w.length:null;}
   function fR(v){return v===null?"–":(v>=0?"+":"")+v.toFixed(2)+"R";}
   function renderStats(){
@@ -901,12 +1018,12 @@ td input{width:66px;border:1px solid var(--line);border-radius:7px;padding:4px 7
       if(r.kind==="trade"){
         var e=r.t, badge=e.grade==="A"?'<span class="badge bg-green">A</span>':e.grade==="B"?'<span class="badge bg-yellow">B</span>':'<span class="badge bg-red">Geen</span>';
         var flag=!e.taken?' <span class="hint">niet genomen</span>':(e.grade==="NO"?' <span class="badge bg-red">regelbreuk</span>':"");
-        tr.innerHTML='<td style="white-space:nowrap" class="num">'+fmt(e.ts)+'</td><td><span class="badge bg-primary">Trade</span></td><td>'+esc(e.sym)+" "+e.dir+(e.tf?" · "+esc(e.tf):"")+flag+(e.missing.length?'<div class="hint">Mist: '+esc(e.missing.map(ptLabel).join(", "))+'</div>':"")+(e.notes?'<div class="hint">'+esc(e.notes)+'</div>':"")+'</td><td>'+badge+'</td><td class="num"><input type="number" step="0.1" inputmode="decimal" value="'+(e.r==null?"":e.r)+'" aria-label="R"></td><td><button class="del" title="Verwijderen">×</button></td>';
+        tr.innerHTML='<td style="white-space:nowrap" class="num">'+fmt(e.ts)+'</td><td><span class="badge bg-primary">Trade</span></td><td>'+esc(e.sym)+" "+e.dir+(e.tf?" · "+esc(e.tf):"")+flag+(e.missing.length?'<div class="hint">Mist: '+esc(e.missing.map(ptLabel).join(", "))+'</div>':"")+((e.noTrade||[]).length?'<div class="hint" style="color:var(--red)">No-trade: '+esc(e.noTrade.join(" \u00b7 "))+'</div>':"")+(e.notes?'<div class="hint">'+esc(e.notes)+'</div>':"")+'</td><td>'+badge+'</td><td class="num"><input type="number" step="0.1" inputmode="decimal" value="'+(e.r==null?"":e.r)+'" aria-label="R"></td><td><button class="del" title="Verwijderen">×</button></td>';
         q("input",tr).onchange=function(ev){var v=ev.target.value.trim().replace(",",".");e.r=v===""?null:parseFloat(v);if(isNaN(e.r))e.r=null;saveTradeDoc(e);renderStats();};
         q(".del",tr).onclick=function(){if(!confirm("Trade verwijderen?"))return;trades=trades.filter(function(x){return x.id!==e.id;});deleteTradeDoc(e.id);renderLog();renderStats();};
       } else {
         var p=r.p, isDag=p.type==="dag", items=isDag?DG:WKL, pr=progress(items,p);
-        tr.innerHTML='<td style="white-space:nowrap" class="num">'+fmt(p.savedAt)+'</td><td><span class="badge '+(isDag?"bg-azure":"bg-purple")+'">'+(isDag?"Dagplan":"Weekplan")+'</span></td><td>'+(isDag?fmtDate(p.key):"Week "+p.key.slice(6))+' · '+(isDag?"dagstart":"weekstart")+' '+pr.done+'/'+pr.total+(p.images.length?' · '+p.images.length+' screenshot'+(p.images.length>1?"s":""):"")+(p.links.length?' · '+p.links.length+' link'+(p.links.length>1?"s":""):"")+((p.scenarios||[]).length?' · '+p.scenarios.length+' scenario'+(p.scenarios.length>1?"'s":""):"")+(p.focus?'<div class="hint">Focus: '+esc(p.focus)+'</div>':"")+((p.scenarios||[])[0]&&p.scenarios[0].text?'<div class="hint">'+esc(p.scenarios[0].text.slice(0,120))+(p.scenarios[0].text.length>120?"…":"")+'</div>':"")+'</td><td>'+(p.bias?'<span class="badge bg-muted">'+esc(p.bias)+'</span>':"–")+'</td><td class="num"></td><td><button class="btn btn-sm" type="button">Bekijk</button></td>';
+        tr.innerHTML='<td style="white-space:nowrap" class="num">'+fmt(p.savedAt)+'</td><td><span class="badge '+(isDag?"bg-azure":"bg-purple")+'">'+(isDag?"Dagplan":"Weekplan")+'</span></td><td>'+(isDag?fmtDate(p.key):"Week "+p.key.slice(6))+' · '+(isDag?"dagstart":"weekstart")+' '+pr.done+'/'+pr.total+(p.images.length?' · '+p.images.length+' screenshot'+(p.images.length>1?"s":""):"")+(p.links.length?' · '+p.links.length+' link'+(p.links.length>1?"s":""):"")+((p.scenarios||[]).length?' · '+p.scenarios.length+' scenario'+(p.scenarios.length>1?"'s":""):"")+(p.focus?'<div class="hint">Focus: '+esc(p.focus)+'</div>':"")+((p.scenarios||[])[0]&&scLine(p.scenarios[0])?'<div class="hint">'+esc(scLine(p.scenarios[0]).slice(0,120))+(scLine(p.scenarios[0]).length>120?"…":"")+'</div>':"")+'</td><td>'+(p.bias?'<span class="badge bg-muted">'+esc(p.bias)+'</span>':"–")+'</td><td class="num"></td><td><button class="btn btn-sm" type="button">Bekijk</button></td>';
         q(".btn",tr).onclick=function(){$("modal-box").innerHTML='<div class="card-header"><h3 class="card-title">'+(isDag?"Dagplan "+fmtDate(p.key):"Weekplan "+p.key.slice(6))+'</h3><button class="btn btn-sm" id="m-close">Sluiten</button></div>'+planHtml(p,items,true);bindOvThumbs($("modal-box"));$("m-close").onclick=function(){$("modal").hidden=true;};$("modal").hidden=false;};
       }
       tb.appendChild(tr);
@@ -952,8 +1069,8 @@ td input{width:66px;border:1px solid var(--line);border-radius:7px;padding:4px 7
     rd.readAsText(f);
   };
   $("exp-csv").onclick=function(){
-    var head=["datum","week","symbool","richting","tf","grade","risico_pct","genomen","R"].concat(PT.map(function(i){return i.k;})).concat(["notitie"]);
-    var rows=trades.map(function(e){return [e.ts,e.week||"",e.sym,e.dir,e.tf,e.grade,e.risk,e.taken?1:0,e.r==null?"":e.r].concat(PT.map(function(i){return e.checks[i.k]?1:0;})).concat(['"'+(e.notes||"").replace(/"/g,'""')+'"']).join(",");});
+    var head=["datum","week","symbool","richting","tf","grade","risico_pct","genomen","R"].concat(PT.map(function(i){return i.k;})).concat(["no_trade_actief","notitie"]);
+    var rows=trades.map(function(e){return [e.ts,e.week||"",e.sym,e.dir,e.tf,e.grade,e.risk,e.taken?1:0,e.r==null?"":e.r].concat(PT.map(function(i){return e.checks[i.k]?1:0;})).concat(['"'+((e.noTrade||[]).join(" | ").replace(/"/g,'""'))+'"','"'+(e.notes||"").replace(/"/g,'""')+'"']).join(",");});
     copy([head.join(",")].concat(rows).join("\n"),"CSV");
   };
 
