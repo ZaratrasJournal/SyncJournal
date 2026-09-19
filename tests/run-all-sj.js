@@ -14,6 +14,7 @@ const SPECS = [
   'exchange-sync', 'exchange-sync2', 'balance-sync', 'auto-sync', 'account-remove', 'robustness', 'multi-tab', 'tj-migrate', 'pnl-pct', 'unit-toggle', 'possize',
   'matrix', 'yearheatmap', 'review-list', 'coach-share', 'tv-links',
   'heatmap-scaling', 'analytics-metrics', 'tendencies', 'faq', 'trash',
+  'tradingplan-plan',        // aparte app (tradingplan.syncjournal.nl), draait mee zodat hij niet ongetest blijft
 ];
 
 const filter = process.argv.slice(2);
