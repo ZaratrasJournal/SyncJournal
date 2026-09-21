@@ -10,6 +10,11 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 De journal is opnieuw opgebouwd als **SyncJournal** en draait nu online op [syncjournal.nl](https://syncjournal.nl). Versienummers zijn opnieuw gestart op v0.9.x (bèta); de oude TradeJournal-releases staan verderop in dit bestand. Je data overzetten kan via Instellingen → Data → Importeer oude backup.
 
+## [v0.9.101] — 2026-09-21
+
+### Toegevoegd
+- **Markering bij een koppeling die nog niet af is.** Kraken Futures staat in Instellingen → Accounts nu met het label **"in ontwikkeling"**, met daaronder de reden: kijk je trades na een sync even na, want er kunnen trades ontbreken of bedragen afwijken. Je kunt gewoon koppelen — anders dan bij een gestopte API zoals MEXC. Ontdek je iets dat niet klopt, meld het in de Discord.
+
 ## [v0.9.100] — 2026-09-18
 
 ### Fixed

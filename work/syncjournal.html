@@ -89,6 +89,9 @@ main{padding:26px 30px 46px;animation:rise .34s both}
 .phead h3{font-size:14px}
 .phead .sp{flex:1}
 .chip{font-size:11px;color:var(--muted);font-weight:600}
+/* markering op een exchange-rij: "API gestopt" (blokkerend) of "in ontwikkeling" (waarschuwend) */
+.exflag{display:inline-block;vertical-align:middle;margin-left:6px;padding:2px 8px;border-radius:20px;font-size:10.5px;font-weight:700;letter-spacing:.02em;background:var(--amber-soft);color:var(--amber);border:1px solid color-mix(in srgb,var(--amber) 35%,transparent)}
+.exnote{display:block;margin-top:4px;color:var(--amber);font-size:11.5px;line-height:1.45}
 .pbody{padding:16px}
 
 /* eyebrow / hero */
@@ -1571,7 +1574,9 @@ const EXCHANGES=[
   {id:'okx',name:'OKX',abbr:'OK',c:'#7b8794',acct:'OKX',val:0},
   {id:'hyperliquid',name:'Hyperliquid',abbr:'HL',c:'#a78bfa',acct:'HL',val:0},
   // Kraken Futures: de aangewezen route voor NL na de MEXC-offboarding (MiFID II via CySEC).
-  {id:'kraken',name:'Kraken Futures',abbr:'KF',c:'#7c5ce0',acct:'Kraken',val:0},
+  // beta: koppelen mag, maar de sync is nog niet af - zie de markering in Instellingen.
+  {id:'kraken',name:'Kraken Futures',abbr:'KF',c:'#7c5ce0',acct:'Kraken',val:0,
+   beta:'De Kraken-koppeling is nog in ontwikkeling. Kijk je trades na een sync even na: het kan zijn dat er trades ontbreken of dat bedragen afwijken. Ontdek je iets, meld het in de Discord.'},
 ];
 const EXMAP=Object.fromEntries(EXCHANGES.map(e=>[e.id,e]));
 // Netto ingelegd kapitaal uit het ledger (deposit +, withdrawal −, correction = absoluut setpoint).
@@ -1707,7 +1712,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.100';
+const APP_VERSION='v0.9.101';
 const SCHEMA_VERSION=2;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -3228,10 +3233,10 @@ function pgInstellingen(){
     const ad=(typeof ExchangeAPI!=='undefined'&&ExchangeAPI[e.id])||{};
     const lastS=c&&c.lastSync?new Date(c.lastSync).toLocaleString('nl-NL',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'';
     if(e.deprecated)return `<div class="setrow" style="opacity:.75">${accAvatar(e.id,30)}
-      <div class="txt"><b>${e.name} <span class="chip warnc" style="background:var(--amber-soft);border:1px solid color-mix(in srgb,var(--amber) 35%,transparent);color:var(--amber);font-weight:700;padding:2px 8px;border-radius:20px;font-size:10.5px;vertical-align:middle">API gestopt</span></b>
+      <div class="txt"><b>${e.name}<span class="exflag">API gestopt</span></b>
       <small>${esc(e.deprecated)}. Je bestaande ${e.name}-trades blijven gewoon zichtbaar en tellen mee; oude exports importeren kan via CSV/back-up.</small></div></div>`;
     return `<div class="setrow">${accAvatar(e.id,30)}
-      <div class="txt"><b>${e.name}</b><small><span class="dotc" style="display:inline-block;vertical-align:middle;margin-right:4px;background:${c&&c.connected?'var(--green)':'var(--muted)'}"></span>${c&&c.connected?'verbonden · '+(ad.walletOnly?'wallet':'key')+' •••'+c.hint+(lastS?' · laatste sync '+lastS:'')+(SYNC.auto?(c.noAuto?' · auto-sync uit':' · auto-sync aan'):''):'niet verbonden'}</small></div>
+      <div class="txt"><b>${e.name}${e.beta?'<span class="exflag">in ontwikkeling</span>':''}</b><small><span class="dotc" style="display:inline-block;vertical-align:middle;margin-right:4px;background:${c&&c.connected?'var(--green)':'var(--muted)'}"></span>${c&&c.connected?'verbonden · '+(ad.walletOnly?'wallet':'key')+' •••'+c.hint+(lastS?' · laatste sync '+lastS:'')+(SYNC.auto?(c.noAuto?' · auto-sync uit':' · auto-sync aan'):''):'niet verbonden'}${e.beta?`<span class="exnote">⚠ ${esc(e.beta)}</span>`:''}</small></div>
       ${c&&c.connected?`<button class="btn" onclick="syncExchange('${e.id}')">↻ Sync nu</button>`:''}
       <button class="btn" onclick="connExpand('${e.id}')">${open?'Sluiten':(c&&c.connected?'Beheren':'Verbinden')}</button></div>
       ${open?`<div class="conncfg">

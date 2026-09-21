@@ -152,6 +152,26 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  âœ
     return dd && /MEXC/.test(dd.textContent);
   }));
 
+  console.log('\u2500\u2500\u2500 Markering op een koppeling die nog niet af is (Denny 21-09-2026) \u2500\u2500\u2500');
+  const flag = await p.evaluate(() => {
+    go('instellingen');
+    const rij = n => [...document.querySelectorAll('.setrow')].find(r => (r.querySelector('b') || {}).textContent && r.querySelector('b').textContent.indexOf(n) === 0);
+    const kr = rij('Kraken'), mx = rij('MEXC'), bl = rij('Blofin');
+    return {
+      krChip: !!(kr && kr.querySelector('.exflag')) && kr.querySelector('.exflag').textContent,
+      krUitleg: !!(kr && kr.querySelector('.exnote')),
+      krKoppelbaar: !!(kr && [...kr.querySelectorAll('button')].some(b => /Verbinden|Beheren/.test(b.textContent))),
+      mxChip: !!(mx && mx.querySelector('.exflag')) && mx.querySelector('.exflag').textContent,
+      mxKoppelbaar: !!(mx && mx.querySelector('button')),
+      blSchoon: !!bl && !bl.querySelector('.exflag') && !bl.querySelector('.exnote'),
+    };
+  });
+  ok('Kraken toont de markering "in ontwikkeling"', flag.krChip === 'in ontwikkeling', JSON.stringify(flag.krChip));
+  ok('met een uitleg eronder', flag.krUitleg);
+  ok('maar blijft gewoon te koppelen (anders dan een gestopte API)', flag.krKoppelbaar && !flag.mxKoppelbaar, JSON.stringify(flag));
+  ok('MEXC houdt zijn eigen markering', flag.mxChip === 'API gestopt', JSON.stringify(flag.mxChip));
+  ok('een exchange zonder markering blijft schoon', flag.blSchoon);
+
   ok('geen JS-errors totaal', errs.length === 0, errs.slice(0, 3).join(' | '));
   console.log(`\n=== Saldo & verbind-flow: ${pass}/${pass + fail} ===`);
   await b.close();
