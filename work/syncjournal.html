@@ -991,6 +991,21 @@ body.dark .mx-legend .mxsw{box-shadow:inset 0 0 0 1px rgba(255,255,255,.12)}
 .gfbadge button{font-size:11px;font-weight:800;padding:2px 9px;border-radius:12px;background:var(--amber);color:#fff;cursor:pointer}
 .gfbadge[hidden]{display:none} /* class-display won het van het hidden-attribuut → leeg amber pilletje bij 0 filters */
 @media(max-width:1100px){.gfbadge{display:none}}
+/* Executie-stappen: elke instap, bijkoop en afbouw van één positie */
+.exwrap{margin-top:12px;border:1px solid var(--line2);border-radius:11px;overflow:hidden;background:var(--sink)}
+.exhead{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 14px;padding:9px 13px;border-bottom:1px solid var(--line2)}
+.exhead b{font-size:12px;font-weight:700}
+.exhead span{font-size:11.5px;color:var(--muted)}
+.exhead span i{font-style:normal;color:var(--ink2);font-weight:600;font-family:var(--fn)}
+.extab{width:100%;border-collapse:collapse;font-size:12px}
+.extab th{text-align:right;font-weight:700;color:var(--muted);font-size:10px;letter-spacing:.06em;text-transform:uppercase;padding:7px 10px;white-space:nowrap}
+.extab th:nth-child(-n+2){text-align:left}
+.extab td{padding:6px 10px;border-top:1px solid var(--line2);text-align:right;white-space:nowrap}
+.extab td:nth-child(-n+2){text-align:left}
+.extab tr:last-child td{border-bottom:0}
+.extab .fk{display:inline-block;min-width:34px;text-align:center;padding:1px 7px;border-radius:20px;font-size:10px;font-weight:800;letter-spacing:.03em;background:color-mix(in srgb,var(--fc) 15%,transparent);color:var(--fc)}
+.exflat{color:var(--muted)}
+@media (max-width:560px){.extab th:nth-child(6),.extab td:nth-child(6),.extab th:nth-child(7),.extab td:nth-child(7){display:none}}
 /* Trade-tijdlijn (Review-detail) */
 .tline{display:flex;flex-wrap:wrap;align-items:center;gap:7px;margin-top:11px;padding:8px 11px;background:var(--sink);border:1px solid var(--line2);border-radius:9px;font-size:12px}
 .tline .tlc{white-space:nowrap;color:var(--ink2)}
@@ -1719,7 +1734,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.103';
+const APP_VERSION='v0.9.104';
 const SCHEMA_VERSION=3;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -2245,6 +2260,55 @@ function tradeDurationMin(t){
   const d=+t.durationMin||0;return d>0?d:null;
 }
 function fmtDurMin(m){if(m==null)return '—';if(m>=1440)return `${Math.floor(m/1440)}d ${Math.floor((m%1440)/60)}u`;if(m>=60)return `${Math.floor(m/60)}u ${m%60}m`;return `${m}m`;}
+/* De losse stappen achter één positie. Alleen tonen als er echt iets te zien valt:
+   bij één instap en één uitstap voegt een tabel niets toe aan wat er al staat.
+   "Positie na" en "Ø entry" zijn de twee kolommen die het verhaal vertellen — daar zie
+   je wanneér een bijkoop je gemiddelde verschoof, en dus waarom een latere afbouw
+   tegen een ander gemiddelde afrekende dan een eerdere. */
+const EX_KIND={open:['Open','var(--accent)'],add:['Bij','var(--amber)'],close:['Af','var(--teal)'],flip:['Om','var(--purple)']};
+function execTable(t){
+  const f=(t&&t.fills)||[];
+  if(f.length<2||!f.some(x=>x.kind==='close'))return '';
+  const sum=fillSummary(f);
+  const n=(v,d)=>Number(+v||0).toLocaleString('nl-NL',{maximumFractionDigits:(d==null?8:d)});
+  // prijzen houden hun decimalen (81.008,90 en niet 81.008,9)
+  const px=v=>{const a=Math.abs(+v||0),d=a>=1000?2:a>=1?4:8;
+    return Number(+v||0).toLocaleString('nl-NL',{minimumFractionDigits:d,maximumFractionDigits:d});};
+  /* Per stap gaat het om centen: de gewone geldweergave rondt af op hele euro's, en dan
+     wordt +1,58 opeens "+2". Hier dus twee decimalen. */
+  const geld=v=>(v<0?'−':'+')+CURSYM()+' '+Math.abs(+v||0).toLocaleString('nl-NL',{minimumFractionDigits:2,maximumFractionDigits:2});
+  /* De P&L-kolom telt op tot de brutowinst; het bedrag bovenaan de trade is ná fees.
+     Die regel eronder maakt zichtbaar waar het verschil zit — anders tel je de kolom op
+     en klopt hij niet met de kop, en dat is precies waar supportvragen van komen.
+     Het nettobedrag van de exchange is leidend: die kent ook funding en afrondingen die
+     wij uit de fills niet kunnen zien. Wijkt onze eigen som daarvan af, dan zeggen we dat
+     eerlijk in de tooltip in plaats van twee bedragen naast elkaar te zetten. */
+  const eigen=sum.realized-sum.fees;
+  const netto=isFinite(+t.pnl)?+t.pnl:eigen;
+  const afw=Math.abs(netto-eigen)>0.01
+    ? ` title="Uit de stappen berekend: ${geld(eigen)}. Het verschil komt door funding of afronding bij de exchange."` : '';
+  const rows=f.map(x=>{
+    const k=EX_KIND[x.kind]||['',''];
+    return `<tr>
+      <td class="num">${ts2time(x.ts)}</td>
+      <td><span class="fk" style="--fc:${k[1]}">${k[0]}</span></td>
+      <td class="num mask">${n(x.qtyAsset)}</td>
+      <td class="num">${px(x.price)}</td>
+      <td class="num mask">${x.posAfter>0?n(x.posAfterAsset):'<span class="exflat">vlak</span>'}</td>
+      <td class="num">${px(x.avgEntry)}</td>
+      <td class="num" style="color:var(--muted)">${x.fee?n(+(+x.fee).toFixed(4)):''}</td>
+      <td class="num mask ${x.pnl==null?'':cls(x.pnl)}">${x.pnl==null?'':geld(x.pnl)}</td>
+    </tr>`;}).join('');
+  const verschil=(sum.avgEntry&&sum.firstEntry&&Math.abs(sum.avgEntry-sum.firstEntry)>1e-9)
+    ? ` <span>eerste instap <i>${px(sum.firstEntry)}</i> · gemiddeld <i>${px(sum.avgEntry)}</i></span>` : '';
+  return `<div class="exwrap"><div class="exhead"><b>Zo is deze positie gelopen</b>
+      <span>${sum.entries} ${sum.entries===1?'instap':'instappen'} · ${sum.exits} ${sum.exits===1?'afbouw':'afbouwstappen'}</span>${verschil}</div>
+    <table class="extab"><thead><tr><th>Tijd</th><th>Wat</th><th>Aantal</th><th>Prijs</th><th>Positie na</th><th>Ø entry</th><th>Fee</th><th>P&amp;L</th></tr></thead>
+    <tbody>${rows}</tbody>
+    <tfoot><tr><td></td><td><b>Samen</b></td><td class="num mask">${n(sum.exitsAsset)}</td><td></td><td></td><td></td>
+      <td class="num" style="color:var(--muted)">${sum.fees?n(+sum.fees.toFixed(4)):''}</td>
+      <td class="num mask ${cls(netto)}"${afw}><b>${geld(netto)}</b></td></tr></tfoot></table></div>`;
+}
 // Mini-tijdlijn voor Review-detail én hover-uitklap: Open → TP-hits (met tijd) → Close · duur.
 function tradeTimeline(t){
   const o=+t.openTime||0;if(!o)return '';
@@ -2266,6 +2330,14 @@ function tradeTimeline(t){
 function tradeHoverDetail(t){
   const stat=(lb,vl,st)=>vl?`<div class="dstat"><div class="lb">${lb}</div><div class="vl"${st?` style="${st}"`:''}>${vl}</div></div>`:'';
   let tl=tradeTimeline(t);
+  /* Zat er meer achter deze positie dan een keer in en een keer uit? Zeg dat hier, en
+     wijs naar Review - daar staat de hele stappentabel. Zonder deze regel zou niemand
+     weten dat die bestaat. */
+  const sm=(t.fills&&t.fills.length>=2)?fillSummary(t.fills):null;
+  if(sm&&(sm.entries>1||sm.exits>1)){
+    tl+=`<div class="tline" style="margin-top:6px"><span class="tlc">\u21C5 ${sm.entries} ${sm.entries===1?'instap':'instappen'} \u00b7 ${sm.exits} ${sm.exits===1?'afbouw':'afbouwstappen'}</span>`
+      +`<span class="tla">\u2192</span><span class="tlc" style="color:var(--muted)">elke stap staat in Review</span></div>`;
+  }
   if(!tl){ // geen openTime (oude CSV-trades): toon wat er wél is
     const m=tradeDurationMin(t),c=+t.closeTime||0,bits=[];
     if(t.status==='closed'&&c)bits.push(`<span class="tlc">🏁 Close <b class="num">${fmtD(ts2date(c))} ${ts2time(c)}</b></span>`);
@@ -2405,6 +2477,9 @@ function fxView(list){
     const r=(+t.fx)||fxFor(t.date)||FX.latest; if(!(r>0))return t;
     const o={...t,pnlUsd:+t.pnl||0};   // percentages blijven in dollars rekenen
     FX_MONEY.forEach(k=>{const v=+o[k];if(isFinite(v))o[k]=v*r;});
+    // de losse stappen horen in dezelfde valuta te staan als het totaal erboven
+    if(Array.isArray(t.fills)&&t.fills.length)o.fills=t.fills.map(f=>({...f,
+      pnl:(f.pnl==null?null:f.pnl*r), fee:(+f.fee||0)*r}));
     return o;
   });
 }
@@ -3314,6 +3389,7 @@ function pgReview(){
         <div class="pbody">
           <div style="display:flex;align-items:center;gap:8px">${exBadge(t.exchange)}<span class="pill ${t.dir}">${t.dir==='long'?'LONG':'SHORT'}</span>${statusB(t.status)}</div>
           ${tradeTimeline(t)}
+          ${execTable(t)}
           <div style="display:flex;align-items:baseline;gap:12px;margin-top:12px">
             <span class="pnlbig ${cls(t.pnl)} mask">${eurS(t.pnl)}</span>
             <span class="num ${cls(t.r)}" style="font-weight:700;font-size:16px">${(t.r>=0?'+':'')+(+t.r).toFixed(1)}R</span>
@@ -5089,6 +5165,77 @@ const normPrice=(v)=>{
   // JS default toString() gebruikt minimale representatie (2335, niet 2335.000000000000)
   return String(n);
 };
+/* ═══ Executie-stappen van één positie (Denny 21-09-2026) ═══
+   Een positie bestaat uit fills: instappen, bijkopen en afbouwen. De exchange vat dat
+   samen tot één gemiddelde instap en één bedrag; deze functie rekent de stappen terug
+   zodat je ze allemaal ziet.
+
+   Het model is het lopende gewogen gemiddelde, en dat is niet willekeurig gekozen:
+   nagerekend tegen Denny's OKX-positie 3809943469299781632 geeft het exact de bedragen
+   die OKX zelf rapporteert (eerste afbouw +1,5778 tegenover OKX' +1,57778431).
+     • vergroot je de positie, dan schuift het gemiddelde mee
+     • bouw je af, dan blijft het gemiddelde staan en reken je de winst ertegen af
+   Let op het verschil met het gemiddelde dat de exchange tóont: dat is het gewogen
+   gemiddelde over álle instappen, terwijl de afbouw afrekent tegen het lopende
+   gemiddelde op dat moment. Bij een positie waar je tussendoor bijkoopt lopen die twee
+   uiteen — vandaar dat beide zichtbaar moeten zijn.
+
+   steps: [{ts, side:'buy'|'sell', qty, price, fee}] op tijd gesorteerd
+   opts:  {dir:'long'|'short', mult}  mult = contractwaarde (1 contract = mult in asset) */
+function fillTimeline(steps,opts){
+  const mult=(+((opts||{}).mult))||1;
+  /* Deterministisch sorteren. Fills van dezelfde order dragen vaak exact dezelfde
+     milliseconde; zonder tweede sleutel wisselt de volgorde per keer en daarmee het
+     lopende gemiddelde. Nul-hoeveelheden en dubbele fills vallen af, zodat opnieuw
+     inlezen niets verandert. */
+  const gezien={};
+  const rijen=(steps||[])
+    .filter(f=>f&&Math.abs(+f.qty)>0&&isFinite(+f.price))
+    .filter(f=>{const k=f.id!=null?String(f.id):null;if(!k)return true;if(gezien[k])return false;gezien[k]=1;return true;})
+    .slice().sort((a,b)=>((+a.ts||0)-(+b.ts||0))||String(a.id==null?'':a.id).localeCompare(String(b.id==null?'':b.id)));
+
+  /* Getekende positie: plus is long, min is short. Daarmee volgt uit één vergelijking
+     of een fill de positie vergroot of verkleint, en of hij haar zelfs omdraait. */
+  let pos=0,avg=0;
+  return rijen.map(f=>{
+    const q=Math.abs(+f.qty)||0, px=+f.price||0, fee=Math.abs(+f.fee)||0;
+    const sq=(String(f.side||'').toLowerCase()==='buy'?1:-1)*q;
+    const vergroot=(pos*sq)>=0;
+    let kind,pnl=null;
+    if(!vergroot){
+      // nooit meer afrekenen dan er openstaat — de rest opent een positie de andere kant op
+      const dicht=Math.min(q,Math.abs(pos));
+      pnl=(px-avg)*dicht*mult*(pos>0?1:-1);
+    }
+    if(vergroot){
+      kind=pos===0?'open':'add';
+      avg=(avg*Math.abs(pos)+px*q)/(Math.abs(pos)+q);
+    }else if(q>Math.abs(pos)){
+      kind='flip';       // draait om: vanaf hier een nieuwe positie met een nieuwe basis
+      avg=px;
+    }else{
+      kind='close';      // afbouwen laat het gemiddelde ongemoeid
+    }
+    pos+=sq;
+    return {ts:+f.ts||0,side:f.side,kind,qty:q,qtyAsset:q*mult,price:px,fee,
+            posAfter:Math.abs(pos),posAfterAsset:Math.abs(pos)*mult,
+            dirAfter:pos>0?'long':pos<0?'short':'',avgEntry:avg,pnl};
+  });
+}
+// Samenvatting van een stappenlijst: aantallen en de twee gemiddelden naast elkaar.
+function fillSummary(fills){
+  const f=fills||[];
+  const ins=f.filter(x=>x.kind==='open'||x.kind==='add'||x.kind==='flip');
+  const uit=f.filter(x=>x.pnl!=null);
+  const gew=(rows)=>{const q=rows.reduce((s,x)=>s+x.qty,0);return q>0?rows.reduce((s,x)=>s+x.price*x.qty,0)/q:0;};
+  return {entries:ins.length,exits:uit.length,
+    firstEntry:ins.length?ins[0].price:0, avgEntry:gew(ins),
+    firstExit:uit.length?uit[0].price:0,  avgExit:gew(uit),
+    realized:uit.reduce((s,x)=>s+(x.pnl||0),0),
+    exitsAsset:uit.reduce((s,x)=>s+(x.qtyAsset||0),0),
+    fees:f.reduce((s,x)=>s+(x.fee||0),0),
+    peak:f.reduce((m,x)=>Math.max(m,x.posAfter),0)};
+}
 /* Prijs afronden op de schaal van de prijs. Sommige exchanges geven geen gemiddelde
    instapprijs maar laten hem afleiden; dan komt er 81029.32444444444 uit - veertien
    cijfers achter de komma die een nauwkeurigheid suggereren die er niet is. Boven de
@@ -5850,6 +5997,30 @@ const ExchangeAPI = {
       if(data.success===false)throw new Error(data.error||"OKX verbinding mislukt");
       return{success:true,balance:data.balance||"0"};
     },
+    // Ruwe fills voor één instrument in een tijdvenster. De Worker vraagt zowel FUTURES
+    // (de EEA X-Perps) als SWAP op en voegt ze samen.
+    async fetchFills(apiKey,apiSecret,passphrase,symbol,startTime,endTime){
+      const data=await proxyCall({exchange:"okx",action:"fills",apiKey,apiSecret,passphrase,symbol,startTime,endTime});
+      return Array.isArray(data&&data.fills)?data.fills:[];
+    },
+    /* OKX-fills → de stappen van één positie. OKX levert geen positie-id op fills, dus we
+       matchen op instrument, positiekant en het tijdvenster van de positie. In one-way-mode
+       ontbreekt posSide ("net"); dan valt de filter terug op instrument + venster. */
+    stepsForTrade(t,raw){
+      const dir=String(t.dir||t.direction||"").toLowerCase();
+      // basis-asset uit het instrument: "BTC-USD_UM_XPERP-04APR31" en "BTC-USDT-SWAP" → BTC
+      const basis=String(t.pair||"").split("/")[0].toUpperCase();
+      const van=(+t.openTime||0)-1000, tot=(+t.closeTime||Date.now())+1000;
+      return (raw||[]).filter(f=>{
+        if(basis&&String(f.instId||"").split("-")[0].toUpperCase()!==basis)return false;
+        const ts=+f.ts||0; if(!(ts>=van&&ts<=tot))return false;
+        const ps=String(f.posSide||"").toLowerCase();
+        if(ps==="long"||ps==="short")return ps===dir;   // one-way-mode geeft "net": dan telt het venster
+        return true;
+      }).map(f=>({ts:+f.ts||0,side:String(f.side||"").toLowerCase(),
+                  qty:Math.abs(parseFloat(f.fillSz)||0),price:parseFloat(f.fillPx)||0,
+                  fee:Math.abs(parseFloat(f.fee)||0)}));
+    },
     async fetchOpenPositions(apiKey,apiSecret,passphrase){
       const data=await proxyCall({exchange:"okx",action:"open_positions",apiKey,apiSecret,passphrase});
       await this._loadContractValues();
@@ -6000,7 +6171,9 @@ function refreshFromSync(bestaand,verse){
     if(!(k in verse))return;
     const nieuw=verse[k], oud=bestaand[k];
     const zelfde=(Array.isArray(nieuw)&&Array.isArray(oud))?JSON.stringify(nieuw)===JSON.stringify(oud):String(nieuw)===String(oud);
-    if(!zelfde){bestaand[k]=nieuw;gewijzigd=true;}
+    if(!zelfde){bestaand[k]=nieuw;gewijzigd=true;
+      if(k==='closeTime'||k==='pnl')bestaand.fills=[];   // positie is verder gelopen → stappen opnieuw ophalen
+    }
   });
   return gewijzigd;
 }
@@ -6055,6 +6228,42 @@ async function refreshBalance(exId){
 }
 // Fase 1 haalt alleen GESLOTEN trades op. Dedupe op bron-id (stabiel per adapter);
 // de prullenbak wint: een verwijderde trade komt niet terug via sync (srcId-guard).
+/* De executie-stappen ophalen voor trades die ze nog niet hebben (Denny 21-09-2026).
+   Eén aanvraag voor de hele batch: fills-history geeft alles in het tijdvenster terug,
+   daarna verdelen we de fills over de trades.
+
+   De contractwaarde leiden we af uit de trade zelf — het aantal asset dat gesloten is
+   gedeeld door het aantal contracten van de sluit-fills. Dat werkt voor OKX' contracten
+   (1 contract = 0,0001 BTC) én voor exchanges die gewoon in asset rapporteren (dan komt
+   er 1 uit), zonder dat we per exchange een tabel hoeven bij te houden. */
+async function backfillFills(exId){
+  const ad=ExchangeAPI[exId],c=CONNS[exId];
+  if(!ad||typeof ad.fetchFills!=='function'||typeof ad.stepsForTrade!=='function')return 0;
+  if(!c||!c.connected||TAB_STALE)return 0;
+  const mist=T.filter(t=>t&&t.exchange===exId&&t.status==='closed'&&!(t.fills&&t.fills.length)&&(+t.openTime>0));
+  if(!mist.length)return 0;
+  const van=Math.min(...mist.map(t=>+t.openTime||0))-60000;
+  const tot=Math.max(...mist.map(t=>+t.closeTime||Date.now()))+60000;
+  let raw=[];
+  try{ raw=await ad.fetchFills(c.apiKey,c.apiSecret,c.passphrase,'',van,tot); }
+  catch(e){ return 0; }
+  if(!raw.length)return 0;
+  let n=0;
+  mist.forEach(t=>{
+    const steps=ad.stepsForTrade(t,raw);
+    if(steps.length<2)return;                       // één fill voegt niets toe aan wat je al ziet
+    const dir=String(t.dir||'').toLowerCase()==='short'?'short':'long';
+    const sluitKant=dir==='short'?'buy':'sell';
+    const contracten=steps.filter(x=>x.side===sluitKant).reduce((a,x)=>a+x.qty,0);
+    const asset=+t.qtyAsset||0;
+    const mult=(contracten>0&&asset>0)?(asset/contracten):1;
+    const fills=fillTimeline(steps,{dir,mult});
+    if(!fills.some(x=>x.kind==='close'))return;     // zonder afbouw is er niets te tonen
+    t.fills=fills;n++;
+  });
+  if(n)persist();
+  return n;
+}
 async function syncExchange(exId,opts){
   const quiet=opts&&opts.quiet;
   if(EXMAP[exId]&&EXMAP[exId].deprecated){if(!quiet)toast('Sync niet meer mogelijk: '+EXMAP[exId].deprecated+'. Je oude trades blijven gewoon zichtbaar.','err');return -1;}
@@ -6073,6 +6282,7 @@ async function syncExchange(exId,opts){
   finalizePlaceholders(exId,mapped);
   finalizeStaleOpens(exId);
   runPartialDetect(exId);
+  try{await backfillFills(exId);}catch(e){}   // de losse stappen achter elke positie
   await fxSync();               // verse trades krijgen de koers van hun handelsdag mee
   await refreshBalance(exId);   // saldo ververst mee met elke sync
   CONNS[exId]={...c,lastSync:Date.now()};persistConns();

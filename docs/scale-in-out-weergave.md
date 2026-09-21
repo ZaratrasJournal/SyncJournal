@@ -13,11 +13,13 @@
 | 20-09 03:51 | sell | 13 cont | 81.011,70 | 51 | 81.009,61 | — |
 | 20-09 04:45 | buy | 25 cont | 80.378,50 | 26 | 81.009,61 | **+1,58** |
 | 20-09 18:38 | buy | 13 cont | 81.403,10 | 13 | 81.009,61 | −0,52 |
-| 20-09 21:08 | sell | 39 cont | 81.055,10 | **52** | **81.020,99** | — |
-| 21-09 03:22 | buy | 39 cont | 82.032,90 | 13 | 81.020,99 | −3,86 |
-| 21-09 19:39 | buy | 13 cont | 85.888,60 | **0** | — | −6,30 |
+| 20-09 21:08 | sell | 39 cont | 81.055,10 | **52** | **81.043,73** | — |
+| 21-09 03:22 | buy | 39 cont | 82.032,90 | 13 | 81.043,73 | −3,86 |
+| 21-09 19:39 | buy | 13 cont | 85.888,60 | **0** | 81.043,73 | −6,30 |
 
 De exchange vat dit samen als één regel: gemiddelde instap 81.029, gemiddelde uitstap 82.039, netto −9,76.
+
+**Nagerekend en bevestigd** (21-09-2026): het lopend-gemiddelde-model reproduceert OKX' bedragen exact. Het gemiddelde wordt herrekend bij elke bijkoop en blijft ongemoeid bij een afbouw; de gerealiseerde P&L per afbouw rekent tegen dat lopende gemiddelde. De eerste afbouw komt uit op +1,5778 tegenover OKX' +1,57778431. En het gewogen gemiddelde over álle entries geeft 81029,32444444 — gelijk aan OKX' eigen `openAvgPx` van 81029,32444444444. Let op het verschil tussen die twee gemiddelden: 81.029,32 is het gemiddelde over al je instappen, 81.043,73 is het lopende gemiddelde waartegen je laatste twee afbouwstappen afrekenden.
 
 Het interessante: **close #1 was winstgevend, #2 t/m #4 niet** — en dat is pas te begrijpen als je ziet dat de bijshort om 21:08 het gemiddelde omhoog schoof.
 
@@ -103,7 +105,7 @@ Eerst dacht ik: gewogen gemiddelde, want dan komt het getal overeen met wat OKX 
 
 > *"Entry Price: Price of the initial entry order."* · *"Avg Entry: Average price across all entry executions."* · *"Exit Price: Price of the first closing execution."* · *"Avg Exit: Average price across all closing executions."* · *"Executions: Count of individual executions within the trade."*
 
-Dat is bruikbaarder dan één getal: **je eerste instap náást je gemiddelde laat precies zien hoeveel een bijkoop je gemiddelde heeft verschoven** — in deze casus 81.008,90 tegenover 81.020,99. Precies het getal dat nu ontbreekt.
+Dat is bruikbaarder dan één getal: **je eerste instap náást je gemiddelde laat precies zien hoeveel een bijkoop je gemiddelde heeft verschoven** — in deze casus 81.008,90 tegenover 81.029,32. Precies het getal dat nu ontbreekt.
 
 Advies: sla `entryPrice`, `avgEntry`, `exitPrice`, `avgExit` en het aantal fills apart op. Toon **avgEntry** als hoofdgetal (blijft matchen met OKX), de eerste instap ernaast of in de uitgeklapte tijdlijn. Let op: TraderSync's "Exit Price" is de **eerste** close, terwijl Tradervue de **laatste** neemt — kies bewust en zet er een eenduidig label bij.
 
@@ -158,3 +160,20 @@ First Exit PnL tegenover Last Exit PnL, plus een derde die hier het meest zegt: 
 4. Stapgrafiek en de schaal-analyse.
 
 Stap 1 en 2 leveren samen het antwoord op de oorspronkelijke vraag; 3 is de onderscheidende functie; 4 is luxe.
+
+**Stand 21-09-2026: stap 1 en 2 zijn gebouwd** (v0.9.104). De stappen worden bij een sync opgehaald voor OKX, de tabel staat in het Review-detail en de tradeslijst wijst ernaar. Stap 3 en 4 staan nog open.
+
+### Onderzocht: bestaat hier al een oplossing voor?
+Nagegaan op npm en GitHub. Kort antwoord: **nee, en dat is geen gemis.** Er is geen enkel onderhouden pakket dat fills omzet naar een positie-levensloop; wat de zoekresultaten oplevert zijn hobbyprojecten met een handvol downloads en SEO-repo's van een paar dagen oud. Ook ccxt doet dit niet — dat geeft alleen door wat de exchange zelf zegt.
+
+De waarde van de volwassen implementaties (NautilusTrader, freqtrade, Ledger's cost-basis-bibliotheek) zit niet in hun code maar in hun **lijst valkuilen**, en die zijn overgenomen:
+
+| Valkuil | Hoe het nu is afgevangen |
+|---|---|
+| Meer sluiten dan openstaat | Alleen afrekenen over wat open stond; de rest draait de positie om met een nieuwe basis |
+| Dezelfde fill twee keer binnenhalen | Wordt op bron-id genegeerd, dus opnieuw inlezen verandert niets |
+| Fills met dezelfde milliseconde | Vaste tweede sorteersleutel, anders wisselt het gemiddelde per keer |
+| Fills van nul | Overgeslagen |
+| Contractwaarde | Afgeleid uit de trade zelf, dus geen tabel per exchange nodig |
+
+Eén valkuil is bewust **niet** afgevangen: fees in een andere valuta dan waarin wordt afgerekend. Daarom is het nettobedrag van de exchange leidend in de totaalregel en tonen we onze eigen som alleen in de tooltip.

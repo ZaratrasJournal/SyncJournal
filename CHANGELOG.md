@@ -10,6 +10,13 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 De journal is opnieuw opgebouwd als **SyncJournal** en draait nu online op [syncjournal.nl](https://syncjournal.nl). Versienummers zijn opnieuw gestart op v0.9.x (bèta); de oude TradeJournal-releases staan verderop in dit bestand. Je data overzetten kan via Instellingen → Data → Importeer oude backup.
 
+## [v0.9.104] — 2026-09-21
+
+### Toegevoegd
+- **Zie hoe een positie werkelijk gelopen is.** Handelde je een positie in stappen af — eerst een stuk eruit, later de rest, misschien tussendoor bijgekocht — dan toonde de journal daar één gemiddelde instap van. Nu staat in het Review-detail een tabel met elke stap: tijd, wat je deed, hoeveel, tegen welke prijs, **hoe groot je positie daarna nog was** en **wat je gemiddelde instap op dat moment was**. Die laatste twee kolommen maken zichtbaar wanneer een bijkoop je gemiddelde verschoof, en dus waarom een latere afbouw tegen een ander gemiddelde afrekende dan een eerdere. In je tradeslijst staat er een regel bij zodra er meer achter een positie zit dan één keer in en één keer uit.
+
+  De bedragen per stap zijn nagerekend tegen de cijfers die OKX zelf rapporteert en komen daarmee overeen. Onder de tabel staat een totaalregel met de fees, zodat je de kolom kunt optellen en op het bedrag bovenaan uitkomt. Werkt nu voor OKX; de andere koppelingen volgen.
+
 ## [v0.9.103] — 2026-09-21
 
 ### Gewijzigd
