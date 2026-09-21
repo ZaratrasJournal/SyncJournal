@@ -78,6 +78,23 @@ const STAND2 = { uTime: 1790012341907, cont: 90, pnl: -9.7626, fee: -0.7279, exi
     await ctx.close();
   }
 
+  console.log('─── Prijzen met nepnauwkeurigheid ───');
+  {
+    const { ctx, p } = await open();
+    const r = await p.evaluate(() => {
+      const rec = { instId: 'BTC-USD_UM_XPERP-04APR31', posId: '1', posSide: 'short', cTime: '1789869078888', uTime: '1790012341907',
+        openAvgPx: '81029.32444444444', closeAvgPx: '82039.30777777778', closeTotalPos: '90', openMaxPos: '90',
+        realizedPnl: '-9.7626', fee: '-0.7279', fundingFee: '0', settleCcy: 'USDC', type: '1' };
+      const t = ExchangeAPI.okx._normalise(rec);
+      return { entry: t.entry, exit: t.exit, klein: pxRound('0.000012345678'), midden: pxRound('2.33456789') };
+    });
+    ok('een afgeleide instapprijs wordt afgerond op centen', r.entry === '81029.32', JSON.stringify(r.entry));
+    ok('en de uitstapprijs ook', r.exit === '82039.31', JSON.stringify(r.exit));
+    ok('een muntje van een paar dollar houdt vier decimalen', r.midden === '2.3346', JSON.stringify(r.midden));
+    ok('een centen-coin houdt er acht', r.klein === '0.00001235', JSON.stringify(r.klein));
+    await ctx.close();
+  }
+
   console.log('─── Size wordt gelezen zoals hij is opgeslagen ───');
   {
     const { ctx, p } = await open();

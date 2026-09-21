@@ -10,6 +10,11 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 De journal is opnieuw opgebouwd als **SyncJournal** en draait nu online op [syncjournal.nl](https://syncjournal.nl). Versienummers zijn opnieuw gestart op v0.9.x (bèta); de oude TradeJournal-releases staan verderop in dit bestand. Je data overzetten kan via Instellingen → Data → Importeer oude backup.
 
+## [v0.9.103] — 2026-09-21
+
+### Gewijzigd
+- **Prijzen zonder nepnauwkeurigheid.** OKX geeft voor X-Perps geen gemiddelde instapprijs maar laat die afleiden; daar kwam 81029.32444444444 uit — veertien cijfers achter de komma die een precisie suggereren die er niet is. Prijzen worden nu afgerond op de schaal van de prijs: boven de 1000 twee decimalen, boven de 1 vier, daaronder acht voor de centen-coins.
+
 ## [v0.9.102] — 2026-09-21
 
 ### Toegevoegd
