@@ -59,6 +59,18 @@ input,textarea{font-family:inherit}
 .side nav button.on{background:color-mix(in srgb,var(--pc,var(--accent)) 13%,transparent);color:var(--pc,var(--accent));border-left-color:var(--pc,var(--accent));border-radius:0 8px 8px 0}
 .side nav button.on .nav-ic{opacity:1}
 /* sidebar-footer: branding (Powered by Morani · Built by Zaratras) in SJ-stijl */
+/* Koppelingen met saldo, onderin het menu. Alleen zichtbaar als er ook echt een
+   koppeling is - geen koppeling, geen blokje. */
+.sideconn{border-top:1px solid var(--line2);padding:10px 12px 4px;margin-top:8px}
+.sideconn .sc-h{display:flex;align-items:baseline;justify-content:space-between;gap:8px;padding:0 6px 6px;font-size:9.5px;font-weight:800;letter-spacing:.11em;text-transform:uppercase;color:var(--faint)}
+.sideconn .sc-h button{font:inherit;letter-spacing:inherit;color:var(--muted);background:none;border:0;padding:0;cursor:pointer}
+.sideconn .sc-h button:hover{color:var(--accent)}
+.sideconn .sc-r{display:flex;align-items:center;gap:9px;width:100%;padding:6px;border:0;background:none;border-radius:8px;text-align:left;cursor:pointer}
+.sideconn .sc-r:hover{background:var(--hover)}
+.sideconn .sc-n{flex:1;min-width:0;font-size:12.5px;font-weight:600;color:var(--ink2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sideconn .sc-v{font-family:var(--fn);font-size:12px;font-weight:700;color:var(--ink);white-space:nowrap}
+.sideconn .sc-v.dim{color:var(--faint);font-weight:600}
+.sideconn .sc-w{width:6px;height:6px;border-radius:50%;background:var(--amber);flex:none}
 .side-foot{border-top:1px solid var(--line);padding:14px 18px;display:flex;align-items:center;gap:11px}
 .side-foot .brandhex{width:28px;height:28px;flex:none;filter:drop-shadow(0 2px 6px color-mix(in srgb,var(--accent) 35%,transparent))}
 .side-foot .who{line-height:1.5}
@@ -1154,6 +1166,7 @@ body.dark .toast{box-shadow:0 10px 34px rgba(0,0,0,.5)}
     <div class="logo" onclick="showWelcome()" style="cursor:pointer" title="Welkomscherm">Sync<span>Journal</span></div>
     <nav id="nav"></nav>
     <nav id="navbot" class="navbot"></nav>
+    <div id="sideconn" class="sideconn" hidden></div>
     <div class="side-foot"><svg class="brandhex" viewBox="0 0 64 64" aria-hidden="true"><defs><linearGradient id="bhg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3B5BD9"/><stop offset="1" stop-color="#8A5CF0"/></linearGradient></defs><polygon points="32,4 57,18.5 57,45.5 32,60 7,45.5 7,18.5" fill="url(#bhg)"/><text x="32" y="41" font-family="Arial,sans-serif" font-size="22" font-weight="800" fill="#fff" text-anchor="middle">SJ</text></svg><div class="who"><div class="brl">Powered by <b>Morani</b></div><div class="brl">Built by <b>Zaratras</b></div></div></div>
   </aside>
   <div class="body">
@@ -1734,7 +1747,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.104';
+const APP_VERSION='v0.9.105';
 const SCHEMA_VERSION=3;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -4428,6 +4441,7 @@ function render(){
   document.getElementById('psub').textContent=sub||'';
   document.getElementById('ptbar').style.background=PAGEC[STATE.page]||'var(--accent)';
   const bv=document.getElementById('balVal');if(bv)bv.textContent=CURSYM()+' '+Math.round(fxNow(totalBalance())).toLocaleString('nl-NL');
+  try{renderSideConns();}catch(e){}
   const m=document.getElementById('main');destroyCharts();_rcQueue=[];m.innerHTML=tabBanner()+updateBanner()+driveBanner()+backupBanner()+fn();m.style.animation='none';void m.offsetWidth;m.style.animation='';
   document.querySelectorAll('#nav button,#navbot button').forEach(b=>b.classList.toggle('on',b.dataset.p===STATE.page));
   try{bkIndUpdate();}catch(e){}
@@ -4462,6 +4476,27 @@ document.addEventListener('keydown',e=>{
   radioRefocus={id:grp.id,i:ni};bs[ni].click();
 });
 function selRev(i){STATE.revSel=i;render();}
+/* Koppelingen met saldo onderin het menu (Denny 21-09-2026, naar Coin Market Manager).
+   Bewust strenger dan relevantExchanges(): die toont ook een exchange waar je alleen nog
+   oude trades van hebt, en dan zou een losgekoppelde koppeling hier met 0 blijven staan.
+   Hier telt alleen een echte, bestaande koppeling - haal je de sleutel weg, dan is de
+   regel meteen weg. Het totaal staat al in de balanspil, dus dat herhalen we niet. */
+function renderSideConns(){
+  const el=document.getElementById('sideconn'); if(!el) return;
+  const rijen=EXCHANGES.filter(e=>!e.deprecated&&CONNS[e.id]&&CONNS[e.id].connected);
+  if(!rijen.length){ el.hidden=true; el.innerHTML=''; return; }
+  el.hidden=false;
+  el.innerHTML=`<div class="sc-h"><span>Koppelingen</span><button onclick="go('instellingen')">Beheren</button></div>`
+    +rijen.map(e=>{
+      const c=CONNS[e.id]||{}, gesynct=+c.lastSync||0;
+      const titel=gesynct?('Laatste sync '+new Date(gesynct).toLocaleString('nl-NL',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}))
+                         :'Nog niet gesynchroniseerd';
+      const bedrag=gesynct?`<span class="sc-v num mask">${eur(fxNow(e.val))}</span>`
+                          :`<span class="sc-v dim">\u2014</span><span class="sc-w" aria-hidden="true"></span>`;
+      return `<button class="sc-r" onclick="go('instellingen')" title="${esc(e.name+' \u00b7 '+titel)}">`
+        +`${accAvatar(e.id,20)}<span class="sc-n">${esc(e.name)}</span>${bedrag}</button>`;
+    }).join('');
+}
 function setTheme(t){STATE.theme=t;document.body.classList.toggle('dark',t==='dark');document.getElementById('btnTheme').innerHTML=svg(t==='dark'?IC.sun:IC.moon,16);persistState();render();}
 function togglePriv(){STATE.priv=!STATE.priv;document.body.classList.toggle('priv',STATE.priv);document.getElementById('btnEye').style.color=STATE.priv?'var(--accent)':'';persistState();render();}
 function setCurrency(c){

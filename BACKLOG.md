@@ -248,7 +248,7 @@ Basis kwam uit de feature-diff v4_14 → v9 onderaan. Inmiddels werken we op **v
 
 ## 📋 Onderzocht — wacht op go (geen code geschreven)
 
-- [ ] **Koppelingen met saldo onderin het menu** *(2026-09-21, feature-wens Denny — naar voorbeeld van Coin Market Manager)* — Onder de navigatie een blokje **Connections**: per verbonden exchange het logo, de naam en het saldo. Geen verbinding → niets zichtbaar; api verwijderd → direct weg.
+- [x] **Koppelingen met saldo onderin het menu** — ✅ gebouwd in v0.9.105 (21-09-2026) *(2026-09-21, feature-wens Denny — naar voorbeeld van Coin Market Manager)* — Onder de navigatie een blokje **Connections**: per verbonden exchange het logo, de naam en het saldo. Geen verbinding → niets zichtbaar; api verwijderd → direct weg.
 
   **Wat er al klaarligt** (dit is grotendeels samenstellen, niet bouwen):
   - `accountList()` geeft per account `{n, v, c, ex, id}` — naam, waarde, kleur, exchange, id.
@@ -265,7 +265,7 @@ Basis kwam uit de feature-diff v4_14 → v9 onderaan. Inmiddels werken we op **v
   - **Niet dubbelen**: het totaal staat al in de balanspil rechtsboven. Dit blokje toont dus alleen de bedragen per koppeling, geen totaal.
   - Handmatige accounts bewust **niet** meenemen: dat zijn geen koppelingen en ze staan al in Instellingen.
 
-  **Wacht op go.**
+  **Gebouwd.** Op mobiel bleek de zorg onterecht: de zijbalk wordt daar een uitschuifpaneel, geen bovenbalk, dus het blokje werkt ook daar. De versheid is opgelost met een streepje plus stip voor een koppeling die nog niet gesynct is, en de laatste sync in de tooltip.
 
 
 - [ ] **Combined trades — meerdere trades als één behandelen** *(2026-05-02, onderzoek afgerond — zie [docs/combined-trades-research-2026-05-02.md](docs/combined-trades-research-2026-05-02.md) · ✅ go gegeven 2026-06-04 · demo gebouwd in [demos/trades-merge-demo.html](demos/trades-merge-demo.html) · inbouw v12.189 in uitvoering)* — Feature-request van Denny: trades selecteren in TradeList → klik "Combineer" → 4 trades worden één logische trade met aggregate entry/SL/exit/PnL/fees + de 4 individuele trades als TP-niveaus. Use-case voorbeeld: 4× 0.25 BTC long met verschillende TP-targets samen behandelen als 1× 1 BTC long met 4 TPs.

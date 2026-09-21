@@ -10,6 +10,11 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 De journal is opnieuw opgebouwd als **SyncJournal** en draait nu online op [syncjournal.nl](https://syncjournal.nl). Versienummers zijn opnieuw gestart op v0.9.x (bèta); de oude TradeJournal-releases staan verderop in dit bestand. Je data overzetten kan via Instellingen → Data → Importeer oude backup.
 
+## [v0.9.105] — 2026-09-21
+
+### Toegevoegd
+- **Je koppelingen met hun saldo, onderin het menu.** Onder de navigatie staat nu per verbonden exchange het logo, de naam en het saldo — zo zie je op elk scherm waar je geld staat, zonder naar Instellingen te hoeven. Heb je niets gekoppeld, dan is er ook niets te zien; koppel je een exchange los, dan verdwijnt de regel meteen. Een koppeling die nog niet gesynchroniseerd is toont een streepje met een oranje stipje in plaats van een verzonnen bedrag. Het totaal wordt niet herhaald: dat staat al rechtsboven. Bedragen verdwijnen mee met de privacyknop en volgen je weergave-valuta.
+
 ## [v0.9.104] — 2026-09-21
 
 ### Toegevoegd
