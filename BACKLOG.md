@@ -248,6 +248,26 @@ Basis kwam uit de feature-diff v4_14 → v9 onderaan. Inmiddels werken we op **v
 
 ## 📋 Onderzocht — wacht op go (geen code geschreven)
 
+- [ ] **Koppelingen met saldo onderin het menu** *(2026-09-21, feature-wens Denny — naar voorbeeld van Coin Market Manager)* — Onder de navigatie een blokje **Connections**: per verbonden exchange het logo, de naam en het saldo. Geen verbinding → niets zichtbaar; api verwijderd → direct weg.
+
+  **Wat er al klaarligt** (dit is grotendeels samenstellen, niet bouwen):
+  - `accountList()` geeft per account `{n, v, c, ex, id}` — naam, waarde, kleur, exchange, id.
+  - `accAvatar(id, formaat)` levert het exchange-logo als chip.
+  - `fxNow()` rekent het saldo om naar de weergave-valuta (sinds v0.9.102).
+  - De klasse `.mask` verbergt bedragen zodra privacy aan staat — die moet eroverheen.
+  - Loskoppelen zet `EXMAP[id].val = 0` en verwijdert `CONNS[id]`, dus de regel verdwijnt vanzelf. Denny's eis "na verwijderen niks zichtbaar" is daarmee al gedekt.
+  - Plek in de opmaak: tussen `#navbot` en `.side-foot` in de `<aside class="side">`.
+
+  **Waar op te letten** (de punten die het echt werk maken):
+  - `relevantExchanges()` toont ook exchanges die *geen* koppeling hebben maar wél oude trades. Voor dit blokje moet de voorwaarde strenger: alleen `CONNS[id].connected`. Anders staat een losgekoppelde MEXC er met € 0 bij.
+  - **Mobiel**: onder 820px wordt de zijbalk een horizontale balk bovenin; dit blokje past daar niet. Keuze maken: verbergen, of meenemen in het hamburgermenu.
+  - **Versheid**: `e.val` ververst alleen bij een sync. Een verouderd bedrag is op een permanent zichtbare plek vervelender dan in Instellingen — dus het moment van de laatste sync erbij, of bij openen verversen.
+  - **Niet dubbelen**: het totaal staat al in de balanspil rechtsboven. Dit blokje toont dus alleen de bedragen per koppeling, geen totaal.
+  - Handmatige accounts bewust **niet** meenemen: dat zijn geen koppelingen en ze staan al in Instellingen.
+
+  **Wacht op go.**
+
+
 - [ ] **Combined trades — meerdere trades als één behandelen** *(2026-05-02, onderzoek afgerond — zie [docs/combined-trades-research-2026-05-02.md](docs/combined-trades-research-2026-05-02.md) · ✅ go gegeven 2026-06-04 · demo gebouwd in [demos/trades-merge-demo.html](demos/trades-merge-demo.html) · inbouw v12.189 in uitvoering)* — Feature-request van Denny: trades selecteren in TradeList → klik "Combineer" → 4 trades worden één logische trade met aggregate entry/SL/exit/PnL/fees + de 4 individuele trades als TP-niveaus. Use-case voorbeeld: 4× 0.25 BTC long met verschillende TP-targets samen behandelen als 1× 1 BTC long met 4 TPs.
 
   **Architectuur-update 2026-06-04**: research-doc shape (`tradeGroupId` + `tradeGroupRole`) is bij implementatie vervangen door demo-shape (`mergedFrom: [ids]` op master + `mergedInto: masterId` op children + `_preMergeStatus` voor exact-restore). Reden: master heeft expliciete child-lijst, geen filter-lookup nodig om children te vinden, eenvoudiger te visualiseren. Scope v1 FTMO-only — knop verschijnt alleen bij `source==="ftmo"`.
