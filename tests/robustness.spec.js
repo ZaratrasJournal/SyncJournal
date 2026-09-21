@@ -17,6 +17,8 @@ const BAD_BACKUP = {
   const b = await chromium.launch(); const p = await b.newPage(); p.on('dialog', d => d.accept());
   const errs = []; p.on('pageerror', e => errs.push(String(e).split('\n')[0]));
   await p.setViewportSize({ width: 1700, height: 1000 });
+  // Vaste bedragen in deze spec: geen wisselkoers erbij (de omrekening zelf staat in valuta.spec).
+  await p.route('**/*', r => /frankfurter/.test(r.request().url()) ? r.abort() : r.continue());
   await p.goto(url, { waitUntil: 'networkidle' });
   await p.evaluate(async () => { localStorage.clear(); try { await IDB.clearAll(); } catch (e) {} });
   await p.reload({ waitUntil: 'networkidle' }); await p.waitForTimeout(600);

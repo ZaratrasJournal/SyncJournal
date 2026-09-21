@@ -1527,13 +1527,20 @@ function pnlBaseOf(t){
   if(!(totalBalance()>0))return 0;
   const b=_pctBases().get(t&&t.id);return (b&&b>0)?b:0;
 }
-function pnlPctOf(t){if(!t)return null;const b=pnlBaseOf(t);return b>0?+(((+t.pnl||0)/b)*100).toFixed(2):null;}
+/* Een percentage is pnl ÷ accountgrootte. De accountgrootte staat in dollars, dus
+   het bedrag erboven ook - anders verandert je rendement zodra je van weergave-valuta
+   wisselt. pnlUsd staat op de omgerekende kopie; op het origineel is pnl al dollars. */
+const pnlUsdOf=t=>{const u=+((t||{}).pnlUsd);return isFinite(u)?u:(+((t||{}).pnl)||0);};
+const netUsd=rows=>(rows||[]).reduce((s,t)=>s+pnlUsdOf(t),0);
+function pnlPctOf(t){if(!t)return null;const b=pnlBaseOf(t);return b>0?+((pnlUsdOf(t)/b)*100).toFixed(2):null;}
 // Totaal-regel: netto van de selectie t.o.v. de basis van de oudste trade erin.
 function pnlPctTotal(rows,net){
-  const ref=+((STATE||{}).pctRef)||0;if(ref>0)return +(net/ref*100).toFixed(2);
-  const closed=(rows||[]).filter(t=>t&&t.status==='closed');if(!closed.length)return null;
+  const closed=(rows||[]).filter(t=>t&&t.status==='closed');
+  const n=closed.length?netUsd(closed):(+net||0);   // altijd in dollars, ongeacht de weergave
+  const ref=+((STATE||{}).pctRef)||0;if(ref>0)return +(n/ref*100).toFixed(2);
+  if(!closed.length)return null;
   const oldest=closed.reduce((a,c)=>_pnlMomentKey(c)<_pnlMomentKey(a)?c:a);
-  const b=pnlBaseOf(oldest);return b>0?+(net/b*100).toFixed(2):null;
+  const b=pnlBaseOf(oldest);return b>0?+(n/b*100).toFixed(2):null;
 }
 /* ═══ €/%/R-weergave (Denny 2026-09-18, zoals de originele Morani-journal) ═══
    STATE.unit bepaalt hoe P&L-waarden tonen: valuta, % (echte accountbasis via
@@ -1712,8 +1719,8 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.101';
-const SCHEMA_VERSION=2;
+const APP_VERSION='v0.9.102';
+const SCHEMA_VERSION=3;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
   // ander type dan verwacht (bv. sj_manual='null' of een array waar een object hoort).
@@ -1781,6 +1788,29 @@ const MIGRATIONS=[
   {v:2,note:'open-moment = canonieke datum voor synced trades',up(){
     T.forEach(t=>{const o=+t.openTime||0;if(o){t.date=ts2date(o);t.time=ts2time(o);t.session=sessionFromTime(t.time);}});
   }},
+  /* v3 (2026-09-21, melding Denny): OKX levert één positie aan als doorlopende tussenstand.
+     Het bron-kenmerk bevatte de sluittijd, dus elke tussenstand werd een aparte trade en
+     telde de P&L dubbel (-3,44 + -9,76 terwijl -9,76 het totaal al was). Het kenmerk is nu
+     de positie zelf; deze stap trekt bestaande journals gelijk: per positie blijft de
+     laatste stand staan, en wat je zelf had ingevuld verhuist daarheen mee. */
+  {v:3,note:'OKX: één positie = één trade',up(){
+    const perPositie=new Map();
+    T.forEach(t=>{
+      if(!t||t.exchange!=='okx')return;
+      const m=/^okx_(\d+)_\d+$/.exec(String(t.srcId||''));
+      if(!m)return;
+      t.srcId='okx_'+m[1];
+      const lijst=perPositie.get(t.srcId)||[];lijst.push(t);perPositie.set(t.srcId,lijst);
+    });
+    const weg=new Set();
+    perPositie.forEach(lijst=>{
+      if(lijst.length<2)return;
+      // de laatste stand bevat de eerdere al; die houden we
+      const houden=lijst.reduce((a,b)=>((+b.closeTime||0)>=(+a.closeTime||0)?b:a));
+      lijst.forEach(t=>{ if(t!==houden){ adoptUserFieldsSJ(houden,t); weg.add(t.id); } });
+    });
+    if(weg.size)T=T.filter(t=>!weg.has(t.id));
+  }},
 ];
 async function runMigrations(){
   const from=DB.load('schema',0);
@@ -1828,6 +1858,11 @@ let CLOSED=[];
 let TAB_STALE=false,_dataSeen=+(DB.load('data_ts',0))||0;
 function persist(){
   if(TAB_STALE)return;   // verouderd tabblad schrijft niet: het zou het andere werk wissen
+  /* Achtergrondwerk (wisselkoersen, auto-sync, Drive) kan schrijven op een moment dat dit
+     tabblad nog niet DOORHEEFT dat een ander tabblad voor was - het storage-signaal is dan
+     nog niet verwerkt. Daarom hier nog één keer kijken wat er werkelijk in de opslag staat
+     voordat we eroverheen gaan. (21-09-2026, aan het licht gekomen bij de koersen.) */
+  try{ if((+DB.load('data_ts',0)||0)>_dataSeen){tabMarkStale();return;} }catch(e){}
   IDB.set('trades',T).then(okr=>{ if(okr===false)ErrorCenter.report('save',new Error('IndexedDB weigerde de schrijfactie voor trades.'),{severity:'critical',userMsg:'Je laatste wijziging kon niet worden opgeslagen. Ze staat nog in beeld, exporteer een back-up en probeer opnieuw.',actions:[{label:'Exporteer backup',fn:()=>exportJSON()},{label:'Opnieuw proberen',fn:()=>persist()}]}); });
   try{const ts=Date.now();DB.save('data_ts',ts);_dataSeen=ts;bkQueue();}catch(e){}
 }
@@ -2023,7 +2058,7 @@ function addAcctTx(id){const m=MANUAL.find(x=>x.id===id);if(!m||!STATE.txOpen)re
   if(type==='withdrawal'&&amt>cur){toast('Opname ('+eur(amt)+') is groter dan het ingelegde kapitaal ('+eur(cur)+')','err');return;}
   if(type==='correction'&&cur>0&&Math.abs(amt-cur)/cur>0.5&&!confirm('Correctie wijkt >50% af van het huidige ingelegde kapitaal ('+eur(cur)+' → '+eur(amt)+'). Doorgaan?'))return;
   m.transactions.push({id:'tx'+Date.now().toString(36),type,amount:String(amt),date:new Date().toISOString().slice(0,10),note:(noteEl?noteEl.value:'').trim()});
-  persistManual();STATE.txOpen=null;render();toast('✓ '+TX_TYPES[type].label+' · ingelegd nu '+eur(acctCapital(m.transactions)),'ok');}
+  persistManual();STATE.txOpen=null;render();toast('✓ '+TX_TYPES[type].label+' · ingelegd nu '+eur(fxNow(acctCapital(m.transactions))),'ok');}
 function delAcctTx(id,txid){const m=MANUAL.find(x=>x.id===id);if(!m)return;if(!confirm('Deze mutatie verwijderen?'))return;m.transactions=m.transactions.filter(t=>t.id!==txid);persistManual();render();toast('Mutatie verwijderd','info');}
 function toggleAutoSync(){SYNC.auto=!SYNC.auto;persistSync();if(typeof startAutoSync==='function')startAutoSync();render();}
 function setSyncInterval(v){SYNC.interval=v;persistSync();if(typeof startAutoSync==='function')startAutoSync();}
@@ -2180,7 +2215,18 @@ function filterBar(){
 // Size kan als tekst binnenkomen: "8.000" (NL-duizendtal) maar ook "1000,50" (NL-decimaal).
 // Punten zijn duizendtallen, de komma is de decimaal — zonder deze omzetting werd elke
 // komma-invoer NaN (audit 2026-09-18: kolom toonde "—" en sorteren sprong door elkaar).
-const SZ=t=>Number(String(t.size).replace(/\./g,'').replace(',','.'));
+/* Size lezen. Een punt is een DECIMAALTEKEN, niet een duizendtal - adapters slaan
+   "623.91" op en dat is zeshonderddrieentwintig, geen 62.391 (OKX-melding 21-09-2026).
+   Alleen wanneer er ook een komma in staat is het Nederlandse invoer ("1.234,56") en
+   is de punt wél een duizendtalscheiding. De oude journal deed hier simpelweg
+   parseFloat; dit is diezelfde regel, met de handmatige invoer erbij. */
+const SZ=t=>{
+  const s=String((t&&t.size!=null)?t.size:'').trim();
+  if(!s)return NaN;
+  if(s.indexOf(',')>-1)return Number(s.replace(/\./g,'').replace(',','.'));   // "1.234,56" → punt is duizendtal
+  if(/^\d{1,3}(\.\d{3})+$/.test(s))return Number(s.replace(/\./g,''));         // "8.000" → achtduizend
+  return Number(s);                                                          // "623.91" → zeshonderddrieentwintig komma 91
+};
 // A3 (ChangeMaker + Denny): tags leven op twee plekken (los tags-veld + laag-confirmaties).
 // Dit is DE bron voor de tags-kolom en het tag-filter, zodat de tabel altijd exact toont
 // wat er in de trade zit — waar de tag ook geselecteerd is.
@@ -2274,7 +2320,97 @@ function theoR(t){const entry=+t.entry,stop=+t.stop;if(!(entry>0)||!(stop>0)||st
 // Zo'n waarde telt nergens mee — één kapotte trade mag nooit alle gemiddelden slopen.
 const R_SANE_MAX=100;
 function tradeR(t){const r=+t.r;if(r)return Math.abs(r)<=R_SANE_MAX?r:0;const th=theoR(t);return (th==null||Math.abs(th)>R_SANE_MAX)?0:th;}
-const CURSYM=()=>STATE.currency==='USD'?'$':'€';
+/* ═══ Valuta (Denny 21-09-2026) ═══
+   Alles wat de app opslaat staat in DOLLARS: exchanges rapporteren in USDT/USDC, en
+   handmatige accounts en FTMO vult Denny ook in dollars in. De weergave-valuta rekent
+   dat om met de ECB-dagkoersen (via frankfurter.dev, gratis en zonder sleutel).
+
+   Twee soorten bedragen, bewust verschillend behandeld:
+   • Een trade krijgt éénmalig de koers van zijn handelsdag mee (t.fx) en houdt die.
+     Je juni-resultaat staat in september dus nog steeds op hetzelfde euro-bedrag.
+   • Een saldo is een waarde van nú en gebruikt daarom altijd de laatste koers.
+
+   Lukt ophalen niet en is er ook niets in de cache, dan tonen we dollars met het
+   dollarteken — liever eerlijk dan een verzonnen omrekening. */
+const FX={rates:{},latest:0,latestDate:'',ts:0,err:''};
+(()=>{try{const f=DB.load('fx',null);if(f&&typeof f==='object'){FX.rates=f.rates||{};FX.latest=+f.latest||0;FX.latestDate=f.latestDate||'';FX.ts=+f.ts||0;}}catch(e){}})();
+function fxSave(){try{DB.save('fx',{rates:FX.rates,latest:FX.latest,latestDate:FX.latestDate,ts:FX.ts});}catch(e){}}
+const fxOk=()=>FX.latest>0;
+// De weergave-valuta die we ECHT kunnen tonen: euro alleen als er een koers is.
+const dispCur=()=>(STATE.currency==='EUR'&&fxOk())?'EUR':'USD';
+// Koers voor een datum: exact, anders de laatste beursdag ervoor (weekend/feestdag),
+// anders de nieuwste koers die we hebben.
+function fxFor(date){
+  if(!fxOk())return 0;
+  const r=fxExact(date);
+  if(r)return r;
+  const keys=Object.keys(FX.rates).sort();
+  return keys.length?FX.rates[keys[0]]:FX.latest;   // ouder dan onze reeks → de oudste koers die we kennen
+}
+// Alleen een koers die echt bij deze datum hoort (die dag of de laatste beursdag ervoor).
+// Geeft 0 als we die periode nog niet hebben — dan zetten we nog niets vast.
+function fxExact(date){
+  const d=String(date||'').slice(0,10); if(!d)return 0;
+  if(FX.rates[d])return FX.rates[d];
+  const eerder=Object.keys(FX.rates).filter(k=>k<=d).sort();
+  return eerder.length?FX.rates[eerder[eerder.length-1]]:0;
+}
+const FX_URL='https://api.frankfurter.dev/v1/';
+const FX_MAXAGE=6*3600e3;   // koersen komen één keer per werkdag; vaker vragen heeft geen zin
+async function fxRefresh(force){
+  if(!force&&FX.ts&&Date.now()-FX.ts<FX_MAXAGE&&fxOk())return fxOk();
+  try{
+    const r=await fetch(FX_URL+'latest?base=USD&symbols=EUR',{cache:'no-cache'});
+    const d=await r.json();
+    const v=d&&d.rates&&+d.rates.EUR;
+    if(!isFinite(v)||v<=0)throw new Error('geen koers');
+    FX.latest=v;FX.latestDate=d.date||'';FX.rates[d.date]=v;FX.ts=Date.now();FX.err='';
+    fxSave();return true;
+  }catch(e){ FX.err=(e&&e.message)||'onbereikbaar'; return fxOk(); }
+}
+// De koersreeks moet minstens teruglopen tot je oudste trade. Trades komen later
+// binnen dan de eerste koersaanvraag (sync, CSV-import, back-up), dus dit draait
+// opnieuw zodra de verzameling verandert - anders zou een oude trade met de koers
+// van vandaag worden vastgezet.
+async function fxEnsureRange(){
+  if(!fxOk())return false;
+  const datums=T.map(t=>String(t&&t.date||'')).filter(x=>x.length>=10).sort();
+  const vanaf=datums[0]; if(!vanaf)return false;
+  const keys=Object.keys(FX.rates).sort();
+  if(keys.length&&keys[0]<=vanaf)return false;   // die periode hebben we al
+  try{
+    const r=await fetch(FX_URL+vanaf+'..?base=USD&symbols=EUR',{cache:'no-cache'});
+    const d=await r.json();
+    let n=0;
+    Object.entries(d&&d.rates||{}).forEach(([k,o])=>{const x=+((o||{}).EUR);if(isFinite(x)&&x>0){FX.rates[k]=x;n++;}});
+    if(n){fxSave();return true;}
+  }catch(e){}
+  return false;
+}
+// Koersen ophalen, reeks aanvullen en vastzetten - één aanroep voor alle plekken.
+async function fxSync(){
+  const ok=await fxRefresh();
+  if(!ok)return false;
+  await fxEnsureRange();
+  return true;
+}
+
+// Trade-bedragen in de weergave-valuta. Geeft KOPIEËN terug: T blijft de dollar-waarheid.
+// Prijzen (entry/exit/stop/tp) blijven onaangeroerd — die staan in USDT en daar denk je in.
+const FX_MONEY=['pnl','fees','realizedPnl','unrealized','mae','mfe'];
+function fxView(list){
+  if(dispCur()!=='EUR')return list;
+  return list.map(t=>{
+    // de koers van de handelsdag; die ligt vast zodra de ECB hem publiceert
+    const r=(+t.fx)||fxFor(t.date)||FX.latest; if(!(r>0))return t;
+    const o={...t,pnlUsd:+t.pnl||0};   // percentages blijven in dollars rekenen
+    FX_MONEY.forEach(k=>{const v=+o[k];if(isFinite(v))o[k]=v*r;});
+    return o;
+  });
+}
+// Een saldo is een waarde van nu → altijd de laatste koers.
+const fxNow=v=>{const n=+v||0;return dispCur()==='EUR'?n*FX.latest:n;};
+const CURSYM=()=>dispCur()==='USD'?'$':'€';
 const eur=v=>CURSYM()+' '+Math.round(Math.abs(v)).toLocaleString('nl-NL');
 const eurS=v=>(v<0?'−':'+')+eur(v);
 // Compact signed amount for tight labels (year-strip): +€8,8k / −€420
@@ -2434,7 +2570,7 @@ function rcAreaChart(data,o){const t=themeColors(),H=React.createElement,R=Recha
 }
 function donut(size=132){
   const t=themeColors(),H=React.createElement,R=Recharts;
-  const data=accountList().filter(a=>a.v>0).map(a=>({name:a.n,value:Math.max(0,a.v),fill:a.c}));
+  const data=accountList().filter(a=>a.v>0).map(a=>({name:a.n,value:Math.max(0,fxNow(a.v)),fill:a.c}));
   return rcChart(()=>H(R.ResponsiveContainer,{width:'100%',height:'100%'},
     H(R.PieChart,{margin:{top:2,right:2,bottom:2,left:2}},
       H(R.Pie,{data,dataKey:'value',nameKey:'name',cx:'50%',cy:'50%',innerRadius:'62%',outerRadius:'95%',paddingAngle:2,stroke:t.surface,strokeWidth:2,isAnimationActive:true},
@@ -2498,14 +2634,14 @@ function groupRows(field){const o={};CLOSED.forEach(t=>{const k=field==='session
 
 /* ═══ PAGES ═══ */
 function pgDashboard(){
-  const legend=accountList().map(x=>`<div class="row">${accAvatar(x.id,18)}<span class="lbl">${esc(x.n)}</span><span class="val mask">${eur(x.v)}</span></div>`).join('');
+  const legend=accountList().map(x=>`<div class="row">${accAvatar(x.id,18)}<span class="lbl">${esc(x.n)}</span><span class="val mask">${eur(fxNow(x.v))}</span></div>`).join('');
   // Lege journal maar wél een gekoppelde exchange of saldo (Denny 2026-09-16: HL verbonden
   // en niets te zien) → toon de balans-hero, met daaronder de eerste-trade-uitleg.
   if(!T.length){
     const hasAcct=totalBalance()>0||MANUAL.length>0||EXCHANGES.some(e=>!e.deprecated&&CONNS[e.id]&&CONNS[e.id].connected);
     if(!hasAcct)return `${filterBar()}${emptyState('trades-first')}`;
     return `${filterBar()}<div class="panel hero"><div><div class="eyebrow">Totale balans</div>
-      <div class="big num mask">${eur(totalBalance())}</div>
+      <div class="big num mask">${eur(fxNow(totalBalance()))}</div>
       <div class="meta">Nog geen gesloten trades, start een sync of voeg je eerste trade toe.</div></div>
       <div class="alloc">${donut()}<div class="legend">${legend}</div></div></div>
       <div style="height:13px"></div>${emptyState('trades-first')}`;
@@ -2520,10 +2656,10 @@ function pgDashboard(){
   const yRows=T.filter(t=>t&&t.status==='closed'&&String(t.date||'').startsWith(_yr));
   const ytd=yRows.reduce((s,t)=>s+(+t.pnl||0),0);
   let ytdTxt;
-  if(UNIT()==='val'){const _base=totalBalance()-ytd;ytdTxt=`YTD <b class="num ${cls(ytd)} mask">${eurS(ytd)}${_base>0?' ('+(ytd>=0?'+':'−')+Math.abs(ytd/_base*100).toFixed(1).replace('.',',')+'%)':''}</b>`;}
+  if(UNIT()==='val'){const _y=netUsd(yRows),_base=totalBalance()-_y;ytdTxt=`YTD <b class="num ${cls(ytd)} mask">${eurS(ytd)}${_base>0?' ('+(_y>=0?'+':'−')+Math.abs(_y/_base*100).toFixed(1).replace('.',',')+'%)':''}</b>`;}
   else ytdTxt=`YTD <b class="num ${cls(ytd)}">${unitAgg(yRows,ytd,{terse:true})}</b>`;
   const hero=!VV('dHero')?'':`<div class="panel hero"><div>${unitSeg()}<div class="eyebrow">Totale balans</div>
-    <div class="big num mask">${eur(totalBalance())}</div>
+    <div class="big num mask">${eur(fxNow(totalBalance()))}</div>
     <div class="meta">Gerealiseerd deze maand <b class="num ${cls(mNet)}${unitMask()}">${unitAgg(mRows,mNet)}</b> · ${ytdTxt}</div></div>
     <div class="alloc">${donut()}<div class="legend">${legend}</div></div></div>`;
   const kks=[...(VV('dKpiCore')?['net','wr']:[]),...(VV('dKpiPro')?['pf','exp','r']:[])];
@@ -3259,7 +3395,7 @@ function pgInstellingen(){
       <div class="txfbtn"><button class="btn" onclick="txCancel()">Annuleren</button><button class="btn pri" onclick="addAcctTx('${m.id}')">Toevoegen</button></div></div>`;})():'';
     const txListHtml=txs.length?`<div class="txlist">${txs.map(x=>{const meta=TX_TYPES[x.type]||TX_TYPES.correction;const pre=x.type==='correction'?'= ':(meta.sign<0?'− ':'+ ');return `<div class="txrow"><span class="txic" style="color:${meta.color}">${meta.icon}</span><div class="txmeta"><b>${meta.label}</b>${x.note?`<small>${esc(x.note)}</small>`:''}</div><span class="txdate num">${fmtD(x.date)}</span><span class="txamt num mask" style="color:${meta.color}">${pre}${eur(Math.abs(+x.amount||0))}</span><button class="txdel" onclick="delAcctTx('${m.id}','${x.id}')" title="Verwijderen">×</button></div>`;}).join('')}</div>`:`<div class="txempty">Nog geen mutaties, voeg een storting toe.</div>`;
     return `<div class="setrow"><div class="mav">✎</div>
-      <div class="txt"><b>${esc(m.name)}</b><small>handmatig · saldo <b class="mask">${eur(bal)}</b> · ingelegd <span class="mask">${eur(cap)}</span>${pnl?` · trades <b class="${cls(pnl)}">${eurS(pnl)}</b>`:''}</small></div>
+      <div class="txt"><b>${esc(m.name)}</b><small>handmatig · saldo <b class="mask">${eur(fxNow(bal))}</b> · ingelegd <span class="mask">${eur(fxNow(cap))}</span>${pnl?` · trades <b class="${cls(pnl)}">${eurS(pnl)}</b>`:''}</small></div>
       <button class="btn" onclick="toggleMan('${m.id}')">${open?'Sluiten':'Beheren'}</button></div>
       ${open?`<div class="conncfg">
         ${txLegend}
@@ -4203,7 +4339,7 @@ function render(){
   // zodat doortypen in zoekbalken niet onderbroken wordt (render() vervangt #main volledig).
   let _fid=null,_fs=null,_fe=null;
   try{const _ae=document.activeElement;if(_ae&&_ae.id&&(_ae.tagName==='INPUT'||_ae.tagName==='TEXTAREA')){_fid=_ae.id;if(typeof _ae.selectionStart==='number'){_fs=_ae.selectionStart;_fe=_ae.selectionEnd;}}}catch(e){}
-  FT=applyFilter(T);
+  FT=fxView(applyFilter(T));
   CLOSED=FT.filter(t=>t.status!=='open');
   // B1 (ChangeMaker): filters gelden bewust app-breed — maak dat op élke pagina zichtbaar,
   // zodat "al mijn trades zijn weg" nooit meer een mysterie is.
@@ -4215,7 +4351,7 @@ function render(){
   document.getElementById('ptitle').textContent=title;
   document.getElementById('psub').textContent=sub||'';
   document.getElementById('ptbar').style.background=PAGEC[STATE.page]||'var(--accent)';
-  const bv=document.getElementById('balVal');if(bv)bv.textContent=CURSYM()+' '+Math.round(totalBalance()).toLocaleString('nl-NL');
+  const bv=document.getElementById('balVal');if(bv)bv.textContent=CURSYM()+' '+Math.round(fxNow(totalBalance())).toLocaleString('nl-NL');
   const m=document.getElementById('main');destroyCharts();_rcQueue=[];m.innerHTML=tabBanner()+updateBanner()+driveBanner()+backupBanner()+fn();m.style.animation='none';void m.offsetWidth;m.style.animation='';
   document.querySelectorAll('#nav button,#navbot button').forEach(b=>b.classList.toggle('on',b.dataset.p===STATE.page));
   try{bkIndUpdate();}catch(e){}
@@ -4252,7 +4388,10 @@ document.addEventListener('keydown',e=>{
 function selRev(i){STATE.revSel=i;render();}
 function setTheme(t){STATE.theme=t;document.body.classList.toggle('dark',t==='dark');document.getElementById('btnTheme').innerHTML=svg(t==='dark'?IC.sun:IC.moon,16);persistState();render();}
 function togglePriv(){STATE.priv=!STATE.priv;document.body.classList.toggle('priv',STATE.priv);document.getElementById('btnEye').style.color=STATE.priv?'var(--accent)':'';persistState();render();}
-function setCurrency(c){STATE.currency=c;persistState();render();}
+function setCurrency(c){
+  STATE.currency=c;persistState();render();
+  // euro gekozen maar nog geen koers? één poging, daarna opnieuw tekenen
+  if(c==='EUR'&&!fxOk())fxSync().then(ok=>{if(ok)render();else toast('Wisselkoers niet op te halen — bedragen staan in dollars','err');}); }
 function setPctRef(v){STATE.pctRef=Math.max(0,+v||0);persistState();render();}
 /* trades CRUD + import/export */
 // Volledige staat-payload — gedeeld door export, snapshots en herstel.
@@ -4293,6 +4432,13 @@ function applyBackup(d){
   // Herstelde back-up kan een ander sync-interval of andere koppelingen bevatten:
   // de lopende timer draait anders nog op de oude instellingen.
   try{startAutoSync();}catch(e){}
+  fxSync().then(ok=>{if(ok)render();});   // een teruggezette back-up kan oudere trades bevatten
+  /* Een back-up kan van een oudere schema-versie zijn. De opruimstappen kijken normaal
+     naar wat er in de opslag stond, en die is na een herstel niet meer representatief -
+     dus zetten we de teller terug op de versie van het bestand en laten de stappen er
+     alsnog overheen lopen. Zonder dit blijft oude rommel uit de back-up gewoon staan. */
+  const bv=+d.schemaVersion||0;
+  if(bv&&bv<SCHEMA_VERSION){ try{DB.save('schema',bv);runMigrations().then(()=>render());}catch(e){} }
 }
 /* ═══ Backup-bewaking (hosting-plan fase 1, Denny 2026-09-16) ═══
    Eén statuslaag voor álle backup-methodes: elke geslaagde backup (handmatige export,
@@ -5615,7 +5761,11 @@ const ExchangeAPI = {
       else{const dir=String(t.direction||"").toLowerCase();if(dir==="long"||dir==="short")direction=dir;else direction=((exitN-entryN)*netPnl>=0)?"long":"short";}
       const tpLevels=Array.isArray(t.tpLevels)?t.tpLevels:[];
       return{...EMPTY_TRADE,
-        id:"okx_"+(t.posId||uid())+"_"+closeT,
+        // Één positie = één trade. OKX geeft een lopende positie bij elke sync opnieuw
+        // terug met een verder gevulde stand (meer gesloten contracten, hogere cumulatieve
+        // PnL). Stond de sluittijd in dit kenmerk, dan werd elke tussenstand een aparte
+        // trade en telde de P&L dubbel. Nu herkent de sync hem en werkt hij hem bij.
+        id:"okx_"+(t.posId||("t"+closeT)),
         positionId:String(t.posId||""),
         openTime:openMs?String(openMs):"",closeTime:String(closeT),
         date:ts2date(closeT),time:ts2time(closeT),
@@ -5830,13 +5980,42 @@ function sjFromTj(tj){
 }
 // Gedeelde import-brug voor sync én CSV: TJ-schema → SJ, dedupe op bron-id,
 // prullenbak-guard (verwijderd blijft verwijderd), unieke ids per batch.
+/* Velden die van de exchange komen en dus mogen worden bijgewerkt als dezelfde trade
+   opnieuw langskomt met een verdere stand. Alles wat JIJ invult (notities, tags, setup,
+   beoordeling, screenshots) blijft staan - daarom staat dat hier bewust niet in. */
+const SJ_SYNC_FIELDS=['exit','pnl','fees','r','status','closeTime','qtyAsset','size','_rawCloseSize','realizedPnl','tps','leverage'];
+function refreshFromSync(bestaand,verse){
+  let gewijzigd=false;
+  SJ_SYNC_FIELDS.forEach(k=>{
+    if(!(k in verse))return;
+    const nieuw=verse[k], oud=bestaand[k];
+    const zelfde=(Array.isArray(nieuw)&&Array.isArray(oud))?JSON.stringify(nieuw)===JSON.stringify(oud):String(nieuw)===String(oud);
+    if(!zelfde){bestaand[k]=nieuw;gewijzigd=true;}
+  });
+  return gewijzigd;
+}
 function importTjClosed(rawList){
-  const have=new Set(T.map(t=>t.srcId&&String(t.srcId)).filter(Boolean));
+  const byId=new Map();T.forEach(t=>{if(t&&t.srcId)byId.set(String(t.srcId),t);});
   const dead=new Set(TRASH.map(t=>t.srcId&&String(t.srcId)).filter(Boolean));
-  const fresh=(rawList||[]).filter(t=>t&&t.status==='closed'&&t.id&&!have.has(String(t.id))&&!dead.has(String(t.id)));
+  // Binnen één antwoord kan dezelfde positie twee keer staan (een tussenstand én de
+  // eindstand). Houd per bron-id alleen de laatste: die bevat de andere al.
+  const perId=new Map();
+  (rawList||[]).filter(t=>t&&t.status==='closed'&&t.id&&!dead.has(String(t.id))).forEach(t=>{
+    const k=String(t.id), vorige=perId.get(k);
+    if(!vorige||(+t.closeTime||0)>=(+vorige.closeTime||0))perId.set(k,t);
+  });
+  const bruikbaar=[...perId.values()];
+  // bekend → bijwerken (een lopende positie groeit tussen twee syncs door)
+  let bij=0;
+  bruikbaar.filter(t=>byId.has(String(t.id))).forEach(t=>{
+    const verse=sjFromTj(t), bestaand=byId.get(String(t.id));
+    if(refreshFromSync(bestaand,verse))bij++;
+  });
+  const fresh=bruikbaar.filter(t=>!byId.has(String(t.id)));
   const mapped=fresh.map(sjFromTj);
   const base=nextId();mapped.forEach((t,i)=>t.id=base+i);
-  if(mapped.length){T=[...T,...mapped];persist();}
+  if(mapped.length)T=[...T,...mapped];
+  if(mapped.length||bij)persist();
   return mapped;
 }
 async function testConn(exId){
@@ -5884,6 +6063,7 @@ async function syncExchange(exId,opts){
   finalizePlaceholders(exId,mapped);
   finalizeStaleOpens(exId);
   runPartialDetect(exId);
+  await fxSync();               // verse trades krijgen de koers van hun handelsdag mee
   await refreshBalance(exId);   // saldo ververst mee met elke sync
   CONNS[exId]={...c,lastSync:Date.now()};persistConns();
   if(!quiet)toast(mapped.length?('✓ '+ad.name+': '+mapped.length+' nieuwe trade'+(mapped.length>1?'s':'')):('✓ '+ad.name+': geen nieuwe trades'),mapped.length?'ok':'info');
@@ -7022,6 +7202,7 @@ async function boot(){
   try{EXCHANGES.filter(e=>e.deprecated&&CONNS[e.id]).forEach(e=>{delete CONNS[e.id];});persistConns();}catch(e){}
   try{await runMigrations();}catch(e){}   // geversioneerde schema-updates (snapshot + rollback ingebouwd)
   selfCheck();                            // grove corruptie → herstel-aanbod
+  try{fxSync().then(ok=>{if(ok)render();});}catch(e){}   // koersen ophalen en per trade vastzetten
   try{startAutoSync();}catch(e){}         // exchange auto-sync-timer (doet niets zolang SYNC.auto uit staat)
   render();
   // Eerste-start: migratie-aanbod (oude tj_-data) heeft voorrang op het welkomscherm.

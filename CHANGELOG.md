@@ -10,6 +10,16 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 De journal is opnieuw opgebouwd als **SyncJournal** en draait nu online op [syncjournal.nl](https://syncjournal.nl). Versienummers zijn opnieuw gestart op v0.9.x (bèta); de oude TradeJournal-releases staan verderop in dit bestand. Je data overzetten kan via Instellingen → Data → Importeer oude backup.
 
+## [v0.9.102] — 2026-09-21
+
+### Toegevoegd
+- **Bedragen in echte euro's.** De €/$-schakelaar wisselde alleen het teken; de bedragen bleven dollars. Nu rekent de app om met de dagkoersen van de Europese Centrale Bank. Een trade gebruikt de koers van de dag waarop hij sloot — je resultaat van juni blijft dus hetzelfde bedrag — en een saldo de koers van vandaag. Percentages, R en win-rate veranderen niet mee: dat zijn verhoudingen. Lukt het ophalen van de koers niet, dan toont de app dollars met het dollarteken in plaats van een verzonnen omrekening.
+
+### Fixed
+- **OKX: één positie is weer één trade** (gemeld door Denny). OKX levert een lopende positie bij elke sync opnieuw aan met een verdere stand. Omdat het kenmerk van een trade de sluittijd bevatte, werd elke tussenstand een nieuwe regel en telde de P&L dubbel — in Denny's geval −$3,44 én −$9,76, terwijl −$9,76 het totaal al was. Bestaande journals worden bij het opstarten eenmalig opgeruimd: per positie blijft de laatste stand staan en verhuizen je eigen notities, tags en setup mee.
+- **Size werd honderd keer te groot getoond.** "623.91" verscheen als "$ 62.391" doordat de punt als duizendtalscheiding werd gelezen. Handmatige invoer in Nederlandse schrijfwijze ("8.000" of "1.234,56") blijft gewoon werken.
+- **Achtergrondwerk kan het werk van een ander tabblad niet meer overschrijven.** Heb je de journal in twee tabbladen open, dan kon een achtergrondtaak schrijven vóórdat dat tabblad doorhad dat het achterliep. Er wordt nu vlak voor het opslaan nog één keer gekeken wat er werkelijk staat.
+
 ## [v0.9.101] — 2026-09-21
 
 ### Toegevoegd

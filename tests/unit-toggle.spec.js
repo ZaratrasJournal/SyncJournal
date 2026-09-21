@@ -10,6 +10,9 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
   const b = await chromium.launch(); const p = await b.newPage(); p.on('dialog', d => d.accept());
   const errs = []; p.on('pageerror', e => errs.push(String(e)));
   await p.setViewportSize({ width: 1700, height: 1100 });
+  // Deze spec rekent met vaste bedragen, dus geen wisselkoers erbij: zonder koers toont
+  // de app bewust dollars (de eerlijke terugval). De omrekening zelf staat in valuta.spec.
+  await p.route('**/*', r => /frankfurter/.test(r.request().url()) ? r.abort() : r.continue());
   await p.goto(url, { waitUntil: 'networkidle' });
   await p.evaluate(async () => { localStorage.clear(); try { await IDB.clearAll(); } catch (e) {} });
   await p.reload({ waitUntil: 'networkidle' }); await p.waitForTimeout(600);
@@ -30,7 +33,7 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
 
   console.log('─── Valuta-stand (standaard) ───');
   const v0 = await p.evaluate(() => { const h = document.querySelector('#main .hero'); return { seg: !!h.querySelector('.unitseg'), on: h.querySelector('.unitseg button.on').textContent, big: h.querySelector('.big').textContent, meta: h.querySelector('.meta').textContent }; });
-  ok('seg staat in de hero, € actief, balans en maand in valuta', v0.seg && v0.on === '€' && /1\.050/.test(v0.big) && /\+€ 250/.test(v0.meta), JSON.stringify(v0));
+  ok('seg staat in de hero, valuta actief, balans en maand in valuta', v0.seg && v0.on === '$' && /1\.050/.test(v0.big) && /\+\$ 250/.test(v0.meta), JSON.stringify(v0));
 
   console.log('─── Valuta-pil volgt de valuta-instelling ───');
   const cur = await p.evaluate(() => {
@@ -39,7 +42,9 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
     setCurrency('EUR'); render(); const eurL = lbl();
     return { usd, eurL };
   });
-  ok('pil toont $ bij dollar-instelling en € bij euro', cur.usd === '$' && cur.eurL === '€', JSON.stringify(cur));
+  // Zonder wisselkoers blijft de app bij dollars, ook als je euro hebt gekozen: liever
+  // eerlijk dan een verzonnen omrekening. Het euro-geval staat in valuta.spec.
+  ok('pil volgt de valuta; zonder koers blijft dat de dollar', cur.usd === '$' && cur.eurL === '$', JSON.stringify(cur));
   ok('pillen staan bóven "Totale balans" (leesorde eenheid → label → bedrag)', await p.evaluate(() => {
     const col = document.querySelector('#main .hero > div');
     const kids = [...col.children].map(c => c.className);
