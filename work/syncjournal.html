@@ -1021,6 +1021,12 @@ body.dark .mx-legend .mxsw{box-shadow:inset 0 0 0 1px rgba(255,255,255,.12)}
 .extab tr:last-child td{border-bottom:0}
 .extab .fk{display:inline-block;min-width:34px;text-align:center;padding:1px 7px;border-radius:20px;font-size:10px;font-weight:800;letter-spacing:.03em;background:color-mix(in srgb,var(--fc) 15%,transparent);color:var(--fc)}
 .exflat{color:var(--muted)}
+.extab .exday td{text-align:left;padding:7px 10px 4px;border-top:1px solid var(--line2);font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.extab tbody tr.exday+tr td{border-top:0}
+.extab .exnew td{text-align:left;padding:8px 10px;border-top:1px solid var(--line);background:color-mix(in srgb,var(--ink) 4%,transparent);font-size:11px;color:var(--muted)}
+.extab .exnew i{font-style:normal;color:var(--ink2);font-weight:600;font-family:var(--fn)}
+.extab .exsame{color:var(--line)}
+.extab .exfee{color:var(--muted)}
 @media (max-width:560px){.extab th:nth-child(6),.extab td:nth-child(6),.extab th:nth-child(7),.extab td:nth-child(7){display:none}}
 /* Trade-tijdlijn (Review-detail) */
 .tline{display:flex;flex-wrap:wrap;align-items:center;gap:7px;margin-top:11px;padding:8px 11px;background:var(--sink);border:1px solid var(--line2);border-radius:9px;font-size:12px}
@@ -1752,7 +1758,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.110';
+const APP_VERSION='v0.9.111';
 const SCHEMA_VERSION=4;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -2299,19 +2305,40 @@ function fmtDurMin(m){if(m==null)return '—';if(m>=1440)return `${Math.floor(m/
    je wanneér een bijkoop je gemiddelde verschoof, en dus waarom een latere afbouw
    tegen een ander gemiddelde afrekende dan een eerdere. */
 const EX_KIND={open:['Open','var(--accent)'],add:['Bij','var(--amber)'],close:['Af','var(--teal)'],flip:['Om','var(--purple)']};
+/* De stappen van een positie zijn een verhaal in de tijd: wanneer stapte je in, wanneer
+   bouwde je af, en wat leverde dat op. Drie dingen maken dat leesbaar.
+
+   Datums als tussenkop in plaats van in elke rij. Denny's positie liep over drie dagen en
+   de tijdkolom toonde alleen 03:51 en 04:45 - dan lijkt 21:08 op dezelfde dag te vallen.
+
+   De Ø-entry alleen tonen wanneer hij beweegt. Afbouwen laat je gemiddelde ongemoeid, dus
+   dezelfde prijs stond er drie regels achter elkaar; nu zie je in één oogopslag dat alleen
+   een bijkoop hem verschuift.
+
+   En een positie die vlak gaat en dáárna opnieuw opent, is een tweede positie. Die kreeg
+   geen eigen kop, waardoor het gemiddelde over twee posities werd gerekend. */
+function execLegs(fills){
+  const legs=[];let huidig=[];
+  (fills||[]).forEach(x=>{huidig.push(x);if(!(x.posAfter>1e-12)){legs.push(huidig);huidig=[];}});
+  if(huidig.length)legs.push(huidig);
+  return legs;
+}
+const ts2dag=ms=>new Date(+ms||Date.now()).toLocaleDateString('nl-NL',{weekday:'short',day:'numeric',month:'short'});
 function execTable(t){
   const f=(t&&t.fills)||[];
   if(f.length<2||!f.some(x=>x.kind==='close'))return '';
   const sum=fillSummary(f);
+  const legs=execLegs(f);
   const n=(v,d)=>Number(+v||0).toLocaleString('nl-NL',{maximumFractionDigits:(d==null?8:d)});
   // prijzen houden hun decimalen (81.008,90 en niet 81.008,9)
   const px=v=>{const a=Math.abs(+v||0),d=a>=1000?2:a>=1?4:8;
     return Number(+v||0).toLocaleString('nl-NL',{minimumFractionDigits:d,maximumFractionDigits:d});};
   /* Per stap gaat het om centen: de gewone geldweergave rondt af op hele euro's, en dan
      wordt +1,58 opeens "+2". Hier dus twee decimalen. */
-  const geld=v=>(v<0?'−':'+')+CURSYM()+' '+Math.abs(+v||0).toLocaleString('nl-NL',{minimumFractionDigits:2,maximumFractionDigits:2});
-  /* De P&L-kolom telt op tot de brutowinst; het bedrag bovenaan de trade is ná fees.
-     Die regel eronder maakt zichtbaar waar het verschil zit — anders tel je de kolom op
+  const geld=v=>(v<0?'\u2212':'+')+CURSYM()+' '+Math.abs(+v||0).toLocaleString('nl-NL',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const kosten=v=>(+v)?Math.abs(+v).toLocaleString('nl-NL',{minimumFractionDigits:2,maximumFractionDigits:2}):'';
+  /* De P&L-kolom telt op tot de brutowinst; het bedrag bovenaan de trade is n\u00e1 fees.
+     Die regel eronder maakt zichtbaar waar het verschil zit \u2014 anders tel je de kolom op
      en klopt hij niet met de kop, en dat is precies waar supportvragen van komen.
      Het nettobedrag van de exchange is leidend: die kent ook funding en afrondingen die
      wij uit de fills niet kunnen zien. Wijkt onze eigen som daarvan af, dan zeggen we dat
@@ -2320,26 +2347,46 @@ function execTable(t){
   const netto=isFinite(+t.pnl)?+t.pnl:eigen;
   const afw=Math.abs(netto-eigen)>0.01
     ? ` title="Uit de stappen berekend: ${geld(eigen)}. Het verschil komt door funding of afronding bij de exchange."` : '';
-  const rows=f.map(x=>{
-    const k=EX_KIND[x.kind]||['',''];
-    return `<tr>
-      <td class="num">${ts2time(x.ts)}</td>
-      <td><span class="fk" style="--fc:${k[1]}">${k[0]}</span></td>
-      <td class="num mask">${n(x.qtyAsset)}</td>
-      <td class="num">${px(x.price)}</td>
-      <td class="num mask">${x.posAfter>0?n(x.posAfterAsset):'<span class="exflat">vlak</span>'}</td>
-      <td class="num">${px(x.avgEntry)}</td>
-      <td class="num" style="color:var(--muted)">${x.fee?n(+(+x.fee).toFixed(4)):''}</td>
-      <td class="num mask ${x.pnl==null?'':cls(x.pnl)}">${x.pnl==null?'':geld(x.pnl)}</td>
-    </tr>`;}).join('');
-  const verschil=(sum.avgEntry&&sum.firstEntry&&Math.abs(sum.avgEntry-sum.firstEntry)>1e-9)
-    ? ` <span>eerste instap <i>${px(sum.firstEntry)}</i> · gemiddeld <i>${px(sum.avgEntry)}</i></span>` : '';
-  return `<div class="exwrap"><div class="exhead"><b>Zo is deze positie gelopen</b>
-      <span>${sum.entries} ${sum.entries===1?'instap':'instappen'} · ${sum.exits} ${sum.exits===1?'afbouw':'afbouwstappen'}</span>${verschil}</div>
-    <table class="extab"><thead><tr><th>Tijd</th><th>Wat</th><th>Aantal</th><th>Prijs</th><th>Positie na</th><th>Ø entry</th><th>Fee</th><th>P&amp;L</th></tr></thead>
+  const KOL=8;
+  let dag='',vorigeAvg=null,rows='';
+  legs.forEach((leg,li)=>{
+    if(li){
+      const ls=fillSummary(leg);
+      rows+=`<tr class="exnew"><td colspan="${KOL}">Nieuwe positie \u00b7 ${ls.entries} ${ls.entries===1?'instap':'instappen'}
+        \u00b7 gemiddeld <i>${px(ls.avgEntry)}</i></td></tr>`;
+      dag='';vorigeAvg=null;
+    }
+    leg.forEach(x=>{
+      const d=ts2dag(x.ts);
+      if(d!==dag){dag=d;rows+=`<tr class="exday"><td colspan="${KOL}">${d}</td></tr>`;}
+      const k=EX_KIND[x.kind]||['',''];
+      // het gemiddelde beweegt alleen bij instappen \u2014 herhalen maakt de kolom onleesbaar
+      const avgNieuw=vorigeAvg===null||Math.abs(x.avgEntry-vorigeAvg)>1e-9;
+      vorigeAvg=x.avgEntry;
+      rows+=`<tr>
+        <td class="num">${ts2time(x.ts)}</td>
+        <td><span class="fk" style="--fc:${k[1]}">${k[0]}</span></td>
+        <td class="num mask">${n(x.qtyAsset)}</td>
+        <td class="num">${px(x.price)}</td>
+        <td class="num mask">${x.posAfter>0?n(x.posAfterAsset):'<span class="exflat">vlak</span>'}</td>
+        <td class="num${avgNieuw?'':' exsame'}">${avgNieuw?px(x.avgEntry):'\u00b7'}</td>
+        <td class="num exfee">${kosten(x.fee)}</td>
+        <td class="num mask ${x.pnl==null?'':cls(x.pnl)}">${x.pnl==null?'':geld(x.pnl)}</td>
+      </tr>`;
+    });
+  });
+  /* Bij meerdere posities zegt \u00e9\u00e9n gemiddelde niets meer \u2014 dan is het aantal posities het
+     nuttige feit, en staat het gemiddelde per positie bij de tussenkop. */
+  const kop=legs.length>1
+    ? `<span>${legs.length} posities \u00b7 ${sum.entries} instappen \u00b7 ${sum.exits} afbouwstappen</span>`
+    : `<span>${sum.entries} ${sum.entries===1?'instap':'instappen'} \u00b7 ${sum.exits} ${sum.exits===1?'afbouw':'afbouwstappen'}</span>`
+      +((sum.avgEntry&&sum.firstEntry&&Math.abs(sum.avgEntry-sum.firstEntry)>1e-9)
+        ? ` <span>eerste instap <i>${px(sum.firstEntry)}</i> \u00b7 gemiddeld <i>${px(sum.avgEntry)}</i></span>` : '');
+  return `<div class="exwrap"><div class="exhead"><b>Zo is deze positie gelopen</b>${kop}</div>
+    <table class="extab"><thead><tr><th>Tijd</th><th>Wat</th><th>Aantal</th><th>Prijs</th><th>Positie na</th><th>\u00d8 entry</th><th>Fee ${CURSYM()}</th><th>P&amp;L</th></tr></thead>
     <tbody>${rows}</tbody>
     <tfoot><tr><td></td><td><b>Samen</b></td><td class="num mask">${n(sum.exitsAsset)}</td><td></td><td></td><td></td>
-      <td class="num" style="color:var(--muted)">${sum.fees?n(+sum.fees.toFixed(4)):''}</td>
+      <td class="num exfee">${kosten(sum.fees)}</td>
       <td class="num mask ${cls(netto)}"${afw}><b>${geld(netto)}</b></td></tr></tfoot></table></div>`;
 }
 /* In het bewerkformulier is de vraag niet alleen "hoe liep het", maar ook "waarom zie

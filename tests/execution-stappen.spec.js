@@ -172,6 +172,41 @@ const TRADE = {
     await ctx.close();
   }
 
+  console.log('─── Twee posities achter elkaar (Denny’s schermafbeelding 22-09-2026) ───');
+  {
+    /* Zijn tabel liep vlak en opende daarna opnieuw: twee posities onder één kop die
+       "deze positie" heet, met een gemiddelde dat over allebei werd gerekend. */
+    const { ctx, p } = await open();
+    const r = await p.evaluate(t0 => {
+      const dag = 864e5, d0 = +new Date('2026-09-20T03:51:00');
+      const stappen = [
+        { ts: d0, side: 'sell', qty: 10, price: 81000, fee: 0.1 },
+        { ts: d0 + 36e5, side: 'buy', qty: 10, price: 80000, fee: 0.1 },      // vlak
+        { ts: d0 + 2 * dag, side: 'sell', qty: 5, price: 85000, fee: 0.1 },   // nieuwe positie
+        { ts: d0 + 2 * dag + 36e5, side: 'buy', qty: 5, price: 86000, fee: 0.1 },
+      ];
+      T = [{ ...t0, fills: fillTimeline(stappen, { dir: 'short', mult: 1 }) }];
+      openForm(T[0].id);
+      const el = document.querySelector('.exwrap');
+      const plat = (x) => x.textContent.replace(/\s+/g, ' ').trim();
+      const uit = {
+        kop: plat(el.querySelector('.exhead')),
+        nieuw: [...el.querySelectorAll('tr.exnew')].map(plat),
+        dagen: [...el.querySelectorAll('tr.exday')].map(plat),
+        stappen: el.querySelectorAll('tbody tr:not(.exday):not(.exnew)').length,
+      };
+      closeForm(); return uit;
+    }, TRADE);
+    ok('de kop meldt dat het er twee zijn, niet één', /2 posities/.test(r.kop), JSON.stringify(r.kop));
+    ok('en houdt op over "gemiddeld" te praten, want dat sloeg op allebei',
+      !/gemiddeld/.test(r.kop), JSON.stringify(r.kop));
+    ok('er staat een scheiding waar de tweede positie begint',
+      r.nieuw.length === 1 && /Nieuwe positie/.test(r.nieuw[0]) && /85\.000/.test(r.nieuw[0]), JSON.stringify(r.nieuw));
+    ok('alle vier de stappen blijven zichtbaar — niets weggemoffeld', r.stappen === 4, JSON.stringify(r.stappen));
+    ok('en beide dagen krijgen hun eigen datumkop', r.dagen.length === 2, JSON.stringify(r.dagen));
+    await ctx.close();
+  }
+
   console.log('─── Samen met de valuta-omrekening ───');
   {
     const ctx = await b.newContext(); const p = await ctx.newPage();
@@ -220,11 +255,15 @@ const TRADE = {
     const met = await p.evaluate(() => {
       CONNS.okx = { connected: true, apiKey: 'k', apiSecret: 's', passphrase: 'p' };
       openForm(1);
-      const el = document.querySelector('.exwrap'); const n = el ? el.querySelectorAll('tbody tr').length : 0;
+      const el = document.querySelector('.exwrap');
+      const n = el ? el.querySelectorAll('tbody tr:not(.exday):not(.exnew)').length : 0;
+      const dagen = el ? [...el.querySelectorAll('tbody tr.exday')].map(r => r.textContent.trim()) : [];
       const centen = el ? /1,58/.test(el.innerText) : false;
-      closeForm(); return { n, centen };
+      closeForm(); return { n, dagen, centen };
     });
     ok('met stappen staat de tabel in het formulier', met.n === 7, JSON.stringify(met.n));
+    ok('met een datumkop per dag, zodat 21:08 en 03:22 niet op dezelfde dag lijken te vallen',
+      met.dagen.length === 2 && /20 sep/.test(met.dagen[0]) && /21 sep/.test(met.dagen[1]), JSON.stringify(met.dagen));
     ok('inclusief de winst en het verlies per stap', met.centen, JSON.stringify(met));
     await ctx.close();
   }

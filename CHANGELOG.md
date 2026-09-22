@@ -10,6 +10,14 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 De journal is opnieuw opgebouwd als **SyncJournal** en draait nu online op [syncjournal.nl](https://syncjournal.nl). Versienummers zijn opnieuw gestart op v0.9.x (bèta); de oude TradeJournal-releases staan verderop in dit bestand. Je data overzetten kan via Instellingen → Data → Importeer oude backup.
 
+## [v0.9.111] — 2026-09-22
+
+### Gewijzigd
+- **Datums in je stappenoverzicht.** Een positie die over meerdere dagen loopt toonde alleen kloktijden, en dan lijkt 21:08 op dezelfde dag te vallen als 03:22. Er staat nu een datumkop boven elke dag.
+- **De Ø-entry staat er alleen nog als hij beweegt.** Afbouwen laat je gemiddelde ongemoeid, dus dezelfde prijs stond drie regels achter elkaar. Nu zie je meteen dat alleen een bijkoop hem verschuift.
+- **Ging je positie vlak en opende je daarna opnieuw, dan is dat een tweede positie.** Die stond zonder scheiding in dezelfde tabel, met een gemiddelde dat over allebei werd gerekend. Er staat nu een tussenkop, en de kop telt de posities in plaats van te doen alsof het er één is.
+- De fee-kolom heeft een valuta in de kop en staat op centen in plaats van vier decimalen.
+
 ## [v0.9.110] — 2026-09-22
 
 ### Gewijzigd
