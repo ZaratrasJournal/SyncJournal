@@ -10,6 +10,14 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 De journal is opnieuw opgebouwd als **SyncJournal** en draait nu online op [syncjournal.nl](https://syncjournal.nl). Versienummers zijn opnieuw gestart op v0.9.x (bèta); de oude TradeJournal-releases staan verderop in dit bestand. Je data overzetten kan via Instellingen → Data → Importeer oude backup.
 
+## [v0.9.118] — 2026-09-22
+
+### Gewijzigd
+- **OKX-stappen komen nu uit wat OKX zelf per uitvoering meldt.** Of een stap je positie opent of afbouwt leidden we af uit de kant plus een lopende telling; OKX zegt het gewoon per fill. Eén vreemde uitvoering in het tijdvenster kon daardoor alle stappen erna laten verschuiven — dat kan nu niet meer.
+- De winst of het verlies per afbouwstap is voortaan exact het bedrag van OKX; onze eigen berekening blijft er als controle naast staan.
+- Stappen worden gesorteerd op het moment van uitvoering in plaats van het moment waarop OKX het record aanmaakte.
+- **Een liquidatie of ADL heet nu "Liq"** in je stappenoverzicht, in plaats van een gewone afbouwstap.
+
 ## [v0.9.117] — 2026-09-22
 
 ### Fixed

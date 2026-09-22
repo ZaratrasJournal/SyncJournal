@@ -1760,7 +1760,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.117';
+const APP_VERSION='v0.9.118';
 const SCHEMA_VERSION=7;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -2367,7 +2367,9 @@ function fmtDurMin(m){if(m==null)return '—';if(m>=1440)return `${Math.floor(m/
    "Positie na" en "Ø entry" zijn de twee kolommen die het verhaal vertellen — daar zie
    je wanneér een bijkoop je gemiddelde verschoof, en dus waarom een latere afbouw
    tegen een ander gemiddelde afrekende dan een eerdere. */
-const EX_KIND={open:['Open','var(--accent)'],add:['Bij','var(--amber)'],close:['Af','var(--teal)'],flip:['Om','var(--purple)']};
+const EX_KIND={open:['Open','var(--accent)'],add:['Bij','var(--amber)'],close:['Af','var(--teal)'],flip:['Om','var(--purple)'],liq:['Liq','var(--red)']};
+// Een gedwongen sluiting (liquidatie of ADL) telt als afbouwstap, maar verdient een eigen label.
+const isAfbouw=x=>!!x&&(x.kind==='close'||x.kind==='liq');
 /* De stappen van een positie zijn een verhaal in de tijd: wanneer stapte je in, wanneer
    bouwde je af, en wat leverde dat op. Drie dingen maken dat leesbaar.
 
@@ -2389,7 +2391,7 @@ function execLegs(fills){
 const ts2dag=ms=>new Date(+ms||Date.now()).toLocaleDateString('nl-NL',{weekday:'short',day:'numeric',month:'short'});
 function execTable(t){
   const f=stepsOf(t);
-  if(f.length<2||!f.some(x=>x.kind==='close'))return '';
+  if(f.length<2||!f.some(isAfbouw))return '';
   const sum=fillSummary(f);
   const legs=execLegs(f);
   const n=(v,d)=>Number(+v||0).toLocaleString('nl-NL',{maximumFractionDigits:(d==null?8:d)});
@@ -5415,7 +5417,11 @@ function fillTimeline(steps,opts){
   return rijen.map(f=>{
     const q=Math.abs(+f.qty)||0, px=+f.price||0, fee=Math.abs(+f.fee)||0;
     const sq=(String(f.side||'').toLowerCase()==='buy'?1:-1)*q;
-    const vergroot=(pos*sq)>=0;
+    /* Zegt de exchange zelf of deze fill de positie vergroot of verkleint (OKX subType,
+       Blofin/HL hun dir), dan is dat leidend - een lopende teller schuift door zodra er
+       één vreemde fill in het venster valt. Bij een vlakke positie valt er niets te
+       sluiten, dus daar opent een fill altijd. */
+    const vergroot=pos===0?true:(f.effect==='inc'?true:f.effect==='dec'?false:(pos*sq)>=0);
     let kind,pnl=null,pnlCalc=null;
     if(!vergroot){
       // nooit meer afrekenen dan er openstaat — de rest opent een positie de andere kant op
@@ -5432,7 +5438,7 @@ function fillTimeline(steps,opts){
       kind='flip';       // draait om: vanaf hier een nieuwe positie met een nieuwe basis
       avg=px;
     }else{
-      kind='close';      // afbouwen laat het gemiddelde ongemoeid
+      kind=f.liq?'liq':'close';   // afbouwen laat het gemiddelde ongemoeid
     }
     pos+=sq;
     return {ts:+f.ts||0,side:f.side,kind,qty:q,qtyAsset:q*mult,price:px,fee,
@@ -5971,7 +5977,7 @@ const ExchangeAPI = {
       const sluitAf=(coin,st)=>{
         const steps=st.steps; if(!steps.length)return;
         const tl=fillTimeline(steps,{mult:1});
-        if(!tl.some(x=>x.kind==='close'))return;
+        if(!tl.some(isAfbouw))return;
         const sum=fillSummary(tl);
         const first=tl[0], last=tl[tl.length-1];
         const side=first.side==="buy"?"long":"short";
@@ -6325,6 +6331,19 @@ const ExchangeAPI = {
       }
       return rows;
     },
+    /* Wat OKX zelf over een fill zegt (docs-v5, Transaction details → subType):
+       3/4 openen een long/short, 5/6 sluiten er een, 100-107 is (gedeeltelijke) liquidatie
+       en 125-128 is ADL. Zonder deze vertaling leiden we open/sluiten af uit side plus een
+       lopende teller, en dat schuift door zodra er één vreemde fill in het venster valt. */
+    _subType(v){
+      const n=parseInt(v,10); if(!isFinite(n))return {};
+      const OPEN=[3,4,206,207,272,273,326,327], SLUIT=[5,6,208,209,274,275,328,329];
+      const LIQ=[100,101,102,103,104,105,106,107,125,126,127,128];
+      if(OPEN.includes(n))return {effect:'inc'};
+      if(SLUIT.includes(n))return {effect:'dec'};
+      if(LIQ.includes(n))return {effect:'dec',liq:true};
+      return {};   // 1/2 (buy/sell in net-mode) en al het overige: de teller beslist
+    },
     /* OKX-fills → de stappen van één positie. OKX levert geen positie-id op fills, dus we
        matchen op instrument, positiekant en het tijdvenster van de positie. In one-way-mode
        ontbreekt posSide ("net"); dan valt de filter terug op instrument + venster. */
@@ -6339,13 +6358,18 @@ const ExchangeAPI = {
       const eerste=(f,...ks)=>{for(const k of ks){const v=f[k];if(v!==undefined&&v!==null&&v!=='')return v;}return '';};
       return (raw||[]).map(f=>({
         id:eerste(f,'tradeId','fillId','id','ordId')||undefined,
+        ordId:String(eerste(f,'ordId','orderId')),
         instId:String(eerste(f,'instId','instrument','symbol')),
         posSide:String(eerste(f,'posSide','positionSide')).toLowerCase(),
-        ts:+eerste(f,'ts','fillTime','time','timestamp')||0,
+        /* Sorteren op fillTime, niet op ts: ts is het moment waarop OKX het record aanmaakte,
+           fillTime dat van de uitvoering. De docs zeggen het met zoveel woorden. */
+        ts:+eerste(f,'fillTime','ts','time','timestamp')||0,
         side:String(eerste(f,'side','fillSide','direction')).toLowerCase(),
         qty:Math.abs(parseFloat(eerste(f,'fillSz','sz','size','vol','amount','qty'))||0),
         price:parseFloat(eerste(f,'fillPx','px','price','fillPrice','tradePrice'))||0,
         fee:Math.abs(parseFloat(eerste(f,'fee','fees','commission'))||0),
+        ...this._subType(eerste(f,'subType')),
+        pnlExch:(()=>{const v=parseFloat(f.fillPnl);return isFinite(v)&&v!==0?v:null;})(),
       })).filter(f=>{
         if(basis&&f.instId&&f.instId.split(/[-_/]/)[0].toUpperCase()!==basis)return false;
         if(!(f.ts>=van&&f.ts<=tot))return false;
@@ -6609,7 +6633,7 @@ async function backfillFills(exId,opts){
     const asset=+t.qtyAsset||0;
     const mult=(contracten>0&&asset>0)?(asset/contracten):1;
     const fills=fillTimeline(steps,{dir,mult});
-    if(!fills.some(x=>x.kind==='close')){ t.fillsNone=Date.now(); continue; }
+    if(!fills.some(isAfbouw)){ t.fillsNone=Date.now(); continue; }
     t.fills=fills; delete t.fillsNone; n++;
   }
   if(n||lijst.some(t=>t.fillsNone))persist();
