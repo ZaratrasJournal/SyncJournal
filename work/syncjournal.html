@@ -1752,7 +1752,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.106';
+const APP_VERSION='v0.9.107';
 const SCHEMA_VERSION=4;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -2352,7 +2352,27 @@ function execBlock(t){
     &&ExchangeAPI[t.exchange]&&typeof ExchangeAPI[t.exchange].fetchFills==='function';
   if(!viaKoppeling)return '';
   return `<div class="exwrap"><div class="exhead"><b>Zo is deze positie gelopen</b>
-      <span>nog niet opgehaald — de losse stappen komen binnen bij je volgende sync</span></div></div>`;
+      <span>nog niet opgehaald</span>
+      <button type="button" class="btn btn-sm" style="margin-left:auto" onclick="fetchStepsFor(${t.id})">Stappen ophalen</button></div></div>`;
+}
+/* Nu ophalen voor deze ene trade, in plaats van wachten tot de volgende sync. Overgenomen
+   uit de oude journal, waar dit ook een knop in het tradeformulier was - met een melding bij
+   elke uitkomst, want stil niets doen is het ergste wat zo'n knop kan doen. */
+async function fetchStepsFor(id){
+  const t=T.find(x=>x.id===id); if(!t)return;
+  const btn=document.querySelector('.exwrap button'); if(btn){btn.disabled=true;btn.textContent='Ophalen\u2026';}
+  let r={n:0,reden:'fout',detail:''};
+  try{ r=(await backfillFills(t.exchange))||r; }catch(e){ r={n:0,reden:'fout',detail:(e&&e.message)||String(e)}; }
+  if(r.n){ toast('\u2713 Stappen opgehaald','ok'); }
+  else{
+    toast(r.reden==='geen-fills'?'Geen fills gevonden bij de exchange voor deze periode'
+        : r.reden==='geen-match'?'Fills opgehaald, maar ze horen niet bij deze trade'
+        : r.reden==='fout'?'Ophalen mislukt: '+(r.detail||'onbekende fout')
+        : 'Niets op te halen','err');
+    if(r.detail)ErrorCenter.report('sync',new Error('stappen ophalen ('+r.reden+'): '+r.detail),
+      {severity:'warn',userMsg:'De losse stappen konden niet worden opgehaald.',actions:[{label:'Details',fn:()=>ErrorCenter.diagnostics()}]});
+  }
+  openForm(id);   // formulier opnieuw opbouwen, met of zonder tabel
 }
 // Mini-tijdlijn voor Review-detail én hover-uitklap: Open → TP-hits (met tijd) → Close · duur.
 function tradeTimeline(t){
@@ -6075,18 +6095,28 @@ const ExchangeAPI = {
        ontbreekt posSide ("net"); dan valt de filter terug op instrument + venster. */
     stepsForTrade(t,raw){
       const dir=String(t.dir||t.direction||"").toLowerCase();
-      // basis-asset uit het instrument: "BTC-USD_UM_XPERP-04APR31" en "BTC-USDT-SWAP" → BTC
+      // basis-asset uit het instrument: "BTC-USD_UM_XPERP-04APR31" en "BTC-USDT-SWAP" -> BTC
       const basis=String(t.pair||"").split("/")[0].toUpperCase();
       const van=(+t.openTime||0)-1000, tot=(+t.closeTime||Date.now())+1000;
-      return (raw||[]).filter(f=>{
-        if(basis&&String(f.instId||"").split("-")[0].toUpperCase()!==basis)return false;
-        const ts=+f.ts||0; if(!(ts>=van&&ts<=tot))return false;
-        const ps=String(f.posSide||"").toLowerCase();
-        if(ps==="long"||ps==="short")return ps===dir;   // one-way-mode geeft "net": dan telt het venster
+      /* Eerst vertalen, daarna pas filteren. Tolerant lezen, zoals de oude journal deed:
+         exchanges en Worker-versies noemen dezelfde waarde anders, en één veldnaam
+         verwachten betekent dat dit stil niets doet zodra er iets afwijkt. */
+      const eerste=(f,...ks)=>{for(const k of ks){const v=f[k];if(v!==undefined&&v!==null&&v!=='')return v;}return '';};
+      return (raw||[]).map(f=>({
+        id:eerste(f,'tradeId','fillId','id','ordId')||undefined,
+        instId:String(eerste(f,'instId','instrument','symbol')),
+        posSide:String(eerste(f,'posSide','positionSide')).toLowerCase(),
+        ts:+eerste(f,'ts','fillTime','time','timestamp')||0,
+        side:String(eerste(f,'side','fillSide','direction')).toLowerCase(),
+        qty:Math.abs(parseFloat(eerste(f,'fillSz','sz','size','vol','amount','qty'))||0),
+        price:parseFloat(eerste(f,'fillPx','px','price','fillPrice','tradePrice'))||0,
+        fee:Math.abs(parseFloat(eerste(f,'fee','fees','commission'))||0),
+      })).filter(f=>{
+        if(basis&&f.instId&&f.instId.split(/[-_/]/)[0].toUpperCase()!==basis)return false;
+        if(!(f.ts>=van&&f.ts<=tot))return false;
+        if(f.posSide==="long"||f.posSide==="short")return f.posSide===dir;  // one-way-mode geeft "net"
         return true;
-      }).map(f=>({ts:+f.ts||0,side:String(f.side||"").toLowerCase(),
-                  qty:Math.abs(parseFloat(f.fillSz)||0),price:parseFloat(f.fillPx)||0,
-                  fee:Math.abs(parseFloat(f.fee)||0)}));
+      });
     },
     async fetchOpenPositions(apiKey,apiSecret,passphrase){
       const data=await proxyCall({exchange:"okx",action:"open_positions",apiKey,apiSecret,passphrase});
@@ -6308,16 +6338,19 @@ async function backfillFills(exId){
   if(!ad||typeof ad.fetchFills!=='function'||typeof ad.stepsForTrade!=='function')return 0;
   if(!c||!c.connected||TAB_STALE)return 0;
   const mist=T.filter(t=>t&&t.exchange===exId&&t.status==='closed'&&!(t.fills&&t.fills.length)&&(+t.openTime>0));
-  if(!mist.length)return 0;
+  if(!mist.length)return {n:0,reden:''};
   const van=Math.min(...mist.map(t=>+t.openTime||0))-60000;
   const tot=Math.max(...mist.map(t=>+t.closeTime||Date.now()))+60000;
+  const venster=new Date(van).toLocaleString('nl-NL')+' t/m '+new Date(tot).toLocaleString('nl-NL');
   let raw=[];
   try{ raw=await ad.fetchFills(c.apiKey,c.apiSecret,c.passphrase,'',van,tot); }
-  catch(e){ return 0; }
-  if(!raw.length)return 0;
-  let n=0;
+  catch(e){ return {n:0,reden:'fout',detail:((e&&e.message)||String(e))+' \u00b7 venster '+venster}; }
+  if(!raw.length)return {n:0,reden:'geen-fills',detail:'De proxy gaf geen fills terug voor '+venster
+    +'. Mogelijk kent je Worker de fills-actie nog niet, of bewaart de exchange ze niet meer.'};
+  let n=0, gematcht=0;
   mist.forEach(t=>{
     const steps=ad.stepsForTrade(t,raw);
+    gematcht=Math.max(gematcht,steps.length);
     if(steps.length<2)return;                       // één fill voegt niets toe aan wat je al ziet
     const dir=String(t.dir||'').toLowerCase()==='short'?'short':'long';
     const sluitKant=dir==='short'?'buy':'sell';
@@ -6329,7 +6362,15 @@ async function backfillFills(exId){
     t.fills=fills;n++;
   });
   if(n)persist();
-  return n;
+  if(n)return {n,reden:''};
+  /* Wel fills binnen, maar ze horen bij geen enkele trade. Dat wijst op een mismatch in
+     instrument, richting of tijdvenster - en dan is de eerste ruwe fill het nuttigst om
+     te kunnen zien wat er niet aansluit. */
+  const v=raw[0]||{};
+  return {n:0,reden:'geen-match',detail:raw.length+' fills opgehaald, maar hooguit '+gematcht
+    +' hoorde bij een trade. Eerste fill: instrument '+(v.instId||'?')+', kant '+(v.side||'?')
+    +'/'+(v.posSide||'?')+', tijd '+(v.ts?new Date(+v.ts).toLocaleString('nl-NL'):'?')
+    +'. Gezocht venster: '+venster+'.'};
 }
 async function syncExchange(exId,opts){
   const quiet=opts&&opts.quiet;
@@ -6349,7 +6390,15 @@ async function syncExchange(exId,opts){
   finalizePlaceholders(exId,mapped);
   finalizeStaleOpens(exId);
   runPartialDetect(exId);
-  try{await backfillFills(exId);}catch(e){}   // de losse stappen achter elke positie
+  let bf={n:0,reden:''};
+  try{ bf=(await backfillFills(exId))||bf; }catch(e){ bf={n:0,reden:'fout',detail:(e&&e.message)||String(e)}; }
+  if(!quiet&&bf.reden){
+    /* Beloven dat de stappen "bij je volgende sync" komen en er dan over zwijgen is erger
+       dan de fout zelf. Dus melden, met de reden onder Details. */
+    ErrorCenter.report('sync',new Error('stappen niet opgehaald ('+bf.reden+'): '+(bf.detail||'')),{severity:'warn',
+      userMsg:'De losse stappen van je '+ad.name+'-posities konden niet worden opgehaald. Je trades en bedragen kloppen gewoon \u2014 alleen de uitsplitsing per stap ontbreekt.',
+      actions:[{label:'Details',fn:()=>ErrorCenter.diagnostics()}]});
+  }
   await fxSync();               // verse trades krijgen de koers van hun handelsdag mee
   await refreshBalance(exId);   // saldo ververst mee met elke sync
   CONNS[exId]={...c,lastSync:Date.now()};persistConns();

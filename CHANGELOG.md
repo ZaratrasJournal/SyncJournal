@@ -10,6 +10,15 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 De journal is opnieuw opgebouwd als **SyncJournal** en draait nu online op [syncjournal.nl](https://syncjournal.nl). Versienummers zijn opnieuw gestart op v0.9.x (bèta); de oude TradeJournal-releases staan verderop in dit bestand. Je data overzetten kan via Instellingen → Data → Importeer oude backup.
 
+## [v0.9.107] — 2026-09-22
+
+### Toegevoegd
+- **Knop "Stappen ophalen"** in het tradeformulier. Wachten tot je volgende sync hoeft niet meer: haal de losse stappen van deze positie nu op. Lukt het niet, dan hoor je meteen waarom.
+
+### Fixed
+- **Het ophalen van de stappen faalde stil.** Kwamen er geen fills terug, of gaf de proxy een fout, dan gebeurde er niets en zei de app niets — terwijl er wél stond dat ze bij de volgende sync zouden komen. Nu meldt hij het, met de reden onder Details: geen fills in dit tijdvenster, een fout van de proxy, of fills die bij geen enkele trade horen (met het instrument en de kant erbij, zodat duidelijk is wat niet aansluit).
+- **Fills met andere veldnamen werden niet herkend.** De code verwachtte precies één schrijfwijze; exchanges en Worker-versies noemen dezelfde waarde anders. Nu worden de gangbare varianten allemaal gelezen — dezelfde tolerantie die de oude journal al had.
+
 ## [v0.9.106] — 2026-09-22
 
 ### Toegevoegd

@@ -47,8 +47,8 @@ const TRADE = {
     ExchangeAPI.okx.fetchFills = async () => rows;
     CONNS.okx = { connected: true, apiKey: 'k', apiSecret: 's', passphrase: 'p' };
     T = [t]; persist();
-    const n = await backfillFills('okx');
-    return { n, fills: T[0].fills || [] };
+    const r = await backfillFills('okx');
+    return { n: (r && r.n) || 0, reden: (r && r.reden) || '', fills: T[0].fills || [] };
   }, [fills, trade]);
 
   console.log('─── De rekenkern tegen OKX’ eigen bedragen ───');
@@ -123,7 +123,7 @@ const TRADE = {
       bij(r.fills.filter(f => f.kind === 'close').reduce((s, f) => s + f.pnl, 0) - TRADE.fees, TRADE.pnl, 0.1),
       JSON.stringify(r.fills.filter(f => f.kind === 'close').reduce((s, f) => s + f.pnl, 0)));
 
-    const nog = await p.evaluate(async () => { const n = await backfillFills('okx'); return { n, len: T[0].fills.length }; });
+    const nog = await p.evaluate(async () => { const r = await backfillFills('okx'); return { n: (r && r.n) || 0, len: T[0].fills.length }; });
     ok('een tweede keer doet niets: de stappen staan er al', nog.n === 0 && nog.len === 7, JSON.stringify(nog));
 
     const bijgewerkt = await p.evaluate(() => {
@@ -141,7 +141,7 @@ const TRADE = {
 
     const stale = await p.evaluate(async () => {
       TAB_STALE = true; T[0].fills = [];
-      const n = await backfillFills('okx'); TAB_STALE = false; return n;
+      const r = await backfillFills('okx'); TAB_STALE = false; return (r && r.n) || 0;
     });
     ok('een verouderd tabblad haalt niets op', stale === 0, JSON.stringify(stale));
     await ctx.close();
@@ -206,7 +206,9 @@ const TRADE = {
       const el = document.querySelector('.exwrap'); const txt = el ? el.innerText : '';
       closeForm(); return txt;
     });
-    ok('zonder stappen legt het formulier uit waar ze vandaan komen', /nog niet opgehaald/.test(zonder) && /volgende sync/.test(zonder), JSON.stringify(zonder.slice(0, 70)));
+    // De belofte "komt bij je volgende sync" is vervangen door een knop: doen is beter dan wachten.
+    ok('zonder stappen zegt het formulier dat, met een knop om ze te halen',
+      /nog niet opgehaald/.test(zonder) && /Stappen ophalen/.test(zonder), JSON.stringify(zonder.slice(0, 80)));
 
     const zonderKoppeling = await p.evaluate(() => {
       delete CONNS.okx; openForm(1);
@@ -241,6 +243,64 @@ const TRADE = {
     ok('een bestaande entry met veertien decimalen wordt afgerond', r.entry === 81029.32, JSON.stringify(r.entry));
     ok('de exit ook', r.exit === 82039.31, JSON.stringify(r.exit));
     ok('en de prijs van een TP-niveau', r.tp === 80500.12, JSON.stringify(r.tp));
+    await ctx.close();
+  }
+
+  console.log('─── Als het ophalen niet lukt, zegt de app waarom ───');
+  {
+    const { ctx, p } = await open();
+    const r = await p.evaluate(async t0 => {
+      CONNS.okx = { connected: true, apiKey: 'k', apiSecret: 's', passphrase: 'p' };
+      const uit = {};
+      T = [t0]; ExchangeAPI.okx.fetchFills = async () => []; uit.leeg = await backfillFills('okx');
+      T = [t0]; ExchangeAPI.okx.fetchFills = async () => { throw new Error('403 van de proxy'); }; uit.fout = await backfillFills('okx');
+      T = [t0]; ExchangeAPI.okx.fetchFills = async () => [{ instId: 'ETH-USDT-SWAP', posSide: 'long', ts: '1789869078000', side: 'buy', fillSz: '1', fillPx: '2000', fee: '-0.1' }];
+      uit.mismatch = await backfillFills('okx');
+      T = []; uit.niets = await backfillFills('okx');
+      return uit;
+    }, TRADE);
+    ok('geen fills terug: zegt dat, met het gezochte tijdvenster', r.leeg.reden === 'geen-fills' && /venster|t\/m/.test(r.leeg.detail), JSON.stringify(r.leeg.reden));
+    ok('een fout van de proxy komt er letterlijk uit', r.fout.reden === 'fout' && /403/.test(r.fout.detail), JSON.stringify(r.fout.detail));
+    ok('fills die nergens bij horen: noemt het instrument en de kant',
+      r.mismatch.reden === 'geen-match' && /ETH-USDT-SWAP/.test(r.mismatch.detail) && /buy\/long/.test(r.mismatch.detail), JSON.stringify(r.mismatch.detail).slice(0, 90));
+    ok('niets te doen is geen fout', r.niets.reden === '', JSON.stringify(r.niets));
+
+    const gemeld = await p.evaluate(async t0 => {
+      T = [t0]; CONNS.okx = { connected: true, apiKey: 'k', apiSecret: 's', passphrase: 'p' };
+      ExchangeAPI.okx.fetchFills = async () => [];
+      ExchangeAPI.okx.fetchTrades = async () => [];
+      ExchangeAPI.okx.testConnection = async () => ({ success: true, balance: '0' });
+      ExchangeAPI.okx.fetchOpenPositions = async () => [];
+      await syncExchange('okx', {});
+      const bar = document.getElementById('errbar');
+      return { zichtbaar: bar.classList.contains('on'), tekst: bar.innerText.slice(0, 120), log: (ErrorCenter.log[0] || {}).msg || '' };
+    }, TRADE);
+    ok('een handmatige sync meldt het zichtbaar', gemeld.zichtbaar && /stappen/i.test(gemeld.tekst), JSON.stringify(gemeld.tekst).slice(0, 110));
+    ok('en de reden staat in de details', /geen-fills/.test(gemeld.log), JSON.stringify(gemeld.log).slice(0, 90));
+    await ctx.close();
+  }
+
+  console.log('─── Afwijkende veldnamen en de knop (les uit de oude journal) ───');
+  {
+    const { ctx, p } = await open();
+    const r = await p.evaluate(async t0 => {
+      CONNS.okx = { connected: true, apiKey: 'k', apiSecret: 's', passphrase: 'p' };
+      const anders = [
+        { symbol: 'BTC-USD_UM_XPERP-04APR31', positionSide: 'short', fillTime: '1789869078000', side: 'sell', size: '38', price: '81008.9', commission: '-0.154', fillId: 'b1' },
+        { symbol: 'BTC-USD_UM_XPERP-04APR31', positionSide: 'short', fillTime: '1789872312000', side: 'buy', size: '25', price: '80378.5', commission: '-0.1', fillId: 'b2' },
+      ];
+      T = [{ ...t0 }]; ExchangeAPI.okx.fetchFills = async () => anders;
+      const a = await backfillFills('okx');
+      const stappen = (T[0].fills || []).map(f => f.kind).join();
+      // en de knop in het formulier
+      T = [{ ...t0 }]; openForm(T[0].id);
+      const knop = document.querySelector('.exwrap button');
+      const label = knop ? knop.textContent : 'GEEN KNOP';
+      closeForm();
+      return { n: a.n, stappen, label };
+    }, TRADE);
+    ok('fills met andere veldnamen worden ook gelezen', r.n === 1 && r.stappen === 'open,close', JSON.stringify(r));
+    ok('en in het formulier staat een knop om ze nu op te halen', r.label === 'Stappen ophalen', JSON.stringify(r.label));
     await ctx.close();
   }
 
