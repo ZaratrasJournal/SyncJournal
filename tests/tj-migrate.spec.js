@@ -111,7 +111,18 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
   ok('accountnaam uit oude app + key aangekomen', rt.acctName === 'Blofin Main' && rt.key === 'BKEY1234');
 
   console.log('─── Geen duplicaten bij sync ná migratie ───');
-  ok('zelfde trades opnieuw via sync-brug → 0 nieuw (srcId-dedupe)', await p.evaluate((fx) => { closeForm(); const before = T.length; const mapped = importTjClosed(fx.trades); return mapped.length === 0 && T.length === before; }, fix));
+  ok('zelfde trades opnieuw via sync-brug → 0 nieuw (srcId-dedupe)', await p.evaluate((fx) => {
+    closeForm(); const before = T.length;
+    /* De fixture draagt de sleutel van vóór v0.9.116 (positionId + sluittijd). De adapter
+       levert sinds die versie positionId + createTime, en dat is ook waar de opruimstap de
+       overgezette rijen naartoe hernoemt — dus zo komt een sync ze aan. */
+    const alsVandaag = fx.trades.map(t => {
+      const m = /^blofin_(\d+)_\d+$/.exec(String(t.id || ''));
+      return (m && +t.openTime > 0) ? { ...t, id: 'blofin_' + m[1] + '_' + (+t.openTime) } : t;
+    });
+    const mapped = importTjClosed(alsVandaag);
+    return mapped.length === 0 && T.length === before;
+  }, fix));
 
   console.log('─── Vangnetten ───');
   ok('integriteits-check slaat aan bij gemanipuleerde P&L', await p.evaluate((fx) => { const hold = T[0].pnl; T[0].pnl = (+T[0].pnl || 0) + 500; const iss = TJMigrate.verify({ trades: T }, { trades: fx.trades }); T[0].pnl = hold; return iss.some(x => /P&L wijkt af/.test(x)); }, fix));

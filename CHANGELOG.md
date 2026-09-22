@@ -10,6 +10,13 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 De journal is opnieuw opgebouwd als **SyncJournal** en draait nu online op [syncjournal.nl](https://syncjournal.nl). Versienummers zijn opnieuw gestart op v0.9.x (bèta); de oude TradeJournal-releases staan verderop in dit bestand. Je data overzetten kan via Instellingen → Data → Importeer oude backup.
 
+## [v0.9.117] — 2026-09-22
+
+### Fixed
+- **Data uit de oude TradeJournal liep niet door de opruimstappen.** Daardoor bleven posities die in stappen sloten als losse rijen staan — met hun P&L dubbel geteld, want de oude journal bewaarde bij elke sluiting de lopende totaalstand opnieuw. Overzetten doet die stappen nu wél, dus je ziet per positie één trade met het juiste bedrag.
+- Het overzicht na het overzetten vertelt nu hoeveel rijen zijn samengevoegd, en de controle achteraf rekent daarmee in plaats van het als fout te melden.
+- Een onleesbare regel in je oude opslag liet het overzetten vastlopen. Zulke regels worden nu overgeslagen en benoemd.
+
 ## [v0.9.116] — 2026-09-22
 
 ### Gewijzigd

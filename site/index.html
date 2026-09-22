@@ -1760,7 +1760,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.116';
+const APP_VERSION='v0.9.117';
 const SCHEMA_VERSION=7;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -1822,6 +1822,12 @@ const IDB={db:null,
 /* Geversioneerde schema-migratie: elke toekomstige breaking change krijgt een {v, up}-stap.
    up() transformeert de al-geladen live-staat (T, PBOOK, tagConfig, …) in-place.
    runMigrations() draait in boot() ná de data-load, maakt eerst een snapshot en rolt terug bij fouten. */
+/* Wat de opruimstappen hebben samengevoegd. De oude journal maakte van één positie die in
+   stappen sloot meerdere rijen, elk met de cumülatieve P&L - dus telde hij die positie
+   meerdere keren. Bij het overzetten willen we dat verschil kunnen uitleggen in plaats van
+   het als integriteitsfout te melden. */
+const MIG_SAMEN={n:0,pnl:0};
+const migSamen=t=>{MIG_SAMEN.n++;MIG_SAMEN.pnl+=(+t.pnl||0);};
 const MIGRATIONS=[
   // v2 (2026-09-14): open-moment wordt de canonieke trade-datum/tijd/sessie voor gesyncte
   // trades. Adapters stempelden dit wisselend (MEXC/Blofin op sluitmoment, HL op open),
@@ -1863,7 +1869,7 @@ const MIGRATIONS=[
       if(lijst.length<2)return;
       // de laatste stand bevat de eerdere al; die houden we
       const houden=lijst.reduce((a,b)=>((+b.closeTime||0)>=(+a.closeTime||0)?b:a));
-      lijst.forEach(t=>{ if(t!==houden){ adoptUserFieldsSJ(houden,t); weg.add(t.id); } });
+      lijst.forEach(t=>{ if(t!==houden){ adoptUserFieldsSJ(houden,t); migSamen(t); weg.add(t.id); } });
     });
     if(weg.size)T=T.filter(t=>!weg.has(t.id));
   }},
@@ -1914,7 +1920,7 @@ const MIGRATIONS=[
     const weg=new Set();
     groep.forEach((lijst,k)=>{
       const houden=lijst.reduce((a,b)=>((+b.closeTime||0)>=(+a.closeTime||0)?b:a));
-      lijst.forEach(t=>{ if(t!==houden){ adoptUserFieldsSJ(houden,t); weg.add(t.id); } });
+      lijst.forEach(t=>{ if(t!==houden){ adoptUserFieldsSJ(houden,t); migSamen(t); weg.add(t.id); } });
       houden.srcId=k; houden.fills=[]; vroegste=Math.min(vroegste,+houden.openTime||Infinity);
     });
     if(weg.size)T=T.filter(t=>!weg.has(t.id));
@@ -1923,6 +1929,7 @@ const MIGRATIONS=[
   }},
 ];
 async function runMigrations(){
+  MIG_SAMEN.n=0;MIG_SAMEN.pnl=0;
   const from=DB.load('schema',0);
   if(from>=SCHEMA_VERSION){return {ran:0};}
   const pending=MIGRATIONS.filter(m=>m.v>from && m.v<=SCHEMA_VERSION).sort((a,b)=>a.v-b.v);
@@ -4708,7 +4715,8 @@ function applyBackup(d){
      dus zetten we de teller terug op de versie van het bestand en laten de stappen er
      alsnog overheen lopen. Zonder dit blijft oude rommel uit de back-up gewoon staan. */
   const bv=+d.schemaVersion||0;
-  if(bv&&bv<SCHEMA_VERSION){ try{DB.save('schema',bv);runMigrations().then(()=>render());}catch(e){} }
+  if(bv&&bv<SCHEMA_VERSION){ try{DB.save('schema',bv);return runMigrations().then(()=>render());}catch(e){} }
+  return Promise.resolve();
 }
 /* ═══ Backup-bewaking (hosting-plan fase 1, Denny 2026-09-16) ═══
    Eén statuslaag voor álle backup-methodes: elke geslaagde backup (handmatige export,
@@ -5112,7 +5120,12 @@ const TJMigrate={
     });
     const pbById={};(old.playbooks||[]).forEach(pb=>{if(pb&&pb.id&&pb.name)pbById[pb.id]=pb.name;});
     let compl=0;
-    const trades=(old.trades||[]).map((ot,i)=>{ const t={...migrateOldTrade(ot),id:i}; const src=ot.source;
+    /* Een oude opslag kan beschadigd zijn (lege regels, half opgeslagen JSON). Zulke
+       regels overslaan in plaats van het hele overzetten laten vallen. */
+    const bruikbaar=(old.trades||[]).filter(ot=>ot&&typeof ot==='object');
+    const kapot=(old.trades||[]).length-bruikbaar.length;
+    if(kapot)warnings.push(kapot+' regel'+(kapot===1?'':'s')+' uit je oude journal was onleesbaar en '+(kapot===1?'is':'zijn')+' niet overgezet.');
+    const trades=bruikbaar.map((ot,i)=>{ const t={...migrateOldTrade(ot),id:i}; const src=ot.source;
       if(src&&src!=='manual'){ const a=acctById[src];
         if(a)t.exchange=(!a.type||a.type==='manual')?a.id:(EXMAP[a.type]?a.type:'');
         else if(EXMAP[src])t.exchange=src; else if(OLD_EXMAP[src])t.exchange=OLD_EXMAP[src]; else t.exchange='';
@@ -5132,19 +5145,25 @@ const TJMigrate={
     const theme=TJ_THEME[(old.config||{}).theme]||'light';
     const settings={theme,currency:'USD',priv:!!old.privacy,density:STATE.density};
     const report={trades:trades.length,playbooks:Object.keys(pbook).length,manual:manual.length,conns:Object.keys(conns).length,tags:['setupTags','confirmationTags','timeframeTags','emotionTags','mistakeTags'].reduce((s,c)=>s+(((old.tags&&old.tags[c])||[]).length),0),pnl:trades.reduce((s,t)=>s+(+t.pnl||0),0)};
-    return {payload:{trades,tagConfig:tagConfigOut,pbook,manual,conns,exMeta,settings},report,warnings,old};
+    /* schemaVersion 1: de oude journal kent ons schema niet, en zonder dit veld sloeg
+       applyBackup de opruimstappen over. Juist die stappen trekken de oude rij-per-sluiting
+       gelijk (Blofin v7, OKX v3/v5, Hyperliquid v6) en zetten de datum op het open-moment (v2). */
+    return {payload:{schemaVersion:1,trades,tagConfig:tagConfigOut,pbook,manual,conns,exMeta,settings},report,warnings,old};
   },
   // Integriteit ná het overzetten: aantallen, geldige velden, én de totale P&L moet
   // op de cent kloppen met de oude data (fase-3-audit, Denny 2026-09-17).
   verify(payload,old){ const issues=[];
-    if(!Array.isArray(T)||T.length!==payload.trades.length)issues.push('Aantal trades komt niet overeen na overzetten.');
+    const samen=MIG_SAMEN.n;   // bewust samengevoegd door de opruimstappen, geen verlies
+    if(!Array.isArray(T)||T.length!==payload.trades.length-samen)issues.push('Aantal trades komt niet overeen na overzetten.');
     if((T||[]).some(t=>t&&(t.pnl===undefined||isNaN(+t.pnl))))issues.push('Sommige trades hebben een ongeldige P&L.');
     if((T||[]).some(t=>!t||!t.date))issues.push('Sommige trades missen een datum.');
     if(old&&Array.isArray(old.trades)){
-      const sumOld=old.trades.reduce((s,t)=>s+(+t.pnl||0),0),sumNew=(T||[]).reduce((s,t)=>s+(+t.pnl||0),0);
-      if(Math.abs(sumOld-sumNew)>0.01)issues.push('Totale P&L wijkt af: oud '+eurS(sumOld)+' vs overgezet '+eurS(sumNew)+'.');
-      const clOld=old.trades.filter(t=>(t.status||'closed')==='closed').length,clNew=(T||[]).filter(t=>t.status==='closed').length;
-      if(clOld!==clNew)issues.push('Aantal gesloten trades wijkt af ('+clOld+' → '+clNew+').');
+      const oudeRijen=old.trades.filter(t=>t&&typeof t==='object');   // onleesbare regels tellen niet mee
+      const sumOld=oudeRijen.reduce((s,t)=>s+(+t.pnl||0),0),sumNew=(T||[]).reduce((s,t)=>s+(+t.pnl||0),0);
+      const verwacht=sumOld-MIG_SAMEN.pnl;   // de dubbeltellingen van de oude journal vallen weg
+      if(Math.abs(verwacht-sumNew)>0.01)issues.push('Totale P&L wijkt af: verwacht '+eurS(verwacht)+' vs overgezet '+eurS(sumNew)+'.');
+      const clOld=oudeRijen.filter(t=>(t.status||'closed')==='closed').length,clNew=(T||[]).filter(t=>t.status==='closed').length;
+      if(clOld-samen!==clNew)issues.push('Aantal gesloten trades wijkt af ('+clOld+' → '+clNew+').');
     }
     return issues; },
   // Oud EXPORT-bestand (volledige backup: trades+tagConfig+accounts+config+playbooks,
@@ -5189,10 +5208,12 @@ async function migApply(){
   const pre=_migPre;if(!pre)return;_migPre=null;closeForm();
   try{
     await Snapshots.create(pre.source==='file'?'vóór import oude backup':'vóór migratie');
-    applyBackup(pre.payload);
+    await applyBackup(pre.payload);   // de opruimstappen horen klaar te zijn vóór de controle
     const issues=TJMigrate.verify(pre.payload,pre.old);
+    const warnings=[...pre.warnings];
+    if(MIG_SAMEN.n)warnings.push(MIG_SAMEN.n+' rij'+(MIG_SAMEN.n===1?'':'en')+' bleken tussenstanden van een positie die in stappen sloot. De oude journal telde die apart mee; ze zijn samengevoegd tot hun positie, met je notities en labels erbij.');
     DB.save('migrated_from_tj',{when:new Date().toISOString(),trades:pre.report.trades,source:pre.source});
-    showMigrationReport(pre.report,pre.warnings,issues);
+    showMigrationReport({...pre.report,trades:(T||[]).length},warnings,issues);
   }catch(e){ ErrorCenter.report('migrate',e,{severity:'error',userMsg:'De migratie is mislukt. Je bestaande data is ongewijzigd, probeer opnieuw of importeer een JSON-back-up.'}); }
 }
 function openModalHTML(html){ const m=document.getElementById('modal'); m.innerHTML=html; m.classList.add('on'); document.getElementById('scrim').classList.add('on'); modalKind='wizard';formDirty=false; }
