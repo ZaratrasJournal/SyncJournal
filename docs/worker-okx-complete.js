@@ -272,14 +272,14 @@ async function handleOKX(action, { apiKey, apiSecret, passphrase, startTime, end
   }
   if (action === 'fills') {
     // X-Perps = FUTURES, gewone perps = SWAP → query beide + merge.
-    // De fouten per instType gaan méé terug: een ongeldige sleutel, een geweigerd bereik en
-    // "er zijn echt geen fills" leverden anders alle drie een lege lijst op, en dan ziet de
-    // journal geen verschil tussen stuk en leeg. (Denny 22-09-2026.)
-    const errs = {};
-    const safeGet2 = async (it, p) => {
-      try { return await get(p); }
-      catch (e) { errs[it] = String((e && e.message) || e).slice(0, 200); return []; }
-    };
+    // De fouten per instType gaan méé terug onder _okxDebug, net als bij `trades`: een
+    // ongeldige sleutel, een geweigerd bereik en "er zijn echt geen fills" leverden anders
+    // alle drie een lege lijst op, en dan ziet de journal geen verschil tussen stuk en leeg.
+    // Bewust NIET als `error` op het hoogste niveau: dat is hier de conventie voor een
+    // mislukt request, en andere journals op deze Worker zouden daarop gaan gooien.
+    // (Denny 22-09-2026.)
+    const safeGet2 = async (p) => { try { return await get(p); } catch (e) { return { __err: String((e && e.message) || e).slice(0, 200) }; } };
+    const arr2 = (x) => (Array.isArray(x) ? x : []);
     const build = (it) => {
       let p = `/api/v5/trade/fills-history?instType=${it}&limit=100`;
       if (symbol)    p += '&instId=' + encodeURIComponent(symbol);
@@ -287,13 +287,13 @@ async function handleOKX(action, { apiKey, apiSecret, passphrase, startTime, end
       if (endTime)   p += '&end=' + endTime;
       return p;
     };
-    const fut = await safeGet2('FUTURES', build('FUTURES'));
-    const swap = await safeGet2('SWAP', build('SWAP'));
-    const rows = [...(Array.isArray(fut) ? fut : []), ...(Array.isArray(swap) ? swap : [])];
-    const out = { fills: rows };
-    // Alleen melden als er niets binnenkwam én er iets misging: één werkende instType is genoeg.
-    if (!rows.length && Object.keys(errs).length) out.error = Object.keys(errs).map(k => k + ': ' + errs[k]).join(' · ');
-    return out;
+    const fut = await safeGet2(build('FUTURES'));
+    const swap = await safeGet2(build('SWAP'));
+    const rows = [...arr2(fut), ...arr2(swap)];
+    return {
+      fills: rows,
+      _okxDebug: { futures: arr2(fut).length, err_fut: fut.__err, swap: arr2(swap).length, err_swap: swap.__err },
+    };
   }
   // trades: OKX EEA "X-Perps" (bv. BTCUSD UM X-Perp) zijn instType=FUTURES, NIET SWAP
   // (OKX changelog 2026-03-31; instFamily BTC-USD_UM, instId bv. BTC-USD_UM_XPERP-040431).

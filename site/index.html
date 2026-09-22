@@ -1752,7 +1752,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.109';
+const APP_VERSION='v0.9.110';
 const SCHEMA_VERSION=4;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -6075,7 +6075,15 @@ const ExchangeAPI = {
     // (de EEA X-Perps) als SWAP op en voegt ze samen.
     async fetchFills(apiKey,apiSecret,passphrase,symbol,startTime,endTime){
       const data=await proxyCall({exchange:"okx",action:"fills",apiKey,apiSecret,passphrase,symbol,startTime,endTime});
-      return Array.isArray(data&&data.fills)?data.fills:[];
+      const rows=Array.isArray(data&&data.fills)?data.fills:[];
+      /* Lege lijst kan twee dingen betekenen: er zijn echt geen fills, of OKX weigerde de
+         vraag. De Worker legt de reden onder _okxDebug (zelfde plek als bij `trades`).
+         Zonder die sleutel - een oudere Worker - blijft het gewoon een lege lijst. */
+      if(!rows.length&&data&&data._okxDebug){
+        const d=data._okxDebug, reden=[d.err_fut,d.err_swap].filter(Boolean).join(' · ');
+        if(reden)throw new Error(reden);
+      }
+      return rows;
     },
     /* OKX-fills → de stappen van één positie. OKX levert geen positie-id op fills, dus we
        matchen op instrument, positiekant en het tijdvenster van de positie. In one-way-mode

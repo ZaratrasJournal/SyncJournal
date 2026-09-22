@@ -418,6 +418,40 @@ const TRADE = {
     await ctx.close();
   }
 
+  console.log('─── Wat de proxy terugmeldt ───');
+  {
+    /* Een lege lijst betekende twee dingen tegelijk: geen fills, of OKX weigerde de vraag.
+       De Worker legt de reden onder _okxDebug — bewust daar en niet als `error`, want dat
+       veld betekent op deze gedeelde Worker "request mislukt" en andere journals die hem
+       gebruiken zouden daarop gaan gooien. */
+    const { ctx, p } = await open();
+    const r = await p.evaluate(async t0 => {
+      CONNS.okx = { connected: true, apiKey: 'k', apiSecret: 's', passphrase: 'p' };
+      const echt = window.fetch;
+      const antwoord = (body) => { window.fetch = async () => ({ ok: true, status: 200, json: async () => body, text: async () => '' }); };
+      const uit = {};
+
+      antwoord({ fills: [], _okxDebug: { futures: 0, err_fut: 'OKX /api/v5/trade/fills-history: Invalid OK-ACCESS-KEY', swap: 0 } });
+      T = [{ ...t0 }]; uit.sleutel = await backfillFills('okx');
+
+      antwoord({ fills: [], _okxDebug: { futures: 0, swap: 0 } });   // niets mis, gewoon leeg
+      T = [{ ...t0 }]; uit.echtLeeg = await backfillFills('okx');
+
+      antwoord({ fills: [] });                                        // oudere Worker, geen debug
+      T = [{ ...t0 }]; uit.oudeWorker = await backfillFills('okx');
+
+      window.fetch = echt;
+      return uit;
+    }, TRADE);
+    ok('een geweigerde sleutel komt er als fout uit, niet als "geen fills"',
+      r.sleutel.reden === 'fout' && /Invalid OK-ACCESS-KEY/.test(r.sleutel.detail), JSON.stringify(r.sleutel).slice(0, 120));
+    ok('en een echt leeg venster blijft gewoon "geen fills"',
+      r.echtLeeg.reden === 'geen-fills', JSON.stringify(r.echtLeeg.reden));
+    ok('een Worker die _okxDebug nog niet kent werkt onveranderd',
+      r.oudeWorker.reden === 'geen-fills', JSON.stringify(r.oudeWorker.reden));
+    await ctx.close();
+  }
+
   ok('geen JS-errors totaal', errs.length === 0, [...new Set(errs)].slice(0, 3).join(' | '));
   console.log(`\n=== Executie-stappen: ${pass}/${pass + fail} ===`);
   await b.close();
