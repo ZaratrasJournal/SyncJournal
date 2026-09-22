@@ -385,6 +385,39 @@ const TRADE = {
     await ctx.close();
   }
 
+  console.log('─── Wat de adapter teruggeeft ───');
+  {
+    /* De OKX-adapter had fetchFills twee keer staan. De tweede won, gaf {fills,total} in
+       plaats van een array en liet alleen de afsluit-fills door. backfillFills leest
+       raw.length → undefined → "geen fills", wat OKX ook antwoordde. (Denny 22-09-2026.) */
+    const { ctx, p } = await open();
+    const r = await p.evaluate(async () => {
+      const ruw = [
+        { instId: 'BTC-USD_UM_XPERP-04APR31', posSide: 'short', ts: '1', side: 'sell', fillSz: '10', fillPx: '100', fee: '-0.1' },
+        { instId: 'BTC-USD_UM_XPERP-04APR31', posSide: 'short', ts: '2', side: 'buy', fillSz: '10', fillPx: '90', fee: '-0.1', fillPnl: '5' },
+      ];
+      const echt = window.fetch;
+      window.fetch = async () => ({ ok: true, status: 200, json: async () => ({ fills: ruw }), text: async () => '' });
+      const uit = {};
+      // alleen adapters die het stappen-pad ondersteunen; de rest volgt nog het oude
+      // TP-contract ({fills,total}) en wordt door backfillFills overgeslagen
+      for (const id of Object.keys(ExchangeAPI)) {
+        const ad = ExchangeAPI[id];
+        if (typeof ad.fetchFills !== 'function' || typeof ad.stepsForTrade !== 'function') continue;
+        try { const v = await ad.fetchFills('k', 's', 'p', '', 1, 9); uit[id] = Array.isArray(v) ? v.length : 'GEEN ARRAY: ' + JSON.stringify(v).slice(0, 60); }
+        catch (e) { uit[id] = 'fout: ' + ((e && e.message) || e); }
+      }
+      window.fetch = echt;
+      return uit;
+    });
+    const adapters = Object.keys(r);
+    ok('elke adapter die stappen levert geeft een array terug, geen object',
+      adapters.length > 0 && adapters.every(k => typeof r[k] === 'number'), JSON.stringify(r));
+    ok('en OKX houdt ook de instap-fills over, niet alleen de afsluiters',
+      r.okx === 2, JSON.stringify(r.okx));
+    await ctx.close();
+  }
+
   ok('geen JS-errors totaal', errs.length === 0, [...new Set(errs)].slice(0, 3).join(' | '));
   console.log(`\n=== Executie-stappen: ${pass}/${pass + fail} ===`);
   await b.close();

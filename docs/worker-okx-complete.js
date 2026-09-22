@@ -254,10 +254,14 @@ async function handleOKX(action, { apiKey, apiSecret, passphrase, startTime, end
   };
 
   if (action === 'test') {
-    const rows = await get('/api/v5/account/balance?ccy=USDT');
-    const det = (rows[0] && rows[0].details) || [];
-    const usdt = det.find(d => d.ccy === 'USDT');
-    const balance = usdt ? (usdt.eq || usdt.availBal || '0') : ((rows[0] && rows[0].totalEq) || '0');
+    // S5: GEEN ?ccy=USDT-filter meer — OKX EEA-accounts houden USDC aan, niet USDT.
+    // totalEq = totale account-equity in USD (valuta-agnostisch) → klopt voor USDC én USDT.
+    // Fallback: een USDC/USDT-detail, anders de eerste valuta.
+    const rows = await get('/api/v5/account/balance');
+    const acc = rows[0] || {};
+    const det = acc.details || [];
+    const pref = det.find(d => d.ccy === 'USDC') || det.find(d => d.ccy === 'USDT') || det[0];
+    const balance = acc.totalEq || (pref && (pref.eq || pref.availBal)) || '0';
     return { success: true, balance: String(balance) };
   }
   if (action === 'open_positions') {
@@ -267,8 +271,15 @@ async function handleOKX(action, { apiKey, apiSecret, passphrase, startTime, end
     return { positions: rows };
   }
   if (action === 'fills') {
-    // X-Perps = FUTURES, gewone perps = SWAP → query beide + merge (faalt stil per instType).
-    const safeGet2 = async (p) => { try { return await get(p); } catch (e) { return []; } };
+    // X-Perps = FUTURES, gewone perps = SWAP → query beide + merge.
+    // De fouten per instType gaan méé terug: een ongeldige sleutel, een geweigerd bereik en
+    // "er zijn echt geen fills" leverden anders alle drie een lege lijst op, en dan ziet de
+    // journal geen verschil tussen stuk en leeg. (Denny 22-09-2026.)
+    const errs = {};
+    const safeGet2 = async (it, p) => {
+      try { return await get(p); }
+      catch (e) { errs[it] = String((e && e.message) || e).slice(0, 200); return []; }
+    };
     const build = (it) => {
       let p = `/api/v5/trade/fills-history?instType=${it}&limit=100`;
       if (symbol)    p += '&instId=' + encodeURIComponent(symbol);
@@ -276,10 +287,13 @@ async function handleOKX(action, { apiKey, apiSecret, passphrase, startTime, end
       if (endTime)   p += '&end=' + endTime;
       return p;
     };
-    const fut = await safeGet2(build('FUTURES'));
-    const swap = await safeGet2(build('SWAP'));
+    const fut = await safeGet2('FUTURES', build('FUTURES'));
+    const swap = await safeGet2('SWAP', build('SWAP'));
     const rows = [...(Array.isArray(fut) ? fut : []), ...(Array.isArray(swap) ? swap : [])];
-    return { fills: rows };
+    const out = { fills: rows };
+    // Alleen melden als er niets binnenkwam én er iets misging: één werkende instType is genoeg.
+    if (!rows.length && Object.keys(errs).length) out.error = Object.keys(errs).map(k => k + ': ' + errs[k]).join(' · ');
+    return out;
   }
   // trades: OKX EEA "X-Perps" (bv. BTCUSD UM X-Perp) zijn instType=FUTURES, NIET SWAP
   // (OKX changelog 2026-03-31; instFamily BTC-USD_UM, instId bv. BTC-USD_UM_XPERP-040431).

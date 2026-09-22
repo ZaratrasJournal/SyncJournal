@@ -10,6 +10,14 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 De journal is opnieuw opgebouwd als **SyncJournal** en draait nu online op [syncjournal.nl](https://syncjournal.nl). Versienummers zijn opnieuw gestart op v0.9.x (bèta); de oude TradeJournal-releases staan verderop in dit bestand. Je data overzetten kan via Instellingen → Data → Importeer oude backup.
 
+## [v0.9.109] — 2026-09-22
+
+### Fixed
+- **"Geen fills gevonden" kwam er altijd uit bij OKX, wat de exchange ook antwoordde.** De OKX-koppeling had het ophalen van fills per ongeluk twee keer beschreven; de tweede versie won, gaf een ander soort antwoord terug en liet bovendien alleen je afsluitingen door. Je instappen en bijkopen waren dus sowieso weggefilterd. De dubbele versie is weg.
+
+### Bekend
+- De proxy meldt nog niet wáárom OKX niets teruggeeft: een ongeldige sleutel en "er zijn geen fills" komen er allebei als leeg uit. De aanpassing daarvoor staat klaar in `docs/worker-okx-complete.js` en moet in Cloudflare worden gezet.
+
 ## [v0.9.108] — 2026-09-22
 
 ### Fixed

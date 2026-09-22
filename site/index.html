@@ -1752,7 +1752,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.108';
+const APP_VERSION='v0.9.109';
 const SCHEMA_VERSION=4;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -6032,19 +6032,6 @@ const ExchangeAPI = {
     // maar OKX levert `fillPx`/`fillSz`/`fillPnl`. We mappen die + behouden de ruwe velden
     // (spread) zodat bestaande fallback-lezers blijven werken. Size = contracten × ctVal (base),
     // zodat percentages kloppen ongeacht contract-multiplier.
-    _normaliseFill(f){
-      const instId=String(f.instId||"");
-      const ctVal=this._ctVal(instId);
-      const contracts=Math.abs(parseFloat(f.fillSz)||0);
-      const pnl=parseFloat(f.fillPnl!=null?f.fillPnl:f.fillPnL)||0;
-      return{...f,
-        price:String(f.fillPx||""),
-        size:String(contracts*ctVal),
-        side:f.side,posSide:f.posSide,
-        pnl:String(pnl),
-        ts:Number(f.ts)||0,
-      };
-    },
     _normaliseOpen(p){
       const instId=String(p.instId||"");
       const pair=this._pairOf(instId,p.settleCcy||p.ccy);
@@ -6122,29 +6109,6 @@ const ExchangeAPI = {
       const data=await proxyCall({exchange:"okx",action:"open_positions",apiKey,apiSecret,passphrase});
       await this._loadContractValues();
       return(data.positions||[]).map(p=>this._normaliseOpen(p));
-    },
-    async fetchFills(apiKey,apiSecret,passphrase,symbol,startTime,endTime){
-      // symbol komt als "BTC_USDC" (pair→_). De échte X-Perp instId (BTC-USD_UM_XPERP-040431)
-      // is NIET uit de pair te reconstrueren, dus sturen we GEEN instId naar de Worker (die
-      // skipt het filter bij ontbrekend symbol) en filteren client-side op base + close-side.
-      // Tijdvenster (startTime/endTime) scopet de fills al tot deze positie. Geen Worker-redeploy
-      // nodig: de bestaande `fills`-action filtert alleen op instId wanneer meegegeven.
-      const base=String(symbol||"").split(/[/_-]/)[0].toUpperCase(); // "BTC"
-      const data=await proxyCall({exchange:"okx",action:"fills",apiKey,apiSecret,passphrase,startTime,endTime});
-      await this._loadContractValues();
-      const raw=Array.isArray(data.fills)?data.fills:[];
-      const fills=raw.filter(f=>{
-        const inst=String(f.instId||"").toUpperCase();
-        if(base&&inst&&!inst.startsWith(base+"-"))return false; // andere coin → weg
-        // close-fill: long sluit met side=sell, short met side=buy. Net-mode (geen posSide):
-        // val terug op fillPnl≠0 (een open-fill heeft geen gerealiseerde PnL).
-        const side=String(f.side||"").toLowerCase();
-        const ps=String(f.posSide||"").toLowerCase();
-        if(ps==="long")return side==="sell";
-        if(ps==="short")return side==="buy";
-        return Math.abs(parseFloat(f.fillPnl!=null?f.fillPnl:f.fillPnL)||0)>0;
-      }).map(f=>this._normaliseFill(f));
-      return{fills,total:fills.length};
     }
   }
 };
