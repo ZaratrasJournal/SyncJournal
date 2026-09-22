@@ -1758,8 +1758,8 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.111';
-const SCHEMA_VERSION=4;
+const APP_VERSION='v0.9.112';
+const SCHEMA_VERSION=5;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
   // ander type dan verwacht (bv. sj_manual='null' of een array waar een object hoort).
@@ -1864,6 +1864,24 @@ const MIGRATIONS=[
       lijst.forEach(t=>{ if(t!==houden){ adoptUserFieldsSJ(houden,t); weg.add(t.id); } });
     });
     if(weg.size)T=T.filter(t=>!weg.has(t.id));
+  }},
+  /* OKX hergebruikt een posId tot 30 dagen na een volledige sluiting (docs positions-history;
+     snapshot 29-06-2026: zes posities met één posId). Migratie v3 sleutelde op posId alleen en
+     liet daardoor elke heropening de vorige trade overschrijven (Denny 22-09-2026). De sleutel
+     is nu posId + cTime; openTime ís cTime, dus hernoemen kan zonder de exchange. De fills gaan
+     leeg (die kunnen stappen van een andere levensloop bevatten) en de sync gaat terug tot de
+     vroegste hernoemde trade, zodat een overschreven positie bij de volgende sync herstelt.
+     De prullenbak gaat mee, anders komt een verwijderde trade onder de nieuwe sleutel terug. */
+  {v:5,note:'OKX: sleutel per positie-levensloop',up(){
+    let vroegste=Infinity;
+    const hernoem=t=>{
+      const m=/^okx_(\d+)$/.exec(String((t&&t.srcId)||''));if(!m)return 0;
+      const open=+t.openTime||+t.closeTime||0;
+      t.srcId='okx_'+m[1]+'_'+open;return open;
+    };
+    T.forEach(t=>{ if(!t||t.exchange!=='okx')return; const open=hernoem(t); if(!open)return; t.fills=[]; vroegste=Math.min(vroegste,open); });
+    let prul=0;TRASH.forEach(t=>{ if(t&&t.exchange==='okx'&&hernoem(t))prul++; });if(prul)persistTrash();
+    if(isFinite(vroegste)&&CONNS.okx&&CONNS.okx.connected){ CONNS.okx={...CONNS.okx,lastSync:vroegste-3600e3}; persistConns(); }
   }},
 ];
 async function runMigrations(){
@@ -6052,11 +6070,15 @@ const ExchangeAPI = {
       else{const dir=String(t.direction||"").toLowerCase();if(dir==="long"||dir==="short")direction=dir;else direction=((exitN-entryN)*netPnl>=0)?"long":"short";}
       const tpLevels=Array.isArray(t.tpLevels)?t.tpLevels:[];
       return{...EMPTY_TRADE,
-        // Één positie = één trade. OKX geeft een lopende positie bij elke sync opnieuw
-        // terug met een verder gevulde stand (meer gesloten contracten, hogere cumulatieve
-        // PnL). Stond de sluittijd in dit kenmerk, dan werd elke tussenstand een aparte
-        // trade en telde de P&L dubbel. Nu herkent de sync hem en werkt hij hem bij.
-        id:"okx_"+(t.posId||("t"+closeT)),
+        /* Één positie-levensloop = één trade. De sleutel is posId + cTime, om twee redenen:
+           - OKX geeft een lopende positie bij elke sync opnieuw terug met een verdere stand
+             (meer gesloten contracten, hogere cumulatieve P&L). Zat uTime in de sleutel, dan
+             werd elke tussenstand een aparte trade en telde de P&L dubbel.
+           - OKX hergebruikt een posId tot 30 dagen na een volledige sluiting (docs
+             positions-history). Alleen posId als sleutel liet elke heropening de vorige
+             trade overschrijven (Denny 22-09-2026). cTime is de aanmaaktijd van de
+             levensloop en verandert niet zolang de positie loopt. */
+        id:t.posId?("okx_"+t.posId+"_"+(openMs||closeT)):("okx_t"+closeT),
         positionId:String(t.posId||""),
         openTime:openMs?String(openMs):"",closeTime:String(closeT),
         date:ts2date(closeT),time:ts2time(closeT),
@@ -6093,7 +6115,7 @@ const ExchangeAPI = {
       if(ps==="long")direction="long";else if(ps==="short")direction="short";
       else direction=parseFloat(p.pos)>=0?"long":"short";
       return{...EMPTY_TRADE,
-        id:"okx_open_"+(p.posId||p.instId||uid()),
+        id:"okx_open_"+(p.posId||p.instId||uid())+"_"+(Number(p.cTime)||0),   // posId wordt hergebruikt, cTime niet
         positionId:String(p.posId||""),
         openTime:String(openMs),closeTime:"",
         date:ts2date(openMs),time:ts2time(openMs),

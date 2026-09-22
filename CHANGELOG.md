@@ -10,6 +10,15 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 De journal is opnieuw opgebouwd als **SyncJournal** en draait nu online op [syncjournal.nl](https://syncjournal.nl). Versienummers zijn opnieuw gestart op v0.9.x (bèta); de oude TradeJournal-releases staan verderop in dit bestand. Je data overzetten kan via Instellingen → Data → Importeer oude backup.
 
+## [v0.9.112] — 2026-09-22
+
+### Fixed
+- **OKX: een heropende positie overschreef de vorige.** OKX hergebruikt het positie-id tot dertig dagen na een volledige sluiting. Sluit je een positie en open je binnen die tijd opnieuw op hetzelfde instrument, dan zag de journal dat als dezelfde trade en verving hij de oude cijfers door de nieuwe — en kwamen de stappen van beide posities in één tabel terecht. Elke positie-levensloop is nu een eigen trade.
+- Bestaande OKX-trades worden bij het starten automatisch omgezet. Is er een positie overschreven, dan haalt de eerstvolgende sync hem terug; de losse stappen worden daarna opnieuw opgehaald. Je notities, tags en screenshots blijven staan.
+
+### Gewijzigd
+- Datums en tussenkoppen in het stappenoverzicht (zie v0.9.111).
+
 ## [v0.9.111] — 2026-09-22
 
 ### Gewijzigd
