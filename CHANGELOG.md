@@ -10,6 +10,11 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 De journal is opnieuw opgebouwd als **SyncJournal** en draait nu online op [syncjournal.nl](https://syncjournal.nl). Versienummers zijn opnieuw gestart op v0.9.x (bèta); de oude TradeJournal-releases staan verderop in dit bestand. Je data overzetten kan via Instellingen → Data → Importeer oude backup.
 
+## [v0.9.121] — 2026-09-22
+
+### Gewijzigd
+- Brede testronde over alle koppelingen tegelijk (OKX, Hyperliquid, Blofin, Kraken, CSV en handmatig) plus een aanvallende ronde op alles wat vandaag is gebouwd. Geen gebruikerszichtbare wijzigingen; wel een intern veld bij Kraken weggehaald dat toch niet bewaard bleef.
+
 ## [v0.9.120] — 2026-09-22
 
 ### Fixed
