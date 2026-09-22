@@ -1758,7 +1758,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.113';
+const APP_VERSION='v0.9.114';
 const SCHEMA_VERSION=6;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -2359,7 +2359,7 @@ function execLegs(fills){
 }
 const ts2dag=ms=>new Date(+ms||Date.now()).toLocaleDateString('nl-NL',{weekday:'short',day:'numeric',month:'short'});
 function execTable(t){
-  const f=(t&&t.fills)||[];
+  const f=stepsOf(t);
   if(f.length<2||!f.some(x=>x.kind==='close'))return '';
   const sum=fillSummary(f);
   const legs=execLegs(f);
@@ -2479,7 +2479,7 @@ function tradeHoverDetail(t){
   /* Zat er meer achter deze positie dan een keer in en een keer uit? Zeg dat hier, en
      wijs naar Review - daar staat de hele stappentabel. Zonder deze regel zou niemand
      weten dat die bestaat. */
-  const sm=(t.fills&&t.fills.length>=2)?fillSummary(t.fills):null;
+  const st=stepsOf(t);const sm=st.length>=2?fillSummary(st):null;
   if(sm&&(sm.entries>1||sm.exits>1)){
     tl+=`<div class="tline" style="margin-top:6px"><span class="tlc">\u21C5 ${sm.entries} ${sm.entries===1?'instap':'instappen'} \u00b7 ${sm.exits} ${sm.exits===1?'afbouw':'afbouwstappen'}</span>`
       +`<span class="tla">\u2192</span><span class="tlc" style="color:var(--muted)">elke stap staat in Review</span></div>`;
@@ -4657,8 +4657,12 @@ function sanitizeTrade(t,i){
   out.pnl=num(out.pnl);out.r=num(out.r);   // deze twee neemt élke weergave als vanzelfsprekend aan
   ['entry','exit','stop','tp','fees','leverage','risk','rrPlanned','pnlPct','durationMin','mae','mfe','rating'].forEach(k=>{if(k in out)out[k]=num(out[k]);});
   SJ_ARR_FIELDS.forEach(k=>{if(!Array.isArray(out[k]))out[k]=[];});
+  // stappen: alleen echte stap-objecten met een leesbare prijs en hoeveelheid; de rest weg
+  if('fills' in out)out.fills=Array.isArray(out.fills)?out.fills.filter(f=>f&&typeof f==='object'&&isFinite(+f.price)&&isFinite(+f.qty)):[];
   return out;
 }
+// De stappen van een trade, altijd als schone array — wat er ook in het veld staat.
+const stepsOf=t=>Array.isArray(t&&t.fills)?t.fills.filter(x=>x&&typeof x==='object'):[];
 // Datum bruikbaar voor maand-/jaargroepering? (leeg of half ingevuld telt niet mee)
 const hasDate=t=>!!(t&&typeof t.date==='string'&&t.date.length>=7);
 function applyBackup(d){
@@ -5839,7 +5843,9 @@ const ExchangeAPI = {
     // closedPnl gesommeerd. Tid van de eerste sub-fill behouden voor dedup.
     _aggregateSubFills(fills){
       const g={};
+      const gezien=new Set();   // dezelfde fill twee keer binnen (bv. overlappende vensters) telt één keer
       for(const f of fills){
+        if(f.tid!=null&&f.tid!==""){ const id=String(f.tid); if(gezien.has(id))continue; gezien.add(id); }
         const k=(f.ms||0)+"|"+(f.coin||"")+"|"+(f.dir||"");
         const sz=Math.abs(parseFloat(f.sz)||0);
         const px=parseFloat(f.px)||0;
@@ -6024,13 +6030,15 @@ const ExchangeAPI = {
       if(liepAl&&startTime){
         const eerder=fromTs-60*864e5;
         const extra=[];let c2=eerder,g2=0;
-        while(g2++<20){
-          const batch=await this._post({type:"userFillsByTime",user:addr,startTime:c2,endTime:fromTs-1});
-          if(!Array.isArray(batch)||batch.length===0)break;
-          extra.push(...batch);
-          if(batch.length<2000)break;
-          const lastTs=batch[batch.length-1].time; if(!lastTs||lastTs<=c2)break; c2=lastTs+1;
-        }
+        try{
+          while(g2++<20){
+            const batch=await this._post({type:"userFillsByTime",user:addr,startTime:c2,endTime:fromTs-1});
+            if(!Array.isArray(batch)||batch.length===0)break;
+            extra.push(...batch);
+            if(batch.length<2000)break;
+            const lastTs=batch[batch.length-1].time; if(!lastTs||lastTs<=c2)break; c2=lastTs+1;
+          }
+        }catch(e){ /* terugkijken is een extra; mislukt het, dan krijgt de positie een afgeleide instap */ }
         const gezien=new Set(allFills.map(f=>String(f.tid)));
         extra.forEach(f=>{ if(!gezien.has(String(f.tid)))allFills.push(f); });
       }

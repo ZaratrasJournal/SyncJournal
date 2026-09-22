@@ -11,7 +11,7 @@ const SPECS = [
   'e2e-doorloop',            // ← de grote doorloop, eerst (vangt integratie-breuken meteen)
   'backup-guard', 'drive-backup', 'drive-broker', 'hosted', 'weergave-presets', 'demo-dataset', 'pb-demo-cleanup', 'pb-layers',
   'duration', 'changemaker-feedback', 'fout-filter', 'default-tags', 'multifilter', 'csv-import',
-  'exchange-sync', 'exchange-sync2', 'balance-sync', 'auto-sync', 'valuta', 'okx-positie', 'okx-levensloop', 'hyperliquid-levensloop', 'execution-stappen', 'koppelingen-menu', 'account-remove', 'robustness', 'multi-tab', 'tj-migrate', 'pnl-pct', 'unit-toggle', 'possize',
+  'exchange-sync', 'exchange-sync2', 'balance-sync', 'auto-sync', 'valuta', 'okx-positie', 'okx-levensloop', 'hyperliquid-levensloop', 'scenario-levensloop', 'execution-stappen', 'koppelingen-menu', 'account-remove', 'robustness', 'multi-tab', 'tj-migrate', 'pnl-pct', 'unit-toggle', 'possize',
   'matrix', 'yearheatmap', 'review-list', 'coach-share', 'tv-links',
   'heatmap-scaling', 'analytics-metrics', 'tendencies', 'faq', 'trash',
   'tradingplan-plan',        // aparte app (tradingplan.syncjournal.nl), draait mee zodat hij niet ongetest blijft
