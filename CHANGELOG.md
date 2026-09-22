@@ -10,6 +10,17 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 De journal is opnieuw opgebouwd als **SyncJournal** en draait nu online op [syncjournal.nl](https://syncjournal.nl). Versienummers zijn opnieuw gestart op v0.9.x (bèta); de oude TradeJournal-releases staan verderop in dit bestand. Je data overzetten kan via Instellingen → Data → Importeer oude backup.
 
+## [v0.9.106] — 2026-09-22
+
+### Toegevoegd
+- **De stappen staan nu ook in het bewerkformulier**, onder je take-profit-niveaus — daar waar je ernaar zoekt. Zijn ze er nog niet, dan staat er waarom: ze komen binnen bij je volgende sync. Beter dan een leeg vlak waar je van moet raden.
+
+### Fixed
+- **Bestaande trades hadden nog steeds veertien cijfers achter de komma.** De afronding uit v0.9.103 gold alleen voor nieuw binnengekomen trades; je bestaande entry van 81029.32444444444 bleef staan. Bij het opstarten worden entry, exit, stop en de prijzen van je TP-niveaus eenmalig opgeschoond.
+
+### Gewijzigd
+- **Koppelingen staan boven Instellingen in het menu**, met de twee blokken tegen elkaar aan onderin.
+
 ## [v0.9.105] — 2026-09-21
 
 ### Toegevoegd

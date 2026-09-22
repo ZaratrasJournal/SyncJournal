@@ -196,6 +196,54 @@ const TRADE = {
     await ctx.close();
   }
 
+  console.log('─── In het bewerkformulier, waar Denny keek ───');
+  {
+    const { ctx, p } = await open();
+    const zonder = await p.evaluate(() => {
+      CONNS.okx = { connected: true, apiKey: 'k', apiSecret: 's', passphrase: 'p' };
+      T = [{ id: 1, exchange: 'okx', pair: 'BTC/USDC', dir: 'short', status: 'closed', kind: 'live', date: '2026-09-20', time: '03:51', entry: 81029.32, exit: 82039.31, size: '729.26', pnl: -9.7626, r: 0, openTime: '1789869078888', closeTime: '1790012341907', qtyAsset: 0.009, tps: [], tags: [], layers: [], emotions: [], mistakes: [], checks: [], screenshots: [], tvLinks: [] }];
+      openForm(1);
+      const el = document.querySelector('.exwrap'); const txt = el ? el.innerText : '';
+      closeForm(); return txt;
+    });
+    ok('zonder stappen legt het formulier uit waar ze vandaan komen', /nog niet opgehaald/.test(zonder) && /volgende sync/.test(zonder), JSON.stringify(zonder.slice(0, 70)));
+
+    const zonderKoppeling = await p.evaluate(() => {
+      delete CONNS.okx; openForm(1);
+      const el = document.querySelector('.exwrap'); const er = !!el; closeForm(); return er;
+    });
+    ok('zonder koppeling belooft het formulier niets', zonderKoppeling === false);
+
+    await backfill(p, ruw(ECHT), TRADE);
+    const met = await p.evaluate(() => {
+      CONNS.okx = { connected: true, apiKey: 'k', apiSecret: 's', passphrase: 'p' };
+      openForm(1);
+      const el = document.querySelector('.exwrap'); const n = el ? el.querySelectorAll('tbody tr').length : 0;
+      const centen = el ? /1,58/.test(el.innerText) : false;
+      closeForm(); return { n, centen };
+    });
+    ok('met stappen staat de tabel in het formulier', met.n === 7, JSON.stringify(met.n));
+    ok('inclusief de winst en het verlies per stap', met.centen, JSON.stringify(met));
+    await ctx.close();
+  }
+
+  console.log('─── Bestaande trades worden opgeschoond ───');
+  {
+    const { ctx, p } = await open();
+    const r = await p.evaluate(async () => {
+      T = [{ id: 1, exchange: 'okx', pair: 'BTC/USDC', dir: 'short', status: 'closed', date: '2026-09-20', time: '03:51',
+        entry: 81029.32444444444, exit: 82039.30777777778, size: '729.26', pnl: -9.7626, r: 0,
+        tps: [{ price: 80500.123456789, pct: 50, hit: true, ts: 0 }], tags: [], layers: [], emotions: [], mistakes: [], checks: [], screenshots: [], tvLinks: [] }];
+      DB.save('schema', 3);
+      await runMigrations();
+      return { entry: T[0].entry, exit: T[0].exit, tp: T[0].tps[0].price };
+    });
+    ok('een bestaande entry met veertien decimalen wordt afgerond', r.entry === 81029.32, JSON.stringify(r.entry));
+    ok('de exit ook', r.exit === 82039.31, JSON.stringify(r.exit));
+    ok('en de prijs van een TP-niveau', r.tp === 80500.12, JSON.stringify(r.tp));
+    await ctx.close();
+  }
+
   ok('geen JS-errors totaal', errs.length === 0, [...new Set(errs)].slice(0, 3).join(' | '));
   console.log(`\n=== Executie-stappen: ${pass}/${pass + fail} ===`);
   await b.close();

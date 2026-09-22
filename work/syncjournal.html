@@ -48,7 +48,11 @@ input,textarea{font-family:inherit}
 .logo{font-family:var(--fd);font-weight:800;font-size:17px;letter-spacing:-.02em;padding:20px 22px 16px}
 .logo span{color:var(--accent)}
 .side nav{display:flex;flex-direction:column;gap:2px;padding:6px 12px}
-.side .navbot{margin-top:auto;border-top:1px solid var(--line2);padding-top:9px}
+.side .navbot{border-top:1px solid var(--line2);padding-top:9px}
+/* Duwt de koppelingen en de voettekst naar de onderkant. Als losse ruimte i.p.v. een
+   auto-marge op één blok: het koppelingenblok is er niet altijd, en dan zou de
+   onderkant van het menu verschuiven. */
+.side .side-sp{flex:1 1 auto;min-height:10px}
 .side .navbot button.ai{color:var(--pc);background:color-mix(in srgb,var(--pc) 8%,transparent)}
 .side .navbot button.ai .nav-ic{opacity:1}
 .side .navbot button.ai .aidot{width:6px;height:6px;border-radius:50%;background:var(--green);margin-left:auto;flex:none;box-shadow:0 0 0 3px color-mix(in srgb,var(--green) 22%,transparent)}
@@ -61,7 +65,7 @@ input,textarea{font-family:inherit}
 /* sidebar-footer: branding (Powered by Morani · Built by Zaratras) in SJ-stijl */
 /* Koppelingen met saldo, onderin het menu. Alleen zichtbaar als er ook echt een
    koppeling is - geen koppeling, geen blokje. */
-.sideconn{border-top:1px solid var(--line2);padding:10px 12px 4px;margin-top:8px}
+.sideconn{border-top:1px solid var(--line2);padding:10px 12px 4px}
 .sideconn .sc-h{display:flex;align-items:baseline;justify-content:space-between;gap:8px;padding:0 6px 6px;font-size:9.5px;font-weight:800;letter-spacing:.11em;text-transform:uppercase;color:var(--faint)}
 .sideconn .sc-h button{font:inherit;letter-spacing:inherit;color:var(--muted);background:none;border:0;padding:0;cursor:pointer}
 .sideconn .sc-h button:hover{color:var(--accent)}
@@ -1165,8 +1169,9 @@ body.dark .toast{box-shadow:0 10px 34px rgba(0,0,0,.5)}
   <aside class="side">
     <div class="logo" onclick="showWelcome()" style="cursor:pointer" title="Welkomscherm">Sync<span>Journal</span></div>
     <nav id="nav"></nav>
-    <nav id="navbot" class="navbot"></nav>
+    <div class="side-sp"></div>
     <div id="sideconn" class="sideconn" hidden></div>
+    <nav id="navbot" class="navbot"></nav>
     <div class="side-foot"><svg class="brandhex" viewBox="0 0 64 64" aria-hidden="true"><defs><linearGradient id="bhg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3B5BD9"/><stop offset="1" stop-color="#8A5CF0"/></linearGradient></defs><polygon points="32,4 57,18.5 57,45.5 32,60 7,45.5 7,18.5" fill="url(#bhg)"/><text x="32" y="41" font-family="Arial,sans-serif" font-size="22" font-weight="800" fill="#fff" text-anchor="middle">SJ</text></svg><div class="who"><div class="brl">Powered by <b>Morani</b></div><div class="brl">Built by <b>Zaratras</b></div></div></div>
   </aside>
   <div class="body">
@@ -1747,8 +1752,8 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.105';
-const SCHEMA_VERSION=3;
+const APP_VERSION='v0.9.106';
+const SCHEMA_VERSION=4;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
   // ander type dan verwacht (bv. sj_manual='null' of een array waar een object hoort).
@@ -1821,6 +1826,21 @@ const MIGRATIONS=[
      telde de P&L dubbel (-3,44 + -9,76 terwijl -9,76 het totaal al was). Het kenmerk is nu
      de positie zelf; deze stap trekt bestaande journals gelijk: per positie blijft de
      laatste stand staan, en wat je zelf had ingevuld verhuist daarheen mee. */
+  /* v4 (2026-09-22, melding Denny): de afronding van afgeleide prijzen (v0.9.103) gold
+     alleen voor nieuw binnengekomen trades. Bestaande trades hielden hun veertien cijfers
+     achter de komma — 81029.32444444444 in het bewerkformulier. Deze stap ruimt dat op,
+     met dezelfde schaal als de adapters: boven de 1000 twee decimalen, boven de 1 vier,
+     daaronder acht. */
+  {v:4,note:'prijzen afronden op de schaal van de prijs',up(){
+    const r=v=>{const n=parseFloat(v);if(!isFinite(n)||n===0)return v;
+      const a=Math.abs(n),d=a>=1000?2:a>=1?4:8;const af=+n.toFixed(d);
+      return (typeof v==='string')?String(af):af;};
+    T.forEach(t=>{ if(!t||typeof t!=='object')return;
+      ['entry','exit','stop','tp','mae','mfe'].forEach(k=>{ if(t[k]!==undefined&&t[k]!=='')t[k]=r(t[k]); });
+      if(Array.isArray(t.tps))t.tps.forEach(x=>{ if(x&&x.price!==undefined&&x.price!=='')x.price=r(x.price); });
+      if(Array.isArray(t.fills))t.fills.forEach(f=>{ if(f&&f.price!==undefined)f.price=r(f.price); });
+    });
+  }},
   {v:3,note:'OKX: één positie = één trade',up(){
     const perPositie=new Map();
     T.forEach(t=>{
@@ -2321,6 +2341,18 @@ function execTable(t){
     <tfoot><tr><td></td><td><b>Samen</b></td><td class="num mask">${n(sum.exitsAsset)}</td><td></td><td></td><td></td>
       <td class="num" style="color:var(--muted)">${sum.fees?n(+sum.fees.toFixed(4)):''}</td>
       <td class="num mask ${cls(netto)}"${afw}><b>${geld(netto)}</b></td></tr></tfoot></table></div>`;
+}
+/* In het bewerkformulier is de vraag niet alleen "hoe liep het", maar ook "waarom zie
+   ik hier niets". Daarom: stáán er stappen, dan de tabel; staan ze er niet, dan eerlijk
+   zeggen waar ze vandaan komen in plaats van een leeg vlak achterlaten. */
+function execBlock(t){
+  const tab=execTable(t);
+  if(tab)return tab;
+  const viaKoppeling=t&&t.exchange&&CONNS[t.exchange]&&CONNS[t.exchange].connected
+    &&ExchangeAPI[t.exchange]&&typeof ExchangeAPI[t.exchange].fetchFills==='function';
+  if(!viaKoppeling)return '';
+  return `<div class="exwrap"><div class="exhead"><b>Zo is deze positie gelopen</b>
+      <span>nog niet opgehaald — de losse stappen komen binnen bij je volgende sync</span></div></div>`;
 }
 // Mini-tijdlijn voor Review-detail én hover-uitklap: Open → TP-hits (met tijd) → Close · duur.
 function tradeTimeline(t){
@@ -7244,6 +7276,7 @@ function openForm(id){
       <div class="field ${vfc('pro',+t.rrPlanned>0)}"><label>Geplande R:R</label><input id="f_rrPlanned" value="${t.rrPlanned||''}" inputmode="decimal" placeholder="2.0"></div>
       <div class="calcprev" id="calcPrev"></div>
       <div class="field full"><div class="lt-head"><label style="margin:0">Take-profit-niveaus <span class="hint">(partial closes · verdeel je positie)</span></label></div><div id="tpbuilder" class="tpbuilder"></div></div>
+      <div class="field full">${execBlock(t)}</div>
 
       <div class="msub s4"><span class="msn">4</span> Resultaat</div>
       <div class="field"><label>P&L (${CURSYM()})</label><input id="f_pnl" value="${t.pnl}" inputmode="decimal"></div>
