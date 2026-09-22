@@ -59,20 +59,20 @@ const FIX = 'tests/_fixtures/blofin-snapshot.json';
     ok('user-velden geadopteerd op de echte trade', fin.closed && /notitie tijdens open/.test(fin.notes || '') && (fin.tags || []).includes('LiveTag'), JSON.stringify(fin).slice(0, 200));
   }
 
-  console.log('─── Partial-detectie (deterministisch) ───');
+  console.log('─── Partial-detectie (deterministisch, Kraken — Blofin is model B sinds v0.9.116) ───');
   const part = await p.evaluate(() => {
-    const mk = (id, st, extra) => ({ id, srcId: 'blofin_777_' + id, date: '2026-09-01', time: '10:00', pair: 'ETH/USDT', dir: 'long', setup: '', session: 'London', status: st, kind: 'live', exchange: 'blofin', entry: 2500, exit: st === 'closed' ? 2600 : 0, stop: 0, size: '2500', qtyAsset: 0.25, _rawCloseSize: '0.25', positionId: 'pid-777', closeTime: String(1758000000000 + id), pnl: st === 'closed' ? 25 : 0, fees: 0.1, r: 0, tps: [], tags: [], layers: [], emotions: [], mistakes: [], checks: [], screenshots: [], tvLinks: [] });
+    const mk = (id, st, extra) => ({ id, srcId: 'kraken_777_' + id, date: '2026-09-01', time: '10:00', pair: 'ETH/USDT', dir: 'long', setup: '', session: 'London', status: st, kind: 'live', exchange: 'kraken', entry: 2500, exit: st === 'closed' ? 2600 : 0, stop: 0, size: '2500', qtyAsset: 0.25, _rawCloseSize: '0.25', positionId: 'pid-777', closeTime: String(1758000000000 + id), pnl: st === 'closed' ? 25 : 0, fees: 0.1, r: 0, tps: [], tags: [], layers: [], emotions: [], mistakes: [], checks: [], screenshots: [], tvLinks: [] });
     // rest 1.0 + 2×0.25 gesloten → origineel 1.5; géén ghost (closed ≪ rest) → pct = 0.25/1.5 ≈ 16.67%
     const openT = mk(9101, 'open'); openT.qtyAsset = 1.0; openT.size = '2500'; openT.exit = 0;
     T.push(openT, mk(9102, 'closed'), mk(9103, 'closed')); persist();
-    runPartialDetect('blofin');
+    runPartialDetect('kraken');
     const t = T.find(x => x.id === 9101);
     return { status: t.status, realized: t.realizedPnl, pnl: t.pnl, hits: (t.tps || []).filter(x => x.hit).length, pcts: (t.tps || []).map(x => x.pct) };
   });
   ok('open + gesloten siblings → status partial', part.status === 'partial', JSON.stringify(part));
   ok('realizedPnl = som van siblings (50), eigen pnl blijft 0', Math.abs(part.realized - 50) < 0.01 && part.pnl === 0);
   ok('TP-hits opgebouwd uit siblings (2 hits, pct ≈16.7)', part.hits === 2 && part.pcts.every(x => Math.abs(x - 16.67) < 0.5), JSON.stringify(part.pcts));
-  const rev = await p.evaluate(() => { T = T.filter(x => x.id !== 9102 && x.id !== 9103); runPartialDetect('blofin'); const t = T.find(x => x.id === 9101); return { status: t.status, realized: t.realizedPnl }; });
+  const rev = await p.evaluate(() => { T = T.filter(x => x.id !== 9102 && x.id !== 9103); runPartialDetect('kraken'); const t = T.find(x => x.id === 9101); return { status: t.status, realized: t.realizedPnl }; });
   ok('siblings weg → terug naar open, realizedPnl gewist', rev.status === 'open' && rev.realized === undefined, JSON.stringify(rev));
   await p.evaluate(() => { T = T.filter(x => x.id !== 9101); persist(); });
 

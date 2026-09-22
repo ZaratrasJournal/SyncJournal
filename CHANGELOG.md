@@ -10,6 +10,12 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 De journal is opnieuw opgebouwd als **SyncJournal** en draait nu online op [syncjournal.nl](https://syncjournal.nl). Versienummers zijn opnieuw gestart op v0.9.x (bèta); de oude TradeJournal-releases staan verderop in dit bestand. Je data overzetten kan via Instellingen → Data → Importeer oude backup.
 
+## [v0.9.116] — 2026-09-22
+
+### Gewijzigd
+- **Blofin: één trade per positie, met alle stappen erin.** Blofin gebruikt per instrument steeds hetzelfde positie-id en werkt een positie bij naarmate er meer van sluit. Tot nu toe werd elke tussenstand een eigen rij die achteraf weer aan elkaar werd geknoopt; nu is een positie één trade van eerste instap tot vlak, en komen de instappen en afbouwstappen als stappen mee uit Blofin's fills. De P&L per stap is die van Blofin zelf.
+- Bestaande Blofin-trades worden bij het starten samengevoegd per positie (notities en tags gaan mee) en bij de eerstvolgende sync bijgewerkt; de stappen worden daarna opgehaald.
+
 ## [v0.9.115] — 2026-09-22
 
 ### Gewijzigd

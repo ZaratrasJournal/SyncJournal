@@ -1,6 +1,6 @@
 # OKX-herstelplan
 
-Datum: 2026-09-22. Hoort bij [okx-model.md](okx-model.md) (hoe OKX werkt). Status: **stap 1 gebouwd** (v0.9.112, lokaal; spec `tests/okx-levensloop.spec.js`, 25/25 op Denny's back-ups en de snapshot van 29-06). Hyperliquid naar model B: gebouwd in v0.9.113 (`tests/hyperliquid-levensloop.spec.js`, 25/25 op de wallet-snapshot van mei). Formulier vergrendeld voor gesyncte trades in v0.9.115. Volgende: Blofin (docs-check), Kraken, OKX stap 2/3.
+Datum: 2026-09-22. Hoort bij [okx-model.md](okx-model.md) (hoe OKX werkt). Status: **stap 1 gebouwd** (v0.9.112, lokaal; spec `tests/okx-levensloop.spec.js`, 25/25 op Denny's back-ups en de snapshot van 29-06). Hyperliquid naar model B: gebouwd in v0.9.113 (`tests/hyperliquid-levensloop.spec.js`, 25/25 op de wallet-snapshot van mei). Formulier vergrendeld in v0.9.115. Blofin naar model B in v0.9.116 (zie onderaan). Volgende: Kraken (Worker), OKX stap 2/3, plan-tegen-uitvoering.
 
 ## Wat er kapot is, in één zin
 
@@ -83,3 +83,16 @@ Aparte release. Ontwerp eerst als demo.
 3. Worker-beslissing → stap 3.
 
 v0.9.111 (datums en tussenkoppen in de tabel) gaat mee met stap 1; de tussenkop "Nieuwe positie" blijft als vangnet bestaan maar hoort na stap 1 niet meer voor te komen.
+
+## Blofin (gebouwd in v0.9.116)
+
+Bron: [Blofin API docs](https://docs.blofin.com/), *GET Positions History*, *GET Trade History*; snapshots uit Denny's account van 01-05 en 04-05-2026 (`tests/_fixtures/blofin-snapshot*.json`).
+
+| Aanname | Bewijs |
+|---|---|
+| `positionId` is per instrument en wordt hergebruikt | Snapshot 04-05: **33** levenslopen onder `positionId 8000000610734` |
+| `createTime` is per levensloop uniek en stabiel | 33 verschillende `createTime`'s; `historyId 109673008` heeft op 01-05 en 04-05 dezelfde `createTime` |
+| Het record werkt in-place bij | Diezelfde `historyId`: 01-05 `closePositions 0.001/0.0029`, P&L 3,26; 04-05 `0.0029/0.0029`, P&L 4,52 |
+| Fills dragen geen positie-id, wel `fillPnl` | Docs *Trade History*: `tradeId, orderId, fillPrice, fillSize, fillPnl, positionSide, side, fee, ts` |
+
+Sleutel: `blofin_<positionId>_<createTime>`. Stappen via `fills-history` per levensloop-venster (Blofin praat rechtstreeks vanuit de browser, geen Worker). `detectPartials` is voor Blofin een no-op. Migratie v7 voegt de oude rij-per-sluiting-trades samen per (positionId, openTime). Spec: `tests/blofin-levensloop.spec.js` (21/21, waarvan de twee snapshots als twee syncs). De deterministische partial-test in `exchange-sync2` draait nu op Kraken, de laatste exchange op model A.

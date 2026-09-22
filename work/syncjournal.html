@@ -1760,8 +1760,8 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.115';
-const SCHEMA_VERSION=6;
+const APP_VERSION='v0.9.116';
+const SCHEMA_VERSION=7;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
   // ander type dan verwacht (bv. sj_manual='null' of een array waar een object hoort).
@@ -1900,6 +1900,26 @@ const MIGRATIONS=[
       const m=+t.openTime||+t.closeTime||0; if(m>0)vroegste=Math.min(vroegste,m);
     });
     if(n&&isFinite(vroegste)&&CONNS.hyperliquid&&CONNS.hyperliquid.connected){ CONNS.hyperliquid={...CONNS.hyperliquid,lastSync:vroegste-3600e3}; persistConns(); }
+  }},
+  /* Blofin van "rij per sluiting" naar "rij per positie-levensloop". Oude rijen heten
+     blofin_<positionId>_<updateTime>; alle tussenstanden van één levensloop delen positionId
+     én openTime (= createTime). Per groep blijft de laatste stand staan (die bevat de rest al),
+     onder de nieuwe sleutel positionId + createTime; notities en tags van de weggevallen rijen
+     verhuizen mee. Fills gaan leeg, de sync gaat terug tot de oudste rij. Rijen uit de
+     orderhistorie (blofin_<orderId>) en CSV-imports blijven zoals ze zijn. */
+  {v:7,note:'Blofin: sleutel per positie-levensloop',up(){
+    const groep=new Map();let vroegste=Infinity;
+    const sleutel=t=>{const m=/^blofin_(\d+)_(\d+)$/.exec(String((t&&t.srcId)||''));if(!m||!(+t.openTime>0))return null;return 'blofin_'+m[1]+'_'+(+t.openTime);};
+    T.forEach(t=>{ if(!t||t.exchange!=='blofin'||t.status!=='closed')return; const k=sleutel(t); if(!k)return; (groep.get(k)||groep.set(k,[]).get(k)).push(t); });
+    const weg=new Set();
+    groep.forEach((lijst,k)=>{
+      const houden=lijst.reduce((a,b)=>((+b.closeTime||0)>=(+a.closeTime||0)?b:a));
+      lijst.forEach(t=>{ if(t!==houden){ adoptUserFieldsSJ(houden,t); weg.add(t.id); } });
+      houden.srcId=k; houden.fills=[]; vroegste=Math.min(vroegste,+houden.openTime||Infinity);
+    });
+    if(weg.size)T=T.filter(t=>!weg.has(t.id));
+    let prul=0;TRASH.forEach(t=>{ const k=t&&t.exchange==='blofin'?sleutel(t):null; if(k){t.srcId=k;prul++;} });if(prul)persistTrash();
+    if(groep.size&&isFinite(vroegste)&&CONNS.blofin&&CONNS.blofin.connected){ CONNS.blofin={...CONNS.blofin,lastSync:vroegste-3600e3}; persistConns(); }
   }},
 ];
 async function runMigrations(){
@@ -5634,7 +5654,12 @@ const ExchangeAPI = {
         // Warm up contractValue cache vóór mapping
         await this._getContractValue("BTC-USDT");
         const ctvMap=this._ctvCache||{};
-        // Elk close-record = 1 trade (géén aggregatie). Size = closePositions (qty gesloten in DIT event).
+        /* Één positie-levensloop = één trade (model B, 22-09-2026). Blofin hergebruikt positionId
+           per instrument (snapshot 04-05: 33 levenslopen onder één id); createTime is per
+           levensloop uniek en het record werkt in-place bij naarmate er meer sluit. Met
+           updateTime in de sleutel werd elke tussenstand een eigen rij (de "siblings" van de
+           partial-detectie); met alleen positionId zou elke heropening de vorige overschrijven.
+           Size = closePositions: wat er tot nu toe van deze levensloop gesloten is. */
         return(data.trades||[]).filter(t=>{const pnl=parseFloat(t.realizedPnl||t.pnl||"0");const sz=Math.abs(parseFloat(t.closePositions||t.closeTotalPos||"0"));return pnl!==0||sz>0}).map(t=>{
           const posSide=(t.positionSide||"net").toLowerCase();
           const closeTime=t.updateTime||t.createTime||Date.now();
@@ -5679,7 +5704,7 @@ const ExchangeAPI = {
             const grossPn=netPn+feePn; // assume realizedPnl is NET
             direction=((xN-entryN)*grossPn>=0)?"long":"short";
           }
-          return{id:"blofin_"+t.positionId+"_"+closeTime,date:ts2date(closeTime),time:ts2time(closeTime),pair:(t.instId||"").replace("-","/"),direction,entry:normPrice(entryPrice),exit:normPrice(exitPrice),positionSize:sizeUsdt||normPrice(assetQty),positionSizeAsset:assetQty>0?normPrice(assetQty):"",pnl:t.realizedPnl||t.pnl||"",fees:t.fee?Math.abs(parseFloat(t.fee)).toString():"0",leverage:t.leverage||"10",source:"blofin",status:"closed",stopLoss:"",takeProfit:"",highestPrice:"",lowestPrice:"",setupTags:[],confirmationTags:[],timeframeTags:[],emotionTags:[],mistakeTags:[],customTags:[],rating:0,screenshot:null,notes:"",links:[],layers:[],positionId:t.positionId||"",openTime:t.createTime||"",closeTime:String(closeTime),
+          return{id:"blofin_"+t.positionId+"_"+(t.createTime||closeTime),date:ts2date(closeTime),time:ts2time(closeTime),pair:(t.instId||"").replace("-","/"),direction,entry:normPrice(entryPrice),exit:normPrice(exitPrice),positionSize:sizeUsdt||normPrice(assetQty),positionSizeAsset:assetQty>0?normPrice(assetQty):"",pnl:t.realizedPnl||t.pnl||"",fees:t.fee?Math.abs(parseFloat(t.fee)).toString():"0",leverage:t.leverage||"10",source:"blofin",status:"closed",stopLoss:"",takeProfit:"",highestPrice:"",lowestPrice:"",setupTags:[],confirmationTags:[],timeframeTags:[],emotionTags:[],mistakeTags:[],customTags:[],rating:0,screenshot:null,notes:"",links:[],layers:[],positionId:t.positionId||"",openTime:t.createTime||"",closeTime:String(closeTime),
             // v12.62: raw close-size in base currency (Blofin geeft closePositions in BTC voor BTC-USDT, niet in contracts).
             // Gebruikt door detectPartialFromSiblings voor correcte pct-berekening op tpLevels — anders krijg je 0.05% i.p.v. 34%.
             // v12.90: sla _rawCloseSize op als BASE currency (= assetQty na heuristic), niet
@@ -5767,7 +5792,33 @@ const ExchangeAPI = {
       if(startTime)params.begin=startTime;
       if(endTime)params.end=endTime;
       const data=await this._direct(apiKey,apiSecret,passphrase,"/api/v1/trade/fills-history",params);
-      return{fills:data.data||[],total:(data.data||[]).length};
+      return Array.isArray(data&&data.data)?data.data:[];
+    },
+    /* Blofin-fills → de stappen van één levensloop. Geen positionId op fills, dus koppelen op
+       instrument + positiekant + het tijdvenster van de levensloop; in net-mode is positionSide
+       "net" en beslist de lopende teller. fillPnl is Blofin's eigen P&L per fill en is leidend. */
+    stepsForTrade(t,raw){
+      const dir=String(t.dir||t.direction||"").toLowerCase();
+      const basis=String(t.pair||"").split("/")[0].toUpperCase();
+      const van=(+t.openTime||0)-1000, tot=(+t.closeTime||Date.now())+1000;
+      const eerste=(f,...ks)=>{for(const k of ks){const v=f[k];if(v!==undefined&&v!==null&&v!=='')return v;}return '';};
+      return (raw||[]).map(f=>({
+        id:eerste(f,'tradeId','fillId','id')||undefined,
+        ordId:String(eerste(f,'orderId','ordId')),
+        instId:String(eerste(f,'instId','instrument','symbol')),
+        posSide:String(eerste(f,'positionSide','posSide')).toLowerCase(),
+        ts:+eerste(f,'ts','fillTime','time')||0,
+        side:String(eerste(f,'side')).toLowerCase(),
+        qty:Math.abs(parseFloat(eerste(f,'fillSize','fillSz','size'))||0),
+        price:parseFloat(eerste(f,'fillPrice','fillPx','price'))||0,
+        fee:Math.abs(parseFloat(eerste(f,'fee'))||0),
+        pnlExch:(()=>{const v=parseFloat(f.fillPnl);return isFinite(v)&&v!==0?v:null;})(),
+      })).filter(f=>{
+        if(basis&&f.instId&&f.instId.split(/[-_/]/)[0].toUpperCase()!==basis)return false;
+        if(!(f.ts>=van&&f.ts<=tot))return false;
+        if(f.posSide==="long"||f.posSide==="short")return f.posSide===dir;
+        return true;
+      });
     }
   },
   kraken:{
@@ -6341,7 +6392,7 @@ ExchangeAPI.okx.captureSnapshot=async function(creds){
 // ─────────────────────────────────────────────────────────────────────────────
 // v12.232: optionele sourceKey-param — dispatcher geeft de werkelijke trade.source door
 // (account.id post-multi-account); zonder param valt 'ie terug op de legacy type-string.
-ExchangeAPI.blofin.detectPartials=function(trades,sourceKey){return detectPartialFromSiblings(trades,sourceKey||"blofin","blofin")};
+ExchangeAPI.blofin.detectPartials=function(trades){return trades};   // model B: één rij per levensloop, geen siblings
 ExchangeAPI.mexc.detectPartials=function(trades,sourceKey){return detectPartialFromSiblings(trades,sourceKey||"mexc","mexc")};
 ExchangeAPI.kraken.detectPartials=function(trades,sourceKey){return detectPartialFromSiblings(trades,sourceKey||"kraken","kraken")};
 ExchangeAPI.hyperliquid.detectPartials=function(trades){return trades};   // model B: een levensloop is al compleet, er zijn geen siblings
