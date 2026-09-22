@@ -10,6 +10,14 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 De journal is opnieuw opgebouwd als **SyncJournal** en draait nu online op [syncjournal.nl](https://syncjournal.nl). Versienummers zijn opnieuw gestart op v0.9.x (bèta); de oude TradeJournal-releases staan verderop in dit bestand. Je data overzetten kan via Instellingen → Data → Importeer oude backup.
 
+## [v0.9.119] — 2026-09-22
+
+### Fixed
+- **Een trade kon volledig uit je journal verdwijnen door een afrondingsrest.** Stapte je in met 0,0015 en 0,0058, dan telde dat op tot 0,00729999… en leek een sluiting van 0,0073 gróter dan je positie — waarna de app hem las als een omkering en de trade oversloeg. Geldt voor alle exchanges. Er zit nu speling in die meeschaalt met de positie, en een restje van niets telt niet meer als openstaande positie.
+
+### Toegevoegd
+- **Kraken: één trade per positie, met alle stappen erin** — zodra je proxy de losse positie-gebeurtenissen meestuurt. Inclusief funding en een eigen label voor liquidaties. Stuurt je proxy ze nog niet, dan verandert er niets. De aanpassing staat klaar in `docs/worker-kraken-events.md`.
+
 ## [v0.9.118] — 2026-09-22
 
 ### Gewijzigd

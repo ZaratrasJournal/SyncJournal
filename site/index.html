@@ -1760,7 +1760,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.118';
+const APP_VERSION='v0.9.119';
 const SCHEMA_VERSION=7;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -5421,6 +5421,11 @@ function fillTimeline(steps,opts){
        Blofin/HL hun dir), dan is dat leidend - een lopende teller schuift door zodra er
        één vreemde fill in het venster valt. Bij een vlakke positie valt er niets te
        sluiten, dus daar opent een fill altijd. */
+    /* Hoeveelheden stapelen met afrondingsresten: 0,0015 + 0,0058 komt uit op
+       0,007299999999999999, en dan lijkt een sluiting van 0,0073 gróter dan de positie.
+       Zonder speling werd dat een omkering in plaats van een sluiting, en viel de hele
+       trade weg. Vandaar een marge die meeschaalt met de positie. */
+    const eps=Math.max(1e-12,Math.abs(pos)*1e-9);
     const vergroot=pos===0?true:(f.effect==='inc'?true:f.effect==='dec'?false:(pos*sq)>=0);
     let kind,pnl=null,pnlCalc=null;
     if(!vergroot){
@@ -5434,13 +5439,14 @@ function fillTimeline(steps,opts){
     if(vergroot){
       kind=pos===0?'open':'add';
       avg=(avg*Math.abs(pos)+px*q)/(Math.abs(pos)+q);
-    }else if(q>Math.abs(pos)){
+    }else if(q>Math.abs(pos)+eps){
       kind='flip';       // draait om: vanaf hier een nieuwe positie met een nieuwe basis
       avg=px;
     }else{
       kind=f.liq?'liq':'close';   // afbouwen laat het gemiddelde ongemoeid
     }
     pos+=sq;
+    if(Math.abs(pos)<eps)pos=0;   // een afrondingsrest is geen openstaande positie
     return {ts:+f.ts||0,side:f.side,kind,qty:q,qtyAsset:q*mult,price:px,fee,
             posAfter:Math.abs(pos),posAfterAsset:Math.abs(pos)*mult,
             dirAfter:pos>0?'long':pos<0?'short':'',avgEntry:avg,pnl,pnlCalc,
@@ -5889,7 +5895,108 @@ const ExchangeAPI = {
       const stableId=t.fill_id||(status==="open"?`open_${t.symbol||"?"}_${t.fillTime||"0"}_${sideLc||"?"}`:uid());
       return{id:"kraken_"+stableId,openTime:t.open_time||ft,closeTime:closeT,date:closeT?closeT.split("T")[0]:(ft?ft.split("T")[0]:""),time:closeT?(closeT.split("T")[1]||"").slice(0,5):(ft?(ft.split("T")[1]||"").slice(0,5):""),pair,direction:t.direction||(sideLc==="buy"||sideLc==="long"?"long":"short"),entry:String(t.entry_price||t.price||""),exit:status==="closed"?String(t.exit_price||""):"",positionSize:usdNotional>0?usdNotional.toFixed(2):String(t.size||""),positionSizeAsset:String(t.size||""),pnl:status==="closed"?pnlVal:"",unrealizedPnl:status==="open"?String(t.unrealized_pnl||""):"",liquidationPrice:String(t.liquidation_price||""),fees:t.fee?String(Math.abs(parseFloat(t.fee)||0).toFixed(4)):"0",leverage:"1",source:"kraken",status,stopLoss:"",takeProfit:"",highestPrice:"",lowestPrice:"",setupTags:[],confirmationTags:[],timeframeTags:[],emotionTags:[],mistakeTags:[],customTags:[],rating:0,screenshot:null,notes:"",links:[],layers:[],manualOverrides:[],tpLevels,originalSizeAsset};
     },
-    async fetchTrades(apiKey,apiSecret,_pp,startTime){const data=await proxyCall({exchange:"kraken",action:"trades",apiKey,apiSecret,startTime});return(data.trades||[]).filter(t=>t.pair_clean||t.symbol||t.direction).map(t=>this._normalise(t))},
+    /* Kraken levert zijn positiegeschiedenis als losse gebeurtenissen: elke uitvoering zegt
+       wat de positie ervoor en erna was, wat er gerealiseerd is en of het een liquidatie was.
+       Daarmee is één levensloop af te lezen - van de eerste opening tot newPosition weer nul -
+       inclusief funding, dat Kraken als eigen gebeurtenis binnen die levensloop boekt.
+
+       Levert de proxy die gebeurtenissen nog niet (oudere Worker), dan blijft het oude pad
+       staan: één trade per groep sluitingen. Zo werkt de app met beide versies. */
+    _krLevenslopen(events){
+      const per={},uit=[];
+      const getal=v=>{const n=parseFloat(v);return isFinite(n)?n:0;};
+      const klaar=(sym,st)=>{
+        if(!st.steps.length)return;
+        const tl=fillTimeline(st.steps,{mult:1});
+        if(!tl.some(isAfbouw))return;
+        const sum=fillSummary(tl);
+        const eerste=tl[0],laatste=tl[tl.length-1];
+        const dir=eerste.side==="buy"?"long":"short";
+        const fees=Math.abs(st.fee), netto=st.pnl-fees+st.funding;
+        const qty=sum.exitsAsset||sum.peak||0;
+        uit.push({...EMPTY_TRADE,
+          id:"kraken_pos_"+sym+"_"+st.begin,
+          date:ts2date(eerste.ts),time:ts2time(eerste.ts),
+          openTime:String(eerste.ts),closeTime:String(laatste.ts),
+          pair:this._pair(sym),direction:dir,
+          entry:sum.avgEntry>0?normPrice(sum.avgEntry):"",
+          exit:sum.avgExit>0?normPrice(sum.avgExit):"",
+          positionSize:(sum.avgEntry>0&&qty>0)?(sum.avgEntry*qty).toFixed(2):"",
+          positionSizeAsset:qty>0?normPrice(qty):"",
+          pnl:String(netto.toFixed(4)),
+          fees:String(fees.toFixed(4)),
+          funding:String(st.funding.toFixed(4)),
+          leverage:"",source:"kraken",status:"closed",
+          positionId:sym,
+          fills:tl,
+        });
+      };
+      const rijen=(events||[]).map(e=>({...(e&&e.event&&e.event.PositionUpdate||{}),_ts:+(e&&e.timestamp)||0,_uid:e&&e.uid}))
+        .filter(u=>u.tradeable)
+        .sort((a,b)=>((+a.timestamp||a._ts||0)-(+b.timestamp||b._ts||0))||String(a.executionUid||a._uid||"").localeCompare(String(b.executionUid||b._uid||"")));
+      for(const u of rijen){
+        const sym=String(u.tradeable);
+        const st=per[sym]||(per[sym]={pos:0,steps:[],pnl:0,fee:0,funding:0,begin:0});
+        const oud=getal(u.oldPosition), nieuwPos=getal(u.newPosition);
+        if(st.steps.length===0&&!st.begin)st.begin=+u.timestamp||u._ts||0;
+        st.pnl+=getal(u.realizedPnL); st.fee+=Math.abs(getal(u.fee)); st.funding+=getal(u.realizedFunding);
+        /* Het verschil tussen de stand vóór en ná is de grootte van de stap. Dat is
+           betrouwbaarder dan executionSize, dat bij een omkeer alleen het nieuwe stuk telt -
+           en dan komt de positie aan het eind niet op nul uit. */
+        const delta=nieuwPos-oud;
+        const grootte=Math.abs(delta)>1e-12?Math.abs(delta):Math.abs(getal(u.executionSize));
+        const prijs=getal(u.executionPrice);
+        const soort=String(u.tradeType||"").toLowerCase();
+        if(grootte>0&&prijs>0){
+          const wissel=String(u.positionChange||"").toLowerCase();
+          const kant=(delta>0)?"buy":"sell";
+          st.steps.push({ts:+u.fillTime||+u.timestamp||u._ts||0,side:kant,qty:grootte,price:prijs,
+            fee:Math.abs(getal(u.fee)),id:u.executionUid||u._uid,
+            effect:(wissel==="open"||wissel==="increase")?"inc":(wissel==="close"||wissel==="decrease")?"dec":undefined,
+            liq:(soort==="liquidation"||soort==="partialliquidation"),
+            pnlExch:getal(u.realizedPnL)||null});
+        }
+        st.pos=nieuwPos;
+        if(Math.abs(nieuwPos)<1e-12){ klaar(sym,st); delete per[sym]; }
+      }
+      return uit;   // wat nog open staat komt via de open-positie-placeholder binnen
+    },
+    /* Oude rijen (één per groep sluitingen) opgaan in de levensloop die ze bevat, zodra de
+       proxy gebeurtenissen levert. Notities en labels verhuizen mee. */
+    afterImport(nieuw){
+      let n=0;
+      (nieuw||[]).forEach(L=>{
+        if(!L||L.exchange!=="kraken"||!/^kraken_pos_/.test(String(L.srcId||"")))return;
+        const van=+L.openTime-1000, tot=+L.closeTime+1000;
+        T.filter(o=>o&&o.exchange==="kraken"&&o!==L&&!/^kraken_pos_/.test(String(o.srcId||""))
+                   &&o.pair===L.pair&&o.dir===L.dir&&(+o.closeTime)>=van&&(+o.closeTime)<=tot)
+         .forEach(o=>{ adoptUserFieldsSJ(L,o); T=T.filter(t=>t.id!==o.id); n++; });
+      });
+      if(n)persist();
+      return n;
+    },
+    async fetchTrades(apiKey,apiSecret,_pp,startTime){const data=await proxyCall({exchange:"kraken",action:"trades",apiKey,apiSecret,startTime});
+      if(Array.isArray(data&&data.events)&&data.events.length){
+        let events=data.events;
+        const c=CONNS.kraken;
+        /* Eerste keer dat de proxy de losse gebeurtenissen levert: haal in dezelfde beurt ook
+           de oudere historie op, anders missen bestaande trades het begin van hun levensloop.
+           (lastSync terugzetten helpt hier niet - dit verzoek is al gedaan.) */
+        if(c&&!c.evt){
+          const oudste=T.filter(t=>t&&t.exchange==="kraken"&&+t.openTime>0).reduce((m,t)=>Math.min(m,+t.openTime),Infinity);
+          if(isFinite(oudste)&&oudste<(+startTime||Date.now())){
+            try{
+              const ouder=await proxyCall({exchange:"kraken",action:"trades",apiKey,apiSecret,startTime:Math.max(0,oudste-3600e3)});
+              if(Array.isArray(ouder&&ouder.events)&&ouder.events.length){
+                const gezien=new Set(events.map(e=>String(e&&e.uid)));
+                events=[...events,...ouder.events.filter(e=>!gezien.has(String(e&&e.uid)))];
+              }
+            }catch(e){ /* extra poging; mislukt hij, dan blijft het bij het verse venster */ }
+          }
+          CONNS.kraken={...c,evt:1};persistConns();
+        }
+        return this._krLevenslopen(events);
+      }return(data.trades||[]).filter(t=>t.pair_clean||t.symbol||t.direction).map(t=>this._normalise(t))},
     async testConnection(apiKey,apiSecret){const data=await proxyCall({exchange:"kraken",action:"test",apiKey,apiSecret});if(!data.success)throw new Error(data.error||"Kraken verbinding mislukt");return{success:true,balance:data.balance||"0"}},
     async fetchOpenPositions(apiKey,apiSecret){const data=await proxyCall({exchange:"kraken",action:"open_positions",apiKey,apiSecret});return(data.positions||[]).map(t=>({...this._normalise({...t,status:"open"}),status:"open"}))},
     async fetchFills(apiKey,apiSecret,_pp,symbol,startTime,endTime){const data=await proxyCall({exchange:"kraken",action:"fills",apiKey,apiSecret,symbol,startTime,endTime});return{fills:(data.fills||[]).map(t=>this._normalise(t)),total:data.total||0}}
@@ -6439,7 +6546,11 @@ ExchangeAPI.okx.captureSnapshot=async function(creds){
 // (account.id post-multi-account); zonder param valt 'ie terug op de legacy type-string.
 ExchangeAPI.blofin.detectPartials=function(trades){return trades};   // model B: één rij per levensloop, geen siblings
 ExchangeAPI.mexc.detectPartials=function(trades,sourceKey){return detectPartialFromSiblings(trades,sourceKey||"mexc","mexc")};
-ExchangeAPI.kraken.detectPartials=function(trades,sourceKey){return detectPartialFromSiblings(trades,sourceKey||"kraken","kraken")};
+ExchangeAPI.kraken.detectPartials=function(trades,sourceKey){
+  // levenslopen zijn al compleet; alleen het oude pad (één rij per groep sluitingen) heeft siblings
+  const oud=(trades||[]).filter(t=>!/^kraken_pos_/.test(String((t&&t.id)||"")));
+  return oud.length?detectPartialFromSiblings(trades,sourceKey||"kraken","kraken"):trades;
+};
 ExchangeAPI.hyperliquid.detectPartials=function(trades){return trades};   // model B: een levensloop is al compleet, er zijn geen siblings
 ExchangeAPI.okx.detectPartials=function(trades,sourceKey){return detectPartialFromSiblings(trades,sourceKey||"okx","okx")};
 ExchangeAPI.ftmo.detectPartials=function(trades){return trades};
@@ -6668,7 +6779,7 @@ async function syncExchange(exId,opts){
   }
   await fxSync();               // verse trades krijgen de koers van hun handelsdag mee
   await refreshBalance(exId);   // saldo ververst mee met elke sync
-  CONNS[exId]={...c,lastSync:Date.now()};persistConns();
+  CONNS[exId]={...(CONNS[exId]||c),lastSync:Date.now()};persistConns();   // de adapter kan de koppeling onderweg hebben bijgewerkt
   if(!quiet)toast(mapped.length?('✓ '+ad.name+': '+mapped.length+' nieuwe trade'+(mapped.length>1?'s':'')):('✓ '+ad.name+': geen nieuwe trades'),mapped.length?'ok':'info');
   render();return mapped.length;
 }
