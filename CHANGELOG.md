@@ -10,6 +10,12 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 De journal is opnieuw opgebouwd als **SyncJournal** en draait nu online op [syncjournal.nl](https://syncjournal.nl). Versienummers zijn opnieuw gestart op v0.9.x (bèta); de oude TradeJournal-releases staan verderop in dit bestand. Je data overzetten kan via Instellingen → Data → Importeer oude backup.
 
+## [v0.9.115] — 2026-09-22
+
+### Gewijzigd
+- **Gesyncte trades: de exchange is de bron.** Bij een trade die via de API is opgehaald zijn entry, exit, size, fees en P&L in het formulier alleen-lezen, en de take-profit-bouwer is er niet meer — de afbouwstappen komen van de exchange zelf. Stop-loss, risico, notities, tags, grade en screenshots blijven gewoon van jou. Handmatige trades en CSV-imports blijven volledig bewerkbaar.
+- R-multiple bij zo'n trade rekent met de P&L van de exchange en jouw stop.
+
 ## [v0.9.114] — 2026-09-22
 
 ### Fixed

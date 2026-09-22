@@ -688,6 +688,8 @@ table.tbl{width:100%;border-collapse:collapse;font-size:14px}
 .field label{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:700}
 .field input,.field select,.field textarea{border:1px solid var(--line);border-radius:9px;background:var(--sink);color:var(--ink);padding:9px 11px;font-size:13.5px;outline:none}
 .field input:focus,.field select:focus,.field textarea:focus{border-color:var(--accent);background:var(--surface)}
+.field input[readonly]{border-style:dashed;color:var(--ink2);background:color-mix(in srgb,var(--sink) 55%,var(--surface));cursor:default}
+.lockbar{font-size:12px;color:var(--muted);padding:8px 11px;border:1px dashed var(--line);border-radius:9px;line-height:1.45}
 .xbtn{margin-left:auto;width:32px;height:32px;border-radius:8px;color:var(--muted);font-size:17px}
 .xbtn:hover{background:var(--hover);color:var(--ink)}
 .msub{--sec:var(--accent);grid-column:1/-1;display:flex;align-items:center;gap:9px;font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink);font-weight:800;margin-top:22px;padding:11px 14px;background:color-mix(in srgb,var(--sec) 9%,transparent);border-radius:10px;border-left:3px solid var(--sec)}
@@ -1758,7 +1760,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.114';
+const APP_VERSION='v0.9.115';
 const SCHEMA_VERSION=6;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -7387,6 +7389,11 @@ function tpBreakdown(t){const s=tpStats(t);if(!s)return '<div style="color:var(-
 function fnum(id){const el=document.getElementById(id);if(!el)return NaN;const v=parseFloat(String(el.value).trim().replace(',','.'));return isNaN(v)?NaN:v;}
 // ── Positie-grootte in $ óf in de asset zelf (bv. 0,5 BTC) — omrekening via entry ──
 let formSizeUnit='usd';
+/* Gesynct = via de API opgehaald: de exchange is de bron van entry, exit, size, fees, P&L en
+   de afbouwstappen. Die velden zijn in het formulier alleen-lezen en de TP-bouwer verdwijnt;
+   anders staan er twee waarheden naast elkaar. Een CSV-import telt niet als gesynct. */
+const isGesynct=t=>!!(t&&t.srcId&&!/_csv_/.test(String(t.srcId)));
+let formLocked=false;
 function pairBase(p){return String(p||'').split('/')[0].trim();}
 function formMomentMs(dId,tId){const d=((document.getElementById(dId)||{}).value||'').trim();if(!d)return 0;let tm=((document.getElementById(tId)||{}).value||'').trim();if(!/^\d{1,2}:\d{2}$/.test(tm))tm='00:00';if(tm.length===4)tm='0'+tm;const ms=+new Date(d+'T'+tm);return isFinite(ms)?ms:0;}
 function updSzBtn(){const b=document.getElementById('szAssetBtn');if(b){const base=pairBase((document.getElementById('f_pair')||{}).value);b.textContent=base||'coin';}}
@@ -7400,14 +7407,15 @@ function calcTrade(fill){
   const tp=(typeof formTPs!=='undefined'&&formTPs.length&&+String(formTPs[0].price).replace(',','.')>0)?+String(formTPs[0].price).replace(',','.'):NaN;
   const dirEl=document.getElementById('f_dir'),dir=dirEl&&dirEl.value==='short'?-1:1;
   let pnl=NaN,r=NaN,rr=NaN,pct=NaN;
-  if(entry>0&&!isNaN(exit)&&!isNaN(size))pnl=Math.round((exit-entry)/entry*size*dir-fees);
+  if(formLocked)pnl=fnum('f_pnl');   // gesynct: de P&L van de exchange is leidend, R rekent daarmee
+  else if(entry>0&&!isNaN(exit)&&!isNaN(size))pnl=Math.round((exit-entry)/entry*size*dir-fees);
   // A6: R alleen bij betekenisvol risico — stop ≈ entry (of duizendtal-typefout) gaf R's van miljarden.
   if(entry>0&&!isNaN(stop)&&!isNaN(size)&&!isNaN(pnl)&&Math.abs(entry-stop)>=entry*1e-4){const risk=Math.abs(entry-stop)/entry*size;if(risk>0)r=+(pnl/risk).toFixed(2);}
   if(entry>0&&!isNaN(stop)&&!isNaN(tp)&&Math.abs(entry-stop)>0)rr=+(Math.abs(tp-entry)/Math.abs(entry-stop)).toFixed(2);
   // live-preview: de trade wordt nú genomen, dus basis = huidige balans (of vaste referentie)
   const _pb=(+STATE.pctRef||0)>0?+STATE.pctRef:totalBalance();
   if(!isNaN(pnl)&&_pb>0)pct=+(pnl/_pb*100).toFixed(2);
-  if(fill){if(!isNaN(pnl))document.getElementById('f_pnl').value=pnl;if(!isNaN(r))document.getElementById('f_r').value=r;if(!isNaN(rr))document.getElementById('f_rrPlanned').value=rr;
+  if(fill){if(!isNaN(pnl)&&!formLocked)document.getElementById('f_pnl').value=pnl;if(!isNaN(r))document.getElementById('f_r').value=r;if(!isNaN(rr))document.getElementById('f_rrPlanned').value=rr;
     const _o=formMomentMs('f_date','f_time'),_c=formMomentMs('f_closeDate','f_closeTime');
     if(_o&&_c&&_c>_o){const el=document.getElementById('f_durationMin');if(el)el.value=Math.round((_c-_o)/60000);}}
   const prev=document.getElementById('calcPrev');if(!prev)return;
@@ -7443,6 +7451,7 @@ function updFormVis(){
 function openForm(id){
   const t=id!=null?T.find(x=>x.id===id):{date:new Date().toISOString().slice(0,10),time:'',exchange:(relevantExchanges()[0]||MANUAL[0]||{id:'blofin'}).id,pair:'BTC/USDC',dir:'long',setup:'',session:'London',timeframe:'15m',market:'Trending',grade:'',entry:'',stop:'',tp:'',exit:'',size:'',leverage:10,fees:'',risk:'',rrPlanned:'',pnl:'',r:'',status:'closed',emotion:'',mistake:'',emotions:[],mistakes:[],layers:[],tags:[],notes:'',lessons:'',durationMin:'',mae:'',mfe:''};
   formSizeUnit=(t.sizeUnit==='asset'&&t.qty>0)?'asset':'usd';formPbTouched=false;formPbLayersJson='';
+  formLocked=isGesynct(t);const RO=formLocked?' readonly':'';
   formTags=[...(t.tags||[])];formGrade=gradeOf(t);formShots=[...(t.screenshots||[])];formTvLinks=[...(t.tvLinks||[])];
   formLayers=(t.layers||[]).map(L=>({timeframe:L.timeframe||'',bias:L.bias||'',setups:[...(L.setups||[])],confirmations:[...(L.confirmations||[])]}));
   formEmotions=[...(t.emotions||(t.emotion?[t.emotion]:[]))];
@@ -7483,23 +7492,24 @@ function openForm(id){
         <div class="confseg gradeseg" id="gradeseg">${GRADES.map(g=>`<button data-g="${g.k}" class="g-${g.k} ${formGrade===g.k?'on':''}" onclick="setFormGrade('${g.k}')" title="${g.desc}">${g.k}</button>`).join('')}</div></div>
 
       <div class="msub s3"><span class="msn">3</span> Prijzen &amp; risico</div>
-      <div class="field"><label>Entry</label><input id="f_entry" value="${t.entry}" inputmode="decimal" oninput="calcTrade(true)"></div>
-      <div class="field"><label>Exit</label><input id="f_exit" value="${t.exit}" inputmode="decimal" oninput="calcTrade(true)"></div>
+      ${formLocked?`<div class="field full"><div class="lockbar">\ud83d\udd12 Entry, exit, size, fees en P&amp;L komen van ${esc((EXMAP[t.exchange]||{}).name||'de exchange')} en zijn hier niet aan te passen. Stop, risico en alles wat over jou gaat wel.</div></div>`:''}
+      <div class="field"><label>Entry</label><input id="f_entry"${RO} value="${t.entry}" inputmode="decimal" oninput="calcTrade(true)"></div>
+      <div class="field"><label>Exit</label><input id="f_exit"${RO} value="${t.exit}" inputmode="decimal" oninput="calcTrade(true)"></div>
       <div class="field ${vfc('std',+t.stop>0)}"><label>Stop-loss</label><input id="f_stop" value="${t.stop||''}" inputmode="decimal" oninput="calcTrade(true)"></div>
       <div class="field"><label>Size <span class="hint">(in ${CURSYM()} of in de asset)</span></label>
-        <div class="szrow"><input id="f_size" value="${formSizeUnit==='asset'?(t.qty||''):t.size}" inputmode="decimal" oninput="calcTrade(true)">
+        <div class="szrow"><input id="f_size"${RO} value="${formSizeUnit==='asset'?(t.qty||''):t.size}" inputmode="decimal" oninput="calcTrade(true)">
         <div class="szseg" id="szseg"><button type="button" class="${formSizeUnit==='usd'?'on':''}" onclick="setSizeUnit('usd')">${CURSYM()}</button><button type="button" id="szAssetBtn" class="${formSizeUnit==='asset'?'on':''}" onclick="setSizeUnit('asset')">${esc(pairBase(t.pair)||'coin')}</button></div></div></div>
       <div class="field ${vfc('std',id!=null&&+t.leverage>0)}"><label>Leverage</label><input id="f_leverage" value="${t.leverage||''}" inputmode="numeric" placeholder="10"></div>
       <div class="field ${vfc('std',+t.risk>0)}"><label>Risk (%)</label><input id="f_risk" value="${t.risk||''}" inputmode="decimal" placeholder="1.0"></div>
       <div class="field ${vfc('pro',+t.rrPlanned>0)}"><label>Geplande R:R</label><input id="f_rrPlanned" value="${t.rrPlanned||''}" inputmode="decimal" placeholder="2.0"></div>
       <div class="calcprev" id="calcPrev"></div>
-      <div class="field full"><div class="lt-head"><label style="margin:0">Take-profit-niveaus <span class="hint">(partial closes · verdeel je positie)</span></label></div><div id="tpbuilder" class="tpbuilder"></div></div>
+      ${formLocked?'':`<div class="field full"><div class="lt-head"><label style="margin:0">Take-profit-niveaus <span class="hint">(partial closes · verdeel je positie)</span></label></div><div id="tpbuilder" class="tpbuilder"></div></div>`}
       <div class="field full">${execBlock(t)}</div>
 
       <div class="msub s4"><span class="msn">4</span> Resultaat</div>
-      <div class="field"><label>P&L (${CURSYM()})</label><input id="f_pnl" value="${t.pnl}" inputmode="decimal"></div>
+      <div class="field"><label>P&L (${CURSYM()})</label><input id="f_pnl"${RO} value="${t.pnl}" inputmode="decimal"></div>
       <div class="field ${vfc('std',t.r!==''&&+t.r!==0)}"><label>R-multiple</label><input id="f_r" value="${t.r}" inputmode="decimal"></div>
-      <div class="field"><label>Fees (${CURSYM()})</label><input id="f_fees" value="${t.fees||''}" inputmode="decimal" oninput="calcTrade(true)"></div>
+      <div class="field"><label>Fees (${CURSYM()})</label><input id="f_fees"${RO} value="${t.fees||''}" inputmode="decimal" oninput="calcTrade(true)"></div>
       <div class="field ${vfc('std',!!closeD0)}"><label>Sluit-datum <span class="hint">(optioneel)</span></label><input type="date" id="f_closeDate" value="${closeD0}" onchange="calcTrade(true)"></div>
       <div class="field ${vfc('std',!!closeT0)}"><label>Sluit-tijd</label><input id="f_closeTime" value="${closeT0}" placeholder="16:45" oninput="calcTrade(true)"></div>
       <div class="field ${vfc('std',!!t.durationMin)}"><label>Tijd in trade (min) <span class="hint">(auto bij sluit-tijd)</span></label><input id="f_durationMin" value="${t.durationMin||''}" inputmode="numeric"></div>
@@ -7587,6 +7597,11 @@ function submitForm(id){
     emotions:[...formEmotions],emotion:formEmotions[0]||'',mistakes:[...formMistakes],mistake:formMistakes[0]||'',
     kind:g('kind')||'live',missedReasons:g('kind')==='gemist'?[...formMissed]:[],
     screenshots:[...formShots],tvLinks:[...formTvLinks],tags:[...formTags],notes:g('notes'),lessons:g('lessons')};
+  if(id!=null&&id!=='null'&&formLocked){
+    // readonly in het formulier is een hint, geen slot: wat de exchange leverde blijft staan
+    const oud=T.find(x=>x.id===id)||{};
+    ['entry','exit','size','sizeUnit','qty','pnl','fees','tps'].forEach(k=>{ if(k in oud)obj[k]=oud[k]; else delete obj[k]; });
+  }
   if(id!=null&&id!=='null'){const t=T.find(x=>x.id===id);const oldO=+t.openTime||0,oldC=+t.closeTime||0;Object.assign(t,obj);
     // seconde-precisie van gesyncte timestamps behouden als de minuut niet is gewijzigd
     if(oldO&&Math.floor(oldO/60000)===Math.floor((+t.openTime||0)/60000))t.openTime=String(oldO);
