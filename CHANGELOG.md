@@ -10,6 +10,11 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 De journal is opnieuw opgebouwd als **SyncJournal** en draait nu online op [syncjournal.nl](https://syncjournal.nl). Versienummers zijn opnieuw gestart op v0.9.x (bèta); de oude TradeJournal-releases staan verderop in dit bestand. Je data overzetten kan via Instellingen → Data → Importeer oude backup.
 
+## [v0.9.120] — 2026-09-22
+
+### Fixed
+- **Trades van dezelfde dag stonden in willekeurige volgorde.** De lijst sorteerde alleen op de datum, niet op het tijdstip erbij — dus kon een trade van 17:08 onder één van 04:03 belanden. Hij sorteert nu op het moment van de trade, en bij precies hetzelfde moment blijft de volgorde vast.
+
 ## [v0.9.119] — 2026-09-22
 
 ### Fixed

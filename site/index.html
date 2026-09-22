@@ -1551,14 +1551,16 @@ const svg=(p,w=18)=>`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" 
    bedrag (STATE.pctRef, bijv. prop-account). Geen betrouwbare basis → GEEN
    percentage (null), nooit een verzonnen getal. Weergave rekent live; het oude
    opgeslagen pnlPct-veld wordt genegeerd. */
-function _pnlMomentKey(t){const o=+t.openTime||0;if(o)return o;const ms=+new Date((t.date||'1970-01-01')+'T'+(t.time||'00:00'));return isFinite(ms)?ms:0;}
+/* Het moment waarop een trade telt: het open-moment (je beslissing valt bij entry), en
+   anders de ingevoerde datum + tijd. Gebruikt voor de equity-curve én de sortering. */
+function tradeMoment(t){const o=+t.openTime||0;if(o)return o;const ms=+new Date((t.date||'1970-01-01')+'T'+(t.time||'00:00'));return isFinite(ms)?ms:0;}
 let _pctKey='',_pctMap=null;
 function _pctBases(){
   const total=totalBalance();
   const key=T.length+'|'+total.toFixed(2)+'|'+DB.load('data_ts',0);
   if(key===_pctKey&&_pctMap)return _pctMap;
   const m=new Map();
-  const closed=T.filter(t=>t&&t.status==='closed'&&isFinite(+t.pnl)).sort((a,b)=>_pnlMomentKey(a)-_pnlMomentKey(b));
+  const closed=T.filter(t=>t&&t.status==='closed'&&isFinite(+t.pnl)).sort((a,b)=>tradeMoment(a)-tradeMoment(b));
   let acc=0;
   for(let i=closed.length-1;i>=0;i--){acc+=+closed[i].pnl||0;m.set(closed[i].id,total-acc);}
   _pctKey=key;_pctMap=m;return m;
@@ -1580,7 +1582,7 @@ function pnlPctTotal(rows,net){
   const n=closed.length?netUsd(closed):(+net||0);   // altijd in dollars, ongeacht de weergave
   const ref=+((STATE||{}).pctRef)||0;if(ref>0)return +(n/ref*100).toFixed(2);
   if(!closed.length)return null;
-  const oldest=closed.reduce((a,c)=>_pnlMomentKey(c)<_pnlMomentKey(a)?c:a);
+  const oldest=closed.reduce((a,c)=>tradeMoment(c)<tradeMoment(a)?c:a);
   const b=pnlBaseOf(oldest);return b>0?+(n/b*100).toFixed(2):null;
 }
 /* ═══ €/%/R-weergave (Denny 2026-09-18, zoals de originele Morani-journal) ═══
@@ -1760,7 +1762,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.119';
+const APP_VERSION='v0.9.120';
 const SCHEMA_VERSION=7;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -2934,7 +2936,14 @@ function pgTrades(){
   const q=STATE.query.toLowerCase();
   if(q)rows=rows.filter(t=>(t.pair+' '+t.setup+' '+t.session+' '+tradeEmotions(t).join(' ')+' '+tradeMistakes(t).join(' ')+' '+tradeTagsAll(t).join(' ')).toLowerCase().includes(q));
   const sc=STATE.sortCol,sd=STATE.sortDir;
-  rows=rows.slice().sort((a,b)=>{let x=a[sc],y=b[sc];if(sc==='size'){x=SZ(a);y=SZ(b);}if(typeof x==='string'){return x<y?-sd:x>y?sd:0;}return (x-y)*sd;});
+  rows=rows.slice().sort((a,b)=>{let x=a[sc],y=b[sc];
+    if(sc==='size'){x=SZ(a);y=SZ(b);}
+    // op datum sorteren is op moment sorteren: anders staan twee trades van dezelfde dag
+    // in de volgorde waarin ze toevallig zijn binnengekomen (Denny 22-09-2026)
+    if(sc==='date'){x=tradeMoment(a);y=tradeMoment(b);}
+    const c=(typeof x==='string')?(x<y?-sd:x>y?sd:0):((x-y)*sd);
+    return c||((a.id-b.id)*sd);   // gelijk moment: vaste volgorde, geen geschuif bij hertekenen
+  });
   const maxS=Math.max(1,...rows.map(SZ)),net=rows.reduce((s,t)=>s+t.pnl,0);
   // Paginatie: render alleen de huidige pagina (houdt de DOM klein bij duizenden trades).
   const PAGE=100;let tPage=STATE.tradePage||0;const pageCount=Math.max(1,Math.ceil(rows.length/PAGE));
