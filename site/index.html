@@ -1758,8 +1758,8 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.112';
-const SCHEMA_VERSION=5;
+const APP_VERSION='v0.9.113';
+const SCHEMA_VERSION=6;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
   // ander type dan verwacht (bv. sj_manual='null' of een array waar een object hoort).
@@ -1882,6 +1882,22 @@ const MIGRATIONS=[
     T.forEach(t=>{ if(!t||t.exchange!=='okx')return; const open=hernoem(t); if(!open)return; t.fills=[]; vroegste=Math.min(vroegste,open); });
     let prul=0;TRASH.forEach(t=>{ if(t&&t.exchange==='okx'&&hernoem(t))prul++; });if(prul)persistTrash();
     if(isFinite(vroegste)&&CONNS.okx&&CONNS.okx.connected){ CONNS.okx={...CONNS.okx,lastSync:vroegste-3600e3}; persistConns(); }
+  }},
+  /* Hyperliquid van "rij per sluiting" naar "rij per positie-levensloop" (model B). De oude
+     rijen zijn niet lokaal te hergroeperen (ze missen de fills), dus: markeren, en de sync
+     terugzetten tot de oudste rij. De eerstvolgende sync bouwt de levenslopen opnieuw op uit
+     de fills; ExchangeAPI.hyperliquid.afterImport laat de gemarkeerde rijen daarin opgaan,
+     met hun notities en tags. Rijen ouder dan wat Hyperliquid nog levert blijven staan. */
+  {v:6,note:'Hyperliquid: \u00e9\u00e9n trade per positie-levensloop',up(){
+    let vroegste=Infinity,n=0;
+    T.forEach(t=>{
+      if(!t||t.exchange!=='hyperliquid'||t.status!=='closed')return;
+      const k=String(t.srcId||'');
+      if(!/^hyperliquid_/.test(k)||/^hyperliquid_csv_/.test(k))return;
+      t._hlOud=1;n++;
+      const m=+t.openTime||+t.closeTime||0; if(m>0)vroegste=Math.min(vroegste,m);
+    });
+    if(n&&isFinite(vroegste)&&CONNS.hyperliquid&&CONNS.hyperliquid.connected){ CONNS.hyperliquid={...CONNS.hyperliquid,lastSync:vroegste-3600e3}; persistConns(); }
   }},
 ];
 async function runMigrations(){
@@ -2383,7 +2399,7 @@ function execTable(t){
       vorigeAvg=x.avgEntry;
       rows+=`<tr>
         <td class="num">${ts2time(x.ts)}</td>
-        <td><span class="fk" style="--fc:${k[1]}">${k[0]}</span></td>
+        <td><span class="fk" style="--fc:${k[1]}">${k[0]}</span>${x.synthetic?' <span class="exflat" title="Instap lag buiten het sync-venster; afgeleid uit de P&amp;L van de sluiting">≈</span>':''}</td>
         <td class="num mask">${n(x.qtyAsset)}</td>
         <td class="num">${px(x.price)}</td>
         <td class="num mask">${x.posAfter>0?n(x.posAfterAsset):'<span class="exflat">vlak</span>'}</td>
@@ -5353,11 +5369,14 @@ function fillTimeline(steps,opts){
     const q=Math.abs(+f.qty)||0, px=+f.price||0, fee=Math.abs(+f.fee)||0;
     const sq=(String(f.side||'').toLowerCase()==='buy'?1:-1)*q;
     const vergroot=(pos*sq)>=0;
-    let kind,pnl=null;
+    let kind,pnl=null,pnlCalc=null;
     if(!vergroot){
       // nooit meer afrekenen dan er openstaat — de rest opent een positie de andere kant op
       const dicht=Math.min(q,Math.abs(pos));
-      pnl=(px-avg)*dicht*mult*(pos>0?1:-1);
+      pnlCalc=(px-avg)*dicht*mult*(pos>0?1:-1);
+      /* Levert de exchange zelf de gerealiseerde P&L per fill (Hyperliquid closedPnl, OKX
+         fillPnl), dan is dát het getoonde bedrag; ons eigen cijfer blijft als controle. */
+      pnl=(f.pnlExch!=null&&isFinite(+f.pnlExch))?+f.pnlExch:pnlCalc;
     }
     if(vergroot){
       kind=pos===0?'open':'add';
@@ -5371,7 +5390,8 @@ function fillTimeline(steps,opts){
     pos+=sq;
     return {ts:+f.ts||0,side:f.side,kind,qty:q,qtyAsset:q*mult,price:px,fee,
             posAfter:Math.abs(pos),posAfterAsset:Math.abs(pos)*mult,
-            dirAfter:pos>0?'long':pos<0?'short':'',avgEntry:avg,pnl};
+            dirAfter:pos>0?'long':pos<0?'short':'',avgEntry:avg,pnl,pnlCalc,
+            ...(f.synthetic?{synthetic:true}:{}),...(f.ordId?{ordId:f.ordId}:{})};
   });
 }
 // Samenvatting van een stappenlijst: aantallen en de twee gemiddelden naast elkaar.
@@ -5825,90 +5845,140 @@ const ExchangeAPI = {
         const px=parseFloat(f.px)||0;
         const fee=Math.abs(parseFloat(f.fee)||0);
         const pnl=parseFloat(f.closedPnl)||0;
-        if(!g[k]){g[k]={ms:f.ms,coin:f.coin,dir:f.dir,tid:f.tid,_szSum:0,_pxW:0,_feeSum:0,_pnlSum:0};}
+        if(!g[k]){g[k]={ms:f.ms,coin:f.coin,dir:f.dir,side:f.side,startPosition:f.startPosition,tid:f.tid,_szSum:0,_pxW:0,_feeSum:0,_pnlSum:0};}
         g[k]._szSum+=sz;g[k]._pxW+=px*sz;g[k]._feeSum+=fee;g[k]._pnlSum+=pnl;
         if(!g[k].tid&&f.tid)g[k].tid=f.tid;
-      }
-      return Object.values(g).map(o=>({ms:o.ms,coin:o.coin,dir:o.dir,tid:o.tid,sz:String(o._szSum),px:o._szSum>0?String(o._pxW/o._szSum):"0",fee:String(o._feeSum),closedPnl:String(o._pnlSum)}));
-    },
-    // Gedeelde FIFO-reconstructie voor API + CSV. Input: array van fills met
-    // {coin, dir, px, sz, fee, closedPnl, ms, tid?}. Sub-fills op zelfde ms+coin+dir worden
-    // eerst geaggregeerd. Elke close-fill wordt gematcht met oudste opens per coin+richting
-    // → gewogen entry, netto PnL (closedPnl − openFees), totale fees = close-fee + opens-fees.
-    _reconstructTrades(fills,idPrefix){
-      const aggregated=this._aggregateSubFills(fills);
-      const opens={};// key "COIN:side" → [{px,sz,fee,ms}, ...]
-      const out=[];
-      const sorted=[...aggregated].sort((a,b)=>(a.ms||0)-(b.ms||0));
-      for(const f of sorted){
-        let side,isOpen;
-        if(f.dir==="Open Long"){side="long";isOpen=true;}
-        else if(f.dir==="Close Long"){side="long";isOpen=false;}
-        else if(f.dir==="Open Short"){side="short";isOpen=true;}
-        else if(f.dir==="Close Short"){side="short";isOpen=false;}
-        else if(f.dir==="Buy"){side="long";isOpen=true;}// spot open long
-        else if(f.dir==="Sell"){side="long";isOpen=false;}// spot close long
-        else continue;// flip-fills "Long > Short" / "Short > Long". MVP skip
-        const szN=Math.abs(parseFloat(f.sz)||0);
-        const pxN=parseFloat(f.px)||0;
-        const feeN=Math.abs(parseFloat(f.fee)||0);
-        const pnlN=parseFloat(f.closedPnl)||0;
-        const key=f.coin+":"+side;
-        if(isOpen){
-          if(!opens[key])opens[key]=[];
-          opens[key].push({px:pxN,sz:szN,fee:feeN,ms:Number(f.ms)||0});
-        }else{
-          const q=opens[key]||[];
-          let remaining=szN,entryW=0,entrySize=0,openFees=0,openMs=0;
-          while(remaining>1e-9&&q.length){
-            const lot=q[0];
-            if(!openMs)openMs=lot.ms;
-            if(lot.sz<=remaining+1e-9){entryW+=lot.px*lot.sz;entrySize+=lot.sz;openFees+=lot.fee;remaining-=lot.sz;q.shift();}
-            else{const ratio=remaining/lot.sz;const feeShare=lot.fee*ratio;entryW+=lot.px*remaining;entrySize+=remaining;openFees+=feeShare;lot.fee-=feeShare;lot.sz-=remaining;remaining=0;}
-          }
-          let avgEntry=entrySize>0?entryW/entrySize:0;
-          // Fase 2 (onderzoek 2026-09-14): lone close — open-fills buiten het sync-venster.
-          // HL houdt de entry constant bij partial closes, dus de entry is exact terug te
-          // rekenen uit de close-fill zelf: entry = px − richting × closedPnl/sz.
-          // (closedPnl is bruto, exclusief fees — live geverifieerd op echte fills.)
-          let entryDerived=false;
-          if(!(avgEntry>0)&&pxN>0&&szN>0){
-            const dirSign=side==="long"?1:-1;
-            const calc=pxN-dirSign*(pnlN/szN);
-            if(isFinite(calc)&&calc>0){avgEntry=calc;entryDerived=true;}
-          }
-          // closedPnl (API-stijl, na pre-aggregatie) = GROSS PnL zonder fees afgetrokken.
-          // Echte netto = gross − close_fee − Σ(open_fees). CSV-parser normaliseert zijn
-          // eigen "closedPnl − close_fee" convention naar API-stijl vóór de helper.
-          const totalFee=feeN+openFees;
-          const netPnl=pnlN-totalFee;
-          const partial=entrySize<szN-1e-9;
-          const usdNotional=avgEntry>0?(avgEntry*szN).toFixed(2):"";
-          const closeMs=Number(f.ms)||0;
-          const fingerprint=f.tid||(openMs+"_"+f.coin+"_"+side+"_"+closeMs);
-          out.push({...EMPTY_TRADE,
-            id:idPrefix+"_"+fingerprint,
-            date:openMs?ts2date(openMs):ts2date(closeMs),
-            time:openMs?ts2time(openMs):ts2time(closeMs),
-            openTime:openMs?String(openMs):"",
-            closeTime:String(closeMs),
-            pair:this._toPair(f.coin),
-            direction:side,
-            entry:avgEntry>0?normPrice(avgEntry):"",
-            exit:normPrice(pxN),
-            positionSize:usdNotional,
-            positionSizeAsset:szN>0?normPrice(szN):"",
-            pnl:String(netPnl.toFixed(4)),
-            fees:String(totalFee.toFixed(4)),
-            leverage:"",
-            source:"hyperliquid",
-            status:"closed",
-            positionId:f.tid?String(f.tid):"",
-            notes:entryDerived?"⚠ Entry afgeleid uit closedPnl, open-fill lag buiten het sync-venster":(partial?"⚠ Partial data: opening fills buiten range":""),
-          });
+        /* startPosition = de stand vóór de hele order: sub-fills bewegen één kant op, dus bij
+           openen is dat de kleinste |stand|, bij sluiten de grootste. */
+        if(f.startPosition!=null&&f.startPosition!==""){
+          const a=Math.abs(parseFloat(g[k].startPosition))||0, b=Math.abs(parseFloat(f.startPosition))||0;
+          const opent=/Open|Buy/.test(String(f.dir||""));
+          if(g[k].startPosition==null||g[k].startPosition===""||(opent?b<a:b>a))g[k].startPosition=f.startPosition;
         }
       }
-      return out;
+      return Object.values(g).map(o=>({ms:o.ms,coin:o.coin,dir:o.dir,side:o.side,startPosition:o.startPosition,tid:o.tid,sz:String(o._szSum),px:o._szSum>0?String(o._pxW/o._szSum):"0",fee:String(o._feeSum),closedPnl:String(o._pnlSum)}));
+    },
+    /* Gedeelde reconstructie voor API + CSV. Input: fills met {coin, dir, px, sz, fee,
+       closedPnl, ms, side?, startPosition?, tid?}. Sub-fills op dezelfde ms+coin+dir worden
+       eerst geaggregeerd.
+
+       Model B (22-09-2026): één positie-levensloop = één trade. De fills van een coin worden
+       op volgorde afgelopen; van de eerste fill bij een vlakke positie tot de fill die hem
+       weer vlak maakt is één trade, met alle fills als stappen. Daarvóór maakte elke sluiting
+       een eigen trade (FIFO tegen de oudste opens), waardoor drie TP's drie rijen werden en
+       de analytics sluitingen telden in plaats van beslissingen.
+
+       Hyperliquid zegt per fill wat hij is (dir "Open Long"/"Close Short"/..., side B/A) en
+       levert closedPnl bruto per fill; dat cijfer is leidend per stap. Netto = Σ closedPnl
+       − Σ fees (live geverifieerd op echte fills).
+
+       Begint een levensloop met een sluiting (opens buiten het sync-venster), dan wordt de
+       instap afgeleid uit de sluiting zelf - HL houdt de entry constant, dus
+       entry = px − richting × closedPnl/sz - en als synthetische stap getoond. */
+    _effectOf(f){
+      const side=String(f.side||"").toUpperCase();
+      if(side==="B")return "buy"; if(side==="A")return "sell";
+      const d=String(f.dir||"");
+      if(d==="Open Long"||d==="Close Short"||d==="Buy"||d==="Short > Long")return "buy";
+      if(d==="Close Long"||d==="Open Short"||d==="Sell"||d==="Long > Short")return "sell";
+      return "";
+    },
+    _reconstructTrades(fills,idPrefix){
+      const aggregated=this._aggregateSubFills(fills);
+      const sorted=[...aggregated].sort((a,b)=>((a.ms||0)-(b.ms||0))||String(a.tid||"").localeCompare(String(b.tid||"")));
+      const out=[];
+      const lopend={};   // coin → {pos, steps}
+      const sluitAf=(coin,st)=>{
+        const steps=st.steps; if(!steps.length)return;
+        const tl=fillTimeline(steps,{mult:1});
+        if(!tl.some(x=>x.kind==='close'))return;
+        const sum=fillSummary(tl);
+        const first=tl[0], last=tl[tl.length-1];
+        const side=first.side==="buy"?"long":"short";
+        const bruto=tl.reduce((a,x)=>a+(x.pnl||0),0);
+        const fees=tl.reduce((a,x)=>a+(x.fee||0),0);
+        const net=bruto-fees;
+        const qty=sum.exitsAsset||sum.peak||0;
+        const entry=sum.avgEntry, exit=sum.avgExit;
+        const afgeleid=steps.some(x=>x.synthetic);
+        const fp=st.firstTid||(first.ts+"_"+coin+"_"+side+"_"+last.ts);
+        out.push({...EMPTY_TRADE,
+          id:idPrefix+"_"+fp,
+          date:ts2date(first.ts),time:ts2time(first.ts),
+          openTime:String(first.ts),closeTime:String(last.ts),
+          pair:this._toPair(coin),
+          direction:side,
+          entry:entry>0?normPrice(entry):"",
+          exit:exit>0?normPrice(exit):"",
+          positionSize:entry>0&&qty>0?(entry*qty).toFixed(2):"",
+          positionSizeAsset:qty>0?normPrice(qty):"",
+          pnl:String(net.toFixed(4)),
+          fees:String(fees.toFixed(4)),
+          leverage:"",
+          source:"hyperliquid",
+          status:"closed",
+          positionId:coin,
+          fills:tl,
+          notes:afgeleid?"\u26a0 Entry afgeleid uit closedPnl, open-fill lag buiten het sync-venster":"",
+        });
+      };
+      for(const f of sorted){
+        const side=this._effectOf(f); if(!side)continue;
+        const szN=Math.abs(parseFloat(f.sz)||0), pxN=parseFloat(f.px)||0, feeN=Math.abs(parseFloat(f.fee)||0), pnlN=parseFloat(f.closedPnl)||0;
+        if(!(szN>0)||!(pxN>0))continue;
+        const coin=f.coin;
+        const st=lopend[coin]||(lopend[coin]={pos:0,steps:[],firstTid:null,voorstuk:null});
+        if(st.pos===0&&st.steps.length===0){
+          st.firstTid=f.tid?String(f.tid):null;
+          const sp=parseFloat(f.startPosition);
+          const sluitNu=/Close|>/.test(String(f.dir||""));
+          if(isFinite(sp)&&Math.abs(sp)>1e-9){
+            /* De positie liep al toen het venster begon (API geeft de stand vóór de fill mee,
+               met teken: + long, − short). Zet dat voorstuk als synthetische instap neer; de
+               prijs ervan volgt uit de eerste sluiting, want HL rekent closedPnl tegen de
+               gewogen entry: entry = px − richting × closedPnl/sz. */
+            st.voorstuk={ts:(Number(f.ms)||0)-1,side:sp>0?"buy":"sell",qty:Math.abs(sp),price:0,fee:0,synthetic:true};
+            st.steps.push(st.voorstuk);
+            st.pos=sp;
+          }else if(sluitNu){
+            /* Geen startPosition (CSV) en toch een sluiting als eerste: neem de grootte van
+               die sluiting als voorstuk. Meer weten we niet. */
+            const posSide=side==="sell"?1:-1;              // een sell sluit een long
+            const entryCalc=pxN-posSide*(pnlN/szN);
+            if(isFinite(entryCalc)&&entryCalc>0){
+              st.steps.push({ts:(Number(f.ms)||0)-1,side:posSide>0?"buy":"sell",qty:szN,price:entryCalc,fee:0,synthetic:true});
+              st.pos=posSide*szN;
+            }
+          }
+        }
+        const sluit=(st.pos>0&&side==="sell")||(st.pos<0&&side==="buy");
+        if(sluit&&st.voorstuk&&!(st.voorstuk.price>0)){
+          // eerste sluiting: het gewogen gemiddelde van nu is bekend, dus de prijs van het voorstuk ook
+          const posSide=st.pos>0?1:-1;
+          const gem=pxN-posSide*(pnlN/szN);
+          const bij=st.steps.filter(x=>x!==st.voorstuk&&x.side===st.voorstuk.side);
+          const bijSz=bij.reduce((a,x)=>a+x.qty,0), bijPx=bij.reduce((a,x)=>a+x.qty*x.price,0);
+          const prijs=(gem*(st.voorstuk.qty+bijSz)-bijPx)/st.voorstuk.qty;
+          st.voorstuk.price=(isFinite(prijs)&&prijs>0)?prijs:(gem>0?gem:pxN);
+        }
+        st.steps.push({ts:Number(f.ms)||0,side,qty:szN,price:pxN,fee:feeN,pnlExch:sluit?pnlN:null,id:f.tid?String(f.tid):undefined});
+        st.pos+=side==="buy"?szN:-szN;
+        if(Math.abs(st.pos)<1e-9){ st.pos=0; sluitAf(coin,st); delete lopend[coin]; }
+      }
+      return out;   // wat nog open staat komt niet mee: daar zorgt de open-positie-placeholder voor
+    },
+    /* Na een sync: oude rijen uit het model-A-tijdperk (één rij per sluiting, gemarkeerd door
+       migratie v6) opgaan in de levensloop die ze bevat. Notities en tags verhuizen mee. */
+    afterImport(nieuw){
+      let n=0;
+      (nieuw||[]).forEach(L=>{
+        if(!L||L.exchange!=="hyperliquid")return;
+        const van=+L.openTime-1000, tot=+L.closeTime+1000;
+        T.filter(o=>o&&o._hlOud&&o.exchange==="hyperliquid"&&o.pair===L.pair&&o.dir===L.dir&&(+o.closeTime)>=van&&(+o.closeTime)<=tot)
+         .forEach(o=>{ adoptUserFieldsSJ(L,o); T=T.filter(t=>t.id!==o.id); n++; });
+      });
+      if(n)persist();
+      return n;
     },
     async testConnection(walletAddress){
       const addr=this._validateAddress(walletAddress);
@@ -5944,8 +6014,27 @@ const ExchangeAPI = {
       }
       // FIFO-reconstructie via gedeelde helper — haalt open-fills op, weegt entry-price,
       // trekt open-fees af van closedPnl voor echte netto-PnL.
-      const fills=allFills.map(f=>({coin:f.coin,dir:f.dir,px:f.px,sz:f.sz,fee:f.fee,closedPnl:f.closedPnl,ms:Number(f.time)||0,tid:f.tid}));
-      return this._reconstructTrades(fills,"hyperliquid");
+      const naarFill=f=>({coin:f.coin,dir:f.dir,side:f.side,startPosition:f.startPosition,px:f.px,sz:f.sz,fee:f.fee,closedPnl:f.closedPnl,ms:Number(f.time)||0,tid:f.tid});
+      /* Liep een positie al toen het venster begon (startPosition ≠ 0 op de eerste fill van
+         een coin), dan liggen de opens ervoor. Eén keer verder terug kijken kost één extra
+         aanroep en geeft de hele levensloop in plaats van een afgeleide instap. */
+      const eerstePerCoin={};
+      [...allFills].sort((a,b)=>(+a.time||0)-(+b.time||0)).forEach(f=>{ if(!(f.coin in eerstePerCoin))eerstePerCoin[f.coin]=f; });
+      const liepAl=Object.values(eerstePerCoin).some(f=>Math.abs(parseFloat(f.startPosition)||0)>1e-9);
+      if(liepAl&&startTime){
+        const eerder=fromTs-60*864e5;
+        const extra=[];let c2=eerder,g2=0;
+        while(g2++<20){
+          const batch=await this._post({type:"userFillsByTime",user:addr,startTime:c2,endTime:fromTs-1});
+          if(!Array.isArray(batch)||batch.length===0)break;
+          extra.push(...batch);
+          if(batch.length<2000)break;
+          const lastTs=batch[batch.length-1].time; if(!lastTs||lastTs<=c2)break; c2=lastTs+1;
+        }
+        const gezien=new Set(allFills.map(f=>String(f.tid)));
+        extra.forEach(f=>{ if(!gezien.has(String(f.tid)))allFills.push(f); });
+      }
+      return this._reconstructTrades(allFills.map(naarFill),"hyperliquid");
     },
     async fetchOpenPositions(walletAddress){
       const addr=this._validateAddress(walletAddress);
@@ -6245,7 +6334,7 @@ ExchangeAPI.okx.captureSnapshot=async function(creds){
 ExchangeAPI.blofin.detectPartials=function(trades,sourceKey){return detectPartialFromSiblings(trades,sourceKey||"blofin","blofin")};
 ExchangeAPI.mexc.detectPartials=function(trades,sourceKey){return detectPartialFromSiblings(trades,sourceKey||"mexc","mexc")};
 ExchangeAPI.kraken.detectPartials=function(trades,sourceKey){return detectPartialFromSiblings(trades,sourceKey||"kraken","kraken")};
-ExchangeAPI.hyperliquid.detectPartials=function(trades,sourceKey){return detectPartialFromSiblings(trades,sourceKey||"hyperliquid","hyperliquid")};
+ExchangeAPI.hyperliquid.detectPartials=function(trades){return trades};   // model B: een levensloop is al compleet, er zijn geen siblings
 ExchangeAPI.okx.detectPartials=function(trades,sourceKey){return detectPartialFromSiblings(trades,sourceKey||"okx","okx")};
 ExchangeAPI.ftmo.detectPartials=function(trades){return trades};
 
@@ -6290,6 +6379,7 @@ function sjFromTj(tj){
   t.qtyAsset=parseFloat(tj.positionSizeAsset)||0;
   if(tj._rawCloseSize!=null)t._rawCloseSize=String(tj._rawCloseSize);
   t.openTime=String(tj.openTime||'');t.closeTime=String(tj.closeTime||'');
+  if(Array.isArray(tj.fills)&&tj.fills.length)t.fills=tj.fills;   // adapters die de stappen al kennen (Hyperliquid)
   // Canoniek: het OPEN-moment bepaalt datum/tijd/sessie (besluit 2026-09-14) — je beslissing
   // valt bij entry. Adapters stempelden dit wisselend (MEXC/Blofin op close, HL op open).
   if(+t.openTime){t.date=ts2date(+t.openTime);t.time=ts2time(+t.openTime);t.session=sessionFromTime(t.time);}
@@ -6302,7 +6392,7 @@ function sjFromTj(tj){
 /* Velden die van de exchange komen en dus mogen worden bijgewerkt als dezelfde trade
    opnieuw langskomt met een verdere stand. Alles wat JIJ invult (notities, tags, setup,
    beoordeling, screenshots) blijft staan - daarom staat dat hier bewust niet in. */
-const SJ_SYNC_FIELDS=['exit','pnl','fees','r','status','closeTime','qtyAsset','size','_rawCloseSize','realizedPnl','tps','leverage'];
+const SJ_SYNC_FIELDS=['entry','exit','pnl','fees','r','status','closeTime','qtyAsset','size','_rawCloseSize','realizedPnl','tps','leverage','fills'];   // fills als laatste: na het wissen hieronder
 function refreshFromSync(bestaand,verse){
   let gewijzigd=false;
   SJ_SYNC_FIELDS.forEach(k=>{
@@ -6310,7 +6400,7 @@ function refreshFromSync(bestaand,verse){
     const nieuw=verse[k], oud=bestaand[k];
     const zelfde=(Array.isArray(nieuw)&&Array.isArray(oud))?JSON.stringify(nieuw)===JSON.stringify(oud):String(nieuw)===String(oud);
     if(!zelfde){bestaand[k]=nieuw;gewijzigd=true;
-      if(k==='closeTime'||k==='pnl')bestaand.fills=[];   // positie is verder gelopen → stappen opnieuw ophalen
+      if((k==='closeTime'||k==='pnl')&&!(Array.isArray(verse.fills)&&verse.fills.length))bestaand.fills=[];   // positie is verder gelopen → stappen opnieuw ophalen (tenzij de adapter ze al meegeeft)
     }
   });
   return gewijzigd;
@@ -6461,6 +6551,7 @@ async function syncExchange(exId,opts){
   finalizePlaceholders(exId,mapped);
   finalizeStaleOpens(exId);
   runPartialDetect(exId);
+  if(typeof ad.afterImport==='function'){ try{ ad.afterImport(mapped); }catch(e){} }   // exchange-eigen opruiming (HL: oude per-sluiting-rijen)
   let bf={n:0,reden:''};
   try{ bf=(await backfillFills(exId))||bf; }catch(e){ bf={n:0,reden:'fout',detail:(e&&e.message)||String(e)}; }
   if(!quiet&&bf.reden){

@@ -127,7 +127,8 @@ const TRADE = {
     ok('een tweede keer doet niets: de stappen staan er al', nog.n === 0 && nog.len === 7, JSON.stringify(nog));
 
     const bijgewerkt = await p.evaluate(() => {
-      const vers = { ...T[0], closeTime: '1790099999999', pnl: -12 };
+      const { fills: _weg, ...rest } = T[0];   // een OKX-record uit de sync draagt zelf geen stappen
+      const vers = { ...rest, closeTime: '1790099999999', pnl: -12 };
       const gew = refreshFromSync(T[0], vers);
       return { gew, fills: (T[0].fills || []).length };
     });

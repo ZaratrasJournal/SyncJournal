@@ -1,6 +1,6 @@
 # OKX-herstelplan
 
-Datum: 2026-09-22. Hoort bij [okx-model.md](okx-model.md) (hoe OKX werkt). Status: **stap 1 gebouwd** (v0.9.112, lokaal; spec `tests/okx-levensloop.spec.js`, 25/25 op Denny's back-ups en de snapshot van 29-06). Stap 2 en 3 wachten op akkoord.
+Datum: 2026-09-22. Hoort bij [okx-model.md](okx-model.md) (hoe OKX werkt). Status: **stap 1 gebouwd** (v0.9.112, lokaal; spec `tests/okx-levensloop.spec.js`, 25/25 op Denny's back-ups en de snapshot van 29-06). Hyperliquid naar model B: gebouwd in v0.9.113 (`tests/hyperliquid-levensloop.spec.js`, 25/25 op de wallet-snapshot van mei). Volgende: formulier vergrendelen voor gesyncte trades, dan Blofin, Kraken, en OKX stap 2/3.
 
 ## Wat er kapot is, in één zin
 

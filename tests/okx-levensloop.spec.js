@@ -115,7 +115,7 @@ const LOOP2 = { cTime: 1790046180000, uTime: 1790070780000, openAvgPx: 85551.6, 
       applyBackup(d); await new Promise(x => setTimeout(x, 1800));
       return { schema: DB.load('schema', 0), t: T.filter(x => x.exchange === 'okx').map(x => ({ srcId: x.srcId, pnl: +x.pnl, fills: (x.fills || []).length })) };
     }, BK21);
-    ok('schema staat op 5', r.schema === 5, JSON.stringify(r.schema));
+    ok('schema staat op de huidige versie', r.schema === await p.evaluate(() => SCHEMA_VERSION), JSON.stringify(r.schema));
     ok('de ene positie blijft één trade, nu met cTime in de sleutel', r.t.length === 1 && r.t[0].srcId === 'okx_' + POS + '_' + LOOP1.cTime, JSON.stringify(r.t));
     await ctx.close();
   } else { ok('back-up 21-09 aanwezig', false, 'ontbreekt'); }

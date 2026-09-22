@@ -10,6 +10,12 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 De journal is opnieuw opgebouwd als **SyncJournal** en draait nu online op [syncjournal.nl](https://syncjournal.nl). Versienummers zijn opnieuw gestart op v0.9.x (bèta); de oude TradeJournal-releases staan verderop in dit bestand. Je data overzetten kan via Instellingen → Data → Importeer oude backup.
 
+## [v0.9.113] — 2026-09-22
+
+### Gewijzigd
+- **Hyperliquid: één trade per positie, met alle stappen erin.** Tot nu toe werd elke sluiting een eigen trade: drie take-profits waren drie rijen, en je winrate en trade-aantal telden sluitingen in plaats van beslissingen. Een positie loopt nu van de eerste instap tot hij weer vlak is, en de instappen, bijkopen en afbouwstappen staan als stappen in de trade — direct uit de fills, zonder aparte ophaalstap. De P&L per stap is die van Hyperliquid zelf.
+- Bestaande Hyperliquid-trades worden bij de eerstvolgende sync opnieuw opgebouwd; je notities en tags gaan mee naar de trade waar de oude rij in valt. Liep een positie al vóór het sync-venster, dan kijkt de sync eenmalig zestig dagen verder terug.
+
 ## [v0.9.112] — 2026-09-22
 
 ### Fixed
