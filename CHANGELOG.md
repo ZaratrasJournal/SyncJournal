@@ -10,6 +10,15 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 De journal is opnieuw opgebouwd als **SyncJournal** en draait nu online op [syncjournal.nl](https://syncjournal.nl). Versienummers zijn opnieuw gestart op v0.9.x (bèta); de oude TradeJournal-releases staan verderop in dit bestand. Je data overzetten kan via Instellingen → Data → Importeer oude backup.
 
+## [v0.9.108] — 2026-09-22
+
+### Fixed
+- **Stappen ophalen werkte niet bij een gevulde journal.** De app vroeg de exchange om één tijdvenster voor al je posities tegelijk — met voorbeelddata in je journal liep dat van februari 2025 tot vandaag. Zo'n bereik van negentien maanden weigert de exchange, dus kwam er niets terug. Elke positie krijgt nu zijn eigen, smalle venster.
+- Voorbeelddata en handmatige trades worden niet meer bij de exchange opgevraagd: die zijn daar nooit geweest. Vraag je er via de knop toch om, dan probeert de app het gewoon.
+- Mislukte pogingen worden niet meer bij elke sync herhaald; na een week krijgt zo'n positie vanzelf een nieuwe kans.
+- Is een positie ouder dan de bewaartermijn van de exchange (ongeveer drie maanden), dan zegt de app dat nu met zoveel woorden.
+- De foutmelding toonde twee keer dezelfde knop **Details**.
+
 ## [v0.9.107] — 2026-09-22
 
 ### Toegevoegd

@@ -23,7 +23,7 @@ const ECHT = [
 ];
 const ruw = (f) => f.map(x => ({ instId: 'BTC-USD_UM_XPERP-04APR31', posSide: 'short', ts: String(x.ts), side: x.side, fillSz: String(x.qty), fillPx: String(x.price), fee: String(-x.fee) }));
 const TRADE = {
-  id: 1, exchange: 'okx', pair: 'BTC/USDC', dir: 'short', status: 'closed', kind: 'live',
+  id: 1, exchange: 'okx', srcId: 'okx_3809943469299781632', pair: 'BTC/USDC', dir: 'short', status: 'closed', kind: 'live',
   date: '2026-09-20', time: '03:51', entry: 81029.32, exit: 82039.31, openTime: '1789869078888',
   closeTime: '1790012341907', qtyAsset: 0.009, pnl: -9.7626, r: -0.6, size: '729.26', fees: 0.7279,
   tps: [], tags: [], layers: [], emotions: [], mistakes: [], checks: [], screenshots: [], tvLinks: [],
@@ -252,9 +252,9 @@ const TRADE = {
     const r = await p.evaluate(async t0 => {
       CONNS.okx = { connected: true, apiKey: 'k', apiSecret: 's', passphrase: 'p' };
       const uit = {};
-      T = [t0]; ExchangeAPI.okx.fetchFills = async () => []; uit.leeg = await backfillFills('okx');
-      T = [t0]; ExchangeAPI.okx.fetchFills = async () => { throw new Error('403 van de proxy'); }; uit.fout = await backfillFills('okx');
-      T = [t0]; ExchangeAPI.okx.fetchFills = async () => [{ instId: 'ETH-USDT-SWAP', posSide: 'long', ts: '1789869078000', side: 'buy', fillSz: '1', fillPx: '2000', fee: '-0.1' }];
+      T = [{ ...t0 }]; ExchangeAPI.okx.fetchFills = async () => []; uit.leeg = await backfillFills('okx');
+      T = [{ ...t0 }]; ExchangeAPI.okx.fetchFills = async () => { throw new Error('403 van de proxy'); }; uit.fout = await backfillFills('okx');
+      T = [{ ...t0 }]; ExchangeAPI.okx.fetchFills = async () => [{ instId: 'ETH-USDT-SWAP', posSide: 'long', ts: '1789869078000', side: 'buy', fillSz: '1', fillPx: '2000', fee: '-0.1' }];
       uit.mismatch = await backfillFills('okx');
       T = []; uit.niets = await backfillFills('okx');
       return uit;
@@ -266,7 +266,7 @@ const TRADE = {
     ok('niets te doen is geen fout', r.niets.reden === '', JSON.stringify(r.niets));
 
     const gemeld = await p.evaluate(async t0 => {
-      T = [t0]; CONNS.okx = { connected: true, apiKey: 'k', apiSecret: 's', passphrase: 'p' };
+      T = [{ ...t0 }]; CONNS.okx = { connected: true, apiKey: 'k', apiSecret: 's', passphrase: 'p' };
       ExchangeAPI.okx.fetchFills = async () => [];
       ExchangeAPI.okx.fetchTrades = async () => [];
       ExchangeAPI.okx.testConnection = async () => ({ success: true, balance: '0' });
@@ -301,6 +301,87 @@ const TRADE = {
     }, TRADE);
     ok('fills met andere veldnamen worden ook gelezen', r.n === 1 && r.stappen === 'open,close', JSON.stringify(r));
     ok('en in het formulier staat een knop om ze nu op te halen', r.label === 'Stappen ophalen', JSON.stringify(r.label));
+    await ctx.close();
+  }
+
+  console.log('─── Het gevraagde tijdvenster (Denny’s diagnose 22-09-2026) ───');
+  {
+    // Zijn diagnose vroeg om 1-2-2025 t/m 21-9-2026: het venster liep van zijn oudste tot
+    // zijn nieuwste trade, want alle 1002 werden in één aanvraag gepropt. OKX bewaart fills
+    // ~3 maanden en geeft op zo'n bereik niets terug.
+    const { ctx, p } = await open();
+    const r = await p.evaluate(async t0 => {
+      CONNS.okx = { connected: true, apiKey: 'k', apiSecret: 's', passphrase: 'p' };
+      const dag = 864e5, nu = Date.now();
+      const maak = (i, dagenTerug) => ({ ...t0, id: 100 + i, srcId: 'okx_' + i, fills: [],
+        openTime: String(nu - dagenTerug * dag - 36e5), closeTime: String(nu - dagenTerug * dag) });
+      const gevraagd = [];
+      ExchangeAPI.okx.fetchFills = async (k, s2, p2, sym, van, tot) => { gevraagd.push([van, tot]); return []; };
+
+      // één verse trade tussen een berg oude
+      T = [maak(0, 1), ...Array.from({ length: 30 }, (_, i) => maak(i + 1, 300 + i))];
+      await backfillFills('okx');
+      const spanwijdte = gevraagd.map(([a, b]) => b - a);
+
+      // veertig verse trades: de sync werkt er hooguit een handvol per keer af
+      gevraagd.length = 0;
+      T = Array.from({ length: 40 }, (_, i) => maak(i, i));
+      await backfillFills('okx');
+      const eersteRonde = gevraagd.length;
+
+      // zes verse trades: na één ronde is er niets meer te proberen
+      T = Array.from({ length: 6 }, (_, i) => maak(i, i));
+      gevraagd.length = 0; await backfillFills('okx'); const ronde1 = gevraagd.length;
+      gevraagd.length = 0; await backfillFills('okx'); const tweedeRonde = gevraagd.length;
+
+      // een week later mag het weer
+      T.forEach(t => { if (t.fillsNone) t.fillsNone = Date.now() - 8 * dag; });
+      gevraagd.length = 0;
+      await backfillFills('okx');
+      const naEenWeek = gevraagd.length;
+
+      // handmatige knop: precies die ene trade, ook als hij al is afgeschreven
+      gevraagd.length = 0;
+      const mik = T[3]; mik.fillsNone = Date.now();
+      const los = await backfillFills('okx', { tradeId: mik.id });
+      const losAantal = gevraagd.length;
+      const losVenster = losAantal === 1 && gevraagd[0][0] < +mik.openTime && gevraagd[0][1] > +mik.closeTime;
+
+      /* Voorbeelddata draagt het label van een exchange maar heeft geen bron-id: die
+         574 OKX-demotrades vanaf 1-2-2025 maakten het venster negentien maanden breed. */
+      gevraagd.length = 0;
+      T = [{ ...maak(0, 2), srcId: '' }, maak(1, 3)];
+      await backfillFills('okx');
+      const demoOvergeslagen = gevraagd.length === 1;
+      gevraagd.length = 0;
+      await backfillFills('okx', { tradeId: T[0].id });
+      const demoViaKnop = gevraagd.length === 1;
+
+      // en een oude trade meldt dat de exchange hem niet meer heeft
+      T = [maak(0, 200)];
+      const oud = await backfillFills('okx', { tradeId: T[0].id });
+      return { spanwijdte, eersteRonde, ronde1, tweedeRonde, naEenWeek, losAantal, losVenster,
+        losReden: los.reden, demoOvergeslagen, demoViaKnop, oudDetail: oud.detail || '' };
+    }, TRADE);
+
+    ok('alleen de trade binnen de bewaartermijn wordt opgevraagd, niet de oude berg',
+      r.spanwijdte.length === 1, JSON.stringify(r.spanwijdte.length));
+    ok('en dat venster beslaat die ene positie, geen maanden',
+      r.spanwijdte[0] < 3 * 864e5, JSON.stringify(Math.round(r.spanwijdte[0] / 36e5) + ' uur'));
+    ok('per sync hooguit een handvol aanvragen, ook met veertig open staande',
+      r.eersteRonde === 8, JSON.stringify(r.eersteRonde));
+    ok('een mislukte poging wordt niet elke sync herhaald',
+      r.ronde1 === 6 && r.tweedeRonde === 0, JSON.stringify({ ronde1: r.ronde1, ronde2: r.tweedeRonde }));
+    ok('maar na een week krijgt hij een nieuwe kans', r.naEenWeek === 6, JSON.stringify(r.naEenWeek));
+    ok('de knop vraagt precies één trade op, met zijn eigen venster',
+      r.losAantal === 1 && r.losVenster, JSON.stringify({ n: r.losAantal, venster: r.losVenster }));
+    ok('en trapt door de afschrijving heen', r.losReden === 'geen-fills', JSON.stringify(r.losReden));
+    ok('voorbeelddata zonder bron-id wordt vanzelf niet opgevraagd',
+      r.demoOvergeslagen, JSON.stringify(r.demoOvergeslagen));
+    ok('maar de knop probeert het wél als je er zelf om vraagt',
+      r.demoViaKnop, JSON.stringify(r.demoViaKnop));
+    ok('bij een oude trade zegt de app dat de exchange hem niet meer bewaart',
+      /ouder dan 90 dagen/.test(r.oudDetail), JSON.stringify(r.oudDetail).slice(0, 110));
     await ctx.close();
   }
 

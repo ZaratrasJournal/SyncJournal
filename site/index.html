@@ -1752,7 +1752,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.107';
+const APP_VERSION='v0.9.108';
 const SCHEMA_VERSION=4;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -1874,7 +1874,7 @@ async function runMigrations(){
   }catch(e){
     const pre=SNAP_META.find(s=>s.label==='vóór schema-update');
     if(pre)await Snapshots.restore(pre.id);
-    ErrorCenter.report('migrate',e,{severity:'critical',userMsg:'Het bijwerken van je data naar de nieuwe versie ging mis. Je vorige staat is automatisch teruggezet.',actions:[{label:'Details',fn:()=>ErrorCenter.diagnostics()}]});
+    ErrorCenter.report('migrate',e,{severity:'critical',userMsg:'Het bijwerken van je data naar de nieuwe versie ging mis. Je vorige staat is automatisch teruggezet.'});
     return {ran:0,error:true};
   }
 }
@@ -2362,7 +2362,7 @@ async function fetchStepsFor(id){
   const t=T.find(x=>x.id===id); if(!t)return;
   const btn=document.querySelector('.exwrap button'); if(btn){btn.disabled=true;btn.textContent='Ophalen\u2026';}
   let r={n:0,reden:'fout',detail:''};
-  try{ r=(await backfillFills(t.exchange))||r; }catch(e){ r={n:0,reden:'fout',detail:(e&&e.message)||String(e)}; }
+  try{ delete t.fillsNone; r=(await backfillFills(t.exchange,{tradeId:id}))||r; }catch(e){ r={n:0,reden:'fout',detail:(e&&e.message)||String(e)}; }
   if(r.n){ toast('\u2713 Stappen opgehaald','ok'); }
   else{
     toast(r.reden==='geen-fills'?'Geen fills gevonden bij de exchange voor deze periode'
@@ -2370,7 +2370,7 @@ async function fetchStepsFor(id){
         : r.reden==='fout'?'Ophalen mislukt: '+(r.detail||'onbekende fout')
         : 'Niets op te halen','err');
     if(r.detail)ErrorCenter.report('sync',new Error('stappen ophalen ('+r.reden+'): '+r.detail),
-      {severity:'warn',userMsg:'De losse stappen konden niet worden opgehaald.',actions:[{label:'Details',fn:()=>ErrorCenter.diagnostics()}]});
+      {severity:'warn',userMsg:'De losse stappen konden niet worden opgehaald.'});
   }
   openForm(id);   // formulier opnieuw opbouwen, met of zonder tabel
 }
@@ -5086,7 +5086,7 @@ async function migApply(){
     const issues=TJMigrate.verify(pre.payload,pre.old);
     DB.save('migrated_from_tj',{when:new Date().toISOString(),trades:pre.report.trades,source:pre.source});
     showMigrationReport(pre.report,pre.warnings,issues);
-  }catch(e){ ErrorCenter.report('migrate',e,{severity:'error',userMsg:'De migratie is mislukt. Je bestaande data is ongewijzigd, probeer opnieuw of importeer een JSON-back-up.',actions:[{label:'Details',fn:()=>ErrorCenter.diagnostics()}]}); }
+  }catch(e){ ErrorCenter.report('migrate',e,{severity:'error',userMsg:'De migratie is mislukt. Je bestaande data is ongewijzigd, probeer opnieuw of importeer een JSON-back-up.'}); }
 }
 function openModalHTML(html){ const m=document.getElementById('modal'); m.innerHTML=html; m.classList.add('on'); document.getElementById('scrim').classList.add('on'); modalKind='wizard';formDirty=false; }
 function migOffer(){ const det=TJMigrate.detect(); if(!det)return; openModalHTML(`
@@ -6326,51 +6326,81 @@ async function refreshBalance(exId){
 // Fase 1 haalt alleen GESLOTEN trades op. Dedupe op bron-id (stabiel per adapter);
 // de prullenbak wint: een verwijderde trade komt niet terug via sync (srcId-guard).
 /* De executie-stappen ophalen voor trades die ze nog niet hebben (Denny 21-09-2026).
-   Eén aanvraag voor de hele batch: fills-history geeft alles in het tijdvenster terug,
-   daarna verdelen we de fills over de trades.
+   Per trade een eigen aanvraag met het venster van die ene positie. Eén aanvraag voor de
+   hele batch leek zuiniger, maar dan werd het venster zo breed als je hele historie en
+   daar geeft de exchange niets op terug (Denny 22-09-2026).
 
    De contractwaarde leiden we af uit de trade zelf — het aantal asset dat gesloten is
    gedeeld door het aantal contracten van de sluit-fills. Dat werkt voor OKX' contracten
    (1 contract = 0,0001 BTC) én voor exchanges die gewoon in asset rapporteren (dan komt
    er 1 uit), zonder dat we per exchange een tabel hoeven bij te houden. */
-async function backfillFills(exId){
+const FILL_RETENTIE_DAGEN=90;   // zover terug bewaren exchanges hun fills ongeveer
+const FILL_MAX_PER_SYNC=8;      // niet je hele historie afgaan bij elke sync
+const FILL_HERKANS_MS=7*864e5;  // na een mislukte poging pas over een week opnieuw
+async function backfillFills(exId,opts){
+  opts=opts||{};
   const ad=ExchangeAPI[exId],c=CONNS[exId];
-  if(!ad||typeof ad.fetchFills!=='function'||typeof ad.stepsForTrade!=='function')return 0;
-  if(!c||!c.connected||TAB_STALE)return 0;
-  const mist=T.filter(t=>t&&t.exchange===exId&&t.status==='closed'&&!(t.fills&&t.fills.length)&&(+t.openTime>0));
-  if(!mist.length)return {n:0,reden:''};
-  const van=Math.min(...mist.map(t=>+t.openTime||0))-60000;
-  const tot=Math.max(...mist.map(t=>+t.closeTime||Date.now()))+60000;
-  const venster=new Date(van).toLocaleString('nl-NL')+' t/m '+new Date(tot).toLocaleString('nl-NL');
-  let raw=[];
-  try{ raw=await ad.fetchFills(c.apiKey,c.apiSecret,c.passphrase,'',van,tot); }
-  catch(e){ return {n:0,reden:'fout',detail:((e&&e.message)||String(e))+' \u00b7 venster '+venster}; }
-  if(!raw.length)return {n:0,reden:'geen-fills',detail:'De proxy gaf geen fills terug voor '+venster
-    +'. Mogelijk kent je Worker de fills-actie nog niet, of bewaart de exchange ze niet meer.'};
-  let n=0, gematcht=0;
-  mist.forEach(t=>{
+  if(!ad||typeof ad.fetchFills!=='function'||typeof ad.stepsForTrade!=='function')return {n:0,reden:''};
+  if(!c||!c.connected||TAB_STALE)return {n:0,reden:''};
+
+  const kandidaat=t=>t&&t.exchange===exId&&t.status==='closed'&&!(t.fills&&t.fills.length)&&(+t.openTime>0);
+  let lijst;
+  if(opts.tradeId!=null){
+    lijst=T.filter(t=>t.id===opts.tradeId&&kandidaat(t));       // knop: precies deze ene
+  }else{
+    /* Automatisch: alleen trades die van de exchange komen (srcId), recent genoeg dat de
+       fills er nog zijn, en een handvol per keer. Een mislukte poging onthouden we met het
+       tijdstip - anders probeert elke sync hetzelfde en krijg je elke keer dezelfde
+       waarschuwing. Na een week mag het weer, want de Worker of de exchange kan intussen
+       veranderd zijn. */
+    const grens=Date.now()-FILL_RETENTIE_DAGEN*864e5;
+    const magWeer=t=>!t.fillsNone||(Date.now()-t.fillsNone)>FILL_HERKANS_MS;
+    lijst=T.filter(t=>kandidaat(t)&&t.srcId&&magWeer(t)&&(+t.closeTime||0)>grens)
+           .sort((a,b)=>(+b.closeTime||0)-(+a.closeTime||0))
+           .slice(0,FILL_MAX_PER_SYNC);
+  }
+  if(!lijst.length)return {n:0,reden:''};
+
+  let n=0, laatste=null;
+  for(const t of lijst){
+    /* Per trade een eigen, smal venster. Bij één aanvraag voor de hele batch liep dat
+       venster van je oudste tot je nieuwste trade - bij 1000 trades negentien maanden, en
+       daar geeft de exchange niets op terug. (Melding Denny 22-09-2026.) */
+    const van=(+t.openTime||0)-60000, tot=(+t.closeTime||Date.now())+60000;
+    const venster=new Date(van).toLocaleString('nl-NL')+' t/m '+new Date(tot).toLocaleString('nl-NL');
+    const oud=(Date.now()-(+t.closeTime||0))>FILL_RETENTIE_DAGEN*864e5;
+    let raw=[];
+    try{ raw=await ad.fetchFills(c.apiKey,c.apiSecret,c.passphrase,'',van,tot); }
+    catch(e){ laatste={n:0,reden:'fout',detail:((e&&e.message)||String(e))+' \u00b7 venster '+venster}; continue; }
+    if(!raw.length){
+      t.fillsNone=Date.now();
+      laatste={n:0,reden:'geen-fills',detail:'Geen fills voor '+venster+'.'
+        +(oud?' Deze trade is ouder dan '+FILL_RETENTIE_DAGEN+' dagen; zo ver terug bewaart de exchange ze meestal niet meer.'
+             :' Mogelijk kent je Worker de fills-actie voor '+ad.name+' nog niet.')};
+      continue;
+    }
     const steps=ad.stepsForTrade(t,raw);
-    gematcht=Math.max(gematcht,steps.length);
-    if(steps.length<2)return;                       // één fill voegt niets toe aan wat je al ziet
+    if(steps.length<2){
+      t.fillsNone=Date.now();
+      const v=raw[0]||{};
+      laatste={n:0,reden:'geen-match',detail:raw.length+' fills opgehaald, maar '+steps.length
+        +' hoorde bij deze trade. Eerste fill: instrument '+(v.instId||v.symbol||'?')
+        +', kant '+(v.side||'?')+'/'+(v.posSide||v.positionSide||'?')
+        +', tijd '+((v.ts||v.fillTime)?new Date(+(v.ts||v.fillTime)).toLocaleString('nl-NL'):'?')
+        +'. Gezocht: '+venster+'.'};
+      continue;
+    }
     const dir=String(t.dir||'').toLowerCase()==='short'?'short':'long';
     const sluitKant=dir==='short'?'buy':'sell';
     const contracten=steps.filter(x=>x.side===sluitKant).reduce((a,x)=>a+x.qty,0);
     const asset=+t.qtyAsset||0;
     const mult=(contracten>0&&asset>0)?(asset/contracten):1;
     const fills=fillTimeline(steps,{dir,mult});
-    if(!fills.some(x=>x.kind==='close'))return;     // zonder afbouw is er niets te tonen
-    t.fills=fills;n++;
-  });
-  if(n)persist();
-  if(n)return {n,reden:''};
-  /* Wel fills binnen, maar ze horen bij geen enkele trade. Dat wijst op een mismatch in
-     instrument, richting of tijdvenster - en dan is de eerste ruwe fill het nuttigst om
-     te kunnen zien wat er niet aansluit. */
-  const v=raw[0]||{};
-  return {n:0,reden:'geen-match',detail:raw.length+' fills opgehaald, maar hooguit '+gematcht
-    +' hoorde bij een trade. Eerste fill: instrument '+(v.instId||'?')+', kant '+(v.side||'?')
-    +'/'+(v.posSide||'?')+', tijd '+(v.ts?new Date(+v.ts).toLocaleString('nl-NL'):'?')
-    +'. Gezocht venster: '+venster+'.'};
+    if(!fills.some(x=>x.kind==='close')){ t.fillsNone=Date.now(); continue; }
+    t.fills=fills; delete t.fillsNone; n++;
+  }
+  if(n||lijst.some(t=>t.fillsNone))persist();
+  return n?{n,reden:''}:(laatste||{n:0,reden:''});
 }
 async function syncExchange(exId,opts){
   const quiet=opts&&opts.quiet;
@@ -6396,8 +6426,7 @@ async function syncExchange(exId,opts){
     /* Beloven dat de stappen "bij je volgende sync" komen en er dan over zwijgen is erger
        dan de fout zelf. Dus melden, met de reden onder Details. */
     ErrorCenter.report('sync',new Error('stappen niet opgehaald ('+bf.reden+'): '+(bf.detail||'')),{severity:'warn',
-      userMsg:'De losse stappen van je '+ad.name+'-posities konden niet worden opgehaald. Je trades en bedragen kloppen gewoon \u2014 alleen de uitsplitsing per stap ontbreekt.',
-      actions:[{label:'Details',fn:()=>ErrorCenter.diagnostics()}]});
+      userMsg:'De losse stappen van je '+ad.name+'-posities konden niet worden opgehaald. Je trades en bedragen kloppen gewoon — alleen de uitsplitsing per stap ontbreekt.'});
   }
   await fxSync();               // verse trades krijgen de koers van hun handelsdag mee
   await refreshBalance(exId);   // saldo ververst mee met elke sync
@@ -6989,7 +7018,7 @@ function runPartialDetect(exId){
 }
 
 
-function migRun(){ closeForm(); try{ migPreview(TJMigrate.map(TJMigrate.readOld()),'browser'); }catch(e){ ErrorCenter.report('migrate',e,{severity:'error',userMsg:'De oude data kon niet worden gelezen. Probeer een JSON-back-up te importeren.',actions:[{label:'Details',fn:()=>ErrorCenter.diagnostics()}]}); } }
+function migRun(){ closeForm(); try{ migPreview(TJMigrate.map(TJMigrate.readOld()),'browser'); }catch(e){ ErrorCenter.report('migrate',e,{severity:'error',userMsg:'De oude data kon niet worden gelezen. Probeer een JSON-back-up te importeren.'}); } }
 function showMigrationReport(report,warnings,issues){ const okAll=!issues.length; openModalHTML(`
   <div class="mhead"><h3>${okAll?'✓ Migratie afgerond':'⚠ Migratie afgerond met aandachtspunten'}</h3><button class="xbtn" onclick="migReportClose()">×</button></div>
   <div class="mbody mbody-wiz">
@@ -7011,7 +7040,7 @@ function importJSON(){ const inp=document.createElement('input');inp.type='file'
       await Snapshots.create('vóór import');  // vangnet: huidige staat eerst veiligstellen
       applyBackup(d);
       toast('✓ '+T.length+' trades geïmporteerd','ok');
-    }catch(err){ ErrorCenter.report('import',err,{severity:'error',userMsg:'Het bestand kon niet worden geïmporteerd, is het een geldige SyncJournal- of TradeJournal-back-up? Je bestaande data is ongewijzigd.',actions:[{label:'Details',fn:()=>ErrorCenter.diagnostics()}]}); }};
+    }catch(err){ ErrorCenter.report('import',err,{severity:'error',userMsg:'Het bestand kon niet worden geïmporteerd, is het een geldige SyncJournal- of TradeJournal-back-up? Je bestaande data is ongewijzigd.'}); }};
     rd.readAsText(f);};inp.click(); }
 function loadDemoData(){T=SEED.map(t=>{const o=+new Date(`${t.date}T${t.time||'12:00'}:00`);const c=(t.status!=='open'&&+t.durationMin)?o+t.durationMin*60000:0;return {...t,openTime:isFinite(o)?String(o):'',closeTime:c?String(c):''};});persist();render();}
 // Volledige voorbeeld-dataset (3000 trades, alle features) staat als los bestand naast de
