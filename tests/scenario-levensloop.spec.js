@@ -4,6 +4,7 @@
 // de proxy (fetch). Daarna back-up, CSV en een corrupte back-up.
 const { chromium } = require('playwright'); const path = require('path'); const fs = require('fs');
 let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  ✓ ' + n)) : (fail++, console.log('  ✗ ' + n + (e ? ' → ' + e : ''))); };
+let skipped = 0; const skip = n => { skipped++; console.log('  ⏭ ' + n + ' — fixture niet in deze kloon, overgeslagen'); };
 const bij = (a, b, tol) => Math.abs(a - b) <= (tol == null ? 1e-6 : tol);
 const APP = 'file:///' + path.resolve('work/syncjournal.html').split(path.sep).join('/');
 const CSV = path.resolve('tests/_fixtures/hyperliquid-export.csv');
@@ -241,7 +242,7 @@ const netto = fills => fills.reduce((a, f) => a + (+f.closedPnl) - (+f.fee), 0);
   }
 
   console.log('─── CSV-import van de echte Hyperliquid-export ───');
-  if (fs.existsSync(CSV)) {
+  if (!process.env.SJ_GEEN_FIXTURES && fs.existsSync(CSV)) {
     const tekst = fs.readFileSync(CSV, 'utf8');
     // onafhankelijk: per coin de positie uit de rijen, netto = Σ closedPnl van de CSV (die is al na fees)
     const rijen = tekst.trim().split(/\r?\n/).slice(1).map(l => l.split(',')).map(v => ({ coin: v[1], dir: v[2], sz: +v[4], pnl: +v[7] }));
@@ -256,7 +257,7 @@ const netto = fills => fills.reduce((a, f) => a + (+f.closedPnl) - (+f.fee), 0);
     ok('elke trade heeft zijn stappen', r.steps === r.a, `${r.steps} vs ${r.a}`);
     ok('dezelfde CSV nog eens importeren voegt niets toe', r.b === r.a, `${r.b} vs ${r.a}`);
     await ctx.close();
-  } else ok('HL-export fixture aanwezig', false);
+  } else skip('CSV-import van de echte Hyperliquid-export');
 
   console.log('─── Corrupte back-up en oude schema’s ───');
   {
@@ -288,7 +289,7 @@ const netto = fills => fills.reduce((a, f) => a + (+f.closedPnl) - (+f.fee), 0);
   }
 
   ok('geen JS-errors totaal', errs.length === 0, [...new Set(errs)].slice(0, 4).join(' | '));
-  console.log(`\n=== Scenario’s levensloop: ${pass}/${pass + fail} ===`);
+  console.log(`\n=== Scenario’s levensloop: ${pass}/${pass + fail}${skipped ? ' · ' + skipped + ' delen overgeslagen (fixtures niet in deze kloon)' : ''} ===`);
   await b.close();
   process.exit(fail ? 1 : 0);
 })();

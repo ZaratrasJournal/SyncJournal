@@ -9,7 +9,9 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
 const bij = (a, b, tol) => Math.abs(a - b) <= (tol == null ? 1e-6 : tol);
 
 const APP = 'file:///' + path.resolve('work/syncjournal.html').split(path.sep).join('/');
-const lees = f => fs.existsSync(f) ? JSON.parse(fs.readFileSync(f, 'utf8')) : null;
+const lees = f => (!process.env.SJ_GEEN_FIXTURES && fs.existsSync(f)) ? JSON.parse(fs.readFileSync(f, 'utf8')) : null;
+let skipped = 0; const skip = n => { skipped++; console.log('  ⏭ ' + n + ' — fixture niet in deze kloon, overgeslagen'); };
+
 const BK21 = lees('syncjournal-backup-2026-09-21.json');
 const BK22 = lees('syncjournal-backup-2026-09-22.json');
 const SNAP = lees('okx-snapshot-2026-06-29-15-17.json');
@@ -106,7 +108,7 @@ const LOOP2 = { cTime: 1790046180000, uTime: 1790070780000, openAvgPx: 85551.6, 
     ok('en een tweede sync voegt niets toe', r.n2 === 0, JSON.stringify(r.n2));
     ok('elke trade houdt zijn eigen P&L', r.pnls.length === 6 && new Set(r.pnls.map(x => x.toFixed(4))).size === 6, JSON.stringify(r.pnls));
     await ctx.close();
-  } else { ok('snapshot van 29-06 aanwezig', false, 'okx-snapshot-2026-06-29-15-17.json ontbreekt'); }
+  } else skip('snapshot 29-06: zes levenslopen onder één posId');
 
   console.log('─── Migratie v5 op Denny’s back-up van 21-09 (schema 4) ───');
   if (BK21) {
@@ -118,7 +120,7 @@ const LOOP2 = { cTime: 1790046180000, uTime: 1790070780000, openAvgPx: 85551.6, 
     ok('schema staat op de huidige versie', r.schema === await p.evaluate(() => SCHEMA_VERSION), JSON.stringify(r.schema));
     ok('de ene positie blijft één trade, nu met cTime in de sleutel', r.t.length === 1 && r.t[0].srcId === 'okx_' + POS + '_' + LOOP1.cTime, JSON.stringify(r.t));
     await ctx.close();
-  } else { ok('back-up 21-09 aanwezig', false, 'ontbreekt'); }
+  } else skip('migratie v5 op de back-up van 21-09');
 
   console.log('─── Migratie v5 + hersync op Denny’s back-up van 22-09 (de gelijmde rij) ───');
   if (BK22) {
@@ -146,10 +148,10 @@ const LOOP2 = { cTime: 1790046180000, uTime: 1790070780000, openAvgPx: 85551.6, 
     ok('de overschreven positie is hersteld: P&L −9,76, exit 82.039', e && bij(e.pnl, -9.7626, 1e-4) && bij(e.exit, 82039.31, 0.01) && bij(e.qty, 0.009, 1e-9), JSON.stringify(e));
     ok('en die van 22-09 is een eigen trade: P&L −1,56', z && bij(z.pnl, -1.5627, 1e-4), JSON.stringify(z));
     await ctx.close();
-  } else { ok('back-up 22-09 aanwezig', false, 'ontbreekt'); }
+  } else skip('migratie v5 + hersync op de back-up van 22-09');
 
   ok('geen JS-errors totaal', errs.length === 0, [...new Set(errs)].slice(0, 3).join(' | '));
-  console.log(`\n=== OKX-levensloop: ${pass}/${pass + fail} ===`);
+  console.log(`\n=== OKX-levensloop: ${pass}/${pass + fail}${skipped ? ' · ' + skipped + ' delen overgeslagen (fixtures niet in deze kloon)' : ''} ===`);
   await b.close();
   process.exit(fail ? 1 : 0);
 })();

@@ -11,7 +11,9 @@ const bij = (a, b, tol) => Math.abs(a - b) <= (tol == null ? 1e-6 : tol);
 
 const APP = 'file:///' + path.resolve('work/syncjournal.html').split(path.sep).join('/');
 const FIX = path.resolve('tests/_fixtures/hyperliquid-snapshot.json');
-const SNAP = fs.existsSync(FIX) ? JSON.parse(fs.readFileSync(FIX, 'utf8')) : null;
+const SNAP = (!process.env.SJ_GEEN_FIXTURES && fs.existsSync(FIX)) ? JSON.parse(fs.readFileSync(FIX, 'utf8')) : null;
+let skipped = 0; const skip = n => { skipped++; console.log('  ⏭ ' + n + ' — fixture niet in deze kloon, overgeslagen'); };
+
 const FILLS = SNAP ? (SNAP.fills || (SNAP.raw && SNAP.raw.fills) || []) : [];
 
 // onafhankelijke groepering: sub-fills van één order samenvoegen, per coin de positie
@@ -66,7 +68,7 @@ const naarFill = f => ({ coin: f.coin, dir: f.dir, side: f.side, startPosition: 
     open: +t.openTime, close: +t.closeTime, date: t.date, steps: (t.fills || []).length,
     closes: (t.fills || []).filter(x => x.kind === 'close').length, synthetic: (t.fills || []).some(x => x.synthetic), notes: t.notes || '' })), [fills, prefix]);
 
-  if (!FILLS.length) { ok('fixture aanwezig', false, FIX + ' ontbreekt'); }
+  if (!FILLS.length) skip('de echte wallet-snapshot (81 fills)');
   else {
     console.log(`─── De echte wallet: ${FILLS.length} fills, ${LOOPS.length} afgeronde levenslopen ───`);
     const { ctx, p } = await open();
@@ -107,7 +109,7 @@ const naarFill = f => ({ coin: f.coin, dir: f.dir, side: f.side, startPosition: 
   console.log('─── Alleen de sluitingen in het venster (opens ervoor) ───');
   {
     const meer = LOOPS.find(l => l.closes >= 2 && !l.lone);
-    if (!meer) ok('een levensloop met meerdere sluitingen in de fixture', false);
+    if (!meer) skip('alleen de sluitingen in het venster (echte levensloop)');
     else {
       const { ctx, p } = await open();
       // het venster begint precies bij de eerste sluiting: alles ervoor is "buiten beeld"
@@ -126,7 +128,7 @@ const naarFill = f => ({ coin: f.coin, dir: f.dir, side: f.side, startPosition: 
   }
 
   console.log('─── Migratie v6: oude rijen gaan op in de levensloop ───');
-  {
+  if (!LOOPS.some(l => l.closes >= 2 && !l.lone)) skip('migratie v6 op een echte levensloop'); else {
     const meer = LOOPS.find(l => l.closes >= 2 && !l.lone);
     const { ctx, p } = await open();
     const r = await p.evaluate(([fills, loop]) => {
@@ -166,7 +168,7 @@ const naarFill = f => ({ coin: f.coin, dir: f.dir, side: f.side, startPosition: 
   }
 
   ok('geen JS-errors totaal', errs.length === 0, [...new Set(errs)].slice(0, 3).join(' | '));
-  console.log(`\n=== Hyperliquid-levensloop: ${pass}/${pass + fail} ===`);
+  console.log(`\n=== Hyperliquid-levensloop: ${pass}/${pass + fail}${skipped ? ' · ' + skipped + ' delen overgeslagen (fixtures niet in deze kloon)' : ''} ===`);
   await b.close();
   process.exit(fail ? 1 : 0);
 })();
