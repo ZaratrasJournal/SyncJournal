@@ -1,6 +1,6 @@
 # OKX-herstelplan
 
-Datum: 2026-09-22. Hoort bij [okx-model.md](okx-model.md) (hoe OKX werkt). Status: **stap 1 gebouwd** (v0.9.112, lokaal; spec `tests/okx-levensloop.spec.js`, 25/25 op Denny's back-ups en de snapshot van 29-06). Hyperliquid naar model B: gebouwd in v0.9.113 (`tests/hyperliquid-levensloop.spec.js`, 25/25 op de wallet-snapshot van mei). Formulier vergrendeld in v0.9.115. Blofin naar model B in v0.9.116 (zie onderaan). OKX stap 2 gebouwd in v0.9.118 (`tests/okx-subtype.spec.js`, 18/18). Volgende: Kraken (Worker-beslissing) en stap 3, plan tegen uitvoering.
+Datum: 2026-09-22. Hoort bij [okx-model.md](okx-model.md) (hoe OKX werkt). Status: **stap 1 gebouwd** (v0.9.112, lokaal; spec `tests/okx-levensloop.spec.js`, 25/25 op Denny's back-ups en de snapshot van 29-06). Hyperliquid naar model B: gebouwd in v0.9.113 (`tests/hyperliquid-levensloop.spec.js`, 25/25 op de wallet-snapshot van mei). Formulier vergrendeld in v0.9.115. Blofin naar model B in v0.9.116 (zie onderaan). OKX stap 2 in v0.9.118, Kraken in v0.9.119 en afgerond in v0.9.126. Alle vier de exchanges staan op model B; Kraken wacht alleen nog op de Worker-update (zie `docs/worker-update.md`). Rest: stap 3, plan tegen uitvoering.
 
 ## Wat er kapot is, in één zin
 

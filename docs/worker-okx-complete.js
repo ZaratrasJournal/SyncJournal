@@ -593,9 +593,17 @@ async function handleKraken(action, { apiKey, apiSecret, startTime }) {
     };
   }).filter(t => t.pair_clean);
 
+  /* De losse positie-gebeurtenissen gaan mee, zodat de journal één trade per levensloop kan
+     bouwen met alle stappen, funding en het liquidatie-kenmerk erin. `trades` blijft ernaast
+     staan voor journals die de gebeurtenissen nog niet lezen. (Denny 23-09-2026.) */
+  const events = allElements
+    .filter(el => el && el.event && el.event.PositionUpdate)
+    .map(el => ({ uid: el.uid, timestamp: el.timestamp, event: { PositionUpdate: el.event.PositionUpdate } }));
+
   return {
     source: 'position_updates',
     trades,
+    events,
     _v18Debug: {
       pagesFetched,
       totalElements: allElements.length,
@@ -609,6 +617,7 @@ async function handleKraken(action, { apiKey, apiSecret, startTime }) {
       firstResponseKeys,
       firstResponseBytes,
       sinceUsed: since,
+      eventsReturned: events.length,
     },
   };
 

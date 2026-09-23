@@ -1762,7 +1762,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.125';
+const APP_VERSION='v0.9.126';
 const SCHEMA_VERSION=7;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -2464,8 +2464,11 @@ function execTable(t){
 function execBlock(t){
   const tab=execTable(t);
   if(tab)return tab;
-  const viaKoppeling=t&&t.exchange&&CONNS[t.exchange]&&CONNS[t.exchange].connected
-    &&ExchangeAPI[t.exchange]&&typeof ExchangeAPI[t.exchange].fetchFills==='function';
+  const ad=t&&t.exchange&&ExchangeAPI[t.exchange];
+  // beide zijn nodig: zonder stepsForTrade kan backfillFills er niets mee, en dan zou de
+  // knop gegarandeerd "niets op te halen" antwoorden
+  const viaKoppeling=!!(ad&&CONNS[t.exchange]&&CONNS[t.exchange].connected
+    &&typeof ad.fetchFills==='function'&&typeof ad.stepsForTrade==='function');
   if(!viaKoppeling)return '';
   return `<div class="exwrap"><div class="exhead"><b>Zo is deze positie gelopen</b>
       <span>nog niet opgehaald</span>
@@ -5697,7 +5700,9 @@ const ExchangeAPI = {
         return{id:"mexc_open_"+p.positionId,positionId:String(p.positionId||""),openTime:String(p.createTime||""),closeTime:"",date:ts2date(p.createTime||Date.now()),time:ts2time(p.createTime||Date.now()),pair:(p.symbol||"BTC_USDT").replace("_","/"),direction:p.positionType===1?"long":"short",entry:String(p.openAvgPrice||p.holdAvgPrice||""),exit:"",positionSize,positionSizeAsset,pnl:"",fees:String(p.holdFee||"0"),leverage:String(p.leverage||"10"),source:"mexc",status:"open",unrealizedPnl:String(p.unrealized||p.realised||""),liquidationPrice:String(p.liquidatePrice||""),stopLoss:"",takeProfit:"",highestPrice:"",lowestPrice:"",setupTags:[],confirmationTags:[],timeframeTags:[],emotionTags:[],mistakeTags:[],customTags:[],rating:0,screenshot:null,notes:"",links:[],layers:[],_rawHoldVol:String(p.holdVol||""),_rawCloseVol:String(p.closeVol||"")};
       });
     },
-    async fetchFills(apiKey,apiSecret,symbol,positionId,startTime,endTime){const data=await proxyCall({exchange:"mexc",action:"fills",apiKey,apiSecret,symbol:symbol.replace("/","_"),positionId,startTime,endTime});return{fills:data.fills||[],debug:data.debug||null,unfiltered:data.unfiltered||false,total:data.total||0}}
+    /* Geen fetchFills voor MEXC: de koppeling is gestopt en de TP-backfill die dit pad
+       bediende is nooit overgezet. Een adapter met fills maar zonder stappen-vertaling
+       levert alleen een knop op die niets kan ophalen. */
   },
   blofin:{
     name:"Blofin",color:"#6366f1",needsPassphrase:true,
@@ -6068,7 +6073,9 @@ const ExchangeAPI = {
       }return(data.trades||[]).filter(t=>t.pair_clean||t.symbol||t.direction).map(t=>this._normalise(t))},
     async testConnection(apiKey,apiSecret){const data=await proxyCall({exchange:"kraken",action:"test",apiKey,apiSecret});if(!data.success)throw new Error(data.error||"Kraken verbinding mislukt");return{success:true,balance:data.balance||"0"}},
     async fetchOpenPositions(apiKey,apiSecret){const data=await proxyCall({exchange:"kraken",action:"open_positions",apiKey,apiSecret});return(data.positions||[]).map(t=>({...this._normalise({...t,status:"open"}),status:"open"}))},
-    async fetchFills(apiKey,apiSecret,_pp,symbol,startTime,endTime){const data=await proxyCall({exchange:"kraken",action:"fills",apiKey,apiSecret,symbol,startTime,endTime});return{fills:(data.fills||[]).map(t=>this._normalise(t)),total:data.total||0}}
+    /* Geen fetchFills voor Kraken: de stappen komen uit de positie-gebeurtenissen, en volgens
+       de docs draagt /derivatives/api/v3/fills geen realized_pnl zodra je met lastFillTime
+       pagineert — en dat doet de proxy altijd. */
   },
   hyperliquid:{
     // Wallet-only exchange — geen API-keys, alleen wallet-adres (public on-chain data).
