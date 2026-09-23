@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Handmatige trades — drie richtingen</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* tokens 1-op-1 uit work/syncjournal.html */
+:root{
+  --bg:#F4F6FA; --surface:#FFFFFF; --raise:#FBFCFE; --sink:#F7F9FC;
+  --ink:#191E2A; --ink2:#525A6B; --muted:#6B7385; --faint:#7A8291;
+  --line:#E8EBF2; --line2:#F0F2F7;
+  --accent:#3B5BD9; --accent-soft:#EDF0FD; --accent-line:#CDD6F7;
+  --green:#12946A; --green-soft:#E3F4EC; --red:#D64259; --red-soft:#FBE8EC; --amber:#C0821C; --amber-soft:#F8EFDD;
+  --violet:#7C5CE0; --teal:#0E9E96;
+  --grid:#EDEFF5; --hover:#F6F8FC; --track:#EEF1F6; --zebra:#FAFBFD;
+  --fb:'Inter',sans-serif; --fd:'Plus Jakarta Sans',sans-serif; --fn:'IBM Plex Mono',monospace;
+  --sh:0 1px 2px rgba(20,30,60,.05);
+}
+body.dark{
+  --bg:#0E1218; --surface:#141A22; --raise:#171E28; --sink:#10151c;
+  --ink:#F4F7FB; --ink2:#C7CFDB; --muted:#939CAC; --faint:#6C7583;
+  --line:#232B36; --line2:#1C232D;
+  --accent:#6E86F0; --accent-soft:#1B2436; --accent-line:#2E3B57;
+  --green:#37C48B; --green-soft:#12261F; --red:#F0637A; --red-soft:#2A1820; --amber:#E0A63C; --amber-soft:#28210F;
+  --violet:#A78BFA; --teal:#2CC5B6;
+  --grid:#1B222C; --hover:#19212B; --track:#1E2732; --zebra:#12171f;
+  --sh:0 1px 2px rgba(0,0,0,.25);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--fb);font-size:13.5px;line-height:1.5;-webkit-font-smoothing:antialiased;transition:background .3s,color .3s}
+.num{font-family:var(--fn);font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.g{color:var(--green)} .r{color:var(--red)}
+
+.bar{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+  padding:11px 20px;background:var(--surface);border-bottom:1px solid var(--line);box-shadow:var(--sh)}
+.bar b{font-family:var(--fd);font-size:14px;font-weight:800}
+.bar .hint{font-size:12px;color:var(--muted)}
+.bar .sp{flex:1}
+.btn{border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:9px;
+  padding:6px 12px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit}
+.btn:hover{background:var(--hover)}
+.btn.on{background:var(--accent);border-color:var(--accent);color:#fff}
+
+.wrap{max-width:1180px;margin:0 auto;padding:22px 20px 70px}
+.lead{max-width:760px;margin-bottom:8px}
+.lead h1{font-family:var(--fd);font-size:20px;font-weight:800;letter-spacing:-.01em;margin-bottom:6px}
+.lead p{color:var(--ink2);font-size:13px}
+.lead p+p{margin-top:8px}
+
+.opt{background:var(--surface);border:1px solid var(--line);border-radius:14px;margin-top:22px;overflow:hidden;box-shadow:var(--sh)}
+.opt>header{display:flex;align-items:flex-start;gap:12px;padding:15px 18px;border-bottom:1px solid var(--line2);background:var(--raise)}
+.optn{flex:none;width:26px;height:26px;border-radius:8px;display:grid;place-items:center;
+  font-family:var(--fn);font-size:12px;font-weight:600;background:var(--accent-soft);color:var(--accent);border:1px solid var(--accent-line)}
+.opt h2{font-family:var(--fd);font-size:15px;font-weight:800;margin-bottom:3px}
+.opt header p{font-size:12.5px;color:var(--muted);max-width:74ch}
+.body{padding:18px}
+.split{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+@media(max-width:900px){.split{grid-template-columns:1fr}}
+.paneel h3{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:9px}
+
+/* invoervelden, zoals het formulier */
+.veld{margin-bottom:10px}
+.veld label{display:block;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
+.veld input{width:100%;border:1px solid var(--line);border-radius:9px;background:var(--sink);color:var(--ink);
+  padding:8px 11px;font-size:13px;font-family:inherit;outline:none}
+.veld input:focus{border-color:var(--accent);background:var(--surface)}
+.rij3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px}
+.rij2{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+
+/* TP-bouwer, zoals nu in de app */
+.tprow{display:flex;align-items:center;gap:7px;margin-bottom:7px}
+.tpnum{flex:none;width:34px;font-size:11px;font-weight:700;color:var(--muted)}
+.tpin{flex:1;min-width:0;border:1px solid var(--line);border-radius:8px;background:var(--sink);color:var(--ink);padding:6px 9px;font-size:12.5px;font-family:var(--fn);outline:none}
+.tpin.pct{flex:none;width:62px}
+.tpin.tijd{flex:none;width:72px}
+.tphit{flex:none;border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:5px 10px;font-size:11.5px;font-weight:700;color:var(--muted);cursor:pointer;font-family:inherit}
+.tphit.on{background:var(--green-soft);border-color:transparent;color:var(--green)}
+.tptot{font-size:11.5px;color:var(--muted);margin-top:7px}
+
+/* stappentabel, 1-op-1 uit de app */
+.exwrap{border:1px solid var(--line2);border-radius:11px;overflow:hidden;background:var(--sink)}
+.exhead{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 14px;padding:9px 13px;border-bottom:1px solid var(--line2)}
+.exhead b{font-size:12px;font-weight:700}
+.exhead span{font-size:11.5px;color:var(--muted)}
+.exhead span i{font-style:normal;color:var(--ink2);font-weight:600;font-family:var(--fn)}
+.extab{width:100%;border-collapse:collapse;font-size:12px}
+.extab th{text-align:right;font-weight:700;color:var(--muted);font-size:10px;letter-spacing:.06em;text-transform:uppercase;padding:7px 10px;white-space:nowrap}
+.extab th:nth-child(-n+2){text-align:left}
+.extab td{padding:6px 10px;border-top:1px solid var(--line2);text-align:right;white-space:nowrap}
+.extab td:nth-child(-n+2){text-align:left}
+.extab .fk{display:inline-block;min-width:34px;text-align:center;padding:1px 7px;border-radius:20px;font-size:10px;font-weight:800;letter-spacing:.03em;background:color-mix(in srgb,var(--fc) 15%,transparent);color:var(--fc)}
+.extab .exday td{text-align:left;padding:7px 10px 4px;font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.extab tbody tr.exday+tr td{border-top:0}
+.extab .exsame{color:var(--line)}
+.extab .exfee{color:var(--muted)}
+.exflat{color:var(--muted)}
+.afgeleid{display:inline-block;margin-left:5px;font-size:11px;color:var(--amber);cursor:help}
+
+/* TP-breakdown zoals nu */
+.tplist{border:1px solid var(--line2);border-radius:11px;overflow:hidden;background:var(--sink)}
+.tpr{display:flex;align-items:center;gap:9px;padding:8px 12px;font-size:12.5px}
+.tpr+.tpr{border-top:1px solid var(--line2)}
+.tpr.hit{background:color-mix(in srgb,var(--green) 6%,transparent)}
+.tpdot{flex:none;width:16px;color:var(--muted)} .tpr.hit .tpdot{color:var(--green)}
+.tpnaam{flex:none;width:44px;font-weight:700;font-size:11.5px}
+.tpfoot{display:flex;gap:10px;padding:8px 12px;border-top:1px solid var(--line);font-size:12px;color:var(--muted);background:var(--surface)}
+
+.oordeel{display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:14px 18px;border-top:1px solid var(--line2);background:var(--sink)}
+@media(max-width:700px){.oordeel{grid-template-columns:1fr}}
+.oordeel h4{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px}
+.voor h4{color:var(--green)} .tegen h4{color:var(--red)}
+.oordeel ul{list-style:none;font-size:12.5px;color:var(--ink2)}
+.oordeel li{padding-left:15px;position:relative;margin-bottom:4px}
+.oordeel li::before{content:'';position:absolute;left:3px;top:8px;width:4px;height:4px;border-radius:50%;background:currentColor;opacity:.45}
+.tip{margin-top:26px;padding:14px 18px;border:1px dashed var(--accent-line);border-radius:12px;background:var(--accent-soft);font-size:13px;color:var(--ink2);max-width:860px}
+.tip b{color:var(--ink)}
+</style>
+</head>
+<body>
+
+<div class="bar">
+  <b>Handmatige trades</b>
+  <span class="hint">drie richtingen, met dezelfde trade als voorbeeld</span>
+  <span class="sp"></span>
+  <button class="btn" id="th" onclick="document.body.classList.toggle('dark');th.textContent=document.body.classList.contains('dark')?'☀ Licht':'☾ Donker'">☾ Donker</button>
+</div>
+
+<div class="wrap">
+  <div class="lead">
+    <h1>Hoe vul je een handmatige trade in?</h1>
+    <p>Bij een gesyncte trade zie je wat er <i>gebeurde</i>: elke instap, bijkoop en afbouwstap komt van de exchange. Bij een handmatige trade vul je zelf in, en dan is de vraag hoeveel je wilt typen voor hoeveel inzicht.</p>
+    <p>Alle drie tonen dezelfde trade: <b>XAU/USD long</b>, in op 2.400 met 2 lots, TP1 op 2.420 geraakt (de helft eraf), de rest op 2.430 gesloten. Netto <span class="num g">+$ 59</span>.</p>
+  </div>
+
+  <!-- ── 1 ─────────────────────────────────────────────────── -->
+  <section class="opt">
+    <header>
+      <span class="optn">1</span>
+      <div><h2>Stappen afleiden uit wat je al invult</h2>
+      <p>Je typt niets extra. De app maakt de stappentabel uit je entry, size, TP-niveaus en exit — en zet er een markering bij dat het een reconstructie is, geen opgehaalde data.</p></div>
+    </header>
+    <div class="body"><div class="split">
+      <div class="paneel"><h3>Wat je invult — precies als nu</h3>
+        <div class="rij3">
+          <div class="veld"><label>Entry</label><input value="2400" readonly></div>
+          <div class="veld"><label>Exit</label><input value="2430" readonly></div>
+          <div class="veld"><label>Size</label><input value="2" readonly></div>
+        </div>
+        <h3 style="margin-top:12px">Take-profit-niveaus</h3>
+        <div class="tprow"><span class="tpnum">TP1</span><input class="tpin" value="2420" readonly><input class="tpin pct" value="50" readonly><button class="tphit on">✓ hit</button><input class="tpin tijd" value="10:15" readonly></div>
+        <div class="tprow"><span class="tpnum">TP2</span><input class="tpin" value="2450" readonly><input class="tpin pct" value="50" readonly><button class="tphit">open</button></div>
+        <div class="tptot">Verdeeld: <b class="num g">100%</b> ✓ volledig</div>
+      </div>
+      <div class="paneel"><h3>Wat je krijgt — automatisch</h3>
+        <div class="exwrap">
+          <div class="exhead"><b>Zo is deze positie gelopen</b><span>1 instap · 2 afbouwstappen</span><span style="color:var(--amber)">≈ afgeleid uit je invoer</span></div>
+          <table class="extab">
+            <thead><tr><th>Tijd</th><th>Wat</th><th>Aantal</th><th>Prijs</th><th>Positie na</th><th>Ø entry</th><th>Fee $</th><th>P&amp;L</th></tr></thead>
+            <tbody>
+              <tr class="exday"><td colspan="8">di 15 sep</td></tr>
+              <tr><td class="num">09:30</td><td><span class="fk" style="--fc:var(--accent)">Open</span><span class="afgeleid" title="Afgeleid uit je entry en size">≈</span></td><td class="num">2</td><td class="num">2.400,00</td><td class="num">2</td><td class="num">2.400,00</td><td class="num exfee">0,50</td><td></td></tr>
+              <tr><td class="num">10:15</td><td><span class="fk" style="--fc:var(--teal)">Af</span><span class="afgeleid" title="Afgeleid uit TP1: 50% op 2.420">≈</span></td><td class="num">1</td><td class="num">2.420,00</td><td class="num">1</td><td class="num exsame">·</td><td class="num exfee">0,25</td><td class="num g">+$ 20,00</td></tr>
+              <tr><td class="num">11:30</td><td><span class="fk" style="--fc:var(--teal)">Af</span><span class="afgeleid" title="Afgeleid uit je exit: de rest">≈</span></td><td class="num">1</td><td class="num">2.430,00</td><td class="exflat">vlak</td><td class="num exsame">·</td><td class="num exfee">0,25</td><td class="num g">+$ 30,00</td></tr>
+              <tr><td></td><td><b>Samen</b></td><td class="num">2</td><td></td><td></td><td></td><td class="num exfee">1,00</td><td class="num g"><b>+$ 59,00</b></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p style="font-size:12px;color:var(--muted);margin-top:9px">Elke ≈ betekent: dit heeft de app afgeleid, niet opgehaald. TP2 stond open en verschijnt dus niet als stap — wat je níét deed hoort niet in je uitvoering.</p>
+      </div>
+    </div></div>
+    <div class="oordeel">
+      <div class="voor"><h4>Waarom wel</h4><ul>
+        <li>Geen extra typewerk: het komt uit wat je nu al invult</li>
+        <li>Eén beeld voor álle trades — handmatig en gesynct zien er hetzelfde uit</li>
+        <li>Je ziet je afbouw chronologisch in plaats van als lijstje</li>
+      </ul></div>
+      <div class="tegen"><h4>Waarom niet</h4><ul>
+        <li>Het is een reconstructie; de precisie is die van je eigen invoer</li>
+        <li>Fees worden naar rato verdeeld — de app weet niet wat je per stap betaalde</li>
+        <li>Een bijkoop halverwege kun je hiermee niet vastleggen</li>
+      </ul></div>
+    </div>
+  </section>
+
+  <!-- ── 2 ─────────────────────────────────────────────────── -->
+  <section class="opt">
+    <header>
+      <span class="optn">2</span>
+      <div><h2>Stappen los invoeren</h2>
+      <p>Je legt elke uitvoering zelf vast, net zoals de exchange dat zou doen. Entry, exit en P&amp;L rolt de app er dan zelf uit — jij hoeft ze niet meer te berekenen.</p></div>
+    </header>
+    <div class="body"><div class="split">
+      <div class="paneel"><h3>Wat je invult — een regel per stap</h3>
+        <div class="exwrap">
+          <div class="exhead"><b>Stappen</b><span>voeg toe wat je deed</span></div>
+          <table class="extab">
+            <thead><tr><th>Tijd</th><th>Wat</th><th>Aantal</th><th>Prijs</th><th>Fee</th><th></th></tr></thead>
+            <tbody>
+              <tr><td><input class="tpin tijd" value="09:30" readonly></td><td><button class="tphit on" style="background:var(--accent-soft);color:var(--accent)">Open</button></td><td><input class="tpin" style="width:64px" value="2" readonly></td><td><input class="tpin" style="width:84px" value="2400" readonly></td><td><input class="tpin" style="width:60px" value="0,50" readonly></td><td><button class="tphit">×</button></td></tr>
+              <tr><td><input class="tpin tijd" value="10:15" readonly></td><td><button class="tphit on">Af</button></td><td><input class="tpin" style="width:64px" value="1" readonly></td><td><input class="tpin" style="width:84px" value="2420" readonly></td><td><input class="tpin" style="width:60px" value="0,25" readonly></td><td><button class="tphit">×</button></td></tr>
+              <tr><td><input class="tpin tijd" value="11:30" readonly></td><td><button class="tphit on">Af</button></td><td><input class="tpin" style="width:64px" value="1" readonly></td><td><input class="tpin" style="width:84px" value="2430" readonly></td><td><input class="tpin" style="width:60px" value="0,25" readonly></td><td><button class="tphit">×</button></td></tr>
+            </tbody>
+          </table>
+          <div style="padding:9px 12px;border-top:1px solid var(--line2)"><button class="btn">+ Stap toevoegen</button>
+            <span style="font-size:11.5px;color:var(--muted);margin-left:10px">Open · Bij · Af · Om</span></div>
+        </div>
+      </div>
+      <div class="paneel"><h3>Wat je krijgt — gerekend, niet getypt</h3>
+        <div class="exwrap">
+          <div class="exhead"><b>Zo is deze positie gelopen</b><span>1 instap · 2 afbouwstappen</span><span>gemiddeld <i>2.400,00</i></span></div>
+          <table class="extab">
+            <thead><tr><th>Tijd</th><th>Wat</th><th>Aantal</th><th>Prijs</th><th>Positie na</th><th>Ø entry</th><th>Fee $</th><th>P&amp;L</th></tr></thead>
+            <tbody>
+              <tr class="exday"><td colspan="8">di 15 sep</td></tr>
+              <tr><td class="num">09:30</td><td><span class="fk" style="--fc:var(--accent)">Open</span></td><td class="num">2</td><td class="num">2.400,00</td><td class="num">2</td><td class="num">2.400,00</td><td class="num exfee">0,50</td><td></td></tr>
+              <tr><td class="num">10:15</td><td><span class="fk" style="--fc:var(--teal)">Af</span></td><td class="num">1</td><td class="num">2.420,00</td><td class="num">1</td><td class="num exsame">·</td><td class="num exfee">0,25</td><td class="num g">+$ 20,00</td></tr>
+              <tr><td class="num">11:30</td><td><span class="fk" style="--fc:var(--teal)">Af</span></td><td class="num">1</td><td class="num">2.430,00</td><td class="exflat">vlak</td><td class="num exsame">·</td><td class="num exfee">0,25</td><td class="num g">+$ 30,00</td></tr>
+              <tr><td></td><td><b>Samen</b></td><td class="num">2</td><td></td><td></td><td></td><td class="num exfee">1,00</td><td class="num g"><b>+$ 59,00</b></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div style="margin-top:10px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);font-size:12.5px;color:var(--ink2)">
+          <b style="color:var(--ink)">Entry 2.400 · Exit 2.425 · P&amp;L +$ 59</b><br>
+          <span style="color:var(--muted)">Uit je stappen gerekend. Deze velden hoef je niet meer zelf in te vullen.</span>
+        </div>
+      </div>
+    </div></div>
+    <div class="oordeel">
+      <div class="voor"><h4>Waarom wel</h4><ul>
+        <li>Klopt precies: een bijkoop, een omkering, alles kan erin</li>
+        <li>Entry, exit en P&amp;L worden berekend — minder rekenfouten</li>
+        <li>Exact hetzelfde model als een gesyncte trade, geen uitzonderingen</li>
+      </ul></div>
+      <div class="tegen"><h4>Waarom niet</h4><ul>
+        <li>Veel meer typewerk, voor iets wat je meestal niet bijhoudt</li>
+        <li>Snel een trade noteren wordt een klus</li>
+        <li>Het formulier wordt zwaarder, terwijl handmatig juist licht moet zijn</li>
+      </ul></div>
+    </div>
+  </section>
+
+  <!-- ── 3 ─────────────────────────────────────────────────── -->
+  <section class="opt">
+    <header>
+      <span class="optn">3</span>
+      <div><h2>Laten zoals het is</h2>
+      <p>TP-niveaus blijven de manier waarop je een handmatige trade vastlegt. De stappentabel is er voor data die van een exchange komt; handmatig krijgt een breakdown die past bij wat je zelf weet.</p></div>
+    </header>
+    <div class="body"><div class="split">
+      <div class="paneel"><h3>Wat je invult</h3>
+        <div class="rij3">
+          <div class="veld"><label>Entry</label><input value="2400" readonly></div>
+          <div class="veld"><label>Exit</label><input value="2430" readonly></div>
+          <div class="veld"><label>Size</label><input value="2" readonly></div>
+        </div>
+        <div class="rij2">
+          <div class="veld"><label>Stop-loss</label><input value="2380" readonly></div>
+          <div class="veld"><label>P&amp;L ($)</label><input value="59" readonly></div>
+        </div>
+        <h3 style="margin-top:12px">Take-profit-niveaus</h3>
+        <div class="tprow"><span class="tpnum">TP1</span><input class="tpin" value="2420" readonly><input class="tpin pct" value="50" readonly><button class="tphit on">✓ hit</button><input class="tpin tijd" value="10:15" readonly></div>
+        <div class="tprow"><span class="tpnum">TP2</span><input class="tpin" value="2450" readonly><input class="tpin pct" value="50" readonly><button class="tphit">open</button></div>
+        <div class="tptot">Verdeeld: <b class="num g">100%</b> ✓ volledig</div>
+      </div>
+      <div class="paneel"><h3>Wat je krijgt — zoals nu</h3>
+        <div class="tplist">
+          <div class="tpr hit"><span class="tpdot">✓</span><span class="tpnaam">TP1</span><span class="num">2.420,00</span><span style="flex:1"></span><span class="num" style="color:var(--muted)">50%</span><span class="num g">+1,0R</span></div>
+          <div class="tpr"><span class="tpdot">○</span><span class="tpnaam">TP2</span><span class="num">2.450,00</span><span style="flex:1"></span><span class="num" style="color:var(--muted)">50%</span><span class="num" style="color:var(--muted)">—</span></div>
+          <div class="tpfoot"><span>Gewogen exit <b class="num" style="color:var(--ink)">2.425,00</b></span><span style="flex:1"></span><span>Hit <b class="num g">50%</b> · gerealiseerd <b class="num g">+1,3R</b></span></div>
+        </div>
+        <p style="font-size:12px;color:var(--muted);margin-top:9px">Geen tijdlijn, geen stappen. Je ziet welk niveau je haalde en welk deel van je positie daarbij hoorde — en wat het in R opleverde.</p>
+        <p style="font-size:12px;color:var(--amber);margin-top:7px">Bij het bouwen van deze demo bleek hier een rekenfout te zitten: het niet-gehaalde deel werd altijd op je stop afgerekend, ook bij een trade die al gesloten was. Deze trade meldde daardoor <b>+0,0R</b> terwijl hij +1,3R maakte. Dat is gefixt in v0.9.122 — los van welke richting je kiest.</p>
+      </div>
+    </div></div>
+    <div class="oordeel">
+      <div class="voor"><h4>Waarom wel</h4><ul>
+        <li>Snel: een handmatige trade noteer je in twintig seconden</li>
+        <li>Eerlijk over de bron — niets wordt gesuggereerd wat je niet invoerde</li>
+        <li>Geen werk, geen risico op nieuwe fouten</li>
+      </ul></div>
+      <div class="tegen"><h4>Waarom niet</h4><ul>
+        <li>Twee verschillende beelden in dezelfde journal</li>
+        <li>Je afbouw staat als lijstje, niet op volgorde van tijd</li>
+        <li>Wie vooral handmatig werkt, ziet de nieuwe weergave nooit</li>
+      </ul></div>
+    </div>
+  </section>
+
+  <div class="tip">
+    <b>Mijn voorkeur: 1.</b> Je typt niets extra, elke trade ziet er hetzelfde uit, en de ≈-markering is eerlijk over waar het vandaan komt. Optie 2 is het meest precies maar kost te veel typewerk voor de meeste trades — tenzij je hem als extra aanbiedt bóven optie 1, voor die ene trade waar je wél alles wilt vastleggen. Optie 3 is de veiligste keuze: er gaat niets kapot, maar je journal blijft in twee helften uiteenvallen.
+  </div>
+</div>
+
+</body>
+</html>

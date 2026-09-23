@@ -10,6 +10,13 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 De journal is opnieuw opgebouwd als **SyncJournal** en draait nu online op [syncjournal.nl](https://syncjournal.nl). Versienummers zijn opnieuw gestart op v0.9.x (bèta); de oude TradeJournal-releases staan verderop in dit bestand. Je data overzetten kan via Instellingen → Data → Importeer oude backup.
 
+## [v0.9.122] — 2026-09-23
+
+### Fixed
+- **Het take-profit-overzicht rekende je winst te laag.** Het deel van je positie dat zijn TP niet haalde werd altijd afgerekend op je stop-loss — ook bij een trade die je allang met winst had gesloten. Een trade die +1,3R maakte meldde daardoor "gerealiseerd +0,0R". Bij een gesloten trade telt nu je echte exit mee.
+- Loopt de positie nog, dan blijft de stop de aanname, maar dat staat er nu ook bij: "bij je stop" met een aantekening, in plaats van "gerealiseerd".
+- Heb je geen stop ingevuld, dan zie je wel de gewogen exit maar geen R — zonder risico valt er niets tegen af te zetten.
+
 ## [v0.9.121] — 2026-09-22
 
 ### Gewijzigd

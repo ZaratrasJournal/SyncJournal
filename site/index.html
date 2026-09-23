@@ -1762,7 +1762,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.121';
+const APP_VERSION='v0.9.122';
 const SCHEMA_VERSION=7;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -7595,11 +7595,19 @@ function renderTPs(){const c=document.getElementById('tpbuilder');if(!c)return;
 function tpStats(t){const tps=(t.tps||[]).filter(x=>+x.price>0);if(!tps.length)return null;
   const entry=+t.entry,stop=+t.stop||0,dir=t.dir==='long'?1:-1,risk=Math.abs(entry-stop)||entry*0.01;
   const hit=tps.filter(x=>x.hit),hitPct=hit.reduce((s,x)=>s+(+x.pct||0),0),missedPct=tps.filter(x=>!x.hit).reduce((s,x)=>s+(+x.pct||0),0),denom=hitPct+missedPct;
-  let wExit=null,wR=null;if(denom>0&&stop>0){const hc=hit.reduce((s,x)=>s+(+x.price)*(+x.pct||0),0);wExit=(hc+stop*missedPct)/denom;wR=((wExit-entry)*dir)/risk;}
-  return {tps,hit,hitPct,missedPct,wExit,wR};}
+  /* Het deel dat zijn TP niet haalde is bij een gesloten trade op je exit gegaan, niet op
+     je stop. Dat laatste is alleen een redelijke aanname zolang de positie nog loopt.
+     Zonder dit meldde een trade die op +1,48R sloot "gerealiseerd +0,0R". (Denny 23-09-2026.) */
+  const dicht=t.status==='closed'&&+t.exit>0;
+  const rest=dicht?+t.exit:stop;
+  let wExit=null,wR=null;
+  if(denom>0&&rest>0){const hc=hit.reduce((s,x)=>s+(+x.price)*(+x.pct||0),0);wExit=(hc+rest*missedPct)/denom;
+    if(stop>0)wR=((wExit-entry)*dir)/risk;}   // R heeft een echte stop nodig, anders is het geen risico
+  return {tps,hit,hitPct,missedPct,wExit,wR,dicht};}
 function tpBreakdown(t){const s=tpStats(t);if(!s)return '<div style="color:var(--muted);font-size:12.5px;padding:6px 0">Geen TP-niveaus vastgelegd.</div>';
   const rows=s.tps.map((tp,i)=>`<div class="tprow ${tp.hit?'hit':''}"><span class="tpdot">${tp.hit?'✓':'○'}</span><span class="tpname">TP${i+1}</span><span class="tpprice num">${(+tp.price).toLocaleString('nl-NL')}</span><span class="tpr num ${(+tp.r||0)>=0?'g':'r'}">${tp.r?('+'+tp.r+'R'):''}</span><div class="tpbar"><div class="tpbarf" style="width:${Math.min(100,+tp.pct||0)}%;background:${tp.hit?'var(--green)':'var(--line2)'}"></div></div><span class="tppct num">${tp.pct}%</span></div>`).join('');
-  const foot=s.wExit!=null?`<div class="tpfoot"><span>Gewogen exit <b class="num">${(+s.wExit).toLocaleString('nl-NL')}</b></span><span class="sp" style="flex:1"></span><span>Hit <b class="num g">${Math.round(s.hitPct)}%</b> · gerealiseerd <b class="num ${cls(s.wR)}">${(s.wR>=0?'+':'')+(+s.wR).toFixed(1)}R</b></span></div>`:'';
+  const rDeel=s.wR!=null?` · ${s.dicht?'gerealiseerd':'bij je stop'} <b class="num ${cls(s.wR)}">${(s.wR>=0?'+':'')+(+s.wR).toFixed(1)}R</b>`:'';
+  const foot=s.wExit!=null?`<div class="tpfoot"><span>Gewogen exit <b class="num">${(+s.wExit).toLocaleString('nl-NL')}</b>${s.dicht?'':' <span title="De positie loopt nog; het niet-gehaalde deel is afgerekend op je stop">(aanname)</span>'}</span><span class="sp" style="flex:1"></span><span>Hit <b class="num g">${Math.round(s.hitPct)}%</b>${rDeel}</span></div>`:'';
   return `<div class="tplist">${rows}</div>${foot}`;}
 function fnum(id){const el=document.getElementById(id);if(!el)return NaN;const v=parseFloat(String(el.value).trim().replace(',','.'));return isNaN(v)?NaN:v;}
 // ── Positie-grootte in $ óf in de asset zelf (bv. 0,5 BTC) — omrekening via entry ──
