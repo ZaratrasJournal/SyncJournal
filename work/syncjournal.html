@@ -1762,7 +1762,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.124';
+const APP_VERSION='v0.9.125';
 const SCHEMA_VERSION=7;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -6300,10 +6300,46 @@ const ExchangeAPI = {
       }
       return this._reconstructTrades(allFills.map(naarFill),"hyperliquid");
     },
+    /* Wanneer begon een positie die nog loopt? Hyperliquid zegt het niet bij de positie
+       zelf, maar het staat in de fills: de lopende positie begon bij de eerste uitvoering
+       nádat hij voor het laatst vlak stond. Begon hij vóór het venster dat we ophalen, dan
+       weten we het niet - en dan zeggen we het ook niet. */
+    _openBegin(fills){
+      const per={},uit={};
+      const rijen=[...(fills||[])].sort((a,b)=>((+a.time||+a.ms||0)-(+b.time||+b.ms||0))||String(a.tid||'').localeCompare(String(b.tid||'')));
+      for(const f of rijen){
+        const kant=this._effectOf(f); if(!kant)continue;
+        const sz=Math.abs(parseFloat(f.sz)||0); if(!(sz>0))continue;
+        const st=per[f.coin]||(per[f.coin]={pos:0,begin:0,gezien:false});
+        if(!st.gezien){ st.gezien=true; const sp=parseFloat(f.startPosition); st.pos=isFinite(sp)?sp:0; }
+        if(Math.abs(st.pos)<1e-12)st.begin=+f.time||+f.ms||0;   // vanaf vlak: hier begint een nieuwe positie
+        st.pos+=kant==='buy'?sz:-sz;
+        if(Math.abs(st.pos)<1e-12){st.pos=0;st.begin=0;}
+      }
+      Object.keys(per).forEach(c=>{ if(per[c].begin)uit[c]=per[c].begin; });
+      return uit;
+    },
     async fetchOpenPositions(walletAddress){
       const addr=this._validateAddress(walletAddress);
       const state=await this._post({type:"clearinghouseState",user:addr});
       const positions=state?.assetPositions||[];
+      /* Eén extra aanroep, en alleen wanneer er ook echt iets openstaat: zonder de fills
+         zouden we het sync-moment als opentijd moeten stempelen, en dat is precies de
+         verwarring die deze melding opleverde. */
+      let begin={};
+      if(positions.length){
+        try{
+          const fills=[];let cursor=Date.now()-90*864e5,guard=0;
+          while(guard++<10){
+            const batch=await this._post({type:"userFillsByTime",user:addr,startTime:cursor});
+            if(!Array.isArray(batch)||!batch.length)break;
+            fills.push(...batch);
+            if(batch.length<2000)break;
+            const last=batch[batch.length-1].time; if(!last||last<=cursor)break; cursor=last+1;
+          }
+          begin=this._openBegin(fills);
+        }catch(e){ /* lukt het niet, dan claimen we geen tijd */ }
+      }
       return positions.map(ap=>{
         const p=ap.position||{};
         const szi=parseFloat(p.szi||"0");// signed size: positief=long, negatief=short
@@ -6317,8 +6353,9 @@ const ExchangeAPI = {
           // niet → duplicaten (ChangeMaker-bug, Discord 2026-06-07).
           id:"hyperliquid_open_"+p.coin,
           positionId:p.coin||"",
-          openTime:"",closeTime:"",
-          date:ts2date(Date.now()),time:ts2time(Date.now()),
+          openTime:begin[p.coin]?String(begin[p.coin]):"",closeTime:"",
+          // onbekend? dan wel een datum om op te groeperen, maar géén tijd die niet klopt
+          date:ts2date(begin[p.coin]||Date.now()),time:begin[p.coin]?ts2time(begin[p.coin]):"",
           pair:this._toPair(p.coin),
           direction:szi>0?"long":"short",
           entry:normPrice(entryPx),exit:"",

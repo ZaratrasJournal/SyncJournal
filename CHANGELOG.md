@@ -10,6 +10,12 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 De journal is opnieuw opgebouwd als **SyncJournal** en draait nu online op [syncjournal.nl](https://syncjournal.nl). Versienummers zijn opnieuw gestart op v0.9.x (bèta); de oude TradeJournal-releases staan verderop in dit bestand. Je data overzetten kan via Instellingen → Data → Importeer oude backup.
 
+## [v0.9.125] — 2026-09-23
+
+### Fixed
+- **Een open Hyperliquid-positie kreeg het tijdstip van je sync in plaats van je instap.** Stapte je om 14:49 in en synchroniseerde je om 15:02, dan stond er 15:02. Hyperliquid meldt bij een lopende positie geen opentijd, dus haalt de journal hem nu uit je uitvoeringen: de positie begon bij de eerste fill nadat hij voor het laatst vlak stond. Bestaande rijen worden bij je volgende sync vanzelf gecorrigeerd.
+- Valt je instap buiten wat Hyperliquid nog levert, dan blijft de tijd leeg in plaats van dat er een tijdstip wordt getoond dat niet klopt. Met dank aan de member die het meldde.
+
 ## [v0.9.124] — 2026-09-23
 
 ### Fixed
