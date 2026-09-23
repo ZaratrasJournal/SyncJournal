@@ -1762,7 +1762,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.123';
+const APP_VERSION='v0.9.124';
 const SCHEMA_VERSION=7;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -2656,7 +2656,9 @@ function fxView(list){
   return list.map(t=>{
     // de koers van de handelsdag; die ligt vast zodra de ECB hem publiceert
     const r=(+t.fx)||fxFor(t.date)||FX.latest; if(!(r>0))return t;
-    const o={...t,pnlUsd:+t.pnl||0};   // percentages blijven in dollars rekenen
+    /* pnlUsd: percentages blijven in dollars rekenen. _fx: afgeleide stappen leiden hun
+       bedrag af uit de príjzen, en die blijven in de valuta van het paar staan. */
+    const o={...t,pnlUsd:+t.pnl||0,_fx:r};
     FX_MONEY.forEach(k=>{const v=+o[k];if(isFinite(v))o[k]=v*r;});
     // de losse stappen horen in dezelfde valuta te staan als het totaal erboven
     if(Array.isArray(t.fills)&&t.fills.length)o.fills=t.fills.map(f=>({...f,
@@ -4753,7 +4755,14 @@ function stappenVan(t){
   const echt=stepsOf(t);
   if(echt.length)return echt;
   const af=afgeleideStappen(t);
-  return af.length?fillTimeline(af,{mult:1}):[];
+  if(!af.length)return [];
+  const tl=fillTimeline(af,{mult:1});
+  /* De bedragen per stap volgen uit de príjzen, en die staan in de valuta van het paar -
+     ook wanneer je de journal in euro's bekijkt. De fees komen al omgerekend binnen (van
+     de trade zelf), dus alleen de winst en het verlies moeten nog mee. */
+  const r=+t._fx;
+  if(r>0&&r!==1)tl.forEach(x=>{ if(x.pnl!=null)x.pnl*=r; if(x.pnlCalc!=null)x.pnlCalc*=r; });
+  return tl;
 }
 // Datum bruikbaar voor maand-/jaargroepering? (leeg of half ingevuld telt niet mee)
 const hasDate=t=>!!(t&&typeof t.date==='string'&&t.date.length>=7);

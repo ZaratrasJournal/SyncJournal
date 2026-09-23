@@ -10,6 +10,11 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 De journal is opnieuw opgebouwd als **SyncJournal** en draait nu online op [syncjournal.nl](https://syncjournal.nl). Versienummers zijn opnieuw gestart op v0.9.x (bèta); de oude TradeJournal-releases staan verderop in dit bestand. Je data overzetten kan via Instellingen → Data → Importeer oude backup.
 
+## [v0.9.124] — 2026-09-23
+
+### Fixed
+- **In euro's bleven de bedragen per stap in dollars staan** bij een handmatige trade. De fees en het totaal werden wél omgerekend, dus de tabel sloot niet meer aan op de regel erboven. De prijzen blijven — terecht — in de valuta van het paar.
+
 ## [v0.9.123] — 2026-09-23
 
 ### Toegevoegd
