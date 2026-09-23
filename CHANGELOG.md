@@ -10,6 +10,13 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 De journal is opnieuw opgebouwd als **SyncJournal** en draait nu online op [syncjournal.nl](https://syncjournal.nl). Versienummers zijn opnieuw gestart op v0.9.x (bèta); de oude TradeJournal-releases staan verderop in dit bestand. Je data overzetten kan via Instellingen → Data → Importeer oude backup.
 
+## [v0.9.123] — 2026-09-23
+
+### Toegevoegd
+- **Ook handmatige trades tonen nu hoe je positie is gelopen.** Vul je een trade zelf in met take-profit-niveaus, dan bouwt de app daar de stappentabel uit op: je instap op je entry, een afbouw bij elke aangevinkte TP, en de rest op je exit. Je hoeft niets extra te typen. Elke stap draagt een ≈ en de kop zegt het er bij, want dit is afgeleid uit je eigen invoer — het komt niet van een exchange.
+- Alleen wanneer er ook echt meer dan één uitstap was. Eenmaal in en eenmaal uit vertelt niets wat niet al bovenaan het formulier staat.
+- Trades die van een exchange komen veranderen niet: die wachten op hun echte stappen, met de knop om ze op te halen.
+
 ## [v0.9.122] — 2026-09-23
 
 ### Fixed

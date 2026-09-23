@@ -208,14 +208,20 @@ const DAG = 864e5, UUR = 36e5;
   console.log('─── Het formulier: gesynct op slot, handmatig open ───');
   const form = await p.evaluate(() => {
     const kijk = id => { openForm(id); const ro = k => { const el = document.getElementById('f_' + k); return el ? el.hasAttribute('readonly') : null; };
-      const r = { entry: ro('entry'), pnl: ro('pnl'), tp: !!document.getElementById('tpbuilder'), stappen: !!document.querySelector('.exwrap table') }; closeForm(); return r; };
+      const el = document.querySelector('.exwrap');
+      const r = { entry: ro('entry'), pnl: ro('pnl'), tp: !!document.getElementById('tpbuilder'),
+        stappen: !!(el && el.querySelector('table')), afgeleid: !!el && /afgeleid uit je invoer/.test(el.innerText),
+        rijen: el && el.querySelector('table') ? el.querySelectorAll('tbody tr:not(.exday):not(.exnew)').length : 0 };
+      closeForm(); return r; };
     const g = T.find(t => t.exchange === 'kraken'), h = T.find(t => t.exchange === 'manual');
     return { gesynct: kijk(g.id), handmatig: kijk(h.id) };
   });
-  ok('een gesyncte trade: velden op slot, stappentabel, geen TP-bouwer',
-    form.gesynct.entry && form.gesynct.pnl && form.gesynct.stappen && !form.gesynct.tp, JSON.stringify(form.gesynct));
-  ok('een handmatige trade: alles bewerkbaar, TP-bouwer, geen stappentabel',
-    !form.handmatig.entry && !form.handmatig.pnl && form.handmatig.tp && !form.handmatig.stappen, JSON.stringify(form.handmatig));
+  ok('een gesyncte trade: velden op slot, opgehaalde stappentabel, geen TP-bouwer',
+    form.gesynct.entry && form.gesynct.pnl && form.gesynct.stappen && !form.gesynct.afgeleid && !form.gesynct.tp, JSON.stringify(form.gesynct));
+  ok('een handmatige trade: alles bewerkbaar, TP-bouwer én een afgeleide stappentabel',
+    !form.handmatig.entry && !form.handmatig.pnl && form.handmatig.tp && form.handmatig.stappen && form.handmatig.afgeleid, JSON.stringify(form.handmatig));
+  ok('die afgeleide tabel heeft drie stappen: in, TP1 eraf, rest op de exit',
+    form.handmatig.rijen === 3, JSON.stringify(form.handmatig.rijen));
 
   console.log('─── Back-up eruit en op een vers profiel weer erin ───');
   const backup = await p.evaluate(() => snapshotPayload());
