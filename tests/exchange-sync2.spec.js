@@ -38,7 +38,7 @@ const FIX = 'tests/_fixtures/blofin-snapshot.json';
     ok('open positie geïmporteerd als open trade', !!open);
     ok('open: dir short + entry ≈ 79738.6 + echte openTime', open && open.dir === 'short' && Math.abs(open.entry - 79738.6) < 1 && !!open.openTime);
     ok('open: liq + unrealizedPnl + qtyAsset aanwezig', open && open.liq > 0 && isFinite(open.unrealizedPnl) && open.qtyAsset > 0);
-    ok('blofin open rij is GEEN placeholder (echte rest-positie)', open && !open.placeholder);
+    ok('blofin open rij is een placeholder (model B: de positie zelf komt uit de historie)', open && !!open.placeholder);   // sinds 24-09-2026
     const counts1 = await p.evaluate(() => ({ open: T.filter(t => t.status === 'open').length, all: T.length }));
     const n2 = await p.evaluate(() => syncExchange('blofin'));
     const counts2 = await p.evaluate(() => ({ open: T.filter(t => t.status === 'open').length, all: T.length }));

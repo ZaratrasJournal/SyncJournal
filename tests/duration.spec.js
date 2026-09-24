@@ -85,8 +85,8 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
 
   console.log('─── Partial: TP-tijdstip bewaard ───');
   const pts = await p.evaluate(() => {
-    const mk = (id, st) => ({ id, srcId: 'blofin_9_' + id, date: '2026-09-01', time: '10:00', pair: 'LINK/USDT', dir: 'long', setup: '', session: 'London', status: st, kind: 'live', exchange: 'blofin', entry: 20, exit: st === 'closed' ? 22 : 0, stop: 0, size: '400', qtyAsset: st === 'closed' ? 5 : 20, _rawCloseSize: st === 'closed' ? '5' : undefined, positionId: 'pid-9', closeTime: st === 'closed' ? String(+new Date('2026-09-01T15:30:00')) : '', pnl: st === 'closed' ? 10 : 0, fees: 0, r: 0, tps: [], tags: [], layers: [], emotions: [], mistakes: [], checks: [], screenshots: [], tvLinks: [] });
-    T.push(mk(9501, 'open'), mk(9502, 'closed')); persist(); runPartialDetect('blofin');
+    const mk = (id, st) => ({ id, srcId: 'kraken_9_' + id, date: '2026-09-01', time: '10:00', pair: 'LINK/USDT', dir: 'long', setup: '', session: 'London', status: st, kind: 'live', exchange: 'kraken', entry: 20, exit: st === 'closed' ? 22 : 0, stop: 0, size: '400', qtyAsset: st === 'closed' ? 5 : 20, _rawCloseSize: st === 'closed' ? '5' : undefined, positionId: 'pid-9', closeTime: st === 'closed' ? String(+new Date('2026-09-01T15:30:00')) : '', pnl: st === 'closed' ? 10 : 0, fees: 0, r: 0, tps: [], tags: [], layers: [], emotions: [], mistakes: [], checks: [], screenshots: [], tvLinks: [] });
+    T.push(mk(9501, 'open'), mk(9502, 'closed')); persist(); runPartialDetect('kraken');
     const t = T.find(x => x.id === 9501); return { status: t.status, ts: (t.tps.find(x => x.hit) || {}).ts };
   });
   ok('TP-hit draagt het sluit-tijdstip van de sibling', pts.status === 'partial' && pts.ts === +new Date('2026-09-01T15:30:00'), JSON.stringify(pts));

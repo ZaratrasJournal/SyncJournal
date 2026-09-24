@@ -38,7 +38,7 @@ const sleutel = r => r.positionId + '_' + r.createTime;
     CONNS.blofin = { connected: true, apiKey: 'k', apiSecret: 's', passphrase: 'p', lastSync: 0, syncFrom: '2026-01-01' }; persistConns();
   }, [hist, opens, fills || []]);
   const sync = p => p.evaluate(() => syncExchange('blofin', { quiet: true }));
-  const bf = p => p.evaluate(() => T.filter(t => t.exchange === 'blofin' && t.status === 'closed').map(t => ({ srcId: t.srcId, pnl: +t.pnl, qty: +t.qtyAsset, open: +t.openTime, close: +t.closeTime, steps: (t.fills || []).map(f => f.kind).join(','), notes: t.notes || '' })));
+  const bf = p => p.evaluate(() => T.filter(t => t.exchange === 'blofin' && t.srcId && !/^blofin_open_/.test(t.srcId)).map(t => ({ srcId: t.srcId, status: t.status, pnl: +t.pnl, realized: +t.realizedPnl || 0, qty: +t.qtyAsset, open: +t.openTime, close: +t.closeTime, steps: (t.fills || []).map(f => f.kind).join(','), notes: t.notes || '' })));
 
   console.log('─── De sleutel ───');
   {
@@ -66,15 +66,20 @@ const sleutel = r => r.positionId + '_' + r.createTime;
     ok(`sync 1 (01-05): ${k1.size} levenslopen worden ${k1.size} trades`, n1 === k1.size && t.length === k1.size, JSON.stringify({ n1, t: t.length, verwacht: k1.size }));
     ok('geen twee trades met dezelfde sleutel', new Set(t.map(x => x.srcId)).size === t.length);
     const deels = t.find(x => x.srcId === 'blofin_8000000610734_' + h1.find(r => r.historyId === '109673008').createTime);
-    ok('de levensloop die op 01-05 nog deels open stond: P&L 3,26 en 0,001 gesloten', deels && bij(deels.pnl, 3.2616, 0.001) && bij(deels.qty, 0.001, 1e-9), JSON.stringify(deels));
-    await p.evaluate(() => { const o = T.find(x => x.exchange === 'blofin' && x.status === 'open'); if (o) o.notes = 'open-notitie'; const d = T.find(x => /8000000610734_/.test(x.srcId) && Math.abs(x.pnl - 3.2616) < 0.001); if (d) d.notes = 'mijn notitie'; });
+    if (!deels) { console.log('  (rijen: ' + JSON.stringify(t.map(x => x.srcId + ':' + x.status)) + ')'); }
+    // sinds 24-09-2026 is een levensloop die nog loopt één rij met status partial: het geboekte
+    // deel (3,26) staat apart, de P&L blijft 0 tot hij dicht is, de grootte is de hele positie
+    ok('de levensloop die op 01-05 nog deels open stond: partial, 3,26 geboekt, hele positie 0,0029',
+      deels && deels.status === 'partial' && bij(deels.realized, 3.2616, 0.001) && deels.pnl === 0 && bij(deels.qty, 0.0029, 1e-9), JSON.stringify(deels));
+    await p.evaluate(() => { const o = T.find(x => x.exchange === 'blofin' && x.status === 'open'); if (o) o.notes = 'open-notitie'; const d = T.find(x => /8000000610734_/.test(x.srcId) && x.status === 'partial'); if (d) d.notes = 'mijn notitie'; });
 
     // de update van 04-05 valt binnen het venster van een sync die er kort op volgt
     await p.evaluate(([h, o]) => { window.__BF.hist = h; window.__BF.opens = o; CONNS.blofin.lastSync = 0; persistConns(); }, [h2, S2.openPositions]);
     const n2 = await sync(p); t = await bf(p);
     ok(`sync 2 (04-05): ${nieuw.length} nieuwe levensloop, totaal ${k2.size}`, n2 === nieuw.length && t.length === k2.size, JSON.stringify({ n2, t: t.length, nieuw: nieuw.length }));
     const heel = t.find(x => x.srcId === deels.srcId);
-    ok('diezelfde levensloop is bijgewerkt, niet verdubbeld: P&L 4,52 en 0,0029 gesloten', heel && bij(heel.pnl, 4.5212, 0.001) && bij(heel.qty, 0.0029, 1e-9), JSON.stringify(heel));
+    ok('diezelfde levensloop is bijgewerkt, niet verdubbeld: nu gesloten, P&L 4,52 en 0,0029',
+      heel && heel.status === 'closed' && bij(heel.pnl, 4.5212, 0.001) && !heel.realized && bij(heel.qty, 0.0029, 1e-9), JSON.stringify(heel));
     ok('en de notitie erop is gebleven', heel && heel.notes === 'mijn notitie', JSON.stringify(heel && heel.notes));
     const n3 = await sync(p); const t3 = await bf(p);
     ok('sync 3: niets nieuws, niets veranderd', n3 === 0 && JSON.stringify(t3) === JSON.stringify(t), JSON.stringify(n3));

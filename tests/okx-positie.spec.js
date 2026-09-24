@@ -38,7 +38,7 @@ const STAND2 = { uTime: 1790012341907, cont: 90, pnl: -9.7626, fee: -0.7279, exi
     });
     return importTjClosed(stds.map(s => ExchangeAPI.okx._normalise(rec(s)))).length;
   }, standen);
-  const trades = p => p.evaluate(() => T.filter(t => t.exchange === 'okx').map(t => ({ srcId: t.srcId, pnl: t.pnl, size: t.size, qty: t.qtyAsset, closeTime: t.closeTime, notes: t.notes, setup: t.setup, tags: t.tags })));
+  const trades = p => p.evaluate(() => T.filter(t => t.exchange === 'okx').map(t => ({ srcId: t.srcId, status: t.status, realized: t.realizedPnl, pnl: t.pnl, size: t.size, qty: t.qtyAsset, closeTime: t.closeTime, notes: t.notes, setup: t.setup, tags: t.tags })));
 
   console.log('─── Twee standen in één antwoord ───');
   {
@@ -56,7 +56,10 @@ const STAND2 = { uTime: 1790012341907, cont: 90, pnl: -9.7626, fee: -0.7279, exi
     const { ctx, p } = await open();
     await sync(p, [STAND1]);
     const na1 = await trades(p);
-    ok('eerste sync: één trade met de tussenstand', na1.length === 1 && na1[0].pnl === STAND1.pnl, JSON.stringify(na1));
+    // sinds 24-09-2026: een positie die nog niet vlak staat is één rij met status partial;
+    // het geboekte deel staat in realizedPnl, de P&L blijft 0 tot de positie dicht is
+    ok('eerste sync: één lopende positie met het geboekte deel apart',
+      na1.length === 1 && na1[0].status === 'partial' && na1[0].pnl === 0 && Math.abs((na1[0].realized || 0) - STAND1.pnl) < 1e-6, JSON.stringify(na1));
 
     // de gebruiker vult ondertussen zijn eigen dingen in
     await p.evaluate(() => { const t = T.find(x => x.exchange === 'okx'); t.notes = 'te vroeg ingestapt'; t.setup = 'SFP'; t.tags = ['revenge']; persist(); });

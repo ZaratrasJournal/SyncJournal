@@ -1762,8 +1762,8 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.127';
-const SCHEMA_VERSION=7;
+const APP_VERSION='v0.9.128';
+const SCHEMA_VERSION=8;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
   // ander type dan verwacht (bv. sj_manual='null' of een array waar een object hoort).
@@ -1928,6 +1928,25 @@ const MIGRATIONS=[
     if(weg.size)T=T.filter(t=>!weg.has(t.id));
     let prul=0;TRASH.forEach(t=>{ const k=t&&t.exchange==='blofin'?sleutel(t):null; if(k){t.srcId=k;prul++;} });if(prul)persistTrash();
     if(groep.size&&isFinite(vroegste)&&CONNS.blofin&&CONNS.blofin.connected){ CONNS.blofin={...CONNS.blofin,lastSync:vroegste-3600e3}; persistConns(); }
+  }},
+  /* Tot 24-09-2026 werd een positie die deels gesloten was twee rijen: een gesloten rij voor
+     het geboekte deel en een open rij (placeholder) voor de rest. De sync herstelt dat alleen
+     als de positie nog beweegt (een ongewijzigde historierij komt niet opnieuw binnen), dus
+     hier eenmalig: zelfde positionId + openstart => één rij met status partial. De hele
+     grootte is het geboekte deel plus de rest; de live cijfers komen van de open rij mee. */
+  {v:8,note:'Deels gesloten positie: één rij',up(){
+    const weg=new Set();
+    for(const o of T.filter(t=>t&&(t.status==='open'||t.status==='partial')&&t.positionId&&ExchangeAPI[t.exchange]&&ExchangeAPI[t.exchange].openIsPlaceholder)){
+      const c=T.find(t=>t&&t!==o&&!weg.has(t.id)&&t.exchange===o.exchange&&t.status==='closed'&&t.srcId&&!t.placeholder&&t.srcId!==o.srcId&&zelfdePositieSJ(o,t));
+      if(!c)continue;
+      c.status='partial';c.realizedPnl=+c.pnl||0;c.pnl=0;c.r=0;
+      c.qtyAsset=+((+c.qtyAsset||0)+(+o.qtyAsset||0)).toFixed(10);
+      if(+c.entry>0&&c.qtyAsset>0)c.size=(+c.entry*c.qtyAsset).toFixed(2);
+      adoptUserFieldsSJ(c,o);
+      ['unrealizedPnl','liq'].forEach(k=>{if(o[k]!=null&&o[k]!==''&&(c[k]==null||c[k]===''))c[k]=o[k];});
+      weg.add(o.id);
+    }
+    if(weg.size)T=T.filter(t=>!weg.has(t.id));
   }},
 ];
 async function runMigrations(){
@@ -5799,6 +5818,12 @@ const ExchangeAPI = {
             }
           }
           const sizeUsdt=(entryN>0&&assetQty>0)?(entryN*assetQty).toFixed(2):"";
+          /* Nog niet vlak? closePositions < maxPositions. Dan is dit een lopende positie
+             waarvan een deel is geboekt: één rij, status partial. De grootte is die van de
+             hèle positie, in dezelfde eenheid als assetQty (zelfde heuristiek). */
+          const maxN=Math.abs(parseFloat(t.maxPositions)||0);
+          const isPartial=maxN>0&&contractsN>0&&maxN>contractsN+1e-9;
+          const maxAsset=isPartial&&contractsN>0?assetQty*(maxN/contractsN):assetQty;
           let direction;
           if(posSide==="long")direction="long";
           else if(posSide==="short")direction="short";
@@ -5812,7 +5837,7 @@ const ExchangeAPI = {
             const grossPn=netPn+feePn; // assume realizedPnl is NET
             direction=((xN-entryN)*grossPn>=0)?"long":"short";
           }
-          return{id:"blofin_"+t.positionId+"_"+(t.createTime||closeTime),date:ts2date(closeTime),time:ts2time(closeTime),pair:(t.instId||"").replace("-","/"),direction,entry:normPrice(entryPrice),exit:normPrice(exitPrice),positionSize:sizeUsdt||normPrice(assetQty),positionSizeAsset:assetQty>0?normPrice(assetQty):"",pnl:t.realizedPnl||t.pnl||"",fees:t.fee?Math.abs(parseFloat(t.fee)).toString():"0",leverage:t.leverage||"10",source:"blofin",status:"closed",stopLoss:"",takeProfit:"",highestPrice:"",lowestPrice:"",setupTags:[],confirmationTags:[],timeframeTags:[],emotionTags:[],mistakeTags:[],customTags:[],rating:0,screenshot:null,notes:"",links:[],layers:[],positionId:t.positionId||"",openTime:t.createTime||"",closeTime:String(closeTime),
+          return{id:"blofin_"+t.positionId+"_"+(t.createTime||closeTime),date:ts2date(closeTime),time:ts2time(closeTime),pair:(t.instId||"").replace("-","/"),direction,entry:normPrice(entryPrice),exit:normPrice(exitPrice),positionSize:sizeUsdt||normPrice(assetQty),positionSizeAsset:assetQty>0?normPrice(assetQty):"",pnl:t.realizedPnl||t.pnl||"",fees:t.fee?Math.abs(parseFloat(t.fee)).toString():"0",leverage:t.leverage||"10",source:"blofin",status:"closed",realizedPnl:"",...(isPartial?{status:"partial",realizedPnl:String(t.realizedPnl||t.pnl||""),pnl:"0",positionSizeAsset:maxAsset>0?normPrice(maxAsset):(assetQty>0?normPrice(assetQty):""),positionSize:(entryN>0&&maxAsset>0)?(entryN*maxAsset).toFixed(2):sizeUsdt}:{}),stopLoss:"",takeProfit:"",highestPrice:"",lowestPrice:"",setupTags:[],confirmationTags:[],timeframeTags:[],emotionTags:[],mistakeTags:[],customTags:[],rating:0,screenshot:null,notes:"",links:[],layers:[],positionId:t.positionId||"",openTime:t.createTime||"",closeTime:String(closeTime),
             // v12.62: raw close-size in base currency (Blofin geeft closePositions in BTC voor BTC-USDT, niet in contracts).
             // Gebruikt door detectPartialFromSiblings voor correcte pct-berekening op tpLevels — anders krijg je 0.05% i.p.v. 34%.
             // v12.90: sla _rawCloseSize op als BASE currency (= assetQty na heuristic), niet
@@ -6489,7 +6514,12 @@ const ExchangeAPI = {
         source:"okx",status:"closed",
         _okxInstId:instId,
         _rawCloseSize:assetQty>0?String(assetQty):"",
-        ...(isPartialClose?{_okxPartialClose:true}:{}),
+        /* Nog niet vlak? Dan is dit geen afgeronde trade maar een lopende positie waarvan
+           een deel is geboekt. Één rij, status partial, met het geboekte bedrag apart - de
+           weergave zet daar zelf "deels dicht" onder. */
+        realizedPnl:"",   // bij een lopende positie hieronder gevuld; bij sluiting weer leeg
+        ...(isPartialClose?{status:"partial",realizedPnl:netPnl.toFixed(4),pnl:"0",
+            positionSizeAsset:openMaxContracts>0?normPrice(openMaxContracts*ctVal):(assetQty>0?normPrice(assetQty):"")}:{}),
         tpLevels,
       };
     },
@@ -6657,16 +6687,16 @@ ExchangeAPI.okx.captureSnapshot=async function(creds){
 // ─────────────────────────────────────────────────────────────────────────────
 // v12.232: optionele sourceKey-param — dispatcher geeft de werkelijke trade.source door
 // (account.id post-multi-account); zonder param valt 'ie terug op de legacy type-string.
-ExchangeAPI.blofin.detectPartials=function(trades){return trades};   // model B: één rij per levensloop, geen siblings
+ExchangeAPI.blofin.detectPartials=null;     // model B: één rij per levensloop, geen siblings
 ExchangeAPI.mexc.detectPartials=function(trades,sourceKey){return detectPartialFromSiblings(trades,sourceKey||"mexc","mexc")};
 ExchangeAPI.kraken.detectPartials=function(trades,sourceKey){
   // levenslopen zijn al compleet; alleen het oude pad (één rij per groep sluitingen) heeft siblings
   const oud=(trades||[]).filter(t=>!/^kraken_pos_/.test(String((t&&t.id)||"")));
   return oud.length?detectPartialFromSiblings(trades,sourceKey||"kraken","kraken"):trades;
 };
-ExchangeAPI.hyperliquid.detectPartials=function(trades){return trades};   // model B: een levensloop is al compleet, er zijn geen siblings
-ExchangeAPI.okx.detectPartials=function(trades,sourceKey){return detectPartialFromSiblings(trades,sourceKey||"okx","okx")};
-ExchangeAPI.ftmo.detectPartials=function(trades){return trades};
+ExchangeAPI.hyperliquid.detectPartials=null;// model B: een levensloop is al compleet
+ExchangeAPI.okx.detectPartials=null;        // model B: de adapter markeert een lopende positie zelf als partial
+ExchangeAPI.ftmo.detectPartials=null;       // CSV-only, geen partials
 
 // v12.235: Hyperliquid + Kraken leveren via fetchTrades COMPLETE round-trips (FIFO/server-side
 // gereconstrueerd uit fills), niet losse partial-close records zoals Blofin/MEXC. Hun open-trade
@@ -6681,6 +6711,11 @@ ExchangeAPI.hyperliquid.openIsPlaceholder=true;
 ExchangeAPI.kraken.openIsPlaceholder=true;
 // OKX positions-history = geaggregeerde round-trips (zoals Kraken), niet losse partial-records.
 ExchangeAPI.okx.openIsPlaceholder=true;
+/* Blofin stond hier bewust NIET bij: in model A was de open rij de "echte rest" na de
+   deelsluitingen, en de siblings-detectie hing daar aan. In model B is de rij uit de
+   positiegeschiedenis de positie zelf (status partial zolang hij loopt); de open rij is dan
+   alleen een tussenstand tot die rij binnen is, en moet erin opgaan. (Denny 24-09-2026.) */
+ExchangeAPI.blofin.openIsPlaceholder=true;
 const PLACEHOLDER_USER_FIELDS=["notes","entryNote","setupTags","confirmationTags","timeframeTags","emotionTags","mistakeTags","customTags","rating","screenshot","screenshots","links","layers","playbookId","complianceChecks","complianceScore","tradeGrade","stopLoss","takeProfit"];
 function adoptPlaceholderFields(target,placeholder){
   const out={...target};
@@ -6708,6 +6743,8 @@ function sjFromTj(tj){
   // Fase 2: velden die de partial-detectie en open-positie-weergave nodig hebben.
   t.qtyAsset=parseFloat(tj.positionSizeAsset)||0;
   if(tj._rawCloseSize!=null)t._rawCloseSize=String(tj._rawCloseSize);
+  // het geboekte deel van een nog lopende positie; migrateOldTrade laat onbekende velden vallen
+  if('realizedPnl' in tj)t.realizedPnl=parseFloat(tj.realizedPnl)||0;
   t.openTime=String(tj.openTime||'');t.closeTime=String(tj.closeTime||'');
   if(Array.isArray(tj.fills)&&tj.fills.length)t.fills=tj.fills;   // adapters die de stappen al kennen (Hyperliquid)
   // Canoniek: het OPEN-moment bepaalt datum/tijd/sessie (besluit 2026-09-14) — je beslissing
@@ -6725,12 +6762,16 @@ function sjFromTj(tj){
 const SJ_SYNC_FIELDS=['entry','exit','pnl','fees','r','status','closeTime','qtyAsset','size','_rawCloseSize','realizedPnl','tps','leverage','fills'];   // fills als laatste: na het wissen hieronder
 function refreshFromSync(bestaand,verse){
   let gewijzigd=false;
+  /* Een rij die van 'closed' naar 'partial' gaat zonder nieuwe sluiting (zelfde closeTime) is
+     alleen anders gelabeld - dat gebeurt bij de eerste sync na de fix van 24-09-2026. De P&L
+     verhuist dan naar realizedPnl, maar de positie is niet verder gelopen: stappen bewaren. */
+  const herlabel=bestaand.status==='closed'&&verse.status==='partial'&&String(bestaand.closeTime||'')===String(verse.closeTime||'');
   SJ_SYNC_FIELDS.forEach(k=>{
     if(!(k in verse))return;
     const nieuw=verse[k], oud=bestaand[k];
     const zelfde=(Array.isArray(nieuw)&&Array.isArray(oud))?JSON.stringify(nieuw)===JSON.stringify(oud):String(nieuw)===String(oud);
     if(!zelfde){bestaand[k]=nieuw;gewijzigd=true;
-      if((k==='closeTime'||k==='pnl')&&!(Array.isArray(verse.fills)&&verse.fills.length))bestaand.fills=[];   // positie is verder gelopen → stappen opnieuw ophalen (tenzij de adapter ze al meegeeft)
+      if((k==='closeTime'||k==='pnl'||k==='realizedPnl')&&!herlabel&&!(Array.isArray(verse.fills)&&verse.fills.length))bestaand.fills=[];   // positie is verder gelopen → stappen opnieuw ophalen (tenzij de adapter ze al meegeeft)
     }
   });
   return gewijzigd;
@@ -6741,7 +6782,9 @@ function importTjClosed(rawList){
   // Binnen één antwoord kan dezelfde positie twee keer staan (een tussenstand én de
   // eindstand). Houd per bron-id alleen de laatste: die bevat de andere al.
   const perId=new Map();
-  (rawList||[]).filter(t=>t&&t.status==='closed'&&t.id&&!dead.has(String(t.id))).forEach(t=>{
+  /* Ook 'partial': een positie waarvan een deel is geboekt maar die nog loopt. Die hoort
+     als één rij binnen te komen, niet als gesloten trade plus een losse open rest. */
+  (rawList||[]).filter(t=>t&&(t.status==='closed'||t.status==='partial')&&t.id&&!dead.has(String(t.id))).forEach(t=>{
     const k=String(t.id), vorige=perId.get(k);
     if(!vorige||(+t.closeTime||0)>=(+vorige.closeTime||0))perId.set(k,t);
   });
@@ -6804,7 +6847,8 @@ async function backfillFills(exId,opts){
   if(!ad||typeof ad.fetchFills!=='function'||typeof ad.stepsForTrade!=='function')return {n:0,reden:''};
   if(!c||!c.connected||TAB_STALE)return {n:0,reden:''};
 
-  const kandidaat=t=>t&&t.exchange===exId&&t.status==='closed'&&!(t.fills&&t.fills.length)&&(+t.openTime>0);
+  // ook 'partial': een lopende positie met al geboekte sluitingen heeft stappen om te tonen
+  const kandidaat=t=>t&&t.exchange===exId&&(t.status==='closed'||t.status==='partial')&&!(t.fills&&t.fills.length)&&(+t.openTime>0);
   let lijst;
   if(opts.tradeId!=null){
     lijst=T.filter(t=>t.id===opts.tradeId&&kandidaat(t));       // knop: precies deze ene
@@ -6962,8 +7006,13 @@ async function syncOpenTrades(exId,opts){
     const key=exMatchKey(sj);
     const ex=mine.find(t=>(t.srcId&&sj.srcId&&t.srcId===sj.srcId)||(key&&exMatchKey(t)===key&&(!t.positionId||!sj.positionId||String(t.positionId)===String(sj.positionId))));
     if(ex){seen.add(ex.id);
-      // live velden verversen; SL/TP alleen overschrijven met een échte waarde (user-invoer beschermen)
-      ex.entry=sj.entry;ex.size=sj.size;ex.qtyAsset=sj.qtyAsset;if(sj.leverage)ex.leverage=sj.leverage;
+      /* Kwam deze rij uit de positiegeschiedenis (eigen bron-id, geen placeholder), dan staan
+         daar de cijfers van de hèle positie in. De open positie kent alleen het restant, dus
+         die mag entry, size en aantal niet overschrijven - anders krimpt je trade bij elke
+         sync mee met wat er nog openstaat. (Denny 24-09-2026.) */
+      const uitHistorie=!!(ex.srcId&&!ex.placeholder);
+      if(!uitHistorie){ex.entry=sj.entry;ex.size=sj.size;ex.qtyAsset=sj.qtyAsset;}
+      if(sj.leverage)ex.leverage=sj.leverage;
       if(sj.stop)ex.stop=sj.stop;if(sj.tp)ex.tp=sj.tp;
       ex.unrealizedPnl=sj.unrealizedPnl;ex.liq=sj.liq;
       if(!ex.openTime&&sj.openTime){ex.openTime=sj.openTime;ex.date=sj.date||ex.date;ex.time=sj.time||ex.time;}
@@ -6992,15 +7041,38 @@ function finalizeStaleOpens(exId){
   if(n)persist();
   return n;
 }
+// Dezelfde positie? Op positionId én openstart (OKX hergebruikt posId's); zonder positionId
+// alleen voor een placeholder op de matchKey (pair|richting|entry).
+function zelfdePositieSJ(a,b){
+  if(a.positionId&&b.positionId){
+    if(String(a.positionId)!==String(b.positionId))return false;
+    const ao=+a.openTime||0,bo=+b.openTime||0;return !ao||!bo||ao===bo;
+  }
+  const k=exMatchKey(a);return !!(a.placeholder&&k&&exMatchKey(b)===k);
+}
 // Placeholder-finalize: nieuwe gesloten trades vervangen hun placeholder (echte trade wint).
 function finalizePlaceholders(exId,newClosed){
   const ad=ExchangeAPI[exId];
-  if(!ad||!ad.openIsPlaceholder||!newClosed||!newClosed.length)return 0;
+  if(!ad||!ad.openIsPlaceholder)return 0;
   let n=0;
-  for(const cT of newClosed){
+  const opgaanIn=(echt,ph)=>{adoptUserFieldsSJ(echt,ph);
+    ['unrealizedPnl','liq'].forEach(k=>{if(ph[k]!=null&&ph[k]!==''&&(echt[k]==null||echt[k]===''))echt[k]=ph[k];});   // de live cijfers van de open rest
+    T=T.filter(t=>t.id!==ph.id);n++;};
+  const lopend=()=>T.filter(t=>t.exchange===exId&&t.placeholder&&(t.status==='open'||t.status==='partial'));
+  for(const cT of (newClosed||[])){
     const key=exMatchKey(cT);if(!key)continue;
-    const ph=T.find(t=>t.exchange===exId&&t.placeholder&&(t.status==='open'||t.status==='partial')&&exMatchKey(t)===key);
-    if(ph){adoptUserFieldsSJ(cT,ph);T=T.filter(t=>t.id!==ph.id);n++;}
+    const ph=lopend().find(t=>exMatchKey(t)===key);
+    if(ph)opgaanIn(cT,ph);
+  }
+  /* Een positie die nog loopt maar al deels geboekt is, staat als eigen rij (status partial)
+     in de historie. Een open rij voor dezelfde positie is dan dubbelop - ook wanneer die
+     historierij niet nieuw is, want voor 24-09-2026 bleven die twee naast elkaar staan en
+     dat moet bij de eerstvolgende sync vanzelf goed komen. Zelfde positie = zelfde
+     positionId en openstart (OKX hergebruikt posId's), anders dezelfde matchKey; een open
+     rij zonder placeholder-vlag (Blofin van voor vandaag) telt alleen mee via positionId. */
+  for(const rij of T.filter(t=>t.exchange===exId&&(t.status==='open'||t.status==='partial')&&(t.placeholder||t.positionId))){
+    const echt=T.find(t=>t.exchange===exId&&t.id!==rij.id&&!t.placeholder&&t.status==='partial'&&t.srcId&&t.srcId!==rij.srcId&&zelfdePositieSJ(rij,t));
+    if(echt)opgaanIn(echt,rij);
   }
   if(n)persist();
   return n;
@@ -7465,7 +7537,14 @@ function runPartialDetect(exId){
   const idx={};const views=[];
   T.forEach(t=>{if(t.exchange!==exId)return;const v=tjViewOf(t);idx[v.id]=t;views.push(v);});
   if(!views.length)return;
-  const out=detectPartialFromSiblings(views,exId,exId);
+  /* Via de adapter, zoals de dispatcher-afspraak hierboven zegt. Rechtstreeks aanroepen ging
+     langs de per-exchange keuze heen: exchanges op het levensloop-model markeren een lopende
+     positie zelf als partial, en de siblings-detectie draaide dat weer terug naar 'open'.
+     Staat er geen detectie (model B), dan valt er hier niets toe te passen - dan zou deze lus
+     juist wegpoetsen wat de adapter net heeft vastgesteld. (Denny 24-09-2026.) */
+  const detect=ExchangeAPI[exId]&&ExchangeAPI[exId].detectPartials;
+  if(typeof detect!=='function')return;
+  const out=detect(views,exId)||[];
   let changed=false;
   out.forEach(v=>{const t=idx[v.id];if(!t)return;
     if(v.status!==t.status){t.status=v.status;changed=true;}

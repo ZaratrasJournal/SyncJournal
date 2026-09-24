@@ -10,6 +10,18 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 De journal is opnieuw opgebouwd als **SyncJournal** en draait nu online op [syncjournal.nl](https://syncjournal.nl). Versienummers zijn opnieuw gestart op v0.9.x (bèta); de oude TradeJournal-releases staan verderop in dit bestand. Je data overzetten kan via Instellingen → Data → Importeer oude backup.
 
+## [v0.9.128] — 2026-09-24
+
+### Fixed
+- **Een positie die je deels had gesloten stond twee keer in je lijst.** Eén gesloten rij voor het deel dat al geboekt was en één open rij voor de rest — en die tweede verscheen pas na een sync. Bij OKX en Blofin is zo'n positie nu wat hij is: één rij met status *partial*, het geboekte bedrag apart ("deels dicht"), de grootte van de hele positie, en de live cijfers van het deel dat nog loopt. Sluit je de rest, dan wordt diezelfde rij gesloten. Notities en tags blijven staan.
+- Bestaande journals worden bij het openen automatisch hersteld (dataschema v8): de twee rijen worden één, met de stappen die je al had opgehaald. Dit was nodig omdat een positie die niet meer beweegt bij een sync niet opnieuw langskomt.
+- De open positie kon bij elke sync de grootte van je trade laten krimpen tot wat er nog openstond; de cijfers van de hele positie komen nu uit de historie en blijven staan.
+- Ook een lopende positie met al geboekte sluitingen krijgt nu zijn stappen opgehaald, niet pas wanneer hij helemaal dicht is.
+
+### Gewijzigd
+- Hyperliquid en Kraken hadden deze dubbeltelling niet: daar is een lopende positie één open rij en verschijnt het geboekte deel wanneer de positie klaar is. Dat gat (het geboekte deel is tot dan niet zichtbaar) staat nu expliciet vast in de tests.
+- De partial-detectie loopt weer via de adapter van de exchange zelf, zodat een fix voor de ene exchange de verwerking van een andere niet raakt.
+
 ## [v0.9.127] — 2026-09-24
 
 ### Gewijzigd
