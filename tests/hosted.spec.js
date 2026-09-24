@@ -1,6 +1,6 @@
 // Borgt fase 2 van het hosting-plan (2026-09-16): IS_HOSTED-detectie, echte
 // versie-vergelijking + update-banner, opslag-bescherming-status, verhuis-FAQ,
-// en de release-sync tussen site/index.html en site/version.json.
+// en de release-sync tussen site/app.html (de journal; index.html is sinds 24-09-2026 de landingspagina) en site/version.json.
 const { chromium } = require('playwright'); const path = require('path'); const fs = require('fs');
 let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  ✓ ' + n)) : (fail++, console.log('  ✗ ' + n + (e ? ' → ' + e : ''))); };
 (async () => {
@@ -31,10 +31,10 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
   ok('FAQ: syncjournal.nl-vraag + verhuisvraag aanwezig', await p.evaluate(() => { go('faq'); const t = document.getElementById('main').textContent; return /staat mijn data dan online/.test(t) && /hoe verhuis ik naar syncjournal\.nl/.test(t); }));
 
   console.log('─── Release-sync site/ ───');
-  const idx = fs.readFileSync(path.resolve('site', 'index.html'), 'utf8');
+  const idx = fs.readFileSync(path.resolve('site', 'app.html'), 'utf8');
   const vj = JSON.parse(fs.readFileSync(path.resolve('site', 'version.json'), 'utf8'));
   const m = idx.match(/const APP_VERSION='([^']+)'/);
-  ok('site/index.html en site/version.json dragen dezelfde versie', m && m[1] === vj.version, `index=${m && m[1]} json=${vj.version}`);
+  ok('site/app.html en site/version.json dragen dezelfde versie', m && m[1] === vj.version, `index=${m && m[1]} json=${vj.version}`);
   ok('privacy.html aanwezig met kernpunten (lokaal, Drive, contact via community)', (() => { const pv = fs.readFileSync(path.resolve('site', 'privacy.html'), 'utf8'); return /eigen browser/.test(pv) && /Google Drive/.test(pv) && /community/.test(pv) && !/info@syncjournal/.test(pv); })());
   ok('_headers: version.json wordt nooit gecachet', /\/version\.json\s*\n\s*Cache-Control: no-store/.test(fs.readFileSync(path.resolve('site', '_headers'), 'utf8')));
   ok('demo-dataset.json staat naast de app (3000 trades, geldige backup-vorm)', (() => { try { const d = JSON.parse(fs.readFileSync(path.resolve('site', 'demo-dataset.json'), 'utf8')); return d.app === 'SyncJournal' && Array.isArray(d.trades) && d.trades.length === 3000 && !!d.exMeta; } catch (e) { return false; } })());

@@ -42,13 +42,15 @@ Onderstaande secties gaan over hosting en releases van deze repo.
 
 | Bestand | Doel |
 |---|---|
-| `index.html` | De volledige app (single-file HTML + vanilla JS; kopie van `work/syncjournal.html` op releasemoment) |
-| `version.json` | Bron voor de in-app update-check (`{version, released}`) — **moet gelijk zijn aan `APP_VERSION` in index.html** |
+| `index.html` | De landingspagina (eigen, lichte pagina; gebouwd uit `demos/landing-demo.html` in de dev-repo) |
+| `app.html` | De volledige journal (single-file HTML + vanilla JS; kopie van `work/syncjournal.html` op releasemoment). Bereikbaar als `/app` |
+| `robots.txt`, `sitemap.xml`, `og-image.png` | Voor zoekmachines en link-previews; de app zelf staat op `Disallow` |
+| `version.json` | Bron voor de in-app update-check (`{version, released}`) — **moet gelijk zijn aan `APP_VERSION` in app.html** |
 | `demo-dataset.json` | Voorbeelddata (3000 trades) voor "Rondkijken met voorbeelddata" |
 | `privacy.html` | Privacyverklaring (ook vereist voor de Google Drive-verificatie) |
 | `_headers` | Cache-regels (`version.json` nooit cachen) |
 
-De broncode wordt ontwikkeld in een aparte dev-repo met een Playwright-testsuite (29 specs, ~800 checks); `tests/hosted.spec.js` bewaakt daar o.a. dat `index.html` en `version.json` dezelfde versie dragen en dat de demo-dataset meegaat.
+De broncode wordt ontwikkeld in een aparte dev-repo met een Playwright-testsuite (29 specs, ~800 checks); `tests/hosted.spec.js` bewaakt daar o.a. dat `app.html` en `version.json` dezelfde versie dragen en dat de demo-dataset meegaat.
 
 ### Hosting: twee Cloudflare Pages-projecten op deze repo
 
@@ -61,7 +63,7 @@ De app toont op een `work.*`-hostname automatisch een 🚧 WERKVERSIE-badge. Aan
 
 ### Release-ritueel
 
-1. `cp work/syncjournal.html site/index.html` (in de dev-repo)
+1. `cp work/syncjournal.html site/app.html` (in de dev-repo)
 2. Zet `version` + `released` in `version.json` gelijk aan de nieuwe `APP_VERSION`
 3. Voeg bij user-facing wijzigingen een blok toe bovenaan `CHANGELOG.md` in de dev-repo (de app linkt ernaar bij Instellingen → Updates)
 4. Draai de volledige testsuite — alles groen vóór er iets vertrekt

@@ -10,6 +10,16 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 De journal is opnieuw opgebouwd als **SyncJournal** en draait nu online op [syncjournal.nl](https://syncjournal.nl). Versienummers zijn opnieuw gestart op v0.9.x (bèta); de oude TradeJournal-releases staan verderop in dit bestand. Je data overzetten kan via Instellingen → Data → Importeer oude backup.
 
+## [v0.9.131] — 2026-09-24
+
+### Toegevoegd
+- **Nieuwe landingspagina op syncjournal.nl.** Een eigen, lichte pagina (geen app-code) die laat zien wat SyncJournal doet: coins die een equity-curve in R worden, een coin-strip, de zeven onderdelen als levende tegels, voorbeelden van wat Tendencies en Analytics over je vertellen, en het privacy-blok. De journal zelf staat nu op `syncjournal.nl/app`; oude bookmarks naar de root blijven werken.
+- Terugkerende gebruikers zien bovenaan **"Open mijn journal"**. Wil je de pagina niet meer zien: Instellingen → Weergave → **"Landingspagina overslaan"** (standaard uit). Via het logo in de journal kom je altijd terug op de startpagina.
+- `robots.txt` en `sitemap.xml` zijn nu echte bestanden (voorheen gaf de site daar de app-pagina terug).
+
+### Gewijzigd
+- Het oude welkomscherm ín de journal is vervangen door de landingspagina. "Begin je journal", "Rondkijken met voorbeelddata", de keuze Rustig/Standaard/Alles en de zeven tegels werken zoals voorheen, nu vanaf de landingspagina.
+
 ## [v0.9.130] — 2026-09-24
 
 ### Toegevoegd
