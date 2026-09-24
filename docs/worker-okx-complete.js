@@ -320,7 +320,7 @@ async function handleOKX(action, { apiKey, apiSecret, passphrase, startTime, end
 // ═══════════════════════════════════════════════════════════════
 // Kraken Futures — fills + account-log gekoppeld (v8 match-fix)
 // ═══════════════════════════════════════════════════════════════
-async function handleKraken(action, { apiKey, apiSecret, startTime }) {
+async function handleKraken(action, { apiKey, apiSecret, startTime, withEvents }) {
   const base = 'https://futures.kraken.com';
 
   const signKraken = async (basePath, nonce, postData = '') => {
@@ -594,16 +594,17 @@ async function handleKraken(action, { apiKey, apiSecret, startTime }) {
   }).filter(t => t.pair_clean);
 
   /* De losse positie-gebeurtenissen gaan mee, zodat de journal één trade per levensloop kan
-     bouwen met alle stappen, funding en het liquidatie-kenmerk erin. `trades` blijft ernaast
-     staan voor journals die de gebeurtenissen nog niet lezen. (Denny 23-09-2026.) */
-  const events = allElements
+     bouwen met alle stappen, funding en het liquidatie-kenmerk erin. Alleen wanneer de client
+     erom vraagt: de oude TradeJournal gebruikt dezelfde Worker en zou ze anders downloaden
+     en parsen zonder er iets aan te hebben. `trades` blijft ernaast staan. (Denny 23-09-2026.) */
+  const events = withEvents === true ? allElements
     .filter(el => el && el.event && el.event.PositionUpdate)
-    .map(el => ({ uid: el.uid, timestamp: el.timestamp, event: { PositionUpdate: el.event.PositionUpdate } }));
+    .map(el => ({ uid: el.uid, timestamp: el.timestamp, event: { PositionUpdate: el.event.PositionUpdate } })) : undefined;
 
   return {
     source: 'position_updates',
     trades,
-    events,
+    ...(events ? { events } : {}),
     _v18Debug: {
       pagesFetched,
       totalElements: allElements.length,
@@ -617,7 +618,7 @@ async function handleKraken(action, { apiKey, apiSecret, startTime }) {
       firstResponseKeys,
       firstResponseBytes,
       sinceUsed: since,
-      eventsReturned: events.length,
+      eventsReturned: events ? events.length : 0,
     },
   };
 

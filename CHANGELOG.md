@@ -10,6 +10,11 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 De journal is opnieuw opgebouwd als **SyncJournal** en draait nu online op [syncjournal.nl](https://syncjournal.nl). Versienummers zijn opnieuw gestart op v0.9.x (bèta); de oude TradeJournal-releases staan verderop in dit bestand. Je data overzetten kan via Instellingen → Data → Importeer oude backup.
 
+## [v0.9.127] — 2026-09-24
+
+### Gewijzigd
+- SyncJournal vraagt de Kraken-positiegebeurtenissen voortaan expliciet op. De oorspronkelijke TradeJournal gebruikt dezelfde proxy en heeft ze niet nodig; zonder die vraag zou hij ze bij elke sync downloaden zonder er iets mee te doen.
+
 ## [v0.9.126] — 2026-09-23
 
 ### Fixed

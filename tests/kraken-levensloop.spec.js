@@ -92,7 +92,7 @@ const ev = (o) => ({ uid: 'u' + (o.ts), timestamp: o.ts, event: { PositionUpdate
     window.__KR = a; window.__KRcalls = [];
     window.fetch = async (url, init) => {
       const body = JSON.parse(init.body);
-      window.__KRcalls.push({ action: body.action, startTime: +body.startTime || 0 });
+      window.__KRcalls.push({ action: body.action, startTime: +body.startTime || 0, withEvents: body.withEvents === true });
       const d = body.action === 'trades' ? window.__KR
         : body.action === 'test' ? { success: true, balance: '100' }
         : body.action === 'open_positions' ? { positions: [] } : {};
@@ -182,6 +182,8 @@ const ev = (o) => ({ uid: 'u' + (o.ts), timestamp: o.ts, event: { PositionUpdate
     ok('de P&L is die van de hele positie', bij(r.pnl, 4 - 0.18, 1e-9), JSON.stringify(r.pnl));
     ok('de proxy-upgrade is één keer opgemerkt, en de oudere historie is er meteen bij gehaald',
       r.evt === 1 && r.haal.length === 2 && r.haal[1].startTime < r.haal[0].startTime, JSON.stringify({ evt: r.evt, haal: r.haal }));
+    ok('en we vragen er expliciet om — zo krijgt de oude journal ze niet ongevraagd',
+      r.haal.every(c => c.withEvents === true), JSON.stringify(r.haal));
     const n2 = await p.evaluate(() => { window.__KRcalls = []; return syncExchange('kraken', { quiet: true }); });
     const r2 = await p.evaluate(() => ({ n: T.length, haal: window.__KRcalls.filter(c => c.action === 'trades').length }));
     ok('een tweede sync voegt niets toe en haalt de historie niet nóg eens op', n2 === 0 && r2.n === 1 && r2.haal === 1, JSON.stringify(r2));

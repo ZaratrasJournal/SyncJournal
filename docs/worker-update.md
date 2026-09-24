@@ -16,19 +16,21 @@ Alles wat er nu werkt blijft werken. De `trades`-uitvoer van Kraken blijft ongew
 In `handleKraken`, vlak vóór de laatste `return`:
 
 ```js
-const events = allElements
+const events = withEvents === true ? allElements
   .filter(el => el && el.event && el.event.PositionUpdate)
-  .map(el => ({ uid: el.uid, timestamp: el.timestamp, event: { PositionUpdate: el.event.PositionUpdate } }));
+  .map(el => ({ uid: el.uid, timestamp: el.timestamp, event: { PositionUpdate: el.event.PositionUpdate } })) : undefined;
 
 return {
   source: 'position_updates',
   trades,
-  events,          // ← nieuw
+  ...(events ? { events } : {}),     // ← nieuw, alleen op verzoek
   _v18Debug: { /* … */ },
 };
 ```
 
-`allElements` staat er al: de lus die de pagina's ophaalt vult hem. De Worker gooide alleen alles weg behalve de sluitingen.
+`withEvents` komt uit de request; de functiekop wordt `handleKraken(action, { apiKey, apiSecret, startTime, withEvents })`. `allElements` staat er al: de lus die de pagina's ophaalt vult hem. De Worker gooide alleen alles weg behalve de sluitingen.
+
+**Waarom alleen op verzoek.** De oorspronkelijke TradeJournal gebruikt dezelfde Worker en leest alleen `data.trades`. Zonder die voorwaarde zou hij die gebeurtenissen wél downloaden en parsen zonder er iets aan te hebben — bij een drukke Kraken-historie is dat zo een paar honderd kilobyte per sync, voor niets. SyncJournal stuurt `withEvents: true` mee; de oude journal niet, en merkt er dus niets van.
 
 **Waarom niet via `/derivatives/api/v3/fills`.** Uit Kraken's eigen documentatie bij dat endpoint: *"`realized_pnl` … Null when the fill was recorded before this field was introduced, or when the request uses `lastFillTime`."* De Worker pagineert altijd met `lastFillTime`, dus daar is de P&L structureel leeg. De positie-gebeurtenissen dragen hem wél, plus funding en het liquidatie-kenmerk.
 
@@ -50,6 +52,18 @@ return {
 ```
 
 **Bewust niet als `error` op het hoogste niveau.** Dat veld betekent op deze Worker "request mislukt", en de Worker is gedeeld met Morani's journal — die zou daarop gaan gooien bij wat voorheen gewoon een leeg antwoord was. Een onbekende extra sleutel negeert elke client.
+
+## Breekt dit de oorspronkelijke journal?
+
+Nee, en dat is nagekeken in zijn code in plaats van aangenomen:
+
+| Endpoint | Wat de oude journal ermee doet | Gevolg |
+|---|---|---|
+| Kraken `trades` | `(data.trades \|\| []).filter(…)` | leest `events` niet — en vraagt er nu ook niet om |
+| OKX `fills` | `Array.isArray(data.fills) ? data.fills : []` | negeert `_okxDebug` |
+| Kraken `fills` | ongewijzigd | — |
+
+Zijn `proxyCall` gooit wél op een `error` op het hoogste niveau (`if(data.error){…throw}`). Daarom staat de OKX-diagnose onder `_okxDebug` en niet onder `error`: anders zou een leeg fills-antwoord bij hem een harde fout worden.
 
 ## Na het deployen
 
