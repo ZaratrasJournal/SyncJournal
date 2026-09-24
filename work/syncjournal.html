@@ -690,6 +690,8 @@ table.tbl{width:100%;border-collapse:collapse;font-size:14px}
 .field input:focus,.field select:focus,.field textarea:focus{border-color:var(--accent);background:var(--surface)}
 .field input[readonly]{border-style:dashed;color:var(--ink2);background:color-mix(in srgb,var(--sink) 55%,var(--surface));cursor:default}
 .lockbar{font-size:12px;color:var(--muted);padding:8px 11px;border:1px dashed var(--line);border-radius:9px;line-height:1.45}
+.formwarn{font-size:12px;color:var(--ink);padding:8px 11px;border:1px dashed color-mix(in srgb,var(--amber) 55%,transparent);background:color-mix(in srgb,var(--amber) 10%,transparent);border-radius:9px;line-height:1.45}
+.formwarn .btn{margin-left:6px;vertical-align:middle}
 .xbtn{margin-left:auto;width:32px;height:32px;border-radius:8px;color:var(--muted);font-size:17px}
 .xbtn:hover{background:var(--hover);color:var(--ink)}
 .msub{--sec:var(--accent);grid-column:1/-1;display:flex;align-items:center;gap:9px;font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink);font-weight:800;margin-top:22px;padding:11px 14px;background:color-mix(in srgb,var(--sec) 9%,transparent);border-radius:10px;border-left:3px solid var(--sec)}
@@ -1762,7 +1764,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.129';
+const APP_VERSION='v0.9.130';
 const SCHEMA_VERSION=8;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -7762,19 +7764,21 @@ function renderMistakes(){const c=document.getElementById('mistakebuilder');if(!
   c.innerHTML=`<div class="tg-chips pillchips" style="--chip:var(--amber)">${(tagConfig.mistakeTags||[]).map(m=>`<span class="tagopt ${formMistakes.includes(m)?'on':''}" onclick="toggleMistake('${esc(m).replace(/'/g,'')}')">${esc(m)}</span>`).join('')}</div>`;}
 /* ═══ TP-technologie (take-profit-niveaus / partial closes) ═══ */
 let formTPs=[];
+let formCloseAuto={t:'',d:''};   // sluittijd/-datum die wij uit de TP-tijden hebben ingevuld: die mogen we later weer bijwerken, een eigen invoer niet
 function evenTPs(){const n=formTPs.length;if(!n)return;const base=Math.floor(100/n),rem=100-base*n;formTPs.forEach((tp,i)=>{tp.pct=base+(i<rem?1:0);});}
 function addTP(){formTPs.push({price:'',pct:0,r:'',hit:false});evenTPs();renderTPs();}
 function removeTP(i){formTPs.splice(i,1);evenTPs();renderTPs();}
-function toggleTPHit(i){formTPs[i].hit=!formTPs[i].hit;renderTPs();}
+function toggleTPHit(i){formTPs[i].hit=!formTPs[i].hit;renderTPs();calcTrade(true);
+  if(formTPs[i].hit){const el=document.querySelectorAll('#tpbuilder .tptime')[formTPs.slice(0,i).filter(x=>x.hit).length];if(el)el.focus();}}
 function applyTPTemplate(dist){formTPs=dist.map((pct,i)=>({price:(formTPs[i]&&formTPs[i].price)||'',pct,r:(formTPs[i]&&formTPs[i].r)||'',hit:(formTPs[i]&&formTPs[i].hit)||false}));renderTPs();}
 function tpSum(){const el=document.getElementById('tpsum');if(!el)return;const s=formTPs.reduce((a,x)=>a+(+x.pct||0),0);el.textContent=s+'%';el.className='num '+(s===100?'g':'r');}
 function renderTPs(){const c=document.getElementById('tpbuilder');if(!c)return;
   const sum=formTPs.reduce((a,x)=>a+(+x.pct||0),0);
   const rows=formTPs.map((tp,i)=>`<div class="tprow-edit"><span class="tpnum">TP${i+1}</span>
-    <input class="tpin" placeholder="prijs" value="${tp.price}" inputmode="decimal" oninput="formTPs[${i}].price=this.value">
-    <input class="tpin pct" placeholder="%" value="${tp.pct}" inputmode="numeric" oninput="formTPs[${i}].pct=+this.value||0;tpSum()">
-    <button type="button" class="tphit ${tp.hit?'on':''}" onclick="toggleTPHit(${i})">${tp.hit?'✓ hit':'open'}</button>
-    ${tp.hit?`<input class="tpin tptime" placeholder="tijd" value="${esc(tp.tsTime||'')}" oninput="formTPs[${i}].tsTime=this.value" title="Sluittijd van deze TP (HH:MM), zichtbaar in de tijdlijn">`:''}
+    <input class="tpin" placeholder="prijs" value="${tp.price}" inputmode="decimal" oninput="formTPs[${i}].price=this.value;calcTrade(true)">
+    <input class="tpin pct" placeholder="%" value="${tp.pct}" inputmode="numeric" oninput="formTPs[${i}].pct=+this.value||0;tpSum();calcTrade(true)">
+    <button type="button" class="tphit ${tp.hit?'on':''}" onclick="toggleTPHit(${i})" title="${tp.hit?'Gehaald - klik om terug te zetten':'Klik als deze TP is gehaald: P&L, exit en status rekenen we dan uit'}">${tp.hit?'✓ hit':'open'}</button>
+    ${tp.hit?`<input class="tpin tptime" placeholder="HH:MM" value="${esc(tp.tsTime||'')}" oninput="formTPs[${i}].tsTime=this.value;calcTrade(true)" title="Hoe laat deze TP is gehaald (HH:MM) - zichtbaar in de stappentabel; de laatste wordt je sluittijd">`:''}
     <button type="button" class="xlayer" onclick="removeTP(${i})" title="verwijderen">×</button></div>`).join('');
   c.innerHTML=`<div class="tptmpl">${formTPs.length>1?`<button type="button" class="btn" onclick="evenTPs();renderTPs()">Gelijk verdelen</button>`:''}<span class="sp" style="flex:1"></span><button type="button" class="btn pri" onclick="addTP()">+ TP toevoegen</button></div>
     ${formTPs.length?`<div class="tprows">${rows}</div><div class="tptot">Verdeeld: <b id="tpsum" class="num ${sum===100?'g':'r'}">${sum}%</b> ${sum===100?'✓ volledig':'— moet samen 100% zijn'}</div>`:`<div class="layerhint">Voeg take-profit-niveaus toe, we verdelen je positie automatisch gelijk (1 TP = 100%, 2 = 50/50, 3 = 34/33/33…). Pas het % zelf aan als je anders wilt, en markeer welke TP's geraakt zijn (partial closes).</div>`}`;}
@@ -7811,14 +7815,35 @@ function formSizeUsd(){const v=fnum('f_size');if(isNaN(v))return NaN;if(formSize
 function setSizeUnit(u){if(u===formSizeUnit)return;const entry=fnum('f_entry'),v=fnum('f_size'),el=document.getElementById('f_size');
   if(!isNaN(v)&&entry>0&&el){el.value=u==='asset'?String(+(v/entry).toFixed(6)):String(Math.round(v*entry));}
   formSizeUnit=u;document.querySelectorAll('#szseg button').forEach(b=>b.classList.toggle('on',(b.id==='szAssetBtn')===(u==='asset')));calcTrade(true);}
+/* De TP-niveaus rekenen mee zodra er één "hit" is: elk gehaald niveau sluit zijn deel op
+   zijn prijs, het restant op de exit (als die er is). Zijn ze allemaal gehaald, dan ís de
+   gewogen TP-prijs de exit. Zo hoef je bij een handmatige trade niets na te rekenen
+   (Denny 24-09-2026); de stappentabel leidt dezelfde stappen af (afgeleideStappen). */
+function tpAfrekening(entry,size,dir,exit){
+  if(typeof formTPs==='undefined'||!formTPs.length||!(entry>0)||isNaN(size))return null;
+  const tps=formTPs.map(x=>({price:+String(x.price).replace(',','.')||0,pct:+x.pct||0,hit:!!x.hit,tsTime:String(x.tsTime||'').trim()})).filter(x=>x.price>0&&x.pct>0);
+  const hit=tps.filter(x=>x.hit);if(!hit.length)return null;
+  const hitPct=hit.reduce((a,x)=>a+x.pct,0),restPct=Math.max(0,100-hitPct);
+  const gewogenHit=hit.reduce((a,x)=>a+x.price*x.pct,0);
+  let pnl=hit.reduce((a,x)=>a+(x.price-entry)/entry*size*(x.pct/100)*dir,0);
+  const alles=restPct===0,restDicht=alles||exit>0;
+  if(!alles&&exit>0)pnl+=(exit-entry)/entry*size*(restPct/100)*dir;
+  const wExit=alles?gewogenHit/hitPct:(exit>0?(gewogenHit+exit*restPct)/100:null);
+  const tijden=hit.map(x=>x.tsTime).filter(t=>/^\d{1,2}:\d{2}$/.test(t)).map(t=>t.length===4?'0'+t:t).sort();
+  return {pnl,hitPct,restPct,alles,restDicht,wExit,laatsteTijd:tijden.length?tijden[tijden.length-1]:''};
+}
 function calcTrade(fill){
   // C3: het losse TP-veld is vervallen — R:R rekent met TP1 uit de niveaus-bouwer.
-  const entry=fnum('f_entry'),exit=fnum('f_exit'),stop=fnum('f_stop'),size=formSizeUsd(),fees=fnum('f_fees')||0;
+  const entry=fnum('f_entry'),stop=fnum('f_stop'),size=formSizeUsd(),fees=fnum('f_fees')||0;
+  let exit=fnum('f_exit');
   const tp=(typeof formTPs!=='undefined'&&formTPs.length&&+String(formTPs[0].price).replace(',','.')>0)?+String(formTPs[0].price).replace(',','.'):NaN;
   const dirEl=document.getElementById('f_dir'),dir=dirEl&&dirEl.value==='short'?-1:1;
   let pnl=NaN,r=NaN,rr=NaN,pct=NaN;
+  const afr=formLocked?null:tpAfrekening(entry,size,dir,exit);
+  if(afr&&afr.alles&&afr.wExit>0)exit=+afr.wExit.toFixed(entry<10?4:2);   // alle TP's gehaald: de gewogen TP-prijs is je exit
   if(formLocked)pnl=fnum('f_pnl');   // gesynct: de P&L van de exchange is leidend, R rekent daarmee
-  else if(entry>0&&!isNaN(exit)&&!isNaN(size))pnl=Math.round((exit-entry)/entry*size*dir-fees);
+  else if(afr)pnl=+(afr.pnl-fees).toFixed(2);
+  else if(entry>0&&!isNaN(exit)&&!isNaN(size))pnl=+((exit-entry)/entry*size*dir-fees).toFixed(2);
   // A6: R alleen bij betekenisvol risico — stop ≈ entry (of duizendtal-typefout) gaf R's van miljarden.
   if(entry>0&&!isNaN(stop)&&!isNaN(size)&&!isNaN(pnl)&&Math.abs(entry-stop)>=entry*1e-4){const risk=Math.abs(entry-stop)/entry*size;if(risk>0)r=+(pnl/risk).toFixed(2);}
   if(entry>0&&!isNaN(stop)&&!isNaN(tp)&&Math.abs(entry-stop)>0)rr=+(Math.abs(tp-entry)/Math.abs(entry-stop)).toFixed(2);
@@ -7826,13 +7851,26 @@ function calcTrade(fill){
   const _pb=(+STATE.pctRef||0)>0?+STATE.pctRef:totalBalance();
   if(!isNaN(pnl)&&_pb>0)pct=+(pnl/_pb*100).toFixed(2);
   if(fill){if(!isNaN(pnl)&&!formLocked)document.getElementById('f_pnl').value=pnl;if(!isNaN(r))document.getElementById('f_r').value=r;if(!isNaN(rr))document.getElementById('f_rrPlanned').value=rr;
+    if(afr&&afr.alles){
+      const ex=document.getElementById('f_exit');if(ex&&!formLocked)ex.value=exit;
+      /* alles gehaald: de trade is dicht; de laatst gehaalde TP-tijd wordt je sluittijd
+         (vóór je open-tijd = de volgende dag), tenzij je die al zelf had ingevuld */
+      const st=document.getElementById('f_status');if(st&&st.value!=='closed')st.value='closed';
+      const ct=document.getElementById('f_closeTime'),cd=document.getElementById('f_closeDate');
+      if(afr.laatsteTijd&&ct&&(!String(ct.value).trim()||ct.value===formCloseAuto.t)){ct.value=afr.laatsteTijd;formCloseAuto.t=afr.laatsteTijd;
+        const d=document.getElementById('f_date').value,ot=String(document.getElementById('f_time').value||'').trim();
+        if(cd&&d&&(!cd.value||cd.value===formCloseAuto.d)){cd.value=(ot&&afr.laatsteTijd<ot.padStart(5,'0'))?ts2date(+new Date(d+'T00:00')+864e5):d;formCloseAuto.d=cd.value;}}
+    }else if(afr){
+      // deels gehaald: dicht als het restant op je exit is gegaan, anders loopt hij nog (partial)
+      const st=document.getElementById('f_status');if(st)st.value=afr.restDicht?'closed':'partial';}
     const _o=formMomentMs('f_date','f_time'),_c=formMomentMs('f_closeDate','f_closeTime');
     if(_o&&_c&&_c>_o){const el=document.getElementById('f_durationMin');if(el)el.value=Math.round((_c-_o)/60000);}}
   const prev=document.getElementById('calcPrev');if(!prev)return;
   const parts=[];
   if(formSizeUnit==='asset'&&!isNaN(size))parts.push(`Size <b class="num">≈ ${CURSYM()} ${Math.round(size).toLocaleString('nl-NL')}</b>`);
   if(isNaN(pnl)&&isNaN(r)&&isNaN(rr)&&!parts.length){prev.innerHTML='<span class="calc-ic">∑</span><span style="color:var(--muted)">Vul <b>entry</b>, <b>exit</b>, <b>stop</b> &amp; <b>size</b> in. P&amp;L, R en R:R rekenen we automatisch uit.</span>';return;}
-  if(!isNaN(pnl))parts.push(`P&L <b class="num ${pnl>=0?'g':'r'}">${eurS(pnl)}</b>`);
+  if(afr)parts.push(`TP's <b class="num g">${afr.hitPct}%</b> gehaald${afr.alles?` · exit <b class="num">${exit.toLocaleString('nl-NL')}</b>`:(afr.restDicht?` · restant ${afr.restPct}% op je exit`:` · <span style="color:var(--amber)">restant ${afr.restPct}% loopt nog — vul de exit in zodra dat deel dicht is</span>`)}`);
+  if(!isNaN(pnl))parts.push(`P&L <b class="num ${pnl>=0?'g':'r'}">${eurCS(pnl)}</b>`);
   if(!isNaN(pct))parts.push(`<b class="num ${pct>=0?'g':'r'}">${(pct>=0?'+':'')+pct.toFixed(2).replace('.',',')}%</b>`);
   if(!isNaN(r))parts.push(`R <b class="num ${r>=0?'g':'r'}">${(r>=0?'+':'')+r.toFixed(2).replace('.',',')}R</b>`);
   if(!isNaN(r)&&Math.abs(r)>50)parts.push(`<span style="color:var(--amber);font-weight:700">⚠ R lijkt onrealistisch, check entry/stop (duizendtallen zónder punt typen)</span>`);
@@ -7859,8 +7897,8 @@ function updFormVis(){
   btn.textContent=formMoreOpen?'▴ Minder velden':`▾ Meer velden (${n})`;
 }
 function openForm(id){
-  const t=id!=null?T.find(x=>x.id===id):{date:new Date().toISOString().slice(0,10),time:'',exchange:(relevantExchanges()[0]||MANUAL[0]||{id:'blofin'}).id,pair:'BTC/USDC',dir:'long',setup:'',session:'London',timeframe:'15m',market:'Trending',grade:'',entry:'',stop:'',tp:'',exit:'',size:'',leverage:10,fees:'',risk:'',rrPlanned:'',pnl:'',r:'',status:'closed',emotion:'',mistake:'',emotions:[],mistakes:[],layers:[],tags:[],notes:'',lessons:'',durationMin:'',mae:'',mfe:''};
-  formSizeUnit=(t.sizeUnit==='asset'&&t.qty>0)?'asset':'usd';formPbTouched=false;formPbLayersJson='';
+  const t=id!=null?T.find(x=>x.id===id):{date:new Date().toISOString().slice(0,10),time:'',exchange:(MANUAL[0]||relevantExchanges()[0]||{id:'blofin'}).id,pair:'BTC/USDC',dir:'long',setup:'',session:'London',timeframe:'15m',market:'Trending',grade:'',entry:'',stop:'',tp:'',exit:'',size:'',leverage:10,fees:'',risk:'',rrPlanned:'',pnl:'',r:'',status:'closed',emotion:'',mistake:'',emotions:[],mistakes:[],layers:[],tags:[],notes:'',lessons:'',durationMin:'',mae:'',mfe:''};
+  formSizeUnit=(t.sizeUnit==='asset'&&t.qty>0)?'asset':'usd';formPbTouched=false;formPbLayersJson='';formCloseAuto={t:'',d:''};
   formLocked=isGesynct(t);const RO=formLocked?' readonly':'';
   formTags=[...(t.tags||[])];formGrade=gradeOf(t);formShots=[...(t.screenshots||[])];formTvLinks=[...(t.tvLinks||[])];
   formLayers=(t.layers||[]).map(L=>({timeframe:L.timeframe||'',bias:L.bias||'',setups:[...(L.setups||[])],confirmations:[...(L.confirmations||[])]}));
@@ -7873,7 +7911,8 @@ function openForm(id){
   // formulier: relevante exchanges + handmatige accounts; niets relevants → alle
   // (niet-deprecated) exchanges als vangnet, en de exchange van een bestaande trade doet altijd mee
   const exOpt=(()=>{
-    let lst=[...relevantExchanges().map(e=>[e.id,e.name]),...MANUAL.map(m=>[m.id,m.name+' (handmatig)'])];
+    // handmatige accounts eerst: een handgetypte trade hoort daar (Denny 24-09-2026)
+    let lst=[...MANUAL.map(m=>[m.id,m.name+' (handmatig)']),...relevantExchanges().map(e=>[e.id,e.name])];
     if(!lst.length)lst=EXCHANGES.filter(e=>!e.deprecated).map(e=>[e.id,e.name]);
     if(t.exchange&&!lst.some(([id])=>id===t.exchange)&&EXMAP[t.exchange])lst.push([t.exchange,EXMAP[t.exchange].name]);
     return lst.map(([id,nm])=>`<option value="${id}" ${t.exchange===id?'selected':''}>${esc(nm)}</option>`).join('');
@@ -7886,7 +7925,8 @@ function openForm(id){
     <div class="mhead"><h3>${id!=null?'Trade bewerken':'Nieuwe trade'}</h3><button class="xbtn" onclick="closeForm()">×</button></div>
     <div class="mbody">
       <div class="msub s1"><span class="msn">1</span> Basis</div>
-      <div class="field"><label>Exchange</label><select id="f_exchange" aria-label="Exchange">${exOpt}</select></div>
+      <div class="field"><label>Exchange</label><select id="f_exchange" aria-label="Exchange" onchange="formExchangeHint()">${exOpt}</select></div>
+      <div class="field full" id="exWarn" hidden></div>
       <div class="field"><label>Pair</label><input id="f_pair" value="${esc(t.pair)}" placeholder="BTC/USDC" oninput="updSzBtn()"></div>
       <div class="field"><label>Datum</label><input type="date" id="f_date" value="${t.date}" onchange="onDateChange()"></div>
       <div class="field"><label>Tijd</label><input id="f_time" value="${t.time||''}" placeholder="14:30"></div>
@@ -7914,7 +7954,7 @@ function openForm(id){
       <div class="field ${vfc('pro',+t.rrPlanned>0)}"><label>Geplande R:R</label><input id="f_rrPlanned" value="${t.rrPlanned||''}" inputmode="decimal" placeholder="2.0"></div>
       <div class="calcprev" id="calcPrev"></div>
       ${formLocked?'':`<div class="field full"><div class="lt-head"><label style="margin:0">Take-profit-niveaus <span class="hint">(partial closes · verdeel je positie)</span></label></div><div id="tpbuilder" class="tpbuilder"></div></div>`}
-      <div class="field full">${execBlock(t)}</div>
+      ${id!=null?`<div class="field full">${execBlock(t)}</div>`:''}   <!-- een nieuwe trade heeft nog geen stappen om te tonen of op te halen -->
 
       <div class="msub s4"><span class="msn">4</span> Resultaat</div>
       <div class="field"><label>P&L (${CURSYM()})</label><input id="f_pnl"${RO} value="${t.pnl}" inputmode="decimal"></div>
@@ -7944,13 +7984,32 @@ function openForm(id){
     </div>
     <div class="mfoot">${id!=null?`<button class="btn" style="color:var(--red);border-color:color-mix(in srgb,var(--red) 35%,transparent)" onclick="delTrade(${id})">Verwijderen</button>`:''}
       <span class="form-err" id="formErr"></span><span style="flex:1"></span><button class="btn" onclick="closeForm()">Annuleren</button><button class="btn pri" onclick="submitForm(${id!=null?id:'null'})">Opslaan</button></div>`;
-  renderLayers();renderEmotions();renderMistakes();renderMissed();renderTPs();renderFormShots();renderFormTvLinks();renderFormTags();calcTrade(false);onKindChange();updFormVis();
+  renderLayers();renderEmotions();renderMistakes();renderMissed();renderTPs();renderFormShots();renderFormTvLinks();renderFormTags();calcTrade(false);onKindChange();updFormVis();formExchangeHint();
   document.getElementById('modal').classList.add('on');document.getElementById('scrim').classList.add('on');
   modalKind='trade';formDirty=false;
   // Bij openen stond de focus nergens: je moest eerst klikken, en Tab landde op het
   // sluitkruisje (audit 2026-09-18). Nieuwe trade → direct in Pair; bestaande trade laten
   // we met rust, daar kom je meestal voor één specifiek veld.
   if(id==null)setTimeout(()=>{try{const el=document.getElementById('f_pair');if(el&&document.getElementById('modal').classList.contains('on')){el.focus();el.select&&el.select();}}catch(e){}},40);
+}
+/* Een handgetypte trade op een gekoppelde exchange telt mee in de P&L en het saldo van die
+   koppeling en kan bij een sync gaan botsen. Zonder handmatig account is er geen goede plek
+   voor: dan eerst een aanmaken. Alleen een waarschuwing - blokkeren doen we niet. */
+function formExchangeHint(){
+  const box=document.getElementById('exWarn'),sel=document.getElementById('f_exchange');if(!box||!sel)return;
+  if(formLocked){box.hidden=true;return;}
+  const id=sel.value,c=CONNS[id];
+  if(c&&c.connected){
+    box.hidden=false;
+    box.innerHTML=`<div class="formwarn">⚠ <b>${esc((EXMAP[id]||{}).name||id)}</b> is gekoppeld via de API. Een handmatige trade telt hier mee in de P&L en het saldo van die koppeling en kan bij een sync in de weg zitten. ${MANUAL.length?`Kies liever je handmatige account.`:`Maak eerst een handmatig account aan <button type="button" class="btn btn-sm" onclick="naarHandmatigAccount()">Account toevoegen</button>`}</div>`;
+  }else if(!MANUAL.length){
+    box.hidden=false;
+    box.innerHTML=`<div class="formwarn">⚠ Je hebt nog geen handmatig account. Handmatige trades horen op een eigen account, los van je koppelingen. <button type="button" class="btn btn-sm" onclick="naarHandmatigAccount()">Account toevoegen</button></div>`;
+  }else box.hidden=true;
+}
+function naarHandmatigAccount(){
+  formDirty=false;closeForm();STATE.setTab='accounts';go('instellingen');
+  setTimeout(()=>{try{const el=document.getElementById('ma_name');if(el){el.scrollIntoView({block:'center'});el.focus();}}catch(e){}},60);
 }
 function closeForm(){
   if((modalKind==='trade'||modalKind==='pb')&&formDirty){ if(!confirm('Je hebt niet-opgeslagen wijzigingen. Sluiten zonder opslaan?'))return; }
@@ -7970,6 +8029,10 @@ function submitForm(id){
     const fe=document.getElementById('formErr');if(fe)fe.textContent='⚠ '+errs[0][1];
     const first=document.getElementById(errs[0][0]);if(first){first.focus();first.scrollIntoView({block:'center',behavior:'smooth'});}
     return;
+  }
+  if((id==null||id==='null')&&!formLocked&&CONNS[g('exchange')]&&CONNS[g('exchange')].connected){
+    const nm=(EXMAP[g('exchange')]||{}).name||g('exchange');
+    if(!confirm(nm+' is gekoppeld via de API. Deze handmatige trade telt dan mee in de P&L en het saldo van die koppeling en kan bij een sync in de weg zitten.\n\nToch opslaan?'))return;
   }
   const pnl=num('pnl');
   const ex=EXMAP[g('exchange')];

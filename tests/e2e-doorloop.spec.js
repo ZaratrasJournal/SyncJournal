@@ -46,7 +46,8 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
     document.getElementById('f_dir').value = 'long'; document.getElementById('f_status').value = 'closed';
     set('f_entry', '100'); set('f_exit', '110'); set('f_stop', '95'); set('f_size', '1000'); set('f_fees', '5');
     set('f_closeDate', today); set('f_closeTime', '12:00');
-    addTP(); addTP(); formTPs[0].price = '105'; formTPs[1].price = '110'; formTPs[0].hit = true; formTPs[1].hit = true; renderTPs();
+    // gehaalde TP's bepalen sinds 24-09-2026 de exit (gewogen); beide op 110 = exit 110
+    addTP(); addTP(); formTPs[0].price = '110'; formTPs[1].price = '110'; formTPs[0].hit = true; formTPs[1].hit = true; renderTPs();
     const chip = [...document.querySelectorAll('#tagpick *')].find(x => x.textContent.trim() === 'A+ setup'); if (chip) chip.click();
     document.getElementById('f_notes').value = 'QA-doorloop trade';
     calcTrade(true);
@@ -67,7 +68,8 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
 
   console.log('─── Trade wijzigen → alles beweegt exact mee ───');
   await p.evaluate(() => { go('trades'); openForm(T[0].id); }); await p.waitForTimeout(250);
-  await p.evaluate(() => { document.getElementById('f_exit').value = '90'; calcTrade(true); submitForm(T[0].id); }); await p.waitForTimeout(300);
+  // exit naar 90 kan alleen als de TP's níét gehaald zijn (anders wint de gewogen TP-prijs)
+  await p.evaluate(() => { formTPs.forEach(x => { x.hit = false; }); renderTPs(); document.getElementById('f_exit').value = '90'; calcTrade(true); submitForm(T[0].id); }); await p.waitForTimeout(300);
   const edit = await p.evaluate(() => ({ pnl: T[0].pnl, r: T[0].r, bal: manualBalance(MANUAL[0]) }));
   ok('exit 110→90: pnl −105 · R −2.1 · saldo 12.895', edit.pnl === -105 && edit.r === -2.1 && edit.bal === 12895, JSON.stringify(edit));
   ok('dashboard: netto −105 en win-rate 0%', await p.evaluate(() => { go('dashboard'); const k = document.querySelector('.kpis').textContent; return /105/.test(k) && /0%/.test(k); }));
@@ -96,7 +98,7 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
   ok('tag verwijderen uit config → uit config, trade-data + chip + losse-tag-picker blijven', await p.evaluate(() => { removeTagCat('customTags', 'QA-label'); const uitConfig = !(tagConfig.customTags || []).includes('QA-label'); openForm(null); const alsLosseTag = [...document.querySelectorAll('#tagpick *')].some(x => x.textContent.trim() === 'QA-label'); formDirty = false; closeForm(); const onTrade = T.find(x => x.id === window.__qaId).tags.includes('QA-label'); go('trades'); const chipStill = [...document.querySelectorAll('tbody tr.mrow')].some(r => /QA-label/.test(r.textContent)); return uitConfig && alsLosseTag && onTrade && chipStill; }));
 
   console.log('─── TP wijzigen ───');
-  ok('TP2 op niet-geraakt → review toont 1/2', await p.evaluate(() => { openForm(T.find(x => x.pair === 'BTC/USDT').id); formTPs[1].hit = false; renderTPs(); submitForm(T.find(x => x.pair === 'BTC/USDT').id); const t = T.find(x => x.pair === 'BTC/USDT'); STATE.revSel = t.id; go('review'); return t.tps.filter(x => x.hit).length === 1 && /1\/2/.test(document.getElementById('main').textContent); }));
+  ok('TP2 op niet-geraakt → review toont 1/2', await p.evaluate(() => { openForm(T.find(x => x.pair === 'BTC/USDT').id); formTPs[0].hit = true; formTPs[1].hit = false; renderTPs(); submitForm(T.find(x => x.pair === 'BTC/USDT').id); const t = T.find(x => x.pair === 'BTC/USDT'); STATE.revSel = t.id; go('review'); return t.tps.filter(x => x.hit).length === 1 && /1\/2/.test(document.getElementById('main').textContent); }));
 
   console.log('─── Verwijderen, prullenbak, herstellen ───');
   const eth = await p.evaluate(() => T.find(x => x.pair === 'ETH/USDT').id);

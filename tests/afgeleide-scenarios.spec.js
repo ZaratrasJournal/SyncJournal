@@ -40,7 +40,9 @@ const APP = 'file:///' + path.resolve('work/syncjournal.html').split(path.sep).j
         afgeleid: !!el && /afgeleid/.test(el.innerText) };
       closeForm(); return uit;
     });
-    ok('de trade is aangemaakt met een berekende P&L', r.n === 1 && bij(r.pnl, 196, 1), JSON.stringify(r.pnl));
+    // sinds 24-09-2026 rekent een gehaalde TP mee: 60% op 81.000 (+60) + 40% op de exit 82.000 (+80) − 4 fees = 136,
+    // en dat is ook precies wat de stappentabel hieronder optelt
+    ok('de trade is aangemaakt met een berekende P&L (TP1 + restant op exit)', r.n === 1 && bij(r.pnl, 136, 0.01), JSON.stringify(r.pnl));
     ok('en het formulier toont meteen drie stappen', r.tabel && r.rijen.length === 3, JSON.stringify(r.rijen.length));
     ok('instap 08:00 op 80.000, TP1 om 10:30 op 81.000, rest 14:00 op 82.000',
       /08:00/.test(r.rijen[0]) && /80\.000/.test(r.rijen[0]) && /10:30/.test(r.rijen[1]) && /81\.000/.test(r.rijen[1]) && /14:00/.test(r.rijen[2]) && /82\.000/.test(r.rijen[2]),

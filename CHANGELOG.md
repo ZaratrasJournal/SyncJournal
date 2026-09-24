@@ -10,6 +10,18 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 De journal is opnieuw opgebouwd als **SyncJournal** en draait nu online op [syncjournal.nl](https://syncjournal.nl). Versienummers zijn opnieuw gestart op v0.9.x (bèta); de oude TradeJournal-releases staan verderop in dit bestand. Je data overzetten kan via Instellingen → Data → Importeer oude backup.
 
+## [v0.9.130] — 2026-09-24
+
+### Toegevoegd
+- **Handmatige trades rekenen zichzelf uit via je TP's.** Zet een take-profit op "✓ hit" en de P&L, R, status en sluittijd volgen: elk gehaald niveau sluit zijn deel op zijn prijs, het restant op je exit. Zijn alle niveaus gehaald, dan is de gewogen TP-prijs je exit en staat de trade op gesloten met de tijd van de laatste TP als sluittijd. Loopt er nog een deel, dan staat hij op *partial* en zegt de rekenregel wat er nog open is.
+- Bij "✓ hit" springt de cursor meteen in het tijdveld (HH:MM) van die TP; die tijden komen terug in de stappentabel.
+- **Waarschuwingen in het formulier.** Kies je een exchange die via de API gekoppeld is, dan zie je dat een handmatige trade daar meetelt in de P&L en het saldo van die koppeling, en vraagt opslaan om bevestiging. Heb je nog geen handmatig account, dan zegt het formulier dat en brengt een knop je naar Instellingen → Accounts.
+
+### Gewijzigd
+- Je handmatige account is de standaardkeuze voor een nieuwe trade en staat bovenaan de exchange-lijst.
+- De P&L-berekening in het formulier rekent op de cent (was: hele dollars).
+- Een nieuwe trade toont geen "Stappen ophalen"-knop meer; er is dan nog niets om op te halen.
+
 ## [v0.9.129] — 2026-09-24
 
 ### Gewijzigd
