@@ -27,6 +27,7 @@ De journal is opnieuw opgebouwd als **SyncJournal** en draait nu online op [sync
 - TP-tijden als "25:99" of "9:5" gelden niet meer als tijd; TP's die samen meer dan 100% verdelen worden naar rato op 100% gezet (in de berekening én de stappentabel), zodat je nooit meer sluit dan je hebt.
 - Een sluittijd zonder sluitdatum telde niet mee (geen stappentabel, geen tijd in trade); de datum volgt nu de open-datum, of de dag erna als de tijd vóór je instap ligt.
 - Zet je een "hit" weer uit, dan gaan status, P&L en de gewogen exit die het formulier zelf had ingevuld ook weer terug; wat je zelf typte blijft staan.
+- **Saldo van een handmatig account telde niet dezelfde trades als de statistieken.** Het geboekte deel van een deels gesloten trade zat wél in je netto P&L maar niet in je saldo; een paper- of backtest-trade zat juist niét in je statistieken maar wél in je saldo. Saldo en statistieken rekenen nu op dezelfde trades: alles wat niet open staat en een echte (live) trade is.
 
 ## [v0.9.129] — 2026-09-24
 
