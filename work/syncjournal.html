@@ -4758,6 +4758,9 @@ function afgeleideStappen(t){
   const raak=(t.tps||[]).filter(x=>x&&+x.price>0&&+x.pct>0&&x.hit)
     .map(x=>({price:+x.price,pct:+x.pct,ts:+x.ts||0}))
     .sort((a,b)=>(a.ts||0)-(b.ts||0));
+  // samen meer dan 100% verdeeld? naar rato terug, net als de afrekening in het formulier
+  const totaal=(t.tps||[]).filter(x=>x&&+x.price>0&&+x.pct>0).reduce((a,x)=>a+(+x.pct),0);
+  if(totaal>100)raak.forEach(x=>{x.pct=x.pct*100/totaal;});
   const gedaan=raak.reduce((a,x)=>a+x.pct,0);
   const rest=Math.max(0,100-gedaan);
   const uitstappen=raak.length+(rest>0.01?1:0);
@@ -7764,7 +7767,7 @@ function renderMistakes(){const c=document.getElementById('mistakebuilder');if(!
   c.innerHTML=`<div class="tg-chips pillchips" style="--chip:var(--amber)">${(tagConfig.mistakeTags||[]).map(m=>`<span class="tagopt ${formMistakes.includes(m)?'on':''}" onclick="toggleMistake('${esc(m).replace(/'/g,'')}')">${esc(m)}</span>`).join('')}</div>`;}
 /* ═══ TP-technologie (take-profit-niveaus / partial closes) ═══ */
 let formTPs=[];
-let formCloseAuto={t:'',d:''};   // sluittijd/-datum die wij uit de TP-tijden hebben ingevuld: die mogen we later weer bijwerken, een eigen invoer niet
+let formCloseAuto={t:'',d:'',s:'',sPrev:'',p:'',e:''};   // wat wij zelf invulden (sluittijd/-datum, status, P&L, exit): dat mogen we later bijwerken of terugdraaien, eigen invoer niet
 function evenTPs(){const n=formTPs.length;if(!n)return;const base=Math.floor(100/n),rem=100-base*n;formTPs.forEach((tp,i)=>{tp.pct=base+(i<rem?1:0);});}
 function addTP(){formTPs.push({price:'',pct:0,r:'',hit:false});evenTPs();renderTPs();}
 function removeTP(i){formTPs.splice(i,1);evenTPs();renderTPs();}
@@ -7819,17 +7822,20 @@ function setSizeUnit(u){if(u===formSizeUnit)return;const entry=fnum('f_entry'),v
    zijn prijs, het restant op de exit (als die er is). Zijn ze allemaal gehaald, dan ís de
    gewogen TP-prijs de exit. Zo hoef je bij een handmatige trade niets na te rekenen
    (Denny 24-09-2026); de stappentabel leidt dezelfde stappen af (afgeleideStappen). */
+const TIJD_RE=/^([01]?\d|2[0-3]):[0-5]\d$/;   // 9:05 en 23:59 wel, 25:99 en 9:5 niet
 function tpAfrekening(entry,size,dir,exit){
   if(typeof formTPs==='undefined'||!formTPs.length||!(entry>0)||isNaN(size))return null;
   const tps=formTPs.map(x=>({price:+String(x.price).replace(',','.')||0,pct:+x.pct||0,hit:!!x.hit,tsTime:String(x.tsTime||'').trim()})).filter(x=>x.price>0&&x.pct>0);
   const hit=tps.filter(x=>x.hit);if(!hit.length)return null;
-  const hitPct=hit.reduce((a,x)=>a+x.pct,0),restPct=Math.max(0,100-hitPct);
+  // samen meer dan 100% verdeeld? dan naar rato terug: je kunt niet meer sluiten dan je hebt
+  const totaal=tps.reduce((a,x)=>a+x.pct,0);if(totaal>100)tps.forEach(x=>{x.pct=x.pct*100/totaal;});
+  const hitPct=+hit.reduce((a,x)=>a+x.pct,0).toFixed(6),restPct=Math.max(0,+(100-hitPct).toFixed(6));
   const gewogenHit=hit.reduce((a,x)=>a+x.price*x.pct,0);
   let pnl=hit.reduce((a,x)=>a+(x.price-entry)/entry*size*(x.pct/100)*dir,0);
   const alles=restPct===0,restDicht=alles||exit>0;
   if(!alles&&exit>0)pnl+=(exit-entry)/entry*size*(restPct/100)*dir;
   const wExit=alles?gewogenHit/hitPct:(exit>0?(gewogenHit+exit*restPct)/100:null);
-  const tijden=hit.map(x=>x.tsTime).filter(t=>/^\d{1,2}:\d{2}$/.test(t)).map(t=>t.length===4?'0'+t:t).sort();
+  const tijden=hit.map(x=>x.tsTime).filter(t=>TIJD_RE.test(t)).map(t=>t.length===4?'0'+t:t).sort();
   return {pnl,hitPct,restPct,alles,restDicht,wExit,laatsteTijd:tijden.length?tijden[tijden.length-1]:''};
 }
 function calcTrade(fill){
@@ -7850,19 +7856,33 @@ function calcTrade(fill){
   // live-preview: de trade wordt nú genomen, dus basis = huidige balans (of vaste referentie)
   const _pb=(+STATE.pctRef||0)>0?+STATE.pctRef:totalBalance();
   if(!isNaN(pnl)&&_pb>0)pct=+(pnl/_pb*100).toFixed(2);
-  if(fill){if(!isNaN(pnl)&&!formLocked)document.getElementById('f_pnl').value=pnl;if(!isNaN(r))document.getElementById('f_r').value=r;if(!isNaN(rr))document.getElementById('f_rrPlanned').value=rr;
+  if(fill){
+    const pnlEl=document.getElementById('f_pnl'),exEl=document.getElementById('f_exit'),st=document.getElementById('f_status');
+    if(!isNaN(pnl)&&!formLocked){pnlEl.value=pnl;formCloseAuto.p=String(pnl);}
+    else if(!formLocked&&pnlEl&&formCloseAuto.p&&pnlEl.value===formCloseAuto.p){pnlEl.value='';formCloseAuto.p='';}   // niet meer te berekenen: onze eigen invulling weg
+    if(!isNaN(r))document.getElementById('f_r').value=r;if(!isNaN(rr))document.getElementById('f_rrPlanned').value=rr;
+    // status: wij zetten hem, dus wij zetten hem ook terug als de reden wegvalt
+    const zetStatus=v=>{if(!st||st.value===v)return;if(st.value!==formCloseAuto.s)formCloseAuto.sPrev=st.value;st.value=v;formCloseAuto.s=v;};
     if(afr&&afr.alles){
-      const ex=document.getElementById('f_exit');if(ex&&!formLocked)ex.value=exit;
+      if(exEl&&!formLocked){exEl.value=exit;formCloseAuto.e=String(exit);}
       /* alles gehaald: de trade is dicht; de laatst gehaalde TP-tijd wordt je sluittijd
          (vóór je open-tijd = de volgende dag), tenzij je die al zelf had ingevuld */
-      const st=document.getElementById('f_status');if(st&&st.value!=='closed')st.value='closed';
-      const ct=document.getElementById('f_closeTime'),cd=document.getElementById('f_closeDate');
-      if(afr.laatsteTijd&&ct&&(!String(ct.value).trim()||ct.value===formCloseAuto.t)){ct.value=afr.laatsteTijd;formCloseAuto.t=afr.laatsteTijd;
-        const d=document.getElementById('f_date').value,ot=String(document.getElementById('f_time').value||'').trim();
-        if(cd&&d&&(!cd.value||cd.value===formCloseAuto.d)){cd.value=(ot&&afr.laatsteTijd<ot.padStart(5,'0'))?ts2date(+new Date(d+'T00:00')+864e5):d;formCloseAuto.d=cd.value;}}
-    }else if(afr){
+      zetStatus('closed');
+      const ct=document.getElementById('f_closeTime');
+      if(afr.laatsteTijd&&ct&&(!String(ct.value).trim()||ct.value===formCloseAuto.t)){ct.value=afr.laatsteTijd;formCloseAuto.t=afr.laatsteTijd;}
+    }else{
+      if(exEl&&formCloseAuto.e&&exEl.value===formCloseAuto.e){exEl.value='';formCloseAuto.e='';}   // de gewogen TP-exit hoort bij "alles gehaald"
       // deels gehaald: dicht als het restant op je exit is gegaan, anders loopt hij nog (partial)
-      const st=document.getElementById('f_status');if(st)st.value=afr.restDicht?'closed':'partial';}
+      if(afr)zetStatus(afr.restDicht?'closed':'partial');
+      else if(st&&formCloseAuto.s&&st.value===formCloseAuto.s){st.value=formCloseAuto.sPrev||'closed';formCloseAuto.s='';}
+      const ct=document.getElementById('f_closeTime');
+      if(!afr&&ct&&formCloseAuto.t&&ct.value===formCloseAuto.t){ct.value='';formCloseAuto.t='';}
+    }
+    // een sluittijd zonder sluitdatum: de open-datum, of de dag erna als de tijd vóór je instap ligt
+    const ct=document.getElementById('f_closeTime'),cd=document.getElementById('f_closeDate');
+    if(ct&&cd){const tm=String(ct.value||'').trim().padStart(5,'0'),d=document.getElementById('f_date').value,ot=String(document.getElementById('f_time').value||'').trim().padStart(5,'0');
+      if(TIJD_RE.test(tm)&&d&&(!cd.value||cd.value===formCloseAuto.d)){cd.value=(ot!=='00:00'&&tm<ot)?ts2date(+new Date(d+'T00:00')+864e5):d;formCloseAuto.d=cd.value;}
+      else if(!tm&&cd.value&&cd.value===formCloseAuto.d){cd.value='';formCloseAuto.d='';}}
     const _o=formMomentMs('f_date','f_time'),_c=formMomentMs('f_closeDate','f_closeTime');
     if(_o&&_c&&_c>_o){const el=document.getElementById('f_durationMin');if(el)el.value=Math.round((_c-_o)/60000);}}
   const prev=document.getElementById('calcPrev');if(!prev)return;
@@ -7898,7 +7918,7 @@ function updFormVis(){
 }
 function openForm(id){
   const t=id!=null?T.find(x=>x.id===id):{date:new Date().toISOString().slice(0,10),time:'',exchange:(MANUAL[0]||relevantExchanges()[0]||{id:'blofin'}).id,pair:'BTC/USDC',dir:'long',setup:'',session:'London',timeframe:'15m',market:'Trending',grade:'',entry:'',stop:'',tp:'',exit:'',size:'',leverage:10,fees:'',risk:'',rrPlanned:'',pnl:'',r:'',status:'closed',emotion:'',mistake:'',emotions:[],mistakes:[],layers:[],tags:[],notes:'',lessons:'',durationMin:'',mae:'',mfe:''};
-  formSizeUnit=(t.sizeUnit==='asset'&&t.qty>0)?'asset':'usd';formPbTouched=false;formPbLayersJson='';formCloseAuto={t:'',d:''};
+  formSizeUnit=(t.sizeUnit==='asset'&&t.qty>0)?'asset':'usd';formPbTouched=false;formPbLayersJson='';formCloseAuto={t:'',d:'',s:'',sPrev:'',p:'',e:''};
   formLocked=isGesynct(t);const RO=formLocked?' readonly':'';
   formTags=[...(t.tags||[])];formGrade=gradeOf(t);formShots=[...(t.screenshots||[])];formTvLinks=[...(t.tvLinks||[])];
   formLayers=(t.layers||[]).map(L=>({timeframe:L.timeframe||'',bias:L.bias||'',setups:[...(L.setups||[])],confirmations:[...(L.confirmations||[])]}));
@@ -7914,7 +7934,9 @@ function openForm(id){
     // handmatige accounts eerst: een handgetypte trade hoort daar (Denny 24-09-2026)
     let lst=[...MANUAL.map(m=>[m.id,m.name+' (handmatig)']),...relevantExchanges().map(e=>[e.id,e.name])];
     if(!lst.length)lst=EXCHANGES.filter(e=>!e.deprecated).map(e=>[e.id,e.name]);
-    if(t.exchange&&!lst.some(([id])=>id===t.exchange)&&EXMAP[t.exchange])lst.push([t.exchange,EXMAP[t.exchange].name]);
+    // ook een account dat niet (meer) bestaat: anders springt de keuze naar de eerste optie en
+    // verhuist de trade bij opslaan stilletjes naar een andere exchange
+    if(t.exchange&&!lst.some(([id])=>id===t.exchange))lst.push([t.exchange,EXMAP[t.exchange]?EXMAP[t.exchange].name:t.exchange+' (verwijderd account)']);
     return lst.map(([id,nm])=>`<option value="${id}" ${t.exchange===id?'selected':''}>${esc(nm)}</option>`).join('');
   })();
   // Weergave-presets: Standaard/Pro-velden zijn verbergbaar, maar een veld mét inhoud

@@ -22,6 +22,12 @@ De journal is opnieuw opgebouwd als **SyncJournal** en draait nu online op [sync
 - De P&L-berekening in het formulier rekent op de cent (was: hele dollars).
 - Een nieuwe trade toont geen "Stappen ophalen"-knop meer; er is dan nog niets om op te halen.
 
+### Fixed
+- Een trade op een handmatig account dat je daarna had verwijderd, sprong bij bewerken naar de eerste exchange in de lijst en verhuisde bij opslaan stilletjes mee. Hij blijft nu op zijn eigen (verwijderde) account staan.
+- TP-tijden als "25:99" of "9:5" gelden niet meer als tijd; TP's die samen meer dan 100% verdelen worden naar rato op 100% gezet (in de berekening én de stappentabel), zodat je nooit meer sluit dan je hebt.
+- Een sluittijd zonder sluitdatum telde niet mee (geen stappentabel, geen tijd in trade); de datum volgt nu de open-datum, of de dag erna als de tijd vóór je instap ligt.
+- Zet je een "hit" weer uit, dan gaan status, P&L en de gewogen exit die het formulier zelf had ingevuld ook weer terug; wat je zelf typte blijft staan.
+
 ## [v0.9.129] — 2026-09-24
 
 ### Gewijzigd
