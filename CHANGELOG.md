@@ -10,6 +10,11 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 De journal is opnieuw opgebouwd als **SyncJournal** en draait nu online op [syncjournal.nl](https://syncjournal.nl). Versienummers zijn opnieuw gestart op v0.9.x (bèta); de oude TradeJournal-releases staan verderop in dit bestand. Je data overzetten kan via Instellingen → Data → Importeer oude backup.
 
+## [v0.9.129] — 2026-09-24
+
+### Gewijzigd
+- **De P&L per trade staat nu op de cent.** Een winst van $ 0,25 stond als "+$ 0"; nu "+$ 0,25". Geldt voor de tradelijst (ook het geboekte deel van een lopende positie en de niet-gerealiseerde P&L), het totaal onder de lijst en de recente trades op het dashboard.
+
 ## [v0.9.128] — 2026-09-24
 
 ### Fixed
