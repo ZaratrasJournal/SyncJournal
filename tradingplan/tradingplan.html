@@ -606,7 +606,8 @@ abbr[title]{text-decoration:underline dotted var(--faint);cursor:help;text-under
         <div class="card-body" style="display:grid;gap:10px">
           <div class="hint" style="line-height:1.55">Een template bevat je checklists, je playbook-tekst en de poort-instellingen — <b>niet</b> je plannen of trades. Zo deel je je opzet met de community zonder je eigen data mee te sturen.</div>
           <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="tpl-exp">⬇ Template exporteren</button><button class="btn" id="tpl-imp">⬆ Template importeren</button><input type="file" id="tpl-file" accept="application/json,.json" style="display:none"><button class="btn" id="tpl-reset">Herstel standaard (alles)</button></div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-sm" id="help-again">Uitleg opnieuw tonen</button></div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-sm" id="help-again">Uitleg opnieuw tonen</button><button class="btn btn-sm" id="demo-poort">Voorbeeld-poortrecords uit de journal</button></div>
+          <div class="hint" style="line-height:1.55">Om de koppeling te proberen: maakt bij de laatste 40 gesloten trades in je SyncJournal een poort-beoordeling (5–20 min vóór de open-tijd) en een dagafsluiting. Handig met de voorbeelddata van de journal. Je bestaande poort-records blijven staan.</div>
         </div>
       </div></div>
     </div>
@@ -748,6 +749,10 @@ abbr[title]{text-decoration:underline dotted var(--faint);cursor:help;text-under
     try{var r=indexedDB.open("sj_db",1);r.onupgradeneeded=function(){try{r.result.createObjectStore("kv");}catch(e){}};
       r.onsuccess=function(){try{var g=r.result.transaction("kv","readonly").objectStore("kv").get("trades");g.onsuccess=function(){var arr=Array.isArray(g.result)?g.result:[],m={};arr.forEach(function(t){if(t&&t.planRef&&t.planRef!=="none"){var rr=+t.r;m[String(t.planRef)]={r:(rr&&isFinite(rr))?rr:null,pair:t.pair};}});JR=m;r.result.close();res(true);};g.onerror=function(){r.result.close();res(false);};}catch(e){res(false);}};
       r.onerror=function(){res(false);};}catch(e){res(false);} });}
+  function journalTrades(){return new Promise(function(res){ if(!window.indexedDB)return res([]);
+    try{var r=indexedDB.open("sj_db",1);r.onupgradeneeded=function(){try{r.result.createObjectStore("kv");}catch(e){}};
+      r.onsuccess=function(){try{var g=r.result.transaction("kv","readonly").objectStore("kv").get("trades");g.onsuccess=function(){var a=Array.isArray(g.result)?g.result:[];r.result.close();res(a);};g.onerror=function(){r.result.close();res([]);};}catch(e){res([]);}};
+      r.onerror=function(){res([]);};}catch(e){res([]);} });}
   document.addEventListener("visibilitychange",function(){if(document.visibilityState==="visible")journalLoad().then(function(ok){if(ok){renderLog();renderStats();renderOverview();if(!q('[data-panel="afsluiting"]').hidden)mountAf();}});});
 
   /* ═══════════════ plannen ═══════════════ */
@@ -1148,6 +1153,24 @@ abbr[title]{text-decoration:underline dotted var(--faint);cursor:help;text-under
     $("tpl-file").onchange=function(){var f=$("tpl-file").files[0];$("tpl-file").value="";if(!f)return;var rd=new FileReader();rd.onload=function(){var d;try{d=JSON.parse(rd.result);}catch(e){toast("Geen geldig bestand");return;}if(!d||!d.template||!d.cfg){toast("Dit is geen TradingPlan-template");return;}if(!confirm("Template overnemen? Je checklists, playbook en poort-instellingen worden vervangen. Je plannen en trades blijven staan."))return;cfg=normCfg(d.cfg);pb=Object.assign({},DEF.pb,d.playbook||{});saveCfg();savePb();["pt","dg","wk"].forEach(renderEd);qa("[data-pb]").forEach(pbPaint);afterCfg();toast("Template overgenomen");};rd.readAsText(f);};
     $("tpl-reset").onclick=function(){if(!confirm("Alles terug naar de standaard: checklists, playbook-tekst en poort-instellingen? Je plannen en trades blijven staan."))return;cfg=normCfg(null);pb=clone(DEF.pb);saveCfg();savePb();["pt","dg","wk"].forEach(renderEd);qa("[data-pb]").forEach(pbPaint);qa("#gm button").forEach(function(x){x.setAttribute("aria-pressed",cfg.gradeMode===x.dataset.v?"true":"false");});$("gm-hint").textContent=GM_HINT[cfg.gradeMode];qa("[data-max]").forEach(function(i){i.value=String(cfg.max[i.dataset.max]).replace(".",",");});afterCfg();toast("Standaard hersteld");};
     $("help-again").onclick=function(){openHelp(0);};
+    $("demo-poort").onclick=function(){
+      journalTrades().then(function(arr){
+        var kand=arr.filter(function(t){return t&&t.status==="closed"&&(!t.kind||t.kind==="live")&&+t.openTime>0&&t.pair;}).sort(function(a,b){return (+b.openTime)-(+a.openTime);}).slice(0,40);
+        if(!kand.length){toast("Geen gesloten trades in je journal gevonden. Laad daar eerst (voorbeeld)data.");return;}
+        if(!confirm("Voor "+kand.length+" journal-trades een voorbeeld-poortrecord en dagafsluiting aanmaken?"))return;
+        var base=Date.now();
+        kand.forEach(function(t,i){
+          var setup=["A","A","B","C"][i%4],mis=i%5===0?["rr"]:[],exec=mis.length?"HALF":"VOL",mx=cfg.max[setup]||1;
+          var ts=new Date(+t.openTime-(5+(i%4)*5)*60000),dag=t.date||localKey(ts),checks={};
+          cfg.pt.forEach(function(p){checks[p.k]=mis.indexOf(p.k)<0;});
+          trades.push({id:base+i,ts:ts.toISOString(),week:weekKeyOf(dag),day:dag,sym:String(t.pair).split("/")[0].toUpperCase(),dir:String(t.dir||"long").toLowerCase()==="short"?"Short":"Long",tf:"15m",setup:setup,checks:checks,missing:mis,exec:exec,grade:exec==="VOL"?"A":"B",risk:exec==="VOL"?mx:mx/2,taken:true,r:null,noTrade:[],notes:"voorbeeld"});
+          var p=getPlan("dag",dag);
+          if(!(p.close&&p.close.saved)){p.close={scenario:"geen",gevolgd:["ja","ja","deels","nee"][i%4],les:"",r:null,saved:true,savedAt:new Date(dag+"T18:00:00").toISOString()};p.updatedAt=p.updatedAt||p.close.savedAt;}
+        });
+        trades.sort(function(a,b){return b.id-a.id;});saveTrades();savePlans();
+        toast(kand.length+" voorbeeld-poortrecords aangemaakt. Open de journal: die koppelt ze vanzelf.");setTimeout(function(){location.reload();},900);
+      });
+    };
   }
 
   /* ═══════════════ tabs, uitleg per tab, sneltoetsen ═══════════════ */
