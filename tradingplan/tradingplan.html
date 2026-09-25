@@ -734,6 +734,18 @@ abbr[title]{text-decoration:underline dotted var(--faint);cursor:help;text-under
     });
   }
 
+  /* ═══════════════ koppeling met SyncJournal (zelfde origin) — alleen lezen ═══════════════
+     De journal koppelt zijn trades aan onze poort-records (planRef = ons id). Wij lezen de
+     journal-trades uit IndexedDB sj_db/kv/'trades' en nemen de R over; die is dan niet meer
+     handmatig in te vullen. Zonder journal of zonder koppeling blijft alles zoals het was. */
+  var JR={};   // poort-record-id → {r,pair}
+  function effR(t){return JR[t.id]&&JR[t.id].r!=null?JR[t.id].r:t.r;}
+  function journalLoad(){return new Promise(function(res){ if(!window.indexedDB)return res(false);
+    try{var r=indexedDB.open("sj_db",1);r.onupgradeneeded=function(){try{r.result.createObjectStore("kv");}catch(e){}};
+      r.onsuccess=function(){try{var g=r.result.transaction("kv","readonly").objectStore("kv").get("trades");g.onsuccess=function(){var arr=Array.isArray(g.result)?g.result:[],m={};arr.forEach(function(t){if(t&&t.planRef&&t.planRef!=="none"){var rr=+t.r;m[String(t.planRef)]={r:(rr&&isFinite(rr))?rr:null,pair:t.pair};}});JR=m;r.result.close();res(true);};g.onerror=function(){r.result.close();res(false);};}catch(e){res(false);}};
+      r.onerror=function(){res(false);};}catch(e){res(false);} });}
+  document.addEventListener("visibilitychange",function(){if(document.visibilityState==="visible")journalLoad().then(function(ok){if(ok){renderLog();renderStats();renderOverview();if(!q('[data-panel="afsluiting"]').hidden)mountAf();}});});
+
   /* ═══════════════ plannen ═══════════════ */
   function planId(type,key){return type+"-"+key;}
   function blankPlan(type,key){return {id:planId(type,key),type:type,key:key,checks:{},images:[],links:[],saved:false,savedAt:null,updatedAt:null};}
@@ -963,23 +975,23 @@ abbr[title]{text-decoration:underline dotted var(--faint);cursor:help;text-under
     renderPtType();renderPtLeg();renderPtNoTrade();renderPtWarns();renderPt();
   }
   function ptClear(){qa("#pt-list input").forEach(function(i){i.checked=false;});$("pt-notes").value="";$("pt-taken").checked=false;NT_OK={};renderPtNoTrade();renderPtWarns();renderPt();}
-  function avgR(a){var w=a.filter(function(e){return e.r!=null;});return w.length?w.reduce(function(s,e){return s+e.r;},0)/w.length:null;}
+  function avgR(a){var w=a.filter(function(e){return effR(e)!=null;});return w.length?w.reduce(function(s,e){return s+effR(e);},0)/w.length:null;}
   function renderStats(){
-    var tk=trades.filter(function(e){return e.taken;}),wk=weekTrades(),max=parseInt(getPlan("week",WK).maxtrades)||0,net=wk.filter(function(e){return e.r!=null;}).reduce(function(s,e){return s+e.r;},0);
+    var tk=trades.filter(function(e){return e.taken;}),wk=weekTrades(),max=parseInt(getPlan("week",WK).maxtrades)||0,net=wk.filter(function(e){return effR(e)!=null;}).reduce(function(s,e){return s+effR(e);},0);
     var groups=cfg.gradeMode==="checklist"?[["A-trades",tk.filter(function(e){return e.exec==="VOL";}),"green"],["B-trades",tk.filter(function(e){return e.exec==="HALF";}),"amber"],["Regelbreuken",tk.filter(function(e){return e.exec==="NO";}),"red"]]
       :[["A-setups",tk.filter(function(e){return e.setup==="A";}),"green"],["B-setups",tk.filter(function(e){return e.setup==="B";}),"teal"],["C-setups",tk.filter(function(e){return e.setup==="C";}),"red"],["Regelbreuken",tk.filter(function(e){return e.exec==="NO";}),"red"]];
     function card(k,v,s,col,n){return '<div class="col-3"><div class="card stat"><div class="card-body"><div class="k">'+k+'</div><div class="v"'+(col?' style="color:var(--'+col+')"':'')+'>'+v+'</div><div class="s">'+s+(n!=null?' <span class="n">· n='+n+'</span>':'')+'</div></div></div></div>';}
     var h=card("Trades deze week",wk.length+(max?' <span class="hint" style="font-size:14px">/ '+max+'</span>':''),max&&wk.length>=max?'<span style="color:var(--red)">Limiet bereikt</span>':"Netto "+fR(wk.length?net:null));
-    groups.forEach(function(g){h+=card(g[0],g[1].length,"gem. "+fR(avgR(g[1])),g[2],g[1].filter(function(e){return e.r!=null;}).length);});
+    groups.forEach(function(g){h+=card(g[0],g[1].length,"gem. "+fR(avgR(g[1])),g[2],g[1].filter(function(e){return effR(e)!=null;}).length);});
     $("pt-stats").innerHTML=h;
-    var met=tk.filter(function(e){return e.r!=null;}).length;
+    var met=tk.filter(function(e){return effR(e)!=null;}).length;
     $("pt-weinig").innerHTML=met<MIN_TRADES?'<div class="weinig">📊 Nog te weinig data voor conclusies: <b>'+met+' van '+MIN_TRADES+'</b> trades met een R. Gemiddelden hieronder zijn nog toeval, geen patroon.</div>':"";
   }
 
   /* ═══════════════ dagafsluiting ═══════════════ */
   var afSc=null,afFol=null;
   function afKey(){return localKey(afAnchor);}
-  function dayR(key){var ts=trades.filter(function(t){return t.taken&&t.day===key&&t.r!=null;});return ts.length?ts.reduce(function(s,t){return s+t.r;},0):null;}
+  function dayR(key){var ts=trades.filter(function(t){return t.taken&&t.day===key&&effR(t)!=null;});return ts.length?ts.reduce(function(s,t){return s+effR(t);},0):null;}
   function mountAf(){
     var key=afKey(),p=getPlan("dag",key),c=p.close||{};afSc=c.scenario!=null?c.scenario:null;afFol=c.gevolgd||null;
     $("af-id").textContent=fmtDate(key);$("af-title").textContent=key===DK?"Dagafsluiting · vandaag":"Dagafsluiting · "+fmtDate(key);$("af-today").hidden=key===DK;
@@ -993,7 +1005,7 @@ abbr[title]{text-decoration:underline dotted var(--faint);cursor:help;text-under
     $("af-r-hint").textContent=auto!=null?"Uit de log: "+fR(auto)+" · aanpassen mag":"Nog geen R in de log voor deze dag. Vul de R bij je trades in, of zet hem hier.";
     $("af-status").textContent=c.saved?"Opgeslagen in log · "+fmt(c.savedAt):"Nog niet opgeslagen";
     var ts=trades.filter(function(t){return t.day===key;});
-    $("af-trades").innerHTML=ts.length?'<ul class="list">'+ts.map(function(t){return '<li class="chk" style="cursor:default"><span class="gmark '+(t.setup||"NO")+'">'+(t.setup||"?")+'</span><span><span class="l" style="text-decoration:none;color:var(--ink)">'+esc(t.sym)+' '+t.dir+(t.tf?' · '+esc(t.tf):'')+'</span><span class="d">'+execLabel(t)+(t.taken?'':' · niet genomen')+' · R: <b class="num">'+fR(t.r)+'</b></span></span></li>';}).join("")+'</ul>':'<div class="empty">Geen trades op deze dag.</div>';
+    $("af-trades").innerHTML=ts.length?'<ul class="list">'+ts.map(function(t){return '<li class="chk" style="cursor:default"><span class="gmark '+(t.setup||"NO")+'">'+(t.setup||"?")+'</span><span><span class="l" style="text-decoration:none;color:var(--ink)">'+esc(t.sym)+' '+t.dir+(t.tf?' · '+esc(t.tf):'')+'</span><span class="d">'+execLabel(t)+(t.taken?'':' · niet genomen')+' · R: <b class="num">'+fR(effR(t))+'</b>'+(JR[t.id]?' <span class="badge bg-azure" title="R uit SyncJournal">journal</span>':'')+'</span></span></li>';}).join("")+'</ul>':'<div class="empty">Geen trades op deze dag.</div>';
   }
   function execLabel(t){return t.exec==="VOL"?"volle size":t.exec==="HALF"?"halve size":"regelbreuk";}
   function initAf(){
@@ -1023,7 +1035,7 @@ abbr[title]{text-decoration:underline dotted var(--faint);cursor:help;text-under
   function renderOverview(){
     if(!cfg)return;renderRoute();
     var od=getPlan("dag",DK),ow=getPlan("week",WK),tt=todayTrades(),wt=weekTrades(),max=parseInt(ow.maxtrades)||0;
-    var rT=dayR(DK),rW=wt.filter(function(t){return t.r!=null;}).reduce(function(s,t){return s+t.r;},0),rWn=wt.filter(function(t){return t.r!=null;}).length;
+    var rT=dayR(DK),rW=wt.filter(function(t){return effR(t)!=null;}).reduce(function(s,t){return s+effR(t);},0),rWn=wt.filter(function(t){return effR(t)!=null;}).length;
     var mind=parseInt(od.mind)||0,l=losersToday();
     function kp(k,v,s,cls){return '<div class="kp '+(cls||"")+'"><div class="k">'+k+'</div><div class="v">'+v+'</div>'+(s?'<div class="s">'+s+'</div>':'')+'</div>';}
     $("kpi").innerHTML=
@@ -1061,9 +1073,9 @@ abbr[title]{text-decoration:underline dotted var(--faint);cursor:help;text-under
       if(r.kind==="trade"){
         var e=r.t,badge=(e.setup?'<span class="gmark '+e.setup+'" style="margin-right:6px">'+e.setup+'</span>':'')+(e.exec==="VOL"?'<span class="badge bg-green">vol</span>':e.exec==="HALF"?'<span class="badge bg-yellow">half</span>':'<span class="badge bg-red">geen</span>');
         var flag=!e.taken?' <span class="hint">niet genomen</span>':(e.exec==="NO"?' <span class="badge bg-red">regelbreuk</span>':"");
-        tr.innerHTML='<td style="white-space:nowrap" class="num td-l">'+fmt(e.ts)+'</td><td><span class="badge bg-primary">Trade</span></td><td>'+esc(e.sym)+" "+e.dir+(e.tf?" · "+esc(e.tf):"")+flag+(e.risk?' <span class="hint">· '+pct(e.risk)+'</span>':'')+(e.missing.length?'<div class="hint">Mist: '+esc(e.missing.map(ptLabel).join(", "))+'</div>':"")+((e.noTrade||[]).length?'<div class="hint" style="color:var(--red)">No-trade: '+esc(e.noTrade.join(" · "))+'</div>':"")+(e.notes?'<div class="hint">'+esc(e.notes)+'</div>':"")+'</td><td>'+badge+'</td><td class="num"><input type="number" step="0.1" inputmode="decimal" value="'+(e.r==null?"":e.r)+'" aria-label="R"></td><td><button class="del" title="Verwijderen" aria-label="Trade verwijderen">×</button></td>';
-        var rIn=q("input",tr),kleur=function(){rIn.classList.toggle("pos",e.r>0);rIn.classList.toggle("neg",e.r<0);};kleur();
-        rIn.onchange=function(ev){var v=ev.target.value.trim().replace(",",".");e.r=v===""?null:parseFloat(v);if(isNaN(e.r))e.r=null;kleur();saveTrades();renderStats();renderOverview();};
+        tr.innerHTML='<td style="white-space:nowrap" class="num td-l">'+fmt(e.ts)+'</td><td><span class="badge bg-primary">Trade</span></td><td>'+esc(e.sym)+" "+e.dir+(e.tf?" · "+esc(e.tf):"")+flag+(e.risk?' <span class="hint">· '+pct(e.risk)+'</span>':'')+(e.missing.length?'<div class="hint">Mist: '+esc(e.missing.map(ptLabel).join(", "))+'</div>':"")+((e.noTrade||[]).length?'<div class="hint" style="color:var(--red)">No-trade: '+esc(e.noTrade.join(" · "))+'</div>':"")+(e.notes?'<div class="hint">'+esc(e.notes)+'</div>':"")+'</td><td>'+badge+'</td><td class="num">'+(JR[e.id]?'<b class="'+(effR(e)>0?"pos":effR(e)<0?"neg":"")+'" title="R uit SyncJournal ('+esc(JR[e.id].pair||"")+')">'+fR(effR(e))+'</b> <span class="badge bg-azure">journal</span>':'<input type="number" step="0.1" inputmode="decimal" value="'+(e.r==null?"":e.r)+'" aria-label="R">')+'</td><td><button class="del" title="Verwijderen" aria-label="Trade verwijderen">×</button></td>';
+        var rIn=q("input[type=number]",tr),kleur=function(){if(!rIn)return;rIn.classList.toggle("pos",e.r>0);rIn.classList.toggle("neg",e.r<0);};kleur();
+        if(rIn)rIn.onchange=function(ev){var v=ev.target.value.trim().replace(",",".");e.r=v===""?null:parseFloat(v);if(isNaN(e.r))e.r=null;kleur();saveTrades();renderStats();renderOverview();};
         q(".del",tr).onclick=function(){if(!confirm("Trade verwijderen?"))return;trades=trades.filter(function(x){return x.id!==e.id;});saveTrades();renderLog();renderStats();renderOverview();};
       } else if(r.kind==="afsluiting"){
         var p=r.p,c=p.close,sc=c.scenario==="geen"?"geen van de scenario’s":((p.scenarios||[])[c.scenario]?scName(p.scenarios[c.scenario],c.scenario):"scenario "+(c.scenario+1));
@@ -1195,7 +1207,8 @@ abbr[title]{text-decoration:underline dotted var(--faint);cursor:help;text-under
     if(leeg&&meta.introSeen)toast("Nieuwe gebruiker: begin bij je Playbook (1) of je Weekplan (2)");
     if(leeg&&/^plan/.test(location.pathname.replace(/^\//,"")))$("storage").innerHTML="Opslag: alleen deze browser, alleen van jou.<br>Kom je van tradingplan.syncjournal.nl? Exporteer daar je back-up (Log) en importeer hem hier.";
   }
-  loadAll().then(boot,function(e){console.error(e);boot();});
+  loadAll().then(function(){return journalLoad();}).then(boot,function(e){console.error(e);boot();});
+  window.__tpJournalLoad=journalLoad;window.__tpJR=function(){return JR;};   // voor tests
 })();
 </script>
 </body>
