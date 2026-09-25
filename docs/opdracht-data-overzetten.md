@@ -1,7 +1,7 @@
 # Opdracht: data-overdracht die niet mis kan gaan (export-overzicht, import-keuze, diagnose)
 
 **Datum:** 2026-09-25 · **Eigenaar:** Denny · **Uitvoering:** Claude in `work/syncjournal.html`
-**Status:** concept, drie keuzes open (zie §2). Uitvoeren pas na akkoord op de keuzes.
+**Status:** keuzes vastgezet door Denny op 2026-09-25 (K1 aan, K2 beide, K3 beide). Eerst een demo (`demos/data-overzetten-demo.html`), daarna bouwen volgens §4.
 
 ## 0. Doel
 
@@ -38,9 +38,9 @@ integriteitscontrole) is het voorbeeld. Dezelfde discipline komt op de gewone ex
 
 | # | Vraag | Advies | Besluit |
 |---|-------|--------|---------|
-| K1 | API-sleutels standaard mee in de export? | **Aan**, als apart vinkje met waarschuwing "zet uit als je dit bestand deelt". Eigen back-up moet direct weer kunnen syncen. | ☐ |
-| K2 | Import: alleen vervangen per onderdeel, of ook samenvoegen? | **Beide**, vervangen als standaard. Samenvoegen ontdubbelt exchange-trades op bron-id en handmatige trades op datum + pair + richting + entry. | ☐ |
-| K3 | Diagnose-rapport: download, klembord, of beide? | **Beide**, plus een korte samenvatting in het scherm zelf. | ☐ |
+| K1 | API-sleutels standaard mee in de export? | **Aan**, als apart vinkje met waarschuwing "zet uit als je dit bestand deelt". Eigen back-up moet direct weer kunnen syncen. | ✅ aan |
+| K2 | Import: alleen vervangen per onderdeel, of ook samenvoegen? | **Beide**, vervangen als standaard. Samenvoegen ontdubbelt exchange-trades op bron-id en handmatige trades op datum + pair + richting + entry. | ✅ beide |
+| K3 | Diagnose-rapport: download, klembord, of beide? | **Beide**, plus een korte samenvatting in het scherm zelf. | ✅ beide |
 
 ## 3. Scope
 
