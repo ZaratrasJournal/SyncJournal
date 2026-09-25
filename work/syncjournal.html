@@ -690,6 +690,8 @@ table.tbl{width:100%;border-collapse:collapse;font-size:14px}
 .field input:focus,.field select:focus,.field textarea:focus{border-color:var(--accent);background:var(--surface)}
 .field input[readonly]{border-style:dashed;color:var(--ink2);background:color-mix(in srgb,var(--sink) 55%,var(--surface));cursor:default}
 .lockbar{font-size:12px;color:var(--muted);padding:8px 11px;border:1px dashed var(--line);border-radius:9px;line-height:1.45}
+.plan-obs{margin-top:10px;padding:9px 12px;border-radius:9px;background:var(--accent-soft);border:1px solid var(--accent-line);font-size:12.5px;line-height:1.5}
+.plan-weinig{padding:8px 12px;border-radius:9px;background:var(--sink);border:1px dashed var(--line);font-size:12.5px;color:var(--muted)}
 .formwarn{font-size:12px;color:var(--ink);padding:8px 11px;border:1px dashed color-mix(in srgb,var(--amber) 55%,transparent);background:color-mix(in srgb,var(--amber) 10%,transparent);border-radius:9px;line-height:1.45}
 .formwarn .btn{margin-left:6px;vertical-align:middle}
 .xbtn{margin-left:auto;width:32px;height:32px;border-radius:8px;color:var(--muted);font-size:17px}
@@ -1767,7 +1769,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.132';
+const APP_VERSION='v0.9.133';
 const SCHEMA_VERSION=8;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -3256,11 +3258,75 @@ function weekHourHeat(){
 function whMove(e){const tip=document.getElementById('yhtip');if(!tip)return;const t=e.target.closest&&e.target.closest('.whm-cell');if(!t){yhHide();return;}const n=+t.dataset.n;
   tip.innerHTML=`<div class="yht-d">${esc(t.dataset.t)}</div>`+(n?`<div class="yht-row"><span>Trades</span><b>${n}</b></div><div class="yht-row"><span>Win-rate</span><b>${t.dataset.wr}%</b></div><div class="yht-pnl ${cls(+t.dataset.pnl)} mask">${eurS(+t.dataset.pnl)}</div>`:`<div class="yht-row" style="color:var(--muted)">Geen trades</div>`);
   tip.classList.add('on');const tw=tip.offsetWidth,th=tip.offsetHeight;let x=Math.max(8,Math.min(window.innerWidth-tw-8,e.clientX-tw/2)),y=e.clientY-th-14;if(y<8)y=e.clientY+16;tip.style.left=x+'px';tip.style.top=y+'px';}
+/* ═══ Tendencies → Plan: wat je TradingPlan-poort over je trades zegt (stap 3, 25-09-2026) ═══
+   Vijf sneden over de trades die aan een poort-record gekoppeld zijn (planRef). Cijfers altijd
+   met n; onder PLAN_MIN trades zegt de pagina eerlijk "nog te weinig data". Een observatiezin
+   alleen als twee groepen elk ≥ PLAN_MIN_GROEP trades hebben en ≥ PLAN_MIN_VERSCHIL R uit elkaar
+   liggen - en dan als observatie, nooit als bevel. */
+const PLAN_MIN=30,PLAN_MIN_GROEP=10,PLAN_MIN_VERSCHIL=0.3;
+const TEND_TABS=[['sessie','Per sessie'],['setup','Per setup'],['grade','Per grade'],['emotie','Per emotie'],['plan','Plan']];
+function planStat(list){const w=list.filter(t=>t.pnl>0).length,rs=list.map(tradeR),avg=list.length?rs.reduce((a,c)=>a+c,0)/list.length:0;return {n:list.length,wr:list.length?Math.round(w/list.length*100):0,avg};}
+function planGroupRows(groups,kleur){   // groups: [[label,trades,color?]]
+  const rows=groups.filter(g=>g[1].length).map(g=>{const st=planStat(g[1]);return {label:g[0],n:st.n,avg:st.avg,wr:st.wr,color:g[2]||kleur||'var(--accent)'};});
+  return rows;
+}
+function planRowsHtml(rows){
+  if(!rows.length)return '<div class="hint" style="padding:6px 0">Nog niets in deze snede.</div>';
+  return hbars(rows.map(r=>({label:r.label,val:r.wr,disp:`<b class="${cls(r.avg)}">${(r.avg>=0?'+':'')+r.avg.toFixed(2).replace('.',',')}R</b>`,color:r.color,sub:`n=${r.n} · win-rate ${r.wr}%`})));
+}
+function planObservatie(rows,tot,wat){
+  if(tot<PLAN_MIN)return '';
+  const ok=rows.filter(r=>r.n>=PLAN_MIN_GROEP);if(ok.length<2)return '';
+  const best=ok.reduce((a,b)=>b.avg>a.avg?b:a),worst=ok.reduce((a,b)=>b.avg<a.avg?b:a);
+  if(best.avg-worst.avg<PLAN_MIN_VERSCHIL)return '';
+  const f=v=>(v>=0?'+':'')+v.toFixed(2).replace('.',',')+'R';
+  return `<div class="plan-obs">${wat} <b>${esc(worst.label)}</b> ${worst.avg<0?'kosten je':'leveren'} <b class="${cls(worst.avg)}">${f(worst.avg)}</b> per trade (${worst.n} trades); <b>${esc(best.label)}</b> ${best.avg<0?'kosten':'leveren'} <b class="${cls(best.avg)}">${f(best.avg)}</b> (${best.n}). Verschil ${f(best.avg-worst.avg)}.</div>`;
+}
+function planTendencies(){
+  const P=planLoad(),recs=new Map(P.trades.map(r=>[String(r.id),r]));
+  const alle=CLOSED.filter(t=>isLive(t));
+  const gek=alle.filter(t=>t.planRef&&t.planRef!=='none'&&recs.has(String(t.planRef)));
+  const zonder=alle.filter(t=>!(t.planRef&&t.planRef!=='none'&&recs.has(String(t.planRef))));
+  const sub=`<div class="subtabs" id="tendTabs">${TEND_TABS.map(([k,l])=>`<button data-t="${k}" class="${STATE.tend===k?'on':''}">${l}</button>`).join('')}</div>`;
+  const kop=(t,d)=>`<div class="phead"><h3>${t}</h3><span class="sp"></span><span class="chip">${d}</span></div>`;
+  if(!P.trades.length)return `${filterBar()}<div class="panel">${kop('Plan','TradingPlan')}<div class="pbody"><div class="hint" style="line-height:1.6">Hier zie je wat je <b>TradingPlan</b>-poort over je trades zegt: uitvoering, setup-type, gemiste checks, trades zonder poort en of je je plan volgde. Er zijn nog geen poort-beoordelingen. Open <a href="#" onclick="go('plan');return false">Plan</a> en beoordeel je volgende trade vóór je klikt; de journal koppelt hem daarna vanzelf aan de trade van de exchange.</div>${sub}</div></div>`;
+  const rec=t=>recs.get(String(t.planRef));
+  const tot=gek.length;
+  const drempel=tot<PLAN_MIN?`<div class="plan-weinig">📊 Nog te weinig data voor conclusies: <b>${tot} van ${PLAN_MIN}</b> gekoppelde trades. De cijfers hieronder zijn nog toeval, geen patroon.</div>`:'';
+  // 1 uitvoering
+  const r1=planGroupRows([['Volle size',gek.filter(t=>rec(t).exec==='VOL'),'var(--green)'],['Halve size',gek.filter(t=>rec(t).exec==='HALF'),'var(--amber)'],['Regelbreuk',gek.filter(t=>rec(t).exec==='NO'),'var(--red)']]);
+  // 2 setup-type
+  const r2=planGroupRows([['A-setup',gek.filter(t=>rec(t).setup==='A'),'var(--green)'],['B-setup',gek.filter(t=>rec(t).setup==='B'),'var(--teal)'],['C-setup',gek.filter(t=>rec(t).setup==='C'),'var(--red)'],['Setup onbekend',gek.filter(t=>!rec(t).setup),'var(--muted)']]);
+  // 3 gemiste checks (alleen genomen trades met een open punt)
+  const lbl=k=>{const it=(P.cfg.pt||[]).find(i=>i.k===k);return it?it.t:k;};
+  const perMis={};gek.forEach(t=>{(rec(t).missing||[]).forEach(k=>{(perMis[k]=perMis[k]||[]).push(t);});});
+  const r3=planGroupRows(Object.keys(perMis).map(k=>[lbl(k),perMis[k],'var(--red)'])).sort((a,b)=>a.avg-b.avg);
+  // 4 zonder poort
+  const r4=planGroupRows([['Met poort-beoordeling',gek,'var(--green)'],['Zonder poort',zonder,'var(--amber)']]);
+  // 5 plan gevolgd: per dag met een afsluiting, de R van die dag
+  const perDag={};alle.forEach(t=>{const d=t.date;if(!d)return;(perDag[d]=perDag[d]||[]).push(t);});
+  const dagen={ja:[],deels:[],nee:[],geen:[]};
+  Object.keys(perDag).forEach(d=>{const pl=P.plans['dag-'+d],c=pl&&pl.close&&pl.close.saved?pl.close.gevolgd:null;const R=perDag[d].reduce((a,t)=>a+tradeR(t),0);const key=c==='ja'||c==='deels'||c==='nee'?c:'geen';dagen[key].push({pnl:R,r:R,_dag:d});});
+  const r5=[['Plan gevolgd',dagen.ja,'var(--green)'],['Deels gevolgd',dagen.deels,'var(--amber)'],['Niet gevolgd',dagen.nee,'var(--red)'],['Geen afsluiting',dagen.geen,'var(--muted)']].filter(g=>g[1].length).map(g=>{const n=g[1].length,w=g[1].filter(x=>x.r>0).length,avg=g[1].reduce((a,x)=>a+x.r,0)/n;return {label:g[0],n,wr:Math.round(w/n*100),avg,color:g[2]};});
+  const blok=(t,d,rows,obs)=>`<div class="panel">${kop(t,d)}<div class="pbody">${planRowsHtml(rows)}${obs}</div></div>`;
+  return `${filterBar()}
+    <div class="sect-h">Plan, wat je poort over je trades zegt</div>
+    <div class="panel"><div class="phead"><h3>TradingPlan-koppeling</h3><span class="sp"></span><span class="chip">${tot} gekoppeld · ${zonder.length} zonder poort</span>${sub}</div>
+      <div class="pbody">${drempel||`<div class="hint">${tot} gekoppelde trades. Observaties verschijnen bij groepen van ≥${PLAN_MIN_GROEP} trades die ≥${PLAN_MIN_VERSCHIL.toFixed(1).replace('.',',')}R uit elkaar liggen.</div>`}</div></div><div style="height:13px"></div>
+    <div class="grid" style="grid-template-columns:1fr 1fr;align-items:start">
+      ${blok('Uitvoering','volle size · halve size · regelbreuk',r1,planObservatie(r1,tot,'Je trades met'))}
+      ${blok('Setup-type','uit je playbook, gekozen in de poort',r2,planObservatie(r2,tot,'Je'))}
+      ${blok('Gemiste checks','welk open punt kost je geld',r3,planObservatie(r3,tot,'Trades zonder'))}
+      ${blok('Met of zonder poort','trades die de route oversloegen',r4,planObservatie(r4,tot,'Je trades'))}
+    </div><div style="height:13px"></div>
+    ${blok('Plan gevolgd','uit je dagafsluiting · R per dag',r5,r5.length>=2&&tot>=PLAN_MIN?planObservatie(r5,tot,'Dagen'):'')}`;
+}
 function pgTendencies(){
+  if(STATE.tend==='plan')return planTendencies();
   const field={sessie:'session',setup:'setup',emotie:'emotion',grade:'grade'}[STATE.tend];
   const rows=groupRows(field).sort((a,b)=>b.pnl-a.pnl);
   if(!rows.length)return `${filterBar()}${emptyState(countActive()?'trades-none':'tendencies')}`;
-  const tabs=[['sessie','Per sessie'],['setup','Per setup'],['grade','Per grade'],['emotie','Per emotie']];
+  const tabs=TEND_TABS;
   const mxPanel=setupSessionMatrix();
   return `${filterBar()}
     <div class="sect-h">Conclusie, waar je wint &amp; waar je lekt</div>

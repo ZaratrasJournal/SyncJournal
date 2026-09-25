@@ -108,6 +108,7 @@ const OPEN = [{ instId: INST, posId: POS, posSide: 'short', cTime: String(CT), u
     for (let i = 0; i < 2; i++) await sync('okx');
     const r = await rijen('okx');
     ok('na nog twee syncs nog steeds één rij', r.length === 1 && r[0].status === 'partial', JSON.stringify(r.map(x => x.srcId + ':' + x.status)));
+    await p.waitForTimeout(600);   // persist() schrijft asynchroon naar IndexedDB; niet herladen vóór dat klaar is (flaky)
     await p.reload({ waitUntil: 'domcontentloaded' }); await p.waitForTimeout(1300);
     const r2 = await rijen('okx');
     ok('na herladen: nog steeds één rij, met stappen', r2.length === 1 && r2[0].stappen === 'open,close,close,close', JSON.stringify(r2.map(x => x.srcId + ':' + x.status)));

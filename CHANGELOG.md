@@ -10,6 +10,17 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 De journal is opnieuw opgebouwd als **SyncJournal** en draait nu online op [syncjournal.nl](https://syncjournal.nl). Versienummers zijn opnieuw gestart op v0.9.x (bèta); de oude TradeJournal-releases staan verderop in dit bestand. Je data overzetten kan via Instellingen → Data → Importeer oude backup.
 
+## [v0.9.133] — 2026-09-25
+
+### Toegevoegd
+- **Journal en TradingPlan praten met elkaar.** Een trade van de exchange wordt automatisch gekoppeld aan de poort-beoordeling die je er in TradingPlan vlak vóór voor deed (zelfde symbool en richting, binnen 45 minuten — instelbaar in TradingPlan → Instellingen). In de trade-details zie je "Poort · A-setup · 7/7 · volle size · 2%", met een knop om een andere beoordeling te kiezen of de trade bewust zonder poort te laten. Trades zonder poort-beoordeling krijgen een badge "zonder poort".
+- **Tendencies → Plan**: vijf inzichten uit die koppeling — uitvoering (volle/halve size/regelbreuk), setup-type A/B/C, welk gemist poort-punt je geld kost, trades mét en zonder poort, en of je je plan volgde (uit je dagafsluiting). Altijd met het aantal trades; onder 30 gekoppelde trades zegt de pagina eerlijk "nog te weinig data". Een observatiezin verschijnt pas bij groepen van 10+ trades die 0,3R of meer uit elkaar liggen — als observatie, nooit als bevel.
+- TradingPlan neemt de R van gekoppelde trades over uit de journal (log, statistiek en dagafsluiting); die hoef je daar niet meer in te tikken.
+- De journal-back-up neemt je TradingPlan-plannen, poort-beoordelingen en instellingen mee (screenshots blijven in TradingPlans eigen back-up).
+
+### Gewijzigd
+- TradingPlan bewaart geen lege dag- of weekplannen meer die alleen door bladeren zijn ontstaan.
+
 ## [v0.9.132] — 2026-09-25
 
 ### Toegevoegd

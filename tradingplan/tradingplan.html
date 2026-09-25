@@ -302,10 +302,11 @@ td.td-l{text-align:left}
 .rs .when{font-size:10.5px;color:var(--faint)}
 @media (max-width:700px){.route{grid-template-columns:repeat(5,minmax(96px,1fr));overflow-x:auto}.rs .when{display:none}}
 /* cockpit */
-.kpi{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;padding:14px 16px}
+.kpi{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;padding:14px 16px}
 .kp{border:1px solid var(--line2);border-radius:11px;padding:10px 12px;background:var(--sink);min-width:0}
 .kp .k{font-size:10px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
-.kp .v{font-size:20px;font-weight:700;font-family:var(--fn);margin-top:3px;line-height:1.2}
+.kp .v{font-size:19px;font-weight:700;font-family:var(--fn);margin-top:3px;line-height:1.25}
+.kp .v small{white-space:nowrap}
 .kp .v small{font-size:12px;color:var(--muted);font-weight:600}
 .kp .s{font-size:12px;color:var(--muted);margin-top:2px}
 .kp.warn{border-color:color-mix(in srgb,var(--red) 40%,transparent);background:var(--red-soft)}
@@ -383,7 +384,7 @@ details.fold>summary .hint{font-weight:500}
 .kbd{font:600 11px var(--fn);background:var(--sink);border:1px solid var(--line);border-radius:5px;padding:1px 7px;display:inline-block}
 abbr[title]{text-decoration:underline dotted var(--faint);cursor:help;text-underline-offset:2px}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
-@media (max-width:820px){.route{padding:6px 4px 8px}.kpi{grid-template-columns:repeat(2,1fr)}.side{overflow:hidden}.tabs{min-width:0;flex:1}.tabs button .key{display:none}.stype{grid-template-columns:1fr}}
+@media (max-width:820px){.route{padding:6px 4px 8px}.kpi{grid-template-columns:repeat(2,1fr)}.leg li{flex-wrap:wrap}.leg .r{white-space:normal;width:100%;padding-left:34px}.side{overflow:hidden}.tabs{min-width:0;flex:1}.tabs button .key{display:none}.stype{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -692,7 +693,10 @@ abbr[title]{text-decoration:underline dotted var(--faint);cursor:help;text-under
   function lsGet(k,fb){try{var r=localStorage.getItem(k);return r?JSON.parse(r):fb;}catch(e){return fb;}}
   function lsSet(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){toast("Lokaal opslaan lukte niet (te vol?)");}}
   var plans={}, trades=[], pb=null, cfg=null, meta={};
-  function savePlans(){lsSet(LS.plans,plans);} function saveTrades(){lsSet(LS.trades,trades);} function savePb(){lsSet(LS.pb,pb);} function saveCfg(){lsSet(LS.cfg,cfg);} function saveMeta(){lsSet(LS.meta,meta);}
+  /* Bladeren door dagen/weken maakt lege plan-objecten aan (getPlan); die horen niet in de opslag
+     of de back-up. Leeg = nooit aangeraakt, niet opgeslagen, geen afsluiting. */
+  function isBlankPlan(p){return !p||(!p.updatedAt&&!p.saved&&!(p.close&&p.close.saved));}
+  function savePlans(){var out={};Object.keys(plans).forEach(function(k){if(!isBlankPlan(plans[k]))out[k]=plans[k];});lsSet(LS.plans,out);} function saveTrades(){lsSet(LS.trades,trades);} function savePb(){lsSet(LS.pb,pb);} function saveCfg(){lsSet(LS.cfg,cfg);} function saveMeta(){lsSet(LS.meta,meta);}
   var IDBH=null, IMG_CACHE={};
   function idbOpen(){return new Promise(function(res){ if(!window.indexedDB)return res(null);
     try{var r=indexedDB.open("tp2",1);r.onupgradeneeded=function(){r.result.createObjectStore("img");};r.onsuccess=function(){res(r.result);};r.onerror=function(){res(null);};}catch(e){res(null);} });}
@@ -1092,7 +1096,8 @@ abbr[title]{text-decoration:underline dotted var(--faint);cursor:help;text-under
   /* backup v2 (+ import van v1) */
   function backupPayload(){
     var imgs={};Object.keys(plans).forEach(function(k){eachPlanImage(plans[k],function(im){if(im.idb&&IMG_CACHE[im.idb])imgs[im.idb]=IMG_CACHE[im.idb];});});
-    return {app:"TradingPlan",version:2,exported:new Date().toISOString(),trades:trades,plans:plans,playbook:pb,cfg:cfg,meta:meta,images:imgs};
+    var pl={};Object.keys(plans).forEach(function(k){if(!isBlankPlan(plans[k]))pl[k]=plans[k];});
+    return {app:"TradingPlan",version:2,exported:new Date().toISOString(),trades:trades,plans:pl,playbook:pb,cfg:cfg,meta:meta,images:imgs};
   }
   $("exp-json").onclick=function(){var blob=new Blob([JSON.stringify(backupPayload())],{type:"application/json"});var a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="tradingplan-backup-"+DK+".json";document.body.appendChild(a);a.click();setTimeout(function(){URL.revokeObjectURL(a.href);a.remove();},400);toast("Backup gedownload");};
   $("imp-json").onclick=function(){$("imp-file").click();};
