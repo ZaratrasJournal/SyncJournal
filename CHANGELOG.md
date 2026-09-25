@@ -10,6 +10,13 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 De journal is opnieuw opgebouwd als **SyncJournal** en draait nu online op [syncjournal.nl](https://syncjournal.nl). Versienummers zijn opnieuw gestart op v0.9.x (bèta); de oude TradeJournal-releases staan verderop in dit bestand. Je data overzetten kan via Instellingen → Data → Importeer oude backup.
 
+## [v0.9.134] — 2026-09-25
+
+### Toegevoegd
+- **Nieuwe voorbeelddata, tot en met vandaag.** "Rondkijken met voorbeelddata" laadt nu een verse set van ±1.100 trades over 20 maanden, van één realistische trader: winstgevend over het geheel, maar met echte pieken en dalen (een overtrading-maand in december, een zomerslump, winning- en losing-streaks), trades geclusterd op handelsdagen en sessies, zes playbooks met voorbeelden, tags, twee handmatige accounts met stortingen en payouts, en exchange-trades die eruitzien als gesynct (stappen, vergrendelde cijfers).
+- De voorbeelddata neemt ook een **TradingPlan** mee: weekplannen, dagplannen met scenario's en dagafsluitingen, en poort-beoordelingen bij de laatste 70 trades — al gekoppeld, zodat Tendencies → Plan direct iets laat zien. Heb je zelf al plannen of poort-records staan, dan blijven die met rust en komt het plan-deel niet mee.
+- "Voorbeelddata opruimen" haalt ook de meegekomen poort-records en plannen weer weg; wat je zelf in TradingPlan toevoegde blijft staan.
+
 ## [v0.9.133] — 2026-09-25
 
 ### Toegevoegd

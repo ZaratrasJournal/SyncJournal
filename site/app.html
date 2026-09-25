@@ -1769,7 +1769,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.133';
+const APP_VERSION='v0.9.134';
 const SCHEMA_VERSION=8;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -7727,9 +7727,16 @@ async function resetDemo(){
     // de demo levert inhoud (trades, playbooks, tags, accounts) — nooit iemands echte
     // exchange-koppelingen, sync-instellingen, thema of weergave-keuze overschrijven
     delete d.conns;delete d.sync;delete d.settings;delete d.view;delete d.sections;delete d.aiPrefs;
+    /* Het TradingPlan-blok (poort-beoordelingen, dag-/weekplannen) komt alleen mee als je daar
+       nog niets hebt staan: je eigen plan overschrijven we nooit. Zonder blok gaan ook de
+       verwijzingen op de trades eraf, anders wijzen ze naar records die er niet zijn. */
+    const planMee=!!(d.tradingplan&&planIsLeeg());
+    let planIds=null;
+    if(planMee){try{planIds={recs:JSON.parse(d.tradingplan.trades||'[]').map(r=>String(r.id)),plans:Object.keys(JSON.parse(d.tradingplan.plans||'{}'))};}catch(e){planIds=null;}}
+    else{delete d.tradingplan;(d.trades||[]).forEach(t=>{if(t)delete t.planRef;});}
     applyBackup(d);
-    markDemoLoaded();
-    toast('✓ Voorbeelddata geladen: '+T.length+' trades','ok');
+    markDemoLoaded(planIds);
+    toast('✓ Voorbeelddata geladen: '+T.length+' trades'+(planMee?' + TradingPlan':''),'ok');
   } else { loadDemoData(); markDemoLoaded(); toast('Voorbeelddata geladen (compacte set, de volledige dataset was niet bereikbaar)','info'); }
 }
 /* ═══ Voorbeelddata weer opruimen (Denny 2026-09-18) ═══
@@ -7737,9 +7744,10 @@ async function resetDemo(){
    instellingen. We onthouden daarom bij het laden precies wat de demo meebracht, zodat
    we het later gericht kunnen weghalen. Alles wat jij daarna zelf hebt aangepast of
    gebruikt blijft staan; bij twijfel laten we het met rust. */
-function markDemoLoaded(){
+function planIsLeeg(){try{const r=JSON.parse(localStorage.getItem(PLAN_LS.trades)||'[]'),p=JSON.parse(localStorage.getItem(PLAN_LS.plans)||'{}');return !(Array.isArray(r)&&r.length)&&!Object.keys(p||{}).length;}catch(e){return false;}}
+function markDemoLoaded(planIds){
   T.forEach(t=>{if(t)t._demo=1;});persist();
-  DB.save('demo_loaded',{when:Date.now(),
+  DB.save('demo_loaded',{when:Date.now(),plan:planIds||null,   // ids van meegekomen poort-records en plannen
     pb:Object.entries(PBOOK).map(([n,p])=>[n,JSON.stringify(p)]),   // hele playbook, zodat élke bewerking telt
     manual:MANUAL.map(m=>({id:m.id,name:m.name,tx:(m.transactions||[]).length})),
     ex:Object.fromEntries(EXCHANGES.map(e=>[e.id,e.val]))});
@@ -7764,9 +7772,17 @@ function demoCleanup(){
   Object.entries(mark.ex||{}).forEach(([id,val])=>{const e=EXMAP[id];
     if(e&&+e.val===+val&&+val!==0&&!T.some(t=>t&&t.exchange===id)){e.val=0;exGone++;}});
   if(exGone)persistExMeta();
+  // TradingPlan: alleen de records en plannen die met de demo meekwamen; wat je zelf toevoegde blijft
+  let planGone=0;
+  if(mark.plan){try{
+    const recs=new Set(mark.plan.recs||[]),pl=new Set(mark.plan.plans||[]);
+    const r0=JSON.parse(localStorage.getItem(PLAN_LS.trades)||'[]'),r1=r0.filter(r=>!(r&&recs.has(String(r.id))));planGone+=r0.length-r1.length;
+    const p0=JSON.parse(localStorage.getItem(PLAN_LS.plans)||'{}');pl.forEach(k=>{if(p0[k]){delete p0[k];planGone++;}});
+    localStorage.setItem(PLAN_LS.trades,JSON.stringify(r1));localStorage.setItem(PLAN_LS.plans,JSON.stringify(p0));
+  }catch(e){}}
   DB.save('demo_loaded',null);
   STATE.selected=[];render();
-  toast('✓ Opgeruimd: '+demoTrades+' trades'+(pbGone?', '+pbGone+' playbooks':'')+(manGone?', '+manGone+' account'+(manGone>1?'s':''):'')+(exGone?', saldi teruggezet':''),'ok');
+  toast('✓ Opgeruimd: '+demoTrades+' trades'+(pbGone?', '+pbGone+' playbooks':'')+(manGone?', '+manGone+' account'+(manGone>1?'s':''):'')+(exGone?', saldi teruggezet':'')+(planGone?', TradingPlan-voorbeelden':''),'ok');
 }
 // Verwijderen is omkeerbaar (prullenbak + undo-toast) → geen confirm-dialoog meer nodig.
 function delTrade(id){ formDirty=false;trashDelete([id]);if(STATE.revSel===id)STATE.revSel=(T[0]||{}).id||0;closeForm();render();toast('🗑 Trade naar prullenbak','info',{label:'Ongedaan maken',fn:()=>undoTrash([id])}); }

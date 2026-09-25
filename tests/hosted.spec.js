@@ -37,7 +37,7 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  âœ
   ok('site/app.html en site/version.json dragen dezelfde versie', m && m[1] === vj.version, `index=${m && m[1]} json=${vj.version}`);
   ok('privacy.html aanwezig met kernpunten (lokaal, Drive, contact via community)', (() => { const pv = fs.readFileSync(path.resolve('site', 'privacy.html'), 'utf8'); return /eigen browser/.test(pv) && /Google Drive/.test(pv) && /community/.test(pv) && !/info@syncjournal/.test(pv); })());
   ok('_headers: version.json wordt nooit gecachet', /\/version\.json\s*\n\s*Cache-Control: no-store/.test(fs.readFileSync(path.resolve('site', '_headers'), 'utf8')));
-  ok('demo-dataset.json staat naast de app (3000 trades, geldige backup-vorm)', (() => { try { const d = JSON.parse(fs.readFileSync(path.resolve('site', 'demo-dataset.json'), 'utf8')); return d.app === 'SyncJournal' && Array.isArray(d.trades) && d.trades.length === 3000 && !!d.exMeta; } catch (e) { return false; } })());
+  ok('demo-dataset.json staat naast de app (â‰¥1000 trades t/m vandaag, geldige backup-vorm, TradingPlan-blok)', (() => { try { const d = JSON.parse(fs.readFileSync(path.resolve('site', 'demo-dataset.json'), 'utf8')); return d.app === 'SyncJournal' && Array.isArray(d.trades) && d.trades.length >= 1000 && !!d.exMeta && !!d.tradingplan && d.trades[0].date === new Date().toISOString().slice(0, 10); } catch (e) { return false; } })());
 
   ok('geen JS-errors totaal', errs.length === 0, errs.slice(0, 3).join(' | '));
   console.log(`\n=== Hosted (fase 2): ${pass}/${pass + fail} ===`);

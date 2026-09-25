@@ -211,17 +211,25 @@ const shot = async (p, name) => { await p.screenshot({ path: 'tests/screenshots/
   const demo = JSON.parse(fs.readFileSync(path.resolve('site/demo-dataset.json'), 'utf8'));
   const c2 = await b.newContext({ viewport: { width: 1360, height: 900 } }); const p2 = await c2.newPage(); const e2 = []; p2.on('pageerror', e => e2.push(String(e).split('\n')[0])); p2.on('dialog', d => d.accept());
   await p2.route('**/*', r => /^https?:/.test(r.request().url()) ? r.abort() : r.continue());
-  // poort-records die bij drie demo-trades van 2026-08-31 horen (BTC short 18:59, ETH long 16:02) — ARB long krijgt er bewust geen
+  // De demo-set (v2) brengt zijn eigen TradingPlan-blok mee; hier testen we de koppeling zelf,
+  // dus dat blok en de voorgekoppelde verwijzingen gaan eraf. Drie gesloten live-trades met
+  // verschillende munten: A en B krijgen een poort-record (6 resp. 10 min vóór de open), C bewust niet.
+  delete demo.tradingplan; demo.trades.forEach(t => { delete t.planRef; });
+  const kand = demo.trades.filter(t => t.kind === 'live' && t.status === 'closed' && t.srcId && +t.openTime > 0);
+  const base = t => t.pair.split('/')[0];
+  const tA = kand[0], tB = kand.find(t => base(t) !== base(tA)), tC = kand.find(t => base(t) !== base(tA) && base(t) !== base(tB));
+  const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
   const REC = [
-    { id: 9001, ts: new Date(1788195540000 - 6 * 60000).toISOString(), day: '2026-08-31', sym: 'BTC', dir: 'Short', tf: '15m', setup: 'A', checks: { trend: 1, zone: 1, trigger: 1, sl: 1, rr: 1, ftmo: 1, mind: 1 }, missing: [], exec: 'VOL', risk: 2, taken: true, r: null, noTrade: [], notes: 'demo-koppeling' },
-    { id: 9002, ts: new Date(1788184920000 - 10 * 60000).toISOString(), day: '2026-08-31', sym: 'ETH', dir: 'Long', tf: '15m', setup: 'B', checks: { trend: 1, zone: 1, trigger: 1, sl: 1, rr: 0, ftmo: 1, mind: 1 }, missing: ['rr'], exec: 'HALF', risk: 0.5, taken: true, r: null, noTrade: [], notes: '' }
+    { id: 9001, ts: new Date(+tA.openTime - 6 * 60000).toISOString(), day: tA.date, sym: base(tA), dir: cap(tA.dir), tf: '15m', setup: 'A', checks: { trend: 1, zone: 1, trigger: 1, sl: 1, rr: 1, ftmo: 1, mind: 1 }, missing: [], exec: 'VOL', risk: 2, taken: true, r: null, noTrade: [], notes: 'demo-koppeling' },
+    { id: 9002, ts: new Date(+tB.openTime - 10 * 60000).toISOString(), day: tB.date, sym: base(tB), dir: cap(tB.dir), tf: '15m', setup: 'B', checks: { trend: 1, zone: 1, trigger: 1, sl: 1, rr: 0, ftmo: 1, mind: 1 }, missing: ['rr'], exec: 'HALF', risk: 0.5, taken: true, r: null, noTrade: [], notes: '' }
   ];
+  const IDS = { a: tA.srcId, b: tB.srcId, c: tC.srcId, rA: +tA.r, rB: +tB.r, n: demo.trades.length };
   await p2.addInitScript(rec => { localStorage.setItem('sj_welcomed', 'true'); if (localStorage.getItem('tp2:trades')) return;   /* init-scripts draaien ook na een reload: alleen de eerste keer seeden */ localStorage.setItem('tp2:trades', JSON.stringify(rec)); localStorage.setItem('tp2:plans', JSON.stringify({ 'dag-2026-08-31': { id: 'dag-2026-08-31', type: 'dag', key: '2026-08-31', checks: {}, images: [], links: [], scenarios: [{ title: 'Sweep', als: 'x', dan: 'y', ongeldig: '', text: '', images: [], links: [] }], close: { scenario: 0, gevolgd: 'deels', les: 'demo', r: null, saved: true, savedAt: '2026-08-31T18:00:00.000Z' } } })); localStorage.setItem('tp2:cfg', JSON.stringify({ matchMin: 45 })); localStorage.setItem('tp2:meta', JSON.stringify({ schema: 2, introSeen: true })); }, REC);
   await p2.goto(APP, { waitUntil: 'domcontentloaded' }); await p2.waitForTimeout(1200);
   await p2.evaluate(async d => { await applyBackup(d); }, demo); await p2.waitForTimeout(1500);
-  const jm = await p2.evaluate(() => { const n = planMatch(); const btc = T.find(t => t.pair === 'BTC/USDT' && t.date === '2026-08-31' && t.time === '18:59'); const eth = T.find(t => t.pair === 'ETH/USDT' && t.date === '2026-08-31' && t.time === '16:02'); const arb = T.find(t => t.pair === 'ARB/USDT' && t.date === '2026-08-31'); return { n, T: T.length, btc: btc && btc.planRef, eth: eth && eth.planRef, arb: arb && arb.planRef, badge: planBadge(arb).length > 0, line: planLine(btc).replace(/<[^>]+>/g, ' ') }; });
-  ok('demo-dataset geladen (3000 trades); 2 matches: BTC→9001, ETH→9002, ARB zonder', jm.T === 3000 && jm.n === 2 && jm.btc === '9001' && jm.eth === '9002' && !jm.arb && jm.badge, JSON.stringify(jm));
-  ok('hover-regel van de BTC-trade: A-setup · 7/7 · volle size · 2%', /A-setup/.test(jm.line) && /7\/7/.test(jm.line) && /volle size/.test(jm.line) && /2%/.test(jm.line), jm.line);
+  const jm = await p2.evaluate((ids) => { const n = planMatch(); const f = s => T.find(t => t.srcId === s); const btc = f(ids.a), eth = f(ids.b), arb = f(ids.c); return { n, T: T.length, btc: btc && btc.planRef, eth: eth && eth.planRef, arb: arb && arb.planRef, badge: planBadge(arb).length > 0, line: planLine(btc).replace(/<[^>]+>/g, ' ') }; }, IDS);
+  ok('demo-dataset geladen (' + IDS.n + ' trades); 2 matches: A→9001, B→9002, C zonder', jm.T === IDS.n && jm.n === 2 && jm.btc === '9001' && jm.eth === '9002' && !jm.arb && jm.badge, JSON.stringify(jm));
+  ok('hover-regel van trade A: A-setup · 7/7 · volle size · 2%', /A-setup/.test(jm.line) && /7\/7/.test(jm.line) && /volle size/.test(jm.line) && /2%/.test(jm.line), jm.line);
   await p2.evaluate(() => { STATE.tend = 'plan'; clearGFilter(); go('tendencies'); });
   const tt = await p2.evaluate(() => document.getElementById('main').innerText.replace(/\s+/g, ' '));
   ok('Tendencies → Plan: 2 gekoppeld, drempel "2 van 30", uitvoering/setup zichtbaar', /2 gekoppeld/.test(tt) && /2 van 30/.test(tt) && /A-setup/.test(tt) && /Halve size/.test(tt), tt.slice(0, 300));
@@ -229,7 +237,7 @@ const shot = async (p, name) => { await p.screenshot({ path: 'tests/screenshots/
   // TradingPlan in dezelfde origin: leest de R van de gekoppelde demo-trades
   await p2.goto(TP, { waitUntil: 'load' }); await p2.waitForTimeout(900);
   const jr = await p2.evaluate(() => ({ jr: window.__tpJR(), log: document.getElementById('log-body').innerText.replace(/\s+/g, ' ') }));
-  ok('TradingPlan: R uit de journal voor 9001 (+1,40) en 9002 (−0,92), badge "journal" in de log', jr.jr['9001'] && Math.abs(jr.jr['9001'].r - 1.4) < 0.001 && jr.jr['9002'] && Math.abs(jr.jr['9002'].r + 0.92) < 0.001 && /journal/.test(jr.log), JSON.stringify(jr.jr));
+  ok('TradingPlan: R uit de journal voor 9001 (' + IDS.rA + ') en 9002 (' + IDS.rB + '), badge "journal" in de log', jr.jr['9001'] && Math.abs(jr.jr['9001'].r - IDS.rA) < 0.001 && jr.jr['9002'] && Math.abs(jr.jr['9002'].r - IDS.rB) < 0.001 && /journal/.test(jr.log), JSON.stringify(jr.jr));
   ok('poort-statistiek telt de journal-R mee: 2 van 30', await p2.evaluate(() => { document.querySelector('[data-tab="poort"]').click(); return /2 van 30/.test(document.getElementById('pt-weinig').innerText); }));
   // voorbeeld-poortrecords uit de journal (Instellingen) → 40 records + afsluitingen → journal koppelt ze
   await p2.evaluate(() => document.querySelector('[data-tab="instellingen"]').click()); await p2.click('#demo-poort'); await p2.waitForTimeout(1600); await p2.waitForLoadState('load'); await p2.waitForTimeout(600);
