@@ -1,4 +1,6 @@
 // Tradingplan: de drie uitbreidingen van 19-09-2026 (Denny koos voorstel 4, 5 en 6).
+// Bijgesteld 25-09-2026 voor v2: geen uitleg-modal in de test, overzicht = cockpit (#ov-sc),
+// oordeel heet vol/half/geen en vraagt eerst een setup-type.
 //  4 — het dagplan vult zichzelf half in vanuit het weekplan en je vorige dag
 //  5 — scenario's zijn als-dan-dan-niet i.p.v. één vrij tekstvak
 //  6 — je eigen no-trade-condities uit het weekplan gelden als harde check in de poort
@@ -15,6 +17,7 @@ const URL_APP = 'file:///' + path.resolve('tradingplan/tradingplan.html').replac
     const ctx = await b.newContext(); const p = await ctx.newPage();
     p.on('pageerror', e => errs.push(String(e).split('\n')[0]));
     p.on('dialog', d => d.accept());
+    await p.addInitScript(() => { localStorage.setItem('tp2:meta', JSON.stringify({ schema: 2, introSeen: true })); });
     if (seed) await p.addInitScript(s => { localStorage.setItem('tp2:plans', JSON.stringify(s)); }, seed);
     await p.goto(URL_APP, { waitUntil: 'domcontentloaded' });
     await p.waitForTimeout(700);
@@ -41,9 +44,9 @@ const URL_APP = 'file:///' + path.resolve('tradingplan/tradingplan.html').replac
     });
     ok('de drie velden worden los opgeslagen', opgeslagen && opgeslagen.als.includes('weekend-low') && opgeslagen.dan.includes('POC') && opgeslagen.ongeldig.includes('73.8k'), JSON.stringify(opgeslagen).slice(0, 120));
 
-    const ovTekst = await p.evaluate(() => { const tab=t=>document.querySelector('.tabs button[data-tab="'+t+'"]').click(); tab('overzicht'); return document.querySelector('#ov-dag').innerText; });
-    ok('het overzicht toont Als en Dan als losse regels', /Als\s+prijs sweept/.test(ovTekst) && /Dan\s+long vanaf/.test(ovTekst), JSON.stringify(ovTekst.slice(0, 160)));
-    ok('en waar het scenario ongeldig wordt', ovTekst.includes('Ongeldig bij 15m sluit onder 73.8k'));
+    const ovTekst = await p.evaluate(() => { const tab=t=>document.querySelector('.tabs button[data-tab="'+t+'"]').click(); tab('overzicht'); return document.querySelector('#ov-sc').innerText; });
+    ok('het overzicht toont Als en Dan als losse regels', /Als\s+prijs sweept/i.test(ovTekst) && /Dan\s+long vanaf/i.test(ovTekst), JSON.stringify(ovTekst.slice(0, 160)));
+    ok('en waar het scenario ongeldig wordt', /ongeldig\s+15m sluit onder 73\.8k/i.test(ovTekst));
 
     const toelichting = await p.evaluate(() => {
       const tab=t=>document.querySelector('.tabs button[data-tab="'+t+'"]').click(); tab('dag'); const btn = document.querySelector('#sc-wrap .sc-note'); if (!btn) return 'knop ontbreekt';
@@ -57,7 +60,7 @@ const URL_APP = 'file:///' + path.resolve('tradingplan/tradingplan.html').replac
   {
     const oud = {}; oud['dag-' + vandaag()] = { id: 'dag-' + vandaag(), type: 'dag', key: vandaag(), checks: {}, images: [], links: [], scenarios: [{ title: 'Oud', text: 'Als prijs de low pakt dan long.', images: [], links: [] }] };
     const { ctx, p } = await open(oud);
-    const r = await p.evaluate(() => { const tab=t=>document.querySelector('.tabs button[data-tab="'+t+'"]').click(); tab('dag'); return { tekstveld: (document.querySelector('#sc-wrap .sc-text') || {}).value, als: (document.querySelector('#sc-wrap .sc-als') || {}).value, ov: document.querySelector('#ov-dag').innerText }; });
+    const r = await p.evaluate(() => { const tab=t=>document.querySelector('.tabs button[data-tab="'+t+'"]').click(); tab('dag'); return { tekstveld: (document.querySelector('#sc-wrap .sc-text') || {}).value, als: (document.querySelector('#sc-wrap .sc-als') || {}).value, ov: document.querySelector('#ov-sc').innerText }; });
     ok('bestaande vrije tekst blijft staan als toelichting', r.tekstveld === 'Als prijs de low pakt dan long.', JSON.stringify(r.tekstveld));
     ok('en gaat niet verloren in het overzicht', r.ov.includes('Als prijs de low pakt dan long.'));
     ok('de nieuwe velden zijn leeg, niets wordt verzonnen', r.als === '', JSON.stringify(r.als));
@@ -131,11 +134,12 @@ const URL_APP = 'file:///' + path.resolve('tradingplan/tradingplan.html').replac
     ok('7 van 7 afgevinkt is nog steeds geen trade zolang een conditie openstaat', allesAf.oordeel === 'Geen trade' && /No-trade-conditie/.test(allesAf.reden), JSON.stringify(allesAf));
 
     const vrij = await p.evaluate(async () => {
+      document.querySelector('#pt-stype [data-t="A"]').click();
       document.querySelectorAll('#pt-notrade input').forEach(i => { i.checked = true; i.dispatchEvent(new Event('change', { bubbles: true })); });
       await new Promise(r => setTimeout(r, 120));
       return { oordeel: document.querySelector('#pt-verdict .g').textContent, blok: !!document.querySelector('#pt-notrade .nt.blocked') };
     });
-    ok('zijn ze afgevinkt, dan geldt gewoon het A-oordeel', vrij.oordeel === 'A · 1%' && !vrij.blok, JSON.stringify(vrij));
+    ok('zijn ze afgevinkt, dan geldt gewoon het oordeel (A-setup, alles af: volle size 2%)', vrij.oordeel === 'Volle size · 2%' && !vrij.blok, JSON.stringify(vrij));
 
     const eenOpen = await p.evaluate(async () => {
       const i = document.querySelector('#pt-notrade input'); i.checked = false; i.dispatchEvent(new Event('change', { bubbles: true }));
@@ -144,7 +148,7 @@ const URL_APP = 'file:///' + path.resolve('tradingplan/tradingplan.html').replac
       document.getElementById('pt-save').click();
       await new Promise(r => setTimeout(r, 250));
       const t = JSON.parse(localStorage.getItem('tp2:trades'))[0];
-      return { noTrade: t.noTrade, grade: t.grade, log: document.getElementById('log-body').innerText };
+      return { noTrade: t.noTrade, grade: t.exec, log: document.getElementById('log-body').innerText };
     });
     ok('de openstaande conditie gaat mee de log in', (eenOpen.noTrade || []).length === 1 && eenOpen.grade === 'NO', JSON.stringify(eenOpen.noTrade));
     ok('en is zichtbaar in de logregel', /No-trade:/.test(eenOpen.log), JSON.stringify(eenOpen.log.slice(0, 120)));

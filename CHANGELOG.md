@@ -10,6 +10,16 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 De journal is opnieuw opgebouwd als **SyncJournal** en draait nu online op [syncjournal.nl](https://syncjournal.nl). Versienummers zijn opnieuw gestart op v0.9.x (bèta); de oude TradeJournal-releases staan verderop in dit bestand. Je data overzetten kan via Instellingen → Data → Importeer oude backup.
 
+## [v0.9.132] — 2026-09-25
+
+### Toegevoegd
+- **TradingPlan v2 op syncjournal.nl/plan.** De planningstool staat nu naast je journal (menu-item "Plan"), met dezelfde opslag-plek in je browser. Nieuw in v2: een route bovenaan het Overzicht (Playbook → Weekplan → Dagplan → Poort → Afsluiting) met status per stap, een "Vandaag in één blik"-cockpit, een poort die eerst vraagt welke setup het is (A/B/C uit je playbook) en dan *volle size / halve size / geen trade* oordeelt, waarschuwingen bij je weeklimiet, na 2 verliezers op een dag en bij een onrustige mentaal-score, een dagafsluiting (welk scenario speelde, plan gevolgd, één les — die morgen bovenaan je dagplan staat), bewerkbare checklists met "Herstel standaard", een deelbare template, sneltoetsen (1–8, ‹ ›, ?) en een uitleg voor nieuwe gebruikers.
+- Statistiek in de poort zegt eerlijk "nog te weinig data" tot 30 trades en toont altijd het aantal.
+
+### Gewijzigd
+- Je bestaande TradingPlan-data wordt bij het eerste openen van `/plan` eenmalig omgezet (poort-grade A/B → volle/halve size); oude back-ups (v1) blijven importeerbaar. Let op: data die nog op `tradingplan.syncjournal.nl` staat verhuist niet vanzelf — dat adres toont nu een pagina met "Download mijn back-up" en de stap om hem op `/plan` te importeren.
+- Opslag van TradingPlan is altijd lokaal per gebruiker; het gedeelde cloud-pad is verwijderd.
+
 ## [v0.9.131] — 2026-09-24
 
 ### Toegevoegd

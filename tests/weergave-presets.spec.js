@@ -23,7 +23,7 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
 
   console.log('─── Default + preset-schakelen ───');
   ok('verse gebruiker start op Alles', await p.evaluate(() => VIEW.preset === 'alles'));
-  ok('nav toont alle pagina\'s in Alles', await p.evaluate(() => document.querySelectorAll('#nav button,#navbot button').length === 10));
+  ok('nav toont alle pagina\'s in Alles', await p.evaluate(() => document.querySelectorAll('#nav button,#navbot button').length === 11));   // 11 sinds 25-09-2026: + 'Plan' (TradingPlan)
   const nettoAlles = await p.evaluate(() => { go('dashboard'); return document.querySelector('.kpis .kpi .kv, .kpis [class*=kpi]')?.textContent || document.querySelector('.kpis')?.textContent || ''; });
   await p.evaluate(() => viewPreset('rustig')); await p.waitForTimeout(300);
   ok('Rustig: Analytics/Tendencies/Playbook/AI uit de nav', await p.evaluate(() => { const ps = [...document.querySelectorAll('#nav button,#navbot button')].map(x => x.dataset.p); return !ps.includes('analytics') && !ps.includes('tendencies') && !ps.includes('playbook') && !ps.includes('ai') && ps.includes('dashboard') && ps.includes('review'); }));
