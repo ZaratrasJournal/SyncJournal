@@ -10,6 +10,14 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 De journal is opnieuw opgebouwd als **SyncJournal** en draait nu online op [syncjournal.nl](https://syncjournal.nl). Versienummers zijn opnieuw gestart op v0.9.x (bèta); de oude TradeJournal-releases staan verderop in dit bestand. Je data overzetten kan via Instellingen → Data → Importeer oude backup.
 
+## [v0.9.136] — 2026-09-25
+
+### Toegevoegd
+- **Exporteren: eerst zien wat er meegaat.** Exporteer JSON opent nu een overzicht per onderdeel (trades met het aantal notities, screenshots, links en stappen; prullenbak; tags; playbooks met afbeeldingen; handmatige accounts; exchange-koppelingen; saldi; instellingen; AI-coach; TradingPlan) met aantal en omvang, elk met een vinkje. API-sleutels en wallet-adressen zijn een apart vinkje: standaard aan voor je eigen back-up, uit als je het bestand deelt. Onderin telt de bestandsgrootte mee. Het bestand krijgt een inhoudsopgave (manifest); uitgezette onderdelen ontbreken in het bestand en blijven bij het terugzetten dus zoals ze zijn.
+- **Importeren: kiezen wat je overneemt, en een controle achteraf.** Bij een SyncJournal-bestand zie je eerst wat erin zit tegenover wat je nu hebt, per onderdeel met een vinkje. Trades kun je **vervangen** (standaard) of **samenvoegen**: dan komen alleen trades binnen die je nog niet hebt (herkend op bron-id, anders op datum, pair, richting, entry en size) en komen verwijderde trades niet terug. Ontbreekt een onderdeel in het bestand, dan blijft jouw huidige staan. Koppelingen uit een bestand zonder sleutels tellen niet als verbonden. Na het overnemen volgt dezelfde controle als bij het overzetten uit de oude app: aantallen en netto P&L op de cent, en onleesbare P&L in het bestand wordt benoemd. Klopt het niet, dan staat er een knop om de veiligheidskopie van zojuist terug te zetten. Een bestand met alleen playbooks en tags (gedeeld door iemand anders) kan nu ook.
+- **Diagnose-rapport** in Instellingen → Data → "Hulp bij problemen": altijd zichtbaar, met een samenvatting (versie en schema, aantallen, laatste sync per koppeling, signalen) en de knoppen Kopieer en Download. Het rapport bevat versie, opslag, aantallen per status/soort/exchange, datumbereik, trades zonder datum of open-tijd, dubbele bron-id's, prullenbak, snapshots, migratie- en importstempel, sync-status per koppeling met backoff, of de proxy bereikbaar is, back-upstatus, TradingPlan-status en de laatste fouten. Nooit sleutels, notities, screenshots of volledige adressen. "Details" in de foutbalk levert hetzelfde rapport.
+- Overzetten uit de oude TradeJournal noemt nu ook wat er niet meegaat omdat SyncJournal het niet kent (discipline-vinkjes, weekreflecties, mindset-voorkeuren, mijlpalen, TP-templates; per trade compliance-vinkjes en handmatige overschrijvingen).
+
 ## [v0.9.135] — 2026-09-25
 
 ### Toegevoegd

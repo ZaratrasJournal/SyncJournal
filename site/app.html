@@ -423,6 +423,25 @@ table.tbl{width:100%;border-collapse:collapse;font-size:14px}
 .excell .ext b{font-size:12px;font-weight:600;display:block;white-space:nowrap}
 .excell .ext small{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
 .pill{font-size:10px;font-weight:700;padding:2px 7px;border-radius:5px}
+.dov-cnt{font-family:var(--fn);font-size:12px;min-width:76px;text-align:right;white-space:nowrap}
+.dov-cnt.dim{color:var(--faint)}
+.dov-off .txt{opacity:.5} .dov-off .txt b{text-decoration:line-through}
+.dov-na .txt{opacity:.55}
+.dov-cmp{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
+.dov-cmp>div{border:1px solid var(--line);border-radius:8px;padding:10px 13px;background:var(--sink)}
+.dov-cmp .h{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.dov-cmp .v{font-family:var(--fn);font-weight:700;font-size:14px;margin-top:2px;word-break:break-all}
+.dov-cmp small{display:block;color:var(--muted);font-size:11.5px}
+.dov-note{padding:9px 13px;border-radius:8px;font-size:12.5px;line-height:1.55;margin-top:10px}
+.dov-note.warn{background:var(--amber-soft);color:var(--amber)} .dov-note.bad{background:var(--red-soft);color:var(--red)} .dov-note.ok{background:var(--green-soft);color:var(--green)} .dov-note.info{background:var(--sink);color:var(--muted)}
+.dov-tag{font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:999px;white-space:nowrap}
+.dov-tag.warn{background:var(--amber-soft);color:var(--amber)} .dov-tag.ok{background:var(--green-soft);color:var(--green)} .dov-tag.bad{background:var(--red-soft);color:var(--red)}
+.dov-sum{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;padding:12px 18px}
+.dov-sum>div{border:1px solid var(--line);border-radius:8px;padding:9px 12px}
+.dov-sum .h{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.dov-sum .v{font-size:12.5px;font-weight:600;margin-top:3px;line-height:1.45}
+.dov-sum .v small{display:block;color:var(--muted);font-weight:500}
+@media (max-width:760px){.dov-cmp,.dov-sum{grid-template-columns:1fr}}
 .pill.long{color:var(--green);background:var(--green-soft)} .pill.short{color:var(--red);background:var(--red-soft)}
 .tag{color:var(--muted)}
 .status{display:inline-flex;align-items:center;gap:6px;font-size:10.5px;font-weight:600;padding:3px 9px 3px 8px;border-radius:6px;border:1px solid var(--line);color:var(--ink2);background:var(--surface)}
@@ -1771,7 +1790,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.135';
+const APP_VERSION='v0.9.136';
 const SCHEMA_VERSION=8;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -1807,7 +1826,7 @@ const ErrorCenter={
   },
   act(i){ const a=this._actions[i]; this.dismiss(); if(a&&typeof a.fn==='function')try{a.fn();}catch(e){} },
   dismiss(){ const bar=document.getElementById('errbar'); if(bar){bar.className='errbar';bar.innerHTML='';} },
-  diagnostics(){ try{
+  diagnostics(){ try{ if(typeof diagDownload==='function')return diagDownload();
     const data={app:'SyncJournal',version:(typeof APP_VERSION!=='undefined'?APP_VERSION:'?'),when:new Date().toISOString(),trades:(typeof T!=='undefined'&&Array.isArray(T))?T.length:null,userAgent:navigator.userAgent,log:this.log};
     const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});const u=URL.createObjectURL(blob);const a=document.createElement('a');a.href=u;a.download='syncjournal-diagnostics-'+new Date().toISOString().slice(0,10)+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(u),1500);
   }catch(e){} },
@@ -1820,7 +1839,7 @@ window.addEventListener('error',e=>{ if(e&&e.target&&e.target!==window)return; /
 window.addEventListener('unhandledrejection',e=>{ try{ErrorCenter.report('crash',(e&&e.reason)||new Error('Onafgehandelde belofte-fout'),{severity:'error',userMsg:'Een achtergrondactie mislukte. Als dit blijft gebeuren, exporteer een back-up.',actions:[{label:'Exporteer backup',fn:()=>exportJSON()}]});}catch(_){}
 });
 // Quota-vooruitblik: waarschuw bij >90% opslaggebruik vóór het te laat is.
-try{ if(navigator.storage&&navigator.storage.estimate){navigator.storage.estimate().then(est=>{ if(est&&est.quota&&est.usage/est.quota>0.9)ErrorCenter.report('quota',new Error('Opslag bijna vol'),{severity:'warn',userMsg:'Je browseropslag is bijna vol ('+Math.round(est.usage/est.quota*100)+'%). Exporteer een back-up en ruim ruimte op om dataverlies te voorkomen.',actions:[{label:'Exporteer backup',fn:()=>exportJSON()}]}); }).catch(()=>{}); } }catch(e){}
+try{ if(navigator.storage&&navigator.storage.estimate){navigator.storage.estimate().then(est=>{ try{DIAG_EST={usage:est.usage||0,quota:est.quota||0};}catch(e){} if(est&&est.quota&&est.usage/est.quota>0.9)ErrorCenter.report('quota',new Error('Opslag bijna vol'),{severity:'warn',userMsg:'Je browseropslag is bijna vol ('+Math.round(est.usage/est.quota*100)+'%). Exporteer een back-up en ruim ruimte op om dataverlies te voorkomen.',actions:[{label:'Exporteer backup',fn:()=>exportJSON()}]}); }).catch(()=>{}); } }catch(e){}
 // IndexedDB voor trades + playbooks (mét ingesloten screenshots) — omzeilt de ~5MB localStorage-limiet.
 // Config/tags/instellingen blijven in localStorage (klein). Key-value store 'kv'.
 const IDB={db:null,
@@ -3907,12 +3926,17 @@ function pgInstellingen(){
         <div class="setrow"><div class="txt"><b>Waarschuwing na</b></div>
           <select class="fsel" aria-label="Waarschuwingsdrempel" onchange="bkSetThreshold(this.value)">${[1,2,3,5,7,14].map(d=>`<option value="${d}" ${BK.threshold===d?'selected':''}>${d} dag${d===1?'':'en'}</option>`).join('')}</select></div>
       </div>
-      <div class="panel"><div class="setrow"><div class="txt"><b>Back-up</b><small>Exporteer of importeer je journal als JSON, echt werkend</small></div>
-      <button class="btn" onclick="importJSON()">Importeer</button><button class="btn pri" onclick="exportJSON()">Exporteer JSON</button></div>
-      <div class="setrow"><div class="txt"><b>Voorbeelddata laden</b><small>Vul de app met 3000 voorbeeld-trades incl. accounts, playbooks en tags, overschrijft je huidige journal</small></div><button class="btn" onclick="resetDemo()">Laden</button></div>
+      <div class="panel"><div class="setrow"><div class="txt"><b>Back-up</b><small>Exporteer of importeer je journal als JSON. Je ziet eerst wat er in het bestand gaat, of wat erin zit.</small></div>
+      <button class="btn" onclick="importJSON()">Importeer</button><button class="btn pri" onclick="exportOverzicht()">Exporteer JSON</button></div>
+      <div class="setrow"><div class="txt"><b>Voorbeelddata laden</b><small>Vul de app met ±1.100 voorbeeld-trades van één trader over 20 maanden, incl. accounts, playbooks, tags en TradingPlan; overschrijft je huidige journal</small></div><button class="btn" onclick="resetDemo()">Laden</button></div>
       ${demoPresent()?`<div class="setrow"><div class="txt"><b>Voorbeelddata opruimen</b><small>Haalt de demo-trades, -playbooks en -accounts weer weg. Wat je zelf hebt toegevoegd of aangepast blijft staan.</small></div><button class="btn" onclick="demoCleanup()">Opruimen</button></div>`:''}
       <div class="setrow"><div class="txt"><b>Opslag-bescherming</b><small>${PERSISTED===true?'<span style="color:var(--green);font-weight:700">✓ Actief</span>, je browser heeft beloofd deze opslag niet zelf op te ruimen':PERSISTED===false?'<span style="color:var(--amber);font-weight:700">Niet actief</span>, de browser mag bij ruimtegebrek opruimen; een recente backup is extra belangrijk':'Onbekend, deze browser geeft er geen uitsluitsel over'}</small></div></div>
       <div class="setrow"><div class="txt"><b>Versie</b><small>SyncJournal ${APP_VERSION} · dataschema v${SCHEMA_VERSION} · ${T.length} trades lokaal opgeslagen</small></div></div></div>
+      <div class="section-sub">🩺 Hulp bij problemen</div>
+      <div class="panel" id="diagPanel">
+        <div class="setrow"><div class="txt"><b>Diagnose-rapport</b><small>Eén bestand met versie, opslag, aantallen, sync-status en fouten. Zonder sleutels, notities of screenshots. Plak het in Discord bij je melding.</small></div><button class="btn" onclick="diagCopy()">Kopieer</button><button class="btn pri" onclick="diagDownload()">Download</button></div>
+        ${diagSummaryHtml()}
+      </div>
       <div class="section-sub">🗑️ Prullenbak${TRASH.length?` · ${TRASH.length}`:''} <span class="hint">(verwijderde trades · ${TRASH_DAYS} dagen bewaard, daarna automatisch weg)</span></div>
       <div class="panel">${trashPanel()}</div>
       <div class="section-sub">🛟 Veiligheidskopieën <span class="hint">(automatisch vóór risicovolle acties · laatste 3)</span></div>
@@ -5256,6 +5280,231 @@ function driveBanner(){
 }
 function exportJSON(){ const blob=new Blob([JSON.stringify(snapshotPayload(),null,2)],{type:'application/json'});
   const u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download='syncjournal-backup-'+localDateISO()+'.json';a.click();URL.revokeObjectURL(u);toast('✓ Back-up geëxporteerd','ok');bkStamp('handmatig'); }
+/* ═══ Data-overdracht (Denny 2026-09-25, docs/opdracht-data-overzetten.md) ═══
+   Eerst zien, dan doen. Export: per onderdeel aantal en omvang, vinkje aan/uit, sleutels
+   apart; het bestand krijgt een manifest. Import: per onderdeel wat erin zit tegenover wat
+   je nu hebt, vervangen of samenvoegen, en achteraf een controle op aantallen en P&L. */
+const DOV_PARTS=[
+  {k:'trades',t:'Trades',keys:['trades']},
+  {k:'trash',t:'Prullenbak',keys:['trash']},
+  {k:'tags',t:'Tags',keys:['tagConfig']},
+  {k:'pbook',t:'Playbooks',keys:['pbook']},
+  {k:'manual',t:'Handmatige accounts',keys:['manual']},
+  {k:'conns',t:'Exchange-koppelingen',keys:['conns','sync']},
+  {k:'exmeta',t:'Saldi en accountnamen',keys:['exMeta']},
+  {k:'settings',t:'Instellingen',keys:['settings','view']},
+  {k:'ai',t:'AI-coach-voorkeuren',keys:['aiPrefs']},
+  {k:'plan',t:'TradingPlan',keys:['tradingplan']},
+];
+const DOV_SECRET=['apiKey','apiSecret','passphrase','wallet'];
+function dovBytes(v){try{return v==null?0:JSON.stringify(v).length;}catch(e){return 0;}}
+function dovKb(b){return b>=1073741824?(b/1073741824).toFixed(1).replace('.',',')+' GB':b>=1048576?(b/1048576).toFixed(1).replace('.',',')+' MB':Math.max(1,Math.round(b/1024))+' KB';}
+function dovHasKeys(conns){return !!conns&&Object.values(conns).some(c=>c&&DOV_SECRET.some(k=>c[k]));}
+// Beschrijving per onderdeel van een back-up-object (het bestand of de huidige staat).
+function dovDescribe(d){
+  d=d||{};const out={};
+  const has=(k)=>d[k]!=null;
+  const ts=Array.isArray(d.trades)?d.trades.filter(t=>t&&typeof t==='object'):[];
+  const met=(f)=>ts.filter(f).length;
+  out.trades={present:has('trades'),count:ts.length,sub:ts.length?ts.length.toLocaleString('nl-NL')+' trades · '+met(t=>t.notes||t.lessons)+' met notities · '+met(t=>(t.screenshots||[]).length)+' met screenshots · '+met(t=>(t.tvLinks||[]).length)+' met links · '+met(t=>(t.fills||[]).length)+' met stappen':'geen trades'};
+  const tr=Array.isArray(d.trash)?d.trash.length:0;
+  out.trash={present:has('trash'),count:tr,sub:tr+' verwijderde trade'+(tr===1?'':'s')+' (komen bij het terugzetten niet terug in je lijst)'};
+  const tc=d.tagConfig&&typeof d.tagConfig==='object'?d.tagConfig:{};const nTags=Object.values(tc).reduce((n,a)=>n+(Array.isArray(a)?a.length:0),0);
+  out.tags={present:has('tagConfig'),count:nTags,sub:nTags+' labels: setup, confirmatie, timeframe, emotie, fout, gemist, eigen'};
+  const pb=d.pbook&&typeof d.pbook==='object'?Object.values(d.pbook):[];const pbImg=pb.reduce((n,p)=>n+((p&&p.examples)||[]).filter(x=>x&&x.dataUrl).length,0);
+  out.pbook={present:has('pbook'),count:pb.length,sub:pb.length+' playbook'+(pb.length===1?'':'s')+(pbImg?' · '+pbImg+' voorbeeldafbeelding'+(pbImg===1?'':'en'):'')+(pb.length?' · '+pb.slice(0,4).map(p=>p.name).join(', ')+(pb.length>4?' …':''):'')};
+  const man=Array.isArray(d.manual)?d.manual:[];const tx=man.reduce((n,m)=>n+((m&&m.transactions)||[]).length,0);
+  out.manual={present:has('manual'),count:man.length,sub:man.length?man.map(m=>m.name).join(', ')+' · '+tx+' storting'+(tx===1?'':'en')+' en opnames':'geen handmatige accounts'};
+  const cn=d.conns&&typeof d.conns==='object'?Object.entries(d.conns).filter(([id,c])=>c&&(c.connected||c.apiKey||c.wallet)):[];
+  out.conns={present:has('conns'),count:cn.length,keys:dovHasKeys(d.conns),sub:cn.length?cn.map(([id,c])=>((EXMAP[id]||{}).name||id)+(c.hint?' …'+c.hint:'')).join(' · ')+(d.sync?' · sync-instellingen':''):'geen koppelingen'};
+  const em=d.exMeta&&typeof d.exMeta==='object'?Object.entries(d.exMeta).filter(([id,m])=>m&&(+m.val||(m.acct&&EXMAP[id]&&m.acct!==EXMAP[id].acct))):[];
+  out.exmeta={present:has('exMeta'),count:em.length,sub:em.length?em.map(([id,m])=>(m.acct||(EXMAP[id]||{}).name||id)+(+m.val?' '+eurS(+m.val).replace(/^\+/,''):'')).join(' · '):'geen saldi ingevuld'};
+  const st=d.settings||{},vw=d.view||{};
+  out.settings={present:has('settings')||has('view'),count:1,sub:[st.theme?'thema '+(st.theme==='dark'?'donker':'licht'):'',st.currency||'',vw.preset?'weergave '+vw.preset:''].filter(Boolean).join(' · ')||'thema, valuta, weergave'};
+  const ai=d.aiPrefs||{};
+  out.ai={present:has('aiPrefs'),count:1,sub:ai.tone?'toon '+ai.tone+(ai.focus?' · focus '+Object.keys(ai.focus).filter(k=>ai.focus[k]).join(', '):''):'toon en focus'};
+  let plans=0,recs=0;try{const tp=d.tradingplan||{};plans=Object.keys(JSON.parse(tp.plans||'{}')).length;recs=(JSON.parse(tp.trades||'[]')||[]).length;}catch(e){}
+  out.plan={present:has('tradingplan'),count:plans+recs,sub:has('tradingplan')?plans+' plannen · '+recs+' poort-beoordelingen · checklists en regels (screenshots zitten in TradingPlans eigen back-up)':'geen TradingPlan-gegevens'};
+  DOV_PARTS.forEach(p=>{out[p.k].bytes=p.keys.reduce((n,k)=>n+dovBytes(d[k]),0);});
+  return out;
+}
+// Sleutels uit de koppelingen halen; de koppeling zelf (hint, syncFrom) blijft herkenbaar.
+function dovStripKeys(conns){const o={};Object.entries(conns||{}).forEach(([id,c])=>{if(!c)return;const n={...c};DOV_SECRET.forEach(k=>{delete n[k];});o[id]=n;});return o;}
+// Het bestand samenstellen: alleen gekozen onderdelen, sleutels naar keuze, plus manifest.
+function dovBuildExport(sel,keys){
+  const full=snapshotPayload(),desc=dovDescribe(full),out={app:full.app,appVersion:full.appVersion,schemaVersion:full.schemaVersion,exported:full.exported};
+  const manifest={parts:{},keysIncluded:!!keys,hostedVersion:UPDATE.remote||''};
+  DOV_PARTS.forEach(p=>{const on=sel[p.k]!==false;manifest.parts[p.k]={included:on,count:on?desc[p.k].count:0,bytes:on?desc[p.k].bytes:0};
+    if(on)p.keys.forEach(k=>{if(full[k]!=null)out[k]=full[k];});});
+  if(out.conns&&!keys)out.conns=dovStripKeys(out.conns);
+  out.manifest=manifest;
+  return out;
+}
+let _dovExp={sel:{},keys:true};
+function exportOverzicht(){
+  const desc=dovDescribe(snapshotPayload());_dovExp={sel:{},keys:true};DOV_PARTS.forEach(p=>{_dovExp.sel[p.k]=true;});
+  const rows=DOV_PARTS.map(p=>`<div class="setrow" data-dov="${p.k}"><input type="checkbox" checked aria-label="${esc(p.t)}" onchange="dovExpToggle('${p.k}',this.checked)" style="width:17px;height:17px;accent-color:var(--accent)"><div class="txt"><b>${esc(p.t)}</b><small>${esc(desc[p.k].sub)}</small></div><span class="dov-cnt dim">${dovKb(desc[p.k].bytes)}</span></div>`).join('');
+  openModalHTML(`<div class="mhead"><h3>📤 Wat gaat er mee?</h3><button class="xbtn" onclick="closeForm()">×</button></div>
+  <div class="mbody mbody-wiz">
+    <p class="setintro">Kies wat er in het bestand komt. Wat je uitzet ontbreekt in het bestand; bij het terugzetten blijft dat deel dan zoals het is.</p>
+    <div class="panel">${rows}</div>
+    <div class="section-sub">Gevoelig</div>
+    <div class="panel"><div class="setrow" data-dov="keys"><input type="checkbox" checked aria-label="API-sleutels" onchange="dovExpToggle('keys',this.checked)" style="width:17px;height:17px;accent-color:var(--accent)"><div class="txt"><b>API-sleutels en wallet-adressen</b><small>${desc.conns.keys?'Leesbaar in het bestand. Aan voor je eigen back-up (direct weer syncen). <b>Zet uit als je dit bestand deelt.</b>':'Je hebt geen sleutels opgeslagen, dit vinkje doet nu niets.'}</small></div><span class="dov-tag ${desc.conns.keys?'warn':'ok'}" id="dovKeysTag">${desc.conns.keys?'gaat mee':'geen'}</span></div></div>
+    <div class="dov-note info">Automatische back-ups (map of Drive) blijven altijd volledig, mét sleutels. Dit overzicht geldt voor het bestand dat je nu zelf maakt.</div>
+    <div style="display:flex;gap:8px;align-items:center;margin-top:12px"><span class="setintro" style="margin:0" id="dovExpTot"></span><span style="flex:1"></span><button class="btn" onclick="closeForm()">Annuleren</button><button class="btn pri" onclick="dovExportGo()">Exporteren</button></div>
+  </div>`);
+  _dovExp.desc=desc;dovExpTotal();
+}
+function dovExpToggle(k,on){ if(k==='keys'){_dovExp.keys=on;const t=document.getElementById('dovKeysTag');if(t&&_dovExp.desc.conns.keys){t.textContent=on?'gaat mee':'niet mee';t.className='dov-tag '+(on?'warn':'ok');}} else _dovExp.sel[k]=on;
+  const row=document.querySelector(`#modal [data-dov="${k}"]`);if(row)row.classList.toggle('dov-off',!on);dovExpTotal(); }
+function dovExpTotal(){ const el=document.getElementById('dovExpTot');if(!el)return;let b=300,n=0;DOV_PARTS.forEach(p=>{if(_dovExp.sel[p.k]){b+=_dovExp.desc[p.k].bytes;n++;}});
+  el.innerHTML=`<b class="num">${dovKb(b)}</b> · ${n} van ${DOV_PARTS.length} onderdelen · ${_dovExp.keys&&_dovExp.desc.conns.keys?'met sleutels':'zonder sleutels'} · syncjournal-backup-${localDateISO()}.json`; }
+function dovExportGo(){
+  const d=dovBuildExport(_dovExp.sel,_dovExp.keys);closeForm();
+  const blob=new Blob([JSON.stringify(d,null,2)],{type:'application/json'});
+  const u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download='syncjournal-backup-'+localDateISO()+'.json';a.click();URL.revokeObjectURL(u);
+  const alles=DOV_PARTS.every(p=>_dovExp.sel[p.k]);
+  toast('✓ Back-up geëxporteerd'+(alles?'':' ('+DOV_PARTS.filter(p=>_dovExp.sel[p.k]).length+' van '+DOV_PARTS.length+' onderdelen)')+(_dovExp.keys?'':' zonder sleutels'),'ok');
+  if(alles)bkStamp('handmatig');   // een gedeeltelijk bestand telt niet als volledige back-up
+}
+
+// ── import-keuze ──
+let _dovImp=null;
+function dovTradeKey(t){ if(!t)return ''; if(t.srcId)return 'S:'+String(t.srcId); return 'M:'+(t.date||'')+'|'+String(t.pair||'').toUpperCase()+'|'+String(t.dir||'')+'|'+(+t.entry||0).toFixed(8)+'|'+String(t.size||''); }
+// Samenvoegen: wat je hebt blijft; uit het bestand komt alleen wat je nog niet hebt. De
+// prullenbak wint: een bewust verwijderde trade komt niet via een oud bestand terug.
+function dovMergeTrades(cur,inc,trash){
+  const seen=new Set(cur.map(dovTradeKey)),weg=new Set((trash||[]).map(dovTradeKey));
+  const nieuw=[];(inc||[]).forEach(t=>{if(!t||typeof t!=='object')return;const k=dovTradeKey(t);if(!k||seen.has(k)||weg.has(k))return;seen.add(k);nieuw.push(t);});
+  return {list:[...cur,...nieuw],nieuw:nieuw.length,overgeslagen:(inc||[]).length-nieuw.length};
+}
+function dovImportModal(d,fileName){
+  const inF=dovDescribe(d),nu=dovDescribe(snapshotPayload());
+  const ts=Array.isArray(d.trades)?d.trades.filter(t=>t&&typeof t==='object'):[];
+  const pnlF=ts.reduce((s,t)=>s+(+t.pnl||0),0),pnlNu=(T||[]).reduce((s,t)=>s+(+t.pnl||0),0);
+  const merge=dovMergeTrades(T||[],ts,TRASH);
+  _dovImp={d,sel:{},mode:'vervangen',fileName:fileName||'',nieuw:merge.nieuw,inF,nu,pnlF};
+  DOV_PARTS.forEach(p=>{_dovImp.sel[p.k]=!!inF[p.k].present;});
+  const rows=DOV_PARTS.map(p=>{const f=inF[p.k],n=nu[p.k];
+    if(!f.present)return `<div class="setrow dov-na"><span style="width:17px;flex:none"></span><div class="txt"><b>${esc(p.t)}</b><small>niet in dit bestand, jouw huidige blijft staan</small></div><span class="dov-cnt dim">–</span><span class="dov-cnt dim">${n.count.toLocaleString('nl-NL')} nu</span></div>`;
+    const extra=p.k==='trades'?`<span class="seg" id="dovMode"><button class="on" onclick="dovImpMode('vervangen')">vervangen</button><button onclick="dovImpMode('samenvoegen')">samenvoegen</button></span>`:'';
+    return `<div class="setrow" data-dov="${p.k}"><input type="checkbox" checked aria-label="${esc(p.t)}" onchange="dovImpToggle('${p.k}',this.checked)" style="width:17px;height:17px;accent-color:var(--accent)"><div class="txt"><b>${esc(p.t)}</b><small>${esc(f.sub)}</small></div>${extra}<span class="dov-cnt">${f.count.toLocaleString('nl-NL')} in bestand</span><span class="dov-cnt dim">${n.count.toLocaleString('nl-NL')} nu</span></div>`;}).join('');
+  const man=d.manifest||{};
+  openModalHTML(`<div class="mhead"><h3>📥 Wat zit erin en wat neem je over?</h3><button class="xbtn" onclick="closeForm()">×</button></div>
+  <div class="mbody mbody-wiz">
+    <div class="dov-cmp"><div><div class="h">Bestand</div><div class="v">${esc(fileName||'back-up')}</div><small>${esc(d.appVersion||'onbekende versie')}${d.exported?' · '+esc(snapWhen(d.exported)):''}${inF.conns.keys?' · <b style="color:var(--amber)">bevat API-sleutels</b>':' · zonder sleutels'}${man.hostedVersion?' · gemaakt op '+esc(man.hostedVersion):''}</small></div>
+    <div><div class="h">Trades</div><div class="v">${inF.trades.present?ts.length.toLocaleString('nl-NL')+' · netto <span class="'+cls(pnlF)+'">'+eurS(pnlF)+'</span>':'geen trades in dit bestand'}</div><small>nu in je journal: ${(T||[]).length.toLocaleString('nl-NL')} · netto ${eurS(pnlNu)}</small></div></div>
+    <div class="panel">${rows}</div>
+    ${inF.conns.keys?`<div class="dov-note warn">⚠ Dit bestand bevat API-sleutels. Ze worden alleen overgenomen als je <b>Exchange-koppelingen</b> aanvinkt; dan vervangen ze je huidige sleutels.</div>`:''}
+    <div class="dov-note info" id="dovModeNote"></div>
+    <div style="display:flex;gap:8px;align-items:center;margin-top:12px"><span class="setintro" style="margin:0">Er wordt eerst een veiligheidskopie gemaakt, daarna een controle.</span><span style="flex:1"></span><button class="btn" onclick="closeForm()">Annuleren</button><button class="btn pri" onclick="dovImportGo()">Importeren</button></div>
+  </div>`);
+  dovImpNote();
+}
+function dovImpToggle(k,on){ _dovImp.sel[k]=on;const row=document.querySelector(`#modal [data-dov="${k}"]`);if(row)row.classList.toggle('dov-off',!on);dovImpNote(); }
+function dovImpMode(m){ _dovImp.mode=m;document.querySelectorAll('#dovMode button').forEach(b=>b.classList.toggle('on',b.textContent===m));dovImpNote(); }
+function dovImpNote(){ const el=document.getElementById('dovModeNote');if(!el||!_dovImp)return;const i=_dovImp;
+  if(!i.inF.trades.present){el.textContent='Trades blijven zoals ze zijn. Wat je aanvinkt vervangt dat onderdeel.';return;}
+  if(!i.sel.trades){el.textContent='Trades worden niet overgenomen, jouw huidige blijven.';return;}
+  el.innerHTML=i.mode==='vervangen'?`<b>Vervangen:</b> je huidige ${(T||[]).length.toLocaleString('nl-NL')} trades maken plaats voor de ${i.inF.trades.count.toLocaleString('nl-NL')} uit het bestand. De veiligheidskopie bewaart de laatste 3 versies.`:`<b>Samenvoegen:</b> je huidige trades blijven. Uit het bestand komen alleen trades die je nog niet hebt: <b>${i.nieuw} nieuw</b> (herkend op bron-id, anders op datum, pair, richting, entry en size). Verwijderde trades komen niet terug.`; }
+async function dovImportGo(){
+  const i=_dovImp;if(!i)return;_dovImp=null;closeForm();
+  const d=i.d,cur=snapshotPayload(),d2={app:'SyncJournal',appVersion:d.appVersion||APP_VERSION,schemaVersion:+d.schemaVersion||SCHEMA_VERSION,exported:d.exported||''};
+  let nieuw=0,verwacht=null;
+  DOV_PARTS.forEach(p=>{const use=i.sel[p.k]&&i.inF[p.k].present;p.keys.forEach(k=>{const v=use?d[k]:cur[k];if(v!=null)d2[k]=v;});});
+  if(i.sel.trades&&i.inF.trades.present){
+    const ts=d.trades.filter(t=>t&&typeof t==='object');
+    if(i.mode==='samenvoegen'){const m=dovMergeTrades(T||[],ts,TRASH);d2.trades=m.list;nieuw=m.nieuw;}
+    verwacht={trades:d2.trades.length,closed:d2.trades.filter(t=>(t.status||'closed')==='closed').length,pnl:d2.trades.reduce((s,t)=>s+(+t.pnl||0),0),kapot:d2.trades.filter(t=>t.pnl!=null&&t.pnl!==''&&!isFinite(parseFloat(String(t.pnl).replace(',','.'))))};
+  }
+  // koppelingen zonder sleutels (bestand zonder sleutels) tellen niet als verbonden
+  if(i.sel.conns&&d2.conns)Object.values(d2.conns).forEach(c=>{if(c&&c.connected&&!DOV_SECRET.some(k=>c[k]))c.connected=false;});
+  // sync-instellingen alleen als ze in het bestand staan; anders de huidige
+  if(!d2.sync&&cur.sync)d2.sync=cur.sync;
+  const snap=await Snapshots.create('vóór import');
+  try{ await applyBackup(d2); }catch(e){ ErrorCenter.report('import',e,{severity:'error',userMsg:'Het overnemen mislukte halverwege. Zet de veiligheidskopie van zojuist terug via Instellingen → Data.'});return; }
+  const issues=verwacht?dovVerify(verwacht,+d.schemaVersion||0):[];
+  const done=[];
+  if(i.sel.trades&&i.inF.trades.present)done.push(i.mode==='samenvoegen'?`${(T||[]).length.toLocaleString('nl-NL')} trades: ${((T||[]).length-nieuw).toLocaleString('nl-NL')} van jou + ${nieuw} nieuw uit het bestand`:`${(T||[]).length.toLocaleString('nl-NL')} trades overgenomen (je vorige staan in de veiligheidskopie)`);
+  else if(i.inF.trades.present)done.push('trades niet overgenomen, jouw huidige blijven');
+  [['trash','prullenbak'],['tags','tags'],['pbook','playbooks'],['manual','handmatige accounts'],['exmeta','saldi en accountnamen'],['settings','instellingen'],['ai','AI-coach-voorkeuren'],['plan','TradingPlan']].forEach(([k,l])=>{if(i.inF[k].present)done.push(i.sel[k]?l+' overgenomen':l+' overgeslagen');});
+  if(i.inF.conns.present)done.push(i.sel.conns?(i.inF.conns.keys?'exchange-koppelingen mét sleutels overgenomen':'exchange-koppelingen overgenomen zonder sleutels (opnieuw verbinden)'):'sleutels overgeslagen, je eigen koppelingen blijven');
+  DB.save('last_import',{when:new Date().toISOString(),file:i.fileName,ok:!issues.length,issues,done});
+  dovResultModal(issues,done,snap);
+}
+// Controle achteraf: dezelfde regels als bij de migratie uit de oude app.
+function dovVerify(v,bv){
+  const issues=[],samen=(bv&&bv<SCHEMA_VERSION)?MIG_SAMEN.n:0,samenPnl=(bv&&bv<SCHEMA_VERSION)?MIG_SAMEN.pnl:0;
+  if(!Array.isArray(T)||T.length!==v.trades-samen)issues.push('Aantal trades komt niet overeen: verwacht '+(v.trades-samen)+', geteld '+((T||[]).length)+'.');
+  const kapot=(v.kapot||[]).concat((T||[]).filter(t=>t&&!isFinite(+t.pnl)));if(kapot.length)issues.push(kapot.length+' trade'+(kapot.length===1?' heeft':'s hebben')+' een onleesbare P&L in het bestand ('+kapot.slice(0,3).map(t=>(t.date||'?')+' '+(t.pair||'')).join(', ')+'), die staan nu op 0.');
+  if((T||[]).some(t=>!t||!t.date))issues.push('Sommige trades missen een datum.');
+  const sum=(T||[]).reduce((s,t)=>s+(+t.pnl||0),0),exp=v.pnl-samenPnl;
+  if(Math.abs(exp-sum)>0.01)issues.push('Totale P&L wijkt af: verwacht '+eurS(exp)+', geteld '+eurS(sum)+'.');
+  const cl=(T||[]).filter(t=>t.status==='closed').length;if(v.closed-samen!==cl)issues.push('Aantal gesloten trades wijkt af ('+(v.closed-samen)+' → '+cl+').');
+  return issues;
+}
+function dovResultModal(issues,done,snap){
+  const ok=!issues.length;
+  openModalHTML(`<div class="mhead"><h3>${ok?'✓ Controle geslaagd':'⛔ Controle mislukt'}</h3><button class="xbtn" onclick="closeForm()">×</button></div>
+  <div class="mbody mbody-wiz">
+    ${ok?'<div class="dov-note ok">Aantallen en netto P&L kloppen op de cent met het bestand.</div>':'<div class="dov-note bad">'+issues.map(esc).join('<br>')+'<br><b>Er is niets kwijt:</b> je kunt de veiligheidskopie van zojuist terugzetten.</div>'}
+    <div class="section-sub">Wat er is gebeurd</div><div class="panel">${done.map(l=>`<div class="setrow"><span style="color:${ok?'var(--green)':'var(--amber)'};font-weight:800">${ok?'✓':'•'}</span><div class="txt"><b style="font-weight:500">${esc(l)}</b></div></div>`).join('')}</div>
+    <div style="display:flex;gap:8px;align-items:center;margin-top:12px">${(!ok&&snap)?`<button class="btn" style="color:var(--red)" onclick="closeForm();snapRestore('${esc(snap.id)}')">Veiligheidskopie terugzetten</button>`:''}<span style="flex:1"></span><button class="btn pri" onclick="closeForm()">${ok?'Klaar':'Toch behouden'}</button></div>
+  </div>`);
+  toast(ok?'✓ Import gecontroleerd en in orde':'⚠ Import: controle wijkt af, zie het overzicht',ok?'ok':'err');
+}
+
+// ── diagnose-rapport ──
+let DIAG_EST=null;   // {usage,quota} uit navigator.storage.estimate(), bij het opstarten gevuld
+function diagLastSync(){return EXCHANGES.filter(e=>CONNS[e.id]&&CONNS[e.id].connected).map(e=>({id:e.id,name:e.name,last:+CONNS[e.id].lastSync||0}));}
+function diagSummaryHtml(){
+  const sy=diagLastSync(),fmt=ms=>ms?new Date(ms).toLocaleString('nl-NL',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'nooit';
+  const sig=diagSignals();
+  return `<div class="dov-sum">
+    <div><div class="h">Versie</div><div class="v">${esc(APP_VERSION)} geladen${UPDATE.remote?' · '+esc(UPDATE.remote)+' gehost':''}<small>schema ${SCHEMA_VERSION} · ${esc(diagBrowser())}</small></div></div>
+    <div><div class="h">Data</div><div class="v">${(T||[]).length.toLocaleString('nl-NL')} trades · ${(T||[]).filter(t=>t&&t.status==='open').length} open · ${Object.keys(PBOOK||{}).length} playbooks<small>${DIAG_EST&&DIAG_EST.quota?'opslag '+dovKb(DIAG_EST.usage)+' van '+dovKb(DIAG_EST.quota):'opslag onbekend'}${PERSISTED===true?' · beschermd':PERSISTED===false?' · niet beschermd':''}</small></div></div>
+    <div><div class="h">Laatste sync</div><div class="v">${sy.length?sy.map(x=>esc(x.name)+' '+fmt(x.last)).join(' · '):'geen koppelingen'}<small>${sy.filter(x=>_rlWaitSec(x.id)>0).map(x=>esc(x.name)+': rate-limit nog ~'+Math.ceil(_rlWaitSec(x.id)/60)+' min').join(' · ')||'geen rate-limits actief'}</small></div></div>
+  </div>${sig.length?`<div class="dov-note warn" style="margin:0 18px 14px">⚠ ${sig.length} signa${sig.length===1?'al':'len'}: ${esc(sig.join(' · '))}. Staan in het rapport onder <span class="num">zelfcontrole</span>.</div>`:''}`;
+}
+function diagBrowser(){const ua=navigator.userAgent||'';const b=/Edg\/(\d+)/.exec(ua)?'Edge '+/Edg\/(\d+)/.exec(ua)[1]:/Firefox\/(\d+)/.exec(ua)?'Firefox '+/Firefox\/(\d+)/.exec(ua)[1]:/Chrome\/(\d+)/.exec(ua)?'Chrome '+/Chrome\/(\d+)/.exec(ua)[1]:/Safari\/(\d+)/.exec(ua)?'Safari':'browser';const os=/Windows/.test(ua)?'Windows':/Mac OS/.test(ua)?'macOS':/Android/.test(ua)?'Android':/iPhone|iPad/.test(ua)?'iOS':/Linux/.test(ua)?'Linux':'';return b+(os?' · '+os:'');}
+// Wat er mogelijk mis is met de data, in mensentaal; dezelfde regels als de controle na import.
+function diagSignals(){
+  const out=[],ts=(T||[]).filter(t=>t&&typeof t==='object');
+  const zd=ts.filter(t=>!t.date).length;if(zd)out.push(zd+' trades zonder datum');
+  const zp=ts.filter(t=>!isFinite(+t.pnl)).length;if(zp)out.push(zp+' trades met onleesbare P&L');
+  const zo=ts.filter(t=>!(+t.openTime>0)).length;if(zo)out.push(zo+' trades zonder open-tijd');
+  const seen={},dup=[];ts.forEach(t=>{if(!t.srcId)return;const k=String(t.srcId);if(seen[k])dup.push(k);seen[k]=1;});if(dup.length)out.push('dubbele bron-id ('+dup.length+'×): '+dup.slice(0,2).join(', '));
+  const mk={},dm=[];ts.forEach(t=>{if(t.srcId)return;const k=dovTradeKey(t);if(mk[k])dm.push(k);mk[k]=1;});if(dm.length)out.push(dm.length+' dubbele handmatige trades');
+  if(!Array.isArray(T))out.push('trades-lijst is geen lijst');
+  if(!PBOOK||typeof PBOOK!=='object')out.push('playbooks onleesbaar');
+  const bo=EXCHANGES.filter(e=>_rlWaitSec(e.id)>0).map(e=>e.name);if(bo.length)out.push('rate-limit actief: '+bo.join(', '));
+  if(DIAG_EST&&DIAG_EST.quota&&DIAG_EST.usage/DIAG_EST.quota>0.9)out.push('opslag bijna vol');
+  return out;
+}
+async function diagReport(){
+  const ts=(T||[]).filter(t=>t&&typeof t==='object'),cnt=(f)=>ts.filter(f).length,by=(f)=>{const o={};ts.forEach(t=>{const k=f(t)||'geen';o[k]=(o[k]||0)+1;});return o;};
+  const dates=ts.map(t=>t.date).filter(Boolean).sort();
+  const lsSizes={};try{for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(/^(sj_|tp2:|tj_)/.test(k))lsSizes[k]=(localStorage.getItem(k)||'').length;}}catch(e){}
+  const idb={};for(const k of ['trades','trash','pbook','snapshots']){try{idb[k]=dovBytes(await IDB.get(k));}catch(e){idb[k]='?';}}
+  let est=DIAG_EST;try{if(navigator.storage&&navigator.storage.estimate){const e=await navigator.storage.estimate();est={usage:e.usage||0,quota:e.quota||0};DIAG_EST=est;}}catch(e){}
+  let worker={url:'',reachable:null,ms:null,status:null};
+  try{const url=getProxyUrl();worker.url=String(url||'').replace(/^(https?:\/\/[^\/]{6})[^\/]*/,'$1…');if(url){const ac=new AbortController(),t0=Date.now(),to=setTimeout(()=>ac.abort(),3000);try{const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}',signal:ac.signal});worker.reachable=true;worker.status=r.status;worker.ms=Date.now()-t0;}catch(e){worker.reachable=false;worker.ms=Date.now()-t0;}clearTimeout(to);}}catch(e){}
+  let plan={aanwezig:false};try{const P=planLoad();plan={aanwezig:!!(P.trades.length||Object.keys(P.plans).length),plans:Object.keys(P.plans).length,records:P.trades.length,gekoppeld:ts.filter(t=>t.planRef&&t.planRef!=='none').length,matchMin:P.cfg.matchMin||null};}catch(e){}
+  const seen={},dup=[];ts.forEach(t=>{if(!t.srcId)return;const k=String(t.srcId);if(seen[k])dup.push(k);seen[k]=1;});
+  return {
+    app:{loaded:APP_VERSION,hosted:UPDATE.remote||null,schema:SCHEMA_VERSION,schemaStored:DB.load('schema',null),host:(()=>{try{return location.host||location.protocol;}catch(e){return '?';}})(),hosted_flag:IS_HOSTED,ua:navigator.userAgent,browser:diagBrowser(),lang:navigator.language,tz:(()=>{try{return Intl.DateTimeFormat().resolvedOptions().timeZone;}catch(e){return '?';}})(),when:new Date().toISOString(),tab_stale:TAB_STALE},
+    opslag:{usage:est?est.usage:null,quota:est?est.quota:null,pct:est&&est.quota?+(est.usage/est.quota*100).toFixed(2):null,persisted:PERSISTED,idb,localStorage:lsSizes,tj_oud_aanwezig:!!TJMigrate.detect(),tp2:plan},
+    data:{trades:ts.length,status:by(t=>t.status),kind:by(t=>t.kind||'live'),exchange:by(t=>t.exchange),met_srcId:cnt(t=>t.srcId),met_fills:cnt(t=>(t.fills||[]).length),met_tps:cnt(t=>(t.tps||[]).length),met_screenshots:cnt(t=>(t.screenshots||[]).length),datumbereik:dates.length?[dates[0],dates[dates.length-1]]:null,zonder_datum:cnt(t=>!t.date),zonder_pnl:cnt(t=>!isFinite(+t.pnl)),zonder_openTime:cnt(t=>!(+t.openTime>0)),dubbele_srcId:dup.slice(0,10),trash:(TRASH||[]).length,playbooks:Object.keys(PBOOK||{}).length,tags:Object.values(tagConfig||{}).reduce((n,a)=>n+(Array.isArray(a)?a.length:0),0),manual:(MANUAL||[]).map(m=>({name:m.name,tx:(m.transactions||[]).length})),snapshots:(SNAP_META||[]).map(s=>({label:s.label,ts:s.ts,trades:s.trades})),migrated_from_tj:DB.load('migrated_from_tj',null),last_import:DB.load('last_import',null),demo_loaded:!!DB.load('demo_loaded',null)},
+    sync:{interval:SYNC.interval,auto:!!SYNC.auto,conns:Object.fromEntries(EXCHANGES.map(e=>{const c=CONNS[e.id]||{};return [e.id,{connected:!!c.connected,hint:c.hint||'',lastSync:c.lastSync?new Date(+c.lastSync).toISOString():null,syncFrom:c.syncFrom||'',autoSync:!!c.autoSync,backoff_sec:_rlWaitSec(e.id)||0,deprecated:!!e.deprecated}];})),worker},
+    backup:{choice:BK.choice||'zelf',last:BK.ts?new Date(BK.ts).toISOString():null,method:BK.method||'',threshold_days:BK.threshold,drive_connected:!!(DRIVE&&DRIVE.rt),dirty_since:_bkDirtySince?new Date(_bkDirtySince).toISOString():null},
+    tradingplan:plan,
+    zelfcontrole:{signalen:diagSignals()},
+    fouten:(ErrorCenter.log||[]).slice(0,30),
+  };
+}
+async function diagDownload(){ try{const d=await diagReport();const blob=new Blob([JSON.stringify(d,null,2)],{type:'application/json'});const u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download='syncjournal-diagnose-'+localDateISO()+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(u),1500);toast('✓ Diagnose-rapport gedownload','ok');}catch(e){ErrorCenter.report('crash',e,{severity:'warn',userMsg:'Het rapport kon niet worden gemaakt.'});} }
+async function diagCopy(){ try{const d=await diagReport(),s=JSON.stringify(d);if(navigator.clipboard&&navigator.clipboard.writeText){await navigator.clipboard.writeText(s);toast('✓ Gekopieerd, plak het in Discord','ok');}else throw new Error('geen klembord');}catch(e){toast('Kopiëren lukte niet, gebruik Download','err');} }
+
 // ── Snapshots: automatische veiligheidskopie vóór risicovolle acties, laatste 3 in IndexedDB ──
 let SNAP_META=[];  // {id, ts, label, trades, playbooks} — in-memory cache voor de UI
 const Snapshots={ MAX:3,
@@ -5430,6 +5679,7 @@ function migPreview(pre,source){
       <div class="setrow"><div class="txt"><b>${pre.report.tags} tags</b><small>setup-, confirmatie-, emotie- en fout-labels</small></div></div>
     </div>
     ${connRows?`<div class="section-sub">Exchange-koppelingen</div><div class="panel">${connRows}</div>`:''}
+    <div class="section-sub">Gaat niet mee</div><div class="panel"><div class="setrow"><div class="txt" style="font-size:12.5px">SyncJournal kent deze onderdelen van de oude app niet, ze hebben geen plek om naartoe te gaan: <b>discipline-vinkjes, weekreflecties, mindset-voorkeuren, mijlpalen, TP-templates</b>. Per trade: compliance-vinkjes en -score, handmatige overschrijvingen. Je trades, notities, screenshots, links, tags en playbooks gaan wél mee.</div></div></div>
     ${pre.warnings.length?`<div class="section-sub">Let op</div><div class="panel">${pre.warnings.map(w=>`<div class="setrow"><div class="txt" style="font-size:12.5px">⚠ ${esc(w)}</div></div>`).join('')}</div>`:''}
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px"><button class="btn" onclick="closeForm()">Annuleren</button><button class="btn pri" onclick="migApply()">Veilig overzetten</button></div>
   </div>`);
@@ -7712,12 +7962,11 @@ function importJSON(){ const inp=document.createElement('input');inp.type='file'
     rd.onload=async ()=>{try{
       const d=JSON.parse(rd.result);
       const arr=Array.isArray(d)?d:d.trades;
-      if(!Array.isArray(arr)){toast('Geen trades gevonden in bestand','err');return;}
-      const _old=looksOldExport(arr);
-      if(_old){ migPreview(TJMigrate.mapExport(d),'file'); return; } // eerst controleren, dan pas overzetten (veiligheidskopie in migApply)
-      await Snapshots.create('vóór import');  // vangnet: huidige staat eerst veiligstellen
-      applyBackup(d);
-      toast('✓ '+T.length+' trades geïmporteerd','ok');
+      // een SyncJournal-bestand hoeft geen trades te hebben (bv. alleen playbooks en tags gedeeld)
+      const isSj=!!d&&typeof d==='object'&&!Array.isArray(d)&&(d.app==='SyncJournal'||DOV_PARTS.some(p=>p.keys.some(k=>d[k]!=null)));
+      if(!Array.isArray(arr)&&!isSj){toast('Geen journal-gegevens gevonden in dit bestand','err');return;}
+      if(Array.isArray(arr)&&looksOldExport(arr)){ migPreview(TJMigrate.mapExport(d),'file'); return; } // eerst controleren, dan pas overzetten (veiligheidskopie in migApply)
+      dovImportModal(Array.isArray(d)?{trades:d}:d,f.name);   // eerst zien wat erin zit en kiezen, dan pas overnemen (veiligheidskopie in dovImportGo)
     }catch(err){ ErrorCenter.report('import',err,{severity:'error',userMsg:'Het bestand kon niet worden geïmporteerd, is het een geldige SyncJournal- of TradeJournal-back-up? Je bestaande data is ongewijzigd.'}); }};
     rd.readAsText(f);};inp.click(); }
 function loadDemoData(){T=SEED.map(t=>{const o=+new Date(`${t.date}T${t.time||'12:00'}:00`);const c=(t.status!=='open'&&+t.durationMin)?o+t.durationMin*60000:0;return {...t,openTime:isFinite(o)?String(o):'',closeTime:c?String(c):''};});persist();render();}

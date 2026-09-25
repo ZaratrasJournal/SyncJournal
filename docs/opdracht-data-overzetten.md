@@ -1,7 +1,7 @@
 # Opdracht: data-overdracht die niet mis kan gaan (export-overzicht, import-keuze, diagnose)
 
 **Datum:** 2026-09-25 · **Eigenaar:** Denny · **Uitvoering:** Claude in `work/syncjournal.html`
-**Status:** keuzes vastgezet door Denny op 2026-09-25 (K1 aan, K2 beide, K3 beide). Eerst een demo (`demos/data-overzetten-demo.html`), daarna bouwen volgens §4.
+**Status:** gebouwd in v0.9.136 (2026-09-25) na demo `demos/data-overzetten-demo.html`. Specs: `export-overzicht` (21), `import-keuze` (21), `export-import-rondje` (74, vier datasets in `tests/helpers/dov-datasets.js`), `diagnose` (16). Open: stap 4-doorloop met Denny's eigen oude-app-export.
 
 ## 0. Doel
 

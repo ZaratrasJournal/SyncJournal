@@ -240,7 +240,7 @@ function build(){
   const tradingplan=buildTradingPlan(trades);
   const tagConfig={setupTags:PB_DEF.map(d=>d.name),confirmationTags:CONFIRM,timeframeTags:TF,emotionTags:EMOTIONS,mistakeTags:MISTAKES,missedReasonTags:['🐢 Durf','🔪 Buiten regels','⏰ Te laat gespot','💰 Kapitaal vol'],customTags:CUSTOM};
   return {
-    app:'SyncJournal',appVersion:'v0.9.135',schemaVersion:8,exported:new Date().toISOString(),
+    app:'SyncJournal',appVersion:'v0.9.136',schemaVersion:8,exported:new Date().toISOString(),
     _note:'Voorbeelddata v2 — gegenereerd door scripts/gen-syncjournal-dataset-v2.js (data t/m vandaag, incl. TradingPlan-blok)',
     tagConfig,pbook:buildPlaybooks(),
     conns:{blofin:{connected:true,autoSync:true,hint:'5533'},okx:{connected:true,autoSync:true,hint:'318f'},hyperliquid:{connected:true,autoSync:false,wallet:'0x1d14…3E70'}},
