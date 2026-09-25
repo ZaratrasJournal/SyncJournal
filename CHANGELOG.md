@@ -10,6 +10,19 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 De journal is opnieuw opgebouwd als **SyncJournal** en draait nu online op [syncjournal.nl](https://syncjournal.nl). Versienummers zijn opnieuw gestart op v0.9.x (bèta); de oude TradeJournal-releases staan verderop in dit bestand. Je data overzetten kan via Instellingen → Data → Importeer oude backup.
 
+## [v0.9.135] — 2026-09-25
+
+### Toegevoegd
+- **De poort kiest uit je journal-playbooks.** In TradingPlan → Poort kies je eerst welke setup het is, uit de playbooks van je journal (archief-playbooks niet). De grade springt op de grade van dat playbook; omlaag bijstellen mag ("vandaag een B"), omhoog niet. De verplichte criteria van het playbook staan als vinkjes boven de vaste checklist, optionele criteria staan erbij maar tellen niet mee, en anti-criteria worden "niet als"-vinkjes die de poort op "geen trade" zetten.
+- **Geen dubbele vinkjes.** Bij een playbook-criterium kies je in de journal (Playbook → Bewerken) welk vast poort-punt het dekt (trend, HP-zone, trigger, SL of 2R). Dat vaste punt verdwijnt dan als vinkje in de poort en volgt het playbook-criterium; de kop van de vaste checklist zegt hoeveel punten al gedekt zijn. Harde stops (FTMO-ruimte, Mentaal) zijn nooit te dekken.
+- **Statistiek van het gekozen playbook** naast de poort: trades, win-rate, gemiddelde en totale R, de laatste 10 als blokjes, beste sessie en profit factor, uit je journal. Bij een playbook in test of met negatief resultaat staat er een waarschuwing bij.
+- **Gekoppelde trades krijgen hun setup.** Koppelt de journal een exchange-trade aan een poort-record, dan vult hij het lege setup-veld met het playbook uit de poort en de lege grade met het setup-type. Wat je zelf al koos blijft staan. De poort-regel in de trade-details toont nu ook de playbook-naam.
+- Het tabblad **Playbook heet nu Regels**: je A/B/C-regels en triggers zoals ze waren, plus een leestabel van je journal-playbooks (grade, status, verplichte criteria en wat ze dekken, anti-criteria, R uit de journal) met een knop naar de journal om te bewerken.
+- Voorbeelddata: de playbooks dekken poort-punten en de poort-records dragen het playbook, zodat je dit direct kunt zien.
+
+### Gewijzigd
+- Zonder journal-playbooks werkt de poort precies zoals voorheen (alleen setup-type A/B/C).
+
 ## [v0.9.134] — 2026-09-25
 
 ### Toegevoegd

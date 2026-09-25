@@ -957,6 +957,8 @@ body.dark .mx-legend .mxsw{box-shadow:inset 0 0 0 1px rgba(255,255,255,.12)}
 .critrow{display:flex;align-items:center;gap:8px}
 .critreq{width:30px;height:34px;border:1px solid var(--line);border-radius:8px;background:var(--sink);color:var(--muted);cursor:pointer;font-size:15px;flex:none;line-height:1}
 .critreq.on{color:var(--amber);border-color:color-mix(in srgb,var(--amber) 45%,transparent);background:var(--amber-soft)}
+.critcov{flex:none;max-width:150px;border:1px solid var(--line);border-radius:8px;background:var(--sink);color:var(--muted);padding:7px 8px;font-size:12px;outline:none}
+.critcov.on{color:var(--accent);border-color:var(--accent)}
 .critin{flex:1;min-width:0;border:1px solid var(--line);border-radius:8px;background:var(--sink);color:var(--ink);padding:8px 11px;font-size:13px;outline:none}
 .critin:focus{border-color:var(--accent)}
 .pbsec{margin-top:15px}.pbsec:first-child{margin-top:0}
@@ -1769,7 +1771,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.134';
+const APP_VERSION='v0.9.135';
 const SCHEMA_VERSION=8;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -2557,18 +2559,21 @@ function planMatch(){
     let best=null,bestD=Infinity;
     P.trades.forEach(r=>{if(!r||!r.taken||bezet.has(String(r.id)))return;if(String(r.sym||'').toUpperCase()!==base||String(r.dir||'').toLowerCase()!==dir)return;
       const d=open-(+new Date(r.ts));if(!(d>=0&&d<=venster))return;if(d<bestD){bestD=d;best=r;}});
-    if(best){t.planRef=String(best.id);bezet.add(String(best.id));n++;}
+    if(best){t.planRef=String(best.id);planAdopt(t,best);bezet.add(String(best.id));n++;}
   });
   if(n)persist();return n;
 }
-function planSetRef(id,ref){const t=T.find(x=>x.id===id);if(!t)return;t.planRef=ref;persist();closeForm();render();toast(ref==='none'?'Losgekoppeld van de poort':'Poort-beoordeling gekoppeld','ok');}
+/* De poort weet welk playbook je nam en welk setup-type: een gesyncte trade heeft die velden
+   niet. Alleen lege velden vullen; wat je zelf koos blijft staan. */
+function planAdopt(t,r){if(!t||!r)return;if(!t.setup&&r.pb&&PBOOK[r.pb])t.setup=r.pb;if(!t.grade&&/^[ABC]$/.test(String(r.setup||'')))t.grade=r.setup;}
+function planSetRef(id,ref){const t=T.find(x=>x.id===id);if(!t)return;t.planRef=ref;if(ref!=='none')planAdopt(t,planRecOf(t));persist();closeForm();render();toast(ref==='none'?'Losgekoppeld van de poort':'Poort-beoordeling gekoppeld','ok');}
 function planExec(r){return r.exec==='VOL'?'volle size':r.exec==='HALF'?'halve size':'regelbreuk';}
 function planLine(t){
   if(!planHas())return '';
   const r=planRecOf(t),knop=`<a href="#" onclick="event.stopPropagation();planPick(${t.id});return false" style="color:var(--accent);font-weight:600">${r?'andere / geen':'koppelen'}</a>`;
   if(!r)return `<div class="tline" style="margin-top:6px"><span class="tlc">🚪 ${t.planRef==='none'?'Bewust zonder poort':'Geen poort-beoordeling gevonden'}</span><span class="tla">·</span><span class="tlc">${knop}</span></div>`;
   const n=Object.keys(r.checks||{}).length,af=n-(r.missing||[]).length;
-  return `<div class="tline" style="margin-top:6px"><span class="tlc">🚪 Poort · <b>${r.setup?esc(r.setup)+'-setup':'setup onbekend'}</b> · ${af}/${n} · ${planExec(r)}${r.risk?' · '+String(r.risk).replace('.',',')+'%':''}${(r.missing||[]).length?' · mist: '+esc(r.missing.join(', ')):''}</span><span class="tla">·</span><span class="tlc">${knop}</span></div>`;
+  return `<div class="tline" style="margin-top:6px"><span class="tlc">🚪 Poort · ${r.pb?esc(r.pb)+' · ':''}<b>${r.setup?esc(r.setup)+'-setup':'setup onbekend'}</b>${r.pbGrade&&r.setup&&r.pbGrade!==r.setup?' <span class="hint">(playbook '+esc(r.pbGrade)+')</span>':''} · ${af}/${n} · ${planExec(r)}${r.risk?' · '+String(r.risk).replace('.',',')+'%':''}${(r.missing||[]).length?' · mist: '+esc(r.missing.join(', ')):''}</span><span class="tla">·</span><span class="tlc">${knop}</span></div>`;
 }
 function planPick(id){
   const t=T.find(x=>x.id===id);if(!t)return;const P=planLoad(),dag=t.date;
@@ -3969,7 +3974,7 @@ let pbEditOrig='',pbForm={},pbCrit=[],pbAnti=[],pbExamples=[];
 function openPbEdit(setup){pbEditOrig=setup||'';const isNew=!setup;const pb=isNew?{...EMPTY_PB}:(PBOOK[setup]||{...EMPTY_PB,name:setup});
   pbForm={...EMPTY_PB,...pb};
   formLayers=(pb.layers||[]).map(L=>({timeframe:L.timeframe||'',bias:L.bias||'',setups:[...(L.setups||[])],confirmations:[...(L.confirmations||[])]}));
-  pbCrit=(pb.criteria||[]).map(c=>({text:c.text,mandatory:!!c.mandatory}));
+  pbCrit=(pb.criteria||[]).map(c=>({text:c.text,mandatory:!!c.mandatory,covers:c.covers||''}));
   pbAnti=(pb.antiCriteria||[]).map(c=>({text:c.text,mandatory:!!c.mandatory}));
   pbExamples=[...(pb.examples||[])];
   const statusPills=PB_STATUS.map(([k,l,c])=>`<button type="button" class="biaspill ${pbForm.status===k?'on':''}" style="--bc:${c}" onclick="setPbField('status','${k}',this)">${l}</button>`).join('');
@@ -4017,7 +4022,12 @@ function openPbEdit(setup){pbEditOrig=setup||'';const isNew=!setup;const pb=isNe
 function setPbField(k,v,btn){pbForm[k]=v;if(btn){[...btn.parentElement.children].forEach(b=>b.classList.remove('on'));btn.classList.add('on');}}
 function setPbGrade(g){pbForm.defaultGrade=pbForm.defaultGrade===g?'':g;document.querySelectorAll('#pb_grade button').forEach(b=>b.classList.toggle('on',b.textContent===pbForm.defaultGrade));}
 function togPbSession(s){const a=pbForm.sessions=pbForm.sessions||[];const i=a.indexOf(s);if(i<0)a.push(s);else a.splice(i,1);document.querySelectorAll('#pb_sessions .tagopt').forEach(el=>el.classList.toggle('on',(pbForm.sessions||[]).includes(el.textContent)));}
-function critRow(list,i,fn){const c=list[i];return `<div class="critrow"><button type="button" class="critreq ${c.mandatory?'on':''}" title="verplicht aan/uit" onclick="${fn}Req(${i})">${c.mandatory?'★':'☆'}</button><input class="critin" value="${esc(c.text)}" placeholder="bv. Sweep van de vorige high" oninput="${fn}Txt(${i},this.value)"><button type="button" class="xlayer" onclick="${fn}Rm(${i})">×</button></div>`;}
+/* Vaste poort-punten uit TradingPlan (of de standaardlijst): een verplicht criterium kan er één
+   dekken, zodat het in de poort één vinkje wordt in plaats van twee. Harde stops zijn nooit te dekken. */
+const PLAN_PT_STD=[['trend','Trend mee'],['zone','Prijs in HP-zone'],['trigger','Trigger uit de lijst'],['sl','SL op logisch level'],['rr','Minimaal 2R naar TP1']];
+function planPtOpties(){const pt=(planLoad().cfg||{}).pt;const lijst=Array.isArray(pt)&&pt.length?pt.filter(p=>p&&p.k&&p.t&&!p.hard).map(p=>[String(p.k),String(p.t)]):PLAN_PT_STD;return lijst;}
+function critRow(list,i,fn){const c=list[i];const cov=fn==='pbCrit'?`<select class="critcov ${c.covers?'on':''}" title="Dekt dit criterium een vast punt van de poort in TradingPlan?" onchange="pbCritCov(${i},this.value)"><option value="">dekt poort-punt…</option>${planPtOpties().map(([k,t])=>`<option value="${esc(k)}" ${c.covers===k?'selected':''}>${esc(t)}</option>`).join('')}</select>`:'';return `<div class="critrow"><button type="button" class="critreq ${c.mandatory?'on':''}" title="verplicht aan/uit" onclick="${fn}Req(${i})">${c.mandatory?'★':'☆'}</button><input class="critin" value="${esc(c.text)}" placeholder="bv. Sweep van de vorige high" oninput="${fn}Txt(${i},this.value)">${cov}<button type="button" class="xlayer" onclick="${fn}Rm(${i})">×</button></div>`;}
+function pbCritCov(i,v){pbCrit[i].covers=v||'';const el=document.querySelectorAll('#pbcrit .critcov')[i];if(el)el.classList.toggle('on',!!v);}
 function renderPbCrit(){const c=document.getElementById('pbcrit');if(!c)return;c.innerHTML=pbCrit.length?`<div class="critlist">${pbCrit.map((_,i)=>critRow(pbCrit,i,'pbCrit')).join('')}</div>`:'<div class="lt-empty" style="padding:4px 0">Nog geen criteria, klik + Criterium.</div>';}
 function addPbCrit(){pbCrit.push({text:'',mandatory:false});renderPbCrit();}
 function pbCritTxt(i,v){pbCrit[i].text=v;}
@@ -4040,7 +4050,7 @@ function savePbook(){const g=id=>{const el=document.getElementById(id);return el
   const name=g('pb_name');if(!name){const e=document.getElementById('pbErr');if(e)e.textContent='⚠ Naam is verplicht.';const n=document.getElementById('pb_name');if(n)n.focus();return;}
   const layers=formLayers.map(L=>({timeframe:L.timeframe,bias:L.bias||'',setups:[...L.setups],confirmations:[...L.confirmations]})).filter(L=>L.timeframe||L.bias||L.setups.length||L.confirmations.length);
   const obj={...EMPTY_PB,...pbForm,name,oneLiner:g('pb_oneliner'),layers,
-    criteria:pbCrit.map(c=>({text:c.text.trim(),mandatory:!!c.mandatory})).filter(c=>c.text),
+    criteria:pbCrit.map(c=>({text:c.text.trim(),mandatory:!!c.mandatory,covers:c.covers||''})).filter(c=>c.text),
     antiCriteria:pbAnti.map(c=>({text:c.text.trim(),mandatory:!!c.mandatory})).filter(c=>c.text),
     stop:g('pb_stop'),target:g('pb_target'),minRR:g('pb_minrr'),bigPicture:g('pb_bigpic'),tape:g('pb_tape'),intuition:g('pb_intuition'),
     examples:pbExamples,tradingViewUrl:g('pb_tvurl'),referenceUrl:g('pb_refurl'),referenceLabel:g('pb_reflabel'),
@@ -4080,7 +4090,7 @@ function playbookDetail(setup){
   const stC2=pb.status==='active'?'var(--green)':pb.status==='testing'?'var(--amber)':'var(--muted)',stL2=pb.status==='active'?'Actief':pb.status==='testing'?'Testen':'Archief';
   const pbOverview=`${pb.oneLiner?`<div style="font-size:13px;color:var(--ink2);margin-bottom:13px;font-style:italic">"${esc(pb.oneLiner)}"</div>`:''}
     ${layerSummary?`<div class="pbsec"><div class="pbsec-h">Setup-lagen</div>${layerSummary}</div>`:''}
-    <div class="pbsec"><div class="pbsec-h">Entry-criteria <span style="color:var(--muted);font-weight:400">· wanneer WEL</span></div>${critList.length?critList.map(c=>`<div class="rl"><span style="color:var(--green);font-weight:800;flex:none">✓</span><span>${c.mandatory?'<b style="color:var(--amber)">★</b> ':''}${esc(c.text)}</span></div>`).join(''):'<div class="rl" style="color:var(--muted)">Nog geen criteria, klik ✎ Bewerken</div>'}</div>
+    <div class="pbsec"><div class="pbsec-h">Entry-criteria <span style="color:var(--muted);font-weight:400">· wanneer WEL</span></div>${critList.length?critList.map(c=>`<div class="rl"><span style="color:var(--green);font-weight:800;flex:none">✓</span><span>${c.mandatory?'<b style="color:var(--amber)">★</b> ':''}${esc(c.text)}${c.covers?` <span style="color:var(--muted);font-size:11px">· dekt poort-punt "${esc((planPtOpties().find(o=>o[0]===c.covers)||[c.covers,c.covers])[1])}"</span>`:''}</span></div>`).join(''):'<div class="rl" style="color:var(--muted)">Nog geen criteria, klik ✎ Bewerken</div>'}</div>
     ${antiList.length?`<div class="pbsec"><div class="pbsec-h" style="color:var(--red)">Anti-criteria <span style="color:var(--muted);font-weight:400">· wanneer NIET</span></div>${antiList.map(c=>`<div class="rl"><span style="color:var(--red);font-weight:800;flex:none">✕</span><span>${esc(c.text)}</span></div>`).join('')}</div>`:''}
     ${(pb.stop||pb.target||pb.minRR)?`<div class="pbsec"><div class="pbsec-h">Risk</div><div class="pbsec-txt">${pb.stop?`<div><span class="pbk-l">Stop</span> ${esc(pb.stop)}</div>`:''}${pb.target?`<div><span class="pbk-l">Target</span> ${esc(pb.target)}</div>`:''}${pb.minRR?`<div><span class="pbk-l">Min R:R</span> ${esc(pb.minRR)}</div>`:''}</div></div>`:''}
     ${(pb.bigPicture||pb.tape||pb.intuition)?`<div class="pbsec"><div class="pbsec-h">Markt-context</div><div class="pbsec-txt">${pb.bigPicture?`<div>📊 ${esc(pb.bigPicture)}</div>`:''}${pb.tape?`<div>🌊 ${esc(pb.tape)}</div>`:''}${pb.intuition?`<div>💡 ${esc(pb.intuition)}</div>`:''}</div></div>`:''}

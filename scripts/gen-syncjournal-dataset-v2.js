@@ -52,7 +52,7 @@ function buildPlaybooks(){
   const pbook={};
   PB_DEF.forEach((d,i)=>{pbook[d.name]={name:d.name,oneLiner:d.oneLiner,
     layers:[{timeframe:d.tf[0],bias:d.bias,setups:[d.name],confirmations:[pick(CONFIRM),pick(CONFIRM)]},{timeframe:d.tf[1]||d.tf[0],bias:d.bias,setups:[],confirmations:[pick(CONFIRM)]}],
-    criteria:[{text:'Duidelijke '+d.tf[0]+'-structuur',mandatory:true},{text:pick(CONFIRM)+' als bevestiging',mandatory:true},{text:'R:R minimaal 2:1',mandatory:false}],
+    criteria:[{text:'Duidelijke '+d.tf[0]+'-structuur',mandatory:true,covers:'trend'},{text:pick(CONFIRM)+' als bevestiging',mandatory:true,covers:'trigger'},{text:'R:R minimaal 2:1',mandatory:false,covers:'rr'}],
     antiCriteria:[{text:'Vlak vóór high-impact nieuws',mandatory:true},{text:'Geen duidelijke liquidity-target',mandatory:false}],
     status:d.status,defaultGrade:d.grade,stop:'onder/boven de sweep',target:'volgende liquidity-pool',minRR:'2',
     bigPicture:'Werkt het best wanneer de hogere TF meebeweegt met de setup-richting.',tape:'Let op afnemend volume in de aanloop, dan expansie op de trigger.',intuition:'Voelt schoon als de sweep snel wordt teruggekocht.',
@@ -215,7 +215,7 @@ function buildTradingPlan(trades){
     const setup=t.grade==='A'?'A':t.grade==='B'?'B':'C', exec=i%7===3?'HALF':(i%11===5?'NO':'VOL'), missing=exec==='HALF'?[pick(['rr','zone','trigger'])]:exec==='NO'?['trigger','rr']:[];
     const checks={};DEF_PT.forEach(p=>{checks[p.k]=missing.indexOf(p.k)<0;});
     const ts=new Date(+t.openTime-rint(4,22)*60000), mx=setup==='A'?2:setup==='B'?1:0.5;
-    recs.push({id:800000+i,ts:ts.toISOString(),week:isoWeek(new Date(t.date+'T12:00:00')),day:t.date,sym:t.pair.split('/')[0],dir:t.dir==='short'?'Short':'Long',tf:t.timeframe==='4H'?'1h':'15m',setup,checks,missing,exec,grade:exec==='VOL'?'A':exec==='HALF'?'B':'NO',risk:exec==='VOL'?mx:exec==='HALF'?mx/2:0,taken:true,r:null,noTrade:exec==='NO'&&chance(0.4)?['Na 2 verliezers op één dag']:[],notes:exec==='NO'?pick(['Wilde het verlies goedmaken. Fout.','Buiten de sessie, toch geklikt.']):''});
+    recs.push({id:800000+i,ts:ts.toISOString(),week:isoWeek(new Date(t.date+'T12:00:00')),day:t.date,sym:t.pair.split('/')[0],dir:t.dir==='short'?'Short':'Long',tf:t.timeframe==='4H'?'1h':'15m',setup,pb:t.setup,pbGrade:(PB_BY_NAME[t.setup]||{}).grade||'',pbMissing:[],anti:[],checks,missing,exec,grade:exec==='VOL'?'A':exec==='HALF'?'B':'NO',risk:exec==='VOL'?mx:exec==='HALF'?mx/2:0,taken:true,r:null,noTrade:exec==='NO'&&chance(0.4)?['Na 2 verliezers op één dag']:[],notes:exec==='NO'?pick(['Wilde het verlies goedmaken. Fout.','Buiten de sessie, toch geklikt.']):''});
     t.planRef=String(800000+i);
     const dag=t.date, pid='dag-'+dag;
     if(!plans[pid]){const sc=pick(SC),sc2=pick(SC),saved=new Date(dag+'T08:30:00').toISOString(),dayR=0;
@@ -240,7 +240,7 @@ function build(){
   const tradingplan=buildTradingPlan(trades);
   const tagConfig={setupTags:PB_DEF.map(d=>d.name),confirmationTags:CONFIRM,timeframeTags:TF,emotionTags:EMOTIONS,mistakeTags:MISTAKES,missedReasonTags:['🐢 Durf','🔪 Buiten regels','⏰ Te laat gespot','💰 Kapitaal vol'],customTags:CUSTOM};
   return {
-    app:'SyncJournal',appVersion:'v0.9.134',schemaVersion:8,exported:new Date().toISOString(),
+    app:'SyncJournal',appVersion:'v0.9.135',schemaVersion:8,exported:new Date().toISOString(),
     _note:'Voorbeelddata v2 — gegenereerd door scripts/gen-syncjournal-dataset-v2.js (data t/m vandaag, incl. TradingPlan-blok)',
     tagConfig,pbook:buildPlaybooks(),
     conns:{blofin:{connected:true,autoSync:true,hint:'5533'},okx:{connected:true,autoSync:true,hint:'318f'},hyperliquid:{connected:true,autoSync:false,wallet:'0x1d14…3E70'}},
