@@ -5330,23 +5330,31 @@ function dovDescribe(d){
 }
 // Sleutels uit de koppelingen halen; de koppeling zelf (hint, syncFrom) blijft herkenbaar.
 function dovStripKeys(conns){const o={};Object.entries(conns||{}).forEach(([id,c])=>{if(!c)return;const n={...c};DOV_SECRET.forEach(k=>{delete n[k];});o[id]=n;});return o;}
-// Het bestand samenstellen: alleen gekozen onderdelen, sleutels naar keuze, plus manifest.
-function dovBuildExport(sel,keys){
-  const full=snapshotPayload(),desc=dovDescribe(full),out={app:full.app,appVersion:full.appVersion,schemaVersion:full.schemaVersion,exported:full.exported};
-  const manifest={parts:{},keysIncluded:!!keys,hostedVersion:UPDATE.remote||''};
+// Periode: op de open-datum van de trade (t.date). Leeg = alles. Open posities tellen mee als ze
+// binnen de periode zijn geopend.
+function dovPeriode(list,per){ if(!per||(!per.van&&!per.tot))return list; return (list||[]).filter(t=>t&&(!per.van||String(t.date||'')>=per.van)&&(!per.tot||String(t.date||'')<=per.tot)); }
+function dovPeriodeTxt(per){ if(!per||(!per.van&&!per.tot))return ''; const f=d=>{const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(String(d||''));return m?m[3]+'-'+m[2]+'-'+m[1]:String(d);}; return (per.van?f(per.van):'begin')+' t/m '+(per.tot?f(per.tot):'nu'); }
+// Het bestand samenstellen: alleen gekozen onderdelen, sleutels naar keuze, periode, plus manifest.
+function dovBuildExport(sel,keys,per){
+  const full=snapshotPayload();
+  if(per&&(per.van||per.tot)){full.trades=dovPeriode(full.trades,per);full.trash=dovPeriode(full.trash,per);}
+  const desc=dovDescribe(full),out={app:full.app,appVersion:full.appVersion,schemaVersion:full.schemaVersion,exported:full.exported};
+  const manifest={parts:{},keysIncluded:!!keys,hostedVersion:UPDATE.remote||'',period:(per&&(per.van||per.tot))?{van:per.van||'',tot:per.tot||''}:null};
   DOV_PARTS.forEach(p=>{const on=sel[p.k]!==false;manifest.parts[p.k]={included:on,count:on?desc[p.k].count:0,bytes:on?desc[p.k].bytes:0};
     if(on)p.keys.forEach(k=>{if(full[k]!=null)out[k]=full[k];});});
   if(out.conns&&!keys)out.conns=dovStripKeys(out.conns);
   out.manifest=manifest;
   return out;
 }
-let _dovExp={sel:{},keys:true};
+let _dovExp={sel:{},keys:true,per:{van:'',tot:''}};
 function exportOverzicht(){
-  const desc=dovDescribe(snapshotPayload());_dovExp={sel:{},keys:true};DOV_PARTS.forEach(p=>{_dovExp.sel[p.k]=true;});
+  const desc=dovDescribe(snapshotPayload());_dovExp={sel:{},keys:true,per:{van:'',tot:''}};DOV_PARTS.forEach(p=>{_dovExp.sel[p.k]=true;});
   const rows=DOV_PARTS.map(p=>`<div class="setrow" data-dov="${p.k}"><input type="checkbox" checked aria-label="${esc(p.t)}" onchange="dovExpToggle('${p.k}',this.checked)" style="width:17px;height:17px;accent-color:var(--accent)"><div class="txt"><b>${esc(p.t)}</b><small>${esc(desc[p.k].sub)}</small></div><span class="dov-cnt dim">${dovKb(desc[p.k].bytes)}</span></div>`).join('');
   openModalHTML(`<div class="mhead"><h3>📤 Wat gaat er mee?</h3><button class="xbtn" onclick="closeForm()">×</button></div>
   <div class="mbody mbody-wiz">
     <p class="setintro">Kies wat er in het bestand komt. Wat je uitzet ontbreekt in het bestand; bij het terugzetten blijft dat deel dan zoals het is.</p>
+    <div class="panel" style="margin-bottom:10px"><div class="setrow"><div class="txt"><b>Periode</b><small id="dovPerHint">Leeg = alle trades. Op de open-datum van de trade; de prullenbak volgt dezelfde periode.</small></div>
+      <label class="hint" for="dovVan">van</label><input type="date" id="dovVan" class="fsel" style="padding:5px 8px" onchange="dovExpPeriode()" aria-label="Periode van"><label class="hint" for="dovTot">tot</label><input type="date" id="dovTot" class="fsel" style="padding:5px 8px" onchange="dovExpPeriode()" aria-label="Periode tot"></div></div>
     <div class="panel">${rows}</div>
     <div class="section-sub">Gevoelig</div>
     <div class="panel"><div class="setrow" data-dov="keys"><input type="checkbox" checked aria-label="API-sleutels" onchange="dovExpToggle('keys',this.checked)" style="width:17px;height:17px;accent-color:var(--accent)"><div class="txt"><b>API-sleutels en wallet-adressen</b><small>${desc.conns.keys?'Leesbaar in het bestand. Aan voor je eigen back-up (direct weer syncen). <b>Zet uit als je dit bestand deelt.</b>':'Je hebt geen sleutels opgeslagen, dit vinkje doet nu niets.'}</small></div><span class="dov-tag ${desc.conns.keys?'warn':'ok'}" id="dovKeysTag">${desc.conns.keys?'gaat mee':'geen'}</span></div></div>
@@ -5357,15 +5365,29 @@ function exportOverzicht(){
 }
 function dovExpToggle(k,on){ if(k==='keys'){_dovExp.keys=on;const t=document.getElementById('dovKeysTag');if(t&&_dovExp.desc.conns.keys){t.textContent=on?'gaat mee':'niet mee';t.className='dov-tag '+(on?'warn':'ok');}} else _dovExp.sel[k]=on;
   const row=document.querySelector(`#modal [data-dov="${k}"]`);if(row)row.classList.toggle('dov-off',!on);dovExpTotal(); }
+function dovExpPeriode(){
+  const van=(document.getElementById('dovVan')||{}).value||'',tot=(document.getElementById('dovTot')||{}).value||'';
+  _dovExp.per={van,tot};
+  const full=snapshotPayload(),alle=full.trades.length,alleTrash=(full.trash||[]).length;
+  full.trades=dovPeriode(full.trades,_dovExp.per);full.trash=dovPeriode(full.trash,_dovExp.per);
+  const d=dovDescribe(full);_dovExp.desc.trades=d.trades;_dovExp.desc.trash=d.trash;
+  const per=dovPeriodeTxt(_dovExp.per);
+  const tr=document.querySelector('#modal [data-dov="trades"] .txt small');if(tr)tr.textContent=(per?full.trades.length.toLocaleString('nl-NL')+' van '+alle.toLocaleString('nl-NL')+' trades · '+per+' · ':'')+d.trades.sub.replace(/^[\d.]+ trades · /,per?'':'$&').replace(/^geen trades$/,per?'geen trades in deze periode':'geen trades');
+  const tk=document.querySelector('#modal [data-dov="trades"] .dov-cnt');if(tk)tk.textContent=dovKb(d.trades.bytes);
+  const ts=document.querySelector('#modal [data-dov="trash"] .txt small');if(ts)ts.textContent=(per?full.trash.length+' van '+alleTrash+' verwijderde trades in deze periode':d.trash.sub);
+  const h=document.getElementById('dovPerHint');if(h)h.innerHTML=per?'<b>'+esc(per)+'</b> · een bestand met een periode telt niet als volledige back-up; bij het terugzetten is <b>samenvoegen</b> de logische keuze.':'Leeg = alle trades. Op de open-datum van de trade; de prullenbak volgt dezelfde periode.';
+  dovExpTotal();
+}
 function dovExpTotal(){ const el=document.getElementById('dovExpTot');if(!el)return;let b=300,n=0;DOV_PARTS.forEach(p=>{if(_dovExp.sel[p.k]){b+=_dovExp.desc[p.k].bytes;n++;}});
-  el.innerHTML=`<b class="num">${dovKb(b)}</b> · ${n} van ${DOV_PARTS.length} onderdelen · ${_dovExp.keys&&_dovExp.desc.conns.keys?'met sleutels':'zonder sleutels'} · syncjournal-backup-${localDateISO()}.json`; }
+  const per=dovPeriodeTxt(_dovExp.per);
+  el.innerHTML=`<b class="num">${dovKb(b)}</b> · ${n} van ${DOV_PARTS.length} onderdelen${per?' · '+esc(per):''} · ${_dovExp.keys&&_dovExp.desc.conns.keys?'met sleutels':'zonder sleutels'} · syncjournal-backup-${localDateISO()}${per?'-periode':''}.json`; }
 function dovExportGo(){
-  const d=dovBuildExport(_dovExp.sel,_dovExp.keys);closeForm();
+  const per=dovPeriodeTxt(_dovExp.per),d=dovBuildExport(_dovExp.sel,_dovExp.keys,_dovExp.per);closeForm();
   const blob=new Blob([JSON.stringify(d,null,2)],{type:'application/json'});
-  const u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download='syncjournal-backup-'+localDateISO()+'.json';a.click();URL.revokeObjectURL(u);
-  const alles=DOV_PARTS.every(p=>_dovExp.sel[p.k]);
-  toast('✓ Back-up geëxporteerd'+(alles?'':' ('+DOV_PARTS.filter(p=>_dovExp.sel[p.k]).length+' van '+DOV_PARTS.length+' onderdelen)')+(_dovExp.keys?'':' zonder sleutels'),'ok');
-  if(alles)bkStamp('handmatig');   // een gedeeltelijk bestand telt niet als volledige back-up
+  const u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download='syncjournal-backup-'+localDateISO()+(per?'-periode':'')+'.json';a.click();URL.revokeObjectURL(u);
+  const alles=DOV_PARTS.every(p=>_dovExp.sel[p.k])&&!per;
+  toast('✓ Back-up geëxporteerd'+(per?' ('+per+')':'')+(DOV_PARTS.every(p=>_dovExp.sel[p.k])?'':' ('+DOV_PARTS.filter(p=>_dovExp.sel[p.k]).length+' van '+DOV_PARTS.length+' onderdelen)')+(_dovExp.keys?'':' zonder sleutels'),'ok');
+  if(alles)bkStamp('handmatig');   // een gedeeltelijk bestand of een periode telt niet als volledige back-up
 }
 
 // ── import-keuze ──
@@ -5392,7 +5414,7 @@ function dovImportModal(d,fileName){
   const man=d.manifest||{};
   openModalHTML(`<div class="mhead"><h3>📥 Wat zit erin en wat neem je over?</h3><button class="xbtn" onclick="closeForm()">×</button></div>
   <div class="mbody mbody-wiz">
-    <div class="dov-cmp"><div><div class="h">Bestand</div><div class="v">${esc(fileName||'back-up')}</div><small>${esc(d.appVersion||'onbekende versie')}${d.exported?' · '+esc(snapWhen(d.exported)):''}${inF.conns.keys?' · <b style="color:var(--amber)">bevat API-sleutels</b>':' · zonder sleutels'}${man.hostedVersion?' · gemaakt op '+esc(man.hostedVersion):''}</small></div>
+    <div class="dov-cmp"><div><div class="h">Bestand</div><div class="v">${esc(fileName||'back-up')}</div><small>${esc(d.appVersion||'onbekende versie')}${d.exported?' · '+esc(snapWhen(d.exported)):''}${inF.conns.keys?' · <b style="color:var(--amber)">bevat API-sleutels</b>':' · zonder sleutels'}${man.hostedVersion?' · gemaakt op '+esc(man.hostedVersion):''}${man.period?' · <b>trades '+esc(dovPeriodeTxt(man.period))+'</b> (samenvoegen ligt voor de hand)':''}</small></div>
     <div><div class="h">Trades</div><div class="v">${inF.trades.present?ts.length.toLocaleString('nl-NL')+' · netto <span class="'+cls(pnlF)+'">'+eurS(pnlF)+'</span>':'geen trades in dit bestand'}</div><small>nu in je journal: ${(T||[]).length.toLocaleString('nl-NL')} · netto ${eurS(pnlNu)}</small></div></div>
     <div class="panel">${rows}</div>
     ${inF.conns.keys?`<div class="dov-note warn">⚠ Dit bestand bevat API-sleutels. Ze worden alleen overgenomen als je <b>Exchange-koppelingen</b> aanvinkt; dan vervangen ze je huidige sleutels.</div>`:''}

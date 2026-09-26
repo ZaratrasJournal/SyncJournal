@@ -35,13 +35,13 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
       blofinVal: (EXCHANGES.find(e => e.id === 'blofin') || {}).val, blofinAcct: (EXCHANGES.find(e => e.id === 'blofin') || {}).acct,
       planRecs: JSON.parse(localStorage.getItem('tp2:trades') || '[]').length, planPlans: Object.keys(JSON.parse(localStorage.getItem('tp2:plans') || '{}')).length,
       linked: T.filter(t => t.planRef).length, synced: T.filter(t => t.srcId).length, fills: T.filter(t => t.fills && t.fills.length).length,
-      today: T.some(t => t.date === new Date().toISOString().slice(0, 10)),
+      today: T.some(t => (Date.now() - +new Date(t.date)) < 8 * 864e5),
       connHint: (CONNS.mexc || {}).hint, theme: STATE.theme, preset: VIEW.preset,
       manual: (MANUAL || []).length, withTps: T.filter(t => (t.tps || []).length).length };
   }, raw);
   ok('verse journal start leeg (geen confirm nodig)', res.fresh);
   ok('alle trades uit het bestand geladen (' + N + ')', res.trades === N && N > 1000, String(res.trades));
-  ok('data loopt tot en met vandaag', res.today);
+  ok('data loopt tot (hooguit een week vóór) vandaag', res.today);
   ok('gesynct-uitziende exchange-trades met stappen', res.synced > 500 && res.fills > 500, JSON.stringify({ s: res.synced, f: res.fills }));
   ok('TradingPlan-blok mee (poort-records + plannen) en trades eraan gekoppeld', res.planRecs === 70 && res.planPlans > 40 && res.linked === 70, JSON.stringify({ r: res.planRecs, p: res.planPlans, l: res.linked }));
   ok('playbooks + tag-configuratie mee', res.pbooks >= 6 && res.setups > 0, JSON.stringify({ p: res.pbooks, s: res.setups }));

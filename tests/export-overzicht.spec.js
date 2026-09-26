@@ -46,6 +46,22 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
   ok('volledig bestand: alle onderdelen, sleutels erin, manifest keysIncluded true', ['trades', 'trash', 'tagConfig', 'pbook', 'manual', 'conns', 'sync', 'exMeta', 'settings', 'view', 'aiPrefs', 'tradingplan', 'manifest'].every(k => k in full) && full.conns.blofin.apiSecret === 'BLOFIN-SECRET-abcdef' && full.manifest.keysIncluded === true, Object.keys(full).join());
   ok('oude directe export (exportJSON) blijft werken voor de vangnetten', await p.evaluate(() => typeof exportJSON === 'function'));
 
+  console.log('─── Periode van / tot ───');
+  const VOL = DS.volledig(); const inRange = VOL.trades.filter(t => t.date >= '2026-02-01' && t.date <= '2026-03-31').length; const trashIn = VOL.trash.filter(t => t.date >= '2026-02-01' && t.date <= '2026-03-31').length;
+  await p.evaluate(() => exportOverzicht()); await p.waitForTimeout(150);
+  await p.fill('#dovVan', '2026-02-01'); await p.fill('#dovTot', '2026-03-31'); await p.evaluate(() => dovExpPeriode()); await p.waitForTimeout(100);
+  const pr = await p.evaluate(() => ({ trades: document.querySelector('#modal [data-dov="trades"] .txt small').textContent, trash: document.querySelector('#modal [data-dov="trash"] .txt small').textContent, hint: document.getElementById('dovPerHint').innerText, tot: document.getElementById('dovExpTot').innerText }));
+  ok('trades-regel: "' + inRange + ' van 40 trades · periode", prullenbak volgt', new RegExp('^' + inRange + ' van 40 trades · .* t/m ').test(pr.trades) && new RegExp('^' + trashIn + ' van 2 verwijderde').test(pr.trash), pr.trades + ' | ' + pr.trash);
+  ok('hint: telt niet als volledige back-up, samenvoegen ligt voor de hand; totaal noemt de periode en -periode in de bestandsnaam', /telt niet als volledige back-up/.test(pr.hint) && /samenvoegen/.test(pr.hint) && /t\/m/.test(pr.tot) && /-periode\.json/.test(pr.tot), pr.hint + ' | ' + pr.tot);
+  const per = await p.evaluate(() => { const d = dovBuildExport(_dovExp.sel, _dovExp.keys, _dovExp.per); return { n: d.trades.length, out: d.trades.filter(t => t.date < '2026-02-01' || t.date > '2026-03-31').length, open: d.trades.filter(t => t.status === 'open').length, trash: d.trash.length, period: d.manifest.period, count: d.manifest.parts.trades.count, pb: Object.keys(d.pbook).length, json: JSON.stringify(d) }; });
+  ok('bestand: alleen trades uit de periode (' + inRange + '), open posities uit de periode erbij, prullenbak gefilterd, manifest.period, playbooks compleet', per.n === inRange && per.out === 0 && per.trash === trashIn && per.period && per.period.van === '2026-02-01' && per.period.tot === '2026-03-31' && per.count === inRange && per.pb === 4, JSON.stringify({ n: per.n, out: per.out, trash: per.trash, period: per.period, count: per.count }));
+  const bkP = await p.evaluate(() => BK.ts);
+  const [dlP] = await Promise.all([p.waitForEvent('download'), p.evaluate(() => dovExportGo())]);
+  ok('download heet …-periode.json en stempelt de back-up niet', /-periode\.json$/.test(dlP.suggestedFilename()) && await p.evaluate(b0 => BK.ts === b0, bkP), dlP.suggestedFilename());
+  await p.evaluate(j => dovImportModal(JSON.parse(j), 'periode.json'), per.json); await p.waitForTimeout(150);
+  ok('import-kop toont de periode en wijst op samenvoegen', /trades .* t\/m .*\(samenvoegen ligt voor de hand\)/.test(await H.modalText(p)), (await H.modalText(p)).slice(0, 200));
+  await p.evaluate(() => closeForm());
+
   console.log('─── Zonder sleutels opgeslagen ───');
   await p.evaluate(() => { CONNS = {}; persistConns(); exportOverzicht(); }); await p.waitForTimeout(150);
   ok('geen sleutels → regel zegt dat het vinkje nu niets doet', /dit vinkje doet nu niets/.test(await p.evaluate(() => document.querySelector('#modal [data-dov="keys"]').innerText)));
