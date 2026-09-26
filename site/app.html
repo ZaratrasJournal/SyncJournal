@@ -1019,6 +1019,8 @@ body.dark .mx-legend .mxsw{box-shadow:inset 0 0 0 1px rgba(255,255,255,.12)}
 .faqsearch:focus{border-color:var(--accent)}
 .faqnone{background:var(--surface);border:1px dashed var(--line);border-radius:10px;padding:18px;text-align:center;font-size:13px;color:var(--muted)}
 .tpin.tptime{max-width:70px;flex:none}
+.tpin.tpdate{max-width:138px;flex:none;padding:6px 8px;font-size:12px}
+.tpts{flex:none;font-size:11px;color:var(--muted);margin-left:8px}
 /* Multi-select filter-dropdowns */
 .dd-btn.fselbtn{background:var(--surface);color:var(--ink);border-radius:9px;padding:8px 12px;font-size:12.5px;font-weight:500}
 .dd-btn.fselbtn.on{border-color:var(--accent);color:var(--accent);font-weight:700}
@@ -1790,7 +1792,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.139';
+const APP_VERSION='v0.9.140';
 const SCHEMA_VERSION=8;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -2546,7 +2548,7 @@ function tradeTimeline(t){
   const fmtMoment=ms=>`${fmtD(ts2date(ms))} ${ts2time(ms)}`;
   const chips=[`<span class="tlc">🚀 Open <b class="num">${fmtMoment(o)}</b></span>`];
   (t.tps||[]).filter(x=>x.hit&&+x.ts>0).sort((a,b)=>a.ts-b.ts).forEach((x,i)=>{
-    chips.push(`<span class="tlc">🎯 TP${i+1} <b class="num">${ts2time(+x.ts)}</b>${+x.pct?` <span style="color:var(--muted)">(${Math.round(+x.pct)}%)</span>`:''}</span>`);
+    chips.push(`<span class="tlc">🎯 TP${i+1} <b class="num">${ts2date(+x.ts)===ts2date(o)?ts2time(+x.ts):fmtMoment(+x.ts)}</b>${+x.pct?` <span style="color:var(--muted)">(${Math.round(+x.pct)}%)</span>`:''}</span>`);
   });
   const c=+t.closeTime||0;
   if(t.status==='closed'&&c)chips.push(`<span class="tlc">🏁 Close <b class="num">${fmtMoment(c)}</b></span>`);
@@ -4504,7 +4506,13 @@ function pgAnalytics(){
   const mistBars=Object.entries(mistBy).sort((x,y)=>x[1]-y[1]).map(([m,v])=>({m:m.length>11?m.slice(0,10)+'…':m,v:Math.round(v),f:m}));
   // Duur nu op echte timestamps (openTime/closeTime) met durationMin als fallback.
   const _hd=t=>tradeDurationMin(t)||0;
-  const avgHoldW=wins.length?Math.round(wins.reduce((s,t)=>s+_hd(t),0)/wins.length):0,avgHoldL=losses.length?Math.round(losses.reduce((s,t)=>s+_hd(t),0)/losses.length):0,maxHold=Math.max(1,avgHoldW,avgHoldL);
+  const avgHoldW=wins.length?Math.round(wins.reduce((s,t)=>s+_hd(t),0)/wins.length):0,avgHoldL=losses.length?Math.round(losses.reduce((s,t)=>s+_hd(t),0)/losses.length):0;
+  // Tijd tot je TP's: van de instap tot het eerste en het laatste gehaalde niveau (alleen trades met TP-tijden).
+  const _tpMs=t=>{const o=+t.openTime||0;return o?(t.tps||[]).filter(x=>x&&x.hit&&+x.ts>o).map(x=>Math.round((+x.ts-o)/60000)):[];};
+  const _tp1=CLOSED.map(t=>{const a=_tpMs(t);return a.length?Math.min(...a):null;}).filter(x=>x!=null);
+  const _tpN=CLOSED.map(t=>{const a=_tpMs(t);return a.length>1?Math.max(...a):null;}).filter(x=>x!=null);
+  const avgTp1=_tp1.length?Math.round(_tp1.reduce((s,x)=>s+x,0)/_tp1.length):0,avgTpN=_tpN.length?Math.round(_tpN.reduce((s,x)=>s+x,0)/_tpN.length):0;
+  const maxHold=Math.max(1,avgHoldW,avgHoldL,avgTp1,avgTpN);
   // Duur → resultaat: gem. R per duur-bucket (scalps vs swings)
   const _durAll=[...wins,...losses].map(t=>({m:tradeDurationMin(t),r:tradeR(t)})).filter(x=>x.m!=null);
   const DURB=[[15,'<15m'],[60,'15m–1u'],[240,'1–4u'],[1440,'4–24u'],[Infinity,'>1 dag']];
@@ -4512,6 +4520,8 @@ function pgAnalytics(){
   const _maxAbsDurR=Math.max(0.01,...durRows.map(x=>Math.abs(x.avg)));
   const durBody=durRows.length?hbars(durRows.map(x=>({label:x.label,val:Math.round(Math.abs(x.avg)/_maxAbsDurR*100),disp:(x.avg>=0?'+':'')+x.avg.toFixed(2).replace('.',',')+'R',sub:x.n+' trades',color:x.avg>=0?'var(--green)':'var(--red)'}))):'<div style="padding:18px;color:var(--muted);font-size:12.5px">Nog geen trades met een bekende duur.</div>';
   const holdRows=[{label:'Winst',val:Math.round(avgHoldW/maxHold*100),disp:fmtDur(avgHoldW),sub:`${wins.length} trades`,color:'var(--green)'},{label:'Verlies',val:Math.round(avgHoldL/maxHold*100),disp:fmtDur(avgHoldL),sub:`${losses.length} trades`,color:'var(--red)'}];
+  if(_tp1.length)holdRows.push({label:'Tot 1e TP',val:Math.round(avgTp1/maxHold*100),disp:fmtDur(avgTp1),sub:`${_tp1.length} trades`,color:'var(--accent)'});
+  if(_tpN.length)holdRows.push({label:'Tot laatste TP',val:Math.round(avgTpN/maxHold*100),disp:fmtDur(avgTpN),sub:`${_tpN.length} trades`,color:'var(--accent)'});
   const gData=GRADES.map(g=>{const gt=CLOSED.filter(x=>gradeOf(x)===g.k);const w=gt.filter(x=>x.pnl>0).length;const wr=gt.length?Math.round(w/gt.length*100):0;const net=gt.reduce((s,x)=>s+x.pnl,0);const avgR=gt.length?gt.reduce((s,x)=>s+tradeR(x),0)/gt.length:0;return {g,n:gt.length,w,l:gt.length-w,wr,net,avgR};});
   const gChart=gradeStackChart(gData.map(d=>({x:'Grade '+d.g.k,win:d.w,loss:d.l})));
   const gLegend=`<span class="chip gr-legend"><i style="background:var(--green)"></i>winst<i style="background:var(--red);margin-left:9px"></i>verlies</span>`;
@@ -4603,7 +4613,7 @@ function pgAnalytics(){
       ${(()=>{const go2=d=>{if(d&&d.f){setFilter('mistake',d.f);go('trades');}};
         if(!mistBars.length)return panelRaw('Fout-analyse','',`<div style="padding:24px 18px;color:var(--muted);font-size:12.5px">Geen fouten getagd in beeld 🎉</div>`);
         return panel('Fout-analyse','netto-impact per fout · klik = die trades',mistBars.length>=3?radarImpact(mistBars,go2):barsPnl(mistBars,'e',go2));})()}
-      ${panelRaw('Gem. tijd in trade','winst vs. verlies',hbars(holdRows))}
+      ${panelRaw('Gem. tijd in trade',_tp1.length?'winst vs. verlies · tot je TP\'s':'winst vs. verlies',hbars(holdRows))}
       ${panelRaw('Duur → resultaat','gem. R per duur-bucket',durBody)}
     </div><div style="height:13px"></div>
     ${eroAPanel}
@@ -8203,8 +8213,18 @@ function evenTPs(){const n=formTPs.length;if(!n)return;const base=Math.floor(100
 function addTP(){formTPs.push({price:'',pct:0,r:'',hit:false});evenTPs();renderTPs();}
 function removeTP(i){formTPs.splice(i,1);evenTPs();renderTPs();}
 function toggleTPHit(i){formTPs[i].hit=!formTPs[i].hit;renderTPs();calcTrade(true);
-  if(formTPs[i].hit){const el=document.querySelectorAll('#tpbuilder .tptime')[formTPs.slice(0,i).filter(x=>x.hit).length];if(el)el.focus();}}
-function applyTPTemplate(dist){formTPs=dist.map((pct,i)=>({price:(formTPs[i]&&formTPs[i].price)||'',pct,r:(formTPs[i]&&formTPs[i].r)||'',hit:(formTPs[i]&&formTPs[i].hit)||false}));renderTPs();}
+  if(formTPs[i].hit){const el=document.querySelectorAll('#tpbuilder .tptime')[i];if(el)el.focus();}}
+/* Een tijd bij een TP betekent dat hij gehaald is: dan hoeft "hit" niet apart aan. Datum en tijd
+   staan bij elke TP klaar (ook vóór de hit), want anders vond niemand het veld (Denny 26-09-2026). */
+function tpTijdIngevuld(i){const x=formTPs[i];if(!x)return;
+  if(!x.hit&&TIJD_RE.test(String(x.tsTime||'').trim())){x.hit=true;renderTPs();const el=document.querySelectorAll('#tpbuilder .tptime')[i];if(el){el.focus();try{el.setSelectionRange(el.value.length,el.value.length);}catch(e){}}}
+  calcTrade(true);}
+/* Het moment van een TP in het formulier: eigen datum + tijd, of alleen een tijd t.o.v. de
+   open-datum (vóór de open-tijd = de volgende dag). 0 = geen geldige tijd. */
+function tpMomentMs(x){const tm=String((x&&x.tsTime)||'').trim();if(!TIJD_RE.test(tm))return 0;const t5=tm.length===4?'0'+tm:tm;
+  const eigen=String((x&&x.tsDate)||'').trim(),d=eigen||((document.getElementById('f_date')||{}).value||'').trim();if(!d)return 0;
+  let c=+new Date(d+'T'+t5);if(!eigen){const o=formMomentMs('f_date','f_time');if(o&&c<o)c+=86400000;}return isFinite(c)?c:0;}
+function applyTPTemplate(dist){formTPs=dist.map((pct,i)=>({price:(formTPs[i]&&formTPs[i].price)||'',pct,r:(formTPs[i]&&formTPs[i].r)||'',hit:(formTPs[i]&&formTPs[i].hit)||false,ts:(formTPs[i]&&formTPs[i].ts)||0,tsDate:(formTPs[i]&&formTPs[i].tsDate)||'',tsTime:(formTPs[i]&&formTPs[i].tsTime)||''}));renderTPs();}
 function tpSum(){const el=document.getElementById('tpsum');if(!el)return;const s=formTPs.reduce((a,x)=>a+(+x.pct||0),0);el.textContent=s+'%';el.className='num '+(s===100?'g':'r');}
 function renderTPs(){const c=document.getElementById('tpbuilder');if(!c)return;
   const sum=formTPs.reduce((a,x)=>a+(+x.pct||0),0);
@@ -8212,7 +8232,8 @@ function renderTPs(){const c=document.getElementById('tpbuilder');if(!c)return;
     <input class="tpin" placeholder="prijs" value="${tp.price}" inputmode="decimal" oninput="formTPs[${i}].price=this.value;calcTrade(true)">
     <input class="tpin pct" placeholder="%" value="${tp.pct}" inputmode="numeric" oninput="formTPs[${i}].pct=+this.value||0;tpSum();calcTrade(true)">
     <button type="button" class="tphit ${tp.hit?'on':''}" onclick="toggleTPHit(${i})" title="${tp.hit?'Gehaald - klik om terug te zetten':'Klik als deze TP is gehaald: P&L, exit en status rekenen we dan uit'}">${tp.hit?'✓ hit':'open'}</button>
-    ${tp.hit?`<input class="tpin tptime" placeholder="HH:MM" value="${esc(tp.tsTime||'')}" oninput="formTPs[${i}].tsTime=this.value;calcTrade(true)" title="Hoe laat deze TP is gehaald (HH:MM) - zichtbaar in de stappentabel; de laatste wordt je sluittijd">`:''}
+    <input class="tpin tpdate" type="date" value="${esc(tp.tsDate||'')}" oninput="formTPs[${i}].tsDate=this.value;tpTijdIngevuld(${i})" title="Dag waarop deze TP is gehaald. Leeg = de dag van je instap (of de dag erna als de tijd vóór je instap ligt)">
+    <input class="tpin tptime" placeholder="HH:MM" value="${esc(tp.tsTime||'')}" oninput="formTPs[${i}].tsTime=this.value;tpTijdIngevuld(${i})" title="Hoe laat deze TP is gehaald (HH:MM). Een tijd invullen zet de TP op gehaald; de laatste wordt je sluitmoment. Zichtbaar in de tijdlijn en de stappentabel">
     <button type="button" class="xlayer" onclick="removeTP(${i})" title="verwijderen">×</button></div>`).join('');
   c.innerHTML=`<div class="tptmpl">${formTPs.length>1?`<button type="button" class="btn" onclick="evenTPs();renderTPs()">Gelijk verdelen</button>`:''}<span class="sp" style="flex:1"></span><button type="button" class="btn pri" onclick="addTP()">+ TP toevoegen</button></div>
     ${formTPs.length?`<div class="tprows">${rows}</div><div class="tptot">Verdeeld: <b id="tpsum" class="num ${sum===100?'g':'r'}">${sum}%</b> ${sum===100?'✓ volledig':'— moet samen 100% zijn'}</div>`:`<div class="layerhint">Voeg take-profit-niveaus toe, we verdelen je positie automatisch gelijk (1 TP = 100%, 2 = 50/50, 3 = 34/33/33…). Pas het % zelf aan als je anders wilt, en markeer welke TP's geraakt zijn (partial closes).</div>`}`;}
@@ -8230,7 +8251,7 @@ function tpStats(t){const tps=(t.tps||[]).filter(x=>+x.price>0);if(!tps.length)r
     if(stop>0)wR=((wExit-entry)*dir)/risk;}   // R heeft een echte stop nodig, anders is het geen risico
   return {tps,hit,hitPct,missedPct,wExit,wR,dicht};}
 function tpBreakdown(t){const s=tpStats(t);if(!s)return '<div style="color:var(--muted);font-size:12.5px;padding:6px 0">Geen TP-niveaus vastgelegd.</div>';
-  const rows=s.tps.map((tp,i)=>`<div class="tprow ${tp.hit?'hit':''}"><span class="tpdot">${tp.hit?'✓':'○'}</span><span class="tpname">TP${i+1}</span><span class="tpprice num">${(+tp.price).toLocaleString('nl-NL')}</span><span class="tpr num ${(+tp.r||0)>=0?'g':'r'}">${tp.r?('+'+tp.r+'R'):''}</span><div class="tpbar"><div class="tpbarf" style="width:${Math.min(100,+tp.pct||0)}%;background:${tp.hit?'var(--green)':'var(--line2)'}"></div></div><span class="tppct num">${tp.pct}%</span></div>`).join('');
+  const rows=s.tps.map((tp,i)=>`<div class="tprow ${tp.hit?'hit':''}"><span class="tpdot">${tp.hit?'✓':'○'}</span><span class="tpname">TP${i+1}</span><span class="tpprice num">${(+tp.price).toLocaleString('nl-NL')}</span><span class="tpr num ${(+tp.r||0)>=0?'g':'r'}">${tp.r?('+'+tp.r+'R'):''}</span><div class="tpbar"><div class="tpbarf" style="width:${Math.min(100,+tp.pct||0)}%;background:${tp.hit?'var(--green)':'var(--line2)'}"></div></div><span class="tppct num">${tp.pct}%</span>${tp.hit&&+tp.ts?`<span class="tpts num" title="moment waarop dit niveau is gehaald">${ts2date(+tp.ts)===ts2date(+t.openTime||0)?ts2time(+tp.ts):fmtD(ts2date(+tp.ts))+' '+ts2time(+tp.ts)}</span>`:''}</div>`).join('');
   const rDeel=s.wR!=null?` · ${s.dicht?'gerealiseerd':'bij je stop'} <b class="num ${cls(s.wR)}">${(s.wR>=0?'+':'')+(+s.wR).toFixed(1)}R</b>`:'';
   const foot=s.wExit!=null?`<div class="tpfoot"><span>Gewogen exit <b class="num">${(+s.wExit).toLocaleString('nl-NL')}</b>${s.dicht?'':' <span title="De positie loopt nog; het niet-gehaalde deel is afgerekend op je stop">(aanname)</span>'}</span><span class="sp" style="flex:1"></span><span>Hit <b class="num g">${Math.round(s.hitPct)}%</b>${rDeel}</span></div>`:'';
   return `<div class="tplist">${rows}</div>${foot}`;}
@@ -8256,7 +8277,7 @@ function setSizeUnit(u){if(u===formSizeUnit)return;const entry=fnum('f_entry'),v
 const TIJD_RE=/^([01]?\d|2[0-3]):[0-5]\d$/;   // 9:05 en 23:59 wel, 25:99 en 9:5 niet
 function tpAfrekening(entry,size,dir,exit){
   if(typeof formTPs==='undefined'||!formTPs.length||!(entry>0)||isNaN(size))return null;
-  const tps=formTPs.map(x=>({price:+String(x.price).replace(',','.')||0,pct:+x.pct||0,hit:!!x.hit,tsTime:String(x.tsTime||'').trim()})).filter(x=>x.price>0&&x.pct>0);
+  const tps=formTPs.map(x=>({price:+String(x.price).replace(',','.')||0,pct:+x.pct||0,hit:!!x.hit,ms:tpMomentMs(x)})).filter(x=>x.price>0&&x.pct>0);
   const hit=tps.filter(x=>x.hit);if(!hit.length)return null;
   // samen meer dan 100% verdeeld? dan naar rato terug: je kunt niet meer sluiten dan je hebt
   const totaal=tps.reduce((a,x)=>a+x.pct,0);if(totaal>100)tps.forEach(x=>{x.pct=x.pct*100/totaal;});
@@ -8266,8 +8287,8 @@ function tpAfrekening(entry,size,dir,exit){
   const alles=restPct===0,restDicht=alles||exit>0;
   if(!alles&&exit>0)pnl+=(exit-entry)/entry*size*(restPct/100)*dir;
   const wExit=alles?gewogenHit/hitPct:(exit>0?(gewogenHit+exit*restPct)/100:null);
-  const tijden=hit.map(x=>x.tsTime).filter(t=>TIJD_RE.test(t)).map(t=>t.length===4?'0'+t:t).sort();
-  return {pnl,hitPct,restPct,alles,restDicht,wExit,laatsteTijd:tijden.length?tijden[tijden.length-1]:''};
+  const laatsteMs=hit.reduce((m,x)=>Math.max(m,x.ms||0),0);   // het laatst gehaalde niveau, op datum én tijd
+  return {pnl,hitPct,restPct,alles,restDicht,wExit,laatsteMs,laatsteTijd:laatsteMs?ts2time(laatsteMs):'',laatsteDatum:laatsteMs?ts2date(laatsteMs):''};
 }
 function calcTrade(fill){
   // C3: het losse TP-veld is vervallen — R:R rekent met TP1 uit de niveaus-bouwer.
@@ -8300,7 +8321,8 @@ function calcTrade(fill){
          (vóór je open-tijd = de volgende dag), tenzij je die al zelf had ingevuld */
       zetStatus('closed');
       const ct=document.getElementById('f_closeTime');
-      if(afr.laatsteTijd&&ct&&(!String(ct.value).trim()||ct.value===formCloseAuto.t)){ct.value=afr.laatsteTijd;formCloseAuto.t=afr.laatsteTijd;}
+      if(afr.laatsteTijd&&ct&&(!String(ct.value).trim()||ct.value===formCloseAuto.t)){ct.value=afr.laatsteTijd;formCloseAuto.t=afr.laatsteTijd;
+        const cd=document.getElementById('f_closeDate');if(afr.laatsteDatum&&cd&&(!cd.value||cd.value===formCloseAuto.d)){cd.value=afr.laatsteDatum;formCloseAuto.d=afr.laatsteDatum;}}
     }else{
       if(exEl&&formCloseAuto.e&&exEl.value===formCloseAuto.e){exEl.value='';formCloseAuto.e='';}   // de gewogen TP-exit hoort bij "alles gehaald"
       // deels gehaald: dicht als het restant op je exit is gegaan, anders loopt hij nog (partial)
@@ -8312,7 +8334,8 @@ function calcTrade(fill){
     // een sluittijd zonder sluitdatum: de open-datum, of de dag erna als de tijd vóór je instap ligt
     const ct=document.getElementById('f_closeTime'),cd=document.getElementById('f_closeDate');
     if(ct&&cd){const tm=String(ct.value||'').trim().padStart(5,'0'),d=document.getElementById('f_date').value,ot=String(document.getElementById('f_time').value||'').trim().padStart(5,'0');
-      if(TIJD_RE.test(tm)&&d&&(!cd.value||cd.value===formCloseAuto.d)){cd.value=(ot!=='00:00'&&tm<ot)?ts2date(+new Date(d+'T00:00')+864e5):d;formCloseAuto.d=cd.value;}
+      const uitTP=!!(afr&&afr.alles&&afr.laatsteDatum&&cd.value===afr.laatsteDatum);   // de datum kwam net uit het laatste TP-moment
+      if(!uitTP&&TIJD_RE.test(tm)&&d&&(!cd.value||cd.value===formCloseAuto.d)){cd.value=(ot!=='00:00'&&tm<ot)?ts2date(+new Date(d+'T00:00')+864e5):d;formCloseAuto.d=cd.value;}
       else if(!tm&&cd.value&&cd.value===formCloseAuto.d){cd.value='';formCloseAuto.d='';}}
     const _o=formMomentMs('f_date','f_time'),_c=formMomentMs('f_closeDate','f_closeTime');
     if(_o&&_c&&_c>_o){const el=document.getElementById('f_durationMin');if(el)el.value=Math.round((_c-_o)/60000);}}
@@ -8356,7 +8379,7 @@ function openForm(id){
   formEmotions=[...(t.emotions||(t.emotion?[t.emotion]:[]))];
   formMistakes=[...(t.mistakes||(t.mistake?[t.mistake]:[]))];
   formMissed=[...(t.missedReasons||[])];
-  formTPs=(t.tps||[]).map(x=>({price:x.price,pct:x.pct,r:x.r||'',hit:!!x.hit,ts:+x.ts||0,tsTime:+x.ts?ts2time(+x.ts):''}));
+  formTPs=(t.tps||[]).map(x=>({price:x.price,pct:x.pct,r:x.r||'',hit:!!x.hit,ts:+x.ts||0,tsDate:+x.ts?ts2date(+x.ts):'',tsTime:+x.ts?ts2time(+x.ts):''}));
   const opt=(arr,sel)=>arr.map(x=>`<option ${x===sel?'selected':''}>${esc(x)}</option>`).join('');
   const _cMs0=+t.closeTime||0,closeD0=_cMs0?ts2date(_cMs0):'',closeT0=_cMs0?ts2time(_cMs0):'';
   // formulier: relevante exchanges + handmatige accounts; niets relevants → alle
@@ -8505,9 +8528,10 @@ function submitForm(id){
     // C4: TP-sluittijden — HH:MM t.o.v. de open-datum (vóór open-tijd = volgende dag);
     // seconde-precisie van gesyncte ts blijft behouden als de minuut niet wijzigt.
     tps:(()=>{const o=formMomentMs('f_date','f_time');const d=g('date');
-      return formTPs.map(x=>{let ts=+x.ts||0;let tm=String(x.tsTime||'').trim();
-        if(/^\d{1,2}:\d{2}$/.test(tm)){if(tm.length===4)tm='0'+tm;
-          if(!(ts&&ts2time(ts)===tm)&&d){let c=+new Date(d+'T'+tm);if(o&&c<o)c+=86400000;if(isFinite(c))ts=c;}}
+      return formTPs.map(x=>{let ts=+x.ts||0;let tm=String(x.tsTime||'').trim();const eigenD=String(x.tsDate||'').trim(),dd=eigenD||d;
+        if(TIJD_RE.test(tm)){if(tm.length===4)tm='0'+tm;
+          const ongewijzigd=ts&&ts2time(ts)===tm&&(!eigenD||ts2date(ts)===eigenD);
+          if(!ongewijzigd&&dd){let c=+new Date(dd+'T'+tm);if(!eigenD&&o&&c<o)c+=86400000;if(isFinite(c))ts=c;}}
         else if(!tm)ts=0;
         return {price:+String(x.price).replace(',','.')||0,pct:+x.pct||0,r:x.r,hit:!!x.hit,ts};}).filter(x=>x.price>0);})(),
     // size blijft ALTIJD in $ opgeslagen (alle stats rekenen daarop); in asset-modus bewaren we

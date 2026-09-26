@@ -10,6 +10,16 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 De journal is opnieuw opgebouwd als **SyncJournal** en draait nu online op [syncjournal.nl](https://syncjournal.nl). Versienummers zijn opnieuw gestart op v0.9.x (bèta); de oude TradeJournal-releases staan verderop in dit bestand. Je data overzetten kan via Instellingen → Data → Importeer oude backup.
 
+## [v0.9.140] — 2026-09-26
+
+### Toegevoegd
+- **Datum én tijd per take-profit-niveau.** Bij elke TP in het formulier staan nu een datumveld en een tijdveld klaar, ook vóórdat je hem op gehaald zet. Een tijd invullen zet de TP meteen op "✓ hit". Laat je de datum leeg, dan geldt de dag van je instap (of de dag erna als de tijd vóór je instap ligt), precies zoals eerst; vul je een datum in, dan kan een TP ook dagen later vallen, zoals bij een swing.
+- Die momenten werken overal door: het laatst gehaalde niveau bepaalt sluitdatum, sluittijd en tijd in trade; de tijdlijn en de TP-breakdown tonen per niveau het moment (met datum als het een andere dag is dan je instap); de stappentabel gebruikt ze al.
+- **Analytics → Gem. tijd in trade** toont nu ook **Tot 1e TP** en **Tot laatste TP**: hoe lang je gemiddeld zit voordat je eerste en je laatste niveau wordt geraakt (alleen trades met TP-momenten tellen mee).
+
+### Fixed
+- Het tijdveld bij een TP verscheen pas na "✓ hit" en kende alleen een tijd; een TP op een andere dag dan de instap was niet vast te leggen.
+
 ## [v0.9.139] — 2026-09-26
 
 ### Verwijderd
