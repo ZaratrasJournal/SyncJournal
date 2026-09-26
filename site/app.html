@@ -1796,7 +1796,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.144';
+const APP_VERSION='v0.9.145';
 const SCHEMA_VERSION=8;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -8049,15 +8049,21 @@ function sjImportCsvText(text,forExchange){
   csvTrades.forEach(t=>{if(/_csv_/.test(String(t.id||''))){
     t.id=(t.source||'csv')+'_csv_'+[t.pair,t.direction,t.date,t.time,t.entry,t.exit,t.pnl,t.positionSize,t.closeTime||''].join('|');}});
   const mapped=importTjClosed(csvTrades);try{planMatch();}catch(e){}
-  [...new Set(mapped.map(t=>t.exchange).filter(Boolean))].forEach(exId=>{
+  // per exchange uit het bestand, niet uit wat nieuw was: bij een herimport is niets nieuw, maar de opruiming moet wel draaien
+  let opgeruimd=0;
+  [...new Set(csvTrades.map(t=>sourceTypeOf(t.source)).filter(ex=>EXMAP[ex]))].forEach(exId=>{
     try{runPartialDetect(exId);}catch(e){}
-    // exchange-eigen opruiming, net als bij de sync: oude rijen gaan op in de nieuwe levensloop (notities en labels verhuizen mee)
-    const ad=ExchangeAPI[exId];if(ad&&typeof ad.afterImport==='function'){try{ad.afterImport(mapped);}catch(e){}}
+    /* Exchange-eigen opruiming, net als bij de sync: oude rijen gaan op in de nieuwe levensloop
+       (notities en labels verhuizen mee). Niet alleen voor wat nu nieuw binnenkwam: was het bestand
+       al eerder ingelezen, dan bestaan de nieuwe trades al en moeten de oude rijen alsnog weg. */
+    const ad=ExchangeAPI[exId];
+    if(ad&&typeof ad.afterImport==='function'){const ids=new Set(csvTrades.map(t=>String(t.id)));try{opgeruimd+=ad.afterImport(T.filter(t=>t&&t.exchange===exId&&ids.has(String(t.srcId))))||0;}catch(e){}}
   });
   render();
   const dup=csvTrades.length-mapped.length, warn=(csvTrades._waarschuwingen||[]).length;
   toast((mapped.length?('✓ '+mapped.length+' trade'+(mapped.length===1?'':'s')+' geïmporteerd'+(dup?' · '+dup+' overgeslagen (al aanwezig of in prullenbak)':'')):('Alle '+dup+' trades al aanwezig, niets te importeren'))
-    +(warn?' · ⚠ '+warn+' regel'+(warn===1?'':'s')+' niet sluitend, zie console':''),mapped.length?'ok':'info');
+    +(opgeruimd?' · '+opgeruimd+' oude rij'+(opgeruimd===1?'':'en')+' opgegaan in de nieuwe trades':'')
+    +(warn?' · ⚠ '+warn+' regel'+(warn===1?'':'s')+' niet sluitend, zie console':''),(mapped.length||opgeruimd)?'ok':'info');
   return mapped.length;
 }
 function handleCsvFile(e){
