@@ -1790,7 +1790,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.136';
+const APP_VERSION='v0.9.137';
 const SCHEMA_VERSION=8;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -5578,22 +5578,33 @@ function migrateOldTrade(ot){
     if(ex){const d=dir==='short'?-1:1;r=+(((ex-entry)*d)/Math.abs(entry-stop)).toFixed(2);}
   }
   const scr=ot.screenshots&&ot.screenshots.length?ot.screenshots:(ot.screenshot?[ot.screenshot]:[]);
+  // TP-niveaus: de oude app markeerde een gehaald niveau met status:"hit" (niet hit:true)
+  const tpsM=(ot.tpLevels||ot.tps||[]).map(x=>({price:+x.price||0,pct:+x.pct||0,r:x.r||'',hit:x.hit===true||x.status==='hit'}));
+  // Sim-trade zonder exit maar met gehaalde TP's: het resultaat volgt uit die niveaus, naar rato
+  // van het gehaalde deel (zo rekende de oude app ook). Het niet-gehaalde deel telt niet mee.
+  if(!r&&kind!=='live'&&!(+ot.exit)&&!hindsightExit&&entry&&stop&&stop!==entry){
+    const hit=tpsM.filter(x=>x.hit&&x.price>0&&x.pct>0);
+    if(hit.length){const tot=Math.max(100,tpsM.reduce((a,x)=>a+x.pct,0)),d=dir==='short'?-1:1;r=+hit.reduce((a,x)=>a+((x.price-entry)*d/Math.abs(entry-stop))*(x.pct/tot),0).toFixed(2);}
+  }
+  // sim-trade met een R maar zonder P&L: theoretische P&L uit R × risico, zodat win/verlies en
+  // profit factor per playbook kloppen (sim-trades tellen nooit mee in saldi of live-statistiek)
+  const pnlSim=(kind!=='live'&&!pnl&&r&&entry&&stop&&size)?+(r*Math.abs(entry-stop)/entry*size).toFixed(2):0;
   return {date:ot.date||'',time:ot.time||'',exchange,account:'',pair:ot.pair||'',dir,
     setup:setupTags[0]||ot.setup||'',session:ot.session||sessionFromTime(ot.time),
     timeframe:(layers[layers.length-1]||{}).timeframe||ot.timeframe||'',market:ot.market||'',grade,
     entry,exit:+ot.exit||0,stop,tp:+(ot.takeProfit!=null?ot.takeProfit:ot.tp)||0,hindsightExit,
     size:String(size||0),leverage:+ot.leverage||0,fees:+ot.fees||0,risk:+ot.risk||0,rrPlanned:+ot.rrPlanned||0,
-    pnl,r,status:ot.status||'closed',
+    pnl:pnl||pnlSim,r,status:(ot.status==='missed'||!ot.status)?'closed':ot.status,   // oude app: sim-trades hadden status 'missed'
     emotions:[...(ot.emotionTags||ot.emotions||[])],emotion:(ot.emotionTags||ot.emotions||[])[0]||'',
     mistakes:[...(ot.mistakeTags||ot.mistakes||[])],mistake:(ot.mistakeTags||ot.mistakes||[])[0]||'',
     kind,missedReasons:[...(ot.missedReasonTags||ot.missedReasons||[])],
     tags:[...new Set([...(ot.customTags||[]),...(ot.confirmationTags||[]),...(ot.tags||[])])],
-    layers,tps:(ot.tpLevels||ot.tps||[]).map(x=>({price:+x.price||0,pct:+x.pct||0,r:x.r||'',hit:!!x.hit})),
+    layers,tps:tpsM,
     notes:ot.notes||'',lessons:ot.entryNote||ot.lessons||'',durationMin:+ot.durationMin||0,mae:+ot.mae||0,mfe:+ot.mfe||0,
     // fase-3-audit (2026-09-17): deze velden gingen eerst verloren bij migratie —
     // timestamps (duur + canoniek open-moment), TV-links en de asset-hoeveelheid.
     openTime:String(ot.openTime||''),closeTime:String(ot.closeTime||''),
-    tvLinks:[...(ot.links||ot.tvLinks||[])],qtyAsset:parseFloat(ot.positionSizeAsset)||0,
+    tvLinks:(ot.links||ot.tvLinks||[]).map(x=>typeof x==='string'?x:((x&&x.url)||'')).filter(Boolean),qtyAsset:parseFloat(ot.positionSizeAsset)||0,
     screenshots:[...scr],rating:ot.rating||0,checks:[]};
 }
 function looksOldExport(arr){return arr.length>0 && !('dir' in arr[0]) && (('direction' in arr[0])||('stopLoss' in arr[0])||('setupTags' in arr[0])||('simType' in arr[0]));}
@@ -5636,7 +5647,7 @@ const TJMigrate={
       if(EXMAP[t.exchange]&&ot.id){t.srcId=String(ot.id);t.positionId=String(ot.positionId||'');}
       // canoniek: het open-moment bepaalt datum/tijd/sessie (besluit 2026-09-14)
       if(+t.openTime){t.date=ts2date(+t.openTime);t.time=ts2time(+t.openTime);t.session=sessionFromTime(t.time);}
-      if(!t.setup&&ot.playbookId&&pbById[ot.playbookId])t.setup=pbById[ot.playbookId];
+      if(ot.playbookId&&pbById[ot.playbookId])t.setup=pbById[ot.playbookId];   // playbook wint van de setup-tag: setup = playbook-naam in SyncJournal
       if((ot.complianceChecks||[]).length)compl++;
       return t; });
     if(compl)warnings.push('Playbook-compliance-afvinklijstjes ('+compl+' trades) kent SyncJournal niet; die vinkjes zijn niet overgezet, de trades zelf wel.');
@@ -5660,10 +5671,10 @@ const TJMigrate={
     if((T||[]).some(t=>!t||!t.date))issues.push('Sommige trades missen een datum.');
     if(old&&Array.isArray(old.trades)){
       const oudeRijen=old.trades.filter(t=>t&&typeof t==='object');   // onleesbare regels tellen niet mee
-      const sumOld=oudeRijen.reduce((s,t)=>s+(+t.pnl||0),0),sumNew=(T||[]).reduce((s,t)=>s+(+t.pnl||0),0);
+      const sumOld=oudeRijen.filter(t=>!t.simType).reduce((s,t)=>s+(+t.pnl||0),0),sumNew=(T||[]).filter(t=>!t.kind||t.kind==='live').reduce((s,t)=>s+(+t.pnl||0),0);   // sim-trades: theoretische P&L, buiten de vergelijking
       const verwacht=sumOld-MIG_SAMEN.pnl;   // de dubbeltellingen van de oude journal vallen weg
       if(Math.abs(verwacht-sumNew)>0.01)issues.push('Totale P&L wijkt af: verwacht '+eurS(verwacht)+' vs overgezet '+eurS(sumNew)+'.');
-      const clOld=oudeRijen.filter(t=>(t.status||'closed')==='closed').length,clNew=(T||[]).filter(t=>t.status==='closed').length;
+      const clOld=oudeRijen.filter(t=>{const st=t.status||'closed';return st==='closed'||st==='missed';}).length,clNew=(T||[]).filter(t=>t.status==='closed').length;   // 'missed' = oude sim-trade, wordt gesloten
       if(clOld-samen!==clNew)issues.push('Aantal gesloten trades wijkt af ('+clOld+' → '+clNew+').');
     }
     return issues; },

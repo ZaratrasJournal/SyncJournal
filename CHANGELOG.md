@@ -10,6 +10,14 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 De journal is opnieuw opgebouwd als **SyncJournal** en draait nu online op [syncjournal.nl](https://syncjournal.nl). Versienummers zijn opnieuw gestart op v0.9.x (bèta); de oude TradeJournal-releases staan verderop in dit bestand. Je data overzetten kan via Instellingen → Data → Importeer oude backup.
 
+## [v0.9.137] — 2026-09-26
+
+### Fixed
+- **Backtests en gemiste trades uit de oude TradeJournal kwamen onzichtbaar binnen.** De oude app gaf sim-trades de status "missed"; die status kent SyncJournal niet, waardoor zulke trades nergens meetelden en de controle na het overzetten ten onrechte een afwijking meldde. Ze komen nu binnen als gesloten backtest- of gemiste trades (gevonden met Denny's eigen export, 26-09-2026).
+- **Gehaalde TP-niveaus uit de oude app gingen verloren.** De oude app markeerde een gehaald niveau met een status-veld; dat werd niet herkend, waardoor elke TP als niet gehaald binnenkwam. Ze komen nu goed over, en een backtest of gemiste trade zonder exit krijgt zijn R uit de gehaalde niveaus, naar rato van het gehaalde deel.
+- **TradingView-links uit de oude app** kwamen als losse objecten mee en toonden "[object Object]"; ze zijn nu gewone links.
+- **Playbook-koppeling bij het overzetten**: een oude trade met een playbook krijgt dat playbook nu als setup, ook als er een setup-tag op stond. Daardoor tellen de trades op de Playbook-pagina mee en werkt de statistiek per playbook.
+
 ## [v0.9.136] — 2026-09-25
 
 ### Toegevoegd
