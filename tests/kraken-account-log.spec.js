@@ -220,7 +220,11 @@ const desc = rows => rows.slice().reverse();   // zoals de export: nieuwste eers
     ];
     const header = Object.keys(rows[0]);
     const csv = [header.join(','), ...rows.map(r => header.map(h => r[h]).join(','))].join('\n');
+    // een rij van de CSV-import van vóór v0.9.142: UTC-tijd, size in coin, geen closeTime, mét notitie van de gebruiker
+    await p.evaluate(() => { T.push({ id: nextId(), exchange: 'kraken', account: '', srcId: 'kraken_csv_BTC/USD|long|2026-05-01|10:00|75000|75550|1.1|0.00200000|', pair: 'BTC/USD', dir: 'long', date: '2026-05-01', time: '10:00', entry: 75000, exit: 75550, stop: 0, size: '0.002', pnl: 1.1, fees: 0.2, r: 0, status: 'closed', kind: 'live', tps: [], layers: [], emotions: [], mistakes: [], checks: [], screenshots: [], tvLinks: [], tags: ['oud-label'], notes: 'oude notitie', openTime: '', closeTime: '' }); persist(); });
     const n = await p.evaluate(t => sjImportCsvText(t, ''), csv);
+    const na = await p.evaluate(() => T.filter(t => t.exchange === 'kraken').map(t => ({ srcId: t.srcId, notes: t.notes, tags: t.tags, size: t.size })));
+    ok('de oude CSV-rij gaat op in de nieuwe levensloop: één trade over, notitie en label verhuizen mee', na.length === 1 && /^kraken_pos_/.test(na[0].srcId) && na[0].notes === 'oude notitie' && (na[0].tags || []).includes('oud-label') && +na[0].size === 150, JSON.stringify(na));
     const t = (await p.evaluate(() => T.filter(t => t.exchange === 'kraken').map(t => ({ srcId: t.srcId, date: t.date, time: t.time, tps: t.tps, fills: (t.fills || []).length, qtyAsset: t.qtyAsset, size: t.size }))))[0];
     ok('één trade, via de gedeelde brug, met stappen en asset-hoeveelheid', n === 1 && !!t && t.fills === 3 && bij(t.qtyAsset, 0.002, 1e-9) && bij(+t.size, 150, 0.01), JSON.stringify(t));
     ok('beide TP-niveaus hit, met hun moment (ts) — voor de tijdlijn en "tot 1e TP"', !!t && t.tps.length === 2 && t.tps.every(x => x.hit && +x.ts > 0) && t.tps[0].ts === Date.parse('2026-05-01T11:00:00Z'), JSON.stringify(t && t.tps));

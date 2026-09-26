@@ -1796,7 +1796,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.143';
+const APP_VERSION='v0.9.144';
 const SCHEMA_VERSION=8;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -6679,8 +6679,11 @@ const ExchangeAPI = {
       (nieuw||[]).forEach(L=>{
         if(!L||L.exchange!=="kraken"||!/^kraken_pos_/.test(String(L.srcId||"")))return;
         const van=+L.openTime-1000, tot=+L.closeTime+1000;
+        /* Rijen van de CSV-import van vóór v0.9.142 hebben geen closeTime; hun datum en tijd
+           zijn de UTC-openingstijd uit de export. Die vallen samen met openTime van de levensloop. */
+        const oudeCsvOpen=o=>{if(+o.closeTime||!/_csv_/.test(String(o.srcId||"")))return false;const ms=Date.parse(String(o.date||"")+"T"+String(o.time||"00:00")+":00Z");return isFinite(ms)&&Math.abs(ms-(+L.openTime))<=90e3;};
         T.filter(o=>o&&o.exchange==="kraken"&&o!==L&&!/^kraken_pos_/.test(String(o.srcId||""))
-                   &&o.pair===L.pair&&o.dir===L.dir&&(+o.closeTime)>=van&&(+o.closeTime)<=tot)
+                   &&o.pair===L.pair&&o.dir===L.dir&&(((+o.closeTime)>=van&&(+o.closeTime)<=tot)||oudeCsvOpen(o)))
          .forEach(o=>{ adoptUserFieldsSJ(L,o); T=T.filter(t=>t.id!==o.id); n++; });
       });
       if(n)persist();
@@ -8046,7 +8049,11 @@ function sjImportCsvText(text,forExchange){
   csvTrades.forEach(t=>{if(/_csv_/.test(String(t.id||''))){
     t.id=(t.source||'csv')+'_csv_'+[t.pair,t.direction,t.date,t.time,t.entry,t.exit,t.pnl,t.positionSize,t.closeTime||''].join('|');}});
   const mapped=importTjClosed(csvTrades);try{planMatch();}catch(e){}
-  [...new Set(mapped.map(t=>t.exchange).filter(Boolean))].forEach(exId=>{try{runPartialDetect(exId);}catch(e){}});
+  [...new Set(mapped.map(t=>t.exchange).filter(Boolean))].forEach(exId=>{
+    try{runPartialDetect(exId);}catch(e){}
+    // exchange-eigen opruiming, net als bij de sync: oude rijen gaan op in de nieuwe levensloop (notities en labels verhuizen mee)
+    const ad=ExchangeAPI[exId];if(ad&&typeof ad.afterImport==='function'){try{ad.afterImport(mapped);}catch(e){}}
+  });
   render();
   const dup=csvTrades.length-mapped.length, warn=(csvTrades._waarschuwingen||[]).length;
   toast((mapped.length?('✓ '+mapped.length+' trade'+(mapped.length===1?'':'s')+' geïmporteerd'+(dup?' · '+dup+' overgeslagen (al aanwezig of in prullenbak)':'')):('Alle '+dup+' trades al aanwezig, niets te importeren'))
