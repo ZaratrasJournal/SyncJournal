@@ -10,6 +10,11 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 De journal is opnieuw opgebouwd als **SyncJournal** en draait nu online op [syncjournal.nl](https://syncjournal.nl). Versienummers zijn opnieuw gestart op v0.9.x (bèta); de oude TradeJournal-releases staan verderop in dit bestand. Je data overzetten kan via Instellingen → Data → Importeer oude backup.
 
+## [v0.9.143] — 2026-09-26
+
+### Gewijzigd
+- **TP-niveaus in het formulier:** achter het verdelingsgetal staat nu een %-teken, en het tijdveld is breder met een leesbare aanwijzing (uu:mm) in plaats van HH:MM in hoofdletters.
+
 ## [v0.9.142] — 2026-09-26
 
 ### Fixed
