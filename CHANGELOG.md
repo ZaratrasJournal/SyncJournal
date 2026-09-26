@@ -10,6 +10,11 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 De journal is opnieuw opgebouwd als **SyncJournal** en draait nu online op [syncjournal.nl](https://syncjournal.nl). Versienummers zijn opnieuw gestart op v0.9.x (bèta); de oude TradeJournal-releases staan verderop in dit bestand. Je data overzetten kan via Instellingen → Data → Importeer oude backup.
 
+## [v0.9.141] — 2026-09-26
+
+### Fixed
+- **Oefentrades kregen de API-waarschuwing van een gekoppelde exchange.** Bij een backtest-, paper- of gemiste trade op bijvoorbeeld Blofin verscheen "is gekoppeld via de API, deze trade telt mee in de P&L en het saldo", en opslaan vroeg om bevestiging. Zo'n trade zit nergens aan vast, dus de melding en de vraag komen nu alleen nog bij een live trade. Wissel je de soort in het formulier, dan volgt de melding meteen.
+
 ## [v0.9.140] — 2026-09-26
 
 ### Toegevoegd

@@ -70,6 +70,19 @@ const APP = 'file:///' + path.resolve('work/syncjournal.html').split(path.sep).j
     await p.evaluate(() => openForm(null)); await set('f_pair', 'ETH/USDC'); await set('f_entry', '100'); await set('f_exit', '101'); await set('f_size', '100');
     await p.evaluate(() => submitForm(null));
     ok('op het handmatige account gewoon opslaan, zonder vraag', dialogs.length === 0 && await p.evaluate(() => T.length) === 2, JSON.stringify(dialogs));
+    // een oefentrade (backtest/paper/gemist) zit nergens aan vast: geen waarschuwing, geen vraag
+    dialogs = [];
+    await p.evaluate(() => openForm(null)); await set('f_exchange', 'okx');
+    ok('live op OKX: waarschuwing staat er', /gekoppeld/.test(await warn()), await warn());
+    const oefen = await p.evaluate(() => Object.keys(KINDS).find(k => k !== 'live'));
+    await set('f_kind', oefen);
+    ok('soort op oefentrade (' + oefen + '): waarschuwing weg', await warn() === '', await warn());
+    await set('f_pair', 'SOL/USDC'); await set('f_entry', '100'); await set('f_exit', '105'); await set('f_size', '100');
+    await p.evaluate(() => submitForm(null));
+    ok('opslaan van een oefentrade op een gekoppelde exchange vraagt niets', dialogs.length === 0 && await p.evaluate(() => T.length) === 3, JSON.stringify(dialogs));
+    await p.evaluate(() => openForm(null)); await set('f_exchange', 'okx'); await set('f_kind', oefen); await set('f_kind', 'live');
+    ok('terug naar live: waarschuwing komt terug', /gekoppeld/.test(await warn()), await warn());
+    await p.evaluate(() => { formDirty = false; closeForm(); });
   }
 
   console.log('─── 4. TP hit rekent alles uit ───');
