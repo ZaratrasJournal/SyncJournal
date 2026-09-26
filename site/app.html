@@ -1800,7 +1800,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.146';
+const APP_VERSION='v0.9.147';
 const SCHEMA_VERSION=8;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -6682,12 +6682,22 @@ const ExchangeAPI = {
       let n=0;
       (nieuw||[]).forEach(L=>{
         if(!L||L.exchange!=="kraken"||!/^kraken_pos_/.test(String(L.srcId||"")))return;
-        const van=+L.openTime-1000, tot=+L.closeTime+1000;
-        /* Rijen van de CSV-import van vóór v0.9.142 hebben geen closeTime; hun datum en tijd
-           zijn de UTC-openingstijd uit de export. Die vallen samen met openTime van de levensloop. */
-        const oudeCsvOpen=o=>{if(+o.closeTime||!/_csv_/.test(String(o.srcId||"")))return false;const ms=Date.parse(String(o.date||"")+"T"+String(o.time||"00:00")+":00Z");return isFinite(ms)&&Math.abs(ms-(+L.openTime))<=90e3;};
-        T.filter(o=>o&&o.exchange==="kraken"&&o!==L&&!/^kraken_pos_/.test(String(o.srcId||""))
-                   &&o.pair===L.pair&&o.dir===L.dir&&(((+o.closeTime)>=van&&(+o.closeTime)<=tot)||oudeCsvOpen(o)))
+        /* Elke oudere Kraken-rij van hetzelfde pair en dezelfde richting met een bekend moment
+           binnen de levensloop hoort bij deze positie. Drie oude vormen komen voor:
+             · de oude journal (gemigreerd): kraken_<fill-id>, open- en sluittijd als ISO-tekst, één rij per groep sluitingen
+             · de oude CSV-importer (vóór v0.9.142): geen tijden, datum en tijd = UTC-openingstijd uit de export
+             · de eerste levensloop-versie: numerieke tijden
+           kraken_pos_-rijen zijn de levensloop zelf en worden op id bijgewerkt, niet hier. */
+        const van=+L.openTime-90e3, tot=+L.closeTime+90e3;
+        const ms=v=>{const n=+v;if(n>0)return n;const p=Date.parse(String(v||""));return p>0?p:0;};
+        const binnen=t=>t>0&&t>=van&&t<=tot;
+        const hoort=o=>{
+          const o1=ms(o.openTime), o2=ms(o.closeTime);
+          if(o1||o2)return binnen(o1)||binnen(o2);
+          const d=Date.parse(String(o.date||"")+"T"+String(o.time||"00:00")+":00Z");   // zonder tijden: datum+tijd is UTC (oude CSV-importer)
+          return binnen(d);
+        };
+        T.filter(o=>o&&o.exchange==="kraken"&&o!==L&&!/^kraken_pos_/.test(String(o.srcId||""))&&o.pair===L.pair&&o.dir===L.dir&&hoort(o))
          .forEach(o=>{ adoptUserFieldsSJ(L,o); T=T.filter(t=>t.id!==o.id); n++; });
       });
       if(n)persist();

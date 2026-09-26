@@ -10,6 +10,11 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 De journal is opnieuw opgebouwd als **SyncJournal** en draait nu online op [syncjournal.nl](https://syncjournal.nl). Versienummers zijn opnieuw gestart op v0.9.x (bèta); de oude TradeJournal-releases staan verderop in dit bestand. Je data overzetten kan via Instellingen → Data → Importeer oude backup.
 
+## [v0.9.147] — 2026-09-26
+
+### Fixed
+- **Kraken: ook trades uit de oude TradeJournal gaan op in de nieuwe levensloop-trades.** Kwamen je Kraken-trades via de migratie uit de oude journal (één rij per groep sluitingen, tijden als tekst), dan bleven die bij het inlezen van je account-log naast de nieuwe trades staan: 20 oude + 23 nieuwe = 43. Nu herkent de import elke oudere Kraken-rij van hetzelfde pair en dezelfde richting met een moment binnen de levensloop, en gaat die erin op. Lees je account-log opnieuw in en het aantal zakt naar het echte aantal posities; notities en labels blijven.
+
 ## [v0.9.146] — 2026-09-26
 
 ### Toegevoegd
