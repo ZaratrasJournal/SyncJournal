@@ -1,6 +1,6 @@
 // Koppeling SyncJournal ↔ TradingPlan (stap 2 van docs/opdracht-tradingplan-koppeling.md).
 // Journal: planMatch op symbool + richting + venster, planRef op de trade, handmatige correctie
-// blijft staan, poort-regel in de hover-details, badge "zonder poort", tradingplan-blok in de back-up.
+// blijft staan, poort-regel in de hover-details, geen badge in de tradelijst, tradingplan-blok in de back-up.
 // TradingPlan: R van gekoppelde trades komt uit de journal (IndexedDB sj_db), niet meer handmatig.
 const { chromium } = require('playwright'); const path = require('path');
 let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  ✓ ' + n)) : (fail++, console.log('  ✗ ' + n + (e ? ' → ' + e : ''))); };
@@ -45,11 +45,11 @@ const trade = (id, pair, dir, h, m, r) => ({ id, exchange: 'okx', status: 'close
   ok('handmatig gekoppeld aan 103 blijft zo na een nieuwe match-ronde', await p.evaluate(() => { planMatch(); return T.find(t => t.id === 2).planRef === '103'; }));
 
   console.log('--- weergave in de journal ---');
-  const hd = await p.evaluate(() => ({ t1: planLine(T.find(t => t.id === 1)), t3: planLine(T.find(t => t.id === 3)), badge3: planBadge(T.find(t => t.id === 3)), badge1: planBadge(T.find(t => t.id === 1)) }));
+  const hd = await p.evaluate(() => ({ t1: planLine(T.find(t => t.id === 1)), t3: planLine(T.find(t => t.id === 3)) }));
   ok('hover-details: "Poort · B-setup · 6/7 · halve size · 0,5% · mist: e" met knop andere/geen', /B-setup/.test(hd.t1) && /6\/7/.test(hd.t1) && /halve size/.test(hd.t1) && /0,5%/.test(hd.t1) && /mist: e/.test(hd.t1) && /andere \/ geen/.test(hd.t1), hd.t1.replace(/<[^>]+>/g, ' '));
-  ok('zonder record: "Geen poort-beoordeling gevonden" + koppelen; badge "zonder poort" alleen daar', /Geen poort-beoordeling gevonden/.test(hd.t3) && /koppelen/.test(hd.t3) && /zonder poort/.test(hd.badge3) && hd.badge1 === '', hd.badge3);
+  ok('zonder record: "Geen poort-beoordeling gevonden" + koppelen', /Geen poort-beoordeling gevonden/.test(hd.t3) && /koppelen/.test(hd.t3), hd.t3.replace(/<[^>]+>/g, ' '));
   const lijst = await p.evaluate(() => { STATE.page = 'trades'; STATE.tradeTab = 'all'; render(); return { badges: document.querySelectorAll('.kbadge').length, tekst: [...document.querySelectorAll('.kbadge')].map(x => x.textContent).join() }; });
-  ok('tradelijst toont de badge bij de trades zonder koppeling', lijst.badges >= 2 && /zonder poort/.test(lijst.tekst), JSON.stringify(lijst));
+  ok('tradelijst toont géén "zonder poort"-badge meer (weg sinds v0.9.139: ruis op alles van vóór de koppeling)', !/zonder poort/.test(lijst.tekst), JSON.stringify(lijst));
   await p.evaluate(() => planPick(3));
   const pick = await p.evaluate(() => ({ open: document.getElementById('modal').classList.contains('on'), knoppen: [...document.querySelectorAll('#modal .mbody .btn')].map(b => b.textContent.trim()) }));
   ok('kiezer toont de genomen poort-records van die dag (niet de "niet genomen") + "geen"', pick.open && pick.knoppen.length === 5 && /09:50.*BTC Short.*A-setup.*volle size/.test(pick.knoppen[1]) && /Geen — deze trade ging bewust zonder poort/.test(pick.knoppen[4]) && !pick.knoppen.some(k => /SOL/.test(k)), JSON.stringify(pick.knoppen));

@@ -10,6 +10,11 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 De journal is opnieuw opgebouwd als **SyncJournal** en draait nu online op [syncjournal.nl](https://syncjournal.nl). Versienummers zijn opnieuw gestart op v0.9.x (bèta); de oude TradeJournal-releases staan verderop in dit bestand. Je data overzetten kan via Instellingen → Data → Importeer oude backup.
 
+## [v0.9.139] — 2026-09-26
+
+### Verwijderd
+- **Badge "zonder poort" in de tradelijst.** Hij stond op elke live-trade zonder gekoppelde poort-beoordeling, dus ook op alles van vóór de TradingPlan-koppeling — ruis zonder betekenis. De poort-regel in de trade-details (met de knop andere/geen) en het blok "Met of zonder poort" in Tendencies → Plan blijven gewoon staan.
+
 ## [v0.9.138] — 2026-09-26
 
 ### Gewijzigd
