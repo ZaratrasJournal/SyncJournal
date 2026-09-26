@@ -1022,6 +1022,10 @@ body.dark .mx-legend .mxsw{box-shadow:inset 0 0 0 1px rgba(255,255,255,.12)}
 .faqsearch:focus{border-color:var(--accent)}
 .faqnone{background:var(--surface);border:1px dashed var(--line);border-radius:10px;padding:18px;text-align:center;font-size:13px;color:var(--muted)}
 .tpin.tptime{max-width:84px;flex:none;font-variant-numeric:tabular-nums}
+.tppnl{flex:none;min-width:70px;font-size:12px;text-align:right}
+.tpdnav{display:flex;flex-direction:column;gap:2px;flex:none}
+.tpdnav button{border:1px solid var(--line);background:var(--sink);color:var(--muted);border-radius:5px;font-size:7px;line-height:1;padding:3px 5px;cursor:pointer}
+.tpdnav button:hover{color:var(--ink);border-color:var(--accent)}
 .tpin.tptime::placeholder{font-size:12px;letter-spacing:0;text-transform:none}
 .tpin.tpdate{max-width:138px;flex:none;padding:6px 8px;font-size:12px}
 .tpts{flex:none;font-size:11px;color:var(--muted);margin-left:8px}
@@ -1796,7 +1800,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.145';
+const APP_VERSION='v0.9.146';
 const SCHEMA_VERSION=8;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -8048,6 +8052,8 @@ function sjImportCsvText(text,forExchange){
   // Vervang die door een deterministische vingerafdruk van de trade-inhoud.
   csvTrades.forEach(t=>{if(/_csv_/.test(String(t.id||''))){
     t.id=(t.source||'csv')+'_csv_'+[t.pair,t.direction,t.date,t.time,t.entry,t.exit,t.pnl,t.positionSize,t.closeTime||''].join('|');}});
+  // wat in de prullenbak zit komt niet terug (verwijderd blijft verwijderd) — zeg dat apart, mét de uitweg
+  const inBak=csvTrades.filter(t=>TRASH.some(x=>String(x.srcId||'')===String(t.id))).length;
   const mapped=importTjClosed(csvTrades);try{planMatch();}catch(e){}
   // per exchange uit het bestand, niet uit wat nieuw was: bij een herimport is niets nieuw, maar de opruiming moet wel draaien
   let opgeruimd=0;
@@ -8060,8 +8066,9 @@ function sjImportCsvText(text,forExchange){
     if(ad&&typeof ad.afterImport==='function'){const ids=new Set(csvTrades.map(t=>String(t.id)));try{opgeruimd+=ad.afterImport(T.filter(t=>t&&t.exchange===exId&&ids.has(String(t.srcId))))||0;}catch(e){}}
   });
   render();
-  const dup=csvTrades.length-mapped.length, warn=(csvTrades._waarschuwingen||[]).length;
-  toast((mapped.length?('✓ '+mapped.length+' trade'+(mapped.length===1?'':'s')+' geïmporteerd'+(dup?' · '+dup+' overgeslagen (al aanwezig of in prullenbak)':'')):('Alle '+dup+' trades al aanwezig, niets te importeren'))
+  const dup=csvTrades.length-mapped.length-inBak, warn=(csvTrades._waarschuwingen||[]).length;
+  toast((mapped.length?('✓ '+mapped.length+' trade'+(mapped.length===1?'':'s')+' geïmporteerd'+(dup?' · '+dup+' overgeslagen (al aanwezig of in prullenbak)':'')):(inBak&&!dup?(inBak+' trade'+(inBak===1?' zit':'s zitten')+' in de prullenbak, niets geïmporteerd'):('Alle '+dup+' trades al aanwezig, niets te importeren')))
+    +(inBak?' · '+inBak+' in de prullenbak (leeg de prullenbak om ze opnieuw in te lezen)':'')
     +(opgeruimd?' · '+opgeruimd+' oude rij'+(opgeruimd===1?'':'en')+' opgegaan in de nieuwe trades':'')
     +(warn?' · ⚠ '+warn+' regel'+(warn===1?'':'s')+' niet sluitend, zie console':''),(mapped.length||opgeruimd)?'ok':'info');
   return mapped.length;
@@ -8326,29 +8333,53 @@ function renderMistakes(){const c=document.getElementById('mistakebuilder');if(!
 let formTPs=[];
 let formCloseAuto={t:'',d:'',s:'',sPrev:'',p:'',e:''};   // wat wij zelf invulden (sluittijd/-datum, status, P&L, exit): dat mogen we later bijwerken of terugdraaien, eigen invoer niet
 function evenTPs(){const n=formTPs.length;if(!n)return;const base=Math.floor(100/n),rem=100-base*n;formTPs.forEach((tp,i)=>{tp.pct=base+(i<rem?1:0);});}
-function addTP(){formTPs.push({price:'',pct:0,r:'',hit:false});evenTPs();renderTPs();}
+function addTP(){formTPs.push({price:'',pct:0,r:'',hit:false,tsDate:tpStandaardDatum()});evenTPs();renderTPs();}
+// de dag van je instap uit het formulier, anders vandaag
+function tpStandaardDatum(){const d=((document.getElementById('f_date')||{}).value||'').trim();return /^\d{4}-\d{2}-\d{2}$/.test(d)?d:localDateISO();}
+// een dag eerder of later, zonder de datumkiezer open te hoeven doen
+function tpDatumStap(i,d){const x=formTPs[i];if(!x)return;const ms=Date.parse((x.tsDate||tpStandaardDatum())+'T12:00:00');if(!isFinite(ms))return;
+  x.tsDate=ts2date(ms+d*86400000);const el=document.querySelectorAll('#tpbuilder .tpdate')[i];if(el)el.value=x.tsDate;calcTrade(true);}
+/* Resultaat per niveau in de rij zelf: (prijs − entry) × dat deel van de positie, zonder fees.
+   Zo zie je bij het invullen meteen wat elk niveau opbrengt. Vergrendelde (gesyncte) trades
+   tonen de stappentabel met de P&L van de exchange, dus daar hoeft dit niet. */
+function tpRijPnl(entry,size,dir){
+  document.querySelectorAll('#tpbuilder .tppnl').forEach(el=>{const x=formTPs[+el.dataset.i];const px=x?(+String(x.price).replace(',','.')||0):0,pct=x?(+x.pct||0):0;
+    if(!(entry>0)||isNaN(size)||!(px>0)||!(pct>0)){el.textContent='';el.className='tppnl num';return;}
+    const v=(px-entry)/entry*size*(pct/100)*dir;el.textContent=eurCS(v);el.className='tppnl num '+cls(v);});}
 function removeTP(i){formTPs.splice(i,1);evenTPs();renderTPs();}
 function toggleTPHit(i){formTPs[i].hit=!formTPs[i].hit;renderTPs();calcTrade(true);
   if(formTPs[i].hit){const el=document.querySelectorAll('#tpbuilder .tptime')[i];if(el)el.focus();}}
 /* Een tijd bij een TP betekent dat hij gehaald is: dan hoeft "hit" niet apart aan. Datum en tijd
    staan bij elke TP klaar (ook vóór de hit), want anders vond niemand het veld (Denny 26-09-2026). */
 function tpTijdIngevuld(i){const x=formTPs[i];if(!x)return;
-  if(!x.hit&&TIJD_RE.test(String(x.tsTime||'').trim())){x.hit=true;renderTPs();const el=document.querySelectorAll('#tpbuilder .tptime')[i];if(el){el.focus();try{el.setSelectionRange(el.value.length,el.value.length);}catch(e){}}}
+  const tm=String(x.tsTime||'').trim();
+  if(TIJD_RE.test(tm)){
+    /* Een TP vóór je instaptijd op de dag van je instap kan niet: dat is de dag erna. De
+       vooraf ingevulde datum schuift dan zichtbaar mee (eenmalig, alleen zolang hij nog op de instapdag staat). */
+    const fd=((document.getElementById('f_date')||{}).value||'').trim(),ft=((document.getElementById('f_time')||{}).value||'').trim();
+    if(x.tsDate&&x.tsDate===fd&&/^\d{1,2}:\d{2}$/.test(ft)&&tm.padStart(5,'0')<ft.padStart(5,'0')){x.tsDate=ts2date(Date.parse(fd+'T12:00:00')+86400000);const de=document.querySelectorAll('#tpbuilder .tpdate')[i];if(de)de.value=x.tsDate;}
+  }
+  if(!x.hit&&TIJD_RE.test(tm)){x.hit=true;renderTPs();const el=document.querySelectorAll('#tpbuilder .tptime')[i];if(el){el.focus();try{el.setSelectionRange(el.value.length,el.value.length);}catch(e){}}}
   calcTrade(true);}
 /* Het moment van een TP in het formulier: eigen datum + tijd, of alleen een tijd t.o.v. de
    open-datum (vóór de open-tijd = de volgende dag). 0 = geen geldige tijd. */
 function tpMomentMs(x){const tm=String((x&&x.tsTime)||'').trim();if(!TIJD_RE.test(tm))return 0;const t5=tm.length===4?'0'+tm:tm;
   const eigen=String((x&&x.tsDate)||'').trim(),d=eigen||((document.getElementById('f_date')||{}).value||'').trim();if(!d)return 0;
-  let c=+new Date(d+'T'+t5);if(!eigen){const o=formMomentMs('f_date','f_time');if(o&&c<o)c+=86400000;}return isFinite(c)?c:0;}
+  let c=+new Date(d+'T'+t5);
+  // geen eigen dag, of de (vooraf ingevulde) instapdag: vóór de instaptijd betekent de dag erna
+  if(!eigen||eigen===d){const o=formMomentMs('f_date','f_time');if(o&&c<o)c+=86400000;}return isFinite(c)?c:0;}
 function applyTPTemplate(dist){formTPs=dist.map((pct,i)=>({price:(formTPs[i]&&formTPs[i].price)||'',pct,r:(formTPs[i]&&formTPs[i].r)||'',hit:(formTPs[i]&&formTPs[i].hit)||false,ts:(formTPs[i]&&formTPs[i].ts)||0,tsDate:(formTPs[i]&&formTPs[i].tsDate)||'',tsTime:(formTPs[i]&&formTPs[i].tsTime)||''}));renderTPs();}
 function tpSum(){const el=document.getElementById('tpsum');if(!el)return;const s=formTPs.reduce((a,x)=>a+(+x.pct||0),0);el.textContent=s+'%';el.className='num '+(s===100?'g':'r');}
 function renderTPs(){const c=document.getElementById('tpbuilder');if(!c)return;
+  // de dag van je instap staat vooraf ingevuld: scheelt een klik, en je ziet wat er straks wordt vastgelegd
+  formTPs.forEach(tp=>{if(!tp.tsDate)tp.tsDate=tpStandaardDatum();});
   const sum=formTPs.reduce((a,x)=>a+(+x.pct||0),0);
   const rows=formTPs.map((tp,i)=>`<div class="tprow-edit"><span class="tpnum">TP${i+1}</span>
     <input class="tpin" placeholder="prijs" value="${tp.price}" inputmode="decimal" oninput="formTPs[${i}].price=this.value;calcTrade(true)">
     <span class="tppct"><input class="tpin pct" placeholder="deel" value="${tp.pct}" inputmode="numeric" oninput="formTPs[${i}].pct=+this.value||0;tpSum();calcTrade(true)"><i>%</i></span>
+    <span class="tppnl num" data-i="${i}" title="Resultaat van dit niveau (zonder fees)"></span>
     <button type="button" class="tphit ${tp.hit?'on':''}" onclick="toggleTPHit(${i})" title="${tp.hit?'Gehaald - klik om terug te zetten':'Klik als deze TP is gehaald: P&L, exit en status rekenen we dan uit'}">${tp.hit?'✓ hit':'open'}</button>
-    <input class="tpin tpdate" type="date" value="${esc(tp.tsDate||'')}" oninput="formTPs[${i}].tsDate=this.value;tpTijdIngevuld(${i})" title="Dag waarop deze TP is gehaald. Leeg = de dag van je instap (of de dag erna als de tijd vóór je instap ligt)">
+    <input class="tpin tpdate" type="date" value="${esc(tp.tsDate||'')}" oninput="formTPs[${i}].tsDate=this.value;tpTijdIngevuld(${i})" title="Dag waarop deze TP is gehaald. Staat vooraf op de dag van je instap; leeg = die dag (of de dag erna als de tijd vóór je instap ligt)"><span class="tpdnav"><button type="button" onclick="tpDatumStap(${i},1)" title="Een dag later" tabindex="-1">▲</button><button type="button" onclick="tpDatumStap(${i},-1)" title="Een dag eerder" tabindex="-1">▼</button></span>
     <input class="tpin tptime" placeholder="uu:mm" value="${esc(tp.tsTime||'')}" oninput="formTPs[${i}].tsTime=this.value;tpTijdIngevuld(${i})" title="Hoe laat deze TP is gehaald (HH:MM). Een tijd invullen zet de TP op gehaald; de laatste wordt je sluitmoment. Zichtbaar in de tijdlijn en de stappentabel">
     <button type="button" class="xlayer" onclick="removeTP(${i})" title="verwijderen">×</button></div>`).join('');
   c.innerHTML=`<div class="tptmpl">${formTPs.length>1?`<button type="button" class="btn" onclick="evenTPs();renderTPs()">Gelijk verdelen</button>`:''}<span class="sp" style="flex:1"></span><button type="button" class="btn pri" onclick="addTP()">+ TP toevoegen</button></div>
@@ -8414,6 +8445,7 @@ function calcTrade(fill){
   const dirEl=document.getElementById('f_dir'),dir=dirEl&&dirEl.value==='short'?-1:1;
   let pnl=NaN,r=NaN,rr=NaN,pct=NaN;
   const afr=formLocked?null:tpAfrekening(entry,size,dir,exit);
+  if(!formLocked)tpRijPnl(entry,size,dir);
   if(afr&&afr.alles&&afr.wExit>0)exit=+afr.wExit.toFixed(entry<10?4:2);   // alle TP's gehaald: de gewogen TP-prijs is je exit
   if(formLocked)pnl=fnum('f_pnl');   // gesynct: de P&L van de exchange is leidend, R rekent daarmee
   else if(afr)pnl=+(afr.pnl-fees).toFixed(2);

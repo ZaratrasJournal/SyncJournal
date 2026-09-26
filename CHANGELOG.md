@@ -10,6 +10,15 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 De journal is opnieuw opgebouwd als **SyncJournal** en draait nu online op [syncjournal.nl](https://syncjournal.nl). Versienummers zijn opnieuw gestart op v0.9.x (bèta); de oude TradeJournal-releases staan verderop in dit bestand. Je data overzetten kan via Instellingen → Data → Importeer oude backup.
 
+## [v0.9.146] — 2026-09-26
+
+### Toegevoegd
+- **Resultaat per TP-niveau in het formulier.** Achter het percentage staat nu wat dat niveau opbrengt: (prijs − entry) × dat deel van je positie, zonder fees. Je ziet dus bij het invullen meteen wat elk niveau waard is.
+- **TP-datum staat vooraf op de dag van je instap** (scheelt een klik), en met de ▲▼-knoppen naast de datum zet je hem een dag later of eerder zonder de datumkiezer te openen. Vul je een tijd in die vóór je instaptijd ligt, dan schuift de datum vanzelf naar de dag erna.
+
+### Gewijzigd
+- **Import-toast zegt het als trades in de prullenbak zitten.** Een verwijderde trade komt bij een import niet terug (verwijderd blijft verwijderd). Dat stond verstopt in "overgeslagen (al aanwezig of in prullenbak)"; nu staat er apart hoeveel er in de prullenbak zitten en dat je die moet legen om ze opnieuw in te lezen. Relevant als je Kraken-trades van de API-koppeling hebt verwijderd en daarna je account-log inleest: die posities hebben dezelfde id.
+
 ## [v0.9.145] — 2026-09-26
 
 ### Fixed
