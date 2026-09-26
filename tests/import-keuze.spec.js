@@ -76,7 +76,7 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
   const OUD = { version: 12, schemaVersion: 12, exportDate: '2026-09-10T10:00:00Z', trades: [{ id: 'a1', date: '2026-09-01', time: '10:00', pair: 'BTC/USDT', direction: 'long', entry: '60000', exit: '60500', stopLoss: '59500', positionSize: '1000', pnl: '8.3', setupTags: ['London SFP'], emotionTags: [], mistakeTags: [], source: 'manual', status: 'closed', complianceChecks: ['x'] }], tagConfig: { setupTags: ['London SFP'] }, accounts: [], config: { theme: 'sync' }, playbooks: [] };
   await p.evaluate(d => { const arr = d.trades; if (looksOldExport(arr)) migPreview(TJMigrate.mapExport(d), 'file'); }, OUD); await p.waitForTimeout(150);
   const ot = await H.modalText(p);
-  ok('overzetten-scherm met de vaste regel "Gaat niet mee" (discipline, reflecties, mindset, mijlpalen, TP-templates)', /Controleer wat er wordt overgezet/.test(ot) && /Gaat niet mee/.test(ot) && /discipline-vinkjes, weekreflecties, mindset-voorkeuren, mijlpalen, TP-templates/.test(ot) && /compliance-vinkjes/.test(ot), ot.slice(0, 300));
+  ok('overzetten-scherm met de vaste regel "Gaat niet mee" (discipline, reflecties, mindset, mijlpalen, TP-templates)', /Controleer wat er wordt overgezet/.test(ot) && /Gaat niet mee/.test(ot) && /discipline-vinkjes, weekreflecties, mindset-voorkeuren, mijlpalen, TP-templates/.test(ot) && /Afgevinkte playbook-criteria bij entry komen als tekst/.test(ot), ot.slice(0, 300));
   await p.evaluate(() => closeForm());
 
   console.log('─── importJSON stuurt een nieuw bestand naar de keuze-modal ───');

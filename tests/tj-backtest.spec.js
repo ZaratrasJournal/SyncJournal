@@ -16,6 +16,11 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
   ok('setup = playbook-naam (1H MSB/BOS en HTF OB POI), niet de setup-tag', (pre.setup['1H MSB/BOS'] || 0) + (pre.setup['HTF OB POI - LTF Entry'] || 0) === 39 && !pre.setup.BOS, JSON.stringify(pre.setup));
   ok('TradingView-links als adressen (38 trades), 3 TP-niveaus (34), screenshots (6)', pre.links === 38 && pre.linkType === 'string' && pre.tps === 34 && pre.shots === 6, JSON.stringify([pre.links, pre.linkType, pre.tps, pre.shots]));
   ok('overzicht: 39 trades, 2 playbooks, 3 koppelingen, 47 tags, 2 waarschuwingen', pre.report.trades === 39 && pre.report.playbooks === 2 && pre.report.conns === 3 && pre.report.tags === 47 && pre.warn === 2, JSON.stringify(pre.report));
+  ok('netto telt alleen live (0 hier); 39 sim-trades apart met theoretisch bedrag', pre.report.liveN === 0 && pre.report.simN === 39 && pre.report.simPnl > 700, JSON.stringify([pre.report.liveN, pre.report.simN, pre.report.simPnl]));
+  const cc = await p.evaluate(d => { const ts = TJMigrate.mapExport(d).payload.trades; return { n: ts.filter(t => /Afgevinkt bij entry \(oude app, \d+%\): /.test(t.notes)).length, note0: ts[0].notes, txt: (migPreview(TJMigrate.mapExport(d), 'file'), document.getElementById('modal').innerText.replace(/\s+/g, ' ')) }; }, d);
+  ok('afgevinkte criteria bij entry bewaard als tekst in de notitie (39 trades)', cc.n === 39 && /een MSB of BOS · MSB of BOS na impuls/.test(cc.note0), cc.note0.slice(0, 120));
+  ok('overzicht: jaartal in de periode, sim-trades apart, waarschuwing zegt dat de vinkjes als tekst bewaard zijn', /02-01-2026 – 15-06-2026/.test(cc.txt) && /39 backtest\/paper\/gemist \(theoretisch/.test(cc.txt) && /als tekst onderaan de notitie/.test(cc.txt), cc.txt.slice(0, 300));
+  await p.evaluate(() => closeForm());
 
   const na = await p.evaluate(async d => { const pre = TJMigrate.mapExport(d); await Snapshots.create('test'); await applyBackup(pre.payload); await new Promise(r => setTimeout(r, 800));
     const issues = TJMigrate.verify(pre.payload, pre.old);

@@ -1790,7 +1790,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.137';
+const APP_VERSION='v0.9.138';
 const SCHEMA_VERSION=8;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -2779,6 +2779,7 @@ const arr=v=>v>=0?'▲':'▼';
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const jsarg=s=>String(s).replace(/[\\'"<>]/g,'');  // veilige arg voor inline on*-handlers (geen quote-/tag-breakout)
 const fmtD=d=>d.slice(8)+'-'+d.slice(5,7);
+const fmtDJ=d=>d.slice(8)+'-'+d.slice(5,7)+'-'+d.slice(0,4);   // met jaar, voor overzichten over een langere periode
 // Eén rekenbron: agg() was een ongeguarde kopie van aggOf() (Infinity bij nul verliezen,
 // NaN bij een lege lijst — audit 2026-09-18). Nu dezelfde, wél beveiligde berekening.
 function agg(){
@@ -5648,15 +5649,16 @@ const TJMigrate={
       // canoniek: het open-moment bepaalt datum/tijd/sessie (besluit 2026-09-14)
       if(+t.openTime){t.date=ts2date(+t.openTime);t.time=ts2time(+t.openTime);t.session=sessionFromTime(t.time);}
       if(ot.playbookId&&pbById[ot.playbookId])t.setup=pbById[ot.playbookId];   // playbook wint van de setup-tag: setup = playbook-naam in SyncJournal
-      if((ot.complianceChecks||[]).length)compl++;
+      // afgevinkte playbook-criteria bij entry: geen veld voor in SyncJournal, maar wel bewaren als tekst
+      if((ot.complianceChecks||[]).length){compl++;const regel='Afgevinkt bij entry (oude app'+(ot.complianceScore!=null?', '+Math.round(+ot.complianceScore)+'%':'')+'): '+ot.complianceChecks.map(x=>String(x)).join(' · ');if(!String(t.notes||'').includes(regel))t.notes=(t.notes?t.notes+'\n':'')+regel;}
       return t; });
-    if(compl)warnings.push('Playbook-compliance-afvinklijstjes ('+compl+' trades) kent SyncJournal niet; die vinkjes zijn niet overgezet, de trades zelf wel.');
+    if(compl)warnings.push('Playbook-afvinklijstjes bij entry ('+compl+' trades) kent SyncJournal niet als veld; ze staan als tekst onderaan de notitie van de trade, zodat er niets verloren gaat. In SyncJournal doe je dit voortaan vooraf in de poort van TradingPlan.');
     const tagConfigOut=JSON.parse(JSON.stringify(tagConfig));
     ['setupTags','confirmationTags','timeframeTags','emotionTags','mistakeTags','missedReasonTags'].forEach(cat=>{ const cur=new Set(tagConfigOut[cat]||[]); ((old.tags&&old.tags[cat])||[]).forEach(v=>v&&cur.add(v)); tagConfigOut[cat]=[...cur]; });
     const pbook={}; (old.playbooks||[]).forEach(pb=>{ if(pb&&pb.name)pbook[pb.name]=pbNormalize(pb.name,pb); });
     const theme=TJ_THEME[(old.config||{}).theme]||'light';
     const settings={theme,currency:'USD',priv:!!old.privacy,density:STATE.density};
-    const report={trades:trades.length,playbooks:Object.keys(pbook).length,manual:manual.length,conns:Object.keys(conns).length,tags:['setupTags','confirmationTags','timeframeTags','emotionTags','mistakeTags'].reduce((s,c)=>s+(((old.tags&&old.tags[c])||[]).length),0),pnl:trades.reduce((s,t)=>s+(+t.pnl||0),0)};
+    const report={trades:trades.length,playbooks:Object.keys(pbook).length,manual:manual.length,conns:Object.keys(conns).length,tags:['setupTags','confirmationTags','timeframeTags','emotionTags','mistakeTags'].reduce((s,c)=>s+(((old.tags&&old.tags[c])||[]).length),0),pnl:trades.filter(t=>!t.kind||t.kind==='live').reduce((s,t)=>s+(+t.pnl||0),0),liveN:trades.filter(t=>!t.kind||t.kind==='live').length,simN:trades.filter(t=>t.kind&&t.kind!=='live').length,simPnl:trades.filter(t=>t.kind&&t.kind!=='live').reduce((s,t)=>s+(+t.pnl||0),0)};
     /* schemaVersion 1: de oude journal kent ons schema niet, en zonder dit veld sloeg
        applyBackup de opruimstappen over. Juist die stappen trekken de oude rij-per-sluiting
        gelijk (Blofin v7, OKX v3/v5, Hyperliquid v6) en zetten de datum op het open-moment (v2). */
@@ -5696,7 +5698,7 @@ function migPreview(pre,source){
   _migPre={...pre,source};
   const p=pre.payload,ts=p.trades;
   const dates=ts.map(t=>t.date).filter(Boolean).sort();
-  const range=dates.length?fmtD(dates[0])+' – '+fmtD(dates[dates.length-1]):'geen datums';
+  const range=dates.length?fmtDJ(dates[0])+' – '+fmtDJ(dates[dates.length-1]):'geen datums';
   const byEx={};ts.forEach(t=>{const k=t.exchange||'';byEx[k]=(byEx[k]||0)+1;});
   const exName=k=>!k?'losse trades':(EXMAP[k]?EXMAP[k].name:((p.manual.find(m=>m.id===k)||{}).name||k));
   const exLine=Object.entries(byEx).sort((a,b)=>b[1]-a[1]).map(([k,n])=>esc(exName(k))+' '+n).join(' · ');
@@ -5706,13 +5708,13 @@ function migPreview(pre,source){
   <div class="mbody mbody-wiz">
     <p class="setintro">${source==='file'?'Uit je back-upbestand van de oude TradeJournal.':'Uit je oude TradeJournal in deze browser (die blijft ongewijzigd).'} Overzetten <b>vervangt</b> je huidige SyncJournal-data; er wordt eerst automatisch een veiligheidskopie gemaakt zodat je altijd terug kunt.</p>
     <div class="panel">
-      <div class="setrow"><div class="txt"><b>${ts.length} trades · netto <span class="num ${cls(pre.report.pnl)}">${eurS(pre.report.pnl)}</span></b><small>${range}${exLine?' · '+exLine:''} — controleer dit bedrag met je oude app</small></div></div>
+      <div class="setrow"><div class="txt"><b>${ts.length} trades${pre.report.liveN?' · netto <span class="num '+cls(pre.report.pnl)+'">'+eurS(pre.report.pnl)+'</span>':''}</b><small>${range}${exLine?' · '+exLine:''}${pre.report.simN?' · '+pre.report.simN+' backtest/paper/gemist (theoretisch '+eurS(pre.report.simPnl)+', telt niet mee in saldi)':''}${pre.report.liveN?' — controleer het nettobedrag met je oude app':''}</small></div></div>
       <div class="setrow"><div class="txt"><b>${pbNames.length} playbook${pbNames.length===1?'':'s'}</b><small>${pbNames.length?esc(pbNames.slice(0,6).join(', '))+(pbNames.length>6?' …':''):'geen'}</small></div></div>
       <div class="setrow"><div class="txt"><b>${p.manual.length} handmatig${p.manual.length===1?' account':'e accounts'}</b><small>${p.manual.length?esc(p.manual.map(m=>m.name).join(', ')):'geen'}</small></div></div>
       <div class="setrow"><div class="txt"><b>${pre.report.tags} tags</b><small>setup-, confirmatie-, emotie- en fout-labels</small></div></div>
     </div>
     ${connRows?`<div class="section-sub">Exchange-koppelingen</div><div class="panel">${connRows}</div>`:''}
-    <div class="section-sub">Gaat niet mee</div><div class="panel"><div class="setrow"><div class="txt" style="font-size:12.5px">SyncJournal kent deze onderdelen van de oude app niet, ze hebben geen plek om naartoe te gaan: <b>discipline-vinkjes, weekreflecties, mindset-voorkeuren, mijlpalen, TP-templates</b>. Per trade: compliance-vinkjes en -score, handmatige overschrijvingen. Je trades, notities, screenshots, links, tags en playbooks gaan wél mee.</div></div></div>
+    <div class="section-sub">Gaat niet mee</div><div class="panel"><div class="setrow"><div class="txt" style="font-size:12.5px">SyncJournal kent deze onderdelen van de oude app niet, ze hebben geen plek om naartoe te gaan: <b>discipline-vinkjes, weekreflecties, mindset-voorkeuren, mijlpalen, TP-templates</b>. Per trade: handmatige overschrijvingen. Afgevinkte playbook-criteria bij entry komen als tekst in de notitie. Je trades, notities, screenshots, links, tags en playbooks gaan wél mee.</div></div></div>
     ${pre.warnings.length?`<div class="section-sub">Let op</div><div class="panel">${pre.warnings.map(w=>`<div class="setrow"><div class="txt" style="font-size:12.5px">⚠ ${esc(w)}</div></div>`).join('')}</div>`:''}
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px"><button class="btn" onclick="closeForm()">Annuleren</button><button class="btn pri" onclick="migApply()">Veilig overzetten</button></div>
   </div>`);

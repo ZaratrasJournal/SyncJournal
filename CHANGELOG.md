@@ -10,6 +10,11 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 De journal is opnieuw opgebouwd als **SyncJournal** en draait nu online op [syncjournal.nl](https://syncjournal.nl). Versienummers zijn opnieuw gestart op v0.9.x (bèta); de oude TradeJournal-releases staan verderop in dit bestand. Je data overzetten kan via Instellingen → Data → Importeer oude backup.
 
+## [v0.9.138] — 2026-09-26
+
+### Gewijzigd
+- **Overzetten uit de oude TradeJournal.** De afgevinkte playbook-criteria bij entry gaan niet meer verloren: ze staan als tekst onderaan de notitie van de trade ("Afgevinkt bij entry (oude app, 100%): …"). Het nettobedrag in het controlescherm telt alleen live trades; backtests, paper en gemiste trades staan apart met hun theoretische bedrag, want die tellen niet mee in saldi. De datums in het overzicht tonen nu het jaar.
+
 ## [v0.9.137] — 2026-09-26
 
 ### Fixed
