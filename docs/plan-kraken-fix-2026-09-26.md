@@ -201,3 +201,27 @@ Versie-bump + CHANGELOG:
 3. Twee keer syncen of importeren → 0 nieuwe trades.
 4. Alle Kraken-tests groen; `exchange-isolation.spec.js` bewijst dat de andere exchanges byte-gelijk bleven.
 5. Release-flow doorlopen voor beide sessies; push alleen op Denny's "push".
+
+---
+
+## Uitgevoerd · sessie 1 (2026-09-26, v0.9.142)
+
+**Gebouwd** (alles in `ExchangeAPI.kraken`, `work/syncjournal.html`): `_logRegelsUitCsv(rows)`, `_logRegelsUitJson(logs)`, `levenslopenUitAccountLog(regels)` → `{trades, open, waarschuwingen}`; het CSV-import-blok roept die aan (het dode tweede `isKrakenLog`-blok is weg); `amsDateTime(ms)` als gedeelde helper (ook in `_krLevenslopen`); `captureSnapshot` vraagt `withEvents:true` en bewaart `events` (fase 0); `migrateOldTrade` laat `ts` op TP-niveaus door (anders verdween het TP-moment bij import, zie afwijking 2).
+
+**Bewijs** (`node tests/kraken-account-log.spec.js`, tegen `tests/_fixtures/kraken-account-log-2026-09-26.csv`):
+```
+SUMMARY: csv closed positions 107, journal 107, matched 107, missing 0, dir-mismatch 0, size-mismatch 0, pnl-mismatch 0, extra 0
+netto P&L -179.98 = Σ realized pnl − Σ fee + Σ funding (-179.98) · 413/413 fills · 58 trades met ≥2 TP's · 0 waarschuwingen · tweede import 0 nieuw
+=== Kraken account-log: 44/44 ===
+```
+`tests/kraken-levensloop.spec.js`: 25/25 + 2 fixme (echte semantiek: 55 van 93 trades krijgen open == close; dat is de productiebug, wordt in sessie 2 opgelost). Regressie: csv-import 16/16, exchange-sync 23/23 + 22/22, partial-alle-exchanges 21/21, tp-datum-tijd 14/14, kraken-afronding 9/9, plus de Playwright-specs (isolatie, smoke, 3way, real-data, pipeline-cross, HL-dup, multi-account) groen.
+
+**Afwijkingen van het plan, met bewijs:**
+1. **`pnl` bevat óók de `funding rate change`-boekingen binnen de levensloop**, niet alleen de `realized funding` op de trade-regel. In de export vallen alle 995 funding-boekingen binnen een levensloop (0 erbuiten), en ze zijn echte cash-mutaties van die positie. Referentie is daarmee **−179,98** (= −87,32 − 93,07 + 0,11 + 0,30), niet −180,29; de spec rekent dat onafhankelijk na via `tests/helpers/kraken-recon.js`. Per positie blijft het verschil < 0,05, dus `scripts/kraken-recon.js` (tolerantie 0,5) ziet geen PNL-mismatch.
+2. **`migrateOldTrade` (gedeelde brug) laat `ts` op TP-niveaus door.** Zonder die ene toevoeging verloor élke exchange-import het moment van een gehaald niveau (v0.9.140 toont dat in tijdlijn en "Tot 1e TP"). Pure passthrough, geen exchange-aanname.
+3. **Spec in Node-script-stijl** (zoals `csv-import.spec.js` en de andere syncjournal-specs), niet in de `test()`-stijl van `kraken-real-data.spec.js` (die draait tegen de oude `work/tradejournal.html`).
+4. **Bug in de eerste versie, gevangen door de synthetische case "positie die nog loopt":** een opening vanaf 0 werd als omkering gezien (`(0>0)===(nieuw>0)` is false bij een long). De trades bleven toevallig goed (de schijn-levensloop had qty 0 en viel weg), maar `open` raakte vervuild. Gefixt: `zelfdeKant` is ook waar als de oude stand 0 is.
+
+**Fase 0, wat Denny kan aanleveren (niet nodig voor sessie 1, wel voor sessie 2):** met `?dev=1` de Kraken-snapshotknop → de snapshot bevat nu `events` (rauwe PositionUpdate-events van de huidige Worker, twee maanden terug). Sla op als `tests/_fixtures/kraken-events-2026-09.json`. Voor verder terug: het console-snippet uit §0.2 hierboven. De account-log-JSON kan pas na Worker v19 (sessie 2.1); tot die tijd is de CSV de bron.
+
+**Nog te doen door Denny (1.7):** back-up maken → de 34 oude Kraken-trades verwijderen → account-log CSV inlezen (verwacht: 107 trades, toast zonder waarschuwingen) → `node scripts/kraken-recon.js <csv> <export>` → `missing 0`. En: `syncjournal-backup-2026-09-26 kraken.json` staat nog in de repo-root (kopie staat al in `_scratch/`); verwijder 'm uit de root, hij bevat API-keys.

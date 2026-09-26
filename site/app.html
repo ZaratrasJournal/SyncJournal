@@ -1792,7 +1792,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.141';
+const APP_VERSION='v0.9.142';
 const SCHEMA_VERSION=8;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -5592,7 +5592,7 @@ function migrateOldTrade(ot){
   }
   const scr=ot.screenshots&&ot.screenshots.length?ot.screenshots:(ot.screenshot?[ot.screenshot]:[]);
   // TP-niveaus: de oude app markeerde een gehaald niveau met status:"hit" (niet hit:true)
-  const tpsM=(ot.tpLevels||ot.tps||[]).map(x=>({price:+x.price||0,pct:+x.pct||0,r:x.r||'',hit:x.hit===true||x.status==='hit'}));
+  const tpsM=(ot.tpLevels||ot.tps||[]).map(x=>({price:+x.price||0,pct:+x.pct||0,r:x.r||'',hit:x.hit===true||x.status==='hit',ts:Number(x.ts)||0}));   // ts: het moment van een gehaalde TP (adapters die de stappen kennen)
   // Sim-trade zonder exit maar met gehaalde TP's: het resultaat volgt uit die niveaus, naar rato
   // van het gehaalde deel (zo rekende de oude app ook). Het niet-gehaalde deel telt niet mee.
   if(!r&&kind!=='live'&&!(+ot.exit)&&!hindsightExit&&entry&&stop&&stop!==entry){
@@ -5764,6 +5764,17 @@ function uid(){return 'x'+Date.now().toString(36)+Math.random().toString(36).sli
 function ts2date(ms){const d=new Date(+ms||Date.now());return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
 function ts2time(ms){const d=new Date(+ms||Date.now());return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;}
 function localDateISO(){return ts2date(Date.now());}
+/* Datum en tijd in Amsterdam voor tijdstempels die van een exchange komen. ts2date/ts2time
+   nemen de tijdzone van de browser; dat klopt alleen toevallig op een Nederlandse machine. */
+function amsDateTime(ms){
+  const n=+ms;if(!(n>0))return{date:'',time:''};
+  try{
+    const s=new Intl.DateTimeFormat('sv-SE',{timeZone:'Europe/Amsterdam',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(new Date(n));
+    const m=s.match(/(\d{4}-\d{2}-\d{2})\D+(\d{2}):(\d{2})/);
+    if(m)return{date:m[1],time:m[2]+':'+m[3]};
+  }catch(e){}
+  return{date:ts2date(n),time:ts2time(n)};
+}
 function sourceTypeOf(src){if(!src)return 'manual';if(EXMAP[src])return src;return MANUAL.some(m=>m.id===src)?'manual':String(src);}
 
 // -- EMPTY_TRADE (TJ-schema; het formaat dat de adapters uitspugen) --
@@ -6428,6 +6439,170 @@ const ExchangeAPI = {
       const stableId=t.fill_id||(status==="open"?`open_${t.symbol||"?"}_${t.fillTime||"0"}_${sideLc||"?"}`:uid());
       return{id:"kraken_"+stableId,openTime:t.open_time||ft,closeTime:closeT,date:closeT?closeT.split("T")[0]:(ft?ft.split("T")[0]:""),time:closeT?(closeT.split("T")[1]||"").slice(0,5):(ft?(ft.split("T")[1]||"").slice(0,5):""),pair,direction:t.direction||(sideLc==="buy"||sideLc==="long"?"long":"short"),entry:String(t.entry_price||t.price||""),exit:status==="closed"?String(t.exit_price||""):"",positionSize:usdNotional>0?usdNotional.toFixed(2):String(t.size||""),positionSizeAsset:String(t.size||""),pnl:status==="closed"?pnlVal:"",unrealizedPnl:status==="open"?String(t.unrealized_pnl||""):"",liquidationPrice:String(t.liquidation_price||""),fees:t.fee?String(Math.abs(parseFloat(t.fee)||0).toFixed(4)):"0",leverage:"1",source:"kraken",status,stopLoss:"",takeProfit:"",highestPrice:"",lowestPrice:"",setupTags:[],confirmationTags:[],timeframeTags:[],emotionTags:[],mistakeTags:[],customTags:[],rating:0,screenshot:null,notes:"",links:[],layers:[],manualOverrides:[],tpLevels,originalSizeAsset};
     },
+    /* ═══ Account-log → levenslopen (Denny 26-09-2026) ═══
+       Kraken's account-log is de bron van waarheid: per uitvoering een positie-regel
+       (asset == contract: change en new balance in contracten) en een cash-regel
+       (asset == usd: realized pnl, fee, realized funding). De CSV-export en het
+       JSON-endpoint /api/history/v3/account-log bevatten dezelfde regels; beide worden
+       hier naar één vorm gebracht en door dezelfde functie tot trades gebouwd, zodat
+       CSV-import en API-sync dezelfde trade met dezelfde id opleveren.
+
+       Waarom niet de positie-gebeurtenissen (/positions): daar is fillTime de openings-
+       tijd van de hele positie en hangt de opbouw af van de volgorde waarin de events
+       binnenkomen; zie docs/opdracht-kraken-fix-2026-09-26.md. De balans-keten hieronder
+       (new balance = oude stand + change) is volgorde-onafhankelijk. */
+    _KR_LOG_TRADE_INFOS:['futures trade','futures liquidation','futures partial liquidation','futures assignor','futures assignee','futures_unwind','futures unwind bankrupt','futures unwind counterparty','covered liquidation'],
+    // CSV-rijen (kolomnamen uit de export, of de JSON-veldnamen als iemand die als CSV plakt) → genormaliseerde regels
+    _logRegelsUitCsv(rows){
+      const num=v=>{const n=parseFloat(String(v==null?'':v).replace(',','.'));return isFinite(n)?n:0;};
+      const veld=(r,...ks)=>{for(const k of ks){if(r[k]!=null&&String(r[k])!=='')return r[k];}return '';};
+      const regels=(rows||[]).map((r,i)=>{
+        const dt=String(veld(r,'dateTime','date')).trim();
+        // de export is UTC zonder zone-aanduiding; een ISO-string met zone gaat ongewijzigd door
+        const ts=(dt.includes('T')||/[zZ]$/.test(dt))?Date.parse(dt):Date.parse(dt.replace(' ','T')+'Z');
+        return{ts:isFinite(ts)?ts:0,seq:i,info:String(veld(r,'type','info')).toLowerCase().trim(),
+          asset:String(veld(r,'symbol','asset')).toLowerCase().trim(),contract:String(veld(r,'contract')).toLowerCase().trim(),
+          change:num(veld(r,'change')),newBalance:num(veld(r,'new balance','new_balance')),
+          avgEntry:num(veld(r,'new average entry price','new_average_entry_price')),tradePrice:num(veld(r,'trade price','trade_price')),
+          realizedPnl:num(veld(r,'realized pnl','realized_pnl')),fee:num(veld(r,'fee')),realizedFunding:num(veld(r,'realized funding','realized_funding')),
+          liquidationFee:num(veld(r,'liquidation fee','liquidation_fee')),execution:String(veld(r,'execution')),id:String(veld(r,'uid','booking_uid'))};
+      });
+      /* De export staat nieuwste-eerst. seq moet chronologisch lopen: binnen één seconde
+         bepaalt de bestandsvolgorde welke cash-regel bij welke positie-regel hoort. */
+      const met=regels.filter(r=>r.ts>0);
+      if(met.length>1&&met[0].ts>met[met.length-1].ts)regels.forEach((r,i)=>{r.seq=regels.length-1-i;});
+      return regels;
+    },
+    // JSON-regels van /api/history/v3/account-log → dezelfde vorm
+    _logRegelsUitJson(logs){
+      const num=v=>{const n=parseFloat(v);return isFinite(n)?n:0;};
+      return(logs||[]).map((l,i)=>({ts:Date.parse(l.date)||0,seq:(+l.id)||i,info:String(l.info||'').toLowerCase().trim(),
+        asset:String(l.asset||'').toLowerCase().trim(),contract:String(l.contract||'').toLowerCase().trim(),
+        change:(l.new_balance!=null&&l.old_balance!=null)?num(l.new_balance)-num(l.old_balance):num(l.change),
+        newBalance:num(l.new_balance),avgEntry:num(l.new_average_entry_price),tradePrice:num(l.trade_price),
+        realizedPnl:num(l.realized_pnl),fee:num(l.fee),realizedFunding:num(l.realized_funding),liquidationFee:num(l.liquidation_fee),
+        execution:String(l.execution||''),id:String(l.booking_uid||l.id||'')}));
+    },
+    /* Genormaliseerde regels → {trades, open, waarschuwingen}. Pure functie: geen DOM, geen T.
+       Stappen:  1. paren van positie- en cash-regel per uitvoering
+                 2. levensloop per contract via de balans-keten (0 → ≠0 opent, → 0 sluit, tekenwissel keert om)
+                 3. funding-boekingen bij de levensloop die op dat moment open stond
+                 4. per afgesloten levensloop één trade in dezelfde vorm als _krLevenslopen */
+    levenslopenUitAccountLog(regels){
+      const EPS=1e-9, waarschuwingen=[];
+      const wanneer=ms=>new Date(ms).toISOString().slice(0,19).replace('T',' ');
+      const isTrade=new Set(this._KR_LOG_TRADE_INFOS);
+      const alle=(regels||[]).filter(r=>r&&r.contract).slice().sort((a,b)=>(a.ts-b.ts)||(a.seq-b.seq));
+      const handel=alle.filter(r=>isTrade.has(r.info));
+      const funding=alle.filter(r=>r.info==='funding rate change');
+
+      /* 1. Paren. Met een execution-id (JSON) is de koppeling exact. Zonder (CSV) staat de
+         cash-regel direct na zijn positie-regel; bij twijfel wint dezelfde trade price. Een
+         positie-regel zonder cash-regel is een fee die met KFEE is betaald: fee 0, pnl 0. */
+      const posities=[], wachtPos={}, wachtCash={};
+      const zelfdePrijs=(a,b)=>Math.abs(a.tradePrice-b.tradePrice)<1e-6;
+      const past=(p,c)=>p.execution||c.execution?(p.execution===c.execution):zelfdePrijs(p,c);
+      for(const r of handel){
+        if(r.asset===r.contract){
+          r.cash=null;posities.push(r);
+          const w=wachtCash[r.contract]||[], j=w.findIndex(c=>past(r,c));
+          if(j>=0)r.cash=w.splice(j,1)[0];else(wachtPos[r.contract]||(wachtPos[r.contract]=[])).push(r);
+          continue;
+        }
+        const kand=wachtPos[r.contract]||[];
+        let i=-1;
+        for(let k=kand.length-1;k>=0;k--){if(past(kand[k],r)){i=k;break;}}
+        if(i<0&&!r.execution&&kand.length)i=kand.length-1;
+        if(i>=0){kand.splice(i,1)[0].cash=r;}
+        else(wachtCash[r.contract]||(wachtCash[r.contract]=[])).push(r);
+        // rotki's controle: de cash-mutatie is precies pnl + funding − fee − liquidatiefee
+        const verwacht=r.realizedPnl+r.realizedFunding-Math.abs(r.fee)-Math.abs(r.liquidationFee);
+        if(Math.abs(r.change-verwacht)>1e-6)waarschuwingen.push(wanneer(r.ts)+' '+r.contract+': cash-regel niet sluitend (change '+r.change+', pnl+funding−fee '+verwacht.toFixed(8)+')');
+      }
+      Object.keys(wachtCash).forEach(c=>wachtCash[c].forEach(r=>waarschuwingen.push(wanneer(r.ts)+' '+c+': cash-regel zonder positie-regel (pnl '+r.realizedPnl+')')));
+
+      /* 2. Levensloop per contract. */
+      const lopen=[], lopend={}, stand={};
+      const nieuw=(c,ts,dir,partial)=>({contract:c,openTs:ts,closeTs:0,dir,steps:[],pnl:0,fee:0,liqFee:0,funding:0,partial:!!partial});
+      const stap=(L,r,qty,effect,fee,pnl,suffix)=>L.steps.push({ts:r.ts,side:r.change>0?'buy':'sell',qty,price:r.tradePrice,fee,
+        // seq vooraan: fillTimeline sorteert op (ts, id), en binnen één seconde moet de bestandsvolgorde leidend blijven
+        id:String(r.seq).padStart(9,'0')+'_'+(r.execution||r.id||r.contract)+(suffix||''),effect,liq:/liquidation/.test(r.info),
+        pnlExch:(effect==='dec'&&pnl!=null&&isFinite(pnl))?pnl:null});
+      const boek=(L,c,feeDeel)=>{if(!L||!c)return;const d=feeDeel==null?1:feeDeel;L.pnl+=c.realizedPnl;L.funding+=c.realizedFunding;L.fee+=Math.abs(c.fee)*d;L.liqFee+=Math.abs(c.liquidationFee)*d;};
+      for(const r of posities){
+        const c=r.contract, nieuwBal=r.newBalance, oudRij=nieuwBal-r.change;
+        let oud=stand[c];
+        if(oud==null)oud=oudRij;
+        else if(Math.abs(oud-oudRij)>Math.max(EPS,Math.abs(oud)*1e-6)){waarschuwingen.push(wanneer(r.ts)+' '+c+': keten niet sluitend (stand '+oud+', regel zegt '+oudRij+')');oud=oudRij;}
+        stand[c]=nieuwBal;
+        if(Math.abs(r.change)<EPS||!(r.tradePrice>0)){boek(lopend[c],r.cash);continue;}   // geen uitvoering, wel een boeking
+        let L=lopend[c];
+        if(!L||Math.abs(oud)<EPS){
+          // begint de keten niet op nul, dan ligt de opening buiten het bestand: start met wat er al stond
+          const wees=Math.abs(oud)>=EPS;
+          L=lopend[c]=nieuw(c,r.ts,(wees?oud:nieuwBal)>0?'long':'short',wees);
+          if(wees)L.steps.push({ts:r.ts-1,side:oud>0?'buy':'sell',qty:Math.abs(oud),price:r.avgEntry>0?r.avgEntry:r.tradePrice,fee:0,id:'000000000_wees_'+c+'_'+r.ts,effect:'inc',synthetic:true});
+        }
+        const fee=Math.abs(r.cash?r.cash.fee:0), pnl=r.cash?r.cash.realizedPnl:null;
+        // vanaf nul, naar nul, of hetzelfde teken: geen omkering
+        const zelfdeKant=Math.abs(oud)<EPS||Math.abs(nieuwBal)<EPS||(nieuwBal>0)===(oud>0);
+        if(zelfdeKant){
+          stap(L,r,Math.abs(r.change),Math.abs(nieuwBal)>Math.abs(oud)+EPS?'inc':'dec',fee,pnl);
+          boek(L,r.cash);
+          if(Math.abs(nieuwBal)<EPS){L.closeTs=r.ts;lopen.push(L);delete lopend[c];}
+        }else{
+          // omkering in één uitvoering: het oude deel sluit, de rest opent direct een nieuwe levensloop
+          const dicht=Math.abs(oud), rest=Math.abs(nieuwBal), deel=dicht/(dicht+rest);
+          stap(L,r,dicht,'dec',fee*deel,pnl,'_sluit');
+          boek(L,r.cash,deel);
+          L.closeTs=r.ts;lopen.push(L);
+          const N=lopend[c]=nieuw(c,r.ts,nieuwBal>0?'long':'short',false);
+          stap(N,r,rest,'inc',fee*(1-deel),null,'_open');
+          N.fee+=fee*(1-deel);
+        }
+      }
+
+      /* 3. Funding hoort bij de levensloop die op dat moment open stond (Kraken boekt hem
+         alleen zolang er een positie is). Valt hij buiten elke levensloop, dan telt hij niet mee. */
+      const nogOpen=Object.values(lopend);
+      for(const f of funding){
+        const L=lopen.find(L=>L.contract===f.contract&&f.ts>=L.openTs&&f.ts<=L.closeTs)||nogOpen.find(L=>L.contract===f.contract&&f.ts>=L.openTs);
+        if(L)L.funding+=f.realizedFunding;
+      }
+
+      /* 4. Trades, in dezelfde vorm als _krLevenslopen (zelfde id-vorm → CSV en API dedupen). */
+      const trades=[], open=[];
+      const maak=(L)=>{
+        const tl=fillTimeline(L.steps,{mult:1});
+        if(!tl.length||!L.closeTs||!tl.some(isAfbouw)){open.push(L);return;}
+        const sum=fillSummary(tl), sym=L.contract.toUpperCase();
+        const fees=Math.abs(L.fee)+Math.abs(L.liqFee);
+        // pnl is netto: gerealiseerd − fees + funding. Funding apart bewaren kan niet (migrateOldTrade laat onbekende velden vallen).
+        const netto=L.pnl-fees+L.funding;
+        const qty=sum.exitsAsset||sum.peak||0;
+        const uit=tl.filter(isAfbouw), uitQty=uit.reduce((s,x)=>s+x.qty,0)||1;
+        const {date,time}=amsDateTime(L.openTs);
+        trades.push({...EMPTY_TRADE,
+          id:"kraken_pos_"+sym+"_"+L.openTs,
+          date,time,openTime:String(L.openTs),closeTime:String(L.closeTs),
+          pair:this._pair(sym),direction:L.dir,
+          entry:sum.avgEntry>0?pxRound(sum.avgEntry):"",
+          exit:sum.avgExit>0?pxRound(sum.avgExit):"",
+          positionSize:(sum.avgEntry>0&&qty>0)?(sum.avgEntry*qty).toFixed(2):"",
+          positionSizeAsset:qty>0?normPrice(+qty.toFixed(8)):"",   // optelrest (0,0232000…02) wegronden
+          pnl:String(netto.toFixed(4)),
+          fees:String(fees.toFixed(4)),
+          leverage:"",source:"kraken",status:"closed",
+          positionId:sym,
+          fills:tl,
+          notes:L.partial?"⚠ Partial data: opening order niet in CSV-range":"",
+          tpLevels:uit.map((x,i)=>({id:'tp'+(i+1)+'_'+x.ts,price:normPrice(x.price),pct:String(+(x.qty/uitQty*100).toFixed(2)),status:"hit",actualPrice:normPrice(x.price),ts:x.ts})),
+        });
+      };
+      lopen.forEach(maak);
+      nogOpen.forEach(L=>open.push(L));
+      return{trades,open,waarschuwingen};
+    },
     /* Kraken levert zijn positiegeschiedenis als losse gebeurtenissen: elke uitvoering zegt
        wat de positie ervoor en erna was, wat er gerealiseerd is en of het een liquidatie was.
        Daarmee is één levensloop af te lezen - van de eerste opening tot newPosition weer nul -
@@ -6449,7 +6624,7 @@ const ExchangeAPI = {
         const qty=sum.exitsAsset||sum.peak||0;
         uit.push({...EMPTY_TRADE,
           id:"kraken_pos_"+sym+"_"+st.begin,
-          date:ts2date(eerste.ts),time:ts2time(eerste.ts),
+          ...amsDateTime(eerste.ts),
           openTime:String(eerste.ts),closeTime:String(laatste.ts),
           pair:this._pair(sym),direction:dir,
           entry:sum.avgEntry>0?normPrice(sum.avgEntry):"",
@@ -7093,9 +7268,9 @@ ExchangeAPI.kraken.captureSnapshot=async function(creds){
   const{apiKey,apiSecret}=creds||{};
   if(!apiKey||!apiSecret)throw new Error("API key en secret nodig");
   const startTime=new Date(new Date().getFullYear(),new Date().getMonth()-2,1).getTime();
-  const tradesRaw=await proxyCall({exchange:"kraken",action:"trades",apiKey,apiSecret,startTime});
+  const tradesRaw=await proxyCall({exchange:"kraken",action:"trades",apiKey,apiSecret,startTime,withEvents:true});   // rauwe PositionUpdate-events mee: fixture voor de levensloop-test
   const openRaw=await proxyCall({exchange:"kraken",action:"open_positions",apiKey,apiSecret});
-  return{type:"kraken-snapshot",positionsHistory:tradesRaw.trades||tradesRaw.data||[],openPositions:openRaw.positions||openRaw.data||[],raw:{trades:tradesRaw,open:openRaw}};
+  return{type:"kraken-snapshot",positionsHistory:tradesRaw.trades||tradesRaw.data||[],events:tradesRaw.events||[],openPositions:openRaw.positions||openRaw.data||[],raw:{trades:tradesRaw,open:openRaw}};
 };
 ExchangeAPI.hyperliquid.captureSnapshot=async function(creds){
   const{walletAddress}=creds||{};
@@ -7529,7 +7704,8 @@ function parseExchangeCsvText(text,forExchange){
         const lines=text.split("\n").filter(l=>l.trim());
         if(lines.length<2)throw new Error("Leeg bestand");
         const headers=parseCSVLine(lines[0]).map(h=>h.replace(/"/g,""));
-        const isKrakenLog=headers.includes("uid")&&headers.includes("realized pnl")&&headers.includes("trade price");
+        const isKrakenLog=(headers.includes("uid")&&headers.includes("realized pnl")&&headers.includes("trade price"))
+          ||(headers.includes("booking_uid")&&headers.includes("info")&&headers.includes("new_balance"));   // account-log-JSON als CSV geplakt
         const isMexcFutures=headers.includes("Futures Trading Pair")&&headers.includes("Closing PNL");
         const isMexcPosition=headers.includes("Futures")&&headers.includes("Avg Entry Price")&&headers.includes("Avg Close Price");
         const isBlofinOrder=headers.includes("Underlying Asset")&&headers.includes("Avg Fill")&&headers.includes("PNL");
@@ -7677,7 +7853,7 @@ function parseExchangeCsvText(text,forExchange){
             }
           }
         }
-        // Kraken account log — position-lifecycle tracking per contract
+        // Kraken account log — één levensloop per positie, via de adapter (CSV-import en API-sync delen die functie)
         if(isKrakenLog){
           const rowsRaw=[];
           for(let i=1;i<lines.length;i++){
@@ -7685,83 +7861,10 @@ function parseExchangeCsvText(text,forExchange){
             const r={};headers.forEach((h,idx)=>r[h]=vals[idx]||"");
             rowsRaw.push(r);
           }
-          // Filter op "futures trade" met contract (niet usd-side, niet conversion)
-          const fills=rowsRaw.filter(r=>r.type==="futures trade"&&r.contract&&r.symbol!=="usd").reverse();
-          // Bovenstaande reverse: CSV is normaal nieuwste eerst; wij willen oudste eerst voor lifecycle tracking
-          // (als CSV al oud→nieuw is, geen reverse nodig; check eerste vs laatste date)
-          if(fills.length>=2&&new Date(fills[0].dateTime)>new Date(fills[fills.length-1].dateTime))fills.reverse();
-
-          const cleanPair=(s)=>{let x=(s||"").toUpperCase().replace("PF_","").replace("PI_","").replace("XBT","BTC");if(x.includes("/"))return x;if(x.endsWith("USDC"))return x.slice(0,-4)+"/USDC";if(x.endsWith("USDT"))return x.slice(0,-4)+"/USDT";if(x.endsWith("USD"))return x.slice(0,-3)+"/USD";return x+"/USD";};
-          const uidShort=()=>Math.random().toString(36).slice(2,10);
-          // Lifecycle per contract
-          const positions={};
-          for(const f of fills){
-            const contract=f.contract;if(!contract)continue;
-            const oldBal=parseFloat(f["new balance"])-parseFloat(f.change||0);
-            const newBal=parseFloat(f["new balance"]);
-            const chg=parseFloat(f.change||0);
-            const tradePrice=parseFloat(f["trade price"]||0);
-            const fee=Math.abs(parseFloat(f.fee||0));
-            // Find matching usd-side row voor realized pnl
-            const usdRow=rowsRaw.find(r=>r.type==="futures trade"&&r.symbol==="usd"&&r.dateTime===f.dateTime&&r["trade price"]===f["trade price"]);
-            const pnl=usdRow?parseFloat(usdRow["realized pnl"]||0):0;
-            const ts=new Date(f.dateTime).getTime();
-            const date=f.dateTime.split(" ")[0];
-            const time=(f.dateTime.split(" ")[1]||"00:00:00").slice(0,5);
-            const absOld=Math.abs(oldBal),absNew=Math.abs(newBal);
-            let pos=positions[contract];
-            // Nieuwe positie opent (balance van 0 naar non-zero)
-            if(absOld<1e-9&&absNew>1e-9){
-              positions[contract]={direction:newBal>0?"long":"short",openTs:ts,date,time,entryPrice:parseFloat(f["new average entry price"])||tradePrice,openSize:absNew,tps:[],totalPnl:0,totalFee:fee,partial:false};
-              continue;
-            }
-            // Orphan close: opening valt buiten CSV-range. Start virtuele positie bij eerste close-fill.
-            if(!pos&&absOld>1e-9&&absNew<absOld){
-              positions[contract]=pos={
-                direction:oldBal>0?"long":"short",
-                openTs:ts,date,time,
-                entryPrice:parseFloat(f["new average entry price"])||tradePrice,
-                openSize:absOld,
-                tps:[],totalPnl:0,totalFee:0,partial:true,
-              };
-            }
-            if(!pos)continue;
-            // Partial close
-            if(absNew<absOld-1e-9){
-              const closedAmt=absOld-absNew;
-              pos.tps.push({price:tradePrice,sizeClose:closedAmt,pnl});
-              pos.totalPnl+=pnl;pos.totalFee+=fee;
-              if(absNew<1e-9){
-                const exitW=pos.tps.reduce((s,t)=>s+t.price*t.sizeClose,0);
-                const totalClosed=pos.tps.reduce((s,t)=>s+t.sizeClose,0);
-                const avgExit=totalClosed>0?exitW/totalClosed:0;
-                csvTrades.push({...EMPTY_TRADE,
-                  id:"kraken_csv_"+uid(),
-                  date:pos.date,time:pos.time,
-                  pair:cleanPair(contract),
-                  direction:pos.direction,
-                  entry:String(pos.entryPrice),
-                  exit:String(avgExit),
-                  positionSize:String(pos.openSize.toFixed(8)),
-                  pnl:String((pos.totalPnl-pos.totalFee).toFixed(4)),
-                  fees:String(pos.totalFee.toFixed(4)),
-                  leverage:"1",
-                  source:forExchange||"kraken",
-                  status:"closed",
-                  notes:pos.partial?"⚠ Partial data: opening order niet in CSV-range":"",
-                  tpLevels:pos.tps.map(t=>({id:uidShort(),price:String(t.price),pct:String(((t.sizeClose/pos.openSize)*100).toFixed(1)),status:"hit",actualPrice:String(t.price)})),
-                });
-                delete positions[contract];
-              }
-              continue;
-            }
-            // Add to position
-            if(absNew>absOld+1e-9){
-              pos.openSize+=(absNew-absOld);
-              pos.entryPrice=parseFloat(f["new average entry price"])||pos.entryPrice;
-              pos.totalFee+=fee;
-            }
-          }
+          const uit=ExchangeAPI.kraken.levenslopenUitAccountLog(ExchangeAPI.kraken._logRegelsUitCsv(rowsRaw));
+          uit.trades.forEach(t=>csvTrades.push(forExchange?{...t,source:forExchange}:t));
+          // niet-sluitende regels gaan als eigenschap mee naar de import-toast; de details staan in de console
+          if(uit.waarschuwingen.length){csvTrades._waarschuwingen=uit.waarschuwingen;console.warn('[kraken csv] '+uit.waarschuwingen.length+' regel(s) niet sluitend:',uit.waarschuwingen);}
         }else if(isBlofinOrder){/* al verwerkt hierboven */}else if(isMexcPosition){
           // MEXC Position History — positie-level data met entry, exit, pnl
           const normNum=(s)=>String(s||"").replace(/"/g,"").replace(/,/g,"").replace(/USDT|USDC|USD/g,"").trim();
@@ -7796,11 +7899,6 @@ function parseExchangeCsvText(text,forExchange){
             const dt=row["Time"]||"";
             csvTrades.push({...EMPTY_TRADE,id:"mexc_csv_"+uid(),date:dt.split(" ")[0]||"",time:(dt.split(" ")[1]||"00:00").slice(0,5),pair,direction,entry:"",exit:closePrice,positionSize:sizeUsd,positionSizeAsset:sizeAsset,pnl:String(pnl),fees:normNum(row["Trading Fee"])||"0",leverage:row["Leverage"]||"10",source:forExchange||"mexc",status:"closed"});
           }
-        }else if(isKrakenLog){
-          const rows=[];for(let i=1;i<lines.length;i++){const vals=lines[i].split(",").map(v=>v.trim().replace(/"/g,""));const row={};headers.forEach((h,idx)=>row[h]=vals[idx]||"");rows.push(row)}
-          const usdCloses=rows.filter(r=>r.type==="futures trade"&&r.symbol==="usd"&&parseFloat(r["realized pnl"])!==0);
-          const posRows=rows.filter(r=>r.type==="futures trade"&&r.symbol!=="usd");
-          csvTrades=usdCloses.map(u=>{const matching=posRows.find(p=>p.dateTime===u.dateTime&&p["trade price"]===u["trade price"]);const sizeChg=matching?parseFloat(matching.change):0;const direction=sizeChg>0?"short":"long";const entryPrice=matching?matching["new average entry price"]:"";const contract=(u.contract||"pf_xbtusd").toUpperCase().replace("PF_","").replace("PI_","");const krakenP=(s)=>{s=s.replace("XBT","BTC");if(s.endsWith("USDC"))return s.slice(0,-4)+"/USDC";if(s.endsWith("USDT"))return s.slice(0,-4)+"/USDT";if(s.endsWith("USD"))return s.slice(0,-3)+"/USD";return s+"/USD"};const pair=krakenP(contract);const dt=u.dateTime||"";return{...EMPTY_TRADE,id:"kraken_csv_"+uid(),date:dt.split(" ")[0]||"",time:(dt.split(" ")[1]||"00:00").slice(0,5),pair,direction,entry:entryPrice||"",exit:u["trade price"]||"",positionSize:matching?String(Math.abs(sizeChg)):"",pnl:u["realized pnl"]||"",fees:u.fee||"0",leverage:"1",source:forExchange||"kraken",status:"closed"}});
         }
         if(isHyperliquidFills){
           // Hyperliquid compact CSV — elke rij is een fill (Open/Close). Delegeer FIFO-reconstructie
@@ -7946,8 +8044,9 @@ function sjImportCsvText(text,forExchange){
   const mapped=importTjClosed(csvTrades);try{planMatch();}catch(e){}
   [...new Set(mapped.map(t=>t.exchange).filter(Boolean))].forEach(exId=>{try{runPartialDetect(exId);}catch(e){}});
   render();
-  const dup=csvTrades.length-mapped.length;
-  toast(mapped.length?('✓ '+mapped.length+' trade'+(mapped.length===1?'':'s')+' geïmporteerd'+(dup?' · '+dup+' overgeslagen (al aanwezig of in prullenbak)':'')):('Alle '+dup+' trades al aanwezig, niets te importeren'),mapped.length?'ok':'info');
+  const dup=csvTrades.length-mapped.length, warn=(csvTrades._waarschuwingen||[]).length;
+  toast((mapped.length?('✓ '+mapped.length+' trade'+(mapped.length===1?'':'s')+' geïmporteerd'+(dup?' · '+dup+' overgeslagen (al aanwezig of in prullenbak)':'')):('Alle '+dup+' trades al aanwezig, niets te importeren'))
+    +(warn?' · ⚠ '+warn+' regel'+(warn===1?'':'s')+' niet sluitend, zie console':''),mapped.length?'ok':'info');
   return mapped.length;
 }
 function handleCsvFile(e){

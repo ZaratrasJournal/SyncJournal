@@ -8,9 +8,17 @@
 // Toets: Denny's echte Kraken-account-log (tests/_fixtures/kraken-export.csv, 2437 regels)
 // wordt omgezet naar gebeurtenissen en moet dezelfde levenslopen opleveren als een
 // onafhankelijke telling op die CSV.
+//
+// LET OP (26-09-2026): de fixture hieronder zet fillTime = executietijd en levert de events
+// chronologisch. In productie is fillTime de OPENINGSTIJD van de positie en komen de events
+// nieuwste-eerst; daarop gaat _krLevenslopen onderuit (docs/opdracht-kraken-fix-2026-09-26.md
+// §2–4). De toets "Kraken's echte semantiek" onderaan legt dat vast als fixme: hij telt niet
+// als fout tot sessie 2 het events-pad vervangt door de account-log-route (zie
+// docs/plan-kraken-fix-2026-09-26.md). Wordt hij groen, dan meldt hij dat zelf.
 const { chromium } = require('playwright'); const path = require('path'); const fs = require('fs');
 let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  ✓ ' + n)) : (fail++, console.log('  ✗ ' + n + (e ? ' → ' + e : ''))); };
 let skipped = 0; const skip = n => { skipped++; console.log('  ⏭ ' + n + ' — fixture niet in deze kloon, overgeslagen'); };
+let fixmes = 0; const fixme = (n, c, e) => { c ? (pass++, console.log('  ✓ ' + n + ' — fixme is opgelost, haal de markering weg')) : (fixmes++, console.log('  ⚠ fixme: ' + n + (e ? ' → ' + e : '') + ' — bekend kapot, sessie 2')); };
 const bij = (a, b, tol) => Math.abs(a - b) <= (tol == null ? 1e-6 : tol);
 const APP = 'file:///' + path.resolve('work/syncjournal.html').split(path.sep).join('/');
 const CSV = path.resolve('tests/_fixtures/kraken-export.csv');
@@ -119,6 +127,27 @@ const ev = (o) => ({ uid: 'u' + (o.ts), timestamp: o.ts, event: { PositionUpdate
     await ctx.close();
   } else skip('de echte Kraken-account-log');
 
+  console.log("─── Kraken's echte semantiek: fillTime = openingstijd van de positie, nieuwste eerst ───");
+  /* Zelfde echte account-log, maar nu zoals /api/history/v3/positions het in productie levert:
+     fillTime is op élk event de openingstijd van de positie (docs + ccxt fetchPositionsHistory,
+     26-09-2026) en de Worker geeft de events nieuwste-eerst. _krLevenslopen neemt fillTime als
+     stap-tijd, dus elke stap krijgt dezelfde tijd en open == close. */
+  if (ECHT) {
+    const { ctx, p } = await open();
+    const echt = ECHT.events.map(e => {
+      const u = e.event.PositionUpdate;
+      const l = ECHT.loops.find(l => l.sym === u.tradeable && e.timestamp >= l.begin && e.timestamp <= l.eind);
+      return { ...e, event: { PositionUpdate: { ...u, fillTime: l ? l.begin : u.fillTime } } };
+    }).sort((a, b) => b.timestamp - a.timestamp);
+    const t = await bouw(p, echt);
+    const opEnNeer = ECHT.loops.filter(l => t.some(x => x.open === l.begin && x.close === l.eind)).length;
+    fixme('met fillTime = openingstijd en nieuwste-eerst komen dezelfde levenslopen eruit (begin én eind)',
+      t.length === ECHT.loops.length && opEnNeer === ECHT.loops.length,
+      `${t.length} vs ${ECHT.loops.length} levenslopen, ${opEnNeer} met juiste begin+eind, ${t.filter(x => x.open === x.close).length} met open == close`);
+    fixme('geen trade heeft open == close', !t.some(x => x.open === x.close && x.n > 1), `${t.filter(x => x.open === x.close).length} trades`);
+    await ctx.close();
+  } else skip("de echte Kraken-account-log (echte semantiek)");
+
   console.log('─── Wat Kraken zelf per gebeurtenis zegt ───');
   {
     const { ctx, p } = await open();
@@ -208,7 +237,7 @@ const ev = (o) => ({ uid: 'u' + (o.ts), timestamp: o.ts, event: { PositionUpdate
   }
 
   ok('geen JS-errors totaal', errs.length === 0, [...new Set(errs)].slice(0, 3).join(' | '));
-  console.log(`\n=== Kraken-levensloop: ${pass}/${pass + fail}${skipped ? ' · ' + skipped + ' delen overgeslagen (fixtures niet in deze kloon)' : ''} ===`);
+  console.log(`\n=== Kraken-levensloop: ${pass}/${pass + fail}${fixmes ? ' · ' + fixmes + ' fixme (bekend kapot, sessie 2)' : ''}${skipped ? ' · ' + skipped + ' delen overgeslagen (fixtures niet in deze kloon)' : ''} ===`);
   await b.close();
   process.exit(fail ? 1 : 0);
 })();

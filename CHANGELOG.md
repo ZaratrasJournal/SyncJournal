@@ -10,6 +10,15 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 De journal is opnieuw opgebouwd als **SyncJournal** en draait nu online op [syncjournal.nl](https://syncjournal.nl). Versienummers zijn opnieuw gestart op v0.9.x (bèta); de oude TradeJournal-releases staan verderop in dit bestand. Je data overzetten kan via Instellingen → Data → Importeer oude backup.
 
+## [v0.9.142] — 2026-09-26
+
+### Fixed
+- **Kraken: de CSV-import van de account-log geeft nu je complete historie, correct.** Elke positie wordt één trade met al haar stappen: instappen, bijkopen en elke deelsluiting als gehaald TP-niveau mét het moment. Netto P&L is gerealiseerd − fees + funding, de positiegrootte staat in USD (de coin-hoeveelheid apart), datum en tijd in Amsterdam-tijd. Getoetst tegen een echte export van 107 posities en 413 fills: 0 afwijkingen in richting, grootte en P&L, en dubbel inlezen voegt niets toe. Lees je account-log opnieuw in (Kraken Pro → Documents → Ledger → tab Futures, of futures.kraken.com → Logs → Download All). Heb je Kraken-trades via de API-koppeling binnengehaald, verwijder die dan eerst: die reconstructie was structureel fout (richting omgeklapt, open- en sluittijd gelijk, de helft van de fills weg). De API-sync gaat in een volgende versie op dezelfde bron over; dat vereist een Worker-update.
+- **Het moment van een gehaald TP-niveau uit een exchange-import blijft bewaard.** Bij het overzetten naar de journal viel dat tijdstip weg, waardoor de tijdlijn en "Tot 1e TP" in Analytics die trades oversloegen.
+
+### Gewijzigd
+- Dev (`?dev=1`): de Kraken-snapshotknop neemt nu ook de rauwe positie-events mee, als fixture voor de volgende stap.
+
 ## [v0.9.141] — 2026-09-26
 
 ### Fixed
