@@ -10,7 +10,7 @@ Basis kwam uit de feature-diff v4_14 → v9 onderaan. Inmiddels werken we op **v
 
 <!-- Denny stuurt bugs 1 voor 1 — elk item krijgt datum + korte reproductiestap. -->
 
-- [ ] **Spec rood: TP-tijd vóór open-tijd rolt niet door naar de volgende dag** *(2026-09-27, gevonden door de volledige doorloop)* — `changemaker-feedback` staat op 27/28. De gefaalde check:
+- [x] **Spec rood: TP-tijd vóór open-tijd rolt niet door naar de volgende dag** — ✅ opgelost in v0.9.149: de doorrol-voorwaarde bij het opslaan is gelijkgetrokken met die van het formulier (`tpMomentMs`). Gemeten over drie invoervolgordes; de normale route was al goed, de twee zijpaden volgen nu. *(2026-09-27, gevonden door de volledige doorloop)* — `changemaker-feedback` staat op 27/28. De gefaalde check:
 
   ```
   ✗ TP-tijd vóór open-tijd → volgende dag (overnight)
@@ -19,7 +19,7 @@ Basis kwam uit de feature-diff v4_14 → v9 onderaan. Inmiddels werken we op **v
 
   Een TP-tijd die vóór de open-tijd ligt hoort als *volgende dag* gelezen te worden (een positie die over middernacht loopt). `ts2 < ts1` bevestigt dat de tweede tijdstempel op dezelfde dag is blijven staan. **Raakt de TP-datum/tijd-functie uit v0.9.146** (datum vooringevuld + ▲▼-knoppen). **Reproductie**: `node tests/changemaker-feedback.spec.js`. Effort: S.
 
-- [ ] **Spec crasht: `planBadge is not defined` in plan-doorloop** *(2026-09-27, gevonden door de volledige doorloop)* — `plan-doorloop` stopt hard op [tests/plan-doorloop.spec.js:230](tests/plan-doorloop.spec.js#L230):
+- [x] **Spec crasht: `planBadge is not defined` in plan-doorloop** — ✅ opgelost 27-09-2026: spec-fout, geen app-defect. De badge is in v0.9.139 bewust uit de tradeslijst gehaald (bcbd9e0); de spec riep hem daarna nog aan. Nu 72/72 — alles ná die regel was sindsdien ongetest. *(2026-09-27, gevonden door de volledige doorloop)* — `plan-doorloop` stopt hard op [tests/plan-doorloop.spec.js:230](tests/plan-doorloop.spec.js#L230):
 
   ```
   page.evaluate: ReferenceError: planBadge is not defined
@@ -267,17 +267,23 @@ Basis kwam uit de feature-diff v4_14 → v9 onderaan. Inmiddels werken we op **v
 
 ## 🔐 Uit de prompt-sessies (sessie 1 — security-review in `pr-reviewer-nl`)
 
+> **Extra gevonden bij het testen, 27-09-2026 — al opgelost.** De theme-token-hook
+> (`.claude/hooks/check-theme-tokens.js`) keek alleen naar `work/tradejournal.html`, de bevroren
+> app. Sinds de naamswijziging blokkeerde hij dus niets meer in de app waar we in werken: een dode
+> guardrail ziet er precies zo uit als een werkende. Gefixt in commit f70d4aa, plus een tweede gat
+> (relatief pad glipte erlangs) en vastgelegd in `tests/theme-hook.spec.js` (26 checks).
+
 Deze punten kwamen boven bij het herschrijven van de review-agent op 27-09-2026: de OWASP-checklist werd tegen de echte code aangehouden in plaats van tegen de theorie. Aan het eind van de prompt-reeks kijken we of stories overlappen vóór we gaan fixen.
 
 | # | Actiepunt | Nu | Straks | Effort |
 |---|---|---|---|---|
-| 1 | `CLAUDE.md` wijst naar de bevroren app | 16× `tradejournal.html`, 0× `syncjournal.html`; release-flow verwijst naar `main/` | Beschrijft `work/syncjournal.html` → `site/app.html` + `site/version.json`; `main/` expliciet als bevroren gemarkeerd | S |
-| 2 | Escaping-gat in de lightbox | `url` en `t.time` gaan ongeëscaped een `innerHTML` in | `esc()` eromheen; import valideert screenshot-URL's op schema | S |
-| 3 | Geen Subresource Integrity | 0 `integrity`-attributen; `xlsx` komt van een CDN | `integrity` + `crossorigin` op de xlsx-regel, óf script gevendord | S |
+| ~~1~~ ✅ | `CLAUDE.md` wijst naar de bevroren app | 16× `tradejournal.html`, 0× `syncjournal.html`; release-flow verwijst naar `main/` | Beschrijft `work/syncjournal.html` → `site/app.html` + `site/version.json`; `main/` expliciet als bevroren gemarkeerd | S |
+| ~~2~~ ✅ | Escaping-gat in de lightbox | `url` en `t.time` gaan ongeëscaped een `innerHTML` in | `esc()` eromheen; import valideert screenshot-URL's op schema | S |
+| ~~3~~ ✅ | Geen Subresource Integrity | 0 `integrity`-attributen; `xlsx` komt van een CDN | `integrity` + `crossorigin` op de xlsx-regel, óf script gevendord | S |
 | 4 | CORS-wildcard in de Worker | Onbekend in productie; de referentie staat op `'*'` | Bevestigd door Denny en beperkt tot de eigen origins | S · Denny |
 | 5 | Reviewer op echte code draaien | Agent herschreven, nooit op een diff losgelaten | Gedraaid op de eerste PR; secties bijgesteld op wat hij meldt | S |
 
-- [ ] **`CLAUDE.md` beschrijft de bevroren app, niet de app waar we in werken** *(2026-09-27, prompt-sessie 1)* — De projectinstructies noemen **16×** `tradejournal.html` en **0×** `syncjournal.html`. Elke nieuwe Claude-sessie krijgt daardoor de opdracht om in het verkeerde bestand te werken, en ziet een release-flow die niet meer bestaat.
+- [x] **`CLAUDE.md` beschrijft de bevroren app, niet de app waar we in werken** — ✅ 27-09-2026 (commit 04443c3). Bijgewerkt tegen `site/README.md`, inclusief de deploy-stap die nergens stond en de waarschuwing bij de graphify-graaf. *(2026-09-27, prompt-sessie 1)* — De projectinstructies noemen **16×** `tradejournal.html` en **0×** `syncjournal.html`. Elke nieuwe Claude-sessie krijgt daardoor de opdracht om in het verkeerde bestand te werken, en ziet een release-flow die niet meer bestaat.
 
   **Feitelijke situatie** (gemeten 27-09-2026):
 
@@ -297,7 +303,7 @@ Deze punten kwamen boven bij het herschrijven van de review-agent op 27-09-2026:
 
   **Acceptatie**: `grep -c "tradejournal.html" CLAUDE.md` levert alleen nog treffers op in de zin die zegt dat dat bestand bevroren is; de release-flow-stappen zijn na te lopen zonder dat er een bestand ontbreekt.
 
-- [ ] **Screenshot-URL en tijd ongeëscaped in de lightbox** *(2026-09-27, prompt-sessie 1)* — In `renderLightbox()` gaan twee waarden ongeëscaped een HTML-string in, terwijl de buurvelden op dezelfde regel wél door `esc()` gaan. Het is dus een vergeten geval, geen bewuste keuze.
+- [x] **Screenshot-URL en tijd ongeëscaped in de lightbox** — ✅ v0.9.148. Bleek zes plekken in plaats van één; opgelost met één helper `beeldSrc()` in plaats van zes escapes. Lek eerst aangetoond, daarna gedicht. Spec: `tests/beeld-escaping.spec.js` (16 checks). *(2026-09-27, prompt-sessie 1)* — In `renderLightbox()` gaan twee waarden ongeëscaped een HTML-string in, terwijl de buurvelden op dezelfde regel wél door `esc()` gaan. Het is dus een vergeten geval, geen bewuste keuze.
 
   ```js
   // work/syncjournal.html:3703
@@ -314,7 +320,7 @@ Deze punten kwamen boven bij het herschrijven van de review-agent op 27-09-2026:
 
   **Acceptatie**: een backup-JSON met `screenshots: ['x" onerror="alert(1)']` importeren en openen levert een kapot plaatje op, geen uitgevoerde code. Test in `tests/`.
 
-- [ ] **Geen Subresource Integrity op externe bronnen** *(2026-09-27, prompt-sessie 1)* — `grep -c "integrity=" work/syncjournal.html` geeft **0**. De app laadt precies één extern script: `xlsx@0.18.5` via jsDelivr ([work/syncjournal.html:13](work/syncjournal.html#L13)). Versie staat vastgezet (goed), maar zonder hash kan een gecompromitteerde CDN willekeurige code draaien bij elke member — in een app die alle trades in localStorage heeft staan.
+- [x] **Geen Subresource Integrity op externe bronnen** — ✅ v0.9.148. Hash zelf berekend over het bestand en daarna mét netwerk getoetst dat `XLSX` nog laadt. *(2026-09-27, prompt-sessie 1)* — `grep -c "integrity=" work/syncjournal.html` geeft **0**. De app laadt precies één extern script: `xlsx@0.18.5` via jsDelivr ([work/syncjournal.html:13](work/syncjournal.html#L13)). Versie staat vastgezet (goed), maar zonder hash kan een gecompromitteerde CDN willekeurige code draaien bij elke member — in een app die alle trades in localStorage heeft staan.
 
   Verder extern: de Google-fonts (`fonts.googleapis.com` / `fonts.gstatic.com`). Daar is SRI niet praktisch omdat het CSS-bestand per browser verschilt.
 
@@ -345,7 +351,7 @@ Gemeten op 27-09-2026 bij het schrijven van de refactor-agent: app-code = één 
 | # | Actiepunt | Nu | Straks | Effort |
 |---|---|---|---|---|
 | 6 | CSV-import per exchange splitsen | 333 regels in één functie; 4 van de 6 exchanges inline; okx-tak achter een zesvoudige negatie | `herkentCsv`/`parseCsv` per adapter; `parseExchangeCsvText` is een lus over de adapters | M–L |
-| 7 | Graphify-graaf verouderd | Graaf van 22-06, geëxtraheerd uit de bevroren `tradejournal.html` | Vers uit `work/syncjournal.html`, óf de instructie uit `CLAUDE.md` verwijderd | S |
+| 7 ⚠ | Graphify-graaf verouderd (**waarschuwing staat in `CLAUDE.md`, graaf zelf nog niet ververst**) | Graaf van 22-06, geëxtraheerd uit de bevroren `tradejournal.html` | Vers uit `work/syncjournal.html`, óf de instructie uit `CLAUDE.md` verwijderd | S |
 
 - [ ] **CSV-import: detectie en parsing per exchange uit elkaar trekken** *(2026-09-27, prompt-sessie 2)* — `parseExchangeCsvText` ([work/syncjournal.html:7722](work/syncjournal.html#L7722)) is met **333 regels de langste functie in de app** en bevat de CSV-parsing van alle zes exchanges door elkaar. Dat botst frontaal met de exchange-isolatieregel uit `CLAUDE.md`.
 
@@ -429,10 +435,10 @@ Volledige doorlichting in [docs/teststrategie-2026-09-27.md](docs/teststrategie-
 | # | Actiepunt | Nu | Straks | Effort |
 |---|---|---|---|---|
 | 10 | CI-lijst automatisch opbouwen | `run-all-sj.js` heeft een handmatige lijst van 74 namen; **97 spec-bestanden draaien nooit** | `readdirSync` over `tests/*.spec.js` + korte uitsluitlijst; nieuwe specs doen automatisch mee | S |
-| 11 | Eén runner in plaats van twee | `npm test` laadt álle 171 bestanden; de 80 losse scripts starten browsers tijdens collectie en 77 roepen `process.exit` aan | `npm test` wijst naar `run-all-sj.js`; `testMatch` beperkt tot runner-stijl-specs | S |
+| 11 ⚠ | Eén runner (**`npm test` is nu gedocumenteerd als kapot; de config zelf nog niet aangepast**) | `npm test` laadt álle 171 bestanden; de 80 losse scripts starten browsers tijdens collectie en 77 roepen `process.exit` aan | `npm test` wijst naar `run-all-sj.js`; `testMatch` beperkt tot runner-stijl-specs | S |
 | 12 | CSV-import testen op CI | `tests/_fixtures/` is gitignored → import wordt online overgeslagen; dekt 3 van 6 formaten | Geanonimiseerde fixtures in git voor alle zes formaten | M |
 | 13 | Levensloop-toets voor elke exchange | 4 van 6 hebben een levensloop-spec; MEXC en FTMO niet, en de vier toetsen niet hetzelfde | Eén gedeelde toets (open → partial → close → re-import), zes keer gedraaid | M |
-| 14 | Twee poorten — pas ná story 10 | Doorloop = **8,6 min** voor 74 specs, dus nu nog niet nodig | Snelle poort < 10 min zodra story 10 er 97 specs bij zet; volledige poort nachtelijk | S |
+| 14 | Twee poorten — pas ná story 10 | Doorloop = **9,5 min** voor 76 specs (27-09, 76/76 groen), dus nu nog niet nodig | Snelle poort < 10 min zodra story 10 er 97 specs bij zet; volledige poort nachtelijk | S |
 
 - [ ] **CI draait 74 van de 171 specs — de lijst is handmatig** *(2026-09-27, prompt-sessie 4)* — `tests/run-all-sj.js` bevat een met de hand bijgehouden `SPECS`-array van 74 namen. Dat is wat GitHub Actions draait. De overige **97 spec-bestanden draaien alleen als iemand ze toevallig aanroept**.
 

@@ -6,6 +6,13 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v0.9.150] — 2026-09-27
+
+### Gewijzigd
+- **De plaatjes bij Backtest, Paper en Gemist zijn weg.** Ze stonden in het filtermenu, in de
+  keuzelijst van het trade-formulier en op de badge in de tradeslijst. Het kleuraccent per soort
+  blijft, dus je ziet nog steeds in één oogopslag waar je naar kijkt.
+
 ## [v0.9.149] — 2026-09-27
 
 ### Fixed
