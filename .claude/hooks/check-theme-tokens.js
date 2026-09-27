@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// PreToolUse hook — block Edit/Write op work/tradejournal.html
+// PreToolUse hook — block Edit/Write op de journal-bestanden in work/
 // als hardcoded theme-kleuren (wit/zwart/goud) in inline JSX style verschijnen
 // zonder var(--...) wrapper.
 //
@@ -22,8 +22,10 @@ const { tool_name, tool_input = {} } = input;
 if (tool_name !== 'Edit' && tool_name !== 'Write') process.exit(0);
 
 const filePath = tool_input.file_path || '';
-// Check alleen work/tradejournal.html (de live dev-file)
-if (!/[\\/]work[\\/]tradejournal\.html$/i.test(filePath)) process.exit(0);
+// Alleen de journal zelf. syncjournal.html is de live dev-file; tradejournal.html staat
+// bevroren maar houdt dezelfde bewaking, zodat een late bewerking daar ook niet glipt.
+// (^|scheidingsteken) zodat een relatief pad als "work/syncjournal.html" ook matcht.
+if (!/(^|[\\/])work[\\/](sync|trade)journal\.html$/i.test(filePath)) process.exit(0);
 
 const text = tool_input.new_string || tool_input.content || '';
 if (!text) process.exit(0);
