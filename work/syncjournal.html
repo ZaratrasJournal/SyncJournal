@@ -1804,7 +1804,7 @@ const KINDS={live:{label:'Live',color:'var(--green)'},gemist:{label:'Gemist',col
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.150';
+const APP_VERSION='v0.9.151';
 const SCHEMA_VERSION=8;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -6050,6 +6050,10 @@ function getProxyUrl(){
 // stil (ze catch'en al), en een manuele actie krijgt een nette melding i.p.v. de exchange te blijven
 // overvragen. Bij succes reset de backoff. Zo blijven we binnen de free-tier + OKX's IP-limiet.
 const _rlBackoff={};// {exchange:{until:ts,tries:n}}
+// Wordt in elke Worker-aanroep meegestuurd; de Worker weigert verzoeken zonder dit kenmerk.
+// Bewust geen geheim: het staat in de client. Het doel is een drempel tegen meeliften, niet
+// authenticatie. Wijzig je dit, wijzig het dan ook in de Worker (zie docs/worker-hardening).
+const CLIENT_TAG="syncjournal-web";
 function _rlWaitSec(ex){const b=_rlBackoff[ex];return(b&&b.until>Date.now())?Math.ceil((b.until-Date.now())/1000):0;}
 function _rlBump(ex){const tries=((_rlBackoff[ex]&&_rlBackoff[ex].tries)||0)+1;const delay=Math.min(10*60*1000,30000*Math.pow(2,tries-1));_rlBackoff[ex]={until:Date.now()+delay,tries};}
 function _rlIsLimit(status,msg){return status===429||/(^|[^0-9])429([^0-9]|$)|1015|rate.?limit|too many request/i.test(String(msg||""));}
@@ -6059,7 +6063,11 @@ async function proxyCall(payload){
   // Proactief overslaan tijdens een actieve backoff — bespaart de Worker + exchange.
   if(_rlWaitSec(ex)>0)throw _rlError(ex);
   const url=getProxyUrl();
-  const resp=await fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
+  // Kenmerk waaraan de Worker onze eigen app herkent. Geen beveiliging — het staat in de client
+  // en is dus af te lezen — maar het weert scripts die de Worker-URL simpelweg gevonden hebben
+  // en hem als gratis exchange-proxy gebruiken. In de body en niet in een header, want een
+  // eigen header maakt van elk verzoek een CORS-preflight.
+  const resp=await fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({...payload,client:CLIENT_TAG})});
   if(!resp.ok){
     var bodyTxt="";try{bodyTxt=await resp.text();}catch(ex1){}
     if(_rlIsLimit(resp.status,bodyTxt)){_rlBump(ex);throw _rlError(ex);}
