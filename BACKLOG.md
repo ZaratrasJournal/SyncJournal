@@ -10,7 +10,26 @@ Basis kwam uit de feature-diff v4_14 → v9 onderaan. Inmiddels werken we op **v
 
 <!-- Denny stuurt bugs 1 voor 1 — elk item krijgt datum + korte reproductiestap. -->
 
+- [ ] **Spec rood: TP-tijd vóór open-tijd rolt niet door naar de volgende dag** *(2026-09-27, gevonden door de volledige doorloop)* — `changemaker-feedback` staat op 27/28. De gefaalde check:
+
+  ```
+  ✗ TP-tijd vóór open-tijd → volgende dag (overnight)
+    {"hasTimeInput":true,"ts1":1789209000000,"ts2":1789193700000,"sameDay":12,"nextDay":12}
+  ```
+
+  Een TP-tijd die vóór de open-tijd ligt hoort als *volgende dag* gelezen te worden (een positie die over middernacht loopt). `ts2 < ts1` bevestigt dat de tweede tijdstempel op dezelfde dag is blijven staan. **Raakt de TP-datum/tijd-functie uit v0.9.146** (datum vooringevuld + ▲▼-knoppen). **Reproductie**: `node tests/changemaker-feedback.spec.js`. Effort: S.
+
+- [ ] **Spec crasht: `planBadge is not defined` in plan-doorloop** *(2026-09-27, gevonden door de volledige doorloop)* — `plan-doorloop` stopt hard op [tests/plan-doorloop.spec.js:230](tests/plan-doorloop.spec.js#L230):
+
+  ```
+  page.evaluate: ReferenceError: planBadge is not defined
+  ```
+
+  Het gebeurt in het blok *"Koppeling met de journal op de demo-dataset"*. Alles ná regel 230 draait dus niet — de spec meldt geen telling, alleen `?`. Óf `planBadge` is hernoemd/verwijderd in de app en de spec loopt achter, óf de functie wordt op dat moment nog niet geladen. Eerst uitzoeken welk van de twee; het verschil bepaalt of dit een spec-fix of een app-bug is. **Reproductie**: `node tests/plan-doorloop.spec.js`. Effort: S.
+
 ⮕ Blofin CCXT-hint opgelost in v12.210. Lesson L18 update blijft optioneel (B) — overweeg later voor docs-update.
+
+- [ ] **SyncJournal: API-koppeling-waarschuwing in trade-form ook bij backtest / paper / gemiste trade** *(2026-09-26, gemeld door Denny)* — In het trade-form (nieuw én bewerken) toont `formExchangeHint()` de melding "⚠ Blofin is gekoppeld via de API. Een handmatige trade telt hier mee in de P&L…" zodra de gekozen exchange een actieve koppeling heeft, ongeacht het veld **Soort**. Een backtest, paper- of gemiste trade zit nergens aan vast: telt niet mee in de live P&L of het saldo van de koppeling en botst niet met een sync. De melding (en de `confirm()` bij opslaan) is daar dus ruis. **Reproductie**: open een trade met Exchange = Blofin (gekoppeld) en Soort = Backtest → gele waarschuwingsbox onder Exchange. **Fix-richting**: in `formExchangeHint()` en de save-confirm alleen waarschuwen als `f_kind === 'live'`; `onKindChange()` moet de hint opnieuw evalueren zodat de box verdwijnt/verschijnt bij wisselen van Soort. Code: [site/app.html:8449](site/app.html#L8449) (hint) + [site/app.html:8484-8487](site/app.html#L8484-L8487) (confirm bij opslaan). Effort: S.
 
 - [ ] **Hyperliquid: gesloten trade blijft "open" na auto-sync (handmatige refresh sluit 'm wél)** *(2026-09-03, gemeld door Denny)* — Een op Hyperliquid **gesloten** positie blijft in de journal als **open** staan zolang alleen de **auto-sync** (achtergrond-poll) draait. Pas bij een **handmatige refresh** wordt de trade correct als gesloten afgerond. Symptoom: de open-placeholder wordt op de auto-sync-route niet gefinaliseerd/geconsumeerd door de gesloten round-trip, op de manuele route wél.
 
@@ -245,6 +264,262 @@ Basis kwam uit de feature-diff v4_14 → v9 onderaan. Inmiddels werken we op **v
 - [ ] **Finalize-aggregatie extraheren (3 kopieën)** *(2026-06-11, audit fase 4)* — `importTrades`-finalize, `syncOpenPositions`-finalize en `detectPartialFromSiblings` delen dezelfde fee/TP/size-aggregatie als kopie; de v12.231 dup-bug kwam hieruit. Exchange-cluster specs staan als vangnet. Pas oppakken mét aanleiding. Effort: M, risico: hoog.
 - [ ] **`aicoach-weekly` "topbar indicator due"-spec structureel maken** *(2026-06-11, audit fase 4)* — Pre-existing failure, los van de audit-fixes; reproduceert op oudere commits. Effort: S.
 - [ ] **CSV-`source:"csv"` vs API dedup-gat** *(2026-06-11, audit fase 3)* — Zelfde positie via generieke CSV én API kan dubbel binnenkomen (verschillende id-formats, compound-dedup dekt alleen FTMO). Niche-pad. Effort: M.
+
+## 🔐 Uit de prompt-sessies (sessie 1 — security-review in `pr-reviewer-nl`)
+
+Deze punten kwamen boven bij het herschrijven van de review-agent op 27-09-2026: de OWASP-checklist werd tegen de echte code aangehouden in plaats van tegen de theorie. Aan het eind van de prompt-reeks kijken we of stories overlappen vóór we gaan fixen.
+
+| # | Actiepunt | Nu | Straks | Effort |
+|---|---|---|---|---|
+| 1 | `CLAUDE.md` wijst naar de bevroren app | 16× `tradejournal.html`, 0× `syncjournal.html`; release-flow verwijst naar `main/` | Beschrijft `work/syncjournal.html` → `site/app.html` + `site/version.json`; `main/` expliciet als bevroren gemarkeerd | S |
+| 2 | Escaping-gat in de lightbox | `url` en `t.time` gaan ongeëscaped een `innerHTML` in | `esc()` eromheen; import valideert screenshot-URL's op schema | S |
+| 3 | Geen Subresource Integrity | 0 `integrity`-attributen; `xlsx` komt van een CDN | `integrity` + `crossorigin` op de xlsx-regel, óf script gevendord | S |
+| 4 | CORS-wildcard in de Worker | Onbekend in productie; de referentie staat op `'*'` | Bevestigd door Denny en beperkt tot de eigen origins | S · Denny |
+| 5 | Reviewer op echte code draaien | Agent herschreven, nooit op een diff losgelaten | Gedraaid op de eerste PR; secties bijgesteld op wat hij meldt | S |
+
+- [ ] **`CLAUDE.md` beschrijft de bevroren app, niet de app waar we in werken** *(2026-09-27, prompt-sessie 1)* — De projectinstructies noemen **16×** `tradejournal.html` en **0×** `syncjournal.html`. Elke nieuwe Claude-sessie krijgt daardoor de opdracht om in het verkeerde bestand te werken, en ziet een release-flow die niet meer bestaat.
+
+  **Feitelijke situatie** (gemeten 27-09-2026):
+
+  | | bestand | versie | status |
+  |---|---|---|---|
+  | dev | `work/syncjournal.html` | v0.9.147 | hier werken we |
+  | release | `site/app.html` | v0.9.147 | byte-identiek aan work |
+  | bron van waarheid | `site/version.json` | v0.9.147 | |
+  | bevroren | `work/tradejournal.html` + `main/tradejournal.html` | v12.239 | legacy, niet meer aanraken |
+  | verouderd | `main/version.json` | v12.239 | wijst naar de bevroren app |
+
+  **Wat er mis is in `CLAUDE.md`**: (a) sectie *Folder layout* en *Versies & bestanden* beschrijven alleen de oude structuur; (b) de release-flow verwijst naar `cp work → main` en `main/version.json` terwijl het nu `cp work/syncjournal.html → site/app.html` + `site/version.json` is; (c) `APP_VERSION` wordt beschreven als object `{version:"v12.X"}` maar is nu een string: `const APP_VERSION='v0.9.147'` ([work/syncjournal.html:1803](work/syncjournal.html#L1803)); (d) de landingspagina (`site/index.html`) en het TradingPlan (`/plan`) staan er nog niet in.
+
+  **Fix-richting**: `CLAUDE.md` bijwerken naar de huidige twee-sporen-situatie, met expliciet "`work/tradejournal.html` en `main/` zijn bevroren, daar wijzigen we niets meer". Eén alinea die dat hard maakt voorkomt een hele categorie verkeerde bewerkingen.
+
+  **Waarom dit eerst moet**: elk ander item op deze lijst wordt door een sessie opgepakt die eerst `CLAUDE.md` leest. Zolang die naar het verkeerde bestand wijst, is elke volgende fix een gok. Effort: S (~20 min).
+
+  **Acceptatie**: `grep -c "tradejournal.html" CLAUDE.md` levert alleen nog treffers op in de zin die zegt dat dat bestand bevroren is; de release-flow-stappen zijn na te lopen zonder dat er een bestand ontbreekt.
+
+- [ ] **Screenshot-URL en tijd ongeëscaped in de lightbox** *(2026-09-27, prompt-sessie 1)* — In `renderLightbox()` gaan twee waarden ongeëscaped een HTML-string in, terwijl de buurvelden op dezelfde regel wél door `esc()` gaan. Het is dus een vergeten geval, geen bewuste keuze.
+
+  ```js
+  // work/syncjournal.html:3703
+  const inner = url ? `<img src="${url}" alt="screenshot">` : chartThumb(t,0);
+  // work/syncjournal.html:3705
+  const cap = t ? `${esc(t.pair)} · ${esc(t.setup)} · ${fmtD(t.date)}${t.time?' '+t.time:''} · …` : …;
+  ```
+
+  `url` komt uit `t.screenshots`, `t.time` uit het trade-formulier. Een aanhalingsteken in `url` breekt uit het `src`-attribuut; daarna is een `onerror`-handler triviaal. De `esc()`-helper staat op [work/syncjournal.html:2791](work/syncjournal.html#L2791) en wordt op de ~40 andere `innerHTML`-plekken wél netjes gebruikt — dit is een uitschieter, geen patroon.
+
+  **Waarom het ertoe doet ondanks dat het je eigen data is**: op zichzelf is dit self-XSS en daarmee onschuldig. Maar in deze community worden **backup-JSON's uitgewisseld**, en via `applyBackup()` komt die data van iemand anders binnen. Dat maakt het een echte route.
+
+  **Fix-richting**: `esc(url)` en `esc(t.time)`. Daarnaast controleren of het import-pad (`applyBackup`) de screenshot-velden valideert — een `data:`- of `blob:`-URL is verwacht, een `javascript:`-URL niet. Effort: S.
+
+  **Acceptatie**: een backup-JSON met `screenshots: ['x" onerror="alert(1)']` importeren en openen levert een kapot plaatje op, geen uitgevoerde code. Test in `tests/`.
+
+- [ ] **Geen Subresource Integrity op externe bronnen** *(2026-09-27, prompt-sessie 1)* — `grep -c "integrity=" work/syncjournal.html` geeft **0**. De app laadt precies één extern script: `xlsx@0.18.5` via jsDelivr ([work/syncjournal.html:13](work/syncjournal.html#L13)). Versie staat vastgezet (goed), maar zonder hash kan een gecompromitteerde CDN willekeurige code draaien bij elke member — in een app die alle trades in localStorage heeft staan.
+
+  Verder extern: de Google-fonts (`fonts.googleapis.com` / `fonts.gstatic.com`). Daar is SRI niet praktisch omdat het CSS-bestand per browser verschilt.
+
+  **Fix-richting**: `integrity` + `crossorigin="anonymous"` op de xlsx-regel. Hash halen bij jsDelivr zelf. Overweeg als alternatief het script te vendoren zoals React, Recharts en prop-types al gevendord zijn ([work/syncjournal.html:1247-1558](work/syncjournal.html#L1247-L1558)) — dan is er geen externe afhankelijkheid meer en werkt de export ook offline. Effort: S.
+
+  **Acceptatie**: de xlsx-regel heeft een `integrity`-hash óf het script is gevendord; de Excel-export werkt nog (handmatig + spec).
+
+- [ ] **Controleren: staat `Access-Control-Allow-Origin` op `*` in de productie-Worker?** *(2026-09-27, prompt-sessie 1 — actie voor Denny)* — In de historische referentie staat `const ALLOWED_ORIGIN = '*'` ([proxy-local/worker.js:14](proxy-local/worker.js#L14)). Die map is niet meer actief, dus dit zegt niets over productie — maar de productie-Worker beheert Denny buiten deze repo, dus alleen zij kan dit nakijken.
+
+  **Wat er gebeurt als het `*` is**: credentials lekken er niet door — die stuurt de client zelf mee — maar elke willekeurige website kan de Worker dan aanroepen en hem als gratis exchange-proxy gebruiken, op ons Cloudflare-quota. Bij genoeg misbruik gaan de koppelingen voor iedereen stuk door rate-limiting.
+
+  **Fix-richting indien bevestigd**: beperken tot de eigen origins (`https://syncjournal.nl`, `https://work.syncjournal.nl`, en `http://localhost:*` voor ontwikkeling). Levering als diff aan Denny; zij deployt.
+
+  **Ook meenemen bij die controle** (uit dezelfde referentie, regel 55/177/227): de Worker bouwt elke upstream-URL uit een **vaste base per exchange** plus een pad van de client. Dat is de goede vorm en moet zo blijven — controleer dat het clientpad geen host kan worden (`//evil.com/...`). Effort: S, maar blokkeert op Denny.
+
+  **Acceptatie**: Denny bevestigt wat er in de live Worker staat; indien `*`, een diff geleverd en gedeployd.
+
+- [ ] **`pr-reviewer-nl` op een echte PR laten lopen** *(2026-09-27, prompt-sessie 1)* — De agent is herschreven (OWASP-sectie, exchange-isolatie, thema-tokens, Amsterdam-tijd, release-discipline) maar nog nooit op code losgelaten. De werkmap staat vol ongecommitte wijzigingen, dus een run nu geeft één onleesbare brij.
+
+  **Wanneer**: de eerstvolgende PR tussen Denny en Sebas. Daarna beoordelen of de secties te streng of te los staan; vooral of hij niet elke `innerHTML` gaat melden waar `esc()` al gebruikt wordt.
+
+  **Ook nog te besluiten**: de agent staat nu op `model: opus` (was `sonnet`) omdat een security-review redeneerwerk is. Terugzetten als dat te duur uitpakt. Effort: S.
+
+## 🧹 Uit de prompt-sessies (sessie 2 — refactor-coach in `refactor-coach-nl`)
+
+Gemeten op 27-09-2026 bij het schrijven van de refactor-agent: app-code = één `<script>`-blok, regels 1559–8874 (~7.300 regels, ~566 functies op topniveau). Deze twee punten kwamen daaruit.
+
+| # | Actiepunt | Nu | Straks | Effort |
+|---|---|---|---|---|
+| 6 | CSV-import per exchange splitsen | 333 regels in één functie; 4 van de 6 exchanges inline; okx-tak achter een zesvoudige negatie | `herkentCsv`/`parseCsv` per adapter; `parseExchangeCsvText` is een lus over de adapters | M–L |
+| 7 | Graphify-graaf verouderd | Graaf van 22-06, geëxtraheerd uit de bevroren `tradejournal.html` | Vers uit `work/syncjournal.html`, óf de instructie uit `CLAUDE.md` verwijderd | S |
+
+- [ ] **CSV-import: detectie en parsing per exchange uit elkaar trekken** *(2026-09-27, prompt-sessie 2)* — `parseExchangeCsvText` ([work/syncjournal.html:7722](work/syncjournal.html#L7722)) is met **333 regels de langste functie in de app** en bevat de CSV-parsing van alle zes exchanges door elkaar. Dat botst frontaal met de exchange-isolatieregel uit `CLAUDE.md`.
+
+  **Het patroon is al half toegepast** — dat maakt dit een afmaak-klus, geen ontwerpvraag:
+
+  | exchange | waar de parsing staat |
+  |---|---|
+  | kraken | ✅ adapter — `ExchangeAPI.kraken._logRegelsUitCsv` + `levenslopenUitAccountLog` ([:7885](work/syncjournal.html#L7885)) |
+  | hyperliquid | ✅ adapter — `ExchangeAPI.hyperliquid._reconstructTrades` ([:7940](work/syncjournal.html#L7940)) |
+  | blofin | ❌ inline, [:7749](work/syncjournal.html#L7749) |
+  | mexc | ❌ inline (2 varianten: Futures + Position), [:7889](work/syncjournal.html#L7889) |
+  | ftmo | ❌ inline, [:7946](work/syncjournal.html#L7946) |
+  | okx | ❌ inline, [:8001](work/syncjournal.html#L8001) |
+
+  **Waarom het nú pijn doet**, met bewijs uit de code zelf:
+  - De okx-tak begint met een **zesvoudige negatie**: `if(isOkxPosition && !isKrakenLog && !isBlofinOrder && !isMexcPosition && !isMexcFutures && !isFtmoMetriX && …)` ([:8001](work/syncjournal.html#L8001)). De generieke fallback op [:8050](work/syncjournal.html#L8050) doet hetzelfde. Een zevende exchange toevoegen betekent dus **twee lange negatie-kettingen bijwerken** op plekken die niets met die nieuwe exchange te maken hebben — precies de fout-categorie waar de isolatieregel voor bestaat.
+  - `isBlofinOrder` wordt op [:7749](work/syncjournal.html#L7749) afgehandeld en staat daarna nóg een keer in de else-if-keten met de comment `/* al verwerkt hierboven */` ([:7889](work/syncjournal.html#L7889)). Restant van een eerdere doorvoer.
+
+  **Fix-richting** (`Replace Conditional with Polymorphism`, in stappen, gedrag ongewijzigd):
+  1. Per exchange een `herkentCsv(headers)` en `parseCsv(rows, forExchange)` op de adapter, precies zoals kraken en hyperliquid het al doen.
+  2. `parseExchangeCsvText` wordt een lus: eerste adapter die `herkentCsv` op `true` zet, wint; anders de generieke fallback. De negatie-kettingen verdwijnen dan vanzelf.
+  3. Per exchange één stap, met de bestaande import-specs eromheen draaien.
+
+  **Vangnet vóór stap 1**: controleren welke van de 171 specs in `tests/` de CSV-import per exchange dekken, en voor de exchanges waar niets ligt eerst een characterization-spec schrijven met een echte export als fixture.
+
+  **Raakt**: alle zes exchanges, plus het herstel-pad uit v0.9.144–147 (Kraken-import die oude CSV-rijen opruimt). Effort: M–L, risico midden. **Niet samen met een feature doen.**
+
+  **Acceptatie**: `parseExchangeCsvText` past in één scherm; elke exchange heeft zijn eigen `herkentCsv`/`parseCsv`; een import van elk van de zes formaten levert exact dezelfde trades op als vóór de refactor (specs groen, geen changelog-regel nodig).
+
+- [ ] **Graphify-graaf is verouderd én van de bevroren app** *(2026-09-27, prompt-sessie 2)* — `CLAUDE.md` schrijft voor om vóór een wijziging aan een gedeelde helper de graphify-graaf te raadplegen ("wat raakt dit nog meer"). Die graaf klopt niet meer:
+
+  - `graphify-src/tradejournal.js` is **3,5 MB en dateert van 22-06-2026** — geëxtraheerd uit `tradejournal.html` (3,6 MB, de **bevroren** app op v12.239), niet uit `work/syncjournal.html` (1,4 MB, v0.9.147).
+  - De graaf in `graphify-out/` beschrijft dus een andere app dan die waar we in werken. Een impact-check erop geeft aanroepers die hier niet meer bestaan, en mist alles wat sinds juni is bijgekomen — inclusief de hele Kraken-levensloop en de OKX-adapter.
+
+  **Waarom dit erger is dan een verouderd bestand**: de instructie in `CLAUDE.md` wekt vertrouwen. Iemand die 'm volgt vóór een wijziging aan `netPnl` of `normalizeTrade` krijgt een antwoord dat plausibel oogt en fout is.
+
+  **Fix-richting**: óf de graaf verversen tegen de huidige app (`graphify-src/syncjournal.js` extraheren uit het `<script>`-blok van `work/syncjournal.html`, dan `graphify graphify-src --update` — code-only/AST, dus gratis), óf de instructie uit `CLAUDE.md` halen en er "gebruik grep" van maken. Niet allebei half. Effort: S.
+
+  **Overlap**: hangt samen met de `CLAUDE.md`-story uit sessie 1 — dezelfde oorzaak (documentatie die op de bevroren app is blijven staan). Bij de opruimronde samen bekijken.
+
+  **Acceptatie**: óf de graaf is vers en `graphify-src/` komt aantoonbaar uit `work/syncjournal.html`, óf `CLAUDE.md` verwijst er niet meer naar.
+
+## 🧩 Uit de prompt-sessies (sessie 3 — toestandsmatrix in de code-conventies)
+
+De regel zelf staat inmiddels in `CLAUDE.md` onder *Code-conventies* ("Toestanden benoemen vóór je bouwt"). Bij het toetsen daarvan aan de bestaande code kwamen deze twee punten boven.
+
+| # | Actiepunt | Nu | Straks | Effort |
+|---|---|---|---|---|
+| 8 | Grafiek zonder data toont leeg assenstelsel | `equity()` duwt bij 0 trades een `{x:0,y:0}` in de reeks en tekent assen zonder lijn of uitleg | Lege staat via `emptyState()` met een volgende stap erin | S |
+| 9 | Negen manieren om "leeg" te tonen | `emptyState()`-helper (8×) náást 7 losse classes: `lt-empty`, `revempty`, `txempty`, `thm-empty`, `tagcard-empty`, `ml-empty`, `empty-h` | Eén helper, één vormgeving, één plek om de tekst te wijzigen | S |
+
+- [ ] **Grafiek zonder data toont een leeg assenstelsel in plaats van een lege staat** *(2026-09-27, prompt-sessie 3)* — `equity()` ([work/syncjournal.html:2954](work/syncjournal.html#L2954)) doet dit:
+
+  ```js
+  src.slice().reverse().forEach((tr,i)=>{cum+=tr.pnl;data.push({x:i,y:Math.round(cum)});});
+  if(!data.length)data.push({x:0,y:0});
+  ```
+
+  Bij nul trades in de reeks wordt er dus één nulpunt bijgezet en rendert Recharts een volledig paneel met assen, grid en label — maar zonder lijn en zonder uitleg. De gebruiker ziet iets wat op een fout lijkt.
+
+  **Waar dit zichtbaar wordt**: de equity-curve staat op vier plekken — dashboard ([:3039](work/syncjournal.html#L3039)), playbook-detail ([:4153](work/syncjournal.html#L4153)), analytics-periode ([:4590](work/syncjournal.html#L4590)). Een periode-filter dat niets overhoudt, is de makkelijkste manier om het te reproduceren. Gezien in de intro-video-opname van 27-09-2026 (lichte thema, dashboard).
+
+  **Fix-richting**: `if(!data.length) return emptyState('equity-none')` met een regel in `EMPTY` die de volgende stap noemt. Let op het verschil tussen **leeg** ("nog geen gesloten trades") en **niets in beeld** ("geen trades in deze periode") — dat zijn twee meldingen, niet één.
+
+  **Meteen meenemen**: dezelfde constructie zit mogelijk in de andere chart-helpers. Bij het oppakken eerst grep op `if(!data.length)` en `data.push({x:0`. Effort: S.
+
+  **Acceptatie**: dashboard met een periode zonder gesloten trades toont een lege staat met een volgende stap; spec in `tests/` die dat vastlegt; geen drift in de pixel-diff voor de gevulde situatie.
+
+- [ ] **Negen manieren om "leeg" te tonen** *(2026-09-27, prompt-sessie 3)* — Er is een `emptyState(key)`-helper ([work/syncjournal.html:2890](work/syncjournal.html#L2890)) met teksten in `EMPTY`, en die wordt 8× gebruikt. Daarnaast bestaan er zeven losse CSS-classes die hetzelfde doen: `lt-empty` (5×), `revempty` (2×), `txempty`, `thm-empty`, `tagcard-empty`, `ml-empty`, `empty-h`.
+
+  **Waarom het ertoe doet**: de teksten staan daardoor verspreid door het bestand in plaats van in `EMPTY`, ze zien er niet hetzelfde uit, en de meeste noemen alleen dat er niets is zonder te zeggen wat de volgende stap is. Bij een nieuw paneel wordt de achtste variant geschreven, omdat de helper niet in beeld is.
+
+  **Fix-richting**: de losse gevallen één voor één naar `emptyState()` brengen en de bijbehorende CSS-classes opruimen. Geen big-bang: per scherm, met de pixel-diff als vangnet. Dit is puur visueel en verandert geen gedrag — dus geen changelog-regel, wél baseline-update na een bewuste keuze.
+
+  **Overlap**: raakt story 8 (die gebruikt dezelfde helper) en de nieuwe conventieregel in `CLAUDE.md`. Effort: S per scherm, M in totaal.
+
+## 🧪 Uit de prompt-sessies (sessie 4 — teststrategie)
+
+Volledige doorlichting in [docs/teststrategie-2026-09-27.md](docs/teststrategie-2026-09-27.md). Gemeten 27-09-2026: 171 spec-bestanden, 2 runners, 2.104 asserts. De suite is niet slecht — het probleem zit in hoe hij gedraaid wordt.
+
+| # | Actiepunt | Nu | Straks | Effort |
+|---|---|---|---|---|
+| 10 | CI-lijst automatisch opbouwen | `run-all-sj.js` heeft een handmatige lijst van 74 namen; **97 spec-bestanden draaien nooit** | `readdirSync` over `tests/*.spec.js` + korte uitsluitlijst; nieuwe specs doen automatisch mee | S |
+| 11 | Eén runner in plaats van twee | `npm test` laadt álle 171 bestanden; de 80 losse scripts starten browsers tijdens collectie en 77 roepen `process.exit` aan | `npm test` wijst naar `run-all-sj.js`; `testMatch` beperkt tot runner-stijl-specs | S |
+| 12 | CSV-import testen op CI | `tests/_fixtures/` is gitignored → import wordt online overgeslagen; dekt 3 van 6 formaten | Geanonimiseerde fixtures in git voor alle zes formaten | M |
+| 13 | Levensloop-toets voor elke exchange | 4 van 6 hebben een levensloop-spec; MEXC en FTMO niet, en de vier toetsen niet hetzelfde | Eén gedeelde toets (open → partial → close → re-import), zes keer gedraaid | M |
+| 14 | Twee poorten — pas ná story 10 | Doorloop = **8,6 min** voor 74 specs, dus nu nog niet nodig | Snelle poort < 10 min zodra story 10 er 97 specs bij zet; volledige poort nachtelijk | S |
+
+- [ ] **CI draait 74 van de 171 specs — de lijst is handmatig** *(2026-09-27, prompt-sessie 4)* — `tests/run-all-sj.js` bevat een met de hand bijgehouden `SPECS`-array van 74 namen. Dat is wat GitHub Actions draait. De overige **97 spec-bestanden draaien alleen als iemand ze toevallig aanroept**.
+
+  **Wat er buiten valt** (selectie): `smoke`, `themes`, `design-review`, `a11y`, `exchange-isolation`, de **complete MEXC-cluster** (18 bestanden), **alle `sync-*`-specs** (backoff, cooldown, throttle, dedup), `kraken-account-log` (47 checks, 26-09 gebouwd), `multi-account-*` (4), `trades-pagination`.
+
+  Dat zijn precies de lagen waar dit jaar de duurste bugs zaten. Niemand heeft een fout gemaakt — de lijst is gewoon niet meegegroeid met de map.
+
+  **Fix-richting**: `SPECS` vervangen door `fs.readdirSync('tests').filter(f=>f.endsWith('.spec.js'))` plus een korte, zichtbare **uitsluit**lijst voor wat bewust apart draait (`design-review`, `a11y`, `ux-audit-screenshots`). Een insluitlijst loopt achter; een uitsluitlijst niet.
+
+  **Verwacht**: de eerste volledige run wordt rood. Dat is de opbrengst, niet het probleem — het zijn 97 bestanden waarvan we nu niet weten of ze nog kloppen. Reken op een opruimronde erna. Effort: S voor de wijziging, M voor het groen krijgen.
+
+  **Acceptatie**: een nieuw `tests/x.spec.js` draait mee zonder dat er iets aan `run-all-sj.js` verandert; de samenvatting noemt het aantal gedraaide, overgeslagen en gefaalde specs.
+
+- [ ] **Twee runners die elkaar in de weg zitten** *(2026-09-27, prompt-sessie 4)* — `npm test` draait `playwright test` met `testMatch: '**/*.spec.js'` ([playwright.config.js](playwright.config.js)), en pakt daarmee ook de **80 spec-bestanden die geen Playwright-runner-specs zijn** maar losse Node-scripts met een eigen `ok()`-teller. Die hebben geen `test()`-blokken; hun module-body start zélf een browser.
+
+  **Gevolg, reproduceerbaar**: `npx playwright test --list` start tientallen browsers en drukt hun eigen ✓-uitvoer af — nog vóór er iets gedraaid wordt. En **77 van die 80 scripts roepen `process.exit()` aan**; `csv-import.spec.js` doet `process.exit(0)` zodra de fixtures ontbreken, wat op een schone kloon de hele collectie afbreekt.
+
+  `npm test` is daarmee in de praktijk onbruikbaar — terwijl het in `CLAUDE.md` als standaardcommando staat.
+
+  **Fix-richting**: `run-all-sj.js` wordt de enige weg; `npm test` gaat daarnaar wijzen. `testMatch` beperken tot de runner-stijl-bestanden, of de config-route helemaal schrappen. `CLAUDE.md` bijwerken. Nieuwe specs worden in de runner-stijl geschreven; de bestaande 80 worden vervangen wanneer iemand ze toch aanraakt — geen apart project. Effort: S.
+
+  **Acceptatie**: `npm test` doet hetzelfde als de CI-doorloop en geeft één samenvatting; `playwright test --list` start geen browsers meer.
+
+- [ ] **CSV-import wordt op CI overgeslagen** *(2026-09-27, prompt-sessie 4)* — `tests/_fixtures/` staat in `.gitignore` (regel 38) omdat er echte exports in staan — terecht. Maar `csv-import.spec.js` slaat zichzelf daardoor over zodra de bestanden ontbreken, en op CI ontbreken ze altijd. **Import is risicocategorie 1 en wordt online niet getest.**
+
+  Daarbij dekt de spec maar drie van de zes formaten: blofin, kraken, hyperliquid. MEXC, FTMO en OKX hebben geen CSV-fixture.
+
+  **Fix-richting**: per exchange één **geanonimiseerde** export in `tests/fixtures/csv/` — echte kolomstructuur en echte randgevallen, verzonnen bedragen, geen account-ID's. Die mogen wél in git.
+
+  **Overlap**: dit is het vangnet dat story 6 (CSV-parser per exchange splitsen) nodig heeft. Deze twee horen achter elkaar: eerst de fixtures, dan de refactor. Effort: M.
+
+  **Acceptatie**: `csv-import` draait groen op GitHub Actions en dekt alle zes formaten; de samenvatting meldt geen `⏭️` meer voor deze spec.
+
+- [ ] **Levensloop-toets ontbreekt voor MEXC en FTMO, en de vier bestaande toetsen niet hetzelfde** *(2026-09-27, prompt-sessie 4)* — Er zijn `kraken-levensloop`, `blofin-levensloop`, `hyperliquid-levensloop` en `okx-levensloop`. MEXC (18 spec-bestanden, maar geen levensloop) en FTMO (1 spec totaal) hebben er geen. En de vier die er zijn, zijn afzonderlijk gegroeid en toetsen niet dezelfde dingen.
+
+  **Waarom dit de belangrijkste dekkingsvraag is**: partial-close is de standaard handelsstijl in deze community. Open → partial → partial → close → opnieuw importeren is het pad waar de duurste bugs van dit jaar zaten (Blofin partial-detectie, Hyperliquid refresh-duplicaat, Kraken 20→43).
+
+  **Fix-richting**: één gedeelde toetsvorm die per adapter over diens fixture draait. Eén test, zes keer gedraaid, in plaats van zes tests die elk iets anders controleren. Bestaande specs blijven staan voor de exchange-eigenaardigheden.
+
+  **Volgorde**: ná story 12 (fixtures in git), anders is er niets om hem op te draaien. Effort: M.
+
+  **Acceptatie**: alle zes adapters doorlopen dezelfde toets; een tweede import voegt nul trades toe; de partial-opbouw klopt per TP-niveau.
+
+- [ ] **Eén trage poort opsplitsen in snel en volledig — pas ná story 10** *(2026-09-27, prompt-sessie 4)* — **Gemeten**: `node tests/run-all-sj.js` doet 74 specs in **8,6 minuten**, 72 groen. Dat zit onder de grens, dus dit is nu géén probleem. Het wordt er een zodra story 10 er 97 specs bij zet — reken dan op ruwweg een verdubbeling, tegen een `timeout-minutes: 30`. Traagste specs nu: `plan-doorloop` 46 s (crasht), `landing` 25 s, `execution-stappen` 21 s, `export-import-rondje` 20 s, `scenario-levensloop` 19 s.
+
+  **Fix-richting**: twee poorten. **Snel** (rekenlaag + schermlaag + `e2e-doorloop`, doel < 10 min) bij elke push en PR. **Volledig** (daarbij `design-review`, `a11y` en de zware exchange-specs) nachtelijk en vóór elke release.
+
+  **Grootste winst in looptijd** zit niet in minder tests maar in minder browsers: een deel van de rekenlaag-specs start een Chromium terwijl een Node-simulatie tegen een fixture genoeg is. Effort: S voor de splitsing, M voor het omzetten van de rekenlaag-specs.
+
+  **Acceptatie**: de snelle poort draait onder de 10 minuten; de volledige poort draait nachtelijk en meldt apart.
+
+## 👁 Uit de prompt-sessies (sessie 5 — wachtpost-ontwerp)
+
+Volledig ontwerp in [docs/wachtpost-ontwerp-2026-09-27.md](docs/wachtpost-ontwerp-2026-09-27.md). Eén controle die opmerkt wanneer een wijziging de bekende valkuilen raakt, en die zwijgt over de rest. **Advies: bouwen ná story 7, 10 en 2** — drie van de signalen vervallen zodra die opgelost zijn.
+
+| # | Actiepunt | Nu | Straks | Effort |
+|---|---|---|---|---|
+| 15 | Dagelijkse staat-controle (niveau 2) | Niets bewaakt de samenhang tussen work / site / version.json / CHANGELOG / graphify | Eén script dat die vijf vergelijkt; rood = iets loopt achter | S |
+| 16 | Diff-wachtpost (niveau 3) | Een wijziging aan een gedeelde helper of een `if (ex === …)` in gedeelde code valt pas op bij review — of bij een member | `PostToolUse`-hook meldt met bestand, regel en de geraakte adapters; max 3 meldingen, de rest stil gelogd | M |
+
+- [ ] **Dagelijkse staat-controle van de repo** *(2026-09-27, prompt-sessie 5)* — Vijf dingen horen met elkaar in de pas te lopen en er is niets dat dat controleert:
+
+  | Controle | Stand 27-09-2026 |
+  |---|---|
+  | `work/syncjournal.html` = `site/app.html` | ✅ byte-identiek |
+  | `APP_VERSION` = `site/version.json` | ✅ allebei v0.9.147 |
+  | Bovenste `CHANGELOG.md`-blok = `APP_VERSION` | te controleren |
+  | `graphify-src/` komt uit de huidige app en is jonger | ❌ zie story 7 |
+  | `node tests/run-all-sj.js` groen | ⚠ 72/74, 8,6 min |
+
+  Alle vijf zijn **vergelijkingen, geen oordelen** — goedkoop, hard, en zonder valse meldingen. Dat maakt dit het makkelijkste deel van de wachtpost en een goed vertrekpunt.
+
+  **Fix-richting**: één Node-script (~80 regels), aan te roepen met de hand, vanuit CI of via een `SessionStart`-hook. Het meldt alleen wat rood is. Effort: S.
+
+  **Acceptatie**: het script draait in onder een seconde, meldt de bestaande graphify-scheefstand, en zwijgt zodra alles klopt.
+
+- [ ] **Diff-wachtpost op `work/syncjournal.html`** *(2026-09-27, prompt-sessie 5)* — Een `PostToolUse`-hook die na elke bewerking naar de diff kijkt en meldt bij vijf signalen: een gewijzigde gedeelde helper (mét de lijst adapters die over dat pad lopen), een nieuwe `if (ex === …)` buiten `ExchangeAPI`, een `localStorage`-key zonder `tj_`, een nieuwe externe `<script src>`, en een `innerHTML`-template zonder `esc()`.
+
+  **De onderbrekingsdrempel is het eigenlijke ontwerp**: melden mag alleen als het te onderbouwen is met bestand + regel, niets doen binnen dagen iets kost, er een concrete volgende stap is, het niet al zichtbaar was in de wijziging zelf, en een mens de onderbreking terecht zou vinden. Valt er één af → stil loggen in `.claude/wachtpost.log`. **Hoogstens drie meldingen per sessie.**
+
+  **Bewust niet**: geen leerlus die drempels zelf bijstelt. Bij een paar meldingen per week is dat niet te meten, en een drempel die zichzelf dichtdraait, verstomt ongemerkt. In plaats daarvan het stille logboek, eens per maand met de hand nagelopen.
+
+  **Mag nooit blokkeren** — anders dan de bestaande theme-hook, die een eenduidig antwoord heeft. Een oordeel hoort niet te kunnen tegenhouden.
+
+  **Volgorde**: ná story 7, 10 en 2 — drie van de signalen vervallen daarmee. Effort: M (~150 regels).
+
+  **Acceptatie**: een wijziging aan `detectPartialFromSiblings` levert één melding met de vijf geraakte adapters en een testcommando; een gewone opmaakwijziging levert niets.
 
 ## 📋 Onderzocht — wacht op go (geen code geschreven)
 

@@ -1,20 +1,32 @@
-# TradeJournal — projectcontext voor Claude
+# SyncJournal — projectcontext voor Claude
 
 ## Wat is dit
-Trading journal web-app voor een kleine trade-community. Denny en Sebas bouwen samen. Voorlopig lokaal draaien; later misschien online.
+Trading journal web-app voor een kleine trade-community. Denny en Sebas bouwen samen.
+Draait online op **syncjournal.nl** (leden) en **work.syncjournal.nl** (werkversie), en
+lokaal via een localhost-server.
+
+> **Let op — er staan twee apps in deze repo.** `syncjournal.html` is de app waar we aan
+> werken. `tradejournal.html` is de oude journal en is **bevroren**: daar gaat geen fix of
+> feature meer in. Zie *Versies & bestanden* hieronder.
 
 ## Stack & keuzes
 - **Single-file HTML + vanilla JS.** Geen bundler, geen framework (tenzij expliciet besloten).
 - **Storage:** localStorage met een `schemaVersion`-veld. Bij laden: migreer oude data naar huidige versie. Voor groeiende data stap over naar IndexedDB.
 - **Altijd via localhost serveren**, nooit `file://` (origin-consistentie voor localStorage + toekomstige CORS).
-- **Vaste filename** (`tradejournal.html`). Versienummer staat *in* de app, niet in de bestandsnaam — anders raakt localStorage zoek.
+- **Vaste filename** (`syncjournal.html`, als release `app.html`). Versienummer staat *in* de app, niet in de bestandsnaam — anders raakt localStorage zoek.
 - **JSON export/import** knop is verplicht: vangnet voor gebruikers bij browserwissels en toekomstige backend-migratie.
 - **Exchange-koppeling:** eerst CSV-import (werkt voor alle exchanges). Directe API's pas wanneer er een backend is (API-keys horen niet in de browser).
 
 ## Folder layout
 ```
-work/        - dev: huidige tradejournal.html
-main/        - release-mirror + version.json (gesynct via cp work -> main)
+work/        - dev: syncjournal.html — HIER WERK JE
+               (work/tradejournal.html = de oude app, BEVROREN)
+site/        - wat er gepubliceerd wordt: index.html (landing), app.html (de journal, kopie
+               van work/syncjournal.html), version.json, plan/, demo-dataset.json.
+               site/README.md beschrijft het release-ritueel en de hosting.
+deploy/      - GITIGNORED: kloon van de losse site-repo (ZaratrasJournal/syncjournal-site)
+               waar Cloudflare Pages op draait. Hierheen kopieer je site/ bij een release.
+main/        - BEVROREN: release-spiegel van de oude TradeJournal (v12.239). Niet aanraken.
 demos/       - losse *-demo.html voor UI-iteratie
   share-examples/ - voorbeeld share-playbook JSONs
 assets/      - logo, favicons, og-image
@@ -28,21 +40,42 @@ _scratch/    - GITIGNORED: oude varianten (v4_14, dragdrop-test, design-handoff)
 ```
 
 ## Versies & bestanden
-- `work/tradejournal.html` — huidige development-file. Hier werk je.
-- `main/tradejournal.html` — community-release. Wordt gesynct via `cp work → main` bij elke release (niet bij elke commit).
-- `main/version.json` — bron-van-waarheid voor auto-update-check: `{version: "v12.X", released: "YYYY-MM-DD"}`. Wordt gefetched door de app via GitHub raw.
-- `APP_VERSION` const bovenin `work/tradejournal.html` — semver `v12.X`. **Moet synchroon blijven met `main/version.json`**.
-- `CHANGELOG.md` — user-facing release-notes. Standaard "Keep a Changelog"-stijl in NL.
-- `_scratch/TradeJournal_v4_14.html` — historische referentie (Denny's oude versie, gitignored). Features zijn grotendeels gemigreerd; zie feature-diff onderin BACKLOG.md.
+
+| Bestand | Rol |
+|---|---|
+| `work/syncjournal.html` | **De development-file. Hier werk je.** |
+| `site/app.html` | De release: kopie van `work/syncjournal.html`, gepubliceerd als `/app` |
+| `site/version.json` | Bron van waarheid voor de in-app update-check: `{version, released}` |
+| `site/index.html` | De landingspagina |
+| `site/plan/` | TradingPlan v2 (`syncjournal.nl/plan`) |
+| `CHANGELOG.md` | User-facing release-notes, "Keep a Changelog"-stijl in NL |
+
+- `APP_VERSION` staat bovenin `work/syncjournal.html` en is een **string**:
+  `const APP_VERSION='v0.9.147';` — geen object. **Moet gelijk blijven aan `site/version.json`**;
+  `tests/hosted.spec.js` bewaakt dat.
+- **Bevroren, niet meer aanraken**: `work/tradejournal.html`, `main/tradejournal.html` en
+  `main/version.json` (de oude TradeJournal, v12.239). Fixes en features gaan uitsluitend naar
+  `work/syncjournal.html`. Oude data overzetten gebeurt ín de app
+  (Instellingen -> Data -> Importeer oude backup), niet door in het oude bestand te werken.
+- `_scratch/TradeJournal_v4_14.html` — historische referentie (gitignored).
 
 ## Release-flow (exact ritueel bij user-facing changes)
-1. Bump `APP_VERSION.version` in `work/tradejournal.html` (zoek `const APP_VERSION`).
-2. Bump `"version"` in `main/version.json` naar dezelfde waarde.
-3. Voeg changelog-entry toe bovenaan `CHANGELOG.md` onder `## [vX.Y] — YYYY-MM-DD` met **Toegevoegd** / **Gewijzigd** / **Verwijderd** / **Fixed** secties.
-4. Commit de user-facing changes bij elkaar (code + version-bumps + CHANGELOG entry in één commit).
-5. `cp work/tradejournal.html main/tradejournal.html`.
-6. Commit als `Release: sync work -> main (vX.Y — korte titel)`.
-7. **`git push` ALLEEN op expliciet "push"-commando van Denny.** Een "ga maar bouwen" / "doe maar" / "zet erin" is **géén** push-toestemming. Lokale commits zijn OK; pushen naar `origin/main` maakt het publiek voor de community en vereist altijd Denny's expliciete go. Na push ziet de community de update-banner in Instellingen → Accounts bij hun volgende Check.
+
+De volledige beschrijving met hosting staat in **`site/README.md`**, sectie *Voor beheerders*.
+Dat is de bron; hieronder de korte versie.
+
+1. Bump `APP_VERSION` in `work/syncjournal.html` (zoek `const APP_VERSION`) — het is een string.
+2. Zet `version` en `released` in `site/version.json` op dezelfde waarde.
+3. Voeg een changelog-blok toe bovenaan `CHANGELOG.md` onder `## [vX.Y] — YYYY-MM-DD` met
+   **Toegevoegd** / **Gewijzigd** / **Verwijderd** / **Fixed**.
+4. Commit code + versiebumps + changelog **in één commit**.
+5. `cp work/syncjournal.html site/app.html`.
+6. Draai de suite: `node tests/run-all-sj.js`. Alles groen voordat er iets vertrekt.
+7. Commit als `Release: sync work -> site (vX.Y — korte titel)`.
+8. Kopieer `site/` naar `deploy/syncjournal-site/` — **die aparte repo is wat Cloudflare Pages
+   bouwt.** Sla je dit over, dan blijft de site op de vorige versie staan terwijl deze repo al
+   bij is. Dat is eerder gebeurd en kostte een middag zoeken.
+9. **`git push` ALLEEN op expliciet "push"-commando van Denny.** In de deploy-repo: push naar `work` -> work.syncjournal.nl (staging); fast-forward `work` -> `main` + push -> syncjournal.nl (leden). Een "ga maar bouwen" / "doe maar" / "zet erin" is **géén** push-toestemming. Lokale commits zijn OK; pushen naar `origin/main` maakt het publiek voor de community en vereist altijd Denny's expliciete go. Na push ziet de community de update-banner in Instellingen → Accounts bij hun volgende Check.
 
 ## Code-conventies
 - **Theme-awareness**: nooit hardcoded `#fff`, `rgba(255,255,255,...)`, `#C9A84C` in JSX. Gebruik `var(--text)`, `var(--text2)`, `var(--gold)`, `var(--bg)`, `var(--green)`, `var(--red)`, `var(--amber)`. Of voeg per-thema override toe in `<style>` block met `body.theme-light .selector {...}`. Alle 6 thema's testen: sync / classic / aurora / light / parchment / daylight.
@@ -53,6 +86,17 @@ _scratch/    - GITIGNORED: oude varianten (v4_14, dragdrop-test, design-handoff)
 - **Inline JSX styling**: inline `style={{}}` is de norm in deze file. CSS-class alleen als er een hover/media-query nodig is. Houd style-objects compact.
 - **React hooks**: `useState` / `useEffect` / `useRef` / `useMemo` / `useCallback` zijn globaal gedestructureerd bovenin het bestand (`const {useState,...} = React`). Geen `React.useState` nodig.
 - **Amsterdam-tijd voor user-facing datums**: gebruik `Intl.DateTimeFormat("sv-SE", {timeZone:"Europe/Amsterdam", ...})` voor dag-of-week / uur berekeningen (DST-aware). Zie DisciplineHeatmap als voorbeeld.
+- **Toestanden benoemen vóór je bouwt**: elk scherm, paneel en lijst heeft meer toestanden dan
+  "gevuld". Loop ze expliciet langs vóór de eerste regel code, en bouw wat van toepassing is:
+  **leeg** (nog nooit data), **niets in beeld** (wel data, maar het filter of de periode laat
+  niets over — een andere melding dan leeg), **laden**, **fout**, **gevuld**. Voor formulieren
+  ook: **uitgeschakeld** en **bezig met opslaan**.
+  - Een grafiek zonder data hoort een lege staat te tonen, geen leeg assenstelsel. Gebruik
+    `emptyState(key)` (met een regel in `EMPTY`) in plaats van een nieuwe `*-empty`-class.
+  - Een lege staat zegt wát er ontbreekt en wat de volgende stap is ("Nog geen trades, start een
+    sync"), niet alleen dat er niets is.
+  - Randgevallen die hier vaak misgaan: precies één datapunt, alle waarden nul, en een periode
+    zonder trades terwijl er wel trades bestaan.
 
 ## Code-stijl (voor Claude)
 
@@ -120,7 +164,7 @@ We ondersteunen 5 exchanges (Blofin, MEXC, Kraken Futures, Hyperliquid, FTMO MT5
 - Commit-messages en code-comments in het Engels (GitHub-conventie, makkelijker voor anderen die later aansluiten).
 - Kleine, reviewbare commits; feature branches + PR review tussen Denny en Sebas.
 - Elke user-facing commit = óók een `CHANGELOG.md` entry in dezelfde commit. Refactor / test / docs hoeven niet in changelog.
-- Voordat je een feature van v4_14 overzet: eerst checken of de huidige `work/tradejournal.html` al een eigen variant heeft, dan afstemmen welke richting we kiezen.
+- Voordat je een feature van v4_14 overzet: eerst checken of `work/syncjournal.html` al een eigen variant heeft, dan afstemmen welke richting we kiezen.
 
 ## Agents & skills — wanneer gebruiken
 
@@ -152,15 +196,21 @@ Claude mag (en moet) deze tools proactief inzetten. Denny hoeft er niet steeds o
 - **Bij bug-melding van Denny**: gebruik `/systematic-debugging` (Superpowers — 4-phase root cause, completer dan mattpocock's `/diagnose`). Voorkomt ad-hoc grep-en-gokken bij hardnekkige Blofin/MEXC/BT-bugs. Bij ≥3 mislukte fixes: ga naar Phase 4.5 (architectuur-twijfel).
 - **Voor "klaar"/"fixed"/"werkt"-claims**: gebruik `/verification-before-completion` (Superpowers). Run verificatie-commando's eerst (Playwright spec / Node-snippet / smoke), bevestig output, dan pas claim. Geen "should work"-aannames.
 - **Bij "denk er over na" / nieuwe-feature plan**: gebruik `/grill-me` — interview-modus met decision-tree branches, één vraag tegelijk. Voorkomt onvolledige plannen voor grote features.
-- **Bij onbekend deel van `tradejournal.html` (5500+ LOC)**: gebruik `/zoom-out` — geeft module-map + callers met domain-vocabulaire. Sneller oriënteren dan blind grep'en.
-- **Impact-check vóór wijziging aan een gedeelde / cross-exchange helper** (`netPnl`, `sourceTypeOf`, `normalizeTrade`, `syncTradeFlatFields`, `detectPartialFromSiblings`, `getConsumedSiblings`, e.d.): raadpleeg de graphify-graaf voor de callers — `graphify query "wat roept netPnl aan"` of `graphify path "A" "B"` — om te toetsen wélke exchanges/modules dat pad raken (sluit aan op de exchange-isolatie-regel). De graaf staat in `graphify-out/`; broncode is de uit `tradejournal.html` geëxtraheerde `graphify-src/tradejournal.js`. Dit is een **"wat raakt dit nog meer"-tool**, géén vervanging voor grep — voor "waar staat functie X" blijft grep sneller én altijd actueel.
-  - **De graaf is een snapshot.** Na een substantiële wijziging aan `work/tradejournal.html`, vóór je 'm weer voor impact-checks vertrouwt: regenereer `graphify-src/tradejournal.js` (extraheer de twee `<script>`-blokken: setup + babel-app) en draai `graphify graphify-src --update` (code-only/AST → gratis, geen tokens). Bij twijfel of de graaf vers is: eerst verversen.
+- **Bij onbekend deel van `work/syncjournal.html` (~8.900 regels)**: gebruik `/zoom-out` — geeft module-map + callers met domain-vocabulaire. Sneller oriënteren dan blind grep'en.
+- **Impact-check vóór wijziging aan een gedeelde / cross-exchange helper** (`netPnl`, `sourceTypeOf`, `normalizeTrade`, `syncTradeFlatFields`, `detectPartialFromSiblings`, `getConsumedSiblings`, e.d.): raadpleeg de graphify-graaf voor de callers — `graphify query "wat roept netPnl aan"` of `graphify path "A" "B"` — om te toetsen wélke exchanges/modules dat pad raken (sluit aan op de exchange-isolatie-regel). De graaf staat in `graphify-out/` (gitignored, lokaal), met de bron in `graphify-src/`. Dit is een **"wat raakt dit nog meer"-tool**, géén vervanging voor grep — voor "waar staat functie X" blijft grep sneller én altijd actueel.
+  - **De graaf klopt op dit moment niet.** `graphify-src/tradejournal.js` is geextraheerd uit de
+    **bevroren** `tradejournal.html` en dateert van 22-06-2026. Hij beschrijft dus een andere app
+    dan die waarin we werken: aanroepers die hier niet bestaan, en alles van na juni ontbreekt
+    (Kraken-levensloop, OKX-adapter). **Vertrouw hem niet tot hij ververst is** — gebruik grep.
+  - **Verversen**: extraheer het `<script>`-blok van `work/syncjournal.html` naar
+    `graphify-src/syncjournal.js`, verwijder de oude `tradejournal.js`, en draai
+    `graphify graphify-src --update` (code-only/AST, kost geen tokens). Zie backlog-story 7.
 - **Changelog-discipline**: elke user-facing commit hoort in de release-flow (zie boven). Refactor/test/docs hoeven niet in changelog.
 - **Bij bug-fix op theme-gerelateerd gedrag**: altijd alle 6 thema's checken (sync / classic / aurora / light / parchment / daylight).
 
 ## Autonome testing (sinds v12.62)
 
-Claude Code kan UI-flows zelfstandig testen tegen `work/tradejournal.html` via Playwright. **Geen copy-paste loop meer voor visuele validatie.**
+Claude Code kan UI-flows zelfstandig testen tegen `work/syncjournal.html` via Playwright. **Geen copy-paste loop meer voor visuele validatie.**
 
 ### Tooling
 
@@ -187,16 +237,22 @@ Claude Code kan UI-flows zelfstandig testen tegen `work/tradejournal.html` via P
 
 ```bash
 cd C:/Users/Denny/Documents/Tradejournal
-npm test                                  # alle tests
-npx playwright test tests/smoke.spec.js
-npx playwright test tests/blofin-partial.spec.js
-npx playwright test tests/themes.spec.js  # 6 thema's × ~9s = ~55s
+node tests/run-all-sj.js                  # DE suite — 74 specs, ~8,6 min (dit is wat CI draait)
+node tests/run-all-sj.js kraken csv       # alleen specs waarvan de naam matcht
+node tests/kraken-levensloop.spec.js      # losse Node-spec (80 stuks) draai je met node
+npx playwright test tests/smoke.spec.js   # runner-spec (91 stuks) draai je met playwright
 node tests/run-adhoc.js --fixture=blofin-partial-state.json --theme=parchment
 ```
 
+> **`npm test` werkt op dit moment niet.** De `testMatch` in `playwright.config.js` pakt álle
+> `tests/*.spec.js`, maar 80 daarvan zijn losse Node-scripts die zelf een browser starten en
+> `process.exit()` aanroepen — die draaien dan al tijdens het verzamelen en kunnen de hele run
+> afbreken. Gebruik `node tests/run-all-sj.js`. Zie `docs/teststrategie-2026-09-27.md` en
+> backlog-story 11.
+
 ### Workflow voor mij (Claude) bij elke nieuwe feature
 
-1. Code wijzigen in `work/tradejournal.html`.
+1. Code wijzigen in `work/syncjournal.html`.
 2. **Pure logic gewijzigd?** Run Node-simulatie tegen relevante snapshot-fixture.
 3. **UI gewijzigd?** Run/uitbreiden van de bijbehorende `*.spec.js`. Lees screenshot via Read-tool.
 4. **Nieuwe feature?** Voeg test toe in `tests/<feature>.spec.js` voordat je 'm afsluit. Past in dezelfde commit.
@@ -219,13 +275,13 @@ node tests/run-adhoc.js --fixture=blofin-partial-state.json --theme=parchment
 
 ### Theme-token validator hook
 
-`.claude/hooks/check-theme-tokens.js` (PreToolUse op Edit/Write) blokkeert hardcoded `#fff` / `#000` / `#C9A84C` / `rgb(255,255,255)` in JSX inline-style attributes voor `work/tradejournal.html`. CSS in `<style>` blokken (theme-overrides via `body.theme-light .selector {...}`) is wel toegestaan. Geregistreerd in `.claude/settings.json`.
+`.claude/hooks/check-theme-tokens.js` (PreToolUse op Edit/Write) blokkeert hardcoded `#fff` / `#000` / `#C9A84C` / `rgb(255,255,255)` in JSX inline-style attributes voor `work/syncjournal.html`. CSS in `<style>` blokken (theme-overrides via `body.theme-light .selector {...}`) is wel toegestaan. Geregistreerd in `.claude/settings.json`.
 
 **Effect**: Claude krijgt direct feedback (exit 2 + stderr) bij theme-violation, kan zelf fixen vóór de Edit doorgaat. Voorkomt theme-bug-categorie permanent.
 
 Test handmatig:
 ```bash
-echo '{"tool_name":"Edit","tool_input":{"file_path":"work/tradejournal.html","new_string":"<div style={{color:\"#fff\"}}>x</div>"}}' \
+echo '{"tool_name":"Edit","tool_input":{"file_path":"work/syncjournal.html","new_string":"<div style={{color:\"#fff\"}}>x</div>"}}' \
   | node .claude/hooks/check-theme-tokens.js
 # Verwacht: exit 2 + uitleg
 ```
