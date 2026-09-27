@@ -6,6 +6,21 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v0.9.148] — 2026-09-27
+
+### Fixed
+- **Screenshots uit een geïmporteerde backup kunnen geen code meer uitvoeren.** Een beeld-URL
+  ging op zes plekken ongeëscaped het scherm in (lightbox, miniaturen in het formulier en op de
+  trade, de review-tijdlijn en de playbook-voorbeelden). Bij je eigen screenshots maakte dat niets
+  uit, maar wie een backup van iemand anders importeert, laadde diens waarden in. Alles loopt nu
+  door één controle die alleen echte beeld-URL's doorlaat. Ook het tijdstip in het onderschrift
+  van de lightbox wordt nu geëscaped.
+
+### Gewijzigd
+- De Excel-export laadt zijn bibliotheek voortaan met een vaste controlesom (Subresource
+  Integrity). Wijkt het bestand op het CDN ooit af van de versie waarop wij het hebben getest,
+  dan laadt het niet in plaats van dat er onbekende code draait.
+
 # SyncJournal (v0.9.x)
 
 De journal is opnieuw opgebouwd als **SyncJournal** en draait nu online op [syncjournal.nl](https://syncjournal.nl). Versienummers zijn opnieuw gestart op v0.9.x (bèta); de oude TradeJournal-releases staan verderop in dit bestand. Je data overzetten kan via Instellingen → Data → Importeer oude backup.

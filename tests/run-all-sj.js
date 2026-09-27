@@ -12,7 +12,7 @@ const SPECS = [
   'backup-guard', 'drive-backup', 'drive-broker', 'hosted', 'weergave-presets', 'demo-dataset', 'pb-demo-cleanup', 'pb-layers',
   'duration', 'changemaker-feedback', 'fout-filter', 'default-tags', 'multifilter', 'trades-sortering', 'integratie-breed', 'stress-vandaag', 'csv-import',
   'exchange-sync', 'exchange-sync2', 'balance-sync', 'auto-sync', 'valuta', 'okx-positie', 'okx-levensloop', 'okx-subtype', 'okx-partial', 'partial-alle-exchanges', 'okx-partial-herstel', 'hyperliquid-levensloop', 'hl-open-tijd', 'blofin-levensloop', 'kraken-levensloop', 'kraken-afronding', 'scenario-levensloop', 'gesynct-vergrendeld', 'execution-stappen', 'koppelingen-menu', 'account-remove', 'robustness', 'multi-tab', 'tj-migrate', 'tj-overzetten', 'pnl-pct', 'unit-toggle', 'tp-overzicht', 'afgeleide-stappen', 'afgeleide-scenarios', 'handmatig-formulier', 'handmatig-scenarios', 'handmatig-statistieken', 'landing', 'tradingplan-v2', 'plan-koppeling', 'plan-tendencies', 'plan-doorloop', 'plan-playbook', 'tj-backtest', 'export-overzicht', 'import-keuze', 'export-import-rondje', 'diagnose', 'possize',
-  'matrix', 'yearheatmap', 'review-list', 'coach-share', 'tv-links', 'theme-hook',
+  'matrix', 'yearheatmap', 'review-list', 'coach-share', 'tv-links', 'theme-hook', 'beeld-escaping',
   'heatmap-scaling', 'analytics-metrics', 'tendencies', 'faq', 'trash',
   'tradingplan-plan',        // aparte app (tradingplan.syncjournal.nl), draait mee zodat hij niet ongetest blijft
 ];

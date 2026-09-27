@@ -10,7 +10,11 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <!-- XLSX-parser voor CSV-import van .xlsx-exports (MEXC), zelfde versie als tradejournal -->
-<script defer src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<!-- Enige externe afhankelijkheid: de Excel-export. Versie staat vast en de hash is
+     berekend over precies dat bestand, zodat een gewijzigde CDN-versie niet laadt. -->
+<script defer src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"
+        integrity="sha384-vtjasyidUo0kW94K5MXDXntzOJpQgBKXmE7e2Ga4LG0skTTLeBi97eFAXsqewJjw"
+        crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <style>
 :root{
   --bg:#F4F6FA; --surface:#FFFFFF; --raise:#FBFCFE; --sink:#F7F9FC;
@@ -1800,7 +1804,7 @@ const KINDS={live:{label:'Live',color:'var(--green)',emoji:''},gemist:{label:'Ge
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.147';
+const APP_VERSION='v0.9.148';
 const SCHEMA_VERSION=8;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -2790,6 +2794,11 @@ const cls=v=>v>=0?'g':'r';
 const arr=v=>v>=0?'▲':'▼';
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const jsarg=s=>String(s).replace(/[\\'"<>]/g,'');  // veilige arg voor inline on*-handlers (geen quote-/tag-breakout)
+// Bron voor een <img src="...">. Eigen screenshots zijn data:image-URL's uit compressImg,
+// maar via een geïmporteerde backup komt deze waarde van iemand anders: alleen bekende
+// beeld-schema's toelaten, en escapen zodat er niet uit het attribuut te breken valt.
+const BEELD_SCHEMA=/^(data:image\/[a-z0-9.+-]+[,;]|blob:|https?:\/\/)/i;
+const beeldSrc=u=>{const s=String(u||'').trim();return BEELD_SCHEMA.test(s)?esc(s):'';};
 const fmtD=d=>d.slice(8)+'-'+d.slice(5,7);
 const fmtDJ=d=>d.slice(8)+'-'+d.slice(5,7)+'-'+d.slice(0,4);   // met jaar, voor overzichten over een langere periode
 // Eén rekenbron: agg() was een ongeguarde kopie van aggOf() (Infinity bij nul verliezen,
@@ -3597,7 +3606,7 @@ function coachPkgHTML(trades,opts){
     const rating=t.rating||(tradeEmotions(t).some(e=>CALM_EMOS.includes(e))?(t.pnl>0?5:4):(t.pnl>0?3:2));
     const checks=revChecks(t), chkLabels=(typeof CHECKLIST!=='undefined'?CHECKLIST:['','','','','']);
     const shotsArr=shotMap[t.id]||[];
-    const media=(shotsArr.length?shotsArr.map((u,i)=>shotBlock('<img src="'+u+'" alt="screenshot">','Screenshot '+(i+1)+' / '+shotsArr.length)):[shotBlock(chartThumb(t,1),'Auto-chart · geen screenshot geüpload')]).join('');
+    const media=(shotsArr.length?shotsArr.map((u,i)=>shotBlock('<img src="'+beeldSrc(u)+'" alt="screenshot">','Screenshot '+(i+1)+' / '+shotsArr.length)):[shotBlock(chartThumb(t,1),'Auto-chart · geen screenshot geüpload')]).join('');
     const szTxt=(typeof SZ==='function'&&!isNaN(SZ(t)))?CURSYM()+' '+SZ(t).toLocaleString('nl-NL'):'—';
     const num=v=>numOrDash(v);
     return `<div class="tcard">
@@ -3658,7 +3667,7 @@ function removeScreenshot(id,i){const t=T.find(x=>x.id===id);if(!t||!t.screensho
    zodat uploaden/plakken het open formulier niet herbouwt. Werkt zoals de echte journal. */
 let formShots=[];
 function renderFormShots(){const c=document.getElementById('shotbuilder');if(!c)return;
-  const thumbs=formShots.map((s,i)=>`<div class="shotbox" onclick="zoomFormShot(${i})"><button class="shotdel" onclick="event.stopPropagation();removeFormShot(${i})" title="verwijderen">×</button><img src="${s}" alt="screenshot ${i+1}"><span class="zoom">🔍</span></div>`).join('');
+  const thumbs=formShots.map((s,i)=>`<div class="shotbox" onclick="zoomFormShot(${i})"><button class="shotdel" onclick="event.stopPropagation();removeFormShot(${i})" title="verwijderen">×</button><img src="${beeldSrc(s)}" alt="screenshot ${i+1}"><span class="zoom">🔍</span></div>`).join('');
   const add=formShots.length<8?`<div class="shotadd" onclick="pickFormShot()"><div style="font-size:24px;line-height:1">＋</div><div style="font-size:10.5px;color:var(--muted);margin-top:5px;text-align:center;line-height:1.35">Upload of plak<br>(Ctrl/⌘+V)</div></div>`:'';
   c.innerHTML=`<div class="shotgrid">${thumbs}${add}</div>`;}
 async function addFormShot(file){if(!file||!(file.type||'').startsWith('image/'))return;if(formShots.length>=8){toast('Max 8 screenshots per trade','info');return;}try{formShots.push(await compressImg(file));renderFormShots();}catch(e){toast('Kon afbeelding niet laden','info');}}
@@ -3674,7 +3683,7 @@ function removeFormTvLink(i){formTvLinks.splice(i,1);formDirty=true;renderFormTv
 function renderFormTvLinks(){const c=document.getElementById('tvlinkbuilder');if(!c)return;
   c.innerHTML=formTvLinks.length?formTvLinks.map((u,i)=>`<span class="tvchip"><a href="${esc(u)}" target="_blank" rel="noopener noreferrer" title="${esc(u)}">📈 ${esc(tvShort(u))}</a><button type="button" onclick="removeFormTvLink(${i})" aria-label="verwijderen">✕</button></span>`).join(''):'<span class="hint">Nog geen links, plak een TradingView-URL en klik Toevoegen.</span>';}
 function screenshotGallery(t){const shots=t.screenshots||[];
-  const thumbs=shots.map((s,i)=>`<div class="shotbox" onclick="zoomShots(${t.id},${i})"><button class="shotdel" onclick="event.stopPropagation();removeScreenshot(${t.id},${i})" title="verwijderen">×</button><img src="${s}" alt="screenshot ${i+1}"><span class="zoom">🔍</span></div>`).join('');
+  const thumbs=shots.map((s,i)=>`<div class="shotbox" onclick="zoomShots(${t.id},${i})"><button class="shotdel" onclick="event.stopPropagation();removeScreenshot(${t.id},${i})" title="verwijderen">×</button><img src="${beeldSrc(s)}" alt="screenshot ${i+1}"><span class="zoom">🔍</span></div>`).join('');
   const auto=!shots.length?`<div class="shotbox" onclick="zoomShots(${t.id},-1)" title="auto-chart (voorbeeld)">${chartThumb(t,0)}<span class="shotlbl">📈 auto-chart</span></div>`:'';
   const add=`<div class="shotadd" onclick="pickScreenshot(${t.id})"><div style="font-size:24px;line-height:1">＋</div><div style="font-size:10.5px;color:var(--muted);margin-top:5px;text-align:center;line-height:1.35">Upload of plak<br>(Ctrl/⌘+V)</div></div>`;
   return `<div class="shotgrid">${thumbs}${auto}${add}</div>`;
@@ -3700,9 +3709,9 @@ let lbShots=[],lbIdx=0,lbTradeId=null;
 function zoomShots(id,idx){const t=T.find(x=>x.id===id);if(!t)return;lbTradeId=id;const shots=t.screenshots||[];
   if(idx>=0&&shots.length){lbShots=shots;lbIdx=idx;}else{lbShots=[null];lbIdx=0;}
   renderLightbox();document.getElementById('lightbox').classList.add('on');document.getElementById('scrim').classList.add('on');}
-function renderLightbox(){const t=T.find(x=>x.id===lbTradeId);const url=lbShots[lbIdx];if(!t&&!url)return;const inner=url?`<img src="${url}" alt="screenshot">`:chartThumb(t,0);
+function renderLightbox(){const t=T.find(x=>x.id===lbTradeId);const url=lbShots[lbIdx];if(!t&&!url)return;const inner=url?`<img src="${beeldSrc(url)}" alt="screenshot">`:chartThumb(t,0);
   const nav=lbShots.length>1?`<button class="lb-nav prev" onclick="event.stopPropagation();lbMove(-1)">‹</button><button class="lb-nav next" onclick="event.stopPropagation();lbMove(1)">›</button><div class="lb-count">${lbIdx+1}/${lbShots.length}</div>`:'';
-  const cap=t?`${esc(t.pair)} · ${esc(t.setup)} · ${fmtD(t.date)}${t.time?' '+t.time:''} · ${t.dir==='long'?'LONG':'SHORT'}${url?'':' · auto-chart'}`:`Screenshot ${lbIdx+1}/${lbShots.length}`;
+  const cap=t?`${esc(t.pair)} · ${esc(t.setup)} · ${fmtD(t.date)}${t.time?' '+esc(t.time):''} · ${t.dir==='long'?'LONG':'SHORT'}${url?'':' · auto-chart'}`:`Screenshot ${lbIdx+1}/${lbShots.length}`;
   document.getElementById('lightbox').innerHTML=`<div class="lb-inner" onclick="event.stopPropagation()">${nav}${inner}<div class="lb-cap">${cap}</div></div>`;}
 function lbMove(d){lbIdx=(lbIdx+d+lbShots.length)%lbShots.length;renderLightbox();}
 function closeLightbox(){document.getElementById('lightbox').classList.remove('on');if(!document.getElementById('modal').classList.contains('on'))document.getElementById('scrim').classList.remove('on');}
@@ -4076,7 +4085,7 @@ function pbAntiTxt(i,v){pbAnti[i].text=v;}
 function pbAntiReq(i){pbAnti[i].mandatory=!pbAnti[i].mandatory;renderPbAnti();}
 function pbAntiRm(i){pbAnti.splice(i,1);renderPbAnti();}
 function renderPbExamples(){const c=document.getElementById('pbexamples');if(!c)return;
-  const thumbs=pbExamples.map((ex,i)=>`<div class="shotbox exbox ex-${ex.kind}"><button class="shotdel" onclick="rmPbExample(${i})">×</button><img src="${ex.dataUrl}" alt="voorbeeld ${i+1}"><select class="exkind" aria-label="Voorbeeld-type" onchange="setPbExKind(${i},this.value)">${PB_EXKINDS.map(([k,l])=>`<option value="${k}" ${ex.kind===k?'selected':''}>${l}</option>`).join('')}</select></div>`).join('');
+  const thumbs=pbExamples.map((ex,i)=>`<div class="shotbox exbox ex-${ex.kind}"><button class="shotdel" onclick="rmPbExample(${i})">×</button><img src="${beeldSrc(ex.dataUrl)}" alt="voorbeeld ${i+1}"><select class="exkind" aria-label="Voorbeeld-type" onchange="setPbExKind(${i},this.value)">${PB_EXKINDS.map(([k,l])=>`<option value="${k}" ${ex.kind===k?'selected':''}>${l}</option>`).join('')}</select></div>`).join('');
   const add=pbExamples.length<6?`<div class="shotadd" onclick="pickPbExample()"><div style="font-size:24px;line-height:1">＋</div><div style="font-size:10.5px;color:var(--muted);margin-top:5px;text-align:center;line-height:1.35">Upload of plak<br>(Ctrl/⌘+V)</div></div>`:'';
   c.innerHTML=`<div class="shotgrid shotbuilder-grid">${thumbs}${add}</div>`;}
 async function addPbExample(file){if(!file||!(file.type||'').startsWith('image/'))return;if(pbExamples.length>=6){toast('Max 6 voorbeelden','info');return;}try{pbExamples.push({id:'ex'+Date.now(),dataUrl:await compressImg(file),caption:'',kind:'win'});renderPbExamples();}catch(e){toast('Kon afbeelding niet laden','info');}}
@@ -4132,7 +4141,7 @@ function playbookDetail(setup){
     ${(pb.stop||pb.target||pb.minRR)?`<div class="pbsec"><div class="pbsec-h">Risk</div><div class="pbsec-txt">${pb.stop?`<div><span class="pbk-l">Stop</span> ${esc(pb.stop)}</div>`:''}${pb.target?`<div><span class="pbk-l">Target</span> ${esc(pb.target)}</div>`:''}${pb.minRR?`<div><span class="pbk-l">Min R:R</span> ${esc(pb.minRR)}</div>`:''}</div></div>`:''}
     ${(pb.bigPicture||pb.tape||pb.intuition)?`<div class="pbsec"><div class="pbsec-h">Markt-context</div><div class="pbsec-txt">${pb.bigPicture?`<div>📊 ${esc(pb.bigPicture)}</div>`:''}${pb.tape?`<div>🌊 ${esc(pb.tape)}</div>`:''}${pb.intuition?`<div>💡 ${esc(pb.intuition)}</div>`:''}</div></div>`:''}
     ${(pb.referenceUrl||pb.tradingViewUrl)?`<div class="pbsec"><div class="pbsec-h">Links</div><div class="pbsec-txt">${pb.tradingViewUrl?`<div><a class="linklike" href="${esc(pb.tradingViewUrl)}" target="_blank" rel="noopener">📈 TradingView-template</a></div>`:''}${pb.referenceUrl?`<div><a class="linklike" href="${esc(pb.referenceUrl)}" target="_blank" rel="noopener">🔗 ${esc(pb.referenceLabel||'Bron')}</a></div>`:''}</div></div>`:''}`;
-  const exGallery=(pb.examples||[]).length?`<div class="panel"><div class="phead"><h3>Voorbeeld-charts</h3><span class="sp"></span><span class="chip">${pb.examples.length}</span></div><div class="pbody"><div class="shotgrid">${pb.examples.map((ex,i)=>`<div class="shotbox exbox ex-${ex.kind}" onclick="zoomPbExamples('${esc(setup).replace(/'/g,'')}',${i})"><img src="${ex.dataUrl}" alt="voorbeeld"><span class="exlbl ex-${ex.kind}">${({win:'✓ School',marginal:'~ Marginaal',fail:'✗ Mislukt'})[ex.kind]||ex.kind}</span></div>`).join('')}</div></div></div>`:'';
+  const exGallery=(pb.examples||[]).length?`<div class="panel"><div class="phead"><h3>Voorbeeld-charts</h3><span class="sp"></span><span class="chip">${pb.examples.length}</span></div><div class="pbody"><div class="shotgrid">${pb.examples.map((ex,i)=>`<div class="shotbox exbox ex-${ex.kind}" onclick="zoomPbExamples('${esc(setup).replace(/'/g,'')}',${i})"><img src="${beeldSrc(ex.dataUrl)}" alt="voorbeeld"><span class="exlbl ex-${ex.kind}">${({win:'✓ School',marginal:'~ Marginaal',fail:'✗ Mislukt'})[ex.kind]||ex.kind}</span></div>`).join('')}</div></div></div>`:'';
   return `${filterBar()}
     <div class="pbdetail-head">
       <button class="btn" onclick="closePlaybook()">← Alle playbooks</button>
