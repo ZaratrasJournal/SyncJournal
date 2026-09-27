@@ -227,8 +227,11 @@ const shot = async (p, name) => { await p.screenshot({ path: 'tests/screenshots/
   await p2.addInitScript(rec => { localStorage.setItem('sj_welcomed', 'true'); if (localStorage.getItem('tp2:trades')) return;   /* init-scripts draaien ook na een reload: alleen de eerste keer seeden */ localStorage.setItem('tp2:trades', JSON.stringify(rec)); localStorage.setItem('tp2:plans', JSON.stringify({ 'dag-2026-08-31': { id: 'dag-2026-08-31', type: 'dag', key: '2026-08-31', checks: {}, images: [], links: [], scenarios: [{ title: 'Sweep', als: 'x', dan: 'y', ongeldig: '', text: '', images: [], links: [] }], close: { scenario: 0, gevolgd: 'deels', les: 'demo', r: null, saved: true, savedAt: '2026-08-31T18:00:00.000Z' } } })); localStorage.setItem('tp2:cfg', JSON.stringify({ matchMin: 45 })); localStorage.setItem('tp2:meta', JSON.stringify({ schema: 2, introSeen: true })); }, REC);
   await p2.goto(APP, { waitUntil: 'domcontentloaded' }); await p2.waitForTimeout(1200);
   await p2.evaluate(async d => { await applyBackup(d); }, demo); await p2.waitForTimeout(1500);
-  const jm = await p2.evaluate((ids) => { const n = planMatch(); const f = s => T.find(t => t.srcId === s); const btc = f(ids.a), eth = f(ids.b), arb = f(ids.c); return { n, T: T.length, btc: btc && btc.planRef, eth: eth && eth.planRef, arb: arb && arb.planRef, badge: planBadge(arb).length > 0, line: planLine(btc).replace(/<[^>]+>/g, ' ') }; }, IDS);
-  ok('demo-dataset geladen (' + IDS.n + ' trades); 2 matches: A→9001, B→9002, C zonder', jm.T === IDS.n && jm.n === 2 && jm.btc === '9001' && jm.eth === '9002' && !jm.arb && jm.badge, JSON.stringify(jm));
+  // Geen badge-check meer: de 'zonder poort'-badge is in v0.9.139 bewust uit de tradeslijst
+  // gehaald (commit bcbd9e0), en daarmee ook planBadge(). Deze spec riep hem daarna nog aan en
+  // crashte er hard op, waardoor alles hieronder stilletjes ongetest bleef.
+  const jm = await p2.evaluate((ids) => { const n = planMatch(); const f = s => T.find(t => t.srcId === s); const btc = f(ids.a), eth = f(ids.b), arb = f(ids.c); return { n, T: T.length, btc: btc && btc.planRef, eth: eth && eth.planRef, arb: arb && arb.planRef, line: planLine(btc).replace(/<[^>]+>/g, ' ') }; }, IDS);
+  ok('demo-dataset geladen (' + IDS.n + ' trades); 2 matches: A→9001, B→9002, C zonder', jm.T === IDS.n && jm.n === 2 && jm.btc === '9001' && jm.eth === '9002' && !jm.arb, JSON.stringify(jm));
   ok('hover-regel van trade A: A-setup · 7/7 · volle size · 2%', /A-setup/.test(jm.line) && /7\/7/.test(jm.line) && /volle size/.test(jm.line) && /2%/.test(jm.line), jm.line);
   await p2.evaluate(() => { STATE.tend = 'plan'; clearGFilter(); go('tendencies'); });
   const tt = await p2.evaluate(() => document.getElementById('main').innerText.replace(/\s+/g, ' '));

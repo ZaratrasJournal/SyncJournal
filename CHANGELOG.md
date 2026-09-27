@@ -6,6 +6,16 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v0.9.149] — 2026-09-27
+
+### Fixed
+- **Een TP vóór je instaptijd wordt weer als de volgende dag opgeslagen.** De datum bij een TP
+  staat sinds v0.9.146 vooraf ingevuld op je instapdag. Het formulier rekende daarmee correct —
+  een TP om 08:15 bij een instap om 10:00 is de ochtend erna — maar bij het opslaan werd die
+  vooraf ingevulde datum behandeld alsof je hem zelf had gekozen, en bleef de TP vóór de instap
+  staan. Daardoor week de opgeslagen tijd af van wat je in het formulier zag, en liepen de
+  tijdlijn en de duur mis. Een dag die je zélf op iets anders zet, blijft onaangeroerd.
+
 ## [v0.9.148] — 2026-09-27
 
 ### Fixed
