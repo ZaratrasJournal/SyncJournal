@@ -10,6 +10,50 @@ Basis kwam uit de feature-diff v4_14 → v9 onderaan. Inmiddels werken we op **v
 
 <!-- Denny stuurt bugs 1 voor 1 — elk item krijgt datum + korte reproductiestap. -->
 
+- [ ] **Merged trades uit de oude journal worden in SyncJournal dubbel geteld** *(2026-09-28, gevonden door de suite-doorloop)* — De merge-functie (FTMO/MT5-workaround, v12.190) werkt zo: de master-trade krijgt `mergedFrom = [child-ids]`, de kinderen krijgen `status = "merged-child"` en `mergedInto`, en een helper `filterMergedChildren()` houdt die kinderen uit álle lijsten en analytics. Zo telt alleen de master mee.
+
+  **In SyncJournal is de helft overgezet.** De velden staan er wel:
+
+  ```js
+  // work/syncjournal.html:5829 — in EMPTY_TRADE
+  mergedFrom:null, mergedInto:null, _preMergeStatus:null, _mergeSource:null, _mergeTimestamp:null
+  ```
+
+  Maar `filterMergedChildren` bestaat **alleen in de comment ernaast** (`:5828`) — er is geen functie en geen aanroep. In de oude journal staat hij op `work/tradejournal.html:2102` en wordt hij gebruikt op `:20974`.
+
+  **En de migratie laat de status ongemoeid** (`migrateOldTrade`, [work/syncjournal.html:5627](work/syncjournal.html#L5627)):
+
+  ```js
+  status:(ot.status==='missed'||!ot.status)?'closed':ot.status
+  ```
+
+  Dus `"merged-child"` komt één op één mee.
+
+  **Gevolg**: wie in de oude journal trades heeft samengevoegd en overzet, krijgt zowel de master als de losse kinderen in zijn lijst en in de analytics. De master draagt de opgetelde P&L van die kinderen, dus die P&L telt twee keer. Bij FTMO-gebruikers die de merge-workaround gebruikten staan de cijfers daarmee te hoog.
+
+  **Nog te bevestigen vóór de fix**: seed een backup met één master + twee merged-children, migreer, en meet de netto P&L tegenover de verwachte waarde. Dat is meteen de regressietest.
+
+  **Fix-richting — uitgezocht 28-09-2026, het is één regel.** SyncJournal bouwt de tradeslijst op één plek op, en alles daaronder (lijst, dashboard, analytics, tellers) komt daaruit:
+
+  ```js
+  // work/syncjournal.html:4815 — nu
+  FT = fxView(applyFilter(T));
+  // wordt
+  FT = fxView(applyFilter(T.filter(t => t.status !== 'merged-child')));
+  ```
+
+  Dat is precies wat de oude journal doet ([work/tradejournal.html:20974](work/tradejournal.html#L20974)), daar alleen in een `useMemo` omdat het React is.
+
+  De kinderen blijven in de opslag staan — niets gaat verloren en een backup blijft compleet — ze zijn alleen niet meer zichtbaar en tellen niet meer mee. Data weggooien is onomkeerbaar; dit niet.
+
+  **Test hoort erbij**: seed een master met twee merged-children, migreer, en meet de netto P&L tegen de verwachte waarde. Zonder die test weet je niet of de fix doet wat hij belooft.
+
+  **Effort**: S — fix en test samen ongeveer een half uur.
+
+  **Om te weten**: er is in SyncJournal géén merge-functie. Je kunt trades niet samenvoegen en ook niet ontkoppelen; alleen de velden zijn overgezet. Na deze fix heeft een migrerend lid dus een master-trade die hij nooit meer uit elkaar kan halen. Dat is voor nu acceptabel, maar de merge-functie moet ooit alsnog overgezet worden óf bewust vervallen worden verklaard.
+
+  *Denny 28-09-2026: een enkel lid gebruikt de merge-functie. Niet vóór de release; op de backlog.*
+
 - [x] **Spec rood: TP-tijd vóór open-tijd rolt niet door naar de volgende dag** — ✅ opgelost in v0.9.149: de doorrol-voorwaarde bij het opslaan is gelijkgetrokken met die van het formulier (`tpMomentMs`). Gemeten over drie invoervolgordes; de normale route was al goed, de twee zijpaden volgen nu. *(2026-09-27, gevonden door de volledige doorloop)* — `changemaker-feedback` staat op 27/28. De gefaalde check:
 
   ```
@@ -501,6 +545,40 @@ Volledig ontwerp in [docs/wachtpost-ontwerp-2026-09-27.md](docs/wachtpost-ontwer
   **Volgorde**: ná story 7, 10 en 2 — drie van de signalen vervallen daarmee. Effort: M (~150 regels).
 
   **Acceptatie**: een wijziging aan `detectPartialFromSiblings` levert één melding met de vijf geraakte adapters en een testcommando; een gewone opmaakwijziging levert niets.
+
+## 🧰 Uit de suite-doorloop (28-09-2026)
+
+De eerste ronde waarin alle 172 specs tegen `work/syncjournal.html` draaien: **97 groen, 75 rood, 56 min**. Vrijwel alle rode specs beschrijven de oude journal, niet een kapotte app. Dertien zijn al gerepareerd (hernoemde teksten); de rest staat hieronder.
+
+| # | Actiepunt | Nu | Straks | Effort |
+|---|---|---|---|---|
+| 17 | AI-coach-specs herschrijven | 12 specs zoeken `sec-chat`; het scherm heet nu `#aiFeed` / `#aiInput` | De AI-coach is weer gedekt | M |
+| 18 | Account-specs herschrijven | 5 specs klikken `+ Account toevoegen`, een knop die niet meer bestaat | Getoetst tegen de huidige accounts-pagina | S |
+| 19 | CI-poorten splitsen | Doorloop is **56 min**, `timeout-minutes` staat op **30** → CI valt om op de klok | Snelle poort < 10 min per push, volledige poort nachtelijk | S |
+
+- [ ] **AI-coach-specs herschrijven tegen het verbouwde scherm** *(2026-09-28, suite-doorloop)* — Twaalf specs bevragen `sec-chat`, dat in SyncJournal niet bestaat. De AI-coach heeft nu `#aiFeed` en `#aiInput`. Fout: `Cannot read properties of null (reading 'querySelectorAll')`.
+
+  Raakt: aicoach-chat, -2msg, -context, -layout, -markdown, -switch, -budget, -foundation, -popup, -popup-sidebar, -pretrade, -privacy, -weekly.
+
+  Geen mechanische fix — per spec opnieuw schrijven. Volgens de risicoweging in [docs/teststrategie-2026-09-27.md](docs/teststrategie-2026-09-27.md) staat de AI-coach onderaan (randfunctionaliteit), dus dit mag wachten. **Overweeg** eerst of alle twaalf nog nodig zijn; een deel dekt hetzelfde.
+
+  **Acceptatie**: de AI-coach-cluster draait groen, of de specs die niets toevoegen zijn geschrapt met een reden.
+
+- [ ] **Account-specs herschrijven tegen de huidige accounts-pagina** *(2026-09-28, suite-doorloop)* — Vijf specs klikken op `+ Account toevoegen`. Die knop bestaat niet; een exchange koppel je onder **Exchange-koppelingen** met **Verbinden** ([work/syncjournal.html:3830](work/syncjournal.html#L3830)), en een handmatig account voeg je toe met **+ Toevoegen** ([:3894](work/syncjournal.html#L3894)).
+
+  Raakt: account-delete-modal, account-modal-scroll, account-tile-balance, account-type-cap, multi-account-detail, multi-account-ui.
+
+  `account-remove` is wél groen en dekt het verwijderen al, dus kijk per spec of hij nog iets toevoegt. Deze vijf kosten samen ruim 90 s aan timeouts per doorloop.
+
+  **Acceptatie**: groen, of geschrapt met een reden. Geen spec die op een timeout blijft staan.
+
+- [ ] **CI-poorten splitsen — nu wél nodig** *(2026-09-28, suite-doorloop)* — Gemeten: **56 minuten** voor 172 specs, tegen `timeout-minutes: 30` in [.github/workflows/syncjournal-tests.yml](.github/workflows/syncjournal-tests.yml). Zet je de volledige suite in CI aan, dan valt hij om op de klok en niet op een fout.
+
+  Bijna de helft van die tijd (**45 min**) gaat op aan specs die falen. Zodra story 17 en 18 klaar zijn, zakt dat vanzelf. Meet daarom **na** die twee opnieuw voordat je poorten bouwt — misschien is het dan niet meer nodig.
+
+  Is het dat wel, dan: snelle poort (rekenlaag + schermlaag + `e2e-doorloop`) bij elke push met doel < 10 min, volledige poort nachtelijk en vóór een release. De runner heeft daar nu al schakelaars voor: `SPEC_TIMEOUT` en `GEEN_HERKANSING`.
+
+  **Acceptatie**: CI draait binnen zijn timeout en meldt groen of rood op inhoud, niet op tijd.
 
 ## 📋 Onderzocht — wacht op go (geen code geschreven)
 

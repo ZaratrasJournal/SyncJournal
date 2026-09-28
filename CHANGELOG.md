@@ -6,6 +6,13 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v0.9.152] — 2026-09-28
+
+### Fixed
+- **De FAQ wees naar een knop die niet bestaat.** Bij *"Hoe koppel ik een exchange?"* stond
+  *"Instellingen → Accounts → + Account toevoegen"*. Die knop is er niet; je koppelt een exchange
+  onder **Exchange-koppelingen** met de **Verbinden**-knop ernaast. De tekst klopt nu.
+
 ## [v0.9.151] — 2026-09-27
 
 ### Gewijzigd
