@@ -61,11 +61,9 @@ Morgenavond loop ik het live met jullie door. 📓
 > SyncJournal is live op syncjournal.nl — 12× sneller, automatische back-up naar je eigen Drive. Overzetten duurt 2 minuten.
 
 **Als reactie op "waarom een nieuwe app?"**
-> De oude moest zichzelf bij elke keer openen vertalen, en haalde daarvoor onderdelen op bij andere
-> servers. Dat kostte 2,5 seconden, en als daar iets haperde startte je journal niet. De nieuwe heeft
-> dat niet meer nodig: alles zit erin, hij staat er in 0,2 seconden en hij draait op zichzelf.
-> (Voor de nieuwsgierigen: dat waren React, Chart.js, Babel en nog wat bouwstenen van de app — niets
-> wat met jouw data te maken had.)
+> De oude moest zichzelf bij elke keer openen eerst vertalen voordat hij iets kon tonen. Dat kostte
+> 2,5 seconden. Dat is eruit: de nieuwe staat er in 0,2 seconden, en het bestand ging van 3,4 naar
+> 1,4 MB.
 
 **Als reactie op "gaat mijn data dan naar Google?"**
 > Nee. De app maakt een map *SyncJournal* in jouw eigen Drive en zet daar je backup-bestand neer —
@@ -86,8 +84,7 @@ Morgenavond loop ik het live met jullie door. 📓
 |---|---|
 | 12× sneller (2,5 s → 0,2 s) | Gemeten 28-09-2026 met Playwright, beide apps, netwerk aan, twee metingen per app |
 | 3,4 MB → 1,4 MB | Bestandsgrootte `work/tradejournal.html` en `work/syncjournal.html` |
-| Startte niet als een externe server eruit lag | Acht `<script src>` in de oude app (React, React-DOM, Chart.js, jsPDF, html2canvas, Babel van cdnjs; xlsx, SortableJS van jsdelivr). **Niet als "acht scripts" in het bericht zetten** — dat zegt gebruikers niets en roept de vraag op of hun data ergens heen ging |
-| Acht externe scripts → één | Oud: React, React-DOM, Chart.js, jsPDF, html2canvas, Babel (cdnjs) + xlsx, SortableJS (jsdelivr). Nieuw: alleen `xlsx`, met `defer` — niet nodig om te starten |
+| *(externe scripts — bewust niet in het bericht)* | Oud: acht `<script src>` (React, React-DOM, Chart.js, jsPDF, html2canvas, Babel van cdnjs; xlsx, SortableJS van jsdelivr). Nieuw: alleen `xlsx`, met `defer`. **Eruit gelaten**: het zegt gebruikers niets, het is iets wat hun in de praktijk nooit is overkomen, en het roept de vraag op of hun data ergens heen ging |
 | Prullenbak, 30 dagen | `TRASH_DAYS=30` in SyncJournal. In de oude app was verwijderen definitief: *"Definitief — verdwijnen uit je journal én balans"* |
 | Twaalf smaken → twee | Oud: `layout` is `standard` of `premium`, elk met zes thema's (sync, classic, aurora, light, parchment, daylight). Nieuw: `setTheme('light')` / `setTheme('dark')` |
 | Nieuw: Google Drive-backup | 10 treffers + OAuth in SyncJournal, 1 losse vermelding zonder koppeling in de oude |
