@@ -57,7 +57,13 @@ exchange zelf, dus het hoeft niet jouw regel te zijn.
 
 ---
 
-## 2 · Het client-kenmerk
+## 2 · Het client-kenmerk — als label, niet als slot
+
+> **Gecorrigeerd op 28-09-2026.** De eerste versie van dit document zei: laat de Worker verzoeken
+> zonder kenmerk weigeren. **Dat zou schade aanrichten.** Denny wees erop dat Morani's eigen
+> journal dezelfde Worker gebruikt, en die stuurt geen kenmerk. Bovendien draaien er nog leden op
+> de oude `tradejournal.html`, die het ook niet stuurt. Weigeren breekt allebei, stil, zonder dat
+> zij weten waarom. Het kenmerk blijft dus een **label om mee te kijken**, geen slot.
 
 De app stuurt sinds v0.9.151 in elke Worker-aanroep een veld mee:
 
@@ -65,48 +71,42 @@ De app stuurt sinds v0.9.151 in elke Worker-aanroep een veld mee:
 { "exchange": "okx", "action": "test", "apiKey": "…", "client": "syncjournal-web" }
 ```
 
-Dat is **geen geheim** — het staat in de client en is af te lezen door wie de app opent. Het doel
-is een drempel: een script dat de Worker-URL gevonden heeft, stuurt dit veld niet mee.
+Het zit in de **body** en niet in een header: een eigen header maakt van elk verzoek een
+CORS-preflight, die de Worker eerst zou moeten toestaan.
 
-Het zit bewust in de **body** en niet in een header. Een eigen header maakt van elk verzoek een
-CORS-preflight, en dan zou de Worker die header eerst in `Access-Control-Allow-Headers` moeten
-toestaan — een extra stap die stuk kan gaan zonder dat je het merkt.
+### Wie er allemaal op deze Worker zit
 
-### De wijziging in `worker.js`
+| Client | Stuurt `client` mee |
+|---|---|
+| SyncJournal (`site/app.html`) vanaf v0.9.151 | `syncjournal-web` |
+| De oude TradeJournal (`main/tradejournal.html`), nog bij leden in gebruik | niets |
+| Morani's eigen variant | niets |
+
+### De wijziging in `worker.js` — alleen loggen
 
 Onder `const { exchange, action } = body;` erbij:
 
 ```js
-    // Alleen onze eigen app. Geen authenticatie — het kenmerk staat in de client — maar het
-    // weert scripts die de Worker-URL simpelweg gevonden hebben. Moet gelijk blijven aan
-    // CLIENT_TAG in work/syncjournal.html.
-    const TOEGESTANE_CLIENTS = ['syncjournal-web'];
-    if (!TOEGESTANE_CLIENTS.includes(body.client)) {
-      return json({ error: 'Onbekende client' }, 403);
-    }
+    // Alleen meekijken: wie roept deze Worker aan? NIET weigeren — de oude journal en
+    // Morani's variant sturen geen kenmerk, en die horen gewoon te blijven werken.
+    console.log('client:', body.client || 'onbekend', '· exchange:', exchange, '· action:', action);
 ```
 
-### Let op de volgorde — anders breek je members
+Terug te lezen met `wrangler tail`, of in het dashboard onder **Workers & Pages → morani-proxy →
+Logs**. Daarmee zie je wat je wilde weten: hoeveel verkeer van welke app komt, hoeveel leden nog
+op de oude journal zitten, en of er verkeer binnenkomt dat van geen van beide is.
 
-Oude versies van de app sturen dit veld **niet** mee. Zet je de Worker meteen op weigeren, dan
-valt de sync uit voor iedereen die nog niet heeft geüpdatet.
+### Zou je het ooit wél kunnen afdwingen?
 
-| | Wanneer | Wat |
-|---|---|---|
-| **A** | Nu, met de release | App-kant uitrollen (v0.9.151). De Worker negeert het onbekende veld gewoon; er verandert niets. |
-| **B** | Na 2 à 4 weken | Pas dan de weigering hierboven aanzetten, als vrijwel iedereen geüpdatet is. |
+Alleen als élke legitieme client een kenmerk meestuurt. Dat vraagt:
 
-Wil je tussentijds weten hoe ver dat is, zet dan in stap A alvast dit in de Worker in plaats van
-de weigering:
+1. Morani zet een eigen kenmerk in zijn journal (bv. `morani-web`).
+2. De oude `tradejournal.html` wordt niet meer gebruikt, of krijgt er ook een.
+3. Pas dán een lijst in de Worker: `['syncjournal-web', 'morani-web']`.
 
-```js
-    if (body.client !== 'syncjournal-web') console.log('client ontbreekt of wijkt af:', body.client);
-```
-
-Die regels lees je terug met `wrangler tail`, of in het dashboard onder **Workers & Pages →
-morani-proxy → Logs**. Zie je daar na een paar weken niets meer, dan kun je veilig naar stap B.
-
----
+**Doe dat pas als de logs uit stap 2 laten zien dat er niets meer zonder kenmerk binnenkomt.**
+En weeg het nog eens af: het kenmerk staat in de client en is dus af te lezen en te kopiëren.
+De bescherming zit in de rate-limit, niet hierin.
 
 ## Wat hier bewust niet staat
 
@@ -120,18 +120,11 @@ morani-proxy → Logs**. Zie je daar na een paar weken niets meer, dan kun je ve
 
 ## Controleren dat het werkt
 
-Na stap B, vanaf je eigen machine:
+**De rate-limit**: Cloudflare-dashboard → **Security → Events**. Staat daar na een week niets
+geblokkeerd, dan zit de drempel goed. Klaagt een member over "even druk", kijk daar dan eerst —
+de app toont die melding ook bij een 429 van de exchange zelf, dus het hoeft niet jouw regel te zijn.
 
-```bash
-# zonder kenmerk → hoort 403 te geven
-curl -s -X POST -H "Content-Type: application/json" \
-  -d '{"exchange":"okx","action":"test"}' \
-  https://morani-proxy.moranitraden.workers.dev
-
-# met kenmerk → hoort de normale fout over ontbrekende keys te geven, geen 403
-curl -s -X POST -H "Content-Type: application/json" \
-  -d '{"exchange":"okx","action":"test","client":"syncjournal-web"}' \
-  https://morani-proxy.moranitraden.workers.dev
-```
+**Het log-label**: `wrangler tail`, of **Workers & Pages → morani-proxy → Logs**. Je zou drie
+soorten regels moeten zien: `syncjournal-web`, en `onbekend` voor de oude journal en voor Morani.
 
 En daarna één keer echt syncen in de app, want dat is de enige toets die telt.

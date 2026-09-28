@@ -12,8 +12,8 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 - **Elke aanvraag aan de sync-proxy draagt nu een kenmerk van de app.** De proxy stond open voor
   iedereen die het adres kende en kon zo door anderen als gratis doorgeefluik worden gebruikt, op
   onze kosten. Je keys liepen daar geen gevaar bij — die verlaten je browser alleen richting je
-  eigen exchange. Voor jou verandert er niets; de proxy gaat het kenmerk pas afdwingen wanneer
-  vrijwel iedereen deze versie draait.
+  eigen exchange. Voor jou verandert er niets: het kenmerk dient om mee te kijken welk verkeer
+  waar vandaan komt. De bescherming zelf komt van een snelheidslimiet op de proxy.
 
 ## [v0.9.150] — 2026-09-27
 
