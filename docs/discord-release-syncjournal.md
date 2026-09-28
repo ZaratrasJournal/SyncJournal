@@ -18,6 +18,10 @@ en je hoeft nooit meer een bestand te downloaden — updates komen vanzelf. **OK
 je ziet nu **de hele levensloop van een positie** met elke TP, elke stap en elke fee, en er is een
 nieuwe **Plan-pagina**.
 
+Nieuw is ook de **Google Drive-koppeling**: de app maakt een map *SyncJournal* in **jouw** Drive en
+zet daar automatisch je backups neer — wij kunnen daar niet bij. Daarmee is je journal niet langer
+alleen je browser, en kun je op een andere computer verder waar je gebleven was.
+
 Een paar onderdelen zijn nog niet meegekomen — laat vooral weten wat je mist, dan zetten we het op
 de lijst.
 
@@ -47,6 +51,12 @@ Morgenavond loop ik het live met jullie door. 📓
 > kostte 2,5 seconden en een internetverbinding. De nieuwe doet dat niet meer: 0,2 seconden, en
 > hij werkt zonder verbinding. Daardoor ging het bestand ook van 3,4 naar 1,4 MB.
 
+**Als reactie op "gaat mijn data dan naar Google?"**
+> Nee. De app maakt een map *SyncJournal* in jouw eigen Drive en zet daar je backup-bestand neer —
+> hetzelfde bestand dat je ook met de hand kunt exporteren. Wij hebben geen server en kunnen er niet
+> bij. Je trekt de toegang op elk moment in via je Google-accountinstellingen. Bonus: Drive bewaart
+> 30 dagen versiegeschiedenis per bestand, dus je kunt ook terug naar gisteren.
+
 **Als reactie op "wat is er weg?"**
 > Doelen, milestones, de mindset-module met pre-trade-checks en de deelkaarten zijn nog niet
 > meegekomen. Niet omdat ze slecht waren — er moest gekozen worden, en de sync en de analyse
@@ -62,6 +72,7 @@ Morgenavond loop ik het live met jullie door. 📓
 | 3,4 MB → 1,4 MB | Bestandsgrootte `work/tradejournal.html` en `work/syncjournal.html` |
 | Vijf exchanges, OKX erbij | `EXCHANGES` in beide bestanden; OKX komt in de oude nergens voor |
 | Nieuw: Plan-pagina | `NAVBOT` in SyncJournal; staat niet in de oude `TABS` |
+| Nieuw: Google Drive-backup | 10 treffers + OAuth in SyncJournal, 1 losse vermelding zonder koppeling in de oude |
 | Niet meegekomen | Doelen, milestones, mindset, pre-trade, deelkaarten — in de oude app aanwezig, in SyncJournal nul voorkomens |
 
 **Niet claimen**: "alles is meegenomen" (dat is niet zo) en "sneller dan elke andere journal"
