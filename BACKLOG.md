@@ -546,6 +546,24 @@ Volledig ontwerp in [docs/wachtpost-ontwerp-2026-09-27.md](docs/wachtpost-ontwer
 
   **Acceptatie**: een wijziging aan `detectPartialFromSiblings` levert één melding met de vijf geraakte adapters en een testcommando; een gewone opmaakwijziging levert niets.
 
+## 🧹 Opruimen na de MEXC-offboarding
+
+- [ ] **XLSX-ondersteuning eruit — pas ná de MEXC-offboarding** *(2026-09-28, voorstel Denny)* — De app laadt één extern script: `xlsx@0.18.5` van jsDelivr ([work/syncjournal.html:13](work/syncjournal.html#L13)). Het dient voor precies één ding — `.xlsx`-bestanden inlezen bij de CSV-import ([:8110](work/syncjournal.html#L8110)) — en dat is er omdat **MEXC in Excel-formaat exporteert in plaats van CSV**.
+
+  **Waarom niet nu.** MEXC verlaat Nederland in november 2026 en de API-koppeling is al gestopt ([work/syncjournal.html:1657](work/syncjournal.html#L1657)). De enige manier waarop leden hun MEXC-historie nog binnenkrijgen is een handmatige export, en die is `.xlsx`. Het nu weghalen raakt precies de groep die het de komende weken nodig heeft.
+
+  **Wanneer wel.** Zodra de offboarding voorbij is — reken op december. Dan levert geen enkele ondersteunde exchange nog Excel, en houd je een app zonder één externe afhankelijkheid over: alles inline, niets van een CDN, volledig offline bruikbaar.
+
+  **Wat er dan moet gebeuren:**
+  - `<script src>` op regel 13 eruit (inclusief de `integrity`-hash uit v0.9.148)
+  - `accept=".csv,.xlsx,.xls"` terug naar `.csv` ([:3891](work/syncjournal.html#L3891))
+  - De XLSX-tak in `handleCsvFile` eruit, met een nette melding als iemand tóch een `.xlsx` kiest: *"Sla op als CSV en probeer opnieuw."*
+  - FAQ en de tekst bij CSV-import nalopen op "XLSX"
+
+  **Tussenoptie als je het eerder kwijt wilt**: de bibliotheek vendoren in plaats van schrappen, zoals React, Recharts en prop-types al ingebakken zitten. Dan is de CDN-afhankelijkheid weg terwijl MEXC-gebruikers gewoon kunnen importeren. Kost ~880 kB in het bestand, en de laadtijd staat al als punt op de backlog (*Onderzoek → "Laadtijd ~10s"*), dus dat weegt tegen elkaar op.
+
+  **Acceptatie**: geen `<script src>` meer in het bestand; een `.csv` importeert nog gewoon; een `.xlsx` geeft een begrijpelijke melding in plaats van een stille mislukking. **Effort**: S.
+
 ## 🧰 Uit de suite-doorloop (28-09-2026)
 
 De eerste ronde waarin alle 172 specs tegen `work/syncjournal.html` draaien: **97 groen, 75 rood, 56 min**. Vrijwel alle rode specs beschrijven de oude journal, niet een kapotte app. Dertien zijn al gerepareerd (hernoemde teksten); de rest staat hieronder.
