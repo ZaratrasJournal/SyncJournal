@@ -17,6 +17,10 @@ Wat je meteen merkt: hij is **12× sneller open** — 0,2 seconden in plaats van
 meer een bestand te downloaden, want updates komen vanzelf. En je ziet nu **de hele levensloop van
 een positie**: elke TP, elke stap en elke fee, in plaats van alleen het eindresultaat.
 
+Het grootste verschil zie je meteen: waar de oude journal alles op elk scherm propte, is het nu
+**rustiger en breder** — minder tegelijk, beter leesbaar. En in plaats van twee layouts met elk zes
+thema's is het simpelweg **licht of donker**.
+
 Nieuw is ook de **Google Drive-koppeling**: de app maakt een map *SyncJournal* in **jouw** Drive en
 zet daar automatisch je backups neer — wij kunnen daar niet bij. Daarmee is je journal niet langer
 alleen je browser, en kun je op een andere computer verder waar je gebleven was.
@@ -74,7 +78,8 @@ Morgenavond loop ik het live met jullie door. 📓
 |---|---|
 | 12× sneller (2,5 s → 0,2 s) | Gemeten 28-09-2026 met Playwright, beide apps, netwerk aan, twee metingen per app |
 | 3,4 MB → 1,4 MB | Bestandsgrootte `work/tradejournal.html` en `work/syncjournal.html` |
-| Geen externe code meer nodig | Oud: scripts van jsdelivr én cdnjs. Nieuw: alleen jsdelivr voor `xlsx`, met `defer` — niet nodig om te starten |
+| Acht externe scripts → één | Oud: React, React-DOM, Chart.js, jsPDF, html2canvas, Babel (cdnjs) + xlsx, SortableJS (jsdelivr). Nieuw: alleen `xlsx`, met `defer` — niet nodig om te starten |
+| Twaalf smaken → twee | Oud: `layout` is `standard` of `premium`, elk met zes thema's (sync, classic, aurora, light, parchment, daylight). Nieuw: `setTheme('light')` / `setTheme('dark')` |
 | Nieuw: Google Drive-backup | 10 treffers + OAuth in SyncJournal, 1 losse vermelding zonder koppeling in de oude |
 | Nieuw: levensloop per positie | "levensloop" 0× in de oude, 38× in SyncJournal; "executie-stappen" 0× tegen 3× |
 | Niet meegekomen | Doelen, milestones, mindset, pre-trade, deelkaarten — in de oude app aanwezig, in SyncJournal nul voorkomens |
