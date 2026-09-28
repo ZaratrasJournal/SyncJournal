@@ -29,6 +29,10 @@ En er komt nog iets aan: een **Plan-pagina** waarop je vóór de handelsdag vast
 bent, en waar je journal achteraf zelf de link legt met je trades. Nog in aanbouw — morgenavond laat
 ik alvast zien waar het heen gaat.
 
+Waar je aan gewend was, is er gewoon nog: playbooks, tags, screenshots, TradingView-links, emoties
+en fouten, de sessie-analyse, de kalender, tendencies, de AI-coach, CSV-import en je
+exchange-koppelingen. Er is niets weggegooid dat je dagelijks gebruikt.
+
 Een paar onderdelen zijn nog niet meegekomen — laat vooral weten wat je mist, dan zetten we het op
 de lijst.
 
