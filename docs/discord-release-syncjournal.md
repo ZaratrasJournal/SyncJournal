@@ -13,10 +13,9 @@ Mannen — hij staat er: **https://syncjournal.nl**
 Uit de enquête kwam één ding heel duidelijk naar voren: **vereenvoudigen en stabiliseren**. Dus
 zijn we niet gaan stapelen op de oude journal, maar opnieuw begonnen.
 
-Wat je meteen merkt: hij is **12× sneller open** (0,2 seconden in plaats van 2,5), werkt **offline**,
-en je hoeft nooit meer een bestand te downloaden — updates komen vanzelf. En je ziet nu
-**de hele levensloop van een positie**: elke TP, elke stap en elke fee, in plaats van alleen het
-eindresultaat.
+Wat je meteen merkt: hij is **12× sneller open** — 0,2 seconden in plaats van 2,5 — en je hoeft nooit
+meer een bestand te downloaden, want updates komen vanzelf. En je ziet nu **de hele levensloop van
+een positie**: elke TP, elke stap en elke fee, in plaats van alleen het eindresultaat.
 
 Nieuw is ook de **Google Drive-koppeling**: de app maakt een map *SyncJournal* in **jouw** Drive en
 zet daar automatisch je backups neer — wij kunnen daar niet bij. Daarmee is je journal niet langer
@@ -48,12 +47,13 @@ Morgenavond loop ik het live met jullie door. 📓
 > Opnieuw opgebouwd, met wat jullie vroegen
 
 **Als één regel (bijv. in een aankondigingskanaal)**
-> SyncJournal is live op syncjournal.nl — 12× sneller, werkt offline, automatische back-up naar je eigen Drive. Overzetten duurt 2 minuten.
+> SyncJournal is live op syncjournal.nl — 12× sneller, automatische back-up naar je eigen Drive. Overzetten duurt 2 minuten.
 
 **Als reactie op "waarom een nieuwe app?"**
-> De oude was in de browser een React-app die zichzelf bij elke keer openen moest vertalen. Dat
-> kostte 2,5 seconden en een internetverbinding. De nieuwe doet dat niet meer: 0,2 seconden, en
-> hij werkt zonder verbinding. Daardoor ging het bestand ook van 3,4 naar 1,4 MB.
+> De oude was in de browser een React-app die zichzelf bij elke keer openen moest vertalen, met code
+> die hij daarvoor van twee externe servers ophaalde. Dat kostte 2,5 seconden. De nieuwe heeft dat
+> niet meer nodig — alles zit in de app zelf — en staat er in 0,2 seconden. Daardoor ging het
+> bestand ook van 3,4 naar 1,4 MB.
 
 **Als reactie op "gaat mijn data dan naar Google?"**
 > Nee. De app maakt een map *SyncJournal* in jouw eigen Drive en zet daar je backup-bestand neer —
@@ -74,6 +74,7 @@ Morgenavond loop ik het live met jullie door. 📓
 |---|---|
 | 12× sneller (2,5 s → 0,2 s) | Gemeten 28-09-2026 met Playwright, beide apps, netwerk aan, twee metingen per app |
 | 3,4 MB → 1,4 MB | Bestandsgrootte `work/tradejournal.html` en `work/syncjournal.html` |
+| Geen externe code meer nodig | Oud: scripts van jsdelivr én cdnjs. Nieuw: alleen jsdelivr voor `xlsx`, met `defer` — niet nodig om te starten |
 | Nieuw: Google Drive-backup | 10 treffers + OAuth in SyncJournal, 1 losse vermelding zonder koppeling in de oude |
 | Nieuw: levensloop per positie | "levensloop" 0× in de oude, 38× in SyncJournal; "executie-stappen" 0× tegen 3× |
 | Niet meegekomen | Doelen, milestones, mindset, pre-trade, deelkaarten — in de oude app aanwezig, in SyncJournal nul voorkomens |
@@ -83,6 +84,10 @@ Morgenavond loop ik het live met jullie door. 📓
   Stond eerst wel in dit bericht; eruit gehaald op 28-09-2026.
 - *"Nieuw: de Plan-pagina"* — niet als afgeronde functie neerzetten; hij is nog in aanbouw.
   Als vooruitblik mag hij er wél in, en dat doet het bericht ook — met "nog in aanbouw" erbij.
+- *"werkt offline"* — **niet waar**, en dit stond er eerst wel in. syncjournal.nl is een website en
+  heeft internet nodig om te laden; er is geen service worker. De oude journal was weliswaar een
+  bestand op je computer, maar haalde bij elke start code op van twee CDN's, dus die werkte óók niet
+  offline. Wat je wél mag zeggen: *"geen externe code meer nodig om te starten"*.
 - *"alles is meegenomen"* — dat is niet zo.
 - *"sneller dan elke andere journal"* — niet gemeten.
 - De **30 seconden** die een eerdere meting gaf: die kwam doordat het netwerk geblokkeerd was en
