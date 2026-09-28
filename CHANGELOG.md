@@ -6,6 +6,17 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v0.9.153] — 2026-09-28
+
+### Toegevoegd
+- **Vier antwoorden erbij in de FAQ**, over onderwerpen die er nog helemaal niet in stonden:
+  - *Ik kom van de oude TradeJournal, hoe zet ik mijn trades over?* — met de waarschuwing dat
+    samengevoegde trades op dit moment dubbel tellen na het overzetten.
+  - *Wat is de Plan-pagina?* — TradingPlan stond wel in het menu, maar werd nergens uitgelegd.
+  - *Ik gebruik geen koppeling, kan ik toch een account bijhouden?* — handmatige accounts, voor
+    een prop-firm-challenge of een beurs zonder koppeling.
+  - *Hoe weet ik of er een nieuwe versie is?*
+
 ## [v0.9.152] — 2026-09-28
 
 ### Fixed
