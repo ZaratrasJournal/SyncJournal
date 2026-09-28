@@ -51,7 +51,7 @@ _scratch/    - GITIGNORED: oude varianten (v4_14, dragdrop-test, design-handoff)
 | `CHANGELOG.md` | User-facing release-notes, "Keep a Changelog"-stijl in NL |
 
 - `APP_VERSION` staat bovenin `work/syncjournal.html` en is een **string**:
-  `const APP_VERSION='v0.9.147';` — geen object. **Moet gelijk blijven aan `site/version.json`**;
+  `const APP_VERSION='v1.0';` — geen object. **Moet gelijk blijven aan `site/version.json`**;
   `tests/hosted.spec.js` bewaakt dat.
 - **Bevroren, niet meer aanraken**: `work/tradejournal.html`, `main/tradejournal.html` en
   `main/version.json` (de oude TradeJournal, v12.239). Fixes en features gaan uitsluitend naar
@@ -78,7 +78,7 @@ Dat is de bron; hieronder de korte versie.
 9. **`git push` ALLEEN op expliciet "push"-commando van Denny.** In de deploy-repo: push naar `work` -> work.syncjournal.nl (staging); fast-forward `work` -> `main` + push -> syncjournal.nl (leden). Een "ga maar bouwen" / "doe maar" / "zet erin" is **géén** push-toestemming. Lokale commits zijn OK; pushen naar `origin/main` maakt het publiek voor de community en vereist altijd Denny's expliciete go. Na push ziet de community de update-banner in Instellingen → Accounts bij hun volgende Check.
 
 ## Code-conventies
-- **Theme-awareness**: nooit hardcoded `#fff`, `rgba(255,255,255,...)`, `#C9A84C` in JSX. Gebruik `var(--text)`, `var(--text2)`, `var(--gold)`, `var(--bg)`, `var(--green)`, `var(--red)`, `var(--amber)`. Of voeg per-thema override toe in `<style>` block met `body.theme-light .selector {...}`. Alle 6 thema's testen: sync / classic / aurora / light / parchment / daylight.
+- **Theme-awareness**: nooit hardcoded `#fff`, `rgba(255,255,255,...)`, `#C9A84C` in JSX. Gebruik `var(--text)`, `var(--text2)`, `var(--gold)`, `var(--bg)`, `var(--green)`, `var(--red)`, `var(--amber)`. Of voeg per-thema override toe in `<style>` block met `body.theme-light .selector {...}`. **SyncJournal heeft twee thema's: licht en donker** (`setTheme('light')` / `setTheme('dark')`) — test allebei. De zes thema's uit de oude journal (sync / classic / aurora / light / parchment / daylight) bestaan hier niet meer.
 - **localStorage prefix `tj_`**: alle keys beginnen met `tj_` (bv. `tj_trades`, `tj_mindset_prefs`, `tj_discipline_checks`, `tj_milestones_seen`). Voorkomt collisions.
 - **Environment flags**:
   - `IS_DEV` (via `?dev=1` in URL, persistent) — verbergt dev-only UI (proxy-URL, debug knoppen) voor community.
@@ -146,7 +146,7 @@ De app praat met exchange-API's via een **online Cloudflare Worker**, niet via `
 
 ## Exchange-architectuur — bug-isolatie tussen exchanges
 
-We ondersteunen 5 exchanges (Blofin, MEXC, Kraken Futures, Hyperliquid, FTMO MT5). Elke exchange heeft eigen data-shapes en eigen aannames; **een fix voor één exchange mag niet per ongeluk een andere breken**. Daarom:
+We ondersteunen zes exchanges: **Blofin, OKX, Kraken Futures en Hyperliquid** met een API-koppeling, **MEXC** (koppeling gestopt — MEXC verlaat NL nov 2026, CSV-import blijft) en **FTMO MT5** via CSV en handmatige accounts. Elke exchange heeft eigen data-shapes en eigen aannames; **een fix voor één exchange mag niet per ongeluk een andere breken**. Daarom:
 
 - **API-adapters zijn per exchange** in `ExchangeAPI.{exchange}` — `fetchTrades`, `testConnection`, `fetchOpenPositions`, `fetchFills`, etc. Elk eigen object, eigen closure. Hier nooit cross-exchange logica plakken.
 - **Trade-processing met exchange-aannames hoort óók in de adapter**, niet in shared helpers. Voorbeeld: Blofin's partial-close detectie maakt aannames over `positionId`-hergebruik en `_rawCloseSize`-veld die voor MEXC niet kloppen. Zo'n functie wordt een adapter-methode (`ExchangeAPI.blofin.detectPartials(...)`), niet een gedeelde helper die met `if (ex==="blofin")` switcht.
@@ -206,7 +206,7 @@ Claude mag (en moet) deze tools proactief inzetten. Denny hoeft er niet steeds o
     `graphify-src/syncjournal.js`, verwijder de oude `tradejournal.js`, en draai
     `graphify graphify-src --update` (code-only/AST, kost geen tokens). Zie backlog-story 7.
 - **Changelog-discipline**: elke user-facing commit hoort in de release-flow (zie boven). Refactor/test/docs hoeven niet in changelog.
-- **Bij bug-fix op theme-gerelateerd gedrag**: altijd alle 6 thema's checken (sync / classic / aurora / light / parchment / daylight).
+- **Bij bug-fix op theme-gerelateerd gedrag**: licht én donker checken. (De oude journal had er zes; SyncJournal twee.)
 
 ## Autonome testing (sinds v12.62)
 
@@ -218,7 +218,7 @@ Claude Code kan UI-flows zelfstandig testen tegen `work/syncjournal.html` via Pl
 - **`tests/`-folder** bevat:
   - `smoke.spec.js` — laad app, verifieer versie, geen JS-errors, screenshot in `tests/screenshots/`.
   - `blofin-partial.spec.js` — seedt localStorage met `tests/fixtures/blofin-partial-state.json`, valideert detectPartialFromSiblings + UI-rendering.
-  - `themes.spec.js` — laadt app voor alle 6 thema's (sync/classic/aurora/light/parchment/daylight), checkt body.className + geen JS-errors + screenshot per thema in `tests/screenshots/themes/`.
+  - `themes.spec.js` — laadt de app per thema, checkt body.className + geen JS-errors + screenshot in `tests/screenshots/themes/`. **Let op**: deze spec dateert uit de tijd van zes thema's; zie backlog-story 17/18 over verouderde specs.
   - `helpers/seed.js` — `seedLocalStorage(fixture)` voor `page.addInitScript`.
   - `run-adhoc.js` — losse Node-runner voor ad-hoc exploratie (geen test-framework).
   - `screenshots/` — gegitignored behalve `baseline/`.
@@ -237,12 +237,19 @@ Claude Code kan UI-flows zelfstandig testen tegen `work/syncjournal.html` via Pl
 
 ```bash
 cd C:/Users/Denny/Documents/Tradejournal
-node tests/run-all-sj.js                  # DE suite — 74 specs, ~8,6 min (dit is wat CI draait)
+node tests/run-all-sj.js                  # DE suite — leest de map: 174 specs (dit is wat CI draait)
 node tests/run-all-sj.js kraken csv       # alleen specs waarvan de naam matcht
 node tests/kraken-levensloop.spec.js      # losse Node-spec (80 stuks) draai je met node
 npx playwright test tests/smoke.spec.js   # runner-spec (91 stuks) draai je met playwright
-node tests/run-adhoc.js --fixture=blofin-partial-state.json --theme=parchment
+node tests/run-adhoc.js --fixture=blofin-partial-state.json --theme=light
+SPEC_TIMEOUT=15000 GEEN_HERKANSING=1 node tests/run-all-sj.js   # diagnose-ronde: snel falen
 ```
+
+> **Stand 28-09-2026**: de runner leest sinds vandaag de map in plaats van een handmatige lijst,
+> waardoor er 174 specs meedraaien in plaats van 74. Daarvan staat ongeveer de helft rood, en dat
+> zijn **verouderde specs, geen kapotte app** — ze beschrijven de oude journal (verdwenen UI,
+> hernoemde teksten). Zie `docs/teststrategie-2026-09-27.md` en backlog-story 17–19.
+> De set die bij een release telt is de oude lijst van 74; die stond op v1.0 volledig groen.
 
 > **`npm test` werkt op dit moment niet.** De `testMatch` in `playwright.config.js` pakt álle
 > `tests/*.spec.js`, maar 80 daarvan zijn losse Node-scripts die zelf een browser starten en
@@ -288,9 +295,9 @@ echo '{"tool_name":"Edit","tool_input":{"file_path":"work/syncjournal.html","new
 
 ### Accessibility audit (axe-core)
 
-`tests/a11y.spec.js` — runt axe-core (WCAG 2.1 A + AA tags) over Dashboard/Trades/Accounts × 6 thema's = 18 specs (~3 min). Logt alle violations per scherm gegroepeerd op impact (critical/serious/moderate/minor) + concrete rule-IDs en eerste 3 affected nodes voor critical.
+`tests/a11y.spec.js` — runt axe-core (WCAG 2.1 A + AA tags) over Dashboard/Trades/Accounts × de thema's (geschreven voor zes, nu twee — spec loopt achter). Logt alle violations per scherm gegroepeerd op impact (critical/serious/moderate/minor) + concrete rule-IDs en eerste 3 affected nodes voor critical.
 
-**Hard-fail beleid**: alleen `critical` impact blokkeert (form-labels, keyboard-traps, missing roles). `serious` (vooral color-contrast) wordt gelogd maar niet geblokkeerd — onze 6 thema's hebben bewust subtiele inactieve tabs/ondertitels die ~3.4:1 zitten i.p.v. WCAG 4.5:1. Bij regressie zou de log-output direct opvallen.
+**Hard-fail beleid**: alleen `critical` impact blokkeert (form-labels, keyboard-traps, missing roles). `serious` (vooral color-contrast) wordt gelogd maar niet geblokkeerd — onze thema's hebben bewust subtiele inactieve tabs/ondertitels die ~3.4:1 zitten i.p.v. WCAG 4.5:1. Bij regressie zou de log-output direct opvallen.
 
 **Run**:
 ```bash
@@ -323,7 +330,7 @@ Geen install nodig. Parseert `~/.claude/projects/*.jsonl`. Gebruik wekelijks om 
 
 ### /design-review slash command
 
-`.claude/commands/design-review.md` — autonome visuele review over 6 thema's × 3 schermen (Dashboard / Trades / Instellingen). Type `/design-review` (of met argument: `trades` / `accounts` / `dashboard` om te scopen). Workflow: runt `tests/design-review.spec.js` (18 specs, ~2.5 min) + smoke, leest output-screenshots multimodaal, vergelijkt met baseline in `tests/screenshots/baseline/design-review/`, loopt design-checklist (contrast, theme-consistency, layout integrity, whitespace, top-bar info), output in Nederlands gestructureerd rapport met ✓/⚠/✗ per scherm × thema + top-actiepunten + ship/fix-verdict.
+`.claude/commands/design-review.md` — autonome visuele review over de thema's × 3 schermen (geschreven voor zes thema's, nu twee) (Dashboard / Trades / Instellingen). Type `/design-review` (of met argument: `trades` / `accounts` / `dashboard` om te scopen). Workflow: runt `tests/design-review.spec.js` (18 specs, ~2.5 min) + smoke, leest output-screenshots multimodaal, vergelijkt met baseline in `tests/screenshots/baseline/design-review/`, loopt design-checklist (contrast, theme-consistency, layout integrity, whitespace, top-bar info), output in Nederlands gestructureerd rapport met ✓/⚠/✗ per scherm × thema + top-actiepunten + ship/fix-verdict.
 
 **Twee specs onderscheid:**
 - `tests/themes.spec.js` — snelle Dashboard-only check (~55s, 6 shots) — voor pre-commit / smoke

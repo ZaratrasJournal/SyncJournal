@@ -10,7 +10,7 @@ Basis kwam uit de feature-diff v4_14 → v9 onderaan. Inmiddels werken we op **v
 
 <!-- Denny stuurt bugs 1 voor 1 — elk item krijgt datum + korte reproductiestap. -->
 
-- [ ] **Merged trades uit de oude journal worden in SyncJournal dubbel geteld** *(2026-09-28, gevonden door de suite-doorloop)* — De merge-functie (FTMO/MT5-workaround, v12.190) werkt zo: de master-trade krijgt `mergedFrom = [child-ids]`, de kinderen krijgen `status = "merged-child"` en `mergedInto`, en een helper `filterMergedChildren()` houdt die kinderen uit álle lijsten en analytics. Zo telt alleen de master mee.
+- [x] **Merged trades uit de oude journal worden in SyncJournal dubbel geteld** — ✅ *Opgelost in v1.0 (28-09-2026).* Bleek gróter dan de één regel die hieronder stond: het dashboard leest op twee plekken rechtstreeks uit `T` ("Recente trades" en de jaarberekening), dus alleen `FT` filteren was niet genoeg. Nu een benoemde helper `zonderMergedChildren()` op alle drie de plekken. Aangetoond: dezelfde vier rijen telden 600 en tellen nu 300. Spec: `tests/merged-children.spec.js` (11 checks), inclusief de controle dat de kinderen níet zijn weggegooid. *(2026-09-28, gevonden door de suite-doorloop)* — De merge-functie (FTMO/MT5-workaround, v12.190) werkt zo: de master-trade krijgt `mergedFrom = [child-ids]`, de kinderen krijgen `status = "merged-child"` en `mergedInto`, en een helper `filterMergedChildren()` houdt die kinderen uit álle lijsten en analytics. Zo telt alleen de master mee.
 
   **In SyncJournal is de helft overgezet.** De velden staan er wel:
 
