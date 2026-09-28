@@ -59,28 +59,55 @@ ons geval het IP van de bezoeker.
 - `namespace_id` is een vrij te kiezen getal; het onderscheidt tellers binnen je account.
 - Vereist **wrangler 4.36 of nieuwer** (`npx wrangler --version`).
 
-### In `worker.js`
+### In `worker.js` — exact, tegen v19
 
-Twee wijzigingen. Eerst `env` erbij in de handtekening — die staat er nu niet:
+Alleen het `export default`-blok verandert. De rest van het bestand blijft ongemoeid.
+
+**Nu:**
 
 ```js
 export default {
-  async fetch(request, env) {                    // ← env toegevoegd
+  async fetch(request) {
+    if (request.method === 'OPTIONS') return cors();
+    if (request.method !== 'POST') return json({ error: 'Only POST allowed' }, 405);
+    let body;
+    try { body = await request.json(); }
+    catch { return json({ error: 'Invalid JSON' }, 400); }
+    const { exchange, action } = body;
+    try {
+```
+
+**Wordt:**
+
+```js
+export default {
+  async fetch(request, env) {
     if (request.method === 'OPTIONS') return cors();
     if (request.method !== 'POST') return json({ error: 'Only POST allowed' }, 405);
 
-    // Snelheidslimiet per IP. 60 per minuut is ruim: een sync doet er een handvol per
-    // exchange, ook als iemand driftig op ververs drukt. Een script dat de Worker
-    // leegtrekt loopt er meteen tegenaan.
-    const ip = request.headers.get('CF-Connecting-IP') || 'onbekend';
-    const { success } = await env.LIMIET.limit({ key: ip });
-    if (!success) return json({ error: 'Te veel verzoeken, probeer over een minuut opnieuw' }, 429);
+    // Snelheidslimiet per IP. Staat ná de OPTIONS-check, zodat CORS-preflights niet
+    // meetellen. De `if (env.LIMIET)` is met opzet: zonder die guard geeft een deploy
+    // vóór de binding bestaat een 500 op élk verzoek, en dan ligt de sync plat.
+    if (env && env.LIMIET) {
+      const ip = request.headers.get('CF-Connecting-IP') || 'onbekend';
+      const { success } = await env.LIMIET.limit({ key: ip });
+      if (!success) return json({ error: 'Te veel verzoeken, probeer over een minuut opnieuw' }, 429);
+    }
 
     let body;
-    // … de rest blijft zoals hij is
+    try { body = await request.json(); }
+    catch { return json({ error: 'Invalid JSON' }, 400); }
+    const { exchange, action } = body;
+
+    // Alleen meekijken wie er belt. NIET weigeren: de oude TradeJournal en Morani's
+    // eigen journal sturen geen `client` mee en moeten blijven werken.
+    console.log('client:', body.client || 'onbekend', '· exchange:', exchange, '· action:', action);
+
+    try {
 ```
 
-Deployen zoals je gewend bent (`npx wrangler deploy`).
+Door die `if (env && env.LIMIET)` maakt de volgorde niet uit: deploy je de code eerst, dan draait
+hij gewoon door zonder limiet tot de binding er is.
 
 ### Als je de Worker in het dashboard bewerkt
 
