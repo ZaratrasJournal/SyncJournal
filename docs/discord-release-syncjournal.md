@@ -22,6 +22,10 @@ Nieuw is ook de **Google Drive-koppeling**: de app maakt een map *SyncJournal* i
 zet daar automatisch je backups neer — wij kunnen daar niet bij. Daarmee is je journal niet langer
 alleen je browser, en kun je op een andere computer verder waar je gebleven was.
 
+En er komt nog iets aan: een **Plan-pagina** waarop je vóór de handelsdag vastlegt wat je van plan
+bent, en waar je journal achteraf zelf de link legt met je trades. Nog in aanbouw — morgenavond laat
+ik alvast zien waar het heen gaat.
+
 Een paar onderdelen zijn nog niet meegekomen — laat vooral weten wat je mist, dan zetten we het op
 de lijst.
 
@@ -77,8 +81,8 @@ Morgenavond loop ik het live met jullie door. 📓
 **Niet claimen:**
 - *"OKX is erbij gekomen"* — onjuist. OKX zat al in de oude journal (eigen adapter, 60 treffers).
   Stond eerst wel in dit bericht; eruit gehaald op 28-09-2026.
-- *"Nieuw: de Plan-pagina"* — die is nog in aanbouw en hoort niet in een release-aankondiging.
-  Noem hem hooguit tijdens de sessie als vooruitblik.
+- *"Nieuw: de Plan-pagina"* — niet als afgeronde functie neerzetten; hij is nog in aanbouw.
+  Als vooruitblik mag hij er wél in, en dat doet het bericht ook — met "nog in aanbouw" erbij.
 - *"alles is meegenomen"* — dat is niet zo.
 - *"sneller dan elke andere journal"* — niet gemeten.
 - De **30 seconden** die een eerdere meting gaf: die kwam doordat het netwerk geblokkeerd was en
