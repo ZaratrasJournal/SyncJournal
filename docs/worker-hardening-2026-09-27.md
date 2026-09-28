@@ -28,34 +28,77 @@ Daarom deze twee maatregelen.
 
 ---
 
-## 1 · Rate limiting in Cloudflare
+## 1 · Snelheidslimiet in de Worker zelf
 
-Geen code nodig, alleen een regel in het dashboard. Dit is de maatregel die er echt toe doet.
+> **Gecorrigeerd op 28-09-2026.** De eerste versie zei: maak een WAF *rate limiting rule* in het
+> dashboard. Dat werkt hier niet. WAF-regels gelden op een **zone** — een domein dat in jouw
+> Cloudflare-account staat — en de Worker draait op `morani-proxy.moranitraden.workers.dev`.
+> `workers.dev` is een domein van Cloudflare zelf, niet van jou. Bovendien geeft het Free-plan
+> maar één WAF-regel, en die kan alleen op *Path* en *Verified Bot* matchen, niet op IP.
+> De juiste weg is de snelheidslimiet in de Worker zelf.
 
-1. Cloudflare-dashboard → je account → **Workers & Pages** → `morani-proxy`.
-2. Ga naar **Settings → Domains & Routes** en noteer de route (`morani-proxy.moranitraden.workers.dev`).
-3. Ga in het linkermenu naar **Security → WAF → Rate limiting rules** → **Create rule**.
+Cloudflare heeft daar een ingebouwde binding voor. Die telt per sleutel die je zelf kiest — in
+ons geval het IP van de bezoeker.
 
-| Veld | Waarde |
-|---|---|
-| Rule name | `syncjournal-proxy-limiet` |
-| If incoming requests match | *Custom filter expression* → Field **Hostname** · Operator **equals** · Value `morani-proxy.moranitraden.workers.dev` |
-| Characteristics (waarop tellen) | **IP address** |
-| Rate | **60** requests per **1 minute** |
-| Duration (hoe lang blokkeren) | **10 seconds** |
-| Then take action | **Block** |
+### Instellen in `wrangler.jsonc`
 
-4. **Deploy**.
+```jsonc
+{
+  "main": "src/index.js",
+  "ratelimits": [
+    {
+      "name": "LIMIET",
+      "namespace_id": "1001",
+      "simple": { "limit": 60, "period": 60 }
+    }
+  ]
+}
+```
 
-**Waarom 60 per minuut.** Een gewone sync doet er een handvol: per exchange een saldo-call, een
-trades-call en soms fills per positie. Iemand met vier koppelingen die driftig op ververs drukt,
-komt niet in de buurt van 60. Een script dat de Worker leegtrekt wel, meteen.
+- `period` mag **alleen 10 of 60** zijn (seconden). Andere waarden worden geweigerd.
+- `namespace_id` is een vrij te kiezen getal; het onderscheidt tellers binnen je account.
+- Vereist **wrangler 4.36 of nieuwer** (`npx wrangler --version`).
 
-Zie je na een week niets geblokkeerd staan (**Security → Events**), dan staat hij goed. Klaagt een
-member over "even druk", kijk daar dan eerst: de app toont die melding ook bij een 429 van de
-exchange zelf, dus het hoeft niet jouw regel te zijn.
+### In `worker.js`
 
----
+Twee wijzigingen. Eerst `env` erbij in de handtekening — die staat er nu niet:
+
+```js
+export default {
+  async fetch(request, env) {                    // ← env toegevoegd
+    if (request.method === 'OPTIONS') return cors();
+    if (request.method !== 'POST') return json({ error: 'Only POST allowed' }, 405);
+
+    // Snelheidslimiet per IP. 60 per minuut is ruim: een sync doet er een handvol per
+    // exchange, ook als iemand driftig op ververs drukt. Een script dat de Worker
+    // leegtrekt loopt er meteen tegenaan.
+    const ip = request.headers.get('CF-Connecting-IP') || 'onbekend';
+    const { success } = await env.LIMIET.limit({ key: ip });
+    if (!success) return json({ error: 'Te veel verzoeken, probeer over een minuut opnieuw' }, 429);
+
+    let body;
+    // … de rest blijft zoals hij is
+```
+
+Deployen zoals je gewend bent (`npx wrangler deploy`).
+
+### Als je de Worker in het dashboard bewerkt
+
+Dan heb je geen `wrangler.jsonc`. De binding voeg je toe onder **Workers & Pages →
+morani-proxy → Settings → Bindings → Add binding**. Staat *Rate limiting* daar niet tussen, dan
+kan het alleen via wrangler — in dat geval is de eenvoudigste route één keer `npx wrangler init`
+op de bestaande Worker en daarna vanaf je eigen machine deployen.
+
+### Wat een lid merkt
+
+Niets, tenzij je de limiet raakt. En dan heeft de app het al opgevangen: `proxyCall` herkent een
+429 ([work/syncjournal.html:6055](work/syncjournal.html#L6055)) en zet een oplopende cooldown per
+exchange, met de melding *"… is even druk (rate-limit), probeer over ~30s"*.
+
+**Kanttekening:** die melding noemt de exchange, terwijl de 429 dan van ónze Worker komt. Klopt
+niet helemaal, maar hij is onschuldig en pas relevant als iemand de limiet daadwerkelijk raakt.
+Wil je dat netter, dan moet de app het onderscheid kunnen zien — dat is een aparte kleine
+wijziging, niet nodig om dit aan te zetten.
 
 ## 2 · Het client-kenmerk — als label, niet als slot
 
@@ -120,9 +163,16 @@ De bescherming zit in de rate-limit, niet hierin.
 
 ## Controleren dat het werkt
 
-**De rate-limit**: Cloudflare-dashboard → **Security → Events**. Staat daar na een week niets
-geblokkeerd, dan zit de drempel goed. Klaagt een member over "even druk", kijk daar dan eerst —
-de app toont die melding ook bij een 429 van de exchange zelf, dus het hoeft niet jouw regel te zijn.
+**De snelheidslimiet**, vanaf je eigen machine — de tweede regel hoort een 429 te geven:
+
+```bash
+for i in $(seq 1 70); do
+  curl -s -o /dev/null -w "%{http_code} " -X POST -H "Content-Type: application/json"     -d '{"exchange":"okx","action":"test","client":"syncjournal-web"}'     https://morani-proxy.moranitraden.workers.dev
+done; echo
+```
+
+Je zou eerst een reeks normale antwoorden moeten zien en daarna `429`. Gebeurt dat niet, dan is
+de binding niet actief — controleer de naam (`LIMIET`) en of `env` in de handtekening staat.
 
 **Het log-label**: `wrangler tail`, of **Workers & Pages → morani-proxy → Logs**. Je zou drie
 soorten regels moeten zien: `syncjournal-web`, en `onbekend` voor de oude journal en voor Morani.
