@@ -1804,7 +1804,7 @@ const KINDS={live:{label:'Live',color:'var(--green)'},gemist:{label:'Gemist',col
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v0.9.153';
+const APP_VERSION='v1.0';
 const SCHEMA_VERSION=8;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -2792,6 +2792,12 @@ const eurCS=v=>(v<0?'−':'+')+eurC(v);
 const eurK=v=>{const a=Math.abs(v),s=v<0?'−':'+';return s+CURSYM()+(a>=1000?(a/1000).toFixed(a>=10000?0:1).replace('.',',')+'k':Math.round(a));};
 const cls=v=>v>=0?'g':'r';
 const arr=v=>v>=0?'▲':'▼';
+/* Samengevoegde trades uit de oude journal: de master draagt de opgetelde P&L van zijn kinderen,
+   dus die kinderen mogen nergens meetellen — niet in een lijst, niet in een som. Ze blijven wél in
+   de opslag staan, zodat een backup compleet blijft en er niets onomkeerbaar verdwijnt.
+   SyncJournal kent zelf geen merge-functie; deze rijen komen uitsluitend binnen via
+   "Importeer oude backup". (Gevonden 28-09-2026: de velden waren overgezet, deze filter niet.) */
+const zonderMergedChildren=rows=>(rows||[]).filter(t=>t&&t.status!=='merged-child');
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const jsarg=s=>String(s).replace(/[\\'"<>]/g,'');  // veilige arg voor inline on*-handlers (geen quote-/tag-breakout)
 // Bron voor een <img src="...">. Eigen screenshots zijn data:image-URL's uit compressImg,
@@ -3034,7 +3040,7 @@ function pgDashboard(){
   const mRows=CLOSED.filter(t=>String(t.date||'').startsWith(_mm));
   const mNet=mRows.reduce((s,t)=>s+(+t.pnl||0),0);
   const _yr=String(new Date().getFullYear());
-  const yRows=T.filter(t=>t&&t.status==='closed'&&String(t.date||'').startsWith(_yr));
+  const yRows=zonderMergedChildren(T).filter(t=>t&&t.status==='closed'&&String(t.date||'').startsWith(_yr));
   const ytd=yRows.reduce((s,t)=>s+(+t.pnl||0),0);
   let ytdTxt;
   if(UNIT()==='val'){const _y=netUsd(yRows),_base=totalBalance()-_y;ytdTxt=`YTD <b class="num ${cls(ytd)} mask">${eurS(ytd)}${_base>0?' ('+(_y>=0?'+':'−')+Math.abs(_y/_base*100).toFixed(1).replace('.',',')+'%)':''}</b>`;}
@@ -3053,7 +3059,7 @@ function pgDashboard(){
   const nudge=(VIEW.preset==='rustig'&&T.length>=25&&!VIEW.nudged)?`<div class="vnudge">💡 Er staan meer inzichten voor je klaar, profit factor, expectancy, analytics en tendencies. <span class="go" onclick="dismissNudge(true)">Bekijk Standaard</span><button class="x" onclick="dismissNudge(false)" aria-label="Hint sluiten">×</button></div>`:'';
   const recent=!VV('dRecent')?'':`<div class="panel"><div class="phead"><h3>Recente trades</h3><span class="sp"></span><button class="chip a" onclick="go('trades')" style="font-weight:700">Alle trades →</button>${pHide('dRecent','Recente trades')}</div>
     <div class="tblwrap"><table class="tbl"><thead><tr><th>Pair</th><th>Setup</th><th>Datum</th><th class="rt">P&L</th><th class="rt">R</th><th class="rt">Status</th></tr></thead>
-    <tbody>${T.slice(0,6).map(t=>`<tr><td>${assetCell(t.pair)}</td><td class="tag">${esc(t.setup)}</td><td class="tag num">${fmtD(t.date)}</td><td class="rt">${UNIT()==='val'?pnlCell(t.pnl,pnlPctOf(t)):`<span class="num ${unitTrade(t)==='—'?'':cls(+t.pnl||0)}" style="font-weight:700">${unitTrade(t)}</span>`}</td><td class="rt num ${cls(t.r)}">${(t.r>=0?'+':'')+t.r.toFixed(1)}R</td><td class="rt">${statusB(t.status)}</td></tr>`).join('')}</tbody></table></div></div>`;
+    <tbody>${zonderMergedChildren(T).slice(0,6).map(t=>`<tr><td>${assetCell(t.pair)}</td><td class="tag">${esc(t.setup)}</td><td class="tag num">${fmtD(t.date)}</td><td class="rt">${UNIT()==='val'?pnlCell(t.pnl,pnlPctOf(t)):`<span class="num ${unitTrade(t)==='—'?'':cls(+t.pnl||0)}" style="font-weight:700">${unitTrade(t)}</span>`}</td><td class="rt num ${cls(t.r)}">${(t.r>=0?'+':'')+t.r.toFixed(1)}R</td><td class="rt">${statusB(t.status)}</td></tr>`).join('')}</tbody></table></div></div>`;
   return `${filterBar()}${hero}<div style="height:16px"></div>${kpis}${nudge}<div style="height:16px"></div>${eq}<div style="height:16px"></div>
     <div class="grid" style="grid-template-columns:1fr 1fr">${mon}${edge}</div><div style="height:16px"></div>${recent}`;
 }
@@ -4816,7 +4822,7 @@ function render(){
   // zodat doortypen in zoekbalken niet onderbroken wordt (render() vervangt #main volledig).
   let _fid=null,_fs=null,_fe=null;
   try{const _ae=document.activeElement;if(_ae&&_ae.id&&(_ae.tagName==='INPUT'||_ae.tagName==='TEXTAREA')){_fid=_ae.id;if(typeof _ae.selectionStart==='number'){_fs=_ae.selectionStart;_fe=_ae.selectionEnd;}}}catch(e){}
-  FT=fxView(applyFilter(T));
+  FT=fxView(applyFilter(zonderMergedChildren(T)));
   CLOSED=FT.filter(t=>t.status!=='open');
   // B1 (ChangeMaker): filters gelden bewust app-breed — maak dat op élke pagina zichtbaar,
   // zodat "al mijn trades zijn weg" nooit meer een mysterie is.

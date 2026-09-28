@@ -14,7 +14,7 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
   console.log('─── Modal: wat zit erin, wat heb je nu ───');
   await p.evaluate(d => dovImportModal(d, 'syncjournal-backup-2026-09-24.json'), FILE); await p.waitForTimeout(150);
   const mt = await H.modalText(p);
-  ok('kop: bestandsnaam, versie, bevat API-sleutels, trades in bestand tegenover nu', /syncjournal-backup-2026-09-24\.json/.test(mt) && /v0\.9\.\d+/.test(mt) && /bevat API-sleutels/.test(mt) && /40 · netto/.test(mt) && /nu in je journal: 40/.test(mt), mt.slice(0, 300));
+  ok('kop: bestandsnaam, versie, bevat API-sleutels, trades in bestand tegenover nu', /syncjournal-backup-2026-09-24\.json/.test(mt) && /v\d+\.\d+(\.\d+)?/.test(mt) && /bevat API-sleutels/.test(mt) && /40 · netto/.test(mt) && /nu in je journal: 40/.test(mt), mt.slice(0, 300));
   ok('per onderdeel "in bestand" en "nu"; trades met vervangen/samenvoegen', await p.evaluate(() => document.querySelectorAll('#modal [data-dov]').length === 10 && !!document.getElementById('dovMode') && /40 in bestand/.test(document.querySelector('#modal [data-dov="trades"]').innerText)));
   ok('waarschuwing over sleutels alleen bij Exchange-koppelingen', /Ze worden alleen overgenomen als je Exchange-koppelingen aanvinkt/.test(mt));
   ok('toelichting vervangen', /Vervangen:/.test(await p.evaluate(() => document.getElementById('dovModeNote').innerText)));

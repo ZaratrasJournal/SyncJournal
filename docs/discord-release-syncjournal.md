@@ -6,7 +6,7 @@
 
 ---
 
-## 🎉 SyncJournal is live
+## 🎉 SyncJournal 1.0 is live
 
 Mannen — hij staat er: **https://syncjournal.nl**
 
@@ -58,7 +58,7 @@ Morgenavond loop ik het live met jullie door. 📓
 > Opnieuw opgebouwd, met wat jullie vroegen
 
 **Als één regel (bijv. in een aankondigingskanaal)**
-> SyncJournal is live op syncjournal.nl — 12× sneller, automatische back-up naar je eigen Drive. Overzetten duurt 2 minuten.
+> SyncJournal 1.0 is live op syncjournal.nl — 12× sneller, automatische back-up naar je eigen Drive. Overzetten duurt 2 minuten.
 
 **Als reactie op "waarom een nieuwe app?"**
 > De oude moest zichzelf bij elke keer openen eerst vertalen voordat hij iets kon tonen. Dat kostte

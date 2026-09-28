@@ -6,6 +6,27 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v1.0] — 2026-09-28
+
+SyncJournal is uit de 0.9-reeks. Wat begon als een herbouw van de oude TradeJournal draait nu
+online op syncjournal.nl, met je data waar die hoort: in je eigen browser.
+
+### Fixed
+- **Samengevoegde trades uit de oude journal telden dubbel.** De merge-functie zet op de master
+  de opgetelde P&L van zijn kinderen en geeft die kinderen de status `merged-child`. Bij het
+  overzetten kwamen die rijen mee, maar de filter die ze uit lijsten en sommen houdt niet — dus
+  zag je zowel de samengevoegde trade als de losse delen, en telde het bedrag twee keer. Dit raakte
+  alleen wie de merge-functie gebruikte (FTMO/MT5) en daarna overzette. De kinderen zijn niet
+  verwijderd: ze staan nog gewoon in je opslag en in je back-up, ze tellen alleen niet meer mee.
+
+### Waar we vandaan komen
+- 2,5 seconden wachten bij het openen → **0,2 seconden**
+- Een bestand downloaden en zelf bijwerken → **syncjournal.nl**, updates komen vanzelf
+- Back-up met de hand → **automatisch naar je eigen Google Drive**
+- Alleen het eindresultaat van een trade → **de hele levensloop**: elke TP, elke stap, elke fee
+- Verwijderen was definitief → **prullenbak met 30 dagen**
+- Twee layouts × zes thema's → **licht of donker**
+
 ## [v0.9.153] — 2026-09-28
 
 ### Toegevoegd

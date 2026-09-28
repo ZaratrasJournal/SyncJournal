@@ -12,7 +12,7 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
   await p.evaluate(() => { go('instellingen'); setSetTab('data'); });
   const panel = await p.evaluate(() => document.getElementById('diagPanel').innerText.replace(/\s+/g, ' '));
   ok('panel met Kopieer en Download, altijd zichtbaar', /Diagnose-rapport/.test(panel) && /Kopieer/.test(panel) && /Download/.test(panel));
-  ok('samenvatting: versie + schema, aantallen, laatste sync per koppeling', /v0\.9\.\d+ geladen/.test(panel) && /schema 8/.test(panel) && /40 trades · 4 open · 4 playbooks/.test(panel) && /Blofin \d\d-\d\d/.test(panel) && /Hyperliquid nooit/.test(panel), panel.slice(0, 400));
+  ok('samenvatting: versie + schema, aantallen, laatste sync per koppeling', /v\d+\.\d+(\.\d+)? geladen/.test(panel) && /schema 8/.test(panel) && /40 trades · 4 open · 4 playbooks/.test(panel) && /Blofin \d\d-\d\d/.test(panel) && /Hyperliquid nooit/.test(panel), panel.slice(0, 400));
 
   console.log('─── Het rapport ───');
   const rep = await p.evaluate(async () => { const r = await diagReport(); return { r, json: JSON.stringify(r) }; });
