@@ -21,6 +21,9 @@ Het grootste verschil zie je meteen: waar de oude journal alles op elk scherm pr
 **rustiger en breder** — minder tegelijk, beter leesbaar. En in plaats van twee layouts met elk zes
 thema's is het simpelweg **licht of donker**.
 
+En verwijderen is niet langer definitief: er is nu een **prullenbak** waar je 30 dagen de tijd hebt
+om iets terug te halen.
+
 Nieuw is ook de **Google Drive-koppeling**: de app maakt een map *SyncJournal* in **jouw** Drive en
 zet daar automatisch je backups neer — wij kunnen daar niet bij. Daarmee is je journal niet langer
 alleen je browser, en kun je op een andere computer verder waar je gebleven was.
@@ -83,6 +86,7 @@ Morgenavond loop ik het live met jullie door. 📓
 | 12× sneller (2,5 s → 0,2 s) | Gemeten 28-09-2026 met Playwright, beide apps, netwerk aan, twee metingen per app |
 | 3,4 MB → 1,4 MB | Bestandsgrootte `work/tradejournal.html` en `work/syncjournal.html` |
 | Acht externe scripts → één | Oud: React, React-DOM, Chart.js, jsPDF, html2canvas, Babel (cdnjs) + xlsx, SortableJS (jsdelivr). Nieuw: alleen `xlsx`, met `defer` — niet nodig om te starten |
+| Prullenbak, 30 dagen | `TRASH_DAYS=30` in SyncJournal. In de oude app was verwijderen definitief: *"Definitief — verdwijnen uit je journal én balans"* |
 | Twaalf smaken → twee | Oud: `layout` is `standard` of `premium`, elk met zes thema's (sync, classic, aurora, light, parchment, daylight). Nieuw: `setTheme('light')` / `setTheme('dark')` |
 | Nieuw: Google Drive-backup | 10 treffers + OAuth in SyncJournal, 1 losse vermelding zonder koppeling in de oude |
 | Nieuw: levensloop per positie | "levensloop" 0× in de oude, 38× in SyncJournal; "executie-stappen" 0× tegen 3× |
