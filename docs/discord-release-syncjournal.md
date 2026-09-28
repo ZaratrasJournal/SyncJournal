@@ -93,6 +93,10 @@ Morgenavond loop ik het live met jullie door. 📓
   heeft internet nodig om te laden; er is geen service worker. De oude journal was weliswaar een
   bestand op je computer, maar haalde bij elke start code op van twee CDN's, dus die werkte óók niet
   offline. Wat je wél mag zeggen: *"geen externe code meer nodig om te starten"*.
+- *"elf pagina's, alles altijd in beeld"* — stond er eerst; onjuist op twee manieren. De oude
+  journal werkte met tabs, dus er was altijd één scherm zichtbaar, én beide apps hebben elf pagina's.
+- *"zelf kiezen hoeveel je ziet"* als nieuw — de weergave-presets (Rustig / Standaard / Alles) zaten
+  ook al in de oude journal. Geen verschil, dus eruit.
 - *"alles is meegenomen"* — dat is niet zo.
 - *"sneller dan elke andere journal"* — niet gemeten.
 - De **30 seconden** die een eerdere meting gaf: die kwam doordat het netwerk geblokkeerd was en
