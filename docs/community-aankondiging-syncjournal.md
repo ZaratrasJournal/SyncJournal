@@ -6,7 +6,7 @@
 
 # 🚀 SyncJournal is live — jullie journal draait nu online
 
-Mannen, hij staat er: **https://syncjournal.nl**
+Traders, hij staat er: **https://syncjournal.nl**
 
 Geen HTML-bestand meer downloaden, geen updates meer overzetten. Je opent gewoon de site en je journal is er — en bij een nieuwe versie zie je vanzelf een update-banner. Al je data blijft **100% in je eigen browser** staan: geen account, geen server, niemand die meekijkt.
 

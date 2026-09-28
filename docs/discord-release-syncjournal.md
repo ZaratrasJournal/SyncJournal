@@ -8,7 +8,7 @@
 
 ## 🎉 SyncJournal 1.0 is live
 
-Mannen — hij staat er: **https://syncjournal.nl**
+Traders — hij staat er: **https://syncjournal.nl**
 
 Uit de enquête kwam één ding heel duidelijk naar voren: **vereenvoudigen en stabiliseren**. Dus
 zijn we niet gaan stapelen op de oude journal, maar opnieuw begonnen.
@@ -90,6 +90,9 @@ Morgenavond loop ik het live met jullie door. 📓
 | Nieuw: Google Drive-backup | 10 treffers + OAuth in SyncJournal, 1 losse vermelding zonder koppeling in de oude |
 | Nieuw: levensloop per positie | "levensloop" 0× in de oude, 38× in SyncJournal; "executie-stappen" 0× tegen 3× |
 | Niet meegekomen | Doelen, milestones, mindset, pre-trade, deelkaarten — in de oude app aanwezig, in SyncJournal nul voorkomens |
+
+**Aanspreekvorm**: de community is niet alleen mannen. Gebruik *"Traders"* of *"allemaal"*,
+niet *"mannen"* of *"jongens"*. (Denny 28-09-2026.)
 
 **Niet claimen:**
 - *"OKX is erbij gekomen"* — onjuist. OKX zat al in de oude journal (eigen adapter, 60 treffers).
