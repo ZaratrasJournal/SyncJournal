@@ -6,6 +6,23 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v1.3] — 2026-09-29
+
+### Gewijzigd
+- **Elke soort tag heeft nu één eigen kleur, en die zie je overal terug**: in een trade, in het
+  trade-overzicht en in Instellingen → Tags. Setups blauw, confirmaties groenblauw, timeframe paars,
+  positieve emoties groen, negatieve emoties rood, fouten amber, missed-redenen roze en eigen labels
+  grijs. Tot nu toe had elke plek z'n eigen kleuren — FOMO was rood in de trade maar amber in het
+  overzicht. Werkt in het lichte en het donkere thema.
+- **In Instellingen → Tags bepaal je zelf welke emoties negatief zijn.** De emotiekaart heeft een kolom
+  Negatief en een kolom Positief; met ⇄ verplaats je een emotie naar de andere kant. Voorheen lag dat
+  vast in de app, waardoor een emotie die je zelf toevoegde altijd bij Positief belandde.
+
+### Toegevoegd
+- Het trade-overzicht toont nu ook de **timeframe** en de **missed-redenen** van een trade.
+
+---
+
 ## [v1.2] — 2026-09-29
 
 ### Fixed

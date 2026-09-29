@@ -23,7 +23,7 @@ elke wijziging eindigt met `node tests/run-release.js` groen.
 | **B2** | OKX: contractwaarde-vangnet kent geen USDC-perps | 2 | S | — |
 | **W2** | Ruwe exchange-data kunnen vastleggen (dev-modus terug) | 2 | M | — |
 | **C1** | Lege staten: één manier, met een volgende stap | 2 | S + M | — |
-| **C5** | Acht tag-soorten, acht kleuren, overal gelijk; emoties positief/negatief | 2 | M | akkoord kleuren |
+| ~~C5~~ | ~~Acht tag-soorten, acht kleuren, overal gelijk~~ — ✅ **gedaan in v1.3** | — | — | — |
 | **T1** | CSV-import testen op CI | 2 | M | — |
 | **W1** | Worker: staat `Access-Control-Allow-Origin` op `*`? | 2 | XS (Denny) | — |
 | **B3** | Controleren: telt dezelfde positie dubbel via CSV én API? | 2 | S | — |
@@ -195,7 +195,11 @@ nog zeven losse classes: `lt-empty` (5×), `revempty` (3×), `txempty`, `thm-emp
 **Klaar als** er geen losse `*-empty`-classes meer zijn en elke lege-staat-tekst in `EMPTY` staat en
 een volgende stap noemt.
 
-### C5 · Eén kleurenschema voor tags, en emoties gesplitst in positief en negatief — prio 2 · M
+### C5 · Eén kleurenschema voor tags, en emoties gesplitst in positief en negatief — ✅ gedaan in v1.3
+
+*Gebouwd 29-09-2026 na akkoord op de demo ([demos/tag-kleuren-demo.html](demos/tag-kleuren-demo.html)).*
+*Spec: `tests/tag-kleuren.spec.js` (64 checks, beide thema's). Afwijking van het plan: de emotiekaart*
+*zet Negatief en Positief onder elkaar in plaats van naast elkaar — de kaarten zijn ~360px breed.*
 
 *Gevraagd door Denny, 29-09-2026.*
 

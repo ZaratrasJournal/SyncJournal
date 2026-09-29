@@ -22,7 +22,7 @@
   --line:#E8EBF2; --line2:#F0F2F7;
   --accent:#3B5BD9; --accent-soft:#EDF0FD; --accent-line:#CDD6F7;
   --green:#12946A; --green-soft:#E3F4EC; --red:#D64259; --red-soft:#FBE8EC; --amber:#C0821C; --amber-soft:#F8EFDD;
-  --violet:#7C5CE0; --teal:#0E9E96;
+  --violet:#7C5CE0; --teal:#0E9E96;--pink:#D6409F;
   --grid:#EDEFF5; --hover:#F6F8FC; --track:#EEF1F6; --zebra:#FAFBFD;
   --fb:'Inter',sans-serif; --fd:'Plus Jakarta Sans',sans-serif; --fn:'IBM Plex Mono',monospace;
   --sh:0 1px 2px rgba(20,30,60,.05);
@@ -33,7 +33,7 @@ body.dark{
   --line:#232B36; --line2:#1C232D;
   --accent:#6E86F0; --accent-soft:#1B2436; --accent-line:#2E3B57;
   --green:#37C48B; --green-soft:#12261F; --red:#F0637A; --red-soft:#2A1820; --amber:#E0A63C; --amber-soft:#28210F;
-  --violet:#A78BFA; --teal:#2CC5B6;
+  --violet:#A78BFA; --teal:#2CC5B6;--pink:#F472B6;
   --grid:#1B222C; --hover:#19212B; --track:#1E2732; --zebra:#12171f;
   --sh:0 1px 2px rgba(0,0,0,.25);
 }
@@ -1164,6 +1164,11 @@ details.faq .faq-a b{color:var(--ink)}
 .tagcard-h{display:flex;align-items:center;gap:9px;padding:11px 15px;border-bottom:1px solid var(--line2);background:color-mix(in srgb,var(--cc) 6%,transparent)}
 .tagcard-dot{width:11px;height:11px;border-radius:4px;background:var(--cc);flex:none;box-shadow:0 0 0 3px color-mix(in srgb,var(--cc) 18%,transparent)}
 .tagcard-emoji{font-size:15px;line-height:1;flex:none}
+.tagcard-dot.emo{background:linear-gradient(135deg,var(--red) 50%,var(--green) 50%);box-shadow:none}
+.emokol{display:flex;flex-direction:column;gap:14px}
+.emokol-kop{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;margin:0 0 7px}
+.tagmanage button.wissel{color:var(--muted);font-size:11px}
+.tagmanage button.wissel:hover{background:var(--track)}
 /* oefentrades — soort-badge + filter */
 .paircell{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
 .kbadge{display:inline-flex;align-items:center;gap:3px;font-size:9.5px;font-weight:700;padding:2px 7px;border-radius:5px;color:var(--kc);background:color-mix(in srgb,var(--kc) 14%,transparent);border:1px solid color-mix(in srgb,var(--kc) 32%,transparent);white-space:nowrap;letter-spacing:.02em}
@@ -1735,10 +1740,12 @@ const EMOTIONS=['Kalm','Zelfverzekerd','Gefocust','FOMO','Twijfel','Gehaast','Re
 const TFLIST=['Daily','4H','2H','1H','30M','15M','5M','1M'];/* top-down volgorde */
 const TIMEFRAMES=TFLIST;
 const CONFIRMATIONS=['Liquidity Sweep','OB','FVG','EQL/EQH','Flat candle','Session sweep','VAH/VAL/POC','Range retest','Range acceptatie'];
-const EMO_NEG=['FOMO','Gehaast','Twijfel','Twijfels','Revenge','Onzeker','Gefrustreerd','Tilt'];
+// Startwaarde voor tagConfig.emotionNeg (welke emoties negatief/rood zijn). Tot 29-09-2026 was dit
+// dé lijst, vast in de code: een zelf toegevoegde negatieve emotie belandde daardoor bij Positief.
+// Nu is het data, instelbaar in Instellingen → Tags (backlog C5).
+const EMO_NEG_START=['FOMO','Gehaast','Twijfel','Twijfels','Revenge','Onzeker','Gefrustreerd','Tilt'];
 // "kalm gebleven"-heuristiek (checklist + auto-rating): alle rustige emoties tellen
 const CALM_EMOS=['Kalm','Rustig','Zelfverzekerd','Geduldig','Gefocust'];
-const EMO_POS=['Kalm','Rustig','Zelfverzekerd','Gefocust','Geduldig','Gedisciplineerd'];
 const MARKETS=['Trending','Ranging','Volatiel','Kalm'];
 const MISTAKES=['','Te vroeg in','Te laat in','Geen plan','SL te krap','SL te wijd','Revenge trade','FOMO-instap','Overtrading','TP te vroeg','Positie te groot','Tegen trend'];
 const TAGPOOL=['A+ setup','Breakout','Reversal','Runner','Scalp-trade','Swing-trade','News','Overtraded','Discipline','Te vroeg','Te laat','Perfecte executie','Tegen trend','Hoge R'];
@@ -1811,7 +1818,7 @@ const KINDS={live:{label:'Live',color:'var(--green)'},gemist:{label:'Gemist',col
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v1.2';
+const APP_VERSION='v1.3';
 const SCHEMA_VERSION=8;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -2102,17 +2109,20 @@ function addSyncedTrades(list){
 }
 function nextId(){ return [...T,...TRASH].reduce((m,t)=>Math.max(m,t.id),-1)+1; }
 /* Tag-categorieën — zoals het originele TagManager-overzicht uit de journal */
+// Eén kleur per soort, uit de thema-tokens zodat licht en donker allebei kloppen. Dezelfde kleur
+// in een trade, in het trade-overzicht en in Instellingen → Tags — lees hem altijd via tagKleur().
+// (Denny 29-09-2026, backlog C5; demo: demos/tag-kleuren-demo.html.)
 const TAG_CATS=[
-  {key:'setupTags',label:'Setup-type',color:'#5aa9ff'},
-  {key:'confirmationTags',label:'Confirmaties',color:'#12b39b'},
-  {key:'timeframeTags',label:'Timeframe',color:'#a78bfa'},
-  {key:'emotionTags',label:'Emoties',color:'#c0821c'},
-  {key:'mistakeTags',label:'Fouten',color:'#e8823c'},
-  {key:'missedReasonTags',label:'Missed-redenen',color:'#8a92a3',emoji:'👻'},
+  {key:'setupTags',label:'Setup-type',color:'var(--accent)'},
+  {key:'confirmationTags',label:'Confirmaties',color:'var(--teal)'},
+  {key:'timeframeTags',label:'Timeframe',color:'var(--violet)'},
+  {key:'emotionTags',label:'Emoties',color:'var(--green)'},   // positief; negatief is var(--red), zie tagKleur,
+  {key:'mistakeTags',label:'Fouten',color:'var(--amber)'},
+  {key:'missedReasonTags',label:'Missed-redenen',color:'var(--pink)',emoji:'👻'},
   // Eigen labels (2026-09-14): vrije tags zoals "nieuwsdag" of "high conviction" — beheersbaar
   // in Instellingen → Tags en de enige bron voor de tags-picker in het trade-formulier
   // (confirmaties kies je in de setup-lagen; die stonden dubbel in de picker).
-  {key:'customTags',label:'Eigen labels',color:'#7a869c',emoji:'🔖'},
+  {key:'customTags',label:'Eigen labels',color:'var(--muted)',emoji:'🔖'},
 ];
 // Standaard-tags voor een verse journal = Denny's eigen bewezen set (2026-09-17,
 // overgenomen uit zijn tag-beheer). Bestaande gebruikers behouden hun eigen lijsten.
@@ -2126,12 +2136,46 @@ const DEFAULT_TAGCONFIG={
   customTags:[],
 };
 let tagConfig=DB.load('tagconfig',JSON.parse(JSON.stringify(DEFAULT_TAGCONFIG)));
-if(!tagConfig.missedReasonTags)tagConfig.missedReasonTags=[...DEFAULT_TAGCONFIG.missedReasonTags];
-if(!Array.isArray(tagConfig.customTags))tagConfig.customTags=[...DEFAULT_TAGCONFIG.customTags];
+// Vult aan wat een oudere journal of back-up nog niet kent. Draait bij het laden én na elke
+// import: een back-up van vóór een nieuw veld heeft dat veld niet.
+function normTagConfig(){
+  if(!tagConfig||typeof tagConfig!=='object')tagConfig=JSON.parse(JSON.stringify(DEFAULT_TAGCONFIG));
+  if(!tagConfig.missedReasonTags)tagConfig.missedReasonTags=[...DEFAULT_TAGCONFIG.missedReasonTags];
+  if(!Array.isArray(tagConfig.customTags))tagConfig.customTags=[...DEFAULT_TAGCONFIG.customTags];
+  if(!Array.isArray(tagConfig.emotionNeg))tagConfig.emotionNeg=[...EMO_NEG_START];
+}
+normTagConfig();
 function persistTagConfig(){ DB.save('tagconfig',tagConfig); }
-function allTags(){ return [...new Set(Object.values(tagConfig).flat())]; }
+// De tag-lijsten per soort. Niet Object.values(tagConfig): daar zit ook emotionNeg in, een
+// deelverzameling van de emoties, die dan dubbel zou tellen.
+const tagLijsten=cfg=>TAG_CATS.map(c=>((cfg||tagConfig)[c.key])||[]);
 function addTagCat(catKey,inputId){const el=document.getElementById(inputId);if(!el)return;const v=el.value.trim();if(v&&!(tagConfig[catKey]||[]).includes(v)){tagConfig[catKey]=[...(tagConfig[catKey]||[]),v];persistTagConfig();}render();}
 function removeTagCat(catKey,tag){tagConfig[catKey]=(tagConfig[catKey]||[]).filter(t=>t!==tag);persistTagConfig();render();}
+// Emoties: of een emotie negatief (rood) of positief (groen) is, staat in tagConfig.emotionNeg.
+// Verwijder je een emotie, dan blijft zijn kant bewaard: oude trades houden zo hun kleur.
+const isNegEmotie=tag=>(tagConfig.emotionNeg||[]).includes(tag);
+const EMO_KLEUR={neg:'var(--red)',pos:'var(--green)'};
+function zetEmotieKant(tag,neg){const s=new Set(tagConfig.emotionNeg||[]);if(neg)s.add(tag);else s.delete(tag);
+  tagConfig.emotionNeg=[...s];persistTagConfig();render();}
+function addEmotie(neg,inputId){const el=document.getElementById(inputId);if(!el)return;const v=el.value.trim();if(!v)return;
+  if(!(tagConfig.emotionTags||[]).includes(v))tagConfig.emotionTags=[...(tagConfig.emotionTags||[]),v];
+  zetEmotieKant(v,neg);}
+// DE kleur van een tag, gegeven zijn soort. Eén bron voor het formulier, het trade-overzicht en
+// Instellingen → Tags (backlog C5).
+function tagKleur(key,tag){if(key==='emotionTags')return EMO_KLEUR[tag!=null&&isNegEmotie(tag)?'neg':'pos'];
+  const c=TAG_CATS.find(x=>x.key===key);return c?c.color:'var(--muted)';}
+// Instellingen → Tags: de emotiekaart in twee kolommen. De kant bepaalt de kleur overal.
+function emotieKaart(c){const alle=tagConfig.emotionTags||[];
+  const chip=(tg,neg)=>{const col=tagKleur('emotionTags',tg),a=esc(tg).replace(/'/g,'');
+    return `<span class="tagmanage" style="border-color:color-mix(in srgb,${col} 45%,transparent)"><span style="width:7px;height:7px;border-radius:50%;background:${col}"></span>${esc(tg)}<button class="wissel" onclick="zetEmotieKant('${a}',${!neg})" title="Naar ${neg?'Positief':'Negatief'}">⇄</button><button onclick="removeTagCat('emotionTags','${a}')" title="verwijderen">×</button></span>`;};
+  const kol=neg=>{const lijst=alle.filter(e=>isNegEmotie(e)===neg),col=EMO_KLEUR[neg?'neg':'pos'],id='newemo_'+(neg?'neg':'pos');
+    return `<div data-emo="${neg?'neg':'pos'}"><div class="emokol-kop" style="color:${col}">${neg?'Negatief':'Positief'}</div>
+      <div class="tagcard-chips">${lijst.length?lijst.map(t=>chip(t,neg)).join(''):'<span class="tagcard-empty">Nog geen</span>'}</div>
+      <div class="tagadd"><input id="${id}" placeholder="Nieuwe ${neg?'negatieve':'positieve'} emotie…" onkeydown="if(event.key==='Enter'){event.preventDefault();addEmotie(${neg},'${id}');}"><button class="btn" onclick="addEmotie(${neg},'${id}')">+</button></div></div>`;};
+  return `<div class="tagcard" style="--cc:var(--ink2)">
+        <div class="tagcard-h"><span class="tagcard-dot emo"></span><b>${c.label}</b><span class="chip">${alle.length}</span></div>
+        <div class="tagcard-body"><div class="emokol">${kol(true)}${kol(false)}</div></div>
+      </div>`;}
 
 /* ═══ Accounts: exchange-koppelingen + handmatige accounts + sync ═══ */
 let CONNS=DB.load('conns',{});        // per exchange-id: {connected, noAuto, hint}
@@ -2425,13 +2469,22 @@ const SZ=t=>{
 // Dit is DE bron voor de tags-kolom en het tag-filter, zodat de tabel altijd exact toont
 // wat er in de trade zit — waar de tag ook geselecteerd is.
 function tradeTagsAll(t){return [...new Set([...(t.tags||[]),...(t.layers||[]).flatMap(L=>L.confirmations||[])])];}
-// Wat de Tags-kolom in het trade-overzicht toont: alles wat je in "Setup & psychologie"
-// aanklikte — setups en bevestigingen uit de lagen, eigen labels, emoties en fouten. Alleen
-// voor de weergave: filters, zoeken en statistieken blijven op tradeTagsAll, zodat daar niets
-// verschuift. (Denny 29-09-2026: een setup en een emotie aangeklikt, kolom bleef leeg.)
-function overzichtTags(t){const L=t.layers||[];
-  return [...new Set([...L.flatMap(l=>l.setups||[]),...L.flatMap(l=>l.confirmations||[]),...(t.tags||[]),
-    ...tradeEmotions(t),...tradeMistakes(t)].filter(Boolean))];}
+// Wat de Tags-kolom in het trade-overzicht toont: alles wat je bij de trade aanklikte — setups,
+// timeframes en bevestigingen uit de lagen, emoties, fouten, missed-redenen en eigen labels — elk
+// in de kleur van zijn soort, dezelfde als in het formulier en in Instellingen → Tags. Alleen voor
+// de weergave: filters, zoeken en statistieken blijven op tradeTagsAll, zodat daar niets verschuift.
+// (Denny 29-09-2026; kleuren: backlog C5.) Geeft [{tag,kleur}].
+function overzichtTags(t){const L=t.layers||[],uit=[],gezien=new Set();
+  const zet=(tag,kleur)=>{if(tag&&!gezien.has(tag)){gezien.add(tag);uit.push({tag,kleur});}};
+  L.forEach(l=>(l.setups||[]).forEach(x=>zet(x,tagKleur('setupTags',x))));
+  L.forEach(l=>zet(l.timeframe,tagKleur('timeframeTags',l.timeframe)));
+  L.forEach(l=>(l.confirmations||[]).forEach(x=>zet(x,tagKleur('confirmationTags',x))));
+  tradeEmotions(t).forEach(x=>zet(x,tagKleur('emotionTags',x)));
+  tradeMistakes(t).forEach(x=>zet(x,tagKleur('mistakeTags',x)));
+  (t.missedReasons||[]).forEach(x=>zet(x,tagKleur('missedReasonTags',x)));
+  // losse tags: bij oude trades staan hier ook bevestigingen in; die houden hun eigen kleur
+  (t.tags||[]).forEach(x=>zet(x,tagColor(x)||tagKleur('customTags',x)));
+  return uit;}
 // Fouten/emoties leven als array (mistakes/emotions) met het oude enkelvoud als fallback.
 // DE bron voor zoeken, het fouten-filter en de fout-analyse (ChangeMaker 2026-09-14:
 // trades met een toegewezen fout waren nergens terug te vinden).
@@ -2895,10 +2948,12 @@ function accAvatar(id,sz){const e=acctOf(id);if(!e)return '';const ini=(e.abbr||
 // Alleen logo + exchange-naam (Denny 2026-09-14): de interne account-labels ('Scalp' e.d.)
 // zijn nergens instelbaar en horen dus niet in het trades-overzicht.
 function exCell(id){const e=acctOf(id);if(!e)return '';return `<div class="excell">${accAvatar(id)}<div class="ext"><b>${esc(e.name)}</b></div></div>`;}
-function tagColor(tag){for(const c of TAG_CATS){if((tagConfig[c.key]||[]).includes(tag))return c.color;}return '';}
+function tagColor(tag){for(const c of TAG_CATS){if((tagConfig[c.key]||[]).includes(tag))return tagKleur(c.key,tag);}return '';}
 // Eén uniforme chip-stijl: config-tags in hun categorie-kleur, losse/eigen tags in
 // neutraal grijs — maar altijd dezelfde vorm (bolletje + kleur), nooit twee soorten.
 function tagChips(tags,click){return (tags||[]).map(t=>{const col=tagColor(t)||'var(--muted)';return `<span class="tagchip col${click?' click':''}" style="--tc:${col}" ${click?`onclick="event.stopPropagation();setFilter('tag','${jsarg(t)}')"`:''}>${esc(t)}</span>`;}).join('');}
+// Chips waarvan de kleur al vaststaat (de soort is bekend uit waar de tag vandaan komt).
+function kleurChips(items){return (items||[]).map(({tag,kleur})=>`<span class="tagchip col" style="--tc:${kleur}">${esc(tag)}</span>`).join('');}
 function statusB(s){const c=s==='partial'?'part':s==='open'?'open':'closed';return `<span class="status ${c}"><span class="sdot"></span>${s==='partial'?'Partial':s==='open'?'Open':'Gesloten'}</span>`;}
 function kindBadge(t){if(isLive(t))return '';const k=KINDS[t.kind]||{label:t.kind,color:'var(--muted)'};return `<span class="kbadge" style="--kc:${k.color}">${k.label}</span>`;}
 const SESSC={'London':'#7c6cf0','New York':'#12b39b','US AM':'#12b39b','US PM':'#3b6ef5','Asia':'#c0821c','Tokyo':'#c0821c','Weekend':'#b07090'};
@@ -3149,7 +3204,7 @@ function pgTrades(){
         ${VV('tSize')?`<td class="rt num mask" data-l="Size">${isNaN(SZ(t))?'—':CURSYM()+' '+SZ(t).toLocaleString('nl-NL')}${qtySub(t)}</td>`:''}<td class="rt" data-l="P&L">${t.status==='open'&&t.unrealizedPnl?`<span class="num ${cls(t.unrealizedPnl)} mask" title="niet-gerealiseerde P&L">~${eurCS(t.unrealizedPnl)}</span>`:t.status==='partial'&&t.realizedPnl?`<span class="num ${cls(t.realizedPnl)} mask" title="gerealiseerd deel, rest loopt nog">${eurCS(t.realizedPnl)}<div style="font-size:10.5px;color:var(--amber)">deels dicht</div></span>`:pnlCell(t.pnl,pnlPctOf(t))}</td>
         ${VV('tR')?`<td class="ct" data-l="R">${rBadge(t)}</td>`:''}
         <td data-l="Setup">${setupBadge(t.setup)}</td>${VV('tSessie')?`<td data-l="Sessie">${sessBadge(sessionOf(t))}</td>`:''}
-        ${VV('tTags')?`<td data-l="Tags" style="max-width:170px">${tagChips(overzichtTags(t))}</td>`:''}</tr>
+        ${VV('tTags')?`<td data-l="Tags" style="max-width:240px">${kleurChips(overzichtTags(t))}</td>`:''}</tr>
         <tr class="drow" id="drow-${t.id}" hidden onclick="openForm(${t.id})"><td colspan="${cols.length+1}">${tradeHoverDetail(t)}</td></tr>`;}).join('')}</tbody>
       <tfoot><tr><td class="cbx"></td><td colspan="${cols.findIndex(c=>c[0]==='pnl')}">Totaal (${rows.length})</td><td class="rt">${pnlCell(net,pnlPctTotal(rows,net))}</td>${cols.length-cols.findIndex(c=>c[0]==='pnl')-1?`<td colspan="${cols.length-cols.findIndex(c=>c[0]==='pnl')-1}"></td>`:''}</tr></tfoot>
     </table></div>${pageCount>1?`<div class="pager">
@@ -3959,9 +4014,9 @@ function pgInstellingen(){
       <div class="panel">
         <div class="setrow" style="opacity:.6"><div class="txt"><b>Eigen API-key (BYOK)</b><small>Straks kun je je eigen Claude-key koppelen via de beveiligde proxy, sleutels lopen nooit los in de browser</small></div><input placeholder="sk-ant-… (binnenkort)" disabled style="width:190px;border:1px solid var(--line);border-radius:8px;padding:8px 11px;font-size:12.5px;background:var(--sink);color:var(--muted)"></div>
       </div>`,
-    tags:`<p class="setintro">Beheer je tags per categorie, elke categorie z'n eigen kleur, precies zoals ze in de trade-picker verschijnen.</p>
+    tags:`<p class="setintro">Beheer je tags per soort. Elke soort heeft z'n eigen kleur, en die zie je overal terug: in een trade, in het trade-overzicht en hier. Bij emoties bepaal je zelf wat negatief (rood) en wat positief (groen) is.</p>
       <div class="tagcatgrid">
-      ${TAG_CATS.map(c=>`<div class="tagcard" style="--cc:${c.color}">
+      ${TAG_CATS.map(c=>c.key==='emotionTags'?emotieKaart(c):`<div class="tagcard" style="--cc:${c.color}">
         <div class="tagcard-h">${c.emoji?`<span class="tagcard-emoji">${c.emoji}</span>`:'<span class="tagcard-dot"></span>'}<b>${c.label}</b><span class="chip">${(tagConfig[c.key]||[]).length}</span></div>
         <div class="tagcard-body">
           <div class="tagcard-chips">${(tagConfig[c.key]||[]).length?(tagConfig[c.key]||[]).map(tg=>`<span class="tagmanage" style="border-color:color-mix(in srgb,${c.color} 45%,transparent)"><span style="width:7px;height:7px;border-radius:50%;background:${c.color}"></span>${esc(tg)}<button onclick="removeTagCat('${c.key}','${esc(tg).replace(/'/g,'')}')" title="verwijderen">×</button></span>`).join(''):'<span class="tagcard-empty">Nog geen tags in deze categorie</span>'}</div>
@@ -5023,7 +5078,7 @@ const hasDate=t=>!!(t&&typeof t.date==='string'&&t.date.length>=7);
 function applyBackup(d){
   T=(d.trades||[]).map((t,i)=>sanitizeTrade(t,i));
   TRASH=Array.isArray(d.trash)?d.trash:[];persistTrash();  // tolerant: oude back-ups hebben geen trash-veld
-  if(d.tagConfig){tagConfig=d.tagConfig;persistTagConfig();}
+  if(d.tagConfig){tagConfig=d.tagConfig;normTagConfig();persistTagConfig();}
   PBOOK={};Object.entries(d.pbook||{}).forEach(([k,v])=>PBOOK[k]=pbNormalize(k,v));persistPbook();
   if(d.conns){CONNS=d.conns;persistConns();}
   if(d.manual){MANUAL=d.manual;MANUAL.forEach(m=>{if(!Array.isArray(m.transactions))m.transactions=[];});persistManual();}
@@ -5382,7 +5437,7 @@ function dovDescribe(d){
   out.trades={present:has('trades'),count:ts.length,sub:ts.length?ts.length.toLocaleString('nl-NL')+' trades · '+met(t=>t.notes||t.lessons)+' met notities · '+met(t=>(t.screenshots||[]).length)+' met screenshots · '+met(t=>(t.tvLinks||[]).length)+' met links · '+met(t=>(t.fills||[]).length)+' met stappen':'geen trades'};
   const tr=Array.isArray(d.trash)?d.trash.length:0;
   out.trash={present:has('trash'),count:tr,sub:tr+' verwijderde trade'+(tr===1?'':'s')+' (komen bij het terugzetten niet terug in je lijst)'};
-  const tc=d.tagConfig&&typeof d.tagConfig==='object'?d.tagConfig:{};const nTags=Object.values(tc).reduce((n,a)=>n+(Array.isArray(a)?a.length:0),0);
+  const tc=d.tagConfig&&typeof d.tagConfig==='object'?d.tagConfig:{};const nTags=tagLijsten(tc).reduce((n,a)=>n+(Array.isArray(a)?a.length:0),0);
   out.tags={present:has('tagConfig'),count:nTags,sub:nTags+' labels: setup, confirmatie, timeframe, emotie, fout, gemist, eigen'};
   const pb=d.pbook&&typeof d.pbook==='object'?Object.values(d.pbook):[];const pbImg=pb.reduce((n,p)=>n+((p&&p.examples)||[]).filter(x=>x&&x.dataUrl).length,0);
   out.pbook={present:has('pbook'),count:pb.length,sub:pb.length+' playbook'+(pb.length===1?'':'s')+(pbImg?' · '+pbImg+' voorbeeldafbeelding'+(pbImg===1?'':'en'):'')+(pb.length?' · '+pb.slice(0,4).map(p=>p.name).join(', ')+(pb.length>4?' …':''):'')};
@@ -8351,8 +8406,8 @@ function renderFormTags(){const c=document.getElementById('tagpick');if(!c)retur
   // De picker toont ALLEEN "Eigen labels" (Instellingen → Tags) + losse tags uit bestaande
   // trades. Confirmaties staan hier bewust niet — die kies je in de setup-lagen (feedback
   // Denny 2026-09-14: ze stonden dubbel en oogden onbeheersbaar).
-  const custom=tagConfig.customTags||[];const cCol=(TAG_CATS.find(x=>x.key==='customTags')||{}).color||'#7a869c';
-  const known=new Set(Object.values(tagConfig).flat());
+  const custom=tagConfig.customTags||[];const cCol=tagKleur('customTags');
+  const known=new Set(tagLijsten().flat());
   const loose=[...new Set([...formTags,...T.flatMap(t=>t.tags||[])])].filter(t=>!known.has(t));
   c.innerHTML=`<div class="tg-chips">${custom.map(t=>chip(t,cCol)).join('')}${loose.map(t=>chip(t,'var(--muted)')).join('')}</div>`;}
 function setFormGrade(g){formGrade=(formGrade===g?'':g);document.querySelectorAll('#gradeseg button').forEach(b=>b.classList.toggle('on',b.dataset.g===formGrade));}
@@ -8394,24 +8449,24 @@ function renderLayers(){const c=document.getElementById('layerbuilder');if(!c)re
     const tfChip=tf=>`<span class="tagopt ${L.timeframe===tf?'on':''}" onclick="setLayerTF(${i},'${tf}')">${tf}</span>`;
     const chip=(kind,tag)=>`<span class="tagopt ${L[kind].includes(tag)?'on':''}" onclick="toggleLayerTag(${i},'${kind}','${esc(tag).replace(/'/g,'')}')">${esc(tag)}</span>`;
     return `<div class="layerrow"><div class="layerhead"><span class="layernum">${i+1}</span><span class="sp" style="flex:1"></span><div class="biaspills">${biasPills}</div><button type="button" class="xlayer" onclick="removeLayer(${i})" title="laag verwijderen">×</button></div>
-      <div class="layertags"><div class="lt-lbl">Timeframe</div><div class="tg-chips">${TFLIST.map(tfChip).join('')}</div></div>
-      <div class="layertags"><div class="lt-lbl">Setups</div><div class="tg-chips">${[...new Set([...(tagConfig.setupTags||[]),...L.setups])].map(t=>chip('setups',t)).join('')}</div></div>
-      <div class="layertags"><div class="lt-lbl">Confirmaties</div><div class="tg-chips">${[...new Set([...(tagConfig.confirmationTags||[]),...L.confirmations])].map(t=>chip('confirmations',t)).join('')}</div></div></div>`;}).join('');}
+      <div class="layertags"><div class="lt-lbl">Timeframe</div><div class="tg-chips" style="--chip:${tagKleur('timeframeTags')}">${TFLIST.map(tfChip).join('')}</div></div>
+      <div class="layertags"><div class="lt-lbl">Setups</div><div class="tg-chips" style="--chip:${tagKleur('setupTags')}">${[...new Set([...(tagConfig.setupTags||[]),...L.setups])].map(t=>chip('setups',t)).join('')}</div></div>
+      <div class="layertags"><div class="lt-lbl">Confirmaties</div><div class="tg-chips" style="--chip:${tagKleur('confirmationTags')}">${[...new Set([...(tagConfig.confirmationTags||[]),...L.confirmations])].map(t=>chip('confirmations',t)).join('')}</div></div></div>`;}).join('');}
 /* emoties (negatief/positief) + fouten */
 function toggleEmotion(e){const i=formEmotions.indexOf(e);if(i<0)formEmotions.push(e);else formEmotions.splice(i,1);renderEmotions();}
 function renderEmotions(){const c=document.getElementById('emobuilder');if(!c)return;const cats=tagConfig.emotionTags||[];
   const chip=e=>`<span class="tagopt ${formEmotions.includes(e)?'on':''}" onclick="toggleEmotion('${esc(e).replace(/'/g,'')}')">${esc(e)}</span>`;
-  const neg=cats.filter(e=>EMO_NEG.includes(e)),pos=cats.filter(e=>!EMO_NEG.includes(e));
-  c.innerHTML=`<div class="emocol"><div class="emo-head neg">Negatief</div><div class="tg-chips pillchips" style="--chip:var(--red)">${neg.map(chip).join('')||'<span class="lt-empty">—</span>'}</div></div>
-    <div class="emocol"><div class="emo-head pos">Positief</div><div class="tg-chips pillchips" style="--chip:var(--green)">${pos.map(chip).join('')||'<span class="lt-empty">—</span>'}</div></div>`;}
+  const neg=cats.filter(isNegEmotie),pos=cats.filter(e=>!isNegEmotie(e));
+  c.innerHTML=`<div class="emocol"><div class="emo-head neg">Negatief</div><div class="tg-chips pillchips" style="--chip:${EMO_KLEUR.neg}">${neg.map(chip).join('')||'<span class="lt-empty">—</span>'}</div></div>
+    <div class="emocol"><div class="emo-head pos">Positief</div><div class="tg-chips pillchips" style="--chip:${EMO_KLEUR.pos}">${pos.map(chip).join('')||'<span class="lt-empty">—</span>'}</div></div>`;}
 let formMissed=[];
 function toggleMissed(m){const i=formMissed.indexOf(m);if(i<0)formMissed.push(m);else formMissed.splice(i,1);renderMissed();}
 function renderMissed(){const c=document.getElementById('missedbuilder');if(!c)return;
-  c.innerHTML=`<div class="tg-chips pillchips" style="--chip:var(--muted)">${(tagConfig.missedReasonTags||[]).map(m=>`<span class="tagopt ${formMissed.includes(m)?'on':''}" onclick="toggleMissed('${esc(m).replace(/'/g,'')}')">${esc(m)}</span>`).join('')}</div>`;}
+  c.innerHTML=`<div class="tg-chips pillchips" style="--chip:${tagKleur('missedReasonTags')}">${(tagConfig.missedReasonTags||[]).map(m=>`<span class="tagopt ${formMissed.includes(m)?'on':''}" onclick="toggleMissed('${esc(m).replace(/'/g,'')}')">${esc(m)}</span>`).join('')}</div>`;}
 function onKindChange(){const el=document.getElementById('f_kind'),mf=document.getElementById('missedfield');if(mf)mf.style.display=(el&&el.value==='gemist')?'':'none';if(typeof formExchangeHint==='function')formExchangeHint();}
 function toggleMistake(m){const i=formMistakes.indexOf(m);if(i<0)formMistakes.push(m);else formMistakes.splice(i,1);renderMistakes();}
 function renderMistakes(){const c=document.getElementById('mistakebuilder');if(!c)return;
-  c.innerHTML=`<div class="tg-chips pillchips" style="--chip:var(--amber)">${(tagConfig.mistakeTags||[]).map(m=>`<span class="tagopt ${formMistakes.includes(m)?'on':''}" onclick="toggleMistake('${esc(m).replace(/'/g,'')}')">${esc(m)}</span>`).join('')}</div>`;}
+  c.innerHTML=`<div class="tg-chips pillchips" style="--chip:${tagKleur('mistakeTags')}">${(tagConfig.mistakeTags||[]).map(m=>`<span class="tagopt ${formMistakes.includes(m)?'on':''}" onclick="toggleMistake('${esc(m).replace(/'/g,'')}')">${esc(m)}</span>`).join('')}</div>`;}
 /* ═══ TP-technologie (take-profit-niveaus / partial closes) ═══ */
 let formTPs=[];
 let formCloseAuto={t:'',d:'',s:'',sPrev:'',p:'',e:''};   // wat wij zelf invulden (sluittijd/-datum, status, P&L, exit): dat mogen we later bijwerken of terugdraaien, eigen invoer niet
@@ -8939,7 +8994,7 @@ function readBundled(){try{const el=document.getElementById('sj-bundled');if(!el
 function seedBundled(d){
   const old=looksOldExport(d.trades);if(old)mergeOldTags(d.trades);
   T=d.trades.map((x,i)=>old?({...migrateOldTrade(x),id:i}):sanitizeTrade(x,i));
-  if(d.tagConfig){tagConfig=d.tagConfig;persistTagConfig();}
+  if(d.tagConfig){tagConfig=d.tagConfig;normTagConfig();persistTagConfig();}
   PBOOK={};Object.entries(d.pbook||{}).forEach(([k,v])=>PBOOK[k]=pbNormalize(k,v));persistPbook();
   if(d.manual){MANUAL=d.manual;MANUAL.forEach(m=>{if(!Array.isArray(m.transactions))m.transactions=[];});persistManual();}
   if(d.aiPrefs){AIPREFS={...AIPREFS,...d.aiPrefs,focus:{...AIPREFS.focus,...(d.aiPrefs.focus||{})}};persistAIPrefs();}

@@ -45,4 +45,7 @@ module.exports = [
 
   // v1.2: Tags-kolom toont alles wat je aanklikte
   'tags-overzicht',
+
+  // v1.3: acht tag-soorten, acht kleuren, overal gelijk (backlog C5)
+  'tag-kleuren',
 ];
