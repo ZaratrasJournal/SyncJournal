@@ -296,6 +296,8 @@ node tests/run-all-sj.js --jobs=1         # serieel, als parallel iets vertroebe
 node tests/run-all-sj.js --lijst          # toon wat er zou draaien, draai niets
 node tests/run-all-sj.js kraken csv       # alleen specs waarvan de naam matcht
 node tests/kraken-levensloop.spec.js      # losse Node-spec (80 stuks) draai je met node
+node tests/hl-echt.spec.js                # Denny's echte Hyperliquid-account door de hele app (opname)
+node tests/hl-echt.spec.js --opnemen      # opname verversen bij Hyperliquid; --live = vers, zonder bewaren
 npx playwright test tests/smoke.spec.js   # runner-spec (91 stuks) draai je met playwright
 node tests/run-adhoc.js --fixture=blofin-partial-state.json --theme=light
 SPEC_TIMEOUT=15000 GEEN_HERKANSING=1 node tests/run-all-sj.js   # diagnose-ronde: snel falen
@@ -338,6 +340,10 @@ SPEC_TIMEOUT=15000 GEEN_HERKANSING=1 node tests/run-all-sj.js   # diagnose-ronde
 ### Bekende limitaties
 
 - **Live exchange API met credentials**: ik kan niet inloggen met Denny's keys. Snapshot-knop blijft de brug.
+  **Uitzondering: Hyperliquid.** Wallet-data is openbaar, dus daar testen we tegen Denny's echte account:
+  `tests/hl-echt.spec.js` speelt een opname uit `tests/_fixtures/hyperliquid-wallet.json` af (zit in de
+  release-poort, slaat zich over op CI). **Het walletadres blijft buiten de repo**: die is openbaar, en het
+  adres koppelt het project aan Denny's hele tradehistorie en saldo.
 - **Externe OAuth flows**: niet automatiseerbaar.
 - **Subjective UX-calls** ("voelt warm genoeg", "is dit visueel mooi"): blijft Denny's call. Read-tool toont kleur/layout, maar smaak is menselijk.
 
