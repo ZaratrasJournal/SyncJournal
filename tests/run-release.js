@@ -29,7 +29,10 @@ if (process.argv.includes('--hier')) {
   }
 
   const wt = path.join(os.tmpdir(), `sj-poort-${sha}-${Date.now()}`);
-  const add = git('worktree', 'add', '--detach', wt, 'HEAD');
+  // core.autocrlf=false: check de bytes uit zoals ze in git staan (LF), net als CI op Linux.
+  // Met de Windows-standaard (true) krijgt de kopie CRLF, en dan faalde landing.spec op
+  // robots.txt terwijl de site en CI gewoon LF hebben.
+  const add = git('-c', 'core.autocrlf=false', 'worktree', 'add', '--detach', wt, 'HEAD');
   if (add.status !== 0) { console.log('✗ worktree maken mislukt:\n' + add.stderr); process.exit(1); }
 
   // node_modules is gitignored en zit dus niet in de kopie; een junction wijst naar de echte.
