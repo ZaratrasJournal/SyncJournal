@@ -23,6 +23,7 @@ elke wijziging eindigt met `node tests/run-release.js` groen.
 | **B2** | OKX: contractwaarde-vangnet kent geen USDC-perps | 2 | S | — |
 | **W2** | Ruwe exchange-data kunnen vastleggen (dev-modus terug) | 2 | M | — |
 | **C1** | Lege staten: één manier, met een volgende stap | 2 | S + M | — |
+| **C5** | Eén kleurenschema voor tags; emoties gesplitst in positief/negatief | 2 | M | kleurkeuze Denny |
 | **T1** | CSV-import testen op CI | 2 | M | — |
 | **W1** | Worker: staat `Access-Control-Allow-Origin` op `*`? | 2 | XS (Denny) | — |
 | **B3** | Controleren: telt dezelfde positie dubbel via CSV én API? | 2 | S | — |
@@ -193,6 +194,47 @@ nog zeven losse classes: `lt-empty` (5×), `revempty` (3×), `txempty`, `thm-emp
 
 **Klaar als** er geen losse `*-empty`-classes meer zijn en elke lege-staat-tekst in `EMPTY` staat en
 een volgende stap noemt.
+
+### C5 · Eén kleurenschema voor tags, en emoties gesplitst in positief en negatief — prio 2 · M
+
+*Gevraagd door Denny, 29-09-2026.*
+
+**Waarom.** Elke soort tag heeft op drie plekken drie verschillende kleuren:
+
+| Soort | Trade-formulier | Instellingen → Tags | Tags-kolom (overzicht) |
+|---|---|---|---|
+| Setups | neutraal (aangeklikt: accentblauw) | blauw | blauw |
+| Bevestigingen | neutraal | groenblauw | groenblauw |
+| Emoties, negatief | rood | amber, één lijst | amber |
+| Emoties, positief | groen | amber, één lijst | amber |
+| Fouten | amber | oranje | oranje |
+
+Instellingen → Tags belooft *"elke categorie z'n eigen kleur, precies zoals ze in de trade-picker
+verschijnen"* — dat klopt niet. En de splitsing positief/negatief in het formulier komt uit een vaste
+lijst in de code (`EMO_NEG`, [work/syncjournal.html:1738](work/syncjournal.html#L1738)): een emotie
+die je zelf toevoegt (bv. "Angstig") staat daar niet in en belandt bij **Positief**, in het groen,
+zonder dat je dat ergens kunt rechtzetten.
+
+**Plan.**
+1. Eén bron: elke soort één kleur, uit thema-tokens (`var(--red)`, `var(--green)`, `var(--amber)` …)
+   in plaats van hex, zodat licht en donker kloppen.
+2. De splitsing wordt data: `tagConfig.emotionNeg` (welke emoties negatief zijn). Bij het laden gevuld
+   uit de huidige vaste lijst als het veld ontbreekt — ook voor oude back-ups.
+3. Instellingen → Tags: de emotiekaart in twee kolommen, Negatief en Positief; toevoegen aan een kant,
+   met één klik verplaatsen naar de andere.
+4. Formulier: leest de splitsing uit `emotionNeg`; aangeklikte setups en bevestigingen in hun eigen kleur.
+5. Tags-kolom volgt vanzelf via `tagColor`, die alleen positief/negatief hoeft te kennen.
+6. `EMO_NEG` en het ongebruikte `EMO_POS` weg. `CALM_EMOS` blijft (rating in de coach-export).
+7. Test: dezelfde tag heeft op alle drie de plekken dezelfde kleur, in licht en donker; een zelf
+   toegevoegde negatieve emotie staat overal bij Negatief; een oude journal zonder `emotionNeg` houdt
+   FOMO en Gehaast negatief.
+
+**Open keuze (Denny):** welke kleuren de standaard worden. Voorstel, uit het formulier: negatief rood,
+positief groen, fouten amber, setups blauw, bevestigingen groenblauw.
+
+**Klaar als** elke soort op alle drie de plekken dezelfde kleur heeft, in beide thema's, eigen emoties
+hun kant kiezen in Instellingen, en de belofte in Instellingen weer klopt. Wijzigt de tag-datastructuur:
+met migratie, changelog-regel en een test op oude back-ups.
 
 ### C2 · CSV-parser per exchange opsplitsen — prio 3 · M–L
 
