@@ -91,7 +91,12 @@ Dat is de bron; hieronder de korte versie.
   sorteren. Dit was de bug van v1.1: elf plekken lazen `t.r` of deelden door álle trades,
   waardoor een verlies van −$3,95 als `+0,0R` in beeld kwam en elk gemiddelde naar nul werd
   getrokken.
-- **localStorage prefix `tj_`**: alle keys beginnen met `tj_` (bv. `tj_trades`, `tj_mindset_prefs`, `tj_discipline_checks`, `tj_milestones_seen`). Voorkomt collisions.
+- **Opslag: `sj_` en IndexedDB, niet `tj_`**. SyncJournal zet instellingen in localStorage onder
+  `sj_` (via `DB.load` / `DB.save`, [work/syncjournal.html:1816](work/syncjournal.html#L1816)) en de
+  trades in IndexedDB (`IDB`). **`tj_` is het voorvoegsel van de óúde TradeJournal**: een gevulde
+  `tj_trades` ziet SyncJournal juist als oude data om te migreren, en opent dan de migratie-modal.
+  Specs die `tj_`-sleutels seeden starten daardoor in een lege journal achter een modal — zo faalden
+  64 omgezette specs op 29-09-2026 (backlog-story 20). Seed in specs via `tests/helpers/dov-page.js`.
 - **Environment flags**:
   - `IS_DEV` (via `?dev=1` in URL, persistent) — verbergt dev-only UI (proxy-URL, debug knoppen) voor community.
   - `IS_HOSTED` (detecteert file:// / localhost vs. public domain) — regelt variant van de update-knop (↻ Update nu op hosted, ⬇ Download op lokaal).

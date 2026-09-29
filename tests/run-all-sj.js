@@ -31,13 +31,23 @@ const EERST = ['e2e-doorloop'];
 const RELEASE = process.argv.includes('--release');
 const bestaat = (n) => fs.existsSync(path.join(__dirname, n + '.spec.js'));
 
+// Specs die alleen de bevroren oude app laden (work/tradejournal.html) zeggen niets over
+// SyncJournal. Een mechanische omzetting van 82 stuks gaf op 29-09-2026 64 rode en ~20
+// vals-groene specs (backlog-story 20), dus die draaien niet mee tot ze per stuk herschreven
+// zijn. Herschrijf je er een naar syncjournal.html, dan doet hij vanzelf weer mee.
+const laadtAlleenOudeApp = (n) => {
+  const bron = fs.readFileSync(path.join(__dirname, n + '.spec.js'), 'utf8');
+  return /tradejournal\.html/.test(bron) && !/syncjournal\.html/.test(bron);
+};
+const MAP = RELEASE ? [] : fs.readdirSync(__dirname)
+  .filter((f) => f.endsWith('.spec.js'))
+  .map((f) => f.slice(0, -'.spec.js'.length))
+  .filter((n) => !UITGESLOTEN.includes(n));
+const OUDE_APP = MAP.filter(laadtAlleenOudeApp);
+
 const ALLE = RELEASE
   ? require('./release-set.js').filter((n) => !UITGESLOTEN.includes(n))
-  : fs.readdirSync(__dirname)
-      .filter((f) => f.endsWith('.spec.js'))
-      .map((f) => f.slice(0, -'.spec.js'.length))
-      .filter((n) => !UITGESLOTEN.includes(n))
-      .sort();
+  : MAP.filter((n) => !OUDE_APP.includes(n)).sort();
 
 // Een release-set die naar een verdwenen spec wijst is stil kapot: de poort lijkt te slagen
 // terwijl er minder draait dan je denkt. Daarom hard stoppen in plaats van overslaan.
@@ -55,7 +65,7 @@ const JOBS = Math.max(1, +((process.argv.find((a) => a.startsWith('--jobs=')) ||
 
 if (process.argv.includes('--lijst')) {
   console.log(run.join('\n'));
-  console.log(`\n${run.length} specs${RELEASE ? ' · release-poort' : ''} · ${JOBS} tegelijk${UITGESLOTEN.length ? ' · uitgesloten: ' + UITGESLOTEN.join(', ') : ''}`);
+  console.log(`\n${run.length} specs${RELEASE ? ' · release-poort' : ''} · ${JOBS} tegelijk${UITGESLOTEN.length ? ' · uitgesloten: ' + UITGESLOTEN.join(', ') : ''}${OUDE_APP.length ? ` · ${OUDE_APP.length} overgeslagen (alleen oude app)` : ''}`);
   process.exit(0);
 }
 const env = { ...process.env, NODE_PATH: path.resolve(__dirname, '..', 'node_modules') };
@@ -66,7 +76,7 @@ const results = []; const t0 = Date.now();
 console.log('Node', process.version, '· Playwright', (() => { try { return require('playwright/package.json').version; } catch (e) { return 'ONTBREEKT: ' + e.message; } })());
 const pre = spawnSync(process.execPath, ['-e', "const{chromium}=require('playwright');chromium.launch().then(b=>b.close()).then(()=>console.log('browser-start OK')).catch(e=>{console.log('BROWSER-START FAALT:',String(e).split('\\n').slice(0,8).join(' · '));process.exit(1)})"], { env, encoding: 'utf8', timeout: 120000 });
 console.log(((pre.stdout || '') + (pre.stderr || '')).trim().split('\n').slice(0, 8).join(' · ') || 'preflight: geen output');
-console.log(`${run.length} specs${RELEASE ? ' · release-poort' : ''} · ${JOBS} tegelijk\n`);
+console.log(`${run.length} specs${RELEASE ? ' · release-poort' : ''} · ${JOBS} tegelijk${OUDE_APP.length ? ` · ${OUDE_APP.length} overgeslagen: laden alleen de bevroren oude app (story 20)` : ''}\n`);
 
 // De suite kent twee soorten specs en ze starten niet hetzelfde:
 //   - Node-stijl: een gewoon script met een eigen ok()-teller  -> node <spec>

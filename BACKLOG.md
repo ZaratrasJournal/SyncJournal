@@ -612,13 +612,58 @@ De eerste ronde waarin alle 172 specs tegen `work/syncjournal.html` draaien: **9
 
   **Acceptatie**: groen, of geschrapt met een reden. Geen spec die op een timeout blijft staan.
 
-- [ ] **CI-poorten splitsen — nu wél nodig** *(2026-09-28, suite-doorloop)* — Gemeten: **56 minuten** voor 172 specs, tegen `timeout-minutes: 30` in [.github/workflows/syncjournal-tests.yml](.github/workflows/syncjournal-tests.yml). Zet je de volledige suite in CI aan, dan valt hij om op de klok en niet op een fout.
+- [x] **CI-poorten splitsen** — ✅ *Opgelost 29-09-2026, anders dan hieronder voorzien.* CI draait nu
+  de release-poort (`node tests/run-release.js --hier`, 80 specs) in plaats van de hele map: groen in
+  ~3 min, ruim binnen de 30. De specs draaien 4 tegelijk. Een aparte nachtelijke volledige run is
+  pas zinvol als de oude-app-specs (story 20) herschreven zijn. *(Oorspronkelijke notitie:)*
+  *(2026-09-28, suite-doorloop)* — Gemeten: **56 minuten** voor 172 specs, tegen `timeout-minutes: 30` in [.github/workflows/syncjournal-tests.yml](.github/workflows/syncjournal-tests.yml). Zet je de volledige suite in CI aan, dan valt hij om op de klok en niet op een fout.
 
   Bijna de helft van die tijd (**45 min**) gaat op aan specs die falen. Zodra story 17 en 18 klaar zijn, zakt dat vanzelf. Meet daarom **na** die twee opnieuw voordat je poorten bouwt — misschien is het dan niet meer nodig.
 
   Is het dat wel, dan: snelle poort (rekenlaag + schermlaag + `e2e-doorloop`) bij elke push met doel < 10 min, volledige poort nachtelijk en vóór een release. De runner heeft daar nu al schakelaars voor: `SPEC_TIMEOUT` en `GEEN_HERKANSING`.
 
   **Acceptatie**: CI draait binnen zijn timeout en meldt groen of rood op inhoud, niet op tijd.
+
+- [ ] **20 · De 82 oude-app-specs per stuk herschrijven** *(2026-09-29, n.a.v. `/code-review`)*
+
+  In een eerdere sessie zijn 82 specs mechanisch omgezet van `work/tradejournal.html` naar
+  `work/syncjournal.html`: pad, selectors en teksten vervangen. Die omzetting is **teruggedraaid**
+  (nooit gecommit); de specs laden weer de bevroren oude app en `run-all-sj.js` slaat ze over
+  zolang ze dat doen. Waarom terug: gemeten op 79 van de 82 waren er **64 rood en ~20 vals-groen**.
+  Vals-groen is erger dan rood — het lijkt dekking en bewaakt niets.
+
+  Wat de review vond, als bouwstenen voor het herschrijven:
+
+  - **Seeden via de verkeerde sleutels.** `tests/helpers/seed.js` zet `tj_trades`, `tj_welcomed`, …
+    SyncJournal leest `sj_`-sleutels en IndexedDB ([work/syncjournal.html:1820](work/syncjournal.html#L1820)),
+    en ziet een gevulde `tj_trades` juist als **oude data om te migreren** → de migratie-modal
+    (`#scrim.on`) gaat open en blokkeert klikken. Seed via `tests/helpers/dov-page.js` (`seed()` /
+    applyBackup) en lees terug uit `T`, niet uit localStorage.
+  - **Negatieve checks slagen vanzelf in een lege app.** "NIET aangeraakt / NIET getoond / verborgen"
+    is altijd waar als de data nooit geladen is (mexc-size-rehel, backup-bewaker, backup-autobackup,
+    aicoach-popup/-budget/-weekly, trade-flat-sync). Zet bij elke negatieve check een positieve ernaast
+    die bewijst dat de data er wél is.
+  - **Zoeken in `page.content()` of body-tekst zoekt ook in de broncode.** Het app-script staat inline
+    in `<body>`, dus `toMatch(/PARTIAL/i)` of `toContain('v12.62')` slaagt altijd (smoke, themes,
+    blofin-partial, demo-*-import). Toets op een specifiek element of op `APP_VERSION`.
+  - **"Klaar"-signaal te vroeg.** `/SyncJournal/i` en `/Dashboard/i` staan al statisch in de HTML
+    en zijn waar vóór `boot()` klaar is. Wacht op iets dat boot() zelf zet.
+  - **Navigeren via `go(page)`**, niet door ~50 keer knoppen op tekst te zoeken in 30 bestanden.
+    Eén helper naast `openJournal`/`seed` in `dov-page.js`.
+  - **Dingen die in SyncJournal niet bestaan:** zes thema's (lesson-*/themes), hash-routing
+    (`#/trades`, `#/help`), de React-component TradeList (tradelist-hooks), `?ai=0/1` (AI-coach hangt
+    aan het weergave-preset `pgAI`), `Totale balans (live)` / `computeTotalBalance` (heet
+    `totalBalance()`), bedragen als `$1234` (het is `+€ 1.234`). Specs die alleen daarover gaan:
+    **schrappen met een reden**, niet omzetten.
+  - **exchange-isolation** toetst dat elke adapter een `detectPartials`-functie heeft, terwijl model B
+    die bewust op `null` zet ([work/syncjournal.html:7383](work/syncjournal.html#L7383)). Toets de
+    dispatcher-terugval en de mexc/kraken-isolatie, niet de interne structuur.
+
+  Story 17 (AI-coach) en 18 (accounts) zijn deelverzamelingen hiervan. Aanpak volgens CLAUDE.md:
+  `superpowers:writing-plans`, dan per spec herschrijven of schrappen.
+
+  **Acceptatie**: elke spec laadt `work/syncjournal.html` en is groen, of is geschrapt met een reden.
+  Geen negatieve check zonder positieve tegenhanger.
 
 ## 📋 Onderzocht — wacht op go (geen code geschreven)
 
