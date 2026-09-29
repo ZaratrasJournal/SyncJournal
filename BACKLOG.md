@@ -23,7 +23,7 @@ elke wijziging eindigt met `node tests/run-release.js` groen.
 | **B2** | OKX: contractwaarde-vangnet kent geen USDC-perps | 2 | S | — |
 | **W2** | Ruwe exchange-data kunnen vastleggen (dev-modus terug) | 2 | M | — |
 | **C1** | Lege staten: één manier, met een volgende stap | 2 | S + M | — |
-| **C5** | Eén kleurenschema voor tags; emoties gesplitst in positief/negatief | 2 | M | kleurkeuze Denny |
+| **C5** | Acht tag-soorten, acht kleuren, overal gelijk; emoties positief/negatief | 2 | M | akkoord kleuren |
 | **T1** | CSV-import testen op CI | 2 | M | — |
 | **W1** | Worker: staat `Access-Control-Allow-Origin` op `*`? | 2 | XS (Denny) | — |
 | **B3** | Controleren: telt dezelfde positie dubbel via CSV én API? | 2 | S | — |
@@ -229,8 +229,25 @@ zonder dat je dat ergens kunt rechtzetten.
    toegevoegde negatieve emotie staat overal bij Negatief; een oude journal zonder `emotionNeg` houdt
    FOMO en Gehaast negatief.
 
-**Open keuze (Denny):** welke kleuren de standaard worden. Voorstel, uit het formulier: negatief rood,
-positief groen, fouten amber, setups blauw, bevestigingen groenblauw.
+**Acht soorten, acht kleuren** (voorstel 29-09-2026, wacht op akkoord Denny):
+
+| Soort | Kleur | Token |
+|---|---|---|
+| Setup-type | blauw | `--accent` |
+| Confirmaties | groenblauw | `--teal` |
+| Timeframe | paars | `--violet` |
+| Emoties, positief | groen | `--green` |
+| Emoties, negatief | rood | `--red` |
+| Fouten | amber | `--amber` |
+| Missed-redenen | roze | nieuw `--pink` (licht + donker) |
+| Eigen tags | grijs | `--muted` |
+
+Groen, rood en amber zijn de kleuren die het formulier al gebruikt. Nu dubbel: missed-redenen en eigen
+labels zijn allebei grijs.
+
+**Ook erbij:** timeframe en missed-redenen komen in de Tags-kolom van het overzicht (`overzichtTags`
+toont ze nu niet), en in het formulier krijgen timeframe, setups en confirmaties hun kleur zodra je
+ze aanklikt.
 
 **Klaar als** elke soort op alle drie de plekken dezelfde kleur heeft, in beide thema's, eigen emoties
 hun kant kiezen in Instellingen, en de belofte in Instellingen weer klopt. Wijzigt de tag-datastructuur:
