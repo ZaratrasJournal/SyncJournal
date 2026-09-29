@@ -42,4 +42,7 @@ module.exports = [
 
   // v1.1: R-onbekend en zichtbare verbindingsfouten
   'r-scenarios', 'r-zonder-stop', 'conn-fout-zichtbaar', 'ip-whitelist-melding',
+
+  // v1.2: Tags-kolom toont alles wat je aanklikte
+  'tags-overzicht',
 ];

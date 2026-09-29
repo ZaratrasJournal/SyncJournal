@@ -1811,7 +1811,7 @@ const KINDS={live:{label:'Live',color:'var(--green)'},gemist:{label:'Gemist',col
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v1.1';
+const APP_VERSION='v1.2';
 const SCHEMA_VERSION=8;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -2425,6 +2425,13 @@ const SZ=t=>{
 // Dit is DE bron voor de tags-kolom en het tag-filter, zodat de tabel altijd exact toont
 // wat er in de trade zit — waar de tag ook geselecteerd is.
 function tradeTagsAll(t){return [...new Set([...(t.tags||[]),...(t.layers||[]).flatMap(L=>L.confirmations||[])])];}
+// Wat de Tags-kolom in het trade-overzicht toont: alles wat je in "Setup & psychologie"
+// aanklikte — setups en bevestigingen uit de lagen, eigen labels, emoties en fouten. Alleen
+// voor de weergave: filters, zoeken en statistieken blijven op tradeTagsAll, zodat daar niets
+// verschuift. (Denny 29-09-2026: een setup en een emotie aangeklikt, kolom bleef leeg.)
+function overzichtTags(t){const L=t.layers||[];
+  return [...new Set([...L.flatMap(l=>l.setups||[]),...L.flatMap(l=>l.confirmations||[]),...(t.tags||[]),
+    ...tradeEmotions(t),...tradeMistakes(t)].filter(Boolean))];}
 // Fouten/emoties leven als array (mistakes/emotions) met het oude enkelvoud als fallback.
 // DE bron voor zoeken, het fouten-filter en de fout-analyse (ChangeMaker 2026-09-14:
 // trades met een toegewezen fout waren nergens terug te vinden).
@@ -3142,7 +3149,7 @@ function pgTrades(){
         ${VV('tSize')?`<td class="rt num mask" data-l="Size">${isNaN(SZ(t))?'—':CURSYM()+' '+SZ(t).toLocaleString('nl-NL')}${qtySub(t)}</td>`:''}<td class="rt" data-l="P&L">${t.status==='open'&&t.unrealizedPnl?`<span class="num ${cls(t.unrealizedPnl)} mask" title="niet-gerealiseerde P&L">~${eurCS(t.unrealizedPnl)}</span>`:t.status==='partial'&&t.realizedPnl?`<span class="num ${cls(t.realizedPnl)} mask" title="gerealiseerd deel, rest loopt nog">${eurCS(t.realizedPnl)}<div style="font-size:10.5px;color:var(--amber)">deels dicht</div></span>`:pnlCell(t.pnl,pnlPctOf(t))}</td>
         ${VV('tR')?`<td class="ct" data-l="R">${rBadge(t)}</td>`:''}
         <td data-l="Setup">${setupBadge(t.setup)}</td>${VV('tSessie')?`<td data-l="Sessie">${sessBadge(sessionOf(t))}</td>`:''}
-        ${VV('tTags')?`<td data-l="Tags" style="max-width:170px">${tagChips(tradeTagsAll(t))}</td>`:''}</tr>
+        ${VV('tTags')?`<td data-l="Tags" style="max-width:170px">${tagChips(overzichtTags(t))}</td>`:''}</tr>
         <tr class="drow" id="drow-${t.id}" hidden onclick="openForm(${t.id})"><td colspan="${cols.length+1}">${tradeHoverDetail(t)}</td></tr>`;}).join('')}</tbody>
       <tfoot><tr><td class="cbx"></td><td colspan="${cols.findIndex(c=>c[0]==='pnl')}">Totaal (${rows.length})</td><td class="rt">${pnlCell(net,pnlPctTotal(rows,net))}</td>${cols.length-cols.findIndex(c=>c[0]==='pnl')-1?`<td colspan="${cols.length-cols.findIndex(c=>c[0]==='pnl')-1}"></td>`:''}</tr></tfoot>
     </table></div>${pageCount>1?`<div class="pager">

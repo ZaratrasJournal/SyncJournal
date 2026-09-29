@@ -6,6 +6,18 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v1.2] — 2026-09-29
+
+### Fixed
+- **De Tags-kolom in het trade-overzicht toont weer wat je bij een trade aanklikte**: de setups
+  en bevestigingen uit je setup-lagen, je emoties, je fouten en je eigen labels, elk in de kleur
+  van hun soort. Tot nu toe verschenen daar alleen eigen labels en bevestigingen. Een trade met
+  alleen een setup of een emotie — of gekoppeld aan een playbook met alleen setups — gaf
+  daardoor een lege kolom, terwijl alles wel was opgeslagen. Filters en statistieken zijn
+  ongewijzigd.
+
+---
+
 ## [v1.1] — 2026-09-29
 
 Twee dingen die je verkeerd voorlichtten: R deed alsof je break-even draaide terwijl hij het
