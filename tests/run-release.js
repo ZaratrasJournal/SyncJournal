@@ -35,19 +35,29 @@ if (process.argv.includes('--hier')) {
   const add = git('-c', 'core.autocrlf=false', 'worktree', 'add', '--detach', wt, 'HEAD');
   if (add.status !== 0) { console.log('✗ worktree maken mislukt:\n' + add.stderr); process.exit(1); }
 
-  // node_modules is gitignored en zit dus niet in de kopie; een junction wijst naar de echte.
-  const nm = path.join(wt, 'node_modules');
+  // Gitignored mappen zitten niet in de kopie; een junction wijst naar de echte.
+  //   node_modules    — zonder draait er niets
+  //   tests/_fixtures — echte exchange-exports (daarom gitignored). Zonder deze koppeling sloeg
+  //                     csv-import zichzelf over, en was de CSV-import lokaal ongetest.
+  const KOPPEL = ['node_modules', path.join('tests', '_fixtures')]
+    .filter((p) => fs.existsSync(path.join(repo, p)));
+  const links = [];
   let code = 1;
   try {
-    fs.symlinkSync(path.join(repo, 'node_modules'), nm, 'junction');
+    for (const p of KOPPEL) {
+      const doel = path.join(wt, p);
+      if (fs.existsSync(doel)) continue;
+      fs.symlinkSync(path.join(repo, p), doel, 'junction');
+      links.push(doel);
+    }
     console.log(`Release-poort op commit ${sha}, in een losse kopie.\n`);
     const r = spawnSync(process.execPath, [path.join(wt, 'tests', 'run-release.js'), '--hier', ...process.argv.slice(2)],
       { cwd: wt, stdio: 'inherit' });
     code = r.status == null ? 1 : r.status;
   } finally {
-    // Eerst de junction los (zonder recursive: alleen de koppeling, nooit de echte
-    // node_modules), pas dan de worktree weg.
-    try { fs.rmSync(nm); } catch (e) {}
+    // Eerst de junctions los (zonder recursive: alleen de koppeling, nooit de echte map),
+    // pas dan de worktree weg.
+    for (const l of links) { try { fs.rmSync(l); } catch (e) {} }
     git('worktree', 'remove', '--force', wt);
   }
   process.exit(code);
