@@ -53,7 +53,7 @@ _scratch/    - GITIGNORED: oude varianten (v4_14, dragdrop-test, design-handoff)
 | `CHANGELOG.md` | User-facing release-notes, "Keep a Changelog"-stijl in NL |
 
 - `APP_VERSION` staat bovenin `work/syncjournal.html` en is een **string**:
-  `const APP_VERSION='v1.1';` — geen object. **Moet gelijk blijven aan `site/version.json`**;
+  `const APP_VERSION='v1.3';` — geen object. **Moet gelijk blijven aan `site/version.json`**;
   `tests/hosted.spec.js` bewaakt dat.
 - **Bevroren, niet meer aanraken**: `work/tradejournal.html`, `main/tradejournal.html` en
   `main/version.json` (de oude TradeJournal, v12.239). Fixes en features gaan uitsluitend naar
@@ -67,6 +67,13 @@ De volledige beschrijving met hosting staat in **`site/README.md`**, sectie *Voo
 Dat is de bron; hieronder de korte versie.
 
 1. Bump `APP_VERSION` in `work/syncjournal.html` (zoek `const APP_VERSION`) — het is een string.
+   **Welk nummer** (afspraak Denny, 29-09-2026 — `major.minor.patch`):
+   - **patch** `v1.3` → `v1.3.1`: bugfix, niets nieuws voor de gebruiker
+   - **minor** `v1.3` → `v1.4`: nieuwe functie of zichtbaar ander gedrag (schrijf zonder `.0`, zoals `v1.4`)
+   - **major** → `v2.0`: grote omslag — nieuwe opzet, backend, of iets wat leden aan hun data merken
+   Nooit terug naar een lager nummer: `verNum()` in de update-check telt major×1e6 + minor×1e3 + patch,
+   dus een lagere versie verschijnt bij leden nooit als update. Tot en met v1.3 telde elke release het
+   tweede cijfer op, ook bij bugfixes; vanaf v1.3 geldt dit schema.
 2. Zet `version` en `released` in `site/version.json` op dezelfde waarde.
 3. Voeg een changelog-blok toe bovenaan `CHANGELOG.md` onder `## [vX.Y] — YYYY-MM-DD` met
    **Toegevoegd** / **Gewijzigd** / **Verwijderd** / **Fixed**.
