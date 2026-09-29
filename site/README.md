@@ -66,8 +66,9 @@ De app toont op een `work.*`-hostname automatisch een 🚧 WERKVERSIE-badge. Aan
 1. `cp work/syncjournal.html site/app.html` (in de dev-repo)
 2. Zet `version` + `released` in `version.json` gelijk aan de nieuwe `APP_VERSION`
 3. Voeg bij user-facing wijzigingen een blok toe bovenaan `CHANGELOG.md` in de dev-repo (de app linkt ernaar bij Instellingen → Updates)
-4. Draai de volledige testsuite — alles groen vóór er iets vertrekt
-5. Commit, en **alleen op expliciet "push"/"release"-commando van Denny** naar GitHub:
+4. Commit, en draai de release-poort: `node tests/run-release.js` in de dev-repo. Die test de commit
+   in een losse kopie (worktree). Alles groen vóór er iets vertrekt
+5. **Alleen op expliciet "push"/"release"-commando van Denny** naar GitHub:
    - push naar `work` → work.syncjournal.nl (staging)
    - fast-forward `work` → `main` + push → syncjournal.nl (leden-release)
 6. Cloudflare Pages deployt automatisch; leden zien binnen ±4 uur de update-banner, of direct via 🔄 Check in Instellingen → Updates.

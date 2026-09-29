@@ -1,7 +1,9 @@
 # SyncJournal — projectcontext voor Claude
 
 ## Wat is dit
-Trading journal web-app voor een kleine trade-community. Denny en Sebas bouwen samen.
+Trading journal web-app voor een kleine trade-community. Denny bouwt het — sinds 29-09-2026
+alleen; Sebas doet niet meer mee. Adviezen die alleen voor een tweede ontwikkelaar nut hebben
+(delen, review tussen twee mensen) zijn dus niet van belang.
 Draait online op **syncjournal.nl** (leden) en **work.syncjournal.nl** (werkversie), en
 lokaal via een localhost-server.
 
@@ -51,7 +53,7 @@ _scratch/    - GITIGNORED: oude varianten (v4_14, dragdrop-test, design-handoff)
 | `CHANGELOG.md` | User-facing release-notes, "Keep a Changelog"-stijl in NL |
 
 - `APP_VERSION` staat bovenin `work/syncjournal.html` en is een **string**:
-  `const APP_VERSION='v1.0';` — geen object. **Moet gelijk blijven aan `site/version.json`**;
+  `const APP_VERSION='v1.1';` — geen object. **Moet gelijk blijven aan `site/version.json`**;
   `tests/hosted.spec.js` bewaakt dat.
 - **Bevroren, niet meer aanraken**: `work/tradejournal.html`, `main/tradejournal.html` en
   `main/version.json` (de oude TradeJournal, v12.239). Fixes en features gaan uitsluitend naar
@@ -68,17 +70,27 @@ Dat is de bron; hieronder de korte versie.
 2. Zet `version` en `released` in `site/version.json` op dezelfde waarde.
 3. Voeg een changelog-blok toe bovenaan `CHANGELOG.md` onder `## [vX.Y] — YYYY-MM-DD` met
    **Toegevoegd** / **Gewijzigd** / **Verwijderd** / **Fixed**.
-4. Commit code + versiebumps + changelog **in één commit**.
-5. `cp work/syncjournal.html site/app.html`.
-6. Draai de suite: `node tests/run-all-sj.js`. Alles groen voordat er iets vertrekt.
-7. Commit als `Release: sync work -> site (vX.Y — korte titel)`.
-8. Kopieer `site/` naar `deploy/syncjournal-site/` — **die aparte repo is wat Cloudflare Pages
+4. `cp work/syncjournal.html site/app.html`.
+5. Commit code + versiebumps + changelog + `site/app.html` **in één commit**, als
+   `Release vX.Y: korte titel`.
+6. Draai de release-poort: **`node tests/run-release.js`**. Die test **de commit** in een losse
+   kopie (worktree), niet je werkmap — zo kan niemand halverwege een bestand verwisselen, wat op
+   28-09-2026 twee metingen waardeloos maakte. Alles groen voordat er iets vertrekt. Rood? Fixen,
+   opnieuw committen, poort opnieuw.
+7. Kopieer `site/` naar `deploy/syncjournal-site/` — **die aparte repo is wat Cloudflare Pages
    bouwt.** Sla je dit over, dan blijft de site op de vorige versie staan terwijl deze repo al
    bij is. Dat is eerder gebeurd en kostte een middag zoeken.
-9. **`git push` ALLEEN op expliciet "push"-commando van Denny.** In de deploy-repo: push naar `work` -> work.syncjournal.nl (staging); fast-forward `work` -> `main` + push -> syncjournal.nl (leden). Een "ga maar bouwen" / "doe maar" / "zet erin" is **géén** push-toestemming. Lokale commits zijn OK; pushen naar `origin/main` maakt het publiek voor de community en vereist altijd Denny's expliciete go. Na push ziet de community de update-banner in Instellingen → Accounts bij hun volgende Check.
+8. **`git push` ALLEEN op expliciet "push"-commando van Denny.** In de deploy-repo: push naar `work` -> work.syncjournal.nl (staging); fast-forward `work` -> `main` + push -> syncjournal.nl (leden). Een "ga maar bouwen" / "doe maar" / "zet erin" is **géén** push-toestemming. Lokale commits zijn OK; pushen naar `origin/main` maakt het publiek voor de community en vereist altijd Denny's expliciete go. Na push ziet de community de update-banner in Instellingen → Accounts bij hun volgende Check.
 
 ## Code-conventies
 - **Theme-awareness**: nooit hardcoded `#fff`, `rgba(255,255,255,...)`, `#C9A84C` in JSX. Gebruik `var(--text)`, `var(--text2)`, `var(--gold)`, `var(--bg)`, `var(--green)`, `var(--red)`, `var(--amber)`. Of voeg per-thema override toe in `<style>` block met `body.theme-light .selector {...}`. **SyncJournal heeft twee thema's: licht en donker** (`setTheme('light')` / `setTheme('dark')`) — test allebei. De zes thema's uit de oude journal (sync / classic / aurora / light / parchment / daylight) bestaan hier niet meer.
+- **R-multiple: `0` is niet "onbekend"**. Zonder stop-loss is R niet te bepalen, en dat is iets
+  anders dan een trade die precies op break-even sloot. Gebruik `tradeROrNull(t)` voor weergave
+  (geeft `null` → toon een streepje) en `gemR(rows)` voor gemiddelden (telt alleen trades mét
+  een R, `n===0` → streepje). `tradeR(t)` geeft `0` bij onbekend en is **alleen** goed voor
+  sorteren. Dit was de bug van v1.1: elf plekken lazen `t.r` of deelden door álle trades,
+  waardoor een verlies van −$3,95 als `+0,0R` in beeld kwam en elk gemiddelde naar nul werd
+  getrokken.
 - **localStorage prefix `tj_`**: alle keys beginnen met `tj_` (bv. `tj_trades`, `tj_mindset_prefs`, `tj_discipline_checks`, `tj_milestones_seen`). Voorkomt collisions.
 - **Environment flags**:
   - `IS_DEV` (via `?dev=1` in URL, persistent) — verbergt dev-only UI (proxy-URL, debug knoppen) voor community.
@@ -148,6 +160,20 @@ De app praat met exchange-API's via een **online Cloudflare Worker**, niet via `
 
 We ondersteunen zes exchanges: **Blofin, OKX, Kraken Futures en Hyperliquid** met een API-koppeling, **MEXC** (koppeling gestopt — MEXC verlaat NL nov 2026, CSV-import blijft) en **FTMO MT5** via CSV en handmatige accounts. Elke exchange heeft eigen data-shapes en eigen aannames; **een fix voor één exchange mag niet per ongeluk een andere breken**. Daarom:
 
+### Hoe elke exchange de buitenwereld bereikt
+
+Dit stond nergens opgeschreven en moest op 29-09-2026 uit de code worden afgeleid — met een
+verkeerde aanname als gevolg. Onthoud het:
+
+| Exchange | Route | Gevolg |
+|---|---|---|
+| **OKX, MEXC, Kraken** | via de Cloudflare Worker (`proxyCall`) | hun authenticated endpoints staan geen CORS toe, en de secret hoort niet client-side getekend te worden. De exchange ziet het IP van de Worker, **nooit dat van de gebruiker** — dus een IP-whitelist op de sleutel kan nooit kloppen, en Workers hebben geen vast uitgaand IP. |
+| **Blofin** | rechtstreeks vanuit de browser (`fetch`) | Blofin stáát CORS toe. De exchange ziet het echte IP, dus daar werkt een IP-whitelist wél. |
+| **Hyperliquid** | publieke wallet-data | geen sleutels, niet van toepassing. |
+
+Wat via `proxyCall` loopt raakt dus per definitie OKX, MEXC én Kraken tegelijk — en Blofin en
+Hyperliquid juist niet. Toets dat expliciet vóór je `proxyCall` of `refreshBalance` aanraakt.
+
 - **API-adapters zijn per exchange** in `ExchangeAPI.{exchange}` — `fetchTrades`, `testConnection`, `fetchOpenPositions`, `fetchFills`, etc. Elk eigen object, eigen closure. Hier nooit cross-exchange logica plakken.
 - **Trade-processing met exchange-aannames hoort óók in de adapter**, niet in shared helpers. Voorbeeld: Blofin's partial-close detectie maakt aannames over `positionId`-hergebruik en `_rawCloseSize`-veld die voor MEXC niet kloppen. Zo'n functie wordt een adapter-methode (`ExchangeAPI.blofin.detectPartials(...)`), niet een gedeelde helper die met `if (ex==="blofin")` switcht.
 - **Pure utilities mogen gedeeld blijven** als ze ZERO exchange-aannames hebben: `syncTradeFlatFields` (layers→flat tags), `normalizeTrade` (price-precisie fix), `getConsumedSiblings` (algemene matchKey). Geen `if (exchange === ...)` ergens in. Bij twijfel: per exchange.
@@ -162,7 +188,9 @@ We ondersteunen zes exchanges: **Blofin, OKX, Kraken Futures en Hyperliquid** me
 ## Werkafspraken
 - Communiceer in het **Nederlands**.
 - Commit-messages en code-comments in het Engels (GitHub-conventie, makkelijker voor anderen die later aansluiten).
-- Kleine, reviewbare commits; feature branches + PR review tussen Denny en Sebas.
+- Kleine, reviewbare commits, gewoon op `main`. **Alleen bij een release of een grote feature**
+  een branch + pull request, zodat `/code-review` (plugin) er met een frisse blik naar kijkt.
+  Voor elke kleine fix een PR is in je eentje alleen maar extra werk.
 - Elke user-facing commit = óók een `CHANGELOG.md` entry in dezelfde commit. Refactor / test / docs hoeven niet in changelog.
 - Voordat je een feature van v4_14 overzet: eerst checken of `work/syncjournal.html` al een eigen variant heeft, dan afstemmen welke richting we kiezen.
 
@@ -173,7 +201,9 @@ Claude mag (en moet) deze tools proactief inzetten. Denny hoeft er niet steeds o
 ### Custom subagents (in `~/.claude/agents/`)
 - **`html-feature-diff`** — altijd gebruiken wanneer we features tussen twee versies (v4_14 ↔ v9 of latere versies) vergelijken of migreren. Levert een gestructureerde featurelijst + migratievolgorde.
 - **`exchange-integrator`** — gebruiken bij álles rondom exchange-data: CSV-parser schrijven, nieuw exchange toevoegen, trade-schema-mapping, API-vragen. Weigert terecht API-keys-in-de-browser.
-- **`pr-reviewer-nl`** — draaien vóór elke merge van een PR tussen Denny en Sebas. Focus op single-file HTML valkuilen + storage-schema + security.
+- **`pr-reviewer-nl`** — lokaal, op de diff, vóór een release of het mergen van een PR. Nederlands,
+  kent de single-file-HTML-valkuilen, het storage-schema en de security-punten. Vult `/code-review`
+  aan: dat draait op de PR zelf en toetst aan dít bestand.
 
 ### Built-in agents
 - **`Explore`** — snel zoeken in de grote HTML-bestanden (200–400 KB) zonder ze helemaal in context te trekken. Gebruik voor "waar staat functie X?".
@@ -188,14 +218,23 @@ Claude mag (en moet) deze tools proactief inzetten. Denny hoeft er niet steeds o
 - **`loop` / `schedule`** — nu niet nodig.
 
 ### Standaard-reflexen
-- Voor een grote feature: eerst `Plan`, dan uitvoeren.
+- **Grote feature of refactor** (bv. backlog-story 6 CSV-parser, 17–19 verouderde specs):
+  `superpowers:writing-plans` → plan-document in `docs/`, daarna `superpowers:executing-plans`.
+  Niet voor kleine fixes.
 - Bij werken aan beide HTML-versies: start met `html-feature-diff`.
 - Bij nieuwe exchange: start met `exchange-integrator` (die gebruikt intern `web-search-agent`).
-- Vóór een merge naar `main`: `pr-reviewer-nl` over de diff.
+- **Vóór een release**: `pr-reviewer-nl` over de diff. Bij een pull request daarnaast `/code-review`
+  (plugin; vereist GitHub CLI `gh`, ingelogd). De automatische CI-review is uitgezet: die kostte
+  API-tegoed bij elke PR en deed hetzelfde.
 - **Demo-first voor grote UI-features**: gebruik `/prototype` (mattpocock skill) — formaliseert ons bestaande `demos/*-demo.html` patroon. Bouw 1-3 radically different UI variations, toggleable. Itereer met Denny. Pas als UX zit, integreer in `work/tradejournal.html`. Bespaart herwerk en houdt de grote file schoon.
-- **Bij bug-melding van Denny**: gebruik `/systematic-debugging` (Superpowers — 4-phase root cause, completer dan mattpocock's `/diagnose`). Voorkomt ad-hoc grep-en-gokken bij hardnekkige Blofin/MEXC/BT-bugs. Bij ≥3 mislukte fixes: ga naar Phase 4.5 (architectuur-twijfel).
-- **Voor "klaar"/"fixed"/"werkt"-claims**: gebruik `/verification-before-completion` (Superpowers). Run verificatie-commando's eerst (Playwright spec / Node-snippet / smoke), bevestig output, dan pas claim. Geen "should work"-aannames.
+- **Bij bug-melding van Denny**: gebruik `superpowers:systematic-debugging` (plugin — 4-phase root cause, completer dan mattpocock's `/diagnose`). Voorkomt ad-hoc grep-en-gokken bij hardnekkige Blofin/MEXC/BT-bugs. Bij ≥3 mislukte fixes: ga naar Phase 4.5 (architectuur-twijfel).
+- **Bij elke bugfix: eerst de test** (`superpowers:test-driven-development`). Schrijf een spec die
+  de bug laat zien, zie hem falen, dán de fix. Bewezen op 28-09-2026: de ingeslikte fout in
+  `refreshBalance` kwam alleen boven doordat de test bleef falen na de eerste fix.
+- **Voor "klaar"/"fixed"/"werkt"-claims**: gebruik `superpowers:verification-before-completion` (plugin). Run verificatie-commando's eerst (Playwright spec / Node-snippet / smoke), bevestig output, dan pas claim. Geen "should work"-aannames.
 - **Bij "denk er over na" / nieuwe-feature plan**: gebruik `/grill-me` — interview-modus met decision-tree branches, één vraag tegelijk. Voorkomt onvolledige plannen voor grote features.
+  **`/grill-me` gaat voor `superpowers:brainstorming`.** Die laatste meldt zich uit zichzelf bij
+  elke "maak iets"-vraag; gebruik hem alleen bij grote nieuwe features, ná grill-me.
 - **Bij onbekend deel van `work/syncjournal.html` (~8.900 regels)**: gebruik `/zoom-out` — geeft module-map + callers met domain-vocabulaire. Sneller oriënteren dan blind grep'en.
 - **Impact-check vóór wijziging aan een gedeelde / cross-exchange helper** (`netPnl`, `sourceTypeOf`, `normalizeTrade`, `syncTradeFlatFields`, `detectPartialFromSiblings`, `getConsumedSiblings`, e.d.): raadpleeg de graphify-graaf voor de callers — `graphify query "wat roept netPnl aan"` of `graphify path "A" "B"` — om te toetsen wélke exchanges/modules dat pad raken (sluit aan op de exchange-isolatie-regel). De graaf staat in `graphify-out/` (gitignored, lokaal), met de bron in `graphify-src/`. Dit is een **"wat raakt dit nog meer"-tool**, géén vervanging voor grep — voor "waar staat functie X" blijft grep sneller én altijd actueel.
   - **De graaf klopt op dit moment niet.** `graphify-src/tradejournal.js` is geextraheerd uit de
@@ -237,7 +276,11 @@ Claude Code kan UI-flows zelfstandig testen tegen `work/syncjournal.html` via Pl
 
 ```bash
 cd C:/Users/Denny/Documents/Tradejournal
-node tests/run-all-sj.js                  # DE suite — leest de map: 174 specs (dit is wat CI draait)
+node tests/run-release.js                 # DE RELEASE-POORT — 80 specs, ~3 min, test de laatste commit in een worktree
+node tests/run-release.js --hier          # zelfde poort in je werkmap (zo draait CI)
+node tests/run-all-sj.js                  # alles in de map: 174 specs (~helft rood = verouderd, zie hieronder)
+node tests/run-all-sj.js --jobs=1         # serieel, als parallel iets vertroebelt
+node tests/run-all-sj.js --lijst          # toon wat er zou draaien, draai niets
 node tests/run-all-sj.js kraken csv       # alleen specs waarvan de naam matcht
 node tests/kraken-levensloop.spec.js      # losse Node-spec (80 stuks) draai je met node
 npx playwright test tests/smoke.spec.js   # runner-spec (91 stuks) draai je met playwright
@@ -245,11 +288,24 @@ node tests/run-adhoc.js --fixture=blofin-partial-state.json --theme=light
 SPEC_TIMEOUT=15000 GEEN_HERKANSING=1 node tests/run-all-sj.js   # diagnose-ronde: snel falen
 ```
 
-> **Stand 28-09-2026**: de runner leest sinds vandaag de map in plaats van een handmatige lijst,
-> waardoor er 174 specs meedraaien in plaats van 74. Daarvan staat ongeveer de helft rood, en dat
-> zijn **verouderde specs, geen kapotte app** — ze beschrijven de oude journal (verdwenen UI,
+> **Stand 29-09-2026 — twee poorten, en waarom.**
+> `tests/run-all-sj.js` leest de map: 174 specs. Ongeveer de helft staat rood en dat zijn
+> **verouderde specs, geen kapotte app** — ze beschrijven de oude journal (verdwenen UI,
 > hernoemde teksten). Zie `docs/teststrategie-2026-09-27.md` en backlog-story 17–19.
-> De set die bij een release telt is de oude lijst van 74; die stond op v1.0 volledig groen.
+>
+> Wat bij een release telt staat daarom in **`tests/release-set.js`** en draait met
+> **`node tests/run-release.js`**. Die lijst zat tot 29-09 alleen nog in de git-historie van
+> `run-all-sj.js` en moest met `git show HEAD:` teruggehaald worden om v1.1 vrij te geven —
+> een poort die je kwijtraakt door een commit is geen poort. Wijst de lijst naar een spec die
+> niet bestaat, dan stopt de runner hard in plaats van 'm over te slaan.
+>
+> De poort draait standaard in een **worktree** (losse kopie van de laatste commit), zodat niets
+> in je werkmap een lopende meting kan verstoren. Ook de CI (`.github/workflows/syncjournal-tests.yml`)
+> draait sinds 29-09 de poort (`--hier`), niet meer de hele map — die was daardoor rood geworden.
+>
+> Beide runners draaien **4 specs tegelijk** (`--jobs=N`). De specs zijn onafhankelijk: eigen
+> browser, eigen localStorage. Dat bracht de release-poort van ~55 min naar ~4 min. De
+> e2e-doorloop draait vooraf en alléén, zonder concurrentie.
 
 > **`npm test` werkt op dit moment niet.** De `testMatch` in `playwright.config.js` pakt álle
 > `tests/*.spec.js`, maar 80 daarvan zijn losse Node-scripts die zelf een browser starten en
@@ -278,73 +334,11 @@ SPEC_TIMEOUT=15000 GEEN_HERKANSING=1 node tests/run-all-sj.js   # diagnose-ronde
 - `tests/screenshots/*.png` behalve `baseline/` (gitignored)
 - Lokale `blofin-snapshot-*.json` (gitignored — kan positionId's bevatten die specifiek voor user zijn)
 
-## Tooling — guardrails & cost-tracking (sinds v12.62)
+## Tooling — guardrails & cost-tracking
 
-### Theme-token validator hook
-
-`.claude/hooks/check-theme-tokens.js` (PreToolUse op Edit/Write) blokkeert hardcoded `#fff` / `#000` / `#C9A84C` / `rgb(255,255,255)` in JSX inline-style attributes voor `work/syncjournal.html`. CSS in `<style>` blokken (theme-overrides via `body.theme-light .selector {...}`) is wel toegestaan. Geregistreerd in `.claude/settings.json`.
-
-**Effect**: Claude krijgt direct feedback (exit 2 + stderr) bij theme-violation, kan zelf fixen vóór de Edit doorgaat. Voorkomt theme-bug-categorie permanent.
-
-Test handmatig:
-```bash
-echo '{"tool_name":"Edit","tool_input":{"file_path":"work/syncjournal.html","new_string":"<div style={{color:\"#fff\"}}>x</div>"}}' \
-  | node .claude/hooks/check-theme-tokens.js
-# Verwacht: exit 2 + uitleg
-```
-
-### Accessibility audit (axe-core)
-
-`tests/a11y.spec.js` — runt axe-core (WCAG 2.1 A + AA tags) over Dashboard/Trades/Accounts × de thema's (geschreven voor zes, nu twee — spec loopt achter). Logt alle violations per scherm gegroepeerd op impact (critical/serious/moderate/minor) + concrete rule-IDs en eerste 3 affected nodes voor critical.
-
-**Hard-fail beleid**: alleen `critical` impact blokkeert (form-labels, keyboard-traps, missing roles). `serious` (vooral color-contrast) wordt gelogd maar niet geblokkeerd — onze thema's hebben bewust subtiele inactieve tabs/ondertitels die ~3.4:1 zitten i.p.v. WCAG 4.5:1. Bij regressie zou de log-output direct opvallen.
-
-**Run**:
-```bash
-npx playwright test tests/a11y.spec.js
-```
-
-**Baseline drift** (gemeten 2026-05-01 op v12.62, na 4 aria-label fixes):
-- Dark thema's: 15-40 serious per scherm (vooral inactieve tabs, LIVE-indicator, "built by Zaratras" subtitel)
-- Light thema's: 35-76 serious per scherm (lichtgrijs op wit = altijd marginaal)
-
-Hand-fixes voor specifieke contrast-issues kunnen later — pas `BLOCKING_IMPACTS` in de spec aan om strakker te worden.
-
-### Claude PR-review CI (claude-code-action)
-
-Twee GitHub workflows in `.github/workflows/`:
-- `claude-pr-review.yml` — auto-review op elke nieuwe PR met onze NL-checklist (single-file HTML valkuilen, tj_-prefix, schemaVersion, theme-tokens, Amsterdam-tijd)
-- `claude-mention.yml` — `@claude <vraag>` in PR/issue comment triggert Claude in de thread
-
-**Setup**: zie `.github/CLAUDE-REVIEW-SETUP.md` voor de eenmalige stappen (ANTHROPIC_API_KEY toevoegen aan repo secrets). Werkt zonder GitHub App.
-
-### ccusage — token & kosten check
-
-```bash
-npx ccusage@latest daily              # dagoverzicht
-npx ccusage@latest blocks             # 5-uur block-view
-npx ccusage@latest session            # per-sessie overzicht
-```
-
-Geen install nodig. Parseert `~/.claude/projects/*.jsonl`. Gebruik wekelijks om budget in de gaten te houden.
-
-### /design-review slash command
-
-`.claude/commands/design-review.md` — autonome visuele review over de thema's × 3 schermen (geschreven voor zes thema's, nu twee) (Dashboard / Trades / Instellingen). Type `/design-review` (of met argument: `trades` / `accounts` / `dashboard` om te scopen). Workflow: runt `tests/design-review.spec.js` (18 specs, ~2.5 min) + smoke, leest output-screenshots multimodaal, vergelijkt met baseline in `tests/screenshots/baseline/design-review/`, loopt design-checklist (contrast, theme-consistency, layout integrity, whitespace, top-bar info), output in Nederlands gestructureerd rapport met ✓/⚠/✗ per scherm × thema + top-actiepunten + ship/fix-verdict.
-
-**Twee specs onderscheid:**
-- `tests/themes.spec.js` — snelle Dashboard-only check (~55s, 6 shots) — voor pre-commit / smoke
-- `tests/design-review.spec.js` — comprehensive multi-screen × multi-theme (~2.5 min, 18 shots, met fixture) — voor `/design-review`. **Heeft pixel-diff** tegen `tests/screenshots/baseline/design-review/<theme>-<screen>.png` via `pixelmatch` (helper in `tests/helpers/diff-baseline.js`). Drempel 2% — daadwerkelijke drift door dynamic content (live tickers, timestamps, mindset-quote rotatie) zit op 0.2-0.7%, dus 2% geeft ~3× marge en vangt elke echte regressie. Bij failure: bekijk `tests/screenshots/diff/design-review/<theme>-<screen>.diff.png` voor visuele diff (rood = veranderd).
-
-**Baseline updaten** (na bewuste UI-keuze):
-```bash
-cp tests/screenshots/design-review/<theme>-<screen>.png tests/screenshots/baseline/design-review/
-git commit -am "update design-review baseline (vX.Y — reden)"
-```
-
-**Wanneer gebruiken**: vóór elke release-bump, na elke grote UI-feature, bij twijfel of een theme-fix het niet brak.
-
-**Wat het NIET doet**: subjectieve UX ("voelt premium"), klikflows binnen schermen (gebruik feature-specs), accessibility audit (fase 3).
+Staat in de skill **`tooling-guardrails`** (`.claude/skills/tooling-guardrails/SKILL.md`) en
+laadt alleen wanneer je hem nodig hebt: de theme-token hook, de axe-core a11y-audit, de Claude
+PR-review-workflows, `ccusage` voor token- en kostencontrole, en `/design-review`.
 
 ## Niet doen
 - **Geen `git push` naar `origin/main` zonder expliciet "push"-commando van Denny.** Geldt voor élke push (gewoon, force, vanaf andere branch — alles). "Ga maar bouwen" / "doe maar" / "zet erin" / "ja akkoord" zijn **géén** push-toestemming, alleen het letterlijke woord *push* (of "release", "live", "publiceer") telt. Lokale commits + `cp work → main` zijn OK; pas op het moment dat het naar GitHub gaat is expliciete go vereist. Bij twijfel: niet pushen, vragen.
