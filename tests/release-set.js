@@ -48,4 +48,7 @@ module.exports = [
 
   // v1.3: acht tag-soorten, acht kleuren, overal gelijk (backlog C5)
   'tag-kleuren',
+
+  // v1.3.1: je invoer blijft staan als een trade sluit
+  'sluiten-behoudt-invoer',
 ];

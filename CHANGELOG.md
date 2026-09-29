@@ -14,6 +14,20 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v1.3.1] — 2026-09-29
+
+### Fixed
+- **Bij het sluiten van een trade verdwenen je setup-lagen.** Zodra een open positie gesloten werd,
+  maakte de open rij plaats voor de gesloten trade van de exchange, en daarbij gingen je setup-lagen
+  (timeframe, bias, setups, bevestigingen) verloren — en daarmee ook die tags in het overzicht.
+  Emoties, notities en je stop bleven wel staan. Hetzelfde gold voor marktconditie, MAE/MFE, je
+  review-status en de koppeling met je TradingPlan. Dit speelde bij alle exchanges. Alles wat je zelf
+  invult, blijft nu staan als een trade sluit.
+
+  *Was je al een trade kwijt?* Vul de lagen dan opnieuw in; een gesloten trade raakt ze niet meer kwijt.
+
+---
+
 ## [v1.3] — 2026-09-29
 
 ### Gewijzigd
