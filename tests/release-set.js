@@ -2,8 +2,8 @@
 //
 // Waarom een expliciete lijst en niet "alles in tests/": ongeveer de helft van de map
 // beschrijft nog de oude TradeJournal (verdwenen UI, hernoemde teksten) en staat rood
-// zonder dat er iets aan de app mankeert. Zie backlog-story 17-19. Zodra die opgeruimd
-// zijn kan dit bestand weg en is de map zelf weer de poort.
+// zonder dat er iets aan de app mankeert. Zie backlog T2. Zodra die klaar is, kan dit
+// bestand weg en is de map zelf weer de poort.
 //
 // Waarom een eigen bestand: tot 29-09-2026 stond deze lijst alleen nog in de git-historie
 // van run-all-sj.js, omdat die runner de map ging lezen. Om v1.1 te kunnen vrijgeven moest

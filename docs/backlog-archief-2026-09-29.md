@@ -1,3 +1,8 @@
+> **Archief.** Dit is de backlog zoals hij was tot 29-09-2026, met alle onderzoeksnotities en de
+> 137 afgeronde punten. Hij is toen opgeruimd; de actuele backlog staat in [`BACKLOG.md`](../BACKLOG.md),
+> met onderaan een tabel van wat er met elk open punt is gebeurd. Regelverwijzingen hieronder kunnen
+> naar de bevroren oude app wijzen (`work/tradejournal.html`) of verouderd zijn.
+
 # SyncJournal — Backlog
 
 Werklijst voor Denny & Sebas. Staat per status gegroepeerd. Sluit een item af door hem naar **Done** te verplaatsen met korte notitie + PR-link.

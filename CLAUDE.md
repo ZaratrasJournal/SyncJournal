@@ -96,9 +96,10 @@ Dat is de bron; hieronder de korte versie.
   trades in IndexedDB (`IDB`). **`tj_` is het voorvoegsel van de óúde TradeJournal**: een gevulde
   `tj_trades` ziet SyncJournal juist als oude data om te migreren, en opent dan de migratie-modal.
   Specs die `tj_`-sleutels seeden starten daardoor in een lege journal achter een modal — zo faalden
-  64 omgezette specs op 29-09-2026 (backlog-story 20). Seed in specs via `tests/helpers/dov-page.js`.
+  64 omgezette specs op 29-09-2026 (backlog T2). Seed in specs via `tests/helpers/dov-page.js`.
 - **Environment flags**:
   - `IS_DEV` (via `?dev=1` in URL, persistent) — verbergt dev-only UI (proxy-URL, debug knoppen) voor community.
+    **Bestaat in SyncJournal (nog) niet** — dit beschrijft de oude app. Terugbrengen is backlog **W2**.
   - `IS_HOSTED` (detecteert file:// / localhost vs. public domain) — regelt variant van de update-knop (↻ Update nu op hosted, ⬇ Download op lokaal).
 - **Inline JSX styling**: inline `style={{}}` is de norm in deze file. CSS-class alleen als er een hover/media-query nodig is. Houd style-objects compact.
 - **React hooks**: `useState` / `useEffect` / `useRef` / `useMemo` / `useCallback` zijn globaal gedestructureerd bovenin het bestand (`const {useState,...} = React`). Geen `React.useState` nodig.
@@ -152,7 +153,7 @@ De app praat met exchange-API's via een **online Cloudflare Worker**, niet via `
 
 ### Wat dat betekent voor lokaal testen
 - Lokaal end-to-end testen tegen echte MEXC/Blofin/Kraken/Hyperliquid APIs **kan niet** zonder credentials + actieve Worker.
-- **Snapshot-fixture pattern** blijft daarom de enige autonome test-route: `?dev=1` knop captured raw API response → JSON fixture → offline pipeline-test in `tests/`. Zie sectie "Autonome testing" verder in dit document.
+- **Snapshot-fixture pattern** blijft daarom de enige autonome test-route: `?dev=1` knop captured raw API response → JSON fixture → offline pipeline-test in `tests/`. **Let op:** in SyncJournal ontbreekt die knop nog (backlog **W2**); tot dan levert Denny ruwe data handmatig aan. Zie sectie "Autonome testing" verder in dit document.
 - Mock-fixtures voor proxy-response in unit-tests blijven ook bruikbaar voor client-side parsing/filter validatie (bv. `tests/mexc-history-orders.spec.js` v12.93 patroon).
 
 ### Wat te doen bij een proxy-wijziging
@@ -184,7 +185,7 @@ Hyperliquid juist niet. Toets dat expliciet vóór je `proxyCall` of `refreshBal
 - **Pure utilities mogen gedeeld blijven** als ze ZERO exchange-aannames hebben: `syncTradeFlatFields` (layers→flat tags), `normalizeTrade` (price-precisie fix), `getConsumedSiblings` (algemene matchKey). Geen `if (exchange === ...)` ergens in. Bij twijfel: per exchange.
 - **Bij wijzigingen aan iets dat door meerdere exchanges loopt**: expliciet toetsen welke exchanges het pad raken. Een commit-message als "fix Blofin partial-close" terwijl je `detectPartialFromSiblings` (shared) wijzigt = misleidend, want MEXC gaat ook door dezelfde functie.
 - **Nieuwe exchange toevoegen** = vol-formuleerd adapter-object met alle methodes (incl. no-ops voor wat niet relevant is, bv. `detectPartials: t => t` voor CSV-only). Dispatcher in App roept altijd via `ExchangeAPI[ex].method(...)`, nooit een if/else op exchange-naam in App.
-- **Snapshot-fixture pattern** (`?dev=1` knoppen voor Blofin in v12.85): per-exchange uitbreidbaar. Patroon staat in `BACKLOG.md` onder "🚧 Hidden / dev-only debug-knoppen".
+- **Snapshot-fixture pattern** (`?dev=1` knoppen voor Blofin in v12.85, oude app): per-exchange uitbreidbaar. In SyncJournal nog niet aanwezig — backlog **W2**.
 
 **Anti-patroon**: één gedeelde `detectPartialFromSiblings` met `if (exchange === "blofin") { /* speciale logica */ }`. Dat trekt Blofin-aannames over het MEXC-pad heen. Beter: split naar adapter-methodes.
 
@@ -223,7 +224,7 @@ Claude mag (en moet) deze tools proactief inzetten. Denny hoeft er niet steeds o
 - **`loop` / `schedule`** — nu niet nodig.
 
 ### Standaard-reflexen
-- **Grote feature of refactor** (bv. backlog-story 6 CSV-parser, 17–19 verouderde specs):
+- **Grote feature of refactor** (bv. backlog C2 CSV-parser, T2 verouderde specs):
   `superpowers:writing-plans` → plan-document in `docs/`, daarna `superpowers:executing-plans`.
   Niet voor kleine fixes.
 - Bij werken aan beide HTML-versies: start met `html-feature-diff`.
@@ -248,7 +249,7 @@ Claude mag (en moet) deze tools proactief inzetten. Denny hoeft er niet steeds o
     (Kraken-levensloop, OKX-adapter). **Vertrouw hem niet tot hij ververst is** — gebruik grep.
   - **Verversen**: extraheer het `<script>`-blok van `work/syncjournal.html` naar
     `graphify-src/syncjournal.js`, verwijder de oude `tradejournal.js`, en draai
-    `graphify graphify-src --update` (code-only/AST, kost geen tokens). Zie backlog-story 7.
+    `graphify graphify-src --update` (code-only/AST, kost geen tokens). Zie backlog W3.
 - **Changelog-discipline**: elke user-facing commit hoort in de release-flow (zie boven). Refactor/test/docs hoeven niet in changelog.
 - **Bij bug-fix op theme-gerelateerd gedrag**: licht én donker checken. (De oude journal had er zes; SyncJournal twee.)
 
@@ -262,7 +263,7 @@ Claude Code kan UI-flows zelfstandig testen tegen `work/syncjournal.html` via Pl
 - **`tests/`-folder** bevat:
   - `smoke.spec.js` — laad app, verifieer versie, geen JS-errors, screenshot in `tests/screenshots/`.
   - `blofin-partial.spec.js` — seedt localStorage met `tests/fixtures/blofin-partial-state.json`, valideert detectPartialFromSiblings + UI-rendering.
-  - `themes.spec.js` — laadt de app per thema, checkt body.className + geen JS-errors + screenshot in `tests/screenshots/themes/`. **Let op**: deze spec dateert uit de tijd van zes thema's; zie backlog-story 17/18 over verouderde specs.
+  - `themes.spec.js` — laadt de app per thema, checkt body.className + geen JS-errors + screenshot in `tests/screenshots/themes/`. **Let op**: deze spec dateert uit de tijd van zes thema's; zie backlog T2 over verouderde specs.
   - `helpers/seed.js` — `seedLocalStorage(fixture)` voor `page.addInitScript`.
   - `run-adhoc.js` — losse Node-runner voor ad-hoc exploratie (geen test-framework).
   - `screenshots/` — gegitignored behalve `baseline/`.
@@ -296,7 +297,7 @@ SPEC_TIMEOUT=15000 GEEN_HERKANSING=1 node tests/run-all-sj.js   # diagnose-ronde
 > **Stand 29-09-2026 — twee poorten, en waarom.**
 > `tests/run-all-sj.js` leest de map: 174 specs. Ongeveer de helft staat rood en dat zijn
 > **verouderde specs, geen kapotte app** — ze beschrijven de oude journal (verdwenen UI,
-> hernoemde teksten). Zie `docs/teststrategie-2026-09-27.md` en backlog-story 17–19.
+> hernoemde teksten). Zie `docs/teststrategie-2026-09-27.md` en backlog T2.
 >
 > Wat bij een release telt staat daarom in **`tests/release-set.js`** en draait met
 > **`node tests/run-release.js`**. Die lijst zat tot 29-09 alleen nog in de git-historie van
@@ -316,7 +317,7 @@ SPEC_TIMEOUT=15000 GEEN_HERKANSING=1 node tests/run-all-sj.js   # diagnose-ronde
 > `tests/*.spec.js`, maar 80 daarvan zijn losse Node-scripts die zelf een browser starten en
 > `process.exit()` aanroepen — die draaien dan al tijdens het verzamelen en kunnen de hele run
 > afbreken. Gebruik `node tests/run-all-sj.js`. Zie `docs/teststrategie-2026-09-27.md` en
-> backlog-story 11.
+> backlog T4.
 
 ### Workflow voor mij (Claude) bij elke nieuwe feature
 

@@ -33,7 +33,7 @@ const bestaat = (n) => fs.existsSync(path.join(__dirname, n + '.spec.js'));
 
 // Specs die alleen de bevroren oude app laden (work/tradejournal.html) zeggen niets over
 // SyncJournal. Een mechanische omzetting van 82 stuks gaf op 29-09-2026 64 rode en ~20
-// vals-groene specs (backlog-story 20), dus die draaien niet mee tot ze per stuk herschreven
+// vals-groene specs (backlog T2), dus die draaien niet mee tot ze per stuk herschreven
 // zijn. Herschrijf je er een naar syncjournal.html, dan doet hij vanzelf weer mee.
 const laadtAlleenOudeApp = (n) => {
   const bron = fs.readFileSync(path.join(__dirname, n + '.spec.js'), 'utf8');
@@ -76,7 +76,7 @@ const results = []; const t0 = Date.now();
 console.log('Node', process.version, '· Playwright', (() => { try { return require('playwright/package.json').version; } catch (e) { return 'ONTBREEKT: ' + e.message; } })());
 const pre = spawnSync(process.execPath, ['-e', "const{chromium}=require('playwright');chromium.launch().then(b=>b.close()).then(()=>console.log('browser-start OK')).catch(e=>{console.log('BROWSER-START FAALT:',String(e).split('\\n').slice(0,8).join(' · '));process.exit(1)})"], { env, encoding: 'utf8', timeout: 120000 });
 console.log(((pre.stdout || '') + (pre.stderr || '')).trim().split('\n').slice(0, 8).join(' · ') || 'preflight: geen output');
-console.log(`${run.length} specs${RELEASE ? ' · release-poort' : ''} · ${JOBS} tegelijk${OUDE_APP.length ? ` · ${OUDE_APP.length} overgeslagen: laden alleen de bevroren oude app (story 20)` : ''}\n`);
+console.log(`${run.length} specs${RELEASE ? ' · release-poort' : ''} · ${JOBS} tegelijk${OUDE_APP.length ? ` · ${OUDE_APP.length} overgeslagen: laden alleen de bevroren oude app (backlog T2)` : ''}\n`);
 
 // De suite kent twee soorten specs en ze starten niet hetzelfde:
 //   - Node-stijl: een gewoon script met een eigen ok()-teller  -> node <spec>
