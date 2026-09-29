@@ -566,6 +566,28 @@ Volledig ontwerp in [docs/wachtpost-ontwerp-2026-09-27.md](docs/wachtpost-ontwer
 
 ## 🧰 Uit de suite-doorloop (28-09-2026)
 
+- [ ] **Account-label wordt gekopieerd naar de trade in plaats van opgezocht** — *(gevonden 28-09-2026, n.a.v. Denny's vraag over "ACCOUNT: Test")*.
+  Bij het opslaan van een trade zet het formulier het account-label plat in de trade:
+
+  ```js
+  // work/syncjournal.html — trade-form opslaan
+  const obj={date:g('date'),...,exchange:g('exchange'),account:ex?ex.acct:'',...}
+  ```
+
+  Hernoem je daarna je account (Instellingen → Accounts, of via `adoptExMeta` bij het
+  importeren van een backup), dan houden bestaande trades het óúde label en nieuwe krijgen
+  het nieuwe. Twee namen voor één account, zonder dat er iets veranderd is.
+
+  Het label wordt nergens voor gerekend — saldo, P&L en R lopen allemaal via `t.exchange` —
+  dus het is cosmetisch. Maar het is wel verwarrend, en de oplossing is klein: toon het label
+  via `acctOf(t.exchange).acct` in plaats van `t.account` te lezen, en laat `t.account` alleen
+  staan voor sub-accounts die écht per trade verschillen.
+
+  **Let op bij het oplossen**: gesynct e trades hebben helemáál geen `account` (geen enkele
+  adapter zet het); alleen het formulier en de demo-generator vullen het. Een trade mét
+  `account` is dus handmatig ingevoerd of demo-data.
+
+
 De eerste ronde waarin alle 172 specs tegen `work/syncjournal.html` draaien: **97 groen, 75 rood, 56 min**. Vrijwel alle rode specs beschrijven de oude journal, niet een kapotte app. Dertien zijn al gerepareerd (hernoemde teksten); de rest staat hieronder.
 
 | # | Actiepunt | Nu | Straks | Effort |
