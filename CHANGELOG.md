@@ -6,6 +6,36 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v1.1] — 2026-09-29
+
+Twee dingen die je verkeerd voorlichtten: R deed alsof je break-even draaide terwijl hij het
+simpelweg niet kon weten, en een mislukte exchange-koppeling meldde dat hij gelukt was.
+
+### Fixed
+- **R toont een streepje in plaats van `+0,0R` als er geen stop-loss is ingevuld.** Zonder stop
+  is er geen risico om je resultaat tegen af te zetten, dus is R niet te bepalen — `+0,0R` las
+  ten onrechte als "precies break-even", ook bij een flink verlies. Een trade die écht op nul
+  sloot toont nog steeds `+0,0R`.
+- **Gemiddelde R telt trades zonder stop-loss niet langer als nul mee.** Ze stonden wél in de
+  noemer, waardoor ze je gemiddelde naar beneden trokken. Geldt voor het dashboard, Playbook,
+  Grades, Tendencies en het edge-overzicht. Valt er niets te middelen, dan staat er een streepje.
+- **Het coach-exportbestand telde trades zonder stop-loss mee als winst**, waardoor de win-rate
+  in het bestand dat je deelt te hoog uitviel.
+- **Een mislukte exchange-koppeling meldde eerst "verbonden".** De koppeling werd als geslaagd
+  weggeschreven vóór de eerste aanvraag, en de fout verdween ongezien. De fout blijft nu in beeld
+  staan bij je koppeling, tot een poging wél lukt.
+- **Een sleutel met een IP-whitelist geeft nu uitleg in plaats van de ruwe exchange-tekst.** Bij
+  OKX, MEXC en Kraken loopt je aanvraag via onze tussenserver, dus die exchanges zien nooit jouw
+  eigen IP — een whitelist blokkeert daardoor je eigen koppeling.
+
+### Gewijzigd
+- Bij het koppelen van OKX, MEXC en Kraken staat nu dat de IP-whitelist uit moet. Bij Blofin en
+  Hyperliquid niet: die praten rechtstreeks met de exchange, daar werkt een whitelist wel.
+- FAQ: eerlijker uitleg over welke exchanges rechtstreeks werken en welke via onze tussenserver
+  lopen.
+
+---
+
 ## [v1.0] — 2026-09-28
 
 SyncJournal is uit de 0.9-reeks. Wat begon als een herbouw van de oude TradeJournal draait nu
