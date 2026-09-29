@@ -665,6 +665,14 @@ De eerste ronde waarin alle 172 specs tegen `work/syncjournal.html` draaien: **9
   **Acceptatie**: elke spec laadt `work/syncjournal.html` en is groen, of is geschrapt met een reden.
   Geen negatieve check zonder positieve tegenhanger.
 
+  **Ook deze zeven horen erbij** *(gemeten 29-09-2026)*: account-modal-scroll, donation-section,
+  milestone-demo-skip, okx-balance-label, sync-cooldown, sync-dashboard-fetch-dedup,
+  sync-fills-throttle. Ze laden wel `syncjournal.html` (en draaien dus mee in de volle run), maar
+  zoeken teksten van de oude journal: "Verbinding testen" (heet **Test verbinding**), "Refresh
+  trades" (**↻ Sync nu**), "+ Account toevoegen", milestones ("10 trades!") en de donatie-sectie
+  — de laatste drie bestaan in SyncJournal niet. Nooit gecommit; geen app-fout. Dit zijn de
+  enige 7 rode van de 97 specs in de volle run.
+
 ## 📋 Onderzocht — wacht op go (geen code geschreven)
 
 - [x] **Koppelingen met saldo onderin het menu** — ✅ gebouwd in v0.9.105 (21-09-2026) *(2026-09-21, feature-wens Denny — naar voorbeeld van Coin Market Manager)* — Onder de navigatie een blokje **Connections**: per verbonden exchange het logo, de naam en het saldo. Geen verbinding → niets zichtbaar; api verwijderd → direct weg.

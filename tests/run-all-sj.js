@@ -113,7 +113,11 @@ const runSpec = (s) => new Promise((klaar) => {
   const [cmd, args, opts] = isRunnerSpec(s)
     // Playwright leest het argument als patroon op het bestandspad; een absoluut Windows-pad
     // met backslashes matcht niet ("No tests found"). Daarom relatief, met schuine strepen.
-    ? ['npx', ['playwright', 'test', 'tests/' + s + '.spec.js', '--reporter=line', '--workers=1', '--timeout=' + (process.env.SPEC_TIMEOUT || '30000')],
+    // --output per spec: met 4 tegelijk schreven ze allemaal naar dezelfde test-results/ en
+    // wisten ze elkaars traces ("ENOENT … .playwright-artifacts-0"), waardoor specs rood werden
+    // op de runner in plaats van op de app.
+    ? ['npx', ['playwright', 'test', 'tests/' + s + '.spec.js', '--reporter=line', '--workers=1',
+        '--output=test-results/' + s, '--timeout=' + (process.env.SPEC_TIMEOUT || '30000')],
        { env, shell: true, cwd: path.resolve(__dirname, '..') }]
     : [process.execPath, [path.join(__dirname, s + '.spec.js')], { env }];
   const p = spawn(cmd, args, opts);
