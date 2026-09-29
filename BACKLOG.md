@@ -30,6 +30,7 @@ elke wijziging eindigt met `node tests/run-release.js` groen.
 | **C2** | CSV-parser per exchange opsplitsen | 3 | M–L | T1 |
 | **T3** | Levensloop-toets voor FTMO, één gedeelde vorm | 3 | M | T1 |
 | **T4** | `npm test` repareren | 3 | XS | — |
+| **T5** | `drive-backup` is timing-gevoelig bij 4 specs tegelijk | 3 | XS | — |
 | **C3** | Account-label opzoeken in plaats van kopiëren | 3 | S | — |
 | **W3** | Graphify verversen of de instructie weghalen | 3 | S | — |
 | **W4** | Eerste echte PR met beide reviewers | 3 | XS | volgende release |
@@ -157,6 +158,18 @@ Onbruikbaar; CLAUDE.md waarschuwt er nu voor.
 in CLAUDE.md eruit.
 
 **Klaar als** `npm test` hetzelfde doet als de release-poort.
+
+### T5 · `drive-backup` is timing-gevoelig bij 4 specs tegelijk — prio 3 · XS
+
+**Waarom.** In de release-poort van v1.2 (29-09) faalde `drive-backup` de eerste keer en slaagde hij
+bij de herkansing (39 s). Los draaide hij 3 van de 3 keer groen. De herkansing verbergt dit nu —
+maar een spec die op timing leunt, geeft vroeg of laat een vals rood of groen.
+
+**Plan.** De vaste wachttijden in de spec vervangen door wachten op een concreet signaal (de
+back-up is geschreven). Daarna de poort een paar keer draaien zonder herkansing
+(`GEEN_HERKANSING=1 node tests/run-release.js`).
+
+**Klaar als** hij bij 4 tegelijk drie keer achter elkaar zonder herkansing groen is.
 
 ---
 
