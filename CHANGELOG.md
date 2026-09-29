@@ -14,6 +14,20 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v1.3.3] — 2026-09-29
+
+### Fixed
+- **OKX-trades verdwenen bij het overzetten van je oude journal.** Kreeg je bij het inlezen van je
+  oude backup de melding "… rijen bleken tussenstanden van een positie die in stappen sloot", dan zijn
+  losse OKX-trades op hetzelfde paar ten onrechte samengevoegd tot één trade — bij een member werden er
+  zo twaalf één. OKX gebruikt hetzelfde positie-nummer opnieuw voor elke nieuwe positie op een paar, en
+  het overzetten keek alleen naar dat nummer. Nu worden alleen de echte tussenstanden van één positie
+  samengevoegd (zelfde nummer én zelfde opening).
+  **Mis je OKX-trades na het overzetten?** Lees je oude backup na deze update opnieuw in via
+  Instellingen → Data → Importeer oude backup. Je journal wordt dan opnieuw opgebouwd uit die backup,
+  met al je trades. Heb je sinds het overzetten zelf iets aangepast, doe dat daarna opnieuw; gesynchte
+  trades komen bij de volgende sync vanzelf terug.
+
 ## [v1.3.2] — 2026-09-29
 
 ### Fixed

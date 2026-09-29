@@ -1831,7 +1831,7 @@ const KINDS={live:{label:'Live',color:'var(--green)'},gemist:{label:'Gemist',col
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v1.3.2';
+const APP_VERSION='v1.3.3';
 const SCHEMA_VERSION=8;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -1933,7 +1933,13 @@ const MIGRATIONS=[
       const m=/^okx_(\d+)_\d+$/.exec(String(t.srcId||''));
       if(!m)return;
       t.srcId='okx_'+m[1];
-      const lijst=perPositie.get(t.srcId)||[];lijst.push(t);perPositie.set(t.srcId,lijst);
+      /* Alleen rijen met dezelfde opening zijn stappen van één positie: OKX gebruikt een posId
+         opnieuw voor elke nieuwe positie op hetzelfde paar (zie v5). Op posId alleen werden twaalf
+         losse trades er één (member Jarne, 29-09-2026). Zonder opening valt het niet te zeggen,
+         dan blijft de rij staan. */
+      const open=+t.openTime||0; if(!open)return;
+      const k=t.srcId+'_'+open;
+      const lijst=perPositie.get(k)||[];lijst.push(t);perPositie.set(k,lijst);
     });
     const weg=new Set();
     perPositie.forEach(lijst=>{

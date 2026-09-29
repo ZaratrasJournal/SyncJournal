@@ -119,9 +119,11 @@ const STAND2 = { uTime: 1790012341907, cont: 90, pnl: -9.7626, fee: -0.7279, exi
     const { ctx, p } = await open();
     const r = await p.evaluate(() => {
       const basis = { exchange: 'okx', pair: 'BTC/USDC', dir: 'short', status: 'closed', kind: 'live', date: '2026-09-20', time: '03:51', entry: 81026.89, size: '623.91', r: 0, tps: [], tags: [], layers: [], emotions: [], mistakes: [], checks: [], screenshots: [], tvLinks: [] };
+      // beide standen van dezelfde positie: zelfde posId én zelfde opening (cTime), andere sluittijd
+      const OPEN = '1789869060000';
       T = [
-        { ...basis, id: 1, srcId: 'okx_3809943469299781632_1789953772401', closeTime: '1789953772401', pnl: -3.4449, notes: 'mijn notitie' },
-        { ...basis, id: 2, srcId: 'okx_3809943469299781632_1790012341907', closeTime: '1790012341907', pnl: -9.7626, size: '729.24' },
+        { ...basis, openTime: OPEN, id: 1, srcId: 'okx_3809943469299781632_1789953772401', closeTime: '1789953772401', pnl: -3.4449, notes: 'mijn notitie' },
+        { ...basis, openTime: OPEN, id: 2, srcId: 'okx_3809943469299781632_1790012341907', closeTime: '1790012341907', pnl: -9.7626, size: '729.24' },
       ];
       MIGRATIONS.find(m => m.v === 3).up();
       return T.filter(t => t.exchange === 'okx').map(t => ({ srcId: t.srcId, pnl: t.pnl, notes: t.notes }));
