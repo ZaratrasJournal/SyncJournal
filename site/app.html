@@ -1640,8 +1640,21 @@ function setUnit(u){STATE.unit=['val','pct','r'].includes(u)?u:'val';persistStat
 const UNIT=()=>STATE.unit||'val';
 // R of null — de bestaande tradeR() geeft 0 bij onbekend (prima voor sorteren,
 // fout voor weergave/gemiddelden); deze variant maakt "onbekend" expliciet.
-function tradeROrNull(t){const r=+t.r;if(r&&Math.abs(r)<=R_SANE_MAX)return r;const th=theoR(t);return (th==null||!isFinite(th)||Math.abs(th)>R_SANE_MAX)?null:th;}
-const rS=v=>(v<0?'−':'+')+Math.abs(v).toFixed(1).replace('.',',')+'R';
+function tradeROrNull(t){
+  // Live en gesloten, met stop en size: netto-R wint, ook van een opgeslagen waarde.
+  // Valt hij absurd uit (bv. een size die geen dollars is), dan terug naar de opgeslagen R.
+  if(t&&isLive(t)&&t.status==='closed'){const n=rNetto(t);if(n!=null&&Math.abs(n)<=R_SANE_MAX)return n;}
+  const r=+t.r;if(r&&Math.abs(r)<=R_SANE_MAX)return r;const th=theoR(t);return (th==null||!isFinite(th)||Math.abs(th)>R_SANE_MAX)?null:th;}
+// R-multiple zoals TradeZella e.a.: netto P&L (na fees) ÷ je risico in $, met risico =
+// |entry − stop| ÷ entry × size. Zo rekende het formulier al; tabel, dashboard en gemiddelden
+// namen de prijsbeweging vóór fees (Denny 29-09-2026: 0 / +0,07R / +0,2R voor één trade).
+// Geen stop, geen size of een stop vrijwel op de entry → null: niet te bepalen.
+function rNetto(t){const entry=+t.entry,stop=+t.stop,size=+t.size,pnl=+t.pnl;
+  if(!(entry>0)||!(stop>0)||!(size>0)||!isFinite(pnl)||Math.abs(entry-stop)<entry*1e-4)return null;
+  const risk=Math.abs(entry-stop)/entry*size;return risk>0?pnl/risk:null;}
+// Onder de 1R twee decimalen: 0,07R afgerond tot "0,1R" lijkt een ander getal dan het formulier
+// toont (Denny 29-09-2026).
+const rS=v=>{const a=Math.abs(+v||0);return (v<0?'−':'+')+a.toFixed(a>0&&a<1?2:1).replace('.',',')+'R';};
 const pctSgn=v=>(v<0?'−':'+')+Math.abs(v).toFixed(2).replace('.',',')+'%';
 function aggR(rows){let sum=0,n=0,miss=0;(rows||[]).forEach(t=>{const r=tradeROrNull(t);if(r==null)miss++;else{sum+=r;n++;}});return {sum,n,miss};}
 // Gemiddelde R over álleen de trades waarvan R bekend is. Een trade zonder stop-loss heeft
@@ -1818,7 +1831,7 @@ const KINDS={live:{label:'Live',color:'var(--green)'},gemist:{label:'Gemist',col
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v1.3.1';
+const APP_VERSION='v1.3.2';
 const SCHEMA_VERSION=8;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -2050,6 +2063,17 @@ let CLOSED=[];
    via het storage-event meteen die melding, stopt met opslaan (niets overschrijven!) en
    toont een banner: verversen, of bewust doorgaan met dit tabblad. */
 let TAB_STALE=false,_dataSeen=+(DB.load('data_ts',0))||0;
+// Rekenruis uit prijzen poetsen. Een gemiddelde uit fills geeft bv. 83227.99999999999 in plaats
+// van 83228 (binaire kommagetallen); de tabel rondt dat af, het formulier liet het ruw zien.
+// 12 significante cijfers: ruim genoeg voor elke koers, ook memecoins, en de ruis is weg. Draait
+// bij elke opslag (dekt sync, formulier en import) en bij het laden (sanitizeTrade). P&L en fees
+// blijven onaangeroerd: die komen van de exchange. (Denny 29-09-2026.)
+const PRIJS_CIJFERS=12;
+const schoonPrijs=x=>typeof x==='number'&&isFinite(x)&&x!==0?+x.toPrecision(PRIJS_CIJFERS):x;
+function schoonPrijzen(t){if(!t||typeof t!=='object')return t;
+  ['entry','exit','stop','tp','hindsightExit'].forEach(k=>{if(k in t)t[k]=schoonPrijs(t[k]);});
+  (Array.isArray(t.tps)?t.tps:[]).forEach(x=>{if(x&&'price' in x)x.price=schoonPrijs(x.price);});
+  return t;}
 function persist(){
   if(TAB_STALE)return;   // verouderd tabblad schrijft niet: het zou het andere werk wissen
   /* Achtergrondwerk (wisselkoersen, auto-sync, Drive) kan schrijven op een moment dat dit
@@ -2057,6 +2081,7 @@ function persist(){
      nog niet verwerkt. Daarom hier nog één keer kijken wat er werkelijk in de opslag staat
      voordat we eroverheen gaan. (21-09-2026, aan het licht gekomen bij de koersen.) */
   try{ if((+DB.load('data_ts',0)||0)>_dataSeen){tabMarkStale();return;} }catch(e){}
+  T.forEach(schoonPrijzen);
   IDB.set('trades',T).then(okr=>{ if(okr===false)ErrorCenter.report('save',new Error('IndexedDB weigerde de schrijfactie voor trades.'),{severity:'critical',userMsg:'Je laatste wijziging kon niet worden opgeslagen. Ze staat nog in beeld, exporteer een back-up en probeer opnieuw.',actions:[{label:'Exporteer backup',fn:()=>exportJSON()},{label:'Opnieuw proberen',fn:()=>persist()}]}); });
   try{const ts=Date.now();DB.save('data_ts',ts);_dataSeen=ts;bkQueue();}catch(e){}
 }
@@ -2714,8 +2739,8 @@ function tradeHoverDetail(t){
     if(bits.length)tl=`<div class="tline">${bits.join('<span class="tla">→</span>')}</div>`;
   }
   let s='';
-  s+=stat('Stop-loss',+t.stop>0?numOrDash(t.stop):'','color:var(--red)');
-  s+=stat('Take-profit',(!t.tps||!t.tps.length)&&+t.tp>0?numOrDash(t.tp):'');
+  s+=stat('Stop-loss',+t.stop>0?prijsOfStreep(t.stop):'','color:var(--red)');
+  s+=stat('Take-profit',(!t.tps||!t.tps.length)&&+t.tp>0?prijsOfStreep(t.tp):'');
   s+=stat('Risk',+t.risk>0?String(+t.risk).replace('.',',')+'%':'');
   s+=stat('Geplande R:R',+t.rrPlanned>0?'1 : '+String(+t.rrPlanned).replace('.',','):'');
   s+=stat('Leverage',+t.leverage>1?(+t.leverage)+'×':'');
@@ -2748,7 +2773,10 @@ function trDrowShow(id){trDrowHide();const r=document.getElementById('drow-'+id)
 function trDrowHide(){if(DROW_CUR==null)return;const r=document.getElementById('drow-'+DROW_CUR);if(r)r.hidden=true;DROW_CUR=null;}
 // Asset-hoeveelheid (alleen aanwezig als de trade in asset-eenheden is ingevoerd)
 function qtySub(t){return (t.sizeUnit==='asset'&&t.qty>0)?`<div class="num" style="font-size:11px;color:var(--muted);white-space:nowrap">${(+t.qty).toLocaleString('nl-NL',{maximumFractionDigits:6})} ${esc(String(t.pair||'').split('/')[0])}</div>`:'';}
-const numOrDash=v=>{const n=+v;return isNaN(n)?'—':n.toLocaleString('nl-NL');};  // leeg/undefined veld → em-dash i.p.v. NaN
+// Een prijs op het scherm. Leeg, geen getal óf 0 → streepje: een koers van 0 bestaat niet, dus
+// 0 betekent "nog niet bekend" (open trade, backtest zonder exit). Was numOrDash en toonde dan
+// "0" (Denny 29-09-2026). Alleen voor prijzen — bij een bedrag of aantal kan 0 wel kloppen.
+const prijsOfStreep=v=>{const n=+v;return (isNaN(n)||n===0||v===''||v==null)?'—':n.toLocaleString('nl-NL');};  // leeg/undefined veld → em-dash i.p.v. NaN
 // Theoretische R voor sim-trades (backtest/paper/gemist) zonder echte pnl: (exit−entry)·richting / |entry−stop|.
 // Exit uit hindsightExit → echte exit → laatste TP → tp. Prijs-gebaseerd (size-onafhankelijk), zoals het origineel.
 function theoR(t){const entry=+t.entry,stop=+t.stop;if(!(entry>0)||!(stop>0)||stop===entry)return null;
@@ -2760,7 +2788,7 @@ function theoR(t){const entry=+t.entry,stop=+t.stop;if(!(entry>0)||!(stop>0)||st
 // A6: |R| > 100 is per definitie een datafout (stop ≈ entry → delen door bijna nul).
 // Zo'n waarde telt nergens mee — één kapotte trade mag nooit alle gemiddelden slopen.
 const R_SANE_MAX=100;
-function tradeR(t){const r=+t.r;if(r)return Math.abs(r)<=R_SANE_MAX?r:0;const th=theoR(t);return (th==null||Math.abs(th)>R_SANE_MAX)?0:th;}
+function tradeR(t){const r=tradeROrNull(t);return r==null?0:r;}
 /* ═══ Valuta (Denny 21-09-2026) ═══
    Alles wat de app opslaat staat in DOLLARS: exchanges rapporteren in USDT/USDC, en
    handmatige accounts en FTMO vult Denny ook in dollars in. De weergave-valuta rekent
@@ -2857,8 +2885,21 @@ function fxView(list){
 // Een saldo is een waarde van nu → altijd de laatste koers.
 const fxNow=v=>{const n=+v||0;return dispCur()==='EUR'?n*FX.latest:n;};
 const CURSYM=()=>dispCur()==='USD'?'$':'€';
-const eur=v=>CURSYM()+' '+Math.round(Math.abs(v)).toLocaleString('nl-NL');
+// Bedragen onder de 100 met centen, daarboven hele eenheden: +$0,46 moet zichtbaar zijn, $239
+// en $815 blijven rustig. Eerst altijd hele eenheden, waardoor kleine winst als "+$ 0" op het
+// dashboard stond (Denny 29-09-2026).
+const CENTEN_ONDER=100;
+const eur=v=>{const a=Math.abs(+v||0);return CURSYM()+' '+(a>0&&a<CENTEN_ONDER
+  ?a.toLocaleString('nl-NL',{minimumFractionDigits:2,maximumFractionDigits:2})
+  :Math.round(a).toLocaleString('nl-NL'));};
 const eurS=v=>(v<0?'−':'+')+eur(v);
+// Kort bedrag voor grafiek-assen en -labels, met dezelfde grens als eur(): onder de 100 met
+// centen, tot 1.000 hele eenheden, daarboven "k". Zonder valutateken (dat staat in de titel).
+const KORT_K=1000;
+function bedragKort(v,metPlus){const n=+v||0,a=Math.abs(n),s=n<0?'−':(metPlus?'+':'');
+  if(a>=KORT_K)return s+(a/KORT_K).toFixed(a>=10*KORT_K?0:1).replace('.',',')+'k';
+  if(a>0&&a<CENTEN_ONDER)return s+a.toFixed(2).replace('.',',');
+  return s+Math.round(a);}
 // Op de cent, voor de P&L per trade: een winst van $ 0,25 is anders "+$ 0" (Denny 24-09-2026)
 const eurC=v=>CURSYM()+' '+Math.abs(+v||0).toLocaleString('nl-NL',{minimumFractionDigits:2,maximumFractionDigits:2});
 const eurCS=v=>(v<0?'−':'+')+eurC(v);
@@ -2872,6 +2913,9 @@ const arr=v=>v>=0?'▲':'▼';
    SyncJournal kent zelf geen merge-functie; deze rijen komen uitsluitend binnen via
    "Importeer oude backup". (Gevonden 28-09-2026: de velden waren overgezet, deze filter niet.) */
 const zonderMergedChildren=rows=>(rows||[]).filter(t=>t&&t.status!=='merged-child');
+// Nieuwste trade eerst, op datum en tijd. De opslag staat in toevoegvolgorde: een geïmporteerde
+// reeks oude trades staat vooraan en nieuwe syncs komen achteraan (Recente trades, 29-09-2026).
+const nieuwsteEerst=rows=>(rows||[]).slice().sort((a,b)=>(String(b.date||'')+' '+String(b.time||'')).localeCompare(String(a.date||'')+' '+String(a.time||'')));
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const jsarg=s=>String(s).replace(/[\\'"<>]/g,'');  // veilige arg voor inline on*-handlers (geen quote-/tag-breakout)
 // Bron voor een <img src="...">. Eigen screenshots zijn data:image-URL's uit compressImg,
@@ -2892,7 +2936,11 @@ const PERIODS=[['7d','Laatste 7 dagen'],['30d','Laatste 30 dagen'],['3m','Laatst
 const PERLBL={'7d':'7 dagen','30d':'30 dagen','3m':'3 maanden','all':'Alles'};
 const PERDAYS={'7d':7,'30d':30,'3m':90};
 function periodTrades(list,per){if(per==='all'||!PERDAYS[per]||!list.length)return list;const ref=Math.max(...list.map(t=>+new Date(t.date)));const from=ref-PERDAYS[per]*864e5;return list.filter(t=>+new Date(t.date)>=from);}
-function aggOf(list){const wins=list.filter(t=>t.pnl>0),losses=list.filter(t=>t.pnl<0),net=list.reduce((s,t)=>s+t.pnl,0),gW=wins.reduce((s,t)=>s+t.pnl,0),gL=Math.abs(losses.reduce((s,t)=>s+t.pnl,0)),n=list.length||1;return {net,wr:wins.length/n*100,pf:gL?gW/gL:(gW>0?99:0),exp:net/n,...(g=>({avgR:g.avg,rN:g.n,rMiss:g.miss}))(gemR(list)),n:list.length};}
+// Winst zonder één verlies: de profit factor is dan oneindig. aggOf e.a. geven daarvoor PF_ONEINDIG
+// terug; toon hem altijd via pfTxt, zodat er nooit "99,00" op het scherm komt (Denny 29-09-2026).
+const PF_ONEINDIG=99;
+const pfTxt=pf=>(+pf||0)>=PF_ONEINDIG?'∞':(+pf||0).toFixed(2).replace('.',',');
+function aggOf(list){const wins=list.filter(t=>t.pnl>0),losses=list.filter(t=>t.pnl<0),net=list.reduce((s,t)=>s+t.pnl,0),gW=wins.reduce((s,t)=>s+t.pnl,0),gL=Math.abs(losses.reduce((s,t)=>s+t.pnl,0)),n=list.length||1;return {net,wr:wins.length/n*100,pf:gL?gW/gL:(gW>0?PF_ONEINDIG:0),exp:net/n,...(g=>({avgR:g.avg,rN:g.n,rMiss:g.miss}))(gemR(list)),n:list.length};}
 function perDD(key){const cur=KPIPER[key]||'all';return `<div class="dd" data-dd="${key}"><button class="dd-btn" onclick="ddToggle(this)">${PERLBL[cur]}<span class="cv">▾</span></button><div class="dd-menu">${PERIODS.map(([v,l])=>`<button class="${v===cur?'on':''}" onclick="setPer('${key}','${v}')">${l}</button>`).join('')}</div></div>`;}
 function ddToggle(btn){const dd=btn.closest('.dd'),open=dd.classList.contains('open');document.querySelectorAll('.dd.open').forEach(d=>d.classList.remove('open'));if(!open)dd.classList.add('open');}
 function setPer(key,v){KPIPER[key]=v;render();}
@@ -2907,8 +2955,11 @@ function kpiBlock(key,ns){
   let dTxt='',dUp=true;
   if(chr.length>=4){if(key==='net'||key==='exp'){if(pa[key]){dTxt=Math.abs(Math.round((ca[key]-pa[key])/Math.abs(pa[key])*100))+'%';}dUp=ca[key]>=pa[key];}
     else if(key==='wr'){dTxt=Math.abs(Math.round(ca.wr-pa.wr))+'pt';dUp=ca.wr>=pa.wr;}
-    else if(key==='r'){if(!ca.rN||!pa.rN)return '';dTxt=Math.abs(ca.avgR-pa.avgR).toFixed(1).replace('.',',')+'R';dUp=ca.avgR>=pa.avgR;}
-    else{dTxt=Math.abs(ca.pf-pa.pf).toFixed(1).replace('.',',');dUp=ca.pf>=pa.pf;}}
+    // Geen R in een van beide helften: niets te vergelijken. Dan geen trend — wél de kaart.
+    // (Hier stond `return ''`, waardoor de hele Gem. R-kaart verdween; v1.1, gevonden 29-09-2026.)
+    else if(key==='r'){if(ca.rN&&pa.rN){dTxt=Math.abs(ca.avgR-pa.avgR).toFixed(1).replace('.',',')+'R';dUp=ca.avgR>=pa.avgR;}}
+    // Zelfde voor profit factor: oneindig min een getal is geen verschil.
+    else if(ca.pf<PF_ONEINDIG&&pa.pf<PF_ONEINDIG){dTxt=Math.abs(ca.pf-pa.pf).toFixed(1).replace('.',',');dUp=ca.pf>=pa.pf;}}
   // Netto en Expectancy volgen de €/%/R-weergavekeuze; Win-rate/PF/Gem. R zijn unit-loos.
   let val;
   if(key==='net')val=UNIT()==='val'?eurS(ag.net):unitAgg(lst,ag.net);
@@ -2918,7 +2969,7 @@ function kpiBlock(key,ns){
     else val=eurS(ag.exp);
   }
   else if(key==='r')val=ag.rN?(ag.avgR>=0?'+':'')+ag.avgR.toFixed(2).replace('.',','):'—';
-  else val=key==='wr'?Math.round(ag.wr)+'%':ag.pf.toFixed(2).replace('.',',');
+  else val=key==='wr'?Math.round(ag.wr)+'%':pfTxt(ag.pf);
   const vc=key==='net'?cls(ag.net):key==='exp'?cls(ag.exp):key==='r'?cls(ag.avgR):'',mask=(key==='net'||key==='exp')?unitMask():'';
   const spark=sp.length>1?sp:[ag.net||0,ag.net||0];
   return `<div class="kpi kcard"><div class="ktop"><div class="k">${cfg.label}</div>${perDD(sk)}</div>
@@ -3054,9 +3105,9 @@ function donut(size=132){
   ),'ch-donut',size);
 }
 function equity(h,list){
-  const src=list||CLOSED;let cum=0;const data=[];src.slice().reverse().forEach((tr,i)=>{cum+=tr.pnl;data.push({x:i,y:Math.round(cum)});});
+  const src=list||CLOSED;let cum=0;const data=[];src.slice().reverse().forEach((tr,i)=>{cum+=(+tr.pnl||0);data.push({x:i,y:+cum.toFixed(2)});});
   if(!data.length)data.push({x:0,y:0});
-  return rcAreaChart(data,{col:themeColors().accent,gid:'gEq',yfmt:v=>(Math.round(v/100)/10)+'k',tfmt:eurS,name:'Netto P&L',h:h||188,cls:'ch-eq'});
+  return rcAreaChart(data,{col:themeColors().accent,gid:'gEq',yfmt:v=>bedragKort(v),tfmt:eurS,name:'Netto P&L',h:h||188,cls:'ch-eq'});
 }
 // Fout-profiel als radar (shadcn/Recharts-stijl, idee Denny 2026-09-17): labels rondom
 // i.p.v. gepropt onder de x-as. Waarde = absolute netto-impact; tooltip toont echte netto.
@@ -3064,7 +3115,7 @@ function equity(h,list){
 // daaronder valt de caller terug op barsPnl.
 function radarImpact(data,onBar){
   const t=themeColors(),H=React.createElement,R=Recharts;
-  const rows=data.map(d=>({x:d.m,y:Math.abs(Math.round(d.v)),f:d.f,net:Math.round(d.v)}));
+  const rows=data.map(d=>({x:d.m,y:Math.abs(+(+d.v).toFixed(2)),f:d.f,net:+(+d.v).toFixed(2)}));
   const tick=p=>{const d=rows[p.payload&&p.payload.index!=null?p.payload.index:p.index]||rows.find(r=>r.x===p.payload.value)||{};
     return H('text',{x:p.x,y:p.y,textAnchor:p.textAnchor,fill:t.muted,fontSize:10.5,dy:4,
       cursor:onBar?'pointer':'default',onClick:onBar?()=>onBar(d):undefined},p.payload.value);};
@@ -3080,13 +3131,13 @@ function radarImpact(data,onBar){
 }
 function barsPnl(data,unit='k',onBar){
   const t=themeColors(),H=React.createElement,R=Recharts;
-  const fmt=unit==='k'?(v=>(v>=0?'+':'−')+Math.abs(v/1000).toFixed(Math.abs(v)%1000?1:0)+'k'):unit==='r'?(v=>rS(v)):unit==='p'?(v=>pctSgn(v)):(v=>eurS(v));
+  const fmt=unit==='k'?(v=>bedragKort(v,true)):unit==='r'?(v=>rS(v)):unit==='p'?(v=>pctSgn(v)):(v=>eurS(v));
   // Compacte waarde-label ON de bar (per rij), zodat je niet hoeft te hoveren.
   const lbl=v=>{const s=v>=0?'+':'−',a=Math.abs(v);
     if(unit==='r')return s+a.toFixed(1).replace('.',',')+'R';
     if(unit==='p')return s+a.toFixed(1).replace('.',',')+'%';
-    return a>=1000?s+(a/1000).toFixed(a>=10000?0:1).replace('.',',')+'k':s+Math.round(a);};
-  const rows=data.map(d=>({x:d.m,y:(unit==='r'||unit==='p')?+(+d.v).toFixed(2):Math.round(d.v),f:d.f}));
+    return bedragKort(v,true);};
+  const rows=data.map(d=>({x:d.m,y:+(+d.v).toFixed(2),f:d.f}));
   // interval:0 — Recharts' standaard laat labels aan het BEGIN vallen bij ruimtegebrek,
   // net de grootste fout/verliezer (Denny 2026-09-17). Veel én lange categorieën → schuin.
   const tilt=rows.length>6&&rows.some(r=>String(r.x).length>5);
@@ -3104,7 +3155,7 @@ function hbars(items){return `<div class="hbars">`+items.map(r=>`<div class="hba
   <div class="track"></div><div class="fill" style="width:${r.val}%;background:${r.color}"></div>
   <div class="val">${r.disp}</div><div class="sub">${r.sub}</div></div>`).join('')+`</div>`;}
 function groupRows(field){const o={};CLOSED.forEach(t=>{const k=field==='session'?sessionOf(t):t[field];(o[k]=o[k]||{n:0,w:0,pnl:0,r:0,rN:0});o[k].n++;o[k].pnl+=t.pnl;const _r=tradeROrNull(t);if(_r!=null){o[k].r+=_r;o[k].rN++;}if(t.pnl>0)o[k].w++;});
-  return Object.entries(o).map(([k,v])=>{const wr=Math.round(v.w/v.n*100);return {label:k,val:wr,disp:wr+'%',pnl:v.pnl,n:v.n,r:v.r/v.n,sub:`${v.n} trades · netto <b class="${cls(v.pnl)}">${eurS(v.pnl)}</b>`,color:v.pnl>=0?'var(--green)':'var(--red)'};});}
+  return Object.entries(o).map(([k,v])=>{const wr=Math.round(v.w/v.n*100);return {label:k,val:wr,disp:wr+'%',pnl:v.pnl,n:v.n,r:v.rN?v.r/v.rN:null,sub:`${v.n} trades · netto <b class="${cls(v.pnl)}">${eurS(v.pnl)}</b>`,color:v.pnl>=0?'var(--green)':'var(--red)'};});}
 
 /* ═══ PAGES ═══ */
 function pgDashboard(){
@@ -3127,7 +3178,9 @@ function pgDashboard(){
   const mRows=CLOSED.filter(t=>String(t.date||'').startsWith(_mm));
   const mNet=mRows.reduce((s,t)=>s+(+t.pnl||0),0);
   const _yr=String(new Date().getFullYear());
-  const yRows=zonderMergedChildren(T).filter(t=>t&&t.status==='closed'&&String(t.date||'').startsWith(_yr));
+  // Zelfde bron als "deze maand" (CLOSED, mét je filter). Dit telde eerst álle trades, dus met
+  // filter "Live trades" kwamen de backtests als gerealiseerde winst in YTD (Denny 29-09-2026).
+  const yRows=CLOSED.filter(t=>String(t.date||'').startsWith(_yr));
   const ytd=yRows.reduce((s,t)=>s+(+t.pnl||0),0);
   let ytdTxt;
   if(UNIT()==='val'){const _y=netUsd(yRows),_base=totalBalance()-_y;ytdTxt=`YTD <b class="num ${cls(ytd)} mask">${eurS(ytd)}${_base>0?' ('+(_y>=0?'+':'−')+Math.abs(_y/_base*100).toFixed(1).replace('.',',')+'%)':''}</b>`;}
@@ -3146,7 +3199,7 @@ function pgDashboard(){
   const nudge=(VIEW.preset==='rustig'&&T.length>=25&&!VIEW.nudged)?`<div class="vnudge">💡 Er staan meer inzichten voor je klaar, profit factor, expectancy, analytics en tendencies. <span class="go" onclick="dismissNudge(true)">Bekijk Standaard</span><button class="x" onclick="dismissNudge(false)" aria-label="Hint sluiten">×</button></div>`:'';
   const recent=!VV('dRecent')?'':`<div class="panel"><div class="phead"><h3>Recente trades</h3><span class="sp"></span><button class="chip a" onclick="go('trades')" style="font-weight:700">Alle trades →</button>${pHide('dRecent','Recente trades')}</div>
     <div class="tblwrap"><table class="tbl"><thead><tr><th>Pair</th><th>Setup</th><th>Datum</th><th class="rt">P&L</th><th class="rt">R</th><th class="rt">Status</th></tr></thead>
-    <tbody>${zonderMergedChildren(T).slice(0,6).map(t=>`<tr><td>${assetCell(t.pair)}</td><td class="tag">${esc(t.setup)}</td><td class="tag num">${fmtD(t.date)}</td><td class="rt">${UNIT()==='val'?pnlCell(t.pnl,pnlPctOf(t)):`<span class="num ${unitTrade(t)==='—'?'':cls(+t.pnl||0)}" style="font-weight:700">${unitTrade(t)}</span>`}</td><td class="rt">${rCell(t)}</td><td class="rt">${statusB(t.status)}</td></tr>`).join('')}</tbody></table></div></div>`;
+    <tbody>${nieuwsteEerst(FT).slice(0,6).map(t=>`<tr><td>${assetCell(t.pair)}</td><td class="tag">${esc(t.setup||'—')}</td><td class="tag num">${fmtD(t.date)}</td><td class="rt">${UNIT()==='val'?pnlCell(t.pnl,pnlPctOf(t)):`<span class="num ${unitTrade(t)==='—'?'':cls(+t.pnl||0)}" style="font-weight:700">${unitTrade(t)}</span>`}</td><td class="rt">${rCell(t)}</td><td class="rt">${statusB(t.status)}</td></tr>`).join('')}</tbody></table></div></div>`;
   return `${filterBar()}${hero}<div style="height:16px"></div>${kpis}${nudge}<div style="height:16px"></div>${eq}<div style="height:16px"></div>
     <div class="grid" style="grid-template-columns:1fr 1fr">${mon}${edge}</div><div style="height:16px"></div>${recent}`;
 }
@@ -3200,7 +3253,7 @@ function pgTrades(){
         <td class="tag num" data-l="Datum">${fmtD(t.date)}${t.time?`<div style="font-size:10.5px;color:var(--muted)">${esc(t.time)}</div>`:''}${t.status!=='closed'?`<div style="margin-top:3px">${statusB(t.status)}</div>`:''}</td>
         ${VV('tExchange')?`<td data-l="Exchange">${exCell(t.exchange)}</td>`:''}
         <td data-l="Pair"><div class="paircell">${assetCell(t.pair)}${kindBadge(t)}${newBadge(t)}</div></td><td data-l="Richting"><span class="pill ${t.dir}">${t.dir==='long'?'LONG':'SHORT'}</span></td>
-        ${VV('tEntryExit')?`<td class="rt num" data-l="Entry">${numOrDash(t.entry)}</td><td class="rt num" data-l="Exit">${numOrDash(t.exit)}</td>`:''}
+        ${VV('tEntryExit')?`<td class="rt num" data-l="Entry">${prijsOfStreep(t.entry)}</td><td class="rt num" data-l="Exit">${prijsOfStreep(t.exit)}</td>`:''}
         ${VV('tSize')?`<td class="rt num mask" data-l="Size">${isNaN(SZ(t))?'—':CURSYM()+' '+SZ(t).toLocaleString('nl-NL')}${qtySub(t)}</td>`:''}<td class="rt" data-l="P&L">${t.status==='open'&&t.unrealizedPnl?`<span class="num ${cls(t.unrealizedPnl)} mask" title="niet-gerealiseerde P&L">~${eurCS(t.unrealizedPnl)}</span>`:t.status==='partial'&&t.realizedPnl?`<span class="num ${cls(t.realizedPnl)} mask" title="gerealiseerd deel, rest loopt nog">${eurCS(t.realizedPnl)}<div style="font-size:10.5px;color:var(--amber)">deels dicht</div></span>`:pnlCell(t.pnl,pnlPctOf(t))}</td>
         ${VV('tR')?`<td class="ct" data-l="R">${rBadge(t)}</td>`:''}
         <td data-l="Setup">${setupBadge(t.setup)}</td>${VV('tSessie')?`<td data-l="Sessie">${sessBadge(sessionOf(t))}</td>`:''}
@@ -3480,7 +3533,7 @@ function pgTendencies(){
       <div class="panel"><div class="phead"><h3>Win-rate per ${STATE.tend}</h3><span class="sp"></span><span class="chip">radar</span></div><div class="pbody">${radar(rows.map(r=>r.label.length>10?r.label.slice(0,9)+'…':r.label),rows.map(r=>r.val),{name:'Win-rate',fmt:v=>v+'%',h:288})}</div></div>
       <div class="panel"><div class="phead"><h3>Prestatie-breakdown</h3><span class="sp"></span>
         <div class="subtabs" id="tendTabs">${tabs.map(([k,l])=>`<button data-t="${k}" class="${STATE.tend===k?'on':''}">${l}</button>`).join('')}</div></div>
-        ${hbars(rows.map(r=>({...r,val:r.val,disp:r.disp,sub:`${r.n} trades · gem. R <b class="${cls(r.r)}">${(r.r>=0?'+':'')+r.r.toFixed(2).replace('.',',')}</b> · netto <b class="${cls(r.pnl)}">${eurS(r.pnl)}</b>`})))}</div>
+        ${hbars(rows.map(r=>({...r,val:r.val,disp:r.disp,sub:`${r.n} trades · gem. R <b class="${r.r==null?'':cls(r.r)}">${r.r==null?'—':(r.r>=0?'+':'')+r.r.toFixed(2).replace('.',',')}</b> · netto <b class="${cls(r.pnl)}">${eurS(r.pnl)}</b>`})))}</div>
     </div>`;
 }
 
@@ -3683,7 +3736,7 @@ async function downloadCoachPackage(){
 // bouwt het self-contained coach-pakket (HTML). Alle user-tekst via esc() → geen self-XSS in het gedeelde bestand.
 function coachPkgHTML(trades,opts){
   const hide=opts.hide, name=esc(opts.name||'een trader'), shotMap=opts.shotMap||{};
-  const rTxt=r=>(r>=0?'+':'')+(+r||0).toFixed(1)+'R', pctTxt=p=>(p==null||!isFinite(+p))?'—':((+p||0)>=0?'+':'')+(+p||0).toFixed(2).replace('.',',')+'%';
+  const rTxt=r=>rS(+r||0), pctTxt=p=>(p==null||!isFinite(+p))?'—':((+p||0)>=0?'+':'')+(+p||0).toFixed(2).replace('.',',')+'%';
   const cl=v=>v>=0?'g':'r', amt=v=>hide?'<span class="hid">•••</span>':v;
   const dates=trades.map(t=>t.date).filter(Boolean).sort();
   const per=dates.length?(fmtD(dates[0])+(dates.length>1?' – '+fmtD(dates[dates.length-1]):'')):'—';
@@ -3701,7 +3754,7 @@ function coachPkgHTML(trades,opts){
     const shotsArr=shotMap[t.id]||[];
     const media=(shotsArr.length?shotsArr.map((u,i)=>shotBlock('<img src="'+beeldSrc(u)+'" alt="screenshot">','Screenshot '+(i+1)+' / '+shotsArr.length)):[shotBlock(chartThumb(t,1),'Auto-chart · geen screenshot geüpload')]).join('');
     const szTxt=(typeof SZ==='function'&&!isNaN(SZ(t)))?CURSYM()+' '+SZ(t).toLocaleString('nl-NL'):'—';
-    const num=v=>numOrDash(v);
+    const num=v=>prijsOfStreep(v);
     return `<div class="tcard">
       <div class="tc-head"><span class="tc-idx">${ti+1}</span>
         <div style="min-width:0"><div class="tc-pair">${esc(t.pair)} <span class="pill ${t.dir}">${t.dir==='long'?'LONG':'SHORT'}</span></div>
@@ -3873,10 +3926,10 @@ function pgReview(){
 
       <div class="panel"><div class="phead"><h3>Plan vs. uitvoering</h3><span class="sp"></span><span class="chip">geplande R:R <b class="num">${t.rrPlanned?(t.rrPlanned+':1'):'—'}</b> → behaald ${rCell(t,'font-weight:700')}</span></div>
         <div class="pbody"><div class="plangrid">
-          ${pc('Entry',numOrDash(t.entry))}
+          ${pc('Entry',prijsOfStreep(t.entry))}
           ${pc('Stop-loss',t.stop?(+t.stop).toLocaleString('nl-NL'):'—','r')}
           ${pc('Take-profit',t.tp?(+t.tp).toLocaleString('nl-NL'):'—','g')}
-          ${pc('Exit',numOrDash(t.exit))}
+          ${pc('Exit',prijsOfStreep(t.exit))}
           ${pc('Size','<span class="mask">'+(isNaN(SZ(t))?'—':CURSYM()+' '+SZ(t).toLocaleString('nl-NL'))+((t.sizeUnit==='asset'&&t.qty>0)?' <span style="color:var(--muted);font-size:11px">· '+(+t.qty).toLocaleString('nl-NL',{maximumFractionDigits:6})+' '+esc(String(t.pair||'').split('/')[0])+'</span>':'')+'</span>')}
           ${pc('Leverage',(t.leverage||'—')+'×')}
           ${pc('Risk','<span class="mask">'+(t.risk||'—')+'%</span>')}
@@ -4208,10 +4261,10 @@ function playbookDetail(setup){
   const closed=src.filter(x=>x.status!=='open');
   const n=closed.length,w=closed.filter(x=>x.pnl>0).length,wr=n?Math.round(w/n*100):0;
   const net=closed.reduce((a,x)=>a+x.pnl,0),_gr=gemR(closed),avgR=_gr.avg,rN=_gr.n,exp=n?net/n:0;
-  const grossW=closed.filter(x=>x.pnl>0).reduce((a,x)=>a+x.pnl,0),grossL=Math.abs(closed.filter(x=>x.pnl<0).reduce((a,x)=>a+x.pnl,0)),pf=grossL?grossW/grossL:(grossW>0?99:0);
+  const grossW=closed.filter(x=>x.pnl>0).reduce((a,x)=>a+x.pnl,0),grossL=Math.abs(closed.filter(x=>x.pnl<0).reduce((a,x)=>a+x.pnl,0)),pf=grossL?grossW/grossL:(grossW>0?PF_ONEINDIG:0);
   const best=closed.length?Math.max(...closed.map(x=>x.pnl)):0,worst=closed.length?Math.min(...closed.map(x=>x.pnl)):0;
   const bySes={};closed.forEach(x=>{const s=sessionOf(x);(bySes[s]=bySes[s]||{v:0,n:0});bySes[s].v+=x.pnl;bySes[s].n++;});
-  const sesBars=Object.entries(bySes).sort((a,b)=>b[1].v-a[1].v).map(([k,v])=>({m:k,v:Math.round(v.v)}));
+  const sesBars=Object.entries(bySes).sort((a,b)=>b[1].v-a[1].v).map(([k,v])=>({m:k,v:+(+v.v).toFixed(2)}));
   const tagCount={};closed.forEach(x=>(x.tags||[]).forEach(tg=>tagCount[tg]=(tagCount[tg]||0)+1));
   const topTags=Object.entries(tagCount).sort((a,b)=>b[1]-a[1]).slice(0,6);
   // Edge-erosion FUNNEL (Backtest → Paper → Real) — over ALLE kinds voor deze setup (los van de Live/Oefen-filter).
@@ -4247,7 +4300,7 @@ function playbookDetail(setup){
       <span class="sp" style="flex:1"></span>
       <button class="btn" onclick="openPbEdit('${esc(setup).replace(/'/g,'')}')">✎ Bewerken</button></div>
     <div class="pbk-row">
-      ${kpi('Trades',n)}${kpi('Netto',eurS(net),cls(net)+' mask')}${kpi('Gem. R',rN?(avgR>=0?'+':'')+avgR.toFixed(2).replace('.',','):'—',rN?cls(avgR):'')}${kpi('Verwachting',eurS(exp),cls(exp)+' mask')}${kpi('Profit factor',pf>=99?'∞':pf.toFixed(2).replace('.',','))}${kpi('Beste',eurS(best),'g mask')}${kpi('Slechtste',eurS(worst),'r mask')}</div>
+      ${kpi('Trades',n)}${kpi('Netto',eurS(net),cls(net)+' mask')}${kpi('Gem. R',rN?(avgR>=0?'+':'')+avgR.toFixed(2).replace('.',','):'—',rN?cls(avgR):'')}${kpi('Verwachting',eurS(exp),cls(exp)+' mask')}${kpi('Profit factor',pfTxt(pf))}${kpi('Beste',eurS(best),'g mask')}${kpi('Slechtste',eurS(worst),'r mask')}</div>
     <div class="pbdetail-grid">
       <div class="panel revlistpanel" style="align-self:start">
         <div class="phead"><h3>Trades</h3><span class="sp"></span><span class="chip">${src.length}</span></div>
@@ -4434,7 +4487,7 @@ function scoreDonut(wr,pf,payoff){
   const ring=donutChart([{name:'score',value:score,fill:col},{name:'rest',value:100-score,fill:'var(--track)'}],{big:score,sub:'/ 100',col},{noTip:true,pad:0});
   const pill=`<div style="text-align:center;margin-top:-2px"><span style="font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:${col}">${lbl}</span></div>`;
   const st=(l,v)=>`<span style="display:inline-flex;flex-direction:column;align-items:center;gap:1px"><span style="font-size:9px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600">${l}</span><b class="num" style="font-size:12.5px">${v}</b></span>`;
-  return ring+pill+`<div style="display:flex;justify-content:center;gap:20px;flex-wrap:wrap;margin-top:8px">${st('Win-rate',Math.round(wr)+'%')}${st('Profit factor',pf>=99?'∞':pf.toFixed(2).replace('.',','))}${st('Payoff',payoff.toFixed(2).replace('.',','))}</div>`;
+  return ring+pill+`<div style="display:flex;justify-content:center;gap:20px;flex-wrap:wrap;margin-top:8px">${st('Win-rate',Math.round(wr)+'%')}${st('Profit factor',pfTxt(pf))}${st('Payoff',payoff.toFixed(2).replace('.',','))}</div>`;
 }
 function lineSeries(vals,opts){opts=opts||{};
   const t=themeColors(),H=React.createElement,R=Recharts,last=vals[vals.length-1]||0,col=cvar(opts.col)||(last>=0?t.accent:t.red),isLine=!!opts.line;
@@ -4611,10 +4664,10 @@ function pgAnalytics(){
   // Top 6 op |netto|: grootste verliezers horen er óók in (ChangeMaker 2026-09-16 — bij een
   // fouten-filter viel de zwaarste verliezer juist buiten de lijst); weergave winst → verlies.
   const pairRows=groupRows('pair').sort((x,y)=>Math.abs(y.pnl)-Math.abs(x.pnl)).slice(0,6).sort((x,y)=>y.pnl-x.pnl);
-  const sessBars=groupRows('session').sort((x,y)=>y.pnl-x.pnl).map(s=>({m:s.label,v:Math.round(s.pnl)}));
+  const sessBars=groupRows('session').sort((x,y)=>y.pnl-x.pnl).map(s=>({m:s.label,v:+(+s.pnl).toFixed(2)}));
   // álle fouten per trade tellen mee, niet alleen de eerste (ChangeMaker 2026-09-14)
   const mistBy={};CLOSED.forEach(t=>tradeMistakes(t).forEach(m=>{mistBy[m]=(mistBy[m]||0)+t.pnl;}));
-  const mistBars=Object.entries(mistBy).sort((x,y)=>x[1]-y[1]).map(([m,v])=>({m:m.length>11?m.slice(0,10)+'…':m,v:Math.round(v),f:m}));
+  const mistBars=Object.entries(mistBy).sort((x,y)=>x[1]-y[1]).map(([m,v])=>({m:m.length>11?m.slice(0,10)+'…':m,v:+(+v).toFixed(2),f:m}));
   // Duur nu op echte timestamps (openTime/closeTime) met durationMin als fallback.
   const _hd=t=>tradeDurationMin(t)||0;
   const avgHoldW=wins.length?Math.round(wins.reduce((s,t)=>s+_hd(t),0)/wins.length):0,avgHoldL=losses.length?Math.round(losses.reduce((s,t)=>s+_hd(t),0)/losses.length):0;
@@ -4637,7 +4690,7 @@ function pgAnalytics(){
   const gChart=gradeStackChart(gData.map(d=>({x:'Grade '+d.g.k,win:d.w,loss:d.l})));
   const gLegend=`<span class="chip gr-legend"><i style="background:var(--green)"></i>winst<i style="background:var(--red);margin-left:9px"></i>verlies</span>`;
   const gRows=gData.map(d=>`<div class="graderow"><span class="gbadge g-${d.g.k}">${d.g.k}</span><div class="gr-main"><div class="gr-top"><span><b>${d.n}</b> trades</span><b class="gr-net num ${cls(d.net)}">${eurS(d.net)}</b></div><div class="gr-meter"><div class="gr-track"><div class="gr-fill" style="width:${d.wr}%;background:${d.wr>=50?'var(--green)':d.wr>=35?'var(--amber)':'var(--red)'}"></div></div><span class="gr-wr">${d.wr}%</span></div><div class="gr-sub">gem. ${d.rN?(d.avgR>=0?'+':'')+d.avgR.toFixed(2)+'R':'—'} · ${d.w}W / ${d.l}V</div></div></div>`).join('');
-  const grossW=wins.reduce((s,x)=>s+x.pnl,0),grossL=Math.abs(losses.reduce((s,x)=>s+x.pnl,0)),pfv=grossL?grossW/grossL:(grossW>0?99:0);
+  const grossW=wins.reduce((s,x)=>s+x.pnl,0),grossL=Math.abs(losses.reduce((s,x)=>s+x.pnl,0)),pfv=grossL?grossW/grossL:(grossW>0?PF_ONEINDIG:0);
   const longN=CLOSED.filter(x=>x.dir==='long').length,shortN=CLOSED.length-longN,winN=wins.length,lossN=losses.length;
   const recentForm=chron.slice(-22);
   const formStrip=recentForm.map(x=>`<span class="fdot ${x.pnl>=0?'w':'l'}" title="${fmtD(x.date)} · ${eurS(x.pnl)}"></span>`).join('');
@@ -4694,7 +4747,7 @@ function pgAnalytics(){
       ${panel('Reeks &amp; vorm','momentum van je edge',streakBody)}
     </div><div style="height:13px"></div>
     <div class="grid" style="grid-template-columns:1fr 1fr;align-items:stretch">
-      ${panelHead('Drawdown + herstel','<span class="chip" title="recovery factor = netto ÷ max drawdown · duur = trades onder vorige piek">recovery '+(recovery>=99?'∞':recovery.toFixed(1))+' · onder piek '+ddLen+'t</span>',lineSeries(ddV,{id:'dd',col:'var(--red)',fmt:v=>Math.round(v)}))}
+      ${panelHead('Drawdown + herstel','<span class="chip" title="recovery factor = netto ÷ max drawdown · duur = trades onder vorige piek">recovery '+(recovery>=99?'∞':recovery.toFixed(1))+' · onder piek '+ddLen+'t</span>',lineSeries(ddV,{id:'dd',col:'var(--red)',fmt:v=>bedragKort(v)}))}
       ${panel('Cumulatieve R','som van R',lineSeries(crV,{id:'cr',line:true,fmt:v=>v.toFixed(0)+'R',col:'var(--accent)'}))}
     </div><div style="height:13px"></div>
     <div class="sect-h">Per dimensie, waar zit je edge</div>
@@ -4857,10 +4910,10 @@ function aiReply(q){
   const rTxt=(a.avgR>=0?'+':'')+a.avgR.toFixed(2).replace('.',',');
   if(/emotie|psych|gevoel|tilt/.test(ql)){const eBy={};CLOSED.forEach(t=>tradeEmotions(t).forEach(e=>{eBy[e]=(eBy[e]||0)+t.pnl;}));const worstE=Object.entries(eBy).sort((x,y)=>x[1]-y[1])[0];return worstE?`De emotie die je 't meest kost is <b>${esc(worstE[0])}</b> (${eurS(worstE[1])} netto). Herken 'm vroeg, dat is je grootste psychologische lek.`:`Je hebt nog weinig emoties getagd. Tag ze consequent, dan zie ik welke stemming je geld kost.`;}
   if(/discipline|regels|consistent|plan/.test(ql)){const byG={};CLOSED.filter(t=>t.grade).forEach(t=>{(byG[t.grade]=byG[t.grade]||{n:0,w:0}).n++;if(t.pnl>0)byG[t.grade].w++;});const aG=byG['A'];return aG?`Je A-setups winnen ${Math.round(aG.w/aG.n*100)}% (${aG.n} trades). Hoe strenger je bij A blijft, hoe stabieler je curve. Discipline = minder B/C forceren.`:`Grade je setups (A/B/C) consequent, dan meet ik of je discipline je edge volgt.`;}
-  if(/risk|\br\b|rr|ratio/.test(ql))return `Je gemiddelde R is <b>${rTxt}</b> over ${a.n} trades. Profit factor ${a.pf.toFixed(2).replace('.',',')}. Houd je verliezers klein en laat winners lopen, daar valt de meeste winst te halen.`;
+  if(/risk|\br\b|rr|ratio/.test(ql))return (a.rN?`Je gemiddelde R is <b>${rTxt}</b> over ${a.rN} trade${a.rN===1?'':'s'} met een stop-loss.`:`Je gemiddelde R is nog niet te bepalen: geen van je trades heeft een stop-loss.`)+` Profit factor ${pfTxt(a.pf)}. Houd je verliezers klein en laat winners lopen, daar valt de meeste winst te halen.`;
   if(/lek|verlies|fout|slecht|kwijt/.test(ql))return `Je grootste lek zit bij <b>${worstMist?esc(worstMist[0]):'losse fouten'}</b> (${worstMist?eurS(worstMist[1]):'—'}). Je zwakste sessie is <b>${esc(worst.label)}</b> (${worst.disp} win). Filter daar strenger, dat scheelt direct netto.`;
   if(/edge|sterk|beste|goed|werkt/.test(ql))return `Je edge zit in <b>${esc(best.label)}</b>: ${eurS(best.pnl)} netto en ${best.disp} win-rate. Je gem. R is <b>${rTxt}</b>. Doe bewust méér van wat daar werkt.`;
-  if(/week|maand|periode|hoe.*ging|samenvat|overzicht/.test(ql))return `Deze selectie: <b>${eurS(a.net)}</b> netto over ${a.n} trades · win-rate ${Math.round(a.wr)}% · profit factor ${a.pf.toFixed(2).replace('.',',')}. Sterkste sessie ${esc(best.label)}, zwakste ${esc(worst.label)}. Solide, bewaak je discipline in ${esc(worst.label)}.`;
+  if(/week|maand|periode|hoe.*ging|samenvat|overzicht/.test(ql))return `Deze selectie: <b>${eurS(a.net)}</b> netto over ${a.n} trades · win-rate ${Math.round(a.wr)}% · profit factor ${pfTxt(a.pf)}. Sterkste sessie ${esc(best.label)}, zwakste ${esc(worst.label)}. Solide, bewaak je discipline in ${esc(worst.label)}.`;
   return `Op basis van je ${a.n} trades: netto <b>${eurS(a.net)}</b>, win-rate ${Math.round(a.wr)}%, gem. R ${rTxt}. Vraag me gericht naar je <i>edge</i>, je <i>grootste lek</i>, of <i>hoe je periode ging</i>.`;
 }
 function aiScroll(){const c=document.getElementById('aiFeed');if(c)c.scrollTop=c.scrollHeight;}
@@ -5006,6 +5059,7 @@ function sanitizeTrade(t,i){
   out.status=s(o.status)||'closed';out.kind=s(o.kind)||'live';out.setup=s(o.setup);out.session=s(o.session);
   out.pnl=num(out.pnl);out.r=num(out.r);   // deze twee neemt élke weergave als vanzelfsprekend aan
   ['entry','exit','stop','tp','fees','leverage','risk','rrPlanned','pnlPct','durationMin','mae','mfe','rating'].forEach(k=>{if(k in out)out[k]=num(out[k]);});
+  schoonPrijzen(out);
   SJ_ARR_FIELDS.forEach(k=>{if(!Array.isArray(out[k]))out[k]=[];});
   // stappen: alleen echte stap-objecten met een leesbare prijs en hoeveelheid; de rest weg
   if('fills' in out)out.fills=Array.isArray(out.fills)?out.fills.filter(f=>f&&typeof f==='object'&&isFinite(+f.price)&&isFinite(+f.qty)):[];
@@ -8543,7 +8597,9 @@ function tpStats(t){const tps=(t.tps||[]).filter(x=>+x.price>0);if(!tps.length)r
   return {tps,hit,hitPct,missedPct,wExit,wR,dicht};}
 function tpBreakdown(t){const s=tpStats(t);if(!s)return '<div style="color:var(--muted);font-size:12.5px;padding:6px 0">Geen TP-niveaus vastgelegd.</div>';
   const rows=s.tps.map((tp,i)=>`<div class="tprow ${tp.hit?'hit':''}"><span class="tpdot">${tp.hit?'✓':'○'}</span><span class="tpname">TP${i+1}</span><span class="tpprice num">${(+tp.price).toLocaleString('nl-NL')}</span><span class="tpr num ${(+tp.r||0)>=0?'g':'r'}">${tp.r?('+'+tp.r+'R'):''}</span><div class="tpbar"><div class="tpbarf" style="width:${Math.min(100,+tp.pct||0)}%;background:${tp.hit?'var(--green)':'var(--line2)'}"></div></div><span class="tppct num">${tp.pct}%</span>${tp.hit&&+tp.ts?`<span class="tpts num" title="moment waarop dit niveau is gehaald">${ts2date(+tp.ts)===ts2date(+t.openTime||0)?ts2time(+tp.ts):fmtD(ts2date(+tp.ts))+' '+ts2time(+tp.ts)}</span>`:''}</div>`).join('');
-  const rDeel=s.wR!=null?` · ${s.dicht?'gerealiseerd':'bij je stop'} <b class="num ${cls(s.wR)}">${(s.wR>=0?'+':'')+(+s.wR).toFixed(1)}R</b>`:'';
+  // gesloten: dezelfde (netto) R als overal; nog open: het scenario als de rest op je stop gaat
+  const rEcht=s.dicht?tradeROrNull(t):s.wR;
+  const rDeel=rEcht!=null?` · ${s.dicht?'gerealiseerd':'bij je stop'} <b class="num ${cls(rEcht)}">${rS(rEcht)}</b>`:'';
   const foot=s.wExit!=null?`<div class="tpfoot"><span>Gewogen exit <b class="num">${(+s.wExit).toLocaleString('nl-NL')}</b>${s.dicht?'':' <span title="De positie loopt nog; het niet-gehaalde deel is afgerekend op je stop">(aanname)</span>'}</span><span class="sp" style="flex:1"></span><span>Hit <b class="num g">${Math.round(s.hitPct)}%</b>${rDeel}</span></div>`:'';
   return `<div class="tplist">${rows}</div>${foot}`;}
 function fnum(id){const el=document.getElementById(id);if(!el)return NaN;const v=parseFloat(String(el.value).trim().replace(',','.'));return isNaN(v)?NaN:v;}
@@ -8600,6 +8656,9 @@ function calcTrade(fill){
   // live-preview: de trade wordt nú genomen, dus basis = huidige balans (of vaste referentie)
   const _pb=(+STATE.pctRef||0)>0?+STATE.pctRef:totalBalance();
   if(!isNaN(pnl)&&_pb>0)pct=+(pnl/_pb*100).toFixed(2);
+  // R-veld bij openen (fill=false): alleen invullen als het leeg of 0 is. Een gesynct trade toonde
+  // anders "0" terwijl de regel erboven +0,07R zei; een zelf ingevulde waarde blijft staan.
+  if(!fill&&!isNaN(r)){const rEl=document.getElementById('f_r');if(rEl&&!(+rEl.value))rEl.value=r;}
   if(fill){
     const pnlEl=document.getElementById('f_pnl'),exEl=document.getElementById('f_exit'),st=document.getElementById('f_status');
     if(!isNaN(pnl)&&!formLocked){pnlEl.value=pnl;formCloseAuto.p=String(pnl);}
@@ -8726,7 +8785,7 @@ function openForm(id){
 
       <div class="msub s4"><span class="msn">4</span> Resultaat</div>
       <div class="field"><label>P&L (${CURSYM()})</label><input id="f_pnl"${RO} value="${t.pnl}" inputmode="decimal"></div>
-      <div class="field ${vfc('std',t.r!==''&&+t.r!==0)}"><label>R-multiple</label><input id="f_r" value="${t.r}" inputmode="decimal"></div>
+      <div class="field ${vfc('std',t.r!==''&&+t.r!==0)}"><label>R-multiple</label><input id="f_r" value="${+t.r?t.r:''}" inputmode="decimal"></div>
       <div class="field"><label>Fees (${CURSYM()})</label><input id="f_fees"${RO} value="${t.fees||''}" inputmode="decimal" oninput="calcTrade(true)"></div>
       <div class="field ${vfc('std',!!closeD0)}"><label>Sluit-datum <span class="hint">(optioneel)</span></label><input type="date" id="f_closeDate" value="${closeD0}" onchange="calcTrade(true)"></div>
       <div class="field ${vfc('std',!!closeT0)}"><label>Sluit-tijd</label><input id="f_closeTime" value="${closeT0}" placeholder="16:45" oninput="calcTrade(true)"></div>

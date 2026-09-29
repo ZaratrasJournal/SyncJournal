@@ -14,6 +14,33 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v1.3.2] — 2026-09-29
+
+### Fixed
+- **YTD telde je backtests mee.** Met het filter "Live trades" stond je backtest-winst als
+  gerealiseerde winst in het jaaroverzicht. YTD telt nu dezelfde trades als "deze maand" en je KPI's.
+- **Recente trades toonde niet je nieuwste trades.** Het dashboard pakte de eerste zes uit de opslag,
+  zonder op datum te sorteren en zonder naar je filter te kijken — zo zag je oude backtests in plaats
+  van je nieuwe live trades. Nu: je nieuwste trades bovenaan, volgens je filter.
+- **Kleine bedragen stonden als $0 op het dashboard.** Alles werd afgerond op hele dollars, grafieken
+  op duizendtallen ("0k"). Bedragen onder de $100 tonen nu centen (+$0,46), daarboven blijven ze
+  rustig ($815), en "k" komt pas vanaf $1.000. Geldt voor het dashboard, de equity-curve,
+  Maand-P&L en de grafieken in Analytics.
+- **Profit factor zonder verliezen stond als "99,00".** Dat is nu ∞, ook in de AI-coach.
+- **De Gem. R-kaart kon van het dashboard verdwijnen** zodra een deel van je trades geen stop-loss had.
+- **Prijzen met rekenruis**, zoals een entry van 83227.99999999999 bij Hyperliquid, zijn nu gewoon 83228.
+- **Een ontbrekende prijs toonde "0".** Bij open trades en backtests zonder exit staat nu een streepje.
+
+### Gewijzigd
+- **R is nu overal hetzelfde getal: netto P&L (na fees) gedeeld door je risico in dollars** — zoals
+  TradeZella en andere journals rekenen. Tot nu toe gaf één trade drie verschillende R's: het
+  formulier 0, de samenvatting netto, en de tabel op basis van de prijsbeweging vóór fees. Door deze
+  wijziging kan de R van je live trades anders uitvallen dan je gewend bent, vooral bij trades met
+  veel fees. Backtests houden hun eigen R. Onder de 1R zie je twee decimalen (+0,07R), zodat de tabel
+  en het formulier hetzelfde tonen.
+
+---
+
 ## [v1.3.1] — 2026-09-29
 
 ### Fixed

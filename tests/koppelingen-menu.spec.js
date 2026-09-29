@@ -64,7 +64,7 @@ const APP = 'file:///' + path.resolve('work/syncjournal.html').replace(/\\/g, '/
     });
     const r = await blok(p);
     ok('elke koppeling krijgt een regel', !r.verborgen && r.namen.length === 3, JSON.stringify(r.namen));
-    ok('met het saldo erachter', /1\.235/.test(r.waarden.join()) && /43/.test(r.waarden.join()), JSON.stringify(r.waarden));
+    ok('met het saldo erachter', /1\.235/.test(r.waarden.join()) && /42,83/.test(r.waarden.join())   /* onder de $100 met centen (v1.3.2) */, JSON.stringify(r.waarden));
     ok('een koppeling die nog niet gesynct is toont een streepje met een stip',
       r.waarden.some(v => v === '—') && r.waarschuwing === 1, JSON.stringify({ w: r.waarden, stip: r.waarschuwing }));
     ok('bedragen zijn te verbergen met de privacyknop', r.gemaskeerd);

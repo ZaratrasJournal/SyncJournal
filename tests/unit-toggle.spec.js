@@ -75,8 +75,10 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
 
   console.log('─── R-stand: zonder-R telt nooit als 0 ───');
   const v2 = await p.evaluate(() => { setUnit('r'); const h = document.querySelector('#main .hero'); const kpis = document.querySelector('.kpis').textContent; const rec = [...document.querySelectorAll('#main table tbody tr')].map(r => r.textContent).join('|'); return { meta: h.querySelector('.meta').textContent, kpis, rec, big: h.querySelector('.big').textContent }; });
-  ok('hero-maand = +5,0R · 1 zonder R', /\+5,0R/.test(v2.meta) && /1 zonder R/.test(v2.meta), v2.meta);
-  ok('KPI Netto +5,0R (met zonder-R-teller), Expectancy = gemiddelde over geldige = +1,7R', /\+5,0R/.test(v2.kpis) && /zonder R/.test(v2.kpis) && /\+1,7R/.test(v2.kpis), v2.kpis.slice(0, 220));
+  // Sinds v1.3.2 is R netto P&L ÷ risico ($50 hier): 80/50 + 150/50 + 50/50 = 1,6 + 3,0 + 1,0 = 5,6.
+  // De opgeslagen r (2,0 / 2,0 / 1,0) klopte niet met de P&L; die wint niet meer bij live trades.
+  ok('hero-maand = +5,6R · 1 zonder R', /\+5,6R/.test(v2.meta) && /1 zonder R/.test(v2.meta), v2.meta);
+  ok('KPI Netto +5,6R (met zonder-R-teller), Expectancy = gemiddelde over geldige = +1,9R', /\+5,6R/.test(v2.kpis) && /zonder R/.test(v2.kpis) && /\+1,9R/.test(v2.kpis), v2.kpis.slice(0, 220));
   ok('recente trades: −$30-trade toont — in plaats van 0R', /—/.test(v2.rec), v2.rec.slice(0, 160));
   ok('balans blijft valuta in R-stand', /1\.050/.test(v2.big));
 
@@ -90,7 +92,7 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
 
   console.log('─── Ook na filtering kloppend ───');
   const v3 = await p.evaluate(() => { setFilter('exchange', 'blofin'); go('dashboard'); const meta = document.querySelector('#main .hero .meta').textContent; clearFilterKey('exchange'); return meta; });
-  ok('filter op Blofin → maand +4,0R · 1 zonder R (HL-trade telt niet mee)', /\+4,0R/.test(v3) && /1 zonder R/.test(v3), v3);
+  ok('filter op Blofin → maand +4,6R · 1 zonder R (HL-trade telt niet mee)', /\+4,6R/.test(v3) && /1 zonder R/.test(v3), v3);
   const v4 = await p.evaluate(() => { setUnit('pct'); setFilter('exchange', 'blofin'); go('dashboard'); const meta = document.querySelector('#main .hero .meta').textContent; clearFilterKey('exchange'); setUnit('val'); return meta; });
   ok('filter in %-stand: +25,00% (netto 200 ÷ basis 800)', /\+25,00%/.test(v4), v4);
 

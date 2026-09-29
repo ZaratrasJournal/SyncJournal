@@ -51,4 +51,8 @@ module.exports = [
 
   // v1.3.1: je invoer blijft staan als een trade sluit
   'sluiten-behoudt-invoer',
+
+  // v1.3.2: dashboard telt je filter, ∞, geen rekenruis, streepje voor ontbrekende prijzen,
+  // centen onder de $100, en R overal netto
+  'dashboard-live', 'pf-en-kpi', 'afronding-prijzen', 'prijs-streepje', 'kleine-bedragen', 'r-netto',
 ];

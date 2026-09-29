@@ -112,8 +112,8 @@ const APP = 'file:///' + path.resolve('work/syncjournal.html').split(path.sep).j
     await nieuw({ pair: 'ETH/USDC', date: '2026-09-20', time: '08:00', entry: '2400', size: '1000' });
     await tps([{ price: '2420', pct: 50, hit: true, t: '09:00' }, { price: '2450', pct: 50, hit: true, t: '10:00' }]);
     const t = await bewaar();
-    const r = await p.evaluate(() => { STATE.page = 'trades'; STATE.tradeTab = 'all'; render(); const cel = document.querySelector('td[data-l="P&L"]'); const s = document.querySelector('td[data-l="Status"], .stb'); go('dashboard'); const k = document.querySelector('.kpis').textContent; return { cel: cel && cel.innerText.replace(/\s+/g, ' ').trim(), kpi: /\$ 15\b/.test(k) }; });   // het dashboard rondt op hele dollars
-    ok('tabel: +$ 14,58 · dashboard netto $ 15', /\+\$ 14,58/.test(r.cel || '') && r.kpi, JSON.stringify(r));
+    const r = await p.evaluate(() => { STATE.page = 'trades'; STATE.tradeTab = 'all'; render(); const cel = document.querySelector('td[data-l="P&L"]'); const s = document.querySelector('td[data-l="Status"], .stb'); go('dashboard'); const k = document.querySelector('.kpis').textContent; return { cel: cel && cel.innerText.replace(/\s+/g, ' ').trim(), kpi: /\$ 14,58/.test(k) /* onder de $100 met centen (v1.3.2), gelijk aan de tabel */ }; });   // het dashboard rondt op hele dollars
+    ok('tabel: +$ 14,58 · dashboard netto $ 14,58', /\+\$ 14,58/.test(r.cel || '') && r.kpi, JSON.stringify(r));
   }
 
   console.log('─── FOUT: lege TP-prijs of 0% op "hit" telt niet mee ───');
