@@ -50,38 +50,52 @@ Staat een bron nog niet aan, dan meldt het rapport dat in één regel en komt de
 
 ## Installeren op de NUC
 
-1. **Kopieer deze map** vanaf je laptop (pas gebruiker en host aan):
-   ```bash
-   scp -r scripts/dagrapport denny@nuc:~/sj-dagrapport
-   ```
-2. **Instellingen**: op de NUC
-   ```bash
-   cd ~/sj-dagrapport
-   cp dagrapport.env.voorbeeld dagrapport.env
-   nano dagrapport.env          # tokens invullen, uitleg staat erin
-   chmod 600 dagrapport.env
-   ```
-3. **Controleren**, bron voor bron (stuurt niets naar Telegram):
-   ```bash
-   python3 dagrapport.py --controleer
-   ```
-   Een `FOUT` bij één bron? Meestal ontbreekt een recht op het API-token of staat de bron nog niet aan.
-4. **Proefrapport** in je terminal, en daarna echt:
-   ```bash
-   python3 dagrapport.py --droog
-   python3 dagrapport.py
-   ```
-5. **Elke ochtend om 08:00**: `crontab -e` en deze regel toevoegen
-   ```
-   0 8 * * * /usr/bin/python3 /home/denny/sj-dagrapport/dagrapport.py >> /home/denny/sj-dagrapport/dagrapport.log 2>&1
-   ```
-   Cron gebruikt de tijdzone van de NUC: `timedatectl` moet `Europe/Amsterdam` tonen. Zo niet:
-   `sudo timedatectl set-timezone Europe/Amsterdam`.
+Zoals ffalert: één installatiescript, met sudo. Het zet de code in `/opt/sj-dagrapport`, je
+instellingen in `/etc/sj-dagrapport/dagrapport.env` (alleen leesbaar voor root en de dienst), het log
+in `/var/lib/sj-dagrapport`, en een systemd-timer voor elke ochtend 08:00 Amsterdamse tijd. Stond de
+NUC om 08:00 uit, dan komt het rapport zodra hij weer aanstaat.
 
-Een rapport over een andere dag: `python3 dagrapport.py --datum 2026-09-29`.
+**1. Instellingen invullen, op je laptop.** `dagrapport.env` staat in deze map (door git genegeerd;
+de Telegram-token staat er al in). Vul de Cloudflare-regels in; de chat-id mag nog leeg, zie stap 3.
+
+**2. Kopiëren en installeren**, vanaf je laptop in deze map:
+
+```powershell
+scp dagrapport-install.sh dagrapport.env nuc:~
+```
+```bash
+ssh nuc
+sudo bash dagrapport-install.sh dagrapport.env
+```
+
+Het installatiescript verplaatst `dagrapport.env` naar `/etc`; er blijft geen kopie met tokens in je
+home staan. Zonder dat bestand installeert hij ook, met een leeg voorbeeld dat je daarna invult met
+`sudo nano /etc/sj-dagrapport/dagrapport.env`.
+
+**3. Controleren**, bron voor bron (stuurt niets):
+
+```bash
+sudo python3 /opt/sj-dagrapport/dagrapport.py controleer
+```
+
+Bij elke bron wil je gegevens zien, geen `FOUT`. Is de chat-id nog leeg, dan zoekt hij hem op: stuur
+je bot eerst `/start` in Telegram, draai `controleer` opnieuw, en zet het getal dat hij
+toont achter `TELEGRAM_CHAT_ID=` (`sudo nano /etc/sj-dagrapport/dagrapport.env`).
+
+**4. Proberen:**
+
+```bash
+sudo python3 /opt/sj-dagrapport/dagrapport.py droog              # alleen tonen
+sudo systemctl start sj-dagrapport && tail /var/lib/sj-dagrapport/dagrapport.log   # echt versturen
+systemctl list-timers sj-dagrapport.timer                        # wanneer de volgende komt
+```
+
+**Bijwerken** na een wijziging: `python scripts/dagrapport/bouw-installer.py` op je laptop, dan
+opnieuw `scp` + `sudo bash dagrapport-install.sh` (zonder `dagrapport.env`: je instellingen blijven
+staan). Een rapport over een andere dag: `sudo python3 /opt/sj-dagrapport/dagrapport.py droog --datum 2026-09-29`.
 
 ## Testen
 
 ```bash
-python3 test_dagrapport.py        # in deze map, ook op de NUC; geen netwerk nodig
+python test_dagrapport.py         # in deze map; geen netwerk nodig. Controleert ook dat de installer bij is.
 ```

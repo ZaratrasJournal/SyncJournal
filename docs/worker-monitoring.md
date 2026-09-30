@@ -97,7 +97,7 @@ API-token met *Account Analytics: Read* op beide accounts; laat `CF_API_TOKEN_WO
 Na een paar syncs, vanaf de NUC:
 
 ```bash
-cd ~/sj-dagrapport && python3 dagrapport.py --controleer
+sudo python3 /opt/sj-dagrapport/dagrapport.py controleer
 ```
 
 Onder *Exchange-tellingen* horen rijen te staan. Of rechtstreeks:

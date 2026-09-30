@@ -167,12 +167,23 @@ class Tests(unittest.TestCase):
                 f.write('# test\n' + '\n'.join(f'{k}={v}' for k, v in CFG.items()) + '\n')
             nep = NepCloudflare()
             dr._post = nep
-            self.assertEqual(dr.main(['--config', pad, '--datum', '2026-09-29', '--droog']), 0)
+            self.assertEqual(dr.main(['droog', '--config', pad, '--datum', '2026-09-29']), 0)
             self.assertEqual(nep.verzonden, [])
             self.assertEqual(dr.main(['--config', pad, '--datum', '2026-09-29']), 0)
             self.assertEqual(len(nep.verzonden), 1)
             self.assertEqual(nep.verzonden[0]['chat_id'], '42')
             self.assertIn('📊 SyncJournal — di 29 sep 2026', nep.verzonden[0]['text'])
+
+    def test_installer_bevat_de_actuele_code(self):
+        import importlib.util
+        map_ = os.path.dirname(os.path.abspath(__file__))
+        spec = importlib.util.spec_from_file_location('bouw', os.path.join(map_, 'bouw-installer.py'))
+        bouw = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(bouw)
+        with open(os.path.join(map_, 'dagrapport-install.sh'), encoding='utf-8', newline='') as f:
+            huidig = f.read()
+        self.assertNotIn(chr(13), huidig, 'CRLF in de installer: bash op de NUC struikelt daarover')
+        self.assertEqual(huidig, bouw.bouw(), 'installer loopt achter: draai python scripts/dagrapport/bouw-installer.py')
 
     def test_zonder_telegram_token_een_duidelijke_fout(self):
         with self.assertRaisesRegex(ValueError, 'TELEGRAM_TOKEN'):

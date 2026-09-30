@@ -1,3 +1,35 @@
+#!/usr/bin/env bash
+# SyncJournal-dagrapport op de NUC installeren of bijwerken.
+#
+#   scp dagrapport-install.sh nuc:~                  (vanaf je laptop, in scripts/dagrapport)
+#   ssh nuc
+#   sudo bash dagrapport-install.sh
+#
+# Heb je dagrapport.env al ingevuld op je laptop? Stuur hem mee en geef hem op:
+#   scp dagrapport-install.sh dagrapport.env nuc:~
+#   sudo bash dagrapport-install.sh dagrapport.env   (wordt verplaatst naar /etc, met de juiste rechten)
+#
+# Opnieuw draaien = bijwerken: de code wordt vervangen, je instellingen blijven staan.
+# GEGENEREERD door scripts/dagrapport/bouw-installer.py uit dagrapport.py — niet met de hand bewerken.
+set -euo pipefail
+
+NAAM=sj-dagrapport
+GEBRUIKER=sjrapport
+CODE=/opt/$NAAM
+CONFIG=/etc/$NAAM
+DATA=/var/lib/$NAAM
+
+[ "$(id -u)" -eq 0 ] || { echo "Draai dit met sudo: sudo bash $0"; exit 1; }
+PY=$(command -v python3) || { echo "python3 ontbreekt: sudo apt install python3"; exit 1; }
+"$PY" -c 'import sys, zoneinfo; zoneinfo.ZoneInfo("Europe/Amsterdam")' 2>/dev/null \
+  || { echo "Python 3.9 of nieuwer met tijdzones nodig (nu: $("$PY" --version)). Probeer: sudo apt install tzdata"; exit 1; }
+
+id "$GEBRUIKER" >/dev/null 2>&1 || useradd --system --no-create-home --shell /usr/sbin/nologin "$GEBRUIKER"
+install -d -m 755 "$CODE"
+install -d -m 750 -o root -g "$GEBRUIKER" "$CONFIG"
+install -d -m 750 -o "$GEBRUIKER" -g "$GEBRUIKER" "$DATA"
+
+cat > "$CODE/dagrapport.py" <<'SJ_DAGRAPPORT_PY'
 #!/usr/bin/env python3
 """SyncJournal-dagrapport: de cijfers van gisteren uit Cloudflare, als één bericht in Telegram.
 
@@ -406,3 +438,94 @@ def main(argv=None):
 
 if __name__ == '__main__':
     sys.exit(main())
+SJ_DAGRAPPORT_PY
+chmod 755 "$CODE/dagrapport.py"
+
+# Instellingen: meegegeven bestand wint; anders een leeg voorbeeld, maar alleen als er nog niets staat.
+NIEUW=0
+if [ -n "${1:-}" ]; then
+  [ -f "$1" ] || { echo "Bestand $1 niet gevonden"; exit 1; }
+  [ -f "$CONFIG/dagrapport.env" ] && cp -p "$CONFIG/dagrapport.env" "$CONFIG/dagrapport.env.vorige"
+  install -m 640 -o root -g "$GEBRUIKER" "$1" "$CONFIG/dagrapport.env"
+  rm -f "$1"
+  echo "Instellingen uit $1 staan nu in $CONFIG/dagrapport.env (het bestand in je home is weg)."
+elif [ ! -f "$CONFIG/dagrapport.env" ]; then
+  cat > "$CONFIG/dagrapport.env" <<'SJ_DAGRAPPORT_ENV'
+# Kopieer naar dagrapport.env (naast dagrapport.py) en vul in. Daarna: chmod 600 dagrapport.env
+# Dit bestand bevat geheimen: nooit committen, nooit delen.
+
+# Cloudflare-API-token, alleen-lezen: My Profile → API Tokens → Create Token → Custom token,
+# rechten: Account → Account Analytics → Read
+CF_API_TOKEN=
+# Account-ID van jouw account (waar syncjournal.nl en Web Analytics in staan): staat rechts op de
+# overzichtspagina van Workers & Pages
+CF_ACCOUNT_ID=
+# Site tag van Web Analytics: open de site onder Analytics & Logs → Web Analytics, en kopieer
+# de waarde achter siteTag~in= uit de adresbalk
+CF_WA_SITE_TAG=
+
+# De Worker (morani-proxy) draait in het account van Morani. Account-ID van dat account, en een
+# token met Account Analytics: Read op dát account (van Morani, of van jou als je lid bent van zijn
+# account — dan kan ook één token voor beide). Leeg laten = hetzelfde als hierboven.
+CF_ACCOUNT_ID_WORKER=
+CF_API_TOKEN_WORKER=
+
+# Standaardwaarden, alleen aanpassen als je iets hernoemt
+CF_WORKER=morani-proxy
+CF_AE_DATASET=sj_proxy
+HOST=syncjournal.nl
+
+# Telegram: maak een bot via @BotFather (/newbot) en stuur hem één bericht.
+# De chat-id staat daarna in https://api.telegram.org/bot<TOKEN>/getUpdates onder "chat":{"id":…}
+TELEGRAM_TOKEN=
+TELEGRAM_CHAT_ID=
+SJ_DAGRAPPORT_ENV
+  NIEUW=1
+fi
+chown root:"$GEBRUIKER" "$CONFIG/dagrapport.env"
+chmod 640 "$CONFIG/dagrapport.env"
+
+cat > /etc/systemd/system/$NAAM.service <<EOF
+[Unit]
+Description=SyncJournal-dagrapport naar Telegram
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=$GEBRUIKER
+ExecStart=$PY $CODE/dagrapport.py --config $CONFIG/dagrapport.env
+StandardOutput=append:$DATA/dagrapport.log
+StandardError=append:$DATA/dagrapport.log
+EOF
+
+# 08:00 Amsterdamse tijd, ook rond de klokwissel. Persistent: stond de NUC om 08:00 uit, dan
+# komt het rapport zodra hij weer aanstaat.
+cat > /etc/systemd/system/$NAAM.timer <<EOF
+[Unit]
+Description=SyncJournal-dagrapport elke ochtend om 08:00
+
+[Timer]
+OnCalendar=*-*-* 08:00:00 Europe/Amsterdam
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+EOF
+
+systemctl daemon-reload
+systemctl enable --now $NAAM.timer >/dev/null
+
+echo
+echo "✓ SyncJournal-dagrapport geïnstalleerd."
+echo "  code:         $CODE/dagrapport.py"
+echo "  instellingen: $CONFIG/dagrapport.env"
+echo "  log:          $DATA/dagrapport.log"
+echo "  volgende:     $(systemctl list-timers $NAAM.timer --no-legend | awk '{print $1, $2, $3}')"
+echo
+if [ "$NIEUW" = 1 ]; then
+  echo "Nu de tokens invullen:  sudo nano $CONFIG/dagrapport.env"
+fi
+echo "Controleren:            sudo python3 $CODE/dagrapport.py controleer"
+echo "Proefrapport tonen:     sudo python3 $CODE/dagrapport.py droog"
+echo "Nu echt versturen:      sudo systemctl start $NAAM && tail $DATA/dagrapport.log"
