@@ -1,7 +1,10 @@
 # Monitoring in de Worker — voor het dagrapport
 
-*Voor Denny. De Worker-code zit buiten deze repo; hieronder staat wat erin moet en wat je in
-Cloudflare instelt. De code zelf staat in [worker-monitoring.js](worker-monitoring.js) en is getest
+*Voor Denny, en voor Morani: `morani-proxy` draait in **het Cloudflare-account van Morani**, dus
+deze stappen gebeuren daar, door Morani of door jou als je toegang hebt tot zijn account. De
+tellingen komen ook daar te staan. Morani's eigen journal gebruikt dezelfde Worker; vraag hem dus
+eerst of hij akkoord is. De Worker-code zit buiten deze repo; hieronder staat wat erin moet en wat je
+in Cloudflare instelt. De code zelf staat in [worker-monitoring.js](worker-monitoring.js) en is getest
 met `node tests/worker-monitoring.spec.js`.*
 
 ---
@@ -15,10 +18,14 @@ Na elk verzoek schrijft de Worker één telling naar **Workers Analytics Engine*
 | blob1 | exchange | `okx` |
 | blob2 | actie | `trades` |
 | blob3 | uitkomst | `ok`, `ip-whitelist`, `sleutel`, `rate-limit`, `exchange-fout`, `verzoek`, `worker-fout` |
-| blob4 | bij een fout: de foutmelding, zonder IP-adressen en sleutels | `OKX /api/v5/account/balance: Your IP [ip] is not included…` |
-| blob5 | client | `syncjournal-web`, of `onbekend` (oude journal, Morani's variant) |
+| blob4 | bij een fout: de foutmelding, zonder IP-adressen en sleutels — **alleen voor SyncJournal** | `OKX /api/v5/account/balance: Your IP [ip] is not included…` |
+| blob5 | client | `syncjournal-web`, of `ander` (Morani's journal, de oude TradeJournal) |
 | double1, double2 | HTTP-status, duur in ms | `500`, `312` |
-| index1 | vingerafdruk van de koppeling | `3f9a0c1e` |
+| index1 | vingerafdruk van de koppeling — **alleen voor SyncJournal** | `3f9a0c1e` |
+
+Verzoeken van **andere apps** tellen alleen mee als aantal: exchange, actie, uitkomst. Geen
+fouttekst, geen vingerafdruk. Die gebruikers kennen onze privacyverklaring niet, en het dagrapport
+heeft van hen alleen nodig hoe druk ze de Worker maken.
 
 **Nooit** sleutels, secrets, passphrases, bedragen, trades of IP-adressen — de test controleert dat.
 De vingerafdruk is een HMAC van de API-sleutel met een geheim dat alleen in de Worker staat: niet
@@ -80,6 +87,13 @@ en telt het rapport "dagen op rij" opnieuw vanaf nul. Kwijt? Dan is dat het enig
 Zoals je de Worker altijd deployt. De volgorde van stap 1 t/m 3 maakt niet uit: zonder binding telt
 de Worker niets, zonder geheim blijft de vingerafdruk leeg — de sync werkt in alle gevallen door.
 
+## Het dagrapport en Morani's account
+
+Het dagrapport leest de Worker-cijfers en de tellingen uit Morani's account. Vul in `dagrapport.env`
+op de NUC `CF_ACCOUNT_ID_WORKER` (Morani's account-ID) en `CF_API_TOKEN_WORKER` in: een token met
+*Account Analytics: Read* op dat account. Ben je lid van Morani's account, dan kun je ook één token
+maken dat bij allebei mag en `CF_API_TOKEN_WORKER` leeg laten.
+
 ## Controleren
 
 Na een paar syncs, vanaf de NUC:
@@ -98,7 +112,9 @@ curl "https://api.cloudflare.com/client/v4/accounts/<ACCOUNT_ID>/analytics_engin
 
 ## Web Analytics (bezoekers)
 
-Los van de Worker: Workers & Pages → het Pages-project van syncjournal.nl → Metrics →
-*Web Analytics* aanzetten. Cloudflare zet dan zelf het meetscriptje in de pagina's; het werkt zonder
-cookies. De *site tag* voor het dagrapport staat daarna in de adresbalk als je de site opent onder
-Analytics & Logs → Web Analytics (`siteTag~in=…`).
+Los van de Worker, en in **jouw** account. Sinds v1.3.4 laden de pagina's het meetscript zelf, alleen
+op `syncjournal.nl` (niet op de werkversie of lokaal): *Automatic setup* zette het er in twee weken
+nooit in. In Web Analytics → Manage site staat de site daarom op *JS Snippet installation*. Het token
+staat in de pagina's (`data-cf-beacon`); dat is niet geheim. De *site tag* voor het dagrapport staat
+in de adresbalk als je de site opent onder Web Analytics (`siteTag~in=…`); dat is een andere waarde
+dan het token.

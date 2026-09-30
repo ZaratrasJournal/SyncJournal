@@ -147,6 +147,18 @@ class Tests(unittest.TestCase):
         tekst = dr.maak_rapport(DAG, cfg, dr.verzamel(cfg, DAG))
         self.assertIn('⚠ Bezoekers niet opgehaald: CF_WA_SITE_TAG ontbreekt of bevat vreemde tekens', tekst)
 
+    def test_worker_in_een_ander_account(self):
+        cfg = dict(CFG, CF_ACCOUNT_ID_WORKER='morani99', CF_API_TOKEN_WORKER='morani-token')
+        nep = NepCloudflare()
+        dr._post = nep
+        dr.maak_rapport(DAG, cfg, dr.verzamel(cfg, DAG))
+        wa = [(b, h) for u, b, h in nep.vragen if u.endswith('/graphql') and 'rumPageload' in b]
+        wk = [(b, h) for u, b, h in nep.vragen if u.endswith('/graphql') and 'workersInvocations' in b]
+        ae = [(u, h) for u, b, h in nep.vragen if 'analytics_engine' in u]
+        self.assertTrue(wa and all('abc123' in b and h['Authorization'] == 'Bearer geheim-token' for b, h in wa))
+        self.assertTrue(wk and all('morani99' in b and h['Authorization'] == 'Bearer morani-token' for b, h in wk))
+        self.assertTrue(ae and all('/accounts/morani99/' in u and h['Authorization'] == 'Bearer morani-token' for u, h in ae))
+
     def test_versturen_en_droog(self):
         with tempfile.TemporaryDirectory() as d:
             pad = os.path.join(d, 'dagrapport.env')

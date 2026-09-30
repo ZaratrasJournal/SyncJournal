@@ -64,6 +64,13 @@ const geenGeheimen = p => { const s = JSON.stringify(p); return ![SLEUTEL, GEHEI
   ok('in geen enkele telling een sleutel, geheim, passphrase, IP of het zout', alles.every(geenGeheimen));
   ok('bij "gelukt" geen fouttekst', alles[0].blobs[3] === '', JSON.stringify(alles[0].blobs));
 
+  console.log('─── Andere apps op deze Worker (Morani, de oude journal) ───');
+  for (const client of [undefined, 'morani-web']) {
+    const { punt } = await verzoek(gevallen[1][1], { client });
+    ok(`client ${client || '(geen)'}: wel geteld, met uitkomst`, punt && punt.blobs[2] === 'ip-whitelist' && punt.blobs[4] === 'ander', JSON.stringify(punt && punt.blobs));
+    ok(`client ${client || '(geen)'}: geen fouttekst en geen vingerafdruk`, punt && punt.blobs[3] === '' && punt.indexes[0] === '', JSON.stringify(punt && [punt.blobs[3], punt.indexes]));
+  }
+
   console.log('─── Vingerafdruk ───');
   const a1 = (await verzoek(gevallen[0][1])).punt.indexes[0], a2 = (await verzoek(gevallen[1][1])).punt.indexes[0];
   const b = (await verzoek(gevallen[0][1], { apiKey: 'een-andere-sleutel-0000' })).punt.indexes[0];

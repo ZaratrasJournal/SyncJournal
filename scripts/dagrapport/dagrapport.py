@@ -52,10 +52,16 @@ def laad_config(pad):
                 if regel and not regel.startswith('#') and '=' in regel:
                     k, v = regel.split('=', 1)
                     cfg[k.strip()] = v.strip().strip('"').strip("'")
-    for k in list(cfg) + ['CF_API_TOKEN', 'CF_ACCOUNT_ID', 'CF_WA_SITE_TAG', 'TELEGRAM_TOKEN', 'TELEGRAM_CHAT_ID']:
+    for k in list(cfg) + ['CF_API_TOKEN', 'CF_ACCOUNT_ID', 'CF_WA_SITE_TAG', 'CF_ACCOUNT_ID_WORKER', 'CF_API_TOKEN_WORKER',
+                          'TELEGRAM_TOKEN', 'TELEGRAM_CHAT_ID']:
         if os.environ.get(k):
             cfg[k] = os.environ[k]
     return cfg
+
+
+def worker_account(cfg):
+    """De Worker draait in Morani's account, de website in dat van Denny. Leeg = hetzelfde account."""
+    return cfg.get('CF_ACCOUNT_ID_WORKER') or cfg.get('CF_ACCOUNT_ID'), cfg.get('CF_API_TOKEN_WORKER') or cfg.get('CF_API_TOKEN')
 
 
 def veilig(waarde, naam):
@@ -88,9 +94,9 @@ def _post(url, data, headers):
         return e.code, e.read().decode('utf-8', 'replace')
 
 
-def graphql(cfg, query):
+def graphql(token, query):
     status, tekst = _post(f'{CF_API}/graphql', json.dumps({'query': query}).encode(),
-                          {'Authorization': f"Bearer {cfg['CF_API_TOKEN']}", 'Content-Type': 'application/json'})
+                          {'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'})
     if status != 200:
         raise RuntimeError(f'GraphQL HTTP {status}: {tekst[:200]}')
     d = json.loads(tekst)
@@ -100,9 +106,10 @@ def graphql(cfg, query):
 
 
 def ae_sql(cfg, sql):
-    acc = veilig(cfg.get('CF_ACCOUNT_ID'), 'CF_ACCOUNT_ID')
+    acc, token = worker_account(cfg)
+    acc = veilig(acc, 'CF_ACCOUNT_ID_WORKER')
     status, tekst = _post(f'{CF_API}/accounts/{acc}/analytics_engine/sql', (sql + ' FORMAT JSON').encode(),
-                          {'Authorization': f"Bearer {cfg['CF_API_TOKEN']}"})
+                          {'Authorization': f'Bearer {token}'})
     if status != 200:
         raise RuntimeError(f'Analytics Engine HTTP {status}: {tekst[:200]}')
     return json.loads(tekst).get('data', [])
@@ -125,7 +132,7 @@ def haal_bezoeken(cfg, van, tot):
         velden = f'dimensions {{ {dims} }}' if dims else ''
         q = (f'{{ viewer {{ accounts(filter: {{accountTag: "{acc}"}}) {{ rumPageloadEventsAdaptiveGroups(limit: {limit}, {filt}) '
              f'{{ count sum {{ visits }} {velden} }} }} }} }}')
-        return graphql(cfg, q)['rumPageloadEventsAdaptiveGroups']
+        return graphql(cfg.get('CF_API_TOKEN'), q)['rumPageloadEventsAdaptiveGroups']
 
     totaal = vraag('', 1)
     uit = {'bezoeken': int(sum(getal(g['sum']['visits']) for g in totaal)), 'weergaven': int(sum(getal(g['count']) for g in totaal)), 'mist': []}
@@ -139,11 +146,12 @@ def haal_bezoeken(cfg, van, tot):
 
 
 def haal_worker(cfg, van, tot):
-    acc, naam = veilig(cfg.get('CF_ACCOUNT_ID'), 'CF_ACCOUNT_ID'), veilig(cfg.get('CF_WORKER'), 'CF_WORKER')
+    acc, token = worker_account(cfg)
+    acc, naam = veilig(acc, 'CF_ACCOUNT_ID_WORKER'), veilig(cfg.get('CF_WORKER'), 'CF_WORKER')
     q = (f'{{ viewer {{ accounts(filter: {{accountTag: "{acc}"}}) {{ workersInvocationsAdaptive(limit: 100, '
          f'filter: {{scriptName: "{naam}", datetime_geq: "{iso(van)}", datetime_leq: "{iso(tot - timedelta(seconds=1))}"}}) '
          f'{{ sum {{ requests errors subrequests }} quantiles {{ cpuTimeP99 }} dimensions {{ status }} }} }} }} }}')
-    groepen = graphql(cfg, q)['workersInvocationsAdaptive']
+    groepen = graphql(token, q)['workersInvocationsAdaptive']
     per_status = defaultdict(int)
     for g in groepen:
         per_status[g['dimensions']['status']] += int(getal(g['sum']['requests']))

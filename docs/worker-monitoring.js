@@ -7,6 +7,10 @@
    vingerafdruk van de API-sleutel (HMAC met een geheim dat alleen in de Worker staat): zo ziet het
    dagrapport dat een fout steeds van dezelfde koppeling komt, zonder te weten welke.
 
+   Fouttekst en vingerafdruk alleen voor verzoeken van SyncJournal (client syncjournal-web): daar
+   staat het in de privacyverklaring. Morani's eigen journal en de oude TradeJournal gebruiken deze
+   Worker ook; die tellen alleen mee als aantal (exchange, actie, uitkomst).
+
    Zonder de binding SJ_METRICS doet dit blok niets, en zonder het geheim SJ_KOPPEL_ZOUT blijft de
    vingerafdruk leeg. De volgorde van deployen maakt dus niet uit. */
 export default {
@@ -60,9 +64,10 @@ async function telVerzoek(env, meta, response, duur, workerFout) {
   // Alleen de fout lezen, niet de hele (soms grote) trade-lijst parsen: dat kost CPU-tijd.
   if (response.status !== 200 || tekst.startsWith('{"error"')) { try { fout = String(JSON.parse(tekst).error || ''); } catch (e) { fout = tekst.slice(0, 200); } }
   const uitkomst = response.status === 200 && !fout ? 'ok' : foutSoort(response.status, fout, workerFout);
+  const eigen = meta.client === 'syncjournal-web';
   env.SJ_METRICS.writeDataPoint({
-    blobs: [String(meta.exchange || ''), String(meta.action || ''), uitkomst, uitkomst === 'ok' ? '' : schoneFout(fout), String(meta.client || 'onbekend')],
+    blobs: [String(meta.exchange || ''), String(meta.action || ''), uitkomst, eigen && uitkomst !== 'ok' ? schoneFout(fout) : '', eigen ? 'syncjournal-web' : 'ander'],
     doubles: [response.status, duur],
-    indexes: [await vingerafdruk(env, meta)],
+    indexes: [eigen ? await vingerafdruk(env, meta) : ''],
   });
 }

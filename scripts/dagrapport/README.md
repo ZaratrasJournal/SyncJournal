@@ -40,11 +40,11 @@ Kraken · fout bij de exchange: 1 koppeling (nieuw), 2× — "System busy"
 
 ## Waar de cijfers vandaan komen
 
-| Regel | Bron | Moet aan staan |
-|---|---|---|
-| Bezoekers | Cloudflare Web Analytics | Web Analytics op het Pages-project |
-| Worker | Worker-statistieken van `morani-proxy` | niets, altijd beschikbaar |
-| Exchanges en fouten | Workers Analytics Engine, dataset `sj_proxy` | de monitoring in de Worker: `docs/worker-monitoring.md` |
+| Regel | Bron | Account | Moet aan staan |
+|---|---|---|---|
+| Bezoekers | Cloudflare Web Analytics | jouw account (`CF_ACCOUNT_ID`) | het meetscript in de pagina's (sinds v1.3.4) |
+| Worker | Worker-statistieken van `morani-proxy` | Morani's account (`CF_ACCOUNT_ID_WORKER`) | niets, altijd beschikbaar |
+| Exchanges en fouten | Workers Analytics Engine, dataset `sj_proxy` | Morani's account | de monitoring in de Worker: `docs/worker-monitoring.md` |
 
 Staat een bron nog niet aan, dan meldt het rapport dat in één regel en komt de rest gewoon door.
 
