@@ -23,6 +23,9 @@ module.exports = [
   'exchange-sync', 'exchange-sync2', 'balance-sync', 'auto-sync', 'valuta',
   'okx-positie', 'okx-levensloop', 'okx-subtype', 'okx-partial', 'okx-partial-herstel',
   'partial-alle-exchanges', 'hyperliquid-levensloop', 'hl-open-tijd', 'blofin-levensloop',
+  'auto-sync-pauze',         // blijvende sleutelfout: auto-sync stopt, handmatig syncen kan altijd
+  'web-analytics',           // meetscript alleen op syncjournal.nl, niet op de werkversie of lokaal
+  'worker-monitoring',       // de Worker-telling voor het dagrapport lekt geen sleutels of IP's
   'okx-overzetten',          // oude backup: losse OKX-trades met dezelfde posId blijven apart (member Jarne)
   'hl-echt',                 // Denny's echte wallet, afgespeeld uit tests/_fixtures (op CI overgeslagen)
   'kraken-levensloop', 'kraken-afronding', 'scenario-levensloop', 'gesynct-vergrendeld',

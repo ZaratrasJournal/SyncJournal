@@ -14,6 +14,23 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v1.3.4] — 2026-09-30
+
+### Fixed
+- **Auto-sync bleef het proberen met een sleutel die niet werkt.** Had je koppeling een fout die
+  vanzelf niet overgaat — een IP-whitelist op je sleutel, een verwijderde of verlopen sleutel, een
+  verkeerde passphrase — dan probeerde auto-sync het elke 15 minuten opnieuw, en mislukte dat
+  zonder dat je het zag. Nu staat auto-sync voor die koppeling stil, en staat de fout met uitleg bij
+  de koppeling (Instellingen → Accounts). Herstel je de koppeling (Test of opnieuw verbinden), dan
+  loopt auto-sync weer. Zelf op Sync drukken probeert het altijd.
+
+### Gewijzigd
+- **Privacyverklaring bijgewerkt.** We tellen voortaan bezoeken met Cloudflare Web Analytics: zonder
+  cookies, alleen totalen per dag. En de tussenserver voor OKX, MEXC en Kraken houdt bij hoe vaak hij
+  gebruikt wordt en welke fouten de exchanges teruggeven — zonder sleutels, bedragen of IP-adressen,
+  drie maanden bewaard. Zo zien we sync-problemen voordat je ze hoeft te melden. Alles staat op
+  syncjournal.nl/privacy.html.
+
 ## [v1.3.3] — 2026-09-29
 
 ### Fixed

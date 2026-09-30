@@ -1217,6 +1217,8 @@ body.dark .toast{box-shadow:0 10px 34px rgba(0,0,0,.5)}
 .toast .tbar{position:absolute;left:0;bottom:0;height:2.5px;background:var(--amber);animation:tshrink 7s linear both}
 @keyframes tshrink{from{width:100%}to{width:0}}
 </style>
+<!-- Cloudflare Web Analytics: zonder cookies, alleen op syncjournal.nl (niet op de werkversie of lokaal). Zie privacy.html. -->
+<script>(function(){if(location.hostname!=='syncjournal.nl')return;var s=document.createElement('script');s.type='module';s.src='https://static.cloudflareinsights.com/beacon.min.js';s.setAttribute('data-cf-beacon','{"token": "c6001fe65da94f1eb99df53cad11d8d5"}');document.head.appendChild(s);})();</script>
 </head>
 <body>
 <div class="shell">
@@ -1831,7 +1833,7 @@ const KINDS={live:{label:'Live',color:'var(--green)'},gemist:{label:'Gemist',col
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v1.3.3';
+const APP_VERSION='v1.3.4';
 const SCHEMA_VERSION=8;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -2215,6 +2217,13 @@ let CONNS=DB.load('conns',{});        // per exchange-id: {connected, noAuto, hi
 // uitleg (bv. "zet je IP-whitelist uit") juist moest blijven staan terwijl je je sleutel
 // opnieuw aanmaakt. Wordt gewist zodra een poging wél lukt.
 let CONN_ERR={};
+/* Fouten die vanzelf niet overgaan: de sleutel zelf deugt niet (IP-whitelist, verwijderd of verlopen,
+   verkeerde passphrase of handtekening, te weinig rechten). Opnieuw proberen verandert daar niets aan;
+   auto-sync slaat zo'n koppeling daarom over tot hij weer werkt (testConn/refreshBalance wissen de
+   fout). Tot 30-09-2026 probeerde auto-sync het elke 15 minuten opnieuw, stil, met twee
+   Worker-verzoeken per keer. */
+const BLIJVENDE_FOUT=/whitelist|access.?key|api.?key|passphrase|sign(ature)?|authenticat|unauthori[sz]ed|permission|ongeldig wallet/i;
+const blijvendeFout=exId=>!!CONN_ERR[exId]&&BLIJVENDE_FOUT.test(CONN_ERR[exId]);
 // v0.9.100: auto-sync was per account opt-in en stond standaard uit, waardoor de
 // globale schakelaar niets deed. Nu geldt hij voor alles wat verbonden is; het oude
 // veld ruimen we op zodat er geen twee waarheden naast elkaar staan.
@@ -3988,7 +3997,7 @@ function pgInstellingen(){
         ${ad.needsPassphrase?`<div class="ccfield"><label>Passphrase</label><input id="cp_${e.id}" type="password" value="${esc((c&&c.passphrase)||'')}" placeholder="API-passphrase"></div>`:''}`}
         <div class="ccfield"><label>Sync vanaf <span class="hint">(optioneel, eerste sync haalt anders 30 dagen op)</span></label><input type="date" id="cf_${e.id}" value="${esc((c&&c.syncFrom)||'')}"></div>
         <div class="connnote">🔒 Gebruik <b>read-only</b> keys (kunnen nooit handelen of geld opnemen). Sleutels blijven lokaal in deze browser; ${e.id==='blofin'?'Blofin wordt direct vanuit de browser ondertekend':e.id==='hyperliquid'?'Hyperliquid gebruikt alleen publieke wallet-data':'aanvragen lopen via de beveiligde proxy'}.${(e.id==='okx'||e.id==='mexc'||e.id==='kraken')?' <b>Zet de IP-whitelist van je sleutel uit</b> — aanvragen komen van onze tussenserver, niet van jouw eigen IP.':''}</div>
-        ${CONN_ERR[e.id]?`<div class="connerr">⚠ ${esc(CONN_ERR[e.id])}</div>`:''}
+        ${CONN_ERR[e.id]?`<div class="connerr">⚠ ${esc(CONN_ERR[e.id])}${blijvendeFout(e.id)?' <b>Auto-sync staat stil tot je dit oplost</b>; test of vernieuw daarna de koppeling.':''}</div>`:''}
         <div class="connrow">${c&&c.connected?`<label class="swrow"><span>Auto-sync voor dit account</span><div class="sw ${c.noAuto?'':'on'}" onclick="toggleExSync('${e.id}')"></div></label>`:''}<span class="sp" style="flex:1"></span>${c&&c.connected?`<button class="btn danger" onclick="disconnectEx('${e.id}')">Loskoppelen</button><button class="btn" id="ct_${e.id}" onclick="testConn('${e.id}')">Test verbinding</button>`:''}<button class="btn pri" onclick="connectEx('${e.id}')">${c&&c.connected?'Bijwerken':'Verbinden'}</button></div>
       </div>`:''}`;}).join('');
   const txLegend=`<div class="txlegend">${Object.entries(TX_TYPES).map(([k,v])=>`<span class="txlg"><span class="txic" style="color:${v.color}">${v.icon}</span>${v.label}${k==='deposit'?' (erbij)':k==='withdrawal'?' (eraf)':' (setpoint)'}</span>`).join('')}</div>`;
@@ -7735,7 +7744,7 @@ async function syncExchange(exId,opts){
   const startTime=last?last-3600e3:(c.syncFrom?+new Date(c.syncFrom):Date.now()-30*864e5);
   let raw;
   try{raw=ad.walletOnly?await ad.fetchTrades(c.wallet,null,null,startTime):await ad.fetchTrades(c.apiKey,c.apiSecret,c.passphrase,startTime);}
-  catch(e){if(!quiet)toast('✗ Sync '+ad.name+' mislukt: '+((e&&e.message)||e),'err');return -1;}
+  catch(e){CONN_ERR[exId]=(e&&e.message)||String(e);if(!quiet)toast('✗ Sync '+ad.name+' mislukt: '+CONN_ERR[exId],'err');return -1;}
   const mapped=importTjClosed(raw);
   // Fase 2 stap 2+3: placeholders en stale opens vervangen door de echte trades,
   // daarna pas de partial-status bepalen.
@@ -7773,7 +7782,7 @@ async function syncNow(){
 let _autoSyncTimer=null;
 const SYNC_MS={'5m':300e3,'15m':900e3,'30m':1800e3,'1u':3600e3};
 function syncIntervalMs(){return SYNC_MS[SYNC.interval]||SYNC_MS['15m'];}
-function autoSyncTargets(){return EXCHANGES.filter(e=>!e.deprecated&&CONNS[e.id]&&CONNS[e.id].connected&&!CONNS[e.id].noAuto);}
+function autoSyncTargets(){return EXCHANGES.filter(e=>!e.deprecated&&CONNS[e.id]&&CONNS[e.id].connected&&!CONNS[e.id].noAuto&&!blijvendeFout(e.id));}
 async function autoSyncRun(onlyOverdue){
   if(!SYNC.auto||TAB_STALE)return;   // een verouderd tabblad mag niet schrijven, dus ook niet syncen
   const overdueBefore=Date.now()-syncIntervalMs();
