@@ -169,7 +169,10 @@ def haal_exchanges(cfg, van, tot):
     eerder = ae_sql(cfg, f"SELECT toUnixTimestamp(toStartOfHour(timestamp)) AS uur, index1 AS koppeling, blob1 AS exchange, blob3 AS uitkomst, "
                          f"SUM(_sample_interval) AS n FROM {ds} WHERE toUnixTimestamp(timestamp) >= {v - REEKS_DAGEN * 86400} "
                          f"AND toUnixTimestamp(timestamp) < {t} AND blob3 != 'ok' GROUP BY uur, koppeling, exchange, uitkomst")
-    return {'gisteren': gisteren, 'eerder': eerder}
+    # De drukste minuut: daarmee kies je een snelheidslimiet (binding LIMIET) die niemand raakt.
+    piek = ae_sql(cfg, f"SELECT toUnixTimestamp(toStartOfMinute(timestamp)) AS minuut, SUM(_sample_interval) AS n FROM {ds} "
+                       f"WHERE toUnixTimestamp(timestamp) >= {v} AND toUnixTimestamp(timestamp) < {t} GROUP BY minuut ORDER BY n DESC LIMIT 1")
+    return {'gisteren': gisteren, 'eerder': eerder, 'piek': piek}
 
 
 def reeks(eerder, dag, sleutel):
@@ -256,6 +259,9 @@ def blok_exchanges(x, dag):
     regels.append('SyncJournal: ' + (' · '.join(f'{EXCHANGE_NAAM.get(e, e)} {nl(sj[e])}' for e in volgorde) or 'geen verzoeken'))
     if ander:
         regels.append(f'Oude journal en andere apps: {nl(ander)} verzoeken')
+    if x.get('piek'):
+        p = x['piek'][0]
+        regels.append(f"Drukste minuut: {nl(getal(p['n']))} verzoeken, om {datetime.fromtimestamp(int(getal(p['minuut'])), AMS):%H:%M}")
 
     # fouten per (exchange, uitkomst): hoeveel keer, welke koppelingen, meest voorkomende tekst
     groep = defaultdict(lambda: {'n': 0.0, 'koppelingen': set(), 'teksten': defaultdict(float)})

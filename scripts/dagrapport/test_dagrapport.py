@@ -68,7 +68,7 @@ class NepCloudflare:
         if '/analytics_engine/sql' in url:
             if 'ae' in self.kapot:
                 return 500, '{"errors":[{"message":"dataset not found"}]}'
-            rijen = self.eerder if 'toStartOfHour' in body else self.gisteren
+            rijen = self.eerder if 'toStartOfHour' in body else [{'minuut': uur(DAG, 9), 'n': '23'}] if 'toStartOfMinute' in body else self.gisteren
             return 200, json.dumps({'meta': [], 'data': rijen, 'rows': len(rijen)})
         if 'api.telegram.org' in url:
             if url.endswith('/sendMessage'):
@@ -103,6 +103,7 @@ class Tests(unittest.TestCase):
         self.assertIn('Overbelast 0 · Worker-fouten 0 · CPU p99 3,1 ms (limiet 10 ms)', tekst)
         self.assertIn('SyncJournal: OKX 3.188 · Kraken 902', tekst)
         self.assertIn('Oude journal en andere apps: 120 verzoeken', tekst)
+        self.assertIn('Drukste minuut: 23 verzoeken, om 09:00', tekst)
         self.assertIn('OKX · IP-whitelist: 1 koppeling (3e dag op rij → DM sturen?), 180×', tekst)
         self.assertIn('OKX · sleutel ongeldig: 1 koppeling (nieuw), 8×', tekst)
         self.assertIn('Kraken · fout bij de exchange: 1 koppeling (nieuw), 2× — "System busy"', tekst)
