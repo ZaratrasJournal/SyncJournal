@@ -92,12 +92,18 @@ class Tests(unittest.TestCase):
         self.assertEqual(tot - van, timedelta(hours=25))
         self.assertEqual(dr.iso(van), '2026-10-24T22:00:00Z')
 
+    def test_een_lopende_dag_vraagt_tot_nu(self):
+        nu = datetime(2026, 9, 30, 20, 37, 12, tzinfo=timezone.utc)
+        van, tot = dr.meetvenster(date(2026, 9, 30), nu)
+        self.assertEqual(dr.iso(tot), '2026-09-30T20:37:00Z')        # op de minuut: elke minuut een verse vraag
+        self.assertEqual(dr.meetvenster(date(2026, 9, 29), nu), dr.dagvenster(date(2026, 9, 29)))   # afgesloten dag: heel
+
     def test_volledig_rapport(self):
         tekst, nep = self.rapport()
         print('\n' + tekst)
         self.assertIn('📊 SyncJournal — di 29 sep 2026', tekst)
         self.assertIn('Bezoeken 118 · paginaweergaven 310 · werkversie 6', tekst)
-        self.assertIn('app 90 · landing 24 · plan 10', tekst)
+        self.assertIn('Weergaven: app 180 · landing 48 · plan 20', tekst)   # weergaven, niet bezoeken (count = 2× in de nep)
         self.assertIn('NL 81% · BE 12% · DE 4,0% · overig 3,2%', tekst)
         self.assertIn('4.210 verzoeken, 4,2% van de daglimiet (100.000)', tekst)
         self.assertIn('Overbelast 0 · Worker-fouten 0 · CPU p99 3,1 ms (limiet 10 ms)', tekst)

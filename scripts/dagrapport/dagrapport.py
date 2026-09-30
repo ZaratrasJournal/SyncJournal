@@ -87,6 +87,16 @@ def dagvenster(dag):
     return van, tot
 
 
+def meetvenster(dag, nu=None):
+    """Het venster dat we opvragen: de hele dag, of tot nu (op de minuut) als de dag nog loopt.
+    Cloudflare's GraphQL geeft voor een inhoudelijk gelijke vraag een bewaard antwoord terug (gemeten
+    30-09-2026: na ruim 20 minuten nog het oude). Een dag die nog loopt krijgt zo elke minuut een
+    andere vraag, dus verse cijfers; een afgesloten dag verandert toch niet meer."""
+    van, tot = dagvenster(dag)
+    nu = (nu or datetime.now(timezone.utc)).replace(second=0, microsecond=0)
+    return van, min(tot, nu)
+
+
 def iso(dt):
     return dt.strftime('%Y-%m-%dT%H:%M:%SZ')
 
@@ -148,7 +158,9 @@ def haal_bezoeken(cfg, van, tot):
     # De uitsplitsingen elk los: bestaat een veld niet (meer), dan valt alleen die regel weg.
     for dim in ('requestHost', 'requestPath', 'countryName'):
         try:
-            uit[dim] = {g['dimensions'][dim] or '?': int(getal(g['sum']['visits'])) for g in vraag(dim, 200)}
+            # per pagina weergaven: een bezoek telt alleen bij de pagina waar het begon, dus /app kreeg er 0
+            veld = (lambda g: g['count']) if dim == 'requestPath' else (lambda g: g['sum']['visits'])
+            uit[dim] = {g['dimensions'][dim] or '?': int(getal(veld(g))) for g in vraag(dim, 200)}
         except Exception as e:
             uit['mist'].append(f'{dim}: {e}')
     return uit
@@ -236,7 +248,7 @@ def blok_bezoeken(b, host):
         per = defaultdict(int)
         for pad, n in b['requestPath'].items():
             per[pagina(pad)] += n
-        regels.append(' · '.join(f'{k} {nl(per[k])}' for k in ('app', 'landing', 'plan', 'overig') if per[k]))
+        regels.append('Weergaven: ' + ' · '.join(f'{k} {nl(per[k])}' for k in ('app', 'landing', 'plan', 'overig') if per[k]))
     if b.get('countryName'):
         tot = sum(b['countryName'].values())
         top = sorted(b['countryName'].items(), key=lambda x: -x[1])[:3]
@@ -329,7 +341,7 @@ def maak_rapport(dag, cfg, bronnen):
 
 
 def verzamel(cfg, dag):
-    van, tot = dagvenster(dag)
+    van, tot = meetvenster(dag)
     bronnen = {}
     for sleutel, haal in (('bezoeken', haal_bezoeken), ('worker', haal_worker), ('exchanges', haal_exchanges)):
         try:
@@ -354,7 +366,7 @@ def controleer(cfg, dag):
     """Elke bron los, met de ruwe uitkomst of de fout: voor het eerste keer instellen."""
     ontbreekt = [k for k in ('CF_API_TOKEN', 'CF_ACCOUNT_ID', 'CF_WA_SITE_TAG', 'TELEGRAM_TOKEN', 'TELEGRAM_CHAT_ID') if not cfg.get(k)]
     print('Instellingen:', 'compleet' if not ontbreekt else 'ONTBREEKT ' + ', '.join(ontbreekt))
-    van, tot = dagvenster(dag)
+    van, tot = meetvenster(dag)
     for naam, haal in (('Bezoekers (Web Analytics)', haal_bezoeken), ('Worker-statistieken', haal_worker), ('Exchange-tellingen (Analytics Engine)', haal_exchanges)):
         print(f'\n── {naam} ──')
         try:

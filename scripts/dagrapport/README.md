@@ -8,7 +8,7 @@ welke exchange-fouten leden kregen. Draait op de NUC via cron; alleen Python 3.9
 
 👥 Bezoekers
 Bezoeken 118 · paginaweergaven 310 · werkversie 6
-app 90 · landing 24 · plan 10
+Weergaven: app 180 · landing 48 · plan 20
 NL 81% · BE 12% · DE 4,0% · overig 3,2%
 
 ⚙️ Worker (morani-proxy)
