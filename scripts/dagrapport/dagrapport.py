@@ -134,7 +134,8 @@ def getal(x):
 # ── Bronnen ─────────────────────────────────────────────────────────────────────────────────
 def haal_bezoeken(cfg, van, tot):
     acc, site = veilig(cfg.get('CF_ACCOUNT_ID'), 'CF_ACCOUNT_ID'), veilig(cfg.get('CF_WA_SITE_TAG'), 'CF_WA_SITE_TAG')
-    filt = f'filter: {{siteTag: "{site}", datetime_geq: "{iso(van)}", datetime_leq: "{iso(tot - timedelta(seconds=1))}"}}'
+    # bot: 0 — zonder bots, zoals het dashboard standaard toont ("Exclude bots: Yes")
+    filt = f'filter: {{siteTag: "{site}", bot: 0, datetime_geq: "{iso(van)}", datetime_leq: "{iso(tot - timedelta(seconds=1))}"}}'
 
     def vraag(dims, limit):
         velden = f'dimensions {{ {dims} }}' if dims else ''

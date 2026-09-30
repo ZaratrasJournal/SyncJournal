@@ -154,7 +154,12 @@ De app praat met exchange-API's via een **online Cloudflare Worker**, niet via `
 
 ### Wat dat betekent voor proxy-wijzigingen
 - **Nooit zeggen** "gebruik wrangler dev tegen `proxy-local/`" of "edit worker.js lokaal" als instructie aan Denny — dat doet niets.
-- **Worker-code zelf** wordt door Denny extern beheerd (niet in deze repo onder version-control). Voor de feitelijke deploy moet zij óf direct in Cloudflare dashboard editen, óf via haar eigen wrangler-setup ergens anders.
+- **Worker-code zelf** draait als `morani-proxy` in **het Cloudflare-account van Morani**; Denny kan erbij en deployt
+  via het dashboard. Sinds 30-09-2026 staat de productieversie óók in de repo: [docs/worker-v20.js](docs/worker-v20.js)
+  (v19 was byte-gelijk aan `docs/worker-okx-complete.js`). Verandert de Worker, werk dan dat bestand bij en draai
+  `node tests/worker-monitoring.spec.js` — die test het complete bestand met de echte handlers. v20 telt elk verzoek
+  in Workers Analytics Engine voor het dagrapport op Denny's NUC ([scripts/dagrapport/](scripts/dagrapport/)); zie
+  [docs/worker-monitoring.md](docs/worker-monitoring.md). Morani's eigen journal gebruikt dezelfde Worker.
 - **Wij kunnen wel** in deze repo voorstellen formuleren ("vervang in worker.js de fills-action door deze code"), maar de daadwerkelijke deploy gebeurt buiten ons zicht.
 - **Veranderingen aan `proxy-local/worker.js`** zijn dus in principe **alleen historisch / als referentie**. Als we de productie-Worker willen wijzigen, leveren we de diff aan Denny en zij past het toe in haar Worker-omgeving.
 

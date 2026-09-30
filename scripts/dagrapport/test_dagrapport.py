@@ -116,6 +116,8 @@ class Tests(unittest.TestCase):
         self.assertTrue(all(f'< {int(TOT.timestamp())}' in s for s in sql), sql)
         self.assertFalse(any('geheim-token' in b for _, b, _ in nep.vragen))
         self.assertTrue(all(h.get('Authorization') == 'Bearer geheim-token' for u, _, h in nep.vragen if 'cloudflare' in u))
+        rum = [b for u, b, _ in nep.vragen if 'rumPageload' in b]
+        self.assertTrue(rum and all('bot: 0' in b for b in rum), 'bezoeken zonder bots, zoals het dashboard')
 
     def test_geen_fouten(self):
         tekst, _ = self.rapport(gisteren=[{'exchange': 'okx', 'uitkomst': 'ok', 'client': 'syncjournal-web', 'koppeling': 'a', 'fout': '', 'n': '50'}], eerder=[])
