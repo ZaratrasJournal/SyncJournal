@@ -60,6 +60,15 @@ Met wrangler in plaats van het dashboard:
 npx wrangler secret put SJ_KOPPEL_ZOUT
 ```
 
+## Workers Logs: uitzetten
+
+Op 30-09-2026 stond bij `morani-proxy` *Observability → Workers Logs: Enabled*. Dat bewaart per
+verzoek een logregel met gegevens over het verzoek en het antwoord (Free: drie dagen). Welke velden
+precies, zegt Cloudflare niet; de headers van een verzoek bevatten in elk geval het IP-adres. Dat past
+niet bij de privacypagina ("geen IP-adres"), en het dagrapport heeft het niet nodig: de telling hierboven
+doet dat werk. **Zet Workers Logs uit** (Settings → Observability), en alleen tijdelijk aan als je iets
+moet debuggen. Met wrangler: `"observability": { "logs": { "invocation_logs": false } }`.
+
 ## Voor Morani
 
 > De Worker telt vanaf nu per verzoek: exchange, actie, gelukt of welke soort fout. Voor jouw journal
