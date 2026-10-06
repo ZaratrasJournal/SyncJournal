@@ -13,6 +13,11 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  âœ
   // Deze spec rekent met vaste bedragen, dus geen wisselkoers erbij: zonder koers toont
   // de app bewust dollars (de eerlijke terugval). De omrekening zelf staat in valuta.spec.
   await p.route('**/*', r => /frankfurter/.test(r.request().url()) ? r.abort() : r.continue());
+  // Vaste klok: de testtrades staan op de 1e, 5e, 10e en 12e van "deze maand". Welke daarvan in het
+  // weekend vallen (sessie Weekend) en welke nog in de toekomst liggen, hing af van de maand: in
+  // oktober 2026 werd London +100 in plaats van +230 (rood op 06-10-2026). September 2026 is de
+  // maand waarin de verwachtingen hieronder geschreven zijn.
+  await p.clock.setFixedTime(new Date('2026-09-20T12:00:00'));
   await p.goto(url, { waitUntil: 'networkidle' });
   await p.evaluate(async () => { localStorage.clear(); try { await IDB.clearAll(); } catch (e) {} });
   await p.reload({ waitUntil: 'networkidle' }); await p.waitForTimeout(600);

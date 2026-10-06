@@ -71,6 +71,25 @@ const BT = { ...L, id: 'bt', kind: 'backtest', exchange: '', date: `${MAAND}-01`
   ok('formulier-veld R-multiple: 0.07 (niet 0)', String(r.veld) === '0.07', String(r.veld));
   ok('formulier-veld zonder stop: leeg, niet "0"', r.veldZonder === '', JSON.stringify(r.veldZonder));
 
+  // R heeft geen valuta. In euro-weergave zet fxView de P&L om, maar grootte en prijzen niet: deelde
+  // rNetto de omgezette P&L door het risico in dollars, dan was elke R een koers te laag (06-10-2026).
+  console.log('─── In euro-weergave blijft R hetzelfde ───');
+  const eur = await p.evaluate(async rijen => {
+    T = rijen.map(x => ({ ...EMPTY_TRADE, ...x })); persist(); clearGFilter(); setFilter('kind', 'alle');
+    FX.latest = 0.85; STATE.currency = 'EUR'; go('trades');   // een koers zonder internet
+    const cel = {}, pnl = {};
+    document.querySelectorAll('tbody tr').forEach(tr => { const tijd = (tr.textContent.match(/\d\d:\d\d/) || [''])[0];
+      const c = tr.querySelector('td[data-l="R"]'), q = tr.querySelector('td[data-l="P&L"]'); if (c) cel[tijd] = c.textContent.trim(); if (q) pnl[tijd] = q.textContent.trim(); });
+    const r = tradeROrNull(FT.find(t => t.id === 'hl'));
+    openForm('hl'); await new Promise(res => setTimeout(res, 300)); const veld = (document.getElementById('f_r') || {}).value; closeForm();
+    STATE.currency = 'USD'; FX.latest = 0; render();
+    return { cel, pnl, r, veld };
+  }, [HL, OUD, FEES, ZONDER, BT]);
+  ok("de bedragen staan echt in euro's", /€/.test(eur.pnl['10:00'] || ''), eur.pnl['10:00']);
+  ok("Denny's trade: R = 0,07, ook in euro's", Math.abs(eur.r - 0.0729) < 0.001, String(eur.r));
+  ok("tabel in euro's: +0,07R / +1,5R / −0,20R, net als in dollars", eur.cel['17:40'] === '+0,07R' && eur.cel['10:00'] === '+1,5R' && eur.cel['11:00'] === '−0,20R', JSON.stringify(eur.cel));
+  ok("formulier in euro's: 0.07", String(eur.veld) === '0.07', String(eur.veld));
+
   console.log('─── Gemiddelden en AI-coach ───');
   const gem = await p.evaluate(() => { const live = T.filter(t => t.kind !== 'backtest'); const g = gemR(live);
     T = T.filter(t => t.id === 'zonder'); persist(); setFilter('kind', 'live');

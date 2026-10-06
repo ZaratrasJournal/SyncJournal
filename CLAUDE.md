@@ -77,7 +77,10 @@ Dat is de bron; hieronder de korte versie.
 2. Zet `version` en `released` in `site/version.json` op dezelfde waarde.
 3. Voeg een changelog-blok toe bovenaan `CHANGELOG.md` onder `## [vX.Y] — YYYY-MM-DD` met
    **Toegevoegd** / **Gewijzigd** / **Verwijderd** / **Fixed**.
-4. `cp work/syncjournal.html site/app.html`.
+4. `cp work/syncjournal.html site/app.html`, en ververs de demo-data:
+   `node scripts/gen-syncjournal-dataset-v2.js` (schrijft `site/demo-dataset.json`, data t/m vandaag).
+   De poort eist dat die hooguit een week oud is (`hosted`, `demo-dataset`); sla je dit over, dan
+   staat de poort rood zodra de vorige release meer dan een week geleden is.
 5. Commit code + versiebumps + changelog + `site/app.html` **in één commit**, als
    `Release vX.Y: korte titel`.
 6. Draai de release-poort: **`node tests/run-release.js`**. Die test **de commit** in een losse

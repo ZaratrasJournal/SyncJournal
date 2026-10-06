@@ -1651,7 +1651,10 @@ function tradeROrNull(t){
 // |entry − stop| ÷ entry × size. Zo rekende het formulier al; tabel, dashboard en gemiddelden
 // namen de prijsbeweging vóór fees (Denny 29-09-2026: 0 / +0,07R / +0,2R voor één trade).
 // Geen stop, geen size of een stop vrijwel op de entry → null: niet te bepalen.
-function rNetto(t){const entry=+t.entry,stop=+t.stop,size=+t.size,pnl=+t.pnl;
+// R heeft geen valuta: het risico staat in dollars (grootte en prijzen), dus de P&L ook. In
+// euro-weergave zet fxView de P&L om en bewaart de dollars als pnlUsd; met de euro's was elke R een
+// koers te laag (+0,06R in de tabel, 0.07 in het formulier — gevonden 06-10-2026).
+function rNetto(t){const entry=+t.entry,stop=+t.stop,size=+t.size,pnl=t.pnlUsd!=null?+t.pnlUsd:+t.pnl;
   if(!(entry>0)||!(stop>0)||!(size>0)||!isFinite(pnl)||Math.abs(entry-stop)<entry*1e-4)return null;
   const risk=Math.abs(entry-stop)/entry*size;return risk>0?pnl/risk:null;}
 // Onder de 1R twee decimalen: 0,07R afgerond tot "0,1R" lijkt een ander getal dan het formulier
@@ -1833,7 +1836,7 @@ const KINDS={live:{label:'Live',color:'var(--green)'},gemist:{label:'Gemist',col
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v1.3.4';
+const APP_VERSION='v1.3.5';
 const SCHEMA_VERSION=8;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -7837,7 +7840,11 @@ async function syncOpenTrades(exId,opts){
   for(const o of opens){
     const sj=sjFromTj(o);sj.status='open';
     const key=exMatchKey(sj);
-    const ex=mine.find(t=>(t.srcId&&sj.srcId&&t.srcId===sj.srcId)||(key&&exMatchKey(t)===key&&(!t.positionId||!sj.positionId||String(t.positionId)===String(sj.positionId))));
+    /* Zelfde sleutel is niet genoeg: Hyperliquid geeft een open positie één vaste sleutel per coin
+       (hyperliquid_open_BTC). Ging de vorige positie dicht en een nieuwe open zonder sync ertussen,
+       dan werd de nieuwe in de oude rij geschreven: cijfers van nu, datum van toen (Denny 06-10-2026).
+       Een andere openstart is een andere positie; de oude rij ruimt de sync daarna zelf op. */
+    const ex=mine.find(t=>zelfdeStartSJ(t,sj)&&((t.srcId&&sj.srcId&&t.srcId===sj.srcId)||(key&&exMatchKey(t)===key&&(!t.positionId||!sj.positionId||String(t.positionId)===String(sj.positionId)))));
     if(ex){seen.add(ex.id);
       /* Kwam deze rij uit de positiegeschiedenis (eigen bron-id, geen placeholder), dan staan
          daar de cijfers van de hèle positie in. De open positie kent alleen het restant, dus
@@ -7876,10 +7883,13 @@ function finalizeStaleOpens(exId){
 }
 // Dezelfde positie? Op positionId én openstart (OKX hergebruikt posId's); zonder positionId
 // alleen voor een placeholder op de matchKey (pair|richting|entry).
+// Zelfde levensloop? Twee bekende openstarts (ms) moeten gelijk zijn; ontbreekt er een, dan valt het
+// niet te zeggen. Een openstart als datumtekst (Kraken: fillTime) telt als onbekend.
+function zelfdeStartSJ(a,b){const ao=+a.openTime||0,bo=+b.openTime||0;return !ao||!bo||ao===bo;}
 function zelfdePositieSJ(a,b){
   if(a.positionId&&b.positionId){
     if(String(a.positionId)!==String(b.positionId))return false;
-    const ao=+a.openTime||0,bo=+b.openTime||0;return !ao||!bo||ao===bo;
+    return zelfdeStartSJ(a,b);
   }
   const k=exMatchKey(a);return !!(a.placeholder&&k&&exMatchKey(b)===k);
 }

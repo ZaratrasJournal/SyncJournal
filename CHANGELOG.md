@@ -14,6 +14,22 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v1.3.5] — 2026-10-06
+
+### Fixed
+- **Een nieuwe Hyperliquid-positie kreeg de datum van de vorige.** Had je een paar dagen niet
+  gesynct, terwijl je vorige positie op dezelfde coin dichtging en je een nieuwe opende, dan schreef
+  de sync de nieuwe positie in de open rij van de oude: de cijfers van nu, de datum van toen. Je
+  setup-lagen van de oude positie hingen er dan aan, en de gesloten trade stond er als extra rij
+  naast. Nu herkent de sync aan de openingstijd dat het een andere positie is. Staat het bij jou al
+  verkeerd, dan herstelt de eerstvolgende sync het vanzelf: de nieuwe positie krijgt haar eigen
+  datum, en je invoer verhuist naar de gesloten trade waar hij bij hoort.
+- **In euro-weergave was elke R zo'n 15% te laag.** Sinds v1.3.2 is R de netto P&L gedeeld door je
+  risico. Stond je journal op euro's, dan werd de P&L eerst omgerekend naar euro's, terwijl het risico
+  in dollars bleef. Zo stond er in de tabel +0,06R waar het formulier 0.07 zei, en schoven gemiddelden,
+  kruistabellen en je sterkste combinatie mee. R heeft geen valuta: hij rekent nu altijd met dollars
+  aan beide kanten. Wie op dollars staat, merkte niets.
+
 ## [v1.3.4] — 2026-09-30
 
 ### Fixed

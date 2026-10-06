@@ -74,7 +74,7 @@ const overslaan = reden => { console.log('  ⏭ ' + reden + ' — overgeslagen')
   ok('boot zonder JS-fouten', errs.length === 0, errs[0]);
 
   const hlTrades = () => p.evaluate(() => T.filter(t => t.exchange === 'hyperliquid').map(t => ({ id: t.id, status: t.status, dir: t.dir,
-    entry: t.entry, exit: t.exit, pnl: +t.pnl, fees: +t.fees, stop: +t.stop, openTime: +t.openTime,
+    entry: t.entry, exit: t.exit, pnl: +t.pnl, fees: +t.fees, stop: +t.stop, openTime: +t.openTime, date: t.date,
     layers: t.layers, emotions: t.emotions, mistakes: t.mistakes, tags: t.tags, notes: t.notes })));
   const invoerIntact = t => !!t && zelfde(t.layers, JOUW.layers) && zelfde(t.emotions, JOUW.emotions) && zelfde(t.mistakes, JOUW.mistakes)
     && zelfde(t.tags, JOUW.tags) && t.notes === JOUW.notes && Math.abs(t.stop - STOP) < 1e-9;
@@ -122,6 +122,12 @@ const overslaan = reden => { console.log('  ⏭ ' + reden + ' — overgeslagen')
   ok(`${dicht.length} gesloten trades, ${open.length} open — net als bij Hyperliquid`,
     t2.filter(t => t.status === 'closed').length === dicht.length && t2.filter(t => t.status !== 'closed').length === open.length,
     t2.map(t => t.status).join(','));
+  // Melding 06-10-2026: een nieuwe positie op dezelfde coin kreeg de datum en de invoer van de vorige
+  for (const O of open) {
+    const r = t2.find(t => t.status !== 'closed' && t.openTime === O.open);
+    ok(`de lopende positie van ${dag(O.open)} staat open op haar eigen datum, entry ${+O.entry.toPrecision(12)}, zonder je invoer van de vorige`,
+      !!r && r.date === dag(O.open) && Math.abs(r.entry - O.entry) < 1e-6 && !(r.layers || []).length, JSON.stringify(r && { date: r.date, entry: r.entry, layers: r.layers }));
+  }
   const somApp = t2.filter(t => t.status === 'closed').reduce((s, t) => s + t.pnl, 0), somHl = dicht.reduce((s, x) => s + x.netto, 0);
   ok(`totale P&L ${somHl.toFixed(2)} = wat Hyperliquid zegt`, Math.abs(somApp - somHl) < 1e-4 * dicht.length, somApp.toFixed(6) + ' vs ' + somHl.toFixed(6));
 
