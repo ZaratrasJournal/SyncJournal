@@ -19,7 +19,7 @@ elke wijziging eindigt met `node tests/run-release.js` groen.
 
 | ID | Story | Prio | Effort | Hangt af van |
 |---|---|---|---|---|
-| **B1** | Partial close bij Hyperliquid en Kraken pas zichtbaar na sluiting | 1 | M | — |
+| **B1** | Kraken: lopende positie zonder partial en zonder stappen | 1 | M | — |
 | **B2** | OKX: contractwaarde-vangnet kent geen USDC-perps | 2 | S | — |
 | **W2** | Ruwe exchange-data kunnen vastleggen (dev-modus terug) | 2 | M | — |
 | **C1** | Lege staten: één manier, met een volgende stap | 2 | S + M | — |
@@ -41,28 +41,32 @@ elke wijziging eindigt met `node tests/run-release.js` groen.
 
 ## Bugs
 
-### B1 · Partial close bij Hyperliquid en Kraken pas zichtbaar na sluiting — prio 1 · M
+### B1 · Kraken: lopende positie zonder partial en zonder stappen — prio 1 · M
 
-**Waarom.** Partial-close is de standaard handelsstijl in de community. Bij OKX en Blofin toont een
-lopende positie het geboekte deel als *partial*. Bij Hyperliquid en Kraken staat hij als gewoon "open",
-en de winst van de afgebouwde stukken verschijnt pas als de hele positie dicht is. Tot dat moment
-kloppen P&L en win-rate niet. Het staat vastgelegd als "bekend gat" in
-[tests/partial-alle-exchanges.spec.js:138](tests/partial-alle-exchanges.spec.js#L138).
+**Stand 07-10-2026.** Hyperliquid is af: een lopende positie met een TP is sinds v1.3.6 één rij met
+status partial, en sinds v1.4 staan bij Hyperliquid, OKX en Blofin de stappen er vanaf de opening
+(melding Denny: "dit wil je al zien vanaf dat die open gaat, voor elke exchange"). Kraken niet: daar
+staat een lopende positie als gewoon "open", zonder stappen, en het geboekte deel van een TP verschijnt
+pas als de hele positie dicht is. Vastgelegd als "bekend gat" in
+[tests/partial-alle-exchanges.spec.js](tests/partial-alle-exchanges.spec.js) (de Kraken-check).
 
-Dit is wat er overbleef van de oude story *"Kraken trades hebben geen TP-coverage"*: sinds de
-levensloop krijgt elke Kraken-trade zijn afbouwstappen wél, maar pas na sluiting.
+**Waarom het bij Kraken niet meekwam.** De stappen komen uit de positie-gebeurtenissen
+(`_krLevenslopen`), en die geeft alleen afgesloten levenslopen terug. Bovendien haalt een gewone sync
+gebeurtenissen op vanaf de vorige sync: de opening van een positie die dagen geleden begon, ligt buiten
+dat venster. Hyperliquid kijkt in dat geval eenmalig verder terug (`liepAl` in `fetchTrades`); Kraken
+niet.
 
 **Plan.**
-1. Test eerst: de assertie op regel 138 omdraaien — een lopende Hyperliquid/Kraken-positie met één
-   afbouw hoort een partial-rij te zijn, met het geboekte deel apart. Zien falen.
-2. Nagaan hoe OKX en Blofin die partial-rij opbouwen uit hun positiegeschiedenis.
-3. Hetzelfde gedrag in de levensloop-functies: `levenslopenUitAccountLog` (Kraken,
-   [work/syncjournal.html:6563](work/syncjournal.html#L6563)) en `_reconstructTrades` (Hyperliquid,
-   [:6873](work/syncjournal.html#L6873)). Een levensloop die nog loopt maar al afbouwstappen heeft →
-   status partial, geboekt deel = som van die stappen.
-4. Herhaald syncen en daarna sluiten: nog steeds één rij, geen dubbeltelling (scenario 1–3 in
-   dezelfde spec dekken dat al).
-5. Alleen in deze twee adapters. Niets in gedeelde helpers (exchange-isolatie).
+1. Test eerst: in partial-alle-exchanges de Kraken-check omdraaien (lopende positie met één afbouw →
+   partial met het geboekte deel apart), en in een eigen spec een open Kraken-positie die zijn instap
+   als stap toont. Zien falen.
+2. `_krLevenslopen` en `levenslopenUitAccountLog` (die de lopende levenslopen al apart houdt): een
+   lopende levensloop met afbouw → status partial, zonder afbouw → de stappen aan de open rij, zoals
+   Hyperliquid in `_reconstructTrades(…, metOpen)`.
+3. Terugkijken als een levensloop al liep bij het begin van het venster, zoals Hyperliquid. Nagaan of
+   de Worker-actie `trades` een vroeger `startTime` aankan zonder de rate-limit te raken.
+4. Past bij de geplande Kraken-sessie 2 (het events-pad met fillTime als openingstijd vervangen); samen
+   doen. Alleen in de Kraken-adapter.
 
 **Klaar als** de spec voor alle vier de API-exchanges hetzelfde gedrag toetst, en de release-poort groen is.
 
