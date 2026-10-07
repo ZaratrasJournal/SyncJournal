@@ -14,6 +14,14 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v1.4] — 2026-10-07
+
+### Gewijzigd
+- **Je ziet de stappen van een trade vanaf het moment dat hij opengaat.** "Zo is deze positie
+  gelopen" verscheen pas na de eerste sluiting of TP. Nu staat je instap er meteen, en elke bijkoop
+  of TP komt erbij zodra die gebeurt. Voor Hyperliquid, OKX en Blofin; Kraken volgt nog. Zolang er
+  niets is afgebouwd, staat onder "Samen" een streepje in plaats van +$ 0,00.
+
 ## [v1.3.6] — 2026-10-07
 
 ### Fixed

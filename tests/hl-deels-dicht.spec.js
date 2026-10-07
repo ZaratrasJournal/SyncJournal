@@ -59,6 +59,12 @@ const JOUW = { layers: [{ timeframe: '4H', bias: 'Bearish', setups: ['MSB'], con
   await sync();
   const open1 = (await rijen()).find(r => r.status === 'open');
   ok('de short staat open: 05-10 16:24, 0,00447 BTC', !!open1 && open1.date === '2026-10-05' && open1.time === '16:24' && bij(open1.qty, 0.00447, 1e-9), JSON.stringify(open1));
+  // Denny 07-10-2026: "het lijkt me dat je dit al in een trade wilt zien vanaf dat die open gaat"
+  ok('de stappen staan er vanaf de opening: open 0,00447 @86.303', !!open1 && open1.stappen.length === 1 && open1.stappen[0][0] === 'open' && open1.stappen[0][1] === 86303 && bij(open1.stappen[0][2], 0.00447, 1e-9),
+    JSON.stringify(open1 && open1.stappen));
+  const voet1 = await p.evaluate(async id => { STATE.currency = 'USD'; openForm(id); await new Promise(r => setTimeout(r, 300));
+    const v = document.querySelector('.extab tfoot'); const s = v ? v.innerText.replace(/\s+/g, ' ') : 'geen stappen-blok'; closeForm(); return s; }, open1 && open1.id);
+  ok('in het formulier: "Samen" zegt nog niets geboekt, geen +$ 0,00', /Samen/.test(voet1) && !/0,00\b/.test(voet1.split('Samen')[1].replace(/0,17/, '')) && /—/.test(voet1), voet1);
   await p.evaluate(({ id, J }) => { const t = T.find(x => x.id === id); t.layers = J.layers; t.stop = J.stop; persist(); }, { id: open1 && open1.id, J: JOUW });
 
   for (const [naam, nu] of [['07-10 06:26, na de TP van 04:00', S.naTP], ['07-10 12:00, nog een keer syncen', S.later]]) {

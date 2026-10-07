@@ -1836,7 +1836,7 @@ const KINDS={live:{label:'Live',color:'var(--green)'},gemist:{label:'Gemist',col
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v1.3.6';
+const APP_VERSION='v1.4';
 const SCHEMA_VERSION=9;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -2582,7 +2582,11 @@ function execLegs(fills){
 const ts2dag=ms=>new Date(+ms||Date.now()).toLocaleDateString('nl-NL',{weekday:'short',day:'numeric',month:'short'});
 function execTable(t){
   const f=stappenVan(t);
-  if(f.length<2||!f.some(isAfbouw))return '';
+  /* Een positie die nog loopt toont haar stappen vanaf de opening, ook als er alleen nog een
+     instap is (Denny 07-10-2026) - maar alleen echte stappen van de exchange: een afgeleide instap
+     uit je eigen invoer zegt niets nieuws. Een gesloten trade heeft minstens een sluiting nodig. */
+  const loopt=(t.status==='open'||t.status==='partial')&&f.some(x=>!x.synthetic);
+  if(!f.length||(!loopt&&(f.length<2||!f.some(isAfbouw))))return '';
   const sum=fillSummary(f);
   const legs=execLegs(f);
   const n=(v,d)=>Number(+v||0).toLocaleString('nl-NL',{maximumFractionDigits:(d==null?8:d)});
@@ -2646,9 +2650,9 @@ function execTable(t){
   return `<div class="exwrap"><div class="exhead"><b>Zo is deze positie gelopen</b>${kop}${afgeleid}</div>
     <table class="extab"><thead><tr><th>Tijd</th><th>Wat</th><th>Aantal</th><th>Prijs</th><th>Positie na</th><th>\u00d8 entry</th><th>Fee ${CURSYM()}</th><th>P&amp;L</th></tr></thead>
     <tbody>${rows}</tbody>
-    <tfoot><tr><td></td><td><b>Samen</b></td><td class="num mask">${n(sum.exitsAsset)}</td><td></td><td></td><td></td>
+    <tfoot><tr><td></td><td><b>Samen</b></td><td class="num mask">${sum.exits?n(sum.exitsAsset):'—'}</td><td></td><td></td><td></td>
       <td class="num exfee">${kosten(sum.fees)}</td>
-      <td class="num mask ${cls(netto)}"${afw}><b>${geld(netto)}</b></td></tr></tfoot></table></div>`;
+      ${sum.exits?`<td class="num mask ${cls(netto)}"${afw}><b>${geld(netto)}</b></td>`:'<td class="num" title="Nog niets afgebouwd: er is nog niets geboekt">—</td>'}</tr></tfoot></table></div>`;
 }
 /* In het bewerkformulier is de vraag niet alleen "hoe liep het", maar ook "waarom zie
    ik hier niets". Daarom: stáán er stappen, dan de tabel; staan ze er niet, dan eerlijk
@@ -7018,7 +7022,8 @@ const ExchangeAPI = {
       if(d==="Close Long"||d==="Open Short"||d==="Sell"||d==="Long > Short")return "sell";
       return "";
     },
-    _reconstructTrades(fills,idPrefix){
+    _naarFill(f){return {coin:f.coin,dir:f.dir,side:f.side,startPosition:f.startPosition,px:f.px,sz:f.sz,fee:f.fee,closedPnl:f.closedPnl,ms:Number(f.time)||0,tid:f.tid};},
+    _reconstructTrades(fills,idPrefix,metOpen){
       const aggregated=this._aggregateSubFills(fills);
       const sorted=[...aggregated].sort((a,b)=>((a.ms||0)-(b.ms||0))||String(a.tid||"").localeCompare(String(b.tid||"")));
       const out=[];
@@ -7026,11 +7031,14 @@ const ExchangeAPI = {
       /* loopt: de positie staat nog open maar is al deels geboekt (een TP geraakt). Dan één rij met
          status partial: de volle grootte, de stappen tot nu toe, en het geboekte bedrag apart als
          realizedPnl - zoals bij OKX. Gaat hij later helemaal dicht, dan komt dezelfde sleutel terug
-         als gesloten trade en werkt importTjClosed de rij bij. */
+         als gesloten trade en werkt importTjClosed de rij bij.
+         metOpen: ook een lopende positie zonder sluiting, met status open. Alleen fetchOpenPositions
+         vraagt daarom: die hangt de stappen aan de open rij, zodat ze er vanaf de opening staan. */
       const sluitAf=(coin,st,loopt)=>{
         const steps=st.steps; if(!steps.length)return;
         const tl=fillTimeline(steps,{mult:1});
-        if(!tl.some(isAfbouw))return;
+        const afgebouwd=tl.some(isAfbouw);
+        if(!afgebouwd&&!(loopt&&metOpen))return;
         const sum=fillSummary(tl);
         const first=tl[0], last=tl[tl.length-1];
         const side=first.side==="buy"?"long":"short";
@@ -7059,7 +7067,7 @@ const ExchangeAPI = {
           positionId:coin,
           fills:tl,
           notes:afgeleid?"\u26a0 Entry afgeleid uit closedPnl, open-fill lag buiten het sync-venster":"",
-          ...(loopt?{status:"partial",realizedPnl:net.toFixed(4),pnl:"0"}:{}),
+          ...(loopt?(afgebouwd?{status:"partial",realizedPnl:net.toFixed(4),pnl:"0"}:{status:"open",closeTime:"",pnl:"0"}):{}),
         });
       };
       for(const f of sorted){
@@ -7158,7 +7166,6 @@ const ExchangeAPI = {
       }
       // FIFO-reconstructie via gedeelde helper — haalt open-fills op, weegt entry-price,
       // trekt open-fees af van closedPnl voor echte netto-PnL.
-      const naarFill=f=>({coin:f.coin,dir:f.dir,side:f.side,startPosition:f.startPosition,px:f.px,sz:f.sz,fee:f.fee,closedPnl:f.closedPnl,ms:Number(f.time)||0,tid:f.tid});
       /* Liep een positie al toen het venster begon (startPosition ≠ 0 op de eerste fill van
          een coin), dan liggen de opens ervoor. Eén keer verder terug kijken kost één extra
          aanroep en geeft de hele levensloop in plaats van een afgeleide instap. */
@@ -7180,7 +7187,7 @@ const ExchangeAPI = {
         const gezien=new Set(allFills.map(f=>String(f.tid)));
         extra.forEach(f=>{ if(!gezien.has(String(f.tid)))allFills.push(f); });
       }
-      return this._reconstructTrades(allFills.map(naarFill),"hyperliquid");
+      return this._reconstructTrades(allFills.map(f=>this._naarFill(f)),"hyperliquid");
     },
     /* Wanneer begon een positie die nog loopt? Hyperliquid zegt het niet bij de positie
        zelf, maar het staat in de fills: de lopende positie begon bij de eerste uitvoering
@@ -7208,7 +7215,7 @@ const ExchangeAPI = {
       /* Eén extra aanroep, en alleen wanneer er ook echt iets openstaat: zonder de fills
          zouden we het sync-moment als opentijd moeten stempelen, en dat is precies de
          verwarring die deze melding opleverde. */
-      let begin={};
+      let begin={}, stappen={};
       if(positions.length){
         try{
           const fills=[];let cursor=Date.now()-90*864e5,guard=0;
@@ -7220,6 +7227,10 @@ const ExchangeAPI = {
             const last=batch[batch.length-1].time; if(!last||last<=cursor)break; cursor=last+1;
           }
           begin=this._openBegin(fills);
+          /* Uit dezelfde fills de stappen van de lopende positie: dan staan ze er vanaf de opening,
+             niet pas na de eerste TP (Denny 07-10-2026). Geen extra aanroep. */
+          this._reconstructTrades(fills.map(f=>this._naarFill(f)),"hyperliquid",true)
+            .forEach(t=>{ if(t.status!=="closed")stappen[t.positionId]=t.fills; });
         }catch(e){ /* lukt het niet, dan claimen we geen tijd */ }
       }
       return positions.map(ap=>{
@@ -7247,6 +7258,7 @@ const ExchangeAPI = {
           fees:"0",
           leverage:String(p.leverage?.value||""),
           source:"hyperliquid",status:"open",
+          fills:stappen[p.coin]||[],
           unrealizedPnl:normPrice(p.unrealizedPnl||""),
           liquidationPrice:normPrice(p.liquidationPx||""),
           stopLoss:"",takeProfit:"",
@@ -7693,14 +7705,18 @@ async function refreshBalance(exId){
 const FILL_RETENTIE_DAGEN=90;   // zover terug bewaren exchanges hun fills ongeveer
 const FILL_MAX_PER_SYNC=8;      // niet je hele historie afgaan bij elke sync
 const FILL_HERKANS_MS=7*864e5;  // na een mislukte poging pas over een week opnieuw
+const FILL_HERKANS_OPEN_MS=3600e3;   // een lopende positie: na een uur opnieuw (de exchange kan de fill nog niet gemeld hebben)
 async function backfillFills(exId,opts){
   opts=opts||{};
   const ad=ExchangeAPI[exId],c=CONNS[exId];
   if(!ad||typeof ad.fetchFills!=='function'||typeof ad.stepsForTrade!=='function')return {n:0,reden:''};
   if(!c||!c.connected||TAB_STALE)return {n:0,reden:''};
 
-  // ook 'partial': een lopende positie met al geboekte sluitingen heeft stappen om te tonen
-  const kandidaat=t=>t&&t.exchange===exId&&(t.status==='closed'||t.status==='partial')&&!(t.fills&&t.fills.length)&&(+t.openTime>0);
+  /* Ook 'partial' en 'open': de stappen van een positie horen er vanaf de opening te staan, niet pas
+     na de eerste sluiting (Denny 07-10-2026). Verandert de open positie, dan maakt syncOpenTrades
+     de stappen leeg en komen ze hier opnieuw langs. */
+  const kandidaat=t=>t&&t.exchange===exId&&(t.status==='closed'||t.status==='partial'||t.status==='open')&&!(t.fills&&t.fills.length)&&(+t.openTime>0);
+  const eind=t=>+t.closeTime||Date.now();   // een open trade loopt tot nu
   let lijst;
   if(opts.tradeId!=null){
     lijst=T.filter(t=>t.id===opts.tradeId&&kandidaat(t));       // knop: precies deze ene
@@ -7711,9 +7727,9 @@ async function backfillFills(exId,opts){
        waarschuwing. Na een week mag het weer, want de Worker of de exchange kan intussen
        veranderd zijn. */
     const grens=Date.now()-FILL_RETENTIE_DAGEN*864e5;
-    const magWeer=t=>!t.fillsNone||(Date.now()-t.fillsNone)>FILL_HERKANS_MS;
-    lijst=T.filter(t=>kandidaat(t)&&t.srcId&&magWeer(t)&&(+t.closeTime||0)>grens)
-           .sort((a,b)=>(+b.closeTime||0)-(+a.closeTime||0))
+    const magWeer=t=>!t.fillsNone||(Date.now()-t.fillsNone)>(t.status==='open'?FILL_HERKANS_OPEN_MS:FILL_HERKANS_MS);
+    lijst=T.filter(t=>kandidaat(t)&&t.srcId&&magWeer(t)&&eind(t)>grens)
+           .sort((a,b)=>eind(b)-eind(a))
            .slice(0,FILL_MAX_PER_SYNC);
   }
   if(!lijst.length)return {n:0,reden:''};
@@ -7723,9 +7739,10 @@ async function backfillFills(exId,opts){
     /* Per trade een eigen, smal venster. Bij één aanvraag voor de hele batch liep dat
        venster van je oudste tot je nieuwste trade - bij 1000 trades negentien maanden, en
        daar geeft de exchange niets op terug. (Melding Denny 22-09-2026.) */
-    const van=(+t.openTime||0)-60000, tot=(+t.closeTime||Date.now())+60000;
+    const van=(+t.openTime||0)-60000, tot=eind(t)+60000;
     const venster=new Date(van).toLocaleString('nl-NL')+' t/m '+new Date(tot).toLocaleString('nl-NL');
-    const oud=(Date.now()-(+t.closeTime||0))>FILL_RETENTIE_DAGEN*864e5;
+    const oud=(Date.now()-eind(t))>FILL_RETENTIE_DAGEN*864e5;
+    const loopt=t.status==='open';
     let raw=[];
     try{ raw=await ad.fetchFills(c.apiKey,c.apiSecret,c.passphrase,'',van,tot); }
     catch(e){ laatste={n:0,reden:'fout',detail:((e&&e.message)||String(e))+' \u00b7 venster '+venster}; continue; }
@@ -7737,7 +7754,7 @@ async function backfillFills(exId,opts){
       continue;
     }
     const steps=ad.stepsForTrade(t,raw);
-    if(steps.length<2){
+    if(steps.length<(loopt?1:2)){   // een open positie mag één instap hebben
       t.fillsNone=Date.now();
       const v=raw[0]||{};
       laatste={n:0,reden:'geen-match',detail:raw.length+' fills opgehaald, maar '+steps.length
@@ -7751,9 +7768,12 @@ async function backfillFills(exId,opts){
     const sluitKant=dir==='short'?'buy':'sell';
     const contracten=steps.filter(x=>x.side===sluitKant).reduce((a,x)=>a+x.qty,0);
     const asset=+t.qtyAsset||0;
-    const mult=(contracten>0&&asset>0)?(asset/contracten):1;
+    /* Bij een open positie is qtyAsset wat er nú openstaat: instappen min sluitingen. Zonder
+       sluitingen valt de contractwaarde anders niet af te leiden. */
+    const nogOpen=steps.filter(x=>x.side!==sluitKant).reduce((a,x)=>a+x.qty,0)-contracten;
+    const mult=(loopt&&nogOpen>0&&asset>0)?(asset/nogOpen):(contracten>0&&asset>0)?(asset/contracten):1;
     const fills=fillTimeline(steps,{dir,mult});
-    if(!fills.some(isAfbouw)){ t.fillsNone=Date.now(); continue; }
+    if(!loopt&&!fills.some(isAfbouw)){ t.fillsNone=Date.now(); continue; }
     t.fills=fills; delete t.fillsNone; n++;
   }
   if(n||lijst.some(t=>t.fillsNone))persist();
@@ -7869,12 +7889,20 @@ async function syncOpenTrades(exId,opts){
        Een andere openstart is een andere positie; de oude rij ruimt de sync daarna zelf op. */
     const ex=mine.find(t=>zelfdeStartSJ(t,sj)&&((t.srcId&&sj.srcId&&t.srcId===sj.srcId)||(key&&exMatchKey(t)===key&&(!t.positionId||!sj.positionId||String(t.positionId)===String(sj.positionId)))));
     if(ex){seen.add(ex.id);
+      /* De stappen van een open positie verlopen zodra die verandert (bijkoop of TP): klopt de stand
+         na de laatste stap niet meer met wat er nu openstaat, dan haalt backfillFills ze opnieuw op. */
+      const laatsteStap=ex.status==='open'&&Array.isArray(ex.fills)&&ex.fills.length?ex.fills[ex.fills.length-1]:null;
+      if(laatsteStap&&!(Array.isArray(sj.fills)&&sj.fills.length)){
+        const nu=+sj.qtyAsset||0, toen=+laatsteStap.posAfterAsset||0;
+        if(nu>0&&Math.abs(nu-toen)>nu*1e-6){ex.fills=[];delete ex.fillsNone;}
+      }
       /* Kwam deze rij uit de positiegeschiedenis (eigen bron-id, geen placeholder), dan staan
          daar de cijfers van de hèle positie in. De open positie kent alleen het restant, dus
          die mag entry, size en aantal niet overschrijven - anders krimpt je trade bij elke
          sync mee met wat er nog openstaat. (Denny 24-09-2026.) */
       const uitHistorie=!!(ex.srcId&&!ex.placeholder);
-      if(!uitHistorie){ex.entry=sj.entry;ex.size=sj.size;ex.qtyAsset=sj.qtyAsset;}
+      if(!uitHistorie){ex.entry=sj.entry;ex.size=sj.size;ex.qtyAsset=sj.qtyAsset;
+        if(Array.isArray(sj.fills)&&sj.fills.length)ex.fills=sj.fills;}   // adapters die de stappen van een open positie al kennen (Hyperliquid)
       if(sj.leverage)ex.leverage=sj.leverage;
       if(sj.stop)ex.stop=sj.stop;if(sj.tp)ex.tp=sj.tp;
       ex.unrealizedPnl=sj.unrealizedPnl;ex.liq=sj.liq;
