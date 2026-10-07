@@ -14,6 +14,17 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v1.4.1] — 2026-10-07
+
+### Fixed
+- **De stappen van een deels gesloten OKX- of Blofin-positie stonden 2,67× te groot.** De omrekening
+  van contracten naar munten keek naar de sluitingen, terwijl de grootte van een deels gesloten trade
+  de hele positie is. Bij een member stond een TP van 0,0009 BTC als 0,0024. De P&L klopte wel; die
+  komt rechtstreeks van de exchange. Je trades die nog lopen krijgen na de update vanzelf de juiste
+  stappen.
+- **Eén order in stukjes stond als losse stappen.** OKX meldt elk stukje van een order apart, zodat er
+  bijvoorbeeld elf "instappen" in dezelfde seconde stonden. Dat is nu één stap.
+
 ## [v1.4] — 2026-10-07
 
 ### Gewijzigd

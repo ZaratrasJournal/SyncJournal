@@ -62,6 +62,37 @@ const bfFill = (ts, side, sz, px, fee) => ({ instId: 'ETH-USDT', positionSide: '
   const b1 = await backfill('blofin', [bfFill(OPEN_T + 500, 'buy', 2, 3000, 1.2)], BLOFIN);
   ok('de instap staat erin: open, 2 ETH @3.000', b1.stappen.length === 1 && b1.stappen[0].kind === 'open' && bij(b1.stappen[0].qty, 2) && b1.stappen[0].prijs === 3000, JSON.stringify(b1));
 
+  // Denny 07-10-2026, zijn OKX-short van 05-10: één order in elf stukjes (24 contracten) en een TP van 9.
+  // De tabel toonde elf "instappen" en alles 2,67× te groot: de contractwaarde werd afgeleid uit de
+  // sluitingen (0,0024 / 9), terwijl de grootte van een deels gesloten trade de hele positie is.
+  console.log('─── OKX: deels dicht, één order in elf stukjes (Denny\'s short van 05-10) ───');
+  const ORDER = '3981950639221428224', TP_T = Date.parse('2026-10-07T14:49:17Z'), ST = Date.parse('2026-10-05T04:16:16Z');
+  const stukjes = [3, 4, 1, 2, 1, 1, 2, 1, 1, 1, 7].map((c, i) => ({ ...okxFill(ST, 'sell', c, 85840, 0.0042917 * c), tradeId: 'f' + i, ordId: ORDER }));
+  const tp = { ...okxFill(TP_T, 'buy', 9, 82900.1, 0.037305045), ordId: '3989023279207600129', fillPnl: '2.64591' };
+  const deels = await backfill('okx', [...stukjes, tp], { ...OKX, status: 'partial', placeholder: false, srcId: 'okx_3809943469299781632_1791173776681',
+    openTime: String(ST), closeTime: String(TP_T), entry: 85840, exit: 82900.1, qtyAsset: 0.0024, size: '77.26', pnl: 0, realizedPnl: 2.5092 });
+  ok('één order is één stap: instap en TP, niet elf instappen', deels.stappen.length === 2 && deels.stappen[0].kind === 'open' && deels.stappen[1].kind === 'close',
+    JSON.stringify(deels.stappen.map(s => s.kind)));
+  ok('instap 0,0024 BTC (24 contracten van 0,0001)', !!deels.stappen[0] && bij(deels.stappen[0].qty, 0.0024), JSON.stringify(deels.stappen[0]));
+  ok('TP 0,0009 BTC @82.900,1 — klopt met +$ 2,65 bij 2.939,9 koersverschil', !!deels.stappen[1] && bij(deels.stappen[1].qty, 0.0009) && deels.stappen[1].prijs === 82900.1,
+    JSON.stringify(deels.stappen[1]));
+  ok('rest na de TP: 0,0015 BTC', !!deels.stappen[1] && bij(deels.stappen[1].na, 0.0015), JSON.stringify(deels.stappen[1]));
+
+  console.log('─── Een journal met de oude, foute stappen herstelt (opruimstap v10) ───');
+  const herstel = await p.evaluate(async ([rows]) => {
+    // zoals Denny's trade 83 nu opgeslagen staat: twaalf stappen, alles 2,67× te groot
+    T[0].fills = Array.from({ length: 12 }, (_, i) => ({ ts: 1791173776681, side: i < 11 ? 'sell' : 'buy', kind: i ? (i < 11 ? 'add' : 'close') : 'open', qty: 1, qtyAsset: 0.00026667, price: 85840, posAfterAsset: 0.004 }));
+    const dicht = { ...T[0], id: 2, status: 'closed', srcId: 'okx_dicht', fills: [{ kind: 'open', qty: 1 }, { kind: 'close', qty: 1 }] };
+    T.push(dicht);
+    MIGRATIONS.find(m => m.v === 10).up();
+    const naMigratie = { lopend: T[0].fills.length, dicht: T[1].fills.length };
+    ExchangeAPI.okx.fetchFills = async () => rows;
+    await backfillFills('okx');
+    return { naMigratie, stappen: T[0].fills.map(f => [f.kind, +f.qtyAsset.toFixed(8)]) };
+  }, [[...stukjes, tp]]);
+  ok('de opruimstap haalt de foute stappen van de lopende positie weg, en laat een gesloten trade staan', herstel.naMigratie.lopend === 0 && herstel.naMigratie.dicht === 2, JSON.stringify(herstel.naMigratie));
+  ok('de volgende sync zet de juiste terug: instap 0,0024, TP 0,0009', JSON.stringify(herstel.stappen) === JSON.stringify([['open', 0.0024], ['close', 0.0009]]), JSON.stringify(herstel.stappen));
+
   console.log('─── Wat niet verandert ───');
   const dicht = await backfill('okx', [okxFill(OPEN_T + 300, 'sell', 90, 86303, 0.36)], { ...OKX, status: 'closed', placeholder: false, srcId: 'okx_3900000000000000001_' + OPEN_T, closeTime: String(BIJ_T), exit: 85000, pnl: 11 });
   ok('een gesloten trade met alleen een instap blijft zonder stappen (daar hoort een sluiting bij)', dicht.stappen.length === 0, JSON.stringify(dicht));
