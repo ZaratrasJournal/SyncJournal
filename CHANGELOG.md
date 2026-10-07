@@ -14,6 +14,29 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v1.4.2] — 2026-10-07
+
+### Fixed
+- **De equity-curve liep achterstevoren.** De grafiek ging ervan uit dat je nieuwste trade vooraan
+  staat, maar gesyncte trades komen er achteraan bij. Daardoor stond je laatste verlies vooraan en je
+  eerste trades achteraan. Dat gold op het Dashboard, in Analytics en bij een playbook. De curve loopt
+  nu van je oudste naar je nieuwste trade, net als de drawdown-grafiek eronder.
+- **De lijnen in de grafieken tekenden toppen en dalen die er niet waren.** De vloeiende lijn schoot
+  tussen twee punten door, onder je laagste stand of boven je hoogste, en werd dan aan de rand
+  afgesneden. Hij blijft nu binnen je echte cijfers, nog steeds vloeiend.
+- **"493%" naast je Netto P&L.** Dat was geen P&L-percentage, maar de verandering tussen de eerste en
+  de tweede helft van de periode. Bij een klein of negatief begin zegt dat niets. Netto P&L en
+  Expectancy tonen daar nu geen getal meer; de kleur van het lijntje geeft de richting. Bij de andere
+  kaarten vertelt een tooltip waarmee de trend vergelijkt.
+- **Het jaaroverzicht in de Kalender paste niet op een laptopscherm.** Je moest onderin heen en weer
+  scrollen. De vakjes rekenden met de breedte van je hele scherm en vergaten de zijbalk; alleen op een
+  scherm vanaf ongeveer 2200 pixels breed paste het. Ze schalen nu mee met het paneel, en het hele jaar
+  staat in één keer in beeld.
+
+### Gewijzigd
+- Het label bij de equity-curve op het Dashboard zei "year-to-date", maar de curve toont al je trades
+  in je filter. Er staat nu "cumulatief".
+
 ## [v1.4.1] — 2026-10-07
 
 ### Fixed
