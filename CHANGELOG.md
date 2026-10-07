@@ -14,6 +14,18 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v1.3.6] — 2026-10-07
+
+### Fixed
+- **Een geraakte TP op Hyperliquid was onzichtbaar zolang de positie nog liep.** De trade bleef
+  gewoon "open" staan, zonder de TP-stap en zonder het geboekte bedrag, en de grootte kromp mee
+  met wat er nog openstond. Pas als de hele positie dicht was, kwam alles tevoorschijn. Nu is een
+  positie waarvan een deel geboekt is "deels dicht", zoals bij OKX en Blofin: met de volle grootte,
+  de stappen tot nu toe, en het geboekte bedrag apart. Staat er bij jou nu zo'n positie, dan zie je
+  de TP na de eerstvolgende sync.
+- **Onder de stappen van een deels gesloten positie stond "Samen: +$ 0,00".** Daar staat nu het
+  bedrag dat je al geboekt hebt. Gold voor alle exchanges met deels gesloten posities.
+
 ## [v1.3.5] — 2026-10-06
 
 ### Fixed

@@ -1836,8 +1836,8 @@ const KINDS={live:{label:'Live',color:'var(--green)'},gemist:{label:'Gemist',col
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v1.3.5';
-const SCHEMA_VERSION=8;
+const APP_VERSION='v1.3.6';
+const SCHEMA_VERSION=9;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
   // ander type dan verwacht (bv. sj_manual='null' of een array waar een object hoort).
@@ -2027,6 +2027,17 @@ const MIGRATIONS=[
       weg.add(o.id);
     }
     if(weg.size)T=T.filter(t=>!weg.has(t.id));
+  }},
+  /* Hyperliquid kende tot 07-10-2026 geen partial: een lopende positie met een geraakte TP stond als
+     open rij met alleen het restant, zonder stap of geboekt bedrag. De sync kijkt na een update
+     alleen terug tot de vorige sync, dus een TP van daarvóór kwam nooit meer langs. Zet de sync
+     éénmalig terug tot de opening van de oudste open positie; de eerstvolgende sync bouwt de
+     partial-rij en laat de open rij erin opgaan, met je invoer. */
+  {v:9,note:'Hyperliquid: deels gesloten positie als partial',up(){
+    const open=T.filter(t=>t&&t.exchange==='hyperliquid'&&t.status==='open'&&+t.openTime>0);
+    if(!open.length||!CONNS.hyperliquid||!CONNS.hyperliquid.connected)return;
+    const vroegste=Math.min(...open.map(t=>+t.openTime));
+    CONNS.hyperliquid={...CONNS.hyperliquid,lastSync:vroegste-3600e3}; persistConns();
   }},
 ];
 async function runMigrations(){
@@ -2589,7 +2600,10 @@ function execTable(t){
      wij uit de fills niet kunnen zien. Wijkt onze eigen som daarvan af, dan zeggen we dat
      eerlijk in de tooltip in plaats van twee bedragen naast elkaar te zetten. */
   const eigen=sum.realized-sum.fees;
-  const netto=isFinite(+t.pnl)?+t.pnl:eigen;
+  /* Bij een positie die nog loopt (partial) is t.pnl bewust 0 - het geboekte deel staat in
+     realizedPnl. Anders stond hier +$ 0,00 onder een geraakte TP (Denny 07-10-2026). */
+  const geboekt=t.status==='partial'&&t.realizedPnl!==''&&t.realizedPnl!=null&&isFinite(+t.realizedPnl);
+  const netto=geboekt?+t.realizedPnl:isFinite(+t.pnl)?+t.pnl:eigen;
   const afw=Math.abs(netto-eigen)>0.01
     ? ` title="Uit de stappen berekend: ${geld(eigen)}. Het verschil komt door funding of afronding bij de exchange."` : '';
   const KOL=8;
@@ -7009,7 +7023,11 @@ const ExchangeAPI = {
       const sorted=[...aggregated].sort((a,b)=>((a.ms||0)-(b.ms||0))||String(a.tid||"").localeCompare(String(b.tid||"")));
       const out=[];
       const lopend={};   // coin → {pos, steps}
-      const sluitAf=(coin,st)=>{
+      /* loopt: de positie staat nog open maar is al deels geboekt (een TP geraakt). Dan één rij met
+         status partial: de volle grootte, de stappen tot nu toe, en het geboekte bedrag apart als
+         realizedPnl - zoals bij OKX. Gaat hij later helemaal dicht, dan komt dezelfde sleutel terug
+         als gesloten trade en werkt importTjClosed de rij bij. */
+      const sluitAf=(coin,st,loopt)=>{
         const steps=st.steps; if(!steps.length)return;
         const tl=fillTimeline(steps,{mult:1});
         if(!tl.some(isAfbouw))return;
@@ -7019,7 +7037,7 @@ const ExchangeAPI = {
         const bruto=tl.reduce((a,x)=>a+(x.pnl||0),0);
         const fees=tl.reduce((a,x)=>a+(x.fee||0),0);
         const net=bruto-fees;
-        const qty=sum.exitsAsset||sum.peak||0;
+        const qty=loopt?(sum.peak||0):(sum.exitsAsset||sum.peak||0);
         const entry=sum.avgEntry, exit=sum.avgExit;
         const afgeleid=steps.some(x=>x.synthetic);
         const fp=st.firstTid||(first.ts+"_"+coin+"_"+side+"_"+last.ts);
@@ -7041,6 +7059,7 @@ const ExchangeAPI = {
           positionId:coin,
           fills:tl,
           notes:afgeleid?"\u26a0 Entry afgeleid uit closedPnl, open-fill lag buiten het sync-venster":"",
+          ...(loopt?{status:"partial",realizedPnl:net.toFixed(4),pnl:"0"}:{}),
         });
       };
       for(const f of sorted){
@@ -7086,7 +7105,11 @@ const ExchangeAPI = {
         st.pos+=side==="buy"?szN:-szN;
         if(Math.abs(st.pos)<1e-9){ st.pos=0; sluitAf(coin,st); delete lopend[coin]; }
       }
-      return out;   // wat nog open staat komt niet mee: daar zorgt de open-positie-placeholder voor
+      /* Wat nog loopt komt alleen mee als er al iets van geboekt is. Zonder sluiting zorgt de
+         open-positie-placeholder ervoor; die kent alleen het restant, dus een TP was tot de laatste
+         sluiting onzichtbaar en de grootte kromp mee (Denny 07-10-2026). */
+      Object.entries(lopend).forEach(([coin,st])=>sluitAf(coin,st,true));
+      return out;
     },
     /* Na een sync: oude rijen uit het model-A-tijdperk (één rij per sluiting, gemarkeerd door
        migratie v6) opgaan in de levensloop die ze bevat. Notities en tags verhuizen mee. */

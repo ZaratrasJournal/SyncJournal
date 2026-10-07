@@ -28,6 +28,7 @@ module.exports = [
   'worker-monitoring',       // de Worker-telling voor het dagrapport lekt geen sleutels of IP's
   'okx-overzetten',          // oude backup: losse OKX-trades met dezelfde posId blijven apart (member Jarne)
   'nieuwe-positie-na-pauze', // dagen niet gesynct: nieuwe positie op dezelfde coin krijgt haar eigen datum
+  'hl-deels-dicht',          // Hyperliquid: een geraakte TP is zichtbaar terwijl de positie nog loopt
   'hl-echt',                 // Denny's echte wallet, afgespeeld uit tests/_fixtures (op CI overgeslagen)
   'kraken-levensloop', 'kraken-afronding', 'scenario-levensloop', 'gesynct-vergrendeld',
   'execution-stappen', 'koppelingen-menu', 'account-remove', 'robustness', 'multi-tab',

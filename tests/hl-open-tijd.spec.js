@@ -34,7 +34,7 @@ const GEOPEND = +new Date('2026-09-23T14:49:31'), SYNC = +new Date('2026-09-23T1
     };
     CONNS.hyperliquid = { connected: true, wallet: w, lastSync: 0, syncFrom: '' }; persistConns();
     await syncExchange('hyperliquid', { quiet: true });
-    const t = T.find(x => x.status === 'open');
+    const t = T.find(x => x.status === 'open' || x.status === 'partial');   // lopende positie; partial als er al iets geboekt is (07-10-2026)
     return t ? { open: +t.openTime || 0, date: t.date, time: t.time, entry: +t.entry, dir: t.dir,
       regel: (tradeTimeline(t) || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() } : null;
   }, [fills, posities, WALLET]);
@@ -125,7 +125,7 @@ const GEOPEND = +new Date('2026-09-23T14:49:31'), SYNC = +new Date('2026-09-23T1
       };
       CONNS.hyperliquid = { connected: true, wallet: w, lastSync: 0, syncFrom: '' }; persistConns();
       await syncExchange('hyperliquid', { quiet: true });
-      const t = T.find(x => x.status === 'open');
+      const t = T.find(x => x.status === 'open' || x.status === 'partial');   // lopende positie; partial als er al iets geboekt is (07-10-2026)
       return { n: T.length, open: +t.openTime || 0, date: t.date, time: t.time, notes: t.notes };
     }, [WALLET, GEOPEND, SYNC]);
     ok('geen dubbele rij, dezelfde trade', r.n === 1, JSON.stringify(r.n));

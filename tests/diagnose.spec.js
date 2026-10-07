@@ -12,14 +12,15 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
   await p.evaluate(() => { go('instellingen'); setSetTab('data'); });
   const panel = await p.evaluate(() => document.getElementById('diagPanel').innerText.replace(/\s+/g, ' '));
   ok('panel met Kopieer en Download, altijd zichtbaar', /Diagnose-rapport/.test(panel) && /Kopieer/.test(panel) && /Download/.test(panel));
-  ok('samenvatting: versie + schema, aantallen, laatste sync per koppeling', /v\d+\.\d+(\.\d+)? geladen/.test(panel) && /schema 8/.test(panel) && /40 trades · 4 open · 4 playbooks/.test(panel) && /Blofin \d\d-\d\d/.test(panel) && /Hyperliquid nooit/.test(panel), panel.slice(0, 400));
+  const SV = await p.evaluate(() => SCHEMA_VERSION);   // niet vast op een getal: elke opruimstap verhoogt hem
+  ok('samenvatting: versie + schema, aantallen, laatste sync per koppeling', /v\d+\.\d+(\.\d+)? geladen/.test(panel) && panel.includes('schema ' + SV) && /40 trades · 4 open · 4 playbooks/.test(panel) && /Blofin \d\d-\d\d/.test(panel) && /Hyperliquid nooit/.test(panel), panel.slice(0, 400));
 
   console.log('─── Het rapport ───');
   const rep = await p.evaluate(async () => { const r = await diagReport(); return { r, json: JSON.stringify(r) }; });
   const r = rep.r;
   ok('alle blokken aanwezig', ['app', 'opslag', 'data', 'sync', 'backup', 'tradingplan', 'zelfcontrole', 'fouten'].every(k => k in r), Object.keys(r).join());
   ok('geen sleutels, wallet, notities of screenshots in het rapport', !/BLOFIN-SECRET|BLOFIN-KEY|apiKey|apiSecret|passphrase|0x1d14aabb|data:image|Notitie \d|ünïcödé/.test(rep.json));
-  ok('app: versie, schema, host, browser, tijdzone', r.app.loaded === (await p.evaluate(() => APP_VERSION)) && r.app.schema === 8 && typeof r.app.host === 'string' && /Chrome|Edge|Chromium|browser/.test(r.app.browser) && !!r.app.tz, JSON.stringify(r.app).slice(0, 200));
+  ok('app: versie, schema, host, browser, tijdzone', r.app.loaded === (await p.evaluate(() => APP_VERSION)) && r.app.schema === SV && typeof r.app.host === 'string' && /Chrome|Edge|Chromium|browser/.test(r.app.browser) && !!r.app.tz, JSON.stringify(r.app).slice(0, 200));
   ok('opslag: schatting, persisted, IndexedDB- en localStorage-omvang, tp2 aanwezig, geen oude app', typeof r.opslag.idb.trades === 'number' && r.opslag.idb.trades > 10000 && Object.keys(r.opslag.localStorage).some(k => /^sj_/.test(k)) && r.opslag.tp2.aanwezig === true && r.opslag.tj_oud_aanwezig === false, JSON.stringify(r.opslag).slice(0, 300));
   ok('data: aantallen per status/kind/exchange, met srcId/fills/tps/screenshots, datumbereik, prullenbak, snapshots', r.data.trades === 40 && r.data.status.open === 4 && r.data.status.partial === 4 && r.data.kind.paper === 7 && r.data.exchange.blofin === 6 && r.data.met_fills > 0 && r.data.met_tps === 40 && r.data.met_screenshots === 8 && Array.isArray(r.data.datumbereik) && r.data.trash === 2 && Array.isArray(r.data.snapshots), JSON.stringify(r.data).slice(0, 400));
   ok('sync: per koppeling verbonden/hint (laatste 4)/lastSync/backoff, worker-blok, interval', r.sync.conns.blofin.connected === true && r.sync.conns.blofin.hint === '5533' && /^2026-/.test(r.sync.conns.blofin.lastSync || '') && r.sync.conns.hyperliquid.lastSync === null && 'reachable' in r.sync.worker && r.sync.interval === '30m', JSON.stringify(r.sync).slice(0, 300));

@@ -63,7 +63,9 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
   const snapTs0 = await p.evaluate(() => (SNAP_META[0] || {}).ts || '');
   await p.evaluate(d => dovImportModal(d, 'kapot.json'), DS.kapot());
   await p.evaluate(async () => { await dovImportGo(); await new Promise(r => setTimeout(r, 500)); });
-  const after4 = await p.evaluate(() => ({ modal: document.getElementById('modal').innerText.replace(/\s+/g, ' '), pnl3: T[3].pnl, snapLabel: (SNAP_META[0] || {}).label, snapTs: (SNAP_META[0] || {}).ts, last: DB.load('last_import', null) }));
+  // De import-kopie zoeken, niet SNAP_META[0]: een bestand van een ouder schema krijgt daarna nog een
+  // kopie 'vóór schema-update'. De knop in de modal zet de import-kopie terug (snap.id).
+  const after4 = await p.evaluate(() => ({ modal: document.getElementById('modal').innerText.replace(/\s+/g, ' '), pnl3: T[3].pnl, snapLabel: (SNAP_META.find(s => s.label === 'vóór import') || {}).label, snapTs: (SNAP_META.find(s => s.label === 'vóór import') || {}).ts, last: DB.load('last_import', null) }));
   ok('controle mislukt: 2 trades met onleesbare P&L benoemd, niets kwijt', /Controle mislukt/.test(after4.modal) && /2 trades hebben een onleesbare P&L/.test(after4.modal) && /Er is niets kwijt/.test(after4.modal), after4.modal.slice(0, 250));
   ok('veiligheidskopie "vóór import" is gemaakt; last_import onthoudt de afwijking', after4.snapLabel === 'vóór import' && after4.snapTs !== snapTs0 && after4.last && after4.last.ok === false && after4.last.issues.length > 0, JSON.stringify(after4.last));
   ok('knop "Veiligheidskopie terugzetten" staat in de modal', /Veiligheidskopie terugzetten/.test(after4.modal));

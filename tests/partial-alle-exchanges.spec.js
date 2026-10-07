@@ -3,10 +3,10 @@
 //   1. een positie opent en wordt deels gesloten  → precies één rij, ook na herhaalde syncs
 //   2. de rest gaat dicht                          → nog steeds één rij, nu gesloten
 //   3. een nieuwe positie op hetzelfde instrument  → een tweede rij, de eerste blijft heel
-// Voor OKX en Blofin (positiegeschiedenis) toont die ene rij het geboekte deel als partial.
-// Voor Hyperliquid en Kraken (levensloop uit fills/gebeurtenissen) is de lopende positie een
-// open rij; het geboekte deel wordt pas zichtbaar wanneer de levensloop klaar is. Dat is een
-// bekend gat, geen dubbeltelling — en die grens staat hier expliciet in de assertie.
+// Voor OKX, Blofin en (sinds 07-10-2026) Hyperliquid toont die ene rij het geboekte deel als
+// partial. Voor Kraken (levensloop uit gebeurtenissen) is de lopende positie een open rij; het
+// geboekte deel wordt pas zichtbaar wanneer de levensloop klaar is. Dat is een bekend gat, geen
+// dubbeltelling — en die grens staat hier expliciet in de assertie.
 const { chromium } = require('playwright'); const path = require('path');
 let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  ✓ ' + n)) : (fail++, console.log('  ✗ ' + n + (e ? ' → ' + e : ''))); };
 const bij = (a, b, tol) => Math.abs(a - b) <= (tol == null ? 1e-6 : tol);
@@ -135,8 +135,11 @@ const T0 = NU - 2 * DAG, T1 = T0 + 2 * UUR, T2 = T0 + 5 * UUR, T3 = NU - 40 * 60
   ok('OKX en Blofin: die rij is partial met het geboekte deel apart',
     s.okx[0].status === 'partial' && bij(s.okx[0].realized, 3.4562, 1e-3) && s.okx[0].pnl === 0 &&
     s.blofin[0].status === 'partial' && bij(s.blofin[0].realized, 39, 1e-3) && s.blofin[0].pnl === 0, JSON.stringify({ okx: s.okx[0], blofin: s.blofin[0] }));
-  ok('Hyperliquid en Kraken: de lopende positie is een open rij (bekend gat: het geboekte deel wacht op de sluiting)',
-    s.hyperliquid[0].status === 'open' && s.kraken[0].status === 'open', JSON.stringify({ hl: s.hyperliquid[0], kr: s.kraken[0] }));
+  // Hyperliquid sinds 07-10-2026 (melding Denny): 4 van 10 SOL dicht, closedPnl 20 min 2× 0,02 fee
+  ok('Hyperliquid: die rij is partial met het geboekte deel apart (19,96)',
+    s.hyperliquid[0].status === 'partial' && bij(s.hyperliquid[0].realized, 19.96, 1e-3) && s.hyperliquid[0].pnl === 0, JSON.stringify(s.hyperliquid[0]));
+  ok('Kraken: de lopende positie is een open rij (bekend gat: het geboekte deel wacht op de sluiting)',
+    s.kraken[0].status === 'open', JSON.stringify(s.kraken[0]));
   ok('en niemand heeft zijn notitie verloren', EX.every(ex => s[ex][0].notes === 'notitie ' + ex), JSON.stringify(EX.map(ex => s[ex][0].notes)));
 
   console.log('─── 2. De rest gaat dicht ───');

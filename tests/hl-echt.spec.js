@@ -74,7 +74,7 @@ const overslaan = reden => { console.log('  ⏭ ' + reden + ' — overgeslagen')
   ok('boot zonder JS-fouten', errs.length === 0, errs[0]);
 
   const hlTrades = () => p.evaluate(() => T.filter(t => t.exchange === 'hyperliquid').map(t => ({ id: t.id, status: t.status, dir: t.dir,
-    entry: t.entry, exit: t.exit, pnl: +t.pnl, fees: +t.fees, stop: +t.stop, openTime: +t.openTime, date: t.date,
+    entry: t.entry, exit: t.exit, pnl: +t.pnl, fees: +t.fees, stop: +t.stop, openTime: +t.openTime, date: t.date, qty: +t.qtyAsset, realized: +t.realizedPnl || 0,
     layers: t.layers, emotions: t.emotions, mistakes: t.mistakes, tags: t.tags, notes: t.notes })));
   const invoerIntact = t => !!t && zelfde(t.layers, JOUW.layers) && zelfde(t.emotions, JOUW.emotions) && zelfde(t.mistakes, JOUW.mistakes)
     && zelfde(t.tags, JOUW.tags) && t.notes === JOUW.notes && Math.abs(t.stop - STOP) < 1e-9;
@@ -127,6 +127,9 @@ const overslaan = reden => { console.log('  ⏭ ' + reden + ' — overgeslagen')
     const r = t2.find(t => t.status !== 'closed' && t.openTime === O.open);
     ok(`de lopende positie van ${dag(O.open)} staat open op haar eigen datum, entry ${+O.entry.toPrecision(12)}, zonder je invoer van de vorige`,
       !!r && r.date === dag(O.open) && Math.abs(r.entry - O.entry) < 1e-6 && !(r.layers || []).length, JSON.stringify(r && { date: r.date, entry: r.entry, layers: r.layers }));
+    // Melding 07-10-2026: een geraakte TP was onzichtbaar tot de hele positie dicht was
+    if (O.closes.length) ok(`al deels dicht: partial, volle grootte ${+O.qty.toPrecision(12)}, geboekt ${O.netto.toFixed(2)} na fees`,
+      !!r && r.status === 'partial' && Math.abs(r.qty - O.qty) < 1e-9 && Math.abs(r.realized - O.netto) < 1e-3, JSON.stringify(r && { status: r.status, qty: r.qty, realized: r.realized }));
   }
   const somApp = t2.filter(t => t.status === 'closed').reduce((s, t) => s + t.pnl, 0), somHl = dicht.reduce((s, x) => s + x.netto, 0);
   ok(`totale P&L ${somHl.toFixed(2)} = wat Hyperliquid zegt`, Math.abs(somApp - somHl) < 1e-4 * dicht.length, somApp.toFixed(6) + ' vs ' + somHl.toFixed(6));
