@@ -23,9 +23,9 @@ const TRADES = [
   live(82, 'hyperliquid', '2026-10-05', '16:24', 0, { status: 'partial', realizedPnl: 9.5332, closeTime: '' }),
   live(83, 'okx', '2026-10-05', '06:16', 0, { status: 'partial', realizedPnl: 2.5092, closeTime: '' }),
 ];
-// van oud naar nieuw: 0,0089 → 0,4597 → −1,5625 → −0,9006 → −10,8313. De twee lopende posities (partial)
-// tellen in de statistieken mee als "gesloten + partial", met P&L 0: ze staan achteraan en veranderen niets.
-const VERWACHT = [0.01, 0.46, -1.56, -0.9, -10.83, -10.83, -10.83];
+// van oud naar nieuw: 0,0089 → 0,4597 → −1,5625 → −0,9006 → −10,8313, dan het geboekte deel van de twee
+// lopende posities (v1.5): 83 om 06:16 (+2,5092 → −8,3221), 82 om 16:24 (+9,5332 → +1,2111).
+const VERWACHT = [0.01, 0.46, -1.56, -0.9, -10.83, -8.32, 1.21];
 
 (async () => {
   const b = await chromium.launch(); const { p, errs } = await H.openJournal(b);
@@ -41,8 +41,8 @@ const VERWACHT = [0.01, 0.46, -1.56, -0.9, -10.83, -10.83, -10.83];
 
   console.log('─── Equity-curve ───');
   const reeks = await p.evaluate(() => window.__eq);
-  ok('van oud naar nieuw: eerst de kleine winsten, de −9,93 als laatste', JSON.stringify(reeks) === JSON.stringify(VERWACHT), JSON.stringify(reeks));
-  ok('eindigt op de Netto P&L (−10,83)', !!reeks && reeks[reeks.length - 1] === -10.83, JSON.stringify(reeks));
+  ok('van oud naar nieuw: eerst de kleine winsten, dan de −9,93, dan de geboekte TP\'s', JSON.stringify(reeks) === JSON.stringify(VERWACHT), JSON.stringify(reeks));
+  ok('eindigt op de Netto P&L (+1,21)', !!reeks && reeks[reeks.length - 1] === 1.21, JSON.stringify(reeks));
   // een handmatige trade komt vooraan in T (unshift), een sync achteraan: de volgorde in T zegt niets
   const gemengd = await p.evaluate(() => { T.unshift(T.pop()); T.reverse(); render(); return window.__eq; });
   ok('volgorde in de opslag maakt niet uit', JSON.stringify(gemengd) === JSON.stringify(VERWACHT), JSON.stringify(gemengd));

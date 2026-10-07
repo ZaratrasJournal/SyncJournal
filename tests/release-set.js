@@ -32,6 +32,7 @@ module.exports = [
   'hl-deels-dicht',          // Hyperliquid: een geraakte TP is zichtbaar terwijl de positie nog loopt
   'equity-curve',            // equity-curve van oud naar nieuw, zonder verzonnen toppen; geen 493%-trend
   'jaaroverzicht-past',      // Kalender: het jaaroverzicht past in zijn paneel, ook op een laptop
+  'lopend-niet-meegeteld',   // geboekt geld telt (ook van een lopende positie), uitkomsten pas als hij dicht is
   'hl-echt',                 // Denny's echte wallet, afgespeeld uit tests/_fixtures (op CI overgeslagen)
   'kraken-levensloop', 'kraken-afronding', 'scenario-levensloop', 'gesynct-vergrendeld',
   'execution-stappen', 'koppelingen-menu', 'account-remove', 'robustness', 'multi-tab',

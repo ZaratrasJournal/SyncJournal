@@ -1611,9 +1611,10 @@ function _pctBases(){
   const key=T.length+'|'+total.toFixed(2)+'|'+DB.load('data_ts',0);
   if(key===_pctKey&&_pctMap)return _pctMap;
   const m=new Map();
-  const closed=T.filter(t=>t&&t.status==='closed'&&isFinite(+t.pnl)).sort((a,b)=>tradeMoment(a)-tradeMoment(b));
+  // Everything booked, partials too: the balance already holds a TP that was hit (v1.5).
+  const geld=T.filter(t=>t&&(t.status==='closed'||t.status==='partial')).sort((a,b)=>tradeMoment(a)-tradeMoment(b));
   let acc=0;
-  for(let i=closed.length-1;i>=0;i--){acc+=+closed[i].pnl||0;m.set(closed[i].id,total-acc);}
+  for(let i=geld.length-1;i>=0;i--){acc+=geboekt(geld[i]);m.set(geld[i].id,total-acc);}
   _pctKey=key;_pctMap=m;return m;
 }
 function pnlBaseOf(t){
@@ -1629,11 +1630,12 @@ const netUsd=rows=>(rows||[]).reduce((s,t)=>s+pnlUsdOf(t),0);
 function pnlPctOf(t){if(!t)return null;const b=pnlBaseOf(t);return b>0?+((pnlUsdOf(t)/b)*100).toFixed(2):null;}
 // Totaal-regel: netto van de selectie t.o.v. de basis van de oudste trade erin.
 function pnlPctTotal(rows,net){
-  const closed=(rows||[]).filter(t=>t&&t.status==='closed');
-  const n=closed.length?netUsd(closed):(+net||0);   // altijd in dollars, ongeacht de weergave
+  // Alles wat geboekt is; een partial telt met zijn geboekte deel als hij via boeking() binnenkomt.
+  const geld=(rows||[]).filter(t=>t&&(t.status==='closed'||t.status==='partial'));
+  const n=geld.length?netUsd(geld):(+net||0);   // altijd in dollars, ongeacht de weergave
   const ref=+((STATE||{}).pctRef)||0;if(ref>0)return +(n/ref*100).toFixed(2);
-  if(!closed.length)return null;
-  const oldest=closed.reduce((a,c)=>tradeMoment(c)<tradeMoment(a)?c:a);
+  if(!geld.length)return null;
+  const oldest=geld.reduce((a,c)=>tradeMoment(c)<tradeMoment(a)?c:a);
   const b=pnlBaseOf(oldest);return b>0?+(n/b*100).toFixed(2):null;
 }
 /* ═══ €/%/R-weergave (Denny 2026-09-18, zoals de originele Morani-journal) ═══
@@ -1648,7 +1650,7 @@ const UNIT=()=>STATE.unit||'val';
 function tradeROrNull(t){
   // Live en gesloten, met stop en size: netto-R wint, ook van een opgeslagen waarde.
   // Valt hij absurd uit (bv. een size die geen dollars is), dan terug naar de opgeslagen R.
-  if(t&&isLive(t)&&t.status==='closed'){const n=rNetto(t);if(n!=null&&Math.abs(n)<=R_SANE_MAX)return n;}
+  if(t&&isLive(t)&&(t.status==='closed'||t._geboekt)){const n=rNetto(t);if(n!=null&&Math.abs(n)<=R_SANE_MAX)return n;}
   const r=+t.r;if(r&&Math.abs(r)<=R_SANE_MAX)return r;const th=theoR(t);return (th==null||!isFinite(th)||Math.abs(th)>R_SANE_MAX)?null:th;}
 // R-multiple zoals TradeZella e.a.: netto P&L (na fees) ÷ je risico in $, met risico =
 // |entry − stop| ÷ entry × size. Zo rekende het formulier al; tabel, dashboard en gemiddelden
@@ -1710,7 +1712,7 @@ function acctCapital(txs){let c=0;(txs||[]).forEach(t=>{const a=parseFloat(t.amo
 /* Dezelfde trades als de statistieken (CLOSED): ook een deels gesloten trade telt met wat er
    al geboekt is, en een paper-/backtest-trade is geen geld - die hoort niet in je saldo.
    (Scenario-ronde 24-09-2026: partial telde niet mee, oefentrades juist wel.) */
-function acctPnl(id){return T.filter(t=>t&&t.status!=='open'&&isLive(t)&&t.exchange===id).reduce((s,t)=>s+(+t.pnl||0),0);}
+function acctPnl(id){return T.filter(t=>t&&t.status!=='open'&&isLive(t)&&t.exchange===id).reduce((s,t)=>s+geboekt(t),0);}
 // Saldo handmatig account = max(0, ingelegd kapitaal) + gerealiseerde trade-P&L.
 function manualBalance(m){return Math.max(0,acctCapital(m.transactions))+acctPnl(m.id);}
 // Totaalbalans over alle accounts (exchanges = mock-seedwaarde tot live-API; handmatig = berekend).
@@ -1822,7 +1824,7 @@ function genTrades(n){
 // Maand-P&L in de actieve unit: € = netto, % = t.o.v. de balans bij die maandstart
 // (per maand, bewust geen samengesteld rendement), R = som van geldige R's.
 function monthlyUnit(){const mn=['jan','feb','mrt','apr','mei','jun','jul','aug','sep','okt','nov','dec'];const by={};
-  CLOSED.filter(hasDate).forEach(t=>{const k=t.date.slice(0,7);(by[k]=by[k]||[]).push(t);});
+  BOEKINGEN.filter(hasDate).forEach(t=>{const k=t.date.slice(0,7);(by[k]=by[k]||[]).push(t);});
   return Object.keys(by).sort().map(k=>{const rows=by[k];const net=rows.reduce((s,t)=>s+(+t.pnl||0),0);
     let v=net;
     if(UNIT()==='pct'){const p=pnlPctTotal(rows,net);v=p==null?0:p;}
@@ -1839,7 +1841,7 @@ const KINDS={live:{label:'Live',color:'var(--green)'},gemist:{label:'Gemist',col
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v1.4.2';
+const APP_VERSION='v1.5';
 const SCHEMA_VERSION=10;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -2090,6 +2092,29 @@ function selfCheck(){
 // Voorbeelddata laden is een bewuste actie (loadDemoData), geen automatische reseed.
 let T=[]; // geladen in boot() uit IndexedDB (async)
 let CLOSED=[];
+let BOEKINGEN=[];
+/* Two lists (Denny 07-10-2026, option A). CLOSED: trades with an outcome, for anything that counts,
+   divides or decides win/loss. A running position (open, or partial after a TP) can still hit its
+   stop. BOEKINGEN: all booked money, for anything that sums an amount; a partial carries what it
+   booked so far. Until v1.5 a partial was a 0 trade in CLOSED: not a win, so it lowered win-rate
+   and counted as a loss in the streak, while a synced partial's TP money was missing from net P&L. */
+function heeftUitkomst(t){return t.status!=='open'&&t.status!=='partial';}
+/* A manual partial books into pnl (so does a trade the user set to partial). A synced partial keeps
+   pnl 0 and the booked amount in realizedPnl - but only where the adapter says the row carries its
+   own money (partialDraagtGeboekt). In MEXC/Kraken's sibling model realizedPnl is the sum of closed
+   sibling rows that count already; reading it would count that money twice (review 07-10-2026). */
+function geboekt(t){
+  const p=+t.pnl||0;
+  if(t.status==='partial'&&!p&&t.realizedPnl!==''&&t.realizedPnl!=null&&isFinite(+t.realizedPnl)){
+    const ad=ExchangeAPI[t.exchange];if(ad&&ad.partialDraagtGeboekt)return +t.realizedPnl;}
+  return p;
+}
+/* pnlUsd only exists in EUR view (fxView); % and R read it, so it must follow the booked amount.
+   _geboekt makes tradeROrNull take net R of what was booked, not the stored R of the whole position. */
+function boeking(t){if(t.status!=='partial')return t;const v=geboekt(t);return {...t,pnl:v,_geboekt:true,...(t._fx?{pnlUsd:v/t._fx}:{})};}
+// Calendar day totals from BOEKINGEN rows: v = all booked money, n/w = closed trades, l = running.
+function dagTotalen(rows){const by={};rows.forEach(t=>{const d=(by[t.date]=by[t.date]||{v:0,n:0,w:0,l:0});
+  d.v+=t.pnl;if(!heeftUitkomst(t)){d.l++;return;}d.n++;if(t.pnl>0)d.w++;});return by;}
 /* ═══ Twee tabbladen tegelijk (audit 2026-09-18) ═══
    Voorheen won simpelweg de laatste schrijver: had je de journal in twee tabs open, dan
    overschreef het oudste tabblad stilletjes het werk van het andere. Elke tab houdt nu bij
@@ -2437,7 +2462,7 @@ function applyFilter(rows){const f=FILTER;return rows.filter(t=>kindMatch(t,f.ki
 // Zelfde filters MAAR zonder de kind-filter — voor de real/paper/backtest-vergelijking (moet alle soorten zien).
 function applyFilterNoKind(rows){const f=FILTER;return rows.filter(t=>(!f.exchange.length||f.exchange.includes(t.exchange))&&(!f.pair.length||f.pair.includes(t.pair))&&(!f.setup.length||f.setup.includes(t.setup))&&(!f.session.length||f.session.includes(sessionOf(t)))&&(!f.dir||t.dir===f.dir)&&(!f.tag.length||tradeTagsAll(t).some(x=>f.tag.includes(x)))&&(!f.mistake.length||tradeMistakes(t).some(x=>f.mistake.includes(x)))&&(!f.status.length||f.status.includes(t.status))&&(!f.dateFrom||t.date>=f.dateFrom)&&(!f.dateTo||t.date<=f.dateTo));}
 // Buckets voor edge-erosion (real vs paper vs backtest) — gedeeld door analytics + playbook-detail.
-function eroBuckets(rows){const b={backtest:[],paper:[],real:[]};(rows||[]).forEach(x=>{if(x.status==='open')return;const k=x.kind==='backtest'?'backtest':x.kind==='paper'?'paper':(isLive(x)?'real':null);if(k)b[k].push(x);});
+function eroBuckets(rows){const b={backtest:[],paper:[],real:[]};(rows||[]).forEach(x=>{if(!heeftUitkomst(x))return;const k=x.kind==='backtest'?'backtest':x.kind==='paper'?'paper':(isLive(x)?'real':null);if(k)b[k].push(x);});
   const stat=arr=>{const n=arr.length,g=gemR(arr);return {n,rN:g.n,wr:n?Math.round(arr.filter(x=>tradeR(x)>0).length/n*100):0,avgR:g.avg,net:arr.reduce((a,c)=>a+(+c.pnl||0),0)};};
   return {backtest:stat(b.backtest),paper:stat(b.paper),real:stat(b.real)};}
 function countActive(){return MULTI_FILTER_KEYS.filter(k=>FILTER[k].length).length+(FILTER.dir?1:0)+((FILTER.dateFrom||FILTER.dateTo)?1:0)+((FILTER.kind&&FILTER.kind!=='live')?1:0);}
@@ -2996,7 +3021,7 @@ document.addEventListener('click',e=>{if(!e.target.closest('.dd'))document.query
 function kpiBlock(key,ns){
   const sk=ns?ns+'_'+key:key;
   const cfg={net:{label:'Netto P&L'},wr:{label:'Win-rate'},pf:{label:'Profit factor'},exp:{label:'Expectancy'},r:{label:'Gem. R'}}[key];
-  const per=KPIPER[sk],lst=periodTrades(CLOSED,per),chr=lst.slice().sort((x,y)=>(x.date+x.time)<(y.date+y.time)?-1:1),ag=aggOf(lst);
+  const per=KPIPER[sk],lst=periodTrades(key==='net'?BOEKINGEN:CLOSED,per),chr=lst.slice().sort((x,y)=>(x.date+x.time)<(y.date+y.time)?-1:1),ag=aggOf(lst);
   let cum=0,w=0,gw=0,gl=0,rs=0;const sp=[];
   chr.forEach((t,i)=>{cum+=t.pnl;rs+=tradeR(t);if(t.pnl>0){w++;gw+=t.pnl;}else gl+=Math.abs(t.pnl);sp.push(key==='net'?cum:key==='wr'?w/(i+1)*100:key==='pf'?(gl?gw/gl:(gw>0?4:0)):key==='r'?rs/(i+1):cum/(i+1));});
   const mid=Math.floor(chr.length/2),pa=aggOf(chr.slice(0,mid)),ca=aggOf(chr.slice(mid));
@@ -3023,8 +3048,11 @@ function kpiBlock(key,ns){
   else val=key==='wr'?Math.round(ag.wr)+'%':pfTxt(ag.pf);
   const vc=key==='net'?cls(ag.net):key==='exp'?cls(ag.exp):key==='r'?cls(ag.avgR):'',mask=(key==='net'||key==='exp')?unitMask():'';
   const spark=sp.length>1?sp:[ag.net||0,ag.net||0];
+  // net P&L includes what running positions booked so far; say how much, so it adds up
+  const lopend=key==='net'&&UNIT()==='val'?lst.filter(t=>t.status==='partial').reduce((s,t)=>s+t.pnl,0):0;
   return `<div class="kpi kcard"><div class="ktop"><div class="k">${cfg.label}</div>${perDD(sk)}</div>
     <div class="kv-row"><div class="v ${vc}${mask}">${val}</div>${dTxt?`<span class="ktrend ${dUp?'up':'down'}" title="tweede helft van de periode t.o.v. de eerste helft">${dTxt} ${dUp?'↗':'↘'}</span>`:''}</div>
+    ${lopend?`<div class="d mask">waarvan ${eurCS(lopend)} uit lopende posities</div>`:''}
     <div class="kspark">${miniSpark(spark,dUp)}</div></div>`;
 }
 function pnlCell(pnl,pct){pnl=+pnl||0;const noPct=(pct==null||!isFinite(+pct));pct=+pct||0;return `<span style="display:inline-flex;flex-direction:column;align-items:flex-end;line-height:1.25"><span class="num ${cls(pnl)} mask" style="white-space:nowrap">${eurCS(pnl)}</span>${noPct?'':`<span class="num ${cls(pnl)}" style="font-size:12px;opacity:.8;white-space:nowrap">${arr(pnl)}${Math.abs(pct).toFixed(2).replace('.',',')}%</span>`}</span>`;}
@@ -3158,7 +3186,7 @@ function donut(size=132){
 function equity(h,list){
   /* T has no fixed order: a manual trade goes in front, a sync appends at the back. This used
      reverse(), which assumed newest-first, so a synced journal drew its curve backwards. */
-  const src=(list||CLOSED).slice().sort((a,b)=>tradeMoment(a)-tradeMoment(b));
+  const src=(list||BOEKINGEN).slice().sort((a,b)=>tradeMoment(a)-tradeMoment(b));
   let cum=0;const data=[];src.forEach((tr,i)=>{cum+=(+tr.pnl||0);data.push({x:i,y:+cum.toFixed(2)});});
   if(!data.length)data.push({x:0,y:0});
   return rcAreaChart(data,{col:themeColors().accent,gid:'gEq',yfmt:v=>bedragKort(v),tfmt:eurS,name:'Netto P&L',h:h||188,cls:'ch-eq'});
@@ -3229,12 +3257,12 @@ function pgDashboard(){
   // "Deze maand" is nu écht de huidige maand (was: de hele gefilterde selectie) en YTD
   // het lopende jaar; beide volgen de €/%/R-weergavekeuze. De balans blijft altijd valuta.
   const _mm=new Date().toISOString().slice(0,7);
-  const mRows=CLOSED.filter(t=>String(t.date||'').startsWith(_mm));
+  const mRows=BOEKINGEN.filter(t=>String(t.date||'').startsWith(_mm));
   const mNet=mRows.reduce((s,t)=>s+(+t.pnl||0),0);
   const _yr=String(new Date().getFullYear());
-  // Zelfde bron als "deze maand" (CLOSED, mét je filter). Dit telde eerst álle trades, dus met
+  // Zelfde bron als "deze maand" (BOEKINGEN, mét je filter). Dit telde eerst álle trades, dus met
   // filter "Live trades" kwamen de backtests als gerealiseerde winst in YTD (Denny 29-09-2026).
-  const yRows=CLOSED.filter(t=>String(t.date||'').startsWith(_yr));
+  const yRows=BOEKINGEN.filter(t=>String(t.date||'').startsWith(_yr));
   const ytd=yRows.reduce((s,t)=>s+(+t.pnl||0),0);
   let ytdTxt;
   if(UNIT()==='val'){const _y=netUsd(yRows),_base=totalBalance()-_y;ytdTxt=`YTD <b class="num ${cls(ytd)} mask">${eurS(ytd)}${_base>0?' ('+(_y>=0?'+':'−')+Math.abs(_y/_base*100).toFixed(1).replace('.',',')+'%)':''}</b>`;}
@@ -3271,7 +3299,7 @@ function pgTrades(){
     const c=(typeof x==='string')?(x<y?-sd:x>y?sd:0):((x-y)*sd);
     return c||((a.id-b.id)*sd);   // gelijk moment: vaste volgorde, geen geschuif bij hertekenen
   });
-  const maxS=Math.max(1,...rows.map(SZ)),net=rows.reduce((s,t)=>s+t.pnl,0);
+  const maxS=Math.max(1,...rows.map(SZ)),net=rows.reduce((s,t)=>s+geboekt(t),0);
   // Paginatie: render alleen de huidige pagina (houdt de DOM klein bij duizenden trades).
   const PAGE=100;let tPage=STATE.tradePage||0;const pageCount=Math.max(1,Math.ceil(rows.length/PAGE));
   if(tPage>=pageCount)tPage=pageCount-1;if(tPage<0)tPage=0;STATE.tradePage=tPage;
@@ -3313,7 +3341,7 @@ function pgTrades(){
         <td data-l="Setup">${setupBadge(t.setup)}</td>${VV('tSessie')?`<td data-l="Sessie">${sessBadge(sessionOf(t))}</td>`:''}
         ${VV('tTags')?`<td data-l="Tags" style="max-width:240px">${kleurChips(overzichtTags(t))}</td>`:''}</tr>
         <tr class="drow" id="drow-${t.id}" hidden onclick="openForm(${t.id})"><td colspan="${cols.length+1}">${tradeHoverDetail(t)}</td></tr>`;}).join('')}</tbody>
-      <tfoot><tr><td class="cbx"></td><td colspan="${cols.findIndex(c=>c[0]==='pnl')}">Totaal (${rows.length})</td><td class="rt">${pnlCell(net,pnlPctTotal(rows,net))}</td>${cols.length-cols.findIndex(c=>c[0]==='pnl')-1?`<td colspan="${cols.length-cols.findIndex(c=>c[0]==='pnl')-1}"></td>`:''}</tr></tfoot>
+      <tfoot><tr><td class="cbx"></td><td colspan="${cols.findIndex(c=>c[0]==='pnl')}">Totaal (${rows.length})</td><td class="rt">${pnlCell(net,pnlPctTotal(rows.map(boeking),net))}</td>${cols.length-cols.findIndex(c=>c[0]==='pnl')-1?`<td colspan="${cols.length-cols.findIndex(c=>c[0]==='pnl')-1}"></td>`:''}</tr></tfoot>
     </table></div>${pageCount>1?`<div class="pager">
       <button class="btn" ${tPage===0?'disabled':''} onclick="setTradePage(${tPage-1})">‹ Vorige</button>
       <span class="pageinfo"><b>${pStart+1}–${Math.min(pStart+PAGE,rows.length)}</b> van ${rows.length} · pagina ${tPage+1}/${pageCount}</span>
@@ -3596,7 +3624,7 @@ function calNav(delta){const [y,m]=STATE.calMonth.split('-').map(Number);let mm=
 function calYearNav(delta){const [y,m]=STATE.calMonth.split('-').map(Number);STATE.calMonth=`${y+delta}-${String(m).padStart(2,'0')}`;render();}
 function pgKalender(){
   const [Y,M]=STATE.calMonth.split('-').map(Number);
-  const byDay={};CLOSED.filter(t=>hasDate(t)&&t.date.slice(0,7)===STATE.calMonth).forEach(t=>{(byDay[t.date]=byDay[t.date]||{v:0,n:0,w:0});byDay[t.date].v+=t.pnl;byDay[t.date].n++;if(t.pnl>0)byDay[t.date].w++;});
+  const byDay=dagTotalen(BOEKINGEN.filter(t=>hasDate(t)&&t.date.slice(0,7)===STATE.calMonth));
   const days=Object.entries(byDay);const green=days.filter(([,d])=>d.v>0).length,redd=days.filter(([,d])=>d.v<0).length;
   const monNet=days.reduce((s,[,d])=>s+d.v,0),monTrades=days.reduce((s,[,d])=>s+d.n,0),monWins=days.reduce((s,[,d])=>s+d.w,0);
   const monWR=monTrades?Math.round(monWins/monTrades*100):0;
@@ -3608,20 +3636,20 @@ function pgKalender(){
   for(let d=1;d<=dim;d++){const ds=`${STATE.calMonth}-${String(d).padStart(2,'0')}`;cells.push({d,day:byDay[ds]});}
   while(cells.length%7)cells.push({empty:true});
   let grid='';for(let w=0;w<cells.length/7;w++){
-    const wk=cells.slice(w*7,w*7+7);let wkNet=0,wkN=0;
+    const wk=cells.slice(w*7,w*7+7);let wkNet=0,wkD=0;
     const row=wk.map(c=>{
       if(c.empty)return '<div class="cell empty"></div>';
       const dd=c.day;if(!dd)return `<div class="cell"><span class="dn">${c.d}</span></div>`;
-      wkNet+=dd.v;wkN+=dd.n;
+      wkNet+=dd.v;wkD++;
       const inten=Math.round(Math.min(1,Math.abs(dd.v)/maxAbs)*55+18);
       const bg=`color-mix(in srgb,var(--${dd.v>=0?'green':'red'}) ${inten}%,transparent)`;
       const bd=`color-mix(in srgb,var(--${dd.v>=0?'green':'red'}) ${inten+18}%,transparent)`;
       return `<div class="cell ${dd.v>=0?'pos':'neg'}" style="background:${bg};border-color:${bd}"><span class="dn">${c.d}</span>
-        <div class="cbot"><span class="cp ${cls(dd.v)}">${eurS(dd.v)}</span><span class="cn">${dd.n}·${Math.round(dd.w/dd.n*100)}%</span></div></div>`;
+        <div class="cbot"><span class="cp ${cls(dd.v)}">${eurS(dd.v)}</span><span class="cn">${dd.n?`${dd.n}·${Math.round(dd.w/dd.n*100)}%`:'loopt'}</span></div></div>`;
     }).join('');
-    grid+=`<div class="calrow">${row}<div class="wtot ${wkN?cls(wkNet):''}">${wkN?eurS(wkNet):'—'}<small>wk ${w+1}</small></div></div>`;
+    grid+=`<div class="calrow">${row}<div class="wtot ${wkD?cls(wkNet):''}">${wkD?eurS(wkNet):'—'}<small>wk ${w+1}</small></div></div>`;
   }
-  const yByDay={};CLOSED.filter(t=>hasDate(t)&&t.date.slice(0,4)===String(Y)).forEach(t=>{(yByDay[t.date]=yByDay[t.date]||{v:0,n:0,w:0});yByDay[t.date].v+=t.pnl;yByDay[t.date].n++;if(t.pnl>0)yByDay[t.date].w++;});
+  const yByDay=dagTotalen(BOEKINGEN.filter(t=>hasDate(t)&&t.date.slice(0,4)===String(Y)));
   const yNet=Object.values(yByDay).reduce((s,d)=>s+d.v,0),yDays=Object.keys(yByDay).length;
   const stat=(k,v,vc,sub)=>kpiCard(k,v,{vc,ctx:sub||''});
   return `${filterBar()}<div class="kpis" style="grid-template-columns:repeat(5,1fr);margin-bottom:16px">
@@ -4312,7 +4340,7 @@ function playbookDetail(setup){
   const panel=(title,chip,body)=>`<div class="panel"><div class="phead"><h3>${title}</h3><span class="sp"></span>${chip?`<span class="chip">${chip}</span>`:''}</div><div class="pbody">${body}</div></div>`;
   const panelHead=(title,right,body)=>`<div class="panel"><div class="phead"><h3>${title}</h3><span class="sp"></span>${right||''}</div><div class="pbody">${body}</div></div>`;
   const src=(FT.length?FT:T).filter(x=>x.setup===setup);
-  const closed=src.filter(x=>x.status!=='open');
+  const closed=src.filter(heeftUitkomst);
   const n=closed.length,w=closed.filter(x=>x.pnl>0).length,wr=n?Math.round(w/n*100):0;
   const net=closed.reduce((a,x)=>a+x.pnl,0),_gr=gemR(closed),avgR=_gr.avg,rN=_gr.n,exp=n?net/n:0;
   const grossW=closed.filter(x=>x.pnl>0).reduce((a,x)=>a+x.pnl,0),grossL=Math.abs(closed.filter(x=>x.pnl<0).reduce((a,x)=>a+x.pnl,0)),pf=grossL?grossW/grossL:(grossW>0?PF_ONEINDIG:0);
@@ -4578,8 +4606,8 @@ function yearHeatmap(year,byDay){
   const maxAbs=Math.max(1,...Object.values(byDay).map(d=>Math.abs(d.v)));
   const heatFill=v=>{if(!v)return 'var(--track)';const inten=Math.round(Math.min(1,Math.abs(v)/maxAbs)*58+22);return `color-mix(in srgb,var(--${v>=0?'green':'red'}) ${inten}%,transparent)`;};
   // --- 12-month strip (shape of the year) ---
-  const byMonth=Array.from({length:12},()=>({v:0,n:0,w:0}));
-  for(const iso in byDay){const mo=+iso.slice(5,7)-1,d=byDay[iso];byMonth[mo].v+=d.v;byMonth[mo].n+=d.n;byMonth[mo].w+=d.w;}
+  const byMonth=Array.from({length:12},()=>({v:0,n:0,w:0,l:0}));
+  for(const iso in byDay){const mo=+iso.slice(5,7)-1,d=byDay[iso];byMonth[mo].v+=d.v;byMonth[mo].n+=d.n;byMonth[mo].w+=d.w;byMonth[mo].l+=d.l||0;}
   const curMo=(STATE.calMonth.slice(0,4)===String(year))?+STATE.calMonth.slice(5,7)-1:-1;
   const mMax=Math.max(1,...byMonth.map(m=>Math.abs(m.v)));
   let strip='';
@@ -4587,9 +4615,9 @@ function yearHeatmap(year,byDay){
     const pos=m.v>=0,wpct=Math.max(m.v?6:0,Math.round(Math.abs(m.v)/mMax*100));
     const col=pos?'var(--green)':'var(--red)';
     const bar=m.v?(pos?`left:50%;width:${wpct/2}%;background:${col}`:`right:50%;width:${wpct/2}%;background:${col}`):'';
-    strip+=`<div class="ymc${i===curMo?' on':''}" onclick="calGoMonth(${i})" data-mo="${i}" data-mn="${mAbbr[i]}" data-mv="${m.v}" data-mn2="${m.n}" data-mw="${m.w}">
+    strip+=`<div class="ymc${i===curMo?' on':''}" onclick="calGoMonth(${i})" data-mo="${i}" data-mn="${mAbbr[i]}" data-mv="${m.v}" data-mn2="${m.n}" data-mw="${m.w}" data-ml="${m.l}">
       <div class="ymn">${mAbbr[i]}</div>
-      <div class="ymv ${m.n?cls(m.v):''}" ${m.n?'':'style="color:var(--faint)"'}>${m.n?eurK(m.v):'—'}</div>
+      <div class="ymv ${m.n||m.l?cls(m.v):''}" ${m.n||m.l?'':'style="color:var(--faint)"'}>${m.n||m.l?eurK(m.v):'—'}</div>
       <div class="ymb">${bar?`<i style="${bar}"></i>`:''}</div></div>`;
   });
   // --- daily heatmap (fixed square cells via CSS grid) ---
@@ -4601,7 +4629,7 @@ function yearHeatmap(year,byDay){
     const mo=dt.getUTCMonth();
     if(mo!==prevMo){prevMo=mo;mlabels+=`<span style="grid-column:${col+1}">${mAbbr[mo]}</span>`;}
     const iso=`${year}-${String(mo+1).padStart(2,'0')}-${String(dt.getUTCDate()).padStart(2,'0')}`,dd=byDay[iso];
-    cells+=`<div class="yc" style="grid-column:${col+1};grid-row:${dow+1};background:${heatFill(dd?dd.v:0)}" data-iso="${iso}" data-v="${dd?dd.v:0}" data-n="${dd?dd.n:0}" data-w="${dd?dd.w:0}"></div>`;
+    cells+=`<div class="yc" style="grid-column:${col+1};grid-row:${dow+1};background:${heatFill(dd?dd.v:0)}" data-iso="${iso}" data-v="${dd?dd.v:0}" data-n="${dd?dd.n:0}" data-w="${dd?dd.w:0}" data-l="${dd?dd.l:0}"></div>`;
   }
   const dLbl=['ma','','wo','','vr','','zo'].map(x=>`<span>${x}</span>`).join('');
   return `<div class="ystrip" onmousemove="ymMove(event)" onmouseleave="yhHide()">${strip}</div>
@@ -4612,13 +4640,15 @@ function yearHeatmap(year,byDay){
         <div class="yh-cells">${cells}</div>
       </div></div></div>`;
 }
+// running positions in a day/month tooltip: not in trades or win-rate, but their booked money is in the amount
+const yhLopend=lo=>lo?`<div class="yht-row"><span>Lopend</span><b>${lo}</b></div>`:'';
 // month-strip tooltip (reuses #yhtip)
 function ymMove(e){const tip=document.getElementById('yhtip');if(!tip)return;const c=e.target.closest&&e.target.closest('[data-mo]');
   if(!c){yhHide();return;}
-  const n=+c.dataset.mn2,w=+c.dataset.mw,l=n-w,v=+c.dataset.mv,mo=+c.dataset.mo;
-  tip.innerHTML=n>0
-    ?`<div class="yht-d">${MNAMES[mo]}</div><div class="yht-row"><span>Trades</span><b>${n}</b></div><div class="yht-row"><span>Win-rate</span><b>${Math.round(w/n*100)}%</b></div><div class="yht-pnl ${cls(v)} mask">${eurS(v)}</div>`
-    :`<div class="yht-d">${MNAMES[mo]}</div><div class="yht-row" style="color:var(--muted)">Geen trades</div>`;
+  const n=+c.dataset.mn2,w=+c.dataset.mw,v=+c.dataset.mv,mo=+c.dataset.mo,lo=+c.dataset.ml||0;
+  tip.innerHTML=`<div class="yht-d">${MNAMES[mo]}</div>`+(n||lo
+    ?`${n?`<div class="yht-row"><span>Trades</span><b>${n}</b></div><div class="yht-row"><span>Win-rate</span><b>${Math.round(w/n*100)}%</b></div>`:''}${yhLopend(lo)}<div class="yht-pnl ${cls(v)} mask">${eurS(v)}</div>`
+    :`<div class="yht-row" style="color:var(--muted)">Geen trades</div>`);
   tip.classList.add('on');
   const cr=c.getBoundingClientRect(),tw=tip.offsetWidth,th=tip.offsetHeight;
   let x=Math.max(8,Math.min(window.innerWidth-tw-8,cr.left+cr.width/2-tw/2));
@@ -4631,10 +4661,10 @@ function calGoMonth(mo){const y=STATE.calMonth.slice(0,4);STATE.calMonth=`${y}-$
 function fmtLong(iso){try{return new Date(iso+'T12:00:00Z').toLocaleDateString('nl-NL',{weekday:'short',day:'numeric',month:'short',year:'numeric'});}catch(e){return iso;}}
 function yhMove(e){const tip=document.getElementById('yhtip');if(!tip)return;const r=e.target.closest&&e.target.closest('[data-iso]');
   if(!r){yhHide();return;}
-  const iso=r.dataset.iso,n=+r.dataset.n,v=+r.dataset.v,w=+r.dataset.w,l=n-w;
-  tip.innerHTML=n>0
-    ?`<div class="yht-d">${esc(fmtLong(iso))}</div><div class="yht-row"><span>Trades</span><b>${n}</b></div><div class="yht-row"><span>Winst / verlies</span><b><span class="g">${w}</span> / <span class="r">${l}</span></b></div><div class="yht-row"><span>Win-rate</span><b>${Math.round(w/n*100)}%</b></div><div class="yht-pnl ${cls(v)} mask">${eurS(v)}</div>`
-    :`<div class="yht-d">${esc(fmtLong(iso))}</div><div class="yht-row" style="color:var(--muted)">Geen trades</div>`;
+  const iso=r.dataset.iso,n=+r.dataset.n,v=+r.dataset.v,w=+r.dataset.w,l=n-w,lo=+r.dataset.l||0;
+  tip.innerHTML=`<div class="yht-d">${esc(fmtLong(iso))}</div>`+(n||lo
+    ?`${n?`<div class="yht-row"><span>Trades</span><b>${n}</b></div><div class="yht-row"><span>Winst / verlies</span><b><span class="g">${w}</span> / <span class="r">${l}</span></b></div><div class="yht-row"><span>Win-rate</span><b>${Math.round(w/n*100)}%</b></div>`:''}${yhLopend(lo)}<div class="yht-pnl ${cls(v)} mask">${eurS(v)}</div>`
+    :`<div class="yht-row" style="color:var(--muted)">Geen trades</div>`);
   tip.classList.add('on');
   const cr=r.getBoundingClientRect(),tw=tip.offsetWidth,th=tip.offsetHeight;
   let x=Math.max(8,Math.min(window.innerWidth-tw-8,cr.left+cr.width/2-tw/2));
@@ -4691,11 +4721,15 @@ function pgAnalytics(){
   const wins=CLOSED.filter(t=>t.pnl>0),losses=CLOSED.filter(t=>t.pnl<0);
   const avgW=wins.length?wins.reduce((s,t)=>s+t.pnl,0)/wins.length:0,avgL=losses.length?Math.abs(losses.reduce((s,t)=>s+t.pnl,0)/losses.length):0,payoff=avgL?avgW/avgL:0;
   const chron=CLOSED.slice().sort((x,y)=>(x.date+x.time)<(y.date+y.time)?-1:1);
+  // Money (equity, drawdown) runs over everything booked, in the same order as the equity curve;
+  // cumulative R and the running ratios run over closed trades only.
+  const geldChron=BOEKINGEN.slice().sort((x,y)=>tradeMoment(x)-tradeMoment(y));
   let cum=0,peak=0,maxDD=0,cr=0;const eqV=[0],ddV=[0],crV=[0];
-  chron.forEach(t=>{cum+=t.pnl;peak=Math.max(peak,cum);maxDD=Math.min(maxDD,cum-peak);cr+=t.r;eqV.push(cum);ddV.push(cum-peak);crV.push(+cr.toFixed(2));});
+  geldChron.forEach(t=>{cum+=t.pnl;peak=Math.max(peak,cum);maxDD=Math.min(maxDD,cum-peak);eqV.push(cum);ddV.push(cum-peak);});
+  chron.forEach(t=>{cr+=t.r;crV.push(+cr.toFixed(2));});
   let ws=0,ls=0,mw=0,ml=0;chron.forEach(t=>{if(t.pnl>0){ws++;ls=0;mw=Math.max(mw,ws);}else{ls++;ws=0;ml=Math.max(ml,ls);}});
-  let w2=0,gw2=0,gl2=0;const wrRun=[],pfRun=[],expRun=[];
-  chron.forEach((t,i)=>{if(t.pnl>0){w2++;gw2+=t.pnl;}else{gl2+=Math.abs(t.pnl);}wrRun.push(w2/(i+1)*100);pfRun.push(gl2?gw2/gl2:(gw2>0?4:0));expRun.push(eqV[i+1]/(i+1));});
+  let w2=0,gw2=0,gl2=0,net2=0;const wrRun=[],pfRun=[],expRun=[];
+  chron.forEach((t,i)=>{net2+=t.pnl;if(t.pnl>0){w2++;gw2+=t.pnl;}else{gl2+=Math.abs(t.pnl);}wrRun.push(w2/(i+1)*100);pfRun.push(gl2?gw2/gl2:(gw2>0?4:0));expRun.push(net2/(i+1));});
   const kpis=`<div class="kpis" style="grid-template-columns:repeat(4,1fr)">${['net','wr','pf','exp'].map(k=>kpiBlock(k)).join('')}</div>`;
   const panel=(title,chip,body)=>`<div class="panel"><div class="phead"><h3>${title}</h3><span class="sp"></span>${chip?`<span class="chip">${chip}</span>`:''}</div><div class="pbody">${body}</div></div>`;
   const panelHead=(title,right,body)=>`<div class="panel"><div class="phead"><h3>${title}</h3><span class="sp"></span>${right||''}</div><div class="pbody">${body}</div></div>`;
@@ -4763,13 +4797,13 @@ function pgAnalytics(){
   const sqnTone=sqn>=2.5?'g':sqn>=1.6?'a':'r';
   const netAll=eqV[eqV.length-1];
   const recovery=maxDD?netAll/Math.abs(maxDD):(netAll>0?99:0);
-  let _pk=0,_dl=0,ddLen=0;chron.forEach((t,i)=>{const v=eqV[i+1];if(v>=_pk){_pk=v;_dl=0;}else{_dl++;ddLen=Math.max(ddLen,_dl);}});
+  let _pk=0,_dl=0,ddLen=0;geldChron.forEach((t,i)=>{const v=eqV[i+1];if(v>=_pk){_pk=v;_dl=0;}else{_dl++;ddLen=Math.max(ddLen,_dl);}});
   const capTrades=CLOSED.filter(t=>(+t.mfe||0)>0.05);
   const capture=capTrades.length?Math.round(capTrades.reduce((s,t)=>s+Math.max(0,tradeR(t))/(+t.mfe),0)/capTrades.length*100):0;
   const mfePts=CLOSED.filter(t=>(+t.mfe||0)>0).map(t=>({mfe:+(+t.mfe).toFixed(2),r:+tradeR(t).toFixed(2),win:t.pnl>=0})).slice(0,400);
   const rrBy={};CLOSED.forEach(t=>{const su=t.setup||'—';if(su==='—')return;(rrBy[su]=rrBy[su]||{p:0,a:0,n:0});rrBy[su].p+=(+t.rrPlanned||0);rrBy[su].a+=tradeR(t);rrBy[su].n++;});
   const rrRows=Object.entries(rrBy).map(([su,o])=>({su,p:o.p/o.n,a:o.a/o.n})).filter(x=>x.p>0).sort((a,b)=>b.p-a.p);
-  const byDayNet={};CLOSED.forEach(t=>{byDayNet[t.date]=(byDayNet[t.date]||0)+t.pnl;});
+  const byDayNet={};BOEKINGEN.forEach(t=>{byDayNet[t.date]=(byDayNet[t.date]||0)+t.pnl;});
   const posDays=Object.values(byDayNet).filter(v=>v>0).sort((a,b)=>b-a);const top5=posDays.slice(0,5).reduce((s,v)=>s+v,0);
   const paretoWin=netAll>0?Math.round(bigW/netAll*100):0,top5pct=netAll>0?Math.round(top5/netAll*100):0;
   const sampleWarn=CLOSED.length<30;
@@ -4791,13 +4825,13 @@ function pgAnalytics(){
     ${statTile('⚡',capture+'%','MFE benut (capture)','')}</div>`;
   const eroA=eroBuckets(applyFilterNoKind(T));
   const eroAPanel=(eroA.backtest.n||eroA.paper.n)?`<div class="panel"><div class="phead"><h3>Live vs Paper vs Backtest</h3><span class="sp"></span><span class="chip" title="edge-verval, over alle soorten, los van de Live/Oefen-filter">edge-bewaking · alle soorten</span></div><div class="pbody">${erosionBody(eroA)}</div></div><div style="height:13px"></div>`:'';
-  // B2 (ChangeMaker): leg uit waarom het aantal ≠ totaal — analytics rekent zonder open trades.
-  const nOpenA=FT.filter(t=>t.status==='open').length,nPartA=FT.filter(t=>t.status==='partial').length;
-  const scopeChip=`<div style="margin-top:9px"><span class="chip" style="background:var(--sink);border:1px solid var(--line);padding:4px 11px;border-radius:20px">📊 ${CLOSED.length.toLocaleString('nl-NL')} trades in de berekening (gesloten${nPartA?` + ${nPartA} partial`:''})${nOpenA?` · ${nOpenA} open niet meegerekend`:''}</span></div>`;
+  // B2 (ChangeMaker): leg uit waarom het aantal ≠ totaal — analytics rekent zonder lopende trades.
+  const nLopendA=FT.filter(t=>!heeftUitkomst(t)).length;
+  const scopeChip=`<div style="margin-top:9px"><span class="chip" style="background:var(--sink);border:1px solid var(--line);padding:4px 11px;border-radius:20px">📊 ${CLOSED.length.toLocaleString('nl-NL')} trades in de berekening${nLopendA?` · ${nLopendA} lopend niet meegerekend`:''}</span></div>`;
   return `${filterBar()}${scopeChip}${sampleBadge}<div style="height:11px"></div>${tiles}<div style="height:13px"></div>${kpis}<div style="height:13px"></div>
     <div class="sect-h">Traject &amp; risico</div>
     <div class="grid" style="grid-template-columns:2fr 1fr;align-items:stretch">
-      ${panelHead('Equity-curve',perDD('eq'),equity(214,periodTrades(CLOSED,KPIPER.eq)))}
+      ${panelHead('Equity-curve',perDD('eq'),equity(214,periodTrades(BOEKINGEN,KPIPER.eq)))}
       ${panel('Reeks &amp; vorm','momentum van je edge',streakBody)}
     </div><div style="height:13px"></div>
     <div class="grid" style="grid-template-columns:1fr 1fr;align-items:stretch">
@@ -5018,7 +5052,8 @@ function render(){
   let _fid=null,_fs=null,_fe=null;
   try{const _ae=document.activeElement;if(_ae&&_ae.id&&(_ae.tagName==='INPUT'||_ae.tagName==='TEXTAREA')){_fid=_ae.id;if(typeof _ae.selectionStart==='number'){_fs=_ae.selectionStart;_fe=_ae.selectionEnd;}}}catch(e){}
   FT=fxView(applyFilter(zonderMergedChildren(T)));
-  CLOSED=FT.filter(t=>t.status!=='open');
+  CLOSED=FT.filter(heeftUitkomst);
+  BOEKINGEN=FT.filter(t=>t.status!=='open').map(boeking);
   // B1 (ChangeMaker): filters gelden bewust app-breed — maak dat op élke pagina zichtbaar,
   // zodat "al mijn trades zijn weg" nooit meer een mysterie is.
   const gfb=document.getElementById('gfBadge');
@@ -7577,6 +7612,15 @@ ExchangeAPI.kraken.detectPartials=function(trades,sourceKey){
 ExchangeAPI.hyperliquid.detectPartials=null;// model B: een levensloop is al compleet
 ExchangeAPI.okx.detectPartials=null;        // model B: de adapter markeert een lopende positie zelf als partial
 ExchangeAPI.ftmo.detectPartials=null;       // CSV-only, geen partials
+/* Draagt een partial-rij zijn eigen geboekte geld (realizedPnl)? Model B wel: die rij is de hele
+   levensloop. Het sibling-model niet: daar staat in realizedPnl de som van gesloten rijen die zelf al
+   meetellen in je netto. Gelezen door geboekt() (v1.5). */
+ExchangeAPI.okx.partialDraagtGeboekt=true;
+ExchangeAPI.blofin.partialDraagtGeboekt=true;
+ExchangeAPI.hyperliquid.partialDraagtGeboekt=true;
+ExchangeAPI.mexc.partialDraagtGeboekt=false;
+ExchangeAPI.kraken.partialDraagtGeboekt=false;   // levensloop kent nog geen partial (backlog B1); het oude pad is sibling
+ExchangeAPI.ftmo.partialDraagtGeboekt=false;
 
 // v12.235: Hyperliquid + Kraken leveren via fetchTrades COMPLETE round-trips (FIFO/server-side
 // gereconstrueerd uit fills), niet losse partial-close records zoals Blofin/MEXC. Hun open-trade

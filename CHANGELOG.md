@@ -14,6 +14,20 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v1.5] — 2026-10-07
+
+### Gewijzigd
+- **Een positie die nog loopt telt nu eerlijk mee.** Raak je een TP terwijl de rest nog openstaat, dan
+  staat dat geboekte bedrag nu in je Netto P&L, je equity-curve, de kalender en je maand-P&L, net als
+  in je saldo bij de exchange. Onder Netto P&L zie je hoeveel daarvan uit lopende posities komt.
+- **Win-rate, expectancy, profit factor en je reeks wachten tot een positie helemaal dicht is.** Na een
+  TP kan de rest nog op je stop eindigen, dus de uitkomst staat pas vast als hij dicht is. Tot nu toe
+  telde zo'n positie daar als trade van $ 0: je win-rate ging omlaag, en in je reeks stond hij als
+  verlies. Gaat hij dicht, dan telt hij mee met zijn hele resultaat, winst of verlies.
+- Analytics zegt erbij hoeveel posities er nog lopen ("5 trades in de berekening · 2 lopend niet
+  meegerekend"). In de kalender staat het geboekte deel op de dag van de trade, met "loopt" erbij.
+- In de %-weergave telt het geboekte deel ook mee, zodat het percentage klopt met het bedrag.
+
 ## [v1.4.2] — 2026-10-07
 
 ### Fixed

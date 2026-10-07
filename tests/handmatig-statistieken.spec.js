@@ -86,12 +86,13 @@ const VANDAAG = new Date().toISOString().slice(0, 10);
     // deels gesloten via TP1: gerealiseerd 4,17, rest loopt
     await voeg({ date: VANDAAG, pair: 'ETH/USDC', entry: '2400', size: '1000', tps: [{ price: '2420', pct: 50, hit: true, t: '11:00' }, { price: '2450', pct: 50 }] });
     s = await stand();
-    ok('deels gesloten (partial, +4,17 geboekt): telt in netto én balans', bij(s.net, 4.17, 0.005) && bij(s.bal1, 10004.17, 0.005) && s.closedN === 1, JSON.stringify({ net: s.net, bal: s.bal1, closedN: s.closedN }));
+    // v1.5: het geboekte deel telt in netto en balans; als uitkomst (win-rate, aantal) pas als hij dicht is
+    ok('deels gesloten (partial, +4,17 geboekt): telt in netto én balans, nog niet als afgelopen trade', bij(s.net, 4.17, 0.005) && /4,17/.test(s.kpis) && bij(s.bal1, 10004.17, 0.005) && s.closedN === 0, JSON.stringify({ net: s.net, kpis: s.kpis, bal: s.bal1, closedN: s.closedN }));
     // oefentrades horen niet in je echte cijfers
     await voeg({ date: VANDAAG, pair: 'SOL/USDC', kind: 'paper', entry: '100', exit: '150', size: '1000' });   // +500 paper
     await voeg({ date: VANDAAG, pair: 'SOL/USDC', kind: 'backtest', entry: '100', exit: '200', size: '1000' });   // +1000 backtest
     s = await stand();
-    ok('paper/backtest: niet in netto, niet in balans, niet in het gesloten-aantal', bij(s.net, 4.17, 0.005) && bij(s.bal1, 10004.17, 0.005) && s.closedN === 1, JSON.stringify({ net: s.net, bal: s.bal1, closedN: s.closedN, kpis: s.kpis }));
+    ok('paper/backtest: niet in netto, niet in balans, niet in het gesloten-aantal', bij(s.net, 4.17, 0.005) && bij(s.bal1, 10004.17, 0.005) && s.closedN === 0, JSON.stringify({ net: s.net, bal: s.bal1, closedN: s.closedN, kpis: s.kpis }));
     const oefen = await p.evaluate(() => { FILTER.kind = 'oefen'; render(); const r = { n: CLOSED.length, net: CLOSED.reduce((s, t) => s + t.pnl, 0), bal: manualBalance(MANUAL[0]) }; FILTER.kind = 'live'; render(); return r; });
     ok('filter "oefen": 2 oefentrades, netto 1.500, maar de balans blijft de echte', oefen.n === 2 && oefen.net === 1500 && bij(oefen.bal, 10004.17, 0.005), JSON.stringify(oefen));
   }

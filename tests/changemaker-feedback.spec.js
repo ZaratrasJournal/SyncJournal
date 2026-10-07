@@ -103,7 +103,7 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
   ok('Wis-knop in de indicator wist alle filters', b1.cleared);
 
   console.log('─── B2: analytics-teller ───');
-  ok('scope-chip legt gesloten/open-telling uit', await p.evaluate(() => { T.push({ id: 800, date: '2026-09-07', time: '10:00', pair: 'BTC/USDT', dir: 'long', setup: '', session: 'London', status: 'open', kind: 'live', exchange: '', entry: 100, exit: 0, stop: 95, size: '100', pnl: 0, r: 0, tps: [], tags: [], layers: [], emotions: [], mistakes: [], checks: [], screenshots: [], tvLinks: [] }); persist(); go('analytics'); const txt = document.getElementById('main').textContent; return /trades in de berekening/.test(txt) && /open niet meegerekend/.test(txt); }));
+  ok('scope-chip legt gesloten/open-telling uit', await p.evaluate(() => { T.push({ id: 800, date: '2026-09-07', time: '10:00', pair: 'BTC/USDT', dir: 'long', setup: '', session: 'London', status: 'open', kind: 'live', exchange: '', entry: 100, exit: 0, stop: 95, size: '100', pnl: 0, r: 0, tps: [], tags: [], layers: [], emotions: [], mistakes: [], checks: [], screenshots: [], tvLinks: [] }); persist(); go('analytics'); const txt = document.getElementById('main').textContent; return /trades in de berekening/.test(txt) && /lopend niet meegerekend/.test(txt); }));
 
   console.log('─── C1: status-filter ───');
   const c1 = await p.evaluate(() => { go('trades'); const hasSel = [...document.querySelectorAll('.filtbar .ddchk span')].some(x => x.textContent === 'Partial'); setFilter('status', 'open'); const allOpen = FT.length > 0 && FT.every(t => t.status === 'open'); setFilter('status', ''); return { hasSel, allOpen }; });

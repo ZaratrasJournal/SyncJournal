@@ -177,7 +177,9 @@ const overslaan = reden => { console.log('  ⏭ ' + reden + ' — overgeslagen')
     const tab = [...document.querySelectorAll('.panel')].find(x => /Recente trades/.test(x.textContent));
     const eerste = tab && tab.querySelector('tbody tr');
     return { meta, eerste: eerste ? [...eerste.children].map(td => td.textContent.trim()) : [] }; });
-  const som = pre => dicht.filter(x => dag(x.open).startsWith(pre)).reduce((s, x) => s + x.netto, 0);
+  // v1.5: wat een lopende positie al geboekt heeft (een geraakte TP) telt mee; zonder sluiting nog niets
+  const geboekt = [...dicht, ...open.filter(x => x.closes.length)];
+  const som = pre => geboekt.filter(x => dag(x.open).startsWith(pre)).reduce((s, x) => s + x.netto, 0);
   const bedrag = re => { const m = dash.meta.match(re); return m ? getal(m[1]) : NaN; };
   const maand = dag(nu2).slice(0, 7), jaar = dag(nu2).slice(0, 4);
   ok(`gerealiseerd deze maand = ${som(maand).toFixed(2)}`, Math.abs(bedrag(/deze maand\s*([+−-]?\s*\$?\s*[\d.,]+)/) - som(maand)) < 0.006, dash.meta);
