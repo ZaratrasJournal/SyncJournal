@@ -181,9 +181,8 @@ const overslaan = reden => { console.log('  ⏭ ' + reden + ' — overgeslagen')
   const geboekt = [...dicht, ...open.filter(x => x.closes.length)];
   const som = pre => geboekt.filter(x => dag(x.open).startsWith(pre)).reduce((s, x) => s + x.netto, 0);
   const bedrag = re => { const m = dash.meta.match(re); return m ? getal(m[1]) : NaN; };
-  const maand = dag(nu2).slice(0, 7), jaar = dag(nu2).slice(0, 4);
+  const maand = dag(nu2).slice(0, 7);
   ok(`gerealiseerd deze maand = ${som(maand).toFixed(2)}`, Math.abs(bedrag(/deze maand\s*([+−-]?\s*\$?\s*[\d.,]+)/) - som(maand)) < 0.006, dash.meta);
-  ok(`YTD = ${som(jaar).toFixed(2)}`, Math.abs(bedrag(/YTD\s*([+−-]?\s*\$?\s*[\d.,]+)/) - som(jaar)) < 0.006, dash.meta);
   const nieuwste = [...dicht, ...open].sort((x, y) => y.open - x.open)[0], d = dag(nieuwste.open);   // een lopende positie is nieuwer
   ok('Recente trades: je nieuwste trade bovenaan', !!dash.eerste[0] && dash.eerste[0].includes(nieuwste.coin) && dash.eerste[2] === d.slice(8) + '-' + d.slice(5, 7),
     JSON.stringify(dash.eerste));

@@ -57,7 +57,6 @@ const t = (id, dag, pnl) => ({ id, pair: 'BTC/USDC', dir: 'long', exchange: 'okx
   const klein = await dash([t('a', 2, 0.45), t('b', 3, 0.01)]);
   ok('Netto P&L toont +$ 0,46', klein.netto === '+$ 0,46', klein.netto);
   ok('"deze maand" toont +$ 0,46', /deze maand \+\$ 0,46/.test(klein.meta), klein.meta);
-  ok('YTD toont +$ 0,46', /YTD \+\$ 0,46/.test(klein.meta), klein.meta);
   ok('equity-curve: geen "0k" meer op de as', klein.equity.length > 0 && !klein.equity.some(x => /k$/.test(x)), JSON.stringify(klein.equity));
   ok('equity-curve: de as laat centen zien', klein.equity.some(x => /\d,\d/.test(x)), JSON.stringify(klein.equity));
   ok('Maand-P&L: het label is +0,46, niet +0', klein.maand.some(x => x === '+0,46'), JSON.stringify(klein.maand));

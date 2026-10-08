@@ -1597,8 +1597,9 @@ const svg=(p,w=18)=>`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" 
 /* ═══ Seed ═══ */
 /* ═══ P&L-percentage: altijd t.o.v. de ÉCHTE accountgrootte (Denny 2026-09-17:
    "het moet altijd kloppend zijn") — verving het demo-restant ACCT=24663.
-   Basis per trade = huidige totale balans − P&L van deze en alle latere gesloten
-   trades (gereconstrueerd, geen extra opslag nodig). Optioneel vast referentie-
+   Basis per trade = huidige totale balans − het geboekte geld van deze en alle latere
+   trades, ook het geboekte deel van een lopende positie (v1.5; gereconstrueerd, geen
+   extra opslag nodig). Optioneel vast referentie-
    bedrag (STATE.pctRef, bijv. prop-account). Geen betrouwbare basis → GEEN
    percentage (null), nooit een verzonnen getal. Weergave rekent live; het oude
    opgeslagen pnlPct-veld wordt genegeerd. */
@@ -1630,7 +1631,7 @@ const netUsd=rows=>(rows||[]).reduce((s,t)=>s+pnlUsdOf(t),0);
 function pnlPctOf(t){if(!t)return null;const b=pnlBaseOf(t);return b>0?+((pnlUsdOf(t)/b)*100).toFixed(2):null;}
 // Totaal-regel: netto van de selectie t.o.v. de basis van de oudste trade erin.
 function pnlPctTotal(rows,net){
-  // Alles wat geboekt is; een partial telt met zijn geboekte deel als hij via boeking() binnenkomt.
+  // Everything booked; a partial counts with its booked part when it arrives via boeking().
   const geld=(rows||[]).filter(t=>t&&(t.status==='closed'||t.status==='partial'));
   const n=geld.length?netUsd(geld):(+net||0);   // altijd in dollars, ongeacht de weergave
   const ref=+((STATE||{}).pctRef)||0;if(ref>0)return +(n/ref*100).toFixed(2);
@@ -1705,12 +1706,13 @@ const EXCHANGES=[
 const EXMAP=Object.fromEntries(EXCHANGES.map(e=>[e.id,e]));
 // Netto ingelegd kapitaal uit het ledger (deposit +, withdrawal −, correction = absoluut setpoint).
 function acctCapital(txs){let c=0;(txs||[]).forEach(t=>{const a=parseFloat(t.amount)||0;if(t.type==='deposit')c+=a;else if(t.type==='withdrawal')c-=a;else if(t.type==='correction')c=a;});return c;}
-// Gerealiseerde P&L van gesloten trades gekoppeld aan dit account (via t.exchange === account.id).
+// Geboekte P&L van de trades gekoppeld aan dit account (via t.exchange === account.id).
 // A1 (ChangeMaker): balans is werkelijkheid — ALTIJD op alle trades rekenen, nooit op de
 // gefilterde lijst. Voorheen liep dit via CLOSED (gefilterd) waardoor de totale balans
 // mee veranderde met setup/account-filters (120K → 127K bij filteren op een winnende setup).
-/* Dezelfde trades als de statistieken (CLOSED): ook een deels gesloten trade telt met wat er
-   al geboekt is, en een paper-/backtest-trade is geen geld - die hoort niet in je saldo.
+/* Hetzelfde geld als BOEKINGEN (via geboekt()), maar over álle trades: ook een deels gesloten
+   trade telt met wat er al geboekt is, en een paper-/backtest-trade is geen geld - die hoort niet
+   in je saldo. De statistieken (CLOSED) tellen een lopende positie juist nog niet mee (v1.5).
    (Scenario-ronde 24-09-2026: partial telde niet mee, oefentrades juist wel.) */
 function acctPnl(id){return T.filter(t=>t&&t.status!=='open'&&isLive(t)&&t.exchange===id).reduce((s,t)=>s+geboekt(t),0);}
 // Saldo handmatig account = max(0, ingelegd kapitaal) + gerealiseerde trade-P&L.
@@ -1841,7 +1843,7 @@ const KINDS={live:{label:'Live',color:'var(--green)'},gemist:{label:'Gemist',col
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v1.5';
+const APP_VERSION='v1.6';
 const SCHEMA_VERSION=10;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -3254,22 +3256,18 @@ function pgDashboard(){
       <div style="height:13px"></div>${emptyState('trades-first')}`;
   }
   const a=agg();
-  // "Deze maand" is nu écht de huidige maand (was: de hele gefilterde selectie) en YTD
-  // het lopende jaar; beide volgen de €/%/R-weergavekeuze. De balans blijft altijd valuta.
-  const _mm=new Date().toISOString().slice(0,7);
+  /* Under the balance: only this month, in the €/%/R choice (the balance stays currency). A YTD next
+     to it said nearly the same, and the total already sits in the Net P&L card (Denny 08-10-2026).
+     The month is Amsterdam's: toISOString() is UTC, so the first hour of a month counted the last. */
+  const _mm=amsDateTime(Date.now()).date.slice(0,7);
   const mRows=BOEKINGEN.filter(t=>String(t.date||'').startsWith(_mm));
   const mNet=mRows.reduce((s,t)=>s+(+t.pnl||0),0);
-  const _yr=String(new Date().getFullYear());
-  // Zelfde bron als "deze maand" (BOEKINGEN, mét je filter). Dit telde eerst álle trades, dus met
-  // filter "Live trades" kwamen de backtests als gerealiseerde winst in YTD (Denny 29-09-2026).
-  const yRows=BOEKINGEN.filter(t=>String(t.date||'').startsWith(_yr));
-  const ytd=yRows.reduce((s,t)=>s+(+t.pnl||0),0);
-  let ytdTxt;
-  if(UNIT()==='val'){const _y=netUsd(yRows),_base=totalBalance()-_y;ytdTxt=`YTD <b class="num ${cls(ytd)} mask">${eurS(ytd)}${_base>0?' ('+(_y>=0?'+':'−')+Math.abs(_y/_base*100).toFixed(1).replace('.',',')+'%)':''}</b>`;}
-  else ytdTxt=`YTD <b class="num ${cls(ytd)}">${unitAgg(yRows,ytd,{terse:true})}</b>`;
+  let mTxt;
+  if(UNIT()==='val'){const _m=netUsd(mRows),_base=totalBalance()-_m;mTxt=`<b class="num ${cls(mNet)} mask">${eurS(mNet)}${_base>0?' ('+(_m>=0?'+':'−')+Math.abs(_m/_base*100).toFixed(1).replace('.',',')+'%)':''}</b>`;}
+  else mTxt=`<b class="num ${cls(mNet)}">${unitAgg(mRows,mNet)}</b>`;
   const hero=!VV('dHero')?'':`<div class="panel hero"><div>${unitSeg()}<div class="eyebrow">Totale balans</div>
     <div class="big num mask">${eur(fxNow(totalBalance()))}</div>
-    <div class="meta">Gerealiseerd deze maand <b class="num ${cls(mNet)}${unitMask()}">${unitAgg(mRows,mNet)}</b> · ${ytdTxt}</div></div>
+    <div class="meta">Gerealiseerd deze maand ${mTxt}</div></div>
     <div class="alloc">${donut()}<div class="legend">${legend}</div></div></div>`;
   const kks=[...(VV('dKpiCore')?['net','wr']:[]),...(VV('dKpiPro')?['pf','exp','r']:[])];
   const kpis=!kks.length?'':`<div class="kpis">${kks.map(k=>kpiBlock(k,'d')).join('')}</div>`;
@@ -7612,14 +7610,14 @@ ExchangeAPI.kraken.detectPartials=function(trades,sourceKey){
 ExchangeAPI.hyperliquid.detectPartials=null;// model B: een levensloop is al compleet
 ExchangeAPI.okx.detectPartials=null;        // model B: de adapter markeert een lopende positie zelf als partial
 ExchangeAPI.ftmo.detectPartials=null;       // CSV-only, geen partials
-/* Draagt een partial-rij zijn eigen geboekte geld (realizedPnl)? Model B wel: die rij is de hele
-   levensloop. Het sibling-model niet: daar staat in realizedPnl de som van gesloten rijen die zelf al
-   meetellen in je netto. Gelezen door geboekt() (v1.5). */
+/* Does a partial row carry its own booked money (realizedPnl)? Model B does: the row is the whole
+   lifecycle. The sibling model does not: realizedPnl holds the sum of closed rows that already count
+   in net P&L. Read by geboekt() (v1.5). */
 ExchangeAPI.okx.partialDraagtGeboekt=true;
 ExchangeAPI.blofin.partialDraagtGeboekt=true;
 ExchangeAPI.hyperliquid.partialDraagtGeboekt=true;
 ExchangeAPI.mexc.partialDraagtGeboekt=false;
-ExchangeAPI.kraken.partialDraagtGeboekt=false;   // levensloop kent nog geen partial (backlog B1); het oude pad is sibling
+ExchangeAPI.kraken.partialDraagtGeboekt=false;   // lifecycle has no partial yet (backlog B1); the old path is sibling
 ExchangeAPI.ftmo.partialDraagtGeboekt=false;
 
 // v12.235: Hyperliquid + Kraken leveren via fetchTrades COMPLETE round-trips (FIFO/server-side

@@ -57,9 +57,11 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
   ok('trade binnengekomen via sync', r3.n === 1 && r3.trades === 1 && r3.ex === 'hyperliquid', JSON.stringify(r3));
   ok('saldo mee-ververst met de sync', r3.val === 1284.56, String(r3.val));
 
-  console.log('─── Dashboard met trades: echte YTD ───');
-  const r4 = await p.evaluate(() => { go('dashboard'); const hero = document.querySelector('#main .hero'); return hero ? hero.textContent : ''; });
-  ok('hero toont balans + YTD op basis van echte P&L', /YTD/.test(r4) && /50/.test(r4) && !/11,4/.test(r4), r4.slice(0, 120));
+  console.log('─── Dashboard met trades: echte cijfers ───');
+  // v1.6: onder de balans alleen "deze maand" (YTD vervallen); de trade van 10-09 valt in september
+  await p.clock.setFixedTime(new Date('2026-09-20T12:00:00+02:00'));
+  const r4 = await p.evaluate(() => { go('dashboard'); const hero = document.querySelector('#main .hero'); return hero ? hero.textContent.replace(/\s+/g, ' ') : ''; });
+  ok('hero toont balans + "deze maand" op basis van echte P&L (+$ 50,00)', /deze maand \+\$ 50,00/.test(r4) && !/11,4/.test(r4), r4.slice(0, 160));
 
   console.log('─── Verbindingstest legt saldo ook vast ───');
   ok('testConn schrijft het geteste saldo naar het account', await p.evaluate(async () => { window.__bal = '1300'; await testConn('hyperliquid'); return EXMAP.hyperliquid.val === 1300; }));

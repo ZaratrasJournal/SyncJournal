@@ -14,6 +14,17 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v1.6] — 2026-10-08
+
+### Gewijzigd
+- **Onder je Totale balans staat nu alleen "Gerealiseerd deze maand"**, met het percentage erbij. YTD
+  ernaast zei vaak bijna hetzelfde, en dat was verwarrend. Je totaal over elke periode zie je in de
+  Netto P&L-kaart eronder.
+
+### Fixed
+- **"Deze maand" volgt nu de Nederlandse tijd.** In het eerste uur van een nieuwe maand telde de app nog
+  de vorige maand, omdat hij met UTC rekende.
+
 ## [v1.5] — 2026-10-07
 
 ### Gewijzigd

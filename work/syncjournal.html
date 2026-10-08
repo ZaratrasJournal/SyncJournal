@@ -1843,7 +1843,7 @@ const KINDS={live:{label:'Live',color:'var(--green)'},gemist:{label:'Gemist',col
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v1.5';
+const APP_VERSION='v1.6';
 const SCHEMA_VERSION=10;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -3256,22 +3256,18 @@ function pgDashboard(){
       <div style="height:13px"></div>${emptyState('trades-first')}`;
   }
   const a=agg();
-  // "Deze maand" is nu écht de huidige maand (was: de hele gefilterde selectie) en YTD
-  // het lopende jaar; beide volgen de €/%/R-weergavekeuze. De balans blijft altijd valuta.
-  const _mm=new Date().toISOString().slice(0,7);
+  /* Under the balance: only this month, in the €/%/R choice (the balance stays currency). A YTD next
+     to it said nearly the same, and the total already sits in the Net P&L card (Denny 08-10-2026).
+     The month is Amsterdam's: toISOString() is UTC, so the first hour of a month counted the last. */
+  const _mm=amsDateTime(Date.now()).date.slice(0,7);
   const mRows=BOEKINGEN.filter(t=>String(t.date||'').startsWith(_mm));
   const mNet=mRows.reduce((s,t)=>s+(+t.pnl||0),0);
-  const _yr=String(new Date().getFullYear());
-  // Zelfde bron als "deze maand" (BOEKINGEN, mét je filter). Dit telde eerst álle trades, dus met
-  // filter "Live trades" kwamen de backtests als gerealiseerde winst in YTD (Denny 29-09-2026).
-  const yRows=BOEKINGEN.filter(t=>String(t.date||'').startsWith(_yr));
-  const ytd=yRows.reduce((s,t)=>s+(+t.pnl||0),0);
-  let ytdTxt;
-  if(UNIT()==='val'){const _y=netUsd(yRows),_base=totalBalance()-_y;ytdTxt=`YTD <b class="num ${cls(ytd)} mask">${eurS(ytd)}${_base>0?' ('+(_y>=0?'+':'−')+Math.abs(_y/_base*100).toFixed(1).replace('.',',')+'%)':''}</b>`;}
-  else ytdTxt=`YTD <b class="num ${cls(ytd)}">${unitAgg(yRows,ytd,{terse:true})}</b>`;
+  let mTxt;
+  if(UNIT()==='val'){const _m=netUsd(mRows),_base=totalBalance()-_m;mTxt=`<b class="num ${cls(mNet)} mask">${eurS(mNet)}${_base>0?' ('+(_m>=0?'+':'−')+Math.abs(_m/_base*100).toFixed(1).replace('.',',')+'%)':''}</b>`;}
+  else mTxt=`<b class="num ${cls(mNet)}">${unitAgg(mRows,mNet)}</b>`;
   const hero=!VV('dHero')?'':`<div class="panel hero"><div>${unitSeg()}<div class="eyebrow">Totale balans</div>
     <div class="big num mask">${eur(fxNow(totalBalance()))}</div>
-    <div class="meta">Gerealiseerd deze maand <b class="num ${cls(mNet)}${unitMask()}">${unitAgg(mRows,mNet)}</b> · ${ytdTxt}</div></div>
+    <div class="meta">Gerealiseerd deze maand ${mTxt}</div></div>
     <div class="alloc">${donut()}<div class="legend">${legend}</div></div></div>`;
   const kks=[...(VV('dKpiCore')?['net','wr']:[]),...(VV('dKpiPro')?['pf','exp','r']:[])];
   const kpis=!kks.length?'':`<div class="kpis">${kks.map(k=>kpiBlock(k,'d')).join('')}</div>`;

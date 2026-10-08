@@ -51,10 +51,17 @@ const RIJEN = [
   await p.evaluate(rijen => { T = rijen.map(x => ({ ...EMPTY_TRADE, ...x })); persist(); clearGFilter(); setFilter('kind', 'live'); }, RIJEN);
   const live = await lees();
 
-  console.log('─── Filter "Live trades": YTD telt geen backtests ───');
-  const ytd = (live.meta.match(/YTD\s*(.+)$/) || [, ''])[1];
-  ok('YTD bevat de $900 aan backtests niet', !/900/.test(ytd), ytd);
-  ok('YTD en "deze maand" tellen dezelfde live trades', !/300|600|900/.test(live.meta), live.meta);
+  console.log('─── Filter "Live trades": "deze maand" telt geen backtests ───');
+  ok('"deze maand" = de live trades (+$ 0,46), niet de $ 900 aan backtests', /deze maand \+\$ 0,46/.test(live.meta) && !/300|600|900/.test(live.meta), live.meta);
+  // Denny 08-10-2026: "deze maand +$ 22,71 · YTD +$ 23,17" was dubbel en verwarrend; het totaal staat
+  // al in de Netto P&L-kaart. Eén getal onder de balans.
+  ok('geen YTD meer naast "deze maand"', !/YTD|dit jaar/i.test(live.meta), live.meta);
+  const metPct = await p.evaluate(() => {
+    MANUAL = [{ id: 'm1', name: 'Boek', transactions: [{ id: 1, type: 'deposit', amount: 100, date: '2026-01-01' }] }]; persistManual(); go('dashboard');
+    const m = ((document.querySelector('.panel.hero .meta') || {}).textContent || '').replace(/\s+/g, ' ').trim(); MANUAL = []; persistManual(); render(); return m;
+  });
+  // basis = balans 100 − wat deze maand geboekt is (0,46): 0,46 / 99,54 = +0,5%
+  ok('"deze maand" krijgt het percentage dat eerst bij YTD stond: (+0,5%)', /deze maand \+\$ 0,46 \(\+0,5%\)/.test(metPct), metPct);
 
   console.log('─── Recente trades: nieuwste eerst, en alleen wat het filter laat zien ───');
   ok('er staan trades in Recente trades', live.datums.length > 0, JSON.stringify(live.datums));
@@ -69,6 +76,16 @@ const RIJEN = [
   ok('de nieuwste (live, deze maand) staat nog steeds bovenaan', /ETH\/USDC/.test(alle.paren[0] || ''), JSON.stringify(alle.paren));
   const sleutels = await p.evaluate(() => [...document.querySelectorAll('.panel')].find(x => /Recente trades/.test(x.textContent)) ? 1 : 0);
   ok('Recente trades bestaat nog', sleutels === 1);
+
+  console.log('─── "Deze maand" volgt Amsterdam, ook in het eerste uur van een maand ───');
+  // 1 november 00:30 in Amsterdam is in UTC nog 31 oktober; toISOString() gaf dan oktober
+  await p.clock.setFixedTime(new Date('2026-11-01T00:30:00+01:00'));
+  const nov = await p.evaluate(() => {
+    T = [{ ...EMPTY_TRADE, id: 'okt', kind: 'live', exchange: 'okx', pair: 'BTC/USDC', dir: 'long', status: 'closed', date: '2026-10-31', time: '20:00', pnl: 2 },
+         { ...EMPTY_TRADE, id: 'nov', kind: 'live', exchange: 'okx', pair: 'BTC/USDC', dir: 'long', status: 'closed', date: '2026-11-01', time: '00:10', pnl: 5 }];
+    persist(); go('dashboard'); return ((document.querySelector('.panel.hero .meta') || {}).textContent || '').replace(/\s+/g, ' ').trim();
+  });
+  ok('om 00:30 op 1 november is "deze maand" november: +$ 5,00', /deze maand \+\$ 5,00/.test(nov), nov);
 
   ok('geen nieuwe JS-fouten', errs.length === 0, errs[0]);
   console.log(`\n=== Dashboard-live: ${pass}/${pass + fail} ===`);
