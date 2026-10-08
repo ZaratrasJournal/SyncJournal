@@ -67,10 +67,14 @@ De volledige beschrijving met hosting staat in **`site/README.md`**, sectie *Voo
 Dat is de bron; hieronder de korte versie.
 
 1. Bump `APP_VERSION` in `work/syncjournal.html` (zoek `const APP_VERSION`) — het is een string.
-   **Welk nummer** (afspraak Denny, 29-09-2026 — `major.minor.patch`):
-   - **patch** `v1.3` → `v1.3.1`: bugfix, niets nieuws voor de gebruiker
-   - **minor** `v1.3` → `v1.4`: nieuwe functie of zichtbaar ander gedrag (schrijf zonder `.0`, zoals `v1.4`)
+   **Welk nummer** (afspraak Denny, 29-09-2026, aangescherpt 08-10-2026 — `major.minor.patch`):
+   - **patch** `v1.3` → `v1.3.1`: bugfixes **en kleine aanpassingen**: een tekst, een label, een regel
+     weghalen of verplaatsen
+   - **minor** `v1.3` → `v1.4`: een **nieuwe functie**, of een verandering die je **cijfers of
+     werkwijze** raakt (zoals v1.5: lopende posities tellen anders mee). Schrijf zonder `.0`, zoals `v1.4`
    - **major** → `v2.0`: grote omslag — nieuwe opzet, backend, of iets wat leden aan hun data merken
+   Twijfel tussen patch en minor? Kies patch. "Zichtbaar ander gedrag" was tot 08-10 genoeg voor een
+   minor; daardoor werd het weghalen van YTD onder de balans v1.6, waar v1.5.1 logischer was.
    Nooit terug naar een lager nummer: `verNum()` in de update-check telt major×1e6 + minor×1e3 + patch,
    dus een lagere versie verschijnt bij leden nooit als update. Tot en met v1.3 telde elke release het
    tweede cijfer op, ook bij bugfixes; vanaf v1.3 geldt dit schema.

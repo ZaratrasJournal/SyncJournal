@@ -2,12 +2,14 @@
 
 Alle noemenswaardige wijzigingen aan SyncJournal. Versies volgen [semver](https://semver.org/): `major.minor.patch`.
 
-- **patch** (1.3 → 1.3.1): een bugfix, niets nieuws voor de gebruiker
-- **minor** (1.3 → 1.4): een nieuwe functie of zichtbaar ander gedrag
+- **patch** (1.3 → 1.3.1): een bugfix of een kleine aanpassing, zoals een tekst, een label of een
+  regel die verdwijnt
+- **minor** (1.3 → 1.4): een nieuwe functie, of een verandering die je cijfers of je werkwijze raakt
 - **major** (1.x → 2.0): een grote omslag — een nieuwe opzet, een backend, of iets wat leden aan hun data merken
 
 Tot en met v1.3 (29-09-2026) ging bij elke release het tweede cijfer omhoog, ook bij bugfixes. Vanaf
-daar geldt het schema hierboven. Terug naar een lager nummer kan niet: de update-check van leden
+daar geldt het schema hierboven; op 08-10-2026 is het aangescherpt, zodat een kleine aanpassing een
+patch is en geen minor. Terug naar een lager nummer kan niet: de update-check van leden
 vergelijkt versies, en een lager nummer zou nooit als update verschijnen.
 
 Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Drop in de Morani Discord.
