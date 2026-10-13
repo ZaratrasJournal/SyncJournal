@@ -16,6 +16,17 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v1.6.1] — 2026-10-13
+
+### Fixed
+- **Gem. R op de playbook-kaart stond op +0,00.** De kaart las een R-veld dat bij gesyncte trades leeg
+  blijft, en deelde door alle trades. Nu rekent hij zoals de rest van de app: netto P&L gedeeld door je
+  risico, alleen over trades met een stop. Heeft geen enkele trade een stop, dan staat er een streepje.
+- **Dezelfde fout op drie andere plekken:**
+  - De grafiek "Cumulatieve R" in Analytics bleef leeg.
+  - R per tradeduur in Analytics telde een trade zonder stop als 0R mee.
+  - In de prullenbak stond bij elke trade +0.0R.
+
 ## [v1.6] — 2026-10-08
 
 ### Gewijzigd

@@ -1843,7 +1843,7 @@ const KINDS={live:{label:'Live',color:'var(--green)'},gemist:{label:'Gemist',col
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v1.6';
+const APP_VERSION='v1.6.1';
 const SCHEMA_VERSION=10;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -4480,10 +4480,10 @@ function edgeLeakSection(pbName){
 }
 function pgPlaybook(){
   if(STATE.pbSel)return playbookDetail(STATE.pbSel);
-  const g={};CLOSED.forEach(t=>{(g[t.setup]=g[t.setup]||{n:0,w:0,pnl:0,r:0,best:-1e9,worst:1e9,tags:{}});const o=g[t.setup];o.n++;o.pnl+=t.pnl;o.r+=t.r;if(t.pnl>0)o.w++;o.best=Math.max(o.best,t.pnl);o.worst=Math.min(o.worst,t.pnl);(t.tags||[]).forEach(tg=>o.tags[tg]=(o.tags[tg]||0)+1);});
+  const g={};CLOSED.forEach(t=>{(g[t.setup]=g[t.setup]||{n:0,w:0,pnl:0,rows:[],best:-1e9,worst:1e9,tags:{}});const o=g[t.setup];o.n++;o.pnl+=t.pnl;o.rows.push(t);if(t.pnl>0)o.w++;o.best=Math.max(o.best,t.pnl);o.worst=Math.min(o.worst,t.pnl);(t.tags||[]).forEach(tg=>o.tags[tg]=(o.tags[tg]||0)+1);});
   const list=[...new Set([...SETUPS.filter(s=>g[s]),...Object.keys(PBOOK)])].sort((a,b)=>(g[b]?g[b].pnl:-1e18)-(g[a]?g[a].pnl:-1e18));
   if(!list.length)return `${filterBar()}<div style="display:flex;margin-bottom:14px"><span style="flex:1"></span><button class="btn pri" onclick="openPbEdit(null)">+ Nieuwe playbook</button></div>${emptyState(countActive()?'trades-none':'playbook')}`;
-  const cards=list.map(s=>{const v=g[s]||{n:0,w:0,pnl:0,r:0,best:0,worst:0,tags:{}};const wr=v.n?Math.round(v.w/v.n*100):0,ar=v.n?v.r/v.n:0;
+  const cards=list.map(s=>{const v=g[s]||{n:0,w:0,pnl:0,rows:[],best:0,worst:0,tags:{}};const wr=v.n?Math.round(v.w/v.n*100):0,gr=gemR(v.rows),ar=gr.avg;
     const topTags=Object.entries(v.tags).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([t])=>t);
     const wrCol=wr>=60?'var(--green)':wr>=45?'var(--amber)':'var(--red)';const dash=v.n?null:'—';
     const pbObj=PBOOK[s]||null;const crit=(pbObj&&pbObj.criteria)||[];
@@ -4492,7 +4492,7 @@ function pgPlaybook(){
       <div class="top"><span class="ic" style="background:var(--accent)">${esc(s[0])}</span><span class="nm">${esc(s)}</span><span class="pbstatus" style="color:${stC};border-color:color-mix(in srgb,${stC} 35%,transparent);background:color-mix(in srgb,${stC} 12%,transparent)">${stL}</span><button class="pbedit" onclick="event.stopPropagation();openPbEdit('${esc(s).replace(/'/g,'')}')" title="Bewerken">✎</button><span class="wr ${wr>=50?'g':'r'}">${v.n?wr+'%':'—'}</span></div>
       <div class="pbwr"><div class="pbwr-t"><div class="pbwr-f" style="width:${wr}%;background:${wrCol}"></div></div><span class="pbwr-l">${v.w}W · ${v.n-v.w}V</span></div>
       <div class="stats"><div class="s"><div class="l">Trades</div><div class="v">${v.n}</div></div>
-        <div class="s"><div class="l">Gem. R</div><div class="v ${cls(ar)}">${dash||(ar>=0?'+':'')+ar.toFixed(2).replace('.',',')}</div></div>
+        <div class="s"><div class="l">Gem. R</div><div class="v ${gr.n?cls(ar):''}">${dash||(gr.n?(ar>=0?'+':'')+ar.toFixed(2).replace('.',','):'—')}</div></div>
         <div class="s"><div class="l">Netto</div><div class="v ${cls(v.pnl)} mask">${dash||eurS(v.pnl)}</div></div></div>
       <div class="stats" style="border-top:none"><div class="s"><div class="l">Beste</div><div class="v g mask" style="font-size:13px">${dash||eurS(v.best)}</div></div>
         <div class="s"><div class="l">Slechtste</div><div class="v r mask" style="font-size:13px">${dash||eurS(v.worst)}</div></div>
@@ -4724,7 +4724,7 @@ function pgAnalytics(){
   const geldChron=BOEKINGEN.slice().sort((x,y)=>tradeMoment(x)-tradeMoment(y));
   let cum=0,peak=0,maxDD=0,cr=0;const eqV=[0],ddV=[0],crV=[0];
   geldChron.forEach(t=>{cum+=t.pnl;peak=Math.max(peak,cum);maxDD=Math.min(maxDD,cum-peak);eqV.push(cum);ddV.push(cum-peak);});
-  chron.forEach(t=>{cr+=t.r;crV.push(+cr.toFixed(2));});
+  chron.forEach(t=>{const r=tradeROrNull(t);if(r==null)return;cr+=r;crV.push(+cr.toFixed(2));});   // no R (no stop) is not 0R
   let ws=0,ls=0,mw=0,ml=0;chron.forEach(t=>{if(t.pnl>0){ws++;ls=0;mw=Math.max(mw,ws);}else{ls++;ws=0;ml=Math.max(ml,ls);}});
   let w2=0,gw2=0,gl2=0,net2=0;const wrRun=[],pfRun=[],expRun=[];
   chron.forEach((t,i)=>{net2+=t.pnl;if(t.pnl>0){w2++;gw2+=t.pnl;}else{gl2+=Math.abs(t.pnl);}wrRun.push(w2/(i+1)*100);pfRun.push(gl2?gw2/gl2:(gw2>0?4:0));expRun.push(net2/(i+1));});
@@ -4764,7 +4764,7 @@ function pgAnalytics(){
   const avgTp1=_tp1.length?Math.round(_tp1.reduce((s,x)=>s+x,0)/_tp1.length):0,avgTpN=_tpN.length?Math.round(_tpN.reduce((s,x)=>s+x,0)/_tpN.length):0;
   const maxHold=Math.max(1,avgHoldW,avgHoldL,avgTp1,avgTpN);
   // Duur → resultaat: gem. R per duur-bucket (scalps vs swings)
-  const _durAll=[...wins,...losses].map(t=>({m:tradeDurationMin(t),r:tradeR(t)})).filter(x=>x.m!=null);
+  const _durAll=[...wins,...losses].map(t=>({m:tradeDurationMin(t),r:tradeROrNull(t)})).filter(x=>x.m!=null&&x.r!=null);
   const DURB=[[15,'<15m'],[60,'15m–1u'],[240,'1–4u'],[1440,'4–24u'],[Infinity,'>1 dag']];
   const durRows=DURB.map(([max,label],i)=>{const min=i?DURB[i-1][0]:0;const g=_durAll.filter(x=>x.m>=min&&x.m<max);const avg=g.length?g.reduce((s,x)=>s+x.r,0)/g.length:0;return {label,n:g.length,avg};}).filter(x=>x.n>0);
   const _maxAbsDurR=Math.max(0.01,...durRows.map(x=>Math.abs(x.avg)));
@@ -8601,7 +8601,7 @@ function trashPanel(){
     ${n?`<button class="btn pri" onclick="trashRestoreSel()">↩ Terugzetten (${n})</button><button class="btn danger" onclick="trashKillSel()">Definitief (${n})</button>`:`<button class="btn danger" onclick="trashEmpty()">Prullenbak legen</button>`}</div>`;
   const list=rows.map(t=>{const left=trashDaysLeft(t);const on=trSel.has(t.id);
     return `<div class="setrow${on?' trsel':''}"><div class="txt" style="display:flex;align-items:center;gap:10px">${cb(on,`trashSelToggle(${t.id})`,'Selecteer trade')}
-      <span><b>${esc(t.pair||'?')} · ${t.dir==='short'?'short':'long'} <span class="num ${(t.r||0)>=0?'g':'r'}" style="font-weight:700">${(t.r||0)>=0?'+':'−'}${Math.abs(t.r||0).toFixed(1)}R</span></b>
+      <span><b>${esc(t.pair||'?')} · ${t.dir==='short'?'short':'long'} ${(r=>r==null?'<span class="num">—</span>':`<span class="num ${r>=0?'g':'r'}" style="font-weight:700">${rS(r)}</span>`)(tradeROrNull(t))}</b>
       <small style="display:block">${esc(t.date||'')}${t.setup?' · '+esc(t.setup):''} · <span style="color:${left<=7?'var(--red)':'var(--amber)'};font-weight:600">nog ${left} dag${left===1?'':'en'}</span></small></span></div>
       <button class="btn" onclick="trashRestoreOne(${t.id})">↩ Terugzetten</button><button class="btn danger" onclick="trashKill(${t.id})" title="definitief verwijderen" style="padding:8px 10px">×</button></div>`;}).join('');
   const pager=pages>1?`<div class="setrow" style="justify-content:center;gap:10px">
