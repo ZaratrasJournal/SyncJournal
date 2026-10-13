@@ -16,6 +16,18 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v1.8] — 2026-10-13
+
+### Toegevoegd
+- **Tendencies kent nu tijdframes.** Kies in de kruis-analyse *Tijdframe* (je entry), *TF-combinatie*
+  (zoals "Daily > 1H") of *HTF-bias* en zet ze af tegen je setup, sessie of richting. Ook je sterkste
+  combinatie en je structurele lek kijken er nu naar.
+- **HTF-bias: mee of tegen.** In Analytics zie je hoe je trades het doen als ze meegaan met de bias van
+  je hoogste laag, als ze ertegenin gaan, of als je geen bias hebt ingevuld: win-rate, gemiddelde R en
+  netto.
+- **Lagen-patronen op de playbook-pagina.** Per combinatie van tijdframe en setup ("4H SFP → 1H BOS")
+  zie je aantal, win-rate, gemiddelde R en netto, vanaf 2 trades, met je beste en zwakste patroon.
+
 ## [v1.7] — 2026-10-13
 
 ### Gewijzigd

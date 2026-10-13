@@ -1772,6 +1772,15 @@ function tfMinuten(tf){const s=String(tf||'').trim().toLowerCase();if(!s)return 
   const m=s.match(/^(\d+)\s*(m|min|h|d|w)$/);if(!m)return Infinity;
   return +m[1]*{m:1,min:1,h:60,d:1440,w:10080}[m[2]];}
 const tfHoogEerst=(a,b)=>a===b?0:(a>b?-1:1);
+// Timeframe analytics (v1.8, Denny 13-10-2026). Layers are top-down (v1.7), so the first layer is the
+// highest timeframe and the last one the entry.
+function tfCombo(t){const tfs=(t.layers||[]).map(l=>l&&l.timeframe).filter(Boolean);return tfs.length?tfs.join(' > '):'—';}
+// HTF bias: the highest layer that says Bullish or Bearish; Neutraal or empty is skipped.
+function htfBias(t){for(const l of (t.layers||[])){const b=String((l&&l.bias)||'').toLowerCase();if(b==='bullish')return 'Bullish';if(b==='bearish')return 'Bearish';}return '';}
+function biasRelatie(t){const b=htfBias(t);if(!b)return 'geen';return (b==='Bullish')===(t.dir!=='short')?'mee':'tegen';}
+// Pattern within a playbook: timeframe plus setups per layer, "4H SFP → 1H BOS+MSB".
+function laagPatroon(t){const L=(t.layers||[]).filter(l=>l&&(l.timeframe||(l.setups||[]).length));
+  return L.length?L.map(l=>[l.timeframe||'?',(l.setups||[]).join('+')].filter(Boolean).join(' ')).join(' → '):'—';}
 // The trade's timeframe: the lowest layer that has one (layers are top-down), else what it had.
 function entryTF(layers,fallback){for(let i=(layers||[]).length-1;i>=0;i--){const tf=layers[i]&&layers[i].timeframe;if(tf)return tf;}return fallback||'';}
 // Layers top-down by timeframe (Denny 13-10-2026). A layer without a timeframe keeps its slot;
@@ -1859,7 +1868,7 @@ const KINDS={live:{label:'Live',color:'var(--green)'},gemist:{label:'Gemist',col
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v1.7';
+const APP_VERSION='v1.8';
 const SCHEMA_VERSION=11;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -2533,7 +2542,7 @@ function multiDD(key,opts){
   return `<div class="dd" data-dd="${key}"><button class="dd-btn fselbtn ${cur.length?'on':''}" onclick="ddToggle(this)">${esc(label)}<span class="cv">▾</span></button>
     <div class="dd-menu ddchecks" onclick="event.stopPropagation()">
       ${opts.map(o=>{const val=Array.isArray(o)?o[0]:o,lab=Array.isArray(o)?o[1]:o;const on=cur.includes(val);
-        return `<label class="ddchk ${on?'on':''}"><input type="checkbox" ${on?'checked':''} onchange="toggleFilter('${key}','${jsarg(val)}')"><span>${esc(lab)}</span></label>`;}).join('')}
+        return `<label class="ddchk ${on?'on':''}"><input type="checkbox" ${on?'checked':''} onchange="toggleFilter('${key}',${jsarg(val)})"><span>${esc(lab)}</span></label>`;}).join('')}
       ${cur.length?`<div class="dd-sep"></div><button class="ddclear" onclick="clearFilterKey('${key}')">✕ Wis selectie</button>`:''}
     </div></div>`;
 }
@@ -2544,7 +2553,7 @@ function singleDD(key,opts,dflt,aria,cls){
   const cur=FILTER[key]||dflt;
   const o=opts.find(x=>x[0]===cur)||opts[0];
   return `<div class="dd" data-dd="${key}"><button class="dd-btn fselbtn${cls?' '+cls:''}${cur!==dflt?' on':''}" aria-label="${esc(aria)}" onclick="ddToggle(this)">${esc(o[1])}<span class="cv">▾</span></button>
-    <div class="dd-menu">${opts.map(([v,l])=>`<button class="${v===cur?'on':''}" onclick="setFilter('${key}','${jsarg(v)}')">${esc(l)}</button>`).join('')}</div></div>`;
+    <div class="dd-menu">${opts.map(([v,l])=>`<button class="${v===cur?'on':''}" onclick="setFilter('${key}',${jsarg(v)})">${esc(l)}</button>`).join('')}</div></div>`;
 }
 function filterBar(){
   const pairs=[...new Set(T.map(t=>t.pair))].sort();
@@ -2860,7 +2869,7 @@ function tradeHoverDetail(t){
   const emos=tradeEmotions(t);
   if(emos.length)meta.push(`<span>💭 ${emos.map(e=>`<span class="tagchip">${esc(e)}</span>`).join('')}</span>`);
   const mis=tradeMistakes(t);
-  if(mis.length)meta.push(`<span>⚠ ${mis.map(m=>`<span class="tagchip col click" style="--tc:var(--red)" title="filter op deze fout" onclick="event.stopPropagation();setFilter('mistake','${jsarg(m)}')">${esc(m)}</span>`).join('')}</span>`);
+  if(mis.length)meta.push(`<span>⚠ ${mis.map(m=>`<span class="tagchip col click" style="--tc:var(--red)" title="filter op deze fout" onclick="event.stopPropagation();setFilter('mistake',${jsarg(m)})">${esc(m)}</span>`).join('')}</span>`);
   if(+t.rating>0)meta.push(`<span>${[1,2,3,4,5].map(n=>`<span class="${n<=+t.rating?'star':'staro'}">${n<=+t.rating?'★':'☆'}</span>`).join('')}</span>`);
   if((t.screenshots||[]).length)meta.push(`<span>📸 ${t.screenshots.length} screenshot${t.screenshots.length>1?'s':''}</span>`);
   if((t.missedReasons||[]).length)meta.push(`<span>👻 ${t.missedReasons.map(esc).join(' · ')}</span>`);
@@ -3020,7 +3029,10 @@ const zonderMergedChildren=rows=>(rows||[]).filter(t=>t&&t.status!=='merged-chil
 // reeks oude trades staat vooraan en nieuwe syncs komen achteraan (Recente trades, 29-09-2026).
 const nieuwsteEerst=rows=>(rows||[]).slice().sort((a,b)=>(String(b.date||'')+' '+String(b.time||'')).localeCompare(String(a.date||'')+' '+String(a.time||'')));
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const jsarg=s=>String(s).replace(/[\\'"<>]/g,'');  // veilige arg voor inline on*-handlers (geen quote-/tag-breakout)
+/* A value as a JS string literal for an inline on*-handler, escaped for the attribute. The browser
+   decodes the attribute before the JS runs, so stripping quotes was not enough ('&#39;' became a quote,
+   review 13-10-2026), and it mangled values like "R&D o'k". Use it without surrounding quotes. */
+const jsarg=s=>esc(JSON.stringify(String(s)));
 // Bron voor een <img src="...">. Eigen screenshots zijn data:image-URL's uit compressImg,
 // maar via een geïmporteerde backup komt deze waarde van iemand anders: alleen bekende
 // beeld-schema's toelaten, en escapen zodat er niet uit het attribuut te breken valt.
@@ -3111,7 +3123,7 @@ function exCell(id){const e=acctOf(id);if(!e)return '';return `<div class="excel
 function tagColor(tag){for(const c of TAG_CATS){if((tagConfig[c.key]||[]).includes(tag))return tagKleur(c.key,tag);}return '';}
 // Eén uniforme chip-stijl: config-tags in hun categorie-kleur, losse/eigen tags in
 // neutraal grijs — maar altijd dezelfde vorm (bolletje + kleur), nooit twee soorten.
-function tagChips(tags,click){return (tags||[]).map(t=>{const col=tagColor(t)||'var(--muted)';return `<span class="tagchip col${click?' click':''}" style="--tc:${col}" ${click?`onclick="event.stopPropagation();setFilter('tag','${jsarg(t)}')"`:''}>${esc(t)}</span>`;}).join('');}
+function tagChips(tags,click){return (tags||[]).map(t=>{const col=tagColor(t)||'var(--muted)';return `<span class="tagchip col${click?' click':''}" style="--tc:${col}" ${click?`onclick="event.stopPropagation();setFilter('tag',${jsarg(t)})"`:''}>${esc(t)}</span>`;}).join('');}
 // Chips waarvan de kleur al vaststaat (de soort is bekend uit waar de tag vandaan komt).
 function kleurChips(items){return (items||[]).map(({tag,kleur})=>`<span class="tagchip col" style="--tc:${kleur}">${esc(tag)}</span>`).join('');}
 function statusB(s){const c=s==='partial'?'part':s==='open'?'open':'closed';return `<span class="status ${c}"><span class="sdot"></span>${s==='partial'?'Partial':s==='open'?'Open':'Gesloten'}</span>`;}
@@ -3142,6 +3154,7 @@ function kpiCard(label,value,o){o=o||{};
 /* Empty states (SetProduct-principes: icoon + kop + omschrijving + één actie; FTU ≠ no-results) */
 const EMPTY={
   analytics:['📊','Nog geen trades om te analyseren','Sluit een paar trades of pas je filter aan, dan verschijnen hier je equity-curve, R-verdeling, drawdown en meer.','+ Trade toevoegen','openForm(null)'],
+  htfbias:['🧭','Nog geen bias in je lagen','Kies Bullish of Bearish bij je hoogste setup-laag. Dan zie je hier of je trades het beter doen met of tegen de grotere trend.','',''],
   tendencies:['🧭','Nog geen patronen zichtbaar','Je hebt gesloten trades nodig om je edge per sessie, setup en emotie te zien.','+ Trade toevoegen','openForm(null)'],
   playbook:['📗','Je playbook is nog leeg','Voeg trades toe met een setup. SyncJournal berekent automatisch win-rate en verwachting per setup.','+ Trade toevoegen','openForm(null)'],
   kalender:['🗓️','Geen trades deze maand','Blader naar een andere maand met de pijltjes, of pas je filter aan.','',''],
@@ -3437,7 +3450,7 @@ function setupSessionMatrix(){
       const lite=liteText();
       let badge='';
       if(wr>=65&&c.pnl>150)badge='🎯';else if(wr<=30&&c.pnl<-100)badge='⊘';else if(wr<=45&&c.pnl<-50)badge='⏱';
-      tiles+=`<div class="tm-tile${cls2}${cls3}${lite}" style="left:${(tr.x+1)/gw*100}%;top:${(tr.y+1)/gh*100}%;width:${tw/gw*100}%;height:${th/gh*100}%;background:${tint(c.pnl,faded)}" onclick="matrixCell('${jsarg(su)}','${jsarg(se)}')" data-su="${esc(su)}" data-se="${esc(se)}" data-n="${c.n}" data-w="${c.w}" data-pnl="${c.pnl}">${badge?`<span class="tb">${badge}</span>`:''}<span class="ts">${esc(su)}</span><span class="tv mask">${eurK(c.pnl)} · ${wr}%</span></div>`;
+      tiles+=`<div class="tm-tile${cls2}${cls3}${lite}" style="left:${(tr.x+1)/gw*100}%;top:${(tr.y+1)/gh*100}%;width:${tw/gw*100}%;height:${th/gh*100}%;background:${tint(c.pnl,faded)}" onclick="matrixCell(${jsarg(su)},${jsarg(se)})" data-su="${esc(su)}" data-se="${esc(se)}" data-n="${c.n}" data-w="${c.w}" data-pnl="${c.pnl}">${badge?`<span class="tb">${badge}</span>`:''}<span class="ts">${esc(su)}</span><span class="tv mask">${eurK(c.pnl)} · ${wr}%</span></div>`;
     });
     groups+=`<div class="tm-grp" style="left:${gx/W*100}%;top:${gy/H*100}%;width:${gw/W*100}%;height:${gh/H*100}%"><div class="tm-ghead"><span class="gn">${esc(se)}</span><span class="gv ${cls(g.tot.pnl)} mask">${eurK(g.tot.pnl)}</span></div>${tiles}</div>`;
   });
@@ -3474,7 +3487,7 @@ function pairProfitHeatmap(){
   const tiles=squarify(pairs,{x:0,y:0,w:1000,h:H}).map(r=>{const {pair,c}=r.item,wr=c.n?Math.round(c.w/c.n*100):0;
     const cls2=(r.w<80||r.h<46)?' small':'',cls3=(r.w<46||r.h<26)?' tiny':'';
     const lite=liteText();
-    return `<div class="tm-tile${cls2}${cls3}${lite}" style="left:${(r.x+1)/1000*100}%;top:${(r.y+1)/H*100}%;width:${(r.w-2)/1000*100}%;height:${(r.h-2)/H*100}%;background:${tint(c.pnl)}" onclick="pairCell('${jsarg(pair)}')" data-su="${esc(pair)}" data-n="${c.n}" data-w="${c.w}" data-pnl="${c.pnl}"><span class="tlogo">${coinLogo(pair)}</span><span class="ts">${esc(pair)}</span><span class="tv mask">${eurK(c.pnl)} · ${wr}%</span></div>`;
+    return `<div class="tm-tile${cls2}${cls3}${lite}" style="left:${(r.x+1)/1000*100}%;top:${(r.y+1)/H*100}%;width:${(r.w-2)/1000*100}%;height:${(r.h-2)/H*100}%;background:${tint(c.pnl)}" onclick="pairCell(${jsarg(pair)})" data-su="${esc(pair)}" data-n="${c.n}" data-w="${c.w}" data-pnl="${c.pnl}"><span class="tlogo">${coinLogo(pair)}</span><span class="ts">${esc(pair)}</span><span class="tv mask">${eurK(c.pnl)} · ${wr}%</span></div>`;
   }).join('');
   const sw=bg=>`<span class="mxsw" style="background:${bg}"></span>`;
   return `<div class="tm" style="aspect-ratio:1000/${H}" onmousemove="tmMove(event)" onmouseleave="yhHide()">${tiles}</div>
@@ -3490,8 +3503,12 @@ const TDIM={
   emo:{label:'Emotie',get:t=>tradeEmotions(t)[0]||'—',all:t=>tradeEmotions(t)},
   grade:{label:'Grade',get:t=>gradeOf(t)||'—'},
   dir:{label:'Richting',get:t=>t.dir==='long'?'Long':'Short'},
+  tf:{label:'Tijdframe',get:t=>t.timeframe||entryTF(t.layers)||'—'},
+  tfcombo:{label:'TF-combinatie',get:t=>tfCombo(t)},
+  htf:{label:'HTF-bias',get:t=>HTF_LABEL[biasRelatie(t)]},
 };
-const TDIM_ORDER=['setup','session','hour','dow','emo','grade','dir'];
+const HTF_LABEL={mee:'Mee met HTF',tegen:'Tegen HTF',geen:'Geen bias'};
+const TDIM_ORDER=['setup','session','hour','dow','emo','grade','dir','tf','tfcombo','htf'];
 // Multi-waarde dimensies (emoties): een trade telt in élk bucket waar hij bij hoort,
 // niet alleen het eerste (zelfde klasse bug als de Fout-analyse, ChangeMaker 2026-09-14).
 function tdimAll(dim,t){const d=TDIM[dim];const vs=d.all?d.all(t):[d.get(t)];return vs.filter(v=>v&&v!=='—');}
@@ -3500,15 +3517,19 @@ function tdimVals(dim){const set=new Map();CLOSED.forEach(t=>{tdimAll(dim,t).for
   if(dim==='hour')arr.sort();
   else if(dim==='dow'){const o=['Ma','Di','Wo','Do','Vr','Za','Zo'];arr.sort((a,b)=>o.indexOf(a)-o.indexOf(b));}
   else if(dim==='grade')arr.sort();
+  else if(dim==='tf')arr.sort((a,b)=>tfHoogEerst(tfMinuten(a),tfMinuten(b)));
+  else if(dim==='htf'){const o=Object.values(HTF_LABEL);arr.sort((a,b)=>o.indexOf(a)-o.indexOf(b));}
   else arr.sort((a,b)=>set.get(b).pnl-set.get(a).pnl);
   return arr;}
 function tendEdgeLeak(){
-  const pairs=[['setup','session'],['setup','hour'],['session','dow'],['setup','emo']];const combos=[];
+  const pairs=[['setup','session'],['setup','hour'],['session','dow'],['setup','emo'],['setup','tfcombo'],['setup','htf']];const combos=[];
   pairs.forEach(([a,bd])=>{const m={};CLOSED.forEach(t=>{tdimAll(a,t).forEach(va=>tdimAll(bd,t).forEach(vb=>{const k=va+'||'+vb;(m[k]=m[k]||{n:0,w:0,pnl:0,r:0,rN:0,va,vb});const c=m[k];c.n++;c.pnl+=t.pnl;const _r=tradeROrNull(t);if(_r!=null){c.r+=_r;c.rN++;}if(t.pnl>0)c.w++;}));});
-    Object.values(m).forEach(c=>{if(c.n>=TEND_MINN)combos.push({...c,avgR:c.rN?c.r/c.rN:0,wr:Math.round(c.w/c.n*100)});});});
+    // "Geen bias" is not a condition, it is the whole setup again (review 13-10-2026)
+    Object.values(m).forEach(c=>{if(c.n>=TEND_MINN&&c.vb!==HTF_LABEL.geen)combos.push({...c,avgR:c.rN?c.r/c.rN:0,wr:Math.round(c.w/c.n*100)});});});
   if(!combos.length)return {edge:null,leak:null};
   combos.sort((x,y)=>y.avgR-x.avgR);
-  return {edge:combos[0],leak:combos[combos.length-1]};
+  // one combination cannot be both your edge and your leak
+  return {edge:combos[0],leak:combos.length>1?combos[combos.length-1]:null};
 }
 function tendVerdict(){
   const {edge,leak}=tendEdgeLeak();
@@ -3519,10 +3540,12 @@ function tendVerdict(){
   return `<div class="grid" style="grid-template-columns:1fr 1fr;align-items:stretch">${card(edge,'edge')}${card(leak,'leak')}</div>`;
 }
 function setCrossDim(which,val){STATE[which==='row'?'tendRow':'tendCol']=val;render();}
+const CROSS_FILTERBAAR=['setup','session','dir'];   // dimensions crossCell can turn into a trade filter
 function crossCell(rd,rv,cd,cv){const apply=(dim,val)=>{if(dim==='setup')FILTER.setup=val?[val]:[];else if(dim==='session')FILTER.session=val?[val]:[];else if(dim==='dir')FILTER.dir=(val==='Long'?'long':'short');};
   apply(rd,rv);apply(cd,cv);STATE.selected=[];STATE.tradePage=0;yhHide();go('trades');}
 function crossHeat(){
   let rd=STATE.tendRow||'setup',cd=STATE.tendCol||'session';if(rd===cd)cd=(rd==='session'?'setup':'session');
+  const klikbaar=CROSS_FILTERBAAR.includes(rd)&&CROSS_FILTERBAAR.includes(cd);   // a click must filter on both, or not at all
   const rvals=tdimVals(rd),cvals=tdimVals(cd);const cells={};let mx=0.3;
   CLOSED.forEach(t=>{tdimAll(rd,t).forEach(rv=>tdimAll(cd,t).forEach(cv=>{const k=rv+'||'+cv;(cells[k]=cells[k]||{n:0,w:0,pnl:0,r:0,rN:0});const c=cells[k];c.n++;c.pnl+=t.pnl;const _r=tradeROrNull(t);if(_r!=null){c.r+=_r;c.rN++;}if(t.pnl>0)c.w++;}));});
   Object.values(cells).forEach(c=>{if(c.n>=TEND_MINN)mx=Math.max(mx,Math.abs(c.r/c.n));});
@@ -3533,7 +3556,7 @@ function crossHeat(){
     if(!c||!c.n)return '<td class="thm-empty"></td>';
     const avgR=c.rN?c.r/c.rN:0,faded=c.n<TEND_MINN||!c.rN,wr=Math.round(c.w/c.n*100);
     const lite=faded?'':liteText();
-    return `<td class="${faded?'faded':''}${lite}" style="background:${faded?'var(--track)':tint(avgR)}" ${faded?'':`onclick="crossCell('${rd}','${jsarg(rv)}','${cd}','${jsarg(cv)}')"`} data-t="${esc(rv)} · ${esc(cv)}" data-r="${avgR.toFixed(2)}" data-wr="${wr}" data-pnl="${c.pnl}" data-n="${c.n}" onmousemove="crossMove(event)" onmouseleave="yhHide()">${faded?`<div class="thm-n" style="color:var(--muted)">n=${c.n}</div>`:`<div class="thm-v">${(avgR>=0?'+':'')+avgR.toFixed(2)}R</div><div class="thm-n">${wr}% · n=${c.n}</div>`}</td>`;}).join('')+'</tr>').join('');
+    return `<td class="${faded?'faded':''}${lite}" style="background:${faded?'var(--track)':tint(avgR)}" ${faded||!klikbaar?'':`onclick="crossCell('${rd}',${jsarg(rv)},'${cd}',${jsarg(cv)})"`} data-t="${esc(rv)} · ${esc(cv)}" data-r="${avgR.toFixed(2)}" data-wr="${wr}" data-pnl="${c.pnl}" data-n="${c.n}" onmousemove="crossMove(event)" onmouseleave="yhHide()">${faded?`<div class="thm-n" style="color:var(--muted)">n=${c.n}</div>`:`<div class="thm-v">${(avgR>=0?'+':'')+avgR.toFixed(2)}R</div><div class="thm-n">${wr}% · n=${c.n}</div>`}</td>`;}).join('')+'</tr>').join('');
   const sw=f=>`<span class="mxsw" style="background:${tint(f*mx)}"></span>`;
   return `<div class="panel"><div class="phead"><h3>🔀 Kruis-analyse</h3>
     <div class="crossctrl">${sel('row',rd)}<span class="x">×</span>${sel('col',cd)}</div><span class="sp"></span>
@@ -4362,6 +4385,26 @@ function savePbook(){const g=id=>{const el=document.getElementById(id);return el
   formDirty=false;closeForm();if(pbEditOrig&&STATE.pbSel===pbEditOrig)STATE.pbSel=name;render();toast(pbEditOrig?'✓ Playbook bijgewerkt':'✓ Playbook aangemaakt','ok');}
 function deletePbook(){if(!confirm('Deze playbook verwijderen? (je trades blijven staan)'))return;formDirty=false;delete PBOOK[pbEditOrig];persistPbook();closeForm();if(STATE.pbSel===pbEditOrig)STATE.pbSel='';render();toast('Playbook verwijderd','info');}
 function zoomPbExamples(setup,idx){const pb=PBOOK[setup];if(!pb||!(pb.examples||[]).length)return;lbShots=pb.examples.map(e=>e.dataUrl);lbIdx=idx;lbTradeId=null;renderLightbox();document.getElementById('lightbox').classList.add('on');document.getElementById('scrim').classList.add('on');}
+/* Layer patterns within a playbook (v1.8, demos/playbook-layer-breakdown-demo.html): closed trades
+   grouped by timeframe + setups per layer, best average R first. A pattern needs PATROON_MIN trades
+   before it says anything; single trades are only counted. */
+const PATROON_MIN=2;
+function lagenPatronen(closed){
+  const per={};closed.forEach(x=>{const k=laagPatroon(x);if(k==='—')return;(per[k]=per[k]||[]).push(x);});
+  const alle=Object.entries(per).map(([k,g])=>{const gr=gemR(g);return {k,n:g.length,wr:Math.round(g.filter(x=>x.pnl>0).length/g.length*100),r:gr.n?gr.avg:null,net:g.reduce((a,x)=>a+x.pnl,0)};});
+  const muted=t=>`<div style="color:var(--muted);font-size:12.5px;padding:6px 2px">${t}</div>`;
+  if(!alle.length)return muted('Nog geen setup-lagen in de trades van deze playbook. Vul bij je trades je lagen in (tijdframe en setup), dan zie je hier welke combinatie het best werkt.');
+  const rij=alle.filter(x=>x.n>=PATROON_MIN).sort((a,b)=>((b.r==null?-1e9:b.r)-(a.r==null?-1e9:a.r))||(b.net-a.net));
+  const rest=alle.length-rij.length;
+  const restTxt=rest?muted(rest+(rest===1?' patroon':' patronen')+' met te weinig trades (minder dan '+PATROON_MIN+')'):'';
+  if(!rij.length)return muted('Nog te weinig trades per patroon: elk patroon heeft er minstens '+PATROON_MIN+' nodig.')+restTxt;
+  const rS2=r=>r==null?'—':(r>=0?'+':'−')+Math.abs(r).toFixed(2).replace('.',',')+'R';
+  const label=i=>rij.length<2?'':i===0?'<span class="chip" style="color:var(--green)">Beste</span>':i===rij.length-1?`<span class="chip" style="color:var(--${(rij[i].r!=null&&rij[i].r<0)?'red':'amber'})">Zwakste</span>`:'';   // red only when it actually loses
+  return rij.map((x,i)=>`<div data-patroon="${esc(x.k)}" style="display:flex;align-items:center;gap:12px;padding:8px 2px;border-bottom:1px solid var(--line2)">
+      <b class="num" style="flex:1;min-width:0">${esc(x.k)}</b>${label(i)}
+      <span class="num" style="color:var(--muted)">${x.n}×</span><span class="num">${x.wr}%</span>
+      <span class="num ${x.r==null?'':cls(x.r)}">${rS2(x.r)}</span><span class="num ${cls(x.net)} mask">${eurS(x.net)}</span></div>`).join('')+restTxt;
+}
 function playbookDetail(setup){
   const panel=(title,chip,body)=>`<div class="panel"><div class="phead"><h3>${title}</h3><span class="sp"></span>${chip?`<span class="chip">${chip}</span>`:''}</div><div class="pbody">${body}</div></div>`;
   const panelHead=(title,right,body)=>`<div class="panel"><div class="phead"><h3>${title}</h3><span class="sp"></span>${right||''}</div><div class="pbody">${body}</div></div>`;
@@ -4380,6 +4423,7 @@ function playbookDetail(setup){
   const eroTypes=[ero.backtest.n>0,ero.paper.n>0,ero.real.n>0].filter(Boolean).length;
   const eroPanel=eroTypes>=2?`<div class="panel"><div class="phead"><h3>📉 Edge-erosion funnel</h3><span class="sp"></span><span class="chip">Backtest → Paper → Real</span></div><div class="pbody"><div class="funnel">${erosionFunnel(ero)}</div></div></div>`:'';
   const leakPanel=edgeLeakSection(setup);
+  const patroonPanel=panel('Lagen-patronen','tijdframe + setup per laag · vanaf '+PATROON_MIN+' trades',lagenPatronen(closed));
   const list=src.map(x=>`<div class="revitem" onclick="openForm(${x.id})">
     <div style="min-width:0;flex:1"><div style="display:flex;align-items:center;gap:6px">${assetCell(x.pair)}${kindBadge(x)}</div><div style="font-size:10.5px;color:var(--muted);margin-top:2px">${accAvatar(x.exchange,15)} <span class="num">${fmtD(x.date)}</span> · ${esc(sessionOf(x))}</div></div>
     <span class="m ${cls(x.pnl)} mask">${eurS(x.pnl)}</span></div>`).join('');
@@ -4419,6 +4463,7 @@ function playbookDetail(setup){
           ${panel('R-verdeling','waar landen je trades',histoR(closed))}
           ${panel('Win / verlies','verdeling',donutPanel([{name:'Winst',value:w,fill:'var(--green)'},{name:'Verlies',value:n-w,fill:'var(--red)'}],{big:wr+'%',sub:'win-rate'}))}
         </div>
+        ${patroonPanel}
         ${eroPanel}
         ${leakPanel}
         ${sesBars.length?panel('Netto per sessie','waar werkt deze setup het best',barsPnl(sesBars,'e')):''}
@@ -4775,6 +4820,11 @@ function pgAnalytics(){
       ${wlStat('Gem. MAE',avgMae.toFixed(2)+'R','r')}${wlStat('Huidige reeks',curStreak+(curType==='w'?'W':curType==='l'?'V':''),curType==='w'?'g':curType==='l'?'r':'')}</div></div>`;
   const dirRows=['long','short'].map(d=>{const g=CLOSED.filter(t=>t.dir===d),w=g.filter(t=>t.pnl>0).length,pnl=g.reduce((s,t)=>s+t.pnl,0),wr=g.length?Math.round(w/g.length*100):0;
     return {label:d==='long'?'Long':'Short',val:wr,disp:wr+'%',sub:`${g.length} trades · netto <b class="${cls(pnl)}">${eurS(pnl)}</b>`,color:pnl>=0?'var(--green)':'var(--red)'};});
+  // HTF bias (v1.8): with or against the bias of the highest layer that has one
+  const htfRows=['mee','tegen','geen'].map(k=>{const g=CLOSED.filter(t=>biasRelatie(t)===k),w=g.filter(t=>t.pnl>0).length,pnl=g.reduce((s,t)=>s+t.pnl,0),wr=g.length?Math.round(w/g.length*100):0,gr=gemR(g);
+    const r=gr.n?(gr.avg>=0?'+':'−')+Math.abs(gr.avg).toFixed(2).replace('.',',')+'R':'—';
+    return {label:HTF_LABEL[k],val:wr,disp:g.length?wr+'%':'—',sub:`${g.length} trades · gem. ${r} · netto <b class="${cls(pnl)} mask">${eurS(pnl)}</b>`,color:pnl>=0?'var(--green)':'var(--red)'};});
+  const htfBody=CLOSED.some(t=>biasRelatie(t)!=='geen')?hbars(htfRows):emptyState('htfbias');
   // Top 6 op |netto|: grootste verliezers horen er óók in (ChangeMaker 2026-09-16 — bij een
   // fouten-filter viel de zwaarste verliezer juist buiten de lijst); weergave winst → verlies.
   const pairRows=groupRows('pair').sort((x,y)=>Math.abs(y.pnl)-Math.abs(x.pnl)).slice(0,6).sort((x,y)=>y.pnl-x.pnl);
@@ -4881,6 +4931,7 @@ function pgAnalytics(){
       ${panel('Netto per sessie','gesorteerd op netto',barsPnl(sessBars,'e'))}
       ${panelRaw('Long vs. short','win-rate · netto',hbars(dirRows))}
     </div><div style="height:13px"></div>
+    ${panelRaw('HTF-bias: mee of tegen','bias van je hoogste laag · win-rate · gem. R · netto',htfBody)}<div style="height:13px"></div>
     <div class="grid" style="grid-template-columns:2fr 1fr;align-items:stretch">
       ${panelRaw('Per pair','top 6 · grootste netto-impact',hbars(pairRows))}
       ${panel('Kerncijfers','gem. per trade',wl)}
