@@ -51,7 +51,8 @@ const PB_BY_NAME={};PB_DEF.forEach(d=>PB_BY_NAME[d.name]=d);
 function buildPlaybooks(){
   const pbook={};
   PB_DEF.forEach((d,i)=>{pbook[d.name]={name:d.name,oneLiner:d.oneLiner,
-    layers:[{timeframe:d.tf[0],bias:d.bias,setups:[d.name],confirmations:[pick(CONFIRM),pick(CONFIRM)]},{timeframe:d.tf[1]||d.tf[0],bias:d.bias,setups:[],confirmations:[pick(CONFIRM)]}],
+    // top-down like the app (v1.7): higher timeframe first, the entry layer last
+    layers:(([e,h])=>[h,e])([{timeframe:d.tf[0],bias:d.bias,setups:[d.name],confirmations:[pick(CONFIRM),pick(CONFIRM)]},{timeframe:d.tf[1]||d.tf[0],bias:d.bias,setups:[],confirmations:[pick(CONFIRM)]}]),
     criteria:[{text:'Duidelijke '+d.tf[0]+'-structuur',mandatory:true,covers:'trend'},{text:pick(CONFIRM)+' als bevestiging',mandatory:true,covers:'trigger'},{text:'R:R minimaal 2:1',mandatory:false,covers:'rr'}],
     antiCriteria:[{text:'Vlak vóór high-impact nieuws',mandatory:true},{text:'Geen duidelijke liquidity-target',mandatory:false}],
     status:d.status,defaultGrade:d.grade,stop:'onder/boven de sweep',target:'volgende liquidity-pool',minRR:'2',
@@ -141,7 +142,7 @@ function genTrade(id,kind,dateMs,session,hm){
   const mistakes=(!win&&chance(0.55))?[pick(MISTAKES)]:[]; if(mistakes.length&&chance(0.2))mistakes.push(pick(MISTAKES));
   const tags=[...new Set([...(chance(0.4)?[pick(CUSTOM)]:[]),...(chance(0.5)?[pick(CONFIRM)]:[])])];
   const layers=[{timeframe:pb.tf[0],bias:pb.bias,setups:[pbName],confirmations:[pick(CONFIRM)]}];
-  if(chance(0.5))layers.push({timeframe:pb.tf[1]||pb.tf[0],bias:pb.bias,setups:[],confirmations:[pick(CONFIRM)]});
+  if(chance(0.5))layers.unshift({timeframe:pb.tf[1]||pb.tf[0],bias:pb.bias,setups:[],confirmations:[pick(CONFIRM)]});   // HTF on top
   const shots=chance(0.2)?Array.from({length:rint(1,3)},()=>pick(SHOTS)):[];
   const durationMin=Math.round(win?rf(20,320):rf(6,140));
   const mae=+(win?rf(0.1,0.55):Math.abs(r)*rf(0.75,1.1)).toFixed(2);

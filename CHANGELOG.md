@@ -16,6 +16,21 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v1.7] — 2026-10-13
+
+### Gewijzigd
+- **Setup-lagen staan altijd top-down.** Kies je bij een laag een hoger tijdframe, dan schuift die laag
+  meteen naar boven, met zijn setups en bias mee. Je entry-laag is altijd de onderste. Ook in je
+  playbook-sjablonen.
+- **In een laag zie je je eigen tijdframe-tags** uit Instellingen (Weekly, Daily, 12H, 4H …), van hoog
+  naar laag. Voeg je een tag toe, dan staat hij meteen op de goede plek.
+
+### Fixed
+- **Een hoger tijdframe onderaan maakte je trade een trade op dat tijdframe.** Zette je eerst je 1H-laag
+  en daarna een 4H-bevestiging eronder, dan telde je trade als 4H-trade. Je bestaande trades zijn bij
+  de update rechtgezet: lagen top-down, en het tijdframe van de trade is weer dat van je entry-laag.
+  Je gekozen setup blijft staan. "bearish" en "Bearish" tellen voortaan als hetzelfde.
+
 ## [v1.6.1] — 2026-10-13
 
 ### Fixed

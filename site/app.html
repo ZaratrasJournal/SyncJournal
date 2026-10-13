@@ -1764,6 +1764,22 @@ function sessionOf(t){return t&&isWeekendDate(t.date)?'Weekend':((t&&t.session)|
 const EMOTIONS=['Kalm','Zelfverzekerd','Gefocust','FOMO','Twijfel','Gehaast','Revenge'];
 const TFLIST=['Daily','4H','2H','1H','30M','15M','5M','1M'];/* top-down volgorde */
 const TIMEFRAMES=TFLIST;
+/* Timeframe label -> minutes, for top-down order (Weekly > Daily > 12H > 1H > 15M). 'M' is minutes,
+   as in the timeframe tags. An unreadable label is Infinity: it sorts to the top and never becomes
+   the entry layer (the last layer, see submitForm). Empty -> null (no timeframe chosen yet). */
+function tfMinuten(tf){const s=String(tf||'').trim().toLowerCase();if(!s)return null;
+  const woord={weekly:10080,week:10080,daily:1440,day:1440,monthly:43200,month:43200}[s];if(woord)return woord;
+  const m=s.match(/^(\d+)\s*(m|min|h|d|w)$/);if(!m)return Infinity;
+  return +m[1]*{m:1,min:1,h:60,d:1440,w:10080}[m[2]];}
+const tfHoogEerst=(a,b)=>a===b?0:(a>b?-1:1);
+// The trade's timeframe: the lowest layer that has one (layers are top-down), else what it had.
+function entryTF(layers,fallback){for(let i=(layers||[]).length-1;i>=0;i--){const tf=layers[i]&&layers[i].timeframe;if(tf)return tf;}return fallback||'';}
+// Layers top-down by timeframe (Denny 13-10-2026). A layer without a timeframe keeps its slot;
+// equal timeframes keep their order (Array.prototype.sort is stable).
+function sorteerLagen(layers){const L=[...(layers||[])],plek=[],met=[];
+  L.forEach((l,i)=>{if(tfMinuten(l&&l.timeframe)!=null){plek.push(i);met.push(l);}});
+  met.sort((a,b)=>tfHoogEerst(tfMinuten(a.timeframe),tfMinuten(b.timeframe)));
+  plek.forEach((i,k)=>{L[i]=met[k];});return L;}
 const CONFIRMATIONS=['Liquidity Sweep','OB','FVG','EQL/EQH','Flat candle','Session sweep','VAH/VAL/POC','Range retest','Range acceptatie'];
 // Startwaarde voor tagConfig.emotionNeg (welke emoties negatief/rood zijn). Tot 29-09-2026 was dit
 // dé lijst, vast in de code: een zelf toegevoegde negatieve emotie belandde daardoor bij Positief.
@@ -1843,8 +1859,8 @@ const KINDS={live:{label:'Live',color:'var(--green)'},gemist:{label:'Gemist',col
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v1.6.1';
-const SCHEMA_VERSION=10;
+const APP_VERSION='v1.7';
+const SCHEMA_VERSION=11;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
   // ander type dan verwacht (bv. sj_manual='null' of een array waar een object hoort).
@@ -2054,6 +2070,18 @@ const MIGRATIONS=[
      van de exchange komt niet meer terug. */
   {v:10,note:'OKX/Blofin: stappen van lopende posities opnieuw ophalen',up(){
     T.forEach(t=>{ if(t&&(t.exchange==='okx'||t.exchange==='blofin')&&(t.status==='partial'||t.status==='open')&&Array.isArray(t.fills)&&t.fills.length){ t.fills=[]; delete t.fillsNone; } });
+  }},
+  /* Layers top-down (Denny 13-10-2026): the last layer is the entry layer and sets t.timeframe, so a
+     4H layer added under a 1H one made the trade a 4H trade. The setup stays as it is: we cannot tell
+     whether it was picked or derived. Bias spelling from the old journal ('bearish') joins in. The
+     runner persists T and PBOOK; the trash we save here. */
+  {v:11,note:'Setup-lagen top-down, bias-schrijfwijze gelijk',up(){
+    const BIAS={bullish:'Bullish',bearish:'Bearish',neutraal:'Neutraal',neutral:'Neutraal'};
+    const fix=layers=>sorteerLagen(layers.map(l=>({...l,bias:BIAS[String((l&&l.bias)||'').toLowerCase()]||(l&&l.bias)||''})));
+    [...T,...TRASH].forEach(t=>{ if(!t||!Array.isArray(t.layers)||!t.layers.length)return;
+      t.layers=fix(t.layers); t.timeframe=entryTF(t.layers,t.timeframe); });
+    Object.values(PBOOK||{}).forEach(pb=>{ if(pb&&Array.isArray(pb.layers)&&pb.layers.length)pb.layers=fix(pb.layers); });
+    persistTrash();
   }},
 ];
 async function runMigrations(){
@@ -4321,7 +4349,7 @@ function rmPbExample(i){pbExamples.splice(i,1);renderPbExamples();}
 function setPbExKind(i,k){pbExamples[i].kind=k;renderPbExamples();}
 function savePbook(){const g=id=>{const el=document.getElementById(id);return el?el.value.trim():'';};
   const name=g('pb_name');if(!name){const e=document.getElementById('pbErr');if(e)e.textContent='⚠ Naam is verplicht.';const n=document.getElementById('pb_name');if(n)n.focus();return;}
-  const layers=formLayers.map(L=>({timeframe:L.timeframe,bias:L.bias||'',setups:[...L.setups],confirmations:[...L.confirmations]})).filter(L=>L.timeframe||L.bias||L.setups.length||L.confirmations.length);
+  const layers=sorteerLagen(formLayers.map(L=>({timeframe:L.timeframe,bias:L.bias||'',setups:[...L.setups],confirmations:[...L.confirmations]})).filter(L=>L.timeframe||L.bias||L.setups.length||L.confirmations.length));
   const obj={...EMPTY_PB,...pbForm,name,oneLiner:g('pb_oneliner'),layers,
     criteria:pbCrit.map(c=>({text:c.text.trim(),mandatory:!!c.mandatory,covers:c.covers||''})).filter(c=>c.text),
     antiCriteria:pbAnti.map(c=>({text:c.text.trim(),mandatory:!!c.mandatory})).filter(c=>c.text),
@@ -5129,7 +5157,7 @@ function setPctRef(v){STATE.pctRef=Math.max(0,+v||0);persistState();render();}
 /* trades CRUD + import/export */
 // Volledige staat-payload — gedeeld door export, snapshots en herstel.
 function planBackupBlock(){const o={};let any=false;Object.keys(PLAN_LS).forEach(k=>{try{const v=localStorage.getItem(PLAN_LS[k]);if(v!=null){o[k]=v;any=true;}}catch(e){}});return any?o:null;}
-function snapshotPayload(){ return {app:'SyncJournal',appVersion:APP_VERSION,schemaVersion:SCHEMA_VERSION,exported:new Date().toISOString(),tradingplan:planBackupBlock(),tagConfig,pbook:PBOOK,conns:CONNS,manual:MANUAL,sync:SYNC,aiPrefs:AIPREFS,view:{preset:VIEW.preset,v:VIEW.v},exMeta:Object.fromEntries(EXCHANGES.map(e=>[e.id,{val:e.val,acct:e.acct}])),settings:{theme:STATE.theme,currency:STATE.currency,priv:STATE.priv,density:STATE.density},trades:T,trash:TRASH}; }
+function snapshotPayload(){ return {app:'SyncJournal',appVersion:APP_VERSION,schemaVersion:DB.load('schema',SCHEMA_VERSION),exported:new Date().toISOString(),tradingplan:planBackupBlock(),tagConfig,pbook:PBOOK,conns:CONNS,manual:MANUAL,sync:SYNC,aiPrefs:AIPREFS,view:{preset:VIEW.preset,v:VIEW.v},exMeta:Object.fromEntries(EXCHANGES.map(e=>[e.id,{val:e.val,acct:e.acct}])),settings:{theme:STATE.theme,currency:STATE.currency,priv:STATE.priv,density:STATE.density},trades:T,trash:TRASH}; }
 // Zet een volledige backup-payload (nieuw formaat) terug in de live-staat.
 /* Binnenkomende trades veilig maken (audit 2026-09-18): één ontbrekend date-veld in een
    back-up liet het dashboard crashen — en omdat opslaan vóór tekenen gebeurt, overleefde
@@ -5831,7 +5859,7 @@ const OLD_EXMAP={mexc:'mexc',blofin:'blofin',okx:'okx',hyperliquid:'hyperliquid'
 function migrateOldTrade(ot){
   const dir=(ot.direction||ot.dir||'long');
   const setupTags=ot.setupTags||[];
-  const layers=(ot.layers||[]).map(L=>({timeframe:L.timeframe||'',bias:L.bias||'',setups:[...(L.setups||[])],confirmations:[...(L.confirmations||[])]}));
+  const layers=sorteerLagen((ot.layers||[]).map(L=>({timeframe:L.timeframe||'',bias:L.bias||'',setups:[...(L.setups||[])],confirmations:[...(L.confirmations||[])]})));
   const kindMap={missed:'gemist',backtest:'backtest',paper:'paper'};
   const kind=ot.simType?(kindMap[ot.simType]||'live'):(ot.kind||'live');
   const grade=(ot.tradeGrade||ot.grade||'').replace('+','');
@@ -5860,7 +5888,7 @@ function migrateOldTrade(ot){
   const pnlSim=(kind!=='live'&&!pnl&&r&&entry&&stop&&size)?+(r*Math.abs(entry-stop)/entry*size).toFixed(2):0;
   return {date:ot.date||'',time:ot.time||'',exchange,account:'',pair:ot.pair||'',dir,
     setup:setupTags[0]||ot.setup||'',session:ot.session||sessionFromTime(ot.time),
-    timeframe:(layers[layers.length-1]||{}).timeframe||ot.timeframe||'',market:ot.market||'',grade,
+    timeframe:entryTF(layers,ot.timeframe),market:ot.market||'',grade,
     entry,exit:+ot.exit||0,stop,tp:+(ot.takeProfit!=null?ot.takeProfit:ot.tp)||0,hindsightExit,
     size:String(size||0),leverage:+ot.leverage||0,fees:+ot.fees||0,risk:+ot.risk||0,rrPlanned:+ot.rrPlanned||0,
     pnl:pnl||pnlSim,r,status:(ot.status==='missed'||!ot.status)?'closed':ot.status,   // oude app: sim-trades hadden status 'missed'
@@ -8655,7 +8683,10 @@ function onDateChange(){const d=document.getElementById('f_date'),s=document.get
 /* setup-lagen (top-down) — zoals origineel */
 function addLayer(){formLayers.push({timeframe:'',bias:'',setups:[],confirmations:[]});renderLayers();}
 function removeLayer(i){formLayers.splice(i,1);renderLayers();}
-function setLayerTF(i,tf){formLayers[i].timeframe=(formLayers[i].timeframe===tf?'':tf);renderLayers();}
+function setLayerTF(i,tf){formLayers[i].timeframe=(formLayers[i].timeframe===tf?'':tf);formLayers=sorteerLagen(formLayers);renderLayers();}
+// The timeframe chips of a layer: your timeframe tags, plus what the open trade already uses.
+function tfKeuzes(){const tags=tagConfig&&tagConfig.timeframeTags;const s=new Set([...(tags&&tags.length?tags:TFLIST),...formLayers.map(l=>l.timeframe).filter(Boolean)]);
+  return [...s].sort((a,b)=>tfHoogEerst(tfMinuten(a),tfMinuten(b)));}
 function setLayerBias(i,v){formLayers[i].bias=(formLayers[i].bias===v?'':v);renderLayers();}
 function toggleLayerTag(i,kind,tag){const a=formLayers[i][kind];const j=a.indexOf(tag);if(j<0)a.push(tag);else a.splice(j,1);renderLayers();}
 function renderLayers(){const c=document.getElementById('layerbuilder');if(!c)return;
@@ -8663,10 +8694,10 @@ function renderLayers(){const c=document.getElementById('layerbuilder');if(!c)re
   const BIAS=[['Bullish','var(--green)'],['Neutraal','var(--muted)'],['Bearish','var(--red)']];
   c.innerHTML=formLayers.map((L,i)=>{
     const biasPills=BIAS.map(([x,col])=>`<button type="button" class="biaspill ${L.bias===x?'on':''}" style="--bc:${col}" onclick="setLayerBias(${i},'${x}')">${x}</button>`).join('');
-    const tfChip=tf=>`<span class="tagopt ${L.timeframe===tf?'on':''}" onclick="setLayerTF(${i},'${tf}')">${tf}</span>`;
-    const chip=(kind,tag)=>`<span class="tagopt ${L[kind].includes(tag)?'on':''}" onclick="toggleLayerTag(${i},'${kind}','${esc(tag).replace(/'/g,'')}')">${esc(tag)}</span>`;
+    const tfChip=tf=>`<span class="tagopt ${L.timeframe===tf?'on':''}" onclick="setLayerTF(${i},${esc(JSON.stringify(tf))})">${esc(tf)}</span>`;
+    const chip=(kind,tag)=>`<span class="tagopt ${L[kind].includes(tag)?'on':''}" onclick="toggleLayerTag(${i},'${kind}',${esc(JSON.stringify(tag))})">${esc(tag)}</span>`;
     return `<div class="layerrow"><div class="layerhead"><span class="layernum">${i+1}</span><span class="sp" style="flex:1"></span><div class="biaspills">${biasPills}</div><button type="button" class="xlayer" onclick="removeLayer(${i})" title="laag verwijderen">×</button></div>
-      <div class="layertags"><div class="lt-lbl">Timeframe</div><div class="tg-chips" style="--chip:${tagKleur('timeframeTags')}">${TFLIST.map(tfChip).join('')}</div></div>
+      <div class="layertags"><div class="lt-lbl">Timeframe</div><div class="tg-chips" style="--chip:${tagKleur('timeframeTags')}">${tfKeuzes().map(tfChip).join('')}</div></div>
       <div class="layertags"><div class="lt-lbl">Setups</div><div class="tg-chips" style="--chip:${tagKleur('setupTags')}">${[...new Set([...(tagConfig.setupTags||[]),...L.setups])].map(t=>chip('setups',t)).join('')}</div></div>
       <div class="layertags"><div class="lt-lbl">Confirmaties</div><div class="tg-chips" style="--chip:${tagKleur('confirmationTags')}">${[...new Set([...(tagConfig.confirmationTags||[]),...L.confirmations])].map(t=>chip('confirmations',t)).join('')}</div></div></div>`;}).join('');}
 /* emoties (negatief/positief) + fouten */
@@ -9024,13 +9055,13 @@ function submitForm(id){
   const pnl=num('pnl');
   const ex=EXMAP[g('exchange')];
   // setup-lagen: schoon opslaan; platte setup/timeframe afleiden uit de entry-laag (voor analytics)
-  const layers=formLayers.map(L=>({timeframe:L.timeframe,bias:L.bias||'',setups:[...L.setups],confirmations:[...L.confirmations]})).filter(L=>L.timeframe||L.bias||L.setups.length||L.confirmations.length);
+  const layers=sorteerLagen(formLayers.map(L=>({timeframe:L.timeframe,bias:L.bias||'',setups:[...L.setups],confirmations:[...L.confirmations]})).filter(L=>L.timeframe||L.bias||L.setups.length||L.confirmations.length));
   const entryLayer=layers.length?layers[layers.length-1]:null;
   // Playbook-koppeling wint: gekozen playbook is de setup; anders afgeleid uit de entry-laag.
   // A2: aangeraakt playbook-veld wint altijd — óók bij "— geen —" (setup echt leeg).
   // Onaangeraakt en leeg → afleiden uit de entry-laag (gedrag voor nieuwe trades).
   const setup=formPbTouched?g('playbook'):(g('playbook')||(entryLayer&&entryLayer.setups.length?entryLayer.setups[0]:''));
-  const timeframe=entryLayer?entryLayer.timeframe:'';
+  const timeframe=entryTF(layers,(id!=null&&id!=='null')?(T.find(x=>x.id===id)||{}).timeframe:'');
   const obj={date:g('date'),time:g('time'),exchange:g('exchange'),account:ex?ex.acct:'',pair:g('pair').toUpperCase().trim(),dir:g('dir'),session:g('session'),
     market:g('market'),grade:formGrade,layers,setup,timeframe,
     entry:num('entry'),exit:num('exit'),stop:num('stop'),

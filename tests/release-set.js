@@ -32,6 +32,7 @@ module.exports = [
   'hl-deels-dicht',          // Hyperliquid: een geraakte TP is zichtbaar terwijl de positie nog loopt
   'equity-curve',            // equity-curve van oud naar nieuw, zonder verzonnen toppen; geen 493%-trend
   'jaaroverzicht-past',      // Kalender: het jaaroverzicht past in zijn paneel, ook op een laptop
+  'lagen-topdown',           // setup-lagen top-down op tijdframe; entry-laag bepaalt het tijdframe
   'playbook-r',              // R overal netto ÷ risico: playbook-kaart, cumulatieve R, R per duur, prullenbak
   'lopend-niet-meegeteld',   // geboekt geld telt (ook van een lopende positie), uitkomsten pas als hij dicht is
   'hl-echt',                 // Denny's echte wallet, afgespeeld uit tests/_fixtures (op CI overgeslagen)
