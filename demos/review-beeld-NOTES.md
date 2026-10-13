@@ -59,5 +59,12 @@ balk + tekst op het klembord; anders download). ← → = vorige/volgende maand.
 | **2 — Rijen** | per trade één rij: beeld · info · review naast elkaar, alles direct zichtbaar |
 | **3 — Focus** | de maand als filmstrip bovenaan, één trade groot met review ernaast |
 
+## Ronde 3 (14-10-2026) — `demos/review-beeld-demo-v3.html`
+Denny koos **indeling 1 (kaarten)**: 3 per rij, kaarten selecteerbaar (vinkje linksboven, toont je
+volgorde-nummer), *Presenteer maand* wordt *Presenteer geselecteerde (n)* zodra je iets kiest, plus
+"Selecteer maand". De sessie-kolom is vervangen door een **selectiebalk** onderin (volgorde, presenteer,
+coach-pakket, Discord, bedragen verbergen, naam, wissen) — zo blijft er ruimte voor 3 kaarten. In de
+presentatie staat een **strook met miniaturen** onder het beeld: klik om direct naar een trade te gaan.
+
 ## Verdict
 _(invullen na Denny's keuze; daarna demo verwijderen en het plan schrijven)_
