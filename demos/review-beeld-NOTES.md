@@ -43,5 +43,21 @@ dezelfde reviewpagina, met dezelfde filters (playbook, tags, uitkomst, periode).
 - Moet "coach-feedback" (veld in de presentatie) echt bewaard worden bij de trade?
 - Variant D: nu meenemen of later als aparte stap?
 
+## Ronde 2 (14-10-2026) — `demos/review-beeld-demo-v2.html`
+Denny koos **C** (coach-sessie), met: meer info per trade, de trade kunnen **reviewen** in de beeld-modus,
+**blokken per maand** (‹ › tussen maanden, minder op je scherm, grotere miniaturen), werkende knoppen, en de
+**Presenteer**-functie uit B erbij.
+
+In alle drie de indelingen werken: *Samen doorlopen* (volledig scherm, info + review + coach-feedback ernaast),
+*Presenteer maand* (hele maand, zonder eerst te kiezen), *Coach-pakket* (downloadt een echt HTML-bestand met
+beelden, info, review en coach-feedback; beelden vergroten in het bestand) en *Kopieer voor Discord* (beeld met
+balk + tekst op het klembord; anders download). ← → = vorige/volgende maand.
+
+| | Indeling |
+|---|---|
+| **1 — Kaarten** | 2 trades per rij: grote chart, info-raster, review uitklapbaar |
+| **2 — Rijen** | per trade één rij: beeld · info · review naast elkaar, alles direct zichtbaar |
+| **3 — Focus** | de maand als filmstrip bovenaan, één trade groot met review ernaast |
+
 ## Verdict
 _(invullen na Denny's keuze; daarna demo verwijderen en het plan schrijven)_
