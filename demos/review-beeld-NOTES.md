@@ -87,7 +87,7 @@ presentatie staat een **strook met miniaturen** onder het beeld: klik om direct 
 
 ## Ronde 5 (14-10-2026) — `demos/review-beeld-demo-v5.html` (volledige uitwerking)
 - Schakelaar **Per trade | 🖼 Beeld** werkt; "Open trade →" (kaart en presentatie) gaat naar Per trade.
-- **Per trade, nieuwe indeling**: lijst links (mini-beeld, pair, richting, datum, setup, R, gereviewd, 💬), rechts
+- **Per trade, nieuwe indeling**: lijst links (selectievakje i.p.v. mini-beeld, pair, richting, datum, setup, R, gereviewd, 💬), rechts
   de trade: kop (selecteren, pair · setup, richting, R, ‹ n/N ›, Markeer gereviewd, Discord, bewerken), chart
   groot (max ~44% van het scherm, klik = groot), extra beelden + TV-links, 18 info-tegels, lagen + TP's, stappen (uitklap),
   review in twee kolommen (wat gebeurde er, leerpunt, coach-feedback | emotie, discipline, rating, tags/fouten).
