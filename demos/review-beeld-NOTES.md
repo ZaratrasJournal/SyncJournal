@@ -85,5 +85,21 @@ presentatie staat een **strook met miniaturen** onder het beeld: klik om direct 
   ...t.setup]`). Voorstel: splitsen in *Alle playbooks* (de playbook van de trade) en *Alle setups* (setup-tags in
   de lagen, over playbooks heen).
 
-## Verdict
-_(invullen na Denny's keuze; daarna demo verwijderen en het plan schrijven)_
+## Ronde 5 (14-10-2026) — `demos/review-beeld-demo-v5.html` (volledige uitwerking)
+- Schakelaar **Per trade | 🖼 Beeld** werkt; "Open trade →" (kaart en presentatie) gaat naar Per trade.
+- **Per trade, nieuwe indeling**: lijst links (mini-beeld, pair, richting, datum, setup, R, gereviewd, 💬), rechts
+  de trade: kop (selecteren, pair · setup, richting, R, ‹ n/N ›, Markeer gereviewd, Discord, bewerken), chart
+  groot (max ~54% van het scherm), extra beelden + TV-links, 18 info-tegels, lagen + TP's, stappen (uitklap),
+  review in twee kolommen (wat gebeurde er, leerpunt, coach-feedback | emotie, discipline, rating, tags/fouten).
+  ← → = vorige/volgende trade.
+- **Coach-feedback wordt bewaard bij de trade**: invullen in presentatie, kaart-review of per trade; zichtbaar op de
+  kaart (💬), in de lijst en in het coach-pakket.
+
+## Verdict (Denny, 14-10-2026)
+- Beeld-modus: **kaarten (indeling 1), 3 per rij, stijl "rand"** (groene/rode streep links), kop + setupregel
+  boven de afbeelding, selectievakje in de kopregel, info-vakken als tegels.
+- **Selectie & delen**-paneel rechts; presenteerknop past zich aan (maand / geselecteerde); miniaturen-strook in de
+  presentatie; gewone filterbalk van de app.
+- **Coach-feedback bewaren bij de trade** (ja).
+- **Per-trade-pagina meenemen** in dezelfde ronde.
+- Daarna: filter "Alle playbooks" (zie boven).
