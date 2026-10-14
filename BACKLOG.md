@@ -5,7 +5,7 @@ stamden uit april–juni en waren geschreven voor de oude TradeJournal. Elk twij
 nagekeken. Wat er met elk punt is gebeurd staat onderaan; de vorige versie, met 137 afgeronde punten
 en alle onderzoeksnotities, staat in [docs/backlog-archief-2026-09-29.md](docs/backlog-archief-2026-09-29.md).
 
-**Hoe te lezen.** Elke story heeft een ID (**B** bug · **T** tests · **C** code · **W** werkwijze), een
+**Hoe te lezen.** Elke story heeft een ID (**F** functie · **B** bug · **T** tests · **C** code · **W** werkwijze), een
 prioriteit (1 = eerst) en een effort (XS < 1 uur · S ≈ halve dag · M ≈ dag · L = meerdere dagen). Per
 story: waarom het ertoe doet, het plan in stappen, en wanneer hij klaar is.
 
@@ -19,6 +19,7 @@ elke wijziging eindigt met `node tests/run-release.js` groen.
 
 | ID | Story | Prio | Effort | Hangt af van |
 |---|---|---|---|---|
+| **F1** | TP's in de presentatie en in Kopieer voor Discord | 2 | S | — (v1.9 live) |
 | **B1** | Kraken: lopende positie zonder partial en zonder stappen | 1 | M | — |
 | **B2** | OKX: contractwaarde-vangnet kent geen USDC-perps | 2 | S | — |
 | **W2** | Ruwe exchange-data kunnen vastleggen (dev-modus terug) | 2 | M | — |
@@ -36,6 +37,38 @@ elke wijziging eindigt met `node tests/run-release.js` groen.
 | **W3** | Graphify verversen of de instructie weghalen | 3 | S | — |
 | **W4** | Eerste echte PR met beide reviewers | 3 | XS | volgende release |
 | **C4** | XLSX-ondersteuning eruit | gepland | S | na 16 nov (MEXC weg) |
+
+---
+
+## Functies
+
+### F1 · TP's in de presentatie en in Kopieer voor Discord — prio 2 · S
+
+**Waarom.** Denny en de community traden met deelsluitingen (TP1, TP2, …). In v1.9 tonen de
+presentatie en het Discord-beeld alleen een tegel "TP geraakt 2/3". De niveaus zelf (prijs, deel van
+de positie, geraakt of niet) staan alleen op de per-trade-pagina en in het coach-pakket. Juist bij het
+presenteren aan de coach en bij delen op Discord wil je zien wáár je afbouwde. (Denny, 14-10-2026.)
+
+**Wat er al is.** De TP-data staat in `t.tps` (`price`, `pct`, `hit`). `tpStats(t)` geeft de niveaus,
+het gewogen exit-niveau en de gerealiseerde R; `tpBreakdown(t)` tekent ze op de per-trade-pagina. Bouw
+daarop, niet opnieuw.
+
+**Plan.**
+1. Test eerst, in `tests/review-beeld.spec.js`:
+   - een trade met 3 TP's (2 geraakt) geeft in het zijpaneel van de presentatie drie regels met prijs en %, en de geraakte zijn gemarkeerd;
+   - `revDiscordTekst` bevat een TP-regel ("TP1 81.230 ✓ · TP2 82.009 ✓ · TP3 82.616");
+   - een trade zonder TP's toont niets extra's: geen leeg kopje.
+2. **Presentatie** (`revInfoVol`): onder *Lagen (top-down)* een blok *Take-profits* met `tpBreakdown(t)` of
+   een compacte variant (TP · prijs · % · ✓).
+3. **Discord-beeld** (`revDiscord`): in het infopaneel rechts een regel per TP, met prijs en een groen ✓
+   als hij geraakt is. Maximaal 4 regels; daarna "+n". Controleer dat het paneel (hoogte `DC_H`) niet
+   overloopt bij lange notities en 4 TP's.
+4. **Discord-tekst** (`revDiscordTekst`): één regel met de TP's.
+5. Kijken in licht en donker, en het Discord-PNG bekijken met een echte chart.
+
+**Klaar als** de presentatie, het Discord-beeld en de Discord-tekst de TP-niveaus tonen voor trades
+mét TP's, er niets verandert voor trades zónder, en `node tests/run-release.js` groen is. Release als
+patch (v1.9.1): een kleine aanpassing aan bestaande functies.
 
 ---
 
