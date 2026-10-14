@@ -66,5 +66,18 @@ volgorde-nummer), *Presenteer maand* wordt *Presenteer geselecteerde (n)* zodra 
 coach-pakket, Discord, bedragen verbergen, naam, wissen) — zo blijft er ruimte voor 3 kaarten. In de
 presentatie staat een **strook met miniaturen** onder het beeld: klik om direct naar een trade te gaan.
 
+## Ronde 4 (14-10-2026) — `demos/review-beeld-demo-v4.html`
+- Deel-paneel terug als kolom rechts, nu **"Selectie & delen"**: geselecteerde trades in volgorde, *+ Hele
+  maand*, naam, bedragen verbergen, *Presenteer geselecteerde*, *Coach-pakket*, *Kopieer voor Discord*. De
+  selectiebalk onderin is vervallen.
+- De **gewone filterbalk van de app** (accounts, pairs, setups, sessies, long & short, statussen, tags, fouten,
+  live trades, datums); de review-status (Alles / Te reviewen / Gereviewd) staat als segment bij de maand.
+- **Presentatie**: meer trade-info (exchange, richting, sessie, entry/stop/exit, size, leverage, risk, R:R
+  gepland vs behaald, P&L, fees, duur, grade, lagen top-down met bias en confirmaties, TP's, tags en fouten).
+  Coach-feedback blijft (Denny vindt die mooi).
+- **Discord-beeld**: chart links, trade-info rechts (pair, richting, setup + lagen, R groot, datum, sessie,
+  HTF-bias, entry/stop/exit, R:R gepland, TP geraakt, duur, confirmaties/tags), voetbalk met notitie. De tekst
+  bevat dezelfde kern.
+
 ## Verdict
 _(invullen na Denny's keuze; daarna demo verwijderen en het plan schrijven)_
