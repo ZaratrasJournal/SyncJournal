@@ -20,6 +20,7 @@ elke wijziging eindigt met `node tests/run-release.js` groen.
 | ID | Story | Prio | Effort | Hangt af van |
 |---|---|---|---|---|
 | **F1** | TP's in de presentatie en in Kopieer voor Discord | 2 | S | — (v1.9 live) |
+| **F2** | Kopieer voor Discord met meerdere trades: één voor één + alles downloaden | 2 | S | samen met F1 |
 | **B1** | Kraken: lopende positie zonder partial en zonder stappen | 1 | M | — |
 | **B2** | OKX: contractwaarde-vangnet kent geen USDC-perps | 2 | S | — |
 | **W2** | Ruwe exchange-data kunnen vastleggen (dev-modus terug) | 2 | M | — |
@@ -69,6 +70,40 @@ daarop, niet opnieuw.
 **Klaar als** de presentatie, het Discord-beeld en de Discord-tekst de TP-niveaus tonen voor trades
 mét TP's, er niets verandert voor trades zónder, en `node tests/run-release.js` groen is. Release als
 patch (v1.9.1): een kleine aanpassing aan bestaande functies.
+
+### F2 · Kopieer voor Discord met meerdere trades — prio 2 · S
+
+**Waarom.** Selecteer je 3 trades en klik je *Kopieer voor Discord*, dan krijg je alleen de eerste
+(Denny, 14-10-2026). Dat is geen fout in de code: het klembord van de browser kan maar één afbeelding
+tegelijk bevatten. De knop moet dat wel zichtbaar oplossen.
+
+**Gekozen aanpak.** Geen collage: die maakt elke chart onleesbaar en Discord verkleint grote plaatjes
+(10 MB-limiet). Alleen een waarschuwing laat het werk bij de gebruiker.
+1. **Eén voor één.** Na het kopiëren verandert de knop in *📋 Kopieer 2 van 3 (BTC/USDC 05-10)*, enz.
+   Discord laat je in één bericht meerdere keren plakken (tot 10 bijlagen): plakken, klikken, plakken,
+   en dan één keer versturen. De toast zegt "1 van 3 gekopieerd, plak en klik dan op Volgende".
+   De stand (`STATE.revDiscordIdx`) gaat terug naar 0 als de selectie verandert.
+2. **Alles downloaden** als tweede knop in *Selectie & delen*: één PNG per trade
+   (`discord-<datum>-<pair>.png`), met de teksten samen op het klembord. Die bestanden sleep je in één
+   keer naar Discord. De browser kan één keer toestemming vragen voor meerdere downloads; zeg dat in
+   de knoptekst of de toast.
+
+**Bouwen op.** `revDiscord(id)` geeft al `'beeld' | 'download' | 'tekst'` terug. Splits het tekenen
+van het canvas af (`revDiscordCanvas(t, img, hide) → Blob`), zodat de klembord-route en de
+download-route het delen. Dat stond ook als nit in de review van v1.9.
+
+**Plan.**
+1. Test eerst, in `tests/review-beeld.spec.js`:
+   - met 3 geselecteerde trades zegt de knop eerst "1 van 3", na een klik "2 van 3", daarna "3 van 3", en daarna weer vanaf 1;
+   - een andere selectie zet de teller terug naar 0;
+   - *Alles downloaden* geeft 3 downloads met de juiste namen;
+   - met 1 trade ziet de knop eruit zoals nu.
+2. `revDiscordCanvas` afsplitsen; `revDiscord` en de nieuwe `revDiscordAlles()` gebruiken hem.
+3. Knop en toast in `revSelPanel` aanpassen; tweede knop *⬇ Alle beelden voor Discord*.
+4. Met de hand in Discord testen: plakken, volgende, plakken, versturen.
+
+**Klaar als** je met 3 geselecteerde trades alle drie in één Discord-bericht krijgt, op volle
+kwaliteit, en `node tests/run-release.js` groen is. Samen met F1 als patch (v1.9.1).
 
 ---
 
