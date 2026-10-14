@@ -79,5 +79,11 @@ presentatie staat een **strook met miniaturen** onder het beeld: klik om direct 
   HTF-bias, entry/stop/exit, R:R gepland, TP geraakt, duur, confirmaties/tags), voetbalk met notitie. De tekst
   bevat dezelfde kern.
 
+## Daarna (Denny 14-10-2026)
+- **Filter "Alle playbooks" in de filterbalk.** Nu mengt "Alle setups" playbook-namen, setup-tags uit de lagen
+  en `t.setup`, en filtert alleen op `t.setup` (work/syncjournal.html, `filterBar`: `setups=[...PBOOK, ...setupTags,
+  ...t.setup]`). Voorstel: splitsen in *Alle playbooks* (de playbook van de trade) en *Alle setups* (setup-tags in
+  de lagen, over playbooks heen).
+
 ## Verdict
 _(invullen na Denny's keuze; daarna demo verwijderen en het plan schrijven)_
