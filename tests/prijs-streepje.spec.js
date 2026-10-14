@@ -42,7 +42,7 @@ const RIJEN = [
     });
     // het detailscherm (Plan vs. uitvoering) van de open trade
     STATE.revSel = 'open'; go('review');
-    const plan = [...document.querySelectorAll('.plangrid > *')].map(x => x.textContent.replace(/\s+/g, ' ').trim());
+    const plan = [...document.querySelectorAll('.revtiles > div')].map(x => x.textContent.replace(/\s+/g, ' ').trim());
     return { tabel: uit, plan };
   }, RIJEN);
 
@@ -54,7 +54,7 @@ const RIJEN = [
 
   console.log('─── Detailscherm ───');
   const exitVak = r.plan.find(x => /^Exit/.test(x)) || '';
-  ok('"Exit" in Plan vs. uitvoering toont een streepje', /—/.test(exitVak) && !/\b0\b/.test(exitVak.replace('Exit', '')), exitVak);
+  ok('"Exit"-tegel in het detail toont een streepje', /—/.test(exitVak) && !/\b0\b/.test(exitVak.replace('Exit', '')), exitVak);
 
   ok('geen nieuwe JS-fouten', errs.length === 0, errs[0]);
   console.log(`\n=== Prijs-streepje: ${pass}/${pass + fail} ===`);

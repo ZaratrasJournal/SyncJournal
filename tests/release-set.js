@@ -17,7 +17,7 @@ module.exports = [
   // fundament: opslag, backup, weergave, demo-data
   'backup-guard', 'drive-backup', 'drive-broker', 'hosted', 'weergave-presets', 'demo-dataset',
   'pb-demo-cleanup', 'pb-layers', 'duration', 'changemaker-feedback', 'fout-filter', 'default-tags',
-  'multifilter', 'trades-sortering', 'integratie-breed', 'stress-vandaag', 'csv-import',
+  'multifilter', 'playbook-filter', 'trades-sortering', 'integratie-breed', 'stress-vandaag', 'csv-import',
 
   // exchanges: sync, saldo, levensloop per beurs
   'exchange-sync', 'exchange-sync2', 'balance-sync', 'auto-sync', 'valuta',
@@ -51,7 +51,7 @@ module.exports = [
   'tradingplan-plan',        // aparte app (tradingplan.syncjournal.nl), draait mee zodat hij niet ongetest blijft
 
   // analyse en weergave
-  'matrix', 'yearheatmap', 'review-list', 'coach-share', 'tv-links', 'theme-hook', 'beeld-escaping',
+  'matrix', 'yearheatmap', 'review-list', 'coach-share', 'review-beeld', 'tv-links', 'theme-hook', 'beeld-escaping',
   'heatmap-scaling', 'analytics-metrics', 'tendencies', 'faq', 'trash',
 
   // v1.1: R-onbekend en zichtbare verbindingsfouten

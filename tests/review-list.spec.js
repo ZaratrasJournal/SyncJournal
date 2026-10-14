@@ -49,16 +49,16 @@ const mk = (id, date, reviewed) => ({ id, date, time: '10:00', pair: 'BTC/USDT',
 
   console.log('─── Markeren vanuit de lijst ───');
   await p.evaluate(() => { setRevPeriod('all'); setRevFilter('all'); }); await p.waitForTimeout(200);
-  ok('rev-check is een knop', await p.evaluate(() => document.querySelector('.revitem .rev-check').tagName === 'BUTTON'));
-  // trade 1 is niet gereviewd → klik markeert 'm
-  const before = await p.evaluate(() => T.find(x => x.id === 1).reviewed);
-  await p.evaluate(() => { const it = [...document.querySelectorAll('.revitem')].find(el => el.querySelector('.m')); }); // no-op guard
-  await p.evaluate(() => { document.querySelector('.revitem .rev-check').click(); }); await p.waitForTimeout(250);
-  const after = await p.evaluate(() => T.find(x => x.id === 1).reviewed);
-  ok('klik op rondje markeert trade als gereviewd', before === false && after === true);
-  ok('klik selecteert de trade NIET open (blijft op huidige)', await p.evaluate(() => STATE.revSel === 1) || true); // selRev niet getriggerd door stopPropagation
-  await p.evaluate(() => { document.querySelector('.revitem .rev-check').click(); }); await p.waitForTimeout(250);
-  ok('nogmaals klikken demarkeert', await p.evaluate(() => T.find(x => x.id === 1).reviewed) === false);
+  // v1.9: the round "reviewed" button in the list became a selection box; marking is done in the trade header
+  ok('vakje is een checkbox', await p.evaluate(() => document.querySelector('.revitem .revcbx').getAttribute('role') === 'checkbox'));
+  const openVoor = await p.evaluate(() => STATE.revSel);
+  await p.evaluate(() => { document.querySelector('.revitem .revcbx').click(); }); await p.waitForTimeout(250);
+  ok('klik op het vakje selecteert, opent niet', await p.evaluate(v => STATE.revShareSel.length === 1 && STATE.revSel === v, openVoor));
+  await p.evaluate(() => { document.querySelector('.revitem .revcbx').click(); }); await p.waitForTimeout(250);
+  ok('nogmaals klikken haalt weg', await p.evaluate(() => STATE.revShareSel.length === 0));
+  await p.evaluate(() => { STATE.revSel = 1; render(); toggleReviewed(1); }); await p.waitForTimeout(250);
+  ok('markeren via de knop in de kop werkt', await p.evaluate(() => T.find(x => x.id === 1).reviewed === true));
+  await p.evaluate(() => toggleReviewed(1)); await p.waitForTimeout(150);
 
   console.log('─── Gereviewed terugvinden ───');
   await p.evaluate(() => setRevFilter('done')); await p.waitForTimeout(200);

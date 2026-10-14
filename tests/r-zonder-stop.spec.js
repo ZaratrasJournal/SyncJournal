@@ -87,12 +87,13 @@ const NUL     = { ...B, id: 'n1', date: '2026-09-25', time: '13:00', entry: 6000
   console.log('─── En het detailscherm ───');
   await p.evaluate(() => { STATE.revSel = 'z2'; go('review'); }); await p.waitForTimeout(500);
   const detail = await p.evaluate(() => {
-    const chip = [...document.querySelectorAll('.chip')].find(e => /behaald/.test(e.textContent));
-    const groot = [...document.querySelectorAll('.pnlbig')].map(e => (e.parentElement || {}).textContent || '')[0];
-    return { chip: chip ? chip.textContent.trim() : null, groot: (groot || '').trim() };
+    // v1.9 layout: the "Behaald" tile and the R badge in the trade header
+    const tegel = [...document.querySelectorAll('.revtiles > div')].find(e => /Behaald/.test(e.textContent));
+    const kop = document.querySelector('.revtrade .revthd .rbadge');
+    return { chip: tegel ? tegel.textContent.replace(/\s+/g, ' ').trim() : null, groot: kop ? kop.textContent.trim() : '' };
   });
-  ok('de "behaald"-chip toont een streepje', detail.chip && /behaald\s*—/.test(detail.chip), detail.chip);
-  ok('het grote R-getal naast de P&L ook', detail.groot && detail.groot.includes('—') && !/\+0[.,]0R/.test(detail.groot), detail.groot);
+  ok('de "Behaald"-tegel toont een streepje', detail.chip && /Behaald\s*—/.test(detail.chip), detail.chip);
+  ok('het R-label in de kop ook', detail.groot === '—', detail.groot);
 
   ok('geen nieuwe JS-fouten', errs.length === 0, errs[0]);
 

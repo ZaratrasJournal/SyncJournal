@@ -39,12 +39,12 @@ const CUSTOM=['A+ setup','herhaalbaar','nieuwsdag','high conviction'];
 
 // ── playbooks: bewust gemengd, maar samen winstgevend ──
 const PB_DEF=[
-  {name:'Trend-pullback',oneLiner:'Koop de pullback naar de OB in een schone trend.',status:'active',grade:'A',tf:['1H','4H'],bias:'Bullish',baseWR:0.52,E:0.30,w:5},
-  {name:'London SFP',oneLiner:'Sweep van de London-low, reclaim en terug de range in.',status:'active',grade:'A',tf:['15M','1H'],bias:'Bullish',baseWR:0.49,E:0.24,w:5},
-  {name:'BOS-retest',oneLiner:'Break of structure, dan entry op de retest van de breakout.',status:'active',grade:'B',tf:['15M','4H'],bias:'Bullish',baseWR:0.46,E:0.10,w:4},
-  {name:'Range-fade',oneLiner:'Fade de extremes van een duidelijke range naar het midden.',status:'active',grade:'B',tf:['5M','15M'],bias:'Neutraal',baseWR:0.44,E:-0.02,w:3},
-  {name:'Reclaim',oneLiner:'Verlies + reclaim van een belangrijk niveau als trigger.',status:'testing',grade:'C',tf:['15M','30M'],bias:'Neutraal',baseWR:0.41,E:-0.15,w:2},
-  {name:'VWAP-bounce',oneLiner:'Mean-reversion bounce op de dagelijkse VWAP.',status:'testing',grade:'C',tf:['5M','15M'],bias:'Neutraal',baseWR:0.38,E:-0.25,w:1},
+  {name:'Trend-pullback',su:['MSB','BOS'],oneLiner:'Koop de pullback naar de OB in een schone trend.',status:'active',grade:'A',tf:['1H','4H'],bias:'Bullish',baseWR:0.52,E:0.30,w:5},
+  {name:'London SFP',su:['SFP'],oneLiner:'Sweep van de London-low, reclaim en terug de range in.',status:'active',grade:'A',tf:['15M','1H'],bias:'Bullish',baseWR:0.49,E:0.24,w:5},
+  {name:'BOS-retest',su:['BOS'],oneLiner:'Break of structure, dan entry op de retest van de breakout.',status:'active',grade:'B',tf:['15M','4H'],bias:'Bullish',baseWR:0.46,E:0.10,w:4},
+  {name:'Range-fade',su:['Range'],oneLiner:'Fade de extremes van een duidelijke range naar het midden.',status:'active',grade:'B',tf:['5M','15M'],bias:'Neutraal',baseWR:0.44,E:-0.02,w:3},
+  {name:'Reclaim',su:['SFP','MSB'],oneLiner:'Verlies + reclaim van een belangrijk niveau als trigger.',status:'testing',grade:'C',tf:['15M','30M'],bias:'Neutraal',baseWR:0.41,E:-0.15,w:2},
+  {name:'VWAP-bounce',su:['Range'],oneLiner:'Mean-reversion bounce op de dagelijkse VWAP.',status:'testing',grade:'C',tf:['5M','15M'],bias:'Neutraal',baseWR:0.38,E:-0.25,w:1},
 ];
 const PB_POOL=[];PB_DEF.forEach(d=>{for(let i=0;i<d.w;i++)PB_POOL.push(d);});
 const PB_BY_NAME={};PB_DEF.forEach(d=>PB_BY_NAME[d.name]=d);
@@ -52,7 +52,7 @@ function buildPlaybooks(){
   const pbook={};
   PB_DEF.forEach((d,i)=>{pbook[d.name]={name:d.name,oneLiner:d.oneLiner,
     // top-down like the app (v1.7): higher timeframe first, the entry layer last
-    layers:(([e,h])=>[h,e])([{timeframe:d.tf[0],bias:d.bias,setups:[d.name],confirmations:[pick(CONFIRM),pick(CONFIRM)]},{timeframe:d.tf[1]||d.tf[0],bias:d.bias,setups:[],confirmations:[pick(CONFIRM)]}]),
+    layers:(([e,h])=>[h,e])([{timeframe:d.tf[0],bias:d.bias,setups:d.su,confirmations:[pick(CONFIRM),pick(CONFIRM)]},{timeframe:d.tf[1]||d.tf[0],bias:d.bias,setups:[],confirmations:[pick(CONFIRM)]}]),
     criteria:[{text:'Duidelijke '+d.tf[0]+'-structuur',mandatory:true,covers:'trend'},{text:pick(CONFIRM)+' als bevestiging',mandatory:true,covers:'trigger'},{text:'R:R minimaal 2:1',mandatory:false,covers:'rr'}],
     antiCriteria:[{text:'Vlak vóór high-impact nieuws',mandatory:true},{text:'Geen duidelijke liquidity-target',mandatory:false}],
     status:d.status,defaultGrade:d.grade,stop:'onder/boven de sweep',target:'volgende liquidity-pool',minRR:'2',
@@ -141,7 +141,7 @@ function genTrade(id,kind,dateMs,session,hm){
   const emotions=[emo]; if(chance(0.25))emotions.push(pick(EMOTIONS));
   const mistakes=(!win&&chance(0.55))?[pick(MISTAKES)]:[]; if(mistakes.length&&chance(0.2))mistakes.push(pick(MISTAKES));
   const tags=[...new Set([...(chance(0.4)?[pick(CUSTOM)]:[]),...(chance(0.5)?[pick(CONFIRM)]:[])])];
-  const layers=[{timeframe:pb.tf[0],bias:pb.bias,setups:[pbName],confirmations:[pick(CONFIRM)]}];
+  const layers=[{timeframe:pb.tf[0],bias:pb.bias,setups:[pb.su[d.getDate()%pb.su.length]],confirmations:[pick(CONFIRM)]}];
   if(chance(0.5))layers.unshift({timeframe:pb.tf[1]||pb.tf[0],bias:pb.bias,setups:[],confirmations:[pick(CONFIRM)]});   // HTF on top
   const shots=chance(0.2)?Array.from({length:rint(1,3)},()=>pick(SHOTS)):[];
   const durationMin=Math.round(win?rf(20,320):rf(6,140));
@@ -239,7 +239,7 @@ function buildTradingPlan(trades){
 function build(){
   const trades=buildTrades();
   const tradingplan=buildTradingPlan(trades);
-  const tagConfig={setupTags:PB_DEF.map(d=>d.name),confirmationTags:CONFIRM,timeframeTags:TF,emotionTags:EMOTIONS,mistakeTags:MISTAKES,missedReasonTags:['🐢 Durf','🔪 Buiten regels','⏰ Te laat gespot','💰 Kapitaal vol'],customTags:CUSTOM};
+  const tagConfig={setupTags:['BOS','MSB','SFP','F2R','Range','Structuur'],confirmationTags:CONFIRM,timeframeTags:TF,emotionTags:EMOTIONS,mistakeTags:MISTAKES,missedReasonTags:['🐢 Durf','🔪 Buiten regels','⏰ Te laat gespot','💰 Kapitaal vol'],customTags:CUSTOM};
   return {
     app:'SyncJournal',appVersion:'v0.9.136',schemaVersion:8,exported:new Date().toISOString(),
     _note:'Voorbeelddata v2 — gegenereerd door scripts/gen-syncjournal-dataset-v2.js (data t/m vandaag, incl. TradingPlan-blok)',

@@ -23,26 +23,14 @@ const mk = (id, over) => Object.assign({ id, date: '2026-08-3' + id, time: '10:0
   await p.evaluate((rows) => { T = rows.map(r => ({ ...r })); STATE.revSel = 1; STATE.revShareMode = false; STATE.revShareSel = []; persist(); clearGFilter(); go('review'); }, rows);
   await p.waitForTimeout(400);
 
-  console.log('─── Selectie-modus (los van gereviewd-rondje) ───');
-  ok('normale lijst heeft gereviewd-rondje (rev-check)', await p.evaluate(() => document.querySelector('.revitem .rev-check') !== null));
-  ok('"Deel"-knop aanwezig', await p.evaluate(() => document.querySelector('.revshare-btn') !== null));
-  await p.evaluate(() => toggleShareMode()); await p.waitForTimeout(200);
-  ok('share-modus: selectie-checkbox i.p.v. gereviewd-rondje', await p.evaluate(() => document.querySelector('.revitem.selmode .rev-selbox') !== null && document.querySelector('.revitem .rev-check') === null));
-  ok('share-bar aanwezig', await p.evaluate(() => document.querySelector('.revsharebar') !== null));
-  // klik een rij → selecteert (opent NIET de detail)
-  await p.evaluate(() => document.querySelectorAll('.revitem.selmode')[0].click()); await p.waitForTimeout(150);
-  ok('rij-klik selecteert (1)', await p.evaluate(() => STATE.revShareSel.length === 1));
-  ok('geselecteerde rij krijgt .sel', await p.evaluate(() => document.querySelector('.revitem.selmode.sel') !== null));
-  await p.evaluate(() => shareSelectAllVisible()); await p.waitForTimeout(150);
-  ok('Alles selecteren → 3', await p.evaluate(() => STATE.revShareSel.length === 3));
-  await p.evaluate(() => shareClearSel()); await p.waitForTimeout(150);
+  console.log('─── Selectie (v1.9: vakje vóór elke trade, geen aparte deel-modus) ───');
+  ok('elke lijstregel heeft een selectievakje', await p.evaluate(() => document.querySelectorAll('.revitem .revcbx[role=checkbox]').length === 3));
+  await p.evaluate(() => document.querySelectorAll('.revitem .revcbx')[0].click()); await p.waitForTimeout(150);
+  ok('vakje selecteert (1)', await p.evaluate(() => STATE.revShareSel.length === 1));
+  ok('geselecteerd vakje toont volgnummer', await p.evaluate(() => document.querySelector('.revitem .revcbx.on').textContent.trim() === '1'));
+  await p.evaluate(() => revSelClear()); await p.waitForTimeout(150);
   ok('Wis → 0', await p.evaluate(() => STATE.revShareSel.length === 0));
-
-  console.log('─── Deel-dialoog ───');
-  await p.evaluate(() => { STATE.revShareSel = [1, 2]; render(); openShareDialog(); }); await p.waitForTimeout(200);
-  ok('dialoog toont naam-veld + verberg-toggle', await p.evaluate(() => document.getElementById('shareName') !== null && document.getElementById('shareHide') !== null));
-  ok('verberg-bedragen standaard aan', await p.evaluate(() => document.getElementById('shareHide').checked === true));
-  await p.evaluate(() => closeForm());
+  ok('bedragen verbergen in exports standaard aan', await p.evaluate(() => STATE.shareHide === true));
 
   console.log('─── Pakket-inhoud + beveiliging ───');
   const pkg = await p.evaluate(() => { const t1 = T.find(x => x.id === 1), t2 = T.find(x => x.id === 2); return coachPkgHTML([t1, t2], { name: 'Denny', hide: true, shotMap: { 1: [T[0].screenshots[0]], 2: [] } }); });

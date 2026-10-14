@@ -39,7 +39,7 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  âœ
   ok('fouten-picker en setup-lagen tonen de nieuwe tags', form.mistOk && form.layerOk);
   ok('filterbar-fouten en setups-dropdown volgen mee', await p.evaluate(() => {
     T = [{ id: 1, date: '2026-09-10', time: '10:00', pair: 'BTC/USDT', dir: 'long', setup: '', session: 'London', status: 'closed', kind: 'live', exchange: '', entry: 100, exit: 110, stop: 95, size: '1000', pnl: 50, r: 1, tps: [], tags: [], layers: [], emotions: [], mistakes: [], checks: [], screenshots: [], tvLinks: [] }]; persist(); go('trades');
-    const dd = document.querySelector('[data-dd="mistake"]'); const su = document.querySelector('[data-dd="setup"]');
+    const dd = document.querySelector('[data-dd="mistake"]'); const su = document.querySelector('[data-dd="setupTag"]');
     return dd && /Revenge trade/.test(dd.textContent) && !/Te laat in/.test(dd.textContent) && su && /F2R/.test(su.textContent);
   }));
 

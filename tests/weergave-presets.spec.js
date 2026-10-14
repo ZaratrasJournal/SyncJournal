@@ -34,7 +34,7 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
 
   console.log('─── Trades-tabel per preset ───');
   await p.evaluate(() => go('trades')); await p.waitForTimeout(300);
-  ok('Rustig: geen Exchange/Entry/Exit/Size/R/Sessie/Tags-kolommen', await p.evaluate(() => { const hs = [...document.querySelectorAll('thead th')].map(x => x.textContent.trim()); return !hs.some(x => /^Exchange/.test(x)) && !hs.some(x => /^Entry/.test(x)) && !hs.some(x => /^R($| )/.test(x)) && hs.some(x => /^Datum/.test(x)) && hs.some(x => /^P&L/.test(x)) && hs.some(x => /^Setup/.test(x)); }));
+  ok('Rustig: geen Exchange/Entry/Exit/Size/R/Sessie/Tags-kolommen', await p.evaluate(() => { const hs = [...document.querySelectorAll('thead th')].map(x => x.textContent.trim()); return !hs.some(x => /^Exchange/.test(x)) && !hs.some(x => /^Entry/.test(x)) && !hs.some(x => /^R($| )/.test(x)) && hs.some(x => /^Datum/.test(x)) && hs.some(x => /^P&L/.test(x)) && hs.some(x => /^Playbook/.test(x)); }));
   await p.locator('tbody tr.mrow', { hasText: 'BTC/USDT' }).hover(); await p.waitForTimeout(150);
   ok('Rustig hover-uitklap: tijdlijn wél, stats/notities niet', await p.evaluate(() => { const d = document.getElementById('drow-1'); return d && !d.hidden && /Open/.test(d.textContent) && /Close/.test(d.textContent) && !/Stop-loss/i.test(d.textContent) && !/testnotitie/.test(d.textContent); }));
   await p.evaluate(() => viewPreset('alles')); await p.waitForTimeout(300);

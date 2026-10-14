@@ -41,18 +41,13 @@ const mk = (id, over) => Object.assign({ id, date: '2026-08-31', time: '10:00', 
 
   console.log('─── Review-pagina: sectie boven screenshots ───');
   await p.evaluate(() => { STATE.revSel = 1; clearGFilter(); go('review'); }); await p.waitForTimeout(300);
-  ok('TradingView-paneel aanwezig', await p.evaluate(() => [...document.querySelectorAll('#main .panel h3')].some(h => /TradingView/.test(h.textContent))));
-  ok('review-link opent in nieuw tabblad (target/rel)', await p.evaluate(() => { const a = document.querySelector('.revshots-col .tvlink'); return a && a.target === '_blank' && /noopener/.test(a.rel) && /noreferrer/.test(a.rel); }));
-  ok('link staat BOVEN de screenshots', await p.evaluate(() => {
-    const panels = [...document.querySelectorAll('.revshots-col .panel')];
-    const tvIdx = panels.findIndex(pl => /TradingView/.test(pl.querySelector('h3').textContent));
-    const shotIdx = panels.findIndex(pl => /Screenshots/.test(pl.querySelector('h3').textContent));
-    return tvIdx >= 0 && shotIdx >= 0 && tvIdx < shotIdx;
-  }));
-  ok('href intact (https tradingview)', await p.evaluate(() => { const h = document.querySelector('.revshots-col .tvlink').getAttribute('href'); return h.startsWith('https://') && h.includes('tradingview.com'); }));
+  // v1.9 layout: TV links sit with the chart (under it, or in the empty chart box when there is no screenshot)
+  ok('TradingView-link aanwezig bij de chart', await p.evaluate(() => !!document.querySelector('.revtrade .tvlink')));
+  ok('review-link opent in nieuw tabblad (target/rel)', await p.evaluate(() => { const a = document.querySelector('.revtrade .tvlink'); return a && a.target === '_blank' && /noopener/.test(a.rel) && /noreferrer/.test(a.rel); }));
+  ok('href intact (https tradingview)', await p.evaluate(() => { const h = document.querySelector('.revtrade .tvlink').getAttribute('href'); return h.startsWith('https://') && h.includes('tradingview.com'); }));
   // trade zonder links → geen paneel
   await p.evaluate(() => { T.push({ id: 2, date: '2026-08-30', time: '10:00', pair: 'ETH/USDT', dir: 'long', setup: 'Reclaim', session: 'US AM', status: 'closed', kind: 'live', pnl: 50, r: 1, pnlPct: 0.2, entry: 100, stop: 95, tp: 110, exit: 105, size: 3000, tvLinks: [], screenshots: [], tags: [], layers: [], emotions: [], mistakes: [], checks: [] }); STATE.revSel = 2; go('review'); }); await p.waitForTimeout(200);
-  ok('geen links → geen TradingView-paneel', await p.evaluate(() => ![...document.querySelectorAll('.revshots-col .panel h3')].some(h => /TradingView/.test(h.textContent))));
+  ok('geen links → geen TradingView-link', await p.evaluate(() => !document.querySelector('.revtrade .tvlink')));
 
   console.log('─── Coach-pakket bevat de links ───');
   const pkg = await p.evaluate(() => { const t = T.find(x => x.id === 1); return coachPkgHTML([t], { name: 'D', hide: true, shotMap: { 1: [] } }); });

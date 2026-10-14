@@ -16,6 +16,50 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v1.9] — 2026-10-14
+
+### Toegevoegd
+- **Review: beeld-modus.** Bovenaan Review kies je *Per trade* of *🖼 Beeld*. Beeld toont je trades
+  met een screenshot of TradingView-link als kaarten per maand, drie naast elkaar, met een groene of rode
+  rand. Blader met ‹ › (of de pijltjestoetsen) door de maanden. Per kaart zie je datum, sessie, lagen,
+  HTF-bias, entry, stop, exit en duur, plus je coach-feedback.
+- **Selectie & delen.** Vink kaarten aan met het vakje vóór de datum. In het paneel zet je ze in je
+  eigen volgorde, voeg je in één klik de hele maand toe, en kies je je naam en of bedragen verborgen
+  blijven. De selectie blijft staan als je van maand of weergave wisselt.
+- **Presenteren.** *Presenteer maand* of *Presenteer geselecteerde* opent je beelden op volledig scherm,
+  met daaronder een strook miniaturen om snel te springen, en ernaast alle trade-info en je review.
+- **Coach-feedback bij de trade.** Wat je coach zegt, schrijf je bij de trade: per trade, op de kaart
+  of tijdens het presenteren. Het gaat mee in je backup en in het coach-pakket.
+- **Kopieer voor Discord.** Zet je chart met de trade-info ernaast (pair, setup, lagen, R, entry,
+  stop, exit, duur) als één beeld op je klembord, plus een korte tekst. Staat je browser dat niet toe,
+  dan wordt het beeld gedownload.
+- **Filter op playbook.** De filterbalk heeft nu *Alle playbooks* (de playbook van een trade) én *Alle
+  setups* (de setups uit je lagen, zoals BOS of SFP, over al je playbooks heen). Trades zonder playbook
+  vind je met *Zonder playbook*. Het filter geldt, zoals elk filter, voor de hele app.
+
+### Gewijzigd
+- **Review per trade, nieuwe indeling.** De chart staat groot bovenaan, de feiten staan in 18 tegels,
+  lagen en take-profits staan eronder, en je review staat in twee kolommen. Met ← → ga je naar de vorige
+  of volgende trade.
+- Het vakje vóór een trade in de review-lijst selecteert hem nu om te delen. Markeren als gereviewd doe
+  je met de knop bovenaan de trade.
+- Het coach-pakket bevat nu ook je lagen (top-down, met bias) en de coach-feedback.
+- Op de playbook-pagina zie je met een playbook-filter alleen de gekozen playbooks, niet ook de rest als
+  lege kaarten.
+- *Setup* heet nu *Playbook* waar de playbook van een trade bedoeld is: de kolom in Trades en op het
+  Dashboard, *Per playbook* in Tendencies en de keuze *Playbook* in de kruis-analyse.
+
+### Fixed
+- *Alle setups* mengde playbooks met setup-tags, maar filterde alleen op de playbook: koos je "BOS",
+  dan kreeg je altijd 0 trades.
+- Liet een filter geen trades over, dan toonden Review en het playbook-detail ongemerkt **alle** trades.
+  Nu zie je een lege lijst met de uitleg dat het filter niets overlaat.
+- Het coach-pakket toonde bij een trade zonder stop-loss "+0,0R"; nu een streepje. Links in het pakket
+  zijn alleen nog gewone webadressen.
+
+### Verwijderd
+- De knop *⤴ Deel* met het aparte deel-venster op Review: delen gaat nu via het paneel *Selectie & delen*.
+
 ## [v1.8] — 2026-10-13
 
 ### Toegevoegd
