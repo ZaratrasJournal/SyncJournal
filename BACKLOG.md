@@ -406,6 +406,18 @@ duurdere opus-model moet blijven.
 | Test-scenario's O–T (6) | Funding, scaling-in, direction-flip, leverage-wijziging, liquidatie, sub-accounts | Zodra de bijbehorende feature er is |
 | Wachtpost (2) | Dagelijkse staat-controle, diff-wachtpost ([ontwerp](docs/wachtpost-ontwerp-2026-09-27.md)) | Na W3 en T2 — anders vervalt de helft van de signalen |
 | Sync (1) | `fetchFills` parallel bij verversen | Als verversen traag voelt |
+| Stortingen & opnames (1) | Percentages kloppend houden bij in- en uitleg, zie hieronder | Als leden vragen waarom oude percentages veranderen, of als je vaak stort of opneemt |
+
+**Stortingen & opnames in de percentages** (Denny, 14-10-2026, bewust niet ingepland). De app kent
+voor gekoppelde exchanges geen stortingen en opnames, en bewaart geen saldo-geschiedenis. Het
+%-rendement van een trade rekent met een teruggerekend saldo (`pnlBaseOf`/`_pctBases`: saldo nu −
+geboekte winst van die trade en alle latere). Een storting van $500 maakt daardoor al je óúde
+percentages achteraf kleiner; een opname maakt ze groter. Bedragen, R, de equity-curve en drawdown
+kloppen wél. Oplossing als het nodig wordt: een stortingen/opnames-logboek per account (bestaat al
+voor handmatige accounts, `acctCapital`). Dat vul je zelf, of het wordt opgehaald: Hyperliquid
+openbaar, Kraken uit de account-log, Blofin en OKX via een extra endpoint. Daarna is de basis = saldo
+nu − latere winst − latere stortingen + latere opnames. Tot die tijd: *Instellingen → Percentage
+rekent met → Vast referentiebedrag*.
 
 De uitgewerkte teksten van deze ideeën staan in het [archief](docs/backlog-archief-2026-09-29.md).
 
