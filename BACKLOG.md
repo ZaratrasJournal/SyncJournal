@@ -19,7 +19,7 @@ elke wijziging eindigt met `node tests/run-release.js` groen.
 
 | ID | Story | Prio | Effort | Hangt af van |
 |---|---|---|---|---|
-| **F1** | TP's in de presentatie en in Kopieer voor Discord | 2 | S | — (v1.9 live) |
+| ~~F1~~ | ~~TP's in de presentatie en in Kopieer voor Discord~~ — ✅ **gedaan in v1.9.1** | — | — | — |
 | **F2** | Kopieer voor Discord met meerdere trades: één voor één + alles downloaden | 2 | S | samen met F1 |
 | **B1** | Kraken: lopende positie zonder partial en zonder stappen | 1 | M | — |
 | **B2** | OKX: contractwaarde-vangnet kent geen USDC-perps | 2 | S | — |
@@ -43,7 +43,7 @@ elke wijziging eindigt met `node tests/run-release.js` groen.
 
 ## Functies
 
-### F1 · TP's in de presentatie en in Kopieer voor Discord — prio 2 · S
+### F1 · TP's in de presentatie en in Kopieer voor Discord — ✅ gedaan in v1.9.1
 
 **Waarom.** Denny en de community traden met deelsluitingen (TP1, TP2, …). In v1.9 tonen de
 presentatie en het Discord-beeld alleen een tegel "TP geraakt 2/3". De niveaus zelf (prijs, deel van
