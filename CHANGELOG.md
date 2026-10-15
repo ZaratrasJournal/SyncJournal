@@ -16,6 +16,19 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v1.9.1] — 2026-10-15
+
+### Gewijzigd
+- **Take-profits in de presentatie en in Kopieer voor Discord.** Naast de trade-info zie je nu elke TP
+  met prijs, deel van de positie en een ✓ als hij geraakt is. Het Discord-beeld toont er tot vier
+  (daarna "+n"), en de Discord-tekst heeft een TP-regel. Trades zonder TP's blijven zoals ze waren.
+
+### Fixed
+- **Kraken: lopende positie zonder datum en met de verkeerde sessie.** Kraken gaf voor een open positie
+  geen bruikbare openingstijd ("1970"). De journal haalt die tijd nu uit Kraken's positie-geschiedenis,
+  dus je ziet de echte datum, tijd en sessie. Ook als je pas uren later synct. Een positie die al openstond
+  krijgt bij de eerstvolgende sync haar tijd (de journal kijkt daarvoor eenmalig tot 30 dagen terug).
+
 ## [v1.9] — 2026-10-14
 
 ### Toegevoegd

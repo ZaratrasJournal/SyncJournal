@@ -191,6 +191,23 @@ const mk = (id, over) => Object.assign({ id, date: '2026-09-' + String(id).padSt
   await p.evaluate(() => { closeRevPres(); setRevMode('trade'); });
   ok('FAQ beschrijft de nieuwe flow (geen "⤴ Deel")', await p.evaluate(() => { go('faq'); const t = document.getElementById('main').textContent; go('review'); return !/⤴ Deel/.test(t) && /Selectie & delen/.test(t); }));
 
+  console.log('─── F1: take-profits in presentatie en Discord ───');
+  const TPS = [{ price: 81230, pct: 50, hit: true }, { price: 82009, pct: 30, hit: true }, { price: 82616, pct: 20, hit: false }];
+  await seed([mk(1, { date: '2026-09-29', screenshots: [PNG], tps: TPS }), mk(2, { date: '2026-09-28', screenshots: [PNG], tps: [] }),
+    mk(3, { date: '2026-09-27', screenshots: [PNG], tps: [1, 2, 3, 4, 5, 6].map(i => ({ price: 60000 + i * 100, pct: 10, hit: i < 3 })) })], 'beeld');
+  await p.evaluate(() => openRevPres([1], 1, true));
+  ok('presentatie: blok Take-profits met 3 regels', await p.evaluate(() => document.querySelectorAll('#revpres aside .revtps > span').length === 3));
+  ok('presentatie: prijs, % en ✓ bij geraakt', await p.evaluate(() => { const s = [...document.querySelectorAll('#revpres aside .revtps > span')].map(x => x.textContent); return /TP1/.test(s[0]) && /81\.230/.test(s[0]) && /50%/.test(s[0]) && /✓/.test(s[0]) && !/✓/.test(s[2]); }));
+  await p.evaluate(() => openRevPres([2], 2, true));
+  ok('presentatie zonder TP\'s: geen leeg kopje', await p.evaluate(() => !document.querySelector('#revpres aside .revtps') && !/Take-profits/.test(document.querySelector('#revpres aside').textContent)));
+  await p.evaluate(() => closeRevPres());
+  const txTp = await p.evaluate(() => revDiscordTekst(T.find(t => t.id === 1), true));
+  ok('Discord-tekst: TP-regel', /TP1 81\.230 ✓ · TP2 82\.009 ✓ · TP3 82\.616/.test(txTp), txTp);
+  ok('Discord-tekst zonder TP\'s: geen TP-regel', !/TP1/.test(await p.evaluate(() => revDiscordTekst(T.find(t => t.id === 2), true))));
+  const rg = await p.evaluate(() => revTpRegels(T.find(t => t.id === 3)));
+  ok('Discord-beeld: maximaal 4 TP-regels + "+2"', rg.length === 5 && rg[4].l === '+2' && rg[0].hit === true && rg[3].hit === false, JSON.stringify(rg));
+  ok('Discord-beeld zonder TP\'s: geen regels', (await p.evaluate(() => revTpRegels(T.find(t => t.id === 2)))).length === 0);
+
   //@@NEXT
 
   ok('geen JS-errors', errs.length === 0, errs.slice(0, 3).join(' | '));

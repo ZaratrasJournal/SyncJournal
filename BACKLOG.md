@@ -138,6 +138,8 @@ niet.
 
 **Klaar als** de spec voor alle vier de API-exchanges hetzelfde gedrag toetst, en de release-poort groen is.
 
+**Al gedaan (14-10-2026, B4):** de openingstijd van een lopende positie komt uit de positie-events (`_lopend` in `_krLevenslopen`, ingevuld door `afterImport`), niet meer uit `/openpositions`, dat geen `fillTime` documenteert en 1970 stuurde. `fetchTrades` kijkt 30 dagen terug zolang een open rij geen tijd heeft. Stap 3 hieronder is daarmee voor de openingstijd al gedekt; de stappen en de partial-status nog niet. Test: [tests/kraken-opentijd.spec.js](tests/kraken-opentijd.spec.js).
+
 ### B2 · OKX: contractwaarde-vangnet kent geen USDC-perps — prio 2 · S
 
 **Waarom.** `ExchangeAPI.okx._ctvFallback` ([work/syncjournal.html:7123](work/syncjournal.html#L7123))

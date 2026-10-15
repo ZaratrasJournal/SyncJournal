@@ -659,6 +659,7 @@ table.tbl{width:100%;border-collapse:collapse;font-size:14px}
 .revpres aside .revtiles{grid-template-columns:repeat(3,minmax(0,1fr))}.revpres aside .revgrid{grid-template-columns:1fr}
 .revpres aside>.lbl{font:700 10.5px var(--fb);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:12px 0 6px}
 @media(max-width:1000px){.revpres.on{grid-template-columns:minmax(0,1fr)}.revpres aside{display:none}}
+.revtps{display:flex;flex-wrap:wrap;gap:5px}.revtps span{border:1px solid var(--line);background:var(--sink);border-radius:7px;padding:3px 8px;font:600 12px var(--fn);color:var(--ink2)}.revtps span.hit{border-color:var(--green);color:var(--green);background:var(--green-soft)}
 .revtop{display:flex;align-items:center;gap:10px;margin:0 0 10px}.revtop .sp,.revmonth .sp,.revcard .sp{flex:1}
 .revmonth .revfilters{margin-top:0}.revmonth .revfilters button{flex:0 0 auto;white-space:nowrap;padding:5px 10px}
 .revmodes{display:inline-flex;background:var(--sink);border:1px solid var(--line);border-radius:10px;padding:3px}
@@ -1903,7 +1904,7 @@ const KINDS={live:{label:'Live',color:'var(--green)'},gemist:{label:'Gemist',col
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v1.9';
+const APP_VERSION='v1.9.1';
 const SCHEMA_VERSION=11;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -4076,7 +4077,14 @@ function openRevPres(ids,startId,panel){const items=[];
   (ids||[]).map(id=>T.find(x=>x.id===id)).filter(Boolean).forEach(t=>{const sh=revShots(t);if(sh.length)sh.forEach((src,k)=>items.push({id:t.id,src,k}));else items.push({id:t.id,src:null,k:0});});
   if(!items.length){toast('Geen trades om te presenteren','info');return;}
   revPres={items,i:Math.max(0,items.findIndex(x=>x.id===startId)),panel:!!panel};drawRevPres();}
-function revInfoVol(t){return `${revTiles(t,18)}<div class="lbl">Lagen (top-down)</div>${(t.layers||[]).length?t.layers.map(revLaag).join(''):'<span style="color:var(--muted)">—</span>'}`;}
+// Take-profit levels with a price, in their own order: TP1, TP2, ... (F1, Denny 14-10-2026).
+const revTps=t=>(t.tps||[]).filter(x=>x&&+x.price>0).map((x,i)=>({n:'TP'+(i+1),prijs:prijsOfStreep(x.price),pct:+x.pct||0,hit:!!x.hit}));
+const revTpTxt=x=>x.n+' · '+x.prijs+(x.pct?' · '+x.pct+'%':'')+(x.hit?' ✓':'');
+function revTpBlok(t){const L=revTps(t);return L.length?`<div class="lbl">Take-profits</div><div class="revtps">${L.map(x=>`<span class="${x.hit?'hit':''}">${esc(revTpTxt(x))}</span>`).join('')}</div>`:'';}
+const DC_TP_MAX=4;   // TP rows that fit in the Discord image's info panel; more become "+n"
+function revTpRegels(t){const L=revTps(t),r=L.slice(0,DC_TP_MAX).map(x=>({l:x.n,v:x.prijs+(x.pct?' · '+x.pct+'%':'')+(x.hit?' ✓':''),hit:x.hit}));
+  if(L.length>DC_TP_MAX)r.push({l:'+'+(L.length-DC_TP_MAX),v:'',hit:false});return r;}
+function revInfoVol(t){return `${revTiles(t,18)}<div class="lbl">Lagen (top-down)</div>${(t.layers||[]).length?t.layers.map(revLaag).join(''):'<span style="color:var(--muted)">—</span>'}${revTpBlok(t)}`;}
 function drawRevPres(){let el=document.getElementById('revpres');
   if(!el){el=document.createElement('div');el.id='revpres';el.className='revpres';el.setAttribute('role','dialog');el.setAttribute('aria-label','Presentatie');document.body.appendChild(el);}
   if(!revPres){el.classList.remove('on');el.innerHTML='';return;}
@@ -4126,7 +4134,7 @@ function revReviewFields(t){const checks=revChecks(t),rating=revRating(t),emo=tr
 function revDiscordTekst(t,hide){const r=tradeROrNull(t),tv=(t.tvLinks||[]).filter(isHttpUrl)[0];
   return [`**${t.pair} ${t.dir==='long'?'LONG':'SHORT'}** · ${t.setup||'—'} (${lagenTxt(t)}) · ${r==null?'—':rS(r)}${hide?'':' · '+eurS(t.pnl)}`,
     `Entry ${prijsOfStreep(t.entry)} · Stop ${prijsOfStreep(t.stop)} · Exit ${prijsOfStreep(t.exit)}${t.rrPlanned?' · R:R gepland '+String(t.rrPlanned).replace('.',','):''}`,
-    t.notes||'',tv||''].filter(Boolean).join('\n');}
+    revTps(t).map(x=>x.n+' '+x.prijs+(x.hit?' ✓':'')).join(' · '),t.notes||'',tv||''].filter(Boolean).join('\n');}
 // Discord image: chart left, trade info right, the note in a footer. Always dark: it is a standalone PNG, not the app UI.
 const DC={bg:'#0d1118',bar:'#151a23',ink:'#eef1f7',sub:'#c3c9d6',mut:'#8a92a6',pos:'#2fbf8a',neg:'#ef5d6a',brand:'#7d88ff'};
 const DC_W=1280,DC_H=760,DC_PANEL=440,DC_FOOT=64;   // chart area, info panel width, footer height (px)
@@ -4149,6 +4157,7 @@ async function revDiscord(id){const t=T.find(x=>x.id===id);if(!t)return 'tekst';
   regel('Datum',fmtD(t.date||'')+' '+(t.time||''));regel('Sessie',sessionOf(t)||'—');regel('HTF-bias',b||'—',b==='Bullish'?DC.pos:b==='Bearish'?DC.neg:null);
   regel('Entry',prijsOfStreep(t.entry));regel('Stop',prijsOfStreep(t.stop),DC.neg);regel('Exit',prijsOfStreep(t.exit));
   regel('R:R gepland',t.rrPlanned?String(t.rrPlanned).replace('.',',')+' : 1':'—');regel('Duur',fmtDurMin(tradeDurationMin(t)));
+  revTpRegels(t).forEach(x=>regel(x.l,x.v,x.hit?DC.pos:null));
   g.fillStyle=DC.bar;g.fillRect(0,DC_H,c.width,DC_FOOT);g.fillStyle=DC.brand;g.font='bold 24px Inter,sans-serif';g.fillText('SyncJournal',24,DC_H+41);
   const nt=t.notes?'“'+String(t.notes).replace(/\s+/g,' ')+'”':'';g.fillStyle=DC.mut;g.font='20px Inter,sans-serif';g.fillText(nt.length>110?nt.slice(0,107)+'…”':nt,200,DC_H+40);
   let blob;try{blob=await new Promise((ok,nok)=>{try{c.toBlob(bl=>bl?ok(bl):nok(new Error('leeg')),'image/png');}catch(e){nok(e);}});}
@@ -6919,7 +6928,7 @@ const ExchangeAPI = {
       // → bouw uit symbol + fillTime + side zodat re-sync dezelfde id geeft (geen duplicaten).
       // v12.101: direction-fix — Kraken /openpositions geeft side="long"/"short" (niet "buy"/"sell").
       const sideLc=String(t.side||"").toLowerCase();
-      const stableId=t.fill_id||(status==="open"?`open_${t.symbol||"?"}_${t.fillTime||"0"}_${sideLc||"?"}`:uid());
+      const stableId=t.fill_id||(status==="open"?`open_${t.symbol||"?"}_${ft?ft+"_":""}${sideLc||"?"}`:uid());   // B4: /openpositions sent fillTime 1970 (undocumented field)
       return{id:"kraken_"+stableId,openTime:t.open_time||ft,closeTime:closeT,date:closeT?closeT.split("T")[0]:(ft?ft.split("T")[0]:""),time:closeT?(closeT.split("T")[1]||"").slice(0,5):(ft?(ft.split("T")[1]||"").slice(0,5):""),pair,direction:t.direction||(sideLc==="buy"||sideLc==="long"?"long":"short"),entry:String(t.entry_price||t.price||""),exit:status==="closed"?String(t.exit_price||""):"",positionSize:usdNotional>0?usdNotional.toFixed(2):String(t.size||""),positionSizeAsset:String(t.size||""),pnl:status==="closed"?pnlVal:"",unrealizedPnl:status==="open"?String(t.unrealized_pnl||""):"",liquidationPrice:String(t.liquidation_price||""),fees:t.fee?String(Math.abs(parseFloat(t.fee)||0).toFixed(4)):"0",leverage:"1",source:"kraken",status,stopLoss:"",takeProfit:"",highestPrice:"",lowestPrice:"",setupTags:[],confirmationTags:[],timeframeTags:[],emotionTags:[],mistakeTags:[],customTags:[],rating:0,screenshot:null,notes:"",links:[],layers:[],manualOverrides:[],tpLevels,originalSizeAsset};
     },
     /* ═══ Account-log → levenslopen (Denny 26-09-2026) ═══
@@ -7128,7 +7137,7 @@ const ExchangeAPI = {
         const sym=String(u.tradeable);
         const st=per[sym]||(per[sym]={pos:0,steps:[],pnl:0,fee:0,funding:0,begin:0});
         const oud=getal(u.oldPosition), nieuwPos=getal(u.newPosition);
-        if(st.steps.length===0&&!st.begin)st.begin=+u.timestamp||u._ts||0;
+        if(st.steps.length===0&&!st.begin){st.begin=+u.timestamp||u._ts||0;st.vanaf0=Math.abs(oud)<1e-12;}
         st.pnl+=getal(u.realizedPnL); st.fee+=Math.abs(getal(u.fee)); st.funding+=getal(u.realizedFunding);
         /* Het verschil tussen de stand vóór en ná is de grootte van de stap. Dat is
            betrouwbaarder dan executionSize, dat bij een omkeer alleen het nieuwe stuk telt -
@@ -7148,6 +7157,13 @@ const ExchangeAPI = {
         }
         st.pos=nieuwPos;
         if(Math.abs(nieuwPos)<1e-12){ klaar(sym,st); delete per[sym]; }
+      }
+      /* Still running: the open row comes from /openpositions, whose fillTime Kraken does not document
+         (it sent 1970, Denny 14-10-2026). Keep the opening time from these events for afterImport - but
+         only when the opening is inside the window; a position that was already open stays unknown. */
+      this._lopend={};
+      for(const [sym,st] of Object.entries(per)){
+        if(st.vanaf0&&st.steps.length&&Math.abs(st.pos)>1e-12)this._lopend[sym]={openTime:st.steps[0].ts,dir:st.steps[0].side==="buy"?"long":"short"};
       }
       return uit;   // wat nog open staat komt via de open-positie-placeholder binnen
     },
@@ -7175,10 +7191,32 @@ const ExchangeAPI = {
         T.filter(o=>o&&o.exchange==="kraken"&&o!==L&&!/^kraken_pos_/.test(String(o.srcId||""))&&o.pair===L.pair&&o.dir===L.dir&&hoort(o))
          .forEach(o=>{ adoptUserFieldsSJ(L,o); T=T.filter(t=>t.id!==o.id); n++; });
       });
+      /* A wider window (look-back) can return a lifecycle that was imported before with a later start:
+         its id holds the start, so it arrives as a second row. Same contract and same close = same
+         position; keep the one with the earliest start, which holds all the steps. */
+      const pos={};
+      T.forEach(t=>{if(t&&t.exchange==="kraken"&&/^kraken_pos_/.test(String(t.srcId||""))&&t.closeTime){const k=t.positionId+"|"+t.closeTime;(pos[k]=pos[k]||[]).push(t);}});
+      Object.values(pos).forEach(g=>{if(g.length<2)return;g.sort((a,b)=>this._msTijd(a.openTime)-this._msTijd(b.openTime));
+        g.slice(1).forEach(o=>{adoptUserFieldsSJ(g[0],o);T=T.filter(t=>t.id!==o.id);n++;});});
+      const lop=this._lopend||{};
+      T.forEach(o=>{
+        if(!this._zoektTijd(o))return;
+        const hit=Object.entries(lop).find(([sym,l])=>this._pair(sym)===o.pair&&l.dir===o.dir);
+        if(!hit||!(+hit[1].openTime>0)){o._krZocht=Date.now();n++;return;}   // not in the events: don't look back again on every sync
+        const at=amsDateTime(hit[1].openTime);
+        o.openTime=String(hit[1].openTime);o.date=at.date;o.time=at.time;o.session=sessionFromTime(at.time);n++;
+      });
       if(n)persist();
       return n;
     },
-    async fetchTrades(apiKey,apiSecret,_pp,startTime){const data=await proxyCall({exchange:"kraken",action:"trades",apiKey,apiSecret,startTime,withEvents:true});   // de oude journal vraagt er niet om, en krijgt ze dus ook niet
+    _OPEN_TERUG_MS:30*864e5,   // look-back while a running position has no opening time (same as a first sync)
+    _msTijd(v){const n=+v;if(n>0)return n;const p=Date.parse(String(v||""));return p>0?p:0;},
+    // An open row that still needs its opening time: not stale, no time (number or ISO), not searched for in vain yet.
+    _zoektTijd(t){return !!t&&t.exchange==="kraken"&&(t.status==="open"||t.status==="partial")&&!t._stale&&!t._krZocht&&!this._msTijd(t.openTime);},
+    async fetchTrades(apiKey,apiSecret,_pp,startTime){
+      this._lopend={};
+      if(T.some(t=>this._zoektTijd(t)))startTime=Math.min(+startTime||Date.now(),Date.now()-this._OPEN_TERUG_MS);
+      const data=await proxyCall({exchange:"kraken",action:"trades",apiKey,apiSecret,startTime,withEvents:true});   // de oude journal vraagt er niet om, en krijgt ze dus ook niet
       if(Array.isArray(data&&data.events)&&data.events.length){
         let events=data.events;
         const c=CONNS.kraken;
@@ -7201,7 +7239,9 @@ const ExchangeAPI = {
         return this._krLevenslopen(events);
       }return(data.trades||[]).filter(t=>t.pair_clean||t.symbol||t.direction).map(t=>this._normalise(t))},
     async testConnection(apiKey,apiSecret){const data=await proxyCall({exchange:"kraken",action:"test",apiKey,apiSecret});if(!data.success)throw new Error(data.error||"Kraken verbinding mislukt");return{success:true,balance:data.balance||"0"}},
-    async fetchOpenPositions(apiKey,apiSecret){const data=await proxyCall({exchange:"kraken",action:"open_positions",apiKey,apiSecret});return(data.positions||[]).map(t=>({...this._normalise({...t,status:"open"}),status:"open"}))},
+    async fetchOpenPositions(apiKey,apiSecret){
+      T.forEach(t=>{if(t&&t.exchange==="kraken"&&/_1970-01-01T00:00:00\.000Z_/.test(String(t.srcId||"")))t.srcId=String(t.srcId).replace(/_1970-01-01T00:00:00\.000Z_/,"_");});   // ids from before v1.9.1
+      const data=await proxyCall({exchange:"kraken",action:"open_positions",apiKey,apiSecret});return(data.positions||[]).map(t=>({...this._normalise({...t,status:"open"}),status:"open"}))},
     /* Geen fetchFills voor Kraken: de stappen komen uit de positie-gebeurtenissen, en volgens
        de docs draagt /derivatives/api/v3/fills geen realized_pnl zodra je met lastFillTime
        pagineert — en dat doet de proxy altijd. */
