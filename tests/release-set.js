@@ -17,7 +17,7 @@ module.exports = [
   // fundament: opslag, backup, weergave, demo-data
   'backup-guard', 'drive-backup', 'drive-broker', 'hosted', 'weergave-presets', 'demo-dataset',
   'pb-demo-cleanup', 'pb-layers', 'duration', 'changemaker-feedback', 'fout-filter', 'default-tags',
-  'multifilter', 'playbook-filter', 'kraken-opentijd', 'trades-sortering', 'integratie-breed', 'stress-vandaag', 'csv-import',
+  'multifilter', 'playbook-filter', 'kraken-opentijd', 'kraken-accountlog-sync', 'kraken-csv-api', 'worker-accountlog', 'trades-sortering', 'integratie-breed', 'stress-vandaag', 'csv-import',
 
   // exchanges: sync, saldo, levensloop per beurs
   'exchange-sync', 'exchange-sync2', 'balance-sync', 'auto-sync', 'valuta',

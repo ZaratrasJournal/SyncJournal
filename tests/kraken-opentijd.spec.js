@@ -54,7 +54,7 @@ const ev = (uid, ts, oud, nieuw, prijs, wissel) => ({ uid, timestamp: ts, event:
 
   console.log('─── Terugkijken zolang een open rij geen tijd heeft ───');
   const st = await p.evaluate(async () => {
-    const calls = []; window.proxyCall = async (q) => { calls.push(q.startTime); return { trades: [], events: [{ uid: 'x', timestamp: 1, event: { PositionUpdate: {} } }] }; };
+    const calls = []; window.proxyCall = async (q) => { if (q.action === 'trades') calls.push(q.startTime); return { trades: [], events: [{ uid: 'x', timestamp: 1, event: { PositionUpdate: {} } }] }; };
     CONNS.kraken = { ...(CONNS.kraken || {}), evt: 1 };
     const nu = Date.now(), start = nu - 3600e3;
     T = [{ id: 87, exchange: 'kraken', pair: 'BTC/USD', dir: 'short', status: 'open', kind: 'live', openTime: '' }];
@@ -68,7 +68,7 @@ const ev = (uid, ts, oud, nieuw, prijs, wissel) => ({ uid, timestamp: ts, event:
 
   console.log('─── Review-fixes v1.9.1 ───');
   const eenKeer = await p.evaluate(async () => {
-    const calls = []; window.proxyCall = async (q) => { calls.push(q.startTime); return { trades: [], events: [{ uid: 'x', timestamp: 1, event: { PositionUpdate: {} } }] }; };
+    const calls = []; window.proxyCall = async (q) => { if (q.action === 'trades') calls.push(q.startTime); return { trades: [], events: [{ uid: 'x', timestamp: 1, event: { PositionUpdate: {} } }] }; };
     const nu = Date.now(), start = nu - 3600e3;
     T = [{ id: 87, exchange: 'kraken', pair: 'BTC/USD', dir: 'short', status: 'open', kind: 'live', openTime: '' }];
     await ExchangeAPI.kraken.fetchTrades('k', 's', null, start); ExchangeAPI.kraken.afterImport([]);   // opening niet gevonden
@@ -77,7 +77,7 @@ const ev = (uid, ts, oud, nieuw, prijs, wissel) => ({ uid, timestamp: ts, event:
   });
   ok('niet gevonden → daarna niet bij elke sync opnieuw 30 dagen terug', eenKeer.eerste < eenKeer.start && eenKeer.tweede === eenKeer.start, JSON.stringify(eenKeer));
   const stale = await p.evaluate(async () => {
-    const calls = []; window.proxyCall = async (q) => { calls.push(q.startTime); return { trades: [], events: [{ uid: 'x', timestamp: 1, event: { PositionUpdate: {} } }] }; };
+    const calls = []; window.proxyCall = async (q) => { if (q.action === 'trades') calls.push(q.startTime); return { trades: [], events: [{ uid: 'x', timestamp: 1, event: { PositionUpdate: {} } }] }; };
     const start = Date.now() - 3600e3;
     T = [{ id: 87, exchange: 'kraken', pair: 'BTC/USD', dir: 'short', status: 'open', kind: 'live', openTime: '', _stale: true },
          { id: 88, exchange: 'kraken', pair: 'ETH/USD', dir: 'long', status: 'open', kind: 'live', openTime: '2026-09-01T10:00:00.000Z' }];

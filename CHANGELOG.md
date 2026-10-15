@@ -16,6 +16,23 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v1.10] — 2026-10-15
+
+### Fixed
+- **Kraken: trades komen nu uit Kraken's account-log.** Dat is hetzelfde overzicht als de CSV-export van
+  Kraken, en het klopt per uitvoering. De oude route (positie-gebeurtenissen) kon oude posities opnieuw
+  binnenhalen als kopie, twee posities aan elkaar plakken, en een gesloten trade open laten staan. Bij de
+  eerste sync na deze update haalt de journal je Kraken-historie één keer opnieuw op en ruimt hij op:
+  kopieën gaan naar de prullenbak, notities en stops verhuizen mee naar de juiste trade, en wat je zelf
+  had weggegooid blijft weg. Je startdatum per koppeling telt: oudere trades komen er niet bij, en
+  oude rijen van vóór die datum gaan naar de prullenbak. Zet je de startdatum later vroeger, dan haalt
+  de volgende sync het ontbrekende stuk op. Een lopende positie krijgt meteen haar echte
+  openingstijd.
+- **Kraken-CSV en de koppeling herkennen elkaar.** Een positie uit een eerdere CSV-import en dezelfde
+  positie via de koppeling zijn nu één trade (getoetst op 107 van 107 echte posities). Zolang Kraken
+  gekoppeld is, is een Kraken-CSV-import niet nodig en wordt hij tegengehouden met uitleg.
+- Vereist de Kraken-proxy v21 (staat live sinds 15-10-2026). Met een oudere proxy werkt de sync zoals voorheen.
+
 ## [v1.9.1] — 2026-10-15
 
 ### Gewijzigd

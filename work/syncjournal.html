@@ -1904,7 +1904,7 @@ const KINDS={live:{label:'Live',color:'var(--green)'},gemist:{label:'Gemist',col
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v1.9.1';
+const APP_VERSION='v1.10';
 const SCHEMA_VERSION=11;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -7075,7 +7075,7 @@ const ExchangeAPI = {
         const uit=tl.filter(isAfbouw), uitQty=uit.reduce((s,x)=>s+x.qty,0)||1;
         const {date,time}=amsDateTime(L.openTs);
         trades.push({...EMPTY_TRADE,
-          id:"kraken_pos_"+sym+"_"+L.openTs,
+          id:"kraken_pos_"+sym+"_"+Math.floor(L.openTs/1000)*1000,   // whole seconds: the CSV export has seconds, the API milliseconds; same position, same id
           date,time,openTime:String(L.openTs),closeTime:String(L.closeTs),
           pair:this._pair(sym),direction:L.dir,
           entry:sum.avgEntry>0?pxRound(sum.avgEntry):"",
@@ -7189,32 +7189,135 @@ const ExchangeAPI = {
           return binnen(d);
         };
         T.filter(o=>o&&o.exchange==="kraken"&&o!==L&&!/^kraken_pos_/.test(String(o.srcId||""))&&o.pair===L.pair&&o.dir===L.dir&&hoort(o))
-         .forEach(o=>{ adoptUserFieldsSJ(L,o); T=T.filter(t=>t.id!==o.id); n++; });
+         .forEach(o=>{ this._voegSamen(L,o); n++; });
       });
       /* A wider window (look-back) can return a lifecycle that was imported before with a later start:
          its id holds the start, so it arrives as a second row. Same contract and same close = same
          position; keep the one with the earliest start, which holds all the steps. */
       const pos={};
       T.forEach(t=>{if(t&&t.exchange==="kraken"&&/^kraken_pos_/.test(String(t.srcId||""))&&t.closeTime){const k=t.positionId+"|"+t.closeTime;(pos[k]=pos[k]||[]).push(t);}});
-      Object.values(pos).forEach(g=>{if(g.length<2)return;g.sort((a,b)=>this._msTijd(a.openTime)-this._msTijd(b.openTime));
-        g.slice(1).forEach(o=>{adoptUserFieldsSJ(g[0],o);T=T.filter(t=>t.id!==o.id);n++;});});
+      const uitLog=t=>this._log&&this._log.levenslopen.some(L=>String(L.id)===String(t.srcId))?0:1;   // the account-log row always wins
+      Object.values(pos).forEach(g=>{if(g.length<2)return;g.sort((a,b)=>(uitLog(a)-uitLog(b))||(this._msTijd(a.openTime)-this._msTijd(b.openTime)));
+        g.slice(1).forEach(o=>{this._voegSamen(g[0],o);n++;});});
+      /* Account-log (v1.10): rows the events path made (other id, sometimes cut off or glued together)
+         merge into the lifecycle their opening falls in: same pair, direction and contract, the closest
+         opening. Does that lifecycle belong to a trashed trade, the old row goes to the trash too. */
+      if(this._log){
+        const nieuwId=new Set(this._log.levenslopen.map(t=>String(t.id)));
+        T.filter(o=>o&&o.exchange==="kraken"&&/^kraken_pos_/.test(String(o.srcId||""))&&!nieuwId.has(String(o.srcId))).forEach(o=>{
+          const t0=this._msTijd(o.openTime);if(!t0)return;
+          // direction is a preference, not a requirement: the events path often took it from the closing step
+          const kand=this._log.levenslopen.filter(L=>L.pair===o.pair&&this._zelfdeContract(L,o)&&t0>=+L.openTime-90e3&&t0<=+L.closeTime);
+          if(!kand.length)return;
+          const zelfde=L=>this._dirVan(L)===this._dirVan(o)?0:1;
+          const L=kand.sort((a,b)=>(zelfde(a)-zelfde(b))||(Math.abs(+a.openTime-t0)-Math.abs(+b.openTime-t0)))[0];
+          // thrown away, or closed before the start date you chose: the old row does not belong in the journal (trash, recoverable)
+          if(this._log.weg.has(String(L.id))||(this._log.startDatum&&+L.closeTime<this._log.startDatum)){trashDelete([o.id]);n++;return;}
+          const doel=T.find(x=>x&&x.exchange==="kraken"&&String(x.srcId)===String(L.id));
+          if(doel){this._voegSamen(doel,o);n++;}
+        });
+      }
       const lop=this._lopend||{};
       T.forEach(o=>{
         if(!this._zoektTijd(o))return;
         const hit=Object.entries(lop).find(([sym,l])=>this._pair(sym)===o.pair&&l.dir===o.dir);
-        if(!hit||!(+hit[1].openTime>0)){o._krZocht=Date.now();n++;return;}   // not in the events: don't look back again on every sync
+        if(!hit||!(+hit[1].openTime>0)){if(!(this._log&&this._log.afgekapt)){o._krZocht=Date.now();n++;}return;}   // not found: don't look back again on every sync (unless the history was capped)
         const at=amsDateTime(hit[1].openTime);
         o.openTime=String(hit[1].openTime);o.date=at.date;o.time=at.time;o.session=sessionFromTime(at.time);n++;
       });
+      this._log=null;   // a CSV import later must not use this sync's lifecycles
       if(n)persist();
       return n;
+    },
+    /* ═══ Account-log via the Worker (v21, Denny 15-10-2026) ═══
+       The source of truth, as in the CSV import (levenslopenUitAccountLog). Kraken docs:
+       GET /api/history/v3/account-log, since/before in ms. An old Worker (v20) answers the action
+       with the trades flow; then this returns null and the sync uses the position events as before. */
+    _LOG_TERUG_MS:30*864e5,   // look-back step while the window starts in the middle of a position
+    _LOG_TERUG_MAX:4,         // up to ~4 months; a position cut off beyond that is not imported
+    _LOG_EXTRA_MAX:2,         // extra requests when the Worker capped (rate limit: 30 history tokens per request)
+    // While the API is linked the account-log brings everything in; a Kraken CSV import would only add confusion.
+    csvBlokkade(){const c=CONNS.kraken;return(c&&c.connected)?'Kraken is gekoppeld: je trades komen al automatisch binnen via de koppeling (hele historie). Een CSV-import is niet nodig. Wil je toch een CSV importeren, ontkoppel Kraken dan eerst.':'';},
+    _isWees(t){return /^⚠ Partial data/.test(String((t&&t.notes)||""));},
+    _contractVan(o){if(o&&o.positionId)return String(o.positionId).toUpperCase();const m=/^kraken_pos_(.+)_\d+$/.exec(String((o&&o.srcId)||""));return m?m[1].toUpperCase():"";},
+    _zelfdeContract(a,b){const x=this._contractVan(a),y=this._contractVan(b);return !x||!y||x===y;},
+    _dirVan(o){return String((o&&(o.dir||o.direction))||"").toLowerCase();},
+    // Trades you threw away stay away, also after the trash is emptied (30 days) or the account is re-linked.
+    _wegIds(){try{return new Set(DB.load('kraken_weg',[])||[]);}catch(e){return new Set();}},
+    _bewaarWeg(set){try{DB.save('kraken_weg',[...set]);}catch(e){}},
+    /* Merge a superseded row into the row that replaces it without losing anything: notes are joined,
+       lists combined, the rest via adoptUserFieldsSJ; the old row goes to the trash (recoverable). */
+    _voegSamen(doel,o){
+      ['notes','lessons','coach'].forEach(k=>{const a=String(doel[k]||'').trim(),b=String(o[k]||'').trim();if(a&&b&&!a.includes(b))doel[k]=a+'\n\n'+b;});
+      ['tags','screenshots','tvLinks','emotions','mistakes'].forEach(k=>{if(Array.isArray(doel[k])&&doel[k].length&&Array.isArray(o[k])&&o[k].length)doel[k]=[...new Set([...doel[k],...o[k]])];});
+      adoptUserFieldsSJ(doel,o);
+      trashDelete([o.id]);
+    },
+    async _logOphalen(apiKey,apiSecret,since){
+      const haal=async(van,tot)=>{const d=await proxyCall({exchange:"kraken",action:"account_log",apiKey,apiSecret,startTime:van>0?van:undefined,before:tot});
+        return(d&&d.source==="account_log"&&Array.isArray(d.logs))?d:null;};
+      const veilig=async(van,tot)=>{try{return await haal(van,tot);}catch(e){return null;}};   // an extra request may fail; keep what we have
+      const uniek=rows=>{const m=new Map();rows.forEach(l=>{const k=String((l&&(l.id??l.booking_uid))||"");if(k&&!m.has(k))m.set(k,l);});return[...m.values()];};
+      const laatsteDatum=()=>logs.reduce((m,l)=>Math.max(m,Date.parse(l&&l.date)||0),0);
+      const d=await haal(since);if(!d)return null;
+      let logs=d.logs,afgekapt=!!(d._logDebug&&d._logDebug.afgekapt);
+      for(let i=0;afgekapt&&i<this._LOG_EXTRA_MAX;i++){
+        const laatste=laatsteDatum();
+        const d2=laatste?await veilig(laatste-1000):null;if(!d2)break;   // one second of overlap; rows are de-duplicated by id
+        logs=uniek(logs.concat(d2.logs));afgekapt=!!(d2._logDebug&&d2._logDebug.afgekapt);
+      }
+      const bouw=()=>this.levenslopenUitAccountLog(this._logRegelsUitJson(logs));
+      let uit=bouw(),van=since;
+      // the window starts in the middle of a position (chain not from 0): ask for the part before it
+      for(let i=0;van>0&&i<this._LOG_TERUG_MAX&&(uit.trades.some(t=>this._isWees(t))||uit.open.some(L=>L.partial));i++){
+        const eerder=Math.max(0,van-this._LOG_TERUG_MS);
+        const d3=await veilig(eerder,van);if(!d3)break;
+        logs=uniek(d3.logs.concat(logs));van=eerder;uit=bouw();
+      }
+      // resume point after a capped run: the start of the earliest still-open position, else the last row
+      const openStart=uit.open.filter(L=>!L.partial).map(L=>L.openTs).filter(Boolean);
+      const tot=Math.min(laatsteDatum()||Infinity,...openStart)-1000;
+      return{uit,afgekapt,tot:isFinite(tot)?tot:0};
     },
     _OPEN_TERUG_MS:30*864e5,   // look-back while a running position has no opening time (same as a first sync)
     _msTijd(v){const n=+v;if(n>0)return n;const p=Date.parse(String(v||""));return p>0?p:0;},
     // An open row that still needs its opening time: not stale, no time (number or ISO), not searched for in vain yet.
     _zoektTijd(t){return !!t&&t.exchange==="kraken"&&(t.status==="open"||t.status==="partial")&&!t._stale&&!t._krZocht&&!this._msTijd(t.openTime);},
     async fetchTrades(apiKey,apiSecret,_pp,startTime){
-      this._lopend={};
+      this._lopend={};this._log=null;
+      let c=CONNS.kraken||{};
+      /* First time via the account-log: the whole history (or from the configured start date), continuing
+         where a capped run stopped; after that the window since the last sync, widened to the start of
+         any running position so its opening is always inside. */
+      const lopendeStart=T.filter(t=>t&&t.exchange==="kraken"&&(t.status==="open"||t.status==="partial")).map(t=>this._msTijd(t.openTime)).filter(Boolean);
+      const startDatum=c.syncFrom?+new Date(c.syncFrom):0;
+      // start date moved earlier than the history fetched so far (logVanaf): fetch the missing part once, like a first sync
+      if(c.log&&!(c.logVanaf!=null&&+c.logVanaf<=startDatum)){c={...c,log:0};delete c.logTot;CONNS.kraken=c;persistConns();}
+      let vanaf=c.log?(+startTime||0):(+c.logTot||startDatum);
+      // the one-time cleanup reaches back to the oldest existing Kraken row; imports still start at the start date
+      const oudsteRij=T.filter(t=>t&&t.exchange==="kraken"&&/^kraken_pos_/.test(String(t.srcId||""))).map(t=>this._msTijd(t.openTime)).filter(Boolean);
+      if(!c.log&&!c.logTot&&vanaf>0&&oudsteRij.length)vanaf=Math.min(vanaf,Math.min(...oudsteRij)-60e3);
+      if(c.log&&vanaf>0&&lopendeStart.length)vanaf=Math.min(vanaf,Math.min(...lopendeStart)-1000);
+      const log=await this._logOphalen(apiKey,apiSecret,vanaf);
+      if(log){
+        const {uit}=log;
+        uit.open.filter(L=>!L.partial).forEach(L=>{this._lopend[String(L.contract).toUpperCase()]={openTime:L.openTs,dir:L.dir};});
+        // thrown away stays away: a remembered id, or a trashed trade of the same contract and direction that opened inside this position
+        const weg=this._wegIds();
+        const prullenbak=TRASH.filter(o=>o&&o.exchange==="kraken");
+        prullenbak.forEach(o=>{if(/^kraken_pos_/.test(String(o.srcId||"")))weg.add(String(o.srcId));});
+        const opent=o=>this._msTijd(o.openTime)||Date.parse(String(o.date||"")+"T"+String(o.time||"00:00")+":00Z")||0;
+        uit.trades.forEach(t=>{
+          if(prullenbak.some(o=>o.pair===t.pair&&this._dirVan(o)===this._dirVan(t)&&this._zelfdeContract(o,t)&&opent(o)>=+t.openTime-90e3&&opent(o)<+t.closeTime))weg.add(String(t.id));
+        });
+        this._bewaarWeg(weg);
+        const levenslopen=uit.trades.filter(t=>!this._isWees(t));
+        this._log={levenslopen,weg,afgekapt:log.afgekapt,startDatum};
+        if(log.afgekapt){CONNS.kraken={...CONNS.kraken,logTot:log.tot};persistConns();}
+        else if(!c.log){const n={...CONNS.kraken,log:1,logVanaf:startDatum};delete n.logTot;CONNS.kraken=n;persistConns();}
+        if(uit.waarschuwingen.length)console.warn('[kraken account-log] '+uit.waarschuwingen.length+' row(s) not closing:',uit.waarschuwingen);
+        return levenslopen.filter(t=>!weg.has(String(t.id))&&(!startDatum||+t.closeTime>=startDatum));   // like the old route: what closed after the start date
+      }
       if(T.some(t=>this._zoektTijd(t)))startTime=Math.min(+startTime||Date.now(),Date.now()-this._OPEN_TERUG_MS);
       const data=await proxyCall({exchange:"kraken",action:"trades",apiKey,apiSecret,startTime,withEvents:true});   // de oude journal vraagt er niet om, en krijgt ze dus ook niet
       if(Array.isArray(data&&data.events)&&data.events.length){
@@ -8469,6 +8572,7 @@ function parseExchangeCsvText(text,forExchange){
         }
         // Kraken account log — één levensloop per positie, via de adapter (CSV-import en API-sync delen die functie)
         if(isKrakenLog){
+          const blok=ExchangeAPI.kraken.csvBlokkade();if(blok)throw new Error(blok);
           const rowsRaw=[];
           for(let i=1;i<lines.length;i++){
             const vals=parseCSVLine(lines[i]).map(v=>v.replace(/"/g,""));
