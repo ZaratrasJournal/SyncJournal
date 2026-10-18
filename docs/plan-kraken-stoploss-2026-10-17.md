@@ -353,13 +353,23 @@ Test: een open short met een Buy-stop 82.235 krijgt die stop. Verschuift hij naa
 
 ---
 
-## Bevindingen snapshot (in te vullen bij Task 2)
+## Bevindingen snapshot (18-10-2026)
 
-- `orderType` van een SL-trigger: …
-- `reduceOnly` op SL: …
-- Verschuiven gaat als: `OrderTriggerUpdated` / annuleren + nieuw plaatsen
-- Geschiedenis gaat terug tot: …
-- Afwijkingen van de regels in Task 3, en de genomen ruling: …
+Snapshot van Denny's account: 40 events van 14-10 18:12 tot 16-10 17:55, 1 pagina, gevraagd vanaf 01-09.
+Vaste testdata (zonder uid's) in `tests/fixtures/kraken-triggers-sample.json`.
+
+- **`orderType`** is altijd `Market`, zowel voor de SL als de TP's (de documentatie noemt `stop`/`stp`). De app filtert er niet op.
+- **`reduceOnly`** is `true` op alle triggers, SL en TP. Het onderscheid SL/TP blijft dus: kant ten opzichte van de entry.
+- **De SL wordt bij de fill geplaatst**, met reason `partial_fill`, op exact de openingstijd. Bij een limit-instap met SL
+  plaatst Kraken hem eerst bij de order (14:59:50), en bij de fill annuleert (`order_group_order_cancelled`) en plaatst
+  hij hem opnieuw (17:15:52). Review-punt I3 (limit-instap buiten de 60 s) speelt dus niet: er is altijd een plaatsing op de fill.
+- **TP's** komen als `new_user_order` aan de winstkant, met hun eigen qty (bijv. 0,0038 / 0,0019 / 0,0019). Dat zijn je geplande TP's.
+- **Bij de sluiting** annuleert Kraken alle resterende triggers (`would_not_reduce_position`). Een geraakte stop of TP is `OrderTriggerActivated`.
+- **Verschuiven:** komt in deze periode niet voor (geen `OrderTriggerUpdated`). Of verschuiven een update is of annuleren +
+  nieuw plaatsen, is nog niet gezien; de code kent beide.
+- **Geschiedenis:** begint op 14-10, niet op 01-09. Ouder bestaat er (voor Denny) niet. Trades van vóór 14-10 houden "—".
+- **Afwijkingen:** geen. Alle vier de gesloten posities krijgen de stop die Kraken had (82235, 81700, 81700, 81500).
+  Let op: bij twee daarvan had Denny zelf de exit als stop ingevuld (81680 en 81882); die blijven staan (een zelf ingevulde stop wint).
 
 ## Bewust niet in dit plan
 

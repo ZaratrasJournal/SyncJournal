@@ -94,7 +94,7 @@ const bouwLogs = (lijst) => { let id = 5000; const logs = [];
 
   console.log('─── Venster begint midden in een positie ───');
   const wees = await p.evaluate(async (logs) => {
-    T = []; TRASH = []; CONNS.kraken = { connected: true, apiKey: 'k', apiSecret: 's', lastSync: Z('2026-10-14T17:30:00') + 3600e3, evt: 1, log: 1, logVanaf: 0 };
+    T = []; TRASH = []; CONNS.kraken = { connected: true, apiKey: 'k', apiSecret: 's', lastSync: Z('2026-10-14T17:30:00') + 3600e3, evt: 1, log: 1, logVanaf: 0, stappen: ExchangeAPI.kraken._HERHAAL };
     window.__vragen = []; await syncExchange('kraken', { quiet: true });
     return { trades: T.filter(t => t.exchange === 'kraken').map(t => ({ date: t.date, time: t.time, steps: (t.fills || []).length, notes: t.notes || '' })), vragen: window.__vragen.filter(v => v.action === 'account_log').map(v => v.startTime) };
   }, maakLogs());
@@ -109,7 +109,7 @@ const bouwLogs = (lijst) => { let id = 5000; const logs = [];
       if (q.action === 'account_log') return { source: 'account_log', logs: open.filter(l => Date.parse(l.date) >= (+q.startTime || 0)), _logDebug: { afgekapt: false } };
       return {};
     };
-    T = []; TRASH = []; CONNS.kraken = { connected: true, apiKey: 'k', apiSecret: 's', lastSync: Date.parse('2026-10-14T17:00:00Z'), evt: 1, log: 1, logVanaf: 0 };
+    T = []; TRASH = []; CONNS.kraken = { connected: true, apiKey: 'k', apiSecret: 's', lastSync: Date.parse('2026-10-14T17:00:00Z'), evt: 1, log: 1, logVanaf: 0, stappen: ExchangeAPI.kraken._HERHAAL };
     await syncExchange('kraken', { quiet: true });
     return T.filter(t => t.exchange === 'kraken').map(t => ({ st: t.status, date: t.date, time: t.time, sessie: t.session }));
   }, maakLogs());

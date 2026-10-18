@@ -22,8 +22,11 @@ function reconstruct(csvText) {
   const finish = (p) => {
     const w = (arr) => { let q = 0, v = 0; for (const f of arr) { q += Math.abs(f.qty); v += Math.abs(f.qty) * f.price; } return q ? { qty: q, avg: v / q } : { qty: 0, avg: null }; };
     const o = w(p.opens), c = w(p.closes);
+    // one order = one step: its executions share the second (checked against order ids, Denny 18-10-2026: 249/249)
+    const groepen = arr => new Set(arr.map(f => f.t)).size;
     pos.push({ contract: p.contract, dir: p.dir, openT: p.openT, closeT: p.closeT, qty: o.qty, entry: o.avg, exit: c.avg, notional: o.qty * (o.avg || 0),
-      gross: p.pnl, fee: p.fee, funding: p.funding, net: p.pnl - p.fee, nOpens: p.opens.length, nCloses: p.closes.length, nFills: p.opens.length + p.closes.length, flip: p.flip });
+      gross: p.pnl, fee: p.fee, funding: p.funding, net: p.pnl - p.fee, nOpens: p.opens.length, nCloses: p.closes.length, nFills: p.opens.length + p.closes.length, flip: p.flip,
+      nCloseSteps: groepen(p.closes), nSteps: groepen(p.opens) + groepen(p.closes) });
   };
   for (const f of fills) {
     const c = f.contract; let p = open[c];

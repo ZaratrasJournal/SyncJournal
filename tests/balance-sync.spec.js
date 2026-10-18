@@ -149,7 +149,7 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
   });
   ok('niets gekoppeld → geen accounts-filter in de filterbar', rv.noDD);
   ok('formulier valt dan terug op alle actieve exchanges', rv.fallbackN >= 4, String(rv.fallbackN));
-  ok('één koppeling → filter en formulier tonen alléén die', rv.ddOpts.join() === 'Hyperliquid' && rv.formOpts2.join() === 'hyperliquid' && rv.sel === 'hyperliquid', JSON.stringify({ dd: rv.ddOpts, f: rv.formOpts2 }));
+  ok('één koppeling → filter en formulier tonen alléén die', rv.ddOpts.join() === 'Hyperliquid' && rv.formOpts2.filter(Boolean).join() === 'hyperliquid' && rv.formOpts2[0] === '' && rv.sel === 'hyperliquid', JSON.stringify({ dd: rv.ddOpts, f: rv.formOpts2 }));
   ok('exchange met alleen trades blijft zichtbaar (trades nooit onvindbaar)', await p.evaluate(() => {
     T = [{ id: 1, date: '2026-09-10', time: '10:00', pair: 'BTC/USDT', dir: 'long', setup: '', session: 'London', status: 'closed', kind: 'live', exchange: 'mexc', entry: 100, exit: 110, stop: 95, size: '1000', pnl: 50, r: 1, tps: [], tags: [], layers: [], emotions: [], mistakes: [], checks: [], screenshots: [], tvLinks: [] }]; persist(); render();
     const dd = document.querySelector('[data-dd="exchange"]');

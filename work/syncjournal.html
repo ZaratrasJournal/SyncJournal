@@ -762,6 +762,7 @@ table.tbl{width:100%;border-collapse:collapse;font-size:14px}
 .msub.s4{--sec:var(--green)}.msub.s5{--sec:var(--teal)}.msub.s6{--sec:var(--muted)}
 /* hints in formulieren zijn echte instructies → leesbare grijstint, niet de decoratieve */
 .field .hint{font-size:10.5px;color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0}
+.fxhint{font-size:11.5px;color:var(--ink2);margin-top:4px;font-variant-numeric:tabular-nums}.fxhint:empty{display:none}.fxhint b{color:var(--ink)}
 .tagpick{grid-column:1/-1;display:flex;flex-direction:column;gap:14px}
 .taggroup{display:flex;flex-direction:column;gap:8px}
 .tg-head{display:flex;align-items:center;gap:8px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:700}
@@ -1098,6 +1099,9 @@ body.dark .mx-legend .mxsw{box-shadow:inset 0 0 0 1px rgba(255,255,255,.12)}
 .extab th:nth-child(-n+2){text-align:left}
 .extab td{padding:6px 10px;border-top:1px solid var(--line2);text-align:right;white-space:nowrap}
 .extab td:nth-child(-n+2){text-align:left}
+.extab tr.exg td:first-child{box-shadow:inset 3px 0 0 color-mix(in srgb,var(--accent) 55%,transparent)}
+.extab tr.exg:not(.exg-s) td{border-top-color:transparent}
+.extp{display:inline-block;margin-left:6px;padding:0 6px;border-radius:5px;font-size:10px;font-weight:700;color:var(--accent);border:1px solid color-mix(in srgb,var(--accent) 40%,transparent)}
 .extab tr:last-child td{border-bottom:0}
 .extab .fk{display:inline-block;min-width:34px;text-align:center;padding:1px 7px;border-radius:20px;font-size:10px;font-weight:800;letter-spacing:.03em;background:color-mix(in srgb,var(--fc) 15%,transparent);color:var(--fc)}
 .exflat{color:var(--muted)}
@@ -1649,7 +1653,8 @@ function _pctBases(){
   if(key===_pctKey&&_pctMap)return _pctMap;
   const m=new Map();
   // Everything booked, partials too: the balance already holds a TP that was hit (v1.5).
-  const geld=T.filter(t=>t&&(t.status==='closed'||t.status==='partial')).sort((a,b)=>tradeMoment(a)-tradeMoment(b));
+  // Only live trades: a backtest or a missed trade is no money in the account (Denny 18-10: −107%, 2834%).
+  const geld=T.filter(t=>t&&isLive(t)&&(t.status==='closed'||t.status==='partial')).sort((a,b)=>tradeMoment(a)-tradeMoment(b));
   let acc=0;
   for(let i=geld.length-1;i>=0;i--){acc+=geboekt(geld[i]);m.set(geld[i].id,total-acc);}
   _pctKey=key;_pctMap=m;return m;
@@ -1668,7 +1673,7 @@ function pnlPctOf(t){if(!t)return null;const b=pnlBaseOf(t);return b>0?+((pnlUsd
 // Totaal-regel: netto van de selectie t.o.v. de basis van de oudste trade erin.
 function pnlPctTotal(rows,net){
   // Everything booked; a partial counts with its booked part when it arrives via boeking().
-  const geld=(rows||[]).filter(t=>t&&(t.status==='closed'||t.status==='partial'));
+  const geld=(rows||[]).filter(t=>t&&isLive(t)&&(t.status==='closed'||t.status==='partial'));
   const n=geld.length?netUsd(geld):(+net||0);   // altijd in dollars, ongeacht de weergave
   const ref=+((STATE||{}).pctRef)||0;if(ref>0)return +(n/ref*100).toFixed(2);
   if(!geld.length)return null;
@@ -1904,7 +1909,7 @@ const KINDS={live:{label:'Live',color:'var(--green)'},gemist:{label:'Gemist',col
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v1.10';
+const APP_VERSION='v1.11';
 const SCHEMA_VERSION=11;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -2245,7 +2250,7 @@ function trashDelete(ids){  // T → TRASH (nieuwste bovenaan)
 function trashRestore(ids){  // TRASH → T; bij id-botsing (nieuwe trade kreeg dat id) een vers id
   const set=new Set(ids),back=[];
   TRASH=TRASH.filter(t=>{ if(set.has(t.id)){back.push(t);return false;} return true; });
-  back.forEach(t=>{ delete t.deletedAt; if(T.some(x=>x.id===t.id))t.id=nextId(); T.push(t); });
+  back.forEach(t=>{ delete t.deletedAt; t.teruggezet=Date.now(); if(T.some(x=>x.id===t.id))t.id=nextId(); T.push(t); });   // teruggezet: adapters that remember thrown-away trades let this one back in
   persist(); persistTrash(); return back.length;
 }
 function purgeTrash(){  // stil bij boot: alles ouder dan 30 dagen definitief weg
@@ -2475,8 +2480,14 @@ async function clearAllData(){ if(!confirm('ÁLLE lokale data wissen, trades, ta
 
 /* ═══ State ═══ */
 const STATE=Object.assign({page:'dashboard',theme:'light',priv:false,tradeTab:'all',density:'comfy',tend:'sessie',revSel:0,revQuery:'',revFilter:'all',revPeriod:'all',
-  sortCol:'date',sortDir:-1,query:'',calMonth:new Date().toISOString().slice(0,7),currency:'EUR',selected:[],pbSel:'',pctRef:0,unit:'val',
+  sortCol:'date',sortDir:-1,query:'',calMonth:new Date().toISOString().slice(0,7),currency:'USD',selected:[],pbSel:'',pctRef:0,unit:'val',
   sections:{hero:true,kpis:true,equity:true,monthly:true,edge:true,recent:true}}, DB.load('state',{}));
+/* Default currency dollar (v1.11) is for new journals only. A member whose state was never saved with a currency had
+   euros; decide once and save it, so a new journal is not taken for an old one at its next start (review v1.11). */
+if(!('currency' in (DB.load('state',{})||{}))){
+  const bestaand=Object.keys(localStorage).some(k=>(k.startsWith('sj_')&&k!=='sj_state')||k.startsWith('tj_'));
+  STATE.currency=bestaand?'EUR':'USD';persistState();
+}
 STATE.selected=[];
 STATE.revMode='trade'; STATE.revMonth=0; STATE.revShareSel=[]; STATE.shareHide=true;  // review: weergave (trade|beeld), maand-index in Beeld, geselecteerde trade-ids in volgorde, bedragen verbergen in exports
 STATE.tendRow=STATE.tendRow||'setup'; STATE.tendCol=STATE.tendCol||'session';  // Tendencies kruis-heatmap dimensies
@@ -2681,6 +2692,28 @@ function fmtDurMin(m){if(m==null)return '—';if(m>=1440)return `${Math.floor(m/
 const EX_KIND={open:['Open','var(--accent)'],add:['Bij','var(--amber)'],close:['Af','var(--teal)'],flip:['Om','var(--purple)'],liq:['Liq','var(--red)']};
 // Een gedwongen sluiting (liquidatie of ADL) telt als afbouwstap, maar verdient een eigen label.
 const isAfbouw=x=>!!x&&(x.kind==='close'||x.kind==='liq');
+/* For the reader, the fills of one order are one step: one TP, one entry. Groups consecutive fills with the
+   same ordId and the same kind (in or out); without an ordId every fill is its own group. Pure, no exchange. */
+function perOrder(fills){
+  const uit=[];
+  (fills||[]).forEach(x=>{const v=uit[uit.length-1],af=isAfbouw(x);
+    if(v&&x.ordId&&v.ordId===x.ordId&&v.af===af){const q=v.qty+x.qty;v.price=q>0?(v.price*v.qty+x.price*x.qty)/q:v.price;v.qty=q;v.fills.push(x);}
+    else uit.push({ordId:x.ordId||'',af,ts:x.ts,qty:x.qty,price:x.price,fills:[x]});});
+  return uit;
+}
+/* Label per close (TP level or close order), named after what it was (Denny 18-10-2026):
+     a take-profit order, or a close by hand in profit: TP n (by hand: "TP n ✋") - all profit-taking is numbered;
+     a stop order (also at break-even or in profit): SL;  by hand at a loss: "Close ✋";  a liquidation: Liq.
+   Profit = the close price against the average entry, in the trade's direction, fees aside. Only an exchange that
+   knows sets soort; without it every level stays TP n, as before. t: the trade (entry, dir). */
+function tpLabels(lijst,t){
+  const entry=+(t&&t.entry)||0,dir=String(t&&(t.dir||t.direction))==='short'?-1:1;let n=0;
+  return(lijst||[]).map(x=>{const s=x&&x.soort;
+    if(s==='sl')return 'SL';
+    if(s==='liq')return 'Liq';
+    if(s==='hand')return entry>0&&(+x.price-entry)*dir>0?'TP'+(++n)+' ✋':'Close ✋';
+    return 'TP'+(++n);});
+}
 /* De stappen van een positie zijn een verhaal in de tijd: wanneer stapte je in, wanneer
    bouwde je af, en wat leverde dat op. Drie dingen maken dat leesbaar.
 
@@ -2731,6 +2764,15 @@ function execTable(t){
   const afw=Math.abs(netto-eigen)>0.01
     ? ` title="Uit de stappen berekend: ${geld(eigen)}. Het verschil komt door funding of afronding bij de exchange."` : '';
   const KOL=8;
+  /* The fills of one order belong together (Denny 18-10-2026): every fill stays visible, a bracket holds
+     an order's rows together and its first row says TP n. Only where the exchange gives an order (ordId). */
+  const groepen=perOrder(f),metOrder=f.some(x=>x.ordId),haak=new Map();
+  const afLabels=tpLabels(groepen.filter(g=>g.af).map(g=>({soort:g.fills[0].soort,price:g.price})),t);let afNr=0;
+  const metSoort=f.some(x=>x.soort);   // without it (OKX, Blofin) a stop or liquidation would read as TP n
+  if(metOrder)groepen.forEach(g=>{const lbl=g.af&&metSoort?afLabels[afNr]:'';if(g.af)afNr++;const n=g.fills.length;
+    g.fills.forEach((x,i)=>haak.set(x,{cls:n>1?(i===0?'exg exg-s':i===n-1?'exg exg-e':'exg'):'',lbl:i===0?lbl:''}));});
+  const nIn=metOrder?groepen.filter(g=>!g.af).length:sum.entries,nUit=metOrder?groepen.filter(g=>g.af).length:sum.exits;
+  const uitv=(n,fills)=>fills>n?` (${fills} uitvoeringen)`:'';
   let dag='',vorigeAvg=null,rows='';
   legs.forEach((leg,li)=>{
     if(li){
@@ -2746,9 +2788,10 @@ function execTable(t){
       // het gemiddelde beweegt alleen bij instappen \u2014 herhalen maakt de kolom onleesbaar
       const avgNieuw=vorigeAvg===null||Math.abs(x.avgEntry-vorigeAvg)>1e-9;
       vorigeAvg=x.avgEntry;
-      rows+=`<tr>
+      const h=haak.get(x);
+      rows+=`<tr${h&&h.cls?` class="${h.cls}"`:''}>
         <td class="num">${ts2time(x.ts)}</td>
-        <td><span class="fk" style="--fc:${k[1]}">${k[0]}</span>${x.synthetic?' <span class="exflat" title="Instap lag buiten het sync-venster; afgeleid uit de P&amp;L van de sluiting">≈</span>':''}</td>
+        <td><span class="fk" style="--fc:${k[1]}">${k[0]}</span>${h&&h.lbl?` <span class="extp">${h.lbl}</span>`:''}${x.synthetic?' <span class="exflat" title="Instap lag buiten het sync-venster; afgeleid uit de P&amp;L van de sluiting">≈</span>':''}</td>
         <td class="num mask">${n(x.qtyAsset)}</td>
         <td class="num">${px(x.price)}</td>
         <td class="num mask">${x.posAfter>0?n(x.posAfterAsset):'<span class="exflat">vlak</span>'}</td>
@@ -2761,8 +2804,8 @@ function execTable(t){
   /* Bij meerdere posities zegt \u00e9\u00e9n gemiddelde niets meer \u2014 dan is het aantal posities het
      nuttige feit, en staat het gemiddelde per positie bij de tussenkop. */
   const kop=legs.length>1
-    ? `<span>${legs.length} posities \u00b7 ${sum.entries} instappen \u00b7 ${sum.exits} afbouwstappen</span>`
-    : `<span>${sum.entries} ${sum.entries===1?'instap':'instappen'} \u00b7 ${sum.exits} ${sum.exits===1?'afbouw':'afbouwstappen'}</span>`
+    ? `<span>${legs.length} posities \u00b7 ${nIn} instappen${uitv(nIn,sum.entries)} \u00b7 ${nUit} afbouwstappen${uitv(nUit,sum.exits)}</span>`
+    : `<span>${nIn} ${nIn===1?'instap':'instappen'}${uitv(nIn,sum.entries)} \u00b7 ${nUit} ${nUit===1?'afbouw':'afbouwstappen'}${uitv(nUit,sum.exits)}</span>`
       +((sum.avgEntry&&sum.firstEntry&&Math.abs(sum.avgEntry-sum.firstEntry)>1e-9)
         ? ` <span>eerste instap <i>${px(sum.firstEntry)}</i> \u00b7 gemiddeld <i>${px(sum.avgEntry)}</i></span>` : '');
   const afgeleid=f.every(x=>x.synthetic)
@@ -2814,10 +2857,12 @@ function tradeTimeline(t){
   const o=+t.openTime||0;if(!o)return '';
   const fmtMoment=ms=>`${fmtD(ts2date(ms))} ${ts2time(ms)}`;
   const chips=[`<span class="tlc">🚀 Open <b class="num">${fmtMoment(o)}</b></span>`];
-  (t.tps||[]).filter(x=>x.hit&&+x.ts>0).sort((a,b)=>a.ts-b.ts).forEach((x,i)=>{
-    chips.push(`<span class="tlc">🎯 TP${i+1} <b class="num">${ts2date(+x.ts)===ts2date(o)?ts2time(+x.ts):fmtMoment(+x.ts)}</b>${+x.pct?` <span style="color:var(--muted)">(${Math.round(+x.pct)}%)</span>`:''}</span>`);
-  });
   const c=+t.closeTime||0;
+  const hits=(t.tps||[]).filter(x=>x.hit&&+x.ts>0).sort((a,b)=>a.ts-b.ts),lbl=tpLabels(hits,t);
+  const icoon=l=>l==='SL'?'🛑 ':l==='Liq'?'⚠️ ':/^TP/.test(l)?'🎯 ':'';
+  hits.forEach((x,i)=>{
+    chips.push(`<span class="tlc">${icoon(lbl[i])}${lbl[i]} <b class="num">${ts2date(+x.ts)===ts2date(o)?ts2time(+x.ts):fmtMoment(+x.ts)}</b>${+x.pct?` <span style="color:var(--muted)">(${Math.round(+x.pct)}%)</span>`:''}</span>`);
+  });
   if(t.status==='closed'&&c)chips.push(`<span class="tlc">🏁 Close <b class="num">${fmtMoment(c)}</b></span>`);
   const m=tradeDurationMin(t);
   if(m!=null)chips.push(`<span class="tlc">⏱ <b class="num">${t.status!=='closed'?'~':''}${fmtDurMin(m)}</b>${t.status!=='closed'?' <span style="color:var(--amber)">loopt</span>':''}</span>`);
@@ -3022,7 +3067,7 @@ async function fxSync(){
 
 // Trade-bedragen in de weergave-valuta. Geeft KOPIEËN terug: T blijft de dollar-waarheid.
 // Prijzen (entry/exit/stop/tp) blijven onaangeroerd — die staan in USDT en daar denk je in.
-const FX_MONEY=['pnl','fees','realizedPnl','unrealized','mae','mfe'];
+const FX_MONEY=['pnl','fees','realizedPnl','unrealized','unrealizedPnl','mae','mfe'];
 function fxView(list){
   if(dispCur()!=='EUR')return list;
   return list.map(t=>{
@@ -3059,6 +3104,8 @@ function bedragKort(v,metPlus){const n=+v||0,a=Math.abs(n),s=n<0?'−':(metPlus?
 // Op de cent, voor de P&L per trade: een winst van $ 0,25 is anders "+$ 0" (Denny 24-09-2026)
 const eurC=v=>CURSYM()+' '+Math.abs(+v||0).toLocaleString('nl-NL',{minimumFractionDigits:2,maximumFractionDigits:2});
 const eurCS=v=>(v<0?'−':'+')+eurC(v);
+// The trade form works in dollars whatever the view (the journal stores dollars): same layout, always $
+const usdCS=v=>(v<0?'−':'+')+'$ '+Math.abs(+v||0).toLocaleString('nl-NL',{minimumFractionDigits:2,maximumFractionDigits:2});
 // Compact signed amount for tight labels (year-strip): +€8,8k / −€420
 const eurK=v=>{const a=Math.abs(v),s=v<0?'−':'+';return s+CURSYM()+(a>=1000?(a/1000).toFixed(a>=10000?0:1).replace('.',',')+'k':Math.round(a));};
 const cls=v=>v>=0?'g':'r';
@@ -3420,7 +3467,7 @@ function pgTrades(){
         ${VV('tExchange')?`<td data-l="Exchange">${exCell(t.exchange)}</td>`:''}
         <td data-l="Pair"><div class="paircell">${assetCell(t.pair)}${kindBadge(t)}${newBadge(t)}</div></td><td data-l="Richting"><span class="pill ${t.dir}">${t.dir==='long'?'LONG':'SHORT'}</span></td>
         ${VV('tEntryExit')?`<td class="rt num" data-l="Entry">${prijsOfStreep(t.entry)}</td><td class="rt num" data-l="Exit">${prijsOfStreep(t.exit)}</td>`:''}
-        ${VV('tSize')?`<td class="rt num mask" data-l="Size">${isNaN(SZ(t))?'—':CURSYM()+' '+SZ(t).toLocaleString('nl-NL')}${qtySub(t)}</td>`:''}<td class="rt" data-l="P&L">${t.status==='open'&&t.unrealizedPnl?`<span class="num ${cls(t.unrealizedPnl)} mask" title="niet-gerealiseerde P&L">~${eurCS(t.unrealizedPnl)}</span>`:t.status==='partial'&&t.realizedPnl?`<span class="num ${cls(t.realizedPnl)} mask" title="gerealiseerd deel, rest loopt nog">${eurCS(t.realizedPnl)}<div style="font-size:10.5px;color:var(--amber)">deels dicht</div></span>`:pnlCell(t.pnl,pnlPctOf(t))}</td>
+        ${VV('tSize')?`<td class="rt num mask" data-l="Size">${isNaN(SZ(t))?'—':t._fx?`<span title="$ ${SZ(t).toLocaleString('nl-NL')}">${CURSYM()} ${Math.round(SZ(t)*t._fx).toLocaleString('nl-NL')}</span>`:CURSYM()+' '+SZ(t).toLocaleString('nl-NL')}${qtySub(t)}</td>`:''}<td class="rt" data-l="P&L">${t.status==='open'&&t.unrealizedPnl?`<span class="num ${cls(t.unrealizedPnl)} mask" title="niet-gerealiseerde P&L">~${eurCS(t.unrealizedPnl)}</span>`:t.status==='partial'&&t.realizedPnl?`<span class="num ${cls(t.realizedPnl)} mask" title="gerealiseerd deel, rest loopt nog">${eurCS(t.realizedPnl)}<div style="font-size:10.5px;color:var(--amber)">deels dicht</div></span>`:pnlCell(t.pnl,pnlPctOf(t))}</td>
         ${VV('tR')?`<td class="ct" data-l="R">${rBadge(t)}</td>`:''}
         <td data-l="Playbook">${setupBadge(t.setup)}</td>${VV('tSessie')?`<td data-l="Sessie">${sessBadge(sessionOf(t))}</td>`:''}
         ${VV('tTags')?`<td data-l="Tags" style="max-width:240px">${kleurChips(overzichtTags(t))}</td>`:''}</tr>
@@ -4078,7 +4125,7 @@ function openRevPres(ids,startId,panel){const items=[];
   if(!items.length){toast('Geen trades om te presenteren','info');return;}
   revPres={items,i:Math.max(0,items.findIndex(x=>x.id===startId)),panel:!!panel};drawRevPres();}
 // Take-profit levels with a price, in their own order: TP1, TP2, ... (F1, Denny 14-10-2026).
-const revTps=t=>(t.tps||[]).filter(x=>x&&+x.price>0).map((x,i)=>({n:'TP'+(i+1),prijs:prijsOfStreep(x.price),pct:+x.pct||0,hit:!!x.hit}));
+const revTps=t=>{const l=(t.tps||[]).filter(x=>x&&+x.price>0),lb=tpLabels(l,t);return l.map((x,i)=>({n:lb[i],prijs:prijsOfStreep(x.price),pct:+x.pct||0,hit:!!x.hit}));};
 const revTpTxt=x=>x.n+' · '+x.prijs+(x.pct?' · '+x.pct+'%':'')+(x.hit?' ✓':'');
 function revTpBlok(t){const L=revTps(t);return L.length?`<div class="lbl">Take-profits</div><div class="revtps">${L.map(x=>`<span class="${x.hit?'hit':''}">${esc(revTpTxt(x))}</span>`).join('')}</div>`:'';}
 const DC_TP_MAX=4;   // TP rows that fit in the Discord image's info panel; more become "+n"
@@ -6459,7 +6506,7 @@ function fillTimeline(steps,opts){
     return {ts:+f.ts||0,side:f.side,kind,qty:q,qtyAsset:q*mult,price:px,fee,
             posAfter:Math.abs(pos),posAfterAsset:Math.abs(pos)*mult,
             dirAfter:pos>0?'long':pos<0?'short':'',avgEntry:avg,pnl,pnlCalc,
-            ...(f.synthetic?{synthetic:true}:{}),...(f.ordId?{ordId:f.ordId}:{})};
+            ...(f.synthetic?{synthetic:true}:{}),...(f.ordId?{ordId:f.ordId}:{}),...(f.soort?{soort:f.soort}:{})};
   });
 }
 // Samenvatting van een stappenlijst: aantallen en de twee gemiddelden naast elkaar.
@@ -6929,7 +6976,7 @@ const ExchangeAPI = {
       // v12.101: direction-fix — Kraken /openpositions geeft side="long"/"short" (niet "buy"/"sell").
       const sideLc=String(t.side||"").toLowerCase();
       const stableId=t.fill_id||(status==="open"?`open_${t.symbol||"?"}_${ft?ft+"_":""}${sideLc||"?"}`:uid());   // B4: /openpositions sent fillTime 1970 (undocumented field)
-      return{id:"kraken_"+stableId,openTime:t.open_time||ft,closeTime:closeT,date:closeT?closeT.split("T")[0]:(ft?ft.split("T")[0]:""),time:closeT?(closeT.split("T")[1]||"").slice(0,5):(ft?(ft.split("T")[1]||"").slice(0,5):""),pair,direction:t.direction||(sideLc==="buy"||sideLc==="long"?"long":"short"),entry:String(t.entry_price||t.price||""),exit:status==="closed"?String(t.exit_price||""):"",positionSize:usdNotional>0?usdNotional.toFixed(2):String(t.size||""),positionSizeAsset:String(t.size||""),pnl:status==="closed"?pnlVal:"",unrealizedPnl:status==="open"?String(t.unrealized_pnl||""):"",liquidationPrice:String(t.liquidation_price||""),fees:t.fee?String(Math.abs(parseFloat(t.fee)||0).toFixed(4)):"0",leverage:"1",source:"kraken",status,stopLoss:"",takeProfit:"",highestPrice:"",lowestPrice:"",setupTags:[],confirmationTags:[],timeframeTags:[],emotionTags:[],mistakeTags:[],customTags:[],rating:0,screenshot:null,notes:"",links:[],layers:[],manualOverrides:[],tpLevels,originalSizeAsset};
+      return{id:"kraken_"+stableId,openTime:t.open_time||ft,closeTime:closeT,date:closeT?closeT.split("T")[0]:(ft?ft.split("T")[0]:""),time:closeT?(closeT.split("T")[1]||"").slice(0,5):(ft?(ft.split("T")[1]||"").slice(0,5):""),pair,direction:t.direction||(sideLc==="buy"||sideLc==="long"?"long":"short"),entry:String(t.entry_price||t.price||""),exit:status==="closed"?String(t.exit_price||""):"",positionSize:usdNotional>0?usdNotional.toFixed(2):String(t.size||""),positionSizeAsset:String(t.size||""),pnl:status==="closed"?pnlVal:"",unrealizedPnl:status==="open"?String(t.unrealizedPnl??t.unrealized_pnl??""):"",liquidationPrice:String(t.liquidation_price||""),fees:t.fee?String(Math.abs(parseFloat(t.fee)||0).toFixed(4)):"0",leverage:"1",source:"kraken",status,stopLoss:"",takeProfit:"",highestPrice:"",lowestPrice:"",setupTags:[],confirmationTags:[],timeframeTags:[],emotionTags:[],mistakeTags:[],customTags:[],rating:0,screenshot:null,notes:"",links:[],layers:[],manualOverrides:[],tpLevels,originalSizeAsset};
     },
     /* ═══ Account-log → levenslopen (Denny 26-09-2026) ═══
        Kraken's account-log is de bron van waarheid: per uitvoering een positie-regel
@@ -6965,15 +7012,75 @@ const ExchangeAPI = {
       if(met.length>1&&met[0].ts>met[met.length-1].ts)regels.forEach((r,i)=>{r.seq=regels.length-1-i;});
       return regels;
     },
+    /* ═══ Stop-loss from the trigger history (Worker v22, Denny 18-10-2026) ═══ */
+    _STOP_VOOR_MS:60e3,   // a bracket stop may be placed up to 60 s before the opening fill
+    _TRIG_OUD_MS:864e5,   // Worker without 'triggers' (v21): ask again after a day, its fallback is a heavy positions call
+    async _triggersOphalen(apiKey,apiSecret,van,tot){
+      const c=CONNS.kraken||{};if(+c.trigOud>Date.now()-this._TRIG_OUD_MS)return null;
+      try{const d=await proxyCall({exchange:"kraken",action:"triggers",apiKey,apiSecret,startTime:van>0?van:undefined,before:tot});
+        if(!(d&&d.source==="triggers"&&Array.isArray(d.elements))){CONNS.kraken={...CONNS.kraken,trigOud:Date.now()};persistConns();return null;}   // Worker v21 answers with the trades flow
+        if(c.trigOud){const n={...CONNS.kraken};delete n.trigOud;CONNS.kraken=n;persistConns();}
+        return{regels:this._triggerRegels(d.elements),afgekapt:!!(d._trigDebug&&d._trigDebug.afgekapt)};
+      }catch(e){console.warn('[kraken triggers] no stop-losses this sync:',(e&&e.message)||e);return null;}   // the stop is extra: a failing request never blocks the trades
+    },
+    // Trigger events → flat rows. Kraken documents no SL/TP field: side and price decide later.
+    _triggerRegels(elements){
+      const SOORT={OrderTriggerPlaced:'geplaatst',OrderTriggerUpdated:'gewijzigd',OrderTriggerCancelled:'geannuleerd',OrderTriggerActivated:'geactiveerd'};
+      const num=v=>{const n=parseFloat(v);return isFinite(n)?n:0;}, gezien=new Set();
+      return(elements||[]).flatMap(e=>{const k=Object.keys((e&&e.event)||{})[0],soort=SOORT[k];if(!soort)return[];
+        if(e.uid){if(gezien.has(e.uid))return[];gezien.add(e.uid);}   // the same event twice (overlapping pages)
+        const v=e.event[k]||{},o=v.order||v.newOrderTrigger||{},oud=v.oldOrderTrigger;
+        const rij={ts:+e.timestamp||+o.timestamp||0,contract:String(o.tradeable||'').toUpperCase(),side:String(o.direction||'').toLowerCase(),
+          price:num(o.triggerOptions&&o.triggerOptions.triggerPrice),qty:num(o.quantity),soort,uid:String(o.uid||''),
+          kant:String((o.triggerOptions&&o.triggerOptions.triggerSide)||'').toLowerCase()};
+        if(soort==='gewijzigd'&&oud){rij.oudePrijs=num(oud.triggerOptions&&oud.triggerOptions.triggerPrice);rij.oudeUid=String(oud.uid||'');}
+        return rij.contract&&rij.price>0?[rij]:[];});
+    },
+    /* The original stop-loss of a position: the first trigger on its contract, closing side, loss side of
+       the entry, placed between the opening (minus a bracket margin) and the close. `verschoven`: that stop
+       order was later edited to another price, or cancelled and replaced by a new stop at entry or worse. */
+    _stopVoorLevensloop(L,regels){
+      const short=String(L.direction||L.dir)==='short',entry=+L.entry,van=+L.openTime-this._STOP_VOOR_MS,tot=+L.closeTime||Infinity;
+      const sluitKant=short?'buy':'sell',verlies=p=>short?p>entry:p<entry,stopKant=p=>short?p>=entry:p<=entry;
+      if(!(entry>0))return{stop:null,verschoven:false};
+      const kand=(regels||[]).filter(r=>r.contract===String(L.positionId||'').toUpperCase()&&r.side===sluitKant&&r.ts>=van&&r.ts<=tot).sort((a,b)=>a.ts-b.ts);
+      const prijsVan=r=>r.soort==='gewijzigd'&&r.oudePrijs>0?r.oudePrijs:r.price;
+      const i=kand.findIndex(r=>(r.soort==='geplaatst'||(r.soort==='gewijzigd'&&r.ts>=+L.openTime))&&verlies(prijsVan(r)));   // an edit inside the bracket margin is the previous position's stop
+      if(i<0)return{stop:null,verschoven:false};
+      const eerste=kand[i],stop=prijsVan(eerste);
+      // follow the stop order itself, so a take-profit placed later never counts as a move
+      let uid=eerste.soort==='gewijzigd'?(eerste.oudeUid||eerste.uid):eerste.uid,nu=stop,weg=false,verschoven=false;
+      const isHet=(u,p)=>uid&&u?u===uid:p===nu;
+      kand.slice(eerste.soort==='gewijzigd'?i:i+1).forEach(r=>{
+        if(r.soort==='gewijzigd'&&isHet(r.oudeUid||r.uid,r.oudePrijs)){if(r.price!==nu)verschoven=true;nu=r.price;uid=r.uid||uid;}
+        else if(r.soort==='geannuleerd'&&!weg&&isHet(r.uid,r.price))weg=true;
+        else if(r.soort==='geplaatst'&&weg&&stopKant(r.price)){if(r.price!==nu)verschoven=true;nu=r.price;uid=r.uid;weg=false;}
+      });
+      return{stop,verschoven};
+    },
+    /* How a close order went (F5): a trigger activated at the same moment on the closing side is a stop or a TP;
+       triggerSide decides (Kraken docs): closing a long, Below = stop and Above = take-profit, a short the other way
+       round - so a stop moved to break-even or into profit is still a stop. No trigger: closed by hand. */
+    _afbouwSoort(L,regels){
+      const short=String(L.direction||L.dir)==='short',sluitKant=short?'buy':'sell',stopKant=short?'above':'below',entry=+L.entry;
+      const act=(regels||[]).filter(r=>r.soort==='geactiveerd'&&r.contract===String(L.positionId||'').toUpperCase()&&r.side===sluitKant);
+      return g=>{
+        if(g.fills.some(f=>f.kind==='liq'))return 'liq';
+        const a=act.find(r=>Math.floor(r.ts/1000)===Math.floor(g.ts/1000));   // same moment as the execution (seen: to the ms)
+        if(!a)return 'hand';
+        if(a.kant)return a.kant===stopKant?'sl':'tp';
+        return(short?a.price>=entry:a.price<=entry)?'sl':'tp';   // no triggerSide: the side of the entry
+      };
+    },
     // JSON-regels van /api/history/v3/account-log → dezelfde vorm
-    _logRegelsUitJson(logs){
+    _logRegelsUitJson(logs,orders){   // orders: Map execution uid → order uid (Worker v23), optional
       const num=v=>{const n=parseFloat(v);return isFinite(n)?n:0;};
       return(logs||[]).map((l,i)=>({ts:Date.parse(l.date)||0,seq:(+l.id)||i,info:String(l.info||'').toLowerCase().trim(),
         asset:String(l.asset||'').toLowerCase().trim(),contract:String(l.contract||'').toLowerCase().trim(),
         change:(l.new_balance!=null&&l.old_balance!=null)?num(l.new_balance)-num(l.old_balance):num(l.change),
         newBalance:num(l.new_balance),avgEntry:num(l.new_average_entry_price),tradePrice:num(l.trade_price),
         realizedPnl:num(l.realized_pnl),fee:num(l.fee),realizedFunding:num(l.realized_funding),liquidationFee:num(l.liquidation_fee),
-        execution:String(l.execution||''),id:String(l.booking_uid||l.id||'')}));
+        execution:String(l.execution||''),order:(orders&&orders.get(String(l.execution||'')))||'',id:String(l.booking_uid||l.id||'')}));
     },
     /* Genormaliseerde regels → {trades, open, waarschuwingen}. Pure functie: geen DOM, geen T.
        Stappen:  1. paren van positie- en cash-regel per uitvoering
@@ -7016,10 +7123,16 @@ const ExchangeAPI = {
       /* 2. Levensloop per contract. */
       const lopen=[], lopend={}, stand={};
       const nieuw=(c,ts,dir,partial)=>({contract:c,openTs:ts,closeTs:0,dir,steps:[],pnl:0,fee:0,liqFee:0,funding:0,partial:!!partial});
-      const stap=(L,r,qty,effect,fee,pnl,suffix)=>L.steps.push({ts:r.ts,side:r.change>0?'buy':'sell',qty,price:r.tradePrice,fee,
+      /* Every execution stays its own step; ordId says which order it belongs to, so the TP list (and the
+         step table's bracket) can count one order once: a TP or stop through several price levels is one TP.
+         The account-log has no order id (Kraken docs "Get account log": only `execution`); with Worker v23 it
+         comes from "Get execution events" (order.uid). Without it (older Worker, CSV): the same second and side.
+         Checked on Denny's history 18-10-2026: 417 executions, 249 orders, both rules 249/249. */
+      const stap=(L,r,qty,effect,fee,pnl,suffix)=>{const side=r.change>0?'buy':'sell';L.steps.push({ts:r.ts,side,qty,price:r.tradePrice,fee,
+        ordId:r.order||('s'+Math.floor(r.ts/1000)+side+effect+(suffix||'')),
         // seq vooraan: fillTimeline sorteert op (ts, id), en binnen één seconde moet de bestandsvolgorde leidend blijven
         id:String(r.seq).padStart(9,'0')+'_'+(r.execution||r.id||r.contract)+(suffix||''),effect,liq:/liquidation/.test(r.info),
-        pnlExch:(effect==='dec'&&pnl!=null&&isFinite(pnl))?pnl:null});
+        pnlExch:(effect==='dec'&&pnl!=null&&isFinite(pnl))?pnl:null});};
       const boek=(L,c,feeDeel)=>{if(!L||!c)return;const d=feeDeel==null?1:feeDeel;L.pnl+=c.realizedPnl;L.funding+=c.realizedFunding;L.fee+=Math.abs(c.fee)*d;L.liqFee+=Math.abs(c.liquidationFee)*d;};
       for(const r of posities){
         const c=r.contract, nieuwBal=r.newBalance, oudRij=nieuwBal-r.change;
@@ -7072,7 +7185,7 @@ const ExchangeAPI = {
         // pnl is netto: gerealiseerd − fees + funding. Funding apart bewaren kan niet (migrateOldTrade laat onbekende velden vallen).
         const netto=L.pnl-fees+L.funding;
         const qty=sum.exitsAsset||sum.peak||0;
-        const uit=tl.filter(isAfbouw), uitQty=uit.reduce((s,x)=>s+x.qty,0)||1;
+        const uit=perOrder(tl.filter(isAfbouw)), uitQty=uit.reduce((s,x)=>s+x.qty,0)||1;   // one TP per order, not per execution
         const {date,time}=amsDateTime(L.openTs);
         trades.push({...EMPTY_TRADE,
           id:"kraken_pos_"+sym+"_"+Math.floor(L.openTs/1000)*1000,   // whole seconds: the CSV export has seconds, the API milliseconds; same position, same id
@@ -7212,10 +7325,16 @@ const ExchangeAPI = {
           const zelfde=L=>this._dirVan(L)===this._dirVan(o)?0:1;
           const L=kand.sort((a,b)=>(zelfde(a)-zelfde(b))||(Math.abs(+a.openTime-t0)-Math.abs(+b.openTime-t0)))[0];
           // thrown away, or closed before the start date you chose: the old row does not belong in the journal (trash, recoverable)
-          if(this._log.weg.has(String(L.id))||(this._log.startDatum&&+L.closeTime<this._log.startDatum)){trashDelete([o.id]);n++;return;}
+          if(this._log.weg.has(this._seconden(L.id))||(this._log.startDatum&&+L.closeTime<this._log.startDatum)){trashDelete([o.id]);n++;return;}
           const doel=T.find(x=>x&&x.exchange==="kraken"&&String(x.srcId)===String(L.id));
           if(doel){this._voegSamen(doel,o);n++;}
         });
+        // how each close went, on the TP levels (one per close order, same order as the fills)
+        if(this._log.soorten)T.forEach(o=>{if(!o||o.exchange!=="kraken"||!Array.isArray(o.tps))return;const l=this._log.soorten.get(String(o.srcId));if(!l)return;
+          o.tps.forEach((x,i)=>{if(l[i]&&x.soort!==l[i]){x.soort=l[i];n++;}});});
+        // stop-loss from the trigger history: where Kraken knows the stop, it is the stop - like entry and exit (Denny 18-10-2026)
+        if(this._log.stops)T.forEach(o=>{if(!o||o.exchange!=="kraken")return;const s=this._log.stops.get(String(o.srcId));if(!s)return;
+          if(+o.stop!==s.stop||o.stopBron!=='kraken'||!!o.stopVerschoven!==s.verschoven){o.stop=s.stop;o.stopBron='kraken';if(s.verschoven)o.stopVerschoven=true;else delete o.stopVerschoven;n++;}});
       }
       const lop=this._lopend||{};
       T.forEach(o=>{
@@ -7225,6 +7344,7 @@ const ExchangeAPI = {
         const at=amsDateTime(hit[1].openTime);
         o.openTime=String(hit[1].openTime);o.date=at.date;o.time=at.time;o.session=sessionFromTime(at.time);n++;
       });
+      if(this._log)T.forEach(o=>{if(o&&o.exchange==="kraken"&&o.teruggezet){delete o.teruggezet;n++;}});   // handled: the next sync starts from the last sync again
       this._log=null;   // a CSV import later must not use this sync's lifecycles
       if(n)persist();
       return n;
@@ -7243,7 +7363,9 @@ const ExchangeAPI = {
     _zelfdeContract(a,b){const x=this._contractVan(a),y=this._contractVan(b);return !x||!y||x===y;},
     _dirVan(o){return String((o&&(o.dir||o.direction))||"").toLowerCase();},
     // Trades you threw away stay away, also after the trash is emptied (30 days) or the account is re-linked.
-    _wegIds(){try{return new Set(DB.load('kraken_weg',[])||[]);}catch(e){return new Set();}},
+    // ids made before 17-10 carry the opening in ms, since then in whole seconds: compare on whole seconds
+    _seconden(id){return String(id||"").replace(/^(kraken_pos_.+_)(\d+)$/,(m,a,n)=>a+Math.floor(+n/1000)*1000);},
+    _wegIds(){try{return new Set((DB.load('kraken_weg',[])||[]).map(x=>this._seconden(x)));}catch(e){return new Set();}},
     _bewaarWeg(set){try{DB.save('kraken_weg',[...set]);}catch(e){}},
     /* Merge a superseded row into the row that replaces it without losing anything: notes are joined,
        lists combined, the rest via adoptUserFieldsSJ; the old row goes to the trash (recoverable). */
@@ -7252,6 +7374,19 @@ const ExchangeAPI = {
       ['tags','screenshots','tvLinks','emotions','mistakes'].forEach(k=>{if(Array.isArray(doel[k])&&doel[k].length&&Array.isArray(o[k])&&o[k].length)doel[k]=[...new Set([...doel[k],...o[k]])];});
       adoptUserFieldsSJ(doel,o);
       trashDelete([o.id]);
+    },
+    _HERHAAL:2,   // history fetched once more per version: 1 = one step per order (v1.11), 2 = how each close went (F5)
+    _EXEC_OUD_MS:864e5,   // Worker without 'executions' (v22): ask again after a day, its fallback is a heavy positions call
+    // execution uid → order uid (Kraken docs "Get execution events"); null: older Worker or an error, steps then go by the second
+    async _ordersOphalen(apiKey,apiSecret,van){
+      const c=CONNS.kraken||{};if(+c.execOud>Date.now()-this._EXEC_OUD_MS)return null;
+      try{const d=await proxyCall({exchange:"kraken",action:"executions",apiKey,apiSecret,startTime:van>0?van:undefined});
+        if(!(d&&d.source==="executions"&&Array.isArray(d.elements))){CONNS.kraken={...CONNS.kraken,execOud:Date.now()};persistConns();return null;}
+        if(c.execOud){const n={...CONNS.kraken};delete n.execOud;CONNS.kraken=n;persistConns();}
+        const m=new Map();
+        d.elements.forEach(e=>{const x=(((e||{}).event||{}).execution||{}).execution||{};if(x.uid&&x.order&&x.order.uid)m.set(String(x.uid),String(x.order.uid));});
+        return m;
+      }catch(e){console.warn('[kraken executions] steps grouped by the second this sync:',(e&&e.message)||e);return null;}
     },
     async _logOphalen(apiKey,apiSecret,since){
       const haal=async(van,tot)=>{const d=await proxyCall({exchange:"kraken",action:"account_log",apiKey,apiSecret,startTime:van>0?van:undefined,before:tot});
@@ -7266,7 +7401,7 @@ const ExchangeAPI = {
         const d2=laatste?await veilig(laatste-1000):null;if(!d2)break;   // one second of overlap; rows are de-duplicated by id
         logs=uniek(logs.concat(d2.logs));afgekapt=!!(d2._logDebug&&d2._logDebug.afgekapt);
       }
-      const bouw=()=>this.levenslopenUitAccountLog(this._logRegelsUitJson(logs));
+      const bouw=orders=>this.levenslopenUitAccountLog(this._logRegelsUitJson(logs,orders));
       let uit=bouw(),van=since;
       // the window starts in the middle of a position (chain not from 0): ask for the part before it
       for(let i=0;van>0&&i<this._LOG_TERUG_MAX&&(uit.trades.some(t=>this._isWees(t))||uit.open.some(L=>L.partial));i++){
@@ -7274,6 +7409,10 @@ const ExchangeAPI = {
         const d3=await veilig(eerder,van);if(!d3)break;
         logs=uniek(d3.logs.concat(logs));van=eerder;uit=bouw();
       }
+      // which order each execution belongs to (Worker v23), over the whole window fetched: one order = one step
+      const eerste=logs.reduce((m,l)=>Math.min(m,Date.parse(l&&l.date)||Infinity),Infinity);
+      const orders=logs.length?await this._ordersOphalen(apiKey,apiSecret,isFinite(eerste)?eerste-1000:0):null;
+      if(orders&&orders.size)uit=bouw(orders);
       // resume point after a capped run: the start of the earliest still-open position, else the last row
       const openStart=uit.open.filter(L=>!L.partial).map(L=>L.openTs).filter(Boolean);
       const tot=Math.min(laatsteDatum()||Infinity,...openStart)-1000;
@@ -7293,11 +7432,16 @@ const ExchangeAPI = {
       const startDatum=c.syncFrom?+new Date(c.syncFrom):0;
       // start date moved earlier than the history fetched so far (logVanaf): fetch the missing part once, like a first sync
       if(c.log&&!(c.logVanaf!=null&&+c.logVanaf<=startDatum)){c={...c,log:0};delete c.logTot;CONNS.kraken=c;persistConns();}
+      // once per _HERHAAL version: fetch the history again, so trades imported before get what a newer version adds
+      if(c.log&&(+c.stappen||0)<this._HERHAAL){c={...c,log:0};delete c.logTot;CONNS.kraken=c;persistConns();}
       let vanaf=c.log?(+startTime||0):(+c.logTot||startDatum);
       // the one-time cleanup reaches back to the oldest existing Kraken row; imports still start at the start date
       const oudsteRij=T.filter(t=>t&&t.exchange==="kraken"&&/^kraken_pos_/.test(String(t.srcId||""))).map(t=>this._msTijd(t.openTime)).filter(Boolean);
       if(!c.log&&!c.logTot&&vanaf>0&&oudsteRij.length)vanaf=Math.min(vanaf,Math.min(...oudsteRij)-60e3);
       if(c.log&&vanaf>0&&lopendeStart.length)vanaf=Math.min(vanaf,Math.min(...lopendeStart)-1000);
+      // a row put back from the trash: fetch the log from its opening, or its position cannot come back
+      const teruggezet=T.filter(t=>t&&t.exchange==="kraken"&&t.teruggezet).map(t=>this._msTijd(t.openTime)||Date.parse(String(t.date||"")+"T"+String(t.time||"00:00")+":00Z")||0).filter(Boolean);
+      if(c.log&&vanaf>0&&teruggezet.length)vanaf=Math.min(vanaf,Math.min(...teruggezet)-60e3);
       const log=await this._logOphalen(apiKey,apiSecret,vanaf);
       if(log){
         const {uit}=log;
@@ -7305,18 +7449,53 @@ const ExchangeAPI = {
         // thrown away stays away: a remembered id, or a trashed trade of the same contract and direction that opened inside this position
         const weg=this._wegIds();
         const prullenbak=TRASH.filter(o=>o&&o.exchange==="kraken");
-        prullenbak.forEach(o=>{if(/^kraken_pos_/.test(String(o.srcId||"")))weg.add(String(o.srcId));});
+        prullenbak.forEach(o=>{if(/^kraken_pos_/.test(String(o.srcId||"")))weg.add(this._seconden(o.srcId));});
         const opent=o=>this._msTijd(o.openTime)||Date.parse(String(o.date||"")+"T"+String(o.time||"00:00")+":00Z")||0;
         uit.trades.forEach(t=>{
           if(prullenbak.some(o=>o.pair===t.pair&&this._dirVan(o)===this._dirVan(t)&&this._zelfdeContract(o,t)&&opent(o)>=+t.openTime-90e3&&opent(o)<+t.closeTime))weg.add(String(t.id));
         });
+        /* ... unless it is still in the journal (a row merged into it sits in the trash, that is no reason), or you
+           put a row of it back from the trash: then you want the position back. */
+        const levend=T.filter(o=>o&&o.exchange==="kraken");
+        levend.forEach(o=>weg.delete(this._seconden(o.srcId)));
+        const opnieuw=levend.filter(o=>o.teruggezet);
+        uit.trades.forEach(t=>{if(opnieuw.some(o=>o.pair===t.pair&&this._dirVan(o)===this._dirVan(t)&&this._zelfdeContract(o,t)&&opent(o)>=+t.openTime-90e3&&opent(o)<+t.closeTime))weg.delete(String(t.id));});
         this._bewaarWeg(weg);
+        // a position already in the journal under its old ms id keeps that id: the row is updated, not replaced by a copy
+        // only a row of the same direction: a broken old-route row can share the id in whole seconds
+        const oudeRijen=levend.filter(o=>/^kraken_pos_/.test(String(o.srcId||"")));
+        uit.trades.forEach(t=>{const o=oudeRijen.find(o=>this._seconden(o.srcId)===String(t.id)&&this._dirVan(o)===this._dirVan(t)&&!o.teruggezet)
+          ||oudeRijen.find(o=>this._seconden(o.srcId)===String(t.id)&&this._dirVan(o)===this._dirVan(t));if(o)t.id=String(o.srcId);});
         const levenslopen=uit.trades.filter(t=>!this._isWees(t));
         this._log={levenslopen,weg,afgekapt:log.afgekapt,startDatum};
         if(log.afgekapt){CONNS.kraken={...CONNS.kraken,logTot:log.tot};persistConns();}
-        else if(!c.log){const n={...CONNS.kraken,log:1,logVanaf:startDatum};delete n.logTot;CONNS.kraken=n;persistConns();}
+        else if(!c.log){const n={...CONNS.kraken,log:1,logVanaf:startDatum,stappen:this._HERHAAL};delete n.logTot;CONNS.kraken=n;persistConns();}
         if(uit.waarschuwingen.length)console.warn('[kraken account-log] '+uit.waarschuwingen.length+' row(s) not closing:',uit.waarschuwingen);
-        return levenslopen.filter(t=>!weg.has(String(t.id))&&(!startDatum||+t.closeTime>=startDatum));   // like the old route: what closed after the start date
+        const terug=levenslopen.filter(t=>!weg.has(this._seconden(t.id))&&(!startDatum||+t.closeTime>=startDatum));   // like the old route: what closed after the start date
+        /* stop-losses for these positions; afterImport writes them (sjFromTj drops unknown fields such as stopBron).
+           Once, also for the closed rows imported before the trigger history existed (stopsKlaar). */
+        const nu=new Set(terug.map(t=>String(t.id)));
+        const eerder=(CONNS.kraken||{}).stopsKlaar?[]:T.filter(o=>o&&o.exchange==="kraken"&&o.status==="closed"&&/^kraken_pos_/.test(String(o.srcId||""))&&!nu.has(String(o.srcId))&&+o.openTime>0&&+o.closeTime>0)
+          .map(o=>({id:o.srcId,positionId:o.positionId,direction:o.dir,entry:o.entry,openTime:o.openTime,closeTime:o.closeTime}));
+        // running positions: the opening from the account-log (_lopend), the window up to now (F4)
+        const nuMs=Date.now();
+        const lopend=T.filter(o=>o&&o.exchange==="kraken"&&o.status==="open").map(o=>{
+          const hit=Object.entries(this._lopend).find(([sym,l])=>this._pair(sym)===o.pair&&l.dir===o.dir);
+          return hit&&+hit[1].openTime>0?{id:String(o.srcId),positionId:hit[0],direction:o.dir,entry:o.entry,openTime:String(hit[1].openTime),closeTime:String(nuMs)}:null;}).filter(Boolean);
+        const doelen=terug.concat(eerder,lopend);
+        if(doelen.length){
+          const van=Math.min(...doelen.map(t=>+t.openTime))-this._STOP_VOOR_MS, tot=Math.max(...doelen.map(t=>+t.closeTime))+1;
+          const res=await this._triggersOphalen(apiKey,apiSecret,van,tot);
+          if(res){const stops=new Map();doelen.forEach(t=>{const s=this._stopVoorLevensloop(t,res.regels);if(s.stop)stops.set(String(t.id),s);});this._log.stops=stops;
+            // how each close went: on the fills (step table); afterImport puts it on the TP levels (sjFromTj drops unknown fields)
+            const soorten=new Map();
+            terug.forEach(t=>{const soort=this._afbouwSoort(t,res.regels);
+              const lijst=perOrder((t.fills||[]).filter(isAfbouw)).map(g=>{const s=soort(g);g.fills.forEach(f=>{f.soort=s;});return s;});
+              soorten.set(String(t.id),lijst);});
+            this._log.soorten=soorten;
+            if(!res.afgekapt&&!(CONNS.kraken||{}).stopsKlaar){CONNS.kraken={...CONNS.kraken,stopsKlaar:1};persistConns();}}
+        }
+        return terug;
       }
       if(T.some(t=>this._zoektTijd(t)))startTime=Math.min(+startTime||Date.now(),Date.now()-this._OPEN_TERUG_MS);
       const data=await proxyCall({exchange:"kraken",action:"trades",apiKey,apiSecret,startTime,withEvents:true});   // de oude journal vraagt er niet om, en krijgt ze dus ook niet
@@ -9035,7 +9214,14 @@ let formMissed=[];
 function toggleMissed(m){const i=formMissed.indexOf(m);if(i<0)formMissed.push(m);else formMissed.splice(i,1);renderMissed();}
 function renderMissed(){const c=document.getElementById('missedbuilder');if(!c)return;
   c.innerHTML=`<div class="tg-chips pillchips" style="--chip:${tagKleur('missedReasonTags')}">${(tagConfig.missedReasonTags||[]).map(m=>`<span class="tagopt ${formMissed.includes(m)?'on':''}" onclick="toggleMissed('${esc(m).replace(/'/g,'')}')">${esc(m)}</span>`).join('')}</div>`;}
-function onKindChange(){const el=document.getElementById('f_kind'),mf=document.getElementById('missedfield');if(mf)mf.style.display=(el&&el.value==='gemist')?'':'none';if(typeof formExchangeHint==='function')formExchangeHint();}
+function onKindChange(handmatig){const el=document.getElementById('f_kind'),mf=document.getElementById('missedfield');if(mf)mf.style.display=(el&&el.value==='gemist')?'':'none';
+  // a backtest or practice trade has no exchange; one you picked yourself stays, and back to Live restores the one before
+  const ex=document.getElementById('f_exchange');
+  if(handmatig&&ex&&el&&!ex.dataset.gekozen){   // only when you change Soort yourself: opening a trade changes nothing
+    if(el.value!=='live'&&ex.value){ex.dataset.vorige=ex.value;ex.value='';}
+    else if(el.value==='live'&&!ex.value){const eerste=[...ex.options].find(o=>o.value);ex.value=ex.dataset.vorige||(eerste?eerste.value:'');}
+  }
+  if(typeof formExchangeHint==='function')formExchangeHint();}
 function toggleMistake(m){const i=formMistakes.indexOf(m);if(i<0)formMistakes.push(m);else formMistakes.splice(i,1);renderMistakes();}
 function renderMistakes(){const c=document.getElementById('mistakebuilder');if(!c)return;
   c.innerHTML=`<div class="tg-chips pillchips" style="--chip:${tagKleur('mistakeTags')}">${(tagConfig.mistakeTags||[]).map(m=>`<span class="tagopt ${formMistakes.includes(m)?'on':''}" onclick="toggleMistake('${esc(m).replace(/'/g,'')}')">${esc(m)}</span>`).join('')}</div>`;}
@@ -9055,7 +9241,7 @@ function tpDatumStap(i,d){const x=formTPs[i];if(!x)return;const ms=Date.parse((x
 function tpRijPnl(entry,size,dir){
   document.querySelectorAll('#tpbuilder .tppnl').forEach(el=>{const x=formTPs[+el.dataset.i];const px=x?(+String(x.price).replace(',','.')||0):0,pct=x?(+x.pct||0):0;
     if(!(entry>0)||isNaN(size)||!(px>0)||!(pct>0)){el.textContent='';el.className='tppnl num';return;}
-    const v=(px-entry)/entry*size*(pct/100)*dir;el.textContent=eurCS(v);el.className='tppnl num '+cls(v);});}
+    const v=(px-entry)/entry*size*(pct/100)*dir;el.textContent=usdCS(v);el.className='tppnl num '+cls(v);});}
 function removeTP(i){formTPs.splice(i,1);evenTPs();renderTPs();}
 function toggleTPHit(i){formTPs[i].hit=!formTPs[i].hit;renderTPs();calcTrade(true);
   if(formTPs[i].hit){const el=document.querySelectorAll('#tpbuilder .tptime')[i];if(el)el.focus();}}
@@ -9108,7 +9294,8 @@ function tpStats(t){const tps=(t.tps||[]).filter(x=>+x.price>0);if(!tps.length)r
     if(stop>0)wR=((wExit-entry)*dir)/risk;}   // R heeft een echte stop nodig, anders is het geen risico
   return {tps,hit,hitPct,missedPct,wExit,wR,dicht};}
 function tpBreakdown(t){const s=tpStats(t);if(!s)return '<div style="color:var(--muted);font-size:12.5px;padding:6px 0">Geen TP-niveaus vastgelegd.</div>';
-  const rows=s.tps.map((tp,i)=>`<div class="tprow ${tp.hit?'hit':''}"><span class="tpdot">${tp.hit?'✓':'○'}</span><span class="tpname">TP${i+1}</span><span class="tpprice num">${(+tp.price).toLocaleString('nl-NL')}</span><span class="tpr num ${(+tp.r||0)>=0?'g':'r'}">${tp.r?('+'+tp.r+'R'):''}</span><div class="tpbar"><div class="tpbarf" style="width:${Math.min(100,+tp.pct||0)}%;background:${tp.hit?'var(--green)':'var(--line2)'}"></div></div><span class="tppct num">${tp.pct}%</span>${tp.hit&&+tp.ts?`<span class="tpts num" title="moment waarop dit niveau is gehaald">${ts2date(+tp.ts)===ts2date(+t.openTime||0)?ts2time(+tp.ts):fmtD(ts2date(+tp.ts))+' '+ts2time(+tp.ts)}</span>`:''}</div>`).join('');
+  const lb=tpLabels(s.tps,t);
+  const rows=s.tps.map((tp,i)=>`<div class="tprow ${tp.hit?'hit':''}"><span class="tpdot">${tp.hit?'✓':'○'}</span><span class="tpname">${lb[i]}</span><span class="tpprice num">${(+tp.price).toLocaleString('nl-NL')}</span><span class="tpr num ${(+tp.r||0)>=0?'g':'r'}">${tp.r?('+'+tp.r+'R'):''}</span><div class="tpbar"><div class="tpbarf" style="width:${Math.min(100,+tp.pct||0)}%;background:${tp.hit?'var(--green)':'var(--line2)'}"></div></div><span class="tppct num">${tp.pct}%</span>${tp.hit&&+tp.ts?`<span class="tpts num" title="moment waarop dit niveau is gehaald">${ts2date(+tp.ts)===ts2date(+t.openTime||0)?ts2time(+tp.ts):fmtD(ts2date(+tp.ts))+' '+ts2time(+tp.ts)}</span>`:''}</div>`).join('');
   // gesloten: dezelfde (netto) R als overal; nog open: het scenario als de rest op je stop gaat
   const rEcht=s.dicht?tradeROrNull(t):s.wR;
   const rDeel=rEcht!=null?` · ${s.dicht?'gerealiseerd':'bij je stop'} <b class="num ${cls(rEcht)}">${rS(rEcht)}</b>`:'';
@@ -9122,6 +9309,7 @@ let formSizeUnit='usd';
    anders staan er twee waarheden naast elkaar. Een CSV-import telt niet als gesynct. */
 const isGesynct=t=>!!(t&&t.srcId&&!/_csv_/.test(String(t.srcId)));
 let formLocked=false;
+let formFxVast=0;   // the rate stored on the trade being edited (t.fx), else the rate of its date
 function pairBase(p){return String(p||'').split('/')[0].trim();}
 function formMomentMs(dId,tId){const d=((document.getElementById(dId)||{}).value||'').trim();if(!d)return 0;let tm=((document.getElementById(tId)||{}).value||'').trim();if(!/^\d{1,2}:\d{2}$/.test(tm))tm='00:00';if(tm.length===4)tm='0'+tm;const ms=+new Date(d+'T'+tm);return isFinite(ms)?ms:0;}
 function updSzBtn(){const b=document.getElementById('szAssetBtn');if(b){const base=pairBase((document.getElementById('f_pair')||{}).value);b.textContent=base||'coin';}}
@@ -9148,6 +9336,17 @@ function tpAfrekening(entry,size,dir,exit){
   const wExit=alles?gewogenHit/hitPct:(exit>0?(gewogenHit+exit*restPct)/100:null);
   const laatsteMs=hit.reduce((m,x)=>Math.max(m,x.ms||0),0);   // het laatst gehaalde niveau, op datum én tijd
   return {pnl,hitPct,restPct,alles,restDicht,wExit,laatsteMs,laatsteTijd:laatsteMs?ts2time(laatsteMs):'',laatsteDatum:laatsteMs?ts2date(laatsteMs):''};
+}
+/* The form works in dollars, as the journal stores every amount (prices are in USDT). In euro view the
+   table converts at the day's rate; show that here, so 32,25 in the form and € 28,25 in the table add up
+   (a trader's question, 18-10-2026). */
+function formFxHint(){
+  const pe=document.getElementById('fxPnl'),se=document.getElementById('fxSize');if(!pe&&!se)return;
+  const d=(document.getElementById('f_date')||{}).value||'';
+  const r=dispCur()==='EUR'?(formFxVast||fxFor(d)||FX.latest):0;
+  const pnl=fnum('f_pnl'),size=formSizeUsd();
+  if(pe)pe.innerHTML=r>0&&!isNaN(pnl)?`≈ <b>${eurCS(pnl*r)}</b> in je weergave · koers ${esc(fmtD(d))}: ${r.toLocaleString('nl-NL',{maximumFractionDigits:4})}`:'';
+  if(se)se.innerHTML=r>0&&!isNaN(size)&&size>0?`≈ € ${Math.round(size*r).toLocaleString('nl-NL')}`:'';
 }
 function calcTrade(fill){
   // C3: het losse TP-veld is vervallen — R:R rekent met TP1 uit de niveaus-bouwer.
@@ -9202,12 +9401,13 @@ function calcTrade(fill){
       else if(!tm&&cd.value&&cd.value===formCloseAuto.d){cd.value='';formCloseAuto.d='';}}
     const _o=formMomentMs('f_date','f_time'),_c=formMomentMs('f_closeDate','f_closeTime');
     if(_o&&_c&&_c>_o){const el=document.getElementById('f_durationMin');if(el)el.value=Math.round((_c-_o)/60000);}}
+  formFxHint();
   const prev=document.getElementById('calcPrev');if(!prev)return;
   const parts=[];
-  if(formSizeUnit==='asset'&&!isNaN(size))parts.push(`Size <b class="num">≈ ${CURSYM()} ${Math.round(size).toLocaleString('nl-NL')}</b>`);
+  if(formSizeUnit==='asset'&&!isNaN(size))parts.push(`Size <b class="num">≈ $ ${Math.round(size).toLocaleString('nl-NL')}</b>`);
   if(isNaN(pnl)&&isNaN(r)&&isNaN(rr)&&!parts.length){prev.innerHTML='<span class="calc-ic">∑</span><span style="color:var(--muted)">Vul <b>entry</b>, <b>exit</b>, <b>stop</b> &amp; <b>size</b> in. P&amp;L, R en R:R rekenen we automatisch uit.</span>';return;}
   if(afr)parts.push(`TP's <b class="num g">${afr.hitPct}%</b> gehaald${afr.alles?` · exit <b class="num">${exit.toLocaleString('nl-NL')}</b>`:(afr.restDicht?` · restant ${afr.restPct}% op je exit`:` · <span style="color:var(--amber)">restant ${afr.restPct}% loopt nog — vul de exit in zodra dat deel dicht is</span>`)}`);
-  if(!isNaN(pnl))parts.push(`P&L <b class="num ${pnl>=0?'g':'r'}">${eurCS(pnl)}</b>`);
+  if(!isNaN(pnl))parts.push(`P&L <b class="num ${pnl>=0?'g':'r'}">${usdCS(pnl)}</b>`);
   if(!isNaN(pct))parts.push(`<b class="num ${pct>=0?'g':'r'}">${(pct>=0?'+':'')+pct.toFixed(2).replace('.',',')}%</b>`);
   if(!isNaN(r))parts.push(`R <b class="num ${r>=0?'g':'r'}">${(r>=0?'+':'')+r.toFixed(2).replace('.',',')}R</b>`);
   if(!isNaN(r)&&Math.abs(r)>50)parts.push(`<span style="color:var(--amber);font-weight:700">⚠ R lijkt onrealistisch, check entry/stop (duizendtallen zónder punt typen)</span>`);
@@ -9236,7 +9436,8 @@ function updFormVis(){
 function openForm(id){
   const t=id!=null?T.find(x=>x.id===id):{date:new Date().toISOString().slice(0,10),time:'',exchange:(MANUAL[0]||relevantExchanges()[0]||{id:'blofin'}).id,pair:'BTC/USDC',dir:'long',setup:'',session:'London',timeframe:'15m',market:'Trending',grade:'',entry:'',stop:'',tp:'',exit:'',size:'',leverage:10,fees:'',risk:'',rrPlanned:'',pnl:'',r:'',status:'closed',emotion:'',mistake:'',emotions:[],mistakes:[],layers:[],tags:[],notes:'',lessons:'',durationMin:'',mae:'',mfe:''};
   formSizeUnit=(t.sizeUnit==='asset'&&t.qty>0)?'asset':'usd';formPbTouched=false;formPbLayersJson='';formCloseAuto={t:'',d:'',s:'',sPrev:'',p:'',e:''};
-  formLocked=isGesynct(t);const RO=formLocked?' readonly':'';
+  formLocked=isGesynct(t);const RO=formLocked?' readonly':'';formFxVast=+t.fx||0;
+  const stopVast=!!(t.stopBron&&t.stopBron!=='gebruiker'&&EXMAP[t.stopBron]);   // the exchange's stop is locked, like entry
   formTags=[...(t.tags||[])];formGrade=gradeOf(t);formShots=[...(t.screenshots||[])];formTvLinks=[...(t.tvLinks||[])];
   formLayers=(t.layers||[]).map(L=>({timeframe:L.timeframe||'',bias:L.bias||'',setups:[...(L.setups||[])],confirmations:[...(L.confirmations||[])]}));
   formEmotions=[...(t.emotions||(t.emotion?[t.emotion]:[]))];
@@ -9254,7 +9455,8 @@ function openForm(id){
     // ook een account dat niet (meer) bestaat: anders springt de keuze naar de eerste optie en
     // verhuist de trade bij opslaan stilletjes naar een andere exchange
     if(t.exchange&&!lst.some(([id])=>id===t.exchange))lst.push([t.exchange,EXMAP[t.exchange]?EXMAP[t.exchange].name:t.exchange+' (verwijderd account)']);
-    return lst.map(([id,nm])=>`<option value="${id}" ${t.exchange===id?'selected':''}>${esc(nm)}</option>`).join('');
+    // a backtest or practice trade belongs to no exchange (Denny 18-10-2026); without this the first exchange was picked silently
+    return `<option value="" ${t.exchange?'':'selected'}>Geen exchange (backtest / oefentrade)</option>`+lst.map(([id,nm])=>`<option value="${id}" ${t.exchange===id?'selected':''}>${esc(nm)}</option>`).join('');
   })();
   // Weergave-presets: Standaard/Pro-velden zijn verbergbaar, maar een veld mét inhoud
   // krijgt vf-keep en blijft altijd zichtbaar. Alles blijft in de DOM (submit/calc veilig).
@@ -9264,14 +9466,14 @@ function openForm(id){
     <div class="mhead"><h3>${id!=null?'Trade bewerken':'Nieuwe trade'}</h3><button class="xbtn" onclick="closeForm()">×</button></div>
     <div class="mbody">
       <div class="msub s1"><span class="msn">1</span> Basis</div>
-      <div class="field"><label>Exchange</label><select id="f_exchange" aria-label="Exchange" onchange="formExchangeHint()">${exOpt}</select></div>
+      <div class="field"><label>Exchange</label><select id="f_exchange" aria-label="Exchange" onchange="this.dataset.gekozen=1;formExchangeHint()">${exOpt}</select></div>
       <div class="field full" id="exWarn" hidden></div>
       <div class="field"><label>Pair</label><input id="f_pair" value="${esc(t.pair)}" placeholder="BTC/USDC" oninput="updSzBtn()"></div>
       <div class="field"><label>Datum</label><input type="date" id="f_date" value="${t.date}" onchange="onDateChange()"></div>
       <div class="field"><label>Tijd</label><input id="f_time" value="${t.time||''}" placeholder="14:30"></div>
       <div class="field"><label>Richting</label><select id="f_dir" aria-label="Richting" onchange="calcTrade(true)"><option value="long" ${t.dir==='long'?'selected':''}>Long</option><option value="short" ${t.dir==='short'?'selected':''}>Short</option></select></div>
       <div class="field"><label>Status</label><select id="f_status" aria-label="Status"><option value="closed" ${t.status==='closed'?'selected':''}>Gesloten</option><option value="partial" ${t.status==='partial'?'selected':''}>Partial</option><option value="open" ${t.status==='open'?'selected':''}>Open</option></select></div>
-      <div class="field ${vfc('pro',id!=null&&t.kind&&t.kind!=='live')}"><label>Soort <span class="hint">(Live of oefentrade)</span></label><select id="f_kind" aria-label="Soort trade" onchange="onKindChange()">${Object.entries(KINDS).map(([v,k])=>`<option value="${v}" ${(t.kind||'live')===v?'selected':''}>${k.label}</option>`).join('')}</select></div>
+      <div class="field ${vfc('pro',id!=null&&t.kind&&t.kind!=='live')}"><label>Soort <span class="hint">(Live of oefentrade)</span></label><select id="f_kind" aria-label="Soort trade" onchange="onKindChange(true)">${Object.entries(KINDS).map(([v,k])=>`<option value="${v}" ${(t.kind||'live')===v?'selected':''}>${k.label}</option>`).join('')}</select></div>
 
       <div class="msub s2"><span class="msn">2</span> Context</div>
       <div class="field"><label>Sessie</label><select id="f_session" aria-label="Sessie">${opt(SESSIONS,sessionOf(t)||t.session)}</select></div>
@@ -9281,13 +9483,13 @@ function openForm(id){
         <div class="confseg gradeseg" id="gradeseg">${GRADES.map(g=>`<button data-g="${g.k}" class="g-${g.k} ${formGrade===g.k?'on':''}" onclick="setFormGrade('${g.k}')" title="${g.desc}">${g.k}</button>`).join('')}</div></div>
 
       <div class="msub s3"><span class="msn">3</span> Prijzen &amp; risico</div>
-      ${formLocked?`<div class="field full"><div class="lockbar">\ud83d\udd12 Entry, exit, size, fees en P&amp;L komen van ${esc((EXMAP[t.exchange]||{}).name||'de exchange')} en zijn hier niet aan te passen. Stop, risico en alles wat over jou gaat wel.</div></div>`:''}
+      ${formLocked?`<div class="field full"><div class="lockbar">\ud83d\udd12 Entry, exit, size, fees en P&amp;L komen van ${esc((EXMAP[t.exchange]||{}).name||'de exchange')} en zijn hier niet aan te passen${stopVast?', net als de stop-loss':''}. ${stopVast?'Risico':'Stop, risico'} en alles wat over jou gaat wel.</div></div>`:''}
       <div class="field"><label>Entry</label><input id="f_entry"${RO} value="${t.entry}" inputmode="decimal" oninput="calcTrade(true)"></div>
       <div class="field"><label>Exit</label><input id="f_exit"${RO} value="${t.exit}" inputmode="decimal" oninput="calcTrade(true)"></div>
-      <div class="field ${vfc('std',+t.stop>0)}"><label>Stop-loss</label><input id="f_stop" value="${t.stop||''}" inputmode="decimal" oninput="calcTrade(true)"></div>
-      <div class="field"><label>Size <span class="hint">(in ${CURSYM()} of in de asset)</span></label>
+      <div class="field ${vfc('std',+t.stop>0)}"><label>Stop-loss${t.stopBron&&t.stopBron!=='gebruiker'&&EXMAP[t.stopBron]?` <span class="hint">(van ${esc(EXMAP[t.stopBron].name)}${t.stopVerschoven?', later verschoven':''})</span>`:''}</label><input id="f_stop"${stopVast?' readonly':''} value="${t.stop||''}" inputmode="decimal" oninput="calcTrade(true)"></div>
+      <div class="field"><label>Size <span class="hint">(in $ of in de asset)</span></label>
         <div class="szrow"><input id="f_size"${RO} value="${formSizeUnit==='asset'?(t.qty||''):t.size}" inputmode="decimal" oninput="calcTrade(true)">
-        <div class="szseg" id="szseg"><button type="button" class="${formSizeUnit==='usd'?'on':''}" onclick="setSizeUnit('usd')">${CURSYM()}</button><button type="button" id="szAssetBtn" class="${formSizeUnit==='asset'?'on':''}" onclick="setSizeUnit('asset')">${esc(pairBase(t.pair)||'coin')}</button></div></div></div>
+        <div class="szseg" id="szseg"><button type="button" class="${formSizeUnit==='usd'?'on':''}" onclick="setSizeUnit('usd')">$</button><button type="button" id="szAssetBtn" class="${formSizeUnit==='asset'?'on':''}" onclick="setSizeUnit('asset')">${esc(pairBase(t.pair)||'coin')}</button></div></div><div class="fxhint" id="fxSize"></div></div>
       <div class="field ${vfc('std',id!=null&&+t.leverage>0)}"><label>Leverage</label><input id="f_leverage" value="${t.leverage||''}" inputmode="numeric" placeholder="10"></div>
       <div class="field ${vfc('std',+t.risk>0)}"><label>Risk (%)</label><input id="f_risk" value="${t.risk||''}" inputmode="decimal" placeholder="1.0"></div>
       <div class="field ${vfc('pro',+t.rrPlanned>0)}"><label>Geplande R:R</label><input id="f_rrPlanned" value="${t.rrPlanned||''}" inputmode="decimal" placeholder="2.0"></div>
@@ -9296,9 +9498,9 @@ function openForm(id){
       ${id!=null?`<div class="field full">${execBlock(t)}</div>`:''}   <!-- een nieuwe trade heeft nog geen stappen om te tonen of op te halen -->
 
       <div class="msub s4"><span class="msn">4</span> Resultaat</div>
-      <div class="field"><label>P&L (${CURSYM()})</label><input id="f_pnl"${RO} value="${t.pnl}" inputmode="decimal"></div>
+      <div class="field"><label>P&L ($)</label><input id="f_pnl"${RO} value="${t.pnl}" inputmode="decimal" oninput="formFxHint()"><div class="fxhint" id="fxPnl"></div></div>
       <div class="field ${vfc('std',t.r!==''&&+t.r!==0)}"><label>R-multiple</label><input id="f_r" value="${+t.r?t.r:''}" inputmode="decimal"></div>
-      <div class="field"><label>Fees (${CURSYM()})</label><input id="f_fees"${RO} value="${t.fees||''}" inputmode="decimal" oninput="calcTrade(true)"></div>
+      <div class="field"><label>Fees ($)</label><input id="f_fees"${RO} value="${t.fees||''}" inputmode="decimal" oninput="calcTrade(true)"></div>
       <div class="field ${vfc('std',!!closeD0)}"><label>Sluit-datum <span class="hint">(optioneel)</span></label><input type="date" id="f_closeDate" value="${closeD0}" onchange="calcTrade(true)"></div>
       <div class="field ${vfc('std',!!closeT0)}"><label>Sluit-tijd</label><input id="f_closeTime" value="${closeT0}" placeholder="16:45" oninput="calcTrade(true)"></div>
       <div class="field ${vfc('std',!!t.durationMin)}"><label>Tijd in trade (min) <span class="hint">(auto bij sluit-tijd)</span></label><input id="f_durationMin" value="${t.durationMin||''}" inputmode="numeric"></div>
@@ -9421,7 +9623,10 @@ function submitForm(id){
     const oud=T.find(x=>x.id===id)||{};
     ['entry','exit','size','sizeUnit','qty','pnl','fees','tps'].forEach(k=>{ if(k in oud)obj[k]=oud[k]; else delete obj[k]; });
   }
-  if(id!=null&&id!=='null'){const t=T.find(x=>x.id===id);const oldO=+t.openTime||0,oldC=+t.closeTime||0;Object.assign(t,obj);
+  if(id!=null&&id!=='null'){const t=T.find(x=>x.id===id);const oldO=+t.openTime||0,oldC=+t.closeTime||0;
+    if(t.stopBron&&t.stopBron!=='gebruiker'&&EXMAP[t.stopBron])obj.stop=t.stop;   // the exchange's stop is locked: readonly is a hint, not a lock
+    else if((+t.stop||0)!==(+obj.stop||0)){t.stopBron='gebruiker';delete t.stopVerschoven;}   // changed or cleared by hand
+    Object.assign(t,obj);
     // seconde-precisie van gesyncte timestamps behouden als de minuut niet is gewijzigd
     if(oldO&&Math.floor(oldO/60000)===Math.floor((+t.openTime||0)/60000))t.openTime=String(oldO);
     if(oldC&&Math.floor(oldC/60000)===Math.floor((+t.closeTime||0)/60000))t.closeTime=String(oldC);}

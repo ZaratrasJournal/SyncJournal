@@ -28,7 +28,8 @@ const APP = 'file:///' + path.resolve('work/syncjournal.html').split(path.sep).j
     await p.evaluate(() => openForm(null));
     ok('nieuwe trade opent op "Eigen boek (handmatig)"', await g('f_exchange') === 'm1', JSON.stringify(await g('f_exchange')));
     const opties = await p.evaluate(() => [...document.querySelectorAll('#f_exchange option')].map(o => o.value));
-    ok('en het handmatige account staat bovenaan de lijst', opties[0] === 'm1' && opties.includes('okx'), JSON.stringify(opties));
+    // "Geen exchange" (backtest / oefentrade, v1.11) staat altijd bovenaan; daaronder komt het handmatige account eerst
+    ok('en het handmatige account staat bovenaan de lijst (na "Geen exchange")', opties[0] === '' && opties[1] === 'm1' && opties.includes('okx'), JSON.stringify(opties));
     ok('geen waarschuwing bij het handmatige account', await warn() === '', await warn());
     await p.evaluate(() => closeForm());
   }

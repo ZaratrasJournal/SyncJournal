@@ -21,6 +21,14 @@ elke wijziging eindigt met `node tests/run-release.js` groen.
 |---|---|---|---|---|
 | ~~F1~~ | ~~TP's in de presentatie en in Kopieer voor Discord~~ — ✅ **gedaan in v1.9.1** | — | — | — |
 | **F2** | Kopieer voor Discord met meerdere trades: één voor één + alles downloaden | 2 | S | samen met F1 |
+| **F3** | Kraken: oorspronkelijke stop-loss automatisch — 🔨 **gebouwd, branch `kraken-stoploss`** | 1 | — | release v1.11 |
+| ~~F4~~ | ~~Kraken: lopende positie krijgt zijn stop al vóór het sluiten~~ — ✅ **gedaan in v1.11** | — | — | — |
+| **F5** | Hoe liep de trade af: ~~exit-reden (TP/SL/Close)~~ ✅ v1.11 · stopbeweging (BE/strakker/ruimer) nog open | 1 | S | F3 |
+| **F6** | Kraken: geplande TP's uit de trigger-historie | 2 | S | F3 |
+| **F7** | Analytics: stop-management en uitvoering | 1 | M | F5 (F6 voor één blok) |
+| **F8** | Hyperliquid: oorspronkelijke stop-loss, geplande TP's, TP/SL/Close — plan bijgewerkt 18-10 | 1 | M | F3 |
+| **F9** | Override-knop voor een stop van de exchange ("Zelf aanpassen" / "Terug naar Kraken") | 2 | S | F3 |
+| **F10** | OKX en daarna Blofin: stop-loss en TP/SL/Close, elk in de eigen adapter | 2 | M + M | F8 |
 | **B1** | Kraken: lopende positie zonder partial en zonder stappen | 1 | M | — |
 | **B2** | OKX: contractwaarde-vangnet kent geen USDC-perps | 2 | S | — |
 | **W2** | Ruwe exchange-data kunnen vastleggen (dev-modus terug) | 2 | M | — |
@@ -29,6 +37,7 @@ elke wijziging eindigt met `node tests/run-release.js` groen.
 | **T1** | CSV-import testen op CI | 2 | M | — |
 | **W1** | Worker: staat `Access-Control-Allow-Origin` op `*`? | 2 | XS (Denny) | — |
 | **B3** | Controleren: telt dezelfde positie dubbel via CSV én API? | 2 | S | — |
+| ~~B5~~ | ~~P&L-percentages van −107% en 2.834% bij oudere trades~~ — ✅ **gedaan in v1.11** | — | — | — |
 | **T2** | Oude-app-specs herschrijven of schrappen | 3 | L | besluit AI-coach (deels) |
 | **C2** | CSV-parser per exchange opsplitsen | 3 | M–L | T1 |
 | **T3** | Levensloop-toets voor FTMO, één gedeelde vorm | 3 | M | T1 |
@@ -105,6 +114,148 @@ download-route het delen. Dat stond ook als nit in de review van v1.9.
 **Klaar als** je met 3 geselecteerde trades alle drie in één Discord-bericht krijgt, op volle
 kwaliteit, en `node tests/run-release.js` groen is. Samen met F1 als patch (v1.9.1).
 
+### F3 · Kraken: oorspronkelijke stop-loss automatisch — 🔨 gebouwd, wacht op release v1.11
+
+**Waarom.** Zonder stop is de R van een trade niet te bepalen ("—"), en dan kloppen gemiddelde R,
+expectancy en risico niet. Kraken bewaart elke stop-order in de trigger-historie.
+
+**Stand (18-10-2026).** Plan: [docs/plan-kraken-stoploss-2026-10-17.md](docs/plan-kraken-stoploss-2026-10-17.md).
+Worker v22 (actie `triggers`) is live. De app-kant staat op branch `kraken-stoploss`, met
+`tests/kraken-stoploss.spec.js` (ook getoetst tegen Denny's echte triggers, 4/4) en `tests/worker-triggers.spec.js`.
+- De R rekent met de **oorspronkelijke** stop. Schuif je hem later naar break-even, dan blijft het risico
+  van je instap de noemer; de trade krijgt `stopVerschoven: true`.
+- Een stop die je zelf invult of wist (`stopBron: 'gebruiker'`) raakt de sync nooit meer aan.
+- Trades van vóór de update krijgen hun stop één keer, voor zover Kraken's historie reikt (bij Denny vanaf 14-10).
+
+**Klaar als** v1.11 live staat: versie, changelog, CLAUDE.md "productie = Worker v22", release-poort groen.
+
+### F4 · Kraken: lopende positie krijgt zijn stop al vóór het sluiten — ✅ gedaan in v1.11
+
+**Gedaan (18-10-2026).** Zelfde triggers-verzoek als de sync, venster opening → nu; test in `tests/kraken-stoploss.spec.js`.
+Bij het sluiten gaat de stop mee naar de gesloten trade (als jouw veld, zonder "van Kraken"; de waarde is dezelfde).
+
+**Waarom.** Nu krijgt een Kraken-trade zijn stop pas als hij dicht is. Tijdens de trade zie je dus
+nog geen risico en geen R:R, terwijl Kraken de stop al kent (Denny's open long van 16-10: stop 79.314).
+
+**Plan** (Task 5 van het F3-plan).
+1. Test eerst: een open long met een Sell-stop 79.314 krijgt die stop op de open rij, met `stopBron: 'kraken'`.
+   Wordt hij daarna naar break-even geschoven, dan blijft 79.314 staan.
+2. Dezelfde `triggers`-aanroep van de sync, met als venster de opening van de lopende positie tot nu (`this._lopend`).
+3. Vul de stop van de open rij op dezelfde manier: alleen als hij leeg is of `stopBron: 'kraken'` heeft.
+4. **Niet** `/openorders` gebruiken: die geeft de huidige stop, en na verschuiven klopt de R dan niet meer.
+
+**Klaar als** een lopende Kraken-positie zijn oorspronkelijke stop toont, en het sluiten hem niet verandert.
+
+### F5 · Hoe liep de trade af: stopbeweging en exit-reden vastleggen — prio 1 · S
+
+**Waarom.** `stopVerschoven` zegt alleen dát de stop bewoog, niet welke kant op. Een stop naar
+break-even of strakker is risicobeheer; een stop **verder weg** zetten is verliezen laten lopen, een
+heel ander signaal. En je weet nu niet of een trade dichtging op je stop, op een TP of met de hand.
+Kraken legt beide vast (snapshot 18-10): een geraakte trigger is `OrderTriggerActivated`, en bij een
+sluiting met de hand annuleert Kraken alles met `would_not_reduce_position`. Dit is de basis voor F7.
+
+**Velden** (op de trade, naast `stop`):
+- `stopLaatst`: de laatste stop vóór de sluiting.
+- `stopBeweging`: `'geen' | 'be' | 'strakker' | 'ruimer'`.
+  - **be**: binnen 0,1% van de entry.
+  - **strakker**: dichter bij de entry, of voorbij de entry de winst in (trailing).
+  - **ruimer**: verder van de entry dan de oorspronkelijke stop.
+- `exitReden`: `'stop' | 'tp' | 'hand' | 'liquidatie'`, voor het deel dat de positie sloot.
+  - **stop** of **tp**: de laatste `geactiveerd` vóór de sluiting is een stop- of TP-trigger (SL/TP volgens dezelfde kant-regel).
+  - **hand**: er is niets geactiveerd.
+  - **liquidatie**: komt uit de account-log.
+
+**Plan.**
+1. Test eerst, in `tests/kraken-stoploss.spec.js`, uit de fixture: positie 3 (16-10 11:19) → `exitReden: 'stop'`,
+   positie 4 (14:32) → `'hand'`, positie 1 (14-10) → `'hand'` na TP1 (`geactiveerd` op 80.000 telt als deelsluiting,
+   niet als exit). Plus synthetisch: naar BE → `'be'`, stop verder weg → `'ruimer'`.
+2. `_stopVoorLevensloop` geeft naast `stop` en `verschoven` ook `laatst`, `beweging` en `exitReden`.
+   De keten-logica die de stop-order volgt bestaat al.
+3. Invullen in `afterImport`, met dezelfde regel als de stop: niet over iets dat de gebruiker zelf koos.
+4. In het formulier: onder de stop "later naar BE" / "later strakker" / "later verder weg ⚠", in plaats van alleen "later verschoven".
+5. **Gedeelde vorm**, zodat Hyperliquid (F8) dezelfde velden vult. De berekening van de beweging is een pure
+   helper zonder exchange-aannames (`stopBewegingVan(dir, entry, stop, laatst)`); de exit-reden blijft per adapter.
+
+**Klaar als** de vier fixture-posities de juiste exit-reden hebben, een verder weggezette stop als `'ruimer'`
+herkend wordt, en de release-poort groen is. Patch of minor: geen cijfers veranderen, wel nieuwe info → **minor**.
+
+### F6 · Kraken: geplande TP's uit de trigger-historie — prio 2 · S
+
+**Waarom.** De TP's van een Kraken-trade komen nu uit de fills, dus alleen de TP's die geraakt zijn.
+De TP die je plande maar die niet geraakt werd, ontbreekt. Daarmee mis je "gepland tegenover gehaald".
+Kraken heeft ze wél: TP-triggers aan de winstkant, met hun eigen qty (16-10 06:51: 82.932 / 83.582 / 85.332
+voor 0,0038 / 0,0019 / 0,0019).
+
+**Plan.**
+1. Test eerst, uit de fixture: positie 2 krijgt 3 geplande TP's met prijs en % (49/25/25), geen enkele geraakt;
+   positie 1 krijgt TP1 80.000 geraakt (uit de fill) plus TP2 78.500 en TP3 77.200 gepland.
+2. In de adapter: triggers aan de winstkant, sluitende kant, binnen de levensloop, die niet de stop zijn.
+   Gewijzigd of geannuleerd en opnieuw geplaatst → de laatste prijs vóór de sluiting (een TP mag je verzetten, de stop niet).
+3. Samenvoegen met de `tps` uit de fills: een fill binnen 0,2% van een geplande TP markeert die als geraakt.
+   Een fill zonder geplande TP blijft een eigen regel. Bestaand gedrag voor trades zonder triggers blijft gelijk.
+4. Met `rrPlanned` (geplande R:R van de gewogen TP's tegenover de oorspronkelijke stop), maar alleen als de gebruiker die niet zelf invulde.
+
+**Klaar als** een Kraken-trade alle geplande TP's toont, de geraakte gemarkeerd, en de presentatie en
+Discord (F1) ze laten zien.
+
+### F7 · Analytics: stop-management en uitvoering — prio 1 · M
+
+**Waarom.** Met de oorspronkelijke stop (F3), de stopbeweging en de exit-reden (F5) en de geplande TP's (F6)
+kun je vragen beantwoorden die je nu niet ziet (Denny, 18-10-2026). De R blijft overal de R ten opzichte van
+je **oorspronkelijke** risico; dat maakt trades vergelijkbaar.
+
+**Blokken** (één nieuw paneel *Stop & uitvoering* op de Analytics-pagina, volgt de filterbalk):
+1. **Verliezen in R.** Gemiddeld verlies in R, en het aandeel verliezen slechter dan −1,1R.
+   Rond −1R betekent dat je je stop respecteert. Slechter wijst op slippage of een ruimer gezette stop.
+   Een klik toont die trades.
+2. **Break-even schuiven.** Hoe vaak, de gemiddelde R en winrate met en zonder verschoven stop, en hoeveel
+   trades op break-even eindigen. Zonder koersdata kunnen we niet zeggen wat er zónder schuiven was
+   gebeurd; zeg dat in het paneel, en beweer het niet.
+3. **Stop verder weg gezet.** Aantal trades en hun gemiddelde R, als waarschuwing. Telt mee als fout
+   (`mistakes`) in discipline-statistieken, maar alleen als voorstel: de gebruiker bevestigt.
+4. **Hoe ging de trade dicht.** Verdeling stop / TP / met de hand, met de gemiddelde R per soort.
+5. **Gepland tegenover gehaald** (vereist F6). Geplande R:R naast de gehaalde R, en het aandeel trades dat TP1, TP2 en TP3 haalde.
+
+**Toestanden** (CLAUDE.md):
+- **Leeg:** "Nog geen trades met een stop-loss. Die komen vanzelf bij Kraken-trades, of vul de stop in bij een trade."
+- **Niets in beeld:** het filter laat geen trades met een stop over.
+- **Eén trade:** wel tonen, met "te weinig trades voor een conclusie" onder 10.
+
+Trades zonder stop tellen nergens mee; zeg hoeveel dat er zijn ("12 van 40 trades hebben een stop").
+
+**Plan.** Eerst een demo met 2 varianten (`/prototype`, `demos/`) met Denny's echte data, dan pas in de app.
+Gebruik `gemR` en `tradeROrNull`, en `emptyState(key)` voor de lege staten.
+
+**Klaar als** de blokken kloppen met een met de hand nagerekende set trades (test), licht en donker
+bekeken zijn, en de release-poort groen is.
+
+### F9 · Override-knop voor een stop van de exchange — prio 2 · S
+
+**Waarom.** De stop van de exchange is vergrendeld (v1.11). Plaats je bij de exchange per ongeluk een verkeerde stop
+(typfout, een minuut later verbeterd), dan rekent de journal met die typfout als oorspronkelijke stop. Advies van
+18-10-2026: een bewuste, zichtbare override in plaats van een automatische "typfout"-regel die gokt.
+
+**Plan.**
+1. Naast het vergrendelde stop-veld een knop **Zelf aanpassen**: zet `stopBron:'gebruiker'`, bewaart de waarde van de
+   exchange (`stopExchange`) en maakt het veld vrij. De sync laat `stopBron:'gebruiker'` daarna met rust (nu wint de
+   exchange altijd: die regel krijgt deze ene uitzondering).
+2. Label: "Stop-loss (zelf aangepast · Kraken: 81.000)".
+3. Knop **Terug naar Kraken**: `stopBron` weer van de exchange, de waarde van de exchange terug.
+4. Tests: override overleeft een sync; terugzetten herstelt; geldt per trade, voor elke exchange (gedeeld, via `EXMAP`).
+
+**Klaar als** een verkeerde stop van de exchange met twee klikken te corrigeren en terug te draaien is.
+
+### F8 · Hyperliquid: oorspronkelijke stop-loss en geplande TP's — prio 1 · M
+
+**Waarom.** Hetzelfde als F3 en F6, voor Hyperliquid. Daar legt `historicalOrders` elke statuswijziging vast.
+Een wijziging is annuleren plus een nieuwe order (nieuw oid), dus de oorspronkelijke stop is terug te vinden.
+
+**Plan:** [docs/plan-hyperliquid-stoploss-2026-10-17.md](docs/plan-hyperliquid-stoploss-2026-10-17.md),
+met een risicotabel. Hergebruik de gedeelde regels uit F3: `stopBron`, het formulier, het label en de
+`stopBeweging`-helper uit F5. Geen Worker nodig: wallet-data is openbaar.
+
+**Klaar als** het plan is uitgevoerd en `tests/hl-echt.spec.js` de stops van Denny's echte account toont.
+
 ---
 
 ## Bugs
@@ -171,6 +322,21 @@ herbouwd. Het is een stille fout: je P&L verdubbelt zonder melding.
 **Klaar als** de spec bestaat en groen is. Effort M als het een echte fout blijkt.
 
 ---
+
+### B5 · P&L-percentages van −107% en 2.834% bij oudere trades — ✅ gedaan in v1.11
+
+**Wat er mis was** (Denny, 18-10-2026). Het percentage onder de P&L is P&L ÷ je saldo op dat moment. Dat saldo
+rekent de journal terug: het huidige totaalsaldo min alle P&L die daarna kwam. Daarin telden ook **backtests** mee
+(bij Denny 39 stuks, +$814), terwijl dat geen geld op je account is. Voor maart kwam de basis daardoor rond nul of
+onder nul uit.
+
+**Fix.** `_pctBases` en `pnlPctTotal` tellen alleen live trades (`isLive`). Een backtest heeft zelf geen
+percentage meer. Test: `tests/pnl-pct.spec.js` (backtest van +814 verandert de basis niet). Op Denny's data: de
+basis van 23-03 is $309,58 (−0,96%), geen basis meer onder nul, hoogste percentage 6%.
+
+**Wat blijft:** stortingen en opnames ziet de journal niet. Wie geld bijstort of opneemt, krijgt voor de periode
+daarvóór een basis die zoveel te hoog of te laag is. Zie het idee "stortingen" onder *Ideeën*. Het vaste
+referentiebedrag (Instellingen → Accounts) blijft de uitwijk.
 
 ## Tests
 

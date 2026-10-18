@@ -37,7 +37,7 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
   ok('P&L rekent met $-notional (0.5 × 2000 = 1000)', Math.abs(t0.pnl - 1000) < 1, 'pnl=' + t0.pnl);
 
   console.log('─── Weergave ───');
-  ok('tabel toont $ + asset-regel', await p.evaluate(() => { const td = [...document.querySelectorAll('td[data-l="Size"]')].find(x => /BTC/.test(x.textContent)); return td && /25\.000/.test(td.textContent) && /0,5 BTC/.test(td.textContent); }));
+  ok('tabel toont $ + asset-regel', await p.evaluate(() => { const td = [...document.querySelectorAll('td[data-l="Size"]')].find(x => /BTC/.test(x.textContent)); const sp = td && td.querySelector('[title]'); return td && /25\.000/.test(td.textContent + (sp ? sp.title : '')) && /0,5 BTC/.test(td.textContent); }));   // euro view: converted, the dollars in the title (v1.11)
   await p.evaluate(() => { STATE.revSel = T[T.length - 1].id; go('review'); }); await p.waitForTimeout(400);
   ok('review-detail toont asset-hoeveelheid', await p.evaluate(() => /0,5 BTC/.test(document.getElementById('main').textContent)));
 

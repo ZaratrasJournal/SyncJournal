@@ -59,7 +59,7 @@ const desc = rows => rows.slice().reverse();   // zoals de export: nieuwste eers
     const r = await p.evaluate((t) => { const before = T.length; const n = sjImportCsvText(t, ''); return { n, added: T.length - before }; }, csvText);
     const lees = () => p.evaluate(() => T.filter(t => t.exchange === 'kraken').map(t => ({ id: t.id, srcId: t.srcId, date: t.date, time: t.time, pair: t.pair, dir: t.dir, entry: t.entry, exit: t.exit,
       size: t.size, qtyAsset: t.qtyAsset, pnl: t.pnl, fees: t.fees, openTime: t.openTime, closeTime: t.closeTime, status: t.status, notes: t.notes,
-      fills: (t.fills || []).length, tps: (t.tps || []).map(x => ({ price: x.price, pct: x.pct, hit: x.hit, ts: x.ts })) })));
+      fills: (t.fills || []).length, orders: perOrder(t.fills || []).length, tps: (t.tps || []).map(x => ({ price: x.price, pct: x.pct, hit: x.hit, ts: x.ts })) })));
     const trades = await lees();
     ok(`import levert alle ${ref.positions.length} posities als trade`, r.n === ref.positions.length && trades.length === ref.positions.length, JSON.stringify(r));
     const cmp = compare(ref.positions, trades);
@@ -68,11 +68,13 @@ const desc = rows => rows.slice().reverse();   // zoals de export: nieuwste eers
     const somJ = trades.reduce((s, t) => s + (+t.pnl), 0);
     const somRef = ref.positions.reduce((s, p) => s + p.net + p.funding, 0);   // netto = gerealiseerd − fees + funding (trade-regels én funding rate change-regels)
     ok(`netto P&L ${somJ.toFixed(2)} = Σ realized pnl − Σ fee + Σ funding (${somRef.toFixed(2)})`, bij(somJ, somRef, 0.05), `${somJ.toFixed(4)} vs ${somRef.toFixed(4)}`);
+    const refStappen = ref.positions.reduce((s, p) => s + p.nSteps, 0);
     ok(`alle ${ref.fills} fills zijn stappen (Σ fills.length)`, trades.reduce((s, t) => s + t.fills, 0) === ref.fills, String(trades.reduce((s, t) => s + t.fills, 0)));
+    ok(`… in ${refStappen} orders (zelfde seconde, zelfde kant): zo telt de journal ze`, trades.reduce((s, t) => s + t.orders, 0) === refStappen, String(trades.reduce((s, t) => s + t.orders, 0)));
     ok('elke trade: openTime < closeTime, ≥2 stappen, gesloten', trades.every(t => +t.openTime < +t.closeTime && t.fills >= 2 && t.status === 'closed'), JSON.stringify(trades.filter(t => !(+t.openTime < +t.closeTime && t.fills >= 2)).slice(0, 2)));
     ok('datum en tijd zijn Amsterdam-tijd van het open-moment', trades.every(t => { const a = ams(+t.openTime); return t.date === a.date && t.time === a.time; }), JSON.stringify(trades.filter(t => { const a = ams(+t.openTime); return !(t.date === a.date && t.time === a.time); }).slice(0, 2)));
-    const multi = ref.positions.filter(p => p.nCloses >= 2).length;
-    ok(`${multi} posities met ≥2 sluitingen hebben ≥2 TP-niveaus (hit, met moment)`, trades.filter(t => t.tps.length >= 2).length === multi && trades.every(t => t.tps.every(x => x.hit && x.ts > 0)), String(trades.filter(t => t.tps.length >= 2).length));
+    const multi = ref.positions.filter(p => p.nCloseSteps >= 2).length;
+    ok(`${multi} posities met ≥2 sluitende orders hebben ≥2 TP-niveaus (hit, met moment)`, trades.filter(t => t.tps.length >= 2).length === multi && trades.every(t => t.tps.every(x => x.hit && x.ts > 0)), String(trades.filter(t => t.tps.length >= 2).length));
     ok('TP-percentages tellen op tot 100', trades.every(t => bij(t.tps.reduce((s, x) => s + x.pct, 0), 100, 0.05)), JSON.stringify(trades.filter(t => !bij(t.tps.reduce((s, x) => s + x.pct, 0), 100, 0.05)).slice(0, 1)));
     ok('geen partial-data-notities: alle openingen staan in het bestand', trades.every(t => !t.notes), String(trades.filter(t => t.notes).length));
     ok('srcId-vorm kraken_pos_<CONTRACT>_<openTs> (zelfde als de API-route)', trades.every(t => new RegExp('^kraken_pos_PF_[A-Z]+_' + t.openTime + '$').test(t.srcId)), trades[0] && trades[0].srcId);
@@ -82,7 +84,8 @@ const desc = rows => rows.slice().reverse();   // zoals de export: nieuwste eers
     const mei20 = trades.find(t => t.date === '2026-05-20' && t.time === '10:05');
     ok('20 mei: long 77241 → twee sluitingen (77523, 77329), 3 stappen, +1,95', !!mei20 && mei20.dir === 'long' && bij(+mei20.entry, 77241, 0.5) && mei20.fills === 3 && mei20.tps.length === 2 && bij(+mei20.pnl, 1.95, 0.05), JSON.stringify(mei20));
     const jun6 = trades.find(t => t.date === '2026-06-06');
-    ok('6 juni: short 60504 → 60997, vier sluitingen om 14:07, −12,83', !!jun6 && jun6.dir === 'short' && bij(+jun6.entry, 60504.44, 0.5) && jun6.tps.length === 4 && bij(+jun6.pnl, -12.83, 0.05) && ams(+jun6.closeTime).time === '14:07', JSON.stringify(jun6));
+    // four executions at 12:07:02.000 are one stop order through four price levels (order ids, 18-10-2026)
+    ok('6 juni: short 60504 → 60997, één stop door vier prijsniveaus om 14:07 = één sluiting, −12,83', !!jun6 && jun6.dir === 'short' && bij(+jun6.entry, 60504.44, 0.5) && jun6.tps.length === 1 && bij(+jun6.pnl, -12.83, 0.05) && ams(+jun6.closeTime).time === '14:07', JSON.stringify(jun6));
     const r2 = await p.evaluate((t) => sjImportCsvText(t, ''), csvText);
     const na = await lees();
     ok('tweede keer inlezen → 0 nieuw, nog steeds evenveel trades', r2 === 0 && na.length === trades.length, `${r2} / ${na.length}`);
@@ -90,7 +93,7 @@ const desc = rows => rows.slice().reverse();   // zoals de export: nieuwste eers
     await ctx.close();
   } else console.log('  ⏭ tests/_fixtures/kraken-account-log-2026-09-26.csv ontbreekt in deze kloon — overgeslagen');
 
-  console.log('─── Vier sluitingen in één seconde ───');
+  console.log('─── Eén stop door vier prijsniveaus in één seconde ───');
   {
     const { ctx, p } = await open();
     const rows = [
@@ -101,10 +104,11 @@ const desc = rows => rows.slice().reverse();   // zoals de export: nieuwste eers
       ...uitvoering('2026-06-06 12:07:02', 0.002, 0, 60997, { pnl: -0.994, fee: 0.05 }),
     ];
     const a = await bouw(p, rows), d = await bouw(p, desc(rows));
-    ok('één short met open + vier sluitingen', a.trades.length === 1 && a.trades[0].dir === 'short' && a.trades[0].steps === 'open,close,close,close,close', JSON.stringify(a.trades[0] && a.trades[0].steps));
+    // Kraken's order ids (18-10-2026) show this is one stop order going through four price levels
+    ok('één short met open + vier uitvoeringen bij de sluiting (alle vier zichtbaar)', a.trades.length === 1 && a.trades[0].dir === 'short' && a.trades[0].steps === 'open,close,close,close,close', JSON.stringify(a.trades[0] && a.trades[0].steps));
     ok('netto = Σ pnl − Σ fee = −9,894 − 1,0 = −10,894', a.trades.length === 1 && bij(a.trades[0].pnl, -10.894, 1e-6), a.trades[0] && a.trades[0].pnl);
-    ok('vier TP-niveaus, elk met het sluitmoment, samen 100%', a.trades[0].tps.length === 4 && a.trades[0].tps.every(x => x.ts === Date.parse('2026-06-06T12:07:02Z') && x.status === 'hit') && bij(a.trades[0].tps.reduce((s, x) => s + x.pct, 0), 100, 0.01), JSON.stringify(a.trades[0].tps));
-    ok('in TP-volgorde van het bestand: 60993, 60994, 60995, 60997', a.trades[0].tps.map(x => x.price).join(',') === '60993,60994,60995,60997', a.trades[0].tps.map(x => x.price).join(','));
+    ok('één TP-niveau met het sluitmoment, 100%', a.trades[0].tps.length === 1 && a.trades[0].tps.every(x => x.ts === Date.parse('2026-06-06T12:07:02Z') && x.status === 'hit') && bij(a.trades[0].tps[0].pct, 100, 0.01), JSON.stringify(a.trades[0].tps));
+    ok('prijs = gewogen gemiddelde van de vier niveaus (60.994,70)', bij(+a.trades[0].tps[0].price, 1219.894 / 0.02, 0.01), a.trades[0].tps.map(x => x.price).join(','));
     ok('nieuwste-eerst aangeleverd (zoals de export): identiek resultaat', JSON.stringify(d) === JSON.stringify(a), JSON.stringify(d.trades[0] && d.trades[0].tps));
     ok('tijd in Amsterdam: open 12:21, dag 2026-06-06', a.trades[0].date === '2026-06-06' && a.trades[0].time === '12:21', a.trades[0].date + ' ' + a.trades[0].time);
     ok('geen waarschuwingen', a.waarschuwingen.length === 0, JSON.stringify(a.waarschuwingen));

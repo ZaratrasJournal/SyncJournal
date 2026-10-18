@@ -48,6 +48,17 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
     return /10,00%/.test(txt) && /17,65%/.test(txt) && /25,00%/.test(txt);
   }));
 
+  console.log('─── Backtests en gemiste trades tellen niet mee (Denny 18-10: −107%, 2834%) ───');
+  // a backtest is no money in the account: its P&L must not be taken off the balance when walking back
+  const r3 = await p.evaluate(() => {
+    T.push({ ...T[0], id: 20, date: '2026-09-11', kind: 'backtest', exchange: '', pnl: 814 }, { ...T[0], id: 21, date: '2026-09-11', kind: 'gemist', exchange: '', pnl: 500 });
+    _pctKey = ''; const f = id => pnlPctOf(T.find(t => t.id === id));
+    const uit = { p1: f(1), b1: pnlBaseOf(T.find(t => t.id === 1)), tot: pnlPctTotal(T.filter(t => t.status === 'closed' && isLive(t)), 200) };
+    T = T.filter(t => t.id !== 20 && t.id !== 21); _pctKey = ''; return uit;
+  });
+  ok('backtest van +814 verandert de basis niet: oudste trade blijft +10% op 800', r3.b1 === 800 && r3.p1 === 10, JSON.stringify(r3));
+  ok('totaal blijft +25%', r3.tot === 25, JSON.stringify(r3));
+
   console.log('─── Vast referentiebedrag ───');
   const r2 = await p.evaluate(() => { setPctRef(10000); const f = id => pnlPctOf(T.find(t => t.id === id)); return { p1: f(1), tot: pnlPctTotal(T.filter(t => t.status === 'closed'), 200) }; });
   ok('vaste referentie 10.000 → +0,8% en totaal +2%', r2.p1 === 0.8 && r2.tot === 2, JSON.stringify(r2));

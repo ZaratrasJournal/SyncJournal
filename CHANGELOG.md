@@ -16,6 +16,52 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v1.11] — 2026-10-18
+
+### Toegevoegd
+- **Kraken: je stop-loss komt vanzelf binnen.** De journal haalt bij elke sync je stop-orders bij Kraken
+  op en zet de **oorspronkelijke** stop van elke gesloten trade in het veld Stop-loss. Daarmee krijgen je
+  Kraken-trades een R-multiple in plaats van een streepje, en kloppen gemiddelde R en risico. Schuif je je
+  stop later naar break-even, dan blijft de R rekenen met het risico van je instap; bij de stop staat dan
+  "(van Kraken, later verschoven)". Trades van vóór deze update krijgen hun stop één keer, voor zover
+  Kraken's historie teruggaat.
+- Ook een **lopende** Kraken-positie krijgt zijn stop al, zodat je tijdens de trade je risico en R:R ziet.
+- **Hoe ging je trade dicht?** Bij Kraken zie je per afbouw wat het was, in de stappentabel, de tijdlijn en de
+  presentatie. Elke winstname is een **TP** (TP1, TP2, …); deed je dat met de hand, dan staat er een handje bij
+  (**TP3 ✋**). Een geraakte stop is **SL**, ook op break-even. Met de hand uitgestapt met verlies is **Close ✋**.
+  Bijvoorbeeld: TP1 → TP2 → TP3 ✋ → TP4 ✋, of TP1 → SL.
+- Kent Kraken de stop van een trade, dan is dat de stop, net als entry en exit: het veld is vergrendeld en een
+  eerder zelf ingevulde stop maakt plaats. Kent Kraken geen stop, dan vul je hem zelf in.
+
+### Gewijzigd
+- Pas je in een trade de stop-loss aan, dan onthoudt de journal dat jij hem koos. Dat geldt voor elke exchange.
+- De journal staat voortaan standaard op **dollar** (nieuwe gebruikers). Euro kies je in Instellingen.
+- Vereist de Kraken-proxy v23 (staat live sinds 18-10-2026). Met een oudere proxy werkt de sync zoals voorheen, alleen zonder stop.
+
+### Fixed
+- **Een backtest of oefentrade hoeft geen exchange te hebben.** In het formulier staat nu "Geen exchange"; kies je
+  bij Soort *Backtest*, dan springt hij daar vanzelf naartoe. Eerder koos het formulier stil de eerste exchange
+  (bijvoorbeeld OKX) voor een trade zonder exchange, en bij opslaan werd het dan een OKX-trade.
+- **Kraken: een lopende positie toont weer haar winst of verlies** (was altijd +$ 0,00). Kraken levert het,
+  de journal las het onder een oude veldnaam.
+- **Kraken: één TP is weer één TP.** Kraken vult een order vaak in stukjes (een TP of stop door meerdere
+  prijsniveaus), en elk stukje werd een eigen TP: zeven TP's waar er twee waren. De journal haalt nu bij Kraken op
+  welke order elke uitvoering hoort, en telt per order. In "Zo is deze positie gelopen" zie je nog elke
+  uitvoering, met een haak om de regels van één order en het label TP1, TP2. Je Kraken-historie wordt bij de
+  eerste sync één keer opnieuw opgehaald, zodat ook bestaande trades kloppen.
+- **Het tradeformulier zegt nu in welke valuta je werkt.** De journal bewaart bedragen in dollars, en het
+  formulier toont ze ook zo. Stond je weergave op euro, dan zette het formulier er toch € boven: je vulde 32,25 in
+  en de tabel toonde € 28,25. Nu staat er $, met eronder wat de tabel ervan maakt ("≈ € 28,25 in je weergave",
+  met de koers van die dag). In de tabel wordt ook de size omgerekend naar euro.
+- **P&L-percentages bij oudere trades kloppen weer.** Backtests telden mee bij het terugrekenen van je saldo,
+  waardoor oudere trades percentages als −107% of 2.834% kregen. Nu tellen alleen echte trades; backtests krijgen
+  geen percentage.
+- **Kraken: een trade terugzetten uit de prullenbak werkt weer.** Sinds v1.10 ging zo'n trade bij de volgende
+  sync opnieuw de prullenbak in. Nu komt de positie terug, met de juiste cijfers uit Kraken; je notities gaan mee.
+- **Kraken: oudere trades blijven één trade.** Trades die vóór 17-10 binnenkwamen hebben een iets ander intern
+  nummer. Haalde de sync die periode opnieuw op, dan werden ze vervangen door een kopie, en kon een weggegooide
+  positie terugkomen. Nu worden ze herkend en bijgewerkt.
+
 ## [v1.10] — 2026-10-15
 
 ### Fixed
