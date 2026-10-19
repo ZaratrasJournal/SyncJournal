@@ -16,6 +16,29 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v1.12] — 2026-10-19
+
+### Toegevoegd
+- **Hyperliquid: je stop-loss en ingestelde take-profits komen automatisch mee, net als bij Kraken.** De journal
+  haalt bij elke sync je orders bij Hyperliquid op en zet de **oorspronkelijke** stop van elke trade in het veld
+  Stop-loss: de SL die je bij je instap meegaf, of anders de eerste stop die je plaatste. Je R-multiple klopt
+  daardoor zonder invullen. Bij een lopende positie staan je ingestelde TP's erbij.
+- **Per afbouw zie je TP, SL of Close.** Een geraakte take-profit heet TP1, TP2…; een geraakte stop heet SL, ook
+  als je hem naar break-even of in de winst had geschoven; met de hand gesloten in winst is "TP n ✋", met
+  verlies "Close ✋". Een TP-order die in meerdere stukken gevuld werd is één TP.
+
+### Gewijzigd
+- **De stop van Hyperliquid wint.** Had je bij een Hyperliquid-trade zelf een stop ingevuld, dan maakt die plaats
+  voor de stop die Hyperliquid kent, en staat het veld daarna vast, zoals entry en exit. De R van zo'n trade
+  kan daardoor veranderen.
+- **De eerste sync na de update haalt je Hyperliquid-historie één keer opnieuw op**, zodat ook je oudere trades
+  hun stop en TP/SL-labels krijgen. Trades die ouder zijn dan wat Hyperliquid aan orders bewaart (de laatste
+  2000) houden wat ze hadden.
+
+### Fixed
+- **Een stop-out telt niet meer als geraakte TP.** De tegel "TP geraakt", de 🎯-regel bij een trade en "Tijd tot
+  je TP's" telden een geraakte stop of een verliesgevende sluiting als TP. Dat gold ook voor Kraken-trades.
+
 ## [v1.11.1] — 2026-10-19
 
 ### Gewijzigd
