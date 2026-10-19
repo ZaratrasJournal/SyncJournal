@@ -2706,12 +2706,15 @@ function perOrder(fills){
      a stop order (also at break-even or in profit): SL;  by hand at a loss: "Close ✋";  a liquidation: Liq.
    Profit = the close price against the average entry, in the trade's direction, fees aside. Only an exchange that
    knows sets soort; without it every level stays TP n, as before. t: the trade (entry, dir). */
-function tpLabels(lijst,t){
-  const entry=+(t&&t.entry)||0,dir=String(t&&(t.dir||t.direction))==='short'?-1:1;let n=0;
+function tpTelt(x,t){const s=x&&x.soort;
+  if(s==='sl'||s==='liq')return false;
+  if(s==='hand'){const entry=+(t&&t.entry)||0,dir=String(t&&(t.dir||t.direction))==='short'?-1:1;return entry>0&&(+x.price-entry)*dir>0;}
+  return true;}
+function tpLabels(lijst,t){let n=0;
   return(lijst||[]).map(x=>{const s=x&&x.soort;
     if(s==='sl')return 'SL';
     if(s==='liq')return 'Liq';
-    if(s==='hand')return entry>0&&(+x.price-entry)*dir>0?'TP'+(++n)+' ✋':'Close ✋';
+    if(s==='hand')return tpTelt(x,t)?'TP'+(++n)+' ✋':'Close ✋';
     return 'TP'+(++n);});
 }
 /* De stappen van een positie zijn een verhaal in de tijd: wanneer stapte je in, wanneer
@@ -2953,7 +2956,7 @@ function tradeHoverDetail(t){
   const meta=[];
   const lays=(t.layers||[]).map(L=>{const txt=[L.timeframe,(L.setups||[]).join('+')].filter(Boolean).join(' ');return txt?`<span class="lay">${esc(txt)}</span>`:'';}).filter(Boolean);
   if(lays.length)meta.push(`<span>📐 ${lays.join(' <span class="arr">→</span> ')}</span>`);
-  const tps=t.tps||[];
+  const tps=(t.tps||[]).filter(x=>tpTelt(x,t));   // a stop-out is not a take-profit
   if(tps.length)meta.push(`<span>🎯 <span class="num">${tps.filter(x=>x.hit).length} van ${tps.length}</span> TP's geraakt</span>`);
   const emos=tradeEmotions(t);
   if(emos.length)meta.push(`<span>💭 ${emos.map(e=>`<span class="tagchip">${esc(e)}</span>`).join('')}</span>`);
@@ -4156,7 +4159,7 @@ const revRating=t=>t.rating||(tradeEmotions(t).some(e=>CALM_EMOS.includes(e))?(t
 const revLaag=l=>`<div class="laag"><span class="tf">${esc((l&&l.timeframe)||'?')}</span><span class="lw">${esc(((l&&l.setups)||[]).join(' + '))}${l&&l.bias?' <span class="tagchip">'+esc(l.bias)+'</span>':''}${tagChips((l&&l.confirmations)||[],false)}</span></div>`;
 // Info tiles: 8 on a card, 18 on the per-trade page (order agreed in demo v5).
 function revTiles(t,n){const tile=(l,v,c)=>`<div><div class="l">${l}</div><div class="v num ${c||''}">${v}</div></div>`;
-  const b=htfBias(t),r=tradeROrNull(t),tps=t.tps||[],hit=tps.filter(x=>x.hit).length;
+  const b=htfBias(t),r=tradeROrNull(t),tps=(t.tps||[]).filter(x=>tpTelt(x,t)),hit=tps.filter(x=>x.hit).length;
   const kaart=[tile('Datum',esc(fmtD(t.date||'')+(t.time?' '+t.time:''))),tile('Sessie',esc(sessionOf(t)||'—')),tile('Lagen',esc(lagenTxt(t))),
     tile('HTF-bias',b||'—',b==='Bullish'?'g':b==='Bearish'?'r':''),tile('Entry',prijsOfStreep(t.entry)),tile('Stop',prijsOfStreep(t.stop),'r'),
     tile('Exit',prijsOfStreep(t.exit)),tile('Duur',fmtDurMin(tradeDurationMin(t)))];
@@ -5010,7 +5013,7 @@ function pgAnalytics(){
   const _hd=t=>tradeDurationMin(t)||0;
   const avgHoldW=wins.length?Math.round(wins.reduce((s,t)=>s+_hd(t),0)/wins.length):0,avgHoldL=losses.length?Math.round(losses.reduce((s,t)=>s+_hd(t),0)/losses.length):0;
   // Tijd tot je TP's: van de instap tot het eerste en het laatste gehaalde niveau (alleen trades met TP-tijden).
-  const _tpMs=t=>{const o=+t.openTime||0;return o?(t.tps||[]).filter(x=>x&&x.hit&&+x.ts>o).map(x=>Math.round((+x.ts-o)/60000)):[];};
+  const _tpMs=t=>{const o=+t.openTime||0;return o?(t.tps||[]).filter(x=>x&&x.hit&&tpTelt(x,t)&&+x.ts>o).map(x=>Math.round((+x.ts-o)/60000)):[];};
   const _tp1=CLOSED.map(t=>{const a=_tpMs(t);return a.length?Math.min(...a):null;}).filter(x=>x!=null);
   const _tpN=CLOSED.map(t=>{const a=_tpMs(t);return a.length>1?Math.max(...a):null;}).filter(x=>x!=null);
   const avgTp1=_tp1.length?Math.round(_tp1.reduce((s,x)=>s+x,0)/_tp1.length):0,avgTpN=_tpN.length?Math.round(_tpN.reduce((s,x)=>s+x,0)/_tpN.length):0;
@@ -7621,25 +7624,39 @@ const ExchangeAPI = {
         per.set(k,rij);});
       return[...per.values()].filter(r=>r.price>0&&r.soort!=='anders');
     },
+    /* The SL an entry order carries (placed with the order ticket): entry oid → [{price,sz,ts}]. Measured on Denny's
+       recording: the child's oid is not the stop's own oid (it repeats the entry's, or entry+1), but its trigger
+       price and size are the stop as placed - the original stop, exactly. */
+    _instapStops(historical){
+      const per=new Map();
+      [...(historical||[])].sort((a,b)=>(+a.statusTimestamp||0)-(+b.statusTimestamp||0)).forEach(x=>{const o=x&&x.order;if(!o||o.isTrigger||per.has(String(o.oid)))return;
+        const k=(o.children||[]).filter(c=>c&&/^stop/i.test(c.orderType)&&parseFloat(c.triggerPx)>0).map(c=>({price:parseFloat(c.triggerPx),sz:parseFloat(c.origSz||c.sz)||0,ts:+o.timestamp||0}));
+        if(k.length)per.set(String(o.oid),k);});
+      return per;
+    },
     /* The original stop of a trade: the earliest stop order on its coin, closing side, loss side of the entry, placed
        between the opening (minus a bracket margin) and the close; several within a minute: weighted by size.
        verschoven: a later stop with another price. tps: take-profit orders on the profit side, latest per price. */
-    _slTpVoorTrade(t,regels){
+    _slTpVoorTrade(t,regels,kinderen){
       const short=String(t.direction||t.dir)==='short',entry=+t.entry,coin=String(t.positionId||String(t.pair||'').split('/')[0]);
       const van=+t.openTime-this._SL_VOOR_MS,tot=+t.closeTime||Date.now(),sluit=short?'buy':'sell';
       /* also a reduce-only order placed earlier and still active at the opening: a limit entry with its SL and TPs
          attached, filled hours later (Denny's long of 16-10). A previous position's stop is cancelled when that
          position closes (reduceOnlyCanceled), so it is no longer active here. */
       const open=+t.openTime,actief=r=>r.reduceOnly&&(r.status==='open'||r.statusTs>=open);
-      const kand=(regels||[]).filter(r=>r.coin===coin&&r.side===sluit&&r.ts<=tot&&(r.ts>=van||actief(r))).sort((a,b)=>a.ts-b.ts);
+      const afgelopen=r=>r.status!=='open'&&r.statusTs<open;   // hit or cancelled before this opening: the previous position's
+      const kand=(regels||[]).filter(r=>r.coin===coin&&r.side===sluit&&r.ts<=tot&&!afgelopen(r)&&(r.ts>=van||actief(r))).sort((a,b)=>a.ts-b.ts);
       const verlies=p=>short?p>entry:p<entry;
-      const sls=kand.filter(r=>r.soort==='sl'&&verlies(r.price));
-      let stop=null,verschoven=false;
-      if(sls.length&&entry>0){const eerste=sls.filter(r=>r.ts-sls[0].ts<=60e3);const tw=eerste.reduce((s,r)=>s+r.sz,0);
-        stop=tw>0?+(eerste.reduce((s,r)=>s+r.price*r.sz,0)/tw).toFixed(8):sls[0].price;
-        verschoven=kand.some(r=>r.soort==='sl'&&r.ts>eerste[eerste.length-1].ts&&r.price!==stop);}
-      const stopVerloop=kand.filter(r=>r.soort==='sl').map(r=>({ts:r.ts,price:r.price,status:r.status}));
       const piek=+t.qty||+t.positionSizeAsset||0,dicht=+t.closeTime||0;
+      // several stops at once: weighted only when together they fit the position (partial stops); else one was replaced
+      const weeg=l=>{const tw=l.reduce((s,r)=>s+r.sz,0);return l.length>1&&tw>0&&piek>0&&tw<=piek*1.001?+(l.reduce((s,r)=>s+r.price*r.sz,0)/tw).toFixed(8):l[0].price;};
+      const kind=(kinderen&&t.instapOid!=null?kinderen.get(String(t.instapOid))||[]:[]).filter(k=>verlies(k.price));
+      const sls=kand.filter(r=>r.soort==='sl'&&verlies(r.price));
+      let stop=null,verschoven=false,basis=0,deStop=[];
+      if(entry>0&&kind.length){stop=weeg(kind);basis=kind[0].ts;}   // the entry order's own SL: exact
+      else if(entry>0&&sls.length){const eerste=sls.filter(r=>r.ts-sls[0].ts<=60e3);stop=weeg(eerste);basis=sls[0].ts;deStop=stop===eerste[0].price&&eerste.length>1?[eerste[0]]:eerste;}
+      if(stop!=null)verschoven=kand.some(r=>r.soort==='sl'&&r.ts>=basis&&!deStop.includes(r)&&r.price!==stop);
+      const stopVerloop=kand.filter(r=>r.soort==='sl'&&r.ts>=basis).map(r=>({ts:r.ts,price:r.price,status:r.status}));
       const perPrijs=new Map();kand.filter(r=>r.soort==='tp'&&!verlies(r.price)).forEach(r=>perPrijs.set(r.price,r));
       const tps=[...perPrijs.values()].sort((a,b)=>short?b.price-a.price:a.price-b.price).map(r=>({price:r.price,pct:piek>0?+(r.sz/piek*100).toFixed(2):0,
         status:/triggered|filled/.test(r.status)?'geraakt':r.status==='open'?'open':(r.status==='reduceOnlyCanceled'&&dicht&&r.statusTs>=dicht-5e3)?'niet geraakt':'geannuleerd'}));
@@ -7649,7 +7666,7 @@ const ExchangeAPI = {
        also when moved to break-even or into profit; a Take Profit order is TP; any other order (market, limit) is by hand. */
     _afbouwSoort(t,regels){
       const perOid=new Map((regels||[]).map(r=>[String(r.oid),r.soort]));
-      return g=>g.fills.some(f=>f.kind==='liq')?'liq':(perOid.get(String(g.ordId||''))||'hand');
+      return g=>g.fills.some(f=>f.kind==='liq')?'liq':g.ordId?(perOid.get(String(g.ordId))||'hand'):null;   // no order id (CSV, older sync): unknown
     },
     _reconstructTrades(fills,idPrefix,metOpen){
       const aggregated=this._aggregateSubFills(fills);
@@ -7769,19 +7786,22 @@ const ExchangeAPI = {
        Hyperliquid knows the stop it is the stop, like entry and exit (Denny 18-10-2026, as Kraken). Only trades the
        order history covers (it keeps the last 2000 orders): an older trade keeps what it had. */
     _stopsInvullen(){
-      const regels=this._orders;this._orders=null;
-      if(!regels||!regels.length)return 0;
-      const vanaf=Math.min(...regels.map(r=>r.ts))-this._SL_VOOR_MS;let n=0;
+      const ord=this._orders;this._orders=null;
+      if(!ord||!ord.regels.length)return 0;
+      const{regels,kinderen,vanaf}=ord;let n=0;
       T.filter(o=>o&&o.exchange==="hyperliquid"&&/^(closed|open|partial)$/.test(o.status||"")&&+o.openTime>=vanaf).forEach(o=>{
-        const L={positionId:o.positionId||String(o.pair||'').split('/')[0],direction:o.dir,entry:o.entry,openTime:o.openTime,closeTime:o.status==='closed'?o.closeTime:'',positionSizeAsset:o.qtyAsset};
-        const s=this._slTpVoorTrade(L,regels);
+        const L={positionId:o.positionId||String(o.pair||'').split('/')[0],direction:o.dir,entry:o.entry,openTime:o.openTime,closeTime:o.status==='closed'?o.closeTime:'',positionSizeAsset:o.qtyAsset,
+          instapOid:((o.fills||[]).filter(f=>!isAfbouw(f)).sort((a,b)=>(+a.ts||0)-(+b.ts||0))[0]||{}).ordId};
+        const s=this._slTpVoorTrade(L,regels,kinderen);
         if(s.stop&&(+o.stop!==s.stop||o.stopBron!=='hyperliquid')){o.stop=s.stop;o.stopBron='hyperliquid';n++;}
         if(o.stopBron==='hyperliquid'){if(s.verschoven)o.stopVerschoven=true;else delete o.stopVerschoven;o.stopVerloop=s.stopVerloop;}
         if(s.tps.length)o.tpsGepland=s.tps;
         // how each close went: on the fills (step table) and the TP levels (sjFromTj drops unknown fields)
         const soort=this._afbouwSoort(L,regels);
-        perOrder((o.fills||[]).filter(isAfbouw)).forEach((g,i)=>{const k=soort(g);g.fills.forEach(f=>{f.soort=k;});
-          if(Array.isArray(o.tps)&&o.tps[i]&&o.tps[i].soort!==k){o.tps[i].soort=k;n++;}});
+        // the TP level of a close order by its moment: your own levels may stand in front of the hit ones
+        const hits=(o.tps||[]).filter(x=>x&&x.hit);
+        perOrder((o.fills||[]).filter(isAfbouw)).forEach(g=>{const k=soort(g);if(!k)return;g.fills.forEach(f=>{f.soort=k;});
+          const tp=hits.find(x=>Number(x.ts)===Number(g.ts));if(tp&&tp.soort!==k){tp.soort=k;n++;}});
       });
       return n;
     },
@@ -7803,8 +7823,14 @@ const ExchangeAPI = {
       }catch(e){/* spot optioneel — perps-waarde blijft staan */}
       return{success:true,balance:(perps+spotFree).toFixed(2)};
     },
+    _HERHAAL:1,   // history fetched once more per version: 1 = every step with its order id (F8)
+    _ORDERS_MAX:2000,   // historicalOrders returns at most the newest 2000 status rows
     async fetchTrades(walletAddress,_unused1,_unused2,startTime){
       const addr=this._validateAddress(walletAddress);
+      // once per _HERHAAL version: from the oldest trade in the journal, so trades synced before get what a newer version adds
+      const herhaal=(+(CONNS.hyperliquid||{}).stappen||0)<this._HERHAAL;
+      if(herhaal){const oudste=Math.min(...T.filter(t=>t&&t.exchange==="hyperliquid").map(t=>+t.openTime).filter(x=>x>0));
+        if(isFinite(oudste)&&(!startTime||oudste-3600e3<+startTime))startTime=oudste-3600e3;}
       // Pagineer userFillsByTime in batches van 2000. Hyperliquid cap = laatste 10k fills totaal.
       const fromTs=startTime?Number(startTime):new Date(Date.now()-90*24*60*60*1000).getTime();// default 90d
       const allFills=[];let cursor=fromTs;let guard=0;
@@ -7842,10 +7868,16 @@ const ExchangeAPI = {
       }
       // stop-loss and take-profit orders (F8): one call per sync, an extra - afterImport fills them in
       this._orders=await this._ordersOphalen(addr);
+      if(herhaal){CONNS.hyperliquid={...CONNS.hyperliquid,stappen:this._HERHAAL};persistConns();}
       return this._reconstructTrades(allFills.map(f=>this._naarFill(f)),"hyperliquid");
     },
     async _ordersOphalen(addr){
-      try{const h=await this._post({type:"historicalOrders",user:addr});return Array.isArray(h)?this._orderRegels(h):null;}
+      try{const h=await this._post({type:"historicalOrders",user:addr});if(!Array.isArray(h))return null;
+        const regels=this._orderRegels(h);
+        /* covered from the first order placed; when the list is full (the newest rows only), from its oldest row */
+        let vanaf=Math.min(...regels.map(r=>r.ts))-this._SL_VOOR_MS;
+        if(h.length>=this._ORDERS_MAX)vanaf=Math.max(vanaf,Math.min(...h.map(x=>+x.statusTimestamp||Infinity)));
+        return{regels,kinderen:this._instapStops(h),vanaf};}
       catch(e){console.warn('[hyperliquid orders] no stop-losses this sync:',(e&&e.message)||e);return null;}   // never blocks the trades
     },
     /* Wanneer begon een positie die nog loopt? Hyperliquid zegt het niet bij de positie

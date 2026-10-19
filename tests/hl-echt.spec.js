@@ -39,9 +39,13 @@ const orderBeeld = regels => { const per = {};
   for (const r of regels || []) { const o = r.order || {}; const x = per[o.oid] || (per[o.oid] = { oid: String(o.oid), coin: o.coin, side: o.side, type: o.orderType || '', ro: !!o.reduceOnly, ts: +o.timestamp, px: 0, last: 0, status: '' });
     x.ts = Math.min(x.ts, +o.timestamp); if (+o.triggerPx > 0 && !x.px) x.px = +o.triggerPx; if (+r.statusTimestamp >= x.last) { x.last = +r.statusTimestamp; x.status = r.status; } }
   return per; };
-const stopVolgensHl = (X, per, eind) => { const sluit = X.dir === 'long' ? 'A' : 'B';
+const stopVolgensHl = (X, per, eind, regels) => { const sluit = X.dir === 'long' ? 'A' : 'B';
+  // the SL on the entry order's ticket (order.children: its trigger price as placed)
+  const kind = (regels || []).filter(r => r.order && String(r.order.oid) === String(X.opens[0].oid)).flatMap(r => r.order.children || [])
+    .find(c => /^stop/i.test(c.orderType) && +c.triggerPx > 0);
+  if (kind) return +kind.triggerPx;
   const s = Object.values(per).filter(o => /^stop/i.test(o.type) && o.ro && o.coin === X.coin && o.side === sluit && o.ts <= eind
-    && (o.ts >= X.open - 60e3 || o.status === 'open' || o.last >= X.open)).sort((a, b) => a.ts - b.ts)[0];
+    && !(o.status !== 'open' && o.last < X.open) && (o.ts >= X.open - 60e3 || o.status === 'open' || o.last >= X.open)).sort((a, b) => a.ts - b.ts)[0];
   return s ? s.px : 0; };
 const soortVolgensHl = (oid, per) => { const o = per[oid]; return !o ? 'hand' : /^take profit/i.test(o.type) ? 'tp' : /^stop/i.test(o.type) ? 'sl' : 'hand'; };
 const overslaan = reden => { console.log('  ⏭ ' + reden + ' — overgeslagen'); console.log('\n=== HL echt: overgeslagen ==='); process.exit(0); };
@@ -66,7 +70,7 @@ const overslaan = reden => { console.log('  ⏭ ' + reden + ' — overgeslagen')
   const GETYPT = +(L.dir === 'long' ? L.entry * (1 - STOP_AFSTAND) : L.entry * (1 + STOP_AFSTAND)).toFixed(1);
   const per = orderBeeld(acc.historicalOrders);
   const eindVan = X => dicht.includes(X) ? X.closes[X.closes.length - 1].time : Infinity;
-  const STOP = stopVolgensHl(L, per, eindVan(L));
+  const STOP = stopVolgensHl(L, per, eindVan(L), acc.historicalOrders);
   if (!STOP) overslaan('de opname heeft geen stop-loss bij je laatste positie (historicalOrders ontbreekt? neem opnieuw op)');
   const rVan = (X, stop) => X.netto / (Math.abs(X.entry - stop) * X.qty);   // netto P&L ÷ risico in $
   const rVerwacht = rVan(L, STOP);
@@ -151,7 +155,7 @@ const overslaan = reden => { console.log('  ⏭ ' + reden + ' — overgeslagen')
   }
   // F8: per trade de stop, en per afbouw TP / SL / hand, volgens de ruwe orders
   for (const X of [...dicht, ...open]) {
-    const r = t2.find(t => t.openTime === X.open), stop = stopVolgensHl(X, per, eindVan(X));
+    const r = t2.find(t => t.openTime === X.open), stop = stopVolgensHl(X, per, eindVan(X), acc.historicalOrders);
     ok(`${dag(X.open)} ${X.dir}: stop ${stop || 'geen'} van Hyperliquid`, !!r && (stop ? r.stop === stop && r.stopBron === 'hyperliquid' : !r.stop), JSON.stringify(r && [r.stop, r.stopBron]));
     const verwacht = X.closes.map(f => soortVolgensHl(String(f.oid), per));
     const app = r ? r.afbouw.map(f => [f.oid, f.soort]) : [];
@@ -196,7 +200,7 @@ const overslaan = reden => { console.log('  ⏭ ' + reden + ' — overgeslagen')
     mijn.every(r => Math.abs(r.L.netto) >= 100 || (/\d,\d\d/.test(r.pnl) && Math.abs(getal(r.pnl) - r.L.netto) < 0.006)),
     JSON.stringify(mijn.map(r => [r.pnl, +r.L.netto.toFixed(4)])));
   const marge = x => Math.abs(x) < 1 ? 0.006 : 0.06;   // de tabel toont 2 decimalen onder 1R, anders 1
-  const rRij = r => { const stop = stopVolgensHl(r.L, per, eindVan(r.L)); return stop ? rVan(r.L, stop) : null; };
+  const rRij = r => { const stop = stopVolgensHl(r.L, per, eindVan(r.L), acc.historicalOrders); return stop ? rVan(r.L, stop) : null; };
   ok('R van elke trade = netto P&L ÷ risico met de stop van Hyperliquid (zonder stop: een streepje)',
     mijn.every(r => { const x = rRij(r); return x == null ? r.r === '—' : Math.abs(getal(r.r) - x) < marge(x) && (x < 0) === /−/.test(r.r); }),
     JSON.stringify(mijn.map(r => [r.r, rRij(r) && +rRij(r).toFixed(3)])));

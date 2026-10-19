@@ -45,8 +45,8 @@ const fill = (iso, dir, sz, px, oid, closedPnl = 0, startPosition = 0, tid) => (
   // Denny's running long: a limit entry with its SL placed 15-10 19:05, filled 16-10 17:13 (22 h later), SL still open
   ok('limit-instap met SL erbij, 22 uur vóór de fill geplaatst en nog actief: telt', (await sl([ord(14, Z('2026-10-14T21:05:00'), 'A', 'Stop Market', 79440, 0.00391, 'open')])).stop === 79440);
   ok('… ook als hij later geraakt werd (actief bij de opening)', (await sl([ord(15, Z('2026-10-14T21:05:00'), 'A', 'Stop Market', 79440, 0.00391, 'triggered', Z('2026-10-16T01:00:00'))], { ...LONG, closeTime: String(Z('2026-10-16T01:00:01')) })).stop === 79440);
-  q = await sl([ord(9, Z('2026-10-15T19:05:00'), 'A', 'Stop Market', 79000, 0.002, 'open'), ord(10, Z('2026-10-15T19:05:20'), 'A', 'Stop Market', 80000, 0.002, 'open')]);
-  ok('twee deel-stops in dezelfde minuut: gewogen 79.500', q.stop === 79500, JSON.stringify(q));
+  q = await sl([ord(9, Z('2026-10-15T19:05:00'), 'A', 'Stop Market', 79000, 0.00195, 'open'), ord(10, Z('2026-10-15T19:05:20'), 'A', 'Stop Market', 80000, 0.00195, 'open')]);
+  ok('twee deel-stops in dezelfde minuut (samen de positie): gewogen 79.500', q.stop === 79500, JSON.stringify(q));
   q = await sl([ord(11, Z('2026-10-16T17:54:00'), 'A', 'Take Profit Market', 83179, 0.00132, 'triggered', Z('2026-10-16T20:00:00')), ord(12, Z('2026-10-16T17:54:00'), 'A', 'Take Profit Market', 85232, 0.00148, 'open')]);
   ok('TP\'s: 83.179 geraakt, 85.232 open, met %', q.tps.length === 2 && q.tps[0].status === 'geraakt' && q.tps[1].status === 'open' && Math.round(q.tps[0].pct) === 34, JSON.stringify(q.tps));
   // measured on Denny's recording: a hit order ends with a 'filled' row that has triggerPx 0.0 and isTrigger false
@@ -105,7 +105,7 @@ const fill = (iso, dir, sz, px, oid, closedPnl = 0, startPosition = 0, tid) => (
   y = await sync(fillsMetHand, orders.slice(0, 2).concat(ord(33, Z('2026-10-15T09:00:05'), 'A', 'Stop Market', 79000, 0.001, 'reduceOnlyCanceled', Z('2026-10-15T12:00:00'))));
   ok('stop 79.000 (stop-order, niet geraakt) en met de hand met verlies gesloten → TP1, TP2, Close ✋', y.stop === 79000 && y.labels.join(',') === 'TP1,TP2,Close ✋', JSON.stringify(y));
   // the same trade, a stop typed by hand before: Hyperliquid's stop wins (Denny 18-10-2026, as Kraken)
-  const opnieuw = await p.evaluate(async () => { const t = T.find(x => x.exchange === 'hyperliquid'); t.stop = 78000; delete t.stopBron; CONNS.hyperliquid.lastSync = Date.now() - 864e5 * 5;
+  const opnieuw = await p.evaluate(async () => { const t = T.find(x => x.exchange === 'hyperliquid'); t.stop = 78000; t.stopBron = 'gebruiker';   // as the form marks a stop typed by hand CONNS.hyperliquid.lastSync = Date.now() - 864e5 * 5;
     await syncExchange('hyperliquid', { quiet: true }); return { stop: t.stop, bron: t.stopBron, n: T.filter(x => x.exchange === 'hyperliquid').length }; });
   ok('een eerder getypte stop maakt plaats voor die van Hyperliquid', opnieuw.n === 1 && opnieuw.stop === 79000 && opnieuw.bron === 'hyperliquid', JSON.stringify(opnieuw));
   y = await sync(tpsl, 'fout');
@@ -113,6 +113,53 @@ const fill = (iso, dir, sz, px, oid, closedPnl = 0, startPosition = 0, tid) => (
   // a trade older than the order history (Hyperliquid keeps the last 2000 orders): no invented "Close"
   y = await sync(tpsl, [ord(99, Z('2026-10-15T13:00:00'), 'A', 'Stop Market', 70000, 0.001, 'open')]);
   ok('trade van vóór de order-historie: geen verzonnen labels (TP1–TP3 zoals vroeger)', y.labels.join(',') === 'TP1,TP2,TP3', JSON.stringify(y));
+
+  console.log('─── Review v1.12 ───');
+  // C1: stopped out at 18:59:59 by a stop placed 18:59:50, long again at 19:00, own stop 79.000 at 19:01
+  q = await sl([ord(40, Z('2026-10-15T18:59:50'), 'A', 'Stop Market', 80500, 0.00391, 'triggered', Z('2026-10-15T18:59:59')), ord(41, Z('2026-10-15T19:01:00'), 'A', 'Stop Market', 79000, 0.00391, 'open')]);
+  ok('C1: gestopt en binnen een minuut opnieuw long → je nieuwe stop 79.000, niet die van de vorige positie', q.stop === 79000 && q.verschoven === false, JSON.stringify(q));
+  // I1: the entry order carries its SL as a child (measured: same price and size, placed with the entry); a stop from another, earlier entry plan does not win
+  const instap = (oid, ts, type, kids) => ({ order: { coin: 'BTC', side: 'B', orderType: type, triggerPx: '0.0', sz: '0.0', origSz: '0.00391', oid, timestamp: ts, isTrigger: false, reduceOnly: false,
+    children: kids.map(([px, sz]) => ({ coin: 'BTC', side: 'A', orderType: 'Stop Market', triggerPx: String(px), sz: String(sz), oid, timestamp: ts, isTrigger: true, reduceOnly: true })) }, status: 'filled', statusTimestamp: ts });
+  const kids = [ord(42, Z('2026-10-15T09:00:00'), 'A', 'Stop Market', 78000, 0.00391, 'canceled', Z('2026-10-15T20:00:00')), instap(500, Z('2026-10-15T19:00:00'), 'Market', [[80000, 0.00391]]),
+    ord(43, Z('2026-10-15T19:00:00'), 'A', 'Stop Market', 80000, 0.00391, 'open')];
+  q = await p.evaluate(([orders, L]) => { const h = ExchangeAPI.hyperliquid; return h._slTpVoorTrade(L, h._orderRegels(orders), h._instapStops ? h._instapStops(orders) : undefined); }, [kids, { ...LONG, instapOid: '500' }]);
+  ok('I1: de SL die aan je instap-order hangt (80.000) wint van een losse stop uit een eerder plan (78.000)', q.stop === 80000 && q.verschoven === false, JSON.stringify(q));
+  // I2: one stop dragged to another price within the minute (two full-size orders): the first, moved
+  q = await sl([ord(44, Z('2026-10-15T19:01:00'), 'A', 'Stop Market', 79000, 0.00391, 'canceled', Z('2026-10-15T19:01:20')), ord(45, Z('2026-10-15T19:01:20'), 'A', 'Stop Market', 80000, 0.00391, 'open')]);
+  ok('I2: stop binnen de minuut versleept (2× de volle grootte) → 79.000, verschoven; geen verzonnen 79.500', q.stop === 79000 && q.verschoven === true, JSON.stringify(q));
+  // I3: a trade whose steps carry no order id (CSV, or synced before this version): no invented "by hand"
+  const zonderOid = tpsl.map(x => { const c = { ...x }; delete c.oid; return c; });
+  y = await sync(zonderOid, orders);
+  ok('I3: stappen zonder order-nummer → labels TP1–TP3 zoals vroeger, wel de stop', y.labels.join(',') === 'TP1,TP2,TP3' && y.stop === 79000, JSON.stringify(y));
+  // … and a connection from before this version fetches its history once more, so old trades get their order ids
+  const her = await p.evaluate(async ([fills]) => { const c = CONNS.hyperliquid; c.lastSync = Date.parse('2026-10-18T00:00:00Z'); delete c.stappen; persistConns();
+    const starts = []; const oud = ExchangeAPI.hyperliquid._post;
+    ExchangeAPI.hyperliquid._post = async body => { if (body.type === 'userFillsByTime') { starts.push(+body.startTime); return fills.filter(f => f.time >= +body.startTime); } return oud(body); };
+    await syncExchange('hyperliquid', { quiet: true }); const t = T.find(x => x.exchange === 'hyperliquid'); const l1 = tpLabels(t.tps, t);
+    await syncExchange('hyperliquid', { quiet: true });
+    return { starts, l1, stappen: CONNS.hyperliquid.stappen }; }, [tpsl]);
+  ok('I3: verbinding van vóór deze versie haalt één keer alles opnieuw op → TP1, TP2, SL', her.starts[0] <= Z('2026-10-15T09:00:00') && her.l1.join(',') === 'TP1,TP2,SL', JSON.stringify(her));
+  ok('I3: … en daarna weer vanaf de laatste sync', her.starts.length >= 2 && her.starts[her.starts.length - 1] > Z('2026-10-15T09:00:00') && her.stappen >= 1, JSON.stringify(her));
+  // I4: your own TP in front of the hit levels (old rows, placeholders): each close keeps its own kind
+  y = await sync(tpsl, orders);
+  const i4 = await p.evaluate(async () => { const h = ExchangeAPI.hyperliquid, t = T.find(x => x.exchange === 'hyperliquid');
+    t.tps.forEach(x => delete x.soort); t.tps.unshift({ price: 90000, pct: 10, r: '', hit: false, ts: 0 });
+    h._orders = await h._ordersOphalen(CONNS.hyperliquid.wallet); h._stopsInvullen();
+    return t.tps.map(x => x.price + ':' + (x.soort || '')); });
+  ok('I4: eigen TP vóóraan → 81.000 tp, 82.000 tp, 80.000 sl; je eigen TP zonder soort', i4.join(',') === '90000:,81000:tp,82000:tp,80000:sl', JSON.stringify(i4));
+  // I5: Hyperliquid returns the newest 2000 status rows; the trade lies before what they cover
+  const vol = Array.from({ length: 1999 }, (_, i) => ({ order: { coin: 'ETH', side: 'B', orderType: 'Limit', triggerPx: '0.0', sz: '0.1', origSz: '0.1', oid: 1000 + i, timestamp: Z('2026-10-15T11:00:00') + i * 1000, isTrigger: false, reduceOnly: false }, status: 'filled', statusTimestamp: Z('2026-10-15T11:00:00') + i * 1000 }));
+  y = await sync(tpsl, [ord(35, Z('2026-10-15T09:00:05'), 'A', 'Stop Market', 79000, 0.001, 'canceled', Z('2026-10-15T11:30:00')), ...vol]);
+  ok('I5: trade vóór wat de 2000 regels dekken → geen stop en geen verzonnen labels', !(y.stop > 0) && y.labels.join(',') === 'TP1,TP2,TP3', JSON.stringify(y));
+  // I6: a stop-out is not a hit take-profit (shared display: review tile)
+  const i6 = await p.evaluate(async () => { try { hideWelcome(); } catch (e) {}
+    T = [{ id: 7, exchange: 'hyperliquid', pair: 'BTC/USDC', dir: 'long', status: 'closed', kind: 'live', date: '2026-10-15', time: '09:00', entry: 80000, exit: 79000, stop: 79000, size: '240', pnl: -3, fees: 0.1,
+      tps: [{ price: 79000, pct: 100, r: '', hit: true, ts: Date.parse('2026-10-15T12:00:00Z'), soort: 'sl' }], tags: [], layers: [] }]; persist(); clearGFilter(); setFilter('kind', 'alle');
+    STATE.revSel = 7; go('review'); await new Promise(r => setTimeout(r, 300));
+    const tile = [...document.querySelectorAll('.revtiles > *')].find(e => /TP geraakt/.test(e.textContent));
+    return tile ? tile.textContent.replace(/\s+/g, ' ').trim() : '(geen tegel)'; });
+  ok('I6: gestopt op je SL → tegel "TP geraakt" zegt geen 1/1', i6 !== '(geen tegel)' && !/1\/1/.test(i6), i6);
 
   ok('geen JS-fouten', errs.length === 0, errs.slice(0, 2).join(' | '));
   console.log(`\n=== HL stop-loss: ${pass}/${pass + fail} ===`); await b.close(); process.exit(fail ? 1 : 0);
