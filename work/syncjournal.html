@@ -7645,6 +7645,12 @@ const ExchangeAPI = {
         status:/triggered|filled/.test(r.status)?'geraakt':r.status==='open'?'open':(r.status==='reduceOnlyCanceled'&&dicht&&r.statusTs>=dicht-5e3)?'niet geraakt':'geannuleerd'}));
       return{stop,verschoven,stopVerloop,tps};
     },
+    /* How a close order went (F5/F8): the fill's oid is the order's oid (seen in Denny's recording). A Stop order is SL,
+       also when moved to break-even or into profit; a Take Profit order is TP; any other order (market, limit) is by hand. */
+    _afbouwSoort(t,regels){
+      const perOid=new Map((regels||[]).map(r=>[String(r.oid),r.soort]));
+      return g=>g.fills.some(f=>f.kind==='liq')?'liq':(perOid.get(String(g.ordId||''))||'hand');
+    },
     _reconstructTrades(fills,idPrefix,metOpen){
       const aggregated=this._aggregateSubFills(fills);
       const sorted=[...aggregated].sort((a,b)=>((a.ms||0)-(b.ms||0))||String(a.tid||"").localeCompare(String(b.tid||"")));
@@ -7688,6 +7694,9 @@ const ExchangeAPI = {
           status:"closed",
           positionId:coin,
           fills:tl,
+          // one TP level per close order, like Kraken (F8): timeline, presentation and labels read them
+          tpLevels:(()=>{const uit=perOrder(tl.filter(isAfbouw)),q=uit.reduce((a,x)=>a+x.qty,0)||1;
+            return uit.map((x,i)=>({id:'tp'+(i+1)+'_'+x.ts,price:normPrice(x.price),pct:String(+(x.qty/q*100).toFixed(2)),status:"hit",actualPrice:normPrice(x.price),ts:x.ts}));})(),
           notes:afgeleid?"\u26a0 Entry afgeleid uit closedPnl, open-fill lag buiten het sync-venster":"",
           ...(loopt?(afgebouwd?{status:"partial",realizedPnl:net.toFixed(4),pnl:"0"}:{status:"open",closeTime:"",pnl:"0"}):{}),
         });

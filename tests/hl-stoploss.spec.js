@@ -61,6 +61,26 @@ const fill = (iso, dir, sz, px, oid, closedPnl = 0, startPosition = 0, tid) => (
   ok('omkering: de short houdt zijn buy-stop 82.000', (await sl(flip, SHORT)).stop === 82000);
   ok('omkering: de nieuwe long krijgt de sell-stop 80.900', (await sl(flip, NA)).stop === 80900);
 
+  console.log('─── Task 4: hoe ging elke afbouw — TP, SL of Close ───');
+  // long 0.003 @ 80000: TP1 (trigger order 31) and TP2 (32) hit, then the stop (33) moved to break-even and hit
+  const tpsl = [fill('2026-10-15T09:00:00', 'Open Long', 0.003, 80000, 30),
+    fill('2026-10-15T10:00:00', 'Close Long', 0.001, 81000, 31, 1, 0.003), fill('2026-10-15T11:00:00', 'Close Long', 0.001, 82000, 32, 2, 0.002),
+    fill('2026-10-15T12:00:00', 'Close Long', 0.001, 80000, 33, 0, 0.001)];
+  const orders = [ord(31, Z('2026-10-15T09:00:05'), 'A', 'Take Profit Market', 81000, 0.001, 'triggered', Z('2026-10-15T10:00:00')),
+    ord(32, Z('2026-10-15T09:00:05'), 'A', 'Take Profit Market', 82000, 0.001, 'triggered', Z('2026-10-15T11:00:00')),
+    ord(33, Z('2026-10-15T09:00:05'), 'A', 'Stop Market', 80000, 0.001, 'triggered', Z('2026-10-15T12:00:00'))];
+  const labels = (fills, orders) => p.evaluate(([fills, orders]) => { const h = ExchangeAPI.hyperliquid, t = h._reconstructTrades(fills.map(f => h._naarFill(f)), 'hl')[0];
+    const soort = h._afbouwSoort(t, h._orderRegels(orders)); const g = perOrder(t.fills.filter(isAfbouw));
+    return { soort: g.map(soort), labels: tpLabels(g.map(x => ({ soort: soort(x), price: x.price })), t), tps: (t.tpLevels || []).length }; }, [fills, orders]);
+  let lb = await labels(tpsl, orders);
+  ok('TP1 en TP2 geraakt, dan de stop op break-even → TP1, TP2, SL', lb.labels.join(',') === 'TP1,TP2,SL', JSON.stringify(lb));
+  ok('een TP-niveau per afbouw-order (3)', lb.tps === 3, JSON.stringify(lb));
+  lb = await labels(tpsl, orders.slice(0, 2));
+  ok('zonder stop-order: de laatste sluiting met de hand, op entry → Close ✋', lb.labels.join(',') === 'TP1,TP2,Close ✋', JSON.stringify(lb));
+  const handWinst = [tpsl[0], tpsl[1], tpsl[2], fill('2026-10-15T12:00:00', 'Close Long', 0.001, 83000, 33, 3, 0.001)];
+  lb = await labels(handWinst, orders.slice(0, 2));
+  ok('met de hand in winst → TP3 ✋', lb.labels.join(',') === 'TP1,TP2,TP3 ✋', JSON.stringify(lb));
+
   ok('geen JS-fouten', errs.length === 0, errs.slice(0, 2).join(' | '));
   console.log(`\n=== HL stop-loss: ${pass}/${pass + fail} ===`); await b.close(); process.exit(fail ? 1 : 0);
 })().catch(e => { console.log('  ✗ crash: ' + String(e).split('\n')[0]); process.exit(1); });
