@@ -16,6 +16,12 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v1.11.1] — 2026-10-19
+
+### Gewijzigd
+- **De Kraken-koppeling is uit ontwikkeling.** De markering "in ontwikkeling" en de waarschuwing bij Kraken in
+  Instellingen → Accounts zijn weg: trades, tijden, stop-loss en TP's komen sinds v1.10/v1.11 betrouwbaar binnen.
+
 ## [v1.11] — 2026-10-18
 
 ### Toegevoegd

@@ -170,9 +170,10 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  âœ
       blSchoon: !!bl && !bl.querySelector('.exflag') && !bl.querySelector('.exnote'),
     };
   });
-  ok('Kraken toont de markering "in ontwikkeling"', flag.krChip === 'in ontwikkeling', JSON.stringify(flag.krChip));
-  ok('met een uitleg eronder', flag.krUitleg);
-  ok('maar blijft gewoon te koppelen (anders dan een gestopte API)', flag.krKoppelbaar && !flag.mxKoppelbaar, JSON.stringify(flag));
+  // Kraken is out of development since v1.11.1 (Denny 19-10-2026): no marking, no warning, still linkable
+  ok('Kraken heeft geen markering "in ontwikkeling" meer', !flag.krChip, JSON.stringify(flag.krChip));
+  ok('en geen waarschuwing eronder', !flag.krUitleg);
+  ok('en is gewoon te koppelen (anders dan een gestopte API)', flag.krKoppelbaar && !flag.mxKoppelbaar, JSON.stringify(flag));
   ok('MEXC houdt zijn eigen markering', flag.mxChip === 'API gestopt', JSON.stringify(flag.mxChip));
   ok('een exchange zonder markering blijft schoon', flag.blSchoon);
 
