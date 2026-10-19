@@ -33,6 +33,9 @@ async function haalAccount(wallet) {
     wallet, opgenomen: new Date().toISOString(), fills,
     clearinghouseState: await post({ type: 'clearinghouseState', user: wallet }),
     spotClearinghouseState: await post({ type: 'spotClearinghouseState', user: wallet }),
+    // orders, for stop-loss and take-profits (F8): the last 2000 status changes, and what is open now
+    historicalOrders: await post({ type: 'historicalOrders', user: wallet }).then(x => Array.isArray(x) ? x : [], () => []),
+    frontendOpenOrders: await post({ type: 'frontendOpenOrders', user: wallet }).then(x => Array.isArray(x) ? x : [], () => []),
   };
 }
 
@@ -96,6 +99,9 @@ async function speelAf(page, acc, klok = {}) {
       json = acc.fills.filter(f => f.time >= van && f.time <= tot && (nu == null || f.time <= nu)).slice(0, MAX_BATCH);
     } else if (body.type === 'clearinghouseState') json = staatOp(acc, nu);
     else if (body.type === 'spotClearinghouseState') json = acc.spotClearinghouseState;
+    // order history as it was at moment `nu`; an older recording without orders gives empty lists
+    else if (body.type === 'historicalOrders') json = (acc.historicalOrders || []).filter(x => nu == null || (+x.statusTimestamp || +(x.order || {}).timestamp || 0) <= nu);
+    else if (body.type === 'frontendOpenOrders') json = acc.frontendOpenOrders || [];
     else { log.onbekend.push(body.type); return route.fulfill({ status: 400, body: 'niet opgenomen: ' + body.type }); }
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(json) });
   });

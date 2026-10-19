@@ -250,10 +250,14 @@ meting tegen (fill-`oid` ≠ trigger-`oid`): koppel op de `statusTimestamp` van 
 
 ---
 
-## Bevindingen opname (in te vullen bij Task 1)
+## Bevindingen opname (19-10-2026)
 
-- Fill-`oid` van een geraakte trigger = trigger-`oid`: …
-- Liquidatie in de fills: …
+Opname van Denny's wallet: 29 fills, 89 order-regels, 4 open orders, 1 open positie.
+- **Fill-`oid` van een geraakte trigger = trigger-`oid`:** ja, bij alle 7 geraakte orders (5 TP's, 2 stops). Task 4 koppelt dus exact op `oid`, zonder tijd.
+- **Volgorde per order:** `open` → `triggered` → `filled` (of `canceled` / `reduceOnlyCanceled`). De regel `filled` heeft
+  `triggerPx: "0.0"`, `isTrigger: false` en `triggerCondition: "Triggered"`; de trigger-prijs staat in `open` en `triggered`.
+  `_orderRegels` neemt de prijs daarom uit een regel met `triggerPx > 0`, niet uit de eerste regel.
+- **Liquidatie in de fills:** geen in deze opname; `dir` kent Open/Close Long/Short. Een liquidatie herkennen we (later) aan het veld `liquidation`.
 
 ## Bewust niet in dit plan
 - **OKX en Blofin:** eigen plan per exchange, daarna. Daar bewaart de exchange alleen de laatste stand van een stop: "eerst gezien = oorspronkelijk" zolang de positie loopt.
