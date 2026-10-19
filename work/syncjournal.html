@@ -7565,7 +7565,7 @@ const ExchangeAPI = {
         const px=parseFloat(f.px)||0;
         const fee=Math.abs(parseFloat(f.fee)||0);
         const pnl=parseFloat(f.closedPnl)||0;
-        if(!g[k]){g[k]={ms:f.ms,coin:f.coin,dir:f.dir,side:f.side,startPosition:f.startPosition,tid:f.tid,_szSum:0,_pxW:0,_feeSum:0,_pnlSum:0};}
+        if(!g[k]){g[k]={ms:f.ms,coin:f.coin,dir:f.dir,side:f.side,startPosition:f.startPosition,tid:f.tid,oid:f.oid,_szSum:0,_pxW:0,_feeSum:0,_pnlSum:0};}
         g[k]._szSum+=sz;g[k]._pxW+=px*sz;g[k]._feeSum+=fee;g[k]._pnlSum+=pnl;
         if(!g[k].tid&&f.tid)g[k].tid=f.tid;
         /* startPosition = de stand vóór de hele order: sub-fills bewegen één kant op, dus bij
@@ -7576,7 +7576,7 @@ const ExchangeAPI = {
           if(g[k].startPosition==null||g[k].startPosition===""||(opent?b<a:b>a))g[k].startPosition=f.startPosition;
         }
       }
-      return Object.values(g).map(o=>({ms:o.ms,coin:o.coin,dir:o.dir,side:o.side,startPosition:o.startPosition,tid:o.tid,sz:String(o._szSum),px:o._szSum>0?String(o._pxW/o._szSum):"0",fee:String(o._feeSum),closedPnl:String(o._pnlSum)}));
+      return Object.values(g).map(o=>({ms:o.ms,coin:o.coin,dir:o.dir,side:o.side,startPosition:o.startPosition,tid:o.tid,oid:o.oid,sz:String(o._szSum),px:o._szSum>0?String(o._pxW/o._szSum):"0",fee:String(o._feeSum),closedPnl:String(o._pnlSum)}));
     },
     /* Gedeelde reconstructie voor API + CSV. Input: fills met {coin, dir, px, sz, fee,
        closedPnl, ms, side?, startPosition?, tid?}. Sub-fills op dezelfde ms+coin+dir worden
@@ -7603,7 +7603,7 @@ const ExchangeAPI = {
       if(d==="Close Long"||d==="Open Short"||d==="Sell"||d==="Long > Short")return "sell";
       return "";
     },
-    _naarFill(f){return {coin:f.coin,dir:f.dir,side:f.side,startPosition:f.startPosition,px:f.px,sz:f.sz,fee:f.fee,closedPnl:f.closedPnl,ms:Number(f.time)||0,tid:f.tid};},
+    _naarFill(f){return {coin:f.coin,dir:f.dir,side:f.side,startPosition:f.startPosition,px:f.px,sz:f.sz,fee:f.fee,closedPnl:f.closedPnl,ms:Number(f.time)||0,tid:f.tid,oid:f.oid};},
     _reconstructTrades(fills,idPrefix,metOpen){
       const aggregated=this._aggregateSubFills(fills);
       const sorted=[...aggregated].sort((a,b)=>((a.ms||0)-(b.ms||0))||String(a.tid||"").localeCompare(String(b.tid||"")));
@@ -7690,7 +7690,8 @@ const ExchangeAPI = {
           const prijs=(gem*(st.voorstuk.qty+bijSz)-bijPx)/st.voorstuk.qty;
           st.voorstuk.price=(isFinite(prijs)&&prijs>0)?prijs:(gem>0?gem:pxN);
         }
-        st.steps.push({ts:Number(f.ms)||0,side,qty:szN,price:pxN,fee:feeN,pnlExch:sluit?pnlN:null,id:f.tid?String(f.tid):undefined});
+        // ordId: the order (oid) - an order filled at several moments is one step for the reader (perOrder); the CSV has none
+        st.steps.push({ts:Number(f.ms)||0,side,qty:szN,price:pxN,fee:feeN,pnlExch:sluit?pnlN:null,id:f.tid?String(f.tid):undefined,...(f.oid!=null&&f.oid!==''?{ordId:String(f.oid)}:{})});
         st.pos+=side==="buy"?szN:-szN;
         if(Math.abs(st.pos)<1e-9){ st.pos=0; sluitAf(coin,st); delete lopend[coin]; }
       }
