@@ -68,7 +68,8 @@ const fill = (iso, dir, sz, px, oid, closedPnl = 0, startPosition = 0, tid) => (
     fill('2026-10-15T12:00:00', 'Close Long', 0.001, 80000, 33, 0, 0.001)];
   const orders = [ord(31, Z('2026-10-15T09:00:05'), 'A', 'Take Profit Market', 81000, 0.001, 'triggered', Z('2026-10-15T10:00:00')),
     ord(32, Z('2026-10-15T09:00:05'), 'A', 'Take Profit Market', 82000, 0.001, 'triggered', Z('2026-10-15T11:00:00')),
-    ord(33, Z('2026-10-15T09:00:05'), 'A', 'Stop Market', 80000, 0.001, 'triggered', Z('2026-10-15T12:00:00'))];
+    ord(35, Z('2026-10-15T09:00:05'), 'A', 'Stop Market', 79000, 0.001, 'canceled', Z('2026-10-15T11:30:00')),   // the original stop, moved to break-even:
+    ord(33, Z('2026-10-15T11:30:00'), 'A', 'Stop Market', 80000, 0.001, 'triggered', Z('2026-10-15T12:00:00'))];
   const labels = (fills, orders) => p.evaluate(([fills, orders]) => { const h = ExchangeAPI.hyperliquid, t = h._reconstructTrades(fills.map(f => h._naarFill(f)), 'hl')[0];
     const soort = h._afbouwSoort(t, h._orderRegels(orders)); const g = perOrder(t.fills.filter(isAfbouw));
     return { soort: g.map(soort), labels: tpLabels(g.map(x => ({ soort: soort(x), price: x.price })), t), tps: (t.tpLevels || []).length }; }, [fills, orders]);
@@ -80,6 +81,38 @@ const fill = (iso, dir, sz, px, oid, closedPnl = 0, startPosition = 0, tid) => (
   const handWinst = [tpsl[0], tpsl[1], tpsl[2], fill('2026-10-15T12:00:00', 'Close Long', 0.001, 83000, 33, 3, 0.001)];
   lb = await labels(handWinst, orders.slice(0, 2));
   ok('met de hand in winst → TP3 ✋', lb.labels.join(',') === 'TP1,TP2,TP3 ✋', JSON.stringify(lb));
+
+  console.log('─── Task 5: in de sync — de exchange wint ───');
+  // the TP/TP/stop long from Task 4, through the real syncExchange with a fake Hyperliquid API
+  const sync = (fills, orders, prep) => p.evaluate(async ([fills, orders, prep]) => {
+    T = []; TRASH = []; CONNS.hyperliquid = { connected: true, wallet: '0x' + '1'.repeat(40), syncFrom: '2026-10-01' }; window.__hl = [];
+    ExchangeAPI.hyperliquid._post = async body => { window.__hl.push(body.type);
+      if (body.type === 'userFillsByTime') return fills.filter(f => f.time >= (+body.startTime || 0) && (body.endTime == null || f.time <= +body.endTime));
+      if (body.type === 'historicalOrders') { if (orders === 'fout') throw new Error('Hyperliquid HTTP 429 op historicalOrders'); return orders; }
+      if (body.type === 'clearinghouseState') return { marginSummary: { accountValue: '100' }, assetPositions: [] };
+      if (body.type === 'spotClearinghouseState') return { balances: [] };
+      if (body.type === 'frontendOpenOrders') return [];
+      return []; };
+    if (prep) new Function(prep)();
+    const res = await syncExchange('hyperliquid', { quiet: true });
+    const t = T.find(x => x.exchange === 'hyperliquid');
+    return { res, n: T.filter(x => x.exchange === 'hyperliquid').length, stop: t && t.stop, bron: t && t.stopBron, labels: t ? tpLabels(t.tps, t) : [], vragen: window.__hl.filter(x => x === 'historicalOrders').length };
+  }, [fills, orders, prep || '']);
+  let y = await sync(tpsl, orders);
+  ok('nieuwe trade: oorspronkelijke stop 79.000 van Hyperliquid, labels TP1, TP2, SL', y.n === 1 && y.stop === 79000 && y.bron === 'hyperliquid' && y.labels.join(',') === 'TP1,TP2,SL', JSON.stringify(y));
+  ok('één historicalOrders-aanroep per sync', y.vragen === 1, JSON.stringify(y));
+  const fillsMetHand = [tpsl[0], tpsl[1], tpsl[2], fill('2026-10-15T12:00:00', 'Close Long', 0.001, 79500, 34, -0.5, 0.001)];
+  y = await sync(fillsMetHand, orders.slice(0, 2).concat(ord(33, Z('2026-10-15T09:00:05'), 'A', 'Stop Market', 79000, 0.001, 'reduceOnlyCanceled', Z('2026-10-15T12:00:00'))));
+  ok('stop 79.000 (stop-order, niet geraakt) en met de hand met verlies gesloten → TP1, TP2, Close ✋', y.stop === 79000 && y.labels.join(',') === 'TP1,TP2,Close ✋', JSON.stringify(y));
+  // the same trade, a stop typed by hand before: Hyperliquid's stop wins (Denny 18-10-2026, as Kraken)
+  const opnieuw = await p.evaluate(async () => { const t = T.find(x => x.exchange === 'hyperliquid'); t.stop = 78000; delete t.stopBron; CONNS.hyperliquid.lastSync = Date.now() - 864e5 * 5;
+    await syncExchange('hyperliquid', { quiet: true }); return { stop: t.stop, bron: t.stopBron, n: T.filter(x => x.exchange === 'hyperliquid').length }; });
+  ok('een eerder getypte stop maakt plaats voor die van Hyperliquid', opnieuw.n === 1 && opnieuw.stop === 79000 && opnieuw.bron === 'hyperliquid', JSON.stringify(opnieuw));
+  y = await sync(tpsl, 'fout');
+  ok('historicalOrders faalt (429): trades komen binnen, zonder stop, labels TP1–TP3 zoals vroeger', y.res !== -1 && y.n === 1 && !(y.stop > 0) && y.labels.join(',') === 'TP1,TP2,TP3', JSON.stringify(y));
+  // a trade older than the order history (Hyperliquid keeps the last 2000 orders): no invented "Close"
+  y = await sync(tpsl, [ord(99, Z('2026-10-15T13:00:00'), 'A', 'Stop Market', 70000, 0.001, 'open')]);
+  ok('trade van vóór de order-historie: geen verzonnen labels (TP1–TP3 zoals vroeger)', y.labels.join(',') === 'TP1,TP2,TP3', JSON.stringify(y));
 
   ok('geen JS-fouten', errs.length === 0, errs.slice(0, 2).join(' | '));
   console.log(`\n=== HL stop-loss: ${pass}/${pass + fail} ===`); await b.close(); process.exit(fail ? 1 : 0);
