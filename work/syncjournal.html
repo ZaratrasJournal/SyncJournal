@@ -7604,6 +7604,47 @@ const ExchangeAPI = {
       return "";
     },
     _naarFill(f){return {coin:f.coin,dir:f.dir,side:f.side,startPosition:f.startPosition,px:f.px,sz:f.sz,fee:f.fee,closedPnl:f.closedPnl,ms:Number(f.time)||0,tid:f.tid,oid:f.oid};},
+    /* ═══ Stop-loss and take-profits from the order history (F8, Denny 19-10-2026) ═══ */
+    _SL_VOOR_MS:60e3,   // a bracket SL may be placed up to 60 s before the opening fill
+    /* historicalOrders → one row per oid: first placement time, last known status. Order types are matched on their
+       start ("Stop Market", "Stop Limit", "Take Profit Market", ...); anything else is ignored. A hit order ends with
+       a 'filled' row that has triggerPx 0.0 and isTrigger false (seen in Denny's recording): the price comes from a
+       row that has one. */
+    _orderRegels(historical){
+      const per=new Map();
+      (historical||[]).forEach(x=>{const o=x&&x.order;if(!o||!o.isTrigger)return;const k=String(o.oid);
+        const soort=/^stop/i.test(o.orderType)?'sl':/^take profit/i.test(o.orderType)?'tp':'anders';
+        const rij=per.get(k)||{oid:k,ts:+o.timestamp||0,coin:String(o.coin||''),side:o.side==='B'?'buy':'sell',soort,price:0,sz:parseFloat(o.origSz||o.sz)||0,status:'',statusTs:0,reduceOnly:!!o.reduceOnly};
+        if(!(rij.price>0))rij.price=parseFloat(o.triggerPx)||0;
+        rij.ts=Math.min(rij.ts||Infinity,+o.timestamp||Infinity);
+        if((+x.statusTimestamp||0)>=rij.statusTs){rij.status=String(x.status||'');rij.statusTs=+x.statusTimestamp||0;}
+        per.set(k,rij);});
+      return[...per.values()].filter(r=>r.price>0&&r.soort!=='anders');
+    },
+    /* The original stop of a trade: the earliest stop order on its coin, closing side, loss side of the entry, placed
+       between the opening (minus a bracket margin) and the close; several within a minute: weighted by size.
+       verschoven: a later stop with another price. tps: take-profit orders on the profit side, latest per price. */
+    _slTpVoorTrade(t,regels){
+      const short=String(t.direction||t.dir)==='short',entry=+t.entry,coin=String(t.positionId||String(t.pair||'').split('/')[0]);
+      const van=+t.openTime-this._SL_VOOR_MS,tot=+t.closeTime||Date.now(),sluit=short?'buy':'sell';
+      /* also a reduce-only order placed earlier and still active at the opening: a limit entry with its SL and TPs
+         attached, filled hours later (Denny's long of 16-10). A previous position's stop is cancelled when that
+         position closes (reduceOnlyCanceled), so it is no longer active here. */
+      const open=+t.openTime,actief=r=>r.reduceOnly&&(r.status==='open'||r.statusTs>=open);
+      const kand=(regels||[]).filter(r=>r.coin===coin&&r.side===sluit&&r.ts<=tot&&(r.ts>=van||actief(r))).sort((a,b)=>a.ts-b.ts);
+      const verlies=p=>short?p>entry:p<entry;
+      const sls=kand.filter(r=>r.soort==='sl'&&verlies(r.price));
+      let stop=null,verschoven=false;
+      if(sls.length&&entry>0){const eerste=sls.filter(r=>r.ts-sls[0].ts<=60e3);const tw=eerste.reduce((s,r)=>s+r.sz,0);
+        stop=tw>0?+(eerste.reduce((s,r)=>s+r.price*r.sz,0)/tw).toFixed(8):sls[0].price;
+        verschoven=kand.some(r=>r.soort==='sl'&&r.ts>eerste[eerste.length-1].ts&&r.price!==stop);}
+      const stopVerloop=kand.filter(r=>r.soort==='sl').map(r=>({ts:r.ts,price:r.price,status:r.status}));
+      const piek=+t.qty||+t.positionSizeAsset||0,dicht=+t.closeTime||0;
+      const perPrijs=new Map();kand.filter(r=>r.soort==='tp'&&!verlies(r.price)).forEach(r=>perPrijs.set(r.price,r));
+      const tps=[...perPrijs.values()].sort((a,b)=>short?b.price-a.price:a.price-b.price).map(r=>({price:r.price,pct:piek>0?+(r.sz/piek*100).toFixed(2):0,
+        status:/triggered|filled/.test(r.status)?'geraakt':r.status==='open'?'open':(r.status==='reduceOnlyCanceled'&&dicht&&r.statusTs>=dicht-5e3)?'niet geraakt':'geannuleerd'}));
+      return{stop,verschoven,stopVerloop,tps};
+    },
     _reconstructTrades(fills,idPrefix,metOpen){
       const aggregated=this._aggregateSubFills(fills);
       const sorted=[...aggregated].sort((a,b)=>((a.ms||0)-(b.ms||0))||String(a.tid||"").localeCompare(String(b.tid||"")));

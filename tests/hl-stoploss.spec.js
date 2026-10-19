@@ -29,6 +29,38 @@ const fill = (iso, dir, sz, px, oid, closedPnl = 0, startPosition = 0, tid) => (
   const s = await bouw(sub);
   ok('sub-fills op dezelfde ms blijven één stap (gelijk aan de CSV-export), met het oid', s.steps === 2 && s.ordIds.join(',') === '7,8', JSON.stringify(s));
 
+  console.log('─── Task 3: welke order is de SL of een TP van welke trade ───');
+  const ord = (oid, ts, side, type, px, sz, status, statusTs) => ({ order: { coin: 'BTC', side, orderType: type, triggerPx: String(px), sz: String(sz), origSz: String(sz), oid, timestamp: ts, isTrigger: true, reduceOnly: true, isPositionTpsl: false }, status, statusTimestamp: statusTs || ts });
+  const LONG = { positionId: 'BTC', direction: 'long', entry: '81073', openTime: String(Z('2026-10-15T19:00:00')), closeTime: '', positionSizeAsset: '0.00391' };
+  const sl = (orders, L = LONG) => p.evaluate(([orders, L]) => { const h = ExchangeAPI.hyperliquid; return h._slTpVoorTrade(L, h._orderRegels(orders)); }, [orders, L]);
+  ok('SL 79.440 (sell-stop onder entry)', (await sl([ord(1, Z('2026-10-15T19:05:00'), 'A', 'Stop Market', 79440, 0.00391, 'open')])).stop === 79440);
+  ok('TP aan de winstkant is geen SL', (await sl([ord(2, Z('2026-10-15T19:05:00'), 'A', 'Take Profit Market', 83179, 0.00132, 'open')])).stop === null);
+  ok('stop aan de kopende kant (instap-stop) is geen SL', (await sl([ord(3, Z('2026-10-15T19:05:00'), 'B', 'Stop Market', 79440, 0.00391, 'open')])).stop === null);
+  let q = await sl([ord(4, Z('2026-10-15T19:05:00'), 'A', 'Stop Market', 79440, 0.00391, 'canceled', Z('2026-10-16T10:00:00')), ord(5, Z('2026-10-16T10:00:00'), 'A', 'Stop Market', 81073, 0.00391, 'open')]);
+  ok('verschoven naar break-even: 79.440 blijft, verschoven, verloop 2', q.stop === 79440 && q.verschoven === true && q.stopVerloop.length === 2, JSON.stringify(q));
+  ok('alleen een stop in winst: geen oorspronkelijke SL', (await sl([ord(6, Z('2026-10-15T19:05:00'), 'A', 'Stop Market', 82000, 0.00391, 'open')])).stop === null);
+  ok('bracket 30 s vóór instap telt', (await sl([ord(7, Z('2026-10-15T18:59:30'), 'A', 'Stop Market', 79440, 0.00391, 'open')])).stop === 79440);
+  // the previous position's reduce-only stop is cancelled when that position closes (reduceOnlyCanceled, before this opening)
+  ok('stop van de vorige positie (geannuleerd vóór de instap) telt niet', (await sl([ord(8, Z('2026-10-15T18:55:00'), 'A', 'Stop Market', 79440, 0.00391, 'reduceOnlyCanceled', Z('2026-10-15T18:58:00'))])).stop === null);
+  // Denny's running long: a limit entry with its SL placed 15-10 19:05, filled 16-10 17:13 (22 h later), SL still open
+  ok('limit-instap met SL erbij, 22 uur vóór de fill geplaatst en nog actief: telt', (await sl([ord(14, Z('2026-10-14T21:05:00'), 'A', 'Stop Market', 79440, 0.00391, 'open')])).stop === 79440);
+  ok('… ook als hij later geraakt werd (actief bij de opening)', (await sl([ord(15, Z('2026-10-14T21:05:00'), 'A', 'Stop Market', 79440, 0.00391, 'triggered', Z('2026-10-16T01:00:00'))], { ...LONG, closeTime: String(Z('2026-10-16T01:00:01')) })).stop === 79440);
+  q = await sl([ord(9, Z('2026-10-15T19:05:00'), 'A', 'Stop Market', 79000, 0.002, 'open'), ord(10, Z('2026-10-15T19:05:20'), 'A', 'Stop Market', 80000, 0.002, 'open')]);
+  ok('twee deel-stops in dezelfde minuut: gewogen 79.500', q.stop === 79500, JSON.stringify(q));
+  q = await sl([ord(11, Z('2026-10-16T17:54:00'), 'A', 'Take Profit Market', 83179, 0.00132, 'triggered', Z('2026-10-16T20:00:00')), ord(12, Z('2026-10-16T17:54:00'), 'A', 'Take Profit Market', 85232, 0.00148, 'open')]);
+  ok('TP\'s: 83.179 geraakt, 85.232 open, met %', q.tps.length === 2 && q.tps[0].status === 'geraakt' && q.tps[1].status === 'open' && Math.round(q.tps[0].pct) === 34, JSON.stringify(q.tps));
+  // measured on Denny's recording: a hit order ends with a 'filled' row that has triggerPx 0.0 and isTrigger false
+  const geraakt = [ord(13, Z('2026-10-15T19:05:00'), 'A', 'Stop Market', 79440, 0.00391, 'open'), ord(13, Z('2026-10-15T19:05:00'), 'A', 'Stop Market', 79440, 0.00391, 'triggered', Z('2026-10-16T01:00:00')),
+    { order: { coin: 'BTC', side: 'A', orderType: 'Stop Market', triggerPx: '0.0', sz: '0.0', origSz: '0.00391', oid: 13, timestamp: Z('2026-10-16T01:00:01'), isTrigger: false, reduceOnly: true, triggerCondition: 'Triggered' }, status: 'filled', statusTimestamp: Z('2026-10-16T01:00:01') }];
+  q = await sl(geraakt, { ...LONG, closeTime: String(Z('2026-10-16T01:00:01')) });
+  ok('geraakte stop (laatste regel "filled" met prijs 0.0): stop 79.440', q.stop === 79440, JSON.stringify(q));
+  // flip: a short closes and a long opens at 10:00; a buy-stop at 09:30 belongs to the short, a sell-stop at 10:00:10 to the long
+  const SHORT = { positionId: 'BTC', direction: 'short', entry: '81500', openTime: String(Z('2026-10-15T09:00:00')), closeTime: String(Z('2026-10-15T10:00:00')), positionSizeAsset: '0.002' };
+  const NA = { positionId: 'BTC', direction: 'long', entry: '81400', openTime: String(Z('2026-10-15T10:00:00')), closeTime: '', positionSizeAsset: '0.002' };
+  const flip = [ord(20, Z('2026-10-15T09:30:00'), 'B', 'Stop Market', 82000, 0.002, 'canceled', Z('2026-10-15T10:00:00')), ord(21, Z('2026-10-15T10:00:10'), 'A', 'Stop Market', 80900, 0.002, 'open')];
+  ok('omkering: de short houdt zijn buy-stop 82.000', (await sl(flip, SHORT)).stop === 82000);
+  ok('omkering: de nieuwe long krijgt de sell-stop 80.900', (await sl(flip, NA)).stop === 80900);
+
   ok('geen JS-fouten', errs.length === 0, errs.slice(0, 2).join(' | '));
   console.log(`\n=== HL stop-loss: ${pass}/${pass + fail} ===`); await b.close(); process.exit(fail ? 1 : 0);
 })().catch(e => { console.log('  ✗ crash: ' + String(e).split('\n')[0]); process.exit(1); });
