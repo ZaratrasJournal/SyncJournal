@@ -16,6 +16,26 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v1.13] — 2026-10-20
+
+### Toegevoegd
+- **Kraken: een geraakte TP zie je meteen, ook als je positie nog loopt.** Tot nu toe bleef een Kraken-positie
+  een kale open rij tot hij helemaal dicht was. Nu wordt een positie waarvan al een deel is gesloten één rij met
+  status *partial*, net als bij Hyperliquid, OKX en Blofin: de volle grootte, je geboekte P&L apart, de TP die
+  geraakt is, en je lopende P&L van wat nog openstaat. Gaat de positie dicht, dan wordt dezelfde rij gesloten:
+  je notities en tags blijven staan.
+- **Kraken: "Zo is deze positie gelopen" bij een open positie.** Ook zonder afbouw zie je je instap (en
+  bijkopen) als stappen, zoals bij OKX en Hyperliquid.
+
+### Gewijzigd
+- **Het geboekte deel van een lopende Kraken-positie telt mee in je totalen**, zoals bij de andere exchanges.
+  Win-rate en analyses tellen de positie pas mee als hij dicht is.
+- **Je geplande TP's blijven staan** wanneer een Kraken-positie deels sluit; alleen de geraakte niveaus komen
+  van Kraken.
+- **Een Kraken-CSV neemt geen lopende posities meer over.** Een CSV is een momentopname: een lopende positie
+  komt binnen via de koppeling, of met een latere CSV zodra hij dicht is. Zo kan een oudere CSV een gesloten
+  trade nooit terugzetten.
+
 ## [v1.12] — 2026-10-19
 
 ### Toegevoegd
