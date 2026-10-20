@@ -16,6 +16,29 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v1.13.1] — 2026-10-20
+
+### Fixed
+- **De schakelaar $ / % / R boven je balans geldt nu op elke pagina.** Kalender, Tendencies en een deel van
+  Analytics bleven bedragen tonen, wat de knop ook zei. Nu volgen ook:
+  - **Kalender:** elke dag, het weektotaal, netto maand, beste en slechtste dag, en het jaaroverzicht met tooltips;
+  - **Tendencies:** de breakdown, je sterkste combinatie en je lek, de setup×sessie-matrix, de kruis-analyse en de
+    weekdag×uur-heatmap;
+  - **Analytics:** Long vs. short, HTF-bias, Grade-breakdown, Winst per pair, Per pair, Netto per sessie,
+    Fout-analyse, Kerncijfers, Max drawdown en Pareto;
+  - **Dashboard:** Waar zit je edge.
+- **Wat niet te bepalen is, telt niet als 0.** Een dag met alleen trades zonder stop-loss heeft in R geen waarde:
+  die cel blijft neutraal in plaats van groen. Zonder balans geldt hetzelfde voor %.
+- **% per setup, sessie, pair of uur rekent voor elke groep met dezelfde basis**: je balans vóór de oudste trade in
+  beeld. Zo verhouden de groepen zich in % zoals in $ en R. Een dag, week of maand rekent met de balans aan het begin
+  van die periode.
+
+### Gewijzigd
+- **Kerncijfers in R en %**: gemiddelde winst, gemiddeld verlies, grootste winst/verlies en verwachting per trade zijn
+  het gemiddelde (of uiterste) van de R of het % per trade. Trades zonder stop-loss tellen in R niet mee. Het % per
+  trade is ten opzichte van je balans op dat moment. De payoff-ratio blijft de verhouding in geld.
+- **Max drawdown in %** is de grootste daling ten opzichte van je balans op de top ervoor, alleen over live trades.
+
 ## [v1.13] — 2026-10-20
 
 ### Toegevoegd
