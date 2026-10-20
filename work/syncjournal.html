@@ -7308,7 +7308,9 @@ const ExchangeAPI = {
           const d=Date.parse(String(o.date||"")+"T"+String(o.time||"00:00")+":00Z");   // zonder tijden: datum+tijd is UTC (oude CSV-importer)
           return binnen(d);
         };
-        T.filter(o=>o&&o.exchange==="kraken"&&o!==L&&!/^kraken_pos_/.test(String(o.srcId||""))&&o.pair===L.pair&&o.dir===L.dir&&hoort(o))
+        // a running row takes its placeholder in below (removed, not trashed: a trashed row with this opening puts the position on the thrown-away list)
+        const lopendePh=o=>L.status==="partial"&&/^kraken_open_/.test(String(o.srcId||""));
+        T.filter(o=>o&&o.exchange==="kraken"&&o!==L&&!/^kraken_pos_/.test(String(o.srcId||""))&&!lopendePh(o)&&o.pair===L.pair&&o.dir===L.dir&&hoort(o))
          .forEach(o=>{ this._voegSamen(L,o); n++; });
       });
       /* A wider window (look-back) can return a lifecycle that was imported before with a later start:
@@ -7336,9 +7338,14 @@ const ExchangeAPI = {
           const doel=T.find(x=>x&&x.exchange==="kraken"&&String(x.srcId)===String(L.id));
           if(doel){this._voegSamen(doel,o);n++;}
         });
-        // how each close went, on the TP levels (one per close order, same order as the fills)
+        T.filter(o=>o&&o.exchange==="kraken"&&o.status==="partial"&&/^kraken_pos_/.test(String(o.srcId||""))).forEach(echt=>{
+          T.filter(ph=>ph&&ph!==echt&&ph.exchange==="kraken"&&/^kraken_open_/.test(String(ph.srcId||""))&&ph.pair===echt.pair&&this._dirVan(ph)===this._dirVan(echt)).forEach(ph=>{
+            adoptUserFieldsSJ(echt,ph);
+            ['unrealizedPnl','liq'].forEach(k=>{if(ph[k]!=null&&ph[k]!=='')echt[k]=ph[k];});   // the live numbers of what is still open
+            T=T.filter(t=>t!==ph);delete echt._stale;n++;});});
+        // how each close went, on the hit TP levels (one per close order, same order as the fills); your planned levels stay as they are
         if(this._log.soorten)T.forEach(o=>{if(!o||o.exchange!=="kraken"||!Array.isArray(o.tps))return;const l=this._log.soorten.get(String(o.srcId));if(!l)return;
-          o.tps.forEach((x,i)=>{if(l[i]&&x.soort!==l[i]){x.soort=l[i];n++;}});});
+          o.tps.filter(x=>x&&x.hit).forEach((x,i)=>{if(l[i]&&x.soort!==l[i]){x.soort=l[i];n++;}});});
         // stop-loss from the trigger history: where Kraken knows the stop, it is the stop - like entry and exit (Denny 18-10-2026)
         if(this._log.stops)T.forEach(o=>{if(!o||o.exchange!=="kraken")return;const s=this._log.stops.get(String(o.srcId));if(!s)return;
           if(+o.stop!==s.stop||o.stopBron!=='kraken'||!!o.stopVerschoven!==s.verschoven){o.stop=s.stop;o.stopBron='kraken';if(s.verschoven)o.stopVerschoven=true;else delete o.stopVerschoven;n++;}});
@@ -7483,6 +7490,11 @@ const ExchangeAPI = {
         else if(!c.log){const n={...CONNS.kraken,log:1,logVanaf:startDatum,stappen:this._HERHAAL};delete n.logTot;CONNS.kraken=n;persistConns();}
         if(uit.waarschuwingen.length)console.warn('[kraken account-log] '+uit.waarschuwingen.length+' row(s) not closing:',uit.waarschuwingen);
         const terug=levenslopen.filter(t=>!weg.has(this._seconden(t.id))&&(!startDatum||+t.closeTime>=startDatum));   // like the old route: what closed after the start date
+        terug.forEach(t=>{const o=T.find(x=>x&&x.exchange==="kraken"&&String(x.srcId)===String(t.id));if(!o)return;
+          delete o._stale;   // the account-log has this position: not a vanished open row (finalizeStaleOpens would merge it away)
+          // the sync replaces the TP list: keep the levels you planned that were not hit
+          const eigen=(o.tps||[]).filter(x=>x&&!x.hit&&+x.price>0).map(x=>({price:normPrice(x.price),pct:String(x.pct||""),status:"user",actualPrice:""}));
+          if(eigen.length)t.tpLevels=[...(t.tpLevels||[]),...eigen];});
         /* stop-losses for these positions; afterImport writes them (sjFromTj drops unknown fields such as stopBron).
            Once, also for the closed rows imported before the trigger history existed (stopsKlaar). */
         const nu=new Set(terug.map(t=>String(t.id)));
@@ -7534,7 +7546,14 @@ const ExchangeAPI = {
     async testConnection(apiKey,apiSecret){const data=await proxyCall({exchange:"kraken",action:"test",apiKey,apiSecret});if(!data.success)throw new Error(data.error||"Kraken verbinding mislukt");return{success:true,balance:data.balance||"0"}},
     async fetchOpenPositions(apiKey,apiSecret){
       T.forEach(t=>{if(t&&t.exchange==="kraken"&&/_1970-01-01T00:00:00\.000Z_/.test(String(t.srcId||"")))t.srcId=String(t.srcId).replace(/_1970-01-01T00:00:00\.000Z_/,"_");});   // ids from before v1.9.1
-      const data=await proxyCall({exchange:"kraken",action:"open_positions",apiKey,apiSecret});return(data.positions||[]).map(t=>({...this._normalise({...t,status:"open"}),status:"open"}))},
+      const data=await proxyCall({exchange:"kraken",action:"open_positions",apiKey,apiSecret});
+      /* Partly closed, the position is a lifecycle row (status partial). Kraken's price is the average of what is open
+         now, ours of all entries, so matching on entry fails after a second entry or an add: give the open position
+         that row's id, then syncOpenTrades updates it (running P&L only) instead of adding a placeholder beside it. */
+      const loopt=T.filter(o=>o&&o.exchange==="kraken"&&o.status==="partial"&&/^kraken_pos_/.test(String(o.srcId||"")));
+      return(data.positions||[]).map(t=>{const o={...this._normalise({...t,status:"open"}),status:"open"};
+        const rij=loopt.find(x=>x.pair===o.pair&&this._dirVan(x)===this._dirVan(o));
+        return rij?{...o,id:String(rij.srcId)}:o;})},
     /* Geen fetchFills voor Kraken: de stappen komen uit de positie-gebeurtenissen, en volgens
        de docs draagt /derivatives/api/v3/fills geen realized_pnl zodra je met lastFillTime
        pagineert — en dat doet de proxy altijd. */
@@ -8878,7 +8897,7 @@ function parseExchangeCsvText(text,forExchange){
             rowsRaw.push(r);
           }
           const uit=ExchangeAPI.kraken.levenslopenUitAccountLog(ExchangeAPI.kraken._logRegelsUitCsv(rowsRaw));
-          uit.trades.forEach(t=>csvTrades.push(forExchange?{...t,source:forExchange}:t));
+          uit.trades.filter(t=>t.status!=="partial").forEach(t=>csvTrades.push(forExchange?{...t,source:forExchange}:t));   // an older CSV must not reopen a closed trade
           // niet-sluitende regels gaan als eigenschap mee naar de import-toast; de details staan in de console
           if(uit.waarschuwingen.length){csvTrades._waarschuwingen=uit.waarschuwingen;console.warn('[kraken csv] '+uit.waarschuwingen.length+' regel(s) niet sluitend:',uit.waarschuwingen);}
         }else if(isBlofinOrder){/* al verwerkt hierboven */}else if(isMexcPosition){
