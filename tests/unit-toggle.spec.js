@@ -125,14 +125,15 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
     return panels;
   });
   ok('analytics blijft volledig renderen met filters actief in R-stand', filt > 8, String(filt));
-  // Fase 1 = dashboard; analytics rekent bewust nog in bedragen. Bewijs: de sessie-bars
-  // tonen +230 (netto €) en niet +4,0 (R) — zo zien we straks ook of fase 2 écht landt.
-  ok('analytics rekent in fase 1 nog met bedragen, ook in R-stand', await p.evaluate(async () => {
+  // Fase 2 (v1.13.1, Denny 20-10-2026): ook Analytics volgt de schakelaar. De sessie-bars
+  // tonen in R-stand R (+4,0R), niet meer het bedrag (+230).
+  const sessie = await p.evaluate(async () => {
     setUnit('r'); go('analytics'); await new Promise(r => setTimeout(r, 700));
     const pn = [...document.querySelectorAll('#main .panel')].find(x => /Netto per sessie/.test(x.textContent));
-    const ok1 = !!pn && /230/.test(pn.textContent);
-    setUnit('val'); return ok1;
-  }));
+    const tx = pn ? [...pn.querySelectorAll('svg text')].map(e => e.textContent).filter(s => /\d/.test(s)) : [];
+    setUnit('val'); return tx;
+  });
+  ok('analytics volgt de schakelaar: sessie-bars in R-stand in R', sessie.length > 0 && sessie.every(s => /R$/.test(s)) && !sessie.some(s => /230/.test(s)), JSON.stringify(sessie));
 
   ok('geen JS-errors totaal', errs.length === 0, errs.slice(0, 3).join(' | '));
   console.log(`\n=== €/%/R-weergave: ${pass}/${pass + fail} ===`);
