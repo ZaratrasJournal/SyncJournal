@@ -2186,7 +2186,7 @@ function heeftUitkomst(t){return t.status!=='open'&&t.status!=='partial';}
 function geboekt(t){
   const p=+t.pnl||0;
   if(t.status==='partial'&&!p&&t.realizedPnl!==''&&t.realizedPnl!=null&&isFinite(+t.realizedPnl)){
-    const ad=ExchangeAPI[t.exchange];if(ad&&ad.partialDraagtGeboekt)return +t.realizedPnl;}
+    const ad=ExchangeAPI[t.exchange],d=ad&&ad.partialDraagtGeboekt;if(typeof d==='function'?d(t):d)return +t.realizedPnl;}   // a function: per row (Kraken has both models)
   return p;
 }
 /* pnlUsd only exists in EUR view (fxView); % and R read it, so it must follow the booked amount.
@@ -7180,19 +7180,21 @@ const ExchangeAPI = {
 
       /* 4. Trades, in dezelfde vorm als _krLevenslopen (zelfde id-vorm → CSV en API dedupen). */
       const trades=[], open=[];
-      const maak=(L)=>{
+      /* loopt: still open but partly closed (a TP hit, Denny 20-10-2026) - one row with status partial: the full
+         size, the booked P&L apart, closeTime = the last step (as Hyperliquid), and the same id it keeps when it closes. */
+      const maak=(L,loopt)=>{
         const tl=fillTimeline(L.steps,{mult:1});
-        if(!tl.length||!L.closeTs||!tl.some(isAfbouw)){open.push(L);return;}
+        if(!tl.length||(!loopt&&!L.closeTs)||!tl.some(isAfbouw)){if(!loopt)open.push(L);return;}
         const sum=fillSummary(tl), sym=L.contract.toUpperCase();
         const fees=Math.abs(L.fee)+Math.abs(L.liqFee);
         // pnl is netto: gerealiseerd − fees + funding. Funding apart bewaren kan niet (migrateOldTrade laat onbekende velden vallen).
         const netto=L.pnl-fees+L.funding;
-        const qty=sum.exitsAsset||sum.peak||0;
+        const qty=loopt?(sum.peak||0):(sum.exitsAsset||sum.peak||0);
         const uit=perOrder(tl.filter(isAfbouw)), uitQty=uit.reduce((s,x)=>s+x.qty,0)||1;   // one TP per order, not per execution
         const {date,time}=amsDateTime(L.openTs);
         trades.push({...EMPTY_TRADE,
           id:"kraken_pos_"+sym+"_"+Math.floor(L.openTs/1000)*1000,   // whole seconds: the CSV export has seconds, the API milliseconds; same position, same id
-          date,time,openTime:String(L.openTs),closeTime:String(L.closeTs),
+          date,time,openTime:String(L.openTs),closeTime:String(loopt?tl[tl.length-1].ts:L.closeTs),
           pair:this._pair(sym),direction:L.dir,
           entry:sum.avgEntry>0?pxRound(sum.avgEntry):"",
           exit:sum.avgExit>0?pxRound(sum.avgExit):"",
@@ -7205,10 +7207,12 @@ const ExchangeAPI = {
           fills:tl,
           notes:L.partial?"⚠ Partial data: opening order niet in CSV-range":"",
           tpLevels:uit.map((x,i)=>({id:'tp'+(i+1)+'_'+x.ts,price:normPrice(x.price),pct:String(+(x.qty/uitQty*100).toFixed(2)),status:"hit",actualPrice:normPrice(x.price),ts:x.ts})),
+          ...(loopt?{status:"partial",realizedPnl:String(netto.toFixed(4)),pnl:"0"}:{}),
         });
       };
-      lopen.forEach(maak);
-      nogOpen.forEach(L=>open.push(L));
+      lopen.forEach(L=>maak(L,false));
+      // still running: the open row (placeholder) keeps its opening and steps from here; partly closed also becomes a partial row
+      nogOpen.forEach(L=>{open.push(L);if(!L.partial)maak(L,true);});
       return{trades,open,waarschuwingen};
     },
     /* Kraken levert zijn positiegeschiedenis als losse gebeurtenissen: elke uitvoering zegt
@@ -7347,6 +7351,10 @@ const ExchangeAPI = {
         const at=amsDateTime(hit[1].openTime);
         o.openTime=String(hit[1].openTime);o.date=at.date;o.time=at.time;o.session=sessionFromTime(at.time);n++;
       });
+      // an open row shows how the position went from its opening (Denny 20-10-2026); its opening must be this lifecycle's
+      T.forEach(o=>{if(!o||o.exchange!=="kraken"||o.status!=="open")return;
+        const hit=Object.entries(lop).find(([sym,l])=>this._pair(sym)===o.pair&&l.dir===o.dir&&Array.isArray(l.fills)&&l.fills.length&&this._msTijd(o.openTime)===+l.openTime);
+        if(hit&&JSON.stringify(o.fills||[])!==JSON.stringify(hit[1].fills)){o.fills=hit[1].fills;n++;}});
       if(this._log)T.forEach(o=>{if(o&&o.exchange==="kraken"&&o.teruggezet){delete o.teruggezet;n++;}});   // handled: the next sync starts from the last sync again
       this._log=null;   // a CSV import later must not use this sync's lifecycles
       if(n)persist();
@@ -7448,7 +7456,7 @@ const ExchangeAPI = {
       const log=await this._logOphalen(apiKey,apiSecret,vanaf);
       if(log){
         const {uit}=log;
-        uit.open.filter(L=>!L.partial).forEach(L=>{this._lopend[String(L.contract).toUpperCase()]={openTime:L.openTs,dir:L.dir};});
+        uit.open.filter(L=>!L.partial).forEach(L=>{this._lopend[String(L.contract).toUpperCase()]={openTime:L.openTs,dir:L.dir,fills:fillTimeline(L.steps,{mult:1})};});
         // thrown away stays away: a remembered id, or a trashed trade of the same contract and direction that opened inside this position
         const weg=this._wegIds();
         const prullenbak=TRASH.filter(o=>o&&o.exchange==="kraken");
@@ -8243,9 +8251,10 @@ ExchangeAPI.okx.captureSnapshot=async function(creds){
 ExchangeAPI.blofin.detectPartials=null;     // model B: één rij per levensloop, geen siblings
 ExchangeAPI.mexc.detectPartials=function(trades,sourceKey){return detectPartialFromSiblings(trades,sourceKey||"mexc","mexc")};
 ExchangeAPI.kraken.detectPartials=function(trades,sourceKey){
-  // levenslopen zijn al compleet; alleen het oude pad (één rij per groep sluitingen) heeft siblings
+  // levenslopen zijn al compleet; alleen het oude pad (één rij per groep sluitingen) heeft siblings.
+  // Alleen die rijen gaan erin en komen eruit: een lopende levensloop is zelf al partial, met zijn eigen geboekte deel.
   const oud=(trades||[]).filter(t=>!/^kraken_pos_/.test(String((t&&t.id)||"")));
-  return oud.length?detectPartialFromSiblings(trades,sourceKey||"kraken","kraken"):trades;
+  return oud.length?detectPartialFromSiblings(oud,sourceKey||"kraken","kraken"):[];
 };
 ExchangeAPI.hyperliquid.detectPartials=null;// model B: een levensloop is al compleet
 ExchangeAPI.okx.detectPartials=null;        // model B: de adapter markeert een lopende positie zelf als partial
@@ -8257,7 +8266,7 @@ ExchangeAPI.okx.partialDraagtGeboekt=true;
 ExchangeAPI.blofin.partialDraagtGeboekt=true;
 ExchangeAPI.hyperliquid.partialDraagtGeboekt=true;
 ExchangeAPI.mexc.partialDraagtGeboekt=false;
-ExchangeAPI.kraken.partialDraagtGeboekt=false;   // lifecycle has no partial yet (backlog B1); the old path is sibling
+ExchangeAPI.kraken.partialDraagtGeboekt=t=>/^kraken_pos_/.test(String((t&&t.srcId)||""));   // a lifecycle row carries its own money; the old path is sibling
 ExchangeAPI.ftmo.partialDraagtGeboekt=false;
 
 // v12.235: Hyperliquid + Kraken leveren via fetchTrades COMPLETE round-trips (FIFO/server-side

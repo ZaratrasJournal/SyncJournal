@@ -30,6 +30,7 @@ module.exports = [
   'nieuwe-positie-na-pauze', // dagen niet gesynct: nieuwe positie op dezelfde coin krijgt haar eigen datum
   'stappen-open',            // OKX en Blofin: de stappen van een open positie, vanaf de opening
   'hl-deels-dicht',          // Hyperliquid: een geraakte TP is zichtbaar terwijl de positie nog loopt
+  'kraken-deels-dicht',      // Kraken: een geraakte TP en de stappen zichtbaar terwijl de positie nog loopt
   'hl-stoploss',             // Hyperliquid: stop-loss, ingestelde TP's en TP/SL/Close per afbouw uit de orders (F8)
   'equity-curve',            // equity-curve van oud naar nieuw, zonder verzonnen toppen; geen 493%-trend
   'jaaroverzicht-past',      // Kalender: het jaaroverzicht past in zijn paneel, ook op een laptop
