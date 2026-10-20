@@ -1647,7 +1647,11 @@ const svg=(p,w=18)=>`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" 
    anders de ingevoerde datum + tijd. Gebruikt voor de equity-curve én de sortering. */
 function tradeMoment(t){const o=+t.openTime||0;if(o)return o;const ms=+new Date((t.date||'1970-01-01')+'T'+(t.time||'00:00'));return isFinite(ms)?ms:0;}
 let _pctKey='',_pctMap=null;
+/* For the duration of one render: totalBalance() walks every trade per manual account and pnlBaseOf asks for it per
+   trade, which made a page in % quadratic. Only inside render() - outside it, a changed balance is never stale. */
+let _renderMemo=null;
 function _pctBases(){
+  if(_renderMemo&&_renderMemo.pct)return _renderMemo.pct;
   const total=totalBalance();
   const key=T.length+'|'+total.toFixed(2)+'|'+DB.load('data_ts',0);
   if(key===_pctKey&&_pctMap)return _pctMap;
@@ -1657,7 +1661,7 @@ function _pctBases(){
   const geld=T.filter(t=>t&&isLive(t)&&(t.status==='closed'||t.status==='partial')).sort((a,b)=>tradeMoment(a)-tradeMoment(b));
   let acc=0;
   for(let i=geld.length-1;i>=0;i--){acc+=geboekt(geld[i]);m.set(geld[i].id,total-acc);}
-  _pctKey=key;_pctMap=m;return m;
+  _pctKey=key;_pctMap=m;if(_renderMemo)_renderMemo.pct=m;return m;
 }
 function pnlBaseOf(t){
   const ref=+((STATE||{}).pctRef)||0;if(ref>0)return ref;
@@ -1671,13 +1675,18 @@ const pnlUsdOf=t=>{const u=+((t||{}).pnlUsd);return isFinite(u)?u:(+((t||{}).pnl
 const netUsd=rows=>(rows||[]).reduce((s,t)=>s+pnlUsdOf(t),0);
 function pnlPctOf(t){if(!t)return null;const b=pnlBaseOf(t);return b>0?+((pnlUsdOf(t)/b)*100).toFixed(2):null;}
 // Totaal-regel: netto van de selectie t.o.v. de basis van de oudste trade erin.
-function pnlPctTotal(rows,net){
+/* basis: the trades whose oldest one sets the base. A period (day, week, month) uses its own first trade; a
+   cross-section (setup, session, pair, hour) passes everything in view, so every group has the same denominator
+   and compares as in $ and R (review 20-10-2026). */
+function pnlPctTotal(rows,net,basis){
   // Everything booked; a partial counts with its booked part when it arrives via boeking().
-  const geld=(rows||[]).filter(t=>t&&isLive(t)&&(t.status==='closed'||t.status==='partial'));
+  const live=l=>(l||[]).filter(t=>t&&isLive(t)&&(t.status==='closed'||t.status==='partial'));
+  const geld=live(rows);
   const n=geld.length?netUsd(geld):(+net||0);   // altijd in dollars, ongeacht de weergave
   const ref=+((STATE||{}).pctRef)||0;if(ref>0)return +(n/ref*100).toFixed(2);
   if(!geld.length)return null;
-  const oldest=geld.reduce((a,c)=>tradeMoment(c)<tradeMoment(a)?c:a);
+  const bron=basis?live(basis):geld;if(!bron.length)return null;
+  const oldest=bron.reduce((a,c)=>tradeMoment(c)<tradeMoment(a)?c:a);
   const b=pnlBaseOf(oldest);return b>0?+(n/b*100).toFixed(2):null;
 }
 /* ═══ €/%/R-weergave (Denny 2026-09-18, zoals de originele Morani-journal) ═══
@@ -1716,7 +1725,7 @@ function aggR(rows){let sum=0,n=0,miss=0;(rows||[]).forEach(t=>{const r=tradeROr
 function gemR(rows){const a=aggR(rows);return {avg:a.n?a.sum/a.n:0,n:a.n,miss:a.miss};}
 // P&L van een selectie in de actieve unit (html). o.terse laat de "· n zonder R"-suffix weg.
 function unitAgg(rows,net,o){o=o||{};
-  if(UNIT()==='pct'){const p=pnlPctTotal(rows,net);return p==null?'—':pctSgn(p);}
+  if(UNIT()==='pct'){const p=pnlPctTotal(rows,net,o.basis);return p==null?'—':pctSgn(p);}
   if(UNIT()==='r'){const a=aggR(rows);
     const miss=(a.miss&&!o.terse)?` <span style="font-weight:500;font-size:.72em;color:var(--muted)">· ${a.miss} zonder R</span>`:'';
     if(!a.n)return a.miss?'—'+miss:rS(0);   // alleen risicoloze trades → streepje mét uitleg
@@ -1724,14 +1733,18 @@ function unitAgg(rows,net,o){o=o||{};
   return eurS(net);
 }
 /* A group of trades (a day, a session, a setup) in the active unit as a number: for colour, bar length and sorting.
-   € = net, % = of the balance at the group's first trade (pnlPctTotal, never summed), R = sum of known R's. */
-function unitVal(rows,net){
-  if(UNIT()==='pct'){const p=pnlPctTotal(rows,net);return p==null?0:p;}
-  if(UNIT()==='r')return aggR(rows).sum;
+   € = net, % = of the balance (pnlPctTotal, never summed; basis: see there), R = sum of known R's.
+   null = not known (no balance, or no trade with a stop): not 0, which would colour a losing day green. */
+function unitVal(rows,net,basis){
+  if(UNIT()==='pct')return pnlPctTotal(rows,net,basis);
+  if(UNIT()==='r'){const a=aggR(rows);return a.n?a.sum:null;}
   return net;
 }
 // … and as short text for a tile, cell or tooltip: compact money (eurK), else % or R without the "n zonder R" note
-function unitKort(rows,net){return UNIT()==='val'?eurK(net):unitAgg(rows,net,{terse:true});}
+function unitKort(rows,net,basis){return UNIT()==='val'?eurK(net):unitAgg(rows,net,{terse:true,basis});}
+const uCls=u=>u==null?'':cls(u);   // no colour for what is not known
+const uKleur=u=>u==null?'var(--muted)':u>=0?'var(--green)':'var(--red)';
+const barUnit=()=>UNIT()==='r'?'r':UNIT()==='pct'?'p':'e';   // barsPnl / radarImpact format
 function unitTrade(t){
   if(UNIT()==='pct'){const p=pnlPctOf(t);return p==null?'—':pctSgn(p);}
   if(UNIT()==='r'){const r=tradeROrNull(t);return r==null?'—':rS(r);}
@@ -1768,7 +1781,8 @@ function acctPnl(id){return T.filter(t=>t&&t.status!=='open'&&isLive(t)&&t.excha
 // Saldo handmatig account = max(0, ingelegd kapitaal) + gerealiseerde trade-P&L.
 function manualBalance(m){return Math.max(0,acctCapital(m.transactions))+acctPnl(m.id);}
 // Totaalbalans over alle accounts (exchanges = mock-seedwaarde tot live-API; handmatig = berekend).
-function totalBalance(){return EXCHANGES.reduce((s,e)=>s+e.val,0)+MANUAL.reduce((s,m)=>s+manualBalance(m),0);}
+function totalBalance(){const r=_renderMemo;if(r&&r.bal!=null)return r.bal;
+  const b=EXCHANGES.reduce((s,e)=>s+e.val,0)+MANUAL.reduce((s,m)=>s+manualBalance(m),0);if(r)r.bal=b;return b;}
 // Accounts voor dashboard-donut/legenda (exchanges + handmatige accounts).
 // Alleen relevante exchange-rijen tonen (gekoppeld, saldo of trades) — anders staan er
 // bij een verse journal vijf lege exchanges in de legenda/donut.
@@ -1903,7 +1917,7 @@ function genTrades(n){
 function monthlyUnit(){const mn=['jan','feb','mrt','apr','mei','jun','jul','aug','sep','okt','nov','dec'];const by={};
   BOEKINGEN.filter(hasDate).forEach(t=>{const k=t.date.slice(0,7);(by[k]=by[k]||[]).push(t);});
   return Object.keys(by).sort().map(k=>{const rows=by[k];const net=rows.reduce((s,t)=>s+(+t.pnl||0),0);
-    return {m:mn[+k.slice(5,7)-1],v:unitVal(rows,net)};});}
+    return {m:mn[+k.slice(5,7)-1],v:unitVal(rows,net)??0};});}
 const SEED=genTrades(74);
 const SEEDVER=13;
 // Setup-grade (A/B/C) — pre-trade kwaliteitsinschatting, vervangt de oude 1-5 zekerheid.
@@ -3341,13 +3355,13 @@ function equity(h,list){
 // i.p.v. gepropt onder de x-as. Waarde = absolute netto-impact; tooltip toont echte netto.
 // Labels zijn klikbaar (zelfde klik-door als de bars). Radar heeft ≥3 punten nodig —
 // daaronder valt de caller terug op barsPnl.
-function radarImpact(data,onBar){
+function radarImpact(data,onBar,unit='e'){
   const t=themeColors(),H=React.createElement,R=Recharts;
   const rows=data.map(d=>({x:d.m,y:Math.abs(+(+d.v).toFixed(2)),f:d.f,net:+(+d.v).toFixed(2)}));
   const tick=p=>{const d=rows[p.payload&&p.payload.index!=null?p.payload.index:p.index]||rows.find(r=>r.x===p.payload.value)||{};
     return H('text',{x:p.x,y:p.y,textAnchor:p.textAnchor,fill:t.muted,fontSize:10.5,dy:4,
       cursor:onBar?'pointer':'default',onClick:onBar?()=>onBar(d):undefined},p.payload.value);};
-  const fmt=v=>{const r=rows.find(x=>x.y===v);return eurS(r?r.net:-Math.abs(v));};
+  const fmt=v=>{const r=rows.find(x=>x.y===v),n=r?r.net:-Math.abs(v);return unit==='r'?rS(n):unit==='p'?pctSgn(n):eurS(n);};
   return rcChart(()=>H(R.ResponsiveContainer,{width:'100%',height:'100%'},
     H(R.RadarChart,{data:rows,outerRadius:'66%',margin:{top:10,right:26,left:26,bottom:6}},
       H(R.PolarGrid,{stroke:t.line}),
@@ -3383,8 +3397,10 @@ function hbars(items){return `<div class="hbars">`+items.map(r=>`<div class="hba
   <div class="track"></div><div class="fill" style="width:${r.val}%;background:${r.color}"></div>
   <div class="val">${r.disp}</div><div class="sub">${r.sub}</div></div>`).join('')+`</div>`;}
 function groupRows(field){const o={};CLOSED.forEach(t=>{const k=field==='session'?sessionOf(t):t[field];(o[k]=o[k]||{n:0,w:0,pnl:0,r:0,rN:0,rows:[]});o[k].n++;o[k].pnl+=t.pnl;o[k].rows.push(t);const _r=tradeROrNull(t);if(_r!=null){o[k].r+=_r;o[k].rN++;}if(t.pnl>0)o[k].w++;});
-  return Object.entries(o).map(([k,v])=>{const wr=Math.round(v.w/v.n*100),u=unitVal(v.rows,v.pnl);
-    return {label:k,val:wr,disp:wr+'%',pnl:v.pnl,u,rows:v.rows,n:v.n,r:v.rN?v.r/v.rN:null,sub:`${v.n} trades · netto <b class="${cls(u)}">${unitAgg(v.rows,v.pnl,{terse:true})}</b>`,color:u>=0?'var(--green)':'var(--red)'};});}
+  return Object.entries(o).map(([k,v])=>{const wr=Math.round(v.w/v.n*100),u=unitVal(v.rows,v.pnl,CLOSED);
+    return {label:k,val:wr,disp:wr+'%',pnl:v.pnl,u,rows:v.rows,n:v.n,r:v.rN?v.r/v.rN:null,sub:`${v.n} trades · netto <b class="${uCls(u)}">${unitAgg(v.rows,v.pnl,{terse:true,basis:CLOSED})}</b>`,color:uKleur(u)};});}
+// sort on the unit value, highest first; what is not known goes last
+const opU=(a,b)=>((a.u==null)-(b.u==null))||((b.u||0)-(a.u||0));
 
 /* ═══ PAGES ═══ */
 function pgDashboard(){
@@ -3533,12 +3549,17 @@ function setupSessionMatrix(){
     const c=(bySess[se].setups[su]=bySess[se].setups[su]||{n:0,w:0,pnl:0,rows:[]});c.n++;c.pnl+=t.pnl;c.rows.push(t);if(t.pnl>0)c.w++;bySess[se].tot.n++;bySess[se].tot.pnl+=t.pnl;bySess[se].tot.rows.push(t);});
   if(!any)return '';
   // colour, size and labels in the active unit ($ / % / R); the badges keep their dollar thresholds
-  Object.values(bySess).forEach(g=>{g.tot.u=unitVal(g.tot.rows,g.tot.pnl);Object.values(g.setups).forEach(c=>{c.u=unitVal(c.rows,c.pnl);});});
-  const wOf=c=>(mode==='n'?c.n:Math.abs(c.u))||0;
+  Object.values(bySess).forEach(g=>{g.tot.u=unitVal(g.tot.rows,g.tot.pnl,CLOSED);Object.values(g.setups).forEach(c=>{c.u=unitVal(c.rows,c.pnl,CLOSED);});});
+  // sized by |P&L| but nothing known in this unit (no stops, no balance): by number of trades, never an empty panel
+  const opGeld=mode!=='n'&&Object.values(bySess).some(g=>Object.values(g.setups).some(c=>c.u));
+  const wOf=c=>(opGeld?Math.abs(c.u||0):c.n)||0;
   let maxAbs=UNIT()==='val'?1:1e-9;Object.values(bySess).forEach(g=>Object.values(g.setups).forEach(c=>{if(c.n>=3)maxAbs=Math.max(maxAbs,Math.abs(c.u));}));
   const tint=(pnl,faded)=>{if(!pnl)return 'var(--track)';const inten=Math.round(Math.min(1,Math.abs(pnl)/maxAbs)*40+48);return `color-mix(in srgb,var(--${pnl>=0?'green':'red'}) ${faded?16:inten}%,transparent)`;};
   // sessies proportioneel op handelsvolume (drukke sessie = groter), setups als sub-treemap
-  const sess=SESS.filter(se=>bySess[se]).map(se=>({value:Object.values(bySess[se].setups).reduce((s,c)=>s+wOf(c),0),se})).filter(s=>s.value>0);
+  const sessW=SESS.filter(se=>bySess[se]).map(se=>({value:Object.values(bySess[se].setups).reduce((s,c)=>s+wOf(c),0),se}));
+  const sessMax=Math.max(0,...sessW.map(x=>x.value));
+  // a session whose setups are not known in this unit keeps a readable tile
+  const sess=sessW.map(x=>({...x,value:opGeld?Math.max(x.value,sessMax*0.12):x.value})).filter(s=>s.value>0);
   // hoogte groeit mee met het aantal tegels → meer sessies/setups = groter, tegels blijven leesbaar
   const nTiles=sess.reduce((a,x)=>a+Object.keys(bySess[x.se].setups).length,0);
   const H=Math.round(Math.max(300,Math.min(660,205+nTiles*13)));
@@ -3547,7 +3568,8 @@ function setupSessionMatrix(){
   grects.forEach(gr=>{
     const se=gr.item.se,g=bySess[se];
     const gx=gr.x+GAP/2,gy=gr.y+GAP/2,gw=gr.w-GAP,gh=gr.h-GAP;
-    const items=Object.entries(g.setups).map(([su,c])=>({value:wOf(c)||0.0001,su,c}));
+    const itemMax=Math.max(0,...Object.values(g.setups).map(wOf));
+    const items=Object.entries(g.setups).map(([su,c])=>({value:wOf(c)||(opGeld?itemMax*0.12:0)||0.0001,su,c}));
     const trects=squarify(items,{x:0,y:HEAD,w:gw,h:gh-HEAD});
     let tiles='';
     trects.forEach(tr=>{
@@ -3556,14 +3578,14 @@ function setupSessionMatrix(){
       const lite=liteText();
       let badge='';
       if(wr>=65&&c.pnl>150)badge='🎯';else if(wr<=30&&c.pnl<-100)badge='⊘';else if(wr<=45&&c.pnl<-50)badge='⏱';
-      tiles+=`<div class="tm-tile${cls2}${cls3}${lite}" style="left:${(tr.x+1)/gw*100}%;top:${(tr.y+1)/gh*100}%;width:${tw/gw*100}%;height:${th/gh*100}%;background:${tint(c.u,faded)}" onclick="matrixCell(${jsarg(su)},${jsarg(se)})" data-su="${esc(su)}" data-se="${esc(se)}" data-n="${c.n}" data-w="${c.w}" data-pnl="${c.u}" data-tx="${esc(unitAgg(c.rows,c.pnl,{terse:true}))}">${badge?`<span class="tb">${badge}</span>`:''}<span class="ts">${esc(su)}</span><span class="tv${unitMask()}">${unitKort(c.rows,c.pnl)} · ${wr}%</span></div>`;
+      tiles+=`<div class="tm-tile${cls2}${cls3}${lite}" style="left:${(tr.x+1)/gw*100}%;top:${(tr.y+1)/gh*100}%;width:${tw/gw*100}%;height:${th/gh*100}%;background:${tint(c.u,faded)}" onclick="matrixCell(${jsarg(su)},${jsarg(se)})" data-su="${esc(su)}" data-se="${esc(se)}" data-n="${c.n}" data-w="${c.w}" data-pnl="${c.u??0}" data-tx="${esc(unitAgg(c.rows,c.pnl,{terse:true,basis:CLOSED}))}">${badge?`<span class="tb">${badge}</span>`:''}<span class="ts">${esc(su)}</span><span class="tv${unitMask()}">${unitKort(c.rows,c.pnl,CLOSED)} · ${wr}%</span></div>`;
     });
-    groups+=`<div class="tm-grp" style="left:${gx/W*100}%;top:${gy/H*100}%;width:${gw/W*100}%;height:${gh/H*100}%"><div class="tm-ghead"><span class="gn">${esc(se)}</span><span class="gv ${cls(g.tot.u)}${unitMask()}">${unitKort(g.tot.rows,g.tot.pnl)}</span></div>${tiles}</div>`;
+    groups+=`<div class="tm-grp" style="left:${gx/W*100}%;top:${gy/H*100}%;width:${gw/W*100}%;height:${gh/H*100}%"><div class="tm-ghead"><span class="gn">${esc(se)}</span><span class="gv ${uCls(g.tot.u)}${unitMask()}">${unitKort(g.tot.rows,g.tot.pnl,CLOSED)}</span></div>${tiles}</div>`;
   });
   const sw=(pnl,f)=>`<span class="mxsw" style="background:${tint(pnl,f)}"></span>`;
   return `<div class="panel"><div class="phead"><h3>🎯 Setup × sessie</h3><span class="sp"></span>
     <div class="seg"><button class="${mode==='n'?'on':''}" onclick="setMatrixSize('n')"># trades</button><button class="${mode==='pnl'?'on':''}" onclick="setMatrixSize('pnl')">|P&L|</button></div></div>
-    <div class="pbody"><p class="mx-intro">Elke sessie is een groep, elke setup een tegel. Grootte = ${mode==='n'?'aantal trades':'impact (|P&L|)'} · kleur = netto P&L · klik een tegel om te filteren.</p>
+    <div class="pbody"><p class="mx-intro">Elke sessie is een groep, elke setup een tegel. Grootte = ${opGeld?'impact (|P&L|)':'aantal trades'} · kleur = netto P&L · klik een tegel om te filteren.</p>
     <div class="tm" style="aspect-ratio:1000/${H}" onmousemove="tmMove(event)" onmouseleave="yhHide()">${groups}</div>
     <div class="mx-legend"><span class="g1">verlies ${sw(-maxAbs*0.3)}${sw(-maxAbs)}</span><span class="g1">winst ${sw(maxAbs*0.3)}${sw(maxAbs)}</span><span style="color:var(--faint)">← klein · groot →</span><span>🎯 edge bevestigd · ⊘ edge weg · ⏱ aandacht</span><span style="margin-left:auto;font-style:italic">grootte = hoeveelheid · kleur = netto P&L</span></div>
     </div></div>`;
@@ -3585,7 +3607,7 @@ function pairProfitHeatmap(){
   CLOSED.forEach(t=>{const pr=t.pair||'—';(by[pr]=by[pr]||{n:0,w:0,pnl:0,rows:[]});by[pr].n++;by[pr].pnl+=t.pnl;by[pr].rows.push(t);if(t.pnl>0)by[pr].w++;});
   const pairs=Object.entries(by).filter(([p])=>p&&p!=='—').map(([pair,c])=>({pair,c}));
   if(!pairs.length)return `<div style="padding:26px 18px;color:var(--muted);font-size:12.5px">Geen trades in beeld.</div>`;
-  pairs.forEach(x=>{x.c.u=unitVal(x.c.rows,x.c.pnl);});   // size, colour and label in the active unit
+  pairs.forEach(x=>{x.c.u=unitVal(x.c.rows,x.c.pnl,CLOSED);});   // size, colour and label in the active unit
   let maxAbs=UNIT()==='val'?1:1e-9;pairs.forEach(x=>maxAbs=Math.max(maxAbs,Math.abs(x.c.u)));
   // minimum-grootte: geef kleine pairs (bv. SOL) een leesbare tegel — sizing krijgt een bodem van 22% v/d grootste
   pairs.forEach(x=>x.value=Math.max(Math.abs(x.c.u),maxAbs*0.22)||0.0001);
@@ -3594,7 +3616,7 @@ function pairProfitHeatmap(){
   const tiles=squarify(pairs,{x:0,y:0,w:1000,h:H}).map(r=>{const {pair,c}=r.item,wr=c.n?Math.round(c.w/c.n*100):0;
     const cls2=(r.w<80||r.h<46)?' small':'',cls3=(r.w<46||r.h<26)?' tiny':'';
     const lite=liteText();
-    return `<div class="tm-tile${cls2}${cls3}${lite}" style="left:${(r.x+1)/1000*100}%;top:${(r.y+1)/H*100}%;width:${(r.w-2)/1000*100}%;height:${(r.h-2)/H*100}%;background:${tint(c.u)}" onclick="pairCell(${jsarg(pair)})" data-su="${esc(pair)}" data-n="${c.n}" data-w="${c.w}" data-pnl="${c.u}" data-tx="${esc(unitAgg(c.rows,c.pnl,{terse:true}))}"><span class="tlogo">${coinLogo(pair)}</span><span class="ts">${esc(pair)}</span><span class="tv${unitMask()}">${unitKort(c.rows,c.pnl)} · ${wr}%</span></div>`;
+    return `<div class="tm-tile${cls2}${cls3}${lite}" style="left:${(r.x+1)/1000*100}%;top:${(r.y+1)/H*100}%;width:${(r.w-2)/1000*100}%;height:${(r.h-2)/H*100}%;background:${tint(c.u)}" onclick="pairCell(${jsarg(pair)})" data-su="${esc(pair)}" data-n="${c.n}" data-w="${c.w}" data-pnl="${c.u??0}" data-tx="${esc(unitAgg(c.rows,c.pnl,{terse:true,basis:CLOSED}))}"><span class="tlogo">${coinLogo(pair)}</span><span class="ts">${esc(pair)}</span><span class="tv${unitMask()}">${unitKort(c.rows,c.pnl,CLOSED)} · ${wr}%</span></div>`;
   }).join('');
   const sw=bg=>`<span class="mxsw" style="background:${bg}"></span>`;
   return `<div class="tm" style="aspect-ratio:1000/${H}" onmousemove="tmMove(event)" onmouseleave="yhHide()">${tiles}</div>
@@ -3642,7 +3664,7 @@ function tendVerdict(){
   const {edge,leak}=tendEdgeLeak();
   const card=(c,type)=>`<div class="vcard ${type}"><div class="vkick">${type==='edge'?'🎯 Jouw sterkste combinatie':'⚠ Structureel lek'}</div>
     <div class="vcombo">${c?esc(c.va)+' · '+esc(c.vb):'—'}</div>
-    ${c?`<div class="vstats"><span>gem. <b class="${c.avgR>=0?'g':'r'}">${(c.avgR>=0?'+':'')+c.avgR.toFixed(2)}R</b></span><span>win <b>${c.wr}%</b></span><span>netto <b class="${cls(unitVal(c.rows,c.pnl))}${unitMask()}">${unitAgg(c.rows,c.pnl,{terse:true})}</b></span><span>n=<b>${c.n}</b></span></div>
+    ${c?`<div class="vstats"><span>gem. <b class="${c.avgR>=0?'g':'r'}">${(c.avgR>=0?'+':'')+c.avgR.toFixed(2)}R</b></span><span>win <b>${c.wr}%</b></span><span>netto <b class="${uCls(unitVal(c.rows,c.pnl,CLOSED))}${unitMask()}">${unitAgg(c.rows,c.pnl,{terse:true,basis:CLOSED})}</b></span><span>n=<b>${c.n}</b></span></div>
     <div class="vexpl">${type==='edge'?'Hier ligt je edge, zoek deze condities actief op.':'Deze combinatie kost structureel geld, vermijden of herzien.'}</div>`:'<div class="vexpl">Te weinig data (min. '+TEND_MINN+' trades per combinatie).</div>'}</div>`;
   return `<div class="grid" style="grid-template-columns:1fr 1fr;align-items:stretch">${card(edge,'edge')}${card(leak,'leak')}</div>`;
 }
@@ -3663,7 +3685,7 @@ function crossHeat(){
     if(!c||!c.n)return '<td class="thm-empty"></td>';
     const avgR=c.rN?c.r/c.rN:0,faded=c.n<TEND_MINN||!c.rN,wr=Math.round(c.w/c.n*100);
     const lite=faded?'':liteText();
-    return `<td class="${faded?'faded':''}${lite}" style="background:${faded?'var(--track)':tint(avgR)}" ${faded||!klikbaar?'':`onclick="crossCell('${rd}',${jsarg(rv)},'${cd}',${jsarg(cv)})"`} data-t="${esc(rv)} · ${esc(cv)}" data-r="${avgR.toFixed(2)}" data-wr="${wr}" data-pnl="${unitVal(c.rows,c.pnl)}" data-tx="${esc(unitAgg(c.rows,c.pnl,{terse:true}))}" data-n="${c.n}" onmousemove="crossMove(event)" onmouseleave="yhHide()">${faded?`<div class="thm-n" style="color:var(--muted)">n=${c.n}</div>`:`<div class="thm-v">${(avgR>=0?'+':'')+avgR.toFixed(2)}R</div><div class="thm-n">${wr}% · n=${c.n}</div>`}</td>`;}).join('')+'</tr>').join('');
+    return `<td class="${faded?'faded':''}${lite}" style="background:${faded?'var(--track)':tint(avgR)}" ${faded||!klikbaar?'':`onclick="crossCell('${rd}',${jsarg(rv)},'${cd}',${jsarg(cv)})"`} data-t="${esc(rv)} · ${esc(cv)}" data-r="${avgR.toFixed(2)}" data-wr="${wr}" data-pnl="${unitVal(c.rows,c.pnl,CLOSED)??0}" data-tx="${esc(unitAgg(c.rows,c.pnl,{terse:true,basis:CLOSED}))}" data-n="${c.n}" onmousemove="crossMove(event)" onmouseleave="yhHide()">${faded?`<div class="thm-n" style="color:var(--muted)">n=${c.n}</div>`:`<div class="thm-v">${(avgR>=0?'+':'')+avgR.toFixed(2)}R</div><div class="thm-n">${wr}% · n=${c.n}</div>`}</td>`;}).join('')+'</tr>').join('');
   const sw=f=>`<span class="mxsw" style="background:${tint(f*mx)}"></span>`;
   return `<div class="panel"><div class="phead"><h3>🔀 Kruis-analyse</h3>
     <div class="crossctrl">${sel('row',rd)}<span class="x">×</span>${sel('col',cd)}</div><span class="sp"></span>
@@ -3678,12 +3700,12 @@ function weekHourHeat(){
   const m={};let mx=1;
   CLOSED.forEach(t=>{const h=parseInt(String(t.time||'').slice(0,2));if(isNaN(h))return;const d=dowMon(t.date);const k=d+'|'+h;(m[k]=m[k]||{n:0,w:0,pnl:0,rows:[]});m[k].pnl+=t.pnl;m[k].rows.push(t);m[k].n++;if(t.pnl>0)m[k].w++;});
   if(UNIT()!=='val')mx=1e-9;
-  Object.values(m).forEach(c=>{c.u=unitVal(c.rows,c.pnl);mx=Math.max(mx,Math.abs(c.u));});   // colour in the active unit
+  Object.values(m).forEach(c=>{c.u=unitVal(c.rows,c.pnl,CLOSED);mx=Math.max(mx,Math.abs(c.u||0));});   // colour in the active unit
   const tint=v=>v?`color-mix(in srgb,var(--${v>=0?'green':'red'}) ${Math.round(Math.min(1,Math.abs(v)/mx)*55+25)}%,transparent)`:'var(--track)';
   const DOW=['Ma','Di','Wo','Do','Vr','Za','Zo'];
   let html='<div></div>';for(let h=0;h<24;h++)html+=`<div class="whm-hl">${h%3===0?h:''}</div>`;
-  for(let d=0;d<7;d++){html+=`<div class="whm-dl">${DOW[d]}</div>`;for(let h=0;h<24;h++){const c=m[d+'|'+h];const v=c?c.u:0;
-    html+=`<div class="whm-cell" style="background:${c?tint(v):'var(--track)'}" data-t="${DOW[d]} · ${String(h).padStart(2,'0')}u" data-n="${c?c.n:0}" data-pnl="${v}"${c?` data-tx="${esc(unitAgg(c.rows,c.pnl,{terse:true}))}"`:''} data-wr="${c?Math.round(c.w/c.n*100):0}" onmousemove="whMove(event)" onmouseleave="yhHide()"></div>`;}}
+  for(let d=0;d<7;d++){html+=`<div class="whm-dl">${DOW[d]}</div>`;for(let h=0;h<24;h++){const c=m[d+'|'+h];const v=c?c.u??0:0;
+    html+=`<div class="whm-cell" style="background:${c?tint(v):'var(--track)'}" data-t="${DOW[d]} · ${String(h).padStart(2,'0')}u" data-n="${c?c.n:0}" data-pnl="${v}"${c?` data-tx="${esc(unitAgg(c.rows,c.pnl,{terse:true,basis:CLOSED}))}"`:''} data-wr="${c?Math.round(c.w/c.n*100):0}" onmousemove="whMove(event)" onmouseleave="yhHide()"></div>`;}}
   return `<div class="whm">${html}</div>`;
 }
 function whMove(e){const tip=document.getElementById('yhtip');if(!tip)return;const t=e.target.closest&&e.target.closest('.whm-cell');if(!t){yhHide();return;}const n=+t.dataset.n;
@@ -3755,7 +3777,7 @@ function planTendencies(){
 function pgTendencies(){
   if(STATE.tend==='plan')return planTendencies();
   const field={sessie:'session',setup:'setup',emotie:'emotion',grade:'grade'}[STATE.tend];
-  const rows=groupRows(field).sort((a,b)=>b.u-a.u);
+  const rows=groupRows(field).sort(opU);
   if(!rows.length)return `${filterBar()}${emptyState(countActive()?'trades-none':'tendencies')}`;
   const tabs=TEND_TABS;
   const mxPanel=setupSessionMatrix();
@@ -3772,7 +3794,7 @@ function pgTendencies(){
       <div class="panel"><div class="phead"><h3>Win-rate per ${STATE.tend}</h3><span class="sp"></span><span class="chip">radar</span></div><div class="pbody">${radar(rows.map(r=>r.label.length>10?r.label.slice(0,9)+'…':r.label),rows.map(r=>r.val),{name:'Win-rate',fmt:v=>v+'%',h:288})}</div></div>
       <div class="panel"><div class="phead"><h3>Prestatie-breakdown</h3><span class="sp"></span>
         <div class="subtabs" id="tendTabs">${tabs.map(([k,l])=>`<button data-t="${k}" class="${STATE.tend===k?'on':''}">${l}</button>`).join('')}</div></div>
-        ${hbars(rows.map(r=>({...r,val:r.val,disp:r.disp,sub:`${r.n} trades · gem. R <b class="${r.r==null?'':cls(r.r)}">${r.r==null?'—':(r.r>=0?'+':'')+r.r.toFixed(2).replace('.',',')}</b> · netto <b class="${cls(r.u)}">${unitAgg(r.rows,r.pnl,{terse:true})}</b>`})))}</div>
+        ${hbars(rows.map(r=>({...r,val:r.val,disp:r.disp,sub:`${r.n} trades · gem. R <b class="${r.r==null?'':cls(r.r)}">${r.r==null?'—':(r.r>=0?'+':'')+r.r.toFixed(2).replace('.',',')}</b> · netto <b class="${uCls(r.u)}">${unitAgg(r.rows,r.pnl,{terse:true,basis:CLOSED})}</b>`})))}</div>
     </div>`;
 }
 
@@ -3786,7 +3808,8 @@ function pgKalender(){
   const monNet=days.reduce((s,[,d])=>s+d.v,0),monTrades=days.reduce((s,[,d])=>s+d.n,0),monWins=days.reduce((s,[,d])=>s+d.w,0);
   const monRows=days.flatMap(([,d])=>d.rows);
   const monWR=monTrades?Math.round(monWins/monTrades*100):0;
-  const best=days.slice().sort((a,b)=>b[1].u-a[1].u)[0],worst=days.slice().sort((a,b)=>a[1].u-b[1].u)[0];
+  const bekend=days.filter(([,d])=>d.u!=null);
+  const best=bekend.slice().sort((a,b)=>b[1].u-a[1].u)[0],worst=bekend.slice().sort((a,b)=>a[1].u-b[1].u)[0];
   const dagTxt=d=>unitAgg(d.rows,d.v,{terse:true});
   const maxAbs=Math.max(UNIT()==='val'?1:1e-9,...days.map(([,d])=>Math.abs(d.u)));
   const dim=new Date(Y,M,0).getDate(),first=new Date(Y,M-1,1),startDow=(first.getDay()+6)%7;
@@ -3800,19 +3823,21 @@ function pgKalender(){
       if(c.empty)return '<div class="cell empty"></div>';
       const dd=c.day;if(!dd)return `<div class="cell"><span class="dn">${c.d}</span></div>`;
       wkNet+=dd.v;wkD++;wkRows.push(...dd.rows);
+      const tel=`<span class="cn">${dd.n?`${dd.n}·${Math.round(dd.w/dd.n*100)}%`:'loopt'}</span>`;
+      if(dd.u==null)return `<div class="cell"><span class="dn">${c.d}</span><div class="cbot"><span class="cp">${dagTxt(dd)}</span>${tel}</div></div>`;   // not known in this unit: neutral
       const inten=Math.round(Math.min(1,Math.abs(dd.u)/maxAbs)*55+18);
       const bg=`color-mix(in srgb,var(--${dd.u>=0?'green':'red'}) ${inten}%,transparent)`;
       const bd=`color-mix(in srgb,var(--${dd.u>=0?'green':'red'}) ${inten+18}%,transparent)`;
       return `<div class="cell ${dd.u>=0?'pos':'neg'}" style="background:${bg};border-color:${bd}"><span class="dn">${c.d}</span>
         <div class="cbot"><span class="cp ${cls(dd.u)}">${dagTxt(dd)}</span><span class="cn">${dd.n?`${dd.n}·${Math.round(dd.w/dd.n*100)}%`:'loopt'}</span></div></div>`;
     }).join('');
-    grid+=`<div class="calrow">${row}<div class="wtot ${wkD?cls(unitVal(wkRows,wkNet)):''}">${wkD?unitAgg(wkRows,wkNet,{terse:true}):'—'}<small>wk ${w+1}</small></div></div>`;
+    grid+=`<div class="calrow">${row}<div class="wtot ${wkD?uCls(unitVal(wkRows,wkNet)):''}">${wkD?unitAgg(wkRows,wkNet,{terse:true}):'—'}<small>wk ${w+1}</small></div></div>`;
   }
   const yByDay=dagTotalen(BOEKINGEN.filter(t=>hasDate(t)&&t.date.slice(0,4)===String(Y)));
   const yNet=Object.values(yByDay).reduce((s,d)=>s+d.v,0),yDays=Object.keys(yByDay).length,yRows=Object.values(yByDay).flatMap(d=>d.rows);
   const stat=(k,v,vc,sub)=>kpiCard(k,v,{vc,ctx:sub||''});
   return `${filterBar()}<div class="kpis" style="grid-template-columns:repeat(5,1fr);margin-bottom:16px">
-      ${stat('Netto maand',unitAgg(monRows,monNet),cls(unitVal(monRows,monNet)),monTrades+' trades')}
+      ${stat('Netto maand',unitAgg(monRows,monNet),uCls(unitVal(monRows,monNet)),monTrades+' trades')}
       ${stat('Win-rate',monWR+'%','',monWins+'W · '+(monTrades-monWins)+'V')}
       ${stat('Groene dagen',green,'g',redd+' rode dagen')}
       ${stat('Beste dag',best?dagTxt(best[1]):'—','g',best?fmtD(best[0]):'')}
@@ -3830,7 +3855,7 @@ function pgKalender(){
         <h3 style="min-width:150px;text-align:center">Jaaroverzicht ${Y}</h3>
         <button class="iconbtn" onclick="calYearNav(1)" style="width:30px;height:30px" aria-label="volgend jaar">›</button>
         <span class="sp"></span>
-        <span class="chip gr-legend">${yDays} handelsdagen · netto <b class="${cls(unitVal(yRows,yNet))}">${unitAgg(yRows,yNet,{terse:true})}</b> · <i style="background:var(--green)"></i>winst<i style="background:var(--red);margin-left:7px"></i>verlies</span></div>
+        <span class="chip gr-legend">${yDays} handelsdagen · netto <b class="${uCls(unitVal(yRows,yNet))}">${unitAgg(yRows,yNet,{terse:true})}</b> · <i style="background:var(--green)"></i>winst<i style="background:var(--red);margin-left:7px"></i>verlies</span></div>
       <div class="pbody">${yearHeatmap(Y,yByDay)}</div></div>`;
 }
 
@@ -4879,9 +4904,9 @@ function yearHeatmap(year,byDay){
     const pos=m.u>=0,wpct=Math.max(m.u?6:0,Math.round(Math.abs(m.u)/mMax*100));
     const col=pos?'var(--green)':'var(--red)';
     const bar=m.u?(pos?`left:50%;width:${wpct/2}%;background:${col}`:`right:50%;width:${wpct/2}%;background:${col}`):'';
-    strip+=`<div class="ymc${i===curMo?' on':''}" onclick="calGoMonth(${i})" data-mo="${i}" data-mn="${mAbbr[i]}" data-mv="${m.u}" data-mt="${esc(unitAgg(m.rows,m.v,{terse:true}))}" data-mn2="${m.n}" data-mw="${m.w}" data-ml="${m.l}">
+    strip+=`<div class="ymc${i===curMo?' on':''}" onclick="calGoMonth(${i})" data-mo="${i}" data-mn="${mAbbr[i]}" data-mv="${m.u??0}" data-mt="${esc(unitAgg(m.rows,m.v,{terse:true}))}" data-mn2="${m.n}" data-mw="${m.w}" data-ml="${m.l}">
       <div class="ymn">${mAbbr[i]}</div>
-      <div class="ymv ${m.n||m.l?cls(m.u):''}" ${m.n||m.l?'':'style="color:var(--faint)"'}>${m.n||m.l?unitKort(m.rows,m.v):'—'}</div>
+      <div class="ymv ${m.n||m.l?uCls(m.u):''}" ${m.n||m.l?'':'style="color:var(--faint)"'}>${m.n||m.l?unitKort(m.rows,m.v):'—'}</div>
       <div class="ymb">${bar?`<i style="${bar}"></i>`:''}</div></div>`;
   });
   // --- daily heatmap (fixed square cells via CSS grid) ---
@@ -4893,7 +4918,7 @@ function yearHeatmap(year,byDay){
     const mo=dt.getUTCMonth();
     if(mo!==prevMo){prevMo=mo;mlabels+=`<span style="grid-column:${col+1}">${mAbbr[mo]}</span>`;}
     const iso=`${year}-${String(mo+1).padStart(2,'0')}-${String(dt.getUTCDate()).padStart(2,'0')}`,dd=byDay[iso];
-    cells+=`<div class="yc" style="grid-column:${col+1};grid-row:${dow+1};background:${heatFill(dd?dd.u:0)}" data-iso="${iso}" data-v="${dd?dd.u:0}"${dd?` data-t="${esc(unitAgg(dd.rows,dd.v,{terse:true}))}"`:''} data-n="${dd?dd.n:0}" data-w="${dd?dd.w:0}" data-l="${dd?dd.l:0}"></div>`;
+    cells+=`<div class="yc" style="grid-column:${col+1};grid-row:${dow+1};background:${heatFill(dd?dd.u:0)}" data-iso="${iso}" data-v="${dd?dd.u??0:0}"${dd?` data-t="${esc(unitAgg(dd.rows,dd.v,{terse:true}))}"`:''} data-n="${dd?dd.n:0}" data-w="${dd?dd.w:0}" data-l="${dd?dd.l:0}"></div>`;
   }
   const dLbl=['ma','','wo','','vr','','zo'].map(x=>`<span>${x}</span>`).join('');
   return `<div class="ystrip" onmousemove="ymMove(event)" onmouseleave="yhHide()">${strip}</div>
@@ -4993,8 +5018,9 @@ function pgAnalytics(){
   chron.forEach(t=>{const r=tradeROrNull(t);if(r==null)return;cr+=r;crV.push(+cr.toFixed(2));});   // no R (no stop) is not 0R
   const maxDDTxt=(()=>{
     if(UNIT()==='r'){let pk=0,dd=0;crV.forEach(v=>{pk=Math.max(pk,v);dd=Math.min(dd,v-pk);});return crV.length>1?rS(dd):'—';}
-    if(UNIT()==='pct'){const base=geldChron.length?pnlBaseOf(geldChron[0]):0;if(!(base>0))return '—';
-      let c=0,pk=0,dd=0;geldChron.forEach(t=>{c+=t.pnl;pk=Math.max(pk,c);dd=Math.min(dd,(c-pk)/(base+pk)*100);});return pctSgn(dd);}
+    // live money in dollars, like pnlPctOf: a % does not depend on the display currency, and a backtest is no money
+    if(UNIT()==='pct'){const g=geldChron.filter(t=>isLive(t)&&(t.status==='closed'||t.status==='partial'));const base=g.length?pnlBaseOf(g[0]):0;if(!(base>0))return '—';
+      let c=0,pk=0,dd=0;g.forEach(t=>{c+=pnlUsdOf(t);pk=Math.max(pk,c);dd=Math.min(dd,(c-pk)/(base+pk)*100);});return pctSgn(dd);}
     return eurS(maxDD);})();
   let ws=0,ls=0,mw=0,ml=0;chron.forEach(t=>{if(t.pnl>0){ws++;ls=0;mw=Math.max(mw,ws);}else{ls++;ws=0;ml=Math.max(ml,ls);}});
   let w2=0,gw2=0,gl2=0,net2=0;const wrRun=[],pfRun=[],expRun=[];
@@ -5011,8 +5037,9 @@ function pgAnalytics(){
   const uFmt=v=>v==null?'—':UNIT()==='r'?rS(v):UNIT()==='pct'?pctSgn(v):eurS(v);
   const uLijst=rows=>rows.map(perTrade).filter(v=>v!=null&&isFinite(v));
   const uGem=rows=>{const l=uLijst(rows);return l.length?l.reduce((x,y)=>x+y,0)/l.length:null;};
-  const uW=UNIT()==='val'?avgW:uGem(wins),uL=UNIT()==='val'?-avgL:uGem(losses),uExp=UNIT()==='val'?a.exp:uGem(CLOSED);
-  const uBigW=UNIT()==='val'?bigW:(uLijst(wins).length?Math.max(...uLijst(wins)):null),uBigL=UNIT()==='val'?bigL:(uLijst(losses).length?Math.min(...uLijst(losses)):null);
+  const lW=uLijst(wins),lL=uLijst(losses),gem=l=>l.length?l.reduce((x,y)=>x+y,0)/l.length:null;
+  const uW=UNIT()==='val'?avgW:gem(lW),uL=UNIT()==='val'?-avgL:gem(lL),uExp=UNIT()==='val'?a.exp:uGem(CLOSED);
+  const uBigW=UNIT()==='val'?bigW:(lW.length?Math.max(...lW):null),uBigL=UNIT()==='val'?bigL:(lL.length?Math.min(...lL):null);
   const mx=UNIT()==='val'?Math.max(avgW,avgL,1):Math.max(Math.abs(uW||0),Math.abs(uL||0),1e-9);
   const avgMae=CLOSED.length?CLOSED.reduce((s,t)=>s+(+t.mae||0),0)/CLOSED.length:0,avgMfe=CLOSED.length?CLOSED.reduce((s,t)=>s+(+t.mfe||0),0)/CLOSED.length:0,captured=avgMfe?Math.round(a.avgR/avgMfe*100):0;
   let curStreak=0,curType='';for(const t of chron.slice().reverse()){const w=t.pnl>0;if(curType===''){curType=w?'w':'l';curStreak=1;}else if((curType==='w')===w)curStreak++;else break;}
@@ -5022,23 +5049,24 @@ function pgAnalytics(){
     <div><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:5px"><span style="color:var(--muted)">Gem. verlies</span><b class="num r">${uFmt(uL)}</b></div><div class="meter" style="justify-content:flex-start"><div class="t" style="width:100%"><div class="f" style="width:${Math.abs(uL||0)/mx*100}%;background:var(--red)"></div></div></div></div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px 16px;border-top:1px solid var(--line2);padding-top:12px">
       ${wlStat('Grootste winst',uFmt(uBigW),'g')}${wlStat('Grootste verlies',uFmt(uBigL),'r')}
-      ${wlStat('Payoff-ratio',payoff.toFixed(2).replace('.',','))}${wlStat('Verwachting/trade',uFmt(uExp),cls(uExp||0))}
+      ${wlStat('Payoff-ratio',payoff.toFixed(2).replace('.',','))}${wlStat('Verwachting/trade',uFmt(uExp),uCls(uExp))}
       ${wlStat('Gem. MAE',avgMae.toFixed(2)+'R','r')}${wlStat('Huidige reeks',curStreak+(curType==='w'?'W':curType==='l'?'V':''),curType==='w'?'g':curType==='l'?'r':'')}</div></div>`;
   const dirRows=['long','short'].map(d=>{const g=CLOSED.filter(t=>t.dir===d),w=g.filter(t=>t.pnl>0).length,pnl=g.reduce((s,t)=>s+t.pnl,0),wr=g.length?Math.round(w/g.length*100):0;
-    const u=unitVal(g,pnl);
-    return {label:d==='long'?'Long':'Short',val:wr,disp:wr+'%',sub:`${g.length} trades · netto <b class="${cls(u)}">${unitAgg(g,pnl,{terse:true})}</b>`,color:u>=0?'var(--green)':'var(--red)'};});
+    const u=unitVal(g,pnl,CLOSED);
+    return {label:d==='long'?'Long':'Short',val:wr,disp:wr+'%',sub:`${g.length} trades · netto <b class="${uCls(u)}">${unitAgg(g,pnl,{terse:true,basis:CLOSED})}</b>`,color:uKleur(u)};});
   // HTF bias (v1.8): with or against the bias of the highest layer that has one
   const htfRows=['mee','tegen','geen'].map(k=>{const g=CLOSED.filter(t=>biasRelatie(t)===k),w=g.filter(t=>t.pnl>0).length,pnl=g.reduce((s,t)=>s+t.pnl,0),wr=g.length?Math.round(w/g.length*100):0,gr=gemR(g);
     const r=gr.n?(gr.avg>=0?'+':'−')+Math.abs(gr.avg).toFixed(2).replace('.',',')+'R':'—';
-    const u=unitVal(g,pnl);
-    return {label:HTF_LABEL[k],val:wr,disp:g.length?wr+'%':'—',sub:`${g.length} trades · gem. ${r} · netto <b class="${cls(u)}${unitMask()}">${unitAgg(g,pnl,{terse:true})}</b>`,color:u>=0?'var(--green)':'var(--red)'};});
+    const u=unitVal(g,pnl,CLOSED);
+    return {label:HTF_LABEL[k],val:wr,disp:g.length?wr+'%':'—',sub:`${g.length} trades · gem. ${r} · netto <b class="${uCls(u)}${unitMask()}">${unitAgg(g,pnl,{terse:true,basis:CLOSED})}</b>`,color:uKleur(u)};});
   const htfBody=CLOSED.some(t=>biasRelatie(t)!=='geen')?hbars(htfRows):emptyState('htfbias');
   // Top 6 op |netto|: grootste verliezers horen er óók in (ChangeMaker 2026-09-16 — bij een
   // fouten-filter viel de zwaarste verliezer juist buiten de lijst); weergave winst → verlies.
-  const pairRows=groupRows('pair').sort((x,y)=>Math.abs(y.pnl)-Math.abs(x.pnl)).slice(0,6).sort((x,y)=>y.pnl-x.pnl);
-  const sessBars=groupRows('session').sort((x,y)=>y.pnl-x.pnl).map(s=>({m:s.label,v:+(+s.pnl).toFixed(2)}));
+  const pairRows=groupRows('pair').sort((x,y)=>Math.abs(y.u||0)-Math.abs(x.u||0)).slice(0,6).sort(opU);
+  const sessBars=groupRows('session').sort(opU).map(s=>({m:s.label,v:+(+(s.u??0)).toFixed(2)}));
   // álle fouten per trade tellen mee, niet alleen de eerste (ChangeMaker 2026-09-14)
-  const mistBy={};CLOSED.forEach(t=>tradeMistakes(t).forEach(m=>{mistBy[m]=(mistBy[m]||0)+t.pnl;}));
+  const mistBy={};CLOSED.forEach(t=>tradeMistakes(t).forEach(m=>{(mistBy[m]=mistBy[m]||[]).push(t);}));
+  Object.keys(mistBy).forEach(m=>{const l=mistBy[m];mistBy[m]=unitVal(l,l.reduce((s,t)=>s+t.pnl,0),CLOSED)??0;});   // net per mistake in the unit
   const mistBars=Object.entries(mistBy).sort((x,y)=>x[1]-y[1]).map(([m,v])=>({m:m.length>11?m.slice(0,10)+'…':m,v:+(+v).toFixed(2),f:m}));
   // Duur nu op echte timestamps (openTime/closeTime) met durationMin als fallback.
   const _hd=t=>tradeDurationMin(t)||0;
@@ -5058,10 +5086,10 @@ function pgAnalytics(){
   const holdRows=[{label:'Winst',val:Math.round(avgHoldW/maxHold*100),disp:fmtDur(avgHoldW),sub:`${wins.length} trades`,color:'var(--green)'},{label:'Verlies',val:Math.round(avgHoldL/maxHold*100),disp:fmtDur(avgHoldL),sub:`${losses.length} trades`,color:'var(--red)'}];
   if(_tp1.length)holdRows.push({label:'Tot 1e TP',val:Math.round(avgTp1/maxHold*100),disp:fmtDur(avgTp1),sub:`${_tp1.length} trades`,color:'var(--accent)'});
   if(_tpN.length)holdRows.push({label:'Tot laatste TP',val:Math.round(avgTpN/maxHold*100),disp:fmtDur(avgTpN),sub:`${_tpN.length} trades`,color:'var(--accent)'});
-  const gData=GRADES.map(g=>{const gt=CLOSED.filter(x=>gradeOf(x)===g.k);const w=gt.filter(x=>x.pnl>0).length;const wr=gt.length?Math.round(w/gt.length*100):0;const net=gt.reduce((s,x)=>s+x.pnl,0);const _g=gemR(gt);return {g,n:gt.length,w,l:gt.length-w,wr,net,rows:gt,u:unitVal(gt,net),avgR:_g.avg,rN:_g.n};});
+  const gData=GRADES.map(g=>{const gt=CLOSED.filter(x=>gradeOf(x)===g.k);const w=gt.filter(x=>x.pnl>0).length;const wr=gt.length?Math.round(w/gt.length*100):0;const net=gt.reduce((s,x)=>s+x.pnl,0);const _g=gemR(gt);return {g,n:gt.length,w,l:gt.length-w,wr,net,rows:gt,u:unitVal(gt,net,CLOSED),avgR:_g.avg,rN:_g.n};});
   const gChart=gradeStackChart(gData.map(d=>({x:'Grade '+d.g.k,win:d.w,loss:d.l})));
   const gLegend=`<span class="chip gr-legend"><i style="background:var(--green)"></i>winst<i style="background:var(--red);margin-left:9px"></i>verlies</span>`;
-  const gRows=gData.map(d=>`<div class="graderow"><span class="gbadge g-${d.g.k}">${d.g.k}</span><div class="gr-main"><div class="gr-top"><span><b>${d.n}</b> trades</span><b class="gr-net num ${cls(d.u)}">${unitAgg(d.rows,d.net,{terse:true})}</b></div><div class="gr-meter"><div class="gr-track"><div class="gr-fill" style="width:${d.wr}%;background:${d.wr>=50?'var(--green)':d.wr>=35?'var(--amber)':'var(--red)'}"></div></div><span class="gr-wr">${d.wr}%</span></div><div class="gr-sub">gem. ${d.rN?(d.avgR>=0?'+':'')+d.avgR.toFixed(2)+'R':'—'} · ${d.w}W / ${d.l}V</div></div></div>`).join('');
+  const gRows=gData.map(d=>`<div class="graderow"><span class="gbadge g-${d.g.k}">${d.g.k}</span><div class="gr-main"><div class="gr-top"><span><b>${d.n}</b> trades</span><b class="gr-net num ${uCls(d.u)}">${unitAgg(d.rows,d.net,{terse:true,basis:CLOSED})}</b></div><div class="gr-meter"><div class="gr-track"><div class="gr-fill" style="width:${d.wr}%;background:${d.wr>=50?'var(--green)':d.wr>=35?'var(--amber)':'var(--red)'}"></div></div><span class="gr-wr">${d.wr}%</span></div><div class="gr-sub">gem. ${d.rN?(d.avgR>=0?'+':'')+d.avgR.toFixed(2)+'R':'—'} · ${d.w}W / ${d.l}V</div></div></div>`).join('');
   const grossW=wins.reduce((s,x)=>s+x.pnl,0),grossL=Math.abs(losses.reduce((s,x)=>s+x.pnl,0)),pfv=grossL?grossW/grossL:(grossW>0?PF_ONEINDIG:0);
   const longN=CLOSED.filter(x=>x.dir==='long').length,shortN=CLOSED.length-longN,winN=wins.length,lossN=losses.length;
   const recentForm=chron.slice(-22);
@@ -5136,7 +5164,7 @@ function pgAnalytics(){
       </div>
     </div><div style="height:13px"></div>
     <div class="grid" style="grid-template-columns:1fr 1fr;align-items:stretch">
-      ${panel('Netto per sessie','gesorteerd op netto',barsPnl(sessBars,'e'))}
+      ${panel('Netto per sessie','gesorteerd op netto',barsPnl(sessBars,barUnit()))}
       ${panelRaw('Long vs. short','win-rate · netto',hbars(dirRows))}
     </div><div style="height:13px"></div>
     ${panelRaw('HTF-bias: mee of tegen','bias van je hoogste laag · win-rate · gem. R · netto',htfBody)}<div style="height:13px"></div>
@@ -5149,7 +5177,7 @@ function pgAnalytics(){
     <div class="grid" style="grid-template-columns:1fr 1fr 1fr;align-items:stretch">
       ${(()=>{const go2=d=>{if(d&&d.f){setFilter('mistake',d.f);go('trades');}};
         if(!mistBars.length)return panelRaw('Fout-analyse','',`<div style="padding:24px 18px;color:var(--muted);font-size:12.5px">Geen fouten getagd in beeld 🎉</div>`);
-        return panel('Fout-analyse','netto-impact per fout · klik = die trades',mistBars.length>=3?radarImpact(mistBars,go2):barsPnl(mistBars,'e',go2));})()}
+        return panel('Fout-analyse','netto-impact per fout · klik = die trades',mistBars.length>=3?radarImpact(mistBars,go2,barUnit()):barsPnl(mistBars,barUnit(),go2));})()}
       ${panelRaw('Gem. tijd in trade',_tp1.length?'winst vs. verlies · tot je TP\'s':'winst vs. verlies',hbars(holdRows))}
       ${panelRaw('Duur → resultaat','gem. R per duur-bucket',durBody)}
     </div><div style="height:13px"></div>
@@ -5329,7 +5357,8 @@ function toast(msg,type,act){const c=document.getElementById('toasts');if(!c)ret
   }
   c.appendChild(el);requestAnimationFrame(()=>el.classList.add('on'));
   setTimeout(()=>{el.classList.remove('on');setTimeout(()=>el.remove(),320);},act?7000:2600);}
-function render(){
+function render(){_renderMemo={};try{renderPagina();}finally{_renderMemo=null;}}
+function renderPagina(){
   pasteTargetId=null;
   yhHide();  // ruim een eventueel hangende hover-tooltip op (bv. na klik op treemap-tegel → navigatie)
   // Focus-preservatie: leg actief invoerveld + cursorpositie vast vóór de herbouw,

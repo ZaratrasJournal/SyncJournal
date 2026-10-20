@@ -61,6 +61,41 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
   ok('kerncijfers in R: grootste +3,0R / −1,0R, verwachting +0,94R', /\+3,0R/.test(kern.bigW) && /−1,0R/.test(kern.bigL) && /\+0,94R/.test(kern.exp), JSON.stringify(kern));
   ok('max drawdown in R: −1,0R', /−1,0R/.test(kern.dd), JSON.stringify(kern));
 
+  console.log('─── Review: onbekend is geen 0 ───');
+  // a losing trade without a stop on 20-10: no R, and no money in the cross-sections either way
+  await p.evaluate(() => { T.push({ ...T[0], id: 9, date: '2026-10-20', time: '08:00', setup: 'MSB', stop: 0, pnl: -50, exit: 79600, mistakes: ['FOMO'], openTime: String(Date.parse('2026-10-20T08:00:00Z')), closeTime: String(Date.parse('2026-10-20T09:00:00Z')) });
+    T[1].mistakes = ['FOMO']; persist(); setUnit('r'); go('kalender'); });
+  const leeg = await p.evaluate(() => { const cel = [...document.querySelectorAll('.calgrid .cell')].find(c => (c.querySelector('.dn') || {}).textContent === '20');
+    const groen = [...document.querySelectorAll('.kpis > *')].find(k => /Groene dagen/.test(k.textContent));
+    return { cls: cel.className, tekst: cel.querySelector('.cp').textContent, groen: groen.textContent.replace(/\s+/g, ' ') }; });
+  ok('R: 20 okt (alleen een trade zonder stop) is neutraal, geen groene dag', !/pos|neg/.test(leeg.cls) && leeg.tekst === '—' && /Groene dagen ?5 ?2 rode/.test(leeg.groen), JSON.stringify(leeg));
+  const tegels = await p.evaluate(() => { const o = T.map(t => [t.stop, t.session]); T.forEach(t => { t.stop = 0; t.session = t.time < '12' ? 'London' : 'New York'; }); STATE.matrixSize = 'pnl'; go('tendencies');
+    const n = document.querySelectorAll('.tm-tile').length; T.forEach((t, i) => { [t.stop, t.session] = o[i]; }); STATE.matrixSize = 'n'; return n; });
+  ok('R zonder stops, matrix op |P&L|: de tegels blijven staan', tegels > 0, String(tegels));
+  await p.evaluate(() => go('analytics')); await p.waitForTimeout(1500);
+  const balken = await p.evaluate(() => { const pan = t => [...document.querySelectorAll('.panel')].find(x => (x.querySelector('h3') || {}).textContent === t);
+    const tx = t => { const x = pan(t); return x ? [...x.querySelectorAll('svg text')].map(e => e.textContent).filter(s => /\d/.test(s)) : null; };
+    return { sessie: tx('Netto per sessie'), fout: tx('Fout-analyse') }; });
+  ok('Netto per sessie en Fout-analyse in R', balken.sessie && balken.sessie.length && balken.sessie.every(s => /R$/.test(s)) && balken.fout && balken.fout.every(s => !/\$/.test(s)), JSON.stringify(balken));
+
+  console.log('─── Review: % met een echte balans ───');
+  await p.evaluate(() => { EXCHANGES.find(e => e.id === 'blofin').val = 10700; setUnit('pct'); });   // booked 700 → the base before the first trade is 10.000
+  const pct = await p.evaluate(() => { go('kalender');
+    const cel = [...document.querySelectorAll('.calgrid .cell')].find(c => (c.querySelector('.dn') || {}).textContent === '6');
+    const wk = [...document.querySelectorAll('.wtot')].map(w => w.textContent.replace(/\s+/g, ' '));
+    go('analytics'); const m = document.getElementById('main').textContent.replace(/\s+/g, ' ');
+    return { dag6: cel.querySelector('.cp').textContent, wk3: wk[2], dd: m.slice(Math.max(0, m.indexOf('Max drawdown') - 8), m.indexOf('Max drawdown')) }; });
+  ok('%: 6 okt +1,00% (100 ÷ 10.000), week 3 +5,39% (550 ÷ 10.200)', pct.dag6 === '+1,00%' && /\+5,39%/.test(pct.wk3), JSON.stringify(pct));
+  ok('%: max drawdown −0,98% (−100 ÷ 10.200)', /−0,98%/.test(pct.dd), JSON.stringify(pct));
+  const eur = await p.evaluate(() => { FX.latest = 0.9; FX.latestDate = '2026-10-20'; FX.ts = Date.now(); fxSave(); STATE.currency = 'EUR'; persistState(); go('analytics');
+    const m = document.getElementById('main').textContent.replace(/\s+/g, ' '); STATE.currency = 'USD'; persistState();
+    return m.slice(Math.max(0, m.indexOf('Max drawdown') - 8), m.indexOf('Max drawdown')); });
+  ok('%: max drawdown in euro-weergave ook −0,98% (een % hangt niet van de valuta af)', /−0,98%/.test(eur), eur);
+  const doorsnede = await p.evaluate(() => { const lees = () => { STATE.tend = 'setup'; go('tendencies'); return Object.fromEntries([...document.querySelectorAll('.hbar')].map(h => [h.querySelector('.lbl').textContent, h.querySelector('.sub').textContent.replace(/\s+/g, ' ').match(/netto (\S+ ?\S*)$/)[1]])); };
+    setUnit('val'); const geld = lees(); setUnit('pct'); const proc = lees(); return { geld, proc }; });
+  const getal = s => parseFloat(String(s).replace(/[^\d,−-]/g, '').replace(',', '.').replace('−', '-'));
+  ok('%: elke groep in Tendencies over dezelfde basis (netto ÷ 10.000), zoals in $ en R', Object.keys(doorsnede.geld).length > 0 && Object.keys(doorsnede.geld).every(k => Math.abs(getal(doorsnede.proc[k]) - getal(doorsnede.geld[k]) / 100) < 0.004), JSON.stringify(doorsnede));
+
   console.log('─── In dollars blijft alles zoals het was ───');
   await p.evaluate(() => setUnit('val'));
   const kalV = await p.evaluate(() => { go('kalender'); const cel = [...document.querySelectorAll('.calgrid .cell')].find(c => (c.querySelector('.dn') || {}).textContent === '6'); return cel && cel.querySelector('.cp').textContent; });
