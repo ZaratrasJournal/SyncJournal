@@ -16,6 +16,26 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v1.14] — 2026-10-22
+
+### Toegevoegd
+- **Zie of je sync loopt.** Een stip links van je balans:
+  - groen: de automatische sync loopt op schema;
+  - oranje: langer dan twee keer je interval niet gesynct, bijvoorbeeld omdat de journal dicht was of de laptop sliep;
+  - rood: een sync is mislukt, of een koppeling heeft een fout die je eerst moet oplossen;
+  - grijs: automatisch synchroniseren staat uit.
+
+  Houd je muis erop voor het moment van de laatste sync.
+- **Bij elke koppeling** in Instellingen → Accounts staat hoe de laatste sync ging: wanneer, hoe lang geleden,
+  automatisch of handmatig, en hoeveel nieuwe trades. Mislukt hij, dan staat de reden erbij.
+- **Sync-geschiedenis** onder Synchronisatie: de laatste 50 syncs. Gelijke syncs zonder nieuwe trades staan als één
+  regel met het aantal, zodat de lijst dagen terugkijkt. De geschiedenis staat alleen in je browser en gaat mee in je
+  export.
+
+### Gewijzigd
+- **Een verouderd tabblad synct niet meer.** Had je de journal in twee tabbladen open en werkte het andere tabblad
+  verder, dan sloeg dit tabblad niets op maar haalde het wel trades op. Nu vraagt het je eerst te verversen.
+
 ## [v1.13.2] — 2026-10-22
 
 ### Fixed

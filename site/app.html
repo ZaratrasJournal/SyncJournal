@@ -97,6 +97,9 @@ input,textarea{font-family:inherit}
 .balpill{display:flex;align-items:center;gap:9px;padding:7px 13px;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
 .balpill .l{font-size:9.5px;text-transform:uppercase;letter-spacing:.11em;color:var(--muted);font-weight:700}
 .balpill .v{font-weight:700}
+.syncdot{width:7px;height:7px;border-radius:50%;flex:none;background:var(--muted)}
+.syncdot[data-s="ok"]{background:var(--green)}.syncdot[data-s="laat"]{background:var(--amber)}.syncdot[data-s="fout"]{background:var(--red)}.syncdot[data-s="geen"]{display:none}
+.synchist{width:100%;border-collapse:collapse;font-size:12px}.synchist td{padding:6px 8px;border-top:1px solid var(--line2);color:var(--ink2)}.synchist td.num{text-align:right}
 main{padding:26px 30px 46px;animation:rise .34s both}
 @keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 @media(prefers-reduced-motion:reduce){*{animation:none!important}}
@@ -1281,7 +1284,7 @@ body.dark .toast{box-shadow:0 10px 34px rgba(0,0,0,.5)}
       <button class="iconbtn bkind" id="bkInd" title="Backup-status" aria-label="Backup-status"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5l7.5 2.8v5.9c0 4.6-3.2 7.9-7.5 10.3C7.7 19.1 4.5 15.8 4.5 11.2V5.3z"/><path class="bkchk" d="M8.6 12l2.4 2.4 4.4-4.6"/></svg></button>
       <button class="iconbtn" id="btnEye" title="Privacy">${''}</button>
       <button class="iconbtn" id="btnTheme" title="Thema">${''}</button>
-      <div class="balpill"><span class="l">Balans</span><span class="v num mask" id="balVal">€ 0</span></div>
+      <div class="balpill"><span class="syncdot" id="syncDot" data-s="geen" title="" role="img"></span><span class="l">Balans</span><span class="v num mask" id="balVal">€ 0</span></div>
     </header>
     <main id="main"></main>
   </div>
@@ -1929,7 +1932,7 @@ const KINDS={live:{label:'Live',color:'var(--green)'},gemist:{label:'Gemist',col
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v1.13.2';
+const APP_VERSION='v1.14';
 const SCHEMA_VERSION=11;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -4319,7 +4322,7 @@ function pgInstellingen(){
       <div class="txt"><b>${e.name}<span class="exflag">API gestopt</span></b>
       <small>${esc(e.deprecated)}. Je bestaande ${e.name}-trades blijven gewoon zichtbaar en tellen mee; oude exports importeren kan via CSV/back-up.</small></div></div>`;
     return `<div class="setrow">${accAvatar(e.id,30)}
-      <div class="txt"><b>${e.name}${e.beta?'<span class="exflag">in ontwikkeling</span>':''}</b><small><span class="dotc" style="display:inline-block;vertical-align:middle;margin-right:4px;background:${c&&c.connected?'var(--green)':'var(--muted)'}"></span>${c&&c.connected?'verbonden · '+(ad.walletOnly?'wallet':'key')+' •••'+c.hint+(lastS?' · laatste sync '+lastS:'')+(SYNC.auto?(c.noAuto?' · auto-sync uit':' · auto-sync aan'):''):'niet verbonden'}${e.beta?`<span class="exnote">⚠ ${esc(e.beta)}</span>`:''}</small></div>
+      <div class="txt"><b>${e.name}${e.beta?'<span class="exflag">in ontwikkeling</span>':''}</b><small><span class="dotc" style="display:inline-block;vertical-align:middle;margin-right:4px;background:${c&&c.connected?'var(--green)':'var(--muted)'}"></span>${c&&c.connected?'verbonden · '+(ad.walletOnly?'wallet':'key')+' •••'+c.hint+(syncRegel(e.id)||(lastS?' · laatste sync '+lastS:''))+(SYNC.auto?(c.noAuto?' · auto-sync uit':' · auto-sync aan'):''):'niet verbonden'}${e.beta?`<span class="exnote">⚠ ${esc(e.beta)}</span>`:''}</small></div>
       ${c&&c.connected?`<button class="btn" onclick="syncExchange('${e.id}')">↻ Sync nu</button>`:''}
       <button class="btn" onclick="connExpand('${e.id}')">${open?'Sluiten':(c&&c.connected?'Beheren':'Verbinden')}</button></div>
       ${open?`<div class="conncfg">
@@ -4392,6 +4395,7 @@ function pgInstellingen(){
         <div class="setrow"><div class="txt"><b>Automatisch synchroniseren</b><small>Haalt periodiek nieuwe trades op bij verbonden exchanges${SYNC.auto?(autoN?' · actief voor '+autoN+' account'+(autoN===1?'':'s'):' · nog geen enkel account verbonden'):''}</small></div><div class="sw ${SYNC.auto?'on':''}" onclick="toggleAutoSync()"></div></div>
         <div class="setrow"><div class="txt"><b>Sync-interval</b><small>Hoe vaak we controleren op nieuwe trades</small></div><select class="fsel" aria-label="Sync-interval" onchange="setSyncInterval(this.value)">${[['5m','Elke 5 min'],['15m','Elke 15 min'],['30m','Elke 30 min'],['1u','Elk uur']].map(([v,l])=>`<option value="${v}" ${SYNC.interval===v?'selected':''}>${l}</option>`).join('')}</select></div>
         <div class="setrow"><div class="txt"><b>Nu synchroniseren</b><small>Handmatig een sync starten</small></div><button class="btn" onclick="syncNow()">Sync nu</button></div>
+        ${syncHistorie()}
       </div>`,
     weergave:`<p class="setintro">Uiterlijk en weergave van de app.</p>
       <div class="panel">
@@ -5378,6 +5382,7 @@ function renderPagina(){
   document.getElementById('ptitle').textContent=title;
   document.getElementById('psub').textContent=sub||'';
   document.getElementById('ptbar').style.background=PAGEC[STATE.page]||'var(--accent)';
+  try{syncStip();}catch(e){}
   const bv=document.getElementById('balVal');if(bv)bv.textContent=CURSYM()+' '+Math.round(fxNow(totalBalance())).toLocaleString('nl-NL');
   try{renderSideConns();}catch(e){}
   const m=document.getElementById('main');destroyCharts();_rcQueue=[];m.innerHTML=tabBanner()+updateBanner()+driveBanner()+backupBanner()+fn();m.style.animation='none';void m.offsetWidth;m.style.animation='';
@@ -5456,7 +5461,7 @@ function setPctRef(v){STATE.pctRef=Math.max(0,+v||0);persistState();render();}
 /* trades CRUD + import/export */
 // Volledige staat-payload — gedeeld door export, snapshots en herstel.
 function planBackupBlock(){const o={};let any=false;Object.keys(PLAN_LS).forEach(k=>{try{const v=localStorage.getItem(PLAN_LS[k]);if(v!=null){o[k]=v;any=true;}}catch(e){}});return any?o:null;}
-function snapshotPayload(){ return {app:'SyncJournal',appVersion:APP_VERSION,schemaVersion:DB.load('schema',SCHEMA_VERSION),exported:new Date().toISOString(),tradingplan:planBackupBlock(),tagConfig,pbook:PBOOK,conns:CONNS,manual:MANUAL,sync:SYNC,aiPrefs:AIPREFS,view:{preset:VIEW.preset,v:VIEW.v},exMeta:Object.fromEntries(EXCHANGES.map(e=>[e.id,{val:e.val,acct:e.acct}])),settings:{theme:STATE.theme,currency:STATE.currency,priv:STATE.priv,density:STATE.density},trades:T,trash:TRASH}; }
+function snapshotPayload(){ return {app:'SyncJournal',appVersion:APP_VERSION,schemaVersion:DB.load('schema',SCHEMA_VERSION),exported:new Date().toISOString(),tradingplan:planBackupBlock(),tagConfig,pbook:PBOOK,conns:CONNS,manual:MANUAL,sync:SYNC,synclog:syncLog(),aiPrefs:AIPREFS,view:{preset:VIEW.preset,v:VIEW.v},exMeta:Object.fromEntries(EXCHANGES.map(e=>[e.id,{val:e.val,acct:e.acct}])),settings:{theme:STATE.theme,currency:STATE.currency,priv:STATE.priv,density:STATE.density},trades:T,trash:TRASH}; }
 // Zet een volledige backup-payload (nieuw formaat) terug in de live-staat.
 /* Binnenkomende trades veilig maken (audit 2026-09-18): één ontbrekend date-veld in een
    back-up liet het dashboard crashen — en omdat opslaan vóór tekenen gebeurt, overleefde
@@ -5886,7 +5891,7 @@ const DOV_PARTS=[
   {k:'tags',t:'Tags',keys:['tagConfig']},
   {k:'pbook',t:'Playbooks',keys:['pbook']},
   {k:'manual',t:'Handmatige accounts',keys:['manual']},
-  {k:'conns',t:'Exchange-koppelingen',keys:['conns','sync']},
+  {k:'conns',t:'Exchange-koppelingen',keys:['conns','sync','synclog']},
   {k:'exmeta',t:'Saldi en accountnamen',keys:['exMeta']},
   {k:'settings',t:'Instellingen',keys:['settings','view']},
   {k:'ai',t:'AI-coach-voorkeuren',keys:['aiPrefs']},
@@ -6113,7 +6118,7 @@ async function diagReport(){
     app:{loaded:APP_VERSION,hosted:UPDATE.remote||null,schema:SCHEMA_VERSION,schemaStored:DB.load('schema',null),host:(()=>{try{return location.host||location.protocol;}catch(e){return '?';}})(),hosted_flag:IS_HOSTED,ua:navigator.userAgent,browser:diagBrowser(),lang:navigator.language,tz:(()=>{try{return Intl.DateTimeFormat().resolvedOptions().timeZone;}catch(e){return '?';}})(),when:new Date().toISOString(),tab_stale:TAB_STALE},
     opslag:{usage:est?est.usage:null,quota:est?est.quota:null,pct:est&&est.quota?+(est.usage/est.quota*100).toFixed(2):null,persisted:PERSISTED,idb,localStorage:lsSizes,tj_oud_aanwezig:!!TJMigrate.detect(),tp2:plan},
     data:{trades:ts.length,status:by(t=>t.status),kind:by(t=>t.kind||'live'),exchange:by(t=>t.exchange),met_srcId:cnt(t=>t.srcId),met_fills:cnt(t=>(t.fills||[]).length),met_tps:cnt(t=>(t.tps||[]).length),met_screenshots:cnt(t=>(t.screenshots||[]).length),datumbereik:dates.length?[dates[0],dates[dates.length-1]]:null,zonder_datum:cnt(t=>!t.date),zonder_pnl:cnt(t=>!isFinite(+t.pnl)),zonder_openTime:cnt(t=>!(+t.openTime>0)),dubbele_srcId:dup.slice(0,10),trash:(TRASH||[]).length,playbooks:Object.keys(PBOOK||{}).length,tags:Object.values(tagConfig||{}).reduce((n,a)=>n+(Array.isArray(a)?a.length:0),0),manual:(MANUAL||[]).map(m=>({name:m.name,tx:(m.transactions||[]).length})),snapshots:(SNAP_META||[]).map(s=>({label:s.label,ts:s.ts,trades:s.trades})),migrated_from_tj:DB.load('migrated_from_tj',null),last_import:DB.load('last_import',null),demo_loaded:!!DB.load('demo_loaded',null)},
-    sync:{interval:SYNC.interval,auto:!!SYNC.auto,conns:Object.fromEntries(EXCHANGES.map(e=>{const c=CONNS[e.id]||{};return [e.id,{connected:!!c.connected,hint:c.hint||'',lastSync:c.lastSync?new Date(+c.lastSync).toISOString():null,syncFrom:c.syncFrom||'',autoSync:!!c.autoSync,backoff_sec:_rlWaitSec(e.id)||0,deprecated:!!e.deprecated}];})),worker},
+    sync:{log:syncLog().slice(0,20),interval:SYNC.interval,auto:!!SYNC.auto,conns:Object.fromEntries(EXCHANGES.map(e=>{const c=CONNS[e.id]||{};return [e.id,{connected:!!c.connected,hint:c.hint||'',lastSync:c.lastSync?new Date(+c.lastSync).toISOString():null,syncFrom:c.syncFrom||'',autoSync:!!c.autoSync,backoff_sec:_rlWaitSec(e.id)||0,deprecated:!!e.deprecated}];})),worker},
     backup:{choice:BK.choice||'zelf',last:BK.ts?new Date(BK.ts).toISOString():null,method:BK.method||'',threshold_days:BK.threshold,drive_connected:!!(DRIVE&&DRIVE.rt),dirty_since:_bkDirtySince?new Date(_bkDirtySince).toISOString():null},
     tradingplan:plan,
     zelfcontrole:{signalen:diagSignals()},
@@ -8616,14 +8621,18 @@ async function syncExchange(exId,opts){
   if(EXMAP[exId]&&EXMAP[exId].deprecated){if(!quiet)toast('Sync niet meer mogelijk: '+EXMAP[exId].deprecated+'. Je oude trades blijven gewoon zichtbaar.','err');return -1;}
   const ad=ExchangeAPI[exId],c=CONNS[exId];
   if(!ad||!c||!c.connected){if(!quiet)toast('Eerst verbinden via Instellingen → Accounts','err');return -1;}
+  // an out-of-date tab cannot save: syncing here would fetch trades that are lost, and move lastSync past them
+  if(TAB_STALE){if(!quiet)toast('Dit tabblad is verouderd: ververs het eerst, dan synct het weer','err');return -1;}
   // Fase 2 stap 1: open posities eerst (maakt/ververst open rijen en placeholders).
   await syncOpenTrades(exId,{quiet:true});
   const last=+c.lastSync||0;
   const startTime=last?last-3600e3:(c.syncFrom?+new Date(c.syncFrom):Date.now()-30*864e5);
   let raw;
   try{raw=ad.walletOnly?await ad.fetchTrades(c.wallet,null,null,startTime):await ad.fetchTrades(c.apiKey,c.apiSecret,c.passphrase,startTime);}
-  catch(e){CONN_ERR[exId]=(e&&e.message)||String(e);if(!quiet)toast('✗ Sync '+ad.name+' mislukt: '+CONN_ERR[exId],'err');return -1;}
-  const mapped=importTjClosed(raw);
+  catch(e){CONN_ERR[exId]=(e&&e.message)||String(e);logSync(exId,opts&&opts.auto,null,CONN_ERR[exId]);syncStip();if(!quiet)toast('✗ Sync '+ad.name+' mislukt: '+CONN_ERR[exId],'err');return -1;}
+  let mapped;
+  try{   // an error after the fetch (import, rates, balance) is a failed sync too: logged, not silent (review 22-10)
+  mapped=importTjClosed(raw);
   // Fase 2 stap 2+3: placeholders en stale opens vervangen door de echte trades,
   // daarna pas de partial-status bepalen.
   finalizePlaceholders(exId,mapped);
@@ -8642,6 +8651,8 @@ async function syncExchange(exId,opts){
   await refreshBalance(exId);   // saldo ververst mee met elke sync
   try{planMatch();}catch(e){}   // nieuwe trades aan hun poort-beoordeling koppelen
   CONNS[exId]={...(CONNS[exId]||c),lastSync:Date.now()};persistConns();   // de adapter kan de koppeling onderweg hebben bijgewerkt
+  logSync(exId,opts&&opts.auto,mapped.length,null);
+  }catch(e){CONN_ERR[exId]=(e&&e.message)||String(e);logSync(exId,opts&&opts.auto,null,CONN_ERR[exId]);syncStip();if(!quiet)toast('✗ Sync '+ad.name+' mislukt: '+CONN_ERR[exId],'err');return -1;}
   if(!quiet)toast(mapped.length?('✓ '+ad.name+': '+mapped.length+' nieuwe trade'+(mapped.length>1?'s':'')):('✓ '+ad.name+': geen nieuwe trades'),mapped.length?'ok':'info');
   render();return mapped.length;
 }
@@ -8666,9 +8677,48 @@ async function autoSyncRun(onlyOverdue){
   const overdueBefore=Date.now()-syncIntervalMs();
   for(const e of autoSyncTargets()){
     if(onlyOverdue&&(+CONNS[e.id].lastSync||0)>overdueBefore)continue;
-    await syncExchange(e.id,{quiet:true});
+    await syncExchange(e.id,{quiet:true,auto:true});
   }
 }
+/* ═══ Sync-logboek (Denny 22-10-2026: "een soort last sync since?") ═══
+   Every sync of an exchange: when, automatic or by hand, how many new trades, or the error. Only in this browser
+   (localStorage), the newest 50; it goes along in the export, so a report like "my TP is gone" can be read back.
+   The dot by the balance says whether automatic sync is on schedule: green, amber (more than twice the interval
+   without a sync - the tab was closed, asleep, or out of date), red (the last sync of an account failed). */
+const SYNCLOG_MAX=50;
+function syncLog(){const l=DB.load('synclog',[]);return Array.isArray(l)?l.filter(x=>x&&typeof x==='object'&&+x.ts>0&&x.ex):[];}
+/* Repeats of "nothing new" (same account, same way) merge into one line with a count (x) and the first time (van):
+   at 5 minutes and four accounts, 50 single lines would cover barely an hour (review 22-10-2026). */
+function logSync(ex,auto,n,fout){const l=syncLog(),nu=Date.now(),leeg=n===0&&!fout;
+  const vorige=l.find(x=>x.ex===ex);
+  if(leeg&&vorige&&vorige===l[0]&&vorige.n===0&&!vorige.fout&&!!vorige.auto===!!auto){vorige.van=+vorige.van||+vorige.ts;vorige.ts=nu;vorige.x=(+vorige.x||1)+1;DB.save('synclog',l);return;}
+  DB.save('synclog',[{ts:nu,ex,auto:!!auto,n:n==null?null:+n||0,fout:fout?String(fout).slice(0,200):null},...l].slice(0,SYNCLOG_MAX));}
+function geledenTxt(ts){const m=Math.floor((Date.now()-ts)/60e3);if(m<1)return 'zojuist';if(m<60)return m+' min geleden';const u=Math.floor(m/60);return u<24?u+' u geleden':Math.floor(u/24)+' d geleden';}
+function syncMoment(ts){const ams={timeZone:'Europe/Amsterdam'},dag=v=>new Intl.DateTimeFormat('sv-SE',ams).format(new Date(v));
+  const tijd=new Date(ts).toLocaleTimeString('nl-NL',{...ams,hour:'2-digit',minute:'2-digit'});
+  return dag(ts)===dag(Date.now())?tijd:new Date(ts).toLocaleDateString('nl-NL',{...ams,day:'2-digit',month:'2-digit'})+' '+tijd;}
+const syncUitkomst=x=>x.fout?`<span style="color:var(--red)">mislukt: ${esc(x.fout)}</span>`:(+x.n?(+x.n)+' nieuwe trade'+(+x.n===1?'':'s'):'geen nieuwe trades');
+// the account row: how the last sync of this exchange went
+function syncRegel(ex){const x=syncLog().find(l=>l.ex===ex),c=CONNS[ex]||{};const ts=x?x.ts:+c.lastSync||0;if(!ts)return '';
+  return ` · laatste sync ${syncMoment(ts)} (${geledenTxt(ts)})`+(x?` · ${x.auto?'automatisch':'handmatig'} · ${syncUitkomst(x)}`:'');}
+function syncStip(){const el=document.getElementById('syncDot');if(!el)return;
+  const accs=EXCHANGES.filter(e=>!e.deprecated&&CONNS[e.id]&&CONNS[e.id].connected&&!CONNS[e.id].noAuto);
+  let st='geen',titel='';
+  if(accs.length&&!SYNC.auto){st='uit';titel='Automatisch synchroniseren staat uit (Instellingen → Accounts)';}
+  else if(accs.length){const log=syncLog(),iv=syncIntervalMs(),ivTxt={'5m':'elke 5 min','15m':'elke 15 min','30m':'elke 30 min','1u':'elk uur'}[SYNC.interval]||'elke 15 min';
+    const fout=accs.filter(e=>{const x=log.find(l=>l.ex===e.id);return (x&&x.fout&&CONN_ERR[e.id])||blijvendeFout(e.id);});
+    const oudste=Math.min(...accs.map(e=>+CONNS[e.id].lastSync||0));
+    const laatste=Math.max(...accs.map(e=>+CONNS[e.id].lastSync||0));
+    if(fout.length){st='fout';titel='Sync mislukt: '+fout.map(e=>e.name+(CONN_ERR[e.id]?' ('+String(CONN_ERR[e.id]).slice(0,80)+')':'')).join(', ')+(fout.some(e=>blijvendeFout(e.id))?' · automatisch synchroniseren staat stil tot je dit oplost':'')+' · zie Instellingen → Accounts';}
+    else if(!oudste||Date.now()-oudste>2*iv){st='laat';titel=(oudste?'Al '+geledenTxt(oudste)+' niet gesynct':'Nog niet gesynct')+' · automatisch '+ivTxt+(TAB_STALE?' · dit tabblad synct niet, het is verouderd':' · staat de journal open?');}
+    else{st='ok';titel='Laatst gesynct '+syncMoment(laatste)+' ('+geledenTxt(laatste)+') · automatisch '+ivTxt;}}
+  el.dataset.s=st;el.title=titel;el.setAttribute('aria-label',titel);}
+let _syncHistOpen=false;   // the history stays open while the app re-renders (after every sync)
+function syncHistorie(){const l=syncLog();
+  const rijen=l.map(x=>`<tr><td>${syncMoment(+x.ts)}${+x.x>1?` <small style="color:var(--muted)">${+x.x}× sinds ${syncMoment(+x.van)}</small>`:''}</td><td>${esc((EXMAP[x.ex]||{}).name||x.ex)}</td><td>${x.auto?'automatisch':'handmatig'}</td><td class="num">${x.fout?syncUitkomst(x):(+x.n?(+x.n)+' nieuw':'—')}</td></tr>`).join('');
+  return `<details class="setrow" style="display:block"${_syncHistOpen?' open':''} ontoggle="_syncHistOpen=this.open"><summary style="cursor:pointer"><b>Sync-geschiedenis</b> <small style="color:var(--muted)">${l.length?'de laatste '+l.length+' syncs, alleen in deze browser':'nog leeg'}</small></summary>
+    ${l.length?`<table class="synchist"><tbody>${rijen}</tbody></table>`:'<p style="color:var(--muted);font-size:12px;margin:8px 0 0">Nog geen syncs vastgelegd. Na de eerstvolgende sync zie je hier wanneer hij liep, of hij automatisch ging en wat hij opleverde.</p>'}</details>`;}
+setInterval(()=>{try{syncStip();}catch(e){}},60e3);   // the dot turns amber on its own when syncs stop
 function startAutoSync(){
   if(_autoSyncTimer)clearInterval(_autoSyncTimer);
   _autoSyncTimer=setInterval(()=>{autoSyncRun(false).catch(()=>{});},syncIntervalMs());
