@@ -1929,7 +1929,7 @@ const KINDS={live:{label:'Live',color:'var(--green)'},gemist:{label:'Gemist',col
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v1.13.1';
+const APP_VERSION='v1.13.2';
 const SCHEMA_VERSION=11;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -7919,6 +7919,12 @@ const ExchangeAPI = {
       if(herhaal){const oudste=Math.min(...T.filter(t=>t&&t.exchange==="hyperliquid").map(t=>+t.openTime).filter(x=>x>0));
         if(isFinite(oudste)&&(!startTime||oudste-3600e3<+startTime))startTime=oudste-3600e3;}
       // Pagineer userFillsByTime in batches van 2000. Hyperliquid cap = laatste 10k fills totaal.
+      /* A running position is fetched from its opening, every sync (as Kraken): its partial row is rebuilt from the
+         fills, so a TP hit more than an hour before the last sync still shows - and a row lost before comes back. */
+      /* Only rows the API fills can rebuild (not a CSV row) and that syncOpenTrades just confirmed as running (not
+         stale): an old CSV partial or a forgotten row would pull the window back months, every sync. At most 90 days. */
+      const lopendVan=T.filter(t=>t&&t.exchange==="hyperliquid"&&(t.status==="open"||t.status==="partial")&&!t._stale&&/^hyperliquid_(?!csv_)/.test(String(t.srcId||""))).map(t=>+t.openTime).filter(x=>x>0);
+      if(startTime&&lopendVan.length)startTime=Math.min(+startTime,Math.max(Math.min(...lopendVan)-3600e3,Date.now()-90*864e5));
       const fromTs=startTime?Number(startTime):new Date(Date.now()-90*24*60*60*1000).getTime();// default 90d
       const allFills=[];let cursor=fromTs;let guard=0;
       while(guard++<20){
@@ -7956,7 +7962,16 @@ const ExchangeAPI = {
       // stop-loss and take-profit orders (F8): one call per sync, an extra - afterImport fills them in
       this._orders=await this._ordersOphalen(addr);
       if(herhaal){CONNS.hyperliquid={...CONNS.hyperliquid,stappen:this._HERHAAL};persistConns();}
-      return this._reconstructTrades(allFills.map(f=>this._naarFill(f)),"hyperliquid");
+      const uit=this._reconstructTrades(allFills.map(f=>this._naarFill(f)),"hyperliquid");
+      // the fills have these positions: a row of them is not a vanished open position (finalizeStaleOpens would merge it away)
+      const ids=new Set(uit.map(t=>String(t.id)));T.forEach(o=>{if(o&&o.exchange==="hyperliquid"&&ids.has(String(o.srcId)))delete o._stale;});
+      /* The wider window brings rows you already have through the sync again, and the sync replaces TPs and leverage:
+         keep the levels you planned that were not hit, and your leverage when the fills have none (review 22-10). */
+      uit.forEach(t=>{const o=T.find(x=>x&&x.exchange==="hyperliquid"&&String(x.srcId)===String(t.id));if(!o)return;
+        const eigen=(o.tps||[]).filter(x=>x&&!x.hit&&+x.price>0).map(x=>({price:normPrice(x.price),pct:String(x.pct||""),status:"user",actualPrice:""}));
+        if(eigen.length)t.tpLevels=[...(t.tpLevels||[]),...eigen];
+        if(!t.leverage&&o.leverage)t.leverage=String(o.leverage);});
+      return uit;
     },
     async _ordersOphalen(addr){
       try{const h=await this._post({type:"historicalOrders",user:addr});if(!Array.isArray(h))return null;
@@ -8011,8 +8026,16 @@ const ExchangeAPI = {
             .forEach(t=>{ if(t.status!=="closed")stappen[t.positionId]=t.fills; });
         }catch(e){ /* lukt het niet, dan claimen we geen tijd */ }
       }
+      /* Partly closed, the position is a lifecycle row (status partial). Hyperliquid's entryPx can differ from the
+         fill average (81620.9 vs 81621, Denny 22-10-2026), so matching on entry failed: syncOpenTrades added a
+         placeholder beside the row, marked the row stale and finalizeStaleOpens removed it. Give the open position
+         that row's id instead - only when the opening is the same: an old partial that closed while the app was
+         off must not hand its id to a new position on the coin (review 22-10: its P&L came in again every sync).
+         Opening unknown (the fills call failed): no id; the placeholder then merges into the row after the import. */
+      const loopt=T.filter(o=>o&&o.exchange==="hyperliquid"&&o.status==="partial"&&/^hyperliquid_(?!open_|csv_)/.test(String(o.srcId||"")));
       return positions.map(ap=>{
         const p=ap.position||{};
+        const rij=begin[p.coin]?loopt.find(o=>String(o.positionId)===String(p.coin)&&o.dir===(parseFloat(p.szi||"0")>0?"long":"short")&&+o.openTime===+begin[p.coin]):null;
         const szi=parseFloat(p.szi||"0");// signed size: positief=long, negatief=short
         const sz=Math.abs(szi);
         const entryPx=parseFloat(p.entryPx||"0");
@@ -8022,7 +8045,7 @@ const ExchangeAPI = {
           // mexc_open_<positionId> / blofin_open_<positionId>. Géén Date.now() — anders krijgt
           // dezelfde open positie bij elke refresh een nieuw id en dedupliceert syncOpenPositions
           // niet → duplicaten (ChangeMaker-bug, Discord 2026-06-07).
-          id:"hyperliquid_open_"+p.coin,
+          id:rij?String(rij.srcId):"hyperliquid_open_"+p.coin,
           positionId:p.coin||"",
           openTime:begin[p.coin]?String(begin[p.coin]):"",closeTime:"",
           // onbekend? dan wel een datum om op te groeperen, maar géén tijd die niet klopt

@@ -16,6 +16,17 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v1.13.2] — 2026-10-22
+
+### Fixed
+- **Hyperliquid: een geraakte TP verdwijnt niet meer uit een lopende positie.** Je short van 22-10 stond na een
+  TP weer als gewone open trade: geen geboekte winst, geen R. Hyperliquid noemt voor je open positie een net andere
+  entry (81.620,9) dan het gemiddelde van je fills (81.621). Daardoor herkende de journal de rij met je TP niet meer
+  als dezelfde positie en ruimde hij hem op. Nu blijft een deels gesloten positie één rij met status *partial*, sync
+  na sync, met je geboekte winst, de TP en je R. **Een rij die al zo was verdwenen, komt bij de eerstvolgende sync
+  vanzelf terug**: de journal haalt een lopende positie voortaan altijd vanaf de opening op.
+- **Je eigen geplande TP's en je leverage blijven staan** wanneer de sync een Hyperliquid-trade bijwerkt.
+
 ## [v1.13.1] — 2026-10-20
 
 ### Fixed
