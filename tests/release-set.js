@@ -32,6 +32,7 @@ module.exports = [
   'hl-deels-dicht',          // Hyperliquid: een geraakte TP is zichtbaar terwijl de positie nog loopt
   'eenheid-paginas',         // de $ / % / R-schakelaar geldt op Dashboard, Analytics, Tendencies en Kalender
   'kraken-deels-dicht',      // Kraken: een geraakte TP en de stappen zichtbaar terwijl de positie nog loopt
+  'hl-partial-blijft',       // Hyperliquid: een deels gesloten positie blijft één partial-rij, sync na sync
   'hl-stoploss',             // Hyperliquid: stop-loss, ingestelde TP's en TP/SL/Close per afbouw uit de orders (F8)
   'equity-curve',            // equity-curve van oud naar nieuw, zonder verzonnen toppen; geen 493%-trend
   'jaaroverzicht-past',      // Kalender: het jaaroverzicht past in zijn paneel, ook op een laptop

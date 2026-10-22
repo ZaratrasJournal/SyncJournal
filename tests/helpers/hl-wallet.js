@@ -76,7 +76,9 @@ function staatOp(acc, nu) {
   const { open } = levenslopen(acc.fills.filter(f => f.time <= nu));
   const assetPositions = open.map(L => {
     const szi = naVan(L.fills[L.fills.length - 1]);   // de stand na de laatste fill
-    return { type: 'oneWay', position: { coin: L.coin, szi: String(szi), entryPx: String(L.entry), positionValue: String(Math.abs(szi) * L.entry),
+    // acc.entryPx: Hyperliquid's own entry for a coin when it differs from the fill average (81620.9 vs 81621, Denny 22-10-2026)
+    const entryPx = (acc.entryPx && acc.entryPx[L.coin]) || String(L.entry);
+    return { type: 'oneWay', position: { coin: L.coin, szi: String(szi), entryPx, positionValue: String(Math.abs(szi) * L.entry),
       unrealizedPnl: '0', returnOnEquity: '0', liquidationPx: null, marginUsed: '0', leverage: { type: 'cross', value: 1 }, maxLeverage: 40 } };
   });
   return { ...acc.clearinghouseState, assetPositions };
