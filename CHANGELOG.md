@@ -28,7 +28,7 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
   Houd je muis erop voor het moment van de laatste sync.
 - **Bij elke koppeling** in Instellingen → Accounts staat hoe de laatste sync ging: wanneer, hoe lang geleden,
   automatisch of handmatig, en hoeveel nieuwe trades. Mislukt hij, dan staat de reden erbij.
-- **Sync-geschiedenis** onder Synchronisatie: de laatste 50 syncs. Gelijke syncs zonder nieuwe trades staan als één
+- **Sync-geschiedenis** onder Synchronisatie: de laatste 50 syncs, met datum en tijd. Gelijke syncs zonder nieuwe trades staan als één
   regel met het aantal, zodat de lijst dagen terugkijkt. De geschiedenis staat alleen in je browser en gaat mee in je
   export.
 

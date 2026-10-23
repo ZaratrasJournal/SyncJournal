@@ -38,7 +38,7 @@ const NU = Date.parse('2026-10-22T20:00:00Z');
   s = await status();
   ok('logboek: OKX, handmatig, 1 nieuw, geen fout', s.log.length === 1 && s.log[0].ex === 'okx' && s.log[0].auto === false && s.log[0].n === 1 && !s.log[0].fout, JSON.stringify(s.log));
   ok('rij bij OKX: laatste sync 22:00 (zojuist) · handmatig · 1 nieuwe trade', /laatste sync 22:00 \(zojuist\) · handmatig · 1 nieuwe trade/.test(s.rij), s.rij);
-  ok('geschiedenis toont hem: 22:00, OKX, handmatig, 1 nieuw', s.hist.length === 1 && /22:00/.test(s.hist[0]) && /OKX/.test(s.hist[0]) && /handmatig/.test(s.hist[0]) && /1 nieuw/.test(s.hist[0]), JSON.stringify(s.hist));
+  ok('geschiedenis toont hem mét datum (ook vandaag): do 22-10 22:00, OKX, handmatig, 1 nieuw', s.hist.length === 1 && /do 22-10 22:00/.test(s.hist[0]) && /OKX/.test(s.hist[0]) && /handmatig/.test(s.hist[0]) && /1 nieuw/.test(s.hist[0]), JSON.stringify(s.hist));
   ok('stip bij de balans: groen, met wanneer en hoe vaak', s.dot && s.dot.kleur === 'ok' && /22:00/.test(s.dot.titel) && /elke 15 min/.test(s.dot.titel), JSON.stringify(s.dot));
 
   console.log('─── 10 minuten later: de automatische sync ───');

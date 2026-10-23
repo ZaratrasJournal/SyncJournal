@@ -8694,6 +8694,9 @@ function logSync(ex,auto,n,fout){const l=syncLog(),nu=Date.now(),leeg=n===0&&!fo
   if(leeg&&vorige&&vorige===l[0]&&vorige.n===0&&!vorige.fout&&!!vorige.auto===!!auto){vorige.van=+vorige.van||+vorige.ts;vorige.ts=nu;vorige.x=(+vorige.x||1)+1;DB.save('synclog',l);return;}
   DB.save('synclog',[{ts:nu,ex,auto:!!auto,n:n==null?null:+n||0,fout:fout?String(fout).slice(0,200):null},...l].slice(0,SYNCLOG_MAX));}
 function geledenTxt(ts){const m=Math.floor((Date.now()-ts)/60e3);if(m<1)return 'zojuist';if(m<60)return m+' min geleden';const u=Math.floor(m/60);return u<24?u+' u geleden':Math.floor(u/24)+' d geleden';}
+// the history always shows the date (Denny 23-10-2026: a list that looks back days); elsewhere only for another day
+function syncDatumTijd(ts){const ams={timeZone:'Europe/Amsterdam'},d=new Date(ts);
+  return d.toLocaleDateString('nl-NL',{...ams,weekday:'short'})+' '+d.toLocaleDateString('nl-NL',{...ams,day:'2-digit',month:'2-digit'})+' '+d.toLocaleTimeString('nl-NL',{...ams,hour:'2-digit',minute:'2-digit'});}
 function syncMoment(ts){const ams={timeZone:'Europe/Amsterdam'},dag=v=>new Intl.DateTimeFormat('sv-SE',ams).format(new Date(v));
   const tijd=new Date(ts).toLocaleTimeString('nl-NL',{...ams,hour:'2-digit',minute:'2-digit'});
   return dag(ts)===dag(Date.now())?tijd:new Date(ts).toLocaleDateString('nl-NL',{...ams,day:'2-digit',month:'2-digit'})+' '+tijd;}
@@ -8715,7 +8718,7 @@ function syncStip(){const el=document.getElementById('syncDot');if(!el)return;
   el.dataset.s=st;el.title=titel;el.setAttribute('aria-label',titel);}
 let _syncHistOpen=false;   // the history stays open while the app re-renders (after every sync)
 function syncHistorie(){const l=syncLog();
-  const rijen=l.map(x=>`<tr><td>${syncMoment(+x.ts)}${+x.x>1?` <small style="color:var(--muted)">${+x.x}× sinds ${syncMoment(+x.van)}</small>`:''}</td><td>${esc((EXMAP[x.ex]||{}).name||x.ex)}</td><td>${x.auto?'automatisch':'handmatig'}</td><td class="num">${x.fout?syncUitkomst(x):(+x.n?(+x.n)+' nieuw':'—')}</td></tr>`).join('');
+  const rijen=l.map(x=>`<tr><td>${syncDatumTijd(+x.ts)}${+x.x>1?` <small style="color:var(--muted)">${+x.x}× sinds ${syncDatumTijd(+x.van)}</small>`:''}</td><td>${esc((EXMAP[x.ex]||{}).name||x.ex)}</td><td>${x.auto?'automatisch':'handmatig'}</td><td class="num">${x.fout?syncUitkomst(x):(+x.n?(+x.n)+' nieuw':'—')}</td></tr>`).join('');
   return `<details class="setrow" style="display:block"${_syncHistOpen?' open':''} ontoggle="_syncHistOpen=this.open"><summary style="cursor:pointer"><b>Sync-geschiedenis</b> <small style="color:var(--muted)">${l.length?'de laatste '+l.length+' syncs, alleen in deze browser':'nog leeg'}</small></summary>
     ${l.length?`<table class="synchist"><tbody>${rijen}</tbody></table>`:'<p style="color:var(--muted);font-size:12px;margin:8px 0 0">Nog geen syncs vastgelegd. Na de eerstvolgende sync zie je hier wanneer hij liep, of hij automatisch ging en wat hij opleverde.</p>'}</details>`;}
 setInterval(()=>{try{syncStip();}catch(e){}},60e3);   // the dot turns amber on its own when syncs stop
