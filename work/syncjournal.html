@@ -8255,9 +8255,19 @@ const ExchangeAPI = {
       };
     },
     async fetchTrades(apiKey,apiSecret,passphrase,startTime){
+      this._regels=null;this._dekking=0;
       const data=await proxyCall({exchange:"okx",action:"trades",apiKey,apiSecret,passphrase,startTime});
       await this._loadContractValues();
-      return(data.trades||[]).map(t=>this._normalise(t));
+      // stop-loss and take-profit orders (F10): one call per sync, an extra - afterImport fills them in, never blocks the trades
+      try{const d=await proxyCall({exchange:"okx",action:"algos",apiKey,apiSecret,passphrase,startTime:Date.now()-this._ALGO_DAGEN*864e5});
+        if(d&&d.source==="algos"){this._regels=this._algoRegels(d);this._dekking=this._dekkingVan(d);}}   // Worker v23 answers with the trades flow: skipped
+      catch(e){console.warn('[okx algos] no stop-losses this sync:',(e&&e.message)||e);}
+      const uit=(data.trades||[]).map(t=>this._normalise(t));
+      // the sync replaces the TP list: keep the levels you planned that were not hit (as Kraken and Hyperliquid)
+      uit.forEach(t=>{const o=T.find(x=>x&&x.exchange==="okx"&&String(x.srcId)===String(t.id));if(!o)return;
+        const eigen=(o.tps||[]).filter(x=>x&&!x.hit&&+x.price>0).map(x=>({price:normPrice(x.price),pct:String(x.pct||""),status:"user",actualPrice:""}));
+        if(eigen.length)t.tpLevels=[...(Array.isArray(t.tpLevels)?t.tpLevels:[]),...eigen];});
+      return uit;
     },
     async testConnection(apiKey,apiSecret,passphrase){
       const data=await proxyCall({exchange:"okx",action:"test",apiKey,apiSecret,passphrase});
@@ -8328,7 +8338,91 @@ const ExchangeAPI = {
       const data=await proxyCall({exchange:"okx",action:"open_positions",apiKey,apiSecret,passphrase});
       await this._loadContractValues();
       return(data.positions||[]).map(p=>this._normaliseOpen(p));
-    }
+    },
+    /* ═══ Stop-loss, take-profits and how each close went (F10, Denny 24-10-2026) ═══
+       Worker v24 'algos': OKX's TP/SL orders (orders-algo-history and -pending, 3 months). Measured on Denny's account:
+       SL and TPs are separate 'conditional' orders (sometimes 'oco': SL and TP in one), one-way mode (side = the closing
+       side), moving a SL = cancel + a new order. A close fill's ordId is in the ordIdList of the algo order it came from. */
+    _ALGO_DAGEN:90,     // OKX keeps algo order history for 3 months
+    _SL_VOOR_MS:60e3,   // a SL placed up to a minute before the opening fill belongs to it
+    /* algos answer → one row per leg (an oco has a SL leg and a TP leg): {algoId, instId, basis, side, sz, hele, soort, price,
+       status (live/effective/canceled/order_failed), ts (placed), statusTs (last change), ordIds}. An oco that fired on one
+       leg: the other leg did not fire (canceled). A trailing stop is a SL at its latest trigger. */
+    _algoRegels(d){
+      if(!d||d.source!=="algos")return [];
+      const uit=[];
+      const rij=(a,live)=>{
+        const instId=String(a.instId||""),ord=String(a.ordType||""),state=live?"live":String(a.state||""),actualSide=String(a.actualSide||"");
+        const r={algoId:String(a.algoId||""),instId,basis:instId.split(/[-_/]/)[0].toUpperCase(),side:String(a.side||"").toLowerCase(),
+          sz:parseFloat(a.sz)||0,hele:String(a.closeFraction)==="1",ts:Number(a.cTime)||0,statusTs:Number(a.uTime)||Number(a.cTime)||0,ordIds:(a.ordIdList||[]).map(String)};
+        const been=(soort,price)=>{if(!(price>0))return;
+          uit.push({...r,soort,price,status:(state==="effective"&&ord==="oco"&&actualSide&&actualSide!==soort)?"canceled":state});};
+        if(ord==="move_order_stop"){been("sl",parseFloat(a.moveTriggerPx)||parseFloat(a.slTriggerPx)||parseFloat(a.activePx));return;}
+        been("sl",parseFloat(a.slTriggerPx));been("tp",parseFloat(a.tpTriggerPx));
+      };
+      (d.history||[]).forEach(a=>rij(a,false));(d.pending||[]).forEach(a=>rij(a,true));
+      return uit;
+    },
+    // which trades the answer covers: 3 months back, or - when the Worker had to stop paging - from the oldest order it got
+    _dekkingVan(d){
+      const ts=(d&&d.history||[]).map(a=>Number(a.cTime)||0).filter(x=>x>0);
+      return d&&d._okxDebug&&d._okxDebug.afgekapt&&ts.length?Math.min(...ts)-this._SL_VOOR_MS:Date.now()-this._ALGO_DAGEN*864e5;
+    },
+    /* The original stop: the first SL on the trade's asset and closing side, on the loss side of the entry, placed between
+       the opening (minus a minute) and the close, or active at the opening - not one that ended before it (the previous
+       position's). OKX reuses posId, so the time window links, not the id. A later SL with another price: moved. */
+    _slTpVoorTrade(t,regels){
+      const short=String(t.direction||t.dir)==="short",entry=+t.entry,basis=String(t.pair||"").split("/")[0].toUpperCase();
+      const open=+t.openTime,van=open-this._SL_VOOR_MS,tot=+t.closeTime||Date.now(),dicht=+t.closeTime||0,sluit=short?"buy":"sell";
+      const actief=r=>r.status==="live"||r.statusTs>=open;
+      const afgelopen=r=>r.status!=="live"&&r.statusTs<open;
+      const kand=(regels||[]).filter(r=>r.basis===basis&&r.side===sluit&&r.ts<=tot&&!afgelopen(r)&&(r.ts>=van||actief(r))).sort((a,b)=>a.ts-b.ts);
+      const verlies=p=>short?p>entry:p<entry;
+      const eerste=entry>0?kand.find(r=>r.soort==="sl"&&verlies(r.price)):null,stop=eerste?eerste.price:null;
+      const verschoven=!!eerste&&kand.some(r=>r.soort==="sl"&&r!==eerste&&r.ts>=eerste.ts&&r.price!==stop);
+      const stopVerloop=kand.filter(r=>r.soort==="sl").map(r=>({ts:r.ts,price:r.price,status:r.status}));
+      const piek=+t.qtyAsset||+t.positionSizeAsset||0;
+      const perPrijs=new Map();kand.filter(r=>r.soort==="tp"&&!verlies(r.price)).forEach(r=>perPrijs.set(r.price,r));
+      const tps=[...perPrijs.values()].sort((a,b)=>short?b.price-a.price:a.price-b.price).map(r=>({price:r.price,
+        pct:r.hele?100:(piek>0?+(r.sz*this._ctVal(r.instId)/piek*100).toFixed(2):0),   // OKX sizes are contracts
+        status:r.status==="effective"?"geraakt":r.status==="live"?"open":(dicht&&r.statusTs>=dicht-5e3)?"niet geraakt":"geannuleerd"}));
+      return{stop,verschoven,stopVerloop,tps};
+    },
+    // how a close went: a TP or SL order that fired (its ordIdList holds the fill's ordId), a liquidation, or by hand
+    _afbouwSoort(regels){
+      const perOrd=new Map();(regels||[]).forEach(r=>{if(r.status==="effective")r.ordIds.forEach(o=>perOrd.set(o,r.soort));});
+      return g=>g.fills.some(f=>f.kind==="liq")?"liq":g.ordId?(perOrd.get(String(g.ordId))||"hand"):null;   // no order id: unknown
+    },
+    /* The kind on every close step, and one TP level per close order (OKX trades had none), like Hyperliquid; your own
+       planned levels stay. Only when a step has an order id. */
+    _labelAfbouw(o,regels){
+      const groepen=perOrder((o.fills||[]).filter(isAfbouw));if(!groepen.length)return false;
+      const soort=this._afbouwSoort(regels),ks=groepen.map(soort);if(ks.every(k=>k==null))return false;
+      let n=false;
+      groepen.forEach((g,i)=>{const k=ks[i];if(!k)return;g.fills.forEach(f=>{if(f.soort!==k){f.soort=k;n=true;}});});
+      const tot=groepen.reduce((a,g)=>a+g.qty,0)||1;
+      const niveaus=groepen.map((g,i)=>({price:+(+g.price).toFixed(8),pct:+(g.qty/tot*100).toFixed(2),r:"",hit:true,ts:g.ts,...(ks[i]?{soort:ks[i]}:{})}));
+      const nieuw=[...niveaus,...(o.tps||[]).filter(x=>x&&!x.hit)];
+      if(JSON.stringify(nieuw)!==JSON.stringify(o.tps||[])){o.tps=nieuw;n=true;}
+      return n;
+    },
+    /* After the import: the stop (OKX wins, as Kraken and Hyperliquid - Denny 18-10), its course, the planned TPs and the
+       labels, for every OKX trade the order history covers. A trade older than that keeps what it had. */
+    afterImport(){
+      const regels=this._regels;if(!regels||!regels.length)return 0;
+      const vanaf=this._dekking||0;let n=0;
+      T.filter(o=>o&&o.exchange==="okx"&&/^(closed|open|partial)$/.test(o.status||"")&&+o.openTime>=vanaf).forEach(o=>{
+        const s=this._slTpVoorTrade({dir:o.dir,entry:o.entry,openTime:o.openTime,closeTime:o.status==="closed"?o.closeTime:"",pair:o.pair,qtyAsset:o.qtyAsset},regels);
+        if(s.stop&&(+o.stop!==s.stop||o.stopBron!=="okx")){o.stop=s.stop;o.stopBron="okx";n++;}
+        if(o.stopBron==="okx"){if(s.verschoven)o.stopVerschoven=true;else delete o.stopVerschoven;o.stopVerloop=s.stopVerloop;}
+        if(s.tps.length)o.tpsGepland=s.tps;
+        if(this._labelAfbouw(o,regels))n++;
+      });
+      if(n)persist();
+      return n;
+    },
+    // backfillFills fetched the steps of a new trade after afterImport: label them in the same sync
+    naStappen(t){const regels=this._regels;if(regels&&regels.length&&t&&+t.openTime>=(this._dekking||0))this._labelAfbouw(t,regels);}
   }
 };
 // -- captureSnapshot patches (4168-4213) --
@@ -8641,6 +8735,7 @@ async function backfillFills(exId,opts){
     const fills=fillTimeline(steps,{dir,mult});
     if(!loopt&&!fills.some(isAfbouw)){ t.fillsNone=Date.now(); continue; }
     t.fills=fills; delete t.fillsNone; n++;
+    if(typeof ad.naStappen==='function'){try{ad.naStappen(t);}catch(e){}}   // an adapter may annotate the fresh steps (OKX: TP/SL per close)
   }
   if(n||lijst.some(t=>t.fillsNone))persist();
   return n?{n,reden:''}:(laatste||{n:0,reden:''});
