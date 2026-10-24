@@ -83,6 +83,46 @@ const ALGOS = [algo(1, OPEN + 30e3, 'buy', { slTriggerPx: '87000', sz: '24', sta
   const eigen = await p.evaluate(() => (T.find(x => x.exchange === 'okx').tps || []).filter(x => !x.hit).map(x => x.price));
   ok('je eigen geplande TP blijft staan als de sync bijwerkt', plan && eigen.includes(80000), JSON.stringify(eigen));
 
+  console.log('─── Review 24-10 ───');
+  // 1: a half answer (one call failed) must not overwrite a good stop
+  y = await sync(ALGOS, vers);
+  const half = await p.evaluate(async rows => { const t = T.find(x => x.exchange === 'okx'); CONNS.okx.lastSync = Date.now() - 36e5; persistConns();
+    const o = window.proxyCall; window.proxyCall = async q => q.action === 'algos' ? { source: 'algos', history: rows, pending: [], orders: [], _okxDebug: { errors: ['OKX orders-algo-history: Too Many Requests'] } } : o(q);
+    await syncExchange('okx', { quiet: true }); window.proxyCall = o; return { stop: +t.stop, versch: !!t.stopVerschoven }; },
+    [{ ...ALGOS[1] }, { ...ALGOS[2] }, { algoId: '20', instId: INST, ordType: 'conditional', side: 'buy', posSide: 'net', reduceOnly: 'true', slTriggerPx: '86500', sz: '24', state: 'canceled', cTime: String(OPEN + 36e5), uTime: String(DICHT), ordIdList: [] }]);
+  ok('1: half antwoord (één verzoek mislukt): de stop van 87.000 blijft', half.stop === 87000, JSON.stringify(half));
+  // 2: coverage = the newest of the oldest rows of the groups that were cut off
+  const dek = await p.evaluate(() => { const o = ExchangeAPI.okx, nu = Date.now(), r = (st, dagen, i) => ({ algoId: st + i, ordType: 'conditional', state: st, cTime: String(nu - dagen * 864e5 + i * 1000) });
+    const d = { source: 'algos', history: [...Array.from({ length: 500 }, (_, i) => r('canceled', 10, i)), ...Array.from({ length: 30 }, (_, i) => r('effective', 85, i))], _okxDebug: { afgekapt: true } };
+    return (nu - o._dekkingVan(d)) / 864e5; });
+  ok('2: canceled afgekapt op 10 dagen, effective tot 85: dekking ±10 dagen (niet 85)', dek > 9.9 && dek < 10.1, String(dek));
+  // 3: algos fails in a sync where the trade comes in again: the TP list and its labels stay
+  y = await sync(ALGOS, vers);
+  y = await sync('fout', "CONNS.okx.lastSync = Date.now() - 36e5; persistConns();");
+  ok('3: algos mislukt terwijl de trade opnieuw binnenkomt: labels blijven TP1, TP2, TP3 ✋', y.labels.join() === 'TP1,TP2,TP3 ✋', JSON.stringify(y));
+  // 4: a running partial: a TP level is a share of the whole position, not of what was closed so far
+  const pp = await p.evaluate(rows => { const o = ExchangeAPI.okx; const t = { ...EMPTY_TRADE, exchange: 'okx', status: 'partial', dir: 'short', entry: 85840, qtyAsset: 0.0024, pair: 'BTC/USDC', openTime: String(Date.parse('2026-10-05T04:16:16Z')),
+    fills: [{ kind: 'open', ts: 1, qty: 0.0024, price: 85840, ordId: 'e1' }, { kind: 'close', ts: 2, qty: 0.0009, price: 82900.1, ordId: 'o1' }], tps: [] };
+    o._labelAfbouw(t, o._algoRegels({ source: 'algos', history: rows, pending: [] })); return t.tps.map(x => x.pct); }, ALGOS);
+  ok('4: partial, 9 van 24 contracten dicht: TP1 = 37,5% (niet 100%)', pp.length === 1 && pp[0] === 37.5, JSON.stringify(pp));
+  // 5: a conditional with both SL and TP that fired on the SL
+  const beide = algo(30, OPEN + 30e3, 'buy', { slTriggerPx: '87000', tpTriggerPx: '80000', sz: '24', state: 'effective', actualSide: 'sl', ordIdList: ['s1'], uTime: String(DICHT) });
+  q = await sl([beide]);
+  const k5 = await p.evaluate(rows => ExchangeAPI.okx._afbouwSoort(ExchangeAPI.okx._algoRegels({ source: 'algos', history: rows, pending: [] }))({ ordId: 's1', fills: [{ kind: 'close' }] }), [beide]);
+  ok('5: conditional met SL én TP, geraakt op de SL: label sl, TP niet geraakt', k5 === 'sl' && q.tps[0] && q.tps[0].status === 'niet geraakt', JSON.stringify([k5, q.tps]));
+  // 6: the SL amended in place (same algoId, new price) and the cost-price SL that moves to the entry
+  const amend = await p.evaluate(rows => { const o = ExchangeAPI.okx; T = [{ ...EMPTY_TRADE, id: 1, exchange: 'okx', status: 'closed', dir: 'short', entry: 85840, qtyAsset: 0.0024, pair: 'BTC/USDC',
+    openTime: String(Date.parse('2026-10-05T04:16:16Z')), closeTime: String(Date.parse('2026-10-08T18:53:27Z')), stop: 87000, stopBron: 'okx', stopAlgoId: '1', fills: [], tps: [] }];
+    o._regels = o._algoRegels({ source: 'algos', history: rows, pending: [] }); o._dekking = 0; o.afterImport([]); return { stop: +T[0].stop, versch: !!T[0].stopVerschoven }; },
+    [{ ...ALGOS[0], slTriggerPx: '86500' }]);
+  ok('6: SL gewijzigd (zelfde algoId, nieuwe prijs 86.500): de stop blijft 87.000, verschoven', amend.stop === 87000 && amend.versch, JSON.stringify(amend));
+  const kostprijs = await p.evaluate(rows => { const o = ExchangeAPI.okx; T[0].stopAlgoId = '1'; delete T[0].stopVerschoven;
+    o._regels = o._algoRegels({ source: 'algos', history: rows, pending: [] }); o.afterImport([]); return { stop: +T[0].stop, versch: !!T[0].stopVerschoven }; },
+    [{ ...ALGOS[0], slTriggerPx: '85840', amendPxOnTriggerType: '1' }]);
+  ok('6: cost-price SL schoof naar de entry: de stop blijft 87.000, verschoven', kostprijs.stop === 87000 && kostprijs.versch, JSON.stringify(kostprijs));
+  // 7: a stop that is not reduce-only (an entry stop for the other direction) is not this trade's SL
+  ok('7: niet-reduceOnly stop telt niet als SL', (await sl([algo(40, OPEN + 30e3, 'buy', { slTriggerPx: '87000', sz: '24', reduceOnly: 'false' })])).stop === null);
+
   console.log('─── Denny\'s opname tegen zijn trades (export 22-10) ───');
   const OPN = path.resolve('tests/_fixtures/okx-algos.json'), EXP = path.resolve('syncjournal-backup-2026-10-22.json');
   if (fs.existsSync(OPN) && fs.existsSync(EXP)) {
