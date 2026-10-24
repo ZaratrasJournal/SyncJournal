@@ -45,6 +45,31 @@ de nieuwste prijs; OKX bewaart geen revisies. Drie bronnen, in deze volgorde:
    (bewaard op de trade als `stopEerst`), omdat de sync elk kwartier draait;
 3. anders `slTriggerPx` uit de algo-historie (de laatste stand); dan zonder "verschoven".
 
+## Wat de opname liet zien (24-10-2026, Worker v24 live)
+
+Opname van Denny's OKX-account (`tests/_fixtures/okx-algos.json`, gitignored): 81 algo-orders over 3 maanden,
+allemaal `BTC-USD_UM_XPERP-310404`; 0 openstaand (geen lopende positie); 3 instap-orders (7 dagen); geen fouten.
+
+- **SL en TP's zijn losse `conditional`-orders**, seconden tot minuten na de instap geplaatst; `attachAlgoOrds` is
+  overal leeg. In september ook een paar `oco`-orders (SL + TP in één). Geen trailing (`move_order_stop`).
+- **One-way-modus:** `posSide` is overal `net`; `side` is de sluitkant (`buy` sluit een short, `sell` een long);
+  `reduceOnly` is `true`. TP op de hele positie: `closeFraction` `1` (geen `sz`).
+- **Een SL verschuiven = annuleren + nieuwe order** (nieuw `algoId`), zoals bij Hyperliquid. Voorbeeld 24-09: SL 87.463
+  geannuleerd 16:49:48, nieuwe SL 84.850 om 16:50:41. Wijzigen-in-plaats is niet gezien.
+- **Koppeling exact:** in Denny's export (22-10) hangen alle 4 de TP-afbouwen via `ordIdList` aan hun TP-order. De 4
+  afbouwen zonder koppeling zijn handmatige sluitingen: bij die trades staat de SL `canceled` op het moment van sluiten.
+- **`posId` wordt hergebruikt:** de drie laatste trades hebben hetzelfde `posId` → koppelen op instrument (basis-asset),
+  sluitkant en tijdvenster.
+- **OKX-trades hebben geen TP-niveaus** (`tps: []`): die komen er per afbouw-order bij, zoals bij Hyperliquid.
+
+**Rulings (vervangen de drie bronnen voor de oorspronkelijke SL):**
+- De oorspronkelijke SL = de **eerst geplaatste SL-order** aan de sluitkant, aan de verlieskant van de entry, geplaatst
+  tussen opening − 60 s en sluiting (of actief bij de opening, niet al afgelopen ervóór) — dezelfde regel als Hyperliquid
+  (v1.12, met de C1-fix). Latere SL's met een andere prijs → `verschoven`, en het verloop.
+- `_planOpInstap` en `stopEerst` vervallen: het plan op de instap-order is bij Denny leeg, en verschuiven maakt een nieuwe
+  order. Kosten als het fout is: wie een SL *wijzigt in plaats van opnieuw zet*, ziet alleen de laatste prijs.
+- Contracten → asset met `_ctVal(instId)` (B2) voor het percentage van een gepland TP.
+
 ## Global Constraints
 
 - **Exchange-isolatie:** geen wijziging aan Kraken, Hyperliquid, Blofin, MEXC of FTMO; geen `if(exchange===…)` in
@@ -125,8 +150,8 @@ de nieuwste prijs; OKX bewaart geen revisies. Drie bronnen, in deze volgorde:
 - Produces:
   - `_algoRegels(antwoord) → [{algoId, instId, basis, posSide, side:'buy'|'sell', soort:'sl'|'tp'|'oco'|'trail', slPx, tpPx, sz, hele:boolean, state, actualSide, actualPx, triggerTime, cTime, uTime, ordIds:string[], live:boolean}]`
     (`basis` = asset uit `instId`, zoals in `stepsForTrade`; `hele` = `closeFraction==='1'`; `live` = uit `pending`)
-  - `_planOpInstap(antwoord) → Map<ordId, {slPx, tps:[{px, sz}]}>` uit `orders[].attachAlgoOrds`
-  - `_slTpVoorTrade(t, regels, plan) → {stop:number|null, verschoven:boolean, stopVerloop:[{ts,price,status}], tps:[{price,pct,status}]}`
+  - `_slTpVoorTrade(t, regels) → {stop:number|null, verschoven:boolean, stopVerloop:[{ts,price,status}], tps:[{price,pct,status}]}`
+    (ruling 24-10: geen plan-op-instap en geen `stopEerst`; zie "Wat de opname liet zien")
   - `_afbouwSoort(regels) → (groep) => 'tp'|'sl'|'liq'|'hand'|null` (`null` als de stap geen `ordId` heeft)
 
 - [ ] **Step 1: tests** in `tests/okx-stoploss.spec.js` (synthetische OKX-rijen):
@@ -135,9 +160,9 @@ de nieuwste prijs; OKX bewaart geen revisies. Drie bronnen, in deze volgorde:
   - TP aan de winstkant is geen SL; een stop aan de instap-kant is geen SL;
   - **one-way (`posSide:'net'`)**: kant uit `side`, sluitkant van de trade;
   - **hergebruikt posId**: een SL van een vorige levensloop (zelfde instrument, `uTime` vóór de opening) telt niet;
-  - plan op de instap-order (`_planOpInstap`) wint van de algo-prijs; met plan 79.000 en algo 80.000 (verschoven,
-    zelfde `algoId`): stop 79.000, `verschoven:true`;
-  - zonder plan: `stopEerst` op de trade wint; zonder beide: algo-prijs, `verschoven:false`;
+  - verschoven zoals Denny het doet: SL 87.463 geannuleerd, daarna een nieuwe SL 84.850 (nieuw `algoId`): stop 87.463,
+    `verschoven:true`, verloop van 2;
+  - een SL die vóór de opening al afgelopen was (vorige positie) telt niet (de HL-C1-regel);
   - `_afbouwSoort`: fill-`ordId` in `ordIdList` van een `effective` algo met `actualSide:'tp'` → `tp`, `'sl'` → `sl`;
     `trail` → `sl`; liquidatie-stap → `liq`; geen match → `hand`; geen `ordId` → `null`;
   - **split-TP**: drie TP-algo's met eigen `sz` → drie geplande TP's met `pct` = `sz`/positie.
@@ -152,15 +177,17 @@ de nieuwste prijs; OKX bewaart geen revisies. Drie bronnen, in deze volgorde:
 
 **Interfaces:**
 - Consumes: Task 3.
-- Produces op een OKX-trade: `stop`, `stopBron:'okx'`, `stopVerschoven`, `stopVerloop`, `tpsGepland`, `stopEerst`
-  (eerst gezien, alleen bij een lopende positie), `fills[].soort`, en per afbouw-order een TP-niveau met `soort`
-  (zelfde vorm als HL `tpLevels`; je eigen niet-geraakte TP's blijven erbij).
+- Produces op een OKX-trade: `stop`, `stopBron:'okx'`, `stopVerschoven`, `stopVerloop`, `tpsGepland`,
+  `fills[].soort`, en per afbouw-order een TP-niveau in `tps` met `hit:true`, `ts` en `soort` (zelfde vorm als HL; je
+  eigen niet-geraakte TP's blijven erbij).
 
 - [ ] **Step 1: tests** (sync via `syncExchange('okx')`, nep-Worker):
   - nieuwe gesloten trade met SL en twee TP-afbouwen → stop van OKX, labels `TP1, TP2`, daarna stop-out `SL`;
   - **één `algos`-aanroep per sync**;
-  - lopende positie: `stopEerst` = de SL bij de eerste sync; later verschoven (zelfde `algoId`, nieuwe prijs) →
-    stop blijft de eerste, `verschoven:true`; geplande TP's uit `pending` op de rij;
+  - lopende positie: SL en geplande TP's uit `pending` op de rij; na verschuiven (geannuleerd + nieuw) blijft de stop
+    de eerste, `verschoven:true`;
+  - **Denny's opname** (`tests/_fixtures/okx-algos.json`, overgeslagen als hij ontbreekt) tegen zijn drie trades met
+    stappen: 05-10 → TP1, TP2, Close ✋, stop 87.000; 20-10 → TP1, TP2, Close ✋, stop 81.200; 28-09 → stop 82.000;
   - een zelf getypte stop (`stopBron:'gebruiker'`) maakt plaats voor die van OKX;
   - **Worker v23** (antwoord zonder `source:'algos'`) en een fout: trades komen binnen, geen stop, geen labels;
   - trade waarvan de stappen pas in `backfillFills` binnenkomen (nieuw): labels via `naStappen` in dezelfde sync;
