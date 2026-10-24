@@ -142,6 +142,18 @@ const T0 = NU - 2 * DAG, T1 = T0 + 2 * UUR, T2 = T0 + 5 * UUR, T3 = NU - 40 * 60
     s.kraken[0].status === 'open', JSON.stringify(s.kraken[0]));
   ok('en niemand heeft zijn notitie verloren', EX.every(ex => s[ex][0].notes === 'notitie ' + ex), JSON.stringify(EX.map(ex => s[ex][0].notes)));
 
+  // Denny 24-10-2026: a partial shows the unrealized P&L of the open rest - it must follow the exchange each sync,
+  // not keep the value of the first sync
+  console.log('─── 1b. De koers loopt: de unrealized P&L van de rest ververst bij elke sync ───');
+  const unreal = () => p.evaluate(() => Object.fromEntries(['okx', 'blofin', 'hyperliquid', 'kraken'].map(ex => [ex, T.filter(t => t.exchange === ex).map(t => +t.unrealizedPnl || 0)])));
+  const zet = w => p.evaluate(w => { const S = window.__S; S.okx.deels.open[0].upl = w.okx; S.blofin.deels.open[0].unrealizedPnl = w.blofin;
+    S.hyperliquid.deels.open[0].position.unrealizedPnl = w.hyperliquid; S.kraken.deels.open[0].unrealizedPnl = w.kraken; }, w);
+  for (const w of [{ okx: '4.5', blofin: '70', hyperliquid: '42', kraken: '3' }, { okx: '-1.1', blofin: '12', hyperliquid: '8', kraken: '-0.5' }]) {
+    await zet(w); await syncAlle();
+    const u = await unreal();
+    EX.forEach(ex => ok(`${ex}: unrealized nu ${w[ex]}`, u[ex].length === 1 && bij(u[ex][0], +w[ex], 1e-6), JSON.stringify(u[ex])));
+  }
+
   console.log('─── 2. De rest gaat dicht ───');
   await fase('dicht'); await syncAlle(); await syncAlle();
   s = await stand();
