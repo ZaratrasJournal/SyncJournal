@@ -8100,7 +8100,7 @@ const ExchangeAPI = {
     // (geen auth) → 1× ophalen + 15 min cachen. Fallback-map als vangnet; PnL-cross-check in
     // _normalise corrigeert alsnog wanneer ctVal ontbreekt voor een exotic coin.
     _ctvCache:null,_ctvCacheTs:0,
-    _ctvFallback:{"BTC-USDT-SWAP":0.01,"ETH-USDT-SWAP":0.1,"SOL-USDT-SWAP":1,"XRP-USDT-SWAP":100,"DOGE-USDT-SWAP":1000,"LTC-USDT-SWAP":1,"ADA-USDT-SWAP":100,"AVAX-USDT-SWAP":1,"LINK-USDT-SWAP":1,"DOT-USDT-SWAP":1,"BNB-USDT-SWAP":0.01,"MATIC-USDT-SWAP":10,"TON-USDT-SWAP":1,"TRX-USDT-SWAP":1000},
+    _ctvFallback:{"BTC-USDT-SWAP":0.01,"ETH-USDT-SWAP":0.1,"SOL-USDT-SWAP":1,"XRP-USDT-SWAP":100,"DOGE-USDT-SWAP":1000,"LTC-USDT-SWAP":1,"ADA-USDT-SWAP":100,"AVAX-USDT-SWAP":1,"LINK-USDT-SWAP":1,"DOT-USDT-SWAP":1,"BNB-USDT-SWAP":0.01,"POL-USDT-SWAP":10,"SUI-USDT-SWAP":1,"MATIC-USDT-SWAP":10,"TON-USDT-SWAP":1,"TRX-USDT-SWAP":1000},
     async _loadContractValues(){
       const now=Date.now();
       if(this._ctvCache&&now-this._ctvCacheTs<15*60*1000)return this._ctvCache;
@@ -8113,13 +8113,19 @@ const ExchangeAPI = {
       if(Object.keys(map).length){this._ctvCache=map;this._ctvCacheTs=now;}
       return this._ctvCache||{};
     },
+    /* EEA accounts trade USDC on FUTURES: the X-Perps (BTC-USD_UM_XPERP-310404) and dated futures (BTC-USD_UM-261030).
+       There are no USDC-SWAP contracts. Per contract family (instId without the expiry), OKX's own ctVal from
+       /public/instruments on 24-10-2026 (backlog B2). The X-Perp and the dated future differ: BTC 0.0001 vs 0.01. */
+    _ctvFamilie:{"BTC-USD_UM_XPERP":0.0001,"BTC-USD_UM":0.01,"ETH-USD_UM_XPERP":0.001,"ETH-USD_UM":0.001,"SOL-USD_UM_XPERP":0.01,"SOL-USD_UM":0.1,
+      "XRP-USD_UM_XPERP":1,"DOGE-USD_UM_XPERP":10,"LTC-USD_UM_XPERP":0.1,"ADA-USD_UM_XPERP":10,"AVAX-USD_UM_XPERP":10,"LINK-USD_UM_XPERP":1,
+      "DOT-USD_UM_XPERP":1,"BNB-USD_UM_XPERP":0.01,"POL-USD_UM_XPERP":10,"TRX-USD_UM_XPERP":10,"SUI-USD_UM_XPERP":1},
     _ctVal(instId){
       const m=this._ctvCache||{};
       if(m[instId]!=null)return m[instId];
       if(this._ctvFallback[instId]!=null)return this._ctvFallback[instId];
-      // OKX EEA X-Perp UM-familie als de live /instruments-fetch faalt (bv. file:// CORS).
-      // EU-contractspec: 0.0001 BTC/contract (bevestigd via Denny's 0.0008 BTC = 8 contracten).
-      if(/^BTC-USD_UM/i.test(instId))return 0.0001;
+      // the live /instruments lookup failed (e.g. offline or file:// CORS): the contract family, without the expiry
+      const fam=this._ctvFamilie[String(instId||"").replace(/-\d{6}$/,"")];
+      if(fam!=null)return fam;
       return 1;
     },
     _instId(symbol){return String(symbol||"").replace("/","-").replace(/-SWAP$/i,"")+"-SWAP";},

@@ -26,11 +26,11 @@ elke wijziging eindigt met `node tests/run-release.js` groen.
 | **F5** | Hoe liep de trade af: ~~exit-reden (TP/SL/Close)~~ ✅ v1.11 · stopbeweging (BE/strakker/ruimer) nog open | 1 | S | F3 |
 | **F6** | Kraken: geplande TP's uit de trigger-historie | 2 | S | F3 |
 | **F7** | Analytics: stop-management en uitvoering | 1 | M | F5 (F6 voor één blok) |
-| **F8** | Hyperliquid: oorspronkelijke stop-loss, geplande TP's, TP/SL/Close — plan bijgewerkt 18-10 | 1 | M | F3 |
+| ~~F8~~ | ~~Hyperliquid: oorspronkelijke stop-loss, geplande TP's, TP/SL/Close~~ — ✅ **gedaan in v1.12** | — | — | — |
 | **F9** | Override-knop voor een stop van de exchange ("Zelf aanpassen" / "Terug naar Kraken") | 2 | S | F3 |
-| **F10** | OKX en daarna Blofin: stop-loss en TP/SL/Close, elk in de eigen adapter | 2 | M + M | F8 |
-| **B1** | Kraken: lopende positie zonder partial en zonder stappen | 1 | M | — |
-| **B2** | OKX: contractwaarde-vangnet kent geen USDC-perps | 2 | S | — |
+| **F10** | OKX en daarna Blofin: stop-loss en TP/SL/Close, elk in de eigen adapter — OKX: plan + Worker v24 klaar (24-10, [plan](docs/plan-okx-stoploss-2026-10-24.md)) | 2 | M + M | F8 |
+| ~~B1~~ | ~~Kraken: lopende positie zonder partial en zonder stappen~~ — ✅ **gedaan in v1.13** | — | — | — |
+| ~~B2~~ | ~~OKX: contractwaarde-vangnet kent geen USDC-perps~~ — ✅ **gedaan 24-10** (per contractfamilie; volgende release) | — | — | — |
 | **W2** | Ruwe exchange-data kunnen vastleggen (dev-modus terug) | 2 | M | — |
 | **C1** | Lege staten: één manier, met een volgende stap | 2 | S + M | — |
 | ~~C5~~ | ~~Acht tag-soorten, acht kleuren, overal gelijk~~ — ✅ **gedaan in v1.3** | — | — | — |
@@ -306,6 +306,12 @@ vangnet — maar OKX is je actieve exchange en EEA-accounts handelen in USDC.
 3. Toevoegen aan de map; test groen.
 
 **Klaar als** elke USDT-sleutel in het vangnet een USDC-tegenhanger heeft, met de waarde van OKX zelf.
+
+**✅ Gedaan 24-10-2026** (`tests/okx-ctval.spec.js`). Bij het meten bleek: **USDC-SWAP-contracten bestaan niet**; EEA-accounts
+handelen USDC op FUTURES, de X-Perps (`BTC-USD_UM_XPERP-310404`) en datum-futures (`BTC-USD_UM-261030`). Het vangnet
+kent nu de contractwaarde per familie (instrument zonder vervaldatum), uit OKX's eigen lijst. Daarbij twee fouten
+gevonden: de oude uitzondering gaf een BTC-datum-future 0,0001 in plaats van 0,01 (100× te klein), en ETH X-Perp viel
+terug op 1 in plaats van 0,001 (1000× te groot).
 
 ### B3 · Controleren: telt dezelfde positie dubbel via CSV én API? — prio 2 · S
 
