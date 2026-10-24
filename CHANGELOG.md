@@ -16,6 +16,21 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v1.15] — 2026-10-24
+
+### Toegevoegd
+- **OKX: je stop-loss komt vanzelf binnen, net als bij Kraken en Hyperliquid.** De journal haalt bij elke sync je
+  TP/SL-orders bij OKX op en zet de **oorspronkelijke** stop van elke trade in het veld Stop-loss, vergrendeld "(van
+  OKX)". Heb je hem later verzet, dan staat "verschoven" erbij. Je R-multiple klopt daardoor zonder invullen.
+- **OKX: per afbouw zie je TP, SL of Close.** Een geraakte take-profit heet TP1, TP2…; een geraakte stop heet SL; met
+  de hand gesloten in winst "TP n ✋", met verlies "Close ✋". Bij een lopende positie staan je ingestelde TP's erbij.
+  Dit vereist **Worker v24** (staat sinds 24-10 live).
+
+### Fixed
+- **OKX: de positiegrootte klopt ook als het ophalen van de contractwaarde mislukt.** Valt OKX's lijst met
+  contractwaarden even weg, dan rekende de journal sommige contracten verkeerd om: een ETH X-Perp 1000× te groot, een
+  BTC-future met vervaldatum 100× te klein. Het vangnet kent nu de echte waarden per contractsoort.
+
 ## [v1.14.1] — 2026-10-24
 
 ### Toegevoegd
