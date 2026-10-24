@@ -28,6 +28,8 @@ async function openJournal(b, opts) {
   await p.route('**/*', r => /^https?:/.test(r.request().url()) ? r.abort() : r.continue());
   await p.addInitScript(bootHaak);
   if (opts.init) await p.addInitScript(opts.init, opts.initArg);
+  // Vaste klok (Date.now en new Date); timers lopen gewoon door.
+  if (opts.klok) await p.clock.setFixedTime(opts.klok);
   await p.goto(APP, { waitUntil: 'domcontentloaded' }); await bootKlaar(p); await p.waitForTimeout(300);
   return { ctx, p, errs };
 }
