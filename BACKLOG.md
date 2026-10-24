@@ -37,7 +37,7 @@ elke wijziging eindigt met `node tests/run-release.js` groen.
 | **T1** | CSV-import testen op CI | 2 | M | — |
 | **W1** | Worker: staat `Access-Control-Allow-Origin` op `*`? | 2 | XS (Denny) | — |
 | **B3** | Controleren: telt dezelfde positie dubbel via CSV én API? | 2 | S | — |
-| **W4** | Worker v25: `okxHost` alleen uit een vaste lijst (lek sinds v19) en de ongebruikte `orders`-verzoeken uit `algos` weg (review 24-10) | 1 | XS | — |
+| **W5** | Worker v25: `okxHost` alleen uit een vaste lijst (lek sinds v19) en de ongebruikte `orders`-verzoeken uit `algos` weg (review 24-10) | 1 | XS | — |
 | **B6** | OKX: waarschuwing bij een onbekende contractsoort in het vangnet; SL koppelen op het exacte contract i.p.v. de munt (review 24-10) | 3 | XS | — |
 | ~~B5~~ | ~~P&L-percentages van −107% en 2.834% bij oudere trades~~ — ✅ **gedaan in v1.11** | — | — | — |
 | **T2** | Oude-app-specs herschrijven of schrappen | 3 | L | besluit AI-coach (deels) |
