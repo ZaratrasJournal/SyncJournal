@@ -23,7 +23,8 @@ const bootKlaar = p => p.waitForFunction(() => window.__sjBoot === true, null, {
 
 async function openJournal(b, opts) {
   opts = opts || {};
-  const ctx = await b.newContext({ viewport: opts.viewport || { width: 1360, height: 900 }, permissions: opts.clipboard ? ['clipboard-read', 'clipboard-write'] : [] });
+  const ctx = await b.newContext({ viewport: opts.viewport || { width: 1360, height: 900 }, permissions: opts.clipboard ? ['clipboard-read', 'clipboard-write'] : [],
+    ...(opts.timezoneId ? { timezoneId: opts.timezoneId } : {}) });
   const p = await ctx.newPage(); const errs = []; p.on('pageerror', e => errs.push(String(e).split('\n')[0])); p.on('dialog', d => d.accept());
   await p.route('**/*', r => /^https?:/.test(r.request().url()) ? r.abort() : r.continue());
   await p.addInitScript(bootHaak);

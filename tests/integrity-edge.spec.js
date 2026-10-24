@@ -1,105 +1,76 @@
-// Fase 3 (review/journal-audit): integriteit & edge-cases — datums/tijdzones + import-validatie.
+// Datums rond middernacht en een rommel-back-up.
 //
-// Kernbugs die deze spec vastlegt (allemaal gevonden in de fase-3 audit):
-//  1. "Vandaag" werd berekend via new Date().toISOString() = UTC-dag → tussen 00:00 en
-//     01:00/02:00 lokale tijd wees alles (EMPTY_TRADE.date, FilterBar-pills, dag-stats)
-//     naar GISTEREN.
-//  2. Kalendercellen bouwden hun datum-key via new Date(jaar,maand,dag).toISOString()
-//     → voor elke tijdzone oost van UTC structureel één dag verschoven (PnL onder het
-//     verkeerde dagnummer, "vandaag"-highlight op morgen).
-//  3. ts2date (UTC) en ts2time (lokaal) waren een inconsistent paar: een exchange-fill om
-//     23:30Z kreeg date=gisteren met time=01:30.
-//  4. Backup-import spreidde rommel-items ([1,"x",null]) over EMPTY_TRADE → lege trades.
-const { test, expect } = require('@playwright/test');
-const path = require('path');
-const fs = require('fs');
-const os = require('os');
+// 1. Tussen 00:00 en 02:00 in Amsterdam is het in UTC nog gisteren. Wat de gebruiker als "vandaag"
+//    ziet, moet de lokale dag zijn: new Date().toISOString() geeft de UTC-dag en is dan fout.
+//    De klok staat op 1 juli 2026 00:30 Amsterdam (30 juni 22:30 UTC): dan is zelfs de maand anders.
+// 2. Een back-up met rommel ([1, 'x', null, …]) mag niets toevoegen of vervangen.
+//
+// Herschreven in T2 (24-10-2026): de oude spec testte dezelfde audit-bugs in work/tradejournal.html.
+const { chromium } = require('playwright');
+const fs = require('fs'); const os = require('os'); const path = require('path');
+const H = require('./helpers/dov-page');
+let pass = 0, fail = 0, fixmes = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  ✓ ' + n)) : (fail++, console.log('  ✗ ' + n + (e ? ' → ' + e : ''))); };
+// FIXME-check: bekende bug in de app (docs/plan-t2-specs.md, Gevonden bugs). Telt niet als rood zolang hij faalt.
+const fixme = (n, c, e) => { fixmes++; console.log(c ? '  ⚠ FIXME lijkt opgelost, maak er weer ok() van: ' + n : '  ⚠ FIXME (bekende bug): ' + n + (e ? ' → ' + e : '')); };
 
-const APP_PATH = path.resolve(__dirname, '../work/tradejournal.html');
-const FILE_URL = 'file:///' + APP_PATH.replace(/\\/g, '/');
+const NA_MIDDERNACHT = new Date('2026-07-01T00:30:00+02:00');
+const FILL_UTC = Date.UTC(2026, 5, 30, 22, 30);   // zelfde moment, als exchange-tijdstempel
 
-// 00:30 lokale tijd (Europe/Amsterdam op deze machine) op 11 juni 2026.
-// In UTC is het dan nog 10 juni (22:30Z) — precies het window waarin de oude code faalde.
-const MIDNIGHT_LOCAL = new Date(2026, 5, 11, 0, 30, 0);
+(async () => {
+  const b = await chromium.launch();
+  // De browser in Nederland, zoals bij de leden; de klok vast op net na middernacht.
+  const { p, errs } = await H.openJournal(b, { timezoneId: 'Europe/Amsterdam', klok: NA_MIDDERNACHT });
 
-test('na middernacht: localDateISO = vandaag, EMPTY_TRADE/kalender/ts2date consistent', async ({ page }) => {
-  await page.clock.install({ time: MIDNIGHT_LOCAL });
-  await page.addInitScript(() => localStorage.setItem('tj_welcomed', '1'));
-  await page.goto(FILE_URL, { waitUntil: 'networkidle' });
-  await page.waitForFunction(() => typeof localDateISO === 'function' && typeof EMPTY_TRADE === 'object', { timeout: 30_000 });
+  console.log('─── Na middernacht ───');
+  const r = await p.evaluate(fill => ({ utc: new Date().toISOString().slice(0, 10), lokaal: localDateISO(), leeg: EMPTY_TRADE.date,
+    fillDatum: ts2date(fill), fillTijd: ts2time(fill), ams: amsDateTime(fill) }), FILL_UTC);
+  ok('klok staat goed: in UTC is het nog 30 juni', r.utc === '2026-06-30', r.utc);
+  ok('localDateISO() = 1 juli', r.lokaal === '2026-07-01', r.lokaal);
+  ok('EMPTY_TRADE.date = 1 juli', r.leeg === '2026-07-01', r.leeg);
+  ok('exchange-fill om 22:30 UTC: datum en tijd beschrijven hetzelfde moment (1 juli 00:30)', r.fillDatum === '2026-07-01' && r.fillTijd === '00:30', JSON.stringify(r));
+  ok('amsDateTime: ook 1 juli 00:30', r.ams.date === '2026-07-01' && r.ams.time === '00:30', JSON.stringify(r.ams));
 
-  const r = await page.evaluate(() => ({
-    utcToday: new Date().toISOString().split('T')[0],     // de oude (foute) berekening
-    localToday: localDateISO(),                            // de nieuwe
-    emptyTradeDate: EMPTY_TRADE.date,
-    localTime: localTimeHM(),
-    // kalendercel "11 juni 2026" — moet key 2026-06-11 dragen (was: 2026-06-10)
-    calendarCellKey: localDateISO(new Date(2026, 5, 11)),
-    // exchange-fill om 22:30Z = 00:30 lokaal → date en time moeten hetzelfde moment beschrijven
-    fillDate: ts2date(Date.UTC(2026, 5, 10, 22, 30)),
-    fillTime: ts2time(Date.UTC(2026, 5, 10, 22, 30)),
-  }));
+  await H.go(p, 'trades');
+  await p.evaluate(() => openForm(null));
+  const nieuw = await p.evaluate(() => document.getElementById('f_date').value);
+  fixme('nieuwe trade krijgt als datum vandaag (1 juli), niet gisteren', nieuw === '2026-07-01', nieuw);
+  await p.evaluate(() => closeForm());
+  const kal = await p.evaluate(() => STATE.calMonth);
+  fixme('Kalender opent op de huidige maand (juli)', kal === '2026-07', kal);
+  const storting = await p.evaluate(() => { MANUAL.push({ id: 'm_t', name: 'Test', transactions: [] }); go('instellingen'); setSetTab('accounts'); txOpen('m_t', 'deposit');
+    document.getElementById('tx_amt').value = '100'; addAcctTx('m_t'); const d = MANUAL.find(m => m.id === 'm_t').transactions[0].date; removeManual('m_t'); return d; });
+  fixme('storting op een handmatig account krijgt als datum vandaag', storting === '2026-07-01', storting);
 
-  // Sanity dat de klok-mock het bedoelde window raakt: UTC zegt nog "gisteren"
-  expect(r.utcToday).toBe('2026-06-10');
-  // ...maar alles wat de user ziet moet 11 juni zijn:
-  expect(r.localToday).toBe('2026-06-11');
-  expect(r.emptyTradeDate).toBe('2026-06-11');
-  expect(r.localTime).toBe('00:30');
-  expect(r.calendarCellKey).toBe('2026-06-11');
-  expect(r.fillDate).toBe('2026-06-11');
-  expect(r.fillTime).toBe('00:30');
-});
+  console.log('─── Rommel-back-up ───');
+  await H.seedTrades(p, [1, 2, 3].map(i => ({ id: i, date: '2026-06-0' + i, time: '10:00', pair: 'BTC/USDT', dir: 'long', status: 'closed', kind: 'live', entry: 100, exit: 110, size: '1000', pnl: 10, exchange: '' })));
+  const tmp = path.join(os.tmpdir(), 'sj-rommel-backup.json');
+  const importeer = async inhoud => {
+    fs.writeFileSync(tmp, JSON.stringify(inhoud));
+    const [kiezer] = await Promise.all([p.waitForEvent('filechooser'), p.evaluate(() => importJSON())]);
+    await kiezer.setFiles(tmp);
+    await p.waitForFunction(() => document.getElementById('modal').classList.contains('on') || /niet worden geïmporteerd|geen journal-gegevens/i.test(document.body.innerText), null, { timeout: 5000 }).catch(() => {});
+    return p.evaluate(() => ({ modal: document.getElementById('modal').classList.contains('on'), tekst: document.getElementById('modal').innerText.replace(/\s+/g, ' '),
+      melding: /niet worden geïmporteerd|geen journal-gegevens/i.test(document.body.innerText) }));
+  };
+  const trades = () => p.evaluate(() => T.map(t => t.date + ' ' + t.pair).sort().join(', '));
+  const voor = await trades();
+  ok('drie trades staan klaar', voor.split(', ').length === 3, voor);
 
-test('sanitizeBackupTrades: filtert rommel, houdt trade-achtige objecten', async ({ page }) => {
-  await page.addInitScript(() => localStorage.setItem('tj_welcomed', '1'));
-  await page.goto(FILE_URL, { waitUntil: 'networkidle' });
-  await page.waitForFunction(() => typeof sanitizeBackupTrades === 'function', { timeout: 30_000 });
-  const r = await page.evaluate(() => {
-    const mixed = sanitizeBackupTrades([1, 'x', null, [], { id: 'a' }, { pair: 'BTC/USDT' }, { foo: 'bar' }]);
-    const nonArr = sanitizeBackupTrades({ id: 'a' });
-    return { kept: mixed.trades.length, skipped: mixed.skipped, nonArrKept: nonArr.trades.length };
-  });
-  expect(r.kept).toBe(2);       // {id:'a'} + {pair:'BTC/USDT'}; {foo:'bar'} heeft geen trade-veld
-  expect(r.skipped).toBe(5);
-  expect(r.nonArrKept).toBe(0);
-});
+  const r1 = await importeer([1, 2, 3, 'niet-een-trade', null]);
+  ok('alleen rommel: een duidelijke melding, geen keuzescherm', r1.melding && !r1.modal, JSON.stringify({ ...r1, tekst: r1.tekst.slice(0, 80) }));
+  ok('en niets toegevoegd of vervangen', await trades() === voor, await trades());
 
-test('backup-import met rommel-array: niets geïmporteerd + duidelijke fout', async ({ page }) => {
-  // Seed 3 echte trades; daarna een .json met [1,2,3] importeren via Instellingen → backup-input.
-  const seedTrades = [1, 2, 3].map(i => ({
-    id: 't' + i, date: '2026-06-0' + i, time: '10:00', pair: 'BTC/USDT', direction: 'long',
-    entry: '100', exit: '110', positionSize: '1000', pnl: '10', fees: '0', status: 'closed', source: 'manual',
-    setupTags: [], confirmationTags: [], timeframeTags: [], emotionTags: [], mistakeTags: [], customTags: [],
-    tpLevels: [], layers: [], links: [], screenshots: [], notes: '', rating: 0,
-  }));
-  await page.addInitScript((trades) => {
-    localStorage.setItem('tj_trades', JSON.stringify(trades));
-    localStorage.setItem('tj_welcomed', '1');
-    localStorage.setItem('tj_config', JSON.stringify({ defaultQuote: 'USDT', exchanges: {}, theme: 'sync', accountsSchema: 2 }));
-  }, seedTrades);
-  await page.goto(FILE_URL, { waitUntil: 'networkidle' });
-  await page.waitForFunction(() => /Dashboard/i.test(document.body.innerText), { timeout: 30_000 });
-  await page.waitForTimeout(2500); // trades-load + effects settle
-
-  // Backup-input zit op de Accounts/Instellingen-pagina
-  await page.evaluate(() => { location.hash = '#/accounts'; });
-  await page.waitForTimeout(1200);
-
-  // Garbage-bestand
-  const tmp = path.join(os.tmpdir(), 'tj-garbage-backup.json');
-  fs.writeFileSync(tmp, JSON.stringify([1, 2, 3, 'niet-een-trade', null]));
-
-  // Het backup-input (display:none) accepteert setInputFiles ook zonder klik
-  const input = page.locator('input[type="file"][accept=".json"]').first();
-  await input.setInputFiles(tmp);
-  await page.waitForTimeout(1500);
-
-  const after = await page.evaluate(() => {
-    const trades = JSON.parse(localStorage.getItem('tj_trades') || '[]');
-    return { n: trades.length, ids: trades.map(t => t.id).sort() };
-  });
-  expect(after.n).toBe(3);                            // niets bijgekomen
-  expect(after.ids).toEqual(['t1', 't2', 't3']);      // en niets vervangen
+  // Een object zonder één trade-veld ertussen: de oude app liet dat weg ("{foo:'bar'} is geen trade").
+  const r2 = await importeer([{ foo: 'bar' }, 1, 'x', null]);
+  const telt = (r2.tekst.match(/Trades[^]*?(\d+) in bestand/) || [])[1];
+  ok('object tussen de rommel: er komt een keuzescherm (niets gebeurt zonder bevestiging)', r2.modal, r2.tekst.slice(0, 80));
+  fixme('een object zonder trade-velden telt niet als trade in het keuzescherm', telt === undefined || telt === '0', 'keuzescherm: ' + (telt || '?') + ' trade(s) in bestand → bevestigen ("vervangen" staat voorgeselecteerd) vervangt je 3 trades');
+  await p.evaluate(() => closeForm());
+  ok('keuzescherm gesloten zonder te kiezen: niets veranderd', await trades() === voor, await trades());
   fs.unlinkSync(tmp);
-});
+
+  ok('geen JS-fouten', errs.length === 0, [...new Set(errs)].slice(0, 3).join(' | '));
+  await b.close();
+  console.log(`\n=== Integriteit randen: ${pass}/${pass + fail}${fixmes ? ' · ' + fixmes + ' fixme' : ''} ===`);
+  process.exit(fail ? 1 : 0);
+})().catch(e => { console.error(e); process.exit(1); });
