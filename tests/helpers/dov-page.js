@@ -42,6 +42,9 @@ async function go(p, page) {
   await p.evaluate(pg => go(pg), page);
   await p.waitForFunction(pg => STATE.page === pg && document.getElementById('ptitle').textContent === PAGES[pg][0], page, { timeout: 5000 });
 }
+// render() laat #main infaden; een screenshot of kleurmeting daarvóór ziet een half-transparante pagina.
+const stil = p => p.waitForFunction(() => document.getElementById('main').getAnimations({ subtree: true })
+  .every(a => a.playState !== 'running' || (a.effect && a.effect.getTiming().iterations === Infinity)), null, { timeout: 5000 });
 const modalText = p => p.evaluate(() => document.getElementById('modal').innerText.replace(/\s+/g, ' '));
 const mainText = p => p.evaluate(() => document.getElementById('main').innerText.replace(/\s+/g, ' '));
-module.exports = { APP, openJournal, reload, bootKlaar, seed, seedTrades, wipe, go, modalText, mainText };
+module.exports = { APP, openJournal, reload, bootKlaar, seed, seedTrades, wipe, go, stil, modalText, mainText };
