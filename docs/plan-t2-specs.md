@@ -220,7 +220,21 @@ in licht ~170× op Trades tegen ~15× in donker, en `label-content-name-mismatch
 
 ## Metingen
 
-*(eindstand, zie onderaan)*
+Eindstand 24-10-2026 op branch `t2-specs`, lokaal (Windows 11, Node 24.14.1, Playwright 1.64.1,
+Chromium headless shell 1248):
+
+| Run | Vóór | Na |
+|---|---|---|
+| `node tests/run-release.js --hier` | 124/125 (landing: CRLF) | **125/125** · 2,8 min |
+| `node tests/run-all-sj.js` (hele map, min uitsluitlijst en oude-app-specs) | 125 + 6 groen, 81 overgeslagen | **141/141** · 3,1 min · 13 overgeslagen (AI-coach) |
+| `node tests/design-review.spec.js` | — | 1/1 · 10 schermen zonder baseline (⏭️) |
+| `node tests/a11y.spec.js` | — | 9/9 · 5 fixme |
+
+**Niet lokaal geverifieerd:** de delen die echte exports uit `tests/_fixtures/` nodig hebben
+(gitignored, niet in deze worktree): `csv-import`, `hl-echt`, en de fixture-delen van
+`blofin-levensloop`, `hyperliquid-levensloop`, `kraken-levensloop`, `okx-levensloop`,
+`scenario-levensloop` en `kraken-account-log` meldden ⏭️. Op die delen leunen de "al gedekt"-
+besluiten voor de oude `*-3way`- en `*-real-data`-specs; draai ze in Denny's eigen kloon.
 
 ## Voorstel release-poort
 
