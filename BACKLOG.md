@@ -28,7 +28,7 @@ elke wijziging eindigt met `node tests/run-release.js` groen.
 | **F7** | Analytics: stop-management en uitvoering | 1 | M | F5 (F6 voor één blok) |
 | ~~F8~~ | ~~Hyperliquid: oorspronkelijke stop-loss, geplande TP's, TP/SL/Close~~ — ✅ **gedaan in v1.12** | — | — | — |
 | **F9** | Override-knop voor een stop van de exchange ("Zelf aanpassen" / "Terug naar Kraken") | 2 | S | F3 |
-| **F10** | OKX en daarna Blofin: stop-loss en TP/SL/Close, elk in de eigen adapter — OKX: plan + Worker v24 klaar (24-10, [plan](docs/plan-okx-stoploss-2026-10-24.md)) | 2 | M + M | F8 |
+| **F10** | OKX en daarna Blofin: stop-loss en TP/SL/Close, elk in de eigen adapter — **OKX ✅ v1.15**, Blofin nog open | 2 | M | F8 |
 | ~~B1~~ | ~~Kraken: lopende positie zonder partial en zonder stappen~~ — ✅ **gedaan in v1.13** | — | — | — |
 | ~~B2~~ | ~~OKX: contractwaarde-vangnet kent geen USDC-perps~~ — ✅ **gedaan 24-10** (per contractfamilie; volgende release) | — | — | — |
 | **W2** | Ruwe exchange-data kunnen vastleggen (dev-modus terug) | 2 | M | — |
@@ -37,6 +37,8 @@ elke wijziging eindigt met `node tests/run-release.js` groen.
 | **T1** | CSV-import testen op CI | 2 | M | — |
 | **W1** | Worker: staat `Access-Control-Allow-Origin` op `*`? | 2 | XS (Denny) | — |
 | **B3** | Controleren: telt dezelfde positie dubbel via CSV én API? | 2 | S | — |
+| **W3** | Worker v25: `okxHost` alleen uit een vaste lijst (lek sinds v19) en de ongebruikte `orders`-verzoeken uit `algos` weg (review 24-10) | 1 | XS | — |
+| **B6** | OKX: waarschuwing bij een onbekende contractsoort in het vangnet; SL koppelen op het exacte contract i.p.v. de munt (review 24-10) | 3 | XS | — |
 | ~~B5~~ | ~~P&L-percentages van −107% en 2.834% bij oudere trades~~ — ✅ **gedaan in v1.11** | — | — | — |
 | **T2** | Oude-app-specs herschrijven of schrappen | 3 | L | besluit AI-coach (deels) |
 | **C2** | CSV-parser per exchange opsplitsen | 3 | M–L | T1 |
