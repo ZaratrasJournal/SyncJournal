@@ -17,7 +17,7 @@ module.exports = [
   // fundament: opslag, backup, weergave, demo-data
   'backup-guard', 'drive-backup', 'drive-broker', 'hosted', 'weergave-presets', 'demo-dataset',
   'pb-demo-cleanup', 'pb-layers', 'duration', 'changemaker-feedback', 'fout-filter', 'default-tags',
-  'multifilter', 'playbook-filter', 'kraken-opentijd', 'kraken-accountlog-sync', 'kraken-csv-api', 'worker-accountlog', 'worker-triggers', 'worker-executions', 'worker-okx-algos', 'okx-ctval', 'kraken-stoploss', 'kraken-stappen', 'valuta-formulier', 'backtest-zonder-exchange', 'trades-sortering', 'integratie-breed', 'stress-vandaag', 'csv-import',
+  'multifilter', 'playbook-filter', 'kraken-opentijd', 'kraken-accountlog-sync', 'kraken-csv-api', 'worker-accountlog', 'worker-triggers', 'worker-executions', 'worker-okx-algos', 'okx-ctval', 'kraken-stoploss', 'kraken-stappen', 'valuta-formulier', 'backtest-zonder-exchange', 'trades-sortering', 'integratie-breed', 'stress-vandaag', 'csv-import',
 
   // exchanges: sync, saldo, levensloop per beurs
   'exchange-sync', 'exchange-sync2', 'balance-sync', 'auto-sync', 'valuta',
@@ -30,6 +30,7 @@ module.exports = [
   'nieuwe-positie-na-pauze', // dagen niet gesynct: nieuwe positie op dezelfde coin krijgt haar eigen datum
   'stappen-open',            // OKX en Blofin: de stappen van een open positie, vanaf de opening
   'hl-deels-dicht',          // Hyperliquid: een geraakte TP is zichtbaar terwijl de positie nog loopt
+  'valuta-koers',            // euro-saldo is een schatting: ≈, ECB-koers met datum, oranje bij een oude koers
   'partial-unrealized',      // een partial toont ook de unrealized P&L van de rest (klein, telt nergens mee)
   'sync-logboek',            // elke sync vastgelegd: rij per koppeling, stip bij de balans, geschiedenis, export
   'eenheid-paginas',         // de $ / % / R-schakelaar geldt op Dashboard, Analytics, Tendencies en Kalender
