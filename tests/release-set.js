@@ -30,6 +30,7 @@ module.exports = [
   'nieuwe-positie-na-pauze', // dagen niet gesynct: nieuwe positie op dezelfde coin krijgt haar eigen datum
   'stappen-open',            // OKX en Blofin: de stappen van een open positie, vanaf de opening
   'hl-deels-dicht',          // Hyperliquid: een geraakte TP is zichtbaar terwijl de positie nog loopt
+  'valuta-koers',            // euro-saldo is een schatting: ≈, ECB-koers met datum, oranje bij een oude koers
   'partial-unrealized',      // een partial toont ook de unrealized P&L van de rest (klein, telt nergens mee)
   'sync-logboek',            // elke sync vastgelegd: rij per koppeling, stip bij de balans, geschiedenis, export
   'eenheid-paginas',         // de $ / % / R-schakelaar geldt op Dashboard, Analytics, Tendencies en Kalender
