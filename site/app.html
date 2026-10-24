@@ -96,7 +96,7 @@ input,textarea{font-family:inherit}
 .iconbtn svg{width:16px;height:16px}
 .balpill{display:flex;align-items:center;gap:9px;padding:7px 13px;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
 .balpill .l{font-size:9.5px;text-transform:uppercase;letter-spacing:.11em;color:var(--muted);font-weight:700}
-.balpill .v{font-weight:700}
+.balpill .v{font-weight:700}.balpill .v.oud{color:var(--amber)}
 .syncdot{width:7px;height:7px;border-radius:50%;flex:none;background:var(--muted)}
 .syncdot[data-s="ok"]{background:var(--green)}.syncdot[data-s="laat"]{background:var(--amber)}.syncdot[data-s="fout"]{background:var(--red)}.syncdot[data-s="geen"]{display:none}
 .synchist{width:100%;border-collapse:collapse;font-size:12px}.synchist td{padding:6px 8px;border-top:1px solid var(--line2);color:var(--ink2)}.synchist td.num{text-align:right}
@@ -1932,7 +1932,7 @@ const KINDS={live:{label:'Live',color:'var(--green)'},gemist:{label:'Gemist',col
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v1.14';
+const APP_VERSION='v1.14.1';
 const SCHEMA_VERSION=11;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -3114,6 +3114,24 @@ function fxView(list){
 // Een saldo is een waarde van nu → altijd de laatste koers.
 const fxNow=v=>{const n=+v||0;return dispCur()==='EUR'?n*FX.latest:n;};
 const CURSYM=()=>dispCur()==='USD'?'$':'€';
+/* A euro balance is an estimate (Denny 24-10-2026: € 9.500 here, € 9.491,50 at OKX; in dollars both matched). The
+   exchange holds dollars and converts with its own live rate, we with the ECB rate: a few tenths of a percent apart.
+   So a converted balance says "≈", names the rate and its date, and turns amber when the rate is old. */
+const KOERS_OUD_WERKDAGEN=3;   // the ECB publishes every working day; three missed in a row means fetching fails
+function koersDatumTxt(){if(!FX.latestDate)return '';const d=new Date(FX.latestDate+'T12:00:00Z'),ams={timeZone:'Europe/Amsterdam'};
+  return d.toLocaleDateString('nl-NL',{...ams,weekday:'short'})+' '+d.toLocaleDateString('nl-NL',{...ams,day:'2-digit',month:'2-digit'});}
+function koersWerkdagenOud(){if(!FX.latestDate)return 0;const vandaag=new Intl.DateTimeFormat('sv-SE',{timeZone:'Europe/Amsterdam'}).format(new Date());
+  let n=0;const d=new Date(FX.latestDate+'T12:00:00Z');
+  for(d.setUTCDate(d.getUTCDate()+1);d.toISOString().slice(0,10)<vandaag;d.setUTCDate(d.getUTCDate()+1)){const w=d.getUTCDay();if(w!==0&&w!==6)n++;}
+  return n;}
+const koersOud=()=>dispCur()==='EUR'&&koersWerkdagenOud()>=KOERS_OUD_WERKDAGEN;
+const koersTxt=()=>FX.latest.toFixed(4).replace('.',',');
+function koersUitleg(){if(dispCur()!=='EUR')return '';
+  return (koersOud()?'⚠ Koers van '+koersDatumTxt()+': een nieuwere kon niet worden opgehaald. ':'')
+    +'Omgerekend met de ECB-koers van '+koersDatumTxt()+' ('+koersTxt()+'). Je exchange houdt dollars en rekent met een eigen live koers; '
+    +'dat kan een paar tienden van een procent schelen. Wil je exact de cijfers van je exchange zien, kies dan $ in Instellingen → Weergave.';}
+// a balance (a value of now) in the display currency; in euros marked as an estimate
+const saldoTxt=usd=>(dispCur()==='EUR'?'≈ ':'')+eur(fxNow(usd));
 // Bedragen onder de 100 met centen, daarboven hele eenheden: +$0,46 moet zichtbaar zijn, $239
 // en $815 blijven rustig. Eerst altijd hele eenheden, waardoor kleine winst als "+$ 0" op het
 // dashboard stond (Denny 29-09-2026).
@@ -3412,14 +3430,14 @@ const opU=(a,b)=>((a.u==null)-(b.u==null))||((b.u||0)-(a.u||0));
 
 /* ═══ PAGES ═══ */
 function pgDashboard(){
-  const legend=accountList().map(x=>`<div class="row">${accAvatar(x.id,18)}<span class="lbl">${esc(x.n)}</span><span class="val mask">${eur(fxNow(x.v))}</span></div>`).join('');
+  const legend=accountList().map(x=>`<div class="row">${accAvatar(x.id,18)}<span class="lbl">${esc(x.n)}</span><span class="val mask" title="${esc(koersUitleg())}">${saldoTxt(x.v)}</span></div>`).join('');
   // Lege journal maar wél een gekoppelde exchange of saldo (Denny 2026-09-16: HL verbonden
   // en niets te zien) → toon de balans-hero, met daaronder de eerste-trade-uitleg.
   if(!T.length){
     const hasAcct=totalBalance()>0||MANUAL.length>0||EXCHANGES.some(e=>!e.deprecated&&CONNS[e.id]&&CONNS[e.id].connected);
     if(!hasAcct)return `${filterBar()}${emptyState('trades-first')}`;
     return `${filterBar()}<div class="panel hero"><div><div class="eyebrow">Totale balans</div>
-      <div class="big num mask">${eur(fxNow(totalBalance()))}</div>
+      <div class="big num mask" title="${esc(koersUitleg())}">${saldoTxt(totalBalance())}</div>
       <div class="meta">Nog geen gesloten trades, start een sync of voeg je eerste trade toe.</div></div>
       <div class="alloc">${donut()}<div class="legend">${legend}</div></div></div>
       <div style="height:13px"></div>${emptyState('trades-first')}`;
@@ -3435,7 +3453,7 @@ function pgDashboard(){
   if(UNIT()==='val'){const _m=netUsd(mRows),_base=totalBalance()-_m;mTxt=`<b class="num ${cls(mNet)} mask">${eurS(mNet)}${_base>0?' ('+(_m>=0?'+':'−')+Math.abs(_m/_base*100).toFixed(1).replace('.',',')+'%)':''}</b>`;}
   else mTxt=`<b class="num ${cls(mNet)}">${unitAgg(mRows,mNet)}</b>`;
   const hero=!VV('dHero')?'':`<div class="panel hero"><div>${unitSeg()}<div class="eyebrow">Totale balans</div>
-    <div class="big num mask">${eur(fxNow(totalBalance()))}</div>
+    <div class="big num mask" title="${esc(koersUitleg())}">${saldoTxt(totalBalance())}</div>
     <div class="meta">Gerealiseerd deze maand ${mTxt}</div></div>
     <div class="alloc">${donut()}<div class="legend">${legend}</div></div></div>`;
   const kks=[...(VV('dKpiCore')?['net','wr']:[]),...(VV('dKpiPro')?['pf','exp','r']:[])];
@@ -4351,7 +4369,7 @@ function pgInstellingen(){
       <div class="txfbtn"><button class="btn" onclick="txCancel()">Annuleren</button><button class="btn pri" onclick="addAcctTx('${m.id}')">Toevoegen</button></div></div>`;})():'';
     const txListHtml=txs.length?`<div class="txlist">${txs.map(x=>{const meta=TX_TYPES[x.type]||TX_TYPES.correction;const pre=x.type==='correction'?'= ':(meta.sign<0?'− ':'+ ');return `<div class="txrow"><span class="txic" style="color:${meta.color}">${meta.icon}</span><div class="txmeta"><b>${meta.label}</b>${x.note?`<small>${esc(x.note)}</small>`:''}</div><span class="txdate num">${fmtD(x.date)}</span><span class="txamt num mask" style="color:${meta.color}">${pre}${eur(Math.abs(+x.amount||0))}</span><button class="txdel" onclick="delAcctTx('${m.id}','${x.id}')" title="Verwijderen">×</button></div>`;}).join('')}</div>`:`<div class="txempty">Nog geen mutaties, voeg een storting toe.</div>`;
     return `<div class="setrow"><div class="mav">✎</div>
-      <div class="txt"><b>${esc(m.name)}</b><small>handmatig · saldo <b class="mask">${eur(fxNow(bal))}</b> · ingelegd <span class="mask">${eur(fxNow(cap))}</span>${pnl?` · trades <b class="${cls(pnl)}">${eurS(pnl)}</b>`:''}</small></div>
+      <div class="txt"><b>${esc(m.name)}</b><small>handmatig · saldo <b class="mask" title="${esc(koersUitleg())}">${saldoTxt(bal)}</b> · ingelegd <span class="mask">${eur(fxNow(cap))}</span>${pnl?` · trades <b class="${cls(pnl)}">${eurS(pnl)}</b>`:''}</small></div>
       <button class="btn" onclick="toggleMan('${m.id}')">${open?'Sluiten':'Beheren'}</button></div>
       ${open?`<div class="conncfg">
         ${txLegend}
@@ -4409,7 +4427,7 @@ function pgInstellingen(){
           <div class="tsw ${STATE.theme==='dark'?'on':''}" onclick="setTheme('dark')" style="background:#0E1218"><div style="height:14px;background:#141A22;border-bottom:1px solid #232B36"></div></div></div></div>
       <div class="setrow"><div class="txt"><b>Bedragen verbergen</b><small>Privacy-modus voor screenshots</small></div><div class="sw ${STATE.priv?'on':''}" onclick="togglePriv()"></div></div>
       <div class="setrow"><div class="txt"><b>Landingspagina overslaan</b><small>Open syncjournal.nl meteen in je journal. Via het logo kom je altijd terug op de startpagina.</small></div><div class="sw ${DB.load('skip_landing',false)?'on':''}" onclick="toggleSkipLanding()"></div></div>
-      <div class="setrow"><div class="txt"><b>Valuta</b><small>Weergave-valuta</small></div><div class="seg" id="curSeg"><button class="${STATE.currency==='EUR'?'on':''}" onclick="setCurrency('EUR')">€ EUR</button><button class="${STATE.currency==='USD'?'on':''}" onclick="setCurrency('USD')">$ USD</button></div></div>
+      <div class="setrow"><div class="txt"><b>Valuta</b><small>Weergave-valuta${STATE.currency==='EUR'?(fxOk()?' · euro omgerekend met de ECB-koers van '+koersDatumTxt()+': '+koersTxt()+(koersOud()?' <span style="color:var(--amber)">(verouderd)</span>':'')+'. Je exchange rekent met een eigen live koers; voor exact dezelfde cijfers kies je $.':' · nog geen koers opgehaald, daarom in dollars'):''}</small></div><div class="seg" id="curSeg"><button class="${STATE.currency==='EUR'?'on':''}" onclick="setCurrency('EUR')">€ EUR</button><button class="${STATE.currency==='USD'?'on':''}" onclick="setCurrency('USD')">$ USD</button></div></div>
       </div>
       ${presetsUI}`,
     ai:`<p class="setintro">Stel je AI-coach af, toon, focus en privacy. De coach draait in de demo op je zichtbare trades.</p>
@@ -5388,7 +5406,7 @@ function renderPagina(){
   document.getElementById('psub').textContent=sub||'';
   document.getElementById('ptbar').style.background=PAGEC[STATE.page]||'var(--accent)';
   try{syncStip();}catch(e){}
-  const bv=document.getElementById('balVal');if(bv)bv.textContent=CURSYM()+' '+Math.round(fxNow(totalBalance())).toLocaleString('nl-NL');
+  const bv=document.getElementById('balVal');if(bv){bv.textContent=(dispCur()==='EUR'?'≈ ':'')+CURSYM()+' '+Math.round(fxNow(totalBalance())).toLocaleString('nl-NL');bv.title=koersUitleg();bv.classList.toggle('oud',koersOud());}
   try{renderSideConns();}catch(e){}
   const m=document.getElementById('main');destroyCharts();_rcQueue=[];m.innerHTML=tabBanner()+updateBanner()+driveBanner()+backupBanner()+fn();m.style.animation='none';void m.offsetWidth;m.style.animation='';
   document.querySelectorAll('#nav button,#navbot button').forEach(b=>b.classList.toggle('on',b.dataset.p===STATE.page));
@@ -5450,7 +5468,7 @@ function renderSideConns(){
       const c=CONNS[e.id]||{}, gesynct=+c.lastSync||0;
       const titel=gesynct?('Laatste sync '+new Date(gesynct).toLocaleString('nl-NL',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}))
                          :'Nog niet gesynchroniseerd';
-      const bedrag=gesynct?`<span class="sc-v num mask">${eur(fxNow(e.val))}</span>`
+      const bedrag=gesynct?`<span class="sc-v num mask" title="${esc(koersUitleg())}">${saldoTxt(e.val)}</span>`
                           :`<span class="sc-v dim">\u2014</span><span class="sc-w" aria-hidden="true"></span>`;
       return `<button class="sc-r" onclick="go('instellingen')" title="${esc(e.name+' \u00b7 '+titel)}">`
         +`${accAvatar(e.id,20)}<span class="sc-n">${esc(e.name)}</span>${bedrag}</button>`;

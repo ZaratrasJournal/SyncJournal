@@ -16,6 +16,21 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v1.14.1] — 2026-10-24
+
+### Toegevoegd
+- **Een deels gesloten trade toont ook wat de rest doet.** Onder het geboekte bedrag staat klein de unrealized P&L van
+  wat nog openstaat, bijvoorbeeld "~+$ 8,12 unrealized": de stand van de laatste sync. Die telt nergens mee; het geboekte
+  bedrag blijft wat in je totalen telt.
+
+### Gewijzigd
+- **Een saldo in euro staat er als schatting bij: `≈ € 9.500`.** Je exchange houdt dollars en rekent die met een eigen
+  live koers om naar euro; de journal gebruikt de officiële ECB-koers van de laatste werkdag. Dat kan een paar tienden van
+  een procent schelen. Met je muis op het saldo zie je welke koers en van welke dag; in Instellingen → Weergave staat de
+  koers die nu gebruikt wordt. Wil je exact dezelfde cijfers als je exchange, kies dan $.
+- **Een verouderde koers zie je.** Lukt het ophalen van de koers drie werkdagen niet, dan wordt je saldo oranje, met de
+  datum van de koers erbij.
+
 ## [v1.14] — 2026-10-22
 
 ### Toegevoegd
@@ -31,9 +46,6 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 - **Sync-geschiedenis** onder Synchronisatie: de laatste 50 syncs, met datum en tijd. Gelijke syncs zonder nieuwe trades staan als één
   regel met het aantal, zodat de lijst dagen terugkijkt. De geschiedenis staat alleen in je browser en gaat mee in je
   export.
-- **Een deels gesloten trade toont ook wat de rest doet.** Onder het geboekte bedrag staat klein de unrealized P&L van
-  wat nog openstaat, bijvoorbeeld "~+$ 8,12 unrealized": de stand van de laatste sync. Die telt nergens mee; het geboekte
-  bedrag blijft wat in je totalen telt.
 
 ### Gewijzigd
 - **Een verouderd tabblad synct niet meer.** Had je de journal in twee tabbladen open en werkte het andere tabblad
