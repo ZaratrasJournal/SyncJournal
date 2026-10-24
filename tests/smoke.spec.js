@@ -1,7 +1,7 @@
 // Smoke: SyncJournal start zonder JS-fouten, elke pagina en elk Instellingen-tabblad rendert,
 // en de versie staat in beeld. Bedoeld als snelste vangnet voor een kapotte build.
 //
-// Herschreven in T2 (24-10-2026): de oude smoke laadde work/tradejournal.html.
+// Herschreven in T2 (24-10-2026): de oude smoke laadde de bevroren oude app.
 const { chromium } = require('playwright');
 const H = require('./helpers/dov-page');
 let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  ✓ ' + n)) : (fail++, console.log('  ✗ ' + n + (e ? ' → ' + e : ''))); };

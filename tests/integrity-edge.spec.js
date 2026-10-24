@@ -5,7 +5,7 @@
 //    De klok staat op 1 juli 2026 00:30 Amsterdam (30 juni 22:30 UTC): dan is zelfs de maand anders.
 // 2. Een back-up met rommel ([1, 'x', null, …]) mag niets toevoegen of vervangen.
 //
-// Herschreven in T2 (24-10-2026): de oude spec testte dezelfde audit-bugs in work/tradejournal.html.
+// Herschreven in T2 (24-10-2026): de oude spec testte dezelfde audit-bugs in de bevroren oude app.
 const { chromium } = require('playwright');
 const fs = require('fs'); const os = require('os'); const path = require('path');
 const H = require('./helpers/dov-page');

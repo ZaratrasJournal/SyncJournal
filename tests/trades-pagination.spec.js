@@ -2,7 +2,7 @@
 // gelden voor de hele set (niet alleen de pagina in beeld) en zetten je terug op pagina 1.
 // Het totaal onderaan telt alle trades van de selectie, niet alleen de 100 in beeld.
 //
-// Herschreven in T2 (24-10-2026): de oude spec testte "Toon meer / Toon alles" in work/tradejournal.html.
+// Herschreven in T2 (24-10-2026): de oude spec testte "Toon meer / Toon alles" in de bevroren oude app.
 const { chromium } = require('playwright');
 const H = require('./helpers/dov-page');
 let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  ✓ ' + n)) : (fail++, console.log('  ✗ ' + n + (e ? ' → ' + e : ''))); };

@@ -20,9 +20,8 @@ const fs = require('fs');
 // want ongeveer de helft van de map beschrijft nog de oude journal en staat rood zonder dat
 // de app stuk is. Die set staat in release-set.js en draait met --release.
 const UITGESLOTEN = [
-  'design-review',        // pixel-diff over de thema's x 3 schermen — eigen, tragere poort
-  'a11y',                 // axe-core over 18 combinaties, ~3 min — idem
-  'ux-audit-screenshots', // maakt alleen screenshots, toetst niets
+  'design-review',        // pixel-diff over 2 thema's x 5 schermen — eigen, tragere poort
+  'a11y',                 // axe-core over 2 thema's x 4 schermen — idem
 ];
 // De grote doorloop eerst én alleen: die vangt integratie-breuken meteen, dus daar wil je
 // niet op wachten en je wilt hem ook niet laten concurreren met vijftien andere browsers.

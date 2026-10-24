@@ -4,7 +4,7 @@
 // |fee| + |funding|, richting uit posSide én uit het direction-veld bij net-mode, EEA X-Perps
 // (USDC, eigen ctVal) en de registratie van de adapter (levensloop-model: geen sibling-detectie).
 //
-// Herschreven in T2 (24-10-2026): de oude spec laadde work/tradejournal.html. De levenslopen,
+// Herschreven in T2 (24-10-2026): de oude spec laadde de bevroren oude app. De levenslopen,
 // partials en stappen van OKX toetsen okx-levensloop, okx-partial en okx-subtype.
 const { chromium } = require('playwright');
 const H = require('./helpers/dov-page');

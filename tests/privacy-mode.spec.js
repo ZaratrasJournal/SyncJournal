@@ -1,7 +1,7 @@
 // Privacy-modus (oog-knop rechtsboven): bedragen worden onleesbaar voor screenshots, de keuze
 // blijft na herladen bewaard, en uitzetten maakt alles weer leesbaar.
 //
-// Herschreven in T2 (24-10-2026): de oude spec laadde work/tradejournal.html.
+// Herschreven in T2 (24-10-2026): de oude spec laadde de bevroren oude app.
 const { chromium } = require('playwright');
 const H = require('./helpers/dov-page');
 let pass = 0, fail = 0, fixmes = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  ✓ ' + n)) : (fail++, console.log('  ✗ ' + n + (e ? ' → ' + e : ''))); };

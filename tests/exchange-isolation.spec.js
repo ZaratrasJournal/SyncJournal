@@ -5,7 +5,7 @@
 // SyncJournal kent twee modellen: siblings (MEXC, oud Kraken-pad: losse gesloten rijen naast een
 // open rij) en levensloop (Blofin, OKX, Hyperliquid: één rij per positie, detectPartials = null).
 //
-// Herschreven in T2 (24-10-2026): de oude spec testte de adapters van work/tradejournal.html.
+// Herschreven in T2 (24-10-2026): de oude spec testte de adapters van de bevroren oude app.
 const { chromium } = require('playwright');
 const H = require('./helpers/dov-page');
 let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  ✓ ' + n)) : (fail++, console.log('  ✗ ' + n + (e ? ' → ' + e : ''))); };
