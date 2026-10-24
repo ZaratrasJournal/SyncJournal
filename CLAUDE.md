@@ -162,7 +162,10 @@ De app praat met exchange-API's via een **online Cloudflare Worker**, niet via `
 ### Wat dat betekent voor proxy-wijzigingen
 - **Nooit zeggen** "gebruik wrangler dev tegen `proxy-local/`" of "edit worker.js lokaal" als instructie aan Denny — dat doet niets.
 - **Worker-code zelf** draait als `morani-proxy` in **het Cloudflare-account van Morani**; Denny kan erbij en deployt
-  via het dashboard. Sinds 18-10-2026 is de productieversie [docs/worker-v23.js](docs/worker-v23.js) (v22 + Kraken-actie
+  via het dashboard. Sinds 24-10-2026 is de productieversie [docs/worker-v24.js](docs/worker-v24.js) (v23 + OKX-actie
+  `algos`: TP/SL-algo-orders, openstaande algo-orders en het plan op instap-orders, getest in `tests/worker-okx-algos.spec.js`;
+  live geverifieerd met nep-sleutels: `source:'algos'`, fouten per verzoek onder `_okxDebug.errors`); daarvoor
+  [docs/worker-v23.js](docs/worker-v23.js) (v22 + Kraken-actie
   `executions`: welke order bij elke uitvoering hoort, getest in `tests/worker-executions.spec.js`); daarvoor
   [docs/worker-v22.js](docs/worker-v22.js) (v21 + `triggers` voor de stop-loss), [docs/worker-v21.js](docs/worker-v21.js)
   (v20 + Kraken-actie `account_log`, getest in `tests/worker-accountlog.spec.js`) en [docs/worker-v20.js](docs/worker-v20.js)
