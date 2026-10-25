@@ -25,7 +25,11 @@ const ok = (n, c, e) => { c ? (pass++, console.log('  ✓ ' + n)) : (fail++, con
   const zichtbaar = await p.evaluate(() => document.getElementById('main').innerText);
   const tekst = await p.evaluate(() => document.getElementById('main').innerHTML);
   ok('de FAQ heeft inhoud', tekst.length > 20000, 'lengte: ' + tekst.length);
-  ok('er staan minstens 40 vragen in beeld', (zichtbaar.match(/\?/g) || []).length >= 40, 'gevonden: ' + (zichtbaar.match(/\?/g) || []).length);
+  // Since the tiles layout (faq-tegels) one topic shows at a time; every question is still in the DOM
+  // and the overview shows a tile per topic.
+  const vragen = await p.evaluate(() => document.querySelectorAll('#main details.faq summary').length);
+  ok('er staan minstens 40 vragen in de FAQ', vragen >= 40, 'gevonden: ' + vragen);
+  ok('het overzicht toont de onderwerpen als tegels', /Kies een onderwerp/i.test(zichtbaar) && (zichtbaar.match(/\d+ vragen/g) || []).length >= 9);
 
   console.log('─── Onderwerpen die gedekt moeten zijn ───');
   for (const [naam, zoek] of [

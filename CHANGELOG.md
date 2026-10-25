@@ -16,6 +16,11 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [Unreleased]
+
+### Gewijzigd
+- De FAQ is overzichtelijker: onderwerpen als tegels, een groot zoekveld en beter leesbare antwoorden.
+
 ## [v1.16.1] — 2026-10-25
 
 ### Gewijzigd
