@@ -20,48 +20,47 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ### Toegevoegd
 - **Een echte AI-coach, met je eigen Anthropic-sleutel.** Op de pagina AI-coach plak je je sleutel en chat je met de
-  coach over je trades: "waar lek ik geld?", "review mijn week", "waar zit mijn edge?". De journal rekent alle cijfers
-  uit en geeft ze aan de coach; de coach rekent zelf niets, dus zijn cijfers kloppen met wat je in Analytics ziet. Hij
-  kijkt naar de trades die je filter laat zien. Jij betaalt Anthropic direct: ongeveer 30 cent tot een dollar per maand.
-  Op je Dashboard en in Analytics verschijnt niets van de coach.
-- **Je sleutel blijft op je apparaat.** Hij gaat nooit mee in een export, een back-up of Data overzetten. Op een gedeelde
-  computer kies je "Alleen voor deze sessie onthouden"; dan is hij weg als je het tabblad sluit.
-- **Onder elk antwoord "Wat is er verstuurd?"** met precies wat de coach kreeg. Je cijfers en notities gaan mee; in
-  Instellingen → AI-coach zet je notities of bedragen uit, en kies je tussen Sonnet 5.5 (standaard) en het zuinigere
-  Haiku 5.5. Daar staat ook "Vergeet sleutel".
-- **Vraag de coach over één trade.** In Review staat bij een trade een 🤖-knopje (alleen als je coach gekoppeld is). Dat
-  opent de coach met die trade klaargezet.
-- **Het antwoord van de coach verschijnt terwijl hij schrijft**, met een knop **Stop**. Wat er al stond blijft staan.
-- **Duidelijke meldingen als iets misgaat:** een ongeldige sleutel, tegoed op, je limiet bij Anthropic bereikt, te veel
-  vragen achter elkaar, Claude overbelast, geen internet of geen reactie. Steeds met wat je nu kunt doen, en je vraag
-  blijft in het invoerveld staan.
-- **Zie wat de coach kost.** In Instellingen → AI-coach staat "deze maand ongeveer $ …", en onder elk antwoord wat die
-  vraag ongeveer kostte. Je kunt een eigen maandlimiet instellen; daarboven vraagt de coach eerst of je echt wilt
-  versturen. Vervolgvragen zijn goedkoper, omdat je cijfers bij Anthropic even bewaard blijven (prompt caching). Het
-  verbruik blijft op je apparaat en gaat niet mee in een back-up.
+  coach over je trades. De journal rekent alle cijfers uit en geeft ze aan de coach; de coach rekent zelf niets, dus
+  zijn cijfers kloppen met wat je in Analytics ziet. Hij kijkt naar de trades die je filter laat zien. Jij betaalt
+  Anthropic direct: ongeveer 30 cent tot een dollar per maand. Op je Dashboard en in Analytics verschijnt niets van de
+  coach: hij staat op één plek.
 - **Vier vaste vragen als knop:** "Waar lek ik geld?", "Waar zit mijn edge?", "Review mijn week" en "Hoe ging mijn laatste
   trade?". Elke knop stuurt alleen de cijfers die de vraag nodig heeft, dus minder kosten. De weekreview heeft een vast
   schema: wat ging goed, wat kostte geld, en één ding om volgende week anders te doen. De cijfers erboven (trades,
   netto, winrate, gem. R, en de week ervoor) rekent de journal zelf uit.
-- **Focusgebieden** (discipline, risk, psychologie) in Instellingen bepalen nu waar de coach extra op let.
-- **De coach zoekt zelf dingen op in je journal.** Staat iets niet in de cijfers die hij meekreeg, bijvoorbeeld "hoe
-  doet mijn London SFP het op vrijdag?", dan vraagt hij de journal om precies die cijfers of die trades. De journal
-  rekent; de coach leest. Onder "Wat is er verstuurd?" zie je ook wat hij opzocht.
+- **Vrij vragen, en de coach zoekt zelf op.** Staat iets niet in de cijfers die hij meekreeg, bijvoorbeeld "hoe doet mijn
+  London SFP het op vrijdag?", dan vraagt hij de journal om precies die cijfers of die trades.
+- **Vraag de coach over één trade.** In Review staat bij een trade een 🤖-knopje (alleen als je coach gekoppeld is). Dat
+  opent de coach met die trade klaargezet.
 - **Check mijn trade-idee.** Vul pair, richting, setup, entry, stop en eventueel TP in, en de coach zegt wat je eigen
   cijfers voor die setup erover zeggen, of het idee past bij je playbook-regels, en, als je TradingPlan gebruikt, bij
   je weekplan en vaste regels (bijvoorbeeld max trades of "niet na 2 verliezers"). De journal rekent je geplande R:R
   uit. Geen koop- of verkoopadvies: de coach houdt je je eigen regels voor.
-- **FAQ over de AI-coach:** wat het is, wat je nodig hebt, wat het kost, wat er verstuurd wordt, waar je sleutel staat en
-  hoe je hem uitzet.
+- **Het antwoord verschijnt terwijl de coach schrijft**, met een knop **Stop**. Wat er al stond blijft staan.
+- **Zie wat de coach kost.** In Instellingen → AI-coach staat "deze maand ongeveer $ …", en onder elk antwoord wat die
+  vraag ongeveer kostte. Je kunt een eigen maandlimiet instellen; daarboven vraagt de coach eerst of je echt wilt
+  versturen. Vervolgvragen zijn goedkoper, omdat je cijfers bij Anthropic een paar minuten bewaard blijven. Het verbruik
+  blijft op je apparaat en gaat niet mee in een back-up.
+- **Onder elk antwoord "Wat is er verstuurd?"** met precies wat de coach kreeg, ook wat hij opzocht. Je cijfers en
+  notities gaan mee; in Instellingen → AI-coach zet je notities of bedragen uit, en kies je tussen Sonnet 5.5
+  (standaard) en het zuinigere Haiku 5.5.
+- **Je sleutel blijft op je apparaat.** Hij gaat nooit mee in een export, een back-up of Data overzetten. Op een gedeelde
+  computer kies je "Alleen voor deze sessie onthouden"; dan is hij weg als je het tabblad sluit. "Vergeet sleutel" staat
+  in Instellingen → AI-coach.
+- **Duidelijke meldingen als iets misgaat:** een ongeldige sleutel, tegoed op, je limiet bij Anthropic bereikt, te veel
+  vragen achter elkaar, Claude overbelast, geen internet of geen reactie. Steeds met wat je nu kunt doen, en je vraag
+  blijft in het invoerveld staan.
+- **FAQ over de AI-coach:** wat het is, wat je kunt vragen, de trade-check, wat je nodig hebt, wat het kost, wat er
+  verstuurd wordt, wat je doet bij een foutmelding, waar je sleutel staat en hoe je hem uitzet.
 
 ### Gewijzigd
 - **De AI-coach staat nu ook in het menu van de standaardweergave.** Tot nu toe zag je hem alleen in de weergave
   "Alles".
+- **Focusgebieden** (discipline, risk, psychologie) in Instellingen → AI-coach bepalen nu waar de coach extra op let.
 
 ### Verwijderd
-- **De demo-coach is weg.** Die gaf vaste antwoorden op trefwoorden en noemde iedereen "Denny". In plaats daarvan
-  zie je op de coach-pagina hoe je een echte coach aanzet (met je eigen Anthropic-sleutel, ongeveer 30 cent tot een
-  dollar per maand) en een duidelijk gemarkeerd voorbeeldgesprek.
+- **De demo-coach is weg.** Die gaf vaste antwoorden op trefwoorden en noemde iedereen "Denny". Zonder sleutel zie je
+  op de coach-pagina hoe je een echte coach aanzet, met een duidelijk gemarkeerd voorbeeldgesprek.
 
 ## [v1.15.1] — 2026-10-25
 
