@@ -8152,6 +8152,9 @@ const ExchangeAPI = {
       // the live /instruments lookup failed (e.g. offline or file:// CORS): the contract family, without the expiry
       const fam=this._ctvFamilie[String(instId||"").replace(/-\d{6}$/,"")];
       if(fam!=null)return fam;
+      // unknown contract kind: 1 (no conversion) - sizes may be off, so say so once per contract
+      this._ctvOnbekend=this._ctvOnbekend||new Set();
+      if(!this._ctvOnbekend.has(instId)){this._ctvOnbekend.add(instId);console.warn('[okx ctVal] unknown contract, sizes use ctVal 1:',instId);}
       return 1;
     },
     _instId(symbol){return String(symbol||"").replace("/","-").replace(/-SWAP$/i,"")+"-SWAP";},
@@ -8257,7 +8260,7 @@ const ExchangeAPI = {
         positionSizeAsset:assetQty>0?normPrice(assetQty):"",
         pnl:"",fees:"0",
         leverage:String(p.lever||"10"),
-        source:"okx",status:"open",
+        source:"okx",status:"open",_okxInstId:instId,
         unrealizedPnl:normPrice(p.upl||""),
         liquidationPrice:normPrice(p.liqPx||""),
       };
@@ -8273,6 +8276,7 @@ const ExchangeAPI = {
         else if(d&&d.source==="algos")console.warn('[okx algos] incomplete answer, no stop-losses this sync:',d._okxDebug.errors);}
       catch(e){console.warn('[okx algos] no stop-losses this sync:',(e&&e.message)||e);}
       const uit=(data.trades||[]).map(t=>this._normalise(t));
+      this._onthoudInstId(uit);
       // the sync replaces the TP list: keep the levels you planned that were not hit (as Kraken and Hyperliquid)
       uit.forEach(t=>{const o=T.find(x=>x&&x.exchange==="okx"&&String(x.srcId)===String(t.id));if(!o)return;
         const eigen=(o.tps||[]).filter(x=>x&&!x.hit&&+x.price>0).map(x=>({price:normPrice(x.price),pct:String(x.pct||""),status:"user",actualPrice:""}));
@@ -8347,8 +8351,13 @@ const ExchangeAPI = {
     async fetchOpenPositions(apiKey,apiSecret,passphrase){
       const data=await proxyCall({exchange:"okx",action:"open_positions",apiKey,apiSecret,passphrase});
       await this._loadContractValues();
-      return(data.positions||[]).map(p=>this._normaliseOpen(p));
+      const uit=(data.positions||[]).map(p=>this._normaliseOpen(p));
+      this._onthoudInstId(uit);
+      return uit;
     },
+    /* The exact contract per trade id, for afterImport: it stores it on the trade as okxInstId, so a SL links to its own
+       contract (BTC-USDT-SWAP and BTC-USDC-SWAP are both BTC). The import itself does not keep the adapter's _okxInstId. */
+    _onthoudInstId(rows){this._instIdVan=this._instIdVan||{};(rows||[]).forEach(t=>{if(t&&t._okxInstId)this._instIdVan[String(t.id)]=t._okxInstId;});},
     /* ═══ Stop-loss, take-profits and how each close went (F10, Denny 24-10-2026) ═══
        Worker v24 'algos': OKX's TP/SL orders (orders-algo-history and -pending, 3 months). Measured on Denny's account:
        SL and TPs are separate 'conditional' orders (sometimes 'oco': SL and TP in one), one-way mode (side = the closing
@@ -8387,12 +8396,14 @@ const ExchangeAPI = {
        the opening (minus a minute) and the close, or active at the opening - not one that ended before it (the previous
        position's). OKX reuses posId, so the time window links, not the id. A later SL with another price: moved. */
     _slTpVoorTrade(t,regels){
-      const short=String(t.direction||t.dir)==="short",entry=+t.entry,basis=String(t.pair||"").split("/")[0].toUpperCase();
+      const short=String(t.direction||t.dir)==="short",entry=+t.entry,basis=String(t.pair||"").split("/")[0].toUpperCase(),inst=String(t.instId||"");
+      // the exact contract when both sides know it; otherwise (an older trade) the coin
+      const contract=r=>inst&&r.instId?r.instId===inst:r.basis===basis;
       const open=+t.openTime,van=open-this._SL_VOOR_MS,tot=+t.closeTime||Date.now(),dicht=+t.closeTime||0,sluit=short?"buy":"sell";
       const actief=r=>r.status==="live"||r.statusTs>=open;
       const afgelopen=r=>r.status!=="live"&&r.statusTs<open;
       const kant=r=>r.posSide!=="long"&&r.posSide!=="short"||r.posSide===(short?"short":"long");   // one-way mode: net
-      const kand=(regels||[]).filter(r=>r.basis===basis&&r.side===sluit&&(r.reduceOnly||r.hele)&&kant(r)&&r.ts<=tot&&!afgelopen(r)&&(r.ts>=van||actief(r))).sort((a,b)=>a.ts-b.ts);
+      const kand=(regels||[]).filter(r=>contract(r)&&r.side===sluit&&(r.reduceOnly||r.hele)&&kant(r)&&r.ts<=tot&&!afgelopen(r)&&(r.ts>=van||actief(r))).sort((a,b)=>a.ts-b.ts);
       const verlies=p=>short?p>entry:p<entry;
       const eerste=entry>0?kand.find(r=>r.soort==="sl"&&verlies(r.price)):null,stop=eerste?eerste.price:null,algoId=eerste?eerste.algoId:"";
       const verschoven=!!eerste&&kand.some(r=>r.soort==="sl"&&r!==eerste&&r.ts>=eerste.ts&&r.price!==stop);
@@ -8430,8 +8441,9 @@ const ExchangeAPI = {
       const regels=this._regels&&this._regels.length?this._regels:null,vanaf=this._dekking||0;let n=0;
       T.filter(o=>o&&o.exchange==="okx"&&/^(closed|open|partial)$/.test(o.status||"")).forEach(o=>{
         if(!regels||+o.openTime<vanaf){if(this._labelAfbouw(o,null))n++;return;}   // no orders for it: only restore the TP list
+        const inst=(this._instIdVan||{})[String(o.srcId)];if(inst&&o.okxInstId!==inst){o.okxInstId=inst;n++;}
         const voor=JSON.stringify([o.stop,o.stopBron,o.stopVerschoven,o.stopVerloop,o.tpsGepland]);
-        const s=this._slTpVoorTrade({dir:o.dir,entry:o.entry,openTime:o.openTime,closeTime:o.status==="closed"?o.closeTime:"",pair:o.pair,qtyAsset:o.qtyAsset},regels);
+        const s=this._slTpVoorTrade({dir:o.dir,entry:o.entry,openTime:o.openTime,closeTime:o.status==="closed"?o.closeTime:"",pair:o.pair,qtyAsset:o.qtyAsset,instId:o.okxInstId},regels);
         /* The SL amended in place keeps its algoId with the new price (OKX keeps no revisions): the first price we saw
            stays the stop. Moved to the entry (cost-price SL) leaves no SL on the loss side: the stop stays. */
         const gewijzigd=o.stopBron==="okx"&&o.stopAlgoId&&s.algoId===o.stopAlgoId&&s.stop!==+o.stop;
