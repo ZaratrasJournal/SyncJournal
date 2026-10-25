@@ -5321,7 +5321,7 @@ function faqFilter(q){
    Dashboard or Analytics. */
 // Discord post that walks a member through making a key. Denny fills it in; empty = no link shown.
 const AI_DISCORD_UITLEG='';
-let AIPREFS=DB.load('ai_prefs',{enabled:true,tone:'neutraal',focus:{discipline:true,risk:true,psychologie:false},hideAmounts:false});
+let AIPREFS=DB.load('ai_prefs',{enabled:true,tone:'neutraal',focus:{discipline:true,risk:true,psychologie:false},hideAmounts:false,notes:true});
 AIPREFS.focus=Object.assign({discipline:true,risk:true,psychologie:false},AIPREFS.focus||{});  // borg focus-subobject
 const AI_TONES=[['mild','Mild'],['neutraal','Neutraal'],['direct','Direct']];
 const AI_FOCUS=[['discipline','Discipline'],['risk','Risk'],['psychologie','Psychologie']];
@@ -5331,6 +5331,85 @@ function setAITone(t){AIPREFS.tone=t;persistAIPrefs();render();}
 function toggleAIFocus(k){AIPREFS.focus={...AIPREFS.focus,[k]:!AIPREFS.focus[k]};persistAIPrefs();render();}
 function toggleAIHide(){AIPREFS.hideAmounts=!AIPREFS.hideAmounts;persistAIPrefs();render();}
 function aiScroll(){const c=document.getElementById('aiFeed');if(c)c.scrollTop=c.scrollHeight;}
+/* ── Coach package: the figures the coach may quote, computed by the app ──
+   The model is told not to calculate. Everything it can say about numbers is in here, formatted the way
+   the journal shows it (same helpers as the Analytics KPI cards), so a figure in an answer can be checked
+   against the screen. Amounts and notes only leave the device when the trader allows it. */
+const COACH_MAX_GROEP=8;     // groups per dimension, largest impact first; keeps the package small
+const COACH_MAX_TRADES=30;   // recent trades listed one per line
+const COACH_NOTITIE_MAX=120; // characters of a note per trade
+const COACH_KLEIN_N=5;       // below this a group is too small for a conclusion (told to the model)
+const COACH_GROEPEN=[
+  ['Setup / playbook',t=>[t.setup||'']],
+  ['Sessie',t=>[sessionOf(t)]],
+  ['Weekdag',t=>[TDIM.dow.get(t)]],
+  ['Richting',t=>[TDIM.dir.get(t)]],
+  ['Symbool',t=>[t.pair||'']],
+  ['Grade',t=>[gradeOf(t)]],
+  ['Fout-tag',t=>tradeMistakes(t)],
+  ['Emotie-tag',t=>tradeEmotions(t)],
+];
+function coachR(v){return (v<0?'−':'+')+Math.abs(v).toFixed(2).replace('.',',');}
+// "gem. R +0,42 (n=9, 3 zonder R)": only trades with a stop-loss count (CLAUDE.md, R-multiple).
+function coachGemR(rows){const g=gemR(rows);
+  if(!g.n)return 'geen R'+(g.miss?' ('+g.miss+' zonder stop-loss)':'');
+  return 'gem. R '+coachR(g.avg)+' (n='+g.n+(g.miss?', '+g.miss+' zonder R':'')+')';}
+function coachStats(rows,o,netRows){const a=aggOf(rows),parts=[];
+  if(!o.hideAmounts)parts.push('netto '+eurS(netRows?aggOf(netRows).net:a.net));
+  parts.push('winrate '+Math.round(a.wr)+'%','profit factor '+pfTxt(a.pf));
+  if(!o.hideAmounts)parts.push('expectancy '+eurS(a.exp));
+  parts.push(coachGemR(rows));
+  return parts.join(' · ');}
+function coachDatum(d){const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(String(d||''));return m?m[3]+'-'+m[2]+'-'+m[1]:String(d||'');}
+function coachTradeRegel(t,o){const r=tradeROrNull(t),bits=['- #'+t.id,coachDatum(t.date)+(t.time?' '+t.time:''),sessionOf(t)||'—',(t.pair||'?')+' '+(t.dir==='short'?'short':'long'),
+    r==null?'geen R':'R '+coachR(r)];
+  if(!o.hideAmounts)bits.push('netto '+eurS(t.pnl));
+  bits.push('setup '+(t.setup||'—'));
+  const g=gradeOf(t);if(g)bits.push('grade '+g);
+  const f=tradeMistakes(t),e=tradeEmotions(t);if(f.length)bits.push('fouten: '+f.join(', '));if(e.length)bits.push('emoties: '+e.join(', '));
+  if(o.notes){const n=[t.notes,t.lessons].filter(Boolean).join(' / ').replace(/\s+/g,' ').trim();
+    if(n)bits.push('notitie: "'+(n.length>COACH_NOTITIE_MAX?n.slice(0,COACH_NOTITIE_MAX)+'…':n)+'"');}
+  return bits.join(' · ');}
+function coachGroepen(rows,o){const out=[];
+  COACH_GROEPEN.forEach(([kop,vals])=>{const m=new Map();
+    rows.forEach(t=>[...new Set(vals(t))].filter(v=>v&&v!=='—').forEach(v=>{if(!m.has(v))m.set(v,[]);m.get(v).push(t);}));
+    if(!m.size)return;
+    // impact: money moved, or R moved when amounts stay home
+    const impact=rs=>o.hideAmounts?Math.abs(aggR(rs).sum):Math.abs(rs.reduce((s,t)=>s+t.pnl,0));
+    const groups=[...m.entries()].sort((x,y)=>impact(y[1])-impact(x[1]));
+    out.push('','## '+kop);
+    groups.slice(0,COACH_MAX_GROEP).forEach(([v,rs])=>out.push('- '+v+': n='+rs.length+' · '+coachStats(rs,o)));
+    if(groups.length>COACH_MAX_GROEP)out.push('(+'+(groups.length-COACH_MAX_GROEP)+' kleinere groepen weggelaten)');
+  });
+  return out;}
+// opts: {closed, boekingen, hideAmounts, notes, focusId}. Defaults: what the current filter shows and
+// the trader's coach preferences. Returns {tekst, n}; n = closed trades the package is about.
+function coachPakket(opts){
+  const o={closed:CLOSED,boekingen:BOEKINGEN,hideAmounts:!!AIPREFS.hideAmounts,notes:AIPREFS.notes!==false,focusId:null,...(opts||{})};
+  const rows=o.closed||[],geld=o.boekingen||rows;
+  if(!rows.length)return {tekst:'',n:0};
+  const chron=rows.slice().sort((x,y)=>tradeMoment(y)-tradeMoment(x));
+  const L=['# Over deze data',
+    '- Alle cijfers zijn uitgerekend door SyncJournal. Gebruik alleen deze cijfers; reken niet zelf.',
+    '- R = resultaat in risico-eenheden (netto P&L ÷ risico vanaf de stop-loss). "geen R" = geen stop-loss, dus onbekend. Dat is niet hetzelfde als 0R.',
+    '- gem. R telt alleen trades mét R; n staat erbij.',
+    '- Groepen met n < '+COACH_KLEIN_N+' zijn te klein voor een conclusie.',
+    '- Een trade kan in meerdere fout- of emotiegroepen staan.',
+    o.hideAmounts?'- Bedragen zijn op verzoek van de trader weggelaten. Praat in R, winrate en aantallen.':'- Bedragen in '+(CURSYM()||'$')+'.',
+    '','# Selectie',
+    '- '+rows.length+' gesloten trade'+(rows.length===1?'':'s')+' van '+coachDatum(chron[chron.length-1].date)+' t/m '+coachDatum(chron[0].date)+' (wat het filter van de trader nu laat zien).',
+    '','# Kerncijfers',
+    '- Alles ('+rows.length+' trade'+(rows.length===1?'':'s')+'): '+coachStats(rows,o,geld)];
+  [['30d','Laatste 30 dagen'],['7d','Laatste 7 dagen']].forEach(([per,lbl])=>{const rs=periodTrades(rows,per);
+    if(rs.length&&rs.length<rows.length)L.push('- '+lbl+' t/m '+coachDatum(chron[0].date)+' ('+rs.length+' trade'+(rs.length===1?'':'s')+'): '+coachStats(rs,o,periodTrades(geld,per)));});
+  L.push(...coachGroepen(rows,o));
+  const focus=o.focusId!=null?rows.find(t=>String(t.id)===String(o.focusId)):null;
+  if(focus){L.push('','## Trade in focus',coachTradeRegel(focus,o));
+    if(focus.setup){const zelfde=rows.filter(t=>t.setup===focus.setup);L.push('- Zijn setup ('+focus.setup+'): n='+zelfde.length+' · '+coachStats(zelfde,o));}}
+  const lijst=chron.filter(t=>t!==focus).slice(0,COACH_MAX_TRADES);
+  L.push('','## Recente trades (nieuwste eerst'+(chron.length>COACH_MAX_TRADES?', '+COACH_MAX_TRADES+' van '+chron.length:'')+')',...lijst.map(t=>coachTradeRegel(t,o)));
+  return {tekst:L.join('\n'),n:rows.length};
+}
 // One fixed, clearly marked example so a member sees what they get before making a key.
 // The figures are made up on purpose; nothing here is computed from their trades.
 const AI_VOORBEELD=[
