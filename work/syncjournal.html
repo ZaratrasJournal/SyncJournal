@@ -5399,15 +5399,16 @@ const COACH_MAX_GROEP=8;     // groups per dimension, largest impact first; keep
 const COACH_MAX_TRADES=30;   // recent trades listed one per line
 const COACH_NOTITIE_MAX=120; // characters of a note per trade
 const COACH_KLEIN_N=5;       // below this a group is too small for a conclusion (told to the model)
+// [key used by the tools, heading in the package, values of a trade]
 const COACH_GROEPEN=[
-  ['Setup / playbook',t=>[t.setup||'']],
-  ['Sessie',t=>[sessionOf(t)]],
-  ['Weekdag',t=>[TDIM.dow.get(t)]],
-  ['Richting',t=>[TDIM.dir.get(t)]],
-  ['Symbool',t=>[t.pair||'']],
-  ['Grade',t=>[gradeOf(t)]],
-  ['Fout-tag',t=>tradeMistakes(t)],
-  ['Emotie-tag',t=>tradeEmotions(t)],
+  ['setup','Setup / playbook',t=>[t.setup||'']],
+  ['sessie','Sessie',t=>[sessionOf(t)]],
+  ['weekdag','Weekdag',t=>[TDIM.dow.get(t)]],
+  ['richting','Richting',t=>[TDIM.dir.get(t)]],
+  ['symbool','Symbool',t=>[t.pair||'']],
+  ['grade','Grade',t=>[gradeOf(t)]],
+  ['fout','Fout-tag',t=>tradeMistakes(t)],
+  ['emotie','Emotie-tag',t=>tradeEmotions(t)],
 ];
 function coachR(v){return (v<0?'−':'+')+Math.abs(v).toFixed(2).replace('.',',');}
 // "gem. R +0,42 (n=9, 3 zonder R)": only trades with a stop-loss count (CLAUDE.md, R-multiple).
@@ -5433,7 +5434,7 @@ function coachTradeRegel(t,o){const r=tradeROrNull(t),bits=['- #'+t.id,coachDatu
 function coachGroepen(rows,o){const out=[];
   // volgorde: 'impact' (largest either way), 'slecht' (biggest losses first), 'goed' (biggest gains first)
   const volg=o.volgorde||'impact';
-  COACH_GROEPEN.forEach(([kop,vals])=>{const m=new Map();
+  (o.alleen?COACH_GROEPEN.filter(g=>g[0]===o.alleen):COACH_GROEPEN).forEach(([,kop,vals])=>{const m=new Map();
     rows.forEach(t=>[...new Set(vals(t))].filter(v=>v&&v!=='—').forEach(v=>{if(!m.has(v))m.set(v,[]);m.get(v).push(t);}));
     if(!m.size)return;
     // impact: money moved, or R moved when amounts stay home
@@ -5441,8 +5442,9 @@ function coachGroepen(rows,o){const out=[];
     const sleutel=volg==='slecht'?rs=>-som(rs):volg==='goed'?som:rs=>Math.abs(som(rs));
     const groups=[...m.entries()].sort((x,y)=>sleutel(y[1])-sleutel(x[1]));
     out.push('','## '+kop);
-    groups.slice(0,COACH_MAX_GROEP).forEach(([v,rs])=>out.push('- '+v+': n='+rs.length+' · '+coachStats(rs,o)));
-    if(groups.length>COACH_MAX_GROEP)out.push('(+'+(groups.length-COACH_MAX_GROEP)+' kleinere groepen weggelaten)');
+    const max=o.maxGroep||COACH_MAX_GROEP;
+    groups.slice(0,max).forEach(([v,rs])=>out.push('- '+v+': n='+rs.length+' · '+coachStats(rs,o)));
+    if(groups.length>max)out.push('(+'+(groups.length-max)+' kleinere groepen weggelaten)');
   });
   return out;}
 // Calendar days back from an ISO date (Amsterdam "today" comes from localDateISO()).
@@ -5461,6 +5463,7 @@ const COACH_KOP=hide=>['# Over deze data',
   '- Een trade kan in meerdere fout- of emotiegroepen staan.',
   hide?'- Bedragen zijn op verzoek van de trader weggelaten. Praat in R, winrate en aantallen.':'- Bedragen in '+(CURSYM()||'$')+'.'];
 const COACH_UITERSTEN=10;   // best or worst trades listed for the leak/edge questions
+const COACH_RECENT_VRIJ=10; // recent trades with a free question; the coach looks up more with zoek_trades
 // opts: {closed, boekingen, hideAmounts, notes, focusId, deel}. Defaults: what the current filter shows and the
 // trader's coach preferences. deel picks the part a question needs, so it costs fewer tokens:
 //   'alles' (a free question), 'lek' / 'edge' (groups worst / best first, plus the worst / best trades),
@@ -5497,10 +5500,50 @@ function coachPakket(opts){
     const waarde=t=>o.hideAmounts?tradeR(t):t.pnl,sel=rows.slice().sort((x,y)=>o.deel==='lek'?waarde(x)-waarde(y):waarde(y)-waarde(x)).slice(0,COACH_UITERSTEN);
     L.push('','## '+(o.deel==='lek'?'Slechtste':'Beste')+' trades',...sel.map(t=>coachTradeRegel(t,o)));
   }else if(o.deel!=='laatste'){
-    const lijst=chron.filter(t=>t!==focus).slice(0,COACH_MAX_TRADES);
-    L.push('','## Recente trades (nieuwste eerst'+(chron.length>COACH_MAX_TRADES?', '+COACH_MAX_TRADES+' van '+chron.length:'')+')',...lijst.map(t=>coachTradeRegel(t,o)));
+    const lijst=chron.filter(t=>t!==focus).slice(0,COACH_RECENT_VRIJ);
+    L.push('','## Recente trades (nieuwste eerst'+(chron.length>COACH_RECENT_VRIJ?', '+COACH_RECENT_VRIJ+' van '+chron.length+'; meer via zoek_trades':'')+')',...lijst.map(t=>coachTradeRegel(t,o)));
   }
   return {tekst:L.join('\n'),n:rows.length};
+}
+/* ── Tools: the model asks, the app computes ──
+   Instead of sending everything, the coach can look things up. Both tools run on the same filtered trades and the
+   same helpers as the package, so a figure from a tool matches Analytics. The model never sees raw trades. */
+const AI_MAX_TOOLRONDES=3;
+const AI_TOOL_MAX_TRADES=30;
+const AI_FILTER_SCHEMA={type:'object',description:'Alle velden optioneel; leeg = alle gesloten trades in het filter van de trader.',properties:{
+  setup:{type:'string'},sessie:{type:'string'},weekdag:{type:'string',description:'Ma, Di, Wo, Do, Vr, Za of Zo'},richting:{type:'string',enum:['long','short']},
+  symbool:{type:'string',description:'bijvoorbeeld BTC/USDT'},grade:{type:'string'},fout:{type:'string'},emotie:{type:'string'},
+  van:{type:'string',description:'YYYY-MM-DD, op de open-datum'},tot:{type:'string',description:'YYYY-MM-DD'},resultaat:{type:'string',enum:['winst','verlies']}},additionalProperties:false};
+const AI_TOOLS=[
+  {name:'groep_stats',description:'Cijfers per groep, uitgerekend door de journal: aantal, netto, winrate, profit factor, expectancy, gem. R. Gebruik dit voor wat niet in de data staat, zoals een combinatie (een setup in één sessie) of een periode. dimensie "alles" geeft één totaalregel.',
+    input_schema:{type:'object',properties:{dimensie:{type:'string',enum:['alles',...COACH_GROEPEN.map(g=>g[0])]},filter:AI_FILTER_SCHEMA},required:['dimensie'],additionalProperties:false}},
+  {name:'zoek_trades',description:'Losse trades die aan het filter voldoen, nieuwste eerst, één regel per trade (met notitie als de trader die meestuurt).',
+    input_schema:{type:'object',properties:{filter:AI_FILTER_SCHEMA,max:{type:'integer',description:'hoeveel trades, standaard 10, hooguit 30'}},additionalProperties:false}},
+];
+function coachFilter(rows,f){f=f||{};const lc=v=>String(v).toLowerCase();
+  return rows.filter(t=>COACH_GROEPEN.every(([k,,vals])=>f[k]==null||f[k]===''||vals(t).map(lc).includes(lc(f[k])))
+    &&(!f.van||String(t.date)>=f.van)&&(!f.tot||String(t.date)<=f.tot)
+    &&(!f.resultaat||(f.resultaat==='winst'?t.pnl>0:t.pnl<0)));}
+function coachFilterTxt(f){const d=Object.entries(f||{}).filter(([,v])=>v!=null&&v!=='');return d.length?d.map(([k,v])=>k+'='+v).join(', '):'geen';}
+// Runs one tool_use block. Returns {tekst, fout}: tekst goes back to the model as the tool_result.
+function aiToolUitvoeren(c){
+  const o={hideAmounts:!!AIPREFS.hideAmounts,notes:AIPREFS.notes!==false},inp=(c&&c.input)||{};
+  if(c&&c._kapot)return {tekst:'De invoer van deze aanroep was niet te lezen. Probeer het opnieuw.',fout:true};
+  const rows=coachFilter(CLOSED,inp.filter),kop=c.name+' (filter: '+coachFilterTxt(inp.filter)+')';
+  if(c.name==='groep_stats'){
+    const dim=inp.dimensie;
+    if(dim!=='alles'&&!COACH_GROEPEN.some(g=>g[0]===dim))return {tekst:'Onbekende dimensie "'+dim+'". Kies uit: alles, '+COACH_GROEPEN.map(g=>g[0]).join(', ')+'.',fout:true};
+    if(!rows.length)return {tekst:kop+': Geen gesloten trades met dit filter.'};
+    if(dim==='alles')return {tekst:kop+'\n- Alles ('+rows.length+' trade'+(rows.length===1?'':'s')+'): '+coachStats(rows,o)};
+    return {tekst:kop+'\n'+coachGroepen(rows,{...o,alleen:dim,maxGroep:15}).filter(l=>l&&!l.startsWith('## ')).join('\n')};
+  }
+  if(c.name==='zoek_trades'){
+    const max=Math.max(1,Math.min(AI_TOOL_MAX_TRADES,parseInt(inp.max)||10));
+    if(!rows.length)return {tekst:kop+': Geen gesloten trades met dit filter.'};
+    const lijst=rows.slice().sort((x,y)=>tradeMoment(y)-tradeMoment(x)).slice(0,max);
+    return {tekst:kop+': '+lijst.length+' van '+rows.length+'\n'+lijst.map(t=>coachTradeRegel(t,o)).join('\n')};
+  }
+  return {tekst:'Onbekende tool "'+(c&&c.name)+'".',fout:true};
 }
 /* ── Key: the member's own, on this device only ──
    Never in snapshotPayload (export, automatic back-up, Drive, snapshots), DOV or diagReport: it lives under
@@ -5568,6 +5611,7 @@ const AI_FOUT={
   netwerk:'Geen verbinding. Controleer je internet en probeer het opnieuw.',
   timeout:'Anthropic reageert niet. Probeer het opnieuw; blijft het hangen, kijk dan op status.anthropic.com.',
   geweigerd:'De coach kan deze vraag niet beantwoorden. Probeer hem anders te stellen.',
+  rondes:'De coach kwam er niet uit binnen drie zoekrondes. Stel je vraag wat concreter, bijvoorbeeld met een setup of periode erbij.',
   onbekend:'Dat lukte niet. Probeer het opnieuw.',
 };
 // In the chat there is no key field: say where to swap the key. While linking there is no question to keep.
@@ -5634,6 +5678,7 @@ function aiSysteem(){return ['Je bent de AI-coach in SyncJournal, de trading jou
   '','Regels:',
   '- Je enige bron is de data hieronder, uitgerekend door de journal. Noem alleen getallen die daar staan en reken niet zelf; twee getallen vergelijken mag. Staat iets er niet in, zeg dat, en zeg wat de trader kan vastleggen om het wel te weten.',
   '- Zeg bij een cijfer uit welke tabel het komt, bijvoorbeeld "(uit je sessietabel: London, n=14)".',
+  '- Staat iets niet in de data, zoek het dan op met groep_stats of zoek_trades. Die rekenen in de journal; gebruik hun cijfers zoals ze terugkomen.',
   '- Bij n < 5: noem het, maar trek er geen conclusie uit.',
   '- "geen R" betekent: geen stop-loss, dus onbekend. Behandel dat nooit als 0R.',
   '- Geen financieel advies, geen voorspellingen over de markt, geen instapsignalen.',
@@ -5696,11 +5741,27 @@ async function aiVraag(vraag,o){
     // so a follow-up question reads them from the cache at a tenth of the price.
     const system=[{type:'text',text:aiSysteem(),cache_control:{type:'ephemeral'}},{type:'text',text:'# Data van de trader\n\n'+pk.tekst,cache_control:{type:'ephemeral'}}];
     if(knop)system.push({type:'text',text:'Opdracht voor deze vraag: '+knop[2]});
-    const d=await aiCall(key,{model:aiModel(),max_tokens:AI_MAX_TOKENS,stream:true,cache_control:{type:'ephemeral'},
-      output_config:week?{effort:'low',format:{type:'json_schema',schema:AI_WEEK_SCHEMA}}:{effort:'low'},system,messages},
-      {opText:t=>{live.t+=t;toon();},vraag:true});
-    live.kosten=d.kosten;
-    const tekst=(d.content||[]).filter(x=>x.type==='text').map(x=>x.text).join('\n').trim();
+    // Within one question the history is append-only: the assistant turn (thinking and tool_use blocks
+    // unchanged) and the tool results go back as they are, system and tools stay the same.
+    let msgs=messages,rondes=0,d=null,tekst='';live.kosten=0;const opgezocht=[];
+    for(;;){
+      const body={model:aiModel(),max_tokens:AI_MAX_TOKENS,stream:true,cache_control:{type:'ephemeral'},
+        output_config:week?{effort:'low',format:{type:'json_schema',schema:AI_WEEK_SCHEMA}}:{effort:'low'},system,messages:msgs};
+      if(!week){body.tools=AI_TOOLS;if(rondes>=AI_MAX_TOOLRONDES)body.tool_choice={type:'none'};}
+      d=await aiCall(key,body,{opText:t=>{live.t+=t;toon();},vraag:rondes===0});
+      live.kosten+=d.kosten||0;
+      tekst+=(tekst?'\n\n':'')+(d.content||[]).filter(x=>x.type==='text').map(x=>x.text).join('\n').trim();
+      if(d.stop_reason!=='tool_use')break;
+      if(rondes>=AI_MAX_TOOLRONDES)throw {soort:'rondes'};
+      const calls=(d.content||[]).filter(x=>x.type==='tool_use');
+      const uit=calls.map(c=>{const r=aiToolUitvoeren(c);opgezocht.push('## '+c.name+'('+JSON.stringify(c.input||{})+')\n'+r.tekst);
+        return {type:'tool_result',tool_use_id:c.id,content:r.tekst,...(r.fout?{is_error:true}:{})};});
+      msgs=[...msgs,{role:'assistant',content:(d.content||[]).map(({_kapot,...x})=>x)},{role:'user',content:uit}];
+      rondes++;live.t+=live.t?'\n\n':'';live.zoekt=true;
+      const w=document.querySelector('#aiFeed .ailive .aiwacht');if(w)w.textContent='Coach zoekt in je trades…';
+    }
+    if(opgezocht.length)live.pakket=pk.tekst+'\n\n# Opgezocht door de coach\n\n'+opgezocht.join('\n\n');
+    tekst=tekst.trim();
     if(d.stop_reason==='refusal'||!tekst)throw {soort:'geweigerd'};
     live.t=tekst+(d.stop_reason==='max_tokens'?'\n\n*Het antwoord was te lang en is afgekapt. Vraag "ga door".*':'');
     if(week){let j=null;try{j=JSON.parse(tekst);}catch(e){}

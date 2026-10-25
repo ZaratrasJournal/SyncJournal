@@ -44,6 +44,9 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
   schema: wat ging goed, wat kostte geld, en één ding om volgende week anders te doen. De cijfers erboven (trades,
   netto, winrate, gem. R, en de week ervoor) rekent de journal zelf uit.
 - **Focusgebieden** (discipline, risk, psychologie) in Instellingen bepalen nu waar de coach extra op let.
+- **De coach zoekt zelf dingen op in je journal.** Staat iets niet in de cijfers die hij meekreeg, bijvoorbeeld "hoe
+  doet mijn London SFP het op vrijdag?", dan vraagt hij de journal om precies die cijfers of die trades. De journal
+  rekent; de coach leest. Onder "Wat is er verstuurd?" zie je ook wat hij opzocht.
 - **FAQ over de AI-coach:** wat het is, wat je nodig hebt, wat het kost, wat er verstuurd wordt, waar je sleutel staat en
   hoe je hem uitzet.
 
