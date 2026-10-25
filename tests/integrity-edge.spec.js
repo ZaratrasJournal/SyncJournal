@@ -62,11 +62,9 @@ const FILL_UTC = Date.UTC(2026, 5, 30, 22, 30);   // zelfde moment, als exchange
 
   // Een object zonder één trade-veld ertussen: de oude app liet dat weg ("{foo:'bar'} is geen trade").
   const r2 = await importeer([{ foo: 'bar' }, 1, 'x', null]);
-  const telt = (r2.tekst.match(/Trades[^]*?(\d+) in bestand/) || [])[1];
-  ok('object tussen de rommel: er komt een keuzescherm (niets gebeurt zonder bevestiging)', r2.modal, r2.tekst.slice(0, 80));
-  fixme('een object zonder trade-velden telt niet als trade in het keuzescherm', telt === undefined || telt === '0', 'keuzescherm: ' + (telt || '?') + ' trade(s) in bestand → bevestigen ("vervangen" staat voorgeselecteerd) vervangt je 3 trades');
-  await p.evaluate(() => closeForm());
-  ok('keuzescherm gesloten zonder te kiezen: niets veranderd', await trades() === voor, await trades());
+  // Since v1.15.1 (B10) such an object is not a trade, so the file holds no journal data at all.
+  ok('object tussen de rommel telt niet als trade: dezelfde melding, geen keuzescherm', r2.melding && !r2.modal, JSON.stringify({ ...r2, tekst: r2.tekst.slice(0, 80) }));
+  ok('en niets veranderd', await trades() === voor, await trades());
   fs.unlinkSync(tmp);
 
   ok('geen JS-fouten', errs.length === 0, [...new Set(errs)].slice(0, 3).join(' | '));
