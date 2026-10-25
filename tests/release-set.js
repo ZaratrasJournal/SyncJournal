@@ -53,6 +53,7 @@ module.exports = [
   'afgeleide-stappen', 'afgeleide-scenarios', 'handmatig-formulier', 'handmatig-scenarios',
   'handmatig-statistieken', 'tj-backtest', 'export-overzicht', 'import-keuze', 'import-leeg-object',
   'export-import-rondje', 'diagnose', 'possize',
+  'export-sleutels',         // F12: API-sleutels alleen in een bestand als je dat kiest; automatische back-ups nooit
 
   // site + tradingplan
   'landing', 'tradingplan-v2', 'plan-koppeling', 'plan-tendencies', 'plan-doorloop', 'plan-playbook',
