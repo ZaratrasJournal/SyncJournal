@@ -16,7 +16,7 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
-## [Unreleased]
+## [v1.15.1] — 2026-10-25
 
 ### Fixed
 - **Na middernacht klopt "vandaag" weer.** Tussen 00:00 en 02:00 kreeg een nieuwe trade of een storting
