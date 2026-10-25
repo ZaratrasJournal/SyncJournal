@@ -76,4 +76,10 @@ module.exports = [
   // v1.3.2: dashboard telt je filter, ∞, geen rekenruis, streepje voor ontbrekende prijzen,
   // centen onder de $100, en R overal netto
   'dashboard-live', 'pf-en-kpi', 'afronding-prijzen', 'prijs-streepje', 'kleine-bedragen', 'r-netto',
+
+  // v1.15.1: the bugs T2 found, now real checks
+  'privacy-mode', 'integrity-edge', 'a11y', 'tendencies-untagged',
+  // v1.15.2 + v1.16: Morani links, FAQ, and the AI coach (key never in an export, the app computes, the model reads)
+  'morani-links',
+  'coach-pakket', 'coach-sleutel', 'coach-stream', 'coach-verbruik', 'coach-knoppen', 'coach-tools', 'coach-pretrade',
 ];
