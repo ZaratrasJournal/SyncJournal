@@ -27,6 +27,10 @@ def uur(dag, h=10):
 class NepCloudflare:
     def __init__(self, **kw):
         self.kapot = kw.get('kapot', set())   # 'ae', 'worker', 'requestPath', ...
+        # Worker v25 counts the origin (blob6); before v25 every row has an empty origin.
+        self.herkomst = kw.get('herkomst', [
+            {'herkomst': 'https://syncjournal.nl', 'n': '3800'}, {'herkomst': '', 'n': '300'},
+            {'herkomst': 'http://localhost:8765', 'n': '90'}, {'herkomst': 'null', 'n': '20'}])
         self.gisteren = kw.get('gisteren', [
             {'exchange': 'okx', 'uitkomst': 'ok', 'client': 'syncjournal-web', 'koppeling': 'aaaa1111', 'fout': '', 'n': '3000'},
             {'exchange': 'kraken', 'uitkomst': 'ok', 'client': 'syncjournal-web', 'koppeling': 'bbbb2222', 'fout': '', 'n': '900'},
@@ -68,7 +72,7 @@ class NepCloudflare:
         if '/analytics_engine/sql' in url:
             if 'ae' in self.kapot:
                 return 500, '{"errors":[{"message":"dataset not found"}]}'
-            rijen = self.eerder if 'toStartOfHour' in body else [{'minuut': uur(DAG, 9), 'n': '23'}] if 'toStartOfMinute' in body else self.gisteren
+            rijen = self.eerder if 'toStartOfHour' in body else [{'minuut': uur(DAG, 9), 'n': '23'}] if 'toStartOfMinute' in body else self.herkomst if 'blob6' in body else self.gisteren
             return 200, json.dumps({'meta': [], 'data': rijen, 'rows': len(rijen)})
         if 'api.telegram.org' in url:
             if url.endswith('/sendMessage'):
@@ -124,6 +128,14 @@ class Tests(unittest.TestCase):
         self.assertTrue(all(h.get('Authorization') == 'Bearer geheim-token' for u, _, h in nep.vragen if 'cloudflare' in u))
         rum = [b for u, b, _ in nep.vragen if 'rumPageload' in b]
         self.assertTrue(rum and all('bot: 0' in b for b in rum), 'bezoeken zonder bots, zoals het dashboard')
+
+    def test_herkomst_van_de_verzoeken(self):
+        tekst, _ = self.rapport()
+        self.assertIn('Websites: syncjournal.nl 3.800 · localhost:8765 90 · bestand (oude journal) 20 · zonder website 300', tekst)
+
+    def test_herkomst_voor_worker_v25_geen_regel(self):
+        tekst, _ = self.rapport(herkomst=[{'herkomst': '', 'n': '4210'}])
+        self.assertNotIn('Websites:', tekst)
 
     def test_geen_fouten(self):
         tekst, _ = self.rapport(gisteren=[{'exchange': 'okx', 'uitkomst': 'ok', 'client': 'syncjournal-web', 'koppeling': 'a', 'fout': '', 'n': '50'}], eerder=[])

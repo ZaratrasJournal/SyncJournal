@@ -35,9 +35,9 @@ elke wijziging eindigt met `node tests/run-release.js` groen.
 | **C1** | Lege staten: één manier, met een volgende stap | 2 | S + M | — |
 | ~~C5~~ | ~~Acht tag-soorten, acht kleuren, overal gelijk~~ — ✅ **gedaan in v1.3** | — | — | — |
 | **T1** | CSV-import testen op CI | 2 | M | — |
-| **W1** | Worker: staat `Access-Control-Allow-Origin` op `*`? | 2 | XS (Denny) | — |
+| **W1** | Worker: `Access-Control-Allow-Origin` stond op `*` — 🔨 **v25 gebouwd** (eerst meten, dan afdwingen); wacht op deploy | 2 | XS (Denny) | — |
 | **B3** | Controleren: telt dezelfde positie dubbel via CSV én API? | 2 | S | — |
-| **W5** | Worker v25: `okxHost` alleen uit een vaste lijst (lek sinds v19) en de ongebruikte `orders`-verzoeken uit `algos` weg (review 24-10) | 1 | XS | — |
+| **W5** | Worker v25: `okxHost` alleen uit een vaste lijst (lek sinds v19) en de ongebruikte `orders`-verzoeken uit `algos` weg — 🔨 **gebouwd 25-10, `docs/worker-v25.js`; wacht op deploy door Zaratras** | 1 | XS | — |
 | **B6** | OKX: waarschuwing bij een onbekende contractsoort in het vangnet; SL koppelen op het exacte contract i.p.v. de munt (review 24-10) | 3 | XS | — |
 | ~~B9~~ | Datum na middernacht — ✅ **gedaan in v1.15.1** | — | — | — |
 | ~~B7~~ | Privacy-modus verbergt alle bedragen — ✅ **gedaan in v1.15.1** | — | — | — |
@@ -674,6 +674,12 @@ Test: een `.xlsx` geeft een begrijpelijke melding.
 ## Werkwijze & tooling
 
 ### W1 · Worker: staat `Access-Control-Allow-Origin` op `*`? — prio 2 · XS (Denny)
+
+**Stand 25-10-2026:** ja, in v24 stond hij op `*`. [docs/worker-v25.js](docs/worker-v25.js) lost het op in twee stappen
+(schakelaar `ORIGIN_MODUS`): eerst `meten` (alles werkt, het dagrapport toont per dag welke websites de Worker gebruiken),
+dan `afdwingen` (alleen syncjournal.nl, www, work, localhost/127.0.0.1 en `null`, plus Morani's journal). Stappenplan:
+[docs/worker-v25-deploy.md](docs/worker-v25-deploy.md). De upstream-URL's: MEXC, Blofin en Kraken hadden al een vaste host;
+OKX nam `okxHost` van de aanroeper over (W5), dat is in v25 dicht.
 
 **Waarom.** Dan kan elke website je Worker gebruiken als gratis exchange-proxy, op jouw
 Cloudflare-quota. Bij misbruik gaan de koppelingen voor iedereen stuk door rate-limits. Sleutels

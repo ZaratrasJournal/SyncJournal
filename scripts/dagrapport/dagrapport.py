@@ -193,7 +193,11 @@ def haal_exchanges(cfg, van, tot):
     # De drukste minuut: daarmee kies je een snelheidslimiet (binding LIMIET) die niemand raakt.
     piek = ae_sql(cfg, f"SELECT toUnixTimestamp(toStartOfMinute(timestamp)) AS minuut, SUM(_sample_interval) AS n FROM {ds} "
                        f"WHERE toUnixTimestamp(timestamp) >= {v} AND toUnixTimestamp(timestamp) < {t} GROUP BY minuut ORDER BY n DESC LIMIT 1")
-    return {'gisteren': gisteren, 'eerder': eerder, 'piek': piek}
+    # Worker v25 counts the website a request came from (blob6: scheme + host, 'null' = a file, '' = no browser).
+    # Before v25 every row is empty; then the report shows no line.
+    herkomst = ae_sql(cfg, f"SELECT blob6 AS herkomst, SUM(_sample_interval) AS n FROM {ds} "
+                           f"WHERE toUnixTimestamp(timestamp) >= {v} AND toUnixTimestamp(timestamp) < {t} GROUP BY herkomst ORDER BY n DESC LIMIT 12")
+    return {'gisteren': gisteren, 'eerder': eerder, 'piek': piek, 'herkomst': herkomst}
 
 
 def reeks(eerder, dag, sleutel):
@@ -266,6 +270,17 @@ def blok_worker(w, naam):
             f"Overbelast {nl(s.get('exceededResources', 0))} · Worker-fouten {nl(fouten)} · CPU p99 {cpu} ms (limiet {CPU_LIMIET_MS} ms)"]
 
 
+def regel_herkomst(rijen):
+    """Which websites called the Worker (v25, blob6): read it for a week before ORIGIN_MODUS 'afdwingen'."""
+    if not any(r.get('herkomst') for r in rijen):
+        return ''
+    naam = lambda h: 'bestand (oude journal)' if h == 'null' else h.split('://', 1)[-1]
+    met = [(naam(r['herkomst']), getal(r['n'])) for r in rijen if r.get('herkomst')]
+    zonder = sum(getal(r['n']) for r in rijen if not r.get('herkomst'))
+    met.sort(key=lambda x: -x[1])
+    return 'Websites: ' + ' · '.join(f'{h} {nl(n)}' for h, n in met) + (f' · zonder website {nl(zonder)}' if zonder else '')
+
+
 def blok_exchanges(x, dag):
     rijen, eerder = x['gisteren'], x['eerder']
     totaal = sum(getal(r['n']) for r in rijen)
@@ -283,6 +298,9 @@ def blok_exchanges(x, dag):
     if x.get('piek'):
         p = x['piek'][0]
         regels.append(f"Drukste minuut: {nl(getal(p['n']))} verzoeken, om {datetime.fromtimestamp(int(getal(p['minuut'])), AMS):%H:%M}")
+    websites = regel_herkomst(x.get('herkomst') or [])
+    if websites:
+        regels.append(websites)
 
     # fouten per (exchange, uitkomst): hoeveel keer, welke koppelingen, meest voorkomende tekst
     groep = defaultdict(lambda: {'n': 0.0, 'koppelingen': set(), 'teksten': defaultdict(float)})

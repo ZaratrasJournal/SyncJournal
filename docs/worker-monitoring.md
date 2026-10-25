@@ -19,9 +19,10 @@ Na elk verzoek schrijft de Worker één telling naar **Workers Analytics Engine*
 |---|---|---|
 | blob1 | exchange | `okx` |
 | blob2 | actie | `trades` |
-| blob3 | uitkomst | `ok`, `ip-whitelist`, `sleutel`, `rate-limit`, `exchange-fout`, `verzoek`, `worker-fout` |
+| blob3 | uitkomst | `ok`, `ip-whitelist`, `sleutel`, `rate-limit`, `exchange-fout`, `verzoek`, `worker-fout`, `origin` (v25: website geweigerd) |
 | blob4 | bij een fout: de foutmelding, zonder IP-adressen en sleutels — **alleen voor SyncJournal** | `OKX /api/v5/account/balance: Your IP [ip] is not included…` |
 | blob5 | client | `syncjournal-web`, of `ander` (Morani's journal, de oude TradeJournal) |
+| blob6 | herkomst (v25): de website, alleen schema + host; `null` = de oude TradeJournal als bestand, leeg = geen browser | `https://syncjournal.nl` |
 | double1, double2 | HTTP-status, duur in ms | `500`, `312` |
 | index1 | vingerafdruk van de koppeling — **alleen voor SyncJournal** | `3f9a0c1e` |
 

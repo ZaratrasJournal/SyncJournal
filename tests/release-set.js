@@ -26,6 +26,7 @@ module.exports = [
   'auto-sync-pauze',         // blijvende sleutelfout: auto-sync stopt, handmatig syncen kan altijd
   'web-analytics',           // meetscript alleen op syncjournal.nl, niet op de werkversie of lokaal
   'worker-monitoring',       // de Worker-telling voor het dagrapport lekt geen sleutels of IP's
+  'worker-v25',              // v25: okxHost alleen naar OKX, algos zonder orders-history, websites meten/afdwingen
   'okx-overzetten',          // oude backup: losse OKX-trades met dezelfde posId blijven apart (member Jarne)
   'nieuwe-positie-na-pauze', // dagen niet gesynct: nieuwe positie op dezelfde coin krijgt haar eigen datum
   'stappen-open',            // OKX en Blofin: de stappen van een open positie, vanaf de opening
