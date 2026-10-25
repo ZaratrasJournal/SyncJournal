@@ -1,149 +1,144 @@
-# Funded modus: drie varianten naast elkaar
+# Funded modus: één eenvoudig ontwerp
 
-**Datum**: 25-10-2026 (tweede versie) · **Demo**: [demos/funded-demo.html](../demos/funded-demo.html) · **Onderzoek**: branch
+**Datum**: 25-10-2026 (derde versie) · **Demo**: [demos/funded-demo.html](../demos/funded-demo.html) · **Onderzoek**: branch
 `research-funded-modus`, `docs/research-funded-modus-2026-10-24.md`
 
-Open de demo via localhost. Bovenin schakel je tussen A, B en C, tussen licht en donker, en met "Lege staat" naar een journal zonder
-challenges. Rechtsboven zie je of de Funded modus aan of uit staat. De nepdata: FTMO 100k #1 (gefaald in fase 1), FTMO 100k #2 (nu funded en
-actief), Breakout 25k #1 (gehaald, daarna eruit gezet), FTMO 10k #3 (fase 1 net gestart, nog geen trades) en eigen trades op Blofin en
-Kraken. 44 trades, aug t/m okt.
+Open de demo via localhost. Bovenin kies je een toestand (Funded modus uit, aan maar leeg, lopende challenge, gehaald vóór en ná
+omzetten, niet gehaald, funded met uitbetaling, funded gestopt) en licht of donker. De nepdata: FTMO 100k #1 (niet gehaald),
+FTMO 100k #2 (gehaald, omgezet naar een actief funded account met één uitbetaling van $ 2.480), Breakout 25k #1 (lopend) en eigen
+trades op Blofin en Kraken. 38 trades, aug t/m okt.
 
-## Nieuw in de tweede versie
+## Besluiten (Denny, 25-10-2026)
 
-1. **Funded is een functie die je aanzet**: Instellingen → **Funded** (een nieuwe tab naast Accounts, Weergave, Tags, AI-coach, Data,
-   Updates en Wissen, in de volgorde van de app). Bovenaan staat de schakelaar **Funded modus**, standaard **uit**.
-   - **Uit**: de journal is die van nu. Geen funded-kaarten op het Dashboard, geen challenges bij Accounts, geen filter
-     eigen/funded in Analytics, geen pagina Prop-geld, geen funded-keuze bij de import. De Playwright-controle zoekt op elke pagina naar
-     "funded", "challenge", "FTMO" en "Breakout" en vindt niets.
-   - **Aan**: alles van de gekozen variant verschijnt.
-2. **"Funded meetellen" staat in dezelfde tab**, onder Funded modus, en is alleen zichtbaar als die aan staat. De uitleg over het
-   P&L-percentage is meeverhuisd. Op Dashboard en Accounts zie je alleen nog een klein label in de kopbalk ("eigen en funded apart" of
-   "⚠ funded meegeteld"). Klik je erop, dan ga je naar de tab.
-3. **De import zit in Instellingen → Accounts**, sectie "CSV-import", net als `csvFileInp` / `handleCsvFile` in de app. "Import" staat
-   niet meer in het menu. Na het kiezen van een bestand blijft de vraag "Bij welk account hoort dit?":
-   - **modus uit**: alleen gewone keuzes. Bij een FTMO-bestand stelt hij een handmatig account voor, dat als eigen geld telt, met
-     een tip om Funded modus aan te zetten.
-   - **modus aan**: de funded accounts en challenges, met het voorstel op login (zoals in de eerste versie). Een Blofin-bestand
-     gaat in beide standen gewoon naar Blofin.
+1. **Eén plek.** Alles van funded staat in Instellingen → Funded. Er is geen apart Accounts-scherm voor funded, en Instellingen →
+   Accounts blijft voor de eigen exchanges en handmatige accounts.
+2. **Twee schakelaars bovenaan de tab**: *Funded modus* (standaard uit) en daaronder *Funded meetellen*, die alleen zichtbaar is
+   als de modus aan staat. Met de modus uit is de journal precies zoals nu: nergens iets van funded.
+3. **Geen regels van de firm.** Geen dagverlies, max drawdown, winstdoel, minimum dagen, voortgangsbalk of fases. De firm houdt dat
+   zelf bij.
+4. **Twee soorten**, met dezelfde velden: firm (vrije tekst met suggesties), naam, grootte (startkapitaal, voor het P&L-%) en status.
+   - **Challenge**: bezig / gehaald / niet gehaald. Een 2-step challenge is één challenge, zonder fase 1 en fase 2.
+   - **Funded account**: actief / gestopt, en bij gestopt de reden: eruit gezet of zelf gestopt.
+   - Staat een challenge op *gehaald*, dan verschijnt **"Omzetten naar funded account"**. Firm en grootte gaan mee, de naam kun je
+     aanpassen. Het nieuwe account blijft gekoppeld aan de challenge. De trades van de challenge blijven bij de challenge.
+5. **Trades komen binnen** via de CSV-import (Instellingen → Accounts) of met de hand (het trade-formulier). In het formulier staan bij
+   "Exchange / account" ook de lopende challenges en actieve funded accounts, maar alleen als de modus aan staat. Bij de import vraagt
+   de journal "Bij welk account hoort dit?", met een voorstel op basis van het login-nummer. Een challenge of funded account onthoudt
+   elke login die er ooit bij is geïmporteerd (FTMO geeft per fase een nieuwe).
+6. **Uitbetalingen**: één knop "Uitbetaling toevoegen" (bedrag en datum) op een funded account, zoals een opname bij een handmatig
+   account. "Uitbetaald" staat per funded account en in totaal. Geen fees, resets of profit split.
+7. **Dashboard**: met de modus aan en "meetellen" uit staat er één compacte kaart *Funded* naast je eigen balans, met lopende
+   challenges, actieve funded accounts, P&L van funded en het totaal uitbetaald. Met "meetellen" aan staat er één totaal, gemarkeerd
+   als "incl. funded". **Analytics** heeft het filter eigen / funded / alles.
 
-## Wat er in de tab Funded staat, per variant
+## Datamodel
 
-Mijn keuze: **Accounts is voor gebruiken, Instellingen → Funded is voor inrichten.** Wat je vaak doet (status zetten, voortgang
-bekijken) staat bij Accounts. Wat je eenmalig of af en toe doet (een challenge aanmaken, regels invullen, een fee of payout boeken)
-staat in de tab. Zo wordt de Accounts-pagina geen formulier, en zie je de instellingen niet als je alleen je cijfers wilt bekijken.
+**Een funded-item** (challenge of funded account) is één soort record, in een eigen lijst `sj_funded` (localStorage, naast
+`sj_manual`). Velden:
 
-| | A | B | C |
-|---|---|---|---|
-| Funded modus + Funded meetellen + uitleg P&L-% | ✓ | ✓ | ✓ |
-| Lijst van accounts met per account de funded-vlag, en een funded account toevoegen | ✓ | | |
-| Challenges: lijst met status, en een nieuwe challenge (firm, programma, startkapitaal) | | ✓ | ✓ |
-| Regels per fase van de gekozen challenge (winstdoel, dagverlies, max drawdown, type, min. dagen); een wijziging zie je meteen bij Accounts | | ✓ | ✓ |
-| Kosten en payouts: een boeking invoeren, de laatste vier boekingen, en een link naar het overzicht op de pagina Prop-geld | | | ✓ |
+```js
+{ id:'fc_…', kind:'challenge'|'funded',
+  firm:'FTMO', name:'100k #2', size:100000,      // size = basis voor het P&L-%
+  status:'bezig'|'gehaald'|'niet'                // challenge
+        |'actief'|'gestopt',                     // funded account
+  stop:null|'eruit'|'zelf',                      // alleen bij funded + gestopt
+  logins:['1510002222','1510003333'],            // elke login die er ooit bij is geïmporteerd
+  start:'2026-08-24',
+  funded:'fa_…',                                 // challenge → het funded account waarnaar hij is omgezet
+  from:'fc_…',                                   // funded account → de challenge waar hij uit komt
+  payouts:[{amount:2480, date:'2026-10-13'}] }   // alleen bij funded
+```
 
-Status zetten blijft op de challenge-kaart bij Accounts. Het overzicht "uitgegeven tegenover verdiend" blijft een eigen pagina
-(Prop-geld, alleen in C en alleen met de modus aan): dat lees je, daar voer je niets in.
+- **Trade**: krijgt geen nieuw veld. Een trade hangt al aan een account via `t.exchange` (ook bij handmatige accounts, zie `acctOf`).
+  Voor een funded trade wordt `t.exchange` het id van het item. `acctOf` en de keuzelijst in het trade-formulier (`exOpt`) moeten
+  `sj_funded` dus kennen.
+- **De koppeling challenge ↔ funded account** gaat in twee richtingen (`funded` en `from`). Zo laat elk van de twee kaartjes de
+  ander zien zonder te zoeken. Bij omzetten worden beide gezet. Er worden geen trades verplaatst.
+- **Login-nummers** staan op het item zelf (`logins`), niet op de trade. De import zoekt de login uit het bestand op in alle items.
+  Bij een treffer koppelt hij zonder vraag, met alleen een melding. Bij een onbekende login stelt hij een nieuwe challenge voor
+  (firm en grootte uit het bestand) of een bestaand item van dezelfde firm. Na de keuze komt de login bij dat item. Het lezen van
+  de login uit het bestand hoort in de adapter (`ExchangeAPI.ftmo`), het opzoeken is generiek.
+- **Uitbetalingen** staan op het funded account en raken de eigen balans niet. Een uitbetaling landt op je bank of exchange en
+  zit daar al in. Hem ook in de balans tellen zou dubbel tellen.
+- **Instellingen**: `STATE.funded` (modus) en `STATE.fundedMee` (meetellen) in `sj_state`, naast `pctRef`. De **JSON-export/import**
+  neemt `sj_funded` mee (verplicht vangnet volgens CLAUDE.md).
+- **Geld-sommen**: één helper `isEigenGeld(t)`, die zegt "dit account is geen funded-item". Die komt op elke plek waar eigen geld wordt
+  opgeteld: `totalBalance`, `acctPnl`, `_pctBases`, de dashboard-tegels en de equity.
 
-## Het uitgangspunt in alle drie
-
-- **Wiens geld** hoort bij het **account**, niet bij de trade. Een trade krijgt dus geen nieuw veld: hij hangt al aan een account
-  via `t.exchange` (dat is ook het id van een handmatig account, zie `acctOf`). Een `kind:'funded'` valt af, want dan haalt het
-  standaardfilter (live) funded trades juist uit je analyse.
-- **Analyse telt alles mee**, met een filter *eigen / funded / alles* (standaard *alles*). Vergelijk op **R**: in de demo staat
-  "Range reclaim" op +0,02R maar op −$ 7.381, omdat één verlies op een 100k-account in dollars alles overstemt.
-- **P&L-%** rekent per deel op de eigen basis. In de demo: eigen +$ 356 / $ 8.000 = **+4,45%**, funded +$ 10.650 / $ 450.000 = **+2,37%**.
-  Met "Funded meetellen" aan wordt het (356 + 10.650) / (8.000 + 450.000) = **+2,40%**. Het funded-kapitaal weegt 56× zwaarder,
-  dus het gecombineerde % zegt niets meer over je eigen rendement.
-
-## Waar de instelling staat (datamodel)
-
-In alle varianten gelijk:
-- **`STATE.funded`** (aan/uit) en **`STATE.fundedMee`** (meetellen) bij de andere voorkeuren in `sj_state` (`persistState`),
-  naast `pctRef` en `unit`. Het zijn weergavekeuzes, geen data. Ze gaan mee in de JSON-export onder `settings`.
-- **De funded-vlag en de challenges zijn data**: ze staan bij de accounts (`sj_manual`) en in `sj_challenges`, en blijven bestaan
-  als je de modus uitzet.
-
-| | A | B | C |
-|---|---|---|---|
-| **Kosten** | S | L (B1 = A, daarna B2) | B + S |
-| **Account** (`MANUAL`) | `funded`, `size`, optioneel `login` | + `firm`, `server`, `challengeId`, `phase` | als B |
-| **Nieuw** | – | `sj_challenges`: fases, `status` (`bezig/gehaald/gefaald/eruit`, door jou gezet), `rules` per fase | + `money:[{type:'fee'\|'reset'\|'payout'\|'refund', amount, date, note}]` op de challenge |
-| **Trade** | niets nieuws | niets nieuws | niets nieuws |
-
-## Wat er met funded trades gebeurt als je de modus uitzet
+## Funded modus uitzetten terwijl er funded trades zijn
 
 Er zijn drie mogelijkheden:
 
-1. **Ze tellen als eigen geld.** Dat is precies de scheeftrekking die we willen voorkomen: een funded winst van $ 10.650 maakt van je
-   $ 8.356 ineens $ 19.000, en je P&L-% klopt niet meer. Dit gebeurt ook ongemerkt, want de schakelaar staat ver weg in Instellingen.
-2. **Ze blijven apart, maar zonder funded-schermen.** Dan staan er trades in je analyse en je tradelijst van accounts die je
-   nergens meer ziet. Of je balans "klopt" kun je dan niet meer nagaan, en de journal is niet clean.
-3. **Ze worden verborgen, niet gewist.** Funded accounts en hun trades verdwijnen uit Dashboard, Accounts, Analytics en de
-   tradelijst. Ze blijven in de opslag en in de JSON-export. Zet je de modus weer aan, dan is alles terug.
+1. **Ze tellen als eigen geld.** Dat is precies de scheeftrekking die we willen voorkomen: met de nepdata wordt je $ 8.356 ineens
+   ruim $ 18.000. En het gebeurt ongemerkt, door een schakelaar ver weg in Instellingen.
+2. **Ze blijven apart, zonder funded-schermen.** Dan staan er trades in je lijst en analyse van accounts die je nergens kunt zien of
+   beheren. Dat is niet clean.
+3. **Ze worden verborgen, niet gewist.** Funded-items en hun trades verdwijnen uit Dashboard, Trades, Analytics en het trade-formulier.
+   Ze blijven in de opslag en in de JSON-export. Zet je de modus weer aan, dan is alles terug.
 
-**Advies: 3, verbergen.** "Uit" betekent dan: "ik wil niets van prop zien". De belofte die de hele functie draagt, dat funded geld
-nooit stilletjes als eigen geld telt, blijft in beide standen overeind. Er gaat niets verloren. In de tab staat dan één regel:
-"7 funded accounts met 32 trades zijn verborgen, niet gewist." Wie een funded account tóch als eigen geld wil tellen, haalt per
-account de vlag weg. Dat is een bewuste keuze per account, geen bijwerking van een schakelaar. De demo doet het zo.
+**Advies: 3, verbergen.** Uit betekent dan: "ik wil niets van prop zien", en funded geld telt in geen van beide standen stilletjes
+als eigen geld. In de tab staat dan één regel: "4 challenges en funded accounts met 26 trades zijn verborgen, niet gewist." De demo
+doet het zo.
 
-Het nadeel: met de modus uit tellen die trades ook niet mee in je strategie-analyse. Maar wie funded uitzet, wil prop juist niet zien.
-Wie de trades in de analyse wil hebben, laat de modus aan.
+Het nadeel: met de modus uit tellen die trades ook niet mee in je strategie-analyse. Wie ze daar wil hebben, laat de modus aan.
 
-## A · Minimaal
+## Bouwgrootte: M
 
-**Voor**: klein, en het lost het echte probleem op: funded winst trekt je eigen balans en % niet meer scheef.
-**Tegen**: de journal weet niet welke accounts bij elkaar horen of welke dicht zijn. De funded-balans telt daardoor alle 7 accounts
-mee, ook de gefaalde: **$ 470.650**, een getal zonder betekenis. Bij de import kan hij alleen op login koppelen. Zonder login
-(MetriX-CSV) blijft alleen "kies zelf" over.
+Dit ontwerp is duidelijk kleiner dan de oude challenge-kaart met fases en regels (L). Het blijft wel M, en niet S, omdat het
+op een paar plekken door de hele app heen loopt:
 
-## B · Challenge-kaart (advies van het onderzoek)
+| Onderdeel | Grootte |
+|---|---|
+| `isEigenGeld(t)` op alle geld-sommen (`totalBalance`, `acctPnl`, `_pctBases`, dashboard, equity) + spec die nu faalt | S–M, het meeste risico |
+| `sj_funded` + tab Funded (lijst, toevoegen, status, omzetten, uitbetaling) + schakelaars | S |
+| Dashboard-kaart en "meetellen", Analytics-filter | S |
+| `exOpt` en `acctOf` kennen de funded-items; verbergen als de modus uit staat | S |
+| Import: login uit het MT5-rapport lezen (adapter) + "Bij welk account hoort dit?" + logins onthouden | M (MT5-rapport inlezen is nieuw) |
+| JSON-export/import, `schemaVersion` | S |
 
-**Voor**: een fase is een eigen account, net als bij FTMO zelf (nieuwe login per fase). De funded-balans telt alleen lopende fases
-($ 114.000). De import kiest slim: op login, op een fase zonder login met hetzelfde startkapitaal, of op het datumvenster. Gefaalde en
-eruit gezette challenges blijven als historie staan, en hun trades blijven in de analyse.
-**Tegen**: veel meer code en schermen. De voortgang is een richtlijn: de firm meet op equity met open posities, en die zit niet in een
-CSV. Regels vul je zelf in (alleen voor FTMO voorgesteld).
-
-## C · Twee boekhoudingen
-
-**Voor**: beantwoordt "verdien ik geld met prop?". In de demo: uitgegeven $ 1.368, verdiend $ 3.540, netto **+$ 2.172**, per firm, met
-ROI. Het staat los van je balans, dus er wordt niets dubbel geteld.
-**Tegen**: alles handmatig (fees en payouts staan niet in een trade-export). Een payout die op Kraken of de bank landt, staat daar al in
-je balans en mag nooit ook als storting meetellen.
+Een redelijke volgorde: eerst `isEigenGeld` met de tab en de handmatige invoer (dat is al bruikbaar), daarna de import op login.
+Het verandert cijfers, dus het wordt een **minor**-release.
 
 ## Toestanden in de demo
 
-| Toestand | Waar |
+| Toestand | Wat je ziet |
 |---|---|
-| Funded modus uit | Dashboard, Accounts en Analytics zoals nu; de tab Funded zegt hoeveel er verborgen is |
-| Leeg (modus aan, nog geen challenge) | "Lege staat": Dashboard, Accounts, tab Funded en Prop-geld tonen de volgende stap; bij de import is "nieuwe challenge" voorgeselecteerd |
-| Niets in beeld | Analytics met filter *Funded* in de lege staat |
-| Challenge zonder trades | FTMO 10k #3, Fase 1 |
-| Gefaald / eruit gezet | FTMO 100k #1 / Breakout 25k #1 (grijs, trades blijven in de analyse) |
-| Grens geraakt bij een lopende fase | zet bij Accounts een status terug op "bezig", of verlaag in de tab een max drawdown: de kaart waarschuwt, maar beslist niet |
+| Funded modus uit | Dashboard, Trades en Analytics zoals nu. Het trade-formulier toont alleen eigen accounts. De tab Funded meldt wat er verborgen is |
+| Aan, nog niets | Lege staat met "Challenge toevoegen". Op het Dashboard een kaart met dezelfde knop |
+| Lopende challenge | Breakout 25k #1, 4 trades, status bezig |
+| Gehaald, vóór omzetten | FTMO 100k #2 op gehaald, met de knop "Omzetten naar funded account". Nog geen funded account |
+| Gehaald, ná omzetten | De challenge wijst naar "100k #2 · funded", en het funded account wijst terug |
+| Niet gehaald | FTMO 100k #1, P&L −$ 10.400. De trades blijven in de analyse |
+| Funded + uitbetaling | $ 2.480 uitbetaald op 13-10, en "Uitbetaling toevoegen" |
+| Funded gestopt | Status gestopt, reden eruit gezet. De uitbetaling blijft staan |
 
 ## Open vragen voor Denny
 
-1. **Welke variant?** Mijn advies blijft B in twee stappen (B1 = A eerst), met C erbij als je het geldoverzicht echt bijhoudt.
-2. **Modus uit = verbergen** (advies hierboven): akkoord, of wil je de trades dan toch in je analyse houden?
-3. **Inrichten in Instellingen, gebruiken bij Accounts**: past dat bij hoe jij werkt, of wil je een challenge ook vanaf Accounts kunnen
-   aanmaken?
-4. **Telt "funded" in de balans alleen lopende fases**, of ook een funded account dat je nog hebt maar even niet handelt?
-5. **Wat doet een payout met de funded-balans?** Bij FTMO gaat de winst eraf en zakt de balans terug naar het startkapitaal. De demo
-   verwerkt dat niet.
-6. **Funded-% over meerdere accounts**: zinvol, of alleen een % per fase (zoals de firm het meet)?
-7. **Analyse-filter**: is *eigen / funded / alles* genoeg, of wil je ook *evaluatie* los van *funded* zien?
-8. **Oude FTMO-trades** (`t.exchange='ftmo'`, zonder account): bij het aanzetten van de modus automatisch naar één account "FTMO",
-   of verdeel je ze zelf? En zolang de modus uit staat, blijven ze eigen geld, zoals nu?
-9. **Aanlevering**: een MT5-rapport (HTML of XLSX) en een MetriX-CSV van hetzelfde account, en een Breakout-export als die er is.
-   Zonder die bestanden is de import-herkenning een aanname.
+1. **Modus uit = verbergen** (advies hierboven): akkoord?
+2. **Funded meetellen aan**: telt het totaal alleen lopende challenges en actieve funded accounts mee (zo doet de demo het), of ook
+   afgeronde?
+3. **Na een uitbetaling** zet de firm de balans terug naar de grootte. De demo rekent de balans van een item als grootte + alle P&L.
+   Moet een uitbetaling die balans verlagen, of laten we de balans van een funded-item helemaal weg en tonen we alleen P&L en
+   "uitbetaald"?
+4. **Uitbetaling op een gestopt funded account**: mag dat (een laatste uitbetaling na "zelf gestopt"), of verdwijnt de knop?
+5. **Trade-formulier**: alleen lopende challenges en actieve funded accounts in de keuzelijst (zoals nu), of ook afgeronde, om een
+   vergeten trade achteraf toe te voegen?
+6. **Bestaande FTMO-trades** (`t.exchange='ftmo'`, zonder account): bij het aanzetten van de modus voorstellen ze in één challenge
+   te zetten, of laat je ze als eigen geld staan tot je ze zelf verplaatst?
+7. **Aanlevering**: een MT5-rapport (HTML of XLSX) en een MetriX-CSV van hetzelfde FTMO-account, en een Breakout-export als die er is.
+   Dan stellen we vast waar de login staat, in plaats van het aan te nemen.
 
 ## Over de demo zelf
 
 - Eén bestand, geen build. Alleen de Google Fonts van de app worden van buiten geladen.
-- De kleuren komen uit de variabelen van de app. De enige letterlijke kleur zit in app-regels die ongewijzigd zijn overgenomen
-  (`.btn.pri` en de knop van `.sw`, allebei `#fff` zoals in de app).
-- Funded modus, Funded meetellen, variant, thema, pagina en tab worden onthouden in localStorage (`sj_demo_funded_*`).
-- De tabs Weergave, Tags, AI-coach, Data, Updates en Wissen zijn in de demo leeg; ze werken zoals in de app.
-- Gecontroleerd met Playwright, headless: elke variant met de modus uit en aan, in licht en donker, op desktop en op 390px, plus de
-  tab Funded, de import, de lege staat en Prop-geld. Geen JS-fouten en geen horizontale scroll. Met de modus uit staat er op geen enkele
-  pagina iets van funded. Een regelwijziging in de tab is terug te zien bij Accounts, en beide schakelaars worden na herladen onthouden.
+- De kleuren komen uit de variabelen van de app. De enige letterlijke kleur zit in de ongewijzigd overgenomen app-regels `.btn.pri`
+  en `.sw` (`#fff`, zoals in de app).
+- Funded modus, Funded meetellen, de toestand en het thema worden onthouden (localStorage `sj_demo_funded3_*`). Wat je in de demo
+  toevoegt, omzet of uitbetaalt, wordt niet onthouden.
+- De tabs Weergave, Tags, AI-coach, Data, Updates en Wissen zijn leeg; ze werken zoals in de app.
+- Gecontroleerd met Playwright, headless:
+  - elke toestand in licht en donker, op desktop en op 390px, plus het dashboard, het trade-formulier en de import;
+  - geen JS-fouten en geen horizontale scroll;
+  - met de modus uit staat er op Dashboard, Trades, Analytics en Instellingen → Accounts nergens "funded" of "challenge";
+  - omzetten maakt een gekoppeld funded account (firm en grootte overgenomen, de 10 trades blijven bij de challenge);
+  - een uitbetaling telt op, een nieuwe login wordt na de import onthouden, en beide schakelaars blijven na herladen bewaard.
