@@ -101,7 +101,7 @@ const LANDING = F('index.html'), APP = F('app.html');
   console.log('─── Bestanden ───');
   {
     const rb = fs.readFileSync(path.resolve('site/robots.txt'), 'utf8'), sm = fs.readFileSync(path.resolve('site/sitemap.xml'), 'utf8'), hd = fs.readFileSync(path.resolve('site/_headers'), 'utf8');
-    ok('robots.txt: landing toegestaan, app niet, sitemap genoemd', /Allow: \/\n/.test(rb) && /Disallow: \/app\n/.test(rb) && /Sitemap: https:\/\/syncjournal\.nl\/sitemap\.xml/.test(rb));
+    ok('robots.txt: landing toegestaan, app niet, sitemap genoemd', /Allow: \/\r?\n/.test(rb) && /Disallow: \/app\r?\n/.test(rb) && /Sitemap: https:\/\/syncjournal\.nl\/sitemap\.xml/.test(rb));
     ok('sitemap.xml: landing + privacy, niet de app', /<loc>https:\/\/syncjournal\.nl\/<\/loc>/.test(sm) && /privacy\.html/.test(sm) && !/app\.html/.test(sm));
     ok('_headers: app.html en /app revalideren altijd', /\/app\.html\s*\n\s*Cache-Control: no-cache/.test(hd) && /\/app\s*\n\s*Cache-Control: no-cache/.test(hd));
     const idx = fs.readFileSync(path.resolve('site/index.html'), 'utf8');

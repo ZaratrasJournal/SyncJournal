@@ -82,7 +82,7 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
   await p.evaluate(() => closeForm());
 
   console.log('─── importJSON stuurt een nieuw bestand naar de keuze-modal ───');
-  const tmp = path.resolve('tests/screenshots/_dov-tmp.json'); fs.writeFileSync(tmp, JSON.stringify(PART));
+  const tmp = path.join(require('os').tmpdir(), '_dov-tmp.json'); fs.writeFileSync(tmp, JSON.stringify(PART));   // OS temp: a fresh checkout has no tests/screenshots
   const [chooser] = await Promise.all([p.waitForEvent('filechooser'), p.evaluate(() => importJSON())]);
   await chooser.setFiles(tmp); let mtxt = ''; for (let i = 0; i < 30 && !/Wat zit erin/.test(mtxt); i++) { await p.waitForTimeout(100); mtxt = await H.modalText(p); }
   ok('bestand kiezen → "Wat zit erin en wat neem je over?" met de bestandsnaam', /Wat zit erin en wat neem je over\?/.test(mtxt) && /_dov-tmp\.json/.test(mtxt), mtxt.slice(0, 120));

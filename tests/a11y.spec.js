@@ -1,97 +1,53 @@
-// Accessibility audit — runs axe-core over Dashboard + Trades + Accounts
-// voor ALLE 6 thema's. Vangt:
-//   - Color contrast violations (WCAG AA — kritiek voor 6-theme app)
-//   - ARIA mis-use, missing roles, label mismatches
-//   - Keyboard-trap risk (focusable items zonder navigation path)
-//   - Heading hierarchy issues (h1→h3 zonder h2 etc)
+// Toegankelijkheid: axe-core (WCAG 2.1 A + AA) over Dashboard, Trades, Instellingen en het
+// trade-formulier, in licht en donker. Staat in de uitsluitlijst van run-all-sj.js (eigen,
+// tragere poort): node tests/a11y.spec.js
 //
-// Soft-failure model: log alle violations per thema/scherm, hard-fail
-// alleen op WCAG-A en WCAG-AA "serious" / "critical" impact.
-// "moderate" / "minor" worden gelogd maar niet geblokkeerd — bewust laag
-// drempel houden tot we de baseline kennen.
-const { test, expect } = require('@playwright/test');
-const path = require('path');
-const fs = require('fs');
+// Blokkeert alleen op impact "critical". "serious" (vooral kleurcontrast) en lager worden per
+// scherm gelogd: dat zijn vaak bewuste ontwerpkeuzes, die we eerst als baseline willen kennen.
+//
+// Herschreven in T2 (24-10-2026): de oude spec liep zes thema's van de oude app af.
+const { chromium } = require('playwright');
 const { AxeBuilder } = require('@axe-core/playwright');
+const H = require('./helpers/dov-page');
+const { volledig } = require('./helpers/dov-datasets');
+let pass = 0, fail = 0, fixmes = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  ✓ ' + n)) : (fail++, console.log('  ✗ ' + n + (e ? ' → ' + e : ''))); };
+// FIXME-check: bekende bug in de app (docs/plan-t2-specs.md, Gevonden bugs). Telt niet als rood zolang hij faalt.
+const fixme = (n, c, e) => { fixmes++; console.log(c ? '  ⚠ FIXME lijkt opgelost, maak er weer ok() van: ' + n : '  ⚠ FIXME (bekende bug): ' + n + (e ? ' → ' + e : '')); };
 
-const APP_PATH = path.resolve(__dirname, '../work/tradejournal.html');
-const FILE_URL = 'file:///' + APP_PATH.replace(/\\/g, '/');
-const FIXTURE = JSON.parse(
-  fs.readFileSync(path.join(__dirname, 'fixtures/blofin-partial-state.json'), 'utf8')
-);
+const BLOKKEREND = ['critical'];
+const SCHERMEN = ['dashboard', 'trades', 'instellingen', 'formulier'];
+const DATA = (() => { const d = volledig(); delete d.conns; delete d.settings; d.sync = { auto: false, interval: '30m' }; return d; })();
 
-const THEMES = ['sync', 'classic', 'aurora', 'light', 'parchment', 'daylight'];
-const SCREENS = [
-  { route: 'dashboard', label: 'dashboard' },
-  { route: 'trades',    label: 'trades' },
-  { route: 'accounts',  label: 'accounts' },
-];
-
-// Hard-fail drempel — alleen critical violations blokkeren default.
-// Serious (vooral color-contrast) zijn vaak bewuste design-keuzes (subtiele
-// inactieve tabs, ondertitels) — die loggen we maar blokkeren niet.
-// Bij toekomstige hand-fixes kunnen we BLOCKING_IMPACTS uitbreiden.
-const BLOCKING_IMPACTS = ['critical'];
-
-test.describe('Accessibility audit (axe-core, WCAG AA)', () => {
-  for (const theme of THEMES) {
-    for (const screen of SCREENS) {
-      test(`a11y: ${theme} / ${screen.label}`, async ({ page }) => {
-        await page.addInitScript(({ fx, t, route }) => {
-          if (fx.trades) localStorage.setItem('tj_trades', JSON.stringify(fx.trades));
-          if (fx.config) localStorage.setItem('tj_config', JSON.stringify(fx.config));
-          if (fx.accounts) localStorage.setItem('tj_accounts', JSON.stringify(fx.accounts));
-          if (fx.playbooks) localStorage.setItem('tj_playbooks', JSON.stringify(fx.playbooks));
-          const cfg = JSON.parse(localStorage.getItem('tj_config') || '{}');
-          cfg.theme = t;
-          localStorage.setItem('tj_config', JSON.stringify(cfg));
-          localStorage.setItem('tj_welcomed', '1');
-          localStorage.setItem('tj_milestones_seen', JSON.stringify([
-            'trades-10','trades-50','trades-100','trades-250','trades-500','trades-1000',
-            'win-streak-5','win-streak-10','first-win',
-          ]));
-          window.location.hash = `#/${route}`;
-        }, { fx: FIXTURE, t: theme, route: screen.route });
-
-        await page.goto(FILE_URL, { waitUntil: 'networkidle' });
-        await page.waitForFunction(
-          () => /Dashboard/i.test(document.body.innerText),
-          { timeout: 15_000 }
-        );
-        await page.waitForTimeout(1200);
-
-        // Run axe — focus op WCAG 2.1 A + AA tags, exclude "best-practice"
-        const results = await new AxeBuilder({ page })
-          .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
-          .analyze();
-
-        // Per-impact telling
-        const byImpact = { critical: 0, serious: 0, moderate: 0, minor: 0 };
-        const detailed = [];
-        for (const v of results.violations) {
-          byImpact[v.impact] = (byImpact[v.impact] || 0) + v.nodes.length;
-          detailed.push(`  [${v.impact}] ${v.id}: ${v.help} (${v.nodes.length}× — ${v.helpUrl})`);
-        }
-
-        const total = byImpact.critical + byImpact.serious + byImpact.moderate + byImpact.minor;
-        console.log(`  [a11y] ${theme}/${screen.label}: ${total} violations — critical:${byImpact.critical} serious:${byImpact.serious} moderate:${byImpact.moderate} minor:${byImpact.minor}`);
-        if (detailed.length) console.log(detailed.slice(0, 5).join('\n'));
-
-        // Critical: log de eerste 3 affected nodes voor debug
-        for (const v of results.violations.filter(x => x.impact === 'critical')) {
-          for (const n of v.nodes.slice(0, 3)) {
-            console.log(`    > [critical:${v.id}] target=${n.target.join(' ')}`);
-            console.log(`      html: ${(n.html || '').slice(0, 160)}`);
-          }
-        }
-
-        // Hard-fail alleen op critical of serious
-        const blocking = results.violations.filter(v => BLOCKING_IMPACTS.includes(v.impact));
-        if (blocking.length) {
-          const summary = blocking.map(v => `${v.id} (${v.impact}, ${v.nodes.length}×)`).join(', ');
-          expect(blocking, `Blocking a11y violations voor ${theme}/${screen.label}: ${summary}`).toHaveLength(0);
-        }
-      });
+(async () => {
+  const b = await chromium.launch(); const { p, errs } = await H.openJournal(b);
+  await H.seed(p, DATA);
+  let formulierGeopend = false;
+  for (const theme of ['light', 'dark']) {
+    console.log(`─── ${theme} ───`);
+    await p.evaluate(t => setTheme(t), theme);
+    await p.waitForTimeout(500);   // body heeft transition: background .35s
+    for (const scherm of SCHERMEN) {
+      if (scherm === 'formulier') { await H.go(p, 'trades'); await p.evaluate(() => openForm(T[0].id)); await p.waitForTimeout(300); formulierGeopend = true; }
+      else { await p.evaluate(() => { try { closeForm(); } catch (e) {} }); await H.go(p, scherm); }
+      await H.stil(p);
+      const r = await new AxeBuilder({ page: p }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
+      const per = { critical: 0, serious: 0, moderate: 0, minor: 0 };
+      r.violations.forEach(v => { per[v.impact] = (per[v.impact] || 0) + v.nodes.length; });
+      console.log(`    ${theme}/${scherm}: critical ${per.critical} · serious ${per.serious} · moderate ${per.moderate} · minor ${per.minor}`);
+      r.violations.filter(v => v.impact !== 'minor').slice(0, 4).forEach(v => console.log(`      [${v.impact}] ${v.id} ${v.nodes.length}× — ${v.help} · ${v.nodes[0].target.join(' ')}`));
+      // Bekend: de velden van het trade-formulier (#modal) hebben geen label. Die tellen als fixme, de rest blokkeert.
+      const blok = [], modal = [];
+      for (const v of r.violations.filter(x => BLOKKEREND.includes(x.impact))) for (const n of v.nodes) {
+        const inModal = await p.evaluate(sel => { const el = document.querySelector(sel); return !!(el && el.closest('#modal')); }, n.target[0]);
+        (inModal && v.id === 'label' ? modal : blok).push(v.id + ' ' + n.target.join(' '));
+      }
+      ok(`${theme}/${scherm}: geen critical a11y-fouten buiten het formulier (${r.passes.length} regels geslaagd)`, blok.length === 0 && r.passes.length > 10, blok.slice(0, 4).join(', '));
+      if (scherm === 'formulier') fixme(`${theme}/formulier: elk invoerveld heeft een label`, modal.length === 0, modal.length + '× zonder label, bv. ' + modal.slice(0, 3).join(', '));
+      else if (formulierGeopend) fixme(`${theme}/${scherm}: een gesloten formulier zit niet meer in de toegankelijkheidsboom`, modal.length === 0, modal.length + ' formuliervelden nog te vinden voor een schermlezer');
     }
   }
-});
+  ok('geen JS-fouten', errs.length === 0, [...new Set(errs)].slice(0, 3).join(' | '));
+  await b.close();
+  console.log(`\n=== A11y: ${pass}/${pass + fail}${fixmes ? ' · ' + fixmes + ' fixme' : ''} ===`);
+  process.exit(fail ? 1 : 0);
+})().catch(e => { console.error(e); process.exit(1); });
