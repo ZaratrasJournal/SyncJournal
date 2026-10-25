@@ -63,11 +63,8 @@ const t = (id, dag, pnl, extra) => ({ id, pair: 'BTC/USDC', dir: 'long', exchang
   ok('de Gem. R-kaart staat er nog', !!rMix['Gem. R'], JSON.stringify(Object.keys(rMix)));
   ok('en toont een waarde', /R?[+−-]?\d/.test((rMix['Gem. R'] || {}).waarde || ''), JSON.stringify(rMix['Gem. R']));
 
-  console.log('─── AI-coach noemt ook geen 99,00 ───');
-  await kaarten([t('w1', 2, 0.45), t('w2', 3, 0.01)]);
-  const coach = await p.evaluate(() => [aiReply('hoe ging mijn week'), aiReply('hoe zit het met mijn risk')].join(' | '));
-  ok('AI-coach zegt "profit factor ∞"', /profit factor ∞/i.test(coach), coach.slice(0, 220));
-  ok('en nergens 99,00', !/99,00/.test(coach), coach.slice(0, 220));
+  // The coach no longer writes its own answers (demo removed 25-10-2026); that it never says 99,00
+  // is now checked on the figures the coach receives, in coach-pakket.spec.js.
 
   ok('geen nieuwe JS-fouten', errs.length === 0, errs[0]);
   console.log(`\n=== PF en KPI: ${pass}/${pass + fail} ===`);

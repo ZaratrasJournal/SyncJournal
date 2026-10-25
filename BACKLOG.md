@@ -46,6 +46,7 @@ elke wijziging eindigt met `node tests/run-release.js` groen.
 | **F12** | Export en back-up: zelf kiezen of je API-sleutels meegaan, met een duidelijke melding bovenaan | 1 | S | — |
 | **F13** | AI-coach: echte chat-coach met eigen sleutel (8 besluiten 25-10) | 2 | M + M | — |
 | **W6** | Discord-poll "Gebruik je de AI-coach? Zo nee, waarom niet?" — eind januari 2027 | 3 | XS (Denny) | F13 live |
+| **F14** | SyncJournal buiten Morani: besloten beta (Worker meten + eigen account, limiet, neutrale tags, veiligheid) — 📅 **deze week** | 1 | M | besluit NL/internationaal, F12 |
 | **B8** | Toegankelijkheid trade-formulier: 14 velden zonder label, gesloten formulier blijft vindbaar (T2) | 3 | S | — |
 | **B11** | Tendencies: kruis-analyse zonder playbooks toont een lege tabel zonder lege staat (T2) | 3 | XS | C1 |
 | ~~B5~~ | ~~P&L-percentages van −107% en 2.834% bij oudere trades~~ — ✅ **gedaan in v1.11** | — | — | — |
@@ -333,6 +334,31 @@ bestand laat (ook niet in `diagReport`), en "met" na import weer werkende koppel
 als pure functie, getest zonder sleutel; 2 · sleutel + één echte vraag (minor-release); 3 · foutstaten + streaming;
 4 · verbruik en maandlimiet; 5 · vier vaste vragen en weekreview; 6 · tools; 7 · pre-trade-check; 8 · oude
 `aicoach-*`-specs vervangen.
+
+---
+
+### F14 · SyncJournal buiten Morani: besloten beta — 📅 **deze week (vanaf 26-10-2026)** · prio 1 · M
+
+**Waarom** (Denny, 25-10-2026). De journal breder trekken, zodat ook traders buiten de Morani-community hem gebruiken.
+Technisch staat syncjournal.nl/app al open (geen login, alles lokaal); het werk zit in vertrouwen, neutraliteit en de Worker.
+
+**Eerst beslissen (Denny):** Nederlandse traders buiten Morani, of internationaal? Internationaal = Engels in app, FAQ
+en landing (L, apart traject). Advies: eerst een besloten beta, Nederlandstalig en gratis, met een paar mensen.
+
+**Stappen voor de beta:**
+1. **Worker-verbruik meten:** in het dagrapport op de NUC het aantal verzoeken per dag en de drukste minuut aflezen
+   (Morani's eigen journal gebruikt dezelfde Worker en hetzelfde dagbudget). Schatting: handmatige sync ~30–50
+   verzoeken per gebruiker per dag, auto-sync elke 15 min ~250. Gratis plan: 100.000 per dag; betaald ($5/maand):
+   10 mln per maand, daarna $0,30 per mln.
+2. **Eigen Worker-account** (Cloudflare, betaald plan) voor de nieuwe gebruikers, zodat Morani's account en journal er
+   niet aan vastzitten. Afspraken met Morani over naam, "Powered by Morani" en de bestaande Worker.
+3. **Snelheidslimiet aanzetten** in de Worker (staat in v20+ klaar maar uit, binding `LIMIET`), op basis van de gemeten piek.
+4. **Neutrale standaard-tags en playbooks**, met de Morani-set als keuze ("start met de Morani-set").
+5. **Vertrouwen:** een pagina "Hoe veilig is dit?" (alleen leesrechten, sleutels lokaal, wat de Worker ziet), een
+   Content-Security-Policy in `_headers`, de privacyverklaring bijwerken (de Worker noemen), en **F12** eerst af.
+6. **Onboarding voor vreemden:** welkomstscherm en FAQ zonder Morani-voorkennis; een duidelijke plek voor feedback.
+
+**Later, na de beta:** Engels (als internationaal), het besluit backend/cloud-sync en het verdienmodel (zie *Besluiten*).
 
 ---
 
