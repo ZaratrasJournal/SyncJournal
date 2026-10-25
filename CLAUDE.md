@@ -307,16 +307,17 @@ Claude Code kan UI-flows zelfstandig testen tegen `work/syncjournal.html` via Pl
 
 ```bash
 cd C:/Users/Denny/Documents/Tradejournal
-node tests/run-release.js                 # DE RELEASE-POORT — 80 specs, ~3 min, test de laatste commit in een worktree
+npm test                                  # = node tests/run-release.js, de release-poort
+node tests/run-release.js                 # DE RELEASE-POORT — 125 specs, ~4 min, test de laatste commit in een worktree
 node tests/run-release.js --hier          # zelfde poort in je werkmap (zo draait CI)
-node tests/run-all-sj.js                  # alles in de map: 174 specs (~helft rood = verouderd, zie hieronder)
+node tests/run-all-sj.js                  # alles in de map (~helft rood = verouderd, zie hieronder); ook: npm run test:alles
 node tests/run-all-sj.js --jobs=1         # serieel, als parallel iets vertroebelt
 node tests/run-all-sj.js --lijst          # toon wat er zou draaien, draai niets
 node tests/run-all-sj.js kraken csv       # alleen specs waarvan de naam matcht
 node tests/kraken-levensloop.spec.js      # losse Node-spec (80 stuks) draai je met node
 node tests/hl-echt.spec.js                # Denny's echte Hyperliquid-account door de hele app (opname)
 node tests/hl-echt.spec.js --opnemen      # opname verversen bij Hyperliquid; --live = vers, zonder bewaren
-npx playwright test tests/smoke.spec.js   # runner-spec (91 stuks) draai je met playwright
+npx playwright test tests/smoke.spec.js   # runner-spec (85 stuks, die met @playwright/test) draai je met playwright
 node tests/run-adhoc.js --fixture=blofin-partial-state.json --theme=light
 SPEC_TIMEOUT=15000 GEEN_HERKANSING=1 node tests/run-all-sj.js   # diagnose-ronde: snel falen
 ```
@@ -340,11 +341,10 @@ SPEC_TIMEOUT=15000 GEEN_HERKANSING=1 node tests/run-all-sj.js   # diagnose-ronde
 > browser, eigen localStorage. Dat bracht de release-poort van ~55 min naar ~4 min. De
 > e2e-doorloop draait vooraf en alléén, zonder concurrentie.
 
-> **`npm test` werkt op dit moment niet.** De `testMatch` in `playwright.config.js` pakt álle
-> `tests/*.spec.js`, maar 80 daarvan zijn losse Node-scripts die zelf een browser starten en
-> `process.exit()` aanroepen — die draaien dan al tijdens het verzamelen en kunnen de hele run
-> afbreken. Gebruik `node tests/run-all-sj.js`. Zie `docs/teststrategie-2026-09-27.md` en
-> backlog T4.
+> **`npm test` is de release-poort** (sinds 25-10-2026, backlog T4). `npx playwright test` pakt
+> alleen de runner-specs: `playwright.config.js` zet in `testMatch` uitsluitend de specs die
+> `@playwright/test` importeren. De losse Node-specs starten zelf een browser en roepen
+> `process.exit()` aan; die draai je met `node` of via `run-all-sj.js`.
 
 ### Workflow voor mij (Claude) bij elke nieuwe feature
 

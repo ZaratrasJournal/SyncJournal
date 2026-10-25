@@ -4,7 +4,11 @@ const{test,expect}=require('@playwright/test');
 const path=require('path');
 const fs=require('fs');
 const FILE_URL='file:///'+path.resolve(__dirname,'../work/tradejournal.html').replace(/\\/g,'/');
-const DATA=JSON.parse(fs.readFileSync(path.resolve(__dirname,'../demo-dataset-1000.json'),'utf-8'));
+// demo-dataset-1000.json is generated locally and not in the repo; without it, skip instead of
+// throwing at load time (which aborts `npx playwright test` for every spec).
+const DATA_FILE=path.resolve(__dirname,'../demo-dataset-1000.json');
+const DATA=fs.existsSync(DATA_FILE)?JSON.parse(fs.readFileSync(DATA_FILE,'utf-8')):null;
+test.skip(!DATA,'demo-dataset-1000.json not present');
 
 test('demo-dataset shape klopt',async()=>{
   expect(DATA.trades.length).toBe(1000);
