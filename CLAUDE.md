@@ -380,5 +380,8 @@ PR-review-workflows, `ccusage` voor token- en kostencontrole, en `/design-review
 ## Niet doen
 - **Geen `git push` naar `origin/main` zonder expliciet "push"-commando van Denny.** Geldt voor élke push (gewoon, force, vanaf andere branch — alles). "Ga maar bouwen" / "doe maar" / "zet erin" / "ja akkoord" zijn **géén** push-toestemming, alleen het letterlijke woord *push* (of "release", "live", "publiceer") telt. Lokale commits + `cp work → main` zijn OK; pas op het moment dat het naar GitHub gaat is expliciete go vereist. Bij twijfel: niet pushen, vragen.
 - Geen `file://` paden in instructies naar gebruikers.
-- Geen API-keys in de browser persisten zolang er geen backend is.
+- API-sleutels in de browser (besluit Denny 25-10-2026, bij de AI-coach): de **eigen** sleutel van een gebruiker
+  mag lokaal op zijn apparaat staan, maar gaat **nooit mee** in een export, back-up of "Data overzetten", en er is
+  een keuze "alleen deze sessie" voor een gedeelde pc. **Nooit onze eigen sleutel** (Denny's of die van de Worker)
+  in de browser. Zie `docs/research-ai-coach-2026-10-25.md` §5.
 - Geen framework-refactor zonder expliciet akkoord.

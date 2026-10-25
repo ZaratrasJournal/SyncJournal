@@ -686,7 +686,7 @@ De uitgewerkte teksten van deze ideeën staan in het [archief](docs/backlog-arch
 
 | Besluit | Waarom het ertoe doet |
 |---|---|
-| **Blijft de AI-coach?** | Blokkeert de AI-coach-specs in T2 en de drie AI-ideeën. De enquête zei "heroverwegen". |
+| ~~**Blijft de AI-coach?**~~ — ✅ **ja, als echte chat-coach met eigen sleutel** (Denny, 25-10-2026). Eén plek, niets op Dashboard of Analytics. Eigen sleutel lokaal, nooit in export/back-up. Onderzoek en bouwvolgorde: `docs/research-ai-coach-2026-10-25.md` (branch `research-ai-coach`). | De oude `aicoach-*`-specs worden vervangen door specs voor de nieuwe coach (stap 8 van het onderzoek). |
 | Welke exchanges krijgen prioriteit? | Bepaalt of er een zevende exchange komt, en daarmee de urgentie van C2 |
 | Backend ja of nee? | Pas relevant als API-sleutels uit de browser moeten, of bij cloud-sync |
 | Distributiemodel | Gratis/donatie, of iets anders |
