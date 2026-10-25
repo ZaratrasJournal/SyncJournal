@@ -3298,6 +3298,10 @@ const EMPTY={
   'trades-first':['📈','Begin je journal','Voeg je eerste trade toe of importeer een back-up. Alles blijft lokaal in je browser bewaard.','+ Nieuwe trade','openForm(null)'],
   'trades-none':['🔎','Geen trades gevonden','Geen resultaten voor deze combinatie van filters en zoekopdracht. Probeer het met minder filters.','Wis alle filters','clearFilters();clearGFilter()'],
   revbeeld:['🖼','Nog geen trades met beeld','In deze selectie heeft geen enkele trade een screenshot of TradingView-link. Plak een screenshot bij een trade (Per trade → + screenshot) of pas je filter aan.','Naar Per trade',"setRevMode('trade')"],
+  /* Kruis-analyse states; the button switches to Dag × Richting, which every closed trade has (date, direction). */
+  'cross-setup':['🔀','Nog geen playbook aan je trades gekoppeld','Koppel in het trade-formulier een playbook aan je trades, dan zie je hier per playbook waar je wint en lekt. Of kies hierboven een andere dimensie.','Toon Dag × Richting',"STATE.tendRow='dow';STATE.tendCol='dir';render()"],
+  'cross-dim':['🔀','Deze dimensie is nog leeg','Geen enkele gesloten trade heeft hier een waarde voor, bijvoorbeeld omdat je geen emotie, grade of tijdframe invult. Kies hierboven een andere dimensie, of vul dit in bij je trades.','Toon Dag × Richting',"STATE.tendRow='dow';STATE.tendCol='dir';render()"],
+  'cross-none':['🔀','Geen trade heeft allebei','Beide dimensies hebben waarden, maar nooit op dezelfde trade: er is geen enkele combinatie om te tonen. Kies hierboven een andere combinatie.','Toon Dag × Richting',"STATE.tendRow='dow';STATE.tendCol='dir';render()"],
   review:['📝','Niets om te reviewen','Zodra je trades hebt, kun je ze hier terugkijken, scoren met sterren en van je fouten leren.','+ Trade toevoegen','openForm(null)'],
 };
 function emptyState(key){const e=EMPTY[key]||EMPTY['trades-none'];const [ico,head,desc,cta,act]=e;
@@ -3713,11 +3717,13 @@ function crossHeat(){
     const lite=faded?'':liteText();
     return `<td class="${faded?'faded':''}${lite}" style="background:${faded?'var(--track)':tint(avgR)}" ${faded||!klikbaar?'':`onclick="crossCell('${rd}',${jsarg(rv)},'${cd}',${jsarg(cv)})"`} data-t="${esc(rv)} · ${esc(cv)}" data-r="${avgR.toFixed(2)}" data-wr="${wr}" data-pnl="${unitVal(c.rows,c.pnl,CLOSED)??0}" data-tx="${esc(unitAgg(c.rows,c.pnl,{terse:true,basis:CLOSED}))}" data-n="${c.n}" onmousemove="crossMove(event)" onmouseleave="yhHide()">${faded?`<div class="thm-n" style="color:var(--muted)">n=${c.n}</div>`:`<div class="thm-v">${(avgR>=0?'+':'')+avgR.toFixed(2)}R</div><div class="thm-n">${wr}% · n=${c.n}</div>`}</td>`;}).join('')+'</tr>').join('');
   const sw=f=>`<span class="mxsw" style="background:${tint(f*mx)}"></span>`;
+  const leeg=(!rvals.length||!cvals.length)?(((!rvals.length&&rd==='setup')||(!cvals.length&&cd==='setup'))?'cross-setup':'cross-dim')
+    :Object.keys(cells).length?'':'cross-none';
   return `<div class="panel"><div class="phead"><h3>🔀 Kruis-analyse</h3>
     <div class="crossctrl">${sel('row',rd)}<span class="x">×</span>${sel('col',cd)}</div><span class="sp"></span>
     <span class="chip" title="cellen met minder trades zijn te onbetrouwbaar">min. ${TEND_MINN} trades/cel</span></div>
-    <div class="pbody"><div class="thm-wrap"><table class="thm">${head}${body}</table></div>
-    <div class="mx-legend"><span class="g1">verlies ${sw(-.9)}${sw(-.4)}</span><span class="g1">winst ${sw(.4)}${sw(.9)}</span><span style="color:var(--faint)">grijs = &lt;${TEND_MINN} trades</span><span style="margin-left:auto;font-style:italic">cel = gem. R · klik = filter naar trades</span></div></div></div>`;
+    ${leeg?emptyState(leeg):`<div class="pbody"><div class="thm-wrap"><table class="thm">${head}${body}</table></div>
+    <div class="mx-legend"><span class="g1">verlies ${sw(-.9)}${sw(-.4)}</span><span class="g1">winst ${sw(.4)}${sw(.9)}</span><span style="color:var(--faint)">grijs = &lt;${TEND_MINN} trades</span><span style="margin-left:auto;font-style:italic">cel = gem. R · klik = filter naar trades</span></div></div>`}</div>`;
 }
 function crossMove(e){const tip=document.getElementById('yhtip');if(!tip)return;const t=e.target.closest&&e.target.closest('td[data-t]');if(!t){yhHide();return;}
   tip.innerHTML=`<div class="yht-d">${esc(t.dataset.t)}</div><div class="yht-row"><span>Trades</span><b>${t.dataset.n}</b></div><div class="yht-row"><span>Win-rate</span><b>${t.dataset.wr}%</b></div><div class="yht-row"><span>Gem. R</span><b class="${+t.dataset.r>=0?'g':'r'}">${(+t.dataset.r>=0?'+':'')+(+t.dataset.r).toFixed(2)}R</b></div><div class="yht-pnl ${cls(+t.dataset.pnl)}${unitMask()}">${t.dataset.tx||eurS(+t.dataset.pnl)}</div>`;

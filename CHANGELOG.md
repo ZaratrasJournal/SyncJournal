@@ -24,6 +24,9 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 - **Privacy-modus verbergt nu echt alle bedragen.** Onder de balkjes ("N trades · netto …"), op Analytics (max
   drawdown, gem. winst en verlies, grootste winst en verlies, verwachting per trade), in de Kalender en in de P&L-regel
   van het trade-formulier stonden bedragen nog leesbaar. Die zijn nu ook vervaagd.
+- **Kruis-analyse in Tendencies is niet meer leeg zonder uitleg.** Zonder playbooks toonde hij alleen een kopregel.
+  Nu zie je wat er ontbreekt (geen playbook, een lege dimensie, of geen trade met allebei) en één klik naar een
+  combinatie die wel iets laat zien.
 
 ---
 
