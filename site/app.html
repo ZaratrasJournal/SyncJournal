@@ -454,6 +454,16 @@ table.tbl{width:100%;border-collapse:collapse;font-size:14px}
 .dov-cmp small{display:block;color:var(--muted);font-size:11.5px}
 .dov-note{padding:9px 13px;border-radius:8px;font-size:12.5px;line-height:1.55;margin-top:10px}
 .dov-note.warn{background:var(--amber-soft);color:var(--amber)} .dov-note.bad{background:var(--red-soft);color:var(--red)} .dov-note.ok{background:var(--green-soft);color:var(--green)} .dov-note.info{background:var(--sink);color:var(--muted)}
+.sk-keuze{border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--sink);color:var(--ink);display:flex;flex-direction:column;gap:4px}
+.sk-keuze.met{border-color:var(--amber);background:var(--amber-soft)}
+.sk-h{font-weight:700;font-size:13px;padding:0 2px 2px}
+.sk-opt{display:flex;gap:10px;align-items:flex-start;padding:7px 6px;border-radius:8px;cursor:pointer}
+.sk-opt:hover{background:var(--surface)}
+.sk-opt input{width:17px;height:17px;margin:2px 0 0;flex:none;accent-color:var(--accent)}
+.sk-opt b{display:block;font-size:13px}
+.sk-opt small{display:block;font-size:12px;color:var(--muted);line-height:1.5;margin-top:2px}
+.sk-opt small b{display:inline;font-size:inherit;color:var(--ink)}
+.sk-acties{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .dov-tag{font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:999px;white-space:nowrap}
 .dov-tag.warn{background:var(--amber-soft);color:var(--amber)} .dov-tag.ok{background:var(--green-soft);color:var(--green)} .dov-tag.bad{background:var(--red-soft);color:var(--red)}
 .dov-sum{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;padding:12px 18px}
@@ -2101,7 +2111,7 @@ const KINDS={live:{label:'Live',color:'var(--green)'},gemist:{label:'Gemist',col
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v1.16.2';
+const APP_VERSION='v1.17';
 const SCHEMA_VERSION=11;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -2616,6 +2626,7 @@ function connectEx(id){
         if(ad.needsPassphrase&&!pass){toast(EXMAP[id].name+' vereist ook een passphrase','err');return;} }
   CONNS[id]={...(CONNS[id]||{}),connected:true,
     hint:(ad.walletOnly?wallet:key).slice(-4),apiKey:key,apiSecret:sec,passphrase:pass,wallet,syncFrom:from};
+  delete CONNS[id].needKey;
   persistConns();STATE.connOpen='';render();toast('✓ '+EXMAP[id].name+' verbonden, saldo en trades worden opgehaald…','ok');
   // direct saldo + eerste sync: het dashboard toont meteen de echte balans en trades
   (async()=>{try{delete CONN_ERR[id];await refreshBalance(id);await syncExchange(id,{});}
@@ -4521,7 +4532,7 @@ function pgInstellingen(){
       <div class="txt"><b>${e.name}<span class="exflag">API gestopt</span></b>
       <small>${esc(e.deprecated)}. Je bestaande ${e.name}-trades blijven gewoon zichtbaar en tellen mee; oude exports importeren kan via CSV/back-up.</small></div></div>`;
     return `<div class="setrow">${accAvatar(e.id,30)}
-      <div class="txt"><b>${e.name}${e.beta?'<span class="exflag">in ontwikkeling</span>':''}</b><small><span class="dotc" style="display:inline-block;vertical-align:middle;margin-right:4px;background:${c&&c.connected?'var(--green)':'var(--muted)'}"></span>${c&&c.connected?'verbonden · '+(ad.walletOnly?'wallet':'key')+' •••'+c.hint+(syncRegel(e.id)||(lastS?' · laatste sync '+lastS:''))+(SYNC.auto?(c.noAuto?' · auto-sync uit':' · auto-sync aan'):''):'niet verbonden'}${e.beta?`<span class="exnote">⚠ ${esc(e.beta)}</span>`:''}</small></div>
+      <div class="txt"><b>${e.name}${e.beta?'<span class="exflag">in ontwikkeling</span>':''}</b><small><span class="dotc" style="display:inline-block;vertical-align:middle;margin-right:4px;background:${c&&c.connected?'var(--green)':c&&c.needKey?'var(--amber)':'var(--muted)'}"></span>${c&&!c.connected&&c.needKey?`<b style="color:var(--amber)">sleutel nodig</b> · ${ad.walletOnly?'wallet':'key'} •••${esc(c.hint||'')} kwam uit een back-up zonder sleutels; ${ad.walletOnly?'vul je walletadres opnieuw in':'vul je sleutel opnieuw in'} via Verbinden`:c&&c.connected?'verbonden · '+(ad.walletOnly?'wallet':'key')+' •••'+c.hint+(syncRegel(e.id)||(lastS?' · laatste sync '+lastS:''))+(SYNC.auto?(c.noAuto?' · auto-sync uit':' · auto-sync aan'):''):'niet verbonden'}${e.beta?`<span class="exnote">⚠ ${esc(e.beta)}</span>`:''}</small></div>
       ${c&&c.connected?`<button class="btn" onclick="syncExchange('${e.id}')">↻ Sync nu</button>`:''}
       <button class="btn" onclick="connExpand('${e.id}')">${open?'Sluiten':(c&&c.connected?'Beheren':'Verbinden')}</button></div>
       ${open?`<div class="conncfg">
@@ -5427,7 +5438,7 @@ const FAQS=[
   ['💾 Jouw data & privacy',[
     ['Waar wordt mijn data opgeslagen? Staat die online?','In je eigen browser, op dít apparaat. Ook als je SyncJournal opent via syncjournal.nl: de site levert alleen de app, je trades verlaten je computer niet. Er zijn drie uitzonderingen, en die kies je zelf:<ul><li>Een <b>sync</b> (je trades ophalen bij je exchange) praat met je exchange. Bij OKX en Kraken loopt dat via onze tussenserver.</li><li>Een <b>Drive-back-up</b> gaat naar je eigen Google Drive.</li><li>Voor bedragen in euro haalt de app de dagkoers van de ECB (Europese Centrale Bank) op.</li></ul>Je data hoort dus bij deze browser. Andere computer? Zie de vraag over overzetten.'],
     ['Ik kom van de oude TradeJournal, hoe zet ik mijn trades over?','Met een back-up uit je oude journal, die je hier inleest.<ol><li>Open je <b>oude</b> journal en maak een back-up: <b>Backup & Restore → Backup exporteren (.json)</b>.</li><li>Ga hier naar <b>Instellingen → Data</b>. Klik bij <b>Overzetten uit oude TradeJournal</b> op <b>Importeer oude backup</b> en kies het bestand.</li><li>Je ziet eerst een <b>overzicht ter controle</b>. Pas daarna wordt er iets opgeslagen.</li></ol>Trades, playbooks, tags en je koppelingen gaan mee. Je oude journal blijft ongemoeid. Staat je oude journal in dezelfde browser, dan vindt SyncJournal hem zelf en heet de knop <b>Overzetten</b>.'],
-    ['Hoe maak ik een back-up (en waarom is dat belangrijk)?','Via <b>Instellingen → Data → Exporteer JSON</b>. Je ziet eerst wat er meegaat, daarna krijg je één bestand. Zie het als de reservesleutel van je journal: bewaar het op een veilige plek. Doe dit zeker voordat je je browser opschoont of van computer wisselt.<br><br>Automatisch kan ook, onder <b>Backups</b>: <b>📁 Map</b> (een map op je computer, alleen in Chrome en Edge), <b>☁️ Drive</b> (je eigen Google Drive) of <b>✋ Zelf</b> (de app herinnert je eraan).<br><br><b>Let op:</b> in je back-up kunnen je API-sleutels staan (de codes waarmee de app je exchange uitleest). Bij <b>Exporteer JSON</b> staat onder <b>Gevoelig</b> het vinkje <b>API-sleutels en wallet-adressen</b>: standaard aan. Deel je het bestand, zet het dan uit. Automatische back-ups bevatten ze altijd.','backup'],
+    ['Hoe maak ik een back-up (en waarom is dat belangrijk)?','Via <b>Instellingen → Data → Exporteer JSON</b>. Je ziet eerst wat er meegaat, daarna krijg je één bestand. Zie het als de reservesleutel van je journal: bewaar het op een veilige plek. Doe dit zeker voordat je je browser opschoont of van computer wisselt.<br><br>Automatisch kan ook, onder <b>Backups</b>: <b>📁 Map</b> (een map op je computer, alleen in Chrome en Edge), <b>☁️ Drive</b> (je eigen Google Drive) of <b>✋ Zelf</b> (de app herinnert je eraan).<br><br><b>Je API-sleutels</b> (de codes waarmee de app je exchange uitleest) gaan standaard <b>niet</b> mee. Bovenaan zie je de keuze: <b>Zonder API-sleutels</b> (aanbevolen) of <b>Met API-sleutels</b>. Kies "met" alleen als je verhuist naar een andere browser of pc: iedereen met dat bestand kan je exchange-account gebruiken. Zonder sleutels vragen je koppelingen na het terugzetten opnieuw om je sleutel. Automatische back-ups en veiligheidskopieën gaan altijd zonder sleutels.','backup'],
     ['Hoe werkt de Google Drive-backup?','Je koppelt je eigen Google Drive, en de app zet daar automatisch back-ups neer.<ol><li>Ga naar <b>Instellingen → Data → Backups</b> en kies <b>☁️ Drive</b>.</li><li>Geef toestemming in het Google-venster. De app maakt een zichtbare map <b>“SyncJournal”</b> in jóuw Drive; wij kunnen daar niet bij.</li></ol>Op een andere computer open je syncjournal.nl en koppel je Drive opnieuw. Staat er al een back-up, dan biedt de app aan die over te nemen. Werk je daarna weer thuis, dan meldt de app dat er elders een nieuwere back-up is, met de knop <b>Overnemen</b>. Je huidige stand wordt dan eerst als veiligheidskopie bewaard.'],
     ['Hoe zet ik mijn journal over naar een andere computer, browser of adres?','Met een back-up: exporteren op de oude plek, importeren op de nieuwe.<ol><li>Op de oude plek: <b>Instellingen → Data → Exporteer JSON</b>.</li><li>Op de nieuwe plek: open SyncJournal en kies <b>Instellingen → Data → Importeer</b>.</li><li>Kies wat je overneemt. Trades kun je <b>vervangen</b> of <b>samenvoegen</b>.</li></ol>Dit geldt ook als je SyncJournal eerst lokaal draaide en nu syncjournal.nl gebruikt: de browser bewaart data per adres, dus je gegevens verhuizen niet vanzelf mee. Trades, screenshots, playbooks en instellingen gaan allemaal mee.'],
     ['Wat gebeurt er als ik mijn browsergegevens of cache wis?','Dan is je journal op dit apparaat weg, en de veiligheidskopieën in je browser ook. Met een back-up zet je alles in een minuut terug via <b>Instellingen → Data → Importeer</b>. Zonder back-up is het echt verloren. Maak dus regelmatig een back-up, of zet automatische back-ups aan. Bij <b>Instellingen → Data → Opslag-bescherming</b> zie je of je browser heeft beloofd je opslag niet zelf op te ruimen.'],
@@ -5449,7 +5460,7 @@ const FAQS=[
   ['🔄 Exchanges koppelen & sync',[
     ['Welke exchanges worden ondersteund?','Vier exchanges met een koppeling: <b>Blofin</b>, <b>OKX</b>, <b>Hyperliquid</b> en <b>Kraken Futures</b>. Een koppeling haalt je trades automatisch op; dat heet een <b>sync</b>. Daarnaast lees je een <b>CSV-bestand</b> (een export van je trade-geschiedenis) in van Kraken, Blofin, MEXC, Hyperliquid, FTMO en OKX. <b>MEXC</b> heeft geen koppeling meer: MEXC stopt in november 2026 met Nederlandse klanten en heeft geen MiCA-licentie (de Europese vergunning). Je oude MEXC-trades blijven zichtbaar en tellen mee.'],
     ['Hoe koppel ik een exchange?','Met een read-only API-sleutel. Een <b>API-key</b> is een code waarmee de app je account mag uitlezen; <b>read-only</b> betekent alleen kijken, nooit handelen of geld opnemen.<ol><li>Maak bij je exchange een read-only API-key aan. Bij OKX en Kraken: zet de <b>IP-whitelist uit</b>, want de aanvraag komt van onze tussenserver, niet van jouw IP-adres.</li><li>Ga naar <b>Instellingen → Accounts</b> en klik bij je exchange op <b>Verbinden</b>.</li><li>Plak je key en secret (bij OKX ook je passphrase; bij Hyperliquid alleen je wallet-adres). Kies eventueel <b>Sync vanaf</b>; anders haalt de eerste sync 30 dagen op.</li><li>Klik op <b>Verbinden</b>.</li></ol>'],
-    ['Zijn mijn API-keys veilig?','Ja, als je read-only sleutels gebruikt: die kunnen alleen meekijken, nooit handelen of geld opnemen. Je sleutels staan in je eigen browser, niet bij ons. Bij <b>Blofin</b> praat de app rechtstreeks met de exchange; <b>Hyperliquid</b> heeft geen sleutel nodig, alleen je openbare wallet-adres. <b>OKX</b> en <b>Kraken</b> staan een rechtstreekse verbinding niet toe. Daar gaat je aanvraag via onze tussenserver, die hem ondertekent en doorstuurt. <b>Let op:</b> je sleutels gaan mee in je automatische back-ups, en standaard ook in <b>Exporteer JSON</b>. Deel je zo\'n bestand, zet dan bij het exporteren het vinkje <b>API-sleutels en wallet-adressen</b> uit.'],
+    ['Zijn mijn API-keys veilig?','Ja, als je read-only sleutels gebruikt: die kunnen alleen meekijken, nooit handelen of geld opnemen. Je sleutels staan in je eigen browser, niet bij ons. Bij <b>Blofin</b> praat de app rechtstreeks met de exchange; <b>Hyperliquid</b> heeft geen sleutel nodig, alleen je openbare wallet-adres. <b>OKX</b> en <b>Kraken</b> staan een rechtstreekse verbinding niet toe. Daar gaat je aanvraag via onze tussenserver, die hem ondertekent en doorstuurt. Je sleutels gaan <b>niet</b> mee in je automatische back-ups, en bij <b>Exporteer JSON</b> of <b>Backup nu</b> standaard ook niet. Kies je bij het exporteren toch <b>Met API-sleutels</b> (om te verhuizen naar een andere browser of pc), bewaar dat bestand dan veilig en stuur het nooit door: iedereen met dat bestand kan je exchange-account gebruiken.'],
     ['Hoe zie ik of mijn sync loopt?','Aan de stip links van je balans, rechtsboven. Een sync is het ophalen van je trades bij je exchange.<ul><li><b>Groen</b>: de automatische sync loopt op schema.</li><li><b>Oranje</b>: al een tijd niet gesynct, bv. omdat je laptop sliep.</li><li><b>Rood</b>: een sync mislukte, of een koppeling heeft een fout.</li><li><b>Grijs</b>: automatisch synchroniseren staat uit.</li></ul>Houd je muis erop voor het moment van de laatste sync. Bij <b>Instellingen → Accounts</b> staat per koppeling hoe de laatste sync ging. Onder <b>Synchronisatie</b> zet je auto-sync aan, kies je hoe vaak, en vind je de <b>Sync-geschiedenis</b>.','sync'],
     ['Komt mijn stop-loss vanzelf binnen?','Bij Kraken, Hyperliquid en OKX wel; bij Blofin, CSV-imports en handmatige trades vul je hem zelf in. Je <b>stop-loss</b> is de prijs waarop je uitstapt als het tegenzit. Zonder stop kan de app je R (resultaat gedeeld door risico) niet berekenen. De journal neemt de <b>oorspronkelijke</b> stop van je instap over. Het veld staat dan vast, met "van Kraken" (of je andere exchange) erbij. Heb je de stop later verzet, bv. naar break-even (je instapprijs), dan staat er "verschoven" bij. Je R rekent dan met het risico van je instap.'],
     ['Wat betekenen TP1, SL en Close ✋ bij een trade?','Ze vertellen hoe elk deel van je positie dichtging. Je ziet ze bij Kraken, Hyperliquid en OKX.<ul><li><b>TP1, TP2…</b>: een geraakte take-profit (een vooraf ingestelde winstorder).</li><li><b>TP3 ✋</b>: winst genomen met de hand.</li><li><b>SL</b>: je stop-loss is geraakt, ook als die op break-even of in de winst stond.</li><li><b>Close ✋</b>: met de hand gesloten, met verlies.</li></ul>Bijvoorbeeld: TP1 → TP2 → SL. Je vindt het in "Zo is deze positie gelopen", in de tijdlijn en in de presentatie.'],
@@ -6377,8 +6388,9 @@ function setCurrency(c){
 function setPctRef(v){STATE.pctRef=Math.max(0,+v||0);persistState();render();}
 /* trades CRUD + import/export */
 // Volledige staat-payload — gedeeld door export, snapshots en herstel.
+// Without exchange keys unless asked (F12): automatic back-ups, Drive, the map and snapshots never carry them.
 function planBackupBlock(){const o={};let any=false;Object.keys(PLAN_LS).forEach(k=>{try{const v=localStorage.getItem(PLAN_LS[k]);if(v!=null){o[k]=v;any=true;}}catch(e){}});return any?o:null;}
-function snapshotPayload(){ return {app:'SyncJournal',appVersion:APP_VERSION,schemaVersion:DB.load('schema',SCHEMA_VERSION),exported:new Date().toISOString(),tradingplan:planBackupBlock(),tagConfig,pbook:PBOOK,conns:CONNS,manual:MANUAL,sync:SYNC,synclog:syncLog(),aiPrefs:AIPREFS,view:{preset:VIEW.preset,v:VIEW.v},exMeta:Object.fromEntries(EXCHANGES.map(e=>[e.id,{val:e.val,acct:e.acct}])),settings:{theme:STATE.theme,currency:STATE.currency,priv:STATE.priv,density:STATE.density},trades:T,trash:TRASH}; }
+function snapshotPayload(metSleutels){ return {app:'SyncJournal',appVersion:APP_VERSION,schemaVersion:DB.load('schema',SCHEMA_VERSION),exported:new Date().toISOString(),tradingplan:planBackupBlock(),tagConfig,pbook:PBOOK,conns:metSleutels===true?CONNS:dovStripKeys(CONNS),manual:MANUAL,sync:SYNC,synclog:syncLog(),aiPrefs:AIPREFS,view:{preset:VIEW.preset,v:VIEW.v},exMeta:Object.fromEntries(EXCHANGES.map(e=>[e.id,{val:e.val,acct:e.acct}])),settings:{theme:STATE.theme,currency:STATE.currency,priv:STATE.priv,density:STATE.density},trades:T,trash:TRASH}; }
 // Zet een volledige backup-payload (nieuw formaat) terug in de live-staat.
 /* Binnenkomende trades veilig maken (audit 2026-09-18): één ontbrekend date-veld in een
    back-up liet het dashboard crashen — en omdat opslaan vóór tekenen gebeurt, overleefde
@@ -6503,7 +6515,14 @@ function bkStamp(method){ BK.ts=Date.now();BK.method=method;_bkDirtySince=0;pers
 function bkAgeDays(){ const ref=BK.ts||BK.first||Date.now(); return Math.floor((Date.now()-ref)/86400e3); }
 const BK_METHOD_LBL={handmatig:'handmatig',map:'map',drive:'Google Drive'};
 function bkSnooze(){ BK.snooze=Date.now()+86400e3;persistBK();render(); }
-function bkNow(){ if(BK.choice==='map'&&BK_DIR){ autoBackup(true).then(okr=>{ if(!okr)exportJSON(); }); } else if(BK.choice==='drive'&&driveReady()){ driveBackup(true).then(okr=>{ if(!okr)exportJSON(); }); } else exportJSON(); }
+function bkNow(){ if(!dovHasKeys(CONNS)){bkNowGo(false);return;}
+  const auto=BK.choice==='map'&&BK_DIR?'je back-upmap':BK.choice==='drive'&&driveReady()?'je Google Drive':'';
+  sleutelModal('🛡 Back-up maken',bkNowGo,auto?`Zonder sleutels komt de back-up in ${auto}. Met sleutels wordt het een los bestand op je computer: in de automatische back-up horen geen sleutels.`:''); }
+// With keys: always a separate download, never the automatic map or Drive (those stay keyless).
+function bkNowGo(met){ if(met){exportBestand(true);return;}
+  if(BK.choice==='map'&&BK_DIR)return autoBackup(true).then(okr=>{ if(!okr)exportBestand(false); });
+  if(BK.choice==='drive'&&driveReady())return driveBackup(true).then(okr=>{ if(!okr)exportBestand(false); });
+  exportBestand(false); }
 function backupBanner(){
   if(!T.length)return '';                          // niets te verliezen → geen alarm
   const age=bkAgeDays();
@@ -6585,8 +6604,8 @@ function bkStatusHtml(){
   return `<span style="color:${col};font-weight:700">●</span> Laatste backup: <b>${bkWhen()}</b>`;
 }
 function bkHint(){
-  if(BK.choice==='map')return `Map “${BK_DIR?esc(BK_DIR.name):'…'}” · dagbestanden, laatste ${BK_KEEP} bewaard`;
-  if(BK.choice==='drive')return 'Map “SyncJournal” in je eigen Drive · loopt max 15 min achter · oudere versies 30 dagen via Drive-versiebeheer';
+  if(BK.choice==='map')return `Map “${BK_DIR?esc(BK_DIR.name):'…'}” · dagbestanden, laatste ${BK_KEEP} bewaard · zonder API-sleutels`;
+  if(BK.choice==='drive')return 'Map “SyncJournal” in je eigen Drive · loopt max 15 min achter · oudere versies 30 dagen via Drive-versiebeheer · zonder API-sleutels';
   return 'Kies 📁 of ☁️ voor automatische backups, of exporteer zelf via de knop hierboven';
 }
 // App-balk-schildje: groen+subtiel = vers · amber puls = ouder dan drempel of wacht op
@@ -6782,6 +6801,7 @@ async function driveAdopt(){
     const r=await driveFetch(DRIVE_API+'/files/'+a.id+'?alt=media');const d=await r.json();
     if(!d||!Array.isArray(d.trades))throw new Error('ongeldig backup-bestand');
     await Snapshots.create('vóór Drive-herstel');
+    if(d.conns)d.conns=connsHerstel(d.conns);
     DRIVE.adopt=null; applyBackup(d); bkStamp('drive');
     toast('✓ Nieuwste Drive-backup overgenomen','ok');
   }catch(e){ toast('Overnemen mislukte: '+((e&&e.message)||'onbekend'),'warn'); }
@@ -6796,8 +6816,41 @@ function driveBanner(){
     <button class="btn pri" onclick="driveBackup(true)">Opnieuw verbinden</button><span style="flex:1"></span></div>`;
   return '';
 }
-function exportJSON(){ const blob=new Blob([JSON.stringify(snapshotPayload(),null,2)],{type:'application/json'});
-  const u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download='syncjournal-backup-'+localDateISO()+'.json';a.click();URL.revokeObjectURL(u);toast('✓ Back-up geëxporteerd','ok');bkStamp('handmatig'); }
+function downloadJSON(d,name){ const blob=new Blob([JSON.stringify(d,null,2)],{type:'application/json'});
+  const u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download=name;a.click();URL.revokeObjectURL(u); }
+/* F12: a file the user makes asks first whether the exchange keys go in; the default is without,
+   because a file that is parked or forwarded must not hand out account access. Nothing to choose
+   without stored keys. Automatic back-ups never ask: they are always without. */
+function exportJSON(){ if(!dovHasKeys(CONNS)){exportBestand(false);return;} sleutelModal('📤 Back-up exporteren',exportBestand); }
+function exportBestand(met){ downloadJSON(snapshotPayload(met),'syncjournal-backup-'+localDateISO()+'.json');
+  toast(met?'✓ Back-up mét API-sleutels: bewaar hem veilig':'✓ Back-up geëxporteerd'+(dovHasKeys(CONNS)?', zonder API-sleutels':' · geen API-sleutels'),'ok');bkStamp('handmatig'); }
+function sleutelKeuzeHtml(met,fn){
+  if(!dovHasKeys(CONNS))return `<div id="sleutelKeuze" class="dov-note info" style="margin:0">🔒 Je hebt geen API-sleutels opgeslagen, dus er gaan er ook geen mee in dit bestand.</div>`;
+  const opt=(v,t,sub)=>`<label class="sk-opt"><input type="radio" name="sjKeys" value="${v}" ${(v==='met')===!!met?'checked':''} onchange="${fn}(this.value==='met')"><span><b>${t}</b><small>${sub}</small></span></label>`;
+  return `<div id="sleutelKeuze" class="sk-keuze${met?' met':''}" role="radiogroup" aria-label="API-sleutels in dit bestand">
+    <div class="sk-h">🔑 Gaan je API-sleutels mee?</div>
+    ${opt('zonder','Zonder API-sleutels (aanbevolen)','Je trades, instellingen, playbooks en de rest gaan mee. Je koppelingen vragen na het importeren opnieuw om je sleutels. Ook je walletadres blijft eruit.')}
+    ${opt('met','Met API-sleutels','Alleen als je verhuist naar een andere browser of pc. <b>Iedereen met dit bestand kan je exchange-account gebruiken.</b> Bewaar het veilig en stuur het nooit door.')}
+  </div>`;
+}
+function sleutelKeuzeKleur(met){ const k=document.getElementById('sleutelKeuze');if(k)k.classList.toggle('met',met); }
+let _sk={met:false,go:null};
+function sleutelModal(titel,go,uitleg){ _sk={met:false,go};
+  try{ openModalHTML(`<div class="mhead"><h3>${titel}</h3><button class="xbtn" onclick="closeForm()">×</button></div>
+  <div class="mbody mbody-wiz">${sleutelKeuzeHtml(false,'skKies')}
+    ${uitleg?`<p class="setintro" style="margin:0">${uitleg}</p>`:''}
+    <div class="dov-note bad" id="sjKeysErr" role="alert" hidden></div>
+    <div class="sk-acties"><span style="flex:1"></span><button class="btn" onclick="closeForm()">Annuleren</button><button class="btn pri" id="sjKeysGo" onclick="skGo()">Exporteren</button></div>
+  </div>`); }
+  catch(e){ go(false); }   // a broken modal (e.g. from a crash handler) must not block the safety net: without keys
+}
+function skKies(met){ _sk.met=met;sleutelKeuzeKleur(met); }
+function skGo(){ const g=document.getElementById('sjKeysGo'),err=document.getElementById('sjKeysErr');if(!g||g.disabled||!_sk.go)return;
+  const label=g.textContent;g.disabled=true;g.textContent='Bezig…';if(err)err.hidden=true;
+  setTimeout(async()=>{   // lets "Bezig…" paint before a large journal is serialised
+    try{ await _sk.go(_sk.met);closeForm(); }
+    catch(e){ if(err){err.hidden=false;err.textContent='Het bestand maken lukte niet ('+((e&&e.message)||'onbekende fout')+'). Je data is niet aangeraakt; probeer het opnieuw.';} g.disabled=false;g.textContent=label; }
+  },30); }
 /* ═══ Data-overdracht (Denny 2026-09-25, docs/opdracht-data-overzetten.md) ═══
    Eerst zien, dan doen. Export: per onderdeel aantal en omvang, vinkje aan/uit, sleutels
    apart; het bestand krijgt een manifest. Import: per onderdeel wat erin zit tegenover wat
@@ -6847,41 +6900,46 @@ function dovDescribe(d){
   return out;
 }
 // Sleutels uit de koppelingen halen; de koppeling zelf (hint, syncFrom) blijft herkenbaar.
-function dovStripKeys(conns){const o={};Object.entries(conns||{}).forEach(([id,c])=>{if(!c)return;const n={...c};DOV_SECRET.forEach(k=>{delete n[k];});o[id]=n;});return o;}
+// needKey marks a connection whose key was left out, so an import can ask for it again.
+function dovStripKeys(conns){const o={};Object.entries(conns||{}).forEach(([id,c])=>{if(!c)return;const n={...c};if(DOV_SECRET.some(k=>n[k]))n.needKey=true;DOV_SECRET.forEach(k=>{delete n[k];});o[id]=n;});return o;}
+// Restoring a keyless copy on this device (snapshot, Drive): keep the keys this device already has;
+// without them the connection waits for its key instead of pretending to be connected.
+function connsHerstel(inc){const o={};Object.entries(inc||{}).forEach(([id,c])=>{if(!c)return;const n={...c},h=CONNS[id];
+  if(n.needKey&&!DOV_SECRET.some(k=>n[k])){ if(h&&DOV_SECRET.some(k=>h[k])){DOV_SECRET.forEach(k=>{if(h[k])n[k]=h[k];});n.connected=!!h.connected;delete n.needKey;} else n.connected=false; }
+  o[id]=n;});return o;}
 // Periode: op de open-datum van de trade (t.date). Leeg = alles. Open posities tellen mee als ze
 // binnen de periode zijn geopend.
 function dovPeriode(list,per){ if(!per||(!per.van&&!per.tot))return list; return (list||[]).filter(t=>t&&(!per.van||String(t.date||'')>=per.van)&&(!per.tot||String(t.date||'')<=per.tot)); }
 function dovPeriodeTxt(per){ if(!per||(!per.van&&!per.tot))return ''; const f=d=>{const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(String(d||''));return m?m[3]+'-'+m[2]+'-'+m[1]:String(d);}; return (per.van?f(per.van):'begin')+' t/m '+(per.tot?f(per.tot):'nu'); }
 // Het bestand samenstellen: alleen gekozen onderdelen, sleutels naar keuze, periode, plus manifest.
 function dovBuildExport(sel,keys,per){
-  const full=snapshotPayload();
+  const full=snapshotPayload(!!keys);
   if(per&&(per.van||per.tot)){full.trades=dovPeriode(full.trades,per);full.trash=dovPeriode(full.trash,per);}
   const desc=dovDescribe(full),out={app:full.app,appVersion:full.appVersion,schemaVersion:full.schemaVersion,exported:full.exported};
   const manifest={parts:{},keysIncluded:!!keys,hostedVersion:UPDATE.remote||'',period:(per&&(per.van||per.tot))?{van:per.van||'',tot:per.tot||''}:null};
   DOV_PARTS.forEach(p=>{const on=sel[p.k]!==false;manifest.parts[p.k]={included:on,count:on?desc[p.k].count:0,bytes:on?desc[p.k].bytes:0};
     if(on)p.keys.forEach(k=>{if(full[k]!=null)out[k]=full[k];});});
-  if(out.conns&&!keys)out.conns=dovStripKeys(out.conns);
   out.manifest=manifest;
   return out;
 }
-let _dovExp={sel:{},keys:true,per:{van:'',tot:''}};
+let _dovExp={sel:{},keys:false,per:{van:'',tot:''}};
 function exportOverzicht(){
-  const desc=dovDescribe(snapshotPayload());_dovExp={sel:{},keys:true,per:{van:'',tot:''}};DOV_PARTS.forEach(p=>{_dovExp.sel[p.k]=true;});
+  const desc=dovDescribe(snapshotPayload(true));_dovExp={sel:{},keys:false,per:{van:'',tot:''}};DOV_PARTS.forEach(p=>{_dovExp.sel[p.k]=true;});
   const rows=DOV_PARTS.map(p=>`<div class="setrow" data-dov="${p.k}"><input type="checkbox" checked aria-label="${esc(p.t)}" onchange="dovExpToggle('${p.k}',this.checked)" style="width:17px;height:17px;accent-color:var(--accent)"><div class="txt"><b>${esc(p.t)}</b><small>${esc(desc[p.k].sub)}</small></div><span class="dov-cnt dim">${dovKb(desc[p.k].bytes)}</span></div>`).join('');
   openModalHTML(`<div class="mhead"><h3>📤 Wat gaat er mee?</h3><button class="xbtn" onclick="closeForm()">×</button></div>
   <div class="mbody mbody-wiz">
+    ${sleutelKeuzeHtml(false,'dovExpKeys')}
     <p class="setintro">Kies wat er in het bestand komt. Wat je uitzet ontbreekt in het bestand; bij het terugzetten blijft dat deel dan zoals het is.</p>
     <div class="panel" style="margin-bottom:10px"><div class="setrow"><div class="txt"><b>Periode</b><small id="dovPerHint">Leeg = alle trades. Op de open-datum van de trade; de prullenbak volgt dezelfde periode.</small></div>
       <label class="hint" for="dovVan">van</label><input type="date" id="dovVan" class="fsel" style="padding:5px 8px" onchange="dovExpPeriode()" aria-label="Periode van"><label class="hint" for="dovTot">tot</label><input type="date" id="dovTot" class="fsel" style="padding:5px 8px" onchange="dovExpPeriode()" aria-label="Periode tot"></div></div>
     <div class="panel">${rows}</div>
-    <div class="section-sub">Gevoelig</div>
-    <div class="panel"><div class="setrow" data-dov="keys"><input type="checkbox" checked aria-label="API-sleutels" onchange="dovExpToggle('keys',this.checked)" style="width:17px;height:17px;accent-color:var(--accent)"><div class="txt"><b>API-sleutels en wallet-adressen</b><small>${desc.conns.keys?'Leesbaar in het bestand. Aan voor je eigen back-up (direct weer syncen). <b>Zet uit als je dit bestand deelt.</b>':'Je hebt geen sleutels opgeslagen, dit vinkje doet nu niets.'}</small></div><span class="dov-tag ${desc.conns.keys?'warn':'ok'}" id="dovKeysTag">${desc.conns.keys?'gaat mee':'geen'}</span></div></div>
-    <div class="dov-note info">Automatische back-ups (map of Drive) blijven altijd volledig, mét sleutels. Dit overzicht geldt voor het bestand dat je nu zelf maakt.</div>
+    <div class="dov-note info">Automatische back-ups (map of Drive) en veiligheidskopieën gaan altijd zonder API-sleutels. De keuze bovenaan geldt alleen voor het bestand dat je nu zelf maakt.</div>
     <div style="display:flex;gap:8px;align-items:center;margin-top:12px"><span class="setintro" style="margin:0" id="dovExpTot"></span><span style="flex:1"></span><button class="btn" onclick="closeForm()">Annuleren</button><button class="btn pri" onclick="dovExportGo()">Exporteren</button></div>
   </div>`);
   _dovExp.desc=desc;dovExpTotal();
 }
-function dovExpToggle(k,on){ if(k==='keys'){_dovExp.keys=on;const t=document.getElementById('dovKeysTag');if(t&&_dovExp.desc.conns.keys){t.textContent=on?'gaat mee':'niet mee';t.className='dov-tag '+(on?'warn':'ok');}} else _dovExp.sel[k]=on;
+function dovExpKeys(met){ _dovExp.keys=met;sleutelKeuzeKleur(met);dovExpTotal(); }
+function dovExpToggle(k,on){ _dovExp.sel[k]=on;
   const row=document.querySelector(`#modal [data-dov="${k}"]`);if(row)row.classList.toggle('dov-off',!on);dovExpTotal(); }
 function dovExpPeriode(){
   const van=(document.getElementById('dovVan')||{}).value||'',tot=(document.getElementById('dovTot')||{}).value||'';
@@ -6900,11 +6958,12 @@ function dovExpTotal(){ const el=document.getElementById('dovExpTot');if(!el)ret
   const per=dovPeriodeTxt(_dovExp.per);
   el.innerHTML=`<b class="num">${dovKb(b)}</b> · ${n} van ${DOV_PARTS.length} onderdelen${per?' · '+esc(per):''} · ${_dovExp.keys&&_dovExp.desc.conns.keys?'met sleutels':'zonder sleutels'} · syncjournal-backup-${localDateISO()}${per?'-periode':''}.json`; }
 function dovExportGo(){
-  const per=dovPeriodeTxt(_dovExp.per),d=dovBuildExport(_dovExp.sel,_dovExp.keys,_dovExp.per);closeForm();
-  const blob=new Blob([JSON.stringify(d,null,2)],{type:'application/json'});
-  const u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download='syncjournal-backup-'+localDateISO()+(per?'-periode':'')+'.json';a.click();URL.revokeObjectURL(u);
+  const per=dovPeriodeTxt(_dovExp.per);
+  try{ downloadJSON(dovBuildExport(_dovExp.sel,_dovExp.keys,_dovExp.per),'syncjournal-backup-'+localDateISO()+(per?'-periode':'')+'.json'); }
+  catch(e){ toast('Exporteren lukte niet, probeer het opnieuw','err');return; }
+  closeForm();
   const alles=DOV_PARTS.every(p=>_dovExp.sel[p.k])&&!per;
-  toast('✓ Back-up geëxporteerd'+(per?' ('+per+')':'')+(DOV_PARTS.every(p=>_dovExp.sel[p.k])?'':' ('+DOV_PARTS.filter(p=>_dovExp.sel[p.k]).length+' van '+DOV_PARTS.length+' onderdelen)')+(_dovExp.keys?'':' zonder sleutels'),'ok');
+  toast('✓ Back-up geëxporteerd'+(per?' ('+per+')':'')+(DOV_PARTS.every(p=>_dovExp.sel[p.k])?'':' ('+DOV_PARTS.filter(p=>_dovExp.sel[p.k]).length+' van '+DOV_PARTS.length+' onderdelen)')+(_dovExp.keys&&_dovExp.desc.conns.keys?' mét sleutels':''),'ok');
   if(alles)bkStamp('handmatig');   // een gedeeltelijk bestand of een periode telt niet als volledige back-up
 }
 
@@ -6919,7 +6978,7 @@ function dovMergeTrades(cur,inc,trash){
   return {list:[...cur,...nieuw],nieuw:nieuw.length,overgeslagen:(inc||[]).length-nieuw.length};
 }
 function dovImportModal(d,fileName){
-  const inF=dovDescribe(d),nu=dovDescribe(snapshotPayload());
+  const inF=dovDescribe(d),nu=dovDescribe(snapshotPayload(true));
   const ts=Array.isArray(d.trades)?d.trades.filter(t=>t&&typeof t==='object'):[];
   const pnlF=ts.reduce((s,t)=>s+(+t.pnl||0),0),pnlNu=(T||[]).reduce((s,t)=>s+(+t.pnl||0),0);
   const merge=dovMergeTrades(T||[],ts,TRASH);
@@ -6935,6 +6994,7 @@ function dovImportModal(d,fileName){
     <div class="dov-cmp"><div><div class="h">Bestand</div><div class="v">${esc(fileName||'back-up')}</div><small>${esc(d.appVersion||'onbekende versie')}${d.exported?' · '+esc(snapWhen(d.exported)):''}${inF.conns.keys?' · <b style="color:var(--amber)">bevat API-sleutels</b>':' · zonder sleutels'}${man.hostedVersion?' · gemaakt op '+esc(man.hostedVersion):''}${man.period?' · <b>trades '+esc(dovPeriodeTxt(man.period))+'</b> (samenvoegen ligt voor de hand)':''}</small></div>
     <div><div class="h">Trades</div><div class="v">${inF.trades.present?ts.length.toLocaleString('nl-NL')+' · netto <span class="'+cls(pnlF)+'">'+eurS(pnlF)+'</span>':'geen trades in dit bestand'}</div><small>nu in je journal: ${(T||[]).length.toLocaleString('nl-NL')} · netto ${eurS(pnlNu)}</small></div></div>
     <div class="panel">${rows}</div>
+    ${inF.conns.present&&inF.conns.count&&!inF.conns.keys&&nu.conns.keys?`<div class="dov-note info">🔑 Dit bestand heeft geen API-sleutels. Vink je <b>Exchange-koppelingen</b> aan, dan vragen je koppelingen daarna opnieuw om je sleutels. Zet het vinkje uit om je huidige koppelingen te houden.</div>`:''}
     ${inF.conns.keys?`<div class="dov-note warn">⚠ Dit bestand bevat API-sleutels. Ze worden alleen overgenomen als je <b>Exchange-koppelingen</b> aanvinkt; dan vervangen ze je huidige sleutels.</div>`:''}
     <div class="dov-note info" id="dovModeNote"></div>
     <div style="display:flex;gap:8px;align-items:center;margin-top:12px"><span class="setintro" style="margin:0">Er wordt eerst een veiligheidskopie gemaakt, daarna een controle.</span><span style="flex:1"></span><button class="btn" onclick="closeForm()">Annuleren</button><button class="btn pri" onclick="dovImportGo()">Importeren</button></div>
@@ -6949,7 +7009,7 @@ function dovImpNote(){ const el=document.getElementById('dovModeNote');if(!el||!
   el.innerHTML=i.mode==='vervangen'?`<b>Vervangen:</b> je huidige ${(T||[]).length.toLocaleString('nl-NL')} trades maken plaats voor de ${i.inF.trades.count.toLocaleString('nl-NL')} uit het bestand. De veiligheidskopie bewaart de laatste 3 versies.`:`<b>Samenvoegen:</b> je huidige trades blijven. Uit het bestand komen alleen trades die je nog niet hebt: <b>${i.nieuw} nieuw</b> (herkend op bron-id, anders op datum, pair, richting, entry en size). Verwijderde trades komen niet terug.`; }
 async function dovImportGo(){
   const i=_dovImp;if(!i)return;_dovImp=null;closeForm();
-  const d=i.d,cur=snapshotPayload(),d2={app:'SyncJournal',appVersion:d.appVersion||APP_VERSION,schemaVersion:+d.schemaVersion||SCHEMA_VERSION,exported:d.exported||''};
+  const d=i.d,cur=snapshotPayload(true),d2={app:'SyncJournal',appVersion:d.appVersion||APP_VERSION,schemaVersion:+d.schemaVersion||SCHEMA_VERSION,exported:d.exported||''};
   let nieuw=0,verwacht=null;
   DOV_PARTS.forEach(p=>{const use=i.sel[p.k]&&i.inF[p.k].present;p.keys.forEach(k=>{const v=use?d[k]:cur[k];if(v!=null)d2[k]=v;});});
   if(i.sel.trades&&i.inF.trades.present){
@@ -6958,7 +7018,7 @@ async function dovImportGo(){
     verwacht={trades:d2.trades.length,closed:d2.trades.filter(t=>(t.status||'closed')==='closed').length,pnl:d2.trades.reduce((s,t)=>s+(+t.pnl||0),0),kapot:d2.trades.filter(t=>t.pnl!=null&&t.pnl!==''&&!isFinite(parseFloat(String(t.pnl).replace(',','.'))))};
   }
   // koppelingen zonder sleutels (bestand zonder sleutels) tellen niet als verbonden
-  if(i.sel.conns&&d2.conns)Object.values(d2.conns).forEach(c=>{if(c&&c.connected&&!DOV_SECRET.some(k=>c[k]))c.connected=false;});
+  if(i.sel.conns&&d2.conns)Object.values(d2.conns).forEach(c=>{if(c&&c.connected&&!DOV_SECRET.some(k=>c[k])){c.connected=false;c.needKey=true;}});
   // sync-instellingen alleen als ze in het bestand staan; anders de huidige
   if(!d2.sync&&cur.sync)d2.sync=cur.sync;
   const snap=await Snapshots.create('vóór import');
@@ -7064,6 +7124,7 @@ const Snapshots={ MAX:3,
     const data=await IDB.get('snap_'+id);
     if(!data||!Array.isArray(data.trades)){ErrorCenter.report('load',new Error('snapshot ontbreekt'),{severity:'error',userMsg:'Deze veiligheidskopie kon niet worden geladen.'});return false;}
     await this.create('vóór herstel');  // herstel is óók risicovol → eerst huidige staat vastleggen
+    if(data.conns)data.conns=connsHerstel(data.conns);
     applyBackup(data);
     return true;
   },

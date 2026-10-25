@@ -16,7 +16,7 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
-## [Unreleased]
+## [v1.17] — 2026-10-25
 
 ### Gewijzigd
 - **Je API-sleutels gaan niet meer vanzelf mee in een back-up.** Bij **Exporteer JSON**, **Backup nu** en
