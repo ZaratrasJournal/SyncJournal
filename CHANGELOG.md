@@ -16,6 +16,17 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [Unreleased]
+
+### Gewijzigd
+- **De AI-coach staat nu ook in het menu van de standaardweergave.** Tot nu toe zag je hem alleen in de weergave
+  "Alles".
+
+### Verwijderd
+- **De demo-coach is weg.** Die gaf vaste antwoorden op trefwoorden en noemde iedereen "Denny". In plaats daarvan
+  zie je op de coach-pagina hoe je een echte coach aanzet (met je eigen Anthropic-sleutel, ongeveer 30 cent tot een
+  dollar per maand) en een duidelijk gemarkeerd voorbeeldgesprek.
+
 ## [v1.15] — 2026-10-24
 
 ### Toegevoegd
