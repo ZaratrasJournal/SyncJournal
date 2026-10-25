@@ -16,6 +16,13 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [Unreleased]
+
+### Gewijzigd
+- Bij het delen van een review stelt het naamveld nu "je Discord-naam" voor als voorbeeld.
+
+---
+
 ## [v1.16] — 2026-10-25
 
 ### Toegevoegd
