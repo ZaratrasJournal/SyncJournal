@@ -162,9 +162,10 @@ De app praat met exchange-API's via een **online Cloudflare Worker**, niet via `
 ### Wat dat betekent voor proxy-wijzigingen
 - **Nooit zeggen** "gebruik wrangler dev tegen `proxy-local/`" of "edit worker.js lokaal" als instructie aan Denny — dat doet niets.
 - **Worker-code zelf** draait als `morani-proxy` in **het Cloudflare-account van Morani**; Denny kan erbij en deployt
-  via het dashboard. **Klaar voor deploy (25-10-2026): [docs/worker-v25.js](docs/worker-v25.js)** (v24 + `okxHost` alleen uit
+  via het dashboard. **Productie sinds 25-10-2026: [docs/worker-v25.js](docs/worker-v25.js)**, live gecontroleerd (een vreemde
+  `okxHost` gaat naar OKX; `ORIGIN_MODUS` staat op `'meten'`) (v24 + `okxHost` alleen uit
   een vaste lijst, `algos` zonder orders-history, herkomst geteld en een schakelaar `ORIGIN_MODUS` meten/afdwingen; getest in
-  `tests/worker-v25.spec.js`; stappenplan [docs/worker-v25-deploy.md](docs/worker-v25-deploy.md)). Sinds 24-10-2026 is de productieversie [docs/worker-v24.js](docs/worker-v24.js) (v23 + OKX-actie
+  `tests/worker-v25.spec.js`; stappenplan [docs/worker-v25-deploy.md](docs/worker-v25-deploy.md)). Daarvoor (24-10-2026) [docs/worker-v24.js](docs/worker-v24.js) (v23 + OKX-actie
   `algos`: TP/SL-algo-orders, openstaande algo-orders en het plan op instap-orders, getest in `tests/worker-okx-algos.spec.js`;
   live geverifieerd met nep-sleutels: `source:'algos'`, fouten per verzoek onder `_okxDebug.errors`); daarvoor
   [docs/worker-v23.js](docs/worker-v23.js) (v22 + Kraken-actie
