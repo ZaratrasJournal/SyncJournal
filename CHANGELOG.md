@@ -19,6 +19,7 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 ## [Unreleased]
 
 ### Gewijzigd
+- **De FAQ is nagelopen en bijgewerkt.** Elk antwoord klopt weer met de app (geen "Instellingen → Dashboard" of opgeloste waarschuwingen meer), vakwoorden worden uitgelegd, en er zijn vragen bij over sync, stop-loss, TP/SL, $ / % / R, de euro-schatting, tags en veiligheidskopieën. De AI-coach heet in de FAQ Mori. Nieuw is de categorie *Waarom SyncJournal · mijn visie*, waarin Zaratras uitlegt waarom tags, playbook en review zo werken.
 - Bij het delen van een review stelt het naamveld nu "je Discord-naam" voor als voorbeeld.
 
 ---

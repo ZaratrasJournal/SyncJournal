@@ -123,8 +123,9 @@ const OKX_RUW = "OKX /api/v5/account/balance: Your IP 2a06:98c0:3600::103 is not
   });
   ok('de FAQ beweert niet meer dat álles rechtstreeks gaat',
      !/praat rechtstreeks met de exchange; je keys gaan niet naar een externe server/i.test(faq.keys || ''), (faq.keys || '').slice(0, 90));
-  ok('noemt de drie exchanges die via de tussenserver lopen',
-     /OKX/.test(faq.keys) && /MEXC/.test(faq.keys) && /Kraken/.test(faq.keys), (faq.keys || '').slice(0, 90));
+  // MEXC also ran through the proxy, but its connection was stopped; the FAQ only names live connections.
+  ok('noemt de exchanges die via de tussenserver lopen',
+     /OKX/.test(faq.keys) && /Kraken/.test(faq.keys), (faq.keys || '').slice(0, 90));
   ok('en de twee die dat niet doen', /Blofin/.test(faq.keys) && /Hyperliquid/.test(faq.keys), (faq.keys || '').slice(0, 90));
   ok('de koppel-uitleg noemt de IP-whitelist', /IP-whitelist/i.test(faq.koppel || ''), (faq.koppel || '').slice(-90));
 
