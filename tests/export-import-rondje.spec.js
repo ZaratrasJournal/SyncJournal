@@ -24,8 +24,8 @@ const CMP = ['trades', 'trash', 'tagConfig', 'pbook', 'manual', 'conns', 'sync',
     ok('controle geslaagd na import', /Controle geslaagd/.test(res.modal) && res.n === n1, res.modal.slice(0, 200) + ' n=' + res.n);
     await p.evaluate(() => closeForm());
     const E2 = await p.evaluate(() => { const sel = {}; DOV_PARTS.forEach(x => sel[x.k] = true); return dovBuildExport(sel, true); });
-    // een koppeling zonder sleutels (zoals in de voorbeelddata) telt na import bewust niet als verbonden
-    let connsGenorm = false; Object.values(E1.conns || {}).forEach(c => { if (c && c.connected && !['apiKey', 'apiSecret', 'passphrase', 'wallet'].some(k => c[k])) { c.connected = false; connsGenorm = true; } });
+    // een koppeling zonder sleutels (zoals in de voorbeelddata) telt na import bewust niet als verbonden en vraagt om een sleutel (F12)
+    let connsGenorm = false; Object.values(E1.conns || {}).forEach(c => { if (c && c.connected && !['apiKey', 'apiSecret', 'passphrase', 'wallet'].some(k => c[k])) { c.connected = false; c.needKey = true; connsGenorm = true; } });
     if (connsGenorm) { E1.manifest.parts.conns = E2.manifest.parts.conns; console.log('  · koppelingen zonder sleutels: na import niet verbonden (verwacht)'); }
     for (const k of CMP) {
       const a = JSON.stringify(E1[k] === undefined ? null : E1[k]), c = JSON.stringify(E2[k] === undefined ? null : E2[k]);

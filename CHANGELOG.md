@@ -16,6 +16,22 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [Unreleased]
+
+### Gewijzigd
+- **Je API-sleutels gaan niet meer vanzelf mee in een back-up.** Bij **Exporteer JSON**, **Backup nu** en
+  **Data overzetten** zie je nu bovenaan een keuze: **Zonder API-sleutels** (aanbevolen, staat standaard aan) of
+  **Met API-sleutels**. Kies "met" alleen als je verhuist naar een andere browser of pc: iedereen met dat bestand kan
+  je exchange-account gebruiken. Zonder sleutels gaan je trades, instellingen, playbooks en de rest gewoon mee; ook
+  je Hyperliquid-walletadres blijft eruit.
+- **Automatische back-ups (map en Google Drive) en veiligheidskopieën bevatten nooit meer API-sleutels.** Zet je zo'n
+  kopie terug op dezelfde computer, dan houden je koppelingen de sleutels die er al stonden.
+- **Na het importeren van een bestand zonder sleutels** staan je koppelingen in Instellingen → Accounts op
+  **sleutel nodig**. Klik op **Verbinden** en vul je sleutel (of walletadres) opnieuw in. Een oudere back-up mét
+  sleutels importeert zoals altijd: je koppelingen werken dan meteen.
+
+---
+
 ## [v1.16.2] — 2026-10-25
 
 ### Gewijzigd
