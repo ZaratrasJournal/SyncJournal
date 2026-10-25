@@ -1174,6 +1174,11 @@ details.faq .faq-a b{color:var(--ink)}
 .aimsg.fout .aibub{background:color-mix(in srgb,var(--red) 10%,var(--surface));color:var(--ink)}
 .aiwacht{color:var(--muted);font-style:italic}
 .ailive .aitekst:not(:empty)+.aiwacht{display:none}
+.aikost{font-weight:500;margin-left:6px}
+.aiknoprij{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.aimsg.limiet .aibub{background:color-mix(in srgb,var(--amber) 12%,var(--surface));color:var(--ink)}
+.ailimiet{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--ink2)}
+.ailimiet input{width:84px;border:1px solid var(--line);border-radius:8px;padding:7px 9px;font-size:13px;background:var(--bg);color:var(--ink);font-family:inherit}
 .aigestopt{margin-top:8px;font-size:11.5px;color:var(--muted);font-style:italic}
 .aimsg.info .aibub{color:var(--muted)}
 .aibub{overflow-wrap:anywhere;min-width:0}
@@ -4475,6 +4480,8 @@ function pgInstellingen(){
       <div class="section-sub">🔑 Sleutel en model</div>
       <div class="panel">
         <div class="setrow"><div class="txt"><b>Anthropic-sleutel</b><small>${aiKeyGet()?'Gekoppeld · sleutel '+esc(aiKeyHint())+' · '+(aiKeySessie()?'alleen voor deze sessie':'bewaard op dit apparaat')+'. Gaat nooit mee in een export of back-up.':'Nog geen sleutel. Koppelen doe je op de pagina AI-coach.'}</small></div>${aiKeyGet()?`<button class="btn" data-ai-vergeet onclick="aiKeyVergeet()">Vergeet sleutel</button>`:`<button class="btn" onclick="go('ai')">Naar de coach</button>`}</div>
+        <div class="setrow"><div class="txt"><b>Verbruik deze maand</b><small>Deze maand ongeveer ${aiUsd(aiVerbruik().usd)} (${aiVerbruik().vragen} vra${aiVerbruik().vragen===1?'ag':'gen'}). Een schatting met de prijzen van Anthropic van ${coachDatum(AI_PRIJZEN_DATUM)}; de echte rekening staat in je console. Blijft op dit apparaat.</small></div></div>
+        <div class="setrow"><div class="txt"><b>Maandlimiet</b><small>Boven dit bedrag vraagt de coach eerst of je echt wilt versturen. Leeg = geen limiet. Stel ook een limiet in bij Anthropic: die is hard.</small></div><label class="ailimiet">$ <input id="aiLimiet" type="number" min="0" step="0.5" inputmode="decimal" placeholder="geen" value="${+AIPREFS.limiet>0?AIPREFS.limiet:''}" onchange="setAILimiet(this.value)" aria-label="Maandlimiet in dollars"></label></div>
         <div class="setrow"><div class="txt"><b>Model</b><small>${esc((AI_MODELLEN.find(m=>m[0]===aiModel())||[])[2]||'')}</small></div><div class="seg">${AI_MODELLEN.map(([v,l])=>`<button class="${aiModel()===v?'on':''}" data-ai-model="${v}" onclick="setAIModel('${v}')">${l}</button>`).join('')}</div></div>
       </div>
       <div class="section-sub">🎯 Focusgebieden <span class="hint">(bepalen welke vraag-chips de coach toont)</span></div>
@@ -5457,11 +5464,33 @@ function coachPakket(opts){
    its own storage key that none of those read. "Only this session" keeps it in sessionStorage, for a
    shared computer. Wiping the journal (sj_*) removes it too. */
 const AI_KEY_OPSLAG='sj_ai_key';
+const AI_LOKAAL=[AI_KEY_OPSLAG,'sj_ai_usage'];   // stays on this device: not even its size goes into diagReport
 const AI_URL='https://api.anthropic.com/v1/messages';
 const AI_VERSIE='2026-10-21';   // anthropic-version; this version rejects temperature/top_p/top_k
 const AI_MODELLEN=[['claude-sonnet-5-5','Sonnet 5.5','beste antwoorden, ongeveer 30 cent tot een dollar per maand'],['claude-haiku-5-5','Haiku 5.5','zuinig, een paar cent per maand']];
 const AI_MAX_TOKENS=4000;       // answer plus the model's thinking; a normal answer uses far less
 const AI_HISTORIE=5;            // earlier question/answer pairs sent along with a new question
+/* ── Usage: counted per month on this device only (sj_ai_usage, never in export/back-up/DOV/diagReport) ──
+   USD per million tokens, from https://platform.claude.com/docs/en/about-claude/pricing on AI_PRIJZEN_DATUM.
+   cs = 5-minute cache write, cl = cache read. Haiku 5.5 costs more once a prompt (input + cache) passes 100K. */
+const AI_PRIJZEN_DATUM='2026-10-25';
+const AI_PRIJZEN={
+  'claude-sonnet-5-5':[{tot:Infinity,in:2,cs:2.5,cl:0.10,uit:10}],
+  'claude-haiku-5-5':[{tot:100000,in:0.10,cs:0.125,cl:0.01,uit:0.50},{tot:Infinity,in:0.50,cs:0.625,cl:0.05,uit:2.50}],
+};
+function aiKosten(model,u){u=u||{};const i=+u.input_tokens||0,cs=+u.cache_creation_input_tokens||0,cl=+u.cache_read_input_tokens||0,o=+u.output_tokens||0;
+  const p=(AI_PRIJZEN[model]||AI_PRIJZEN[AI_MODELLEN[0][0]]).find(x=>i+cs+cl<=x.tot);
+  return (i*p.in+cs*p.cs+cl*p.cl+o*p.uit)/1e6;}
+function aiMaand(){return new Intl.DateTimeFormat('sv-SE',{timeZone:'Europe/Amsterdam',year:'numeric',month:'2-digit'}).format(new Date());}
+function aiVerbruik(){const leeg={maand:aiMaand(),usd:0,vragen:0,tokens:{input:0,output:0,cacheSchrijven:0,cacheLezen:0}};
+  const v=DB.load('ai_usage',null);return v&&v.maand===aiMaand()&&v.tokens?v:leeg;}
+function aiVerbruikTel(model,u,vraag){const v=aiVerbruik(),k=aiKosten(model,u);
+  v.tokens.input+=+u.input_tokens||0;v.tokens.output+=+u.output_tokens||0;v.tokens.cacheSchrijven+=+u.cache_creation_input_tokens||0;v.tokens.cacheLezen+=+u.cache_read_input_tokens||0;
+  v.usd+=k;if(vraag)v.vragen++;DB.save('ai_usage',v);return k;}
+function aiUsd(v){return v>0&&v<0.01?'< $ 0,01':'$ '+(+v||0).toFixed(2).replace('.',',');}
+// No render here: this runs from the input's change event, and rebuilding the page during that event
+// throws in Chrome (the focused node is removed mid-blur). Nothing else on the page depends on it.
+function setAILimiet(v){const n=parseFloat(String(v).replace(',','.'));AIPREFS.limiet=n>0?n:0;persistAIPrefs();}
 function aiKeyGet(){try{return sessionStorage.getItem(AI_KEY_OPSLAG)||localStorage.getItem(AI_KEY_OPSLAG)||'';}catch(e){return '';}}
 function aiKeySessie(){try{return !!sessionStorage.getItem(AI_KEY_OPSLAG);}catch(e){return false;}}
 function aiKeySet(k,sessie){try{if(sessie){sessionStorage.setItem(AI_KEY_OPSLAG,k);localStorage.removeItem(AI_KEY_OPSLAG);}else{localStorage.setItem(AI_KEY_OPSLAG,k);sessionStorage.removeItem(AI_KEY_OPSLAG);}}catch(e){}}
@@ -5538,7 +5567,8 @@ async function aiCall(key,body,op){
     if(!/event-stream/.test(r.headers.get('content-type')||'')||!r.body){
       let d={};try{d=await r.json();}catch(e){}
       (d.content||[]).forEach(x=>{if(x.type==='text'&&op.opText)op.opText(x.text);});
-      return {content:d.content||[],stop_reason:d.stop_reason||null,usage:d.usage||{}};
+      m.usage=d.usage||{};
+      return {content:d.content||[],stop_reason:d.stop_reason||null,usage:m.usage,kosten:aiVerbruikTel(body.model,m.usage,op.vraag)};
     }
     const rd=r.body.getReader(),dec=new TextDecoder();let buf='';
     for(;;){
@@ -5549,8 +5579,11 @@ async function aiCall(key,body,op){
     }
     if(buf.trim())aiSseEvent(buf,m,op);
     m.content=m.content.filter(Boolean);delete m._json;
+    m.kosten=aiVerbruikTel(body.model,m.usage,op.vraag);
     return m;
-  }catch(e){if(e&&e.soort)e.deel=m;throw e;}
+  }catch(e){
+    if(m.usage.input_tokens)aiVerbruikTel(body.model,m.usage,false);   // a stopped or broken stream was still billed
+    if(e&&e.soort)e.deel=m;throw e;}
   finally{clearTimeout(timer);if(AI_LOOPT===loopt)AI_LOOPT=null;}
 }
 const AI_TOON={mild:'Begin bij wat goed gaat en breng verbeterpunten vriendelijk.',neutraal:'Zakelijk en feitelijk.',direct:'Direct en zonder verzachting: benoem de grootste fout eerst.'};
@@ -5586,9 +5619,13 @@ function aiMarkdown(txt){
 function aiHistorie(){const paren=[];
   for(let i=0;i<AIMSGS.length-1;i++)if(AIMSGS[i].r==='me'&&AIMSGS[i+1].r==='ai')paren.push([AIMSGS[i].t,AIMSGS[i+1].t]);
   return paren.slice(-AI_HISTORIE).flatMap(([q,a])=>[{role:'user',content:q},{role:'assistant',content:a}]);}
-async function aiVraag(vraag){
-  vraag=String(vraag||'').trim();const key=aiKeyGet();
+async function aiVraag(vraag,o){
+  o=o||{};vraag=String(vraag||'').trim();const key=aiKeyGet();
   if(!vraag||AI_UI.bezig||!key)return;
+  // Over the member's own monthly limit: ask first, send nothing yet.
+  const lim=+AIPREFS.limiet||0;
+  if(lim>0&&aiVerbruik().usd>=lim&&!o.bevestigd){AI_UI.limiet=vraag;AI_UI.invoer=vraag;render();aiScroll();return;}
+  AI_UI.limiet=null;
   const pk=coachPakket({focusId:AI_FOCUS_ID});if(!pk.n){render();return;}
   const messages=[...aiHistorie(),{role:'user',content:vraag}];
   const inp=document.getElementById('aiInput');if(inp)inp.value='';   // sent: not a draft to carry over
@@ -5597,9 +5634,12 @@ async function aiVraag(vraag){
   // While streaming only the live bubble is redrawn, not the whole page.
   const toon=()=>{const el=document.querySelector('#aiFeed .ailive .aitekst');if(el){el.innerHTML=aiMarkdown(live.t);aiScroll();}};
   try{
-    const d=await aiCall(key,{model:aiModel(),max_tokens:AI_MAX_TOKENS,stream:true,output_config:{effort:'low'},
+    // Cached: the package (explicit marker) and the growing conversation (top-level automatic caching),
+    // so a follow-up question reads them from the cache at a tenth of the price.
+    const d=await aiCall(key,{model:aiModel(),max_tokens:AI_MAX_TOKENS,stream:true,output_config:{effort:'low'},cache_control:{type:'ephemeral'},
       system:[{type:'text',text:aiSysteem()},{type:'text',text:'# Data van de trader\n\n'+pk.tekst,cache_control:{type:'ephemeral'}}],messages},
-      {opText:t=>{live.t+=t;toon();}});
+      {opText:t=>{live.t+=t;toon();},vraag:true});
+    live.kosten=d.kosten;
     const tekst=(d.content||[]).filter(x=>x.type==='text').map(x=>x.text).join('\n').trim();
     if(d.stop_reason==='refusal'||!tekst)throw {soort:'geweigerd'};
     live.t=tekst+(d.stop_reason==='max_tokens'?'\n\n*Het antwoord was te lang en is afgekapt. Vraag "ga door".*':'');
@@ -5655,7 +5695,7 @@ function aiMsgHTML(m){
   if(m.live)return `<div class="aimsg ai ailive" aria-live="polite"><div class="aiav">🤖</div><div class="aibub"><div class="aitekst">${aiMarkdown(m.t)}</div><div class="aiwacht">Coach denkt na…</div></div></div>`;
   const body=m.vb?m.t:aiMarkdown(m.t);
   const gestopt=m.gestopt?'<div class="aigestopt">Gestopt door jou, dit is wat er al was.</div>':'';
-  const verstuurd=m.pakket?`<details class="aisent"><summary>Wat is er verstuurd?</summary><pre>${esc(m.pakket)}</pre></details>`:'';
+  const verstuurd=m.pakket?`<details class="aisent"><summary>Wat is er verstuurd?${m.kosten!=null?' <span class="aikost">≈ '+aiUsd(m.kosten)+'</span>':''}</summary><pre>${esc(m.pakket)}</pre></details>`:'';
   return `<div class="aimsg ai"><div class="aiav">🤖</div><div class="aibub">${body}${gestopt}${verstuurd}</div></div>`;}
 function aiZonderSleutel(){
   const discord=AI_DISCORD_UITLEG?` <a class="linklike" href="${esc(AI_DISCORD_UITLEG)}" target="_blank" rel="noopener">Uitleg met screenshots in de Discord</a>`:'';
@@ -5679,6 +5719,9 @@ function aiZonderSleutel(){
 }
 // With a key but nothing to talk about: say what is missing and what to do, no input.
 function aiLeeg(titel,tekst,knop){return `<div class="aiwrap"><div class="aifeed" id="aiFeed">${aiMsgHTML({r:'ai',vb:true,t:'<b>'+titel+'</b><br>'+tekst})}</div>${knop||''}${aiVoet()}</div>`;}
+function aiLimietHTML(){const v=aiVerbruik();
+  return `<div class="aimsg ai limiet" role="alert"><div class="aiav">💰</div><div class="aibub">Je hebt deze maand ongeveer <b>${aiUsd(v.usd)}</b> gebruikt. Dat is boven je eigen limiet van <b>${aiUsd(AIPREFS.limiet)}</b>. Toch versturen?
+    <div class="aiknoprij"><button class="btn pri" id="aiLimietJa" onclick="aiVraag(AI_UI.limiet,{bevestigd:true})">Toch versturen</button><button class="btn" id="aiLimietNee" onclick="AI_UI.limiet=null;render()">Niet nu</button></div></div></div>`;}
 function aiVoet(){return `<div class="aidisc">Claude ${aiModelNaam()} · sleutel ${esc(aiKeyHint())}${aiKeySessie()?' (alleen deze sessie)':''} · je cijfers gaan naar Anthropic, niet naar ons · geen financieel advies · <a class="linklike" onclick="go('instellingen');setSetTab('ai')">Instellingen</a></div>`;}
 function pgAI(){
   aiBewaarInvoer();
@@ -5697,7 +5740,7 @@ function pgAI(){
   const inv=AI_UI.invoer;AI_UI.invoer='';
   return `<div class="aiwrap">
     ${focus}
-    <div class="aifeed" id="aiFeed">${intro}${AIMSGS.map(aiMsgHTML).join('')}</div>
+    <div class="aifeed" id="aiFeed">${intro}${AIMSGS.map(aiMsgHTML).join('')}${AI_UI.limiet?aiLimietHTML():''}</div>
     <div class="aisug">${chips.map(c=>`<button class="aichip"${dis} onclick="aiVraag(${esc(JSON.stringify(c))})">${esc(c)}</button>`).join('')}</div>
     <div class="aiinput"><input id="aiInput" placeholder="Vraag je AI-coach iets…" value="${esc(inv)}"${dis} onkeydown="if(event.key==='Enter')aiSend()"/>${AI_UI.bezig?'<button class="btn" id="aiStopBtn" onclick="aiStop()">Stop</button>':'<button class="btn pri" id="aiSendBtn" onclick="aiSend()">Stuur</button>'}</div>
     ${aiVoet()}
@@ -6472,7 +6515,7 @@ function diagSignals(){
 async function diagReport(){
   const ts=(T||[]).filter(t=>t&&typeof t==='object'),cnt=(f)=>ts.filter(f).length,by=(f)=>{const o={};ts.forEach(t=>{const k=f(t)||'geen';o[k]=(o[k]||0)+1;});return o;};
   const dates=ts.map(t=>t.date).filter(Boolean).sort();
-  const lsSizes={};try{for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(/^(sj_|tp2:|tj_)/.test(k))lsSizes[k]=(localStorage.getItem(k)||'').length;}}catch(e){}
+  const lsSizes={};try{for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(/^(sj_|tp2:|tj_)/.test(k)&&!AI_LOKAAL.includes(k))lsSizes[k]=(localStorage.getItem(k)||'').length;}}catch(e){}
   const idb={};for(const k of ['trades','trash','pbook','snapshots']){try{idb[k]=dovBytes(await IDB.get(k));}catch(e){idb[k]='?';}}
   let est=DIAG_EST;try{if(navigator.storage&&navigator.storage.estimate){const e=await navigator.storage.estimate();est={usage:e.usage||0,quota:e.quota||0};DIAG_EST=est;}}catch(e){}
   let worker={url:'',reachable:null,ms:null,status:null};

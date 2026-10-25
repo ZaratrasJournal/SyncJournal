@@ -35,6 +35,10 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 - **Duidelijke meldingen als iets misgaat:** een ongeldige sleutel, tegoed op, je limiet bij Anthropic bereikt, te veel
   vragen achter elkaar, Claude overbelast, geen internet of geen reactie. Steeds met wat je nu kunt doen, en je vraag
   blijft in het invoerveld staan.
+- **Zie wat de coach kost.** In Instellingen → AI-coach staat "deze maand ongeveer $ …", en onder elk antwoord wat die
+  vraag ongeveer kostte. Je kunt een eigen maandlimiet instellen; daarboven vraagt de coach eerst of je echt wilt
+  versturen. Vervolgvragen zijn goedkoper, omdat je cijfers bij Anthropic even bewaard blijven (prompt caching). Het
+  verbruik blijft op je apparaat en gaat niet mee in een back-up.
 - **FAQ over de AI-coach:** wat het is, wat je nodig hebt, wat het kost, wat er verstuurd wordt, waar je sleutel staat en
   hoe je hem uitzet.
 
