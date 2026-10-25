@@ -27,6 +27,8 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 - **Kruis-analyse in Tendencies is niet meer leeg zonder uitleg.** Zonder playbooks toonde hij alleen een kopregel.
   Nu zie je wat er ontbreekt (geen playbook, een lege dimensie, of geen trade met allebei) en één klik naar een
   combinatie die wel iets laat zien.
+- **Het trade-formulier werkt beter met een schermlezer.** Elk invoerveld wordt nu voorgelezen met zijn naam (Datum,
+  Entry, Exit …) in plaats van alleen "invoerveld", en een gesloten formulier is ook voor een schermlezer echt weg.
 
 ---
 
