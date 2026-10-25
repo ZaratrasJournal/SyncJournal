@@ -37,6 +37,10 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
   en noemen de volgende stap. Mori gebruikt dezelfde meldingen.
 
 ### Fixed
+- **Opnieuw koppelen haalt je oudere trades weer op.** Koppelde je een exchange opnieuw, bijvoorbeeld met de
+  sleutel van een subaccount, dan haalde de eerste sync alleen trades op vanaf de vorige sync van de oude koppeling.
+  Gesloten trades van daarvoor kwamen nooit binnen (gemeld door Jarne). Nu gaat de eerste sync na het koppelen
+  30 dagen terug, of tot je "sync vanaf"-datum. Trades die er al staan, worden niet dubbel ingelezen.
 - **Accountnaam bij oude trades.** Gaf je een account een andere naam (bijvoorbeeld via een
   back-up), dan bleef bij trades die je eerder met de hand had ingevoerd de oude naam staan. De
   naam wordt nu opgezocht, dus elke trade toont de huidige naam. Een eigen sub-account op een

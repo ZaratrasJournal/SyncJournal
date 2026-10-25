@@ -56,6 +56,7 @@ module.exports = [
   'export-sleutels',         // F12: API-sleutels alleen in een bestand als je dat kiest; automatische back-ups nooit
   'lege-staten',             // C1: elke lege staat via emptyState, twee soorten (leeg / niets in beeld), met een volgende stap
   'account-label',           // C3: hernoemd account → oude trades tonen de nieuwe naam
+  'koppel-opnieuw',          // opnieuw koppelen: eerste sync 30 dagen terug of vanaf 'sync vanaf', niet vanaf de oude lastSync (Jarne)
 
   // site + tradingplan
   'landing', 'tradingplan-v2', 'plan-koppeling', 'plan-tendencies', 'plan-doorloop', 'plan-playbook',
