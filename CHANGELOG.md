@@ -31,6 +31,10 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
   Haiku 5.5. Daar staat ook "Vergeet sleutel".
 - **Vraag de coach over één trade.** In Review staat bij een trade een 🤖-knopje (alleen als je coach gekoppeld is). Dat
   opent de coach met die trade klaargezet.
+- **Het antwoord van de coach verschijnt terwijl hij schrijft**, met een knop **Stop**. Wat er al stond blijft staan.
+- **Duidelijke meldingen als iets misgaat:** een ongeldige sleutel, tegoed op, je limiet bij Anthropic bereikt, te veel
+  vragen achter elkaar, Claude overbelast, geen internet of geen reactie. Steeds met wat je nu kunt doen, en je vraag
+  blijft in het invoerveld staan.
 - **FAQ over de AI-coach:** wat het is, wat je nodig hebt, wat het kost, wat er verstuurd wordt, waar je sleutel staat en
   hoe je hem uitzet.
 

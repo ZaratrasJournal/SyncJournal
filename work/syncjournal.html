@@ -1172,7 +1172,11 @@ details.faq .faq-a b{color:var(--ink)}
 .aibub p{margin:0 0 8px}.aibub p:last-child{margin-bottom:0}
 .aibub ul,.aibub ol{margin:0 0 8px;padding-left:20px}
 .aimsg.fout .aibub{background:color-mix(in srgb,var(--red) 10%,var(--surface));color:var(--ink)}
-.aityping .aibub{color:var(--muted);font-style:italic}
+.aiwacht{color:var(--muted);font-style:italic}
+.ailive .aitekst:not(:empty)+.aiwacht{display:none}
+.aigestopt{margin-top:8px;font-size:11.5px;color:var(--muted);font-style:italic}
+.aimsg.info .aibub{color:var(--muted)}
+.aibub{overflow-wrap:anywhere;min-width:0}
 .aichip:disabled{opacity:.5;cursor:default}
 .aisent{margin-top:10px;font-size:11.5px;color:var(--muted)}
 .aisent summary{cursor:pointer;font-weight:600}
@@ -5470,35 +5474,84 @@ function toggleAINotes(){AIPREFS.notes=AIPREFS.notes===false;persistAIPrefs();re
 
 /* ── Talking to Anthropic: the only network call the coach makes ── */
 // Errors become a kind the page knows how to word (research §7), never a raw API message.
-function aiFoutSoort(status,d){const e=(d&&d.error)||{},msg=String(e.message||'');
-  if(status===401)return 'sleutel';
-  if(status===402||/credit balance/i.test(msg))return 'tegoed';
-  if(status===403||/workspace/i.test(msg))return 'rechten';
-  if(status===404)return 'model';
-  if(status===429||status===529||e.type==='overloaded_error')return 'druk';
-  if(status>=500)return 'storing';
+function aiFoutSoort(status,d){const e=(d&&d.error)||{},msg=String(e.message||''),type=String(e.type||'');
+  if(status===401||type==='authentication_error')return 'sleutel';
+  if(status===402||type==='billing_error'||/credit balance/i.test(msg))return 'tegoed';
+  if((status===400||status===403)&&/usage limit|spend limit|spending limit/i.test(msg))return 'limiet';
+  if(status===403||type==='permission_error'||/workspace/i.test(msg))return 'rechten';
+  if(status===404||type==='not_found_error')return 'model';
+  if(status===429||type==='rate_limit_error')return 'druk';
+  if(status===529||type==='overloaded_error')return 'overbelast';
+  if(status>=500||type==='api_error')return 'storing';
   return 'onbekend';}
 const AI_FOUT={
   sleutel:'Anthropic herkent deze sleutel niet. Misschien is hij verlopen of verwijderd. Maak een nieuwe aan op console.anthropic.com.',
-  tegoed:'Je tegoed bij Anthropic is op. Zet er tegoed bij in je console, dan werkt de coach meteen weer.',
+  tegoed:'Je tegoed bij Anthropic is op. Zet er tegoed bij in je console op console.anthropic.com, dan werkt de coach meteen weer.',
+  limiet:'Je hebt je limiet bij Anthropic bereikt. Verhoog hem in je console op console.anthropic.com, of wacht tot de limiet weer vrijkomt.',
   rechten:'Deze sleutel mag dit niet. Maak een sleutel aan voor één workspace.',
   model:'Dit model is niet beschikbaar voor je sleutel. Kies een ander model in Instellingen → AI-coach.',
-  druk:'Claude is even druk. Probeer het over een minuut opnieuw.',
+  druk:'Te veel vragen achter elkaar. Probeer het over een minuut opnieuw.',
+  overbelast:'Claude is op dit moment overbelast. Probeer het over een paar minuten opnieuw.',
   storing:'Er ging iets mis bij Anthropic, niet bij jou. Probeer het zo opnieuw.',
-  netwerk:'Geen verbinding. Je vraag staat nog in het invoerveld.',
+  netwerk:'Geen verbinding. Controleer je internet en probeer het opnieuw.',
+  timeout:'Anthropic reageert niet. Probeer het opnieuw; blijft het hangen, kijk dan op status.anthropic.com.',
   geweigerd:'De coach kan deze vraag niet beantwoorden. Probeer hem anders te stellen.',
   onbekend:'Dat lukte niet. Probeer het opnieuw.',
 };
 // In the chat there is no key field: say where to swap the key. While linking there is no question to keep.
 const AI_FOUT_CHAT_SLEUTEL=' Kies daarna Vergeet sleutel in Instellingen → AI-coach en koppel de nieuwe.';
 const AI_FOUT_KOPPEL_NETWERK='Geen verbinding met Anthropic. Controleer je internet en probeer het opnieuw.';
-async function aiCall(key,body){
-  let r;
-  try{r=await fetch(AI_URL,{method:'POST',headers:{'content-type':'application/json','x-api-key':key,'anthropic-version':AI_VERSIE,'anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify(body)});}
-  catch(e){throw {soort:'netwerk'};}
-  let d=null;try{d=await r.json();}catch(e){}
-  if(!r.ok)throw {soort:aiFoutSoort(r.status,d),status:r.status};
-  return d||{};
+let AI_TIMEOUT_MS=45000;   // no byte from Anthropic for this long counts as a time-out (let: a spec shortens it)
+let AI_LOOPT=null;         // {ctrl, reden} of the request in flight; Stop and the time-out abort it
+function aiStop(){if(AI_LOOPT){AI_LOOPT.reden='gestopt';AI_LOOPT.ctrl.abort();}}
+// Fold one server-sent event into the message being built (blocks by index, stop reason, usage).
+function aiSseEvent(raw,m,op){
+  let data='';raw.split('\n').forEach(l=>{if(l.startsWith('data:'))data+=l.slice(5).trim();});
+  if(!data)return;
+  let d;try{d=JSON.parse(data);}catch(e){return;}
+  const b=m.content[d.index];
+  if(d.type==='message_start')Object.assign(m.usage,(d.message&&d.message.usage)||{});
+  else if(d.type==='content_block_start'){m.content[d.index]={...d.content_block};if(d.content_block.type==='tool_use')m._json[d.index]='';}
+  else if(d.type==='content_block_delta'&&b){const x=d.delta||{};
+    if(x.type==='text_delta'){b.text=(b.text||'')+x.text;if(op.opText)op.opText(x.text);}
+    else if(x.type==='thinking_delta')b.thinking=(b.thinking||'')+x.thinking;
+    else if(x.type==='signature_delta')b.signature=x.signature;
+    else if(x.type==='input_json_delta')m._json[d.index]+=x.partial_json;}
+  else if(d.type==='content_block_stop'&&b&&b.type==='tool_use'){try{b.input=JSON.parse(m._json[d.index]||'{}');}catch(e){b.input={};b._kapot=true;}}
+  else if(d.type==='message_delta'){if(d.delta&&d.delta.stop_reason)m.stop_reason=d.delta.stop_reason;Object.assign(m.usage,d.usage||{});}
+  else if(d.type==='error')throw {soort:aiFoutSoort(0,d)};
+}
+// The coach's only network call. With body.stream the answer arrives as server-sent events and op.opText gets
+// each piece of text; a plain JSON answer is accepted too. Returns {content, stop_reason, usage}.
+async function aiCall(key,body,op){
+  op=op||{};
+  const loopt={ctrl:new AbortController(),reden:''};AI_LOOPT=loopt;
+  let timer;const wacht=()=>{clearTimeout(timer);timer=setTimeout(()=>{loopt.reden='timeout';loopt.ctrl.abort();},AI_TIMEOUT_MS);};
+  const afgebroken=()=>({soort:loopt.reden||'netwerk'});
+  const m={content:[],stop_reason:null,usage:{},_json:{}};
+  wacht();
+  try{
+    let r;
+    try{r=await fetch(AI_URL,{method:'POST',signal:loopt.ctrl.signal,headers:{'content-type':'application/json','x-api-key':key,'anthropic-version':AI_VERSIE,'anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify(body)});}
+    catch(e){throw afgebroken();}
+    if(!r.ok){let d=null;try{d=await r.json();}catch(e){}throw {soort:aiFoutSoort(r.status,d),status:r.status};}
+    if(!/event-stream/.test(r.headers.get('content-type')||'')||!r.body){
+      let d={};try{d=await r.json();}catch(e){}
+      (d.content||[]).forEach(x=>{if(x.type==='text'&&op.opText)op.opText(x.text);});
+      return {content:d.content||[],stop_reason:d.stop_reason||null,usage:d.usage||{}};
+    }
+    const rd=r.body.getReader(),dec=new TextDecoder();let buf='';
+    for(;;){
+      let stuk;try{stuk=await rd.read();}catch(e){throw afgebroken();}
+      if(stuk.done)break;
+      wacht();buf+=dec.decode(stuk.value,{stream:true}).replace(/\r\n/g,'\n');
+      let i;while((i=buf.indexOf('\n\n'))>=0){const ev=buf.slice(0,i);buf=buf.slice(i+2);aiSseEvent(ev,m,op);}
+    }
+    if(buf.trim())aiSseEvent(buf,m,op);
+    m.content=m.content.filter(Boolean);delete m._json;
+    return m;
+  }catch(e){if(e&&e.soort)e.deel=m;throw e;}
+  finally{clearTimeout(timer);if(AI_LOOPT===loopt)AI_LOOPT=null;}
 }
 const AI_TOON={mild:'Begin bij wat goed gaat en breng verbeterpunten vriendelijk.',neutraal:'Zakelijk en feitelijk.',direct:'Direct en zonder verzachting: benoem de grootste fout eerst.'};
 function aiSysteem(){return ['Je bent de AI-coach in SyncJournal, de trading journal van deze trader. Je bent een ervaren trader-coach: nuchter, concreet, proces boven resultaat. Schrijf in het Nederlands; trading-termen mogen Engels.',
@@ -5539,19 +5592,28 @@ async function aiVraag(vraag){
   const pk=coachPakket({focusId:AI_FOCUS_ID});if(!pk.n){render();return;}
   const messages=[...aiHistorie(),{role:'user',content:vraag}];
   const inp=document.getElementById('aiInput');if(inp)inp.value='';   // sent: not a draft to carry over
-  AIMSGS.push({r:'me',t:vraag});AI_UI={bezig:true,invoer:''};render();aiScroll();
+  const live={r:'ai',t:'',live:true,pakket:pk.tekst};
+  AIMSGS.push({r:'me',t:vraag},live);AI_UI={bezig:true,invoer:''};render();aiScroll();
+  // While streaming only the live bubble is redrawn, not the whole page.
+  const toon=()=>{const el=document.querySelector('#aiFeed .ailive .aitekst');if(el){el.innerHTML=aiMarkdown(live.t);aiScroll();}};
   try{
-    const d=await aiCall(key,{model:aiModel(),max_tokens:AI_MAX_TOKENS,output_config:{effort:'low'},
-      system:[{type:'text',text:aiSysteem()},{type:'text',text:'# Data van de trader\n\n'+pk.tekst,cache_control:{type:'ephemeral'}}],messages});
+    const d=await aiCall(key,{model:aiModel(),max_tokens:AI_MAX_TOKENS,stream:true,output_config:{effort:'low'},
+      system:[{type:'text',text:aiSysteem()},{type:'text',text:'# Data van de trader\n\n'+pk.tekst,cache_control:{type:'ephemeral'}}],messages},
+      {opText:t=>{live.t+=t;toon();}});
     const tekst=(d.content||[]).filter(x=>x.type==='text').map(x=>x.text).join('\n').trim();
     if(d.stop_reason==='refusal'||!tekst)throw {soort:'geweigerd'};
-    AIMSGS.push({r:'ai',t:tekst+(d.stop_reason==='max_tokens'?'\n\n*Het antwoord was te lang en is afgekapt. Vraag "ga door".*':''),pakket:pk.tekst});
+    live.t=tekst+(d.stop_reason==='max_tokens'?'\n\n*Het antwoord was te lang en is afgekapt. Vraag "ga door".*':'');
   }catch(e){
     const soort=(e&&e.soort)||'onbekend';
-    if(soort==='netwerk'){AIMSGS.pop();AI_UI.invoer=vraag;}   // nothing was answered: the question goes back into the input
-    AIMSGS.push({r:'fout',t:(AI_FOUT[soort]||AI_FOUT.onbekend)+(soort==='sleutel'||soort==='rechten'?AI_FOUT_CHAT_SLEUTEL:'')});
+    if(soort==='gestopt'&&live.t.trim())live.gestopt=true;   // keep what came in, marked
+    else{
+      // nothing usable came back: the question goes back into the input, with a message what to do next
+      AIMSGS.splice(AIMSGS.indexOf(live)-1,2);AI_UI.invoer=vraag;
+      if(soort==='gestopt')AIMSGS.push({r:'info',t:'Gestopt voordat er een antwoord was.'});
+      else AIMSGS.push({r:'fout',t:(AI_FOUT[soort]||AI_FOUT.onbekend)+(soort==='sleutel'||soort==='rechten'?AI_FOUT_CHAT_SLEUTEL:'')});
+    }
   }
-  AI_UI.bezig=false;render();aiScroll();
+  live.live=false;AI_UI.bezig=false;render();aiScroll();
 }
 function aiSend(){const el=document.getElementById('aiInput');if(el)aiVraag(el.value);}
 // From the trade detail: open the coach with this trade set up as the subject.
@@ -5588,10 +5650,13 @@ const AI_MEEGAAN='Je cijfers en notities gaan mee naar de coach. Uitzetten kan i
 // m.t is trusted HTML only for the fixed example; the member's text and the model's answer are escaped.
 function aiMsgHTML(m){
   if(m.r==='me')return `<div class="aimsg me"><div class="aibub">${esc(m.t)}</div></div>`;
-  if(m.r==='fout')return `<div class="aimsg ai fout"><div class="aiav">⚠️</div><div class="aibub">${esc(m.t)}</div></div>`;
+  if(m.r==='fout')return `<div class="aimsg ai fout" role="alert"><div class="aiav">⚠️</div><div class="aibub">${esc(m.t)}</div></div>`;
+  if(m.r==='info')return `<div class="aimsg ai info"><div class="aiav">🤖</div><div class="aibub">${esc(m.t)}</div></div>`;
+  if(m.live)return `<div class="aimsg ai ailive" aria-live="polite"><div class="aiav">🤖</div><div class="aibub"><div class="aitekst">${aiMarkdown(m.t)}</div><div class="aiwacht">Coach denkt na…</div></div></div>`;
   const body=m.vb?m.t:aiMarkdown(m.t);
+  const gestopt=m.gestopt?'<div class="aigestopt">Gestopt door jou, dit is wat er al was.</div>':'';
   const verstuurd=m.pakket?`<details class="aisent"><summary>Wat is er verstuurd?</summary><pre>${esc(m.pakket)}</pre></details>`:'';
-  return `<div class="aimsg ai"><div class="aiav">🤖</div><div class="aibub">${body}${verstuurd}</div></div>`;}
+  return `<div class="aimsg ai"><div class="aiav">🤖</div><div class="aibub">${body}${gestopt}${verstuurd}</div></div>`;}
 function aiZonderSleutel(){
   const discord=AI_DISCORD_UITLEG?` <a class="linklike" href="${esc(AI_DISCORD_UITLEG)}" target="_blank" rel="noopener">Uitleg met screenshots in de Discord</a>`:'';
   return `<div class="aiwrap">
@@ -5628,14 +5693,13 @@ function pgAI(){
   const ft=AI_FOCUS_ID!=null?T.find(t=>String(t.id)===String(AI_FOCUS_ID)):null;
   const focus=ft?`<div class="aifocus">Trade in focus: <b>${esc(ft.pair||'')}</b> ${esc(coachDatum(ft.date))} ${ft.dir==='short'?'short':'long'} <button class="linklike" onclick="aiFocusWeg()" aria-label="focus weghalen">✕</button></div>`:'';
   const intro=AIMSGS.length?'':aiMsgHTML({r:'ai',vb:true,t:'Vraag me iets over je trades. Ik kijk naar de '+CLOSED.length+' gesloten trade'+(CLOSED.length===1?'':'s')+' die je filter nu laat zien, en noem alleen cijfers die de journal heeft uitgerekend.'});
-  const typing=AI_UI.bezig?`<div class="aimsg ai aityping"><div class="aiav">🤖</div><div class="aibub">Coach denkt na…</div></div>`:'';
   const dis=AI_UI.bezig?' disabled':'';
   const inv=AI_UI.invoer;AI_UI.invoer='';
   return `<div class="aiwrap">
     ${focus}
-    <div class="aifeed" id="aiFeed">${intro}${AIMSGS.map(aiMsgHTML).join('')}${typing}</div>
+    <div class="aifeed" id="aiFeed">${intro}${AIMSGS.map(aiMsgHTML).join('')}</div>
     <div class="aisug">${chips.map(c=>`<button class="aichip"${dis} onclick="aiVraag(${esc(JSON.stringify(c))})">${esc(c)}</button>`).join('')}</div>
-    <div class="aiinput"><input id="aiInput" placeholder="Vraag je AI-coach iets…" value="${esc(inv)}"${dis} onkeydown="if(event.key==='Enter')aiSend()"/><button class="btn pri" id="aiSendBtn"${dis} onclick="aiSend()">Stuur</button></div>
+    <div class="aiinput"><input id="aiInput" placeholder="Vraag je AI-coach iets…" value="${esc(inv)}"${dis} onkeydown="if(event.key==='Enter')aiSend()"/>${AI_UI.bezig?'<button class="btn" id="aiStopBtn" onclick="aiStop()">Stop</button>':'<button class="btn pri" id="aiSendBtn" onclick="aiSend()">Stuur</button>'}</div>
     ${aiVoet()}
   </div>`;
 }
