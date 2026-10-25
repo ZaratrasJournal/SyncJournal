@@ -47,6 +47,10 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 - **De coach zoekt zelf dingen op in je journal.** Staat iets niet in de cijfers die hij meekreeg, bijvoorbeeld "hoe
   doet mijn London SFP het op vrijdag?", dan vraagt hij de journal om precies die cijfers of die trades. De journal
   rekent; de coach leest. Onder "Wat is er verstuurd?" zie je ook wat hij opzocht.
+- **Check mijn trade-idee.** Vul pair, richting, setup, entry, stop en eventueel TP in, en de coach zegt wat je eigen
+  cijfers voor die setup erover zeggen, of het idee past bij je playbook-regels, en, als je TradingPlan gebruikt, bij
+  je weekplan en vaste regels (bijvoorbeeld max trades of "niet na 2 verliezers"). De journal rekent je geplande R:R
+  uit. Geen koop- of verkoopadvies: de coach houdt je je eigen regels voor.
 - **FAQ over de AI-coach:** wat het is, wat je nodig hebt, wat het kost, wat er verstuurd wordt, waar je sleutel staat en
   hoe je hem uitzet.
 

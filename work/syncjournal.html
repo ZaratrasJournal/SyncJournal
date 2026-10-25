@@ -1174,6 +1174,17 @@ details.faq .faq-a b{color:var(--ink)}
 .aimsg.fout .aibub{background:color-mix(in srgb,var(--red) 10%,var(--surface));color:var(--ink)}
 .aiwacht{color:var(--muted);font-style:italic}
 .ailive .aitekst:not(:empty)+.aiwacht{display:none}
+.aiideebar{padding:0 18px 12px;background:var(--surface);border-left:1px solid var(--line);border-right:1px solid var(--line)}
+.aiidee{margin:0;border-radius:0;padding:14px 18px;border-top:1px solid var(--line)}
+.aiidee-h{display:flex;flex-direction:column;gap:2px;margin-bottom:10px;font-size:13px;color:var(--ink)}
+.aiidee-h span{font-size:11.5px;color:var(--muted)}
+.aiideegrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px}
+.aiideegrid label{display:flex;flex-direction:column;gap:3px;font-size:11.5px;font-weight:600;color:var(--ink2);min-width:0}
+.aiideegrid label small{font-weight:400;color:var(--muted);font-size:inherit}
+.aiideegrid label.breed{grid-column:1/-1}
+.aiideegrid input,.aiideegrid select{border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:13px;background:var(--bg);color:var(--ink);font-family:inherit;min-width:0;width:100%;box-sizing:border-box}
+.aiideehint{min-height:18px;margin-top:8px;font-size:12px;color:var(--muted)}
+.aiideehint.fout{color:var(--amber)}
 .aiweek-h{font-weight:700;margin-bottom:8px}
 .ainw{white-space:nowrap}
 .aiwtegels{display:grid;grid-template-columns:repeat(auto-fit,minmax(72px,1fr));gap:6px;margin-bottom:6px}
@@ -1185,7 +1196,7 @@ details.faq .faq-a b{color:var(--ink)}
 .aiweek-v{font-size:11.5px;color:var(--muted);margin-bottom:6px}
 .aiweek h4{margin:10px 0 3px;font-size:12.5px;color:var(--ink)}
 .aiweek p{margin:0}
-.aikost{font-weight:500;margin-left:6px}
+.aikost{font-weight:500;margin-left:6px;white-space:nowrap}
 .aiknoprij{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
 .aimsg.limiet .aibub{background:color-mix(in srgb,var(--amber) 12%,var(--surface));color:var(--ink)}
 .ailimiet{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--ink2)}
@@ -5467,7 +5478,8 @@ const COACH_RECENT_VRIJ=10; // recent trades with a free question; the coach loo
 // opts: {closed, boekingen, hideAmounts, notes, focusId, deel}. Defaults: what the current filter shows and the
 // trader's coach preferences. deel picks the part a question needs, so it costs fewer tokens:
 //   'alles' (a free question), 'lek' / 'edge' (groups worst / best first, plus the worst / best trades),
-//   'week' (the last 7 days against the 7 before), 'laatste' (the newest trade and its setup).
+//   'week' (the last 7 days against the 7 before), 'laatste' (the newest trade and its setup),
+//   'pretrade' (a trade idea in opts.idee against that setup, symbol, direction, playbook and TradingPlan).
 // Returns {tekst, n}; n = closed trades the package is about (0 = nothing to send).
 function coachPakket(opts){
   const o={closed:CLOSED,boekingen:BOEKINGEN,hideAmounts:!!AIPREFS.hideAmounts,notes:AIPREFS.notes!==false,focusId:null,deel:'alles',...(opts||{})};
@@ -5488,7 +5500,8 @@ function coachPakket(opts){
     return {tekst:L.join('\n'),n:w.week.rows.length};
   }
   L.push('- Alles ('+tr(rows.length)+'): '+coachStats(rows,o,geld));
-  if(o.deel!=='laatste')[['30d','Laatste 30 dagen'],['7d','Laatste 7 dagen']].forEach(([per,lbl])=>{const rs=periodTrades(rows,per);
+  if(o.deel==='pretrade'){L.push(...coachPretradeDeel(rows,o));return {tekst:L.join('\n'),n:rows.length};}
+  if(o.deel!=='laatste'&&o.deel!=='pretrade')[['30d','Laatste 30 dagen'],['7d','Laatste 7 dagen']].forEach(([per,lbl])=>{const rs=periodTrades(rows,per);
     if(rs.length&&rs.length<rows.length)L.push('- '+lbl+' t/m '+coachDatum(chron[0].date)+' ('+tr(rs.length)+'): '+coachStats(rs,o,periodTrades(geld,per)));});
   if(o.deel!=='laatste')L.push(...coachGroepen(rows,{...o,volgorde:o.deel==='lek'?'slecht':o.deel==='edge'?'goed':'impact'}));
   const focusId=o.deel==='laatste'?chron[0].id:o.focusId;
@@ -5505,6 +5518,53 @@ function coachPakket(opts){
   }
   return {tekst:L.join('\n'),n:rows.length};
 }
+/* ── Pre-trade check: what the member's own data and rules say about a trade idea ──
+   The journal computes the planned R:R and the stop distance; TradingPlan is read only (tp2:*), like planMatch. */
+function coachIsoWeek(iso){const [y,m,d]=String(iso).split('-').map(Number);const t=new Date(Date.UTC(y,m-1,d)),day=t.getUTCDay()||7;t.setUTCDate(t.getUTCDate()+4-day);
+  const y0=new Date(Date.UTC(t.getUTCFullYear(),0,1));return t.getUTCFullYear()+'-W'+String(Math.ceil(((t-y0)/864e5+1)/7)).padStart(2,'0');}
+function coachGetal(v){const n=parseFloat(String(v==null?'':v).replace(',','.'));return isFinite(n)?n:null;}
+// Planned R:R and stop distance, or a reason why the idea is not complete yet.
+function coachIdeeCijfers(i){const e=coachGetal(i.entry),st=coachGetal(i.stop),tp=coachGetal(i.tp);
+  if(!String(i.pair||'').trim())return {fout:'Vul een pair in.'};
+  if(!(e>0)||!(st>0))return {fout:'Vul entry en stop in.'};
+  if(e===st)return {fout:'Entry en stop zijn gelijk.'};
+  if(i.dir==='long'&&st>e)return {fout:'Bij een long hoort de stop onder de entry.'};
+  if(i.dir==='short'&&st<e)return {fout:'Bij een short hoort de stop boven de entry.'};
+  if(tp!=null&&tp>0&&(i.dir==='long'?tp<=e:tp>=e))return {fout:'Bij een '+i.dir+' hoort de TP '+(i.dir==='long'?'boven':'onder')+' de entry.'};
+  return {rr:tp>0?Math.abs(tp-e)/Math.abs(e-st):null,stopPct:Math.abs(e-st)/e*100};}
+function coachPlanRegels(dir){const P=planLoad(),wk=P.plans['week-'+coachIsoWeek(localDateISO())],pb=(P.cfg&&P.cfg.pb)||null,max=(P.cfg&&P.cfg.max)||null,L=[];
+  if(!wk&&!pb)return ['- Geen TradingPlan-gegevens gevonden op dit apparaat.'];
+  if(wk){L.push('Weekplan '+coachIsoWeek(localDateISO())+':');
+    [['Bias',wk.bias],['Focus',wk.focus],['Max trades deze week',wk.maxtrades],['Nieuws',wk.news],['Range / levels',wk.range||wk.levels]].forEach(([k,v])=>{if(v)L.push('- '+k+': '+String(v).replace(/\s+/g,' ').trim());});
+    const nt=String(wk.notrade||'').split('\n').map(x=>x.trim()).filter(Boolean);if(nt.length)L.push('- Niet traden: '+nt.join(' / '));}
+  else L.push('- Geen weekplan voor deze week.');
+  if(pb){const r=pb[dir];if(r)L.push('Vaste regels voor een '+dir+':',...String(r).split('\n').map(x=>x.trim()).filter(Boolean).map(x=>'- '+x.replace(/^[•!]\s*/,'')));
+    if(pb.extra)L.push('Extra en valkuilen:',...String(pb.extra).split('\n').map(x=>x.trim()).filter(x=>x&&/^[•!]/.test(x)).map(x=>'- '+x.replace(/^[•!]\s*/,'')));}
+  if(max)L.push('- Max risico per grade: '+['A','B','C'].filter(g=>max[g]!=null).map(g=>g+' '+String(max[g]).replace('.',',')+'%').join(', '));
+  return L;}
+function coachPretradeDeel(rows,o){const i=o.idee||{},c=coachIdeeCijfers(i),L=[];
+  L.push('','# Trade-idee (ingevuld door de trader, nog niet genomen)',
+    '- '+i.pair+' '+i.dir+' · setup '+(i.setup||'—')+' · entry '+i.entry+' · stop '+i.stop+(i.tp?' · TP '+i.tp:' · geen TP'),
+    c.rr!=null?'- Gepland R:R (uitgerekend door de journal): '+c.rr.toFixed(2).replace('.',',')+'R':'- Gepland R:R: onbekend, geen TP ingevuld',
+    '- Stop-afstand: '+c.stopPct.toFixed(2).replace('.',',')+'% van de entry');
+  const st=i.setup?rows.filter(t=>t.setup===i.setup):[];
+  if(i.setup){L.push('','## Deze setup ('+i.setup+')',st.length?'- n='+st.length+' · '+coachStats(st,o):'- Nog geen gesloten trades met deze setup.');
+    if(st.length){L.push(...coachGroepen(st,{...o,alleen:'sessie'}).map(l=>l==='## Sessie'?'## Deze setup per sessie':l));
+      L.push(...coachGroepen(st,{...o,alleen:'richting'}).map(l=>l==='## Richting'?'## Deze setup per richting':l));}}
+  const sym=rows.filter(t=>pairBase(t.pair).toUpperCase()===pairBase(i.pair).toUpperCase()),rich=rows.filter(t=>TDIM.dir.get(t).toLowerCase()===i.dir);
+  L.push('','## Dit symbool ('+i.pair+')',sym.length?'- n='+sym.length+' · '+coachStats(sym,o):'- Nog geen gesloten trades.');
+  L.push('','## Deze richting ('+i.dir+')',rich.length?'- n='+rich.length+' · '+coachStats(rich,o):'- Nog geen gesloten trades.');
+  const pb=i.setup&&PBOOK[i.setup];
+  L.push('','## Playbook-regels uit de journal'+(i.setup?' ('+i.setup+')':''));
+  if(pb){(pb.criteria||[]).filter(x=>x&&x.text).forEach(x=>L.push('- Wel: '+x.text+(x.mandatory?' (verplicht)':'')));
+    (pb.antiCriteria||[]).filter(x=>x&&x.text).forEach(x=>L.push('- Niet: '+x.text+(x.mandatory?' (blokkeert)':'')));
+    if(pb.stop)L.push('- Stop: '+pb.stop);if(pb.target)L.push('- Target: '+pb.target);if(pb.minRR)L.push('- Min R:R: '+pb.minRR);}
+  else L.push('- Geen playbook met regels voor deze setup.');
+  L.push('','## Regels uit TradingPlan',...coachPlanRegels(i.dir));
+  const nu=localDateISO(),wk=coachIsoWeek(nu),live=T.filter(t=>isLive(t)&&t.date);
+  L.push('- Trades deze week in de journal: '+live.filter(t=>coachIsoWeek(t.date)===wk).length,
+    '- Verliezers vandaag in de journal: '+live.filter(t=>t.date===nu&&heeftUitkomst(t)&&t.pnl<0).length);
+  return L;}
 /* ── Tools: the model asks, the app computes ──
    Instead of sending everything, the coach can look things up. Both tools run on the same filtered trades and the
    same helpers as the package, so a figure from a tool matches Analytics. The model never sees raw trades. */
@@ -5694,6 +5754,8 @@ const AI_KNOPPEN=[
   ['week','Review mijn week','Review de week van de trader (deze week, vergeleken met de week ervoor). Vul de drie velden: goed = wat ging goed, kostte = wat kostte geld, anders = één concreet, meetbaar ding om volgende week anders te doen. Elk veld één tot drie zinnen. Noem alleen cijfers uit de data, met de tabel.'],
   ['laatste','Hoe ging mijn laatste trade?','Bespreek de trade in focus, de nieuwste trade: wat klopte en wat niet, vergeleken met de cijfers van zijn setup. Sluit af met één les.'],
 ];
+// Not a button of its own: the pre-trade form sends this.
+const AI_PRETRADE_OPDRACHT='De trader overweegt een trade (het trade-idee) en wil weten wat zijn eigen data en regels erover zeggen. Geef geen koop- of verkoopadvies en zeg niet of hij de trade moet nemen, en voorspel niets over de markt. Zeg: hoe deed deze setup het (ook in deze sessie en richting, met n), past het idee bij de playbook-regels en bij de regels uit TradingPlan (noem de regel), en wat valt op (bijvoorbeeld een R:R onder zijn minimum, max trades bereikt, al verliezers vandaag). Sluit af met de vraag of het idee aan zijn eigen regels voldoet.';
 const AI_WEEK_SCHEMA={type:'object',properties:{goed:{type:'string'},kostte:{type:'string'},anders:{type:'string'}},required:['goed','kostte','anders'],additionalProperties:false};
 
 /* ── Conversation state (memory only: gone after a reload, never exported) ── */
@@ -5720,12 +5782,12 @@ function aiHistorie(){const paren=[];
 async function aiVraag(vraag,o){
   o=o||{};vraag=String(vraag||'').trim();const key=aiKeyGet();
   if(!vraag||AI_UI.bezig||!key)return;
-  const knop=AI_KNOPPEN.find(k=>k[0]===o.knop);
+  const knop=o.knop==='pretrade'?['pretrade',vraag,AI_PRETRADE_OPDRACHT]:AI_KNOPPEN.find(k=>k[0]===o.knop);
   // Over the member's own monthly limit: ask first, send nothing yet.
   const lim=+AIPREFS.limiet||0;
   if(lim>0&&aiVerbruik().usd>=lim&&!o.bevestigd){AI_UI.limiet={vraag,o};if(!knop)AI_UI.invoer=vraag;render();aiScroll();return;}
   AI_UI.limiet=null;
-  const pk=coachPakket({focusId:knop?null:AI_FOCUS_ID,deel:knop?knop[0]:'alles'});
+  const pk=coachPakket({focusId:knop?null:AI_FOCUS_ID,deel:knop?knop[0]:'alles',idee:o.idee});
   if(!pk.n){
     if(knop&&knop[0]==='week'){const w=coachWeekCijfers(CLOSED);AIMSGS.push({r:'me',t:vraag},{r:'info',t:'Geen gesloten trades in de afgelopen 7 dagen ('+coachDatum(w.van)+' t/m '+coachDatum(w.tot)+'). Kies een andere vraag, of zet het filter ruimer als je trades verborgen zijn.'});}
     render();aiScroll();return;}
@@ -5821,6 +5883,35 @@ function aiMsgHTML(m){
   const gestopt=m.gestopt?'<div class="aigestopt">Gestopt door jou, dit is wat er al was.</div>':'';
   const verstuurd=m.pakket?`<details class="aisent"><summary>Wat is er verstuurd?${m.kosten!=null?' <span class="aikost">≈ '+aiUsd(m.kosten)+'</span>':''}</summary><pre>${esc(m.pakket)}</pre></details>`:'';
   return `<div class="aimsg ai"><div class="aiav">🤖</div><div class="aibub">${body}${gestopt}${verstuurd}</div></div>`;}
+// The pre-trade form. Values live in memory; checking the idea updates the hint and button in place, so typing
+// never triggers a full render.
+let AI_IDEE={open:false,pair:'',dir:'long',setup:'',entry:'',stop:'',tp:''};
+function aiIdeeLees(){['pair','entry','stop','tp'].forEach(k=>{const el=document.getElementById('aiIdee'+k[0].toUpperCase()+k.slice(1));if(el)AI_IDEE[k]=el.value.trim();});
+  const d=document.getElementById('aiIdeeDir'),s=document.getElementById('aiIdeeSetup');if(d)AI_IDEE.dir=d.value;if(s)AI_IDEE.setup=s.value;}
+function aiIdeeCheck(){aiIdeeLees();const c=coachIdeeCijfers(AI_IDEE),btn=document.getElementById('aiIdeeBtn'),h=document.getElementById('aiIdeeHint');
+  if(btn)btn.disabled=!!c.fout||AI_UI.bezig;
+  if(h){h.textContent=c.fout||('Gepland R:R '+(c.rr!=null?c.rr.toFixed(2).replace('.',',')+'R':'onbekend (geen TP)')+' · stop op '+c.stopPct.toFixed(2).replace('.',',')+'% van de entry');h.className='aiideehint'+(c.fout?' fout':'');}}
+function aiIdeeOpen(v){AI_IDEE.open=v;render();if(v)setTimeout(()=>{const el=document.getElementById('aiIdeePair');if(el)el.focus();aiIdeeCheck();},0);}
+function aiIdeeStuur(){aiIdeeCheck();const i={...AI_IDEE};if(coachIdeeCijfers(i).fout)return;
+  AI_IDEE.open=false;
+  aiVraag('Check mijn trade-idee: '+i.pair+' '+i.dir+(i.setup?', '+i.setup:'')+', entry '+i.entry+', stop '+i.stop+(i.tp?', TP '+i.tp:''),{knop:'pretrade',idee:i});}
+function aiIdeeHTML(){
+  if(!AI_IDEE.open)return `<div class="aiideebar"><button class="btn" id="aiIdeeOpen" onclick="aiIdeeOpen(true)"${AI_UI.bezig?' disabled':''}>🔎 Check mijn trade-idee</button></div>`;
+  const setups=[...new Set([...Object.keys(PBOOK||{}),...T.map(t=>t.setup).filter(Boolean)])].sort();
+  const v=k=>esc(AI_IDEE[k]||'');
+  return `<div class="aiidee panel" role="group" aria-label="Trade-idee">
+    <div class="aiidee-h"><b>Check mijn trade-idee</b><span>De coach zegt wat je eigen cijfers en regels erover zeggen, geen koop- of verkoopadvies.</span></div>
+    <div class="aiideegrid">
+      <label>Pair<input id="aiIdeePair" value="${v('pair')}" placeholder="BTC/USDT" autocomplete="off" oninput="aiIdeeCheck()"></label>
+      <label>Richting<select id="aiIdeeDir" onchange="aiIdeeCheck()"><option value="long"${AI_IDEE.dir==='long'?' selected':''}>Long</option><option value="short"${AI_IDEE.dir==='short'?' selected':''}>Short</option></select></label>
+      <label class="breed">Setup / playbook<select id="aiIdeeSetup" onchange="aiIdeeCheck()"><option value="">Geen setup</option>${setups.map(x=>`<option value="${esc(x)}"${AI_IDEE.setup===x?' selected':''}>${esc(x)}</option>`).join('')}</select></label>
+      <label>Entry<input id="aiIdeeEntry" inputmode="decimal" value="${v('entry')}" oninput="aiIdeeCheck()"></label>
+      <label>Stop<input id="aiIdeeStop" inputmode="decimal" value="${v('stop')}" oninput="aiIdeeCheck()"></label>
+      <label><span>TP <small>(mag leeg)</small></span><input id="aiIdeeTp" inputmode="decimal" value="${v('tp')}" oninput="aiIdeeCheck()"></label>
+    </div>
+    <div class="aiideehint" id="aiIdeeHint" role="status"></div>
+    <div class="aiknoprij"><button class="btn pri" id="aiIdeeBtn" disabled onclick="aiIdeeStuur()">${AI_UI.bezig?'Bezig…':'Check met de coach'}</button><button class="btn" id="aiIdeeSluit" onclick="aiIdeeOpen(false)">Sluiten</button></div>
+  </div>`;}
 // Week review: the figures on top come from the app (coachWeekCijfers), the three texts from the coach.
 function aiWeekHTML(m){const c=m.cijfers,w=c.week,v=c.vorig;
   const tegel=(l,x,mask)=>`<div class="aiwt"><span>${l}</span><b class="${mask?'mask':''}">${x}</b></div>`;
@@ -5870,6 +5961,7 @@ function pgAI(){
     ${focus}
     <div class="aifeed" id="aiFeed">${intro}${AIMSGS.map(aiMsgHTML).join('')}${AI_UI.limiet?aiLimietHTML():''}</div>
     <div class="aisug aiknoppen">${AI_KNOPPEN.map(([id,t])=>`<button class="aichip" data-ai-knop="${esc(t)}"${dis} onclick="aiVraag(${jsarg(t)},{knop:'${id}'})">${esc(t)}</button>`).join('')}</div>
+    ${aiIdeeHTML()}
     <div class="aiinput"><input id="aiInput" placeholder="Vraag je AI-coach iets…" value="${esc(inv)}"${dis} onkeydown="if(event.key==='Enter')aiSend()"/>${AI_UI.bezig?'<button class="btn" id="aiStopBtn" onclick="aiStop()">Stop</button>':'<button class="btn pri" id="aiSendBtn" onclick="aiSend()">Stuur</button>'}</div>
     ${aiVoet()}
   </div>`;
