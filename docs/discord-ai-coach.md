@@ -1,6 +1,6 @@
 # Concept: Discord-post AI-coach
 
-> Concept voor Denny. De plekken met `[screenshot: …]` vul je zelf in met schermafbeeldingen van de Anthropic-console.
+> Concept voor Zaratras. De plekken met `[screenshot: …]` vul je zelf in met schermafbeeldingen van de Anthropic-console.
 > **Controleer bij het maken van de screenshots de menunamen**: Anthropic verandert die geregeld, en de namen hieronder
 > komen uit de docs van oktober 2026 (de console heet inmiddels ook platform.claude.com; console.anthropic.com stuurt
 > je daarheen). Zet daarna de link naar deze post in `AI_DISCORD_UITLEG` in `work/syncjournal.html`, dan verschijnt hij

@@ -66,7 +66,7 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 - **Focusgebieden** (discipline, risk, psychologie) in Instellingen → AI-coach bepalen nu waar de coach extra op let.
 
 ### Verwijderd
-- **De demo-coach is weg.** Die gaf vaste antwoorden op trefwoorden en noemde iedereen "Denny". Zonder sleutel zie je
+- **De demo-coach is weg.** Die gaf vaste antwoorden op trefwoorden en noemde iedereen "Zaratras". Zonder sleutel zie je
   op de coach-pagina hoe je een echte coach aanzet, met een duidelijk gemarkeerd voorbeeldgesprek.
 
 ---
@@ -767,7 +767,7 @@ De journal is opnieuw opgebouwd als **SyncJournal** en draait nu online op [sync
 ## [v0.9.137] — 2026-09-26
 
 ### Fixed
-- **Backtests en gemiste trades uit de oude TradeJournal kwamen onzichtbaar binnen.** De oude app gaf sim-trades de status "missed"; die status kent SyncJournal niet, waardoor zulke trades nergens meetelden en de controle na het overzetten ten onrechte een afwijking meldde. Ze komen nu binnen als gesloten backtest- of gemiste trades (gevonden met Denny's eigen export, 26-09-2026).
+- **Backtests en gemiste trades uit de oude TradeJournal kwamen onzichtbaar binnen.** De oude app gaf sim-trades de status "missed"; die status kent SyncJournal niet, waardoor zulke trades nergens meetelden en de controle na het overzetten ten onrechte een afwijking meldde. Ze komen nu binnen als gesloten backtest- of gemiste trades (gevonden met Zaratras' eigen export, 26-09-2026).
 - **Gehaalde TP-niveaus uit de oude app gingen verloren.** De oude app markeerde een gehaald niveau met een status-veld; dat werd niet herkend, waardoor elke TP als niet gehaald binnenkwam. Ze komen nu goed over, en een backtest of gemiste trade zonder exit krijgt zijn R uit de gehaalde niveaus, naar rato van het gehaalde deel.
 - **TradingView-links uit de oude app** kwamen als losse objecten mee en toonden "[object Object]"; ze zijn nu gewone links.
 - **Playbook-koppeling bij het overzetten**: een oude trade met een playbook krijgt dat playbook nu als setup, ook als er een setup-tag op stond. Daardoor tellen de trades op de Playbook-pagina mee en werkt de statistiek per playbook.
@@ -1046,7 +1046,7 @@ De journal is opnieuw opgebouwd als **SyncJournal** en draait nu online op [sync
 - **Bedragen in echte euro's.** De €/$-schakelaar wisselde alleen het teken; de bedragen bleven dollars. Nu rekent de app om met de dagkoersen van de Europese Centrale Bank. Een trade gebruikt de koers van de dag waarop hij sloot — je resultaat van juni blijft dus hetzelfde bedrag — en een saldo de koers van vandaag. Percentages, R en win-rate veranderen niet mee: dat zijn verhoudingen. Lukt het ophalen van de koers niet, dan toont de app dollars met het dollarteken in plaats van een verzonnen omrekening.
 
 ### Fixed
-- **OKX: één positie is weer één trade** (gemeld door Denny). OKX levert een lopende positie bij elke sync opnieuw aan met een verdere stand. Omdat het kenmerk van een trade de sluittijd bevatte, werd elke tussenstand een nieuwe regel en telde de P&L dubbel — in Denny's geval −$3,44 én −$9,76, terwijl −$9,76 het totaal al was. Bestaande journals worden bij het opstarten eenmalig opgeruimd: per positie blijft de laatste stand staan en verhuizen je eigen notities, tags en setup mee.
+- **OKX: één positie is weer één trade** (gemeld door Zaratras). OKX levert een lopende positie bij elke sync opnieuw aan met een verdere stand. Omdat het kenmerk van een trade de sluittijd bevatte, werd elke tussenstand een nieuwe regel en telde de P&L dubbel — in Zaratras' geval −$3,44 én −$9,76, terwijl −$9,76 het totaal al was. Bestaande journals worden bij het opstarten eenmalig opgeruimd: per positie blijft de laatste stand staan en verhuizen je eigen notities, tags en setup mee.
 - **Size werd honderd keer te groot getoond.** "623.91" verscheen als "$ 62.391" doordat de punt als duizendtalscheiding werd gelezen. Handmatige invoer in Nederlandse schrijfwijze ("8.000" of "1.234,56") blijft gewoon werken.
 - **Achtergrondwerk kan het werk van een ander tabblad niet meer overschrijven.** Heb je de journal in twee tabbladen open, dan kon een achtergrondtaak schrijven vóórdat dat tabblad doorhad dat het achterliep. Er wordt nu vlak voor het opslaan nog één keer gekeken wat er werkelijk staat.
 
@@ -1238,7 +1238,7 @@ Grote onderhouds-release: een volledige code-audit (4 fases) over berekeningen, 
 Hotfix-release bovenop de multi-account update: overal waar de app nog aannam dat `trade.source` een exchange-naam was, wordt nu correct omgegaan met account-id's.
 
 ### Fixed
-- **Filterchips toonden rauwe account-id's** *(gemeld door Denny, 2026-06-10)* — chips in de Trades-filterbalk toonden codes als "Dmpffy2es5xo9a4" i.p.v. "Hyperliquid · Scalp", plus een lege chip. Alle chips (filterbalk, geavanceerde filters, Dashboard PnL-grafiek, fee-breakdown in Analytics, auto-sync status) tonen nu exchange-naam + accountlabel via een centrale resolver ([work/tradejournal.html:2928](work/tradejournal.html#L2928)).
+- **Filterchips toonden rauwe account-id's** *(gemeld door Zaratras, 2026-06-10)* — chips in de Trades-filterbalk toonden codes als "Dmpffy2es5xo9a4" i.p.v. "Hyperliquid · Scalp", plus een lege chip. Alle chips (filterbalk, geavanceerde filters, Dashboard PnL-grafiek, fee-breakdown in Analytics, auto-sync status) tonen nu exchange-naam + accountlabel via een centrale resolver ([work/tradejournal.html:2928](work/tradejournal.html#L2928)).
 - **FTMO-logica werkte niet meer voor account-gescopete trades** — R-multiple berekening, mediaan-SL en lot-weergave checkten op `source === "ftmo"`; na de migratie is de source een account-id. Nu type-gebaseerd.
 - **PnL van handmatige-account trades trok fees niet af** — `netPnl` zag een manual-account-id als exchange-import. Idem voor de auto-PnL-knop en TP-sluit-suggesties in het trade-formulier.
 - **Partial-close detectie sloeg account-gescopete trades over** — de adapter-dispatch (Blofin/MEXC/Kraken/Hyperliquid) matcht nu op de werkelijke trade-source, met behoud van de Blofin positionId-guard ([work/tradejournal.html:1716](work/tradejournal.html#L1716)).
@@ -1291,7 +1291,7 @@ Grote update: **meerdere accounts per exchange** + een vernieuwde Accounts-pagin
 ## [v12.228] — 2026-06-07
 
 ### Fixed
-- **Handmatige storting op een exchange verscheen niet in het Dashboard-totaal** *(gemeld door Denny)*
+- **Handmatige storting op een exchange verscheen niet in het Dashboard-totaal** *(gemeld door Zaratras)*
 
   Een storting (of opname) via de **capital-tracker van een exchange** (Instellingen → exchange → 💰 Capital tracking) werd wél meegeteld in de BALANS bovenin de app en in Instellingen, maar **niet** in het "Account waarde (live)"-totaal op het Dashboard. Ook exchanges zónder API-koppeling (alleen een tracker) verschenen er niet. Een storting op een *handmatig account* werkte wél — alleen het exchange-pad was kapot.
 
@@ -1302,12 +1302,12 @@ Grote update: **meerdere accounts per exchange** + een vernieuwde Accounts-pagin
 ## [v12.227] — 2026-06-06
 
 ### Gewijzigd
-- **Setup Insights — visuele PnL-bar terug als aparte kolom** *(Denny: "de groene bar van winst mag wel apart zoals de oude Setup Insight — dat vond ik mooier")*
+- **Setup Insights — visuele PnL-bar terug als aparte kolom** *(Zaratras: "de groene bar van winst mag wel apart zoals de oude Setup Insight — dat vond ik mooier")*
 
-  In v12.225 was de visuele PnL-bar als subtiele background-gradient achter de PnL-cell gezet (toen Setup Edge werd opgenomen in Setup Insights). Denny vond dat minder mooi. Nu staat de bar weer als aparte 120px-kolom met label "Bar" naast Advies, met een echt zichtbare gradient-balk (groen voor winst, rood voor verlies). De PnL-cell zelf is weer schoon — alleen het bedrag, geen background.
+  In v12.225 was de visuele PnL-bar als subtiele background-gradient achter de PnL-cell gezet (toen Setup Edge werd opgenomen in Setup Insights). Zaratras vond dat minder mooi. Nu staat de bar weer als aparte 120px-kolom met label "Bar" naast Advies, met een echt zichtbare gradient-balk (groen voor winst, rood voor verlies). De PnL-cell zelf is weer schoon — alleen het bedrag, geen background.
 
 ### Geverifieerd (geen wijzigingen nodig)
-- **Filter-doorvoering op Analytics werkt al voor alle types** *(Denny: "loop de filter even langs op alle types — datum / type / coins etc")*
+- **Filter-doorvoering op Analytics werkt al voor alle types** *(Zaratras: "loop de filter even langs op alle types — datum / type / coins etc")*
 
   Geautomatiseerde test draait alle quick-filters door en bevestigt dat Net PnL netjes herrekent bij elke wijziging:
   - Baseline: +$221,17
@@ -1326,12 +1326,12 @@ Grote update: **meerdere accounts per exchange** + een vernieuwde Accounts-pagin
 ## [v12.226] — 2026-06-06
 
 ### Toegevoegd
-- **PnL chart — Wekelijks / Maandelijks toggle** *(Denny: "ik wil dat de Maandelijkse PnL ook een toggle naar wekelijks mag")*
+- **PnL chart — Wekelijks / Maandelijks toggle** *(Zaratras: "ik wil dat de Maandelijkse PnL ook een toggle naar wekelijks mag")*
 
   Naast de titel staan nu twee knoppen `[Wekelijks][Maandelijks]`. Wekelijks toont de laatste 16 ISO-weken (label `wk 32`); maandelijks blijft de laatste 12 maanden (label `mrt`/`apr`). Keuze persisteert in `tj_pnl_period`. Titel + subtitel + tooltip-tekst veranderen mee naargelang de periode.
 
 ### Gewijzigd
-- **Info-tooltips overal werken nu ook bij hover op titel-tekst** *(Denny: "ik zie niet overal een i-info-icon — en als ik hover krijg ik geen informatie")*
+- **Info-tooltips overal werken nu ook bij hover op titel-tekst** *(Zaratras: "ik zie niet overal een i-info-icon — en als ik hover krijg ik geen informatie")*
 
   De `secH()` en `widgetHead()` helpers zetten `title=` nu op de **hele kop-wrapper** ipv alleen op het ⓘ-icoontje. Hover-target is daarmee veel groter — de tooltip verschijnt nu bij hover op het titel-blok in zijn geheel.
 
@@ -1349,7 +1349,7 @@ Grote update: **meerdere accounts per exchange** + een vernieuwde Accounts-pagin
 ## [v12.225] — 2026-06-06
 
 ### Verwijderd
-- **Setup Edge widget verwijderd, volledig samengevoegd in Setup Insights** *(Denny: "kunnen we dit niet samenvoegen?")*
+- **Setup Edge widget verwijderd, volledig samengevoegd in Setup Insights** *(Zaratras: "kunnen we dit niet samenvoegen?")*
 
   De twee setup-widgets overlapten grotendeels:
   - Setup Insights had: Setup · Trades · WR · Avg R · PnL · Advies (min 3 trades, sortering op Avg R)
@@ -1364,7 +1364,7 @@ Grote update: **meerdere accounts per exchange** + een vernieuwde Accounts-pagin
 ## [v12.224] — 2026-06-06
 
 ### Gewijzigd
-- **Analytics — consistent goud-uppercase widget-titels overal** *(Denny: "de kop-titels van elk onderwerp zijn gelig, maar de bovenste weer wit — trek de hele pagina goed qua kleuren")*
+- **Analytics — consistent goud-uppercase widget-titels overal** *(Zaratras: "de kop-titels van elk onderwerp zijn gelig, maar de bovenste weer wit — trek de hele pagina goed qua kleuren")*
 
   Nieuwe v12.219+ widgets (Equity curve, Maandelijkse PnL, Hold-time asymmetry, Behavioral tilt-panel, Fee & funding impact, Propfirm compliance, Killzone × Setup matrix) hadden eigen inline witte titels — afwijkend van de oudere widgets die via `secH()` goud-uppercase titels kregen.
 
@@ -1377,7 +1377,7 @@ Grote update: **meerdere accounts per exchange** + een vernieuwde Accounts-pagin
 ## [v12.223] — 2026-06-06
 
 ### Gewijzigd
-- **Setup-insights tabel — vereenvoudigd naar demo-vorm** *(Denny: "bij de per setup wil ik ook trades / WR / Avg R / PnL hebben net als in de demo")*
+- **Setup-insights tabel — vereenvoudigd naar demo-vorm** *(Zaratras: "bij de per setup wil ik ook trades / WR / Avg R / PnL hebben net als in de demo")*
 
   Van 8 naar 6 kolommen: `Setup | Trades | WR | Avg R | PnL | Advies`. Verwijderd uit de tabel:
   - "Avg $" (gemiddelde PnL per trade) — verschoven naar de row-tooltip (hover toont avg + best + worst)
@@ -1390,7 +1390,7 @@ Grote update: **meerdere accounts per exchange** + een vernieuwde Accounts-pagin
 ## [v12.222] — 2026-06-06
 
 ### Gewijzigd
-- **Maandelijkse PnL chart — visueel rustiger** *(Denny: "de horizontale lijn mag wel weg en het gloei-effect van de bars hoeft niet")*
+- **Maandelijkse PnL chart — visueel rustiger** *(Zaratras: "de horizontale lijn mag wel weg en het gloei-effect van de bars hoeft niet")*
   - Goud-dashed gemiddelde-lijn over de bars verwijderd
   - Glow-border + box-shadow op best/worst maand verwijderd
   - Bars hebben nu alleen nog het gradient-fill — strakker, minder visuele ruis
@@ -1400,7 +1400,7 @@ Grote update: **meerdere accounts per exchange** + een vernieuwde Accounts-pagin
 ## [v12.221] — 2026-06-06
 
 ### Fixed
-- **Discipline Heatmap — sessies view toonde cellen verschoven over dag-rijen** *(Denny: "de discipline heatmap sessies zijn de dagen door elkaar")*
+- **Discipline Heatmap — sessies view toonde cellen verschoven over dag-rijen** *(Zaratras: "de discipline heatmap sessies zijn de dagen door elkaar")*
 
   `gridTemplateColumns` stond op `repeat(5,1fr)` voor de Sessies-view, terwijl er **7 sessies** zijn (Asia AM/PM, London AM/PM, US AM/PM/Late — Weekend is uitgesloten van de heatmap). Daardoor overflowden de 7 cellen per dag-rij naar de volgende rij en kwamen US PM + US Late labels op een willekeurige plek terecht, met dag-labels (Ma/Di/Wo…) midden in de cel-grid. Nu dynamisch op `repeat(${SESSIONS.length},1fr)` — de Sessies-view rendert 7 nette kolommen die strak onder hun headers staan.
 
@@ -1409,7 +1409,7 @@ Grote update: **meerdere accounts per exchange** + een vernieuwde Accounts-pagin
 ## [v12.220] — 2026-06-06
 
 ### Gewijzigd
-- **Maandelijkse PnL chart — volledig redesign** *(Denny: "de maandelijkse PNL chart ziet er niet uit, kan je een betere maken?")*
+- **Maandelijkse PnL chart — volledig redesign** *(Zaratras: "de maandelijkse PNL chart ziet er niet uit, kan je een betere maken?")*
 
   Het Edgewonk/Tradezella patroon. Verbeteringen vs v12.219:
   - **Bredere bars** met gradient-fill (van vol-kleur bovenaan naar 15% opacity onderaan)
@@ -1430,14 +1430,14 @@ Grote update: **meerdere accounts per exchange** + een vernieuwde Accounts-pagin
 ## [v12.219] — 2026-06-06
 
 ### Toegevoegd
-- **Analytics — twee echte grafieken in Overview** *(Denny: "ik mis grafieken, ik zie heel veel bars maar geen grafieken — visueel ingestelde mensen vinden dit fijn")*
+- **Analytics — twee echte grafieken in Overview** *(Zaratras: "ik mis grafieken, ik zie heel veel bars maar geen grafieken — visueel ingestelde mensen vinden dit fijn")*
 
   Onderzoek naar mainstream journals (Tradervue / Tradezella / Edgewonk / Chartlog) wees uit dat de twee meest universele grafieken die in élk pro-journal staan ontbraken in onze Analytics:
 
   - **📈 Equity curve** (bovenaan Overview) — cumulatieve PnL over tijd met area-fill. Gebruikt dezelfde `SyncEquityCurve` als Dashboard/Review zodat het consistent oogt. Steenbarger: "de waarheid van je trading" — #1 chart bij élke pro-coach.
   - **📅 Maandelijkse PnL** (onder equity curve) — staven per maand over de laatste 12 maanden. Groen voor winst, rood voor verlies, hover toont exact bedrag. Klassieke Edgewonk/Tradezella weergave.
 
-- **Per-widget info-tooltips** *(Denny: "zodra je klaar bent mag je de per widget info-tooltip erinbouwen")*
+- **Per-widget info-tooltips** *(Zaratras: "zodra je klaar bent mag je de per widget info-tooltip erinbouwen")*
 
   `secH()` helper uitgebreid met optionele tooltip-parameter. Naast de widget-titel verschijnt een `i`-icoontje (cirkel met cursief 'i') dat een hover-tooltip toont met "wat is dit?"-uitleg + pro-coach bronvermelding waar relevant. Eerste batch geplaatst op de meest-gebruikte widgets:
   - R-Multiple distributie (Tharp)
@@ -1460,7 +1460,7 @@ Grote update: **meerdere accounts per exchange** + een vernieuwde Accounts-pagin
 ## [v12.218] — 2026-06-06
 
 ### Gewijzigd
-- **Analytics — TOC sidebar vanaf de top + Custom-mode krijgt eigen sidebar** *(Denny: "de custom pagina mist een sidebar — ik heb geen idee hoe ik hier iets custom van kan maken")*
+- **Analytics — TOC sidebar vanaf de top + Custom-mode krijgt eigen sidebar** *(Zaratras: "de custom pagina mist een sidebar — ik heb geen idee hoe ik hier iets custom van kan maken")*
 
   Layout-grid wrapt nu de hele Analytics-pagina (toggles + KPI-strip + widgets). Resultaat:
   - **TOC sidebar links** begint vanaf de top, op gelijke hoogte met de toggle-bar — niet meer onder de KPI-strip.
@@ -1490,7 +1490,7 @@ Grote update: **meerdere accounts per exchange** + een vernieuwde Accounts-pagin
   Zichtbaar in Pro en Custom mode, niet in Basic. Vereist alleen bestaande `setupTags` en `time` velden.
 
 ### Gewijzigd
-- **Alignment-patroon "Uncls" label vervangen door "Geen bias"** *(Denny: "de afkorting uncls is niet heel duidelijk")*
+- **Alignment-patroon "Uncls" label vervangen door "Geen bias"** *(Zaratras: "de afkorting uncls is niet heel duidelijk")*
 
   De vijfde categorie in de alignment-patronen widget heette voorheen `Uncls` (afkorting van `Unclassified`). Nu staat er `Geen bias` in zowel de KPI-strip card als de WR-bar-row. Geen functionele wijziging — duidelijker label voor trades waar nog geen bias-data per laag is ingevuld.
 
@@ -1499,7 +1499,7 @@ Grote update: **meerdere accounts per exchange** + een vernieuwde Accounts-pagin
 ## [v12.216] — 2026-06-06
 
 ### Gewijzigd
-- **Analytics — lens-toggles boven de KPI-strip** *(Denny: "de keuzes misschien boven de data zetten?")*
+- **Analytics — lens-toggles boven de KPI-strip** *(Zaratras: "de keuzes misschien boven de data zetten?")*
 
   Proces/Winst/Beide + Basic/Pro/Custom + Genereer rapport-knop staan nu **boven** de KPI-strip in plaats van eronder. Volgt het mental model "kies eerst de lens, dán kijk je rond" (Chartlog/Tradezella-conventie). Geen functionele wijziging — alleen volgorde.
 
@@ -1521,7 +1521,7 @@ Grote update: **meerdere accounts per exchange** + een vernieuwde Accounts-pagin
 ## [v12.215] — 2026-06-06
 
 ### Toegevoegd
-- **Analytics — drie Pro-widgets** *(Denny: "ga je nu ook de pro gedeelte bouwen?")*
+- **Analytics — drie Pro-widgets** *(Zaratras: "ga je nu ook de pro gedeelte bouwen?")*
 
   De drie Pro-only secties (06–08) krijgen hun eerste echte widgets, gebaseerd op het Steenbarger/Tharp/FTMO-onderzoek:
 
@@ -1554,7 +1554,7 @@ Grote update: **meerdere accounts per exchange** + een vernieuwde Accounts-pagin
 
   **Custom mode** (drag-reorder) behoudt onveranderd het flat-gedrag — daar bepaalt de gebruiker zelf de volgorde.
 
-- **Donkere thema's krijgen demo-palette** *(gevraagd door Denny: "kleuren opmaak uit demo erg prettig — doorvoeren in de thema's")*
+- **Donkere thema's krijgen demo-palette** *(gevraagd door Zaratras: "kleuren opmaak uit demo erg prettig — doorvoeren in de thema's")*
 
   Subtiele verschuiving voor sync / classic / aurora:
   - `--gold`: `#C9A84C` → `#e0b341` (warmer goud, vergelijkbaar met Notion-accent)
@@ -1570,7 +1570,7 @@ Grote update: **meerdere accounts per exchange** + een vernieuwde Accounts-pagin
 ## [v12.213] — 2026-06-06
 
 ### Toegevoegd
-- **Analytics — sticky TOC sidebar + bredere layout** *(gevraagd door Denny: "ik mis de opmaak, breedte en sticky side bar van de demo in de journal")*
+- **Analytics — sticky TOC sidebar + bredere layout** *(gevraagd door Zaratras: "ik mis de opmaak, breedte en sticky side bar van de demo in de journal")*
 
   Layout-shell zoals in de redesign-demo:
   - **Max-width naar 1920px** voor Analytics-tab (andere tabs blijven 1520px). Bredere kolommen → meer ruimte voor widgets.
@@ -1590,7 +1590,7 @@ Dit is fase 2 van de Analytics-redesign (na v12.212 KPI-strip + mode-toggle). Se
 ## [v12.212] — 2026-06-06
 
 ### Toegevoegd
-- **Analytics — KPI-strip bovenaan** *(gevraagd door Denny: "ik zit een beetje met de analytics pagina... het moet voor beginners en gevorderde traders belangrijk zijn")*
+- **Analytics — KPI-strip bovenaan** *(gevraagd door Zaratras: "ik zit een beetje met de analytics pagina... het moet voor beginners en gevorderde traders belangrijk zijn")*
 
   Vóór elke widget: een rij met de 5 primary metrics altijd zichtbaar (Stripe/Datadog progressive-disclosure-patroon). Hover op een card voor uitleg + waarom-het-telt.
 
@@ -1618,7 +1618,7 @@ Deze release is fase 1 van de Analytics-redesign. Volgt in v12.213+: TOC met sec
 ## [v12.211] — 2026-06-06
 
 ### Toegevoegd
-- **Merge-feature uitgebreid naar handmatige accounts** *(gevraagd door Denny: "het samenvoegen van trades wil ik verder doortrekken naar alle trades")*
+- **Merge-feature uitgebreid naar handmatige accounts** *(gevraagd door Zaratras: "het samenvoegen van trades wil ik verder doortrekken naar alle trades")*
 
   Was: 🔗 Samenvoegen-knop verscheen alleen bij selectie van trades met `source==="ftmo"`. Crypto-exchanges (Blofin/MEXC/Kraken/Hyperliquid) blijven uitgesloten — die hebben `getConsumedSiblings` voor automatische partial-detectie.
 
@@ -1672,7 +1672,7 @@ Deze release is fase 1 van de Analytics-redesign. Volgt in v12.213+: TOC met sec
 ## [v12.210] — 2026-06-06
 
 ### Toegevoegd
-- **Blofin CCXT-hint bij API-key form** *(gemeld door CryptoTiger in Discord 2026-05-22 via Denny — bug-audit 2026-06-06)*
+- **Blofin CCXT-hint bij API-key form** *(gemeld door CryptoTiger in Discord 2026-05-22 via Zaratras — bug-audit 2026-06-06)*
 
   Wanneer je `Settings → Accounts → Blofin` opent verschijnt nu **boven de API Key / Secret / Passphrase velden** een blauw-getinte hint-box:
   > 💡 **Blofin API-key aanmaken**
@@ -1705,7 +1705,7 @@ Backlog "🐛 Bugs"-sectie ingekrompen, opgeloste items naar "✅ Done" verplaat
 ## [v12.209] — 2026-06-06
 
 ### Gewijzigd
-- **Pattern-badge verplaatst van hoofdrij naar hover-detail-rij** *(gevraagd door Denny: "de counter badge wil ik wel bij de hover zien, niet in de trades overzicht")*
+- **Pattern-badge verplaatst van hoofdrij naar hover-detail-rij** *(gevraagd door Zaratras: "de counter badge wil ik wel bij de hover zien, niet in de trades overzicht")*
 
   Was: pattern-badge (✓ Cont / ↻ Pull / ⇄ Rev / ⚠ Counter) verscheen in de Setup-cel van elke Trades-tabel rij. Bij veel trades met bias-tags = veel extra visuele drukte naast de bias-pijlen en TF-tags.
 
@@ -1725,7 +1725,7 @@ Backlog "🐛 Bugs"-sectie ingekrompen, opgeloste items naar "✅ Done" verplaat
 ## [v12.208] — 2026-06-06
 
 ### Gewijzigd
-- **15M valt nu onder LTF i.p.v. MTF** *(gevraagd door Denny: "kan je de 15m ook onder LTF plaatsen?")*
+- **15M valt nu onder LTF i.p.v. MTF** *(gevraagd door Zaratras: "kan je de 15m ook onder LTF plaatsen?")*
 
   Cutoff `LTF_MAX` verschoven van `15` naar `16` minuten. Effect op `getLayerTimeframeGroup`:
 
@@ -1876,7 +1876,7 @@ Backlog "🐛 Bugs"-sectie ingekrompen, opgeloste items naar "✅ Done" verplaat
 ## [v12.204] — 2026-06-05
 
 ### Toegevoegd
-- **Bias per setup-laag (bullish/neutraal/bearish)** *(gevraagd door Denny + community — bias per-laag concept uit ICT/SMC trading)*
+- **Bias per setup-laag (bullish/neutraal/bearish)** *(gevraagd door Zaratras + community — bias per-laag concept uit ICT/SMC trading)*
 
   Eerste van een 5-release-traject (v12.204-v12.207) voor multi-timeframe-bias-analyse. Deze release = **schema + UI** (geen analytics nog — die volgen in v12.205-207).
 
@@ -1900,7 +1900,7 @@ Backlog "🐛 Bugs"-sectie ingekrompen, opgeloste items naar "✅ Done" verplaat
   - Geen pijl = bias leeg (geen visuele drukte voor legacy trades)
 
 ### Gewijzigd
-- **Hele layer-card krijgt TF-tint zodra TF gekozen is** *(gevraagd door Denny: "ik wil ook dat het de hele laag de tijdframe kleur krijgt")*
+- **Hele layer-card krijgt TF-tint zodra TF gekozen is** *(gevraagd door Zaratras: "ik wil ook dat het de hele laag de tijdframe kleur krijgt")*
 
   Was: alleen `borderLeft:3px` in de TF-kleur.
 
@@ -1938,9 +1938,9 @@ Backlog "🐛 Bugs"-sectie ingekrompen, opgeloste items naar "✅ Done" verplaat
 ## [v12.203] — 2026-06-05
 
 ### Gewijzigd
-- **Layer-color mapping nu range-based i.p.v. whitelist** *(gevraagd door Denny: "kan je dat een van/tot maken? want ik gebruik de 2h bijvoorbeeld ook")*
+- **Layer-color mapping nu range-based i.p.v. whitelist** *(gevraagd door Zaratras: "kan je dat een van/tot maken? want ik gebruik de 2h bijvoorbeeld ook")*
 
-  v12.202 gebruikte een vaste whitelist (`TF_GROUPS.HTF = ["Daily","12H","4H",...]`). Custom timeframes als **2H** (Denny's case) of **90M / 45M / 200M** vielen in "OTHER" → geen kleur. Nu **automatische detectie** voor elke timeframe:
+  v12.202 gebruikte een vaste whitelist (`TF_GROUPS.HTF = ["Daily","12H","4H",...]`). Custom timeframes als **2H** (Zaratras' case) of **90M / 45M / 200M** vielen in "OTHER" → geen kleur. Nu **automatische detectie** voor elke timeframe:
 
   **Nieuwe parser** `parseTimeframeMinutes(tf)` converteert elke shape naar minuten:
   - `"1m" / "5M" / "15min" / "30 min"` → 1 / 5 / 15 / 30
@@ -1970,7 +1970,7 @@ Backlog "🐛 Bugs"-sectie ingekrompen, opgeloste items naar "✅ Done" verplaat
 ## [v12.202] — 2026-06-05
 
 ### Toegevoegd
-- **Setup-lagen krijgen kleur per timeframe-groep** *(gevraagd door Jordy via Discord, demo + thema-validatie samen met Denny)*
+- **Setup-lagen krijgen kleur per timeframe-groep** *(gevraagd door Jordy via Discord, demo + thema-validatie samen met Zaratras)*
 
   Een trade-laag staat in 1 van 3 timeframe-rollen:
 
@@ -2012,7 +2012,7 @@ Backlog "🐛 Bugs"-sectie ingekrompen, opgeloste items naar "✅ Done" verplaat
 ## [v12.201] — 2026-06-05
 
 ### Fixed
-- **R-multiple "—" voor FTMO trades zonder SL** *(gemeld door Denny: "bij een aantal trades zie ik geen R/multiple hoe komt dat?")*
+- **R-multiple "—" voor FTMO trades zonder SL** *(gemeld door Zaratras: "bij een aantal trades zie ik geen R/multiple hoe komt dat?")*
 
   **Oorzaak**: FTMO MetriX CSV-kolom 6 (SL) is leeg voor trades waar de user geen stop in MT5 had ingesteld. De parser zet dan `stopLoss:""`. `calcRMultiple`'s early-return `if(!entry||!sl||...)` triggert dan → `null` → "—" in de tabel.
 
@@ -2037,7 +2037,7 @@ Backlog "🐛 Bugs"-sectie ingekrompen, opgeloste items naar "✅ Done" verplaat
 ## [v12.200] — 2026-06-05
 
 ### Fixed
-- **TP-niveaus toonden "N/A" in de Winst-kolom voor gemergde FTMO-trades** *(gemeld door Denny: "ik zie nu wel de TP's maar niet de winsten")*
+- **TP-niveaus toonden "N/A" in de Winst-kolom voor gemergde FTMO-trades** *(gemeld door Zaratras: "ik zie nu wel de TP's maar niet de winsten")*
 
   **Oorzaak**: `calcProfit` herberekende winst via `(tpPrice − entry) × size × pct / entry`. Voor FTMO is `positionSize` leeg en de crypto-formule (linear contracts) klopt sowieso niet voor MT5 lot-based instruments. Resultaat: `null` → "N/A".
 
@@ -2067,7 +2067,7 @@ Pct is **pro-rata op `positionSizeAsset`** (lot-grootte voor FTMO, base-coin voo
 ## [v12.199] — 2026-06-05
 
 ### Gewijzigd
-- **Bulk-action-bar wordt floating onderaan viewport** *(gemeld door Denny: "na selecteren moet ik naar boven scrollen om de samenvoegen knop te klikken")*
+- **Bulk-action-bar wordt floating onderaan viewport** *(gemeld door Zaratras: "na selecteren moet ik naar boven scrollen om de samenvoegen knop te klikken")*
 
   De bulk-bar zat bovenaan de tabel — bij selecteren van trades 30 rijen naar beneden moest je eerst scrollen naar boven om de actie te kiezen. Nu een **floating action-bar onderaan het scherm**:
 
@@ -2090,7 +2090,7 @@ Pct is **pro-rata op `positionSizeAsset`** (lot-grootte voor FTMO, base-coin voo
 ## [v12.198] — 2026-06-05
 
 ### Fixed
-- **React error `wEntry.toFixed is not a function` bij merge van FTMO-trades** *(gemeld door Denny met error-screenshot)*
+- **React error `wEntry.toFixed is not a function` bij merge van FTMO-trades** *(gemeld door Zaratras met error-screenshot)*
 
   **Oorzaak**: `buildMergePreview` gebruikte `c.positionSize` (USDT-notional voor crypto) als size-basis voor gewogen entry/exit. FTMO-trades hebben `positionSize:""` (lot zit in `positionSizeAsset`), dus `totalSize=0` → fallback `wEntry=children[0].entry` (STRING zoals "2018.50") → `.toFixed(8)` crasht omdat strings die methode niet hebben.
 
@@ -2107,7 +2107,7 @@ Pct is **pro-rata op `positionSizeAsset`** (lot-grootte voor FTMO, base-coin voo
 ## [v12.197] — 2026-06-05
 
 ### Toegevoegd
-- **Gemergde trades vullen automatisch `tpLevels[]` met child-exits** *(gevraagd door Denny: "kan je de TP's ook verwerken in de take profit niveaus?")*
+- **Gemergde trades vullen automatisch `tpLevels[]` met child-exits** *(gevraagd door Zaratras: "kan je de TP's ook verwerken in de take profit niveaus?")*
 
   Bij een merge wordt elke child nu vertaald naar een TP-niveau in de master-trade:
   ```js
@@ -2144,7 +2144,7 @@ Pct is **pro-rata op `positionSizeAsset`** (lot-grootte voor FTMO, base-coin voo
 ## [v12.196] — 2026-06-05
 
 ### Fixed
-- **R-multiple voor FTMO trades nu zelf-tunend op basis van losers** *(gemeld door Denny: "ik zie nu >20R? dan klopt ook niet")*
+- **R-multiple voor FTMO trades nu zelf-tunend op basis van losers** *(gemeld door Zaratras: "ik zie nu >20R? dan klopt ook niet")*
 
   **Bevestigde root cause** (via diagnose-snippet output):
   - Verliezende FTMO-trades hebben SL-afstand 0.286-0.463% van entry — **realistische initial SL** die werd geraakt
@@ -2185,7 +2185,7 @@ Pct is **pro-rata op `positionSizeAsset`** (lot-grootte voor FTMO, base-coin voo
 ## [v12.195] — 2026-06-05
 
 ### Gewijzigd
-- **R-multiple outlier-clamp in Trades-tabel** *(gemeld door Denny met screenshot: "+1926.1R, +750.3R, +257.2R, gaat nog niet goed bij alle trades")*
+- **R-multiple outlier-clamp in Trades-tabel** *(gemeld door Zaratras met screenshot: "+1926.1R, +750.3R, +257.2R, gaat nog niet goed bij alle trades")*
 
   **Onderzoek loopt**: v12.194 fix de absurde miljoenen-R waardes door pnl/price-move-formule, maar voor sommige FTMO-trades blijft R extreem hoog (100-2000R). Vermoedelijke oorzaak: FTMO MetriX SL-kolom logt de **uiteindelijke (trailing) SL** voor winning trades, niet het oorspronkelijke initial risk. Wanneer de SL naar break-even of dichtbij entry getrailed wordt, is `|entry-sl|` bijna 0 → R schiet door het dak terwijl het wiskundig klopt maar praktisch onzin is.
 
@@ -2224,7 +2224,7 @@ Pct is **pro-rata op `positionSizeAsset`** (lot-grootte voor FTMO, base-coin voo
 ## [v12.194] — 2026-06-05
 
 ### Fixed
-- **R-multiple onzin voor FTMO MT5 trades (+15.162R, +5.584.137R, etc.)** *(gemeld door Denny met screenshot na CSV-import)*
+- **R-multiple onzin voor FTMO MT5 trades (+15.162R, +5.584.137R, etc.)** *(gemeld door Zaratras met screenshot na CSV-import)*
 
   **Oorzaak**: `calcRMultiple` ([line 1485](work/tradejournal.html#L1485)) gebruikt de formule voor **linear crypto contracts**:
   ```js
@@ -2262,7 +2262,7 @@ Pct is **pro-rata op `positionSizeAsset`** (lot-grootte voor FTMO, base-coin voo
 ## [v12.193] — 2026-06-05
 
 ### Gewijzigd
-- **Trades-tabel Status-kolom gecentreerd** *(gevraagd door Denny: "status mag gecentreerd")*
+- **Trades-tabel Status-kolom gecentreerd** *(gevraagd door Zaratras: "status mag gecentreerd")*
   - Header + body-cell beide `textAlign:"center"`. ✓/✗ icoons en OPEN/PARTIAL/MISS-pills komen nu netjes in het midden van de kolom.
 
 ### Test
@@ -2273,7 +2273,7 @@ Pct is **pro-rata op `positionSizeAsset`** (lot-grootte voor FTMO, base-coin voo
 ## [v12.192] — 2026-06-05
 
 ### Fixed
-- **FTMO CSV re-import dupliceerde alle trades (existed sinds v12.62, ontdekt bij merge-feature)** *(gevraagd door Denny: "heb je ook nagedacht als ik een csv opnieuw importeer later · dat er geen dubbelingen komen?")*
+- **FTMO CSV re-import dupliceerde alle trades (existed sinds v12.62, ontdekt bij merge-feature)** *(gevraagd door Zaratras: "heb je ook nagedacht als ik een csv opnieuw importeer later · dat er geen dubbelingen komen?")*
 
   **Oorzaak**: de FTMO MetriX CSV-parser maakte voor elke trade een random ID via `"ftmo_csv_"+uid()`. Random IDs match nooit tussen twee importsessies, dus `importTrades`' dedup-key (`existingById = Map(t.id)`) zag elke re-import als 100% fresh trades. Resultaat: dubbele records bij elke re-import. Probleem werd extra zichtbaar met de merge-feature: bij re-import na een merge ontstonden er 3 lagen (master + verborgen children + nieuwe random-ID duplicaten).
 
@@ -2319,7 +2319,7 @@ Pct is **pro-rata op `positionSizeAsset`** (lot-grootte voor FTMO, base-coin voo
 ## [v12.191] — 2026-06-05
 
 ### Fixed
-- **React error #310 in TradeList bij lege trades-state** *(gemeld door Denny met error-screenshot, hook-order violation in v12.190)*
+- **React error #310 in TradeList bij lege trades-state** *(gemeld door Zaratras met error-screenshot, hook-order violation in v12.190)*
 
   **Oorzaak**: in v12.190 voegde ik `const[mergeOpen,setMergeOpen]=useState(false);` toe op een plek **ná** de early-return `if(!trades.length)return<EmptyState/>;` in TradeList. Bij gevulde state (trades aanwezig) wordt de hook uitgevoerd, bij lege state (welcome screen, fresh install, alle trades verwijderd) wordt 'ie overgeslagen. React vereist dat het aantal hook-calls **identiek** is over alle renders — Error #310 = "Rendered fewer hooks than expected".
 
@@ -2335,7 +2335,7 @@ Pct is **pro-rata op `positionSizeAsset`** (lot-grootte voor FTMO, base-coin voo
 ## [v12.190] — 2026-06-05
 
 ### Toegevoegd
-- **Trades samenvoegen — FTMO MT5 partial-workaround** *(gevraagd door Denny, na demo in [demos/trades-merge-demo.html](demos/trades-merge-demo.html))*
+- **Trades samenvoegen — FTMO MT5 partial-workaround** *(gevraagd door Zaratras, na demo in [demos/trades-merge-demo.html](demos/trades-merge-demo.html))*
 
   **Het probleem**: FTMO MT5 web staat geen partial-TPs toe — je opent meerdere losse trades als workaround. Het journal toonde dan 3-4 aparte rijen i.p.v. 1 positie met 3-4 TPs. Trade-count, win-rate per setup en PnL-spreiding werden scheef.
 
@@ -2383,7 +2383,7 @@ Pct is **pro-rata op `positionSizeAsset`** (lot-grootte voor FTMO, base-coin voo
 ## [v12.189] — 2026-06-04
 
 ### Gewijzigd
-- **Trades-tabel kolom-volgorde overgenomen uit trades-merge-demo** *(gevraagd door Denny: "de volgorde van de kolom overzicht in de demo beter dan die van ons · vind het duidelijker te lezen")*
+- **Trades-tabel kolom-volgorde overgenomen uit trades-merge-demo** *(gevraagd door Zaratras: "de volgorde van de kolom overzicht in de demo beter dan die van ons · vind het duidelijker te lezen")*
 
   **Voor**: `☑ · Status · Datum · Symbol · Entry · Exit · Size · Side · PNL · R-mult · Setup · Sessie · Emoties`
 
@@ -2422,7 +2422,7 @@ Pct is **pro-rata op `positionSizeAsset`** (lot-grootte voor FTMO, base-coin voo
 ## [v12.187] — 2026-06-04
 
 ### Fixed
-- **Trades-tabel kolommen niet goed aligned** *(gemeld door Denny: "kolommen en invoer niet goed aligend · meerdere kolommen · kan je dit eens goed nalopen?")*
+- **Trades-tabel kolommen niet goed aligned** *(gemeld door Zaratras: "kolommen en invoer niet goed aligend · meerdere kolommen · kan je dit eens goed nalopen?")*
 
   **Oorzaak**: header-cells (`thStyle`) hadden `padding:"8px 6px"`, body-cells (`tdStyle`) hadden `padding:"10px 6px"`. Verschillende vertical-paddings = visuele mismatch tussen header-labels en kolom-content. Plus header had geen eigen achtergrond → visueel niet duidelijk gescheiden van body.
 
@@ -2443,8 +2443,8 @@ Pct is **pro-rata op `positionSizeAsset`** (lot-grootte voor FTMO, base-coin voo
 ## [v12.186] — 2026-06-04
 
 ### Fixed
-- **Matrix-cellen slecht leesbaar** *(gemeld door Denny: "waarom zijn er zoveel zo slecht leesbaar?")*
-  - Wat Denny opmerkte: dat is de `minN=3` drempel-instelling. Cellen met **<3 trades** (1 of 2 trades) krijgen opacity-dim omdat ze statistisch onbetrouwbaar zijn — één enkele trade van +$70 zegt niets over edge.
+- **Matrix-cellen slecht leesbaar** *(gemeld door Zaratras: "waarom zijn er zoveel zo slecht leesbaar?")*
+  - Wat Zaratras opmerkte: dat is de `minN=3` drempel-instelling. Cellen met **<3 trades** (1 of 2 trades) krijgen opacity-dim omdat ze statistisch onbetrouwbaar zijn — één enkele trade van +$70 zegt niets over edge.
   - **Probleem**: opacity 0.4 was te aggressief, vooral in light/parchment thema waar tekst sowieso subtieler is. Tekst werd bijna onleesbaar terwijl de data wel relevant kan zijn (lower-confidence indicator).
   - **Fix**: opacity 0.4 → **0.7**. Visueel onderscheid blijft (signaal dat data lage confidence is), maar tekst is nu leesbaar in alle themas.
   - **Header-uitleg duidelijker**: "Cellen met < 3 trades zijn gedimd" → "Cellen met < 3 trades zijn iets transparant (te weinig data voor betrouwbare conclusie)".
@@ -2457,7 +2457,7 @@ Pct is **pro-rata op `positionSizeAsset`** (lot-grootte voor FTMO, base-coin voo
 ## [v12.185] — 2026-06-04
 
 ### Gewijzigd
-- **SetupSessionMatrix compacter** *(gemeld door Denny: "ziet er goed uit maar mag een tikje compacter")*
+- **SetupSessionMatrix compacter** *(gemeld door Zaratras: "ziet er goed uit maar mag een tikje compacter")*
   - `border-spacing`: 3 → 2 (kleiner gat tussen tiles)
   - Cell paddings krimpen: header 8/10 → 6/8, body 8/12 → 6/10, lege cellen 12 → 10
   - Fonts 1px kleiner over de hele linie: WR% 14→13, PnL 10→9.5, header 10→9.5
@@ -2473,7 +2473,7 @@ Pct is **pro-rata op `positionSizeAsset`** (lot-grootte voor FTMO, base-coin voo
 ## [v12.184] — 2026-06-04
 
 ### Gewijzigd
-- **SetupSessionMatrix grondig herontworpen — heatmap-stijl** *(gemeld door Denny: "matrix niet overzichtelijk · hoe aantrekkelijker en beter lezen · denk goed na")*
+- **SetupSessionMatrix grondig herontworpen — heatmap-stijl** *(gemeld door Zaratras: "matrix niet overzichtelijk · hoe aantrekkelijker en beter lezen · denk goed na")*
 
   **Vorige design**:
   - Spreadsheet-look met 1px borders rondom elke cel (zware tabel)
@@ -2509,7 +2509,7 @@ Pct is **pro-rata op `positionSizeAsset`** (lot-grootte voor FTMO, base-coin voo
 ## [v12.183] — 2026-06-04
 
 ### Fixed
-- **Edge-Breakdown bars + Per Confirmation-tag card** *(gemeld door Denny: "bars beginnen ook hier weer in het midden · rechter gedeelte niet duidelijk leesbaar")*
+- **Edge-Breakdown bars + Per Confirmation-tag card** *(gemeld door Zaratras: "bars beginnen ook hier weer in het midden · rechter gedeelte niet duidelijk leesbaar")*
 
   **Edge-Breakdown bars** (Per dag / Per grade / Per sessie):
   - **Was**: divergent bar met center-lijn op 50% — positief groeide rechts, negatief links. Verwarrend en inconsistent met alle andere bars in de app.
@@ -2534,7 +2534,7 @@ Pct is **pro-rata op `positionSizeAsset`** (lot-grootte voor FTMO, base-coin voo
 ## [v12.182] — 2026-06-04
 
 ### Gewijzigd
-- **PlaybookDetailModal grondig hertekend** *(gemeld door Denny: "niet leesbaar en overzichtelijk · breder paneel · beter ontwerp · zelfde grootte fonts · alles loopt door elkaar")*
+- **PlaybookDetailModal grondig hertekend** *(gemeld door Zaratras: "niet leesbaar en overzichtelijk · breder paneel · beter ontwerp · zelfde grootte fonts · alles loopt door elkaar")*
 
   **Layout**:
   - Modal **maxWidth 920 → 1240** (35% breder, veel meer adem)
@@ -2564,7 +2564,7 @@ Pct is **pro-rata op `positionSizeAsset`** (lot-grootte voor FTMO, base-coin voo
 ## [v12.181] — 2026-06-04
 
 ### Fixed
-- **Layer-Pattern + Tijd-van-dag bars: uniform left-aligned + 2-regel R-label** *(gemeld door Denny: "hier zijn de bars niet links zoals bij de andere bars — kan je dit overal in het document doen?")*
+- **Layer-Pattern + Tijd-van-dag bars: uniform left-aligned + 2-regel R-label** *(gemeld door Zaratras: "hier zijn de bars niet links zoals bij de andere bars — kan je dit overal in het document doen?")*
 
   **Oorzaak**: in `PlaybookAnalyticsView` hadden 2 bar-secties nog de oude rendering met `justifyContent: isWin ? "flex-start" : "flex-end"` — positieve bars groeiden vanaf links, negatieve van rechts. Plus cryptische label `+0.8R · 50` (was al verbeterd in andere secties).
 
@@ -2583,7 +2583,7 @@ Pct is **pro-rata op `positionSizeAsset`** (lot-grootte voor FTMO, base-coin voo
 ## [v12.180] — 2026-06-04
 
 ### Fixed
-- **PlaybookCard: uniforme hoogte + geen status-kleur links** *(gemeld door Denny: "size van playbook-tegels niet gelijk + kleur status links geeft onrust")*
+- **PlaybookCard: uniforme hoogte + geen status-kleur links** *(gemeld door Zaratras: "size van playbook-tegels niet gelijk + kleur status links geeft onrust")*
 
   **Oorzaak**:
   - Cards hadden `borderLeft: 3px solid statusColor` — groen voor active, amber voor testing, grijs voor retired. Plus de bestaande status-pill rechtsboven = dubbele status-signaal + visuele drukte.
@@ -2603,7 +2603,7 @@ Pct is **pro-rata op `positionSizeAsset`** (lot-grootte voor FTMO, base-coin voo
 ## [v12.179] — 2026-06-04
 
 ### Gewijzigd (UX fase 5e — alle equity-curves nu echt consistent)
-- **PlaybookEquityCurve consolideerd naar SyncEquityCurve** *(gemeld door Denny: "de curve in playbook en de curve in de dashboard zijn verschillende types")*
+- **PlaybookEquityCurve consolideerd naar SyncEquityCurve** *(gemeld door Zaratras: "de curve in playbook en de curve in de dashboard zijn verschillende types")*
   - Was: eigen multi-line SVG-impl met HWM-stippellijn + dashed grid + dashed zero-line + multi-overlay (Real/Backtest/Paper/Missed tegelijk als verschillende dash-patterns)
   - Nu: **single-line SyncEquityCurve met chip-filter** (Variant A — klik bron = die curve, switchen ipv overlay). Match met Dashboard/Review look.
   - HIGH / END labels behouden in card-header
@@ -2724,7 +2724,7 @@ Geen multi-line overlays meer. Geen HWM-stippellijnen. Geen dashed grids. Allema
 ## [v12.174] — 2026-06-04
 
 ### Fixed
-- **Playbook Analytics: paarse rij-achtergrond Missed-impact niet meer theme-consistent** *(gemeld door Denny met screenshot: "gaat niet meer in het thema")*
+- **Playbook Analytics: paarse rij-achtergrond Missed-impact niet meer theme-consistent** *(gemeld door Zaratras met screenshot: "gaat niet meer in het thema")*
   - **Oorzaak**: 4 rijen in Missed-impact card hadden hardcoded `rgba(180,140,200,0.12)` background + `rgba(180,140,200,0.32)` border (paarse "ghost trades" tint). Bij donker thema werd dat een paars-zwaar blok dat niet matchte met de Mistake-tags / Emotion-impact rijen ernaast.
   - **Fix**: backgrounds + borders genormaliseerd naar `var(--bg3)` + `var(--border1)` — zelfde patroon als de andere kaart-rijen.
   - **Behouden**: paarse tekst-kleur (`#b48cc8`) op de cijfers blijft als semantisch signaal voor missed/ghost-trades.
@@ -2742,7 +2742,7 @@ Geen multi-line overlays meer. Geen HWM-stippellijnen. Geen dashed grids. Allema
 ## [v12.173] — 2026-06-03
 
 ### Gewijzigd
-- **Bar-charts: uniform links-uitgelijnd (revert van v172 divergent)** *(gemeld door Denny: "alles van links naar rechts is beter lijkt me")*
+- **Bar-charts: uniform links-uitgelijnd (revert van v172 divergent)** *(gemeld door Zaratras: "alles van links naar rechts is beter lijkt me")*
   - V172 divergent design (bars vanuit center) bleek tegenintuïtief — twee leesrichtingen voor het oog (rechts voor positief, links voor negatief).
   - **Nu**: alle bars starten links bij 0 en groeien naar rechts. Bar-lengte = magnitude (|waarde|), kleur = signaal (groen=positief, rood=negatief).
   - Eén leesrichting: hoe verder de bar uitsteekt, hoe groter de impact (of het nu winst of verlies is).
@@ -2763,7 +2763,7 @@ Geen multi-line overlays meer. Geen HWM-stippellijnen. Geen dashed grids. Allema
 ## [v12.172] — 2026-06-03
 
 ### Gewijzigd
-- **Bar-charts: divergent design (vanuit center, niet vanaf links)** *(gemeld door Denny: "rood rechts is niet echt heel duidelijk voor me")*
+- **Bar-charts: divergent design (vanuit center, niet vanaf links)** *(gemeld door Zaratras: "rood rechts is niet echt heel duidelijk voor me")*
   - **Voor**: bars groeiden allemaal vanaf links — rode bars (negatief) waren rechts-uitgelijnd, groene bars (positief) links-uitgelijnd. Verwarrend bij mix van winnaars/verliezers en bij chart waar bijna alles negatief is.
   - **Na**: bars groeien VANUIT zero-line in het midden. Positief = rechts (groen), negatief = links (rood). Center-line altijd visueel zichtbaar als 1px verticaal lijntje.
   - **Geraakt**:
@@ -2771,7 +2771,7 @@ Geen multi-line overlays meer. Geen HWM-stippellijnen. Geen dashed grids. Allema
     - Per Pair / Per Grade / Per Direction cards in SetupInsightsView (Playbook → Analytics) — eigen helper `RBar`
     - `MistakeImpactChart` (Chart.js) → x-axis nu symmetric `min=-maxAbs, max=+maxAbs` met 0-grid-line dikker zichtbaar (1.5px ipv 1px)
 
-- **Cryptische "+0.6R · 244" notatie verduidelijkt** *(gemeld door Denny: "ik vind door de hele journal maar is onduidelijk")*
+- **Cryptische "+0.6R · 244" notatie verduidelijkt** *(gemeld door Zaratras: "ik vind door de hele journal maar is onduidelijk")*
   - **Voor**: `+0.6R · 244` — wat is R? wat is 244?
   - **Na**: Twee-regel label:
     - Regel 1: `+0.6R avg` (met "avg" in kleinere grijze suffix)
@@ -2789,7 +2789,7 @@ Geen multi-line overlays meer. Geen HWM-stippellijnen. Geen dashed grids. Allema
 ## [v12.171] — 2026-06-03
 
 ### Fixed
-- **Geen ruimte tussen Thema- en TP-templates-card in Instellingen** *(gemeld door Denny met screenshot)*
+- **Geen ruimte tussen Thema- en TP-templates-card in Instellingen** *(gemeld door Zaratras met screenshot)*
   - **Oorzaak**: Layout-card en Thema-card hebben `marginTop:"16px"` op hun inner-wrap-div, maar TpTemplateManager wrap-card had alleen `marginBottom`, geen `marginTop`. Daardoor stond TP-templates direct tegen het Thema-card.
   - **Fix**: `marginTop:"16px"` toegevoegd aan TpTemplateManager wrap-card, matchend met Layout/Thema spacing-patroon.
 
@@ -2801,7 +2801,7 @@ Geen multi-line overlays meer. Geen HWM-stippellijnen. Geen dashed grids. Allema
 ## [v12.170] — 2026-06-03
 
 ### Fixed (Privacy-mode leak-audit)
-- **10 privacy-leaks gefixed** *(gemeld door Denny: "als ik de prijzen hide dan zie ik bij gerealiseerde winst nog steeds de winsten en geen sterren. loop alles nog even door")*
+- **10 privacy-leaks gefixed** *(gemeld door Zaratras: "als ik de prijzen hide dan zie ik bij gerealiseerde winst nog steeds de winsten en geen sterren. loop alles nog even door")*
 
   **Dashboard**
   - `DashboardEquityChart` y-axis ticks + tooltip — toonden equity-bedragen ongemaskeerd (callback functie checked geen `priv`)
@@ -2842,7 +2842,7 @@ Geen multi-line overlays meer. Geen HWM-stippellijnen. Geen dashed grids. Allema
 ## [v12.169] — 2026-06-03
 
 ### Gewijzigd
-- **Trades-tabel: numerieke kolommen rechts-uitgelijnd** *(gemeld door Denny: "kolommen wijken wat af")*
+- **Trades-tabel: numerieke kolommen rechts-uitgelijnd** *(gemeld door Zaratras: "kolommen wijken wat af")*
   - **Voor**: Entry / Exit / Size / R-Mult kolommen waren `textAlign:"center"`. Met variabele-width getallen (`3,09` vs `67.327,40`) wijken decimalen visueel af. PnL was zonder explicit align (default left), inconsistent met andere numerieke kolommen.
   - **Na**: Entry / Exit / Size / PnL / R-Mult → `textAlign:"right"` + `paddingRight:"12px"`. Headers en body matchen. Duizenden-separators, decimal-punten en `+/-`-tekens lijnen pixel-perfect onder elkaar.
   - **Pro-trader-best-practice**: numerieke data right-aligned, categorische data left-aligned. Status / Datum / Symbol / Setup / Sessie / Emoties blijven links. Side blijft center (pill).
@@ -2966,7 +2966,7 @@ Geen multi-line overlays meer. Geen HWM-stippellijnen. Geen dashed grids. Allema
 ## [v12.163] — 2026-06-02
 
 ### Verwijderd
-- **Analytics TOC ("Spring naar:" sticky bar) verwijderd** *(gemeld door Denny: "ik zie nog steeds beide. dat is overbodig")* — De v12.161+v12.162 TOC kwam pal onder de viewMode-control (Proces/Winst/Beide) te staan. Twee bars boven elkaar bleek visueel overladen, ook na het ontdubbelen van labels in v12.162. viewMode dekt de navigatiebehoefte voldoende — Analytics is met de filter "wat zie ik" al voldoende beheersbaar.
+- **Analytics TOC ("Spring naar:" sticky bar) verwijderd** *(gemeld door Zaratras: "ik zie nog steeds beide. dat is overbodig")* — De v12.161+v12.162 TOC kwam pal onder de viewMode-control (Proces/Winst/Beide) te staan. Twee bars boven elkaar bleek visueel overladen, ook na het ontdubbelen van labels in v12.162. viewMode dekt de navigatiebehoefte voldoende — Analytics is met de filter "wat zie ik" al voldoende beheersbaar.
   - Code helemaal verwijderd (geen `display:none` of feature-flag)
   - Geen impact op widgets zelf: `data-sortkey` attributes blijven voor drag-reorder
 
@@ -2975,7 +2975,7 @@ Geen multi-line overlays meer. Geen HWM-stippellijnen. Geen dashed grids. Allema
 ## [v12.162] — 2026-06-02
 
 ### Gewijzigd
-- **Analytics TOC — Proces/Winst-knoppen verwijderd om dubbel-op te vermijden** *(gemeld door Denny: "bij analytics heb je het nu dubbel")* — De v12.161 sticky TOC bevatte 🧠 Proces en 💰 Winst-knoppen, maar dezelfde labels stonden ook in de viewMode-control erboven (Proces / Winst / Beide). Visueel dubbel-op + verwarrend over functie-verschil.
+- **Analytics TOC — Proces/Winst-knoppen verwijderd om dubbel-op te vermijden** *(gemeld door Zaratras: "bij analytics heb je het nu dubbel")* — De v12.161 sticky TOC bevatte 🧠 Proces en 💰 Winst-knoppen, maar dezelfde labels stonden ook in de viewMode-control erboven (Proces / Winst / Beide). Visueel dubbel-op + verwarrend over functie-verschil.
   - **Nieuwe TOC**: 📅 Discipline · 📈 R-Multiple · 🎯 Setups · 💭 Fout & Emotie
   - Bewust geen Proces/Winst-labels meer in TOC — die staan in viewMode (filter "wat zie ik")
   - TOC blijft een scroll-shortcut voor diepere widgets die anders ondersneeuwen
@@ -3039,7 +3039,7 @@ Geen multi-line overlays meer. Geen HWM-stippellijnen. Geen dashed grids. Allema
 ## [v12.159] — 2026-06-02
 
 ### Gewijzigd
-- **TP-templates kaart-inhoud — TP1-5 onder elkaar, label bold, waarde regular** *(2026-06-02, gevraagd door Denny: "TPs wel onder elkaar, dik gedrukt TP1, niet dik gedrukt de waarde, goed gealigneerd")* — Per-template kaart toonde de 5 TP-verdelingen als horizontaal wrappende pills. Nu een verticale 2-koloms grid:
+- **TP-templates kaart-inhoud — TP1-5 onder elkaar, label bold, waarde regular** *(2026-06-02, gevraagd door Zaratras: "TPs wel onder elkaar, dik gedrukt TP1, niet dik gedrukt de waarde, goed gealigneerd")* — Per-template kaart toonde de 5 TP-verdelingen als horizontaal wrappende pills. Nu een verticale 2-koloms grid:
   - Linker kolom: `TP1` t/m `TP5` in monospaced bold (`fontWeight:700`, `color:var(--text2)`)
   - Rechter kolom: waardes (`100`, `50 / 50`, `34 / 33 / 33`, etc.) regular (`fontWeight:400`, `color:var(--text3)`)
   - Beide kolommen monospaced (`var(--mono)`) zodat alle waardes pixel-perfect onder elkaar uitlijnen
@@ -3055,7 +3055,7 @@ Geen multi-line overlays meer. Geen HWM-stippellijnen. Geen dashed grids. Allema
 ## [v12.158] — 2026-06-02
 
 ### Gewijzigd
-- **TP-templates sectie krijgt card-wrapper + 3-kolommen grid** *(2026-06-02, gemeld door Denny: header stond los van content)* — De TP-templates sectie was de enige in Instellingen waarvan de header (titel + sub-text + Reset/+Nieuwe template knoppen) **buiten een card-container** stond, terwijl alle andere secties (VRIJWILLIGE DONATIE, BACKUP & RESTORE, DEFAULT-TEMPLATE PER AANTAL TPS) hun header **binnen** een card hebben. Visuele inconsistentie nu opgelost:
+- **TP-templates sectie krijgt card-wrapper + 3-kolommen grid** *(2026-06-02, gemeld door Zaratras: header stond los van content)* — De TP-templates sectie was de enige in Instellingen waarvan de header (titel + sub-text + Reset/+Nieuwe template knoppen) **buiten een card-container** stond, terwijl alle andere secties (VRIJWILLIGE DONATIE, BACKUP & RESTORE, DEFAULT-TEMPLATE PER AANTAL TPS) hun header **binnen** een card hebben. Visuele inconsistentie nu opgelost:
   - **Card-wrapper** rond hele TP-templates blok met `var(--glass)` background + `var(--border1)` border (zelfde patroon als VRIJWILLIGE DONATIE)
   - **📐 icon-prefix** in de header voor consistentie met `📣 VRIJWILLIGE DONATIE`
   - **3-kolommen grid** voor Equal / Front-loaded / Runner cards (`repeat(auto-fit, minmax(280px, 1fr))`) — direct visueel vergelijkbaar ipv onder elkaar
@@ -3073,7 +3073,7 @@ Geen multi-line overlays meer. Geen HWM-stippellijnen. Geen dashed grids. Allema
 ## [v12.157] — 2026-06-02
 
 ### Fixed
-- **TP-template "Front-loaded" 5TP-verdeling was inconsistent** *(2026-06-02, gemeld door Denny met screenshot)* — Was `[40, 25, 15, 10, 10]` (laatste twee gelijk → patroon breekt). Vergelijking met de andere Front-loaded varianten:
+- **TP-template "Front-loaded" 5TP-verdeling was inconsistent** *(2026-06-02, gemeld door Zaratras met screenshot)* — Was `[40, 25, 15, 10, 10]` (laatste twee gelijk → patroon breekt). Vergelijking met de andere Front-loaded varianten:
   - 2TP: `[70, 30]` (strict-aflopend −40)
   - 3TP: `[50, 30, 20]` (strict-aflopend −20/−10)
   - 4TP: `[40, 30, 20, 10]` (strict-aflopend −10 lineair)
@@ -3229,7 +3229,7 @@ Plus IndexedDB: database `tj_autobackup` met store `handles` (key `directory` �
 ## [v12.153] — 2026-06-01
 
 ### Toegevoegd
-- **Backup-bewaker** — voorkomt onbedoeld data-verlies door browser-wissen *(2026-06-01, gevraagd door Denny na Discord-issue van NielsB die zijn Chrome-profiel leegmaakte met 2-weken-oude backup)*
+- **Backup-bewaker** — voorkomt onbedoeld data-verlies door browser-wissen *(2026-06-01, gevraagd door Zaratras na Discord-issue van NielsB die zijn Chrome-profiel leegmaakte met 2-weken-oude backup)*
   - **📦 Topbar-indicator** rechts in de topbar, altijd zichtbaar. Kleur op basis van laatste-backup-leeftijd:
     - Groen ✓ wanneer <3 dagen
     - Amber Xd wanneer 3-7 dagen
@@ -3266,7 +3266,7 @@ Plus IndexedDB: database `tj_autobackup` met store `handles` (key `directory` �
 ## [v12.152] — 2026-05-21
 
 ### Fixed
-- **Backup-knop importeerde geen playbooks** *(2026-05-21, gemeld door Denny bij demo-data import)* — De "↑ Backup importeren"-knop (Instellingen → Backup & Restore) herstelde wel trades, tags, accounts, config en TP-templates, maar **niet de playbooks**. Drag & drop van een JSON-bestand deed dat wél — een inconsistentie tussen de twee import-paden. Een backup-restore hoort álles te herstellen.
+- **Backup-knop importeerde geen playbooks** *(2026-05-21, gemeld door Zaratras bij demo-data import)* — De "↑ Backup importeren"-knop (Instellingen → Backup & Restore) herstelde wel trades, tags, accounts, config en TP-templates, maar **niet de playbooks**. Drag & drop van een JSON-bestand deed dat wél — een inconsistentie tussen de twee import-paden. Een backup-restore hoort álles te herstellen.
   - **Oorzaak**: `handleBackup` in AccountsHub had geen `setPlaybooks` (werd niet als prop doorgegeven) en miste de playbooks-import-regel die `handleDrop` wel had.
   - **Fix**: `playbooks` + `setPlaybooks` doorgegeven aan AccountsHub; `handleBackup` herstelt nu `d.playbooks` via `migratePlaybooks()`, identiek aan het drag-drop pad.
   - Geverifieerd met een nieuwe test die de **echte file-upload flow** doorloopt (niet localStorage-seed): `tests/demo-backup-import.spec.js` uploadt een 6-playbook backup via de Backup-knop en bevestigt dat alle 6 playbooks + tags + accounts laden.
@@ -3292,7 +3292,7 @@ Plus IndexedDB: database `tj_autobackup` met store `handles` (key `directory` �
 ## [v12.150] — 2026-05-18
 
 ### Toegevoegd
-- **Mori: handleiding + FAQ-sectie** *(2026-05-18, gevraagd door Denny)* — Documentatie zodat community-users zelf aan de slag kunnen met Mori zonder hulp uit Discord.
+- **Mori: handleiding + FAQ-sectie** *(2026-05-18, gevraagd door Zaratras)* — Documentatie zodat community-users zelf aan de slag kunnen met Mori zonder hulp uit Discord.
   - **Nieuwe lesson `L23`** in Help → Handleiding: *"Mori — je AI-coach (BETA)"* (advanced, 14 min). Bevat: TL;DR · Setup in 3 stappen (feature-flag + BYOK + master-toggle) · alle 5 sub-features uitgelegd (pre-trade / weekly / chat / budget / privacy) · Wat Mori NIET kan (live data, charts, tools, garanties) · 5 sterke voorbeeld-vragen · Wanneer ChatGPT/Claude direct beter is · Beta-disclaimer. Met "Open AI-coach →" jump-link.
   - **Nieuwe FAQ-categorie `🤖 Mori (AI-coach)`** met 8 entries:
     1. *"Wat is Mori?"* — wie/wat/welke 4 features
@@ -3314,7 +3314,7 @@ Plus IndexedDB: database `tj_autobackup` met store `handles` (key `directory` �
 ## [v12.149] — 2026-05-18
 
 ### Toegevoegd
-- **Privacy-sectie volwaardig** *(2026-05-18, gevraagd door Denny na uitleg over privacy-filter)* — Vervangt de oude placeholder met een complete transparantie + control panel. AI-coach laatste placeholder is nu live.
+- **Privacy-sectie volwaardig** *(2026-05-18, gevraagd door Zaratras na uitleg over privacy-filter)* — Vervangt de oude placeholder met een complete transparantie + control panel. AI-coach laatste placeholder is nu live.
   - **Status-blok** met groene/amber visual + telling: "Ticker-mask actief · 46 standaard tickers + N custom · amount-mode: ..."
   - **Bedrag-masking** — nieuwe `cfg.privacy.amountMode` met 3 keuzes via segment-buttons:
     - `off` (default): bedragen onveranderd naar Claude
@@ -3353,7 +3353,7 @@ Plus IndexedDB: database `tj_autobackup` met store `handles` (key `directory` �
 ## [v12.148] — 2026-05-18
 
 ### Toegevoegd
-- **Mori-popup krijgt collapsible chat-history sidebar (links)** *(2026-05-18, gevraagd door Denny: "ik wil de geschiedenis gesprekken zichtbaar hebben of uitklapbaar aan de rechter of linkerkant")* — Vervangt de oude dropdown-switcher door een volwaardige sidebar zoals in de AI-coach tab. WhatsApp/email-style: alle conversaties zichtbaar naast de actieve chat, één klik om te wisselen.
+- **Mori-popup krijgt collapsible chat-history sidebar (links)** *(2026-05-18, gevraagd door Zaratras: "ik wil de geschiedenis gesprekken zichtbaar hebben of uitklapbaar aan de rechter of linkerkant")* — Vervangt de oude dropdown-switcher door een volwaardige sidebar zoals in de AI-coach tab. WhatsApp/email-style: alle conversaties zichtbaar naast de actieve chat, één klik om te wisselen.
   - **☰ toggle** links in header — toont/verbergt sidebar. Gold-highlight wanneer aan.
   - **Popup-breedte responsief**: 560px wanneer sidebar aan, 420px wanneer uit. Smooth transition (0.18s).
   - **Sidebar 140px breed** met chat-items: titel + bericht-count + datum + delete-knop (✕). Active chat krijgt gold-dim background + gold border (zelfde `.ai-chat-item` class als tab-sidebar — visueel consistent).
@@ -3371,7 +3371,7 @@ Plus IndexedDB: database `tj_autobackup` met store `handles` (key `directory` �
 ## [v12.147] — 2026-05-18
 
 ### Gewijzigd
-- **De AI-coach heeft een naam: Mori** *(2026-05-18, naam gekozen door Denny uit 4 opties)* — Afgeleid van Morani, warm en persoonlijk, voelt als een trading-buddy ipv een tool. De feature/tab heet nog steeds "AI-coach" (categorische naam in topbar) maar in alle user-facing chat-copy is het nu Mori:
+- **De AI-coach heeft een naam: Mori** *(2026-05-18, naam gekozen door Zaratras uit 4 opties)* — Afgeleid van Morani, warm en persoonlijk, voelt als een trading-buddy ipv een tool. De feature/tab heet nog steeds "AI-coach" (categorische naam in topbar) maar in alle user-facing chat-copy is het nu Mori:
   - **Message-bubble label**: was "AI-COACH", nu "Mori" (in zowel ChatSection als floating popup)
   - **Section-titel** in AI-coach tab: "💬 Chat met je coach" → "💬 Chat met Mori"
   - **Intro-paragraph**: "Stel vragen aan **Mori** over je trading. Hij heeft context van je playbooks..."
@@ -3392,7 +3392,7 @@ Plus IndexedDB: database `tj_autobackup` met store `handles` (key `directory` �
 ## [v12.146] — 2026-05-18
 
 ### Toegevoegd
-- **Floating AI-chat popup (FAB rechtsonder, overal in app)** *(2026-05-18, gevraagd door Denny: "is het ook mogelijk om een interactieve chat te openen via een knopje dat je een soort pop krijgt?")* — Vanaf elke pagina (Dashboard / Trades / Analytics / Playbook / etc.) is er nu een 💬 floating action button (FAB) rechtsonder die een compacte chat-popup opent. Verschijnt alleen wanneer **`?ai=1`** + master enabled + nieuwe toggle **`features.floatingChat`** aan.
+- **Floating AI-chat popup (FAB rechtsonder, overal in app)** *(2026-05-18, gevraagd door Zaratras: "is het ook mogelijk om een interactieve chat te openen via een knopje dat je een soort pop krijgt?")* — Vanaf elke pagina (Dashboard / Trades / Analytics / Playbook / etc.) is er nu een 💬 floating action button (FAB) rechtsonder die een compacte chat-popup opent. Verschijnt alleen wanneer **`?ai=1`** + master enabled + nieuwe toggle **`features.floatingChat`** aan.
   - **FAB**: 54px ronde knop, fixed rechtsonder, gold-dim achtergrond → gold solid wanneer popup open (toont ✕ ipv 💬)
   - **Popup**: 420×580px (clamped op `min(580px, calc(100vh - 120px))`), gold border, donker bg, drop-shadow. Boven de FAB gepositioneerd.
   - **Header**: chat-titel als dropdown (klik → toont alle conversaties met active-highlight + bericht-count) · `+` knop voor nieuwe chat · `✕` sluit
@@ -3416,7 +3416,7 @@ Plus IndexedDB: database `tj_autobackup` met store `handles` (key `directory` �
 ## [v12.145] — 2026-05-18
 
 ### Fixed
-- **Chat-input verdween bij lange responses + geen scroll mogelijk** *(2026-05-18, gemeld door Denny met screenshot: lege ruimte onder de assistant-bubble, geen input zichtbaar)* — Hieronder lag de ECHTE root-cause van "bug 1" uit v12.143/144: een klassieke **flex+overflow CSS-valkuil**. Mijn chat-shell had `height:540px` met inner flex column (scroll-div + input-area), maar zonder `minHeight:0` op flex-children kan een lange child de container uitduwen — de scroll-div werkt dan niet (`overflow:auto` activeert niet) en de input-area wordt door de assistant-bubble onder de container weggeschoven. Bij Denny's 800-token markdown-response was de bubble ~700px hoog, dus de input zat ~150px onder de "chat-shell" en daardoor onzichtbaar (overflow:hidden clipt 'm). De fixes uit v12.143/144 (state-sync + event-listener verwijderen) waren technisch wel correct, maar de **visuele symptoom** kwam van deze layout-bug.
+- **Chat-input verdween bij lange responses + geen scroll mogelijk** *(2026-05-18, gemeld door Zaratras met screenshot: lege ruimte onder de assistant-bubble, geen input zichtbaar)* — Hieronder lag de ECHTE root-cause van "bug 1" uit v12.143/144: een klassieke **flex+overflow CSS-valkuil**. Mijn chat-shell had `height:540px` met inner flex column (scroll-div + input-area), maar zonder `minHeight:0` op flex-children kan een lange child de container uitduwen — de scroll-div werkt dan niet (`overflow:auto` activeert niet) en de input-area wordt door de assistant-bubble onder de container weggeschoven. Bij Zaratras' 800-token markdown-response was de bubble ~700px hoog, dus de input zat ~150px onder de "chat-shell" en daardoor onzichtbaar (overflow:hidden clipt 'm). De fixes uit v12.143/144 (state-sync + event-listener verwijderen) waren technisch wel correct, maar de **visuele symptoom** kwam van deze layout-bug.
 - **Concrete CSS-fixes**:
   - `minHeight:0` op `<aside>` + sidebar scroll-div (anders pushen lange chat-lijsten de sidebar weg)
   - `minHeight:0` op `<main>` (zodat de grid-cel van 540px gerespecteerd wordt)
@@ -3439,8 +3439,8 @@ Plus IndexedDB: database `tj_autobackup` met store `handles` (key `directory` �
 ## [v12.144] — 2026-05-18
 
 ### Fixed
-- **Chat-input bleef na 1 antwoord onbruikbaar — v12.143 fix was incompleet** *(2026-05-18, gemeld door Denny: "Ik kan na 1 antwoord niks meer met de chat. niet opnieuw typen of scrollen.")* — Root-cause: ik had in v12.143 directe `setChats(arr)` toegevoegd in mutaties, MAAR de oude event-listener `tj-ai-chats-change` bleef óók luisteren en deed alsnog een tweede `setChats(loadChats())` na de `saveChats` dispatch. De async event-handler-render kwam soms ná `setLoading(false)` met een stale snapshot binnen → input bleef effectief disabled tot een unrelated page-interaction. **Fix**: event-listener verwijderd uit ChatSection. We doen sinds v12.143 al direct setChats overal — cross-tab sync gebeurt nog via browser Storage-event als nodig. **Nieuwe Playwright-test** (`tests/aicoach-chat-2msg.spec.js`) reproduceert exact het bug-scenario: 2 messages sequentieel sturen → input enabled blijft + scroll-pane onderaan staat na 2e response. Test was vóór deze fix rood, nu groen.
-- **AI vergeleek avgR (1.94) met playbook.minRR (3.0) en concludeerde "onder minimum, niet winstgevend"** *(2026-05-18, gemeld door Denny: "1.7R en hij zegt onder 1R. hoe berekent hij dit?")* — De aggregator gaf alleen `avgR` mee als R-metric. AI vergeleek dat direct met playbook.minRR (een entry-criterium) en concludeerde dat de playbook tekortschoot. Maar:
+- **Chat-input bleef na 1 antwoord onbruikbaar — v12.143 fix was incompleet** *(2026-05-18, gemeld door Zaratras: "Ik kan na 1 antwoord niks meer met de chat. niet opnieuw typen of scrollen.")* — Root-cause: ik had in v12.143 directe `setChats(arr)` toegevoegd in mutaties, MAAR de oude event-listener `tj-ai-chats-change` bleef óók luisteren en deed alsnog een tweede `setChats(loadChats())` na de `saveChats` dispatch. De async event-handler-render kwam soms ná `setLoading(false)` met een stale snapshot binnen → input bleef effectief disabled tot een unrelated page-interaction. **Fix**: event-listener verwijderd uit ChatSection. We doen sinds v12.143 al direct setChats overal — cross-tab sync gebeurt nog via browser Storage-event als nodig. **Nieuwe Playwright-test** (`tests/aicoach-chat-2msg.spec.js`) reproduceert exact het bug-scenario: 2 messages sequentieel sturen → input enabled blijft + scroll-pane onderaan staat na 2e response. Test was vóór deze fix rood, nu groen.
+- **AI vergeleek avgR (1.94) met playbook.minRR (3.0) en concludeerde "onder minimum, niet winstgevend"** *(2026-05-18, gemeld door Zaratras: "1.7R en hij zegt onder 1R. hoe berekent hij dit?")* — De aggregator gaf alleen `avgR` mee als R-metric. AI vergeleek dat direct met playbook.minRR (een entry-criterium) en concludeerde dat de playbook tekortschoot. Maar:
   - `avgR` is het gemiddelde over **alle** trades (winners + losers); losers @ -1R trekken het omlaag
   - `playbook.minRR` is een ENTRY-criterium (welke setups je vóór entry mag nemen), niet een target voor avgR achteraf
   - Met multi-TP partial closes worden veel trades vroeg gesloten op 0.5–1.5R bij TP1 — dat is by design, niet "tekortschieten"
@@ -3454,9 +3454,9 @@ Plus IndexedDB: database `tj_autobackup` met store `handles` (key `directory` �
 ## [v12.143] — 2026-05-18
 
 ### Fixed
-- **AI-coach chat hing in loading-state — assistant-message kwam binnen maar UI bleef "1 berichten" tonen** *(2026-05-18, gemeld door Denny met screenshot: chat-pane leeg met loading-dots na response)* — Race-conditie tussen async event-listener `tj-ai-chats-change` en `setLoading(false)`. State-update via event arriveerde soms ná de re-render → chat-storage had assistant-msg wel, maar React-state nog niet. UI bleef hangen op user-msg + dots, input box disabled. **Fix**: `sendMessage` + `newChat` + `deleteChat` doen nu **direct `setChats(arr)`** met de return-value van `upsertChat`/`deleteChatById` ipv te wachten op event. Plus force-scroll na assistant-render (`setTimeout 80ms` zodat de pane naar bottom scrollt en niet half-leeg lijkt).
-- **Chat-messages waren onleesbaar — markdown werd raw getoond** *(2026-05-18, gemeld door Denny: "De opmaak van de tekst is slecht te lezen")* — Claude antwoordt vaak in markdown (`# headers`, `**bold**`, `> quotes`, `` `code` ``, lists). De chat-pane toonde alleen `whiteSpace: pre-wrap` waardoor `## Wat de data zegt` en `**winstgevend**` als raw tekst met sterretjes verschenen. **Fix**: nieuwe lichte markdown-renderer **`renderChatMarkdown(text)`** die ondersteunt: `# / ## / ### / ####` headers (4 sizes), `**bold**`, `*italic*`, `` `code` ``, code-fences (```` ```...``` ````), `> blockquote` (gouden border-left), ordered/unordered lists (`- * • / 1.`), horizontale lijnen (`---`), paragraph-breaks. Wordt alleen op assistant-messages toegepast via `dangerouslySetInnerHTML`. **User-messages blijven raw** (security: alleen gegenereerde content trusten we, niet user-input).
-- **AI kreeg te weinig trade-detail om patronen te zien** *(2026-05-18, gemeld door Denny: "data wordt niet goed opgehaald", AI vroeg om "tijd van dag, sessie, trend vs range")* — De `Recente trades`-sectie in system prompt had alleen 15 trades met basis-info (datum, sym, pnl, R, pb, grade). Geen tijd, geen sessie, geen notes → AI kon niet vragen als "welke setups op London-open vs NY werkten beter?" beantwoorden zonder extra info aan user te vragen. **Fix**: sample verhoogd naar **25 trades** + per trade extra: `entryTime`, **sessie-bucket** (Asia / London / London-NY / NY, op basis van uur), eerste 60 chars van `notes`. AI kan nu direct patroon-analyses doen zonder verduidelijking.
+- **AI-coach chat hing in loading-state — assistant-message kwam binnen maar UI bleef "1 berichten" tonen** *(2026-05-18, gemeld door Zaratras met screenshot: chat-pane leeg met loading-dots na response)* — Race-conditie tussen async event-listener `tj-ai-chats-change` en `setLoading(false)`. State-update via event arriveerde soms ná de re-render → chat-storage had assistant-msg wel, maar React-state nog niet. UI bleef hangen op user-msg + dots, input box disabled. **Fix**: `sendMessage` + `newChat` + `deleteChat` doen nu **direct `setChats(arr)`** met de return-value van `upsertChat`/`deleteChatById` ipv te wachten op event. Plus force-scroll na assistant-render (`setTimeout 80ms` zodat de pane naar bottom scrollt en niet half-leeg lijkt).
+- **Chat-messages waren onleesbaar — markdown werd raw getoond** *(2026-05-18, gemeld door Zaratras: "De opmaak van de tekst is slecht te lezen")* — Claude antwoordt vaak in markdown (`# headers`, `**bold**`, `> quotes`, `` `code` ``, lists). De chat-pane toonde alleen `whiteSpace: pre-wrap` waardoor `## Wat de data zegt` en `**winstgevend**` als raw tekst met sterretjes verschenen. **Fix**: nieuwe lichte markdown-renderer **`renderChatMarkdown(text)`** die ondersteunt: `# / ## / ### / ####` headers (4 sizes), `**bold**`, `*italic*`, `` `code` ``, code-fences (```` ```...``` ````), `> blockquote` (gouden border-left), ordered/unordered lists (`- * • / 1.`), horizontale lijnen (`---`), paragraph-breaks. Wordt alleen op assistant-messages toegepast via `dangerouslySetInnerHTML`. **User-messages blijven raw** (security: alleen gegenereerde content trusten we, niet user-input).
+- **AI kreeg te weinig trade-detail om patronen te zien** *(2026-05-18, gemeld door Zaratras: "data wordt niet goed opgehaald", AI vroeg om "tijd van dag, sessie, trend vs range")* — De `Recente trades`-sectie in system prompt had alleen 15 trades met basis-info (datum, sym, pnl, R, pb, grade). Geen tijd, geen sessie, geen notes → AI kon niet vragen als "welke setups op London-open vs NY werkten beter?" beantwoorden zonder extra info aan user te vragen. **Fix**: sample verhoogd naar **25 trades** + per trade extra: `entryTime`, **sessie-bucket** (Asia / London / London-NY / NY, op basis van uur), eerste 60 chars van `notes`. AI kan nu direct patroon-analyses doen zonder verduidelijking.
 
 ### Test
 - Nieuwe `tests/aicoach-chat-markdown.spec.js` (2 specs): verifieert dat assistant-message markdown rendert naar `<strong>`/`<blockquote>`/`<ul>`/`<code>`/`<pre>` etc. én dat user-message raw blijft (geen XSS-vector via markdown in user-input).
@@ -3469,7 +3469,7 @@ Plus IndexedDB: database `tj_autobackup` met store `handles` (key `directory` �
 ## [v12.142] — 2026-05-18
 
 ### Fixed
-- **AI-coach gaf "WR 7.1% niet winstgevend" terwijl playbook winstgevend is** *(2026-05-18, gemeld door Denny met screenshot, root-cause:	backtest-trades hebben `t.pnl=""` maar wél `rMultiple` of TPs)* — De aggregator gebruikte direct `Number(t.pnl) || 0`. Backtests die alleen TPs/hindsightExit ingevuld hadden (zonder positionSize / pnl) werden geteld als pnl=0 → noch win noch loss → WR=0% terwijl het 75% had moeten zijn.
+- **AI-coach gaf "WR 7.1% niet winstgevend" terwijl playbook winstgevend is** *(2026-05-18, gemeld door Zaratras met screenshot, root-cause:	backtest-trades hebben `t.pnl=""` maar wél `rMultiple` of TPs)* — De aggregator gebruikte direct `Number(t.pnl) || 0`. Backtests die alleen TPs/hindsightExit ingevuld hadden (zonder positionSize / pnl) werden geteld als pnl=0 → noch win noch loss → WR=0% terwijl het 75% had moeten zijn.
   - **Fix**: `aggregatePlaybookStats` gebruikt nu de bestaande `netPnl(t)` helper (die voor backtests `calcTheoreticalPnl()` aanroept). Win/loss-bepaling werkt nu primair op **`rMultiple`** (preferred voor backtests), fallback naar `calcTheoreticalR()` voor missed-trades zonder R, dan pas `pnl`. Eindelijk klopt de WR voor playbooks met theoretische backtests.
   - **Recent-trades sample** doet dezelfde correctie + toont R-multiple ook als die uit `calcTheoreticalR` komt (was alleen `t.rMultiple` voorheen).
 - **AI mixede data-interpretatie** — Naast bovenstaande bug zat de model óók geen context te hebben over **hoe** de data is opgebouwd. Nieuwe sectie in system prompt: **"Hoe de data is opgebouwd (lees dit eerst!)"** met expliciete uitleg over trade-types ([BT]/[PAPER]/[MISSED]/real), dat WR + avg-R primair uit `rMultiple` komen, dat "PnL$0" op backtests klopt wanneer positionSize leeg is, en dat een playbook met "backtest: 20t WR 65% R 1.5" winstgevend is ondanks $0 PnL.
@@ -3484,7 +3484,7 @@ Plus IndexedDB: database `tj_autobackup` met store `handles` (key `directory` �
 ## [v12.141] — 2026-05-18
 
 ### Fixed
-- **AI-coach chat zag nog steeds geen trade-data, ondanks v12.140 fix** *(2026-05-18, gemeld door Denny met screenshot: "38 live trades deze week, geen enkele getagd met playbook-naam")* — Root-cause: in dit project zijn trades gekoppeld aan playbooks via **`t.playbookId`** (foreign-key naar `playbook.id`), niet via `t.playbook`. Mijn v12.140 `aggregatePlaybookStats` skipte alle trades omdat `t.playbook` overal leeg was. Twee gevolgschades:
+- **AI-coach chat zag nog steeds geen trade-data, ondanks v12.140 fix** *(2026-05-18, gemeld door Zaratras met screenshot: "38 live trades deze week, geen enkele getagd met playbook-naam")* — Root-cause: in dit project zijn trades gekoppeld aan playbooks via **`t.playbookId`** (foreign-key naar `playbook.id`), niet via `t.playbook`. Mijn v12.140 `aggregatePlaybookStats` skipte alle trades omdat `t.playbook` overal leeg was. Twee gevolgschades:
   1. Per-playbook breakdown was **leeg** in system prompt (geen enkele playbook getoond)
   2. Recent-trades sample toonde `pb=-` voor alles
 - **Fix v12.141**:
@@ -3500,7 +3500,7 @@ Plus IndexedDB: database `tj_autobackup` met store `handles` (key `directory` �
 ## [v12.140] — 2026-05-18
 
 ### Gewijzigd
-- **AI-coach chat krijgt veel rijkere trader-context** *(2026-05-18, gemeld door Denny: "deze vraag zou hij moeten kunnen ophalen uit de data die in de journal zit toch?")* — De v12.139 chat-system-prompt gaf alleen 7-dag aggregated stats + top-5 playbook-namen. Bij vragen als *"wat vind je van mijn 1h MSB BOS backtest trades?"* antwoordde de AI dat hij geen data had ontvangen. **Fix**: system-prompt is nu drastisch uitgebreid met:
+- **AI-coach chat krijgt veel rijkere trader-context** *(2026-05-18, gemeld door Zaratras: "deze vraag zou hij moeten kunnen ophalen uit de data die in de journal zit toch?")* — De v12.139 chat-system-prompt gaf alleen 7-dag aggregated stats + top-5 playbook-namen. Bij vragen als *"wat vind je van mijn 1h MSB BOS backtest trades?"* antwoordde de AI dat hij geen data had ontvangen. **Fix**: system-prompt is nu drastisch uitgebreid met:
   - **Per-playbook breakdown** voor álle playbooks (gesorteerd op trade-count), gesplitst per type: `real: 12t WR 58% PnL $340 R 1.2 · backtest: 8t WR 75% R 1.8 · paper: 3t · missed-real: 2t`. AI kan nu direct vergelijken: real-vs-backtest-discrepancy, welk playbook de meeste edge heeft, of er paper-experimenten lopen.
   - **Top-15 recente trades** met datum + type-tag (`[BT]` / `[PAPER]` / `[MISSED]` / leeg=real) + sym + dir + PnL + R + playbook + grade. AI ziet de daadwerkelijke trades, niet alleen geaggregeerde cijfers.
   - **Expliciete instructie** in system prompt: "BELANGRIJK: gebruik de Trader-data hieronder als bron van waarheid. Vraag GEEN trades opnieuw als ze er al staan." Voorkomt de "ik heb geen data ontvangen"-respons wanneer de data wél in de payload zit.
@@ -3608,14 +3608,14 @@ Plus IndexedDB: database `tj_autobackup` met store `handles` (key `directory` �
 ## [v12.134] — 2026-05-17
 
 ### Fixed
-- **Setup-voorbeeld afbeeldingen openden lege tab bij klikken** *(2026-05-17, gemeld door Denny met screenshot)* — Klik op een setup-voorbeeld in Playbook Detail-modal opende een nieuwe browser-tab die leeg bleef. **Oorzaak**: `window.open(ex.dataUrl, "_blank")` met een `data:image/...;base64,...` URL. Chrome (en de meeste browsers) **blokkeren sinds 2017 het openen van data-URLs via window.open** vanwege security (phishing-risico met spoofed pages). **Fix**: in-app lightbox-overlay i.p.v. nieuwe tab — zelfde pattern als trade-screenshots in TradeForm. Voordelen: werkt overal (geen browser-blokkering), keyboard-navigatie (Esc om te sluiten, ← → om door voorbeelden te bladeren bij meerdere), kind-label (✓ School / ✗ Vals / ⚡ Marginal) en caption blijven zichtbaar onder de afbeelding. Nieuwe `.tj-lightbox-btn` CSS-class voor sluit/navigatie-knoppen (theme-agnostic: overlay is altijd donker zodat foto helder oogt).
+- **Setup-voorbeeld afbeeldingen openden lege tab bij klikken** *(2026-05-17, gemeld door Zaratras met screenshot)* — Klik op een setup-voorbeeld in Playbook Detail-modal opende een nieuwe browser-tab die leeg bleef. **Oorzaak**: `window.open(ex.dataUrl, "_blank")` met een `data:image/...;base64,...` URL. Chrome (en de meeste browsers) **blokkeren sinds 2017 het openen van data-URLs via window.open** vanwege security (phishing-risico met spoofed pages). **Fix**: in-app lightbox-overlay i.p.v. nieuwe tab — zelfde pattern als trade-screenshots in TradeForm. Voordelen: werkt overal (geen browser-blokkering), keyboard-navigatie (Esc om te sluiten, ← → om door voorbeelden te bladeren bij meerdere), kind-label (✓ School / ✗ Vals / ⚡ Marginal) en caption blijven zichtbaar onder de afbeelding. Nieuwe `.tj-lightbox-btn` CSS-class voor sluit/navigatie-knoppen (theme-agnostic: overlay is altijd donker zodat foto helder oogt).
 
 ---
 
 ## [v12.133] — 2026-05-17
 
 ### Fixed
-- **BT-trade verliest SL-prijs TP na reload — vervolg op v12.130** *(2026-05-17, gemeld door Denny: "weer dat SL na reload wordt verwijderd")* — v12.130 scopte de self-heal naar `source !== "manual"`, maar BT-trades die gekoppeld zijn aan een **custom account** (bv. een eigen "BT Account" toegevoegd in Settings → Accounts) krijgen `source = account.name` — niet `"manual"`. De heal triggerde dan nog wel. **Fix**: scope verfijnd naar **alleen exchange-API sources** (Blofin / MEXC / Kraken / Hyperliquid / FTMO via `ExchangeAPI[source]` check). Manual trades én trades gekoppeld aan een custom account skipen nu allemaal de heal. Worker-bug fix blijft actief voor de 5 exchange-sources. Autonoom geverifieerd met 3 scenarios (Blofin heal werkt nog ✓ · manual skipt ✓ · custom account-naam skipt ✓).
+- **BT-trade verliest SL-prijs TP na reload — vervolg op v12.130** *(2026-05-17, gemeld door Zaratras: "weer dat SL na reload wordt verwijderd")* — v12.130 scopte de self-heal naar `source !== "manual"`, maar BT-trades die gekoppeld zijn aan een **custom account** (bv. een eigen "BT Account" toegevoegd in Settings → Accounts) krijgen `source = account.name` — niet `"manual"`. De heal triggerde dan nog wel. **Fix**: scope verfijnd naar **alleen exchange-API sources** (Blofin / MEXC / Kraken / Hyperliquid / FTMO via `ExchangeAPI[source]` check). Manual trades én trades gekoppeld aan een custom account skipen nu allemaal de heal. Worker-bug fix blijft actief voor de 5 exchange-sources. Autonoom geverifieerd met 3 scenarios (Blofin heal werkt nog ✓ · manual skipt ✓ · custom account-naam skipt ✓).
 
   **Note**: als je vóór deze versie BT-trades had waar de heal al heeft toegeslagen (TPs zijn al uit localStorage gewist), dan komen die niet vanzelf terug. Vul handmatig de TP-rij opnieuw aan en bij volgende reload blijft hij staan.
 
@@ -3624,31 +3624,31 @@ Plus IndexedDB: database `tj_autobackup` met store `handles` (key `directory` �
 ## [v12.132] — 2026-05-15
 
 ### Toegevoegd
-- **Date-filter op Playbook Analytics** *(2026-05-15, op verzoek van Denny)* — De Playbook Analytics-tab heeft nu z'n eigen datum-filter, mirror van de main FilterBar's date-row. Inputs voor van/tot + presets **Vandaag** / **Deze week** / **Deze maand** / **Alles**. Filter geldt op álle breakdowns: Trust-Score, Erosion, KPIs, equity-curves, layer/session/grade/pair/mistake/emotion-stats, missed-opportunities. Wanneer de filter actief is en trades wegfiltert verschijnt een amber hint "X/Y trades" rechts naast de presets. Filter blijft behouden bij wisselen tussen playbooks (zodat je dezelfde periode over verschillende setups kunt vergelijken). Reset door op "Alles" te klikken. Geen interactie met main FilterBar — Playbook Analytics heeft eigen lokale state.
+- **Date-filter op Playbook Analytics** *(2026-05-15, op verzoek van Zaratras)* — De Playbook Analytics-tab heeft nu z'n eigen datum-filter, mirror van de main FilterBar's date-row. Inputs voor van/tot + presets **Vandaag** / **Deze week** / **Deze maand** / **Alles**. Filter geldt op álle breakdowns: Trust-Score, Erosion, KPIs, equity-curves, layer/session/grade/pair/mistake/emotion-stats, missed-opportunities. Wanneer de filter actief is en trades wegfiltert verschijnt een amber hint "X/Y trades" rechts naast de presets. Filter blijft behouden bij wisselen tussen playbooks (zodat je dezelfde periode over verschillende setups kunt vergelijken). Reset door op "Alles" te klikken. Geen interactie met main FilterBar — Playbook Analytics heeft eigen lokale state.
 
 ---
 
 ## [v12.131] — 2026-05-15
 
 ### Fixed
-- **Analytics "Setup lagen performance" labels worden afgekapt met "..."** *(2026-05-14, gemeld door Denny met screenshot)* — Labels zoals `Daily → 1H+BOS+SFP` werden afgekapt naar `Daily → 1H+B...` waardoor je niet zag welke layer-combinatie bij welke bar hoort. **Oorzaak**: `barRow` helper gebruikte vaste 70px label-kolom met ellipsis. Layer-pattern strings nodigen 110-135px (gemeten via Playwright). **Fix**: `barRow` accepteert nu een optionele `wide`-param die de label-kolom verbreedt naar 160px. Alleen layerAnalysis gebruikt deze opt-in — andere bar-widgets (pair / dag / sessie / fouten / emoties / long-short) blijven compact (70px). Geverifieerd: alle layer-labels passen nu volledig zonder ellipsis.
+- **Analytics "Setup lagen performance" labels worden afgekapt met "..."** *(2026-05-14, gemeld door Zaratras met screenshot)* — Labels zoals `Daily → 1H+BOS+SFP` werden afgekapt naar `Daily → 1H+B...` waardoor je niet zag welke layer-combinatie bij welke bar hoort. **Oorzaak**: `barRow` helper gebruikte vaste 70px label-kolom met ellipsis. Layer-pattern strings nodigen 110-135px (gemeten via Playwright). **Fix**: `barRow` accepteert nu een optionele `wide`-param die de label-kolom verbreedt naar 160px. Alleen layerAnalysis gebruikt deze opt-in — andere bar-widgets (pair / dag / sessie / fouten / emoties / long-short) blijven compact (70px). Geverifieerd: alle layer-labels passen nu volledig zonder ellipsis.
 
 ### Toegevoegd
-- **EdgeGap + StressLeak: zichtbaar label dat ze datum-filter negeren** *(2026-05-14, gemeld door Denny "data van andere trades lekt door bij Analytics filter")* — Onderzoek toonde aan dat 95% van Analytics de FilterBar correct respecteert. Alleen **EdgeGap** (👻 missed trades) en **StressLeakWidget** (💢 paper vs real) gebruiken `allTrades` by design — hun analyses zijn alleen zinvol over volle history. Zonder visueel signaal leek dit een bug. **Fix**: kleine cursieve subtitel `📊 Over alle trades — datum-filter genegeerd voor deze analyse` onder beide widget-headers. Geen functionele verandering — pure UX-clarification.
+- **EdgeGap + StressLeak: zichtbaar label dat ze datum-filter negeren** *(2026-05-14, gemeld door Zaratras "data van andere trades lekt door bij Analytics filter")* — Onderzoek toonde aan dat 95% van Analytics de FilterBar correct respecteert. Alleen **EdgeGap** (👻 missed trades) en **StressLeakWidget** (💢 paper vs real) gebruiken `allTrades` by design — hun analyses zijn alleen zinvol over volle history. Zonder visueel signaal leek dit een bug. **Fix**: kleine cursieve subtitel `📊 Over alle trades — datum-filter genegeerd voor deze analyse` onder beide widget-headers. Geen functionele verandering — pure UX-clarification.
 
 ---
 
 ## [v12.130] — 2026-05-14
 
 ### Fixed
-- **BT-trade verliest "missed" TPs én loss-marking na reload** *(2026-05-14, gemeld door Denny, autonoom gediagnosticeerd)* — Wanneer je in een backtest-trade een TP-prijs invult op SL-niveau (om een SL-hit te modelleren) en die TP markeert als missed, verdween die TP-rij bij de eerstvolgende reload. Daardoor verdween ook de "🛑 Verlies gemarkeerd"-pill omdat de remaining TPs niet meer 100% missed waren. **Oorzaak**: de v12.104 self-heal in `normalizeTrade` ([line ~1665](work/tradejournal.html#L1665)) verwijderde elke niet-hit TP die aan de "verkeerde" kant van entry zat (LONG: prijs < entry, SHORT: prijs > entry) omdat dat een typisch teken was van Blofin/MEXC Worker-bug waarbij pending stop-loss orders per ongeluk als TP-rij werden gestuurd. Voor BT-trades is dat een misclassificatie — user vult bewust SL-prijzen in om verlies-scenarios te modelleren. **Fix**: heal-scope beperkt naar exchange-source (`source !== "manual"`). Manual trades (BT / paper / handmatige real-trades) blijven onaangetast. Worker-bug fix blijft actief voor Blofin/MEXC/Kraken/Hyperliquid imports. Autonoom geverifieerd via 2 Playwright-tests (Blofin heal werkt nog + manual heal skipt).
+- **BT-trade verliest "missed" TPs én loss-marking na reload** *(2026-05-14, gemeld door Zaratras, autonoom gediagnosticeerd)* — Wanneer je in een backtest-trade een TP-prijs invult op SL-niveau (om een SL-hit te modelleren) en die TP markeert als missed, verdween die TP-rij bij de eerstvolgende reload. Daardoor verdween ook de "🛑 Verlies gemarkeerd"-pill omdat de remaining TPs niet meer 100% missed waren. **Oorzaak**: de v12.104 self-heal in `normalizeTrade` ([line ~1665](work/tradejournal.html#L1665)) verwijderde elke niet-hit TP die aan de "verkeerde" kant van entry zat (LONG: prijs < entry, SHORT: prijs > entry) omdat dat een typisch teken was van Blofin/MEXC Worker-bug waarbij pending stop-loss orders per ongeluk als TP-rij werden gestuurd. Voor BT-trades is dat een misclassificatie — user vult bewust SL-prijzen in om verlies-scenarios te modelleren. **Fix**: heal-scope beperkt naar exchange-source (`source !== "manual"`). Manual trades (BT / paper / handmatige real-trades) blijven onaangetast. Worker-bug fix blijft actief voor Blofin/MEXC/Kraken/Hyperliquid imports. Autonoom geverifieerd via 2 Playwright-tests (Blofin heal werkt nog + manual heal skipt).
 
 ---
 
 ## [v12.129] — 2026-05-14
 
 ### Fixed
-- **BT/paper-trades zonder handmatige pnl niet meegerekend in Analytics** *(2026-05-14, autonoom gediagnosticeerd na Denny's melding "ik zie nog steeds geen data")* — Vervolg op v12.128. Twee onderliggende oorzaken:
+- **BT/paper-trades zonder handmatige pnl niet meegerekend in Analytics** *(2026-05-14, autonoom gediagnosticeerd na Zaratras' melding "ik zie nog steeds geen data")* — Vervolg op v12.128. Twee onderliggende oorzaken:
   1. **`netPnl()` returnde altijd 0** voor `status="missed"` trades, ook met handmatige pnl ingevuld. Alle aggregaten (Net PNL / Profit Factor / Expectancy / setup-bars) waren dus 0 voor BT/paper-trades zelfs als de data er was.
   2. **Analytics's `closed`-filter** vereiste `t.pnl !== ""` — BT-trades waar gebruiker alleen TPs of hindsightExit had ingevuld (geen handmatige pnl) vielen weg.
   
@@ -3665,7 +3665,7 @@ Plus IndexedDB: database `tj_autobackup` met store `handles` (key `directory` �
 ## [v12.128] — 2026-05-12
 
 ### Fixed
-- **Backtests/paper-trades verborgen in Analytics zonder zichtbare toggle** *(2026-05-12, gemeld door Denny)* — De globale FilterBar `tradeType` default = `"real"`, wat alle BT/paper/missed trades onzichtbaar maakt (Dashboard, Analytics, Trades, Review, Calendar). De "👻 Type"-toggle om dat te wisselen was alleen zichtbaar wanneer `config.trackMissedTrades` aanstond — een opt-in waar veel users niet vanaf weten. **Fix**: type-filter staat nu altijd in de FilterBar onder "Geavanceerde filters". Default-gedrag blijft `"real"` (geen verrassing voor bestaande users), maar je kunt nu altijd wisselen naar **🔬 Backtest / 📝 Paper / 👻 Gemist / Sim (alle) / Alles** om je simulaties in te zien.
+- **Backtests/paper-trades verborgen in Analytics zonder zichtbare toggle** *(2026-05-12, gemeld door Zaratras)* — De globale FilterBar `tradeType` default = `"real"`, wat alle BT/paper/missed trades onzichtbaar maakt (Dashboard, Analytics, Trades, Review, Calendar). De "👻 Type"-toggle om dat te wisselen was alleen zichtbaar wanneer `config.trackMissedTrades` aanstond — een opt-in waar veel users niet vanaf weten. **Fix**: type-filter staat nu altijd in de FilterBar onder "Geavanceerde filters". Default-gedrag blijft `"real"` (geen verrassing voor bestaande users), maar je kunt nu altijd wisselen naar **🔬 Backtest / 📝 Paper / 👻 Gemist / Sim (alle) / Alles** om je simulaties in te zien.
 
 ---
 
@@ -3674,7 +3674,7 @@ Plus IndexedDB: database `tj_autobackup` met store `handles` (key `directory` �
 Globale privacy-modus — verbergt alle $/€ bedragen met één klik. Voor stream-veilig delen, screen-sharing, of over-de-schouder-context.
 
 ### Toegevoegd
-- **👁 privacy-toggle in de top-bar** *(2026-05-12, op verzoek van Denny — vervangt de Dashboard-only toggle die alleen account-saldo verborg)* — Naast de Theme-knop in de top-bar staat nu een 👁 (oog-icoon) die alle dollar/euro-bedragen vervangt door `$***,**`. Werkt op elke pagina, persisteert via `tj_privacy_mode` localStorage. Active state: 👁‍🗨 + gold accent.
+- **👁 privacy-toggle in de top-bar** *(2026-05-12, op verzoek van Zaratras — vervangt de Dashboard-only toggle die alleen account-saldo verborg)* — Naast de Theme-knop in de top-bar staat nu een 👁 (oog-icoon) die alle dollar/euro-bedragen vervangt door `$***,**`. Werkt op elke pagina, persisteert via `tj_privacy_mode` localStorage. Active state: 👁‍🗨 + gold accent.
 - **Dashboard's bestaande 👁 togglet nu globaal** — voorheen verborg die alleen het account-saldo-blok bovenin, maar alle PnL-cards/KPIs/charts bleven zichtbaar (privacy-leek). Nu synced met de top-bar via React Context — beide togglen dezelfde state.
 
 ### Maskerings-scope
@@ -3723,14 +3723,14 @@ Geen breaking change. Nieuwe localStorage key `tj_privacy_mode` (default `"0"`).
 ## [v12.125] — 2026-05-12
 
 ### Fixed
-- **Refresh-knop negeerde "Sync vanaf" wijziging** *(2026-05-12, gemeld door Denny, gediagnosticeerd via Blofin snapshot)* — Wanneer je "Sync vanaf" verlaagde (bv. 1 mei → 1 april) en op Refresh klikte, kreeg je maar 2 trades binnen i.p.v. de verwachte ~21. **Oorzaak**: Refresh's incremental-optimization gebruikte `Math.max(configuredStart, lastSync-1u)` — `lastSync` (gisteren) wint van `configuredStart` (1 april), dus alleen records sinds gisteren worden gefetcht. **Fix**: bij wijziging van de "Sync vanaf"-datum reset de incremental-cursor (`tj_lastsync_<ex>` localStorage), zodat de volgende Refresh respecteert wat je hebt ingesteld. Geldt voor alle exchanges met API-sync (Blofin / MEXC / Kraken / Hyperliquid). Bestaande trades worden gededupliceerd via `importTrades` — geen duplicates. **Note**: deze fix was incompleet voor users die syncFrom al hadden ingesteld vóór update — zie v12.126.
+- **Refresh-knop negeerde "Sync vanaf" wijziging** *(2026-05-12, gemeld door Zaratras, gediagnosticeerd via Blofin snapshot)* — Wanneer je "Sync vanaf" verlaagde (bv. 1 mei → 1 april) en op Refresh klikte, kreeg je maar 2 trades binnen i.p.v. de verwachte ~21. **Oorzaak**: Refresh's incremental-optimization gebruikte `Math.max(configuredStart, lastSync-1u)` — `lastSync` (gisteren) wint van `configuredStart` (1 april), dus alleen records sinds gisteren worden gefetcht. **Fix**: bij wijziging van de "Sync vanaf"-datum reset de incremental-cursor (`tj_lastsync_<ex>` localStorage), zodat de volgende Refresh respecteert wat je hebt ingesteld. Geldt voor alle exchanges met API-sync (Blofin / MEXC / Kraken / Hyperliquid). Bestaande trades worden gededupliceerd via `importTrades` — geen duplicates. **Note**: deze fix was incompleet voor users die syncFrom al hadden ingesteld vóór update — zie v12.126.
 
 ---
 
 ## [v12.124] — 2026-05-11
 
 ### Fixed
-- **"+ TP toevoegen" knop verdween na 4 TPs** *(2026-05-11, gemeld door Denny)* — De pre-existing cap was `tps.length<4`, maar v12.123 templates ondersteunen tot 5 TPs. Cap opgehoogd naar `tps.length<5` zodat je tot 5 TPs kunt toevoegen.
+- **"+ TP toevoegen" knop verdween na 4 TPs** *(2026-05-11, gemeld door Zaratras)* — De pre-existing cap was `tps.length<4`, maar v12.123 templates ondersteunen tot 5 TPs. Cap opgehoogd naar `tps.length<5` zodat je tot 5 TPs kunt toevoegen.
 
 ---
 
@@ -3739,7 +3739,7 @@ Geen breaking change. Nieuwe localStorage key `tj_privacy_mode` (default `"0"`).
 Slimme TP-verdeling met templates — Take Profit positiegroottes worden automatisch verdeeld volgens gekozen template, handmatige TP-edits triggeren auto-recalc zodat de som altijd 100% blijft.
 
 ### Toegevoegd
-- **3 Pre-built templates** *(2026-05-11, op verzoek van Denny)*: Equal (gelijke verdeling), Front-loaded (zwaar op eerste TP), Runner (zwaar op laatste TP). Werken voor 1 t/m 5 TPs.
+- **3 Pre-built templates** *(2026-05-11, op verzoek van Zaratras)*: Equal (gelijke verdeling), Front-loaded (zwaar op eerste TP), Runner (zwaar op laatste TP). Werken voor 1 t/m 5 TPs.
 - **Template-dropdown** in de trade-modal, boven de TP-grid. Selecteer een template → percentages worden automatisch overschreven. "Custom" verschijnt automatisch wanneer percentages afwijken van de actieve template.
 - **Auto-verdeling** bij `+ TP toevoegen` / TP verwijderen — gebruikt de default-template voor het nieuwe aantal TPs. Bij handmatige afwijking verschijnt een "Verdeling overschrijven?" bevestigingsdialoog.
 - **Auto-recalc cascade** *(Optie B: Last absorbs)* — wanneer je een TP-percentage handmatig wijzigt absorbeert de laatste TP het verschil. Bij overflow cascadet het terug naar TP n-1, etc., met een minimum van 1% per TP. Som blijft altijd exact 100%.
@@ -3774,7 +3774,7 @@ Slimme TP-verdeling met templates — Take Profit positiegroottes worden automat
 Quick-action knoppen "Mark als win" / "Mark als verlies" zijn nu beschikbaar voor *alle* trades — handmatig én exchange-imports — naast BT/paper/missed.
 
 ### Toegevoegd
-- **Quick-actions voor manuele + exchange trades** *(2026-05-09, op verzoek van Denny)* — De knoppen "✓ Mark als win" / "🛑 Mark als verlies" naast Take Profit niveaus waren tot nu toe alleen zichtbaar bij missed/BT/paper trades. Nu verschijnen ze voor élke trade met TPs:
+- **Quick-actions voor manuele + exchange trades** *(2026-05-09, op verzoek van Zaratras)* — De knoppen "✓ Mark als win" / "🛑 Mark als verlies" naast Take Profit niveaus waren tot nu toe alleen zichtbaar bij missed/BT/paper trades. Nu verschijnen ze voor élke trade met TPs:
   - **Handmatige trades** (open/partial): "Mark als win" → zet alle TPs op hit + de bestaande "Trade sluiten"-knop verschijnt voor auto-close op TP-weighted exit. **NIEUW**: "Mark als verlies" → zet alle TPs op missed + nieuwe "🛑 Trade sluiten op SL" knop verschijnt voor auto-close op SL met negatieve pnl.
   - **Handmatige trades** (closed): bij pnl-drift toont een suggestie-knop "PnL bijwerken naar TPs" (win) of **NIEUW** "PnL bijwerken naar SL" (verlies).
   - **Exchange trades** (Blofin / MEXC / Kraken / Hyperliquid / FTMO): knoppen werken puur als TP-status marker — exchange-pnl blijft onaangetast (bron-van-waarheid). Handig voor playbook-analytics.
@@ -3791,7 +3791,7 @@ Quick-action knoppen "Mark als win" / "Mark als verlies" zijn nu beschikbaar voo
 Mindset-toast theme-aware gemaakt — was altijd donker met onleesbare tekst in lichte thema's.
 
 ### Fixed
-- **Mindset-quote toast onleesbaar in lichte thema's** *(2026-05-09, gemeld door Denny met screenshot)* — De mindset-reminder toast (rechtsonder, post-loss) had een hardcoded donkere achtergrond `rgba(10,12,18,.97)` terwijl de tekstkleur `var(--text2)` per-thema schakelt. Resultaat in light/parchment/daylight: donkere tekst op donkere bg = onleesbaar én visueel inconsistent met de rest van de app. **Fix**: achtergrond gebruikt nu `var(--bg2)` (theme-aware) en de drop-shadow is iets zachter (`rgba(0,0,0,.25)` ipv `.5`) zodat hij ook op lichte thema's natuurlijk oogt.
+- **Mindset-quote toast onleesbaar in lichte thema's** *(2026-05-09, gemeld door Zaratras met screenshot)* — De mindset-reminder toast (rechtsonder, post-loss) had een hardcoded donkere achtergrond `rgba(10,12,18,.97)` terwijl de tekstkleur `var(--text2)` per-thema schakelt. Resultaat in light/parchment/daylight: donkere tekst op donkere bg = onleesbaar én visueel inconsistent met de rest van de app. **Fix**: achtergrond gebruikt nu `var(--bg2)` (theme-aware) en de drop-shadow is iets zachter (`rgba(0,0,0,.25)` ipv `.5`) zodat hij ook op lichte thema's natuurlijk oogt.
 
 ---
 
@@ -3800,7 +3800,7 @@ Mindset-toast theme-aware gemaakt — was altijd donker met onleesbare tekst in 
 Trust-Score visueel gemoderniseerd + drempel-labels gecorrigeerd. Iconen per stage, continue progress-bar, status-samenvatting in header.
 
 ### Gewijzigd
-- **Drempel-labels gecorrigeerd** *(2026-05-08, gemeld door Denny — labels toonden nog oude v12.109 thresholds)* — De Trust-Score progressie-bar gaf nog labels van vóór v12.110 ("10+ BT", "5+ paper", "6+ real", "16+ >0.3R"). Sinds v12.110 zijn drempels type-agnostisch. **Fix**: labels nu correct:
+- **Drempel-labels gecorrigeerd** *(2026-05-08, gemeld door Zaratras — labels toonden nog oude v12.109 thresholds)* — De Trust-Score progressie-bar gaf nog labels van vóór v12.110 ("10+ BT", "5+ paper", "6+ real", "16+ >0.3R"). Sinds v12.110 zijn drempels type-agnostisch. **Fix**: labels nu correct:
   - `Idee` (geen drempel — playbook bestaat)
   - `Theorized` · 1+ trade
   - `Validated` · 2+ trades
@@ -3849,7 +3849,7 @@ Trust-Score visueel gemoderniseerd + drempel-labels gecorrigeerd. Iconen per sta
 
 ### Voor de community
 - Geen actie nodig. Bij update naar v12.119 ziet je Playbook Analytics direct de nieuwe sections op basis van bestaande trade-data.
-- **Voor 10 BT trades zoals Denny's voorbeeld**: Layer-pattern (1 pattern uit '1H+BOS+MSB'), Sessie-heatmap (London PM/AM/Weekend cells), Per Grade (A+/A/B/C verdeling), Auto-Insights (sweet-spot identificatie). Mistakes/Emotions/Criteria zijn empty (zijn real-only) — die vullen zich naarmate je real trades neemt.
+- **Voor 10 BT trades zoals Zaratras' voorbeeld**: Layer-pattern (1 pattern uit '1H+BOS+MSB'), Sessie-heatmap (London PM/AM/Weekend cells), Per Grade (A+/A/B/C verdeling), Auto-Insights (sweet-spot identificatie). Mistakes/Emotions/Criteria zijn empty (zijn real-only) — die vullen zich naarmate je real trades neemt.
 - **Tip**: vul `tradeGrade` (A+/A/B/C) op je trades om Per-Grade breakdown te zien. Vul `complianceChecks` op real trades voor criteria-impact ranking.
 
 ---
@@ -3859,7 +3859,7 @@ Trust-Score visueel gemoderniseerd + drempel-labels gecorrigeerd. Iconen per sta
 Quick-fixes Playbook Analytics: equity curve auto-defaults naar beschikbare bron + Cum. PnL toont theoretisch totaal voor BT/paper/missed.
 
 ### Fixed
-- **Equity curve "Selecteer minstens één bron"** *(2026-05-08, gemeld door Denny — 10 BT trades zonder real toonden geen curve)* — Bij playbook-switch (of initial load) was eqSources hard-coded `["real"]`. Voor playbooks zonder real-trades bleef de curve leeg. **Fix**: useEffect detecteert empty curve-state en pakt automatisch eerste beschikbare bron (real → bt → paper → missed). Source-toggle voor KPIs idem.
+- **Equity curve "Selecteer minstens één bron"** *(2026-05-08, gemeld door Zaratras — 10 BT trades zonder real toonden geen curve)* — Bij playbook-switch (of initial load) was eqSources hard-coded `["real"]`. Voor playbooks zonder real-trades bleef de curve leeg. **Fix**: useEffect detecteert empty curve-state en pakt automatisch eerste beschikbare bron (real → bt → paper → missed). Source-toggle voor KPIs idem.
 - **Cum. PnL toonde "theor." placeholder voor BT/paper/missed** — Nu berekent de KPI sum van `calcTheoreticalPnl(t)` over alle trades in bucket. Voor jouw 10 BT met +3.05R avg op $1000 size → toont nu daadwerkelijke theoretische PnL i.p.v. statisch "theor." label.
 
 ### Aanpak
@@ -3876,7 +3876,7 @@ Quick-fixes Playbook Analytics: equity curve auto-defaults naar beschikbare bron
 Hotfix: BT/paper trades met EXIT ingevuld toonden `+$0,00` in PnL-kolom van trades-tabel — terwijl het formulier wel `-7.85` aangaf. Oude `netPnl()` clamp van missed trades naar 0 brak v12.115 EXIT-flow.
 
 ### Fixed
-- **PnL-kolom in trades-tabel respecteert ingevulde `trade.pnl` voor BT/paper** *(2026-05-08, gemeld door Denny — BT short met EXIT=SL ingevuld toonde `+$0,00` ipv `-$7,85`)* — `netPnl(t)` returnt 0 voor `t.status === "missed"` (= correct voor analytics-aggregatie zodat sim-trades real edge-stats niet vervuilen). Maar de trade-rij gebruikte die voor display, waardoor user-ingevulde PnL op BT/paper trades werd gemaskeerd. **Fix**: row-display gebruikt nu `pnlRaw` direct voor missed-trades met PnL ingevuld, met `~` prefix en italic styling om aan te geven dat het theoretisch is. `netPnl()` zelf onveranderd — analytics-paden blijven correct.
+- **PnL-kolom in trades-tabel respecteert ingevulde `trade.pnl` voor BT/paper** *(2026-05-08, gemeld door Zaratras — BT short met EXIT=SL ingevuld toonde `+$0,00` ipv `-$7,85`)* — `netPnl(t)` returnt 0 voor `t.status === "missed"` (= correct voor analytics-aggregatie zodat sim-trades real edge-stats niet vervuilen). Maar de trade-rij gebruikte die voor display, waardoor user-ingevulde PnL op BT/paper trades werd gemaskeerd. **Fix**: row-display gebruikt nu `pnlRaw` direct voor missed-trades met PnL ingevuld, met `~` prefix en italic styling om aan te geven dat het theoretisch is. `netPnl()` zelf onveranderd — analytics-paden blijven correct.
 - **W/L kleur en badge correct voor BT/paper** — `isW`/`isL` flags gebruikten ook netPnl, dus toonden geen kleur. Nu fallback naar pnlRaw voor missed trades.
 
 ### Aanpak
@@ -3890,7 +3890,7 @@ Hotfix: BT/paper trades met EXIT ingevuld toonden `+$0,00` in PnL-kolom van trad
 UX-fix op v12.114: knop-labels waren ambigu — leek alsof "🛑 SL hit" de status was, terwijl het de actie was. Plus state-indicator wanneer trade bulk-gemarkeerd is.
 
 ### Gewijzigd
-- **Knop-labels actie-georiënteerd** *(2026-05-08, gemeld door Denny — "als ik TP op groen vink komt er SL hit te staan, klopt je logica wel?")* — Voorheen `✓ Alle TPs hit` en `🛑 SL hit` lazen als status-claims. Nu duidelijk acties:
+- **Knop-labels actie-georiënteerd** *(2026-05-08, gemeld door Zaratras — "als ik TP op groen vink komt er SL hit te staan, klopt je logica wel?")* — Voorheen `✓ Alle TPs hit` en `🛑 SL hit` lazen als status-claims. Nu duidelijk acties:
   - `✓ Mark als win` (klik → alle TPs naar hit)
   - `🛑 Mark als verlies` (klik → alle TPs naar missed)
 - **State-indicator pillen** verschijnen bij volledige bulk-state:
@@ -3908,7 +3908,7 @@ Bij allHit: zie `✓ Win gemarkeerd` (status pil) + `🛑 Mark als verlies` (act
 EXIT-veld nu zichtbaar voor backtest/paper trades. Simpelste UX: vul exit-prijs in → analytics werkt. Geen hindsightExit of TP-toggling meer nodig.
 
 ### Toegevoegd
-- **EXIT-veld voor backtest/paper trades** *(2026-05-08, gemeld door Denny — "Misschien een exit in de backtest gemist? En dan winst berekenen op basis van exit-prijs?")* — Voor `simType="backtest"` en `simType="paper"` is het EXIT-veld nu zichtbaar in het hoofd-formulier (naast ENTRY en STOP LOSS). Vul de exit-prijs in (waar trade ook werkelijk gesloten is in jouw replay/demo) en analytics werkt direct. Voor `isMissedReal` (real-time gespotte trades, niet daadwerkelijk getradet) blijft EXIT verborgen — daar is hindsightExit nog steeds de juiste field.
+- **EXIT-veld voor backtest/paper trades** *(2026-05-08, gemeld door Zaratras — "Misschien een exit in de backtest gemist? En dan winst berekenen op basis van exit-prijs?")* — Voor `simType="backtest"` en `simType="paper"` is het EXIT-veld nu zichtbaar in het hoofd-formulier (naast ENTRY en STOP LOSS). Vul de exit-prijs in (waar trade ook werkelijk gesloten is in jouw replay/demo) en analytics werkt direct. Voor `isMissedReal` (real-time gespotte trades, niet daadwerkelijk getradet) blijft EXIT verborgen — daar is hindsightExit nog steeds de juiste field.
 
 ### Gewijzigd
 - **`_simTradeExit` priority chain uitgebreid**: `trade.exit` is nu de **primaire** bron voor BT/paper trades. Volgorde:
@@ -3935,7 +3935,7 @@ EXIT-veld nu zichtbaar voor backtest/paper trades. Simpelste UX: vul exit-prijs 
 Verlies-trades met SL-hit kunnen nu in 1 klik gemarkeerd worden + mixed-outcome (sommige TPs hit, rest naar SL) wordt automatisch correct afgeleid.
 
 ### Toegevoegd
-- **Quick-action knoppen voor sim-trades** *(2026-05-08, gemeld door Denny — niet alle BT trades toonden W/L)* — In de TP-sectie van missed/BT/paper trades:
+- **Quick-action knoppen voor sim-trades** *(2026-05-08, gemeld door Zaratras — niet alle BT trades toonden W/L)* — In de TP-sectie van missed/BT/paper trades:
   - Groen `✓ Alle TPs hit` — markeert alle TPs als hit in 1 klik (= trade volledig in winst)
   - Rood `🛑 SL hit` — markeert alle TPs als missed in 1 klik (= trade volledig stopgezet)
   - Knoppen verdwijnen wanneer trade al in die staat is (bv. "✓ Alle TPs hit" verbergt zich als allemaal al hit)
@@ -3963,7 +3963,7 @@ Verlies-trades met SL-hit kunnen nu in 1 klik gemarkeerd worden + mixed-outcome 
 Theoretische exit voor BT/paper/missed trades wordt nu **automatisch afgeleid uit 100% hit-TPs** — geen apart `hindsightExit`-veld meer nodig als de gebruiker zijn TPs al heeft aangevinkt.
 
 ### Gewijzigd
-- **Auto-afgeleide exit voor sim-trades** *(2026-05-08, gevraagd door Denny — "waarom hindsight invullen? het kan toch op basis van de gegevens die zijn ingevuld")* — Voor backtest/paper/missed trades wordt theoretische R en PnL nu in deze volgorde bepaald:
+- **Auto-afgeleide exit voor sim-trades** *(2026-05-08, gevraagd door Zaratras — "waarom hindsight invullen? het kan toch op basis van de gegevens die zijn ingevuld")* — Voor backtest/paper/missed trades wordt theoretische R en PnL nu in deze volgorde bepaald:
   1. **100% hit-TPs**: weighted exit uit `tp.price × tp.pct`. R = `(weighted_exit − entry) / |entry − SL|`. Geen extra invoer nodig — gewoon TPs aanvinken op hit.
   2. **`hindsightExit` als fallback**: alleen als TPs niet 100% afgevinkt zijn.
   3. **Null** (geen analytics): als beide ontbreken.
@@ -3992,7 +3992,7 @@ Theoretische exit voor BT/paper/missed trades wordt nu **automatisch afgeleid ui
 UX-fix op v12.111: voor backtest/paper trades was de exit-prijs verstopt achter een collapsible "🔮 Hindsight (optioneel)" sectie, defaultOpen=false. Daardoor sloegen gebruikers het over en kregen geen analytics. Nu prominenter en context-specifiek.
 
 ### Gewijzigd
-- **Backtest/Paper exit-veld is nu prominent** *(2026-05-08, gemeld door Denny — 10 BT trades zonder hindsightExit ondanks v12.111 fix)* — Het `hindsightExit` veld krijgt nu per `simType` een aangepaste presentatie:
+- **Backtest/Paper exit-veld is nu prominent** *(2026-05-08, gemeld door Zaratras — 10 BT trades zonder hindsightExit ondanks v12.111 fix)* — Het `hindsightExit` veld krijgt nu per `simType` een aangepaste presentatie:
   - **Backtest** (`simType="backtest"`): Section title `🎯 Backtest Exit`, input label `BACKTEST EXIT (waar sloot je in je replay)`, defaultOpen=true, hint `vereist voor analytics ⚠`. Beschrijving: *"Vul je werkelijke exit-prijs in uit de chart-replay. Zonder dit blijven stats leeg."*
   - **Paper** (`simType="paper"`): zelfde behandeling met titel `🎯 Paper Exit`, label `PAPER EXIT (waar sloot je op demo-account)`.
   - **Missed** (legacy/real-time gespot): blijft `🔮 Hindsight (optioneel)` zoals voorheen — daar is het inderdaad optioneel voor edge-leak analyse.
@@ -4012,7 +4012,7 @@ UX-fix op v12.111: voor backtest/paper trades was de exit-prijs verstopt achter 
 Hotfix op v12.110: Trust-Score telde alleen trades **met** hindsightExit. 10 BT trades zonder hindsight stonden nog steeds op "Idee" met "0 trades totaal". Nu gefixt — sample-size telt onafhankelijk van R-data.
 
 ### Fixed
-- **Trust-Score `classifyTrust` count gebaseerd op status+simType, niet hindsightExit** *(2026-05-08, gemeld door Denny — 10 BT trades zonder hindsight bleven op Idee)* — v12.110 gebruikte `playbookErosionStats` voor counts, welke hindsightExit vereist. Daardoor: BT trades zonder hindsightExit telden niet mee → Trust-Score bleef op Idee. **Fix**: `classifyTrust` doet eigen pass over `tradesForPlaybook` met dezelfde filter als `_pbBucketBySource` (status+simType). R-aggregatie gebruikt alleen subset met geldige R-data.
+- **Trust-Score `classifyTrust` count gebaseerd op status+simType, niet hindsightExit** *(2026-05-08, gemeld door Zaratras — 10 BT trades zonder hindsight bleven op Idee)* — v12.110 gebruikte `playbookErosionStats` voor counts, welke hindsightExit vereist. Daardoor: BT trades zonder hindsightExit telden niet mee → Trust-Score bleef op Idee. **Fix**: `classifyTrust` doet eigen pass over `tradesForPlaybook` met dezelfde filter als `_pbBucketBySource` (status+simType). R-aggregatie gebruikt alleen subset met geldige R-data.
   
   Resultaat voor 10 BT zonder hindsightExit:
   - Voor: stage=Idea, "0 trades totaal"
@@ -4037,7 +4037,7 @@ Hotfix op v12.110: Trust-Score telde alleen trades **met** hindsightExit. 10 BT 
 Trust-Score type-agnostisch: alle trade-types (real + paper + backtest + missed) tellen nu mee, drempel voor Bewezen verlaagd van 16 real → 5 totaal.
 
 ### Gewijzigd
-- **`classifyTrust` drempels herzien** *(2026-05-08, gevraagd door Denny)* — Vóór: progressie naar Bewezen vereiste **16 real trades** met avgR > 0.3R. Voor playbooks die voornamelijk via backtest/paper/missed worden gebouwd was Bewezen-status onbereikbaar zonder veel real-money handel. **Nu**: type-agnostische progressie:
+- **`classifyTrust` drempels herzien** *(2026-05-08, gevraagd door Zaratras)* — Vóór: progressie naar Bewezen vereiste **16 real trades** met avgR > 0.3R. Voor playbooks die voornamelijk via backtest/paper/missed worden gebouwd was Bewezen-status onbereikbaar zonder veel real-money handel. **Nu**: type-agnostische progressie:
   - **Idee** — 0 trades
   - **Theorized** — 1+ trade (any type)
   - **Validated** — 2+ trades
@@ -4051,7 +4051,7 @@ Trust-Score type-agnostisch: alle trade-types (real + paper + backtest + missed)
 
 ### Aanpak
 - `playbookErosionStats` skipt missed-trades (bewust, om edge-erosion analysis schoon te houden), maar `classifyTrust` voegt missed nu apart toe via `hindsightExit`-derivatie.
-- Test-suite: 10 logic-cases in `tests/trust-score-thresholds.js` — alle stages, edge-cases (5 trades met avgR<0.3 = Tradeable niet Bewezen), Denny's specifieke scenario (10 BT trades).
+- Test-suite: 10 logic-cases in `tests/trust-score-thresholds.js` — alle stages, edge-cases (5 trades met avgR<0.3 = Tradeable niet Bewezen), Zaratras' specifieke scenario (10 BT trades).
 
 ### Voor de community
 - Geen actie nodig. Bij update naar v12.110 worden bestaande playbooks heractiveerd op de nieuwe drempels — een playbook met bv. 10 backtest trades met avg +0.5R komt direct op Bewezen-status.
@@ -4063,12 +4063,12 @@ Trust-Score type-agnostisch: alle trade-types (real + paper + backtest + missed)
 Win/Loss zichtbaar maken op backtest/paper/missed trades + Playbook Analytics werkt nu ook zonder hindsightExit (toont count + hint).
 
 ### Toegevoegd
-- **W/L-indicator op trade-rij voor BT/paper/missed** *(2026-05-08, gemeld door Denny)* — Trades met `status="missed"` (= backtest/paper/missed) hadden voorheen alleen het bron-badge (🔬 BT / 📝 PAPER / 👻 MISS) maar geen win/loss-aanduiding. **Nu**: badge krijgt een ✓ (groen) of ✗ (rood) icon op basis van theoretische R uit `hindsightExit`. Tooltip toont exacte R-waarde. Vereist dat user `hindsightExit` invult.
+- **W/L-indicator op trade-rij voor BT/paper/missed** *(2026-05-08, gemeld door Zaratras)* — Trades met `status="missed"` (= backtest/paper/missed) hadden voorheen alleen het bron-badge (🔬 BT / 📝 PAPER / 👻 MISS) maar geen win/loss-aanduiding. **Nu**: badge krijgt een ✓ (groen) of ✗ (rood) icon op basis van theoretische R uit `hindsightExit`. Tooltip toont exacte R-waarde. Vereist dat user `hindsightExit` invult.
 - **Theoretische PnL + R-multiple in trade-tabel** — PnL-kolom toont `~+$28.57` (italic, theoretisch label) voor missed trades met hindsightExit. R-multiple kolom idem `+2.0R` italic. EXIT-kolom toont `~72000` (italic) als hindsightExit beschikbaar.
 - **Twee nieuwe helpers**: `calcTheoreticalR(trade)` en `calcTheoreticalPnl(trade)` — apart van `calcRMultiple` zodat real-edge-stats voor closed trades NIET gevuld worden door theoretische missed-data.
 
 ### Fixed
-- **Playbook Analytics toonde "Geen backtest trades" terwijl source-pill 10 zei** *(2026-05-08, gemeld door Denny)* — Mismatch tussen twee functies: `_pbBucketBySource` (voor source-pill counts) telde puur op status+simType, terwijl `playbookErosionStats` (voor KPI's) ook `hindsightExit` vereiste om R te kunnen berekenen. Resultaat: 10 BT trades ingevuld zonder hindsightExit → pill toont 10, KPI's tonen "geen trades". **Fix**: `_srcStats` gebruikt nu count uit `_pbBucketBySource`. Stats (wr/avgR) komen alsnog uit erosion — als die 0 zijn omdat hindsightExit ontbreekt, toont KPI "—" met goud-amber hint:
+- **Playbook Analytics toonde "Geen backtest trades" terwijl source-pill 10 zei** *(2026-05-08, gemeld door Zaratras)* — Mismatch tussen twee functies: `_pbBucketBySource` (voor source-pill counts) telde puur op status+simType, terwijl `playbookErosionStats` (voor KPI's) ook `hindsightExit` vereiste om R te kunnen berekenen. Resultaat: 10 BT trades ingevuld zonder hindsightExit → pill toont 10, KPI's tonen "geen trades". **Fix**: `_srcStats` gebruikt nu count uit `_pbBucketBySource`. Stats (wr/avgR) komen alsnog uit erosion — als die 0 zijn omdat hindsightExit ontbreekt, toont KPI "—" met goud-amber hint:
   > 💡 Stats nog niet beschikbaar. Vul hindsightExit in op je 10 backtest trades om Win-rate, Avg R en theoretische PnL te zien.
 - Geldt identiek voor paper en missed trades.
 
@@ -4088,7 +4088,7 @@ Win/Loss zichtbaar maken op backtest/paper/missed trades + Playbook Analytics we
 Uitbreiding op v12.107 close-button: dezelfde knop verschijnt nu ook bij **al-gesloten** handmatige trades wanneer de opgeslagen PnL afwijkt van wat de hit-TPs samen suggereren. Klik = bijwerken, met manualOverrides-bescherming.
 
 ### Toegevoegd
-- **Knop heeft nu twee modes** *(2026-05-08, gemeld door Denny op eigen closed trade waar PnL=$12.50 stond maar 4 hit-TPs samen +$24.38 zouden geven)*:
+- **Knop heeft nu twee modes** *(2026-05-08, gemeld door Zaratras op eigen closed trade waar PnL=$12.50 stond maar 4 hit-TPs samen +$24.38 zouden geven)*:
   - `mode="close"` — trade is `open`/`partial` met sum-of-hit-pcts ≥ 100%. Knop: groen `✓ Trade sluiten · PnL: +$24.38 · Exit: $81450`. Klik = status closed + PnL/exit/closeTime gevuld.
   - `mode="update"` — trade is `closed`, sum-of-hit-pcts ≥ 100%, opgeslagen PnL wijkt > $1 af van TP-totaal. Knop: amber `🔄 PnL bijwerken naar TPs · was +$12.50 → +$24.38`. Klik = pnl/exit bijgewerkt naar TP-berekening, status blijft closed, closeTime onveranderd.
 - **$1 drempel** voorkomt dat de knop opduikt door floating-point noise of micro-fee-verschillen.
@@ -4158,7 +4158,7 @@ Hotfix op v12.104: SL-as-TP self-heal was niet **idempotent** — kon falen wann
 MEXC stop-loss orders verschenen foutief als TP-rij in de trade-modal. Nu correct gefilterd + auto-geplaatst in `trade.stopLoss`. Bestaande buggy trades worden automatisch geheald bij eerstvolgende app-load.
 
 ### Fixed
-- **Pending stop-loss orders verschenen als TP-niveau** *(2026-05-08, gemeld door Denny — BTC short positionId 1367600842 toonde SL=81000 als TP2)* — De Cloudflare Worker stuurt pending stop-loss orders (`triggerSide=2`) mee in de pending-fills lijst voor MEXC, met `_triggerSide` als marker. Vorige versie filterde die marker niet en zette ze door naar `tpLevels` met status `"open"`. Resultaat: een SHORT met SL=81000 (boven entry 80552.7) toonde 81000 als "TP2" met negatieve "winst". **Fix**: client filtert pending-fills op `_triggerSide !== 2` voor TP-conversie en routeert SL-orders naar `trade.stopLoss` (= hoogste-volume SL als heuristiek). Manueel ingestelde stopLoss (in `manualOverrides`) wordt expliciet niet overschreven.
+- **Pending stop-loss orders verschenen als TP-niveau** *(2026-05-08, gemeld door Zaratras — BTC short positionId 1367600842 toonde SL=81000 als TP2)* — De Cloudflare Worker stuurt pending stop-loss orders (`triggerSide=2`) mee in de pending-fills lijst voor MEXC, met `_triggerSide` als marker. Vorige versie filterde die marker niet en zette ze door naar `tpLevels` met status `"open"`. Resultaat: een SHORT met SL=81000 (boven entry 80552.7) toonde 81000 als "TP2" met negatieve "winst". **Fix**: client filtert pending-fills op `_triggerSide !== 2` voor TP-conversie en routeert SL-orders naar `trade.stopLoss` (= hoogste-volume SL als heuristiek). Manueel ingestelde stopLoss (in `manualOverrides`) wordt expliciet niet overschreven.
 - **Self-heal voor bestaande buggy trades** — Trades die de SL als TP-rij hadden krijgen automatische correctie via `normalizeTrade`: detecteer status="open" tpLevel waar prijs aan de SL-zijde ligt (boven entry voor short, onder voor long) → verplaats prijs naar `trade.stopLoss` (alleen als die leeg is) en verwijder uit `tpLevels`. Marker `_slHealed=true` voorkomt dubbele migratie.
 
 ### Aanpak
@@ -4179,7 +4179,7 @@ MEXC stop-loss orders verschenen foutief als TP-rij in de trade-modal. Nu correc
 MEXC partial-close-still-open positie: `positionSizeAsset` werd te klein opgeslagen (alleen resterende deel), waardoor TP-percentages > 100% en TP-winst-berekeningen factor-fout werden. Geïsoleerd in MEXC-adapter.
 
 ### Fixed
-- **MEXC `fetchOpenPositions`: positionSizeAsset gebruikt origineel = `holdVol + closeVol`** *(2026-05-08, gemeld door Denny via snapshot mexc-snapshot-2026-05-08-06-39.json)* — Bij open positions die al een partial-close hebben gehad levert MEXC `holdVol` (resterend) en `closeVol` (al gesloten). Vorige versie gebruikte alleen `holdVol` voor `_convertContracts`. Symptoom: BTC short positionId `1367600842` had originele 0.0247 BTC (= 247 contracts), maar journal sloeg `positionSizeAsset = 0.0124` op (alleen de resterende 124 contracts). Resultaat: TP1 toonde 49.8% correct (pct opgeslagen op fill-tijd tegen original), maar TP2 toonde **199.2%** want pct = `qty(0.0247) / stored(0.0124) × 100`. Plus warning "Totaal 249% > 100%". **Fix**: `totalVol = (parseFloat(p.holdVol)||0) + (parseFloat(p.closeVol)||0)` als basis voor `_convertContracts`. Reconciliatie volledig gevalideerd via `tests/mexc-partial-open-fix.js` + in-browser test `tests/mexc-partial-open-browser.js`.
+- **MEXC `fetchOpenPositions`: positionSizeAsset gebruikt origineel = `holdVol + closeVol`** *(2026-05-08, gemeld door Zaratras via snapshot mexc-snapshot-2026-05-08-06-39.json)* — Bij open positions die al een partial-close hebben gehad levert MEXC `holdVol` (resterend) en `closeVol` (al gesloten). Vorige versie gebruikte alleen `holdVol` voor `_convertContracts`. Symptoom: BTC short positionId `1367600842` had originele 0.0247 BTC (= 247 contracts), maar journal sloeg `positionSizeAsset = 0.0124` op (alleen de resterende 124 contracts). Resultaat: TP1 toonde 49.8% correct (pct opgeslagen op fill-tijd tegen original), maar TP2 toonde **199.2%** want pct = `qty(0.0247) / stored(0.0124) × 100`. Plus warning "Totaal 249% > 100%". **Fix**: `totalVol = (parseFloat(p.holdVol)||0) + (parseFloat(p.closeVol)||0)` als basis voor `_convertContracts`. Reconciliatie volledig gevalideerd via `tests/mexc-partial-open-fix.js` + in-browser test `tests/mexc-partial-open-browser.js`.
 
 ### Aanpak
 - **Self-heal**: `syncOpenPositions` overschrijft `positionSize` en `positionSizeAsset` automatisch bij volgende refresh (geen ALWAYS_PROTECT-veld). Een `🔄 Refresh trades` op MEXC voldoet om bestaande buggy data te corrigeren.
@@ -4221,7 +4221,7 @@ Nieuwe **Playbook Analytics dashboard** als sub-view in de Playbook-pagina (Phas
 Twee Kraken open-positions bugs gefixt in `_normalise`. Geïsoleerd in de Kraken-adapter — geen impact op MEXC/Blofin/Hyperliquid/FTMO.
 
 ### Fixed
-- **Direction omgekeerd voor Kraken open posities** *(gemeld door Denny op live BTC long)* — Kraken's `/derivatives/api/v3/openpositions` endpoint geeft `side: "long"` of `side: "short"`, géén `"buy"`/`"sell"`. De `_normalise` viel terug op `t.side === "buy" ? "long" : "short"` waardoor élke open Kraken-positie als **short** in het journal terecht kwam. **Fix**: matchen op zowel `"buy"` als `"long"` (case-insensitive). Closed Kraken-trades waren niet geraakt — die kregen `direction` direct van de Worker.
+- **Direction omgekeerd voor Kraken open posities** *(gemeld door Zaratras op live BTC long)* — Kraken's `/derivatives/api/v3/openpositions` endpoint geeft `side: "long"` of `side: "short"`, géén `"buy"`/`"sell"`. De `_normalise` viel terug op `t.side === "buy" ? "long" : "short"` waardoor élke open Kraken-positie als **short** in het journal terecht kwam. **Fix**: matchen op zowel `"buy"` als `"long"` (case-insensitive). Closed Kraken-trades waren niet geraakt — die kregen `direction` direct van de Worker.
 - **Instabiele id voor Kraken open posities** — Kraken's openpositions endpoint heeft géén `fill_id`, dus de fallback `uid()` genereerde bij elke re-sync een nieuwe random id → riskeerde duplicaten in de trade-lijst. **Fix**: voor open posities is de id nu `kraken_open_${symbol}_${fillTime}_${side}` — deterministisch, idempotent over re-syncs heen. Closed trades blijven hun `fill_id` van de Worker gebruiken.
 
 ### Voor de community
@@ -4278,7 +4278,7 @@ Auto-sync intervallen aangepast voor community-schaal + nieuwe gecombineerde syn
 
 ## [v12.98] — 2026-05-06
 
-Drie-lagen positionSize fix voor MEXC trades + Auto-sync UI vereenvoudigd naar één setting. v12.96 self-heal had één gat: trades met **lege** `positionSizeAsset` werden niet gecorrigeerd. Zichtbaar bij Denny's trade van vandaag (closeTime 2026-05-06 10:32) met `positionSize="72"` en `positionSizeAsset=""`.
+Drie-lagen positionSize fix voor MEXC trades + Auto-sync UI vereenvoudigd naar één setting. v12.96 self-heal had één gat: trades met **lege** `positionSizeAsset` werden niet gecorrigeerd. Zichtbaar bij Zaratras' trade van vandaag (closeTime 2026-05-06 10:32) met `positionSize="72"` en `positionSizeAsset=""`.
 
 ### Fixed (positionSize self-heal)
 - **Lege `positionSizeAsset` wordt nu ook gehealed** — Migratie in `normalizeTrade` verbreed: heal als `assetEmpty || ratio>2 || ratio<0.5`. Voorheen alleen bij ratio-mismatch (vereiste niet-lege asset → parseFloat("")=NaN→0 faalde de `asset > 0` check).
@@ -4295,7 +4295,7 @@ Drie-lagen positionSize fix voor MEXC trades + Auto-sync UI vereenvoudigd naar �
 - **Auto-sync vereenvoudigd van twee settings naar één** — Voorkeuren had twee aparte intervallen ("Auto-sync interval" 15-60 min voor historische trades + "Live open posities" 30s-2min voor live PnL). Verwarrend en in praktijk weinig nut: live PnL is wat users continu willen zien, nieuwe historische trades komen sowieso binnen via de "🔄 Refresh trades" knop op de exchange-pagina. **Fix**: één setting "🔄 Auto-sync" (Uit / 30sec / 1min / 2min) die live posities ververst. Description vertelt expliciet voor historische trades de refresh-knop te gebruiken. `config.syncInterval` is dode code geworden — backwards-compat behouden door state niet te wissen.
 
 ### Toegevoegd
-- **Drie-lagen test-spec** ([tests/mexc-size-rehel-v1297.spec.js](tests/mexc-size-rehel-v1297.spec.js)) — 4 scenarios: lege asset wordt gehealed (Denny's trade pid 1364821115), `_convertContracts` gebruikt fallback-map, exotic coin pnl-derivation werkt voor microcap, correcte trade niet aangeraakt.
+- **Drie-lagen test-spec** ([tests/mexc-size-rehel-v1297.spec.js](tests/mexc-size-rehel-v1297.spec.js)) — 4 scenarios: lege asset wordt gehealed (Zaratras' trade pid 1364821115), `_convertContracts` gebruikt fallback-map, exotic coin pnl-derivation werkt voor microcap, correcte trade niet aangeraakt.
 
 ### Voor de community
 Geen actie nodig. Bij update naar v12.98 worden trades met lege `positionSizeAsset` automatisch gecorrigeerd bij eerstvolgende app-load. Voor nieuwe imports na de update: bug-state ontstaat niet meer dankzij laag 1 + 2.
@@ -4307,7 +4307,7 @@ Geen actie nodig. Bij update naar v12.98 worden trades met lege `positionSizeAss
 Self-heal voor legacy MEXC positionSize bug. Trades uit pre-v12.89 era waar de contractSize-conversie faalde (CORS-fail vóór de fallback-map bestond) hadden `positionSize = String(closeVol)` opgeslagen — raw contracts opgevat als USD, factor 8-100× te klein. Symptoom werd zichtbaar nu de TP-breakdown (v12.93+) per-fill winsten toont: `Verwacht totaal $1.78` terwijl PnL `$14.27` was, plus TP-percentage som > 100%.
 
 ### Fixed
-- **Legacy MEXC positionSize/asset factor-mismatch** *(2026-05-06, gemeld door Denny op tweede profiel met v12.95 + Worker v6)* — Voor élke MEXC closed trade berekent normalizeTrade nu de verwachte asset uit `(pnl + fees) / |exit − entry|` (PnL is autoritatief sinds v12.88 = MEXC `realised` veld). Als de opgeslagen asset >2× of <0.5× afwijkt van die verwachting: corrigeer `positionSizeAsset` + `positionSize` automatisch en zet marker `_sizeRehealed=true` om dubbele migratie te voorkomen. Voor de gevallen trade (pid=1360488693): `0.004185 BTC` / `$336` → `0.0336 BTC` / `$2697` (matcht raw `closeVol × ctSize` uit snapshot). Trades binnen 0.5-2.0× ratio (= normale fee/ronding-variatie) worden niet aangeraakt.
+- **Legacy MEXC positionSize/asset factor-mismatch** *(2026-05-06, gemeld door Zaratras op tweede profiel met v12.95 + Worker v6)* — Voor élke MEXC closed trade berekent normalizeTrade nu de verwachte asset uit `(pnl + fees) / |exit − entry|` (PnL is autoritatief sinds v12.88 = MEXC `realised` veld). Als de opgeslagen asset >2× of <0.5× afwijkt van die verwachting: corrigeer `positionSizeAsset` + `positionSize` automatisch en zet marker `_sizeRehealed=true` om dubbele migratie te voorkomen. Voor de gevallen trade (pid=1360488693): `0.004185 BTC` / `$336` → `0.0336 BTC` / `$2697` (matcht raw `closeVol × ctSize` uit snapshot). Trades binnen 0.5-2.0× ratio (= normale fee/ronding-variatie) worden niet aangeraakt.
 
 ### Aanpak
 - Migratie loopt eenmalig per trade bij eerstvolgende app-load via `normalizeTrade`. Geen actie vereist van community-leden.
@@ -4414,7 +4414,7 @@ Tweede fase van robustness-roadmap (v12.91 was time-bounded markers). v12.93 zal
 TP-fetch-markers zijn nu time-bounded en self-healing. Voorkomt structureel dat een eenmalig "0 fills"-antwoord (door propagation-delay of transient API-glitch) een trade *permanent* uit de TP-fetch queue blokkeert. Geldt voor alle exchanges met `fetchFills` (MEXC, Blofin, Hyperliquid).
 
 ### Fixed
-- **MEXC: 116 trades stonden permanent zonder TP's** *(diagnose 2026-05-06 op community-data Denny)* — De v12.90 marker `_tpFetched: true` werd gezet ongeacht of de fetch fills opleverde. Eénmaal door een transient 0-fills response gemarkeerd, werd een trade nooit meer hergerprobeerd, ook niet als MEXC nadien wel data zou geven. Bij Denny's journal stonden 70% van haar MEXC trades (116/165) zo permanent zonder TP-niveaus. **Root cause**: boolean-marker zonder TTL + zonder invariant-check. **Fix in 3 lagen**:
+- **MEXC: 116 trades stonden permanent zonder TP's** *(diagnose 2026-05-06 op community-data Zaratras)* — De v12.90 marker `_tpFetched: true` werd gezet ongeacht of de fetch fills opleverde. Eénmaal door een transient 0-fills response gemarkeerd, werd een trade nooit meer hergerprobeerd, ook niet als MEXC nadien wel data zou geven. Bij Zaratras' journal stonden 70% van haar MEXC trades (116/165) zo permanent zonder TP-niveaus. **Root cause**: boolean-marker zonder TTL + zonder invariant-check. **Fix in 3 lagen**:
   1. **Time-bounded markers** — boolean `_tpFetched` vervangen door timestamp `_tpFetchedAt: <ms>`. Skip alleen binnen 24u-TTL — daarna automatisch retry. Voorkomt permanent-stuck states structureel.
   2. **Invariant-aware marker-setting** — marker NIET zetten wanneer `closed && realised≠0 && fills.length=0 && trade <90d oud`. Een gesloten trade met PnL *moet* fills hebben — 0 fills is per definitie verdacht en hoort retry'd te worden. Voor trades ouder dan 90d (= praktische API-archief-grens) accepteren we 0 fills wel als definitief.
   3. **One-shot migratie in `normalizeTrade`** — bestaande `_tpFetched=true && tpLevels=[]` markers worden bij eerste load van v12.91 weggegooid → die 116 trades komen automatisch terug in de fetch-queue. `_tpFetched=true && tpLevels=[N]` (succesvolle markers) krijgen `_tpFetchedAt=now-12u` zodat ze nog binnen TTL liggen en niet onnodig hergerprobeerd worden.
@@ -4482,7 +4482,7 @@ Real-data validation tegen jouw eigen exchange-snapshots, plus 2 fee-bugs gevond
 
 ### Fixed
 - **MEXC: fees worden absoluut opgeslagen** — MEXC's `fee`-veld komt negatief uit de API (uitgaand vanuit account-perspectief), terwijl Blofin/Kraken/Hyperliquid absolute waardes leveren. Voorheen toonde de UI MEXC fees als negatieve cijfers (bv `-0.5` ipv `0.5`). **Fix**: parser doet nu `Math.abs(fee)`. PnL-veld blijft `realised` direct (verified via 3-way validation tegen xlsx export: MEXC's `realised` is al NET = gross − fee per positie).
-- **Hyperliquid: scaled-in fee-duplicatie.** Bij meerdere opens vóór 1 close (bv. 3× scaling-in op verschillende prijzen) werd in de FIFO-matching de open-fee pro-rata afgesplitst, maar `lot.fee` bleef op de volle initiële waarde staan. Bij volgende close-fills van dezelfde lot werd opnieuw pro-rata gerekend op die volle fee → fee-duplicatie tot ~3% over-attribution. **Fix**: `lot.fee -= feeShare` na elke pro-rata aftrek. Voor Denny's snapshot ging fee-attribution van 1.030× naar 1.000× exact.
+- **Hyperliquid: scaled-in fee-duplicatie.** Bij meerdere opens vóór 1 close (bv. 3× scaling-in op verschillende prijzen) werd in de FIFO-matching de open-fee pro-rata afgesplitst, maar `lot.fee` bleef op de volle initiële waarde staan. Bij volgende close-fills van dezelfde lot werd opnieuw pro-rata gerekend op die volle fee → fee-duplicatie tot ~3% over-attribution. **Fix**: `lot.fee -= feeShare` na elke pro-rata aftrek. Voor Zaratras' snapshot ging fee-attribution van 1.030× naar 1.000× exact.
 
 ### Toegevoegd
 - **Real-data spec-suite per exchange** ([tests/blofin-real-data.spec.js](tests/blofin-real-data.spec.js), [tests/mexc-real-data.spec.js](tests/mexc-real-data.spec.js), [tests/kraken-real-data.spec.js](tests/kraken-real-data.spec.js), [tests/hyperliquid-real-data.spec.js](tests/hyperliquid-real-data.spec.js)) — 23 tests die de echte parser-pipeline tegen snapshot-fixtures runnen (smoke + trade-count + PnL-sum + fees-sum + open-positions + detectPartials). Skipt automatisch wanneer de fixture ontbreekt — CI blijft groen zonder real-data. Snapshots leven in `tests/_fixtures/` (gitignored).
@@ -4774,13 +4774,13 @@ Eerste van een serie diepere exchange-handleidingen — **Blofin koppelen + impo
 - v12.77 — Kraken Futures (l20) + Hyperliquid (l21)
 - v12.78 — FTMO MT5 (l22), CSV-only
 
-Per release: review door Denny + Sebas tegen hun eigen accounts vóór de volgende lesson begint.
+Per release: review door Zaratras + Sebas tegen hun eigen accounts vóór de volgende lesson begint.
 
 ---
 
 ## [v12.74] — 2026-05-02
 
-Standaard tag-baseline voor nieuwe users afgestemd op de community-set die Denny + Sebas hanteren.
+Standaard tag-baseline voor nieuwe users afgestemd op de community-set die Zaratras + Sebas hanteren.
 
 ### Gewijzigd
 - **`DEFAULT_TAGS`** vernieuwd naar de set die zichtbaar is in de community-screenshot. Per categorie:
@@ -4803,11 +4803,11 @@ Standaard tag-baseline voor nieuwe users afgestemd op de community-set die Denny
 Tag-delete strip nu ook layers (fix voor "SFP blijft staan in trade-overzicht na verwijderen"). Plus bulk-tag knop tijdelijk verborgen want feature mist nog logica.
 
 ### Fixed
-- **Critical: tag-delete pad A liet de tag in `layers[].setups` / `.confirmations` / `.timeframe` staan.** Reproductie (Denny): SFP zit in een laag van een trade, gebruiker verwijdert SFP via Instellingen → Tags met *"Verwijder uit config én van trades"*. Voorheen werd alleen `t.setupTags` (flat) geleegd; v12.70's `syncTradeFlatFields` zou bij de eerstvolgende load de flat herafleiden uit de niet-opgeschoonde layers, dus SFP kwam terug. Bovendien rendert de trade-list de chips direct uit `layers[]`, dus de tag bleef visueel zichtbaar zelfs zonder die revival. **Fix**: gedeelde top-level helper `stripTagFromTrade(t, catKey, tag)` die zowel de platte array als alle layer-velden cleant en daarna `syncTradeFlatFields` runt. Voor `timeframeTags` op een laag met die TF: `L.timeframe` wordt geleegd, layer + setups + confirmations blijven. `bulkUntag` (uit v12.72) gebruikt nu dezelfde helper — zelfde regel op één plek.
+- **Critical: tag-delete pad A liet de tag in `layers[].setups` / `.confirmations` / `.timeframe` staan.** Reproductie (Zaratras): SFP zit in een laag van een trade, gebruiker verwijdert SFP via Instellingen → Tags met *"Verwijder uit config én van trades"*. Voorheen werd alleen `t.setupTags` (flat) geleegd; v12.70's `syncTradeFlatFields` zou bij de eerstvolgende load de flat herafleiden uit de niet-opgeschoonde layers, dus SFP kwam terug. Bovendien rendert de trade-list de chips direct uit `layers[]`, dus de tag bleef visueel zichtbaar zelfs zonder die revival. **Fix**: gedeelde top-level helper `stripTagFromTrade(t, catKey, tag)` die zowel de platte array als alle layer-velden cleant en daarna `syncTradeFlatFields` runt. Voor `timeframeTags` op een laag met die TF: `L.timeframe` wordt geleegd, layer + setups + confirmations blijven. `bulkUntag` (uit v12.72) gebruikt nu dezelfde helper — zelfde regel op één plek.
 - **`removeTag`-counter telt nu ook layer-voorkomens.** Voorheen: `trades.filter(t => (t[catKey]||[]).includes(tag))` miste tags die alleen in een layer zaten (de delete-modal vuurde dan niet, ook al stond de tag wel ergens op de trade). Nu via `tradeHasTag(t, catKey, tag)` — top-level helper die flat én layers checkt.
 
 ### Gewijzigd
-- **"Tags toevoegen"-knop op de Trades-pagina tijdelijk verborgen** *(zie [BACKLOG.md](BACKLOG.md) "🚧 Hidden / work-in-progress")*. De feature werkte technisch (timeframe + layer-builder + toggle) maar miste nog logica volgens Denny — bv. hoe omgaan met meerdere layers per trade en een "verwijder hele layer"-actie. Knop is verstopt via `{false && <button .../>}`-wrap; bulk-tag panel-code, handlers en 9 Playwright scenario's blijven intact zodat re-activeren een 2-regel-edit is. Spec `tests/bulk-tag-layered.spec.js` is gemarkeerd als `test.describe.skip(...)` met dezelfde reden.
+- **"Tags toevoegen"-knop op de Trades-pagina tijdelijk verborgen** *(zie [BACKLOG.md](BACKLOG.md) "🚧 Hidden / work-in-progress")*. De feature werkte technisch (timeframe + layer-builder + toggle) maar miste nog logica volgens Zaratras — bv. hoe omgaan met meerdere layers per trade en een "verwijder hele layer"-actie. Knop is verstopt via `{false && <button .../>}`-wrap; bulk-tag panel-code, handlers en 9 Playwright scenario's blijven intact zodat re-activeren een 2-regel-edit is. Spec `tests/bulk-tag-layered.spec.js` is gemarkeerd als `test.describe.skip(...)` met dezelfde reden.
 
 ### Tests
 - **Nieuwe scenario in `tests/tag-delete-modal.spec.js`**: *"Pad A op layered trade"* — SFP staat in twee layers van één trade, klik *"Verwijder uit config én van trades"* → beide layers krijgen SFP gestript, layer-count blijft 2 (TF + confirmations behouden), flat is correct gederiveerd. Volledige focused regressie: 17/17 groen.
@@ -4819,7 +4819,7 @@ Tag-delete strip nu ook layers (fix voor "SFP blijft staan in trade-overzicht na
 Bulk-tag knoppen tonen nu actieve staat én werken als toggle — visueel gelijk aan de tag-pickers in TradeForm.
 
 ### Toegevoegd
-- **Active-state styling** op de simple-tag knoppen in het bulk-tag panel. Een tag-knop wordt **goud-gehighlight** (zelfde stijl als TradeForm + de layer-builder picks) wanneer **alle** geselecteerde trades de tag hebben — voor layer-aware velden (Setup Type / Confirmaties / Timeframe) checkt de helper zowel de platte arrays als alle `layers[].setups` / `.confirmations` / `.timeframe`. Beantwoordt Denny's vraag *"die knop moet vasthouden welke geselecteerd is, zoals in de trade zelf"*.
+- **Active-state styling** op de simple-tag knoppen in het bulk-tag panel. Een tag-knop wordt **goud-gehighlight** (zelfde stijl als TradeForm + de layer-builder picks) wanneer **alle** geselecteerde trades de tag hebben — voor layer-aware velden (Setup Type / Confirmaties / Timeframe) checkt de helper zowel de platte arrays als alle `layers[].setups` / `.confirmations` / `.timeframe`. Beantwoordt Zaratras' vraag *"die knop moet vasthouden welke geselecteerd is, zoals in de trade zelf"*.
 - **Toggle-gedrag**: klik op een actieve knop **verwijdert** de tag van alle geselecteerde trades; klik op een inactieve knop **voegt 'm toe** (oud gedrag). Mixed state (1 van 2 trades heeft de tag) telt als inactive — eerste klik vult dan iedereen aan, tweede klik verwijdert overal.
 - **`aria-pressed`** attribuut op de tag-knoppen voor screen-readers en betrouwbare test-assertions.
 
@@ -4870,7 +4870,7 @@ Flat-tag-sync uit `layers[]` — fixt onzichtbare layer-tags in TagManager, Filt
   - Analytics `setupPerf` ([2858](work/tradejournal.html#L2858)) en `rrBySetup` ([8091](work/tradejournal.html#L8091))
   - `detectTendencies()` detector #2 (setup × pair) en #7 (setup × session) ([5932](work/tradejournal.html#L5932))
 - **Fix**: nieuwe helper `syncTradeFlatFields(trade)` (spiegelvorm van `syncPlaybookFlatFields`) derives platte arrays als unie van alle `layers[].*`-waarden. Wordt aangeroepen op twee plekken:
-  - **`normalizeTrade()`** — draait op elke load (localStorage + IndexedDB + JSON-import). Migreert historische trades automatisch zonder schemaVersion-bump; alle 173 layer-only trades van Denny krijgen direct correcte flat-arrays bij eerste boot van v12.70.
+  - **`normalizeTrade()`** — draait op elke load (localStorage + IndexedDB + JSON-import). Migreert historische trades automatisch zonder schemaVersion-bump; alle 173 layer-only trades van Zaratras krijgen direct correcte flat-arrays bij eerste boot van v12.70.
   - **`saveTrade()`** — derives flat-arrays uit `enriched.layers` vóór het persisten, zodat nieuwe edits direct correcte stats geven.
 - **Behoudregel**: alleen syncen als `layers.length > 0`. Trades zonder layers (oude-stijl handmatige flat-tagging) blijven ongemoeid. `emotionTags` / `mistakeTags` raken nooit door deze sync, want layers slaan die niet op.
 - **Conflict-resolution**: bij stale flat-tags die niet in layers voorkomen, **winnen layers** (overschrijven flat). Consistent met `syncPlaybookFlatFields`-gedrag.
@@ -5024,7 +5024,7 @@ Zie [docs/pro-trader-review-2026-05-02.md](docs/pro-trader-review-2026-05-02.md)
 ### Fixed
 - **OMG meme cropping per format apart afgestemd** — OMG photo (483×440) past niet perfect in beide formats. Vorige fix met `object-position: center 95%` toonde tekst maar sneed gezicht af op 1:1, en sneed tekst af op 16:9. Nu format-specifiek:
   - **16:9** (taller container 540×608): `object-fit: contain` + OMG-paars achtergrond — hele meme zichtbaar (gezicht + "OMG THIS IS SO EXCITING!" tekst), met minimale letterbox die opgaat in de bg-kleur.
-  - **1:1** (wider container ~520×280): `object-position: center 25%` — focus op gezicht/hoofd top, tekst onderaan wordt afgesneden (Denny's keuze: hoofd belangrijker dan tekst op 1:1).
+  - **1:1** (wider container ~520×280): `object-position: center 25%` — focus op gezicht/hoofd top, tekst onderaan wordt afgesneden (Zaratras' keuze: hoofd belangrijker dan tekst op 1:1).
 
 ---
 
@@ -5160,23 +5160,23 @@ Geen visuele wijziging in de cards zelf — alleen de modal-rendering en downloa
 - `EMPTY_TRADE.status` accepteert nu `"partial"` als waarde (naast `"open"`, `"closed"`, `"missed"`). Gederiveerd, niet handmatig zetbaar — auto-overgang via sibling-detectie.
 
 ### Gewijzigd
-- **`syncOpenPositions` doet nu sibling-detectie**: na de reguliere merge loopt 'ie door alle open trades van die exchange, zoekt closed-records die op `(pair, direction, entry-prijs op 8 decimalen)` matchen, en markeert de open trade als `partial` + sum'ed `realizedPnl`. **Niet** op `positionId` — empirisch bewezen via Denny's data dat Blofin `positionId` hergebruikt over meerdere posities (1 positionId telde 8 verschillende BTC-trades met verschillende entries). Een exacte entry-prijs op 8 decimalen is wel uniek per positie. Werkt voor elke exchange waar pair/direction/entry stabiel zijn over partial-close events — Blofin direct, MEXC en Hyperliquid impliciet.
+- **`syncOpenPositions` doet nu sibling-detectie**: na de reguliere merge loopt 'ie door alle open trades van die exchange, zoekt closed-records die op `(pair, direction, entry-prijs op 8 decimalen)` matchen, en markeert de open trade als `partial` + sum'ed `realizedPnl`. **Niet** op `positionId` — empirisch bewezen via Zaratras' data dat Blofin `positionId` hergebruikt over meerdere posities (1 positionId telde 8 verschillende BTC-trades met verschillende entries). Een exacte entry-prijs op 8 decimalen is wel uniek per positie. Werkt voor elke exchange waar pair/direction/entry stabiel zijn over partial-close events — Blofin direct, MEXC en Hyperliquid impliciet.
 - **TradeForm `isOpen`** behandelt `partial` nu hetzelfde als `open` voor exit-fields (verborgen) — positie is technisch nog open. Visueel onderscheid alleen via badge + hint.
 - **FilterBar status-filter** — `"open"` matcht nu zowel `open` als `partial` records (want partial is een open-staat).
 
 ### Fixed (binnen v12.62, na test)
 - **Partial-status auto-recompute bij app-load** — `detectPartialFromSiblings` runde voorheen alleen tijdens `syncOpenPositions` (knop-actie). Bij stale state (bv. na code-update of na localStorage-mutatie zonder verse sync) kon een open trade onterecht "open" of "partial" blijven met outdated `realizedPnl`. Nieuwe `useEffect` runt detectie 1× bij elke app-load over alle exchanges, en updatet alleen waar de gederiveerde waarde echt anders is.
-- **Sibling close-records verbergen uit trade-list** — gemeld door Denny: de TP-record van 29-04 (+$3.26) verscheen naast de 22-04 PARTIAL-rij als losse trade. Beide vertellen hetzelfde verhaal. Nu: in TradeList rendering, closed-records die op `(source, pair, direction, entry)` matchen met een open of partial trade worden verborgen. localStorage en analytics blijven intact — pure visuele filter. Bij volledige positie-sluiting (open trade weg) komen ze automatisch terug als zichtbare losse trades.
-- **Auto-fill `tpLevels` op partial-status open trades** — gemeld door Denny: de TP-record verdween uit de lijst maar verscheen niet in de "Take Profit niveaus" sectie van de open trade. Nu: `detectPartialFromSiblings` vult `tpLevels[]` met de matched siblings als de open trade nog géén user-gedefinieerde tpLevels heeft (geen overschrijving van eigen planning). Per niveau: `price` = closeAveragePrice, `pct` = correct berekend uit raw size, `status: "hit"`, `actualPrice` = closeAveragePrice. Voor Denny's geval: TP1 op 75.647,20 verschijnt als 34.48%-hit op de 22-04 BTC short (= 0.001 BTC van origineel 0.0029 BTC).
-- **TP-winst-calc gebruikte rest-size i.p.v. originele size** — gemeld door Denny: TP1 toonde +$2.16 i.p.v. de echte +$3.35. `calcProfit` rekende `pct × positionSize` waarbij positionSize voor partial-trades de **rest** is (0.0019 BTC) i.p.v. **origineel** (0.0029 BTC). Fix: nieuwe veld `originalSizeAsset` op partial trades (gevuld door `detectPartialFromSiblings` als `rest + alle siblings`), en `calcProfit` gebruikt die wanneer `status==="partial"`. Voor closed/open trades: ongewijzigd gedrag.
-- **"Uit Blofin ophalen" knop overschreef tpLevels met lege array** — gemeld door Denny: na klik verdween de auto-gevulde TP. Bug: `setTrade(p=>({...p,tpLevels:newTPs}))` overschreef ook als `newTPs.length === 0` na price-filter. Fix: bij geen valide fills toon waarschuwing-toast en behoud bestaande tpLevels (incl. door auto-detectie gevulde). Plus: knop verbergt zich bij partial-trades waar tpLevels al gevuld zijn — anti-conflict met auto-detectie.
+- **Sibling close-records verbergen uit trade-list** — gemeld door Zaratras: de TP-record van 29-04 (+$3.26) verscheen naast de 22-04 PARTIAL-rij als losse trade. Beide vertellen hetzelfde verhaal. Nu: in TradeList rendering, closed-records die op `(source, pair, direction, entry)` matchen met een open of partial trade worden verborgen. localStorage en analytics blijven intact — pure visuele filter. Bij volledige positie-sluiting (open trade weg) komen ze automatisch terug als zichtbare losse trades.
+- **Auto-fill `tpLevels` op partial-status open trades** — gemeld door Zaratras: de TP-record verdween uit de lijst maar verscheen niet in de "Take Profit niveaus" sectie van de open trade. Nu: `detectPartialFromSiblings` vult `tpLevels[]` met de matched siblings als de open trade nog géén user-gedefinieerde tpLevels heeft (geen overschrijving van eigen planning). Per niveau: `price` = closeAveragePrice, `pct` = correct berekend uit raw size, `status: "hit"`, `actualPrice` = closeAveragePrice. Voor Zaratras' geval: TP1 op 75.647,20 verschijnt als 34.48%-hit op de 22-04 BTC short (= 0.001 BTC van origineel 0.0029 BTC).
+- **TP-winst-calc gebruikte rest-size i.p.v. originele size** — gemeld door Zaratras: TP1 toonde +$2.16 i.p.v. de echte +$3.35. `calcProfit` rekende `pct × positionSize` waarbij positionSize voor partial-trades de **rest** is (0.0019 BTC) i.p.v. **origineel** (0.0029 BTC). Fix: nieuwe veld `originalSizeAsset` op partial trades (gevuld door `detectPartialFromSiblings` als `rest + alle siblings`), en `calcProfit` gebruikt die wanneer `status==="partial"`. Voor closed/open trades: ongewijzigd gedrag.
+- **"Uit Blofin ophalen" knop overschreef tpLevels met lege array** — gemeld door Zaratras: na klik verdween de auto-gevulde TP. Bug: `setTrade(p=>({...p,tpLevels:newTPs}))` overschreef ook als `newTPs.length === 0` na price-filter. Fix: bij geen valide fills toon waarschuwing-toast en behoud bestaande tpLevels (incl. door auto-detectie gevulde). Plus: knop verbergt zich bij partial-trades waar tpLevels al gevuld zijn — anti-conflict met auto-detectie.
 - **Blofin closePositions eenheid-bug omzeild** — Blofin's `/positions-history` returnt `closePositions` in **base currency direct** (BTC voor BTC-USDT) terwijl `/positions` `positions` in contracts geeft. Onze fetchTrades vermenigvuldigt closePositions onnodig met ctVal=0.001 → `positionSizeAsset` op closed-records is 1000× te klein. Voor de tpLevels pct-berekening gebruiken we nu een nieuw veld `_rawCloseSize` (raw waarde) i.p.v. de buggy `positionSizeAsset`. Bredere fix (size-display in trade-list) blijft op backlog — heeft cosmetische impact maar geen logica-bug.
 
 ### Diagnostic — autonome iteratie zonder copy-paste-loop
 - **📥 Snapshot Blofin response** knop in Accounts → Blofin. Doet beide API-calls (positions + positions-history) en biedt het rauwe resultaat aan als download-bestand `blofin-snapshot-<datum>.json`. Fixture is bedoeld als offline test-data — geen credentials erin.
 - **🔬 Test fixture** file-input. Drop een eerder gecaptured snapshot → de app simuleert `fetchTrades` + `fetchOpenPositions` mapping op die data, runt `detectPartialFromSiblings` (de pure helper die ook in productie draait), en toont per open positie **expected vs actual**: hoeveel siblings, wat de realizedPnl moet zijn, of de status klopt. Mismatches highlighten met rode border-left.
 - **`detectPartialFromSiblings` extraheerd** als module-scope pure functie (was inline in `syncOpenPositions`). Maakt 't testbaar zonder React state of API-calls. Productie-flow ongewijzigd qua gedrag.
-- Doel: bij toekomstige Blofin-issues hoeft Denny alleen 1× een snapshot te capturen i.p.v. elke iteratie console-data te kopiëren.
+- Doel: bij toekomstige Blofin-issues hoeft Zaratras alleen 1× een snapshot te capturen i.p.v. elke iteratie console-data te kopiëren.
 
 ### Niet meegenomen (deferred)
 - **historyId als primary trade-ID** (i.p.v. `blofin_<positionId>_<closeTime>`). Research-gap #1 uit gap-tabel — zou onze "matchte geen enkele closed-record"-bug eerder hebben opgelost. Niet nu omdat: composite-ID werkt op zich (geen actief reproduceerbaar dedup-probleem na de v12.62 fix), en switch vereist legacy-migratie. Op backlog.
@@ -5191,7 +5191,7 @@ Research-rapport (2026-04-30) naar Tradezella / TraderSync / TraderVue / Edgewon
 ## [v12.61] — 2026-04-30
 
 ### Toegevoegd
-- **Bellafiore Playbook-uitbreidingen** (uit research naar Mike Bellafiore's "The Playbook" + Tradezella, gepluimd met Denny's UX-feedback). Twee Bellafiore-concepten geïntegreerd in de bestaande Playbook-feature:
+- **Bellafiore Playbook-uitbreidingen** (uit research naar Mike Bellafiore's "The Playbook" + Tradezella, gepluimd met Zaratras' UX-feedback). Twee Bellafiore-concepten geïntegreerd in de bestaande Playbook-feature:
   - **🌍 Big-Picture-velden op playbook-niveau** — drie optionele textareas: *Big Picture* (markt-state · BTC.D / DXY / total-cap / risk-on of -off), *Reading the Tape* (order-flow · CVD / book-imbalance / liquidations / funding / whale-flows), *Intuition* (pattern-recognition uit ervaring, expliciet apart). Toggle aan/uit per playbook — niet iedereen wil deze laag. Default uit voor nieuwe playbooks; voor bestaande playbooks met `context` ingevuld migreert dat veld automatisch naar `bigPicture` en flipt de toggle aan, zodat geen data verloren gaat.
   - **🎯 A+/A/B/C grading + sizing-helper** — Bellafiore's Tier-systeem voor risico-allocatie. Per playbook stel je een **default-grade** in (wat is dit setup typisch?). Per trade kun je dat overrulen via grade-pills. De **sizing-helper** toont op basis van de grade het suggested risk in % (default A+ 2 / A 1.5 / B 1 / C 0.5 — conservatief voor crypto, lager dan Bellafiore's stocks-30%-DLL omdat 24/7-markt en hogere variance). Met `config.bellafioreAccountSize` ingesteld toont 'ie ook het $-bedrag. **Info-only**, geen save-block — consistent met de bestaande compliance-meter-filosofie.
 
@@ -5208,7 +5208,7 @@ Research-rapport (2026-04-30) naar Tradezella / TraderSync / TraderVue / Edgewon
 - Mike Bellafiore — *"The Playbook"* (2010), SMB Capital. 5 decision-indicators: Big Picture · Intraday Fundamentals · Technical Analysis · Reading the Tape · Intuition. A+ trades verdienen meer risk (Tier-systeem). [SMB Capital blog: The SMB PlayBook — Compiling our best trades](https://www.smbtraining.com/blog/the-smb-playbook-compiling-our-best-trades).
 
 ### Niet meegenomen (deferred)
-- **Intraday Fundamentals als 4e veld** — Bellafiore's 3e decision-indicator. Voor crypto vertaalt dit naar tag-chips (token unlocks / FOMC / regulatory / liquidation cascade / etc.) plus vrij veld. Deferred volgens Denny — past niet in dezelfde release-scope, op backlog gezet.
+- **Intraday Fundamentals als 4e veld** — Bellafiore's 3e decision-indicator. Voor crypto vertaalt dit naar tag-chips (token unlocks / FOMC / regulatory / liquidation cascade / etc.) plus vrij veld. Deferred volgens Zaratras — past niet in dezelfde release-scope, op backlog gezet.
 - **Reasons2Sell exit-checklist · Trust-Score met PF-tiers · Pre-market ritueel** — Bellafiore optimalisaties #3, #4, #5 uit research-rapport. Volgende releases.
 
 ### Documentatie
@@ -5220,49 +5220,49 @@ Research-rapport (2026-04-30) naar Tradezella / TraderSync / TraderVue / Edgewon
 ## [v12.60] — 2026-04-29
 
 ### Toegevoegd (tijdelijk · diagnostic)
-- **🔍 Debug raw response** knop in Accounts → Blofin. Tijdelijk hulpmiddel om Blofin's `/positions-history` gedrag empirisch te valideren — vooral: of partial closes echt N records opleveren met dezelfde `positionId` (zoals de docs impliceren maar niet expliciet zeggen). Toont per positionId: aantal records, states, sum-pnl, openAvg, close-prijs-range, of de positie nog open is, en of `historyId` aanwezig is. Alleen geaggregeerde counts — geen ruwe API-data wordt opgeslagen of verzonden. Knop wordt verwijderd zodra de partial-close aggregator (volgende release) is gevalideerd. Achtergrond: gemeld door Denny — een Blofin-positie van 22-04 met TP1-hit op 29-04 verschijnt nu als 2 losse trades i.p.v. 1 trade met TP-niveau.
+- **🔍 Debug raw response** knop in Accounts → Blofin. Tijdelijk hulpmiddel om Blofin's `/positions-history` gedrag empirisch te valideren — vooral: of partial closes echt N records opleveren met dezelfde `positionId` (zoals de docs impliceren maar niet expliciet zeggen). Toont per positionId: aantal records, states, sum-pnl, openAvg, close-prijs-range, of de positie nog open is, en of `historyId` aanwezig is. Alleen geaggregeerde counts — geen ruwe API-data wordt opgeslagen of verzonden. Knop wordt verwijderd zodra de partial-close aggregator (volgende release) is gevalideerd. Achtergrond: gemeld door Zaratras — een Blofin-positie van 22-04 met TP1-hit op 29-04 verschijnt nu als 2 losse trades i.p.v. 1 trade met TP-niveau.
 
 ---
 
 ## [v12.59] — 2026-04-29
 
 ### Fixed
-- **Backtest- en paper-trades nog steeds onzichtbaar in Simulated-Trades sectie** (vervolg op v12.58, gemeld door Denny). De v12.58 fix las `trade.exit` — maar dat veld is verborgen voor missed/backtest/paper trades (`hideExitFields=isOpen||isMissed` in TradeForm). De échte exit-data zit in `trade.tpLevels[]` met per niveau een prijs + percentage + status (`hit` / `open` / `missed`). Fix: `playbookMissedStats()` berekent nu **weighted R uit de hit-TPs** (zelfde formule die TradeForm onderaan toont als *"Gem R:R"*) — bv. 50% op TP1 + 25% op TP2 + 25% op TP3 → 3.52R bij Denny's setup. Resterende positie zonder hit telt als −1R (aangenomen op SL). Fallback-volgorde: hit-TPs → legacy exit-veld → pnl/riskUsd.
+- **Backtest- en paper-trades nog steeds onzichtbaar in Simulated-Trades sectie** (vervolg op v12.58, gemeld door Zaratras). De v12.58 fix las `trade.exit` — maar dat veld is verborgen voor missed/backtest/paper trades (`hideExitFields=isOpen||isMissed` in TradeForm). De échte exit-data zit in `trade.tpLevels[]` met per niveau een prijs + percentage + status (`hit` / `open` / `missed`). Fix: `playbookMissedStats()` berekent nu **weighted R uit de hit-TPs** (zelfde formule die TradeForm onderaan toont als *"Gem R:R"*) — bv. 50% op TP1 + 25% op TP2 + 25% op TP3 → 3.52R bij Zaratras' setup. Resterende positie zonder hit telt als −1R (aangenomen op SL). Fallback-volgorde: hit-TPs → legacy exit-veld → pnl/riskUsd.
 
 ---
 
 ## [v12.58] — 2026-04-29
 
 ### Fixed
-- **Backtest- en paper-trades werden alsnog leeg gerenderd in de Simulated-Trades sectie van Playbook-detail** (vervolg op v12.56/57, gemeld door Denny). `playbookMissedStats()` filterde elke trade weg waar `hindsightExit` niet was ingevuld — terwijl dat veld alleen bedoeld is voor échte gemiste trades (waar zou de prijs zijn gegaan als je had genomen?). Een backtest- of paper-trade heeft juist een **echte** `exit` ingevuld. Fix: R-bron hangt nu af van sim-type — `missed` blijft `hindsightExit`, `backtest` en `paper` gebruiken `exit + entry + stopLoss` (of `pnl/riskUsd` als fallback). Backtest-trades verschijnen daardoor nu met match-rate tier (≥80% / 50–79% / <50%) + R-multiple in de edge-leak analyse.
+- **Backtest- en paper-trades werden alsnog leeg gerenderd in de Simulated-Trades sectie van Playbook-detail** (vervolg op v12.56/57, gemeld door Zaratras). `playbookMissedStats()` filterde elke trade weg waar `hindsightExit` niet was ingevuld — terwijl dat veld alleen bedoeld is voor échte gemiste trades (waar zou de prijs zijn gegaan als je had genomen?). Een backtest- of paper-trade heeft juist een **echte** `exit` ingevuld. Fix: R-bron hangt nu af van sim-type — `missed` blijft `hindsightExit`, `backtest` en `paper` gebruiken `exit + entry + stopLoss` (of `pnl/riskUsd` als fallback). Backtest-trades verschijnen daardoor nu met match-rate tier (≥80% / 50–79% / <50%) + R-multiple in de edge-leak analyse.
 
 ---
 
 ## [v12.57] — 2026-04-29
 
 ### Fixed
-- **Backtest-trade onzichtbaar in Playbook-detail terwijl matcher ze wel vond** (vervolg op v12.56, gemeld door Denny). De Simulated-Trades sectie had `missSubFilter` default op `"missed"` — voor wie alleen backtest-trades had bleef de sectie leeg met "Geen gemiste-trades, probeer een ander filter". Erger: de filter-pills (👻 / 🔬) verschenen alleen wanneer **beide** tellers > 0, dus geen knop om naar Backtest te switchen. Twee fixes: (1) default filter is nu intelligent — als alleen backtest-trades, start op `"backtest"`; (2) pills zichtbaar zodra één teller > 0, zodat de user altijd visuele feedback krijgt dat de trades gevonden zijn. "Beide"-pill verschijnt alleen als er daadwerkelijk twee types zijn.
+- **Backtest-trade onzichtbaar in Playbook-detail terwijl matcher ze wel vond** (vervolg op v12.56, gemeld door Zaratras). De Simulated-Trades sectie had `missSubFilter` default op `"missed"` — voor wie alleen backtest-trades had bleef de sectie leeg met "Geen gemiste-trades, probeer een ander filter". Erger: de filter-pills (👻 / 🔬) verschenen alleen wanneer **beide** tellers > 0, dus geen knop om naar Backtest te switchen. Twee fixes: (1) default filter is nu intelligent — als alleen backtest-trades, start op `"backtest"`; (2) pills zichtbaar zodra één teller > 0, zodat de user altijd visuele feedback krijgt dat de trades gevonden zijn. "Beide"-pill verschijnt alleen als er daadwerkelijk twee types zijn.
 
 ---
 
 ## [v12.56] — 2026-04-29
 
 ### Fixed
-- **Backtest / Gemiste / Paper trades met playbook-koppeling werden niet teruggevonden in de Playbook-detail-modal** (gemeld door Denny). `tradesForPlaybook()` matchte alleen op setup-tag-overlap met `pb.setupTags`, maar negeerde de expliciete `t.playbookId` FK die `applyPlaybook()` sinds v12.50 zet. Resultaat: koppelde je een backtest-trade aan een playbook zonder setup-tags (of klikte je de auto-gevulde tags handmatig weg), dan verscheen de trade nergens — terwijl `t.playbookId === pb.id` correct was. Fix: `playbookId` is nu de primaire match, setup-tag overlap blijft fallback voor legacy trades zonder FK. Geldt voor alle drie de sim-types (Gemist 👻 / Backtest 🔬 / Paper 📝) én normale closed/open trades.
+- **Backtest / Gemiste / Paper trades met playbook-koppeling werden niet teruggevonden in de Playbook-detail-modal** (gemeld door Zaratras). `tradesForPlaybook()` matchte alleen op setup-tag-overlap met `pb.setupTags`, maar negeerde de expliciete `t.playbookId` FK die `applyPlaybook()` sinds v12.50 zet. Resultaat: koppelde je een backtest-trade aan een playbook zonder setup-tags (of klikte je de auto-gevulde tags handmatig weg), dan verscheen de trade nergens — terwijl `t.playbookId === pb.id` correct was. Fix: `playbookId` is nu de primaire match, setup-tag overlap blijft fallback voor legacy trades zonder FK. Geldt voor alle drie de sim-types (Gemist 👻 / Backtest 🔬 / Paper 📝) én normale closed/open trades.
 
 ---
 
 ## [v12.55] — 2026-04-29
 
 ### Gewijzigd
-- **Playbook-picker is nu ook beschikbaar bij Gemist / Backtest / Paper trades** (gemeld door Denny). Voorheen werd de picker verstopt zodra je `Gemist? / Backtest? / Paper?` aanklikte (`!isMissed`-guard in TradeForm), waardoor je een backtest of gemiste setup niet aan een playbook kon koppelen. Nu zichtbaar voor alle statussen — de playbook-koppeling, auto-fill (setup-tags / timeframes / confirmaties / pair / lagen) én entry-criteria checklist werken bij elke trade-soort. Belangrijk voor wie zijn backtests systematisch tegen specifieke playbooks valideert.
+- **Playbook-picker is nu ook beschikbaar bij Gemist / Backtest / Paper trades** (gemeld door Zaratras). Voorheen werd de picker verstopt zodra je `Gemist? / Backtest? / Paper?` aanklikte (`!isMissed`-guard in TradeForm), waardoor je een backtest of gemiste setup niet aan een playbook kon koppelen. Nu zichtbaar voor alle statussen — de playbook-koppeling, auto-fill (setup-tags / timeframes / confirmaties / pair / lagen) én entry-criteria checklist werken bij elke trade-soort. Belangrijk voor wie zijn backtests systematisch tegen specifieke playbooks valideert.
 
 ---
 
 ## [v12.54] — 2026-04-29
 
 ### Toegevoegd
-- **Setup-lagen in Playbook-form** (Denny voorgesteld). Voorheen had de Playbook-form drie losse flat multi-selects: Setup-tags / Timeframes / Confirmaties — die geen relatie met elkaar legden. Nu mirror van TradeForm: per laag een eigen TF + multi-select setups + multi-select confirmaties. Voeg lagen top-down toe (HTF bias → entry-TF), herorder met ▲▼, verwijder met ✕, "⚠ Niet top-down" waarschuwing als TF-volgorde stijgt. Een playbook is daardoor 1-op-1 een template voor een trade: bij selectie in TradeForm wordt `trade.layers` automatisch met de playbook-lagen voorgevuld (alleen als trade nog geen lagen heeft).
+- **Setup-lagen in Playbook-form** (Zaratras voorgesteld). Voorheen had de Playbook-form drie losse flat multi-selects: Setup-tags / Timeframes / Confirmaties — die geen relatie met elkaar legden. Nu mirror van TradeForm: per laag een eigen TF + multi-select setups + multi-select confirmaties. Voeg lagen top-down toe (HTF bias → entry-TF), herorder met ▲▼, verwijder met ✕, "⚠ Niet top-down" waarschuwing als TF-volgorde stijgt. Een playbook is daardoor 1-op-1 een template voor een trade: bij selectie in TradeForm wordt `trade.layers` automatisch met de playbook-lagen voorgevuld (alleen als trade nog geen lagen heeft).
 - **Layered share/import** — een gedeelde playbook (JSON-export) bevat nu de gestructureerde `layers[]`. Bij import via community-link bouwt `migratePlaybooks` de unions opnieuw uit de lagen, dus structuur blijft behouden tussen gebruikers.
 
 ### Gewijzigd
@@ -5274,15 +5274,15 @@ Research-rapport (2026-04-30) naar Tradezella / TraderSync / TraderVue / Edgewon
 - **`EMPTY_PLAYBOOK.layers[]`** is de nieuwe canonieke structuur. `setupTags`/`timeframes`/`confirmations` blijven bestaan op het schema als gederiveerde unions (niet meer in de UI bewerkbaar). `migratePlaybooks` backfilt automatisch: oude flat-velden → 1 laag per TF (eerste TF krijgt alle setups + confirmaties; user kan splitsen). Geen gebruikersactie nodig.
 
 ### Fixed
-- **Schermflicker + focus-loss bij typen in Playbook-form Naam/Omschrijving** (gemeld door Denny). `Section` en `QuickAdd` waren als componenten *binnen* `PlaybookForm` gedefinieerd — bij elke keystroke kregen ze nieuwe component-identiteit, waardoor React de hele subtree (incl. het input-veld waar je in typte) unmounte+remounte. Focus viel weg, browser scrollde. Fix: helpers naar module-scope (`PlaybookFormSection`, `PlaybookFormQuickAdd`) — zelfde patroon als `Section` voor TradeForm.
-- **Playbook-modal sluit niet meer bij klikken naast het venster** (gemeld door Denny). Backdrop-`onClick` verwijderd; gedrag nu identiek aan trade-edit modal — alleen de ✕-knop sluit. Voorkomt accidenteel verlies van werk.
+- **Schermflicker + focus-loss bij typen in Playbook-form Naam/Omschrijving** (gemeld door Zaratras). `Section` en `QuickAdd` waren als componenten *binnen* `PlaybookForm` gedefinieerd — bij elke keystroke kregen ze nieuwe component-identiteit, waardoor React de hele subtree (incl. het input-veld waar je in typte) unmounte+remounte. Focus viel weg, browser scrollde. Fix: helpers naar module-scope (`PlaybookFormSection`, `PlaybookFormQuickAdd`) — zelfde patroon als `Section` voor TradeForm.
+- **Playbook-modal sluit niet meer bij klikken naast het venster** (gemeld door Zaratras). Backdrop-`onClick` verwijderd; gedrag nu identiek aan trade-edit modal — alleen de ✕-knop sluit. Voorkomt accidenteel verlies van werk.
 
 ---
 
 ## [v12.53] — 2026-04-29
 
 ### Gewijzigd
-- **Setup-pills per laag zijn nu multi-select** (Denny voorgesteld). Tot v12.52 kon je per laag in TradeForm maar één setup-tag aanvinken — onrealistisch in de praktijk, want een 4H-laag kan tegelijk een **MSB én een SFP** zijn (of een Reclaim + Liquidity Sweep, etc.). Pills werken nu identiek aan de CONFIRMATIE-rij: klik = toggle add/remove. Sub-label *"meerdere mogelijk (bv. MSB + SFP op dezelfde laag)"* maakt 't expliciet voor nieuwe gebruikers. Fill Play sub-section verschijnt zodra "Fill Play" in de geselecteerde setups zit; deselecteren wist `fillPlayType` automatisch (zelfde gedrag als voorheen).
+- **Setup-pills per laag zijn nu multi-select** (Zaratras voorgesteld). Tot v12.52 kon je per laag in TradeForm maar één setup-tag aanvinken — onrealistisch in de praktijk, want een 4H-laag kan tegelijk een **MSB én een SFP** zijn (of een Reclaim + Liquidity Sweep, etc.). Pills werken nu identiek aan de CONFIRMATIE-rij: klik = toggle add/remove. Sub-label *"meerdere mogelijk (bv. MSB + SFP op dezelfde laag)"* maakt 't expliciet voor nieuwe gebruikers. Fill Play sub-section verschijnt zodra "Fill Play" in de geselecteerde setups zit; deselecteren wist `fillPlayType` automatisch (zelfde gedrag als voorheen).
 - **Display-format**: Trade-list cell toont layers nu als `4H · MSB+SFP · CVD divergentie+Volume spike` — consistent met hoe confirmaties al gerenderd werden. PlaybookStats layer-summary key wordt `4H+MSB+SFP → 15m+FVG tap` zodat multi-setup combinaties hun eigen unieke groep krijgen (geen vermenging met single-setup variants).
 - **`t.setupTags` (flat trade-level array) blijft onveranderd** — gebruikt door 95% van analytics (Tendencies, Setup × Sessie matrix, FilterBar, Setup Ranking, Playbook compliance). Layer-setups zijn supplementaal voor wie diep wil bouwen, niet de bron-van-waarheid voor patroon-detectie.
 
@@ -5303,10 +5303,10 @@ Research-rapport (2026-04-30) naar Tradezella / TraderSync / TraderVue / Edgewon
 - **Save-knop label en gradient differentiëren nu Backtest / Paper / Gemist** (was alle drie "👻 Gemiste trade opslaan" met roze gradient). Backtest-trades krijgen "🔬 Backtest opslaan" met blauwe gradient (`#7ab4d2`-familie), Paper-trades "📝 Paper trade opslaan" met paarse gradient (`#9a8acc`-familie), Gemist blijft roze. Matcht 1-op-1 met de status-pills bovenin het formulier.
 
 ### Fixed
-- **Fees worden nu overal afgetrokken van PnL in stats & overzicht (quick-log scenario)** (gemeld door Denny). De v12.49 fix werkte alleen wanneer entry/exit/positionSize ingevuld waren. Bij een quick-log (alleen PNL + fees handmatig invullen, zonder entry/exit) bleef de trades-lijst en alle aggregations de bruto-PnL tonen — voorbeeld: PNL=$5000, fees=$50 toonde +$5.000,00 in plaats van +$4.950,00. Opgelost via de nieuwe `netPnl(t)` helper. Toegepast in trade-list cell-display, dashboard-tegels (Total PnL, Win-rate, Profit Factor, Drawdown), Tendencies (Setup × Session matrix, session performance, holdtime, pairs-perf), Playbook-stats (compliance, edge-erosion), R-multiple `_trR()` berekening, score-berekening, en best/worst trade. Filter-checks (`!isNaN(parseFloat(t.pnl))`) blijven raw — die detecteren of een trade überhaupt een pnl-waarde heeft.
-- **Export-knop crashte met `JS ERROR: Script error. Line: 0`** (gemeld door Denny). De export-payload referenceerde `CURRENT_SCHEMA_VERSION` maar die constante was nooit gedeclareerd → ReferenceError → caught door global error-handler die de cross-origin "Script error. Line: 0" toonde (browsers zwartmaken cross-origin error-details, vandaar Line 0). Constante toegevoegd naast `APP_VERSION`.
-- **Glow rond Goals-progress-cirkel werd vierkant gerenderd** (gemeld door Denny). Op het Dashboard bij Maand-doelen was de cirkel-progress correct, maar de drop-shadow eromheen werd geclipped door de SVG viewport (100×100 viewBox, circle reikte tot radius ~45.5, glow had maar ~4.5px ruimte vóór clip → vierkante bounding-box). Fix: `overflow:"visible"` op de SVG zodat de filter buiten de viewBox mag bloeden, plus glow-tuning (8px → 6px blur, alpha 60 → 80 omdat 'ie nu niet meer geclipped wordt).
-- **Setup-lagen pill-tekst onleesbaar op parchment/light/daylight themes** (gemeld door Denny — vervolg op v12.49 fix). Pills gebruikten `var(--text3)` op `var(--bg4)` wrapper → contrast slechts 2.5:1 op parchment (WCAG AA vereist 4.5:1). Eerste poging (text3 → text2) verbeterde contrast naar 7:1 maar de wrapper bleef te wash-out. Definitieve fix is de UX-redesign hierboven (echte card + filled chips).
+- **Fees worden nu overal afgetrokken van PnL in stats & overzicht (quick-log scenario)** (gemeld door Zaratras). De v12.49 fix werkte alleen wanneer entry/exit/positionSize ingevuld waren. Bij een quick-log (alleen PNL + fees handmatig invullen, zonder entry/exit) bleef de trades-lijst en alle aggregations de bruto-PnL tonen — voorbeeld: PNL=$5000, fees=$50 toonde +$5.000,00 in plaats van +$4.950,00. Opgelost via de nieuwe `netPnl(t)` helper. Toegepast in trade-list cell-display, dashboard-tegels (Total PnL, Win-rate, Profit Factor, Drawdown), Tendencies (Setup × Session matrix, session performance, holdtime, pairs-perf), Playbook-stats (compliance, edge-erosion), R-multiple `_trR()` berekening, score-berekening, en best/worst trade. Filter-checks (`!isNaN(parseFloat(t.pnl))`) blijven raw — die detecteren of een trade überhaupt een pnl-waarde heeft.
+- **Export-knop crashte met `JS ERROR: Script error. Line: 0`** (gemeld door Zaratras). De export-payload referenceerde `CURRENT_SCHEMA_VERSION` maar die constante was nooit gedeclareerd → ReferenceError → caught door global error-handler die de cross-origin "Script error. Line: 0" toonde (browsers zwartmaken cross-origin error-details, vandaar Line 0). Constante toegevoegd naast `APP_VERSION`.
+- **Glow rond Goals-progress-cirkel werd vierkant gerenderd** (gemeld door Zaratras). Op het Dashboard bij Maand-doelen was de cirkel-progress correct, maar de drop-shadow eromheen werd geclipped door de SVG viewport (100×100 viewBox, circle reikte tot radius ~45.5, glow had maar ~4.5px ruimte vóór clip → vierkante bounding-box). Fix: `overflow:"visible"` op de SVG zodat de filter buiten de viewBox mag bloeden, plus glow-tuning (8px → 6px blur, alpha 60 → 80 omdat 'ie nu niet meer geclipped wordt).
+- **Setup-lagen pill-tekst onleesbaar op parchment/light/daylight themes** (gemeld door Zaratras — vervolg op v12.49 fix). Pills gebruikten `var(--text3)` op `var(--bg4)` wrapper → contrast slechts 2.5:1 op parchment (WCAG AA vereist 4.5:1). Eerste poging (text3 → text2) verbeterde contrast naar 7:1 maar de wrapper bleef te wash-out. Definitieve fix is de UX-redesign hierboven (echte card + filled chips).
 
 ## [v12.50] — 2026-04-28
 
@@ -5336,8 +5336,8 @@ Research-rapport (2026-04-30) naar Tradezella / TraderSync / TraderVue / Edgewon
 ## [v12.49] — 2026-04-28
 
 ### Fixed
-- **Setup-lagen tag-pills onleesbaar op Parchment-theme** (gemeld door Denny). De Setup-pills bij Trades → trade-detail → "+ Laag toevoegen" gebruikten hardcoded `rgba(255,255,255,0.35)` voor unselected tekst en lichte borders die op cream-bg parchment vrijwel onzichtbaar waren. Vervangen door `var(--text3)` voor tekst en `var(--border4)` voor borders — werkt nu correct op alle 6 themes (sync / classic / aurora / light / parchment / daylight). Geldt voor alle drie pill-types in de layer-builder: Timeframe, Setup, Confirmatie(s).
-- **Layout-toggles ("Indeling aanpassen") onzichtbaar in OFF-state op light themes** (gemeld door Denny). De toggle-track gebruikte `rgba(255,255,255,0.08)` als OFF-background en `rgba(255,255,255,0.25)` als OFF-knob — wit op cream/wit-bg = onzichtbaar. Gebruikers konden uitgeschakelde widgets niet meer aanzetten. Vervangen door `var(--bg4)` track + `1px solid var(--border3)` border + `var(--text4)` knob in OFF-state. ON-state (groen + gold) onveranderd. Werkt nu zichtbaar op alle 6 themes.
+- **Setup-lagen tag-pills onleesbaar op Parchment-theme** (gemeld door Zaratras). De Setup-pills bij Trades → trade-detail → "+ Laag toevoegen" gebruikten hardcoded `rgba(255,255,255,0.35)` voor unselected tekst en lichte borders die op cream-bg parchment vrijwel onzichtbaar waren. Vervangen door `var(--text3)` voor tekst en `var(--border4)` voor borders — werkt nu correct op alle 6 themes (sync / classic / aurora / light / parchment / daylight). Geldt voor alle drie pill-types in de layer-builder: Timeframe, Setup, Confirmatie(s).
+- **Layout-toggles ("Indeling aanpassen") onzichtbaar in OFF-state op light themes** (gemeld door Zaratras). De toggle-track gebruikte `rgba(255,255,255,0.08)` als OFF-background en `rgba(255,255,255,0.25)` als OFF-knob — wit op cream/wit-bg = onzichtbaar. Gebruikers konden uitgeschakelde widgets niet meer aanzetten. Vervangen door `var(--bg4)` track + `1px solid var(--border3)` border + `var(--text4)` knob in OFF-state. ON-state (groen + gold) onveranderd. Werkt nu zichtbaar op alle 6 themes.
 - **Fees worden nu auto-verrekend in PnL bij handmatige trades** (gemeld door Morani via Discord). De PnL-velding had alleen een handmatige *"💡 PNL berekenen"* knop — gebruikers vulden fees in en verwachtten dat PnL automatisch zou aanpassen. Nu doet 'ie dat: nieuwe `useEffect` recalculeert PnL automatisch wanneer entry/exit/positionSize/fees veranderen, mits het een handmatige trade is (`source === "manual"`) en de gebruiker PnL niet handmatig heeft overschreven (`"pnl"` niet in `manualOverrides`). Zodra user PnL handmatig invult, stopt de auto-update — geen overrides van expliciete waarden. API-imports (Blofin / MEXC / Kraken / Hyperliquid) worden geskipt; die leveren al netto PnL.
 
 ## [v12.48] — 2026-04-28
@@ -5397,7 +5397,7 @@ Research-rapport (2026-04-30) naar Tradezella / TraderSync / TraderVue / Edgewon
 ## [v12.46] — 2026-04-28
 
 ### Toegevoegd
-- **Backtest trades naast Missed trades** (Denny voorgesteld). Tot v12.45 had je alleen 👻 Gemist (real-time gespotte setup, niet genomen). Nu ook 🔬 Backtest (chart-replay analyse). Beide vallen onder de bestaande `status:"missed"` paraplu — geen breaking change — maar onderscheiden via nieuw veld `simType: "missed" | "backtest"`. Backwards compat: lege `simType` op bestaande trades wordt automatisch `"missed"` bij eerstvolgende load (`normalizeTrade`).
+- **Backtest trades naast Missed trades** (Zaratras voorgesteld). Tot v12.45 had je alleen 👻 Gemist (real-time gespotte setup, niet genomen). Nu ook 🔬 Backtest (chart-replay analyse). Beide vallen onder de bestaande `status:"missed"` paraplu — geen breaking change — maar onderscheiden via nieuw veld `simType: "missed" | "backtest"`. Backwards compat: lege `simType` op bestaande trades wordt automatisch `"missed"` bij eerstvolgende load (`normalizeTrade`).
 
   **Waarom de splitsing belangrijk is**: missed en backtest hebben fundamenteel verschillende **bias-richting**. Missed-trades hebben twijfel/FOMO/discipline ingebakken — stats erop zijn realistisch. Backtest-trades hebben **hindsight-bias** ingebakken (je weet al hoe de markt liep) — stats erop zijn opgeblazen. Samen-poolen geeft misleidende edge-cijfers. Daarom default-filter op "Gemist" in alle stats, backtest opt-in.
 
@@ -5421,7 +5421,7 @@ Research-rapport (2026-04-30) naar Tradezella / TraderSync / TraderVue / Edgewon
 ## [v12.44] — 2026-04-28
 
 ### Fixed
-- **Lesson-card SVG illustraties schaalden niet** (Denny gemeld). De 16 SVG icons in de Handleiding-tab hadden alleen `viewBox="0 0 80 80"` zonder explicit `width`/`height` attributes — browsers defaulten dan naar 300×150px (HTML5 spec), waardoor de illustraties uit de 120px-hoge container braken en de cards visueel onevenwichtig werden. Fix: explicit `width="80" height="80"` toegevoegd aan alle 16 SVG-strings. In de demo (`handleiding-demo.html`) was dit afgevangen via een CSS-regel `.card-illustration svg{max-width:80px}` die niet meekwam tijdens v12.43-integratie.
+- **Lesson-card SVG illustraties schaalden niet** (Zaratras gemeld). De 16 SVG icons in de Handleiding-tab hadden alleen `viewBox="0 0 80 80"` zonder explicit `width`/`height` attributes — browsers defaulten dan naar 300×150px (HTML5 spec), waardoor de illustraties uit de 120px-hoge container braken en de cards visueel onevenwichtig werden. Fix: explicit `width="80" height="80"` toegevoegd aan alle 16 SVG-strings. In de demo (`handleiding-demo.html`) was dit afgevangen via een CSS-regel `.card-illustration svg{max-width:80px}` die niet meekwam tijdens v12.43-integratie.
 
 ## [v12.43] — 2026-04-28
 
@@ -5448,7 +5448,7 @@ Research-rapport (2026-04-30) naar Tradezella / TraderSync / TraderVue / Edgewon
 ## [v12.42] — 2026-04-28
 
 ### Gewijzigd
-- **PlaybookForm Mistake-pattern → multi-select uit `tagConfig.mistakeTags`** (Denny gemeld). Het laatste vrije text-veld in de Playbook-form is nu ook een pill-grid uit de centrale tag-bron, consistent met setup-tags / confirmaties / timeframes (v12.41). Geen tag-wirwar meer mogelijk.
+- **PlaybookForm Mistake-pattern → multi-select uit `tagConfig.mistakeTags`** (Zaratras gemeld). Het laatste vrije text-veld in de Playbook-form is nu ook een pill-grid uit de centrale tag-bron, consistent met setup-tags / confirmaties / timeframes (v12.41). Geen tag-wirwar meer mogelijk.
   - Nieuw schema-veld `mistakePatterns: []` op playbooks; defaults naar `[]` via `migratePlaybooks()`.
   - Pill-grid uit `tagConfig.mistakeTags` ("Te vroeg in", "SL te krap", "FOMO", "Revenge trade", etc.).
   - **Beheer tags →** deeplink + lege-staat hint zoals andere tag-velden.
@@ -5460,7 +5460,7 @@ Research-rapport (2026-04-30) naar Tradezella / TraderSync / TraderVue / Edgewon
 ## [v12.41] — 2026-04-28
 
 ### Gewijzigd
-- **PlaybookForm — geen vrije tag-input meer** (Denny gemeld). De setup-tags / confirmaties / timeframes velden waren in v12.40 nog chip-inputs met vrije tekst, wat tag-wirwar in de hand werkte ("SFP" / "sfp" / "S F P" / "swing-trade" naast elkaar zou kunnen ontstaan, en dat ondermijnt Tendencies + Compliance × PnL detectie). Discipline-principe: één tag-bron.
+- **PlaybookForm — geen vrije tag-input meer** (Zaratras gemeld). De setup-tags / confirmaties / timeframes velden waren in v12.40 nog chip-inputs met vrije tekst, wat tag-wirwar in de hand werkte ("SFP" / "sfp" / "S F P" / "swing-trade" naast elkaar zou kunnen ontstaan, en dat ondermijnt Tendencies + Compliance × PnL detectie). Discipline-principe: één tag-bron.
 
   Nu alle drie als **multi-select pill-grids** uit `tagConfig`:
   - Setup-tags ← `tagConfig.setupTags`
@@ -5480,7 +5480,7 @@ Research-rapport (2026-04-30) naar Tradezella / TraderSync / TraderVue / Edgewon
 ## [v12.40] — 2026-04-28
 
 ### Gewijzigd
-- **PlaybookForm UX-redesign** (Denny gemeld). Het nieuwe-playbook formulier was in v12.38 één lange opsomming van 11 velden onder elkaar — overweldigend, geen visuele hiërarchie, optionele velden even prominent als verplichte. De form is nu opgedeeld in **5 gekleurde sectie-cards** met eigen accent-kleur en spacing:
+- **PlaybookForm UX-redesign** (Zaratras gemeld). Het nieuwe-playbook formulier was in v12.38 één lange opsomming van 11 velden onder elkaar — overweldigend, geen visuele hiërarchie, optionele velden even prominent als verplichte. De form is nu opgedeeld in **5 gekleurde sectie-cards** met eigen accent-kleur en spacing:
   - 📋 **Basis** (neutraal grijs) — Naam (prominent groter veld met goud-tint), Status, Eén-zin omschrijving
   - 🔍 **Setup-lagen** (gold accent) — Setup-tags (chip-input), Timeframes (pills), Confirmaties (collapsible, default dicht)
   - 📊 **Markt** (blue accent) — Pairs, Sessies, Markt-context (collapsible, default dicht)
@@ -5500,7 +5500,7 @@ Research-rapport (2026-04-30) naar Tradezella / TraderSync / TraderVue / Edgewon
 ## [v12.39] — 2026-04-28
 
 ### Fixed
-- **Playbook-tab was niet zichtbaar in de top-navigatie** (Denny gemeld). De `TABS`-array bevatte de Playbook-entry op index 6, maar de top-nav rendert alleen `TABS.slice(0,6)` — alleen de eerste 6 tabs. Daarna volgt een hardcoded "Instellingen"-knop voor de cluster Accounts/Rules/Tags/Help. Resultaat in v12.38: Playbook bestond als route en als content (`tab==="playbook"&&<PlaybookPage…>` rendered correct), maar er was geen klikbare ingang in de top-nav. Fix: `slice(0,6)` → `slice(0,7)` zodat Playbook als 7e top-tab verschijnt tussen Tendencies en Instellingen.
+- **Playbook-tab was niet zichtbaar in de top-navigatie** (Zaratras gemeld). De `TABS`-array bevatte de Playbook-entry op index 6, maar de top-nav rendert alleen `TABS.slice(0,6)` — alleen de eerste 6 tabs. Daarna volgt een hardcoded "Instellingen"-knop voor de cluster Accounts/Rules/Tags/Help. Resultaat in v12.38: Playbook bestond als route en als content (`tab==="playbook"&&<PlaybookPage…>` rendered correct), maar er was geen klikbare ingang in de top-nav. Fix: `slice(0,6)` → `slice(0,7)` zodat Playbook als 7e top-tab verschijnt tussen Tendencies en Instellingen.
 
 ## [v12.38] — 2026-04-28
 
@@ -5600,7 +5600,7 @@ Research-rapport (2026-04-30) naar Tradezella / TraderSync / TraderVue / Edgewon
 ## [v12.33] — 2026-04-25
 
 ### Fixed
-- **MEXC positie-size klopt nu** (Denny's report). Tot v12.32 nam de MEXC-import de raw `vol`/`closeVol`/`holdVol` direct over als `positionSize` — maar dat zijn **contracts**, niet USDT. Voor BTC_USDT betekent 1 contract = 0.0001 BTC, dus een echte positie van 0.0212 BTC werd in de journal als `212` weergegeven (en geïnterpreteerd als $212 USDT). Fix: zelfde patroon als Blofin — een `_getContractSize(symbol)` helper haalt de echte contract-size op via MEXC's public endpoint `https://contract.mexc.com/api/v1/contract/detail?symbol=X` (CORS-open, geen API-key, geen worker-proxy nodig). Cache per symbol. Bij `fetchTrades` en `fetchOpenPositions` worden contracts geconverteerd naar `positionSizeAsset` (BTC/ETH/SOL qty) en `positionSize` (USD notional via entry-prijs). Voor BTC_USDT op 50× leverage: $1641 USD notional + 0.0212 BTC ipv `212` als raw contracts. Re-sync je MEXC-trades om bestaande verkeerde records te overschrijven (zelfde trade-ID dus geen duplicaten).
+- **MEXC positie-size klopt nu** (Zaratras' report). Tot v12.32 nam de MEXC-import de raw `vol`/`closeVol`/`holdVol` direct over als `positionSize` — maar dat zijn **contracts**, niet USDT. Voor BTC_USDT betekent 1 contract = 0.0001 BTC, dus een echte positie van 0.0212 BTC werd in de journal als `212` weergegeven (en geïnterpreteerd als $212 USDT). Fix: zelfde patroon als Blofin — een `_getContractSize(symbol)` helper haalt de echte contract-size op via MEXC's public endpoint `https://contract.mexc.com/api/v1/contract/detail?symbol=X` (CORS-open, geen API-key, geen worker-proxy nodig). Cache per symbol. Bij `fetchTrades` en `fetchOpenPositions` worden contracts geconverteerd naar `positionSizeAsset` (BTC/ETH/SOL qty) en `positionSize` (USD notional via entry-prijs). Voor BTC_USDT op 50× leverage: $1641 USD notional + 0.0212 BTC ipv `212` als raw contracts. Re-sync je MEXC-trades om bestaande verkeerde records te overschrijven (zelfde trade-ID dus geen duplicaten).
 
 ## [v12.32] — 2026-04-24
 
@@ -5623,7 +5623,7 @@ Research-rapport (2026-04-30) naar Tradezella / TraderSync / TraderVue / Edgewon
 ## [v12.30] — 2026-04-24
 
 ### Gewijzigd
-- **Balans-formule definitief: BALANS = Live API + Capital Tracker (add-on, ≥$0).** Vier iteraties later het juiste model gevonden: tracker en live API zijn complementair, niet concurrent. Voor exchange-koppelingen: live API-balance (= echt saldo, incl. PnL) plus eventuele tracker capital (= off-platform reserve / persoonlijke ledger) opgeteld. Voor accounts zonder API (csv/wallet-only/handmatige accounts): tracker capital + linked trade-PnL. Tracker capital wordt gecapt op $0 — kan nooit negatief, en `Opname > capital` wordt geweigerd door `promptCapitalTx` met heldere alert. Voorkomt zowel Coelho's case (typo's leiden niet meer tot $0 of negatieve cap) als Denny's case (storting verlaagt nooit BALANS). Mini-hint in widget legt het model uit bij exchanges met live API.
+- **Balans-formule definitief: BALANS = Live API + Capital Tracker (add-on, ≥$0).** Vier iteraties later het juiste model gevonden: tracker en live API zijn complementair, niet concurrent. Voor exchange-koppelingen: live API-balance (= echt saldo, incl. PnL) plus eventuele tracker capital (= off-platform reserve / persoonlijke ledger) opgeteld. Voor accounts zonder API (csv/wallet-only/handmatige accounts): tracker capital + linked trade-PnL. Tracker capital wordt gecapt op $0 — kan nooit negatief, en `Opname > capital` wordt geweigerd door `promptCapitalTx` met heldere alert. Voorkomt zowel Coelho's case (typo's leiden niet meer tot $0 of negatieve cap) als Zaratras' case (storting verlaagt nooit BALANS). Mini-hint in widget legt het model uit bij exchanges met live API.
 - **Capital Tracking widget vereenvoudigd**. v12.29 mengde Capital + Equity + Return + Trade PnL door elkaar — bij iemand met $20 inleg + $22 historisch verlies stond er "Equity -$2 / Return -111%" wat eruitzag alsof het systeem geld weghaalde door te storten. Nu: pure capital tracking. Alleen één centraal getal "Ingelegd capital: $X" + twee knoppen **Storting** / **Opname** + collapsible mutaties-lijst. De Correctie-knop is uit de UI gehaald (legacy `correction`-entries blijven leesbaar in de mutaties-lijst voor backwards compat); fouten herstel je nu door de mutatie te verwijderen en een nieuwe te maken. Trade PnL en equity zie je elders (Dashboard / Analytics / live API balance) — die horen niet in een widget die "capital tracking" heet. Geldt voor zowel exchange-koppelingen als handmatige accounts.
 
 ### Toegevoegd
@@ -5639,7 +5639,7 @@ Research-rapport (2026-04-30) naar Tradezella / TraderSync / TraderVue / Edgewon
 - **Live status bar aan/uit toggle** — Instellingen → Accounts → Layout sectie. Default aan; uitzetten verbergt de hele bar (klok, sessie, balans, DD, risk, BTC/ETH/SOL/XAU/XAG tickers) en geeft 32px extra schermruimte. Stop ook met de balance-fetch + WS-tickers wanneer de bar verborgen is — de hook zit ín `AppStatusBar`, dus die unmount volledig.
 
 ### Fixed
-- **BALANS in status bar toonde alleen de winst, niet het totaalsaldo** (Coelho's + Denny's feedback). Bij een storting van $1000 + $50 winst toonde de bar `$50` ipv `$1050`; bij een handmatig ingevulde Storting van $10.000 werd dat genegeerd zodra de exchange-API een ander bedrag teruggaf. Oorzaak: oude formule `handmatigCap + exchangeCap + totalPnl` ging ervan uit dat je je storting altijd handmatig invult, en de eerste fix-poging vertrouwde altijd op live API als die beschikbaar was — beide breken een legitieme use case. Definitieve formule per exchange-koppeling, in volgorde van prioriteit: (1) als je zelf Storting/Opname/Correctie hebt ingevuld → respecteer dat als source of truth (`transactions + gelinkte trade-PnL`), (2) anders gebruik live API-balance via nieuwe `useLiveExchangeBalances` hook (elke 60s `testConnection`-call, gecachet in `localStorage`), (3) anders alleen gelinkte PnL. Orphan trades tellen los mee. Voorkomt zowel onder- als overschatting.
+- **BALANS in status bar toonde alleen de winst, niet het totaalsaldo** (Coelho's + Zaratras' feedback). Bij een storting van $1000 + $50 winst toonde de bar `$50` ipv `$1050`; bij een handmatig ingevulde Storting van $10.000 werd dat genegeerd zodra de exchange-API een ander bedrag teruggaf. Oorzaak: oude formule `handmatigCap + exchangeCap + totalPnl` ging ervan uit dat je je storting altijd handmatig invult, en de eerste fix-poging vertrouwde altijd op live API als die beschikbaar was — beide breken een legitieme use case. Definitieve formule per exchange-koppeling, in volgorde van prioriteit: (1) als je zelf Storting/Opname/Correctie hebt ingevuld → respecteer dat als source of truth (`transactions + gelinkte trade-PnL`), (2) anders gebruik live API-balance via nieuwe `useLiveExchangeBalances` hook (elke 60s `testConnection`-call, gecachet in `localStorage`), (3) anders alleen gelinkte PnL. Orphan trades tellen los mee. Voorkomt zowel onder- als overschatting.
 
 ### Gewijzigd
 - **Trading sessies herzien naar 5 NL-georiënteerde tijdvakken** (Amsterdam-tijd, DST-aware via `Intl.DateTimeFormat`):
@@ -5685,7 +5685,7 @@ Research-rapport (2026-04-30) naar Tradezella / TraderSync / TraderVue / Edgewon
 ## [v12.25] — 2026-04-24
 
 ### Gewijzigd
-- **Content max-width 1520px terug** — v12.23 strekte content over de volle schermbreedte, maar dat oogde op wide-schermen te uitgerekt. Denny wees terug naar de SyncJournal-demo als gewenst ontwerp (waar content compacter staat). `tj-content` heeft nu weer `maxWidth:1520px; margin:0 auto`. Viewport-lock van v12.22 (geen page-scroll, topbar blijft) én responsive Sparkline van v12.24 blijven intact.
+- **Content max-width 1520px terug** — v12.23 strekte content over de volle schermbreedte, maar dat oogde op wide-schermen te uitgerekt. Zaratras wees terug naar de SyncJournal-demo als gewenst ontwerp (waar content compacter staat). `tj-content` heeft nu weer `maxWidth:1520px; margin:0 auto`. Viewport-lock van v12.22 (geen page-scroll, topbar blijft) én responsive Sparkline van v12.24 blijven intact.
 
 ## [v12.24] — 2026-04-24
 
@@ -5747,7 +5747,7 @@ Beide widgets komen 1:1 uit de SyncJournal design-handoff demo (`work/syncjourna
 
 ### Gewijzigd
 - **Feature-referentie groepen zijn nu inklapbaar** (accordeon, zelfde patroon als de FAQ). Elke groep-header toont item-count en een +/− toggle. Standaard dicht; klik om te openen. "Alles open" + "Alles dicht" knoppen rechtsboven de referentie voor bulk-toggle.
-- **"🌳 Versie-flow" groep verwijderd uit Feature-referentie** — dev-interne informatie (work/ vs main/ workflow tussen Denny + Sebas) hoort niet in user-gerichte help. Update-pad is nu volledig gedekt door de FAQ-entry "Hoe check ik of er een update is?" die zelfstandig leest.
+- **"🌳 Versie-flow" groep verwijderd uit Feature-referentie** — dev-interne informatie (work/ vs main/ workflow tussen Zaratras + Sebas) hoort niet in user-gerichte help. Update-pad is nu volledig gedekt door de FAQ-entry "Hoe check ik of er een update is?" die zelfstandig leest.
 
 ## [v12.18] — 2026-04-24
 
