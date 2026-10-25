@@ -54,6 +54,8 @@ module.exports = [
   'handmatig-statistieken', 'tj-backtest', 'export-overzicht', 'import-keuze', 'import-leeg-object',
   'export-import-rondje', 'diagnose', 'possize',
   'export-sleutels',         // F12: API-sleutels alleen in een bestand als je dat kiest; automatische back-ups nooit
+  'lege-staten',             // C1: elke lege staat via emptyState, twee soorten (leeg / niets in beeld), met een volgende stap
+  'account-label',           // C3: hernoemd account → oude trades tonen de nieuwe naam
 
   // site + tradingplan
   'landing', 'tradingplan-v2', 'plan-koppeling', 'plan-tendencies', 'plan-doorloop', 'plan-playbook',
