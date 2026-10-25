@@ -125,7 +125,7 @@ const L = tf => ({ timeframe: tf, bias: '', setups: [], confirmations: [] });
       bak: { tfs: tfs((TRASH.find(x => x.id === 504) || {}).layers), tf: (TRASH.find(x => x.id === 504) || {}).timeframe },
       pb: tfs((PBOOK['Sjabloon'] || {}).layers) };
   });
-  ok('schema 11', m.schema === 11, String(m.schema));
+  ok('schema op de huidige versie', m.schema === await p.evaluate(() => SCHEMA_VERSION), String(m.schema));
   ok('"1H > 4H" wordt 4H, 1H en weer een 1H-trade; de setup blijft X', JSON.stringify(m.a.tfs) === '["4H","1H"]' && m.a.tf === '1H' && m.a.setup === 'X', JSON.stringify(m.a));
   ok('bias "bearish"/"bullish" wordt Bearish/Bullish', JSON.stringify(m.b.bias) === '["Bearish","Bullish"]' && m.b.tf === '15M', JSON.stringify(m.b));
   ok('een trade zonder lagen blijft zoals hij is', m.c.tf === '1H' && m.c.n === 0, JSON.stringify(m.c));

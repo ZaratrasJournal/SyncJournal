@@ -16,6 +16,17 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v1.17.2] — 2026-10-25
+
+### Fixed
+- **Gemiste trades komen vanzelf alsnog binnen.** Door de fout die in v1.17.1 is opgelost (opnieuw koppelen haalde
+  oudere trades niet op) kan je journal gesloten trades missen. Na deze update kijkt je eerstvolgende sync daarom
+  één keer 30 dagen terug, maar niet vóór je "sync vanaf"-datum. Je hoeft niets te doen; trades die er al staan,
+  komen er niet dubbel in. Heb je de afgelopen 30 dagen trades van een exchange via een CSV ingelezen, dan slaat
+  de journal die exchange over, zodat er geen dubbele trades ontstaan.
+
+---
+
 ## [v1.17.1] — 2026-10-25
 
 ### Gewijzigd

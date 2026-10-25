@@ -2118,8 +2118,8 @@ const KINDS={live:{label:'Live',color:'var(--green)'},gemist:{label:'Gemist',col
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v1.17.1';
-const SCHEMA_VERSION=11;
+const APP_VERSION='v1.17.2';
+const SCHEMA_VERSION=12;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
   // ander type dan verwacht (bv. sj_manual='null' of een array waar een object hoort).
@@ -2341,6 +2341,25 @@ const MIGRATIONS=[
       t.layers=fix(t.layers); t.timeframe=entryTF(t.layers,t.timeframe); });
     Object.values(PBOOK||{}).forEach(pb=>{ if(pb&&Array.isArray(pb.layers)&&pb.layers.length)pb.layers=fix(pb.layers); });
     persistTrash();
+  }},
+  /* Before v1.17.1 a reconnect kept the old lastSync, so trades that closed before it never came in (member
+     Jarne 25-10-2026: two closed OKX trades of his sub-account). connectEx now starts fresh; this repairs the
+     journals that already missed trades: the next sync looks back at least 30 days, but not before the
+     "sync from" date. lastSync only moves back, never forward: an earlier step (v5, the old-journal import)
+     may already have set it further back on purpose.
+     Not for an exchange with CSV trades of the last 30 days: the import dedupes on the source id only, and a
+     CSV row has another id than the same trade through the API, so looking back would double them (B3). */
+  {v:12,note:'Koppelingen kijken eenmalig 30 dagen terug',up(){
+    const grens=Date.now()-30*864e5, csvRecent={};
+    T.forEach(t=>{ if(t&&/(^|_)csv_/.test(String(t.srcId||''))&&(+t.closeTime||+t.openTime||Date.parse(t.date)||0)>=grens)csvRecent[t.exchange]=true; });
+    let n=0;
+    Object.entries(CONNS||{}).forEach(([id,c])=>{
+      if(!c||!c.connected||!c.lastSync||csvRecent[id])return;
+      const vanaf=c.syncFrom?+new Date(c.syncFrom):0, begin=Math.max(grens,isFinite(vanaf)?vanaf:0);
+      const terug=begin+3600e3;   // the sync asks from lastSync minus one hour
+      if(terug<c.lastSync){ c.lastSync=terug; n++; }
+    });
+    if(n)persistConns();
   }},
 ];
 async function runMigrations(){

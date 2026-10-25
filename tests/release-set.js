@@ -57,6 +57,7 @@ module.exports = [
   'lege-staten',             // C1: elke lege staat via emptyState, twee soorten (leeg / niets in beeld), met een volgende stap
   'account-label',           // C3: hernoemd account → oude trades tonen de nieuwe naam
   'koppel-opnieuw',          // opnieuw koppelen: eerste sync 30 dagen terug of vanaf 'sync vanaf', niet vanaf de oude lastSync (Jarne)
+  'terugkijken-v12',         // migratie v12: eenmalig 30 dagen terugkijken (niet bij recente CSV-trades, nooit vooruit)
 
   // site + tradingplan
   'landing', 'tradingplan-v2', 'plan-koppeling', 'plan-tendencies', 'plan-doorloop', 'plan-playbook',
