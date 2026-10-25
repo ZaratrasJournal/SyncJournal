@@ -63,7 +63,7 @@ const TRADES = [
   ok('het systeem en de tools blijven gelijk binnen de vraag', JSON.stringify(vz[0].body.system) === JSON.stringify(vz[1].body.system) && JSON.stringify(vz[0].body.tools) === JSON.stringify(vz[1].body.tools));
   const feed = await p.evaluate(() => [...document.querySelectorAll('#aiFeed .aimsg.ai')].pop().innerText);
   ok('het antwoord staat er', /In London verdien je het meest/.test(feed));
-  ok('"Wat is er verstuurd?" toont ook wat de coach opzocht', await p.evaluate(() => { const pre = [...document.querySelectorAll('#aiFeed details pre')].pop(); return !!pre && /Opgezocht door de coach/.test(pre.textContent) && /groep_stats/.test(pre.textContent) && /- London: n=4/.test(pre.textContent); }));
+  ok('"Wat is er verstuurd?" toont ook wat Mori opzocht', await p.evaluate(() => { const pre = [...document.querySelectorAll('#aiFeed details pre')].pop(); return !!pre && /Opgezocht door Mori/.test(pre.textContent) && /groep_stats/.test(pre.textContent) && /- London: n=4/.test(pre.textContent); }));
   ok('een vervolgvraag stuurt alleen tekst mee, geen oude thinking-blokken', await (async () => {
     await N.zet(p, N.tekst('Vervolg.')); await p.fill('#aiInput', 'En US AM?'); await p.click('#aiSendBtn'); await p.waitForTimeout(500);
     const v = await N.verzoeken(p), ms = v[v.length - 1].body.messages; return ms.length === 3 && ms.every(x => typeof x.content === 'string'); })());

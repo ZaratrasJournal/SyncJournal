@@ -40,9 +40,10 @@ const antwoord = (tekst, extra) => ({ id: 'msg_nep', type: 'message', role: 'ass
 
   console.log('─── Geen sleutel ───');
   let t = await main();
-  ok('stappenplan en kostenindicatie', /Zet je echte coach aan/.test(t) && /30 cent tot een dollar per maand/.test(t) && /console\.anthropic\.com/.test(t), t.slice(0, 200));
+  ok('stappenplan en kostenindicatie', /Zet Mori aan/.test(t) && /30 cent tot een dollar per maand/.test(t) && /console\.anthropic\.com/.test(t), t.slice(0, 200));
   ok('één gemarkeerd voorbeeldgesprek', /voorbeeld · zo ziet een gesprek eruit/i.test(t) && await p.locator('.aivb').count() === 1);
-  ok('de regel over wat er meegaat', t.includes('Je cijfers en notities gaan mee naar de coach. Uitzetten kan in Instellingen.'));
+  ok('Mori stelt zich voor in het voorbeeld', /ik ben Mori, je AI-coach/i.test(await p.locator('.aivb').innerText()));
+  ok('de regel over wat er meegaat', t.includes('Je cijfers en notities gaan mee naar Mori. Uitzetten kan in Instellingen.'));
   ok('geen invoerveld voor vragen zonder sleutel', await p.locator('#aiInput').count() === 0);
   ok('geen "Vraag de coach" bij een trade zonder sleutel', await p.evaluate(() => { go('review'); const n = document.querySelectorAll('[data-ai-vraag]').length; go('ai'); return n === 0; }));
 
@@ -94,7 +95,7 @@ const antwoord = (tekst, extra) => ({ id: 'msg_nep', type: 'message', role: 'ass
   console.log('─── Bezig met antwoorden ───');
   vertraging = 600;
   await p.fill('#aiInput', 'Review mijn week'); await p.click('#aiSendBtn'); await p.waitForTimeout(150);
-  ok('typ-indicator, invoer uit en een knop Stop', await p.evaluate(() => /Coach denkt na/.test((document.querySelector('#aiFeed .ailive') || {}).innerText || '') && document.getElementById('aiInput').disabled && !!document.getElementById('aiStopBtn')));
+  ok('typ-indicator, invoer uit en een knop Stop', await p.evaluate(() => /Mori denkt na/.test((document.querySelector('#aiFeed .ailive') || {}).innerText || '') && document.getElementById('aiInput').disabled && !!document.getElementById('aiStopBtn')));
   await p.waitForTimeout(800); vertraging = 0;
   ok('vervolgvraag stuurt het eerdere gesprek mee', (verzoeken.slice(-1)[0].body.messages || []).length === 3, JSON.stringify((verzoeken.slice(-1)[0].body.messages || []).map(m => m.role)));
 
@@ -184,9 +185,23 @@ const antwoord = (tekst, extra) => ({ id: 'msg_nep', type: 'message', role: 'ass
 
   console.log('─── Coach uitgezet in Instellingen ───');
   await p.evaluate(() => { toggleAICoach(); go('ai'); });
-  ok('"AI-coach staat uit", geen invoer, en de keuze blijft bewaard', /AI-coach staat uit/.test(await main()) && await p.locator('#aiInput').count() === 0 && await p.evaluate(() => JSON.parse(localStorage.getItem('sj_ai_prefs')).enabled === false));
+  ok('"Mori staat uit", geen invoer, en de keuze blijft bewaard', /Mori staat uit/.test(await main()) && await p.locator('#aiInput').count() === 0 && await p.evaluate(() => JSON.parse(localStorage.getItem('sj_ai_prefs')).enabled === false));
   ok('dan ook geen 🤖-knop bij een trade', await p.evaluate(() => { go('review'); return document.querySelectorAll('[data-ai-vraag]').length === 0; }));
   await p.evaluate(() => { toggleAICoach(); });
+
+  console.log('─── De coach heet Mori ───');
+  // The name is display text only: a key stored before the rename (sj_ai_key) must keep working. Written straight
+  // into storage, no reload: on file:// Chromium sometimes rolls all of localStorage back on a reload.
+  await p.evaluate(k => { sessionStorage.clear(); localStorage.setItem('sj_ai_key', k); AIMSGS = []; clearGFilter(); setFilter('kind', 'alle'); go('ai'); }, NEP);
+  ok('menu toont "Mori"', await p.evaluate(() => [...document.querySelectorAll('[data-p="ai"]')].some(el => el.innerText.trim() === 'Mori')));
+  ok('paginakop "Mori" met ondertitel "je AI-coach"', await p.evaluate(() => document.getElementById('ptitle').textContent === 'Mori' && document.getElementById('psub').textContent === 'je AI-coach'));
+  ok('Mori stelt zich voor', /Ik ben Mori, je AI-coach/.test(await main()));
+  ok('een al opgeslagen sleutel werkt nog: invoer in plaats van koppelen', await p.locator('#aiInput').count() === 1 && await p.locator('#aiKeyInput').count() === 0);
+  verzoeken.length = 0; gedrag = { status: 200, body: antwoord('Prima.') };
+  await vraag('Hoe sta ik ervoor?');
+  const mori = verzoeken[0] || { headers: {}, body: {} };
+  ok('de vraag gaat met die sleutel', mori.headers['x-api-key'] === NEP);
+  ok('systeemprompt bevat "Je bent Mori"', /Je bent Mori, de AI-coach van SyncJournal/.test(JSON.stringify(mori.body.system || '')));
 
   ok('geen JS-fouten', errs.length === 0, errs[0]);
   console.log(`\n=== Coach-sleutel: ${pass}/${pass + fail} ===`);

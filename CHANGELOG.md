@@ -16,6 +16,11 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [Unreleased]
+
+### Gewijzigd
+- De AI-coach heet nu Mori.
+
 ## [v1.16] — 2026-10-25
 
 ### Toegevoegd
