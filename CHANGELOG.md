@@ -39,6 +39,11 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
   vraag ongeveer kostte. Je kunt een eigen maandlimiet instellen; daarboven vraagt de coach eerst of je echt wilt
   versturen. Vervolgvragen zijn goedkoper, omdat je cijfers bij Anthropic even bewaard blijven (prompt caching). Het
   verbruik blijft op je apparaat en gaat niet mee in een back-up.
+- **Vier vaste vragen als knop:** "Waar lek ik geld?", "Waar zit mijn edge?", "Review mijn week" en "Hoe ging mijn laatste
+  trade?". Elke knop stuurt alleen de cijfers die de vraag nodig heeft, dus minder kosten. De weekreview heeft een vast
+  schema: wat ging goed, wat kostte geld, en één ding om volgende week anders te doen. De cijfers erboven (trades,
+  netto, winrate, gem. R, en de week ervoor) rekent de journal zelf uit.
+- **Focusgebieden** (discipline, risk, psychologie) in Instellingen bepalen nu waar de coach extra op let.
 - **FAQ over de AI-coach:** wat het is, wat je nodig hebt, wat het kost, wat er verstuurd wordt, waar je sleutel staat en
   hoe je hem uitzet.
 
