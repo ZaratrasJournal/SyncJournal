@@ -9,18 +9,24 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
   const url = 'file:///' + path.resolve('work/syncjournal.html').replace(/\\/g, '/');
   const b = await chromium.launch(); const p = await b.newPage(); p.on('dialog', d => d.accept());
   const errs = []; p.on('pageerror', e => errs.push(String(e)));
+  // Wait for a concrete signal instead of a fixed delay: with 4 specs running at once a
+  // fixed wait was sometimes too short (T5). __until polls a condition in the page.
+  await p.addInitScript(() => { window.__until = async (fn, ms = 10000) => { const end = Date.now() + ms; while (!fn()) { if (Date.now() > end) return false; await new Promise(r => setTimeout(r, 25)); } return true; }; });
+  // boot() ends with landingAankomst(), which sets sj_welcomed; until then boot can still
+  // overwrite T with what it read from IndexedDB.
+  const booted = () => p.waitForFunction(() => localStorage.getItem('sj_welcomed') === 'true', null, { timeout: 15000 });
   await p.setViewportSize({ width: 1700, height: 1000 });
   await p.goto(url, { waitUntil: 'networkidle' });
   await p.evaluate(async () => { localStorage.clear(); try { await IDB.clearAll(); } catch (e) {} });
-  await p.reload({ waitUntil: 'networkidle' }); await p.waitForTimeout(600);
+  await p.reload({ waitUntil: 'networkidle' }); await booted();
   await p.evaluate(() => { try { hideWelcome() } catch (e) {} });
 
   console.log('─── Productie-client-ID ingebakken ───');
   ok('Drive-kaart is standaard actief (client-ID hardcoded sinds v0.9.66)', await p.evaluate(() => { go('instellingen'); setSetTab('data'); const c = [...document.querySelectorAll('#bkSeg button')].find(x => /☁️/.test(x.textContent)); return driveReady() && c && !c.disabled; }));
 
   console.log('─── Met client-ID + fake Drive-API ───');
-  await p.evaluate(() => { localStorage.setItem('sj_drive_client_id', '"test-client-id"'); });
-  await p.reload({ waitUntil: 'networkidle' }); await p.waitForTimeout(600);
+  await p.evaluate(() => { localStorage.setItem('sj_drive_client_id', '"test-client-id"'); localStorage.removeItem('sj_welcomed'); });
+  await p.reload({ waitUntil: 'networkidle' }); await booted();
   await p.evaluate(() => {
     try { hideWelcome() } catch (e) {}
     T = [{ id: 1, date: '2026-09-16', time: '10:00', pair: 'BTC/USDT', dir: 'long', setup: '', session: 'London', status: 'closed', kind: 'live', exchange: '', entry: 100, exit: 110, stop: 95, size: '1000', pnl: 100, r: 2, tps: [], tags: [], layers: [], emotions: [], mistakes: [], checks: [], screenshots: [], tvLinks: [] }];
@@ -59,7 +65,7 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
   ok('client-ID aanwezig → Drive-kaart is actief', await p.evaluate(() => { go('instellingen'); setSetTab('data'); const c = [...document.querySelectorAll('#bkSeg button')].find(x => /☁️/.test(x.textContent)); return driveReady() && c && !c.disabled; }));
 
   console.log('─── Koppelen + uploaden ───');
-  await p.evaluate(() => bkChoose('drive')); await p.waitForTimeout(400);
+  await p.evaluate(() => { bkChoose('drive'); return window.__until(() => BK.method === 'drive' && Object.keys(window.__dv.files).length === 1); });
   const conn = await p.evaluate(() => ({ choice: BK.choice, method: BK.method, folder: DRIVE.folderId, n: Object.keys(window.__dv.files).length, name: Object.values(window.__dv.files)[0]?.name, hasTrades: /"pair":"BTC\/USDT"/.test(Object.values(window.__dv.files)[0]?.content || '') }));
   ok('koppelen: map aangemaakt + eerste backup geüpload + gestempeld', conn.choice === 'drive' && conn.method === 'drive' && conn.folder === 'fold1' && conn.n === 1 && /^syncjournal-backup-\d{4}-\d{2}-\d{2}\.json$/.test(conn.name) && conn.hasTrades, JSON.stringify(conn));
   ok('Drive-knop toont gekoppeld (actieve staat + hint)', await p.evaluate(() => { go('instellingen'); setSetTab('data'); const b = [...document.querySelectorAll('#bkSeg button')].find(x => /☁️/.test(x.textContent)); return b.classList.contains('on') && /SyncJournal/.test(document.getElementById('main').textContent); }));
@@ -69,7 +75,7 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
     for (let i = 1; i <= 20; i++) { const id = 'old' + i; window.__dv.files[id] = { id, name: 'syncjournal-backup-2026-08-' + String(i).padStart(2, '0') + '.json', content: '{}', modifiedTime: '2026-08-01T00:00:00Z' }; }
     T[0].notes = 'retentie-' + Date.now(); persist();
     const r = await driveBackup(false);
-    await new Promise(res => setTimeout(res, 300)); // retentie draait bewust async na de upload
+    await window.__until(() => Object.keys(window.__dv.files).length <= 14); // retentie draait bewust async na de upload
     return { r, n: Object.keys(window.__dv.files).length, names: Object.values(window.__dv.files).map(f => f.name).sort().slice(0, 3), choice: BK.choice, folder: DRIVE.folderId };
   });
   ok('retentie: oude dagbestanden worden opgeruimd tot 14', ret.n <= 14, JSON.stringify(ret));
@@ -78,16 +84,15 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
   ok('geslaagde backup reset de dirty-status', await p.evaluate(async () => { bkQueue(); const was = _bkDirtySince > 0; await driveBackup(false); return was && _bkDirtySince === 0; }));
   ok('continu doorwerken: na 5 min tóch upload (max-wait, timer ~1s)', await p.evaluate(async () => {
     const before = BK.ts; T[0].notes = 'maxwait-' + Date.now(); persist(); _bkDirtySince = Date.now() - BK_MAXWAIT_MS - 1000; bkQueue(); // debounce zou 60s zijn, max-wait dwingt ~1s af
-    await new Promise(r => setTimeout(r, 1800));
-    return BK.ts > before && _bkDirtySince === 0;
+    return await window.__until(() => BK.ts > before && _bkDirtySince === 0);
   }));
   ok('tab verbergen met onge-backupte wijzigingen → directe upload', await p.evaluate(async () => {
     const before = BK.ts; T[0].notes = 'vis-' + Date.now(); persist(); _bkDirtySince = Date.now();
     Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
     document.dispatchEvent(new Event('visibilitychange'));
-    await new Promise(r => setTimeout(r, 300));
+    const r = await window.__until(() => BK.ts > before);
     Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
-    return BK.ts > before;
+    return r;
   }));
 
   console.log('─── Nieuwere backup op ander apparaat ───');
@@ -99,19 +104,19 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
     const _tm = new Date(Date.now() + 864e5).toISOString().slice(0, 10);
     window.__dv.files['fRemote'] = { id: 'fRemote', name: 'syncjournal-backup-' + _tm + '.json', content: remote, modifiedTime: new Date(Date.now() + 3600e3).toISOString() };
     DB.save('data_ts', Date.now() - 86400e3); BK.ts = Date.now() - 86400e3;
-    await driveStartupCheck(); await new Promise(r => setTimeout(r, 100));
+    await driveStartupCheck();
     const banner = document.querySelector('.updbanner');
     return { adopt: !!DRIVE.adopt, bannerText: banner ? banner.textContent.slice(0, 60) : '' };
   });
   ok('startup-check ziet nieuwere Drive-backup → overneem-banner', adopt.adopt && /nieuwere backup/.test(adopt.bannerText), JSON.stringify(adopt));
-  ok('Overnemen: veiligheidskopie eerst, data vervangen, banner weg', await p.evaluate(async () => { const snaps = SNAP_META.length; await driveAdopt(); await new Promise(r => setTimeout(r, 200)); return !DRIVE.adopt && T.length === 1 && T[0].pair === 'SOL/USDT' && SNAP_META.length === snaps + 1; }));
+  ok('Overnemen: veiligheidskopie eerst, data vervangen, banner weg', await p.evaluate(async () => { const snaps = SNAP_META.length; await driveAdopt(); return !DRIVE.adopt && T.length === 1 && T[0].pair === 'SOL/USDT' && SNAP_META.length === snaps + 1; }));
 
   console.log('─── Nieuwe locatie: koppelen herkent bestaande backups ───');
   ok('verse journal + bestaande Drive-backup → koppelen biedt herstellen aan (geen lege upload)', await p.evaluate(async () => {
     // simuleer een nieuwe computer: lege journal, maar de Drive-map bevat al een backup
     T = []; persist(); BK.ts = 0; DB.save('data_ts', 0); BK.choice = 'handmatig'; persistBK(); DRIVE.adopt = null;
     const nFiles = Object.keys(window.__dv.files).length;
-    await driveConnect(); await new Promise(r => setTimeout(r, 200));
+    await driveConnect();
     return BK.choice === 'drive' && !!DRIVE.adopt && Object.keys(window.__dv.files).length === nFiles;
   }));
   ok('…en overnemen laadt de data in', await p.evaluate(async () => { await driveAdopt(); return T.length >= 1 && !DRIVE.adopt; }));

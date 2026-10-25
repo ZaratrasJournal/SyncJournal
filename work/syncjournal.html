@@ -1948,6 +1948,7 @@ const EXCHANGES=[
   {id:'kraken',name:'Kraken Futures',abbr:'KF',c:'#7c5ce0',acct:'Kraken',val:0},
 ];
 const EXMAP=Object.fromEntries(EXCHANGES.map(e=>[e.id,e]));
+const EX_DEFAULT_ACCT=Object.fromEntries(EXCHANGES.map(e=>[e.id,e.acct]));   // labels as shipped; adoptExMeta() can rename e.acct
 // Netto ingelegd kapitaal uit het ledger (deposit +, withdrawal −, correction = absoluut setpoint).
 function acctCapital(txs){let c=0;(txs||[]).forEach(t=>{const a=parseFloat(t.amount)||0;if(t.type==='deposit')c+=a;else if(t.type==='withdrawal')c-=a;else if(t.type==='correction')c=a;});return c;}
 // Geboekte P&L van de trades gekoppeld aan dit account (via t.exchange === account.id).
@@ -1973,6 +1974,13 @@ function totalBalance(){const r=_renderMemo;if(r&&r.bal!=null)return r.bal;
 function relevantExchanges(){return EXCHANGES.filter(e=>e.val>0||CONNS[e.id]||T.some(t=>t&&t.exchange===e.id));}
 function accountList(){return [...relevantExchanges().map(e=>({n:e.acct,v:e.val,c:e.c,ex:e.name,id:e.id})),...MANUAL.map(m=>({n:m.name,v:manualBalance(m),c:cvar('var(--amber)'),ex:'handmatig',id:m.id,manual:true}))];}
 // Unified account-resolver (exchange óf handmatig) voor avatar/badge/cel.
+/* The trade form used to copy the exchange's label into t.account, so after a rename old trades kept the
+   old name. The label is now looked up; t.account only counts as a real sub-account when it is not such a
+   copy (the current or the shipped label). Limitation: a copy of a custom label that was renamed again
+   later can't be told apart from a sub-account and keeps showing; a marker per trade would fix that. */
+function subAccountOf(t){const a=t&&t.account,e=t&&EXMAP[t.exchange];if(!a)return '';return e&&(a===e.acct||a===EX_DEFAULT_ACCT[t.exchange])?'':a;}
+// The shipped label is the exchange's name (or close to it) and would only repeat the Exchange tile.
+function accountLabel(t){const sub=subAccountOf(t);if(sub)return sub;const e=EXMAP[t.exchange];return e&&e.acct!==EX_DEFAULT_ACCT[t.exchange]?e.acct:'';}
 function acctOf(id){const e=EXMAP[id];if(e)return {id,name:e.name,acct:e.acct,c:e.c,abbr:e.abbr,manual:false};const m=MANUAL.find(x=>x.id===id);if(m)return {id,name:m.name,acct:'handmatig',c:cvar('var(--amber)'),abbr:(m.name||'??').slice(0,2),manual:true};return null;}
 const PAIRC={BTC:'#f7931a',ETH:'#627eea',SOL:'#000000',XRP:'#23292f',DOGE:'#c3a634',LINK:'#2a5ada',AVAX:'#e84142',BNB:'#f3ba2f',ARB:'#213147',OP:'#ff0420',ADA:'#0033ad',DOT:'#e6007a',MATIC:'#8247e5',POL:'#8247e5',LTC:'#345d9d',TRX:'#eb0029',ATOM:'#2e3148',UNI:'#ff007a',NEAR:'#000000',APT:'#000000',SUI:'#4da2ff',XAU:'#c69320',GOLD:'#c69320',XAG:'#8b9099',SILVER:'#8b9099'};
 // Inline SVG coin-logo's (offline, geen externe requests) — merk-cirkel + wit merkteken. Val terug op ticker.
@@ -3153,7 +3161,7 @@ function tradeHoverDetail(t){
   s+=stat('Geplande R:R',+t.rrPlanned>0?'1 : '+String(+t.rrPlanned).replace('.',','):'');
   s+=stat('Leverage',+t.leverage>1?(+t.leverage)+'×':'');
   s+=stat('Fees',+t.fees>0?`<span class="mask">${CURSYM()} ${(+t.fees).toLocaleString('nl-NL',{minimumFractionDigits:2,maximumFractionDigits:2})}</span>`:'');
-  s+=stat('Account',t.account?esc(t.account):'');
+  s+=stat('Account',esc(accountLabel(t)));
   let notes='';
   if(t.notes)notes+=`<div class="dnote"><div class="lb">Notities</div><div class="tx">${esc(t.notes)}</div></div>`;
   if(t.lessons)notes+=`<div class="dnote les"><div class="lb">Les</div><div class="tx">${esc(t.lessons)}</div></div>`;
@@ -9171,6 +9179,9 @@ const ExchangeAPI = {
       // the live /instruments lookup failed (e.g. offline or file:// CORS): the contract family, without the expiry
       const fam=this._ctvFamilie[String(instId||"").replace(/-\d{6}$/,"")];
       if(fam!=null)return fam;
+      // unknown contract kind: 1 (no conversion) - sizes may be off, so say so once per contract
+      this._ctvOnbekend=this._ctvOnbekend||new Set();
+      if(!this._ctvOnbekend.has(instId)){this._ctvOnbekend.add(instId);console.warn('[okx ctVal] unknown contract, sizes use ctVal 1:',instId);}
       return 1;
     },
     _instId(symbol){return String(symbol||"").replace("/","-").replace(/-SWAP$/i,"")+"-SWAP";},
@@ -9276,7 +9287,7 @@ const ExchangeAPI = {
         positionSizeAsset:assetQty>0?normPrice(assetQty):"",
         pnl:"",fees:"0",
         leverage:String(p.lever||"10"),
-        source:"okx",status:"open",
+        source:"okx",status:"open",_okxInstId:instId,
         unrealizedPnl:normPrice(p.upl||""),
         liquidationPrice:normPrice(p.liqPx||""),
       };
@@ -9292,6 +9303,7 @@ const ExchangeAPI = {
         else if(d&&d.source==="algos")console.warn('[okx algos] incomplete answer, no stop-losses this sync:',d._okxDebug.errors);}
       catch(e){console.warn('[okx algos] no stop-losses this sync:',(e&&e.message)||e);}
       const uit=(data.trades||[]).map(t=>this._normalise(t));
+      this._onthoudInstId(uit);
       // the sync replaces the TP list: keep the levels you planned that were not hit (as Kraken and Hyperliquid)
       uit.forEach(t=>{const o=T.find(x=>x&&x.exchange==="okx"&&String(x.srcId)===String(t.id));if(!o)return;
         const eigen=(o.tps||[]).filter(x=>x&&!x.hit&&+x.price>0).map(x=>({price:normPrice(x.price),pct:String(x.pct||""),status:"user",actualPrice:""}));
@@ -9366,8 +9378,13 @@ const ExchangeAPI = {
     async fetchOpenPositions(apiKey,apiSecret,passphrase){
       const data=await proxyCall({exchange:"okx",action:"open_positions",apiKey,apiSecret,passphrase});
       await this._loadContractValues();
-      return(data.positions||[]).map(p=>this._normaliseOpen(p));
+      const uit=(data.positions||[]).map(p=>this._normaliseOpen(p));
+      this._onthoudInstId(uit);
+      return uit;
     },
+    /* The exact contract per trade id, for afterImport: it stores it on the trade as okxInstId, so a SL links to its own
+       contract (BTC-USDT-SWAP and BTC-USDC-SWAP are both BTC). The import itself does not keep the adapter's _okxInstId. */
+    _onthoudInstId(rows){this._instIdVan=this._instIdVan||{};(rows||[]).forEach(t=>{if(t&&t._okxInstId)this._instIdVan[String(t.id)]=t._okxInstId;});},
     /* ═══ Stop-loss, take-profits and how each close went (F10, Denny 24-10-2026) ═══
        Worker v24 'algos': OKX's TP/SL orders (orders-algo-history and -pending, 3 months). Measured on Denny's account:
        SL and TPs are separate 'conditional' orders (sometimes 'oco': SL and TP in one), one-way mode (side = the closing
@@ -9406,12 +9423,14 @@ const ExchangeAPI = {
        the opening (minus a minute) and the close, or active at the opening - not one that ended before it (the previous
        position's). OKX reuses posId, so the time window links, not the id. A later SL with another price: moved. */
     _slTpVoorTrade(t,regels){
-      const short=String(t.direction||t.dir)==="short",entry=+t.entry,basis=String(t.pair||"").split("/")[0].toUpperCase();
+      const short=String(t.direction||t.dir)==="short",entry=+t.entry,basis=String(t.pair||"").split("/")[0].toUpperCase(),inst=String(t.instId||"");
+      // the exact contract when both sides know it; otherwise (an older trade) the coin
+      const contract=r=>inst&&r.instId?r.instId===inst:r.basis===basis;
       const open=+t.openTime,van=open-this._SL_VOOR_MS,tot=+t.closeTime||Date.now(),dicht=+t.closeTime||0,sluit=short?"buy":"sell";
       const actief=r=>r.status==="live"||r.statusTs>=open;
       const afgelopen=r=>r.status!=="live"&&r.statusTs<open;
       const kant=r=>r.posSide!=="long"&&r.posSide!=="short"||r.posSide===(short?"short":"long");   // one-way mode: net
-      const kand=(regels||[]).filter(r=>r.basis===basis&&r.side===sluit&&(r.reduceOnly||r.hele)&&kant(r)&&r.ts<=tot&&!afgelopen(r)&&(r.ts>=van||actief(r))).sort((a,b)=>a.ts-b.ts);
+      const kand=(regels||[]).filter(r=>contract(r)&&r.side===sluit&&(r.reduceOnly||r.hele)&&kant(r)&&r.ts<=tot&&!afgelopen(r)&&(r.ts>=van||actief(r))).sort((a,b)=>a.ts-b.ts);
       const verlies=p=>short?p>entry:p<entry;
       const eerste=entry>0?kand.find(r=>r.soort==="sl"&&verlies(r.price)):null,stop=eerste?eerste.price:null,algoId=eerste?eerste.algoId:"";
       const verschoven=!!eerste&&kand.some(r=>r.soort==="sl"&&r!==eerste&&r.ts>=eerste.ts&&r.price!==stop);
@@ -9449,8 +9468,9 @@ const ExchangeAPI = {
       const regels=this._regels&&this._regels.length?this._regels:null,vanaf=this._dekking||0;let n=0;
       T.filter(o=>o&&o.exchange==="okx"&&/^(closed|open|partial)$/.test(o.status||"")).forEach(o=>{
         if(!regels||+o.openTime<vanaf){if(this._labelAfbouw(o,null))n++;return;}   // no orders for it: only restore the TP list
+        const inst=(this._instIdVan||{})[String(o.srcId)];if(inst&&o.okxInstId!==inst){o.okxInstId=inst;n++;}
         const voor=JSON.stringify([o.stop,o.stopBron,o.stopVerschoven,o.stopVerloop,o.tpsGepland]);
-        const s=this._slTpVoorTrade({dir:o.dir,entry:o.entry,openTime:o.openTime,closeTime:o.status==="closed"?o.closeTime:"",pair:o.pair,qtyAsset:o.qtyAsset},regels);
+        const s=this._slTpVoorTrade({dir:o.dir,entry:o.entry,openTime:o.openTime,closeTime:o.status==="closed"?o.closeTime:"",pair:o.pair,qtyAsset:o.qtyAsset,instId:o.okxInstId},regels);
         /* The SL amended in place keeps its algoId with the new price (OKX keeps no revisions): the first price we saw
            stays the stop. Moved to the entry (cost-price SL) leaves no SL on the loss side: the stop stays. */
         const gewijzigd=o.stopBron==="okx"&&o.stopAlgoId&&s.algoId===o.stopAlgoId&&s.stop!==+o.stop;
@@ -11026,7 +11046,7 @@ function submitForm(id){
     if(!confirm(nm+' is gekoppeld via de API. Deze handmatige trade telt dan mee in de P&L en het saldo van die koppeling en kan bij een sync in de weg zitten.\n\nToch opslaan?'))return;
   }
   const pnl=num('pnl');
-  const ex=EXMAP[g('exchange')];
+  const vorige=(id!=null&&id!=='null')?T.find(x=>x.id===id):null;   // the trade being edited, if any
   // setup-lagen: schoon opslaan; platte setup/timeframe afleiden uit de entry-laag (voor analytics)
   const layers=sorteerLagen(formLayers.map(L=>({timeframe:L.timeframe,bias:L.bias||'',setups:[...L.setups],confirmations:[...L.confirmations]})).filter(L=>L.timeframe||L.bias||L.setups.length||L.confirmations.length));
   const entryLayer=layers.length?layers[layers.length-1]:null;
@@ -11035,7 +11055,7 @@ function submitForm(id){
   // Onaangeraakt en leeg → afleiden uit de entry-laag (gedrag voor nieuwe trades).
   const setup=formPbTouched?g('playbook'):(g('playbook')||(entryLayer&&entryLayer.setups.length?entryLayer.setups[0]:''));
   const timeframe=entryTF(layers,(id!=null&&id!=='null')?(T.find(x=>x.id===id)||{}).timeframe:'');
-  const obj={date:g('date'),time:g('time'),exchange:g('exchange'),account:ex?ex.acct:'',pair:g('pair').toUpperCase().trim(),dir:g('dir'),session:g('session'),
+  const obj={date:g('date'),time:g('time'),exchange:g('exchange'),account:vorige&&vorige.exchange===g('exchange')?subAccountOf(vorige):'',pair:g('pair').toUpperCase().trim(),dir:g('dir'),session:g('session'),
     market:g('market'),grade:formGrade,layers,setup,timeframe,
     entry:num('entry'),exit:num('exit'),stop:num('stop'),
     // C3: tp = TP1 uit de niveaus (het losse veld is weg); bestaand tp blijft staan als er geen niveaus zijn.

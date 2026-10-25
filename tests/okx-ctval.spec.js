@@ -23,6 +23,16 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
   ok('USDT-SWAP blijft: BTC 0,01; nieuw POL 10, SUI 1', v['BTC-USDT-SWAP'] === 0.01 && v['POL-USDT-SWAP'] === 10 && v['SUI-USDT-SWAP'] === 1, JSON.stringify(v));
   ok('onbekend contract: 1, zoals het was', v['XYZ-USD_UM_XPERP-310404'] === 1, String(v['XYZ-USD_UM_XPERP-310404']));
 
+  console.log('─── Onbekend contract: één waarschuwing (backlog B6) ───');
+  const warns = [];
+  p.on('console', m => { if (m.type() === 'warning') warns.push(m.text()); });
+  await p.evaluate(() => { const o = ExchangeAPI.okx; o._ctvCache = null; ['XYZ-USDT-SWAP', 'XYZ-USDT-SWAP', 'BTC-USDT-SWAP', 'ETH-USD_UM_XPERP-310404', 'ABC-USD_UM_XPERP-310404'].forEach(i => o._ctVal(i)); });
+  await p.waitForTimeout(100);   // console events arrive asynchronously
+  const ctv = warns.filter(w => /ctVal/.test(w));
+  ok('onbekend contract: één console.warn met de instId, ook als het vaker langskomt', ctv.filter(w => w.includes('XYZ-USDT-SWAP')).length === 1, JSON.stringify(ctv));
+  ok('elk onbekend contract krijgt zijn eigen waarschuwing; bekende contracten geen', ctv.length === 2 && ctv.some(w => w.includes('ABC-USD_UM_XPERP-310404')), JSON.stringify(ctv));
+  ok('de waarschuwing noemt geen sleutels', ctv.every(w => !/apiKey|secret|passphrase/i.test(w)), JSON.stringify(ctv));
+
   console.log('─── De live waarde wint ───');
   const live = await p.evaluate(() => { const o = ExchangeAPI.okx; o._ctvCache = { 'ETH-USD_UM_XPERP-310404': 0.002 }; return o._ctVal('ETH-USD_UM_XPERP-310404'); });
   ok('staat het contract in de live lijst, dan telt die', live === 0.002, String(live));

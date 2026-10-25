@@ -123,6 +123,33 @@ const ALGOS = [algo(1, OPEN + 30e3, 'buy', { slTriggerPx: '87000', sz: '24', sta
   // 7: a stop that is not reduce-only (an entry stop for the other direction) is not this trade's SL
   ok('7: niet-reduceOnly stop telt niet als SL', (await sl([algo(40, OPEN + 30e3, 'buy', { slTriggerPx: '87000', sz: '24', reduceOnly: 'false' })])).stop === null);
 
+  console.log('─── Twee contracten op dezelfde munt (backlog B6) ───');
+  // BTC-USDT-SWAP and BTC-USDC-SWAP at the same time, both short, each with its own SL: linking on the coin (BTC) gave
+  // both trades the first SL. Linked on the exact contract (instId), each trade gets its own; the coin is the fallback.
+  const USDT = 'BTC-USDT-SWAP', USDC = 'BTC-USDC-SWAP';
+  const TWEE = [algo(50, OPEN + 30e3, 'buy', { instId: USDT, slTriggerPx: '87000', sz: '24', uTime: String(DICHT) }),
+    algo(51, OPEN + 40e3, 'buy', { instId: USDC, slTriggerPx: '88000', sz: '24', uTime: String(DICHT) })];
+  ok('USDT-contract: zijn eigen SL 87.000', (await sl(TWEE, { ...SHORT, pair: 'BTC/USDT', instId: USDT })).stop === 87000);
+  q = await sl(TWEE, { ...SHORT, instId: USDC });
+  ok('USDC-contract: zijn eigen SL 88.000 (niet de eerdere 87.000 van het andere contract)', q.stop === 88000 && q.stopVerloop.length === 1, JSON.stringify(q));
+  ok('zonder instId (oude trade): terugval op de munt, de eerste SL op BTC', (await sl(TWEE, SHORT)).stop === 87000);
+  const twee = await p.evaluate(async ([algos, open, dicht]) => {
+    const rec = (instId, posId, ccy) => ({ instId, posId, posSide: 'net', direction: 'short', settleCcy: ccy, type: '2', cTime: String(open), uTime: String(dicht),
+      openAvgPx: '85840', closeAvgPx: '84000', closeTotalPos: '24', openMaxPos: '24', realizedPnl: '4.4', fee: '-0.3', fundingFee: '0' });
+    T = []; TRASH = []; CONNS.okx = { connected: true, apiKey: 'k', apiSecret: 's', passphrase: 'p', syncFrom: '2026-10-01' }; persistConns();
+    window.proxyCall = async q => {
+      if (q.action === 'open_positions') return { positions: [] };
+      if (q.action === 'trades') return { source: 'positions-history', trades: [rec('BTC-USDT-SWAP', '501', 'USDT'), rec('BTC-USDC-SWAP', '502', 'USDC')] };
+      if (q.action === 'fills') return { fills: [] };
+      if (q.action === 'algos') return { source: 'algos', history: algos, pending: [], orders: [], _okxDebug: {} };
+      return { success: true, balance: '100' }; };
+    await syncExchange('okx', { quiet: true });
+    return T.filter(x => x.exchange === 'okx').map(t => ({ pair: t.pair, inst: t.okxInstId, stop: +t.stop, bron: t.stopBron }));
+  }, [TWEE, OPEN, DICHT]);
+  const per2 = Object.fromEntries(twee.map(x => [x.inst, x]));
+  ok('sync: elke trade onthoudt zijn contract', twee.length === 2 && !!per2[USDT] && !!per2[USDC], JSON.stringify(twee));
+  ok('sync: BTC-USDT-SWAP krijgt 87.000, BTC-USDC-SWAP 88.000', per2[USDT] && per2[USDT].stop === 87000 && per2[USDC] && per2[USDC].stop === 88000 && per2[USDC].bron === 'okx', JSON.stringify(twee));
+
   console.log('─── Denny\'s opname tegen zijn trades (export 22-10) ───');
   const OPN = path.resolve('tests/_fixtures/okx-algos.json'), EXP = path.resolve('syncjournal-backup-2026-10-22.json');
   if (fs.existsSync(OPN) && fs.existsSync(EXP)) {

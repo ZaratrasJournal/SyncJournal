@@ -36,6 +36,20 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
   sync-geschiedenis, criteria in de playbook-editor, emoties in het trade-formulier) zien er nu hetzelfde uit
   en noemen de volgende stap. Mori gebruikt dezelfde meldingen.
 
+### Fixed
+- **Accountnaam bij oude trades.** Gaf je een account een andere naam (bijvoorbeeld via een
+  back-up), dan bleef bij trades die je eerder met de hand had ingevoerd de oude naam staan. De
+  naam wordt nu opgezocht, dus elke trade toont de huidige naam. Een eigen sub-account op een
+  trade blijft gewoon staan, ook als je die trade opnieuw opslaat (dat werd eerder overschreven).
+- **OKX: stop-loss bij twee contracten op dezelfde munt.** Had je tegelijk een positie op
+  bijvoorbeeld BTC-USDT en BTC-USDC, dan kon de ene trade de stop-loss van de andere krijgen,
+  omdat de stop alleen op de munt (BTC) werd gekoppeld. Nu telt het exacte contract. Oudere trades,
+  waarvan het contract nog niet bekend is, gaan zoals voorheen op de munt; bij de volgende sync
+  wordt het contract erbij gezet.
+- **OKX: onbekende contractsoort.** Kent de journal de grootte van een OKX-contract niet, dan rekent
+  hij met 1 en kan de positiegrootte afwijken. Dat gebeurde stil; nu staat er een waarschuwing met
+  het contract in de browserconsole, zodat we het kunnen terugvinden.
+
 ---
 
 ## [v1.17] — 2026-10-25
