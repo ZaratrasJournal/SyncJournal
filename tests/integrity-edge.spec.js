@@ -33,13 +33,13 @@ const FILL_UTC = Date.UTC(2026, 5, 30, 22, 30);   // zelfde moment, als exchange
   await H.go(p, 'trades');
   await p.evaluate(() => openForm(null));
   const nieuw = await p.evaluate(() => document.getElementById('f_date').value);
-  fixme('nieuwe trade krijgt als datum vandaag (1 juli), niet gisteren', nieuw === '2026-07-01', nieuw);
+  ok('nieuwe trade krijgt als datum vandaag (1 juli), niet gisteren', nieuw === '2026-07-01', nieuw);
   await p.evaluate(() => closeForm());
   const kal = await p.evaluate(() => STATE.calMonth);
-  fixme('Kalender opent op de huidige maand (juli)', kal === '2026-07', kal);
+  ok('Kalender opent op de huidige maand (juli)', kal === '2026-07', kal);
   const storting = await p.evaluate(() => { MANUAL.push({ id: 'm_t', name: 'Test', transactions: [] }); go('instellingen'); setSetTab('accounts'); txOpen('m_t', 'deposit');
     document.getElementById('tx_amt').value = '100'; addAcctTx('m_t'); const d = MANUAL.find(m => m.id === 'm_t').transactions[0].date; removeManual('m_t'); return d; });
-  fixme('storting op een handmatig account krijgt als datum vandaag', storting === '2026-07-01', storting);
+  ok('storting op een handmatig account krijgt als datum vandaag', storting === '2026-07-01', storting);
 
   console.log('─── Rommel-back-up ───');
   await H.seedTrades(p, [1, 2, 3].map(i => ({ id: i, date: '2026-06-0' + i, time: '10:00', pair: 'BTC/USDT', dir: 'long', status: 'closed', kind: 'live', entry: 100, exit: 110, size: '1000', pnl: 10, exchange: '' })));

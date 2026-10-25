@@ -16,6 +16,14 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [Unreleased]
+
+### Fixed
+- **Na middernacht klopt "vandaag" weer.** Tussen 00:00 en 02:00 kreeg een nieuwe trade of een storting
+  de datum van gisteren, en opende de Kalender soms op de vorige maand. Nu geldt overal de Nederlandse datum.
+
+---
+
 ## [v1.15] — 2026-10-24
 
 ### Toegevoegd

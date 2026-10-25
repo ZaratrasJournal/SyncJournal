@@ -1970,7 +1970,7 @@ const ErrorCenter={
   dismiss(){ const bar=document.getElementById('errbar'); if(bar){bar.className='errbar';bar.innerHTML='';} },
   diagnostics(){ try{ if(typeof diagDownload==='function')return diagDownload();
     const data={app:'SyncJournal',version:(typeof APP_VERSION!=='undefined'?APP_VERSION:'?'),when:new Date().toISOString(),trades:(typeof T!=='undefined'&&Array.isArray(T))?T.length:null,userAgent:navigator.userAgent,log:this.log};
-    const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});const u=URL.createObjectURL(blob);const a=document.createElement('a');a.href=u;a.download='syncjournal-diagnostics-'+new Date().toISOString().slice(0,10)+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(u),1500);
+    const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});const u=URL.createObjectURL(blob);const a=document.createElement('a');a.href=u;a.download='syncjournal-diagnostics-'+localDateISO()+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(u),1500);
   }catch(e){} },
 };
 try{ErrorCenter.log=DB.load('errlog',[]);if(!Array.isArray(ErrorCenter.log))ErrorCenter.log=[];}catch(e){ErrorCenter.log=[];}
@@ -2392,7 +2392,7 @@ const TX_TYPES={
   correction:{label:'Correctie', sign:0,  color:'var(--amber)', icon:'✎'}
 };
 // Migreer oude {name,balance}-accounts naar het ledger-model: startsaldo → eerste storting.
-MANUAL.forEach(m=>{if(!Array.isArray(m.transactions)){const b=+m.balance||0;m.transactions=b>0?[{id:'tx'+Math.random().toString(36).slice(2,9),type:'deposit',amount:String(b),date:new Date().toISOString().slice(0,10),note:'Startsaldo'}]:[];delete m.balance;}});
+MANUAL.forEach(m=>{if(!Array.isArray(m.transactions)){const b=+m.balance||0;m.transactions=b>0?[{id:'tx'+Math.random().toString(36).slice(2,9),type:'deposit',amount:String(b),date:localDateISO(),note:'Startsaldo'}]:[];delete m.balance;}});
 let SYNC=DB.load('sync',{auto:false,interval:'15m'});
 // ── Hosted-detectie + echte update-check (hosting-plan fase 2, 2026-09-16) ──
 // Op syncjournal.nl fetcht dit version.json van de eigen origin en vergelijkt met
@@ -2470,7 +2470,7 @@ function disconnectEx(id){
 function toggleExSync(id){if(CONNS[id]){CONNS[id].noAuto=!CONNS[id].noAuto;persistConns();render();}}
 function addManual(){const n=document.getElementById('ma_name'),bal=document.getElementById('ma_bal'),name=n?n.value.trim():'',b=bal?parseFloat(String(bal.value).replace(',','.'))||0:0;
   if(!name){toast('Geef het account een naam','err');return;}
-  const tx=b>0?[{id:'tx'+Date.now().toString(36),type:'deposit',amount:String(b),date:new Date().toISOString().slice(0,10),note:'Startsaldo'}]:[];
+  const tx=b>0?[{id:'tx'+Date.now().toString(36),type:'deposit',amount:String(b),date:localDateISO(),note:'Startsaldo'}]:[];
   MANUAL.push({id:'m'+Date.now(),name,transactions:tx});persistManual();STATE.manOpen='';render();toast('✓ Handmatig account toegevoegd','ok');}
 function removeManual(id){
   const m=MANUAL.find(x=>x.id===id);if(!m)return;
@@ -2491,7 +2491,7 @@ function addAcctTx(id){const m=MANUAL.find(x=>x.id===id);if(!m||!STATE.txOpen)re
   const cur=acctCapital(m.transactions);
   if(type==='withdrawal'&&amt>cur){toast('Opname ('+eur(amt)+') is groter dan het ingelegde kapitaal ('+eur(cur)+')','err');return;}
   if(type==='correction'&&cur>0&&Math.abs(amt-cur)/cur>0.5&&!confirm('Correctie wijkt >50% af van het huidige ingelegde kapitaal ('+eur(cur)+' → '+eur(amt)+'). Doorgaan?'))return;
-  m.transactions.push({id:'tx'+Date.now().toString(36),type,amount:String(amt),date:new Date().toISOString().slice(0,10),note:(noteEl?noteEl.value:'').trim()});
+  m.transactions.push({id:'tx'+Date.now().toString(36),type,amount:String(amt),date:localDateISO(),note:(noteEl?noteEl.value:'').trim()});
   persistManual();STATE.txOpen=null;render();toast('✓ '+TX_TYPES[type].label+' · ingelegd nu '+eur(fxNow(acctCapital(m.transactions))),'ok');}
 function delAcctTx(id,txid){const m=MANUAL.find(x=>x.id===id);if(!m)return;if(!confirm('Deze mutatie verwijderen?'))return;m.transactions=m.transactions.filter(t=>t.id!==txid);persistManual();render();toast('Mutatie verwijderd','info');}
 function toggleAutoSync(){SYNC.auto=!SYNC.auto;persistSync();if(typeof startAutoSync==='function')startAutoSync();render();}
@@ -2505,7 +2505,7 @@ async function clearAllData(){ if(!confirm('ÁLLE lokale data wissen, trades, ta
 
 /* ═══ State ═══ */
 const STATE=Object.assign({page:'dashboard',theme:'light',priv:false,tradeTab:'all',density:'comfy',tend:'sessie',revSel:0,revQuery:'',revFilter:'all',revPeriod:'all',
-  sortCol:'date',sortDir:-1,query:'',calMonth:new Date().toISOString().slice(0,7),currency:'USD',selected:[],pbSel:'',pctRef:0,unit:'val',
+  sortCol:'date',sortDir:-1,query:'',calMonth:localDateISO().slice(0,7),currency:'USD',selected:[],pbSel:'',pctRef:0,unit:'val',
   sections:{hero:true,kpis:true,equity:true,monthly:true,edge:true,recent:true}}, DB.load('state',{}));
 /* Default currency dollar (v1.11) is for new journals only. A member whose state was never saved with a currency had
    euros; decide once and save it, so a new journal is not taken for an old one at its next start (review v1.11). */
@@ -2589,7 +2589,7 @@ function clearFilterKey(k){FILTER[k]=[];STATE.selected=[];STATE.tradePage=0;reop
 function clearGFilter(){MULTI_FILTER_KEYS.forEach(k=>FILTER[k]=[]);['dir','dateFrom','dateTo','datePreset'].forEach(k=>FILTER[k]='');FILTER.kind='live';STATE.tradePage=0;render();}
 /* ── datum-filter: presets + van/tot ── */
 const isoD=dt=>dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0')+'-'+String(dt.getDate()).padStart(2,'0');
-function refNow(){const ds=T.map(t=>t.date).filter(Boolean);return ds.length?ds.reduce((a,b)=>a>b?a:b):new Date().toISOString().slice(0,10);}
+function refNow(){const ds=T.map(t=>t.date).filter(Boolean);return ds.length?ds.reduce((a,b)=>a>b?a:b):localDateISO();}
 let reopenDD=null;
 function setDatePreset(p){const ref=refNow(),d=new Date(ref+'T00:00:00');let from='',to='';
   if(p==='week'){const wd=(d.getDay()+6)%7,mon=new Date(d);mon.setDate(d.getDate()-wd);const sun=new Date(mon);sun.setDate(mon.getDate()+6);from=isoD(mon);to=isoD(sun);}
@@ -3279,7 +3279,7 @@ function rBadge(t){const r=tradeROrNull(t);
 function rCell(t,st){const r=tradeROrNull(t);
   if(r==null)return `<span class="num" style="color:var(--muted)${st?';'+st:''}" title="${R_ONBEKEND}">—</span>`;
   return `<span class="num ${cls(r)}"${st?` style="${st}"`:''}>${rS(r)}</span>`;}
-const _today=new Date().toISOString().slice(0,10);
+const _today=localDateISO();
 function newBadge(t){return t.date===_today?'<span class="newbadge">Nieuw</span>':'';}
 function curStreakBadge(){const chr=CLOSED.slice().sort((x,y)=>(x.date+x.time)<(y.date+y.time)?-1:1);let s=0,type='';for(let i=chr.length-1;i>=0;i--){const w=chr[i].pnl>0;if(type===''){type=w?'w':'l';s=1;}else if((type==='w')===w)s++;else break;}return s?`<span class="streakbadge ${type}">${type==='w'?'🔥':'🥶'} ${s} ${type==='w'?'op rij':'verlies'}</span>`:'';}
 /* Gedeelde KPI-kaart — één typografie/kleur voor álle analytics-pagina's (UXPin: consistentie).
@@ -4013,7 +4013,7 @@ async function downloadCoachPackage(){
     for(const t of trades){const arr=[];for(const u of revShots(t)){arr.push(await resizeShot(u));}shotMap[t.id]=arr;}
     const html=coachPkgHTML(trades,{name,hide,shotMap});
     const blob=new Blob([html],{type:'text/html'}),url=URL.createObjectURL(blob),a=document.createElement('a');
-    a.href=url;a.download='trade-review-'+new Date().toISOString().slice(0,10)+'.html';a.click();setTimeout(()=>URL.revokeObjectURL(url),2000);
+    a.href=url;a.download='trade-review-'+localDateISO()+'.html';a.click();setTimeout(()=>URL.revokeObjectURL(url),2000);
     if(go)go.disabled=false;if(busy)busy.style.display='none';
     toast('✓ Coach-pakket gedownload ('+trades.length+' trade'+(trades.length>1?'s':'')+')','ok');
   }catch(e){if(go)go.disabled=false;if(busy)busy.style.display='none';toast('Kon pakket niet bouwen: '+(e&&e.message||e),'err');}
@@ -9850,7 +9850,7 @@ function updFormVis(){
   btn.textContent=formMoreOpen?'▴ Minder velden':`▾ Meer velden (${n})`;
 }
 function openForm(id){
-  const t=id!=null?T.find(x=>x.id===id):{date:new Date().toISOString().slice(0,10),time:'',exchange:(MANUAL[0]||relevantExchanges()[0]||{id:'blofin'}).id,pair:'BTC/USDC',dir:'long',setup:'',session:'London',timeframe:'15m',market:'Trending',grade:'',entry:'',stop:'',tp:'',exit:'',size:'',leverage:10,fees:'',risk:'',rrPlanned:'',pnl:'',r:'',status:'closed',emotion:'',mistake:'',emotions:[],mistakes:[],layers:[],tags:[],notes:'',lessons:'',durationMin:'',mae:'',mfe:''};
+  const t=id!=null?T.find(x=>x.id===id):{date:localDateISO(),time:'',exchange:(MANUAL[0]||relevantExchanges()[0]||{id:'blofin'}).id,pair:'BTC/USDC',dir:'long',setup:'',session:'London',timeframe:'15m',market:'Trending',grade:'',entry:'',stop:'',tp:'',exit:'',size:'',leverage:10,fees:'',risk:'',rrPlanned:'',pnl:'',r:'',status:'closed',emotion:'',mistake:'',emotions:[],mistakes:[],layers:[],tags:[],notes:'',lessons:'',durationMin:'',mae:'',mfe:''};
   formSizeUnit=(t.sizeUnit==='asset'&&t.qty>0)?'asset':'usd';formPbTouched=false;formPbLayersJson='';formCloseAuto={t:'',d:'',s:'',sPrev:'',p:'',e:''};
   formLocked=isGesynct(t);const RO=formLocked?' readonly':'';formFxVast=+t.fx||0;
   const stopVast=!!(t.stopBron&&t.stopBron!=='gebruiker'&&EXMAP[t.stopBron]);   // the exchange's stop is locked, like entry
