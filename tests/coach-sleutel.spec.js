@@ -182,6 +182,12 @@ const antwoord = (tekst, extra) => ({ id: 'msg_nep', type: 'message', role: 'ass
   ok('"alleen deze sessie": niets met de sleutel in localStorage', !opslag.ls);
   ok('wel in sessionStorage, en de coach werkt', opslag.ss && opslag.chat, JSON.stringify(opslag));
 
+  console.log('─── Coach uitgezet in Instellingen ───');
+  await p.evaluate(() => { toggleAICoach(); go('ai'); });
+  ok('"AI-coach staat uit", geen invoer, en de keuze blijft bewaard', /AI-coach staat uit/.test(await main()) && await p.locator('#aiInput').count() === 0 && await p.evaluate(() => JSON.parse(localStorage.getItem('sj_ai_prefs')).enabled === false));
+  ok('dan ook geen 🤖-knop bij een trade', await p.evaluate(() => { go('review'); return document.querySelectorAll('[data-ai-vraag]').length === 0; }));
+  await p.evaluate(() => { toggleAICoach(); });
+
   ok('geen JS-fouten', errs.length === 0, errs[0]);
   console.log(`\n=== Coach-sleutel: ${pass}/${pass + fail} ===`);
   await b.close();
