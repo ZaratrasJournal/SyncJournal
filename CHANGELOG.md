@@ -16,6 +16,11 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [Unreleased]
+
+### Toegevoegd
+- Links naar Morani op X, YouTube en moranitraden.nl: onderaan het menu, onderaan de FAQ en in de footer van syncjournal.nl.
+
 ## [v1.15.1] — 2026-10-25
 
 ### Fixed

@@ -98,6 +98,16 @@ const LANDING = F('index.html'), APP = F('app.html');
     await ctx.close();
   }
 
+  console.log('─── Footer: Morani-links ───');
+  {
+    const [ctx, p] = await nieuw();
+    await p.goto(LANDING, { waitUntil: 'load' }); await p.waitForTimeout(200);
+    const got = await p.evaluate(() => [...document.querySelectorAll('footer.foot .soc a')].map(a => [a.getAttribute('href'), a.target, a.rel, a.getAttribute('aria-label')]));
+    const want = [['https://x.com/moranitrading', 'Morani op X'], ['https://www.youtube.com/@moranitraden', 'Morani op YouTube'], ['https://moranitraden.nl/', 'moranitraden.nl']];
+    ok('footer: X, YouTube en moranitraden.nl, nieuw tabblad met noopener noreferrer, met aria-label', got.length === 3 && want.every(([u, l], i) => got[i][0] === u && got[i][1] === '_blank' && /\bnoopener\b/.test(got[i][2]) && /\bnoreferrer\b/.test(got[i][2]) && got[i][3] === l), JSON.stringify(got));
+    await ctx.close();
+  }
+
   console.log('─── Bestanden ───');
   {
     const rb = fs.readFileSync(path.resolve('site/robots.txt'), 'utf8'), sm = fs.readFileSync(path.resolve('site/sitemap.xml'), 'utf8'), hd = fs.readFileSync(path.resolve('site/_headers'), 'utf8');
