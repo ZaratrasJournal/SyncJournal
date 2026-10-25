@@ -50,7 +50,7 @@ module.exports = [
   // migratie, invoer, export
   'tj-migrate', 'tj-overzetten', 'pnl-pct', 'unit-toggle', 'tp-overzicht',
   'afgeleide-stappen', 'afgeleide-scenarios', 'handmatig-formulier', 'handmatig-scenarios',
-  'handmatig-statistieken', 'tj-backtest', 'export-overzicht', 'import-keuze',
+  'handmatig-statistieken', 'tj-backtest', 'export-overzicht', 'import-keuze', 'import-leeg-object',
   'export-import-rondje', 'diagnose', 'possize',
 
   // site + tradingplan
