@@ -62,6 +62,7 @@ def morani_logo(dst):
 
 
 LOGO = morani_logo(BUILD / "morani-badge.png")
+SJ_HEX = OUT / "screens/syncjournal-hex.png"  # the app's brand hexagon, rendered from its SVG
 DASH = rounded_image(OUT / "screens/dashboard.png", BUILD / "dashboard-rounded.png")
 
 
@@ -123,7 +124,7 @@ def notes(slide, t):
     slide.notes_slide.notes_text_frame.text = t.strip()
 
 
-def bullets(slide, items, x=0.8, y=2.05, w=11.73, row=0.86, size=26, card=True, marker="accent"):
+def bullets(slide, items, x=0.8, y=2.05, w=11.73, row=0.8, size=26, card=True, marker="accent"):
     if card:
         box(slide, x, y, w, row * len(items) + 0.5, C["surface"], C["line"], radius=0.05)
     for i, it in enumerate(items):
@@ -137,7 +138,14 @@ def new(t=None, kicker=None):
     bg(s)
     if t:
         title(s, t, kicker)
+        footer(s)
     return s
+
+
+def footer(slide):
+    # Both logos, small, bottom right: SyncJournal hexagon + Morani badge.
+    slide.shapes.add_picture(str(SJ_HEX), Inches(11.22), Inches(6.98), height=Inches(0.38))
+    slide.shapes.add_picture(str(LOGO), Inches(11.7), Inches(7.0), height=Inches(0.34))
 
 
 def section_tag(slide, label, col="accent"):
@@ -151,6 +159,7 @@ def section_tag(slide, label, col="accent"):
 # 1. Title
 s = new()
 box(s, 0, 0, 0.22, 7.5, C["accent"], radius=0, shape=MSO_SHAPE.RECTANGLE)
+s.shapes.add_picture(str(SJ_HEX), Inches(1.22), Inches(1.15), height=Inches(0.95))
 text(s, 1.2, 2.2, 8, 1.3, [[("Sync", "ink", FONT_HEAD, 72), ("Journal", "accent", FONT_HEAD, 72)]])
 text(s, 1.22, 3.6, 8, 0.6, f"Live event · {DATUM}", size=26, color="ink2")
 box(s, 1.22, 4.45, 0.9, 0.07, C["gold"], radius=0.5)
@@ -214,9 +223,9 @@ Om die structuur en kaders vorm te geven heb ik de journal gebouwd. Voor mezelf,
 
 # 5-6. Rondgang
 def route(slide, rows):
-    box(slide, 0.8, 2.0, 11.73, 0.9 * len(rows) + 0.4, C["surface"], C["line"], radius=0.05)
+    box(slide, 0.8, 2.0, 11.73, 0.85 * len(rows) + 0.4, C["surface"], C["line"], radius=0.05)
     for i, (n, chips, sub) in enumerate(rows):
-        yy = 2.2 + i * 0.9
+        yy = 2.2 + i * 0.85
         text(slide, 1.2, yy, 0.6, 0.9, n, size=18, color="muted", font=FONT_HEAD, anchor=MSO_ANCHOR.MIDDLE)
         xx = 1.8
         for c in chips:
@@ -428,6 +437,7 @@ for i, (lb, url) in enumerate(links):
     text(s, 1.22, yy, 1.8, 0.6, lb, size=20, color="muted", anchor=MSO_ANCHOR.MIDDLE)
     text(s, 3.1, yy, 6.5, 0.6, url, size=26, color="accent" if lb == "Journal" else "ink",
          font=FONT_HEAD, anchor=MSO_ANCHOR.MIDDLE)
+s.shapes.add_picture(str(SJ_HEX), Inches(9.35), Inches(5.95), height=Inches(0.86))
 s.shapes.add_picture(str(LOGO), Inches(10.4), Inches(5.95), width=Inches(2.2))
 notes(s, """
 Dat was het van mijn kant. Zijn er vragen? Stel ze gerust. Wil je meer van Morani zien: volg Morani op X en YouTube, en kijk op moranitraden.nl. De journal vind je op syncjournal.nl. Dank jullie wel! [aanvullen]
