@@ -1,175 +1,81 @@
-// Tag-loze tendency-detectoren — verificatie dat users zónder setup/emotion/mistake/timeframe
-// tags nog steeds patronen krijgen via de 5 tag-loze detectoren (#4 weekend, #8 pair × session,
-// #9 direction-bias, #10 day-of-week, #11 overtrading-cluster).
+// Tendencies zonder tags: wie geen playbook, emotie of tags invult, krijgt toch patronen te zien
+// uit wat elke trade heeft (tijd, dag, sessie, richting). Geen leeg scherm, geen lege tabel.
 //
-// Plus de empty-state hint die zichtbaar moet zijn als <10% van de trades getagd is.
-const { test, expect } = require('@playwright/test');
-const path = require('path');
-const { seedLocalStorage } = require('./helpers/seed');
+// Herschreven in T2 (24-10-2026): de oude spec toetste de vijf tag-loze detectoren en de
+// "tag je trades"-hint van de oude app. SyncJournal haalt sessie, dag en uur uit de tijd.
+const { chromium } = require('playwright');
+const H = require('./helpers/dov-page');
+let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  ✓ ' + n)) : (fail++, console.log('  ✗ ' + n + (e ? ' → ' + e : ''))); };
 
-const APP_PATH = path.resolve(__dirname, '../work/tradejournal.html');
-const FILE_URL = 'file:///' + APP_PATH.replace(/\\/g, '/');
-
-// Genereert een dataset zonder tags die meerdere detectoren moet triggeren:
-//   - 20 BTC long winners (US AM session) → pair × session sterke kant
-//   - 12 ETH long losers (London AM session) → pair × session zwakke kant
-//   - 8 BTC short losers → direction-bias trigger
-//   - 2 clusters van 6 trades binnen 2u, beide verlies → overtrading
-// Dates relatief t.o.v. nu, allemaal binnen 30d zodat de default period-filter niks afkapt.
-function makeUntaggedTrades() {
-  const trades = [];
-  let id = 0;
-  const now = new Date();
-  const dateMinus = (offset) => {
-    const d = new Date(now);
-    d.setDate(d.getDate() - offset);
-    return d.toISOString().split('T')[0];
-  };
-  const baseTrade = {
-    entry: '50000', stopLoss: '49500', positionSize: '5000',
-    positionSizeAsset: '0.1', leverage: '10', source: 'blofin', status: 'closed',
-    setupTags: [], emotionTags: [], mistakeTags: [], timeframeTags: [], confirmationTags: [],
-  };
-
-  // 20 BTC LONG winners — US AM session (16:00 UTC = ~17:00 Amsterdam, valt in US AM 15:30-19:00)
-  for (let i = 0; i < 20; i++) {
-    trades.push({ ...baseTrade,
-      id: `t_${++id}`,
-      date: dateMinus(2 + (i % 14)),
-      time: '16:00:00',
-      pair: 'BTC/USDT', direction: 'long',
-      exit: '50500', pnl: '25',
-    });
-  }
-
-  // 12 ETH LONG losers — London AM session (10:00 Amsterdam = London AM 09:00-11:30)
-  for (let i = 0; i < 12; i++) {
-    trades.push({ ...baseTrade,
-      id: `t_${++id}`,
-      date: dateMinus(3 + i),
-      time: '10:00:00',
-      pair: 'ETH/USDT', direction: 'long',
-      exit: '2980', entry: '3000', pnl: '-30',
-      stopLoss: '2990', positionSize: '3000', positionSizeAsset: '1',
-    });
-  }
-
-  // 8 BTC SHORT losers — direction-bias trigger (12 long winners exist, 8 short losers)
-  for (let i = 0; i < 8; i++) {
-    trades.push({ ...baseTrade,
-      id: `t_${++id}`,
-      date: dateMinus(4 + i),
-      time: '17:00:00',
-      pair: 'BTC/USDT', direction: 'short',
-      exit: '50200', pnl: '-25',
-    });
-  }
-
-  // 2 verlies-clusters van 6 trades binnen 2u → overtrading
-  for (let cluster = 0; cluster < 2; cluster++) {
-    const day = dateMinus(8 + cluster * 4);
-    for (let i = 0; i < 6; i++) {
-      const totalMinutes = 20 * i; // 0, 20, 40, 60, 80, 100 — alles binnen 2u
-      const hh = String(13 + Math.floor(totalMinutes / 60)).padStart(2, '0');
-      const mm = String(totalMinutes % 60).padStart(2, '0');
-      trades.push({ ...baseTrade,
-        id: `t_${++id}`,
-        date: day,
-        time: `${hh}:${mm}:00`,
-        pair: 'BTC/USDT', direction: 'long',
-        exit: '49900', pnl: '-20',
-      });
-    }
-  }
-
-  return trades;
-}
-
-test.describe('Tag-loze tendency-detectoren', () => {
-  test('produceert ≥3 patronen op trades zonder tags + toont empty-state hint', async ({ page }) => {
-    const fixture = { trades: makeUntaggedTrades() };
-    await page.addInitScript(seedLocalStorage, fixture);
-    // Skip alle milestone-modals (anders blokkeren ze klikken op de Tendencies-page)
-    await page.addInitScript(() => {
-      localStorage.setItem('tj_milestones_seen', JSON.stringify([
-        'trades-10','trades-50','trades-100','trades-250','trades-500','trades-1000',
-        'win-streak-5','win-streak-10','first-win'
-      ]));
-    });
-
-    await page.goto(FILE_URL, { waitUntil: 'networkidle' });
-    await page.waitForFunction(() => /Dashboard/i.test(document.body.innerText), { timeout: 15_000 });
-
-    // Navigeer via hash naar Tendencies-tab
-    await page.evaluate(() => { window.location.hash = '#/tendencies'; });
-    await page.waitForFunction(() => /Tendencies/i.test(document.body.innerText), { timeout: 5_000 });
-    await page.waitForTimeout(800);
-
-    // Periode op "Alles" zodat we niet door de 30d-filter beperkt worden bij CI-tijdzones
-    const allBtn = page.getByRole('button', { name: 'Alles', exact: true }).last();
-    if (await allBtn.isVisible({ timeout: 2_000 }).catch(()=>false)) {
-      await allBtn.click();
-      await page.waitForTimeout(300);
-    }
-
-    // Tel het aantal getoonde tendency-cards via de pnlSum-aggregaat-strip ("Cumulatief")
-    const cardCount = await page.locator('div:has-text("Cumulatief")').filter({ hasText: 'Trades' }).count();
-    console.log(`Tag-less detectors fired ${cardCount} card(s) zichtbaar`);
-    expect(cardCount, 'minstens 3 tag-loze detectoren moeten triggeren').toBeGreaterThanOrEqual(3);
-
-    // Empty-state hint moet zichtbaar zijn (taggedFrac=0 < 0.10)
-    const html = await page.content();
-    expect(html).toMatch(/Patronen-bibliotheek/);
-    expect(html).toMatch(/van 11 actief/);
-
-    // Specifieke detector-titles moeten verschijnen
-    expect(html, 'overtrading-detector moet fired hebben').toMatch(/Overtrading.*verlies-burst/i);
-
-    await page.screenshot({
-      path: path.join(__dirname, 'screenshots/tendencies-untagged.png'),
-      fullPage: true,
-    });
-  });
-
-  test('hint kan gedismissed worden + verdwijnt persistent', async ({ page }) => {
-    const fixture = { trades: makeUntaggedTrades() };
-    await page.addInitScript(seedLocalStorage, fixture);
-    await page.addInitScript(() => {
-      // Skip alle milestone-modals zodat clicks niet onderschept worden.
-      // BELANGRIJK: addInitScript draait OOK op page.reload() — dus geen
-      // tj_tendencies_taghint_dismissed wegvegen, anders test-2 verliest persistentie.
-      if(!localStorage.getItem('tj_milestones_seen')){
-        localStorage.setItem('tj_milestones_seen', JSON.stringify([
-          'trades-10','trades-50','trades-100','trades-250','trades-500','trades-1000',
-          'win-streak-5','win-streak-10','first-win'
-        ]));
-      }
-    });
-    await page.goto(FILE_URL, { waitUntil: 'networkidle' });
-    await page.waitForFunction(() => /Dashboard/i.test(document.body.innerText), { timeout: 15_000 });
-    await page.evaluate(() => { window.location.hash = '#/tendencies'; });
-    await page.waitForTimeout(800);
-
-    // Hint moet eerst zichtbaar zijn
-    const hintHeading = page.getByText(/Patronen-bibliotheek/i).first();
-    await expect(hintHeading).toBeVisible({ timeout: 5_000 });
-
-    // Klik op "Niet meer tonen"
-    const dismissBtn = page.getByRole('button', { name: /Niet meer tonen/i });
-    await dismissBtn.click();
-
-    // Hint verdwijnt na click
-    await expect(hintHeading).toBeHidden({ timeout: 3_000 });
-
-    // localStorage-flag moet gezet zijn
-    const flag = await page.evaluate(() => localStorage.getItem('tj_tendencies_taghint_dismissed'));
-    expect(flag).toBe('1');
-
-    // Reload — hint blijft weg
-    await page.reload({ waitUntil: 'networkidle' });
-    await page.waitForFunction(() => /Dashboard/i.test(document.body.innerText), { timeout: 15_000 });
-    await page.evaluate(() => { window.location.hash = '#/tendencies'; });
-    await page.waitForTimeout(800);
-    await expect(page.getByText(/Patronen-bibliotheek/i)).toBeHidden({ timeout: 3_000 });
-  });
+// 64 gesloten trades zonder playbook/tags/emoties. Ochtend (09u, London) wint, nacht (02u, Asia) verliest.
+const SET = Array.from({ length: 64 }, (_, i) => {
+  const ochtend = i % 2 === 0, dag = 1 + (i % 28);
+  // sessie zoals sync en formulier hem uit de tijd afleiden (sessionFromTime)
+  return { id: i, date: '2026-09-' + String(dag).padStart(2, '0'), time: ochtend ? '09:15' : '02:30', session: ochtend ? 'London' : 'Asia', pair: 'BTC/USDT', dir: i % 3 ? 'long' : 'short',
+    status: 'closed', kind: 'live', entry: 100, exit: ochtend ? 102 : 99, stop: 99, size: '1000', pnl: ochtend ? 20 : -10, exchange: '', setup: '' };
 });
+
+(async () => {
+  const b = await chromium.launch(); const { p, errs } = await H.openJournal(b);
+  await H.seedTrades(p, SET);
+  await H.go(p, 'tendencies');
+
+  const r = await p.evaluate(() => ({
+    leeg: [...document.querySelectorAll('#main .empty-h')].some(h => /Nog geen patronen|Geen trades gevonden/.test(h.textContent)),   // the page's own empty state, not a panel's
+    edge: (document.querySelector('.vcard.edge .vcombo') || {}).textContent || '',
+    leak: (document.querySelector('.vcard.leak .vcombo') || {}).textContent || '',
+    whm: [...document.querySelectorAll('.whm .whm-cell')].filter(c => +c.dataset.n > 0).length,
+    hbars: [...document.querySelectorAll('#main .hbar .lbl')].map(x => x.textContent),
+    kruisRijen: document.querySelectorAll('.thm th.rowh').length,
+    kruisCellen: document.querySelectorAll('.thm td[data-t]').length,
+    kruisTekst: ((document.querySelector('.thm-wrap') || {}).innerText || '').trim().slice(0, 120),
+  }));
+  ok('geen lege staat: er zijn gesloten trades', !r.leeg, JSON.stringify(r));
+  ok('sterkste combinatie gevonden zonder tags (sessie × dag of uur)', r.edge && r.edge !== '—', r.edge);
+  ok('en een lek', r.leak && r.leak !== '—' && r.leak !== r.edge, r.leak);
+  ok('weekdag × uur-heatmap heeft gevulde cellen', r.whm >= 2, String(r.whm));
+  ok('breakdown per sessie heeft balkjes (London en Asia)', r.hbars.length >= 2 && r.hbars.some(x => /London/i.test(x)) && r.hbars.some(x => /Asia/i.test(x)), JSON.stringify(r.hbars));
+
+  // De kruis-analyse: elke toestand, licht en donker. Een lege tabel (alleen een kopregel) is nooit goed.
+  const kruis = () => p.evaluate(() => {
+    const pnl = [...document.querySelectorAll('#main .panel')].find(x => /Kruis-analyse/.test((x.querySelector('h3') || {}).textContent || ''));
+    const leeg = pnl && pnl.querySelector('.empty'), knop = leeg && leeg.querySelector('button');
+    return { paneel: !!pnl, rijen: pnl ? pnl.querySelectorAll('.thm th.rowh').length : 0, tabel: !!(pnl && pnl.querySelector('table.thm')),
+      kiezers: pnl ? pnl.querySelectorAll('.crossctrl select').length : 0, kop: leeg ? leeg.querySelector('.empty-h').textContent : '',
+      uitleg: leeg ? leeg.querySelector('.empty-d').textContent : '', knop: knop ? knop.textContent : '',
+      kleur: leeg ? getComputedStyle(leeg.querySelector('.empty-d')).color : '', bg: getComputedStyle(document.body).backgroundColor };
+  });
+  const ZONDER_COMBI = Array.from({ length: 12 }, (_, i) => ({ ...SET[i], id: 100 + i, ...(i % 2 ? { setup: 'Breakout' } : { grade: 'A' }) }));
+  for (const thema of ['light', 'dark']) {
+    await p.evaluate(t => setTheme(t), thema);
+    // 1. wel trades, geen playbooks: de standaard Playbook × Sessie heeft geen rijen
+    await H.seedTrades(p, SET); await p.evaluate(() => { STATE.tendRow = 'setup'; STATE.tendCol = 'session'; }); await H.go(p, 'tendencies');
+    let k = await kruis();
+    ok(`${thema}, geen playbooks: kruis-analyse toont een lege staat, geen tabel met alleen een kopregel`, k.paneel && !k.tabel && /playbook/i.test(k.kop + k.uitleg), JSON.stringify(k));
+    ok(`${thema}, geen playbooks: zegt wat de volgende stap is (playbook koppelen of andere dimensie) en houdt de kiezers`, /koppel|kies/i.test(k.uitleg) && /dimensie/i.test(k.uitleg) && k.kiezers === 2 && !!k.knop, JSON.stringify(k));
+    ok(`${thema}, lege staat leesbaar in dit thema (tekstkleur ≠ achtergrond)`, k.kleur && k.kleur !== k.bg, k.kleur + ' op ' + k.bg);
+    await p.evaluate(() => [...document.querySelectorAll('#main .panel .empty button')].find(b => /Dag/.test(b.textContent)).click());
+    k = await kruis();
+    ok(`${thema}, knop in de lege staat schakelt naar een combinatie met cellen`, k.tabel && k.rijen >= 2, JSON.stringify(k));
+    // 2. een dimensie die bij geen enkele trade een waarde heeft (hier: emotie)
+    await p.evaluate(() => setCrossDim('row', 'emo')); k = await kruis();
+    ok(`${thema}, lege dimensie (Emotie): lege staat die een andere dimensie voorstelt`, !k.tabel && /dimensie/i.test(k.uitleg) && !!k.knop, JSON.stringify(k));
+    // 3. beide dimensies hebben waarden, maar nooit op dezelfde trade
+    await H.seedTrades(p, ZONDER_COMBI); await p.evaluate(() => { STATE.tendRow = 'setup'; STATE.tendCol = 'grade'; }); await H.go(p, 'tendencies');
+    k = await kruis();
+    ok(`${thema}, Playbook × Grade zonder trade met allebei: lege staat "geen combinatie"`, k.paneel && !k.tabel && /allebei|beide|combinatie/i.test(k.kop + k.uitleg), JSON.stringify(k));
+    // 4. nooit trades: de hele pagina heeft een lege staat, geen losse kruis-analyse
+    await H.seedTrades(p, []); await H.go(p, 'tendencies');
+    const nooit = await p.evaluate(() => ({ leeg: ((document.querySelector('#main .empty-h') || {}).textContent || ''), kruis: /Kruis-analyse/.test(document.getElementById('main').innerText) }));
+    ok(`${thema}, nooit trades: één lege staat voor de pagina, geen kruis-analyse`, /Nog geen patronen/.test(nooit.leeg) && !nooit.kruis, JSON.stringify(nooit));
+  }
+  await H.seedTrades(p, SET); await p.evaluate(() => { setTheme('light'); STATE.tendRow = 'setup'; STATE.tendCol = 'session'; }); await H.go(p, 'tendencies');
+  await p.evaluate(() => { setCrossDim('row', 'dow'); });
+  const k = await p.evaluate(() => ({ rijen: document.querySelectorAll('.thm th.rowh').length, cellen: document.querySelectorAll('.thm td[data-t]').length }));
+  ok('kruis-analyse op Dag × Sessie toont wel cellen', k.rijen >= 2 && k.cellen >= 2, JSON.stringify(k));
+
+  ok('geen JS-fouten', errs.length === 0, [...new Set(errs)].slice(0, 3).join(' | '));
+  await b.close();
+  console.log(`\n=== Tendencies zonder tags: ${pass}/${pass + fail} ===`);
+  process.exit(fail ? 1 : 0);
+})().catch(e => { console.error(e); process.exit(1); });

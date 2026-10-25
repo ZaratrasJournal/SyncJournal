@@ -1,57 +1,87 @@
-// v12.127: privacy-mode globale toggle test.
-const{test,expect}=require("@playwright/test");
-const path=require("path");
+// Privacy-modus (oog-knop rechtsboven): bedragen worden onleesbaar voor screenshots, de keuze
+// blijft na herladen bewaard, en uitzetten maakt alles weer leesbaar.
+//
+// Herschreven in T2 (24-10-2026): de oude spec laadde de bevroren oude app.
+const { chromium } = require('playwright');
+const H = require('./helpers/dov-page');
+let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  ✓ ' + n)) : (fail++, console.log('  ✗ ' + n + (e ? ' → ' + e : ''))); };
 
-const APP=path.resolve(__dirname,"../work/tradejournal.html");
-const FILE_URL="file:///"+APP.replace(/\\/g,"/");
+const T0 = { time: '10:00', pair: 'BTC/USDT', dir: 'long', status: 'closed', kind: 'live', entry: 100, exit: 110, stop: 95, size: '1000', exchange: 'm_a' };
+const DATA = {
+  trades: [{ ...T0, id: 1, date: '2026-10-01', pnl: 1234.56, fees: 4.5 }, { ...T0, id: 2, date: '2026-10-02', pnl: -321.09 }],
+  manual: [{ id: 'm_a', name: 'Prive', transactions: [{ id: 'x1', type: 'deposit', amount: '25000', date: '2026-09-01', note: '' }] }],
+};
 
-const DEMO_TRADES=[
-  {id:"t1",date:"2026-05-01",time:"10:00",pair:"BTC/USDT",direction:"long",
-    entry:"80000",exit:"81000",stopLoss:"79500",positionSize:"1000",positionSizeAsset:"0.0125",
-    pnl:"125.50",fees:"5",leverage:"10",source:"manual",status:"closed",
-    setupTags:["BOS"],layers:[],tpLevels:[],rating:4,manualOverrides:[]},
-  {id:"t2",date:"2026-05-02",time:"14:00",pair:"ETH/USDT",direction:"short",
-    entry:"3500",exit:"3450",stopLoss:"3550",positionSize:"500",positionSizeAsset:"0.143",
-    pnl:"-25.00",fees:"3",leverage:"5",source:"manual",status:"closed",
-    setupTags:["SFP"],layers:[],tpLevels:[],rating:3,manualOverrides:[]},
-];
+// Elk zichtbaar element met een bedrag ($ of € gevolgd door cijfers) in eigen tekst: is het gemaskeerd?
+const BEDRAGEN = (waar = '#main *, #balVal') => {
+  const uit = [];
+  document.querySelectorAll(waar).forEach(el => {
+    const eigen = [...el.childNodes].filter(n => n.nodeType === 3).map(n => n.textContent).join('');
+    if (!/[$€]\s?[\d.,]*\d/.test(eigen) || !el.getClientRects().length) return;
+    const gemaskeerd = !!el.closest('.mask') && getComputedStyle(el.closest('.mask')).filter.includes('blur');
+    uit.push({ t: eigen.trim().slice(0, 30), gemaskeerd, hbar: !!el.closest('.hbar .sub') });
+  });
+  return uit;
+};
 
-test("privacy-mode toggle maskeert bedragen op Dashboard",async({page})=>{
-  await page.addInitScript(({trades})=>{
-    localStorage.setItem("tj_welcomed","1");
-    localStorage.setItem("tj_trades",JSON.stringify(trades));
-    localStorage.setItem("tj_privacy_mode","0");
-    try{indexedDB.deleteDatabase("TradeJournalDB")}catch{}
-  },{trades:DEMO_TRADES});
+// Het uitklapdetail onder een trade-rij (normaal bij hover) zichtbaar maken en daar meten.
+const BEDRAGEN_DETAIL = () => {
+  const rijen = [...document.querySelectorAll('#main tr.drow')];
+  rijen.forEach(r => { r.hidden = false; });
+  const uit = [];
+  rijen.forEach(rij => rij.querySelectorAll('*').forEach(el => {
+    const eigen = [...el.childNodes].filter(n => n.nodeType === 3).map(n => n.textContent).join('');
+    if (!/[$€]\s?[\d.,]*\d/.test(eigen) || !el.getClientRects().length) return;
+    uit.push({ t: eigen.trim().slice(0, 30), gemaskeerd: !!el.closest('.mask') && getComputedStyle(el.closest('.mask')).filter.includes('blur') });
+  }));
+  rijen.forEach(r => { r.hidden = true; });
+  return uit;
+};
 
-  await page.goto(FILE_URL,{waitUntil:"networkidle"});
-  await page.waitForFunction(()=>/Dashboard/i.test(document.body.innerText),{timeout:15000});
-  await page.waitForTimeout(1500);
+(async () => {
+  const b = await chromium.launch(); const { p, errs } = await H.openJournal(b);
+  await H.seed(p, DATA);
 
-  // Topbar 👁-knop bestaat met aria-label
-  const btnLocator=page.locator('button[aria-label="Verberg bedragen"]');
-  await expect(btnLocator).toHaveCount(1);
+  for (const pg of ['dashboard', 'trades']) {
+    await H.go(p, pg);
+    const uit = await p.evaluate(BEDRAGEN);
+    ok(`${pg}, privacy uit: bedragen staan leesbaar in beeld (${uit.length})`, uit.length >= 2 && uit.every(x => !x.gemaskeerd), JSON.stringify(uit.filter(x => x.gemaskeerd).slice(0, 3)));
+  }
+  ok('balans rechtsboven toont het bedrag', await p.evaluate(() => /\d/.test(document.getElementById('balVal').textContent) && !getComputedStyle(document.getElementById('balVal')).filter.includes('blur')));
 
-  // Initial state: bedragen zichtbaar, geen masker
-  const before=await page.evaluate(()=>document.body.innerText);
-  expect(before).toContain("$");
-  expect(before).not.toContain("$***,**");
+  await p.click('#btnEye');
+  ok('oog-knop zet privacy aan (body.priv) en bewaart het', await p.evaluate(() => STATE.priv && document.body.classList.contains('priv') && JSON.parse(localStorage.getItem('sj_state')).priv === true));
+  // Elke pagina met geldbedragen, plus het uitklapdetail van een trade en het formulier; licht én donker.
+  for (const thema of ['light', 'dark']) {
+    await p.evaluate(t => setTheme(t), thema);
+    for (const pg of ['dashboard', 'trades', 'analytics', 'tendencies', 'kalender', 'review']) {
+      await H.go(p, pg);
+      const uit = await p.evaluate(BEDRAGEN), open = uit.filter(x => !x.gemaskeerd);
+      if (['dashboard', 'trades', 'analytics'].includes(pg)) ok(`${thema}, ${pg}: er staan bedragen in beeld (anders zegt de check niets)`, uit.length >= 2, String(uit.length));
+      ok(`${thema}, ${pg}, privacy aan: elk bedrag is onleesbaar (${uit.length}, waarvan ${uit.filter(x => x.hbar).length} onder balkjes)`, open.length === 0, JSON.stringify(open.map(x => x.t).slice(0, 6)));
+    }
+    await H.go(p, 'trades');
+    const detail = await p.evaluate(BEDRAGEN_DETAIL);
+    ok(`${thema}, trade-detail (uitklaprij), privacy aan: elk bedrag is onleesbaar (${detail.length})`, detail.length >= 1 && detail.every(x => x.gemaskeerd), JSON.stringify(detail.filter(x => !x.gemaskeerd).map(x => x.t).slice(0, 6)));
+    await p.evaluate(() => openForm(T.find(t => +t.pnl > 0).id));
+    await p.waitForFunction(() => document.getElementById('modal').classList.contains('on'));
+    const form = await p.evaluate(BEDRAGEN, '#modal *');
+    ok(`${thema}, trade-formulier, privacy aan: elk bedrag in tekst is onleesbaar (${form.length})`, form.length >= 1 && form.every(x => x.gemaskeerd), JSON.stringify(form.filter(x => !x.gemaskeerd).map(x => x.t).slice(0, 6)));
+    await p.evaluate(() => closeForm());
+  }
+  await p.evaluate(() => setTheme('light'));
+  ok('balans rechtsboven is onleesbaar', await p.evaluate(() => getComputedStyle(document.getElementById('balVal')).filter.includes('blur')));
 
-  // DOM-click via .click() omdat Playwright's page.click() niet propageert naar
-  // React's onClick in deze setup (bekend Playwright+React gedrag op file:// origin).
-  await page.evaluate(()=>document.querySelector('button[aria-label="Verberg bedragen"]').click());
-  await page.waitForTimeout(600);
+  await H.reload(p);
+  ok('na herladen staat privacy nog aan', await p.evaluate(() => STATE.priv && document.body.classList.contains('priv')));
 
-  const persist=await page.evaluate(()=>localStorage.getItem("tj_privacy_mode"));
-  expect(persist).toBe("1");
-  const after=await page.evaluate(()=>document.body.innerText);
-  expect(after).toContain("$***,**");
+  await p.click('#btnEye');
+  await H.go(p, 'dashboard');
+  const terug = await p.evaluate(BEDRAGEN);
+  ok('uitzetten: alles weer leesbaar', !(await p.evaluate(() => STATE.priv)) && terug.length >= 2 && terug.every(x => !x.gemaskeerd), JSON.stringify(terug.filter(x => x.gemaskeerd).slice(0, 3)));
 
-  // Toggle terug
-  await page.evaluate(()=>document.querySelector('button[aria-label="Toon bedragen"]').click());
-  await page.waitForTimeout(600);
-  const persistOff=await page.evaluate(()=>localStorage.getItem("tj_privacy_mode"));
-  expect(persistOff).toBe("0");
-  const restored=await page.evaluate(()=>document.body.innerText);
-  expect(restored).not.toContain("$***,**");
-});
+  ok('geen JS-fouten', errs.length === 0, [...new Set(errs)].slice(0, 3).join(' | '));
+  await b.close();
+  console.log(`\n=== Privacy-modus: ${pass}/${pass + fail} ===`);
+  process.exit(fail ? 1 : 0);
+})().catch(e => { console.error(e); process.exit(1); });

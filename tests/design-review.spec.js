@@ -1,118 +1,58 @@
-// Comprehensive multi-screen design-review spec.
+// Design-review: pixel-diff van de belangrijkste schermen in licht en donker, tegen een
+// vastgelegde baseline. Thema-bugs zijn historisch onze grootste regressiecategorie (CLAUDE.md);
+// dit is het vangnet daarvoor. Staat in de uitsluitlijst van run-all-sj.js (eigen, tragere poort):
+//   node tests/design-review.spec.js
 //
-// Loops 6 thema's × 3 schermen (Dashboard / Trades / Instellingen) = 18 screenshots,
-// alle gevoed met dezelfde Blofin-fixture (16 trades, 1 partial) zodat we niet alleen
-// de empty-state zien.
+// Zelfde data en vaste klok bij elke run, zodat alleen een echte UI-wijziging verschil geeft.
+// Screenshots: tests/screenshots/design-review/<thema>-<scherm>.png
+// Baseline:    tests/screenshots/baseline/design-review/<thema>-<scherm>.png
+// Baseline vastleggen of bijwerken ALLEEN na een bewuste UI-keuze (CLAUDE.md):
+//   cp tests/screenshots/design-review/*.png tests/screenshots/baseline/design-review/
+// Zonder baseline meldt de spec "overgeslagen" (⏭️ in de runner), niet groen.
 //
-// Output: tests/screenshots/design-review/<theme>-<screen>.png
-// Baseline: tests/screenshots/baseline/design-review/<theme>-<screen>.png
-//
-// Voor pre-commit smoke gebruik tests/themes.spec.js (sneller, alleen Dashboard).
-const { test, expect } = require('@playwright/test');
-const path = require('path');
-const fs = require('fs');
+// Herschreven in T2 (24-10-2026): de oude spec liep zes thema's van de oude app af; die
+// baselines zijn weggehaald.
+const { chromium } = require('playwright');
+const fs = require('fs'); const path = require('path');
+const H = require('./helpers/dov-page');
+const { volledig } = require('./helpers/dov-datasets');
 const { diffPng } = require('./helpers/diff-baseline');
+let pass = 0, fail = 0, zonder = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  ✓ ' + n)) : (fail++, console.log('  ✗ ' + n + (e ? ' → ' + e : ''))); };
 
-const APP_PATH = path.resolve(__dirname, '../work/tradejournal.html');
-const FILE_URL = 'file:///' + APP_PATH.replace(/\\/g, '/');
-const FIXTURE = JSON.parse(
-  fs.readFileSync(path.join(__dirname, 'fixtures/blofin-partial-state.json'), 'utf8')
-);
 const SHOT_DIR = path.join(__dirname, 'screenshots/design-review');
-const BASELINE_DIR = path.join(__dirname, 'screenshots/baseline/design-review');
+const BASE_DIR = path.join(__dirname, 'screenshots/baseline/design-review');
 const DIFF_DIR = path.join(__dirname, 'screenshots/diff/design-review');
-
-// Pixel-diff regressie threshold. Daadwerkelijke baseline-drift door dynamic
-// content (live tickers, timestamps, mindset-quote rotatie) zit op 0.2-0.7%.
-// 2% geeft ~3x veiligheidsmarge en vangt echte regressies (kleur-shifts,
-// layout-wijzigingen) zonder false positives op rotatie.
+// Meer dan 2% gewijzigde pixels = regressie (anti-aliasing op tekst blijft daar ruim onder).
 const MAX_DIFF_RATIO = 0.02;
+const KLOK = new Date('2026-05-20T12:00:00+02:00');   // na de laatste trade in de dataset
+const SCHERMEN = ['dashboard', 'trades', 'analytics', 'playbook', 'instellingen'];
+const DATA = (() => { const d = volledig(); delete d.conns; delete d.settings; d.sync = { auto: false, interval: '30m' }; return d; })();
 
-const THEMES = ['sync', 'classic', 'aurora', 'light', 'parchment', 'daylight'];
-const SCREENS = [
-  { route: 'dashboard', label: 'dashboard' },
-  { route: 'trades',    label: 'trades' },
-  { route: 'accounts',  label: 'accounts' }, // = Instellingen
-  { route: 'playbook',  label: 'playbook' },
-  { route: 'analytics', label: 'analytics' },
-];
+(async () => {
+  [SHOT_DIR, DIFF_DIR].forEach(d => fs.mkdirSync(d, { recursive: true }));
+  const b = await chromium.launch();
+  const { p, errs } = await H.openJournal(b, { klok: KLOK });
+  await H.seed(p, DATA);
+  // backup-banner en update-banner hangen af van opslag-tijdstempels; vast zetten
+  await p.evaluate(() => { BK.ts = Date.now(); BK.snooze = 0; persistBK(); });
 
-test.describe('Design-review (multi-screen × multi-theme)', () => {
-  for (const theme of THEMES) {
-    for (const screen of SCREENS) {
-      test(`${theme} / ${screen.label}`, async ({ page }) => {
-        const errors = [];
-        page.on('pageerror', e => errors.push(e.message));
-        page.on('console', m => {
-          if (m.type() !== 'error') return;
-          const text = m.text();
-          if (/\[BABEL\] Note:/.test(text)) return;
-          if (/Failed to load resource.*favicon/.test(text)) return;
-          errors.push('[console] ' + text);
-        });
-
-        // Seed fixture + theme + skip welcome + skip milestones (anders blokkeert
-        // 10-trades / first-win modal de screenshot)
-        await page.addInitScript(({ fx, t, route }) => {
-          if (fx.trades) localStorage.setItem('tj_trades', JSON.stringify(fx.trades));
-          if (fx.config) localStorage.setItem('tj_config', JSON.stringify(fx.config));
-          if (fx.accounts) localStorage.setItem('tj_accounts', JSON.stringify(fx.accounts));
-          if (fx.playbooks) localStorage.setItem('tj_playbooks', JSON.stringify(fx.playbooks));
-          // Theme override
-          const cfg = JSON.parse(localStorage.getItem('tj_config') || '{}');
-          cfg.theme = t;
-          localStorage.setItem('tj_config', JSON.stringify(cfg));
-          localStorage.setItem('tj_welcomed', '1');
-          // Mark alle milestones als gezien — voorkom popup-blocker over fixture-data
-          localStorage.setItem('tj_milestones_seen', JSON.stringify([
-            'trades-10','trades-50','trades-100','trades-250','trades-500','trades-1000',
-            'win-streak-5','win-streak-10','first-win',
-          ]));
-          // Initial route — set hash before mount
-          window.location.hash = `#/${route}`;
-        }, { fx: FIXTURE, t: theme, route: screen.route });
-
-        await page.goto(FILE_URL, { waitUntil: 'networkidle' });
-        await page.waitForFunction(
-          () => /Dashboard/i.test(document.body.innerText),
-          { timeout: 15_000 }
-        );
-        // Settle: theme effect + route navigation
-        await page.waitForTimeout(1200);
-
-        // Verify body theme class
-        const className = await page.evaluate(() => document.body.className);
-        expect(className, `body.className voor ${theme}`).toContain(`theme-${theme}`);
-
-        // Verify route navigated
-        const currentHash = await page.evaluate(() => window.location.hash);
-        expect(currentHash, `route voor ${screen.label}`).toContain(screen.route);
-
-        // Geen JS-errors
-        expect(errors, `Geen JS-errors voor ${theme}/${screen.label}`).toHaveLength(0);
-
-        // Screenshot
-        const shotPath = path.join(SHOT_DIR, `${theme}-${screen.label}.png`);
-        await page.screenshot({ path: shotPath, fullPage: false });
-
-        // Pixel-diff vs baseline (soft threshold — dynamic content tolereren)
-        const baselinePath = path.join(BASELINE_DIR, `${theme}-${screen.label}.png`);
-        const diffPath = path.join(DIFF_DIR, `${theme}-${screen.label}.diff.png`);
-        const result = await diffPng(shotPath, baselinePath, { diffPath });
-
-        if (result.missingBaseline) {
-          console.log(`  [diff] ${theme}/${screen.label}: BASELINE MISSING — kopieer huidige als baseline`);
-        } else if (result.sizeMismatch) {
-          throw new Error(`${theme}/${screen.label}: viewport-size mismatch met baseline`);
-        } else {
-          const pct = (result.ratio * 100).toFixed(2);
-          console.log(`  [diff] ${theme}/${screen.label}: ${pct}% pixels gewijzigd (${result.numDiff}/${result.total})`);
-          expect(
-            result.ratio,
-            `Pixel-diff voor ${theme}/${screen.label} = ${pct}% — overschrijdt drempel ${(MAX_DIFF_RATIO*100).toFixed(0)}%. Bekijk diff: ${diffPath}`
-          ).toBeLessThan(MAX_DIFF_RATIO);
-        }
-      });
+  for (const theme of ['light', 'dark']) {
+    console.log(`─── ${theme} ───`);
+    await p.evaluate(t => setTheme(t), theme);
+    await p.waitForTimeout(500);   // body heeft transition: background .35s
+    for (const scherm of SCHERMEN) {
+      await H.go(p, scherm);
+      await H.stil(p); await p.waitForTimeout(400);   // grafieken mounten na de render
+      const naam = `${theme}-${scherm}`;
+      const shot = path.join(SHOT_DIR, naam + '.png');
+      await p.screenshot({ path: shot });
+      const r = await diffPng(shot, path.join(BASE_DIR, naam + '.png'), { diffPath: path.join(DIFF_DIR, naam + '.diff.png') });
+      if (r.missingBaseline) { zonder++; console.log(`  ⏭ ${naam}: geen baseline`); continue; }
+      ok(`${naam}: ${(r.ratio * 100).toFixed(2)}% gewijzigd (max ${MAX_DIFF_RATIO * 100}%)`, !r.sizeMismatch && r.ratio < MAX_DIFF_RATIO, r.sizeMismatch ? 'ander formaat dan de baseline' : 'zie ' + path.relative(process.cwd(), path.join(DIFF_DIR, naam + '.diff.png')));
     }
   }
-});
+  ok('geen JS-fouten', errs.length === 0, [...new Set(errs)].slice(0, 3).join(' | '));
+  await b.close();
+  console.log(`\n=== Design-review: ${pass}/${pass + fail}${zonder ? ` · ${zonder} zonder baseline, overgeslagen` : ''} ===`);
+  process.exit(fail ? 1 : 0);
+})().catch(e => { console.error(e); process.exit(1); });

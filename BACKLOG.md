@@ -39,6 +39,15 @@ elke wijziging eindigt met `node tests/run-release.js` groen.
 | **B3** | Controleren: telt dezelfde positie dubbel via CSV én API? | 2 | S | — |
 | **W5** | Worker v25: `okxHost` alleen uit een vaste lijst (lek sinds v19) en de ongebruikte `orders`-verzoeken uit `algos` weg (review 24-10) | 1 | XS | — |
 | **B6** | OKX: waarschuwing bij een onbekende contractsoort in het vangnet; SL koppelen op het exacte contract i.p.v. de munt (review 24-10) | 3 | XS | — |
+| **B9** | Tussen 00:00 en 02:00 krijgt een nieuwe trade, storting of de Kalender de datum van gisteren (T2) | 1 | XS | — |
+| **B7** | Privacy-modus laat bedragen leesbaar: regel onder de balkjes en een rij Analytics-cijfers (T2) | 2 | S | — |
+| **B10** | Import: een bestand met één leeg object telt als 1 trade en biedt "vervangen" aan (T2) — 🔨 **cloud-sessie, branch `fix-import-leeg-object`** | 2 | XS | — |
+| **F11** | Funded modus: prop-firm-challenges apart van je eigen geld, wél in de strategie-analyse — **eerst een demo** | 2 | L | demo |
+| **F12** | Export en back-up: zelf kiezen of je API-sleutels meegaan, met een duidelijke melding bovenaan | 1 | S | — |
+| **F13** | AI-coach: echte chat-coach met eigen sleutel (8 besluiten 25-10) | 2 | M + M | — |
+| **W6** | Discord-poll "Gebruik je de AI-coach? Zo nee, waarom niet?" — eind januari 2027 | 3 | XS (Denny) | F13 live |
+| **B8** | Toegankelijkheid trade-formulier: 14 velden zonder label, gesloten formulier blijft vindbaar (T2) | 3 | S | — |
+| **B11** | Tendencies: kruis-analyse zonder playbooks toont een lege tabel zonder lege staat (T2) | 3 | XS | C1 |
 | ~~B5~~ | ~~P&L-percentages van −107% en 2.834% bij oudere trades~~ — ✅ **gedaan in v1.11** | — | — | — |
 | **T2** | Oude-app-specs herschrijven of schrappen | 3 | L | besluit AI-coach (deels) |
 | **C2** | CSV-parser per exchange opsplitsen | 3 | M–L | T1 |
@@ -260,6 +269,73 @@ met een risicotabel. Hergebruik de gedeelde regels uit F3: `stopBron`, het formu
 
 ---
 
+### F11 · Funded modus: prop-firm-challenges — prio 2 · L
+
+**Waarom** (Denny, 24-10-2026). Wie een challenge bij FTMO of Breakout handelt, handelt met geld van de firm; de winst
+is pas van jou bij een uitbetaling. Dat mag je eigen balans, P&L en %-basis niet scheeftrekken, maar de trades
+moeten wél meetellen in strategie- en playbook-analyse. Per firm kun je meerdere challenges hebben, die je haalt,
+faalt of later kwijtraakt. Na een CSV-import kiest de journal het account en is hij slim over challenges.
+
+**Nu al mis:** FTMO-trades komen binnen als `ftmo`, dat geen account in `EXCHANGES` is, en tellen toch mee in alle
+P&L-sommen en in `_pctBases()`. Funded winst verschuift dus nu al het percentage van je eigen trades.
+
+**Onderzoek:** `docs/research-funded-modus-2026-10-24.md` (branch `research-funded-modus`) — 13 journals en 4 firms
+vergeleken; advies optie B (funded-vlag op het account + één geld-helper, daarna challenges met fases, een status
+die je zelf zet en een eigen boekhouding voor fees en uitbetalingen; geen automatische breach).
+
+**Plan.** Eerst een demo (`demos/funded-demo.html`, 2–3 varianten) om het ontwerp met Denny rond te krijgen, daarna
+pas het datamodel. Nodig van Denny: een MT5-rapport (XLSX) en een MetriX-CSV van hetzelfde FTMO-account.
+
+---
+
+### F12 · Export en back-up: zelf kiezen of je API-sleutels meegaan — prio 1 · S
+
+**Waarom** (onderzoek AI-coach, besluit Denny 25-10-2026). Een export of back-up bevat nu standaard de
+exchange-sleutels (Blofin, OKX, Kraken). Wie dat bestand ergens neerzet of doorstuurt, geeft toegang tot zijn
+exchange-account. De sleutel van de AI-coach gaat volgens de nieuwe regel nooit mee; voor exchange-sleutels kiest
+de gebruiker zelf.
+
+**Wat.** Bij exporteren, bij een handmatige back-up en bij "Data overzetten" staat **bovenaan** een duidelijke melding
+met een keuze: met of zonder API-sleutels, met in gewone taal wat "met" betekent (iedereen met dit bestand kan je
+exchange-account gebruiken) en wanneer je dat wilt (verhuizen naar een andere browser of pc). Geen stille keuze: de
+gebruiker ziet de keuze voor het bestand wordt gemaakt. Een bestand zonder sleutels importeert gewoon; de koppelingen
+vragen daarna om de sleutels. De automatische back-up gaat altijd zonder sleutels. Raakt alle exchanges via de
+gedeelde export (`DOV_PARTS` `conns`): toets elke exchange en een oude back-up mét sleutels.
+
+**Klaar als** de keuze er op alle drie de plekken staat, de spec bewijst dat "zonder" geen enkele sleutel in het
+bestand laat (ook niet in `diagReport`), en "met" na import weer werkende koppelingen geeft.
+
+---
+
+### F13 · AI-coach: echte chat-coach met eigen sleutel — prio 2 · M + M (stap 0–2), daarna S per stap
+
+**Besluiten Denny, 25-10-2026** (onderzoek: `docs/research-ai-coach-2026-10-25.md`, branch `research-ai-coach`):
+1. De coach blijft, als echte chat-coach met de **eigen Anthropic-sleutel** van de gebruiker. Eén plek in de app;
+   niets op Dashboard of Analytics (de journal blijft clean).
+2. Sleutel lokaal, **nooit** in export, back-up of "Data overzetten"; keuze "alleen deze sessie" (regel in CLAUDE.md).
+3. **Sonnet 5.5 standaard**, Haiku 5.5 als keuze in Instellingen.
+4. **Notities gaan standaard mee**; bij het instellen één eerlijke regel daarover, uitzetten in Instellingen, en
+   onder elk antwoord "Wat is er verstuurd?".
+5. **"Vraag de coach" bij een trade**: klein knopje in het trade-detail, alleen zichtbaar met sleutel; opent de
+   coach-pagina met die trade klaargezet.
+6. **Demo-coach eruit** (de regex-antwoorden, "Hoi Denny" voor elk lid, het lek in bedragen verbergen). Zonder
+   sleutel: één gemarkeerd voorbeeldgesprek + stappenplan in drie stappen (sleutel maken, limiet instellen,
+   plakken) met kostenindicatie.
+7. **Niet tellen** in de app. Gebruik meten = Discord-poll eind januari 2027 (W6).
+8. Bij de release: **Discord-post met screenshots** van de Anthropic-console (sleutel + maandlimiet), gelinkt vanuit
+   het stappenplan, en een **duidelijke FAQ-uitleg** (wat is de coach, wat kost het, wat wordt er verstuurd, hoe
+   zet ik hem uit).
+
+**Ontwerpprincipe: de app rekent, het model leest.** Cijfers komen uit `coachPakket()` (bestaande helpers,
+`gemR`/`tradeROrNull`, nooit `t.r`); de systeemprompt verbiedt eigen berekeningen.
+
+**Bouwvolgorde** (onderzoek §8): 0 · coach in het menu van de standaardweergave, demo-coach eruit; 1 · `coachPakket()`
+als pure functie, getest zonder sleutel; 2 · sleutel + één echte vraag (minor-release); 3 · foutstaten + streaming;
+4 · verbruik en maandlimiet; 5 · vier vaste vragen en weekreview; 6 · tools; 7 · pre-trade-check; 8 · oude
+`aicoach-*`-specs vervangen.
+
+---
+
 ## Bugs
 
 ### B1 · Kraken: lopende positie zonder partial en zonder stappen — prio 1 · M
@@ -345,6 +421,31 @@ basis van 23-03 is $309,58 (−0,96%), geen basis meer onder nul, hoogste percen
 **Wat blijft:** stortingen en opnames ziet de journal niet. Wie geld bijstort of opneemt, krijgt voor de periode
 daarvóór een basis die zoveel te hoog of te laag is. Zie het idee "stortingen" onder *Ideeën*. Het vaste
 referentiebedrag (Instellingen → Accounts) blijft de uitwijk.
+
+### B7–B11 · Gevonden bij T2 (24-10-2026)
+
+De herschreven specs lieten deze bugs zien. Elke spec heeft een `FIXME`-check die de bug meldt zonder rood te
+worden, en die zich meldt zodra de bug weg is. Volledige beschrijving: `docs/plan-t2-specs.md`, "Gevonden bugs"
+(branch `t2-specs`). Per bug: eerst de FIXME omzetten in een echte check (rood), dan de fix.
+
+- **B9 · Datum na middernacht — prio 1 · XS.** Tussen 00:00 en 02:00 NL-tijd is "vandaag" de UTC-dag op drie
+  plekken: een nieuwe trade (`openForm(null)` via `toISOString().slice(0,10)`), de startmaand van de Kalender
+  (`STATE.calMonth`) en een storting/opname op een handmatig account (`addAcctTx`, ook `addManual` en de
+  oude-balans-migratie); `_today` gebruikt hetzelfde patroon. `localDateISO()` bestaat al en klopt. Spec:
+  `integrity-edge`.
+- **B7 · Privacy-modus — prio 2 · S.** De regel "N trades · netto …" onder de balkjes (`hbars`: dashboard en
+  Analytics, en in de bron ook Tendencies) mist de `mask`-class. In Analytics blijven ook max drawdown, netto per
+  groep, gem./grootste winst en verlies en verwachting per trade leesbaar. Spec: `privacy-mode`.
+- **B10 · Import van een leeg object — prio 2 · XS.** `[{foo:'bar'},1,'x',null]` telt als 1 trade en "vervangen"
+  staat voorgeselecteerd (er is wel een veiligheidskopie). Een array met alleen rommel geeft een nette melding, maar
+  via een gevangen TypeError in `looksOldExport`. Spec: `integrity-edge`. 🔨 Cloud-sessie bezig (25-10).
+- **B8 · Toegankelijkheid formulier — prio 3 · S.** 14 velden van het trade-formulier zonder gekoppeld label (axe
+  `label`, critical), en `#modal` gaat dicht met alleen `opacity:0`, dus de velden blijven vindbaar voor een
+  schermlezer. Spec: `a11y`.
+- **B11 · Lege kruis-analyse — prio 3 · XS.** Zonder playbooks toont de kruis-analyse in Tendencies alleen een
+  kopregel. Lege staat via `emptyState()` (C1). Spec: `tendencies-untagged`.
+
+---
 
 ## Tests
 
@@ -636,7 +737,7 @@ De uitgewerkte teksten van deze ideeën staan in het [archief](docs/backlog-arch
 
 | Besluit | Waarom het ertoe doet |
 |---|---|
-| **Blijft de AI-coach?** | Blokkeert de AI-coach-specs in T2 en de drie AI-ideeën. De enquête zei "heroverwegen". |
+| ~~**Blijft de AI-coach?**~~ — ✅ **ja, als echte chat-coach met eigen sleutel** (Denny, 25-10-2026). Eén plek, niets op Dashboard of Analytics. Eigen sleutel lokaal, nooit in export/back-up. Onderzoek en bouwvolgorde: `docs/research-ai-coach-2026-10-25.md` (branch `research-ai-coach`). | De oude `aicoach-*`-specs worden vervangen door specs voor de nieuwe coach (stap 8 van het onderzoek). |
 | Welke exchanges krijgen prioriteit? | Bepaalt of er een zevende exchange komt, en daarmee de urgentie van C2 |
 | Backend ja of nee? | Pas relevant als API-sleutels uit de browser moeten, of bij cloud-sync |
 | Distributiemodel | Gratis/donatie, of iets anders |
