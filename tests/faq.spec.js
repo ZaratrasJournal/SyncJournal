@@ -1,4 +1,4 @@
-// Borgt de vernieuwde FAQ-pagina: 8 categorieën beginner→gevorderd, live zoekveld
+// Borgt de vernieuwde FAQ-pagina: 9 categorieën (sinds 25-10-2026 ook AI-coach) beginner→gevorderd, live zoekveld
 // (filtert vraag+antwoord, opent matches, verbergt lege categorieën), niets-gevonden-melding.
 const { chromium } = require('playwright'); const path = require('path');
 let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  ✓ ' + n)) : (fail++, console.log('  ✗ ' + n + (e ? ' → ' + e : ''))); };
@@ -15,7 +15,7 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
   ok('boot zonder fout', errs.length === 0, errs.join(' | '));
 
   console.log('─── Structuur ───');
-  ok('8 categorieën', await p.evaluate(() => document.querySelectorAll('.faqcat').length === 8));
+  ok('9 categorieën, ook AI-coach', await p.evaluate(() => document.querySelectorAll('.faqcat').length === 9 && [...document.querySelectorAll('.faqcat-h')].some(h => /AI-coach/.test(h.textContent))));
   ok('≥ 30 vragen totaal', await p.evaluate(() => document.querySelectorAll('details.faq').length >= 30));
   ok('volgorde beginner → gevorderd (Aan de slag eerst, problemen laatst)', await p.evaluate(() => { const h = [...document.querySelectorAll('.faqcat-h')].map(x => x.textContent); return /Aan de slag/.test(h[0]) && /problemen/i.test(h[h.length - 1]); }));
   ok('nieuwe features gedekt (coach-pakket, TradingView, edge/lek, SQN)', await p.evaluate(() => { const t = document.querySelector('.faqwrap').textContent; return /coach-pakket/i.test(t) && /TradingView-link/i.test(t) && /lek/.test(t) && /SQN/.test(t); }));

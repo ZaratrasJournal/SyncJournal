@@ -18,6 +18,22 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ## [Unreleased]
 
+### Toegevoegd
+- **Een echte AI-coach, met je eigen Anthropic-sleutel.** Op de pagina AI-coach plak je je sleutel en chat je met de
+  coach over je trades: "waar lek ik geld?", "review mijn week", "waar zit mijn edge?". De journal rekent alle cijfers
+  uit en geeft ze aan de coach; de coach rekent zelf niets, dus zijn cijfers kloppen met wat je in Analytics ziet. Hij
+  kijkt naar de trades die je filter laat zien. Jij betaalt Anthropic direct: ongeveer 30 cent tot een dollar per maand.
+  Op je Dashboard en in Analytics verschijnt niets van de coach.
+- **Je sleutel blijft op je apparaat.** Hij gaat nooit mee in een export, een back-up of Data overzetten. Op een gedeelde
+  computer kies je "Alleen voor deze sessie onthouden"; dan is hij weg als je het tabblad sluit.
+- **Onder elk antwoord "Wat is er verstuurd?"** met precies wat de coach kreeg. Je cijfers en notities gaan mee; in
+  Instellingen → AI-coach zet je notities of bedragen uit, en kies je tussen Sonnet 5.5 (standaard) en het zuinigere
+  Haiku 5.5. Daar staat ook "Vergeet sleutel".
+- **Vraag de coach over één trade.** In Review staat bij een trade een 🤖-knopje (alleen als je coach gekoppeld is). Dat
+  opent de coach met die trade klaargezet.
+- **FAQ over de AI-coach:** wat het is, wat je nodig hebt, wat het kost, wat er verstuurd wordt, waar je sleutel staat en
+  hoe je hem uitzet.
+
 ### Gewijzigd
 - **De AI-coach staat nu ook in het menu van de standaardweergave.** Tot nu toe zag je hem alleen in de weergave
   "Alles".
