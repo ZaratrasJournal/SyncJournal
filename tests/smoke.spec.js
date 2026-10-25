@@ -28,7 +28,7 @@ const TRADE = { id: 1, date: '2026-10-01', time: '10:00', pair: 'BTC/USDT', dir:
 
   await H.go(p, 'trades');
   const lijst = await p.evaluate(() => ({ eerste: !!document.querySelector('#main .empty-h') && document.querySelector('#main .empty-h').textContent, rijen: document.querySelectorAll('#main tbody tr').length }));
-  ok('Trades zonder data: de "begin je journal"-staat, niet "geen trades gevonden"', /Begin je journal/.test(lijst.eerste) && lijst.rijen === 0, JSON.stringify(lijst));
+  ok('Trades zonder data: de "nog geen trades"-staat, niet "geen trades in deze periode"', /^Nog geen trades$/.test(lijst.eerste) && lijst.rijen === 0, JSON.stringify(lijst));
 
   console.log('─── Instellingen en versie ───');
   const inst = await p.evaluate(() => {

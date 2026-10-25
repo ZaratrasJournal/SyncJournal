@@ -16,6 +16,28 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [Unreleased]
+
+### Gewijzigd
+- **Een lege pagina zegt nu wat er ontbreekt en wat je kunt doen, overal op dezelfde manier.** Er zijn twee
+  soorten meldingen. Heb je nog geen trades, dan staat er "Nog geen trades" met een knop naar Instellingen →
+  Accounts (sync of CSV) of om een trade met de hand in te vullen. Heb je wél trades maar laat je periode of
+  filter er geen over, dan staat er "Geen trades in deze periode" met de knop **Filter uitzetten**. Heb je
+  alleen oefentrades, dan laat die knop die ook meteen zien.
+- **Geen leeg assenstelsel meer.** Het dashboard tekende bij nul trades een equity-curve met één nulpunt en
+  verder niets, dat leek een fout. Nu staat er een melding. Dat geldt ook voor de andere grafieken: Cumulatieve
+  R zonder stop-loss, grades, MFE, geplande R:R, fouten, duur, en een radar met minder dan drie waarden.
+- **Met één trade tekent de equity-curve een lijn** vanaf nul, in plaats van een los punt dat je niet ziet.
+  Een maand die precies op nul eindigt, krijgt in Maand-P&L een dun streepje in plaats van niets.
+- **Kalender:** een maand zonder trades zegt dat, met een knop naar je laatste maand met trades.
+- **Trades:** een zoekopdracht zonder resultaat en een leeg tabblad (Open of Gesloten) hebben elk een eigen
+  melding.
+- Ook de kleine meldingen in lijsten (handmatige accounts, mutaties, tags, prullenbak, veiligheidskopieën,
+  sync-geschiedenis, criteria in de playbook-editor, emoties in het trade-formulier) zien er nu hetzelfde uit
+  en noemen de volgende stap. Mori gebruikt dezelfde meldingen.
+
+---
+
 ## [v1.16.1] — 2026-10-25
 
 ### Gewijzigd
