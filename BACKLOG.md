@@ -43,6 +43,7 @@ elke wijziging eindigt met `node tests/run-release.js` groen.
 | **B7** | Privacy-modus laat bedragen leesbaar: regel onder de balkjes en een rij Analytics-cijfers (T2) | 2 | S | — |
 | **B10** | Import: een bestand met één leeg object telt als 1 trade en biedt "vervangen" aan (T2) — 🔨 **cloud-sessie, branch `fix-import-leeg-object`** | 2 | XS | — |
 | **F11** | Funded modus: prop-firm-challenges apart van je eigen geld, wél in de strategie-analyse — **eerst een demo** | 2 | L | demo |
+| **F12** | Export en back-up: zelf kiezen of je API-sleutels meegaan, met een duidelijke melding bovenaan | 1 | S | — |
 | **B8** | Toegankelijkheid trade-formulier: 14 velden zonder label, gesloten formulier blijft vindbaar (T2) | 3 | S | — |
 | **B11** | Tendencies: kruis-analyse zonder playbooks toont een lege tabel zonder lege staat (T2) | 3 | XS | C1 |
 | ~~B5~~ | ~~P&L-percentages van −107% en 2.834% bij oudere trades~~ — ✅ **gedaan in v1.11** | — | — | — |
@@ -282,6 +283,25 @@ die je zelf zet en een eigen boekhouding voor fees en uitbetalingen; geen automa
 
 **Plan.** Eerst een demo (`demos/funded-demo.html`, 2–3 varianten) om het ontwerp met Denny rond te krijgen, daarna
 pas het datamodel. Nodig van Denny: een MT5-rapport (XLSX) en een MetriX-CSV van hetzelfde FTMO-account.
+
+---
+
+### F12 · Export en back-up: zelf kiezen of je API-sleutels meegaan — prio 1 · S
+
+**Waarom** (onderzoek AI-coach, besluit Denny 25-10-2026). Een export of back-up bevat nu standaard de
+exchange-sleutels (Blofin, OKX, Kraken). Wie dat bestand ergens neerzet of doorstuurt, geeft toegang tot zijn
+exchange-account. De sleutel van de AI-coach gaat volgens de nieuwe regel nooit mee; voor exchange-sleutels kiest
+de gebruiker zelf.
+
+**Wat.** Bij exporteren, bij een handmatige back-up en bij "Data overzetten" staat **bovenaan** een duidelijke melding
+met een keuze: met of zonder API-sleutels, met in gewone taal wat "met" betekent (iedereen met dit bestand kan je
+exchange-account gebruiken) en wanneer je dat wilt (verhuizen naar een andere browser of pc). Geen stille keuze: de
+gebruiker ziet de keuze voor het bestand wordt gemaakt. Een bestand zonder sleutels importeert gewoon; de koppelingen
+vragen daarna om de sleutels. De automatische back-up gaat altijd zonder sleutels. Raakt alle exchanges via de
+gedeelde export (`DOV_PARTS` `conns`): toets elke exchange en een oude back-up mét sleutels.
+
+**Klaar als** de keuze er op alle drie de plekken staat, de spec bewijst dat "zonder" geen enkele sleutel in het
+bestand laat (ook niet in `diagReport`), en "met" na import weer werkende koppelingen geeft.
 
 ---
 
