@@ -1,6 +1,6 @@
 # Funded modus: één eenvoudig ontwerp
 
-**Datum**: 25-10-2026 (derde versie) · **Demo**: [demos/funded-demo.html](../demos/funded-demo.html) · **Onderzoek**: branch
+**Datum**: 25-10-2026 (vierde versie) · **Demo**: [demos/funded-demo.html](../demos/funded-demo.html) · **Onderzoek**: branch
 `research-funded-modus`, `docs/research-funded-modus-2026-10-24.md`
 
 Open de demo via localhost. Bovenin kies je een toestand (Funded modus uit, aan maar leeg, lopende challenge, gehaald vóór en ná
@@ -30,6 +30,31 @@ trades op Blofin en Kraken. 38 trades, aug t/m okt.
 7. **Dashboard**: met de modus aan en "meetellen" uit staat er één compacte kaart *Funded* naast je eigen balans, met lopende
    challenges, actieve funded accounts, P&L van funded en het totaal uitbetaald. Met "meetellen" aan staat er één totaal, gemarkeerd
    als "incl. funded". **Analytics** heeft het filter eigen / funded / alles.
+
+## Weergave (versie 4)
+
+Versie 3 klopte inhoudelijk, maar Instellingen → Funded was slecht leesbaar: 6 à 7 gegevens per kaart, de status twee keer, en vier
+tellers erboven. Het model is hetzelfde gebleven; alleen de weergave is rustiger.
+
+- **Bovenaan twee getallen**: Funded P&L en Uitbetaald. De intro is één regel, en de uitleg bij elke schakelaar is één zin.
+  "Hoe telt het P&L-percentage?" blijft ingeklapt.
+- **Dichte kaart**: links de naam ("100k #2") met de firm klein en gedempt, daaronder één statuspil. Rechts één getal: de P&L groot in
+  groen of rood, met het P&L-% klein eronder. Verder alleen kleine labels waar ze iets betekenen: "funded" op een funded account,
+  "→ funded" op een omgezette challenge. Zonder trades staat er "–" met "nog geen trades".
+- **De statuspil** is ook de knop om de status te wijzigen. Klik je erop, dan opent een klein menu (bezig / gehaald / niet gehaald, of
+  actief / gestopt · eruit gezet / gestopt · zelf gestopt). Klik je erbuiten of druk je Esc, dan sluit het.
+- **Details na openklikken**, één kaart tegelijk: grootte, aantal trades, login(s), bij gestopt de reden, de koppeling ("uit challenge
+  100k #2" of "omgezet naar 100k #2"), de lijst met uitbetalingen met "Uitbetaling toevoegen" (alleen funded accounts), en bij een
+  gehaalde challenge die nog niet omgezet is "Omzetten naar funded account".
+- **Bovenaan staat wat loopt**, in één lijst: lopende challenges, gehaalde die nog omgezet moeten worden, en actieve funded accounts.
+  **Onder "Afgerond (n)"**, standaard ingeklapt: niet gehaald, gestopt, en challenges die al omgezet zijn.
+- **Cijfers** zoals in de app: bedragen in IBM Plex Mono (`.num`), "+$ 4.000" met centen pas onder de $ 100 (`eur()`/`eurS()`),
+  percentages als "+4,00%". Geen kadertjes om getallen.
+- **Knoppen onderaan**: één primaire knop "+ Challenge toevoegen", en "+ Funded account" als tekstlink voor wie al funded is zonder
+  challenge in de journal.
+- **Dashboard-kaart**: drie getallen. Funded P&L groot, daaronder "Uitbetaald" en het aantal lopende items.
+- Een funded account dat uit een challenge komt, heet nu gewoon zoals de challenge ("100k #2"). Het label "funded" maakt het
+  verschil; "· funded" in de naam zei hetzelfde nog een keer.
 
 ## Datamodel
 
@@ -107,7 +132,7 @@ Het verandert cijfers, dus het wordt een **minor**-release.
 | Aan, nog niets | Lege staat met "Challenge toevoegen". Op het Dashboard een kaart met dezelfde knop |
 | Lopende challenge | Breakout 25k #1, 4 trades, status bezig |
 | Gehaald, vóór omzetten | FTMO 100k #2 op gehaald, met de knop "Omzetten naar funded account". Nog geen funded account |
-| Gehaald, ná omzetten | De challenge wijst naar "100k #2 · funded", en het funded account wijst terug |
+| Gehaald, ná omzetten | De challenge staat onder Afgerond met het label "→ funded". Het funded account "100k #2" (label "funded") staat bovenaan, met in de details "uit challenge 100k #2" |
 | Niet gehaald | FTMO 100k #1, P&L −$ 10.400. De trades blijven in de analyse |
 | Funded + uitbetaling | $ 2.480 uitbetaald op 13-10, en "Uitbetaling toevoegen" |
 | Funded gestopt | Status gestopt, reden eruit gezet. De uitbetaling blijft staan |
@@ -133,11 +158,14 @@ Het verandert cijfers, dus het wordt een **minor**-release.
 - Eén bestand, geen build. Alleen de Google Fonts van de app worden van buiten geladen.
 - De kleuren komen uit de variabelen van de app. De enige letterlijke kleur zit in de ongewijzigd overgenomen app-regels `.btn.pri`
   en `.sw` (`#fff`, zoals in de app).
-- Funded modus, Funded meetellen, de toestand en het thema worden onthouden (localStorage `sj_demo_funded3_*`). Wat je in de demo
+- Funded modus, Funded meetellen, de toestand en het thema worden onthouden (localStorage `sj_demo_funded3_*`, dezelfde sleutels als versie 3). Wat je in de demo
   toevoegt, omzet of uitbetaalt, wordt niet onthouden.
 - De tabs Weergave, Tags, AI-coach, Data, Updates en Wissen zijn leeg; ze werken zoals in de app.
 - Gecontroleerd met Playwright, headless:
-  - elke toestand in licht en donker, op desktop en op 390px, plus het dashboard, het trade-formulier en de import;
+  - versie 4: Instellingen → Funded in elke toestand, met de kaart dicht en open, in licht en donker, op desktop en op 390px; ook
+    het statusmenu en het dashboard;
+  - de dichte kaart toont geen grootte, login of uitbetaling; er is steeds één kaart open; lopend en afgerond staan goed verdeeld;
+  - de status wijzigen via de pil werkt (ook gestopt met reden), en het menu sluit bij een klik erbuiten;
   - geen JS-fouten en geen horizontale scroll;
   - met de modus uit staat er op Dashboard, Trades, Analytics en Instellingen → Accounts nergens "funded" of "challenge";
   - omzetten maakt een gekoppeld funded account (firm en grootte overgenomen, de 10 trades blijven bij de challenge);
