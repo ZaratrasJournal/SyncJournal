@@ -16,7 +16,7 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
-## [Unreleased]
+## [v1.17.1] — 2026-10-25
 
 ### Gewijzigd
 - **Een lege pagina zegt nu wat er ontbreekt en wat je kunt doen, overal op dezelfde manier.** Er zijn twee
