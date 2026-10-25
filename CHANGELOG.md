@@ -16,10 +16,16 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
-## [Unreleased]
+## [v1.15.2] — 2026-10-25
 
 ### Toegevoegd
-- Links naar Morani op X, YouTube en moranitraden.nl: onderaan het menu, onderaan de FAQ en in de footer van syncjournal.nl.
+- **Links naar Morani** op X, YouTube en moranitraden.nl: klein onderaan het menu, onderaan de FAQ en in de footer van
+  syncjournal.nl.
+
+### Gewijzigd
+- Het blokje "Powered by Morani / Built by Zaratras" onderaan het menu is iets kleiner.
+
+---
 
 ## [v1.15.1] — 2026-10-25
 
