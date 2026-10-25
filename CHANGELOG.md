@@ -16,6 +16,11 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [Unreleased]
+
+### Fixed
+- Een back-up-bestand zonder echte trades (bijvoorbeeld alleen losse waarden of een leeg item) telt bij importeren niet meer als trade. Je krijgt dan de melding "Geen journal-gegevens gevonden in dit bestand", en niet meer de keuze om je journal te vervangen door een lege trade.
+
 ## [v1.15] — 2026-10-24
 
 ### Toegevoegd

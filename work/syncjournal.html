@@ -6231,6 +6231,9 @@ function migrateOldTrade(ot){
     tvLinks:(ot.links||ot.tvLinks||[]).map(x=>typeof x==='string'?x:((x&&x.url)||'')).filter(Boolean),qtyAsset:parseFloat(ot.positionSizeAsset)||0,
     screenshots:[...scr],rating:ot.rating||0,checks:[]};
 }
+// Fields every SyncJournal trade and every old TradeJournal trade carries at least one of.
+const TRADE_FIELDS=['pair','date','dir','direction','entry','exit','pnl','srcId'];
+function isTradeLike(t){return !!t&&typeof t==='object'&&!Array.isArray(t)&&TRADE_FIELDS.some(k=>k in t);}
 function looksOldExport(arr){return arr.length>0 && !('dir' in arr[0]) && (('direction' in arr[0])||('stopLoss' in arr[0])||('setupTags' in arr[0])||('simType' in arr[0]));}
 function mergeOldTags(arr){const merge=(cat,vals)=>{const cur=new Set(tagConfig[cat]||[]);(vals||[]).forEach(v=>v&&cur.add(v));tagConfig[cat]=[...cur];};
   arr.forEach(t=>{merge('setupTags',t.setupTags);merge('confirmationTags',t.confirmationTags);merge('timeframeTags',t.timeframeTags);merge('emotionTags',t.emotionTags);merge('mistakeTags',t.mistakeTags);});persistTagConfig();}
@@ -9432,13 +9435,17 @@ async function migRestorePre(){ const pre=SNAP_META.find(s=>s.label==='vóór mi
 function importJSON(){ const inp=document.createElement('input');inp.type='file';inp.accept='.json';
   inp.onchange=e=>{const f=e.target.files[0];if(!f)return;const rd=new FileReader();
     rd.onload=async ()=>{try{
-      const d=JSON.parse(rd.result);
-      const arr=Array.isArray(d)?d:d.trades;
+      const raw=JSON.parse(rd.result);
+      if(!raw||typeof raw!=='object'){toast('Geen journal-gegevens gevonden in dit bestand','err');return;}
+      // Only entries that look like a trade count; junk (1, "x", null, {"foo":"bar"}) would otherwise
+      // show up as trades and offer to replace the journal. A list where none survive is no trades at all.
+      const d=Array.isArray(raw)?{trades:raw}:{...raw};
+      if(Array.isArray(d.trades)){const n=d.trades.length;d.trades=d.trades.filter(isTradeLike);if((n||Array.isArray(raw))&&!d.trades.length)delete d.trades;}
       // een SyncJournal-bestand hoeft geen trades te hebben (bv. alleen playbooks en tags gedeeld)
-      const isSj=!!d&&typeof d==='object'&&!Array.isArray(d)&&(d.app==='SyncJournal'||DOV_PARTS.some(p=>p.keys.some(k=>d[k]!=null)));
-      if(!Array.isArray(arr)&&!isSj){toast('Geen journal-gegevens gevonden in dit bestand','err');return;}
-      if(Array.isArray(arr)&&looksOldExport(arr)){ migPreview(TJMigrate.mapExport(d),'file'); return; } // eerst controleren, dan pas overzetten (veiligheidskopie in migApply)
-      dovImportModal(Array.isArray(d)?{trades:d}:d,f.name);   // eerst zien wat erin zit en kiezen, dan pas overnemen (veiligheidskopie in dovImportGo)
+      const isSj=d.app==='SyncJournal'||DOV_PARTS.some(p=>p.keys.some(k=>d[k]!=null));
+      if(!isSj){toast('Geen journal-gegevens gevonden in dit bestand','err');return;}
+      if(d.trades&&looksOldExport(d.trades)){ migPreview(TJMigrate.mapExport(d),'file'); return; } // eerst controleren, dan pas overzetten (veiligheidskopie in migApply)
+      dovImportModal(d,f.name);   // eerst zien wat erin zit en kiezen, dan pas overnemen (veiligheidskopie in dovImportGo)
     }catch(err){ ErrorCenter.report('import',err,{severity:'error',userMsg:'Het bestand kon niet worden geïmporteerd, is het een geldige SyncJournal- of TradeJournal-back-up? Je bestaande data is ongewijzigd.'}); }};
     rd.readAsText(f);};inp.click(); }
 function loadDemoData(){T=SEED.map(t=>{const o=+new Date(`${t.date}T${t.time||'12:00'}:00`);const c=(t.status!=='open'&&+t.durationMin)?o+t.durationMin*60000:0;return {...t,openTime:isFinite(o)?String(o):'',closeTime:c?String(c):''};});persist();render();}
