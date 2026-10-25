@@ -28,7 +28,8 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
 
   console.log('─── Opslag-bescherming + FAQ ───');
   ok('Data-tab toont opslag-bescherming-status', await p.evaluate(() => { go('instellingen'); setSetTab('data'); return /Opslag-bescherming/.test(document.getElementById('main').textContent); }));
-  ok('FAQ: syncjournal.nl-vraag + verhuisvraag aanwezig', await p.evaluate(() => { go('faq'); const t = document.getElementById('main').textContent; return /staat mijn data dan online/.test(t) && /hoe verhuis ik naar syncjournal\.nl/.test(t); }));
+  // Since the FAQ audit (25-10-2026) both live in merged questions: online-or-not and moving to another address.
+  ok('FAQ: syncjournal.nl-vraag + verhuisvraag aanwezig', await p.evaluate(() => { go('faq'); const t = document.getElementById('main').textContent; return /Staat die online\?/.test(t) && /Ook als je SyncJournal opent via syncjournal\.nl/.test(t) && /andere computer, browser of adres/.test(t) && /nu syncjournal\.nl gebruikt/.test(t); }));
 
   console.log('─── Release-sync site/ ───');
   const idx = fs.readFileSync(path.resolve('site', 'app.html'), 'utf8');

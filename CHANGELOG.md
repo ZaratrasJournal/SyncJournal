@@ -16,6 +16,13 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [Unreleased]
+
+### Gewijzigd
+- **De FAQ is nagelopen en bijgewerkt.** Elk antwoord klopt weer met de app (geen "Instellingen → Dashboard" of opgeloste waarschuwingen meer), vakwoorden worden uitgelegd, er zijn 18 vragen bij (sync, stop-loss, TP/SL, $ / % / R, euro-schatting, tags, veiligheidskopieën, Mori de AI-coach) en een nieuwe categorie *Waarom SyncJournal · mijn visie* waarin Denny uitlegt waarom tags, playbook en review zo werken.
+
+---
+
 ## [v1.15.1] — 2026-10-25
 
 ### Fixed
