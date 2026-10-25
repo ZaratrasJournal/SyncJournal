@@ -44,6 +44,8 @@ elke wijziging eindigt met `node tests/run-release.js` groen.
 | **B10** | Import: een bestand met één leeg object telt als 1 trade en biedt "vervangen" aan (T2) — 🔨 **cloud-sessie, branch `fix-import-leeg-object`** | 2 | XS | — |
 | **F11** | Funded modus: prop-firm-challenges apart van je eigen geld, wél in de strategie-analyse — **eerst een demo** | 2 | L | demo |
 | **F12** | Export en back-up: zelf kiezen of je API-sleutels meegaan, met een duidelijke melding bovenaan | 1 | S | — |
+| **F13** | AI-coach: echte chat-coach met eigen sleutel (8 besluiten 25-10) | 2 | M + M | — |
+| **W6** | Discord-poll "Gebruik je de AI-coach? Zo nee, waarom niet?" — eind januari 2027 | 3 | XS (Denny) | F13 live |
 | **B8** | Toegankelijkheid trade-formulier: 14 velden zonder label, gesloten formulier blijft vindbaar (T2) | 3 | S | — |
 | **B11** | Tendencies: kruis-analyse zonder playbooks toont een lege tabel zonder lege staat (T2) | 3 | XS | C1 |
 | ~~B5~~ | ~~P&L-percentages van −107% en 2.834% bij oudere trades~~ — ✅ **gedaan in v1.11** | — | — | — |
@@ -302,6 +304,35 @@ gedeelde export (`DOV_PARTS` `conns`): toets elke exchange en een oude back-up m
 
 **Klaar als** de keuze er op alle drie de plekken staat, de spec bewijst dat "zonder" geen enkele sleutel in het
 bestand laat (ook niet in `diagReport`), en "met" na import weer werkende koppelingen geeft.
+
+---
+
+### F13 · AI-coach: echte chat-coach met eigen sleutel — prio 2 · M + M (stap 0–2), daarna S per stap
+
+**Besluiten Denny, 25-10-2026** (onderzoek: `docs/research-ai-coach-2026-10-25.md`, branch `research-ai-coach`):
+1. De coach blijft, als echte chat-coach met de **eigen Anthropic-sleutel** van de gebruiker. Eén plek in de app;
+   niets op Dashboard of Analytics (de journal blijft clean).
+2. Sleutel lokaal, **nooit** in export, back-up of "Data overzetten"; keuze "alleen deze sessie" (regel in CLAUDE.md).
+3. **Sonnet 5.5 standaard**, Haiku 5.5 als keuze in Instellingen.
+4. **Notities gaan standaard mee**; bij het instellen één eerlijke regel daarover, uitzetten in Instellingen, en
+   onder elk antwoord "Wat is er verstuurd?".
+5. **"Vraag de coach" bij een trade**: klein knopje in het trade-detail, alleen zichtbaar met sleutel; opent de
+   coach-pagina met die trade klaargezet.
+6. **Demo-coach eruit** (de regex-antwoorden, "Hoi Denny" voor elk lid, het lek in bedragen verbergen). Zonder
+   sleutel: één gemarkeerd voorbeeldgesprek + stappenplan in drie stappen (sleutel maken, limiet instellen,
+   plakken) met kostenindicatie.
+7. **Niet tellen** in de app. Gebruik meten = Discord-poll eind januari 2027 (W6).
+8. Bij de release: **Discord-post met screenshots** van de Anthropic-console (sleutel + maandlimiet), gelinkt vanuit
+   het stappenplan, en een **duidelijke FAQ-uitleg** (wat is de coach, wat kost het, wat wordt er verstuurd, hoe
+   zet ik hem uit).
+
+**Ontwerpprincipe: de app rekent, het model leest.** Cijfers komen uit `coachPakket()` (bestaande helpers,
+`gemR`/`tradeROrNull`, nooit `t.r`); de systeemprompt verbiedt eigen berekeningen.
+
+**Bouwvolgorde** (onderzoek §8): 0 · coach in het menu van de standaardweergave, demo-coach eruit; 1 · `coachPakket()`
+als pure functie, getest zonder sleutel; 2 · sleutel + één echte vraag (minor-release); 3 · foutstaten + streaming;
+4 · verbruik en maandlimiet; 5 · vier vaste vragen en weekreview; 6 · tools; 7 · pre-trade-check; 8 · oude
+`aicoach-*`-specs vervangen.
 
 ---
 
