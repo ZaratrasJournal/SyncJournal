@@ -40,9 +40,9 @@ const antwoord = (tekst, extra) => ({ id: 'msg_nep', type: 'message', role: 'ass
 
   console.log('─── Geen sleutel ───');
   let t = await main();
-  ok('stappenplan en kostenindicatie', /Zet je echte coach aan/.test(t) && /30 cent tot een dollar per maand/.test(t) && /console\.anthropic\.com/.test(t), t.slice(0, 200));
+  ok('stappenplan en kostenindicatie', /Zet Mori aan/.test(t) && /30 cent tot een dollar per maand/.test(t) && /console\.anthropic\.com/.test(t), t.slice(0, 200));
   ok('één gemarkeerd voorbeeldgesprek', /voorbeeld · zo ziet een gesprek eruit/i.test(t) && await p.locator('.aivb').count() === 1);
-  ok('de regel over wat er meegaat', t.includes('Je cijfers en notities gaan mee naar de coach. Uitzetten kan in Instellingen.'));
+  ok('de regel over wat er meegaat', t.includes('Je cijfers en notities gaan mee naar Mori. Uitzetten kan in Instellingen.'));
   ok('geen invoerveld voor vragen zonder sleutel', await p.locator('#aiInput').count() === 0);
   ok('geen "Vraag de coach" bij een trade zonder sleutel', await p.evaluate(() => { go('review'); const n = document.querySelectorAll('[data-ai-vraag]').length; go('ai'); return n === 0; }));
 
@@ -85,6 +85,11 @@ const antwoord = (tekst, extra) => ({ id: 'msg_nep', type: 'message', role: 'ass
   ok('de vraag gaat als laatste bericht mee', (v.body.messages || []).slice(-1)[0]?.content === 'Waar lek ik geld?', JSON.stringify(v.body.messages));
   ok('het pakket staat in de systeemprompt', sys.includes(JSON.stringify(pakket).slice(1, -1)));
   ok('de systeemprompt zegt: niet zelf rekenen', /reken niet zelf/i.test(sys));
+  ok('de systeemprompt zegt: je bent Mori', /Je bent Mori/.test(sys));
+  ok('menu en paginakop heten Mori, niet AI-coach', await p.evaluate(() => {
+    const kop = document.querySelector('#main h1, #main .ph h1, .ptitle, header h1');
+    const nav = [...document.querySelectorAll('nav button, nav a, .nav button, .nav a, aside button, aside a')].map(e => e.textContent.trim());
+    return nav.some(t => /^Mori\b/.test(t)) && !nav.some(t => /^AI-coach$/.test(t)) && (!kop || /Mori/.test(kop.textContent)); }));
   ok('notities gaan standaard mee', sys.includes(NOTITIE));
   ok('vet wordt <b>', await p.evaluate(() => [...document.querySelectorAll('#aiFeed .aimsg.ai b')].some(x => x.textContent === 'FOMO')));
   ok('lijstje wordt <li>', await p.evaluate(() => document.querySelectorAll('#aiFeed .aimsg.ai li').length === 2));
@@ -184,7 +189,7 @@ const antwoord = (tekst, extra) => ({ id: 'msg_nep', type: 'message', role: 'ass
 
   console.log('─── Coach uitgezet in Instellingen ───');
   await p.evaluate(() => { toggleAICoach(); go('ai'); });
-  ok('"AI-coach staat uit", geen invoer, en de keuze blijft bewaard', /AI-coach staat uit/.test(await main()) && await p.locator('#aiInput').count() === 0 && await p.evaluate(() => JSON.parse(localStorage.getItem('sj_ai_prefs')).enabled === false));
+  ok('"Mori staat uit", geen invoer, en de keuze blijft bewaard', /Mori staat uit/.test(await main()) && await p.locator('#aiInput').count() === 0 && await p.evaluate(() => JSON.parse(localStorage.getItem('sj_ai_prefs')).enabled === false));
   ok('dan ook geen 🤖-knop bij een trade', await p.evaluate(() => { go('review'); return document.querySelectorAll('[data-ai-vraag]').length === 0; }));
   await p.evaluate(() => { toggleAICoach(); });
 
