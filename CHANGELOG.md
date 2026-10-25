@@ -18,6 +18,9 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ## [Unreleased]
 
+### Gewijzigd
+- **De FAQ is overzichtelijker:** onderwerpen als tegels, een groot zoekveld en beter leesbare antwoorden.
+
 ### Gewijzigd (achter de schermen)
 - **De koppeling met OKX en Kraken is veiliger gemaakt.** De tussenserver (de Worker) praat alleen nog met de echte
   OKX-servers, doet minder verzoeken per sync, en kan straks alleen nog vanaf SyncJournal zelf gebruikt worden. Dit
