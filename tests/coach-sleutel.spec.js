@@ -146,7 +146,7 @@ const antwoord = (tekst, extra) => ({ id: 'msg_nep', type: 'message', role: 'ass
   console.log('─── Geen trades / filter laat niets over ───');
   await p.evaluate(() => { setFilter('kind', 'backtest'); go('ai'); });
   t = await main();
-  ok('filter laat niets over: eigen melding, geen invoer', /In je huidige filter staan geen gesloten trades/.test(t) && await p.locator('#aiInput').count() === 0, t.slice(0, 300));
+  ok('filter laat niets over: eigen melding, geen invoer', /Geen gesloten trades in deze periode/.test(t) && await p.locator('#aiInput').count() === 0, t.slice(0, 300));
   await p.evaluate(() => { setFilter('kind', 'alle'); });
   const bewaard = await p.evaluate(() => JSON.stringify(T));
   await p.evaluate(() => { T = []; persist(); render(); go('ai'); });

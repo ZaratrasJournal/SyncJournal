@@ -28,7 +28,7 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
   ok('boot zonder JS-errors', errs.length === 0, errs.slice(0, 2).join(' | '));
 
   console.log('─── Lege journal: dashboard vóór verbinden ───');
-  ok('zonder account gewoon de eerste-trade-uitleg', await p.evaluate(() => { go('dashboard'); return !document.querySelector('#main .hero') && /eerste trade/i.test(document.getElementById('main').textContent); }));
+  ok('zonder account gewoon de eerste-trade-uitleg', await p.evaluate(() => { go('dashboard'); return !document.querySelector('#main .hero') && !!document.querySelector('#main [data-empty="trades-first"]') && /Nog geen trades/.test(document.getElementById('main').textContent); }));
 
   console.log('─── Verbinden = saldo + eerste sync automatisch ───');
   const r1 = await p.evaluate(async () => {
@@ -42,7 +42,7 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
   ok('saldo ook persistent opgeslagen (exmeta)', r1.stored === 1234.56, String(r1.stored));
 
   console.log('─── Dashboard bij nul trades mét account ───');
-  const r2 = await p.evaluate(() => { go('dashboard'); const m = document.getElementById('main'); const hero = m.querySelector('.hero'); return { hero: !!hero, txt: hero ? hero.textContent : '', legend: m.querySelectorAll('.legend .row').length, empty: /eerste trade/i.test(m.textContent) }; });
+  const r2 = await p.evaluate(() => { go('dashboard'); const m = document.getElementById('main'); const hero = m.querySelector('.hero'); return { hero: !!hero, txt: hero ? hero.textContent : '', legend: m.querySelectorAll('.legend .row').length, empty: !!m.querySelector('[data-empty="trades-first"]') }; });
   ok('balans-hero zichtbaar met het echte saldo (afgerond weergegeven)', r2.hero && /1\.235|1235/.test(r2.txt), r2.txt.slice(0, 80));
   ok('HL staat in de accounts-legenda', r2.legend >= 1);
   ok('daaronder nog steeds de eerste-trade-uitleg', r2.empty);

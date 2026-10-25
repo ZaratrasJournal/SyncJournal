@@ -24,7 +24,7 @@ const stand = () => ({
   const b = await chromium.launch(); const { p, errs } = await H.openJournal(b);
   await H.go(p, 'trades');
   let s = await p.evaluate(stand);
-  ok('lege journal: "Begin je journal" met een knop voor je eerste trade', s.rijen === 0 && /Begin je journal/.test(s.kop) && /Nieuwe trade/.test(s.knop), JSON.stringify(s));
+  ok('lege journal: "Nog geen trades" met een knop naar Accounts', s.rijen === 0 && /Nog geen trades/.test(s.kop) && /Naar Accounts/.test(s.knop), JSON.stringify(s));
 
   await H.seedTrades(p, SET);
   await H.go(p, 'trades');
@@ -33,8 +33,8 @@ const stand = () => ({
 
   await p.evaluate(() => setDateFrom('2030-01-01'));
   s = await p.evaluate(stand);
-  ok('datumfilter laat niets over: "Geen trades gevonden", niet "Begin je journal"', s.rijen === 0 && /Geen trades gevonden/.test(s.kop), JSON.stringify(s));
-  ok('met een knop "Wis alle filters" en de melding "0 van 3 trades" bovenaan', /Wis alle filters/.test(s.knop) && /0 van 3/.test(s.badge), JSON.stringify(s));
+  ok('datumfilter laat niets over: "Geen trades in deze periode", niet "Nog geen trades"', s.rijen === 0 && /Geen trades in deze periode/.test(s.kop), JSON.stringify(s));
+  ok('met een knop "Filter uitzetten" en de melding "0 van 3 trades" bovenaan', /Filter uitzetten/.test(s.knop) && /0 van 3/.test(s.badge), JSON.stringify(s));
   await p.click('#main .empty .btn');
   s = await p.evaluate(stand);
   ok('knop wist het filter: weer 3 rijen, melding weg', s.rijen === 3 && !s.kop && !s.badge, JSON.stringify(s));
@@ -42,14 +42,14 @@ const stand = () => ({
   await p.fill('#trSearch', 'XRP');
   await p.waitForFunction(() => STATE.query === 'XRP' && !!document.querySelector('#main .empty-h'), null, { timeout: 3000 });
   s = await p.evaluate(stand);
-  ok('zoekopdracht zonder resultaat: ook "Geen trades gevonden"', s.rijen === 0 && /Geen trades gevonden/.test(s.kop), JSON.stringify(s));
+  ok('zoekopdracht zonder resultaat: "Geen trades voor deze zoekopdracht"', s.rijen === 0 && /Geen trades voor deze zoekopdracht/.test(s.kop), JSON.stringify(s));
   await p.click('#main .empty .btn');
   s = await p.evaluate(stand);
   ok('wissen haalt ook de zoekopdracht weg: 3 rijen', s.rijen === 3 && await p.evaluate(() => STATE.query === ''), JSON.stringify(s));
 
   await p.evaluate(() => { STATE.tradeTab = 'open'; render(); });
   s = await p.evaluate(stand);
-  ok('tabblad Open/partial zonder open trades: "Geen trades gevonden"', s.rijen === 0 && /Geen trades gevonden/.test(s.kop), JSON.stringify(s));
+  ok('tabblad Open/partial zonder open trades: "Geen trades in dit tabblad"', s.rijen === 0 && /Geen trades in dit tabblad/.test(s.kop), JSON.stringify(s));
   await p.evaluate(() => { STATE.tradeTab = 'all'; render(); });
   ok('terug naar Alle: 3 rijen', (await p.evaluate(stand)).rijen === 3);
 

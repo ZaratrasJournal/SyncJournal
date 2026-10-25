@@ -21,7 +21,7 @@ const SET = Array.from({ length: 64 }, (_, i) => {
   await H.go(p, 'tendencies');
 
   const r = await p.evaluate(() => ({
-    leeg: [...document.querySelectorAll('#main .empty-h')].some(h => /Nog geen patronen|Geen trades gevonden/.test(h.textContent)),   // the page's own empty state, not a panel's
+    leeg: [...document.querySelectorAll('#main .empty-h')].some(h => /Nog geen patronen|Geen trades in deze periode/.test(h.textContent)),   // the page's own empty state, not a panel's
     edge: (document.querySelector('.vcard.edge .vcombo') || {}).textContent || '',
     leak: (document.querySelector('.vcard.leak .vcombo') || {}).textContent || '',
     whm: [...document.querySelectorAll('.whm .whm-cell')].filter(c => +c.dataset.n > 0).length,
