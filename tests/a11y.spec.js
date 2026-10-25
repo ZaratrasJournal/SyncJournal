@@ -10,9 +10,7 @@ const { chromium } = require('playwright');
 const { AxeBuilder } = require('@axe-core/playwright');
 const H = require('./helpers/dov-page');
 const { volledig } = require('./helpers/dov-datasets');
-let pass = 0, fail = 0, fixmes = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  ✓ ' + n)) : (fail++, console.log('  ✗ ' + n + (e ? ' → ' + e : ''))); };
-// FIXME-check: bekende bug in de app (docs/plan-t2-specs.md, Gevonden bugs). Telt niet als rood zolang hij faalt.
-const fixme = (n, c, e) => { fixmes++; console.log(c ? '  ⚠ FIXME lijkt opgelost, maak er weer ok() van: ' + n : '  ⚠ FIXME (bekende bug): ' + n + (e ? ' → ' + e : '')); };
+let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  ✓ ' + n)) : (fail++, console.log('  ✗ ' + n + (e ? ' → ' + e : ''))); };
 
 const BLOKKEREND = ['critical'];
 const SCHERMEN = ['dashboard', 'trades', 'instellingen', 'formulier'];
@@ -35,19 +33,23 @@ const DATA = (() => { const d = volledig(); delete d.conns; delete d.settings; d
       r.violations.forEach(v => { per[v.impact] = (per[v.impact] || 0) + v.nodes.length; });
       console.log(`    ${theme}/${scherm}: critical ${per.critical} · serious ${per.serious} · moderate ${per.moderate} · minor ${per.minor}`);
       r.violations.filter(v => v.impact !== 'minor').slice(0, 4).forEach(v => console.log(`      [${v.impact}] ${v.id} ${v.nodes.length}× — ${v.help} · ${v.nodes[0].target.join(' ')}`));
-      // Bekend: de velden van het trade-formulier (#modal) hebben geen label. Die tellen als fixme, de rest blokkeert.
-      const blok = [], modal = [];
-      for (const v of r.violations.filter(x => BLOKKEREND.includes(x.impact))) for (const n of v.nodes) {
-        const inModal = await p.evaluate(sel => { const el = document.querySelector(sel); return !!(el && el.closest('#modal')); }, n.target[0]);
-        (inModal && v.id === 'label' ? modal : blok).push(v.id + ' ' + n.target.join(' '));
+      const blok = [];
+      for (const v of r.violations.filter(x => BLOKKEREND.includes(x.impact))) for (const n of v.nodes) blok.push(v.id + ' ' + n.target.join(' '));
+      ok(`${theme}/${scherm}: geen critical a11y-fouten (${r.passes.length} regels geslaagd)`, blok.length === 0 && r.passes.length > 10, blok.slice(0, 4).join(', '));
+      if (scherm === 'formulier') {
+        const labels = r.violations.filter(v => v.id === 'label').reduce((n, v) => n + v.nodes.length, 0);
+        ok(`${theme}/formulier: elk invoerveld heeft een label (axe "label")`, labels === 0, labels + '× zonder label');
+        // Een schermlezer hoort de zichtbare labeltekst, niet alleen "invoerveld".
+        const namen = {};
+        for (const [veld, naam] of [['Datum', /^Datum$/], ['Entry', /^Entry$/], ['Exit', /^Exit$/], ['P&L ($)', /^P&L \(\$\)$/]]) namen[veld] = await p.getByRole('textbox', { name: naam }).count();
+        ok(`${theme}/formulier: velden zijn vindbaar op hun zichtbare label (Datum, Entry, Exit, P&L)`, Object.values(namen).every(n => n === 1), JSON.stringify(namen));
       }
-      ok(`${theme}/${scherm}: geen critical a11y-fouten buiten het formulier (${r.passes.length} regels geslaagd)`, blok.length === 0 && r.passes.length > 10, blok.slice(0, 4).join(', '));
-      if (scherm === 'formulier') fixme(`${theme}/formulier: elk invoerveld heeft een label`, modal.length === 0, modal.length + '× zonder label, bv. ' + modal.slice(0, 3).join(', '));
-      else if (formulierGeopend) fixme(`${theme}/${scherm}: een gesloten formulier zit niet meer in de toegankelijkheidsboom`, modal.length === 0, modal.length + ' formuliervelden nog te vinden voor een schermlezer');
+      else if (formulierGeopend) ok(`${theme}/${scherm}: geen formulierveld van een gesloten formulier in de toegankelijkheidsboom`, await p.locator('#modal').ariaSnapshot() === '' && await p.getByRole('textbox', { name: /^Entry$/ }).count() === 0,
+        (await p.locator('#modal').ariaSnapshot()).slice(0, 120));
     }
   }
   ok('geen JS-fouten', errs.length === 0, [...new Set(errs)].slice(0, 3).join(' | '));
   await b.close();
-  console.log(`\n=== A11y: ${pass}/${pass + fail}${fixmes ? ' · ' + fixmes + ' fixme' : ''} ===`);
+  console.log(`\n=== A11y: ${pass}/${pass + fail} ===`);
   process.exit(fail ? 1 : 0);
 })().catch(e => { console.error(e); process.exit(1); });

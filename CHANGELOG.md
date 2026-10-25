@@ -19,7 +19,21 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 ## [Unreleased]
 
 ### Fixed
-- Een back-up-bestand zonder echte trades (bijvoorbeeld alleen losse waarden of een leeg item) telt bij importeren niet meer als trade. Je krijgt dan de melding "Geen journal-gegevens gevonden in dit bestand", en niet meer de keuze om je journal te vervangen door een lege trade.
+- **Na middernacht klopt "vandaag" weer.** Tussen 00:00 en 02:00 kreeg een nieuwe trade of een storting
+  de datum van gisteren, en opende de Kalender soms op de vorige maand. Nu geldt overal de Nederlandse datum.
+- **Privacy-modus verbergt nu echt alle bedragen.** Onder de balkjes ("N trades · netto …"), op Analytics (max
+  drawdown, gem. winst en verlies, grootste winst en verlies, verwachting per trade), in de Kalender en in de P&L-regel
+  van het trade-formulier stonden bedragen nog leesbaar. Die zijn nu ook vervaagd.
+- **Kruis-analyse in Tendencies is niet meer leeg zonder uitleg.** Zonder playbooks toonde hij alleen een kopregel.
+  Nu zie je wat er ontbreekt (geen playbook, een lege dimensie, of geen trade met allebei) en één klik naar een
+  combinatie die wel iets laat zien.
+- **Het trade-formulier werkt beter met een schermlezer.** Elk invoerveld wordt nu voorgelezen met zijn naam (Datum,
+  Entry, Exit …) in plaats van alleen "invoerveld", en een gesloten formulier is ook voor een schermlezer echt weg.
+- **Een back-up zonder echte trades vervangt je journal niet meer.** Een bestand met alleen losse waarden of een leeg
+  item telde bij importeren als trade, met de keuze om je journal te vervangen door één lege trade. Nu krijg je de
+  melding "Geen journal-gegevens gevonden in dit bestand".
+
+---
 
 ## [v1.15] — 2026-10-24
 
