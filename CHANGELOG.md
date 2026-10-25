@@ -16,7 +16,7 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
-## [Unreleased]
+## [v1.16.2] — 2026-10-25
 
 ### Gewijzigd
 - **De FAQ is overzichtelijker:** onderwerpen als tegels, een groot zoekveld en beter leesbare antwoorden.
@@ -24,7 +24,7 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 ### Gewijzigd (achter de schermen)
 - **De koppeling met OKX en Kraken is veiliger gemaakt.** De tussenserver (de Worker) praat alleen nog met de echte
   OKX-servers, doet minder verzoeken per sync, en kan straks alleen nog vanaf SyncJournal zelf gebruikt worden. Dit
-  vraagt een nieuwe versie van de Worker (v25), die Zaratras zelf in Cloudflare zet; in de app verandert niets.
+  draait sinds vandaag op een nieuwe versie van de Worker (v25); in de app verandert niets.
 
 ---
 
