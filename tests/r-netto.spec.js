@@ -90,13 +90,13 @@ const BT = { ...L, id: 'bt', kind: 'backtest', exchange: '', date: `${MAAND}-01`
   ok("tabel in euro's: +0,07R / +1,5R / −0,20R, net als in dollars", eur.cel['17:40'] === '+0,07R' && eur.cel['10:00'] === '+1,5R' && eur.cel['11:00'] === '−0,20R', JSON.stringify(eur.cel));
   ok("formulier in euro's: 0.07", String(eur.veld) === '0.07', String(eur.veld));
 
-  console.log('─── Gemiddelden en AI-coach ───');
+  console.log('─── Gemiddelden ───');
   const gem = await p.evaluate(() => { const live = T.filter(t => t.kind !== 'backtest'); const g = gemR(live);
     T = T.filter(t => t.id === 'zonder'); persist(); setFilter('kind', 'live');
-    return { avg: g.avg, n: g.n, coach: aiReply('hoe zit het met mijn risk'), rij: groupRows('session')[0] }; });
+    return { avg: g.avg, n: g.n, rij: groupRows('session')[0] }; });
   ok('gemiddelde R telt 3 live trades met R', gem.n === 3, String(gem.n));
   ok('gemiddelde = (0,0729 + 1,5 − 0,2) ÷ 3', Math.abs(gem.avg - (0.0729 + 1.5 - 0.2) / 3) < 0.001, String(gem.avg));
-  ok('AI-coach zegt geen "+0,00" als er geen R is', !/\+0,00/.test(gem.coach), gem.coach.slice(0, 160));
+  // "no R is not +0,00" for the coach: see coach-pakket.spec.js
   ok('uitsplitsing per sessie: geen R = geen getal', gem.rij && gem.rij.r === null, JSON.stringify(gem.rij && gem.rij.r));
 
   ok('geen nieuwe JS-fouten', errs.length === 0, errs[0]);
