@@ -21,6 +21,9 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 ### Fixed
 - **Na middernacht klopt "vandaag" weer.** Tussen 00:00 en 02:00 kreeg een nieuwe trade of een storting
   de datum van gisteren, en opende de Kalender soms op de vorige maand. Nu geldt overal de Nederlandse datum.
+- **Privacy-modus verbergt nu echt alle bedragen.** Onder de balkjes ("N trades · netto …"), op Analytics (max
+  drawdown, gem. winst en verlies, grootste winst en verlies, verwachting per trade), in de Kalender en in de P&L-regel
+  van het trade-formulier stonden bedragen nog leesbaar. Die zijn nu ook vervaagd.
 
 ---
 
