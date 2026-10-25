@@ -99,7 +99,7 @@ const antwoord = (tekst, extra) => ({ id: 'msg_nep', type: 'message', role: 'ass
   console.log('─── Bezig met antwoorden ───');
   vertraging = 600;
   await p.fill('#aiInput', 'Review mijn week'); await p.click('#aiSendBtn'); await p.waitForTimeout(150);
-  ok('typ-indicator, invoer uit en een knop Stop', await p.evaluate(() => /Coach denkt na/.test((document.querySelector('#aiFeed .ailive') || {}).innerText || '') && document.getElementById('aiInput').disabled && !!document.getElementById('aiStopBtn')));
+  ok('typ-indicator, invoer uit en een knop Stop', await p.evaluate(() => /Mori denkt na/.test((document.querySelector('#aiFeed .ailive') || {}).innerText || '') && document.getElementById('aiInput').disabled && !!document.getElementById('aiStopBtn')));
   await p.waitForTimeout(800); vertraging = 0;
   ok('vervolgvraag stuurt het eerdere gesprek mee', (verzoeken.slice(-1)[0].body.messages || []).length === 3, JSON.stringify((verzoeken.slice(-1)[0].body.messages || []).map(m => m.role)));
 
