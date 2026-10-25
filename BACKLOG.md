@@ -21,7 +21,7 @@ elke wijziging eindigt met `node tests/run-release.js` groen.
 |---|---|---|---|---|
 | ~~F1~~ | ~~TP's in de presentatie en in Kopieer voor Discord~~ — ✅ **gedaan in v1.9.1** | — | — | — |
 | **F2** | Kopieer voor Discord met meerdere trades: één voor één + alles downloaden | 2 | S | samen met F1 |
-| **F3** | Kraken: oorspronkelijke stop-loss automatisch — 🔨 **gebouwd, branch `kraken-stoploss`** | 1 | — | release v1.11 |
+| ~~F3~~ | Kraken: oorspronkelijke stop-loss automatisch — ✅ **gedaan in v1.11** | — | — | — |
 | ~~F4~~ | ~~Kraken: lopende positie krijgt zijn stop al vóór het sluiten~~ — ✅ **gedaan in v1.11** | — | — | — |
 | **F5** | Hoe liep de trade af: ~~exit-reden (TP/SL/Close)~~ ✅ v1.11 · stopbeweging (BE/strakker/ruimer) nog open | 1 | S | F3 |
 | **F6** | Kraken: geplande TP's uit de trigger-historie | 2 | S | F3 |
@@ -39,18 +39,18 @@ elke wijziging eindigt met `node tests/run-release.js` groen.
 | **B3** | Controleren: telt dezelfde positie dubbel via CSV én API? | 2 | S | — |
 | **W5** | Worker v25: `okxHost` alleen uit een vaste lijst (lek sinds v19) en de ongebruikte `orders`-verzoeken uit `algos` weg (review 24-10) | 1 | XS | — |
 | **B6** | OKX: waarschuwing bij een onbekende contractsoort in het vangnet; SL koppelen op het exacte contract i.p.v. de munt (review 24-10) | 3 | XS | — |
-| **B9** | Tussen 00:00 en 02:00 krijgt een nieuwe trade, storting of de Kalender de datum van gisteren (T2) | 1 | XS | — |
-| **B7** | Privacy-modus laat bedragen leesbaar: regel onder de balkjes en een rij Analytics-cijfers (T2) | 2 | S | — |
-| **B10** | Import: een bestand met één leeg object telt als 1 trade en biedt "vervangen" aan (T2) — 🔨 **cloud-sessie, branch `fix-import-leeg-object`** | 2 | XS | — |
+| ~~B9~~ | Datum na middernacht — ✅ **gedaan in v1.15.1** | — | — | — |
+| ~~B7~~ | Privacy-modus verbergt alle bedragen — ✅ **gedaan in v1.15.1** | — | — | — |
+| ~~B10~~ | Import: leeg object telt niet als trade — ✅ **gedaan in v1.15.1** | — | — | — |
 | **F11** | Funded modus: prop-firm-challenges apart van je eigen geld, wél in de strategie-analyse — **eerst een demo** | 2 | L | demo |
 | **F12** | Export en back-up: zelf kiezen of je API-sleutels meegaan, met een duidelijke melding bovenaan | 1 | S | — |
-| **F13** | AI-coach: echte chat-coach met eigen sleutel (8 besluiten 25-10) | 2 | M + M | — |
+| ~~F13~~ | AI-coach Mori met eigen sleutel — ✅ **gedaan in v1.16 / v1.16.1** (stap 0–8) | — | — | — |
 | **W6** | Discord-poll "Gebruik je de AI-coach? Zo nee, waarom niet?" — eind januari 2027 | 3 | XS (Denny) | F13 live |
 | **F14** | SyncJournal buiten Morani: besloten beta (Worker meten + eigen account, limiet, neutrale tags, veiligheid) — 📅 **deze week** | 1 | M | besluit NL/internationaal, F12 |
-| **B8** | Toegankelijkheid trade-formulier: 14 velden zonder label, gesloten formulier blijft vindbaar (T2) | 3 | S | — |
-| **B11** | Tendencies: kruis-analyse zonder playbooks toont een lege tabel zonder lege staat (T2) | 3 | XS | C1 |
+| ~~B8~~ | Toegankelijkheid trade-formulier — ✅ **gedaan in v1.15.1** | — | — | — |
+| ~~B11~~ | Kruis-analyse lege staat — ✅ **gedaan in v1.15.1** | — | — | — |
 | ~~B5~~ | ~~P&L-percentages van −107% en 2.834% bij oudere trades~~ — ✅ **gedaan in v1.11** | — | — | — |
-| **T2** | Oude-app-specs herschrijven of schrappen | 3 | L | besluit AI-coach (deels) |
+| ~~T2~~ | Oude-app-specs herschreven of geschrapt — ✅ **gedaan 25-10** (AI-coach-specs vervangen in v1.16) | — | — | — |
 | **C2** | CSV-parser per exchange opsplitsen | 3 | M–L | T1 |
 | **T3** | Levensloop-toets voor FTMO, één gedeelde vorm | 3 | M | T1 |
 | **T4** | `npm test` repareren | 3 | XS | — |
