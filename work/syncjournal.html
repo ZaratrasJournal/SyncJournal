@@ -127,6 +127,9 @@ main{padding:26px 30px 46px;animation:rise .34s both}
 .chip{font-size:11px;color:var(--muted);font-weight:600}
 /* markering op een exchange-rij: "API gestopt" (blokkerend) of "in ontwikkeling" (waarschuwend) */
 .exflag{display:inline-block;vertical-align:middle;margin-left:6px;padding:2px 8px;border-radius:20px;font-size:10.5px;font-weight:700;letter-spacing:.02em;background:var(--amber-soft);color:var(--amber);border:1px solid color-mix(in srgb,var(--amber) 35%,transparent)}
+.fbadge{display:inline-block;vertical-align:middle;margin-left:6px;padding:1px 7px;border-radius:20px;font-size:10px;font-weight:700;letter-spacing:.02em;text-transform:none}
+.fbadge.mix{background:var(--amber-soft);color:var(--amber);border:1px solid color-mix(in srgb,var(--amber) 35%,transparent)}
+.fbadge.fund{background:color-mix(in srgb,var(--violet) 12%,transparent);color:var(--violet);border:1px solid color-mix(in srgb,var(--violet) 30%,transparent)}
 .exnote{display:block;margin-top:4px;color:var(--amber);font-size:11.5px;line-height:1.45}
 .pbody{padding:16px}
 
@@ -1833,20 +1836,22 @@ let _pctKey='',_pctMap=null;
 let _renderMemo=null;
 function _pctBases(){
   if(_renderMemo&&_renderMemo.pct)return _renderMemo.pct;
-  const total=totalBalance();
-  const key=T.length+'|'+total.toFixed(2)+'|'+DB.load('data_ts',0);
+  // Own money only: a funded win is not in your balance, so walking it back would shift every earlier base.
+  const total=eigenBalans();
+  const key=T.length+'|'+total.toFixed(2)+'|'+DB.load('data_ts',0)+'|'+FUNDED.length;
   if(key===_pctKey&&_pctMap)return _pctMap;
   const m=new Map();
   // Everything booked, partials too: the balance already holds a TP that was hit (v1.5).
   // Only live trades: a backtest or a missed trade is no money in the account (Denny 18-10: −107%, 2834%).
-  const geld=T.filter(t=>t&&isLive(t)&&(t.status==='closed'||t.status==='partial')).sort((a,b)=>tradeMoment(a)-tradeMoment(b));
+  const geld=T.filter(t=>t&&isLive(t)&&isEigenGeld(t)&&(t.status==='closed'||t.status==='partial')).sort((a,b)=>tradeMoment(a)-tradeMoment(b));
   let acc=0;
   for(let i=geld.length-1;i>=0;i--){acc+=geboekt(geld[i]);m.set(geld[i].id,total-acc);}
   _pctKey=key;_pctMap=m;if(_renderMemo)_renderMemo.pct=m;return m;
 }
 function pnlBaseOf(t){
+  const f=fundedItem(t&&t.exchange);if(f)return +f.size>0?+f.size:0;   // a funded trade: on the size, as the firm measures
   const ref=+((STATE||{}).pctRef)||0;if(ref>0)return ref;
-  if(!(totalBalance()>0))return 0;
+  if(!(eigenBalans()>0))return 0;
   const b=_pctBases().get(t&&t.id);return (b&&b>0)?b:0;
 }
 /* Een percentage is pnl ÷ accountgrootte. De accountgrootte staat in dollars, dus
@@ -1867,8 +1872,14 @@ function pnlPctTotal(rows,net,basis){
   const ref=+((STATE||{}).pctRef)||0;if(ref>0)return +(n/ref*100).toFixed(2);
   if(!geld.length)return null;
   const bron=basis?live(basis):geld;if(!bron.length)return null;
-  const oldest=bron.reduce((a,c)=>tradeMoment(c)<tradeMoment(a)?c:a);
-  const b=pnlBaseOf(oldest);return b>0?+(n/b*100).toFixed(2):null;
+  // Own trades: the base of the oldest one. Funded trades add the size of each item in view, so a mix
+  // reads as (own + funded P&L) / (own base + sizes). Without funded trades this is exactly the old sum.
+  const eigen=bron.filter(isEigenGeld),maten=new Map();
+  bron.forEach(t=>{const f=fundedItem(t.exchange);if(f)maten.set(f.id,+f.size||0);});
+  let b=0;
+  if(eigen.length){b=pnlBaseOf(eigen.reduce((a,c)=>tradeMoment(c)<tradeMoment(a)?c:a));if(!(b>0))return null;}
+  maten.forEach(v=>{b+=v;});
+  return b>0?+(n/b*100).toFixed(2):null;
 }
 /* ═══ €/%/R-weergave (Denny 2026-09-18, zoals de originele Morani-journal) ═══
    STATE.unit bepaalt hoe P&L-waarden tonen: valuta, % (echte accountbasis via
@@ -1963,8 +1974,12 @@ function acctPnl(id){return T.filter(t=>t&&t.status!=='open'&&isLive(t)&&t.excha
 // Saldo handmatig account = max(0, ingelegd kapitaal) + gerealiseerde trade-P&L.
 function manualBalance(m){return Math.max(0,acctCapital(m.transactions))+acctPnl(m.id);}
 // Totaalbalans over alle accounts (exchanges = mock-seedwaarde tot live-API; handmatig = berekend).
+function eigenBalans(){const r=_renderMemo;if(r&&r.eigen!=null)return r.eigen;
+  const b=EXCHANGES.reduce((s,e)=>s+e.val,0)+MANUAL.reduce((s,m)=>s+manualBalance(m),0);if(r)r.eigen=b;return b;}
+// A running challenge or active funded account as "balance": its size plus its P&L. Only with "Funded meetellen" on.
+function fundedSaldo(){return FUNDED.filter(fundedLopend).reduce((s,f)=>s+(+f.size||0)+acctPnl(f.id),0);}
 function totalBalance(){const r=_renderMemo;if(r&&r.bal!=null)return r.bal;
-  const b=EXCHANGES.reduce((s,e)=>s+e.val,0)+MANUAL.reduce((s,m)=>s+manualBalance(m),0);if(r)r.bal=b;return b;}
+  const b=eigenBalans()+(fundedMeetellen()?fundedSaldo():0);if(r)r.bal=b;return b;}
 // Accounts voor dashboard-donut/legenda (exchanges + handmatige accounts).
 // Alleen relevante exchange-rijen tonen (gekoppeld, saldo of trades) — anders staan er
 // bij een verse journal vijf lege exchanges in de legenda/donut.
@@ -1972,7 +1987,7 @@ function totalBalance(){const r=_renderMemo;if(r&&r.bal!=null)return r.bal;
 // hoort geen vijf lege exchanges in filter/formulier/legenda te zien (Denny 2026-09-16).
 // Instellingen → Accounts toont bewust wél alles, daar koppel je juist.
 function relevantExchanges(){return EXCHANGES.filter(e=>e.val>0||CONNS[e.id]||T.some(t=>t&&t.exchange===e.id));}
-function accountList(){return [...relevantExchanges().map(e=>({n:e.acct,v:e.val,c:e.c,ex:e.name,id:e.id})),...MANUAL.map(m=>({n:m.name,v:manualBalance(m),c:cvar('var(--amber)'),ex:'handmatig',id:m.id,manual:true}))];}
+function accountList(){return [...relevantExchanges().map(e=>({n:e.acct,v:e.val,c:e.c,ex:e.name,id:e.id})),...(fundedMeetellen()?FUNDED.filter(fundedLopend).map(f=>({n:fundedNaam(f),v:(+f.size||0)+acctPnl(f.id),c:cvar('var(--violet)'),ex:'funded',id:f.id,funded:true})):[]),...MANUAL.map(m=>({n:m.name,v:manualBalance(m),c:cvar('var(--amber)'),ex:'handmatig',id:m.id,manual:true}))];}
 // Unified account-resolver (exchange óf handmatig) voor avatar/badge/cel.
 /* The trade form used to copy the exchange's label into t.account, so after a rename old trades kept the
    old name. The label is now looked up; t.account only counts as a real sub-account when it is not such a
@@ -1981,7 +1996,7 @@ function accountList(){return [...relevantExchanges().map(e=>({n:e.acct,v:e.val,
 function subAccountOf(t){const a=t&&t.account,e=t&&EXMAP[t.exchange];if(!a)return '';return e&&(a===e.acct||a===EX_DEFAULT_ACCT[t.exchange])?'':a;}
 // The shipped label is the exchange's name (or close to it) and would only repeat the Exchange tile.
 function accountLabel(t){const sub=subAccountOf(t);if(sub)return sub;const e=EXMAP[t.exchange];return e&&e.acct!==EX_DEFAULT_ACCT[t.exchange]?e.acct:'';}
-function acctOf(id){const e=EXMAP[id];if(e)return {id,name:e.name,acct:e.acct,c:e.c,abbr:e.abbr,manual:false};const m=MANUAL.find(x=>x.id===id);if(m)return {id,name:m.name,acct:'handmatig',c:cvar('var(--amber)'),abbr:(m.name||'??').slice(0,2),manual:true};return null;}
+function acctOf(id){const e=EXMAP[id];if(e)return {id,name:e.name,acct:e.acct,c:e.c,abbr:e.abbr,manual:false};const m=MANUAL.find(x=>x.id===id);if(m)return {id,name:m.name,acct:'handmatig',c:cvar('var(--amber)'),abbr:(m.name||'??').slice(0,2),manual:true};const f=fundedItem(id);if(f)return {id,name:fundedNaam(f),acct:f.kind==='funded'?'funded':'challenge',c:cvar('var(--violet)'),abbr:(f.firm||f.name||'??').slice(0,2),manual:false,funded:true};return null;}
 const PAIRC={BTC:'#f7931a',ETH:'#627eea',SOL:'#000000',XRP:'#23292f',DOGE:'#c3a634',LINK:'#2a5ada',AVAX:'#e84142',BNB:'#f3ba2f',ARB:'#213147',OP:'#ff0420',ADA:'#0033ad',DOT:'#e6007a',MATIC:'#8247e5',POL:'#8247e5',LTC:'#345d9d',TRX:'#eb0029',ATOM:'#2e3148',UNI:'#ff007a',NEAR:'#000000',APT:'#000000',SUI:'#4da2ff',XAU:'#c69320',GOLD:'#c69320',XAG:'#8b9099',SILVER:'#8b9099'};
 // Inline SVG coin-logo's (offline, geen externe requests) — merk-cirkel + wit merkteken. Val terug op ticker.
 const COIN_MARK={
@@ -2640,6 +2655,22 @@ function updateSection(){const s=UPDATE.status;
   return `<div class="panel"><div class="setrow"><div class="txt"><b>Updates</b><small>SyncJournal <b class="num">${APP_VERSION}</b> · uitgebracht ${RELEASED} · ${IS_HOSTED?'via syncjournal.nl':'lokale versie'} · <a class="linklike" href="https://github.com/ZaratrasJournal/SyncJournal/blob/main/CHANGELOG.md" target="_blank" rel="noopener">📋 changelog</a></small></div>${btn}</div>${res?`<div style="padding:0 18px 16px">${res}</div>`:''}</div>`;}
 function persistConns(){DB.save('conns',CONNS);}
 function persistManual(){DB.save('manual',MANUAL);}
+/* Funded mode (F11, Zaratras 25-10-2026): challenges and funded accounts at a prop firm. That money belongs to the
+   firm until a payout, so it never counts as your own; the trades do count in the analysis. A funded trade carries
+   the item id in t.exchange, like a manual account. Mode off = hidden, never deleted. */
+let FUNDED=DB.load('funded',[]);   // [{id,kind:'challenge'|'funded',firm,name,size,status,stop,logins,start,funded,from,payouts}]
+function persistFunded(){DB.save('funded',FUNDED);}
+const fundedItem=id=>(id&&FUNDED.find(f=>f&&f.id===id))||null;
+// The one test for "is this my money": every own-money sum goes through it.
+const isEigenGeld=t=>!fundedItem(t&&t.exchange);
+const fundedLopend=f=>!!f&&(f.kind==='funded'?f.status==='actief':f.status==='bezig');
+const fundedAan=()=>!!STATE.funded;
+const fundedMeetellen=()=>fundedAan()&&!!STATE.fundedMee;
+const fundedZichtbaar=t=>fundedAan()||isEigenGeld(t);
+const fundedNaam=f=>f?((f.firm?f.firm+' ':'')+(f.name||'')).trim():'';
+// The total holds firm money right now: say so wherever that total shows.
+const inclFunded=()=>fundedMeetellen()&&FUNDED.some(fundedLopend);
+const inclFundedLabel=()=>inclFunded()?' <span class="fbadge mix" title="Funded meetellen staat aan (Instellingen → Funded)">incl. funded</span>':'';
 function persistSync(){DB.save('sync',SYNC);}
 function connExpand(id){STATE.connOpen=STATE.connOpen===id?'':id;render();}
 function connectEx(id){
@@ -2716,7 +2747,7 @@ async function clearAllData(){ if(!confirm('ÁLLE lokale data wissen, trades, ta
 /* ═══ State ═══ */
 const STATE=Object.assign({page:'dashboard',theme:'light',priv:false,tradeTab:'all',density:'comfy',tend:'sessie',revSel:0,revQuery:'',revFilter:'all',revPeriod:'all',
   sortCol:'date',sortDir:-1,query:'',calMonth:localDateISO().slice(0,7),currency:'USD',selected:[],pbSel:'',pctRef:0,unit:'val',
-  sections:{hero:true,kpis:true,equity:true,monthly:true,edge:true,recent:true}}, DB.load('state',{}));
+  sections:{hero:true,kpis:true,equity:true,monthly:true,edge:true,recent:true},funded:false,fundedMee:false}, DB.load('state',{}));
 /* Default currency dollar (v1.11) is for new journals only. A member whose state was never saved with a currency had
    euros; decide once and save it, so a new journal is not taken for an old one at its next start (review v1.11). */
 if(!('currency' in (DB.load('state',{})||{}))){
@@ -2726,7 +2757,7 @@ if(!('currency' in (DB.load('state',{})||{}))){
 STATE.selected=[];
 STATE.revMode='trade'; STATE.revMonth=0; STATE.revShareSel=[]; STATE.shareHide=true;  // review: weergave (trade|beeld), maand-index in Beeld, geselecteerde trade-ids in volgorde, bedragen verbergen in exports
 STATE.tendRow=STATE.tendRow||'setup'; STATE.tendCol=STATE.tendCol||'session';  // Tendencies kruis-heatmap dimensies
-function persistState(){ DB.save('state',{theme:STATE.theme,priv:STATE.priv,density:STATE.density,currency:STATE.currency,pctRef:STATE.pctRef||0,unit:STATE.unit||'val'}); }
+function persistState(){ DB.save('state',{theme:STATE.theme,priv:STATE.priv,density:STATE.density,currency:STATE.currency,pctRef:STATE.pctRef||0,unit:STATE.unit||'val',funded:!!STATE.funded,fundedMee:!!STATE.fundedMee}); }
 
 /* ═══ Weergave-presets (Denny 2026-09-15): Rustig / Standaard / Alles ═══
    Presets zijn een snelkoppeling over losse per-onderdeel toggles, geen echte "modus".
@@ -3727,7 +3758,7 @@ function pgDashboard(){
   let mTxt;
   if(UNIT()==='val'){const _m=netUsd(mRows),_base=totalBalance()-_m;mTxt=`<b class="num ${cls(mNet)} mask">${eurS(mNet)}${_base>0?' ('+(_m>=0?'+':'−')+Math.abs(_m/_base*100).toFixed(1).replace('.',',')+'%)':''}</b>`;}
   else mTxt=`<b class="num ${cls(mNet)}">${unitAgg(mRows,mNet)}</b>`;
-  const hero=!VV('dHero')?'':`<div class="panel hero"><div>${unitSeg()}<div class="eyebrow">Totale balans</div>
+  const hero=!VV('dHero')?'':`<div class="panel hero"><div>${unitSeg()}<div class="eyebrow">Totale balans${inclFundedLabel()}</div>
     <div class="big num mask" title="${esc(koersUitleg())}">${saldoTxt(totalBalance())}</div>
     <div class="meta">Gerealiseerd deze maand ${mTxt}</div></div>
     <div class="alloc">${donut()}<div class="legend">${legend}</div></div></div>`;
@@ -5961,7 +5992,7 @@ function coachPretradeDeel(rows,o){const i=o.idee||{},c=coachIdeeCijfers(i),L=[]
     if(pb.stop)L.push('- Stop: '+pb.stop);if(pb.target)L.push('- Target: '+pb.target);if(pb.minRR)L.push('- Min R:R: '+pb.minRR);}
   else L.push('- Geen playbook met regels voor deze setup.');
   L.push('','## Regels uit TradingPlan',...coachPlanRegels(i.dir));
-  const nu=localDateISO(),wk=coachIsoWeek(nu),live=T.filter(t=>isLive(t)&&t.date);
+  const nu=localDateISO(),wk=coachIsoWeek(nu),live=T.filter(t=>isLive(t)&&t.date&&fundedZichtbaar(t));
   L.push('- Trades deze week in de journal: '+live.filter(t=>coachIsoWeek(t.date)===wk).length,
     '- Verliezers vandaag in de journal: '+live.filter(t=>t.date===nu&&heeftUitkomst(t)&&t.pnl<0).length);
   return L;}
@@ -6397,21 +6428,25 @@ function renderPagina(){
   // zodat doortypen in zoekbalken niet onderbroken wordt (render() vervangt #main volledig).
   let _fid=null,_fs=null,_fe=null;
   try{const _ae=document.activeElement;if(_ae&&_ae.id&&(_ae.tagName==='INPUT'||_ae.tagName==='TEXTAREA')){_fid=_ae.id;if(typeof _ae.selectionStart==='number'){_fs=_ae.selectionStart;_fe=_ae.selectionEnd;}}}catch(e){}
-  FT=fxView(applyFilter(zonderMergedChildren(T)));
+  // Funded mode off: funded trades are hidden everywhere (not deleted). The Dashboard is your money: funded trades
+  // only with "Funded meetellen" on, and then only of a running challenge or active funded account.
+  let zicht=zonderMergedChildren(T).filter(fundedZichtbaar);
+  if(STATE.page==='dashboard')zicht=zicht.filter(t=>isEigenGeld(t)||(fundedMeetellen()&&fundedLopend(fundedItem(t.exchange))));
+  FT=fxView(applyFilter(zicht));
   CLOSED=FT.filter(heeftUitkomst);
   BOEKINGEN=FT.filter(t=>t.status!=='open').map(boeking);
   // B1 (ChangeMaker): filters gelden bewust app-breed — maak dat op élke pagina zichtbaar,
   // zodat "al mijn trades zijn weg" nooit meer een mysterie is.
   const gfb=document.getElementById('gfBadge');
   if(gfb){const nAct=countActive();
-    if(nAct){gfb.hidden=false;gfb.innerHTML=`🔍 ${FT.length.toLocaleString('nl-NL')} van ${T.length.toLocaleString('nl-NL')} trades, filter geldt voor de hele app <button onclick="clearGFilter()" aria-label="Alle filters wissen">Wis</button>`;}
+    if(nAct){gfb.hidden=false;gfb.innerHTML=`🔍 ${FT.length.toLocaleString('nl-NL')} van ${T.filter(fundedZichtbaar).length.toLocaleString('nl-NL')} trades, filter geldt voor de hele app <button onclick="clearGFilter()" aria-label="Alle filters wissen">Wis</button>`;}
     else gfb.hidden=true;}
   const [title,sub,fn]=PAGES[STATE.page];
   document.getElementById('ptitle').textContent=title;
   document.getElementById('psub').textContent=sub||'';
   document.getElementById('ptbar').style.background=PAGEC[STATE.page]||'var(--accent)';
   try{syncStip();}catch(e){}
-  const bv=document.getElementById('balVal');if(bv){bv.textContent=(dispCur()==='EUR'?'≈ ':'')+CURSYM()+' '+Math.round(fxNow(totalBalance())).toLocaleString('nl-NL');bv.title=koersUitleg();bv.classList.toggle('oud',koersOud());}
+  const bv=document.getElementById('balVal');if(bv){bv.textContent=(dispCur()==='EUR'?'≈ ':'')+CURSYM()+' '+Math.round(fxNow(totalBalance())).toLocaleString('nl-NL');bv.title=koersUitleg()+(inclFunded()?' · incl. funded (Instellingen → Funded)':'');bv.classList.toggle('oud',koersOud());}
   try{renderSideConns();}catch(e){}
   const m=document.getElementById('main');destroyCharts();_rcQueue=[];m.innerHTML=tabBanner()+updateBanner()+driveBanner()+backupBanner()+fn();m.style.animation='none';void m.offsetWidth;m.style.animation='';
   document.querySelectorAll('#nav button,#navbot button').forEach(b=>b.classList.toggle('on',b.dataset.p===STATE.page));
