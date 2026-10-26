@@ -342,8 +342,8 @@ als pure functie, getest zonder sleutel; 2 · sleutel + één echte vraag (minor
 **Waarom** (Denny, 25-10-2026). De journal breder trekken, zodat ook traders buiten de Morani-community hem gebruiken.
 Technisch staat syncjournal.nl/app al open (geen login, alles lokaal); het werk zit in vertrouwen, neutraliteit en de Worker.
 
-**Eerst beslissen (Denny):** Nederlandse traders buiten Morani, of internationaal? Internationaal = Engels in app, FAQ
-en landing (L, apart traject). Advies: eerst een besloten beta, Nederlandstalig en gratis, met een paar mensen.
+**Besloten (Denny, 26-10-2026): alleen Nederlands.** Een besloten beta, Nederlandstalig en gratis, met een paar
+mensen. Engels (app, FAQ, landing) is geen doel; komt alleen terug als Denny daar later anders over beslist.
 
 **Stappen voor de beta:**
 1. **Worker-verbruik meten:** in het dagrapport op de NUC het aantal verzoeken per dag en de drukste minuut aflezen
