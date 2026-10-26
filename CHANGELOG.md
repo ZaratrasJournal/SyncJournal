@@ -16,6 +16,16 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v1.18.5] — 2026-10-26
+
+### Gewijzigd
+- **De FAQ is bijgewerkt met de nieuwe functies van v1.18**: de funded modus (en dat die nog in testfase is), CSV-import naast je koppeling zonder dubbele trades, hoe je stop liep en hoe je trade dichtging, een verkeerde stop van je exchange zelf aanpassen, Kopieer voor Discord, Review → Beeld, de privacy-modus en ruwe gegevens sturen als Zaratras erom vraagt.
+
+### Fixed
+- De pop-up bij een CSV-import zei bij een gekoppelde exchange nog dat trades dubbel konden komen te staan. Dat klopt sinds v1.18.1 niet meer: de koppeling is leidend en een trade staat er één keer.
+
+---
+
 ## [v1.18.4] — 2026-10-26
 
 ### Gewijzigd
