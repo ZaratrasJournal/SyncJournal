@@ -40,6 +40,21 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
   - Met de funded modus aan staan je challenges en funded accounts ook in die lijst, en kun je er vanuit de pop-up meteen een toevoegen. Een FTMO-export stelt je FTMO-challenge of funded account voor.
 - Met de funded modus aan staat op het Dashboard een kaart met je funded P&L, wat er is uitbetaald en hoeveel er loopt. In Analytics kies je bovenaan **Eigen**, **Funded** of **Alles**.
 - Twee nieuwe vragen in de FAQ over de funded modus.
+- **Hoe liep je stop, en hoe ging de trade dicht.** Bij trades van Kraken, Hyperliquid en OKX zie je in het
+  trade-detail of je stop later **naar break-even**, **strakker** of **verder weg ⚠** ging, en of de trade dichtging
+  op je **stop-loss**, een **take-profit**, **met de hand** of door een **liquidatie**. Het formulier zegt het ook bij
+  de stop ("van Kraken Futures, later naar break-even"). Dit komt uit wat de sync al ophaalt; voor oudere trades
+  verschijnt het na de volgende sync.
+- **Stop van de exchange zelf aanpassen.** Een stop-loss die van Kraken, Hyperliquid of OKX komt staat vast. Zette je
+  bij de exchange per ongeluk een verkeerde stop (een typfout die je een minuut later verbeterde), dan klik je in het
+  formulier op **Zelf aanpassen** en vul je de juiste in. Het label toont dan wat de exchange zegt ("zelf aangepast ·
+  Kraken Futures: 82.235"), en de volgende sync laat jouw stop staan. Met **Terug naar Kraken Futures** (of de
+  exchange van die trade) zet je de stop van de exchange terug.
+- **Analytics: Stop-management en uitvoering.** Een nieuw paneel laat zien hoe vaak je je stop naar break-even,
+  strakker of verder weg zette, en hoe je trades dichtgingen (stop-loss, take-profit, met de hand, liquidatie). Per
+  groep het aantal trades, de gemiddelde R ten opzichte van je oorspronkelijke stop en de netto P&L. Het volgt je
+  filters en de keuze Eigen / Funded / Alles. Trades zonder stopgeschiedenis tellen niet mee; het paneel zegt hoeveel
+  er wel meetellen, en onder de 10 dat het nog te weinig is voor een conclusie.
 - In het trade-formulier kies je bij "Exchange" ook een challenge of funded account (alleen met de funded modus aan). Afgeronde staan eronder, voor een vergeten trade.
 - Zet je de funded modus aan terwijl er oude FTMO-trades zonder account staan, dan vraagt de journal één keer wat je wilt: in een nieuwe challenge zetten, of als eigen geld laten staan. Hij verplaatst nooit iets vanzelf.
 
