@@ -3076,6 +3076,28 @@ function tpTelt(x,t){const s=x&&x.soort;
   if(s==='sl'||s==='liq')return false;
   if(s==='hand'){const entry=+(t&&t.entry)||0,dir=String(t&&(t.dir||t.direction))==='short'?-1:1;return entry>0&&(+x.price-entry)*dir>0;}
   return true;}
+/* F5: how the stop moved and how the trade closed. Pure, no exchange assumptions: the adapters store stopLaatst
+   (the last stop before the close) and the kind of each close step; these read them. */
+const STOP_BE_MARGE=0.001;   // a stop within 0.1% of the entry counts as break-even
+function stopBewegingVan(dir,entry,stop,laatst){entry=+entry;stop=+stop;laatst=+laatst;
+  if(!(entry>0&&stop>0&&laatst>0))return null;
+  if(laatst===stop)return 'geen';
+  if(Math.abs(laatst-entry)<=entry*STOP_BE_MARGE)return 'be';
+  const short=String(dir||'').toLowerCase()==='short';
+  return (short?laatst>stop:laatst<stop)?'ruimer':'strakker';}   // tighter includes trailing past the entry into profit
+const stopBewegingOf=t=>t?stopBewegingVan(t.dir||t.direction,t.entry,t.stop,t.stopLaatst):null;
+// the last stop an adapter saw: moved → the last one in its course, else the stop itself
+const laatsteStop=(verschoven,verloop,stop)=>verschoven&&verloop&&verloop.length?+verloop[verloop.length-1].price:+stop;
+const STOP_BEW_LBL={geen:'niet verzet',be:'naar break-even',strakker:'strakker',ruimer:'verder weg ⚠'};
+const EXIT_SOORT={sl:'stop',tp:'tp',hand:'hand',liq:'liquidatie'};
+const EXIT_LBL={stop:'stop-loss',tp:'take-profit',hand:'met de hand',liquidatie:'liquidatie'};
+// the close that ended a closed trade: the last close step with a kind (by time), else the last hit TP level with one
+const stopLaterHint=t=>{const b=stopBewegingOf(t);return b&&b!=='geen'?', later '+STOP_BEW_LBL[b]:t.stopVerschoven?', later verschoven':'';};
+function exitRedenOf(t){if(!t||t.status!=='closed')return null;
+  const af=(t.fills||[]).filter(f=>isAfbouw(f)&&f.soort).sort((a,b)=>(+a.ts||0)-(+b.ts||0));
+  const hit=(t.tps||[]).filter(x=>x&&x.hit&&x.soort);
+  const s=af.length?af[af.length-1].soort:hit.length?hit[hit.length-1].soort:'';
+  return EXIT_SOORT[s]||null;}
 function tpLabels(lijst,t){let n=0;
   return(lijst||[]).map(x=>{const s=x&&x.soort;
     if(s==='sl')return 'SL';
@@ -3310,6 +3332,9 @@ function tradeHoverDetail(t){
   }
   let s='';
   s+=stat('Stop-loss',+t.stop>0?prijsOfStreep(t.stop):'','color:var(--red)');
+  const bew=stopBewegingOf(t),uit=exitRedenOf(t);
+  s+=stat('Stop later',bew?esc(STOP_BEW_LBL[bew]):'',bew==='ruimer'?'color:var(--amber)':'');
+  s+=stat('Gesloten via',uit?esc(EXIT_LBL[uit]):'');
   s+=stat('Take-profit',(!t.tps||!t.tps.length)&&+t.tp>0?prijsOfStreep(t.tp):'');
   s+=stat('Risk',+t.risk>0?String(+t.risk).replace('.',',')+'%':'');
   s+=stat('Geplande R:R',+t.rrPlanned>0?'1 : '+String(+t.rrPlanned).replace('.',','):'');
@@ -8491,7 +8516,7 @@ const ExchangeAPI = {
         else if(r.soort==='geannuleerd'&&!weg&&isHet(r.uid,r.price))weg=true;
         else if(r.soort==='geplaatst'&&weg&&stopKant(r.price)){if(r.price!==nu)verschoven=true;nu=r.price;uid=r.uid;weg=false;}
       });
-      return{stop,verschoven};
+      return{stop,verschoven,laatst:nu};
     },
     /* How a close order went (F5): a trigger activated at the same moment on the closing side is a stop or a TP;
        triggerSide decides (Kraken docs): closing a long, Below = stop and Above = take-profit, a short the other way
@@ -8780,7 +8805,8 @@ const ExchangeAPI = {
           o.tps.filter(x=>x&&x.hit).forEach((x,i)=>{if(l[i]&&x.soort!==l[i]){x.soort=l[i];n++;}});});
         // stop-loss from the trigger history: where Kraken knows the stop, it is the stop - like entry and exit (Denny 18-10-2026)
         if(this._log.stops)T.forEach(o=>{if(!o||o.exchange!=="kraken")return;const s=this._log.stops.get(String(o.srcId));if(!s)return;
-          if(+o.stop!==s.stop||o.stopBron!=='kraken'||!!o.stopVerschoven!==s.verschoven){o.stop=s.stop;o.stopBron='kraken';if(s.verschoven)o.stopVerschoven=true;else delete o.stopVerschoven;n++;}});
+          if(+o.stop!==s.stop||o.stopBron!=='kraken'||!!o.stopVerschoven!==s.verschoven){o.stop=s.stop;o.stopBron='kraken';if(s.verschoven)o.stopVerschoven=true;else delete o.stopVerschoven;n++;}
+          if(o.stopBron==='kraken'&&s.laatst>0&&+o.stopLaatst!==s.laatst){o.stopLaatst=s.laatst;n++;}});
       }
       const lop=this._lopend||{};
       T.forEach(o=>{
@@ -9253,7 +9279,8 @@ const ExchangeAPI = {
           instapOid:((o.fills||[]).filter(f=>!isAfbouw(f)).sort((a,b)=>(+a.ts||0)-(+b.ts||0))[0]||{}).ordId};
         const s=this._slTpVoorTrade(L,regels,kinderen);
         if(s.stop&&(+o.stop!==s.stop||o.stopBron!=='hyperliquid')){o.stop=s.stop;o.stopBron='hyperliquid';n++;}
-        if(o.stopBron==='hyperliquid'){if(s.verschoven)o.stopVerschoven=true;else delete o.stopVerschoven;o.stopVerloop=s.stopVerloop;}
+        if(o.stopBron==='hyperliquid'){if(s.verschoven)o.stopVerschoven=true;else delete o.stopVerschoven;o.stopVerloop=s.stopVerloop;
+          const l=laatsteStop(o.stopVerschoven,s.stopVerloop,o.stop);if(l>0&&+o.stopLaatst!==l){o.stopLaatst=l;n++;}}
         if(s.tps.length)o.tpsGepland=s.tps;
         // how each close went: on the fills (step table) and the TP levels (sjFromTj drops unknown fields)
         const soort=this._afbouwSoort(L,regels);
@@ -9778,7 +9805,7 @@ const ExchangeAPI = {
       T.filter(o=>o&&o.exchange==="okx"&&/^(closed|open|partial)$/.test(o.status||"")).forEach(o=>{
         if(!regels||+o.openTime<vanaf){if(this._labelAfbouw(o,null))n++;return;}   // no orders for it: only restore the TP list
         const inst=(this._instIdVan||{})[String(o.srcId)];if(inst&&o.okxInstId!==inst){o.okxInstId=inst;n++;}
-        const voor=JSON.stringify([o.stop,o.stopBron,o.stopVerschoven,o.stopVerloop,o.tpsGepland]);
+        const voor=JSON.stringify([o.stop,o.stopBron,o.stopVerschoven,o.stopVerloop,o.stopLaatst,o.tpsGepland]);
         const s=this._slTpVoorTrade({dir:o.dir,entry:o.entry,openTime:o.openTime,closeTime:o.status==="closed"?o.closeTime:"",pair:o.pair,qtyAsset:o.qtyAsset,instId:o.okxInstId},regels);
         /* The SL amended in place keeps its algoId with the new price (OKX keeps no revisions): the first price we saw
            stays the stop. Moved to the entry (cost-price SL) leaves no SL on the loss side: the stop stays. */
@@ -9787,9 +9814,9 @@ const ExchangeAPI = {
         else if(s.stop&&o.stopBron==="okx"&&!o.stopAlgoId&&s.stop===+o.stop)o.stopAlgoId=s.algoId;
         if(o.stopBron==="okx"){
           if(s.verschoven||gewijzigd||s.stopVerloop.some(v=>v.price!==+o.stop))o.stopVerschoven=true;else delete o.stopVerschoven;
-          o.stopVerloop=s.stopVerloop;}
+          o.stopVerloop=s.stopVerloop;o.stopLaatst=laatsteStop(o.stopVerschoven,s.stopVerloop,o.stop);}
         if(s.tps.length)o.tpsGepland=s.tps;
-        if(voor!==JSON.stringify([o.stop,o.stopBron,o.stopVerschoven,o.stopVerloop,o.tpsGepland]))n++;
+        if(voor!==JSON.stringify([o.stop,o.stopBron,o.stopVerschoven,o.stopVerloop,o.stopLaatst,o.tpsGepland]))n++;
         if(this._labelAfbouw(o,regels))n++;
       });
       if(n)persist();
@@ -11375,7 +11402,7 @@ function openForm(id){
       ${formLocked?`<div class="field full"><div class="lockbar">\ud83d\udd12 Entry, exit, size, fees en P&amp;L komen van ${esc((EXMAP[t.exchange]||{}).name||'de exchange')} en zijn hier niet aan te passen${stopVast?', net als de stop-loss':''}. ${stopVast?'Risico':'Stop, risico'} en alles wat over jou gaat wel.</div></div>`:''}
       <div class="field"><label for="f_entry">Entry</label><input id="f_entry"${RO} value="${t.entry}" inputmode="decimal" oninput="calcTrade(true)"></div>
       <div class="field"><label for="f_exit">Exit</label><input id="f_exit"${RO} value="${t.exit}" inputmode="decimal" oninput="calcTrade(true)"></div>
-      <div class="field ${vfc('std',+t.stop>0)}"><label for="f_stop">Stop-loss${t.stopBron&&t.stopBron!=='gebruiker'&&EXMAP[t.stopBron]?` <span class="hint">(van ${esc(EXMAP[t.stopBron].name)}${t.stopVerschoven?', later verschoven':''})</span>`:''}</label><input id="f_stop"${stopVast?' readonly':''} value="${t.stop||''}" inputmode="decimal" oninput="calcTrade(true)"></div>
+      <div class="field ${vfc('std',+t.stop>0)}"><label for="f_stop">Stop-loss${t.stopBron&&t.stopBron!=='gebruiker'&&EXMAP[t.stopBron]?` <span class="hint">(van ${esc(EXMAP[t.stopBron].name)}${stopLaterHint(t)})</span>`:''}</label><input id="f_stop"${stopVast?' readonly':''} value="${t.stop||''}" inputmode="decimal" oninput="calcTrade(true)"></div>
       <div class="field"><label for="f_size">Size <span class="hint">(in $ of in de asset)</span></label>
         <div class="szrow"><input id="f_size"${RO} value="${formSizeUnit==='asset'?(t.qty||''):t.size}" inputmode="decimal" oninput="calcTrade(true)">
         <div class="szseg" id="szseg"><button type="button" class="${formSizeUnit==='usd'?'on':''}" onclick="setSizeUnit('usd')">$</button><button type="button" id="szAssetBtn" class="${formSizeUnit==='asset'?'on':''}" onclick="setSizeUnit('asset')">${esc(pairBase(t.pair)||'coin')}</button></div></div><div class="fxhint" id="fxSize"></div></div>
