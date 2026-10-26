@@ -14,6 +14,11 @@ vergelijkt versies, en een lager nummer zou nooit als update verschijnen.
 
 Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Drop in de Morani Discord.
 
+## [Unreleased]
+
+### Toegevoegd
+- **Kopieer voor Discord met meerdere trades.** Heb je er meer geselecteerd, dan kopieert de knop ze één voor één ("Kopieer 2 van 3"): plakken in Discord, klikken, plakken, en dan één keer versturen. Of kies **⬇ Alle beelden voor Discord** voor één beeld per trade in je downloads, met de teksten samen op het klembord. Met de privacy-modus aan blijven bedragen ook van het beeld af.
+
 ---
 
 ## [v1.17.2] — 2026-10-25
