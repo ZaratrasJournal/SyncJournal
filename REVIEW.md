@@ -99,7 +99,7 @@ npx playwright test   →   311 passed · 12 skipped · 0 failed   (1.0 uur, exi
 - E2E-only: een formule-bug die "plausibele" cijfers oplevert valt niet op zonder handmatig geverifieerde verwachtingswaardes.
 - ~5s Babel-compile per pageload maakt de suite traag (370 tests ≈ 25–45 min) → wordt zelden integraal gedraaid.
 - Sommige oudere specs asserten op brede signalen (bv. `page.content()` bevat "PARTIAL" — matcht ook de broncode in het script-blok, dus altijd groen). Voorbeeld: `blofin-partial.spec.js` test 2.
-- Geen live-API-tests (bewust: credentials bij Denny; snapshot-fixture-patroon is de brug).
+- Geen live-API-tests (bewust: credentials bij Zaratras; snapshot-fixture-patroon is de brug).
 
 ---
 
@@ -165,7 +165,7 @@ Legenda dekking: ✅ directe test · 🟡 indirect (E2E raakt het pad, geen waar
 
 Criteria: complex × ongetest × directe invloed op trading-beslissingen.
 
-1. **`calcRMultiple` + FTMO-fallback-keten (1546–1640)** — ❌ geen enkele directe test; drie fallback-niveaus met magic numbers (0.1% trail-drempel, 0.4% default, 5% outlier-cap). R-multiple stuurt playbook-stats, grading en Denny's FTMO-evaluatie. Een stille fout hier verandert welke setups "werken". *(Vandaag nog bewezen kwetsbaar: het hele FTMO-pad was sinds v12.231 dood door de source→account-id wissel — zichtbaar geworden als cosmetische chip-bug, maar feitelijk rekende elke FTMO-trade met de crypto-formule.)*
+1. **`calcRMultiple` + FTMO-fallback-keten (1546–1640)** — ❌ geen enkele directe test; drie fallback-niveaus met magic numbers (0.1% trail-drempel, 0.4% default, 5% outlier-cap). R-multiple stuurt playbook-stats, grading en Zaratras' FTMO-evaluatie. Een stille fout hier verandert welke setups "werken". *(Vandaag nog bewezen kwetsbaar: het hele FTMO-pad was sinds v12.231 dood door de source→account-id wissel — zichtbaar geworden als cosmetische chip-bug, maar feitelijk rekende elke FTMO-trade met de crypto-formule.)*
 2. **`netPnl` manual-vs-exchange fee-semantiek (2005–2028)** — de aanname "exchange-PnL is al netto, manual niet" is nergens als test vastgelegd terwijl élk statistiekgetal erdoorheen loopt. v12.231 brak dit voor manual-accounts (fees niet afgetrokken); v12.232 fixt het, maar zonder unit-test kan het opnieuw stilletjes breken.
 3. **Stale-open finalize-duplicaten (importTrades ±20260 én syncOpenPositions ±20348 naast `detectPartialFromSiblings`)** — drie kopieën van fee/TP/size-aggregatie die synchroon moeten blijven; muteren trades destructief (siblings worden verwijderd). Een divergentie = dubbele of verdwenen trades/fees. De v12.231 dup-bug kwam precies uit deze hoek.
 4. **Multi-account migratie + reparatie-pass (±3000, ±20015)** — herschrijft `trade.source` van de volledige dataset bij load; one-shot met `tj_premigration_backup` als vangnet, maar het restore-pad van die backup is ongetest en de migratie bleek al twee bugs te bevatten (orphan→"manual" attributieverlies; race die partial-detectie overschreef — beide gefixt in v12.232).
@@ -269,7 +269,7 @@ tab-switch  Dashboard   : 1.3–1.4s  ← bottleneck (charts + KPI-aggregaten mo
 tab-switch  Analytics   : ~0.5s     · overige tabs 0.08–0.24s — prima
 ```
 
-**Bewust NIET gefixt:** de twee bottlenecks vragen paginatie/virtualisatie (Trades) en lazy-mounting (Dashboard-charts) — dat zijn zichtbare UI/gedrags-keuzes, geen audit-refactors. Het moet via het demo-first proces met Denny. De meet-tooling blijft staan (`node tests/perf-measure.js`) als baseline voor die discussie.
+**Bewust NIET gefixt:** de twee bottlenecks vragen paginatie/virtualisatie (Trades) en lazy-mounting (Dashboard-charts) — dat zijn zichtbare UI/gedrags-keuzes, geen audit-refactors. Het moet via het demo-first proces met Zaratras. De meet-tooling blijft staan (`node tests/perf-measure.js`) als baseline voor die discussie.
 
 ### Eindsamenvatting van de hele audit (fase 1–4)
 
@@ -281,7 +281,7 @@ tab-switch  Analytics   : ~0.5s     · overige tabs 0.08–0.24s — prima
 **Bewust gelaten:** Sharpe/Sortino kalenderdag-definitie + Calmar-eenheden (gedocumenteerde "rough" metrics), PF-999 display-variant, finalize-logica 3× (importTrades/syncOpenPositions/detectPartialFromSiblings — zwaarste refactor, sterke specs eromheen, apart project), CSV-vs-API dedup-gat (niche), multi-step restore-atomiciteit, DST-randjes in week-iteraties.
 
 **Aanbevelingen voor later:**
-1. **Trades-paginatie of -virtualisatie** (grootste gemeten winst; demo-first met Denny).
+1. **Trades-paginatie of -virtualisatie** (grootste gemeten winst; demo-first met Zaratras).
 2. **Dashboard: charts lazy mounten** na first paint.
 3. **`ftmoCtx` doorgeven aan álle `calcRMultiple`-callers** (avgR-metric en playbook-stats gebruiken nu de 0.4%-default waar de Trades-tabel de mediaan gebruikt — inconsistent tussen schermen; bewuste gedragswijziging, dus niet in deze audit gedaan).
 4. Finalize-aggregatie (3 kopieën) extraheren zodra er een aanleiding is — mét de bestaande exchange-cluster specs als vangnet.

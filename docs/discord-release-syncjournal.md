@@ -1,6 +1,6 @@
 # Discord-bericht — SyncJournal live
 
-> Voor Denny. Plak dit in Discord met `demos/release-vergelijking.png` eronder.
+> Voor Zaratras. Plak dit in Discord met `demos/release-vergelijking.png` eronder.
 > Kanaalnaam en @-mention aanpassen. Het langere concept in
 > `community-aankondiging-syncjournal.md` blijft staan als naslag voor de live sessie.
 
@@ -92,7 +92,7 @@ Morgenavond loop ik het live met jullie door. 📓
 | Niet meegekomen | Doelen, milestones, mindset, pre-trade, deelkaarten — in de oude app aanwezig, in SyncJournal nul voorkomens |
 
 **Aanspreekvorm**: de community is niet alleen mannen. Gebruik *"Traders"* of *"allemaal"*,
-niet *"mannen"* of *"jongens"*. (Denny 28-09-2026.)
+niet *"mannen"* of *"jongens"*. (Zaratras 28-09-2026.)
 
 **Niet claimen:**
 - *"OKX is erbij gekomen"* — onjuist. OKX zat al in de oude journal (eigen adapter, 60 treffers).

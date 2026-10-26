@@ -3,9 +3,9 @@
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 > **Bijgewerkt 18-10-2026** na Kraken (v1.11). Wat sindsdien gedeeld is gebouwd, krijgt Hyperliquid gratis mee;
-> dit plan bouwt alleen nog de Hyperliquid-adapter. Besluiten van Denny die het oorspronkelijke plan wijzigen:
+> dit plan bouwt alleen nog de Hyperliquid-adapter. Besluiten van Zaratras die het oorspronkelijke plan wijzigen:
 > - **De stop van de exchange wint en is vergrendeld**, net als entry en exit. Een eerder zelf ingevulde stop
->   maakt plaats. Kent de exchange geen stop, dan vult Denny hem zelf in. (Was: "een zelf ingevulde stop wint".)
+>   maakt plaats. Kent de exchange geen stop, dan vult Zaratras hem zelf in. (Was: "een zelf ingevulde stop wint".)
 > - **Elke afbouw krijgt een label:** TP n (alleen take-profits genummerd), **SL** of **Close** (met de hand).
 > - **Alle uitvoeringen blijven zichtbaar** in "Zo is deze positie gelopen", met een haak per order.
 > - **Eén exchange tegelijk, elk in de eigen adapter.** Hyperliquid eerst, daarna OKX, dan Blofin.
@@ -32,7 +32,7 @@
 
 **Tech Stack:** vanilla JS (single-file app), Node + Playwright-specs, de wallet-opname (`tests/helpers/hl-wallet.js`).
 
-**Spec:** dit document; gesprekken met Denny op 17 en 18-10-2026; meting op zijn echte wallet op 17-10-2026.
+**Spec:** dit document; gesprekken met Zaratras op 17 en 18-10-2026; meting op zijn echte wallet op 17-10-2026.
 
 ## Wat de echte wallet liet zien (17-10-2026)
 
@@ -66,12 +66,12 @@
 | 5 | **Meerdere stops** voor delen van de positie | Onduidelijk welke "de" stop is | Meerdere stops binnen 60 s van de eerste: het op grootte gewogen gemiddelde. Test met twee deel-stops. |
 | 6 | **Geschiedenis te kort**: meer dan 2000 orders geleden | Oude trades zonder stop en zonder labels | Geen stop: R blijft "—". Geen order bekend: label blijft TP n (zoals nu). Nooit gokken. |
 | 7 | **API-fout of rate-limit** | Sync mislukt | Orders ophalen is een extra: bij een fout komen de trades binnen zonder stop en labels; de volgende sync probeert opnieuw. |
-| 8 | **Zichtbare verandering** van R-cijfers | Denny ziet andere statistieken | Changelog benoemt het. Bij elke stop staat "(van Hyperliquid)". |
+| 8 | **Zichtbare verandering** van R-cijfers | Zaratras ziet andere statistieken | Changelog benoemt het. Bij elke stop staat "(van Hyperliquid)". |
 | 9 | **Hyperliquid wijzigt de `orderType`-teksten** | Niets gekoppeld | Herkennen op het begin (`/^stop/i`, `/^take profit/i`). Onbekend blijft onbekend. `hl-echt` draait in de release-poort tegen de opname. |
 | 10 | **Sub-fills los laten** (voor de haak) verandert P&L of stappen | Andere cijfers dan nu | Task 2 toetst op de echte opname: P&L, fees en entry per trade **identiek** aan nu; alleen het aantal regels in de stappentabel groeit. |
 | 11 | **Een wijziging voor Hyperliquid raakt een andere exchange** | Kraken/OKX/Blofin anders | Alleen `ExchangeAPI.hyperliquid` wijzigt. De gedeelde functies blijven ongemoeid; doet een taak dat toch, dan stopt hij en wordt het een eigen besluit. De Kraken-specs (`kraken-*`, 200+ checks) zitten in de release-poort en worden rood als Kraken iets merkt. |
 
-**Vangnetten:** tests met de echte opname, een droogtest op Denny's data vóór de release, eerst naar work, daarna live alleen op "push".
+**Vangnetten:** tests met de echte opname, een droogtest op Zaratras' data vóór de release, eerst naar work, daarna live alleen op "push".
 
 ---
 
@@ -126,7 +126,7 @@ _SL_VOOR_MS = 60e3        // a bracket SL may be placed up to 60 s before the op
 
 ### Task 1: De opname kan orders opnemen en afspelen
 
-**Files:** `tests/helpers/hl-wallet.js`. Test via `node tests/hl-echt.spec.js --opnemen` (Denny's wallet, buiten de repo).
+**Files:** `tests/helpers/hl-wallet.js`. Test via `node tests/hl-echt.spec.js --opnemen` (Zaratras' wallet, buiten de repo).
 
 - [ ] **Step 1:** In `haalAccount(wallet)` na de fills ook `historicalOrders` en `frontendOpenOrders` ophalen en in het resultaat zetten (lege lijst bij een fout).
 - [ ] **Step 2:** In `speelAf` beide types afspelen, met de klok (`nu`) als filter: `historicalOrders` alleen regels met `statusTimestamp ≤ nu`.
@@ -195,7 +195,7 @@ meting tegen (fill-`oid` ≠ trigger-`oid`): koppel op de `statusTimestamp` van 
 
 - [ ] **Step 1: Falende test** (synthetisch): long met TP1 geraakt, TP2 geraakt, daarna de stop → labels `TP1,TP2,SL` in
   `tpLabels(t.tps)`, de stappentabel (`.extp`) en `revTps`; een sluiting met de hand → `Close`; zonder orders → `TP1,TP2` (zoals nu).
-  Op de echte opname: per gesloten trade de verwachte labels, vooraf nagekeken tegen Denny's Hyperliquid-scherm.
+  Op de echte opname: per gesloten trade de verwachte labels, vooraf nagekeken tegen Zaratras' Hyperliquid-scherm.
 - [ ] **Step 2:** Zie hem falen.
 - [ ] **Step 3: Implementeer** `_afbouwSoort` en zet `soort` op de afbouw-fills en `tps[i].soort` in `afterImport`
   (`sjFromTj` laat onbekende velden vallen, dus op de TP-niveaus in `afterImport`, zoals Kraken).
@@ -224,7 +224,7 @@ meting tegen (fill-`oid` ≠ trigger-`oid`): koppel op de `statusTimestamp` van 
 ```js
       T.filter(o=>o&&o.exchange==='hyperliquid'&&(o.status==='closed'||o.status==='open'||o.status==='partial')).forEach(o=>{
         const s=this._slTpVoorTrade(o,this._orders||[]);
-        // where Hyperliquid knows the stop it is the stop, like entry and exit (Denny 18-10-2026)
+        // where Hyperliquid knows the stop it is the stop, like entry and exit (Zaratras 18-10-2026)
         if(s.stop&&(+o.stop!==s.stop||o.stopBron!=='hyperliquid')){o.stop=s.stop;o.stopBron='hyperliquid';n++;}
         if(o.stopBron==='hyperliquid'){if(s.verschoven)o.stopVerschoven=true;else delete o.stopVerschoven;o.stopVerloop=s.stopVerloop;}
         if(s.tps.length)o.tpsGepland=s.tps;
@@ -242,17 +242,17 @@ meting tegen (fill-`oid` ≠ trigger-`oid`): koppel op de `statusTimestamp` van 
 
 - [ ] **Droogtest:** speel de verse opname af in een losse browser. Controleer:
   - het aantal trades per exchange (alleen Hyperliquid mag veranderen);
-  - per Hyperliquid-trade stop, TP's en labels tegen Denny's eigen beeld;
+  - per Hyperliquid-trade stop, TP's en labels tegen Zaratras' eigen beeld;
   - P&L, fees, entry en exit per trade ongewijzigd (Task 2).
 - [ ] **Review:** `pr-reviewer-nl` over de diff, met de Review Focus en de risicotabel.
 - [ ] **Release v1.12** volgens CLAUDE.md. Changelog: *"Hyperliquid: je stop-loss en ingestelde take-profits komen automatisch mee, net als bij Kraken. Je R-multiple klopt zonder invullen, en per afbouw zie je TP, SL of Close."*
-- [ ] **Uitrol:** eerst work (Denny controleert zijn lopende long: SL 79.440, drie TP's), live alleen op zijn "push".
+- [ ] **Uitrol:** eerst work (Zaratras controleert zijn lopende long: SL 79.440, drie TP's), live alleen op zijn "push".
 
 ---
 
 ## Bevindingen opname (19-10-2026)
 
-Opname van Denny's wallet: 29 fills, 89 order-regels, 4 open orders, 1 open positie.
+Opname van Zaratras' wallet: 29 fills, 89 order-regels, 4 open orders, 1 open positie.
 - **Fill-`oid` van een geraakte trigger = trigger-`oid`:** ja, bij alle 7 geraakte orders (5 TP's, 2 stops). Task 4 koppelt dus exact op `oid`, zonder tijd.
 - **Volgorde per order:** `open` → `triggered` → `filled` (of `canceled` / `reduceOnlyCanceled`). De regel `filled` heeft
   `triggerPx: "0.0"`, `isTrigger: false` en `triggerCondition: "Triggered"`; de trigger-prijs staat in `open` en `triggered`.

@@ -1,12 +1,12 @@
 # OKX-herstelplan
 
-Datum: 2026-09-22. Hoort bij [okx-model.md](okx-model.md) (hoe OKX werkt). Status: **stap 1 gebouwd** (v0.9.112, lokaal; spec `tests/okx-levensloop.spec.js`, 25/25 op Denny's back-ups en de snapshot van 29-06). Hyperliquid naar model B: gebouwd in v0.9.113 (`tests/hyperliquid-levensloop.spec.js`, 25/25 op de wallet-snapshot van mei). Formulier vergrendeld in v0.9.115. Blofin naar model B in v0.9.116 (zie onderaan). OKX stap 2 in v0.9.118, Kraken in v0.9.119 en afgerond in v0.9.126. Alle vier de exchanges staan op model B; Kraken wacht alleen nog op de Worker-update (zie `docs/worker-update.md`). Rest: stap 3, plan tegen uitvoering.
+Datum: 2026-09-22. Hoort bij [okx-model.md](okx-model.md) (hoe OKX werkt). Status: **stap 1 gebouwd** (v0.9.112, lokaal; spec `tests/okx-levensloop.spec.js`, 25/25 op Zaratras' back-ups en de snapshot van 29-06). Hyperliquid naar model B: gebouwd in v0.9.113 (`tests/hyperliquid-levensloop.spec.js`, 25/25 op de wallet-snapshot van mei). Formulier vergrendeld in v0.9.115. Blofin naar model B in v0.9.116 (zie onderaan). OKX stap 2 in v0.9.118, Kraken in v0.9.119 en afgerond in v0.9.126. Alle vier de exchanges staan op model B; Kraken wacht alleen nog op de Worker-update (zie `docs/worker-update.md`). Rest: stap 3, plan tegen uitvoering.
 
 ## Wat er kapot is, in één zin
 
 Wij sleutelen OKX-trades op `posId`, maar OKX hergebruikt dat id tot 30 dagen na een volledige sluiting — dus overschrijft elke heropening de vorige trade, en lekken de fills van de nieuwe positie in de stappentabel van de oude.
 
-Zichtbaar in Denny's back-up van 22-09: de positie van 20–21 sept (P&L −9,76, 0,009 BTC) is vervangen door die van 22 sept (P&L −1,56, 0,0019 BTC), onder één rij die van 20-09 03:51 tot 22-09 10:53 loopt en negen stappen van twee posities toont.
+Zichtbaar in Zaratras' back-up van 22-09: de positie van 20–21 sept (P&L −9,76, 0,009 BTC) is vervangen door die van 22 sept (P&L −1,56, 0,0019 BTC), onder één rij die van 20-09 03:51 tot 22-09 10:53 loopt en negen stappen van twee posities toont.
 
 ## Dubbelcheck: elke aanname met bewijs
 
@@ -21,9 +21,9 @@ Zichtbaar in Denny's back-up van 22-09: de positie van 20–21 sept (P&L −9,76
 | 7 | De sluitingen waren TP/SL-algo's, gekoppeld aan de instap-orders | OKX-export *Order History*: kolom **Bot ID** gevuld bij precies de drie sluitingen; prefix matcht de instap-order (`39402602602…` ↔ `3940260260269182976`) | zeker |
 | 8 | Een hersync repareert een bestaande rij als de sleutel matcht | `refreshFromSync` overschrijft `SJ_SYNC_FIELDS` en wist `fills` bij gewijzigde `closeTime`/`pnl` | zeker (code) |
 | 9 | Een hersync haalt de oude levensloop opnieuw op | Worker `trades`: `positions-history` gefilterd op `uTime >= startTime`; bewaartermijn 3 maanden | zeker, mits `startTime` ver genoeg terug (zie stap 1) |
-| 10 | Worker `trades` haalt hooguit 100 rijen, zonder paginering | Worker v19: `limit=100`, geen `after` | bekende beperking, niet blokkerend voor Denny |
+| 10 | Worker `trades` haalt hooguit 100 rijen, zonder paginering | Worker v19: `limit=100`, geen `after` | bekende beperking, niet blokkerend voor Zaratras |
 
-Wat ik **niet** kan bewijzen zonder live sleutels: dat `fills-history` daadwerkelijk fills teruggeeft voor Denny's venster. Sinds v0.9.109 doet de knop dat wel (screenshot van Denny), dus dat staat.
+Wat ik **niet** kan bewijzen zonder live sleutels: dat `fills-history` daadwerkelijk fills teruggeeft voor Zaratras' venster. Sinds v0.9.109 doet de knop dat wel (screenshot van Zaratras), dus dat staat.
 
 ## Stap 1 — Sleutel `okx_<posId>_<cTime>`
 
@@ -37,7 +37,7 @@ Wat ik **niet** kan bewijzen zonder live sleutels: dat `fills-history` daadwerke
   4. zet `CONNS.okx.lastSync` terug naar `min(openTime) − 1 uur`, zodat de eerstvolgende sync de oude levensloop opnieuw ophaalt en de overschreven rij herstelt (aanname 8 + 9).
 - Migratie v3 blijft staan (historisch pad); v5 corrigeert het resultaat ervan.
 
-**Wat er met Denny's data gebeurt**
+**Wat er met Zaratras' data gebeurt**
 - Rij `okx_3809943469299781632` → `okx_3809943469299781632_1789869078888`, fills leeg, lastSync terug naar 20-09.
 - Sync: `positions-history` geeft twee records (cTime 20-09 03:51 en 22-09 ~05:03). Het eerste matcht de hernoemde rij → `refreshFromSync` zet P&L −9,76 / exit 82.039 / 0,009 BTC terug. Het tweede is nieuw → eigen trade, P&L −1,56.
 - Notities, tags, screenshots blijven staan (`adoptUserFieldsSJ` is niet eens nodig: de rij wordt hernoemd, niet vervangen).
@@ -48,7 +48,7 @@ Wat ik **niet** kan bewijzen zonder live sleutels: dat `fills-history` daadwerke
 - `lastSync` terugzetten betekent één zwaardere sync (tot 100 rijen). Acceptabel.
 
 **Tests**
-- Migratietest op Denny's echte back-ups: 21-09 (twee tussenstanden → één trade, ongewijzigd) en 22-09 (gelijmde rij → hernoemd, fills leeg, lastSync teruggezet).
+- Migratietest op Zaratras' echte back-ups: 21-09 (twee tussenstanden → één trade, ongewijzigd) en 22-09 (gelijmde rij → hernoemd, fills leeg, lastSync teruggezet).
 - Synctest met de snapshot van 29-06: zes levenslopen met één `posId` → **zes** trades, geen overschrijving.
 - Herhaalde sync met dezelfde levensloop (tussenstand → eindstand) → één trade, bijgewerkt.
 - Prullenbak-guard onder de nieuwe sleutel.
@@ -63,7 +63,7 @@ Wat ik **niet** kan bewijzen zonder live sleutels: dat `fills-history` daadwerke
 - Venster per levensloop is met stap 1 vanzelf goed.
 
 **Tests**
-- Denny's zeven echte fills met `subType` → zelfde uitkomst als nu (regressie), en met opzettelijk verkeerde `side` maar juiste `subType` → nog steeds goed.
+- Zaratras' zeven echte fills met `subType` → zelfde uitkomst als nu (regressie), en met opzettelijk verkeerde `side` maar juiste `subType` → nog steeds goed.
 - `ts` en `fillTime` in andere volgorde → sortering volgt `fillTime`.
 - `fillPnl` leidend, eigen berekening als tooltip.
 
@@ -78,7 +78,7 @@ Aparte release. Ontwerp eerst als demo.
 
 ## Volgorde en go/no-go
 
-1. Stap 1 bouwen → suite → op Denny's back-up van 22-09 draaien → **Denny controleert** dat beide posities terug zijn met de juiste P&L → release.
+1. Stap 1 bouwen → suite → op Zaratras' back-up van 22-09 draaien → **Zaratras controleert** dat beide posities terug zijn met de juiste P&L → release.
 2. Stap 2 → release.
 3. Worker-beslissing → stap 3.
 
@@ -86,7 +86,7 @@ v0.9.111 (datums en tussenkoppen in de tabel) gaat mee met stap 1; de tussenkop 
 
 ## Blofin (gebouwd in v0.9.116)
 
-Bron: [Blofin API docs](https://docs.blofin.com/), *GET Positions History*, *GET Trade History*; snapshots uit Denny's account van 01-05 en 04-05-2026 (`tests/_fixtures/blofin-snapshot*.json`).
+Bron: [Blofin API docs](https://docs.blofin.com/), *GET Positions History*, *GET Trade History*; snapshots uit Zaratras' account van 01-05 en 04-05-2026 (`tests/_fixtures/blofin-snapshot*.json`).
 
 | Aanname | Bewijs |
 |---|---|

@@ -4,11 +4,11 @@
 `?variant=A|B|C|D`). Nep-data, niets wordt opgeslagen. Weggooi-code: na de keuze verdwijnt de demo.
 
 ## De vraag
-Denny: op de reviewpagina een modus met alleen afbeeldingen en TradingView-links, gefilterd op tag of
+Zaratras: op de reviewpagina een modus met alleen afbeeldingen en TradingView-links, gefilterd op tag of
 playbook; elke afbeelding te vergroten, met datum en een weg naar de trade — om er met de coach doorheen
 te gaan. Hoe ziet dat eruit? En: is het delen in de huidige vorm handig, en hoe staat de reviewpagina?
 
-Antwoorden van Denny vooraf: met de coach **allebei** (samen doorlopen én vooraf opsturen); delen vooral
+Antwoorden van Zaratras vooraf: met de coach **allebei** (samen doorlopen én vooraf opsturen); delen vooral
 voor **Discord/community en de coach**.
 
 ## De varianten
@@ -38,13 +38,13 @@ dezelfde reviewpagina, met dezelfde filters (playbook, tags, uitkomst, periode).
    zet de chart groot bovenaan, de feiten in één rij en de review-velden (notitie, emotie, checklist)
    eronder. Lijstitems worden compacter met een mini-beeldje.
 
-## Open vragen voor Denny
+## Open vragen voor Zaratras
 - Welke variant (of welke combinatie) voor de beeld-modus?
 - Moet "coach-feedback" (veld in de presentatie) echt bewaard worden bij de trade?
 - Variant D: nu meenemen of later als aparte stap?
 
 ## Ronde 2 (14-10-2026) — `demos/review-beeld-demo-v2.html`
-Denny koos **C** (coach-sessie), met: meer info per trade, de trade kunnen **reviewen** in de beeld-modus,
+Zaratras koos **C** (coach-sessie), met: meer info per trade, de trade kunnen **reviewen** in de beeld-modus,
 **blokken per maand** (‹ › tussen maanden, minder op je scherm, grotere miniaturen), werkende knoppen, en de
 **Presenteer**-functie uit B erbij.
 
@@ -60,7 +60,7 @@ balk + tekst op het klembord; anders download). ← → = vorige/volgende maand.
 | **3 — Focus** | de maand als filmstrip bovenaan, één trade groot met review ernaast |
 
 ## Ronde 3 (14-10-2026) — `demos/review-beeld-demo-v3.html`
-Denny koos **indeling 1 (kaarten)**: 3 per rij, kaarten selecteerbaar (vinkje linksboven, toont je
+Zaratras koos **indeling 1 (kaarten)**: 3 per rij, kaarten selecteerbaar (vinkje linksboven, toont je
 volgorde-nummer), *Presenteer maand* wordt *Presenteer geselecteerde (n)* zodra je iets kiest, plus
 "Selecteer maand". De sessie-kolom is vervangen door een **selectiebalk** onderin (volgorde, presenteer,
 coach-pakket, Discord, bedragen verbergen, naam, wissen) — zo blijft er ruimte voor 3 kaarten. In de
@@ -74,12 +74,12 @@ presentatie staat een **strook met miniaturen** onder het beeld: klik om direct 
   live trades, datums); de review-status (Alles / Te reviewen / Gereviewd) staat als segment bij de maand.
 - **Presentatie**: meer trade-info (exchange, richting, sessie, entry/stop/exit, size, leverage, risk, R:R
   gepland vs behaald, P&L, fees, duur, grade, lagen top-down met bias en confirmaties, TP's, tags en fouten).
-  Coach-feedback blijft (Denny vindt die mooi).
+  Coach-feedback blijft (Zaratras vindt die mooi).
 - **Discord-beeld**: chart links, trade-info rechts (pair, richting, setup + lagen, R groot, datum, sessie,
   HTF-bias, entry/stop/exit, R:R gepland, TP geraakt, duur, confirmaties/tags), voetbalk met notitie. De tekst
   bevat dezelfde kern.
 
-## Daarna (Denny 14-10-2026)
+## Daarna (Zaratras 14-10-2026)
 - **Filter "Alle playbooks" in de filterbalk.** Nu mengt "Alle setups" playbook-namen, setup-tags uit de lagen
   en `t.setup`, en filtert alleen op `t.setup` (work/syncjournal.html, `filterBar`: `setups=[...PBOOK, ...setupTags,
   ...t.setup]`). Voorstel: splitsen in *Alle playbooks* (de playbook van de trade) en *Alle setups* (setup-tags in
@@ -95,7 +95,7 @@ presentatie staat een **strook met miniaturen** onder het beeld: klik om direct 
 - **Coach-feedback wordt bewaard bij de trade**: invullen in presentatie, kaart-review of per trade; zichtbaar op de
   kaart (💬), in de lijst en in het coach-pakket.
 
-## Verdict (Denny, 14-10-2026)
+## Verdict (Zaratras, 14-10-2026)
 - Beeld-modus: **kaarten (indeling 1), 3 per rij, stijl "rand"** (groene/rode streep links), kop + setupregel
   boven de afbeelding, selectievakje in de kopregel, info-vakken als tegels.
 - **Selectie & delen**-paneel rechts; presenteerknop past zich aan (maand / geselecteerde); miniaturen-strook in de

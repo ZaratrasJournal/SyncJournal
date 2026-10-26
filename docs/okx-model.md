@@ -1,6 +1,6 @@
 # Hoe OKX werkt — en waar wij ervan afwijken
 
-Datum: 2026-09-22. Bron: [OKX API v5 docs](https://www.okx.com/docs-v5/en/), secties *Get positions history*, *Transaction details (3 days / 3 months)*, *Order history*, *Algo order history*. Aanleiding: Denny's OKX-trades liepen door elkaar (orders, fills, TP's), zie de stappentabel van 22-09.
+Datum: 2026-09-22. Bron: [OKX API v5 docs](https://www.okx.com/docs-v5/en/), secties *Get positions history*, *Transaction details (3 days / 3 months)*, *Order history*, *Algo order history*. Aanleiding: Zaratras' OKX-trades liepen door elkaar (orders, fills, TP's), zie de stappentabel van 22-09.
 
 ## 1. De vier dingen die OKX kent
 
@@ -19,13 +19,13 @@ Dus: **een TP is geen fill.** Een TP is een algo-order die, als hij raakt, een g
 
 > *posId — Position ID. There is attribute expiration. The posId will be expired if it is more than 30 days after the last full close position, then position will use new posId.*
 
-Sluit je een positie volledig en open je binnen 30 dagen opnieuw op hetzelfde instrument en dezelfde kant, dan krijgt die **hetzelfde `posId`**. Denny sloot op 21-09 19:39 en opende op 22-09 05:03: zelfde id.
+Sluit je een positie volledig en open je binnen 30 dagen opnieuw op hetzelfde instrument en dezelfde kant, dan krijgt die **hetzelfde `posId`**. Zaratras sloot op 21-09 19:39 en opende op 22-09 05:03: zelfde id.
 
 Wat wij doen: sinds v0.9.104 is de trade-sleutel `okx_<posId>` (migratie v3, "één positie = één trade"). Daarmee **plakken we twee losse posities aan elkaar**. De sleutel daarvóór was `okx_<posId>_<uTime>`; die gaf juist een dubbele rij bij elke gedeeltelijke sluiting, omdat `uTime` bijwerkt.
 
-De juiste sleutel is **`okx_<posId>_<cTime>`**: `cTime` is "Created time of position" en hoort per levensloop uniek te zijn. *(Te bevestigen met Denny's verse export: zelfde posId, twee verschillende cTime's.)*
+De juiste sleutel is **`okx_<posId>_<cTime>`**: `cTime` is "Created time of position" en hoort per levensloop uniek te zijn. *(Te bevestigen met Zaratras' verse export: zelfde posId, twee verschillende cTime's.)*
 
-Denny's back-up van 21-09 klopt overigens met dit model: twee rijen, zelfde `posId`, zelfde `cTime` (20-09 03:51:18), verschillende `uTime` (03:22 en 19:39). Dat is één levensloop, twee tussenstanden. Die samenvoegen was goed. De positie van 22-09 samenvoegen is fout.
+Zaratras' back-up van 21-09 klopt overigens met dit model: twee rijen, zelfde `posId`, zelfde `cTime` (20-09 03:51:18), verschillende `uTime` (03:22 en 19:39). Dat is één levensloop, twee tussenstanden. Die samenvoegen was goed. De positie van 22-09 samenvoegen is fout.
 
 ### 2b. Fills zeggen zelf of ze openen of sluiten
 
@@ -78,4 +78,4 @@ Volgorde van herstel, elk apart te testen:
 2. **Stappen**: `subType` gebruiken, `fillPnl` leidend, sorteren op `fillTime`, venster per levensloop.
 3. **Plan vs. uitvoering**: Worker-actie `algo_history`, koppeling naar de stappentabel. Aparte stap, aparte release.
 
-Niets hiervan is gebouwd. Eerst Denny's verse export naast dit model leggen.
+Niets hiervan is gebouwd. Eerst Zaratras' verse export naast dit model leggen.

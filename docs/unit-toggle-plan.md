@@ -1,7 +1,7 @@
 # Plan: €/%/R-weergaveschakelaar (zoals de originele Morani-journal)
 
-**Status:** plan + klikbare demo ([demos/unit-toggle-demo.html](../demos/unit-toggle-demo.html)); bouw start na Denny's akkoord.
-**Referentie:** Denny's screenshot 2026-09-17 — seg [€ | % | R] rechts in de dashboard-hero; "Gerealiseerd deze maand +762,0R · YTD +0,0%" terwijl de balans gewoon $ 4.722 blijft.
+**Status:** plan + klikbare demo ([demos/unit-toggle-demo.html](../demos/unit-toggle-demo.html)); bouw start na Zaratras' akkoord.
+**Referentie:** Zaratras' screenshot 2026-09-17 — seg [€ | % | R] rechts in de dashboard-hero; "Gerealiseerd deze maand +762,0R · YTD +0,0%" terwijl de balans gewoon $ 4.722 blijft.
 
 ## Onderzoek: hoe doen anderen dit
 

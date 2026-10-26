@@ -542,9 +542,9 @@ ok('+ Hele maand selecteert de maand', await p.evaluate(() => STATE.revShareSel.
 ok('paneel toont volgorde met pijltjes', await p.evaluate(() => document.querySelectorAll('.revsel .bitem').length === 2));
 ok('presenteerknop wordt "geselecteerde (2)"', await p.evaluate(() => /geselecteerde \(2\)/.test(document.querySelector('.revmonth').textContent)));
 const dl = p.waitForEvent('download');
-await p.evaluate(() => { document.getElementById('revShareName').value = 'Denny'; downloadCoachPackage(); });
+await p.evaluate(() => { document.getElementById('revShareName').value = 'Zaratras'; downloadCoachPackage(); });
 const f = await dl; const html = require('fs').readFileSync(await f.path(), 'utf8');
-ok('pakket gedownload met naam', /Gedeeld door <b>Denny/.test(html));
+ok('pakket gedownload met naam', /Gedeeld door <b>Zaratras/.test(html));
 ok('pakket bevat coach-feedback ge-escaped', html.includes('Let op &lt;script&gt;'));
 ok('pakket bevat lagen-regel', /Lagen/.test(html));
 ok('selectie blijft na download (ook nog naar Discord)', await p.evaluate(() => STATE.revShareSel.length === 2));
@@ -561,7 +561,7 @@ function revSelPanel(){const sel=revSelTrades(),n=sel.length,dis=n?'':'disabled'
     <p class="mu">${n?`${n} trade${n>1?'s':''}, in deze volgorde`:'Vink kaarten aan (het vakje vóór de datum) om ze te presenteren, naar je coach te sturen of op Discord te zetten.'}</p>
     ${sel.map((t,i)=>`<div class="bitem"><span class="o"><button onclick="revSelMove(${i},-1)" aria-label="omhoog">▲</button><button onclick="revSelMove(${i},1)" aria-label="omlaag">▼</button></span><span class="num mu">${i+1}</span><span class="nm"><b>${esc(t.pair)}</b> <span class="mu">${esc(fmtD(t.date))}</span></span>${rBadge(t)}<button class="linkbtn" onclick="revSelToggle(${t.id})" aria-label="weghalen">✕</button></div>`).join('')}
     <div class="selacts"><button class="linkbtn" onclick="revSelMonth()">+ Hele maand</button>${n?'<button class="linkbtn" onclick="revSelClear()">Wissen</button>':''}</div>
-    <label class="lbl" for="revShareName">Jouw naam (in het pakket)</label><input id="revShareName" class="shareinp" value="${esc(DB.load('share_name','')||'')}" onchange="DB.save('share_name',this.value.trim())" placeholder="bv. Denny">
+    <label class="lbl" for="revShareName">Jouw naam (in het pakket)</label><input id="revShareName" class="shareinp" value="${esc(DB.load('share_name','')||'')}" onchange="DB.save('share_name',this.value.trim())" placeholder="bv. Zaratras">
     <label class="shareopt"><input type="checkbox" ${STATE.shareHide?'checked':''} onchange="STATE.shareHide=this.checked"> Bedragen verbergen (alleen R)</label>
     <div class="act">
       <button class="btn pri" ${dis} onclick="openRevPres(STATE.revShareSel,null,true)">▶ Presenteer geselecteerde<small>volledig scherm · info, review en coach-feedback ernaast</small></button>
@@ -790,7 +790,7 @@ async function revDiscord(id){const t=T.find(x=>x.id===id);if(!t)return;const hi
 
   Commit als `Release v1.9: review image mode, sharing and coach feedback` (squash op `main` via PR).
 - [ ] **Step 6: Poort.** Run `node tests/run-release.js`. Verwacht: alles groen. Daarna kopie naar
-  `deploy/syncjournal-site` en commit. **Niet pushen** zonder "push" van Denny.
+  `deploy/syncjournal-site` en commit. **Niet pushen** zonder "push" van Zaratras.
 
 ---
 

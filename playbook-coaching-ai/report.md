@@ -54,7 +54,7 @@
 
 Tier **1** · [https://wyckofflabs.com/](https://wyckofflabs.com/)
 
-> _Why researched_: Meest directe concurrent — exact dezelfde crypto-perp exchanges als Denny (Blofin, Hyperliquid, MEXC, FTMO). AI is per-trade — playbook-niveau is hun gap.
+> _Why researched_: Meest directe concurrent — exact dezelfde crypto-perp exchanges als Zaratras (Blofin, Hyperliquid, MEXC, FTMO). AI is per-trade — playbook-niveau is hun gap.
 
 #### Basis
 
@@ -567,7 +567,7 @@ Tier **1**
 Hybrid: PROACTIVE weekly per-playbook digest + REACTIVE per-trade pressure-test + REACTIVE per-trade autopsy on close. Cadence ties to crypto's 24/7 session rhythm rather than stock-market open/close.
 - **ai minimum trade threshold**: 15+ per playbook for setup-coaching, 10+ for pre-trade history-lookup, n=1 always supported (graceful degradation).
 **ai underlying tech**:
-Claude API (own-key model preferred for privacy + cost-pass-through, given community is small and Denny's user-base is Dutch/EU). Structured aggregation layer in JS over localStorage trade-table + cached market-context (funding/OI snapshot at entry/exit per trade).
+Claude API (own-key model preferred for privacy + cost-pass-through, given community is small and Zaratras' user-base is Dutch/EU). Structured aggregation layer in JS over localStorage trade-table + cached market-context (funding/OI snapshot at entry/exit per trade).
 - **output format**: Per-playbook cards + per-trade modals + weekly digest. Honest sample-size badges. Plain Dutch optional. Mobile-readable.
 **notable prompts**:
 Combinations of pattern_setup_playbook_coaching + pattern_pre_trade_validation + pattern_per_trade_autopsy prompts, all enriched with crypto-specific context fields.
@@ -605,7 +605,7 @@ deep_pattern_analysis powered by structured aggregation. Causal claims defensibl
 Tilt-meter triggered by post-loss revenge-trade pattern (next trade within X minutes, oversized). Discipline-score from A/B/C playbook-grades. Mindset prompts (already in app) tied to sessional cadence.
 - **voice journaling**: Optional, low-priority for v1.
 **mentor mode**:
-Future: community members (Sebas+Denny first) can review each other's playbook stats — but stats only, never trades themselves, to respect privacy-mode (per v12.127 release).
+Future: community members (Sebas+Zaratras first) can review each other's playbook stats — but stats only, never trades themselves, to respect privacy-mode (per v12.127 release).
 
 _Uncertain fields_: Whether any new entrant has shipped a Bellafiore-grade playbook + Claude-API + Hyperliquid native combo in stealth (low probability but worth a quarterly check), Exact funding-rate threshold values that correlate with our community's playbook failures (need actual aggregate data — currently using illustrative numbers in prompts), Cost-per-month for end-user when using own-Claude-API-key at production scale (depends heavily on prompt-design — target <$2/mo through aggressive caching of playbook-stats)
 

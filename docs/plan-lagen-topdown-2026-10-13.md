@@ -6,7 +6,7 @@
 **Doel:** setup-lagen staan altijd top-down op tijdframe (hoogste boven, entry onderaan), het
 formulier toont je eigen tijdframe-tags, en bestaande trades worden eenmalig rechtgezet.
 
-**Besluiten** (Denny, 13-10-2026, grill-me):
+**Besluiten** (Zaratras, 13-10-2026, grill-me):
 1. Een laag springt **meteen** naar zijn plek zodra je een tijdframe kiest; bij opslaan nog eens
    gegarandeerd. Een laag zonder tijdframe blijft op zijn plek.
 2. **Bestaande trades eenmalig rechtzetten**: lagen sorteren, `t.timeframe` = tijdframe van de
@@ -22,7 +22,7 @@ formulier toont je eigen tijdframe-tags, en bestaande trades worden eenmalig rec
 **Waarom het meer is dan volgorde:** `submitForm` neemt de **laatste** laag als entry-laag
 (`work/syncjournal.html`, `const entryLayer=layers[layers.length-1]`) en leidt daar `t.timeframe`
 en — zonder gekozen playbook — de setup uit af. Een 4H-laag onder de 1H maakte de trade een
-4H-trade. In Denny's export van 13-10 staat er zo één ("1H > 4H").
+4H-trade. In Zaratras' export van 13-10 staat er zo één ("1H > 4H").
 
 **Tech:** `work/syncjournal.html`, Playwright-specs als losse Node-scripts.
 
@@ -104,7 +104,7 @@ function tfKeuzes(){const s=new Set([...((tagConfig&&tagConfig.timeframeTags)||T
 - [ ] **Stap 3: implementatie.** `SCHEMA_VERSION=11` en achteraan `MIGRATIONS`:
 
 ```js
-  /* Layers top-down (Denny 13-10-2026): the last layer is the entry layer and sets t.timeframe; a
+  /* Layers top-down (Zaratras 13-10-2026): the last layer is the entry layer and sets t.timeframe; a
      4H layer added under a 1H one made the trade a 4H trade. The setup stays as it is: we cannot
      tell whether it was picked or derived. Bias spelling from the old journal ('bearish') joins in. */
   {v:11,note:'Setup-lagen top-down, bias-schrijfwijze gelijk',up(){

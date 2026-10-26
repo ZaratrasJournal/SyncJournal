@@ -193,7 +193,7 @@ Na grill-me sessie zijn alle open beslissingen + 3 second-order vragen vastgeleg
 |---|---|---|---|
 | 1 | Scheduler weekly digest | **On-app-open check + manuele knop**, Settings-configurable (frequency/day/trigger-style) | Single-file HTML constraint: geen écht background mogelijk. On-app-open + manual = realistisch. Settings-config geeft user controle. |
 | 2 | Cold-start drempel | **Dynamic per simType**: 10 trades BT/paper, 20 trades real | BT-iteratie moet snel, real-trades duurder dus hogere bar. Past bij type-agnostic Trust-Score philosophy. |
-| 3 | Funding-rate scope | **Top-3 v1**: Blofin / MEXC / Hyperliquid. Kraken Futures v1.5. FTMO geen funding-concept. | Dit is Denny's hoofd-trio + partial-close trio. 6u extra Worker-werk dat onze defensible niche-claim concreet maakt. |
+| 3 | Funding-rate scope | **Top-3 v1**: Blofin / MEXC / Hyperliquid. Kraken Futures v1.5. FTMO geen funding-concept. | Dit is Zaratras' hoofd-trio + partial-close trio. 6u extra Worker-werk dat onze defensible niche-claim concreet maakt. |
 | 4 | AI-output storage | **Hybrid**: `trade.aiAutopsy` + `trade.aiPreTradeContext` op trade-object. Weekly digests in nieuwe `tj_ai_weeklies` localStorage-key. | Trade-context hoort bij trade. Weekly digests hebben geen trade-mapping. Schema-impact: 2 nieuwe fields op trade + 1 nieuwe key. |
 | 5 | Budget warning + cap | **Tiered**: $5 warning + $15 hard-cap, beide Settings-configurable. Realtime usage-display per feature. | $5 informatief, $15 blokkerend (instelbaar). UX-buffer voor de Anthropic-bill schrik bij user. |
 | 6 | Ship-strategie | **Progressive**: v12.135 → v12.136 → v12.137 over 3 weken | Feedback-loops na elke release informeren volgende. Past bij onze rapid-iteration cultuur. |

@@ -1,7 +1,7 @@
 # Opdracht: data-overdracht die niet mis kan gaan (export-overzicht, import-keuze, diagnose)
 
-**Datum:** 2026-09-25 · **Eigenaar:** Denny · **Uitvoering:** Claude in `work/syncjournal.html`
-**Status:** gebouwd in v0.9.136 (2026-09-25) na demo `demos/data-overzetten-demo.html`. Specs: `export-overzicht` (21), `import-keuze` (21), `export-import-rondje` (74, vier datasets in `tests/helpers/dov-datasets.js`), `diagnose` (16). Open: stap 4-doorloop met Denny's eigen oude-app-export.
+**Datum:** 2026-09-25 · **Eigenaar:** Zaratras · **Uitvoering:** Claude in `work/syncjournal.html`
+**Status:** gebouwd in v0.9.136 (2026-09-25) na demo `demos/data-overzetten-demo.html`. Specs: `export-overzicht` (21), `import-keuze` (21), `export-import-rondje` (74, vier datasets in `tests/helpers/dov-datasets.js`), `diagnose` (16). Open: stap 4-doorloop met Zaratras' eigen oude-app-export.
 
 ## 0. Doel
 
@@ -140,10 +140,10 @@ integriteitscontrole) is het voorbeeld. Dezelfde discipline komt op de gewone ex
 3. **Diagnose-rapport** (3.3). Spec `tests/diagnose.spec.js`: rapport bevat alle blokken, bevat
    géén `apiKey`/`apiSecret`/`passphrase`/`notes`/`data:image`, klembord-knop werkt, dubbele
    `srcId` en trades zonder datum worden gevonden, foutbalk-Details gebruikt hetzelfde rapport.
-4. **Doorloop met echte data**: Denny's eigen oude-app-export → SyncJournal, daarna export met
+4. **Doorloop met echte data**: Zaratras' eigen oude-app-export → SyncJournal, daarna export met
    overzicht → verse browser → import met keuze → controle groen. Plus de demo-dataset.
 5. Release: versie-bump, CHANGELOG, `cp work/syncjournal.html site/app.html`, mirror, push op
-   Denny's woord.
+   Zaratras' woord.
 
 ## 5. Acceptatie
 

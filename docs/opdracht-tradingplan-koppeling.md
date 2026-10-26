@@ -1,6 +1,6 @@
 # Opdracht: TradingPlan v2 inbouwen, verhuizen naar /plan, en koppelen aan SyncJournal
 
-Vastgelegd 25-09-2026 na een beslisgesprek (Denny + Claude). Dit document is de prompt voor het bouwwerk; de keuzes hieronder zijn genomen en staan niet meer ter discussie tenzij Denny ze zelf opent.
+Vastgelegd 25-09-2026 na een beslisgesprek (Zaratras + Claude). Dit document is de prompt voor het bouwwerk; de keuzes hieronder zijn genomen en staan niet meer ter discussie tenzij Zaratras ze zelf opent.
 
 ## Context
 

@@ -1,6 +1,6 @@
 # Plan: Drive langer ingelogd (fase 4 — token-broker)
 
-**Status:** Worker-code ligt klaar ([drive-token-worker.js](drive-token-worker.js)); wacht op Denny's deploy + go voor de app-kant.
+**Status:** Worker-code ligt klaar ([drive-token-worker.js](drive-token-worker.js)); wacht op Zaratras' deploy + go voor de app-kant.
 
 ## Waarom
 
@@ -17,7 +17,7 @@ Dit is hetzelfde patroon dat apps als Actual Budget gebruiken: lokaal-eerst, met
 
 ## Wat er moet gebeuren
 
-1. **Denny (±5 min):** Worker aanmaken en dit bestand plakken, de twee variabelen zetten (client-ID + het client secret uit Google Cloud Console), custom domain `drive-token.syncjournal.nl`. Stappen staan bovenin het Worker-bestand. In Google Console hoeft niets te wijzigen.
+1. **Zaratras (±5 min):** Worker aanmaken en dit bestand plakken, de twee variabelen zetten (client-ID + het client secret uit Google Cloud Console), custom domain `drive-token.syncjournal.nl`. Stappen staan bovenin het Worker-bestand. In Google Console hoeft niets te wijzigen.
 2. **App-kant (ik, na de deploy):** de Drive-koppeling ombouwen van het uur-token-flow naar de popup-code-flow + stille verlenging, met nette terugval naar de huidige flow als de Worker onbereikbaar is. Inclusief specs (mock-Worker) en changelog. Inschatting: 2-3 uur.
 
 ## Veiligheid, eerlijk benoemd
@@ -27,6 +27,6 @@ Dit is hetzelfde patroon dat apps als Actual Budget gebruiken: lokaal-eerst, met
 - Een refresh token in browser-opslag kan door malware op de computer van de gebruiker gestolen worden — maar die malware kan dan ook gewoon de journal-data zelf lezen. De scope blijft `drive.file`: alleen bestanden die SyncJournal zelf aanmaakt.
 - Intrekken kan altijd: koppeling verwijderen in de app, of via Google-accountbeheer.
 
-## Beslissing (Denny)
+## Beslissing (Zaratras)
 
 Deploy de Worker wanneer je wilt (stappen bovenin het bestand) en zeg het — dan bouw ik de app-kant als aparte release.

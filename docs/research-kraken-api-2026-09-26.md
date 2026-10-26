@@ -2,7 +2,7 @@
 
 # Kraken Futures REST API + account-log CSV — research report for a browser-based trade journal
 
-**Research date: 2026-09-26.** Everything marked **[verified live]** I confirmed myself with `curl` against `futures.kraken.com` today, or by parsing the four real Kraken CSV exports that already sit in `C:\Users\Denny\Documents\Tradejournal\`. The rest is cited to a URL.
+**Research date: 2026-09-26.** Everything marked **[verified live]** I confirmed myself with `curl` against `futures.kraken.com` today, or by parsing the four real Kraken CSV exports that already sit in `C:\Users\<gebruiker>\Documents\Tradejournal\`. The rest is cited to a URL.
 
 ## TL;DR — the five things that change the design
 
@@ -602,9 +602,9 @@ Sources: https://docs.kraken.com/exchange/changelog, the two OpenAPI specs, http
 30. https://github.com/freqtrade/freqtrade/issues/10685 · https://github.com/krakenfx/kraken-cli/issues/36 (both now moot — demo is dead)
 
 **Primary data (local, first-hand)**
-31. `C:\Users\Denny\Documents\Tradejournal\account_log_bacb6956-a5a3-487b-93ba-db8745d1a33b_2026-09-26T11-02-51Z.csv` — 2667 rows, 2025-11-05 → 2026-06-06; the source for the CSV header, the two-leg structure, the accounting identity, the 107-position reconstruction, the KFEE orphans, and the always-empty `position uid`
+31. `C:\Users\<gebruiker>\Documents\Tradejournal\account_log_bacb6956-a5a3-487b-93ba-db8745d1a33b_2026-09-26T11-02-51Z.csv` — 2667 rows, 2025-11-05 → 2026-06-06; the source for the CSV header, the two-leg structure, the accounting identity, the 107-position reconstruction, the KFEE orphans, and the always-empty `position uid`
 32. `…_2026-05-06T14-50-51Z.csv` (2437 rows) · `historyFuturesClosedPositions_2026-05-06.csv` (50 rows, capped) · `futuresLedger_2026-05-06.csv` (100 rows, capped) · `futuresTrades_2026-05-06.csv` (369) · `futuresOrders_2026-05-06.csv` (239)
-33. Working scratch copies of the specs and scraped docs: `C:\Users\Denny\AppData\Local\Temp\claude\c--Users-Denny-Documents-Tradejournal\ab4ec195-2294-44a8-80f6-9d4d64de495c\scratchpad\` (`fut-rest.yaml`, `fut-hist.yaml`, `kf.ts`, `cfrest.py`, `apigo-rest.go`, `kcli-auth.rs`, `changelog.md`, `fut-ratelimits.md`, `legacy-exec.md`, `.firecrawl/`)
+33. Working scratch copies of the specs and scraped docs: `C:\Users\<gebruiker>\AppData\Local\Temp\claude\c--Users-<gebruiker>-Documents-Tradejournal\ab4ec195-2294-44a8-80f6-9d4d64de495c\scratchpad\` (`fut-rest.yaml`, `fut-hist.yaml`, `kf.ts`, `cfrest.py`, `apigo-rest.go`, `kcli-auth.rs`, `changelog.md`, `fut-ratelimits.md`, `legacy-exec.md`, `.firecrawl/`)
 
 ## Caveats
 - **Section 5's commercial-journal coverage is incomplete.** My dedicated TradesViz / Tradervue / TraderSync / Edgewonk / Koinly / CoinLedger search had not returned when I finished, and I have deliberately asserted nothing about them. Worth a follow-up if you care; the primary-data finding (Kraken's own Closed-Positions export is capped at 50 rows, so the account log is the only complete source) is the actionable part and is verified.
