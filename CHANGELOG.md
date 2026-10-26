@@ -30,6 +30,8 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
   - Kies je een exchange die niet bij het bestand past, dan waarschuwt de journal eerst.
   - Herkent de journal het bestand niet, dan importeert hij niets en zegt hij welke formaten wel werken. Meld je exchange dan in de Morani Discord.
   - Met de funded modus aan staan je challenges en funded accounts ook in die lijst, en kun je er vanuit de pop-up meteen een toevoegen. Een FTMO-export stelt je FTMO-challenge of funded account voor.
+- Met de funded modus aan staat op het Dashboard een kaart met je funded P&L, wat er is uitbetaald en hoeveel er loopt. In Analytics kies je bovenaan **Eigen**, **Funded** of **Alles**.
+- Twee nieuwe vragen in de FAQ over de funded modus.
 - In het trade-formulier kies je bij "Exchange" ook een challenge of funded account (alleen met de funded modus aan). Afgeronde staan eronder, voor een vergeten trade.
 - Zet je de funded modus aan terwijl er oude FTMO-trades zonder account staan, dan vraagt de journal één keer wat je wilt: in een nieuwe challenge zetten, of als eigen geld laten staan. Hij verplaatst nooit iets vanzelf.
 

@@ -198,6 +198,15 @@ details.fd-explain>summary{cursor:pointer;padding:12px 18px;font-size:12.5px;fon
 .csvk-voor{font-size:10px;font-weight:700;color:var(--accent);background:var(--accent-soft);border:1px solid var(--accent-line);border-radius:20px;padding:1px 7px}
 .csvk-nieuw{display:grid;grid-template-columns:1fr 1fr;gap:10px;background:var(--sink);border:1px solid var(--line2);border-radius:9px;padding:12px}
 .csvk-full{grid-column:1/-1}
+.fd-kaart{display:flex;align-items:center;gap:18px;padding:14px 20px;border-left:3px solid var(--violet);flex-wrap:wrap}
+.fd-kl{display:flex;flex-direction:column;gap:4px;min-width:0}
+.fd-kbig{font-size:22px;font-weight:700;letter-spacing:-.02em}
+.fd-kr{flex:1;min-width:200px;display:flex;flex-direction:column;gap:3px;font-size:12.5px;color:var(--muted);align-items:flex-end;text-align:right}
+.fd-kr b{color:var(--ink2);font-weight:600}
+.fd-dot{margin:0 7px}
+.fd-geldbar{display:flex;align-items:center;gap:10px;margin:0 0 14px}
+.fd-geldlbl{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+@media(max-width:600px){.fd-kr{align-items:flex-start;text-align:left}}
 .csvk-nieuw.csvk-nieuw3{grid-template-columns:1fr 1fr 1fr}
 .csvk-warn{display:flex;flex-direction:column;gap:6px}
 .csvk-toch{display:flex;align-items:center;gap:7px;font-weight:600;cursor:pointer}
@@ -2743,6 +2752,19 @@ const fundedLopend=f=>!!f&&(f.kind==='funded'?f.status==='actief':f.status==='be
 const fundedAan=()=>!!STATE.funded;
 const fundedMeetellen=()=>fundedAan()&&!!STATE.fundedMee;
 const fundedZichtbaar=t=>fundedAan()||isEigenGeld(t);
+// Analytics money filter: only once there is something funded to filter on.
+const fundedGeldFilterAan=()=>fundedAan()&&FUNDED.length>0;
+function setAnGeld(v){STATE.anGeld=['eigen','funded','alles'].includes(v)?v:'alles';render();}
+function fundedGeldFilter(){if(!fundedGeldFilterAan())return '';const g=STATE.anGeld||'alles';
+  return `<div class="fd-geldbar" data-geld-filter><span class="fd-geldlbl">Geld</span><div class="seg" role="group" aria-label="Eigen geld of funded">${[['eigen','Eigen'],['funded','Funded'],['alles','Alles']].map(([k,l])=>`<button class="${g===k?'on':''}" aria-pressed="${g===k}" onclick="setAnGeld('${k}')">${l}</button>`).join('')}</div></div>`;}
+// Dashboard: one compact card, at most three numbers. Only with the mode on and "meetellen" off (on = one total).
+function fundedKaart(){
+  if(!fundedAan()||fundedMeetellen())return '';
+  if(!FUNDED.length)return `<div class="panel fd-kaart" data-funded-kaart><div class="fd-kl"><span class="eyebrow">Funded</span><div class="fd-dim">Nog geen challenge of funded account.</div></div><button class="btn pri" onclick="STATE.setTab='funded';STATE.fdForm={kind:'challenge',pre:{}};go('instellingen')">Challenge toevoegen</button></div>`;
+  const pnl=FUNDED.reduce((s,f)=>s+acctPnl(f.id),0),paid=FUNDED.reduce((s,f)=>s+fdPaid(f),0),lopend=FUNDED.filter(fundedLopend).length;
+  return `<div class="panel fd-kaart" data-funded-kaart><div class="fd-kl"><span class="eyebrow">Funded P&L</span><b class="fd-kbig num ${cls(pnl)} mask">${eurS(fxNow(pnl))}</b></div>
+    <div class="fd-kr"><div>Uitbetaald <b class="num mask">${eur(fxNow(paid))}</b><span class="fd-dot">·</span><b class="num">${lopend}</b> lopend</div><div class="fd-dim">Geld van de firm, telt niet in je balans. <button class="linklike" onclick="STATE.setTab='funded';go('instellingen')">Beheren</button></div></div></div>`;
+}
 const fundedNaam=f=>f?((f.firm?f.firm+' ':'')+(f.name||'')).trim():'';
 // The total holds firm money right now: say so wherever that total shows.
 const inclFunded=()=>fundedMeetellen()&&FUNDED.some(fundedLopend);
@@ -2825,7 +2847,7 @@ async function clearAllData(){ if(!confirm('ÁLLE lokale data wissen, trades, ta
 /* ═══ State ═══ */
 const STATE=Object.assign({page:'dashboard',theme:'light',priv:false,tradeTab:'all',density:'comfy',tend:'sessie',revSel:0,revQuery:'',revFilter:'all',revPeriod:'all',
   sortCol:'date',sortDir:-1,query:'',calMonth:localDateISO().slice(0,7),currency:'USD',selected:[],pbSel:'',pctRef:0,unit:'val',
-  sections:{hero:true,kpis:true,equity:true,monthly:true,edge:true,recent:true},funded:false,fundedMee:false}, DB.load('state',{}));
+  sections:{hero:true,kpis:true,equity:true,monthly:true,edge:true,recent:true},funded:false,fundedMee:false,anGeld:'alles'}, DB.load('state',{}));
 /* Default currency dollar (v1.11) is for new journals only. A member whose state was never saved with a currency had
    euros; decide once and save it, so a new journal is not taken for an old one at its next start (review v1.11). */
 if(!('currency' in (DB.load('state',{})||{}))){
@@ -3651,6 +3673,7 @@ const EMPTY={
   'saldo-leeg':['','Nog geen saldo','koppel een exchange of voeg een handmatig account toe.','Naar Accounts','naarAccounts()'],
   /* funded mode (Instellingen → Funded) */
   'funded-leeg':['🏁','Nog geen challenges','Voeg je eerste challenge toe met firm, naam en grootte. Of importeer een CSV in Instellingen → Accounts en kies daar je challenge.','Challenge toevoegen',"fdOpenForm('challenge')",'+ Funded account',"fdOpenForm('funded')"],
+  'funded-niets':['🔍','Geen funded trades in beeld','Je hebt wel trades, maar geen op een challenge of funded account in deze selectie. Kies Eigen of Alles.','Toon alles',"setAnGeld('alles')"],
   'funded-niets-lopend':['','Niets lopend','al je challenges en funded accounts staan onder Afgerond.','',''],
   /* playbook detail and editor */
   'pb-gesloten':['⏳','Nog geen gesloten trades met deze playbook','De curve begint bij je eerste gesloten trade met deze playbook.','',''],
@@ -3843,7 +3866,8 @@ function pgDashboard(){
     <div class="big num mask" title="${esc(koersUitleg())}">${saldoTxt(totalBalance())}</div>
     <div class="meta">Gerealiseerd deze maand ${mTxt}</div></div>
     <div class="alloc">${donut()}<div class="legend">${legend}</div></div></div>`;
-  if(!FT.length)return `${filterBar()}${hero}<div style="height:16px"></div>${emptyState('trades-none')}`;   // trades exist, the filter shows none
+  const fk=fundedKaart();
+  if(!FT.length)return `${filterBar()}${hero}${fk?'<div style="height:16px"></div>'+fk:''}<div style="height:16px"></div>${emptyState('trades-none')}`;   // trades exist, the filter shows none
   const kks=[...(VV('dKpiCore')?['net','wr']:[]),...(VV('dKpiPro')?['pf','exp','r']:[])];
   const kpis=!kks.length?'':`<div class="kpis">${kks.map(k=>kpiBlock(k,'d')).join('')}</div>`;
   const eq=!VV('dEquity')?'':`<div class="panel"><div class="phead"><h3>Equity-curve</h3><span class="sp"></span><span class="chip">cumulatief</span>${pHide('dEquity','Equity-curve')}</div><div class="pbody">${equity()}</div></div>`;
@@ -3855,7 +3879,7 @@ function pgDashboard(){
   const recent=!VV('dRecent')?'':`<div class="panel"><div class="phead"><h3>Recente trades</h3><span class="sp"></span><button class="chip a" onclick="go('trades')" style="font-weight:700">Alle trades →</button>${pHide('dRecent','Recente trades')}</div>
     <div class="tblwrap"><table class="tbl"><thead><tr><th>Pair</th><th>Playbook</th><th>Datum</th><th class="rt">P&L</th><th class="rt">R</th><th class="rt">Status</th></tr></thead>
     <tbody>${nieuwsteEerst(FT).slice(0,6).map(t=>`<tr><td>${assetCell(t.pair)}</td><td class="tag">${esc(t.setup||'—')}</td><td class="tag num">${fmtD(t.date)}</td><td class="rt">${UNIT()==='val'?pnlCell(t.pnl,pnlPctOf(t)):`<span class="num ${unitTrade(t)==='—'?'':cls(+t.pnl||0)}" style="font-weight:700">${unitTrade(t)}</span>`}</td><td class="rt">${rCell(t)}</td><td class="rt">${statusB(t.status)}</td></tr>`).join('')}</tbody></table></div></div>`;
-  return `${filterBar()}${hero}<div style="height:16px"></div>${kpis}${nudge}<div style="height:16px"></div>${eq}<div style="height:16px"></div>
+  return `${filterBar()}${hero}${fk?'<div style="height:16px"></div>'+fk:''}<div style="height:16px"></div>${kpis}${nudge}<div style="height:16px"></div>${eq}<div style="height:16px"></div>
     <div class="grid" style="grid-template-columns:1fr 1fr">${mon}${edge}</div><div style="height:16px"></div>${recent}`;
 }
 
@@ -5574,7 +5598,7 @@ function mfeScatter(pts){const H=React.createElement,R=Recharts;
       ));
   },'ch-scatter',230);}
 function pgAnalytics(){
-  if(!CLOSED.length)return `${filterBar()}${emptyState(!T.length?'analytics':!FT.length?'trades-none':'gesloten-nodig')}`;
+  if(!CLOSED.length)return `${filterBar()}${fundedGeldFilter()}${emptyState(!T.length?'analytics':(STATE.anGeld==='funded'&&fundedGeldFilterAan())?'funded-niets':!FT.length?'trades-none':'gesloten-nodig')}`;
   const a=agg();
   const wins=CLOSED.filter(t=>t.pnl>0),losses=CLOSED.filter(t=>t.pnl<0);
   const avgW=wins.length?wins.reduce((s,t)=>s+t.pnl,0)/wins.length:0,avgL=losses.length?Math.abs(losses.reduce((s,t)=>s+t.pnl,0)/losses.length):0,payoff=avgL?avgW/avgL:0;
@@ -5709,7 +5733,7 @@ function pgAnalytics(){
   // B2 (ChangeMaker): leg uit waarom het aantal ≠ totaal — analytics rekent zonder lopende trades.
   const nLopendA=FT.filter(t=>!heeftUitkomst(t)).length;
   const scopeChip=`<div style="margin-top:9px"><span class="chip" style="background:var(--sink);border:1px solid var(--line);padding:4px 11px;border-radius:20px">📊 ${CLOSED.length.toLocaleString('nl-NL')} trades in de berekening${nLopendA?` · ${nLopendA} lopend niet meegerekend`:''}</span></div>`;
-  return `${filterBar()}${scopeChip}${sampleBadge}<div style="height:11px"></div>${tiles}<div style="height:13px"></div>${kpis}<div style="height:13px"></div>
+  return `${filterBar()}${fundedGeldFilter()}${scopeChip}${sampleBadge}<div style="height:11px"></div>${tiles}<div style="height:13px"></div>${kpis}<div style="height:13px"></div>
     <div class="sect-h">Traject &amp; risico</div>
     <div class="grid" style="grid-template-columns:2fr 1fr;align-items:stretch">
       ${panelHead('Equity-curve',perDD('eq'),equity(214,periodTrades(BOEKINGEN,KPIPER.eq)))}
@@ -5817,6 +5841,8 @@ const FAQS=[
     ['Wat betekenen TP1, SL en Close ✋ bij een trade?','Ze vertellen hoe elk deel van je positie dichtging. Je ziet ze bij Kraken, Hyperliquid en OKX.<ul><li><b>TP1, TP2…</b>: een geraakte take-profit (een vooraf ingestelde winstorder).</li><li><b>TP3 ✋</b>: winst genomen met de hand.</li><li><b>SL</b>: je stop-loss is geraakt, ook als die op break-even of in de winst stond.</li><li><b>Close ✋</b>: met de hand gesloten, met verlies.</li></ul>Bijvoorbeeld: TP1 → TP2 → SL. Je vindt het in "Zo is deze positie gelopen", in de tijdlijn en in de presentatie.'],
     ['Hoe importeer ik een CSV-bestand?','Kies het bestand in <b>Instellingen → Accounts → CSV-import</b>; de journal herkent het formaat en vraagt bij welk account het hoort.<ol><li>Exporteer je trade-geschiedenis bij je exchange als CSV of XLSX.</li><li>Ga naar <b>Instellingen → Accounts → CSV-import → Bestand kiezen</b> en kies het bestand.</li><li>Je ziet wat er herkend is, bijvoorbeeld "OKX-positiehistorie · 23 trades · 1 sep t/m 20 okt".</li><li>Kies het account. Het account dat bij het formaat hoort, staat al aangevinkt. Met <b>+ Nieuw account</b> maak je ter plekke een handmatig account, bijvoorbeeld voor een sub-account of een prop-firm-challenge.</li><li>Klik <b>Importeren</b>.</li></ol>Dit werkt nu voor Blofin (orderhistorie), OKX (positiehistorie), Kraken Futures (account-log), Hyperliquid (trades), MEXC (futures-historie), FTMO (MetriX-export) en een algemene CSV met kolommen als date, symbol, side en pnl. Twee keer hetzelfde bestand kan geen kwaad: trades die er al staan, worden overgeslagen. Heb je die exchange ook gekoppeld, dan kan een trade die via de koppeling binnenkomt dubbel komen te staan.'],
     ['Mijn exchange staat er niet tussen, wat nu?','Meld het in de Morani Discord; tot die tijd houd je je trades bij in een handmatig account.<ol><li>Probeer eerst de CSV-import (<b>Instellingen → Accounts → CSV-import</b>). Herkent de journal je bestand niet, dan zegt hij dat meteen en importeert hij niets.</li><li>Meld je exchange in de Morani Discord, het liefst met een voorbeeld-export zonder persoonlijke gegevens. Dan kijken we of we hem kunnen toevoegen.</li><li>Maak intussen een handmatig account aan (<b>Instellingen → Accounts → Handmatige accounts</b>) en voeg je trades met de hand toe.</li></ol>Formaten die nu werken: Blofin, OKX, Kraken Futures, Hyperliquid, MEXC, FTMO en een algemene CSV met kolommen als date, symbol, side en pnl.'],
+    ['Ik handel een challenge bij een prop firm (FTMO, Breakout). Hoe houd ik die bij?','Zet de <b>funded modus</b> aan in <b>Instellingen → Funded</b>; daar voeg je je challenges en funded accounts toe.<ol><li>Ga naar <b>Instellingen → Funded</b> en zet <b>Funded modus</b> aan.</li><li>Klik <b>+ Challenge toevoegen</b> en vul de firm, een naam (bijv. "100k #2") en de grootte in. De grootte is nodig voor het P&L-%.</li><li>Zet je trades erop: kies de challenge bij <b>Exchange</b> in het trade-formulier, of bij de CSV-import in de pop-up "Bij welk account hoort dit bestand?".</li><li>Gehaald? Zet de status op <b>gehaald</b> en klik <b>Omzetten naar funded account</b>. De challenge en het funded account blijven aan elkaar gekoppeld.</li><li>Krijg je een uitbetaling, voeg die dan toe op het funded account.</li></ol>De regels van de firm (dagverlies, drawdown, winstdoel) houdt de firm zelf bij; de journal beslist niet of je gehaald of gefaald bent, dat zet je zelf.'],
+    ['Telt het geld van mijn funded account mee in mijn balans?','Nee: dat geld is van de firm tot een uitbetaling, dus het blijft buiten je eigen balans en je eigen P&L-%. De trades tellen wel mee in Analytics, Tendencies en je playbooks.<ol><li>Op het Dashboard staat een aparte kaart met je funded P&L, wat er is uitbetaald en hoeveel er loopt.</li><li>Wil je toch één totaal zien, zet dan <b>Funded meetellen</b> aan in <b>Instellingen → Funded</b>. Het totaal krijgt dan het label "incl. funded"; alleen lopende challenges en actieve funded accounts tellen mee.</li><li>In Analytics kies je bovenaan <b>Eigen</b>, <b>Funded</b> of <b>Alles</b>.</li></ol>Een uitbetaling telt niet in je balans: die komt op je bank of exchange binnen en zit daar al in. Zet je de funded modus uit, dan worden je challenges, funded accounts en hun trades verborgen, niet gewist.'],
     ['Ik gebruik geen koppeling, kan ik toch een account bijhouden?','Ja, met een handmatig account. Ga naar <b>Instellingen → Accounts → Handmatige accounts</b>, vul een naam en een saldo in en klik op <b>+ Toevoegen</b>. Handig voor een prop-firm-challenge (een test bij een bedrijf als FTMO, dat je daarna met zijn geld laat traden), een beurs zonder koppeling, of om je backtests apart te houden. Via <b>Beheren</b> houd je zelf stortingen en opnames bij. Zet handmatige trades op zo\'n eigen account, niet op een gekoppelde exchange: daar zitten ze bij een sync in de weg.'],
   ]],
   ['📊 Analytics begrijpen',[
@@ -6653,6 +6679,7 @@ function renderPagina(){
   // only with "Funded meetellen" on, and then only of a running challenge or active funded account.
   let zicht=zonderMergedChildren(T).filter(fundedZichtbaar);
   if(STATE.page==='dashboard')zicht=zicht.filter(t=>isEigenGeld(t)||(fundedMeetellen()&&fundedLopend(fundedItem(t.exchange))));
+  if(STATE.page==='analytics'&&fundedGeldFilterAan()&&STATE.anGeld!=='alles')zicht=zicht.filter(t=>STATE.anGeld==='funded'?!isEigenGeld(t):isEigenGeld(t));
   FT=fxView(applyFilter(zicht));
   CLOSED=FT.filter(heeftUitkomst);
   BOEKINGEN=FT.filter(t=>t.status!=='open').map(boeking);
