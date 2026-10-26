@@ -16,6 +16,33 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [Unreleased]
+
+### Toegevoegd
+- **Funded modus** (Instellingen → Funded), voor wie een challenge handelt bij een prop firm zoals FTMO of Breakout. Je zet hem zelf aan; standaard staat hij uit en ziet je journal er precies uit als nu.
+  - Houd je challenges en funded accounts bij met firm, naam, grootte en status (bezig / gehaald / niet gehaald, of actief / gestopt). Een gehaalde challenge zet je met één knop om naar een funded account; de twee blijven aan elkaar gekoppeld.
+  - Per kaart zie je de P&L en het P&L-% op de grootte. Uitbetalingen voeg je toe op een funded account, ook op een gestopt account.
+  - Het geld op een challenge of funded account is van de firm tot een uitbetaling. Het telt daarom **niet** mee in je eigen balans en je eigen P&L-%. De trades tellen wel mee in je analyse.
+  - "Funded meetellen" zet de lopende challenges en actieve funded accounts er toch bij, in één totaal met het label "incl. funded".
+  - Zet je de modus uit, dan worden je challenges, funded accounts en hun trades verborgen, niet gewist. Ze staan nog in je back-up.
+- **CSV-import vraagt bij welk account het bestand hoort.** Na het kiezen van een bestand zie je eerst wat er herkend is (bijv. "OKX-positiehistorie · 23 trades · 1 sep t/m 20 okt"). Daarna kies je de exchange of het handmatige account; het passende account staat al aangevinkt.
+  - Met **+ Nieuw account** maak je ter plekke een handmatig account, bijvoorbeeld voor een sub-account of een prop-firm-challenge.
+  - Kies je een exchange die niet bij het bestand past, dan waarschuwt de journal eerst.
+  - Herkent de journal het bestand niet, dan importeert hij niets en zegt hij welke formaten wel werken. Meld je exchange dan in de Morani Discord.
+  - Met de funded modus aan staan je challenges en funded accounts ook in die lijst, en kun je er vanuit de pop-up meteen een toevoegen. Een FTMO-export stelt je FTMO-challenge of funded account voor.
+- Met de funded modus aan staat op het Dashboard een kaart met je funded P&L, wat er is uitbetaald en hoeveel er loopt. In Analytics kies je bovenaan **Eigen**, **Funded** of **Alles**.
+- Twee nieuwe vragen in de FAQ over de funded modus.
+- In het trade-formulier kies je bij "Exchange" ook een challenge of funded account (alleen met de funded modus aan). Afgeronde staan eronder, voor een vergeten trade.
+- Zet je de funded modus aan terwijl er oude FTMO-trades zonder account staan, dan vraagt de journal één keer wat je wilt: in een nieuwe challenge zetten, of als eigen geld laten staan. Hij verplaatst nooit iets vanzelf.
+
+### Gewijzigd
+- Een FTMO MetriX-export komt nu op een account te staan (een bestaand handmatig FTMO-account, of een nieuw account dat je in de pop-up maakt). Voorheen hingen die trades aan geen enkel account.
+- De FAQ legt de CSV-import stap voor stap uit, met welke formaten werken.
+
+### Fixed
+- Een CSV-bestand zonder kolom "symbol" gaf de foutmelding "config is not defined". Zo'n bestand wordt nu gewoon gelezen of netjes als onbekend gemeld.
+- Een trade op een account dat niet van jou is (zoals een funded account) verschoof het P&L-% van al je eerdere trades. Je eigen P&L-% rekent nu alleen met je eigen geld.
+
 ## [v1.17.2] — 2026-10-25
 
 ### Fixed
