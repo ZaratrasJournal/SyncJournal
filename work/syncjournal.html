@@ -10878,6 +10878,46 @@ ExchangeAPI.kraken.parseCsv=function(csv,bron){
   if(uit.waarschuwingen.length){csvTrades._waarschuwingen=uit.waarschuwingen;console.warn('[kraken csv] '+uit.waarschuwingen.length+' regel(s) niet sluitend:',uit.waarschuwingen);}
   return csvTrades;
 };
+// MEXC: two exports, the position history (one row per position) and the futures order history.
+ExchangeAPI.mexc._csvPosities=h=>h.includes("Futures")&&h.includes("Avg Entry Price")&&h.includes("Avg Close Price");
+ExchangeAPI.mexc._csvFutures=h=>h.includes("Futures Trading Pair")&&h.includes("Closing PNL");
+ExchangeAPI.mexc.herkentCsv=function(csv){return ExchangeAPI.mexc._csvPosities(csv.headers)||ExchangeAPI.mexc._csvFutures(csv.headers);};
+ExchangeAPI.mexc.parseCsv=function(csv,bron){
+  const csvTrades=[];
+  const pairVan=pairRaw=>pairRaw.endsWith("USDT")?pairRaw.slice(0,-4)+"/USDT":pairRaw.endsWith("USDC")?pairRaw.slice(0,-4)+"/USDC":pairRaw.endsWith("USD")?pairRaw.slice(0,-3)+"/USD":pairRaw;
+  if(ExchangeAPI.mexc._csvPosities(csv.headers)){
+    // MEXC Position History — positie-level data met entry, exit, pnl
+    const normNum=(s)=>String(s||"").replace(/"/g,"").replace(/,/g,"").replace(/USDT|USDC|USD/g,"").trim();
+    for(const vals of csv.rijen){
+      const row={};csv.headers.forEach((h,idx)=>row[h]=vals[idx]||"");
+      const pnl=parseFloat(normNum(row["Realized PNL"]));
+      if(isNaN(pnl))continue;
+      const direction=(row["Direction"]||"").toLowerCase().includes("long")?"long":"short";
+      const pair=pairVan(row["Futures"]||"");
+      const openDt=row["Open Time"]||"";
+      const closeDt=row["Close Time"]||"";
+      csvTrades.push({...EMPTY_TRADE,id:"mexc_csv_"+uid(),date:openDt.split(" ")[0]||closeDt.split(" ")[0]||"",time:(openDt.split(" ")[1]||"00:00").slice(0,5),pair,direction,entry:normNum(row["Avg Entry Price"]),exit:normNum(row["Avg Close Price"]),positionSize:normNum(row["Closing Qty (Cont.)"]),pnl:String(pnl),fees:normNum(row["Trading Fee"])||"0",leverage:"10",source:bron,status:"closed",openTime:openDt,closeTime:closeDt});
+    }
+  }else{
+    // MEXC futures history — rijen met Closing PNL ≠ 0 zijn gesloten trades
+    // Getal-normalisatie: MEXC gebruikt komma als duizendtal-scheiding ("68,125" = 68125)
+    const normNum=(s)=>String(s||"").replace(/"/g,"").replace(/,/g,"").trim();
+    for(const vals of csv.rijen){
+      const row={};csv.headers.forEach((h,idx)=>row[h]=vals[idx]||"");
+      const pnl=parseFloat(normNum(row["Closing PNL"]));
+      if(!pnl||isNaN(pnl))continue;
+      const dir=(row["Direction"]||"").toLowerCase();
+      const direction=dir.includes("long")?"long":dir.includes("short")?"short":"long";
+      const pair=pairVan(row["Futures Trading Pair"]||"");
+      const closePrice=normNum(row["Average Filled Price"]);
+      const sizeUsd=normNum(row["Filled Qty (Amount)"]);
+      const sizeAsset=normNum(row["Filled Qty (Crypto)"]);
+      const dt=row["Time"]||"";
+      csvTrades.push({...EMPTY_TRADE,id:"mexc_csv_"+uid(),date:dt.split(" ")[0]||"",time:(dt.split(" ")[1]||"00:00").slice(0,5),pair,direction,entry:"",exit:closePrice,positionSize:sizeUsd,positionSizeAsset:sizeAsset,pnl:String(pnl),fees:normNum(row["Trading Fee"])||"0",leverage:row["Leverage"]||"10",source:bron,status:"closed"});
+    }
+  }
+  return csvTrades;
+};
 function parseExchangeCsvText(text,forExchange){
         const lines=text.split("\n").filter(l=>l.trim());
         if(lines.length<2)throw new Error("Leeg bestand");
@@ -10908,41 +10948,6 @@ function parseExchangeCsvText(text,forExchange){
           &&lcH.some(h=>/(realized|realised).*pnl|^pnl$|\bpnl\b/.test(h))
           &&lcH.some(h=>/avg|average|price|px/.test(h));
         let csvTrades=[];
-        if(isMexcPosition){
-          // MEXC Position History — positie-level data met entry, exit, pnl
-          const normNum=(s)=>String(s||"").replace(/"/g,"").replace(/,/g,"").replace(/USDT|USDC|USD/g,"").trim();
-          for(let i=1;i<lines.length;i++){
-            const vals=parseCSVLine(lines[i]);
-            const row={};headers.forEach((h,idx)=>row[h]=vals[idx]||"");
-            const pnl=parseFloat(normNum(row["Realized PNL"]));
-            if(isNaN(pnl))continue;
-            const direction=(row["Direction"]||"").toLowerCase().includes("long")?"long":"short";
-            const pairRaw=row["Futures"]||"";
-            const pair=pairRaw.endsWith("USDT")?pairRaw.slice(0,-4)+"/USDT":pairRaw.endsWith("USDC")?pairRaw.slice(0,-4)+"/USDC":pairRaw.endsWith("USD")?pairRaw.slice(0,-3)+"/USD":pairRaw;
-            const openDt=row["Open Time"]||"";
-            const closeDt=row["Close Time"]||"";
-            csvTrades.push({...EMPTY_TRADE,id:"mexc_csv_"+uid(),date:openDt.split(" ")[0]||closeDt.split(" ")[0]||"",time:(openDt.split(" ")[1]||"00:00").slice(0,5),pair,direction,entry:normNum(row["Avg Entry Price"]),exit:normNum(row["Avg Close Price"]),positionSize:normNum(row["Closing Qty (Cont.)"]),pnl:String(pnl),fees:normNum(row["Trading Fee"])||"0",leverage:"10",source:forExchange||"mexc",status:"closed",openTime:openDt,closeTime:closeDt});
-          }
-        }else if(isMexcFutures){
-          // MEXC xlsx/csv export — rijen met Closing PNL ≠ 0 zijn gesloten trades
-          // Getal-normalisatie: MEXC gebruikt komma als duizendtal-scheiding ("68,125" = 68125)
-          const normNum=(s)=>String(s||"").replace(/"/g,"").replace(/,/g,"").trim();
-          for(let i=1;i<lines.length;i++){
-            const vals=parseCSVLine(lines[i]);
-            const row={};headers.forEach((h,idx)=>row[h]=vals[idx]||"");
-            const pnl=parseFloat(normNum(row["Closing PNL"]));
-            if(!pnl||isNaN(pnl))continue;
-            const dir=(row["Direction"]||"").toLowerCase();
-            const direction=dir.includes("long")?"long":dir.includes("short")?"short":"long";
-            const pairRaw=row["Futures Trading Pair"]||"";
-            const pair=pairRaw.endsWith("USDT")?pairRaw.slice(0,-4)+"/USDT":pairRaw.endsWith("USDC")?pairRaw.slice(0,-4)+"/USDC":pairRaw.endsWith("USD")?pairRaw.slice(0,-3)+"/USD":pairRaw;
-            const closePrice=normNum(row["Average Filled Price"]);
-            const sizeUsd=normNum(row["Filled Qty (Amount)"]);
-            const sizeAsset=normNum(row["Filled Qty (Crypto)"]);
-            const dt=row["Time"]||"";
-            csvTrades.push({...EMPTY_TRADE,id:"mexc_csv_"+uid(),date:dt.split(" ")[0]||"",time:(dt.split(" ")[1]||"00:00").slice(0,5),pair,direction,entry:"",exit:closePrice,positionSize:sizeUsd,positionSizeAsset:sizeAsset,pnl:String(pnl),fees:normNum(row["Trading Fee"])||"0",leverage:row["Leverage"]||"10",source:forExchange||"mexc",status:"closed"});
-          }
-        }
         if(isHyperliquidFills){
           // Hyperliquid compact CSV — elke rij is een fill (Open/Close). Delegeer FIFO-reconstructie
           // aan ExchangeAPI.hyperliquid._reconstructTrades zodat API- en CSV-import identieke output
