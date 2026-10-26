@@ -94,7 +94,7 @@ const VERWACHT = { blofin: ['blofin', 2], okx: ['okx', 2], kraken: ['kraken', 1]
   console.log('─── Koppeling + CSV (B3) ───');
   await reset({ conns: { okx: { connected: true } } }); await open('okx');
   m = await modal();
-  ok('gekoppelde exchange: "gekoppeld" erbij en één regel over dubbele trades', /OKX (voorstel )?gekoppeld/.test(m.tekst) && /kunnen dubbel komen te staan/.test(m.tekst) && /slaat de journal over/.test(m.tekst), m.tekst.slice(0, 260));
+  ok('gekoppelde exchange: "gekoppeld" erbij en één regel over dubbele trades', /OKX (voorstel )?gekoppeld/.test(m.tekst) && /niet dubbel/.test(m.tekst) && /koppeling is leidend/.test(m.tekst) && !/kunnen dubbel komen te staan/.test(m.tekst) && /slaat de journal over/.test(m.tekst), m.tekst.slice(0, 260));
 
   console.log('─── Niet herkend, leeg, geblokkeerd ───');
   await reset(); await open('onbekend'); m = await modal();
