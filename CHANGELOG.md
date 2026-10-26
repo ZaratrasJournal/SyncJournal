@@ -16,6 +16,13 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [Unreleased]
+
+### Gewijzigd
+- **Review: de nieuwste trade staat bovenaan.** De lijst bij *Per trade*, de kaarten in *Beeld* en de
+  presentatie lopen nu alle drie van nieuw naar oud: op het moment van sluiten, en een open trade op het
+  moment van openen. Bladeren met ‹ › of de pijltjes volgt die volgorde. Trades en Dashboard blijven zoals ze waren.
+
 ## [v1.18.1] — 2026-10-26
 
 Punten die Zaratras vond bij het testen van v1.18.

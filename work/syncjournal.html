@@ -4376,8 +4376,14 @@ function revInPeriod(dateStr){const p=STATE.revPeriod||'all';if(p==='all')return
   return true;}
 // Basis-set voor de review-lijst na periode-filter (telkens vóór de reviewed/zoek-filters).
 function reviewScope(){return FT.filter(x=>revInPeriod(x.date));}
+// One order for the whole Review page (Zaratras 26-10-2026): newest first by close moment; an open trade, or one
+// without a close moment, by its open moment; then date + time. Equal moments by id, so the list never jumps.
+function revMoment(t){const c=+t.closeTime||0,o=+t.openTime||0,open=t.status==='open'||t.status==='partial';
+  if(!open&&c>0)return c;if(o>0)return o;if(c>0)return c;
+  const d=Date.parse((t.date||'')+'T'+(/^\d{2}:\d{2}(:\d{2})?$/.test(t.time||'')?t.time:'00:00'));return isFinite(d)?d:0;}
+function revOrder(list){return list.map(t=>[revMoment(t),t]).sort((a,b)=>b[0]-a[0]||(b[1].id>a[1].id?1:b[1].id<a[1].id?-1:0)).map(x=>x[1]);}
 function reviewItems(){const rq=(STATE.revQuery||'').toLowerCase(),rf=STATE.revFilter||'all';
-  return reviewScope().filter(x=>(rf==='all'||(rf==='done'?x.reviewed:!x.reviewed))&&(!rq||(x.pair+' '+x.setup+' '+x.session+' '+tradeEmotions(x).join(' ')+' '+tradeMistakes(x).join(' ')+' '+(x.tags||[]).join(' ')).toLowerCase().includes(rq)));}
+  return revOrder(reviewScope()).filter(x=>(rf==='all'||(rf==='done'?x.reviewed:!x.reviewed))&&(!rq||(x.pair+' '+x.setup+' '+x.session+' '+tradeEmotions(x).join(' ')+' '+tradeMistakes(x).join(' ')+' '+(x.tags||[]).join(' ')).toLowerCase().includes(rq)));}
 function revNav(d){const src=reviewItems();if(!src.length)return;let i=src.findIndex(x=>x.id===STATE.revSel);if(i<0)i=0;STATE.revSel=src[(i+d+src.length)%src.length].id;render();}
 function setRevFilter(f){STATE.revFilter=f;STATE.revLimit=REV_PAGE;STATE.revMonth=0;render();}
 function setRevPeriod(p){STATE.revPeriod=p;STATE.revLimit=REV_PAGE;STATE.revMonth=0;render();}
@@ -4633,8 +4639,8 @@ function revBeeld(){const M=revMonths();
 const revHasBeeld=t=>revShots(t).length>0||(t.tvLinks||[]).some(isHttpUrl);
 // Image mode works per month (the newest first), so a journal of 3000 trades renders one month of cards.
 function revBeeldItems(){const rf=STATE.revFilter||'all';return FT.filter(x=>rf==='all'||(rf==='done'?x.reviewed:!x.reviewed));}
-function revMonths(){const m={};revBeeldItems().filter(revHasBeeld).forEach(t=>{const k=String(t.date||'').slice(0,7);if(/^\d{4}-\d{2}$/.test(k))(m[k]=m[k]||[]).push(t);});
-  return Object.keys(m).sort().reverse().map(k=>({k,list:m[k].sort((a,b)=>(b.date+(b.time||'')).localeCompare(a.date+(a.time||'')))}));}
+function revMonths(){const m={};revOrder(revBeeldItems().filter(revHasBeeld)).forEach(t=>{const k=String(t.date||'').slice(0,7);if(/^\d{4}-\d{2}$/.test(k))(m[k]=m[k]||[]).push(t);});
+  return Object.keys(m).sort().reverse().map(k=>({k,list:m[k]}));}
 const revMaandNaam=k=>new Date(k+'-15T12:00:00').toLocaleDateString('nl-NL',{month:'long',year:'numeric'});
 function revMonthGo(d){const n=revMonths().length;STATE.revMonth=Math.min(Math.max(0,(STATE.revMonth||0)+d),Math.max(0,n-1));render();}
 function revStatusSeg(tellen){const sc=reviewScope(),total=sc.length,done=sc.filter(x=>x.reviewed).length,rf=STATE.revFilter||'all';
@@ -4806,11 +4812,11 @@ async function revDiscordAlles(){const sel=revSelTrades();if(!sel.length||revDcB
 let revPres=null;
 function revPerTrade(){
   if(!FT.length)return emptyState('trades-none');
-  const t=FT.find(x=>x.id===STATE.revSel)||FT[0];
+  const items=reviewItems();
+  const t=FT.find(x=>x.id===STATE.revSel)||items[0]||revOrder(FT)[0];
   pasteTargetId=t.id;
   const scope=reviewScope();  // periode-gefilterde basis
   const total=scope.length,done=scope.filter(x=>x.reviewed).length;
-  const items=reviewItems();
   const pos=items.findIndex(x=>x.id===t.id);
   // Review toonde ALLE trades: bij 3000 waren dat 39.000 elementen en een halve seconde
   // wachten (audit 2026-09-18). Nu in stappen, met de geopende trade altijd in beeld.
