@@ -8,7 +8,7 @@
 - per afbouw het label **TP n / SL / Close ✋ / Liq** in de stappentabel en de TP-lijst.
 
 **Architecture:**
-- OKX loopt via de Worker. Er komt **één nieuwe Worker-actie `algos`** (Worker v24), die Denny via het dashboard
+- OKX loopt via de Worker. Er komt **één nieuwe Worker-actie `algos`** (Worker v24), die Zaratras via het dashboard
   deployt. De rest van de Worker blijft byte-gelijk aan v23.
 - **Alleen `ExchangeAPI.okx` verandert**, plus één generieke haak in de gedeelde `backfillFills`:
   `ExchangeAPI[ex].naStappen?.(t)`. Dat is het dispatcher-patroon; voor andere exchanges is het een no-op.
@@ -17,7 +17,7 @@
 
 **Tech Stack:** vanilla JS (single-file app), Cloudflare Worker (JS), Node + Playwright-specs.
 
-**Spec:** dit document; Denny 24-10-2026 ("SL meegeven via OKX, net als bij de andere exchanges zichtbaar TP en
+**Spec:** dit document; Zaratras 24-10-2026 ("SL meegeven via OKX, net als bij de andere exchanges zichtbaar TP en
 handmatige TP; niet de handelingen van de andere exchanges slopen"); besluiten 18-10 (exchange wint, vergrendeld);
 het onderzoek in [docs/okx-model.md](okx-model.md) §2c en het OKX-API-onderzoek van 24-10 (samengevat hieronder).
 
@@ -47,7 +47,7 @@ de nieuwste prijs; OKX bewaart geen revisies. Drie bronnen, in deze volgorde:
 
 ## Wat de opname liet zien (24-10-2026, Worker v24 live)
 
-Opname van Denny's OKX-account (`tests/_fixtures/okx-algos.json`, gitignored): 81 algo-orders over 3 maanden,
+Opname van Zaratras' OKX-account (`tests/_fixtures/okx-algos.json`, gitignored): 81 algo-orders over 3 maanden,
 allemaal `BTC-USD_UM_XPERP-310404`; 0 openstaand (geen lopende positie); 3 instap-orders (7 dagen); geen fouten.
 
 - **SL en TP's zijn losse `conditional`-orders**, seconden tot minuten na de instap geplaatst; `attachAlgoOrds` is
@@ -56,7 +56,7 @@ allemaal `BTC-USD_UM_XPERP-310404`; 0 openstaand (geen lopende positie); 3 insta
   `reduceOnly` is `true`. TP op de hele positie: `closeFraction` `1` (geen `sz`).
 - **Een SL verschuiven = annuleren + nieuwe order** (nieuw `algoId`), zoals bij Hyperliquid. Voorbeeld 24-09: SL 87.463
   geannuleerd 16:49:48, nieuwe SL 84.850 om 16:50:41. Wijzigen-in-plaats is niet gezien.
-- **Koppeling exact:** in Denny's export (22-10) hangen alle 4 de TP-afbouwen via `ordIdList` aan hun TP-order. De 4
+- **Koppeling exact:** in Zaratras' export (22-10) hangen alle 4 de TP-afbouwen via `ordIdList` aan hun TP-order. De 4
   afbouwen zonder koppeling zijn handmatige sluitingen: bij die trades staat de SL `canceled` op het moment van sluiten.
 - **`posId` wordt hergebruikt:** de drie laatste trades hebben hetzelfde `posId` → koppelen op instrument (basis-asset),
   sluitkant en tijdvenster.
@@ -66,7 +66,7 @@ allemaal `BTC-USD_UM_XPERP-310404`; 0 openstaand (geen lopende positie); 3 insta
 - De oorspronkelijke SL = de **eerst geplaatste SL-order** aan de sluitkant, aan de verlieskant van de entry, geplaatst
   tussen opening − 60 s en sluiting (of actief bij de opening, niet al afgelopen ervóór) — dezelfde regel als Hyperliquid
   (v1.12, met de C1-fix). Latere SL's met een andere prijs → `verschoven`, en het verloop.
-- `_planOpInstap` en `stopEerst` vervallen: het plan op de instap-order is bij Denny leeg, en verschuiven maakt een nieuwe
+- `_planOpInstap` en `stopEerst` vervallen: het plan op de instap-order is bij Zaratras leeg, en verschuiven maakt een nieuwe
   order. Kosten als het fout is: wie een SL *wijzigt in plaats van opnieuw zet*, ziet alleen de laatste prijs.
 - Contracten → asset met `_ctVal(instId)` (B2) voor het percentage van een gepland TP.
 
@@ -74,12 +74,12 @@ allemaal `BTC-USD_UM_XPERP-310404`; 0 openstaand (geen lopende positie); 3 insta
 
 - **Exchange-isolatie:** geen wijziging aan Kraken, Hyperliquid, Blofin, MEXC of FTMO; geen `if(exchange===…)` in
   gedeelde code. De enige gedeelde regel is de no-op-haak in `backfillFills`.
-- **De Worker** levert Denny als bestand (`docs/worker-v24.js`); nooit `wrangler dev` of `proxy-local/`. Zolang hij
+- **De Worker** levert Zaratras als bestand (`docs/worker-v24.js`); nooit `wrangler dev` of `proxy-local/`. Zolang hij
   v23 draait, moet een sync gewoon slagen, zonder stop en labels (net als HL bij een 429).
 - **De stop van de exchange wint** en staat vast in het formulier (`stopBron:'okx'`), zoals bij Kraken (18-10).
 - **Labels:** alleen take-profits genummerd; met de hand in winst "TP n ✋", met verlies "Close ✋" (`tpLabels`).
 - **Je eigen geplande TP's en leverage** blijven staan als de sync een trade bijwerkt (zoals HL v1.13.2).
-- **Geen push** zonder het letterlijke "push"/"live" van Denny. Eerst work.
+- **Geen push** zonder het letterlijke "push"/"live" van Zaratras. Eerst work.
 - Commits Engels, UI-tekst Nederlands met Engelse tradingtermen.
 
 ## Review Focus
@@ -120,15 +120,15 @@ allemaal `BTC-USD_UM_XPERP-310404`; 0 openstaand (geen lopende positie); 3 insta
 - [ ] **Step 3:** schrijf het blok in `handleOKX` vóór de `trades`-route, met de bestaande `get`.
 - [ ] **Step 4:** spec groen; `node tests/worker-monitoring.spec.js` op v24 groen.
 - [ ] **Step 5:** commit `Worker v24: OKX action 'algos' (TP/SL algo orders, pending, entry-order attachAlgoOrds)`; zet `worker-okx-algos` in `tests/release-set.js`.
-- [ ] **Step 6:** Denny deployt v24 in het Cloudflare-dashboard (`morani-proxy`). CLAUDE.md: productieversie → v24.
+- [ ] **Step 6:** Zaratras deployt v24 in het Cloudflare-dashboard (`morani-proxy`). CLAUDE.md: productieversie → v24.
 
-### Task 2: Opname van Denny's account en de meting
+### Task 2: Opname van Zaratras' account en de meting
 
 **Files:**
 - Create: `tests/_fixtures/okx-algos.json` (gitignored, zoals de HL-opname)
 - Modify: dit plan, sectie "Wat de opname liet zien"
 
-- [ ] **Step 1:** Denny draait in de console van de journal (ingelogd, OKX gekoppeld):
+- [ ] **Step 1:** Zaratras draait in de console van de journal (ingelogd, OKX gekoppeld):
   ```js
   copy(JSON.stringify(await proxyCall({exchange:'okx',action:'algos',apiKey:CONNS.okx.apiKey,apiSecret:CONNS.okx.apiSecret,passphrase:CONNS.okx.passphrase,startTime:Date.now()-90*864e5})))
   ```
@@ -160,7 +160,7 @@ allemaal `BTC-USD_UM_XPERP-310404`; 0 openstaand (geen lopende positie); 3 insta
   - TP aan de winstkant is geen SL; een stop aan de instap-kant is geen SL;
   - **one-way (`posSide:'net'`)**: kant uit `side`, sluitkant van de trade;
   - **hergebruikt posId**: een SL van een vorige levensloop (zelfde instrument, `uTime` vóór de opening) telt niet;
-  - verschoven zoals Denny het doet: SL 87.463 geannuleerd, daarna een nieuwe SL 84.850 (nieuw `algoId`): stop 87.463,
+  - verschoven zoals Zaratras het doet: SL 87.463 geannuleerd, daarna een nieuwe SL 84.850 (nieuw `algoId`): stop 87.463,
     `verschoven:true`, verloop van 2;
   - een SL die vóór de opening al afgelopen was (vorige positie) telt niet (de HL-C1-regel);
   - `_afbouwSoort`: fill-`ordId` in `ordIdList` van een `effective` algo met `actualSide:'tp'` → `tp`, `'sl'` → `sl`;
@@ -186,7 +186,7 @@ allemaal `BTC-USD_UM_XPERP-310404`; 0 openstaand (geen lopende positie); 3 insta
   - **één `algos`-aanroep per sync**;
   - lopende positie: SL en geplande TP's uit `pending` op de rij; na verschuiven (geannuleerd + nieuw) blijft de stop
     de eerste, `verschoven:true`;
-  - **Denny's opname** (`tests/_fixtures/okx-algos.json`, overgeslagen als hij ontbreekt) tegen zijn drie trades met
+  - **Zaratras' opname** (`tests/_fixtures/okx-algos.json`, overgeslagen als hij ontbreekt) tegen zijn drie trades met
     stappen: 05-10 → TP1, TP2, Close ✋, stop 87.000; 20-10 → TP1, TP2, Close ✋, stop 81.200; 28-09 → stop 82.000;
   - een zelf getypte stop (`stopBron:'gebruiker'`) maakt plaats voor die van OKX;
   - **Worker v23** (antwoord zonder `source:'algos'`) en een fout: trades komen binnen, geen stop, geen labels;
@@ -194,13 +194,13 @@ allemaal `BTC-USD_UM_XPERP-310404`; 0 openstaand (geen lopende positie); 3 insta
   - **isolatie**: `partial-alle-exchanges`, `kraken-*`, `hl-*`, `blofin-*` blijven groen.
 - [ ] **Step 2:** FAIL. **Step 3:** implementeer. **Step 4:** groen + release-poort. **Step 5:** commit.
 
-### Task 5: Droogtest op Denny's opname en release
+### Task 5: Droogtest op Zaratras' opname en release
 
 - [ ] **Step 1:** speel `tests/_fixtures/okx-algos.json` af tegen zijn OKX-trades uit de laatste export
-  (alleen de nodige velden lezen); controleer per trade stop, labels en TP's met Denny.
+  (alleen de nodige velden lezen); controleer per trade stop, labels en TP's met Zaratras.
 - [ ] **Step 2:** `pr-reviewer-nl` over de branch; Critical/Important in één fix-ronde met eerst-rode tests.
 - [ ] **Step 3:** release (minor) volgens CLAUDE.md; changelog vermeldt dat **Worker v24** nodig is.
-- [ ] **Step 4:** work; live alleen op Denny's "push"/"live".
+- [ ] **Step 4:** work; live alleen op Zaratras' "push"/"live".
 
 ## Bewust niet in dit plan
 - **Blofin:** eigen plan daarna.

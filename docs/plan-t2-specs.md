@@ -10,7 +10,7 @@
 | **Herschreven** voor SyncJournal | **11** | smoke, themes, privacy-mode, design-review, a11y, trades-pagination, trades-niets-in-beeld (vervangt tradelist-hooks), tendencies-untagged, integrity-edge, exchange-isolation, okx-adapter — plus het fundament in `tests/helpers/` |
 | **Geschrapt** (feature bestaat niet in SyncJournal, of toetst niets) | **33** | zes thema's (theme-toggle ging op in themes), Help/lessen, samenvoegen, share-card, bulk-taggen, tag-modal, validatie-tab, MEXC-API-cluster, Blofin-siblings, lege `test.skip` |
 | **Al gedekt** door een release-spec (ook weg) | **28** | zie de kolom "dekking" per spec |
-| **Wacht op besluit** van Denny | **13** | het AI-coach-cluster |
+| **Wacht op besluit** van Zaratras | **13** | het AI-coach-cluster |
 | **Blijft** (laadde SyncJournal al, groen) | **7** | faq-volledig, merged-children, soort-waarschuwing, tp-datum-tijd, proxy-clienttag, kraken-account-log, tradingplan-v2-demo |
 | **Gevonden bugs** in de app | **7** | zie "Gevonden bugs"; elk staat als `FIXME` in een spec |
 
@@ -26,7 +26,7 @@
   CRLF in robots.txt, alleen op een Windows-checkout), erna 125/125 — zie "Metingen".
 - **Niet lokaal geverifieerd**: de delen van de release-specs die echte exports nodig hebben
   (`tests/_fixtures/`, gitignored) — zie "Metingen". En `design-review` heeft nog geen baseline:
-  die is bewust niet vastgelegd (zie "Voor Denny").
+  die is bewust niet vastgelegd (zie "Voor Zaratras").
 
 ---
 
@@ -176,7 +176,7 @@ Besluiten: **herschrijven** · **schrappen** (de feature bestaat niet in SyncJou
 | mexc-stale-open | stale open → closed | schrappen | idem | weg |
 | mexc-tpfetched-retry | TP-fetch-markers | schrappen | idem | weg |
 
-### AI-coach — wacht op besluit van Denny
+### AI-coach — wacht op besluit van Zaratras
 
 Of de AI-coach blijft is nog niet besloten (backlog T2 stap 3). Deze specs zijn niet aangeraakt en
 laden nog de oude app; `run-all-sj.js` slaat ze over.
@@ -234,7 +234,7 @@ Chromium headless shell 1248):
 (gitignored, niet in deze worktree): `csv-import`, `hl-echt`, en de fixture-delen van
 `blofin-levensloop`, `hyperliquid-levensloop`, `kraken-levensloop`, `okx-levensloop`,
 `scenario-levensloop` en `kraken-account-log` meldden ⏭️. Op die delen leunen de "al gedekt"-
-besluiten voor de oude `*-3way`- en `*-real-data`-specs; draai ze in Denny's eigen kloon.
+besluiten voor de oude `*-3way`- en `*-real-data`-specs; draai ze in Zaratras' eigen kloon.
 
 ## Voorstel release-poort
 
@@ -256,7 +256,7 @@ Niet zelf toegevoegd aan `tests/release-set.js`. Voorstel om op te nemen:
 `run-all-sj.js`). De `FIXME`-checks maken een spec niet rood, dus ze blokkeren een release niet
 zolang de bug bekend is.
 
-## Voor Denny
+## Voor Zaratras
 
 - **Design-review-baseline vastleggen** na een blik op de screenshots (bewuste UI-keuze, CLAUDE.md):
   `node tests/design-review.spec.js`, dan

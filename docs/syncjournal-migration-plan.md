@@ -40,7 +40,7 @@
 
 ### Fase 4 — Test & hardening
 - Playwright/Node end-to-end: echte oude-app-fixture → migratie, write-failure/quota, corrupt-load, snapshot-restore round-trip, idempotentie, post-migratie-integriteit.
-- Valideren tegen een échte export van Denny (accounts, mae/mfe, sessie-grenzen).
+- Valideren tegen een échte export van Zaratras (accounts, mae/mfe, sessie-grenzen).
 
 ## Kortste veilige pad
 Fase 0 → 1 → 2 = veilige, volledige overstap met vangnet. Fase 3 = toekomstbestendiging. Fase 4 loopt mee.
@@ -52,5 +52,5 @@ Fase 0 → 1 → 2 = veilige, volledige overstap met vangnet. Fase 3 = toekomstb
 - ✅ **Fase 3** — geversioneerd migratie-framework (`MIGRATIONS=[{v,up}]`, snapshot-vóór + rollback) + boot-time self-check. Test: 11/11.
 - ✅ **Fase 4** — volledige regressie groen over álle suites (~392 checks).
 
-## Nog nodig van Denny (enige open punt)
+## Nog nodig van Zaratras (enige open punt)
 - Eén echte export/localStorage-dump uit de oude app om de veld-mapping tegen jouw echte data te valideren (accounts, mae/mfe, sessie-grenzen). De mapping is getest tegen realistische synthetische data; validatie tegen één echte set sluit de laatste onzekerheid.

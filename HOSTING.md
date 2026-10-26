@@ -3,7 +3,7 @@
 Twee folders in de GitHub repo:
 
 - **`/main/tradejournal.html`** → final versie. Community downloadt hier.
-- **`/work/tradejournal.html`** → werk-in-uitvoering. Alleen Denny + Sebas.
+- **`/work/tradejournal.html`** → werk-in-uitvoering. Alleen Zaratras + Sebas.
 
 Als we tevreden zijn met de `work` versie → kopiëren naar `main` → pushen → community downloadt de nieuwe versie.
 
@@ -36,7 +36,7 @@ Vóór je een nieuwe versie download:
 
 ---
 
-## 🛠️ Voor Denny + Sebas: dev workflow
+## 🛠️ Voor Zaratras + Sebas: dev workflow
 
 ### Setup (eenmalig)
 

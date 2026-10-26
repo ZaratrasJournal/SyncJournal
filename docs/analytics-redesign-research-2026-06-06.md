@@ -1,6 +1,6 @@
 # Analytics-pagina redesign — research
 **Datum**: 2026-06-06
-**Aanleiding**: Denny vindt huidige Analytics-pagina (~21 widgets in scroll-feed) onoverzichtelijk. Wil snellere navigatie + info-tooltips per widget.
+**Aanleiding**: Zaratras vindt huidige Analytics-pagina (~21 widgets in scroll-feed) onoverzichtelijk. Wil snellere navigatie + info-tooltips per widget.
 
 ## Executive summary
 Top journals zijn vrijwel allemaal afgestapt van één lange scroll-feed:
@@ -17,7 +17,7 @@ Voor 20+ widgets is **sticky-TOC + sectie-anchors** de meest geprezen middenweg.
 | Journal | Navigatie | Default-view | Info-help |
 |---|---|---|---|
 | **Tradervue** | Top-tabs Trades/Journal/Reports/Community; Reports = aparte tab | Drag-and-drop widgets (Cumul. PnL, performance per time/price/size). Calendar P&L bovenaan | Geen inline tooltips; help leeft op aparte help.tradervue.com |
-| **Edgewonk** | Linker sidebar + top-tabs | Edge Finder = **6 vaste categorieën** (behavior + performance) | ✨ **Mei 2026**: collapsible analysis panels met interpretatie-tekst per chart = exact wat Denny wil |
+| **Edgewonk** | Linker sidebar + top-tabs | Edge Finder = **6 vaste categorieën** (behavior + performance) | ✨ **Mei 2026**: collapsible analysis panels met interpretatie-tekst per chart = exact wat Zaratras wil |
 | **TraderSync (Cypher AI)** | KPI-strip met top + side widgets | Customizable trades-table tussenin | **Cypher praat conversational** over patronen i.p.v. statisch tooltip |
 | **TradesViz** | Drag-and-drop builder | 50+ widget-types. Heatmaps (time-of-day/dow) signature | Multi-dimensional filter (20+ dims) i.p.v. tooltips |
 | **Tradezella** | Customizable rearrange | Zella Score + Net PnL + PF + Max DD KPI-strip + Calendar bovenaan. **View-toggle ($ / R / Ticks / Pips) globaal** | 7+ views, 50+ reports onder aparte tab |

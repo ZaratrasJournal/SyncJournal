@@ -1,6 +1,6 @@
 # Worker-aanpassing: Kraken position-events meesturen
 
-Voor Denny. Eén wijziging in `handleKraken`, in de `trades`-tak. Zonder deze aanpassing werkt de journal gewoon door op het oude pad (één trade per groep sluitingen); zodra hij erin staat, schakelt Kraken over op één trade per positie met alle stappen erin.
+Voor Zaratras. Eén wijziging in `handleKraken`, in de `trades`-tak. Zonder deze aanpassing werkt de journal gewoon door op het oude pad (één trade per groep sluitingen); zodra hij erin staat, schakelt Kraken over op één trade per positie met alle stappen erin.
 
 ## Waarom
 
@@ -32,7 +32,7 @@ en vervang die door:
 ```js
   /* De losse gebeurtenissen gaan mee zodat de journal één trade per positie-levensloop kan
      bouwen, met alle stappen, funding en liquidatie-kenmerk erin. `trades` blijft erbij voor
-     journals die de gebeurtenissen nog niet lezen. (Denny 22-09-2026.) */
+     journals die de gebeurtenissen nog niet lezen. (Zaratras 22-09-2026.) */
   const events = allElements
     .filter(el => el && el.event && el.event.PositionUpdate)
     .map(el => ({ uid: el.uid, timestamp: el.timestamp, event: { PositionUpdate: el.event.PositionUpdate } }));

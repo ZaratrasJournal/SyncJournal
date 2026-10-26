@@ -1,6 +1,6 @@
 # SyncJournal — Test & Bug Checklist
 
-Voor Denny + Sebas + community. Gebruik deze checklist:
+Voor Zaratras + Sebas + community. Gebruik deze checklist:
 
 - **Voor een bug-rapport** — vul het template onderaan in en stuur het in Discord
 - **Na een release** — loop de smoke-check door om te zien of basics nog werken
@@ -200,7 +200,7 @@ Voor die dingen blijft jouw + community ogen-check belangrijk.
 
 ## 💡 Tips voor reproductie
 
-- **Snapshot-knop** (`?dev=1` in URL) maakt JSON van de raw exchange API-respons. Sla op, deel met Denny privé. Geen credentials in snapshot.
+- **Snapshot-knop** (`?dev=1` in URL) maakt JSON van de raw exchange API-respons. Sla op, deel met Zaratras privé. Geen credentials in snapshot.
 - **Console open houden** (F12 → Console tab) — JS-errors verschijnen daar als rode regels.
 - **Backup vóór experimenten** — Instellingen → Data → "JSON export". Zo kun je terug.
 - **Localhost serveren** — niet `file://` openen (sommige features falen door browser-security restricties).

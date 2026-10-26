@@ -6,7 +6,7 @@
 **Doel:** laten zien hoe je trades het doen per entry-tijdframe, per tijdframe-combinatie, met of
 tegen de HTF-bias, en per lagen-patroon binnen een playbook.
 
-**Besluiten** (Denny, 13-10-2026, grill-me — zie ook `docs/plan-lagen-topdown-2026-10-13.md`):
+**Besluiten** (Zaratras, 13-10-2026, grill-me — zie ook `docs/plan-lagen-topdown-2026-10-13.md`):
 1. **Tendencies** krijgt drie dimensies: *Tijdframe* (entry, `t.timeframe`), *TF-combinatie*
    (alleen tijdframes, top-down: `Daily > 1H`) en *HTF-bias* (mee / tegen / geen).
 2. **HTF-bias** = de bias van de **hoogste** laag met Bullish of Bearish (Neutraal/leeg overslaan).

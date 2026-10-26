@@ -1,6 +1,6 @@
 # Jev (TypeSafe AI) — is er een use-case voor SyncJournal?
 
-*Onderzoek op verzoek van Denny, 28-09-2026. Aanleiding: hij overweegt er geld in te steken en
+*Onderzoek op verzoek van Zaratras, 28-09-2026. Aanleiding: hij overweegt er geld in te steken en
 wil eerst weten of we het ergens voor kunnen inzetten.*
 
 ---

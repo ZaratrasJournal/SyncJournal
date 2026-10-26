@@ -43,7 +43,7 @@ Demo/sandbox: header `x-simulated-trading: 1`.
 `positions-history` = 1 geaggregeerd record per volledige cyclus (gewogen `closeAvgPx`, geen TP-breakdown). Voor TP-niveaus: `fills-history` per `posId`/`instId`+tijdvenster ophalen en clusteren — de **Worker bouwt tpLevels** (zoals bij Kraken). posId wordt hergebruikt bij heropen → tijdvenster-filtering via `cTime`/`uTime` essentieel voor dedup.
 
 ## 5. CSV-import (CSV-first)
-Web UI → Order Center → Trading History → Download → **Position History** (per gesloten positie, beste). Max 3 mnd/export, vanaf dec-2022. Kolommen spiegelen API-velden (Engelse display-namen, bv. "Realized PnL"), timestamps waarschijnlijk ISO. **Exacte headers onbevestigd — sample van Denny nodig.** ctVal in browser: publieke instruments-endpoint (geen CORS-block) of hardcoded fallback-map (zoals MEXC).
+Web UI → Order Center → Trading History → Download → **Position History** (per gesloten positie, beste). Max 3 mnd/export, vanaf dec-2022. Kolommen spiegelen API-velden (Engelse display-namen, bv. "Realized PnL"), timestamps waarschijnlijk ISO. **Exacte headers onbevestigd — sample van Zaratras nodig.** ctVal in browser: publieke instruments-endpoint (geen CORS-block) of hardcoded fallback-map (zoals MEXC).
 
 ## 6. Quirks
 - `closeTotalPos`/`pos` in **contracts**, niet base — ctVal-lookup is de #1 valkuil.

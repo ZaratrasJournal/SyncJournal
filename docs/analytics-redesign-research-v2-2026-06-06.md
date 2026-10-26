@@ -1,7 +1,7 @@
 # Analytics-pagina redesign — research v2 (diep)
 **Datum**: 2026-06-06
 **Vervangt**: research v1 (was te tactisch — alleen UX-patterns)
-**Aanleiding**: Denny vroeg om diep onderzoek naar wat traders ÉCHT moeten weten. Plus beginner/advanced-modes + breder layout.
+**Aanleiding**: Zaratras vroeg om diep onderzoek naar wat traders ÉCHT moeten weten. Plus beginner/advanced-modes + breder layout.
 
 ---
 
@@ -71,7 +71,7 @@ SyncJournal kan zich onderscheiden door **deze diepe metrics naast de standaard*
 
 ---
 
-## 4. ICT / SMC specifiek (Denny's community)
+## 4. ICT / SMC specifiek (Zaratras' community)
 
 - **Killzone hit-rate** per zone (London Open 02-05 EST / NY AM 07-10 / NY PM / Asia / London Close)
 - **HTF bias-alignment** (Daily/4H) — gewonnen met-bias vs counter-trend
@@ -168,7 +168,7 @@ Toggle elke widget aan/uit individueel. Slaat per gebruiker op in `tj_analytics_
 ## 10. Layout-keuzes
 
 ### Breder
-- Was: 1480px max → **1680px max** (Denny's wens)
+- Was: 1480px max → **1680px max** (Zaratras' wens)
 - Sidebar TOC: 240px → **220px** (iets compacter)
 - Main: meer 2/3-column grids voor compact zicht
 

@@ -7,7 +7,7 @@ Twee workflows in `.github/workflows/`:
 | `claude-pr-review.yml` | Elke PR open / push naar PR | Automatische review in NL met onze project-checklist |
 | `claude-mention.yml` | `@claude` in PR/issue comment | Specifieke vraag — Claude reageert in de thread |
 
-## Eenmalige setup (door Denny)
+## Eenmalige setup (door Zaratras)
 
 ### 1. Anthropic API key als repo secret
 

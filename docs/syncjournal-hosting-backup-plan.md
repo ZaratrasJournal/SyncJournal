@@ -39,7 +39,7 @@
 
 **Doel: leden openen SyncJournal via het domein i.p.v. download+localhost.**
 
-Denny (buiten de repo):
+Zaratras (buiten de repo):
 - Domeinnaam kiezen (naam/prijs — snelheid is geen criterium) en registreren; besluit apex vs www (en redirect).
 - Cloudflare Pages aanmaken (zelfde account als de Worker), koppelen aan het domein. Brotli + cache-headers staan daar standaard goed.
 
@@ -51,15 +51,15 @@ In de app / repo:
 - **Migratiepad voor bestaande leden** (belangrijk!): op localhost = andere origin, dus data reist niet mee. Comms + FAQ: "Exporteer JSON op je oude versie → open de nieuwe URL → Importeer." Fase-1-alarm vangt wie het vergeet.
 - Optioneel 2b: service worker (PWA) → herhaalbezoek instant + offline bruikbaar.
 
-**Omvang:** ±1 dagdeel app-werk; domein/DNS bij Denny. **Afhankelijkheid:** fase 1 gewenst (alarm beschermt bij de overstap), niet blokkerend.
+**Omvang:** ±1 dagdeel app-werk; domein/DNS bij Zaratras. **Afhankelijkheid:** fase 1 gewenst (alarm beschermt bij de overstap), niet blokkerend.
 
 ## Fase 3 — Google Drive-backup (de ☁️-keuze wordt actief)
 
-> ✅ **App-kant volledig gebouwd 2026-09-16 (v0.9.64)** — koppel-flow, zichtbare map, dagbestanden+retentie, nieuwere-backup-check met overneem-banner, herverbind-flow; getest via gemockte Drive-API (tests/drive-backup.spec.js, 12 checks). **Wacht alleen nog op Denny's Google Cloud client-ID** (aanmaken kan zodra privacy-pagina op het domein live is) → één regel invullen (`DRIVE_CLIENT_ID`) en de kaart springt op actief. Testen kan eerder via localStorage-key `sj_drive_client_id`.
+> ✅ **App-kant volledig gebouwd 2026-09-16 (v0.9.64)** — koppel-flow, zichtbare map, dagbestanden+retentie, nieuwere-backup-check met overneem-banner, herverbind-flow; getest via gemockte Drive-API (tests/drive-backup.spec.js, 12 checks). **Wacht alleen nog op Zaratras' Google Cloud client-ID** (aanmaken kan zodra privacy-pagina op het domein live is) → één regel invullen (`DRIVE_CLIENT_ID`) en de kaart springt op actief. Testen kan eerder via localStorage-key `sj_drive_client_id`.
 
 **Doel: automatische backup naar de eigen Drive van het lid + je journal meenemen naar elk systeem.**
 
-Denny (eenmalig):
+Zaratras (eenmalig):
 - Google Cloud-project + OAuth-toestemmingsscherm; verificatie aanvragen met de privacyverklaring uit fase 2. Scope: `drive.file` (lichtste traject — app kan alléén bij bestanden die hij zelf aanmaakt).
 
 In de app:
@@ -78,7 +78,7 @@ In de app:
 - OneDrive als tweede connector in dezelfde backup-laag (als leden erom vragen).
 - E2E-versleutelde multi-device-sync (Cloudflare Worker + D1 of Supabase) — pas als "twee apparaten door elkaar" een bewezen behoefte is. NUC blijft privé-speeltuin/testomgeving, geen community-productie.
 
-## Beslispunten voor Denny
+## Beslispunten voor Zaratras
 
 1. ~~Go voor fase 1?~~ ✅ **Gebouwd 2026-09-16 (v0.9.59)**: backup-status + 3-dagen-alarm (rood ≥7, drempel instelbaar), keuze map-automatisch / Drive-binnenkort / handmatig, FSA-map-backups met 14-dagen-retentie. Spec: tests/backup-guard.spec.js (20 checks).
 2. ~~Domeinnaam?~~ ✅ **Besloten 2026-09-16: `syncjournal.nl`** (registreren bij NL-registrar, naamservers → Cloudflare; www → apex redirect). Tradingplan krijgt **`tradingplan.syncjournal.nl`** — subdomeinen zijn gratis en hebben elk een eigen origin/opslag (tp2: en sj_ botsen dus nooit). Eén privacyverklaring op syncjournal.nl dekt beide voor de Google-verificatie.

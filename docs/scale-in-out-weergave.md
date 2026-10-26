@@ -1,7 +1,7 @@
 # Een positie met meerdere entries en exits tonen — onderzoek en advies
 
 **Datum:** 21-09-2026
-**Aanleiding:** Denny's OKX-short 3809943469299781632. Eén positie, twee entries, vier afbouwstappen waarvan één in winst, en middenin een bijshort. De journal toonde er één gemiddelde instap van — zijn vraag: *"elke stap moet duidelijk zichtbaar zijn. Hoe doen anderen dit?"*
+**Aanleiding:** Zaratras' OKX-short 3809943469299781632. Eén positie, twee entries, vier afbouwstappen waarvan één in winst, en middenin een bijshort. De journal toonde er één gemiddelde instap van — zijn vraag: *"elke stap moet duidelijk zichtbaar zijn. Hoe doen anderen dit?"*
 
 ---
 
