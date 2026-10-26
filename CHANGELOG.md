@@ -42,6 +42,10 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 ### Fixed
 - Een CSV-bestand zonder kolom "symbol" gaf de foutmelding "config is not defined". Zo'n bestand wordt nu gewoon gelezen of netjes als onbekend gemeld.
 - Een trade op een account dat niet van jou is (zoals een funded account) verschoof het P&L-% van al je eerdere trades. Je eigen P&L-% rekent nu alleen met je eigen geld.
+- **Dezelfde positie stond er twee keer als hij via een CSV én via je koppeling binnenkwam** (Blofin, OKX,
+  Hyperliquid). Je P&L telde hem dan dubbel, zonder melding. Nu blijft er één trade over: die van de koppeling,
+  met je notities, tags en screenshots van de CSV-rij erbij. Dat werkt in beide volgordes. Had je al dubbele
+  trades, dan worden die bij je volgende sync van die exchange samengevoegd. Kraken had dit probleem niet.
 
 ## [v1.17.2] — 2026-10-25
 

@@ -2448,7 +2448,8 @@ const MIGRATIONS=[
      "sync from" date. lastSync only moves back, never forward: an earlier step (v5, the old-journal import)
      may already have set it further back on purpose.
      Not for an exchange with CSV trades of the last 30 days: the import dedupes on the source id only, and a
-     CSV row has another id than the same trade through the API, so looking back would double them (B3). */
+     CSV row has another id than the same trade through the API, so looking back would double them (B3).
+     B3 is fixed since (csvOpgaanInApi); this step has already run for members, so it stays as it was. */
   {v:12,note:'Koppelingen kijken eenmalig 30 dagen terug',up(){
     const grens=Date.now()-30*864e5, csvRecent={};
     T.forEach(t=>{ if(t&&/(^|_)csv_/.test(String(t.srcId||''))&&(+t.closeTime||+t.openTime||Date.parse(t.date)||0)>=grens)csvRecent[t.exchange]=true; });
@@ -9860,6 +9861,15 @@ ExchangeAPI.kraken.detectPartials=function(trades,sourceKey){
   const oud=(trades||[]).filter(t=>!/^kraken_pos_/.test(String((t&&t.id)||"")));
   return oud.length?detectPartialFromSiblings(oud,sourceKey||"kraken","kraken"):[];
 };
+/* B3: is this CSV row the same position as this API row? Each exchange's export says how sure a moment is.
+   Blofin's order history is UTC and the parser converts it, so the opening must match within a few minutes.
+   OKX and Hyperliquid write the time of the exporter's screen, which the parser reads as local time: the zone is
+   not known, so open and close may both be shifted by the same whole quarter of an hour.
+   Kraken needs none: CSV and API share the id (contract + opening), and with an API link the CSV is refused.
+   MEXC (no sync any more) and FTMO (no API) cannot overlap. */
+ExchangeAPI.blofin.zelfdePositie=function(csv,api){return zelfdeRondgang(csv,api,{marge:120e3});};
+ExchangeAPI.okx.zelfdePositie=function(csv,api){return zelfdeRondgang(csv,api,{marge:120e3,tijdzoneOnbekend:true});};
+ExchangeAPI.hyperliquid.zelfdePositie=function(csv,api){return zelfdeRondgang(csv,api,{marge:120e3,tijdzoneOnbekend:true});};
 ExchangeAPI.hyperliquid.detectPartials=null;// model B: een levensloop is al compleet
 ExchangeAPI.okx.detectPartials=null;        // model B: de adapter markeert een lopende positie zelf als partial
 ExchangeAPI.ftmo.detectPartials=null;       // CSV-only, geen partials
@@ -10136,6 +10146,7 @@ async function syncExchange(exId,opts){
   // daarna pas de partial-status bepalen.
   finalizePlaceholders(exId,mapped);
   finalizeStaleOpens(exId);
+  csvOpgaanInApi(exId);   // B3: a CSV row of a position the API now brings goes up in it
   runPartialDetect(exId);
   if(typeof ad.afterImport==='function'){ try{ ad.afterImport(mapped); }catch(e){} }   // exchange-eigen opruiming (HL: oude per-sluiting-rijen)
   let bf={n:0,reden:''};
@@ -10327,6 +10338,55 @@ function zelfdePositieSJ(a,b){
     return zelfdeStartSJ(a,b);
   }
   const k=exMatchKey(a);return !!(a.placeholder&&k&&exMatchKey(b)===k);
+}
+/* B3 · one position through a CSV import and through the API sync has two ids (<ex>_csv_<fingerprint> and the
+   adapter's), so the import saw two trades and your P&L doubled without a word. ExchangeAPI.<ex>.zelfdePositie
+   decides per export; these pieces carry no exchange assumptions. */
+const CSV_PRIJS_MARGE=0.001,CSV_HOEVEEL_MARGE=0.02,KWARTIER=15*60e3,MAX_TIJDZONE=14*36e5;
+// a moment from ms, from a date-time text (read as local time, as the parsers do), or from date + time
+function csvMoment(v,date,time){const n=+v;if(n>0)return n;
+  const tekst=v?String(v).trim().replace(' ','T'):(date?String(date)+'T'+String(time||'00:00'):'');
+  const p=tekst?Date.parse(tekst):NaN;return p>0?p:0;}
+/* Same pair, direction, prices and size, and the same moment. o.marge: how far the moments may differ (ms).
+   o.tijdzoneOnbekend: the export may be in another zone, so open and close may be shifted, by the same whole
+   quarter of an hour (every zone is), at most 14 hours. A position at the same prices a day later stays apart. */
+function zelfdeRondgang(csv,api,o){
+  if(!csv||!api||csv.pair!==api.pair||csv.dir!==api.dir)return false;
+  const dicht=(a,b,rel)=>+a>0&&+b>0&&Math.abs(+a-+b)<=rel*Math.max(+a,+b);
+  if(!dicht(csv.entry,api.entry,CSV_PRIJS_MARGE)||!dicht(csv.exit,api.exit,CSV_PRIJS_MARGE)||!dicht(csv.qtyAsset,api.qtyAsset,CSV_HOEVEEL_MARGE))return false;
+  const co=csvMoment(csv.openTime,csv.date,csv.time),ao=+api.openTime||0;
+  if(!co||!ao)return false;
+  const schuif=co-ao;
+  if(!o.tijdzoneOnbekend)return Math.abs(schuif)<=o.marge;
+  if(Math.abs(schuif)>MAX_TIJDZONE+o.marge||Math.abs(schuif-Math.round(schuif/KWARTIER)*KWARTIER)>o.marge)return false;
+  const cc=csvMoment(csv.closeTime),ac=+api.closeTime||0;
+  return cc&&ac?Math.abs((cc-ac)-schuif)<=o.marge:Math.abs(schuif)<=o.marge;   // without both closes only the exact moment counts
+}
+// Your input from one row onto another of the same trade: lists are joined, a text written on both keeps both.
+function neemInvoerMee(doel,bron){
+  SJ_USER_FIELDS.forEach(k=>{const a=doel[k],b=bron[k];if(Array.isArray(a)&&a.length&&Array.isArray(b)&&b.length)doel[k]=[...new Set([...a,...b])];});
+  ['notes','lessons'].forEach(k=>{const a=String(doel[k]||'').trim(),b=String(bron[k]||'').trim();if(a&&b&&!a.includes(b))doel[k]=a+'\n\n'+b;});
+  adoptUserFieldsSJ(doel,bron);
+}
+/* A CSV row and an API row of the same position become one. The API row wins (its numbers and steps are complete),
+   your input on the CSV row moves along, and the CSV row goes: not to the trash, it never was a trade of its own.
+   Is the API row in the trash, the CSV row goes too (thrown away stays thrown away). Runs after a sync and after a
+   CSV import, so both orders end in one row, and rows doubled before this fix merge at the next sync.
+   Returns {samen, weg}: the CSV rows that merged, and those that went because of the trash. */
+function csvOpgaanInApi(exId){
+  const ad=ExchangeAPI[exId],uit={samen:[],weg:[]};
+  if(!ad||typeof ad.zelfdePositie!=='function')return uit;
+  const isApi=t=>t&&t.exchange===exId&&isGesynct(t)&&!t.placeholder&&t.status==='closed';
+  const api=T.filter(isApi),bak=TRASH.filter(isApi);
+  if(!api.length&&!bak.length)return uit;
+  T.filter(t=>t&&t.exchange===exId&&t.status==='closed'&&/_csv_/.test(String(t.srcId||''))).forEach(c=>{
+    const a=api.find(x=>ad.zelfdePositie(c,x));
+    if(a){neemInvoerMee(a,c);uit.samen.push(c);}
+    else if(bak.some(x=>ad.zelfdePositie(c,x)))uit.weg.push(c);
+  });
+  const ids=new Set([...uit.samen,...uit.weg].map(t=>t.id));
+  if(ids.size){T=T.filter(t=>!ids.has(t.id));persist();}
+  return uit;
 }
 // Placeholder-finalize: nieuwe gesloten trades vervangen hun placeholder (echte trade wint).
 function finalizePlaceholders(exId,newClosed){
@@ -10712,11 +10772,17 @@ function sjImportCsvText(text,forExchange){
   csvTrades.forEach(t=>{if(/_csv_/.test(String(t.id||''))){
     t.id=(t.source||'csv')+'_csv_'+[t.pair,t.direction,t.date,t.time,t.entry,t.exit,t.pnl,t.positionSize,t.closeTime||''].join('|');}});
   // wat in de prullenbak zit komt niet terug (verwijderd blijft verwijderd) — zeg dat apart, mét de uitweg
-  const inBak=csvTrades.filter(t=>TRASH.some(x=>String(x.srcId||'')===String(t.id))).length;
+  let inBak=csvTrades.filter(t=>TRASH.some(x=>String(x.srcId||'')===String(t.id))).length;
   const mapped=importTjClosed(csvTrades);try{planMatch();}catch(e){}
   // per exchange uit het bestand, niet uit wat nieuw was: bij een herimport is niets nieuw, maar de opruiming moet wel draaien
-  let opgeruimd=0;
+  let opgeruimd=0,viaKoppeling=0,nieuwSamen=0;
+  const nieuwIds=new Set(mapped.map(t=>t.id)),bestandIds=new Set(csvTrades.map(t=>String(t.id)));
   [...new Set(csvTrades.map(t=>sourceTypeOf(t.source)).filter(ex=>EXMAP[ex]))].forEach(exId=>{
+    // B3: a position the API link already brought in does not come in twice
+    try{const op=csvOpgaanInApi(exId);
+      [...op.samen,...op.weg].forEach(t=>{if(nieuwIds.has(t.id))nieuwSamen++;});
+      viaKoppeling+=op.samen.filter(t=>bestandIds.has(String(t.srcId))).length;
+      inBak+=op.weg.filter(t=>bestandIds.has(String(t.srcId))).length;}catch(e){}
     try{runPartialDetect(exId);}catch(e){}
     /* Exchange-eigen opruiming, net als bij de sync: oude rijen gaan op in de nieuwe levensloop
        (notities en labels verhuizen mee). Niet alleen voor wat nu nieuw binnenkwam: was het bestand
@@ -10725,12 +10791,14 @@ function sjImportCsvText(text,forExchange){
     if(ad&&typeof ad.afterImport==='function'){const ids=new Set(csvTrades.map(t=>String(t.id)));try{opgeruimd+=ad.afterImport(T.filter(t=>t&&t.exchange===exId&&ids.has(String(t.srcId))))||0;}catch(e){}}
   });
   render();
-  const dup=csvTrades.length-mapped.length-inBak, warn=(csvTrades._waarschuwingen||[]).length;
-  toast((mapped.length?('✓ '+mapped.length+' trade'+(mapped.length===1?'':'s')+' geïmporteerd'+(dup?' · '+dup+' overgeslagen (al aanwezig of in prullenbak)':'')):(inBak&&!dup?(inBak+' trade'+(inBak===1?' zit':'s zitten')+' in de prullenbak, niets geïmporteerd'):('Alle '+dup+' trades al aanwezig, niets te importeren')))
+  const nieuw=mapped.length-nieuwSamen;
+  const dup=csvTrades.length-nieuw-inBak, warn=(csvTrades._waarschuwingen||[]).length;
+  toast((nieuw?('✓ '+nieuw+' trade'+(nieuw===1?'':'s')+' geïmporteerd'+(dup?' · '+dup+' overgeslagen (al aanwezig of in prullenbak)':'')):(inBak&&!dup?(inBak+' trade'+(inBak===1?' zit':'s zitten')+' in de prullenbak, niets geïmporteerd'):('Alle '+dup+' trades al aanwezig, niets te importeren')))
     +(inBak?' · '+inBak+' in de prullenbak (leeg de prullenbak om ze opnieuw in te lezen)':'')
     +(opgeruimd?' · '+opgeruimd+' oude rij'+(opgeruimd===1?'':'en')+' opgegaan in de nieuwe trades':'')
-    +(warn?' · ⚠ '+warn+' regel'+(warn===1?'':'s')+' niet sluitend, zie console':''),(mapped.length||opgeruimd)?'ok':'info');
-  return mapped.length;
+    +(viaKoppeling?' · '+viaKoppeling+(viaKoppeling===1?' stond':' stonden')+' er al via je koppeling':'')
+    +(warn?' · ⚠ '+warn+' regel'+(warn===1?'':'s')+' niet sluitend, zie console':''),(nieuw||opgeruimd)?'ok':'info');
+  return nieuw;
 }
 function handleCsvFile(e){
   const file=e.target.files[0];if(!file)return;
