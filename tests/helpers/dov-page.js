@@ -5,6 +5,11 @@
 // "Opslag"). Navigeren gaat via go(page) van de app, niet door knoppen op tekst te zoeken.
 const { chromium } = require('playwright'); const path = require('path');
 const APP = 'file:///' + path.resolve('work/syncjournal.html').split(path.sep).join('/');
+// Same file on a fixed http origin, answered by a route (no server). Chromium does not always give a
+// file:// page a stable localStorage: under load a page sometimes gets a storage area of its own that
+// is gone after a reload. Specs that reload and expect localStorage to survive use opts.http.
+// localhost keeps IS_HOSTED false, as on file://.
+const APP_HTTP = 'http://localhost:4173/syncjournal.html';
 
 // boot() is async (IndexedDB) en sluit af met landingAankomst(), die sj_welcomed schrijft.
 // Dat schrijven is het signaal "data geladen, eerste render gedaan": we vangen het af in
@@ -27,11 +32,12 @@ async function openJournal(b, opts) {
     ...(opts.timezoneId ? { timezoneId: opts.timezoneId } : {}) });
   const p = await ctx.newPage(); const errs = []; p.on('pageerror', e => errs.push(String(e).split('\n')[0])); p.on('dialog', d => d.accept());
   await p.route('**/*', r => /^https?:/.test(r.request().url()) ? r.abort() : r.continue());
+  if (opts.http) await p.route(APP_HTTP + '*', r => r.fulfill({ path: path.resolve('work/syncjournal.html'), contentType: 'text/html; charset=utf-8' }));
   await p.addInitScript(bootHaak);
   if (opts.init) await p.addInitScript(opts.init, opts.initArg);
   // Vaste klok (Date.now en new Date); timers lopen gewoon door.
   if (opts.klok) await p.clock.setFixedTime(opts.klok);
-  await p.goto(APP + (opts.query || ''), { waitUntil: 'domcontentloaded' }); await bootKlaar(p); await p.waitForTimeout(300);
+  await p.goto((opts.http ? APP_HTTP : APP) + (opts.query || ''), { waitUntil: 'domcontentloaded' }); await bootKlaar(p); await p.waitForTimeout(300);
   return { ctx, p, errs };
 }
 async function reload(p) { await p.reload({ waitUntil: 'domcontentloaded' }); await bootKlaar(p); await p.waitForTimeout(300); }
@@ -50,4 +56,4 @@ const stil = p => p.waitForFunction(() => document.getElementById('main').getAni
   .every(a => a.playState !== 'running' || (a.effect && a.effect.getTiming().iterations === Infinity)), null, { timeout: 5000 });
 const modalText = p => p.evaluate(() => document.getElementById('modal').innerText.replace(/\s+/g, ' '));
 const mainText = p => p.evaluate(() => document.getElementById('main').innerText.replace(/\s+/g, ' '));
-module.exports = { APP, openJournal, reload, bootKlaar, seed, seedTrades, wipe, go, stil, modalText, mainText };
+module.exports = { APP, APP_HTTP, openJournal, reload, bootKlaar, seed, seedTrades, wipe, go, stil, modalText, mainText };
