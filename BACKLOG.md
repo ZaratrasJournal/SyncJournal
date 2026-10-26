@@ -1,9 +1,9 @@
 # SyncJournal — Backlog
 
-*Opgeruimd op 29-09-2026.* Van de 84 open punten waren er 24 al gedaan of vervallen; de meeste
-stamden uit april–juni en waren geschreven voor de oude TradeJournal. Elk twijfelgeval is in de code
-nagekeken. Wat er met elk punt is gebeurd staat onderaan; de vorige versie, met 137 afgeronde punten
-en alle onderzoeksnotities, staat in [docs/backlog-archief-2026-09-29.md](docs/backlog-archief-2026-09-29.md).
+*Opgeruimd op 26-10-2026.* Wat klaar is, is weggehaald (besluit Zaratras, 26-10-2026: wat klaar is mag weg);
+per punt is in CHANGELOG.md en in de code nagekeken dat het echt af is. Wat er gebouwd is staat in
+[CHANGELOG.md](CHANGELOG.md); de vorige versies van dit bestand staan in git. Het archief van 29-09-2026, met
+oude onderzoeksnotities, staat in [docs/backlog-archief-2026-09-29.md](docs/backlog-archief-2026-09-29.md).
 
 **Hoe te lezen.** Elke story heeft een ID (**F** functie · **B** bug · **T** tests · **C** code · **W** werkwijze), een
 prioriteit (1 = eerst) en een effort (XS < 1 uur · S ≈ halve dag · M ≈ dag · L = meerdere dagen). Per
@@ -19,177 +19,90 @@ elke wijziging eindigt met `node tests/run-release.js` groen.
 
 | ID | Story | Prio | Effort | Hangt af van |
 |---|---|---|---|---|
-| ~~F1~~ | ~~TP's in de presentatie en in Kopieer voor Discord~~ — ✅ **gedaan in v1.9.1** | — | — | — |
-| **F2** | Kopieer voor Discord met meerdere trades: één voor één + alles downloaden | 2 | S | samen met F1 |
-| ~~F3~~ | Kraken: oorspronkelijke stop-loss automatisch — ✅ **gedaan in v1.11** | — | — | — |
-| ~~F4~~ | ~~Kraken: lopende positie krijgt zijn stop al vóór het sluiten~~ — ✅ **gedaan in v1.11** | — | — | — |
-| **F5** | Hoe liep de trade af: ~~exit-reden (TP/SL/Close)~~ ✅ v1.11 · stopbeweging (BE/strakker/ruimer) nog open | 1 | S | F3 |
-| **F6** | Kraken: geplande TP's uit de trigger-historie | 2 | S | F3 |
-| **F7** | Analytics: stop-management en uitvoering | 1 | M | F5 (F6 voor één blok) |
-| ~~F8~~ | ~~Hyperliquid: oorspronkelijke stop-loss, geplande TP's, TP/SL/Close~~ — ✅ **gedaan in v1.12** | — | — | — |
-| **F9** | Override-knop voor een stop van de exchange ("Zelf aanpassen" / "Terug naar Kraken") | 2 | S | F3 |
-| **F10** | OKX en daarna Blofin: stop-loss en TP/SL/Close, elk in de eigen adapter — **OKX ✅ v1.15**, Blofin nog open | 2 | M | F8 |
-| ~~B1~~ | ~~Kraken: lopende positie zonder partial en zonder stappen~~ — ✅ **gedaan in v1.13** | — | — | — |
-| ~~B2~~ | ~~OKX: contractwaarde-vangnet kent geen USDC-perps~~ — ✅ **gedaan 24-10** (per contractfamilie; volgende release) | — | — | — |
-| **W2** | Ruwe exchange-data kunnen vastleggen (dev-modus terug) | 2 | M | — |
-| **C1** | Lege staten: één manier, met een volgende stap | 2 | S + M | — |
-| ~~C5~~ | ~~Acht tag-soorten, acht kleuren, overal gelijk~~ — ✅ **gedaan in v1.3** | — | — | — |
-| ~~T1~~ | ~~CSV-import testen op CI~~ — ✅ **gedaan, branch `csv-dubbel-ci` (in v1.18.1)** | — | — | — |
-| **W1** | Worker: `Access-Control-Allow-Origin` stond op `*` — 🔨 **v25 live in stand meten**; over een week afdwingen | 2 | XS (Zaratras) | — |
-| ~~B3~~ | ~~Telt dezelfde positie dubbel via CSV én API?~~ — ✅ **was echt dubbel (Blofin, OKX, Hyperliquid), opgelost in v1.18.1 (branch `csv-dubbel-ci`)** | — | — | — |
-| **W5** | Worker v25: `okxHost` alleen uit een vaste lijst (lek sinds v19) en de ongebruikte `orders`-verzoeken uit `algos` weg — ✅ **live sinds 25-10 (v25)** | 1 | XS | — |
-| **B6** | OKX: waarschuwing bij een onbekende contractsoort in het vangnet; SL koppelen op het exacte contract i.p.v. de munt (review 24-10) | 3 | XS | — |
-| ~~B9~~ | Datum na middernacht — ✅ **gedaan in v1.15.1** | — | — | — |
-| ~~B7~~ | Privacy-modus verbergt alle bedragen — ✅ **gedaan in v1.15.1** | — | — | — |
-| ~~B10~~ | Import: leeg object telt niet als trade — ✅ **gedaan in v1.15.1** | — | — | — |
-| **F11** | Funded modus: prop-firm-challenges apart van je eigen geld, wél in de strategie-analyse — **eerst een demo** | 2 | L | demo |
-| **F12** | Export en back-up: zelf kiezen of je API-sleutels meegaan, met een duidelijke melding bovenaan | 1 | S | — |
-| ~~F13~~ | AI-coach Mori met eigen sleutel — ✅ **gedaan in v1.16 / v1.16.1** (stap 0–8) | — | — | — |
-| **W6** | Discord-poll "Gebruik je de AI-coach? Zo nee, waarom niet?" — eind januari 2027 | 3 | XS (Zaratras) | F13 live |
-| **F14** | SyncJournal buiten Morani: besloten beta (Worker meten + eigen account, limiet, neutrale tags, veiligheid) — 📅 **deze week** | 1 | M | besluit NL/internationaal, F12 |
-| ~~B8~~ | Toegankelijkheid trade-formulier — ✅ **gedaan in v1.15.1** | — | — | — |
-| ~~B11~~ | Kruis-analyse lege staat — ✅ **gedaan in v1.15.1** | — | — | — |
-| ~~B5~~ | ~~P&L-percentages van −107% en 2.834% bij oudere trades~~ — ✅ **gedaan in v1.11** | — | — | — |
-| ~~T2~~ | Oude-app-specs herschreven of geschrapt — ✅ **gedaan 25-10** (AI-coach-specs vervangen in v1.16) | — | — | — |
-| **C2** | CSV-parser per exchange opsplitsen | 3 | M–L | T1 |
-| **T3** | Levensloop-toets voor FTMO, één gedeelde vorm | 3 | M | T1 |
-| **T4** | `npm test` repareren | 3 | XS | — |
-| **T5** | `drive-backup` is timing-gevoelig bij 4 specs tegelijk | 3 | XS | — |
-| **C3** | Account-label opzoeken in plaats van kopiëren | 3 | S | — |
-| **W3** | Graphify verversen of de instructie weghalen | 3 | S | — |
+| **F14** | SyncJournal buiten Morani: besloten beta, alleen Nederlands — stap 4–6 gebouwd op branch `f14-beta`; open: review en release, stap 1–3, feedbackplek, Workers Logs — 📅 **deze week** | 1 | M | — |
+| **W1** | Worker: `Access-Control-Allow-Origin` — v25 staat sinds 25-10 op `meten`; **rond 1 november** `ORIGIN_MODUS` op `afdwingen` — 📅 **deze week** | 1 | XS (Zaratras) | een week meten |
+| **W7** | CSP afdwingen: `Content-Security-Policy-Report-Only` → afdwingend | 2 | XS | F14 een week live |
+| **F15** | Funded modus fase 2: een import koppelt zelf aan het juiste challenge- of funded account (login uit het MT5-rapport) | 2 | M | MT5-rapport + MetriX-CSV van Zaratras |
+| **F10** | Blofin: oorspronkelijke stop-loss, stopbeweging en TP/SL/Close in de eigen adapter — OKX ✅ v1.15, Kraken en Hyperliquid ✅ | 2 | M | — |
+| **F6** | Kraken: geplande TP's uit de trigger-historie | 2 | S | — |
+| **F7** | Analytics *Stop & uitvoering*: de drie blokken die nog niet gebouwd zijn (paneel zelf ✅ v1.18) | 3 | S | F6 voor één blok |
+| **T3** | Levensloop-toets voor FTMO, één gedeelde vorm | 3 | M | — |
 | **W4** | Eerste echte PR met beide reviewers | 3 | XS | volgende release |
+| **W6** | Discord-poll "Gebruik je de AI-coach? Zo nee, waarom niet?" — eind januari 2027 | 3 | XS (Zaratras) | — (Mori live sinds v1.16) |
+| **C2** | CSV-parser per exchange opsplitsen | 3 | M–L | T1 |
 | **C4** | XLSX-ondersteuning eruit | gepland | S | na 16 nov (MEXC weg) |
 
 ---
 
 ## Functies
 
-### F1 · TP's in de presentatie en in Kopieer voor Discord — ✅ gedaan in v1.9.1
+### F14 · SyncJournal buiten Morani: besloten beta — 📅 **deze week** · prio 1 · M
 
-**Waarom.** Zaratras en de community traden met deelsluitingen (TP1, TP2, …). In v1.9 tonen de
-presentatie en het Discord-beeld alleen een tegel "TP geraakt 2/3". De niveaus zelf (prijs, deel van
-de positie, geraakt of niet) staan alleen op de per-trade-pagina en in het coach-pakket. Juist bij het
-presenteren aan de coach en bij delen op Discord wil je zien wáár je afbouwde. (Zaratras, 14-10-2026.)
+**Waarom** (Zaratras, 25-10-2026). De journal breder trekken, zodat ook traders buiten de Morani-community hem gebruiken.
+Technisch staat syncjournal.nl/app al open (geen login, alles lokaal); het werk zit in vertrouwen, neutraliteit en de Worker.
 
-**Wat er al is.** De TP-data staat in `t.tps` (`price`, `pct`, `hit`). `tpStats(t)` geeft de niveaus,
-het gewogen exit-niveau en de gerealiseerde R; `tpBreakdown(t)` tekent ze op de per-trade-pagina. Bouw
-daarop, niet opnieuw.
+**Besloten (Zaratras, 26-10-2026): alleen Nederlands.** Een besloten beta, Nederlandstalig en gratis, met een paar
+mensen. Engels (app, FAQ, landing) is geen doel; komt alleen terug als Zaratras daar later anders over beslist.
 
-**Plan.**
-1. Test eerst, in `tests/review-beeld.spec.js`:
-   - een trade met 3 TP's (2 geraakt) geeft in het zijpaneel van de presentatie drie regels met prijs en %, en de geraakte zijn gemarkeerd;
-   - `revDiscordTekst` bevat een TP-regel ("TP1 81.230 ✓ · TP2 82.009 ✓ · TP3 82.616");
-   - een trade zonder TP's toont niets extra's: geen leeg kopje.
-2. **Presentatie** (`revInfoVol`): onder *Lagen (top-down)* een blok *Take-profits* met `tpBreakdown(t)` of
-   een compacte variant (TP · prijs · % · ✓).
-3. **Discord-beeld** (`revDiscord`): in het infopaneel rechts een regel per TP, met prijs en een groen ✓
-   als hij geraakt is. Maximaal 4 regels; daarna "+n". Controleer dat het paneel (hoogte `DC_H`) niet
-   overloopt bij lange notities en 4 TP's.
-4. **Discord-tekst** (`revDiscordTekst`): één regel met de TP's.
-5. Kijken in licht en donker, en het Discord-PNG bekijken met een echte chart.
+**Stand 26-10-2026.** Stap 4–6 zijn gebouwd op branch `origin/f14-beta`, niet gemerged; zie
+`docs/f14-beta-rapport.md` op die branch. Gebouwd: neutrale tag-set naast de Morani-set (stap 4), de pagina
+"Hoe veilig is SyncJournal?", de bijgewerkte privacyverklaring en een CSP in `Report-Only` (stap 5), en een welkom
+in drie stappen voor wie Morani niet kent (stap 6). F12 (sleutels uit de back-up) is af sinds v1.17.
 
-**Klaar als** de presentatie, het Discord-beeld en de Discord-tekst de TP-niveaus tonen voor trades
-mét TP's, er niets verandert voor trades zónder, en `node tests/run-release.js` groen is. Release als
-patch (v1.9.1): een kleine aanpassing aan bestaande functies.
+**Nog open:**
+1. **Review, merge en release** van `f14-beta` (Zaratras): voorstel minor. Zet `tag-sets`, `veiligheid`, `csp` en
+   `onboarding` in `tests/release-set.js`. Lees de teksten op de veiligheidspagina na, vooral de stappen per
+   exchange voor een read-only sleutel en "beheerd door Zaratras" (de Worker draait in Morani's account).
+2. **Workers Logs controleren:** de veiligheidspagina en de privacyverklaring zeggen dat de Worker geen sleutels of
+   IP-adressen bewaart. Dat klopt alleen als *Observability → Workers Logs* bij `morani-proxy` uit staat
+   (`docs/worker-monitoring.md`).
+3. **Een vaste plek voor feedback** (e-mail of formulier): beta-testers van buiten zitten niet in de Discord.
+   Niet gebouwd op `f14-beta`.
+4. **Stap 1 · Worker-verbruik meten:** in het dagrapport op de NUC het aantal verzoeken per dag en de drukste minuut
+   aflezen (Morani's eigen journal gebruikt dezelfde Worker en hetzelfde dagbudget). Schatting: handmatige sync
+   ~30–50 verzoeken per gebruiker per dag, auto-sync elke 15 min ~250. Gratis plan: 100.000 per dag; betaald
+   ($5/maand): 10 mln per maand, daarna $0,30 per mln.
+5. **Stap 2 · Eigen Worker-account** (Cloudflare, betaald plan) voor de nieuwe gebruikers, zodat Morani's account en
+   journal er niet aan vastzitten. Afspraken met Morani over naam, "Powered by Morani" en de bestaande Worker.
+6. **Stap 3 · Snelheidslimiet aanzetten** in de Worker (staat in v20+ klaar maar uit, binding `LIMIET`), op basis van
+   de gemeten piek.
 
-### F2 · Kopieer voor Discord met meerdere trades — prio 2 · S
+Daarna: de CSP afdwingen (**W7**).
 
-**Waarom.** Selecteer je 3 trades en klik je *Kopieer voor Discord*, dan krijg je alleen de eerste
-(Zaratras, 14-10-2026). Dat is geen fout in de code: het klembord van de browser kan maar één afbeelding
-tegelijk bevatten. De knop moet dat wel zichtbaar oplossen.
+**Later, na de beta:** het besluit backend/cloud-sync en het verdienmodel (zie *Besluiten*).
 
-**Gekozen aanpak.** Geen collage: die maakt elke chart onleesbaar en Discord verkleint grote plaatjes
-(10 MB-limiet). Alleen een waarschuwing laat het werk bij de gebruiker.
-1. **Eén voor één.** Na het kopiëren verandert de knop in *📋 Kopieer 2 van 3 (BTC/USDC 05-10)*, enz.
-   Discord laat je in één bericht meerdere keren plakken (tot 10 bijlagen): plakken, klikken, plakken,
-   en dan één keer versturen. De toast zegt "1 van 3 gekopieerd, plak en klik dan op Volgende".
-   De stand (`STATE.revDiscordIdx`) gaat terug naar 0 als de selectie verandert.
-2. **Alles downloaden** als tweede knop in *Selectie & delen*: één PNG per trade
-   (`discord-<datum>-<pair>.png`), met de teksten samen op het klembord. Die bestanden sleep je in één
-   keer naar Discord. De browser kan één keer toestemming vragen voor meerdere downloads; zeg dat in
-   de knoptekst of de toast.
+### F15 · Funded modus fase 2: import koppelt zelf aan het juiste account — prio 2 · M
 
-**Bouwen op.** `revDiscord(id)` geeft al `'beeld' | 'download' | 'tekst'` terug. Splits het tekenen
-van het canvas af (`revDiscordCanvas(t, img, hide) → Blob`), zodat de klembord-route en de
-download-route het delen. Dat stond ook als nit in de review van v1.9.
+**Waarom.** De funded modus staat sinds v1.18 live (in testfase sinds v1.18.4). Bij een CSV-import kies je nu zelf
+het account; een FTMO-export stelt je FTMO-challenge of funded account voor, maar weet niet wélk account het is als
+je er meer hebt. In de MetriX-CSV staat geen login; in het MT5-rapport (HTML of XLSX) staan accountnummer en
+broker wel in de kop (`docs/research-funded-modus-2026-10-24.md`, §8 en "Gevolg").
+
+**Wacht op Zaratras:** een MT5-rapport en een MetriX-CSV van hetzelfde FTMO-account (en een Breakout-export als die
+er is). Dan stellen we vast waar de login staat, in plaats van het aan te nemen (`docs/demo-funded-keuzes.md`, vraag 7).
 
 **Plan.**
-1. Test eerst, in `tests/review-beeld.spec.js`:
-   - met 3 geselecteerde trades zegt de knop eerst "1 van 3", na een klik "2 van 3", daarna "3 van 3", en daarna weer vanaf 1;
-   - een andere selectie zet de teller terug naar 0;
-   - *Alles downloaden* geeft 3 downloads met de juiste namen;
-   - met 1 trade ziet de knop eruit zoals nu.
-2. `revDiscordCanvas` afsplitsen; `revDiscord` en de nieuwe `revDiscordAlles()` gebruiken hem.
-3. Knop en toast in `revSelPanel` aanpassen; tweede knop *⬇ Alle beelden voor Discord*.
-4. Met de hand in Discord testen: plakken, volgende, plakken, versturen.
+1. Test eerst met de geanonimiseerde bestanden: het MT5-rapport wordt herkend, met login en firm.
+2. Het MT5-rapport inlezen in de FTMO-adapter; logins onthouden op het challenge- of funded item.
+3. "Bij welk account hoort dit?" stelt het item met die login voor; zonder login (MetriX) de actieve items van die firm.
 
-**Klaar als** je met 3 geselecteerde trades alle drie in één Discord-bericht krijgt, op volle
-kwaliteit, en `node tests/run-release.js` groen is. Samen met F1 als patch (v1.9.1).
+**Let op C4:** XLSX gaat er na 16 november uit. Komt het MT5-rapport alleen als XLSX, dan eerst kiezen: de
+HTML-variant gebruiken, of C4 aanpassen.
 
-### F3 · Kraken: oorspronkelijke stop-loss automatisch — 🔨 gebouwd, wacht op release v1.11
+**Klaar als** een MT5-rapport zonder vragen op het juiste item landt, een MetriX-CSV het juiste item voorstelt, en de
+release-poort groen is.
 
-**Waarom.** Zonder stop is de R van een trade niet te bepalen ("—"), en dan kloppen gemiddelde R,
-expectancy en risico niet. Kraken bewaart elke stop-order in de trigger-historie.
+### F10 · Blofin: stop-loss en hoe de trade afliep, in de eigen adapter — prio 2 · M
 
-**Stand (18-10-2026).** Plan: [docs/plan-kraken-stoploss-2026-10-17.md](docs/plan-kraken-stoploss-2026-10-17.md).
-Worker v22 (actie `triggers`) is live. De app-kant staat op branch `kraken-stoploss`, met
-`tests/kraken-stoploss.spec.js` (ook getoetst tegen Zaratras' echte triggers, 4/4) en `tests/worker-triggers.spec.js`.
-- De R rekent met de **oorspronkelijke** stop. Schuif je hem later naar break-even, dan blijft het risico
-  van je instap de noemer; de trade krijgt `stopVerschoven: true`.
-- Een stop die je zelf invult of wist (`stopBron: 'gebruiker'`) raakt de sync nooit meer aan.
-- Trades van vóór de update krijgen hun stop één keer, voor zover Kraken's historie reikt (bij Zaratras vanaf 14-10).
+**Stand.** Kraken (v1.11), Hyperliquid (v1.12) en OKX (v1.15) halen de oorspronkelijke stop-loss vanzelf op, en
+sinds v1.18 zie je bij die drie ook de stopbeweging (BE / strakker / verder weg) en de exit-reden (stop / TP / met
+de hand / liquidatie). Blofin nog niet: daar vul je de stop zelf in.
 
-**Klaar als** v1.11 live staat: versie, changelog, CLAUDE.md "productie = Worker v22", release-poort groen.
+**Plan.** Zoals bij OKX, alles in `ExchangeAPI.blofin`: de TP/SL-orders van Blofin ophalen (Blofin praat
+rechtstreeks met de browser, geen Worker nodig), de oorspronkelijke stop met `stopBron`, de gedeelde helper
+`stopBewegingVan` en een eigen exit-reden. Eerst een snapshot met `?dev=1` van Zaratras' Blofin-account.
 
-### F4 · Kraken: lopende positie krijgt zijn stop al vóór het sluiten — ✅ gedaan in v1.11
-
-**Gedaan (18-10-2026).** Zelfde triggers-verzoek als de sync, venster opening → nu; test in `tests/kraken-stoploss.spec.js`.
-Bij het sluiten gaat de stop mee naar de gesloten trade (als jouw veld, zonder "van Kraken"; de waarde is dezelfde).
-
-**Waarom.** Nu krijgt een Kraken-trade zijn stop pas als hij dicht is. Tijdens de trade zie je dus
-nog geen risico en geen R:R, terwijl Kraken de stop al kent (Zaratras' open long van 16-10: stop 79.314).
-
-**Plan** (Task 5 van het F3-plan).
-1. Test eerst: een open long met een Sell-stop 79.314 krijgt die stop op de open rij, met `stopBron: 'kraken'`.
-   Wordt hij daarna naar break-even geschoven, dan blijft 79.314 staan.
-2. Dezelfde `triggers`-aanroep van de sync, met als venster de opening van de lopende positie tot nu (`this._lopend`).
-3. Vul de stop van de open rij op dezelfde manier: alleen als hij leeg is of `stopBron: 'kraken'` heeft.
-4. **Niet** `/openorders` gebruiken: die geeft de huidige stop, en na verschuiven klopt de R dan niet meer.
-
-**Klaar als** een lopende Kraken-positie zijn oorspronkelijke stop toont, en het sluiten hem niet verandert.
-
-### F5 · Hoe liep de trade af: stopbeweging en exit-reden vastleggen — prio 1 · S
-
-**Waarom.** `stopVerschoven` zegt alleen dát de stop bewoog, niet welke kant op. Een stop naar
-break-even of strakker is risicobeheer; een stop **verder weg** zetten is verliezen laten lopen, een
-heel ander signaal. En je weet nu niet of een trade dichtging op je stop, op een TP of met de hand.
-Kraken legt beide vast (snapshot 18-10): een geraakte trigger is `OrderTriggerActivated`, en bij een
-sluiting met de hand annuleert Kraken alles met `would_not_reduce_position`. Dit is de basis voor F7.
-
-**Velden** (op de trade, naast `stop`):
-- `stopLaatst`: de laatste stop vóór de sluiting.
-- `stopBeweging`: `'geen' | 'be' | 'strakker' | 'ruimer'`.
-  - **be**: binnen 0,1% van de entry.
-  - **strakker**: dichter bij de entry, of voorbij de entry de winst in (trailing).
-  - **ruimer**: verder van de entry dan de oorspronkelijke stop.
-- `exitReden`: `'stop' | 'tp' | 'hand' | 'liquidatie'`, voor het deel dat de positie sloot.
-  - **stop** of **tp**: de laatste `geactiveerd` vóór de sluiting is een stop- of TP-trigger (SL/TP volgens dezelfde kant-regel).
-  - **hand**: er is niets geactiveerd.
-  - **liquidatie**: komt uit de account-log.
-
-**Plan.**
-1. Test eerst, in `tests/kraken-stoploss.spec.js`, uit de fixture: positie 3 (16-10 11:19) → `exitReden: 'stop'`,
-   positie 4 (14:32) → `'hand'`, positie 1 (14-10) → `'hand'` na TP1 (`geactiveerd` op 80.000 telt als deelsluiting,
-   niet als exit). Plus synthetisch: naar BE → `'be'`, stop verder weg → `'ruimer'`.
-2. `_stopVoorLevensloop` geeft naast `stop` en `verschoven` ook `laatst`, `beweging` en `exitReden`.
-   De keten-logica die de stop-order volgt bestaat al.
-3. Invullen in `afterImport`, met dezelfde regel als de stop: niet over iets dat de gebruiker zelf koos.
-4. In het formulier: onder de stop "later naar BE" / "later strakker" / "later verder weg ⚠", in plaats van alleen "later verschoven".
-5. **Gedeelde vorm**, zodat Hyperliquid (F8) dezelfde velden vult. De berekening van de beweging is een pure
-   helper zonder exchange-aannames (`stopBewegingVan(dir, entry, stop, laatst)`); de exit-reden blijft per adapter.
-
-**Klaar als** de vier fixture-posities de juiste exit-reden hebben, een verder weggezette stop als `'ruimer'`
-herkend wordt, en de release-poort groen is. Patch of minor: geen cijfers veranderen, wel nieuwe info → **minor**.
+**Klaar als** een Blofin-trade zijn stop, beweging en exit-reden toont zoals de andere drie, en de release-poort groen is.
 
 ### F6 · Kraken: geplande TP's uit de trigger-historie — prio 2 · S
 
@@ -210,456 +123,43 @@ voor 0,0038 / 0,0019 / 0,0019).
 **Klaar als** een Kraken-trade alle geplande TP's toont, de geraakte gemarkeerd, en de presentatie en
 Discord (F1) ze laten zien.
 
-### F7 · Analytics: stop-management en uitvoering — prio 1 · M
+### F7 · Analytics: de rest van *Stop & uitvoering* — prio 3 · S
 
-**Waarom.** Met de oorspronkelijke stop (F3), de stopbeweging en de exit-reden (F5) en de geplande TP's (F6)
-kun je vragen beantwoorden die je nu niet ziet (Zaratras, 18-10-2026). De R blijft overal de R ten opzichte van
-je **oorspronkelijke** risico; dat maakt trades vergelijkbaar.
+**Stand.** Het paneel *Stop-management en uitvoering* staat sinds v1.18 op Analytics: stopbeweging en hoe de trade
+dichtging, per groep aantal, gemiddelde R en netto P&L, met lege staten (`docs/stop-management-rapport.md`).
+Niet gebouwd uit het oorspronkelijke plan:
+1. **Verliezen in R:** gemiddeld verlies in R en het aandeel verliezen slechter dan −1,1R (slippage of een ruimer
+   gezette stop). Een klik toont die trades.
+2. **Stop verder weg als fout voorstellen** (`mistakes`), alleen als voorstel: de gebruiker bevestigt.
+3. **Gepland tegenover gehaald** (vereist F6): geplande R:R naast de gehaalde R, en het aandeel trades dat TP1, TP2
+   en TP3 haalde.
 
-**Blokken** (één nieuw paneel *Stop & uitvoering* op de Analytics-pagina, volgt de filterbalk):
-1. **Verliezen in R.** Gemiddeld verlies in R, en het aandeel verliezen slechter dan −1,1R.
-   Rond −1R betekent dat je je stop respecteert. Slechter wijst op slippage of een ruimer gezette stop.
-   Een klik toont die trades.
-2. **Break-even schuiven.** Hoe vaak, de gemiddelde R en winrate met en zonder verschoven stop, en hoeveel
-   trades op break-even eindigen. Zonder koersdata kunnen we niet zeggen wat er zónder schuiven was
-   gebeurd; zeg dat in het paneel, en beweer het niet.
-3. **Stop verder weg gezet.** Aantal trades en hun gemiddelde R, als waarschuwing. Telt mee als fout
-   (`mistakes`) in discipline-statistieken, maar alleen als voorstel: de gebruiker bevestigt.
-4. **Hoe ging de trade dicht.** Verdeling stop / TP / met de hand, met de gemiddelde R per soort.
-5. **Gepland tegenover gehaald** (vereist F6). Geplande R:R naast de gehaalde R, en het aandeel trades dat TP1, TP2 en TP3 haalde.
-
-**Toestanden** (CLAUDE.md):
-- **Leeg:** "Nog geen trades met een stop-loss. Die komen vanzelf bij Kraken-trades, of vul de stop in bij een trade."
-- **Niets in beeld:** het filter laat geen trades met een stop over.
-- **Eén trade:** wel tonen, met "te weinig trades voor een conclusie" onder 10.
-
-Trades zonder stop tellen nergens mee; zeg hoeveel dat er zijn ("12 van 40 trades hebben een stop").
-
-**Plan.** Eerst een demo met 2 varianten (`/prototype`, `demos/`) met Zaratras' echte data, dan pas in de app.
-Gebruik `gemR` en `tradeROrNull`, en `emptyState(key)` voor de lege staten.
-
-**Klaar als** de blokken kloppen met een met de hand nagerekende set trades (test), licht en donker
-bekeken zijn, en de release-poort groen is.
-
-### F9 · Override-knop voor een stop van de exchange — prio 2 · S
-
-**Waarom.** De stop van de exchange is vergrendeld (v1.11). Plaats je bij de exchange per ongeluk een verkeerde stop
-(typfout, een minuut later verbeterd), dan rekent de journal met die typfout als oorspronkelijke stop. Advies van
-18-10-2026: een bewuste, zichtbare override in plaats van een automatische "typfout"-regel die gokt.
-
-**Plan.**
-1. Naast het vergrendelde stop-veld een knop **Zelf aanpassen**: zet `stopBron:'gebruiker'`, bewaart de waarde van de
-   exchange (`stopExchange`) en maakt het veld vrij. De sync laat `stopBron:'gebruiker'` daarna met rust (nu wint de
-   exchange altijd: die regel krijgt deze ene uitzondering).
-2. Label: "Stop-loss (zelf aangepast · Kraken: 81.000)".
-3. Knop **Terug naar Kraken**: `stopBron` weer van de exchange, de waarde van de exchange terug.
-4. Tests: override overleeft een sync; terugzetten herstelt; geldt per trade, voor elke exchange (gedeeld, via `EXMAP`).
-
-**Klaar als** een verkeerde stop van de exchange met twee klikken te corrigeren en terug te draaien is.
-
-### F8 · Hyperliquid: oorspronkelijke stop-loss en geplande TP's — prio 1 · M
-
-**Waarom.** Hetzelfde als F3 en F6, voor Hyperliquid. Daar legt `historicalOrders` elke statuswijziging vast.
-Een wijziging is annuleren plus een nieuwe order (nieuw oid), dus de oorspronkelijke stop is terug te vinden.
-
-**Plan:** [docs/plan-hyperliquid-stoploss-2026-10-17.md](docs/plan-hyperliquid-stoploss-2026-10-17.md),
-met een risicotabel. Hergebruik de gedeelde regels uit F3: `stopBron`, het formulier, het label en de
-`stopBeweging`-helper uit F5. Geen Worker nodig: wallet-data is openbaar.
-
-**Klaar als** het plan is uitgevoerd en `tests/hl-echt.spec.js` de stops van Zaratras' echte account toont.
-
----
-
-### F11 · Funded modus: prop-firm-challenges — prio 2 · L
-
-**Waarom** (Zaratras, 24-10-2026). Wie een challenge bij FTMO of Breakout handelt, handelt met geld van de firm; de winst
-is pas van jou bij een uitbetaling. Dat mag je eigen balans, P&L en %-basis niet scheeftrekken, maar de trades
-moeten wél meetellen in strategie- en playbook-analyse. Per firm kun je meerdere challenges hebben, die je haalt,
-faalt of later kwijtraakt. Na een CSV-import kiest de journal het account en is hij slim over challenges.
-
-**Nu al mis:** FTMO-trades komen binnen als `ftmo`, dat geen account in `EXCHANGES` is, en tellen toch mee in alle
-P&L-sommen en in `_pctBases()`. Funded winst verschuift dus nu al het percentage van je eigen trades.
-
-**Onderzoek:** `docs/research-funded-modus-2026-10-24.md` — 13 journals en 4 firms
-vergeleken; advies optie B (funded-vlag op het account + één geld-helper, daarna challenges met fases, een status
-die je zelf zet en een eigen boekhouding voor fees en uitbetalingen; geen automatische breach).
-
-**Plan.** Eerst een demo (`demos/funded-demo.html`, 2–3 varianten) om het ontwerp met Zaratras rond te krijgen, daarna
-pas het datamodel. Nodig van Zaratras: een MT5-rapport (XLSX) en een MetriX-CSV van hetzelfde FTMO-account.
-
----
-
-### F12 · Export en back-up: zelf kiezen of je API-sleutels meegaan — prio 1 · S
-
-**Waarom** (onderzoek AI-coach, besluit Zaratras 25-10-2026). Een export of back-up bevat nu standaard de
-exchange-sleutels (Blofin, OKX, Kraken). Wie dat bestand ergens neerzet of doorstuurt, geeft toegang tot zijn
-exchange-account. De sleutel van de AI-coach gaat volgens de nieuwe regel nooit mee; voor exchange-sleutels kiest
-de gebruiker zelf.
-
-**Wat.** Bij exporteren, bij een handmatige back-up en bij "Data overzetten" staat **bovenaan** een duidelijke melding
-met een keuze: met of zonder API-sleutels, met in gewone taal wat "met" betekent (iedereen met dit bestand kan je
-exchange-account gebruiken) en wanneer je dat wilt (verhuizen naar een andere browser of pc). Geen stille keuze: de
-gebruiker ziet de keuze voor het bestand wordt gemaakt. Een bestand zonder sleutels importeert gewoon; de koppelingen
-vragen daarna om de sleutels. De automatische back-up gaat altijd zonder sleutels. Raakt alle exchanges via de
-gedeelde export (`DOV_PARTS` `conns`): toets elke exchange en een oude back-up mét sleutels.
-
-**Klaar als** de keuze er op alle drie de plekken staat, de spec bewijst dat "zonder" geen enkele sleutel in het
-bestand laat (ook niet in `diagReport`), en "met" na import weer werkende koppelingen geeft.
-
----
-
-### F13 · AI-coach: echte chat-coach met eigen sleutel — prio 2 · M + M (stap 0–2), daarna S per stap
-
-**Besluiten Zaratras, 25-10-2026** (onderzoek: `docs/research-ai-coach-2026-10-25.md`):
-1. De coach blijft, als echte chat-coach met de **eigen Anthropic-sleutel** van de gebruiker. Eén plek in de app;
-   niets op Dashboard of Analytics (de journal blijft clean).
-2. Sleutel lokaal, **nooit** in export, back-up of "Data overzetten"; keuze "alleen deze sessie" (regel in CLAUDE.md).
-3. **Sonnet 5.5 standaard**, Haiku 5.5 als keuze in Instellingen.
-4. **Notities gaan standaard mee**; bij het instellen één eerlijke regel daarover, uitzetten in Instellingen, en
-   onder elk antwoord "Wat is er verstuurd?".
-5. **"Vraag de coach" bij een trade**: klein knopje in het trade-detail, alleen zichtbaar met sleutel; opent de
-   coach-pagina met die trade klaargezet.
-6. **Demo-coach eruit** (de regex-antwoorden, "Hoi Zaratras" voor elk lid, het lek in bedragen verbergen). Zonder
-   sleutel: één gemarkeerd voorbeeldgesprek + stappenplan in drie stappen (sleutel maken, limiet instellen,
-   plakken) met kostenindicatie.
-7. **Niet tellen** in de app. Gebruik meten = Discord-poll eind januari 2027 (W6).
-8. Bij de release: **Discord-post met screenshots** van de Anthropic-console (sleutel + maandlimiet), gelinkt vanuit
-   het stappenplan, en een **duidelijke FAQ-uitleg** (wat is de coach, wat kost het, wat wordt er verstuurd, hoe
-   zet ik hem uit).
-
-**Ontwerpprincipe: de app rekent, het model leest.** Cijfers komen uit `coachPakket()` (bestaande helpers,
-`gemR`/`tradeROrNull`, nooit `t.r`); de systeemprompt verbiedt eigen berekeningen.
-
-**Bouwvolgorde** (onderzoek §8): 0 · coach in het menu van de standaardweergave, demo-coach eruit; 1 · `coachPakket()`
-als pure functie, getest zonder sleutel; 2 · sleutel + één echte vraag (minor-release); 3 · foutstaten + streaming;
-4 · verbruik en maandlimiet; 5 · vier vaste vragen en weekreview; 6 · tools; 7 · pre-trade-check; 8 · oude
-`aicoach-*`-specs vervangen.
-
----
-
-### F14 · SyncJournal buiten Morani: besloten beta — 📅 **deze week (vanaf 26-10-2026)** · prio 1 · M
-
-**Waarom** (Zaratras, 25-10-2026). De journal breder trekken, zodat ook traders buiten de Morani-community hem gebruiken.
-Technisch staat syncjournal.nl/app al open (geen login, alles lokaal); het werk zit in vertrouwen, neutraliteit en de Worker.
-
-**Besloten (Zaratras, 26-10-2026): alleen Nederlands.** Een besloten beta, Nederlandstalig en gratis, met een paar
-mensen. Engels (app, FAQ, landing) is geen doel; komt alleen terug als Zaratras daar later anders over beslist.
-
-**Stappen voor de beta:**
-1. **Worker-verbruik meten:** in het dagrapport op de NUC het aantal verzoeken per dag en de drukste minuut aflezen
-   (Morani's eigen journal gebruikt dezelfde Worker en hetzelfde dagbudget). Schatting: handmatige sync ~30–50
-   verzoeken per gebruiker per dag, auto-sync elke 15 min ~250. Gratis plan: 100.000 per dag; betaald ($5/maand):
-   10 mln per maand, daarna $0,30 per mln.
-2. **Eigen Worker-account** (Cloudflare, betaald plan) voor de nieuwe gebruikers, zodat Morani's account en journal er
-   niet aan vastzitten. Afspraken met Morani over naam, "Powered by Morani" en de bestaande Worker.
-3. **Snelheidslimiet aanzetten** in de Worker (staat in v20+ klaar maar uit, binding `LIMIET`), op basis van de gemeten piek.
-4. **Neutrale standaard-tags en playbooks**, met de Morani-set als keuze ("start met de Morani-set").
-5. **Vertrouwen:** een pagina "Hoe veilig is dit?" (alleen leesrechten, sleutels lokaal, wat de Worker ziet), een
-   Content-Security-Policy in `_headers`, de privacyverklaring bijwerken (de Worker noemen), en **F12** eerst af.
-6. **Onboarding voor vreemden:** welkomstscherm en FAQ zonder Morani-voorkennis; een duidelijke plek voor feedback.
-
-**Later, na de beta:** Engels (als internationaal), het besluit backend/cloud-sync en het verdienmodel (zie *Besluiten*).
+Alleen bouwen als Zaratras ze wil. Gebruik `gemR` en `tradeROrNull`.
 
 ---
 
 ## Bugs
 
-### B1 · Kraken: lopende positie zonder partial en zonder stappen — prio 1 · M
-
-**Stand 07-10-2026.** Hyperliquid is af: een lopende positie met een TP is sinds v1.3.6 één rij met
-status partial, en sinds v1.4 staan bij Hyperliquid, OKX en Blofin de stappen er vanaf de opening
-(melding Zaratras: "dit wil je al zien vanaf dat die open gaat, voor elke exchange"). Kraken niet: daar
-staat een lopende positie als gewoon "open", zonder stappen, en het geboekte deel van een TP verschijnt
-pas als de hele positie dicht is. Vastgelegd als "bekend gat" in
-[tests/partial-alle-exchanges.spec.js](tests/partial-alle-exchanges.spec.js) (de Kraken-check).
-
-**Waarom het bij Kraken niet meekwam.** De stappen komen uit de positie-gebeurtenissen
-(`_krLevenslopen`), en die geeft alleen afgesloten levenslopen terug. Bovendien haalt een gewone sync
-gebeurtenissen op vanaf de vorige sync: de opening van een positie die dagen geleden begon, ligt buiten
-dat venster. Hyperliquid kijkt in dat geval eenmalig verder terug (`liepAl` in `fetchTrades`); Kraken
-niet.
-
-**Plan.**
-1. Test eerst: in partial-alle-exchanges de Kraken-check omdraaien (lopende positie met één afbouw →
-   partial met het geboekte deel apart), en in een eigen spec een open Kraken-positie die zijn instap
-   als stap toont. Zien falen.
-2. `_krLevenslopen` en `levenslopenUitAccountLog` (die de lopende levenslopen al apart houdt): een
-   lopende levensloop met afbouw → status partial, zonder afbouw → de stappen aan de open rij, zoals
-   Hyperliquid in `_reconstructTrades(…, metOpen)`.
-3. Terugkijken als een levensloop al liep bij het begin van het venster, zoals Hyperliquid. Nagaan of
-   de Worker-actie `trades` een vroeger `startTime` aankan zonder de rate-limit te raken.
-4. Past bij de geplande Kraken-sessie 2 (het events-pad met fillTime als openingstijd vervangen); samen
-   doen. Alleen in de Kraken-adapter.
-
-**Klaar als** de spec voor alle vier de API-exchanges hetzelfde gedrag toetst, en de release-poort groen is.
-
-**Al gedaan (14-10-2026, B4):** de openingstijd van een lopende positie komt uit de positie-events (`_lopend` in `_krLevenslopen`, ingevuld door `afterImport`), niet meer uit `/openpositions`, dat geen `fillTime` documenteert en 1970 stuurde. `fetchTrades` kijkt 30 dagen terug zolang een open rij geen tijd heeft. Stap 3 hieronder is daarmee voor de openingstijd al gedekt; de stappen en de partial-status nog niet. Test: [tests/kraken-opentijd.spec.js](tests/kraken-opentijd.spec.js).
-
-### B2 · OKX: contractwaarde-vangnet kent geen USDC-perps — prio 2 · S
-
-**Waarom.** `ExchangeAPI.okx._ctvFallback` ([work/syncjournal.html:7123](work/syncjournal.html#L7123))
-kent 14 sleutels, allemaal `*-USDT-SWAP`. Faalt de live lookup van `/public/instruments`, dan wordt de
-size van een USDC-positie verkeerd omgerekend. Meestal vangt de live lookup het af — dit is het
-vangnet — maar OKX is je actieve exchange en EEA-accounts handelen in USDC.
-
-**Plan.**
-1. Test eerst: met een lege cache geeft `_ctVal('BTC-USDC-SWAP')` nu geen of een verkeerde waarde.
-2. De echte `ctVal`-waarden van de USDC-tegenhangers ophalen uit OKX's publieke
-   `/api/v5/public/instruments?instType=SWAP` (geen sleutel nodig). Niet gokken: USDC- en
-   USDT-contracten kunnen een andere grootte hebben.
-3. Toevoegen aan de map; test groen.
-
-**Klaar als** elke USDT-sleutel in het vangnet een USDC-tegenhanger heeft, met de waarde van OKX zelf.
-
-**✅ Gedaan 24-10-2026** (`tests/okx-ctval.spec.js`). Bij het meten bleek: **USDC-SWAP-contracten bestaan niet**; EEA-accounts
-handelen USDC op FUTURES, de X-Perps (`BTC-USD_UM_XPERP-310404`) en datum-futures (`BTC-USD_UM-261030`). Het vangnet
-kent nu de contractwaarde per familie (instrument zonder vervaldatum), uit OKX's eigen lijst. Daarbij twee fouten
-gevonden: de oude uitzondering gaf een BTC-datum-future 0,0001 in plaats van 0,01 (100× te klein), en ETH X-Perp viel
-terug op 1 in plaats van 0,001 (1000× te groot).
-
-### B3 · Controleren: telt dezelfde positie dubbel via CSV én API? — ✅ opgelost (branch `csv-dubbel-ci`, 26-10-2026)
-
-**Uitkomst.** Ja, het was dubbel, bij **Blofin, OKX en Hyperliquid**, in beide volgordes (eerst CSV dan sync, en
-andersom). `sjImportCsvText` geeft een CSV-rij een id uit de inhoud (`<ex>_csv_…`), de API een eigen id, en
-`importTjClosed` ontdubbelt alleen op dat id. **Kraken niet**: CSV en API delen daar het id, en met een koppeling
-weigert de app de Kraken-CSV (`kraken-csv-api.spec.js`). MEXC (geen sync meer) en FTMO (geen API) kunnen niet
-overlappen.
-
-**Fix.** Per adapter `ExchangeAPI.<ex>.zelfdePositie(csv, api)` (Blofin: opening binnen 2 minuten, de export is UTC;
-OKX en Hyperliquid: de exporttijd is lokaal en de zone onbekend, dus open én sluiting mogen met hetzelfde hele
-kwartier verschoven zijn, hooguit 14 uur), bovenop dezelfde pair, richting, instap-, uitstapprijs (0,1%) en grootte
-(2%). `csvOpgaanInApi(exId)` draait na elke sync en elke CSV-import: de API-rij wint, je invoer van de CSV-rij gaat
-mee (lijsten samengevoegd, twee notities blijven allebei), de CSV-rij verdwijnt zonder prullenbak. Ligt de API-rij
-in de prullenbak, dan verdwijnt de CSV-rij ook. Bestaande dubbelen gaan bij de eerstvolgende sync samen.
-Spec: `tests/csv-api-dubbel.spec.js` (47 checks, met nagebootste API op de laag van elke adapter).
-
-**Migratie v12** slaat koppelingen met recente CSV-trades over vanwege B3. Die uitzondering blijft staan (hij
-heeft al gedraaid); vanaf nu zou terugkijken niet meer dubbelen.
-
-*Oorspronkelijke opdracht:*
-
-
-**Waarom.** In de oude app kon één positie twee keer binnenkomen: via een CSV-import én via de
-API-sync, met verschillende id's. Of dat in SyncJournal nog kan is onbekend — de import is sindsdien
-herbouwd. Het is een stille fout: je P&L verdubbelt zonder melding.
-
-**Plan.**
-1. Test eerst: een CSV-fixture importeren van een exchange met API-koppeling (Blofin of Kraken — de
-   fixtures staan lokaal), daarna dezelfde positie syncen via een nagebootste API-respons.
-2. Groen → story sluiten, de spec blijft als bewaking. Rood → dedup in de adapter van die exchange,
-   niet in een gedeelde helper.
-
-**Klaar als** de spec bestaat en groen is. Effort M als het een echte fout blijkt.
-
----
-
-### B5 · P&L-percentages van −107% en 2.834% bij oudere trades — ✅ gedaan in v1.11
-
-**Wat er mis was** (Zaratras, 18-10-2026). Het percentage onder de P&L is P&L ÷ je saldo op dat moment. Dat saldo
-rekent de journal terug: het huidige totaalsaldo min alle P&L die daarna kwam. Daarin telden ook **backtests** mee
-(bij Zaratras 39 stuks, +$814), terwijl dat geen geld op je account is. Voor maart kwam de basis daardoor rond nul of
-onder nul uit.
-
-**Fix.** `_pctBases` en `pnlPctTotal` tellen alleen live trades (`isLive`). Een backtest heeft zelf geen
-percentage meer. Test: `tests/pnl-pct.spec.js` (backtest van +814 verandert de basis niet). Op Zaratras' data: de
-basis van 23-03 is $309,58 (−0,96%), geen basis meer onder nul, hoogste percentage 6%.
-
-**Wat blijft:** stortingen en opnames ziet de journal niet. Wie geld bijstort of opneemt, krijgt voor de periode
-daarvóór een basis die zoveel te hoog of te laag is. Zie het idee "stortingen" onder *Ideeën*. Het vaste
-referentiebedrag (Instellingen → Accounts) blijft de uitwijk.
-
-### B7–B11 · Gevonden bij T2 (24-10-2026)
-
-De herschreven specs lieten deze bugs zien. Elke spec heeft een `FIXME`-check die de bug meldt zonder rood te
-worden, en die zich meldt zodra de bug weg is. Volledige beschrijving: `docs/plan-t2-specs.md`, "Gevonden bugs"
-(branch `t2-specs`). Per bug: eerst de FIXME omzetten in een echte check (rood), dan de fix.
-
-- **B9 · Datum na middernacht — prio 1 · XS.** Tussen 00:00 en 02:00 NL-tijd is "vandaag" de UTC-dag op drie
-  plekken: een nieuwe trade (`openForm(null)` via `toISOString().slice(0,10)`), de startmaand van de Kalender
-  (`STATE.calMonth`) en een storting/opname op een handmatig account (`addAcctTx`, ook `addManual` en de
-  oude-balans-migratie); `_today` gebruikt hetzelfde patroon. `localDateISO()` bestaat al en klopt. Spec:
-  `integrity-edge`.
-- **B7 · Privacy-modus — prio 2 · S.** De regel "N trades · netto …" onder de balkjes (`hbars`: dashboard en
-  Analytics, en in de bron ook Tendencies) mist de `mask`-class. In Analytics blijven ook max drawdown, netto per
-  groep, gem./grootste winst en verlies en verwachting per trade leesbaar. Spec: `privacy-mode`.
-- **B10 · Import van een leeg object — prio 2 · XS.** `[{foo:'bar'},1,'x',null]` telt als 1 trade en "vervangen"
-  staat voorgeselecteerd (er is wel een veiligheidskopie). Een array met alleen rommel geeft een nette melding, maar
-  via een gevangen TypeError in `looksOldExport`. Spec: `integrity-edge`. 🔨 Cloud-sessie bezig (25-10).
-- **B8 · Toegankelijkheid formulier — prio 3 · S.** 14 velden van het trade-formulier zonder gekoppeld label (axe
-  `label`, critical), en `#modal` gaat dicht met alleen `opacity:0`, dus de velden blijven vindbaar voor een
-  schermlezer. Spec: `a11y`.
-- **B11 · Lege kruis-analyse — prio 3 · XS.** Zonder playbooks toont de kruis-analyse in Tendencies alleen een
-  kopregel. Lege staat via `emptyState()` (C1). Spec: `tendencies-untagged`.
+Geen open bugs.
 
 ---
 
 ## Tests
-
-### T1 · CSV-import testen op CI — ✅ gedaan (branch `csv-dubbel-ci`, 26-10-2026)
-
-**Gedaan.** Per formaat een synthetische export in `tests/fixtures-csv/` (in git, met `git add -f` omdat `*.csv`
-genegeerd wordt): Blofin, OKX, Kraken, Hyperliquid, MEXC (futures én posities) en FTMO. `tests/csv-synthetisch.spec.js`
-draait ze altijd, ook op CI (39 checks: herkend formaat, exacte cijfers, dubbel inlezen geeft niets). De
-OKX-kolomnamen volgen de parser, niet een geverifieerde echte export. `csv-import.spec.js` blijft de extra laag op
-de echte exports. Nog te doen: de nieuwe specs in `tests/release-set.js` zetten.
-
-*Oorspronkelijke opdracht:*
-
-
-**Waarom.** `tests/_fixtures/` is terecht gitignored (echte exports), dus op CI slaat `csv-import`
-zichzelf over — ook in de groene runs van vandaag (`⏭️ csv-import … overgeslagen`). Lokaal draait hij
-weer sinds de worktree-poort die map koppelt. Import is de risicovolste laag, en de spec dekt 3 van de
-6 formaten (Blofin, Kraken, Hyperliquid).
-
-**Plan.**
-1. Per exchange één **geanonimiseerde** export in `tests/fixtures/csv/` (die mag in git): echte
-   kolommen en randgevallen, verzonnen bedragen en id's. MEXC (xlsx), FTMO en OKX erbij.
-2. `csv-import.spec.js` leest die map; de lokale echte exports blijven een extra laag.
-3. Vóór de commit controleren dat er geen account-id's, wallets of namen in staan.
-
-**Klaar als** CI geen `⏭️ csv-import` meer toont en alle zes formaten gedekt zijn. Nodig vóór C2 en T3.
-
-### T2 · Oude-app-specs herschrijven of schrappen — prio 3 · L
-
-*Voegt de oude stories 17 (AI-coach), 18 (accounts) en 20 samen.*
-
-**Waarom.** 81 specs laden nog de bevroren oude app en worden overgeslagen in de volle run. 7 laden
-SyncJournal maar zoeken teksten van de oude journal ("Verbinding testen", "Refresh trades",
-milestones, donatie) — dat zijn de enige rode in de volle run (90/97). Een mechanische omzetting gaf
-op 29-09 64 rode en ~20 vals-groene specs, dus: per spec.
-
-**Plan** (eerst een plan-document in `docs/`):
-0. Fundament: `tests/helpers/seed.js` laten seeden via `dov-page.js` → `seed()` / `applyBackup`
-   (`sj_` + IndexedDB, niet `tj_`), en één navigatiehelper via `go(page)` in plaats van ~50 keer
-   knoppen op tekst zoeken.
-1. Triage-tabel per spec: **herschrijven**, **schrappen** (de feature bestaat niet in SyncJournal:
-   zes thema's, milestones, donatie, mindset, hash-routing) of **al gedekt** door een release-spec.
-2. Per cluster herschrijven, met de lessen uit de review: naast elke "NIET getoond"-check een
-   positieve check; niet zoeken in `page.content()` (daar staat de broncode ook in); wachten op iets
-   dat `boot()` zet, niet op de statische kop.
-3. De AI-coach-cluster (12 specs) pas na het besluit of de AI-coach blijft.
-
-**Klaar als** geen spec meer alleen `tradejournal.html` laadt, de volle run groen is, en wat een
-release moet tegenhouden in `tests/release-set.js` staat.
 
 ### T3 · Levensloop-toets voor FTMO, één gedeelde vorm — prio 3 · M
 
 **Waarom.** Kraken, Blofin, Hyperliquid en OKX hebben een levensloop-spec; FTMO niet. En de vier
 toetsen elk iets anders. (MEXC vervalt: koppeling gestopt.)
 
-**Plan** (na T1): één toets — open → partial → partial → dicht → opnieuw importeren voegt niets toe —
+**Plan:** één toets — open → partial → partial → dicht → opnieuw importeren voegt niets toe —
 die per adapter over diens fixture draait. FTMO erbij via zijn CSV. De bestaande specs blijven voor
 de eigenaardigheden per exchange.
 
 **Klaar als** vijf exchanges dezelfde toets doorlopen.
 
-### T4 · `npm test` repareren — prio 3 · XS
-
-**Waarom.** `package.json` zegt `"test": "playwright test"`, en `playwright.config.js` pakt
-`**/*.spec.js` — ook de losse node-scripts, die zelf een browser starten en `process.exit` aanroepen.
-Onbruikbaar; CLAUDE.md waarschuwt er nu voor.
-
-**Plan.** `"test": "node tests/run-release.js"` en `testMatch` beperken of weghalen. De waarschuwing
-in CLAUDE.md eruit.
-
-**Klaar als** `npm test` hetzelfde doet als de release-poort.
-
-### T5 · `drive-backup` is timing-gevoelig bij 4 specs tegelijk — prio 3 · XS
-
-**Waarom.** In de release-poort van v1.2 (29-09) faalde `drive-backup` de eerste keer en slaagde hij
-bij de herkansing (39 s). Los draaide hij 3 van de 3 keer groen. De herkansing verbergt dit nu —
-maar een spec die op timing leunt, geeft vroeg of laat een vals rood of groen.
-
-**Plan.** De vaste wachttijden in de spec vervangen door wachten op een concreet signaal (de
-back-up is geschreven). Daarna de poort een paar keer draaien zonder herkansing
-(`GEEN_HERKANSING=1 node tests/run-release.js`).
-
-**Klaar als** hij bij 4 tegelijk drie keer achter elkaar zonder herkansing groen is.
-
 ---
 
 ## Code
-
-### C1 · Lege staten: één manier, met een volgende stap — prio 2 · S + M
-
-**Waarom.** `equity()` zet bij nul trades een nulpunt in de reeks
-([work/syncjournal.html:2996](work/syncjournal.html#L2996)) en tekent een leeg assenstelsel zonder
-uitleg — het lijkt een fout. Daarnaast bestaan naast de helper `emptyState()`
-([:2930](work/syncjournal.html#L2930), teksten in `EMPTY` op [:2921](work/syncjournal.html#L2921))
-nog zeven losse classes: `lt-empty` (5×), `revempty` (3×), `txempty`, `thm-empty`, `tagcard-empty`,
-`ml-empty`, `empty-h`.
-
-**Plan.**
-1. Test eerst: dashboard met een periode zonder gesloten trades → een lege staat met een volgende
-   stap. Twee teksten: "nog nooit data" en "niets in deze periode" zijn verschillende meldingen.
-2. `equity()` geeft bij lege data `emptyState(...)` terug in plaats van het nulpunt. Andere
-   grafiekhelpers nalopen op `data.push({x:0`.
-3. Per scherm één losse class naar `emptyState()`, CSS opruimen. Pixel-diff als vangnet, licht én donker.
-
-**Klaar als** er geen losse `*-empty`-classes meer zijn en elke lege-staat-tekst in `EMPTY` staat en
-een volgende stap noemt.
-
-### C5 · Eén kleurenschema voor tags, en emoties gesplitst in positief en negatief — ✅ gedaan in v1.3
-
-*Gebouwd 29-09-2026 na akkoord op de demo ([demos/tag-kleuren-demo.html](demos/tag-kleuren-demo.html)).*
-*Spec: `tests/tag-kleuren.spec.js` (64 checks, beide thema's). Afwijking van het plan: de emotiekaart*
-*zet Negatief en Positief onder elkaar in plaats van naast elkaar — de kaarten zijn ~360px breed.*
-
-*Gevraagd door Zaratras, 29-09-2026.*
-
-**Waarom.** Elke soort tag heeft op drie plekken drie verschillende kleuren:
-
-| Soort | Trade-formulier | Instellingen → Tags | Tags-kolom (overzicht) |
-|---|---|---|---|
-| Setups | neutraal (aangeklikt: accentblauw) | blauw | blauw |
-| Bevestigingen | neutraal | groenblauw | groenblauw |
-| Emoties, negatief | rood | amber, één lijst | amber |
-| Emoties, positief | groen | amber, één lijst | amber |
-| Fouten | amber | oranje | oranje |
-
-Instellingen → Tags belooft *"elke categorie z'n eigen kleur, precies zoals ze in de trade-picker
-verschijnen"* — dat klopt niet. En de splitsing positief/negatief in het formulier komt uit een vaste
-lijst in de code (`EMO_NEG`, [work/syncjournal.html:1738](work/syncjournal.html#L1738)): een emotie
-die je zelf toevoegt (bv. "Angstig") staat daar niet in en belandt bij **Positief**, in het groen,
-zonder dat je dat ergens kunt rechtzetten.
-
-**Plan.**
-1. Eén bron: elke soort één kleur, uit thema-tokens (`var(--red)`, `var(--green)`, `var(--amber)` …)
-   in plaats van hex, zodat licht en donker kloppen.
-2. De splitsing wordt data: `tagConfig.emotionNeg` (welke emoties negatief zijn). Bij het laden gevuld
-   uit de huidige vaste lijst als het veld ontbreekt — ook voor oude back-ups.
-3. Instellingen → Tags: de emotiekaart in twee kolommen, Negatief en Positief; toevoegen aan een kant,
-   met één klik verplaatsen naar de andere.
-4. Formulier: leest de splitsing uit `emotionNeg`; aangeklikte setups en bevestigingen in hun eigen kleur.
-5. Tags-kolom volgt vanzelf via `tagColor`, die alleen positief/negatief hoeft te kennen.
-6. `EMO_NEG` en het ongebruikte `EMO_POS` weg. `CALM_EMOS` blijft (rating in de coach-export).
-7. Test: dezelfde tag heeft op alle drie de plekken dezelfde kleur, in licht en donker; een zelf
-   toegevoegde negatieve emotie staat overal bij Negatief; een oude journal zonder `emotionNeg` houdt
-   FOMO en Gehaast negatief.
-
-**Acht soorten, acht kleuren** (voorstel 29-09-2026, wacht op akkoord Zaratras):
-
-| Soort | Kleur | Token |
-|---|---|---|
-| Setup-type | blauw | `--accent` |
-| Confirmaties | groenblauw | `--teal` |
-| Timeframe | paars | `--violet` |
-| Emoties, positief | groen | `--green` |
-| Emoties, negatief | rood | `--red` |
-| Fouten | amber | `--amber` |
-| Missed-redenen | roze | nieuw `--pink` (licht + donker) |
-| Eigen tags | grijs | `--muted` |
-
-Groen, rood en amber zijn de kleuren die het formulier al gebruikt. Nu dubbel: missed-redenen en eigen
-labels zijn allebei grijs.
-
-**Ook erbij:** timeframe en missed-redenen komen in de Tags-kolom van het overzicht (`overzichtTags`
-toont ze nu niet), en in het formulier krijgen timeframe, setups en confirmaties hun kleur zodra je
-ze aanklikt.
-
-**Klaar als** elke soort op alle drie de plekken dezelfde kleur heeft, in beide thema's, eigen emoties
-hun kant kiezen in Instellingen, en de belofte in Instellingen weer klopt. Wijzigt de tag-datastructuur:
-met migratie, changelog-regel en een test op oude back-ups.
 
 ### C2 · CSV-parser per exchange opsplitsen — prio 3 · M–L
 
@@ -677,15 +177,6 @@ Kraken en Hyperliquid hebben hun parsing al in de adapter; Blofin, MEXC, FTMO en
 **Klaar als** de functie op één scherm past en elke import exact dezelfde trades oplevert als
 ervoor. Geen changelog (geen gedragswijziging). Niet samen met een feature doen.
 
-### C3 · Account-label opzoeken in plaats van kopiëren — prio 3 · S
-
-**Waarom.** Het trade-formulier zet het account-label plat in de trade
-([work/syncjournal.html:8750](work/syncjournal.html#L8750)). Hernoem je je account, dan houden oude
-trades de oude naam. Cosmetisch — er wordt niets mee gerekend.
-
-**Plan.** Weergave via `acctOf(t.exchange).acct`; `t.account` alleen voor echte sub-accounts. Test:
-account hernoemen → een oude trade toont de nieuwe naam.
-
 ### C4 · XLSX-ondersteuning eruit — gepland, na 16 november · S
 
 **Waarom.** Het enige externe script in de app (`xlsx@0.18.5`,
@@ -702,57 +193,37 @@ Test: een `.xlsx` geeft een begrijpelijke melding.
 
 ## Werkwijze & tooling
 
-### W1 · Worker: staat `Access-Control-Allow-Origin` op `*`? — prio 2 · XS (Zaratras)
+### W1 · Worker: `Access-Control-Allow-Origin` afdwingen — 📅 **rond 1 november** · prio 1 · XS (Zaratras)
 
-**Stand 25-10-2026:** ja, in v24 stond hij op `*`. [docs/worker-v25.js](docs/worker-v25.js) lost het op in twee stappen
-(schakelaar `ORIGIN_MODUS`): eerst `meten` (alles werkt, het dagrapport toont per dag welke websites de Worker gebruiken),
-dan `afdwingen` (alleen syncjournal.nl, www, work, localhost/127.0.0.1 en `null`, plus Morani's journal). Stappenplan:
-[docs/worker-v25-deploy.md](docs/worker-v25-deploy.md). De upstream-URL's: MEXC, Blofin en Kraken hadden al een vaste host;
-OKX nam `okxHost` van de aanroeper over (W5), dat is in v25 dicht.
+**Stand 26-10-2026.** In v24 stond hij op `*`: elke website kon de Worker gebruiken als gratis exchange-proxy, op
+Morani's Cloudflare-quota. [docs/worker-v25.js](docs/worker-v25.js) staat sinds 25-10 live met de schakelaar
+`ORIGIN_MODUS = 'meten'`: alles werkt, en het dagrapport toont per dag welke websites de Worker gebruiken.
 
-**Waarom.** Dan kan elke website je Worker gebruiken als gratis exchange-proxy, op jouw
-Cloudflare-quota. Bij misbruik gaan de koppelingen voor iedereen stuk door rate-limits. Sleutels
-lekken er niet door.
+**Plan** (Zaratras, ~5 minuten, stappenplan [docs/worker-v25-deploy.md](docs/worker-v25-deploy.md)):
+1. Rond 1 november, na een week meten: in het dagrapport kijken welke herkomsten er voorkomen. Staat er een
+   website die erbij hoort en niet in `ORIGINS`, eerst die toevoegen.
+2. `ORIGIN_MODUS` op `'afdwingen'` en deployen: dan alleen syncjournal.nl, www, work, localhost/127.0.0.1 en `null`,
+   plus Morani's journal.
+3. Een sync op syncjournal.nl en work.syncjournal.nl controleren. Gaat er iets mis: `ORIGIN_MODUS` terug op `'meten'`.
+4. CLAUDE.md bijwerken ("`ORIGIN_MODUS` staat op `'meten'`").
 
-**Plan** (jouw kant, ~5 minuten): in het Cloudflare-dashboard de Worker openen en zoeken op
-`Access-Control-Allow-Origin`. Staat er `*`, dan lever ik een diff die beperkt tot de eigen origins.
-Meteen meekijken: bouwt de Worker upstream-URL's uit een vaste basis per exchange, zodat het clientpad
-geen andere host kan worden?
+**Let op:** Morani's journal en de oude TradeJournal gebruiken dezelfde Worker. De oude TradeJournal draait lokaal,
+als bestand (origin `null`) of via `localhost`. Die moeten op de lijst blijven.
 
-**Let op:** Morani's journal en de oude TradeJournal gebruiken dezelfde Worker. De oude TradeJournal
-draait lokaal — als bestand (origin `null`) of via `localhost`. Die moeten op de lijst, anders breek je ze.
+**Klaar als** de Worker live op `afdwingen` staat en de syncs van alle herkomsten uit het dagrapport nog werken.
 
-**Klaar als** bevestigd is wat er staat, en bij `*` een diff gedeployd is.
+### W7 · CSP afdwingen — prio 2 · XS
 
-### W2 · Ruwe exchange-data kunnen vastleggen (dev-modus terug) — prio 2 · M
+**Waarom.** Met F14 komt er een Content-Security-Policy in `site/_headers`, eerst als `Report-Only`: de browser meldt
+wat hij zou blokkeren, maar blokkeert nog niets. Pas afdwingend beschermt hij: een ingeslopen script kan sleutels
+dan niet naar een vreemde host sturen.
 
-**Waarom.** CLAUDE.md beschrijft het snapshot-fixture-patroon via `?dev=1`-knoppen als dé manier om
-exchange-bugs met echte data te reproduceren zonder jouw sleutels. In SyncJournal bestaat `?dev=1`
-niet (0 treffers). Het diagnosepaneel (`diagnostics()`,
-[work/syncjournal.html:1846](work/syncjournal.html#L1846)) geeft versie, aantallen en laatste sync,
-maar niet de ruwe respons. Voor B1 en elke volgende exchange-bug mis je zo de brug naar een testfixture.
+**Plan** (uit `docs/csp.md` op branch `f14-beta`): een week na de F14-release met de console open meekijken naar
+`[Report Only] Refused to …`. Daarna in `site/_headers` op alle vier de regels `-Report-Only` weghalen,
+`node tests/csp.spec.js` draaien (en de check "nergens al afdwingend" aanpassen), via de werkversie live.
 
-**Plan.**
-1. `?dev=1`, onthouden onder een `sj_`-sleutel, zet een dev-blok aan in het diagnosepaneel.
-2. Per gekoppelde exchange een knop "Ruwe respons downloaden": de laatste API-antwoorden van de
-   adapter, met sleutels, wallet en accountnummers eruit gefilterd.
-3. Die download is direct bruikbaar als fixture in `tests/_fixtures/`.
-4. Test: het bestand bevat geen `apiKey`, `secret`, `passphrase` of wallet (zoals de diagnose-spec
-   dat al toetst).
-5. CLAUDE.md bijwerken: de passages over `IS_DEV` beschrijven nu de oude app.
-
-**Klaar als** de knop voor elke API-exchange (OKX, Blofin, Kraken, Hyperliquid) een bestand oplevert
-dat een spec kan inladen.
-
-### W3 · Graphify verversen of de instructie weghalen — prio 3 · S
-
-**Waarom.** CLAUDE.md verwijst naar de graphify-graaf voor impact-checks, maar die graaf komt uit de
-bevroren app (22-06-2026). Een verouderde graaf geeft plausibele, foute antwoorden.
-
-**Plan.** Kiezen, niet allebei half. **Verversen**: het `<script>`-blok van `work/syncjournal.html`
-naar `graphify-src/syncjournal.js`, de oude weg, `graphify graphify-src --update` (gratis, alleen
-AST). **Of weghalen**: de instructie uit CLAUDE.md, want grep werkt en is altijd actueel.
-Advies: weghalen, tenzij je hem echt gebruikt — dat is de afgelopen weken niet gebeurd.
+**Klaar als** de CSP op syncjournal.nl afdwingend staat en de app, de landing en Mori zonder geblokkeerde
+verzoeken werken.
 
 ### W4 · Eerste echte PR met beide reviewers — prio 3 · XS
 
@@ -768,16 +239,16 @@ duurdere opus-model moet blijven.
 
 | Groep | Punten | Oppakken als |
 |---|---|---|
-| AI-coach uitbreiden (3) | AI Trade Autopsy, AI Super-Prompt "wat heeft prioriteit", playbook-coaching | Na het besluit of de AI-coach blijft |
+| AI-coach uitbreiden (3) | AI Trade Autopsy, AI Super-Prompt "wat heeft prioriteit", playbook-coaching | Als Mori gebruikt wordt (poll W6, eind januari 2027) |
 | Mindset & discipline (10) | Tiltmeter, pre-trade-checklist-builder, checklist-streak, mindset-reminders, dag-limiet/tilt guard, Strengths-onboarding, 2D mindset-grid, decision-space-meter, Strengths Primer, Best Trade of the Week | Als leden erom vragen — de mindset-module is niet meegekomen en de enquête vroeg om vereenvoudiging |
 | Grafieken & analyse (7) | Bruto/netto P&L naast elkaar, drawdown-grafiek, funding & fees-waterval, weekoverzicht, scratch-donut, MAE-to-stop per setup, bias per layer | Kies er één; bruto/netto eerst (fees worden zichtbaar) |
-| Funding-fees per trade (1) | Onderzoek klaar (bouwvolgorde Hyperliquid → Kraken → Blofin) | Na B1 |
+| Funding-fees per trade (1) | Onderzoek klaar (bouwvolgorde Hyperliquid → Kraken → Blofin) | Kan nu (de Kraken-levensloop is af sinds v1.13) |
 | Blofin-schermhulpjes (3) | Near-liquidation-waarschuwing, "laatst ververst"-indicator, live R:R | Laag |
 | Delen & integraties (4) | Trade-voucher/deellink, Discord-webhook, TradingView-grafieken, PDF-rapport | Laag |
 | Help & content (3) | Alerts Cookbook, Bellafiore-playbookveld, pro-trader-review-follow-up | Laag |
 | Combined trades (1) | Meerdere trades als één behandelen | Samenvoegen bestaat al (FTMO); pas bij vraag |
 | Test-scenario's O–T (6) | Funding, scaling-in, direction-flip, leverage-wijziging, liquidatie, sub-accounts | Zodra de bijbehorende feature er is |
-| Wachtpost (2) | Dagelijkse staat-controle, diff-wachtpost ([ontwerp](docs/wachtpost-ontwerp-2026-09-27.md)) | Na W3 en T2 — anders vervalt de helft van de signalen |
+| Wachtpost (2) | Dagelijkse staat-controle, diff-wachtpost ([ontwerp](docs/wachtpost-ontwerp-2026-09-27.md)) | Kan nu: de oude specs zijn herschreven (T2, 25-10) |
 | Sync (1) | `fetchFills` parallel bij verversen | Als verversen traag voelt |
 | Stortingen & opnames (1) | Percentages kloppend houden bij in- en uitleg, zie hieronder | Als leden vragen waarom oude percentages veranderen, of als je vaak stort of opneemt |
 
@@ -798,45 +269,8 @@ De uitgewerkte teksten van deze ideeën staan in het [archief](docs/backlog-arch
 
 | Besluit | Waarom het ertoe doet |
 |---|---|
-| ~~**Blijft de AI-coach?**~~ — ✅ **ja, als echte chat-coach met eigen sleutel** (Zaratras, 25-10-2026). Eén plek, niets op Dashboard of Analytics. Eigen sleutel lokaal, nooit in export/back-up. Onderzoek en bouwvolgorde: `docs/research-ai-coach-2026-10-25.md`. | De oude `aicoach-*`-specs worden vervangen door specs voor de nieuwe coach (stap 8 van het onderzoek). |
 | Welke exchanges krijgen prioriteit? | Bepaalt of er een zevende exchange komt, en daarmee de urgentie van C2 |
 | Backend ja of nee? | Pas relevant als API-sleutels uit de browser moeten, of bij cloud-sync |
 | Distributiemodel | Gratis/donatie, of iets anders |
+| Internationaal (Engels)? | Besloten 26-10-2026: **nee, alleen Nederlands** (F14). Komt alleen terug als Zaratras er later anders over beslist |
 
----
-
-## Opgeruimd op 29-09-2026
-
-| Punt (oud) | Uitkomst | Bewijs |
-|---|---|---|
-| Hyperliquid toevoegen | ✅ gedaan | adapter `ExchangeAPI.hyperliquid` |
-| Laadtijd ~10 s door Babel | ✅ gedaan | geen Babel meer; laadt in 0,2 s |
-| Hosted op eigen domein | ✅ gedaan | syncjournal.nl |
-| Meerdere screenshots per trade | ✅ gedaan | `t.screenshots` |
-| TP-niveaus met datum en tijd | ✅ gedaan | `tsDate`/`tsTime` (v0.9.149) |
-| MFE/MAE-analyse, MFE/MAE-scatter | ✅ gedaan | grafiek bij "Kwaliteit van je trades" |
-| PnL-kalender-heatmap | ✅ gedaan | kalenderpagina |
-| Trades-tabel paginatie | ✅ gedaan | `tPage`/`pageCount` |
-| Kraken-trades zonder TP-overzicht | ✅ opgelost door de levensloop | `kraken-levensloop`: "elke trade heeft stappen met minstens één afbouw"; het restgat is **B1** |
-| Blofin partial-close → koppeling met open trade | ✅ opgelost door de levensloop | `blofin-levensloop`: partial met het geboekte deel apart |
-| CI draait 74 van de 171 specs | ✅ anders opgelost | vaste release-set, en de volle run leest de map |
-| Trage poort splitsen / CI-poorten (oud 14, 19) | ✅ gedaan | 55 → 2,4 min, 4 specs tegelijk |
-| Self-review vóór commit | ✅ gedaan | `superpowers:verification-before-completion` + `pr-reviewer-nl` |
-| Twee runners | ✅ grotendeels | runner draait beide soorten; de rest is **T4** |
-| MEXC partial-close: TP-winst ~8× te laag | ❌ geschrapt | MEXC-koppeling gestopt |
-| MEXC `contractSize` via de proxy | ❌ geschrapt | idem |
-| MEXC eigen `detectPartials` | ❌ geschrapt | idem |
-| `ftmoCtx` doorgeven aan `calcRMultiple` | ❌ geschrapt | die functies bestaan niet in SyncJournal; R loopt via `tradeR`/`gemR` |
-| Dashboard-grafieken lazy mounten | ❌ geschrapt | probleem van de oude React-app |
-| Finalize-aggregatie: 3 kopieën | ❌ geschrapt | `importTrades`-finalize bestaat niet in SyncJournal |
-| Bulk-tag-knop afmaken | ❌ geschrapt | de code zit niet in SyncJournal |
-| Pre-Market Game Plan-tab | ❌ geschrapt | gaat op in de Plan-pagina |
-| aicoach-weekly-spec structureel maken | → **T2** | valt onder de AI-coach-specs |
-| Dev-only debug-knoppen | → **W2** | bestaan niet in SyncJournal; opnieuw als W2 |
-| CSV-import op CI | → **T1** | bleek *niet* gedaan: CI slaat de spec over |
-| Levensloop-toets MEXC en FTMO | → **T3** | MEXC vervalt, FTMO blijft |
-| Oude stories 17, 18, 20 | → **T2** | samengevoegd |
-| Lege staten (oud 8, 9) | → **C1** | samengevoegd |
-| CSV-import per exchange (oud 6) | → **C2** | |
-| CSV- vs API-dedup-gat | → **B3** | eerst een test: bestaat het nog? |
-| Graphify (oud 7), Worker-CORS, reviewer op echte PR | → **W3**, **W1**, **W4** | |
