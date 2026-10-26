@@ -16,6 +16,15 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [Unreleased]
+
+### Gewijzigd
+- **Review → Beeld, grote weergave**: naast (of onder) de afbeelding staan nu álle tags van de trade als gekleurde
+  blokjes, per soort met een eigen kopje en in dezelfde kleuren als in de tradelijst: playbook, timeframe (top-down),
+  setup-type, confirmaties, emoties, fouten, missed-redenen en eigen labels. Ook oudere trades zonder lagen tonen hun
+  tags. Heeft een trade nog geen tags, dan staat er "Nog geen tags" met een knop naar het formulier. Een sluiting op de
+  stop-loss staat niet meer groen met ✓ als behaalde TP, maar rood, zoals de stop erboven.
+
 ## [v1.18.2] — 2026-10-26
 
 ### Gewijzigd

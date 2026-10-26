@@ -782,6 +782,9 @@ table.tbl{width:100%;border-collapse:collapse;font-size:14px}
 .revpres aside .bihd{display:flex;align-items:center;gap:10px}.revpres aside .bihd h3{margin:0}.revpres aside .mu{color:var(--muted);font-size:12.5px;margin-top:4px}
 .revpres aside .biuit{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin:12px 0 8px}.revpres aside .biuit b{font-size:26px}.revpres aside .biuit span{font-size:16px;font-weight:700}
 .revpres aside .birow{display:grid;grid-template-columns:110px minmax(0,1fr);gap:10px;padding:6px 0;border-bottom:1px solid var(--line2);font-size:13px}.revpres aside .birow .l{color:var(--muted)}.revpres aside .birow .v{overflow-wrap:anywhere}
+.revpres aside .bitags{margin:4px 0 6px}.revpres aside .bitags .v{display:flex;flex-wrap:wrap;align-items:center;gap:3px 0;min-width:0}
+.revpres aside .bitags .tagchip{white-space:normal;overflow-wrap:anywhere;max-width:100%;font-size:11.5px;padding:2px 8px}.revpres aside .bitags .bipijl{color:var(--muted);font-size:11px;margin:0 2px}
+.revpres aside .bitags.leeg{color:var(--muted);font-size:13px;padding:8px 0;border-bottom:1px solid var(--line2);display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .revpres aside .binote{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--sink);border-radius:8px;padding:9px 11px;font-size:13px}.revpres aside .biacts{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
 @media(max-width:1000px){.revpres.on{grid-template-columns:minmax(0,1fr)}.revpres aside{display:none}
   .revpres.info.on{display:block;overflow-y:auto}.revpres.info .stage{height:62vh}.revpres.info aside{display:block;overflow:visible;border-left:0;border-top:1px solid var(--line)}}
@@ -3038,17 +3041,19 @@ function tradeTagsAll(t){return [...new Set([...(t.tags||[]),...(t.layers||[]).f
 // timeframes en bevestigingen uit de lagen, emoties, fouten, missed-redenen en eigen labels — elk
 // in de kleur van zijn soort, dezelfde als in het formulier en in Instellingen → Tags. Alleen voor
 // de weergave: filters, zoeken en statistieken blijven op tradeTagsAll, zodat daar niets verschuift.
-// (Denny 29-09-2026; kleuren: backlog C5.) Geeft [{tag,kleur}].
-function overzichtTags(t){const L=t.layers||[],uit=[],gezien=new Set();
-  const zet=(tag,kleur)=>{if(tag&&!gezien.has(tag)){gezien.add(tag);uit.push({tag,kleur});}};
-  L.forEach(l=>(l.setups||[]).forEach(x=>zet(x,tagKleur('setupTags',x))));
-  L.forEach(l=>zet(l.timeframe,tagKleur('timeframeTags',l.timeframe)));
-  L.forEach(l=>(l.confirmations||[]).forEach(x=>zet(x,tagKleur('confirmationTags',x))));
-  tradeEmotions(t).forEach(x=>zet(x,tagKleur('emotionTags',x)));
-  tradeMistakes(t).forEach(x=>zet(x,tagKleur('mistakeTags',x)));
-  (t.missedReasons||[]).forEach(x=>zet(x,tagKleur('missedReasonTags',x)));
+// (Denny 29-09-2026; kleuren: backlog C5.) Geeft [{tag,kleur,key}], key = de TAG_CATS-soort.
+// metTf: ook het losse t.timeframe (trades zonder lagen); de Tags-kolom laat dat weg, die heeft een eigen kolom.
+function overzichtTags(t,metTf){const L=t.layers||[],uit=[],gezien=new Set();
+  const zet=(tag,key)=>{if(tag&&!gezien.has(tag)){gezien.add(tag);uit.push({tag,kleur:tagKleur(key,tag),key});}};
+  L.forEach(l=>(l.setups||[]).forEach(x=>zet(x,'setupTags')));
+  L.forEach(l=>zet(l.timeframe,'timeframeTags'));
+  if(metTf)zet(t.timeframe,'timeframeTags');
+  L.forEach(l=>(l.confirmations||[]).forEach(x=>zet(x,'confirmationTags')));
+  tradeEmotions(t).forEach(x=>zet(x,'emotionTags'));
+  tradeMistakes(t).forEach(x=>zet(x,'mistakeTags'));
+  (t.missedReasons||[]).forEach(x=>zet(x,'missedReasonTags'));
   // losse tags: bij oude trades staan hier ook bevestigingen in; die houden hun eigen kleur
-  (t.tags||[]).forEach(x=>zet(x,tagColor(x)||tagKleur('customTags',x)));
+  (t.tags||[]).forEach(x=>zet(x,(TAG_CATS.find(c=>(tagConfig[c.key]||[]).includes(x))||{key:'customTags'}).key));
   return uit;}
 // Fouten/emoties leven als array (mistakes/emotions) met het oude enkelvoud als fallback.
 // DE bron voor zoeken, het fouten-filter en de fout-analyse (ChangeMaker 2026-09-14:
@@ -4757,13 +4762,28 @@ function revReviewFields(t){const checks=revChecks(t),rating=revRating(t),emo=tr
       <div class="lbl">Tags & fouten</div><div>${tagChips(tradeTagsAll(t),true)}${fouten.map(m=>`<span class="tagchip col" style="--tc:var(--red)">${esc(m)}</span>`).join('')}${!tradeTagsAll(t).length&&!fouten.length?'<span style="color:var(--muted);font-size:12px">Geen tags, voeg toe via ✎ Bewerken</span>':''}</div></div></div>`;}
 const revPrijzen=t=>[['Entry',prijsOfStreep(t.entry)],['Stop',prijsOfStreep(t.stop)],['Exit',prijsOfStreep(t.exit)]];
 const revRrTxt=t=>t.rrPlanned?String(t.rrPlanned).replace('.',','):'';
-// Details beside the large image in Beeld (Zaratras 26-10-2026). Built from the same pieces as the Discord export
-// (revTagRegels, revPrijzen, revTpRegels, lagenTxt), so both always show the same. Privacy mode leaves the amount out.
+// Every tag of the trade, per kind, for the large view in Beeld (Zaratras 26-10-2026): the playbook, then the
+// kinds of TAG_CATS in this order. Same tags and colours as the Tags column (overzichtTags); empty kinds are left out.
+const REV_TAG_VOLGORDE=['timeframeTags','setupTags','confirmationTags','emotionTags','mistakeTags','missedReasonTags','customTags'];
+function revTagGroepen(t){const alle=overzichtTags(t,true);
+  return REV_TAG_VOLGORDE.map(key=>[key,TAG_CATS.find(c=>c.key===key).label,alle.filter(x=>x.key===key)]).filter(([,,v])=>v.length);}
+function revBeeldTags(t){const pb=t.setup?String(t.setup):'',G=revTagGroepen(t);
+  if(!pb&&!G.length)return `<div class="bitags leeg">Nog geen tags <button class="linkbtn" onclick="closeRevPres();openForm(${t.id})">✎ Tags toevoegen</button></div>`;
+  const rij=(key,l,chips)=>`<div class="birow" data-soort="${key}"><span class="l">${esc(l)}</span><span class="v">${chips}</span></div>`;
+  // timeframes top-down (the layers are stored that way), the arrow as in the Lagen row before
+  const chips=(key,v)=>key==='timeframeTags'?v.map(x=>kleurChips([x])).join('<span class="bipijl">→</span>'):kleurChips(v);
+  return `<div class="bitags">${pb?rij('playbook','Playbook',`<span class="tagchip">${esc(pb)}</span>`):''}${G.map(([k,l,v])=>rij(k,l,chips(k,v))).join('')}</div>`;}
+// A stop or liquidation close is no reached take-profit: red and without ✓, as Stop above it (tpTelt, tpLabels).
+const revTpRij=(x,t)=>{const telt=tpTelt(x,t);return {l:x.n,v:x.prijs+(x.pct?' · '+x.pct+'%':'')+(x.hit&&telt?' ✓':''),c:!telt?'r':x.hit?'g':''};};
+// Details beside the large image in Beeld (Zaratras 26-10-2026). Prices and R:R from the same pieces as the Discord
+// export (revPrijzen, revRrTxt, revTps). Privacy mode leaves the amount out.
 function revBeeldInfo(t){const r=tradeROrNull(t),rr=revRrTxt(t),rij=(l,v,c)=>`<div class="birow"><span class="l">${esc(l)}</span><span class="v ${c||''}">${esc(v)}</span></div>`;
+  const tps=(t.tps||[]).filter(x=>x&&+x.price>0);
   return `<div class="bihd"><h3>${esc(t.pair)}</h3><span class="pill ${t.dir}">${t.dir==='long'?'LONG':'SHORT'}</span></div>
     <div class="mu">${esc(fmtD(t.date||''))}${t.time?' · '+esc(t.time):''}${sessionOf(t)?' · '+esc(sessionOf(t)):''}</div>
     <div class="biuit"><b class="num ${r==null?'':r>=0?'g':'r'}">${r==null?'—':rS(r)}</b>${STATE.priv?'':`<span class="num mask ${cls(t.pnl)}">${eurS(t.pnl)}</span>`}</div>
-    <div class="birows">${rij('Lagen',lagenTxt(t))}${revTagRegels(t).map(([l,v])=>rij(l,v.join(', '))).join('')}${revPrijzen(t).map(([l,v])=>rij(l,v,l==='Stop'?'r':'')).join('')}${rr?rij('R:R gepland',rr+' : 1'):''}${revTpRegels(t,Infinity).map(x=>rij(x.l,x.v,x.hit?'g':'')).join('')}</div>
+    ${revBeeldTags(t)}
+    <div class="birows">${revPrijzen(t).map(([l,v])=>rij(l,v,l==='Stop'?'r':'')).join('')}${rr?rij('R:R gepland',rr+' : 1'):''}${revTps(t).map((x,i)=>revTpRij({...tps[i],...x},t)).map(x=>rij(x.l,x.v,x.c)).join('')}</div>
     ${t.notes?`<div class="lbl">Notitie</div><div class="binote">${esc(t.notes)}</div>`:''}
     <div class="biacts"><button class="linkbtn" onclick="revDiscord(${t.id})">📋 Kopieer voor Discord</button></div>`;}
 // Discord text: plain text (Discord renders markdown, not HTML), so no esc() here.

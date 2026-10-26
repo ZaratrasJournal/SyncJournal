@@ -1,7 +1,8 @@
 // Review → Beeld (Zaratras 26-10-2026):
 //  2. trades without an image stay in the grid, as a same-size "Geen afbeelding" tile (also when an image fails to load);
-//  3. clicking a tile opens the large view with the trade details beside it, from the same source as the Discord export.
-// Run with: node tests/review-beeld-info.spec.js   (--deel=2 or --deel=3 for one part)
+//  3. clicking a tile opens the large view with the trade details beside it, from the same source as the Discord export;
+//  4. the panel shows every tag of the trade as a coloured chip, grouped per kind, in the colour of the trade list.
+// Run with: node tests/review-beeld-info.spec.js   (--deel=2, --deel=3 or --deel=4 for one part)
 const { chromium } = require('playwright');
 const { openJournal, seedTrades, go, stil } = require('./helpers/dov-page');
 const deel = (process.argv.find(a => a.startsWith('--deel=')) || '').slice(7);
@@ -69,8 +70,9 @@ const pairsOf = sel => [...document.querySelectorAll(sel)].map(e => (e.textConte
     ok('infopaneel: pair en richting', /AAA\/USDT/.test(txt) && /LONG/.test(txt), txt.slice(0, 120));
     ok('infopaneel: P&L en R', txt.includes(await p.evaluate(() => eurS(T.find(t => t.pair === 'AAA/USDT').pnl))) && txt.includes(await p.evaluate(() => rS(tradeROrNull(T.find(t => t.pair === 'AAA/USDT'))))), txt);
     const regels = await p.evaluate(() => revTagRegels(T.find(t => t.pair === 'AAA/USDT')).map(([l, v]) => [l, v.join(', ')]));
-    ok('playbook, setup en confirmaties: dezelfde regels als Discord', regels.length === 3 && regels.every(([l, v]) => txt.includes(l) && txt.includes(v)), JSON.stringify(regels) + ' | ' + txt);
-    ok('entry/stop/exit, TP\'s en lagen', /Entry/.test(txt) && /Stop/.test(txt) && /Exit/.test(txt) && /TP1/.test(txt) && /TP2/.test(txt) && txt.includes('4H → 15M'), txt);
+    const chips = await p.evaluate(() => [...document.querySelectorAll('#revpres aside .tagchip')].map(c => c.textContent.trim()));
+    ok('playbook, setups en confirmaties uit de Discord-regels staan er als chip', regels.length === 3 && regels.every(([, v]) => v.split(', ').every(x => chips.includes(x))), JSON.stringify(regels) + ' | ' + chips.join());
+    ok('entry/stop/exit, TP\'s en lagen (top-down)', /Entry/.test(txt) && /Stop/.test(txt) && /Exit/.test(txt) && /TP1/.test(txt) && /TP2/.test(txt) && /4H\s*→\s*15M/.test(txt), txt);
     ok('notitie, ge-escaped', txt.includes('Mooi geduld <b>x</b>') && await p.evaluate(() => !document.querySelector('#revpres aside b + x, #revpres aside .binote b')));
     ok('focus gaat naar de weergave', await p.evaluate(() => document.getElementById('revpres').contains(document.activeElement)));
     ok('knoppen hebben een label', await p.evaluate(() => [...document.querySelectorAll('#revpres button')].every(x => x.getAttribute('aria-label') || x.textContent.trim())));
@@ -113,6 +115,86 @@ const pairsOf = sel => [...document.querySelectorAll(sel)].map(e => (e.textConte
     await p.screenshot({ path: 'tests/screenshots/review-beeld-info/info-390.png' });
     await p.evaluate(() => document.getElementById('revpres').scrollTo(0, 99999)); await p.screenshot({ path: 'tests/screenshots/review-beeld-info/info-390-onder.png' });
     await p.keyboard.press('Escape');
+  }
+
+  if (!deel || deel === '4') {
+    console.log('─── 4. Beeld: alle tags als gekleurde chips ───');
+    // E: layers + every kind; F: no layers, only flat fields (older trades); G: closed on its stop; H: no tags at all
+    const E = mk('EEE/USDT', { date: '2026-10-22', closeTime: ms('2026-10-22T15:00:00Z'), screenshots: [PNG], setup: 'Breakout',
+      layers: [{ timeframe: '1H', setups: ['MSB'], confirmations: ['OB', 'FVG'] }], emotions: ['Rustig'], mistakes: ['Te vroeg in'], tags: ['Test'] });
+    const F = mk('FFF/USDT', { date: '2026-10-21', closeTime: ms('2026-10-21T15:00:00Z'), timeframe: '4H', layers: [],
+      tags: ['OB', 'SFP', 'nieuwsdag'], emotions: [], emotion: 'FOMO', mistakes: [], mistake: 'Geen plan', missedReasons: ['Durf'] });
+    const G = mk('GGG/USDT', { date: '2026-10-19', closeTime: ms('2026-10-19T15:00:00Z'), pnl: -30, r: -1, entry: 85, stop: 79.901, exit: 79.901,
+      tps: [{ price: 90, pct: 0, hit: false }, { price: 79.901, pct: 100, hit: true, soort: 'sl' }] });
+    const H = mk('HHH/USDT', { date: '2026-10-17', closeTime: ms('2026-10-17T15:00:00Z') });
+    const openTegel = async pair => { await p.evaluate(pr => [...document.querySelectorAll('.revcard')].find(c => c.textContent.includes(pr)).querySelector('.cardshot').click(), pair); await p.waitForTimeout(150); };
+    const groepen = () => p.evaluate(() => [...document.querySelectorAll('#revpres aside .bitags .birow')].map(r => ({
+      soort: r.dataset.soort, kop: r.querySelector('.l').textContent.trim(),
+      chips: [...r.querySelectorAll('.tagchip')].map(c => ({ t: c.textContent.trim(), kleur: getComputedStyle(c).color })) })));
+    const SOORT = { setupTags: 'var(--accent)', confirmationTags: 'var(--teal)', timeframeTags: 'var(--violet)', mistakeTags: 'var(--amber)', missedReasonTags: 'var(--pink)', customTags: 'var(--muted)' };
+    const kleurVan = v => p.evaluate(v => { const d = document.createElement('span'); d.style.color = v; document.body.appendChild(d); const c = getComputedStyle(d).color; d.remove(); return c; }, v);
+    // the chip colour per tag in the trade list, the reference for "same colour as everywhere"
+    const lijstKleuren = () => p.evaluate(() => { go('trades'); const m = {}; document.querySelectorAll('td[data-l="Tags"] .tagchip').forEach(c => { m[c.textContent.trim()] = getComputedStyle(c).color; }); return m; });
+
+    for (const thema of ['light', 'dark']) {
+      await naarBeeld([H, G, F, E]); await p.evaluate(t => setTheme(t), thema); await stil(p);
+      const lijst = await lijstKleuren();
+      await go(p, 'review'); await p.evaluate(() => setRevMode('beeld')); await p.waitForTimeout(200);
+      await openTegel('EEE/USDT');
+      const g = await groepen();
+      const kop = thema === 'light' ? '' : ' (donker)';
+      ok('trade met lagen: soorten in de afgesproken volgorde' + kop, g.map(x => x.kop).join('|') === 'Playbook|Timeframe|Setup-type|Confirmaties|Emoties|Fouten|Eigen labels', g.map(x => x.kop).join('|'));
+      ok('elke tag één keer, als chip' + kop, JSON.stringify(g.map(x => x.chips.map(c => c.t))) === JSON.stringify([['Breakout'], ['1H'], ['MSB'], ['OB', 'FVG'], ['Rustig'], ['Te vroeg in'], ['Test']]), JSON.stringify(g.map(x => x.chips.map(c => c.t))));
+      const verw = { MSB: await kleurVan(SOORT.setupTags), OB: await kleurVan(SOORT.confirmationTags), FVG: await kleurVan(SOORT.confirmationTags), '1H': await kleurVan(SOORT.timeframeTags),
+        Rustig: await kleurVan('var(--green)'), 'Te vroeg in': await kleurVan(SOORT.mistakeTags), Test: await kleurVan(SOORT.customTags) };
+      const kleur = Object.fromEntries(g.flatMap(x => x.chips.map(c => [c.t, c.kleur])));
+      ok('elke chip in de kleur van zijn soort' + kop, Object.entries(verw).every(([t, c]) => kleur[t] === c), JSON.stringify({ kleur, verw }));
+      ok('dezelfde kleur als dezelfde chip in de tradelijst' + kop, Object.keys(verw).every(t => lijst[t] && lijst[t] === kleur[t]), JSON.stringify({ lijst, kleur }));
+      ok('chips gebruiken de bestaande tag-chip (.tagchip.col)' + kop, await p.evaluate(() => [...document.querySelectorAll('#revpres aside .bitags .tagchip')].filter(c => c.textContent.trim() !== 'Breakout').every(c => c.classList.contains('col'))));
+      await p.screenshot({ path: `tests/screenshots/review-beeld-info/tags-${thema}.png` });
+      await p.keyboard.press('Escape');
+    }
+    await p.evaluate(() => setTheme('light'));
+    const negRood = await kleurVan('var(--red)');
+
+    await openTegel('FFF/USDT');
+    let g = await groepen();
+    ok('trade zonder lagen: platte tags verschijnen', JSON.stringify(g.map(x => [x.kop, x.chips.map(c => c.t)])) === JSON.stringify([['Timeframe', ['4H']], ['Setup-type', ['SFP']], ['Confirmaties', ['OB']], ['Emoties', ['FOMO']], ['Fouten', ['Geen plan']], ['Missed-redenen', ['Durf']], ['Eigen labels', ['nieuwsdag']]]), JSON.stringify(g.map(x => [x.kop, x.chips.map(c => c.t)])));
+    ok('negatieve emotie rood, missed-reden roze', (g.find(x => x.kop === 'Emoties') || { chips: [{}] }).chips[0].kleur === negRood && (g.find(x => x.kop === 'Missed-redenen') || { chips: [{}] }).chips[0].kleur === await kleurVan('var(--pink)'));
+    ok('geen "Lagen —" en geen lege kopjes', await p.evaluate(() => { const a = document.querySelector('#revpres aside').innerText; return !/Lagen\s*—/.test(a) && [...document.querySelectorAll('#revpres aside .bitags .birow')].every(r => r.querySelector('.tagchip')); }));
+    await p.keyboard.press('Escape');
+
+    await openTegel('HHH/USDT');
+    const leeg = await p.evaluate(() => { const a = document.querySelector('#revpres aside'); return { txt: a.innerText, rijen: a.querySelectorAll('.bitags .birow').length, knop: !!a.querySelector('.bitags button') }; });
+    ok('trade zonder tags: "Nog geen tags", geen kopjes', /Nog geen tags/.test(leeg.txt) && leeg.rijen === 0 && !/Playbook|Timeframe|Setup-type|Lagen/.test(leeg.txt), JSON.stringify(leeg));
+    ok('"Nog geen tags" heeft een knop naar het formulier', leeg.knop);
+    await p.evaluate(() => document.querySelector('#revpres aside .bitags button').click()); await p.waitForTimeout(250);
+    ok('die knop sluit de weergave en opent het trade-formulier van deze trade', await p.evaluate(() => { const el = document.getElementById('revpres'); const f = document.getElementById('f_pair'); return !el.classList.contains('on') && !!f && f.value === 'HHH/USDT'; }));
+    await p.evaluate(() => { try { closeForm(); } catch (e) {} }); await p.waitForTimeout(100);
+
+    await go(p, 'review'); await p.evaluate(() => setRevMode('beeld')); await p.waitForTimeout(200);
+    await openTegel('GGG/USDT');
+    const sl = await p.evaluate(() => [...document.querySelectorAll('#revpres aside .birow')].filter(r => /^SL/.test(r.querySelector('.l').textContent.trim())).map(r => { const v = r.querySelector('.v'); return { tekst: r.innerText.replace(/\s+/g, ' '), groen: v.classList.contains('g'), rood: v.classList.contains('r') }; }));
+    ok('stop-loss-sluiting: rij "SL", niet groen en zonder ✓ van een behaalde TP', sl.length === 1 && !sl[0].groen && sl[0].rood && !/✓/.test(sl[0].tekst), JSON.stringify(sl));
+    ok('Discord-tekst ongewijzigd voor de SL', await p.evaluate(() => /SL 79[.,]901/.test(revDiscordTekst(T.find(t => t.pair === 'GGG/USDT'), true))));
+    await p.keyboard.press('Escape');
+
+    await p.evaluate(() => { if (!STATE.priv) togglePriv(); });
+    await openTegel('EEE/USDT');
+    ok('privacy-modus: geen bedrag, tags blijven', await p.evaluate(() => { const a = document.querySelector('#revpres aside'); return !a.innerText.includes(eurS(50)) && a.querySelectorAll('.bitags .tagchip').length === 8; }));
+    await p.keyboard.press('Escape'); await p.evaluate(() => togglePriv());
+
+    // 390 px: panel under the image, long tags wrap inside the panel, the view scrolls itself
+    await p.evaluate(() => { const t = T.find(x => x.pair === 'EEE/USDT'); t.tags = ['Test', 'een heel erg lange eigen tag die nooit op één regel past bij 390 px']; persist(); });
+    await p.setViewportSize({ width: 390, height: 844 }); await go(p, 'review'); await p.evaluate(() => setRevMode('beeld')); await p.waitForTimeout(200);
+    await openTegel('EEE/USDT');
+    const m = await p.evaluate(() => { const el = document.getElementById('revpres'), a = el.querySelector('aside'), ar = a.getBoundingClientRect();
+      const uit = [...a.querySelectorAll('.tagchip')].filter(c => c.getBoundingClientRect().right > ar.right + 1).map(c => c.textContent);
+      return { sw: el.scrollWidth, uit, scrollt: el.scrollHeight > el.clientHeight && getComputedStyle(el).overflowY !== 'visible' }; });
+    ok('390 px: lange tags lopen door binnen het paneel, geen horizontale scroll', m.sw <= 391 && !m.uit.length, JSON.stringify(m));
+    ok('390 px: de weergave scrollt zelf', m.scrollt, JSON.stringify(m));
+    await p.evaluate(() => { const a = document.querySelector('#revpres aside'); a.scrollIntoView(); }); await p.screenshot({ path: 'tests/screenshots/review-beeld-info/tags-390.png' });
+    await p.keyboard.press('Escape'); await p.setViewportSize({ width: 1360, height: 900 });
   }
   ok('geen JS-errors', errs.length === 0, errs.join(' | '));
   await b.close();
