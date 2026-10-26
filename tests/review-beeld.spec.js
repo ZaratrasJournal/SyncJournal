@@ -144,7 +144,8 @@ const mk = (id, over) => Object.assign({ id, date: '2026-09-' + String(id).padSt
   await p.keyboard.press('Escape'); await p.waitForTimeout(100);
   ok('Esc sluit', await p.evaluate(() => !document.getElementById('revpres').classList.contains('on') && revPres === null));
   await p.evaluate(() => document.querySelector('.revcard .cardshot').click()); await p.waitForTimeout(100);
-  ok('klik op kaartbeeld: alleen die trade, zonder paneel', await p.evaluate(() => revPres.items.every(x => x.id === 1) && document.getElementById('revpres').classList.contains('nopanel')));
+  // since 26-10-2026 (Zaratras): the month in page order, with the trade details beside the image
+  ok('klik op kaartbeeld: de maand, op die trade, met gegevens', await p.evaluate(() => revPres.panel === 'info' && revPres.items[revPres.i].id === 1 && new Set(revPres.items.map(x => x.id)).size === 2 && !!document.querySelector('#revpres aside .birows')));
   await p.evaluate(() => go('dashboard'));
   ok('naar een andere pagina sluit de presentatie', await p.evaluate(() => revPres === null && !document.getElementById('revpres').classList.contains('on')));
 

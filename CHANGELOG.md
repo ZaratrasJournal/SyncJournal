@@ -27,6 +27,13 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
   en een knop om er een toe te voegen. Een afbeelding die niet laadt geeft een nette melding in plaats van
   een gebroken plaatje.
 
+### Toegevoegd
+- **Review → Beeld: klik op een tegel toont de gegevens erbij.** Je ziet de afbeelding groot, met ernaast (op
+  je telefoon eronder) pair, richting, datum, R en P&L, lagen, playbook, setup, confirmaties, entry, stop,
+  exit, TP's en je notitie: dezelfde gegevens als in *Kopieer voor Discord*. Met ‹ › of de pijltjes ga je naar
+  de vorige of volgende trade; sluiten met Esc, het kruisje of een klik naast de afbeelding. In de
+  privacy-modus blijft het bedrag weg.
+
 ## [v1.18.1] — 2026-10-26
 
 Punten die Zaratras vond bij het testen van v1.18.
