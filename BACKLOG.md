@@ -25,6 +25,7 @@ elke wijziging eindigt met `node tests/run-release.js` groen.
 | **F15** | Funded modus fase 2: een import koppelt zelf aan het juiste challenge- of funded account (login uit het MT5-rapport) | 2 | M | MT5-rapport + MetriX-CSV van Zaratras |
 | **F10** | Blofin: oorspronkelijke stop-loss, stopbeweging en TP/SL/Close in de eigen adapter — OKX ✅ v1.15, Kraken en Hyperliquid ✅ | 2 | M | — |
 | **F6** | Kraken: geplande TP's uit de trigger-historie | 2 | S | — |
+| **B12** | Op een pc buiten Nederland staan tijden in de zone van die pc, niet in Amsterdam-tijd — hele datumlaag in één keer | 3 | M | — |
 | **F7** | Analytics *Stop & uitvoering*: de drie blokken die nog niet gebouwd zijn (paneel zelf ✅ v1.18) | 3 | S | F6 voor één blok |
 | **T3** | Levensloop-toets voor FTMO, één gedeelde vorm | 3 | M | — |
 | **W4** | Eerste echte PR met beide reviewers | 3 | XS | volgende release |
@@ -140,7 +141,29 @@ Alleen bouwen als Zaratras ze wil. Gebruik `gemR` en `tradeROrNull`.
 
 ## Bugs
 
-Geen open bugs.
+### B12 · Tijden op een pc buiten Nederland: Amsterdam-tijd in de hele datumlaag — prio 3 · M
+
+**Wat er is** (gevonden 26-10-2026 bij `kraken-accountlog-sync`, die in de cloud rood stond). De app toont en
+bewaart datum en tijd in de tijdzone van de computer: `ts2date`/`ts2time` en `new Date(d+'T'+tijd)`. CLAUDE.md wil
+Amsterdam-tijd voor alles wat de gebruiker ziet. Op een Nederlandse computer is dat hetzelfde, dus leden merken
+niets; wie op reis een computer in een andere zone gebruikt, ziet een trade van 19:12 als 17:12 (en een andere
+sessie). De app is daarin wel overal gelijk: tabel, formulier en tijdlijn gebruiken dezelfde zone.
+
+**Waarom niet alleen de sync omzetten.** Geprobeerd: `sjFromTj` naar `amsDateTime` (die de Kraken-adapter al
+gebruikt, maar die `sjFromTj` daarna overschreef). Dan klopt de tabel, maar het formulier rekent bij opslaan de
+opentijd terug uit datum en tijd in de zone van de computer (`formMomentMs`): op een pc buiten Nederland
+verschuift elke opgeslagen trade dan met het zoneverschil. `duration` en `hl-open-tijd` werden rood. Het moet in
+één keer, of niet.
+
+**Plan.**
+1. Test eerst, met `timezoneId: 'America/New_York'` in de browsercontext: een gesyncte trade toont de Amsterdam-tijd
+   in tabel, formulier en tijdlijn, en opslaan zonder wijziging laat `openTime` en `closeTime` gelijk.
+2. Eén paar helpers voor de hele app: tijdstempel → Amsterdam-datum/tijd (`amsDateTime` bestaat) en
+   Amsterdam-datum/tijd → tijdstempel (nieuw, DST-bewust). `ts2date`/`ts2time`, `formMomentMs`, de TP-tijden en
+   `localDateISO` gaan erdoorheen.
+3. Migratie: bestaande `date`/`time` van gesyncte trades opnieuw uit `openTime` (zoals migratie v2).
+
+**Klaar als** de spec in drie zones (Amsterdam, UTC, New York) hetzelfde laat zien en de release-poort groen is.
 
 ---
 
