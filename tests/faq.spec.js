@@ -122,6 +122,59 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
   for (const pd of paden) ok('Instellingen → ' + pd + ' is een tab', tabs.includes(pd), 'tabs: ' + tabs.join(', '));
   ok('features gedekt (coach-pakket, TradingView-link, lek, SQN, sync-geschiedenis, ECB, diagnose-rapport)', await p.evaluate(() => { const t = document.querySelector('.faqwrap').textContent; return /coach-pakket/i.test(t) && /TradingView-link/i.test(t) && /lek/.test(t) && /SQN/.test(t) && /Sync-geschiedenis/.test(t) && /ECB/.test(t) && /Diagnose-rapport/.test(t); }));
 
+  console.log('─── Nieuw in v1.18 t/m v1.18.4 ───');
+  // [onderwerp-emoji, vraag-patroon, woorden die in het antwoord moeten staan]
+  const NIEUW = [
+    ['🔄', /funded modus is nog in testfase/, [/back-up/, /verborgen, niet gewist/]],
+    ['🔄', /CSV ingelezen én mijn exchange gekoppeld/, [/koppeling is leidend/, /volgende sync/]],
+    ['🔄', /hoe mijn stop liep/, [/break-even/, /strakker/, /verder weg/, /liquidatie/, /met de hand/]],
+    ['🔄', /stop van mijn exchange klopt niet/, [/Zelf aanpassen/, /Terug naar Kraken Futures/]],
+    ['📊', /Stop-management en uitvoering/, [/Eigen/, /Funded/, /Alles/]],
+    ['✅', /Discord/, [/Alle beelden voor Discord/, /Playbook/, /Confirmaties/, /privacy-modus/]],
+    ['✅', /Beeld op de Review-pagina/, [/nieuwste/i, /Geen afbeelding/, /tags/, /pijltjes/, /Esc/]],
+    ['🛠️', /ruwe gegevens/, [/\?dev=1/, /Hulp bij problemen/, /Ruwe gegevens downloaden/, /walletadres/, /Zaratras/]],
+  ];
+  const plek = await p.evaluate(n => n.map(([ic, q, w]) => {
+    const ci = FAQS.findIndex(c => c[0].startsWith(ic)), it = ci < 0 ? null : FAQS[ci][1].find(x => new RegExp(q[0], q[1]).test(x[0]));
+    const tekst = it ? faqPlain(it[1]) : '';
+    return { q: q[0], ok: !!it, mist: w.filter(([s, f]) => !new RegExp(s, f).test(tekst)).map(([s]) => s) };
+  }), NIEUW.map(([ic, q, w]) => [ic, [q.source, q.flags], w.map(x => [x.source, x.flags])]));
+  for (const x of plek) ok('nieuwe vraag onder het juiste onderwerp: ' + x.q, x.ok && !x.mist.length, x.ok ? 'mist: ' + x.mist.join(', ') : 'niet gevonden');
+  const aangevuld = await p.evaluate(() => {
+    const a = q => faqPlain((FAQS.flatMap(c => c[1]).find(x => x[0] === q) || [, ''])[1]);
+    return {
+      funded: /\+ Funded account/.test(a('Ik handel een challenge bij een prop firm (FTMO, Breakout). Hoe houd ik die bij?')) && /testfase/.test(a('Ik handel een challenge bij een prop firm (FTMO, Breakout). Hoe houd ik die bij?')),
+      kaart: /Funded meetellen/.test(a('Telt het geld van mijn funded account mee in mijn balans?')) && /kaart/.test(a('Telt het geld van mijn funded account mee in mijn balans?')),
+      csv: /waarschuwt/.test(a('Hoe importeer ik een CSV-bestand?')) && /FTMO-export/.test(a('Hoe importeer ik een CSV-bestand?')),
+      stop: /geen stop-loss/.test(a('Komt mijn stop-loss vanzelf binnen?')) && /Zelf aanpassen/.test(a('Komt mijn stop-loss vanzelf binnen?')),
+      vast: /Zelf aanpassen/.test(a('Waarom kan ik entry en exit niet aanpassen bij een gesyncte trade?')),
+      priv: /Mori/.test(a('Kan ik mijn bedragen verbergen?')) && /coach-pakket/.test(a('Kan ik mijn bedragen verbergen?')),
+      coach: /privacy-modus/.test(a('Ziet mijn coach mijn bedragen?')),
+      mori: /privacy-modus/.test(a('Wat krijgt Mori van mij te zien?')),
+    };
+  });
+  for (const [k, v] of Object.entries(aangevuld)) ok('aangevulde vraag: ' + k, v);
+  const tegen = await p.evaluate(() => { const t = faqPlain(FAQS.flatMap(c => c[1].map(x => x[1])).join(' ')); return { beeld: /alleen trades met een screenshot/.test(t), dubbel: /kan een trade die via de koppeling binnenkomt dubbel/.test(t), sebasReview: (t.match(/Kopieer 2 van 3/g) || []).length }; });
+  ok('niets spreekt de nieuwe functies tegen (Beeld zonder afbeelding, geen dubbele trades)', !tegen.beeld && !tegen.dubbel, JSON.stringify(tegen));
+  ok('Discord één voor één staat op één plek uitgelegd', tegen.sebasReview === 1, JSON.stringify(tegen));
+  await p.evaluate(() => faqHome());
+  const zoek = async (q, re) => { await p.fill('#faqQ', q); return p.evaluate(s => [...document.querySelectorAll('details.faq')].some(d => d.offsetParent && new RegExp(s).test(d.querySelector('summary').textContent)), re); };
+  ok('zoeken op "funded" vindt de testfase-vraag', await zoek('funded', 'testfase'));
+  ok('zoeken op "dubbel" vindt de vraag over CSV + koppeling', await zoek('dubbel', 'Staan mijn trades nu dubbel'));
+  ok('zoeken op "stop" vindt de vraag over een verkeerde exchange-stop', await zoek('stop', 'stop van mijn exchange klopt niet'));
+  ok('zoeken op "Discord" vindt de Discord-vraag', await zoek('Discord', 'in Discord'));
+  ok('zoeken op "ruwe" vindt de vraag over ruwe gegevens', await zoek('ruwe', 'ruwe gegevens'));
+  ok('zoeken op "Beeld" vindt de Beeld-vraag', await zoek('Beeld', 'Beeld op de Review-pagina'));
+  await p.fill('#faqQ', '');
+  // De stappen in de FAQ bestaan in de app zelf
+  const app = await p.evaluate(() => {
+    go('instellingen'); STATE.setTab = 'data'; render(); const data = document.body.textContent;
+    STATE.setTab = 'funded'; render(); const funded = document.body.textContent; go('faq');
+    return { hulp: /Hulp bij problemen/.test(data) && /Diagnose-rapport/.test(data), testfase: /Funded modus/.test(funded) && /Nog in testfase/.test(funded) };
+  });
+  ok('Instellingen → Data heeft "Hulp bij problemen"', app.hulp);
+  ok('Instellingen → Funded heeft "Funded modus" met "Nog in testfase"', app.testfase);
+
   console.log('─── Thema\'s en 390px ───');
   for (const th of ['light', 'dark']) {
     ok('FAQ rendert in ' + th, await p.evaluate(t => { setTheme(t); go('faq'); return document.body.classList.contains('dark') === (t === 'dark') && document.querySelectorAll('.faqtile').length === 9; }, th));
@@ -133,6 +186,15 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
   const mob = await p.evaluate(() => { const t = [...document.querySelectorAll('.faqtile')]; return { kol: new Set(t.map(x => x.getBoundingClientRect().left)).size, scroll: document.documentElement.scrollWidth <= innerWidth + 1, uitleg: getComputedStyle(t[0].querySelector('.td')).display }; });
   ok('390px: tegels in 2 kolommen, geen horizontale scroll', mob.kol === 2 && mob.scroll, JSON.stringify(mob));
   ok('390px: onderwerp openen en antwoord lezen werkt', await p.evaluate(() => { faqOpenQ('faq-backup'); const d = document.getElementById('faq-backup'); return d.open && d.getBoundingClientRect().width <= innerWidth; }));
+  for (const th of ['light', 'dark']) {
+    const smal = await p.evaluate(([t, qs]) => { setTheme(t); go('faq'); return qs.map(q => {
+      const ci = FAQS.findIndex(c => c[1].some(x => x[0].includes(q))); faqOpenCat(ci);
+      const d = [...document.querySelectorAll('#faqc-' + ci + ' details.faq')].find(x => x.querySelector('.faqq').textContent.includes(q)); d.open = true;
+      const r = d.getBoundingClientRect().width <= innerWidth && document.documentElement.scrollWidth <= innerWidth + 1 && d.querySelector('.faq-a').offsetHeight > 0; faqHome(); return r; }); },
+      [th, ['testfase', 'Staan mijn trades nu dubbel', 'stop van mijn exchange', 'in Discord', 'Beeld op de Review', 'ruwe gegevens', 'Stop-management']]);
+    ok('390px ' + th + ': nieuwe vragen open zonder horizontale scroll', smal.every(Boolean), JSON.stringify(smal));
+  }
+  await p.evaluate(() => setTheme('light'));
   await p.setViewportSize({ width: 1600, height: 1000 });
 
   ok('Mori-link in de lege staat navigeert', await p.evaluate(() => { go('faq'); faqFilter('xyzonzinwoord'); document.querySelector('#faqNone .linklike').click(); const r = STATE.page === 'ai'; go('faq'); faqFilter(''); return r; }));
