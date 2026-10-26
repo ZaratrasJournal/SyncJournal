@@ -1489,7 +1489,7 @@ details.faq[open] summary{color:var(--accent)}
 .toast{background:var(--surface);border:1px solid var(--line);border-left-width:3px;border-radius:10px;box-shadow:0 10px 34px rgba(20,30,60,.18);padding:11px 16px;font-size:13px;font-weight:600;color:var(--ink);opacity:0;transform:translateY(12px);transition:opacity .28s,transform .28s;white-space:nowrap}
 body.dark .toast{box-shadow:0 10px 34px rgba(0,0,0,.5)}
 .toast.on{opacity:1;transform:translateY(0)}
-.toast{white-space:normal;width:max-content;max-width:min(560px,calc(100vw - 32px))}   /* long messages wrap instead of running off a phone screen */
+.toast{white-space:pre-line;width:max-content;max-width:min(560px,calc(100vw - 32px))}   /* long messages wrap instead of running off a phone screen */
 /* Error-balk (ErrorCenter) — zichtbare, herstelbare foutmeldingen */
 .errbar{position:fixed;left:50%;bottom:0;transform:translate(-50%,120%);width:min(720px,96vw);z-index:210;display:flex;gap:12px;align-items:flex-start;padding:14px 16px;border-radius:14px 14px 0 0;background:var(--surface);border:1px solid var(--line);border-bottom:none;box-shadow:0 -14px 44px -14px rgba(10,20,50,.4);transition:transform .28s;font-size:13px}
 .errbar.on{transform:translate(-50%,0)}
@@ -6780,6 +6780,7 @@ function go(p){if(revPres){revPres=null;drawRevPres();}if(p==='plan'){location.h
   STATE.page=p;if(p==='playbook')STATE.pbSel='';document.body.classList.remove('nav-open');render();}
 function openPlaybook(s){STATE.page='playbook';STATE.pbSel=s;render();try{window.scrollTo(0,0);}catch(e){}}
 function closePlaybook(){STATE.pbSel='';render();}
+const TOAST_LANG=120;   // characters: a longer message stays up long enough to read
 function toast(msg,type,act){const c=document.getElementById('toasts');if(!c)return;const el=document.createElement('div');el.className='toast '+(type||'info');
   const span=document.createElement('span');span.textContent=msg;el.appendChild(span);
   if(act){ // actie-toast (bv. "Ongedaan maken"): langer zichtbaar + aflopend balkje
@@ -6788,7 +6789,7 @@ function toast(msg,type,act){const c=document.getElementById('toasts');if(!c)ret
     const bar=document.createElement('div');bar.className='tbar';el.appendChild(bar);
   }
   c.appendChild(el);requestAnimationFrame(()=>el.classList.add('on'));
-  setTimeout(()=>{el.classList.remove('on');setTimeout(()=>el.remove(),320);},act?7000:2600);}
+  setTimeout(()=>{el.classList.remove('on');setTimeout(()=>el.remove(),320);},act?7000:msg.length>TOAST_LANG?6000:2600);}
 function render(){_renderMemo={};try{renderPagina();}finally{_renderMemo=null;}}
 function renderPagina(){
   pasteTargetId=null;
@@ -11006,8 +11007,16 @@ function sjImportCsvText(text,forExchange){
     +(inBak?' · '+inBak+' in de prullenbak (leeg de prullenbak om ze opnieuw in te lezen)':'')
     +(opgeruimd?' · '+opgeruimd+' oude rij'+(opgeruimd===1?'':'en')+' opgegaan in de nieuwe trades':'')
     +(viaKoppeling?' · '+viaKoppeling+(viaKoppeling===1?' stond':' stonden')+' er al via je koppeling':'')
-    +(warn?' · ⚠ '+warn+' regel'+(warn===1?'':'s')+' niet sluitend, zie console':''),(nieuw||opgeruimd)?'ok':'info');
+    +(warn?' · ⚠ '+warn+' regel'+(warn===1?'':'s')+' niet sluitend, zie console':'')
+    +csvGeenStopRegel(mapped.filter(t=>T.includes(t))),(nieuw||opgeruimd)?'ok':'info');
   return nieuw;
+}
+/* Most exports carry no stop-loss (Zaratras 26-10-2026): say so instead of leaving those trades without a stop and R
+   unnoticed. Only when none of the new rows has one; an export with an SL column (FTMO) stays quiet. */
+function csvGeenStopRegel(nieuw){
+  if(!nieuw.length||nieuw.some(t=>+t.stop>0))return '';
+  const gekoppeld=nieuw.some(t=>CONNS[t.exchange]&&CONNS[t.exchange].connected);
+  return '\nDeze export bevat geen stop-loss. Vul hem per trade in'+(gekoppeld?'.':', of koppel je exchange: dan komt hij vanzelf mee.');
 }
 function handleCsvFile(e){
   const file=e.target.files[0];if(!file)return;
