@@ -16,6 +16,13 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v1.18.6] — 2026-10-26
+
+### Gewijzigd
+- **Excel-bestanden (.xlsx en .xls) worden niet meer ingelezen.** Sla je export op als CSV en lees die in. Kies je toch een Excel-bestand, dan importeert de journal niets en zegt hij hoe het wel kan. Tip voor MEXC (die geeft vaak een Excel-export): open het bestand in Excel of Google Sheets, kies **Opslaan als → CSV** en lees dat bestand in. Daarmee laadt de journal geen enkel extern script meer.
+
+---
+
 ## [v1.18.5] — 2026-10-26
 
 ### Gewijzigd

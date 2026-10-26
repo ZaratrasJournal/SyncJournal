@@ -48,7 +48,7 @@ zijn. Signalen zonder aanwijsbare schade staan er bewust niet in.
 | **Gedeelde helper gewijzigd** (`netPnl`, `sourceTypeOf`, `normalizeTrade`, `syncTradeFlatFields`, `detectPartialFromSiblings`, `getConsumedSiblings`) | Dit is dé oorzaak van cross-exchange-schade | De naam, en de lijst adapters die over dat pad lopen | **melden** |
 | **`if (ex === …)` of `exchange ===` nieuw toegevoegd buiten `ExchangeAPI`** | Exact het anti-patroon uit `CLAUDE.md` | Het regelnummer en de tak | **melden** |
 | **`localStorage.setItem` met een key zonder `tj_`** | Botsing op dezelfde origin | Regel + key | **melden** |
-| **Nieuw `<script src>` of `<link href>` naar een externe host** | Supply chain; nu nog maar één (`xlsx`) | De URL, en of er `integrity` bij staat | **melden** |
+| **Nieuw `<script src>` of `<link href>` naar een externe host** | Supply chain; sinds v1.18.6 (C4) geen enkele meer | De URL, en of er `integrity` bij staat | **melden** |
 | **`innerHTML` met een template-string zonder `esc()`** | Story 2 kwam hier vandaan | Regel + de interpolatie | **melden** |
 | Functie boven de ~80 regels aangeraakt | Leesbaarheid, geen schade | — | **stil loggen** |
 | Nieuw `tests/*.spec.js` toegevoegd | Zou moeten meedraaien | — | **stil loggen** (vervalt zodra backlog-story 10 klaar is) |
