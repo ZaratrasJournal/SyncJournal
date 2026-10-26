@@ -198,13 +198,14 @@ details.fd-explain>summary{cursor:pointer;padding:12px 18px;font-size:12.5px;fon
 .csvk-voor{font-size:10px;font-weight:700;color:var(--accent);background:var(--accent-soft);border:1px solid var(--accent-line);border-radius:20px;padding:1px 7px}
 .csvk-nieuw{display:grid;grid-template-columns:1fr 1fr;gap:10px;background:var(--sink);border:1px solid var(--line2);border-radius:9px;padding:12px}
 .csvk-full{grid-column:1/-1}
+.csvk-nieuw.csvk-nieuw3{grid-template-columns:1fr 1fr 1fr}
 .csvk-warn{display:flex;flex-direction:column;gap:6px}
 .csvk-toch{display:flex;align-items:center;gap:7px;font-weight:600;cursor:pointer}
 .csvk-p{font-size:13px;line-height:1.55;color:var(--ink2);margin:0}
 .csvk-dim{color:var(--muted);font-size:12px;margin:0}
 .csvk-foot{display:flex;gap:8px;justify-content:flex-end;margin-top:4px}
 .csvk-foot .btn:disabled{opacity:.5;cursor:not-allowed}
-@media(max-width:520px){.csvk-nieuw{grid-template-columns:1fr}}
+@media(max-width:520px){.csvk-nieuw,.csvk-nieuw.csvk-nieuw3{grid-template-columns:1fr}}
 .exnote{display:block;margin-top:4px;color:var(--amber);font-size:11.5px;line-height:1.45}
 .pbody{padding:16px}
 
@@ -4742,7 +4743,28 @@ const fdPaid=f=>(f.payouts||[]).reduce((s,p)=>s+(+p.amount||0),0);
 // What still needs you: a running challenge, a passed one not yet converted, an active funded account.
 const fdBovenaan=f=>fundedLopend(f)||(f.kind==='challenge'&&f.status==='gehaald'&&!fundedItem(f.funded));
 function fdVerborgen(){const ids=new Set(FUNDED.map(f=>f.id));return {n:FUNDED.length,m:T.filter(t=>t&&ids.has(t.exchange)).length};}
-function setFundedModus(on){STATE.funded=!!on;STATE.fdMenu=null;persistState();render();}
+function setFundedModus(on){STATE.funded=!!on;STATE.fdMenu=null;persistState();render();if(on)fdWeesVraag();}
+// Trades whose account no longer or never existed (t.exchange 'ftmo' from an old FTMO import, a removed account).
+const fdWees=()=>T.filter(t=>t&&t.exchange&&!EXMAP[t.exchange]&&!MANUAL.some(m=>m.id===t.exchange)&&!fundedItem(t.exchange));
+function fdWeesVraag(){
+  const w=fdWees();if(!w.length||DB.load('funded_wees',''))return;
+  const bronnen=[...new Set(w.map(t=>String(t.exchange)))],ftmo=bronnen.every(b=>/ftmo/i.test(b));
+  const wie=ftmo?'FTMO':bronnen.map(b=>'"'+b+'"').join(', ');
+  openModalHTML(`<div class="mhead"><h3>🏁 ${w.length} trade${w.length===1?'':'s'} van ${esc(wie)} zonder account</h3><button class="xbtn" onclick="fdWeesLaat()" aria-label="Sluiten">×</button></div>
+  <div class="mbody mbody-wiz">
+    <p class="csvk-p">Je hebt ${w.length} trade${w.length===1?'':'s'} van ${esc(wie)} die bij geen enkel account horen. Nu tellen ze als eigen geld. Hoorden ze bij een challenge?</p>
+    <div class="csvk-nieuw csvk-nieuw3"><div class="field"><label for="weesFirm">Firm</label><input id="weesFirm" list="weesFirms" value="${ftmo?'FTMO':''}" oninput="fdWeesKnop()"><datalist id="weesFirms">${FD_FIRMS.map(x=>`<option value="${x}">`).join('')}</datalist></div>
+      <div class="field"><label for="weesNaam">Naam</label><input id="weesNaam" value="Challenge" oninput="fdWeesKnop()"></div>
+      <div class="field"><label for="weesGrootte">Grootte</label><input id="weesGrootte" inputmode="decimal" placeholder="100.000" oninput="fdWeesKnop()"></div></div>
+    <div class="csvk-foot"><button class="btn" onclick="fdWeesLaat()">Laat ze als eigen geld staan</button><button class="btn pri" id="weesGo" disabled onclick="fdWeesZet()">Zet ze in een nieuwe challenge</button></div></div>`);
+  document.getElementById('modal').classList.add('smal');
+}
+function fdWeesKnop(){const v=id=>(document.getElementById(id)||{}).value||'',b=document.getElementById('weesGo');if(b)b.disabled=!(v('weesFirm').trim()&&v('weesNaam').trim()&&fdBedrag(v('weesGrootte'))>0);}
+function fdWeesLaat(){DB.save('funded_wees','laten');closeForm();}
+function fdWeesZet(){const v=id=>(document.getElementById(id)||{}).value||'';const size=fdBedrag(v('weesGrootte'));if(!(size>0))return;
+  const w=fdWees(),f=fdNieuw('challenge',v('weesFirm'),v('weesNaam'),size,'bezig');
+  w.forEach(t=>{t.exchange=f.id;});persist();DB.save('funded_wees','verplaatst');closeForm();STATE.fdOpen=f.id;render();
+  toast('✓ '+w.length+' trade'+(w.length===1?'':'s')+' in '+fundedNaam(f)+' gezet','ok');}
 function setFundedMee(on){STATE.fundedMee=!!on;persistState();render();}
 function tabFunded(){
   const sw=(on,label,sub,act,id)=>`<div class="setrow"><div class="txt"><b>${label}</b><small>${sub}</small></div><button class="sw ${on?'on':''}" id="${id}" role="switch" aria-checked="${on}" aria-label="${esc(label)}" onclick="${act}"></button></div>`;
@@ -10735,17 +10757,26 @@ function csvDoelOpties(h){
   const o=EXCHANGES.map(e=>({id:e.id,groep:'Exchanges',label:e.name,sub:CONNS[e.id]&&CONNS[e.id].connected?'gekoppeld':'',ex:true}));
   MANUAL.forEach(m=>o.push({id:m.id,groep:'Handmatige accounts',label:m.name,sub:'handmatig'}));
   o.push({id:'nieuw',groep:'Handmatige accounts',label:'+ Nieuw account',sub:'',nieuw:true});
+  // Funded mode on: challenges and funded accounts too, running ones first, finished ones after (a late file).
+  const G='Challenges en funded accounts',fdSub=f=>(f.kind==='funded'?'funded':'challenge')+' · '+((FD_ST[f.kind]||FD_ST.challenge)[f.status]||f.status);
+  if(fundedAan()){
+    FUNDED.filter(fundedLopend).forEach(f=>o.push({id:f.id,groep:G,label:fundedNaam(f),sub:fdSub(f),fd:true}));
+    FUNDED.filter(f=>!fundedLopend(f)).forEach(f=>o.push({id:f.id,groep:G,label:fundedNaam(f),sub:'afgerond · '+fdSub(f),fd:true}));
+    o.push({id:'nieuw-challenge',groep:G,label:'+ Challenge toevoegen',sub:'',nieuwFd:'challenge'},{id:'nieuw-funded',groep:G,label:'+ Funded account toevoegen',sub:'',nieuwFd:'funded'});
+  }
   const fmt=(h&&h.fmt)||{};let voor='';
   if(fmt.ex)voor=fmt.ex;
-  else if(fmt.firm){const re=new RegExp(fmt.firm,'i'),m=MANUAL.find(x=>re.test(x.name||''));voor=m?m.id:'nieuw';}
-  return {opties:o,voor,nieuwNaam:fmt.firm||''};
+  else if(fmt.firm){const re=new RegExp(fmt.firm,'i');
+    if(fundedAan()){const fs=FUNDED.filter(f=>re.test(f.firm||'')),f=fs.find(fundedLopend)||fs[0];voor=f?f.id:'nieuw-challenge';}
+    else{const m=MANUAL.find(x=>re.test(x.name||''));voor=m?m.id:'nieuw';}}
+  return {opties:o,voor,nieuwNaam:fmt.firm||'',firm:fmt.firm||''};
 }
 let _csvK=null;
 function csvKeuze(text,naam){
   const h=csvHerken(text);
   if(h.toestand!=='herkend'){csvNietHerkend(h,naam);return;}
   const d=csvDoelOpties(h);
-  _csvK={text,naam:naam||'',h,keuze:d.voor,nieuwNaam:d.nieuwNaam,toch:false,bezig:false};
+  _csvK={text,naam:naam||'',h,keuze:d.voor,nieuwNaam:d.nieuwNaam,fd:{firm:d.firm,naam:'',grootte:''},toch:false,bezig:false};
   csvKRender();
 }
 function csvNietHerkend(h,naam){
@@ -10767,7 +10798,11 @@ function csvKRender(){
   const lijst=groepen.map(g=>`<div class="csvk-g">${esc(g)}</div>`+d.opties.filter(o=>o.groep===g).map(rij).join('')).join('');
   const nieuw=gekozen&&gekozen.nieuw?`<div class="csvk-nieuw"><div class="field"><label for="csvkNaam">Naam</label><input id="csvkNaam" value="${esc(k.nieuwNaam)}" placeholder="bijv. FTMO 100k" oninput="_csvK.nieuwNaam=this.value;csvKKnop()" ${k.bezig?'disabled':''}></div>
       <div class="field"><label for="csvkSaldo">Startsaldo <span class="hint">(optioneel)</span></label><input id="csvkSaldo" inputmode="decimal" placeholder="0" ${k.bezig?'disabled':''}></div>
-      <p class="csvk-dim csvk-full">Ook voor een sub-account of een prop-firm-challenge, bijv. FTMO 100k.</p></div>`:'';
+      <p class="csvk-dim csvk-full">Ook voor een sub-account of een prop-firm-challenge, bijv. FTMO 100k.</p></div>`
+    :gekozen&&gekozen.nieuwFd?`<div class="csvk-nieuw csvk-nieuw3"><div class="field"><label for="csvkFirm">Firm</label><input id="csvkFirm" list="csvkFirms" value="${esc(k.fd.firm)}" placeholder="FTMO, Breakout, …" oninput="_csvK.fd.firm=this.value;csvKKnop()" ${k.bezig?'disabled':''}><datalist id="csvkFirms">${FD_FIRMS.map(x=>`<option value="${x}">`).join('')}</datalist></div>
+      <div class="field"><label for="csvkNaam">Naam</label><input id="csvkNaam" value="${esc(k.fd.naam)}" placeholder="bijv. 100k #2" oninput="_csvK.fd.naam=this.value;csvKKnop()" ${k.bezig?'disabled':''}></div>
+      <div class="field"><label for="csvkGrootte">Grootte</label><input id="csvkGrootte" inputmode="decimal" value="${esc(k.fd.grootte)}" placeholder="100.000" oninput="_csvK.fd.grootte=this.value;csvKKnop()" ${k.bezig?'disabled':''}></div>
+      <p class="csvk-dim csvk-full">De rest (status, uitbetalingen) vul je later aan in Instellingen → Funded.</p></div>`:'';
   // A file for another exchange would mix two exchanges' data; a manual account is always fine (sub-account, prop firm).
   const fmtEx=k.h.fmt.ex||'',mis=gekozen&&gekozen.ex&&(fmtEx?fmtEx!==gekozen.id:!!k.h.fmt.firm);
   const waarsch=mis?`<div class="dov-note warn csvk-warn">⚠ Dit is een ${esc(k.h.fmt.naam)}, maar je kiest ${esc(gekozen.label)}. Dan komen trades van de ene exchange bij de andere te staan.
@@ -10782,14 +10817,15 @@ function csvKRender(){
   document.getElementById('modal').classList.add('smal');
   csvKKnop();
 }
-function csvKKies(id){_csvK.keuze=id;_csvK.toch=false;csvKRender();if(id==='nieuw'){const el=document.getElementById('csvkNaam');if(el)el.focus();}}
+function csvKKies(id){_csvK.keuze=id;_csvK.toch=false;csvKRender();const el=document.getElementById(id==='nieuw'?'csvkNaam':/^nieuw-/.test(id)?(_csvK.fd.firm?'csvkNaam':'csvkFirm'):'');if(el)el.focus();}
 // Import stays off until there is a valid choice: an account, a name for a new one, a confirmed mismatch.
 function csvKKnop(){const k=_csvK,b=document.getElementById('csvkGo');if(!k||!b)return;
   const d=csvDoelOpties(k.h),g=d.opties.find(o=>o.id===k.keuze),fmtEx=k.h.fmt.ex||'',mis=g&&g.ex&&(fmtEx?fmtEx!==g.id:!!k.h.fmt.firm);
-  b.disabled=k.bezig||!g||(g.nieuw&&!String(k.nieuwNaam||'').trim())||(mis&&!k.toch);}
+  b.disabled=k.bezig||!g||(g.nieuw&&!String(k.nieuwNaam||'').trim())||(g.nieuwFd&&!(String(k.fd.firm||'').trim()&&String(k.fd.naam||'').trim()&&fdBedrag(k.fd.grootte)>0))||(mis&&!k.toch);}
 function csvKImport(){const k=_csvK;if(!k||k.bezig)return;csvKKnop();const b=document.getElementById('csvkGo');if(b&&b.disabled)return;
   let doel=k.keuze;
   if(doel==='nieuw'){const s=document.getElementById('csvkSaldo');const m=maakManual(k.nieuwNaam,s?s.value:'');if(!m)return;doel=m.id;k.keuze=m.id;}
+  else if(doel==='nieuw-challenge'||doel==='nieuw-funded'){const f=fdNieuw(doel==='nieuw-funded'?'funded':'challenge',k.fd.firm,k.fd.naam,fdBedrag(k.fd.grootte));doel=f.id;k.keuze=f.id;}
   k.bezig=true;csvKRender();
   setTimeout(()=>{try{sjImportCsvText(k.text,doel);}finally{_csvK=null;closeForm();}},30);   // let the busy state paint first
 }
@@ -11278,7 +11314,11 @@ function openForm(id){
     // verhuist de trade bij opslaan stilletjes naar een andere exchange
     if(t.exchange&&!lst.some(([id])=>id===t.exchange))lst.push([t.exchange,EXMAP[t.exchange]?EXMAP[t.exchange].name:t.exchange+' (verwijderd account)']);
     // a backtest or practice trade belongs to no exchange (Denny 18-10-2026); without this the first exchange was picked silently
-    return `<option value="" ${t.exchange?'':'selected'}>Geen exchange (backtest / oefentrade)</option>`+lst.map(([id,nm])=>`<option value="${id}" ${t.exchange===id?'selected':''}>${esc(nm)}</option>`).join('');
+    const opt=([id,nm])=>`<option value="${id}" ${t.exchange===id?'selected':''}>${esc(nm)}</option>`;
+    const fd=fundedAan()?FUNDED.filter(f=>!lst.some(([id])=>id===f.id)):[];
+    const fdGroep=(lbl,rij)=>rij.length?`<optgroup label="${lbl}">${rij.map(f=>opt([f.id,fundedNaam(f)+(f.kind==='funded'?' (funded)':' (challenge)')])).join('')}</optgroup>`:'';
+    return `<option value="" ${t.exchange?'':'selected'}>Geen exchange (backtest / oefentrade)</option>`+lst.map(opt).join('')
+      +fdGroep('Challenges en funded accounts',fd.filter(fundedLopend))+fdGroep('Afgerond',fd.filter(f=>!fundedLopend(f)));
   })();
   // Weergave-presets: Standaard/Pro-velden zijn verbergbaar, maar een veld mét inhoud
   // krijgt vf-keep en blijft altijd zichtbaar. Alles blijft in de DOM (submit/calc veilig).
