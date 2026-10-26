@@ -37,6 +37,11 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
   op je **stop-loss**, een **take-profit**, **met de hand** of door een **liquidatie**. Het formulier zegt het ook bij
   de stop ("van Kraken Futures, later naar break-even"). Dit komt uit wat de sync al ophaalt; voor oudere trades
   verschijnt het na de volgende sync.
+- **Stop van de exchange zelf aanpassen.** Een stop-loss die van Kraken, Hyperliquid of OKX komt staat vast. Zette je
+  bij de exchange per ongeluk een verkeerde stop (een typfout die je een minuut later verbeterde), dan klik je in het
+  formulier op **Zelf aanpassen** en vul je de juiste in. Het label toont dan wat de exchange zegt ("zelf aangepast ·
+  Kraken Futures: 82.235"), en de volgende sync laat jouw stop staan. Met **Terug naar Kraken Futures** (of de
+  exchange van die trade) zet je de stop van de exchange terug.
 - In het trade-formulier kies je bij "Exchange" ook een challenge of funded account (alleen met de funded modus aan). Afgeronde staan eronder, voor een vergeten trade.
 - Zet je de funded modus aan terwijl er oude FTMO-trades zonder account staan, dan vraagt de journal één keer wat je wilt: in een nieuwe challenge zetten, of als eigen geld laten staan. Hij verplaatst nooit iets vanzelf.
 

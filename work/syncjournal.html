@@ -3092,6 +3092,26 @@ const STOP_BEW_LBL={geen:'niet verzet',be:'naar break-even',strakker:'strakker',
 const EXIT_SOORT={sl:'stop',tp:'tp',hand:'hand',liq:'liquidatie'};
 const EXIT_LBL={stop:'stop-loss',tp:'take-profit',hand:'met de hand',liquidatie:'liquidatie'};
 // the close that ended a closed trade: the last close step with a kind (by time), else the last hit TP level with one
+/* F9: the exchange's stop is locked; "Zelf aanpassen" frees it and keeps the exchange's value in stopExchange
+   ({bron, stop}), so a wrong stop (a typo at the exchange) can be corrected and the next sync leaves it alone.
+   Shared via EXMAP; each adapter's sync checks stopZelfAangepast and only updates stopExchange. */
+const stopVanExchange=t=>!!(t&&t.stopBron&&t.stopBron!=='gebruiker'&&EXMAP[t.stopBron]);
+const stopZelfAangepast=t=>!!(t&&t.stopBron==='gebruiker'&&t.stopExchange&&EXMAP[t.stopExchange.bron]);
+function stopVeldHtml(t){
+  const naam=b=>esc(EXMAP[b].name);
+  const hint=stopVanExchange(t)?`(van ${naam(t.stopBron)}${stopLaterHint(t)})`:stopZelfAangepast(t)?`(zelf aangepast · ${naam(t.stopExchange.bron)}: ${prijsOfStreep(t.stopExchange.stop)})`:'';
+  const knop=t.id==null?'':stopVanExchange(t)?`<button type="button" class="btn btn-sm" onclick="stopZelfAanpassen(${t.id})">Zelf aanpassen</button>`
+    :stopZelfAangepast(t)?`<button type="button" class="btn btn-sm" onclick="stopTerugNaarExchange(${t.id})">Terug naar ${naam(t.stopExchange.bron)}</button>`:'';
+  return `<label for="f_stop">Stop-loss${hint?` <span class="hint">${hint}</span>`:''}</label><input id="f_stop"${stopVanExchange(t)?' readonly':''} value="${t.stop||''}" inputmode="decimal" oninput="calcTrade(true)">${knop?`<div style="margin-top:4px">${knop}</div>`:''}`;}
+// redraw only the stop field of the open form: the rest of what you typed stays
+function stopVeldVernieuw(t,waarde){const v=document.getElementById('fStopVeld');if(!v)return;
+  const was=document.getElementById('f_stop'),w=waarde!=null?waarde:(was?was.value:t.stop);
+  v.innerHTML=stopVeldHtml({...t,stop:w});try{calcTrade(true);}catch(e){}}
+function stopZelfAanpassen(id){const t=T.find(x=>x.id===id);if(!stopVanExchange(t))return;
+  t.stopExchange={bron:t.stopBron,stop:+t.stop};t.stopBron='gebruiker';persist();stopVeldVernieuw(t);
+  const i=document.getElementById('f_stop');if(i){i.focus();i.select&&i.select();}}
+function stopTerugNaarExchange(id){const t=T.find(x=>x.id===id);if(!stopZelfAangepast(t))return;
+  t.stop=t.stopExchange.stop;t.stopBron=t.stopExchange.bron;delete t.stopExchange;persist();stopVeldVernieuw(t,t.stop);}
 const stopLaterHint=t=>{const b=stopBewegingOf(t);return b&&b!=='geen'?', later '+STOP_BEW_LBL[b]:t.stopVerschoven?', later verschoven':'';};
 function exitRedenOf(t){if(!t||t.status!=='closed')return null;
   const af=(t.fills||[]).filter(f=>isAfbouw(f)&&f.soort).sort((a,b)=>(+a.ts||0)-(+b.ts||0));
@@ -8805,6 +8825,7 @@ const ExchangeAPI = {
           o.tps.filter(x=>x&&x.hit).forEach((x,i)=>{if(l[i]&&x.soort!==l[i]){x.soort=l[i];n++;}});});
         // stop-loss from the trigger history: where Kraken knows the stop, it is the stop - like entry and exit (Denny 18-10-2026)
         if(this._log.stops)T.forEach(o=>{if(!o||o.exchange!=="kraken")return;const s=this._log.stops.get(String(o.srcId));if(!s)return;
+          if(stopZelfAangepast(o)){if(o.stopExchange.stop!==s.stop){o.stopExchange.stop=s.stop;n++;}return;}   // F9: a stop you corrected yourself stays
           if(+o.stop!==s.stop||o.stopBron!=='kraken'||!!o.stopVerschoven!==s.verschoven){o.stop=s.stop;o.stopBron='kraken';if(s.verschoven)o.stopVerschoven=true;else delete o.stopVerschoven;n++;}
           if(o.stopBron==='kraken'&&s.laatst>0&&+o.stopLaatst!==s.laatst){o.stopLaatst=s.laatst;n++;}});
       }
@@ -9278,7 +9299,8 @@ const ExchangeAPI = {
         const L={positionId:o.positionId||String(o.pair||'').split('/')[0],direction:o.dir,entry:o.entry,openTime:o.openTime,closeTime:o.status==='closed'?o.closeTime:'',positionSizeAsset:o.qtyAsset,
           instapOid:((o.fills||[]).filter(f=>!isAfbouw(f)).sort((a,b)=>(+a.ts||0)-(+b.ts||0))[0]||{}).ordId};
         const s=this._slTpVoorTrade(L,regels,kinderen);
-        if(s.stop&&(+o.stop!==s.stop||o.stopBron!=='hyperliquid')){o.stop=s.stop;o.stopBron='hyperliquid';n++;}
+        if(stopZelfAangepast(o)){if(s.stop&&o.stopExchange.stop!==s.stop){o.stopExchange.stop=s.stop;n++;}}   // F9: a stop you corrected yourself stays
+        else if(s.stop&&(+o.stop!==s.stop||o.stopBron!=='hyperliquid')){o.stop=s.stop;o.stopBron='hyperliquid';n++;}
         if(o.stopBron==='hyperliquid'){if(s.verschoven)o.stopVerschoven=true;else delete o.stopVerschoven;o.stopVerloop=s.stopVerloop;
           const l=laatsteStop(o.stopVerschoven,s.stopVerloop,o.stop);if(l>0&&+o.stopLaatst!==l){o.stopLaatst=l;n++;}}
         if(s.tps.length)o.tpsGepland=s.tps;
@@ -9805,18 +9827,19 @@ const ExchangeAPI = {
       T.filter(o=>o&&o.exchange==="okx"&&/^(closed|open|partial)$/.test(o.status||"")).forEach(o=>{
         if(!regels||+o.openTime<vanaf){if(this._labelAfbouw(o,null))n++;return;}   // no orders for it: only restore the TP list
         const inst=(this._instIdVan||{})[String(o.srcId)];if(inst&&o.okxInstId!==inst){o.okxInstId=inst;n++;}
-        const voor=JSON.stringify([o.stop,o.stopBron,o.stopVerschoven,o.stopVerloop,o.stopLaatst,o.tpsGepland]);
+        const voor=JSON.stringify([o.stop,o.stopBron,o.stopVerschoven,o.stopVerloop,o.stopLaatst,o.stopExchange,o.tpsGepland]);
         const s=this._slTpVoorTrade({dir:o.dir,entry:o.entry,openTime:o.openTime,closeTime:o.status==="closed"?o.closeTime:"",pair:o.pair,qtyAsset:o.qtyAsset,instId:o.okxInstId},regels);
         /* The SL amended in place keeps its algoId with the new price (OKX keeps no revisions): the first price we saw
            stays the stop. Moved to the entry (cost-price SL) leaves no SL on the loss side: the stop stays. */
         const gewijzigd=o.stopBron==="okx"&&o.stopAlgoId&&s.algoId===o.stopAlgoId&&s.stop!==+o.stop;
-        if(s.stop&&!gewijzigd&&(+o.stop!==s.stop||o.stopBron!=="okx")){o.stop=s.stop;o.stopBron="okx";o.stopAlgoId=s.algoId;}
+        if(stopZelfAangepast(o)){if(s.stop)o.stopExchange.stop=s.stop;}   // F9: a stop you corrected yourself stays
+        else if(s.stop&&!gewijzigd&&(+o.stop!==s.stop||o.stopBron!=="okx")){o.stop=s.stop;o.stopBron="okx";o.stopAlgoId=s.algoId;}
         else if(s.stop&&o.stopBron==="okx"&&!o.stopAlgoId&&s.stop===+o.stop)o.stopAlgoId=s.algoId;
         if(o.stopBron==="okx"){
           if(s.verschoven||gewijzigd||s.stopVerloop.some(v=>v.price!==+o.stop))o.stopVerschoven=true;else delete o.stopVerschoven;
           o.stopVerloop=s.stopVerloop;o.stopLaatst=laatsteStop(o.stopVerschoven,s.stopVerloop,o.stop);}
         if(s.tps.length)o.tpsGepland=s.tps;
-        if(voor!==JSON.stringify([o.stop,o.stopBron,o.stopVerschoven,o.stopVerloop,o.stopLaatst,o.tpsGepland]))n++;
+        if(voor!==JSON.stringify([o.stop,o.stopBron,o.stopVerschoven,o.stopVerloop,o.stopLaatst,o.stopExchange,o.tpsGepland]))n++;
         if(this._labelAfbouw(o,regels))n++;
       });
       if(n)persist();
@@ -11349,7 +11372,7 @@ function openForm(id){
   const t=id!=null?T.find(x=>x.id===id):{date:localDateISO(),time:'',exchange:(MANUAL[0]||relevantExchanges()[0]||{id:'blofin'}).id,pair:'BTC/USDC',dir:'long',setup:'',session:'London',timeframe:'15m',market:'Trending',grade:'',entry:'',stop:'',tp:'',exit:'',size:'',leverage:10,fees:'',risk:'',rrPlanned:'',pnl:'',r:'',status:'closed',emotion:'',mistake:'',emotions:[],mistakes:[],layers:[],tags:[],notes:'',lessons:'',durationMin:'',mae:'',mfe:''};
   formSizeUnit=(t.sizeUnit==='asset'&&t.qty>0)?'asset':'usd';formPbTouched=false;formPbLayersJson='';formCloseAuto={t:'',d:'',s:'',sPrev:'',p:'',e:''};
   formLocked=isGesynct(t);const RO=formLocked?' readonly':'';formFxVast=+t.fx||0;
-  const stopVast=!!(t.stopBron&&t.stopBron!=='gebruiker'&&EXMAP[t.stopBron]);   // the exchange's stop is locked, like entry
+  const stopVast=stopVanExchange(t);   // the exchange's stop is locked, like entry
   formTags=[...(t.tags||[])];formGrade=gradeOf(t);formShots=[...(t.screenshots||[])];formTvLinks=[...(t.tvLinks||[])];
   formLayers=(t.layers||[]).map(L=>({timeframe:L.timeframe||'',bias:L.bias||'',setups:[...(L.setups||[])],confirmations:[...(L.confirmations||[])]}));
   formEmotions=[...(t.emotions||(t.emotion?[t.emotion]:[]))];
@@ -11402,7 +11425,7 @@ function openForm(id){
       ${formLocked?`<div class="field full"><div class="lockbar">\ud83d\udd12 Entry, exit, size, fees en P&amp;L komen van ${esc((EXMAP[t.exchange]||{}).name||'de exchange')} en zijn hier niet aan te passen${stopVast?', net als de stop-loss':''}. ${stopVast?'Risico':'Stop, risico'} en alles wat over jou gaat wel.</div></div>`:''}
       <div class="field"><label for="f_entry">Entry</label><input id="f_entry"${RO} value="${t.entry}" inputmode="decimal" oninput="calcTrade(true)"></div>
       <div class="field"><label for="f_exit">Exit</label><input id="f_exit"${RO} value="${t.exit}" inputmode="decimal" oninput="calcTrade(true)"></div>
-      <div class="field ${vfc('std',+t.stop>0)}"><label for="f_stop">Stop-loss${t.stopBron&&t.stopBron!=='gebruiker'&&EXMAP[t.stopBron]?` <span class="hint">(van ${esc(EXMAP[t.stopBron].name)}${stopLaterHint(t)})</span>`:''}</label><input id="f_stop"${stopVast?' readonly':''} value="${t.stop||''}" inputmode="decimal" oninput="calcTrade(true)"></div>
+      <div class="field ${vfc('std',+t.stop>0)}" id="fStopVeld">${stopVeldHtml(t)}</div>
       <div class="field"><label for="f_size">Size <span class="hint">(in $ of in de asset)</span></label>
         <div class="szrow"><input id="f_size"${RO} value="${formSizeUnit==='asset'?(t.qty||''):t.size}" inputmode="decimal" oninput="calcTrade(true)">
         <div class="szseg" id="szseg"><button type="button" class="${formSizeUnit==='usd'?'on':''}" onclick="setSizeUnit('usd')">$</button><button type="button" id="szAssetBtn" class="${formSizeUnit==='asset'?'on':''}" onclick="setSizeUnit('asset')">${esc(pairBase(t.pair)||'coin')}</button></div></div><div class="fxhint" id="fxSize"></div></div>
@@ -11540,8 +11563,8 @@ function submitForm(id){
     ['entry','exit','size','sizeUnit','qty','pnl','fees','tps'].forEach(k=>{ if(k in oud)obj[k]=oud[k]; else delete obj[k]; });
   }
   if(id!=null&&id!=='null'){const t=T.find(x=>x.id===id);const oldO=+t.openTime||0,oldC=+t.closeTime||0;
-    if(t.stopBron&&t.stopBron!=='gebruiker'&&EXMAP[t.stopBron])obj.stop=t.stop;   // the exchange's stop is locked: readonly is a hint, not a lock
-    else if((+t.stop||0)!==(+obj.stop||0)){t.stopBron='gebruiker';delete t.stopVerschoven;}   // changed or cleared by hand
+    if(stopVanExchange(t))obj.stop=t.stop;   // the exchange's stop is locked: readonly is a hint, not a lock
+    else if((+t.stop||0)!==(+obj.stop||0)){t.stopBron='gebruiker';if(!t.stopExchange)delete t.stopVerschoven;}   // changed or cleared by hand
     Object.assign(t,obj);
     // seconde-precisie van gesyncte timestamps behouden als de minuut niet is gewijzigd
     if(oldO&&Math.floor(oldO/60000)===Math.floor((+t.openTime||0)/60000))t.openTime=String(oldO);
