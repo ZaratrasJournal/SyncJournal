@@ -51,14 +51,12 @@ elke wijziging eindigt met `node tests/run-release.js` groen.
 | ~~B11~~ | Kruis-analyse lege staat — ✅ **gedaan in v1.15.1** | — | — | — |
 | ~~B5~~ | ~~P&L-percentages van −107% en 2.834% bij oudere trades~~ — ✅ **gedaan in v1.11** | — | — | — |
 | ~~T2~~ | Oude-app-specs herschreven of geschrapt — ✅ **gedaan 25-10** (AI-coach-specs vervangen in v1.16) | — | — | — |
-| **C2** | CSV-parser per exchange opsplitsen | 3 | M–L | T1 |
 | **T3** | Levensloop-toets voor FTMO, één gedeelde vorm | 3 | M | T1 |
 | **T4** | `npm test` repareren | 3 | XS | — |
 | **T5** | `drive-backup` is timing-gevoelig bij 4 specs tegelijk | 3 | XS | — |
 | **C3** | Account-label opzoeken in plaats van kopiëren | 3 | S | — |
 | **W3** | Graphify verversen of de instructie weghalen | 3 | S | — |
 | **W4** | Eerste echte PR met beide reviewers | 3 | XS | volgende release |
-| **C4** | XLSX-ondersteuning eruit | gepland | S | na 16 nov (MEXC weg) |
 
 ---
 
@@ -661,22 +659,6 @@ ze aanklikt.
 hun kant kiezen in Instellingen, en de belofte in Instellingen weer klopt. Wijzigt de tag-datastructuur:
 met migratie, changelog-regel en een test op oude back-ups.
 
-### C2 · CSV-parser per exchange opsplitsen — prio 3 · M–L
-
-**Waarom.** `parseExchangeCsvText` ([work/syncjournal.html:7788](work/syncjournal.html#L7788)) is 333
-regels met de parsing van alle exchanges door elkaar. De OKX-tak en de fallback beginnen met een
-zesvoudige negatie, dus een nieuwe exchange toevoegen betekent twee negatie-kettingen bijwerken.
-Kraken en Hyperliquid hebben hun parsing al in de adapter; Blofin, MEXC, FTMO en OKX nog niet.
-
-**Plan** (na T1, eerst een plan-document):
-1. Per exchange `herkentCsv(headers)` en `parseCsv(rows)` op de adapter, zoals Kraken en
-   Hyperliquid het al doen.
-2. `parseExchangeCsvText` wordt een lus over de adapters; de negatie-kettingen verdwijnen vanzelf.
-3. Eén exchange per stap, met `csv-import` (zes formaten) ertussen.
-
-**Klaar als** de functie op één scherm past en elke import exact dezelfde trades oplevert als
-ervoor. Geen changelog (geen gedragswijziging). Niet samen met een feature doen.
-
 ### C3 · Account-label opzoeken in plaats van kopiëren — prio 3 · S
 
 **Waarom.** Het trade-formulier zet het account-label plat in de trade
@@ -685,18 +667,6 @@ trades de oude naam. Cosmetisch — er wordt niets mee gerekend.
 
 **Plan.** Weergave via `acctOf(t.exchange).acct`; `t.account` alleen voor echte sub-accounts. Test:
 account hernoemen → een oude trade toont de nieuwe naam.
-
-### C4 · XLSX-ondersteuning eruit — gepland, na 16 november · S
-
-**Waarom.** Het enige externe script in de app (`xlsx@0.18.5`,
-[work/syncjournal.html:15](work/syncjournal.html#L15)) bestaat alleen voor MEXC's Excel-export. Tot
-MEXC uit Nederland vertrekt hebben leden het nodig om hun historie binnen te halen.
-
-**Plan** (december): script-tag weg; `accept` terug naar `.csv` ([:3923](work/syncjournal.html#L3923));
-de xlsx-tak uit de CSV-import met de melding *"Sla op als CSV en probeer opnieuw"*; FAQ nalopen.
-Test: een `.xlsx` geeft een begrijpelijke melding.
-
-**Klaar als** er geen `<script src>` meer in het bestand staat.
 
 ---
 
