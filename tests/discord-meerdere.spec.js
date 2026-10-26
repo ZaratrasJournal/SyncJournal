@@ -130,6 +130,44 @@ const mk = (id, over) => Object.assign({ id, date: '2026-10-' + String(id).padSt
   await p.evaluate(() => revDiscordAlles()); await p.waitForTimeout(300);
   ok('privacy-modus bij "Alle beelden": geen bedrag in de teksten', await p.evaluate(() => !window.__clipText.join().includes(eurS(540))));
 
+  console.log('─── Playbook, setup en confirmaties ───');
+  const LAGEN = [{ timeframe: '4H', bias: 'Bullish', setups: ['SFP'], confirmations: ['OB', 'FVG'] }, { timeframe: '1H', setups: ['MSB'], confirmations: ['OB'] }];
+  const tekstVan = (id, hide) => p.evaluate(([id, hide]) => revDiscordTekst(T.find(t => t.id === id), hide), [id, hide]);
+  // what the image draws in the info panel: text, x, y and width
+  const paneel = (id, hide) => p.evaluate(async ([id, hide]) => {
+    const t = T.find(x => x.id === id), img = await revDcImg(t.screenshots[0]), uit = [], orig = CanvasRenderingContext2D.prototype.fillText;
+    CanvasRenderingContext2D.prototype.fillText = function (s, x, y) { if (x >= DC_W) uit.push({ s: String(s), x, y, w: this.measureText(String(s)).width }); return orig.apply(this, arguments); };
+    try { await revDiscordCanvas(t, img, hide); } finally { CanvasRenderingContext2D.prototype.fillText = orig; }
+    return { uit, H: DC_H, R: DC_W + DC_PANEL };
+  }, [id, hide]);
+  const VEEL = ['OB', 'FVG', 'Liquidity sweep', 'Breaker', 'Mitigation block', 'EQ', 'Volume profile', 'VWAP', 'Divergentie'];
+  await seed([mk(5, { setup: 'Range-reclaim', layers: LAGEN }), mk(6, { setup: '', layers: [] }),
+    mk(7, { setup: 'Een heel lang playbook met een naam die niet past', notes: 'x'.repeat(400), tps: [1, 2, 3, 4].map(i => ({ price: 60000 + i * 100, pct: 25, hit: i < 3 })),
+      layers: [{ timeframe: '4H', setups: ['SFP', 'MSB', 'BOS', 'F2R', 'Range', 'Structuur'], confirmations: VEEL }] })], [5]);
+  for (const th of ['light', 'dark']) {
+    await p.evaluate(th => setTheme(th), th);
+    const tx = await tekstVan(5, true);
+    ok(`${th}: tekst heeft "Playbook: Range-reclaim"`, /^Playbook: Range-reclaim$/m.test(tx), tx);
+    ok(`${th}: tekst heeft "Setup: SFP, MSB"`, /^Setup: SFP, MSB$/m.test(tx), tx);
+    ok(`${th}: tekst heeft "Confirmaties: OB, FVG" (twee, OB één keer)`, /^Confirmaties: OB, FVG$/m.test(tx), tx);
+    const leeg = await tekstVan(6, true);
+    ok(`${th}: trade zonder playbook, setup en confirmaties: geen van die regels, geen lege regels`, !/Playbook|Setup:|Confirmaties/.test(leeg) && !/\n\s*\n/.test(leeg) && !/^\s*$/m.test(leeg), JSON.stringify(leeg));
+  }
+  let pn = await paneel(5, false);
+  const tekst = pn.uit.map(x => x.s).join(' | ');
+  ok('beeld: Playbook, Setup en Confirmaties in het infopaneel', /Playbook/.test(tekst) && /Range-reclaim/.test(tekst) && /SFP, MSB/.test(tekst) && /OB, FVG/.test(tekst), tekst);
+  pn = await paneel(6, false);
+  ok('beeld zonder: geen Playbook-, Setup- of Confirmaties-regel', !/Playbook|^Setup$|Confirmaties/.test(pn.uit.map(x => x.s).join('|')), pn.uit.map(x => x.s).join(' | '));
+  for (const hide of [false, true]) {
+    pn = await paneel(7, hide);
+    const t7 = pn.uit.map(x => x.s).join(' | ');
+    ok(`beeld vol (lang playbook, 6 setups, 9 confirmaties, 4 TP's${hide ? ', bedragen verborgen' : ''}): niets onder het paneel`, pn.uit.every(x => x.y <= pn.H - 8), JSON.stringify(pn.uit.filter(x => x.y > pn.H - 8)));
+    ok(`beeld vol${hide ? ' (verborgen)' : ''}: niets buiten de rechterrand`, pn.uit.every(x => x.x + x.w <= pn.R - 8), JSON.stringify(pn.uit.filter(x => x.x + x.w > pn.R - 8).map(x => x.s)));
+    ok(`beeld vol${hide ? ' (verborgen)' : ''}: lange lijsten eindigen op "+n"`, /\+\d+$/.test((pn.uit.find((x, i, a) => a[i - 1] && a[i - 1].s === 'Confirmaties') || {}).s || '') && /\+\d+/.test((pn.uit.find((x, i, a) => a[i - 1] && a[i - 1].s === 'Setup') || {}).s || ''), t7);
+    ok(`beeld vol${hide ? ' (verborgen)' : ''}: playbook afgekapt met …`, pn.uit.some(x => /^Een heel lang.*…$/.test(x.s)), t7);
+  }
+  await p.evaluate(() => setTheme('light'));
+
   console.log('─── Licht, donker, telefoon ───');
   await seed([mk(5), mk(6, { pair: 'ETH/USDT' }), mk(7, { pair: 'SOL/USDT' })], [5, 6, 7]);
   for (const th of ['light', 'dark']) {
