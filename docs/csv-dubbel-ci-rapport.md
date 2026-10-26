@@ -69,7 +69,17 @@ De nieuwe specs staan **niet** in `tests/release-set.js`: `csv-synthetisch` en `
 
 ### Release-poort (`node tests/run-release.js --hier`)
 
-RELEASE_POORT_UITSLAG
+**139/143 groen.** De vier rode horen niet bij deze branch:
+
+- `analytics-metrics`, `matrix`, `tendencies`: alleen "boot zonder fout", omdat deze cloud-container het CDN niet
+  bereikt (`ERR_TUNNEL_CONNECTION_FAILED`). Lokaal of op CI met internet geen punt.
+- `kraken-accountlog-sync` (41/43): twee checks over een short van 14-10. Faalt precies zo op `origin/main`
+  (gecontroleerd op 25-10 in een losse worktree).
+
+`terugkijken-v12` was in deze poort-run groen (zie hierboven: hij is wankel, ook zonder deze wijziging).
+
+Voorbereiding op deze machine: `npm install` (voor `@axe-core/playwright`), met `playwright` en `playwright-core`
+als koppeling naar de voorgeïnstalleerde versie. Een tweede Playwright vindt de voorgeïnstalleerde browser niet.
 
 ## Over de synthetische exports
 
