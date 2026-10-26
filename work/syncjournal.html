@@ -11436,11 +11436,24 @@ function tpMomentMs(x){const tm=String((x&&x.tsTime)||'').trim();if(!TIJD_RE.tes
   // geen eigen dag, of de (vooraf ingevulde) instapdag: vóór de instaptijd betekent de dag erna
   if(!eigen||eigen===d){const o=formMomentMs('f_date','f_time');if(o&&c<o)c+=86400000;}return isFinite(c)?c:0;}
 function applyTPTemplate(dist){formTPs=dist.map((pct,i)=>({price:(formTPs[i]&&formTPs[i].price)||'',pct,r:(formTPs[i]&&formTPs[i].r)||'',hit:(formTPs[i]&&formTPs[i].hit)||false,ts:(formTPs[i]&&formTPs[i].ts)||0,tsDate:(formTPs[i]&&formTPs[i].tsDate)||'',tsTime:(formTPs[i]&&formTPs[i].tsTime)||''}));renderTPs();}
-function tpSum(){const el=document.getElementById('tpsum');if(!el)return;const s=formTPs.reduce((a,x)=>a+(+x.pct||0),0);el.textContent=s+'%';el.className='num '+(s===100?'g':'r');}
+/* The sum of the levels, as a line. Levels from an import are rounded and a float sum gives 99.99999999999999:
+   within TP_SOM_MARGE of 100 counts as complete, and the number is shown with at most 2 decimals. */
+const TP_SOM_MARGE=0.01;
+function tpSomRegel(){const s=formTPs.reduce((a,x)=>a+(+x.pct||0),0),vol=Math.abs(s-100)<=TP_SOM_MARGE+1e-9;
+  return `Verdeeld: <b id="tpsum" class="num ${vol?'g':'r'}">${vol?100:(Math.round(s*100)/100).toLocaleString('nl-NL',{maximumFractionDigits:2})}%</b> ${vol?'✓ volledig':'— moet samen 100% zijn'}`;}
+function tpSum(){const el=document.querySelector('#tpbuilder .tptot');if(el)el.innerHTML=tpSomRegel();}
+/* Imported levels are rounded per level (2 decimals, Blofin's CSV 1), so six of 16.67 add up to 100.02. When the sum is off
+   by no more than that rounding, the difference goes in hundredths to the largest levels, so they add up to exactly 100.
+   A real gap (50 + 40) stays as it is. */
+const TP_AFRONDING=5;   // hundredths per level: rounding to 1 decimal
+function tpPctsNaar100(tps){const c=tps.map(x=>Math.round((+x.pct||0)*100)),d=10000-c.reduce((a,v)=>a+v,0);
+  if(!tps.length||!d||Math.abs(d)>TP_AFRONDING*tps.length)return tps;
+  const volg=c.map((v,i)=>i).sort((a,b)=>c[b]-c[a]);
+  for(let k=0;k<Math.abs(d);k++)c[volg[k%c.length]]+=Math.sign(d);
+  tps.forEach((x,i)=>{x.pct=c[i]/100;});return tps;}
 function renderTPs(){const c=document.getElementById('tpbuilder');if(!c)return;
   // de dag van je instap staat vooraf ingevuld: scheelt een klik, en je ziet wat er straks wordt vastgelegd
   formTPs.forEach(tp=>{if(!tp.tsDate)tp.tsDate=tpStandaardDatum();});
-  const sum=formTPs.reduce((a,x)=>a+(+x.pct||0),0);
   const rows=formTPs.map((tp,i)=>`<div class="tprow-edit"><span class="tpnum">TP${i+1}</span>
     <input class="tpin" placeholder="prijs" value="${tp.price}" inputmode="decimal" oninput="formTPs[${i}].price=this.value;calcTrade(true)">
     <span class="tppct"><input class="tpin pct" placeholder="deel" value="${tp.pct}" inputmode="numeric" oninput="formTPs[${i}].pct=+this.value||0;tpSum();calcTrade(true)"><i>%</i></span>
@@ -11450,7 +11463,7 @@ function renderTPs(){const c=document.getElementById('tpbuilder');if(!c)return;
     <input class="tpin tptime" placeholder="uu:mm" value="${esc(tp.tsTime||'')}" oninput="formTPs[${i}].tsTime=this.value;tpTijdIngevuld(${i})" title="Hoe laat deze TP is gehaald (HH:MM). Een tijd invullen zet de TP op gehaald; de laatste wordt je sluitmoment. Zichtbaar in de tijdlijn en de stappentabel">
     <button type="button" class="xlayer" onclick="removeTP(${i})" title="verwijderen">×</button></div>`).join('');
   c.innerHTML=`<div class="tptmpl">${formTPs.length>1?`<button type="button" class="btn" onclick="evenTPs();renderTPs()">Gelijk verdelen</button>`:''}<span class="sp" style="flex:1"></span><button type="button" class="btn pri" onclick="addTP()">+ TP toevoegen</button></div>
-    ${formTPs.length?`<div class="tprows">${rows}</div><div class="tptot">Verdeeld: <b id="tpsum" class="num ${sum===100?'g':'r'}">${sum}%</b> ${sum===100?'✓ volledig':'— moet samen 100% zijn'}</div>`:`<div class="layerhint">Voeg take-profit-niveaus toe, we verdelen je positie automatisch gelijk (1 TP = 100%, 2 = 50/50, 3 = 34/33/33…). Pas het % zelf aan als je anders wilt, en markeer welke TP's geraakt zijn (partial closes).</div>`}`;}
+    ${formTPs.length?`<div class="tprows">${rows}</div><div class="tptot">${tpSomRegel()}</div>`:`<div class="layerhint">Voeg take-profit-niveaus toe, we verdelen je positie automatisch gelijk (1 TP = 100%, 2 = 50/50, 3 = 34/33/33…). Pas het % zelf aan als je anders wilt, en markeer welke TP's geraakt zijn (partial closes).</div>`}`;}
 /* gewogen exit + gerealiseerde R uit TP's (hit op prijs, gemist deel op SL — mirror origineel) */
 function tpStats(t){const tps=(t.tps||[]).filter(x=>+x.price>0);if(!tps.length)return null;
   const entry=+t.entry,stop=+t.stop||0,dir=t.dir==='long'?1:-1,risk=Math.abs(entry-stop)||entry*0.01;
@@ -11614,7 +11627,7 @@ function openForm(id){
   formEmotions=[...(t.emotions||(t.emotion?[t.emotion]:[]))];
   formMistakes=[...(t.mistakes||(t.mistake?[t.mistake]:[]))];
   formMissed=[...(t.missedReasons||[])];
-  formTPs=(t.tps||[]).map(x=>({price:x.price,pct:x.pct,r:x.r||'',hit:!!x.hit,ts:+x.ts||0,tsDate:+x.ts?ts2date(+x.ts):'',tsTime:+x.ts?ts2time(+x.ts):''}));
+  formTPs=tpPctsNaar100((t.tps||[]).map(x=>({price:x.price,pct:x.pct,r:x.r||'',hit:!!x.hit,ts:+x.ts||0,tsDate:+x.ts?ts2date(+x.ts):'',tsTime:+x.ts?ts2time(+x.ts):''})));
   const opt=(arr,sel)=>arr.map(x=>`<option ${x===sel?'selected':''}>${esc(x)}</option>`).join('');
   const _cMs0=+t.closeTime||0,closeD0=_cMs0?ts2date(_cMs0):'',closeT0=_cMs0?ts2time(_cMs0):'';
   // formulier: relevante exchanges + handmatige accounts; niets relevants → alle
