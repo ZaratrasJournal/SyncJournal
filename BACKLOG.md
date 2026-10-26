@@ -34,9 +34,9 @@ elke wijziging eindigt met `node tests/run-release.js` groen.
 | **W2** | Ruwe exchange-data kunnen vastleggen (dev-modus terug) | 2 | M | — |
 | **C1** | Lege staten: één manier, met een volgende stap | 2 | S + M | — |
 | ~~C5~~ | ~~Acht tag-soorten, acht kleuren, overal gelijk~~ — ✅ **gedaan in v1.3** | — | — | — |
-| **T1** | CSV-import testen op CI | 2 | M | — |
+| ~~T1~~ | CSV-import testen op CI — ✅ **gedaan 26-10** (branch `csv-dubbel-ci`; volgende release) | — | — | — |
 | **W1** | Worker: `Access-Control-Allow-Origin` stond op `*` — 🔨 **v25 live in stand meten**; over een week afdwingen | 2 | XS (Denny) | — |
-| **B3** | Controleren: telt dezelfde positie dubbel via CSV én API? | 2 | S | — |
+| ~~B3~~ | ~~Telt dezelfde positie dubbel via CSV én API?~~ — ✅ **ja, opgelost 26-10** voor Blofin, OKX en Hyperliquid (branch `csv-dubbel-ci`; volgende release) | — | — | — |
 | **W5** | Worker v25: `okxHost` alleen uit een vaste lijst (lek sinds v19) en de ongebruikte `orders`-verzoeken uit `algos` weg — ✅ **live sinds 25-10 (v25)** | 1 | XS | — |
 | **B6** | OKX: waarschuwing bij een onbekende contractsoort in het vangnet; SL koppelen op het exacte contract i.p.v. de munt (review 24-10) | 3 | XS | — |
 | ~~B9~~ | Datum na middernacht — ✅ **gedaan in v1.15.1** | — | — | — |
@@ -431,6 +431,25 @@ herbouwd. Het is een stille fout: je P&L verdubbelt zonder melding.
 
 **Klaar als** de spec bestaat en groen is. Effort M als het een echte fout blijkt.
 
+**Gedaan (26-10-2026, branch `csv-dubbel-ci`).** Het was een echte fout, bij drie van de vier gekoppelde exchanges.
+`tests/csv-api-dubbel.spec.js` liet het eerst zien (15/37): bij **Blofin, OKX en Hyperliquid** kwam dezelfde positie in
+beide volgordes dubbel binnen (eerst CSV dan sync, en andersom), met dubbele P&L. **Kraken** niet: CSV en API bouwen
+daar hetzelfde id, en de CSV-import is geweigerd zolang Kraken gekoppeld is.
+- Fix per adapter: `ExchangeAPI.{blofin,okx,hyperliquid}.zelfdePositie(csvRij, apiRij)` — pair, richting, entry en
+  exit binnen 0,1 %, hoeveelheid binnen 2 %, en de tijden. OKX en Hyperliquid: opening én sluiting op hetzelfde
+  moment (±2 min), waarbij hele uren verschil mag zolang het voor beide gelijk is (de export zegt niet in welke
+  tijdzone hij staat). Blofin: de CSV kent alleen de ordertijd van de opening (een limit-order kan wachten), dus
+  de API-opening ligt 0 tot 12 uur na de CSV. De Blofin-parser geeft daarvoor nu `openTime` mee (niet in de
+  vingerafdruk, dus herimport houdt hetzelfde id).
+- De gedeelde import (`importTjClosed` → `csvApiSamen`) vraagt het alleen aan een adapter die de methode heeft. De
+  API-rij wint; notities, labels, screenshots, playbook en de rest van `SJ_USER_FIELDS` van de CSV-rij gaan mee; de
+  CSV-rij verdwijnt zonder prullenbak. Een CSV-rij voor een positie die de sync al heeft, wordt overgeslagen.
+- **Wat het niet doet:** trades die al dubbel in een journal staan, worden niet opgeruimd (dat zou een migratie
+  zijn; de migratie v12 is bewust ongemoeid gelaten). Een CSV-rij in de prullenbak houdt de API-rij niet tegen.
+  Een Blofin-limit-order die langer dan 12 uur wachtte, wordt niet herkend (dan blijft het zoals vóór de fix).
+  De marges zijn getoetst op synthetische data; met een echte export van Denny naast een sync even nakijken.
+- Rapport: `docs/csv-dubbel-ci-rapport.md`.
+
 ---
 
 ### B5 · P&L-percentages van −107% en 2.834% bij oudere trades — ✅ gedaan in v1.11
@@ -489,6 +508,15 @@ weer sinds de worktree-poort die map koppelt. Import is de risicovolste laag, en
 3. Vóór de commit controleren dat er geen account-id's, wallets of namen in staan.
 
 **Klaar als** CI geen `⏭️ csv-import` meer toont en alle zes formaten gedekt zijn. Nodig vóór C2 en T3.
+
+**Gedaan (26-10-2026, branch `csv-dubbel-ci`).** Synthetische exports in **`tests/fixtures-csv/`** (verzonnen
+getallen, geen account-id's, wallets of namen; wel de kolomnamen en structuur die de parsers verwachten), met een
+eigen `.gitignore` die de repo-brede `*.csv`-regel daar opheft: Blofin-orderhistorie, OKX-positiehistorie, Kraken
+account-log, Hyperliquid-fills, MEXC futures-orders én posities, FTMO MetriX. Spec **`tests/csv-formaten.spec.js`**
+(115 checks) draait ze altijd: per formaat aantal trades, exchange, richting, entry/exit, P&L, fees, open- en
+sluittijd (Europe/Amsterdam), afbouwstappen, en dat herimport niets toevoegt. `csv-import.spec.js` valt nu terug op
+deze bestanden als `tests/_fixtures/` ontbreekt, dus CI slaat hem niet meer over. Beide nieuwe specs staan
+(nog) niet in `tests/release-set.js`; erbij zetten is een keuze voor Denny.
 
 ### T2 · Oude-app-specs herschrijven of schrappen — prio 3 · L
 

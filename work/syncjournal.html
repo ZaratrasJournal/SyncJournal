@@ -8348,6 +8348,17 @@ const ExchangeAPI = {
     /* Blofin-fills → de stappen van één levensloop. Geen positionId op fills, dus koppelen op
        instrument + positiekant + het tijdvenster van de levensloop; in net-mode is positionSide
        "net" en beslist de lopende teller. fillPnl is Blofin's eigen P&L per fill en is leidend. */
+    /* B3: a row from the order-history CSV and one from positions-history for the same position? The CSV has the
+       opening (its first opening order, UTC like the API) but no closing time, and its order time can lie before
+       the opening: a limit order waits until it fills. So: same pair, direction, prices and size, and the API's
+       opening at most _ORDER_WACHT_MS after the CSV's (and not before it, give or take the margin). */
+    _ORDER_WACHT_MS:12*3600e3,   // a limit order that waits longer is not recognised: then both rows stay, as before B3
+    zelfdePositie(csv,api){
+      if(csv.pair!==api.pair||csv.dir!==api.dir)return false;
+      if(!bijnaGelijk(csv.entry,api.entry,CSV_PRIJS_MARGE)||!bijnaGelijk(csv.exit,api.exit,CSV_PRIJS_MARGE)||!bijnaGelijk(csv.qtyAsset,api.qtyAsset,CSV_QTY_MARGE))return false;
+      const d=(+api.openTime||0)-(+csv.openTime||0);
+      return +csv.openTime>0&&+api.openTime>0&&d>=-CSV_TIJD_MARGE&&d<=this._ORDER_WACHT_MS;
+    },
     stepsForTrade(t,raw){
       const dir=String(t.dir||t.direction||"").toLowerCase();
       const basis=String(t.pair||"").split("/")[0].toUpperCase();
@@ -9127,6 +9138,16 @@ const ExchangeAPI = {
       const perOid=new Map((regels||[]).map(r=>[String(r.oid),r.soort]));
       return g=>g.fills.some(f=>f.kind==='liq')?'liq':g.ordId?(perOid.get(String(g.ordId))||'hand'):null;   // no order id (CSV, older sync): unknown
     },
+    /* B3: a row from the fills CSV and one from the API for the same position? The CSV has no fill ids, so its row
+       gets another id. Same pair, direction, prices and size, and the first and last fill at the same moments. The
+       export's times carry no zone and are read as local time: whole hours off is allowed, by the same hours for
+       the opening and the closing. */
+    zelfdePositie(csv,api){
+      if(csv.pair!==api.pair||csv.dir!==api.dir)return false;
+      if(!bijnaGelijk(csv.entry,api.entry,CSV_PRIJS_MARGE)||!bijnaGelijk(csv.exit,api.exit,CSV_PRIJS_MARGE)||!bijnaGelijk(csv.qtyAsset,api.qtyAsset,CSV_QTY_MARGE))return false;
+      const o=uurVerschuiving(+csv.openTime,+api.openTime,CSV_TIJD_MARGE);
+      return o!=null&&o===uurVerschuiving(+csv.closeTime,+api.closeTime,CSV_TIJD_MARGE);
+    },
     _reconstructTrades(fills,idPrefix,metOpen){
       const aggregated=this._aggregateSubFills(fills);
       const sorted=[...aggregated].sort((a,b)=>((a.ms||0)-(b.ms||0))||String(a.tid||"").localeCompare(String(b.tid||"")));
@@ -9654,6 +9675,17 @@ const ExchangeAPI = {
     /* OKX-fills → de stappen van één positie. OKX levert geen positie-id op fills, dus we
        matchen op instrument, positiekant en het tijdvenster van de positie. In one-way-mode
        ontbreekt posSide ("net"); dan valt de filter terug op instrument + venster. */
+    /* B3: a row from the position-history CSV and one from the API for the same position? Same pair, direction,
+       prices and size, and opened and closed at the same moments. The export writes times as text in the zone set
+       in your OKX profile, which the file does not say: read as local time, they may be whole hours off, but by
+       the same hours for the opening and the closing. */
+    zelfdePositie(csv,api){
+      if(csv.pair!==api.pair||csv.dir!==api.dir)return false;
+      if(!bijnaGelijk(csv.entry,api.entry,CSV_PRIJS_MARGE)||!bijnaGelijk(csv.exit,api.exit,CSV_PRIJS_MARGE)||!bijnaGelijk(csv.qtyAsset,api.qtyAsset,CSV_QTY_MARGE))return false;
+      const lokaal=s=>{const m=/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}(?::\d{2})?)/.exec(String(s||''));return m?new Date(m[1]+'T'+m[2]).getTime():(+s||0);};
+      const o=uurVerschuiving(lokaal(csv.openTime),+api.openTime,CSV_TIJD_MARGE);
+      return o!=null&&o===uurVerschuiving(lokaal(csv.closeTime),+api.closeTime,CSV_TIJD_MARGE);
+    },
     stepsForTrade(t,raw){
       const dir=String(t.dir||t.direction||"").toLowerCase();
       // basis-asset uit het instrument: "BTC-USD_UM_XPERP-04APR31" en "BTC-USDT-SWAP" -> BTC
@@ -9972,12 +10004,45 @@ function importTjClosed(rawList){
     if(refreshFromSync(bestaand,verse))bij++;
   });
   const fresh=bruikbaar.filter(t=>!byId.has(String(t.id)));
-  const mapped=fresh.map(sjFromTj);
+  const {mapped,weg}=csvApiSamen(fresh.map(sjFromTj));
   const base=nextId();mapped.forEach((t,i)=>t.id=base+i);
+  if(weg.size)T=T.filter(t=>!weg.has(t.id));   // gone, not to the bin: the API row now holds that position
   if(mapped.length)T=[...T,...mapped];
   if(mapped.length||bij)persist();
   return mapped;
 }
+/* B3: the same position through a CSV import and through the API sync has two source ids, so the srcId dedupe
+   above lets both in and the P&L counts twice. Only the adapter knows what "the same position" means for its
+   exports, so it decides (zelfdePositie(csvRow, apiRow)); an exchange without one is left as is. The API row
+   wins: a CSV row for a position the sync already has is skipped, and a new API row takes over your input from
+   the CSV row it replaces. Closed rows only: a CSV export never has a position that is still running. */
+const isCsvRij=t=>/(^|_)csv_/.test(String((t&&t.srcId)||''));
+function csvApiSamen(nieuw){
+  const weg=new Set();
+  const mapped=nieuw.filter(m=>{
+    const ad=ExchangeAPI[m.exchange];
+    if(typeof ad?.zelfdePositie!=='function'||m.status!=='closed')return true;
+    const csv=isCsvRij(m);
+    const ander=T.find(t=>t&&t.exchange===m.exchange&&t.status==='closed'&&t.srcId&&!weg.has(t.id)&&isCsvRij(t)!==csv
+      &&(csv?ad.zelfdePositie(m,t):ad.zelfdePositie(t,m)));
+    if(!ander)return true;
+    if(csv)return false;
+    adoptUserFieldsSJ(m,ander);weg.add(ander.id);return true;
+  });
+  return {mapped,weg};
+}
+/* Pure helpers for the adapters' zelfdePositie, no exchange assumptions. */
+const bijnaGelijk=(a,b,rel)=>{a=+a;b=+b;return a>0&&b>0&&Math.abs(a-b)<=rel*Math.max(a,b);};
+/* The same moment in a CSV and in the API, when the export's time zone is unknown: a whole number of hours apart
+   (at most 14, the widest zone offset), give or take margeMs. Returns that number of hours, or null. */
+function uurVerschuiving(csvMs,apiMs,margeMs){
+  if(!(csvMs>0&&apiMs>0))return null;
+  const d=apiMs-csvMs,u=Math.round(d/3600e3);
+  return Math.abs(u)<=14&&Math.abs(d-u*3600e3)<=margeMs?u:null;
+}
+const CSV_PRIJS_MARGE=0.001;   // an export may round prices: within 0.1%
+const CSV_QTY_MARGE=0.02;      // a size derived from P&L / price move (OKX) or rounded: within 2%
+const CSV_TIJD_MARGE=120e3;    // exports write whole seconds or minutes, the API milliseconds
 async function testConn(exId){
   const ad=ExchangeAPI[exId],c=CONNS[exId]||{};if(!ad)return;
   const btn=document.getElementById('ct_'+exId);if(btn){btn.disabled=true;btn.textContent='Testen…';}
@@ -10455,6 +10520,7 @@ function parseExchangeCsvText(text,forExchange){
             csvTrades.push({...EMPTY_TRADE,
               id:"blofin_csv_"+uid(),
               date:pos.openDate,time:pos.openTime,
+              openTime:pos.openTs?String(pos.openTs):"",   // UTC ms like the API's createTime (B3: zelfdePositie); not in the id fingerprint, so a re-import keeps its id
               pair:cleanPair(sym),
               direction:pos.direction,
               entry:normPrice(avgEntry>0?avgEntry.toFixed(6):""),

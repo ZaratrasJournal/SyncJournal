@@ -1,19 +1,19 @@
 // Borgt de geporte CSV-import: auto-detectie per exchange-formaat, mapping naar het
 // SJ-schema via de gedeelde brug, dedupe bij dubbel inlezen, prullenbak-guard, en de
-// UI-ingang in Instellingen → Accounts. Draait op de ECHTE export-fixtures.
+// UI-ingang in Instellingen → Accounts. Draait op de ECHTE export-fixtures als die er zijn, anders op de synthetische.
 const { chromium } = require('playwright'); const path = require('path'); const fs = require('fs');
 let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  ✓ ' + n)) : (fail++, console.log('  ✗ ' + n + (e ? ' → ' + e : ''))); };
+// The real export first; without it (a clean clone, CI) the synthetic one from tests/fixtures-csv/ (T1).
 const FIX = {
-  blofin: 'tests/_fixtures/blofin-export.csv',
-  kraken: 'tests/_fixtures/kraken-export.csv',
-  hyperliquid: 'tests/_fixtures/hyperliquid-export.csv',
+  blofin: ['tests/_fixtures/blofin-export.csv', 'tests/fixtures-csv/blofin-orderhistorie.csv'],
+  kraken: ['tests/_fixtures/kraken-export.csv', 'tests/fixtures-csv/kraken-accountlog.csv'],
+  hyperliquid: ['tests/_fixtures/hyperliquid-export.csv', 'tests/fixtures-csv/hyperliquid-fills.csv'],
 };
 (async () => {
   const texts = {};
-  for (const [k, f] of Object.entries(FIX)) { if (fs.existsSync(f)) texts[k] = fs.readFileSync(f, 'utf8'); else console.log('SKIP: ' + f + ' ontbreekt'); }
-  // tests/_fixtures/ bevat échte exchange-exports en staat daarom in .gitignore: op een
-  // schone kloon (GitHub Actions) bestaan ze niet. Dan netjes overslaan i.p.v. crashen —
-  // lokaal, waar de bestanden staan, draait de spec onverkort.
+  for (const [k, lijst] of Object.entries(FIX)) { const f = lijst.find(x => fs.existsSync(x)); if (f) { texts[k] = fs.readFileSync(f, 'utf8'); console.log(k + ': ' + f); } else console.log('SKIP: ' + lijst.join(' / ') + ' ontbreekt'); }
+  // tests/_fixtures/ bevat échte exchange-exports en staat daarom in .gitignore; de synthetische
+  // in tests/fixtures-csv/ staan wel in git, dus overslaan gebeurt alleen nog als ook die weg zijn.
   if (!Object.keys(texts).length) {
     console.log('\n=== CSV-import: overgeslagen, geen export-fixtures in deze kloon ===');
     process.exit(0);
@@ -34,7 +34,7 @@ const FIX = {
   ok('CSV-import-sectie met bestandsknop in Accounts', await p.evaluate(() => { const m = document.getElementById('main').textContent; return /CSV-import/.test(m) && !!document.getElementById('csvFileInp'); }));
 
   for (const [ex, text] of Object.entries(texts)) {
-    console.log(`─── ${ex}: echte export-fixture ───`);
+    console.log(`─── ${ex}: export-fixture ───`);
     const r = await p.evaluate((t) => { const before = T.length; const n = sjImportCsvText(t, ''); return { n, added: T.length - before }; }, text);
     ok(`${ex}: trades geïmporteerd (${r.n})`, r.n > 0 && r.n === r.added, JSON.stringify(r));
     ok(`${ex}: velden geldig (pair/dir/datum/pnl) + exchange gezet`, await p.evaluate((exId) => { const rows = T.filter(t => t.exchange === exId); return rows.length > 0 && rows.every(t => /\//.test(t.pair) && (t.dir === 'long' || t.dir === 'short') && /^\d{4}-\d{2}-\d{2}$/.test(t.date) && isFinite(t.pnl)); }, ex));
