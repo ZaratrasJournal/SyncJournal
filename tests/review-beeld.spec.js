@@ -77,7 +77,8 @@ const mk = (id, over) => Object.assign({ id, date: '2026-09-' + String(id).padSt
     mk(4, { date: '2026-09-21' }),
     mk(5, { date: '2026-09-22', screenshots: [BAD] })], 'beeld');
   ok('nieuwste maand eerst (september)', await p.evaluate(() => /september 2026/.test(document.querySelector('.revmonth h2').textContent)));
-  ok('alleen trades met beeld of TV-link', await p.evaluate(() => document.querySelectorAll('.revcard').length === 2));
+  // since 26-10-2026 (Zaratras) trades without an image keep their place as a "Geen afbeelding" tile
+  ok('alle trades van de maand, ook zonder beeld', await p.evaluate(() => document.querySelectorAll('.revcard').length === 4 && document.querySelectorAll('.revcard .noshot:not(.fallback)').length === 2));
   ok('kaart heeft 8 tegels', await p.evaluate(() => document.querySelectorAll('.revcard')[0].querySelectorAll('.revtiles > div').length === 8));
   ok('winst = groene rand', await p.evaluate(() => document.querySelector('.revcard').classList.contains('win')));
   ok('setup ge-escaped', await p.evaluate(() => !document.querySelector('.revcard img[src="x"]') && document.querySelector('.revcard').textContent.includes('<img')));
@@ -91,7 +92,7 @@ const mk = (id, over) => Object.assign({ id, date: '2026-09-' + String(id).padSt
   await p.evaluate(() => { const b = [...document.querySelectorAll('.revcard .linkbtn')].find(x => /Open trade/.test(x.textContent)); b.click(); });
   ok('Open trade → Per trade op die trade', await p.evaluate(() => STATE.revMode === 'trade' && STATE.revSel === 1));
   await p.evaluate(() => { T = T.map(t => ({ ...t, screenshots: [], tvLinks: [] })); persist(); setRevMode('beeld'); });
-  ok('lege staat zonder beelden, met uitleg', await p.evaluate(() => /Nog geen trades met beeld/.test((document.querySelector('.empty') || {}).textContent || '')));
+  ok('zonder beelden: tegels "Geen afbeelding", geen lege staat', await p.evaluate(() => !document.querySelector('.empty') && [...document.querySelectorAll('.revcard')].every(c => /Geen afbeelding/.test(c.textContent))));
   await p.evaluate(() => setRevMode('trade'));
 
   console.log('─── Beeld: 3000 trades ───');

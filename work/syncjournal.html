@@ -748,6 +748,9 @@ table.tbl{width:100%;border-collapse:collapse;font-size:14px}
 .revcard .cardsub{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted)}
 .revcard .cardshot{position:relative;border-radius:10px;overflow:hidden;border:1px solid var(--line);aspect-ratio:16/10;background:var(--sink);cursor:zoom-in}
 .revcard .cardshot img{width:100%;height:100%;object-fit:cover;display:block}.revcard .tvonly{display:flex;height:100%;align-items:center;justify-content:center;color:var(--muted)}
+.revcard .noshot{display:flex;height:100%;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:10px;text-align:center;color:var(--ink2);font-size:13px}
+.revcard .noshot .nsh,.revcard .noshot .nsv{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:center}.revcard .noshot .nsv{font-size:15px}.revcard .noshot .mu{color:var(--muted)}
+.cardshot>.fallback,.stage>.fallback{display:none!important}.cardshot.kapot>.fallback,.stage.kapot>.fallback{display:flex!important}.cardshot.kapot>img,.stage.kapot>img.main{display:none}
 .revcard .nshots{position:absolute;right:8px;bottom:8px;background:var(--surface);color:var(--ink);border-radius:99px;padding:1px 8px;font-size:12px}
 .revcard .cardlinks{display:flex;flex-wrap:wrap;gap:5px;align-items:center;min-height:4px}
 .revcard .cardcoach{background:var(--accent-soft);border-radius:8px;padding:7px 10px;font-size:13px}.revcard .cardft{display:flex;align-items:center}
@@ -3699,7 +3702,7 @@ const EMPTY={
   kalender:['🗓️','Geen trades in deze maand','Je hebt wel trades, alleen niet in deze maand. Spring naar je laatste maand met trades, of blader met de pijltjes.','Naar laatste maand met trades','calNaarLaatste()'],
   playbook:['📗','Nog geen playbooks','Maak een playbook voor je setup en kies hem bij je trades. Dan rekent de journal per playbook je win-rate en verwachting uit.','+ Nieuwe playbook','openPbEdit(null)'],
   review:['📝','Niets om te reviewen','Zodra je trades hebt, kijk je ze hier terug, scoor je ze met sterren en leer je van je fouten. Start een sync of importeer een CSV in Instellingen → Accounts.','Naar Accounts','naarAccounts()'],
-  revbeeld:['🖼','Nog geen trades met beeld','In deze selectie heeft geen enkele trade een screenshot of TradingView-link. Plak een screenshot bij een trade (Per trade → + screenshot) of pas je filter aan.','Naar Per trade',"setRevMode('trade')"],
+  revbeeld:['🖼','Geen trades in deze selectie','Met dit filter blijft er in Beeld geen trade over. Kies Alle, of pas je filter aan.','Naar Per trade',"setRevMode('trade')"],
   'rev-zoek':['','Geen trades gevonden','pas je zoekopdracht of filter aan.','Wissen','revWis()'],
   'mori-leeg':['🤖','Nog geen trades','Start een sync of importeer een CSV in Instellingen → Accounts, dan heeft Mori iets om naar te kijken.','Naar Accounts','naarAccounts()'],
   'mori-niets':['🤖','Geen gesloten trades in deze periode','Je hebt wel trades, maar je periode of filter laat er geen gesloten over. Zet je filter uit, dan kijkt Mori naar al je trades.','Filter uitzetten','filterUit()'],
@@ -4636,10 +4639,9 @@ function revBeeld(){const M=revMonths();
       ${nSel?`<button class="btn pri" onclick="openRevPres(STATE.revShareSel,null,true)">▶ Presenteer geselecteerde (${nSel})</button>`:`<button class="btn" onclick="openRevPres(${JSON.stringify(L.map(t=>t.id))},null,true)" title="alle beelden van deze maand op volledig scherm, met de trade en review ernaast">▶ Presenteer maand</button>`}
       ${revStatusSeg()}<span class="sp"></span><div class="dots">${M.map((x,j)=>`<span class="${j===i?'on':''}" title="${esc(revMaandNaam(x.k))}" onclick="STATE.revMonth=${j};render()"></span>`).join('')}</div></div>
     <div class="revbeeld"><div class="revcards">${L.map(revCard).join('')}</div>${revSelPanel()}</div>`;}
-const revHasBeeld=t=>revShots(t).length>0||(t.tvLinks||[]).some(isHttpUrl);
-// Image mode works per month (the newest first), so a journal of 3000 trades renders one month of cards.
+// Image mode works per month (the newest first); trades without an image keep their place as a "Geen afbeelding" tile., so a journal of 3000 trades renders one month of cards.
 function revBeeldItems(){const rf=STATE.revFilter||'all';return FT.filter(x=>rf==='all'||(rf==='done'?x.reviewed:!x.reviewed));}
-function revMonths(){const m={};revOrder(revBeeldItems().filter(revHasBeeld)).forEach(t=>{const k=String(t.date||'').slice(0,7);if(/^\d{4}-\d{2}$/.test(k))(m[k]=m[k]||[]).push(t);});
+function revMonths(){const m={};revOrder(revBeeldItems()).forEach(t=>{const k=String(t.date||'').slice(0,7);if(/^\d{4}-\d{2}$/.test(k))(m[k]=m[k]||[]).push(t);});
   return Object.keys(m).sort().reverse().map(k=>({k,list:m[k]}));}
 const revMaandNaam=k=>new Date(k+'-15T12:00:00').toLocaleDateString('nl-NL',{month:'long',year:'numeric'});
 function revMonthGo(d){const n=revMonths().length;STATE.revMonth=Math.min(Math.max(0,(STATE.revMonth||0)+d),Math.max(0,n-1));render();}
@@ -4649,11 +4651,19 @@ function revCard(t){const shots=revShots(t),on=STATE.revShareSel.includes(t.id);
   return `<div class="panel revcard ${(tradeROrNull(t)??t.pnl)>=0?'win':'loss'} ${on?'on':''}">
     <div class="cardhd">${revCbx(t.id)}<b>${esc(fmtD(t.date||''))}</b><span class="mu">${esc(t.time||'')}</span><b>${esc(t.pair)}</b><span class="pill ${t.dir}">${t.dir==='long'?'LONG':'SHORT'}</span></div>
     <div class="cardsub">${esc(t.setup||'—')} · grade ${esc(gradeOf(t)||'—')}<span class="sp"></span>${rBadge(t)}</div>
-    <div class="cardshot" onclick="openRevPres([${t.id}],${t.id},false)" title="vergroot">${shots[0]?`<img src="${beeldSrc(shots[0])}" alt="screenshot" loading="lazy">`:`<div class="tvonly">📈 Alleen een TradingView-link</div>`}${shots.length>1?`<span class="nshots">+${shots.length-1}</span>`:''}</div>
+    <div class="cardshot" onclick="openRevPres([${t.id}],${t.id},false)" title="vergroot">${shots[0]?`<img src="${beeldSrc(shots[0])}" alt="screenshot" loading="lazy" onerror="revImgFout(this)">${revGeenBeeld(t,true)}`
+      :(t.tvLinks||[]).some(isHttpUrl)?`<div class="tvonly">📈 Alleen een TradingView-link</div>`:revGeenBeeld(t)}${shots.length>1?`<span class="nshots">+${shots.length-1}</span>`:''}</div>
     <div class="cardlinks">${tvKnoppen(t)}${tagChips(tradeTagsAll(t).slice(0,3),false)}</div>
     ${revTiles(t,8)}
     ${t.coach?`<div class="cardcoach">💬 ${esc(t.coach)}</div>`:''}
     <div class="cardft"><button class="linkbtn" onclick="toggleReviewed(${t.id})">${t.reviewed?'✓ Gereviewd':'Markeer gereviewd'}</button><span class="sp"></span><button class="linkbtn" onclick="STATE.revSel=${t.id};setRevMode('trade')">Open trade →</button></div></div>`;}
+// Same-size stand-in for a missing image; with kapot it waits hidden behind an image and shows when that fails to load.
+function revGeenBeeld(t,kapot){const r=tradeROrNull(t);
+  return `<div class="noshot${kapot?' fallback':''}"><div class="nsh"><b>${esc(t.pair)}</b><span class="pill ${t.dir}">${t.dir==='long'?'LONG':'SHORT'}</span><span class="mu">${esc(fmtD(t.date||''))}</span></div>
+    <div class="nsv"><b class="num ${r==null?'':r>=0?'g':'r'}">${r==null?'—':rS(r)}</b><span class="num mask ${cls(t.pnl)}">${eurS(t.pnl)}</span></div>
+    <div class="mu">🖼 ${kapot?'Afbeelding niet te laden':'Geen afbeelding'}</div>${kapot?'':`<button class="linkbtn" onclick="event.stopPropagation();pickScreenshot(${t.id})">+ Afbeelding toevoegen</button>`}</div>`;}
+// A broken link shows the stand-in next to it instead of the browser's broken-image icon.
+function revImgFout(img){if(img&&img.parentNode)img.parentNode.classList.add('kapot');}
 function revSelMonth(){const m=revMonths()[STATE.revMonth||0];if(!m)return;m.list.forEach(t=>{if(!STATE.revShareSel.includes(t.id))STATE.revShareSel.push(t.id);});render();}
 function revSelPanel(){const sel=revSelTrades(),n=sel.length,dis=n?'':'disabled';
   return `<div class="panel revsel"><h3>Selectie & delen</h3>

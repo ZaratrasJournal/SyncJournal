@@ -22,6 +22,10 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 - **Review: de nieuwste trade staat bovenaan.** De lijst bij *Per trade*, de kaarten in *Beeld* en de
   presentatie lopen nu alle drie van nieuw naar oud: op het moment van sluiten, en een open trade op het
   moment van openen. Bladeren met ‹ › of de pijltjes volgt die volgorde. Trades en Dashboard blijven zoals ze waren.
+- **Review → Beeld: ook trades zonder afbeelding.** Die vielen eerst weg; nu staan ze op hun plek in de
+  volgorde, als een tegel van dezelfde grootte met pair, richting, datum, R en P&L, de tekst *Geen afbeelding*
+  en een knop om er een toe te voegen. Een afbeelding die niet laadt geeft een nette melding in plaats van
+  een gebroken plaatje.
 
 ## [v1.18.1] — 2026-10-26
 
