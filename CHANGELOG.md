@@ -16,6 +16,15 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [Unreleased]
+
+### Toegevoegd
+- **Kies je startset voor je tags.** Naast de bekende set uit de strategieën van Morani (BOS, MSB, F2R, OB, FVG…) is er
+  nu een algemene set met setups en confirmaties die bij elke trader passen: Breakout, Pullback, Reversal, Range,
+  Trend continuation, Support/Resistance, Volume, Divergence, News en meer. Je kiest in Instellingen → Tags.
+  *Toevoegen* zet er alleen de tags bij die je nog niet had, er verdwijnt niets. *Vervangen* vraagt eerst om
+  bevestiging en laat je eigen labels staan. Heb je al een journal, dan verandert er niets aan je tags.
+
 ## [v1.17.2] — 2026-10-25
 
 ### Fixed

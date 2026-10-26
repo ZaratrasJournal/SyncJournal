@@ -743,6 +743,7 @@ table.tbl{width:100%;border-collapse:collapse;font-size:14px}
 .setrow .txt{flex:1}
 .setrow .txt b{font-size:13.5px;font-weight:600}
 .setrow .txt small{display:block;color:var(--muted);font-size:11.5px}
+.tagsetkeuze .setrow{flex-wrap:wrap}.tagsetkeuze .setrow .txt{min-width:min(100%,260px)}
 .sw{width:42px;height:24px;border-radius:999px;background:var(--track);position:relative;transition:background .2s;flex:none}
 .sw::after{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25);transition:left .2s}
 .sw.on{background:var(--accent)} .sw.on::after{left:21px}
@@ -2529,6 +2530,24 @@ const DEFAULT_TAGCONFIG={
   missedReasonTags:['Durf','Buiten regels','Te laat gespot','Kapitaal vol','Onduidelijk','Bewuste skip','Offline'],
   customTags:[],
 };
+// Neutral starter set for traders outside the Morani community (F14, 26-10-2026). Emotions,
+// mistakes, missed reasons and timeframes match the Morani set; only setups and confirmations
+// differ, because those are where the Morani strategies live.
+const TAGSET_ALGEMEEN={
+  setupTags:['Breakout','Pullback','Reversal','Range','Trend continuation','Retest','Failed breakout','Momentum'],
+  confirmationTags:['Support/Resistance','Volume','Divergence','News','Trendline','Moving average','Candle pattern','Higher timeframe','Session open'],
+  timeframeTags:[...DEFAULT_TAGCONFIG.timeframeTags],
+  emotionTags:[...DEFAULT_TAGCONFIG.emotionTags],
+  mistakeTags:[...DEFAULT_TAGCONFIG.mistakeTags],
+  missedReasonTags:[...DEFAULT_TAGCONFIG.missedReasonTags],
+  customTags:[],
+};
+// The Morani set stays the default for a journal that never chose: existing users who never
+// edited their tags have no sj_tagconfig and must not see their tags change.
+const TAG_SETS={
+  morani:{label:'Morani-set',uitleg:'De setups en confirmaties uit de strategieën van Morani (BOS, MSB, F2R, OB, FVG…). Kies deze als je in de community traadt.',cfg:DEFAULT_TAGCONFIG},
+  algemeen:{label:'Algemene set',uitleg:'Veelgebruikte setups en confirmaties die bij elke trader passen (Breakout, Pullback, Reversal, Volume, Divergence…).',cfg:TAGSET_ALGEMEEN},
+};
 let tagConfig=DB.load('tagconfig',JSON.parse(JSON.stringify(DEFAULT_TAGCONFIG)));
 // Vult aan wat een oudere journal of back-up nog niet kent. Draait bij het laden én na elke
 // import: een back-up van vóór een nieuw veld heeft dat veld niet.
@@ -2540,6 +2559,30 @@ function normTagConfig(){
 }
 normTagConfig();
 function persistTagConfig(){ DB.save('tagconfig',tagConfig); }
+// Has the user ever changed the tag lists? Saved-or-not says nothing: the schema migrations save
+// tagConfig on every first start. A journal still on the untouched default set has nothing of its own.
+const tagConfigEigen=()=>TAG_CATS.some(({key})=>JSON.stringify(tagConfig[key]||[])!==JSON.stringify(DEFAULT_TAGCONFIG[key]||[]));
+// Apply a starter set. 'samenvoegen' appends what is missing and never removes a tag;
+// 'vervangen' swaps the lists after a confirmation but keeps own labels and emotion colours;
+// 'start' replaces only on a journal without own tags, and merges otherwise.
+function kiesTagSet(id,modus){
+  const set=TAG_SETS[id];if(!set)return;
+  if(modus==='start')modus=tagConfigEigen()?'samenvoegen':'nieuw';
+  if(modus==='vervangen'&&!confirm(`Je tags vervangen door de ${set.label.toLowerCase()}? Je setups, confirmaties, timeframes, emoties, fouten en missed-redenen worden die van de set. Je eigen labels blijven staan, en trades houden hun tags.`))return;
+  TAG_CATS.forEach(({key})=>{if(key==='customTags')return;const neu=set.cfg[key]||[];
+    tagConfig[key]=modus==='samenvoegen'?[...new Set([...(tagConfig[key]||[]),...neu])]:[...neu];});
+  tagConfig.emotionNeg=[...new Set([...(tagConfig.emotionNeg||[]),...EMO_NEG_START])];
+  DB.save('tagset',id);persistTagConfig();
+  try{toast(modus==='samenvoegen'?`✓ ${set.label} toegevoegd aan je tags`:`✓ Je tags komen nu uit de ${set.label.toLowerCase()}`,'ok');}catch(e){}
+  try{render();}catch(e){}
+}
+// Settings → Tags: pick or add a starter set.
+function tagSetKeuze(){
+  const cur=DB.load('tagset','');
+  return `<div class="panel tagsetkeuze" id="tagSetKeuze" style="margin-bottom:16px"><div class="setrow"><div class="txt"><b>Startset voor je tags</b><small>${cur?`Je koos de ${esc((TAG_SETS[cur]||{}).label||cur).toLowerCase()}. `:''}Toevoegen voegt alleen tags toe die je nog niet hebt; er verdwijnt niets. Vervangen vraagt eerst om bevestiging.</small></div></div>
+    ${Object.entries(TAG_SETS).map(([id,s])=>`<div class="setrow"><div class="txt"><b>${s.label}${cur===id?' <span class="chip">gekozen</span>':''}</b><small>${s.uitleg}</small></div>
+      <button class="btn" onclick="kiesTagSet('${id}','samenvoegen')">Toevoegen</button><button class="btn" onclick="kiesTagSet('${id}','vervangen')">Vervangen</button></div>`).join('')}</div>`;
+}
 // De tag-lijsten per soort. Niet Object.values(tagConfig): daar zit ook emotionNeg in, een
 // deelverzameling van de emoties, die dan dubbel zou tellen.
 const tagLijsten=cfg=>TAG_CATS.map(c=>((cfg||tagConfig)[c.key])||[]);
@@ -4732,6 +4775,7 @@ function pgInstellingen(){
       <div class="section-sub">🎯 Focusgebieden <span class="hint">(waar Mori extra op let)</span></div>
       <div class="panel">${AI_FOCUS.map(([k,l])=>`<div class="setrow"><div class="txt"><b>${l}</b><small>${k==='discipline'?'Consistentie met je A/B/C-grades':k==='risk'?'R-multiple en risk-management':'Emoties die je geld kosten'}</small></div><div class="sw ${AIPREFS.focus[k]?'on':''}" onclick="toggleAIFocus('${k}')"></div></div>`).join('')}</div>`,
     tags:`<p class="setintro">Beheer je tags per soort. Elke soort heeft z'n eigen kleur, en die zie je overal terug: in een trade, in het trade-overzicht en hier. Bij emoties bepaal je zelf wat negatief (rood) en wat positief (groen) is.</p>
+      ${tagSetKeuze()}
       <div class="tagcatgrid">
       ${TAG_CATS.map(c=>c.key==='emotionTags'?emotieKaart(c):`<div class="tagcard" style="--cc:${c.color}">
         <div class="tagcard-h">${c.emoji?`<span class="tagcard-emoji">${c.emoji}</span>`:'<span class="tagcard-dot"></span>'}<b>${c.label}</b><span class="chip">${(tagConfig[c.key]||[]).length}</span></div>
