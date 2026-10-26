@@ -10939,6 +10939,66 @@ ExchangeAPI.hyperliquid.parseCsv=function(csv,bron){
   for(const t of csvTrades)t.source=bron;
   return csvTrades;
 };
+// FTMO MetriX export: Ticket,Open,Type,Volume,Symbol,Price,SL,TP,Close,Price,Swap,Commissions,Profit,Pips,"Trade duration in seconds"
+// Positioneel parsen vereist: kolom "Price" komt twee keer voor (idx 5=entry, idx 9=exit).
+ExchangeAPI.ftmo.herkentCsv=function(csv){const h=csv.headers;return h[0]==="Ticket"&&h.includes("Pips")&&h.includes("Volume")&&h.includes("Swap");};
+ExchangeAPI.ftmo.parseCsv=function(csv,bron){
+  const csvTrades=[];
+  // FTMO MetriX export — CFD-trades uit MT5. Positioneel parsen: kolom "Price" staat twee keer.
+  // Kolom-order: 0=Ticket 1=Open 2=Type 3=Volume 4=Symbol 5=Price(entry) 6=SL 7=TP 8=Close 9=Price(exit) 10=Swap 11=Commissions 12=Profit 13=Pips 14=Duration
+  const ftmoPair=(s)=>{const up=(s||"").toUpperCase();if(up.endsWith("USDT"))return up.slice(0,-4)+"/USDT";if(up.endsWith("USDC"))return up.slice(0,-4)+"/USDC";if(up.endsWith("USD"))return up.slice(0,-3)+"/USD";if(up.endsWith("EUR"))return up.slice(0,-3)+"/EUR";if(up.endsWith("GBP"))return up.slice(0,-3)+"/GBP";if(up.endsWith("JPY"))return up.slice(0,-3)+"/JPY";return up};
+  const cleanNum=(s)=>{const n=parseFloat(String(s||"").replace(/"/g,"").trim());return isNaN(n)?0:n};
+  const splitDt=(dt)=>{const clean=String(dt||"").replace(/"/g,"").trim();const[d,t]=clean.split(" ");return{date:d||"",time:(t||"00:00").slice(0,5),full:clean}};
+  for(const rij of csv.rijen){
+    const vals=rij.map(v=>v.replace(/"/g,"").trim());
+    if(vals.length<13)continue;
+    const ticket=vals[0];
+    const openDt=splitDt(vals[1]);
+    const typeRaw=(vals[2]||"").toLowerCase();
+    if(typeRaw!=="buy"&&typeRaw!=="sell")continue;// skip balance/credit/bonus rows (MetriX filtert deze normaal al weg)
+    const volume=cleanNum(vals[3]);
+    const symbol=vals[4]||"";
+    const entryPrice=cleanNum(vals[5]);
+    const sl=cleanNum(vals[6]);
+    const tp=cleanNum(vals[7]);
+    const closeDt=splitDt(vals[8]);
+    const exitPrice=cleanNum(vals[9]);
+    const swap=cleanNum(vals[10]);
+    const commissions=cleanNum(vals[11]);
+    const profit=cleanNum(vals[12]);
+    const pips=vals[13]?cleanNum(vals[13]):null;
+    const fees=Math.abs(swap)+Math.abs(commissions);
+    // MT5 "Profit" is bruto (exclusief swap + commissie). Sla netto op voor consistentie met andere parsers.
+    const netPnl=profit+swap+commissions;
+    const direction=typeRaw==="buy"?"long":"short";
+    csvTrades.push({...EMPTY_TRADE,
+      // v12.192: stable dedup-key uit ticket + open-timestamp i.p.v. random uid.
+      // Ticket is MT5's order-ID (uniek per trade, stabiel over re-imports). Open-time
+      // erin opgenomen als extra safety voor recycled tickets. Re-import van zelfde
+      // CSV detecteert duplicaten nu correct via existingById in importTrades.
+      id:"ftmo_csv_"+ticket+"_"+(openDt.full||"").replace(/[^\d]/g,""),
+      date:openDt.date,time:openDt.time,
+      pair:ftmoPair(symbol),
+      direction,
+      entry:entryPrice>0?String(entryPrice):"",
+      exit:exitPrice>0?String(exitPrice):"",
+      stopLoss:sl>0?String(sl):"",
+      takeProfit:tp>0?String(tp):"",
+      positionSize:"",
+      positionSizeAsset:volume>0?String(volume):"",
+      pnl:String(netPnl.toFixed(2)),
+      fees:String(fees.toFixed(2)),
+      leverage:"",
+      source:bron,
+      status:"closed",
+      positionId:ticket,
+      openTime:openDt.full,
+      closeTime:closeDt.full,
+      notes:pips!==null?`${volume} lot · ${pips} pips`:`${volume} lot`,
+    });
+  }
+  return csvTrades;
+};
 function parseExchangeCsvText(text,forExchange){
         const lines=text.split("\n").filter(l=>l.trim());
         if(lines.length<2)throw new Error("Leeg bestand");
@@ -10969,61 +11029,6 @@ function parseExchangeCsvText(text,forExchange){
           &&lcH.some(h=>/(realized|realised).*pnl|^pnl$|\bpnl\b/.test(h))
           &&lcH.some(h=>/avg|average|price|px/.test(h));
         let csvTrades=[];
-        if(isFtmoMetriX){
-          // FTMO MetriX export — CFD-trades uit MT5. Positioneel parsen: kolom "Price" staat twee keer.
-          // Kolom-order: 0=Ticket 1=Open 2=Type 3=Volume 4=Symbol 5=Price(entry) 6=SL 7=TP 8=Close 9=Price(exit) 10=Swap 11=Commissions 12=Profit 13=Pips 14=Duration
-          const ftmoPair=(s)=>{const up=(s||"").toUpperCase();if(up.endsWith("USDT"))return up.slice(0,-4)+"/USDT";if(up.endsWith("USDC"))return up.slice(0,-4)+"/USDC";if(up.endsWith("USD"))return up.slice(0,-3)+"/USD";if(up.endsWith("EUR"))return up.slice(0,-3)+"/EUR";if(up.endsWith("GBP"))return up.slice(0,-3)+"/GBP";if(up.endsWith("JPY"))return up.slice(0,-3)+"/JPY";return up};
-          const cleanNum=(s)=>{const n=parseFloat(String(s||"").replace(/"/g,"").trim());return isNaN(n)?0:n};
-          const splitDt=(dt)=>{const clean=String(dt||"").replace(/"/g,"").trim();const[d,t]=clean.split(" ");return{date:d||"",time:(t||"00:00").slice(0,5),full:clean}};
-          for(let i=1;i<lines.length;i++){
-            const vals=parseCSVLine(lines[i]).map(v=>v.replace(/"/g,"").trim());
-            if(vals.length<13)continue;
-            const ticket=vals[0];
-            const openDt=splitDt(vals[1]);
-            const typeRaw=(vals[2]||"").toLowerCase();
-            if(typeRaw!=="buy"&&typeRaw!=="sell")continue;// skip balance/credit/bonus rows (MetriX filtert deze normaal al weg)
-            const volume=cleanNum(vals[3]);
-            const symbol=vals[4]||"";
-            const entryPrice=cleanNum(vals[5]);
-            const sl=cleanNum(vals[6]);
-            const tp=cleanNum(vals[7]);
-            const closeDt=splitDt(vals[8]);
-            const exitPrice=cleanNum(vals[9]);
-            const swap=cleanNum(vals[10]);
-            const commissions=cleanNum(vals[11]);
-            const profit=cleanNum(vals[12]);
-            const pips=vals[13]?cleanNum(vals[13]):null;
-            const fees=Math.abs(swap)+Math.abs(commissions);
-            // MT5 "Profit" is bruto (exclusief swap + commissie). Sla netto op voor consistentie met andere parsers.
-            const netPnl=profit+swap+commissions;
-            const direction=typeRaw==="buy"?"long":"short";
-            csvTrades.push({...EMPTY_TRADE,
-              // v12.192: stable dedup-key uit ticket + open-timestamp i.p.v. random uid.
-              // Ticket is MT5's order-ID (uniek per trade, stabiel over re-imports). Open-time
-              // erin opgenomen als extra safety voor recycled tickets. Re-import van zelfde
-              // CSV detecteert duplicaten nu correct via existingById in importTrades.
-              id:"ftmo_csv_"+ticket+"_"+(openDt.full||"").replace(/[^\d]/g,""),
-              date:openDt.date,time:openDt.time,
-              pair:ftmoPair(symbol),
-              direction,
-              entry:entryPrice>0?String(entryPrice):"",
-              exit:exitPrice>0?String(exitPrice):"",
-              stopLoss:sl>0?String(sl):"",
-              takeProfit:tp>0?String(tp):"",
-              positionSize:"",
-              positionSizeAsset:volume>0?String(volume):"",
-              pnl:String(netPnl.toFixed(2)),
-              fees:String(fees.toFixed(2)),
-              leverage:"",
-              source:forExchange||"ftmo",
-              status:"closed",
-              positionId:ticket,
-              openTime:openDt.full,
-              closeTime:closeDt.full,
-              notes:pips!==null?`${volume} lot · ${pips} pips`:`${volume} lot`,
-            });
-          }
-        }
         if(isOkxPosition&&!isKrakenLog&&!isBlofinOrder&&!isMexcPosition&&!isMexcFutures&&!isFtmoMetriX&&!isHyperliquidFills){
           // OKX Position History → geaggregeerde round-trips. Flexibele header-resolver (col).
           const col=(...res)=>{for(const re of res){const h=headers.find(hh=>re.test(hh.toLowerCase()));if(h)return h;}return null;};
