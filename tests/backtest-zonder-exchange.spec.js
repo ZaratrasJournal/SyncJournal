@@ -28,6 +28,18 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
     k.value = 'live'; k.dispatchEvent(new Event('change')); return document.getElementById('f_exchange').value; });
   ok('terug naar Live: weer een exchange (niet "Geen")', r4 !== '', r4);
 
+  console.log('─── Exchange kiezen zet de soort (Zaratras 26-10-2026) ───');
+  const r6 = await p.evaluate(() => { openForm(null); const ex = document.getElementById('f_exchange'), k = document.getElementById('f_kind');
+    ex.value = ''; ex.dispatchEvent(new Event('change')); const geen = k.value;
+    ex.value = 'okx'; ex.dispatchEvent(new Event('change')); return { geen, terug: k.value, ex: ex.value }; });
+  ok('Geen exchange zet Soort op Backtest', r6.geen === 'backtest', JSON.stringify(r6));
+  ok('weer een exchange kiezen zet Soort terug op Live (en houdt de exchange)', r6.terug === 'live' && r6.ex === 'okx', JSON.stringify(r6));
+  const r7 = await p.evaluate(() => { openForm(null); const ex = document.getElementById('f_exchange'), k = document.getElementById('f_kind');
+    k.value = 'paper'; k.dispatchEvent(new Event('change')); ex.value = ''; ex.dispatchEvent(new Event('change')); return k.value; });
+  ok('Paper zonder exchange blijft Paper', r7 === 'paper', r7);
+  const r8 = await p.evaluate(() => { openForm(null); const ex = document.getElementById('f_exchange'); ex.value = ''; ex.dispatchEvent(new Event('change'));
+    return !document.getElementById('f_kind').closest('.field').classList.contains('vf-pro') || document.getElementById('f_kind').closest('.field').classList.contains('vf-keep'); });
+  ok('Soort blijft in beeld als hij op Backtest springt', r8, String(r8));
   console.log('─── Bestaande trades openen en opslaan verandert de exchange niet (review v1.11) ───');
   const r5 = await p.evaluate(() => { T.push({ id: 2, date: '2026-10-10', time: '10:00', exchange: 'okx', account: 'okx', pair: 'BTC/USDT', dir: 'long', kind: 'paper', status: 'closed', entry: 1, exit: 2, size: '100', pnl: 1, tps: [], tags: [], layers: [] },
     { id: 3, date: '2026-01-10', time: '10:00', exchange: '', account: '', pair: 'BTC/USDT', dir: 'long', kind: 'live', status: 'closed', entry: 1, exit: 2, size: '100', pnl: 1, tps: [], tags: [], layers: [] }); persist();

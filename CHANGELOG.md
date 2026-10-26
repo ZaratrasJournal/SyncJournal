@@ -16,6 +16,13 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v1.18.7] — 2026-10-26
+
+### Gewijzigd
+- **Kies je bij een nieuwe trade "Geen exchange", dan springt Soort vanzelf op Backtest.** Kies je daarna weer een exchange, dan gaat hij terug naar Live. Een Paper- of Gemist-trade houdt zijn soort.
+
+---
+
 ## [v1.18.6] — 2026-10-26
 
 ### Gewijzigd
