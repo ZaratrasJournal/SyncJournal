@@ -10860,6 +10860,24 @@ ExchangeAPI.blofin.parseCsv=function(csv,bron){
   }
   return csvTrades;
 };
+// Kraken Futures account log: one lifecycle per position, through the same function as the API sync.
+ExchangeAPI.kraken.herkentCsv=function(csv){const h=csv.headers;
+  return (h.includes("uid")&&h.includes("realized pnl")&&h.includes("trade price"))
+    ||(h.includes("booking_uid")&&h.includes("info")&&h.includes("new_balance"));};   // account-log-JSON als CSV geplakt
+ExchangeAPI.kraken.parseCsv=function(csv,bron){
+  const blok=ExchangeAPI.kraken.csvBlokkade();if(blok)throw new Error(blok);
+  const rowsRaw=[];
+  for(const rij of csv.rijen){
+    const vals=rij.map(v=>v.replace(/"/g,""));
+    const r={};csv.headers.forEach((h,idx)=>r[h]=vals[idx]||"");
+    rowsRaw.push(r);
+  }
+  const uit=ExchangeAPI.kraken.levenslopenUitAccountLog(ExchangeAPI.kraken._logRegelsUitCsv(rowsRaw));
+  const csvTrades=uit.trades.filter(t=>t.status!=="partial").map(t=>t.source===bron?t:{...t,source:bron});   // an older CSV must not reopen a closed trade
+  // niet-sluitende regels gaan als eigenschap mee naar de import-toast; de details staan in de console
+  if(uit.waarschuwingen.length){csvTrades._waarschuwingen=uit.waarschuwingen;console.warn('[kraken csv] '+uit.waarschuwingen.length+' regel(s) niet sluitend:',uit.waarschuwingen);}
+  return csvTrades;
+};
 function parseExchangeCsvText(text,forExchange){
         const lines=text.split("\n").filter(l=>l.trim());
         if(lines.length<2)throw new Error("Leeg bestand");
@@ -10890,20 +10908,7 @@ function parseExchangeCsvText(text,forExchange){
           &&lcH.some(h=>/(realized|realised).*pnl|^pnl$|\bpnl\b/.test(h))
           &&lcH.some(h=>/avg|average|price|px/.test(h));
         let csvTrades=[];
-        // Kraken account log — één levensloop per positie, via de adapter (CSV-import en API-sync delen die functie)
-        if(isKrakenLog){
-          const blok=ExchangeAPI.kraken.csvBlokkade();if(blok)throw new Error(blok);
-          const rowsRaw=[];
-          for(let i=1;i<lines.length;i++){
-            const vals=parseCSVLine(lines[i]).map(v=>v.replace(/"/g,""));
-            const r={};headers.forEach((h,idx)=>r[h]=vals[idx]||"");
-            rowsRaw.push(r);
-          }
-          const uit=ExchangeAPI.kraken.levenslopenUitAccountLog(ExchangeAPI.kraken._logRegelsUitCsv(rowsRaw));
-          uit.trades.filter(t=>t.status!=="partial").forEach(t=>csvTrades.push(forExchange?{...t,source:forExchange}:t));   // an older CSV must not reopen a closed trade
-          // niet-sluitende regels gaan als eigenschap mee naar de import-toast; de details staan in de console
-          if(uit.waarschuwingen.length){csvTrades._waarschuwingen=uit.waarschuwingen;console.warn('[kraken csv] '+uit.waarschuwingen.length+' regel(s) niet sluitend:',uit.waarschuwingen);}
-        }else if(isBlofinOrder){/* al verwerkt hierboven */}else if(isMexcPosition){
+        if(isMexcPosition){
           // MEXC Position History — positie-level data met entry, exit, pnl
           const normNum=(s)=>String(s||"").replace(/"/g,"").replace(/,/g,"").replace(/USDT|USDC|USD/g,"").trim();
           for(let i=1;i<lines.length;i++){
