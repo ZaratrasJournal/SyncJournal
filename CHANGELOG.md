@@ -16,7 +16,7 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
-## [Unreleased]
+## [v1.18.2] — 2026-10-26
 
 ### Gewijzigd
 - **Review: de nieuwste trade staat bovenaan.** De lijst bij *Per trade*, de kaarten in *Beeld* en de
