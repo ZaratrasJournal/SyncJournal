@@ -111,7 +111,7 @@ Elk scenario heeft een verwacht resultaat. Loop deze door bij twijfel of doe een
 | M1 | Open positie → close in 1 keer | 1 trade `closed`, pnl = realised, fees absoluut (geen minteken) | ✓ |
 | M2 | Trade met TP-laddered exits | 1 trade met meerdere close-prijzen, fees gesommeerd | ✓ |
 | M3 | Verzin een mini-trade (€10 size) → check of getal klopt | Berekening klopt op 0.01 nauwkeurig | — |
-| M4 | xlsx-export van MEXC web → import in app | Trade-counts ≈ API-count, fees identiek per pair | ✓ 3way |
+| M4 | MEXC-export (xlsx, sinds v1.18.6 eerst opgeslagen als CSV) → import in app | Trade-counts ≈ API-count, fees identiek per pair | ✓ 3way |
 | M5 | Σ trades.pnl op Dashboard ≈ Σ realised in MEXC web | Binnen $20 over een maand (drift = boundary) | ✓ |
 
 ### Kraken Futures
@@ -165,7 +165,7 @@ Auto-getest: scenario L in [tests/scenarios-klmn.spec.js](../tests/scenarios-klm
 | Exchange | Format | Regels | Verwacht resultaat |
 |---|---|---|---|
 | Blofin | Order History CSV | `Underlying Asset,Margin Mode,...` 15 kolommen | FIFO match → trades reconstrueert |
-| MEXC | Futures Order History XLSX | 18 kolommen, FINISHED status filter | Closes met PNL≠0 worden trades |
+| MEXC | Futures Order History (XLSX → opslaan als CSV) | 18 kolommen, FINISHED status filter | Closes met PNL≠0 worden trades |
 | Kraken | Account Log CSV | 22 kolommen, "futures trade" rows | Lifecycle per contract → trades |
 | Hyperliquid | Trade History CSV | 8 kolommen `time,coin,dir,...` | FIFO zoals API |
 | FTMO MT5 | MetriX CSV | 15+ kolommen, Type=buy/sell | Forex/CFD trades |

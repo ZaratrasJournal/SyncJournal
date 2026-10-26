@@ -158,7 +158,8 @@ zonder dit: aparte journals versnipperen je strategie-statistiek [S4].
 | **Breakout Terminal** | Geen export onderzocht; geen API (onderzoek 14-10-2026) | Wacht op een voorbeeld |
 
 **Gevolg:** automatisch koppelen gaat pas echt als SyncJournal ook het **MT5-rapport** (HTML/XLSX) leest.
-De XLSX-route bestaat al: `handleCsvFile` leest `.xlsx` met SheetJS. In het MetriX-CSV staat geen login,
+De XLSX-route bestond toen: `handleCsvFile` las `.xlsx` met SheetJS. *(Sinds v1.18.6, backlog C4, niet meer: een
+Excel-bestand moet eerst als CSV opgeslagen worden. Een MT5-rapport lezen gaat dus via HTML of CSV.)* In het MetriX-CSV staat geen login,
 dus daar moet de journal het account afleiden (zie §6.3) of erom vragen.
 
 ---

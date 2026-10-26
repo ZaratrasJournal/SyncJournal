@@ -68,7 +68,7 @@ const opslag = p => p.evaluate(async () => {
 
   console.log('─── Zonder ?dev=1: niets te zien, niets vastgelegd ───');
   {
-    const { ctx, p, errs } = await H.openJournal(b);
+    const { ctx, p, errs } = await H.openJournal(b, { http: true });
     await p.evaluate(nepExchanges, { WALLET, GEHEIM });
     const n = await syncAlle(p);
     ok('de nep-sync loopt (alle vier ≥ 0)', EX.every(e => n[e] >= 0), JSON.stringify(n));
@@ -80,7 +80,7 @@ const opslag = p => p.evaluate(async () => {
   }
 
   console.log('─── Met ?dev=1: per exchange een download ───');
-  const { ctx, p, errs } = await H.openJournal(b, { query: '?dev=1' });
+  const { ctx, p, errs } = await H.openJournal(b, { http: true, query: '?dev=1' });
   ok('IS_DEV aan en onthouden onder sj_dev', await p.evaluate(() => IS_DEV === true && localStorage.getItem('sj_dev') === 'true'));
   const leeg = await devBlok(p);
   ok('dev-blok zonder koppelingen: zegt wat er ontbreekt', leeg !== null && /Koppel/.test(leeg), leeg);
@@ -138,9 +138,9 @@ const opslag = p => p.evaluate(async () => {
   }
 
   console.log('─── ?dev=0 zet hem uit ───');
-  await p.goto(H.APP + '?dev=0', { waitUntil: 'domcontentloaded' }); await H.bootKlaar(p); await p.waitForTimeout(300);
+  await p.goto(H.APP_HTTP + '?dev=0', { waitUntil: 'domcontentloaded' }); await H.bootKlaar(p); await p.waitForTimeout(300);
   ok('?dev=0: IS_DEV uit, onthouden, geen dev-blok', await p.evaluate(() => IS_DEV === false && localStorage.getItem('sj_dev') !== 'true') && (await devBlok(p)) === null);
-  await p.goto(H.APP, { waitUntil: 'domcontentloaded' }); await H.bootKlaar(p); await p.waitForTimeout(300);
+  await p.goto(H.APP_HTTP, { waitUntil: 'domcontentloaded' }); await H.bootKlaar(p); await p.waitForTimeout(300);
   ok('daarna zonder parameter: blijft uit', await p.evaluate(() => IS_DEV === false));
   ok('geen JS-fouten (dev)', errs.length === 0, errs.slice(0, 3).join(' | '));
   await ctx.close();

@@ -26,7 +26,8 @@ const bouwLogs = (lijst) => { let id = 5000; const logs = [];
   return logs; };
 (async () => {
   const url = 'file:///' + path.resolve('work/syncjournal.html').replace(/\\/g, '/');
-  const b = await chromium.launch(); const p = await b.newPage(); p.on('dialog', d => d.accept());
+  // The app shows times in the browser's zone (ts2date/ts2time); the expected 19:12 is a Dutch member's view.
+  const b = await chromium.launch(); const p = await (await b.newContext({ timezoneId: 'Europe/Amsterdam' })).newPage(); p.on('dialog', d => d.accept());
   const errs = []; p.on('pageerror', e => errs.push(String(e)));
   await p.goto(url, { waitUntil: 'networkidle' });
   await p.evaluate(async () => { localStorage.clear(); try { await IDB.clearAll(); } catch (e) {} });

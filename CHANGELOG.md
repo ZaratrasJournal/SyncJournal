@@ -16,6 +16,27 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v1.18.8] — 2026-10-26
+
+### Gewijzigd
+- **De melding "nog geen handmatig account" of "gekoppeld via de API" in het tradeformulier heeft nu een knop Backtest-trade.** Die zet Exchange op Geen exchange en Soort op Backtest. Naast die knop staat nog steeds Account toevoegen.
+
+---
+
+## [v1.18.7] — 2026-10-26
+
+### Gewijzigd
+- **Kies je bij een nieuwe trade "Geen exchange", dan springt Soort vanzelf op Backtest.** Kies je daarna weer een exchange, dan gaat hij terug naar Live. Een Paper- of Gemist-trade houdt zijn soort.
+
+---
+
+## [v1.18.6] — 2026-10-26
+
+### Gewijzigd
+- **Excel-bestanden (.xlsx en .xls) worden niet meer ingelezen.** Sla je export op als CSV en lees die in. Kies je toch een Excel-bestand, dan importeert de journal niets en zegt hij hoe het wel kan. Tip voor MEXC (die geeft vaak een Excel-export): open het bestand in Excel of Google Sheets, kies **Opslaan als → CSV** en lees dat bestand in. Daarmee laadt de journal geen enkel extern script meer.
+
+---
+
 ## [v1.18.5] — 2026-10-26
 
 ### Gewijzigd
