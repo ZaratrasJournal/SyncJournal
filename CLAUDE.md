@@ -143,7 +143,7 @@ Dat is de bron; hieronder de korte versie.
   bestaande helper het al oplost (voorkomt duplicaten in de grote single-file).
 - **Bij bugfixes**: fix de wortel-oorzaak, niet het symptoom. Inspecteer elke caller
   van de functie die je wijzigt en loop de sibling-paden na (zie ook de
-  exchange-isolatie-regel en de graphify-impact-check elders in dit document).
+  exchange-isolatie-regel en de impact-check elders in dit document).
 - **Liever verwijderen en hergebruiken** dan toevoegen. Maar offer nooit correctheid
   of leesbaarheid op voor een kleinere diff.
 - **Magic values**: benoem elke literal waarvan de betekenis niet op de plek zelf
@@ -186,7 +186,7 @@ De app praat met exchange-API's via een **online Cloudflare Worker**, niet via `
 
 ### Wat dat betekent voor lokaal testen
 - Lokaal end-to-end testen tegen echte MEXC/Blofin/Kraken/Hyperliquid APIs **kan niet** zonder credentials + actieve Worker.
-- **Snapshot-fixture pattern** blijft daarom de enige autonome test-route: `?dev=1` knop captured raw API response → JSON fixture → offline pipeline-test in `tests/`. **Let op:** in SyncJournal ontbreekt die knop nog (backlog **W2**); tot dan levert Denny ruwe data handmatig aan. Zie sectie "Autonome testing" verder in dit document.
+- **Snapshot-fixture pattern** blijft daarom de enige autonome test-route: met `?dev=1` downloadt Zaratras in Instellingen → Data per exchange de ruwe antwoorden van de laatste sync ("Ruwe gegevens downloaden") → JSON fixture → offline pipeline-test in `tests/`. Afspelen: `docs/w2-ruwe-data.md`. Zie sectie "Autonome testing" verder in dit document.
 - Mock-fixtures voor proxy-response in unit-tests blijven ook bruikbaar voor client-side parsing/filter validatie (bv. `tests/mexc-history-orders.spec.js` v12.93 patroon).
 
 ### Wat te doen bij een proxy-wijziging
@@ -218,7 +218,7 @@ Hyperliquid juist niet. Toets dat expliciet vóór je `proxyCall` of `refreshBal
 - **Pure utilities mogen gedeeld blijven** als ze ZERO exchange-aannames hebben: `syncTradeFlatFields` (layers→flat tags), `normalizeTrade` (price-precisie fix), `getConsumedSiblings` (algemene matchKey). Geen `if (exchange === ...)` ergens in. Bij twijfel: per exchange.
 - **Bij wijzigingen aan iets dat door meerdere exchanges loopt**: expliciet toetsen welke exchanges het pad raken. Een commit-message als "fix Blofin partial-close" terwijl je `detectPartialFromSiblings` (shared) wijzigt = misleidend, want MEXC gaat ook door dezelfde functie.
 - **Nieuwe exchange toevoegen** = vol-formuleerd adapter-object met alle methodes (incl. no-ops voor wat niet relevant is, bv. `detectPartials: t => t` voor CSV-only). Dispatcher in App roept altijd via `ExchangeAPI[ex].method(...)`, nooit een if/else op exchange-naam in App.
-- **Snapshot-fixture pattern** (`?dev=1` knoppen voor Blofin in v12.85, oude app): per-exchange uitbreidbaar. In SyncJournal nog niet aanwezig — backlog **W2**.
+- **Snapshot-fixture pattern**: met `?dev=1` per gekoppelde exchange "Ruwe gegevens downloaden" in Instellingen → Data (zie `IS_DEV` hierboven). Een nieuwe adapter legt zijn antwoorden op dezelfde manier vast.
 
 **Anti-patroon**: één gedeelde `detectPartialFromSiblings` met `if (exchange === "blofin") { /* speciale logica */ }`. Dat trekt Blofin-aannames over het MEXC-pad heen. Beter: split naar adapter-methodes.
 
@@ -275,14 +275,7 @@ Claude mag (en moet) deze tools proactief inzetten. Denny hoeft er niet steeds o
   **`/grill-me` gaat voor `superpowers:brainstorming`.** Die laatste meldt zich uit zichzelf bij
   elke "maak iets"-vraag; gebruik hem alleen bij grote nieuwe features, ná grill-me.
 - **Bij onbekend deel van `work/syncjournal.html` (~8.900 regels)**: gebruik `/zoom-out` — geeft module-map + callers met domain-vocabulaire. Sneller oriënteren dan blind grep'en.
-- **Impact-check vóór wijziging aan een gedeelde / cross-exchange helper** (`netPnl`, `sourceTypeOf`, `normalizeTrade`, `syncTradeFlatFields`, `detectPartialFromSiblings`, `getConsumedSiblings`, e.d.): raadpleeg de graphify-graaf voor de callers — `graphify query "wat roept netPnl aan"` of `graphify path "A" "B"` — om te toetsen wélke exchanges/modules dat pad raken (sluit aan op de exchange-isolatie-regel). De graaf staat in `graphify-out/` (gitignored, lokaal), met de bron in `graphify-src/`. Dit is een **"wat raakt dit nog meer"-tool**, géén vervanging voor grep — voor "waar staat functie X" blijft grep sneller én altijd actueel.
-  - **De graaf klopt op dit moment niet.** `graphify-src/tradejournal.js` is geextraheerd uit de
-    **bevroren** `tradejournal.html` en dateert van 22-06-2026. Hij beschrijft dus een andere app
-    dan die waarin we werken: aanroepers die hier niet bestaan, en alles van na juni ontbreekt
-    (Kraken-levensloop, OKX-adapter). **Vertrouw hem niet tot hij ververst is** — gebruik grep.
-  - **Verversen**: extraheer het `<script>`-blok van `work/syncjournal.html` naar
-    `graphify-src/syncjournal.js`, verwijder de oude `tradejournal.js`, en draai
-    `graphify graphify-src --update` (code-only/AST, kost geen tokens). Zie backlog W3.
+- **Impact-check vóór wijziging aan een gedeelde / cross-exchange helper** (`netPnl`, `sourceTypeOf`, `normalizeTrade`, `syncTradeFlatFields`, `detectPartialFromSiblings`, `getConsumedSiblings`, e.d.): zoek met grep alle aanroepers en toets per exchange welke paden de wijziging raakt (sluit aan op de exchange-isolatie-regel).
 - **Changelog-discipline**: elke user-facing commit hoort in de release-flow (zie boven). Refactor/test/docs hoeven niet in changelog.
 - **Bij bug-fix op theme-gerelateerd gedrag**: licht én donker checken. (De oude journal had er zes; SyncJournal twee.)
 
