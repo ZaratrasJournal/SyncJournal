@@ -112,8 +112,13 @@ Dat is de bron; hieronder de korte versie.
   Specs die `tj_`-sleutels seeden starten daardoor in een lege journal achter een modal — zo faalden
   64 omgezette specs op 29-09-2026 (backlog T2). Seed in specs via `tests/helpers/dov-page.js`.
 - **Environment flags**:
-  - `IS_DEV` (via `?dev=1` in URL, persistent) — verbergt dev-only UI (proxy-URL, debug knoppen) voor community.
-    **Bestaat in SyncJournal (nog) niet** — dit beschrijft de oude app. Terugbrengen is backlog **W2**.
+  - `IS_DEV` — dev-modus, terug sinds backlog **W2**. Aan met `?dev=1` in het adres
+    (bv. `syncjournal.nl/app?dev=1`), uit met `?dev=0`; het apparaat onthoudt het onder `sj_dev`
+    (`DB.save('dev', …)`). Gewone leden zien er niets van. Het enige wat erachter zit: in Instellingen →
+    Data → diagnosepaneel per gekoppelde exchange "Ruwe gegevens downloaden" — de ruwe antwoorden van
+    de laatste sync, zonder sleutels, wallet, accountnummers of saldo. Die worden alléén met dev-modus
+    vastgelegd, en alleen in het geheugen van het tabblad (`RUWE_DATA`), nooit in opslag of back-up.
+    Afspelen in een spec: `docs/w2-ruwe-data.md`. Nieuwe dev-only UI hoort achter deze vlag.
   - `IS_HOSTED` (detecteert file:// / localhost vs. public domain) — regelt variant van de update-knop (↻ Update nu op hosted, ⬇ Download op lokaal).
 - **Inline JSX styling**: inline `style={{}}` is de norm in deze file. CSS-class alleen als er een hover/media-query nodig is. Houd style-objects compact.
 - **React hooks**: `useState` / `useEffect` / `useRef` / `useMemo` / `useCallback` zijn globaal gedestructureerd bovenin het bestand (`const {useState,...} = React`). Geen `React.useState` nodig.
