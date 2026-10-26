@@ -1489,6 +1489,7 @@ details.faq[open] summary{color:var(--accent)}
 .toast{background:var(--surface);border:1px solid var(--line);border-left-width:3px;border-radius:10px;box-shadow:0 10px 34px rgba(20,30,60,.18);padding:11px 16px;font-size:13px;font-weight:600;color:var(--ink);opacity:0;transform:translateY(12px);transition:opacity .28s,transform .28s;white-space:nowrap}
 body.dark .toast{box-shadow:0 10px 34px rgba(0,0,0,.5)}
 .toast.on{opacity:1;transform:translateY(0)}
+.toast{white-space:normal;width:max-content;max-width:min(560px,calc(100vw - 32px))}   /* long messages wrap instead of running off a phone screen */
 /* Error-balk (ErrorCenter) — zichtbare, herstelbare foutmeldingen */
 .errbar{position:fixed;left:50%;bottom:0;transform:translate(-50%,120%);width:min(720px,96vw);z-index:210;display:flex;gap:12px;align-items:flex-start;padding:14px 16px;border-radius:14px 14px 0 0;background:var(--surface);border:1px solid var(--line);border-bottom:none;box-shadow:0 -14px 44px -14px rgba(10,20,50,.4);transition:transform .28s;font-size:13px}
 .errbar.on{transform:translate(-50%,0)}
@@ -4425,7 +4426,7 @@ function resizeShot(url){return new Promise(res=>{const img=new Image();
 async function downloadCoachPackage(){
   const trades=revSelTrades(); if(!trades.length)return;
   const nameEl=document.getElementById('revShareName'); const name=(nameEl?nameEl.value:DB.load('share_name','')||'').trim(); DB.save('share_name',name);
-  const hide=STATE.shareHide, go=document.getElementById('revPkgBtn'), busy=document.getElementById('shareBusy');
+  const hide=revHide(), go=document.getElementById('revPkgBtn'), busy=document.getElementById('shareBusy');
   if(go)go.disabled=true; if(busy)busy.style.display='block';
   try{
     const shotMap={};
@@ -4606,7 +4607,7 @@ function revSelPanel(){const sel=revSelTrades(),n=sel.length,dis=n?'':'disabled'
     <div class="act">
       <button class="btn pri" ${dis} onclick="openRevPres(STATE.revShareSel,null,true)">▶ Presenteer geselecteerde<small>volledig scherm · info, review en coach-feedback ernaast</small></button>
       <button class="btn" id="revPkgBtn" ${dis} onclick="downloadCoachPackage()">⬇ Coach-pakket<small>één HTML-bestand met beelden, info, review en coach-feedback</small></button>
-      <button class="btn" ${dis} onclick="revDiscord(STATE.revShareSel[0])">📋 Kopieer voor Discord<small>chart + trade-info als beeld, plus tekst (eerste trade)</small></button>
+      ${revDcKnoppen(sel,dis)}
     </div><div id="shareBusy" class="hint" style="display:none">⏳ Pakket wordt gebouwd…</div></div>`;}
 // Presentation: every screenshot of the chosen trades in order; a trade without one gets one TV-only slot.
 function openRevPres(ids,startId,panel){const items=[];
@@ -4674,13 +4675,27 @@ function revDiscordTekst(t,hide){const r=tradeROrNull(t),tv=(t.tvLinks||[]).filt
 // Discord image: chart left, trade info right, the note in a footer. Always dark: it is a standalone PNG, not the app UI.
 const DC={bg:'#0d1118',bar:'#151a23',ink:'#eef1f7',sub:'#c3c9d6',mut:'#8a92a6',pos:'#2fbf8a',neg:'#ef5d6a',brand:'#7d88ff'};
 const DC_W=1280,DC_H=760,DC_PANEL=440,DC_FOOT=64;   // chart area, info panel width, footer height (px)
+// Shared review exports (Discord, coach package) leave amounts out when "Bedragen verbergen" is ticked or privacy mode is on.
+const revHide=()=>!!(STATE.shareHide||STATE.priv);
+const revDcNaam=t=>'discord-'+(t.date||'trade')+'-'+(String(t.pair||'').replace(/[^A-Za-z0-9]+/g,'-').replace(/^-+|-+$/g,'')||'trade')+'.png';
+function revDcImg(src){const img=new Image();img.crossOrigin='anonymous';return new Promise((ok,nok)=>{img.onload=()=>ok(img);img.onerror=nok;img.src=src;});}
+function revDcDownload(blob,naam){const u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download=naam;a.click();setTimeout(()=>URL.revokeObjectURL(u),3000);}
 // Returns what happened: 'beeld' (image + text on the clipboard), 'download' (image saved, text copied) or 'tekst' (text only).
-async function revDiscord(id){const t=T.find(x=>x.id===id);if(!t)return 'tekst';const hide=STATE.shareHide,tekst=revDiscordTekst(t,hide),src=revShots(t)[0];
-  const alleenTekst=async msg=>{try{await navigator.clipboard.writeText(tekst);}catch(e){}toast(msg,'info');return 'tekst';};
+// stap {i,n} is set when walking through a multi-trade selection; it only changes the toasts.
+async function revDiscord(id,stap){const t=T.find(x=>x.id===id);if(!t)return 'tekst';const hide=revHide(),tekst=revDiscordTekst(t,hide),src=revShots(t)[0];
+  const pre=stap?(stap.i+1)+' van '+stap.n:'',laatste=stap&&stap.i+1===stap.n;
+  const alleenTekst=async msg=>{try{await navigator.clipboard.writeText(tekst);}catch(e){}toast(stap?pre+': '+msg+'. Plak in Discord en klik dan op Volgende.':msg,'info');return 'tekst';};
   if(!src)return alleenTekst('Geen screenshot bij deze trade: alleen de tekst gekopieerd');
-  const img=new Image();img.crossOrigin='anonymous';
-  try{await new Promise((ok,nok)=>{img.onload=ok;img.onerror=nok;img.src=src;});}catch(e){return alleenTekst('Screenshot niet te laden: alleen de tekst gekopieerd');}
-  const c=document.createElement('canvas');c.width=DC_W+DC_PANEL;c.height=DC_H+DC_FOOT;const g=c.getContext('2d');
+  let img;try{img=await revDcImg(src);}catch(e){return alleenTekst('Screenshot niet te laden: alleen de tekst gekopieerd');}
+  let blob;try{blob=await revDiscordCanvas(t,img,hide);}
+  catch(e){return alleenTekst('Dit beeld komt van een andere website en mag niet mee: alleen de tekst gekopieerd');}
+  try{await navigator.clipboard.write([new ClipboardItem({'image/png':blob,'text/plain':new Blob([tekst],{type:'text/plain'})})]);
+    toast(!stap?'📋 Beeld + tekst gekopieerd: plak in Discord (Ctrl+V)':laatste?`📋 ${pre} gekopieerd. Plak in Discord en verstuur je bericht.`:`📋 ${pre} gekopieerd. Plak in Discord en klik dan op Volgende.`,'ok');return 'beeld';}
+  catch(e){revDcDownload(blob,revDcNaam(t));try{await navigator.clipboard.writeText(tekst);}catch(_){}
+    if(stap)toast(pre+': klembord staat geen beeld toe, beeld gedownload en tekst gekopieerd. Liever alles in één keer?','info',{label:'⬇ Alle beelden',fn:revDiscordAlles});
+    else toast('Klembord staat geen beeld toe: beeld gedownload, tekst gekopieerd','info');return 'download';}}
+// Draws the Discord image (chart, info panel, footer) and resolves to a PNG Blob; rejects when the canvas is tainted.
+function revDiscordCanvas(t,img,hide){const c=document.createElement('canvas');c.width=DC_W+DC_PANEL;c.height=DC_H+DC_FOOT;const g=c.getContext('2d');
   g.fillStyle=DC.bg;g.fillRect(0,0,c.width,c.height);
   const sc=Math.min(DC_W/(img.naturalWidth||1),DC_H/(img.naturalHeight||1)),dw=img.naturalWidth*sc,dh=img.naturalHeight*sc;g.drawImage(img,(DC_W-dw)/2,(DC_H-dh)/2,dw,dh);
   let y=48;const x=DC_W+28,r=tradeROrNull(t),b=htfBias(t);
@@ -4696,11 +4711,32 @@ async function revDiscord(id){const t=T.find(x=>x.id===id);if(!t)return 'tekst';
   revTpRegels(t).forEach(x=>regel(x.l,x.v,x.hit?DC.pos:null));
   g.fillStyle=DC.bar;g.fillRect(0,DC_H,c.width,DC_FOOT);g.fillStyle=DC.brand;g.font='bold 24px Inter,sans-serif';g.fillText('SyncJournal',24,DC_H+41);
   const nt=t.notes?'“'+String(t.notes).replace(/\s+/g,' ')+'”':'';g.fillStyle=DC.mut;g.font='20px Inter,sans-serif';g.fillText(nt.length>110?nt.slice(0,107)+'…”':nt,200,DC_H+40);
-  let blob;try{blob=await new Promise((ok,nok)=>{try{c.toBlob(bl=>bl?ok(bl):nok(new Error('leeg')),'image/png');}catch(e){nok(e);}});}
-  catch(e){return alleenTekst('Dit beeld komt van een andere website en mag niet mee: alleen de tekst gekopieerd');}
-  try{await navigator.clipboard.write([new ClipboardItem({'image/png':blob,'text/plain':new Blob([tekst],{type:'text/plain'})})]);toast('📋 Beeld + tekst gekopieerd: plak in Discord (Ctrl+V)','ok');return 'beeld';}
-  catch(e){const u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download='discord-'+(t.date||'trade')+'.png';a.click();setTimeout(()=>URL.revokeObjectURL(u),3000);
-    try{await navigator.clipboard.writeText(tekst);}catch(_){}toast('Klembord staat geen beeld toe: beeld gedownload, tekst gekopieerd','info');return 'download';}}
+  return new Promise((ok,nok)=>{try{c.toBlob(bl=>bl?ok(bl):nok(new Error('leeg')),'image/png');}catch(e){nok(e);}});}
+// The clipboard holds one image at a time, so a multi-trade selection is copied one trade per click (F2).
+// The position resets whenever the selection (or its order) changes.
+let revDcBusy=false;   // false | 'een' | 'alle': an image is being made, buttons are off
+const REV_DC_GAP=250;  // ms between downloads; Chrome drops downloads that start in the same instant
+function revDcStap(){const sel=revSelTrades(),key=sel.map(t=>t.id).join();
+  if(STATE.revDcKey!==key){STATE.revDcKey=key;STATE.revDcIdx=0;}
+  const i=Math.min(STATE.revDcIdx||0,Math.max(0,sel.length-1));return {sel,i,t:sel[i],key};}
+function revDcKnoppen(sel,dis){const n=sel.length,{i,t}=revDcStap(),uit=dis||(revDcBusy?'disabled':'');
+  if(n<2)return `<button class="btn" id="revDcBtn" ${uit} onclick="revDiscordVolgende()">${revDcBusy?'⏳ Beeld wordt gemaakt…':'📋 Kopieer voor Discord'}<small>chart + trade-info als beeld, plus tekst (eerste trade)</small></button>`;
+  return `<button class="btn" id="revDcBtn" ${uit} onclick="revDiscordVolgende()">${revDcBusy==='een'?'⏳ Beeld wordt gemaakt…':`📋 Kopieer ${i+1} van ${n} (${esc(t.pair)} ${esc(fmtD(t.date||''))})`}<small>${i?'Volgende: plak eerst de vorige in Discord':'één beeld per klik, Discord neemt er tot 10 per bericht'}</small></button>
+      <button class="btn" id="revDcAllBtn" ${uit} onclick="revDiscordAlles()">${revDcBusy==='alle'?'⏳ Beelden worden gemaakt…':'⬇ Alle beelden voor Discord'}<small>één PNG per trade, de teksten samen op het klembord</small></button>`;}
+async function revDiscordVolgende(){if(revDcBusy)return;const {sel,i,t,key}=revDcStap();if(!t)return;
+  revDcBusy='een';render();
+  try{return await revDiscord(t.id,sel.length>1?{i,n:sel.length}:null);}
+  finally{revDcBusy=false;if(sel.length>1&&STATE.revDcKey===key)STATE.revDcIdx=(i+1)%sel.length;render();}}
+async function revDiscordAlles(){const sel=revSelTrades();if(!sel.length||revDcBusy)return;const hide=revHide(),namen={};let n=0,zonder=0;
+  revDcBusy='alle';render();
+  try{for(const t of sel){const src=revShots(t)[0];let blob=null;
+      if(src){try{blob=await revDiscordCanvas(t,await revDcImg(src),hide);}catch(e){}}
+      if(!blob){zonder++;continue;}
+      let naam=revDcNaam(t);if(namen[naam])naam=naam.replace(/\.png$/,'-'+(++namen[naam])+'.png');else namen[naam]=1;
+      if(n)await new Promise(r=>setTimeout(r,REV_DC_GAP));revDcDownload(blob,naam);n++;}
+    let txt=true;try{await navigator.clipboard.writeText(sel.map(t=>revDiscordTekst(t,hide)).join('\n\n'));}catch(e){txt=false;}
+    toast(`⬇ ${n} beeld${n===1?'':'en'} gedownload${zonder?`, ${zonder} zonder beeld`:''}. ${txt?'De teksten staan samen op het klembord.':'De teksten konden niet naar het klembord.'}${n>1?' Je browser kan één keer toestemming vragen voor meerdere downloads: kies Toestaan.':''}`,n?'ok':'info');}
+  finally{revDcBusy=false;render();}}
 let revPres=null;
 function revPerTrade(){
   if(!FT.length)return emptyState('trades-none');
@@ -5867,7 +5903,7 @@ const FAQS=[
   ['✅ Review & delen met je coach',[
     ['Waarom zou ik trades reviewen?','Omdat terugkijken met je screenshots de snelste manier is om te leren. Je ziet wat je toen zag, en wat je miste. De Review-pagina zet alles voor je klaar: chart, notities en cijfers. Plan er een vast moment voor, bv. elk weekend.'+faqVisie('visie-review')],
     ['Hoe markeer ik een trade als gereviewd?','Met de knop <b>Markeer gereviewd</b>: bovenaan een trade in <b>Per trade</b>, of onder een kaart in <b>🖼 Beeld</b>. Met de filters <b>Alle / Te doen / Gereviewed</b> en de periodeknoppen zie je wat er nog ligt. Let op: het vakje vóór een trade is om hem te <b>selecteren</b> voor delen, niet om hem af te vinken.'],
-    ['Hoe deel ik trades met mijn coach of trading-buddy?','Via <b>Review → 🖼 Beeld → Selectie & delen</b>. In Beeld staan alleen trades met een screenshot of TradingView-link.<ol><li>Vink de trades aan met het vakje vóór de datum.</li><li>Vul je naam in en kies of bedragen verborgen blijven.</li><li>Kies <b>▶ Presenteer geselecteerde</b> (samen op volledig scherm doorlopen), <b>⬇ Coach-pakket</b> (één HTML-bestand met beelden, info, review en coach-feedback, dat je coach gewoon in de browser opent) of <b>📋 Kopieer voor Discord</b> (chart en trade-info als één beeld, van de eerste geselecteerde trade).</li></ol>'+faqVisie('visie-review')],
+    ['Hoe deel ik trades met mijn coach of trading-buddy?','Via <b>Review → 🖼 Beeld → Selectie & delen</b>. In Beeld staan alleen trades met een screenshot of TradingView-link.<ol><li>Vink de trades aan met het vakje vóór de datum.</li><li>Vul je naam in en kies of bedragen verborgen blijven.</li><li>Kies <b>▶ Presenteer geselecteerde</b> (samen op volledig scherm doorlopen), <b>⬇ Coach-pakket</b> (één HTML-bestand met beelden, info, review en coach-feedback, dat je coach gewoon in de browser opent) of <b>📋 Kopieer voor Discord</b> (chart en trade-info als één beeld; met meer trades één voor één: plakken, op <i>Kopieer 2 van 3</i> klikken, weer plakken en dan één keer versturen) of <b>⬇ Alle beelden voor Discord</b> (één beeld per trade als download, de teksten samen op het klembord).</li></ol>'+faqVisie('visie-review')],
     ['Ziet mijn coach mijn bedragen?','Alleen als jij dat wilt. <b>Bedragen verbergen (alleen R)</b> staat standaard aan in <i>Selectie & delen</i>. Je coach ziet dan R-multiples (je resultaat gedeeld door je risico) en percentages in plaats van bedragen. Genoeg om je proces te beoordelen, zonder je saldo te delen.'],
     ['Waar schrijf ik op wat mijn coach zegt?','In het veld <b>💬 Coach-feedback</b> bij de trade: op Review in <b>Per trade</b>, of tijdens het presenteren. Het wordt bewaard bij de trade, gaat mee in je back-up en staat in het coach-pakket. Met "coach" bedoelen we hier je menselijke coach, zoals Sebas, niet Mori.'],
   ]],
@@ -6079,6 +6115,8 @@ function toggleAICoach(){AIPREFS.enabled=!AIPREFS.enabled;persistAIPrefs();rende
 function setAITone(t){AIPREFS.tone=t;persistAIPrefs();render();}
 function toggleAIFocus(k){AIPREFS.focus={...AIPREFS.focus,[k]:!AIPREFS.focus[k]};persistAIPrefs();render();}
 function toggleAIHide(){AIPREFS.hideAmounts=!AIPREFS.hideAmounts;persistAIPrefs();render();}
+// Amounts stay away from Mori when the Mori switch is on or privacy mode is on (same rule as revHide).
+const aiHide=()=>!!(AIPREFS.hideAmounts||STATE.priv);
 function aiScroll(){const c=document.getElementById('aiFeed');if(c)c.scrollTop=c.scrollHeight;}
 /* ── Coach package: the figures the coach may quote, computed by the app ──
    The model is told not to calculate. Everything it can say about numbers is in here, formatted the way
@@ -6160,7 +6198,7 @@ const COACH_RECENT_VRIJ=10; // recent trades with a free question; the coach loo
 //   'pretrade' (a trade idea in opts.idee against that setup, symbol, direction, playbook and TradingPlan).
 // Returns {tekst, n}; n = closed trades the package is about (0 = nothing to send).
 function coachPakket(opts){
-  const o={closed:CLOSED,boekingen:BOEKINGEN,hideAmounts:!!AIPREFS.hideAmounts,notes:AIPREFS.notes!==false,focusId:null,deel:'alles',...(opts||{})};
+  const o={closed:CLOSED,boekingen:BOEKINGEN,hideAmounts:aiHide(),notes:AIPREFS.notes!==false,focusId:null,deel:'alles',...(opts||{})};
   const rows=o.closed||[],geld=o.boekingen||rows;
   if(!rows.length)return {tekst:'',n:0};
   const chron=rows.slice().sort((x,y)=>tradeMoment(y)-tradeMoment(x));
@@ -6265,7 +6303,7 @@ function coachFilter(rows,f){f=f||{};const lc=v=>String(v).toLowerCase();
 function coachFilterTxt(f){const d=Object.entries(f||{}).filter(([,v])=>v!=null&&v!=='');return d.length?d.map(([k,v])=>k+'='+v).join(', '):'geen';}
 // Runs one tool_use block. Returns {tekst, fout}: tekst goes back to the model as the tool_result.
 function aiToolUitvoeren(c){
-  const o={hideAmounts:!!AIPREFS.hideAmounts,notes:AIPREFS.notes!==false},inp=(c&&c.input)||{};
+  const o={hideAmounts:aiHide(),notes:AIPREFS.notes!==false},inp=(c&&c.input)||{};
   if(c&&c._kapot)return {tekst:'De invoer van deze aanroep was niet te lezen. Probeer het opnieuw.',fout:true};
   const rows=coachFilter(CLOSED,inp.filter),kop=c.name+' (filter: '+coachFilterTxt(inp.filter)+')';
   if(c.name==='groep_stats'){

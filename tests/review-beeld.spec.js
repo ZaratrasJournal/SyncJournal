@@ -208,6 +208,16 @@ const mk = (id, over) => Object.assign({ id, date: '2026-09-' + String(id).padSt
   ok('Discord-beeld: maximaal 4 TP-regels + "+2"', rg.length === 5 && rg[4].l === '+2' && rg[0].hit === true && rg[3].hit === false, JSON.stringify(rg));
   ok('Discord-beeld zonder TP\'s: geen regels', (await p.evaluate(() => revTpRegels(T.find(t => t.id === 2)))).length === 0);
 
+  console.log('─── Privacy-modus in het coach-pakket ───');
+  await seed([mk(1, { date: '2026-09-29', screenshots: [PNG] })], 'beeld');
+  await p.evaluate(() => { STATE.revShareSel = [1]; STATE.shareHide = false; STATE.priv = true; render(); });
+  const dlPriv = p.waitForEvent('download');
+  await p.evaluate(() => downloadCoachPackage());
+  const htmlPriv = require('fs').readFileSync(await (await dlPriv).path(), 'utf8');
+  const bedrag = await p.evaluate(() => eurS(540));
+  ok('privacy-modus aan, vinkje uit: geen bedrag in het coach-pakket', !htmlPriv.includes(bedrag), bedrag);
+  await p.evaluate(() => { STATE.priv = false; STATE.shareHide = true; revSelClear(); setRevMode('trade'); });
+
   //@@NEXT
 
   ok('geen JS-errors', errs.length === 0, errs.slice(0, 3).join(' | '));
