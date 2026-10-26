@@ -182,6 +182,29 @@ details.fd-done .fd-card{box-shadow:none;background:var(--raise)}
 details.fd-explain{border-top:1px solid var(--line2)}
 details.fd-explain>summary{cursor:pointer;padding:12px 18px;font-size:12.5px;font-weight:600;color:var(--ink2)}
 .fd-explain-b{padding:0 18px 14px;display:grid;gap:6px;font-size:12.5px;color:var(--ink2)}
+.modal.smal{width:min(620px,96vw)}
+.csvk-herkend{background:var(--sink);border:1px solid var(--line2);border-radius:9px;padding:10px 13px;font-size:13px;color:var(--ink2)}
+.csvk-herkend b{color:var(--ink)}
+.csvk-file{font-family:var(--fn);font-size:11.5px;color:var(--muted);margin-top:3px;word-break:break-all}
+.csvk-list{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:9px;max-height:46vh;overflow:auto}
+.csvk-g{font-size:10px;font-weight:800;letter-spacing:.11em;text-transform:uppercase;color:var(--faint);padding:10px 13px 4px;background:var(--surface)}
+.csvk-opt{display:flex;align-items:center;gap:10px;padding:9px 13px;cursor:pointer;border-top:1px solid var(--line2);font-size:13.5px}
+.csvk-g+.csvk-opt{border-top:none}
+.csvk-opt:hover{background:var(--hover)}
+.csvk-opt.on{background:var(--accent-soft)}
+.csvk-opt input{accent-color:var(--accent);flex:none;margin:0}
+.csvk-l{font-weight:600}
+.csvk-sub{font-size:11.5px;color:var(--muted)}
+.csvk-voor{font-size:10px;font-weight:700;color:var(--accent);background:var(--accent-soft);border:1px solid var(--accent-line);border-radius:20px;padding:1px 7px}
+.csvk-nieuw{display:grid;grid-template-columns:1fr 1fr;gap:10px;background:var(--sink);border:1px solid var(--line2);border-radius:9px;padding:12px}
+.csvk-full{grid-column:1/-1}
+.csvk-warn{display:flex;flex-direction:column;gap:6px}
+.csvk-toch{display:flex;align-items:center;gap:7px;font-weight:600;cursor:pointer}
+.csvk-p{font-size:13px;line-height:1.55;color:var(--ink2);margin:0}
+.csvk-dim{color:var(--muted);font-size:12px;margin:0}
+.csvk-foot{display:flex;gap:8px;justify-content:flex-end;margin-top:4px}
+.csvk-foot .btn:disabled{opacity:.5;cursor:not-allowed}
+@media(max-width:520px){.csvk-nieuw{grid-template-columns:1fr}}
 .exnote{display:block;margin-top:4px;color:var(--amber);font-size:11.5px;line-height:1.45}
 .pbody{padding:16px}
 
@@ -2761,10 +2784,12 @@ function disconnectEx(id){
   render();toast(EXMAP[id].name+' losgekoppeld'+(killTrades?' · '+linked.length+' trades naar de prullenbak':''),'info');}
 // Auto-sync geldt voor élk verbonden account; deze schakelaar is een uitzondering erop.
 function toggleExSync(id){if(CONNS[id]){CONNS[id].noAuto=!CONNS[id].noAuto;persistConns();render();}}
-function addManual(){const n=document.getElementById('ma_name'),bal=document.getElementById('ma_bal'),name=n?n.value.trim():'',b=bal?parseFloat(String(bal.value).replace(',','.'))||0:0;
-  if(!name){toast('Geef het account een naam','err');return;}
+function maakManual(naam,saldo){const name=String(naam||'').trim(),b=parseFloat(String(saldo==null?'':saldo).replace(',','.'))||0;
+  if(!name){toast('Geef het account een naam','err');return null;}
   const tx=b>0?[{id:'tx'+Date.now().toString(36),type:'deposit',amount:String(b),date:localDateISO(),note:'Startsaldo'}]:[];
-  MANUAL.push({id:'m'+Date.now(),name,transactions:tx});persistManual();STATE.manOpen='';render();toast('✓ Handmatig account toegevoegd','ok');}
+  const m={id:'m'+Date.now(),name,transactions:tx};MANUAL.push(m);persistManual();return m;}
+function addManual(){const n=document.getElementById('ma_name'),bal=document.getElementById('ma_bal');
+  if(!maakManual(n?n.value:'',bal?bal.value:''))return;STATE.manOpen='';render();toast('✓ Handmatig account toegevoegd','ok');}
 function removeManual(id){
   const m=MANUAL.find(x=>x.id===id);if(!m)return;
   const linked=T.filter(t=>t&&t.exchange===id).map(t=>t.id);
@@ -5768,7 +5793,8 @@ const FAQS=[
     ['Hoe zie ik of mijn sync loopt?','Aan de stip links van je balans, rechtsboven. Een sync is het ophalen van je trades bij je exchange.<ul><li><b>Groen</b>: de automatische sync loopt op schema.</li><li><b>Oranje</b>: al een tijd niet gesynct, bv. omdat je laptop sliep.</li><li><b>Rood</b>: een sync mislukte, of een koppeling heeft een fout.</li><li><b>Grijs</b>: automatisch synchroniseren staat uit.</li></ul>Houd je muis erop voor het moment van de laatste sync. Bij <b>Instellingen → Accounts</b> staat per koppeling hoe de laatste sync ging. Onder <b>Synchronisatie</b> zet je auto-sync aan, kies je hoe vaak, en vind je de <b>Sync-geschiedenis</b>.','sync'],
     ['Komt mijn stop-loss vanzelf binnen?','Bij Kraken, Hyperliquid en OKX wel; bij Blofin, CSV-imports en handmatige trades vul je hem zelf in. Je <b>stop-loss</b> is de prijs waarop je uitstapt als het tegenzit. Zonder stop kan de app je R (resultaat gedeeld door risico) niet berekenen. De journal neemt de <b>oorspronkelijke</b> stop van je instap over. Het veld staat dan vast, met "van Kraken" (of je andere exchange) erbij. Heb je de stop later verzet, bv. naar break-even (je instapprijs), dan staat er "verschoven" bij. Je R rekent dan met het risico van je instap.'],
     ['Wat betekenen TP1, SL en Close ✋ bij een trade?','Ze vertellen hoe elk deel van je positie dichtging. Je ziet ze bij Kraken, Hyperliquid en OKX.<ul><li><b>TP1, TP2…</b>: een geraakte take-profit (een vooraf ingestelde winstorder).</li><li><b>TP3 ✋</b>: winst genomen met de hand.</li><li><b>SL</b>: je stop-loss is geraakt, ook als die op break-even of in de winst stond.</li><li><b>Close ✋</b>: met de hand gesloten, met verlies.</li></ul>Bijvoorbeeld: TP1 → TP2 → SL. Je vindt het in "Zo is deze positie gelopen", in de tijdlijn en in de presentatie.'],
-    ['Mijn exchange staat er niet tussen, wat nu?','Probeer de CSV-import; lukt dat niet, houd dan een handmatig account bij. Zes formaten worden automatisch herkend: Kraken, Blofin, MEXC, Hyperliquid, FTMO en OKX. Bij andere bestanden zoekt de import naar gangbare kolomnamen, zoals symbol of pair, date, entry, exit en pnl. Dat lukt niet bij elk bestand, dus controleer na het inlezen of je trades kloppen. Inlezen doe je bij <b>Instellingen → Accounts → CSV-import → Bestand kiezen</b>. Twee keer inlezen kan geen kwaad: dubbele trades worden overgeslagen.'],
+    ['Hoe importeer ik een CSV-bestand?','Kies het bestand in <b>Instellingen → Accounts → CSV-import</b>; de journal herkent het formaat en vraagt bij welk account het hoort.<ol><li>Exporteer je trade-geschiedenis bij je exchange als CSV of XLSX.</li><li>Ga naar <b>Instellingen → Accounts → CSV-import → Bestand kiezen</b> en kies het bestand.</li><li>Je ziet wat er herkend is, bijvoorbeeld "OKX-positiehistorie · 23 trades · 1 sep t/m 20 okt".</li><li>Kies het account. Het account dat bij het formaat hoort, staat al aangevinkt. Met <b>+ Nieuw account</b> maak je ter plekke een handmatig account, bijvoorbeeld voor een sub-account of een prop-firm-challenge.</li><li>Klik <b>Importeren</b>.</li></ol>Dit werkt nu voor Blofin (orderhistorie), OKX (positiehistorie), Kraken Futures (account-log), Hyperliquid (trades), MEXC (futures-historie), FTMO (MetriX-export) en een algemene CSV met kolommen als date, symbol, side en pnl. Twee keer hetzelfde bestand kan geen kwaad: trades die er al staan, worden overgeslagen. Heb je die exchange ook gekoppeld, dan kan een trade die via de koppeling binnenkomt dubbel komen te staan.'],
+    ['Mijn exchange staat er niet tussen, wat nu?','Meld het in de Morani Discord; tot die tijd houd je je trades bij in een handmatig account.<ol><li>Probeer eerst de CSV-import (<b>Instellingen → Accounts → CSV-import</b>). Herkent de journal je bestand niet, dan zegt hij dat meteen en importeert hij niets.</li><li>Meld je exchange in de Morani Discord, het liefst met een voorbeeld-export zonder persoonlijke gegevens. Dan kijken we of we hem kunnen toevoegen.</li><li>Maak intussen een handmatig account aan (<b>Instellingen → Accounts → Handmatige accounts</b>) en voeg je trades met de hand toe.</li></ol>Formaten die nu werken: Blofin, OKX, Kraken Futures, Hyperliquid, MEXC, FTMO en een algemene CSV met kolommen als date, symbol, side en pnl.'],
     ['Ik gebruik geen koppeling, kan ik toch een account bijhouden?','Ja, met een handmatig account. Ga naar <b>Instellingen → Accounts → Handmatige accounts</b>, vul een naam en een saldo in en klik op <b>+ Toevoegen</b>. Handig voor een prop-firm-challenge (een test bij een bedrijf als FTMO, dat je daarna met zijn geld laat traden), een beurs zonder koppeling, of om je backtests apart te houden. Via <b>Beheren</b> houd je zelf stortingen en opnames bij. Zet handmatige trades op zo\'n eigen account, niet op een gekoppelde exchange: daar zitten ze bij een sync in de weg.'],
   ]],
   ['📊 Analytics begrijpen',[
@@ -7623,7 +7649,7 @@ async function migApply(){
     showMigrationReport({...pre.report,trades:(T||[]).length},warnings,issues);
   }catch(e){ ErrorCenter.report('migrate',e,{severity:'error',userMsg:'De migratie is mislukt. Je bestaande data is ongewijzigd, probeer opnieuw of importeer een JSON-back-up.'}); }
 }
-function openModalHTML(html){ const m=document.getElementById('modal'); m.innerHTML=html; m.classList.add('on'); document.getElementById('scrim').classList.add('on'); modalKind='wizard';formDirty=false; }
+function openModalHTML(html){ const m=document.getElementById('modal'); m.innerHTML=html; m.classList.remove('smal'); m.classList.add('on'); document.getElementById('scrim').classList.add('on'); modalKind='wizard';formDirty=false; }
 function migOffer(){ const det=TJMigrate.detect(); if(!det)return; openModalHTML(`
   <div class="mhead"><h3>🛟 Je TradeJournal-data gevonden</h3><button class="xbtn" onclick="migLater()">×</button></div>
   <div class="mbody mbody-wiz">
@@ -9840,6 +9866,7 @@ function sjFromTj(tj){
   const t=migrateOldTrade({...tj,tpLevels:tps});
   t.srcId=String(tj.id||'');t.positionId=String(tj.positionId||'');
   const ty=sourceTypeOf(tj.source);if(EXMAP[ty])t.exchange=ty;
+  else if(tj.source&&(MANUAL.some(m=>m.id===tj.source)||fundedItem(tj.source)))t.exchange=String(tj.source);   // CSV import onto a chosen account
   // Fase 2: velden die de partial-detectie en open-positie-weergave nodig hebben.
   t.qtyAsset=parseFloat(tj.positionSizeAsset)||0;
   if(tj._rawCloseSize!=null)t._rawCloseSize=String(tj._rawCloseSize);
@@ -10621,7 +10648,7 @@ function parseExchangeCsvText(text,forExchange){
           }
         }
         if(!isKrakenLog&&!isBlofinOrder&&!isMexcPosition&&!isMexcFutures&&!isFtmoMetriX&&!isHyperliquidFills&&!isOkxPosition){
-          for(let i=1;i<lines.length;i++){const vals=parseCSVLine(lines[i]).map(v=>v.replace(/"/g,""));const row={};headers.forEach((h,idx)=>row[h.toLowerCase()]=vals[idx]||"");const pairRaw=row.symbol||row.pair||row.contract||"";const pair=pairRaw?(pairRaw.includes("/")?pairRaw:pairRaw):"BTC/"+(config.defaultQuote||"USDT");const trade={...EMPTY_TRADE,id:"csv_"+uid(),date:row.date||(row.time||"").split(" ")[0]||(row.closetime||"").split(" ")[0]||"",time:((row.time||"").split(" ")[1]||(row.closetime||"").split(" ")[1]||"00:00").slice(0,5),pair,direction:((row.side||row.direction||row.type||"").toLowerCase().includes("buy")||(row.side||"").toLowerCase().includes("long"))?"long":"short",entry:row.openprice||row.entryprice||row.entry||row.price||"",exit:row.closeprice||row.exitprice||row.exit||"",positionSize:row.volume||row.size||row.quantity||row.amount||"",pnl:row.pnl||row.profit||row.realizedpnl||row.realised_pnl||"",fees:row.fee||row.fees||row.commission||"0",leverage:row.leverage||"10",source:forExchange||"csv",status:"closed"};if(trade.date)csvTrades.push(trade)}
+          for(let i=1;i<lines.length;i++){const vals=parseCSVLine(lines[i]).map(v=>v.replace(/"/g,""));const row={};headers.forEach((h,idx)=>row[h.toLowerCase()]=vals[idx]||"");const pairRaw=row.symbol||row.pair||row.contract||"";const pair=pairRaw?(pairRaw.includes("/")?pairRaw:pairRaw):"BTC/USDT";   /* was config.defaultQuote: a leftover of the old journal, undefined here, so any file without a symbol column threw "config is not defined" */const trade={...EMPTY_TRADE,id:"csv_"+uid(),date:row.date||(row.time||"").split(" ")[0]||(row.closetime||"").split(" ")[0]||"",time:((row.time||"").split(" ")[1]||(row.closetime||"").split(" ")[1]||"00:00").slice(0,5),pair,direction:((row.side||row.direction||row.type||"").toLowerCase().includes("buy")||(row.side||"").toLowerCase().includes("long"))?"long":"short",entry:row.openprice||row.entryprice||row.entry||row.price||"",exit:row.closeprice||row.exitprice||row.exit||"",positionSize:row.volume||row.size||row.quantity||row.amount||"",pnl:row.pnl||row.profit||row.realizedpnl||row.realised_pnl||"",fees:row.fee||row.fees||row.commission||"0",leverage:row.leverage||"10",source:forExchange||"csv",status:"closed"};if(trade.date)csvTrades.push(trade)}
         }
         return csvTrades;
 }
@@ -10667,10 +10694,104 @@ function handleCsvFile(e){
       const wb=XLSX.read(ev.target.result,{type:'array'});
       text=XLSX.utils.sheet_to_csv(wb.Sheets[wb.SheetNames[0]]);
     }else text=ev.target.result;
-    sjImportCsvText(text,'');
+    csvKeuze(text,file.name);
   }catch(err){toast('CSV-fout: '+((err&&err.message)||err),'err');}};
   if(isXlsx)reader.readAsArrayBuffer(file);else reader.readAsText(file);
   e.target.value='';
+}
+
+/* ═══ CSV-import: first recognise, then ask which account the file belongs to (Zaratras 25-10-2026) ═══
+   Recognising runs the existing parser once without saving: each format branch already stamps its own default
+   source, so the format is read from that and the parsers stay exactly as they are (exchange isolation).
+   Importing then hands the chosen account to sjImportCsvText as forExchange. */
+const CSV_FORMATEN={
+  blofin:{naam:'Blofin-orderhistorie',ex:'blofin'},
+  okx:{naam:'OKX-positiehistorie',ex:'okx'},
+  kraken:{naam:'Kraken Futures account-log',ex:'kraken'},
+  hyperliquid:{naam:'Hyperliquid-trades',ex:'hyperliquid'},
+  mexc:{naam:'MEXC futures-historie',ex:'mexc'},
+  ftmo:{naam:'FTMO MetriX-export',firm:'FTMO'},
+  csv:{naam:'algemene CSV (kolommen op naam herkend)'},
+};
+const CSV_WERKT='Blofin (orderhistorie), OKX (positiehistorie), Kraken Futures (account-log), Hyperliquid (trades), MEXC (futures-historie), FTMO (MetriX-export), en een algemene CSV met kolommen als date, symbol, side en pnl';
+function csvHerken(text){
+  let trades;
+  try{trades=parseExchangeCsvText(text,'');}
+  catch(err){const m=(err&&err.message)||String(err);return {toestand:/^Leeg bestand$/.test(m)?'leeg':'fout',fout:m};}
+  const tel=(trades||[]).filter(t=>t&&(t.status==='closed'||t.status==='partial'));
+  if(!tel.length)return {toestand:'onbekend'};
+  const bron=String(tel[0].source||'csv'),fmt=CSV_FORMATEN[bron]||CSV_FORMATEN.csv;
+  const data=tel.map(t=>String(t.date||'')).filter(d=>/^\d{4}-\d{2}-\d{2}$/.test(d)).sort();
+  return {toestand:'herkend',bron,fmt,n:new Set(tel.map(t=>String(t.id))).size,van:data[0]||'',tot:data[data.length-1]||''};
+}
+function csvPeriode(van,tot){
+  const mn=['jan','feb','mrt','apr','mei','jun','jul','aug','sep','okt','nov','dec'];
+  const f=(d,jaar)=>{const p=d.split('-');return +p[2]+' '+mn[+p[1]-1]+(jaar?' '+p[0]:'');};
+  if(!van)return '';const jaar=van.slice(0,4)!==tot.slice(0,4)||van.slice(0,4)!==localDateISO().slice(0,4);
+  return van===tot?f(van,jaar):f(van,jaar)+' t/m '+f(tot,jaar);
+}
+// Every account a file can go to, from one place: exchanges, manual accounts and "+ Nieuw account".
+function csvDoelOpties(h){
+  const o=EXCHANGES.map(e=>({id:e.id,groep:'Exchanges',label:e.name,sub:CONNS[e.id]&&CONNS[e.id].connected?'gekoppeld':'',ex:true}));
+  MANUAL.forEach(m=>o.push({id:m.id,groep:'Handmatige accounts',label:m.name,sub:'handmatig'}));
+  o.push({id:'nieuw',groep:'Handmatige accounts',label:'+ Nieuw account',sub:'',nieuw:true});
+  const fmt=(h&&h.fmt)||{};let voor='';
+  if(fmt.ex)voor=fmt.ex;
+  else if(fmt.firm){const re=new RegExp(fmt.firm,'i'),m=MANUAL.find(x=>re.test(x.name||''));voor=m?m.id:'nieuw';}
+  return {opties:o,voor,nieuwNaam:fmt.firm||''};
+}
+let _csvK=null;
+function csvKeuze(text,naam){
+  const h=csvHerken(text);
+  if(h.toestand!=='herkend'){csvNietHerkend(h,naam);return;}
+  const d=csvDoelOpties(h);
+  _csvK={text,naam:naam||'',h,keuze:d.voor,nieuwNaam:d.nieuwNaam,toch:false,bezig:false};
+  csvKRender();
+}
+function csvNietHerkend(h,naam){
+  const kop=h.toestand==='leeg'?'Dit bestand is leeg':h.toestand==='fout'?'Dit bestand kunnen we niet inlezen':'Dit bestand herkennen we nog niet';
+  const uitleg=h.toestand==='fout'?`<p class="csvk-p">${esc(h.fout)}</p>`:'';
+  openModalHTML(`<div class="mhead"><h3>📄 ${kop}</h3><button class="xbtn" onclick="closeForm()" aria-label="Sluiten">×</button></div>
+  <div class="mbody mbody-wiz" data-csvk="${h.toestand}">
+    ${naam?`<div class="csvk-file">${esc(naam)}</div>`:''}${uitleg}
+    <p class="csvk-p">Welke exchange is het? Meld het in de Morani Discord, het liefst met een voorbeeld-export zonder persoonlijke gegevens, dan kijken we of we hem kunnen toevoegen.</p>
+    <p class="csvk-p csvk-dim">Deze formaten werken nu: ${CSV_WERKT}.</p>
+    <div class="csvk-foot"><button class="btn pri" onclick="closeForm()">Sluiten</button></div></div>`);
+  document.getElementById('modal').classList.add('smal');
+}
+function csvKRender(){
+  const k=_csvK;if(!k)return;
+  const d=csvDoelOpties(k.h),gekozen=d.opties.find(o=>o.id===k.keuze);
+  const groepen=[...new Set(d.opties.map(o=>o.groep))];
+  const rij=o=>`<label class="csvk-opt ${k.keuze===o.id?'on':''}"><input type="radio" name="csvk" value="${esc(o.id)}" ${k.keuze===o.id?'checked':''} ${k.bezig?'disabled':''} onchange="csvKKies(this.value)"><span class="csvk-l">${esc(o.label)}</span>${o.id===d.voor?'<span class="csvk-voor">voorstel</span>':''}${o.sub?`<span class="csvk-sub">${esc(o.sub)}</span>`:''}</label>`;
+  const lijst=groepen.map(g=>`<div class="csvk-g">${esc(g)}</div>`+d.opties.filter(o=>o.groep===g).map(rij).join('')).join('');
+  const nieuw=gekozen&&gekozen.nieuw?`<div class="csvk-nieuw"><div class="field"><label for="csvkNaam">Naam</label><input id="csvkNaam" value="${esc(k.nieuwNaam)}" placeholder="bijv. FTMO 100k" oninput="_csvK.nieuwNaam=this.value;csvKKnop()" ${k.bezig?'disabled':''}></div>
+      <div class="field"><label for="csvkSaldo">Startsaldo <span class="hint">(optioneel)</span></label><input id="csvkSaldo" inputmode="decimal" placeholder="0" ${k.bezig?'disabled':''}></div>
+      <p class="csvk-dim csvk-full">Ook voor een sub-account of een prop-firm-challenge, bijv. FTMO 100k.</p></div>`:'';
+  // A file for another exchange would mix two exchanges' data; a manual account is always fine (sub-account, prop firm).
+  const fmtEx=k.h.fmt.ex||'',mis=gekozen&&gekozen.ex&&(fmtEx?fmtEx!==gekozen.id:!!k.h.fmt.firm);
+  const waarsch=mis?`<div class="dov-note warn csvk-warn">⚠ Dit is een ${esc(k.h.fmt.naam)}, maar je kiest ${esc(gekozen.label)}. Dan komen trades van de ene exchange bij de andere te staan.
+      <label class="csvk-toch"><input type="checkbox" ${k.toch?'checked':''} onchange="_csvK.toch=this.checked;csvKKnop()"> Toch bij ${esc(gekozen.label)} importeren</label></div>`:'';
+  const dubbel=gekozen&&gekozen.ex&&CONNS[gekozen.id]&&CONNS[gekozen.id].connected?`<div class="dov-note info">${esc(gekozen.label)} is gekoppeld. Trades die ook via de koppeling binnenkomen, kunnen dubbel komen te staan. Trades die er al staan, slaat de journal over.</div>`:'';
+  openModalHTML(`<div class="mhead"><h3>📄 Bij welk account hoort dit bestand?</h3><button class="xbtn" onclick="closeForm()" aria-label="Sluiten" ${k.bezig?'disabled':''}>×</button></div>
+  <div class="mbody mbody-wiz" data-csvk="herkend">
+    <div class="csvk-herkend"><b>Herkend:</b> ${esc(k.h.fmt.naam)} · ${k.h.n} trade${k.h.n===1?'':'s'}${k.h.van?' · '+esc(csvPeriode(k.h.van,k.h.tot)):''}${k.naam?`<div class="csvk-file">${esc(k.naam)}</div>`:''}</div>
+    <div class="csvk-list" role="radiogroup" aria-label="Account">${lijst}</div>
+    ${nieuw}${waarsch}${dubbel}
+    <div class="csvk-foot"><button class="btn" onclick="closeForm()" ${k.bezig?'disabled':''}>Annuleren</button><button class="btn pri" id="csvkGo" onclick="csvKImport()">${k.bezig?'Bezig met importeren…':'Importeren'}</button></div></div>`);
+  document.getElementById('modal').classList.add('smal');
+  csvKKnop();
+}
+function csvKKies(id){_csvK.keuze=id;_csvK.toch=false;csvKRender();if(id==='nieuw'){const el=document.getElementById('csvkNaam');if(el)el.focus();}}
+// Import stays off until there is a valid choice: an account, a name for a new one, a confirmed mismatch.
+function csvKKnop(){const k=_csvK,b=document.getElementById('csvkGo');if(!k||!b)return;
+  const d=csvDoelOpties(k.h),g=d.opties.find(o=>o.id===k.keuze),fmtEx=k.h.fmt.ex||'',mis=g&&g.ex&&(fmtEx?fmtEx!==g.id:!!k.h.fmt.firm);
+  b.disabled=k.bezig||!g||(g.nieuw&&!String(k.nieuwNaam||'').trim())||(mis&&!k.toch);}
+function csvKImport(){const k=_csvK;if(!k||k.bezig)return;csvKKnop();const b=document.getElementById('csvkGo');if(b&&b.disabled)return;
+  let doel=k.keuze;
+  if(doel==='nieuw'){const s=document.getElementById('csvkSaldo');const m=maakManual(k.nieuwNaam,s?s.value:'');if(!m)return;doel=m.id;k.keuze=m.id;}
+  k.bezig=true;csvKRender();
+  setTimeout(()=>{try{sjImportCsvText(k.text,doel);}finally{_csvK=null;closeForm();}},30);   // let the busy state paint first
 }
 
 function runPartialDetect(exId){
@@ -11260,7 +11381,7 @@ function closeForm(){
   if((modalKind==='trade'||modalKind==='pb')&&formDirty){ if(!confirm('Je hebt niet-opgeslagen wijzigingen. Sluiten zonder opslaan?'))return; }
   formDirty=false;modalKind='';
   try{_migPre=null;}catch(e){} // geannuleerde migratie-preview mag nooit alsnog toegepast kunnen worden (migApply pakt zijn kopie vóór het sluiten)
-  if(document.activeElement&&document.activeElement.closest&&document.activeElement.closest('#modal'))document.activeElement.blur();document.getElementById('modal').classList.remove('on');document.getElementById('scrim').classList.remove('on'); }
+  if(document.activeElement&&document.activeElement.closest&&document.activeElement.closest('#modal'))document.activeElement.blur();document.getElementById('modal').classList.remove('on','smal');document.getElementById('scrim').classList.remove('on'); }
 function submitForm(id){
   const g=x=>{const el=document.getElementById('f_'+x);return el?el.value:'';};
   const num=x=>{const v=parseFloat(String(g(x)).trim().replace(',','.'));return isNaN(v)?0:v;};
