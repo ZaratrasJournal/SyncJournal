@@ -16,7 +16,7 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
-## [Unreleased]
+## [v1.18.3] — 2026-10-26
 
 ### Gewijzigd
 - **Review → Beeld, grote weergave**: naast (of onder) de afbeelding staan nu álle tags van de trade als gekleurde
