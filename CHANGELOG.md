@@ -19,6 +19,9 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 ### Toegevoegd
 - **Kopieer voor Discord met meerdere trades.** Heb je er meer geselecteerd, dan kopieert de knop ze één voor één ("Kopieer 2 van 3"): plakken in Discord, klikken, plakken, en dan één keer versturen. Of kies **⬇ Alle beelden voor Discord** voor één beeld per trade in je downloads, met de teksten samen op het klembord. Met de privacy-modus aan blijven bedragen ook van het beeld af.
 
+### Fixed
+- **Privacy-modus geldt nu ook voor Mori en het coach-pakket.** Stond de privacy-modus aan maar het vinkje "Bedragen verbergen" uit, dan gingen je bedragen toch mee naar Mori en in het coach-pakket. Nu niet meer.
+
 ---
 
 ## [v1.17.2] — 2026-10-25

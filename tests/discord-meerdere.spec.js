@@ -124,7 +124,7 @@ const mk = (id, over) => Object.assign({ id, date: '2026-10-' + String(id).padSt
   ok('"Bedragen verbergen": geen bedrag op het beeld', !g.seen.includes(g.amount));
   g = await getekend(false, true);
   ok('privacy-modus: geen bedrag op het beeld', !g.seen.includes(g.amount), g.seen);
-  ok('privacy-modus: geen bedrag in de tekst', await p.evaluate(() => { STATE.shareHide = false; STATE.priv = true; const s = revDcHide(); STATE.priv = false; return s === true; }));
+  ok('privacy-modus: geen bedrag in de tekst', await p.evaluate(() => { STATE.shareHide = false; STATE.priv = true; const s = revHide(); STATE.priv = false; return s === true; }));
   await seed([mk(5), mk(6)], [5, 6]);
   await p.evaluate(() => { STATE.shareHide = false; STATE.priv = true; window.__clipText = []; });
   await p.evaluate(() => revDiscordAlles()); await p.waitForTimeout(300);
