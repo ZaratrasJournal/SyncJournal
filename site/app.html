@@ -1489,7 +1489,7 @@ details.faq[open] summary{color:var(--accent)}
 .toast{background:var(--surface);border:1px solid var(--line);border-left-width:3px;border-radius:10px;box-shadow:0 10px 34px rgba(20,30,60,.18);padding:11px 16px;font-size:13px;font-weight:600;color:var(--ink);opacity:0;transform:translateY(12px);transition:opacity .28s,transform .28s;white-space:nowrap}
 body.dark .toast{box-shadow:0 10px 34px rgba(0,0,0,.5)}
 .toast.on{opacity:1;transform:translateY(0)}
-.toast{white-space:normal;width:max-content;max-width:min(560px,calc(100vw - 32px))}   /* long messages wrap instead of running off a phone screen */
+.toast{white-space:pre-line;width:max-content;max-width:min(560px,calc(100vw - 32px))}   /* long messages wrap instead of running off a phone screen */
 /* Error-balk (ErrorCenter) — zichtbare, herstelbare foutmeldingen */
 .errbar{position:fixed;left:50%;bottom:0;transform:translate(-50%,120%);width:min(720px,96vw);z-index:210;display:flex;gap:12px;align-items:flex-start;padding:14px 16px;border-radius:14px 14px 0 0;background:var(--surface);border:1px solid var(--line);border-bottom:none;box-shadow:0 -14px 44px -14px rgba(10,20,50,.4);transition:transform .28s;font-size:13px}
 .errbar.on{transform:translate(-50%,0)}
@@ -2219,7 +2219,7 @@ const KINDS={live:{label:'Live',color:'var(--green)'},gemist:{label:'Gemist',col
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v1.18';
+const APP_VERSION='v1.18.1';
 const SCHEMA_VERSION=12;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -2449,7 +2449,8 @@ const MIGRATIONS=[
      "sync from" date. lastSync only moves back, never forward: an earlier step (v5, the old-journal import)
      may already have set it further back on purpose.
      Not for an exchange with CSV trades of the last 30 days: the import dedupes on the source id only, and a
-     CSV row has another id than the same trade through the API, so looking back would double them (B3). */
+     CSV row has another id than the same trade through the API, so looking back would double them (B3).
+     B3 is fixed since (csvOpgaanInApi); this step has already run for members, so it stays as it was. */
   {v:12,note:'Koppelingen kijken eenmalig 30 dagen terug',up(){
     const grens=Date.now()-30*864e5, csvRecent={};
     T.forEach(t=>{ if(t&&/(^|_)csv_/.test(String(t.srcId||''))&&(+t.closeTime||+t.openTime||Date.parse(t.date)||0)>=grens)csvRecent[t.exchange]=true; });
@@ -4670,8 +4671,8 @@ const revTps=t=>{const l=(t.tps||[]).filter(x=>x&&+x.price>0),lb=tpLabels(l,t);r
 const revTpTxt=x=>x.n+' · '+x.prijs+(x.pct?' · '+x.pct+'%':'')+(x.hit?' ✓':'');
 function revTpBlok(t){const L=revTps(t);return L.length?`<div class="lbl">Take-profits</div><div class="revtps">${L.map(x=>`<span class="${x.hit?'hit':''}">${esc(revTpTxt(x))}</span>`).join('')}</div>`:'';}
 const DC_TP_MAX=4;   // TP rows that fit in the Discord image's info panel; more become "+n"
-function revTpRegels(t){const L=revTps(t),r=L.slice(0,DC_TP_MAX).map(x=>({l:x.n,v:x.prijs+(x.pct?' · '+x.pct+'%':'')+(x.hit?' ✓':''),hit:x.hit}));
-  if(L.length>DC_TP_MAX)r.push({l:'+'+(L.length-DC_TP_MAX),v:'',hit:false});return r;}
+function revTpRegels(t,max=DC_TP_MAX){const L=revTps(t),r=L.slice(0,max).map(x=>({l:x.n,v:x.prijs+(x.pct?' · '+x.pct+'%':'')+(x.hit?' ✓':''),hit:x.hit}));
+  if(L.length>max)r.push({l:'+'+(L.length-max),v:'',hit:false});return r;}
 function revInfoVol(t){return `${revTiles(t,18)}<div class="lbl">Lagen (top-down)</div>${(t.layers||[]).length?t.layers.map(revLaag).join(''):'<span style="color:var(--muted)">—</span>'}${revTpBlok(t)}`;}
 function drawRevPres(){let el=document.getElementById('revpres');
   if(!el){el=document.createElement('div');el.id='revpres';el.className='revpres';el.setAttribute('role','dialog');el.setAttribute('aria-label','Presentatie');document.body.appendChild(el);}
@@ -4691,6 +4692,9 @@ function drawRevPres(){let el=document.getElementById('revpres');
 function revPresGo(d){if(!revPres)return;revPres.i=(revPres.i+d+revPres.items.length)%revPres.items.length;drawRevPres();}
 function closeRevPres(){revPres=null;drawRevPres();}
 const lagenTxt=t=>(t.layers||[]).map(l=>l&&l.timeframe).filter(Boolean).join(' → ')||'—';
+// Playbook, setups and confirmations for sharing (Zaratras 26-10-2026): only the filled ones, each list once
+const revTagRegels=t=>[['Playbook',t.setup?[String(t.setup)]:[]],['Setup',[...new Set(laagSetups(t))]],
+  ['Confirmaties',[...new Set((t.layers||[]).flatMap(l=>(l&&Array.isArray(l.confirmations))?l.confirmations:[]))]]].filter(([,v])=>v.length);
 const revShots=t=>(t.screenshots||[]).filter(u=>beeldSrc(u));
 const tvKnoppen=t=>(t.tvLinks||[]).filter(isHttpUrl).map((u,i,a)=>`<a class="tvlink" href="${esc(u)}" target="_blank" rel="noopener noreferrer" title="${esc(u)}">📈 TV${a.length>1?' '+(i+1):''} ↗</a>`).join('');
 const revRating=t=>t.rating||(tradeEmotions(t).some(e=>CALM_EMOS.includes(e))?(t.pnl>0?5:4):(t.pnl>0?3:2));
@@ -4720,12 +4724,20 @@ function revReviewFields(t){const checks=revChecks(t),rating=revRating(t),emo=tr
       <div class="lbl">Tags & fouten</div><div>${tagChips(tradeTagsAll(t),true)}${fouten.map(m=>`<span class="tagchip col" style="--tc:var(--red)">${esc(m)}</span>`).join('')}${!tradeTagsAll(t).length&&!fouten.length?'<span style="color:var(--muted);font-size:12px">Geen tags, voeg toe via ✎ Bewerken</span>':''}</div></div></div>`;}
 // Discord text: plain text (Discord renders markdown, not HTML), so no esc() here.
 function revDiscordTekst(t,hide){const r=tradeROrNull(t),tv=(t.tvLinks||[]).filter(isHttpUrl)[0];
-  return [`**${t.pair} ${t.dir==='long'?'LONG':'SHORT'}** · ${t.setup||'—'} (${lagenTxt(t)}) · ${r==null?'—':rS(r)}${hide?'':' · '+eurS(t.pnl)}`,
+  const lagen=(t.layers||[]).some(l=>l&&l.timeframe)?lagenTxt(t)+' · ':'';
+  return [`**${t.pair} ${t.dir==='long'?'LONG':'SHORT'}** · ${lagen}${r==null?'—':rS(r)}${hide?'':' · '+eurS(t.pnl)}`,
+    ...revTagRegels(t).map(([l,v])=>l+': '+v.join(', ')),
     `Entry ${prijsOfStreep(t.entry)} · Stop ${prijsOfStreep(t.stop)} · Exit ${prijsOfStreep(t.exit)}${t.rrPlanned?' · R:R gepland '+String(t.rrPlanned).replace('.',','):''}`,
     revTps(t).map(x=>x.n+' '+x.prijs+(x.hit?' ✓':'')).join(' · '),t.notes||'',tv||''].filter(Boolean).join('\n');}
 // Discord image: chart left, trade info right, the note in a footer. Always dark: it is a standalone PNG, not the app UI.
 const DC={bg:'#0d1118',bar:'#151a23',ink:'#eef1f7',sub:'#c3c9d6',mut:'#8a92a6',pos:'#2fbf8a',neg:'#ef5d6a',brand:'#7d88ff'};
 const DC_W=1280,DC_H=760,DC_PANEL=440,DC_FOOT=64;   // chart area, info panel width, footer height (px)
+const DC_REGEL=38,DC_RAND=14;   // info panel row height, and the margin kept free at the bottom and right edge (px)
+// a list in the width w with the font already set on g: as many as fit, then "+n"; a single item that is too long ends in "…"
+function dcPas(g,lijst,w){
+  for(let n=lijst.length;n>0;n--){const s=lijst.slice(0,n).join(', ')+(n<lijst.length?' +'+(lijst.length-n):'');if(g.measureText(s).width<=w)return s;}
+  const rest=lijst.length>1?' +'+(lijst.length-1):'';let s=String(lijst[0]);
+  while(s.length>1&&g.measureText(s+'…'+rest).width>w)s=s.slice(0,-1);return s+'…'+rest;}
 // Shared review exports (Discord, coach package) leave amounts out when "Bedragen verbergen" is ticked or privacy mode is on.
 const revHide=()=>!!(STATE.shareHide||STATE.priv);
 const revDcNaam=t=>'discord-'+(t.date||'trade')+'-'+(String(t.pair||'').replace(/[^A-Za-z0-9]+/g,'-').replace(/^-+|-+$/g,'')||'trade')+'.png';
@@ -4750,16 +4762,19 @@ function revDiscordCanvas(t,img,hide){const c=document.createElement('canvas');c
   g.fillStyle=DC.bg;g.fillRect(0,0,c.width,c.height);
   const sc=Math.min(DC_W/(img.naturalWidth||1),DC_H/(img.naturalHeight||1)),dw=img.naturalWidth*sc,dh=img.naturalHeight*sc;g.drawImage(img,(DC_W-dw)/2,(DC_H-dh)/2,dw,dh);
   let y=48;const x=DC_W+28,r=tradeROrNull(t),b=htfBias(t);
-  const regel=(l,v,col)=>{g.fillStyle=DC.mut;g.font='600 19px Inter,sans-serif';g.fillText(l,x,y);g.fillStyle=col||DC.ink;g.font='600 21px "IBM Plex Mono",monospace';g.fillText(String(v),x+170,y);y+=38;};
+  const regel=(l,v,col,font)=>{g.fillStyle=DC.mut;g.font='600 19px Inter,sans-serif';g.fillText(l,x,y);g.fillStyle=col||DC.ink;g.font=font||'600 21px "IBM Plex Mono",monospace';g.fillText(String(v),x+170,y);y+=DC_REGEL;};
   g.fillStyle=DC.ink;g.font='bold 32px Inter,sans-serif';g.fillText(t.pair,x,y);const pw=g.measureText(t.pair).width;
   g.fillStyle=t.dir==='long'?DC.pos:DC.neg;g.font='bold 20px Inter,sans-serif';g.fillText(t.dir==='long'?'LONG':'SHORT',x+pw+14,y);y+=40;
-  g.fillStyle=DC.sub;g.font='600 22px Inter,sans-serif';g.fillText(((t.setup||'—')+' · '+lagenTxt(t)).slice(0,34),x,y);y+=74;
+  g.fillStyle=DC.sub;g.font='600 22px Inter,sans-serif';g.fillText(lagenTxt(t).slice(0,34),x,y);y+=74;
   g.fillStyle=r==null?DC.mut:r>=0?DC.pos:DC.neg;g.font='bold 54px "IBM Plex Mono",monospace';g.fillText(r==null?'—':rS(r),x,y);y+=50;
   if(!hide){g.font='bold 24px "IBM Plex Mono",monospace';g.fillText(eurS(t.pnl),x,y-8);y+=26;}
   regel('Datum',fmtD(t.date||'')+' '+(t.time||''));regel('Sessie',sessionOf(t)||'—');regel('HTF-bias',b||'—',b==='Bullish'?DC.pos:b==='Bearish'?DC.neg:null);
   regel('Entry',prijsOfStreep(t.entry));regel('Stop',prijsOfStreep(t.stop),DC.neg);regel('Exit',prijsOfStreep(t.exit));
   regel('R:R gepland',t.rrPlanned?String(t.rrPlanned).replace('.',',')+' : 1':'—');regel('Duur',fmtDurMin(tradeDurationMin(t)));
-  revTpRegels(t).forEach(x=>regel(x.l,x.v,x.hit?DC.pos:null));
+  // playbook, setup and confirmations take a row each; the TP rows get what is left above the footer, the rest becomes "+n"
+  const tags=revTagRegels(t),nTp=revTps(t).length,ruimte=Math.floor((DC_H-DC_RAND-y)/DC_REGEL)+1-tags.length;
+  tags.forEach(([l,v])=>{g.font='600 19px Inter,sans-serif';regel(l,dcPas(g,v,DC_PANEL-28-170-DC_RAND),DC.sub,'600 19px Inter,sans-serif');});
+  revTpRegels(t,nTp<=ruimte?DC_TP_MAX:Math.max(0,Math.min(DC_TP_MAX,ruimte-1))).forEach(x=>regel(x.l,x.v,x.hit?DC.pos:null));
   g.fillStyle=DC.bar;g.fillRect(0,DC_H,c.width,DC_FOOT);g.fillStyle=DC.brand;g.font='bold 24px Inter,sans-serif';g.fillText('SyncJournal',24,DC_H+41);
   const nt=t.notes?'“'+String(t.notes).replace(/\s+/g,' ')+'”':'';g.fillStyle=DC.mut;g.font='20px Inter,sans-serif';g.fillText(nt.length>110?nt.slice(0,107)+'…”':nt,200,DC_H+40);
   return new Promise((ok,nok)=>{try{c.toBlob(bl=>bl?ok(bl):nok(new Error('leeg')),'image/png');}catch(e){nok(e);}});}
@@ -6779,6 +6794,7 @@ function go(p){if(revPres){revPres=null;drawRevPres();}if(p==='plan'){location.h
   STATE.page=p;if(p==='playbook')STATE.pbSel='';document.body.classList.remove('nav-open');render();}
 function openPlaybook(s){STATE.page='playbook';STATE.pbSel=s;render();try{window.scrollTo(0,0);}catch(e){}}
 function closePlaybook(){STATE.pbSel='';render();}
+const TOAST_LANG=120;   // characters: a longer message stays up long enough to read
 function toast(msg,type,act){const c=document.getElementById('toasts');if(!c)return;const el=document.createElement('div');el.className='toast '+(type||'info');
   const span=document.createElement('span');span.textContent=msg;el.appendChild(span);
   if(act){ // actie-toast (bv. "Ongedaan maken"): langer zichtbaar + aflopend balkje
@@ -6787,7 +6803,7 @@ function toast(msg,type,act){const c=document.getElementById('toasts');if(!c)ret
     const bar=document.createElement('div');bar.className='tbar';el.appendChild(bar);
   }
   c.appendChild(el);requestAnimationFrame(()=>el.classList.add('on'));
-  setTimeout(()=>{el.classList.remove('on');setTimeout(()=>el.remove(),320);},act?7000:2600);}
+  setTimeout(()=>{el.classList.remove('on');setTimeout(()=>el.remove(),320);},act?7000:msg.length>TOAST_LANG?6000:2600);}
 function render(){_renderMemo={};try{renderPagina();}finally{_renderMemo=null;}}
 function renderPagina(){
   pasteTargetId=null;
@@ -10068,6 +10084,15 @@ ExchangeAPI.kraken.detectPartials=function(trades,sourceKey){
   const oud=(trades||[]).filter(t=>!/^kraken_pos_/.test(String((t&&t.id)||"")));
   return oud.length?detectPartialFromSiblings(oud,sourceKey||"kraken","kraken"):[];
 };
+/* B3: is this CSV row the same position as this API row? Each exchange's export says how sure a moment is.
+   Blofin's order history is UTC and the parser converts it, so the opening must match within a few minutes.
+   OKX and Hyperliquid write the time of the exporter's screen, which the parser reads as local time: the zone is
+   not known, so open and close may both be shifted by the same whole quarter of an hour.
+   Kraken needs none: CSV and API share the id (contract + opening), and with an API link the CSV is refused.
+   MEXC (no sync any more) and FTMO (no API) cannot overlap. */
+ExchangeAPI.blofin.zelfdePositie=function(csv,api){return zelfdeRondgang(csv,api,{marge:120e3});};
+ExchangeAPI.okx.zelfdePositie=function(csv,api){return zelfdeRondgang(csv,api,{marge:120e3,tijdzoneOnbekend:true});};
+ExchangeAPI.hyperliquid.zelfdePositie=function(csv,api){return zelfdeRondgang(csv,api,{marge:120e3,tijdzoneOnbekend:true});};
 ExchangeAPI.hyperliquid.detectPartials=null;// model B: een levensloop is al compleet
 ExchangeAPI.okx.detectPartials=null;        // model B: de adapter markeert een lopende positie zelf als partial
 ExchangeAPI.ftmo.detectPartials=null;       // CSV-only, geen partials
@@ -10345,6 +10370,7 @@ async function syncExchange(exId,opts){
   // daarna pas de partial-status bepalen.
   finalizePlaceholders(exId,mapped);
   finalizeStaleOpens(exId);
+  csvOpgaanInApi(exId);   // B3: a CSV row of a position the API now brings goes up in it
   runPartialDetect(exId);
   if(typeof ad.afterImport==='function'){ try{ ad.afterImport(mapped); }catch(e){} }   // exchange-eigen opruiming (HL: oude per-sluiting-rijen)
   let bf={n:0,reden:''};
@@ -10536,6 +10562,55 @@ function zelfdePositieSJ(a,b){
     return zelfdeStartSJ(a,b);
   }
   const k=exMatchKey(a);return !!(a.placeholder&&k&&exMatchKey(b)===k);
+}
+/* B3 · one position through a CSV import and through the API sync has two ids (<ex>_csv_<fingerprint> and the
+   adapter's), so the import saw two trades and your P&L doubled without a word. ExchangeAPI.<ex>.zelfdePositie
+   decides per export; these pieces carry no exchange assumptions. */
+const CSV_PRIJS_MARGE=0.001,CSV_HOEVEEL_MARGE=0.02,KWARTIER=15*60e3,MAX_TIJDZONE=14*36e5;
+// a moment from ms, from a date-time text (read as local time, as the parsers do), or from date + time
+function csvMoment(v,date,time){const n=+v;if(n>0)return n;
+  const tekst=v?String(v).trim().replace(' ','T'):(date?String(date)+'T'+String(time||'00:00'):'');
+  const p=tekst?Date.parse(tekst):NaN;return p>0?p:0;}
+/* Same pair, direction, prices and size, and the same moment. o.marge: how far the moments may differ (ms).
+   o.tijdzoneOnbekend: the export may be in another zone, so open and close may be shifted, by the same whole
+   quarter of an hour (every zone is), at most 14 hours. A position at the same prices a day later stays apart. */
+function zelfdeRondgang(csv,api,o){
+  if(!csv||!api||csv.pair!==api.pair||csv.dir!==api.dir)return false;
+  const dicht=(a,b,rel)=>+a>0&&+b>0&&Math.abs(+a-+b)<=rel*Math.max(+a,+b);
+  if(!dicht(csv.entry,api.entry,CSV_PRIJS_MARGE)||!dicht(csv.exit,api.exit,CSV_PRIJS_MARGE)||!dicht(csv.qtyAsset,api.qtyAsset,CSV_HOEVEEL_MARGE))return false;
+  const co=csvMoment(csv.openTime,csv.date,csv.time),ao=+api.openTime||0;
+  if(!co||!ao)return false;
+  const schuif=co-ao;
+  if(!o.tijdzoneOnbekend)return Math.abs(schuif)<=o.marge;
+  if(Math.abs(schuif)>MAX_TIJDZONE+o.marge||Math.abs(schuif-Math.round(schuif/KWARTIER)*KWARTIER)>o.marge)return false;
+  const cc=csvMoment(csv.closeTime),ac=+api.closeTime||0;
+  return cc&&ac?Math.abs((cc-ac)-schuif)<=o.marge:Math.abs(schuif)<=o.marge;   // without both closes only the exact moment counts
+}
+// Your input from one row onto another of the same trade: lists are joined, a text written on both keeps both.
+function neemInvoerMee(doel,bron){
+  SJ_USER_FIELDS.forEach(k=>{const a=doel[k],b=bron[k];if(Array.isArray(a)&&a.length&&Array.isArray(b)&&b.length)doel[k]=[...new Set([...a,...b])];});
+  ['notes','lessons'].forEach(k=>{const a=String(doel[k]||'').trim(),b=String(bron[k]||'').trim();if(a&&b&&!a.includes(b))doel[k]=a+'\n\n'+b;});
+  adoptUserFieldsSJ(doel,bron);
+}
+/* A CSV row and an API row of the same position become one. The API row wins (its numbers and steps are complete),
+   your input on the CSV row moves along, and the CSV row goes: not to the trash, it never was a trade of its own.
+   Is the API row in the trash, the CSV row goes too (thrown away stays thrown away). Runs after a sync and after a
+   CSV import, so both orders end in one row, and rows doubled before this fix merge at the next sync.
+   Returns {samen, weg}: the CSV rows that merged, and those that went because of the trash. */
+function csvOpgaanInApi(exId){
+  const ad=ExchangeAPI[exId],uit={samen:[],weg:[]};
+  if(!ad||typeof ad.zelfdePositie!=='function')return uit;
+  const isApi=t=>t&&t.exchange===exId&&isGesynct(t)&&!t.placeholder&&t.status==='closed';
+  const api=T.filter(isApi),bak=TRASH.filter(isApi);
+  if(!api.length&&!bak.length)return uit;
+  T.filter(t=>t&&t.exchange===exId&&t.status==='closed'&&/_csv_/.test(String(t.srcId||''))).forEach(c=>{
+    const a=api.find(x=>ad.zelfdePositie(c,x));
+    if(a){neemInvoerMee(a,c);uit.samen.push(c);}
+    else if(bak.some(x=>ad.zelfdePositie(c,x)))uit.weg.push(c);
+  });
+  const ids=new Set([...uit.samen,...uit.weg].map(t=>t.id));
+  if(ids.size){T=T.filter(t=>!ids.has(t.id));persist();}
+  return uit;
 }
 // Placeholder-finalize: nieuwe gesloten trades vervangen hun placeholder (echte trade wint).
 function finalizePlaceholders(exId,newClosed){
@@ -10921,11 +10996,17 @@ function sjImportCsvText(text,forExchange){
   csvTrades.forEach(t=>{if(/_csv_/.test(String(t.id||''))){
     t.id=(t.source||'csv')+'_csv_'+[t.pair,t.direction,t.date,t.time,t.entry,t.exit,t.pnl,t.positionSize,t.closeTime||''].join('|');}});
   // wat in de prullenbak zit komt niet terug (verwijderd blijft verwijderd) — zeg dat apart, mét de uitweg
-  const inBak=csvTrades.filter(t=>TRASH.some(x=>String(x.srcId||'')===String(t.id))).length;
+  let inBak=csvTrades.filter(t=>TRASH.some(x=>String(x.srcId||'')===String(t.id))).length;
   const mapped=importTjClosed(csvTrades);try{planMatch();}catch(e){}
   // per exchange uit het bestand, niet uit wat nieuw was: bij een herimport is niets nieuw, maar de opruiming moet wel draaien
-  let opgeruimd=0;
+  let opgeruimd=0,viaKoppeling=0,nieuwSamen=0;
+  const nieuwIds=new Set(mapped.map(t=>t.id)),bestandIds=new Set(csvTrades.map(t=>String(t.id)));
   [...new Set(csvTrades.map(t=>sourceTypeOf(t.source)).filter(ex=>EXMAP[ex]))].forEach(exId=>{
+    // B3: a position the API link already brought in does not come in twice
+    try{const op=csvOpgaanInApi(exId);
+      [...op.samen,...op.weg].forEach(t=>{if(nieuwIds.has(t.id))nieuwSamen++;});
+      viaKoppeling+=op.samen.filter(t=>bestandIds.has(String(t.srcId))).length;
+      inBak+=op.weg.filter(t=>bestandIds.has(String(t.srcId))).length;}catch(e){}
     try{runPartialDetect(exId);}catch(e){}
     /* Exchange-eigen opruiming, net als bij de sync: oude rijen gaan op in de nieuwe levensloop
        (notities en labels verhuizen mee). Niet alleen voor wat nu nieuw binnenkwam: was het bestand
@@ -10934,12 +11015,22 @@ function sjImportCsvText(text,forExchange){
     if(ad&&typeof ad.afterImport==='function'){const ids=new Set(csvTrades.map(t=>String(t.id)));try{opgeruimd+=ad.afterImport(T.filter(t=>t&&t.exchange===exId&&ids.has(String(t.srcId))))||0;}catch(e){}}
   });
   render();
-  const dup=csvTrades.length-mapped.length-inBak, warn=(csvTrades._waarschuwingen||[]).length;
-  toast((mapped.length?('✓ '+mapped.length+' trade'+(mapped.length===1?'':'s')+' geïmporteerd'+(dup?' · '+dup+' overgeslagen (al aanwezig of in prullenbak)':'')):(inBak&&!dup?(inBak+' trade'+(inBak===1?' zit':'s zitten')+' in de prullenbak, niets geïmporteerd'):('Alle '+dup+' trades al aanwezig, niets te importeren')))
+  const nieuw=mapped.length-nieuwSamen;
+  const dup=csvTrades.length-nieuw-inBak, warn=(csvTrades._waarschuwingen||[]).length;
+  toast((nieuw?('✓ '+nieuw+' trade'+(nieuw===1?'':'s')+' geïmporteerd'+(dup?' · '+dup+' overgeslagen (al aanwezig of in prullenbak)':'')):(inBak&&!dup?(inBak+' trade'+(inBak===1?' zit':'s zitten')+' in de prullenbak, niets geïmporteerd'):('Alle '+dup+' trades al aanwezig, niets te importeren')))
     +(inBak?' · '+inBak+' in de prullenbak (leeg de prullenbak om ze opnieuw in te lezen)':'')
     +(opgeruimd?' · '+opgeruimd+' oude rij'+(opgeruimd===1?'':'en')+' opgegaan in de nieuwe trades':'')
-    +(warn?' · ⚠ '+warn+' regel'+(warn===1?'':'s')+' niet sluitend, zie console':''),(mapped.length||opgeruimd)?'ok':'info');
-  return mapped.length;
+    +(viaKoppeling?' · '+viaKoppeling+(viaKoppeling===1?' stond':' stonden')+' er al via je koppeling':'')
+    +(warn?' · ⚠ '+warn+' regel'+(warn===1?'':'s')+' niet sluitend, zie console':'')
+    +csvGeenStopRegel(mapped.filter(t=>T.includes(t))),(nieuw||opgeruimd)?'ok':'info');
+  return nieuw;
+}
+/* Most exports carry no stop-loss (Zaratras 26-10-2026): say so instead of leaving those trades without a stop and R
+   unnoticed. Only when none of the new rows has one; an export with an SL column (FTMO) stays quiet. */
+function csvGeenStopRegel(nieuw){
+  if(!nieuw.length||nieuw.some(t=>+t.stop>0))return '';
+  const gekoppeld=nieuw.some(t=>CONNS[t.exchange]&&CONNS[t.exchange].connected);
+  return '\nDeze export bevat geen stop-loss. Vul hem per trade in'+(gekoppeld?'.':', of koppel je exchange: dan komt hij vanzelf mee.');
 }
 function handleCsvFile(e){
   const file=e.target.files[0];if(!file)return;
@@ -11359,11 +11450,24 @@ function tpMomentMs(x){const tm=String((x&&x.tsTime)||'').trim();if(!TIJD_RE.tes
   // geen eigen dag, of de (vooraf ingevulde) instapdag: vóór de instaptijd betekent de dag erna
   if(!eigen||eigen===d){const o=formMomentMs('f_date','f_time');if(o&&c<o)c+=86400000;}return isFinite(c)?c:0;}
 function applyTPTemplate(dist){formTPs=dist.map((pct,i)=>({price:(formTPs[i]&&formTPs[i].price)||'',pct,r:(formTPs[i]&&formTPs[i].r)||'',hit:(formTPs[i]&&formTPs[i].hit)||false,ts:(formTPs[i]&&formTPs[i].ts)||0,tsDate:(formTPs[i]&&formTPs[i].tsDate)||'',tsTime:(formTPs[i]&&formTPs[i].tsTime)||''}));renderTPs();}
-function tpSum(){const el=document.getElementById('tpsum');if(!el)return;const s=formTPs.reduce((a,x)=>a+(+x.pct||0),0);el.textContent=s+'%';el.className='num '+(s===100?'g':'r');}
+/* The sum of the levels, as a line. Levels from an import are rounded and a float sum gives 99.99999999999999:
+   within TP_SOM_MARGE of 100 counts as complete, and the number is shown with at most 2 decimals. */
+const TP_SOM_MARGE=0.01;
+function tpSomRegel(){const s=formTPs.reduce((a,x)=>a+(+x.pct||0),0),vol=Math.abs(s-100)<=TP_SOM_MARGE+1e-9;
+  return `Verdeeld: <b id="tpsum" class="num ${vol?'g':'r'}">${vol?100:(Math.round(s*100)/100).toLocaleString('nl-NL',{maximumFractionDigits:2})}%</b> ${vol?'✓ volledig':'— moet samen 100% zijn'}`;}
+function tpSum(){const el=document.querySelector('#tpbuilder .tptot');if(el)el.innerHTML=tpSomRegel();}
+/* Imported levels are rounded per level (2 decimals, Blofin's CSV 1), so six of 16.67 add up to 100.02. When the sum is off
+   by no more than that rounding, the difference goes in hundredths to the largest levels, so they add up to exactly 100.
+   A real gap (50 + 40) stays as it is. */
+const TP_AFRONDING=5;   // hundredths per level: rounding to 1 decimal
+function tpPctsNaar100(tps){const c=tps.map(x=>Math.round((+x.pct||0)*100)),d=10000-c.reduce((a,v)=>a+v,0);
+  if(!tps.length||!d||Math.abs(d)>TP_AFRONDING*tps.length)return tps;
+  const volg=c.map((v,i)=>i).sort((a,b)=>c[b]-c[a]);
+  for(let k=0;k<Math.abs(d);k++)c[volg[k%c.length]]+=Math.sign(d);
+  tps.forEach((x,i)=>{x.pct=c[i]/100;});return tps;}
 function renderTPs(){const c=document.getElementById('tpbuilder');if(!c)return;
   // de dag van je instap staat vooraf ingevuld: scheelt een klik, en je ziet wat er straks wordt vastgelegd
   formTPs.forEach(tp=>{if(!tp.tsDate)tp.tsDate=tpStandaardDatum();});
-  const sum=formTPs.reduce((a,x)=>a+(+x.pct||0),0);
   const rows=formTPs.map((tp,i)=>`<div class="tprow-edit"><span class="tpnum">TP${i+1}</span>
     <input class="tpin" placeholder="prijs" value="${tp.price}" inputmode="decimal" oninput="formTPs[${i}].price=this.value;calcTrade(true)">
     <span class="tppct"><input class="tpin pct" placeholder="deel" value="${tp.pct}" inputmode="numeric" oninput="formTPs[${i}].pct=+this.value||0;tpSum();calcTrade(true)"><i>%</i></span>
@@ -11373,7 +11477,7 @@ function renderTPs(){const c=document.getElementById('tpbuilder');if(!c)return;
     <input class="tpin tptime" placeholder="uu:mm" value="${esc(tp.tsTime||'')}" oninput="formTPs[${i}].tsTime=this.value;tpTijdIngevuld(${i})" title="Hoe laat deze TP is gehaald (HH:MM). Een tijd invullen zet de TP op gehaald; de laatste wordt je sluitmoment. Zichtbaar in de tijdlijn en de stappentabel">
     <button type="button" class="xlayer" onclick="removeTP(${i})" title="verwijderen">×</button></div>`).join('');
   c.innerHTML=`<div class="tptmpl">${formTPs.length>1?`<button type="button" class="btn" onclick="evenTPs();renderTPs()">Gelijk verdelen</button>`:''}<span class="sp" style="flex:1"></span><button type="button" class="btn pri" onclick="addTP()">+ TP toevoegen</button></div>
-    ${formTPs.length?`<div class="tprows">${rows}</div><div class="tptot">Verdeeld: <b id="tpsum" class="num ${sum===100?'g':'r'}">${sum}%</b> ${sum===100?'✓ volledig':'— moet samen 100% zijn'}</div>`:`<div class="layerhint">Voeg take-profit-niveaus toe, we verdelen je positie automatisch gelijk (1 TP = 100%, 2 = 50/50, 3 = 34/33/33…). Pas het % zelf aan als je anders wilt, en markeer welke TP's geraakt zijn (partial closes).</div>`}`;}
+    ${formTPs.length?`<div class="tprows">${rows}</div><div class="tptot">${tpSomRegel()}</div>`:`<div class="layerhint">Voeg take-profit-niveaus toe, we verdelen je positie automatisch gelijk (1 TP = 100%, 2 = 50/50, 3 = 34/33/33…). Pas het % zelf aan als je anders wilt, en markeer welke TP's geraakt zijn (partial closes).</div>`}`;}
 /* gewogen exit + gerealiseerde R uit TP's (hit op prijs, gemist deel op SL — mirror origineel) */
 function tpStats(t){const tps=(t.tps||[]).filter(x=>+x.price>0);if(!tps.length)return null;
   const entry=+t.entry,stop=+t.stop||0,dir=t.dir==='long'?1:-1,risk=Math.abs(entry-stop)||entry*0.01;
@@ -11537,7 +11641,7 @@ function openForm(id){
   formEmotions=[...(t.emotions||(t.emotion?[t.emotion]:[]))];
   formMistakes=[...(t.mistakes||(t.mistake?[t.mistake]:[]))];
   formMissed=[...(t.missedReasons||[])];
-  formTPs=(t.tps||[]).map(x=>({price:x.price,pct:x.pct,r:x.r||'',hit:!!x.hit,ts:+x.ts||0,tsDate:+x.ts?ts2date(+x.ts):'',tsTime:+x.ts?ts2time(+x.ts):''}));
+  formTPs=tpPctsNaar100((t.tps||[]).map(x=>({price:x.price,pct:x.pct,r:x.r||'',hit:!!x.hit,ts:+x.ts||0,tsDate:+x.ts?ts2date(+x.ts):'',tsTime:+x.ts?ts2time(+x.ts):''})));
   const opt=(arr,sel)=>arr.map(x=>`<option ${x===sel?'selected':''}>${esc(x)}</option>`).join('');
   const _cMs0=+t.closeTime||0,closeD0=_cMs0?ts2date(_cMs0):'',closeT0=_cMs0?ts2time(_cMs0):'';
   // formulier: relevante exchanges + handmatige accounts; niets relevants → alle

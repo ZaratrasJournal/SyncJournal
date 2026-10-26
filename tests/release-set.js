@@ -93,4 +93,7 @@ module.exports = [
   'funded-geld', 'funded-tab', 'funded-import', 'funded-dashboard', 'csv-account-keuze',
   'discord-meerdere', 'ruwe-data', 'ruwe-data-voorbeeld',
   'stop-beweging', 'stop-override', 'stop-analytics',
+  // v1.18.1: CSV and API no longer double (B3), CSV import on CI (T1), Hyperliquid CSV without leading zeros and
+  // Zaratras' real export (skips without the local fixtures), stop-loss line after an import, TP sum
+  'csv-synthetisch', 'csv-api-dubbel', 'hl-csv-zonder-nul', 'hl-csv-echt', 'csv-stop-melding', 'tp-verdeling',
 ];

@@ -16,6 +16,23 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v1.18.1] — 2026-10-26
+
+Punten die Zaratras vond bij het testen van v1.18.
+
+### Toegevoegd
+- **Kopieer voor Discord: playbook, setup en confirmaties erbij.** De tekst heeft nu een regel "Playbook: …", "Setup: …" en "Confirmaties: …", alleen als ze ingevuld zijn. Op het beeld staan ze compact in het infopaneel rechts; een lange lijst eindigt op "+3", een lange naam op "…". Geldt voor één trade en voor meerdere.
+
+### Gewijzigd
+- **Na een CSV-import zegt de melding het als de export geen stop-loss bevat** (dat geldt voor de meeste exports, zoals die van Hyperliquid). Zo'n trade heeft dan nog geen stop en geen R: vul hem per trade in, of koppel je exchange, dan komt hij vanzelf mee. Een export met stop-loss (FTMO) krijgt die regel niet.
+- Op de eerste regel van de Discord-tekst staat het playbook niet meer: dat heeft nu een eigen regel.
+
+### Fixed
+- **Een trade die je via CSV én je koppeling binnenkrijgt, staat er nu één keer; de koppeling is leidend.** Gold voor Blofin, OKX en Hyperliquid, in beide volgordes: eerst de CSV en dan de sync, of andersom. Je P&L telde zo'n trade dubbel, zonder melding. Nu blijft de trade van de koppeling staan, met zijn stop-loss, en gaan je notities, tags en screenshots van de CSV-rij mee. Had je al dubbele trades, dan gaan die bij je volgende sync van die exchange samen. De importmelding zegt hoeveel trades er al via je koppeling stonden. Ook de Hyperliquid-export met datums zonder voorloopnul ("8-4-2026") gaat goed samen. Kraken had dit probleem niet.
+- **"Verdeeld: 99.99999999999999% — moet samen 100% zijn"** bij de take-profit-niveaus in het trade-formulier. Na een import met bijvoorbeeld 33,76 + 42,97 + 23,27 zag je een rekenfoutje van de computer, en gold de verdeling als niet volledig. Nu staat er "100% ✓ volledig", en het percentage heeft hooguit twee decimalen. Niveaus die door afronding samen net iets naast de 100 uitkwamen (zoals zes keer 16,67) tellen bij het openen precies op tot 100. Een echte afwijking (50 + 40) geeft nog steeds de melding. De regel klopt nu ook terwijl je typt.
+
+---
+
 ## [v1.18] — 2026-10-26
 
 ### Toegevoegd
