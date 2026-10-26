@@ -2607,6 +2607,9 @@ const IS_HOSTED=(()=>{try{return /^https?:$/.test(location.protocol)&&!['localho
 // work.syncjournal.nl = staging: eigen origin (dus eigen opslag, raakt live-data nooit),
 // met een onmiskenbare badge zodat niemand er per ongeluk in journalt.
 const IS_WORK=(()=>{try{return IS_HOSTED&&/^work\./.test(location.hostname);}catch(e){return false;}})();
+// Dev mode (backlog W2): ?dev=1 turns it on and this device remembers it (sj_dev), ?dev=0 turns it off.
+// Members never see it unless they ask for it; it adds the raw-exchange-data block to the diagnose panel.
+const IS_DEV=(()=>{try{const q=new URLSearchParams(location.search).get('dev');if(q==='1'||q==='0')DB.save('dev',q==='1');return DB.load('dev',false)===true;}catch(e){return false;}})();
 const RELEASED='2026-09-16';
 let UPDATE={status:'idle',remote:'',released:''};
 let PERSISTED=null;  // navigator.storage.persist(): true = browser belooft opslag niet op te ruimen
@@ -3555,6 +3558,7 @@ const EMPTY={
   'emo-kolom':['','Nog geen','voeg emoties toe in Instellingen → Tags.','',''],
   prullenbak:['','De prullenbak is leeg','verwijder je een trade, dan staat hij hier nog '+TRASH_DAYS+' dagen zodat je hem kunt terugzetten.','',''],
   'kopie-leeg':['','Nog geen veiligheidskopieën','ze worden automatisch gemaakt vóór import, voorbeelddata laden of wissen. Of maak er hieronder nu één.','',''],
+  'ruw-geen-koppeling':['','Geen gekoppelde exchange','Koppel er een via Accounts en sync, dan staan de ruwe antwoorden hier.','',''],
   'sync-leeg':['','Nog geen syncs vastgelegd','na de eerstvolgende sync zie je hier wanneer hij liep, of hij automatisch ging en wat hij opleverde.','',''],
   'trade-details':['','Nog geen details','klik om stop-loss, notities en meer toe te voegen.','',''],
 };
@@ -4769,6 +4773,7 @@ function pgInstellingen(){
       <div class="panel" id="diagPanel">
         <div class="setrow"><div class="txt"><b>Diagnose-rapport</b><small>Eén bestand met versie, opslag, aantallen, sync-status en fouten. Zonder sleutels, notities of screenshots. Plak het in Discord bij je melding.</small></div><button class="btn" onclick="diagCopy()">Kopieer</button><button class="btn pri" onclick="diagDownload()">Download</button></div>
         ${diagSummaryHtml()}
+        ${IS_DEV?ruwPanelHtml():''}
       </div>
       <div class="section-sub">🗑️ Prullenbak${TRASH.length?` · ${TRASH.length}`:''} <span class="hint">(verwijderde trades · ${TRASH_DAYS} dagen bewaard, daarna automatisch weg)</span></div>
       <div class="panel">${trashPanel()}</div>
@@ -7203,6 +7208,18 @@ async function diagReport(){
   };
 }
 async function diagDownload(){ try{const d=await diagReport();const blob=new Blob([JSON.stringify(d,null,2)],{type:'application/json'});const u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download='syncjournal-diagnose-'+localDateISO()+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(u),1500);toast('✓ Diagnose-rapport gedownload','ok');}catch(e){ErrorCenter.report('crash',e,{severity:'warn',userMsg:'Het rapport kon niet worden gemaakt.'});} }
+// Dev block (W2): per linked exchange the raw answers of the last sync in this tab, as a download.
+function ruwPanelHtml(){
+  const ex=EXCHANGES.filter(e=>CONNS[e.id]&&CONNS[e.id].connected);
+  const wanneer=ms=>new Date(ms).toLocaleTimeString('nl-NL',{hour:'2-digit',minute:'2-digit'});
+  return `<div id="ruwPanel" style="border-top:1px solid var(--line)">
+    <div class="setrow"><div class="txt"><b>🛠 Dev-modus · ruwe exchange-gegevens</b><small>Wat elke exchange bij de laatste sync in dit tabblad terugstuurde, om een bug na te spelen. Weg na herladen. Uitzetten: <span class="num">?dev=0</span> achter het adres.</small></div></div>
+    ${ex.length?`<div class="dov-note info" style="margin:0 18px 6px">Dit bestand bevat je trades (bedragen en tijden), maar geen sleutels, walletadres, accountnummer of saldo. Deel het alleen met Zaratras.</div>
+    ${ex.map(e=>{const r=RUWE_DATA[e.id];
+      return `<div class="setrow"><div class="txt"><b>${esc(e.name)}</b><small>${r?`${r.aanroepen.length} aanroep${r.aanroepen.length===1?'':'en'} · ${dovKb(r.tekens)} · sync van ${wanneer(r.begin)}${r.afgekapt?` · ${r.afgekapt} te groot, weggelaten`:''}`:'Nog niets vastgelegd in dit tabblad. Sync eerst.'}</small></div><button class="btn" data-ex="${e.id}" onclick="ruwDownload('${e.id}')" ${r?'':'disabled'}>Ruwe gegevens downloaden</button></div>`;}).join('')}`
+    :`<div class="setrow">${emptyState('ruw-geen-koppeling','regel')}</div>`}
+  </div>`;
+}
 async function diagCopy(){ try{const d=await diagReport(),s=JSON.stringify(d);if(navigator.clipboard&&navigator.clipboard.writeText){await navigator.clipboard.writeText(s);toast('✓ Gekopieerd, plak het in Discord','ok');}else throw new Error('geen klembord');}catch(e){toast('Kopiëren lukte niet, gebruik Download','err');} }
 
 // ── Snapshots: automatische veiligheidskopie vóór risicovolle acties, laatste 3 in IndexedDB ──
@@ -7721,6 +7738,66 @@ function proxyFoutTekst(ruw,ex){const s=String(ruw||"");
   if(/(^|[^a-z])ip([^a-z]|$)/i.test(s)&&/(whitelist|white ?list|allowlist|not included)/i.test(s))
     return (ex?ex.toUpperCase():"De exchange")+" weigert je sleutel vanwege de IP-whitelist. Zet die uit: SyncJournal praat via een tussenserver, dus "+(ex?ex.toUpperCase():"de exchange")+" ziet nooit jouw eigen IP. Een sleutel met alleen leesrechten heeft geen whitelist nodig.";
   return s;}
+// ── Raw exchange data (backlog W2, dev mode only) ──
+/* With ?dev=1 every adapter call keeps its raw answer here, per exchange, for the last sync: what the adapter
+   got from the Worker or the exchange, before it became trades. Memory of this tab only: never localStorage,
+   IndexedDB, a back-up or the diagnose report, and gone after a reload. Without dev mode nothing is kept.
+   Downloaded from the diagnose panel and replayed in a spec (docs/w2-ruwe-data.md). */
+const RUW_MAX_TEKENS=2e6;      // per exchange ~2 MB of JSON; an answer that does not fit is left out and counted
+const RUW_MAX_AANROEPEN=300;   // per exchange per sync; a full sync with steps is a few dozen calls
+let RUWE_DATA={};              // {exchange:{begin,aanroepen:[{actie,tijd,verzoek,antwoord,fout?}],tekens,afgekapt,weggelaten:Set}}
+/* Field names that never leave the device: keys, wallet, account numbers and the balance. Compared lower-case
+   without _ or -. An adapter adds its own with ruwWeg, and keeps a name with ruwHoud where it means something
+   else on that exchange (Kraken's uid is an event/order id, not an account). */
+const RUW_WEG=new Set(['apikey','apisecret','secretkey','passphrase','password','signature','wallet','walletaddress','address','uid','mainuid','accountid','accountuid','acctid','subacct','subaccount','email','availbal','cashbal','availeq','totaleq']);
+const RUW_WEG_DEEL=/secret|passphrase|apikey|wallet|balance|equity/;   // also old_balance, totalEquity, walletAddress
+const ruwNaam=k=>String(k).toLowerCase().replace(/[^a-z0-9]/g,'');
+function ruwSchoon(v,weg,houd,uit,diep){
+  if(diep>50)return null;
+  if(Array.isArray(v))return v.map(x=>ruwSchoon(x,weg,houd,uit,diep+1));
+  if(!v||typeof v!=='object')return v;
+  const o={};
+  for(const k of Object.keys(v)){const n=ruwNaam(k);
+    if(!houd.has(n)&&(RUW_WEG.has(n)||weg.has(n)||RUW_WEG_DEEL.test(n))){uit.add(k);continue;}
+    o[k]=ruwSchoon(v[k],weg,houd,uit,diep+1);}
+  return o;}
+function ruwBegin(ex){if(IS_DEV&&ex)RUWE_DATA[ex]={begin:Date.now(),aanroepen:[],tekens:0,afgekapt:0,weggelaten:new Set()};}
+// The hook: proxyCall, Blofin's _direct and Hyperliquid's _post call it once per answer or error.
+function ruwVastleggen(ex,actie,verzoek,antwoord,fout){
+  if(!IS_DEV||!ex)return;
+  try{
+    if(!RUWE_DATA[ex])ruwBegin(ex);
+    const r=RUWE_DATA[ex],ad=ExchangeAPI[ex]||{};
+    if(r.aanroepen.length>=RUW_MAX_AANROEPEN){r.afgekapt++;return;}
+    const weg=new Set((ad.ruwWeg||[]).map(ruwNaam)),houd=new Set((ad.ruwHoud||[]).map(ruwNaam));
+    const a={actie:String(actie||''),tijd:new Date().toISOString(),verzoek:ruwSchoon(verzoek||{},weg,houd,r.weggelaten,0),antwoord:fout?null:ruwSchoon(antwoord,weg,houd,r.weggelaten,0)};
+    if(fout)a.fout=String(fout).slice(0,500);
+    let n=JSON.stringify(a).length;
+    if(r.tekens+n>RUW_MAX_TEKENS){a.tekens=n;a.antwoord=null;a.afgekapt=true;r.afgekapt++;n=JSON.stringify(a).length;if(r.tekens+n>RUW_MAX_TEKENS)return;}
+    r.tekens+=n;r.aanroepen.push(a);
+  }catch(e){}   // recording never breaks a sync
+}
+// Every key value in CONNS (key, secret, passphrase, wallet): a last check on the text, not on field names.
+function ruwGeheimen(){const uit=[];Object.values(CONNS||{}).forEach(c=>{if(c&&typeof c==='object')Object.keys(c).forEach(k=>{const v=c[k],n=ruwNaam(k);
+  if(typeof v==='string'&&v.length>=6&&(RUW_WEG.has(n)||RUW_WEG_DEEL.test(n)))uit.push(v);});});return uit;}
+function ruwZonder(v,re){if(typeof v==='string')return v.replace(re,'[weggehaald]');if(Array.isArray(v))return v.map(x=>ruwZonder(x,re));
+  if(v&&typeof v==='object'){const o={};for(const k of Object.keys(v))o[k.replace(re,'[weggehaald]')]=ruwZonder(v[k],re);return o;}return v;}
+function ruwBestand(ex){
+  const r=RUWE_DATA[ex];if(!r)return null;
+  const geh=ruwGeheimen();
+  let d={soort:'syncjournal-ruwe-data',formaat:1,exchange:ex,app:APP_VERSION,gemaakt:new Date().toISOString(),sync:new Date(r.begin).toISOString(),
+    afgekapt:r.afgekapt,weggelaten:[...r.weggelaten].sort(),aanroepen:r.aanroepen};
+  if(geh.length)d=ruwZonder(d,new RegExp(geh.map(s=>s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')).join('|'),'gi'));
+  const tekst=JSON.stringify(d,null,1),laag=tekst.toLowerCase();
+  if(geh.some(s=>laag.includes(s.toLowerCase())||laag.includes(JSON.stringify(s).slice(1,-1).toLowerCase())))throw new Error('sleutelwaarde nog in het bestand');
+  return tekst;}
+function ruwDownload(ex){
+  try{const t=ruwBestand(ex);if(!t)return;
+    const u=URL.createObjectURL(new Blob([t],{type:'application/json'})),a=document.createElement('a');
+    a.href=u;a.download='syncjournal-ruw-'+ex+'-'+localDateISO()+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(u),1500);
+    toast('✓ Ruwe gegevens van '+((EXMAP[ex]||{}).name||ex)+' gedownload','ok');
+  }catch(e){ErrorCenter.report('crash',e,{severity:'warn',userMsg:'De ruwe gegevens konden niet veilig worden opgeslagen. Er is niets gedownload.'});}
+}
 async function proxyCall(payload){
   const ex=(payload&&payload.exchange)||"";
   // Proactief overslaan tijdens een actieve backoff — bespaart de Worker + exchange.
@@ -7736,9 +7813,11 @@ async function proxyCall(payload){
     if(_rlIsLimit(resp.status,bodyTxt)){_rlBump(ex);throw _rlError(ex);}
     var errMsg="Worker fout ("+resp.status+")";
     try{var ed=JSON.parse(bodyTxt);if(ed.error)errMsg=proxyFoutTekst(ed.error,ex);}catch(ex2){}
+    ruwVastleggen(ex,payload.action,payload,null,errMsg);
     throw new Error(errMsg);
   }
   const data=await resp.json();
+  ruwVastleggen(ex,payload.action,payload,data);
   if(data.error){if(_rlIsLimit(0,data.error)){_rlBump(ex);throw _rlError(ex);}throw new Error(proxyFoutTekst(data.error,ex));}
   _rlBackoff[ex]&&delete _rlBackoff[ex];// succes → reset backoff voor deze exchange
   return data;
@@ -7857,6 +7936,7 @@ const ExchangeAPI = {
   },
   blofin:{
     name:"Blofin",color:"#6366f1",needsPassphrase:true,
+    ruwWeg:["available","frozen","bonus"],   // /asset/balances: the balance, never in a raw-data download (W2)
     // contractValue lookup — Blofin's /positions en /positions-history geven qty in
     // CONTRACTS (niet base currency). 1 BTC-USDT contract = 0.001 BTC, 1 DOGE-USDT = 1000 DOGE.
     // Zonder deze conversie zou een positie van 2.9 contracten als 2.9 BTC (1000× te groot) in
@@ -7897,6 +7977,7 @@ const ExchangeAPI = {
         headers:{"ACCESS-KEY":apiKey,"ACCESS-SIGN":signature,"ACCESS-TIMESTAMP":ts,"ACCESS-NONCE":nonce,"ACCESS-PASSPHRASE":passphrase,"Content-Type":"application/json"},
       });
       const data=await res.json();
+      ruwVastleggen("blofin",path,params,data);
       if(data.code&&String(data.code)!=="0")throw new Error(`Blofin: ${data.msg||data.code}`);
       return data;
     },
@@ -8088,6 +8169,8 @@ const ExchangeAPI = {
   },
   kraken:{
     name:"Kraken Futures",color:"#7b61ff",needsPassphrase:false,
+    // W2 raw data: the margin account's value goes (old_/new_balance already by name); uid stays, on Kraken it is an event/order id
+    ruwWeg:["pv","portfolioValue","availableMargin","auxiliary"],ruwHoud:["uid"],
     _pair(sym){let s=(sym||"").toUpperCase().replace("PF_","").replace("PI_","").replace("FF_","");s=s.replace("XBT","BTC");if(s.endsWith("USDC"))return s.slice(0,-4)+"/USDC";if(s.endsWith("USDT"))return s.slice(0,-4)+"/USDT";if(s.endsWith("USD"))return s.slice(0,-3)+"/USD";if(s.includes("/"))return s;return s+"/USD"},
     _normalise(t){
       // v12.230: defensieve timestamp-guard. Kraken's history-endpoints geven `timestamp` /
@@ -8709,11 +8792,14 @@ const ExchangeAPI = {
     // Directe browser-calls naar /info endpoint (CORS-enabled), geen Worker nodig, geen signing.
     // User data via wallet-adres als parameter; iedereen die dit adres kent kan de trades zien.
     name:"Hyperliquid",color:"#00c2ff",needsPassphrase:false,walletOnly:true,
+    ruwWeg:["user","marginSummary","crossMarginSummary","withdrawable","accountValue","totalRawUsd"],   // the wallet and the balance (W2)
     _base:"https://api.hyperliquid.xyz/info",
     async _post(body){
       const res=await fetch(this._base,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
-      if(!res.ok)throw new Error(`Hyperliquid HTTP ${res.status}`);
-      return res.json();
+      if(!res.ok){ruwVastleggen("hyperliquid",body&&body.type,body,null,`HTTP ${res.status}`);throw new Error(`Hyperliquid HTTP ${res.status}`);}
+      const data=await res.json();
+      ruwVastleggen("hyperliquid",body&&body.type,body,data);
+      return data;
     },
     _validateAddress(addr){
       if(!addr||typeof addr!=="string"||!/^0x[0-9a-fA-F]{40}$/.test(addr.trim()))throw new Error("Ongeldig wallet-adres, verwacht 0x gevolgd door 40 hex-tekens");
@@ -9171,6 +9257,7 @@ const ExchangeAPI = {
     // dus openIsPlaceholder=true + detectPartials via de shared helper. TP-breakdown (tpLevels)
     // wordt Kraken-stijl door de Worker uit fills-history opgebouwd en hier passthrough doorgegeven.
     name:"OKX",color:"#1a1a1a",needsPassphrase:true,
+    ruwWeg:["eq","eqUsd","isoEq","disEq","adjEq","frozenBal","ordFrozen"],   // /account/balance: the balance, never in a raw-data download (W2)
     // ctVal-lookup: OKX's positions-history `closeTotalPos`/`pos` staan in CONTRACTS, niet base.
     // 1 BTC-USDT-SWAP contract = 0.01 BTC. Het publieke /instruments endpoint is CORS-enabled
     // (geen auth) → 1× ophalen + 15 min cachen. Fallback-map als vangnet; PnL-cross-check in
@@ -9835,6 +9922,7 @@ async function syncExchange(exId,opts){
   if(!ad||!c||!c.connected){if(!quiet)toast('Eerst verbinden via Instellingen → Accounts','err');return -1;}
   // an out-of-date tab cannot save: syncing here would fetch trades that are lost, and move lastSync past them
   if(TAB_STALE){if(!quiet)toast('Dit tabblad is verouderd: ververs het eerst, dan synct het weer','err');return -1;}
+  ruwBegin(exId);   // dev mode: the raw answers of this sync replace those of the previous one
   // Fase 2 stap 1: open posities eerst (maakt/ververst open rijen en placeholders).
   await syncOpenTrades(exId,{quiet:true});
   const last=+c.lastSync||0;

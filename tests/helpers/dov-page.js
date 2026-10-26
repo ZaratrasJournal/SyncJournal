@@ -31,7 +31,7 @@ async function openJournal(b, opts) {
   if (opts.init) await p.addInitScript(opts.init, opts.initArg);
   // Vaste klok (Date.now en new Date); timers lopen gewoon door.
   if (opts.klok) await p.clock.setFixedTime(opts.klok);
-  await p.goto(APP, { waitUntil: 'domcontentloaded' }); await bootKlaar(p); await p.waitForTimeout(300);
+  await p.goto(APP + (opts.query || ''), { waitUntil: 'domcontentloaded' }); await bootKlaar(p); await p.waitForTimeout(300);
   return { ctx, p, errs };
 }
 async function reload(p) { await p.reload({ waitUntil: 'domcontentloaded' }); await bootKlaar(p); await p.waitForTimeout(300); }
