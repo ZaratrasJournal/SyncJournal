@@ -381,6 +381,10 @@ laadt alleen wanneer je hem nodig hebt: de theme-token hook, de axe-core a11y-au
 PR-review-workflows, `ccusage` voor token- en kostencontrole, en `/design-review`.
 
 ## Niet doen
+- **Uitzondering, cloud-agents (Denny, 26-10-2026: "laat de agents maar testen en pushen wat al kan"):** een cloud-agent
+  of routine mag zijn **eigen feature-branch** pushen als Claude of Zaratras hem die opdracht gaf. Nooit `main`, nooit
+  `work`, nooit de deploy-repo, geen release en geen versienummer tenzij de opdracht dat uitdrukkelijk vraagt. Samenvoegen
+  naar `main` en alles naar work/live blijft achter Denny's expliciete woord.
 - **Geen `git push` naar `origin/main` zonder expliciet "push"-commando van Denny.** Geldt voor élke push (gewoon, force, vanaf andere branch — alles). "Ga maar bouwen" / "doe maar" / "zet erin" / "ja akkoord" zijn **géén** push-toestemming, alleen het letterlijke woord *push* (of "release", "live", "publiceer") telt. Lokale commits + `cp work → main` zijn OK; pas op het moment dat het naar GitHub gaat is expliciete go vereist. Bij twijfel: niet pushen, vragen.
 - Geen `file://` paden in instructies naar gebruikers.
 - API-sleutels in de browser (besluit Denny 25-10-2026, bij de AI-coach): de **eigen** sleutel van een gebruiker
