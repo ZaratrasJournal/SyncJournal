@@ -16,6 +16,13 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v1.18.8] — 2026-10-26
+
+### Gewijzigd
+- **De melding "nog geen handmatig account" of "gekoppeld via de API" in het tradeformulier heeft nu een knop Backtest-trade.** Die zet Exchange op Geen exchange en Soort op Backtest. Naast die knop staat nog steeds Account toevoegen.
+
+---
+
 ## [v1.18.7] — 2026-10-26
 
 ### Gewijzigd
