@@ -2231,7 +2231,7 @@ const KINDS={live:{label:'Live',color:'var(--green)'},gemist:{label:'Gemist',col
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v1.18.3';
+const APP_VERSION='v1.18.4';
 const SCHEMA_VERSION=12;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -4933,7 +4933,9 @@ const fdPaid=f=>(f.payouts||[]).reduce((s,p)=>s+(+p.amount||0),0);
 // What still needs you: a running challenge, a passed one not yet converted, an active funded account.
 const fdBovenaan=f=>fundedLopend(f)||(f.kind==='challenge'&&f.status==='gehaald'&&!fundedItem(f.funded));
 function fdVerborgen(){const ids=new Set(FUNDED.map(f=>f.id));return {n:FUNDED.length,m:T.filter(t=>t&&ids.has(t.exchange)).length};}
-function setFundedModus(on){STATE.funded=!!on;STATE.fdMenu=null;persistState();render();if(on)fdWeesVraag();}
+// Funded mode is still in test (Zaratras, 26-10-2026): warn when it is switched on, without blocking the switch.
+const FD_TEST_TOAST='Funded modus staat aan. Dit is nog een testversie: controleer je cijfers met die van je prop firm.';
+function setFundedModus(on){STATE.funded=!!on;STATE.fdMenu=null;persistState();render();if(on){toast(FD_TEST_TOAST,'info');fdWeesVraag();}}
 // Trades whose account no longer or never existed (t.exchange 'ftmo' from an old FTMO import, a removed account).
 const fdWees=()=>T.filter(t=>t&&t.exchange&&!EXMAP[t.exchange]&&!MANUAL.some(m=>m.id===t.exchange)&&!fundedItem(t.exchange));
 function fdWeesVraag(){
@@ -4959,9 +4961,10 @@ function setFundedMee(on){STATE.fundedMee=!!on;persistState();render();}
 function tabFunded(){
   const sw=(on,label,sub,act,id)=>`<div class="setrow"><div class="txt"><b>${label}</b><small>${sub}</small></div><button class="sw ${on?'on':''}" id="${id}" role="switch" aria-checked="${on}" aria-label="${esc(label)}" onclick="${act}"></button></div>`;
   let out=`<p class="setintro">Challenges en funded accounts bij een prop firm. Telt niet als je eigen geld; de trades wel in je analyse.</p>
-    <div class="panel">${sw(fundedAan(),'Funded modus','Toon challenges en funded accounts in je journal.',`setFundedModus(${!fundedAan()})`,'swFunded')}
+    <div class="panel">${sw(fundedAan(),'Funded modus','Nog in testfase. Toon challenges en funded accounts in je journal.',`setFundedModus(${!fundedAan()})`,'swFunded')}
     ${fundedAan()?sw(!!STATE.fundedMee,'Funded meetellen','Tel lopende challenges en actieve funded accounts op bij je balans.',`setFundedMee(${!STATE.fundedMee})`,'swFundedMee'):''}
-    ${fundedAan()&&FUNDED.length?fdPctUitleg():''}</div>`;
+    ${fundedAan()&&FUNDED.length?fdPctUitleg():''}</div>
+    ${fundedAan()?'<div class="formwarn" id="fdTest" role="note" style="margin-top:12px">⚠️ <b>Testfase.</b> De funded modus is nieuw. Controleer je cijfers met die van je prop firm en maak eerst een back-up (Instellingen → Data). Klopt er iets niet? Meld het in de Morani Discord.</div>':''}`;
   if(!fundedAan()){const v=fdVerborgen();
     return out+(v.n?`<p class="setintro" style="margin-top:12px">${v.n} challenge${v.n===1?'':'s'} en funded accounts met ${v.m} trade${v.m===1?'':'s'} zijn verborgen, niet gewist.</p>`:'');}
   if(!FUNDED.length)return out+`<div style="height:16px"></div>`+(STATE.fdForm&&STATE.fdForm.kind?fdAddForm():emptyState('funded-leeg'));

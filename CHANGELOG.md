@@ -16,6 +16,13 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v1.18.4] — 2026-10-26
+
+### Gewijzigd
+- **Funded modus: duidelijk dat het nog een testfase is.** Onder de schakelaar staat "Nog in testfase". Zet je hem aan, dan zie je een melding, en zolang hij aan staat een waarschuwing bovenaan: controleer je cijfers met die van je prop firm en maak eerst een back-up.
+
+---
+
 ## [v1.18.3] — 2026-10-26
 
 ### Gewijzigd
