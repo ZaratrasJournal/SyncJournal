@@ -14,19 +14,12 @@ vergelijkt versies, en een lager nummer zou nooit als update verschijnen.
 
 Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Drop in de Morani Discord.
 
-## [Unreleased]
+---
+
+## [v1.18] — 2026-10-26
 
 ### Toegevoegd
 - **Kopieer voor Discord met meerdere trades.** Heb je er meer geselecteerd, dan kopieert de knop ze één voor één ("Kopieer 2 van 3"): plakken in Discord, klikken, plakken, en dan één keer versturen. Of kies **⬇ Alle beelden voor Discord** voor één beeld per trade in je downloads, met de teksten samen op het klembord. Met de privacy-modus aan blijven bedragen ook van het beeld af.
-
-### Fixed
-- **Privacy-modus geldt nu ook voor Mori en het coach-pakket.** Stond de privacy-modus aan maar het vinkje "Bedragen verbergen" uit, dan gingen je bedragen toch mee naar Mori en in het coach-pakket. Nu niet meer.
-
----
-
-## [Unreleased]
-
-### Toegevoegd
 - **Funded modus** (Instellingen → Funded), voor wie een challenge handelt bij een prop firm zoals FTMO of Breakout. Je zet hem zelf aan; standaard staat hij uit en ziet je journal er precies uit als nu.
   - Houd je challenges en funded accounts bij met firm, naam, grootte en status (bezig / gehaald / niet gehaald, of actief / gestopt). Een gehaalde challenge zet je met één knop om naar een funded account; de twee blijven aan elkaar gekoppeld.
   - Per kaart zie je de P&L en het P&L-% op de grootte. Uitbetalingen voeg je toe op een funded account, ook op een gestopt account.
@@ -57,14 +50,18 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
   er wel meetellen, en onder de 10 dat het nog te weinig is voor een conclusie.
 - In het trade-formulier kies je bij "Exchange" ook een challenge of funded account (alleen met de funded modus aan). Afgeronde staan eronder, voor een vergeten trade.
 - Zet je de funded modus aan terwijl er oude FTMO-trades zonder account staan, dan vraagt de journal één keer wat je wilt: in een nieuwe challenge zetten, of als eigen geld laten staan. Hij verplaatst nooit iets vanzelf.
+- **Ruwe gegevens bij een probleem (dev-modus).** Open de journal met `?dev=1` achter het adres, sync, en download in Instellingen → Data → *Hulp bij problemen* per exchange wat die terugstuurde. Zonder sleutels, walletadres, accountnummers of saldo, en alleen in het geheugen van het tabblad. Stuur het bestand alleen aan Zaratras. Gewone leden zien hier niets van.
 
 ### Gewijzigd
 - Een FTMO MetriX-export komt nu op een account te staan (een bestaand handmatig FTMO-account, of een nieuw account dat je in de pop-up maakt). Voorheen hingen die trades aan geen enkel account.
 - De FAQ legt de CSV-import stap voor stap uit, met welke formaten werken.
 
 ### Fixed
+- **Privacy-modus geldt nu ook voor Mori en het coach-pakket.** Stond de privacy-modus aan maar het vinkje "Bedragen verbergen" uit, dan gingen je bedragen toch mee naar Mori en in het coach-pakket. Nu niet meer.
 - Een CSV-bestand zonder kolom "symbol" gaf de foutmelding "config is not defined". Zo'n bestand wordt nu gewoon gelezen of netjes als onbekend gemeld.
 - Een trade op een account dat niet van jou is (zoals een funded account) verschoof het P&L-% van al je eerdere trades. Je eigen P&L-% rekent nu alleen met je eigen geld.
+
+---
 
 ## [v1.17.2] — 2026-10-25
 

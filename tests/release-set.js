@@ -88,4 +88,9 @@ module.exports = [
   // v1.15.2 + v1.16: Morani links, FAQ, and the AI coach (key never in an export, the app computes, the model reads)
   'morani-links',
   'coach-pakket', 'coach-sleutel', 'coach-stream', 'coach-verbruik', 'coach-knoppen', 'coach-tools', 'coach-pretrade',
+  // v1.18: funded mode, CSV account pop-up, Discord copy for several trades, raw data in dev mode (W2),
+  // stop management (F5, F7, F9)
+  'funded-geld', 'funded-tab', 'funded-import', 'funded-dashboard', 'csv-account-keuze',
+  'discord-meerdere', 'ruwe-data', 'ruwe-data-voorbeeld',
+  'stop-beweging', 'stop-override', 'stop-analytics',
 ];
