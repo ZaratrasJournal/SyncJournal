@@ -24,6 +24,17 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
   Trend continuation, Support/Resistance, Volume, Divergence, News en meer. Je kiest in Instellingen → Tags.
   *Toevoegen* zet er alleen de tags bij die je nog niet had, er verdwijnt niets. *Vervangen* vraagt eerst om
   bevestiging en laat je eigen labels staan. Heb je al een journal, dan verandert er niets aan je tags.
+- **Hoe veilig is SyncJournal?** Een nieuwe pagina in gewone taal: waar je trades en sleutels staan, hoe je per
+  exchange een read-only sleutel maakt, welke exchange via de tussenserver loopt en wat die wel en niet ziet,
+  back-ups en sleutels, Mori met je eigen Anthropic-sleutel, en wat je doet als een sleutel gelekt is. Je vindt hem
+  onderaan de startpagina, in de privacyverklaring en in Instellingen → Accounts bij het koppelen ("Hoe veilig is dit?").
+- **Extra beveiliging van de website** (Content-Security-Policy): de browser mag de app alleen laten praten met een
+  vaste lijst adressen. Staat eerst een week alleen op melden, zodat er niets breekt.
+
+### Gewijzigd
+- **Privacyverklaring bijgewerkt**: per exchange staat nu welke route hij neemt (Blofin rechtstreeks, Hyperliquid
+  openbaar, OKX en Kraken via de tussenserver), dat de tussenserver ook telt vanaf welke website een verzoek komt,
+  en dat Mori rechtstreeks met Anthropic praat. Ook de wisselkoers, Google Fonts en jsDelivr worden genoemd.
 
 ## [v1.17.2] — 2026-10-25
 
