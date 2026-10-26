@@ -34,9 +34,9 @@ elke wijziging eindigt met `node tests/run-release.js` groen.
 | **W2** | Ruwe exchange-data kunnen vastleggen (dev-modus terug) | 2 | M | — |
 | **C1** | Lege staten: één manier, met een volgende stap | 2 | S + M | — |
 | ~~C5~~ | ~~Acht tag-soorten, acht kleuren, overal gelijk~~ — ✅ **gedaan in v1.3** | — | — | — |
-| **T1** | CSV-import testen op CI | 2 | M | — |
+| ~~T1~~ | ~~CSV-import testen op CI~~ — ✅ **gedaan, branch `csv-dubbel-ci` (in v1.18.1)** | — | — | — |
 | **W1** | Worker: `Access-Control-Allow-Origin` stond op `*` — 🔨 **v25 live in stand meten**; over een week afdwingen | 2 | XS (Zaratras) | — |
-| **B3** | Controleren: telt dezelfde positie dubbel via CSV én API? | 2 | S | — |
+| ~~B3~~ | ~~Telt dezelfde positie dubbel via CSV én API?~~ — ✅ **was echt dubbel (Blofin, OKX, Hyperliquid), opgelost in v1.18.1 (branch `csv-dubbel-ci`)** | — | — | — |
 | **W5** | Worker v25: `okxHost` alleen uit een vaste lijst (lek sinds v19) en de ongebruikte `orders`-verzoeken uit `algos` weg — ✅ **live sinds 25-10 (v25)** | 1 | XS | — |
 | **B6** | OKX: waarschuwing bij een onbekende contractsoort in het vangnet; SL koppelen op het exacte contract i.p.v. de munt (review 24-10) | 3 | XS | — |
 | ~~B9~~ | Datum na middernacht — ✅ **gedaan in v1.15.1** | — | — | — |
@@ -417,7 +417,27 @@ kent nu de contractwaarde per familie (instrument zonder vervaldatum), uit OKX's
 gevonden: de oude uitzondering gaf een BTC-datum-future 0,0001 in plaats van 0,01 (100× te klein), en ETH X-Perp viel
 terug op 1 in plaats van 0,001 (1000× te groot).
 
-### B3 · Controleren: telt dezelfde positie dubbel via CSV én API? — prio 2 · S
+### B3 · Controleren: telt dezelfde positie dubbel via CSV én API? — ✅ opgelost (branch `csv-dubbel-ci`, 26-10-2026)
+
+**Uitkomst.** Ja, het was dubbel, bij **Blofin, OKX en Hyperliquid**, in beide volgordes (eerst CSV dan sync, en
+andersom). `sjImportCsvText` geeft een CSV-rij een id uit de inhoud (`<ex>_csv_…`), de API een eigen id, en
+`importTjClosed` ontdubbelt alleen op dat id. **Kraken niet**: CSV en API delen daar het id, en met een koppeling
+weigert de app de Kraken-CSV (`kraken-csv-api.spec.js`). MEXC (geen sync meer) en FTMO (geen API) kunnen niet
+overlappen.
+
+**Fix.** Per adapter `ExchangeAPI.<ex>.zelfdePositie(csv, api)` (Blofin: opening binnen 2 minuten, de export is UTC;
+OKX en Hyperliquid: de exporttijd is lokaal en de zone onbekend, dus open én sluiting mogen met hetzelfde hele
+kwartier verschoven zijn, hooguit 14 uur), bovenop dezelfde pair, richting, instap-, uitstapprijs (0,1%) en grootte
+(2%). `csvOpgaanInApi(exId)` draait na elke sync en elke CSV-import: de API-rij wint, je invoer van de CSV-rij gaat
+mee (lijsten samengevoegd, twee notities blijven allebei), de CSV-rij verdwijnt zonder prullenbak. Ligt de API-rij
+in de prullenbak, dan verdwijnt de CSV-rij ook. Bestaande dubbelen gaan bij de eerstvolgende sync samen.
+Spec: `tests/csv-api-dubbel.spec.js` (47 checks, met nagebootste API op de laag van elke adapter).
+
+**Migratie v12** slaat koppelingen met recente CSV-trades over vanwege B3. Die uitzondering blijft staan (hij
+heeft al gedraaid); vanaf nu zou terugkijken niet meer dubbelen.
+
+*Oorspronkelijke opdracht:*
+
 
 **Waarom.** In de oude app kon één positie twee keer binnenkomen: via een CSV-import én via de
 API-sync, met verschillende id's. Of dat in SyncJournal nog kan is onbekend — de import is sindsdien
@@ -475,7 +495,16 @@ worden, en die zich meldt zodra de bug weg is. Volledige beschrijving: `docs/pla
 
 ## Tests
 
-### T1 · CSV-import testen op CI — prio 2 · M
+### T1 · CSV-import testen op CI — ✅ gedaan (branch `csv-dubbel-ci`, 26-10-2026)
+
+**Gedaan.** Per formaat een synthetische export in `tests/fixtures-csv/` (in git, met `git add -f` omdat `*.csv`
+genegeerd wordt): Blofin, OKX, Kraken, Hyperliquid, MEXC (futures én posities) en FTMO. `tests/csv-synthetisch.spec.js`
+draait ze altijd, ook op CI (39 checks: herkend formaat, exacte cijfers, dubbel inlezen geeft niets). De
+OKX-kolomnamen volgen de parser, niet een geverifieerde echte export. `csv-import.spec.js` blijft de extra laag op
+de echte exports. Nog te doen: de nieuwe specs in `tests/release-set.js` zetten.
+
+*Oorspronkelijke opdracht:*
+
 
 **Waarom.** `tests/_fixtures/` is terecht gitignored (echte exports), dus op CI slaat `csv-import`
 zichzelf over — ook in de groene runs van vandaag (`⏭️ csv-import … overgeslagen`). Lokaal draait hij
