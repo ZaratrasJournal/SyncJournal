@@ -1,6 +1,6 @@
 # De Worker dichtzetten — rate limiting + client-kenmerk
 
-*Voor Denny. De Worker-code zit buiten deze repo, dus hieronder staat wat je moet doen en
+*Voor Zaratras. De Worker-code zit buiten deze repo, dus hieronder staat wat je moet doen en
 welke code erin moet. De app-kant is al gebouwd (v0.9.151).*
 
 ---
@@ -130,7 +130,7 @@ wijziging, niet nodig om dit aan te zetten.
 ## 2 · Het client-kenmerk — als label, niet als slot
 
 > **Gecorrigeerd op 28-09-2026.** De eerste versie van dit document zei: laat de Worker verzoeken
-> zonder kenmerk weigeren. **Dat zou schade aanrichten.** Denny wees erop dat Morani's eigen
+> zonder kenmerk weigeren. **Dat zou schade aanrichten.** Zaratras wees erop dat Morani's eigen
 > journal dezelfde Worker gebruikt, en die stuurt geen kenmerk. Bovendien draaien er nog leden op
 > de oude `tradejournal.html`, die het ook niet stuurt. Weigeren breekt allebei, stil, zonder dat
 > zij weten waarom. Het kenmerk blijft dus een **label om mee te kijken**, geen slot.

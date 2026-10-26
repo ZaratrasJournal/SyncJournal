@@ -65,6 +65,14 @@ const TRADES = [
   ok('winrate en R blijven', /winrate 50%/.test(verborgen) && /gem\. R/.test(verborgen));
   ok('het pakket zegt dat bedragen zijn weggelaten', /bedragen.*weggelaten/i.test(verborgen));
 
+  console.log('─── Privacy-modus aan, vinkje van Mori uit ───');
+  const priv = await p.evaluate(() => { AIPREFS.hideAmounts = false; STATE.priv = true;
+    try { return { pk: coachPakket({}).tekst, tool: aiToolUitvoeren({ name: 'groep_stats', input: { dimensie: 'alles' } }).tekst }; } finally { STATE.priv = false; } });
+  ok('privacy-modus: geen $ of € in het pakket', !/[$€]/.test(priv.pk), (priv.pk.match(/.*[$€].*/) || [''])[0]);
+  ok('privacy-modus: geen bedragen uit de trades', !/\b40\b|12,5|7,25/.test(priv.pk.replace(/^#.*$/gm, '')), (priv.pk.match(/.*(\b40\b|12,5|7,25).*/) || [''])[0]);
+  ok('privacy-modus: ook geen bedragen als Mori een tool gebruikt', !/[$€]/.test(priv.tool), (priv.tool.match(/.*[$€].*/) || [''])[0]);
+  ok('privacy-modus uit, vinkje uit: bedragen gaan wel mee', /[$€]/.test(await pk()));
+
   console.log('─── Notities ───');
   ok('notities gaan standaard mee', tekst.includes(NOTITIE));
   ok('notities uit: geen notitie in het pakket', !(await pk({ notes: false })).includes(NOTITIE));

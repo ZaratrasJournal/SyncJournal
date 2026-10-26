@@ -1,6 +1,6 @@
 # Worker bijwerken — wat, waarom, en hoe
 
-Voor Denny. Twee wijzigingen, allebei terugwaarts veilig: journals die ze nog niet lezen merken er niets van. `docs/worker-okx-complete.js` is de volledige, bijgewerkte Worker — plakken en deployen is genoeg.
+Voor Zaratras. Twee wijzigingen, allebei terugwaarts veilig: journals die ze nog niet lezen merken er niets van. `docs/worker-okx-complete.js` is de volledige, bijgewerkte Worker — plakken en deployen is genoeg.
 
 ## Wat je ermee wint
 

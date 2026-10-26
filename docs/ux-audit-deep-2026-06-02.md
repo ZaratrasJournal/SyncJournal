@@ -187,7 +187,7 @@
 
 ## 3. Thema-bevindingen — geen kritiek probleem
 
-Het rommelgevoel van Denny komt **niet uit de thema-keuze**:
+Het rommelgevoel van Zaratras komt **niet uit de thema-keuze**:
 - **Sync (donker)**: solide, professional, "trading-terminal"-vibe. Werkt voor alle data-heavy schermen.
 - **Parchment (warm light)**: voelt boekachtig — werkt verrassend goed voor content-heavy schermen zoals Tendencies. KPI cards zijn iets minder prominent maar leesbaar.
 - **Daylight (modern light)**: niet geverifieerd in deze audit door fout in seed-key. Geen reden om aan te nemen dat 't anders is.
@@ -212,7 +212,7 @@ Het rommelgevoel van Denny komt **niet uit de thema-keuze**:
 
 ## 5. Aanbevolen volgorde (V12.164–V12.167, geen big bang)
 
-Geen mass-refactor. Per release één scherm of patroon. Eerst akkoord van Denny per stap.
+Geen mass-refactor. Per release één scherm of patroon. Eerst akkoord van Zaratras per stap.
 
 ### Voorstel — 4 mini-releases
 

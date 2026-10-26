@@ -1,6 +1,6 @@
 # Stand van zaken — avond 28-09-2026
 
-*Voor Denny, om 's ochtends te lezen. Alles staat in de werkmap, **niets is gecommit en niets
+*Voor Zaratras, om 's ochtends te lezen. Alles staat in de werkmap, **niets is gecommit en niets
 is gepusht**. v1.0 draait ongewijzigd op syncjournal.nl.*
 
 ---

@@ -54,8 +54,8 @@ Nieuwe `ExchangeAPI.bybit` (via Worker, `needsPassphrase:false`, host-var `api.b
 ## 8. Voorbereidingschecklist
 **Nu (zonder live perps):**
 - [ ] stub `ExchangeAPI.bybit` (no-op methodes, clean dispatcher).
-- [ ] Worker-skeleton "bybit" action (signing + host-var) — als diff aan Denny.
-- [ ] CSV-parser zodra Denny sample (globale bybit.com-export, wrs gelijke structuur) levert.
+- [ ] Worker-skeleton "bybit" action (signing + host-var) — als diff aan Zaratras.
+- [ ] CSV-parser zodra Zaratras sample (globale bybit.com-export, wrs gelijke structuur) levert.
 - [ ] inline sanity-test parser.
 - [ ] 7-daags pagineer-patroon documenteren (= Kraken).
 
@@ -67,7 +67,7 @@ Nieuwe `ExchangeAPI.bybit` (via Worker, `needsPassphrase:false`, host-var `api.b
 - [ ] leverage-caps definitief (MiFID II/ESMA).
 - [ ] fixture-pattern `tests/bybit-partial.spec.js`.
 
-## 9. Open vragen (Denny / live account)
+## 9. Open vragen (Zaratras / live account)
 1. bybit.eu-account of nog globaal?
 2. geanonimiseerde Trade History CSV exporteerbaar (ook spot) om kolommen te bevestigen?
 3. account-type UTA of CONTRACT?

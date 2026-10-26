@@ -1,6 +1,6 @@
 # Worker v20 — monitoring voor het dagrapport
 
-*Voor Denny. `morani-proxy` draait in **het Cloudflare-account van Morani**; je kunt erbij. Morani's
+*Voor Zaratras. `morani-proxy` draait in **het Cloudflare-account van Morani**; je kunt erbij. Morani's
 eigen journal gebruikt dezelfde Worker, dus laat hem weten wat er verandert (zie onder). De complete
 code staat in [worker-v20.js](worker-v20.js) en is getest met `node tests/worker-monitoring.spec.js`,
 met de echte handlers en een nagemaakt internet.*

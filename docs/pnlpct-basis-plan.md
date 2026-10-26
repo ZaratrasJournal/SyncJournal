@@ -1,6 +1,6 @@
 # Plan: echte basis voor P&L-percentages (vervangt ACCT=24663)
 
-**Status:** wacht op keuze van Denny (zie "Beslissing" onderaan). Nog niets gebouwd.
+**Status:** wacht op keuze van Zaratras (zie "Beslissing" onderaan). Nog niets gebouwd.
 
 ## Huidige situatie
 
@@ -34,7 +34,7 @@ Alle lezers van `t.pnlPct` en `ACCT` langslopen: trade-opslag, migratie, `pnlCel
 
 Ongeveer een halve dag inclusief tests. Aparte release, niet bundelen met andere wijzigingen.
 
-## Beslissing (Denny)
+## Beslissing (Zaratras)
 
 1. Akkoord met **B + optionele vaste referentie (C)**?
 2. Moet het %-veld bij ontbrekende basis verdwijnen of "—" tonen?

@@ -10,7 +10,7 @@ Dit document is de **bron-van-waarheid voor domein-vocabulaire en architectuur-b
 
 Een trading journal web-app voor een kleine crypto-trader community (Morani Discord). Lokaal draaiend (single-file HTML), gericht op gestructureerd journalen + analytics + setup-discipline.
 
-**Users**: Denny (primair), Sebas (co-builder), community-leden via GitHub releases.
+**Users**: Zaratras (primair), Sebas (co-builder), community-leden via GitHub releases.
 
 ---
 
@@ -111,7 +111,7 @@ App praat met exchange-API's via **online Cloudflare Worker**. `proxy-local/work
 Playwright + headless Chromium installed. Per feature:
 - Logic-fix → Node-snippet tegen JSON-fixture (snelst)
 - UI-render → Playwright spec + Read-tool op screenshot
-- Live exchange data → Snapshot-knop (credentials blijven bij Denny)
+- Live exchange data → Snapshot-knop (credentials blijven bij Zaratras)
 
 Commands: `npm test`, `npx playwright test tests/<feature>.spec.js`, `node tests/run-adhoc.js`.
 

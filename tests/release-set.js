@@ -88,4 +88,14 @@ module.exports = [
   // v1.15.2 + v1.16: Morani links, FAQ, and the AI coach (key never in an export, the app computes, the model reads)
   'morani-links',
   'coach-pakket', 'coach-sleutel', 'coach-stream', 'coach-verbruik', 'coach-knoppen', 'coach-tools', 'coach-pretrade',
+  // v1.18: funded mode, CSV account pop-up, Discord copy for several trades, raw data in dev mode (W2),
+  // stop management (F5, F7, F9)
+  'funded-geld', 'funded-tab', 'funded-import', 'funded-dashboard', 'csv-account-keuze',
+  'discord-meerdere', 'ruwe-data', 'ruwe-data-voorbeeld',
+  'stop-beweging', 'stop-override', 'stop-analytics',
+  // v1.18.1: CSV and API no longer double (B3), CSV import on CI (T1), Hyperliquid CSV without leading zeros and
+  // Zaratras' real export (skips without the local fixtures), stop-loss line after an import, TP sum
+  'csv-synthetisch', 'csv-api-dubbel', 'hl-csv-zonder-nul', 'hl-csv-echt', 'csv-stop-melding', 'tp-verdeling',
+  // v1.18.2: Review page, newest first, tiles without an image, large view with trade details
+  'review-volgorde', 'review-beeld-info',
 ];

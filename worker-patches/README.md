@@ -17,7 +17,7 @@ Snippets en complete versies van de **online Cloudflare Worker** die de exchange
 
 **Wat verandert vs v7**: alleen Kraken matching-logica + diagnostic info. MEXC + Blofin byte-voor-byte ongewijzigd vs v7.
 
-- v7 leverde `fillsCount: 328, logsCount: 1000, matchedCount: 0` voor Denny — fills + logs kwamen binnen, maar match-criterium faalde voor élke fill.
+- v7 leverde `fillsCount: 328, logsCount: 1000, matchedCount: 0` voor Zaratras — fills + logs kwamen binnen, maar match-criterium faalde voor élke fill.
 - **v8 fixes**:
   1. Case-insensitive contract-matching (`pf_xbtusd` ↔ `PF_XBTUSD`)
   2. Match-window 5s → **30s** (account-log entries kunnen propagation-delay hebben)

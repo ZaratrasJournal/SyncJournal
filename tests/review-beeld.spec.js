@@ -77,7 +77,8 @@ const mk = (id, over) => Object.assign({ id, date: '2026-09-' + String(id).padSt
     mk(4, { date: '2026-09-21' }),
     mk(5, { date: '2026-09-22', screenshots: [BAD] })], 'beeld');
   ok('nieuwste maand eerst (september)', await p.evaluate(() => /september 2026/.test(document.querySelector('.revmonth h2').textContent)));
-  ok('alleen trades met beeld of TV-link', await p.evaluate(() => document.querySelectorAll('.revcard').length === 2));
+  // since 26-10-2026 (Zaratras) trades without an image keep their place as a "Geen afbeelding" tile
+  ok('alle trades van de maand, ook zonder beeld', await p.evaluate(() => document.querySelectorAll('.revcard').length === 4 && document.querySelectorAll('.revcard .noshot:not(.fallback)').length === 2));
   ok('kaart heeft 8 tegels', await p.evaluate(() => document.querySelectorAll('.revcard')[0].querySelectorAll('.revtiles > div').length === 8));
   ok('winst = groene rand', await p.evaluate(() => document.querySelector('.revcard').classList.contains('win')));
   ok('setup ge-escaped', await p.evaluate(() => !document.querySelector('.revcard img[src="x"]') && document.querySelector('.revcard').textContent.includes('<img')));
@@ -91,7 +92,7 @@ const mk = (id, over) => Object.assign({ id, date: '2026-09-' + String(id).padSt
   await p.evaluate(() => { const b = [...document.querySelectorAll('.revcard .linkbtn')].find(x => /Open trade/.test(x.textContent)); b.click(); });
   ok('Open trade → Per trade op die trade', await p.evaluate(() => STATE.revMode === 'trade' && STATE.revSel === 1));
   await p.evaluate(() => { T = T.map(t => ({ ...t, screenshots: [], tvLinks: [] })); persist(); setRevMode('beeld'); });
-  ok('lege staat zonder beelden, met uitleg', await p.evaluate(() => /Nog geen trades met beeld/.test((document.querySelector('.empty') || {}).textContent || '')));
+  ok('zonder beelden: tegels "Geen afbeelding", geen lege staat', await p.evaluate(() => !document.querySelector('.empty') && [...document.querySelectorAll('.revcard')].every(c => /Geen afbeelding/.test(c.textContent))));
   await p.evaluate(() => setRevMode('trade'));
 
   console.log('─── Beeld: 3000 trades ───');
@@ -143,7 +144,8 @@ const mk = (id, over) => Object.assign({ id, date: '2026-09-' + String(id).padSt
   await p.keyboard.press('Escape'); await p.waitForTimeout(100);
   ok('Esc sluit', await p.evaluate(() => !document.getElementById('revpres').classList.contains('on') && revPres === null));
   await p.evaluate(() => document.querySelector('.revcard .cardshot').click()); await p.waitForTimeout(100);
-  ok('klik op kaartbeeld: alleen die trade, zonder paneel', await p.evaluate(() => revPres.items.every(x => x.id === 1) && document.getElementById('revpres').classList.contains('nopanel')));
+  // since 26-10-2026 (Zaratras): the month in page order, with the trade details beside the image
+  ok('klik op kaartbeeld: de maand, op die trade, met gegevens', await p.evaluate(() => revPres.panel === 'info' && revPres.items[revPres.i].id === 1 && new Set(revPres.items.map(x => x.id)).size === 2 && !!document.querySelector('#revpres aside .birows')));
   await p.evaluate(() => go('dashboard'));
   ok('naar een andere pagina sluit de presentatie', await p.evaluate(() => revPres === null && !document.getElementById('revpres').classList.contains('on')));
 
@@ -207,6 +209,16 @@ const mk = (id, over) => Object.assign({ id, date: '2026-09-' + String(id).padSt
   const rg = await p.evaluate(() => revTpRegels(T.find(t => t.id === 3)));
   ok('Discord-beeld: maximaal 4 TP-regels + "+2"', rg.length === 5 && rg[4].l === '+2' && rg[0].hit === true && rg[3].hit === false, JSON.stringify(rg));
   ok('Discord-beeld zonder TP\'s: geen regels', (await p.evaluate(() => revTpRegels(T.find(t => t.id === 2)))).length === 0);
+
+  console.log('─── Privacy-modus in het coach-pakket ───');
+  await seed([mk(1, { date: '2026-09-29', screenshots: [PNG] })], 'beeld');
+  await p.evaluate(() => { STATE.revShareSel = [1]; STATE.shareHide = false; STATE.priv = true; render(); });
+  const dlPriv = p.waitForEvent('download');
+  await p.evaluate(() => downloadCoachPackage());
+  const htmlPriv = require('fs').readFileSync(await (await dlPriv).path(), 'utf8');
+  const bedrag = await p.evaluate(() => eurS(540));
+  ok('privacy-modus aan, vinkje uit: geen bedrag in het coach-pakket', !htmlPriv.includes(bedrag), bedrag);
+  await p.evaluate(() => { STATE.priv = false; STATE.shareHide = true; revSelClear(); setRevMode('trade'); });
 
   //@@NEXT
 

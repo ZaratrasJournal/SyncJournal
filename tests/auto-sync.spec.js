@@ -10,6 +10,10 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
 const URL_APP = 'file:///' + path.resolve('work/syncjournal.html').replace(/\\/g, '/');
 const WALLET = '0x' + '1'.repeat(36) + '7448';
 const verbonden = (extra = {}) => ({ connected: true, hint: '7448', wallet: WALLET, lastSync: Date.now(), ...extra });
+// A member on the current version: without sj_schema the app sees the storage as older than every migration and runs
+// them, and v12 deliberately moves lastSync back 30 days (one look back), which syncs at once. Whether the spec saw
+// that request depended on the asynchronous migration finishing within the first 3 s: it was red now and then.
+const SCHEMA = +/const SCHEMA_VERSION=(\d+)/.exec(require('fs').readFileSync(path.resolve('work/syncjournal.html'), 'utf8'))[1];
 
 (async () => {
   const b = await chromium.launch();
@@ -17,7 +21,7 @@ const verbonden = (extra = {}) => ({ connected: true, hint: '7448', wallet: WALL
 
   // Eén scenario = een verse browsercontext met eigen opslag, neptijd en een teller
   // van de sync-verzoeken. Extern verkeer wordt geblokkeerd, ook in de test.
-  async function scenario(conn, sync, fn) {
+  async function scenario(conn, sync, fn, schema = SCHEMA) {
     const ctx = await b.newContext(); const p = await ctx.newPage();
     p.on('pageerror', e => errs.push(String(e).split('\n')[0]));
     const hits = [];
@@ -26,14 +30,18 @@ const verbonden = (extra = {}) => ({ connected: true, hint: '7448', wallet: WALL
       if (/api\.hyperliquid\.xyz/.test(u)) { hits.push(u); return r.abort(); }
       return /^https?:/.test(u) ? r.abort() : r.continue();
     });
-    await p.addInitScript(([c, s]) => {
+    await p.addInitScript(([c, s, v]) => {
       localStorage.setItem('sj_conns', JSON.stringify({ hyperliquid: c }));
       localStorage.setItem('sj_sync', JSON.stringify(s));
       localStorage.setItem('sj_welcomed', 'true');
-    }, [conn, sync]);
+      if (v != null) localStorage.setItem('sj_schema', JSON.stringify(v));
+    }, [conn, sync, schema]);
     await p.clock.install();
     await p.goto(URL_APP, { waitUntil: 'domcontentloaded' });
     await p.clock.runFor(3000);
+    // boot is asynchronous (IndexedDB, migrations): measure only once the auto-sync timer has started
+    for (let t = Date.now(); Date.now() - t < 8000 && !(await p.evaluate(() => !!_autoSyncTimer)); ) { await p.waitForTimeout(50); await p.clock.runFor(100); }
+    await p.waitForTimeout(300);
     // De neptijd springt vooruit, maar het verzoek zelf kost echte tijd.
     const wachtOpSync = async (ms = 4000) => { const t = Date.now(); while (!hits.length && Date.now() - t < ms) await p.waitForTimeout(100); return hits.length; };
     const blijftStil = async () => { await p.waitForTimeout(1200); return hits.length === 0; };
@@ -52,6 +60,11 @@ const verbonden = (extra = {}) => ({ connected: true, hint: '7448', wallet: WALL
   await scenario(verbonden({ lastSync: Date.now() - 2 * 864e5 }), { auto: true, interval: '15m' }, async ({ wachtOpSync }) => {
     ok('twee dagen oude sync wordt direct ingehaald', (await wachtOpSync()) > 0);
   });
+
+  console.log('─── Bijwerken van vóór v1.17.1: eenmalig 30 dagen terug ───');
+  await scenario(verbonden(), { auto: true, interval: '15m' }, async ({ wachtOpSync }) => {
+    ok('opslag van vóór migratie v12 met een verse sync: kijkt één keer terug en synct direct', (await wachtOpSync(8000)) > 0);
+  }, 11);
 
   console.log('─── De schakelaars doen wat ze beloven ───');
   await scenario(verbonden({ lastSync: 0 }), { auto: false, interval: '15m' }, async ({ p, blijftStil }) => {

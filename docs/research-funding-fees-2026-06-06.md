@@ -145,7 +145,7 @@ intervalHours: 4-aanname OF verify via public /historicalfundingrates
 
 **Interval**: dynamisch sinds 9 dec 2025 (8u default, kan 4u/1u worden). Terugrekenen uit opeenvolgende `fundingTime`-waarden.
 
-**Aanbeveling**: Blofin als laatste, en eerst bij Denny verifiëren of de UI een funding-CSV-export biedt. Zo niet → reconstructie-benadering of Blofin voorlopig uitstellen.
+**Aanbeveling**: Blofin als laatste, en eerst bij Zaratras verifiëren of de UI een funding-CSV-export biedt. Zo niet → reconstructie-benadering of Blofin voorlopig uitstellen.
 
 ---
 
@@ -169,13 +169,13 @@ Uit het backlog, nog niet beslist:
 
 ## Proxy-dependency
 
-MEXC/Kraken/Blofin vereisen elk een nieuwe action-handler in de **Cloudflare Worker** (signed calls kunnen niet client-side). Die deployt Denny zelf — wij leveren de diff aan (zie CLAUDE.md "Cloudflare Worker proxy"). Hyperliquid heeft dit niet nodig.
+MEXC/Kraken/Blofin vereisen elk een nieuwe action-handler in de **Cloudflare Worker** (signed calls kunnen niet client-side). Die deployt Zaratras zelf — wij leveren de diff aan (zie CLAUDE.md "Cloudflare Worker proxy"). Hyperliquid heeft dit niet nodig.
 
 ## Voorgestelde bouwvolgorde
 
 1. **Schema + migratie + `netPnl()`-aanpassing** (no-op zonder data, veiligste eerste commit).
 2. **Hyperliquid-adapter** `fetchFundingFees()` — proxy-vrij, end-to-end bewijs van schema + matching op één exchange.
-3. **MEXC-adapter** (+ Worker-handler-diff voor Denny).
+3. **MEXC-adapter** (+ Worker-handler-diff voor Zaratras).
 4. **Kraken-adapter** (+ Worker-handler-diff).
 5. **Blofin** — alleen ná CSV-export-check; anders reconstructie of uitstel.
 6. **Analytics**: Funding-card + Funding/Fees waterfall. Scenario O test-fixture.

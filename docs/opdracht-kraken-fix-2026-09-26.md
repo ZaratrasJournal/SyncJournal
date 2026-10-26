@@ -1,6 +1,6 @@
 # Kraken Futures — diagnose én opdracht voor de fix (2026-09-26)
 
-Voor: Denny + de Claude-sessie die de fix bouwt. Alles wat je nodig hebt staat hier of wordt hier naar verwezen. Onderaan staat de prompt die je letterlijk in een nieuwe sessie kunt plakken.
+Voor: Zaratras + de Claude-sessie die de fix bouwt. Alles wat je nodig hebt staat hier of wordt hier naar verwezen. Onderaan staat de prompt die je letterlijk in een nieuwe sessie kunt plakken.
 
 ---
 
@@ -169,7 +169,7 @@ Niet meer actueel (maar staan nog op de backlog): de 1970-timestamp-bug (opgelos
 Waarom deze en niet "de sortering repareren":
 - De account-log is wat Kraken zelf als waarheid exporteert en we hebben 'm net 107/107 gevalideerd. Position-events zijn een afgeleide waarvan we de tijdsemantiek nog steeds niet zeker weten.
 - `old_balance` → `new_balance` per fill maakt de reconstructie **volgorde-onafhankelijk**: je kunt de keten per contract sluitend maken zonder op timestamps te vertrouwen, en meerdere fills binnen dezelfde seconde (komt veel voor: 4 sluitingen om 12:07:02 op 6 juni) hebben geen tiebreak nodig.
-- CSV-import en API-sync leveren dan **exact dezelfde trade** (zelfde id, zelfde velden) → dedup werkt, en Denny kan haar historie vandaag al via CSV herstellen terwijl de Worker-aanpassing wacht.
+- CSV-import en API-sync leveren dan **exact dezelfde trade** (zelfde id, zelfde velden) → dedup werkt, en Zaratras kan haar historie vandaag al via CSV herstellen terwijl de Worker-aanpassing wacht.
 - Past bij de exchange-isolatie-regel: alles in `ExchangeAPI.kraken`, geen gedeelde helper met `if (ex==="kraken")`.
 
 Bouwvolgorde:
@@ -177,7 +177,7 @@ Bouwvolgorde:
 **Fase 0 · Bewijs verzamelen (30 min, geen code-wijziging behalve één regel)**
 1. Zet `withEvents:true` in `ExchangeAPI.kraken.captureSnapshot` en capture één snapshot met `?dev=1`. Óf gebruik het console-snippet uit `worker-patches/README.md` met `withEvents:true` erbij en sla het antwoord op als `tests/_fixtures/kraken-events-2026-09.json` (gitignored map).
 2. Kijk in de rauwe events: zijn `e.timestamp`, `u.timestamp` en `u.fillTime` verschillend per event? Zijn alle 42 fills sinds 7 mei aanwezig (vergelijk met `scripts/kraken-recon.js`)? Dit beslecht R2(a) versus R2(b/c) en bepaalt of de position-events later nog een rol spelen (bijv. voor `tradeType=liquidation`-labels).
-3. Roep, via hetzelfde snippet, één keer `/api/history/v3/account-log?since=…&sort=asc&count=500&info=futures%20trade` aan (Worker heeft daar een pass-through voor nodig; zie fase 2) of vraag Denny om de JSON. Bevestig dat de contract-regels (`asset == contract`, `new_balance` = positie-grootte) er in de JSON óók in zitten. De v7-notitie uit mei ("account-log heeft geen betrouwbare size") is vermoedelijk gebaseerd op alleen de usd-regels; als de contract-regels ontbreken in de JSON, schakel dan over op plan B (executions-endpoint, dat `positionSize` en `realizedPnl` per executie geeft).
+3. Roep, via hetzelfde snippet, één keer `/api/history/v3/account-log?since=…&sort=asc&count=500&info=futures%20trade` aan (Worker heeft daar een pass-through voor nodig; zie fase 2) of vraag Zaratras om de JSON. Bevestig dat de contract-regels (`asset == contract`, `new_balance` = positie-grootte) er in de JSON óók in zitten. De v7-notitie uit mei ("account-log heeft geen betrouwbare size") is vermoedelijk gebaseerd op alleen de usd-regels; als de contract-regels ontbreken in de JSON, schakel dan over op plan B (executions-endpoint, dat `positionSize` en `realizedPnl` per executie geeft).
 
 **Fase 1 · CSV-route rechttrekken = de levensloop-functie bouwen (offline testbaar)**
 1. Haal de Kraken-log-parser uit het CSV-import-blok (≈ regels 7669–7791) naar een adapter-methode, bijv. `ExchangeAPI.kraken.levenslopenUitAccountLog(rows)`. Input: genormaliseerde regels `{ts, info, asset, contract, change, oldBalance, newBalance, avgEntry, tradePrice, realizedPnl, fee, realizedFunding, execution}` (CSV-kolommen en JSON-velden mappen op dezelfde namen).
@@ -185,11 +185,11 @@ Bouwvolgorde:
 3. Bouw per contract de keten via `newBalance`: opening bij 0 → ≠0, sluiting bij → 0, omkering bij tekenwissel. Gebruik `fillTimeline`/`fillSummary` (bestaande gedeelde helpers) alleen voor de weergave-stappen; de *grouping* doe je zelf op de balans-keten. Stap-tijd = de `date`/`dateTime` van de regel.
 4. Vul de trade zoals `_krLevenslopen` dat nu doet (zelfde velden, zelfde `id`-vorm `kraken_pos_<CONTRACT>_<openTs>` zodat CSV en API dedupen), maar dan: `pnl` = Σ realized_pnl − Σ fee (+ Σ realized_funding binnen de levensloop, zoals nu), `positionSize` = Σ open-qty × avgEntry (USD), `positionSizeAsset` = Σ open-qty, `openTime`/`closeTime` gevuld, `date`/`time` via `Intl.DateTimeFormat("sv-SE",{timeZone:"Europe/Amsterdam"})`, `fills` gevuld, `tps` afgeleid uit de sluit-fills met `status:"hit"` en de echte tijd per TP.
 5. Test: `tests/kraken-account-log.spec.js` die de echte export inleest (fixture in `tests/_fixtures/`, skip als afwezig, zoals de andere fixture-tests) en asserteert: 107 trades, netto totaal −180,39 ± 0,05, 0 richting-afwijkingen tegen `scripts/kraken-recon.js`, alle 413 fills terug te vinden, tijden in Amsterdam. Plus een kleine synthetische fixture voor: 4 sluitingen in één seconde, omkering (flip), liquidatie-regel, funding binnen levensloop.
-6. Denny: 34 oude Kraken-trades verwijderen (ze hebben **geen** handmatige notities/tags/screenshots, gecontroleerd op de backup) en de CSV opnieuw inlezen. Klaar voor de historie tot 6 juni.
+6. Zaratras: 34 oude Kraken-trades verwijderen (ze hebben **geen** handmatige notities/tags/screenshots, gecontroleerd op de backup) en de CSV opnieuw inlezen. Klaar voor de historie tot 6 juni.
 
 **Fase 2 · API op dezelfde functie aansluiten**
-1. Worker: nieuwe action `account_log` in `handleKraken`: pagineer `/api/history/v3/account-log` met `since=<startTime>&sort=asc&count=1000&info=…` (de futures-trade/liquidation/assignment/unwind-waarden plus `funding rate change`, url-encoded vóór het signen). **Dit endpoint heeft geen continuation-token**: pagineer op `from=<laatste id + 1>` tot een pagina minder dan `count` regels geeft. Geef de rauwe `logs` door en de laatste `id` als cursor. Foutafhandeling: niet op `res.ok` vertrouwen; check `result === "error"` (HTTP 200) én `status === "unauthorized"` (HTTP 401). Lever de diff als `worker-patches/v19-online-worker.js` + tekst in `docs/worker-kraken-account-log.md`; Denny deployt.
-2. App: `fetchTrades` roept `account_log` aan, valt terug op het huidige events-pad zolang de Worker de action nog niet kent (zelfde patroon als de `withEvents`-overgang). Verwijder het events-pad zodra Denny de nieuwe Worker draait en één sync 107/107 bevestigt.
+1. Worker: nieuwe action `account_log` in `handleKraken`: pagineer `/api/history/v3/account-log` met `since=<startTime>&sort=asc&count=1000&info=…` (de futures-trade/liquidation/assignment/unwind-waarden plus `funding rate change`, url-encoded vóór het signen). **Dit endpoint heeft geen continuation-token**: pagineer op `from=<laatste id + 1>` tot een pagina minder dan `count` regels geeft. Geef de rauwe `logs` door en de laatste `id` als cursor. Foutafhandeling: niet op `res.ok` vertrouwen; check `result === "error"` (HTTP 200) én `status === "unauthorized"` (HTTP 401). Lever de diff als `worker-patches/v19-online-worker.js` + tekst in `docs/worker-kraken-account-log.md`; Zaratras deployt.
+2. App: `fetchTrades` roept `account_log` aan, valt terug op het huidige events-pad zolang de Worker de action nog niet kent (zelfde patroon als de `withEvents`-overgang). Verwijder het events-pad zodra Zaratras de nieuwe Worker draait en één sync 107/107 bevestigt.
 3. `syncFrom` voor Kraken op 2025-11-01 zetten (Kraken's account-log gaat terug tot het begin van het account; `from=1` als je álles wilt) en de `tj_lastsync_kraken`-cursor resetten zodat de eerste sync de hele historie ophaalt.
 4. `captureSnapshot` voor Kraken laat voortaan óók de rauwe account-log-regels meekomen, zodat een volgende bug direct een fixture oplevert.
 
@@ -209,7 +209,7 @@ Het kan (stap-tijd = wrapper-`timestamp`, tiebreak via de keten `oldPosition == 
 4. Twee keer syncen → geen duplicaten; open positie verschijnt één keer als placeholder en verdwijnt zodra de levensloop binnenkomt (`openIsPlaceholder` blijft).
 5. `tests/kraken-levensloop.spec.js` herschreven of vervangen: fixture met échte Kraken-semantiek (`fillTime` = openingstijd, events in `desc`-volgorde, 4 sluitingen in één seconde). De oude versie mag pas weg als de nieuwe groen is.
 6. `tests/exchange-isolation.spec.js` groen: Blofin/OKX/Hyperliquid/FTMO-output byte-gelijk vóór en na.
-7. Release-flow: versie-bump + CHANGELOG-entry ("Kraken: historie compleet en correct; Worker-update nodig voor API-sync, CSV werkt direct"), **geen push zonder Denny's "push"**.
+7. Release-flow: versie-bump + CHANGELOG-entry ("Kraken: historie compleet en correct; Worker-update nodig voor API-sync, CSV werkt direct"), **geen push zonder Zaratras' "push"**.
 
 ---
 
@@ -222,11 +222,11 @@ Context
 - App: work/syncjournal.html (single-file React). Kraken-adapter: ExchangeAPI.kraken (≈ regel 6378–6525), levensloop-functie _krLevenslopen, CSV-import-blok voor het Kraken-log-formaat (≈ regel 7669–7791), captureSnapshot (≈ regel 7080).
 - Ground truth: account_log_bacb6956-a5a3-487b-93ba-db8745d1a33b_2026-09-26T11-02-51Z.csv (107 gesloten posities, 413 fills, netto −180,39). Vergelijkings-scripts: scripts/kraken-recon.js, scripts/kraken-csv-import-adhoc.js, scripts/kraken-compare-csv-import.js.
 - Huidige journal-export met de foute Kraken-trades: "syncjournal-backup-2026-09-26 kraken.json" (bevat API-keys: nooit committen, niet in output citeren).
-- Worker-referentie: worker-patches/v18-online-worker.js + docs/worker-kraken-events.md. De productie-Worker staat buiten de repo; wijzigingen lever je als worker-patches/v19-online-worker.js + een korte deploy-instructie, Denny deployt.
+- Worker-referentie: worker-patches/v18-online-worker.js + docs/worker-kraken-events.md. De productie-Worker staat buiten de repo; wijzigingen lever je als worker-patches/v19-online-worker.js + een korte deploy-instructie, Zaratras deployt.
 - Regels: CLAUDE.md (exchange-isolatie: alle Kraken-logica in de adapter; tj_-prefix; Amsterdam-tijd via Intl sv-SE; geen push zonder expliciet "push"; changelog bij user-facing changes).
 
 Opdracht
-1. Fase 0: maak de rauwe-events-capture mogelijk (withEvents:true in captureSnapshot) en beschrijf in één alinea wat Denny moet doen om de events- en account-log-JSON aan te leveren. Ga niet zitten wachten: fase 1 kan zonder.
+1. Fase 0: maak de rauwe-events-capture mogelijk (withEvents:true in captureSnapshot) en beschrijf in één alinea wat Zaratras moet doen om de events- en account-log-JSON aan te leveren. Ga niet zitten wachten: fase 1 kan zonder.
 2. Fase 1: bouw ExchangeAPI.kraken.levenslopenUitAccountLog(rows) volgens §5 van het document en laat de CSV-import die gebruiken. Schrijf tests/kraken-account-log.spec.js die tegen de echte export draait (fixture in tests/_fixtures/, skip als afwezig) en de acceptatiecriteria van §6 afdwingt. Draai scripts/kraken-recon.js tegen een verse export uit de app als eindcontrole en plak de SUMMARY-regel in je antwoord.
 3. Fase 2: sluit de API aan via een Worker-action account_log (pass-through van /api/history/v3/account-log met since, sort=asc, count=1000, info-filter url-encoded vóór het signen; geen continuation-token, pagineer op from=<laatste id+1>; foutvormen HTTP 200 result:error én HTTP 401 status:unauthorized afvangen) en laat fetchTrades daarop overschakelen met fallback naar het huidige pad. Lever de Worker-diff als v19 + docs/worker-kraken-account-log.md. Het volledige API-onderzoek staat in docs/research-kraken-api-2026-09-26.md, het onderzoek naar hoe derden (ccxt, rotki, tax-tools) het doen in docs/research-kraken-thirdparty-2026-09-26.md.
 4. Herschrijf tests/kraken-levensloop.spec.js zodat de fixture Kraken's echte semantiek heeft (fillTime = openingstijd, desc-volgorde, meerdere sluitingen per seconde). De oude test mag pas weg als de nieuwe groen is.
@@ -235,7 +235,7 @@ Opdracht
 Werkwijze
 - Bewijs vóór claims: elke "werkt"-uitspraak komt met de output van het script of de test.
 - Kleinste heldere wijziging; geen gedeelde helper met exchange-if's.
-- Rapporteer aan het eind: wat is gefixt, wat is geverifieerd (met cijfers), wat wacht op Denny (Worker-deploy, CSV opnieuw inlezen, oude 34 Kraken-trades verwijderen: die hebben geen handmatige inhoud).
+- Rapporteer aan het eind: wat is gefixt, wat is geverifieerd (met cijfers), wat wacht op Zaratras (Worker-deploy, CSV opnieuw inlezen, oude 34 Kraken-trades verwijderen: die hebben geen handmatige inhoud).
 ```
 
 ---
@@ -260,7 +260,7 @@ Het volledige rapport (62 KB, Engels) staat in `docs/research-kraken-api-2026-09
 - Code: ccxt `ts/src/krakenfutures.ts` (`sign()`, `fetchPositionsHistory` PR #30503, `fetchLedger` PR #29782, issue #29760 over fees/account-log), `krakenfx/api-go` `pkg/derivatives/rest.go` `Sign()`, `krakenfx/kraken-cli` `src/auth.rs`, `CryptoFacilities/REST-v3-Python/cfRestApiV3.py`
 - Niet afgerond door de agent: hoe TradesViz/Tradervue/Koinly Kraken Futures importeren. Niet nodig voor de fix.
 
-### 8.4 Openstaande vragen voor Denny
+### 8.4 Openstaande vragen voor Zaratras
 1. Wil je de 34 huidige Kraken-trades laten vervangen (aanbevolen; ze bevatten geen handmatige inhoud) of moeten ze naast de nieuwe blijven staan tot je zelf hebt vergeleken?
 2. Kun je na fase 0 de rauwe events + account-log JSON aanleveren (console-snippet uit `worker-patches/README.md`, met `withEvents:true`)? Dat maakt de position-events-vraag definitief.
 3. Verplaats `syncjournal-backup-2026-09-26 kraken.json` naar `_scratch/` (bevat je API-keys) — en overweeg of de app-export die überhaupt moet bevatten.

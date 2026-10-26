@@ -34,9 +34,9 @@ elke wijziging eindigt met `node tests/run-release.js` groen.
 | **W2** | Ruwe exchange-data kunnen vastleggen (dev-modus terug) | 2 | M | — |
 | **C1** | Lege staten: één manier, met een volgende stap | 2 | S + M | — |
 | ~~C5~~ | ~~Acht tag-soorten, acht kleuren, overal gelijk~~ — ✅ **gedaan in v1.3** | — | — | — |
-| **T1** | CSV-import testen op CI | 2 | M | — |
-| **W1** | Worker: `Access-Control-Allow-Origin` stond op `*` — 🔨 **v25 live in stand meten**; over een week afdwingen | 2 | XS (Denny) | — |
-| **B3** | Controleren: telt dezelfde positie dubbel via CSV én API? | 2 | S | — |
+| ~~T1~~ | ~~CSV-import testen op CI~~ — ✅ **gedaan, branch `csv-dubbel-ci` (in v1.18.1)** | — | — | — |
+| **W1** | Worker: `Access-Control-Allow-Origin` stond op `*` — 🔨 **v25 live in stand meten**; over een week afdwingen | 2 | XS (Zaratras) | — |
+| ~~B3~~ | ~~Telt dezelfde positie dubbel via CSV én API?~~ — ✅ **was echt dubbel (Blofin, OKX, Hyperliquid), opgelost in v1.18.1 (branch `csv-dubbel-ci`)** | — | — | — |
 | **W5** | Worker v25: `okxHost` alleen uit een vaste lijst (lek sinds v19) en de ongebruikte `orders`-verzoeken uit `algos` weg — ✅ **live sinds 25-10 (v25)** | 1 | XS | — |
 | **B6** | OKX: waarschuwing bij een onbekende contractsoort in het vangnet; SL koppelen op het exacte contract i.p.v. de munt (review 24-10) | 3 | XS | — |
 | ~~B9~~ | Datum na middernacht — ✅ **gedaan in v1.15.1** | — | — | — |
@@ -45,7 +45,7 @@ elke wijziging eindigt met `node tests/run-release.js` groen.
 | **F11** | Funded modus: prop-firm-challenges apart van je eigen geld, wél in de strategie-analyse — **eerst een demo** | 2 | L | demo |
 | **F12** | Export en back-up: zelf kiezen of je API-sleutels meegaan, met een duidelijke melding bovenaan | 1 | S | — |
 | ~~F13~~ | AI-coach Mori met eigen sleutel — ✅ **gedaan in v1.16 / v1.16.1** (stap 0–8) | — | — | — |
-| **W6** | Discord-poll "Gebruik je de AI-coach? Zo nee, waarom niet?" — eind januari 2027 | 3 | XS (Denny) | F13 live |
+| **W6** | Discord-poll "Gebruik je de AI-coach? Zo nee, waarom niet?" — eind januari 2027 | 3 | XS (Zaratras) | F13 live |
 | **F14** | SyncJournal buiten Morani: besloten beta (Worker meten + eigen account, limiet, neutrale tags, veiligheid) — 📅 **deze week** | 1 | M | besluit NL/internationaal, F12 |
 | ~~B8~~ | Toegankelijkheid trade-formulier — ✅ **gedaan in v1.15.1** | — | — | — |
 | ~~B11~~ | Kruis-analyse lege staat — ✅ **gedaan in v1.15.1** | — | — | — |
@@ -66,10 +66,10 @@ elke wijziging eindigt met `node tests/run-release.js` groen.
 
 ### F1 · TP's in de presentatie en in Kopieer voor Discord — ✅ gedaan in v1.9.1
 
-**Waarom.** Denny en de community traden met deelsluitingen (TP1, TP2, …). In v1.9 tonen de
+**Waarom.** Zaratras en de community traden met deelsluitingen (TP1, TP2, …). In v1.9 tonen de
 presentatie en het Discord-beeld alleen een tegel "TP geraakt 2/3". De niveaus zelf (prijs, deel van
 de positie, geraakt of niet) staan alleen op de per-trade-pagina en in het coach-pakket. Juist bij het
-presenteren aan de coach en bij delen op Discord wil je zien wáár je afbouwde. (Denny, 14-10-2026.)
+presenteren aan de coach en bij delen op Discord wil je zien wáár je afbouwde. (Zaratras, 14-10-2026.)
 
 **Wat er al is.** De TP-data staat in `t.tps` (`price`, `pct`, `hit`). `tpStats(t)` geeft de niveaus,
 het gewogen exit-niveau en de gerealiseerde R; `tpBreakdown(t)` tekent ze op de per-trade-pagina. Bouw
@@ -95,7 +95,7 @@ patch (v1.9.1): een kleine aanpassing aan bestaande functies.
 ### F2 · Kopieer voor Discord met meerdere trades — prio 2 · S
 
 **Waarom.** Selecteer je 3 trades en klik je *Kopieer voor Discord*, dan krijg je alleen de eerste
-(Denny, 14-10-2026). Dat is geen fout in de code: het klembord van de browser kan maar één afbeelding
+(Zaratras, 14-10-2026). Dat is geen fout in de code: het klembord van de browser kan maar één afbeelding
 tegelijk bevatten. De knop moet dat wel zichtbaar oplossen.
 
 **Gekozen aanpak.** Geen collage: die maakt elke chart onleesbaar en Discord verkleint grote plaatjes
@@ -133,11 +133,11 @@ expectancy en risico niet. Kraken bewaart elke stop-order in de trigger-historie
 
 **Stand (18-10-2026).** Plan: [docs/plan-kraken-stoploss-2026-10-17.md](docs/plan-kraken-stoploss-2026-10-17.md).
 Worker v22 (actie `triggers`) is live. De app-kant staat op branch `kraken-stoploss`, met
-`tests/kraken-stoploss.spec.js` (ook getoetst tegen Denny's echte triggers, 4/4) en `tests/worker-triggers.spec.js`.
+`tests/kraken-stoploss.spec.js` (ook getoetst tegen Zaratras' echte triggers, 4/4) en `tests/worker-triggers.spec.js`.
 - De R rekent met de **oorspronkelijke** stop. Schuif je hem later naar break-even, dan blijft het risico
   van je instap de noemer; de trade krijgt `stopVerschoven: true`.
 - Een stop die je zelf invult of wist (`stopBron: 'gebruiker'`) raakt de sync nooit meer aan.
-- Trades van vóór de update krijgen hun stop één keer, voor zover Kraken's historie reikt (bij Denny vanaf 14-10).
+- Trades van vóór de update krijgen hun stop één keer, voor zover Kraken's historie reikt (bij Zaratras vanaf 14-10).
 
 **Klaar als** v1.11 live staat: versie, changelog, CLAUDE.md "productie = Worker v22", release-poort groen.
 
@@ -147,7 +147,7 @@ Worker v22 (actie `triggers`) is live. De app-kant staat op branch `kraken-stopl
 Bij het sluiten gaat de stop mee naar de gesloten trade (als jouw veld, zonder "van Kraken"; de waarde is dezelfde).
 
 **Waarom.** Nu krijgt een Kraken-trade zijn stop pas als hij dicht is. Tijdens de trade zie je dus
-nog geen risico en geen R:R, terwijl Kraken de stop al kent (Denny's open long van 16-10: stop 79.314).
+nog geen risico en geen R:R, terwijl Kraken de stop al kent (Zaratras' open long van 16-10: stop 79.314).
 
 **Plan** (Task 5 van het F3-plan).
 1. Test eerst: een open long met een Sell-stop 79.314 krijgt die stop op de open rij, met `stopBron: 'kraken'`.
@@ -213,7 +213,7 @@ Discord (F1) ze laten zien.
 ### F7 · Analytics: stop-management en uitvoering — prio 1 · M
 
 **Waarom.** Met de oorspronkelijke stop (F3), de stopbeweging en de exit-reden (F5) en de geplande TP's (F6)
-kun je vragen beantwoorden die je nu niet ziet (Denny, 18-10-2026). De R blijft overal de R ten opzichte van
+kun je vragen beantwoorden die je nu niet ziet (Zaratras, 18-10-2026). De R blijft overal de R ten opzichte van
 je **oorspronkelijke** risico; dat maakt trades vergelijkbaar.
 
 **Blokken** (één nieuw paneel *Stop & uitvoering* op de Analytics-pagina, volgt de filterbalk):
@@ -235,7 +235,7 @@ je **oorspronkelijke** risico; dat maakt trades vergelijkbaar.
 
 Trades zonder stop tellen nergens mee; zeg hoeveel dat er zijn ("12 van 40 trades hebben een stop").
 
-**Plan.** Eerst een demo met 2 varianten (`/prototype`, `demos/`) met Denny's echte data, dan pas in de app.
+**Plan.** Eerst een demo met 2 varianten (`/prototype`, `demos/`) met Zaratras' echte data, dan pas in de app.
 Gebruik `gemR` en `tradeROrNull`, en `emptyState(key)` voor de lege staten.
 
 **Klaar als** de blokken kloppen met een met de hand nagerekende set trades (test), licht en donker
@@ -266,13 +266,13 @@ Een wijziging is annuleren plus een nieuwe order (nieuw oid), dus de oorspronkel
 met een risicotabel. Hergebruik de gedeelde regels uit F3: `stopBron`, het formulier, het label en de
 `stopBeweging`-helper uit F5. Geen Worker nodig: wallet-data is openbaar.
 
-**Klaar als** het plan is uitgevoerd en `tests/hl-echt.spec.js` de stops van Denny's echte account toont.
+**Klaar als** het plan is uitgevoerd en `tests/hl-echt.spec.js` de stops van Zaratras' echte account toont.
 
 ---
 
 ### F11 · Funded modus: prop-firm-challenges — prio 2 · L
 
-**Waarom** (Denny, 24-10-2026). Wie een challenge bij FTMO of Breakout handelt, handelt met geld van de firm; de winst
+**Waarom** (Zaratras, 24-10-2026). Wie een challenge bij FTMO of Breakout handelt, handelt met geld van de firm; de winst
 is pas van jou bij een uitbetaling. Dat mag je eigen balans, P&L en %-basis niet scheeftrekken, maar de trades
 moeten wél meetellen in strategie- en playbook-analyse. Per firm kun je meerdere challenges hebben, die je haalt,
 faalt of later kwijtraakt. Na een CSV-import kiest de journal het account en is hij slim over challenges.
@@ -280,18 +280,18 @@ faalt of later kwijtraakt. Na een CSV-import kiest de journal het account en is 
 **Nu al mis:** FTMO-trades komen binnen als `ftmo`, dat geen account in `EXCHANGES` is, en tellen toch mee in alle
 P&L-sommen en in `_pctBases()`. Funded winst verschuift dus nu al het percentage van je eigen trades.
 
-**Onderzoek:** `docs/research-funded-modus-2026-10-24.md` (branch `research-funded-modus`) — 13 journals en 4 firms
+**Onderzoek:** `docs/research-funded-modus-2026-10-24.md` — 13 journals en 4 firms
 vergeleken; advies optie B (funded-vlag op het account + één geld-helper, daarna challenges met fases, een status
 die je zelf zet en een eigen boekhouding voor fees en uitbetalingen; geen automatische breach).
 
-**Plan.** Eerst een demo (`demos/funded-demo.html`, 2–3 varianten) om het ontwerp met Denny rond te krijgen, daarna
-pas het datamodel. Nodig van Denny: een MT5-rapport (XLSX) en een MetriX-CSV van hetzelfde FTMO-account.
+**Plan.** Eerst een demo (`demos/funded-demo.html`, 2–3 varianten) om het ontwerp met Zaratras rond te krijgen, daarna
+pas het datamodel. Nodig van Zaratras: een MT5-rapport (XLSX) en een MetriX-CSV van hetzelfde FTMO-account.
 
 ---
 
 ### F12 · Export en back-up: zelf kiezen of je API-sleutels meegaan — prio 1 · S
 
-**Waarom** (onderzoek AI-coach, besluit Denny 25-10-2026). Een export of back-up bevat nu standaard de
+**Waarom** (onderzoek AI-coach, besluit Zaratras 25-10-2026). Een export of back-up bevat nu standaard de
 exchange-sleutels (Blofin, OKX, Kraken). Wie dat bestand ergens neerzet of doorstuurt, geeft toegang tot zijn
 exchange-account. De sleutel van de AI-coach gaat volgens de nieuwe regel nooit mee; voor exchange-sleutels kiest
 de gebruiker zelf.
@@ -310,7 +310,7 @@ bestand laat (ook niet in `diagReport`), en "met" na import weer werkende koppel
 
 ### F13 · AI-coach: echte chat-coach met eigen sleutel — prio 2 · M + M (stap 0–2), daarna S per stap
 
-**Besluiten Denny, 25-10-2026** (onderzoek: `docs/research-ai-coach-2026-10-25.md`, branch `research-ai-coach`):
+**Besluiten Zaratras, 25-10-2026** (onderzoek: `docs/research-ai-coach-2026-10-25.md`):
 1. De coach blijft, als echte chat-coach met de **eigen Anthropic-sleutel** van de gebruiker. Eén plek in de app;
    niets op Dashboard of Analytics (de journal blijft clean).
 2. Sleutel lokaal, **nooit** in export, back-up of "Data overzetten"; keuze "alleen deze sessie" (regel in CLAUDE.md).
@@ -319,7 +319,7 @@ bestand laat (ook niet in `diagReport`), en "met" na import weer werkende koppel
    onder elk antwoord "Wat is er verstuurd?".
 5. **"Vraag de coach" bij een trade**: klein knopje in het trade-detail, alleen zichtbaar met sleutel; opent de
    coach-pagina met die trade klaargezet.
-6. **Demo-coach eruit** (de regex-antwoorden, "Hoi Denny" voor elk lid, het lek in bedragen verbergen). Zonder
+6. **Demo-coach eruit** (de regex-antwoorden, "Hoi Zaratras" voor elk lid, het lek in bedragen verbergen). Zonder
    sleutel: één gemarkeerd voorbeeldgesprek + stappenplan in drie stappen (sleutel maken, limiet instellen,
    plakken) met kostenindicatie.
 7. **Niet tellen** in de app. Gebruik meten = Discord-poll eind januari 2027 (W6).
@@ -339,11 +339,11 @@ als pure functie, getest zonder sleutel; 2 · sleutel + één echte vraag (minor
 
 ### F14 · SyncJournal buiten Morani: besloten beta — 📅 **deze week (vanaf 26-10-2026)** · prio 1 · M
 
-**Waarom** (Denny, 25-10-2026). De journal breder trekken, zodat ook traders buiten de Morani-community hem gebruiken.
+**Waarom** (Zaratras, 25-10-2026). De journal breder trekken, zodat ook traders buiten de Morani-community hem gebruiken.
 Technisch staat syncjournal.nl/app al open (geen login, alles lokaal); het werk zit in vertrouwen, neutraliteit en de Worker.
 
-**Besloten (Denny, 26-10-2026): alleen Nederlands.** Een besloten beta, Nederlandstalig en gratis, met een paar
-mensen. Engels (app, FAQ, landing) is geen doel; komt alleen terug als Denny daar later anders over beslist.
+**Besloten (Zaratras, 26-10-2026): alleen Nederlands.** Een besloten beta, Nederlandstalig en gratis, met een paar
+mensen. Engels (app, FAQ, landing) is geen doel; komt alleen terug als Zaratras daar later anders over beslist.
 
 **Stappen voor de beta:**
 1. **Worker-verbruik meten:** in het dagrapport op de NUC het aantal verzoeken per dag en de drukste minuut aflezen
@@ -368,7 +368,7 @@ mensen. Engels (app, FAQ, landing) is geen doel; komt alleen terug als Denny daa
 
 **Stand 07-10-2026.** Hyperliquid is af: een lopende positie met een TP is sinds v1.3.6 één rij met
 status partial, en sinds v1.4 staan bij Hyperliquid, OKX en Blofin de stappen er vanaf de opening
-(melding Denny: "dit wil je al zien vanaf dat die open gaat, voor elke exchange"). Kraken niet: daar
+(melding Zaratras: "dit wil je al zien vanaf dat die open gaat, voor elke exchange"). Kraken niet: daar
 staat een lopende positie als gewoon "open", zonder stappen, en het geboekte deel van een TP verschijnt
 pas als de hele positie dicht is. Vastgelegd als "bekend gat" in
 [tests/partial-alle-exchanges.spec.js](tests/partial-alle-exchanges.spec.js) (de Kraken-check).
@@ -417,7 +417,27 @@ kent nu de contractwaarde per familie (instrument zonder vervaldatum), uit OKX's
 gevonden: de oude uitzondering gaf een BTC-datum-future 0,0001 in plaats van 0,01 (100× te klein), en ETH X-Perp viel
 terug op 1 in plaats van 0,001 (1000× te groot).
 
-### B3 · Controleren: telt dezelfde positie dubbel via CSV én API? — prio 2 · S
+### B3 · Controleren: telt dezelfde positie dubbel via CSV én API? — ✅ opgelost (branch `csv-dubbel-ci`, 26-10-2026)
+
+**Uitkomst.** Ja, het was dubbel, bij **Blofin, OKX en Hyperliquid**, in beide volgordes (eerst CSV dan sync, en
+andersom). `sjImportCsvText` geeft een CSV-rij een id uit de inhoud (`<ex>_csv_…`), de API een eigen id, en
+`importTjClosed` ontdubbelt alleen op dat id. **Kraken niet**: CSV en API delen daar het id, en met een koppeling
+weigert de app de Kraken-CSV (`kraken-csv-api.spec.js`). MEXC (geen sync meer) en FTMO (geen API) kunnen niet
+overlappen.
+
+**Fix.** Per adapter `ExchangeAPI.<ex>.zelfdePositie(csv, api)` (Blofin: opening binnen 2 minuten, de export is UTC;
+OKX en Hyperliquid: de exporttijd is lokaal en de zone onbekend, dus open én sluiting mogen met hetzelfde hele
+kwartier verschoven zijn, hooguit 14 uur), bovenop dezelfde pair, richting, instap-, uitstapprijs (0,1%) en grootte
+(2%). `csvOpgaanInApi(exId)` draait na elke sync en elke CSV-import: de API-rij wint, je invoer van de CSV-rij gaat
+mee (lijsten samengevoegd, twee notities blijven allebei), de CSV-rij verdwijnt zonder prullenbak. Ligt de API-rij
+in de prullenbak, dan verdwijnt de CSV-rij ook. Bestaande dubbelen gaan bij de eerstvolgende sync samen.
+Spec: `tests/csv-api-dubbel.spec.js` (47 checks, met nagebootste API op de laag van elke adapter).
+
+**Migratie v12** slaat koppelingen met recente CSV-trades over vanwege B3. Die uitzondering blijft staan (hij
+heeft al gedraaid); vanaf nu zou terugkijken niet meer dubbelen.
+
+*Oorspronkelijke opdracht:*
+
 
 **Waarom.** In de oude app kon één positie twee keer binnenkomen: via een CSV-import én via de
 API-sync, met verschillende id's. Of dat in SyncJournal nog kan is onbekend — de import is sindsdien
@@ -435,13 +455,13 @@ herbouwd. Het is een stille fout: je P&L verdubbelt zonder melding.
 
 ### B5 · P&L-percentages van −107% en 2.834% bij oudere trades — ✅ gedaan in v1.11
 
-**Wat er mis was** (Denny, 18-10-2026). Het percentage onder de P&L is P&L ÷ je saldo op dat moment. Dat saldo
+**Wat er mis was** (Zaratras, 18-10-2026). Het percentage onder de P&L is P&L ÷ je saldo op dat moment. Dat saldo
 rekent de journal terug: het huidige totaalsaldo min alle P&L die daarna kwam. Daarin telden ook **backtests** mee
-(bij Denny 39 stuks, +$814), terwijl dat geen geld op je account is. Voor maart kwam de basis daardoor rond nul of
+(bij Zaratras 39 stuks, +$814), terwijl dat geen geld op je account is. Voor maart kwam de basis daardoor rond nul of
 onder nul uit.
 
 **Fix.** `_pctBases` en `pnlPctTotal` tellen alleen live trades (`isLive`). Een backtest heeft zelf geen
-percentage meer. Test: `tests/pnl-pct.spec.js` (backtest van +814 verandert de basis niet). Op Denny's data: de
+percentage meer. Test: `tests/pnl-pct.spec.js` (backtest van +814 verandert de basis niet). Op Zaratras' data: de
 basis van 23-03 is $309,58 (−0,96%), geen basis meer onder nul, hoogste percentage 6%.
 
 **Wat blijft:** stortingen en opnames ziet de journal niet. Wie geld bijstort of opneemt, krijgt voor de periode
@@ -475,7 +495,16 @@ worden, en die zich meldt zodra de bug weg is. Volledige beschrijving: `docs/pla
 
 ## Tests
 
-### T1 · CSV-import testen op CI — prio 2 · M
+### T1 · CSV-import testen op CI — ✅ gedaan (branch `csv-dubbel-ci`, 26-10-2026)
+
+**Gedaan.** Per formaat een synthetische export in `tests/fixtures-csv/` (in git, met `git add -f` omdat `*.csv`
+genegeerd wordt): Blofin, OKX, Kraken, Hyperliquid, MEXC (futures én posities) en FTMO. `tests/csv-synthetisch.spec.js`
+draait ze altijd, ook op CI (39 checks: herkend formaat, exacte cijfers, dubbel inlezen geeft niets). De
+OKX-kolomnamen volgen de parser, niet een geverifieerde echte export. `csv-import.spec.js` blijft de extra laag op
+de echte exports. Nog te doen: de nieuwe specs in `tests/release-set.js` zetten.
+
+*Oorspronkelijke opdracht:*
+
 
 **Waarom.** `tests/_fixtures/` is terecht gitignored (echte exports), dus op CI slaat `csv-import`
 zichzelf over — ook in de groene runs van vandaag (`⏭️ csv-import … overgeslagen`). Lokaal draait hij
@@ -576,7 +605,7 @@ een volgende stap noemt.
 *Spec: `tests/tag-kleuren.spec.js` (64 checks, beide thema's). Afwijking van het plan: de emotiekaart*
 *zet Negatief en Positief onder elkaar in plaats van naast elkaar — de kaarten zijn ~360px breed.*
 
-*Gevraagd door Denny, 29-09-2026.*
+*Gevraagd door Zaratras, 29-09-2026.*
 
 **Waarom.** Elke soort tag heeft op drie plekken drie verschillende kleuren:
 
@@ -608,7 +637,7 @@ zonder dat je dat ergens kunt rechtzetten.
    toegevoegde negatieve emotie staat overal bij Negatief; een oude journal zonder `emotionNeg` houdt
    FOMO en Gehaast negatief.
 
-**Acht soorten, acht kleuren** (voorstel 29-09-2026, wacht op akkoord Denny):
+**Acht soorten, acht kleuren** (voorstel 29-09-2026, wacht op akkoord Zaratras):
 
 | Soort | Kleur | Token |
 |---|---|---|
@@ -673,7 +702,7 @@ Test: een `.xlsx` geeft een begrijpelijke melding.
 
 ## Werkwijze & tooling
 
-### W1 · Worker: staat `Access-Control-Allow-Origin` op `*`? — prio 2 · XS (Denny)
+### W1 · Worker: staat `Access-Control-Allow-Origin` op `*`? — prio 2 · XS (Zaratras)
 
 **Stand 25-10-2026:** ja, in v24 stond hij op `*`. [docs/worker-v25.js](docs/worker-v25.js) lost het op in twee stappen
 (schakelaar `ORIGIN_MODUS`): eerst `meten` (alles werkt, het dagrapport toont per dag welke websites de Worker gebruiken),
@@ -752,7 +781,7 @@ duurdere opus-model moet blijven.
 | Sync (1) | `fetchFills` parallel bij verversen | Als verversen traag voelt |
 | Stortingen & opnames (1) | Percentages kloppend houden bij in- en uitleg, zie hieronder | Als leden vragen waarom oude percentages veranderen, of als je vaak stort of opneemt |
 
-**Stortingen & opnames in de percentages** (Denny, 14-10-2026, bewust niet ingepland). De app kent
+**Stortingen & opnames in de percentages** (Zaratras, 14-10-2026, bewust niet ingepland). De app kent
 voor gekoppelde exchanges geen stortingen en opnames, en bewaart geen saldo-geschiedenis. Het
 %-rendement van een trade rekent met een teruggerekend saldo (`pnlBaseOf`/`_pctBases`: saldo nu −
 geboekte winst van die trade en alle latere). Een storting van $500 maakt daardoor al je óúde
@@ -769,7 +798,7 @@ De uitgewerkte teksten van deze ideeën staan in het [archief](docs/backlog-arch
 
 | Besluit | Waarom het ertoe doet |
 |---|---|
-| ~~**Blijft de AI-coach?**~~ — ✅ **ja, als echte chat-coach met eigen sleutel** (Denny, 25-10-2026). Eén plek, niets op Dashboard of Analytics. Eigen sleutel lokaal, nooit in export/back-up. Onderzoek en bouwvolgorde: `docs/research-ai-coach-2026-10-25.md` (branch `research-ai-coach`). | De oude `aicoach-*`-specs worden vervangen door specs voor de nieuwe coach (stap 8 van het onderzoek). |
+| ~~**Blijft de AI-coach?**~~ — ✅ **ja, als echte chat-coach met eigen sleutel** (Zaratras, 25-10-2026). Eén plek, niets op Dashboard of Analytics. Eigen sleutel lokaal, nooit in export/back-up. Onderzoek en bouwvolgorde: `docs/research-ai-coach-2026-10-25.md`. | De oude `aicoach-*`-specs worden vervangen door specs voor de nieuwe coach (stap 8 van het onderzoek). |
 | Welke exchanges krijgen prioriteit? | Bepaalt of er een zevende exchange komt, en daarmee de urgentie van C2 |
 | Backend ja of nee? | Pas relevant als API-sleutels uit de browser moeten, of bij cloud-sync |
 | Distributiemodel | Gratis/donatie, of iets anders |

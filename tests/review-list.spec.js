@@ -67,7 +67,8 @@ const mk = (id, date, reviewed) => ({ id, date, time: '10:00', pair: 'BTC/USDT',
   console.log('─── Grote journals: lijst in stappen (audit 2026-09-18) ───');
   const big = await p.evaluate(async () => {
     T = Array.from({ length: 400 }, (_, i) => ({ id: i + 1, date: '2026-0' + (1 + (i % 9)) + '-' + String(1 + (i % 28)).padStart(2, '0'), time: '10:00', pair: 'BTC/USDT', dir: 'long', setup: 'SFP', session: 'London', status: 'closed', kind: 'live', exchange: '', entry: 100, exit: 110, stop: 95, size: '1000', pnl: 50, r: 1, tps: [], tags: [], layers: [], emotions: [], mistakes: [], checks: [], screenshots: [], tvLinks: [] }));
-    persist(); STATE.revLimit = 150; STATE.revQuery = ''; setRevFilter('all'); setRevPeriod('all'); clearGFilter(); setFilter('kind', 'alle');
+    // newest first since 26-10-2026: no open trade, so the list starts at the top instead of at old id 1
+    persist(); STATE.revSel = -1; STATE.revLimit = 150; STATE.revQuery = ''; setRevFilter('all'); setRevPeriod('all'); clearGFilter(); setFilter('kind', 'alle');
     go('review'); await new Promise(r => setTimeout(r, 400));
     const t0 = performance.now(); render(); await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
     return { rijen: document.querySelectorAll('.revitem').length, meer: !!document.querySelector('.revmore'), meerTekst: (document.querySelector('.revmore') || {}).textContent || '', ms: Math.round(performance.now() - t0), nodes: document.getElementById('main').querySelectorAll('*').length };

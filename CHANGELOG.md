@@ -16,6 +16,104 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v1.18.4] — 2026-10-26
+
+### Gewijzigd
+- **Funded modus: duidelijk dat het nog een testfase is.** Onder de schakelaar staat "Nog in testfase". Zet je hem aan, dan zie je een melding, en zolang hij aan staat een waarschuwing bovenaan: controleer je cijfers met die van je prop firm en maak eerst een back-up.
+
+---
+
+## [v1.18.3] — 2026-10-26
+
+### Gewijzigd
+- **Review → Beeld, grote weergave**: naast (of onder) de afbeelding staan nu álle tags van de trade als gekleurde
+  blokjes, per soort met een eigen kopje en in dezelfde kleuren als in de tradelijst: playbook, timeframe (top-down),
+  setup-type, confirmaties, emoties, fouten, missed-redenen en eigen labels. Ook oudere trades zonder lagen tonen hun
+  tags. Heeft een trade nog geen tags, dan staat er "Nog geen tags" met een knop naar het formulier. Een sluiting op de
+  stop-loss staat niet meer groen met ✓ als behaalde TP, maar rood, zoals de stop erboven.
+
+## [v1.18.2] — 2026-10-26
+
+### Gewijzigd
+- **Review: de nieuwste trade staat bovenaan.** De lijst bij *Per trade*, de kaarten in *Beeld* en de
+  presentatie lopen nu alle drie van nieuw naar oud: op het moment van sluiten, en een open trade op het
+  moment van openen. Bladeren met ‹ › of de pijltjes volgt die volgorde. Trades en Dashboard blijven zoals ze waren.
+- **Review → Beeld: ook trades zonder afbeelding.** Die vielen eerst weg; nu staan ze op hun plek in de
+  volgorde, als een tegel van dezelfde grootte met pair, richting, datum, R en P&L, de tekst *Geen afbeelding*
+  en een knop om er een toe te voegen. Een afbeelding die niet laadt geeft een nette melding in plaats van
+  een gebroken plaatje.
+
+### Toegevoegd
+- **Review → Beeld: klik op een tegel toont de gegevens erbij.** Je ziet de afbeelding groot, met ernaast (op
+  je telefoon eronder) pair, richting, datum, R en P&L, lagen, playbook, setup, confirmaties, entry, stop,
+  exit, TP's en je notitie: dezelfde gegevens als in *Kopieer voor Discord*. Met ‹ › of de pijltjes ga je naar
+  de vorige of volgende trade; sluiten met Esc, het kruisje of een klik naast de afbeelding. In de
+  privacy-modus blijft het bedrag weg.
+
+## [v1.18.1] — 2026-10-26
+
+Punten die Zaratras vond bij het testen van v1.18.
+
+### Toegevoegd
+- **Kopieer voor Discord: playbook, setup en confirmaties erbij.** De tekst heeft nu een regel "Playbook: …", "Setup: …" en "Confirmaties: …", alleen als ze ingevuld zijn. Op het beeld staan ze compact in het infopaneel rechts; een lange lijst eindigt op "+3", een lange naam op "…". Geldt voor één trade en voor meerdere.
+
+### Gewijzigd
+- **Na een CSV-import zegt de melding het als de export geen stop-loss bevat** (dat geldt voor de meeste exports, zoals die van Hyperliquid). Zo'n trade heeft dan nog geen stop en geen R: vul hem per trade in, of koppel je exchange, dan komt hij vanzelf mee. Een export met stop-loss (FTMO) krijgt die regel niet.
+- Op de eerste regel van de Discord-tekst staat het playbook niet meer: dat heeft nu een eigen regel.
+
+### Fixed
+- **Een trade die je via CSV én je koppeling binnenkrijgt, staat er nu één keer; de koppeling is leidend.** Gold voor Blofin, OKX en Hyperliquid, in beide volgordes: eerst de CSV en dan de sync, of andersom. Je P&L telde zo'n trade dubbel, zonder melding. Nu blijft de trade van de koppeling staan, met zijn stop-loss, en gaan je notities, tags en screenshots van de CSV-rij mee. Had je al dubbele trades, dan gaan die bij je volgende sync van die exchange samen. De importmelding zegt hoeveel trades er al via je koppeling stonden. Ook de Hyperliquid-export met datums zonder voorloopnul ("8-4-2026") gaat goed samen. Kraken had dit probleem niet.
+- **"Verdeeld: 99.99999999999999% — moet samen 100% zijn"** bij de take-profit-niveaus in het trade-formulier. Na een import met bijvoorbeeld 33,76 + 42,97 + 23,27 zag je een rekenfoutje van de computer, en gold de verdeling als niet volledig. Nu staat er "100% ✓ volledig", en het percentage heeft hooguit twee decimalen. Niveaus die door afronding samen net iets naast de 100 uitkwamen (zoals zes keer 16,67) tellen bij het openen precies op tot 100. Een echte afwijking (50 + 40) geeft nog steeds de melding. De regel klopt nu ook terwijl je typt.
+
+---
+
+## [v1.18] — 2026-10-26
+
+### Toegevoegd
+- **Kopieer voor Discord met meerdere trades.** Heb je er meer geselecteerd, dan kopieert de knop ze één voor één ("Kopieer 2 van 3"): plakken in Discord, klikken, plakken, en dan één keer versturen. Of kies **⬇ Alle beelden voor Discord** voor één beeld per trade in je downloads, met de teksten samen op het klembord. Met de privacy-modus aan blijven bedragen ook van het beeld af.
+- **Funded modus** (Instellingen → Funded), voor wie een challenge handelt bij een prop firm zoals FTMO of Breakout. Je zet hem zelf aan; standaard staat hij uit en ziet je journal er precies uit als nu.
+  - Houd je challenges en funded accounts bij met firm, naam, grootte en status (bezig / gehaald / niet gehaald, of actief / gestopt). Een gehaalde challenge zet je met één knop om naar een funded account; de twee blijven aan elkaar gekoppeld.
+  - Per kaart zie je de P&L en het P&L-% op de grootte. Uitbetalingen voeg je toe op een funded account, ook op een gestopt account.
+  - Het geld op een challenge of funded account is van de firm tot een uitbetaling. Het telt daarom **niet** mee in je eigen balans en je eigen P&L-%. De trades tellen wel mee in je analyse.
+  - "Funded meetellen" zet de lopende challenges en actieve funded accounts er toch bij, in één totaal met het label "incl. funded".
+  - Zet je de modus uit, dan worden je challenges, funded accounts en hun trades verborgen, niet gewist. Ze staan nog in je back-up.
+- **CSV-import vraagt bij welk account het bestand hoort.** Na het kiezen van een bestand zie je eerst wat er herkend is (bijv. "OKX-positiehistorie · 23 trades · 1 sep t/m 20 okt"). Daarna kies je de exchange of het handmatige account; het passende account staat al aangevinkt.
+  - Met **+ Nieuw account** maak je ter plekke een handmatig account, bijvoorbeeld voor een sub-account of een prop-firm-challenge.
+  - Kies je een exchange die niet bij het bestand past, dan waarschuwt de journal eerst.
+  - Herkent de journal het bestand niet, dan importeert hij niets en zegt hij welke formaten wel werken. Meld je exchange dan in de Morani Discord.
+  - Met de funded modus aan staan je challenges en funded accounts ook in die lijst, en kun je er vanuit de pop-up meteen een toevoegen. Een FTMO-export stelt je FTMO-challenge of funded account voor.
+- Met de funded modus aan staat op het Dashboard een kaart met je funded P&L, wat er is uitbetaald en hoeveel er loopt. In Analytics kies je bovenaan **Eigen**, **Funded** of **Alles**.
+- Twee nieuwe vragen in de FAQ over de funded modus.
+- **Hoe liep je stop, en hoe ging de trade dicht.** Bij trades van Kraken, Hyperliquid en OKX zie je in het
+  trade-detail of je stop later **naar break-even**, **strakker** of **verder weg ⚠** ging, en of de trade dichtging
+  op je **stop-loss**, een **take-profit**, **met de hand** of door een **liquidatie**. Het formulier zegt het ook bij
+  de stop ("van Kraken Futures, later naar break-even"). Dit komt uit wat de sync al ophaalt; voor oudere trades
+  verschijnt het na de volgende sync.
+- **Stop van de exchange zelf aanpassen.** Een stop-loss die van Kraken, Hyperliquid of OKX komt staat vast. Zette je
+  bij de exchange per ongeluk een verkeerde stop (een typfout die je een minuut later verbeterde), dan klik je in het
+  formulier op **Zelf aanpassen** en vul je de juiste in. Het label toont dan wat de exchange zegt ("zelf aangepast ·
+  Kraken Futures: 82.235"), en de volgende sync laat jouw stop staan. Met **Terug naar Kraken Futures** (of de
+  exchange van die trade) zet je de stop van de exchange terug.
+- **Analytics: Stop-management en uitvoering.** Een nieuw paneel laat zien hoe vaak je je stop naar break-even,
+  strakker of verder weg zette, en hoe je trades dichtgingen (stop-loss, take-profit, met de hand, liquidatie). Per
+  groep het aantal trades, de gemiddelde R ten opzichte van je oorspronkelijke stop en de netto P&L. Het volgt je
+  filters en de keuze Eigen / Funded / Alles. Trades zonder stopgeschiedenis tellen niet mee; het paneel zegt hoeveel
+  er wel meetellen, en onder de 10 dat het nog te weinig is voor een conclusie.
+- In het trade-formulier kies je bij "Exchange" ook een challenge of funded account (alleen met de funded modus aan). Afgeronde staan eronder, voor een vergeten trade.
+- Zet je de funded modus aan terwijl er oude FTMO-trades zonder account staan, dan vraagt de journal één keer wat je wilt: in een nieuwe challenge zetten, of als eigen geld laten staan. Hij verplaatst nooit iets vanzelf.
+- **Ruwe gegevens bij een probleem (dev-modus).** Open de journal met `?dev=1` achter het adres, sync, en download in Instellingen → Data → *Hulp bij problemen* per exchange wat die terugstuurde. Zonder sleutels, walletadres, accountnummers of saldo, en alleen in het geheugen van het tabblad. Stuur het bestand alleen aan Zaratras. Gewone leden zien hier niets van.
+
+### Gewijzigd
+- Een FTMO MetriX-export komt nu op een account te staan (een bestaand handmatig FTMO-account, of een nieuw account dat je in de pop-up maakt). Voorheen hingen die trades aan geen enkel account.
+- De FAQ legt de CSV-import stap voor stap uit, met welke formaten werken.
+
+### Fixed
+- **Privacy-modus geldt nu ook voor Mori en het coach-pakket.** Stond de privacy-modus aan maar het vinkje "Bedragen verbergen" uit, dan gingen je bedragen toch mee naar Mori en in het coach-pakket. Nu niet meer.
+- Een CSV-bestand zonder kolom "symbol" gaf de foutmelding "config is not defined". Zo'n bestand wordt nu gewoon gelezen of netjes als onbekend gemeld.
+- Een trade op een account dat niet van jou is (zoals een funded account) verschoof het P&L-% van al je eerdere trades. Je eigen P&L-% rekent nu alleen met je eigen geld.
+
+---
+
 ## [v1.17.2] — 2026-10-25
 
 ### Fixed

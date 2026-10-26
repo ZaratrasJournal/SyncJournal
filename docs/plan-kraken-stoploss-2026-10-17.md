@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Elke Kraken-trade krijgt automatisch zijn **oorspronkelijke stop-loss**, zodat R-multiple, risico en geplande R:R kloppen zonder dat Denny de stop zelf invult.
+**Goal:** Elke Kraken-trade krijgt automatisch zijn **oorspronkelijke stop-loss**, zodat R-multiple, risico en geplande R:R kloppen zonder dat Zaratras de stop zelf invult.
 
 **Architecture:**
 - **Worker v22** krijgt één nieuwe actie, `triggers`. Die haalt Kraken's trigger-geschiedenis op (`GET /api/history/v3/triggers`): daar staan alle stop- en take-profit-orders met hun triggerprijs en tijd.
@@ -16,7 +16,7 @@
 - [Get open orders](https://docs.kraken.com/api-reference/order-management/get-open-orders)
 - [Rate limits](https://docs.kraken.com/exchange/guides/futures/ratelimits)
 
-**Achtergrond:** gesprek met Denny op 17-10-2026. Bevindingen uit Kraken's documentatie:
+**Achtergrond:** gesprek met Zaratras op 17-10-2026. Bevindingen uit Kraken's documentatie:
 - `/triggers` heeft geen positie-id. Koppelen kan alleen via contract en tijd.
 - Er is geen veld dat zegt "dit is SL" of "dit is TP".
 - De `orderType`-waarden zijn tegenstrijdig gedocumenteerd: `stop` of `stp`.
@@ -29,21 +29,21 @@ Daarom komt er een snapshot van echte data (Task 2) vóórdat de koppel-logica v
 ## Global Constraints
 
 - **Alleen Kraken.** Alle app-code staat in `ExchangeAPI.kraken` (`work/syncjournal.html`, regel ~6893–7340). Niets in gedeelde helpers, geen `if(exchange==='kraken')` buiten de adapter.
-- **Worker:** `docs/worker-v22.js` = v21 + één actie. Alle andere code blijft byte-voor-byte gelijk aan v21 (Morani's journal draait op dezelfde Worker). Denny deployt hem via het Cloudflare-dashboard.
+- **Worker:** `docs/worker-v22.js` = v21 + één actie. Alle andere code blijft byte-voor-byte gelijk aan v21 (Morani's journal draait op dezelfde Worker). Zaratras deployt hem via het Cloudflare-dashboard.
 - **De stop van een trade is de oorspronkelijke stop.** De eerste stop aan de verlieskant, niet een later verschoven stop. Een verschoven stop (bijv. naar break-even) wordt alleen gemarkeerd (`stopVerschoven: true`).
-- **Nooit overschrijven wat Denny zelf invulde.** De adapter schrijft `stop` alleen als die leeg is, of als `stopBron === 'kraken'`.
+- **Nooit overschrijven wat Zaratras zelf invulde.** De adapter schrijft `stop` alleen als die leeg is, of als `stopBron === 'kraken'`.
 - **Rate-limit:** `historicaltriggers` kost 1 token uit de history-pot (100 per 10 minuten). Gebruik maximaal 10 pagina's per verzoek, en per sync maximaal 1 extra verzoek.
 - **Tijden:** Kraken stuurt ms-timestamps (UTC). Voor weergave gaat alles via `amsDateTime`.
 - **Release:** **v1.11 (minor)**, want R-multiples veranderen. Worker v22 moet live zijn vóór de app-release. Bij Worker v21 slaat de app de stop-stap over, zonder fout.
 - **Teksten** in het Nederlands, code-comments in het Engels, trading-termen in het Engels (stop-loss, entry).
-- **Privacy:** Denny's snapshot (`kraken-triggers-snapshot*.json`) komt nooit in de repo. Zet het patroon in `.git/info/exclude`. Een fixture in `tests/_fixtures/` wordt geanonimiseerd: geen uid's, geen clientId's.
+- **Privacy:** Zaratras' snapshot (`kraken-triggers-snapshot*.json`) komt nooit in de repo. Zet het patroon in `.git/info/exclude`. Een fixture in `tests/_fixtures/` wordt geanonimiseerd: geen uid's, geen clientId's.
 
 ## Review Focus
 
 1. **Stop verschoven naar break-even.** Verwacht: de trade houdt de oorspronkelijke stop (R klopt) en krijgt `stopVerschoven: true`.
 2. **Bracket-order:** de stop wordt een paar seconden vóór de instap geplaatst (entry + SL tegelijk). Verwacht: hij telt mee, binnen 60 s vóór de opening.
 3. **Een take-profit- of instap-trigger aan de winstkant** of in dezelfde richting als de positie. Verwacht: wordt nooit als stop-loss gezien.
-4. **Een zelf ingevulde stop** (zoals Denny's 82.235 op de short van 14-10). Verwacht: blijft staan, ook als Kraken een andere stop kent.
+4. **Een zelf ingevulde stop** (zoals Zaratras' 82.235 op de short van 14-10). Verwacht: blijft staan, ook als Kraken een andere stop kent.
 5. **Worker nog op v21**, of `/triggers` geeft een fout. Verwacht: de sync gaat gewoon door, alleen zonder stop.
 
 Elke regel heeft een test in de taak die de code bezit (Task 3 en Task 4).
@@ -146,11 +146,11 @@ ok('tweede pagina met continuation_token=abc', new URL(verzoeken[verzoeken.lengt
 
 ---
 
-### Task 2: Denny deployt v22 en maakt een snapshot (handmatig)
+### Task 2: Zaratras deployt v22 en maakt een snapshot (handmatig)
 
 Dit is geen code, maar een **stoppunt**: Task 3 legt de koppel-regels vast tegen echte data.
 
-- [ ] **Step 1: Deploy.** Denny plakt `docs/worker-v22.js` in het Cloudflare-dashboard bij `morani-proxy` en deployt.
+- [ ] **Step 1: Deploy.** Zaratras plakt `docs/worker-v22.js` in het Cloudflare-dashboard bij `morani-proxy` en deployt.
 - [ ] **Step 2: Snapshot.** Op work.syncjournal.nl in de Console (F12) plakken:
 
 ```js
@@ -349,13 +349,13 @@ Test: een open short met een Buy-stop 82.235 krijgt die stop. Verschuift hij naa
   - CHANGELOG (*Toegevoegd: stop-loss van Kraken automatisch, R-multiple klopt zonder invullen; een stop die je zelf invulde blijft staan*);
   - `cp work/syncjournal.html site/app.html`, demo-data verversen, één release-commit.
 - [ ] **Poort:** `node tests/run-release.js` groen.
-- [ ] **Uitrol:** eerst work, Denny test met zijn echte trades, daarna live, alleen op zijn "push".
+- [ ] **Uitrol:** eerst work, Zaratras test met zijn echte trades, daarna live, alleen op zijn "push".
 
 ---
 
 ## Bevindingen snapshot (18-10-2026)
 
-Snapshot van Denny's account: 40 events van 14-10 18:12 tot 16-10 17:55, 1 pagina, gevraagd vanaf 01-09.
+Snapshot van Zaratras' account: 40 events van 14-10 18:12 tot 16-10 17:55, 1 pagina, gevraagd vanaf 01-09.
 Vaste testdata (zonder uid's) in `tests/fixtures/kraken-triggers-sample.json`.
 
 - **`orderType`** is altijd `Market`, zowel voor de SL als de TP's (de documentatie noemt `stop`/`stp`). De app filtert er niet op.
@@ -367,12 +367,12 @@ Vaste testdata (zonder uid's) in `tests/fixtures/kraken-triggers-sample.json`.
 - **Bij de sluiting** annuleert Kraken alle resterende triggers (`would_not_reduce_position`). Een geraakte stop of TP is `OrderTriggerActivated`.
 - **Verschuiven:** komt in deze periode niet voor (geen `OrderTriggerUpdated`). Of verschuiven een update is of annuleren +
   nieuw plaatsen, is nog niet gezien; de code kent beide.
-- **Geschiedenis:** begint op 14-10, niet op 01-09. Ouder bestaat er (voor Denny) niet. Trades van vóór 14-10 houden "—".
+- **Geschiedenis:** begint op 14-10, niet op 01-09. Ouder bestaat er (voor Zaratras) niet. Trades van vóór 14-10 houden "—".
 - **Afwijkingen:** geen. Alle vier de gesloten posities krijgen de stop die Kraken had (82235, 81700, 81700, 81500).
-  Let op: bij twee daarvan had Denny zelf de exit als stop ingevuld (81680 en 81882); die blijven staan (een zelf ingevulde stop wint).
+  Let op: bij twee daarvan had Zaratras zelf de exit als stop ingevuld (81680 en 81882); die blijven staan (een zelf ingevulde stop wint).
 
 ## Bewust niet in dit plan
 
 - **Geplande take-profits** uit de triggers (`take_profit` aan de winstkant). Die zouden de geplande TP's en de R:R kunnen vullen. Eerst de stop werkend krijgen, dan als volgende story.
-- **De huidige stop** van een lopende positie tonen (`/openorders`), naast de oorspronkelijke. Alleen als Denny daar om vraagt.
+- **De huidige stop** van een lopende positie tonen (`/openorders`), naast de oorspronkelijke. Alleen als Zaratras daar om vraagt.
 - **Andere exchanges.** Hyperliquid, Blofin en OKX hebben eigen bronnen voor stops; elk een eigen story.

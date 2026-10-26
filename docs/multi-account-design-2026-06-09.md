@@ -2,7 +2,7 @@
 
 **Datum**: 2026-06-09
 **Status**: ontwerp afgerond via `/grill-me`. Nog geen code. Wacht op go voor implementatieplan/bouw.
-**Aanleiding**: Denny wil meerdere accounts van dezelfde exchange (bv. 2 Hyperliquid-wallets).
+**Aanleiding**: Zaratras wil meerdere accounts van dezelfde exchange (bv. 2 Hyperliquid-wallets).
 
 ## Probleem
 Nu zijn er twee soorten "accounts":
@@ -66,4 +66,4 @@ Nu zijn er twee soorten "accounts":
 
 **Effort (ruwe schatting)**: groot — meerdaagse refactor. Fase 1+2 zijn de fundering en het meeste risico; UI is het meeste werk.
 
-**Wacht op groen licht van Denny voor het implementatieplan / Sprint 1.**
+**Wacht op groen licht van Zaratras voor het implementatieplan / Sprint 1.**

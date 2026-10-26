@@ -1,6 +1,6 @@
 # Concept: community-aankondiging SyncJournal (Discord)
 
-> Concept voor Denny — plak in Discord en pas aan naar eigen smaak. De @-mentions en kanaalnamen zijn placeholders.
+> Concept voor Zaratras — plak in Discord en pas aan naar eigen smaak. De @-mentions en kanaalnamen zijn placeholders.
 
 ---
 

@@ -1,7 +1,7 @@
 # SyncJournal → volledige work-variant — analyse & plan
 
 **Datum:** 2026-09-04
-**Doel:** `demos/syncjournal-app-demo.html` promoveren tot een volwaardige work-variant die Denny **dagelijks met echte data** kan gebruiken voor een volledige test — **naast** de bestaande `work/tradejournal.html` (die blijft bestaan en ongemoeid).
+**Doel:** `demos/syncjournal-app-demo.html` promoveren tot een volwaardige work-variant die Zaratras **dagelijks met echte data** kan gebruiken voor een volledige test — **naast** de bestaande `work/tradejournal.html` (die blijft bestaan en ongemoeid).
 
 ---
 
@@ -86,7 +86,7 @@ Legenda: **[MUST]** = nodig voor een veilige volledige test · **[SHOULD]** = st
 2. ✅ **Fase 2** — trades + playbooks (mét screenshots) naar **IndexedDB** (`sj_db`, store `kv`); config/tags/settings blijven in localStorage. `boot()` laadt async + migreert eenmalig vanuit het Fase-1 localStorage-model. Tests: **6/6** (`fase2-idb.js`) + work-suite **158/158** + safety **7/7**.
 3. ✅ **Fase 3b** — migratie-importer: `importJSON` detecteert oude TradeJournal-export (`{version, trades:[...]}`) en mapt naar het SyncJournal-schema. Veld-mapping: `direction→dir`, `stopLoss→stop`, `takeProfit→tp`, `positionSize→size`, `tradeGrade A+→grade A`, `simType→kind` (missed/backtest/paper→live), `source→exchange`, sessie afgeleid uit tijd, **R afgeleid** uit entry/stop/size, emotie/fout/tags gemapt, layers behouden, `entryNote→lessons`. Merge't referentie-tags in `tagConfig`. Tests: **19/19** (`fase3-migrate.js`).
    - ⚠️ **Best-effort uit broncode** — valideren tegen een échte oude-app-export; velden als `mae/mfe` (oud: prijzen, nieuw: R-multiples) en exacte sessie-grenzen kunnen dan nog bijgesteld worden.
-4. → ✅ **TESTNIVEAU 1 KLAAR.** Denny kan nu: oude export importeren → héle historie migreert → volledige UX/analytics testen met echte data. (Fase 4 CSV, Fase 5 live-API, Fase 6 thema's = daarna.)
+4. → ✅ **TESTNIVEAU 1 KLAAR.** Zaratras kan nu: oude export importeren → héle historie migreert → volledige UX/analytics testen met echte data. (Fase 4 CSV, Fase 5 live-API, Fase 6 thema's = daarna.)
 5. ✅ **Distributie met vooraf ingebakken dataset** — één self-contained HTML-bestand delen mét dataset erin, zodat andere gebruikers direct een gevulde app zien.
    - **Mechanisme:** `<script type="application/json" id="sj-bundled">` blok in `work/syncjournal.html` (standaard `null`). `boot()` laadt dit **alleen** bij een écht lege eerste-start (geen IDB-data én geen `sj_inited`-flag) via `readBundled()`/`seedBundled()`, zet dan `inited=true`. Ondersteunt zowel SyncJournal- als oude TradeJournal-exports (hergebruikt `looksOldExport`/`migrateOldTrade`). **Wist de gebruiker later z'n data, dan komt de bundel NIET terug** (inited blijft) — het is een startpunt, geen dwang.
    - **Build:** `node scripts/bundle-dataset.js <export.json> [uitvoer.html]` injecteert de JSON in het blok en schrijft naar `dist/` (gitignored build-artefact). Vendor is al inline → volledig draagbaar.

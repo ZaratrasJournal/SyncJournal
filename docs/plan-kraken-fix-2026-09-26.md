@@ -2,7 +2,7 @@
 
 Datum: 2026-09-26. Hoort bij `docs/opdracht-kraken-fix-2026-09-26.md` (de diagnose en het waarom). Dit document is het *wat en in welke volgorde*, per sessie, met per stap de plek in de code, de test en het klaar-criterium. Achtergrond in `docs/research-kraken-api-2026-09-26.md` en `docs/research-kraken-thirdparty-2026-09-26.md`.
 
-Doel in één zin: **één Kraken-levensloopfunctie op account-log-data, gevoed door de CSV-import én door de API, die tegen Denny's export 107 van 107 posities correct oplevert.**
+Doel in één zin: **één Kraken-levensloopfunctie op account-log-data, gevoed door de CSV-import én door de API, die tegen Zaratras' export 107 van 107 posities correct oplevert.**
 
 ---
 
@@ -10,16 +10,16 @@ Doel in één zin: **één Kraken-levensloopfunctie op account-log-data, gevoed 
 
 | Sessie | Wat | Resultaat | Wie |
 |---|---|---|---|
-| **0 · Voorbereiding** (Denny, 15 min) | backup verplaatsen, rauwe capture aanleveren | veilige repo + fixtures voor sessie 1 en 2 | Denny |
-| **1 · CSV-route = levensloopfunctie** (Claude, één sessie) | adapter-methode bouwen, CSV-import erop, test tegen echte export, release | Denny kan haar historie correct inlezen | Claude, Denny test |
-| **2 · API op dezelfde functie** (Claude, korte sessie na Worker-deploy) | Worker-action `account_log`, `fetchTrades` omzetten, oude events-pad weg | sync geeft dezelfde trades als CSV, geen duplicaten | Claude bouwt, Denny deployt |
+| **0 · Voorbereiding** (Zaratras, 15 min) | backup verplaatsen, rauwe capture aanleveren | veilige repo + fixtures voor sessie 1 en 2 | Zaratras |
+| **1 · CSV-route = levensloopfunctie** (Claude, één sessie) | adapter-methode bouwen, CSV-import erop, test tegen echte export, release | Zaratras kan haar historie correct inlezen | Claude, Zaratras test |
+| **2 · API op dezelfde functie** (Claude, korte sessie na Worker-deploy) | Worker-action `account_log`, `fetchTrades` omzetten, oude events-pad weg | sync geeft dezelfde trades als CSV, geen duplicaten | Claude bouwt, Zaratras deployt |
 | **3 · Opruimen** (Claude, klein) | backlog-tickets sluiten, docs, memory, baseline | schone staat | Claude |
 
-Sessie 1 hangt nergens van af behalve stap 0.1. Sessie 2 wacht op de Worker-deploy door Denny.
+Sessie 1 hangt nergens van af behalve stap 0.1. Sessie 2 wacht op de Worker-deploy door Zaratras.
 
 ---
 
-## Sessie 0 · Voorbereiding (Denny)
+## Sessie 0 · Voorbereiding (Zaratras)
 
 **0.1 Backup uit de repo-root.** `syncjournal-backup-2026-09-26 kraken.json` bevat de API-keys van Kraken en Blofin in platte tekst en is niet gitignored. Verplaats naar `_scratch/` (gitignored). De scripts uit sessie 1 lezen 'm daar.
 
@@ -37,7 +37,7 @@ console.log('events:', (ev.events || []).length, 'trades:', (ev.trades || []).le
 copy(JSON.stringify(ev));   // → plak in tests/_fixtures/kraken-events-2026-09.json
 ```
 
-Waar het voor dient: beantwoordt definitief waarom de events incompleet en door elkaar binnenkwamen (§4 R2 van de opdracht) en wordt de regressie-fixture voor de herschreven levensloop-test. Bewaar in `tests/_fixtures/` (gitignored). Als Denny er niet aan toekomt, gaat sessie 1 gewoon door.
+Waar het voor dient: beantwoordt definitief waarom de events incompleet en door elkaar binnenkwamen (§4 R2 van de opdracht) en wordt de regressie-fixture voor de herschreven levensloop-test. Bewaar in `tests/_fixtures/` (gitignored). Als Zaratras er niet aan toekomt, gaat sessie 1 gewoon door.
 
 **0.3 Beslissing bevestigen:** de 34 huidige Kraken-trades worden na sessie 1 verwijderd en opnieuw ingelezen. Ze bevatten geen handmatige inhoud (gecontroleerd op de backup: 0 van 34 met notities, tags, screenshots, rating of SL/TP).
 
@@ -121,24 +121,24 @@ Plek: `sjImportCsvText`, blok `if(isKrakenLog){ … }` (≈ regel 7669–7786) e
 Release-flow uit CLAUDE.md / skill `release-flow`: `APP_VERSION` bump, `site/version.json`, CHANGELOG-entry:
 > **Kraken: CSV-import van de account-log geeft nu je complete historie, correct.** Elke positie één trade met alle stappen, partial closes als TP's, netto PnL inclusief fees, tijden in Amsterdam. Lees je account-log-export (Kraken Pro → Documents → Ledger → tab Futures, of futures.kraken.com → Logs → Download All) opnieuw in; dubbel inlezen kan geen kwaad. De API-sync volgt in de volgende versie en vereist een Worker-update.
 
-Kopie naar `site/app.html`, commit. **Niet pushen** zonder Denny's "push".
+Kopie naar `site/app.html`, commit. **Niet pushen** zonder Zaratras' "push".
 
-### 1.7 Denny's doorloop na sessie 1 (15 min)
+### 1.7 Zaratras' doorloop na sessie 1 (15 min)
 1. Instellingen → Data → back-up maken (vangnet).
 2. Trades → filter exchange Kraken → alle 34 selecteren → verwijderen.
 3. Instellingen → Data → account-log CSV inlezen. Verwacht: 107 trades, toast zonder waarschuwingen.
 4. Steekproef tegen Kraken Pro → Posities: 6 juni (short 60.504 → 60.997, 4 sluitingen, −12,83 netto), 20 mei (long 77.241, 2 sluitingen, +1,96), 19 mei (4 posities). Let op: Kraken toont UTC+1, de journal Amsterdam.
 5. Export maken → `node scripts/kraken-recon.js <csv> <export>` → SUMMARY met `missing 0`.
 
-**Klaar-criterium sessie 1**: alle asserts in 1.4 groen, Denny's doorloop klopt, release lokaal gecommit.
+**Klaar-criterium sessie 1**: alle asserts in 1.4 groen, Zaratras' doorloop klopt, release lokaal gecommit.
 
 ---
 
 ## Sessie 2 · API op dezelfde functie
 
-Vereist: de rauwe capture uit 0.2 (voor de fixture) en Denny die de Worker deployt.
+Vereist: de rauwe capture uit 0.2 (voor de fixture) en Zaratras die de Worker deployt.
 
-### 2.1 Worker v19 (Claude levert, Denny deployt; ~45 min)
+### 2.1 Worker v19 (Claude levert, Zaratras deployt; ~45 min)
 Basis: `worker-patches/v18-online-worker.js` → `worker-patches/v19-online-worker.js`. Alleen `handleKraken` wijzigt; MEXC/Blofin/OKX byte-gelijk.
 - Nieuwe action `account_log` met `{startTime, fromId}`:
   - URL `/api/history/v3/account-log?sort=asc&count=1000&since=<startTime>` of, als `fromId` meekomt, `&from=<fromId>` in plaats van `since`; plus `info=` met de negen trade-types en `funding rate change`, **url-encoded vóór het signen** (`futures%20trade`).
@@ -148,18 +148,18 @@ Basis: `worker-patches/v18-online-worker.js` → `worker-patches/v19-online-work
   - Response: `{ source: 'account_log', logs: [...rauw], nextFromId, pages }`.
 - `trades`-action en `events` blijven ongewijzigd staan tot 2.3 klaar is.
 - Documentatie: `docs/worker-kraken-account-log.md` (zelfde opzet als `docs/worker-kraken-events.md`: waarom, exacte snippet, verificatie-snippet met verwachte output).
-- Verificatie door Denny na deploy: console-snippet `call({action:'account_log', startTime: Date.parse('2026-05-01')})` → `logs.length` ≈ 2× het aantal fills sinds 1 mei (2 regels per fill) en `nextFromId` leeg.
+- Verificatie door Zaratras na deploy: console-snippet `call({action:'account_log', startTime: Date.parse('2026-05-01')})` → `logs.length` ≈ 2× het aantal fills sinds 1 mei (2 regels per fill) en `nextFromId` leeg.
 
 ### 2.2 App: `fetchTrades` op account-log (45 min)
 Plek: `ExchangeAPI.kraken.fetchTrades` (≈ regel 6498).
 - Nieuwe volgorde: `proxyCall({action:'account_log', startTime, fromId: CONNS.kraken.logCursor})`. Bij `logs` → `_logRegelsUitJson(logs)` → `levenslopenUitAccountLog(...)` → `trades`. Bewaar `nextFromId`/hoogste `id` als `CONNS.kraken.logCursor` (persistConns) zodat de volgende sync incrementeel is.
 - Fallback: geeft de Worker `{error}` met "unknown action" of geen `logs`, dan het huidige pad (`trades` + `events`) zoals nu, met een eenmalige console-waarschuwing "Worker v19 nodig". Zo blijft de app werken bij members met een oude Worker.
-- Levenslopen die het venster overlappen: vraag bij een lege cursor de historie vanaf `syncFrom` (default nu 2026-05-07 → voor Denny op 2025-11-01 zetten, of `from=1` voor alles); een positie die vóór `since` opende komt als orphan binnen. Dat is dezelfde afspraak als bij de CSV.
+- Levenslopen die het venster overlappen: vraag bij een lege cursor de historie vanaf `syncFrom` (default nu 2026-05-07 → voor Zaratras op 2025-11-01 zetten, of `from=1` voor alles); een positie die vóór `since` opende komt als orphan binnen. Dat is dezelfde afspraak als bij de CSV.
 - `afterImport` (≈ regel 6488) blijft: oude `kraken_csv_*`/losse rijen gaan op in de levensloop met dezelfde `pair`/`dir`/`closeTime`. Voeg de `kraken_pos_`-vorm van CSV-trades toe aan de adoptie zodat een CSV-trade en een API-trade met dezelfde `srcId` niet dubbel komen (ze hebben dezelfde id, dus `importTjClosed` werkt al op `srcId`; controleren in test 2.4).
 - `openIsPlaceholder` blijft `true`.
 
-### 2.3 Oud pad verwijderen (na bevestiging door Denny, 20 min)
-Als één sync bij Denny 107/107 geeft en `nextFromId` leeg is: `_krLevenslopen`, de `withEvents`-logica, de `evt`-vlag op de conn en `ExchangeAPI.kraken.detectPartials`'s oude-pad-tak verwijderen. `tests/kraken-levensloop.spec.js` gaat dan weg (vervangen door `kraken-account-log.spec.js` + de events-fixture-test hieronder).
+### 2.3 Oud pad verwijderen (na bevestiging door Zaratras, 20 min)
+Als één sync bij Zaratras 107/107 geeft en `nextFromId` leeg is: `_krLevenslopen`, de `withEvents`-logica, de `evt`-vlag op de conn en `ExchangeAPI.kraken.detectPartials`'s oude-pad-tak verwijderen. `tests/kraken-levensloop.spec.js` gaat dan weg (vervangen door `kraken-account-log.spec.js` + de events-fixture-test hieronder).
 
 ### 2.4 Tests (45 min)
 - **`tests/kraken-sync-mock.spec.js`**: mock `proxyCall` (patroon: `hyperliquid-refresh-dup.spec.js` / `kraken-3way.spec.js`) met de account-log-JSON uit de capture (0.2) → sync → dezelfde 13 posities sinds 7 mei als de CSV → daarna dezelfde CSV inlezen → 0 nieuwe trades → tweede sync → 0 nieuwe trades → open positie: placeholder verdwijnt zodra de levensloop binnenkomt.
@@ -169,9 +169,9 @@ Als één sync bij Denny 107/107 geeft en `nextFromId` leeg is: `_krLevenslopen`
 
 ### 2.5 Release
 Versie-bump + CHANGELOG:
-> **Kraken: API-sync haalt nu dezelfde complete historie op als de CSV-import** (account-log als bron). Vereist Worker v19 (Denny). Zet je "Sync vanaf" desgewenst terug naar het begin van je Kraken-account en druk op Sync; bestaande Kraken-trades worden bijgewerkt, niet gedupliceerd.
+> **Kraken: API-sync haalt nu dezelfde complete historie op als de CSV-import** (account-log als bron). Vereist Worker v19 (Zaratras). Zet je "Sync vanaf" desgewenst terug naar het begin van je Kraken-account en druk op Sync; bestaande Kraken-trades worden bijgewerkt, niet gedupliceerd.
 
-**Klaar-criterium sessie 2**: sync bij Denny = 107 trades = CSV-import, tweede sync 0 nieuwe, mock-tests groen, oud pad verwijderd.
+**Klaar-criterium sessie 2**: sync bij Zaratras = 107 trades = CSV-import, tweede sync 0 nieuwe, mock-tests groen, oud pad verwijderd.
 
 ---
 
@@ -188,9 +188,9 @@ Versie-bump + CHANGELOG:
 
 | Risico | Kans | Afdekking |
 |---|---|---|
-| Account-log JSON blijkt tóch geen positie-regels te geven (v7-notitie uit mei) | laag (ccxt en rotki verwerken ze; docs: `new_balance` = "new balance of wallet or new size of the position") | Denny's capture in 0.2 vóór sessie 2; anders plan B uit de opdracht (position-events met ccxt-semantiek) op dezelfde levensloopfunctie |
-| CSV-paring positioneel gaat mis bij exotische regels (unwind/assignment) | laag voor Denny, onbekend voor members | controle-identiteit per paar + waarschuwingen in de toast; fixture-cases in 1.4 |
-| Members met oude Worker | zeker, tijdelijk | fallback-pad in 2.2 tot Denny v19 heeft uitgerold; changelog zegt het |
+| Account-log JSON blijkt tóch geen positie-regels te geven (v7-notitie uit mei) | laag (ccxt en rotki verwerken ze; docs: `new_balance` = "new balance of wallet or new size of the position") | Zaratras' capture in 0.2 vóór sessie 2; anders plan B uit de opdracht (position-events met ccxt-semantiek) op dezelfde levensloopfunctie |
+| CSV-paring positioneel gaat mis bij exotische regels (unwind/assignment) | laag voor Zaratras, onbekend voor members | controle-identiteit per paar + waarschuwingen in de toast; fixture-cases in 1.4 |
+| Members met oude Worker | zeker, tijdelijk | fallback-pad in 2.2 tot Zaratras v19 heeft uitgerold; changelog zegt het |
 | Rate-limit history-pool (100 tokens / 10 min, per IP, gedeeld door alle members) | laag bij `count=1000` (3 tokens/pagina) | max 20 pagina's per call; `apiLimitExceeded` netjes tonen |
 | Dubbele trades CSV ↔ API | laag | zelfde `srcId`-vorm; expliciet getest in 2.4 |
 | Funding in `pnl` verwarrend voor gebruikers | middel | comment + changelog; later los veld als de funding-feature komt |
@@ -200,7 +200,7 @@ Versie-bump + CHANGELOG:
 2. CSV-import en API-sync leveren identieke trades (zelfde `srcId`, velden, `fills`, `tps`).
 3. Twee keer syncen of importeren → 0 nieuwe trades.
 4. Alle Kraken-tests groen; `exchange-isolation.spec.js` bewijst dat de andere exchanges byte-gelijk bleven.
-5. Release-flow doorlopen voor beide sessies; push alleen op Denny's "push".
+5. Release-flow doorlopen voor beide sessies; push alleen op Zaratras' "push".
 
 ---
 
@@ -222,6 +222,6 @@ netto P&L -179.98 = Σ realized pnl − Σ fee + Σ funding (-179.98) · 413/413
 3. **Spec in Node-script-stijl** (zoals `csv-import.spec.js` en de andere syncjournal-specs), niet in de `test()`-stijl van `kraken-real-data.spec.js` (die draait tegen de oude `work/tradejournal.html`).
 4. **Bug in de eerste versie, gevangen door de synthetische case "positie die nog loopt":** een opening vanaf 0 werd als omkering gezien (`(0>0)===(nieuw>0)` is false bij een long). De trades bleven toevallig goed (de schijn-levensloop had qty 0 en viel weg), maar `open` raakte vervuild. Gefixt: `zelfdeKant` is ook waar als de oude stand 0 is.
 
-**Fase 0, wat Denny kan aanleveren (niet nodig voor sessie 1, wel voor sessie 2):** met `?dev=1` de Kraken-snapshotknop → de snapshot bevat nu `events` (rauwe PositionUpdate-events van de huidige Worker, twee maanden terug). Sla op als `tests/_fixtures/kraken-events-2026-09.json`. Voor verder terug: het console-snippet uit §0.2 hierboven. De account-log-JSON kan pas na Worker v19 (sessie 2.1); tot die tijd is de CSV de bron.
+**Fase 0, wat Zaratras kan aanleveren (niet nodig voor sessie 1, wel voor sessie 2):** met `?dev=1` de Kraken-snapshotknop → de snapshot bevat nu `events` (rauwe PositionUpdate-events van de huidige Worker, twee maanden terug). Sla op als `tests/_fixtures/kraken-events-2026-09.json`. Voor verder terug: het console-snippet uit §0.2 hierboven. De account-log-JSON kan pas na Worker v19 (sessie 2.1); tot die tijd is de CSV de bron.
 
-**Nog te doen door Denny (1.7):** back-up maken → de 34 oude Kraken-trades verwijderen → account-log CSV inlezen (verwacht: 107 trades, toast zonder waarschuwingen) → `node scripts/kraken-recon.js <csv> <export>` → `missing 0`. En: `syncjournal-backup-2026-09-26 kraken.json` staat nog in de repo-root (kopie staat al in `_scratch/`); verwijder 'm uit de root, hij bevat API-keys.
+**Nog te doen door Zaratras (1.7):** back-up maken → de 34 oude Kraken-trades verwijderen → account-log CSV inlezen (verwacht: 107 trades, toast zonder waarschuwingen) → `node scripts/kraken-recon.js <csv> <export>` → `missing 0`. En: `syncjournal-backup-2026-09-26 kraken.json` staat nog in de repo-root (kopie staat al in `_scratch/`); verwijder 'm uit de root, hij bevat API-keys.

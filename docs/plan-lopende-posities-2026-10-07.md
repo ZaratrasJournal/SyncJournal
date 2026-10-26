@@ -7,7 +7,7 @@
 en gesynct gelijk). Win-rate, expectancy, reeks en andere uitkomst-statistieken tellen alleen trades
 die helemaal dicht zijn.
 
-**Besluit:** Denny, 07-10-2026, optie A. Aanleiding: win-rate 43% en reeks "3V" terwijl zijn twee
+**Besluit:** Zaratras, 07-10-2026, optie A. Aanleiding: win-rate 43% en reeks "3V" terwijl zijn twee
 lopende posities allebei al een TP hadden. Een eerste poging, die partials overal uit de statistieken
 haalde, botste met de scenario-ronde van 24-09: het geboekte deel van een **handmatige** partial telt
 mee in Netto P&L én saldo (`tests/handmatig-statistieken.spec.js`).
@@ -72,7 +72,7 @@ dollarbedrag van `pnl` als `pnlUsd`, met de koers in `_fx`.
 
 **Levert:** `heeftUitkomst(t)`, `geboekt(t)`, `boeking(t)`, globale `BOEKINGEN` (array).
 
-- [ ] **Stap 1: test die faalt.** `tests/lopend-niet-meegeteld.spec.js` met Denny's zeven trades uit
+- [ ] **Stap 1: test die faalt.** `tests/lopend-niet-meegeteld.spec.js` met Zaratras' zeven trades uit
   zijn export (5 gesloten: +0,0089, +0,4508, −2,0222, +0,6619, −9,9307; 2 partial met `pnl 0`,
   `realizedPnl` 9,5332 en 2,5092) plus één open trade. Controles op Analytics: win-rate `60%`,
   expectancy `2,17`, reeks `1V`, 5 bolletjes in "laatste trades", teller begint met
@@ -83,7 +83,7 @@ dollarbedrag van `pnl` als `pnlUsd`, met de koers in `_fx`.
 
 ```js
 let BOEKINGEN=[];
-/* Two lists (Denny 07-10-2026, option A). CLOSED: trades with an outcome, for anything that counts,
+/* Two lists (Zaratras 07-10-2026, option A). CLOSED: trades with an outcome, for anything that counts,
    divides or decides win/loss. A running position (open, or partial after a TP) can still hit its
    stop. BOEKINGEN: all booked money, for anything that sums an amount; a partial carries what it
    booked so far. Until v1.5 a partial was a 0 trade in CLOSED: not a win, so it lowered win-rate
@@ -195,4 +195,4 @@ weektotaal), `yearHeatmap` (data-attributen), `yhMove` (tooltip).
 - [ ] **Stap 4:** `cp work/syncjournal.html site/app.html`,
   `node scripts/gen-syncjournal-dataset-v2.js`, één commit `Release v1.5: …`, dan
   `node tests/run-release.js` (alles groen), dan `site/` naar `deploy/syncjournal-site/` en daar
-  committen. **Niet pushen** zonder "push" van Denny.
+  committen. **Niet pushen** zonder "push" van Zaratras.
