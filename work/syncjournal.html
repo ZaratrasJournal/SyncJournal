@@ -10999,89 +10999,82 @@ ExchangeAPI.ftmo.parseCsv=function(csv,bron){
   }
   return csvTrades;
 };
+// OKX Position History export — 1 rij per gesloten perp-positie (geaggregeerd). OKX-kolomnamen
+// verschillen per UI-taal/versie, dus detectie op structuur: een instrument-kolom (of "-SWAP"
+// in de data) + een PnL-kolom + een prijs-kolom. Flexibele header-resolver in parseCsv.
+// LET OP: gevalideerd tegen verwachte kolomnamen uit de v5-docs; bij een echte export
+// mogelijk fijn-tunen (zie docs/exchange-research-okx-perps-2026-06-17.md, sectie 7).
+// That loose recognition is why OKX is asked last (csvRuim).
+ExchangeAPI.okx.csvRuim=true;
+ExchangeAPI.okx.herkentCsv=function(csv){const lcH=csv.headers.map(h=>h.toLowerCase());
+  return (lcH.some(h=>/instrument/.test(h))||csv.rijen.slice(0,5).some(v=>/-SWAP/i.test(v.join(","))))
+    &&lcH.some(h=>/(realized|realised).*pnl|^pnl$|\bpnl\b/.test(h))
+    &&lcH.some(h=>/avg|average|price|px/.test(h));};
+ExchangeAPI.okx.parseCsv=function(csv,bron){
+  const csvTrades=[];
+  // OKX Position History → geaggregeerde round-trips. Flexibele header-resolver (col).
+  const col=(...res)=>{for(const re of res){const h=csv.headers.find(hh=>re.test(hh.toLowerCase()));if(h)return h;}return null;};
+  const cPair=col(/instrument|underlying|contract|symbol/);
+  const cDir=col(/direction|pos.*side|side|type/);
+  const cOpen=col(/open.*(avg|average).*(price|px)|avg.*open|open.*price|entry/);
+  const cClose=col(/close.*(avg|average).*(price|px)|avg.*close|close.*price|exit/);
+  const cQty=col(/closed.*pos|close.*total|closed.*qty|position(?!.*side)|quantity|qty|size|filled/);
+  const cPnl=col(/(realized|realised).*pnl|^pnl$|\bpnl\b|profit/);
+  const cFee=col(/^fee$|trading.*fee|^fees$/);
+  const cFund=col(/funding/);
+  const cLev=col(/lever/);
+  const cOpenT=col(/open.*time|create.*time|^ctime$/);
+  const cCloseT=col(/close.*time|update.*time|^utime$/);
+  const num=(s)=>{const n=parseFloat(String(s||"").replace(/"/g,"").replace(/,/g,"").replace(/[^\d.+\-eE]/g,""));return isNaN(n)?0:n;};
+  const splitDt=(dt)=>{const c=String(dt||"").replace(/"/g,"").trim();const[d,t]=c.split(/[ T]/);return{date:d||"",time:(t||"00:00").slice(0,5),full:c};};
+  const okxPair=(s)=>{let up=String(s||"").toUpperCase().replace(/-SWAP$/,"").replace(/[-_]/,"/");if(up.includes("/"))return up;if(up.endsWith("USDT"))return up.slice(0,-4)+"/USDT";if(up.endsWith("USDC"))return up.slice(0,-4)+"/USDC";if(up.endsWith("USD"))return up.slice(0,-3)+"/USD";return up;};
+  for(const vals of csv.rijen){
+    const row={};csv.headers.forEach((h,idx)=>row[h]=vals[idx]||"");
+    const entryN=cOpen?num(row[cOpen]):0,exitN=cClose?num(row[cClose]):0;
+    const gross=cPnl?num(row[cPnl]):0;
+    if(!entryN&&!exitN&&!gross)continue;
+    const feeN=cFee?Math.abs(num(row[cFee])):0,fundN=cFund?Math.abs(num(row[cFund])):0;
+    // CSV's PnL = GROSS (excl. fees, zoals de API). Netto = gross − fees − funding.
+    const netPnl=gross-feeN-fundN;
+    const qtyRaw=cQty?Math.abs(num(row[cQty])):0;
+    // ctVal-correctie: staat qty in contracts, leidt size af uit |gross|/|exit-entry| (PnL-cross-check).
+    let assetQty=qtyRaw;
+    const pd=Math.abs(exitN-entryN);
+    if(pd>0&&Math.abs(gross)>1e-6){const implied=Math.abs(gross)/pd;if(qtyRaw<=0||Math.abs(implied-qtyRaw)/implied>0.25)assetQty=implied;}
+    const usd=(entryN>0&&assetQty>0)?(entryN*assetQty).toFixed(2):"";
+    const dirRaw=String(cDir?row[cDir]:"").toLowerCase();
+    const direction=dirRaw.includes("long")?"long":dirRaw.includes("short")?"short":dirRaw.includes("buy")?"long":dirRaw.includes("sell")?"short":((exitN-entryN)*gross>=0?"long":"short");
+    const oT=cOpenT?splitDt(row[cOpenT]):{date:"",time:"",full:""};
+    const cT=cCloseT?splitDt(row[cCloseT]):{date:"",time:"",full:""};
+    csvTrades.push({...EMPTY_TRADE,
+      id:"okx_csv_"+uid(),
+      date:oT.date||cT.date||"",time:oT.time||cT.time||"00:00",
+      pair:okxPair(cPair?row[cPair]:""),direction,
+      entry:entryN>0?normPrice(entryN):"",exit:exitN>0?normPrice(exitN):"",
+      positionSize:usd||(assetQty>0?normPrice(assetQty):""),
+      positionSizeAsset:assetQty>0?normPrice(assetQty):"",
+      pnl:String(netPnl.toFixed(4)),fees:(feeN+fundN).toFixed(4),
+      leverage:cLev?String(num(row[cLev])||"10"):"10",
+      source:bron,status:"closed",
+      openTime:oT.full,closeTime:cT.full,
+    });
+  }
+  return csvTrades;
+};
+// No adapter recognises the file: read the columns by name (date, symbol, side, pnl, ...).
+function csvAlgemeen(csv,bron){
+  const csvTrades=[];
+  for(const rij of csv.rijen){const vals=rij.map(v=>v.replace(/"/g,""));const row={};csv.headers.forEach((h,idx)=>row[h.toLowerCase()]=vals[idx]||"");const pairRaw=row.symbol||row.pair||row.contract||"";const pair=pairRaw?(pairRaw.includes("/")?pairRaw:pairRaw):"BTC/USDT";   /* was config.defaultQuote: a leftover of the old journal, undefined here, so any file without a symbol column threw "config is not defined" */const trade={...EMPTY_TRADE,id:"csv_"+uid(),date:row.date||(row.time||"").split(" ")[0]||(row.closetime||"").split(" ")[0]||"",time:((row.time||"").split(" ")[1]||(row.closetime||"").split(" ")[1]||"00:00").slice(0,5),pair,direction:((row.side||row.direction||row.type||"").toLowerCase().includes("buy")||(row.side||"").toLowerCase().includes("long"))?"long":"short",entry:row.openprice||row.entryprice||row.entry||row.price||"",exit:row.closeprice||row.exitprice||row.exit||"",positionSize:row.volume||row.size||row.quantity||row.amount||"",pnl:row.pnl||row.profit||row.realizedpnl||row.realised_pnl||"",fees:row.fee||row.fees||row.commission||"0",leverage:row.leverage||"10",source:bron,status:"closed"};if(trade.date)csvTrades.push(trade)}
+  return csvTrades;
+}
 function parseExchangeCsvText(text,forExchange){
-        const lines=text.split("\n").filter(l=>l.trim());
-        if(lines.length<2)throw new Error("Leeg bestand");
-        const csv={headers:csvRegel(lines[0]).map(h=>h.replace(/"/g,"")),rijen:lines.slice(1).map(csvRegel)};
-        const ex=Object.keys(ExchangeAPI).filter(k=>typeof ExchangeAPI[k].herkentCsv==='function')
-          .sort((a,b)=>!!ExchangeAPI[a].csvRuim-!!ExchangeAPI[b].csvRuim)
-          .find(k=>ExchangeAPI[k].herkentCsv(csv));
-        if(ex)return ExchangeAPI[ex].parseCsv(csv,forExchange||ex);
-        const parseCSVLine=csvRegel,headers=csv.headers;
-        const isKrakenLog=(headers.includes("uid")&&headers.includes("realized pnl")&&headers.includes("trade price"))
-          ||(headers.includes("booking_uid")&&headers.includes("info")&&headers.includes("new_balance"));   // account-log-JSON als CSV geplakt
-        const isMexcFutures=headers.includes("Futures Trading Pair")&&headers.includes("Closing PNL");
-        const isMexcPosition=headers.includes("Futures")&&headers.includes("Avg Entry Price")&&headers.includes("Avg Close Price");
-        const isBlofinOrder=headers.includes("Underlying Asset")&&headers.includes("Avg Fill")&&headers.includes("PNL");
-        // FTMO MetriX export: Ticket,Open,Type,Volume,Symbol,Price,SL,TP,Close,Price,Swap,Commissions,Profit,Pips,"Trade duration in seconds"
-        // Positioneel parsen vereist: kolom "Price" komt twee keer voor (idx 5=entry, idx 9=exit).
-        const isFtmoMetriX=headers[0]==="Ticket"&&headers.includes("Pips")&&headers.includes("Volume")&&headers.includes("Swap");
-        // Hyperliquid compact CSV export: time,coin,dir,px,sz,ntl,fee,closedPnl
-        // FIFO match open→close per coin+direction om round-trip trades te reconstrueren.
-        const isHyperliquidFills=headers[0]==="time"&&headers.includes("coin")&&headers.includes("closedPnl")&&headers.includes("dir")&&headers.includes("ntl");
-        // OKX Position History export — 1 rij per gesloten perp-positie (geaggregeerd). OKX-kolomnamen
-        // verschillen per UI-taal/versie, dus detectie op structuur: een instrument-kolom (of "-SWAP"
-        // in de data) + een PnL-kolom + een prijs-kolom. Flexibele header-resolver in de branch.
-        // LET OP: gevalideerd tegen verwachte kolomnamen uit de v5-docs; bij Denny's echte export
-        // mogelijk fijn-tunen (zie docs/exchange-research-okx-perps-2026-06-17.md, sectie 7).
-        const lcH=headers.map(h=>h.toLowerCase());
-        const isOkxPosition=(lcH.some(h=>/instrument/.test(h))||lines.slice(1,6).some(l=>/-SWAP/i.test(l)))
-          &&lcH.some(h=>/(realized|realised).*pnl|^pnl$|\bpnl\b/.test(h))
-          &&lcH.some(h=>/avg|average|price|px/.test(h));
-        let csvTrades=[];
-        if(isOkxPosition&&!isKrakenLog&&!isBlofinOrder&&!isMexcPosition&&!isMexcFutures&&!isFtmoMetriX&&!isHyperliquidFills){
-          // OKX Position History → geaggregeerde round-trips. Flexibele header-resolver (col).
-          const col=(...res)=>{for(const re of res){const h=headers.find(hh=>re.test(hh.toLowerCase()));if(h)return h;}return null;};
-          const cPair=col(/instrument|underlying|contract|symbol/);
-          const cDir=col(/direction|pos.*side|side|type/);
-          const cOpen=col(/open.*(avg|average).*(price|px)|avg.*open|open.*price|entry/);
-          const cClose=col(/close.*(avg|average).*(price|px)|avg.*close|close.*price|exit/);
-          const cQty=col(/closed.*pos|close.*total|closed.*qty|position(?!.*side)|quantity|qty|size|filled/);
-          const cPnl=col(/(realized|realised).*pnl|^pnl$|\bpnl\b|profit/);
-          const cFee=col(/^fee$|trading.*fee|^fees$/);
-          const cFund=col(/funding/);
-          const cLev=col(/lever/);
-          const cOpenT=col(/open.*time|create.*time|^ctime$/);
-          const cCloseT=col(/close.*time|update.*time|^utime$/);
-          const num=(s)=>{const n=parseFloat(String(s||"").replace(/"/g,"").replace(/,/g,"").replace(/[^\d.+\-eE]/g,""));return isNaN(n)?0:n;};
-          const splitDt=(dt)=>{const c=String(dt||"").replace(/"/g,"").trim();const[d,t]=c.split(/[ T]/);return{date:d||"",time:(t||"00:00").slice(0,5),full:c};};
-          const okxPair=(s)=>{let up=String(s||"").toUpperCase().replace(/-SWAP$/,"").replace(/[-_]/,"/");if(up.includes("/"))return up;if(up.endsWith("USDT"))return up.slice(0,-4)+"/USDT";if(up.endsWith("USDC"))return up.slice(0,-4)+"/USDC";if(up.endsWith("USD"))return up.slice(0,-3)+"/USD";return up;};
-          for(let i=1;i<lines.length;i++){
-            const vals=parseCSVLine(lines[i]);const row={};headers.forEach((h,idx)=>row[h]=vals[idx]||"");
-            const entryN=cOpen?num(row[cOpen]):0,exitN=cClose?num(row[cClose]):0;
-            const gross=cPnl?num(row[cPnl]):0;
-            if(!entryN&&!exitN&&!gross)continue;
-            const feeN=cFee?Math.abs(num(row[cFee])):0,fundN=cFund?Math.abs(num(row[cFund])):0;
-            // CSV's PnL = GROSS (excl. fees, zoals de API). Netto = gross − fees − funding.
-            const netPnl=gross-feeN-fundN;
-            const qtyRaw=cQty?Math.abs(num(row[cQty])):0;
-            // ctVal-correctie: staat qty in contracts, leidt size af uit |gross|/|exit-entry| (PnL-cross-check).
-            let assetQty=qtyRaw;
-            const pd=Math.abs(exitN-entryN);
-            if(pd>0&&Math.abs(gross)>1e-6){const implied=Math.abs(gross)/pd;if(qtyRaw<=0||Math.abs(implied-qtyRaw)/implied>0.25)assetQty=implied;}
-            const usd=(entryN>0&&assetQty>0)?(entryN*assetQty).toFixed(2):"";
-            const dirRaw=String(cDir?row[cDir]:"").toLowerCase();
-            const direction=dirRaw.includes("long")?"long":dirRaw.includes("short")?"short":dirRaw.includes("buy")?"long":dirRaw.includes("sell")?"short":((exitN-entryN)*gross>=0?"long":"short");
-            const oT=cOpenT?splitDt(row[cOpenT]):{date:"",time:"",full:""};
-            const cT=cCloseT?splitDt(row[cCloseT]):{date:"",time:"",full:""};
-            csvTrades.push({...EMPTY_TRADE,
-              id:"okx_csv_"+uid(),
-              date:oT.date||cT.date||"",time:oT.time||cT.time||"00:00",
-              pair:okxPair(cPair?row[cPair]:""),direction,
-              entry:entryN>0?normPrice(entryN):"",exit:exitN>0?normPrice(exitN):"",
-              positionSize:usd||(assetQty>0?normPrice(assetQty):""),
-              positionSizeAsset:assetQty>0?normPrice(assetQty):"",
-              pnl:String(netPnl.toFixed(4)),fees:(feeN+fundN).toFixed(4),
-              leverage:cLev?String(num(row[cLev])||"10"):"10",
-              source:forExchange||"okx",status:"closed",
-              openTime:oT.full,closeTime:cT.full,
-            });
-          }
-        }
-        if(!isKrakenLog&&!isBlofinOrder&&!isMexcPosition&&!isMexcFutures&&!isFtmoMetriX&&!isHyperliquidFills&&!isOkxPosition){
-          for(let i=1;i<lines.length;i++){const vals=parseCSVLine(lines[i]).map(v=>v.replace(/"/g,""));const row={};headers.forEach((h,idx)=>row[h.toLowerCase()]=vals[idx]||"");const pairRaw=row.symbol||row.pair||row.contract||"";const pair=pairRaw?(pairRaw.includes("/")?pairRaw:pairRaw):"BTC/USDT";   /* was config.defaultQuote: a leftover of the old journal, undefined here, so any file without a symbol column threw "config is not defined" */const trade={...EMPTY_TRADE,id:"csv_"+uid(),date:row.date||(row.time||"").split(" ")[0]||(row.closetime||"").split(" ")[0]||"",time:((row.time||"").split(" ")[1]||(row.closetime||"").split(" ")[1]||"00:00").slice(0,5),pair,direction:((row.side||row.direction||row.type||"").toLowerCase().includes("buy")||(row.side||"").toLowerCase().includes("long"))?"long":"short",entry:row.openprice||row.entryprice||row.entry||row.price||"",exit:row.closeprice||row.exitprice||row.exit||"",positionSize:row.volume||row.size||row.quantity||row.amount||"",pnl:row.pnl||row.profit||row.realizedpnl||row.realised_pnl||"",fees:row.fee||row.fees||row.commission||"0",leverage:row.leverage||"10",source:forExchange||"csv",status:"closed"};if(trade.date)csvTrades.push(trade)}
-        }
-        return csvTrades;
+  const lines=text.split("\n").filter(l=>l.trim());
+  if(lines.length<2)throw new Error("Leeg bestand");
+  const csv={headers:csvRegel(lines[0]).map(h=>h.replace(/"/g,"")),rijen:lines.slice(1).map(csvRegel)};
+  const ex=Object.keys(ExchangeAPI).filter(k=>typeof ExchangeAPI[k].herkentCsv==='function')
+    .sort((a,b)=>!!ExchangeAPI[a].csvRuim-!!ExchangeAPI[b].csvRuim)
+    .find(k=>ExchangeAPI[k].herkentCsv(csv));
+  return ex?ExchangeAPI[ex].parseCsv(csv,forExchange||ex):csvAlgemeen(csv,forExchange||"csv");
 }
 function sjImportCsvText(text,forExchange){
   let csvTrades;
@@ -11148,8 +11141,8 @@ function handleCsvFile(e){
 }
 
 /* ═══ CSV-import: first recognise, then ask which account the file belongs to (Zaratras 25-10-2026) ═══
-   Recognising runs the existing parser once without saving: each format branch already stamps its own default
-   source, so the format is read from that and the parsers stay exactly as they are (exchange isolation).
+   Recognising runs the parser once without saving: the adapter that recognised the file stamps its own id as the
+   default source, so the format is read from that and the parsers stay in their adapters (exchange isolation).
    Importing then hands the chosen account to sjImportCsvText as forExchange. */
 const CSV_FORMATEN={
   blofin:{naam:'Blofin-orderhistorie',ex:'blofin'},

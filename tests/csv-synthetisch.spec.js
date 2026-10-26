@@ -9,7 +9,7 @@
 // in Europe/Amsterdam (zomertijd, UTC+2).
 //
 // Let op: de OKX-kolomnamen volgen wat de parser herkent, niet een geverifieerde echte OKX-export
-// (zie de opmerking bij isOkxPosition in work/syncjournal.html).
+// (zie de opmerking bij ExchangeAPI.okx.herkentCsv in work/syncjournal.html).
 //
 // Draai: node tests/csv-synthetisch.spec.js
 const { chromium } = require('playwright'); const fs = require('fs'); const path = require('path');
