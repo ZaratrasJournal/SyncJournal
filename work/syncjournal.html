@@ -10918,6 +10918,27 @@ ExchangeAPI.mexc.parseCsv=function(csv,bron){
   }
   return csvTrades;
 };
+// Hyperliquid compact CSV export: time,coin,dir,px,sz,ntl,fee,closedPnl — each row a fill.
+ExchangeAPI.hyperliquid.herkentCsv=function(csv){const h=csv.headers;return h[0]==="time"&&h.includes("coin")&&h.includes("closedPnl")&&h.includes("dir")&&h.includes("ntl");};
+ExchangeAPI.hyperliquid.parseCsv=function(csv,bron){
+  // FIFO-reconstructie via _reconstructTrades, zodat API- en CSV-import identieke output
+  // geven (zelfde entry-avg, netto-PnL, dedup-sleutel).
+  const parseHLDateMs=(s)=>{const m=String(s||"").match(/^(\d{1,2})-(\d{1,2})-(\d{4})\s*-\s*(\d{2}):(\d{2})(?::(\d{2}))?/);if(!m)return 0;return new Date(`${m[3]}-${m[2].padStart(2,"0")}-${m[1].padStart(2,"0")}T${m[4]}:${m[5]}:${m[6]||"00"}`).getTime();};
+  const fills=[];
+  for(const rij of csv.rijen){
+    const v=rij.map(x=>x.replace(/"/g,"").trim());
+    if(v.length<8)continue;
+    // Normaliseer CSV's closedPnl (gross − close-fee) naar API-stijl (gross)
+    // door de fee erbij op te tellen. Voor open-rijen is dat −fee + fee = 0 (API-match).
+    // Voor close-rijen is dat (gross − close_fee) + close_fee = gross.
+    const feeVal=Math.abs(parseFloat(v[6])||0);
+    const pnlNorm=String((parseFloat(v[7])||0)+feeVal);
+    fills.push({coin:v[1],dir:v[2],px:v[3],sz:v[4],fee:v[6],closedPnl:pnlNorm,ms:parseHLDateMs(v[0])});
+  }
+  const csvTrades=ExchangeAPI.hyperliquid._reconstructTrades(fills,"hyperliquid_csv");
+  for(const t of csvTrades)t.source=bron;
+  return csvTrades;
+};
 function parseExchangeCsvText(text,forExchange){
         const lines=text.split("\n").filter(l=>l.trim());
         if(lines.length<2)throw new Error("Leeg bestand");
@@ -10948,28 +10969,6 @@ function parseExchangeCsvText(text,forExchange){
           &&lcH.some(h=>/(realized|realised).*pnl|^pnl$|\bpnl\b/.test(h))
           &&lcH.some(h=>/avg|average|price|px/.test(h));
         let csvTrades=[];
-        if(isHyperliquidFills){
-          // Hyperliquid compact CSV — elke rij is een fill (Open/Close). Delegeer FIFO-reconstructie
-          // aan ExchangeAPI.hyperliquid._reconstructTrades zodat API- en CSV-import identieke output
-          // geven (zelfde entry-avg, netto-PnL, dedup-sleutel).
-          const parseHLDateMs=(s)=>{const m=String(s||"").match(/^(\d{1,2})-(\d{1,2})-(\d{4})\s*-\s*(\d{2}):(\d{2})(?::(\d{2}))?/);if(!m)return 0;return new Date(`${m[3]}-${m[2].padStart(2,"0")}-${m[1].padStart(2,"0")}T${m[4]}:${m[5]}:${m[6]||"00"}`).getTime();};
-          const fills=[];
-          for(let i=1;i<lines.length;i++){
-            const v=parseCSVLine(lines[i]).map(x=>x.replace(/"/g,"").trim());
-            if(v.length<8)continue;
-            // Normaliseer CSV's closedPnl (gross − close-fee) naar API-stijl (gross)
-            // door de fee erbij op te tellen. Voor open-rijen is dat −fee + fee = 0 (API-match).
-            // Voor close-rijen is dat (gross − close_fee) + close_fee = gross.
-            const feeVal=Math.abs(parseFloat(v[6])||0);
-            const pnlNorm=String((parseFloat(v[7])||0)+feeVal);
-            fills.push({coin:v[1],dir:v[2],px:v[3],sz:v[4],fee:v[6],closedPnl:pnlNorm,ms:parseHLDateMs(v[0])});
-          }
-          const reconstructed=ExchangeAPI.hyperliquid._reconstructTrades(fills,"hyperliquid_csv");
-          for(const t of reconstructed){
-            t.source=forExchange||"hyperliquid";
-            csvTrades.push(t);
-          }
-        }
         if(isFtmoMetriX){
           // FTMO MetriX export — CFD-trades uit MT5. Positioneel parsen: kolom "Price" staat twee keer.
           // Kolom-order: 0=Ticket 1=Open 2=Type 3=Volume 4=Symbol 5=Price(entry) 6=SL 7=TP 8=Close 9=Price(exit) 10=Swap 11=Commissions 12=Profit 13=Pips 14=Duration
