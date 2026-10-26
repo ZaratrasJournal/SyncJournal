@@ -16,6 +16,19 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [Unreleased]
+
+### Toegevoegd
+- **Funded modus** (Instellingen → Funded), voor wie een challenge handelt bij een prop firm zoals FTMO of Breakout. Je zet hem zelf aan; standaard staat hij uit en ziet je journal er precies uit als nu.
+  - Houd je challenges en funded accounts bij met firm, naam, grootte en status (bezig / gehaald / niet gehaald, of actief / gestopt). Een gehaalde challenge zet je met één knop om naar een funded account; de twee blijven aan elkaar gekoppeld.
+  - Per kaart zie je de P&L en het P&L-% op de grootte. Uitbetalingen voeg je toe op een funded account, ook op een gestopt account.
+  - Het geld op een challenge of funded account is van de firm tot een uitbetaling. Het telt daarom **niet** mee in je eigen balans en je eigen P&L-%. De trades tellen wel mee in je analyse.
+  - "Funded meetellen" zet de lopende challenges en actieve funded accounts er toch bij, in één totaal met het label "incl. funded".
+  - Zet je de modus uit, dan worden je challenges, funded accounts en hun trades verborgen, niet gewist. Ze staan nog in je back-up.
+
+### Fixed
+- Een trade op een account dat niet van jou is (zoals een funded account) verschoof het P&L-% van al je eerdere trades. Je eigen P&L-% rekent nu alleen met je eigen geld.
+
 ## [v1.17.2] — 2026-10-25
 
 ### Fixed
