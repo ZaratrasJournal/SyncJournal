@@ -3701,6 +3701,8 @@ const EMPTY={
   /* charts and panels */
   'radar-weinig':['🕸️','Te weinig voor een radar','Een radar heeft minstens drie waarden nodig. De breakdown hiernaast toont ze wel.','',''],
   'cumr-leeg':['🎯','Nog geen trades met een R','R komt uit je stop-loss. Vul bij je trades een stop-loss in, dan groeit hier je cumulatieve R.','',''],
+  'stop-leeg':['🛑','Nog geen trades met een stopgeschiedenis','Die komen vanzelf bij trades van Kraken, Hyperliquid en OKX: de sync legt vast hoe je stop bewoog en hoe de trade dichtging.','Naar Accounts','naarAccounts()'],
+  'stop-niets':['🔎','Geen stopgeschiedenis in beeld','Je hebt wel trades met een stopgeschiedenis, maar je filter of periode laat er geen over.','Filter uitzetten','filterUit()'],
   'fouten-leeg':['🎉','Geen fouten getagd in beeld','Tag je fouten in het trade-formulier bij Fouten, dan zie je hier wat ze je kosten.','',''],
   'duur-leeg':['⏱️','Nog geen trades met een bekende duur','De duur komt uit je open- en sluittijd. Een sync vult die in; bij een handmatige trade vul je ze zelf in.','',''],
   'mfe-leeg':['📐','Nog geen MFE-data','Vul bij je trades MFE (R) in: hoe ver de koers maximaal je kant op liep. Dan zie je hier hoeveel van de beweging je pakt.','',''],
@@ -5642,6 +5644,35 @@ function mfeScatter(pts){const H=React.createElement,R=Recharts;
         H(R.Scatter,{data:pts.filter(p=>!p.win),fill:t.red,fillOpacity:.5,shape:'circle'})
       ));
   },'ch-scatter',230);}
+/* F7: stop management and execution. Only trades with a stop history (a known movement or exit reason, F5) count;
+   R via gemR (no stop = no R), never t.r. rows = the closed trades in view, so the filter bar and the own/funded
+   money filter apply. We have no price data: what would have happened without moving the stop is not claimed. */
+const STOP_MIN_N=10;   // below this many trades a split says little
+const heeftStopGeschiedenis=t=>stopBewegingOf(t)!=null||exitRedenOf(t)!=null;
+function stopUitvoering(rows){
+  const kop='<div class="phead"><h3>Stop-management en uitvoering</h3><span class="sp"></span><span class="chip">wat je met je stop deed · hoe je trade dichtging</span></div>';
+  const met=(rows||[]).filter(heeftStopGeschiedenis);
+  if(!met.length)return `<div class="panel" data-stop-uitvoering>${kop}${emptyState(T.some(heeftStopGeschiedenis)?'stop-niets':'stop-leeg','in')}</div>`;
+  const rij=(k,lbl,groep)=>{const g=gemR(groep),pnl=groep.reduce((x,t)=>x+(+t.pnl||0),0);
+    return `<div data-rij="${k}" style="display:grid;grid-template-columns:1fr 44px 70px 96px;gap:8px;padding:6px 0;border-top:1px solid var(--line2);font-size:12.5px">
+      <span${k==='ruimer'&&groep.length?' style="color:var(--amber)"':''}>${lbl}</span><b class="num" style="text-align:right">${groep.length}</b>
+      <b class="num ${g.n?uCls(g.avg):''}" style="text-align:right">${g.n?rS(g.avg):'—'}</b><b class="num ${groep.length?cls(pnl):''} mask" style="text-align:right">${groep.length?eurS(pnl):'—'}</b></div>`;};
+  const tabel=(titel,regels)=>`<div><div style="display:grid;grid-template-columns:1fr 44px 70px 96px;gap:8px;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600;padding-bottom:4px">
+    <span>${titel}</span><span style="text-align:right">Trades</span><span style="text-align:right">Gem. R</span><span style="text-align:right">Netto</span></div>${regels}</div>`;
+  const BEW=[['be','Naar break-even'],['strakker','Strakker'],['ruimer','Verder weg ⚠'],['geen','Niet verzet']];
+  const EXIT=[['stop','Stop-loss'],['tp','Take-profit'],['hand','Met de hand'],['liquidatie','Liquidatie']];
+  const metBew=met.filter(t=>stopBewegingOf(t)!=null),metExit=met.filter(t=>exitRedenOf(t)!=null);
+  const nRuim=metBew.filter(t=>stopBewegingOf(t)==='ruimer').length;
+  const tot=(rows||[]).length;
+  return `<div class="panel" data-stop-uitvoering>${kop}<div class="pbody">
+    <div style="font-size:12px;color:var(--muted);margin-bottom:10px"><b class="num" style="color:var(--text)">${met.length}</b> van <b class="num" style="color:var(--text)">${tot}</b> ${tot===1?'trade heeft':'trades hebben'} een stopgeschiedenis${met.length<STOP_MIN_N?' · te weinig trades voor een conclusie':''}</div>
+    <div class="grid" style="grid-template-columns:1fr 1fr;gap:18px;align-items:start">
+      ${tabel('Stop later',BEW.map(([k,l])=>rij(k,l,metBew.filter(t=>stopBewegingOf(t)===k))).join(''))}
+      ${tabel('Gesloten via',EXIT.map(([k,l])=>rij(k,l,metExit.filter(t=>exitRedenOf(t)===k))).join(''))}
+    </div>
+    ${nRuim?`<div style="font-size:12px;color:var(--amber);margin-top:10px">⚠ ${nRuim} ${nRuim===1?'trade':'trades'} met de stop verder weg gezet: daarmee laat je een verlies groter worden dan je plan.</div>`:''}
+    <div style="font-size:11.5px;color:var(--muted);margin-top:8px">R is steeds ten opzichte van je oorspronkelijke stop. Zonder koersdata zeggen we niet wat er zonder verzetten was gebeurd, alleen hoe deze trades uitkwamen.</div>
+  </div></div>`;}
 function pgAnalytics(){
   if(!CLOSED.length)return `${filterBar()}${fundedGeldFilter()}${emptyState(!T.length?'analytics':(STATE.anGeld==='funded'&&fundedGeldFilterAan())?'funded-niets':!FT.length?'trades-none':'gesloten-nodig')}`;
   const a=agg();
@@ -5819,6 +5850,8 @@ function pgAnalytics(){
       ${panelRaw('Gem. tijd in trade',_tp1.length?'winst vs. verlies · tot je TP\'s':'winst vs. verlies',hbars(holdRows))}
       ${panelRaw('Duur → resultaat','gem. R per duur-bucket',durBody)}
     </div><div style="height:13px"></div>
+    <div class="sect-h">Stop-management en uitvoering</div>
+    ${stopUitvoering(CLOSED)}<div style="height:13px"></div>
     ${eroAPanel}
     <div class="sect-h">Kwaliteit van je trades</div>
     <div class="grid" style="grid-template-columns:1fr 1fr;align-items:stretch">

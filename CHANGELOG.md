@@ -42,6 +42,11 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
   formulier op **Zelf aanpassen** en vul je de juiste in. Het label toont dan wat de exchange zegt ("zelf aangepast ·
   Kraken Futures: 82.235"), en de volgende sync laat jouw stop staan. Met **Terug naar Kraken Futures** (of de
   exchange van die trade) zet je de stop van de exchange terug.
+- **Analytics: Stop-management en uitvoering.** Een nieuw paneel laat zien hoe vaak je je stop naar break-even,
+  strakker of verder weg zette, en hoe je trades dichtgingen (stop-loss, take-profit, met de hand, liquidatie). Per
+  groep het aantal trades, de gemiddelde R ten opzichte van je oorspronkelijke stop en de netto P&L. Het volgt je
+  filters en de keuze Eigen / Funded / Alles. Trades zonder stopgeschiedenis tellen niet mee; het paneel zegt hoeveel
+  er wel meetellen, en onder de 10 dat het nog te weinig is voor een conclusie.
 - In het trade-formulier kies je bij "Exchange" ook een challenge of funded account (alleen met de funded modus aan). Afgeronde staan eronder, voor een vergeten trade.
 - Zet je de funded modus aan terwijl er oude FTMO-trades zonder account staan, dan vraagt de journal één keer wat je wilt: in een nieuwe challenge zetten, of als eigen geld laten staan. Hij verplaatst nooit iets vanzelf.
 
