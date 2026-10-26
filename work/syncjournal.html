@@ -10721,17 +10721,154 @@ function tjViewOf(t){return {id:t.srcId||('sj_'+t.id),source:t.exchange,status:t
   positionId:t.positionId||'',closeTime:String(t.closeTime||''),
   tpLevels:(t.tps||[]).map(x=>({price:String(x.price),pct:String(x.pct),status:x.hit?'hit':'user',actualPrice:x.hit?String(x.price):'',ts:Number(x.ts)||0}))};}
 
-/* ═══ CSV-import (geport uit tradejournal v12.235) ═══
-   Auto-detectie: Kraken-log, Blofin-orders, MEXC futures/positions (ook .xlsx),
-   FTMO MetriX, Hyperliquid-fills, OKX-positions + generieke fallback. De parser
-   levert TJ-schema-trades; de import loopt via dezelfde brug als de sync
-   (sjFromTj + srcId-dedupe + prullenbak-guard), dus dubbel inlezen kan geen kwaad. */
+/* ═══ CSV-import (ported from tradejournal v12.235, split per exchange in C2) ═══
+   Shared layer: read the text, split it into rows, ask each adapter whether the file is its own
+   (ExchangeAPI.<ex>.herkentCsv(csv)) and let that adapter turn the rows into trades (parseCsv(csv,bron)).
+   An adapter that recognises loosely (csvRuim) is asked after the strict ones; nothing recognised means
+   the generic CSV. The parsers deliver TJ-schema trades; the import goes through the same bridge as the sync
+   (sjFromTj + srcId dedupe + trash guard), so reading a file twice does no harm. */
+// Simple CSV line parser that respects quoted fields (MEXC writes "68,125" with a comma in the price)
+function csvRegel(line){const out=[];let cur="",inQ=false;for(const ch of line){if(ch==='"'){inQ=!inQ;}else if(ch===','&&!inQ){out.push(cur);cur="";}else cur+=ch;}out.push(cur);return out.map(v=>v.trim());}
+// Blofin order history: recognised on its own columns, turned into positions by FIFO.
+ExchangeAPI.blofin.herkentCsv=function(csv){const h=csv.headers;return h.includes("Underlying Asset")&&h.includes("Avg Fill")&&h.includes("PNL");};
+ExchangeAPI.blofin.parseCsv=function(csv,bron){
+  const csvTrades=[];
+  // Blofin Order History → FIFO positie-reconstructie (one-way mode verondersteld).
+  // PnL uit CSV is authoritative (bevat funding/fees). Orphan closes krijgen partial_data flag.
+  const stripUnit=(s)=>String(s||"").replace(/"/g,"").split(/\s+/)[0].replace(/,/g,"");
+  const parseBlofinDate=(dt)=>{
+    const m=(dt||"").match(/^(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2})(?::(\d{2}))?/);
+    if(!m)return{date:"",time:"",ts:0};
+    // CSV-tijd is UTC (Blofin server). Converteer naar browser-local tijdzone voor display.
+    const utcMs=Date.UTC(+m[3],+m[1]-1,+m[2],+m[4],+m[5],+(m[6]||0));
+    const local=new Date(utcMs);
+    const pad=n=>String(n).padStart(2,"0");
+    return{
+      date:`${local.getFullYear()}-${pad(local.getMonth()+1)}-${pad(local.getDate())}`,
+      time:`${pad(local.getHours())}:${pad(local.getMinutes())}`,
+      ts:utcMs,
+    };
+  };
+  const cleanPair=(s)=>s.endsWith("USDT")?s.slice(0,-4)+"/USDT":s.endsWith("USDC")?s.slice(0,-4)+"/USDC":s;
+  const uidShort=()=>Math.random().toString(36).slice(2,10);
+
+  // Parse + sort ASC
+  const orders=[];
+  for(const vals of csv.rijen){
+    const r={};csv.headers.forEach((h,idx)=>r[h]=vals[idx]||"");
+    if((r["Status"]||"").toLowerCase()!=="filled")continue;
+    const dt=parseBlofinDate(r["Order Time"]);
+    const sideRaw=(r["Side"]||"").toLowerCase();
+    const isBuy=sideRaw.startsWith("buy");
+    const reduceOnly=(r["Reduce-only"]||"").toLowerCase()==="y";
+    orders.push({
+      symbol:r["Underlying Asset"]||"",
+      isBuy,reduceOnly,
+      price:parseFloat(stripUnit(r["Avg Fill"]))||0,
+      size:parseFloat(stripUnit(r["Filled"]))||0,
+      pnl:parseFloat(stripUnit(r["PNL"]))||0,
+      fee:Math.abs(parseFloat(stripUnit(r["Fee"]))||0),
+      leverage:r["Leverage"]||"10",
+      date:dt.date,time:dt.time,ts:dt.ts,
+      raw:r,
+    });
+  }
+  orders.sort((a,b)=>a.ts-b.ts);
+
+  // FIFO queue per symbol — bevat open lots: [{price,size,fee,openDate,openTime,openTs}, ...]
+  const fifo={}; // symbol -> {direction, lots[], totalSize, tps[], feeSum, pnlSum}
+  const emit=(sym,pos)=>{
+    const entryW=pos.lots.reduce((s,l)=>s+l.price*l.size,0);
+    const origEntrySize=pos.origEntrySize||pos.tps.reduce((s,t)=>s+t.size,0);
+    const avgEntry=pos.entryW/pos.entryTotalSize;
+    const exitW=pos.tps.reduce((s,t)=>s+t.price*t.size,0);
+    const totalExit=pos.tps.reduce((s,t)=>s+t.size,0);
+    const avgExit=totalExit>0?exitW/totalExit:0;
+    // Net PnL = sum of CSV PNL column minus total fees (opening + closing fees)
+    const netPnl=pos.pnlSum-pos.feeSum;
+    // positionSize = USD notional, positionSizeAsset = asset-qty (convention in deze app).
+    const qty=pos.entryTotalSize;
+    const usdNotional=avgEntry>0?avgEntry*qty:0;
+    csvTrades.push({...EMPTY_TRADE,
+      id:"blofin_csv_"+uid(),
+      date:pos.openDate,time:pos.openTime,
+      pair:cleanPair(sym),
+      direction:pos.direction,
+      entry:normPrice(avgEntry>0?avgEntry.toFixed(6):""),
+      exit:normPrice(avgExit>0?avgExit.toFixed(6):""),
+      positionSize:usdNotional>0?String(usdNotional.toFixed(2)):"",
+      positionSizeAsset:qty>0?normPrice(qty.toFixed(8)):"",
+      pnl:String(netPnl.toFixed(4)),
+      fees:String(pos.feeSum.toFixed(4)),
+      leverage:pos.leverage,
+      source:bron,
+      status:"closed",
+      notes:pos.partial?"⚠ Partial data: opening orders niet in CSV-range":"",
+      tpLevels:pos.tps.map(t=>({id:uidShort(),price:normPrice(t.price),pct:String(((t.size/pos.entryTotalSize)*100).toFixed(1)),status:"hit",actualPrice:normPrice(t.price)})),
+    });
+  };
+
+  for(const o of orders){
+    const sym=o.symbol;if(!sym||!o.size)continue;
+    if(!o.reduceOnly){
+      // Open/add: direction = Buy→long, Sell→short
+      const dir=o.isBuy?"long":"short";
+      if(!fifo[sym]){
+        fifo[sym]={direction:dir,lots:[],entryW:0,entryTotalSize:0,tps:[],feeSum:0,pnlSum:0,openDate:o.date,openTime:o.time,openTs:o.ts,leverage:o.leverage,partial:false};
+      }else if(fifo[sym].direction!==dir){
+        // Tegenovergestelde open → eerst de huidige positie sluiten (edge case)
+        emit(sym,fifo[sym]);
+        fifo[sym]={direction:dir,lots:[],entryW:0,entryTotalSize:0,tps:[],feeSum:0,pnlSum:0,openDate:o.date,openTime:o.time,openTs:o.ts,leverage:o.leverage,partial:false};
+      }
+      fifo[sym].lots.push({price:o.price,size:o.size});
+      fifo[sym].entryW+=o.price*o.size;
+      fifo[sym].entryTotalSize+=o.size;
+      fifo[sym].feeSum+=o.fee;
+    }else{
+      // Close fill
+      if(!fifo[sym]){
+        // Orphan close — opening order buiten range. Emit los met partial flag.
+        const dir=o.isBuy?"short":"long"; // close-side is tegengesteld
+        const orphanUsd=o.price*o.size;
+        csvTrades.push({...EMPTY_TRADE,
+          id:"blofin_csv_"+uid(),
+          date:o.date,time:o.time,pair:cleanPair(sym),direction:dir,
+          entry:"",exit:normPrice(o.price),
+          positionSize:orphanUsd>0?String(orphanUsd.toFixed(2)):"",
+          positionSizeAsset:normPrice(o.size),
+          pnl:String((o.pnl-o.fee).toFixed(4)),fees:String(o.fee.toFixed(4)),
+          leverage:o.leverage,source:bron,status:"closed",
+          notes:"⚠ Partial data: opening order valt buiten CSV-range",
+        });
+        continue;
+      }
+      const pos=fifo[sym];
+      // Trek size af van FIFO lots
+      let remaining=o.size;
+      while(remaining>1e-9&&pos.lots.length){
+        const lot=pos.lots[0];
+        if(lot.size<=remaining+1e-9){remaining-=lot.size;pos.lots.shift();}
+        else{lot.size-=remaining;remaining=0;}
+      }
+      pos.tps.push({price:o.price,size:o.size,pnl:o.pnl,ts:o.ts});
+      pos.pnlSum+=o.pnl;pos.feeSum+=o.fee;
+      if(pos.lots.length===0){
+        emit(sym,pos);
+        delete fifo[sym];
+      }
+    }
+  }
+  return csvTrades;
+};
 function parseExchangeCsvText(text,forExchange){
-        // Simpele CSV-parser die rekening houdt met quoted velden (MEXC heeft "68,125" met komma in prijs)
-        const parseCSVLine=(line)=>{const out=[];let cur="",inQ=false;for(const ch of line){if(ch==='"'){inQ=!inQ;}else if(ch===','&&!inQ){out.push(cur);cur="";}else cur+=ch;}out.push(cur);return out.map(v=>v.trim())};
         const lines=text.split("\n").filter(l=>l.trim());
         if(lines.length<2)throw new Error("Leeg bestand");
-        const headers=parseCSVLine(lines[0]).map(h=>h.replace(/"/g,""));
+        const csv={headers:csvRegel(lines[0]).map(h=>h.replace(/"/g,"")),rijen:lines.slice(1).map(csvRegel)};
+        const ex=Object.keys(ExchangeAPI).filter(k=>typeof ExchangeAPI[k].herkentCsv==='function')
+          .sort((a,b)=>!!ExchangeAPI[a].csvRuim-!!ExchangeAPI[b].csvRuim)
+          .find(k=>ExchangeAPI[k].herkentCsv(csv));
+        if(ex)return ExchangeAPI[ex].parseCsv(csv,forExchange||ex);
+        const parseCSVLine=csvRegel,headers=csv.headers;
         const isKrakenLog=(headers.includes("uid")&&headers.includes("realized pnl")&&headers.includes("trade price"))
           ||(headers.includes("booking_uid")&&headers.includes("info")&&headers.includes("new_balance"));   // account-log-JSON als CSV geplakt
         const isMexcFutures=headers.includes("Futures Trading Pair")&&headers.includes("Closing PNL");
@@ -10753,134 +10890,6 @@ function parseExchangeCsvText(text,forExchange){
           &&lcH.some(h=>/(realized|realised).*pnl|^pnl$|\bpnl\b/.test(h))
           &&lcH.some(h=>/avg|average|price|px/.test(h));
         let csvTrades=[];
-        if(isBlofinOrder){
-          // Blofin Order History → FIFO positie-reconstructie (one-way mode verondersteld).
-          // PnL uit CSV is authoritative (bevat funding/fees). Orphan closes krijgen partial_data flag.
-          const stripUnit=(s)=>String(s||"").replace(/"/g,"").split(/\s+/)[0].replace(/,/g,"");
-          const parseBlofinDate=(dt)=>{
-            const m=(dt||"").match(/^(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2})(?::(\d{2}))?/);
-            if(!m)return{date:"",time:"",ts:0};
-            // CSV-tijd is UTC (Blofin server). Converteer naar browser-local tijdzone voor display.
-            const utcMs=Date.UTC(+m[3],+m[1]-1,+m[2],+m[4],+m[5],+(m[6]||0));
-            const local=new Date(utcMs);
-            const pad=n=>String(n).padStart(2,"0");
-            return{
-              date:`${local.getFullYear()}-${pad(local.getMonth()+1)}-${pad(local.getDate())}`,
-              time:`${pad(local.getHours())}:${pad(local.getMinutes())}`,
-              ts:utcMs,
-            };
-          };
-          const cleanPair=(s)=>s.endsWith("USDT")?s.slice(0,-4)+"/USDT":s.endsWith("USDC")?s.slice(0,-4)+"/USDC":s;
-          const uidShort=()=>Math.random().toString(36).slice(2,10);
-
-          // Parse + sort ASC
-          const orders=[];
-          for(let i=1;i<lines.length;i++){
-            const vals=parseCSVLine(lines[i]);
-            const r={};headers.forEach((h,idx)=>r[h]=vals[idx]||"");
-            if((r["Status"]||"").toLowerCase()!=="filled")continue;
-            const dt=parseBlofinDate(r["Order Time"]);
-            const sideRaw=(r["Side"]||"").toLowerCase();
-            const isBuy=sideRaw.startsWith("buy");
-            const reduceOnly=(r["Reduce-only"]||"").toLowerCase()==="y";
-            orders.push({
-              symbol:r["Underlying Asset"]||"",
-              isBuy,reduceOnly,
-              price:parseFloat(stripUnit(r["Avg Fill"]))||0,
-              size:parseFloat(stripUnit(r["Filled"]))||0,
-              pnl:parseFloat(stripUnit(r["PNL"]))||0,
-              fee:Math.abs(parseFloat(stripUnit(r["Fee"]))||0),
-              leverage:r["Leverage"]||"10",
-              date:dt.date,time:dt.time,ts:dt.ts,
-              raw:r,
-            });
-          }
-          orders.sort((a,b)=>a.ts-b.ts);
-
-          // FIFO queue per symbol — bevat open lots: [{price,size,fee,openDate,openTime,openTs}, ...]
-          const fifo={}; // symbol -> {direction, lots[], totalSize, tps[], feeSum, pnlSum}
-          const emit=(sym,pos)=>{
-            const entryW=pos.lots.reduce((s,l)=>s+l.price*l.size,0);
-            const origEntrySize=pos.origEntrySize||pos.tps.reduce((s,t)=>s+t.size,0);
-            const avgEntry=pos.entryW/pos.entryTotalSize;
-            const exitW=pos.tps.reduce((s,t)=>s+t.price*t.size,0);
-            const totalExit=pos.tps.reduce((s,t)=>s+t.size,0);
-            const avgExit=totalExit>0?exitW/totalExit:0;
-            // Net PnL = sum of CSV PNL column minus total fees (opening + closing fees)
-            const netPnl=pos.pnlSum-pos.feeSum;
-            // positionSize = USD notional, positionSizeAsset = asset-qty (convention in deze app).
-            const qty=pos.entryTotalSize;
-            const usdNotional=avgEntry>0?avgEntry*qty:0;
-            csvTrades.push({...EMPTY_TRADE,
-              id:"blofin_csv_"+uid(),
-              date:pos.openDate,time:pos.openTime,
-              pair:cleanPair(sym),
-              direction:pos.direction,
-              entry:normPrice(avgEntry>0?avgEntry.toFixed(6):""),
-              exit:normPrice(avgExit>0?avgExit.toFixed(6):""),
-              positionSize:usdNotional>0?String(usdNotional.toFixed(2)):"",
-              positionSizeAsset:qty>0?normPrice(qty.toFixed(8)):"",
-              pnl:String(netPnl.toFixed(4)),
-              fees:String(pos.feeSum.toFixed(4)),
-              leverage:pos.leverage,
-              source:forExchange||"blofin",
-              status:"closed",
-              notes:pos.partial?"⚠ Partial data: opening orders niet in CSV-range":"",
-              tpLevels:pos.tps.map(t=>({id:uidShort(),price:normPrice(t.price),pct:String(((t.size/pos.entryTotalSize)*100).toFixed(1)),status:"hit",actualPrice:normPrice(t.price)})),
-            });
-          };
-
-          for(const o of orders){
-            const sym=o.symbol;if(!sym||!o.size)continue;
-            if(!o.reduceOnly){
-              // Open/add: direction = Buy→long, Sell→short
-              const dir=o.isBuy?"long":"short";
-              if(!fifo[sym]){
-                fifo[sym]={direction:dir,lots:[],entryW:0,entryTotalSize:0,tps:[],feeSum:0,pnlSum:0,openDate:o.date,openTime:o.time,openTs:o.ts,leverage:o.leverage,partial:false};
-              }else if(fifo[sym].direction!==dir){
-                // Tegenovergestelde open → eerst de huidige positie sluiten (edge case)
-                emit(sym,fifo[sym]);
-                fifo[sym]={direction:dir,lots:[],entryW:0,entryTotalSize:0,tps:[],feeSum:0,pnlSum:0,openDate:o.date,openTime:o.time,openTs:o.ts,leverage:o.leverage,partial:false};
-              }
-              fifo[sym].lots.push({price:o.price,size:o.size});
-              fifo[sym].entryW+=o.price*o.size;
-              fifo[sym].entryTotalSize+=o.size;
-              fifo[sym].feeSum+=o.fee;
-            }else{
-              // Close fill
-              if(!fifo[sym]){
-                // Orphan close — opening order buiten range. Emit los met partial flag.
-                const dir=o.isBuy?"short":"long"; // close-side is tegengesteld
-                const orphanUsd=o.price*o.size;
-                csvTrades.push({...EMPTY_TRADE,
-                  id:"blofin_csv_"+uid(),
-                  date:o.date,time:o.time,pair:cleanPair(sym),direction:dir,
-                  entry:"",exit:normPrice(o.price),
-                  positionSize:orphanUsd>0?String(orphanUsd.toFixed(2)):"",
-                  positionSizeAsset:normPrice(o.size),
-                  pnl:String((o.pnl-o.fee).toFixed(4)),fees:String(o.fee.toFixed(4)),
-                  leverage:o.leverage,source:forExchange||"blofin",status:"closed",
-                  notes:"⚠ Partial data: opening order valt buiten CSV-range",
-                });
-                continue;
-              }
-              const pos=fifo[sym];
-              // Trek size af van FIFO lots
-              let remaining=o.size;
-              while(remaining>1e-9&&pos.lots.length){
-                const lot=pos.lots[0];
-                if(lot.size<=remaining+1e-9){remaining-=lot.size;pos.lots.shift();}
-                else{lot.size-=remaining;remaining=0;}
-              }
-              pos.tps.push({price:o.price,size:o.size,pnl:o.pnl,ts:o.ts});
-              pos.pnlSum+=o.pnl;pos.feeSum+=o.fee;
-              if(pos.lots.length===0){
-                emit(sym,pos);
-                delete fifo[sym];
-              }
-            }
-          }
-        }
         // Kraken account log — één levensloop per positie, via de adapter (CSV-import en API-sync delen die functie)
         if(isKrakenLog){
           const blok=ExchangeAPI.kraken.csvBlokkade();if(blok)throw new Error(blok);
