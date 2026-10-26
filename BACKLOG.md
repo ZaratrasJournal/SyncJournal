@@ -85,8 +85,8 @@ er is). Dan stellen we vast waar de login staat, in plaats van het aan te nemen 
 2. Het MT5-rapport inlezen in de FTMO-adapter; logins onthouden op het challenge- of funded item.
 3. "Bij welk account hoort dit?" stelt het item met die login voor; zonder login (MetriX) de actieve items van die firm.
 
-**Let op C4:** XLSX gaat er na 16 november uit. Komt het MT5-rapport alleen als XLSX, dan eerst kiezen: de
-HTML-variant gebruiken, of C4 aanpassen.
+**Let op:** XLSX wordt sinds v1.18.6 niet meer ingelezen. Komt het MT5-rapport alleen als XLSX, gebruik dan de
+HTML-variant of sla het eerst op als CSV.
 
 **Klaar als** een MT5-rapport zonder vragen op het juiste item landt, een MetriX-CSV het juiste item voorstelt, en de
 release-poort groen is.
@@ -258,7 +258,7 @@ De uitgewerkte teksten van deze ideeën staan in het [archief](docs/backlog-arch
 
 | Besluit | Waarom het ertoe doet |
 |---|---|
-| Welke exchanges krijgen prioriteit? | Bepaalt of er een zevende exchange komt, en daarmee de urgentie van C2 |
+| Welke exchanges krijgen prioriteit? | Bepaalt of er een zevende exchange komt |
 | Backend ja of nee? | Pas relevant als API-sleutels uit de browser moeten, of bij cloud-sync |
 | Distributiemodel | Gratis/donatie, of iets anders |
 | Internationaal (Engels)? | Besloten 26-10-2026: **nee, alleen Nederlands** (F14). Komt alleen terug als Zaratras er later anders over beslist |
