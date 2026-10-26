@@ -16,7 +16,8 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
   await p.reload({ waitUntil: 'networkidle' }); await p.waitForTimeout(700);
   ok('boot zonder JS-errors', errs.length === 0, errs.slice(0, 2).join(' | '));
   // sinds 24-09-2026 is de landingspagina (site/index.html) de voordeur; de journal toont geen welkom-overlay meer
-  ok('verse start: geen welkom-overlay meer, welcomed gezet (de landingspagina is de voordeur)', await p.evaluate(() => !document.getElementById('welcome').classList.contains('on') && DB.load('welcomed', false) === true));
+  // Since F14 (26-10-2026) a brand-new journal opens with the 3-step onboarding, not the old welcome screen.
+  ok('verse start: het onboarding-welkom (niet het oude welkomscherm), welcomed gezet', await p.evaluate(() => { const w = document.getElementById('welcome'); return w.classList.contains('on') && !!w.querySelector('[data-ob="overslaan"]') && !w.querySelector('.wl-grid') && DB.load('welcomed', false) === true; }));
   await p.evaluate(() => { hideWelcome(); T = []; TRASH = []; persist(); clearGFilter(); setFilter('kind', 'alle'); });
 
   console.log('─── Account + saldo-mutaties ───');

@@ -12,6 +12,7 @@ const APP = 'file:///' + path.resolve('work/syncjournal.html').split(path.sep).j
 // tj_-data) schrijft het niet; specs voor die route wachten op de modal.
 function bootHaak() {
   localStorage.setItem('sj_welcomed', 'true');
+  localStorage.setItem('sj_onboard', '"klaar"');   // the F14 welcome for a new journal: specs start past it
   window.__sjBoot = false;
   const orig = Storage.prototype.setItem;
   Storage.prototype.setItem = function (k, v) {
@@ -39,7 +40,7 @@ async function seed(p, ds) { await p.evaluate(async d => { await applyBackup(d);
 // Alleen trades (plus eventueel andere backup-onderdelen): elke rij gaat door sanitizeTrade,
 // precies zoals bij een echte import.
 const seedTrades = (p, trades, rest) => seed(p, { ...(rest || {}), trades });
-async function wipe(p) { await p.evaluate(async () => { localStorage.clear(); localStorage.setItem('sj_welcomed', 'true'); try { await IDB.clearAll(); } catch (e) {} }); await reload(p); }
+async function wipe(p) { await p.evaluate(async () => { localStorage.clear(); localStorage.setItem('sj_welcomed', 'true'); localStorage.setItem('sj_onboard', '"klaar"'); try { await IDB.clearAll(); } catch (e) {} }); await reload(p); }
 // Naar een pagina via de app zelf; klaar als de kop van die pagina staat.
 async function go(p, page) {
   await p.evaluate(pg => go(pg), page);

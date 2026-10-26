@@ -30,6 +30,11 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
   onderaan de startpagina, in de privacyverklaring en in Instellingen → Accounts bij het koppelen ("Hoe veilig is dit?").
 - **Extra beveiliging van de website** (Content-Security-Policy): de browser mag de app alleen laten praten met een
   vaste lijst adressen. Staat eerst een week alleen op melden, zodat er niets breekt.
+- **Een welkom in drie stappen voor een nieuwe journal.** Wie SyncJournal voor het eerst opent, krijgt kort uitgelegd
+  wat het is, kiest zijn tags (de set uit de strategieën van Morani of de algemene set) en kiest hoe de eerste
+  trades binnenkomen: een exchange koppelen (met "Hoe veilig is dit?"), een CSV importeren of eerst rondkijken met
+  voorbeelddata. Overslaan kan altijd en dan komt het niet terug. Heb je al een journal, dan zie je het niet.
+- **FAQ:** een nieuwe vraag voor wie Morani niet kent, en uitleg over de startset bij de tags.
 
 ### Gewijzigd
 - **Privacyverklaring bijgewerkt**: per exchange staat nu welke route hij neemt (Blofin rechtstreeks, Hyperliquid

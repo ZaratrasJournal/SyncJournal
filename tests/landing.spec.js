@@ -24,7 +24,8 @@ const LANDING = F('index.html'), APP = F('app.html');
     ok('hero speelt af: bubbels zijn naar de curve gevlogen, cijfers staan', await p.evaluate(() => document.querySelectorAll('.bub.fly').length >= 6 && document.getElementById('sN').textContent === '10'));
     await p.click('#heroCta .pri'); await p.waitForLoadState('load'); await p.waitForTimeout(900);
     ok('landt in de journal, URL is schoon (geen ?view meer)', url(p) === 'app.html', url(p));
-    ok('journal: geen oud welkomscherm, sj_welcomed gezet, preset Rustig', await p.evaluate(() => !document.getElementById('welcome').classList.contains('on') && DB.load('welcomed', false) === true && VIEW.preset === 'rustig'));
+    // Since F14 a brand-new journal may show the 3-step onboarding; the old welcome screen (tile grid) never.
+    ok('journal: geen oud welkomscherm, sj_welcomed gezet, preset Rustig', await p.evaluate(() => { const w = document.getElementById('welcome'); return (!w.classList.contains('on') || (!!w.querySelector('[data-ob]') && !w.querySelector('.wl-grid'))) && DB.load('welcomed', false) === true && VIEW.preset === 'rustig'; }));
     await ctx.close();
   }
 
@@ -67,7 +68,8 @@ const LANDING = F('index.html'), APP = F('app.html');
   {
     const [ctx, p] = await nieuw();
     await p.goto(APP, { waitUntil: 'load' }); await p.waitForTimeout(900);
-    ok('verse start zonder landing: geen overlay, welcomed gezet', await p.evaluate(() => !document.getElementById('welcome').classList.contains('on') && DB.load('welcomed', false) === true));
+    ok('verse start zonder landing: geen oud welkomscherm, welcomed gezet', await p.evaluate(() => { const w = document.getElementById('welcome'); return (!w.classList.contains('on') || (!!w.querySelector('[data-ob]') && !w.querySelector('.wl-grid'))) && DB.load('welcomed', false) === true; }));
+    await p.evaluate(() => { if (document.querySelector('#welcome.on [data-ob]')) hideWelcome(); });
     const r = await p.evaluate(() => { STATE.setTab = 'weergave'; go('instellingen'); const row = [...document.querySelectorAll('.setrow')].find(x => /Landingspagina overslaan/.test(x.textContent)); const sw = row && row.querySelector('.sw'); const uit = sw && !sw.classList.contains('on'); sw && sw.click(); return { row: !!row, uit, na: DB.load('skip_landing', false) }; });
     ok('Instellingen → Weergave: "Landingspagina overslaan", standaard uit, schakelaar schrijft sj_skip_landing', r.row && r.uit && r.na === true, JSON.stringify(r));
     await p.evaluate(() => toggleSkipLanding());
