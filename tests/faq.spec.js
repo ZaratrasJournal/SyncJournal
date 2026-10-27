@@ -21,23 +21,23 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
 
   console.log('─── Overzicht: zoekveld + tegels ───');
   const telling = await p.evaluate(() => ({ cats: FAQS.length, vragen: FAQS.reduce((n, c) => n + c[1].length, 0), dom: document.querySelectorAll('details.faq').length, secties: document.querySelectorAll('.faqcat').length }));
-  ok('10 categorieën en alle vragen in de DOM (gelijk aan FAQS)', telling.cats === 10 && telling.secties === 10 && telling.dom === telling.vragen && telling.vragen >= 55, JSON.stringify(telling));
+  ok('11 categorieën en alle vragen in de DOM (gelijk aan FAQS)', telling.cats === 11 && telling.secties === 11 && telling.dom === telling.vragen && telling.vragen >= 55, JSON.stringify(telling));
   ok('zoekveld zichtbaar', await zichtbaar('.faqhero #faqQ') === 1);
   const tegels = await p.evaluate(() => [...document.querySelectorAll('.faqtile')].map(t => ({ ci: +t.dataset.ci, n: t.querySelector('.tc').textContent, naam: t.querySelector('.tn').textContent, uitleg: t.querySelector('.td').textContent })));
-  ok('9 tegels: elk onderwerp behalve de visie', tegels.length === 9 && !tegels.some(t => /visie/i.test(t.naam)), tegels.map(t => t.naam).join(', '));
+  ok('10 tegels: elk onderwerp behalve de visie', tegels.length === 10 && !tegels.some(t => /visie/i.test(t.naam)), tegels.map(t => t.naam).join(', '));
   ok('elke tegel toont het juiste aantal vragen', await p.evaluate(t => t.every(x => x.n.startsWith(FAQS[x.ci][1].length + ' vragen')), tegels));
   ok('elke tegel heeft een korte uitleg', tegels.every(t => t.uitleg.length > 10));
-  ok('volgorde: Aan de slag eerst, problemen laatst', /Aan de slag/.test(tegels[0].naam) && /problemen/i.test(tegels[8].naam));
+  ok('volgorde: Aan de slag eerst, problemen laatst', /Aan de slag/.test(tegels[0].naam) && /problemen/i.test(tegels[9].naam));
   ok('populaire vragen: 6 stuks', await zichtbaar('.faqpop li button') === 6);
   ok('in het overzicht zijn de vragen zelf nog dicht en verborgen', await zichtbaar('details.faq') === 0);
 
   console.log('─── Tegel → onderwerp → terug ───');
-  await p.click('.faqtile[data-ci="5"]'); await p.waitForTimeout(150);
-  const cat = await p.evaluate(() => ({ kop: document.activeElement.textContent, zichtbaar: [...document.querySelectorAll('.faqcat')].filter(s => !s.hidden).map(s => s.dataset.ci), rijen: [...document.querySelectorAll('#faqc-5 details.faq')].filter(d => d.offsetParent).length, tegels: document.getElementById('faqHome').hidden }));
-  ok('klik op tegel toont alleen die categorie, met al zijn vragen', cat.zichtbaar.join() === '5' && cat.rijen === await p.evaluate(() => FAQS[5][1].length) && cat.tegels, JSON.stringify(cat));
+  await p.click('.faqtile[data-ci="6"]'); await p.waitForTimeout(150);
+  const cat = await p.evaluate(() => ({ kop: document.activeElement.textContent, zichtbaar: [...document.querySelectorAll('.faqcat')].filter(s => !s.hidden).map(s => s.dataset.ci), rijen: [...document.querySelectorAll('#faqc-6 details.faq')].filter(d => d.offsetParent).length, tegels: document.getElementById('faqHome').hidden }));
+  ok('klik op tegel toont alleen die categorie, met al zijn vragen', cat.zichtbaar.join() === '6' && cat.rijen === await p.evaluate(() => FAQS[6][1].length) && cat.tegels, JSON.stringify(cat));
   ok('focus springt naar de kop van het onderwerp', /Analytics begrijpen/.test(cat.kop), cat.kop);
-  await p.click('#faqc-5 .faqback'); await p.waitForTimeout(150);
-  ok('"Alle onderwerpen" brengt je terug naar de tegels, focus op de tegel van waar je kwam', await p.evaluate(() => !document.getElementById('faqHome').hidden && [...document.querySelectorAll('.faqcat')].every(s => s.hidden) && document.activeElement.dataset.ci === '5'));
+  await p.click('#faqc-6 .faqback'); await p.waitForTimeout(150);
+  ok('"Alle onderwerpen" brengt je terug naar de tegels, focus op de tegel van waar je kwam', await p.evaluate(() => !document.getElementById('faqHome').hidden && [...document.querySelectorAll('.faqcat')].every(s => s.hidden) && document.activeElement.dataset.ci === '6'));
   await p.focus('.faqtile[data-ci="2"]'); await p.keyboard.press('Enter'); await p.waitForTimeout(150);
   ok('toetsenbord: Enter op een tegel opent het onderwerp', await p.evaluate(() => !document.getElementById('faqc-2').hidden));
   await p.focus('#faqc-2 details.faq summary'); await p.keyboard.press('Enter');
@@ -177,7 +177,7 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
 
   console.log('─── Thema\'s en 390px ───');
   for (const th of ['light', 'dark']) {
-    ok('FAQ rendert in ' + th, await p.evaluate(t => { setTheme(t); go('faq'); return document.body.classList.contains('dark') === (t === 'dark') && document.querySelectorAll('.faqtile').length === 9; }, th));
+    ok('FAQ rendert in ' + th, await p.evaluate(t => { setTheme(t); go('faq'); return document.body.classList.contains('dark') === (t === 'dark') && document.querySelectorAll('.faqtile').length === 10; }, th));
     ok('zoekopdracht overleeft een re-render (' + th + ')', await p.evaluate(async t => { faqFilter('SQN'); setTheme(t); await new Promise(r => setTimeout(r, 0)); return document.getElementById('faqQ').value === 'SQN' && document.getElementById('faqHome').hidden; }, th));
     await p.evaluate(() => { faqFilter(''); faqHome(); });
   }
