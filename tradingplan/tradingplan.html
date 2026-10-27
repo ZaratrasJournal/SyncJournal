@@ -83,6 +83,9 @@ h3{font-size:var(--t1);font-weight:700;text-transform:uppercase;letter-spacing:.
 .stack>*+*{margin-top:12px}
 .pagehead{display:flex;align-items:flex-end;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:18px 0 14px}
 .pagehead p{color:var(--muted);font-size:var(--t2);margin-top:2px}
+.pagehead .kopr{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.moriset{font-size:var(--t1);color:var(--muted)}
+.moriset:hover{color:var(--accent)}
 .btn{padding:7px 12px;border-radius:9px;font-weight:600;font-size:var(--t2);border:1px solid var(--line);background:var(--surface);color:var(--ink);text-decoration:none;display:inline-flex;align-items:center;gap:6px}
 .btn:hover{background:var(--hover)}
 .btn.pri{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
@@ -357,7 +360,7 @@ label.f .faint,h3 .faint{text-transform:none;letter-spacing:0;font-weight:500}
    tp2:* (plan v2) wordt niet gelezen en niet gewist. */
 
 // ───────────────────────── opslag ─────────────────────────
-const LS={plans:'tp3:plans',cfg:'tp3:cfg',handoff:'tp3:handoff'};
+const LS={plans:'tp3:plans',cfg:'tp3:cfg',handoff:'tp3:handoff',mori:'tp3:mori'};
 const SJ={state:'sj_state',tags:'sj_tagconfig'};
 // Stijl bepaalt alleen de lagen waarmee een nieuwe week en dag starten (besluit 14).
 const STIJLEN={
@@ -555,6 +558,8 @@ function nieuwScenario(day){const L=stijlLagen(cfg().stijl),eigen=day.layers[day
 // alle scenario's met hun dag, nieuwste dag eerst
 function alleScenarios(){return Object.values(PL.days).sort((a,b)=>b.id.localeCompare(a.id)).flatMap(d=>(d.scenarios||[]).map(s=>({s,day:d})));}
 function scenOf(sid){return alleScenarios().find(x=>x.s.id===sid)||null;}
+// Een id hoort nooit in beeld: zonder titel (of met het id als titel) "<pair> <playbook>". Zelfde regel als planTitel in de journal.
+function titel(s){const t=str(s&&s.title).trim();return t&&t!==s.id?t:[str(s&&s.pair).trim().toUpperCase(),str(s&&s.pb).trim()].filter(Boolean).join(' ')||'Scenario';}
 // "BTC/USDT" → "BTC", zoals pairBase in de journal
 const pairBase=p=>String(p||'').split(/[\/\-:]/)[0].trim().toUpperCase();
 
@@ -735,7 +740,7 @@ function zetOmLagen(s,day,week){const per=new Map(),uit=new Set(s.off||[]),uniq=
 function convertH(M){
   const x=scenOf(M.sid);if(!x)return {t:'Zet om in trade',h:'<div class="empty"><b>Scenario niet gevonden</b></div>',f:'<button class="btn" data-a="close">Sluit</button>'};
   const s=x.s,day=x.day,week=weekOf(day.week),c=cfg();
-  const kop=`<div class="convkop"><span class="grade ${s.grade}">${s.grade}</span><span class="dir ${s.dir}">${s.dir}</span><span class="pair">${esc(s.pair)}</span><b>${esc(s.title||'zonder titel')}</b><span class="datum">${esc(datumKort(day.id))}</span></div>`;
+  const kop=`<div class="convkop"><span class="grade ${s.grade}">${s.grade}</span><span class="dir ${s.dir}">${s.dir}</span><span class="pair">${esc(s.pair)}</span><b>${esc(titel(s))}</b><span class="datum">${esc(datumKort(day.id))}</span></div>`;
   const tabs=`<div class="mtabs" role="tablist">${[['koppel','Uit je journal'],['hand','Nieuwe trade invullen']].map(([k,l])=>`<button role="tab" aria-selected="${M.weg===k}" class="${M.weg===k?'on':''}" data-a="convWeg" data-v="${k}">${l}</button>`).join('')}</div>`;
   const later='<button class="btn ghost sm tlink" data-a="laterKoppelen">Nog niet binnen? Markeer als genomen</button>';
   if(M.weg==='hand'){const L=zetOmLagen(s,day,week),unch=s.entry.confirmations.filter(g=>!s.checked.includes(g));
@@ -753,7 +758,7 @@ function convertH(M){
     const res=uit?`<span class="res ${pnl>0?'pos':pnl<0?'neg':''}"><span class="num">${r==null?'–':rS(r)}</span> <span class="num">${geld(pnl)}</span></span>`:'<span class="res faint">loopt nog</span>';
     return `<button class="kand ${on?'on':''} ${ander?'bezet':''}" data-a="kandSel" data-t="${esc(k)}" data-v="${esc(k)}" aria-pressed="${on}" ${ander?'disabled':''}>
       <span class="vink" aria-hidden="true">${on?'✓':''}</span><span class="num tijd">${esc(tradeTijd(t))}</span><b class="kpair">${esc(t.pair)}</b><span class="dir ${t.dir==='short'?'short':'long'}">${esc(t.dir)}</span>${t.kind&&t.kind!=='live'?`<span class="faint small">${esc(t.kind)}</span>`:''}
-      ${ander?`<span class="kbij">bij ${esc(van.title||'een ander scenario')}</span>`:res}</button>`;};
+      ${ander?`<span class="kbij">bij ${esc(titel(van))}</span>`:res}</button>`;};
   const n=M.sel.length;
   if(!JR.klaar)return {t:'Zet om in trade',kop,h:tabs+filters+'<div class="empty">Journal laden…</div>',f:later};
   if(!lijst.length)return {t:'Zet om in trade',kop,h:tabs+filters+`<p class="kgeen">${M.alle?'Geen trades':`Geen ${esc(pairBase(s.pair))} ${esc(s.dir)}`} op ${esc(datumKort(day.id))}${M.erna?' of de dag erna':''} in je journal. Sync eerst in de journal${M.alle?'':', of zet "Alle pairs en richtingen" aan'}.</p>`,f:later};
@@ -767,6 +772,22 @@ function gekoppeldH(s){const ids=s.trades||[];
     ${ids.length?ids.map(id=>{const t=per.get(String(id));return `<div class="ktrade">${t?tradeKort(t):`<span class="faint">trade ${esc(id)} staat niet (meer) in je journal</span>`}<button class="x" data-a="ontkoppel" data-s="${esc(s.id)}" data-v="${esc(String(id))}" aria-label="ontkoppel" title="ontkoppelen">×</button></div>`;}).join('')
       :`<div class="faint small">${s.status==='genomen'?'Genomen, nog niet gekoppeld: koppel de trade zodra hij in je journal staat.':'Nog geen trade gekoppeld.'}</div>`}</div>`;}
 
+// ───────────────────────── Mori (de AI-coach van de journal) ─────────────────────────
+// Het plan heeft geen eigen Mori: een knop zet tp3:mori en opent de journal, die de vraag stelt met haar eigen sleutel,
+// pakket en veiligheidsregels. Het plan kijkt alleen óf er een sleutel is (de "in"-test, nooit getItem): de waarde
+// leest of verstuurt het nooit, en hij komt nooit in tp3:*.
+const AI_SLEUTEL='sj_ai_key';
+function moriKlaar(){let sleutel=false;try{sleutel=[sessionStorage,localStorage].some(st=>AI_SLEUTEL in st);}catch(e){}
+  const pr=lsGet('sj_ai_prefs',{});return sleutel&&!(isObj(pr)&&pr.enabled===false);}   // Mori staat standaard aan, zoals in de journal
+const moriInstellen=()=>`<a class="moriset" href="${esc(JOURNAL_URL)}?page=ai">Mori instellen</a>`;
+// De edge zoals het plan hem toont gaat als cijfers mee: de journal kent de rekenregel van het plan niet (zie edge()).
+function moriEdge(day){const o={},st=x=>({n:x.n,wr:x.wr,gemR:x.gemR,betr:x.betr});
+  rangschik(day.scenarios,day,weekOf(day.week)).forEach(x=>{const e=x.e;o[x.id]={plek:x.plek,sterkste:x.sterkste,basis:e.basis,live:st(e.live),bt:st(e.bt),zonder:e.zonder,richtingLos:e.richtingLos,gemist:e.gemist,context:e.context};});
+  return o;}
+function naarMori(o,day){if(lsSet(LS.mori,Object.assign(o,{ts:Date.now(),edge:JR.klaar?moriEdge(day):null})))location.href=JOURNAL_URL;}
+function dagMoriH(d){if(!moriKlaar())return moriInstellen();const leeg=!d.scenarios.length;
+  return `<button class="btn sm" data-a="dagMori" ${leeg?'disabled aria-describedby="dagmori-uit" title="Voeg eerst een scenario toe"':''}>🤖 Vraag Mori over mijn dagplan</button>${leeg?'<span id="dagmori-uit" class="faint small">Voeg eerst een scenario toe</span>':''}`;}
+
 // ───────────────────────── Dag ─────────────────────────
 function dagView(){
   const id=vandaag(),d=dayOf(id);
@@ -777,7 +798,7 @@ function dagView(){
   const c=cfg(),w=weekOf(d.week),rk=rangschik(d.scenarios,d,w),bijId=Object.fromEntries(d.scenarios.map(s=>[s.id,s]));
   const pf=c.pre.filter(x=>x.trim()).length,pfAf=c.pre.filter((x,i)=>x.trim()&&d.pre[i]).length;
   const geenSterkste=rk.length>1&&!rk.some(x=>x.sterkste)&&rk[0].e&&(rk[0].e.basis==='live'?rk[0].e.live:rk[0].e.bt).n<BASIS_LIVE_MIN;
-  return `<div class="pagehead"><div><h1>${cap(datumLang(id))}</h1><p>Week ${d.week.slice(-2)} · ${d.scenarios.length} scenario's${pf?` · pre-flight ${pfAf}/${pf}`:''}</p></div>${w&&w.focus?`<span class="small muted">🎯 ${esc(w.focus)}</span>`:''}</div>
+  return `<div class="pagehead"><div><h1>${cap(datumLang(id))}</h1><p>Week ${d.week.slice(-2)} · ${d.scenarios.length} scenario's${pf?` · pre-flight ${pfAf}/${pf}`:''}</p></div><div class="kopr">${w&&w.focus?`<span class="small muted">🎯 ${esc(w.focus)}</span>`:''}${dagMoriH(d)}</div></div>
     ${d.mental!=null&&d.mental<=MENTAAL_LAAG?`<div class="callout warn mentwarn" style="margin-bottom:12px">Mentaal ${d.mental}/5 · <b>Overweeg alleen A-setups</b> vandaag.</div>`:''}
     <div class="cockpit"><aside class="card funnel ${S.ctxOpen?'open':''}">
       <button class="btn sm ghost mobonly" style="margin:8px 0 0 8px" data-a="ctx">${S.ctxOpen?'▴ Context inklappen':'▾ Context: week, dag, levels'}</button>
@@ -851,7 +872,7 @@ function scenRij(s,x,d,c){
   return `<div class="card ritem s-${s.status} ${s.status==='ongeldig'||s.status==='niet'?'dim':''} ${klaar?'ready':''}" data-s="${esc(s.id)}">
     <div class="rrow" data-a="toggle" data-s="${esc(s.id)}" role="button" aria-expanded="${open}">
       <div class="rnum ${x.sterkste?'one':''}">${x.plek}</div>
-      <div style="min-width:0"><div class="row" style="gap:6px;flex-wrap:nowrap;min-width:0"><b class="ttl">${esc(s.title)}</b>${x.sterkste?'<span class="tag-sterk">sterkste</span>':''}</div>
+      <div style="min-width:0"><div class="row" style="gap:6px;flex-wrap:nowrap;min-width:0"><b class="ttl">${esc(titel(s))}</b>${x.sterkste?'<span class="tag-sterk">sterkste</span>':''}</div>
         <div class="meta row">${metaH(s)}</div>
         <div class="rline ${zwak?'weinig':''}">${edgeLijn(e,s)}</div></div>
       <div style="text-align:right"><span class="schip ${s.status}"><span class="sdot ${s.status}"></span>${STATUS_KORT[s.status]}</span><div class="faint small num" style="margin-top:5px">${cd.k}/${cd.n} conf ${open?'▴':'▾'}</div></div>
@@ -870,7 +891,7 @@ function scenRij(s,x,d,c){
       </div>
       <div class="stack"><div class="row between"><h3>Edge</h3>${s.pb&&JR.klaar?relH(e):''}</div>${s.pb?edgeTabel(e)+(e.live.n||e.bt.n?edgeNoten(e):''):'<div class="enote">Kies een playbook (Bewerk), dan vergelijkt het plan dit scenario met je trades.</div>'}
         <div class="st" role="group" aria-label="status">${STATUS.map(([k,l])=>`<button class="${k} ${s.status===k?'on':''}" data-a="status" data-s="${esc(s.id)}" data-v="${k}" title="${l}">${STATUS_KORT[k]}</button>`).join('')}</div>
-        <div class="row"><button class="btn sm pri" data-a="convert" data-s="${esc(s.id)}">Zet om in trade</button><button class="btn sm" data-a="editScen" data-s="${esc(s.id)}">Bewerk</button></div>
+        <div class="row"><button class="btn sm pri" data-a="convert" data-s="${esc(s.id)}">Zet om in trade</button>${moriKlaar()?`<button class="btn sm" data-a="mori" data-s="${esc(s.id)}">🤖 Vraag Mori</button>`:''}<button class="btn sm" data-a="editScen" data-s="${esc(s.id)}">Bewerk</button>${moriKlaar()?'':moriInstellen()}</div>
       </div>
     </div>`:''}
   </div>`;
@@ -924,8 +945,8 @@ function planVsH(b){const box=(k,x,cls)=>`<div class="ebox ${cls}"><div class="k
   const verlies=b.buiten.pnl<0||(b.buiten.pnl===0&&b.buiten.R<0);
   return `<div class="edge2">${box('Binnen plan',b.binnen,'binnen')}${box('Buiten plan',b.buiten,'buiten'+(verlies?' verlies':''))}</div>`;}
 const scenR=s=>{const per=new Map(JR.trades.map(t=>[String(t.id),t])),l=(s.trades||[]).map(id=>per.get(String(id))).filter(Boolean),a=aggR(l);return a.n?a.sum:null;};
-function schipH(s,o={}){const r=scenR(s);return `<button class="schip ${s.status}" data-a="${o.act||'logEdit'}" data-s="${esc(s.id)}" title="${esc(STATUS.find(x=>x[0]===s.status)[1])}"><span class="sdot ${s.status}"></span><span class="t">${esc(s.title||'zonder titel')}</span>${r!=null?`<span class="num small">${rS(r)}</span>`:''}</button>`;}
-function statusKnoppen(s,kort){return `<div class="st" role="group" aria-label="status van ${esc(s.title)}">${STATUS.map(([k,l])=>`<button class="${k} ${s.status===k?'on':''}" data-a="status" data-s="${esc(s.id)}" data-v="${k}" title="${l}">${kort?STATUS_KORT[k]:l}</button>`).join('')}</div>`;}
+function schipH(s,o={}){const r=scenR(s);return `<button class="schip ${s.status}" data-a="${o.act||'logEdit'}" data-s="${esc(s.id)}" title="${esc(STATUS.find(x=>x[0]===s.status)[1])}"><span class="sdot ${s.status}"></span><span class="t">${esc(titel(s))}</span>${r!=null?`<span class="num small">${rS(r)}</span>`:''}</button>`;}
+function statusKnoppen(s,kort){return `<div class="st" role="group" aria-label="status van ${esc(titel(s))}">${STATUS.map(([k,l])=>`<button class="${k} ${s.status===k?'on':''}" data-a="status" data-s="${esc(s.id)}" data-v="${k}" title="${l}">${kort?STATUS_KORT[k]:l}</button>`).join('')}</div>`;}
 
 // ───────────────────────── Afsluiting (besluit 20) ─────────────────────────
 // Opent op vandaag als daar een plan is, anders op de laatste dag met een plan.
@@ -942,7 +963,7 @@ function afslView(){
     <span class="seg"><button class="${!isWeek?'on':''}" data-a="afsl" data-v="dag">Dag</button><button class="${isWeek?'on':''}" data-a="afsl" data-v="week">Week</button></span></div>
   ${!isWeek?`<div class="dagkeuze"><span class="seg sm">${ids.slice(0,7).map(id=>`<button class="${id===dag.id?'on':''}" data-a="afslDag" data-v="${id}">${id===vandaag()?'Vandaag':datumKort(id)}</button>`).join('')}</span></div>`:''}
   ${!scen.length?`<div class="card empty"><b>Geen scenario's ${isWeek?'deze week':'op deze dag'}</b>Maak in Dag een scenario aan; dan rekent de afsluiting zich vanzelf uit.</div>`:`
-  ${open.length?`<div class="card pad afopen" style="margin-bottom:12px"><h3 style="margin-bottom:8px">Nog open · sluit af met één tik</h3>${open.map(s=>`<div class="afrij" data-s="${esc(s.id)}"><div class="row" style="gap:6px;margin-bottom:5px">${metaH(s)}<b>${esc(s.title)}</b></div>${statusKnoppen(s,true)}</div>`).join('')}</div>`:''}
+  ${open.length?`<div class="card pad afopen" style="margin-bottom:12px"><h3 style="margin-bottom:8px">Nog open · sluit af met één tik</h3>${open.map(s=>`<div class="afrij" data-s="${esc(s.id)}"><div class="row" style="gap:6px;margin-bottom:5px">${metaH(s)}<b>${esc(titel(s))}</b></div>${statusKnoppen(s,true)}</div>`).join('')}</div>`:''}
   <div class="three">
     <div class="card kpi c-accent"><div class="s">Uitgekomen</div><div class="v">${b.uit}<span class="faint" style="font-size:var(--t2)"> / ${b.n}</span></div><div class="s">${b.open?b.open+' nog open':'alles afgesloten'}</div></div>
     <div class="card kpi c-green"><div class="s">Genomen</div><div class="v">${b.gen}</div><div class="s">${b.gekoppeld?b.gekoppeld+' trade'+(b.gekoppeld===1?'':'s')+' gekoppeld':'nog geen trade gekoppeld'}</div></div>
@@ -951,7 +972,7 @@ function afslView(){
   <div class="two" style="margin-top:12px">
     <div class="card pad"><h3 style="margin-bottom:8px">Scenario's</h3><div class="daychips">${scen.map(s=>schipH(s,{act:'afslEdit'})).join('')}</div>
       ${scen.some(s=>s.id===S.afslEdit)?(()=>{const s=scen.find(x=>x.id===S.afslEdit);return `<div style="margin-top:10px">${statusKnoppen(s,true)}<div class="row" style="margin-top:6px"><button class="btn sm" data-a="convert" data-s="${esc(s.id)}" data-v="koppel">Koppel trade</button></div></div>`;})():''}
-      ${scen.filter(s=>s.status==='genomen'&&!(s.trades||[]).length).map(s=>`<div class="enote">“${esc(s.title)}” is genomen maar nog niet gekoppeld · <button class="btn sm ghost" data-a="convert" data-s="${esc(s.id)}" data-v="koppel">koppel</button></div>`).join('')}</div>
+      ${scen.filter(s=>s.status==='genomen'&&!(s.trades||[]).length).map(s=>`<div class="enote">“${esc(titel(s))}” is genomen maar nog niet gekoppeld · <button class="btn sm ghost" data-a="convert" data-s="${esc(s.id)}" data-v="koppel">koppel</button></div>`).join('')}</div>
     <div class="card pad"><h3 style="margin-bottom:8px">Binnen plan tegenover buiten plan · live</h3>${planVsH(b)}<div class="enote" style="font-size:var(--t2)">${buitenZin(b,wanneer)}</div></div>
   </div>`}
   <div class="card pad" style="margin-top:12px"><label class="f" for="af-les">Les van ${isWeek?'deze week':dag.id===vandaag()?'vandaag':datumKort(dag.id)}</label>
@@ -1096,6 +1117,8 @@ const A={
     S.modal=null;save();toast(ids.length?'Gekoppeld: '+ids.length+' trade'+(ids.length===1?'':'s')+'. De journal vult playbook, grade, lagen en beeld aan waar die nog leeg zijn.':'Geen trades meer gekoppeld.');},
   laterKoppelen:()=>{const x=scenOf(S.modal.sid);if(!x)return;x.s.status='genomen';x.s.statusTs=Date.now();S.modal=null;save();toast('Op genomen gezet. Koppel de trade later vanuit de Afsluiting of de Log.');},
   naarFormulier:()=>{const x=scenOf(S.modal.sid);if(!x)return;lsSet(LS.handoff,{sid:x.s.id,day:x.day.id,ts:Date.now()});location.href=JOURNAL_URL;return false;},
+  mori:el=>{const x=scenOf(el.dataset.s);if(!x)return;naarMori({soort:'scenario',sid:x.s.id,day:x.day.id},x.day);return false;},
+  dagMori:()=>{const d=dayOf(vandaag());if(!d||!d.scenarios.length)return;naarMori({soort:'dag',day:d.id},d);return false;},
   ontkoppel:el=>{const x=scenOf(el.dataset.s);if(!x)return;x.s.trades=(x.s.trades||[]).filter(i=>String(i)!==el.dataset.v);save();},
   lb:el=>{S.modal={type:'lb',doel:el.dataset.d,id:el.dataset.v};},
   afsl:el=>{S.afsl=el.dataset.v;},
@@ -1123,7 +1146,7 @@ const A={
     d.pair=pairBase(d.pair)||'BTC';if(!d.title.trim())d.title=(d.pb||'Scenario')+' '+d.pair;
     if(M.isNew)day.scenarios.push(d);else{const i=day.scenarios.findIndex(s=>s.id===d.id);if(i>=0)day.scenarios[i]=d;}
     S.modal=null;save();},
-  delScen:()=>{const M=S.modal,day=dayOf(M.day);if(!day||!confirm('Scenario "'+(M.draft.title||'zonder titel')+'" verwijderen?'))return false;
+  delScen:()=>{const M=S.modal,day=dayOf(M.day);if(!day||!confirm('Scenario "'+titel(M.draft)+'" verwijderen?'))return false;
     const weg=day.scenarios.find(s=>s.id===M.draft.id);((weg&&weg.media&&weg.media.imgs)||[]).forEach(imgWis);
     day.scenarios=day.scenarios.filter(s=>s.id!==M.draft.id);S.modal=null;save();},
 };

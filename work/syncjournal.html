@@ -1408,6 +1408,7 @@ details.faq[open] summary{color:var(--accent)}
 .aichip:disabled{opacity:.5;cursor:default}
 .aisent{margin-top:10px;font-size:11.5px;color:var(--muted)}
 .aisent summary{cursor:pointer;font-weight:600}
+.aiterug{display:inline-block;margin-top:10px;font-size:12.5px;font-weight:600}
 .aisent pre{white-space:pre-wrap;word-break:break-word;max-height:260px;overflow:auto;margin:8px 0 0;padding:10px;border-radius:8px;background:var(--surface);border:1px solid var(--line);color:var(--ink2);font-size:11px;line-height:1.45}
 .aifocus{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--ink2);background:var(--sink);border:1px solid var(--line);border-radius:9px;padding:8px 12px;margin-bottom:10px}
 .aifocus button{margin-left:auto}
@@ -3300,7 +3301,7 @@ function tradeTimeline(t){
    "none" als je hem bewust buiten plan zet. Er wordt nooit automatisch gekoppeld (besluit 23): je kiest zelf,
    in het plan of hier in de trade-details. tp2:* (plan v2) wordt niet meer gelezen; een oude
    numerieke planRef telt niet. */
-const TP3={plans:'tp3:plans',cfg:'tp3:cfg',handoff:'tp3:handoff'};
+const TP3={plans:'tp3:plans',cfg:'tp3:cfg',handoff:'tp3:handoff',mori:'tp3:mori'};
 const HANDOFF_MAX_MS=10*60000;   // "Zet om in trade" in het plan: na 10 minuten is de overdracht verlopen
 const planObj=o=>!!o&&typeof o==='object'&&!Array.isArray(o);
 function planLoad(){const g=(k,fb)=>{try{const v=JSON.parse(localStorage.getItem(k)||'null');return v==null?fb:v;}catch(e){return fb;}};
@@ -3308,6 +3309,8 @@ function planLoad(){const g=(k,fb)=>{try{const v=JSON.parse(localStorage.getItem
 function planSave(plans){try{localStorage.setItem(TP3.plans,JSON.stringify(plans));return true;}catch(e){toast('Het plan kon niet worden opgeslagen (opslag vol?)','err');return false;}}
 function planScen(sid,P){P=P||planLoad();for(const day of Object.values(P.plans.days)){const s=(day&&day.scenarios||[]).find(x=>x&&x.id===sid);
   if(s){if(!Array.isArray(s.trades))s.trades=[];return {s,day,week:P.plans.weeks[day.week]||null};}}return null;}
+// Een id hoort nooit in beeld: zonder titel (of met het id als titel) "<pair> <playbook>". Zelfde regel als titel() in het plan.
+function planTitel(s){const str=v=>v==null?'':String(v).trim(),t=str(s&&s.title);return t&&t!==s.id?t:[str(s&&s.pair).toUpperCase(),str(s&&s.pb)].filter(Boolean).join(' ')||'Scenario';}
 const planScenRef=t=>t&&typeof t.planRef==='string'&&t.planRef.startsWith('s:')?t.planRef.slice(2):null;
 // De dag van een trade zoals het plan hem ziet: de Amsterdamse kalenderdag van het open-moment.
 const PLAN_AMS=new Intl.DateTimeFormat('sv-SE',{timeZone:'Europe/Amsterdam',year:'numeric',month:'2-digit',day:'2-digit'});
@@ -3381,13 +3384,13 @@ function planSetRef(id,ref){const t=T.find(x=>x.id===id);if(!t)return;const P=pl
   planSave(P.plans);
   const nieuw=x&&t.planRef!==ref;t.planRef=x?ref:'none';
   const ids=nieuw?planAdopt(t,x.s,x.day,x.week):[];
-  persist();closeForm();render();toast(x?'Gekoppeld aan scenario "'+(x.s.title||'zonder titel')+'"':'Bewust buiten plan gezet','ok');
+  persist();closeForm();render();toast(x?'Gekoppeld aan scenario "'+planTitel(x.s)+'"':'Bewust buiten plan gezet','ok');
   if(ids.length)planScreens([[t,ids]]);}
 function planLine(t){
   const P=planLoad(),sid=planScenRef(t),x=sid&&planScen(sid,P);
   const knop=lbl=>`<a href="#" onclick="event.stopPropagation();planPick(${t.id});return false" style="color:var(--accent);font-weight:600">${lbl}</a>`;
   const rij=(txt,lbl)=>`<div class="tline" style="margin-top:6px"><span class="tlc">📋 ${txt}</span><span class="tla">·</span><span class="tlc">${knop(lbl)}</span></div>`;
-  if(x)return rij(`Scenario: <b>${esc(x.s.title||'zonder titel')}</b>${x.s.grade?' · '+esc(x.s.grade):''}`,'wijzig');
+  if(x)return rij(`Scenario: <b>${esc(planTitel(x.s))}</b>${x.s.grade?' · '+esc(x.s.grade):''}`,'wijzig');
   if(t.planRef==='none')return rij('Bewust buiten plan','wijzig');
   return planDagScens(t,P).length?rij('Geen scenario','Koppel aan scenario'):'';
 }
@@ -3395,7 +3398,7 @@ function planPick(id){
   const t=T.find(x=>x.id===id);if(!t)return;const P=planLoad(),lijst=planDagScens(t,P),dag=planTradeDag(t);
   document.getElementById('modal').innerHTML=`<div class="mhead"><h3>Bij welk scenario hoort deze trade?</h3><button class="xbtn" onclick="closeForm()">×</button></div>
     <div class="mbody"><div class="field full"><div class="hint">${esc(t.pair)} ${esc(t.dir)} · ${esc(dag)} ${esc(t.time||'')}. Scenario's van die dag en de dag ervoor uit TradingPlan:</div></div>
-    ${lijst.length?lijst.map(({s,day})=>`<div class="field full"><button class="btn" style="width:100%;justify-content:flex-start" onclick="planSetRef(${id},'s:${esc(String(s.id)).replace(/'/g,'')}')">${t.planRef==='s:'+s.id?'✓ ':''}${esc(day.id===dag?'':day.id+' · ')}${esc(s.title||'zonder titel')} · ${esc(s.pair||'')} ${esc(s.dir||'')}${s.grade?' · '+esc(s.grade):''}</button></div>`).join(''):`<div class="field full">${emptyState('plan-dag','regel')}</div>`}
+    ${lijst.length?lijst.map(({s,day})=>`<div class="field full"><button class="btn" style="width:100%;justify-content:flex-start" onclick="planSetRef(${id},'s:${esc(String(s.id)).replace(/'/g,'')}')">${t.planRef==='s:'+s.id?'✓ ':''}${esc(day.id===dag?'':day.id+' · ')}${esc(planTitel(s))} · ${esc(s.pair||'')} ${esc(s.dir||'')}${s.grade?' · '+esc(s.grade):''}</button></div>`).join(''):`<div class="field full">${emptyState('plan-dag','regel')}</div>`}
     <div class="field full"><button class="btn" style="width:100%;justify-content:flex-start" onclick="planSetRef(${id},'none')">${t.planRef==='none'?'✓ ':''}Geen scenario — bewust buiten plan</button></div></div>
     <div class="mfoot"><span style="flex:1"></span><button class="btn" onclick="closeForm()">Sluiten</button></div>`;
   document.getElementById('modal').classList.add('on');document.getElementById('scrim').classList.add('on');modalKind='plan';formDirty=false;
@@ -3419,6 +3422,23 @@ function planNaHandoff(t){const P=planLoad(),x=planScen(formPlanSid,P);if(!x||!t
   Object.values(P.plans.days).forEach(d=>((d&&d.scenarios)||[]).forEach(s=>{if(Array.isArray(s.trades))s.trades=s.trades.filter(i=>String(i)!==String(t.id));}));
   x.s.trades.push(t.id);x.s.status=t.kind==='gemist'?'gemist':'genomen';x.s.statusTs=Date.now();
   if(planSave(P.plans))t.planRef='s:'+x.s.id;}
+/* "Vraag Mori" in het plan: tp3:mori {soort:'scenario'|'dag', sid?, day, ts, edge}. De journal opent Mori en stelt de
+   vraag zelf, met de eigen sleutel en het eigen pakket: het plan leest of verstuurt de sleutel nooit. Te oud, kapot of
+   naar iets wat niet meer bestaat: niets versturen; bij een verdwenen scenario of dag een melding. */
+function planMoriVanOverdracht(){let h=null,ruw=null;try{ruw=localStorage.getItem(TP3.mori);}catch(e){}
+  if(ruw==null)return false;try{localStorage.removeItem(TP3.mori);h=JSON.parse(ruw);}catch(e){return false;}
+  if(!planObj(h)||!['scenario','dag'].includes(h.soort)||!(Date.now()-(+h.ts||0)<=HANDOFF_MAX_MS))return false;
+  const P=planLoad(),edge=planObj(h.edge)?h.edge:null;let plan=null,vraag='';
+  if(h.soort==='scenario'){const x=planScen(String(h.sid||''),P);
+    if(x){plan={soort:'scenario',s:x.s,day:x.day,week:x.week,edge};vraag='Check mijn scenario: '+planTitel(x.s)+' — '+String(x.s.pair||'').toUpperCase()+' '+(x.s.dir==='short'?'short':'long')+(x.s.pb?', '+x.s.pb:'');}}
+  else{const day=P.plans.days[String(h.day||'')];
+    if(planObj(day)&&(day.scenarios||[]).length){plan={soort:'dag',day:{...day,id:String(h.day)},week:P.plans.weeks[day.week]?{...P.plans.weeks[day.week],id:day.week}:null,edge};vraag='Review mijn dagplan van '+coachDatum(h.day);}}
+  go('ai');
+  if(!plan){AIMSGS.push({r:'info',terug:true,t:h.soort==='scenario'?'Het scenario uit je plan bestaat niet meer, dus er is niets verstuurd. Kijk in je plan of het verwijderd is.':'Het dagplan bestaat niet meer of heeft geen scenario\'s, dus er is niets verstuurd.'});render();return false;}
+  if(!AIPREFS.enabled||!aiKeyGet())return false;   // Mori zegt zelf wat er ontbreekt (uit, of geen sleutel)
+  const s=plan.s,tp=s?(s.tps||[]).map(planGetal).find(v=>v>0):0;
+  aiVraag(vraag,{knop:plan.soort==='dag'?'plan-dag':'plan-scenario',plan,idee:s?{pair:String(s.pair||'').toUpperCase(),dir:s.dir==='short'?'short':'long',setup:s.pb||'',entry:'',stop:planGetal(s.stop)||'',tp:tp||''}:undefined});
+  return true;}
 /* Geen plan-badge in de tradelijst (Denny 26-09-2026: ruis op alles van vóór de koppeling). De
    scenario-regel staat in de trade-details (planLine), de cijfers in Tendencies → Plan. */
 function tradeHoverDetail(t){
@@ -6422,6 +6442,8 @@ const COACH_RECENT_VRIJ=10; // recent trades with a free question; the coach loo
 //   'alles' (a free question), 'lek' / 'edge' (groups worst / best first, plus the worst / best trades),
 //   'week' (the last 7 days against the 7 before), 'laatste' (the newest trade and its setup),
 //   'pretrade' (a trade idea in opts.idee against that setup, symbol, direction, playbook and TradingPlan).
+//   'plan-scenario' / 'plan-dag' (Mori from TradingPlan: opts.plan from planMoriVanOverdracht; a scenario also goes
+//   through the pre-trade part, as an idea without an entry).
 // Returns {tekst, n}; n = closed trades the package is about (0 = nothing to send).
 function coachPakket(opts){
   const o={closed:CLOSED,boekingen:BOEKINGEN,hideAmounts:aiHide(),notes:AIPREFS.notes!==false,focusId:null,deel:'alles',...(opts||{})};
@@ -6443,6 +6465,8 @@ function coachPakket(opts){
   }
   L.push('- Alles ('+tr(rows.length)+'): '+coachStats(rows,o,geld));
   if(o.deel==='pretrade'){L.push(...coachPretradeDeel(rows,o));return {tekst:L.join('\n'),n:rows.length};}
+  if(o.deel==='plan-scenario'&&o.plan){L.push(...coachScenarioDeel(o),...coachPretradeDeel(rows,o));return {tekst:L.join('\n'),n:rows.length};}
+  if(o.deel==='plan-dag'&&o.plan){L.push(...coachDagplanDeel(rows,o));return {tekst:L.join('\n'),n:rows.length};}
   if(o.deel!=='laatste'&&o.deel!=='pretrade')[['30d','Laatste 30 dagen'],['7d','Laatste 7 dagen']].forEach(([per,lbl])=>{const rs=periodTrades(rows,per);
     if(rs.length&&rs.length<rows.length)L.push('- '+lbl+' t/m '+coachDatum(chron[0].date)+' ('+tr(rs.length)+'): '+coachStats(rs,o,periodTrades(geld,per)));});
   if(o.deel!=='laatste')L.push(...coachGroepen(rows,{...o,volgorde:o.deel==='lek'?'slecht':o.deel==='edge'?'goed':'impact'}));
@@ -6466,8 +6490,10 @@ function coachIsoWeek(iso){const [y,m,d]=String(iso).split('-').map(Number);cons
   const y0=new Date(Date.UTC(t.getUTCFullYear(),0,1));return t.getUTCFullYear()+'-W'+String(Math.ceil(((t-y0)/864e5+1)/7)).padStart(2,'0');}
 function coachGetal(v){const n=parseFloat(String(v==null?'':v).replace(',','.'));return isFinite(n)?n:null;}
 // Planned R:R and stop distance, or a reason why the idea is not complete yet.
-function coachIdeeCijfers(i){const e=coachGetal(i.entry),st=coachGetal(i.stop),tp=coachGetal(i.tp);
+// o.entryOptioneel (a scenario from TradingPlan has no entry yet): without an entry there are no figures, and no error.
+function coachIdeeCijfers(i,o){const e=coachGetal(i.entry),st=coachGetal(i.stop),tp=coachGetal(i.tp);
   if(!String(i.pair||'').trim())return {fout:'Vul een pair in.'};
+  if(o&&o.entryOptioneel&&!(e>0))return {zonderEntry:true};
   if(!(e>0)||!(st>0))return {fout:'Vul entry en stop in.'};
   if(e===st)return {fout:'Entry en stop zijn gelijk.'};
   if(i.dir==='long'&&st>e)return {fout:'Bij een long hoort de stop onder de entry.'};
@@ -6476,23 +6502,31 @@ function coachIdeeCijfers(i){const e=coachGetal(i.entry),st=coachGetal(i.stop),t
   return {rr:tp>0?Math.abs(tp-e)/Math.abs(e-st):null,stopPct:Math.abs(e-st)/e*100};}
 // Wat TradingPlan v3 over vandaag zegt: het weekplan (lagen, focus, no-trade, levels), de scenario's van vandaag
 // in deze richting en het risico per grade. Alleen lezen (tp3:*), net als planSync.
-function coachPlanRegels(dir){const P=planLoad(),vd=PLAN_AMS.format(new Date()),wid=coachIsoWeek(vd),wk=P.plans.weeks[wid],dag=P.plans.days[vd],risk=planObj(P.cfg.risk)?P.cfg.risk:null,L=[];
-  const regel=v=>String(v==null?'':v).replace(/\s+/g,' ').trim();
+function coachPlanRegels(dir,dagId){const P=planLoad(),vandaag=PLAN_AMS.format(new Date()),vd=dagId||vandaag,wid=coachIsoWeek(vd),wk=P.plans.weeks[wid],dag=P.plans.days[vd],risk=planObj(P.cfg.risk)?P.cfg.risk:null,L=[];
   if(!wk&&!dag&&!risk)return ['- Geen TradingPlan-gegevens gevonden op dit apparaat.'];
   if(wk){L.push('Weekplan '+wid+':');
-    const lagen=(wk.layers||[]).filter(l=>l&&l.tf).map(l=>l.tf+(l.bias?' '+l.bias:'')+([...(l.setups||[]),...(l.confirmations||[])].length?': '+[...(l.setups||[]),...(l.confirmations||[])].join(', '):''));
-    if(lagen.length)L.push('- Lagen: '+lagen.join(' · '));
-    [['Focus',wk.focus],['Niet traden / nieuws',wk.noTrade],['Levels',wk.levels]].forEach(([k,v])=>{if(regel(v))L.push('- '+k+': '+regel(v));});}
+    const lagen=coachPlanLagen(wk.layers);if(lagen)L.push('- Lagen: '+lagen);
+    [['Focus',wk.focus],['Niet traden / nieuws',wk.noTrade],['Levels',wk.levels]].forEach(([k,v])=>{if(coachPlanTekst(v))L.push('- '+k+': '+coachPlanTekst(v));});}
   else L.push('- Geen weekplan voor deze week.');
-  if(dag){const sc=(dag.scenarios||[]).filter(s=>s&&s.dir===dir);
-    if(dag.mental)L.push('- Mentaal vandaag: '+dag.mental+'/5');
-    L.push(sc.length?'Scenario\'s vandaag ('+dir+'):':'- Geen scenario\'s vandaag voor een '+dir+'.',...sc.map(s=>'- '+regel(s.title)+(s.pb?' · '+s.pb:'')+' · grade '+(s.grade||'?')+' · '+(s.status||'open')+(s.trigger?' · als '+regel(s.trigger):'')+(s.invalid?' · ongeldig als '+regel(s.invalid):'')));}
-  if(risk)L.push('- Risico per grade: '+['A','B','C'].filter(g=>risk[g]!=null).map(g=>+risk[g]?g+' '+String(+risk[g]).replace('.',',')+'%':g+' niet traden').join(', '));
+  if(dag){const sc=(dag.scenarios||[]).filter(s=>s&&s.dir===dir),lagen=coachPlanLagen(dag.layers);
+    L.push('Dagplan '+coachDatum(vd)+':');
+    if(lagen)L.push('- Lagen: '+lagen);
+    if(coachPlanTekst(dag.levels))L.push('- Levels: '+coachPlanTekst(dag.levels));
+    if(dag.mental)L.push('- Mentaal '+(vd===vandaag?'vandaag':'op '+coachDatum(vd))+': '+dag.mental+'/5');
+    L.push(sc.length?'Scenario\'s '+(vd===vandaag?'vandaag':'op '+coachDatum(vd))+' ('+dir+'):':'- Geen scenario\'s '+(vd===vandaag?'vandaag':'op '+coachDatum(vd))+' voor een '+dir+'.',...sc.map(s=>'- '+coachPlanTekst(planTitel(s))+(s.pb?' · '+s.pb:'')+' · grade '+(s.grade||'?')+' · '+(s.status||'open')+(s.trigger?' · als '+coachPlanTekst(s.trigger):'')+(s.invalid?' · ongeldig als '+coachPlanTekst(s.invalid):'')));}
+  if(risk)L.push(coachPlanRisico(risk));
   return L;}
-function coachPretradeDeel(rows,o){const i=o.idee||{},c=coachIdeeCijfers(i),L=[];
-  L.push('','# Trade-idee (ingevuld door de trader, nog niet genomen)',
-    '- '+i.pair+' '+i.dir+' · setup '+(i.setup||'—')+' · entry '+i.entry+' · stop '+i.stop+(i.tp?' · TP '+i.tp:' · geen TP'),
-    c.rr!=null?'- Gepland R:R (uitgerekend door de journal): '+c.rr.toFixed(2).replace('.',',')+'R':'- Gepland R:R: onbekend, geen TP ingevuld',
+const coachPlanTekst=v=>String(v==null?'':v).replace(/\s+/g,' ').trim();
+// "Weekly Bullish: BOS · 4H: MSB, OB": one entry per layer with a timeframe, empty layers without a bias left out.
+const coachPlanLaag=l=>{const tags=[...(l.setups||[]),...(l.confirmations||[])];return l.tf+(l.bias?' '+l.bias:'')+(tags.length?': '+tags.join(', '):'');};
+const coachPlanLagen=layers=>(layers||[]).filter(l=>l&&l.tf&&(l.bias||(l.setups||[]).length||(l.confirmations||[]).length)).map(coachPlanLaag).join(' · ');
+const coachPlanRisico=risk=>'- Risico per grade: '+['A','B','C'].filter(g=>risk[g]!=null).map(g=>+risk[g]?g+' '+String(+risk[g]).replace('.',',')+'%':g+' niet traden').join(', ');
+function coachPretradeDeel(rows,o){const i=o.idee||{},c=coachIdeeCijfers(i,{entryOptioneel:!!o.plan}),L=[];
+  L.push('',o.plan?'# Trade-idee (scenario uit TradingPlan, nog niet genomen)':'# Trade-idee (ingevuld door de trader, nog niet genomen)',
+    '- '+i.pair+' '+i.dir+' · setup '+(i.setup||'—')+' · entry '+(c.zonderEntry?'nog niet bekend':i.entry)+' · stop '+(i.stop||'—')+(i.tp?' · TP '+i.tp:' · geen TP'));
+  if(c.zonderEntry)L.push('- Entry nog niet bekend: geen gepland R:R en geen stop-afstand.');
+  else if(c.fout)L.push('- Geen R:R uit te rekenen: '+c.fout);
+  else L.push(c.rr!=null?'- Gepland R:R (uitgerekend door de journal): '+c.rr.toFixed(2).replace('.',',')+'R':'- Gepland R:R: onbekend, geen TP ingevuld',
     '- Stop-afstand: '+c.stopPct.toFixed(2).replace('.',',')+'% van de entry');
   const st=i.setup?rows.filter(t=>t.setup===i.setup):[];
   if(i.setup){L.push('','## Deze setup ('+i.setup+')',st.length?'- n='+st.length+' · '+coachStats(st,o):'- Nog geen gesloten trades met deze setup.');
@@ -6507,10 +6541,52 @@ function coachPretradeDeel(rows,o){const i=o.idee||{},c=coachIdeeCijfers(i),L=[]
     (pb.antiCriteria||[]).filter(x=>x&&x.text).forEach(x=>L.push('- Niet: '+x.text+(x.mandatory?' (blokkeert)':'')));
     if(pb.stop)L.push('- Stop: '+pb.stop);if(pb.target)L.push('- Target: '+pb.target);if(pb.minRR)L.push('- Min R:R: '+pb.minRR);}
   else L.push('- Geen playbook met regels voor deze setup.');
-  L.push('','## Regels uit TradingPlan',...coachPlanRegels(i.dir));
+  L.push('','## Regels uit TradingPlan',...coachPlanRegels(i.dir,o.plan&&o.plan.day.id));
   const nu=localDateISO(),wk=coachIsoWeek(nu),live=T.filter(t=>isLive(t)&&t.date&&fundedZichtbaar(t));
   L.push('- Trades deze week in de journal: '+live.filter(t=>coachIsoWeek(t.date)===wk).length,
     '- Verliezers vandaag in de journal: '+live.filter(t=>t.date===nu&&heeftUitkomst(t)&&t.pnl<0).length);
+  return L;}
+/* ── Mori in TradingPlan: a scenario or the whole day plan (docs/plan-v3-mori-2026-10-27.md) ──
+   o.plan = {soort, s?, day, week, edge} from planMoriVanOverdracht. The edge comes from the plan as figures (tp3:mori):
+   the journal does not have the plan's matching rule, and Mori should see what the plan shows. No amounts in it. */
+function coachEdgeRegel(e){if(!planObj(e))return 'niet meegegeven (het plan had je journal nog niet geladen)';
+  const st=(lbl,x)=>planObj(x)&&+x.n>0?lbl+' n='+(+x.n)+' · winrate '+Math.round(+x.wr||0)+'% · '+(x.gemR==null||!isFinite(+x.gemR)?'geen R':'gem. R '+coachR(+x.gemR)):lbl+' geen trades';
+  const lijst=a=>(Array.isArray(a)?a:[]).slice(0,12).map(v=>coachPlanTekst(v).slice(0,40)).filter(Boolean);
+  const bits=[st('Live',e.live),st('Backtest',e.bt),'basis '+(e.basis==='live'?'Live':'Backtest (minder dan 10 Live)')];
+  const b=e.basis==='live'?e.live:e.bt;if(planObj(b)&&b.betr)bits.push(b.betr==='weinig'?'weinig data (onder 10)':b.betr==='redelijk'?'redelijk wat data (10 tot 30)':'genoeg data (30 of meer)');
+  if(lijst(e.zonder).length)bits.push('zonder '+lijst(e.zonder).join(', ')+' (te weinig trades met alle tags)');
+  if(e.richtingLos)bits.push('long en short samen (te weinig in één richting)');
+  if(planObj(e.gemist)&&+e.gemist.n>0)bits.push(+e.gemist.n+'× gemist, samen '+coachR(+e.gemist.somR||0)+'R (telt niet mee)');
+  if(lijst(e.context).length)bits.push('alleen context, geen van je trades heeft die laag: '+lijst(e.context).join(', '));
+  return bits.join(' · ');}
+function coachScenarioDeel(o){const {s,day,week,edge}=o.plan,L=['','# Scenario uit TradingPlan (dagplan van '+coachDatum(day.id)+')'];
+  const lagen=planLagen({...s,checked:(s.entry&&s.entry.confirmations)||[]},day,week),conf=(s.entry&&s.entry.confirmations)||[],af=conf.filter(c=>(s.checked||[]).includes(c));
+  const crit=((PBOOK[s.pb]||{}).criteria||[]).filter(c=>c&&c.text),critAf=crit.filter(c=>(s.critChecked||[]).includes(c.text)),critTxt=a=>a.map(c=>c.text+(c.mandatory?' (verplicht)':'')).join(', ')||'geen';
+  L.push('- Titel: '+coachPlanTekst(planTitel(s)),'- Pair: '+coachPlanTekst(s.pair)+' · Richting: '+(s.dir==='short'?'short':'long')+' · Playbook: '+(s.pb||'geen')+' · Grade: '+(s.grade||'?')+' · Status: '+(s.status||'open'));
+  if(coachPlanTekst(s.trigger))L.push('- Trigger: '+coachPlanTekst(s.trigger));
+  if(coachPlanTekst(s.invalid))L.push('- Ongeldig als: '+coachPlanTekst(s.invalid));
+  L.push('- Lagen (week + dag + entry, uitgezette tags niet):',...lagen.map(l=>'  - '+coachPlanLaag({...l,tf:l.timeframe})));
+  L.push('- Confirmations afgevinkt: '+(af.join(', ')||'geen'),'- Confirmations open: '+(conf.filter(c=>!af.includes(c)).join(', ')||'geen'));
+  if(crit.length)L.push('- Criteria afgevinkt: '+critTxt(critAf),'- Criteria open: '+critTxt(crit.filter(c=>!critAf.includes(c))));
+  L.push('- Stop: '+(coachPlanTekst(s.stop)||'geen'),"- TP's: "+((s.tps||[]).map(coachPlanTekst).filter(Boolean).join(' · ')||'geen'));
+  if(coachPlanTekst(s.note))L.push('- Notitie: '+coachPlanTekst(s.note).slice(0,COACH_NOTITIE_MAX));
+  L.push('- Edge volgens het plan: '+coachEdgeRegel(edge&&edge[s.id]));
+  return L;}
+function coachDagplanDeel(rows,o){const {day,week,edge}=o.plan,P=planLoad(),c=P.cfg,L=['','# Dagplan uit TradingPlan ('+coachDatum(day.id)+')'];
+  if(week){L.push('## Week '+week.id);const lg=coachPlanLagen(week.layers);if(lg)L.push('- Lagen: '+lg);
+    [['Levels',week.levels],['Niet traden / nieuws',week.noTrade],['Focus',week.focus]].forEach(([k,v])=>{if(coachPlanTekst(v))L.push('- '+k+': '+coachPlanTekst(v));});}
+  else L.push('## Week','- Geen weekplan voor deze week.');
+  L.push('## Dag');const lg=coachPlanLagen(day.layers);L.push('- Lagen: '+(lg||'geen'));
+  if(coachPlanTekst(day.levels))L.push('- Levels: '+coachPlanTekst(day.levels));
+  L.push('- Mentaal '+(day.id===PLAN_AMS.format(new Date())?'vandaag':'op '+coachDatum(day.id))+': '+(day.mental?day.mental+'/5':'niet ingevuld'));
+  const pre=(Array.isArray(c.pre)?c.pre:[]).map((t,k)=>[coachPlanTekst(t),!!(day.pre||[])[k]]).filter(([t])=>t);
+  if(pre.length)L.push('- Pre-flight: '+pre.map(([t,v])=>t+(v?' ✓':' open')).join(', '));
+  const sc=(day.scenarios||[]).filter(planObj),plek=x=>planObj(edge&&edge[x.id])&&+edge[x.id].plek>0?+edge[x.id].plek:99;
+  L.push('','## Scenario\'s (op de volgorde van het plan: gem. R van de basis, Live vanaf 10 Live-trades, anders Backtest)',...sc.slice().sort((a,b)=>plek(a)-plek(b)).map(x=>{const e=edge&&edge[x.id];
+    return (plek(x)<99?plek(x)+'. ':'- ')+coachPlanTekst(planTitel(x))+' · '+coachPlanTekst(x.pair)+' '+(x.dir==='short'?'short':'long')+' · '+(x.pb||'geen playbook')+' · grade '+(x.grade||'?')+' · '+(x.status||'open')+(planObj(e)&&e.sterkste?' · sterkste':'')+'\n   edge: '+coachEdgeRegel(e);}));
+  const pbs=[...new Set(sc.map(x=>x.pb).filter(Boolean))];
+  if(pbs.length)L.push('','## Deze playbooks in de journal',...pbs.map(pb=>{const r=rows.filter(t=>t.setup===pb);return '- '+pb+': '+(r.length?'n='+r.length+' · '+coachStats(r,o):'nog geen gesloten trades');}));
+  if(planObj(c.risk))L.push('',coachPlanRisico(c.risk));
   return L;}
 /* ── Tools: the model asks, the app computes ──
    Instead of sending everything, the coach can look things up. Both tools run on the same filtered trades and the
@@ -6703,6 +6779,11 @@ const AI_KNOPPEN=[
 ];
 // Not a button of its own: the pre-trade form sends this.
 const AI_PRETRADE_OPDRACHT='De trader overweegt een trade (het trade-idee) en wil weten wat zijn eigen data en regels erover zeggen. Geef geen koop- of verkoopadvies en zeg niet of hij de trade moet nemen, en voorspel niets over de markt. Zeg: hoe deed deze setup het (ook in deze sessie en richting, met n), past het idee bij de playbook-regels en bij de regels uit TradingPlan (noem de regel), en wat valt op (bijvoorbeeld een R:R onder zijn minimum, max trades bereikt, al verliezers vandaag). Sluit af met de vraag of het idee aan zijn eigen regels voldoet.';
+// Not buttons in the journal either: TradingPlan sends these (tp3:mori, planMoriVanOverdracht).
+const AI_PLAN_KNOPPEN=[
+  ['plan-scenario','Check mijn scenario',AI_PRETRADE_OPDRACHT+' Vergelijk het scenario met de eigen cijfers en regels van de trader, en noem waar het scenario tegen zijn week- of dagbias ingaat.'],
+  ['plan-dag','Review mijn dagplan','Bespreek het dagplan. Welke scenario\'s zijn volgens de eigen cijfers het sterkst en welke het zwakst, met het cijfer erbij? Waar spreekt het plan zichzelf tegen (bijvoorbeeld een long-scenario tegen een bearish week-bias, of twee scenario\'s die elkaar uitsluiten)? Past het aantal en de grade van de scenario\'s bij de mentale score van vandaag? Geen koop- of verkoopadvies, geen voorspelling over de markt. Sluit af met één concreet punt voor vandaag.'],
+];
 const AI_WEEK_SCHEMA={type:'object',properties:{goed:{type:'string'},kostte:{type:'string'},anders:{type:'string'}},required:['goed','kostte','anders'],additionalProperties:false};
 
 /* ── Conversation state (memory only: gone after a reload, never exported) ── */
@@ -6729,19 +6810,19 @@ function aiHistorie(){const paren=[];
 async function aiVraag(vraag,o){
   o=o||{};vraag=String(vraag||'').trim();const key=aiKeyGet();
   if(!vraag||AI_UI.bezig||!key)return;
-  const knop=o.knop==='pretrade'?['pretrade',vraag,AI_PRETRADE_OPDRACHT]:AI_KNOPPEN.find(k=>k[0]===o.knop);
+  const knop=o.knop==='pretrade'?['pretrade',vraag,AI_PRETRADE_OPDRACHT]:[...AI_KNOPPEN,...AI_PLAN_KNOPPEN].find(k=>k[0]===o.knop);
   // Over the member's own monthly limit: ask first, send nothing yet.
   const lim=+AIPREFS.limiet||0;
   if(lim>0&&aiVerbruik().usd>=lim&&!o.bevestigd){AI_UI.limiet={vraag,o};if(!knop)AI_UI.invoer=vraag;render();aiScroll();return;}
   AI_UI.limiet=null;
-  const pk=coachPakket({focusId:knop?null:AI_FOCUS_ID,deel:knop?knop[0]:'alles',idee:o.idee});
+  const pk=coachPakket({focusId:knop?null:AI_FOCUS_ID,deel:knop?knop[0]:'alles',idee:o.idee,plan:o.plan});
   if(!pk.n){
     if(knop&&knop[0]==='week'){const w=coachWeekCijfers(CLOSED);AIMSGS.push({r:'me',t:vraag},{r:'info',t:'Geen gesloten trades in de afgelopen 7 dagen ('+coachDatum(w.van)+' t/m '+coachDatum(w.tot)+'). Kies een andere vraag, of zet het filter ruimer als je trades verborgen zijn.'});}
     render();aiScroll();return;}
   const week=knop&&knop[0]==='week';
   const messages=[...aiHistorie(),{role:'user',content:vraag}];
   const inp=document.getElementById('aiInput');if(inp)inp.value='';   // sent: not a draft to carry over
-  const live={r:'ai',t:'',live:true,pakket:pk.tekst,weekLaden:week};
+  const live={r:'ai',t:'',live:true,pakket:pk.tekst,weekLaden:week,terug:!!o.plan};
   AIMSGS.push({r:'me',t:vraag},live);AI_UI={bezig:true,invoer:''};render();aiScroll();
   // While streaming only the live bubble is redrawn, not the whole page.
   const toon=()=>{if(week)return;const el=document.querySelector('#aiFeed .ailive .aitekst');if(el){el.innerHTML=aiMarkdown(live.t);aiScroll();}};
@@ -6824,12 +6905,14 @@ const AI_MEEGAAN='Je cijfers en notities gaan mee naar Mori. Uitzetten kan in In
 function aiMsgHTML(m){
   if(m.r==='me')return `<div class="aimsg me"><div class="aibub">${esc(m.t)}</div></div>`;
   if(m.r==='fout')return `<div class="aimsg ai fout" role="alert"><div class="aiav">⚠️</div><div class="aibub">${esc(m.t)}</div></div>`;
-  if(m.r==='info')return `<div class="aimsg ai info"><div class="aiav">🤖</div><div class="aibub">${esc(m.t)}</div></div>`;
+  if(m.r==='info')return `<div class="aimsg ai info"><div class="aiav">🤖</div><div class="aibub">${esc(m.t)}${m.terug?aiTerugPlan():''}</div></div>`;
   if(m.live)return `<div class="aimsg ai ailive" aria-live="polite"><div class="aiav">🤖</div><div class="aibub"><div class="aitekst">${m.weekLaden?'':aiMarkdown(m.t)}</div><div class="aiwacht">${m.weekLaden?'Weekreview wordt gemaakt…':'Mori denkt na…'}</div></div></div>`;
   const body=m.vb?m.t:m.week?aiWeekHTML(m):aiMarkdown(m.t);
   const gestopt=m.gestopt?'<div class="aigestopt">Gestopt door jou, dit is wat er al was.</div>':'';
   const verstuurd=m.pakket?`<details class="aisent"><summary>Wat is er verstuurd?${m.kosten!=null?' <span class="aikost">≈ '+aiUsd(m.kosten)+'</span>':''}</summary><pre>${esc(m.pakket)}</pre></details>`:'';
-  return `<div class="aimsg ai"><div class="aiav">🤖</div><div class="aibub">${body}${gestopt}${verstuurd}</div></div>`;}
+  return `<div class="aimsg ai"><div class="aiav">🤖</div><div class="aibub">${body}${gestopt}${verstuurd}${m.terug?aiTerugPlan():''}</div></div>`;}
+// A question that came from TradingPlan: a way back, same tab (go('plan') knows where the plan lives).
+const aiTerugPlan=()=>`<a class="linklike aiterug" href="${IS_HOSTED?'/plan/':'../tradingplan/tradingplan.html'}">← Terug naar je plan</a>`;
 // The pre-trade form. Values live in memory; checking the idea updates the hint and button in place, so typing
 // never triggers a full render.
 let AI_IDEE={open:false,pair:'',dir:'long',setup:'',entry:'',stop:'',tp:''};
@@ -12124,7 +12207,7 @@ async function boot(){
   render();
   // Eerste-start: migratie-aanbod (oude tj_-data) heeft voorrang op het welkomscherm.
   if((T||[]).length===0 && !DB.load('migrated_from_tj',null) && !DB.load('mig_declined',false) && TJMigrate.detect()){ migOffer(); }
-  else { landingAankomst(); planVanHandoff().catch(()=>{}); }   // "Zet om in trade" uit het plan
+  else { landingAankomst(); planVanHandoff().catch(()=>{}); try{planMoriVanOverdracht();}catch(e){} }   // "Zet om in trade" en "Vraag Mori" uit het plan
 }
 /* ═══ Aansluiting op de landingspagina (index.html) — 24-09-2026 ═══
    De landing is de voordeur; dit is alles wat de journal daarvan hoeft te weten.
