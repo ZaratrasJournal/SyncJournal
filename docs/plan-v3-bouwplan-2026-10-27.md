@@ -327,3 +327,26 @@ week} | null`; `planSync()` (bij laden en bij een `storage`-event op `tp3:plans`
   Besluit: plakken in een tekstveld plakt altijd gewoon tekst (een link in "Levels" blijft tekst) — kost niets.
   Besluit: zonder trades met lagen zegt de context "Nog geen trades met lagen in je journal" in plaats van elk
   tijdframe als context te noemen — kost niets.
+- **Taak 6 klaar** (volgens de herschreven taak, besluit 23) — `node tests/plan3-koppeling.spec.js` → 37/37; journal-specs
+  rond het formulier groen (`smoke`, `handmatig-formulier`, `handmatig-scenarios`, `tv-links`, `sluiten-behoudt-invoer`,
+  `lege-staten`, `e2e-doorloop`). Plan: venster "Zet om in trade" met "Koppel aan een trade uit je journal" (kandidaten,
+  twee schakelaars, meerdere aanvinken, bezette trade grijs, "Markeer als genomen, koppel later") en "Handmatig,
+  backtest of paper" (`tp3:handoff` → journal). Gekoppelde trades staan in het opengeklapte scenario, met ×.
+  Journal: `planLoad` leest `tp3:*`, `planScen`, `planSync` (bij laden, zichtbaar worden en een `storage`-event),
+  `planAdopt` (alleen lege velden: playbook, grade, lagen, screenshots, tvLinks), `planPick`/`planSetRef` met scenario's
+  en "Geen scenario", `planVanHandoff` + `planNaHandoff`. `planMatch` en al zijn aanroepen zijn weg; `openForm(id, pre)`.
+  Besluit: "Geen scenario" zet `planRef = "none"` (bewust buiten plan, zoals v2) en haalt de trade uit elk scenario —
+  zo blijft zichtbaar dat je er al naar keek — kost niets.
+  Besluit: koppelen vanaf de trade-kant zet een **open** scenario op `genomen`; een andere status blijft staan — kost
+  niets.
+  Besluit: `planSync` na een `storage`-event alleen in het zichtbare journal-tabblad; andere tabbladen volgen bij
+  `visibilitychange` — anders schrijven twee journal-tabbladen tegelijk en krijgt er één de "ander tabblad"-melding —
+  kost als het fout is: een verborgen journal-tab loopt even achter tot je hem opent.
+  Besluit: het pair in het vooraf ingevulde formulier volgt je laatste trade met dezelfde base (bv. `BTC/USDT`),
+  anders `<BASE>/USDT` — kost als het fout is: één veld aanpassen in het formulier.
+  Besluit: `stop` en TP's zijn in het plan vrije tekst; `planGetal` leest "78150,5" en "75.020,5"; alleen een punt
+  is een decimaalteken ("75.020" = 75,02) — kost als het fout is: een lid typt duizendtallen met een punt en ziet
+  een verkeerde stop in het formulier (staat er wel, is aan te passen).
+  Let op (niet opgelost): `nextId()` in de journal neemt het hoogste id + 1. Wis je de trade met het hoogste id
+  definitief, dan krijgt de volgende nieuwe trade hetzelfde id, en hoort die bij het scenario van de gewiste.
+  `PLAN_LS` (v2) staat er tijdelijk nog voor de back-up; taak 8 zet die om.

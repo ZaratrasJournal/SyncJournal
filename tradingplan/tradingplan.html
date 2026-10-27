@@ -211,6 +211,16 @@ button.chip.inh{cursor:pointer}
 .lb{max-width:min(1100px,100%);max-height:100%;display:flex;flex-direction:column;gap:10px}
 .lb img{max-width:100%;max-height:calc(100vh - 110px);object-fit:contain;border-radius:10px;background:var(--surface)}
 
+/* zet om in trade */
+.kands{display:flex;flex-direction:column;gap:4px;max-height:44vh;overflow:auto}
+.kand{display:flex;align-items:center;gap:9px;padding:7px 9px;border:1px solid var(--line);border-radius:9px;cursor:pointer;font-size:12.5px;flex-wrap:wrap}
+.kand:hover{background:var(--hover)}
+.kand.bezet{opacity:.5;cursor:not-allowed}
+.kand input,.sw input{accent-color:var(--accent);width:16px;height:16px}
+.sw{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--ink2);cursor:pointer}
+.ktrade{display:flex;align-items:center;gap:8px;padding:5px 0;font-size:12.5px;border-top:1px dashed var(--line2);flex-wrap:wrap}
+.ktrade .x{margin-left:auto;color:var(--faint);font-weight:700;font-size:15px;padding:0 4px}
+
 /* modal */
 .ov{position:fixed;inset:0;background:var(--scrim);z-index:50;display:flex;align-items:center;justify-content:center;padding:16px}
 .modal{background:var(--surface);border-radius:14px;border:1px solid var(--line);width:100%;max-width:560px;max-height:calc(100vh - 32px);overflow:auto;box-shadow:var(--shl)}
@@ -420,6 +430,7 @@ function themaVanJournal(){const s=lsGet(SJ.state,{});document.documentElement.d
 window.addEventListener('storage',e=>{
   if(e.key===SJ.state||e.key===null)themaVanJournal();
   if(e.key===LS.plans||e.key===LS.cfg){PL=load();render();}
+  if(e.key==='sj_data_ts'||e.key===SJ.tags)laadJournal();   // de journal bewaarde trades (sync, formulier) of tags
 });
 
 // ───────────────────────── helpers ─────────────────────────
@@ -543,6 +554,54 @@ document.addEventListener('drop',ev=>{const m=ev.target.closest&&ev.target.close
   if(files.length)voegBestandenToe(files,m.dataset.doel);else{const u=dt&&(dt.getData('text/uri-list')||dt.getData('text/plain'));if(u)voegLinkToe(u.split('\n')[0],m.dataset.doel);}});
 document.addEventListener('error',ev=>{const t=ev.target;if(t&&t.tagName==='IMG'&&t.dataset&&t.dataset.tv&&!TV_KAPOT.has(t.dataset.tv)){TV_KAPOT.add(t.dataset.tv);render();}},true);
 
+// ───────────────────────── zet om in trade + koppelen (besluit 23: nooit automatisch) ─────────────────────────
+// Scenario.trades (journal-trade-id's) is de bron; de journal zet planRef op de trade als spiegel (planSync).
+const AMS_TIJD=new Intl.DateTimeFormat('nl-NL',{timeZone:'Europe/Amsterdam',hour:'2-digit',minute:'2-digit',hour12:false});
+const tradeDag=t=>+t.openTime>0?amsDag(+t.openTime):String(t.date||'');
+const tradeTijd=t=>+t.openTime>0?AMS_TIJD.format(new Date(+t.openTime)):String(t.time||'');
+function dagNa(iso){const d=dUTC(iso);d.setUTCDate(d.getUTCDate()+1);return d.toISOString().slice(0,10);}
+// welke trade bij welk scenario hoort (een trade hoort bij hooguit één)
+function bezetting(){const m=new Map();alleScenarios().forEach(({s})=>(s.trades||[]).forEach(id=>{if(!m.has(String(id)))m.set(String(id),s);}));return m;}
+// Kandidaten: standaard hetzelfde pair en dezelfde richting, geopend op de dag van het scenario; nieuwste boven.
+function kandidaten(s,day,o){const dagen=new Set([day.id]);if(o.erna)dagen.add(dagNa(day.id));
+  return JR.trades.filter(t=>dagen.has(tradeDag(t))&&(o.alle||(pairBase(t.pair)===pairBase(s.pair)&&String(t.dir).toLowerCase()===s.dir))).sort(nieuwsteEerst);}
+function tradeKort(t){const r=tradeROrNull(t);return `<span class="num">${esc(tradeTijd(t))}</span> <b>${esc(t.pair)}</b> <span class="dir ${t.dir==='short'?'short':'long'}">${esc(t.dir)}</span>${t.kind&&t.kind!=='live'?` <span class="faint small">${esc(t.kind)}</span>`:''} <span class="num">${t.status==='closed'||t.kind==='gemist'?rH(r)+' · '+geld(+t.pnl||0):'<span class="faint">loopt nog</span>'}</span>`;}
+// Lagen zoals ze op de trade komen (week + dag + entry, zelfde tijdframe samen); zelfde regel als planLagen in de journal.
+function zetOmLagen(s,day,week){const per=new Map(),uit=new Set(s.off||[]),uniq=a=>[...new Set(a)];
+  const add=(L,erft,entry)=>{if(!L||!L.tf)return;const set=L.setups.filter(g=>!erft||!uit.has(L.tf+'|'+g)),conf=L.confirmations.filter(g=>(!erft||!uit.has(L.tf+'|'+g))&&(!entry||s.checked.includes(g)));
+    if(erft&&!set.length&&!conf.length&&!L.bias)return;const k=L.tf.toLowerCase(),o=per.get(k)||{tf:L.tf,bias:'',setups:[],confirmations:[]};
+    if(L.bias)o.bias=L.bias;o.setups=uniq([...o.setups,...set]);o.confirmations=uniq([...o.confirmations,...conf]);per.set(k,o);};
+  ((week&&week.layers)||[]).forEach(L=>add(L,true,false));((day&&day.layers)||[]).forEach(L=>add(L,true,false));add(s.entry,false,true);
+  return sorteerLagen([...per.values()]);}
+function convertH(M){
+  const x=scenOf(M.sid);if(!x)return {t:'Zet om in trade',h:'<div class="empty"><b>Scenario niet gevonden</b></div>',f:'<button class="btn" data-a="close">Sluit</button>'};
+  const s=x.s,day=x.day,week=weekOf(day.week),c=cfg();
+  const seg=`<div class="seg" style="display:flex;margin-bottom:12px">${[['koppel','Koppel aan een trade uit je journal'],['hand','Handmatig, backtest of paper']].map(([k,l])=>`<button style="flex:1;white-space:normal" class="${M.weg===k?'on':''}" data-a="convWeg" data-v="${k}">${l}</button>`).join('')}</div>`;
+  const kop=`<div class="row" style="gap:6px;margin-bottom:10px">${metaH(s)}<b>${esc(s.title)}</b><span class="faint small">· ${esc(datumKort(day.id))}</span></div>`;
+  if(M.weg==='hand'){const L=zetOmLagen(s,day,week),unch=s.entry.confirmations.filter(g=>!s.checked.includes(g));
+    return {t:'Zet om in trade',h:seg+kop+`<div class="callout" style="margin-bottom:12px">De journal opent het tradeformulier met deze velden al ingevuld. Jij vult entry, size en uitkomst aan en kiest live, backtest of paper. Opslaan koppelt de trade aan dit scenario.</div>
+      ${c.risk[s.grade]?'':`<div class="callout warn" style="margin-bottom:12px">Grade ${esc(s.grade)} staat in je instellingen op <b>niet traden</b>.</div>`}
+      <dl class="kv"><dt>Pair</dt><dd>${esc(s.pair)}</dd><dt>Richting</dt><dd><span class="dir ${s.dir}">${s.dir}</span></dd><dt>Playbook</dt><dd>${esc(s.pb)||'–'}</dd><dt>Grade</dt><dd><span class="grade ${s.grade}">${s.grade}</span> <span class="muted small">${riskTxt(s.grade)}</span></dd>
+      <dt>Lagen</dt><dd>${L.map(l=>`<div style="margin-bottom:4px"><span class="num small">${esc(l.tf)}</span> ${l.bias?`<span class="bias ${esc(l.bias)}">${esc(l.bias)}</span> `:''}${[...l.setups,...l.confirmations].map(g=>chipH(g)).join(' ')}</div>`).join('')||'–'}${unch.length?`<div class="faint small">Niet afgevinkt, gaat niet mee: ${unch.map(esc).join(', ')}</div>`:''}</dd>
+      <dt>Stop</dt><dd class="num">${esc(s.stop)||'–'}</dd><dt>TP's</dt><dd class="num">${s.tps.map(esc).join(' · ')||'–'}</dd>
+      <dt>Beeld</dt><dd>${s.media.imgs.length} afbeelding${s.media.imgs.length===1?'':'en'} · ${s.media.links.length} link${s.media.links.length===1?'':'s'}</dd></dl>`,
+      f:`<button class="btn" data-a="close">Annuleer</button><button class="btn pri" data-a="naarFormulier">Open tradeformulier</button>`};}
+  const bz=bezetting(),lijst=kandidaten(s,day,M);
+  const rij=t=>{const k=String(t.id),van=bz.get(k),ander=van&&van.id!==s.id;
+    return `<label class="kand ${ander?'bezet':''}" data-t="${esc(k)}"><input type="checkbox" data-a="kandSel" data-v="${esc(k)}" ${M.sel.includes(k)?'checked':''} ${ander?'disabled':''}><span>${tradeKort(t)}${ander?` <span class="small">· hoort bij ${esc(van.title||'een ander scenario')}</span>`:''}</span></label>`;};
+  const sw=(a,lbl,on)=>`<label class="sw"><input type="checkbox" data-a="${a}" ${on?'checked':''}> ${lbl}</label>`;
+  return {t:'Zet om in trade',h:seg+kop+`<div class="row" style="gap:12px;margin-bottom:8px">${sw('kandAlle','alle pairs en richtingen van die dag',M.alle)}${sw('kandErna','ook de dag erna',M.erna)}</div>
+    ${!JR.klaar?'<div class="empty">Journal laden…</div>':lijst.length?`<div class="kands">${lijst.map(rij).join('')}</div><div class="enote">Vink één of meer trades aan (bijkopen of herinstap). De journal neemt playbook, grade, lagen, afbeeldingen en links over, alleen in velden die nog leeg zijn.</div>`
+      :`<div class="empty"><b>Nog geen passende trade. Sync eerst in de journal, of koppel later vanuit de Afsluiting of de Log.</b>${M.alle&&M.erna?'':'Of zet hierboven een schakelaar aan.'}<div class="row"><button class="btn" data-a="laterKoppelen">Markeer als genomen, koppel later</button></div></div>`}`,
+    f:`<button class="btn" data-a="close">Annuleer</button>${lijst.length?`<button class="btn pri" data-a="koppel">${M.sel.length?'Koppel '+M.sel.length+' trade'+(M.sel.length===1?'':'s'):'Bewaar (geen trades)'}</button>`:''}`};
+}
+// De gekoppelde trades in een opengeklapt scenario, met ontkoppelen.
+function gekoppeldH(s){const ids=s.trades||[];
+  const per=new Map(JR.trades.map(t=>[String(t.id),t]));
+  return `<div><div class="row between"><h3>Trades</h3><button class="btn sm ghost" data-a="convert" data-s="${esc(s.id)}" data-v="koppel">Koppel trade</button></div>
+    ${ids.length?ids.map(id=>{const t=per.get(String(id));return `<div class="ktrade">${t?tradeKort(t):`<span class="faint">trade ${esc(id)} staat niet (meer) in je journal</span>`}<button class="x" data-a="ontkoppel" data-s="${esc(s.id)}" data-v="${esc(String(id))}" aria-label="ontkoppel" title="ontkoppelen">×</button></div>`;}).join('')
+      :`<div class="faint small">${s.status==='genomen'?'Genomen, nog niet gekoppeld: koppel de trade zodra hij in je journal staat.':'Nog geen trade gekoppeld.'}</div>`}</div>`;}
+
 // ───────────────────────── Dag ─────────────────────────
 function dagView(){
   const id=vandaag(),d=dayOf(id);
@@ -624,8 +683,9 @@ function scenRij(s,x,d,c){
           ${klaar?`<div class="callout ok" style="margin-top:8px"><b>Klaar om te nemen</b> · ${c.risk[s.grade]?pctTxt(c.risk[s.grade])+' risico':s.grade+': niet traden'}</div>`:''}</div>
         <dl class="kv"><dt>Stop</dt><dd class="num">${esc(s.stop)||'–'}</dd><dt>TP's</dt><dd class="num">${s.tps.map(esc).join(' · ')||'–'}</dd>${s.note?`<dt>Notitie</dt><dd>${esc(s.note)}</dd>`:''}</dl>
         <div><h3 style="margin-bottom:6px">Afbeeldingen en links</h3>${mediaBlok(s.media,{doel:'scen:'+s.id,hint:1})}</div>
+        ${gekoppeldH(s)}
       </div>
-      <div class="stack"><div class="row between"><h3>Edge</h3>${s.pb&&JR.klaar?relH(e):''}</div>${s.pb?edgeTabel(e)+edgeNoten(e):'<div class="enote">Kies een playbook (Bewerk), dan vergelijkt het plan dit scenario met je trades.</div>'}
+      <div class="stack"><div class="row between"><h3>Edge</h3>${s.pb&&JR.klaar?relH(e):''}</div>${s.pb?edgeTabel(e)+(e.live.n||e.bt.n?edgeNoten(e):''):'<div class="enote">Kies een playbook (Bewerk), dan vergelijkt het plan dit scenario met je trades.</div>'}
         <div class="st" role="group" aria-label="status">${STATUS.map(([k,l])=>`<button class="${k} ${s.status===k?'on':''}" data-a="status" data-s="${esc(s.id)}" data-v="${k}" title="${l}">${STATUS_KORT[k]}</button>`).join('')}</div>
         <div class="row"><button class="btn sm pri" data-a="convert" data-s="${esc(s.id)}">Zet om in trade</button><button class="btn sm" data-a="editScen" data-s="${esc(s.id)}">Bewerk</button></div>
       </div>
@@ -667,6 +727,8 @@ function modalH(){
       <h3 style="margin:16px 0 6px">Pre-flight (hooguit 3)</h3>${s.pre.map((p,i)=>`<input class="inp" id="set-pre-${i}" style="margin-bottom:6px" data-f="draft.pre.${i}" value="${esc(p)}" placeholder="bv. ${['Nieuws gecheckt','Goed geslapen','Limieten in orde'][i]}" aria-label="pre-flight ${i+1}">`).join('')}
       <div class="enote">Een herinnering, geen slot: niets wordt geblokkeerd. Laat een regel leeg voor minder vinkjes.</div>`;
     f=`<button class="btn" data-a="close">Annuleer</button><button class="btn pri" data-a="saveSettings">Bewaar</button>`;
+  } else if(M.type==='convert'){
+    const o=convertH(M);t=o.t;h=o.h;f=o.f;
   } else if(M.type==='picker'){
     const L=laagRef(M.path),T=tags(),has=g=>L.setups.includes(g)||L.confirmations.includes(g);t='Tags · '+L.tf;
     const grp=(lbl,list)=>`<h3 style="margin:4px 0 6px">${lbl}</h3><div class="row" style="gap:6px;margin-bottom:12px">${list.map(g=>`<button class="chip pick ${has(g)?'on':''}" data-a="pick" data-v="${esc(g)}">${has(g)?'✓ ':''}${esc(g)}</button>`).join('')||'<span class="faint small">Nog geen tags.</span>'}</div>`;
@@ -751,6 +813,18 @@ const A={
   off:el=>{const x=el.dataset.s&&scenOf(el.dataset.s),d=x?x.s:draftOf();if(!d)return;const k=el.dataset.v,i=d.off.indexOf(k);if(i>=0)d.off.splice(i,1);else d.off.push(k);if(x)save();},
   toggle:el=>{const id=el.dataset.s;S.open[id]=!S.open[id];
     if(S.open[id])S.laatstOpen=id;else if(S.laatstOpen===id)S.laatstOpen=Object.keys(S.open).filter(k=>S.open[k]).pop()||'';},
+  convert:el=>{const x=scenOf(el.dataset.s);if(!x)return;S.modal={type:'convert',sid:x.s.id,weg:el.dataset.v==='hand'?'hand':'koppel',alle:false,erna:false,sel:(x.s.trades||[]).map(String)};},
+  convWeg:el=>{S.modal.weg=el.dataset.v;},
+  kandAlle:()=>{S.modal.alle=!S.modal.alle;},
+  kandErna:()=>{S.modal.erna=!S.modal.erna;},
+  kandSel:el=>{const M=S.modal,k=el.dataset.v,i=M.sel.indexOf(k);if(i>=0)M.sel.splice(i,1);else M.sel.push(k);},
+  koppel:()=>{const M=S.modal,x=scenOf(M.sid);if(!x)return;const per=new Map(JR.trades.map(t=>[String(t.id),t.id])),bz=bezetting();
+    const ids=M.sel.filter(k=>!(bz.get(k)&&bz.get(k).id!==x.s.id)).map(k=>per.has(k)?per.get(k):(x.s.trades||[]).find(i=>String(i)===k)).filter(v=>v!=null);
+    x.s.trades=ids;if(ids.length&&x.s.status!=='genomen'){x.s.status='genomen';x.s.statusTs=Date.now();}
+    S.modal=null;save();toast(ids.length?'Gekoppeld: '+ids.length+' trade'+(ids.length===1?'':'s')+'. De journal vult playbook, grade, lagen en beeld aan waar die nog leeg zijn.':'Geen trades meer gekoppeld.');},
+  laterKoppelen:()=>{const x=scenOf(S.modal.sid);if(!x)return;x.s.status='genomen';x.s.statusTs=Date.now();S.modal=null;save();toast('Op genomen gezet. Koppel de trade later vanuit de Afsluiting of de Log.');},
+  naarFormulier:()=>{const x=scenOf(S.modal.sid);if(!x)return;lsSet(LS.handoff,{sid:x.s.id,day:x.day.id,ts:Date.now()});location.href=JOURNAL_URL;return false;},
+  ontkoppel:el=>{const x=scenOf(el.dataset.s);if(!x)return;x.s.trades=(x.s.trades||[]).filter(i=>String(i)!==el.dataset.v);save();},
   lb:el=>{S.modal={type:'lb',doel:el.dataset.d,id:el.dataset.v};},
   lbStap:el=>{const x=doelMedia(S.modal.doel);if(!x)return;const L=x.m.imgs,i=L.indexOf(S.modal.id);if(L.length)S.modal.id=L[(i+ +el.dataset.v+L.length)%L.length];},
   rmBeeld:el=>{const x=doelMedia(el.dataset.d),id=el.dataset.v;if(!x)return;x.m.imgs=x.m.imgs.filter(i=>i!==id);imgWis(id);save();if(S.modal&&S.modal.type==='lb')S.modal=null;},
@@ -809,6 +883,7 @@ themaVanJournal();
 render();
 laadJournal();
 laadBeelden();
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')laadJournal();});
 </script>
 </body>
 </html>

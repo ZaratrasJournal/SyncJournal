@@ -3296,52 +3296,116 @@ function tradeTimeline(t){
 //    kolommen meer maar leven in een detail-rij die openklapt onder de rij waar je op hovert.
 //    Rij 1 hergebruikt tradeTimeline (zelfde component als het Review-detail); daarna
 //    risk-stats, notities en meta — elk blok verschijnt alleen als het veld gevuld is.
-/* ═══ Koppeling met TradingPlan (/plan, zelfde origin) — 25-09-2026 ═══
-   TradingPlan schrijft poort-records in localStorage tp2:trades; wij lezen ze alleen.
-   Een journal-trade hoort bij het poort-record met hetzelfde symbool en dezelfde richting
-   dat het kortst vóór de open-tijd ligt, binnen het venster uit tp2:cfg (standaard 45 min).
-   De match staat op de trade als planRef (id van het record) of "none" (bewust losgekoppeld);
-   een bestaande planRef wordt nooit overschreven, dus een handmatige correctie blijft staan. */
-const PLAN_LS={trades:'tp2:trades',plans:'tp2:plans',cfg:'tp2:cfg',pb:'tp2:pb',meta:'tp2:meta'};
-function planLoad(){const g=(k,fb)=>{try{const v=JSON.parse(localStorage.getItem(k)||'null');return v==null?fb:v;}catch(e){return fb;}};return {trades:g(PLAN_LS.trades,[]),plans:g(PLAN_LS.plans,{}),cfg:g(PLAN_LS.cfg,{})};}
-function planHas(){try{return /"taken":true/.test(localStorage.getItem(PLAN_LS.trades)||'');}catch(e){return false;}}
-function planRecOf(t){if(!t||!t.planRef||t.planRef==='none')return null;return planLoad().trades.find(x=>x&&String(x.id)===String(t.planRef))||null;}
-function planMatch(){
-  const P=planLoad();if(!P.trades.length)return 0;
-  const venster=((+P.cfg.matchMin>0?+P.cfg.matchMin:45))*60000;
-  const bezet=new Set(T.filter(t=>t&&t.planRef&&t.planRef!=='none').map(t=>String(t.planRef)));
-  let n=0;
-  T.filter(t=>t&&!t.planRef&&+t.openTime>0).sort((a,b)=>(+a.openTime)-(+b.openTime)).forEach(t=>{
-    const base=pairBase(t.pair).toUpperCase(),dir=String(t.dir||'').toLowerCase(),open=+t.openTime;
-    let best=null,bestD=Infinity;
-    P.trades.forEach(r=>{if(!r||!r.taken||bezet.has(String(r.id)))return;if(String(r.sym||'').toUpperCase()!==base||String(r.dir||'').toLowerCase()!==dir)return;
-      const d=open-(+new Date(r.ts));if(!(d>=0&&d<=venster))return;if(d<bestD){bestD=d;best=r;}});
-    if(best){t.planRef=String(best.id);planAdopt(t,best);bezet.add(String(best.id));n++;}
-  });
-  if(n)persist();return n;
-}
-/* De poort weet welk playbook je nam en welk setup-type: een gesyncte trade heeft die velden
-   niet. Alleen lege velden vullen; wat je zelf koos blijft staan. */
-function planAdopt(t,r){if(!t||!r)return;if(!t.setup&&r.pb&&PBOOK[r.pb])t.setup=r.pb;if(!t.grade&&/^[ABC]$/.test(String(r.setup||'')))t.grade=r.setup;}
-function planSetRef(id,ref){const t=T.find(x=>x.id===id);if(!t)return;t.planRef=ref;if(ref!=='none')planAdopt(t,planRecOf(t));persist();closeForm();render();toast(ref==='none'?'Losgekoppeld van de poort':'Poort-beoordeling gekoppeld','ok');}
-function planExec(r){return r.exec==='VOL'?'volle size':r.exec==='HALF'?'halve size':'regelbreuk';}
+/* ═══ Koppeling met TradingPlan v3 (/plan, zelfde origin) — 27-10-2026 ═══
+   Het plan bewaart weken, dagen en scenario's in localStorage tp3:plans. Welke trades bij een scenario horen
+   staat in Scenario.trades (de bron); de journal zet op de trade planRef = "s:<scenario-id>" als spiegel, of
+   "none" als je hem bewust buiten plan zet. Er wordt nooit automatisch gekoppeld (besluit 23): je kiest zelf,
+   in het plan of hier in de trade-details. tp2:* (plan v2, de poort) wordt niet meer gelezen; een oude
+   numerieke planRef telt niet. */
+const TP3={plans:'tp3:plans',cfg:'tp3:cfg',handoff:'tp3:handoff'};
+const HANDOFF_MAX_MS=10*60000;   // "Zet om in trade" in het plan: na 10 minuten is de overdracht verlopen
+const planObj=o=>!!o&&typeof o==='object'&&!Array.isArray(o);
+function planLoad(){const g=(k,fb)=>{try{const v=JSON.parse(localStorage.getItem(k)||'null');return v==null?fb:v;}catch(e){return fb;}};
+  const p=g(TP3.plans,{});return {plans:{v:1,weeks:planObj(p.weeks)?p.weeks:{},days:planObj(p.days)?p.days:{}},cfg:planObj(g(TP3.cfg,{}))?g(TP3.cfg,{}):{}};}
+function planSave(plans){try{localStorage.setItem(TP3.plans,JSON.stringify(plans));return true;}catch(e){toast('Het plan kon niet worden opgeslagen (opslag vol?)','err');return false;}}
+function planScen(sid,P){P=P||planLoad();for(const day of Object.values(P.plans.days)){const s=(day&&day.scenarios||[]).find(x=>x&&x.id===sid);
+  if(s){if(!Array.isArray(s.trades))s.trades=[];return {s,day,week:P.plans.weeks[day.week]||null};}}return null;}
+const planScenRef=t=>t&&typeof t.planRef==='string'&&t.planRef.startsWith('s:')?t.planRef.slice(2):null;
+// De dag van een trade zoals het plan hem ziet: de Amsterdamse kalenderdag van het open-moment.
+const PLAN_AMS=new Intl.DateTimeFormat('sv-SE',{timeZone:'Europe/Amsterdam',year:'numeric',month:'2-digit',day:'2-digit'});
+const planTradeDag=t=>+t.openTime>0?PLAN_AMS.format(new Date(+t.openTime)):String(t.date||'');
+const planDagErvoor=d=>{const x=new Date(d+'T12:00:00Z');x.setUTCDate(x.getUTCDate()-1);return x.toISOString().slice(0,10);};
+// "78150,5" → 78150.5 · "75.020,5" → 75020.5 · leeg of onleesbaar → 0
+function planGetal(v){let s=String(v==null?'':v).trim().replace(/\s/g,'');if(/,/.test(s)&&/\./.test(s))s=s.replace(/\./g,'');s=s.replace(',','.');const n=parseFloat(s);return isFinite(n)?n:0;}
+/* De lagen van een scenario als lagen op een trade: week + dag + de eigen entry-laag, hetzelfde tijdframe
+   samengevoegd, top-down. Uitgezette geërfde tags (s.off, "<tf>|<tag>") gaan niet mee, van de entry-laag
+   alleen de afgevinkte confirmations. Lege geërfde lagen vallen weg; de entry-laag blijft (die is het
+   tijdframe van de trade). Dezelfde regel staat in tradingplan/tradingplan.html (zetOmLagen). */
+function planLagen(s,day,week){const per=new Map(),uit=new Set(s.off||[]),uniq=a=>[...new Set(a)];
+  const add=(L,erft,entry)=>{if(!L||!L.tf)return;const tf=String(L.tf);const k=tf.toLowerCase();
+    const set=(L.setups||[]).filter(g=>!erft||!uit.has(tf+'|'+g)),conf=(L.confirmations||[]).filter(g=>(!erft||!uit.has(tf+'|'+g))&&(!entry||(s.checked||[]).includes(g)));
+    if(erft&&!set.length&&!conf.length&&!L.bias)return;
+    const o=per.get(k)||{timeframe:tf,bias:'',setups:[],confirmations:[]};if(L.bias)o.bias=L.bias;o.setups=uniq([...o.setups,...set]);o.confirmations=uniq([...o.confirmations,...conf]);per.set(k,o);};
+  ((week&&week.layers)||[]).forEach(L=>add(L,true,false));((day&&day.layers)||[]).forEach(L=>add(L,true,false));add(s.entry,false,true);
+  return sorteerLagen([...per.values()]);}
+/* Neemt over wat het scenario weet, alleen in velden die nog leeg zijn: wat je zelf invulde of wat de exchange
+   gaf blijft staan. Geeft de afbeelding-id's terug die nog als screenshot moeten komen (die staan async in
+   IndexedDB tp3). */
+function planAdopt(t,s,day,week){if(!t||!s)return [];
+  if(!t.setup&&s.pb&&PBOOK[s.pb])t.setup=s.pb;
+  if(!gradeOf(t)&&/^[ABC]$/.test(String(s.grade||'')))t.grade=s.grade;
+  if(!(t.layers||[]).length){const L=planLagen(s,day,week);if(L.length){t.layers=L;if(!t.timeframe)t.timeframe=entryTF(L,'');}}
+  const links=(((s.media||{}).links)||[]).filter(isHttpUrl).slice(0,8);if(!(t.tvLinks||[]).length&&links.length)t.tvLinks=links;
+  return (t.screenshots||[]).length?[]:(((s.media||{}).imgs)||[]).slice(0,8);}
+// Afbeeldingen van het plan (IndexedDB tp3/img, waarde = data:image-URL), in dezelfde volgorde.
+function planBeelden(ids){if(!ids||!ids.length)return Promise.resolve([]);
+  return new Promise(res=>{let r;try{r=indexedDB.open('tp3',1);}catch(e){return res([]);}
+    r.onupgradeneeded=()=>r.result.createObjectStore('img');r.onerror=()=>res([]);
+    r.onsuccess=()=>{const db=r.result,out=[];try{const tx=db.transaction('img','readonly'),st=tx.objectStore('img');
+      ids.forEach((id,i)=>{const q=st.get(id);q.onsuccess=()=>{out[i]=q.result;};});
+      tx.oncomplete=()=>{db.close();res(out.filter(u=>BEELD_SCHEMA.test(String(u||''))));};tx.onerror=()=>{db.close();res([]);};}catch(e){db.close();res([]);}};});}
+async function planScreens(paren){for(const [t,ids] of paren){const u=await planBeelden(ids);if(u.length&&!(t.screenshots||[]).length)t.screenshots=u;}if(paren.length){persist();render();}}
+/* Spiegel Scenario.trades op de trades: planRef zetten of wissen. Een nieuwe koppeling neemt eenmalig de lege
+   velden over (planAdopt). Draait bij het laden, als dit tabblad zichtbaar wordt, en als het plan in een ander
+   tabblad tp3:plans wijzigt. */
+function planSync(){const P=planLoad(),bij=new Map();let n=0;const later=[];
+  Object.values(P.plans.days).forEach(day=>((day&&day.scenarios)||[]).forEach(s=>((s&&s.trades)||[]).forEach(id=>{if(!bij.has(String(id)))bij.set(String(id),{s,day});})));
+  T.forEach(t=>{if(!t)return;const x=bij.get(String(t.id));
+    if(x){const ref='s:'+x.s.id;if(t.planRef!==ref){t.planRef=ref;const ids=planAdopt(t,x.s,x.day,P.plans.weeks[x.day.week]||null);if(ids.length)later.push([t,ids]);n++;}}
+    else if(planScenRef(t)){delete t.planRef;n++;}});
+  if(n){persist();render();}
+  if(later.length)planScreens(later);
+  return n;}
+// Scenario's van de dag van de trade en de dag ervoor (wie de volgende ochtend klikt, zoekt gisteren).
+function planDagScens(t,P){const d=planTradeDag(t),dagen=[d,planDagErvoor(d)];
+  return dagen.flatMap(id=>{const day=P.plans.days[id];return ((day&&day.scenarios)||[]).map(s=>({s,day}));});}
+function planSetRef(id,ref){const t=T.find(x=>x.id===id);if(!t)return;const P=planLoad();
+  Object.values(P.plans.days).forEach(d=>((d&&d.scenarios)||[]).forEach(s=>{if(Array.isArray(s.trades))s.trades=s.trades.filter(x=>String(x)!==String(id));}));   // hooguit één scenario per trade
+  const x=ref&&ref.startsWith('s:')?planScen(ref.slice(2),P):null;
+  if(x){x.s.trades.push(t.id);if(x.s.status==='open'){x.s.status='genomen';x.s.statusTs=Date.now();}}
+  planSave(P.plans);
+  const nieuw=x&&t.planRef!==ref;t.planRef=x?ref:'none';
+  const ids=nieuw?planAdopt(t,x.s,x.day,x.week):[];
+  persist();closeForm();render();toast(x?'Gekoppeld aan scenario "'+(x.s.title||'zonder titel')+'"':'Bewust buiten plan gezet','ok');
+  if(ids.length)planScreens([[t,ids]]);}
 function planLine(t){
-  if(!planHas())return '';
-  const r=planRecOf(t),knop=`<a href="#" onclick="event.stopPropagation();planPick(${t.id});return false" style="color:var(--accent);font-weight:600">${r?'andere / geen':'koppelen'}</a>`;
-  if(!r)return `<div class="tline" style="margin-top:6px"><span class="tlc">🚪 ${t.planRef==='none'?'Bewust zonder poort':'Geen poort-beoordeling gevonden'}</span><span class="tla">·</span><span class="tlc">${knop}</span></div>`;
-  const n=Object.keys(r.checks||{}).length,af=n-(r.missing||[]).length;
-  return `<div class="tline" style="margin-top:6px"><span class="tlc">🚪 Poort · ${r.pb?esc(r.pb)+' · ':''}<b>${r.setup?esc(r.setup)+'-setup':'setup onbekend'}</b>${r.pbGrade&&r.setup&&r.pbGrade!==r.setup?' <span class="hint">(playbook '+esc(r.pbGrade)+')</span>':''} · ${af}/${n} · ${planExec(r)}${r.risk?' · '+String(r.risk).replace('.',',')+'%':''}${(r.missing||[]).length?' · mist: '+esc(r.missing.join(', ')):''}</span><span class="tla">·</span><span class="tlc">${knop}</span></div>`;
+  const P=planLoad(),sid=planScenRef(t),x=sid&&planScen(sid,P);
+  const knop=lbl=>`<a href="#" onclick="event.stopPropagation();planPick(${t.id});return false" style="color:var(--accent);font-weight:600">${lbl}</a>`;
+  const rij=(txt,lbl)=>`<div class="tline" style="margin-top:6px"><span class="tlc">📋 ${txt}</span><span class="tla">·</span><span class="tlc">${knop(lbl)}</span></div>`;
+  if(x)return rij(`Scenario: <b>${esc(x.s.title||'zonder titel')}</b>${x.s.grade?' · '+esc(x.s.grade):''}`,'wijzig');
+  if(t.planRef==='none')return rij('Bewust buiten plan','wijzig');
+  return planDagScens(t,P).length?rij('Geen scenario','Koppel aan scenario'):'';
 }
 function planPick(id){
-  const t=T.find(x=>x.id===id);if(!t)return;const P=planLoad(),dag=t.date;
-  const lijst=P.trades.filter(r=>r&&r.taken&&r.day===dag).sort((a,b)=>a.ts<b.ts?-1:1);
-  document.getElementById('modal').innerHTML=`<div class="mhead"><h3>Welke poort-beoordeling hoort bij deze trade?</h3><button class="xbtn" onclick="closeForm()">×</button></div>
-    <div class="mbody"><div class="field full"><div class="hint">${esc(t.pair)} ${esc(t.dir)} · ${esc(dag)} ${esc(t.time||'')}. Poort-records van die dag uit TradingPlan:</div></div>
-    ${lijst.length?lijst.map(r=>`<div class="field full"><button class="btn" style="width:100%;justify-content:flex-start" onclick="planSetRef(${id},'${esc(String(r.id))}')">${String(t.planRef)===String(r.id)?'✓ ':''}${ts2time(+new Date(r.ts))} · ${esc(r.sym)} ${esc(r.dir)} · ${r.setup?esc(r.setup)+'-setup':'setup onbekend'} · ${planExec(r)}</button></div>`).join(''):`<div class="field full">${emptyState('poort-dag','regel')}</div>`}
-    <div class="field full"><button class="btn" style="width:100%;justify-content:flex-start" onclick="planSetRef(${id},'none')">${t.planRef==='none'?'✓ ':''}Geen — deze trade ging bewust zonder poort</button></div></div>
+  const t=T.find(x=>x.id===id);if(!t)return;const P=planLoad(),lijst=planDagScens(t,P),dag=planTradeDag(t);
+  document.getElementById('modal').innerHTML=`<div class="mhead"><h3>Bij welk scenario hoort deze trade?</h3><button class="xbtn" onclick="closeForm()">×</button></div>
+    <div class="mbody"><div class="field full"><div class="hint">${esc(t.pair)} ${esc(t.dir)} · ${esc(dag)} ${esc(t.time||'')}. Scenario's van die dag en de dag ervoor uit TradingPlan:</div></div>
+    ${lijst.length?lijst.map(({s,day})=>`<div class="field full"><button class="btn" style="width:100%;justify-content:flex-start" onclick="planSetRef(${id},'s:${esc(String(s.id)).replace(/'/g,'')}')">${t.planRef==='s:'+s.id?'✓ ':''}${esc(day.id===dag?'':day.id+' · ')}${esc(s.title||'zonder titel')} · ${esc(s.pair||'')} ${esc(s.dir||'')}${s.grade?' · '+esc(s.grade):''}</button></div>`).join(''):`<div class="field full">${emptyState('plan-dag','regel')}</div>`}
+    <div class="field full"><button class="btn" style="width:100%;justify-content:flex-start" onclick="planSetRef(${id},'none')">${t.planRef==='none'?'✓ ':''}Geen scenario — bewust buiten plan</button></div></div>
     <div class="mfoot"><span style="flex:1"></span><button class="btn" onclick="closeForm()">Sluiten</button></div>`;
   document.getElementById('modal').classList.add('on');document.getElementById('scrim').classList.add('on');modalKind='plan';formDirty=false;
 }
+/* "Zet om in trade" → "Handmatig, backtest of paper" in het plan: tp3:handoff {sid, day, ts}. De journal opent
+   dan het tradeformulier, vooraf ingevuld uit het scenario; opslaan koppelt de nieuwe trade (planNaHandoff). */
+// Back-upsleutels van plan v2; taak 8 van het v3-bouwplan zet de back-up om naar tp3:*.
+const PLAN_LS={trades:'tp2:trades',plans:'tp2:plans',cfg:'tp2:cfg',pb:'tp2:pb',meta:'tp2:meta'};
+let formPlanSid='';
+async function planVanHandoff(){let h=null;try{h=JSON.parse(localStorage.getItem(TP3.handoff)||'null');}catch(e){}
+  if(!h)return false;try{localStorage.removeItem(TP3.handoff);}catch(e){}
+  if(!(Date.now()-(+h.ts||0)<=HANDOFF_MAX_MS))return false;
+  const x=planScen(String(h.sid||''));if(!x)return false;const s=x.s,base=String(s.pair||'').toUpperCase();
+  const eerder=T.filter(t=>t&&pairBase(t.pair).toUpperCase()===base).sort((a,b)=>(+b.openTime||0)-(+a.openTime||0))[0];   // je eigen schrijfwijze van het pair
+  const L=planLagen(s,x.day,x.week),tps=(s.tps||[]).map(planGetal).filter(v=>v>0);
+  const shots=await planBeelden((((s.media||{}).imgs)||[]).slice(0,8));
+  openForm(null,{pair:eerder?eerder.pair:base+'/USDT',dir:s.dir==='short'?'short':'long',setup:PBOOK[s.pb]?s.pb:'',grade:/^[ABC]$/.test(String(s.grade||''))?s.grade:'',
+    stop:planGetal(s.stop)||'',date:x.day.id,layers:L,timeframe:entryTF(L,''),tps:tps.map(price=>({price,pct:100/tps.length})),
+    screenshots:shots,tvLinks:(((s.media||{}).links)||[]).filter(isHttpUrl).slice(0,8)});
+  formPlanSid=s.id;return true;}
+// Na opslaan van het vooraf ingevulde formulier: de nieuwe trade hoort bij het scenario.
+function planNaHandoff(t){const P=planLoad(),x=planScen(formPlanSid,P);if(!x||!t)return;
+  Object.values(P.plans.days).forEach(d=>((d&&d.scenarios)||[]).forEach(s=>{if(Array.isArray(s.trades))s.trades=s.trades.filter(i=>String(i)!==String(t.id));}));
+  x.s.trades.push(t.id);x.s.status=t.kind==='gemist'?'gemist':'genomen';x.s.statusTs=Date.now();
+  if(planSave(P.plans))t.planRef='s:'+x.s.id;}
 /* De badge "zonder poort" in de tradelijst is weg (Denny 26-09-2026): op alles van vóór de
    TradingPlan-koppeling was het ruis. De poort-regel in de trade-details en het blok in
    Tendencies → Plan blijven. */
@@ -3729,7 +3793,7 @@ const EMPTY={
   'cross-none':['🔀','Geen trade heeft allebei','Beide dimensies hebben waarden, maar nooit op dezelfde trade: er is geen enkele combinatie om te tonen. Kies hierboven een andere combinatie.','Toon Dag × Richting',"STATE.tendRow='dow';STATE.tendCol='dir';render()"],
   'plan-leeg':['🚦','Nog geen poort-beoordelingen','Hier zie je wat je TradingPlan-poort over je trades zegt: uitvoering, setup-type, gemiste checks en of je je plan volgde. Beoordeel je volgende trade in Plan vóór je klikt; de journal koppelt hem daarna vanzelf aan de trade van de exchange.','Open Plan',"go('plan')"],
   'plan-snede':['','Nog niets in deze snede','dit vult zich met trades die aan een poort-beoordeling gekoppeld zijn.','',''],
-  'poort-dag':['','Geen poort-records op deze dag','beoordeel je trade in Plan vóór je klikt, dan kun je hem hier koppelen.','',''],
+  'plan-dag':['','Geen scenario\'s op deze dag','maak er een in Plan → Dag, of zet de trade hieronder bewust buiten plan.','',''],
   'saldo-leeg':['','Nog geen saldo','koppel een exchange of voeg een handmatig account toe.','Naar Accounts','naarAccounts()'],
   /* funded mode (Instellingen → Funded) */
   'funded-leeg':['🏁','Nog geen challenges','Voeg je eerste challenge toe met firm, naam en grootte. Of importeer een CSV in Instellingen → Accounts en kies daar je challenge.','Challenge toevoegen',"fdOpenForm('challenge')",'+ Funded account',"fdOpenForm('funded')"],
@@ -4237,13 +4301,13 @@ function planObservatie(rows,tot,wat){
   return `<div class="plan-obs">${wat} <b>${esc(worst.label)}</b> ${worst.avg<0?'kosten je':'leveren'} <b class="${cls(worst.avg)}">${f(worst.avg)}</b> per trade (${worst.n} trades); <b>${esc(best.label)}</b> ${best.avg<0?'kosten':'leveren'} <b class="${cls(best.avg)}">${f(best.avg)}</b> (${best.n}). Verschil ${f(best.avg-worst.avg)}.</div>`;
 }
 function planTendencies(){
-  const P=planLoad(),recs=new Map(P.trades.map(r=>[String(r.id),r]));
+  const P=planLoad(),recs=new Map((P.trades||[]).map(r=>[String(r.id),r]));
   const alle=CLOSED.filter(t=>isLive(t));
   const gek=alle.filter(t=>t.planRef&&t.planRef!=='none'&&recs.has(String(t.planRef)));
   const zonder=alle.filter(t=>!(t.planRef&&t.planRef!=='none'&&recs.has(String(t.planRef))));
   const sub=`<div class="subtabs" id="tendTabs">${TEND_TABS.map(([k,l])=>`<button data-t="${k}" class="${STATE.tend===k?'on':''}">${l}</button>`).join('')}</div>`;
   const kop=(t,d)=>`<div class="phead"><h3>${t}</h3><span class="sp"></span><span class="chip">${d}</span></div>`;
-  if(!P.trades.length)return `${filterBar()}<div class="panel">${kop('Plan','TradingPlan')}<div class="pbody">${sub}</div>${emptyState('plan-leeg','in')}</div>`;
+  if(!(P.trades||[]).length)return `${filterBar()}<div class="panel">${kop('Plan','TradingPlan')}<div class="pbody">${sub}</div>${emptyState('plan-leeg','in')}</div>`;
   const rec=t=>recs.get(String(t.planRef));
   const tot=gek.length;
   const drempel=tot<PLAN_MIN?`<div class="plan-weinig">📊 Nog te weinig data voor conclusies: <b>${tot} van ${PLAN_MIN}</b> gekoppelde trades. De cijfers hieronder zijn nog toeval, geen patroon.</div>`:'';
@@ -10452,7 +10516,6 @@ async function syncExchange(exId,opts){
   }
   await fxSync();               // verse trades krijgen de koers van hun handelsdag mee
   await refreshBalance(exId);   // saldo ververst mee met elke sync
-  try{planMatch();}catch(e){}   // nieuwe trades aan hun poort-beoordeling koppelen
   CONNS[exId]={...(CONNS[exId]||c),lastSync:Date.now()};persistConns();   // de adapter kan de koppeling onderweg hebben bijgewerkt
   logSync(exId,opts&&opts.auto,mapped.length,null);
   }catch(e){CONN_ERR[exId]=(e&&e.message)||String(e);logSync(exId,opts&&opts.auto,null,CONN_ERR[exId]);syncStip();if(!quiet)toast('✗ Sync '+ad.name+' mislukt: '+CONN_ERR[exId],'err');return -1;}
@@ -11082,7 +11145,7 @@ function sjImportCsvText(text,forExchange){
     t.id=(t.source||'csv')+'_csv_'+[t.pair,t.direction,t.date,t.time,t.entry,t.exit,t.pnl,t.positionSize,t.closeTime||''].join('|');}});
   // wat in de prullenbak zit komt niet terug (verwijderd blijft verwijderd) — zeg dat apart, mét de uitweg
   let inBak=csvTrades.filter(t=>TRASH.some(x=>String(x.srcId||'')===String(t.id))).length;
-  const mapped=importTjClosed(csvTrades);try{planMatch();}catch(e){}
+  const mapped=importTjClosed(csvTrades);
   // per exchange uit het bestand, niet uit wat nieuw was: bij een herimport is niets nieuw, maar de opruiming moet wel draaien
   let opgeruimd=0,viaKoppeling=0,nieuwSamen=0;
   const nieuwIds=new Set(mapped.map(t=>t.id)),bestandIds=new Set(csvTrades.map(t=>String(t.id)));
@@ -11718,8 +11781,8 @@ function updFormVis(){
   btn.hidden=n===0;
   btn.textContent=formMoreOpen?'▴ Minder velden':`▾ Meer velden (${n})`;
 }
-function openForm(id){
-  const t=id!=null?T.find(x=>x.id===id):{date:localDateISO(),time:'',exchange:(MANUAL[0]||relevantExchanges()[0]||{id:'blofin'}).id,pair:'BTC/USDC',dir:'long',setup:'',session:'London',timeframe:'15m',market:'Trending',grade:'',entry:'',stop:'',tp:'',exit:'',size:'',leverage:10,fees:'',risk:'',rrPlanned:'',pnl:'',r:'',status:'closed',emotion:'',mistake:'',emotions:[],mistakes:[],layers:[],tags:[],notes:'',lessons:'',durationMin:'',mae:'',mfe:''};
+function openForm(id,pre){   // pre: velden voor een nieuwe trade (vooraf ingevuld vanuit TradingPlan)
+  const t=id!=null?T.find(x=>x.id===id):Object.assign({date:localDateISO(),time:'',exchange:(MANUAL[0]||relevantExchanges()[0]||{id:'blofin'}).id,pair:'BTC/USDC',dir:'long',setup:'',session:'London',timeframe:'15m',market:'Trending',grade:'',entry:'',stop:'',tp:'',exit:'',size:'',leverage:10,fees:'',risk:'',rrPlanned:'',pnl:'',r:'',status:'closed',emotion:'',mistake:'',emotions:[],mistakes:[],layers:[],tags:[],notes:'',lessons:'',durationMin:'',mae:'',mfe:''},pre||{});
   formSizeUnit=(t.sizeUnit==='asset'&&t.qty>0)?'asset':'usd';formPbTouched=false;formPbLayersJson='';formCloseAuto={t:'',d:'',s:'',sPrev:'',p:'',e:''};
   formLocked=isGesynct(t);const RO=formLocked?' readonly':'';formFxVast=+t.fx||0;
   const stopVast=stopVanExchange(t);   // the exchange's stop is locked, like entry
@@ -11849,7 +11912,7 @@ function naarHandmatigAccount(){
 }
 function closeForm(){
   if((modalKind==='trade'||modalKind==='pb')&&formDirty){ if(!confirm('Je hebt niet-opgeslagen wijzigingen. Sluiten zonder opslaan?'))return; }
-  formDirty=false;modalKind='';
+  formDirty=false;modalKind='';formPlanSid='';
   try{_migPre=null;}catch(e){} // geannuleerde migratie-preview mag nooit alsnog toegepast kunnen worden (migApply pakt zijn kopie vóór het sluiten)
   if(document.activeElement&&document.activeElement.closest&&document.activeElement.closest('#modal'))document.activeElement.blur();document.getElementById('modal').classList.remove('on','smal');document.getElementById('scrim').classList.remove('on'); }
 function submitForm(id){
@@ -11923,7 +11986,8 @@ function submitForm(id){
     if(oldO&&Math.floor(oldO/60000)===Math.floor((+t.openTime||0)/60000))t.openTime=String(oldO);
     if(oldC&&Math.floor(oldC/60000)===Math.floor((+t.closeTime||0)/60000))t.closeTime=String(oldC);}
   else{T.unshift({id:nextId(),rating:0,checks:[],screenshots:[],...obj});}
-  formDirty=false;persist();try{planMatch();}catch(e){}closeForm();render();toast(id!=null&&id!=='null'?'✓ Trade bijgewerkt':'✓ Trade toegevoegd','ok');
+  if(formPlanSid&&(id==null||id==='null')){try{planNaHandoff(T[0]);}catch(e){}}   // vooraf ingevuld vanuit een scenario: koppel de nieuwe trade
+  formDirty=false;persist();closeForm();render();toast(id!=null&&id!=='null'?'✓ Trade bijgewerkt':'✓ Trade toegevoegd','ok');
 }
 
 /* ═══ Welkom-/landing-scherm (getemperde template-stijl) ═══ */
@@ -12040,14 +12104,17 @@ async function boot(){
   try{EXCHANGES.filter(e=>e.deprecated&&CONNS[e.id]).forEach(e=>{delete CONNS[e.id];});persistConns();}catch(e){}
   try{await runMigrations();}catch(e){}   // geversioneerde schema-updates (snapshot + rollback ingebouwd)
   selfCheck();                            // grove corruptie → herstel-aanbod
-  try{planMatch();}catch(e){}             // TradingPlan-koppeling: trades zonder planRef aan hun poort-record
-  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'){try{if(planMatch())render();}catch(e){}}});
+  try{planSync();}catch(e){}              // TradingPlan: planRef volgens Scenario.trades (nooit automatisch koppelen)
+  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'){try{planSync();}catch(e){}}});
+  // Het plan koppelt in een ander tabblad: alleen het zichtbare journal-tabblad werkt bij, zodat twee
+  // journal-tabbladen niet tegelijk schrijven (de rest volgt bij visibilitychange).
+  window.addEventListener('storage',e=>{if(e&&e.key===TP3.plans&&document.visibilityState==='visible'){try{planSync();}catch(x){}}});
   try{fxSync().then(ok=>{if(ok)render();});}catch(e){}   // koersen ophalen en per trade vastzetten
   try{startAutoSync();}catch(e){}         // exchange auto-sync-timer (doet niets zolang SYNC.auto uit staat)
   render();
   // Eerste-start: migratie-aanbod (oude tj_-data) heeft voorrang op het welkomscherm.
   if((T||[]).length===0 && !DB.load('migrated_from_tj',null) && !DB.load('mig_declined',false) && TJMigrate.detect()){ migOffer(); }
-  else { landingAankomst(); }
+  else { landingAankomst(); planVanHandoff().catch(()=>{}); }   // "Zet om in trade" uit het plan
 }
 /* ═══ Aansluiting op de landingspagina (index.html) — 24-09-2026 ═══
    De landing is de voordeur; dit is alles wat de journal daarvan hoeft te weten.
