@@ -184,3 +184,17 @@ Een journal-playbook (`sj_db` → `kv` → `pbook`) heeft `criteria: [{text, man
   Besluit: de geen-kandidaten-regel noemt wat ontbreekt ("Geen XRP long op di 27-10 in je journal") en de volgende stap
   ("Sync eerst in de journal, of zet "Alle pairs en richtingen" aan"); de oude zin over "later koppelen vanuit Afsluiting
   of Log" is weg, de tekstlink eronder doet dat — kost niets.
+- **Punt 5 klaar** — `plan3-dag` 64/64 (21 nieuwe checks: op Dag met een opengeklapt scenario, het scenario-formulier,
+  Week, Afsluiting en Log per scherm alleen Inter/Plus Jakarta Sans, alleen de vier groottes, één stijl voor labels in
+  hoofdletters, getallen met tabular-nums; en geen `--fn`/IBM Plex Mono/`monospace` meer in het bestand), alle
+  plan3-specs groen. IBM Plex Mono is uit de font-link en `--fn` is weg; elke `font-family:var(--fn)` geschrapt.
+  `font-variant-numeric:tabular-nums` op `body`, zodat elk getal (edge-regel, tabel, KPI, stop, TP's, tijden) rechte
+  kolommen houdt. Typeschaal als tokens `--t1` 12 · `--t2` 13,5 · `--t3` 15 · `--t4` 19; elke `font-size` staat op een
+  van die vier (10,5–12 → 12; 12,5–14 → 13,5; 15–17 → 15; 18–22 → 19). Labels in hoofdletters (kaartkoppen, TRIGGER,
+  tabelkoppen, LONG/SHORT, STERKSTE, ENTRY en de formulierlabels) delen één regel: 12px, 700, `.05em`.
+  Besluit: formulierlabels (`label.f`: Levels, No-trade, Titel, Playbook …) zijn nu ook hoofdletter-labels, zodat
+  "Lagen" en "Levels" op het Week-scherm er hetzelfde uitzien — kost niets.
+  Besluit: de rijnamen van de edge-tabel zijn kort ("Gem. R", "Expectancy") met de uitleg als tooltip — met de grotere
+  tekst liep "Gem. R (= expectancy in R)" over drie regels — kost als het fout is: de uitleg is alleen nog via hover te zien.
+  Besluit: de vijf statusknoppen staan op 390 breed in drie kolommen (twee rijen) — met 12px viel "Genomen" weg achter
+  een "…" — kost niets.

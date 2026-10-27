@@ -139,6 +139,26 @@ const SCEN = [
   const ws = await H.vierShots(p, 'week', async q => { await q.click('nav.tabs [data-v="week"]'); await q.waitForTimeout(100); });
   ok('week 390 breed: geen horizontale scroll', !ws.licht && !ws.donker);
 
+  console.log('--- één lettertype en één typeschaal (polish punt 5) ---');
+  const SCHAAL = [12, 13.5, 15, 19];
+  const typo = () => p.evaluate(() => { const fam = new Set(), maat = new Set(), hoofd = new Set(), nums = [];
+    document.querySelectorAll('body *:not(svg):not(svg *):not(script):not(style)').forEach(e => { if (!e.getClientRects().length) return; const c = getComputedStyle(e);
+      const tekst = [...e.childNodes].some(n => n.nodeType === 3 && n.textContent.trim()) || /^(INPUT|TEXTAREA|SELECT|BUTTON)$/.test(e.tagName);
+      if (!tekst) return; fam.add(c.fontFamily); maat.add(parseFloat(c.fontSize));
+      if (c.textTransform === 'uppercase') hoofd.add([c.fontSize, c.fontWeight, c.letterSpacing].join(' '));
+      if (/\d/.test(e.textContent) && c.fontVariantNumeric !== 'tabular-nums') nums.push(e.className || e.tagName); });
+    return { fam: [...fam], maat: [...maat].sort((a, b) => a - b), hoofd: [...hoofd], nums: [...new Set(nums)].slice(0, 5) }; });
+  const schermen = [['Dag (opengeklapt)', async () => { await p.click('nav.tabs [data-v="dag"]'); await p.click('.ritem .rrow'); }], ['scenario-formulier', async () => { await p.click('[data-a="newScen"]'); }],
+    ['Week', async () => { await p.click('#modal [data-a="close"]'); await p.click('nav.tabs [data-v="week"]'); }], ['Afsluiting', async () => { await p.click('nav.tabs [data-v="afsluiting"]'); }], ['Log', async () => { await p.click('nav.tabs [data-v="log"]'); }]];
+  await p.evaluate(() => { const P = __tp3.load(); const d = P.days[Object.keys(P.days).sort().pop()]; if (d) { const id = __tp3.vandaag(); if (!P.days[id]) { P.days[id] = Object.assign({}, d, { id, week: __tp3.isoWeek(id) }); } __tp3.save(P); } });
+  await p.reload({ waitUntil: 'load' }); await p.waitForTimeout(400);
+  for (const [naam, ga] of schermen) { await ga(); await p.waitForTimeout(150); const t = await typo();
+    ok(`${naam}: alleen Inter (geen monospace)`, t.fam.every(f => /^Inter\b/.test(f) || /^"?Plus Jakarta Sans/.test(f)) && !t.fam.some(f => /mono|Plex/i.test(f)), JSON.stringify(t.fam));
+    ok(`${naam}: hooguit vier groottes (12 / 13,5 / 15 / 19)`, t.maat.every(m => SCHAAL.includes(m)), JSON.stringify(t.maat));
+    ok(`${naam}: labels in hoofdletters één stijl`, t.hoofd.length <= 1, JSON.stringify(t.hoofd));
+    ok(`${naam}: getallen met tabular-nums`, !t.nums.length, JSON.stringify(t.nums)); }
+  ok('geen --fn of IBM Plex Mono meer in het plan', !/--fn|IBM Plex Mono|monospace/.test(require('fs').readFileSync(require('path').join(H.ROOT, 'tradingplan/tradingplan.html'), 'utf8')));
+
   ok('geen JS-errors', errs.length === 0, errs.slice(0, 3).join(' | '));
   await b.close(); srv.close(); process.exit(T.eind());
 })();
