@@ -32,10 +32,24 @@ async function vierShots(p, naam, voor) {
   const scroll = {};
   for (const donker of [false, true]) for (const w of [1280, 390]) {
     await p.setViewportSize({ width: w, height: 900 }); await thema(p, donker); if (voor) await voor(p);
-    await p.screenshot({ path: path.join(SHOTS, `${naam}-${donker ? 'donker' : 'licht'}-${w}.png`), fullPage: true });
+    await p.evaluate(() => window.scrollTo(0, 0)); await p.screenshot({ path: path.join(SHOTS, `${naam}-${donker ? 'donker' : 'licht'}-${w}.png`), fullPage: true });
     if (w === 390) scroll[donker ? 'donker' : 'licht'] = await p.evaluate(() => document.documentElement.scrollWidth > 391);
   }
   await p.setViewportSize({ width: 1280, height: 900 }); await thema(p, false);
   return scroll;
 }
-module.exports = { server, alleenLokaal, teller, SHOTS, thema, vierShots, ROOT };
+// Zet trades en playbooks in IndexedDB sj_db/kv zoals de journal ze bewaart (versie 1, store 'kv'). Draait in de
+// pagina en wacht tot de schrijfactie klaar is; herlaad daarna, dan leest het plan ze bij het starten.
+async function zaaiJournal(p, data) {
+  await p.evaluate(d => new Promise((res, rej) => { const r = indexedDB.open('sj_db', 1); r.onupgradeneeded = () => r.result.createObjectStore('kv');
+    r.onerror = () => rej(r.error); r.onsuccess = () => { const tx = r.result.transaction('kv', 'readwrite'); Object.entries(d).forEach(([k, v]) => tx.objectStore('kv').put(v, k)); tx.oncomplete = () => { r.result.close(); res(); }; tx.onerror = () => rej(tx.error); }; }), data);
+}
+const FIXTURE = () => JSON.parse(fs.readFileSync(path.join(ROOT, 'tests/fixtures/plan3-trades.json'), 'utf8')).trades;
+// Playbooks bij de fixture, in de vorm van de journal (layers top-down, laatste = entry).
+const PBOOK = {
+  'Trend-pullback': { name: 'Trend-pullback', layers: [{ timeframe: '4H', bias: 'Bullish', setups: ['MSB'], confirmations: [] }, { timeframe: '15M', bias: 'Bullish', setups: ['BOS'], confirmations: ['FVG', 'OB'] }], defaultGrade: 'A', status: 'active' },
+  'London SFP': { name: 'London SFP', layers: [{ timeframe: '15M', bias: '', setups: [], confirmations: ['FVG'] }], defaultGrade: 'B', status: 'active' },
+  'Backtestbaas': { name: 'Backtestbaas', layers: [{ timeframe: '1H', bias: '', setups: ['BOS'], confirmations: [] }], defaultGrade: 'B', status: 'active' },
+  'Klein': { name: 'Klein', layers: [], defaultGrade: 'C', status: 'active' },
+};
+module.exports = { server, alleenLokaal, teller, SHOTS, thema, vierShots, ROOT, zaaiJournal, FIXTURE, PBOOK };

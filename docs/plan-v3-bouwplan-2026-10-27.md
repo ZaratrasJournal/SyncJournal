@@ -306,3 +306,14 @@ week} | null`; `planSync()` (bij laden en bij een `storage`-event op `tp3:plans`
   kost niets.
   Besluit: zonder playbook geen edge (n = 0, "kies een playbook"); het spec-woord is "zelfde playbook" — kost als
   het fout is: scenario's zonder playbook vergelijken met trades zonder setup, één regel in `edge`.
+- **Taak 4 klaar** — `node tests/plan3-dag.spec.js` → 39/39 (en basis/lagen/edge groen). Cockpit: trechter Week →
+  Vandaag → Levels → Pre-flight → Mentaal, rechts de rangschikking met één regel per scenario; opengeklapt met
+  afvinklijst, voortgangsbalk, "Klaar om te nemen · x% risico", edge-tabel, status in één tik. Week-scherm: lagen,
+  levels, no-trade, focus. Op 390 px klapt de trechter in tot pre-flight en mentaal.
+  Besluit: "Gisteren overnemen" pakt de laatste eerdere dag met een plan (heet dan "Overnemen van di 26-10" als dat
+  niet gisteren is), en neemt van de open scenario's de links mee maar niet de afbeeldingen — een gedeeld plaatje
+  zou bij weghalen op de ene dag ook op de andere verdwijnen — kost als het fout is: plaatjes kopiëren in IndexedDB.
+  Besluit: zonder confirmations op de entry-laag is een scenario nooit "klaar om te nemen" — de groene staat
+  betekent "alles afgevinkt", en er is dan niets af te vinken — kost niets.
+  Besluit: verwachting in geld als `+$7,69`: trades staan in dollars in de journal; de eurowisseling van de journal
+  (`fxView`) zit niet in het plan — kost als het fout is: leden met euro zien hier dollars.
