@@ -26,7 +26,8 @@ function teller(naam) {
 }
 const SHOTS = path.join(ROOT, 'tests', 'screenshots', 'plan3'); fs.mkdirSync(SHOTS, { recursive: true });
 // Zet het thema zoals de journal het bewaart en herlaad.
-async function thema(p, donker) { await p.evaluate(t => localStorage.setItem('sj_state', JSON.stringify({ theme: t })), donker ? 'dark' : 'light'); await p.reload({ waitUntil: 'load' }); await p.waitForTimeout(250); }
+// De rest van sj_state (valuta, privacy) blijft staan: de journal in hetzelfde tabblad-geheel leest hem ook.
+async function thema(p, donker) { await p.evaluate(t => { let s = {}; try { s = JSON.parse(localStorage.getItem('sj_state') || '{}') || {}; } catch (e) {} s.theme = t; localStorage.setItem('sj_state', JSON.stringify(s)); }, donker ? 'dark' : 'light'); await p.reload({ waitUntil: 'load' }); await p.waitForTimeout(250); }
 // Screenshots licht/donker × 1280/390; geeft per breedte terug of er horizontaal gescrold kan worden.
 async function vierShots(p, naam, voor) {
   const scroll = {};

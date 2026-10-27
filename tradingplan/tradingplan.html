@@ -261,6 +261,8 @@ button.schip{cursor:pointer}
   .modal{border-radius:14px 14px 0 0;max-height:88vh}
 }
 </style>
+<!-- Cloudflare Web Analytics: zonder cookies, alleen op syncjournal.nl (niet op de werkversie of lokaal). Zie privacy.html. -->
+<script>(function(){if(location.hostname!=='syncjournal.nl')return;var s=document.createElement('script');s.type='module';s.src='https://static.cloudflareinsights.com/beacon.min.js';s.setAttribute('data-cf-beacon','{"token": "c6001fe65da94f1eb99df53cad11d8d5"}');document.head.appendChild(s);})();</script>
 </head>
 <body>
 <header class="top"><div class="top-in" id="top"></div></header>
@@ -753,7 +755,8 @@ function weekView(){
 }
 // ───────────────────────── blok D: plan tegenover resultaat (besluiten 5, 19, 21) ─────────────────────────
 // Binnen plan = live, gesloten trades die in Scenario.trades staan; buiten plan = live, gesloten trades in de periode
-// die bij geen enkel scenario horen. Backtest en paper tellen hier niet: het gaat om echt geld.
+// die bij geen enkel scenario horen, vanaf je eerste plan-dag (zoals Tendencies → Plan in de journal: trades van vóór
+// je met plannen begon zeggen niets over je plan). Backtest en paper tellen hier niet: het gaat om echt geld.
 function blokD(days,inPeriode,trades){
   trades=trades||JR.trades;const sc=days.flatMap(d=>(d.scenarios||[]));const tel=k=>sc.filter(s=>s.status===k).length;
   const gen=tel('genomen'),gem=tel('gemist'),niet=tel('niet'),ong=tel('ongeldig'),open=tel('open'),beslist=sc.length-open,uit=gen+gem;
@@ -761,10 +764,11 @@ function blokD(days,inPeriode,trades){
   const gekoppeld=new Set(alleScenarios().flatMap(({s})=>(s.trades||[]).map(String)));
   const echt=t=>isLive(t)&&t.status==='closed';
   const binnen=sc.filter(s=>s.status!=='gemist').flatMap(van).filter(echt);
-  const inP=inPeriode||(()=>{const d=new Set(days.map(x=>x.id));return dag=>d.has(dag);})();
-  const buiten=trades.filter(t=>echt(t)&&inP(tradeDag(t))&&!gekoppeld.has(String(t.id)));
+  const inP=inPeriode||(()=>{const d=new Set(days.map(x=>x.id));return dag=>d.has(dag);})(),eerste=Object.keys(PL.days).sort()[0]||'';
+  const buiten=trades.filter(t=>echt(t)&&tradeDag(t)>=eerste&&inP(tradeDag(t))&&!gekoppeld.has(String(t.id)));
   const som=l=>{const R=aggR(l);return {n:l.length,R:R.sum,rN:R.n,gemR:R.n?R.sum/R.n:null,pnl:l.reduce((a,t)=>a+(+t.pnl||0),0)};};
   return {n:sc.length,beslist,open,gen,gem,niet,ong,uit,pUit:beslist?uit/beslist*100:null,pNeem:uit?gen/uit*100:null,
+    gekoppeld:sc.filter(s=>s.status==='genomen').flatMap(van).length,
     gemR:aggR(sc.filter(s=>s.status==='gemist').flatMap(van)),binnen:som(binnen),buiten:som(buiten)};}
 const geldHeel=v=>(v<0?'−$':'+$')+Math.round(Math.abs(v));
 function scoreZin(b){
@@ -799,14 +803,14 @@ function afslView(){
   ${open.length?`<div class="card pad afopen" style="margin-bottom:12px"><h3 style="margin-bottom:8px">Nog open · sluit af met één tik</h3>${open.map(s=>`<div class="afrij" data-s="${esc(s.id)}"><div class="row" style="gap:6px;margin-bottom:5px">${metaH(s)}<b>${esc(s.title)}</b></div>${statusKnoppen(s,true)}</div>`).join('')}</div>`:''}
   <div class="three">
     <div class="card kpi"><div class="s">Uitgekomen</div><div class="v">${b.uit}<span class="faint" style="font-size:14px"> / ${b.n}</span></div><div class="s">${b.open?b.open+' nog open':'alles afgesloten'}</div></div>
-    <div class="card kpi"><div class="s">Genomen</div><div class="v pos">${b.gen}</div><div class="s">${b.binnen.n?b.binnen.n+' trade'+(b.binnen.n===1?'':'s')+' gekoppeld':'nog geen trade gekoppeld'}</div></div>
+    <div class="card kpi"><div class="s">Genomen</div><div class="v pos">${b.gen}</div><div class="s">${b.gekoppeld?b.gekoppeld+' trade'+(b.gekoppeld===1?'':'s')+' gekoppeld':'nog geen trade gekoppeld'}</div></div>
     <div class="card kpi"><div class="s">Gemist</div><div class="v" style="color:var(--amber)">${b.gem}</div><div class="s">${b.gemR.n?'samen '+rS(b.gemR.sum):b.gem?'R onbekend':'niets laten liggen'}</div></div>
   </div>
   <div class="two" style="margin-top:12px">
     <div class="card pad"><h3 style="margin-bottom:8px">Scenario's</h3><div class="daychips">${scen.map(s=>schipH(s,{act:'afslEdit'})).join('')}</div>
       ${scen.some(s=>s.id===S.afslEdit)?(()=>{const s=scen.find(x=>x.id===S.afslEdit);return `<div style="margin-top:10px">${statusKnoppen(s,true)}<div class="row" style="margin-top:6px"><button class="btn sm" data-a="convert" data-s="${esc(s.id)}" data-v="koppel">Koppel trade</button></div></div>`;})():''}
       ${scen.filter(s=>s.status==='genomen'&&!(s.trades||[]).length).map(s=>`<div class="enote">“${esc(s.title)}” is genomen maar nog niet gekoppeld · <button class="btn sm ghost" data-a="convert" data-s="${esc(s.id)}" data-v="koppel">koppel</button></div>`).join('')}</div>
-    <div class="card pad"><h3 style="margin-bottom:8px">Binnen plan tegenover buiten plan</h3>${planVsH(b)}<div class="enote" style="font-size:12.5px">${buitenZin(b,wanneer)}</div></div>
+    <div class="card pad"><h3 style="margin-bottom:8px">Binnen plan tegenover buiten plan · live</h3>${planVsH(b)}<div class="enote" style="font-size:12.5px">${buitenZin(b,wanneer)}</div></div>
   </div>`}
   <div class="card pad" style="margin-top:12px"><label class="f" for="af-les">Les van ${isWeek?'deze week':dag.id===vandaag()?'vandaag':datumKort(dag.id)}</label>
     <textarea class="inp" id="af-les" data-f="${isWeek?'les.week.'+wid:'les.dag.'+dag.id}" placeholder="Eén ding dat je ${isWeek?'volgende week':'morgen'} anders doet.">${esc(les)}</textarea></div>`;
@@ -826,7 +830,7 @@ function logView(){
   return kop+`<div class="card score">${scoreZin(b)}
       <div class="bar2" title="genomen · gemist · niet uitgekomen · ongeldig">${[['gen','var(--green)'],['gem','var(--amber)'],['niet','var(--faint)'],['ong','var(--red)']].map(([k,c])=>`<i style="width:${b.beslist?b[k]/b.beslist*100:0}%;background:${c}"></i>`).join('')}</div>
       <div class="row small muted" style="margin-top:6px;gap:12px"><span><span class="sdot genomen"></span> genomen ${b.gen}</span><span><span class="sdot gemist"></span> gemist ${b.gem}</span><span><span class="sdot niet"></span> niet uit ${b.niet}</span><span><span class="sdot ongeldig"></span> ongeldig ${b.ong}</span>${b.open?`<span><span class="sdot open"></span> open ${b.open}</span>`:''}</div></div>
-    <div class="card pad" style="margin-top:12px"><h3 style="margin-bottom:8px">Binnen plan tegenover buiten plan · ${MAANDEN[+maand.slice(5)-1]}</h3>${planVsH(bm)}<div class="enote" style="font-size:12.5px">${buitenZin(bm,'deze maand')}</div></div>
+    <div class="card pad" style="margin-top:12px"><h3 style="margin-bottom:8px">Binnen plan tegenover buiten plan · live · ${MAANDEN[+maand.slice(5)-1]}</h3>${planVsH(bm)}<div class="enote" style="font-size:12.5px">${buitenZin(bm,'deze maand')}</div></div>
     <div class="filters">${sel('status',STATUS,'Alle statussen')}${sel('pb',pbs.map(p=>[p,p]),'Alle playbooks')}${sel('dir',[['long','Long'],['short','Short']],'Long en short')}
       ${F.status||F.pb||F.dir?'<button class="btn sm ghost" data-a="logReset">Wis filters</button>':''}</div>
     <div class="card">${rows.length?rows.map(({d,sc})=>{const nb=buiten(d);return `<div class="dayrow" data-d="${esc(d.id)}">

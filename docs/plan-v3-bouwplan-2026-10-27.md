@@ -390,3 +390,16 @@ week} | null`; `planSync()` (bij laden en bij een `storage`-event op `tp3:plans`
   Besluit: het back-upblok krijgt de plaatjes uit een geheugenkopie (`PLAN_IMG`, geladen bij starten, zichtbaar
   worden en elke plan-wijziging), omdat `snapshotPayload` synchroon is — kost als het fout is: een export in de eerste
   tel na het openen kan de plaatjes missen (het plan zelf houdt ze).
+- **Taak 9 klaar** — `node tests/plan3-doorloop.spec.js --docs` → 20/20: demo-dataset in de journal, een week, twee
+  dagen (dag 1 Scalp, dag 2 Daytrade, met een vaste Playwright-klok), vijf scenario's, een geplakt plaatje en een
+  TradingView-link, één scenario gekoppeld aan een journal-trade en één via het vooraf ingevulde formulier (paper),
+  beide dagen afgesloten. 33 screenshots in `docs/plan-v3-bouw-screenshots/` (JPEG, licht/donker, 1280/390). De doorloop
+  staat ook in de release-poort en draait met `DEMO_DATASET=<pad>` tegen een vers v3-demobestand (20/20).
+  Gevonden en opgelost tijdens de doorloop: de Log telde "buiten plan" vanaf het begin van de maand, Tendencies vanaf
+  de eerste plan-dag — nu allebei vanaf de eerste plan-dag; de Afsluiting zei "nog geen trade gekoppeld" bij een
+  gekoppelde paper-trade.
+  Besluit: het Cloudflare-meetscript (alleen actief op syncjournal.nl, uit de huidige `site/plan/index.html`) staat
+  nu ook in `tradingplan/tradingplan.html`, zodat de release-kopie een gewone `cp` is; `web-analytics` is met die
+  kopie (in een losse map) 16/16 — kost niets.
+  Poort: `═══ SyncJournal-suite (release-poort): 164/167 specs groen · 5.4 min ═══` (rood alleen de drie specs die de
+  wisselkoers-API nodig hebben, zie taak 8). Rapport: [plan-v3-bouw-rapport.md](plan-v3-bouw-rapport.md).
