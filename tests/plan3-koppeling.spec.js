@@ -109,7 +109,7 @@ const sc = o => Object.assign({ pair: 'BTC', dir: 'long', grade: 'B', trigger: '
 
   console.log('--- geen automatische koppeling ---');
   await p.evaluate(DAG => { const P = __tp3.load(); P.days[DAG].scenarios.push({ id: 's_ada', title: 'ADA long', pair: 'ADA', dir: 'long', pb: '', grade: 'B', trigger: '', invalid: '', entry: { tf: '15M', bias: '', setups: [], confirmations: [] }, off: [], checked: [], stop: '', tps: [], media: { imgs: [], links: [] }, note: '', status: 'open', statusTs: null, trades: [] }); __tp3.save(P); }, DAG);
-  await j.evaluate(t => { T.push(t); persist(); }, tr(108, 'ADA/USDT', 'long', DAG, 11, 30));
+  await j.evaluate(async t => { T.push(t); persist(); await IDB.set('trades', T); }, tr(108, 'ADA/USDT', 'long', DAG, 11, 30));   // wacht op IndexedDB vóór het herladen
   await j.reload({ waitUntil: 'load' }); await j.waitForTimeout(1200);
   ok('ADA long op dezelfde dag blijft los, het open scenario blijft open', !(await jt(108)).planRef && (await scen('s_ada')).status === 'open' && (await scen('s_ada')).trades.length === 0);
 
