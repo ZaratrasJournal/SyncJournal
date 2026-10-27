@@ -38,6 +38,7 @@ const sc = (id, status, o) => Object.assign({ id, title: 'Scenario ' + id.slice(
   await p.click('nav.tabs [data-v="log"]'); await p.waitForTimeout(150);
   const score = await p.evaluate(() => document.querySelector('#app .score').innerText.replace(/\s+/g, ' '));
   ok('"Je scenario\'s komen in 63% uit. Daarvan neem je 60%. De gemiste waren samen +3,5R."', /Je scenario's komen in 63% uit\. Daarvan neem je 60%\. De gemiste waren samen \+3,5R\./.test(score), score);
+  ok('voorspel-score op accent-soft', await p.evaluate(() => { const e = document.createElement('i'); e.style.backgroundColor = 'var(--accent-soft)'; document.body.appendChild(e); const c = getComputedStyle(e).backgroundColor; e.remove(); return getComputedStyle(document.querySelector('#app .score')).backgroundColor === c; }));
   ok('bovenaan de Log', await p.evaluate(() => { const s = document.querySelector('#app .score'), d = document.querySelector('#app .dayrow'); return s && d && s.getBoundingClientRect().top < d.getBoundingClientRect().top; }));
   ok('ongeldig telt als niet uitgekomen (besluit 19): 8 beslist, 2 open niet', await p.evaluate(() => { const x = __tp3.blokD(Object.values(__tp3.load().days)); return x.beslist === 8 && x.open === 2 && x.uit === 5 && x.niet === 2 && x.ong === 1; }));
 
@@ -81,6 +82,12 @@ const sc = (id, status, o) => Object.assign({ id, title: 'Scenario ' + id.slice(
   ok('één tik sluit af: s_6 gemist', (await scen('s_6')).status === 'gemist' && (await p.evaluate(() => [...document.querySelectorAll('#app .afopen [data-s]')].map(x => x.dataset.s).filter((v, i, a) => a.indexOf(v) === i))).join() === 's_7');
   await p.fill('#af-les', 'Twee trades buiten plan na de eerste winst. Niet doen.'); await p.waitForTimeout(80);
   ok('les van de dag bewaard', await p.evaluate(V => /buiten plan na de eerste winst/.test(__tp3.load().days[V].les), V));
+  const kpi = await p.evaluate(() => { const tok = v => { const e = document.createElement('i'); e.style.backgroundColor = `var(${v})`; document.body.appendChild(e); const c = getComputedStyle(e).backgroundColor; e.remove(); return c; };
+    const bg = s => { const e = document.querySelector(s); return e && getComputedStyle(e).backgroundColor; };
+    return { k: [...document.querySelectorAll('#app .kpi')].map(e => getComputedStyle(e).backgroundColor), binnen: bg('#app .ebox.binnen'), buiten: bg('#app .ebox.buiten'),
+      t: ['--accent-soft', '--green-soft', '--amber-soft', '--red-soft'].map(tok) }; });
+  ok('KPI-blokken op -soft in hun kleur: uitgekomen accent, genomen groen, gemist amber', kpi.k.join('|') === kpi.t.slice(0, 3).join('|'), JSON.stringify(kpi.k));
+  ok('binnen plan op groen-soft, buiten plan (verlies) op rood-soft', kpi.binnen === kpi.t[1] && kpi.buiten === kpi.t[3], JSON.stringify([kpi.binnen, kpi.buiten]));
   await H.vierShots(p, 'afsluiting', async q => { await q.click('nav.tabs [data-v="afsluiting"]'); await q.waitForTimeout(150); });
   await p.click('nav.tabs [data-v="afsluiting"]'); await p.click('#app [data-a="afslDag"][data-v="' + G + '"]'); await p.waitForTimeout(100);
   t = await tekst();

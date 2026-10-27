@@ -100,6 +100,25 @@ const SCEN = [
   ok('390 breed: geen horizontale scroll', await p.evaluate(() => document.documentElement.scrollWidth <= 391));
   await p.setViewportSize({ width: 1280, height: 900 });
 
+  console.log('--- kleur (polish punt 2) ---');
+  await p.evaluate(() => { const P = __tp3.load(); P.days[__tp3.vandaag()].scenarios.find(s => s.id === 's_c').status = 'gemist'; __tp3.save(P); __tp3.render(); });
+  const kl = await p.evaluate(() => {
+    const tok = (v, prop = 'color') => { const e = document.createElement('i'); e.style[prop] = `var(${v})`; document.body.appendChild(e); const c = getComputedStyle(e)[prop]; e.remove(); return c; };
+    const rand = id => getComputedStyle(document.querySelector(`.ritem[data-s="${id}"]`)).borderLeftColor, br = id => parseFloat(getComputedStyle(document.querySelector(`.ritem[data-s="${id}"]`)).borderLeftWidth);
+    const tabs = []; for (const k of ['week', 'dag', 'afsluiting', 'log']) { document.querySelector(`nav.tabs [data-v="${k}"]`).click(); tabs.push(getComputedStyle(document.querySelector('nav.tabs button.on')).borderBottomColor); }
+    document.querySelector('nav.tabs [data-v="dag"]').click();
+    const stip = [...document.querySelectorAll('.funnel .fstep')].map(f => getComputedStyle(f, '::after').borderTopColor);
+    const g = document.querySelector('.ritem[data-s="s_tp"] .grade');
+    return { open: rand('s_bb'), gemist: rand('s_c'), breed: br('s_bb'), accent: tok('--accent'), amber: tok('--amber'), green: tok('--green'), greenSoft: tok('--green-soft', 'backgroundColor'),
+      grade: [getComputedStyle(g).color, getComputedStyle(g).backgroundColor], tabs, stip,
+      palet: ['--accent', '--green', '--red', '--amber', '--teal', '--violet', '--pink'].map(v => tok(v)) };
+  });
+  ok('scenario-kaart: linkerrand naar status (open accent, gemist amber), minstens 3px', kl.open === kl.accent && kl.gemist === kl.amber && kl.breed >= 3, JSON.stringify([kl.open, kl.gemist, kl.breed]));
+  ok('grade A: groene badge', kl.grade[0] === kl.green && kl.grade[1] === kl.greenSoft, JSON.stringify(kl.grade));
+  ok('trechter: elke stap een eigen kleur uit de palette', kl.stip.length === 5 && new Set(kl.stip).size === 5 && kl.stip.every(c => kl.palet.includes(c)), JSON.stringify(kl.stip));
+  ok('actieve tab: een eigen gekleurde onderstreping per tab', new Set(kl.tabs).size === 4 && kl.tabs.every(c => kl.palet.includes(c)), JSON.stringify(kl.tabs));
+  await p.evaluate(() => { const P = __tp3.load(); P.days[__tp3.vandaag()].scenarios.find(s => s.id === 's_c').status = 'open'; __tp3.save(P); __tp3.render(); });
+
   console.log('--- (g) gisteren overnemen ---');
   await p.evaluate(() => { const id = __tp3.vandaag(), P = __tp3.load(), d = P.days[id], gis = new Date(id + 'T12:00:00Z'); gis.setUTCDate(gis.getUTCDate() - 1); const gid = gis.toISOString().slice(0, 10);
     d.id = gid; d.week = __tp3.isoWeek(gid); d.scenarios.forEach((s, i) => { s.status = i === 1 ? 'genomen' : 'open'; s.checked = ['FVG']; }); P.days[gid] = d; delete P.days[id]; __tp3.save(P); });

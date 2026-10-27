@@ -137,3 +137,17 @@ Een journal-playbook (`sj_db` → `kv` → `pbook`) heeft `criteria: [{text, man
   kost niets.
   Besluit: tekst op een gevulde bias-knop is `--surface` in plaats van `--on-accent` (wit): wit op het lichte groen
   van het donkere thema is slecht leesbaar — kost niets.
+- **Punt 2 klaar** — `plan3-dag` 43/43 (4 nieuwe kleur-checks), `plan3-afsluiting` 32/32 (3 nieuwe), alle plan3-specs
+  groen, doorloop 20/20. Scenario-kaart: linkerrand 4px naar status (open accent, genomen groen, gemist amber, niet
+  muted, ongeldig rood); de grade-badge had al zijn kleur (A groen, B accent, C amber). Trechter: gevulde stip per stap
+  (Week violet, Vandaag accent, Levels amber, Pre-flight groen, Mentaal pink). Tabs: een stip en een onderstreping in
+  hun eigen kleur (Week violet, Dag accent, Afsluiting groen, Log amber). KPI's in de Afsluiting op `-soft` (uitgekomen
+  accent, genomen groen, gemist amber), het getal in de volle kleur; binnen plan op groen-soft, buiten plan op
+  rood-soft bij verlies en anders amber-soft (Afsluiting én Log); voorspel-score op accent-soft met de percentages in
+  accent. Week-kaarten hebben een kleurstip bij hun label, in dezelfde kleur als in de trechter (levels amber).
+  Het × van een laag staat nu op dezelfde regel als de laag (eigen kolom) in plaats van op een losse regel.
+  Besluit: mentaal-knoppen gekleurd naar de score (1–2 rood, 3 amber, 4–5 groen) — een 2 in accent-blauw zei niets,
+  en het past bij "Overweeg alleen A-setups" bij ≤ 2 — kost niets.
+  Besluit: de staptitels in de trechter blijven grijs, alleen de stip kleurt — amber of pink als 11px-tekst op wit is
+  te zwak (contrast < 4,5) — kost niets.
+  Besluit: op 390 breed staan de Log-filtergroepen onder elkaar, zonder scheidingslijn — kost niets.
