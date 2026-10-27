@@ -16,6 +16,20 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v1.20] — 2026-10-27
+
+### Toegevoegd
+- **TradingPlan: de criteria van je playbook bij een scenario.** Kies je een playbook, dan zie je meteen de criteria, met de verplichte gemarkeerd. In het scenario vink je ze af. "Klaar om te nemen" vraagt nu ook alle verplichte criteria. "Niet als …" staat erbij als waarschuwing.
+
+### Gewijzigd
+- TradingPlan: tags in dezelfde kleuren als in je journal (setup, confirmation, tijdframe), met een duidelijk verschil tussen eigen, geërfde en uitgezette tags. Bias-knoppen in groen en rood.
+- TradingPlan: meer kleur. Scenario's hebben een kleurrand naar hun status, de stappen en tabs hebben een eigen kleur, en binnen en buiten plan staan in hun kleur.
+- TradingPlan: wat je weekplan al heeft, staat niet nog eens leeg in je dagplan. Per tijdframe is er één rij, met de week-tags gedimd erin.
+- TradingPlan: het venster om een trade te koppelen is rustiger: tik de trade of trades aan en koppel.
+- TradingPlan: één lettertype, ook voor getallen.
+
+---
+
 ## [v1.19] — 2026-10-27
 
 ### Toegevoegd
