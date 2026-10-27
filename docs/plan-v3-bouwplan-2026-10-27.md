@@ -350,3 +350,16 @@ week} | null`; `planSync()` (bij laden en bij een `storage`-event op `tp3:plans`
   Let op (niet opgelost): `nextId()` in de journal neemt het hoogste id + 1. Wis je de trade met het hoogste id
   definitief, dan krijgt de volgende nieuwe trade hetzelfde id, en hoort die bij het scenario van de gewiste.
   `PLAN_LS` (v2) staat er tijdelijk nog voor de back-up; taak 8 zet die om.
+- **Taak 7 klaar** — `node tests/plan3-afsluiting.spec.js` → 28/28 (alle plan3-specs groen). Afsluiting (dag/week)
+  opent op vandaag of de laatste dag met plan, open scenario's apart met één tik, KPI's, binnen/buiten plan in R én
+  geld ("Buiten plan kostte je vandaag −3,0R (−$30)"), koppelen van een genomen scenario zonder trade, één les. Log:
+  voorspel-score bovenaan (besluit 19, exact getest: 63% · 60% · +3,5R), binnen/buiten deze maand, dagen nieuwste
+  boven met status-chips (R van de gekoppelde trades), status en koppelen achteraf, filters met "niets in beeld".
+  Besluit: binnen/buiten plan telt alleen live, gesloten trades (backtest en paper zijn geen echt geld); "binnen" =
+  in `Scenario.trades` van een scenario in de periode, "buiten" = in de periode geopend en bij geen enkel scenario —
+  kost als het fout is: een filter op `kind` in `blokD`.
+  Besluit: "de gemiste waren samen +Z R" komt uit gemiste trades (`kind: 'gemist'`) die je aan een gemist scenario
+  koppelt; zonder zo'n trade zegt de zin dat de R nog onbekend is — een scenario heeft geen entry, dus het plan kan
+  die R niet zelf uitrekenen — kost als het fout is: een veld "R als genomen" op het scenario.
+  Besluit: een weekles zonder weekplan maakt het weekplan aan (het model heeft `Week.les`) — kost niets.
+  Besluit: bedragen in de blok-D-zinnen in hele dollars ("−$30"), zoals het voorbeeld in besluit 21 — kost niets.

@@ -221,6 +221,29 @@ button.chip.inh{cursor:pointer}
 .ktrade{display:flex;align-items:center;gap:8px;padding:5px 0;font-size:12.5px;border-top:1px dashed var(--line2);flex-wrap:wrap}
 .ktrade .x{margin-left:auto;color:var(--faint);font-weight:700;font-size:15px;padding:0 4px}
 
+/* afsluiting + log */
+.kpi{padding:12px 14px}
+.kpi .v{font-family:var(--fn);font-size:22px;font-weight:600;margin-top:2px}
+.kpi .s{font-size:12px;color:var(--muted)}
+.edge2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.ebox{background:var(--sink);border:1px solid var(--line2);border-radius:9px;padding:8px 10px;min-width:0}
+.ebox .k{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);display:flex;justify-content:space-between;gap:6px;flex-wrap:wrap}
+.ebox .big{font-family:var(--fn);font-size:17px;font-weight:600;margin-top:2px}
+.ebox .sub{font-family:var(--fn);font-size:11.5px;color:var(--muted)}
+.ebox.basis{border-color:var(--accent-line)}
+.score{padding:16px 18px;font-size:15px;line-height:1.55}
+.score b{font-family:var(--fd)}
+.bar2{display:flex;height:8px;border-radius:4px;overflow:hidden;background:var(--track);margin-top:10px}
+.dagkeuze{margin-bottom:12px;overflow-x:auto}
+.afrij+.afrij{margin-top:10px;padding-top:10px;border-top:1px dashed var(--line2)}
+.daychips{display:flex;flex-wrap:wrap;gap:6px}
+.dayrow{padding:12px 14px}
+.dayrow+.dayrow{border-top:1px solid var(--line2)}
+.dayhead{display:flex;justify-content:space-between;gap:8px;align-items:center;margin-bottom:7px;flex-wrap:wrap}
+.filters{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:14px 0 10px}
+.filters select{padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:var(--surface);font-size:12.5px;max-width:100%}
+button.schip{cursor:pointer}
+
 /* modal */
 .ov{position:fixed;inset:0;background:var(--scrim);z-index:50;display:flex;align-items:center;justify-content:center;padding:16px}
 .modal{background:var(--surface);border-radius:14px;border:1px solid var(--line);width:100%;max-width:560px;max-height:calc(100vh - 32px);overflow:auto;box-shadow:var(--shl)}
@@ -423,7 +446,7 @@ const pairBase=p=>String(p||'').split(/[\/\-:]/)[0].trim().toUpperCase();
 
 // ───────────────────────── state ─────────────────────────
 let PL=load();
-const S={tab:'dag',modal:null,toast:'',tfOpen:'',open:{},ctxOpen:false};
+const S={tab:'dag',modal:null,toast:'',tfOpen:'',open:{},ctxOpen:false,afsl:'dag',afslDag:null,afslEdit:null,logF:{status:'',pb:'',dir:''},logEdit:null};
 
 // ───────────────────────── thema = journal (besluit 10) ─────────────────────────
 function themaVanJournal(){const s=lsGet(SJ.state,{});document.documentElement.dataset.theme=isObj(s)&&s.theme==='dark'?'dark':'light';}
@@ -711,8 +734,91 @@ function weekView(){
     <div class="card pad"><label class="f" for="w-focus">Focus deze week</label><input class="inp" id="w-focus" data-f="week.focus" value="${esc(w.focus)}" placeholder="één regel"></div></div>
     <div class="card pad" style="margin-top:12px"><h3 style="margin-bottom:6px">Afbeeldingen en links</h3>${mediaBlok(w.media,{doel:'week:'+wid,hint:1})}</div>`;
 }
-function afslView(){return `<div class="pagehead"><div><h1>Afsluiting</h1></div></div><div class="card empty"><b>Nog niets af te sluiten</b>Maak eerst een dagplan in Dag.</div>`;}
-function logView(){return `<div class="pagehead"><div><h1>Log</h1></div></div><div class="card empty"><b>Nog geen dagen in je log</b>Elke dag met een plan komt hier, nieuwste boven.</div>`;}
+// ───────────────────────── blok D: plan tegenover resultaat (besluiten 5, 19, 21) ─────────────────────────
+// Binnen plan = live, gesloten trades die in Scenario.trades staan; buiten plan = live, gesloten trades in de periode
+// die bij geen enkel scenario horen. Backtest en paper tellen hier niet: het gaat om echt geld.
+function blokD(days,inPeriode,trades){
+  trades=trades||JR.trades;const sc=days.flatMap(d=>(d.scenarios||[]));const tel=k=>sc.filter(s=>s.status===k).length;
+  const gen=tel('genomen'),gem=tel('gemist'),niet=tel('niet'),ong=tel('ongeldig'),open=tel('open'),beslist=sc.length-open,uit=gen+gem;
+  const per=new Map(trades.map(t=>[String(t.id),t])),van=s=>(s.trades||[]).map(id=>per.get(String(id))).filter(Boolean);
+  const gekoppeld=new Set(alleScenarios().flatMap(({s})=>(s.trades||[]).map(String)));
+  const echt=t=>isLive(t)&&t.status==='closed';
+  const binnen=sc.filter(s=>s.status!=='gemist').flatMap(van).filter(echt);
+  const inP=inPeriode||(()=>{const d=new Set(days.map(x=>x.id));return dag=>d.has(dag);})();
+  const buiten=trades.filter(t=>echt(t)&&inP(tradeDag(t))&&!gekoppeld.has(String(t.id)));
+  const som=l=>{const R=aggR(l);return {n:l.length,R:R.sum,rN:R.n,gemR:R.n?R.sum/R.n:null,pnl:l.reduce((a,t)=>a+(+t.pnl||0),0)};};
+  return {n:sc.length,beslist,open,gen,gem,niet,ong,uit,pUit:beslist?uit/beslist*100:null,pNeem:uit?gen/uit*100:null,
+    gemR:aggR(sc.filter(s=>s.status==='gemist').flatMap(van)),binnen:som(binnen),buiten:som(buiten)};}
+const geldHeel=v=>(v<0?'−$':'+$')+Math.round(Math.abs(v));
+function scoreZin(b){
+  if(!b.beslist)return 'Nog geen afgeronde scenario\'s. Zet na de sessie per scenario de status, dan komt hier je voorspel-score.';
+  return `Je scenario's komen in <b>${pct(b.pUit)}</b> uit. Daarvan neem je <b>${b.pNeem==null?'–':pct(b.pNeem)}</b>.`+
+    (b.gemR.n?` De gemiste waren samen <b class="${b.gemR.sum>=0?'pos':'neg'}">${rS(b.gemR.sum)}</b>.`:b.gem?' De gemiste hebben nog geen R: koppel een gemiste trade uit je journal.':'');}
+function buitenZin(b,wanneer){const x=b.buiten;
+  if(!x.n)return `Geen trades buiten plan ${wanneer}.`;
+  const kost=x.pnl<0||(x.pnl===0&&x.R<0);
+  return `Buiten plan ${kost?'kostte':'leverde'} je ${wanneer} <b class="${kost?'neg':'pos'}">${x.rN?rS(x.R):'–'} (${geldHeel(x.pnl)})</b>${kost?'':' op'}, over ${x.n} trade${x.n===1?'':'s'}.`;}
+function planVsH(b){const box=(k,x,cls)=>`<div class="ebox ${cls}"><div class="k"><span>${k}</span> <span>${x.n} trade${x.n===1?'':'s'}</span></div><div class="big">${x.rN?rH(x.R):'<span class="faint">–</span>'} <span class="small ${x.pnl<0?'neg':x.pnl>0?'pos':''}">${x.n?geldHeel(x.pnl):''}</span></div><div class="sub">gem. ${x.gemR==null?'–':rS(x.gemR)} per trade</div></div>`;
+  return `<div class="edge2">${box('Binnen plan',b.binnen,'basis')}${box('Buiten plan',b.buiten,'')}</div>`;}
+const scenR=s=>{const per=new Map(JR.trades.map(t=>[String(t.id),t])),l=(s.trades||[]).map(id=>per.get(String(id))).filter(Boolean),a=aggR(l);return a.n?a.sum:null;};
+function schipH(s,o={}){const r=scenR(s);return `<button class="schip ${s.status}" data-a="${o.act||'logEdit'}" data-s="${esc(s.id)}" title="${esc(STATUS.find(x=>x[0]===s.status)[1])}"><span class="sdot ${s.status}"></span><span class="t">${esc(s.title||'zonder titel')}</span>${r!=null?`<span class="num small">${rS(r)}</span>`:''}</button>`;}
+function statusKnoppen(s,kort){return `<div class="st" role="group" aria-label="status van ${esc(s.title)}">${STATUS.map(([k,l])=>`<button class="${k} ${s.status===k?'on':''}" data-a="status" data-s="${esc(s.id)}" data-v="${k}" title="${l}">${kort?STATUS_KORT[k]:l}</button>`).join('')}</div>`;}
+
+// ───────────────────────── Afsluiting (besluit 20) ─────────────────────────
+// Opent op vandaag als daar een plan is, anders op de laatste dag met een plan.
+function afslStart(){const ids=Object.keys(PL.days).sort();return ids.includes(vandaag())?vandaag():ids.pop()||null;}
+function afslView(){
+  const ids=Object.keys(PL.days).sort().reverse();
+  if(!ids.length)return `<div class="pagehead"><div><h1>Afsluiting</h1></div></div><div class="card empty"><b>Nog niets af te sluiten</b>Maak eerst een dagplan in Dag; na de sessie rekent de afsluiting zichzelf uit en schrijf jij één les.<div class="row"><button class="btn pri" data-a="tab" data-v="dag">Naar Dag</button></div></div>`;
+  if(!S.afslDag||!PL.days[S.afslDag])S.afslDag=afslStart();
+  const isWeek=S.afsl==='week',dag=PL.days[S.afslDag],wid=dag.week||isoWeek(dag.id),bw=weekBereik(wid);
+  const days=isWeek?Object.values(PL.days).filter(d=>(d.week||isoWeek(d.id))===wid).sort((a,b)=>b.id.localeCompare(a.id)):[dag];
+  const b=blokD(days,isWeek?(x=>x>=bw.van&&x<=bw.tot):(x=>x===dag.id)),scen=days.flatMap(d=>d.scenarios),open=scen.filter(s=>s.status==='open');
+  const w=weekOf(wid),les=isWeek?(w?w.les:''):dag.les,wanneer=isWeek?'deze week':dag.id===vandaag()?'vandaag':'op '+datumKort(dag.id);
+  return `<div class="pagehead"><div><h1>Afsluiting</h1><p>${isWeek?'Week '+wid.slice(-2)+' · '+datumKort(bw.van)+' – '+datumKort(bw.tot):cap(datumLang(dag.id))} · rekent zichzelf uit, jij schrijft één les</p></div>
+    <span class="seg"><button class="${!isWeek?'on':''}" data-a="afsl" data-v="dag">Dag</button><button class="${isWeek?'on':''}" data-a="afsl" data-v="week">Week</button></span></div>
+  ${!isWeek?`<div class="dagkeuze"><span class="seg sm">${ids.slice(0,7).map(id=>`<button class="${id===dag.id?'on':''}" data-a="afslDag" data-v="${id}">${id===vandaag()?'Vandaag':datumKort(id)}</button>`).join('')}</span></div>`:''}
+  ${!scen.length?`<div class="card empty"><b>Geen scenario's ${isWeek?'deze week':'op deze dag'}</b>Maak in Dag een scenario aan; dan rekent de afsluiting zich vanzelf uit.</div>`:`
+  ${open.length?`<div class="card pad afopen" style="margin-bottom:12px"><h3 style="margin-bottom:8px">Nog open · sluit af met één tik</h3>${open.map(s=>`<div class="afrij" data-s="${esc(s.id)}"><div class="row" style="gap:6px;margin-bottom:5px">${metaH(s)}<b>${esc(s.title)}</b></div>${statusKnoppen(s,true)}</div>`).join('')}</div>`:''}
+  <div class="three">
+    <div class="card kpi"><div class="s">Uitgekomen</div><div class="v">${b.uit}<span class="faint" style="font-size:14px"> / ${b.n}</span></div><div class="s">${b.open?b.open+' nog open':'alles afgesloten'}</div></div>
+    <div class="card kpi"><div class="s">Genomen</div><div class="v pos">${b.gen}</div><div class="s">${b.binnen.n?b.binnen.n+' trade'+(b.binnen.n===1?'':'s')+' gekoppeld':'nog geen trade gekoppeld'}</div></div>
+    <div class="card kpi"><div class="s">Gemist</div><div class="v" style="color:var(--amber)">${b.gem}</div><div class="s">${b.gemR.n?'samen '+rS(b.gemR.sum):b.gem?'R onbekend':'niets laten liggen'}</div></div>
+  </div>
+  <div class="two" style="margin-top:12px">
+    <div class="card pad"><h3 style="margin-bottom:8px">Scenario's</h3><div class="daychips">${scen.map(s=>schipH(s,{act:'afslEdit'})).join('')}</div>
+      ${scen.some(s=>s.id===S.afslEdit)?(()=>{const s=scen.find(x=>x.id===S.afslEdit);return `<div style="margin-top:10px">${statusKnoppen(s,true)}<div class="row" style="margin-top:6px"><button class="btn sm" data-a="convert" data-s="${esc(s.id)}" data-v="koppel">Koppel trade</button></div></div>`;})():''}
+      ${scen.filter(s=>s.status==='genomen'&&!(s.trades||[]).length).map(s=>`<div class="enote">“${esc(s.title)}” is genomen maar nog niet gekoppeld · <button class="btn sm ghost" data-a="convert" data-s="${esc(s.id)}" data-v="koppel">koppel</button></div>`).join('')}</div>
+    <div class="card pad"><h3 style="margin-bottom:8px">Binnen plan tegenover buiten plan</h3>${planVsH(b)}<div class="enote" style="font-size:12.5px">${buitenZin(b,wanneer)}</div></div>
+  </div>`}
+  <div class="card pad" style="margin-top:12px"><label class="f" for="af-les">Les van ${isWeek?'deze week':dag.id===vandaag()?'vandaag':datumKort(dag.id)}</label>
+    <textarea class="inp" id="af-les" data-f="${isWeek?'les.week.'+wid:'les.dag.'+dag.id}" placeholder="Eén ding dat je ${isWeek?'volgende week':'morgen'} anders doet.">${esc(les)}</textarea></div>`;
+}
+
+// ───────────────────────── Log ─────────────────────────
+function logView(){
+  const F=S.logF,days=Object.values(PL.days).sort((a,b)=>b.id.localeCompare(a.id));
+  const kop=`<div class="pagehead"><div><h1>Log</h1><p>Alle dagen, nieuwste boven. Tik een scenario om de status achteraf te zetten of een trade te koppelen.</p></div></div>`;
+  if(!days.length)return kop+`<div class="card empty"><b>Nog geen dagen in je log</b>Elke dag met een plan komt hier, nieuwste boven, met je voorspel-score erboven.<div class="row"><button class="btn pri" data-a="tab" data-v="dag">Maak een dagplan</button></div></div>`;
+  const b=blokD(days),maand=vandaag().slice(0,7),bm=blokD(days.filter(d=>d.id.slice(0,7)===maand),x=>x.slice(0,7)===maand);
+  const keep=s=>(!F.status||s.status===F.status)&&(!F.pb||s.pb===F.pb)&&(!F.dir||s.dir===F.dir);
+  const rows=days.map(d=>({d,sc:d.scenarios.filter(keep)})).filter(x=>x.sc.length||(!F.status&&!F.pb&&!F.dir));
+  const pbs=[...new Set(days.flatMap(d=>d.scenarios.map(s=>s.pb)).filter(Boolean))].sort();
+  const sel=(k,opts,lbl)=>`<select data-f="logF.${k}" aria-label="${lbl}"><option value="">${lbl}</option>${opts.map(([v,l])=>`<option value="${esc(v)}" ${F[k]===v?'selected':''}>${esc(l)}</option>`).join('')}</select>`;
+  const buiten=days.length?d=>JR.trades.filter(t=>isLive(t)&&t.status==='closed'&&tradeDag(t)===d.id&&!bezetting().has(String(t.id))).length:()=>0;
+  return kop+`<div class="card score">${scoreZin(b)}
+      <div class="bar2" title="genomen · gemist · niet uitgekomen · ongeldig">${[['gen','var(--green)'],['gem','var(--amber)'],['niet','var(--faint)'],['ong','var(--red)']].map(([k,c])=>`<i style="width:${b.beslist?b[k]/b.beslist*100:0}%;background:${c}"></i>`).join('')}</div>
+      <div class="row small muted" style="margin-top:6px;gap:12px"><span><span class="sdot genomen"></span> genomen ${b.gen}</span><span><span class="sdot gemist"></span> gemist ${b.gem}</span><span><span class="sdot niet"></span> niet uit ${b.niet}</span><span><span class="sdot ongeldig"></span> ongeldig ${b.ong}</span>${b.open?`<span><span class="sdot open"></span> open ${b.open}</span>`:''}</div></div>
+    <div class="card pad" style="margin-top:12px"><h3 style="margin-bottom:8px">Binnen plan tegenover buiten plan · ${MAANDEN[+maand.slice(5)-1]}</h3>${planVsH(bm)}<div class="enote" style="font-size:12.5px">${buitenZin(bm,'deze maand')}</div></div>
+    <div class="filters">${sel('status',STATUS,'Alle statussen')}${sel('pb',pbs.map(p=>[p,p]),'Alle playbooks')}${sel('dir',[['long','Long'],['short','Short']],'Long en short')}
+      ${F.status||F.pb||F.dir?'<button class="btn sm ghost" data-a="logReset">Wis filters</button>':''}</div>
+    <div class="card">${rows.length?rows.map(({d,sc})=>{const nb=buiten(d);return `<div class="dayrow" data-d="${esc(d.id)}">
+      <div class="dayhead"><b>${d.id===vandaag()?'Vandaag · ':''}${cap(datumLang(d.id))}</b><span class="small muted">mentaal ${d.mental||'–'}/5${nb?' · '+nb+' buiten plan':''}</span></div>
+      <div class="daychips">${sc.map(s=>schipH(s)).join('')||'<span class="faint small">Geen scenario\'s.</span>'}</div>
+      ${sc.some(s=>s.id===S.logEdit)?(()=>{const s=sc.find(x=>x.id===S.logEdit);return `<div style="margin-top:8px">${statusKnoppen(s,true)}<div class="row" style="margin-top:6px"><button class="btn sm" data-a="convert" data-s="${esc(s.id)}" data-v="koppel">Koppel trade</button>${(s.trades||[]).length?`<span class="small muted">${s.trades.length} gekoppeld</span>`:''}</div></div>`;})():''}
+      ${d.les?`<div class="small muted" style="margin-top:7px">📝 ${esc(d.les)}</div>`:''}</div>`;}).join('')
+      :'<div class="empty"><b>Niets in beeld met deze filters</b>Er zijn wel scenario\'s, maar geen enkele past. <button class="btn sm ghost" data-a="logReset">Wis filters</button></div>'}</div>`;
+}
 
 // ───────────────────────── modals ─────────────────────────
 function modalH(){
@@ -783,7 +889,7 @@ function toast(m){S.toast=m;render();clearTimeout(toast.t);toast.t=setTimeout(()
 
 // ───────────────────────── acties ─────────────────────────
 const A={
-  tab:el=>{S.tab=el.dataset.v;S.modal=null;S.tfOpen='';window.scrollTo(0,0);},
+  tab:el=>{S.tab=el.dataset.v;S.modal=null;S.tfOpen='';if(S.tab==='afsluiting')S.afslDag=null;window.scrollTo(0,0);},
   settings:()=>{S.modal={type:'settings',draft:JSON.parse(JSON.stringify(cfg()))};},
   stijl:el=>{S.modal.draft.stijl=el.dataset.v;},
   saveSettings:()=>{const d=S.modal.draft;['A','B','C'].forEach(g=>{d.risk[g]=Math.max(0,+String(d.risk[g]).replace(',','.')||0);});
@@ -826,6 +932,11 @@ const A={
   naarFormulier:()=>{const x=scenOf(S.modal.sid);if(!x)return;lsSet(LS.handoff,{sid:x.s.id,day:x.day.id,ts:Date.now()});location.href=JOURNAL_URL;return false;},
   ontkoppel:el=>{const x=scenOf(el.dataset.s);if(!x)return;x.s.trades=(x.s.trades||[]).filter(i=>String(i)!==el.dataset.v);save();},
   lb:el=>{S.modal={type:'lb',doel:el.dataset.d,id:el.dataset.v};},
+  afsl:el=>{S.afsl=el.dataset.v;},
+  afslDag:el=>{S.afslDag=el.dataset.v;S.afslEdit=null;},
+  afslEdit:el=>{S.afslEdit=S.afslEdit===el.dataset.s?null:el.dataset.s;},
+  logEdit:el=>{S.logEdit=S.logEdit===el.dataset.s?null:el.dataset.s;},
+  logReset:()=>{S.logF={status:'',pb:'',dir:''};},
   lbStap:el=>{const x=doelMedia(S.modal.doel);if(!x)return;const L=x.m.imgs,i=L.indexOf(S.modal.id);if(L.length)S.modal.id=L[(i+ +el.dataset.v+L.length)%L.length];},
   rmBeeld:el=>{const x=doelMedia(el.dataset.d),id=el.dataset.v;if(!x)return;x.m.imgs=x.m.imgs.filter(i=>i!==id);imgWis(id);save();if(S.modal&&S.modal.type==='lb')S.modal=null;},
   rmLink:el=>{const x=doelMedia(el.dataset.d);if(!x)return;x.m.links=x.m.links.filter(u=>u!==el.dataset.v);save();},
@@ -865,6 +976,9 @@ function vulVanPlaybook(d){const p=JR.pbook[d.pb];if(!p)return;const L=(p.layers
 document.addEventListener('input',ev=>{
   const el=ev.target,f=el.dataset&&el.dataset.f;if(!f)return;
   if(f==='draft.tpsTxt'){S.modal.draft.tps=el.value.split(/\s+/).filter(Boolean);return;}
+  if(f.startsWith('logF.')){S.logF[f.slice(5)]=el.value;render();return;}
+  if(f.startsWith('les.')){const [,soort,id]=f.split('.');   // les.dag.<id> · les.week.<id>: een weekles maakt zo nodig het weekplan aan
+    const o=soort==='dag'?dayOf(id):(weekOf(id)||(PL.weeks[id]=nieuweWeek(id)));if(o){o.les=el.value;save();}return;}
   const parts=f.split('.');let o;
   if(parts[0]==='draft')o=S.modal.draft;
   else if(parts[0]==='week')o=weekOf(isoWeek(vandaag()));
@@ -880,6 +994,7 @@ document.addEventListener('input',ev=>{
 // ───────────────────────── start ─────────────────────────
 window.__tp3={load,save,cfg,stijlLagen,dayOf,weekOf,vandaag,isoWeek,tags,voegTijdframeToe,voegTagToe,laagRij,JR,edge,rangschik,betrouwbaarheid,tradeROrNull,voegBeeldToe,voegLinkToe,tvSnapshot,mediaBlok,imgLees};
 themaVanJournal();
+window.__tp3.blokD=blokD;
 render();
 laadJournal();
 laadBeelden();
