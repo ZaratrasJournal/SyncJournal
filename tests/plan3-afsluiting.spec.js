@@ -53,7 +53,7 @@ const sc = (id, status, o) => Object.assign({ id, title: 'Scenario ' + id.slice(
   ok('achteraf aangetikt: s_9 ongeldig → niet uitgekomen, statusTs gezet', (await scen('s_9')).status === 'niet' && (await scen('s_9')).statusTs > 1e12);
   await p.click('#app .schip[data-s="s_10"]'); await p.waitForTimeout(100);
   await p.click('#app .dayrow [data-a="convert"][data-s="s_10"]'); await p.waitForTimeout(150);
-  ok('koppelen kan ook vanuit de Log (kandidatenlijst van die dag)', await p.evaluate(G => /Koppel aan een trade uit je journal/.test(document.getElementById('modal').innerText) && document.getElementById('modal').innerText.includes(G.slice(8, 10).replace(/^0/, '') + '-'), G));
+  ok('koppelen kan ook vanuit de Log (kandidatenlijst van die dag)', await p.evaluate(G => /Uit je journal/.test(document.getElementById('modal').innerText) && document.getElementById('modal').innerText.includes(G.slice(8, 10).replace(/^0/, '') + '-'), G));
   await p.click('#modal [data-a="close"]'); await p.waitForTimeout(80);
   await p.click('#app [data-a="logF"][data-p="status"][data-v="gemist"]'); await p.waitForTimeout(100);
   ok('filter-pills in hun kleur: gemist amber, short rood, playbook accent', await p.evaluate(() => { const c = s => getComputedStyle(document.querySelector('#app [data-a="logF"]' + s)).getPropertyValue('--tc').trim(), t = k => getComputedStyle(document.documentElement).getPropertyValue(k).trim();

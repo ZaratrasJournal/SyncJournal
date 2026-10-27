@@ -98,7 +98,7 @@ const TV = 'https://www.tradingview.com/x/AbC123/';
   await naarKoppel(p);
   const kand = await p.evaluate(() => [...document.querySelectorAll('#modal .kand')].map(k => k.dataset.t));
   ok('kandidaten op dag 1: de trade van dezelfde pair en richting staat erbij', kand.includes(String(T1.id)), JSON.stringify(kand));
-  await p.click(`#modal .kand[data-t="${T1.id}"] input`); await p.click('#modal [data-a="koppel"]'); await p.waitForTimeout(300);
+  await p.click(`#modal .kand[data-t="${T1.id}"]`); await p.click('#modal [data-a="koppel"]'); await p.waitForTimeout(300);
   ok('scenario 1 genomen en gekoppeld', await p.evaluate(([id, tid]) => { const s = __tp3.load().days[Object.keys(__tp3.load().days).sort()[0]].scenarios.find(x => x.id === id); return s.status === 'genomen' && s.trades.map(String).includes(String(tid)); }, [s1, T1.id]));
   await j.bringToFront(); await j.evaluate(() => planSync()); await j.waitForTimeout(800);
   ok('journal: de trade heeft planRef en lagen uit het scenario (alleen lege velden)', await j.evaluate(([tid, sid]) => { const t = T.find(x => String(x.id) === String(tid)); return t.planRef === 's:' + sid; }, [T1.id, s1]));

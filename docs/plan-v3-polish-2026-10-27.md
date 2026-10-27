@@ -169,3 +169,18 @@ Een journal-playbook (`sj_db` → `kv` → `pbook`) heeft `criteria: [{text, man
   de dag-laag aan) — kost niets.
   Besluit: in het opengeklapte scenario toont de entry-rij de setups en bias van de entry-laag; de confirmations staan
   zoals eerder in de afvinklijst eronder — kost niets.
+- **Punt 4 klaar** — `plan3-koppeling` 45/45 (8 nieuwe checks: kop in één regel, tabs, filter-pills, rij aantikken met
+  vinkje, "Koppel 1/2 trades", uitgeschakeld bij 0, tekstlink, geen-kandidaten-regel, paneel van onderen op 390 met de
+  knoppen in beeld), `plan3-afsluiting` 32/32 en `plan3-doorloop` 20/20 (koppelen vanuit Afsluiting, Log en Dag: zelfde
+  venster). Kop: grade · richting · pair · titel, datum klein erachter. Tabs "Uit je journal" / "Nieuwe trade invullen"
+  (met de oude uitleg als één regel in die tab). Filters "Alle pairs en richtingen" en "+ dag erna" als pills. Trades als
+  rijen (knoppen) met tijd · pair · richting · R · bedrag, resultaat groen/rood; gekozen = accent-rand en -achtergrond
+  met vinkje; bezet = grijs, "bij <titel>" rechts, uitgeschakeld. Eén grijze regel onder de lijst. Onderaan links de
+  tekstlink "Nog niet binnen? Markeer als genomen", rechts "Koppel n trade(s)". Specs aangepast aan de nieuwe vorm
+  (rij aantikken in plaats van een vinkvakje, `plan3-afsluiting` en `plan3-doorloop` idem).
+  Besluit: bij 0 gekozen heet de uitgeschakelde knop "Koppel trade" (niet "Koppel 0 trades") — kost niets.
+  Besluit: alles ontkoppelen kan niet meer via dit venster (de knop is uit bij 0); dat gaat met het × bij de trade in het
+  opengeklapte scenario — de opdracht vraagt de knop uit bij 0 — kost als het fout is: één knop "Bewaar zonder trades".
+  Besluit: de geen-kandidaten-regel noemt wat ontbreekt ("Geen XRP long op di 27-10 in je journal") en de volgende stap
+  ("Sync eerst in de journal, of zet "Alle pairs en richtingen" aan"); de oude zin over "later koppelen vanuit Afsluiting
+  of Log" is weg, de tekstlink eronder doet dat — kost niets.
