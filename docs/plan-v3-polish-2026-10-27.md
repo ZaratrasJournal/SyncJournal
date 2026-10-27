@@ -198,3 +198,20 @@ Een journal-playbook (`sj_db` → `kv` → `pbook`) heeft `criteria: [{text, man
   tekst liep "Gem. R (= expectancy in R)" over drie regels — kost als het fout is: de uitleg is alleen nog via hover te zien.
   Besluit: de vijf statusknoppen staan op 390 breed in drie kolommen (twee rijen) — met 12px viel "Genomen" weg achter
   een "…" — kost niets.
+- **Punt 6 klaar** — `plan3-dag` 77/77 (13 nieuwe checks), `plan3-journal` 22/22 (1 nieuwe), alle plan3-specs groen,
+  doorloop 20/20. `pbInfo(naam)` leest criteria, anti-criteria, stop, target en min. R:R uit het journal-playbook (ook het
+  oude formaat, een lijst met teksten, zoals `pbNormalize`; lege criteria vallen weg). Formulier: meteen onder het
+  playbook de criteria (verplichte met een "verplicht"-pill), "Niet als: …" in amber en "Stop · Target · Min. R:R" op één
+  regel. Opengeklapt: "Criteria · <playbook>" als afvinklijst in de stijl van de confirmations, met "x/y verplicht";
+  anti-criteria als amber waarschuwing zonder vinkje. `Scenario.critChecked: [text]` (oude scenario's → `[]`). "Klaar om
+  te nemen" vraagt alle confirmations én alle verplichte criteria. Bij het laden van de journal vallen vinkjes van
+  criteria die niet meer bestaan weg (`snoeiCriteria`, bewaard), en het scenario toont altijd de actuele tekst.
+  Journal: `?page=playbook&pb=<naam>` opent dat playbook (link "vul ze aan in de journal" bij een playbook zonder
+  criteria); het adres wordt daarna weer schoon, zoals bij `?page=`.
+  Besluit: een scenario zonder confirmations maar mét verplichte criteria kan klaar zijn zodra die criteria af zijn —
+  de oude regel ("zonder confirmations nooit klaar") ging erover dat er niets af te vinken was; nu is dat er wel —
+  kost als het fout is: één voorwaarde in `confAf`.
+  Besluit: de voortgangsbalk blijft alleen voor de confirmations; de criteria hebben hun eigen teller ("1/2 verplicht")
+  — kost niets.
+  Besluit: kies je een ander playbook in het formulier, dan worden ook de criteria-vinkjes leeggemaakt (zoals de
+  confirmations al werden) — kost niets.

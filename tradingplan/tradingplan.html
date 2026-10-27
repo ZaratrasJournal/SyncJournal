@@ -212,6 +212,15 @@ button.chip.inh:hover{opacity:1}
 .chk{display:flex;align-items:center;gap:8px;padding:5px 0;font-size:var(--t2);cursor:pointer;user-select:none}
 .chk.on .box{background:var(--green);border-color:var(--green)}
 .chk.on .lbl{color:var(--ink2)}
+.critblok{margin-top:12px}
+.verplicht{font-size:var(--t1);font-weight:600;color:var(--accent);background:var(--accent-soft);padding:1px 7px;border-radius:999px;margin-left:auto;white-space:nowrap}
+.anti{font-size:var(--t1);color:var(--amber);background:var(--amber-soft);border:1px solid color-mix(in srgb,var(--amber) 30%,transparent);border-radius:8px;padding:5px 9px;margin-top:6px}
+.pbcrit{background:var(--sink);border:1px solid var(--line2);border-radius:10px;padding:9px 12px;font-size:var(--t2)}
+.pbcrit ul{list-style:none;display:flex;flex-direction:column;gap:4px}
+.pbcrit li{display:flex;align-items:center;gap:8px}
+.pbcrit li::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--teal);flex:none}
+.pbcrit .verplicht{margin-left:0}
+.pbrisk{font-size:var(--t1);margin-top:7px;color:var(--ink2)}
 .prog{height:5px;border-radius:3px;background:var(--track);overflow:hidden}
 .prog i{display:block;height:100%;background:var(--green);border-radius:3px}
 .ifthen{font-size:var(--t2);display:grid;grid-template-columns:auto minmax(0,1fr);gap:3px 10px}
@@ -369,7 +378,7 @@ const normLaag=L=>({tf:str(L.tf),bias:['Bullish','Bearish','Neutraal'].includes(
 const normMedia=m=>({imgs:arr(isObj(m)?m.imgs:null,x=>typeof x==='string'),links:arr(isObj(m)?m.links:null,x=>typeof x==='string')});
 const STATUSSEN=['open','genomen','gemist','niet','ongeldig'];
 function normScen(s){return Object.assign({},s,{id:str(s.id),title:str(s.title),pair:str(s.pair),dir:s.dir==='short'?'short':'long',pb:str(s.pb),grade:['A','B','C'].includes(s.grade)?s.grade:'B',
-  trigger:str(s.trigger),invalid:str(s.invalid),entry:normLaag(isObj(s.entry)?s.entry:{}),off:arr(s.off,x=>typeof x==='string'),checked:arr(s.checked,x=>typeof x==='string'),
+  trigger:str(s.trigger),invalid:str(s.invalid),entry:normLaag(isObj(s.entry)?s.entry:{}),off:arr(s.off,x=>typeof x==='string'),checked:arr(s.checked,x=>typeof x==='string'),critChecked:arr(s.critChecked,x=>typeof x==='string'),
   stop:str(s.stop),tps:arr(s.tps).map(str),media:normMedia(s.media),note:str(s.note),status:STATUSSEN.includes(s.status)?s.status:'open',statusTs:+s.statusTs>0?+s.statusTs:null,
   trades:arr(s.trades,x=>typeof x==='number'||typeof x==='string')});}
 const DAG_ID=/^\d{4}-\d{2}-\d{2}$/,WEEK_ID=/^\d{4}-W\d{2}$/;
@@ -450,7 +459,15 @@ function sjDbLees(keys){return new Promise(res=>{let r;try{r=indexedDB.open('sj_
     keys.forEach(k=>{const q=st.get(k);q.onsuccess=()=>{out[k]=q.result;};});tx.oncomplete=()=>{db.close();res(out);};tx.onerror=()=>{db.close();res(out);};}catch(e){db.close();res(out);}};});}
 async function laadJournal(){const o=await sjDbLees(['trades','pbook']);
   JR.trades=(Array.isArray(o.trades)?o.trades:[]).filter(isObj).map(t=>Object.assign({},t,{pnl:+t.pnl||0}));
-  JR.pbook=isObj(o.pbook)?o.pbook:{};JR.klaar=true;render();}
+  JR.pbook=isObj(o.pbook)?o.pbook:{};JR.klaar=true;if(snoeiCriteria())save();render();}
+// Playbook-criteria uit de journal (sj_db → kv → pbook). Oud formaat (een lijst met teksten) zoals pbNormalize in de journal.
+function pbInfo(naam){const v=naam&&JR.pbook[naam];if(!v)return null;
+  const crit=(Array.isArray(v)?v.map(t=>({text:t,mandatory:false})):arr(v.criteria,isObj)).map(c=>({text:str(c.text).trim(),mandatory:!!c.mandatory})).filter(c=>c.text);
+  const anti=(Array.isArray(v)?[]:arr(v.antiCriteria,isObj)).map(c=>str(c.text).trim()).filter(Boolean);
+  const o=Array.isArray(v)?{}:v;return {criteria:crit,anti,stop:str(o.stop).trim(),target:str(o.target).trim(),minRR:str(o.minRR).trim()};}
+// Verandert het playbook in de journal, dan vallen vinkjes van criteria die niet meer bestaan weg (polish punt 6).
+function snoeiCriteria(){let weg=false;alleScenarios().forEach(({s})=>{const p=pbInfo(s.pb);if(!p)return;const t=new Set(p.criteria.map(c=>c.text)),n=s.critChecked.filter(x=>t.has(x));
+  if(n.length!==s.critChecked.length){s.critChecked=n;weg=true;}});return weg;}
 
 // ───────────────────────── R en statistiek (gekopieerd uit work/syncjournal.html) ─────────────────────────
 // R alleen van trades mét stop: tradeROrNull geeft null bij onbekend, 0 is break-even (CLAUDE.md).
@@ -533,7 +550,7 @@ let _sid=0;
 function nieuwId(pre,bestaat){let t=Date.now();if(t<=_sid)t=_sid+1;_sid=t;let id=pre+t.toString(36);while(bestaat&&bestaat(id)){_sid++;id=pre+_sid.toString(36);}return id;}
 function nieuwScenario(day){const L=stijlLagen(cfg().stijl),eigen=day.layers[day.layers.length-1];
   return {id:nieuwId('s_',id=>alleScenarios().some(x=>x.s.id===id)),title:'',pair:'BTC',dir:'long',pb:'',grade:'B',trigger:'',invalid:'',
-    entry:{tf:L.entry,bias:eigen?eigen.bias:'',setups:[],confirmations:[]},off:[],checked:[],stop:'',tps:[],media:leegMedia(),note:'',
+    entry:{tf:L.entry,bias:eigen?eigen.bias:'',setups:[],confirmations:[]},off:[],checked:[],critChecked:[],stop:'',tps:[],media:leegMedia(),note:'',
     status:'open',statusTs:null,trades:[]};}
 // alle scenario's met hun dag, nieuwste dag eerst
 function alleScenarios(){return Object.values(PL.days).sort((a,b)=>b.id.localeCompare(a.id)).flatMap(d=>(d.scenarios||[]).map(s=>({s,day:d})));}
@@ -811,8 +828,24 @@ function edgeTabel(e){
   // korte rijnamen zodat de tabel in een halve kaart past; de uitleg staat in de tooltip
   const Lc=kol(e.live),Bc=kol(e.bt),rijen=[['Trades'],['Winrate'],['Gem. R','gemiddelde R = de expectancy in R (alleen trades met een stop)'],['Expectancy','gemiddeld resultaat per trade in geld'],['Profit factor'],['Laatste 10','nieuwste links']];
   return `<table class="etable"><tr><th></th><th>Live${e.basis==='live'?' ★':''}</th><th>Backtest${e.basis==='backtest'?' ★':''}</th></tr>${rijen.map(([r,t],i)=>`<tr><td${t?` title="${t}"`:''}>${r}</td><td>${Lc[i]}</td><td>${Bc[i]}</td></tr>`).join('')}</table>`;}
-const confAf=s=>{const n=s.entry.confirmations.length,k=s.entry.confirmations.filter(c=>s.checked.includes(c)).length;return {n,k,klaar:n>0&&k===n};};
+// Klaar om te nemen: alle confirmations én alle verplichte playbook-criteria afgevinkt (polish punt 6). Zonder iets af
+// te vinken is een scenario nooit klaar; heeft het playbook geen criteria, dan tellen alleen de confirmations.
+function confAf(s){const n=s.entry.confirmations.length,k=s.entry.confirmations.filter(c=>s.checked.includes(c)).length;
+  const crit=(pbInfo(s.pb)||{criteria:[]}).criteria,verpl=crit.filter(c=>c.mandatory),kv=verpl.filter(c=>s.critChecked.includes(c.text)).length;
+  return {n,k,crit,nv:verpl.length,kv,klaar:n+verpl.length>0&&k===n&&kv===verpl.length};}
+const LINK_PB=naam=>JOURNAL_URL+'?page=playbook&pb='+encodeURIComponent(naam);
+function geenCriteria(naam){return `<div class="faint small">Dit playbook heeft nog geen criteria · <a href="${esc(LINK_PB(naam))}">vul ze aan in de journal</a></div>`;}
+function antiH(p){return p.anti.map(a=>`<div class="anti">⚠ Niet als: ${esc(a)}</div>`).join('');}
+function risicoRegel(p){const r=[['Stop',p.stop],['Target',p.target],['Min. R:R',p.minRR]].filter(x=>x[1]);return r.length?`<div class="pbrisk">${r.map(([k,v])=>`<span class="muted">${k}</span> ${esc(v)}`).join(' · ')}</div>`:'';}
+// In het formulier: de criteria van het gekozen playbook, meteen onder de keuze.
+function pbBlok(naam){const p=pbInfo(naam);if(!p)return '';
+  return `<div class="pbcrit">${p.criteria.length?`<ul>${p.criteria.map(c=>`<li class="crit">${esc(c.text)}${c.mandatory?' <span class="verplicht">verplicht</span>':''}</li>`).join('')}</ul>`:geenCriteria(naam)}${antiH(p)}${risicoRegel(p)}</div>`;}
 function metaH(s){return `<span class="grade ${s.grade}">${s.grade}</span><span class="dir ${s.dir}">${s.dir}</span><span>${esc(s.pair)}</span>${s.pb?`<span>· ${esc(s.pb)}</span>`:''}`;}
+// De criteria van het playbook als afvinklijst, in dezelfde stijl als de confirmations; anti-criteria als waarschuwing.
+function critH(s,cd){const p=pbInfo(s.pb);
+  return `<div class="critblok"><div class="row between"><h3>Criteria · ${esc(s.pb)}</h3>${cd.nv?`<span class="faint small">${cd.kv}/${cd.nv} verplicht</span>`:''}</div>
+    ${p.criteria.length?p.criteria.map(c=>{const on=s.critChecked.includes(c.text);return `<div class="chk ${on?'on':''}" data-a="crit" data-s="${esc(s.id)}" data-v="${esc(c.text)}" role="checkbox" aria-checked="${on}"><span class="box">${on?'✓':''}</span><span class="lbl">${esc(c.text)}</span>${c.mandatory?'<span class="verplicht">verplicht</span>':''}</div>`;}).join(''):geenCriteria(s.pb)}
+    ${antiH(p)}</div>`;}
 function scenRij(s,x,d,c){
   const open=!!S.open[s.id],cd=confAf(s),e=x.e,klaar=cd.klaar&&s.status==='open',zwak=basisStat(e).betr==='weinig';
   return `<div class="card ritem s-${s.status} ${s.status==='ongeldig'||s.status==='niet'?'dim':''} ${klaar?'ready':''}" data-s="${esc(s.id)}">
@@ -829,6 +862,7 @@ function scenRij(s,x,d,c){
         <div><h3>Lagen <span class="faint" style="text-transform:none;letter-spacing:0;font-weight:500">· tik een geërfde tag om hem uit te zetten</span></h3><div style="margin-top:2px">${scenRijen(s,d,{sid:s.id})}</div></div>
         <div><div class="row between"><h3>Confirmations ${esc(s.entry.tf)}</h3><span class="faint small num">${cd.k}/${cd.n}</span></div>
           ${cd.n?`<div class="prog" style="margin:5px 0"><i style="width:${cd.k/cd.n*100}%"></i></div>`+s.entry.confirmations.map(cf=>`<div class="chk ${s.checked.includes(cf)?'on':''}" data-a="chk" data-s="${esc(s.id)}" data-v="${esc(cf)}" role="checkbox" aria-checked="${s.checked.includes(cf)}"><span class="box">${s.checked.includes(cf)?'✓':''}</span><span class="lbl">${esc(cf)}</span></div>`).join(''):'<div class="faint small">Geen confirmations op de entry-laag.</div>'}
+          ${s.pb&&pbInfo(s.pb)?critH(s,cd):''}
           ${klaar?`<div class="callout ok" style="margin-top:8px"><b>Klaar om te nemen</b> · ${c.risk[s.grade]?pctTxt(c.risk[s.grade])+' risico':s.grade+': niet traden'}</div>`:''}</div>
         <dl class="kv"><dt>Stop</dt><dd class="num">${esc(s.stop)||'–'}</dd><dt>TP's</dt><dd class="num">${s.tps.map(esc).join(' · ')||'–'}</dd>${s.note?`<dt>Notitie</dt><dd>${esc(s.note)}</dd>`:''}</dl>
         <div><h3 style="margin-bottom:6px">Afbeeldingen en links</h3>${mediaBlok(s.media,{doel:'scen:'+s.id,hint:1})}</div>
@@ -979,6 +1013,7 @@ function modalH(){
     h=`<div class="fgrid">
       <div class="full"><label class="f" for="sc-title">Titel</label><input class="inp" id="sc-title" data-f="draft.title" value="${esc(d.title)}" placeholder="bv. BTC London sweep"></div>
       <div><label class="f" for="sc-pb">Playbook</label>${pbs.length?`<select class="inp" id="sc-pb" data-f="draft.pb"><option value="">Kies…</option>${pbs.map(p=>`<option value="${esc(p)}" ${d.pb===p?'selected':''}>${esc(p)}</option>`).join('')}</select>`:`<div class="faint small" style="padding-top:6px">Nog geen playbooks in je journal. Maak er een in de journal (Playbooks), dan vergelijkt het plan je trades ermee.</div>`}</div>
+      ${d.pb&&pbInfo(d.pb)?`<div class="full">${pbBlok(d.pb)}</div>`:''}
       <div><label class="f" for="sc-pair">Pair</label><input class="inp" id="sc-pair" data-f="draft.pair" value="${esc(d.pair)}" placeholder="BTC"></div>
       <div><label class="f">Richting</label><span class="seg" style="display:flex">${['long','short'].map(x=>`<button style="flex:1" class="${d.dir===x?'on':''}" data-a="dset" data-p="dir" data-v="${x}">${cap(x)}</button>`).join('')}</span></div>
       <div><label class="f">Grade</label><span class="seg" style="display:flex">${['A','B','C'].map(x=>`<button style="flex:1" class="${d.grade===x?'on':''}" data-a="dset" data-p="grade" data-v="${x}">${x}</button>`).join('')}</span></div>
@@ -1075,6 +1110,7 @@ const A={
   linkToe:el=>{const inp=el.closest('.media').querySelector('.linkinp'),v=inp?inp.value:'';if(!v.trim())return false;if(voegLinkToe(v,el.dataset.d)===false)return false;},
   ctx:()=>{S.ctxOpen=!S.ctxOpen;},
   chk:el=>{const x=scenOf(el.dataset.s);if(!x)return;const c=x.s.checked,i=c.indexOf(el.dataset.v);if(i>=0)c.splice(i,1);else c.push(el.dataset.v);save();},
+  crit:el=>{const x=scenOf(el.dataset.s);if(!x)return;const c=x.s.critChecked,i=c.indexOf(el.dataset.v);if(i>=0)c.splice(i,1);else c.push(el.dataset.v);snoeiCriteria();save();},
   status:el=>{const x=scenOf(el.dataset.s);if(!x)return;x.s.status=el.dataset.v;x.s.statusTs=el.dataset.v==='open'?null:Date.now();save();},
   overnemen:el=>{const id=vandaag(),van=dayOf(el.dataset.v);if(!van||PL.days[id])return;const d=nieuweDag(id),kopie=o=>JSON.parse(JSON.stringify(o));
     d.layers=kopie(van.layers);snoeiDag(d,weekOf(d.week));d.levels=van.levels;
@@ -1103,7 +1139,7 @@ document.addEventListener('keydown',ev=>{if(ev.key==='Escape'&&S.modal){A.close(
 // Een playbook kiezen vult de entry-laag en de grade uit het journal-playbook (laatste laag = entry).
 function vulVanPlaybook(d){const p=JR.pbook[d.pb];if(!p)return;const L=(p.layers||[]).filter(isObj),e=L[L.length-1];
   if(e&&e.timeframe)d.entry={tf:tfNorm(e.timeframe),bias:d.dir==='short'&&e.bias==='Bullish'?'Bearish':(e.bias||''),setups:[...(e.setups||[])],confirmations:[...(e.confirmations||[])]};
-  if(/^[ABC]$/.test(p.defaultGrade||''))d.grade=p.defaultGrade;d.checked=[];}
+  if(/^[ABC]$/.test(p.defaultGrade||''))d.grade=p.defaultGrade;d.checked=[];d.critChecked=[];}
 // data-f="week.focus" / "draft.risk.A": schrijft zonder opnieuw te renderen (focus blijft staan)
 document.addEventListener('input',ev=>{
   const el=ev.target,f=el.dataset&&el.dataset.f;if(!f)return;
@@ -1123,7 +1159,7 @@ document.addEventListener('input',ev=>{
 });
 
 // ───────────────────────── start ─────────────────────────
-window.__tp3={S,render,tagKleur,eisen,load,save,cfg,stijlLagen,dayOf,weekOf,vandaag,isoWeek,tags,voegTijdframeToe,voegTagToe,laagRij,JR,edge,rangschik,betrouwbaarheid,tradeROrNull,voegBeeldToe,voegLinkToe,tvSnapshot,mediaBlok,imgLees};
+window.__tp3={S,render,tagKleur,eisen,pbInfo,load,save,cfg,stijlLagen,dayOf,weekOf,vandaag,isoWeek,tags,voegTijdframeToe,voegTagToe,laagRij,JR,edge,rangschik,betrouwbaarheid,tradeROrNull,voegBeeldToe,voegLinkToe,tvSnapshot,mediaBlok,imgLees};
 themaVanJournal();
 window.__tp3.blokD=blokD;
 render();

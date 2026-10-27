@@ -139,6 +139,47 @@ const SCEN = [
   const ws = await H.vierShots(p, 'week', async q => { await q.click('nav.tabs [data-v="week"]'); await q.waitForTimeout(100); });
   ok('week 390 breed: geen horizontale scroll', !ws.licht && !ws.donker);
 
+  console.log('--- playbook-criteria bij een scenario (polish punt 6) ---');
+  const PB6 = Object.assign({}, H.PBOOK, { 'Trend-pullback': Object.assign({}, H.PBOOK['Trend-pullback'], { criteria: [{ text: 'HTF-trend mee', mandatory: true }, { text: 'Volume boven gemiddeld', mandatory: false }, { text: '', mandatory: true }],
+    antiCriteria: [{ text: 'Vlak voor nieuws', mandatory: false }], stop: 'Onder de sweep', target: '2R', minRR: '2' }), 'Oud': ['Alleen in London'] });
+  await H.zaaiJournal(p, { trades: H.FIXTURE(), pbook: PB6 });
+  await p.evaluate(() => { const id = __tp3.vandaag(), P = { v: 1, weeks: {}, days: {} };
+    const sc = (id, pb, conf, extra) => Object.assign({ id, title: id, pair: 'BTC', dir: 'long', pb, grade: 'A', trigger: '', invalid: '', entry: { tf: '15M', bias: '', setups: [], confirmations: conf }, off: [], checked: [], stop: '', tps: [], media: { imgs: [], links: [] }, note: '', status: 'open', statusTs: null, trades: [] }, extra || {});
+    P.days[id] = { id, week: __tp3.isoWeek(id), layers: [], levels: '', mental: null, pre: [false, false, false], media: { imgs: [], links: [] }, les: '', scenarios: [sc('s_kr', 'Trend-pullback', ['FVG']), sc('s_zc', 'Backtestbaas', ['OB'], { checked: ['OB'] })] };
+    localStorage.setItem('tp3:plans', JSON.stringify(P)); });
+  await p.setViewportSize({ width: 1280, height: 900 }); await p.reload({ waitUntil: 'load' }); await p.waitForTimeout(500);
+  await p.click('nav.tabs [data-v="dag"]').catch(() => {});
+  ok('oud scenario zonder critChecked → [] na het laden', await p.evaluate(() => JSON.stringify(__tp3.dayOf(__tp3.vandaag()).scenarios.map(s => s.critChecked)) === '[[],[]]'));
+  ok('oud playbook-formaat (lijst met teksten) wordt criteria', await p.evaluate(() => JSON.stringify(__tp3.pbInfo('Oud').criteria) === JSON.stringify([{ text: 'Alleen in London', mandatory: false }])));
+  await p.click('[data-a="newScen"]'); await p.selectOption('#sc-pb', 'Trend-pullback'); await p.waitForTimeout(120);
+  let pbt = await p.evaluate(() => (document.querySelector('#modal .pbcrit') || {}).innerText || '');
+  ok('playbook kiezen: de criteria verschijnen meteen, de verplichte gemarkeerd', /HTF-trend mee\s*verplicht/i.test(pbt) && /Volume boven gemiddeld/.test(pbt) && !/Volume boven gemiddeld\s*verplicht/i.test(pbt), pbt);
+  ok('anti-criteria als "Niet als …", en stop / target / min. R:R op één regel', /Niet als: Vlak voor nieuws/.test(pbt) && /Stop Onder de sweep · Target 2R · Min\. R:R 2/.test(pbt.replace(/\s+/g, ' ')), pbt);
+  ok('een leeg criterium telt niet mee', (await p.evaluate(() => document.querySelectorAll('#modal .pbcrit li.crit').length)) === 2);
+  await p.selectOption('#sc-pb', 'Backtestbaas'); await p.waitForTimeout(120);
+  pbt = await p.evaluate(() => { const b = document.querySelector('#modal .pbcrit'); return b ? { t: b.innerText, href: (b.querySelector('a') || {}).href || '' } : null; });
+  ok('playbook zonder criteria: geen leeg blok, wel "Dit playbook heeft nog geen criteria" met een link naar het playbook', pbt && /Dit playbook heeft nog geen criteria/.test(pbt.t) && /page=playbook&pb=Backtestbaas/.test(pbt.href), JSON.stringify(pbt));
+  await p.click('#modal [data-a="close"]'); await p.waitForTimeout(80);
+  await p.click('.ritem[data-s="s_kr"] .rrow'); await p.waitForTimeout(120);
+  const det = () => p.evaluate(() => { const r = document.querySelector('.ritem[data-s="s_kr"]'); return { crit: [...r.querySelectorAll('[data-a="crit"]')].map(x => x.dataset.v), anti: [...r.querySelectorAll('.anti')].map(x => x.innerText.trim()), antiKlik: !!r.querySelector('.anti [data-a]'), ready: r.classList.contains('ready') }; });
+  let d6 = await det();
+  ok('opengeklapt: criteria als afvinklijst naast de confirmations', d6.crit.join() === 'HTF-trend mee,Volume boven gemiddeld', JSON.stringify(d6));
+  ok('anti-criteria als waarschuwing (amber), niet af te vinken', d6.anti.length === 1 && /Niet als: Vlak voor nieuws/.test(d6.anti[0]) && !d6.antiKlik && await p.evaluate(() => { const e = document.createElement('i'); e.style.color = 'var(--amber)'; document.body.appendChild(e); const c = getComputedStyle(e).color; e.remove(); return getComputedStyle(document.querySelector('.ritem[data-s="s_kr"] .anti')).color === c; }), JSON.stringify(d6.anti));
+  await p.click('.ritem[data-s="s_kr"] [data-a="chk"][data-v="FVG"]'); await p.click('.ritem[data-s="s_kr"] [data-a="crit"][data-v="Volume boven gemiddeld"]'); await p.waitForTimeout(100);
+  ok('alle confirmations af, verplicht criterium nog niet: nog niet klaar', !(await det()).ready);
+  await p.click('.ritem[data-s="s_kr"] [data-a="crit"][data-v="HTF-trend mee"]'); await p.waitForTimeout(100);
+  ok('ook het verplichte criterium af: "Klaar om te nemen"', (await det()).ready && /Klaar om te nemen/.test(await p.evaluate(() => document.querySelector('.ritem[data-s="s_kr"]').innerText)));
+  ok('afgevinkt bewaard in critChecked', await p.evaluate(() => __tp3.dayOf(__tp3.vandaag()).scenarios[0].critChecked.slice().sort().join() === 'HTF-trend mee,Volume boven gemiddeld'));
+  ok('playbook zonder criteria: klaar zoals vroeger (alleen de confirmations)', await p.evaluate(() => { __tp3.S.open.s_zc = true; __tp3.render(); const r = document.querySelector('.ritem[data-s="s_zc"]'); return r.classList.contains('ready') && /Dit playbook heeft nog geen criteria/.test(r.innerText) && !r.querySelector('[data-a="crit"]'); }));
+  PB6['Trend-pullback'].criteria = [{ text: 'HTF-trend mee (4H)', mandatory: true }, { text: 'Volume boven gemiddeld', mandatory: false }];
+  await H.zaaiJournal(p, { trades: H.FIXTURE(), pbook: PB6 }); await p.reload({ waitUntil: 'load' }); await p.waitForTimeout(500);
+  await p.click('.ritem[data-s="s_kr"] .rrow'); await p.waitForTimeout(120);
+  d6 = await det();
+  ok('playbook gewijzigd in de journal: het scenario volgt de nieuwe tekst, het vinkje van de oude valt weg', d6.crit.join() === 'HTF-trend mee (4H),Volume boven gemiddeld' && !d6.ready && await p.evaluate(() => __tp3.dayOf(__tp3.vandaag()).scenarios[0].critChecked.join() === 'Volume boven gemiddeld'), JSON.stringify(d6));
+  await H.vierShots(p, 'criteria', async q => { await q.click('.ritem[data-s="s_kr"] .rrow'); await q.waitForTimeout(120); });
+  await H.vierShots(p, 'criteria-form', async q => { await q.click('.ritem[data-s="s_kr"] .rrow'); await q.click('.ritem[data-s="s_kr"] [data-a="editScen"]'); await q.waitForTimeout(120); });
+  await H.zaaiJournal(p, { trades: H.FIXTURE(), pbook: H.PBOOK });
+
   console.log('--- één lettertype en één typeschaal (polish punt 5) ---');
   const SCHAAL = [12, 13.5, 15, 19];
   const typo = () => p.evaluate(() => { const fam = new Set(), maat = new Set(), hoofd = new Set(), nums = [];

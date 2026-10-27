@@ -70,6 +70,8 @@ const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJA
   ok('playbook-criteria: geen "dekt poort-punt" meer', pb.cov === 0 && !/poort/i.test(pb.txt), pb.txt.slice(0, 200));
   await j.evaluate(() => { const b = [...document.querySelectorAll('#modal button')].find(x => /Opslaan|Bewaar/.test(x.textContent)); if (b) b.click(); }); await j.waitForTimeout(200);
   ok('de covers-data van een criterium blijft staan na opslaan', await j.evaluate(() => PBOOK['London SFP'].criteria[0].covers === 'trigger'));
+  await j.goto(srv.APP + '?page=playbook&pb=' + encodeURIComponent('London SFP'), { waitUntil: 'load' }); await j.waitForTimeout(1200);
+  ok('link vanuit het plan (?page=playbook&pb=…) opent dat playbook, en het adres wordt weer schoon', await j.evaluate(() => STATE.page === 'playbook' && STATE.pbSel === 'London SFP' && !location.search), await j.evaluate(() => STATE.page + ' ' + STATE.pbSel + ' ' + location.search));
   ok('geen functies van de poort meer', await j.evaluate(() => ['planPtOpties', 'planExec', 'planMatch', 'planRecOf', 'planHas'].every(f => typeof window[f] === 'undefined') && typeof PLAN_PT_STD === 'undefined'));
 
   ok('geen JS-errors', errs.length === 0, errs.slice(0, 3).join(' | '));
