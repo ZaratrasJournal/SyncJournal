@@ -254,6 +254,72 @@ async function laadJournal(){const o=await sjDbLees(['trades','pbook']);
   JR.trades=(Array.isArray(o.trades)?o.trades:[]).filter(isObj).map(t=>Object.assign({},t,{pnl:+t.pnl||0}));
   JR.pbook=isObj(o.pbook)?o.pbook:{};JR.klaar=true;render();}
 
+// ───────────────────────── R en statistiek (gekopieerd uit work/syncjournal.html) ─────────────────────────
+// R alleen van trades mét stop: tradeROrNull geeft null bij onbekend, 0 is break-even (CLAUDE.md).
+const R_SANE_MAX=100, PF_ONEINDIG=99;
+function isLive(t){return !t.kind||t.kind==='live';}
+function rNetto(t){const entry=+t.entry,stop=+t.stop,size=+t.size,pnl=t.pnlUsd!=null?+t.pnlUsd:+t.pnl;
+  if(!(entry>0)||!(stop>0)||!(size>0)||!isFinite(pnl)||Math.abs(entry-stop)<entry*1e-4)return null;
+  const risk=Math.abs(entry-stop)/entry*size;return risk>0?pnl/risk:null;}
+function theoR(t){const entry=+t.entry,stop=+t.stop;if(!(entry>0)||!(stop>0)||stop===entry)return null;
+  const dir=t.dir==='short'?-1:1;let exit=+t.hindsightExit||+t.exit||0;
+  if(!exit&&Array.isArray(t.tps)&&t.tps.length){exit=+((t.tps[t.tps.length-1]||{}).price)||0;}
+  if(!exit)exit=+t.tp||0; if(!exit)return null;
+  return +(((exit-entry)*dir)/Math.abs(entry-stop)).toFixed(2);}
+function tradeROrNull(t){
+  if(t&&isLive(t)&&(t.status==='closed'||t._geboekt)){const n=rNetto(t);if(n!=null&&Math.abs(n)<=R_SANE_MAX)return n;}
+  const r=+t.r;if(r&&Math.abs(r)<=R_SANE_MAX)return r;const th=theoR(t);return (th==null||!isFinite(th)||Math.abs(th)>R_SANE_MAX)?null:th;}
+function aggR(rows){let sum=0,n=0;(rows||[]).forEach(t=>{const r=tradeROrNull(t);if(r!=null){sum+=r;n++;}});return {sum,n};}
+const rS=v=>{const a=Math.abs(+v||0);return (v<0?'−':'+')+a.toFixed(a>0&&a<1?2:1).replace('.',',')+'R';};
+
+// ───────────────────────── edge per scenario (blok A, besluiten 4, 14, 16, 17) ─────────────────────────
+const MIN_N=5;                          // onder 5 trades valt eerst de richting weg, dan de minst specifieke tag
+const REL_REDELIJK=10, REL_GENOEG=30;   // < 10 weinig · 10–29 redelijk · ≥ 30 genoeg
+const BASIS_LIVE_MIN=10;                // basis = Live vanaf 10 Live-trades, anders Backtest; "sterkste" ook pas vanaf 10
+const betrouwbaarheid=n=>n>=REL_GENOEG?'genoeg':n>=REL_REDELIJK?'redelijk':'weinig';
+const isBacktest=t=>t.kind==='backtest'||t.kind==='paper';   // Paper telt bij Backtest
+const telt=t=>t.kind==='gemist'||t.status==='closed';         // een open trade heeft nog geen uitkomst
+const nieuwsteEerst=(a,b)=>(+b.openTime||0)-(+a.openTime||0)||String(b.date+b.time).localeCompare(String(a.date+a.time));
+// Tijdframes waar minstens één journal-trade een laag mee heeft: alleen die tellen mee (besluit 14).
+const _tfCache=new WeakMap();
+function tradeTfs(trades){if(_tfCache.has(trades))return _tfCache.get(trades);const s=new Set();
+  trades.forEach(t=>(t.layers||[]).forEach(L=>{if(L&&L.timeframe)s.add(tfNorm(L.timeframe));}));_tfCache.set(trades,s);return s;}
+function stat(list){const n=list.length;
+  if(!n)return {n:0,wr:null,gemR:null,expGeld:null,pf:null,laatste10:[],betr:betrouwbaarheid(0)};
+  const pnl=t=>+t.pnl||0,w=list.filter(t=>pnl(t)>0),gW=w.reduce((s,t)=>s+pnl(t),0),gL=Math.abs(list.filter(t=>pnl(t)<0).reduce((s,t)=>s+pnl(t),0)),R=aggR(list);
+  return {n,wr:w.length/n*100,gemR:R.n?R.sum/R.n:null,expGeld:list.reduce((s,t)=>s+pnl(t),0)/n,pf:gL?gW/gL:(gW>0?PF_ONEINDIG:0),
+    laatste10:[...list].sort(nieuwsteEerst).slice(0,10).map(t=>pnl(t)>0?true:pnl(t)<0?false:null),betr:betrouwbaarheid(n)};}
+// Eisen van een scenario: week → dag (min wat dit scenario uitzet) + de eigen entry-laag. Elke tag hoort bij zijn tijdframe.
+function eisen(sc,day,week){const out=[],seen=new Set();
+  const add=(L,erft)=>{if(!L)return;const tf=tfNorm(L.tf);[...(L.setups||[]).map(g=>[g,'set']),...(L.confirmations||[]).map(g=>[g,'conf'])].forEach(([tag,kind])=>{
+    const key=L.tf+'|'+tag;if(erft&&(sc.off||[]).includes(key))return;if(seen.has(tf+'|'+tag))return;seen.add(tf+'|'+tag);out.push({tf,tag,kind,label:tf+' '+tag});});};
+  ((week&&week.layers)||[]).forEach(L=>add(L,true));((day&&day.layers)||[]).forEach(L=>add(L,true));add(sc.entry,false);return out;}
+const heeftTag=(t,r)=>(t.layers||[]).some(L=>L&&tfNorm(L.timeframe)===r.tf&&((L.setups||[]).includes(r.tag)||(L.confirmations||[]).includes(r.tag)));
+// minst specifiek eerst: hoogste tijdframe; binnen een tijdframe eerst de confirmations, dan de setups (besluit 16)
+const valVolgorde=(a,b)=>topDown(a.tf,b.tf)||(a.kind===b.kind?0:a.kind==='conf'?-1:1);
+function edge(sc,day,week,trades){
+  trades=trades||JR.trades;const tfs=tradeTfs(trades),alle=eisen(sc,day,week);
+  const tfLijst=[...new Set(alle.map(r=>r.tf).concat([day,week].filter(Boolean).flatMap(x=>(x.layers||[]).map(L=>tfNorm(L.tf))),[tfNorm(sc.entry&&sc.entry.tf)]))].filter(Boolean).sort(topDown);
+  const meetellend=tfLijst.filter(tf=>tfs.has(tf)),context=tfLijst.filter(tf=>!tfs.has(tf));
+  let reqs=alle.filter(r=>tfs.has(r.tf)),richtingLos=false;
+  const basis=sc.pb?trades.filter(t=>t.setup===sc.pb&&telt(t)):[];
+  const match=()=>basis.filter(t=>(richtingLos||t.dir===sc.dir)&&reqs.every(r=>heeftTag(t,r)));
+  const n=m=>m.filter(t=>t.kind!=='gemist').length;
+  let m=match();if(n(m)<MIN_N){richtingLos=true;m=match();}
+  const zonder=[],rij=[...reqs].sort(valVolgorde);
+  while(n(m)<MIN_N&&rij.length){const d=rij.shift();reqs=reqs.filter(r=>r!==d);zonder.push(d.label);m=match();}
+  const live=stat(m.filter(isLive)),bt=stat(m.filter(isBacktest)),gem=m.filter(t=>t.kind==='gemist');
+  return {basis:live.n>=BASIS_LIVE_MIN?'live':'backtest',live,bt,gemist:{n:gem.length,somR:aggR(gem).sum},zonder,richtingLos,meetellend,context};
+}
+// Rangschik op gem. R van de basis (= expectancy in R, te vergelijken tussen Live en Backtest; besluit 17).
+// "Sterkste": alleen de eerste, met ≥ 10 trades op de basis en een positieve gem. R.
+function rangschik(scens,day,week,trades){
+  day=day||dayOf(vandaag());week=week===undefined?weekOf(day&&day.week):week;
+  const r=scens.map(s=>{const e=edge(s,day,week,trades),b=e.basis==='live'?e.live:e.bt;return {id:s.id,e,score:b.gemR,n:b.n};});
+  r.sort((a,b)=>(b.score==null?-Infinity:b.score)-(a.score==null?-Infinity:a.score));
+  return r.map((x,i)=>({id:x.id,plek:i+1,sterkste:i===0&&x.n>=BASIS_LIVE_MIN&&x.score!=null&&x.score>0,e:x.e}));
+}
+
 // ───────────────────────── model ─────────────────────────
 const leegLaag=tf=>({tf,bias:'',setups:[],confirmations:[]});
 const leegMedia=()=>({imgs:[],links:[]});
@@ -492,7 +558,7 @@ document.addEventListener('input',ev=>{
 });
 
 // ───────────────────────── start ─────────────────────────
-window.__tp3={load,save,cfg,stijlLagen,dayOf,weekOf,vandaag,isoWeek,tags,voegTijdframeToe,voegTagToe,laagRij,JR};
+window.__tp3={load,save,cfg,stijlLagen,dayOf,weekOf,vandaag,isoWeek,tags,voegTijdframeToe,voegTagToe,laagRij,JR,edge,rangschik,betrouwbaarheid,tradeROrNull};
 themaVanJournal();
 render();
 laadJournal();

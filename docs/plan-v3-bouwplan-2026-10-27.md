@@ -297,3 +297,12 @@ week} | null`; `planSync()` (bij laden en bij een `storage`-event op `tp3:plans`
   Poort-nulmeting vóór de bouw (`node tests/run-release.js --hier`): 159/164; rood door deze container (fonts
   `ERR_TUNNEL_CONNECTION_FAILED` als console-fout: `matrix`, `analytics-metrics`, `tendencies`), los groen
   (`terugkijken-v12`), en `plan-doorloop` omdat v2 tijdens de meting al vervangen werd.
+- **Taak 3 klaar** — `node tests/plan3-edge.spec.js` → 29/29, met exacte getallen uit `tests/fixtures/plan3-trades.json`
+  (63 trades; de groepen staan bovenin de spec). `edge()`, `rangschik()`, `betrouwbaarheid()` als losse functies,
+  los van de weergave. R-logica gekopieerd uit de journal (`tradeROrNull`, `rNetto`, `theoR`, `aggR`).
+  Besluit: "sterkste" vraagt naast ≥ 10 trades op de basis ook een positieve gem. R — een scenario met −0,3R
+  "sterkste" noemen zet je op het verkeerde been — kost als het fout is: één voorwaarde in `rangschik`.
+  Besluit: een open trade telt niet mee (nog geen uitkomst); een gemiste trade telt altijd in de gemist-regel —
+  kost niets.
+  Besluit: zonder playbook geen edge (n = 0, "kies een playbook"); het spec-woord is "zelfde playbook" — kost als
+  het fout is: scenario's zonder playbook vergelijken met trades zonder setup, één regel in `edge`.
