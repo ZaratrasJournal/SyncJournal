@@ -109,7 +109,7 @@ const ANTWOORD = 'Je Trend-pullback staat op n=4 (uit je setuptabel). Let op je 
   ok('pakket: criteria afgevinkt en open', /Criteria afgevinkt: HTF-trend mee/.test(S) && /Criteria open: Volume boven gemiddeld/.test(S));
   ok('pakket: stop en TP\'s', /Stop: 75020/.test(S) && /TP's: 77400 · 78150,5/.test(S));
   ok('pakket: edge-regel zoals het plan hem toont (n, winrate, gem. R)', /Edge volgens het plan:/.test(S) && /Live n=\d+ · winrate \d+% · gem\. R [+−]\d/.test(S), (S.match(/Edge volgens het plan[^\n]*\n?[^\n]*/) || [''])[0]);
-  ok('pakket: week- en dag-bias, levels, mentaal', /Weekplan[^]*Weekly Bullish/.test(pk) && /Dagplan[^]*4H Bearish/.test(pk) && /BTC 78\.150 weekly high/.test(pk) && /BTC 76\.200 Asia-low/.test(pk) && /Mentaal vandaag: 2\/5/.test(pk), (pk.match(/## Regels uit TradingPlan[^]{0,700}/) || [''])[0]);
+  ok('pakket: week- en dag-bias, levels, oud mentaal-cijfer', /Weekplan[^]*Weekly Bullish/.test(pk) && /Dagplan[^]*4H Bearish/.test(pk) && /BTC 78\.150 weekly high/.test(pk) && /BTC 76\.200 Asia-low/.test(pk) && /Gevoel bij de dagstart: mentaal 2\/5 \(oud\)/.test(pk), (pk.match(/## Regels uit TradingPlan[^]{0,700}/) || [''])[0]);
   ok('de overdracht is gewist', await p.evaluate(() => localStorage.getItem('tp3:mori') === null));
   await p.waitForSelector('#aiFeed .aiterug', { timeout: 4000 }).catch(() => {});
   ok('na het antwoord: "← Terug naar je plan"', await p.evaluate(() => { const a = document.querySelector('#aiFeed .aiterug'); return !!a && /Terug naar je plan/.test(a.textContent) && a.getAttribute('href') === '../tradingplan/tradingplan.html'; }));
@@ -137,10 +137,10 @@ const ANTWOORD = 'Je Trend-pullback staat op n=4 (uit je setuptabel). Let op je 
   v = await N.verzoeken(p); body = v[0] ? v[0].body : {}; pk = pakket(body); op = opdracht(body);
   const dagVraag = body.messages ? body.messages[body.messages.length - 1].content : '';
   ok('één verzoek: "Review mijn dagplan van …"', v.length === 1 && /^Review mijn dagplan van \S/.test(dagVraag), dagVraag);
-  ok('opdracht: dagplan bespreken, sterkste en zwakste, tegenspraak, mentaal, geen advies, één punt', /Bespreek het dagplan/.test(op) && /sterkst/.test(op) && /zichzelf tegen/.test(op) && /mentale score/.test(op) && /Geen koop- of verkoopadvies/.test(op) && /één concreet punt/.test(op), op.slice(0, 300));
+  ok('opdracht: dagplan bespreken, sterkste en zwakste, tegenspraak, gevoel, geen advies, één punt', /Bespreek het dagplan/.test(op) && /sterkst/.test(op) && /zichzelf tegen/.test(op) && /gevoel waarmee de trader de dag begon/.test(op) && /Geen koop- of verkoopadvies/.test(op) && /één concreet punt/.test(op), op.slice(0, 300));
   const D = (pk.match(/# Dagplan uit TradingPlan[^]*$/) || [''])[0];
   ok('pakket: week (lagen met bias, levels, no-trade, focus)', /Weekly Bullish: BOS/.test(D) && /BTC 78\.150 weekly high/.test(D) && /do FOMC 19:00/.test(D) && /Alleen A-setups/.test(D), D.slice(0, 500));
-  ok('pakket: dag (lagen, levels, mentaal, dagstart — oude pre-flight-dag omgezet)', /4H Bearish: MSB/.test(D) && /BTC 76\.200 Asia-low/.test(D) && /Mentaal vandaag: 2\/5/.test(D) && /Dagstart: Nieuws gecheckt ✓, Goed geslapen open/.test(D), D.slice(0, 800));
+  ok('pakket: dag (lagen, levels, oud mentaal-cijfer, dagstart — oude pre-flight-dag omgezet)', /4H Bearish: MSB/.test(D) && /BTC 76\.200 Asia-low/.test(D) && /Gevoel bij de dagstart: mentaal 2\/5 \(oud\)/.test(D) && /Dagstart: Nieuws gecheckt ✓, Goed geslapen open/.test(D), D.slice(0, 800));
   ok('pakket: elk scenario met titel, pair, richting, playbook, grade, status, edge en rang', /[12]\. BTC trend-pullback · BTC long · Trend-pullback · grade A · open/.test(D) && /[12]\. ETH London SFP · ETH short · London SFP · grade C · open/.test(D) && (D.match(/edge: /g) || []).length === 2, (D.match(/## Scenario's[^]{0,600}/) || [''])[0]);
   ok('pakket: risico per grade', /Risico per grade: A 2%, B 1%, C niet traden/.test(D));
   ok('pakket: geen id van een scenario', !/s_btc|s_zc/.test(pk));

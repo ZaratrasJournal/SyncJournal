@@ -1,11 +1,11 @@
 // TradingPlan v3, taak 4: Dag-scherm (Cockpit) en Week-scherm.
-//  (a) links de trechter week → dag → levels → dagstart → mentaal; rechts de gerangschikte scenario's, één regel
+//  (a) links de trechter week → dag → levels → dagstart → gevoel; rechts de gerangschikte scenario's, één regel
 //      "Live n · wr · gemR | Backtest n · wr · gemR" met plek en "sterkste"
 //  (b) tik → open: trigger, ongeldig-als, geërfde tags, confirmations als afvinklijst met voortgangsbalk, edge-tabel,
 //      stop/TP's, notitie; alles af → "Klaar om te nemen · 1% risico" (grade C met 0% → "C: niet traden")
 //  (c) status met één tik, statusTs gezet · (d) mentaal ≤ 2 → "Overweeg alleen A-setups"; dagstart blokkeert niets
 //  (e) scenario toevoegen, bewerken, verwijderen; playbook kiezen vult entry-laag en grade
-//  (f) 390 breed: trechter ingeklapt tot dagstart en mentaal · (g) "Gisteren overnemen"
+//  (f) 390 breed: trechter ingeklapt tot dagstart en gevoel · (g) "Gisteren overnemen"
 const { chromium } = require('playwright');
 const H = require('./helpers/plan3'); const NAAM = 'Plan v3 dag';
 const L = (tf, setups = [], confirmations = [], bias = '') => ({ tf, bias, setups, confirmations });
@@ -32,7 +32,7 @@ const SCEN = [
 
   console.log('--- (a) cockpit ---');
   const a = await p.evaluate(() => ({ stappen: [...document.querySelectorAll('.funnel .fstep h3')].map(x => x.textContent.trim().split(' ')[0]), rijen: [...document.querySelectorAll('.ritem')].map(r => ({ id: r.dataset.s, plek: r.querySelector('.rnum').textContent.trim(), sterk: !!r.querySelector('.tag-sterk'), lijn: r.querySelector('.rline').textContent.replace(/\s+/g, ' ').trim() })), txt: document.getElementById('app').innerText + ' ' + document.getElementById('d-levels').value }));
-  ok('trechter: Week → Vandaag → Levels → Dagstart → Mentaal', a.stappen.join() === 'Week,Vandaag,Levels,Dagstart,Mentaal', a.stappen.join());
+  ok('trechter: Week → Vandaag → Levels → Dagstart → Gevoel', a.stappen.join() === 'Week,Vandaag,Levels,Dagstart,Gevoel', a.stappen.join());
   ok('scenario\'s gerangschikt: Backtestbaas (+1,0R backtest) · trend-pullback (+0,58R live) · zonder data', a.rijen.map(r => r.id).join() === 's_bb,s_tp,s_c' && a.rijen.map(r => r.plek).join() === '1,2,3', JSON.stringify(a.rijen.map(r => r.id)));
   ok('regel: "Live 13 · 62% · +0,58R | Backtest 8 · 63% · +0,50R"', a.rijen[1].lijn === 'Live 13 · 62% · +0,58R | Backtest 8 · 63% · +0,50R', a.rijen[1].lijn);
   ok('regel Backtestbaas: "Live 3 · 67% · +0,33R | Backtest 12 · 67% · +1,0R"', a.rijen[0].lijn === 'Live 3 · 67% · +0,33R | Backtest 12 · 67% · +1,0R', a.rijen[0].lijn);
@@ -62,11 +62,12 @@ const SCEN = [
   await p.click('.ritem[data-s="s_tp"] [data-a="status"][data-v="open"]'); await p.waitForTimeout(80);
   ok('terug naar open: statusTs leeg', await p.evaluate(() => __tp3.dayOf(__tp3.vandaag()).scenarios.find(s => s.id === 's_tp').statusTs === null));
 
-  console.log('--- (d) mentaal en dagstart ---');
-  ok('zonder lage score geen waarschuwing', !/Overweeg alleen A-setups/.test(await p.evaluate(() => document.getElementById('app').innerText)));
-  await p.click('[data-a="mental"][data-v="2"]'); await p.waitForTimeout(80);
+  console.log('--- (d) gevoel en dagstart ---');
+  ok('zonder negatieve emotie geen waarschuwing', !/Overweeg alleen A-setups/.test(await p.evaluate(() => document.getElementById('app').innerText)));
+  await p.evaluate(() => { const t = __tp3.tags(); t.emotionTags = ['FOMO', 'Rustig']; t.emotionNeg = ['FOMO']; localStorage.setItem('sj_tagconfig', JSON.stringify(t)); __tp3.render(); });
+  await p.click('[data-a="emo"][data-v="FOMO"]'); await p.waitForTimeout(80);
   const m = await p.evaluate(() => ({ txt: document.getElementById('app').innerText, first: document.querySelector('#app .mentwarn') && document.querySelector('#app .mentwarn').getBoundingClientRect().top < document.querySelector('.cockpit').getBoundingClientRect().top }));
-  ok('mentaal 2 → bovenaan "Overweeg alleen A-setups"', /Overweeg alleen A-setups/.test(m.txt) && m.first);
+  ok('negatieve emotie (FOMO) → bovenaan "Overweeg alleen A-setups"', /Overweeg alleen A-setups/.test(m.txt) && m.first);
   ok('dagstart niet af: "Zet om in trade" blijft klikbaar', await p.evaluate(() => { const k = document.querySelector('.ritem[data-s="s_tp"] [data-a="convert"]'); return !!k && !k.disabled; }));
   await p.click('[data-a="ds"][data-v="Nieuws gecheckt"]'); await p.waitForTimeout(80);
   ok('dagstart-vinkje bewaard (op tekst)', await p.evaluate(() => __tp3.dayOf(__tp3.vandaag()).dagstart.join() === 'Nieuws gecheckt'));
@@ -94,7 +95,7 @@ const SCEN = [
   console.log('--- (f) telefoon ---');
   await p.setViewportSize({ width: 390, height: 900 }); await p.reload({ waitUntil: 'load' }); await p.waitForTimeout(300);
   const tel = await p.evaluate(() => [...document.querySelectorAll('.funnel .fstep')].filter(x => x.offsetParent).map(x => x.querySelector('h3').textContent.trim()));
-  ok('390 breed: trechter ingeklapt tot Dagstart en Mentaal', tel.join() === 'Dagstart,Mentaal', tel.join());
+  ok('390 breed: trechter ingeklapt tot Dagstart en Gevoel', tel.join() === 'Dagstart,Gevoel', tel.join());
   await p.click('[data-a="ctx"]'); await p.waitForTimeout(80);
   ok('uitklappen toont de hele trechter', await p.evaluate(() => [...document.querySelectorAll('.funnel .fstep')].filter(x => x.offsetParent).length === 5));
   ok('390 breed: geen horizontale scroll', await p.evaluate(() => document.documentElement.scrollWidth <= 391));

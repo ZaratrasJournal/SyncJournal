@@ -110,13 +110,20 @@ label.f{display:block;font-size:var(--t1);font-weight:600;color:var(--muted);mar
 .fgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .fgrid .full{grid-column:1/-1}
 
-/* mental + dagstart */
-.mental{display:inline-flex;gap:4px}
-.mental button{width:30px;height:30px;border-radius:8px;border:1px solid var(--line);background:var(--surface);font-weight:700;font-size:var(--t2);color:var(--muted)}
-.mental button{--kc:var(--accent)}
-.mental button[data-v="1"],.mental button[data-v="2"]{--kc:var(--red)} .mental button[data-v="3"]{--kc:var(--amber)} .mental button[data-v="4"],.mental button[data-v="5"]{--kc:var(--green)}
-.mental button:hover{border-color:var(--kc);color:var(--kc)}
-.mental button.on{background:var(--kc);border-color:var(--kc);color:var(--surface)}
+/* gevoel (emoties) + dagstart */
+.emos{display:flex;flex-wrap:wrap;gap:5px}
+.chip.emo{--tc:var(--green)} .chip.emo.neg{--tc:var(--red)}
+.chip.emo.pick{color:var(--tc);border-color:color-mix(in srgb,var(--tc) 35%,transparent);background:transparent}
+.chip.emo.pick::before{display:none}
+.chip.emo.pick.on{background:var(--tc);border-color:var(--tc);color:var(--surface)}
+.emoregels{margin-top:7px;display:flex;flex-direction:column;gap:2px}
+.emoregel{font-size:var(--t1);color:var(--ink2)}
+.emoregel.weinig{color:var(--faint)}
+.gvrij{display:flex;align-items:center;gap:8px;padding:7px 0;font-size:var(--t2)}
+.gvrij+.gvrij{border-top:1px dashed var(--line2)}
+.gvrij .gvtxt{min-width:0;flex:1}
+.gvrij.weinig .gvtxt{color:var(--faint)}
+.gvrij .rel{flex:none}
 .box{width:18px;height:18px;border-radius:5px;border:1.5px solid var(--faint);display:inline-flex;align-items:center;justify-content:center;flex:none;font-size:var(--t1);color:var(--on-accent);font-weight:800}
 .pf{display:inline-flex;align-items:center;gap:6px;padding:5px 10px 5px 7px;border-radius:999px;border:1px solid var(--line);background:var(--surface);font-size:var(--t2);font-weight:600;color:var(--ink2)}
 .pf .box{width:16px;height:16px;border-radius:50%}
@@ -400,7 +407,7 @@ function load(){const P=lsGet(LS.plans,null),out={v:1,weeks:{},days:{}};if(!isOb
     out.weeks[k]=Object.assign({},w,{id:k,layers:arr(w.layers,isObj).map(normLaag),levels:str(w.levels),noTrade:str(w.noTrade),focus:str(w.focus),media:normMedia(w.media),les:str(w.les)});});
   Object.entries(isObj(P.days)?P.days:{}).forEach(([k,d])=>{if(!DAG_ID.test(k)||!isObj(d))return;
     out.days[k]=Object.assign({},d,{id:k,week:WEEK_ID.test(d.week)?d.week:isoWeek(k),layers:arr(d.layers,isObj).map(normLaag),levels:str(d.levels),mental:[1,2,3,4,5].includes(d.mental)?d.mental:null,
-      dagstart:dagstart(d),off:arr(d.off,x=>typeof x==='string'),media:normMedia(d.media),les:str(d.les),scenarios:arr(d.scenarios,s=>isObj(s)&&s.id).map(normScen)});});
+      dagstart:dagstart(d),emoties:arr(d.emoties,x=>typeof x==='string'),off:arr(d.off,x=>typeof x==='string'),media:normMedia(d.media),les:str(d.les),scenarios:arr(d.scenarios,s=>isObj(s)&&s.id).map(normScen)});});
   Object.values(out.days).forEach(d=>{delete d.pre;snoeiDag(d,out.weeks[d.week]);});
   return out;}
 // save(p) zet een heel plan (alleen __tp3 in de specs): daarna normaal ingelezen, zodat PL nooit een scenario zonder
@@ -442,7 +449,13 @@ const TAGS_STD={
   customTags:[],
 };
 function tags(){const t=lsGet(SJ.tags,null),o=isObj(t)?t:JSON.parse(JSON.stringify(TAGS_STD));
-  ['setupTags','confirmationTags','timeframeTags'].forEach(k=>{if(!Array.isArray(o[k]))o[k]=[...TAGS_STD[k]];});return o;}
+  ['setupTags','confirmationTags','timeframeTags','emotionTags'].forEach(k=>{if(!Array.isArray(o[k]))o[k]=[...TAGS_STD[k]];});
+  if(!Array.isArray(o.emotionNeg))o.emotionNeg=[...EMO_NEG_STD];return o;}
+// Welke emoties negatief (rood) zijn: tagConfig.emotionNeg, startwaarde EMO_NEG_START uit work/syncjournal.html.
+const EMO_NEG_STD=['FOMO','Gehaast','Twijfel','Twijfels','Revenge','Onzeker','Gefrustreerd','Tilt'];
+const isNegEmotie=g=>tags().emotionNeg.includes(g);
+// tradeEmotions uit work/syncjournal.html: de lijst, of het oude losse veld
+const tradeEmotions=t=>(t.emotions&&t.emotions.length)?t.emotions:(t.emotion?[t.emotion]:[]);
 // Timeframe → minuten, gekopieerd uit tfMinuten in work/syncjournal.html ('M' = minuten). Onleesbaar = Infinity.
 function tfMinuten(tf){const s=String(tf||'').trim().toLowerCase();if(!s)return null;
   const woord={weekly:10080,week:10080,daily:1440,day:1440,monthly:43200,month:43200}[s];if(woord)return woord;
@@ -558,7 +571,7 @@ function nieuweWeek(id){return {id,layers:stijlLagen(cfg().stijl).week.map(leegL
 // Day.week is de ISO-week van de dag; de dag erft alleen als daar een weekplan voor bestaat (besluit 14).
 // Een nieuwe dag start met de lagen van de stijl, min de tijdframes die het weekplan al heeft (polish punt 3).
 function nieuweDag(id){const w=weekOf(isoWeek(id)),wt=new Set(w?w.layers.map(L=>L.tf):[]);
-  return {id,week:isoWeek(id),layers:stijlLagen(cfg().stijl).dag.filter(tf=>!wt.has(tf)).map(leegLaag),levels:'',mental:null,
+  return {id,week:isoWeek(id),layers:stijlLagen(cfg().stijl).dag.filter(tf=>!wt.has(tf)).map(leegLaag),levels:'',mental:null,emoties:[],
   dagstart:[],off:[],media:leegMedia(),les:'',scenarios:[]};}
 function dayOf(id){return PL.days[id]||null;}
 function weekOf(id){return id&&PL.weeks[id]||null;}
@@ -815,21 +828,25 @@ function dagView(){
   const pf=c.pre.length,pfAf=c.pre.filter(t=>d.dagstart.includes(t)).length;
   const geenSterkste=rk.length>1&&!rk.some(x=>x.sterkste)&&rk[0].e&&(rk[0].e.basis==='live'?rk[0].e.live:rk[0].e.bt).n<BASIS_LIVE_MIN;
   return `<div class="pagehead"><div><h1>${cap(datumLang(id))}</h1><p>Week ${d.week.slice(-2)} · ${d.scenarios.length} scenario's${pf?` · Dagstart ${pfAf}/${pf}`:''}</p></div><div class="kopr">${w&&w.focus?`<span class="small muted">🎯 ${esc(w.focus)}</span>`:''}${dagMoriH(d)}</div></div>
-    ${d.mental!=null&&d.mental<=MENTAAL_LAAG?`<div class="callout warn mentwarn" style="margin-bottom:12px">Mentaal ${d.mental}/5 · <b>Overweeg alleen A-setups</b> vandaag.</div>`:''}
+    ${waarschuwH(d)}
     <div class="cockpit"><aside class="card funnel ${S.ctxOpen?'open':''}">
       <button class="btn sm ghost mobonly" style="margin:8px 0 0 8px" data-a="ctx">${S.ctxOpen?'▴ Context inklappen':'▾ Context: week, dag, levels'}</button>
       <div class="fstep opt c-violet"><h3>Week ${d.week.slice(-2)}</h3>${w?(w.noTrade?`<div class="small" style="margin-bottom:4px">⛔ ${esc(w.noTrade)}</div>`:'')+`<div class="faint small">${w.layers.length?'De lagen van de week staan gedimd bij Vandaag.':'Het weekplan heeft geen lagen.'} <a href="#" data-a="tab" data-v="week">Weekplan</a></div>`:`<div class="faint small">Geen weekplan: de dag erft niets. Dat mag. <a href="#" data-a="tab" data-v="week">Maak er een</a></div>`}${contextNoot(d,w)}</div>
       <div class="fstep opt c-accent"><h3>Vandaag</h3>${laagRij(d.layers,{pad:'day',erft:w?w.layers:[],dagOff:d.off})}<div style="margin-top:10px">${mediaBlok(d.media,{doel:'dag:'+d.id,hint:1})}</div></div>
       <div class="fstep opt c-amber"><h3>Levels</h3>${w&&w.levels.trim()?`<div class="lvls faint">${esc(w.levels)}</div>`:''}<textarea class="inp" id="d-levels" data-f="day.levels" rows="3" placeholder="één per regel, bv. BTC 76.200 Asia-low" aria-label="levels van vandaag">${esc(d.levels)}</textarea></div>
       <div class="fstep c-green"><div class="row between"><h3>Dagstart</h3><button class="btn sm ghost fbew" data-a="dsBewerk" aria-pressed="${!!S.dsEdit}">${S.dsEdit?'Klaar':'Bewerk'}</button></div>${S.dsEdit?dsLijst(c.pre.map(t=>({t})),'ds'):`<div class="row" style="gap:6px">${dagstartPills(d,c)}</div>`}</div>
-      <div class="fstep c-pink"><h3>Mentaal</h3>${mentalH(d)}</div>
+      <div class="fstep c-pink"><h3>Gevoel</h3>${gevoelH(d)}</div>
     </aside>
     <section><div class="row between" style="margin-bottom:8px"><h2>Scenario's op edge</h2><button class="btn sm" data-a="newScen">+ Scenario</button></div>
       ${geenSterkste?'<div class="enote" style="margin:-4px 0 8px">Nog te weinig trades om te vergelijken: "sterkste" vraagt minstens 10 trades.</div>':''}
       <div class="rlist">${rk.map(x=>scenRij(bijId[x.id],x,d,c)).join('')||'<div class="card empty"><b>Nog geen scenario\'s</b>Voeg er een toe: als … dan … met je playbook, en je ziet de edge uit je journal.<div class="row"><button class="btn pri" data-a="newScen">+ Scenario</button></div></div>'}</div>
     </section></div>`;
 }
-const MENTAAL_LAAG=2;   // mentaal ≤ 2 → "overweeg alleen A-setups" (besluit 18)
+const MENTAAL_LAAG=2;   // oude dagen: mentaal ≤ 2 → "overweeg alleen A-setups" (besluit 18)
+// Minstens één negatieve emotie bij de dagstart (ronde 3 punt 4), of een oude dag met mentaal ≤ 2.
+function waarschuwH(d){const neg=d.emoties.filter(isNegEmotie);
+  if(neg.length)return `<div class="callout warn mentwarn" style="margin-bottom:12px">Je begon met ${neg.map(esc).join(', ')} · <b>Overweeg alleen A-setups</b> vandaag.</div>`;
+  return d.mental!=null&&d.mental<=MENTAAL_LAAG?`<div class="callout warn mentwarn" style="margin-bottom:12px">Mentaal ${d.mental}/5 · <b>Overweeg alleen A-setups</b> vandaag.</div>`:'';}
 const STATUS=[['open','Open'],['genomen','Genomen'],['gemist','Uitgekomen, niet genomen'],['niet','Niet uitgekomen'],['ongeldig','Ongeldig']];
 const STATUS_KORT={open:'Open',genomen:'Genomen',gemist:'Gemist',niet:'Niet uit',ongeldig:'Ongeldig'};
 const pct=v=>Math.round(v)+'%';
@@ -851,7 +868,7 @@ function edgeLijn(e,sc){
   const p=(lbl,s)=>s.n?`${lbl} ${s.n} · ${pct(s.wr)} · ${rH(s.gemR)}`:`${lbl} –`;
   return p('Live',e.live)+' <span class="faint">|</span> '+p('Backtest',e.bt);}
 const basisStat=e=>e.basis==='live'?e.live:e.bt;
-function relH(e){const b=basisStat(e).betr;return `<span class="rel ${b}">${b==='weinig'?'weinig data':b==='redelijk'?'redelijk wat data':'genoeg data'}</span>`;}
+function relH(e){const b=basisStat(e).betr;return `<span class="rel ${b}">${relTxt(b)}</span>`;}
 function dotsH(l){return l.length?`<span class="dots" title="laatste ${l.length}, nieuwste links">${l.map(x=>x===true?'<span class="w">●</span>':x===false?'<span class="l">○</span>':'<span class="b">◌</span>').join('')}</span>`:'';}
 function edgeNoten(e){const p=[];
   if(e.richtingLos)p.push('long en short samen (te weinig '+'trades in één richting)');
@@ -930,7 +947,37 @@ function dsMag(L,t,zelf){if(!t){toast('Een punt heeft een naam nodig.');return f
   if(zelf==null&&L.length>=DAGSTART_MAX){toast('Hooguit '+DAGSTART_MAX+' punten.');return false;}return true;}
 function dsHernoem(i,v){const c=cfg(),van=c.pre[i],t=dsTekst(v);if(van==null||t===van)return;if(!dsMag(c.pre,t,i))return;
   c.pre[i]=t;save();lsSet(LS.cfg,c);hernoemVinkjes(new Map([[van,t]]));}
-function mentalH(d){return `<span class="mental">${[1,2,3,4,5].map(n=>`<button class="${d.mental===n?'on':''}" data-a="mental" data-v="${n}" aria-label="mentaal ${n}">${n}</button>`).join('')}</span>`;}
+// Gevoel bij de dagstart: emoties uit de journal (tagConfig.emotionTags) als pills in hun kleur; per gekozen emotie
+// wat je trades met die emotie deden (journal → plan). Wordt niet naar trades gekopieerd: een ochtend is geen trade.
+function gevoelH(d){const lijst=tags().emotionTags,extra=d.emoties.filter(e=>!lijst.includes(e));
+  const pills=[...lijst,...extra].map(e=>{const on=d.emoties.includes(e);return `<button class="chip pick emo ${isNegEmotie(e)?'neg':''} ${on?'on':''}" data-a="emo" data-v="${esc(e)}" aria-pressed="${on}">${on?'✓ ':''}${esc(e)}</button>`;}).join('');
+  const oud=d.mental&&!d.emoties.length?`<div class="faint small" style="margin-bottom:5px">mentaal ${d.mental}/5 (oud)</div>`:'';
+  return oud+(lijst.length||extra.length?`<div class="emos" role="group" aria-label="gevoel">${pills}</div>`:naarTags('Nog geen emoties.'))+
+    (d.emoties.length?`<div class="emoregels">${d.emoties.map(emoRegelH).join('')}</div>`:'');}
+// "Met FOMO: 14 trades · 29% · −0,40R": live, gesloten trades met die emotie; R alleen mét stop. Onder 10 grijs.
+function emoStat(e){const l=JR.trades.filter(t=>isLive(t)&&t.status==='closed'&&tradeEmotions(t).includes(e)),R=aggR(l);
+  return {n:l.length,wr:l.length?l.filter(t=>(+t.pnl||0)>0).length/l.length*100:null,gemR:R.n?R.sum/R.n:null};}
+function emoRegelH(e){if(!JR.klaar)return '';const x=emoStat(e);
+  if(!x.n)return `<div class="emoregel weinig">Nog geen trades met ${esc(e)}.</div>`;
+  const weinig=x.n<REL_REDELIJK;
+  return `<div class="emoregel ${weinig?'weinig':''}">Met ${esc(e)}: ${x.n} trade${x.n===1?'':'s'} · ${pct(x.wr)} · ${x.gemR==null?'–':rS(x.gemR)}${weinig?' · weinig data':''}</div>`;}
+// Plan → statistiek: per ochtend-emotie over alle dagen waarop je hem koos: de trades van die dagen (live, gesloten,
+// geopend op die Amsterdamse dag), buiten plan en de voorspel-score. Betrouwbaarheid op het aantal dagen.
+// Slechtste gem. R bovenaan; zonder R onderaan. Zelfde regel als planGevoelRijen in de journal.
+function gevoelRijen(){const days=Object.values(PL.days),gek=new Set(alleScenarios().flatMap(({s})=>(s.trades||[]).map(String)));
+  return [...new Set(days.flatMap(d=>d.emoties))].map(e=>{const ds=days.filter(d=>d.emoties.includes(e)),ids=new Set(ds.map(d=>d.id));
+    const l=JR.trades.filter(t=>isLive(t)&&t.status==='closed'&&ids.has(tradeDag(t))),R=aggR(l),b=blokD(ds);
+    return {e,dagen:ds.length,n:l.length,wr:l.length?l.filter(t=>(+t.pnl||0)>0).length/l.length*100:null,gemR:R.n?R.sum/R.n:null,
+      buiten:l.filter(t=>!gek.has(String(t.id))).length,pUit:b.pUit,betr:betrouwbaarheid(ds.length)};})
+    .sort((a,b)=>(a.gemR==null?Infinity:a.gemR)-(b.gemR==null?Infinity:b.gemR)||b.dagen-a.dagen);}
+function gevoelTekst(r){return `Dagen die je met <b>${esc(r.e)}</b> begon: ${r.dagen} ${r.dagen===1?'dag':'dagen'} · ${r.n} trade${r.n===1?'':'s'}`+
+  (r.n?` · ${pct(r.wr)} · ${r.gemR==null?'–':rS(r.gemR)} · ${r.buiten} buiten plan`:'')+(r.pUit!=null?` · scenario's ${pct(r.pUit)} uit`:'');}
+const relTxt=b=>b==='weinig'?'weinig data':b==='redelijk'?'redelijk wat data':'genoeg data';
+function gevoelBlok(){const R=JR.klaar?gevoelRijen():[];
+  return `<div class="card pad gevoel" style="margin-top:12px"><h3 style="margin-bottom:4px">Je dagstart-gevoel</h3>${R.length?R.map(r=>`<div class="gvrij ${r.betr==='weinig'?'weinig':''}"><span class="gvtxt">${gevoelTekst(r)}</span><span class="rel ${r.betr}">${relTxt(r.betr)}</span></div>`).join('')
+    :`<div class="enote" style="font-size:var(--t2)">${JR.klaar?'Kies een paar dagen je gevoel bij de dagstart, dan zie je hier wat het met je trades doet.':'Journal laden…'}</div>`}</div>`;}
+// Kort, voor de Log-dagkop en de Afsluiting: de emoties, of het oude cijfer.
+const gevoelKort=d=>d.emoties.length?d.emoties.join(' · '):d.mental?'mentaal '+d.mental+'/5 (oud)':'';
 
 // ───────────────────────── Week / Afsluiting / Log ─────────────────────────
 function weekView(){
@@ -990,7 +1037,7 @@ function afslView(){
   const days=isWeek?Object.values(PL.days).filter(d=>(d.week||isoWeek(d.id))===wid).sort((a,b)=>b.id.localeCompare(a.id)):[dag];
   const b=blokD(days,isWeek?(x=>x>=bw.van&&x<=bw.tot):(x=>x===dag.id)),scen=days.flatMap(d=>d.scenarios),open=scen.filter(s=>s.status==='open');
   const w=weekOf(wid),les=isWeek?(w?w.les:''):dag.les,wanneer=isWeek?'deze week':dag.id===vandaag()?'vandaag':'op '+datumKort(dag.id);
-  return `<div class="pagehead"><div><h1>Afsluiting</h1><p>${isWeek?'Week '+wid.slice(-2)+' · '+datumKort(bw.van)+' – '+datumKort(bw.tot):cap(datumLang(dag.id))} · rekent zichzelf uit, jij schrijft één les</p></div>
+  return `<div class="pagehead"><div><h1>Afsluiting</h1><p>${isWeek?'Week '+wid.slice(-2)+' · '+datumKort(bw.van)+' – '+datumKort(bw.tot):cap(datumLang(dag.id))} · rekent zichzelf uit, jij schrijft één les</p>${!isWeek&&gevoelKort(dag)?`<p class="afgevoel">Gevoel bij de dagstart: ${esc(gevoelKort(dag))}</p>`:''}</div>
     <span class="seg"><button class="${!isWeek?'on':''}" data-a="afsl" data-v="dag">Dag</button><button class="${isWeek?'on':''}" data-a="afsl" data-v="week">Week</button></span></div>
   ${!isWeek?`<div class="dagkeuze"><span class="seg sm">${ids.slice(0,7).map(id=>`<button class="${id===dag.id?'on':''}" data-a="afslDag" data-v="${id}">${id===vandaag()?'Vandaag':datumKort(id)}</button>`).join('')}</span></div>`:''}
   ${!scen.length?`<div class="card empty"><b>Geen scenario's ${isWeek?'deze week':'op deze dag'}</b>Maak in Dag een scenario aan; dan rekent de afsluiting zich vanzelf uit.</div>`:`
@@ -1026,11 +1073,12 @@ function logView(){
       <div class="bar2" title="genomen · gemist · niet uitgekomen · ongeldig">${[['gen','var(--green)'],['gem','var(--amber)'],['niet','var(--faint)'],['ong','var(--red)']].map(([k,c])=>`<i style="width:${b.beslist?b[k]/b.beslist*100:0}%;background:${c}"></i>`).join('')}</div>
       <div class="row small muted" style="margin-top:6px;gap:12px"><span><span class="sdot genomen"></span> genomen ${b.gen}</span><span><span class="sdot gemist"></span> gemist ${b.gem}</span><span><span class="sdot niet"></span> niet uit ${b.niet}</span><span><span class="sdot ongeldig"></span> ongeldig ${b.ong}</span>${b.open?`<span><span class="sdot open"></span> open ${b.open}</span>`:''}</div></div>
     <div class="card pad" style="margin-top:12px"><h3 style="margin-bottom:8px">Binnen plan tegenover buiten plan · live · ${MAANDEN[+maand.slice(5)-1]}</h3>${planVsH(bm)}<div class="enote" style="font-size:var(--t2)">${buitenZin(bm,'deze maand')}</div></div>
+    ${gevoelBlok()}
     <div class="filters" aria-label="filters"><div class="fgroep" aria-label="status">${STATUS.map(([k])=>fchip('status',k,STATUS_KORT[k],'st-'+k)).join('')}</div>
       ${pbs.length?`<div class="fgroep" aria-label="playbook">${pbs.map(p=>fchip('pb',p,p,'set')).join('')}</div>`:''}<div class="fgroep" aria-label="richting">${fchip('dir','long','Long','d-long')}${fchip('dir','short','Short','d-short')}</div>
       ${F.status||F.pb||F.dir?'<button class="btn sm ghost" data-a="logReset">Wis filters</button>':''}</div>
     <div class="card">${rows.length?rows.map(({d,sc})=>{const nb=buiten(d);return `<div class="dayrow" data-d="${esc(d.id)}">
-      <div class="dayhead"><b>${d.id===vandaag()?'Vandaag · ':''}${cap(datumLang(d.id))}</b><span class="small muted">mentaal ${d.mental||'–'}/5${nb?' · '+nb+' buiten plan':''}</span></div>
+      <div class="dayhead"><b>${d.id===vandaag()?'Vandaag · ':''}${cap(datumLang(d.id))}</b><span class="small muted">${[esc(gevoelKort(d)),nb?nb+' buiten plan':''].filter(Boolean).join(' · ')}</span></div>
       <div class="daychips">${sc.map(s=>schipH(s)).join('')||'<span class="faint small">Geen scenario\'s.</span>'}</div>
       ${sc.some(s=>s.id===S.logEdit)?(()=>{const s=sc.find(x=>x.id===S.logEdit);return `<div style="margin-top:8px">${statusKnoppen(s,true)}<div class="row" style="margin-top:6px"><button class="btn sm" data-a="convert" data-s="${esc(s.id)}" data-v="koppel">Koppel trade</button>${(s.trades||[]).length?`<span class="small muted">${s.trades.length} gekoppeld</span>`:''}</div></div>`;})():''}
       ${d.les?`<div class="small muted" style="margin-top:7px">📝 ${esc(d.les)}</div>`:''}</div>`;}).join('')
@@ -1123,7 +1171,7 @@ const A={
   dsWeg:el=>{const c=cfg();c.pre.splice(+el.dataset.v,1);save();lsSet(LS.cfg,c);},
   dsToe:()=>{const c=cfg(),inp=document.getElementById('ds-nieuw'),t=dsTekst(inp&&inp.value);if(!dsMag(c.pre,t))return false;c.pre.push(t);save();lsSet(LS.cfg,c);
     setTimeout(()=>{const n=document.getElementById('ds-nieuw');if(n)n.focus();},0);},
-  mental:el=>{const d=dayOf(vandaag()),n=+el.dataset.v;d.mental=d.mental===n?null:n;save();},
+  emo:el=>{const d=dayOf(vandaag()),e=el.dataset.v,i=d.emoties.indexOf(e);if(i>=0)d.emoties.splice(i,1);else d.emoties.push(e);save();},
   // lagen
   tfPicker:el=>{S.tfOpen=S.tfOpen===el.dataset.p?'':el.dataset.p;},
   addTf:el=>{const L=lagenVan(el.dataset.p);if(!L||L.some(l=>l.tf===el.dataset.v))return;L.push(leegLaag(el.dataset.v));L.splice(0,L.length,...sorteerLagen(L));S.tfOpen='';save();},

@@ -73,7 +73,7 @@ const TV = 'https://www.tradingview.com/x/AbC123/';
   await p.click('[data-a="settings"]'); await p.click('[data-a="stijl"][data-v="daytrade"]'); await p.click('[data-a="saveSettings"]');
   await p.click('[data-a="maakDag"]'); await p.waitForTimeout(100);
   ok('dag 2 met de Daytrade-lagen 4H · 1H, min 4H dat de week al heeft: 1H', await p.evaluate(() => __tp3.dayOf(__tp3.vandaag()).layers.map(l => l.tf).join()) === '1H');
-  await p.click('[data-a="mental"][data-v="4"]'); await p.click('[data-a="ds"][data-v="Nieuws gecheckt"]'); await p.click('[data-a="ds"][data-v="Goed geslapen"]');
+  await p.click('[data-a="emo"][data-v="Rustig"]'); await p.click('[data-a="ds"][data-v="Nieuws gecheckt"]'); await p.click('[data-a="ds"][data-v="Goed geslapen"]');
   await maakScen({ titel: 'BTC trend-pullback', pb: 'Trend-pullback', pair: 'BTC', dir: 'long', trig: 'Als BTC de 4H OB raakt en 1H een MSB zet', inv: '4H close onder 75.000', stop: '75020', tps: '77400 78150' });
   await maakScen({ titel: 'SOL BOS-retest', pb: 'BOS-retest', pair: 'SOL', dir: 'short', trig: 'Als SOL onder 158 breekt en de retest afwijst', inv: '1H close boven 162' });
   await maakScen({ titel: 'ARB London SFP', pb: 'London SFP', pair: 'ARB', dir: 'long', grade: 'B', trig: 'Als London de Asia-low sweept', inv: '15M close onder 0,80' });

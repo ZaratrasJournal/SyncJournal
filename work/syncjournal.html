@@ -872,6 +872,10 @@ table.tbl{width:100%;border-collapse:collapse;font-size:14px}
 .field input:focus,.field select:focus,.field textarea:focus{border-color:var(--accent);background:var(--surface)}
 .field input[readonly]{border-style:dashed;color:var(--ink2);background:color-mix(in srgb,var(--sink) 55%,var(--surface));cursor:default}
 .lockbar{font-size:12px;color:var(--muted);padding:8px 11px;border:1px dashed var(--line);border-radius:9px;line-height:1.45}
+.plan-gv{display:flex;align-items:center;gap:10px;justify-content:space-between;padding:8px 0;font-size:13px}
+.plan-gv+.plan-gv{border-top:1px dashed var(--line)}
+.plan-gv.weinig>span:first-child{color:var(--muted)}
+.plan-gv .chip{flex:none}
 .plan-obs{margin-top:10px;padding:9px 12px;border-radius:9px;background:var(--accent-soft);border:1px solid var(--accent-line);font-size:12.5px;line-height:1.5}
 .plan-weinig{padding:8px 12px;border-radius:9px;background:var(--sink);border:1px dashed var(--line);font-size:12.5px;color:var(--muted)}
 .formwarn{font-size:12px;color:var(--ink);padding:8px 11px;border:1px dashed color-mix(in srgb,var(--amber) 55%,transparent);background:color-mix(in srgb,var(--amber) 10%,transparent);border-radius:9px;line-height:1.45}
@@ -4342,11 +4346,37 @@ function planObservatie(rows,tot,wat){
   if(best.avg-worst.avg<PLAN_MIN_VERSCHIL)return '';
   return `<div class="plan-obs">${wat} <b>${esc(worst.label)}</b> ${worst.avg<0?'kosten je':'leveren'} <b class="${cls(worst.avg)}">${rS(worst.avg)}</b> per trade (${worst.n} trades); <b>${esc(best.label)}</b> ${best.avg<0?'kosten':'leveren'} <b class="${cls(best.avg)}">${rS(best.avg)}</b> (${best.n}). Verschil ${rS(best.avg-worst.avg)}.</div>`;
 }
+/* Gevoel bij de dagstart (ronde 3 punt 4+5): Day.emoties uit tagConfig.emotionTags. Twee kanten:
+   journal → plan: wat deden je trades mét die emotie (live, gesloten; R alleen mét stop, gemR), en
+   plan → statistiek: wat deden je trades op de dagen die je met die emotie begon. Betrouwbaarheid op het aantal dagen.
+   Dezelfde regels als emoStat/gevoelRijen in tradingplan/tradingplan.html. */
+const PLAN_REL_REDELIJK=10,PLAN_REL_GENOEG=30;
+const planBetr=n=>n>=PLAN_REL_GENOEG?'genoeg':n>=PLAN_REL_REDELIJK?'redelijk':'weinig';
+const planPct=v=>Math.round(v)+'%';
+function planEmoRegel(e,trades){const l=(trades||T).filter(t=>t&&isLive(t)&&t.status==='closed'&&tradeEmotions(t).includes(e)),g=gemR(l);
+  if(!l.length)return 'Nog geen trades met '+e+'.';
+  return 'Met '+e+': '+l.length+' trade'+(l.length===1?'':'s')+' · '+planPct(l.filter(t=>(+t.pnl||0)>0).length/l.length*100)+' · '+(g.n?rS(g.avg):'–')+(l.length<PLAN_REL_REDELIJK?' · weinig data':'');}
+function planGevoelRijen(P,trades){const days=Object.values(P.plans.days).filter(d=>d&&d.id),em=d=>(Array.isArray(d.emoties)?d.emoties:[]).filter(x=>typeof x==='string');
+  const sc=d=>(d.scenarios||[]).filter(planObj),gek=new Set(days.flatMap(d=>sc(d).flatMap(s=>(s.trades||[]).map(String))));
+  return [...new Set(days.flatMap(em))].map(e=>{const ds=days.filter(d=>em(d).includes(e)),ids=new Set(ds.map(d=>d.id));
+    const l=(trades||T).filter(t=>t&&isLive(t)&&t.status==='closed'&&ids.has(planTradeDag(t))),g=gemR(l),S=ds.flatMap(sc),beslist=S.filter(s=>s.status&&s.status!=='open').length,uit=S.filter(s=>s.status==='genomen'||s.status==='gemist').length;
+    return {e,dagen:ds.length,n:l.length,wr:l.length?l.filter(t=>(+t.pnl||0)>0).length/l.length*100:null,gemR:g.n?g.avg:null,buiten:l.filter(t=>!gek.has(String(t.id))).length,pUit:beslist?uit/beslist*100:null,betr:planBetr(ds.length)};})
+    .sort((a,b)=>(a.gemR==null?Infinity:a.gemR)-(b.gemR==null?Infinity:b.gemR)||b.dagen-a.dagen);}
+// b wraps the emotion (html <b> on the page, plain in Mori's package)
+function planGevoelTekst(r,b){b=b||(x=>x);return 'Dagen die je met '+b(r.e)+' begon: '+r.dagen+' '+(r.dagen===1?'dag':'dagen')+' · '+r.n+' trade'+(r.n===1?'':'s')+
+  (r.n?' · '+planPct(r.wr)+' · '+(r.gemR==null?'–':rS(r.gemR))+' · '+r.buiten+' buiten plan':'')+(r.pUit!=null?' · scenario\'s '+planPct(r.pUit)+' uit':'');}
+function planGevoelPanel(P,trades){const R=planGevoelRijen(P,trades),rel=b=>b==='weinig'?'weinig data':b==='redelijk'?'redelijk wat data':'genoeg data';
+  return `<div class="panel"><div class="phead"><h3>Je dagstart-gevoel</h3><span class="sp"></span><span class="chip">per emotie bij de dagstart</span></div><div class="pbody">${R.length?R.map(r=>`<div class="plan-gv${r.betr==='weinig'?' weinig':''}"><span>${planGevoelTekst(r,x=>'<b>'+esc(x)+'</b>')}</span><span class="chip">${rel(r.betr)}</span></div>`).join('')
+    :'<div class="hint">Kies een paar dagen je gevoel bij de dagstart, dan zie je hier wat het met je trades doet.</div>'}</div></div>`;}
+// Mori: "FOMO (negatief), Rustig (positief)", or the old score of a day from before the emotions
+function planGevoelKort(d){const e=(Array.isArray(d&&d.emoties)?d.emoties:[]).filter(x=>typeof x==='string');
+  return e.length?e.map(x=>coachPlanTekst(x)+(isNegEmotie(x)?' (negatief)':' (positief)')).join(', '):d&&d.mental?'mentaal '+d.mental+'/5 (oud)':'';}
 function planTendencies(){
   const P=planLoad(),dagen=Object.values(P.plans.days).filter(d=>d&&d.id),sc=dagen.flatMap(d=>(d.scenarios||[]).filter(Boolean));
   const sub=`<div class="subtabs" id="tendTabs">${TEND_TABS.map(([k,l])=>`<button data-t="${k}" class="${STATE.tend===k?'on':''}">${l}</button>`).join('')}</div>`;
   const kop=(t,d)=>`<div class="phead"><h3>${t}</h3><span class="sp"></span><span class="chip">${d}</span></div>`;
-  if(!sc.length)return `${filterBar()}<div class="panel">${kop('Plan','TradingPlan')}<div class="pbody">${sub}</div>${emptyState('plan-leeg','in')}</div>`;
+  const gevoel=dagen.some(d=>Array.isArray(d.emoties)&&d.emoties.length)||sc.length?`<div style="height:13px"></div>${planGevoelPanel(P,CLOSED)}`:'';
+  if(!sc.length)return `${filterBar()}<div class="panel">${kop('Plan','TradingPlan')}<div class="pbody">${sub}</div>${emptyState('plan-leeg','in')}</div>${gevoel}`;
   // voorspel-score: uitgekomen = genomen + gemist, van alles wat niet meer open staat; ongeldig = niet uitgekomen
   const tel=k=>sc.filter(s=>s.status===k).length,gen=tel('genomen'),gem=tel('gemist'),open=tel('open'),beslist=sc.length-open,uit=gen+gem;
   const perId=new Map(T.filter(Boolean).map(t=>[String(t.id),t])),van=s=>(s.trades||[]).map(id=>perId.get(String(id))).filter(Boolean);
@@ -4367,7 +4397,7 @@ function planTendencies(){
       <div class="pbody"><div style="font-size:15px;line-height:1.55">${score}</div>
         ${hbars(stat.map(([l,n,c])=>({label:l,val:n/sc.length*100,disp:'<b>'+n+'</b>',color:c,sub:Math.round(n/sc.length*100)+'% van je scenario\'s'})))}</div></div><div style="height:13px"></div>
     <div class="panel">${kop('Binnen tegenover buiten plan','live-trades · in R én geld')}<div class="pbody">${tot<PLAN_MIN?`<div class="plan-weinig">📊 Nog te weinig data voor conclusies: <b>${tot} van ${PLAN_MIN}</b> trades sinds je eerste plan. De cijfers hieronder zijn nog toeval, geen patroon.</div>`:''}
-      ${planRowsHtml(rows)}<div class="hint" style="margin-top:8px">${zin}</div>${planObservatie(rows,tot,'Je trades')}</div></div>`;
+      ${planRowsHtml(rows)}<div class="hint" style="margin-top:8px">${zin}</div>${planObservatie(rows,tot,'Je trades')}</div></div>${gevoel}`;
 }
 function pgTendencies(){
   if(STATE.tend==='plan')return planTendencies();
@@ -6534,7 +6564,7 @@ function coachPlanRegels(dir,dagId){const P=planLoad(),vandaag=PLAN_AMS.format(n
     L.push('Dagplan '+coachDatum(vd)+':');
     if(lagen)L.push('- Lagen: '+lagen);
     if(coachPlanTekst(dag.levels))L.push('- Levels: '+coachPlanTekst(dag.levels));
-    if(dag.mental)L.push('- Mentaal '+(vd===vandaag?'vandaag':'op '+coachDatum(vd))+': '+dag.mental+'/5');
+    if(planGevoelKort(dag))L.push('- Gevoel bij de dagstart: '+planGevoelKort(dag)+(vd===vandaag?'':' ('+coachDatum(vd)+')'));
     L.push(sc.length?'Scenario\'s '+(vd===vandaag?'vandaag':'op '+coachDatum(vd))+' ('+dir+'):':'- Geen scenario\'s '+(vd===vandaag?'vandaag':'op '+coachDatum(vd))+' voor een '+dir+'.',...sc.map(s=>'- '+coachPlanTekst(planTitel(s))+(s.pb?' · '+s.pb:'')+' · grade '+(s.grade||'?')+' · '+(s.status||'open')+(s.trigger?' · als '+coachPlanTekst(s.trigger):'')+(s.invalid?' · ongeldig als '+coachPlanTekst(s.invalid):'')));}
   if(risk)L.push(coachPlanRisico(risk));
   return L;}
@@ -6600,7 +6630,9 @@ function coachDagplanDeel(rows,o){const {day,week,edge}=o.plan,P=planLoad(),c=P.
   else L.push('## Week','- Geen weekplan voor deze week.');
   L.push('## Dag');const lg=coachPlanLagen(day.layers);L.push('- Lagen: '+(lg||'geen'));
   if(coachPlanTekst(day.levels))L.push('- Levels: '+coachPlanTekst(day.levels));
-  L.push('- Mentaal '+(day.id===PLAN_AMS.format(new Date())?'vandaag':'op '+coachDatum(day.id))+': '+(day.mental?day.mental+'/5':'niet ingevuld'));
+  L.push('- Gevoel bij de dagstart: '+(planGevoelKort(day)||'niet ingevuld'));
+  const emo=(Array.isArray(day.emoties)?day.emoties:[]).filter(x=>typeof x==='string');
+  if(emo.length){const R=planGevoelRijen(P);emo.forEach(e=>{L.push('  - '+planEmoRegel(e));const r=R.find(x=>x.e===e);if(r&&r.n)L.push('  - '+planGevoelTekst(r)+(r.betr==='weinig'?' (weinig data: minder dan '+PLAN_REL_REDELIJK+' dagen)':''));});}
   const ds=planDagstart(day,c);
   if(ds.length)L.push('- Dagstart: '+ds.map(([t,v])=>t+(v?' ✓':' open')).join(', '));
   const sc=(day.scenarios||[]).filter(planObj),plek=x=>planObj(edge&&edge[x.id])&&+edge[x.id].plek>0?+edge[x.id].plek:99;
@@ -6804,7 +6836,7 @@ const AI_PRETRADE_OPDRACHT='De trader overweegt een trade (het trade-idee) en wi
 // Not buttons in the journal either: TradingPlan sends these (tp3:mori, planMoriVanOverdracht).
 const AI_PLAN_KNOPPEN=[
   ['plan-scenario','Check mijn scenario',AI_PRETRADE_OPDRACHT+' Vergelijk het scenario met de eigen cijfers en regels van de trader, en noem waar het scenario tegen zijn week- of dagbias ingaat.'],
-  ['plan-dag','Review mijn dagplan','Bespreek het dagplan. Welke scenario\'s zijn volgens de eigen cijfers het sterkst en welke het zwakst, met het cijfer erbij? Waar spreekt het plan zichzelf tegen (bijvoorbeeld een long-scenario tegen een bearish week-bias, of twee scenario\'s die elkaar uitsluiten)? Past het aantal en de grade van de scenario\'s bij de mentale score van vandaag? Geen koop- of verkoopadvies, geen voorspelling over de markt. Sluit af met één concreet punt voor vandaag.'],
+  ['plan-dag','Review mijn dagplan','Bespreek het dagplan. Welke scenario\'s zijn volgens de eigen cijfers het sterkst en welke het zwakst, met het cijfer erbij? Waar spreekt het plan zichzelf tegen (bijvoorbeeld een long-scenario tegen een bearish week-bias, of twee scenario\'s die elkaar uitsluiten)? Past het aantal en de grade van de scenario\'s bij het gevoel waarmee de trader de dag begon (en wat dat gevoel volgens de eigen cijfers met zijn trades doet)? Geen koop- of verkoopadvies, geen voorspelling over de markt. Sluit af met één concreet punt voor vandaag.'],
 ];
 const AI_WEEK_SCHEMA={type:'object',properties:{goed:{type:'string'},kostte:{type:'string'},anders:{type:'string'}},required:['goed','kostte','anders'],additionalProperties:false};
 
