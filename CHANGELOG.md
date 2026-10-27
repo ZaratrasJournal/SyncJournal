@@ -16,6 +16,28 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v1.19] — 2026-10-27
+
+### Toegevoegd
+- **TradingPlan v3** (syncjournal.nl/plan), helemaal opnieuw opgezet: een week- en dagplan met scenario's dat je edge uit je eigen journal laat zien. Per scenario zie je Live en Backtest apart (trades, winrate, gem. R, expectancy, profit factor, laatste 10), gerangschikt, met "sterkste" vanaf 10 trades.
+- Vrije tijdframes per week, dag en scenario. Een stijl (Swing, Daytrade of Scalp) in het tandwiel bepaalt waarmee een nieuwe week en dag beginnen. Het weekplan is optioneel.
+- Een afvinklijst per scenario met "Klaar om te nemen" en je risico per grade. Pre-flight en mentaal staan erbij als herinnering.
+- Afbeeldingen en TradingView-links plakken (Ctrl+V), slepen of toevoegen in je week, dag of scenario. Een TradingView-snapshot toont een voorbeeld.
+- **Zet om in trade:** kies zelf een of meer trades uit je journal die bij het scenario horen, of open het tradeformulier al ingevuld voor een handmatige, backtest- of papertrade. Er wordt nooit vanzelf gekoppeld.
+- Afsluiting en Log: wat uitkwam, wat je nam en wat je liet liggen, binnen tegenover buiten plan in R en geld, en je voorspel-score.
+
+### Gewijzigd
+- Het plan volgt het thema van de journal (licht of donker).
+- In de trade-details zie je bij welk scenario een trade hoort, en koppel je hem daar ook.
+- Tendencies → Plan laat je scenario's tegenover je trades zien, in plaats van de poort.
+- Mori leest je weekplan, je scenario's van vandaag en je risico per grade.
+- De back-up neemt je plannen en hun afbeeldingen mee.
+
+### Verwijderd
+- De poort van TradingPlan v2, de drie checklists en "dekt poort-punt" bij playbook-criteria. Gegevens van het oude plan worden niet meer gelezen, maar ook niet gewist.
+
+---
+
 ## [v1.18.8] — 2026-10-26
 
 ### Gewijzigd
