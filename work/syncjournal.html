@@ -1408,6 +1408,7 @@ details.faq[open] summary{color:var(--accent)}
 .aichip:disabled{opacity:.5;cursor:default}
 .aisent{margin-top:10px;font-size:11.5px;color:var(--muted)}
 .aisent summary{cursor:pointer;font-weight:600}
+.aiterug{display:inline-block;margin-top:10px;font-size:12.5px;font-weight:600}
 .aisent pre{white-space:pre-wrap;word-break:break-word;max-height:260px;overflow:auto;margin:8px 0 0;padding:10px;border-radius:8px;background:var(--surface);border:1px solid var(--line);color:var(--ink2);font-size:11px;line-height:1.45}
 .aifocus{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--ink2);background:var(--sink);border:1px solid var(--line);border-radius:9px;padding:8px 12px;margin-bottom:10px}
 .aifocus button{margin-left:auto}
@@ -3300,7 +3301,7 @@ function tradeTimeline(t){
    "none" als je hem bewust buiten plan zet. Er wordt nooit automatisch gekoppeld (besluit 23): je kiest zelf,
    in het plan of hier in de trade-details. tp2:* (plan v2) wordt niet meer gelezen; een oude
    numerieke planRef telt niet. */
-const TP3={plans:'tp3:plans',cfg:'tp3:cfg',handoff:'tp3:handoff'};
+const TP3={plans:'tp3:plans',cfg:'tp3:cfg',handoff:'tp3:handoff',mori:'tp3:mori'};
 const HANDOFF_MAX_MS=10*60000;   // "Zet om in trade" in het plan: na 10 minuten is de overdracht verlopen
 const planObj=o=>!!o&&typeof o==='object'&&!Array.isArray(o);
 function planLoad(){const g=(k,fb)=>{try{const v=JSON.parse(localStorage.getItem(k)||'null');return v==null?fb:v;}catch(e){return fb;}};
@@ -3308,6 +3309,8 @@ function planLoad(){const g=(k,fb)=>{try{const v=JSON.parse(localStorage.getItem
 function planSave(plans){try{localStorage.setItem(TP3.plans,JSON.stringify(plans));return true;}catch(e){toast('Het plan kon niet worden opgeslagen (opslag vol?)','err');return false;}}
 function planScen(sid,P){P=P||planLoad();for(const day of Object.values(P.plans.days)){const s=(day&&day.scenarios||[]).find(x=>x&&x.id===sid);
   if(s){if(!Array.isArray(s.trades))s.trades=[];return {s,day,week:P.plans.weeks[day.week]||null};}}return null;}
+// Een id hoort nooit in beeld: zonder titel (of met het id als titel) "<pair> <playbook>". Zelfde regel als titel() in het plan.
+function planTitel(s){const str=v=>v==null?'':String(v).trim(),t=str(s&&s.title);return t&&t!==s.id?t:[str(s&&s.pair).toUpperCase(),str(s&&s.pb)].filter(Boolean).join(' ')||'Scenario';}
 const planScenRef=t=>t&&typeof t.planRef==='string'&&t.planRef.startsWith('s:')?t.planRef.slice(2):null;
 // De dag van een trade zoals het plan hem ziet: de Amsterdamse kalenderdag van het open-moment.
 const PLAN_AMS=new Intl.DateTimeFormat('sv-SE',{timeZone:'Europe/Amsterdam',year:'numeric',month:'2-digit',day:'2-digit'});
@@ -3381,13 +3384,13 @@ function planSetRef(id,ref){const t=T.find(x=>x.id===id);if(!t)return;const P=pl
   planSave(P.plans);
   const nieuw=x&&t.planRef!==ref;t.planRef=x?ref:'none';
   const ids=nieuw?planAdopt(t,x.s,x.day,x.week):[];
-  persist();closeForm();render();toast(x?'Gekoppeld aan scenario "'+(x.s.title||'zonder titel')+'"':'Bewust buiten plan gezet','ok');
+  persist();closeForm();render();toast(x?'Gekoppeld aan scenario "'+planTitel(x.s)+'"':'Bewust buiten plan gezet','ok');
   if(ids.length)planScreens([[t,ids]]);}
 function planLine(t){
   const P=planLoad(),sid=planScenRef(t),x=sid&&planScen(sid,P);
   const knop=lbl=>`<a href="#" onclick="event.stopPropagation();planPick(${t.id});return false" style="color:var(--accent);font-weight:600">${lbl}</a>`;
   const rij=(txt,lbl)=>`<div class="tline" style="margin-top:6px"><span class="tlc">📋 ${txt}</span><span class="tla">·</span><span class="tlc">${knop(lbl)}</span></div>`;
-  if(x)return rij(`Scenario: <b>${esc(x.s.title||'zonder titel')}</b>${x.s.grade?' · '+esc(x.s.grade):''}`,'wijzig');
+  if(x)return rij(`Scenario: <b>${esc(planTitel(x.s))}</b>${x.s.grade?' · '+esc(x.s.grade):''}`,'wijzig');
   if(t.planRef==='none')return rij('Bewust buiten plan','wijzig');
   return planDagScens(t,P).length?rij('Geen scenario','Koppel aan scenario'):'';
 }
@@ -3395,7 +3398,7 @@ function planPick(id){
   const t=T.find(x=>x.id===id);if(!t)return;const P=planLoad(),lijst=planDagScens(t,P),dag=planTradeDag(t);
   document.getElementById('modal').innerHTML=`<div class="mhead"><h3>Bij welk scenario hoort deze trade?</h3><button class="xbtn" onclick="closeForm()">×</button></div>
     <div class="mbody"><div class="field full"><div class="hint">${esc(t.pair)} ${esc(t.dir)} · ${esc(dag)} ${esc(t.time||'')}. Scenario's van die dag en de dag ervoor uit TradingPlan:</div></div>
-    ${lijst.length?lijst.map(({s,day})=>`<div class="field full"><button class="btn" style="width:100%;justify-content:flex-start" onclick="planSetRef(${id},'s:${esc(String(s.id)).replace(/'/g,'')}')">${t.planRef==='s:'+s.id?'✓ ':''}${esc(day.id===dag?'':day.id+' · ')}${esc(s.title||'zonder titel')} · ${esc(s.pair||'')} ${esc(s.dir||'')}${s.grade?' · '+esc(s.grade):''}</button></div>`).join(''):`<div class="field full">${emptyState('plan-dag','regel')}</div>`}
+    ${lijst.length?lijst.map(({s,day})=>`<div class="field full"><button class="btn" style="width:100%;justify-content:flex-start" onclick="planSetRef(${id},'s:${esc(String(s.id)).replace(/'/g,'')}')">${t.planRef==='s:'+s.id?'✓ ':''}${esc(day.id===dag?'':day.id+' · ')}${esc(planTitel(s))} · ${esc(s.pair||'')} ${esc(s.dir||'')}${s.grade?' · '+esc(s.grade):''}</button></div>`).join(''):`<div class="field full">${emptyState('plan-dag','regel')}</div>`}
     <div class="field full"><button class="btn" style="width:100%;justify-content:flex-start" onclick="planSetRef(${id},'none')">${t.planRef==='none'?'✓ ':''}Geen scenario — bewust buiten plan</button></div></div>
     <div class="mfoot"><span style="flex:1"></span><button class="btn" onclick="closeForm()">Sluiten</button></div>`;
   document.getElementById('modal').classList.add('on');document.getElementById('scrim').classList.add('on');modalKind='plan';formDirty=false;
@@ -3419,6 +3422,23 @@ function planNaHandoff(t){const P=planLoad(),x=planScen(formPlanSid,P);if(!x||!t
   Object.values(P.plans.days).forEach(d=>((d&&d.scenarios)||[]).forEach(s=>{if(Array.isArray(s.trades))s.trades=s.trades.filter(i=>String(i)!==String(t.id));}));
   x.s.trades.push(t.id);x.s.status=t.kind==='gemist'?'gemist':'genomen';x.s.statusTs=Date.now();
   if(planSave(P.plans))t.planRef='s:'+x.s.id;}
+/* "Vraag Mori" in het plan: tp3:mori {soort:'scenario'|'dag', sid?, day, ts, edge}. De journal opent Mori en stelt de
+   vraag zelf, met de eigen sleutel en het eigen pakket: het plan leest of verstuurt de sleutel nooit. Te oud, kapot of
+   naar iets wat niet meer bestaat: niets versturen; bij een verdwenen scenario of dag een melding. */
+function planMoriVanOverdracht(){let h=null,ruw=null;try{ruw=localStorage.getItem(TP3.mori);}catch(e){}
+  if(ruw==null)return false;try{localStorage.removeItem(TP3.mori);h=JSON.parse(ruw);}catch(e){return false;}
+  if(!planObj(h)||!['scenario','dag'].includes(h.soort)||!(Date.now()-(+h.ts||0)<=HANDOFF_MAX_MS))return false;
+  const P=planLoad(),edge=planObj(h.edge)?h.edge:null;let plan=null,vraag='';
+  if(h.soort==='scenario'){const x=planScen(String(h.sid||''),P);
+    if(x){plan={soort:'scenario',s:x.s,day:x.day,week:x.week,edge};vraag='Check mijn scenario: '+planTitel(x.s)+' — '+String(x.s.pair||'').toUpperCase()+' '+(x.s.dir==='short'?'short':'long')+(x.s.pb?', '+x.s.pb:'');}}
+  else{const day=P.plans.days[String(h.day||'')];
+    if(planObj(day)&&(day.scenarios||[]).length){plan={soort:'dag',day:{...day,id:String(h.day)},week:P.plans.weeks[day.week]?{...P.plans.weeks[day.week],id:day.week}:null,edge};vraag='Review mijn dagplan van '+coachDatum(h.day);}}
+  go('ai');
+  if(!plan){AIMSGS.push({r:'info',terug:true,t:h.soort==='scenario'?'Het scenario uit je plan bestaat niet meer, dus er is niets verstuurd. Kijk in je plan of het verwijderd is.':'Het dagplan bestaat niet meer of heeft geen scenario\'s, dus er is niets verstuurd.'});render();return false;}
+  if(!AIPREFS.enabled||!aiKeyGet())return false;   // Mori zegt zelf wat er ontbreekt (uit, of geen sleutel)
+  const s=plan.s,tp=s?(s.tps||[]).map(planGetal).find(v=>v>0):0;
+  aiVraag(vraag,{knop:plan.soort==='dag'?'plan-dag':'plan-scenario',plan,idee:s?{pair:String(s.pair||'').toUpperCase(),dir:s.dir==='short'?'short':'long',setup:s.pb||'',entry:'',stop:planGetal(s.stop)||'',tp:tp||''}:undefined});
+  return true;}
 /* Geen plan-badge in de tradelijst (Denny 26-09-2026: ruis op alles van vóór de koppeling). De
    scenario-regel staat in de trade-details (planLine), de cijfers in Tendencies → Plan. */
 function tradeHoverDetail(t){
@@ -6055,7 +6075,7 @@ const FAQS=[
     ['Ik ben niet zo technisch, is dit iets voor mij?','Ja. Begin klein: voer trades in op <b>Trades</b> en kijk af en toe op het <b>Dashboard</b>. Analytics en Tendencies worden pas interessant als er meer trades in staan. Vind je het druk? Kies bij <b>Instellingen → Weergave</b> de stand <b>🌿 Rustig</b>; dan zie je alleen de basis. De meeste dingen zet je met één klik terug. Alleen het tabje <b>Wissen</b> is echt onomkeerbaar, dus maak daarvoor eerst een back-up.'],
     ['Hoe voeg ik mijn eerste trade toe?','Klik op <b>Trades → + Nieuwe trade</b>. Verplicht is alleen het <b>pair</b> (wat je handelt, bv. BTC/USDT). Bij een gesloten trade ook je <b>entry</b> (je instapprijs) of je <b>P&L</b> (je winst of verlies). De rest vul je in wanneer je wilt. Liever niet alles met de hand? Koppel je exchange bij <b>Instellingen → Accounts</b>, of lees een back-up in bij <b>Instellingen → Data</b>.'],
     ['Kan ik eerst rondkijken zonder mijn eigen trades?','Ja, met voorbeelddata. Klik op de startpagina van syncjournal.nl op <b>Rondkijken met voorbeelddata</b>, of kies in de app <b>Instellingen → Data → Voorbeelddata laden</b>. Je krijgt dan ±1.100 voorbeeldtrades van één trader, met accounts, playbooks en tags. Let op: laden <b>overschrijft</b> je huidige journal. De app maakt eerst wel automatisch een veiligheidskopie. Klaar met kijken? <b>Voorbeelddata opruimen</b> op dezelfde plek haalt het weer weg; wat je zelf toevoegde blijft staan.'],
-    ['In welke volgorde leer ik de app het beste kennen?','Volg het menu van boven naar beneden.<ol><li><b>Trades</b>: voer je trades in, of koppel je exchange.</li><li><b>Dashboard</b>: je resultaat in één oogopslag.</li><li><b>Kalender</b>: welke dagen groen en welke rood waren.</li><li><b>Playbook</b>: leg je vaste manieren van traden vast.</li><li><b>Analytics</b> en <b>Tendencies</b>: vanaf ongeveer 30 trades zie je hier patronen.</li><li><b>Review</b>: kijk je trades terug en leer ervan.</li></ol>Stel ook meteen je tags in bij <b>Instellingen → Tags</b>. Dan wordt alles daarna rijker.'],
+    ['In welke volgorde leer ik de app het beste kennen?','Volg het menu van boven naar beneden.<ol><li><b>Trades</b>: voer je trades in, of koppel je exchange.</li><li><b>Dashboard</b>: je resultaat in één oogopslag.</li><li><b>Kalender</b>: welke dagen groen en welke rood waren.</li><li><b>Playbook</b>: leg je vaste manieren van traden vast.</li><li><b>Plan</b>: maak vóór je sessie een dagplan met scenario\'s, en zie per scenario je edge.</li><li><b>Analytics</b> en <b>Tendencies</b>: vanaf ongeveer 30 trades zie je hier patronen.</li><li><b>Review</b>: kijk je trades terug en leer ervan.</li></ol>Stel ook meteen je tags in bij <b>Instellingen → Tags</b>. Dan wordt alles daarna rijker.'],
   ]],
   ['💡 Waarom SyncJournal · mijn visie',[
     ['Waarom heb je SyncJournal gebouwd?','Om mezelf structuur en kaders te geven, en om jullie daarbij te helpen.<br><br>Ik heb zelf structuur en kaders nodig om goed te traden, en traden liet me dat heel duidelijk zien. Het is een goede spiegel: ik heb mezelf er ook beter door leren kennen.<br><br>Om die structuur en kaders vorm te geven heb ik de journal gebouwd. Voor mezelf, maar ook om jullie daarbij te helpen. Inmiddels ben ik echt mega blij met hoe de journal draait, en ik werk er nog wekelijks aan om verbeteringen door te voeren.<br><br><i>Zaratras</i>','visie-waarom'],
@@ -6067,9 +6087,9 @@ const FAQS=[
   ['💾 Jouw data & privacy',[
     ['Waar wordt mijn data opgeslagen? Staat die online?','In je eigen browser, op dít apparaat. Ook als je SyncJournal opent via syncjournal.nl: de site levert alleen de app, je trades verlaten je computer niet. Er zijn drie uitzonderingen, en die kies je zelf:<ul><li>Een <b>sync</b> (je trades ophalen bij je exchange) praat met je exchange. Bij OKX en Kraken loopt dat via onze tussenserver.</li><li>Een <b>Drive-back-up</b> gaat naar je eigen Google Drive.</li><li>Voor bedragen in euro haalt de app de dagkoers van de ECB (Europese Centrale Bank) op.</li></ul>Je data hoort dus bij deze browser. Andere computer? Zie de vraag over overzetten.'],
     ['Ik kom van de oude TradeJournal, hoe zet ik mijn trades over?','Met een back-up uit je oude journal, die je hier inleest.<ol><li>Open je <b>oude</b> journal en maak een back-up: <b>Backup & Restore → Backup exporteren (.json)</b>.</li><li>Ga hier naar <b>Instellingen → Data</b>. Klik bij <b>Overzetten uit oude TradeJournal</b> op <b>Importeer oude backup</b> en kies het bestand.</li><li>Je ziet eerst een <b>overzicht ter controle</b>. Pas daarna wordt er iets opgeslagen.</li></ol>Trades, playbooks, tags en je koppelingen gaan mee. Je oude journal blijft ongemoeid. Staat je oude journal in dezelfde browser, dan vindt SyncJournal hem zelf en heet de knop <b>Overzetten</b>.'],
-    ['Hoe maak ik een back-up (en waarom is dat belangrijk)?','Via <b>Instellingen → Data → Exporteer JSON</b>. Je ziet eerst wat er meegaat, daarna krijg je één bestand. Zie het als de reservesleutel van je journal: bewaar het op een veilige plek. Doe dit zeker voordat je je browser opschoont of van computer wisselt.<br><br>Automatisch kan ook, onder <b>Backups</b>: <b>📁 Map</b> (een map op je computer, alleen in Chrome en Edge), <b>☁️ Drive</b> (je eigen Google Drive) of <b>✋ Zelf</b> (de app herinnert je eraan).<br><br><b>Je API-sleutels</b> (de codes waarmee de app je exchange uitleest) gaan standaard <b>niet</b> mee. Bovenaan zie je de keuze: <b>Zonder API-sleutels</b> (aanbevolen) of <b>Met API-sleutels</b>. Kies "met" alleen als je verhuist naar een andere browser of pc: iedereen met dat bestand kan je exchange-account gebruiken. Zonder sleutels vragen je koppelingen na het terugzetten opnieuw om je sleutel. Automatische back-ups en veiligheidskopieën gaan altijd zonder sleutels.','backup'],
+    ['Hoe maak ik een back-up (en waarom is dat belangrijk)?','Via <b>Instellingen → Data → Exporteer JSON</b>. Je ziet eerst wat er meegaat, daarna krijg je één bestand. Zie het als de reservesleutel van je journal: bewaar het op een veilige plek. Doe dit zeker voordat je je browser opschoont of van computer wisselt.<br><br>Automatisch kan ook, onder <b>Backups</b>: <b>📁 Map</b> (een map op je computer, alleen in Chrome en Edge), <b>☁️ Drive</b> (je eigen Google Drive) of <b>✋ Zelf</b> (de app herinnert je eraan).<br><br><b>Je API-sleutels</b> (de codes waarmee de app je exchange uitleest) gaan standaard <b>niet</b> mee. Bovenaan zie je de keuze: <b>Zonder API-sleutels</b> (aanbevolen) of <b>Met API-sleutels</b>. Kies "met" alleen als je verhuist naar een andere browser of pc: iedereen met dat bestand kan je exchange-account gebruiken. Zonder sleutels vragen je koppelingen na het terugzetten opnieuw om je sleutel. Automatische back-ups en veiligheidskopieën gaan altijd zonder sleutels.<br><br>Je <b>Trading Plan</b> gaat ook mee: je plannen en hun afbeeldingen.','backup'],
     ['Hoe werkt de Google Drive-backup?','Je koppelt je eigen Google Drive, en de app zet daar automatisch back-ups neer.<ol><li>Ga naar <b>Instellingen → Data → Backups</b> en kies <b>☁️ Drive</b>.</li><li>Geef toestemming in het Google-venster. De app maakt een zichtbare map <b>“SyncJournal”</b> in jóuw Drive; wij kunnen daar niet bij.</li></ol>Op een andere computer open je syncjournal.nl en koppel je Drive opnieuw. Staat er al een back-up, dan biedt de app aan die over te nemen. Werk je daarna weer thuis, dan meldt de app dat er elders een nieuwere back-up is, met de knop <b>Overnemen</b>. Je huidige stand wordt dan eerst als veiligheidskopie bewaard.'],
-    ['Hoe zet ik mijn journal over naar een andere computer, browser of adres?','Met een back-up: exporteren op de oude plek, importeren op de nieuwe.<ol><li>Op de oude plek: <b>Instellingen → Data → Exporteer JSON</b>.</li><li>Op de nieuwe plek: open SyncJournal en kies <b>Instellingen → Data → Importeer</b>.</li><li>Kies wat je overneemt. Trades kun je <b>vervangen</b> of <b>samenvoegen</b>.</li></ol>Dit geldt ook als je SyncJournal eerst lokaal draaide en nu syncjournal.nl gebruikt: de browser bewaart data per adres, dus je gegevens verhuizen niet vanzelf mee. Trades, screenshots, playbooks en instellingen gaan allemaal mee.'],
+    ['Hoe zet ik mijn journal over naar een andere computer, browser of adres?','Met een back-up: exporteren op de oude plek, importeren op de nieuwe.<ol><li>Op de oude plek: <b>Instellingen → Data → Exporteer JSON</b>.</li><li>Op de nieuwe plek: open SyncJournal en kies <b>Instellingen → Data → Importeer</b>.</li><li>Kies wat je overneemt. Trades kun je <b>vervangen</b> of <b>samenvoegen</b>.</li></ol>Dit geldt ook als je SyncJournal eerst lokaal draaide en nu syncjournal.nl gebruikt: de browser bewaart data per adres, dus je gegevens verhuizen niet vanzelf mee. Trades, screenshots, playbooks, je Trading Plan en instellingen gaan allemaal mee.'],
     ['Wat gebeurt er als ik mijn browsergegevens of cache wis?','Dan is je journal op dit apparaat weg, en de veiligheidskopieën in je browser ook. Met een back-up zet je alles in een minuut terug via <b>Instellingen → Data → Importeer</b>. Zonder back-up is het echt verloren. Maak dus regelmatig een back-up, of zet automatische back-ups aan. Bij <b>Instellingen → Data → Opslag-bescherming</b> zie je of je browser heeft beloofd je opslag niet zelf op te ruimen.'],
     ['Wat zijn veiligheidskopieën?','Reservekopieën die de app zelf maakt vóór een risicovolle actie: importeren, voorbeelddata laden of wissen. De laatste 3 staan bij <b>Instellingen → Data → Veiligheidskopieën</b>. Ging er iets mis? Klik bij de juiste kopie op <b>Herstel</b>. Met <b>Maak kopie</b> leg je zelf de huidige stand vast. Let op: deze kopieën staan in je browser. Wis je je browsergegevens, dan zijn ze ook weg. Ze vervangen dus geen echte back-up.'],
     ['Kan ik mijn bedragen verbergen?','Ja: klik op het <b>oog-icoon</b> rechtsboven, of zet <b>Instellingen → Weergave → Bedragen verbergen</b> aan. Alle bedragen in dollars of euro\'s worden dan vervaagd, ook in de grafieken, de Kalender en Analytics. Handig voor screenshots of als iemand meekijkt. Je percentages en je R-waarden (je resultaat gedeeld door je risico) blijven zichtbaar. Het geldt ook voor wat je deelt: in het <b>coach-pakket</b>, bij <b>Kopieer voor Discord</b> en in wat <b>Mori</b> krijgt blijven je bedragen weg, ook als het vinkje daar uit staat.'],
@@ -6081,10 +6101,21 @@ const FAQS=[
     ['Wat is het verschil tussen een playbook en een setup?','Een playbook is je vaste manier van traden; een setup is het patroon dat je op de chart ziet.<ul><li><b>Playbook</b>: je recept met regels, bv. "Trend-pullback": wanneer stap je in, waar ligt je stop, wanneer blijf je weg. Per trade kies je één playbook.</li><li><b>Setup</b>: wat je ziet op één timeframe (de tijdsperiode van je chart), bv. een BOS (break of structure: de koers breekt door een eerdere top of bodem). Setups kies je in de <b>Setup-lagen</b> van een trade.</li></ul>Het veld dat vroeger "Setup" heette, heet sinds v1.9 <b>Playbook</b>. Filteren kan op allebei: <b>Alle playbooks</b> en <b>Alle setups</b>.'],
     ['Wat is het Playbook?','Je verzameling vaste manieren van traden, elk met eigen regels. Je maakt er een op de <b>Playbook</b>-pagina met <b>+ Nieuwe playbook</b>. Per playbook rekent SyncJournal uit hoe het gaat, onder andere je <b>win-rate</b> (hoe vaak je wint) en je <b>expectancy</b> (wat je gemiddeld per trade verdient). Je ziet ook welke combinaties van timeframe en setup het best werken, en of je resultaat zakt van backtest naar live.'+faqVisie('visie-playbook')],
     ['Hoe werken tags, en waar stel ik ze in?','Tags zijn sleutelwoorden die je aan een trade hangt, zodat je later ziet wat werkt. Je stelt ze één keer in bij <b>Instellingen → Tags</b>, per soort: Setup-type, Confirmaties, Timeframe, Emoties, Fouten, Missed-redenen en Eigen labels. Elke soort heeft een eigen kleur. Bij emoties bepaal je zelf wat negatief (rood) en wat positief (groen) is. In het trade-formulier klik je ze daarna alleen nog aan.'+faqVisie('visie-tags')],
-    ['Wat betekenen Live, Paper, Backtest en Gemist?','Dat is de <b>soort</b> trade, en die kies je in het trade-formulier.<ul><li><b>Live</b>: met echt geld.</li><li><b>Paper</b>: op papier of een demo-account, zonder echt geld.</li><li><b>Backtest</b>: een oefentrade op koersdata uit het verleden, om een strategie te testen.</li><li><b>Gemist</b>: een trade die je zag maar niet nam. Met een <b>missed-reden</b> leg je vast waarom.</li></ul>Standaard tonen de pagina\'s alleen <b>Live trades</b>. Met het filter <b>Soort trades</b> bovenaan kijk je naar je oefentrades.'],
-    ['Wat is de Plan-pagina?','Een aparte pagina (<b>Plan</b> in het menu) waar je vóór de handelsdag je plan vastlegt: je scenario\'s, je voorwaarden en waar je van afblijft. Daarna koppelt de journal zelf: een trade hoort bij het plan met hetzelfde pair en dezelfde richting dat er het kortst vóór ligt (standaard binnen 45 minuten). Zo zie je achteraf of je trade uit je plan kwam of erbuiten. Pas je een koppeling zelf aan, dan blijft die staan.'],
+    ['Wat betekenen Live, Paper, Backtest en Gemist?','Dat is de <b>soort</b> trade, en die kies je in het trade-formulier.<ul><li><b>Live</b>: met echt geld.</li><li><b>Paper</b>: op papier of een demo-account, zonder echt geld.</li><li><b>Backtest</b>: een oefentrade op koersdata uit het verleden, om een strategie te testen.</li><li><b>Gemist</b>: een trade die je zag maar niet nam. Met een <b>missed-reden</b> leg je vast waarom.</li></ul>Standaard tonen de pagina\'s alleen <b>Live trades</b>. Met het filter <b>Soort trades</b> bovenaan kijk je naar je oefentrades.<br><br>Kies je bij een nieuwe trade <b>Geen exchange</b>, dan springt Soort vanzelf op Backtest; kies je weer een exchange, dan op Live. Krijg je in het formulier een melding over je exchange, dan zet <b>Backtest-trade</b> dat in één klik.'],
     ['Wat betekent de status "partial"?','Een <b>partial</b> is een positie die deels gesloten is: een of meer TP\'s (take-profits, je winstdoelen) zijn geraakt, maar de rest loopt nog.<ul><li>Het geboekte deel telt meteen mee in je Netto P&L, je equity-curve en de Kalender.</li><li>Win-rate en de andere statistieken wachten tot de hele positie dicht is. De rest kan immers nog op je stop eindigen.</li><li>Onder het bedrag staat klein de <b>unrealized</b> P&L: de stand van het open deel bij de laatste sync. Die telt nergens mee.</li></ul>Je vindt ze via het filter <b>Alle statussen → Partial</b>.'],
     ['Waarom kan ik entry en exit niet aanpassen bij een gesyncte trade?','Omdat bij een gesyncte trade (opgehaald via je exchange-koppeling) de exchange de bron is. Entry, exit, size (de grootte van je positie), fees (kosten) en P&L komen dan van de exchange en staan vast. Stop-loss, risico, notities, tags, grade en screenshots blijven van jou. Komt je stop zelf van de exchange, dan staat die ook vast. Klopt hij niet, dan klik je op <b>Zelf aanpassen</b>; zie de vraag over de stop van je exchange. Handmatige trades en CSV-imports kun je wel helemaal aanpassen.'],
+  ]],
+  ['🗓️ Je trading plan',[
+    ['Wat is het Trading Plan?','Een plan voor je week en je dag, met scenario\'s, dat bij elk scenario je edge uit je eigen trades laat zien. Je opent het met <b>Plan</b> in het menu. Het is een losse pagina, met dezelfde opslag als je journal. Er zijn vier tabs:<ul><li><b>Week</b>: lagen, levels, no-trade en focus voor de week.</li><li><b>Dag</b>: je lagen van vandaag, levels, pre-flight, mentaal en je scenario\'s.</li><li><b>Afsluiting</b>: na de sessie, wat uitkwam en je les.</li><li><b>Log</b>: al je dagen terug.</li></ul>Een <b>scenario</b> is een als-dan-plan: "als BTC de Asia-low sweept, dan long met mijn London SFP". Je <b>edge</b> is waar je structureel geld verdient.','plan'],
+    ['Hoe maak ik een dagplan, en heb ik een weekplan nodig?','Klik op <b>Dag → Maak dagplan</b>. Een weekplan is niet nodig. Heb je er wel een, dan erft elke dag van die week de lagen van de week (gedimd), en wat de week al heeft staat niet nog eens leeg in je dag.<ul><li>Met het tandwiel ⚙ kies je je stijl: <b>Swing</b>, <b>Daytrade</b> of <b>Scalp</b>. Die bepaalt alleen met welke tijdframes een nieuwe week en dag beginnen; je kunt er altijd van afwijken.</li><li>De tags komen uit je journal (<b>Instellingen → Tags</b>). Een nieuwe tag die je in het plan maakt, komt daar ook bij.</li><li>Nog niets voor vandaag? <b>Gisteren overnemen</b> neemt de lagen, levels en nog open scenario\'s van je vorige dagplan over.</li></ul>'],
+    ['Wat zeggen de cijfers bij een scenario?','Hoe je eerdere trades met dezelfde setup het deden: hetzelfde playbook, dezelfde richting en dezelfde tags per tijdframe. <b>Live</b> en <b>Backtest</b> staan apart; Paper telt bij Backtest.<ul><li><b>Gem. R</b>: je gemiddelde resultaat in R. Alleen trades mét stop-loss tellen mee.</li><li><b>Winrate</b>, expectancy, profit factor en je laatste 10.</li><li><b>weinig data</b> (onder 10 trades), <b>redelijk wat data</b> (10 tot 30) of <b>genoeg data</b> (30 of meer).</li><li><b>sterkste</b>: het scenario bovenaan, met minstens 10 trades en een positieve gem. R.</li></ul>Onder 5 trades laat het plan eerst de richting los, dan tags vanaf het hoogste tijdframe; "zonder …" zegt welke. Een tijdframe dat geen van je trades heeft, telt niet mee. Een kans in procenten staat er bewust niet: bij weinig trades is dat schijnzekerheid.'],
+    ['Wanneer is een scenario "Klaar om te nemen"?','Als je alle confirmations van de entry-laag en alle verplichte criteria van je playbook hebt afgevinkt. Open het scenario en vink ze aan; dan staat er <b>Klaar om te nemen</b>, met je risico voor die grade.<ul><li>Het risico per grade (A, B, C) stel je in met het tandwiel ⚙. 0% betekent: niet traden.</li><li>"Niet als: …" uit je playbook staat erbij als waarschuwing.</li><li><b>Pre-flight</b> en <b>mentaal</b> zijn een herinnering, geen slot: niets wordt geblokkeerd. Bij mentaal 1 of 2 zegt het plan: <b>Overweeg alleen A-setups</b>.</li></ul>'],
+    ['Hoe koppel ik een trade aan een scenario?','Dat kies je zelf: er wordt <b>nooit vanzelf gekoppeld</b>. Open het scenario en klik op <b>Zet om in trade</b>.<ul><li><b>Uit je journal</b>: tik een of meer trades aan en klik op <b>Koppel</b>. Je ziet trades met hetzelfde pair en dezelfde richting op die dag; met <b>Alle pairs en richtingen</b> en <b>+ dag erna</b> zie je meer. Een trade hoort bij hooguit één scenario.</li><li><b>Nieuwe trade invullen</b>: het tradeformulier opent al ingevuld, voor een handmatige, backtest- of papertrade. Opslaan koppelt hem.</li></ul>Achteraf kan ook: <b>Koppel trade</b> in de Afsluiting of de Log, of in de journal bij de trade zelf (<b>Koppel aan scenario</b>). Ontkoppelen: het × bij de trade in het scenario. Lege velden van de trade vult de journal aan uit het scenario.'],
+    ['Kan ik screenshots en TradingView-links in mijn plan zetten?','Ja, in je week, je dag en elk scenario. Plak een screenshot met <b>Ctrl+V</b> (Mac: ⌘+V), sleep hem erheen, of klik op <b>+ Afbeelding</b>. Een link plak je in het veld ernaast en voeg je toe met <b>+ Link</b>; van een TradingView-snapshot zie je meteen een voorbeeld.<ul><li>Hooguit 8 afbeeldingen en 8 links per dag of week, en 4 per scenario.</li><li>Plakken gaat naar het scenario dat openstaat, anders naar de dag.</li><li>Bij <b>Zet om in trade</b> gaan de afbeeldingen en links van het scenario mee naar de trade, als die er zelf nog geen heeft.</li></ul>'],
+    ['Wat zie ik in de Afsluiting en de Log?','Hoe je plan uitpakte. In de <b>Afsluiting</b> zet je na de sessie per scenario de status: <b>Genomen</b>, <b>Gemist</b> (uitgekomen, niet genomen), <b>Niet uit</b> (niet uitgekomen) of <b>Ongeldig</b>. Dan zie je:<ul><li>hoeveel scenario\'s uitkwamen, hoeveel je er nam en hoeveel je liet liggen;</li><li><b>binnen plan tegenover buiten plan</b>: je live-trades die bij een scenario horen tegenover die erbuiten, in R en geld;</li><li>ruimte voor één les.</li></ul>De <b>Log</b> toont al je dagen, nieuwste boven, met je <b>voorspel-score</b>: hoe vaak je scenario\'s uitkomen, en hoe vaak je ze dan ook neemt. Dezelfde cijfers staan in de journal bij <b>Tendencies → Plan</b>.'],
+    ['Kan Mori mijn plan bekijken?','Ja, per scenario en je hele dagplan, als Mori aan staat en je sleutel gekoppeld is. Anders staat er <b>Mori instellen</b>.<ul><li>Open een scenario en klik op <b>🤖 Vraag Mori</b>. Mori vergelijkt het met je eigen cijfers en regels, en zegt waar het tegen je week- of dagbias ingaat.</li><li>Bovenaan Dag staat <b>🤖 Vraag Mori over mijn dagplan</b>: welke scenario\'s volgens je cijfers het sterkst en het zwakst zijn, en waar je plan zichzelf tegenspreekt.</li></ul>De journal opent Mori en stelt de vraag. Mee gaan je scenario\'s, lagen, levels, mentaal, pre-flight en de cijfers die het plan toont; bij <b>Wat is er verstuurd?</b> zie je alles. Mori geeft <b>geen koop- of verkoopadvies</b>.'],
+    ['Waar is de poort (en mijn oude plan) gebleven?','Die is weg: het Trading Plan is in v1.19 opnieuw opgezet, zonder poort en zonder de drie checklists. Je oude plan wordt niet meer gelezen, maar ook niet gewist. Je begint dus opnieuw, met een dagplan en je scenario\'s. Ook "dekt poort-punt" bij je playbook-criteria is weg; je criteria zelf staan er nog.'],
+    ['Gaat mijn plan mee in de back-up?','Ja, je plannen en hun afbeeldingen. Bij <b>Instellingen → Data → Exporteer JSON</b> staat het in het overzicht als <b>TradingPlan</b>, met het aantal plannen, scenario\'s en afbeeldingen. Bij <b>Instellingen → Data → Importeer</b> zet de journal ze terug, ook de afbeeldingen. Je sleutel voor Mori gaat nooit mee.'],
   ]],
   ['🔄 Exchanges koppelen & sync',[
     ['Welke exchanges worden ondersteund?','Vier exchanges met een koppeling: <b>Blofin</b>, <b>OKX</b>, <b>Hyperliquid</b> en <b>Kraken Futures</b>. Een koppeling haalt je trades automatisch op; dat heet een <b>sync</b>. Daarnaast lees je een <b>CSV-bestand</b> (een export van je trade-geschiedenis) in van Kraken, Blofin, MEXC, Hyperliquid, FTMO en OKX. <b>MEXC</b> heeft geen koppeling meer: MEXC stopt in november 2026 met Nederlandse klanten en heeft geen MiCA-licentie (de Europese vergunning). Je oude MEXC-trades blijven zichtbaar en tellen mee.'],
@@ -6134,14 +6165,14 @@ const FAQS=[
   ]],
   ['🤖 Mori, je AI-coach',[
     ['Wat is Mori?','Mori is de AI-coach van SyncJournal: een coach waarmee je chat over je eigen trades. Mori draait op <b>Claude</b>, een AI van het bedrijf Anthropic. De journal rekent alle cijfers zelf uit en geeft ze aan Mori; Mori rekent zelf niets. Daardoor kloppen zijn cijfers met wat je in Analytics ziet. Mist Mori iets, dan vraagt hij de journal om precies die cijfers. Je vindt Mori op één plek: de pagina <b>AI-coach</b> in het menu. Op je Dashboard en in Analytics zie je niets van hem. Mori is iets anders dan je menselijke coach, en geeft geen financieel advies.','mori'],
-    ['Wat kan ik Mori vragen?','Alles over je eigen trades. Vier vragen staan als knop klaar:<ul><li><b>Waar lek ik geld?</b></li><li><b>Waar zit mijn edge?</b> (waar je structureel geld verdient)</li><li><b>Review mijn week</b>: wat ging goed, wat kostte geld, en één ding om volgende week anders te doen</li><li><b>Hoe ging mijn laatste trade?</b></li></ul>Je kunt ook zelf typen, bv. "hoe doet mijn London SFP het op vrijdag?". Is Mori gekoppeld, dan staat op Review bij een trade een 🤖-knopje: dat opent Mori met die trade klaargezet. Mori kijkt naar de trades die je filter bovenaan laat zien.'],
-    ['Kan Mori mijn trade-idee checken?','Ja, met <b>Check mijn trade-idee</b> onder de vaste vragen.<ol><li>Vul pair, richting, setup, entry, stop en eventueel je TP (take-profit, je winstdoel) in.</li><li>De journal rekent je geplande R:R uit: hoeveel je kunt winnen tegenover wat je riskeert.</li><li>Mori zegt hoe die setup het bij jou deed, en of het idee past bij je playbook-regels. Gebruik je TradingPlan, dan ook bij je weekplan en vaste regels.</li></ol>Mori geeft <b>geen koop- of verkoopadvies</b>: hij houdt je je eigen regels voor.'],
+    ['Wat kan ik Mori vragen?','Alles over je eigen trades. Vier vragen staan als knop klaar:<ul><li><b>Waar lek ik geld?</b></li><li><b>Waar zit mijn edge?</b> (waar je structureel geld verdient)</li><li><b>Review mijn week</b>: wat ging goed, wat kostte geld, en één ding om volgende week anders te doen</li><li><b>Hoe ging mijn laatste trade?</b></li></ul>Je kunt ook zelf typen, bv. "hoe doet mijn London SFP het op vrijdag?". Is Mori gekoppeld, dan staat op Review bij een trade een 🤖-knopje: dat opent Mori met die trade klaargezet. Mori kijkt naar de trades die je filter bovenaan laat zien. Vanuit je Trading Plan vraag je Mori ook naar een scenario of je dagplan.'],
+    ['Kan Mori mijn trade-idee checken?','Ja, met <b>Check mijn trade-idee</b> onder de vaste vragen.<ol><li>Vul pair, richting, setup, entry, stop en eventueel je TP (take-profit, je winstdoel) in.</li><li>De journal rekent je geplande R:R uit: hoeveel je kunt winnen tegenover wat je riskeert.</li><li>Mori zegt hoe die setup het bij jou deed, en of het idee past bij je playbook-regels. Gebruik je TradingPlan, dan ook bij je weekplan en vaste regels.</li></ol>Mori geeft <b>geen koop- of verkoopadvies</b>: hij houdt je je eigen regels voor.<br><br>Een scenario uit je Trading Plan check je met <b>🤖 Vraag Mori</b> in het plan zelf; daar is een entry nog niet nodig.'],
     ['Wat heb ik nodig om Mori te gebruiken?','Een eigen API-sleutel van Anthropic. Een <b>API-sleutel</b> is een code waarmee de app namens jou Claude mag gebruiken.<ol><li>Maak een account op console.anthropic.com.</li><li>Zet er tegoed op, bv. $5, en stel een maandlimiet in.</li><li>Maak een sleutel aan.</li><li>Plak die op de pagina <b>AI-coach</b> en klik op <b>Koppelen</b>.</li></ol>Een Claude Pro- of Max-abonnement werkt hier niet: Anthropic staat dat niet toe in andere apps.'],
     ['Wat kost Mori?','Ongeveer 30 cent tot een dollar per maand met Sonnet 5.5, en een paar cent met Haiku 5.5, bij een paar vragen per week en een weekreview. Jij betaalt Anthropic direct, niet ons. Onder elk antwoord staat wat die vraag ongeveer kostte. Bij <b>Instellingen → Mori</b> zie je het verbruik van deze maand, kies je het model en zet je een eigen <b>maandlimiet</b>: daarboven vraagt Mori eerst of je echt wilt versturen. Stel ook een limiet in bij Anthropic zelf; die is hard. Vervolgvragen zijn goedkoper, omdat je cijfers een paar minuten bij Anthropic bewaard blijven.'],
-    ['Wat krijgt Mori van mij te zien?','Alleen wat een vraag nodig heeft, en het gaat alleen naar Anthropic, niet naar ons. Dat zijn de cijfers die de journal uitrekent (kerncijfers, en per setup, sessie, weekdag, fout en emotie), een paar trades op één regel, en je notities. Zoekt Mori iets op, dan krijgt hij alleen het resultaat. Bij <b>Instellingen → Mori</b> zet je <b>Bedragen verbergen voor Mori</b> aan of <b>Notities meesturen</b> uit. Staat de privacy-modus aan, dan gaan er ook geen bedragen mee. Onder elk antwoord zie je bij <b>Wat is er verstuurd?</b> precies wat Mori kreeg. Je exchange-sleutels, je wallet-adres en je saldo gaan nooit mee.'],
+    ['Wat krijgt Mori van mij te zien?','Alleen wat een vraag nodig heeft, en het gaat alleen naar Anthropic, niet naar ons. Dat zijn de cijfers die de journal uitrekent (kerncijfers, en per setup, sessie, weekdag, fout en emotie), een paar trades op één regel, en je notities. Zoekt Mori iets op, dan krijgt hij alleen het resultaat. Bij <b>Instellingen → Mori</b> zet je <b>Bedragen verbergen voor Mori</b> aan of <b>Notities meesturen</b> uit. Staat de privacy-modus aan, dan gaan er ook geen bedragen mee. Vraag je vanuit je Trading Plan, dan gaat ook dat scenario of dagplan mee. Onder elk antwoord zie je bij <b>Wat is er verstuurd?</b> precies wat Mori kreeg. Je exchange-sleutels, je wallet-adres en je saldo gaan nooit mee.'],
     ['Mori geeft een foutmelding, wat nu?','Lees de melding: die zegt wat er mis is en wat je kunt doen. Je vraag blijft in het invoerveld staan. De meest voorkomende:<ul><li><b>Sleutel niet herkend</b>: verlopen of verwijderd. Maak een nieuwe en kies <b>Vergeet sleutel</b>.</li><li><b>Tegoed op</b> of <b>limiet bereikt</b>: regel je in je console bij Anthropic.</li><li><b>Te veel vragen achter elkaar</b>: probeer het over een minuut.</li><li><b>Claude overbelast</b>: probeer het over een paar minuten.</li><li><b>Geen verbinding</b>: check je internet.</li></ul>Duurt een antwoord te lang, druk dan op <b>Stop</b>. Wat er al stond, blijft staan.'],
     ['Waar staat mijn sleutel voor Mori?','Alleen op dit apparaat, in je browser. Hij gaat <b>nooit</b> mee in een export of back-up. Op een gedeelde computer vink je <b>Alleen voor deze sessie onthouden</b> aan; dan is hij weg zodra je het tabblad sluit. Het ergste wat iemand met een gelekte sleutel kan doen, is je tegoed bij Anthropic opmaken. Houd dat tegoed dus laag en zet een maandlimiet.'],
-    ['Hoe zet ik Mori uit?','Bij <b>Instellingen → Mori</b>. Met <b>Vergeet sleutel</b> haal je je sleutel weg; met de schakelaar <b>AI-coach ingeschakeld</b> zet je Mori helemaal uit. Wil je de sleutel ook bij Anthropic intrekken? Doe dat in je console onder API keys.'],
+    ['Hoe zet ik Mori uit?','Bij <b>Instellingen → Mori</b>. Met <b>Vergeet sleutel</b> haal je je sleutel weg; met de schakelaar <b>Mori ingeschakeld</b> zet je Mori helemaal uit. Wil je de sleutel ook bij Anthropic intrekken? Doe dat in je console onder API keys.'],
   ]],
   ['🛠️ Weergave & problemen oplossen',[
     ['Hoe wissel ik tussen licht en donker thema?','Klik op het maan- of zonicoon rechtsboven. Of kies het bij <b>Instellingen → Weergave → Thema</b>. Er zijn twee thema\'s, licht en donker, en je keuze wordt onthouden.'],
@@ -6157,12 +6188,13 @@ const FAQS=[
    FAQS itself is never rewritten: faqFmt only re-wraps the HTML for display. */
 const FAQ_DESC={'🚀':'Wat het is, wat het kost en hoe je begint','💡':'Waarom SyncJournal werkt zoals hij werkt',
   '💾':'Waar je data staat, back-ups en overzetten','✍️':'Invullen, screenshots, tags, setups en playbooks',
+  '🗓️':'Week, dag en scenario\'s, met je edge per scenario',
   '🔄':'Exchange koppelen, API-sleutels, sync en CSV','📊':'P&L, R, win-rate en de grafieken uitgelegd',
   '🧭':'Je edge en je lek vinden','✅':'Trades terugkijken en delen met je coach',
   '🤖':'Wat Mori kan, wat het kost en wat hij ziet','🛠️':'Thema, dashboard, updates en als iets hapert'};
 const FAQ_POPULAR=['Hoe voeg ik mijn eerste trade toe?','Hoe maak ik een back-up (en waarom is dat belangrijk)?','Hoe koppel ik een exchange?',
-  'Wat betekent R-multiple (die "R" overal)?','Ik zie lege grafieken of "geen trades", hoe kan dat?','Wat is Mori?'];
-const FAQ_SUGGEST=['back-up','R-multiple','koppelen','screenshot','Mori'];
+  'Wat is het Trading Plan?','Ik zie lege grafieken of "geen trades", hoe kan dat?','Wat is Mori?'];
+const FAQ_SUGGEST=['back-up','R-multiple','koppelen','screenshot','scenario','Mori'];
 const FAQ_OPEN_MAX=3;   // this many search hits or fewer open by themselves
 const FAQ_SNIP=50;      // characters of context around a hit that is only in the answer
 let FAQV={cat:null,q:''};   // open topic (index in FAQS, null = overview) and search text
@@ -6422,6 +6454,8 @@ const COACH_RECENT_VRIJ=10; // recent trades with a free question; the coach loo
 //   'alles' (a free question), 'lek' / 'edge' (groups worst / best first, plus the worst / best trades),
 //   'week' (the last 7 days against the 7 before), 'laatste' (the newest trade and its setup),
 //   'pretrade' (a trade idea in opts.idee against that setup, symbol, direction, playbook and TradingPlan).
+//   'plan-scenario' / 'plan-dag' (Mori from TradingPlan: opts.plan from planMoriVanOverdracht; a scenario also goes
+//   through the pre-trade part, as an idea without an entry).
 // Returns {tekst, n}; n = closed trades the package is about (0 = nothing to send).
 function coachPakket(opts){
   const o={closed:CLOSED,boekingen:BOEKINGEN,hideAmounts:aiHide(),notes:AIPREFS.notes!==false,focusId:null,deel:'alles',...(opts||{})};
@@ -6443,6 +6477,8 @@ function coachPakket(opts){
   }
   L.push('- Alles ('+tr(rows.length)+'): '+coachStats(rows,o,geld));
   if(o.deel==='pretrade'){L.push(...coachPretradeDeel(rows,o));return {tekst:L.join('\n'),n:rows.length};}
+  if(o.deel==='plan-scenario'&&o.plan){L.push(...coachScenarioDeel(o),...coachPretradeDeel(rows,o));return {tekst:L.join('\n'),n:rows.length};}
+  if(o.deel==='plan-dag'&&o.plan){L.push(...coachDagplanDeel(rows,o));return {tekst:L.join('\n'),n:rows.length};}
   if(o.deel!=='laatste'&&o.deel!=='pretrade')[['30d','Laatste 30 dagen'],['7d','Laatste 7 dagen']].forEach(([per,lbl])=>{const rs=periodTrades(rows,per);
     if(rs.length&&rs.length<rows.length)L.push('- '+lbl+' t/m '+coachDatum(chron[0].date)+' ('+tr(rs.length)+'): '+coachStats(rs,o,periodTrades(geld,per)));});
   if(o.deel!=='laatste')L.push(...coachGroepen(rows,{...o,volgorde:o.deel==='lek'?'slecht':o.deel==='edge'?'goed':'impact'}));
@@ -6466,8 +6502,10 @@ function coachIsoWeek(iso){const [y,m,d]=String(iso).split('-').map(Number);cons
   const y0=new Date(Date.UTC(t.getUTCFullYear(),0,1));return t.getUTCFullYear()+'-W'+String(Math.ceil(((t-y0)/864e5+1)/7)).padStart(2,'0');}
 function coachGetal(v){const n=parseFloat(String(v==null?'':v).replace(',','.'));return isFinite(n)?n:null;}
 // Planned R:R and stop distance, or a reason why the idea is not complete yet.
-function coachIdeeCijfers(i){const e=coachGetal(i.entry),st=coachGetal(i.stop),tp=coachGetal(i.tp);
+// o.entryOptioneel (a scenario from TradingPlan has no entry yet): without an entry there are no figures, and no error.
+function coachIdeeCijfers(i,o){const e=coachGetal(i.entry),st=coachGetal(i.stop),tp=coachGetal(i.tp);
   if(!String(i.pair||'').trim())return {fout:'Vul een pair in.'};
+  if(o&&o.entryOptioneel&&!(e>0))return {zonderEntry:true};
   if(!(e>0)||!(st>0))return {fout:'Vul entry en stop in.'};
   if(e===st)return {fout:'Entry en stop zijn gelijk.'};
   if(i.dir==='long'&&st>e)return {fout:'Bij een long hoort de stop onder de entry.'};
@@ -6476,23 +6514,31 @@ function coachIdeeCijfers(i){const e=coachGetal(i.entry),st=coachGetal(i.stop),t
   return {rr:tp>0?Math.abs(tp-e)/Math.abs(e-st):null,stopPct:Math.abs(e-st)/e*100};}
 // Wat TradingPlan v3 over vandaag zegt: het weekplan (lagen, focus, no-trade, levels), de scenario's van vandaag
 // in deze richting en het risico per grade. Alleen lezen (tp3:*), net als planSync.
-function coachPlanRegels(dir){const P=planLoad(),vd=PLAN_AMS.format(new Date()),wid=coachIsoWeek(vd),wk=P.plans.weeks[wid],dag=P.plans.days[vd],risk=planObj(P.cfg.risk)?P.cfg.risk:null,L=[];
-  const regel=v=>String(v==null?'':v).replace(/\s+/g,' ').trim();
+function coachPlanRegels(dir,dagId){const P=planLoad(),vandaag=PLAN_AMS.format(new Date()),vd=dagId||vandaag,wid=coachIsoWeek(vd),wk=P.plans.weeks[wid],dag=P.plans.days[vd],risk=planObj(P.cfg.risk)?P.cfg.risk:null,L=[];
   if(!wk&&!dag&&!risk)return ['- Geen TradingPlan-gegevens gevonden op dit apparaat.'];
   if(wk){L.push('Weekplan '+wid+':');
-    const lagen=(wk.layers||[]).filter(l=>l&&l.tf).map(l=>l.tf+(l.bias?' '+l.bias:'')+([...(l.setups||[]),...(l.confirmations||[])].length?': '+[...(l.setups||[]),...(l.confirmations||[])].join(', '):''));
-    if(lagen.length)L.push('- Lagen: '+lagen.join(' · '));
-    [['Focus',wk.focus],['Niet traden / nieuws',wk.noTrade],['Levels',wk.levels]].forEach(([k,v])=>{if(regel(v))L.push('- '+k+': '+regel(v));});}
+    const lagen=coachPlanLagen(wk.layers);if(lagen)L.push('- Lagen: '+lagen);
+    [['Focus',wk.focus],['Niet traden / nieuws',wk.noTrade],['Levels',wk.levels]].forEach(([k,v])=>{if(coachPlanTekst(v))L.push('- '+k+': '+coachPlanTekst(v));});}
   else L.push('- Geen weekplan voor deze week.');
-  if(dag){const sc=(dag.scenarios||[]).filter(s=>s&&s.dir===dir);
-    if(dag.mental)L.push('- Mentaal vandaag: '+dag.mental+'/5');
-    L.push(sc.length?'Scenario\'s vandaag ('+dir+'):':'- Geen scenario\'s vandaag voor een '+dir+'.',...sc.map(s=>'- '+regel(s.title)+(s.pb?' · '+s.pb:'')+' · grade '+(s.grade||'?')+' · '+(s.status||'open')+(s.trigger?' · als '+regel(s.trigger):'')+(s.invalid?' · ongeldig als '+regel(s.invalid):'')));}
-  if(risk)L.push('- Risico per grade: '+['A','B','C'].filter(g=>risk[g]!=null).map(g=>+risk[g]?g+' '+String(+risk[g]).replace('.',',')+'%':g+' niet traden').join(', '));
+  if(dag){const sc=(dag.scenarios||[]).filter(s=>s&&s.dir===dir),lagen=coachPlanLagen(dag.layers);
+    L.push('Dagplan '+coachDatum(vd)+':');
+    if(lagen)L.push('- Lagen: '+lagen);
+    if(coachPlanTekst(dag.levels))L.push('- Levels: '+coachPlanTekst(dag.levels));
+    if(dag.mental)L.push('- Mentaal '+(vd===vandaag?'vandaag':'op '+coachDatum(vd))+': '+dag.mental+'/5');
+    L.push(sc.length?'Scenario\'s '+(vd===vandaag?'vandaag':'op '+coachDatum(vd))+' ('+dir+'):':'- Geen scenario\'s '+(vd===vandaag?'vandaag':'op '+coachDatum(vd))+' voor een '+dir+'.',...sc.map(s=>'- '+coachPlanTekst(planTitel(s))+(s.pb?' · '+s.pb:'')+' · grade '+(s.grade||'?')+' · '+(s.status||'open')+(s.trigger?' · als '+coachPlanTekst(s.trigger):'')+(s.invalid?' · ongeldig als '+coachPlanTekst(s.invalid):'')));}
+  if(risk)L.push(coachPlanRisico(risk));
   return L;}
-function coachPretradeDeel(rows,o){const i=o.idee||{},c=coachIdeeCijfers(i),L=[];
-  L.push('','# Trade-idee (ingevuld door de trader, nog niet genomen)',
-    '- '+i.pair+' '+i.dir+' · setup '+(i.setup||'—')+' · entry '+i.entry+' · stop '+i.stop+(i.tp?' · TP '+i.tp:' · geen TP'),
-    c.rr!=null?'- Gepland R:R (uitgerekend door de journal): '+c.rr.toFixed(2).replace('.',',')+'R':'- Gepland R:R: onbekend, geen TP ingevuld',
+const coachPlanTekst=v=>String(v==null?'':v).replace(/\s+/g,' ').trim();
+// "Weekly Bullish: BOS · 4H: MSB, OB": one entry per layer with a timeframe, empty layers without a bias left out.
+const coachPlanLaag=l=>{const tags=[...(l.setups||[]),...(l.confirmations||[])];return l.tf+(l.bias?' '+l.bias:'')+(tags.length?': '+tags.join(', '):'');};
+const coachPlanLagen=layers=>(layers||[]).filter(l=>l&&l.tf&&(l.bias||(l.setups||[]).length||(l.confirmations||[]).length)).map(coachPlanLaag).join(' · ');
+const coachPlanRisico=risk=>'- Risico per grade: '+['A','B','C'].filter(g=>risk[g]!=null).map(g=>+risk[g]?g+' '+String(+risk[g]).replace('.',',')+'%':g+' niet traden').join(', ');
+function coachPretradeDeel(rows,o){const i=o.idee||{},c=coachIdeeCijfers(i,{entryOptioneel:!!o.plan}),L=[];
+  L.push('',o.plan?'# Trade-idee (scenario uit TradingPlan, nog niet genomen)':'# Trade-idee (ingevuld door de trader, nog niet genomen)',
+    '- '+i.pair+' '+i.dir+' · setup '+(i.setup||'—')+' · entry '+(c.zonderEntry?'nog niet bekend':i.entry)+' · stop '+(i.stop||'—')+(i.tp?' · TP '+i.tp:' · geen TP'));
+  if(c.zonderEntry)L.push('- Entry nog niet bekend: geen gepland R:R en geen stop-afstand.');
+  else if(c.fout)L.push('- Geen R:R uit te rekenen: '+c.fout);
+  else L.push(c.rr!=null?'- Gepland R:R (uitgerekend door de journal): '+c.rr.toFixed(2).replace('.',',')+'R':'- Gepland R:R: onbekend, geen TP ingevuld',
     '- Stop-afstand: '+c.stopPct.toFixed(2).replace('.',',')+'% van de entry');
   const st=i.setup?rows.filter(t=>t.setup===i.setup):[];
   if(i.setup){L.push('','## Deze setup ('+i.setup+')',st.length?'- n='+st.length+' · '+coachStats(st,o):'- Nog geen gesloten trades met deze setup.');
@@ -6507,10 +6553,52 @@ function coachPretradeDeel(rows,o){const i=o.idee||{},c=coachIdeeCijfers(i),L=[]
     (pb.antiCriteria||[]).filter(x=>x&&x.text).forEach(x=>L.push('- Niet: '+x.text+(x.mandatory?' (blokkeert)':'')));
     if(pb.stop)L.push('- Stop: '+pb.stop);if(pb.target)L.push('- Target: '+pb.target);if(pb.minRR)L.push('- Min R:R: '+pb.minRR);}
   else L.push('- Geen playbook met regels voor deze setup.');
-  L.push('','## Regels uit TradingPlan',...coachPlanRegels(i.dir));
+  L.push('','## Regels uit TradingPlan',...coachPlanRegels(i.dir,o.plan&&o.plan.day.id));
   const nu=localDateISO(),wk=coachIsoWeek(nu),live=T.filter(t=>isLive(t)&&t.date&&fundedZichtbaar(t));
   L.push('- Trades deze week in de journal: '+live.filter(t=>coachIsoWeek(t.date)===wk).length,
     '- Verliezers vandaag in de journal: '+live.filter(t=>t.date===nu&&heeftUitkomst(t)&&t.pnl<0).length);
+  return L;}
+/* ── Mori in TradingPlan: a scenario or the whole day plan (docs/plan-v3-mori-2026-10-27.md) ──
+   o.plan = {soort, s?, day, week, edge} from planMoriVanOverdracht. The edge comes from the plan as figures (tp3:mori):
+   the journal does not have the plan's matching rule, and Mori should see what the plan shows. No amounts in it. */
+function coachEdgeRegel(e){if(!planObj(e))return 'niet meegegeven (het plan had je journal nog niet geladen)';
+  const st=(lbl,x)=>planObj(x)&&+x.n>0?lbl+' n='+(+x.n)+' · winrate '+Math.round(+x.wr||0)+'% · '+(x.gemR==null||!isFinite(+x.gemR)?'geen R':'gem. R '+coachR(+x.gemR)):lbl+' geen trades';
+  const lijst=a=>(Array.isArray(a)?a:[]).slice(0,12).map(v=>coachPlanTekst(v).slice(0,40)).filter(Boolean);
+  const bits=[st('Live',e.live),st('Backtest',e.bt),'basis '+(e.basis==='live'?'Live':'Backtest (minder dan 10 Live)')];
+  const b=e.basis==='live'?e.live:e.bt;if(planObj(b)&&b.betr)bits.push(b.betr==='weinig'?'weinig data (onder 10)':b.betr==='redelijk'?'redelijk wat data (10 tot 30)':'genoeg data (30 of meer)');
+  if(lijst(e.zonder).length)bits.push('zonder '+lijst(e.zonder).join(', ')+' (te weinig trades met alle tags)');
+  if(e.richtingLos)bits.push('long en short samen (te weinig in één richting)');
+  if(planObj(e.gemist)&&+e.gemist.n>0)bits.push(+e.gemist.n+'× gemist, samen '+coachR(+e.gemist.somR||0)+'R (telt niet mee)');
+  if(lijst(e.context).length)bits.push('alleen context, geen van je trades heeft die laag: '+lijst(e.context).join(', '));
+  return bits.join(' · ');}
+function coachScenarioDeel(o){const {s,day,week,edge}=o.plan,L=['','# Scenario uit TradingPlan (dagplan van '+coachDatum(day.id)+')'];
+  const lagen=planLagen({...s,checked:(s.entry&&s.entry.confirmations)||[]},day,week),conf=(s.entry&&s.entry.confirmations)||[],af=conf.filter(c=>(s.checked||[]).includes(c));
+  const crit=((PBOOK[s.pb]||{}).criteria||[]).filter(c=>c&&c.text),critAf=crit.filter(c=>(s.critChecked||[]).includes(c.text)),critTxt=a=>a.map(c=>c.text+(c.mandatory?' (verplicht)':'')).join(', ')||'geen';
+  L.push('- Titel: '+coachPlanTekst(planTitel(s)),'- Pair: '+coachPlanTekst(s.pair)+' · Richting: '+(s.dir==='short'?'short':'long')+' · Playbook: '+(s.pb||'geen')+' · Grade: '+(s.grade||'?')+' · Status: '+(s.status||'open'));
+  if(coachPlanTekst(s.trigger))L.push('- Trigger: '+coachPlanTekst(s.trigger));
+  if(coachPlanTekst(s.invalid))L.push('- Ongeldig als: '+coachPlanTekst(s.invalid));
+  L.push('- Lagen (week + dag + entry, uitgezette tags niet):',...lagen.map(l=>'  - '+coachPlanLaag({...l,tf:l.timeframe})));
+  L.push('- Confirmations afgevinkt: '+(af.join(', ')||'geen'),'- Confirmations open: '+(conf.filter(c=>!af.includes(c)).join(', ')||'geen'));
+  if(crit.length)L.push('- Criteria afgevinkt: '+critTxt(critAf),'- Criteria open: '+critTxt(crit.filter(c=>!critAf.includes(c))));
+  L.push('- Stop: '+(coachPlanTekst(s.stop)||'geen'),"- TP's: "+((s.tps||[]).map(coachPlanTekst).filter(Boolean).join(' · ')||'geen'));
+  if(coachPlanTekst(s.note))L.push('- Notitie: '+coachPlanTekst(s.note).slice(0,COACH_NOTITIE_MAX));
+  L.push('- Edge volgens het plan: '+coachEdgeRegel(edge&&edge[s.id]));
+  return L;}
+function coachDagplanDeel(rows,o){const {day,week,edge}=o.plan,P=planLoad(),c=P.cfg,L=['','# Dagplan uit TradingPlan ('+coachDatum(day.id)+')'];
+  if(week){L.push('## Week '+week.id);const lg=coachPlanLagen(week.layers);if(lg)L.push('- Lagen: '+lg);
+    [['Levels',week.levels],['Niet traden / nieuws',week.noTrade],['Focus',week.focus]].forEach(([k,v])=>{if(coachPlanTekst(v))L.push('- '+k+': '+coachPlanTekst(v));});}
+  else L.push('## Week','- Geen weekplan voor deze week.');
+  L.push('## Dag');const lg=coachPlanLagen(day.layers);L.push('- Lagen: '+(lg||'geen'));
+  if(coachPlanTekst(day.levels))L.push('- Levels: '+coachPlanTekst(day.levels));
+  L.push('- Mentaal '+(day.id===PLAN_AMS.format(new Date())?'vandaag':'op '+coachDatum(day.id))+': '+(day.mental?day.mental+'/5':'niet ingevuld'));
+  const pre=(Array.isArray(c.pre)?c.pre:[]).map((t,k)=>[coachPlanTekst(t),!!(day.pre||[])[k]]).filter(([t])=>t);
+  if(pre.length)L.push('- Pre-flight: '+pre.map(([t,v])=>t+(v?' ✓':' open')).join(', '));
+  const sc=(day.scenarios||[]).filter(planObj),plek=x=>planObj(edge&&edge[x.id])&&+edge[x.id].plek>0?+edge[x.id].plek:99;
+  L.push('','## Scenario\'s (op de volgorde van het plan: gem. R van de basis, Live vanaf 10 Live-trades, anders Backtest)',...sc.slice().sort((a,b)=>plek(a)-plek(b)).map(x=>{const e=edge&&edge[x.id];
+    return (plek(x)<99?plek(x)+'. ':'- ')+coachPlanTekst(planTitel(x))+' · '+coachPlanTekst(x.pair)+' '+(x.dir==='short'?'short':'long')+' · '+(x.pb||'geen playbook')+' · grade '+(x.grade||'?')+' · '+(x.status||'open')+(planObj(e)&&e.sterkste?' · sterkste':'')+'\n   edge: '+coachEdgeRegel(e);}));
+  const pbs=[...new Set(sc.map(x=>x.pb).filter(Boolean))];
+  if(pbs.length)L.push('','## Deze playbooks in de journal',...pbs.map(pb=>{const r=rows.filter(t=>t.setup===pb);return '- '+pb+': '+(r.length?'n='+r.length+' · '+coachStats(r,o):'nog geen gesloten trades');}));
+  if(planObj(c.risk))L.push('',coachPlanRisico(c.risk));
   return L;}
 /* ── Tools: the model asks, the app computes ──
    Instead of sending everything, the coach can look things up. Both tools run on the same filtered trades and the
@@ -6703,6 +6791,11 @@ const AI_KNOPPEN=[
 ];
 // Not a button of its own: the pre-trade form sends this.
 const AI_PRETRADE_OPDRACHT='De trader overweegt een trade (het trade-idee) en wil weten wat zijn eigen data en regels erover zeggen. Geef geen koop- of verkoopadvies en zeg niet of hij de trade moet nemen, en voorspel niets over de markt. Zeg: hoe deed deze setup het (ook in deze sessie en richting, met n), past het idee bij de playbook-regels en bij de regels uit TradingPlan (noem de regel), en wat valt op (bijvoorbeeld een R:R onder zijn minimum, max trades bereikt, al verliezers vandaag). Sluit af met de vraag of het idee aan zijn eigen regels voldoet.';
+// Not buttons in the journal either: TradingPlan sends these (tp3:mori, planMoriVanOverdracht).
+const AI_PLAN_KNOPPEN=[
+  ['plan-scenario','Check mijn scenario',AI_PRETRADE_OPDRACHT+' Vergelijk het scenario met de eigen cijfers en regels van de trader, en noem waar het scenario tegen zijn week- of dagbias ingaat.'],
+  ['plan-dag','Review mijn dagplan','Bespreek het dagplan. Welke scenario\'s zijn volgens de eigen cijfers het sterkst en welke het zwakst, met het cijfer erbij? Waar spreekt het plan zichzelf tegen (bijvoorbeeld een long-scenario tegen een bearish week-bias, of twee scenario\'s die elkaar uitsluiten)? Past het aantal en de grade van de scenario\'s bij de mentale score van vandaag? Geen koop- of verkoopadvies, geen voorspelling over de markt. Sluit af met één concreet punt voor vandaag.'],
+];
 const AI_WEEK_SCHEMA={type:'object',properties:{goed:{type:'string'},kostte:{type:'string'},anders:{type:'string'}},required:['goed','kostte','anders'],additionalProperties:false};
 
 /* ── Conversation state (memory only: gone after a reload, never exported) ── */
@@ -6729,19 +6822,19 @@ function aiHistorie(){const paren=[];
 async function aiVraag(vraag,o){
   o=o||{};vraag=String(vraag||'').trim();const key=aiKeyGet();
   if(!vraag||AI_UI.bezig||!key)return;
-  const knop=o.knop==='pretrade'?['pretrade',vraag,AI_PRETRADE_OPDRACHT]:AI_KNOPPEN.find(k=>k[0]===o.knop);
+  const knop=o.knop==='pretrade'?['pretrade',vraag,AI_PRETRADE_OPDRACHT]:[...AI_KNOPPEN,...AI_PLAN_KNOPPEN].find(k=>k[0]===o.knop);
   // Over the member's own monthly limit: ask first, send nothing yet.
   const lim=+AIPREFS.limiet||0;
   if(lim>0&&aiVerbruik().usd>=lim&&!o.bevestigd){AI_UI.limiet={vraag,o};if(!knop)AI_UI.invoer=vraag;render();aiScroll();return;}
   AI_UI.limiet=null;
-  const pk=coachPakket({focusId:knop?null:AI_FOCUS_ID,deel:knop?knop[0]:'alles',idee:o.idee});
+  const pk=coachPakket({focusId:knop?null:AI_FOCUS_ID,deel:knop?knop[0]:'alles',idee:o.idee,plan:o.plan});
   if(!pk.n){
     if(knop&&knop[0]==='week'){const w=coachWeekCijfers(CLOSED);AIMSGS.push({r:'me',t:vraag},{r:'info',t:'Geen gesloten trades in de afgelopen 7 dagen ('+coachDatum(w.van)+' t/m '+coachDatum(w.tot)+'). Kies een andere vraag, of zet het filter ruimer als je trades verborgen zijn.'});}
     render();aiScroll();return;}
   const week=knop&&knop[0]==='week';
   const messages=[...aiHistorie(),{role:'user',content:vraag}];
   const inp=document.getElementById('aiInput');if(inp)inp.value='';   // sent: not a draft to carry over
-  const live={r:'ai',t:'',live:true,pakket:pk.tekst,weekLaden:week};
+  const live={r:'ai',t:'',live:true,pakket:pk.tekst,weekLaden:week,terug:!!o.plan};
   AIMSGS.push({r:'me',t:vraag},live);AI_UI={bezig:true,invoer:''};render();aiScroll();
   // While streaming only the live bubble is redrawn, not the whole page.
   const toon=()=>{if(week)return;const el=document.querySelector('#aiFeed .ailive .aitekst');if(el){el.innerHTML=aiMarkdown(live.t);aiScroll();}};
@@ -6824,12 +6917,14 @@ const AI_MEEGAAN='Je cijfers en notities gaan mee naar Mori. Uitzetten kan in In
 function aiMsgHTML(m){
   if(m.r==='me')return `<div class="aimsg me"><div class="aibub">${esc(m.t)}</div></div>`;
   if(m.r==='fout')return `<div class="aimsg ai fout" role="alert"><div class="aiav">⚠️</div><div class="aibub">${esc(m.t)}</div></div>`;
-  if(m.r==='info')return `<div class="aimsg ai info"><div class="aiav">🤖</div><div class="aibub">${esc(m.t)}</div></div>`;
+  if(m.r==='info')return `<div class="aimsg ai info"><div class="aiav">🤖</div><div class="aibub">${esc(m.t)}${m.terug?aiTerugPlan():''}</div></div>`;
   if(m.live)return `<div class="aimsg ai ailive" aria-live="polite"><div class="aiav">🤖</div><div class="aibub"><div class="aitekst">${m.weekLaden?'':aiMarkdown(m.t)}</div><div class="aiwacht">${m.weekLaden?'Weekreview wordt gemaakt…':'Mori denkt na…'}</div></div></div>`;
   const body=m.vb?m.t:m.week?aiWeekHTML(m):aiMarkdown(m.t);
   const gestopt=m.gestopt?'<div class="aigestopt">Gestopt door jou, dit is wat er al was.</div>':'';
   const verstuurd=m.pakket?`<details class="aisent"><summary>Wat is er verstuurd?${m.kosten!=null?' <span class="aikost">≈ '+aiUsd(m.kosten)+'</span>':''}</summary><pre>${esc(m.pakket)}</pre></details>`:'';
-  return `<div class="aimsg ai"><div class="aiav">🤖</div><div class="aibub">${body}${gestopt}${verstuurd}</div></div>`;}
+  return `<div class="aimsg ai"><div class="aiav">🤖</div><div class="aibub">${body}${gestopt}${verstuurd}${m.terug?aiTerugPlan():''}</div></div>`;}
+// A question that came from TradingPlan: a way back, same tab (go('plan') knows where the plan lives).
+const aiTerugPlan=()=>`<a class="linklike aiterug" href="${IS_HOSTED?'/plan/':'../tradingplan/tradingplan.html'}">← Terug naar je plan</a>`;
 // The pre-trade form. Values live in memory; checking the idea updates the hint and button in place, so typing
 // never triggers a full render.
 let AI_IDEE={open:false,pair:'',dir:'long',setup:'',entry:'',stop:'',tp:''};
@@ -12124,7 +12219,7 @@ async function boot(){
   render();
   // Eerste-start: migratie-aanbod (oude tj_-data) heeft voorrang op het welkomscherm.
   if((T||[]).length===0 && !DB.load('migrated_from_tj',null) && !DB.load('mig_declined',false) && TJMigrate.detect()){ migOffer(); }
-  else { landingAankomst(); planVanHandoff().catch(()=>{}); }   // "Zet om in trade" uit het plan
+  else { landingAankomst(); planVanHandoff().catch(()=>{}); try{planMoriVanOverdracht();}catch(e){} }   // "Zet om in trade" en "Vraag Mori" uit het plan
 }
 /* ═══ Aansluiting op de landingspagina (index.html) — 24-09-2026 ═══
    De landing is de voordeur; dit is alles wat de journal daarvan hoeft te weten.

@@ -70,6 +70,7 @@ module.exports = [
   'plan3-afsluiting',        // Afsluiting, Log, voorspel-score, binnen/buiten plan
   'plan3-journal',           // journal: Tendencies → Plan, Mori, back-up met plaatjes, geen poort meer
   'plan3-doorloop',          // de hele route op de demo-dataset: week, twee dagen, vijf scenario's, koppelen, afsluiten
+  'plan3-mori',              // Mori in het plan: per scenario en het dagplan, via tp3:mori; de sleutel nooit in het plan
 
   // analyse en weergave
   'matrix', 'yearheatmap', 'review-list', 'coach-share', 'review-beeld', 'tv-links', 'theme-hook', 'beeld-escaping',

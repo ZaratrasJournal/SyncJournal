@@ -34,7 +34,7 @@ const ok = (n, c, e) => { c ? (pass++, console.log('  ✓ ' + n)) : (fail++, con
   console.log('─── Onderwerpen die gedekt moeten zijn ───');
   for (const [naam, zoek] of [
     ['overzetten uit de oude TradeJournal', /oude TradeJournal/i],
-    ['de Plan-pagina', /Plan-pagina/i],
+    ['het Trading Plan', /Trading Plan/],
     ['handmatige accounts', /Handmatige accounts/],
     ['updates', /nieuwe versie/i],
     ['back-ups', /back-?up/i],
@@ -55,6 +55,40 @@ const ok = (n, c, e) => { c ? (pass++, console.log('  ✓ ' + n)) : (fail++, con
   ok('de knop "Verbinden" bestaat in de app', bestaat.verbinden);
   ok('de knop "+ Toevoegen" bestaat in de app', bestaat.toevoegen);
   ok('de FAQ noemt "+ Account toevoegen" niet meer', bestaat.geenOudeKnop);
+
+  console.log('─── 🗓️ Je trading plan (TradingPlan v3 en Mori in het plan) ───');
+  const plan = await p.evaluate(() => { const ci = FAQS.findIndex(c => c[0] === '🗓️ Je trading plan'), ts = FAQS.findIndex(c => /Trades bijhouden/.test(c[0]));
+    const items = ci < 0 ? [] : FAQS[ci][1]; return { ci, ts, desc: FAQ_DESC['🗓️'] || '', vragen: items.map(x => x[0]), tekst: items.map(x => x[0] + ' ' + faqPlain(x[1])).join(' '),
+      alles: faqPlain(FAQS.flatMap(c => c[1].map(x => x[1])).join(' ')), populair: FAQ_POPULAR.some(q => items.some(x => x[0] === q)), suggestie: FAQ_SUGGEST.includes('scenario') }; });
+  ok('de categorie bestaat, direct na "Trades bijhouden", met een korte uitleg', plan.ci > 0 && plan.ci === plan.ts + 1 && plan.desc.length > 10, JSON.stringify({ ci: plan.ci, ts: plan.ts }));
+  for (const re of [/^Wat is het Trading Plan\?$/, /^Wat zeggen de cijfers bij een scenario\?$/, /^Hoe koppel ik een trade aan een scenario\?$/, /^Kan Mori mijn plan bekijken\?$/])
+    ok('vraag aanwezig: ' + re.source, plan.vragen.some(q => re.test(q)), plan.vragen.join(' | '));
+  ok('geen antwoord zegt meer dat de journal zelf koppelt', !/koppelt de journal zelf|binnen 45 minuten|het kortst vóór ligt/.test(plan.alles));
+  ok('"nooit vanzelf gekoppeld" staat erin', /nooit vanzelf gekoppeld/.test(plan.tekst));
+  ok('één plan-vraag is populair, "scenario" is een zoeksuggestie', plan.populair && plan.suggestie);
+  // Elke knop of melding die de nieuwe antwoorden noemen, bestaat in het plan of in de journal.
+  const fs = require('fs'), bron = { plan: fs.readFileSync(path.resolve('tradingplan/tradingplan.html'), 'utf8'), journal: fs.readFileSync(path.resolve('work/syncjournal.html'), 'utf8') };
+  const UI = [['plan', 'Maak dagplan'], ['plan', 'Gisteren overnemen'], ['plan', "label:'Swing'"], ['plan', "label:'Daytrade'"], ['plan', "label:'Scalp'"], ['plan', 'Zet om in trade'], ['plan', 'Uit je journal'],
+    ['plan', 'Nieuwe trade invullen'], ['plan', 'Alle pairs en richtingen'], ['plan', '+ dag erna'], ['plan', 'Koppel trade'], ['plan', '+ Afbeelding'], ['plan', '+ Link'], ['plan', 'Klaar om te nemen'],
+    ['plan', 'Overweeg alleen A-setups'], ['plan', 'weinig data'], ['plan', 'redelijk wat data'], ['plan', 'genoeg data'], ['plan', 'sterkste'], ['plan', '🤖 Vraag Mori</button>'], ['plan', '🤖 Vraag Mori over mijn dagplan'],
+    ['plan', 'Mori instellen'], ['plan', 'Niet als: '], ['plan', "'Niet uit'"], ['plan', "'Ongeldig'"], ['journal', 'Koppel aan scenario'], ['journal', 'Backtest-trade'], ['journal', 'Geen exchange'], ['journal', 'Mori ingeschakeld'],
+    ['journal', 'Wat is er verstuurd?'], ['journal', "['plan','Plan']"], ['journal', "t:'TradingPlan'"]];
+  const mist = UI.filter(([f, l]) => !bron[f].includes(l)).map(x => x.join(': '));
+  ok('de knoppen en meldingen uit de nieuwe antwoorden bestaan in de app', mist.length === 0, mist.join(', '));
+  const label = l => l.replace(/^label:'|'$|<\/button>$|^t:'|^\['plan','|'\]$|^'/g, '').replace(/^Plan'?\]?$/, 'Plan').trim();
+  const nietGenoemd = UI.map(([, l]) => label(l)).filter(l => !plan.tekst.includes(l) && !plan.alles.includes(l));
+  ok('en de FAQ noemt ze ook echt (de lijst blijft eerlijk)', nietGenoemd.length === 0, nietGenoemd.join(', '));
+  await p.evaluate(() => { faqFilter('scenario'); });
+  ok('zoeken op "scenario" vindt de plan-categorie', await p.evaluate(ci => { const c = document.getElementById('faqc-' + ci); return !!c && !c.hidden && [...c.querySelectorAll('details.faq')].some(d => d.offsetParent); }, plan.ci));
+  await p.evaluate(() => { faqFilter(''); });
+  // Screenshots van de plan-categorie (licht en donker, 1280 en 390) voor het rapport
+  for (const th of ['light', 'dark']) for (const w of [1280, 390]) {
+    await p.setViewportSize({ width: w, height: w === 390 ? 1800 : 1300 });   // hoog genoeg: een vaste balk gaf in fullPage een naad op de viewportrand
+    await p.evaluate(([t, ci]) => { setTheme(t); go('faq'); faqOpenCat(ci); const d = document.querySelector('#faqc-' + ci + ' details.faq'); if (d) d.open = true; window.scrollTo(0, 0); }, [th, plan.ci]); await p.waitForTimeout(300);
+    if (w === 390) ok('390 ' + th + ': plan-categorie zonder horizontale scroll', await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
+    await p.screenshot({ path: `tests/screenshots/faq-plan-${th === 'dark' ? 'donker' : 'licht'}-${w}.png`, fullPage: true });
+  }
+  await p.evaluate(() => { setTheme('light'); faqHome(); });
 
   ok('geen nieuwe JS-fouten', errs.length === 0, errs[0]);
   console.log(`\n=== FAQ-volledig: ${pass}/${pass + fail} ===`);

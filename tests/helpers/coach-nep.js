@@ -47,8 +47,8 @@ const tekst = (t, o) => ({ sse: bericht([{ type: 'thinking' }, { type: 'text', t
 const tools = (calls, o) => ({ sse: bericht([{ type: 'thinking' }, ...calls.map((c, i) => ({ type: 'tool_use', id: 'toolu_nep_' + i + '_' + c.name, name: c.name, input: c.input }))], o), pauze: 0 });
 const fout = (status, type, message) => ({ status, json: { type: 'error', error: { type, message: message || type } } });
 
-async function installeer(p) {
-  await p.evaluate(({ API }) => {
+// Draait in de pagina: via p.evaluate (installeer) of als init-script vóór de app start (vooraf).
+function nepFetch({ API, wachtrij }) {
     if (window.__nep) { window.__nep.wachtrij = []; window.__nep.verzoeken = []; return; }
     const echt = window.fetch.bind(window);
     window.__nep = { wachtrij: [], verzoeken: [] };
@@ -76,10 +76,14 @@ async function installeer(p) {
       });
       return new Response(stroom, { status: 200, headers: { 'content-type': 'text/event-stream' } });
     };
-  }, { API });
+    if (wachtrij) window.__nep.wachtrij.push(...wachtrij);
 }
+async function installeer(p) { await p.evaluate(nepFetch, { API }); }
+// Voor een app die bij het laden al verstuurt (een overdracht uit het plan): elke pagina in deze context krijgt
+// de nep-fetch vóór haar eigen scripts, met deze antwoorden in de wachtrij.
+const vooraf = (ctx, ...antwoorden) => ctx.addInitScript(nepFetch, { API, wachtrij: antwoorden });
 const zet = (p, ...antwoorden) => p.evaluate(a => { window.__nep.wachtrij.push(...a); }, antwoorden);
 const verzoeken = p => p.evaluate(() => window.__nep.verzoeken);
 const sleutel = p => p.evaluate(k => { localStorage.setItem('sj_ai_key', k); render(); }, NEP);
 
-module.exports = { API, NEP, ev, bericht, tekst, tools, fout, installeer, zet, verzoeken, sleutel };
+module.exports = { API, NEP, ev, bericht, tekst, tools, fout, installeer, vooraf, zet, verzoeken, sleutel };
