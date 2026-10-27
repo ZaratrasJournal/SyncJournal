@@ -442,12 +442,10 @@ const topDown=(a,b)=>tfMinuten(b)-tfMinuten(a);   // hoogste tijdframe eerst, zo
 const sorteerLagen=L=>[...L].sort((a,b)=>topDown(a.tf,b.tf));
 // "1m" → "1M", "4h" → "4H", "daily" → "Daily": dezelfde schrijfwijze als de journal-tags
 function tfNorm(tf){const s=String(tf||'').trim().replace(/\s+/g,'');const w={weekly:'Weekly',daily:'Daily',monthly:'Monthly'}[s.toLowerCase()];return w||s.toUpperCase();}
-// Een nieuw tijdframe komt ook in de journal (besluit 14), op de journal-volgorde: klein → groot.
-function voegTijdframeToe(tf){tf=tfNorm(tf);const m=tfMinuten(tf);if(m==null||!isFinite(m))return null;
-  const t=tags();if(!t.timeframeTags.includes(tf)){t.timeframeTags=[...t.timeframeTags,tf].sort((a,b)=>tfMinuten(a)-tfMinuten(b));lsSet(SJ.tags,t);}return tf;}
-// cat: 'set' of 'conf'. Ontbreekt een tag, dan komt hij ook in de journal-taglijst (besluit 3).
-function voegTagToe(cat,tag){tag=String(tag||'').trim().replace(/\s+/g,' ');if(!tag)return null;const t=tags();
-  if(!t.setupTags.includes(tag)&&!t.confirmationTags.includes(tag)){const k=cat==='set'?'setupTags':'confirmationTags';t[k]=[...t[k],tag];lsSet(SJ.tags,t);}return tag;}
+// Tags en tijdframes beheer je alleen in de journal (Instellingen → Tags, ronde 3 punt 1): het plan leest sj_tagconfig
+// en schrijft er nooit naar.
+const LINK_TAGS=()=>JOURNAL_URL+'?page=instellingen&tab=tags';
+const naarTags=(wat)=>`<div class="faint small geentags">${esc(wat)} Voeg ze toe in de journal: <a href="${esc(LINK_TAGS())}">Instellingen → Tags</a></div>`;
 const tagSoort=g=>tags().setupTags.includes(g)?'set':'conf';
 // Kleur per tag-soort, zoals TAG_CATS/tagKleur in work/syncjournal.html (eigen labels en onbekende tags: muted).
 const TAG_KLASSE={set:'var(--accent)',conf:'var(--teal)',tf:'var(--violet)',eigen:'var(--muted)'};
@@ -620,9 +618,8 @@ function laagRij(layers,o={}){const erft=o.erft||[];
 function tfKeuze(pad,layers){
   if(S.tfOpen!==pad)return `<button class="chip add" style="margin-top:6px" data-a="tfPicker" data-p="${pad}">+ tijdframe</button>`;
   const bezet=new Set(layers.map(l=>l.tf)),vrij=tags().timeframeTags.filter(tf=>!bezet.has(tf)).sort(topDown);
-  return `<div class="tfpick"><div class="row" style="gap:5px">${vrij.map(tf=>`<button class="chip pick tf" data-a="addTf" data-p="${pad}" data-v="${esc(tf)}">+ ${esc(tf)}</button>`).join('')||'<span class="faint small">Alle tijdframes uit je journal zijn al een laag.</span>'}</div>
-    <div class="row" style="flex-wrap:nowrap;margin-top:8px"><input class="inp" id="nieuwTf" placeholder="Ander tijdframe, bv. 1M of 3D" style="padding:6px 9px;font-size:var(--t2)" aria-label="nieuw tijdframe"><button class="btn sm" data-a="nieuwTf" data-p="${pad}">Voeg toe</button><button class="btn sm ghost" data-a="tfPicker" data-p="">Klaar</button></div>
-    <div class="enote">Een nieuw tijdframe komt ook in de tijdframe-lijst van je journal.</div></div>`;}
+  return `<div class="tfpick"><div class="row" style="gap:5px">${vrij.map(tf=>`<button class="chip pick tf" data-a="addTf" data-p="${pad}" data-v="${esc(tf)}">+ ${esc(tf)}</button>`).join('')}</div>${vrij.length?'':naarTags(tags().timeframeTags.length?'Alle tijdframes uit je journal zijn al een laag.':'Nog geen tijdframes.')}
+    <div class="row" style="margin-top:8px"><button class="btn sm ghost" data-a="tfPicker" data-p="">Klaar</button></div></div>`;}
 // geërfde tags op een scenario: week → dag, elke tag als "<tf>|<tag>", uit te zetten per scenario
 function geerfd(day){const w=weekOf(day.week);return [...(w?w.layers:[]),...day.layers];}
 // De lagen van een scenario: één rij per tijdframe (week + dag geërfd, uit te zetten), de entry-laag in zijn eigen
@@ -1025,10 +1022,9 @@ function modalH(){
     const o=convertH(M);t=o.t;h=o.h;f=o.f;kop=o.kop;cls='conv';
   } else if(M.type==='picker'){
     const L=laagRef(M.path),T=tags(),has=g=>L.setups.includes(g)||L.confirmations.includes(g);t='Tags · '+L.tf;
-    const grp=(lbl,list)=>`<h3 style="margin:4px 0 6px">${lbl}</h3><div class="row" style="gap:6px;margin-bottom:12px">${list.map(g=>`<button class="chip pick ${tagKlasse(g)} ${has(g)?'on':''}" data-a="pick" data-v="${esc(g)}">${has(g)?'✓ ':''}${esc(g)}</button>`).join('')||'<span class="faint small">Nog geen tags.</span>'}</div>`;
-    h=grp('Setups',T.setupTags)+grp('Confirmations',T.confirmationTags)+
-      `<h3 style="margin:4px 0 6px">Ontbreekt er een?</h3><div class="row" style="flex-wrap:nowrap"><input class="inp" id="newtag" placeholder="Nieuwe tag" aria-label="nieuwe tag"><select class="inp" id="newkind" style="width:auto" aria-label="soort"><option value="conf">Confirmation</option><option value="set">Setup</option></select><button class="btn" data-a="newtag">+</button></div>
-       <div class="enote">Komt ook in de taglijst van je journal. Alleen tags die je trades ook kunnen hebben, anders vindt het plan ze niet terug.</div>`;
+    const grp=(lbl,list,leeg)=>`<h3 style="margin:4px 0 6px">${lbl}</h3>${list.length?`<div class="row" style="gap:6px;margin-bottom:12px">${list.map(g=>`<button class="chip pick ${tagKlasse(g)} ${has(g)?'on':''}" data-a="pick" data-v="${esc(g)}">${has(g)?'✓ ':''}${esc(g)}</button>`).join('')}</div>`:`<div style="margin-bottom:12px">${naarTags(leeg)}</div>`}`;
+    h=grp('Setups',T.setupTags,'Nog geen setups.')+grp('Confirmations',T.confirmationTags,'Nog geen confirmations.')+
+      (T.setupTags.length&&T.confirmationTags.length?`<div class="enote">Tags beheer je in de journal: <a href="${esc(LINK_TAGS())}">Instellingen → Tags</a>.</div>`:'');
     f=`<button class="btn pri" data-a="close">Klaar</button>`;
   } else if(M.type==='scen'){
     const d=M.draft,day=dayOf(M.day);t=M.isNew?'Nieuw scenario':'Scenario bewerken';
@@ -1092,16 +1088,11 @@ const A={
   // lagen
   tfPicker:el=>{S.tfOpen=S.tfOpen===el.dataset.p?'':el.dataset.p;},
   addTf:el=>{const L=lagenVan(el.dataset.p);if(!L||L.some(l=>l.tf===el.dataset.v))return;L.push(leegLaag(el.dataset.v));L.splice(0,L.length,...sorteerLagen(L));S.tfOpen='';save();},
-  nieuwTf:el=>{const v=(document.getElementById('nieuwTf')||{}).value||'',tf=voegTijdframeToe(v),L=lagenVan(el.dataset.p);
-    if(!tf){S.tfOpen='';toast('Onbekend tijdframe "'+v.trim()+'". Schrijf het als 1M, 15M, 4H, Daily of Weekly.');return false;}
-    if(L&&!L.some(l=>l.tf===tf)){L.push(leegLaag(tf));L.splice(0,L.length,...sorteerLagen(L));}S.tfOpen='';save();},
   rmLaag:el=>{const L=lagenVan(el.dataset.p),i=L?L.findIndex(l=>l.tf===el.dataset.v):-1;if(i>=0){L.splice(i,1);save();}},
   bias:el=>{const L=laagRef(el.dataset.p,true);L.bias=L.bias===el.dataset.v?'':el.dataset.v;bewaarLaagPad(el.dataset.p);},
   rmtag:el=>{toggleTag(laagRef(el.dataset.p),el.dataset.v);bewaarLaagPad(el.dataset.p);},
   picker:el=>{const back=S.modal&&S.modal.type==='scen'?S.modal:null;S.modal={type:'picker',path:el.dataset.p,back};},
   pick:el=>{toggleTag(laagRef(S.modal.path,true),el.dataset.v);bewaarLaagPad(S.modal.path);},
-  newtag:()=>{const inp=document.getElementById('newtag'),g=voegTagToe(document.getElementById('newkind').value,inp&&inp.value);if(!g)return;
-    const L=laagRef(S.modal.path,true);if(!L.setups.includes(g)&&!L.confirmations.includes(g))toggleTag(L,g);bewaarLaagPad(S.modal.path);},
   // scenario's
   newScen:()=>{const day=dayOf(vandaag());S.modal={type:'scen',isNew:true,day:day.id,draft:nieuwScenario(day)};},
   editScen:el=>{const x=scenOf(el.dataset.s);if(x)S.modal={type:'scen',day:x.day.id,draft:JSON.parse(JSON.stringify(x.s))};},
@@ -1160,7 +1151,7 @@ document.addEventListener('click',ev=>{
   render();
 });
 document.addEventListener('keydown',ev=>{if(ev.key==='Escape'&&S.modal){A.close();render();}
-  if(ev.key==='Enter'&&ev.target&&(ev.target.id==='newtag'||ev.target.id==='nieuwTf')){const b=ev.target.parentElement.querySelector('[data-a="newtag"],[data-a="nieuwTf"]');if(b)b.click();}});
+});
 // Een playbook kiezen vult de entry-laag en de grade uit het journal-playbook (laatste laag = entry).
 function vulVanPlaybook(d){const p=JR.pbook[d.pb];if(!p)return;const L=(p.layers||[]).filter(isObj),e=L[L.length-1];
   if(e&&e.timeframe)d.entry={tf:tfNorm(e.timeframe),bias:d.dir==='short'&&e.bias==='Bullish'?'Bearish':(e.bias||''),setups:[...(e.setups||[])],confirmations:[...(e.confirmations||[])]};
@@ -1184,7 +1175,7 @@ document.addEventListener('input',ev=>{
 });
 
 // ───────────────────────── start ─────────────────────────
-window.__tp3={S,render,tagKleur,eisen,pbInfo,load,save,cfg,stijlLagen,dayOf,weekOf,vandaag,isoWeek,tags,voegTijdframeToe,voegTagToe,laagRij,JR,edge,rangschik,betrouwbaarheid,tradeROrNull,voegBeeldToe,voegLinkToe,tvSnapshot,mediaBlok,imgLees};
+window.__tp3={S,render,tagKleur,eisen,pbInfo,load,save,cfg,stijlLagen,dayOf,weekOf,vandaag,isoWeek,tags,laagRij,JR,edge,rangschik,betrouwbaarheid,tradeROrNull,voegBeeldToe,voegLinkToe,tvSnapshot,mediaBlok,imgLees};
 themaVanJournal();
 window.__tp3.blokD=blokD;
 render();

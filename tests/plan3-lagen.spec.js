@@ -1,7 +1,7 @@
 // TradingPlan v3, taak 2: lagen met vrije tijdframes, tags uit de journal.
 //  - de tijdframe-keuze toont tagConfig.timeframeTags; laag toevoegen/weghalen met één tik; altijd top-down
-//  - een nieuw tijdframe (1M) komt ook in sj_tagconfig, en de journal houdt hem na herladen
-//  - een nieuwe setup- of confirmation-tag komt ook in de journal-taglijst
+//  - ronde 3 punt 1: tags en tijdframes alleen uit sj_tagconfig; het plan schrijft daar nooit naar, en verwijst bij een
+//    lege soort naar Instellingen → Tags in de journal
 //  - de dag erft de week-lagen gedimd, een scenario erft week + dag gedimd; uitzetten → "<tf>|<tag>" in off
 const { chromium } = require('playwright'); const path = require('path');
 const H = require('./helpers/plan3'); const SHOTS = H.SHOTS;
@@ -15,6 +15,7 @@ const TAGS = { setupTags: ['BOS', 'MSB', 'SFP'], confirmationTags: ['Liquidity S
   const p = await ctx.newPage(); p.on('pageerror', e => errs.push(String(e).split('\n')[0]));
   await p.addInitScript(t => { if (!localStorage.getItem('sj_tagconfig')) localStorage.setItem('sj_tagconfig', JSON.stringify(t)); localStorage.setItem('sj_welcomed', 'true'); }, TAGS);
   await p.goto(TP, { waitUntil: 'load' }); await p.waitForTimeout(400);
+  let tcStart = await p.evaluate(() => localStorage.getItem('sj_tagconfig'));
   await p.click('[data-a="maakDag"]'); await p.waitForTimeout(150);
   const tfs = () => p.evaluate(() => __tp3.dayOf(__tp3.vandaag()).layers.map(l => l.tf).join());
 
@@ -30,39 +31,57 @@ const TAGS = { setupTags: ['BOS', 'MSB', 'SFP'], confirmationTags: ['Liquidity S
   await p.click('[data-a="rmLaag"][data-p="day"][data-v="1H"]'); await p.waitForTimeout(100);
   ok('1H weghalen met één tik', await tfs() === 'Daily,4H,15M', await tfs());
 
-  console.log('--- nieuw tijdframe komt in de journal ---');
-  await p.click('[data-a="tfPicker"][data-p="day"]'); await p.fill('#nieuwTf', 'abc'); await p.click('[data-a="nieuwTf"]'); await p.waitForTimeout(100);
-  ok('onleesbaar tijdframe "abc" geweigerd met een melding', await tfs() === 'Daily,4H,15M' && /tijdframe/i.test(await p.evaluate(() => (document.querySelector('.toast') || {}).textContent || '')));
-  await p.click('[data-a="tfPicker"][data-p="day"]'); await p.fill('#nieuwTf', '1m'); await p.click('[data-a="nieuwTf"]'); await p.waitForTimeout(100);
-  const tc = await p.evaluate(() => JSON.parse(localStorage.getItem('sj_tagconfig')).timeframeTags);
-  ok('1M als laag toegevoegd (onderaan: kleinste)', await tfs() === 'Daily,4H,15M,1M', await tfs());
-  ok('1M in sj_tagconfig.timeframeTags, op volgorde van klein naar groot zoals de journal', tc.join() === '1M,5M,15M,1H,4H,Daily', tc.join());
+  console.log('--- tags en tijdframes alleen via Instellingen (ronde 3 punt 1) ---');
+  await p.click('[data-a="tfPicker"][data-p="day"]'); await p.waitForTimeout(80);
+  ok('"+ tijdframe" heeft geen veld om zelf een tijdframe in te typen', await p.evaluate(() => !document.querySelector('#nieuwTf') && !document.querySelector('[data-a="nieuwTf"]')));
+  await p.click('[data-a="addTf"][data-v="5M"]'); await p.waitForTimeout(80);
+  await p.click('[data-a="tfPicker"][data-p="day"]'); await p.waitForTimeout(80);
+  await p.click('[data-a="addTf"][data-v="1H"]'); await p.waitForTimeout(80);
+  await p.click('[data-a="tfPicker"][data-p="day"]'); await p.waitForTimeout(80);
+  const vol = await p.evaluate(() => { const g = document.querySelector('.tfpick .geentags'), a = g && g.querySelector('a'); return { txt: g ? g.textContent : '', href: a ? a.getAttribute('href') : '' }; });
+  ok('alle journal-tijdframes al een laag: één regel met een link naar Instellingen → Tags', /Instellingen → Tags/.test(vol.txt) && /\?page=instellingen&tab=tags$/.test(vol.href), JSON.stringify(vol));
+  await p.click('[data-a="tfPicker"][data-p=""]'); await p.waitForTimeout(60);
+  await p.click('[data-a="rmLaag"][data-p="day"][data-v="5M"]'); await p.click('[data-a="rmLaag"][data-p="day"][data-v="1H"]'); await p.waitForTimeout(80);
+  ok('terug naar Daily · 4H · 15M', await tfs() === 'Daily,4H,15M', await tfs());
 
-  console.log('--- nieuwe tag komt in de journal ---');
   await p.click('[data-a="picker"][data-p="day.0"]'); await p.waitForTimeout(100);
   const groepen = await p.evaluate(() => [...document.querySelectorAll('#modal [data-a="pick"]')].map(x => x.dataset.v));
   ok('de tag-keuze toont de journal-setups en -confirmations', groepen.join() === 'BOS,MSB,SFP,Liquidity Sweep,OB,FVG', groepen.join());
-  await p.click('#modal [data-a="pick"][data-v="BOS"]');
-  await p.fill('#newtag', 'Weekly open'); await p.selectOption('#newkind', 'conf'); await p.click('[data-a="newtag"]'); await p.waitForTimeout(100);
-  await p.fill('#newtag', 'Turtle soup'); await p.selectOption('#newkind', 'set'); await p.click('[data-a="newtag"]'); await p.waitForTimeout(100);
-  await p.fill('#newtag', '<img src=x onerror=alert(1)>'); await p.selectOption('#newkind', 'conf'); await p.click('[data-a="newtag"]'); await p.waitForTimeout(100);
+  ok('geen blok "Ontbreekt er een?" meer: geen veld, geen soort-keuze, geen +', await p.evaluate(() => !document.querySelector('#newtag,#newkind,[data-a="newtag"]') && !/Ontbreekt er een/.test(document.getElementById('modal').textContent)));
+  ok('het venster wijst naar Instellingen → Tags in de journal', await p.evaluate(() => { const a = [...document.querySelectorAll('#modal a')].find(x => /Instellingen → Tags/.test(x.textContent)); return !!a && /\?page=instellingen&tab=tags$/.test(a.getAttribute('href')); }));
+  await p.click('#modal [data-a="pick"][data-v="BOS"]'); await p.click('#modal [data-a="pick"][data-v="OB"]');
   await p.click('#modal [data-a="close"]'); await p.waitForTimeout(100);
   const L0 = await p.evaluate(() => __tp3.dayOf(__tp3.vandaag()).layers[0]);
-  ok('Daily-laag: setups BOS + Turtle soup, confirmation Weekly open', L0.setups.join() === 'BOS,Turtle soup' && L0.confirmations.slice(0, 1).join() === 'Weekly open', JSON.stringify(L0));
-  const tc2 = await p.evaluate(() => JSON.parse(localStorage.getItem('sj_tagconfig')));
-  ok('Turtle soup in setupTags, Weekly open in confirmationTags van de journal', tc2.setupTags.includes('Turtle soup') && tc2.confirmationTags.includes('Weekly open'));
-  ok('een tag met HTML wordt als tekst getoond, niet uitgevoerd', await p.evaluate(() => !document.querySelector('#app img[src="x"]') && /&lt;img|<img/.test(document.getElementById('app').innerText)));
+  ok('Daily-laag: setup BOS, confirmation OB (gekozen uit de lijst)', L0.setups.join() === 'BOS' && L0.confirmations.join() === 'OB', JSON.stringify(L0));
+  ok('__tp3 heeft geen voegTagToe/voegTijdframeToe meer', await p.evaluate(() => !('voegTagToe' in __tp3) && !('voegTijdframeToe' in __tp3)));
+  // Een tag met HTML (bv. uit een oude back-up) wordt als tekst getoond, niet uitgevoerd.
+  await p.evaluate(() => { const P = __tp3.load(); P.days[__tp3.vandaag()].layers[0].confirmations.push('<img src=x onerror=alert(1)>'); __tp3.save(P); __tp3.render(); });
+  await p.waitForTimeout(80);
+  ok('een tag met HTML wordt als tekst getoond, niet uitgevoerd', await p.evaluate(() => !document.querySelector('#app img[src="x"]') && /<img/.test(document.getElementById('app').innerText)));
+  await p.evaluate(() => { const P = __tp3.load(); P.days[__tp3.vandaag()].layers[0].confirmations = ['OB']; __tp3.save(P); __tp3.render(); });
   await p.click('[data-a="bias"][data-p="day.0"][data-v="Bullish"]'); await p.waitForTimeout(80);
   ok('bias zetten op een laag', await p.evaluate(() => __tp3.dayOf(__tp3.vandaag()).layers[0].bias === 'Bullish'));
   await p.click('[data-a="bias"][data-p="day.0"][data-v="Bullish"]'); await p.waitForTimeout(80);
   ok('nog eens tikken = bias weer leeg', await p.evaluate(() => __tp3.dayOf(__tp3.vandaag()).layers[0].bias === ''));
+  ok('sj_tagconfig byte-gelijk na de hele sessie hierboven', await p.evaluate(() => localStorage.getItem('sj_tagconfig')) === tcStart);
+
+  console.log('--- lege soort: verwijzing naar de journal ---');
+  const leeg = await ctx.newPage(); leeg.on('pageerror', e => errs.push('leeg: ' + String(e).split('\n')[0]));
+  await leeg.addInitScript(() => { window.__tagSchrijf = 0; const o = Storage.prototype.setItem; Storage.prototype.setItem = function (k, v) { if (k === 'sj_tagconfig') window.__tagSchrijf++; return o.call(this, k, v); }; });
+  await leeg.goto(TP, { waitUntil: 'load' });
+  const voorLeeg = await leeg.evaluate(() => localStorage.getItem('sj_tagconfig'));
+  await leeg.evaluate(() => localStorage.setItem('sj_tagconfig', JSON.stringify({ setupTags: [], confirmationTags: ['OB'], timeframeTags: ['4H', '1H'], emotionTags: [], mistakeTags: [], missedReasonTags: [], customTags: [] })));
+  await leeg.reload({ waitUntil: 'load' }); await leeg.waitForTimeout(250);
+  await leeg.click('[data-a="picker"][data-p="day.0"]'); await leeg.waitForTimeout(80);
+  ok('geen setups in de journal: "Nog geen setups. Voeg ze toe in de journal: Instellingen → Tags"', await leeg.evaluate(() => { const g = document.querySelector('#modal .geentags'); return !!g && /^Nog geen setups\. Voeg ze toe in de journal: Instellingen → Tags$/.test(g.textContent.trim()) && !!g.querySelector('a[href$="?page=instellingen&tab=tags"]'); }));
+  ok('na herladen schreef het plan in deze tab nooit naar sj_tagconfig', await leeg.evaluate(() => window.__tagSchrijf) === 0);
+  await leeg.evaluate(v => v == null ? localStorage.removeItem('sj_tagconfig') : localStorage.setItem('sj_tagconfig', v), voorLeeg); await leeg.close();
 
   const j = await ctx.newPage(); j.on('pageerror', e => errs.push('journal: ' + String(e).split('\n')[0]));
-  await j.goto(APP, { waitUntil: 'load' }); await j.waitForTimeout(1200);
-  await j.reload({ waitUntil: 'load' }); await j.waitForTimeout(1200);
-  const jt = await j.evaluate(() => ({ tf: tagConfig.timeframeTags, set: tagConfig.setupTags, conf: tagConfig.confirmationTags }));
-  ok('journal na herladen: 1M in de tijdframes, de nieuwe tags in de lijsten', jt.tf.includes('1M') && jt.set.includes('Turtle soup') && jt.conf.includes('Weekly open'), JSON.stringify(jt.tf));
+  await j.goto(APP + '?page=instellingen&tab=tags', { waitUntil: 'load' }); await j.waitForTimeout(1200);
+  ok('de link opent de journal op Instellingen → Tags', await j.evaluate(() => STATE.setTab === 'tags' && /Setup/.test(document.body.innerText)), await j.evaluate(() => STATE.setTab));
   await j.close();
+  tcStart = await p.evaluate(() => localStorage.getItem('sj_tagconfig'));   // de journal mag zijn eigen tags opnieuw opslaan
 
   console.log('--- erven: week → dag → scenario ---');
   await p.evaluate(() => { const P = __tp3.load(), id = __tp3.vandaag(), wid = __tp3.isoWeek(id);
@@ -160,6 +179,7 @@ const TAGS = { setupTags: ['BOS', 'MSB', 'SFP'], confirmationTags: ['Liquidity S
   }
   await p.setViewportSize({ width: 1280, height: 900 });
 
+  ok('sj_tagconfig byte-gelijk aan het begin, na de hele plan-sessie (week, dag, scenario, thema\'s)', await p.evaluate(() => localStorage.getItem('sj_tagconfig')) === tcStart);
   ok('geen JS-errors', errs.length === 0, errs.slice(0, 3).join(' | '));
   await b.close(); srv.close(); process.exit(T.eind());
 })();
