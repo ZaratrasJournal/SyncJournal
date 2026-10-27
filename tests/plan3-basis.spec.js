@@ -3,7 +3,7 @@
 //  - sj_state.theme → data-theme op <html>, en mee als de journal het in een ander tabblad wijzigt
 //  - een nieuwe dag start met de lagen van de stijl (scalp 1H·15M, daytrade 4H·1H)
 //  - een dag zonder weekplan is te maken en te bewaren
-//  - het tandwiel bewaart risico per grade, de drie pre-flight-teksten en de stijl
+//  - het tandwiel bewaart risico per grade, de dagstart-punten en de stijl
 const { chromium } = require('playwright'); const path = require('path');
 const H = require('./helpers/plan3'); const SHOTS = H.SHOTS;
 const NAAM = 'Plan v3 basis';
@@ -37,7 +37,7 @@ const NAAM = 'Plan v3 basis';
   const dag = await p.evaluate(() => { const id = __tp3.vandaag(), d = __tp3.dayOf(id); return { id, d, wk: d && __tp3.weekOf(d.week), ls: JSON.parse(localStorage.getItem('tp3:plans') || 'null') }; });
   ok('daytrade-dag start met 4H · 1H', dag.d && dag.d.layers.map(l => l.tf).join() === '4H,1H', JSON.stringify(dag.d && dag.d.layers));
   ok('dag zonder weekplan: geen week, wel bewaard in tp3:plans (v:1)', dag.d && dag.wk == null && dag.ls && dag.ls.v === 1 && dag.ls.days[dag.id], JSON.stringify(dag.ls).slice(0, 200));
-  ok('dag heeft het vaste model', dag.d && Array.isArray(dag.d.scenarios) && dag.d.pre.length === 3 && dag.d.mental === null && dag.d.media && Array.isArray(dag.d.media.imgs) && dag.d.les === '');
+  ok('dag heeft het vaste model', dag.d && Array.isArray(dag.d.scenarios) && Array.isArray(dag.d.dagstart) && dag.d.dagstart.length === 0 && dag.d.mental === null && dag.d.media && Array.isArray(dag.d.media.imgs) && dag.d.les === '');
   await p.reload({ waitUntil: 'load' }); await p.waitForTimeout(400);
   ok('na herladen: de dag staat er nog, geen lege staat', await p.evaluate(() => !!__tp3.dayOf(__tp3.vandaag()) && !/Nog geen plan voor vandaag/.test(document.getElementById('app').innerText)));
   await p.evaluate(() => { const P = __tp3.load(); delete P.days[__tp3.vandaag()]; __tp3.save(P); const c = __tp3.cfg(); c.stijl = 'scalp'; localStorage.setItem('tp3:cfg', JSON.stringify(c)); });
@@ -48,14 +48,14 @@ const NAAM = 'Plan v3 basis';
   console.log('--- tandwiel ---');
   await p.click('[data-a="settings"]'); await p.waitForTimeout(150);
   await p.fill('#set-risk-A', '2'); await p.fill('#set-risk-B', '0.75'); await p.fill('#set-risk-C', '0');
-  await p.fill('#set-pre-0', 'Kalender gecheckt'); await p.fill('#set-pre-1', 'Acht uur slaap'); await p.fill('#set-pre-2', '');
+  await p.fill('#modal [data-f="draft.pre.0.t"]', 'Kalender gecheckt'); await p.fill('#modal [data-f="draft.pre.1.t"]', 'Acht uur slaap'); await p.click('#modal [data-a="setDsWeg"][data-v="2"]');
   await p.click('[data-a="stijl"][data-v="swing"]');
   await p.click('[data-a="saveSettings"]'); await p.waitForTimeout(150);
   const c = await p.evaluate(() => JSON.parse(localStorage.getItem('tp3:cfg')));
   ok('risico per grade bewaard (A 2 · B 0,75 · C 0)', c.risk.A === 2 && c.risk.B === 0.75 && c.risk.C === 0, JSON.stringify(c.risk));
-  ok('pre-flight-teksten bewaard (een lege mag)', c.pre.join('|') === 'Kalender gecheckt|Acht uur slaap|', JSON.stringify(c.pre));
+  ok('dagstart-punten bewaard (twee, het derde weggehaald)', c.pre.join('|') === 'Kalender gecheckt|Acht uur slaap', JSON.stringify(c.pre));
   ok('stijl bewaard: swing', c.stijl === 'swing');
-  ok('lege pre-flight-tekst: geen vinkje op de dag', await p.evaluate(() => document.querySelectorAll('[data-a="pre"]').length === 2));
+  ok('twee dagstart-punten: twee vinkjes op de dag', await p.evaluate(() => document.querySelectorAll('[data-a="ds"]').length === 2));
 
   console.log('--- thema volgt de journal ---');
   await p.evaluate(() => localStorage.setItem('sj_state', JSON.stringify({ theme: 'dark' })));

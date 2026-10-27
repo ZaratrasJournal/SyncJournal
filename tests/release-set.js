@@ -71,6 +71,7 @@ module.exports = [
   'plan3-journal',           // journal: Tendencies → Plan, Mori, back-up met plaatjes, geen poort meer
   'plan3-doorloop',          // de hele route op de demo-dataset: week, twee dagen, vijf scenario's, koppelen, afsluiten
   'plan3-mori',              // Mori in het plan: per scenario en het dagplan, via tp3:mori; de sleutel nooit in het plan
+  'plan3-dagstart',          // Dagstart (was pre-flight): vrije lijst van hooguit 8, vinkjes op tekst, migratie van Day.pre
 
   // analyse en weergave
   'matrix', 'yearheatmap', 'review-list', 'coach-share', 'review-beeld', 'tv-links', 'theme-hook', 'beeld-escaping',

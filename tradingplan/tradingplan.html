@@ -110,7 +110,7 @@ label.f{display:block;font-size:var(--t1);font-weight:600;color:var(--muted);mar
 .fgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .fgrid .full{grid-column:1/-1}
 
-/* mental + pre-flight */
+/* mental + dagstart */
 .mental{display:inline-flex;gap:4px}
 .mental button{width:30px;height:30px;border-radius:8px;border:1px solid var(--line);background:var(--surface);font-weight:700;font-size:var(--t2);color:var(--muted)}
 .mental button{--kc:var(--accent)}
@@ -122,6 +122,11 @@ label.f{display:block;font-size:var(--t1);font-weight:600;color:var(--muted);mar
 .pf .box{width:16px;height:16px;border-radius:50%}
 .pf.on{border-color:var(--green);background:var(--green-soft);color:var(--green)}
 .pf.on .box{background:var(--green);border-color:var(--green)}
+.dslijst{display:flex;flex-direction:column;gap:5px}
+.dsrij{display:flex;gap:6px;align-items:center}
+.dsrij .inp{padding:5px 9px;font-size:var(--t2);min-width:0}
+.dsrij .btn{flex:none}
+.fstep .fbew{margin:-4px -6px 0 0}
 
 /* chips: de pill van de journal (.tagchip.col): 12% van de kleur, rand 30%, stip vooraan. --tc per tag-soort zoals
    TAG_CATS/tagKleur in work/syncjournal.html. Eigen = vol; geërfd = gedimd met stippelrand; uitgezet = grijs, doorgestreept. */
@@ -369,7 +374,9 @@ const STIJLEN={
   scalp:   {label:'Scalp',    week:['Daily','4H'],    dag:['1H','15M'],entry:'5M'},
 };
 const CFG_STD={stijl:'daytrade',risk:{A:1,B:0.5,C:0},pre:['Nieuws gecheckt','Goed geslapen','Limieten in orde']};
-const PRE_N=3;   // hooguit drie pre-flight-vinkjes (besluit 2)
+const DAGSTART_MAX=8;   // hooguit 8 dagstart-punten (ronde 3 punt 3; was 3 pre-flight-vinkjes)
+// Een lijst dagstart-punten: teksten, zonder lege of dubbele, hooguit 8.
+function normPre(a){const out=[];(Array.isArray(a)?a:[]).forEach(x=>{const t=str(x).trim().replace(/\s+/g,' ');if(t&&!out.includes(t)&&out.length<DAGSTART_MAX)out.push(t);});return out;}
 
 function lsGet(k,fb){try{const v=JSON.parse(localStorage.getItem(k)||'null');return v==null?fb:v;}catch(e){return fb;}}
 function lsSet(k,v){try{localStorage.setItem(k,JSON.stringify(v));return true;}catch(e){toast('Opslaan lukte niet: je browseropslag is vol of geblokkeerd.');return false;}}
@@ -386,19 +393,22 @@ function normScen(s){return Object.assign({},s,{id:str(s.id),title:str(s.title),
   trades:arr(s.trades,x=>typeof x==='number'||typeof x==='string')});}
 const DAG_ID=/^\d{4}-\d{2}-\d{2}$/,WEEK_ID=/^\d{4}-W\d{2}$/;
 function load(){const P=lsGet(LS.plans,null),out={v:1,weeks:{},days:{}};if(!isObj(P))return out;
+  // Oude dagen (pre-flight) hebben pre: [bool,bool,bool] op de index van de toenmalige cfg.pre: omzetten naar teksten.
+  const oc=lsGet(LS.cfg,{}),oudPre=isObj(oc)&&Array.isArray(oc.pre)?oc.pre.map(x=>str(x).trim()):CFG_STD.pre;
+  const dagstart=d=>Array.isArray(d.dagstart)?d.dagstart.filter(x=>typeof x==='string'):Array.isArray(d.pre)?oudPre.filter((t,i)=>t&&d.pre[i]===true):[];
   Object.entries(isObj(P.weeks)?P.weeks:{}).forEach(([k,w])=>{if(!WEEK_ID.test(k)||!isObj(w))return;
     out.weeks[k]=Object.assign({},w,{id:k,layers:arr(w.layers,isObj).map(normLaag),levels:str(w.levels),noTrade:str(w.noTrade),focus:str(w.focus),media:normMedia(w.media),les:str(w.les)});});
   Object.entries(isObj(P.days)?P.days:{}).forEach(([k,d])=>{if(!DAG_ID.test(k)||!isObj(d))return;
     out.days[k]=Object.assign({},d,{id:k,week:WEEK_ID.test(d.week)?d.week:isoWeek(k),layers:arr(d.layers,isObj).map(normLaag),levels:str(d.levels),mental:[1,2,3,4,5].includes(d.mental)?d.mental:null,
-      pre:[0,1,2].map(i=>!!(Array.isArray(d.pre)&&d.pre[i])),off:arr(d.off,x=>typeof x==='string'),media:normMedia(d.media),les:str(d.les),scenarios:arr(d.scenarios,s=>isObj(s)&&s.id).map(normScen)});});
-  Object.values(out.days).forEach(d=>snoeiDag(d,out.weeks[d.week]));
+      dagstart:dagstart(d),off:arr(d.off,x=>typeof x==='string'),media:normMedia(d.media),les:str(d.les),scenarios:arr(d.scenarios,s=>isObj(s)&&s.id).map(normScen)});});
+  Object.values(out.days).forEach(d=>{delete d.pre;snoeiDag(d,out.weeks[d.week]);});
   return out;}
 // save(p) zet een heel plan (alleen __tp3 in de specs): daarna normaal ingelezen, zodat PL nooit een scenario zonder
 // critChecked e.d. heeft (dat gaf af en toe een fout in snoeiCriteria als de journal net klaar was met laden).
 function save(p){if(p){if(!lsSet(LS.plans,p))return false;PL=load();return true;}return lsSet(LS.plans,PL);}
 function cfg(){const c=lsGet(LS.cfg,{}),o=isObj(c)?c:{};
   const risk=Object.assign({},CFG_STD.risk,isObj(o.risk)?o.risk:{});['A','B','C'].forEach(g=>{risk[g]=Math.max(0,+risk[g]||0);});
-  const pre=Array.isArray(o.pre)?o.pre.slice(0,PRE_N).map(x=>String(x||'')):[...CFG_STD.pre];while(pre.length<PRE_N)pre.push('');
+  const pre=Array.isArray(o.pre)?normPre(o.pre):[...CFG_STD.pre];
   return {stijl:STIJLEN[o.stijl]?o.stijl:CFG_STD.stijl,risk,pre};}
 function stijlLagen(stijl){const s=STIJLEN[stijl]||STIJLEN[CFG_STD.stijl];return {week:[...s.week],dag:[...s.dag],entry:s.entry};}
 
@@ -549,7 +559,7 @@ function nieuweWeek(id){return {id,layers:stijlLagen(cfg().stijl).week.map(leegL
 // Een nieuwe dag start met de lagen van de stijl, min de tijdframes die het weekplan al heeft (polish punt 3).
 function nieuweDag(id){const w=weekOf(isoWeek(id)),wt=new Set(w?w.layers.map(L=>L.tf):[]);
   return {id,week:isoWeek(id),layers:stijlLagen(cfg().stijl).dag.filter(tf=>!wt.has(tf)).map(leegLaag),levels:'',mental:null,
-  pre:[false,false,false],off:[],media:leegMedia(),les:'',scenarios:[]};}
+  dagstart:[],off:[],media:leegMedia(),les:'',scenarios:[]};}
 function dayOf(id){return PL.days[id]||null;}
 function weekOf(id){return id&&PL.weeks[id]||null;}
 let _sid=0;
@@ -799,19 +809,19 @@ function dagView(){
   const id=vandaag(),d=dayOf(id);
   if(!d){const vg=vorigeDag(id);
     return `<div class="pagehead"><div><h1>${cap(datumLang(id))}</h1><p>Week ${isoWeek(id).slice(-2)}</p></div></div>
-    <div class="card empty"><b>Nog geen plan voor vandaag</b>Maak een dagplan: lagen, levels, pre-flight en je scenario's. Een weekplan is niet nodig.
+    <div class="card empty"><b>Nog geen plan voor vandaag</b>Maak een dagplan: lagen, levels, je dagstart en je scenario's. Een weekplan is niet nodig.
       <div class="row"><button class="btn pri" data-a="maakDag">Maak dagplan</button>${vg?`<button class="btn" data-a="overnemen" data-v="${vg}" title="lagen, levels en de nog open scenario's">${vg===dagErvoor(id)?'Gisteren overnemen':'Overnemen van '+datumKort(vg)}</button>`:''}</div></div>`;}
   const c=cfg(),w=weekOf(d.week),rk=rangschik(d.scenarios,d,w),bijId=Object.fromEntries(d.scenarios.map(s=>[s.id,s]));
-  const pf=c.pre.filter(x=>x.trim()).length,pfAf=c.pre.filter((x,i)=>x.trim()&&d.pre[i]).length;
+  const pf=c.pre.length,pfAf=c.pre.filter(t=>d.dagstart.includes(t)).length;
   const geenSterkste=rk.length>1&&!rk.some(x=>x.sterkste)&&rk[0].e&&(rk[0].e.basis==='live'?rk[0].e.live:rk[0].e.bt).n<BASIS_LIVE_MIN;
-  return `<div class="pagehead"><div><h1>${cap(datumLang(id))}</h1><p>Week ${d.week.slice(-2)} · ${d.scenarios.length} scenario's${pf?` · pre-flight ${pfAf}/${pf}`:''}</p></div><div class="kopr">${w&&w.focus?`<span class="small muted">🎯 ${esc(w.focus)}</span>`:''}${dagMoriH(d)}</div></div>
+  return `<div class="pagehead"><div><h1>${cap(datumLang(id))}</h1><p>Week ${d.week.slice(-2)} · ${d.scenarios.length} scenario's${pf?` · Dagstart ${pfAf}/${pf}`:''}</p></div><div class="kopr">${w&&w.focus?`<span class="small muted">🎯 ${esc(w.focus)}</span>`:''}${dagMoriH(d)}</div></div>
     ${d.mental!=null&&d.mental<=MENTAAL_LAAG?`<div class="callout warn mentwarn" style="margin-bottom:12px">Mentaal ${d.mental}/5 · <b>Overweeg alleen A-setups</b> vandaag.</div>`:''}
     <div class="cockpit"><aside class="card funnel ${S.ctxOpen?'open':''}">
       <button class="btn sm ghost mobonly" style="margin:8px 0 0 8px" data-a="ctx">${S.ctxOpen?'▴ Context inklappen':'▾ Context: week, dag, levels'}</button>
       <div class="fstep opt c-violet"><h3>Week ${d.week.slice(-2)}</h3>${w?(w.noTrade?`<div class="small" style="margin-bottom:4px">⛔ ${esc(w.noTrade)}</div>`:'')+`<div class="faint small">${w.layers.length?'De lagen van de week staan gedimd bij Vandaag.':'Het weekplan heeft geen lagen.'} <a href="#" data-a="tab" data-v="week">Weekplan</a></div>`:`<div class="faint small">Geen weekplan: de dag erft niets. Dat mag. <a href="#" data-a="tab" data-v="week">Maak er een</a></div>`}${contextNoot(d,w)}</div>
       <div class="fstep opt c-accent"><h3>Vandaag</h3>${laagRij(d.layers,{pad:'day',erft:w?w.layers:[],dagOff:d.off})}<div style="margin-top:10px">${mediaBlok(d.media,{doel:'dag:'+d.id,hint:1})}</div></div>
       <div class="fstep opt c-amber"><h3>Levels</h3>${w&&w.levels.trim()?`<div class="lvls faint">${esc(w.levels)}</div>`:''}<textarea class="inp" id="d-levels" data-f="day.levels" rows="3" placeholder="één per regel, bv. BTC 76.200 Asia-low" aria-label="levels van vandaag">${esc(d.levels)}</textarea></div>
-      <div class="fstep c-green"><h3>Pre-flight</h3><div class="row" style="gap:6px">${preflightPills(d,c)}</div></div>
+      <div class="fstep c-green"><div class="row between"><h3>Dagstart</h3><button class="btn sm ghost fbew" data-a="dsBewerk" aria-pressed="${!!S.dsEdit}">${S.dsEdit?'Klaar':'Bewerk'}</button></div>${S.dsEdit?dsLijst(c.pre.map(t=>({t})),'ds'):`<div class="row" style="gap:6px">${dagstartPills(d,c)}</div>`}</div>
       <div class="fstep c-pink"><h3>Mentaal</h3>${mentalH(d)}</div>
     </aside>
     <section><div class="row between" style="margin-bottom:8px"><h2>Scenario's op edge</h2><button class="btn sm" data-a="newScen">+ Scenario</button></div>
@@ -904,7 +914,22 @@ function scenRij(s,x,d,c){
 }
 // Lege dag: lagen, levels en de nog open scenario's van de laatste dag met een plan overnemen.
 function vorigeDag(id){return Object.keys(PL.days).filter(x=>x<id).sort().pop()||null;}
-function preflightPills(d,c){return c.pre.map((p,i)=>p.trim()?`<button class="pf ${d.pre[i]?'on':''}" data-a="pre" data-v="${i}"><span class="box">${d.pre[i]?'✓':''}</span>${esc(p)}</button>`:'').join('')||'<span class="faint small">Geen pre-flight ingesteld (tandwiel).</span>';}
+function dagstartPills(d,c){return c.pre.map(t=>{const on=d.dagstart.includes(t);return `<button class="pf ${on?'on':''}" data-a="ds" data-v="${esc(t)}" aria-pressed="${on}"><span class="box">${on?'✓':''}</span>${esc(t)}</button>`;}).join('')||'<span class="faint small">Nog geen dagstart-punten. Tik op Bewerk om er een toe te voegen.</span>';}
+// De lijst om te bewerken, in de trechter (w='ds': meteen bewaard) en in het tandwiel (w='set': in de draft tot Bewaar).
+// items = [{t, o?}]: o is de oude tekst in het tandwiel, zodat hernoemen het vinkje meeneemt.
+function dsLijst(items,w){const set=w==='set';
+  return `<div class="dslijst">${items.map((x,i)=>`<div class="dsrij"><input class="inp" ${set?`data-f="draft.pre.${i}.t"`:`data-ds="${i}"`} value="${esc(x.t)}" aria-label="dagstart-punt ${i+1}"><button class="lrm" data-a="${set?'setDsWeg':'dsWeg'}" data-v="${i}" aria-label="${esc(x.t)} weghalen" title="weghalen">×</button></div>`).join('')}
+    ${items.length<DAGSTART_MAX?`<div class="dsrij"><input class="inp" id="${set?'set-ds-nieuw':'ds-nieuw'}" placeholder="Nieuw punt, bv. Kalender gecheckt" aria-label="nieuw dagstart-punt"><button class="btn sm" data-a="${set?'setDsToe':'dsToe'}">+ Voeg toe</button></div>`:`<div class="enote">Hooguit ${DAGSTART_MAX} punten.</div>`}</div>`;}
+// Hernoemen neemt het vinkje mee, op elke dag (de vinkjes staan op tekst).
+// map: oude tekst → nieuwe, in één keer (twee punten die van naam wisselen blijven zo goed).
+function hernoemVinkjes(map){Object.values(PL.days).forEach(d=>{d.dagstart=d.dagstart.map(x=>map.has(x)?map.get(x):x);});save();}
+const dsTekst=v=>str(v).trim().replace(/\s+/g,' ');
+// Een nieuw punt in lijst L (teksten); geeft false met een melding als het niet kan.
+function dsMag(L,t,zelf){if(!t){toast('Een punt heeft een naam nodig.');return false;}
+  if(L.some((x,i)=>x===t&&i!==zelf)){toast('"'+t+'" staat er al.');return false;}
+  if(zelf==null&&L.length>=DAGSTART_MAX){toast('Hooguit '+DAGSTART_MAX+' punten.');return false;}return true;}
+function dsHernoem(i,v){const c=cfg(),van=c.pre[i],t=dsTekst(v);if(van==null||t===van)return;if(!dsMag(c.pre,t,i))return;
+  c.pre[i]=t;save();lsSet(LS.cfg,c);hernoemVinkjes(new Map([[van,t]]));}
 function mentalH(d){return `<span class="mental">${[1,2,3,4,5].map(n=>`<button class="${d.mental===n?'on':''}" data-a="mental" data-v="${n}" aria-label="mentaal ${n}">${n}</button>`).join('')}</span>`;}
 
 // ───────────────────────── Week / Afsluiting / Log ─────────────────────────
@@ -1022,8 +1047,8 @@ function modalH(){
       <div class="enote">Bepaalt alleen met welke lagen een nieuwe week en dag starten (${(()=>{const L=stijlLagen(s.stijl);return 'week '+L.week.join(' · ')+', dag '+L.dag.join(' · ')+', entry '+L.entry;})()}). Je kunt er altijd van afwijken.</div>
       <h3 style="margin:16px 0 6px">Risico per grade</h3><div class="three" style="grid-template-columns:repeat(3,1fr)">${['A','B','C'].map(g=>`<div><label class="f" for="set-risk-${g}">Grade ${g} (%)</label><input class="inp num" id="set-risk-${g}" type="number" step="0.25" min="0" data-f="draft.risk.${g}" value="${s.risk[g]}"></div>`).join('')}</div>
       <div class="enote">0% = niet traden. Het scenario is de check; de grade bepaalt de size.</div>
-      <h3 style="margin:16px 0 6px">Pre-flight (hooguit 3)</h3>${s.pre.map((p,i)=>`<input class="inp" id="set-pre-${i}" style="margin-bottom:6px" data-f="draft.pre.${i}" value="${esc(p)}" placeholder="bv. ${['Nieuws gecheckt','Goed geslapen','Limieten in orde'][i]}" aria-label="pre-flight ${i+1}">`).join('')}
-      <div class="enote">Een herinnering, geen slot: niets wordt geblokkeerd. Laat een regel leeg voor minder vinkjes.</div>`;
+      <h3 style="margin:16px 0 6px">Dagstart (hooguit ${DAGSTART_MAX})</h3>${dsLijst(s.pre,'set')}
+      <div class="enote">Een herinnering, geen slot: niets wordt geblokkeerd. Je vinkt ze elke ochtend af in Dag.</div>`;
     f=`<button class="btn" data-a="close">Annuleer</button><button class="btn pri" data-a="saveSettings">Bewaar</button>`;
   } else if(M.type==='convert'){
     const o=convertH(M);t=o.t;h=o.h;f=o.f;kop=o.kop;cls='conv';
@@ -1082,15 +1107,22 @@ function toast(m){S.toast=m;render();clearTimeout(toast.t);toast.t=setTimeout(()
 // ───────────────────────── acties ─────────────────────────
 const A={
   tab:el=>{S.tab=el.dataset.v;S.modal=null;S.tfOpen='';if(S.tab==='afsluiting')S.afslDag=null;window.scrollTo(0,0);},
-  settings:()=>{S.modal={type:'settings',draft:JSON.parse(JSON.stringify(cfg()))};},
+  settings:()=>{const c=JSON.parse(JSON.stringify(cfg()));c.pre=c.pre.map(t=>({t,o:t}));S.modal={type:'settings',draft:c};},
+  setDsWeg:el=>{S.modal.draft.pre.splice(+el.dataset.v,1);},
+  setDsToe:()=>{const L=S.modal.draft.pre,inp=document.getElementById('set-ds-nieuw'),t=dsTekst(inp&&inp.value);if(!dsMag(L.map(x=>dsTekst(x.t)),t))return false;L.push({t});},
   stijl:el=>{S.modal.draft.stijl=el.dataset.v;},
   saveSettings:()=>{const d=S.modal.draft;['A','B','C'].forEach(g=>{d.risk[g]=Math.max(0,+String(d.risk[g]).replace(',','.')||0);});
-    d.pre=d.pre.map(x=>String(x||'').trim());lsSet(LS.cfg,d);S.modal=null;},
+    // eerst het plan bewaren (een oude pre-flight-dag is dan al omgezet met de óude lijst), dan hernoemen, dan de lijst
+    save();hernoemVinkjes(new Map(d.pre.map(x=>[x.o,dsTekst(x.t)]).filter(([o,t])=>o&&t&&t!==o)));d.pre=normPre(d.pre.map(x=>x.t));lsSet(LS.cfg,d);S.modal=null;},
   close:()=>{S.modal=S.modal&&S.modal.back?S.modal.back:null;},   // tag-keuze vanuit het scenario: terug naar het scenario
   ovclose:(el,ev)=>{if(ev.target!==el)return false;S.modal=null;},
   maakDag:()=>{const id=vandaag();if(!PL.days[id])PL.days[id]=nieuweDag(id);save();},
   maakWeek:()=>{const wid=isoWeek(vandaag());if(!PL.weeks[wid])PL.weeks[wid]=nieuweWeek(wid);Object.values(PL.days).filter(d=>d.week===wid).forEach(d=>snoeiDag(d,PL.weeks[wid]));save();},
-  pre:el=>{const d=dayOf(vandaag()),i=+el.dataset.v;d.pre[i]=!d.pre[i];save();},
+  ds:el=>{const d=dayOf(vandaag()),t=el.dataset.v,i=d.dagstart.indexOf(t);if(i>=0)d.dagstart.splice(i,1);else d.dagstart.push(t);save();},
+  dsBewerk:()=>{S.dsEdit=!S.dsEdit;},
+  dsWeg:el=>{const c=cfg();c.pre.splice(+el.dataset.v,1);save();lsSet(LS.cfg,c);},
+  dsToe:()=>{const c=cfg(),inp=document.getElementById('ds-nieuw'),t=dsTekst(inp&&inp.value);if(!dsMag(c.pre,t))return false;c.pre.push(t);save();lsSet(LS.cfg,c);
+    setTimeout(()=>{const n=document.getElementById('ds-nieuw');if(n)n.focus();},0);},
   mental:el=>{const d=dayOf(vandaag()),n=+el.dataset.v;d.mental=d.mental===n?null:n;save();},
   // lagen
   tfPicker:el=>{S.tfOpen=S.tfOpen===el.dataset.p?'':el.dataset.p;},
@@ -1158,7 +1190,11 @@ document.addEventListener('click',ev=>{
   if(fn(el,ev)===false)return;
   render();
 });
+// Hernoemen in de trechter bij het verlaten van het veld (of Enter), niet bij elke toets.
+document.addEventListener('change',ev=>{const el=ev.target;if(el&&el.dataset&&el.dataset.ds!=null){dsHernoem(+el.dataset.ds,el.value);render();}});
 document.addEventListener('keydown',ev=>{if(ev.key==='Escape'&&S.modal){A.close();render();}
+  const t=ev.target;if(ev.key==='Enter'&&t&&(t.id==='ds-nieuw'||t.id==='set-ds-nieuw')){ev.preventDefault();const b=t.parentElement.querySelector('button');if(b)b.click();}
+  if(ev.key==='Enter'&&t&&t.dataset&&t.dataset.ds!=null){ev.preventDefault();t.blur();}
 });
 // Een playbook kiezen vult de entry-laag en de grade uit het journal-playbook (laatste laag = entry).
 function vulVanPlaybook(d){const p=JR.pbook[d.pb];if(!p)return;const L=(p.layers||[]).filter(isObj),e=L[L.length-1];

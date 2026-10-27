@@ -3304,6 +3304,12 @@ function tradeTimeline(t){
 const TP3={plans:'tp3:plans',cfg:'tp3:cfg',handoff:'tp3:handoff',mori:'tp3:mori'};
 const HANDOFF_MAX_MS=10*60000;   // "Zet om in trade" in het plan: na 10 minuten is de overdracht verlopen
 const planObj=o=>!!o&&typeof o==='object'&&!Array.isArray(o);
+// Dagstart (was pre-flight): cfg.pre is a list of texts, a day keeps the checked texts in dagstart. An old day still has
+// pre: [bool,bool,bool] on the index of cfg.pre. Same rule and default list as load()/CFG_STD in tradingplan/tradingplan.html.
+const PLAN_PRE_STD=['Nieuws gecheckt','Goed geslapen','Limieten in orde'];
+function planDagstart(day,c){const ruw=Array.isArray(c&&c.pre)?c.pre.map(x=>coachPlanTekst(x)):PLAN_PRE_STD,lijst=[...new Set(ruw.filter(Boolean))];
+  const af=Array.isArray(day&&day.dagstart)?day.dagstart:ruw.filter((t,k)=>t&&Array.isArray(day&&day.pre)&&day.pre[k]===true);
+  return lijst.map(t=>[t,af.includes(t)]);}
 function planLoad(){const g=(k,fb)=>{try{const v=JSON.parse(localStorage.getItem(k)||'null');return v==null?fb:v;}catch(e){return fb;}};
   const p=g(TP3.plans,{});return {plans:{v:1,weeks:planObj(p.weeks)?p.weeks:{},days:planObj(p.days)?p.days:{}},cfg:planObj(g(TP3.cfg,{}))?g(TP3.cfg,{}):{}};}
 function planSave(plans){try{localStorage.setItem(TP3.plans,JSON.stringify(plans));return true;}catch(e){toast('Het plan kon niet worden opgeslagen (opslag vol?)','err');return false;}}
@@ -6595,8 +6601,8 @@ function coachDagplanDeel(rows,o){const {day,week,edge}=o.plan,P=planLoad(),c=P.
   L.push('## Dag');const lg=coachPlanLagen(day.layers);L.push('- Lagen: '+(lg||'geen'));
   if(coachPlanTekst(day.levels))L.push('- Levels: '+coachPlanTekst(day.levels));
   L.push('- Mentaal '+(day.id===PLAN_AMS.format(new Date())?'vandaag':'op '+coachDatum(day.id))+': '+(day.mental?day.mental+'/5':'niet ingevuld'));
-  const pre=(Array.isArray(c.pre)?c.pre:[]).map((t,k)=>[coachPlanTekst(t),!!(day.pre||[])[k]]).filter(([t])=>t);
-  if(pre.length)L.push('- Pre-flight: '+pre.map(([t,v])=>t+(v?' ✓':' open')).join(', '));
+  const ds=planDagstart(day,c);
+  if(ds.length)L.push('- Dagstart: '+ds.map(([t,v])=>t+(v?' ✓':' open')).join(', '));
   const sc=(day.scenarios||[]).filter(planObj),plek=x=>planObj(edge&&edge[x.id])&&+edge[x.id].plek>0?+edge[x.id].plek:99;
   L.push('','## Scenario\'s (op de volgorde van het plan: gem. R van de basis, Live vanaf 10 Live-trades, anders Backtest)',...sc.slice().sort((a,b)=>plek(a)-plek(b)).map(x=>{const e=edge&&edge[x.id];
     return (plek(x)<99?plek(x)+'. ':'- ')+coachPlanTekst(planTitel(x))+' · '+coachPlanTekst(x.pair)+' '+(x.dir==='short'?'short':'long')+' · '+(x.pb||'geen playbook')+' · grade '+(x.grade||'?')+' · '+(x.status||'open')+(planObj(e)&&e.sterkste?' · sterkste':'')+'\n   edge: '+coachEdgeRegel(e);}));

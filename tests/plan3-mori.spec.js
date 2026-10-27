@@ -140,7 +140,7 @@ const ANTWOORD = 'Je Trend-pullback staat op n=4 (uit je setuptabel). Let op je 
   ok('opdracht: dagplan bespreken, sterkste en zwakste, tegenspraak, mentaal, geen advies, één punt', /Bespreek het dagplan/.test(op) && /sterkst/.test(op) && /zichzelf tegen/.test(op) && /mentale score/.test(op) && /Geen koop- of verkoopadvies/.test(op) && /één concreet punt/.test(op), op.slice(0, 300));
   const D = (pk.match(/# Dagplan uit TradingPlan[^]*$/) || [''])[0];
   ok('pakket: week (lagen met bias, levels, no-trade, focus)', /Weekly Bullish: BOS/.test(D) && /BTC 78\.150 weekly high/.test(D) && /do FOMC 19:00/.test(D) && /Alleen A-setups/.test(D), D.slice(0, 500));
-  ok('pakket: dag (lagen, levels, mentaal, pre-flight)', /4H Bearish: MSB/.test(D) && /BTC 76\.200 Asia-low/.test(D) && /Mentaal vandaag: 2\/5/.test(D) && /Pre-flight: Nieuws gecheckt ✓, Goed geslapen open/.test(D), D.slice(0, 800));
+  ok('pakket: dag (lagen, levels, mentaal, dagstart — oude pre-flight-dag omgezet)', /4H Bearish: MSB/.test(D) && /BTC 76\.200 Asia-low/.test(D) && /Mentaal vandaag: 2\/5/.test(D) && /Dagstart: Nieuws gecheckt ✓, Goed geslapen open/.test(D), D.slice(0, 800));
   ok('pakket: elk scenario met titel, pair, richting, playbook, grade, status, edge en rang', /[12]\. BTC trend-pullback · BTC long · Trend-pullback · grade A · open/.test(D) && /[12]\. ETH London SFP · ETH short · London SFP · grade C · open/.test(D) && (D.match(/edge: /g) || []).length === 2, (D.match(/## Scenario's[^]{0,600}/) || [''])[0]);
   ok('pakket: risico per grade', /Risico per grade: A 2%, B 1%, C niet traden/.test(D));
   ok('pakket: geen id van een scenario', !/s_btc|s_zc/.test(pk));
