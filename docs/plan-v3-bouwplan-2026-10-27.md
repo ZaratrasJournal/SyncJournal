@@ -246,3 +246,13 @@ scenario's; `planVanHandoff()`.
 - [ ] Commit, push. Klaar.
 
 ## Logboek
+
+- **Taak 1 klaar** — `node tests/plan3-basis.spec.js` → 23/23. v2 in `tradingplan/tradingplan.html` helemaal
+  vervangen. Thema via `data-theme` op `<html>` uit `sj_state.theme` (+ `storage`-event). `__tp3` levert ook
+  `vandaag()` en `isoWeek()` voor de specs.
+  Besluit: `Day.week` is altijd de ISO-week van de dag, ook zonder weekplan; de dag erft alleen als
+  `weeks[day.week]` bestaat — zo erft een dag ook van een weekplan dat je later maakt — kost als het fout is: één
+  regel in `nieuweDag`, en een lezer moet `weekOf(day.week)` doen in plaats van op `null` te testen.
+  Besluit: een lege pre-flight-tekst in het tandwiel = minder vinkjes (zo kies je 0–3) — kost niets.
+  Omgeving: `npx playwright install chromium` kon niet downloaden; de meegeleverde browser 1243 is via een symlink
+  onder de naam die Playwright 1.64 verwacht (1248) gezet. Alleen de cloud-container, niet de repo.
