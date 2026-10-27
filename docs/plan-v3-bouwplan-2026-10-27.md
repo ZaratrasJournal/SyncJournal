@@ -283,3 +283,17 @@ week} | null`; `planSync()` (bij laden en bij een `storage`-event op `tp3:plans`
   Besluit: een lege pre-flight-tekst in het tandwiel = minder vinkjes (zo kies je 0–3) — kost niets.
   Omgeving: `npx playwright install chromium` kon niet downloaden; de meegeleverde browser 1243 is via een symlink
   onder de naam die Playwright 1.64 verwacht (1248) gezet. Alleen de cloud-container, niet de repo.
+- **Taak 2 klaar** — `node tests/plan3-lagen.spec.js` → 25/25 (4× achter elkaar groen), `plan3-basis` 23/23.
+  `laagRij`, `voegTijdframeToe`, `voegTagToe`; tijdframes uit `tagConfig.timeframeTags`, top-down via een kopie
+  van `tfMinuten`; nieuw tijdframe/tag komt in `sj_tagconfig`; geërfde chips per scenario uit te zetten (`off`).
+  Het scenario-formulier is hier al gebouwd (taak 4 vult het aan), omdat erven per scenario anders niet te testen is.
+  Besluit: de plan3-specs draaien via een kleine localhost-server (`tests/helpers/plan3.js`) in plaats van
+  `file://` — met `file://` zag de journal-tab in 3 van 7 runs de localStorage van de plan-tab niet; CLAUDE.md zegt
+  ook "altijd via localhost" — kost als het fout is: één helper; de oude v2-specs blijven `file://` gebruiken.
+  Besluit: een tijdframe dat `tfMinuten` niet kan lezen ("abc") wordt geweigerd met een melding, zodat er geen
+  onsorteerbare laag in de journal-lijst komt — kost niets.
+  Let op (niet opgelost): heeft de journal in een ander tabblad de tag-instellingen open en bewaart hij ze daarna,
+  dan schrijft hij zijn eigen (oudere) `tagConfig` terug en is een tag uit het plan weer weg.
+  Poort-nulmeting vóór de bouw (`node tests/run-release.js --hier`): 159/164; rood door deze container (fonts
+  `ERR_TUNNEL_CONNECTION_FAILED` als console-fout: `matrix`, `analytics-metrics`, `tendencies`), los groen
+  (`terugkijken-v12`), en `plan-doorloop` omdat v2 tijdens de meting al vervangen werd.

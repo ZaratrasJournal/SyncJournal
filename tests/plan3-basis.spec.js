@@ -4,16 +4,15 @@
 //  - een nieuwe dag start met de lagen van de stijl (scalp 1H·15M, daytrade 4H·1H)
 //  - een dag zonder weekplan is te maken en te bewaren
 //  - het tandwiel bewaart risico per grade, de drie pre-flight-teksten en de stijl
-const { chromium } = require('playwright'); const path = require('path'); const fs = require('fs');
-const TP = 'file:///' + path.resolve('tradingplan/tradingplan.html').split(path.sep).join('/');
-const SHOTS = path.resolve('tests/screenshots/plan3'); fs.mkdirSync(SHOTS, { recursive: true });
-let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  ✓ ' + n)) : (fail++, console.log('  ✗ ' + n + (e ? ' → ' + e : ''))); };
+const { chromium } = require('playwright'); const path = require('path');
+const H = require('./helpers/plan3'); const SHOTS = H.SHOTS;
+const NAAM = 'Plan v3 basis';
 
 (async () => {
+  const srv = await H.server(), { TP, APP } = srv, T = H.teller(NAAM), ok = T.ok;
   const b = await chromium.launch(); const errs = [];
-  const ctx = await b.newContext({ viewport: { width: 1280, height: 900 } });
+  const ctx = await b.newContext({ viewport: { width: 1280, height: 900 } }); await H.alleenLokaal(ctx);
   const p = await ctx.newPage(); p.on('pageerror', e => errs.push(String(e).split('\n')[0]));
-  await p.route('**/*', r => /^https?:/.test(r.request().url()) ? r.abort() : r.continue());
   await p.goto(TP, { waitUntil: 'load' }); await p.waitForTimeout(500);
 
   console.log('--- lege opslag ---');
@@ -73,5 +72,5 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
   ok('390 breed: geen horizontale scroll', await p.evaluate(() => document.documentElement.scrollWidth <= 391));
 
   ok('geen JS-errors', errs.length === 0, errs.slice(0, 3).join(' | '));
-  console.log(`\n=== Plan v3 basis: ${pass}/${pass + fail} ===`); await b.close(); process.exit(fail ? 1 : 0);
+  await b.close(); srv.close(); process.exit(T.eind());
 })();

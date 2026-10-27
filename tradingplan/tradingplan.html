@@ -105,6 +105,42 @@ label.f{display:block;font-size:11.5px;font-weight:600;color:var(--muted);margin
 .pf.on{border-color:var(--green);background:var(--green-soft);color:var(--green)}
 .pf.on .box{background:var(--green);border-color:var(--green)}
 
+/* chips + lagen (uit het prototype) */
+.chip{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:999px;font-size:12px;font-weight:600;border:1px solid var(--accent-line);background:var(--accent-soft);color:var(--accent);white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis}
+.chip.conf{background:var(--surface);color:var(--ink2);border-color:var(--line)}
+.chip.inh{opacity:.6;border-style:dashed}
+button.chip.inh{cursor:pointer}
+.chip.inh.off{opacity:.4;text-decoration:line-through}
+.chip.add{background:none;border:1px dashed var(--line);color:var(--muted);cursor:pointer}
+.chip.add:hover{color:var(--accent);border-color:var(--accent-line)}
+.chip .x{opacity:.6;font-weight:700;color:inherit}
+.chip.pick{cursor:pointer;background:var(--surface);color:var(--ink2);border-color:var(--line)}
+.chip.pick.on{background:var(--accent-soft);color:var(--accent);border-color:var(--accent-line)}
+.bias{font-size:11px;font-weight:700;padding:2px 7px;border-radius:6px}
+.bias.Bullish{color:var(--green);background:var(--green-soft)}
+.bias.Bearish{color:var(--red);background:var(--red-soft)}
+.bias.Neutraal{color:var(--ink2);background:var(--track)}
+.layer{display:grid;grid-template-columns:52px minmax(0,1fr);gap:8px;align-items:start;padding:7px 0}
+.layer+.layer{border-top:1px dashed var(--line2)}
+.layer .tf{font-family:var(--fn);font-size:12px;font-weight:600;color:var(--ink2);padding-top:3px;overflow-wrap:anywhere}
+.layer.inh .tf{color:var(--faint)}
+.layer .chips{display:flex;flex-wrap:wrap;gap:5px;align-items:center;min-width:0}
+.lrm{margin-left:auto;color:var(--faint);font-weight:700;font-size:15px;padding:0 4px}
+.lrm:hover{color:var(--red)}
+.inhnote{font-size:11px;color:var(--faint)}
+.tfpick{margin-top:8px;padding:10px;border:1px dashed var(--line);border-radius:10px;background:var(--sink)}
+
+/* cockpit: links de trechter, rechts de scenario's */
+.cockpit{display:grid;grid-template-columns:340px minmax(0,1fr);gap:14px;align-items:start}
+.funnel{position:sticky;top:96px;min-width:0}
+.fstep{position:relative;padding:10px 12px 10px 26px}
+.fstep::before{content:"";position:absolute;left:11px;top:16px;bottom:-10px;width:2px;background:var(--line)}
+.fstep:last-child::before{display:none}
+.fstep::after{content:"";position:absolute;left:7px;top:12px;width:10px;height:10px;border-radius:50%;background:var(--surface);border:2px solid var(--accent)}
+.fstep h3{margin-bottom:4px}
+.rlist{display:flex;flex-direction:column;gap:8px}
+@media(max-width:860px){.cockpit{grid-template-columns:minmax(0,1fr)}.funnel{position:static}}
+
 /* modal */
 .ov{position:fixed;inset:0;background:var(--scrim);z-index:50;display:flex;align-items:center;justify-content:center;padding:16px}
 .modal{background:var(--surface);border-radius:14px;border:1px solid var(--line);width:100%;max-width:560px;max-height:calc(100vh - 32px);overflow:auto;box-shadow:var(--shl)}
@@ -176,6 +212,48 @@ function datumKort(iso){const d=dUTC(iso);return DAGEN[d.getUTCDay()].slice(0,2)
 function dagErvoor(iso){const d=dUTC(iso);d.setUTCDate(d.getUTCDate()-1);return d.toISOString().slice(0,10);}
 const cap=s=>s.charAt(0).toUpperCase()+s.slice(1);
 
+// ───────────────────────── journal: tags, trades, playbooks ─────────────────────────
+// Startwaarde als de journal nog geen sj_tagconfig heeft (nieuw lid): DEFAULT_TAGCONFIG uit work/syncjournal.html.
+const TAGS_STD={
+  setupTags:['BOS','MSB','SFP','F2R','F2L','Structuur','MLS','Range','Bullish retest','Bearish retest'],
+  confirmationTags:['Liquidity Sweep','Support OB','Resistance OB','OB','EQL/EQH','Flat candle','Session sweep US/UK/AS','VAH / VAL / POC','Range retest','Range acceptatie','FVG','Spot koop','Spot verkoop'],
+  timeframeTags:['5M','10M','15M','30M','1H','2H','4H','12H','Daily','Weekly'],
+  emotionTags:['FOMO','Gehaast','Twijfels','Geduldig','Rustig','Zelfverzekerd'],
+  mistakeTags:['Te vroeg in','SL te krap','SL te wijd','Geen plan','Overtrading','TP te vroeg','Positie te groot','Revenge trade'],
+  missedReasonTags:['Durf','Buiten regels','Te laat gespot','Kapitaal vol','Onduidelijk','Bewuste skip','Offline'],
+  customTags:[],
+};
+function tags(){const t=lsGet(SJ.tags,null),o=isObj(t)?t:JSON.parse(JSON.stringify(TAGS_STD));
+  ['setupTags','confirmationTags','timeframeTags'].forEach(k=>{if(!Array.isArray(o[k]))o[k]=[...TAGS_STD[k]];});return o;}
+// Timeframe → minuten, gekopieerd uit tfMinuten in work/syncjournal.html ('M' = minuten). Onleesbaar = Infinity.
+function tfMinuten(tf){const s=String(tf||'').trim().toLowerCase();if(!s)return null;
+  const woord={weekly:10080,week:10080,daily:1440,day:1440,monthly:43200,month:43200}[s];if(woord)return woord;
+  const m=s.match(/^(\d+)\s*(m|min|h|d|w)$/);if(!m)return Infinity;
+  return +m[1]*{m:1,min:1,h:60,d:1440,w:10080}[m[2]];}
+const topDown=(a,b)=>tfMinuten(b)-tfMinuten(a);   // hoogste tijdframe eerst, zoals sorteerLagen in de journal
+const sorteerLagen=L=>[...L].sort((a,b)=>topDown(a.tf,b.tf));
+// "1m" → "1M", "4h" → "4H", "daily" → "Daily": dezelfde schrijfwijze als de journal-tags
+function tfNorm(tf){const s=String(tf||'').trim().replace(/\s+/g,'');const w={weekly:'Weekly',daily:'Daily',monthly:'Monthly'}[s.toLowerCase()];return w||s.toUpperCase();}
+// Een nieuw tijdframe komt ook in de journal (besluit 14), op de journal-volgorde: klein → groot.
+function voegTijdframeToe(tf){tf=tfNorm(tf);const m=tfMinuten(tf);if(m==null||!isFinite(m))return null;
+  const t=tags();if(!t.timeframeTags.includes(tf)){t.timeframeTags=[...t.timeframeTags,tf].sort((a,b)=>tfMinuten(a)-tfMinuten(b));lsSet(SJ.tags,t);}return tf;}
+// cat: 'set' of 'conf'. Ontbreekt een tag, dan komt hij ook in de journal-taglijst (besluit 3).
+function voegTagToe(cat,tag){tag=String(tag||'').trim().replace(/\s+/g,' ');if(!tag)return null;const t=tags();
+  if(!t.setupTags.includes(tag)&&!t.confirmationTags.includes(tag)){const k=cat==='set'?'setupTags':'confirmationTags';t[k]=[...t[k],tag];lsSet(SJ.tags,t);}return tag;}
+const tagSoort=g=>tags().setupTags.includes(g)?'set':'conf';
+
+// Trades en playbooks staan in IndexedDB sj_db/kv (zoals IDB in de journal). Versie 1 en de store 'kv'
+// aanmaken zoals de journal: open je hem zonder versie, dan krijgt een nieuw lid een lege database zonder store.
+const JR={trades:[],pbook:{},klaar:false};
+function sjDbLees(keys){return new Promise(res=>{let r;try{r=indexedDB.open('sj_db',1);}catch(e){return res({});}
+  r.onupgradeneeded=()=>r.result.createObjectStore('kv');
+  r.onerror=()=>res({});
+  r.onsuccess=()=>{const db=r.result,out={};try{const tx=db.transaction('kv','readonly'),st=tx.objectStore('kv');
+    keys.forEach(k=>{const q=st.get(k);q.onsuccess=()=>{out[k]=q.result;};});tx.oncomplete=()=>{db.close();res(out);};tx.onerror=()=>{db.close();res(out);};}catch(e){db.close();res(out);}};});}
+async function laadJournal(){const o=await sjDbLees(['trades','pbook']);
+  JR.trades=(Array.isArray(o.trades)?o.trades:[]).filter(isObj).map(t=>Object.assign({},t,{pnl:+t.pnl||0}));
+  JR.pbook=isObj(o.pbook)?o.pbook:{};JR.klaar=true;render();}
+
 // ───────────────────────── model ─────────────────────────
 const leegLaag=tf=>({tf,bias:'',setups:[],confirmations:[]});
 const leegMedia=()=>({imgs:[],links:[]});
@@ -185,10 +263,21 @@ function nieuweDag(id){return {id,week:isoWeek(id),layers:stijlLagen(cfg().stijl
   pre:[false,false,false],media:leegMedia(),les:'',scenarios:[]};}
 function dayOf(id){return PL.days[id]||null;}
 function weekOf(id){return id&&PL.weeks[id]||null;}
+let _sid=0;
+function nieuwId(pre,bestaat){let t=Date.now();if(t<=_sid)t=_sid+1;_sid=t;let id=pre+t.toString(36);while(bestaat&&bestaat(id)){_sid++;id=pre+_sid.toString(36);}return id;}
+function nieuwScenario(day){const L=stijlLagen(cfg().stijl),eigen=day.layers[day.layers.length-1];
+  return {id:nieuwId('s_',id=>alleScenarios().some(x=>x.s.id===id)),title:'',pair:'BTC',dir:'long',pb:'',grade:'B',trigger:'',invalid:'',
+    entry:{tf:L.entry,bias:eigen?eigen.bias:'',setups:[],confirmations:[]},off:[],checked:[],stop:'',tps:[],media:leegMedia(),note:'',
+    status:'open',statusTs:null,trades:[]};}
+// alle scenario's met hun dag, nieuwste dag eerst
+function alleScenarios(){return Object.values(PL.days).sort((a,b)=>b.id.localeCompare(a.id)).flatMap(d=>(d.scenarios||[]).map(s=>({s,day:d})));}
+function scenOf(sid){return alleScenarios().find(x=>x.s.id===sid)||null;}
+// "BTC/USDT" → "BTC", zoals pairBase in de journal
+const pairBase=p=>String(p||'').split(/[\/\-:]/)[0].trim().toUpperCase();
 
 // ───────────────────────── state ─────────────────────────
 let PL=load();
-const S={tab:'dag',modal:null,toast:''};
+const S={tab:'dag',modal:null,toast:'',tfOpen:''};
 
 // ───────────────────────── thema = journal (besluit 10) ─────────────────────────
 function themaVanJournal(){const s=lsGet(SJ.state,{});document.documentElement.dataset.theme=isObj(s)&&s.theme==='dark'?'dark':'light';}
@@ -203,16 +292,57 @@ const nl=(v,d=1)=>(+v).toFixed(d).replace('.',',');
 const pctTxt=v=>nl(v,v%1?(v*100%10?2:1):0)+'%';
 function riskTxt(g){const r=cfg().risk[g];return r?pctTxt(r)+' risico':g+': niet traden';}
 
+// ───────────────────────── lagen (week, dag en scenario gebruiken dezelfde component) ─────────────────────────
+// pad: "week" / "day" / "draft.entry". Een laag: "week.0", "day.1", "draft.entry".
+function lagenVan(pad){if(pad==='week')return (weekOf(isoWeek(vandaag()))||{}).layers;if(pad==='day')return (dayOf(vandaag())||{}).layers;return null;}
+function laagRef(p){if(p==='draft.entry')return draftOf().entry;const [w,i]=p.split('.');return (lagenVan(w)||[])[+i];}
+function draftOf(){const M=S.modal;return M&&(M.draft&&M.type==='scen'?M.draft:M.back&&M.back.draft);}
+function chipH(tag,o={}){const k=tagSoort(tag);
+  if(o.inh)return `<button class="chip ${k} inh ${o.off?'off':''}" data-a="off" data-v="${esc(o.key)}" title="${o.off?'telt niet mee voor dit scenario · tik om weer mee te tellen':'geërfd · tik om uit te zetten voor dit scenario'}">↑ ${esc(o.label||tag)}</button>`;
+  return `<span class="chip ${k}">${esc(tag)}${o.rm?` <button class="x" ${o.rm} aria-label="haal ${esc(tag)} weg">×</button>`:''}</span>`;}
+const BIASSEN=['Bullish','Bearish','Neutraal'];
+function biasSeg(p,val){return `<span class="seg sm" role="group" aria-label="bias">${BIASSEN.map(b=>`<button class="${val===b?'on':''}" data-a="bias" data-p="${p}" data-v="${b}">${b==='Neutraal'?'Neutr.':b}</button>`).join('')}</span>`;}
+function laagEdit(p,L,o={}){
+  const tagsH=[...L.setups,...L.confirmations].map(g=>chipH(g,{rm:`data-a="rmtag" data-p="${p}" data-v="${esc(g)}"`})).join('');
+  return `<div class="layer" data-tf="${esc(L.tf)}"><div class="tf">${esc(L.tf)}</div><div class="chips">${biasSeg(p,L.bias)}${tagsH}
+    <button class="chip add" data-a="picker" data-p="${p}">+ tag</button>${o.rm?`<button class="lrm" data-a="rmLaag" data-p="${o.rm}" data-v="${esc(L.tf)}" aria-label="laag ${esc(L.tf)} weghalen" title="laag weghalen">×</button>`:''}</div></div>`;}
+function laagRO(L,note){const t=[...L.setups,...L.confirmations];
+  return `<div class="layer inh"><div class="tf">${esc(L.tf)}</div><div class="chips">${L.bias?`<span class="bias ${esc(L.bias)}">${esc(L.bias)}</span>`:''}${t.map(g=>`<span class="chip ${tagSoort(g)} inh">↑ ${esc(g)}</span>`).join('')||'<span class="faint small">geen tags</span>'}${note?`<span class="inhnote">${note}</span>`:''}</div></div>`;}
+// De chip-rij: eerst wat erft (gedimd, alleen-lezen), dan de eigen lagen met een tijdframe-keuze.
+function laagRij(layers,o={}){
+  const erft=(o.erft||[]).map(L=>laagRO(L)).join('');
+  const eigen=layers.map((L,i)=>laagEdit(o.pad+'.'+i,L,{rm:o.pad})).join('')||'<div class="faint small" style="padding:6px 0">Nog geen lagen. Voeg een tijdframe toe.</div>';
+  return erft+eigen+tfKeuze(o.pad,layers);}
+function tfKeuze(pad,layers){
+  if(S.tfOpen!==pad)return `<button class="chip add" style="margin-top:6px" data-a="tfPicker" data-p="${pad}">+ tijdframe</button>`;
+  const bezet=new Set(layers.map(l=>l.tf)),vrij=tags().timeframeTags.filter(tf=>!bezet.has(tf)).sort(topDown);
+  return `<div class="tfpick"><div class="row" style="gap:5px">${vrij.map(tf=>`<button class="chip pick" data-a="addTf" data-p="${pad}" data-v="${esc(tf)}">+ ${esc(tf)}</button>`).join('')||'<span class="faint small">Alle tijdframes uit je journal zijn al een laag.</span>'}</div>
+    <div class="row" style="flex-wrap:nowrap;margin-top:8px"><input class="inp" id="nieuwTf" placeholder="Ander tijdframe, bv. 1M of 3D" style="padding:6px 9px;font-size:12.5px" aria-label="nieuw tijdframe"><button class="btn sm" data-a="nieuwTf" data-p="${pad}">Voeg toe</button><button class="btn sm ghost" data-a="tfPicker" data-p="">Klaar</button></div>
+    <div class="enote">Een nieuw tijdframe komt ook in de tijdframe-lijst van je journal.</div></div>`;}
+// geërfde tags op een scenario: week → dag, elke tag als "<tf>|<tag>", uit te zetten per scenario
+function geerfd(day){const w=weekOf(day.week);return [...(w?w.layers:[]),...day.layers];}
+function erfChips(sc,day){const out=[];geerfd(day).forEach(L=>[...L.setups,...L.confirmations].forEach(g=>{const key=L.tf+'|'+g;
+  out.push(chipH(g,{inh:1,key,off:sc.off.includes(key),label:L.tf+' '+g}));}));
+  return out.join('')||'<span class="faint small">Niets om te erven: week en dag hebben nog geen tags.</span>';}
+function toggleTag(L,g){const k=tagSoort(g)==='set'?'setups':'confirmations',i=L[k].indexOf(g);if(i>=0)L[k].splice(i,1);else L[k].push(g);}
+function bewaarLaagPad(p){if(p.startsWith('draft'))return;save();}
+
 // ───────────────────────── Dag ─────────────────────────
 function dagView(){
   const id=vandaag(),d=dayOf(id);
   if(!d)return `<div class="pagehead"><div><h1>${cap(datumLang(id))}</h1><p>Week ${isoWeek(id).slice(-2)}</p></div></div>
     <div class="card empty"><b>Nog geen plan voor vandaag</b>Maak een dagplan: lagen, levels, pre-flight en je scenario's. Een weekplan is niet nodig.
       <div class="row"><button class="btn pri" data-a="maakDag">Maak dagplan</button></div></div>`;
-  const c=cfg();
+  const c=cfg(),w=weekOf(d.week);
   return `<div class="pagehead"><div><h1>${cap(datumLang(id))}</h1><p>Week ${d.week.slice(-2)} · ${d.scenarios.length} scenario's</p></div></div>
-    <div class="card pad"><h3>Pre-flight</h3><div class="row" style="gap:6px;margin-top:6px">${preflightPills(d,c)}</div>
-      <h3 style="margin-top:12px">Mentaal</h3><div style="margin-top:6px">${mentalH(d)}</div></div>`;
+    <div class="cockpit"><aside class="card funnel">
+      <div class="fstep"><h3>Lagen${w?' · week erft door':''}</h3>${laagRij(d.layers,{pad:'day',erft:w?w.layers:[]})}</div>
+      <div class="fstep"><h3>Pre-flight</h3><div class="row" style="gap:6px">${preflightPills(d,c)}</div></div>
+      <div class="fstep"><h3>Mentaal</h3>${mentalH(d)}</div>
+    </aside>
+    <section><div class="row between" style="margin-bottom:8px"><h2>Scenario's</h2><button class="btn sm" data-a="newScen">+ Scenario</button></div>
+      <div class="rlist">${d.scenarios.map(s=>`<div class="card pad"><b>${esc(s.title)}</b></div>`).join('')||'<div class="card empty"><b>Nog geen scenario\'s</b>Voeg er een toe: als … dan … met je playbook, en je ziet de edge uit je journal.</div>'}</div>
+    </section></div>`;
 }
 function preflightPills(d,c){return c.pre.map((p,i)=>p.trim()?`<button class="pf ${d.pre[i]?'on':''}" data-a="pre" data-v="${i}"><span class="box">${d.pre[i]?'✓':''}</span>${esc(p)}</button>`:'').join('')||'<span class="faint small">Geen pre-flight ingesteld (tandwiel).</span>';}
 function mentalH(d){return `<span class="mental">${[1,2,3,4,5].map(n=>`<button class="${d.mental===n?'on':''}" data-a="mental" data-v="${n}" aria-label="mentaal ${n}">${n}</button>`).join('')}</span>`;}
@@ -224,8 +354,11 @@ function weekView(){
   if(!w)return kop+`<div class="card empty"><b>Nog geen weekplan</b>Een weekplan geeft je dagen hun context: lagen, levels, no-trade en focus.
     <div class="row"><button class="btn pri" data-a="maakWeek">Maak weekplan</button></div></div>`;
   return kop+`<div class="two">
-    <div class="card pad"><label class="f">No-trade / nieuws</label><input class="inp" data-f="week.noTrade" value="${esc(w.noTrade)}" placeholder="één regel, bv. do FOMC 19:00"></div>
-    <div class="card pad"><label class="f">Focus deze week</label><input class="inp" data-f="week.focus" value="${esc(w.focus)}" placeholder="één regel"></div></div>`;
+    <div class="card pad"><h3 style="margin-bottom:4px">Lagen</h3>${laagRij(w.layers,{pad:'week'})}
+      <div class="enote">Tags komen uit je journal. Elke dag van deze week erft deze lagen.</div></div>
+    <div class="card pad"><label class="f" for="w-levels">Levels</label><textarea class="inp" id="w-levels" data-f="week.levels" placeholder="één per regel, bv. BTC 78.150 weekly high">${esc(w.levels)}</textarea></div>
+    <div class="card pad"><label class="f" for="w-nt">No-trade / nieuws</label><input class="inp" id="w-nt" data-f="week.noTrade" value="${esc(w.noTrade)}" placeholder="één regel, bv. do FOMC 19:00"></div>
+    <div class="card pad"><label class="f" for="w-focus">Focus deze week</label><input class="inp" id="w-focus" data-f="week.focus" value="${esc(w.focus)}" placeholder="één regel"></div></div>`;
 }
 function afslView(){return `<div class="pagehead"><div><h1>Afsluiting</h1></div></div><div class="card empty"><b>Nog niets af te sluiten</b>Maak eerst een dagplan in Dag.</div>`;}
 function logView(){return `<div class="pagehead"><div><h1>Log</h1></div></div><div class="card empty"><b>Nog geen dagen in je log</b>Elke dag met een plan komt hier, nieuwste boven.</div>`;}
@@ -243,6 +376,31 @@ function modalH(){
       <h3 style="margin:16px 0 6px">Pre-flight (hooguit 3)</h3>${s.pre.map((p,i)=>`<input class="inp" id="set-pre-${i}" style="margin-bottom:6px" data-f="draft.pre.${i}" value="${esc(p)}" placeholder="bv. ${['Nieuws gecheckt','Goed geslapen','Limieten in orde'][i]}" aria-label="pre-flight ${i+1}">`).join('')}
       <div class="enote">Een herinnering, geen slot: niets wordt geblokkeerd. Laat een regel leeg voor minder vinkjes.</div>`;
     f=`<button class="btn" data-a="close">Annuleer</button><button class="btn pri" data-a="saveSettings">Bewaar</button>`;
+  } else if(M.type==='picker'){
+    const L=laagRef(M.path),T=tags(),has=g=>L.setups.includes(g)||L.confirmations.includes(g);t='Tags · '+L.tf;
+    const grp=(lbl,list)=>`<h3 style="margin:4px 0 6px">${lbl}</h3><div class="row" style="gap:6px;margin-bottom:12px">${list.map(g=>`<button class="chip pick ${has(g)?'on':''}" data-a="pick" data-v="${esc(g)}">${has(g)?'✓ ':''}${esc(g)}</button>`).join('')||'<span class="faint small">Nog geen tags.</span>'}</div>`;
+    h=grp('Setups',T.setupTags)+grp('Confirmations',T.confirmationTags)+
+      `<h3 style="margin:4px 0 6px">Ontbreekt er een?</h3><div class="row" style="flex-wrap:nowrap"><input class="inp" id="newtag" placeholder="Nieuwe tag" aria-label="nieuwe tag"><select class="inp" id="newkind" style="width:auto" aria-label="soort"><option value="conf">Confirmation</option><option value="set">Setup</option></select><button class="btn" data-a="newtag">+</button></div>
+       <div class="enote">Komt ook in de taglijst van je journal. Alleen tags die je trades ook kunnen hebben, anders vindt het plan ze niet terug.</div>`;
+    f=`<button class="btn pri" data-a="close">Klaar</button>`;
+  } else if(M.type==='scen'){
+    const d=M.draft,day=dayOf(M.day);t=M.isNew?'Nieuw scenario':'Scenario bewerken';
+    const pbs=Object.keys(JR.pbook).sort(),tfs=[...new Set([...tags().timeframeTags,d.entry.tf])].sort(topDown);
+    h=`<div class="fgrid">
+      <div class="full"><label class="f" for="sc-title">Titel</label><input class="inp" id="sc-title" data-f="draft.title" value="${esc(d.title)}" placeholder="bv. BTC London sweep"></div>
+      <div><label class="f" for="sc-pb">Playbook</label>${pbs.length?`<select class="inp" id="sc-pb" data-f="draft.pb"><option value="">Kies…</option>${pbs.map(p=>`<option value="${esc(p)}" ${d.pb===p?'selected':''}>${esc(p)}</option>`).join('')}</select>`:`<div class="faint small" style="padding-top:6px">Nog geen playbooks in je journal. Maak er een in de journal (Playbooks), dan vergelijkt het plan je trades ermee.</div>`}</div>
+      <div><label class="f" for="sc-pair">Pair</label><input class="inp" id="sc-pair" data-f="draft.pair" value="${esc(d.pair)}" placeholder="BTC"></div>
+      <div><label class="f">Richting</label><span class="seg" style="display:flex">${['long','short'].map(x=>`<button style="flex:1" class="${d.dir===x?'on':''}" data-a="dset" data-p="dir" data-v="${x}">${cap(x)}</button>`).join('')}</span></div>
+      <div><label class="f">Grade</label><span class="seg" style="display:flex">${['A','B','C'].map(x=>`<button style="flex:1" class="${d.grade===x?'on':''}" data-a="dset" data-p="grade" data-v="${x}">${x}</button>`).join('')}</span></div>
+      <div class="full"><label class="f" for="sc-trig">Trigger</label><input class="inp" id="sc-trig" data-f="draft.trigger" value="${esc(d.trigger)}" placeholder="Als…"></div>
+      <div class="full"><label class="f" for="sc-inv">Ongeldig als</label><input class="inp" id="sc-inv" data-f="draft.invalid" value="${esc(d.invalid)}" placeholder="één regel"></div>
+      <div class="full"><label class="f">Geërfd van week en dag <span class="faint">(tik om uit te zetten voor dit scenario)</span></label><div class="row" style="gap:5px">${erfChips(d,day)}</div></div>
+      <div class="full"><label class="f" for="sc-tf">Entry-laag</label><div class="row" style="gap:6px;margin-bottom:4px"><select class="inp" id="sc-tf" style="width:auto" data-f="draft.entry.tf">${tfs.map(x=>`<option ${d.entry.tf===x?'selected':''}>${esc(x)}</option>`).join('')}</select></div>${laagEdit('draft.entry',d.entry)}</div>
+      <div><label class="f" for="sc-stop">Stop <span class="faint">(optioneel)</span></label><input class="inp num" id="sc-stop" data-f="draft.stop" value="${esc(d.stop)}"></div>
+      <div><label class="f" for="sc-tps">TP's <span class="faint">(optioneel, spatie ertussen)</span></label><input class="inp num" id="sc-tps" data-f="draft.tpsTxt" value="${esc(d.tps.join(' '))}"></div>
+      <div class="full"><label class="f" for="sc-note">Notitie</label><textarea class="inp" id="sc-note" data-f="draft.note">${esc(d.note)}</textarea></div>
+    </div>`;
+    f=`${M.isNew?'':'<button class="btn danger" style="margin-right:auto" data-a="delScen">Verwijder</button>'}<button class="btn" data-a="close">Annuleer</button><button class="btn pri" data-a="saveScen">Bewaar</button>`;
   }
   return `<div class="ov" data-a="ovclose"><div class="modal" role="dialog" aria-modal="true" aria-label="${esc(t)}"><div class="mh"><h2>${esc(t)}</h2><button class="ibtn" data-a="close" aria-label="sluit">✕</button></div><div class="mb">${h}</div><div class="mf">${f}</div></div></div>`;
 }
@@ -268,17 +426,41 @@ function toast(m){S.toast=m;render();clearTimeout(toast.t);toast.t=setTimeout(()
 
 // ───────────────────────── acties ─────────────────────────
 const A={
-  tab:el=>{S.tab=el.dataset.v;S.modal=null;window.scrollTo(0,0);},
+  tab:el=>{S.tab=el.dataset.v;S.modal=null;S.tfOpen='';window.scrollTo(0,0);},
   settings:()=>{S.modal={type:'settings',draft:JSON.parse(JSON.stringify(cfg()))};},
   stijl:el=>{S.modal.draft.stijl=el.dataset.v;},
   saveSettings:()=>{const d=S.modal.draft;['A','B','C'].forEach(g=>{d.risk[g]=Math.max(0,+String(d.risk[g]).replace(',','.')||0);});
     d.pre=d.pre.map(x=>String(x||'').trim());lsSet(LS.cfg,d);S.modal=null;},
-  close:()=>{S.modal=null;},
-  ovclose:(el,ev)=>{if(ev.target===el)S.modal=null;else return false;},
+  close:()=>{S.modal=S.modal&&S.modal.back?S.modal.back:null;},   // tag-keuze vanuit het scenario: terug naar het scenario
+  ovclose:(el,ev)=>{if(ev.target!==el)return false;S.modal=null;},
   maakDag:()=>{const id=vandaag();if(!PL.days[id])PL.days[id]=nieuweDag(id);save();},
   maakWeek:()=>{const wid=isoWeek(vandaag());if(!PL.weeks[wid])PL.weeks[wid]=nieuweWeek(wid);save();},
   pre:el=>{const d=dayOf(vandaag()),i=+el.dataset.v;d.pre[i]=!d.pre[i];save();},
   mental:el=>{const d=dayOf(vandaag()),n=+el.dataset.v;d.mental=d.mental===n?null:n;save();},
+  // lagen
+  tfPicker:el=>{S.tfOpen=S.tfOpen===el.dataset.p?'':el.dataset.p;},
+  addTf:el=>{const L=lagenVan(el.dataset.p);if(!L||L.some(l=>l.tf===el.dataset.v))return;L.push(leegLaag(el.dataset.v));L.splice(0,L.length,...sorteerLagen(L));S.tfOpen='';save();},
+  nieuwTf:el=>{const v=(document.getElementById('nieuwTf')||{}).value||'',tf=voegTijdframeToe(v),L=lagenVan(el.dataset.p);
+    if(!tf){S.tfOpen='';toast('Onbekend tijdframe "'+v.trim()+'". Schrijf het als 1M, 15M, 4H, Daily of Weekly.');return false;}
+    if(L&&!L.some(l=>l.tf===tf)){L.push(leegLaag(tf));L.splice(0,L.length,...sorteerLagen(L));}S.tfOpen='';save();},
+  rmLaag:el=>{const L=lagenVan(el.dataset.p),i=L?L.findIndex(l=>l.tf===el.dataset.v):-1;if(i>=0){L.splice(i,1);save();}},
+  bias:el=>{const L=laagRef(el.dataset.p);L.bias=L.bias===el.dataset.v?'':el.dataset.v;bewaarLaagPad(el.dataset.p);},
+  rmtag:el=>{toggleTag(laagRef(el.dataset.p),el.dataset.v);bewaarLaagPad(el.dataset.p);},
+  picker:el=>{const back=S.modal&&S.modal.type==='scen'?S.modal:null;S.modal={type:'picker',path:el.dataset.p,back};},
+  pick:el=>{toggleTag(laagRef(S.modal.path),el.dataset.v);bewaarLaagPad(S.modal.path);},
+  newtag:()=>{const inp=document.getElementById('newtag'),g=voegTagToe(document.getElementById('newkind').value,inp&&inp.value);if(!g)return;
+    const L=laagRef(S.modal.path);if(!L.setups.includes(g)&&!L.confirmations.includes(g))toggleTag(L,g);bewaarLaagPad(S.modal.path);},
+  // scenario's
+  newScen:()=>{const day=dayOf(vandaag());S.modal={type:'scen',isNew:true,day:day.id,draft:nieuwScenario(day)};},
+  editScen:el=>{const x=scenOf(el.dataset.s);if(x)S.modal={type:'scen',day:x.day.id,draft:JSON.parse(JSON.stringify(x.s))};},
+  off:el=>{const d=draftOf();if(!d)return;const k=el.dataset.v,i=d.off.indexOf(k);if(i>=0)d.off.splice(i,1);else d.off.push(k);},
+  dset:el=>{S.modal.draft[el.dataset.p]=el.dataset.v;},
+  saveScen:()=>{const M=S.modal,d=M.draft,day=dayOf(M.day);if(!day)return;
+    d.pair=pairBase(d.pair)||'BTC';if(!d.title.trim())d.title=(d.pb||'Scenario')+' '+d.pair;
+    if(M.isNew)day.scenarios.push(d);else{const i=day.scenarios.findIndex(s=>s.id===d.id);if(i>=0)day.scenarios[i]=d;}
+    S.modal=null;save();},
+  delScen:()=>{const M=S.modal,day=dayOf(M.day);if(!day||!confirm('Scenario "'+(M.draft.title||'zonder titel')+'" verwijderen?'))return false;
+    day.scenarios=day.scenarios.filter(s=>s.id!==M.draft.id);S.modal=null;save();},
 };
 document.addEventListener('click',ev=>{
   const el=ev.target.closest('[data-a]');if(!el)return;
@@ -287,10 +469,16 @@ document.addEventListener('click',ev=>{
   if(fn(el,ev)===false)return;
   render();
 });
-document.addEventListener('keydown',ev=>{if(ev.key==='Escape'&&S.modal){S.modal=null;render();}});
+document.addEventListener('keydown',ev=>{if(ev.key==='Escape'&&S.modal){A.close();render();}
+  if(ev.key==='Enter'&&ev.target&&(ev.target.id==='newtag'||ev.target.id==='nieuwTf')){const b=ev.target.parentElement.querySelector('[data-a="newtag"],[data-a="nieuwTf"]');if(b)b.click();}});
+// Een playbook kiezen vult de entry-laag en de grade uit het journal-playbook (laatste laag = entry).
+function vulVanPlaybook(d){const p=JR.pbook[d.pb];if(!p)return;const L=(p.layers||[]).filter(isObj),e=L[L.length-1];
+  if(e&&e.timeframe)d.entry={tf:tfNorm(e.timeframe),bias:d.dir==='short'&&e.bias==='Bullish'?'Bearish':(e.bias||''),setups:[...(e.setups||[])],confirmations:[...(e.confirmations||[])]};
+  if(/^[ABC]$/.test(p.defaultGrade||''))d.grade=p.defaultGrade;d.checked=[];}
 // data-f="week.focus" / "draft.risk.A": schrijft zonder opnieuw te renderen (focus blijft staan)
 document.addEventListener('input',ev=>{
   const el=ev.target,f=el.dataset&&el.dataset.f;if(!f)return;
+  if(f==='draft.tpsTxt'){S.modal.draft.tps=el.value.split(/\s+/).filter(Boolean);return;}
   const parts=f.split('.');let o;
   if(parts[0]==='draft')o=S.modal.draft;
   else if(parts[0]==='week')o=weekOf(isoWeek(vandaag()));
@@ -298,13 +486,16 @@ document.addEventListener('input',ev=>{
   if(!o)return;
   const p=parts.slice(1);for(let i=0;i<p.length-1;i++)o=o[p[i]];
   o[p[p.length-1]]=el.value;
+  if(f==='draft.pb')vulVanPlaybook(S.modal.draft);
   if(parts[0]!=='draft')save();
+  if(el.tagName==='SELECT')render();
 });
 
 // ───────────────────────── start ─────────────────────────
-window.__tp3={load,save,cfg,stijlLagen,dayOf,weekOf,vandaag,isoWeek};
+window.__tp3={load,save,cfg,stijlLagen,dayOf,weekOf,vandaag,isoWeek,tags,voegTijdframeToe,voegTagToe,laagRij,JR};
 themaVanJournal();
 render();
+laadJournal();
 </script>
 </body>
 </html>
