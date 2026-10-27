@@ -151,3 +151,21 @@ Een journal-playbook (`sj_db` → `kv` → `pbook`) heeft `criteria: [{text, man
   Besluit: de staptitels in de trechter blijven grijs, alleen de stip kleurt — amber of pink als 11px-tekst op wit is
   te zwak (contrast < 4,5) — kost niets.
   Besluit: op 390 breed staan de Log-filtergroepen onder elkaar, zonder scheidingslijn — kost niets.
+- **Punt 3 klaar** — `plan3-lagen` 46/46 (12 nieuwe checks, met de test uit de opdracht: week Daily · 4H, stijl
+  Daytrade → de nieuwe dag heeft alleen 1H; 4H staat één keer, geërfd; een dag-tag op 4H komt in die rij en telt mee in
+  de edge), `plan3-dag` 43/43, `plan3-doorloop` 20/20, alle plan3-specs groen. `nieuweDag` laat de tijdframes van het
+  weekplan weg; `snoeiDag` haalt bij het laden (en bij "Weekplan maken" en "Gisteren overnemen") een lege dag-laag weg
+  waarvan de week het tijdframe al heeft. `laagRij` voegt week en dag samen tot één rij per tijdframe (`tfRij`): de
+  week-chips gedimd, de dag-tags erachter, "+ tag" op dezelfde rij; zo'n tag gaat naar de dag-laag met dat tijdframe
+  (`day@4H`), die pas ontstaat als je er iets in zet. Het scenario (formulier én opengeklapt) toont ook één rij per
+  tijdframe (`scenRijen`), met de entry-laag in zijn eigen tijdframe-rij (gemarkeerd "entry"). De edge is niet veranderd.
+  Specs bijgewerkt waar de vorm veranderde: `plan3-dag` telt in het formulier alleen de eigen chips (`:not(.inh)`),
+  `plan3-doorloop` verwacht voor dag 2 nu 1H (de week heeft 4H).
+  Besluit: de trechterstap "Week" toont de week-lagen niet meer; die staan gedimd in de rijen van "Vandaag" — anders
+  staat 4H alsnog twee keer op het scherm, één keer in Week en één keer in Vandaag. De stap houdt no-trade, de
+  context-zin en een link naar het weekplan — kost als het fout is: wie de week-lagen los wil zien, opent het Week-tabblad.
+  Besluit: de bias van de week staat in de bias-knoppen van de dag gestippeld (zolang de dag er zelf geen kiest), in
+  plaats van als los label naast de knoppen — één rij, één bias-plek; tikken zet hem voor de dag vast (en maakt zo nodig
+  de dag-laag aan) — kost niets.
+  Besluit: in het opengeklapte scenario toont de entry-rij de setups en bias van de entry-laag; de confirmations staan
+  zoals eerder in de afvinklijst eronder — kost niets.

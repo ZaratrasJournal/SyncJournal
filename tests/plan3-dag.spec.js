@@ -77,7 +77,7 @@ const SCEN = [
   console.log('--- (e) toevoegen, bewerken, verwijderen ---');
   await p.click('[data-a="newScen"]'); await p.waitForTimeout(120);
   await p.selectOption('#sc-pb', 'Trend-pullback'); await p.waitForTimeout(120);
-  const vul = await p.evaluate(() => ({ tf: document.querySelector('#sc-tf').value, grade: (document.querySelector('#modal [data-a="dset"][data-p="grade"].on') || {}).textContent, chips: [...document.querySelectorAll('#modal .layer .chip:not(.add)')].map(x => x.textContent.replace('×', '').trim()) }));
+  const vul = await p.evaluate(() => ({ tf: document.querySelector('#sc-tf').value, grade: (document.querySelector('#modal [data-a="dset"][data-p="grade"].on') || {}).textContent, chips: [...document.querySelectorAll('#modal .layer .chip:not(.add):not(.inh)')].map(x => x.textContent.replace('×', '').trim()) }));
   ok('playbook kiezen: entry-laag 15M met BOS, FVG, OB en grade A uit het journal-playbook', vul.tf === '15M' && vul.grade === 'A' && vul.chips.join() === 'BOS,FVG,OB', JSON.stringify(vul));
   ok('het formulier toont de edge van de combinatie', /Live \d+/.test(await p.evaluate(() => document.querySelector('#modal').innerText)));
   await p.fill('#sc-title', 'Nieuw <b>scenario</b>'); await p.fill('#sc-pair', 'eth/usdt'); await p.click('#modal [data-a="dset"][data-p="dir"][data-v="short"]');

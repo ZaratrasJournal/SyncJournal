@@ -120,6 +120,46 @@ const TAGS = { setupTags: ['BOS', 'MSB', 'SFP'], confirmationTags: ['Liquidity S
     await p.screenshot({ path: path.join(SHOTS, `lagen-${th}-${w}.png`), fullPage: true });
     if (w === 390) ok(`390 breed (${th}): geen horizontale scroll`, await p.evaluate(() => document.documentElement.scrollWidth <= 391));
   }
+  console.log('--- wat de week al heeft, staat niet nog eens in de dag (polish punt 3) ---');
+  const WEEK3 = [{ tf: 'Daily', bias: 'Bullish', setups: ['BOS'], confirmations: [] }, { tf: '4H', bias: 'Bullish', setups: [], confirmations: ['Liquidity Sweep'] }];
+  await p.evaluate(W => { const id = __tp3.vandaag(), wid = __tp3.isoWeek(id); localStorage.setItem('tp3:plans', JSON.stringify({ v: 1, weeks: { [wid]: { id: wid, layers: W, levels: '', noTrade: '', focus: '', media: { imgs: [], links: [] }, les: '' } }, days: {} })); }, WEEK3);
+  await p.setViewportSize({ width: 1280, height: 900 }); await p.reload({ waitUntil: 'load' }); await p.waitForTimeout(300);
+  await p.click('[data-a="maakDag"]'); await p.waitForTimeout(150);
+  ok('nieuwe dag (Daytrade = 4H · 1H) met een weekplan Daily · 4H: alleen een 1H-laag', await tfs() === '1H', await tfs());
+  const rijen = () => p.evaluate(() => [...document.querySelectorAll('#app .layer')].map(r => r.dataset.tf + ':' + [...r.querySelectorAll('.chip:not(.add)')].map(c => (c.classList.contains('inh') ? '↑' : '') + c.textContent.replace(/[↑×]/g, '').trim()).join('/')));
+  let rj = await rijen();
+  ok('de dag toont elk tijdframe één keer: Daily, 4H (geërfd), 1H', rj.map(r => r.split(':')[0]).join() === 'Daily,4H,1H', JSON.stringify(rj));
+  ok('de 4H-rij draagt de week-tag gedimd en een "+ tag"', rj[1] === '4H:↑Liquidity Sweep' && await p.evaluate(() => !!document.querySelector('#app .layer[data-tf="4H"] [data-a="picker"]')), JSON.stringify(rj));
+  ok('de week-bias staat gestippeld in de bias-knoppen van die rij (geen eigen bias)', await p.evaluate(() => { const r = document.querySelector('#app .layer[data-tf="4H"]'); return r.querySelector('[data-a="bias"][data-v="Bullish"]').classList.contains('erf') && !r.querySelector('[data-a="bias"].on'); }));
+  await p.click('#app .layer[data-tf="4H"] [data-a="picker"]'); await p.click('#modal [data-a="pick"][data-v="MSB"]'); await p.click('#modal [data-a="close"]'); await p.waitForTimeout(120);
+  rj = await rijen();
+  ok('dag-tag op 4H: komt in een dag-laag 4H (bewaard)', await tfs() === '4H,1H' && await p.evaluate(() => __tp3.dayOf(__tp3.vandaag()).layers[0].setups.join() === 'MSB'), await tfs());
+  ok('…en staat in dezelfde rij: één 4H-rij met de week-tag en de dag-tag', rj.filter(r => r.startsWith('4H:')).length === 1 && rj[1] === '4H:↑Liquidity Sweep/MSB', JSON.stringify(rj));
+  ok('de dag-tag telt mee in de edge (4H MSB naast 4H Liquidity Sweep)', await p.evaluate(() => { const d = __tp3.dayOf(__tp3.vandaag()), w = __tp3.weekOf(d.week); const r = __tp3.eisen({ entry: { tf: '15M', bias: '', setups: [], confirmations: [] }, off: [] }, d, w).map(x => x.label); return r.includes('4H MSB') && r.includes('4H Liquidity Sweep') && r.includes('Daily BOS'); }));
+  await p.click('#app .layer[data-tf="4H"] [data-a="rmtag"][data-v="MSB"]'); await p.waitForTimeout(100);
+  ok('dag-tag weer weg: de week-rij blijft staan', (await rijen()).map(r => r.split(':')[0]).join() === 'Daily,4H,1H');
+  console.log('  bestaande dag');
+  await p.evaluate(W => { const P = JSON.parse(localStorage.getItem('tp3:plans')), d = P.days[Object.keys(P.days)[0]];
+    d.layers = [{ tf: 'Daily', bias: '', setups: [], confirmations: ['OB'] }, { tf: '4H', bias: '', setups: [], confirmations: [] }, { tf: '1H', bias: 'Bearish', setups: [], confirmations: [] }];
+    localStorage.setItem('tp3:plans', JSON.stringify(P)); }, WEEK3);
+  await p.reload({ waitUntil: 'load' }); await p.waitForTimeout(300);
+  ok('bij laden: de lege 4H-dag-laag (week heeft 4H) is weg, de gevulde Daily blijft', await tfs() === 'Daily,1H', await tfs());
+  rj = await rijen();
+  ok('Daily samengevoegd: één rij met de week-tag gedimd en de dag-tag', rj[0] === 'Daily:↑BOS/OB' && rj.filter(r => r.startsWith('Daily:')).length === 1, JSON.stringify(rj));
+  console.log('  scenario');
+  await p.click('[data-a="newScen"]'); await p.waitForTimeout(150);
+  const mrij = () => p.evaluate(() => [...document.querySelectorAll('#modal .layer')].map(r => r.dataset.tf));
+  ok('scenario-formulier: één rij per tijdframe (Daily, 4H, 1H, entry 15M)', (await mrij()).join() === 'Daily,4H,1H,15M', (await mrij()).join());
+  await p.selectOption('#modal [data-f="draft.entry.tf"]', '4H'); await p.waitForTimeout(100);
+  ok('entry op 4H: de entry-laag zit in de 4H-rij, geen tweede 4H', (await mrij()).join() === 'Daily,4H,1H' && await p.evaluate(() => !!document.querySelector('#modal .layer[data-tf="4H"] [data-a="picker"][data-p="draft.entry"]')), (await mrij()).join());
+  await p.click('#modal [data-a="close"]'); await p.waitForTimeout(80);
+  for (const [th, w] of [['licht', 1280], ['donker', 390]]) {
+    await p.evaluate(t => { localStorage.setItem('sj_state', JSON.stringify({ theme: t })); }, th === 'donker' ? 'dark' : 'light'); await p.reload({ waitUntil: 'load' }); await p.setViewportSize({ width: w, height: 900 }); await p.waitForTimeout(200);
+    if (w === 390) await p.click('[data-a="ctx"]');
+    await p.screenshot({ path: path.join(SHOTS, `lagen-week-dag-${th}-${w}.png`), fullPage: true });
+  }
+  await p.setViewportSize({ width: 1280, height: 900 });
+
   ok('geen JS-errors', errs.length === 0, errs.slice(0, 3).join(' | '));
   await b.close(); srv.close(); process.exit(T.eind());
 })();
