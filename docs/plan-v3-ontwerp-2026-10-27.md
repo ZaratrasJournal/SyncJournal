@@ -76,6 +76,74 @@ laat zien: hoe kansrijk is dit scenario volgens mijn eigen trades? Efficiënt en
 12. **Journal-kant:** de Tendencies-tab "Plan" (`planTendencies`) laat voortaan blok D zien op basis van
     scenario's in plaats van poort-records. `coachPlanRegels` (Mori) leest het nieuwe weekplan.
 
+## Na het prototype (27-10-2026)
+
+Zaratras bekeek het prototype (`demos/plan-v3-demo.html`, rapport `docs/plan-v3-prototype-rapport.md`)
+en het onderzoek (`docs/plan-v3-onderzoek-2026-10-27.md`). Deze besluiten gaan vóór de besluiten
+hierboven waar ze botsen.
+
+13. **Variant B (Cockpit)**, aangevuld met de voortgangsbalk van de confirmations en de groene staat
+    "Klaar om te nemen · 1% risico" uit C, in de opengeklapte rij. A en C vervallen.
+14. **Tijdframes zijn vrij, niet vast Weekly/Daily/4H/1H.** Een scalper moet net zo goed een plan kunnen
+    maken als een swingtrader.
+    - Week en Dag hebben elk een eigen rij lagen. Je kiest de tijdframes uit `tagConfig.timeframeTags` van
+      de journal (standaard 5M t/m Weekly), en voegt er een toe of haalt er een weg met één tik.
+      Ontbreekt een tijdframe, bv. 1M, dan voeg je hem toe en komt hij ook in de journal (zoals besluit 3).
+    - **Stijl** in het tandwiel bepaalt alleen de lagen waarmee een nieuwe week en dag starten:
+
+      | Stijl | Week | Dag | Entry-laag scenario |
+      |---|---|---|---|
+      | Swing | Weekly · Daily | 4H · 1H | 1H |
+      | Daytrade (standaard) | Weekly · Daily | 4H · 1H | 15M |
+      | Scalp | Daily · 4H | 1H · 15M | 5M |
+
+      Per week, dag of scenario kun je daar altijd van afwijken.
+    - **Het weekplan is optioneel.** Een dag zonder weekplan werkt gewoon, en erft dan niets. Een scalper
+      kan dus alleen met dagen werken.
+    - Lagen staan altijd top-down (hoogste tijdframe eerst), net als op een trade (`sorteerLagen`).
+    - **Welk tijdframe telt mee in de edge:** elk tijdframe waar minstens één trade in je journal een laag
+      mee heeft. Een tijdframe waar geen enkele trade een laag mee heeft, is context. Het erft door en
+      stuurt je bias, maar telt niet mee in de matching. Dat staat één keer in de context, niet op elke
+      kaart ("Weekly telt niet mee: geen van je trades heeft een Weekly-laag"). Dit vervangt de vaste
+      regel "Weekly/Daily tellen niet mee" uit het prototype.
+15. **Afbeeldingen en TradingView-links**, in de dag, de week én per scenario.
+    - **Plakken** (Ctrl/Cmd+V) op het Dag- of Week-scherm. Plak je een afbeelding, dan komt die bij het
+      scenario dat openstaat, en anders bij de dag of week. Plak je een link, dan komt die als link erbij.
+      Daarnaast een knop "+ Afbeelding" (bestand kiezen, werkt op de telefoon) en slepen.
+    - **TradingView-snapshotlinks** (`tradingview.com/x/<id>/`) tonen een voorbeeldplaatje. Lukt laden
+      niet, dan blijft het een gewone link-chip. Andere http(s)-links worden een chip met het korte adres
+      (zoals `tvShort` in de journal). Alleen `http:` en `https:`; al het andere wordt geweigerd.
+    - Een klik op een plaatje opent het groot (lightbox). Elke afbeelding en link is weg te halen.
+    - **Hooguit 8 afbeeldingen en 8 links** per dag of week, en **4 + 4 per scenario**. Afbeeldingen
+      worden verkleind zoals in de journal (`compressImg`: max 1400×1000, JPEG 0,82).
+    - "Zet om in trade" neemt de afbeeldingen en links van het scenario mee naar de trade (`screenshots`,
+      `tvLinks`; de journal staat er hooguit 8 van elk toe). Die van de dag gaan niet mee: dat is context.
+    - Afbeeldingen gaan mee in de back-up (besluit 11), zodat er bij een browserwissel niets verloren gaat.
+16. **Matching (blok A) aangescherpt:**
+    - **Richting telt mee.** Long en short op hetzelfde playbook zijn echt verschillend. Zijn er minder
+      dan 5 trades, dan valt de richting als éérste weg, en dat staat erbij ("long en short samen").
+    - **Bias telt niet mee** (nog niet). Dan wordt elke combinatie te specifiek.
+    - Een tag telt alleen in de laag met hetzelfde tijdframe (1H BOS ≠ 15M BOS). Platte `t.tags` tellen
+      niet mee.
+    - Daarna vallen tags weg vanaf het hoogste tijdframe; binnen een tijdframe eerst de confirmations, dan
+      de setups. Zo lang tot er ≥ 5 trades zijn.
+    - Geërfde tags zijn per scenario uit te zetten (tik op de gedimde chip).
+17. **Ranking en betrouwbaarheid:**
+    - De ranking gebruikt de gemiddelde R. Die is de expectancy in R, en is te vergelijken tussen Live en
+      Backtest. De tabel toont ook de expectancy in geld.
+    - Betrouwbaarheid: < 10 trades weinig, 10–29 redelijk, ≥ 30 genoeg.
+    - "Sterkste" alleen bij ≥ 10 trades op de basis (Live, of anders Backtest). Anders: "Nog te weinig
+      trades om te vergelijken". Bij weinig data is het cijfer grijs. Geen Wilson-ondergrens in v1.
+18. **Pre-flight blokkeert niets.** Het is een herinnering. Bij mentaal ≤ 2 staat bovenaan "Overweeg alleen
+    A-setups".
+19. **Voorspel-score:** "uitgekomen" = genomen + uitgekomen-niet-genomen, gedeeld door alle scenario's
+    die niet meer open staan. Ongeldig telt als niet uitgekomen.
+20. **Afsluiting** opent op vandaag als er een dagplan voor vandaag is, anders op de laatste dag met een
+    plan. Open scenario's sluit je daar expliciet af (één tik per scenario, zoals Edgewonk). Eén vrij veld:
+    de les.
+21. **Binnen plan tegenover buiten plan** in R én in geld: "Buiten plan kostte je deze maand −3,6R (−$420)".
+22. **Later, niet in v1:** hoe vaak je bias klopte (blok B/C), Wilson-ondergrens, sessie per scenario.
+
 ## Bestaande code (startpunt)
 
 - Plan v2: `site/plan/index.html` — tabs in `TABS`, opslag `tp2:*` in localStorage, screenshots in
