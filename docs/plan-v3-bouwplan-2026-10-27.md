@@ -5,6 +5,10 @@
 > (`## Logboek`): per taak één regel "klaar", met de testopdracht en de uitkomst, en elke afwijking van dit
 > plan als `Besluit: <wat> — <waarom> — <wat het kost als het fout is>`.
 
+> **Wijziging 27-10-2026, 13:45:** taak 6 is herschreven: niets wordt automatisch gekoppeld, de gebruiker
+> kiest de trade(s) zelf (spec besluit 23). Heb je dit plan eerder gelezen, lees taak 6 en het datamodel
+> (`Scenario.trades`) opnieuw voordat je eraan begint.
+
 **Doel:** TradingPlan v2 vervangen door v3: een week- en dagplan met scenario's dat je edge uit je eigen
 journal laat zien, in de Cockpit-vorm, met vrije tijdframes, plakbare afbeeldingen en TradingView-links, en
 een knop "Zet om in trade".
@@ -64,15 +68,18 @@ Day      = { id, week: weekId | null, layers: [Layer], levels: str, mental: 1..5
 Scenario = { id: "s_" + base36 tijd, title, pair: "BTC", dir: "long" | "short", pb: playbooknaam | "",
              grade: "A" | "B" | "C", trigger, invalid, entry: Layer, off: ["<tf>|<tag>"],
              checked: [confirmation], stop: str, tps: [str], media: Media, note: str,
-             status: "open" | "genomen" | "gemist" | "niet" | "ongeldig", statusTs: ms | null }
+             status: "open" | "genomen" | "gemist" | "niet" | "ongeldig", statusTs: ms | null,
+             trades: [journal-trade-id] }
 ```
 - `gemist` = uitgekomen, niet genomen. `niet` = niet uitgekomen. `off` = geërfde tags die dit scenario
   uitzet. Week-id is de ISO-week (`coachIsoWeek` in de journal), dag-id de Amsterdamse kalenderdag.
 - localStorage `tp3:cfg`: `{ stijl: "swing" | "daytrade" | "scalp", risk: {A:1, B:0.5, C:0}, pre: [3 teksten] }`.
 - localStorage `tp3:handoff`: `{ sid, day, ts }` — kortstondig, zie taak 6.
 - IndexedDB `tp3`, store `img`, sleutel = imgId (`"i_" + base36 tijd + random`), waarde = `data:image/jpeg`-URL.
-- Op een journal-trade: `planRef = "s:" + scenario-id`, of `"none"` (bewust los). Oude numerieke
-  `planRef`'s (v2-poort) worden genegeerd. **`tp2:*` wordt niet meer gelezen en niet gewist.**
+- Welke trades bij een scenario horen staat in `Scenario.trades` (de bron). Op de journal-trade zet de
+  journal `planRef = "s:" + scenario-id` als spiegel. Oude numerieke `planRef`'s (v2-poort) worden
+  genegeerd. **`tp2:*` wordt niet meer gelezen en niet gewist.** Er wordt nooit automatisch gekoppeld
+  (taak 6).
 
 ## Review-focus (wat de taken hieronder expliciet testen)
 
@@ -82,7 +89,8 @@ Scenario = { id: "s_" + base36 tijd, title, pair: "BTC", dir: "long" | "short", 
    en de context zegt dat één keer.
 3. Precies 4 trades na alle weggevallen tags, of 0: de juiste melding, geen deling door nul, geen NaN.
 4. Een geplakte link met `javascript:` of een `<script>` in de tekst: geweigerd of ge-escaped.
-5. Een scenario dat twee trades kan hebben (of twee scenario's één trade): niet zelf kiezen, `planPick`.
+5. Een dag met meerdere trades op hetzelfde pair en dezelfde richting: niets wordt vanzelf gekoppeld; de
+   gebruiker kiest, en een trade kan nooit bij twee scenario's tegelijk horen.
 
 ---
 
@@ -178,29 +186,48 @@ en `rangschik(scenarios) → [{ id, plek, sterkste: bool }]`.
 
 **Bestanden:** `tradingplan/tradingplan.html`, `work/syncjournal.html`, `tests/plan3-koppeling.spec.js`
 
+> **Gewijzigd 27-10-2026, 13:45 (Zaratras, besluit 23 in de spec): er wordt NIETS automatisch
+> gekoppeld.** Wie aan het eind van de dag of de volgende dag klikt, heeft vaak meerdere trades; dan kiest
+> hij zelf welke trade(s) bij het scenario horen. De oude `planMatch` (automatisch op pair + richting +
+> tijdvenster) verdwijnt helemaal.
+
+**Bron van waarheid:** `Scenario.trades: [tradeId]` in `tp3:plans` (zie datamodel). Een trade hoort bij
+hooguit één scenario; een scenario mag meerdere trades hebben (bijbijkopen, herinstap). Op de trade zet de
+journal `planRef = "s:<scenario-id>"` als spiegel, alleen door de journal geschreven.
+
 **Levert (journal):** `planLoad()` leest nu `tp3:*` en geeft `{ plans, cfg }`; `planScen(sid) → {s, day,
-week} | null`; `planMatch()` op scenario's; `planAdopt(t, s, day, week)`; `planPick`/`planSetRef` met
-scenario's; `planVanHandoff()`.
+week} | null`; `planSync()` (bij laden en bij een `storage`-event op `tp3:plans`: zet/wist `planRef` volgens
+`Scenario.trades`, en vult bij een nieuwe koppeling eenmalig de lege velden via `planAdopt`);
+`planAdopt(t, s, day, week)`; `planPick(tradeId)` met de scenario's; `planVanHandoff()`.
 
 - [ ] Test eerst (journal en plan in één browsercontext, zoals `tests/plan-koppeling.spec.js`):
-  - **Handmatig:** "Zet om in trade" → keuze "Handmatig, backtest of paper" → plan schrijft
-    `tp3:handoff` en opent de journal (`/app` als hosted, anders `../work/syncjournal.html`). De journal
-    opent het formulier met pair, richting, playbook, grade, stop, TP's, de lagen (week + dag + entry,
-    zelfde tijdframe samengevoegd, alleen afgevinkte confirmations, uitgezette geërfde tags niet), de
-    afbeeldingen van het scenario als screenshots en de links als `tvLinks`. Opslaan zet
-    `planRef = "s:<id>"` en het scenario op `genomen`. Een handoff ouder dan 10 minuten wordt genegeerd
-    en gewist.
-  - **Gekoppelde exchange:** keuze "Gekoppelde exchange" → status `genomen`, geen formulier. Een trade die
-    daarna binnenkomt met hetzelfde pair en dezelfde richting, geopend op die Amsterdamse dag, krijgt
-    `planRef` en neemt playbook, grade en lagen over, maar alleen velden die nog leeg zijn. Geen dubbele
-    trade. Een bestaande `planRef` wordt nooit overschreven.
-  - Een scenario dat nog **open** staat en een passende trade krijgt, wordt `genomen`, met label
-    "uit plan" in het plan.
-  - **Twijfel** (twee trades bij één scenario, of twee scenario's bij één trade): geen automatische keuze;
-    de trade-details tonen "koppelen" en `planPick` laat de scenario's van die dag zien, plus "Geen —
-    bewust buiten plan".
-- [ ] Bouw het. Hergebruik het patroon van de huidige `planMatch`/`planAdopt`/`planPick`/`planSetRef`
-  ([work/syncjournal.html](../work/syncjournal.html), zoek `PLAN_LS`).
+  - **"Zet om in trade" opent een keuze met twee wegen:**
+    1. **"Koppel aan een trade uit je journal"** (voor API-trades). Een lijst met kandidaten uit de
+       journal-trades: standaard alleen hetzelfde pair en dezelfde richting, geopend op de dag van het
+       scenario (Amsterdamse tijd), nieuwste boven, met tijd, pair, richting, resultaat in R en geld.
+       Schakelaars: "alle pairs en richtingen van die dag" en "ook de dag erna". Je vinkt **één of meer**
+       trades aan en bevestigt. Een trade die al bij een ander scenario hoort staat grijs met "hoort bij
+       <titel>" en is niet aan te vinken. Na bevestigen: `Scenario.trades` bijgewerkt, status `genomen`,
+       en de journal neemt playbook, grade, lagen, afbeeldingen (`screenshots`) en links (`tvLinks`) over,
+       **alleen velden die nog leeg zijn**. Geen dubbele trade.
+       **Geen kandidaten:** "Nog geen passende trade. Sync eerst in de journal, of koppel later vanuit de
+       Afsluiting of de Log." met een knop "Markeer als genomen, koppel later".
+    2. **"Handmatig, backtest of paper"** → plan schrijft `tp3:handoff` en opent de journal (`/app` als
+       hosted, anders `../work/syncjournal.html`). De journal opent het formulier met pair, richting,
+       playbook, grade, stop, TP's, de lagen (week + dag + entry, zelfde tijdframe samengevoegd, alleen
+       afgevinkte confirmations, uitgezette geërfde tags niet), de afbeeldingen van het scenario als
+       screenshots en de links als `tvLinks`. Opslaan voegt de nieuwe trade toe aan `Scenario.trades` en
+       zet het scenario op `genomen`. Een handoff ouder dan 10 minuten wordt genegeerd en gewist.
+  - **Geen automatische koppeling:** een trade met hetzelfde pair en dezelfde richting op die dag blijft
+    los zolang je hem niet kiest. Ook een open scenario wordt niet vanzelf `genomen`.
+  - **Ontkoppelen:** in het opengeklapte scenario staan de gekoppelde trades met een ×; weghalen haalt
+    hem uit `Scenario.trades`, en de journal wist `planRef` (de overgenomen velden blijven staan).
+  - **Vanaf de trade-kant:** in de trade-details staat "Koppel aan scenario" / "Scenario: <titel>
+    (wijzig)". `planPick` toont de scenario's van die dag (en de dag ervoor), plus "Geen scenario".
+  - Koppelen kan ook later: vanuit de Afsluiting en de Log, met dezelfde kandidatenlijst.
+- [ ] Bouw het. Hergebruik wat bruikbaar is van `planAdopt`/`planPick`/`planSetRef`
+  ([work/syncjournal.html](../work/syncjournal.html), zoek `PLAN_LS`); `planMatch` en zijn aanroep bij het
+  laden gaan weg.
 - [ ] Commit, push.
 
 ### Taak 7: Afsluiting, Log en blok D

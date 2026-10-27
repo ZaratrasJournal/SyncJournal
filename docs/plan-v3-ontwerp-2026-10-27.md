@@ -142,6 +142,14 @@ hierboven waar ze botsen.
     plan. Open scenario's sluit je daar expliciet af (één tik per scenario, zoals Edgewonk). Eén vrij veld:
     de les.
 21. **Binnen plan tegenover buiten plan** in R én in geld: "Buiten plan kostte je deze maand −3,6R (−$420)".
+23. **"Zet om in trade" koppelt nooit automatisch** (vervangt de eerste en derde regel van besluit 8).
+    Je klikt vaak pas aan het eind van de dag of de dag erna, en dan zijn er meerdere trades. Daarom:
+    - **API-trade:** je kiest zelf uit een lijst met kandidaten (standaard hetzelfde pair en dezelfde
+      richting op die dag; uit te breiden naar alle trades van die dag en de dag erna). Eén of meer
+      trades per scenario; een trade hoort bij hooguit één scenario.
+    - **Handmatig, backtest of paper:** het vooraf ingevulde formulier, zoals in besluit 8.
+    - Koppelen en ontkoppelen kan ook later, vanuit de Afsluiting, de Log en de trade-details.
+    - Geen "uit plan"-label voor automatisch gekoppelde trades: die bestaan niet meer.
 22. **Later, niet in v1:** hoe vaak je bias klopte (blok B/C), Wilson-ondergrens, sessie per scenario.
 
 ## Bestaande code (startpunt)
