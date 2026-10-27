@@ -194,6 +194,23 @@ button.chip.inh{cursor:pointer}
   .rdetail{grid-template-columns:minmax(0,1fr)}.rline{white-space:normal}}
 @media(max-width:600px){.st button{font-size:10.5px}.etable{font-size:11.5px}.etable td,.etable th{padding:4px 3px}}
 
+/* afbeeldingen en links */
+.media{border-radius:10px;transition:background .15s}
+.media.sleep{background:var(--accent-soft);outline:2px dashed var(--accent-line)}
+.thumbs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+.thumb{position:relative;width:76px;height:56px;border-radius:8px;overflow:hidden;border:1px solid var(--line);background:var(--sink);display:flex;align-items:center;justify-content:center}
+.thumb img{width:100%;height:100%;object-fit:cover;cursor:zoom-in;display:block}
+.thumb .x,.tvprev .x{position:absolute;top:2px;right:2px;width:20px;height:20px;border-radius:50%;background:var(--surface);color:var(--ink2);font-weight:700;font-size:13px;line-height:1;box-shadow:var(--sh)}
+.tvprev{position:relative;width:150px;border-radius:8px;overflow:hidden;border:1px solid var(--line);background:var(--sink)}
+.tvprev a{display:block;text-decoration:none;color:var(--ink2)}
+.tvprev img{width:100%;height:80px;object-fit:cover;display:block}
+.tvprev span{display:block;font-size:11px;padding:3px 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lchip{display:inline-flex;align-items:center;gap:4px;max-width:100%;padding:3px 4px 3px 9px;border-radius:999px;border:1px solid var(--line);background:var(--surface);font-size:12px;font-weight:600}
+.lchip a{color:var(--accent);text-decoration:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.lchip .x{color:var(--faint);font-weight:700;padding:0 4px}
+.lb{max-width:min(1100px,100%);max-height:100%;display:flex;flex-direction:column;gap:10px}
+.lb img{max-width:100%;max-height:calc(100vh - 110px);object-fit:contain;border-radius:10px;background:var(--surface)}
+
 /* modal */
 .ov{position:fixed;inset:0;background:var(--scrim);z-index:50;display:flex;align-items:center;justify-content:center;padding:16px}
 .modal{background:var(--surface);border-radius:14px;border:1px solid var(--line);width:100%;max-width:560px;max-height:calc(100vh - 32px);overflow:auto;box-shadow:var(--shl)}
@@ -447,6 +464,85 @@ function erfChips(sc,day,sid){const out=[];geerfd(day).forEach(L=>[...L.setups,.
 function toggleTag(L,g){const k=tagSoort(g)==='set'?'setups':'confirmations',i=L[k].indexOf(g);if(i>=0)L[k].splice(i,1);else L[k].push(g);}
 function bewaarLaagPad(p){if(p.startsWith('draft'))return;save();}
 
+// ───────────────────────── afbeeldingen en links (besluit 15) ─────────────────────────
+// Plaatjes in IndexedDB tp3/img (sleutel = id, waarde = data:image/jpeg-URL); in het plan alleen de id's.
+const MAX_MEDIA={dag:8,week:8,scen:4};   // per soort: zoveel afbeeldingen én zoveel links
+const WAAR={dag:'per dag',week:'per week',scen:'per scenario'};
+const IMG={};                            // id → data-URL, in het geheugen voor de weergave
+let _tp3db=null;
+const tp3Db=()=>_tp3db||(_tp3db=new Promise((res,rej)=>{const r=indexedDB.open('tp3',1);r.onupgradeneeded=()=>r.result.createObjectStore('img');r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);}));
+function imgReq(mode,fn){return tp3Db().then(db=>new Promise(res=>{let q;try{const tx=db.transaction('img',mode);q=fn(tx.objectStore('img'));
+  tx.oncomplete=()=>res(q?q.result:true);tx.onerror=tx.onabort=()=>res(undefined);}catch(e){res(undefined);}})).catch(()=>undefined);}
+const imgLees=id=>imgReq('readonly',st=>st.get(id));
+const imgZet=(id,v)=>imgReq('readwrite',st=>{st.put(v,id);});
+const imgWis=id=>{delete IMG[id];return imgReq('readwrite',st=>{st.delete(id);});};
+async function laadBeelden(){const db=await tp3Db().catch(()=>null);if(!db)return;
+  await new Promise(res=>{try{const tx=db.transaction('img','readonly'),c=tx.objectStore('img').openCursor();
+    c.onsuccess=()=>{const cur=c.result;if(!cur)return;if(isBeeld(cur.value))IMG[cur.key]=cur.value;cur.continue();};tx.oncomplete=tx.onerror=res;}catch(e){res();}});
+  render();}
+const isBeeld=v=>typeof v==='string'&&/^data:image\/(png|jpe?g|gif|webp);base64,/.test(v);
+// Verkleinen zoals compressImg in work/syncjournal.html: max 1400×1000, JPEG 0,82.
+function compressImg(file,maxW=1400,maxH=1000,q=0.82){return new Promise((res,rej)=>{const rd=new FileReader();rd.onerror=()=>rej();rd.onload=e=>{const img=new Image();img.onerror=()=>rej();img.onload=()=>{let w=img.width,h=img.height;if(w>maxW||h>maxH){const r=Math.min(maxW/w,maxH/h);w=Math.round(w*r);h=Math.round(h*r);}const c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d').drawImage(img,0,0,w,h);res(c.toDataURL('image/jpeg',q));};img.src=e.target.result;};rd.readAsDataURL(file);});}
+// isHttpUrl en tvShort uit work/syncjournal.html
+const isHttpUrl=u=>{try{const x=new URL(u);return x.protocol==='http:'||x.protocol==='https:';}catch(e){return false;}};
+const tvShort=u=>{try{const x=new URL(u);const p=x.pathname.length>1?x.pathname:'';return x.hostname.replace(/^www\./,'')+p;}catch(e){return u;}};
+// TradingView-snapshotlink (tradingview.com/x/<id>/) → het voorbeeldplaatje, anders null
+function tvSnapshot(u){try{const x=new URL(u);if(!/(^|\.)tradingview\.com$/.test(x.hostname)||!/^https?:$/.test(x.protocol))return null;
+  const m=x.pathname.match(/^\/x\/([A-Za-z0-9]+)\/?$/);return m?`https://s3.tradingview.com/snapshots/${m[1][0].toLowerCase()}/${m[1]}.png`:null;}catch(e){return null;}}
+// doel = "dag:<dag-id>" · "week:<week-id>" · "scen:<scenario-id>"
+function doelMedia(doel){const i=String(doel||'').indexOf(':'),soort=doel.slice(0,i),id=doel.slice(i+1);
+  const o=soort==='dag'?dayOf(id):soort==='week'?weekOf(id):soort==='scen'?(scenOf(id)||{}).s:null;
+  if(!o)return null;if(!isObj(o.media))o.media=leegMedia();return {m:o.media,soort};}
+async function voegBeeldToe(file,doel){
+  const x=doelMedia(doel);if(!x)return false;const max=MAX_MEDIA[x.soort];
+  if(!file||!/^image\//.test(file.type||'')){toast('Alleen afbeeldingen (png, jpg, gif of webp).');return false;}
+  if(x.m.imgs.length>=max){toast(`Hooguit ${max} afbeeldingen ${WAAR[x.soort]}.`);return false;}
+  let url;try{url=await compressImg(file);}catch(e){toast('Kon de afbeelding niet lezen.');return false;}
+  if(!isBeeld(url))return false;
+  const y=doelMedia(doel);   // opnieuw: tijdens het verkleinen kan er al een plaatje bij gekomen zijn
+  if(!y||y.m.imgs.length>=max){toast(`Hooguit ${max} afbeeldingen ${WAAR[x.soort]}.`);return false;}
+  const id='i_'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+  if(await imgZet(id,url)===undefined){toast('Opslaan van de afbeelding lukte niet (browseropslag vol?).');return false;}
+  IMG[id]=url;y.m.imgs.push(id);save();render();return id;}
+function voegLinkToe(url,doel){
+  const x=doelMedia(doel);if(!x)return false;const u=String(url||'').trim(),max=MAX_MEDIA[x.soort];
+  if(!isHttpUrl(u)){toast('Alleen http(s)-links. "'+(u.length>40?u.slice(0,40)+'…':u)+'" is geweigerd.');return false;}
+  if(x.m.links.includes(u)){toast('Die link staat er al.');return false;}
+  if(x.m.links.length>=max){toast(`Hooguit ${max} links ${WAAR[x.soort]}.`);return false;}
+  x.m.links.push(u);save();render();return u;}
+const TV_KAPOT=new Set();   // voorbeeldplaatjes die niet laadden: die worden een gewone chip
+function mediaBlok(m,o){
+  const max=MAX_MEDIA[o.doel.split(':')[0]],d=esc(o.doel);
+  const thumbs=m.imgs.map(id=>`<div class="thumb" data-i="${esc(id)}">${IMG[id]?`<img src="${esc(IMG[id])}" alt="afbeelding" data-a="lb" data-d="${d}" data-v="${esc(id)}">`:'<span class="faint small">…</span>'}<button class="x" data-a="rmBeeld" data-d="${d}" data-v="${esc(id)}" aria-label="afbeelding weghalen" title="weghalen">×</button></div>`).join('');
+  const links=m.links.filter(isHttpUrl).map(u=>{const tv=tvSnapshot(u),rm=`<button class="x" data-a="rmLink" data-d="${d}" data-v="${esc(u)}" aria-label="link weghalen" title="weghalen">×</button>`;
+    return tv&&!TV_KAPOT.has(tv)?`<div class="tvprev"><a href="${esc(u)}" target="_blank" rel="noopener noreferrer" title="${esc(u)}"><img src="${esc(tv)}" alt="TradingView-chart" data-tv="${esc(tv)}" referrerpolicy="no-referrer"><span>📈 ${esc(tvShort(u))}</span></a>${rm}</div>`
+      :`<span class="lchip"><a href="${esc(u)}" target="_blank" rel="noopener noreferrer" title="${esc(u)}">${tv?'📈 ':'🔗 '}${esc(tvShort(u))} ↗</a>${rm}</span>`;}).join('');
+  return `<div class="media" data-doel="${d}">${thumbs||links?`<div class="thumbs">${thumbs}${links}</div>`:''}
+    <div class="row" style="gap:6px;flex-wrap:nowrap"><label class="btn sm" style="flex:none">+ Afbeelding<input type="file" accept="image/*" multiple hidden data-doel="${d}"></label>
+      <input class="inp linkinp" placeholder="https://… (TradingView)" aria-label="link toevoegen" style="padding:5px 8px;font-size:12px;min-width:0"><button class="btn sm" data-a="linkToe" data-d="${d}" style="flex:none">+ Link</button></div>
+    <div class="enote">${m.imgs.length}/${max} afbeeldingen · ${m.links.length}/${max} links${o.hint?' · plak (Ctrl/Cmd+V) of sleep hierheen':''}</div></div>`;}
+// Waar een plak-actie heen gaat: het scenario dat openstaat, anders de dag; op het Week-scherm de week.
+function plakDoel(){if(S.modal)return null;const id=vandaag();
+  if(S.tab==='week'){const wid=isoWeek(id);return weekOf(wid)?'week:'+wid:null;}
+  if(S.tab!=='dag'||!dayOf(id))return null;
+  const sid=S.laatstOpen&&S.open[S.laatstOpen]&&dayOf(id).scenarios.some(s=>s.id===S.laatstOpen)?S.laatstOpen:null;
+  return sid?'scen:'+sid:'dag:'+id;}
+async function voegBestandenToe(files,doel){for(const f of files){if(await voegBeeldToe(f,doel)===false)break;}}
+document.addEventListener('paste',ev=>{
+  const cd=ev.clipboardData;if(!cd)return;const el=ev.target,inVeld=el&&(el.tagName==='INPUT'||el.tagName==='TEXTAREA'||el.isContentEditable);
+  const files=[...(cd.files||[])].filter(f=>f&&f.type);
+  if(files.length){ev.preventDefault();const doel=plakDoel();if(!doel){toast(S.modal?'Sluit eerst dit venster, dan kun je plakken.':'Maak eerst een dag- of weekplan, dan kun je plakken.');return;}voegBestandenToe(files,doel);return;}
+  if(inVeld)return;   // tekst in een tekstveld: gewoon plakken
+  const txt=(cd.getData('text/plain')||'').trim();if(!txt)return;
+  const doel=plakDoel();if(!doel)return;ev.preventDefault();voegLinkToe(txt,doel);});
+document.addEventListener('change',ev=>{const el=ev.target;if(el&&el.type==='file'&&el.dataset.doel){voegBestandenToe([...el.files],el.dataset.doel);el.value='';}});
+document.addEventListener('dragover',ev=>{const m=ev.target.closest&&ev.target.closest('.media');if(m){ev.preventDefault();m.classList.add('sleep');}});
+document.addEventListener('dragleave',ev=>{const m=ev.target.closest&&ev.target.closest('.media');if(m)m.classList.remove('sleep');});
+document.addEventListener('drop',ev=>{const m=ev.target.closest&&ev.target.closest('.media');if(!m)return;ev.preventDefault();m.classList.remove('sleep');
+  const dt=ev.dataTransfer,files=[...((dt&&dt.files)||[])];
+  if(files.length)voegBestandenToe(files,m.dataset.doel);else{const u=dt&&(dt.getData('text/uri-list')||dt.getData('text/plain'));if(u)voegLinkToe(u.split('\n')[0],m.dataset.doel);}});
+document.addEventListener('error',ev=>{const t=ev.target;if(t&&t.tagName==='IMG'&&t.dataset&&t.dataset.tv&&!TV_KAPOT.has(t.dataset.tv)){TV_KAPOT.add(t.dataset.tv);render();}},true);
+
 // ───────────────────────── Dag ─────────────────────────
 function dagView(){
   const id=vandaag(),d=dayOf(id);
@@ -462,7 +558,7 @@ function dagView(){
     <div class="cockpit"><aside class="card funnel ${S.ctxOpen?'open':''}">
       <button class="btn sm ghost mobonly" style="margin:8px 0 0 8px" data-a="ctx">${S.ctxOpen?'▴ Context inklappen':'▾ Context: week, dag, levels'}</button>
       <div class="fstep opt"><h3>Week ${d.week.slice(-2)}</h3>${w?w.layers.map(L=>laagRO(L)).join('')+(w.noTrade?`<div class="small" style="margin-top:6px">⛔ ${esc(w.noTrade)}</div>`:''):`<div class="faint small">Geen weekplan: de dag erft niets. Dat mag. <a href="#" data-a="tab" data-v="week">Maak er een</a></div>`}${contextNoot(d,w)}</div>
-      <div class="fstep opt"><h3>Vandaag</h3>${laagRij(d.layers,{pad:'day'})}</div>
+      <div class="fstep opt"><h3>Vandaag</h3>${laagRij(d.layers,{pad:'day'})}<div style="margin-top:10px">${mediaBlok(d.media,{doel:'dag:'+d.id,hint:1})}</div></div>
       <div class="fstep opt"><h3>Levels</h3>${w&&w.levels.trim()?`<div class="lvls faint">${esc(w.levels)}</div>`:''}<textarea class="inp" id="d-levels" data-f="day.levels" rows="3" placeholder="één per regel, bv. BTC 76.200 Asia-low" aria-label="levels van vandaag">${esc(d.levels)}</textarea></div>
       <div class="fstep"><h3>Pre-flight</h3><div class="row" style="gap:6px">${preflightPills(d,c)}</div></div>
       <div class="fstep"><h3>Mentaal</h3>${mentalH(d)}</div>
@@ -482,7 +578,9 @@ const rH=v=>v==null?'<span class="faint" title="geen trades met een stop">–</s
 // Eén keer per scherm: welke tijdframes alleen context zijn (besluit 14), niet op elke kaart.
 function contextNoot(d,w){if(!JR.klaar)return '';
   const tfs=tradeTfs(JR.trades),alle=[...new Set([...(w?w.layers:[]),...d.layers].map(L=>tfNorm(L.tf)).concat(d.scenarios.map(s=>tfNorm(s.entry.tf))))].sort(topDown),ctx=alle.filter(tf=>!tfs.has(tf));
-  if(!ctx.length)return '';const veel=ctx.length>1,laatste=ctx[ctx.length-1];
+  if(!ctx.length)return '';
+  if(!tfs.size)return `<div class="inhnote" style="margin-top:6px">Nog geen trades met lagen in je journal. De edge vult zich zodra je trades tijdframes en tags hebben.</div>`;
+  const veel=ctx.length>1,laatste=ctx[ctx.length-1];
   const namen=veel?ctx.slice(0,-1).join(', ')+' en '+laatste:laatste,lagen=veel?ctx.slice(0,-1).map(x=>x+'-').join(', ')+' of '+laatste+'-laag':laatste+'-laag';
   return `<div class="inhnote" style="margin-top:6px">${esc(namen)} ${veel?'tellen':'telt'} niet mee in de edge: geen van je trades heeft een ${esc(lagen)}. ${veel?'Ze sturen':'Het stuurt'} wel je bias.</div>`;}
 function edgeLijn(e,sc){
@@ -525,6 +623,7 @@ function scenRij(s,x,d,c){
           ${cd.n?`<div class="prog" style="margin:5px 0"><i style="width:${cd.k/cd.n*100}%"></i></div>`+s.entry.confirmations.map(cf=>`<div class="chk ${s.checked.includes(cf)?'on':''}" data-a="chk" data-s="${esc(s.id)}" data-v="${esc(cf)}" role="checkbox" aria-checked="${s.checked.includes(cf)}"><span class="box">${s.checked.includes(cf)?'✓':''}</span><span class="lbl">${esc(cf)}</span></div>`).join(''):'<div class="faint small">Geen confirmations op de entry-laag.</div>'}
           ${klaar?`<div class="callout ok" style="margin-top:8px"><b>Klaar om te nemen</b> · ${c.risk[s.grade]?pctTxt(c.risk[s.grade])+' risico':s.grade+': niet traden'}</div>`:''}</div>
         <dl class="kv"><dt>Stop</dt><dd class="num">${esc(s.stop)||'–'}</dd><dt>TP's</dt><dd class="num">${s.tps.map(esc).join(' · ')||'–'}</dd>${s.note?`<dt>Notitie</dt><dd>${esc(s.note)}</dd>`:''}</dl>
+        <div><h3 style="margin-bottom:6px">Afbeeldingen en links</h3>${mediaBlok(s.media,{doel:'scen:'+s.id,hint:1})}</div>
       </div>
       <div class="stack"><div class="row between"><h3>Edge</h3>${s.pb&&JR.klaar?relH(e):''}</div>${s.pb?edgeTabel(e)+edgeNoten(e):'<div class="enote">Kies een playbook (Bewerk), dan vergelijkt het plan dit scenario met je trades.</div>'}
         <div class="st" role="group" aria-label="status">${STATUS.map(([k,l])=>`<button class="${k} ${s.status===k?'on':''}" data-a="status" data-s="${esc(s.id)}" data-v="${k}" title="${l}">${STATUS_KORT[k]}</button>`).join('')}</div>
@@ -549,7 +648,8 @@ function weekView(){
       <div class="enote">Tags komen uit je journal. Elke dag van deze week erft deze lagen.</div></div>
     <div class="card pad"><label class="f" for="w-levels">Levels</label><textarea class="inp" id="w-levels" data-f="week.levels" placeholder="één per regel, bv. BTC 78.150 weekly high">${esc(w.levels)}</textarea></div>
     <div class="card pad"><label class="f" for="w-nt">No-trade / nieuws</label><input class="inp" id="w-nt" data-f="week.noTrade" value="${esc(w.noTrade)}" placeholder="één regel, bv. do FOMC 19:00"></div>
-    <div class="card pad"><label class="f" for="w-focus">Focus deze week</label><input class="inp" id="w-focus" data-f="week.focus" value="${esc(w.focus)}" placeholder="één regel"></div></div>`;
+    <div class="card pad"><label class="f" for="w-focus">Focus deze week</label><input class="inp" id="w-focus" data-f="week.focus" value="${esc(w.focus)}" placeholder="één regel"></div></div>
+    <div class="card pad" style="margin-top:12px"><h3 style="margin-bottom:6px">Afbeeldingen en links</h3>${mediaBlok(w.media,{doel:'week:'+wid,hint:1})}</div>`;
 }
 function afslView(){return `<div class="pagehead"><div><h1>Afsluiting</h1></div></div><div class="card empty"><b>Nog niets af te sluiten</b>Maak eerst een dagplan in Dag.</div>`;}
 function logView(){return `<div class="pagehead"><div><h1>Log</h1></div></div><div class="card empty"><b>Nog geen dagen in je log</b>Elke dag met een plan komt hier, nieuwste boven.</div>`;}
@@ -594,6 +694,9 @@ function modalH(){
     </div>`;
     f=`${M.isNew?'':'<button class="btn danger" style="margin-right:auto" data-a="delScen">Verwijder</button>'}<button class="btn" data-a="close">Annuleer</button><button class="btn pri" data-a="saveScen">Bewaar</button>`;
   }
+  if(M.type==='lb'){const x=doelMedia(M.doel),n=x?x.m.imgs.length:0,i=x?x.m.imgs.indexOf(M.id)+1:0;
+    return `<div class="ov" data-a="ovclose"><div class="lb" role="dialog" aria-modal="true" aria-label="afbeelding"><img src="${esc(IMG[M.id]||'')}" alt="afbeelding ${i} van ${n}">
+      <div class="row between"><span class="small" style="color:var(--on-accent)">${i} / ${n}</span><div class="row">${n>1?'<button class="btn sm" data-a="lbStap" data-v="-1" aria-label="vorige">‹</button><button class="btn sm" data-a="lbStap" data-v="1" aria-label="volgende">›</button>':''}<button class="btn sm danger" data-a="rmBeeld" data-d="${esc(M.doel)}" data-v="${esc(M.id)}">Haal weg</button><button class="btn sm" data-a="close">Sluit</button></div></div></div></div>`;}
   return `<div class="ov" data-a="ovclose"><div class="modal" role="dialog" aria-modal="true" aria-label="${esc(t)}"><div class="mh"><h2>${esc(t)}</h2><button class="ibtn" data-a="close" aria-label="sluit">✕</button></div><div class="mb">${h}</div><div class="mf">${f}</div></div></div>`;
 }
 
@@ -646,7 +749,13 @@ const A={
   newScen:()=>{const day=dayOf(vandaag());S.modal={type:'scen',isNew:true,day:day.id,draft:nieuwScenario(day)};},
   editScen:el=>{const x=scenOf(el.dataset.s);if(x)S.modal={type:'scen',day:x.day.id,draft:JSON.parse(JSON.stringify(x.s))};},
   off:el=>{const x=el.dataset.s&&scenOf(el.dataset.s),d=x?x.s:draftOf();if(!d)return;const k=el.dataset.v,i=d.off.indexOf(k);if(i>=0)d.off.splice(i,1);else d.off.push(k);if(x)save();},
-  toggle:el=>{const id=el.dataset.s;S.open[id]=!S.open[id];},
+  toggle:el=>{const id=el.dataset.s;S.open[id]=!S.open[id];
+    if(S.open[id])S.laatstOpen=id;else if(S.laatstOpen===id)S.laatstOpen=Object.keys(S.open).filter(k=>S.open[k]).pop()||'';},
+  lb:el=>{S.modal={type:'lb',doel:el.dataset.d,id:el.dataset.v};},
+  lbStap:el=>{const x=doelMedia(S.modal.doel);if(!x)return;const L=x.m.imgs,i=L.indexOf(S.modal.id);if(L.length)S.modal.id=L[(i+ +el.dataset.v+L.length)%L.length];},
+  rmBeeld:el=>{const x=doelMedia(el.dataset.d),id=el.dataset.v;if(!x)return;x.m.imgs=x.m.imgs.filter(i=>i!==id);imgWis(id);save();if(S.modal&&S.modal.type==='lb')S.modal=null;},
+  rmLink:el=>{const x=doelMedia(el.dataset.d);if(!x)return;x.m.links=x.m.links.filter(u=>u!==el.dataset.v);save();},
+  linkToe:el=>{const inp=el.closest('.media').querySelector('.linkinp'),v=inp?inp.value:'';if(!v.trim())return false;if(voegLinkToe(v,el.dataset.d)===false)return false;},
   ctx:()=>{S.ctxOpen=!S.ctxOpen;},
   chk:el=>{const x=scenOf(el.dataset.s);if(!x)return;const c=x.s.checked,i=c.indexOf(el.dataset.v);if(i>=0)c.splice(i,1);else c.push(el.dataset.v);save();},
   status:el=>{const x=scenOf(el.dataset.s);if(!x)return;x.s.status=el.dataset.v;x.s.statusTs=el.dataset.v==='open'?null:Date.now();save();},
@@ -662,6 +771,7 @@ const A={
     if(M.isNew)day.scenarios.push(d);else{const i=day.scenarios.findIndex(s=>s.id===d.id);if(i>=0)day.scenarios[i]=d;}
     S.modal=null;save();},
   delScen:()=>{const M=S.modal,day=dayOf(M.day);if(!day||!confirm('Scenario "'+(M.draft.title||'zonder titel')+'" verwijderen?'))return false;
+    const weg=day.scenarios.find(s=>s.id===M.draft.id);((weg&&weg.media&&weg.media.imgs)||[]).forEach(imgWis);
     day.scenarios=day.scenarios.filter(s=>s.id!==M.draft.id);S.modal=null;save();},
 };
 document.addEventListener('click',ev=>{
@@ -694,10 +804,11 @@ document.addEventListener('input',ev=>{
 });
 
 // ───────────────────────── start ─────────────────────────
-window.__tp3={load,save,cfg,stijlLagen,dayOf,weekOf,vandaag,isoWeek,tags,voegTijdframeToe,voegTagToe,laagRij,JR,edge,rangschik,betrouwbaarheid,tradeROrNull};
+window.__tp3={load,save,cfg,stijlLagen,dayOf,weekOf,vandaag,isoWeek,tags,voegTijdframeToe,voegTagToe,laagRij,JR,edge,rangschik,betrouwbaarheid,tradeROrNull,voegBeeldToe,voegLinkToe,tvSnapshot,mediaBlok,imgLees};
 themaVanJournal();
 render();
 laadJournal();
+laadBeelden();
 </script>
 </body>
 </html>

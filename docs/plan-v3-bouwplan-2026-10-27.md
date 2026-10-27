@@ -317,3 +317,13 @@ week} | null`; `planSync()` (bij laden en bij een `storage`-event op `tp3:plans`
   betekent "alles afgevinkt", en er is dan niets af te vinken — kost niets.
   Besluit: verwachting in geld als `+$7,69`: trades staan in dollars in de journal; de eurowisseling van de journal
   (`fxView`) zit niet in het plan — kost als het fout is: leden met euro zien hier dollars.
+- **Taak 5 klaar** — `node tests/plan3-media.spec.js` → 35/35 (alle plan3-specs groen). Plakken (afbeelding of
+  link) gaat naar het opengeklapte scenario, anders de dag; op het Week-scherm naar de week. "+ Afbeelding", slepen,
+  een linkveld. TradingView-snapshot met voorbeeld, valt terug op een chip. Grenzen 8/8 en 4/4, lightbox, weghalen
+  wist ook in IndexedDB `tp3`; een scenario verwijderen wist zijn plaatjes.
+  Besluit: plakken terwijl een venster (scenario-formulier) openstaat doet niets behalve in tekstvelden, met een
+  melding bij een afbeelding — anders belandt een plaatje bij een scenario dat je misschien annuleert — kost als het
+  fout is: plakken in het formulier toevoegen.
+  Besluit: plakken in een tekstveld plakt altijd gewoon tekst (een link in "Levels" blijft tekst) — kost niets.
+  Besluit: zonder trades met lagen zegt de context "Nog geen trades met lagen in je journal" in plaats van elk
+  tijdframe als context te noemen — kost niets.
