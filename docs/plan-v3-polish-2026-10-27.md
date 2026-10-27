@@ -215,3 +215,8 @@ Een journal-playbook (`sj_db` → `kv` → `pbook`) heeft `criteria: [{text, man
   — kost niets.
   Besluit: kies je een ander playbook in het formulier, dan worden ook de criteria-vinkjes leeggemaakt (zoals de
   confirmations al werden) — kost niets.
+- **Afronding** — na-screenshots in `docs/plan-v3-polish-screenshots/na/` (doorloop met `--uit=`), rapport in
+  [plan-v3-polish-rapport.md](plan-v3-polish-rapport.md). Poort: `node tests/run-release.js --hier` →
+  **`═══ SyncJournal-suite (release-poort): 164/167 specs groen · 5.4 min ═══`**; rood `analytics-metrics`, `matrix`,
+  `tendencies`, alleen op "boot zonder fout"/"geen JS-errors" door `ERR_TUNNEL_CONNECTION_FAILED` (wisselkoers-API
+  `api.frankfurter.dev` onbereikbaar uit de container). Op de onaangeraakte v1.19-commit falen ze hier identiek.
