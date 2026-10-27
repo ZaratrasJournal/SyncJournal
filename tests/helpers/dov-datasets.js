@@ -45,7 +45,7 @@ function fullTrade(i) {
   if (isEx && kind === 'live') { t.srcId = ex + '_' + (900000 + i) + '_' + open; t.positionId = String(900000 + i); }
   if (fills) t.fills = fills;
   if (status === 'open') { t.unrealizedPnl = 7.5; t.liq = +(entry * 0.9).toFixed(4); }
-  if (i % 7 === 0) t.planRef = String(700000 + i);
+  if (i % 7 === 0) t.planRef = 's:s_dov1';   // spiegel van Scenario.trades in het TradingPlan-blok hieronder
   return t;
 }
 
@@ -58,11 +58,14 @@ function volledig() {
     antiCriteria: [{ text: 'Vlak vóór high-impact nieuws', mandatory: true }], stop: 'onder de sweep', target: 'volgende pool', minRR: '2', bigPicture: 'HTF mee', tape: 'volume', intuition: 'schoon',
     examples: [{ id: 'ex_' + name, dataUrl: PNG, caption: 'Voorbeeld', kind: 'win' }], tradingViewUrl: 'https://www.tradingview.com/chart/', referenceUrl: '', referenceLabel: '', pairs: ['BTC/USDT'], sessions: ['London'] });
   const pbook = { 'London SFP': pb('London SFP', 'A', 'active'), 'Trend-pullback': pb('Trend-pullback', 'A', 'active'), 'Range-fade': pb('Range-fade', 'B', 'testing'), 'Oud': pb('Oud', 'C', 'retired') };
+  // TradingPlan-blok zoals de journal het sinds plan v3 exporteert: tp3:plans en tp3:cfg als JSON-tekst, plaatjes als {id: data-URL}.
+  const scen = { id: 's_dov1', title: 'Sweep', pair: 'BTC', dir: 'short', pb: 'London SFP', grade: 'A', trigger: 'x', invalid: 'z', entry: { tf: '15M', bias: 'Bearish', setups: ['London SFP'], confirmations: ['Liquidity Sweep'] }, off: [], checked: ['Liquidity Sweep'], stop: '', tps: [], media: { imgs: ['i_dov1'], links: [] }, note: '', status: 'genomen', statusTs: ms(D(0), '09:00'), trades: [0, 7, 14, 21, 28, 35] };
   const tradingplan = {
-    trades: JSON.stringify([{ id: 700000, ts: new Date(ms(D(0), '08:00')).toISOString(), week: '2026-W02', day: D(0), sym: 'BTC', dir: 'Short', tf: '15m', setup: 'A', pb: 'London SFP', pbGrade: 'A', pbMissing: [], anti: [], checks: { trend: true, zone: true, trigger: true, sl: true, rr: true, ftmo: true, mind: true }, missing: [], exec: 'VOL', grade: 'A', risk: 2, taken: true, r: null, noTrade: [], notes: 'poort' }]),
-    plans: JSON.stringify({ ['dag-' + D(0)]: { id: 'dag-' + D(0), type: 'dag', key: D(0), checks: { start: true }, images: [], links: [], saved: true, savedAt: new Date().toISOString(), updatedAt: new Date().toISOString(), bias: 'Bullish', scenarios: [{ title: 'Sweep', als: 'x', dan: 'y', ongeldig: 'z', text: '', images: [], links: [] }], close: { scenario: 0, gevolgd: 'ja', les: 'Les', r: null, saved: true, savedAt: new Date().toISOString() } } }),
-    cfg: JSON.stringify({ gradeMode: 'assen', max: { A: 2, B: 1, C: 0.5 }, matchMin: 45, pt: [{ k: 'trend', t: 'Trend mee' }, { k: 'zone', t: 'Prijs in HP-zone' }, { k: 'trigger', t: 'Trigger uit de lijst' }, { k: 'sl', t: 'SL op logisch level' }, { k: 'rr', t: 'Minimaal 2R naar TP1' }, { k: 'ftmo', t: 'FTMO-ruimte oké', hard: true }, { k: 'mind', t: 'Mentaal oké', hard: true }] }),
-    meta: JSON.stringify({ schema: 2, introSeen: true, pbSeen: true }),
+    v: 3,
+    plans: JSON.stringify({ v: 1, weeks: { '2026-W02': { id: '2026-W02', layers: [{ tf: 'Weekly', bias: 'Bearish', setups: [], confirmations: [] }], levels: '', noTrade: 'do CPI', focus: 'Alleen A', media: { imgs: [], links: [] }, les: '' } },
+      days: { [D(0)]: { id: D(0), week: '2026-W02', layers: [], levels: '', mental: 4, pre: [true, true, false], media: { imgs: [], links: [] }, les: 'Les', scenarios: [scen] } } }),
+    cfg: JSON.stringify({ stijl: 'daytrade', risk: { A: 2, B: 1, C: 0 }, pre: ['Nieuws gecheckt', 'Goed geslapen', 'FTMO-limiet in orde'] }),
+    imgs: { i_dov1: PNG },
   };
   return {
     app: 'SyncJournal', appVersion: 'v0.9.136', schemaVersion: 8, exported: '2026-09-25T10:00:00.000Z',

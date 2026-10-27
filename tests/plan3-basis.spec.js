@@ -71,6 +71,13 @@ const NAAM = 'Plan v3 basis';
   for (const w of [1280, 390]) { await p.setViewportSize({ width: w, height: 800 }); await p.screenshot({ path: path.join(SHOTS, `basis-dag-licht-${w}.png`), fullPage: true }); }
   ok('390 breed: geen horizontale scroll', await p.evaluate(() => document.documentElement.scrollWidth <= 391));
 
+  console.log('--- half kapotte opslag ---');
+  await p.evaluate(() => { const id = __tp3.vandaag(); localStorage.setItem('tp3:plans', JSON.stringify({ v: 1, weeks: [], days: { [id]: { layers: 'x', pre: null, scenarios: [null, 5, { id: 's_x', entry: null, trades: 'x', media: 'y', status: 'raar', off: [1, 'Weekly|BOS'] }] }, kapot: 5, '2026-13-99x': {} } })); localStorage.setItem('tp3:cfg', '"onzin"'); });
+  await p.reload({ waitUntil: 'load' }); await p.waitForTimeout(300);
+  for (const tab of ['dag', 'week', 'afsluiting', 'log']) { await p.click(`nav.tabs [data-v="${tab}"]`); await p.waitForTimeout(80); }
+  await p.click('nav.tabs [data-v="dag"]'); await p.click('.ritem[data-s="s_x"] .rrow'); await p.waitForTimeout(80);
+  ok('kapotte dag, scenario\'s en cfg: alle tabs renderen, het scenario is te openen', await p.evaluate(() => { const d = __tp3.dayOf(__tp3.vandaag()); return d.scenarios.length === 1 && d.scenarios[0].status === 'open' && Array.isArray(d.scenarios[0].trades) && !!document.querySelector('.ritem[data-s="s_x"] .rdetail') && __tp3.cfg().stijl === 'daytrade'; }));
+
   ok('geen JS-errors', errs.length === 0, errs.slice(0, 3).join(' | '));
   await b.close(); srv.close(); process.exit(T.eind());
 })();

@@ -288,8 +288,24 @@ const PRE_N=3;   // hooguit drie pre-flight-vinkjes (besluit 2)
 function lsGet(k,fb){try{const v=JSON.parse(localStorage.getItem(k)||'null');return v==null?fb:v;}catch(e){return fb;}}
 function lsSet(k,v){try{localStorage.setItem(k,JSON.stringify(v));return true;}catch(e){toast('Opslaan lukte niet: je browseropslag is vol of geblokkeerd.');return false;}}
 const isObj=o=>!!o&&typeof o==='object'&&!Array.isArray(o);
-function load(){const P=lsGet(LS.plans,null);if(!isObj(P))return {v:1,weeks:{},days:{}};
-  return {v:1,weeks:isObj(P.weeks)?P.weeks:{},days:isObj(P.days)?P.days:{}};}
+// Opslag kan half kapot zijn (handmatig bewerkt, oude back-up): elk veld krijgt zijn vorm, onbruikbare items vallen weg.
+const arr=(v,f)=>Array.isArray(v)?v.filter(f||(()=>true)):[];
+const str=v=>typeof v==='string'?v:v==null?'':String(v);
+const normLaag=L=>({tf:str(L.tf),bias:['Bullish','Bearish','Neutraal'].includes(L.bias)?L.bias:'',setups:arr(L.setups,x=>typeof x==='string'),confirmations:arr(L.confirmations,x=>typeof x==='string')});
+const normMedia=m=>({imgs:arr(isObj(m)?m.imgs:null,x=>typeof x==='string'),links:arr(isObj(m)?m.links:null,x=>typeof x==='string')});
+const STATUSSEN=['open','genomen','gemist','niet','ongeldig'];
+function normScen(s){return Object.assign({},s,{id:str(s.id),title:str(s.title),pair:str(s.pair),dir:s.dir==='short'?'short':'long',pb:str(s.pb),grade:['A','B','C'].includes(s.grade)?s.grade:'B',
+  trigger:str(s.trigger),invalid:str(s.invalid),entry:normLaag(isObj(s.entry)?s.entry:{}),off:arr(s.off,x=>typeof x==='string'),checked:arr(s.checked,x=>typeof x==='string'),
+  stop:str(s.stop),tps:arr(s.tps).map(str),media:normMedia(s.media),note:str(s.note),status:STATUSSEN.includes(s.status)?s.status:'open',statusTs:+s.statusTs>0?+s.statusTs:null,
+  trades:arr(s.trades,x=>typeof x==='number'||typeof x==='string')});}
+const DAG_ID=/^\d{4}-\d{2}-\d{2}$/,WEEK_ID=/^\d{4}-W\d{2}$/;
+function load(){const P=lsGet(LS.plans,null),out={v:1,weeks:{},days:{}};if(!isObj(P))return out;
+  Object.entries(isObj(P.weeks)?P.weeks:{}).forEach(([k,w])=>{if(!WEEK_ID.test(k)||!isObj(w))return;
+    out.weeks[k]=Object.assign({},w,{id:k,layers:arr(w.layers,isObj).map(normLaag),levels:str(w.levels),noTrade:str(w.noTrade),focus:str(w.focus),media:normMedia(w.media),les:str(w.les)});});
+  Object.entries(isObj(P.days)?P.days:{}).forEach(([k,d])=>{if(!DAG_ID.test(k)||!isObj(d))return;
+    out.days[k]=Object.assign({},d,{id:k,week:WEEK_ID.test(d.week)?d.week:isoWeek(k),layers:arr(d.layers,isObj).map(normLaag),levels:str(d.levels),mental:[1,2,3,4,5].includes(d.mental)?d.mental:null,
+      pre:[0,1,2].map(i=>!!(Array.isArray(d.pre)&&d.pre[i])),media:normMedia(d.media),les:str(d.les),scenarios:arr(d.scenarios,s=>isObj(s)&&s.id).map(normScen)});});
+  return out;}
 function save(p){if(p)PL=p;return lsSet(LS.plans,PL);}
 function cfg(){const c=lsGet(LS.cfg,{}),o=isObj(c)?c:{};
   const risk=Object.assign({},CFG_STD.risk,isObj(o.risk)?o.risk:{});['A','B','C'].forEach(g=>{risk[g]=Math.max(0,+risk[g]||0);});
@@ -580,8 +596,9 @@ document.addEventListener('error',ev=>{const t=ev.target;if(t&&t.tagName==='IMG'
 // ───────────────────────── zet om in trade + koppelen (besluit 23: nooit automatisch) ─────────────────────────
 // Scenario.trades (journal-trade-id's) is de bron; de journal zet planRef op de trade als spiegel (planSync).
 const AMS_TIJD=new Intl.DateTimeFormat('nl-NL',{timeZone:'Europe/Amsterdam',hour:'2-digit',minute:'2-digit',hour12:false});
-const tradeDag=t=>+t.openTime>0?amsDag(+t.openTime):String(t.date||'');
-const tradeTijd=t=>+t.openTime>0?AMS_TIJD.format(new Date(+t.openTime)):String(t.time||'');
+const geldigMs=v=>{const n=+v;return n>0&&isFinite(new Date(n).getTime())?n:0;};   // een kapotte openTime valt terug op date/time
+const tradeDag=t=>geldigMs(t.openTime)?amsDag(geldigMs(t.openTime)):String(t.date||'');
+const tradeTijd=t=>geldigMs(t.openTime)?AMS_TIJD.format(new Date(geldigMs(t.openTime))):String(t.time||'');
 function dagNa(iso){const d=dUTC(iso);d.setUTCDate(d.getUTCDate()+1);return d.toISOString().slice(0,10);}
 // welke trade bij welk scenario hoort (een trade hoort bij hooguit één)
 function bezetting(){const m=new Map();alleScenarios().forEach(({s})=>(s.trades||[]).forEach(id=>{if(!m.has(String(id)))m.set(String(id),s);}));return m;}

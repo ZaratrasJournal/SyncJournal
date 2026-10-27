@@ -74,7 +74,7 @@ const LANDING = F('index.html'), APP = F('app.html');
     ok('en weer uit', await p.evaluate(() => DB.load('skip_landing', false) === false));
     ok('menu heeft "Plan" (TradingPlan op dezelfde origin), als knop in het onderste menu', await p.evaluate(() => !![...document.querySelectorAll('#navbot button')].find(b => /Plan/.test(b.textContent) && b.dataset.p === 'plan')));
     await p.click('#navbot button[data-p="plan"]'); await p.waitForLoadState('load'); await p.waitForTimeout(500);
-    ok('Plan opent TradingPlan (lokaal: ../tradingplan/tradingplan.html)', /tradingplan\.html$/.test(p.url()) && await p.evaluate(() => !!document.getElementById('route')), p.url());
+    ok('Plan opent TradingPlan (lokaal: ../tradingplan/tradingplan.html)', /tradingplan\.html$/.test(p.url()) && await p.evaluate(() => !!window.__tp3 && !!document.querySelector('nav.tabs')), p.url());
     await p.goto(APP, { waitUntil: 'load' }); await p.waitForTimeout(700);
     await p.click('.logo'); await p.waitForLoadState('load'); await p.waitForTimeout(300);
     ok('logo → landingspagina, met ?landing=1', url(p) === 'index.html?landing=1', url(p));

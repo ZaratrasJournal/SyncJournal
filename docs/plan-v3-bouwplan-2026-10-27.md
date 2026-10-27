@@ -363,3 +363,30 @@ week} | null`; `planSync()` (bij laden en bij een `storage`-event op `tp3:plans`
   die R niet zelf uitrekenen — kost als het fout is: een veld "R als genomen" op het scenario.
   Besluit: een weekles zonder weekplan maakt het weekplan aan (het model heeft `Week.les`) — kost niets.
   Besluit: bedragen in de blok-D-zinnen in hele dollars ("−$30"), zoals het voorbeeld in besluit 21 — kost niets.
+- **Taak 8 klaar** — `node tests/plan3-journal.spec.js` → 21/21. Poort weg uit de journal (`planPtOpties`,
+  `PLAN_PT_STD`, `pbCritCov`, de "dekt poort-punt"-keuze en -weergave, `.critcov`, `planExec`/`planHas`/`planRecOf`/
+  `planMatch`); `covers` op playbook-criteria blijft als data staan. Tendencies → Plan = blok D op scenario's
+  (voorspel-score + binnen/buiten plan in R en geld), Mori (`coachPlanRegels`) leest weekplan, scenario's van vandaag
+  en risico per grade uit `tp3:*`. Back-up: `tradingplan = {v:3, plans, cfg, imgs}`; importeren zet ook de plaatjes in
+  IndexedDB `tp3`; een oud v2-blok wordt genegeerd (niet gelezen, niet gewist); overzicht "2 plannen · 4 scenario's ·
+  1 afbeelding". Diagnose meldt `tp3`. Demo laden/opruimen werkt op v3-dagen; `scripts/gen-syncjournal-dataset-v2.js`
+  maakt nu een v3-blok (25 dagen, scenario's, gekoppelde trades). `site/demo-dataset.json` is **niet** ververst (dat
+  is de release); `demo-dataset.spec` leest wat er in het bestand staat (oud v2-blok → niets gezet) en draait met
+  `DEMO_DATASET=<pad>` ook tegen een vers v3-bestand (32/32 beide).
+  Specs: v2-specs weg (`tradingplan-v2`, `plan-koppeling`, `plan-tendencies`, `plan-doorloop`, `plan-playbook`,
+  `tradingplan-plan`), de acht `plan3-*` in `tests/release-set.js`. Aangepast omdat ze de plan-sleutels raken:
+  `coach-pretrade`, `demo-dataset`, `diagnose`, `export-import-rondje`, `export-overzicht`, `landing`,
+  `tests/helpers/dov-datasets.js`. `tradingplan-v2-demo` (test `demos/tradingplan-v2-demo.html`) blijft staan.
+  Robuustheid: een kapotte `openTime`/`date` liet de trade-details crashen (`planTradeDag`/`planDagErvoor`) — gevangen
+  door `robustness`, `trades-sortering` en `stress-vandaag`, nu afgevangen; het plan normaliseert `tp3:plans` bij het
+  laden (getest met half kapotte opslag in `plan3-basis`).
+  Poort: `node tests/run-release.js --hier` → **`═══ SyncJournal-suite (release-poort): 163/166 specs groen · 5.2 min ═══`**.
+  Rood: `matrix`, `analytics-metrics`, `tendencies`, alle drie op "boot zonder fout": de wisselkoers-API
+  (`api.frankfurter.dev`) is vanuit deze container niet bereikbaar (`ERR_TUNNEL_CONNECTION_FAILED` als console-fout).
+  Met dat ene adres lokaal beantwoord zijn ze 21/21, 17/17 en 15/15; ze stonden in de nulmeting vóór de bouw al zo
+  rood. `privacy-mode` was één keer flaky (2e poging groen).
+  Besluit: "buiten plan" in Tendencies telt vanaf je eerste plan-dag — trades van vóór je met plannen begon zeggen
+  niets over je plan — kost als het fout is: één filter in `planTendencies`.
+  Besluit: het back-upblok krijgt de plaatjes uit een geheugenkopie (`PLAN_IMG`, geladen bij starten, zichtbaar
+  worden en elke plan-wijziging), omdat `snapshotPayload` synchroon is — kost als het fout is: een export in de eerste
+  tel na het openen kan de plaatjes missen (het plan zelf houdt ze).

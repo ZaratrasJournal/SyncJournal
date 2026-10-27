@@ -3,7 +3,7 @@
 // data tot en met vandaag. Winstgevend over het geheel, met echte pieken en dalen (drie
 // drawdown-periodes, winning- en losing-streaks), trades geclusterd op handelsdagen en sessies,
 // stappen (fills) bij exchange-trades, playbooks, tags, handmatige accounts, én een TradingPlan-blok
-// (week-/dagplannen, poort-beoordelingen, dagafsluitingen) dat al aan de trades gekoppeld is.
+// (plan v3: week-/dagplannen met scenario's) dat al aan de trades gekoppeld is.
 //
 // Gebruik:  node scripts/gen-syncjournal-dataset-v2.js [uitvoer.json]   (standaard: site/demo-dataset.json)
 const fs = require('fs'), path = require('path'), zlib = require('zlib');
@@ -204,36 +204,40 @@ function buildTrades(){
   return trades;
 }
 
-/* ── TradingPlan-blok: laatste 8 weken plannen, poort-records bij de laatste ~70 live exchange-trades ── */
+/* ── TradingPlan-blok (plan v3, 27-10-2026): de laatste 25 handelsdagen met live exchange-trades. Weekplannen,
+   dagplannen met scenario's; de meeste A/B-trades horen bij een scenario (Scenario.trades, planRef "s:<id>" als
+   spiegel op de trade), C-trades meestal niet: dat verschil laat "binnen tegenover buiten plan" zien. Plus gemiste,
+   niet uitgekomen en ongeldige scenario's voor de voorspel-score. Vorm zoals planBackupBlock in de journal. ── */
 function buildTradingPlan(trades){
-  const DEF_PT=[{k:"trend",t:"Trend mee",d:"Daily / 4h / 1h zelfde kant op. Anders: BoS op HTF."},{k:"zone",t:"Prijs in HP-zone",d:"High probability zone: supply, demand, OB of DOPS uit je dagstart."},{k:"trigger",t:"Trigger uit de lijst",d:"BoS/MSB, liquiditeit uitgenomen, SFP, structuur houdt. Op 15m."},{k:"sl",t:"SL op logisch level",d:"Invalidatie staat. Level 1, 2 of 3?"},{k:"rr",t:"Minimaal 2R naar TP1",d:"Gemeten, niet geschat."},{k:"ftmo",t:"FTMO-ruimte oké",d:"Daily loss en drawdown-buffer gecheckt.",hard:true},{k:"mind",t:"Mentaal oké",d:"Kalm. Geen revenge, geen verveling.",hard:true}];
-  const DG_K=['start','trend','hl','flats','wknd','mon','hp','reclaim','range','news','ethbtc','tools'], WK_K=['review','monthly','wclose','wopen','levels','hp','liq','news','max','focus'];
-  const plans={}, recs=[];
-  const live=trades.filter(t=>t.kind==='live'&&t.status==='closed'&&t.srcId).slice(0,70);   // nieuwste eerst
-  const SC=[['Sweep weekend-high','prijs sweept de weekend-high en geeft 15m SFP','short vanaf de 15m OB, TP1 POC','15m close boven de sweep-high'],['Reclaim POC','prijs verliest POC en reclaimt binnen 2 candles','long naar VAH, halve size','15m close onder VAL'],['BOS-retest','15m BoS omhoog en retest van de breakout','long vanaf de retest, SL onder de low','structuur breekt terug'],['Afwijzing 4h OB','prijs tikt de 4h OB aan met afwijzing','short naar de 1h POC','15m close door de OB']];
-  const LES=['Wacht op de 15m close vóór je short gaat.','Niet twee keer dezelfde zone shorten na een verlies.','Kleiner sizen op nieuwsdagen.','Eén setup per sessie is genoeg.','Na 2 verliezers: laptop dicht.','Geen entry zonder SFP — ook niet als het "wel goed voelt".'];
-  live.forEach((t,i)=>{
-    const setup=t.grade==='A'?'A':t.grade==='B'?'B':'C', exec=i%7===3?'HALF':(i%11===5?'NO':'VOL'), missing=exec==='HALF'?[pick(['rr','zone','trigger'])]:exec==='NO'?['trigger','rr']:[];
-    const checks={};DEF_PT.forEach(p=>{checks[p.k]=missing.indexOf(p.k)<0;});
-    const ts=new Date(+t.openTime-rint(4,22)*60000), mx=setup==='A'?2:setup==='B'?1:0.5;
-    recs.push({id:800000+i,ts:ts.toISOString(),week:isoWeek(new Date(t.date+'T12:00:00')),day:t.date,sym:t.pair.split('/')[0],dir:t.dir==='short'?'Short':'Long',tf:t.timeframe==='4H'?'1h':'15m',setup,pb:t.setup,pbGrade:(PB_BY_NAME[t.setup]||{}).grade||'',pbMissing:[],anti:[],checks,missing,exec,grade:exec==='VOL'?'A':exec==='HALF'?'B':'NO',risk:exec==='VOL'?mx:exec==='HALF'?mx/2:0,taken:true,r:null,noTrade:exec==='NO'&&chance(0.4)?['Na 2 verliezers op één dag']:[],notes:exec==='NO'?pick(['Wilde het verlies goedmaken. Fout.','Buiten de sessie, toch geklikt.']):''});
-    t.planRef=String(800000+i);
-    const dag=t.date, pid='dag-'+dag;
-    if(!plans[pid]){const sc=pick(SC),sc2=pick(SC),saved=new Date(dag+'T08:30:00').toISOString(),dayR=0;
-      plans[pid]={id:pid,type:'dag',key:dag,checks:Object.fromEntries(DG_K.map(k=>[k,chance(0.85)])),images:[],links:[],saved:true,savedAt:saved,updatedAt:saved,
-        bias:t.dir==='long'?'Bullish':'Bearish',tD:t.dir==='long'?'up':'down',t4:pick(['up','down','range']),t1:pick(['up','down','range']),levels:'POC / VAH / VAL gemarkeerd\nHP-zone op de 4h OB',ftmo:'daily loss nog '+rf(2,4.5).toFixed(1).replace('.',',')+'% over',mind:String(pick([1,2,2,2,3,3,4])),
-        scenarios:[{title:sc[0],als:sc[1],dan:sc[2],ongeldig:sc[3],text:'',images:[],links:[]},{title:sc2[0],als:sc2[1],dan:sc2[2],ongeldig:sc2[3],text:'',images:[],links:[]}],
-        close:{scenario:chance(0.7)?0:'geen',gevolgd:exec==='NO'?'nee':pick(['ja','ja','deels']),les:pick(LES),r:null,saved:true,savedAt:new Date(dag+'T18:10:00').toISOString()}};}
+  const live=trades.filter(t=>t.kind==='live'&&t.status==='closed'&&t.srcId);
+  const dagen=[...new Set(live.map(t=>t.date))].sort().slice(-25);
+  const LES=['Wacht op de 15M-close vóór je instapt.','Niet twee keer dezelfde zone na een verlies.','Kleiner op nieuwsdagen.','Eén setup per sessie is genoeg.','Na 2 verliezers: laptop dicht.','Twee trades buiten plan na de eerste winst. Niet doen.'];
+  const TRIG=['Als de Asia-low gesweept wordt en 15M terug in de range sluit','Als 1H een BOS zet en de retest houdt','Als prijs de 4H OB raakt met een SFP','Als de range-high afwijst zonder volume'];
+  const ONG=['15M close voorbij de sweep','4H close door het level','Structuur breekt terug','Acceptance buiten de range'];
+  const FOCUS=['Alleen A-setups in London','Na 2 verliezers stoppen','Geen trades vóór 9:00','Eén trade per sessie'];
+  const L=(tf,bias,setups,confirmations)=>({tf,bias,setups,confirmations});
+  const weeks={},days={};let sid=0;const nieuwId=()=>'s_demo'+(sid++).toString(36);
+  const scen=(o)=>Object.assign({id:nieuwId(),title:'',pair:'BTC',dir:'long',pb:'',grade:'B',trigger:pick(TRIG),invalid:pick(ONG),entry:L('15M','',[],[]),off:[],checked:[],stop:'',tps:[],media:{imgs:[],links:[]},note:'',status:'open',statusTs:null,trades:[]},o);
+  const pbs=PB_DEF.map(d=>d.name);
+  dagen.forEach((dag,di)=>{
+    const wid=isoWeek(new Date(dag+'T12:00:00')),bias=chance(0.6)?'Bullish':'Bearish';
+    if(!weeks[wid])weeks[wid]={id:wid,layers:[L('Weekly',bias,[],[]),L('Daily',bias,[],[pick(CONFIRM)])],levels:'Weekly high en low\n4H OB\'s\nPOC van vorige week',
+      noTrade:pick(['wo CPI 14:30 · niet traden 14:00–15:00','do FOMC 20:00 · niet traden 19:30–21:00','geen groot nieuws']),focus:pick(FOCUS),media:{imgs:[],links:[]},les:chance(0.5)?pick(LES):''};
+    const sc=[],ts=Date.parse(dag+'T18:00:00Z');
+    live.filter(t=>t.date===dag).forEach(t=>{
+      if(!chance(t.grade==='C'?0.25:0.8))return;   // C-trades meestal buiten plan
+      const ent=(t.layers||[]).filter(x=>x&&x.timeframe).slice(-1)[0]||{timeframe:'15M',bias:'',setups:[],confirmations:[]};
+      const s=scen({title:t.setup+' '+t.pair.split('/')[0],pair:t.pair.split('/')[0],dir:t.dir,pb:t.setup,grade:t.grade||'B',
+        entry:L(ent.timeframe,ent.bias||'',[...(ent.setups||[])],[...(ent.confirmations||[])]),checked:[...(ent.confirmations||[])],
+        stop:t.stop?String(t.stop):'',tps:(t.tps||[]).map(x=>String(x.price)),status:'genomen',statusTs:+t.openTime||ts,trades:[t.id]});
+      t.planRef='s:'+s.id;sc.push(s);});
+    for(let k=rint(1,2);k>0;k--){const pb=pick(pbs),pair=pick(PAIR_W).split('/')[0],st=di===dagen.length-1&&k===1?'open':pick(['gemist','niet','niet','ongeldig','gemist']);
+      sc.push(scen({title:pb+' '+pair,pair,dir:chance(0.6)?'long':'short',pb,grade:pick(['A','B','B','C']),entry:L(pick(['15M','1H','5M']),'',[pick(['BOS','MSB','SFP'])],[pick(CONFIRM)]),status:st,statusTs:st==='open'?null:ts}));}
+    days[dag]={id:dag,week:wid,layers:[L('4H',bias,[pick(['BOS','MSB'])],[]),L('1H','',[],[pick(CONFIRM)])],levels:'Asia high en low\nPOC van gisteren',
+      mental:pick([2,3,3,4,4,4,5]),pre:[true,chance(0.8),chance(0.7)],media:{imgs:[],links:[]},les:chance(0.4)?pick(LES):'',scenarios:sc};
   });
-  // weekplannen voor de weken waarin die dagen vallen
-  Object.values(plans).forEach(p=>{const wk=isoWeek(new Date(p.key+'T12:00:00')),wid='week-'+wk;if(plans[wid])return;const saved=new Date(p.key+'T20:00:00').toISOString();
-    plans[wid]={id:wid,type:'week',key:wk,checks:Object.fromEntries(WK_K.map(k=>[k,true])),images:[],links:[],saved:true,savedAt:saved,updatedAt:saved,bias:pick(['Bullish','Bearish','Range']),open:'',range:'',levels:'Weekly high/low, 4h OB\'s, POC van vorige week',liq:'Weekend high/low, Monday range, flats',maxtrades:String(pick([4,5,6])),news:'wo CPI 14:30 · do claims 14:30',focus:pick(['Geen entry zonder SFP','Eén trade per sessie','Kleiner sizen na een verlies','Geen counter-trend vóór 12:00']),notrade:'Binnen 2 minuten na high-impact nieuws\nNa 2 verliezers op één dag\nBuiten de London- of NY-sessie'};});
-  const cfg={pt:DEF_PT,dg:[{g:"Timeframe"},{k:"start",t:"Start op het juiste timeframe",d:""},{g:"Trend"},{k:"trend",t:"Trend bepaald op Daily / 4h / 1h",d:"Bullish of bearish, per timeframe."},{k:"hl",t:"Belangrijke highs / lows gereclaimed of verloren?",d:"Let op cowboys en clowns."},{g:"Liquiditeit"},{k:"flats",t:"Flats gemarkeerd"},{k:"wknd",t:"Weekend liquiditeit gemarkeerd"},{k:"mon",t:"Monday range gemarkeerd"},{g:"Zones"},{k:"hp",t:"High probability zones gemarkeerd",d:"Supply / demand / OB's / DOPS."},{k:"reclaim",t:"Zones die je wilt zien reclaimen of vasthouden"},{k:"range",t:"Range gemarkeerd",d:"Market Monkey of FRVP. Komen POC / VAH / VAL overeen met de HP-zones?"},{g:"Extra"},{k:"news",t:"US nieuws gecheckt",d:"Tijden staan in het weekplan."},{k:"ethbtc",t:"ETH/BTC bekeken"},{k:"tools",t:"Live data tools open"}],
-    wk:[{g:"Context"},{k:"review",t:"Vorige week gereviewd",d:"Trades, R, regelbreuken. Wat neem je mee?"},{k:"monthly",t:"Monthly context bekeken",d:"Waar zitten we in de maandcandle?"},{k:"wclose",t:"Weekly close van vorige week beoordeeld",d:"Sterk of zwak gesloten? Boven of onder key level?"},{g:"Levels"},{k:"wopen",t:"Weekly open gemarkeerd"},{k:"levels",t:"Key levels Daily / 4h gemarkeerd"},{k:"hp",t:"High probability zones voor de week"},{k:"liq",t:"Liquiditeit vorige week gemarkeerd",d:"Weekend high/low, ongeteste highs/lows, flats."},{g:"Regels"},{k:"news",t:"Nieuwskalender ingevuld",d:"CPI, FOMC, NFP. Dag en tijd."},{k:"max",t:"Max trades voor de week bepaald"},{k:"focus",t:"Eén focuspunt gekozen",d:"Niet drie. Eén."}],
-    gradeMode:'assen',max:{A:2,B:1,C:0.5},matchMin:45};
-  const meta={schema:2,introSeen:true,pbSeen:true,pbTouched:true};
-  // het blok zoals de journal-back-up het draagt: per sleutel de JSON-tekst
-  return {trades:JSON.stringify(recs),plans:JSON.stringify(plans),cfg:JSON.stringify(cfg),meta:JSON.stringify(meta)};
+  const cfg={stijl:'daytrade',risk:{A:1,B:0.5,C:0},pre:['Nieuws gecheckt','Goed geslapen','Limieten in orde']};
+  return {v:3,plans:JSON.stringify({v:1,weeks,days}),cfg:JSON.stringify(cfg),imgs:{}};
 }
 
 function build(){
@@ -268,4 +272,4 @@ const byKind=data.trades.reduce((a,t)=>{a[t.kind]=(a[t.kind]||0)+1;return a;},{}
 console.log(`✓ ${data.trades.length} trades → ${out} (~${kb} KB) · ${data.trades[0].date} … ${data.trades[data.trades.length-1].date}`);
 console.log(`  kinds ${JSON.stringify(byKind)} · open: ${data.trades.filter(t=>t.status==='open').length} · met stappen: ${data.trades.filter(t=>t.fills).length} · gesynct: ${data.trades.filter(t=>t.srcId).length}`);
 console.log(`  live gesloten: ${live.length} · winrate ${Math.round(wins/live.length*100)}% · netto ${netR.toFixed(1)}R / $${netP.toFixed(0)} · max drawdown ${dd.toFixed(1)}R`);
-console.log(`  tradingplan: ${JSON.parse(data.tradingplan.trades).length} poort-records · ${Object.keys(JSON.parse(data.tradingplan.plans)).length} plannen · gekoppeld: ${data.trades.filter(t=>t.planRef).length}`);
+{const pl=JSON.parse(data.tradingplan.plans),sc=Object.values(pl.days).flatMap(d=>d.scenarios);console.log(`  tradingplan (v3): ${Object.keys(pl.weeks).length} weken · ${Object.keys(pl.days).length} dagen · ${sc.length} scenario's · gekoppeld: ${data.trades.filter(t=>t.planRef).length}`);}

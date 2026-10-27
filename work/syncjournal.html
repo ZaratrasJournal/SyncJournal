@@ -1145,8 +1145,6 @@ body.dark .mx-legend .mxsw{box-shadow:inset 0 0 0 1px rgba(255,255,255,.12)}
 .critrow{display:flex;align-items:center;gap:8px}
 .critreq{width:30px;height:34px;border:1px solid var(--line);border-radius:8px;background:var(--sink);color:var(--muted);cursor:pointer;font-size:15px;flex:none;line-height:1}
 .critreq.on{color:var(--amber);border-color:color-mix(in srgb,var(--amber) 45%,transparent);background:var(--amber-soft)}
-.critcov{flex:none;max-width:150px;border:1px solid var(--line);border-radius:8px;background:var(--sink);color:var(--muted);padding:7px 8px;font-size:12px;outline:none}
-.critcov.on{color:var(--accent);border-color:var(--accent)}
 .critin{flex:1;min-width:0;border:1px solid var(--line);border-radius:8px;background:var(--sink);color:var(--ink);padding:8px 11px;font-size:13px;outline:none}
 .critin:focus{border-color:var(--accent)}
 .pbsec{margin-top:15px}.pbsec:first-child{margin-top:0}
@@ -3300,7 +3298,7 @@ function tradeTimeline(t){
    Het plan bewaart weken, dagen en scenario's in localStorage tp3:plans. Welke trades bij een scenario horen
    staat in Scenario.trades (de bron); de journal zet op de trade planRef = "s:<scenario-id>" als spiegel, of
    "none" als je hem bewust buiten plan zet. Er wordt nooit automatisch gekoppeld (besluit 23): je kiest zelf,
-   in het plan of hier in de trade-details. tp2:* (plan v2, de poort) wordt niet meer gelezen; een oude
+   in het plan of hier in de trade-details. tp2:* (plan v2) wordt niet meer gelezen; een oude
    numerieke planRef telt niet. */
 const TP3={plans:'tp3:plans',cfg:'tp3:cfg',handoff:'tp3:handoff'};
 const HANDOFF_MAX_MS=10*60000;   // "Zet om in trade" in het plan: na 10 minuten is de overdracht verlopen
@@ -3313,8 +3311,9 @@ function planScen(sid,P){P=P||planLoad();for(const day of Object.values(P.plans.
 const planScenRef=t=>t&&typeof t.planRef==='string'&&t.planRef.startsWith('s:')?t.planRef.slice(2):null;
 // De dag van een trade zoals het plan hem ziet: de Amsterdamse kalenderdag van het open-moment.
 const PLAN_AMS=new Intl.DateTimeFormat('sv-SE',{timeZone:'Europe/Amsterdam',year:'numeric',month:'2-digit',day:'2-digit'});
-const planTradeDag=t=>+t.openTime>0?PLAN_AMS.format(new Date(+t.openTime)):String(t.date||'');
-const planDagErvoor=d=>{const x=new Date(d+'T12:00:00Z');x.setUTCDate(x.getUTCDate()-1);return x.toISOString().slice(0,10);};
+const planMs=v=>{const n=+v;return n>0&&isFinite(new Date(n).getTime())?n:0;};   // kapotte openTime (robuustheid): terug naar t.date
+const planTradeDag=t=>planMs(t.openTime)?PLAN_AMS.format(new Date(planMs(t.openTime))):String(t.date||'');
+const planDagErvoor=d=>{const x=new Date(d+'T12:00:00Z');if(!isFinite(x.getTime()))return '';x.setUTCDate(x.getUTCDate()-1);return x.toISOString().slice(0,10);};
 // "78150,5" → 78150.5 · "75.020,5" → 75020.5 · leeg of onleesbaar → 0
 function planGetal(v){let s=String(v==null?'':v).trim().replace(/\s/g,'');if(/,/.test(s)&&/\./.test(s))s=s.replace(/\./g,'');s=s.replace(',','.');const n=parseFloat(s);return isFinite(n)?n:0;}
 /* De lagen van een scenario als lagen op een trade: week + dag + de eigen entry-laag, hetzelfde tijdframe
@@ -3344,6 +3343,22 @@ function planBeelden(ids){if(!ids||!ids.length)return Promise.resolve([]);
     r.onsuccess=()=>{const db=r.result,out=[];try{const tx=db.transaction('img','readonly'),st=tx.objectStore('img');
       ids.forEach((id,i)=>{const q=st.get(id);q.onsuccess=()=>{out[i]=q.result;};});
       tx.oncomplete=()=>{db.close();res(out.filter(u=>BEELD_SCHEMA.test(String(u||''))));};tx.onerror=()=>{db.close();res([]);};}catch(e){db.close();res([]);}};});}
+/* De plaatjes van het plan in het geheugen, voor de back-up: snapshotPayload is synchroon en IndexedDB niet.
+   Geladen bij het starten, als dit tabblad zichtbaar wordt en als het plan iets bewaart. Een export in de
+   eerste tel na het laden kan ze dus nog missen; het plan zelf houdt ze gewoon. */
+const PLAN_IMG={};
+function planImgLaad(){return new Promise(res=>{let r;try{r=indexedDB.open('tp3',1);}catch(e){return res(0);}
+  r.onupgradeneeded=()=>r.result.createObjectStore('img');r.onerror=()=>res(0);
+  r.onsuccess=()=>{const db=r.result,nieuw={};try{const tx=db.transaction('img','readonly'),c=tx.objectStore('img').openCursor();
+    c.onsuccess=()=>{const cur=c.result;if(!cur)return;if(BEELD_SCHEMA.test(String(cur.value||'')))nieuw[cur.key]=cur.value;cur.continue();};
+    tx.oncomplete=()=>{db.close();Object.keys(PLAN_IMG).forEach(k=>delete PLAN_IMG[k]);Object.assign(PLAN_IMG,nieuw);res(Object.keys(nieuw).length);};tx.onerror=()=>{db.close();res(0);};}catch(e){db.close();res(0);}};});}
+function planImgZet(imgs){const ok=Object.entries(imgs||{}).filter(([k,v])=>/^i_[0-9a-z]+$/i.test(k)&&BEELD_SCHEMA.test(String(v||'')));if(!ok.length)return Promise.resolve(0);
+  ok.forEach(([k,v])=>{PLAN_IMG[k]=v;});
+  return new Promise(res=>{let r;try{r=indexedDB.open('tp3',1);}catch(e){return res(0);}r.onupgradeneeded=()=>r.result.createObjectStore('img');r.onerror=()=>res(0);
+    r.onsuccess=()=>{const db=r.result;try{const tx=db.transaction('img','readwrite');ok.forEach(([k,v])=>tx.objectStore('img').put(v,k));tx.oncomplete=()=>{db.close();res(ok.length);};tx.onerror=()=>{db.close();res(0);};}catch(e){db.close();res(0);}};});}
+// Alle afbeelding-id's in een plan (week, dag, scenario).
+function planImgIds(plans){const ids=[];const m=o=>((o&&o.media&&o.media.imgs)||[]).forEach(i=>ids.push(i));
+  Object.values(plans.weeks||{}).forEach(m);Object.values(plans.days||{}).forEach(d=>{m(d);((d&&d.scenarios)||[]).forEach(m);});return [...new Set(ids)];}
 async function planScreens(paren){for(const [t,ids] of paren){const u=await planBeelden(ids);if(u.length&&!(t.screenshots||[]).length)t.screenshots=u;}if(paren.length){persist();render();}}
 /* Spiegel Scenario.trades op de trades: planRef zetten of wissen. Een nieuwe koppeling neemt eenmalig de lege
    velden over (planAdopt). Draait bij het laden, als dit tabblad zichtbaar wordt, en als het plan in een ander
@@ -3357,7 +3372,7 @@ function planSync(){const P=planLoad(),bij=new Map();let n=0;const later=[];
   if(later.length)planScreens(later);
   return n;}
 // Scenario's van de dag van de trade en de dag ervoor (wie de volgende ochtend klikt, zoekt gisteren).
-function planDagScens(t,P){const d=planTradeDag(t),dagen=[d,planDagErvoor(d)];
+function planDagScens(t,P){const d=planTradeDag(t);if(!/^\d{4}-\d{2}-\d{2}$/.test(d))return [];const dagen=[d,planDagErvoor(d)];
   return dagen.flatMap(id=>{const day=P.plans.days[id];return ((day&&day.scenarios)||[]).map(s=>({s,day}));});}
 function planSetRef(id,ref){const t=T.find(x=>x.id===id);if(!t)return;const P=planLoad();
   Object.values(P.plans.days).forEach(d=>((d&&d.scenarios)||[]).forEach(s=>{if(Array.isArray(s.trades))s.trades=s.trades.filter(x=>String(x)!==String(id));}));   // hooguit één scenario per trade
@@ -3387,8 +3402,6 @@ function planPick(id){
 }
 /* "Zet om in trade" → "Handmatig, backtest of paper" in het plan: tp3:handoff {sid, day, ts}. De journal opent
    dan het tradeformulier, vooraf ingevuld uit het scenario; opslaan koppelt de nieuwe trade (planNaHandoff). */
-// Back-upsleutels van plan v2; taak 8 van het v3-bouwplan zet de back-up om naar tp3:*.
-const PLAN_LS={trades:'tp2:trades',plans:'tp2:plans',cfg:'tp2:cfg',pb:'tp2:pb',meta:'tp2:meta'};
 let formPlanSid='';
 async function planVanHandoff(){let h=null;try{h=JSON.parse(localStorage.getItem(TP3.handoff)||'null');}catch(e){}
   if(!h)return false;try{localStorage.removeItem(TP3.handoff);}catch(e){}
@@ -3406,9 +3419,8 @@ function planNaHandoff(t){const P=planLoad(),x=planScen(formPlanSid,P);if(!x||!t
   Object.values(P.plans.days).forEach(d=>((d&&d.scenarios)||[]).forEach(s=>{if(Array.isArray(s.trades))s.trades=s.trades.filter(i=>String(i)!==String(t.id));}));
   x.s.trades.push(t.id);x.s.status=t.kind==='gemist'?'gemist':'genomen';x.s.statusTs=Date.now();
   if(planSave(P.plans))t.planRef='s:'+x.s.id;}
-/* De badge "zonder poort" in de tradelijst is weg (Denny 26-09-2026): op alles van vóór de
-   TradingPlan-koppeling was het ruis. De poort-regel in de trade-details en het blok in
-   Tendencies → Plan blijven. */
+/* Geen plan-badge in de tradelijst (Denny 26-09-2026: ruis op alles van vóór de koppeling). De
+   scenario-regel staat in de trade-details (planLine), de cijfers in Tendencies → Plan. */
 function tradeHoverDetail(t){
   const stat=(lb,vl,st)=>vl?`<div class="dstat"><div class="lb">${lb}</div><div class="vl"${st?` style="${st}"`:''}>${vl}</div></div>`:'';
   let tl=tradeTimeline(t);
@@ -3420,7 +3432,7 @@ function tradeHoverDetail(t){
     tl+=`<div class="tline" style="margin-top:6px"><span class="tlc">\u21C5 ${sm.entries} ${sm.entries===1?'instap':'instappen'} \u00b7 ${sm.exits} ${sm.exits===1?'afbouw':'afbouwstappen'}</span>`
       +`<span class="tla">\u2192</span><span class="tlc" style="color:var(--muted)">elke stap staat in Review</span></div>`;
   }
-  tl+=planLine(t);   // koppeling met TradingPlan (leeg als er geen poort-records zijn)
+  tl+=planLine(t);   // koppeling met TradingPlan (leeg als er op die dag geen scenario's zijn)
   if(!tl){ // geen openTime (oude CSV-trades): toon wat er wél is
     const m=tradeDurationMin(t),c=+t.closeTime||0,bits=[];
     if(t.status==='closed'&&c)bits.push(`<span class="tlc">🏁 Close <b class="num">${fmtD(ts2date(c))} ${ts2time(c)}</b></span>`);
@@ -3791,8 +3803,8 @@ const EMPTY={
   'cross-setup':['🔀','Nog geen playbook aan je trades gekoppeld','Koppel in het trade-formulier een playbook aan je trades, dan zie je hier per playbook waar je wint en lekt. Of kies hierboven een andere dimensie.','Toon Dag × Richting',"STATE.tendRow='dow';STATE.tendCol='dir';render()"],
   'cross-dim':['🔀','Deze dimensie is nog leeg','Geen enkele gesloten trade heeft hier een waarde voor, bijvoorbeeld omdat je geen emotie, grade of tijdframe invult. Kies hierboven een andere dimensie, of vul dit in bij je trades.','Toon Dag × Richting',"STATE.tendRow='dow';STATE.tendCol='dir';render()"],
   'cross-none':['🔀','Geen trade heeft allebei','Beide dimensies hebben waarden, maar nooit op dezelfde trade: er is geen enkele combinatie om te tonen. Kies hierboven een andere combinatie.','Toon Dag × Richting',"STATE.tendRow='dow';STATE.tendCol='dir';render()"],
-  'plan-leeg':['🚦','Nog geen poort-beoordelingen','Hier zie je wat je TradingPlan-poort over je trades zegt: uitvoering, setup-type, gemiste checks en of je je plan volgde. Beoordeel je volgende trade in Plan vóór je klikt; de journal koppelt hem daarna vanzelf aan de trade van de exchange.','Open Plan',"go('plan')"],
-  'plan-snede':['','Nog niets in deze snede','dit vult zich met trades die aan een poort-beoordeling gekoppeld zijn.','',''],
+  'plan-leeg':['📋','Nog geen scenario\'s uit TradingPlan','Hier zie je hoe je plan uitkomt: komen je scenario\'s uit, neem je ze, en wat leveren trades binnen en buiten je plan. Maak in Plan een dagplan met scenario\'s en koppel daarna je trades.','Open Plan',"go('plan')"],
+  'plan-snede':['','Nog geen live-trades sinds je eerste plan','dit vult zich zodra je trades sluit en ze aan een scenario koppelt.','',''],
   'plan-dag':['','Geen scenario\'s op deze dag','maak er een in Plan → Dag, of zet de trade hieronder bewust buiten plan.','',''],
   'saldo-leeg':['','Nog geen saldo','koppel een exchange of voeg een handmatig account toe.','Naar Accounts','naarAccounts()'],
   /* funded mode (Instellingen → Funded) */
@@ -4276,68 +4288,56 @@ function weekHourHeat(){
 function whMove(e){const tip=document.getElementById('yhtip');if(!tip)return;const t=e.target.closest&&e.target.closest('.whm-cell');if(!t){yhHide();return;}const n=+t.dataset.n;
   tip.innerHTML=`<div class="yht-d">${esc(t.dataset.t)}</div>`+(n?`<div class="yht-row"><span>Trades</span><b>${n}</b></div><div class="yht-row"><span>Win-rate</span><b>${t.dataset.wr}%</b></div><div class="yht-pnl ${cls(+t.dataset.pnl)}${unitMask()}">${t.dataset.tx||eurS(+t.dataset.pnl)}</div>`:`<div class="yht-row" style="color:var(--muted)">Geen trades</div>`);
   tip.classList.add('on');const tw=tip.offsetWidth,th=tip.offsetHeight;let x=Math.max(8,Math.min(window.innerWidth-tw-8,e.clientX-tw/2)),y=e.clientY-th-14;if(y<8)y=e.clientY+16;tip.style.left=x+'px';tip.style.top=y+'px';}
-/* ═══ Tendencies → Plan: wat je TradingPlan-poort over je trades zegt (stap 3, 25-09-2026) ═══
-   Vijf sneden over de trades die aan een poort-record gekoppeld zijn (planRef). Cijfers altijd
-   met n; onder PLAN_MIN trades zegt de pagina eerlijk "nog te weinig data". Een observatiezin
-   alleen als twee groepen elk ≥ PLAN_MIN_GROEP trades hebben en ≥ PLAN_MIN_VERSCHIL R uit elkaar
-   liggen - en dan als observatie, nooit als bevel. */
+/* ═══ Tendencies → Plan: plan tegenover resultaat (blok D van TradingPlan v3, 27-10-2026) ═══
+   Uit de scenario's in tp3:plans: hoe vaak komen je scenario's uit, hoe vaak neem je ze (voorspel-score,
+   besluit 19), en wat leveren live-trades binnen het plan (in Scenario.trades) tegenover buiten het plan.
+   "Buiten plan" telt vanaf je eerste plan-dag: trades van vóór je met plannen begon zeggen er niets over.
+   Cijfers altijd met n; een observatiezin alleen bij ≥ PLAN_MIN trades en groepen van ≥ PLAN_MIN_GROEP die
+   ≥ PLAN_MIN_VERSCHIL R uit elkaar liggen, en dan als observatie, nooit als bevel. */
 const PLAN_MIN=30,PLAN_MIN_GROEP=10,PLAN_MIN_VERSCHIL=0.3;
 const TEND_TABS=[['sessie','Per sessie'],['setup','Per playbook'],['grade','Per grade'],['emotie','Per emotie'],['plan','Plan']];
-function planStat(list){const w=list.filter(t=>t.pnl>0).length,rs=list.map(tradeR),avg=list.length?rs.reduce((a,c)=>a+c,0)/list.length:0;return {n:list.length,wr:list.length?Math.round(w/list.length*100):0,avg};}
+// R alleen van trades met een stop (gemR): 0 is niet "onbekend" (CLAUDE.md).
+function planStat(list){const w=list.filter(t=>t.pnl>0).length,g=gemR(list);return {n:list.length,wr:list.length?Math.round(w/list.length*100):0,avg:g.n?g.avg:null,rN:g.n,net:list.reduce((a,t)=>a+(+t.pnl||0),0)};}
 function planGroupRows(groups,kleur){   // groups: [[label,trades,color?]]
-  const rows=groups.filter(g=>g[1].length).map(g=>{const st=planStat(g[1]);return {label:g[0],n:st.n,avg:st.avg,wr:st.wr,color:g[2]||kleur||'var(--accent)'};});
-  return rows;
+  return groups.filter(g=>g[1].length).map(g=>{const st=planStat(g[1]);return {label:g[0],n:st.n,avg:st.avg,wr:st.wr,net:st.net,color:g[2]||kleur||'var(--accent)'};});
 }
 function planRowsHtml(rows){
   if(!rows.length)return emptyState('plan-snede','regel');
-  return hbars(rows.map(r=>({label:r.label,val:r.wr,disp:`<b class="${cls(r.avg)}">${(r.avg>=0?'+':'')+r.avg.toFixed(2).replace('.',',')}R</b>`,color:r.color,sub:`n=${r.n} · win-rate ${r.wr}%`})));
+  return hbars(rows.map(r=>({label:r.label,val:r.wr,disp:r.avg==null?'<b>–</b>':`<b class="${cls(r.avg)}">${rS(r.avg)}</b>`,color:r.color,sub:`n=${r.n} · win-rate ${r.wr}% · ${eurS(r.net)}`})));
 }
 function planObservatie(rows,tot,wat){
   if(tot<PLAN_MIN)return '';
-  const ok=rows.filter(r=>r.n>=PLAN_MIN_GROEP);if(ok.length<2)return '';
+  const ok=rows.filter(r=>r.n>=PLAN_MIN_GROEP&&r.avg!=null);if(ok.length<2)return '';
   const best=ok.reduce((a,b)=>b.avg>a.avg?b:a),worst=ok.reduce((a,b)=>b.avg<a.avg?b:a);
   if(best.avg-worst.avg<PLAN_MIN_VERSCHIL)return '';
-  const f=v=>(v>=0?'+':'')+v.toFixed(2).replace('.',',')+'R';
-  return `<div class="plan-obs">${wat} <b>${esc(worst.label)}</b> ${worst.avg<0?'kosten je':'leveren'} <b class="${cls(worst.avg)}">${f(worst.avg)}</b> per trade (${worst.n} trades); <b>${esc(best.label)}</b> ${best.avg<0?'kosten':'leveren'} <b class="${cls(best.avg)}">${f(best.avg)}</b> (${best.n}). Verschil ${f(best.avg-worst.avg)}.</div>`;
+  return `<div class="plan-obs">${wat} <b>${esc(worst.label)}</b> ${worst.avg<0?'kosten je':'leveren'} <b class="${cls(worst.avg)}">${rS(worst.avg)}</b> per trade (${worst.n} trades); <b>${esc(best.label)}</b> ${best.avg<0?'kosten':'leveren'} <b class="${cls(best.avg)}">${rS(best.avg)}</b> (${best.n}). Verschil ${rS(best.avg-worst.avg)}.</div>`;
 }
 function planTendencies(){
-  const P=planLoad(),recs=new Map((P.trades||[]).map(r=>[String(r.id),r]));
-  const alle=CLOSED.filter(t=>isLive(t));
-  const gek=alle.filter(t=>t.planRef&&t.planRef!=='none'&&recs.has(String(t.planRef)));
-  const zonder=alle.filter(t=>!(t.planRef&&t.planRef!=='none'&&recs.has(String(t.planRef))));
+  const P=planLoad(),dagen=Object.values(P.plans.days).filter(d=>d&&d.id),sc=dagen.flatMap(d=>(d.scenarios||[]).filter(Boolean));
   const sub=`<div class="subtabs" id="tendTabs">${TEND_TABS.map(([k,l])=>`<button data-t="${k}" class="${STATE.tend===k?'on':''}">${l}</button>`).join('')}</div>`;
   const kop=(t,d)=>`<div class="phead"><h3>${t}</h3><span class="sp"></span><span class="chip">${d}</span></div>`;
-  if(!(P.trades||[]).length)return `${filterBar()}<div class="panel">${kop('Plan','TradingPlan')}<div class="pbody">${sub}</div>${emptyState('plan-leeg','in')}</div>`;
-  const rec=t=>recs.get(String(t.planRef));
-  const tot=gek.length;
-  const drempel=tot<PLAN_MIN?`<div class="plan-weinig">📊 Nog te weinig data voor conclusies: <b>${tot} van ${PLAN_MIN}</b> gekoppelde trades. De cijfers hieronder zijn nog toeval, geen patroon.</div>`:'';
-  // 1 uitvoering
-  const r1=planGroupRows([['Volle size',gek.filter(t=>rec(t).exec==='VOL'),'var(--green)'],['Halve size',gek.filter(t=>rec(t).exec==='HALF'),'var(--amber)'],['Regelbreuk',gek.filter(t=>rec(t).exec==='NO'),'var(--red)']]);
-  // 2 setup-type
-  const r2=planGroupRows([['A-setup',gek.filter(t=>rec(t).setup==='A'),'var(--green)'],['B-setup',gek.filter(t=>rec(t).setup==='B'),'var(--teal)'],['C-setup',gek.filter(t=>rec(t).setup==='C'),'var(--red)'],['Setup onbekend',gek.filter(t=>!rec(t).setup),'var(--muted)']]);
-  // 3 gemiste checks (alleen genomen trades met een open punt)
-  const lbl=k=>{const it=(P.cfg.pt||[]).find(i=>i.k===k);return it?it.t:k;};
-  const perMis={};gek.forEach(t=>{(rec(t).missing||[]).forEach(k=>{(perMis[k]=perMis[k]||[]).push(t);});});
-  const r3=planGroupRows(Object.keys(perMis).map(k=>[lbl(k),perMis[k],'var(--red)'])).sort((a,b)=>a.avg-b.avg);
-  // 4 zonder poort
-  const r4=planGroupRows([['Met poort-beoordeling',gek,'var(--green)'],['Zonder poort',zonder,'var(--amber)']]);
-  // 5 plan gevolgd: per dag met een afsluiting, de R van die dag
-  const perDag={};alle.forEach(t=>{const d=t.date;if(!d)return;(perDag[d]=perDag[d]||[]).push(t);});
-  const dagen={ja:[],deels:[],nee:[],geen:[]};
-  Object.keys(perDag).forEach(d=>{const pl=P.plans['dag-'+d],c=pl&&pl.close&&pl.close.saved?pl.close.gevolgd:null;const R=perDag[d].reduce((a,t)=>a+tradeR(t),0);const key=c==='ja'||c==='deels'||c==='nee'?c:'geen';dagen[key].push({pnl:R,r:R,_dag:d});});
-  const r5=[['Plan gevolgd',dagen.ja,'var(--green)'],['Deels gevolgd',dagen.deels,'var(--amber)'],['Niet gevolgd',dagen.nee,'var(--red)'],['Geen afsluiting',dagen.geen,'var(--muted)']].filter(g=>g[1].length).map(g=>{const n=g[1].length,w=g[1].filter(x=>x.r>0).length,avg=g[1].reduce((a,x)=>a+x.r,0)/n;return {label:g[0],n,wr:Math.round(w/n*100),avg,color:g[2]};});
-  const blok=(t,d,rows,obs)=>`<div class="panel">${kop(t,d)}<div class="pbody">${planRowsHtml(rows)}${obs}</div></div>`;
+  if(!sc.length)return `${filterBar()}<div class="panel">${kop('Plan','TradingPlan')}<div class="pbody">${sub}</div>${emptyState('plan-leeg','in')}</div>`;
+  // voorspel-score: uitgekomen = genomen + gemist, van alles wat niet meer open staat; ongeldig = niet uitgekomen
+  const tel=k=>sc.filter(s=>s.status===k).length,gen=tel('genomen'),gem=tel('gemist'),open=tel('open'),beslist=sc.length-open,uit=gen+gem;
+  const perId=new Map(T.filter(Boolean).map(t=>[String(t.id),t])),van=s=>(s.trades||[]).map(id=>perId.get(String(id))).filter(Boolean);
+  const gemR=aggR(sc.filter(s=>s.status==='gemist').flatMap(van));
+  const pc=v=>Math.round(v)+'%';
+  const score=!beslist?'Nog geen afgeronde scenario\'s. Zet in Plan na de sessie per scenario de status.'
+    :`Je scenario's komen in <b>${pc(uit/beslist*100)}</b> uit. Daarvan neem je <b>${uit?pc(gen/uit*100):'–'}</b>.`+(gemR.n?` De gemiste waren samen <b class="${cls(gemR.sum)}">${rS(gemR.sum)}</b>.`:'');
+  // binnen tegenover buiten plan: live, gesloten trades (filters van de pagina gelden), vanaf de eerste plan-dag
+  const gekoppeld=new Set(sc.flatMap(s=>(s.trades||[]).map(String))),eerste=dagen.map(d=>d.id).sort()[0];
+  const alle=CLOSED.filter(t=>isLive(t)&&planTradeDag(t)>=eerste);
+  const binnen=alle.filter(t=>gekoppeld.has(String(t.id))),buiten=alle.filter(t=>!gekoppeld.has(String(t.id)));
+  const rows=planGroupRows([['Binnen plan',binnen,'var(--green)'],['Buiten plan',buiten,'var(--amber)']]),bu=aggR(buiten),bnet=buiten.reduce((a,t)=>a+(+t.pnl||0),0);
+  const zin=buiten.length?`Buiten plan ${bnet<0?'kostte':'leverde'} je ${bu.n?rS(bu.sum):'–'} (${eurS(bnet)})${bnet<0?'':' op'}, over ${buiten.length} trade${buiten.length===1?'':'s'} sinds ${fmtD(eerste)}.`:'Geen trades buiten plan sinds '+fmtD(eerste)+'.';
+  const tot=alle.length,stat=[['Genomen',gen,'var(--green)'],['Uitgekomen, niet genomen',gem,'var(--amber)'],['Niet uitgekomen',tel('niet'),'var(--muted)'],['Ongeldig',tel('ongeldig'),'var(--red)'],['Nog open',open,'var(--accent)']].filter(x=>x[1]);
   return `${filterBar()}
-    <div class="sect-h">Plan, wat je poort over je trades zegt</div>
-    <div class="panel"><div class="phead"><h3>TradingPlan-koppeling</h3><span class="sp"></span><span class="chip">${tot} gekoppeld · ${zonder.length} zonder poort</span>${sub}</div>
-      <div class="pbody">${drempel||`<div class="hint">${tot} gekoppelde trades. Observaties verschijnen bij groepen van ≥${PLAN_MIN_GROEP} trades die ≥${PLAN_MIN_VERSCHIL.toFixed(1).replace('.',',')}R uit elkaar liggen.</div>`}</div></div><div style="height:13px"></div>
-    <div class="grid" style="grid-template-columns:1fr 1fr;align-items:start">
-      ${blok('Uitvoering','volle size · halve size · regelbreuk',r1,planObservatie(r1,tot,'Je trades met'))}
-      ${blok('Setup-type','uit je playbook, gekozen in de poort',r2,planObservatie(r2,tot,'Je'))}
-      ${blok('Gemiste checks','welk open punt kost je geld',r3,planObservatie(r3,tot,'Trades zonder'))}
-      ${blok('Met of zonder poort','trades die de route oversloegen',r4,planObservatie(r4,tot,'Je trades'))}
-    </div><div style="height:13px"></div>
-    ${blok('Plan gevolgd','uit je dagafsluiting · R per dag',r5,r5.length>=2&&tot>=PLAN_MIN?planObservatie(r5,tot,'Dagen'):'')}`;
+    <div class="sect-h">Plan, je scenario's tegenover je trades</div>
+    <div class="panel"><div class="phead"><h3>Voorspel-score</h3><span class="sp"></span><span class="chip">${sc.length} scenario's · ${dagen.length} ${dagen.length===1?'dag':'dagen'}</span>${sub}</div>
+      <div class="pbody"><div style="font-size:15px;line-height:1.55">${score}</div>
+        ${hbars(stat.map(([l,n,c])=>({label:l,val:n/sc.length*100,disp:'<b>'+n+'</b>',color:c,sub:Math.round(n/sc.length*100)+'% van je scenario\'s'})))}</div></div><div style="height:13px"></div>
+    <div class="panel">${kop('Binnen tegenover buiten plan','live-trades · in R én geld')}<div class="pbody">${tot<PLAN_MIN?`<div class="plan-weinig">📊 Nog te weinig data voor conclusies: <b>${tot} van ${PLAN_MIN}</b> trades sinds je eerste plan. De cijfers hieronder zijn nog toeval, geen patroon.</div>`:''}
+      ${planRowsHtml(rows)}<div class="hint" style="margin-top:8px">${zin}</div>${planObservatie(rows,tot,'Je trades')}</div></div>`;
 }
 function pgTendencies(){
   if(STATE.tend==='plan')return planTendencies();
@@ -5334,7 +5334,7 @@ let pbEditOrig='',pbForm={},pbCrit=[],pbAnti=[],pbExamples=[];
 function openPbEdit(setup){pbEditOrig=setup||'';const isNew=!setup;const pb=isNew?{...EMPTY_PB}:(PBOOK[setup]||{...EMPTY_PB,name:setup});
   pbForm={...EMPTY_PB,...pb};
   formLayers=(pb.layers||[]).map(L=>({timeframe:L.timeframe||'',bias:L.bias||'',setups:[...(L.setups||[])],confirmations:[...(L.confirmations||[])]}));
-  pbCrit=(pb.criteria||[]).map(c=>({text:c.text,mandatory:!!c.mandatory,covers:c.covers||''}));
+  pbCrit=(pb.criteria||[]).map(c=>({text:c.text,mandatory:!!c.mandatory,covers:c.covers||''}));   // covers: the plan-v2 gate point; no longer shown, kept so old data survives
   pbAnti=(pb.antiCriteria||[]).map(c=>({text:c.text,mandatory:!!c.mandatory}));
   pbExamples=[...(pb.examples||[])];
   const statusPills=PB_STATUS.map(([k,l,c])=>`<button type="button" class="biaspill ${pbForm.status===k?'on':''}" style="--bc:${c}" onclick="setPbField('status','${k}',this)">${l}</button>`).join('');
@@ -5382,12 +5382,7 @@ function openPbEdit(setup){pbEditOrig=setup||'';const isNew=!setup;const pb=isNe
 function setPbField(k,v,btn){pbForm[k]=v;if(btn){[...btn.parentElement.children].forEach(b=>b.classList.remove('on'));btn.classList.add('on');}}
 function setPbGrade(g){pbForm.defaultGrade=pbForm.defaultGrade===g?'':g;document.querySelectorAll('#pb_grade button').forEach(b=>b.classList.toggle('on',b.textContent===pbForm.defaultGrade));}
 function togPbSession(s){const a=pbForm.sessions=pbForm.sessions||[];const i=a.indexOf(s);if(i<0)a.push(s);else a.splice(i,1);document.querySelectorAll('#pb_sessions .tagopt').forEach(el=>el.classList.toggle('on',(pbForm.sessions||[]).includes(el.textContent)));}
-/* Vaste poort-punten uit TradingPlan (of de standaardlijst): een verplicht criterium kan er één
-   dekken, zodat het in de poort één vinkje wordt in plaats van twee. Harde stops zijn nooit te dekken. */
-const PLAN_PT_STD=[['trend','Trend mee'],['zone','Prijs in HP-zone'],['trigger','Trigger uit de lijst'],['sl','SL op logisch level'],['rr','Minimaal 2R naar TP1']];
-function planPtOpties(){const pt=(planLoad().cfg||{}).pt;const lijst=Array.isArray(pt)&&pt.length?pt.filter(p=>p&&p.k&&p.t&&!p.hard).map(p=>[String(p.k),String(p.t)]):PLAN_PT_STD;return lijst;}
-function critRow(list,i,fn){const c=list[i];const cov=fn==='pbCrit'?`<select class="critcov ${c.covers?'on':''}" title="Dekt dit criterium een vast punt van de poort in TradingPlan?" onchange="pbCritCov(${i},this.value)"><option value="">dekt poort-punt…</option>${planPtOpties().map(([k,t])=>`<option value="${esc(k)}" ${c.covers===k?'selected':''}>${esc(t)}</option>`).join('')}</select>`:'';return `<div class="critrow"><button type="button" class="critreq ${c.mandatory?'on':''}" title="verplicht aan/uit" onclick="${fn}Req(${i})">${c.mandatory?'★':'☆'}</button><input class="critin" value="${esc(c.text)}" placeholder="bv. Sweep van de vorige high" oninput="${fn}Txt(${i},this.value)">${cov}<button type="button" class="xlayer" onclick="${fn}Rm(${i})">×</button></div>`;}
-function pbCritCov(i,v){pbCrit[i].covers=v||'';const el=document.querySelectorAll('#pbcrit .critcov')[i];if(el)el.classList.toggle('on',!!v);}
+function critRow(list,i,fn){const c=list[i];return `<div class="critrow"><button type="button" class="critreq ${c.mandatory?'on':''}" title="verplicht aan/uit" onclick="${fn}Req(${i})">${c.mandatory?'★':'☆'}</button><input class="critin" value="${esc(c.text)}" placeholder="bv. Sweep van de vorige high" oninput="${fn}Txt(${i},this.value)"><button type="button" class="xlayer" onclick="${fn}Rm(${i})">×</button></div>`;}
 function renderPbCrit(){const c=document.getElementById('pbcrit');if(!c)return;c.innerHTML=pbCrit.length?`<div class="critlist">${pbCrit.map((_,i)=>critRow(pbCrit,i,'pbCrit')).join('')}</div>`:emptyState('pb-crit','regel');}
 function addPbCrit(){pbCrit.push({text:'',mandatory:false});renderPbCrit();}
 function pbCritTxt(i,v){pbCrit[i].text=v;}
@@ -5471,7 +5466,7 @@ function playbookDetail(setup){
   const stC2=pb.status==='active'?'var(--green)':pb.status==='testing'?'var(--amber)':'var(--muted)',stL2=pb.status==='active'?'Actief':pb.status==='testing'?'Testen':'Archief';
   const pbOverview=`${pb.oneLiner?`<div style="font-size:13px;color:var(--ink2);margin-bottom:13px;font-style:italic">"${esc(pb.oneLiner)}"</div>`:''}
     ${layerSummary?`<div class="pbsec"><div class="pbsec-h">Setup-lagen</div>${layerSummary}</div>`:''}
-    <div class="pbsec"><div class="pbsec-h">Entry-criteria <span style="color:var(--muted);font-weight:400">· wanneer WEL</span></div>${critList.length?critList.map(c=>`<div class="rl"><span style="color:var(--green);font-weight:800;flex:none">✓</span><span>${c.mandatory?'<b style="color:var(--amber)">★</b> ':''}${esc(c.text)}${c.covers?` <span style="color:var(--muted);font-size:11px">· dekt poort-punt "${esc((planPtOpties().find(o=>o[0]===c.covers)||[c.covers,c.covers])[1])}"</span>`:''}</span></div>`).join(''):'<div class="rl" style="color:var(--muted)">Nog geen criteria, klik ✎ Bewerken</div>'}</div>
+    <div class="pbsec"><div class="pbsec-h">Entry-criteria <span style="color:var(--muted);font-weight:400">· wanneer WEL</span></div>${critList.length?critList.map(c=>`<div class="rl"><span style="color:var(--green);font-weight:800;flex:none">✓</span><span>${c.mandatory?'<b style="color:var(--amber)">★</b> ':''}${esc(c.text)}</span></div>`).join(''):'<div class="rl" style="color:var(--muted)">Nog geen criteria, klik ✎ Bewerken</div>'}</div>
     ${antiList.length?`<div class="pbsec"><div class="pbsec-h" style="color:var(--red)">Anti-criteria <span style="color:var(--muted);font-weight:400">· wanneer NIET</span></div>${antiList.map(c=>`<div class="rl"><span style="color:var(--red);font-weight:800;flex:none">✕</span><span>${esc(c.text)}</span></div>`).join('')}</div>`:''}
     ${(pb.stop||pb.target||pb.minRR)?`<div class="pbsec"><div class="pbsec-h">Risk</div><div class="pbsec-txt">${pb.stop?`<div><span class="pbk-l">Stop</span> ${esc(pb.stop)}</div>`:''}${pb.target?`<div><span class="pbk-l">Target</span> ${esc(pb.target)}</div>`:''}${pb.minRR?`<div><span class="pbk-l">Min R:R</span> ${esc(pb.minRR)}</div>`:''}</div></div>`:''}
     ${(pb.bigPicture||pb.tape||pb.intuition)?`<div class="pbsec"><div class="pbsec-h">Markt-context</div><div class="pbsec-txt">${pb.bigPicture?`<div>📊 ${esc(pb.bigPicture)}</div>`:''}${pb.tape?`<div>🌊 ${esc(pb.tape)}</div>`:''}${pb.intuition?`<div>💡 ${esc(pb.intuition)}</div>`:''}</div></div>`:''}
@@ -6466,7 +6461,7 @@ function coachPakket(opts){
   return {tekst:L.join('\n'),n:rows.length};
 }
 /* ── Pre-trade check: what the member's own data and rules say about a trade idea ──
-   The journal computes the planned R:R and the stop distance; TradingPlan is read only (tp2:*), like planMatch. */
+   The journal computes the planned R:R and the stop distance; TradingPlan is read only (tp3:*), like planSync. */
 function coachIsoWeek(iso){const [y,m,d]=String(iso).split('-').map(Number);const t=new Date(Date.UTC(y,m-1,d)),day=t.getUTCDay()||7;t.setUTCDate(t.getUTCDate()+4-day);
   const y0=new Date(Date.UTC(t.getUTCFullYear(),0,1));return t.getUTCFullYear()+'-W'+String(Math.ceil(((t-y0)/864e5+1)/7)).padStart(2,'0');}
 function coachGetal(v){const n=parseFloat(String(v==null?'':v).replace(',','.'));return isFinite(n)?n:null;}
@@ -6479,15 +6474,20 @@ function coachIdeeCijfers(i){const e=coachGetal(i.entry),st=coachGetal(i.stop),t
   if(i.dir==='short'&&st<e)return {fout:'Bij een short hoort de stop boven de entry.'};
   if(tp!=null&&tp>0&&(i.dir==='long'?tp<=e:tp>=e))return {fout:'Bij een '+i.dir+' hoort de TP '+(i.dir==='long'?'boven':'onder')+' de entry.'};
   return {rr:tp>0?Math.abs(tp-e)/Math.abs(e-st):null,stopPct:Math.abs(e-st)/e*100};}
-function coachPlanRegels(dir){const P=planLoad(),wk=P.plans['week-'+coachIsoWeek(localDateISO())],pb=(P.cfg&&P.cfg.pb)||null,max=(P.cfg&&P.cfg.max)||null,L=[];
-  if(!wk&&!pb)return ['- Geen TradingPlan-gegevens gevonden op dit apparaat.'];
-  if(wk){L.push('Weekplan '+coachIsoWeek(localDateISO())+':');
-    [['Bias',wk.bias],['Focus',wk.focus],['Max trades deze week',wk.maxtrades],['Nieuws',wk.news],['Range / levels',wk.range||wk.levels]].forEach(([k,v])=>{if(v)L.push('- '+k+': '+String(v).replace(/\s+/g,' ').trim());});
-    const nt=String(wk.notrade||'').split('\n').map(x=>x.trim()).filter(Boolean);if(nt.length)L.push('- Niet traden: '+nt.join(' / '));}
+// Wat TradingPlan v3 over vandaag zegt: het weekplan (lagen, focus, no-trade, levels), de scenario's van vandaag
+// in deze richting en het risico per grade. Alleen lezen (tp3:*), net als planSync.
+function coachPlanRegels(dir){const P=planLoad(),vd=PLAN_AMS.format(new Date()),wid=coachIsoWeek(vd),wk=P.plans.weeks[wid],dag=P.plans.days[vd],risk=planObj(P.cfg.risk)?P.cfg.risk:null,L=[];
+  const regel=v=>String(v==null?'':v).replace(/\s+/g,' ').trim();
+  if(!wk&&!dag&&!risk)return ['- Geen TradingPlan-gegevens gevonden op dit apparaat.'];
+  if(wk){L.push('Weekplan '+wid+':');
+    const lagen=(wk.layers||[]).filter(l=>l&&l.tf).map(l=>l.tf+(l.bias?' '+l.bias:'')+([...(l.setups||[]),...(l.confirmations||[])].length?': '+[...(l.setups||[]),...(l.confirmations||[])].join(', '):''));
+    if(lagen.length)L.push('- Lagen: '+lagen.join(' · '));
+    [['Focus',wk.focus],['Niet traden / nieuws',wk.noTrade],['Levels',wk.levels]].forEach(([k,v])=>{if(regel(v))L.push('- '+k+': '+regel(v));});}
   else L.push('- Geen weekplan voor deze week.');
-  if(pb){const r=pb[dir];if(r)L.push('Vaste regels voor een '+dir+':',...String(r).split('\n').map(x=>x.trim()).filter(Boolean).map(x=>'- '+x.replace(/^[•!]\s*/,'')));
-    if(pb.extra)L.push('Extra en valkuilen:',...String(pb.extra).split('\n').map(x=>x.trim()).filter(x=>x&&/^[•!]/.test(x)).map(x=>'- '+x.replace(/^[•!]\s*/,'')));}
-  if(max)L.push('- Max risico per grade: '+['A','B','C'].filter(g=>max[g]!=null).map(g=>g+' '+String(max[g]).replace('.',',')+'%').join(', '));
+  if(dag){const sc=(dag.scenarios||[]).filter(s=>s&&s.dir===dir);
+    if(dag.mental)L.push('- Mentaal vandaag: '+dag.mental+'/5');
+    L.push(sc.length?'Scenario\'s vandaag ('+dir+'):':'- Geen scenario\'s vandaag voor een '+dir+'.',...sc.map(s=>'- '+regel(s.title)+(s.pb?' · '+s.pb:'')+' · grade '+(s.grade||'?')+' · '+(s.status||'open')+(s.trigger?' · als '+regel(s.trigger):'')+(s.invalid?' · ongeldig als '+regel(s.invalid):'')));}
+  if(risk)L.push('- Risico per grade: '+['A','B','C'].filter(g=>risk[g]!=null).map(g=>+risk[g]?g+' '+String(+risk[g]).replace('.',',')+'%':g+' niet traden').join(', '));
   return L;}
 function coachPretradeDeel(rows,o){const i=o.idee||{},c=coachIdeeCijfers(i),L=[];
   L.push('','# Trade-idee (ingevuld door de trader, nog niet genomen)',
@@ -7042,7 +7042,13 @@ function setPctRef(v){STATE.pctRef=Math.max(0,+v||0);persistState();render();}
 /* trades CRUD + import/export */
 // Volledige staat-payload — gedeeld door export, snapshots en herstel.
 // Without exchange keys unless asked (F12): automatic back-ups, Drive, the map and snapshots never carry them.
-function planBackupBlock(){const o={};let any=false;Object.keys(PLAN_LS).forEach(k=>{try{const v=localStorage.getItem(PLAN_LS[k]);if(v!=null){o[k]=v;any=true;}}catch(e){}});return any?o:null;}
+/* Back-upblok "tradingplan" (plan v3): tp3:plans en tp3:cfg als hun JSON-tekst, en de plaatjes uit IndexedDB tp3
+   als {id: data-URL}, zodat er bij een browserwissel niets verloren gaat (besluit 15). tp2:* gaat niet meer mee. */
+function planBackupBlock(){let plans=null,cfg=null;try{plans=localStorage.getItem(TP3.plans);cfg=localStorage.getItem(TP3.cfg);}catch(e){}
+  if(plans==null&&cfg==null)return null;
+  const imgs={};planImgIds(planLoad().plans).forEach(id=>{if(PLAN_IMG[id])imgs[id]=PLAN_IMG[id];});
+  return {v:3,plans:plans||JSON.stringify({v:1,weeks:{},days:{}}),cfg:cfg||'{}',imgs};}
+const planBlokV3=b=>!!b&&typeof b==='object'&&b.v===3&&typeof b.plans==='string';
 function snapshotPayload(metSleutels){ return {app:'SyncJournal',appVersion:APP_VERSION,schemaVersion:DB.load('schema',SCHEMA_VERSION),exported:new Date().toISOString(),tradingplan:planBackupBlock(),tagConfig,pbook:PBOOK,conns:metSleutels===true?CONNS:dovStripKeys(CONNS),manual:MANUAL,funded:FUNDED,sync:SYNC,synclog:syncLog(),aiPrefs:AIPREFS,view:{preset:VIEW.preset,v:VIEW.v},exMeta:Object.fromEntries(EXCHANGES.map(e=>[e.id,{val:e.val,acct:e.acct}])),settings:{theme:STATE.theme,currency:STATE.currency,priv:STATE.priv,density:STATE.density,funded:!!STATE.funded,fundedMee:!!STATE.fundedMee},trades:T,trash:TRASH}; }
 // Zet een volledige backup-payload (nieuw formaat) terug in de live-staat.
 /* Binnenkomende trades veilig maken (audit 2026-09-18): één ontbrekend date-veld in een
@@ -7141,7 +7147,10 @@ function applyBackup(d){
   if(d.sync){SYNC=d.sync;persistSync();}
   if(d.aiPrefs){AIPREFS={...AIPREFS,...d.aiPrefs,focus:{...AIPREFS.focus,...(d.aiPrefs.focus||{})}};persistAIPrefs();}
   adoptViewBackup(d);adoptExMeta(d);
-  if(d.tradingplan&&typeof d.tradingplan==='object'){Object.keys(PLAN_LS).forEach(k=>{if(typeof d.tradingplan[k]==='string'){try{localStorage.setItem(PLAN_LS[k],d.tradingplan[k]);}catch(e){}}});}   // TradingPlan-blok terugzetten (tekst; screenshots via TradingPlans eigen back-up)
+  if(planBlokV3(d.tradingplan)){const b=d.tradingplan;   // TradingPlan terugzetten; een oud v2-blok (tp2) wordt niet meer gelezen
+    try{JSON.parse(b.plans);localStorage.setItem(TP3.plans,b.plans);}catch(e){}
+    if(typeof b.cfg==='string'){try{JSON.parse(b.cfg);localStorage.setItem(TP3.cfg,b.cfg);}catch(e){}}
+    planImgZet(b.imgs);}
   if(d.settings){STATE.theme=d.settings.theme||STATE.theme;STATE.currency=d.settings.currency||STATE.currency;STATE.priv=!!d.settings.priv;STATE.density=d.settings.density||STATE.density;document.body.classList.toggle('dark',STATE.theme==='dark');document.body.classList.toggle('priv',STATE.priv);}
   if(d.settings&&'funded' in d.settings){STATE.funded=!!d.settings.funded;STATE.fundedMee=!!d.settings.fundedMee;}
   persistState();persist();render();
@@ -7550,8 +7559,10 @@ function dovDescribe(d){
   out.settings={present:has('settings')||has('view'),count:1,sub:[st.theme?'thema '+(st.theme==='dark'?'donker':'licht'):'',st.currency||'',vw.preset?'weergave '+vw.preset:''].filter(Boolean).join(' · ')||'thema, valuta, weergave'};
   const ai=d.aiPrefs||{};
   out.ai={present:has('aiPrefs'),count:1,sub:ai.tone?'toon '+ai.tone+(ai.focus?' · focus '+Object.keys(ai.focus).filter(k=>ai.focus[k]).join(', '):''):'toon en focus'};
-  let plans=0,recs=0;try{const tp=d.tradingplan||{};plans=Object.keys(JSON.parse(tp.plans||'{}')).length;recs=(JSON.parse(tp.trades||'[]')||[]).length;}catch(e){}
-  out.plan={present:has('tradingplan'),count:plans+recs,sub:has('tradingplan')?plans+' plannen · '+recs+' poort-beoordelingen · checklists en regels (screenshots zitten in TradingPlans eigen back-up)':'geen TradingPlan-gegevens'};
+  let plans=0,scens=0,imgs=0;const v3=planBlokV3(d.tradingplan);
+  if(v3){try{const pl=JSON.parse(d.tradingplan.plans)||{},dg=Object.values(pl.days||{});plans=Object.keys(pl.weeks||{}).length+dg.length;scens=dg.reduce((n,x)=>n+((x&&x.scenarios)||[]).length,0);imgs=Object.keys(d.tradingplan.imgs||{}).length;}catch(e){}}
+  const mv=(n,een,meer)=>n+' '+(n===1?een:meer);
+  out.plan={present:v3,count:plans,sub:v3?mv(plans,'plan','plannen')+' · '+mv(scens,'scenario',"scenario's")+' · '+mv(imgs,'afbeelding','afbeeldingen'):'geen TradingPlan-gegevens'};
   DOV_PARTS.forEach(p=>{out[p.k].bytes=p.keys.reduce((n,k)=>n+dovBytes(d[k]),0);});
   return out;
 }
@@ -7740,16 +7751,16 @@ function diagSignals(){
 async function diagReport(){
   const ts=(T||[]).filter(t=>t&&typeof t==='object'),cnt=(f)=>ts.filter(f).length,by=(f)=>{const o={};ts.forEach(t=>{const k=f(t)||'geen';o[k]=(o[k]||0)+1;});return o;};
   const dates=ts.map(t=>t.date).filter(Boolean).sort();
-  const lsSizes={};try{for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(/^(sj_|tp2:|tj_)/.test(k)&&!AI_LOKAAL.includes(k))lsSizes[k]=(localStorage.getItem(k)||'').length;}}catch(e){}
+  const lsSizes={};try{for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(/^(sj_|tp3:|tj_)/.test(k)&&!AI_LOKAAL.includes(k))lsSizes[k]=(localStorage.getItem(k)||'').length;}}catch(e){}
   const idb={};for(const k of ['trades','trash','pbook','snapshots']){try{idb[k]=dovBytes(await IDB.get(k));}catch(e){idb[k]='?';}}
   let est=DIAG_EST;try{if(navigator.storage&&navigator.storage.estimate){const e=await navigator.storage.estimate();est={usage:e.usage||0,quota:e.quota||0};DIAG_EST=est;}}catch(e){}
   let worker={url:'',reachable:null,ms:null,status:null};
   try{const url=getProxyUrl();worker.url=String(url||'').replace(/^(https?:\/\/[^\/]{6})[^\/]*/,'$1…');if(url){const ac=new AbortController(),t0=Date.now(),to=setTimeout(()=>ac.abort(),3000);try{const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}',signal:ac.signal});worker.reachable=true;worker.status=r.status;worker.ms=Date.now()-t0;}catch(e){worker.reachable=false;worker.ms=Date.now()-t0;}clearTimeout(to);}}catch(e){}
-  let plan={aanwezig:false};try{const P=planLoad();plan={aanwezig:!!(P.trades.length||Object.keys(P.plans).length),plans:Object.keys(P.plans).length,records:P.trades.length,gekoppeld:ts.filter(t=>t.planRef&&t.planRef!=='none').length,matchMin:P.cfg.matchMin||null};}catch(e){}
+  let plan={aanwezig:false};try{const P=planLoad(),dg=Object.values(P.plans.days);plan={aanwezig:!!(dg.length||Object.keys(P.plans.weeks).length),weken:Object.keys(P.plans.weeks).length,dagen:dg.length,scenarios:dg.reduce((n,x)=>n+((x&&x.scenarios)||[]).length,0),afbeeldingen:planImgIds(P.plans).length,gekoppeld:ts.filter(t=>planScenRef(t)).length,buiten_plan:ts.filter(t=>t.planRef==='none').length};}catch(e){}
   const seen={},dup=[];ts.forEach(t=>{if(!t.srcId)return;const k=String(t.srcId);if(seen[k])dup.push(k);seen[k]=1;});
   return {
     app:{loaded:APP_VERSION,hosted:UPDATE.remote||null,schema:SCHEMA_VERSION,schemaStored:DB.load('schema',null),host:(()=>{try{return location.host||location.protocol;}catch(e){return '?';}})(),hosted_flag:IS_HOSTED,ua:navigator.userAgent,browser:diagBrowser(),lang:navigator.language,tz:(()=>{try{return Intl.DateTimeFormat().resolvedOptions().timeZone;}catch(e){return '?';}})(),when:new Date().toISOString(),tab_stale:TAB_STALE},
-    opslag:{usage:est?est.usage:null,quota:est?est.quota:null,pct:est&&est.quota?+(est.usage/est.quota*100).toFixed(2):null,persisted:PERSISTED,idb,localStorage:lsSizes,tj_oud_aanwezig:!!TJMigrate.detect(),tp2:plan},
+    opslag:{usage:est?est.usage:null,quota:est?est.quota:null,pct:est&&est.quota?+(est.usage/est.quota*100).toFixed(2):null,persisted:PERSISTED,idb,localStorage:lsSizes,tj_oud_aanwezig:!!TJMigrate.detect(),tp3:plan},
     data:{trades:ts.length,status:by(t=>t.status),kind:by(t=>t.kind||'live'),exchange:by(t=>t.exchange),met_srcId:cnt(t=>t.srcId),met_fills:cnt(t=>(t.fills||[]).length),met_tps:cnt(t=>(t.tps||[]).length),met_screenshots:cnt(t=>(t.screenshots||[]).length),datumbereik:dates.length?[dates[0],dates[dates.length-1]]:null,zonder_datum:cnt(t=>!t.date),zonder_pnl:cnt(t=>!isFinite(+t.pnl)),zonder_openTime:cnt(t=>!(+t.openTime>0)),dubbele_srcId:dup.slice(0,10),trash:(TRASH||[]).length,playbooks:Object.keys(PBOOK||{}).length,tags:Object.values(tagConfig||{}).reduce((n,a)=>n+(Array.isArray(a)?a.length:0),0),manual:(MANUAL||[]).map(m=>({name:m.name,tx:(m.transactions||[]).length})),snapshots:(SNAP_META||[]).map(s=>({label:s.label,ts:s.ts,trades:s.trades})),migrated_from_tj:DB.load('migrated_from_tj',null),last_import:DB.load('last_import',null),demo_loaded:!!DB.load('demo_loaded',null)},
     sync:{log:syncLog().slice(0,20),interval:SYNC.interval,auto:!!SYNC.auto,conns:Object.fromEntries(EXCHANGES.map(e=>{const c=CONNS[e.id]||{};return [e.id,{connected:!!c.connected,hint:c.hint||'',lastSync:c.lastSync?new Date(+c.lastSync).toISOString():null,syncFrom:c.syncFrom||'',autoSync:!!c.autoSync,backoff_sec:_rlWaitSec(e.id)||0,deprecated:!!e.deprecated}];})),worker},
     backup:{choice:BK.choice||'zelf',last:BK.ts?new Date(BK.ts).toISOString():null,method:BK.method||'',threshold_days:BK.threshold,drive_connected:!!(DRIVE&&DRIVE.rt),dirty_since:_bkDirtySince?new Date(_bkDirtySince).toISOString():null},
@@ -11370,12 +11381,12 @@ async function resetDemo(){
     // de demo levert inhoud (trades, playbooks, tags, accounts) — nooit iemands echte
     // exchange-koppelingen, sync-instellingen, thema of weergave-keuze overschrijven
     delete d.conns;delete d.sync;delete d.settings;delete d.view;delete d.sections;delete d.aiPrefs;
-    /* Het TradingPlan-blok (poort-beoordelingen, dag-/weekplannen) komt alleen mee als je daar
-       nog niets hebt staan: je eigen plan overschrijven we nooit. Zonder blok gaan ook de
-       verwijzingen op de trades eraf, anders wijzen ze naar records die er niet zijn. */
-    const planMee=!!(d.tradingplan&&planIsLeeg());
+    /* Het TradingPlan-blok (weken, dagen, scenario's) komt alleen mee als je daar nog niets hebt
+       staan: je eigen plan overschrijven we nooit. Zonder blok gaan ook de verwijzingen op de
+       trades eraf, anders wijzen ze naar scenario's die er niet zijn. */
+    const planMee=planBlokV3(d.tradingplan)&&planIsLeeg();
     let planIds=null;
-    if(planMee){try{planIds={recs:JSON.parse(d.tradingplan.trades||'[]').map(r=>String(r.id)),plans:Object.keys(JSON.parse(d.tradingplan.plans||'{}'))};}catch(e){planIds=null;}}
+    if(planMee){try{const pl=JSON.parse(d.tradingplan.plans)||{};planIds={weeks:Object.keys(pl.weeks||{}),days:Object.keys(pl.days||{}),imgs:Object.keys(d.tradingplan.imgs||{})};}catch(e){planIds=null;}}
     else{delete d.tradingplan;(d.trades||[]).forEach(t=>{if(t)delete t.planRef;});}
     applyBackup(d);
     markDemoLoaded(planIds);
@@ -11387,10 +11398,10 @@ async function resetDemo(){
    instellingen. We onthouden daarom bij het laden precies wat de demo meebracht, zodat
    we het later gericht kunnen weghalen. Alles wat jij daarna zelf hebt aangepast of
    gebruikt blijft staan; bij twijfel laten we het met rust. */
-function planIsLeeg(){try{const r=JSON.parse(localStorage.getItem(PLAN_LS.trades)||'[]'),p=JSON.parse(localStorage.getItem(PLAN_LS.plans)||'{}');return !(Array.isArray(r)&&r.length)&&!Object.keys(p||{}).length;}catch(e){return false;}}
+function planIsLeeg(){try{const P=planLoad().plans;return !Object.keys(P.days).length&&!Object.keys(P.weeks).length;}catch(e){return false;}}
 function markDemoLoaded(planIds){
   T.forEach(t=>{if(t)t._demo=1;});persist();
-  DB.save('demo_loaded',{when:Date.now(),plan:planIds||null,   // ids van meegekomen poort-records en plannen
+  DB.save('demo_loaded',{when:Date.now(),plan:planIds||null,   // ids van meegekomen weken, dagen en plaatjes van het plan
     pb:Object.entries(PBOOK).map(([n,p])=>[n,JSON.stringify(p)]),   // hele playbook, zodat élke bewerking telt
     manual:MANUAL.map(m=>({id:m.id,name:m.name,tx:(m.transactions||[]).length})),
     ex:Object.fromEntries(EXCHANGES.map(e=>[e.id,e.val]))});
@@ -11415,13 +11426,11 @@ function demoCleanup(){
   Object.entries(mark.ex||{}).forEach(([id,val])=>{const e=EXMAP[id];
     if(e&&+e.val===+val&&+val!==0&&!T.some(t=>t&&t.exchange===id)){e.val=0;exGone++;}});
   if(exGone)persistExMeta();
-  // TradingPlan: alleen de records en plannen die met de demo meekwamen; wat je zelf toevoegde blijft
+  // TradingPlan: alleen de weken en dagen die met de demo meekwamen; wat je zelf toevoegde blijft
   let planGone=0;
-  if(mark.plan){try{
-    const recs=new Set(mark.plan.recs||[]),pl=new Set(mark.plan.plans||[]);
-    const r0=JSON.parse(localStorage.getItem(PLAN_LS.trades)||'[]'),r1=r0.filter(r=>!(r&&recs.has(String(r.id))));planGone+=r0.length-r1.length;
-    const p0=JSON.parse(localStorage.getItem(PLAN_LS.plans)||'{}');pl.forEach(k=>{if(p0[k]){delete p0[k];planGone++;}});
-    localStorage.setItem(PLAN_LS.trades,JSON.stringify(r1));localStorage.setItem(PLAN_LS.plans,JSON.stringify(p0));
+  if(mark.plan&&(mark.plan.days||mark.plan.weeks)){try{
+    const P=planLoad().plans;(mark.plan.weeks||[]).forEach(k=>{if(P.weeks[k]){delete P.weeks[k];planGone++;}});(mark.plan.days||[]).forEach(k=>{if(P.days[k]){delete P.days[k];planGone++;}});
+    if(planGone)planSave(P);
   }catch(e){}}
   DB.save('demo_loaded',null);
   STATE.selected=[];render();
@@ -12105,10 +12114,11 @@ async function boot(){
   try{await runMigrations();}catch(e){}   // geversioneerde schema-updates (snapshot + rollback ingebouwd)
   selfCheck();                            // grove corruptie → herstel-aanbod
   try{planSync();}catch(e){}              // TradingPlan: planRef volgens Scenario.trades (nooit automatisch koppelen)
-  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'){try{planSync();}catch(e){}}});
+  planImgLaad();                          // plaatjes van het plan, voor de back-up
+  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'){try{planSync();}catch(e){}planImgLaad();}});
   // Het plan koppelt in een ander tabblad: alleen het zichtbare journal-tabblad werkt bij, zodat twee
   // journal-tabbladen niet tegelijk schrijven (de rest volgt bij visibilitychange).
-  window.addEventListener('storage',e=>{if(e&&e.key===TP3.plans&&document.visibilityState==='visible'){try{planSync();}catch(x){}}});
+  window.addEventListener('storage',e=>{if(!e||e.key!==TP3.plans)return;planImgLaad();if(document.visibilityState==='visible'){try{planSync();}catch(x){}}});
   try{fxSync().then(ok=>{if(ok)render();});}catch(e){}   // koersen ophalen en per trade vastzetten
   try{startAutoSync();}catch(e){}         // exchange auto-sync-timer (doet niets zolang SYNC.auto uit staat)
   render();

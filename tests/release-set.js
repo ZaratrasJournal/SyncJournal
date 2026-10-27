@@ -59,9 +59,16 @@ module.exports = [
   'koppel-opnieuw',          // opnieuw koppelen: eerste sync 30 dagen terug of vanaf 'sync vanaf', niet vanaf de oude lastSync (Jarne)
   'terugkijken-v12',         // migratie v12: eenmalig 30 dagen terugkijken (niet bij recente CSV-trades, nooit vooruit)
 
-  // site + tradingplan
-  'landing', 'tradingplan-v2', 'plan-koppeling', 'plan-tendencies', 'plan-doorloop', 'plan-playbook',
-  'tradingplan-plan',        // aparte app (tradingplan.syncjournal.nl), draait mee zodat hij niet ongetest blijft
+  // site + TradingPlan v3 (tradingplan/tradingplan.html, syncjournal.nl/plan)
+  'landing',
+  'plan3-basis',             // opslag tp3:*, thema van de journal, vier tabs, tandwiel, stijl-lagen
+  'plan3-lagen',             // vrije tijdframes en tags uit de journal; erven week → dag → scenario
+  'plan3-edge',              // edge per scenario, exacte getallen uit tests/fixtures/plan3-trades.json
+  'plan3-dag',               // Cockpit: trechter, rangschikking, opengeklapt scenario, status, gisteren overnemen
+  'plan3-media',             // afbeeldingen en links: plakken, slepen, TradingView-voorbeeld, grenzen, lightbox
+  'plan3-koppeling',         // "Zet om in trade": zelf koppelen (nooit automatisch) en het vooraf ingevulde formulier
+  'plan3-afsluiting',        // Afsluiting, Log, voorspel-score, binnen/buiten plan
+  'plan3-journal',           // journal: Tendencies → Plan, Mori, back-up met plaatjes, geen poort meer
 
   // analyse en weergave
   'matrix', 'yearheatmap', 'review-list', 'coach-share', 'review-beeld', 'tv-links', 'theme-hook', 'beeld-escaping',

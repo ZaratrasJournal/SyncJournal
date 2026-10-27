@@ -7,8 +7,14 @@ const { chromium } = require('playwright'); const path = require('path'); const 
 let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  ✓ ' + n)) : (fail++, console.log('  ✗ ' + n + (e ? ' → ' + e : ''))); };
 (async () => {
   const url = 'file:///' + path.resolve('work/syncjournal.html').replace(/\\/g, '/');
-  const raw = fs.readFileSync(path.resolve('site', 'demo-dataset.json'), 'utf8');
+  // DEMO_DATASET=<pad>: een ander bestand, bv. vers uit scripts/gen-syncjournal-dataset-v2.js vóór de release
+  const raw = fs.readFileSync(process.env.DEMO_DATASET || path.resolve('site', 'demo-dataset.json'), 'utf8');
   const N = JSON.parse(raw).trades.length;   // aantal trades in het bestand (v2: geen vast getal meer)
+  // TradingPlan-blok: plan v3 ({v:3, plans, cfg, imgs}) komt mee; een ouder bestand met het v2-blok (tp2, de poort)
+  // wordt niet meer gelezen. Wat we verwachten volgt dus uit het bestand zelf (de generator maakt sinds 27-10-2026 v3).
+  const TPB = JSON.parse(raw).tradingplan, V3 = !!TPB && TPB.v === 3;
+  const PLAN_DAGEN = V3 ? Object.keys(JSON.parse(TPB.plans).days).length : 0;
+  const GEKOPPELD = V3 ? JSON.parse(raw).trades.filter(t => /^s:/.test(t.planRef || '')).length : 0;
   const b = await chromium.launch(); const p = await b.newPage(); p.on('dialog', d => d.accept());
   const errs = []; p.on('pageerror', e => errs.push(String(e)));
   await p.setViewportSize({ width: 1700, height: 1000 });
@@ -33,7 +39,7 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
     await resetDemo();
     return { fresh, trades: T.length, pbooks: Object.keys(PBOOK).length, setups: (tagConfig.setupTags || []).length,
       blofinVal: (EXCHANGES.find(e => e.id === 'blofin') || {}).val, blofinAcct: (EXCHANGES.find(e => e.id === 'blofin') || {}).acct,
-      planRecs: JSON.parse(localStorage.getItem('tp2:trades') || '[]').length, planPlans: Object.keys(JSON.parse(localStorage.getItem('tp2:plans') || '{}')).length,
+      planDagen: Object.keys((JSON.parse(localStorage.getItem('tp3:plans') || '{}').days) || {}).length, tp2: localStorage.getItem('tp2:trades'),
       linked: T.filter(t => t.planRef).length, synced: T.filter(t => t.srcId).length, fills: T.filter(t => t.fills && t.fills.length).length,
       today: T.some(t => (Date.now() - +new Date(t.date)) < 8 * 864e5),
       connHint: (CONNS.mexc || {}).hint, theme: STATE.theme, preset: VIEW.preset,
@@ -43,7 +49,8 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
   ok('alle trades uit het bestand geladen (' + N + ')', res.trades === N && N > 1000, String(res.trades));
   ok('data loopt tot (hooguit een week vóór) vandaag', res.today);
   ok('gesynct-uitziende exchange-trades met stappen', res.synced > 500 && res.fills > 500, JSON.stringify({ s: res.synced, f: res.fills }));
-  ok('TradingPlan-blok mee (poort-records + plannen) en trades eraan gekoppeld', res.planRecs === 70 && res.planPlans > 40 && res.linked === 70, JSON.stringify({ r: res.planRecs, p: res.planPlans, l: res.linked }));
+  ok(V3 ? 'TradingPlan-blok (v3) mee: dagen met scenario\'s, trades eraan gekoppeld' : 'oud TradingPlan-blok (v2) in het bestand: niets gezet, geen verwijzingen op de trades',
+    res.planDagen === PLAN_DAGEN && res.linked === GEKOPPELD && res.tp2 === null && (!V3 || (PLAN_DAGEN > 10 && GEKOPPELD > 10)), JSON.stringify({ d: res.planDagen, l: res.linked, v3: V3 }));
   ok('playbooks + tag-configuratie mee', res.pbooks >= 6 && res.setups > 0, JSON.stringify({ p: res.pbooks, s: res.setups }));
   ok('exchange-saldi en accountnamen uit exMeta', res.blofinVal === 10527 && res.blofinAcct === 'Swing', JSON.stringify({ v: res.blofinVal, a: res.blofinAcct }));
   ok('handmatige accounts (FTMO) mee', res.manual >= 1);
@@ -68,15 +75,15 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
   ok('en laadt opnieuw alle trades', res2.trades === N, String(res2.trades));
 
   console.log('─── Eigen TradingPlan wordt nooit overschreven ───');
-  const res2b = await p.evaluate(async () => {
-    localStorage.setItem('tp2:trades', JSON.stringify([{ id: 1, ts: new Date().toISOString(), sym: 'BTC', dir: 'Long', setup: 'A', exec: 'VOL', taken: true, checks: {}, missing: [], noTrade: [] }]));
-    localStorage.setItem('tp2:plans', '{}');
+  const EIGEN = { v: 1, weeks: {}, days: { '2026-01-05': { id: '2026-01-05', week: '2026-W02', layers: [], levels: '', mental: 3, pre: [false, false, false], media: { imgs: [], links: [] }, les: 'eigen', scenarios: [] } } };
+  const res2b = await p.evaluate(async E => {
+    localStorage.setItem('tp3:plans', JSON.stringify(E));
     await resetDemo();
-    return { recs: JSON.parse(localStorage.getItem('tp2:trades')).length, linked: T.filter(t => t.planRef).length };
-  });
-  ok('bestaand plan blijft staan (1 eigen record, geen demo-records)', res2b.recs === 1, String(res2b.recs));
-  ok('en de trades krijgen dan geen verwijzing naar niet-bestaande records', res2b.linked === 0, String(res2b.linked));
-  await p.evaluate(() => { localStorage.removeItem('tp2:trades'); localStorage.removeItem('tp2:plans'); });
+    return { dagen: Object.keys(JSON.parse(localStorage.getItem('tp3:plans')).days), linked: T.filter(t => t.planRef).length };
+  }, EIGEN);
+  ok('bestaand plan blijft staan (1 eigen dag, geen demo-dagen)', res2b.dagen.join() === '2026-01-05', JSON.stringify(res2b.dagen));
+  ok('en de trades krijgen dan geen verwijzing naar niet-bestaande scenario\'s', res2b.linked === 0, String(res2b.linked));
+  await p.evaluate(() => { localStorage.removeItem('tp3:plans'); });
 
   console.log('─── Fallback zonder netwerk ───');
   const res3 = await p.evaluate(async () => {
@@ -94,19 +101,19 @@ let pass = 0, fail = 0; const ok = (n, c, e) => { c ? (pass++, console.log('  �
     EXCHANGES.forEach(e => e.val = 0); persistExMeta();
     window.fetch = async (u) => /demo-dataset/.test(String(u)) ? new Response(json, { status: 200 }) : window.__realFetch(u);
     await resetDemo(); await new Promise(r => setTimeout(r, 300));
-    const na = { trades: T.length, pb: Object.keys(PBOOK).length, man: MANUAL.length, ex: EXMAP.blofin.val, plan: JSON.parse(localStorage.getItem('tp2:trades') || '[]').length, knop: (go('instellingen'), setSetTab('data'), /Voorbeelddata opruimen/.test(document.getElementById('main').textContent)) };
+    const na = { trades: T.length, pb: Object.keys(PBOOK).length, man: MANUAL.length, ex: EXMAP.blofin.val, plan: Object.keys((JSON.parse(localStorage.getItem('tp3:plans') || '{}').days) || {}).length, knop: (go('instellingen'), setSetTab('data'), /Voorbeelddata opruimen/.test(document.getElementById('main').textContent)) };
     // eigen werk toevoegen dat NIET weg mag
     T.push({ id: 999999, date: '2026-09-18', time: '10:00', pair: 'EIGEN/USDT', dir: 'long', setup: 'London SFP', session: 'London', status: 'closed', kind: 'live', exchange: '', entry: 100, exit: 110, stop: 95, size: '1000', pnl: 42, r: 1, tps: [], tags: [], layers: [], emotions: [], mistakes: [], checks: [], screenshots: [], tvLinks: [] });
     PBOOK['Mijn eigen'] = pbNormalize('Mijn eigen', ['eigen regel']);
     PBOOK['BOS-retest'].oneLiner = 'zelf aangepast';   // demo-playbook dat ik bewerkte
     persist(); persistPbook();
-    // eigen poort-record naast de demo-records
-    localStorage.setItem('tp2:trades', JSON.stringify(JSON.parse(localStorage.getItem('tp2:trades')).concat([{ id: 5, ts: new Date().toISOString(), sym: 'ETH', dir: 'Long', setup: 'A', exec: 'VOL', taken: true, checks: {}, missing: [], noTrade: [] }])));
+    // eigen plan-dag naast de demo-dagen
+    { const P = planLoad().plans; P.days['2026-01-05'] = { id: '2026-01-05', week: '2026-W02', layers: [], levels: '', mental: 3, pre: [false, false, false], media: { imgs: [], links: [] }, les: 'eigen', scenarios: [] }; planSave(P); }
     demoCleanup(); await new Promise(r => setTimeout(r, 300));
-    return { na, trades: T.length, pairs: T.map(t => t.pair), pb: Object.keys(PBOOK).sort(), man: MANUAL.length, ex: EXMAP.blofin.val, plan: JSON.parse(localStorage.getItem('tp2:trades') || '[]').map(r => r.id), plans: Object.keys(JSON.parse(localStorage.getItem('tp2:plans') || '{}')).length, knopWeg: (setSetTab('data'), !/Voorbeelddata opruimen/.test(document.getElementById('main').textContent)) };
+    return { na, trades: T.length, pairs: T.map(t => t.pair), pb: Object.keys(PBOOK).sort(), man: MANUAL.length, ex: EXMAP.blofin.val, plan: Object.keys(planLoad().plans.days), knopWeg: (setSetTab('data'), !/Voorbeelddata opruimen/.test(document.getElementById('main').textContent)) };
   }, raw);
-  ok('na laden: alle trades, 6 playbooks, accounts, saldi en plan + opruim-knop verschijnt', cl.na.trades === N && cl.na.pb === 6 && cl.na.man >= 1 && cl.na.ex > 0 && cl.na.plan === 70 && cl.na.knop, JSON.stringify(cl.na));
-  ok('opruimen haalt de demo-poortrecords en -plannen weg, eigen record blijft', cl.plan.length === 1 && cl.plan[0] === 5 && cl.plans === 0, JSON.stringify({ plan: cl.plan, plans: cl.plans }));
+  ok('na laden: alle trades, 6 playbooks, accounts, saldi en plan + opruim-knop verschijnt', cl.na.trades === N && cl.na.pb === 6 && cl.na.man >= 1 && cl.na.ex > 0 && cl.na.plan === PLAN_DAGEN && cl.na.knop, JSON.stringify(cl.na));
+  ok('opruimen haalt de demo-plandagen weg, je eigen dag blijft', cl.plan.join() === '2026-01-05', JSON.stringify(cl.plan));
   ok('opruimen haalt alle voorbeeld-trades weg', cl.trades === 1 && cl.pairs.join() === 'EIGEN/USDT', JSON.stringify(cl.pairs.slice(0, 3)));
   ok('eigen playbook blijft, bewerkt demo-playbook blijft, gebruikt demo-playbook blijft', cl.pb.includes('Mijn eigen') && cl.pb.includes('BOS-retest') && cl.pb.includes('London SFP'), JSON.stringify(cl.pb));
   ok('ongebruikte, onaangeraakte demo-playbooks zijn weg', !cl.pb.includes('Range-fade') && !cl.pb.includes('VWAP-bounce'), JSON.stringify(cl.pb));

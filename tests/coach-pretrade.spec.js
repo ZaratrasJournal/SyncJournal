@@ -13,13 +13,15 @@ const tr = (id, date, pnl, extra) => ({ id, exchange: 'blofin', kind: 'live', st
   session: 'London', date, time: '10:00', entry: 100, stop: 98, size: 1000, pnl, fees: 0, durationMin: 30, ...extra });
 const TRADES = [tr(1, '2026-10-01', 40), tr(2, '2026-10-02', -20), tr(3, '2026-10-05', 30, { session: 'US AM' }), tr(4, '2026-10-06', -10, { setup: 'Trend-pullback', dir: 'short', pair: 'ETH/USDT' })];
 const PB = { 'London SFP': { name: 'London SFP', criteria: [{ text: 'Sweep van de Asia-low', mandatory: true }], antiCriteria: [{ text: 'Vlak voor high-impact nieuws', mandatory: true }], stop: 'onder de sweep', target: 'volgende pool', minRR: '2' } };
-// TradingPlan schrijft in localStorage tp2:*; wij lezen alleen. Het weekplan van deze ISO-week (Amsterdam).
+// TradingPlan (v3) schrijft in localStorage tp3:*; wij lezen alleen. Het weekplan van deze ISO-week en de dag van vandaag (Amsterdam).
 const vandaag = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Amsterdam' }).format(new Date());
 const isoWeek = iso => { const [y, m, d] = iso.split('-').map(Number); const t = new Date(Date.UTC(y, m - 1, d)); const day = t.getUTCDay() || 7; t.setUTCDate(t.getUTCDate() + 4 - day);
   const y0 = new Date(Date.UTC(t.getUTCFullYear(), 0, 1)); return t.getUTCFullYear() + '-W' + String(Math.ceil(((t - y0) / 864e5 + 1) / 7)).padStart(2, '0'); };
+const WID = isoWeek(vandaag), sc = (id, title, dir) => ({ id, title, pair: 'BTC', dir, pb: 'London SFP', grade: 'A', trigger: 'Als de Asia-low gesweept wordt', invalid: '15M close onder de sweep', entry: { tf: '15M', bias: '', setups: ['SFP'], confirmations: [] }, off: [], checked: [], stop: '', tps: [], media: { imgs: [], links: [] }, note: '', status: 'open', statusTs: null, trades: [] });
 const PLAN = {
-  'tp2:cfg': JSON.stringify({ pb: { long: '• Breken van constructie (BOS/MSB)\n• SFP onderzijde', short: '• SFP bovenzijde (mag NIET mee bij long)', extra: "Valkuilen\n• 'Nog eentje' na een verlies" }, max: { A: 2, B: 1, C: 0.5 } }),
-  'tp2:plans': JSON.stringify({ ['week-' + isoWeek(vandaag)]: { id: 'week-' + isoWeek(vandaag), type: 'week', key: isoWeek(vandaag), bias: 'bullish boven 78k', maxtrades: '5', notrade: 'Binnen 2 minuten na nieuws\nNa 2 verliezers op één dag', focus: 'Alleen A-setups', saved: true, updatedAt: '2026-10-20T08:00:00Z' } }),
+  'tp3:cfg': JSON.stringify({ stijl: 'daytrade', risk: { A: 2, B: 1, C: 0 }, pre: ['Nieuws gecheckt', 'Goed geslapen', ''] }),
+  'tp3:plans': JSON.stringify({ v: 1, weeks: { [WID]: { id: WID, layers: [{ tf: 'Weekly', bias: 'Bullish', setups: ['BOS'], confirmations: [] }], levels: 'bullish boven 78k', noTrade: 'Binnen 2 minuten na nieuws · Na 2 verliezers op één dag', focus: 'Alleen A-setups', media: { imgs: [], links: [] }, les: '' } },
+    days: { [vandaag]: { id: vandaag, week: WID, layers: [], levels: '', mental: 4, pre: [true, true, false], media: { imgs: [], links: [] }, les: '', scenarios: [sc('s_l', 'SFP onderzijde', 'long'), sc('s_s', 'SFP bovenzijde (mag NIET mee bij long)', 'short')] } } }),
 };
 
 (async () => {
@@ -63,9 +65,9 @@ const PLAN = {
   await N.zet(p, N.tekst('Volgens je weekplan mag je er nog trades bij.'));
   await p.click('#aiIdeeBtn'); await p.waitForTimeout(500);
   pk = pakketUit((await N.verzoeken(p)).slice(-1)[0].body);
-  ok('weekplan: bias, max trades, no-trade, focus', /## Regels uit TradingPlan/.test(pk) && /bullish boven 78k/.test(pk) && /Max trades deze week: 5/.test(pk) && /Na 2 verliezers op één dag/.test(pk) && /Alleen A-setups/.test(pk), (pk.match(/## Regels uit TradingPlan[\s\S]{0,500}/) || [''])[0]);
-  ok('de vaste regels voor long, niet die voor short', /SFP onderzijde/.test(pk) && !/mag NIET mee bij long/.test(pk));
-  ok('valkuilen en max risico per grade', /Nog eentje/.test(pk) && /A 2%/.test(pk));
+  ok('weekplan: lagen, levels, no-trade, focus', /## Regels uit TradingPlan/.test(pk) && /Weekly Bullish: BOS/.test(pk) && /bullish boven 78k/.test(pk) && /Na 2 verliezers op één dag/.test(pk) && /Alleen A-setups/.test(pk), (pk.match(/## Regels uit TradingPlan[\s\S]{0,500}/) || [''])[0]);
+  ok('de scenario\'s van vandaag voor een long, niet die voor short', /SFP onderzijde/.test(pk) && !/mag NIET mee bij long/.test(pk));
+  ok('risico per grade uit het plan', /Risico per grade: A 2%, B 1%, C niet traden/.test(pk));
   ok('de journal telt mee: trades deze week en verliezers vandaag', /Trades deze week in de journal: \d+/.test(pk) && /Verliezers vandaag in de journal: \d+/.test(pk));
 
   console.log('─── Licht en donker, 390px ───');
