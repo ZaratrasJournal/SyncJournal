@@ -4,10 +4,12 @@
 // Screenshots van elk scherm, licht en donker, 1280 en 390 breed:
 //   node tests/plan3-doorloop.spec.js           → tests/screenshots/plan3-doorloop/
 //   node tests/plan3-doorloop.spec.js --docs    → docs/plan-v3-bouw-screenshots/ (voor het bouwrapport)
+//   node tests/plan3-doorloop.spec.js --uit=<map> → screenshots in die map
 // De klok staat vast (Playwright clock) op de dag van de nieuwste live-trade in de dataset (dag 1) en de dag erna (dag 2).
 const { chromium } = require('playwright'); const fs = require('fs'); const path = require('path');
 const H = require('./helpers/plan3'); const NAAM = 'Plan v3 doorloop';
-const OUT = process.argv.includes('--docs') ? path.join(H.ROOT, 'docs', 'plan-v3-bouw-screenshots') : path.join(H.ROOT, 'tests', 'screenshots', 'plan3-doorloop');
+const UIT = (process.argv.find(a => a.startsWith('--uit=')) || '').slice(6);   // --uit=<map>: screenshots daarheen (bv. de polish-voor/na)
+const OUT = UIT ? path.resolve(H.ROOT, UIT) : process.argv.includes('--docs') ? path.join(H.ROOT, 'docs', 'plan-v3-bouw-screenshots') : path.join(H.ROOT, 'tests', 'screenshots', 'plan3-doorloop');
 fs.mkdirSync(OUT, { recursive: true });
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
 // DEMO_DATASET=<pad>: een ander bestand, bv. vers uit scripts/gen-syncjournal-dataset-v2.js vóór de release

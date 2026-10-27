@@ -85,6 +85,36 @@ const TAGS = { setupTags: ['BOS', 'MSB', 'SFP'], confirmationTags: ['Liquidity S
   ok('bewaard: off = ["Weekly|BOS"], entry 15M met SFP en FVG', s && s.off.join() === 'Weekly|BOS' && s.entry.tf === '15M' && s.entry.setups.join() === 'SFP' && s.entry.confirmations.join() === 'FVG', JSON.stringify(s && { off: s.off, entry: s.entry }));
   ok('scenario-model: id s_…, status open, trades []', s && /^s_[0-9a-z]+$/.test(s.id) && s.status === 'open' && Array.isArray(s.trades) && s.statusTs === null);
 
+  console.log('--- kleuren: elke tag-soort zoals in de journal (polish punt 1) ---');
+  ok('tagKleur: setup accent, confirmation teal, tijdframe violet, de rest muted (TAG_CATS)', await p.evaluate(() =>
+    ['BOS', 'OB', '4H', 'Iets eigens'].map(__tp3.tagKleur).join() === 'var(--accent),var(--teal),var(--violet),var(--muted)'));
+  const tokens = await p.evaluate(() => { const v = () => ['--violet', '--teal', '--pink'].map(k => getComputedStyle(document.documentElement).getPropertyValue(k).trim().toUpperCase()).join();
+    const licht = v(); document.documentElement.dataset.theme = 'dark'; const donker = v(); document.documentElement.dataset.theme = 'light'; return { licht, donker }; });
+  ok('tokens --violet/--teal/--pink letterlijk uit de journal, licht en donker', tokens.licht === '#7C5CE0,#0E9E96,#D6409F' && tokens.donker === '#A78BFA,#2CC5B6,#F472B6', JSON.stringify(tokens));
+  await p.evaluate(sid => { __tp3.S.open[sid] = true; __tp3.render(); }, s.id); await p.waitForTimeout(100);
+  const kl = await p.evaluate(() => {
+    const tok = v => { const e = document.createElement('i'); e.style.color = `var(${v})`; document.body.appendChild(e); const c = getComputedStyle(e).color; e.remove(); return c; };
+    const chip = (sel, txt) => [...document.querySelectorAll(sel)].find(x => x.textContent.includes(txt));
+    const st = e => e ? getComputedStyle(e) : {}; const dot = e => e ? getComputedStyle(e, '::before').backgroundColor : '';
+    const eigenSet = chip('#app .layer:not(.inh) .chip', 'MSB'), eigenConf = chip('#app .layer:not(.inh) .chip', 'OB'), erfSet = chip('#app .funnel .layer.inh .chip', 'BOS');
+    const uit = document.querySelector('#app .rdetail .chip.inh[data-v="Weekly|BOS"]'), erfAan = document.querySelector('#app .rdetail .chip.inh[data-v="Daily|Liquidity Sweep"]');
+    const bias = v => document.querySelector(`#app [data-a="bias"][data-p="day.0"][data-v="${v}"]`);
+    return { accent: tok('--accent'), teal: tok('--teal'), violet: tok('--violet'), green: tok('--green'), red: tok('--red'), muted: tok('--muted'), faint: tok('--faint'),
+      eigenSet: [st(eigenSet).color, dot(eigenSet), st(eigenSet).borderTopStyle, +st(eigenSet).opacity], eigenConf: st(eigenConf).color,
+      erfSet: [st(erfSet).color, st(erfSet).borderTopStyle, +st(erfSet).opacity],
+      uit: uit && [st(uit).color, st(uit).textDecorationLine, +st(uit).opacity], erfAan: erfAan && [st(erfAan).color, st(erfAan).borderTopStyle],
+      tf: st(document.querySelector('#app .layer:not(.inh) .tf')).color,
+      bull: bias('Bullish') && [st(bias('Bullish')).backgroundColor, bias('Bullish').classList.contains('on')], bear: st(bias('Bearish')).color, neutr: st(bias('Neutraal')).color };
+  });
+  ok('eigen setup-chip: accent, met een stip in de kleur, doorgetrokken rand, vol', kl.eigenSet[0] === kl.accent && kl.eigenSet[1] === kl.accent && kl.eigenSet[2] === 'solid' && kl.eigenSet[3] === 1, JSON.stringify(kl.eigenSet));
+  ok('eigen confirmation-chip: teal', kl.eigenConf === kl.teal, kl.eigenConf);
+  ok('tijdframe-label van een laag: violet', kl.tf === kl.violet, kl.tf);
+  ok('geërfde chip (week in de dag): zelfde kleur, stippelrand, gedimd', kl.erfSet[0] === kl.accent && kl.erfSet[1] === 'dashed' && kl.erfSet[2] < 1, JSON.stringify(kl.erfSet));
+  ok('geërfd in het scenario: teal met stippelrand', kl.erfAan && kl.erfAan[0] === kl.teal && kl.erfAan[1] === 'dashed', JSON.stringify(kl.erfAan));
+  ok('uitgezet: grijs en doorgestreept, nog lichter dan geërfd', kl.uit && kl.uit[0] === kl.faint && /line-through/.test(kl.uit[1]) && kl.uit[2] < kl.erfSet[2], JSON.stringify(kl.uit));
+  ok('bias: gekozen Bullish gevuld groen; Bearish rood, Neutraal muted', kl.bull && kl.bull[1] && kl.bull[0] === kl.green && kl.bear === kl.red && kl.neutr === kl.muted, JSON.stringify([kl.bull, kl.bear, kl.neutr]));
+  await p.evaluate(sid => { __tp3.S.open[sid] = false; __tp3.render(); }, s.id);
+
   for (const [th, w] of [['licht', 1280], ['licht', 390], ['donker', 1280], ['donker', 390]]) {
     await p.evaluate(t => { localStorage.setItem('sj_state', JSON.stringify({ theme: t })); }, th === 'donker' ? 'dark' : 'light'); await p.reload({ waitUntil: 'load' }); await p.setViewportSize({ width: w, height: 900 }); await p.waitForTimeout(200);
     await p.screenshot({ path: path.join(SHOTS, `lagen-${th}-${w}.png`), fullPage: true });

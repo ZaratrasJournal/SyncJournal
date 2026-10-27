@@ -119,3 +119,21 @@ Een journal-playbook (`sj_db` → `kv` → `pbook`) heeft `criteria: [{text, man
   `Besluit:`-regels, de voor/na-screenshots, en een concept voor het CHANGELOG-blok (het versienummer kiest Claude).
 
 ## Logboek
+
+- **Punt 1 klaar** — `node tests/plan3-lagen.spec.js` → 34/34 (9 nieuwe kleur-checks), `plan3-afsluiting` 29/29, alle
+  plan3-specs groen. Tokens `--violet`, `--teal`, `--pink` letterlijk uit de journal (licht en donker), plus
+  `--violet-soft`/`--teal-soft`/`--pink-soft` als 12%-mix (de journal heeft die niet als token). `.chip` is nu de
+  journal-pill (`.tagchip.col`: 12% achtergrond, 30% rand, stip) met `--tc` per soort via `tagKleur()` (kopie van de
+  regel in `TAG_CATS`): setup accent, confirmation teal, tijdframe violet, eigen/onbekend muted. Geldt voor eigen lagen,
+  geërfde lagen, geërfd in het scenario, de tag-keuze, de tijdframe-keuze, de lagen in "Zet om in trade" en de
+  "zonder …"-uitleg bij de edge. Eigen = vol met stip; geërfd = zelfde kleur, geen vulling, stippelrand, 72% dekking;
+  uitgezet = `--faint`, doorgestreept, 55%. Bias-knoppen omlijnd in groen/rood/muted, gekozen = gevuld.
+  Voor-screenshots (v1.19) in `docs/plan-v3-polish-screenshots/voor/` (gekopieerd uit de bouw-doorloop, zelfde code).
+  Besluit: de Log-filters zijn pills geworden in plaats van keuzelijsten (status in zijn statuskleur, playbook in de
+  setup-kleur, long groen, short rood; nog eens tikken = uit) — de opdracht noemt de Log-filters als chips, en een
+  keuzelijst kan geen kleur dragen — kost als het fout is: bij veel playbooks wordt de rij langer (hij loopt door).
+  Besluit: het tijdframe-label van een laag is een violet pill (tijdframe = violet in de journal) — kost niets.
+  Besluit: een geërfde chip houdt zijn pijltje "↑" maar verliest de stip — twee tekens voor hetzelfde oogde druk —
+  kost niets.
+  Besluit: tekst op een gevulde bias-knop is `--surface` in plaats van `--on-accent` (wit): wit op het lichte groen
+  van het donkere thema is slecht leesbaar — kost niets.
