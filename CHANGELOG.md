@@ -16,6 +16,24 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v1.21] — 2026-10-27
+
+### Toegevoegd
+- **Vraag Mori vanuit je Trading Plan.** In een scenario staat 🤖 Vraag Mori. Mori vergelijkt het scenario met je eigen cijfers en regels, en zegt waar het tegen je week- of dagbias ingaat. Een entry is nog niet nodig.
+- Bovenaan Dag staat 🤖 Vraag Mori over mijn dagplan: welke scenario's volgens je cijfers het sterkst en het zwakst zijn, waar je plan zichzelf tegenspreekt, en of het past bij hoe je je voelt. Na het antwoord ga je met één klik terug naar je plan.
+- FAQ: een eigen onderwerp "Je trading plan" met tien vragen, van je eerste dagplan tot Mori en de back-up.
+
+### Gewijzigd
+- Een scenario zonder titel heet nu "<pair> <playbook>" in plaats van een interne code.
+- Mori ziet bij "Check mijn trade-idee" ook de lagen en levels van je dagplan.
+- FAQ: bijgewerkt voor het nieuwe plan, de back-up met je plan, "Geen exchange" als backtest en de knop Backtest-trade. De oude uitleg dat de journal zelf koppelt is weg.
+
+### Fixed
+- FAQ: de schakelaar om Mori uit te zetten heet "Mori ingeschakeld".
+- TradingPlan: een zeldzame fout bij het laden van playbook-criteria.
+
+---
+
 ## [v1.20] — 2026-10-27
 
 ### Toegevoegd
