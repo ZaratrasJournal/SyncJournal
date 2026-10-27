@@ -3323,12 +3323,16 @@ function planGetal(v){let s=String(v==null?'':v).trim().replace(/\s/g,'');if(/,/
    samengevoegd, top-down. Uitgezette geërfde tags (s.off, "<tf>|<tag>") gaan niet mee, van de entry-laag
    alleen de afgevinkte confirmations. Lege geërfde lagen vallen weg; de entry-laag blijft (die is het
    tijdframe van de trade). Dezelfde regel staat in tradingplan/tradingplan.html (zetOmLagen). */
+// The week layers as they hold on a day: tags the day switched off (day.off, "<tf>|<tag>") drop out. Same rule as
+// weekVoorDag in tradingplan/tradingplan.html.
+function planWeekVoorDag(week,day){const uit=new Set(Array.isArray(day&&day.off)?day.off:[]);
+  return ((week&&week.layers)||[]).filter(planObj).map(L=>({...L,setups:(L.setups||[]).filter(g=>!uit.has(L.tf+'|'+g)),confirmations:(L.confirmations||[]).filter(g=>!uit.has(L.tf+'|'+g))}));}
 function planLagen(s,day,week){const per=new Map(),uit=new Set(s.off||[]),uniq=a=>[...new Set(a)];
   const add=(L,erft,entry)=>{if(!L||!L.tf)return;const tf=String(L.tf);const k=tf.toLowerCase();
     const set=(L.setups||[]).filter(g=>!erft||!uit.has(tf+'|'+g)),conf=(L.confirmations||[]).filter(g=>(!erft||!uit.has(tf+'|'+g))&&(!entry||(s.checked||[]).includes(g)));
     if(erft&&!set.length&&!conf.length&&!L.bias)return;
     const o=per.get(k)||{timeframe:tf,bias:'',setups:[],confirmations:[]};if(L.bias)o.bias=L.bias;o.setups=uniq([...o.setups,...set]);o.confirmations=uniq([...o.confirmations,...conf]);per.set(k,o);};
-  ((week&&week.layers)||[]).forEach(L=>add(L,true,false));((day&&day.layers)||[]).forEach(L=>add(L,true,false));add(s.entry,false,true);
+  planWeekVoorDag(week,day).forEach(L=>add(L,true,false));((day&&day.layers)||[]).forEach(L=>add(L,true,false));add(s.entry,false,true);
   return sorteerLagen([...per.values()]);}
 /* Neemt over wat het scenario weet, alleen in velden die nog leeg zijn: wat je zelf invulde of wat de exchange
    gaf blijft staan. Geeft de afbeelding-id's terug die nog als screenshot moeten komen (die staan async in
@@ -6517,7 +6521,7 @@ function coachIdeeCijfers(i,o){const e=coachGetal(i.entry),st=coachGetal(i.stop)
 function coachPlanRegels(dir,dagId){const P=planLoad(),vandaag=PLAN_AMS.format(new Date()),vd=dagId||vandaag,wid=coachIsoWeek(vd),wk=P.plans.weeks[wid],dag=P.plans.days[vd],risk=planObj(P.cfg.risk)?P.cfg.risk:null,L=[];
   if(!wk&&!dag&&!risk)return ['- Geen TradingPlan-gegevens gevonden op dit apparaat.'];
   if(wk){L.push('Weekplan '+wid+':');
-    const lagen=coachPlanLagen(wk.layers);if(lagen)L.push('- Lagen: '+lagen);
+    const lagen=coachPlanLagen(planWeekVoorDag(wk,dag));if(lagen)L.push('- Lagen: '+lagen);
     [['Focus',wk.focus],['Niet traden / nieuws',wk.noTrade],['Levels',wk.levels]].forEach(([k,v])=>{if(coachPlanTekst(v))L.push('- '+k+': '+coachPlanTekst(v));});}
   else L.push('- Geen weekplan voor deze week.');
   if(dag){const sc=(dag.scenarios||[]).filter(s=>s&&s.dir===dir),lagen=coachPlanLagen(dag.layers);
@@ -6585,7 +6589,7 @@ function coachScenarioDeel(o){const {s,day,week,edge}=o.plan,L=['','# Scenario u
   L.push('- Edge volgens het plan: '+coachEdgeRegel(edge&&edge[s.id]));
   return L;}
 function coachDagplanDeel(rows,o){const {day,week,edge}=o.plan,P=planLoad(),c=P.cfg,L=['','# Dagplan uit TradingPlan ('+coachDatum(day.id)+')'];
-  if(week){L.push('## Week '+week.id);const lg=coachPlanLagen(week.layers);if(lg)L.push('- Lagen: '+lg);
+  if(week){L.push('## Week '+week.id);const lg=coachPlanLagen(planWeekVoorDag(week,day));if(lg)L.push('- Lagen: '+lg);
     [['Levels',week.levels],['Niet traden / nieuws',week.noTrade],['Focus',week.focus]].forEach(([k,v])=>{if(coachPlanTekst(v))L.push('- '+k+': '+coachPlanTekst(v));});}
   else L.push('## Week','- Geen weekplan voor deze week.');
   L.push('## Dag');const lg=coachPlanLagen(day.layers);L.push('- Lagen: '+(lg||'geen'));

@@ -179,6 +179,37 @@ const TAGS = { setupTags: ['BOS', 'MSB', 'SFP'], confirmationTags: ['Liquidity S
   }
   await p.setViewportSize({ width: 1280, height: 900 });
 
+  console.log('--- geërfde tags zonder pijltje, met uitleg; week-tag voor vandaag uitzetten (ronde 3 punt 2) ---');
+  await p.evaluate(W => { const id = __tp3.vandaag(), wid = __tp3.isoWeek(id); localStorage.setItem('tp3:plans', JSON.stringify({ v: 1,
+    weeks: { [wid]: { id: wid, layers: W, levels: '', noTrade: '', focus: '', media: { imgs: [], links: [] }, les: '' } },
+    days: { [id]: { id, week: wid, layers: [{ tf: '1H', bias: '', setups: ['MSB'], confirmations: [] }], levels: '', mental: null, pre: [false, false, false], media: { imgs: [], links: [] }, les: '',
+      scenarios: [{ id: 's_p2', title: 'P2', pair: 'BTC', dir: 'long', pb: '', grade: 'B', trigger: '', invalid: '', entry: { tf: '15M', bias: '', setups: [], confirmations: [] }, off: [], checked: [], critChecked: [], stop: '', tps: [], media: { imgs: [], links: [] }, note: '', status: 'open', statusTs: null, trades: [] }] } } })); }, WEEK3);
+  await p.reload({ waitUntil: 'load' }); await p.waitForTimeout(300);
+  const fun = () => p.evaluate(() => { const f = document.querySelector('#app .funnel'); return { pijl: /↑/.test(f.innerText), uitleg: [...f.querySelectorAll('.erfuitleg')].map(x => x.textContent.trim()),
+    chip: (() => { const c = f.querySelector('.chip.inh[data-v="Daily|BOS"]'); return c && { title: c.title, off: c.classList.contains('off'), btn: c.tagName }; })(),
+    bias: (f.querySelector('.layer[data-tf="4H"] [data-a="bias"].erf') || {}).title || '' }; });
+  let fu = await fun();
+  ok('geen "↑" meer bij geërfde tags in de dag', !fu.pijl);
+  ok('één uitlegregel: "Gestippeld = uit je weekplan. Tik om voor vandaag uit te zetten."', fu.uitleg.length === 1 && fu.uitleg[0] === 'Gestippeld = uit je weekplan. Tik om voor vandaag uit te zetten.', JSON.stringify(fu.uitleg));
+  ok('tooltip op de geërfde chip: "Uit je weekplan"', fu.chip && /^Uit je weekplan/.test(fu.chip.title) && fu.chip.btn === 'BUTTON', JSON.stringify(fu.chip));
+  ok('de gestippelde week-bias valt onder dezelfde uitleg (tooltip "Uit je weekplan")', /^Uit je weekplan/.test(fu.bias), fu.bias);
+  await p.click('#app .funnel .chip.inh[data-v="Daily|BOS"]'); await p.waitForTimeout(100);
+  fu = await fun();
+  const dOff = await p.evaluate(() => { const d = __tp3.dayOf(__tp3.vandaag()); return { off: d.off, eis: __tp3.eisen(d.scenarios[0], d, __tp3.weekOf(d.week)).map(x => x.label) }; });
+  ok('tik = voor vandaag uitgezet: Day.off ["Daily|BOS"], chip doorgestreept', dOff.off.join() === 'Daily|BOS' && fu.chip.off, JSON.stringify(dOff.off));
+  ok('uitgezet voor vandaag: telt niet mee in de edge van de scenario\'s', !dOff.eis.includes('Daily BOS') && dOff.eis.includes('4H Liquidity Sweep') && dOff.eis.includes('1H MSB'), dOff.eis.join());
+  await p.click('.ritem[data-s="s_p2"] .rrow'); await p.waitForTimeout(100);
+  const sc2 = await p.evaluate(() => { const r = document.querySelector('.ritem[data-s="s_p2"] .rdetail'); const t = v => (r.querySelector(`.chip.inh[data-v="${v}"]`) || {}).title;
+    return { pijl: /↑/.test(r.innerText), week: t('4H|Liquidity Sweep'), dag: t('1H|MSB'), uitDag: !r.querySelector('.chip.inh[data-v="Daily|BOS"]'), uitleg: (r.querySelector('.erfuitleg') || {}).textContent || '' }; });
+  ok('scenario: geen "↑"; tooltip "Uit je weekplan" en "Uit je dagplan" naar de bron', !sc2.pijl && /^Uit je weekplan/.test(sc2.week) && /^Uit je dagplan/.test(sc2.dag), JSON.stringify(sc2));
+  ok('scenario: een week-tag die de dag uitzette, erft het scenario niet', sc2.uitDag);
+  ok('scenario: dezelfde korte uitleg, voor dit scenario', /^Gestippeld = uit je week- of dagplan\. Tik om voor dit scenario uit te zetten\.$/.test(sc2.uitleg.trim()), sc2.uitleg);
+  await p.click('#app .funnel .chip.inh[data-v="Daily|BOS"]'); await p.waitForTimeout(100);
+  ok('nog eens tikken: weer aan', await p.evaluate(() => __tp3.dayOf(__tp3.vandaag()).off.length === 0));
+  await p.click('[data-a="newScen"]'); await p.waitForTimeout(120);
+  ok('scenario-formulier: geen "↑", wel de uitleg', await p.evaluate(() => !/↑/.test(document.getElementById('modal').innerText) && !!document.querySelector('#modal .erfuitleg')));
+  await p.click('#modal [data-a="close"]');
+
   ok('sj_tagconfig byte-gelijk aan het begin, na de hele plan-sessie (week, dag, scenario, thema\'s)', await p.evaluate(() => localStorage.getItem('sj_tagconfig')) === tcStart);
   ok('geen JS-errors', errs.length === 0, errs.slice(0, 3).join(' | '));
   await b.close(); srv.close(); process.exit(T.eind());

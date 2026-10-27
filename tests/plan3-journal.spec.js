@@ -74,6 +74,11 @@ const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJA
   ok('link vanuit het plan (?page=playbook&pb=…) opent dat playbook, en het adres wordt weer schoon', await j.evaluate(() => STATE.page === 'playbook' && STATE.pbSel === 'London SFP' && !location.search), await j.evaluate(() => STATE.page + ' ' + STATE.pbSel + ' ' + location.search));
   ok('geen functies van de poort meer', await j.evaluate(() => ['planPtOpties', 'planExec', 'planMatch', 'planRecOf', 'planHas'].every(f => typeof window[f] === 'undefined') && typeof PLAN_PT_STD === 'undefined'));
 
+  // ronde 3 punt 2: een week-tag die de dag uitzet (Day.off) gaat niet mee op de trade en niet in Mori's pakket
+  ok('planLagen en coachPlanRegels laten een week-tag weg die de dag uitzette', await j.evaluate(() => {
+    const week = { id: '2026-W44', layers: [{ tf: 'Weekly', bias: 'Bullish', setups: ['BOS'], confirmations: ['OB'] }] }, day = { id: '2026-10-27', layers: [], off: ['Weekly|BOS'] };
+    const L = planLagen({ entry: { tf: '15M', setups: [], confirmations: [] }, off: [], checked: [] }, day, week);
+    return L.length === 2 && L[0].timeframe === 'Weekly' && L[0].setups.length === 0 && L[0].confirmations.join() === 'OB' && planWeekVoorDag(week, {}).flatMap(x => x.setups).join() === 'BOS'; }));
   ok('geen JS-errors', errs.length === 0, errs.slice(0, 3).join(' | '));
   await b.close(); srv.close(); process.exit(T.eind());
 })();
