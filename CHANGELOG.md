@@ -16,6 +16,17 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v1.24] — 2026-10-28
+
+### Toegevoegd
+- **TradingPlan: Mori in een zijpaneel.** De knop 🤖 Mori bovenin en "Vraag Mori" bij een scenario of je dagplan openen Mori naast je plan. Je blijft in je plan, kunt doorvragen, en het gesprek blijft staan als je het paneel sluit. Op de telefoon vult het paneel het scherm. Mori leest in het paneel alleen en verandert niets aan je trades of instellingen.
+
+### Gewijzigd
+- TradingPlan: de criteria van je playbook staan in een scenario standaard ingeklapt, op één regel. Staan er nog verplichte criteria open, dan zegt die regel dat.
+- FAQ: bijgewerkt voor Dagstart, Gevoel en je dagstart-gevoel, de lagen in Vandaag, tags via Instellingen en Mori in het zijpaneel.
+
+---
+
 ## [v1.23] — 2026-10-28
 
 ### Gewijzigd

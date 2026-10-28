@@ -86,6 +86,19 @@ h3{font-size:var(--t1);font-weight:700;text-transform:uppercase;letter-spacing:.
 .pagehead .kopr{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .moriset{font-size:var(--t1);color:var(--muted)}
 .moriset:hover{color:var(--accent)}
+/* Mori side panel: the journal's own Mori in an iframe (?embed=mori). Desktop: 420 px on the right, the page makes room;
+   phone: full screen from the bottom. It stays in the DOM when closed, so the conversation lasts until you leave. */
+.moripanel{position:fixed;top:0;right:0;bottom:0;width:420px;z-index:40;display:flex;flex-direction:column;background:var(--bg);border-left:1px solid var(--line);box-shadow:var(--shl)}
+.moripanel[hidden]{display:none}
+.mph{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--line);background:var(--surface)}
+.mph b{font-family:var(--fd);font-size:var(--t3)}
+.mph .ibtn{margin-left:auto}
+.moripanel iframe{flex:1;min-height:0;width:100%;border:0;background:var(--bg)}
+body.mori-open{padding-right:420px}
+body.mori-open .rdetail{grid-template-columns:minmax(0,1fr)}   /* 420 px less: the open scenario reads as on a narrow screen */
+@media(max-width:900px){body.mori-open{padding-right:0;overflow:hidden}.moripanel{width:100%;left:0;border-left:0;animation:moriOp .2s ease-out}}
+@keyframes moriOp{from{transform:translateY(100%)}to{transform:none}}
+@media(prefers-reduced-motion:reduce){.moripanel{animation:none}}
 .btn{padding:7px 12px;border-radius:9px;font-weight:600;font-size:var(--t2);border:1px solid var(--line);background:var(--surface);color:var(--ink);text-decoration:none;display:inline-flex;align-items:center;gap:6px}
 .btn:hover{background:var(--hover)}
 .btn.pri{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
@@ -241,13 +254,16 @@ button.lrij:hover{border-color:var(--accent-line);background:var(--hover)}
 .chk.on .box{background:var(--green);border-color:var(--green)}
 .chk.on .lbl{color:var(--ink2)}
 .critblok{margin-top:12px}
+.crithead{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 6px;width:100%;text-align:left;padding:4px 0;color:var(--muted);font-size:var(--t1)}
+.crithead:hover .crittitel{color:var(--ink2)}
+.crittitel{font-weight:700;text-transform:uppercase;letter-spacing:.05em}
+.critpijl{width:10px;flex:none}
+.critnog{margin-left:auto;color:var(--amber);font-weight:600}
 .verplicht{font-size:var(--t1);font-weight:600;color:var(--accent);background:var(--accent-soft);padding:1px 7px;border-radius:999px;margin-left:auto;white-space:nowrap}
 .anti{font-size:var(--t1);color:var(--amber);background:var(--amber-soft);border:1px solid color-mix(in srgb,var(--amber) 30%,transparent);border-radius:8px;padding:5px 9px;margin-top:6px}
-.pbcrit{background:var(--sink);border:1px solid var(--line2);border-radius:10px;padding:9px 12px;font-size:var(--t2)}
-.pbcrit ul{list-style:none;display:flex;flex-direction:column;gap:4px}
-.pbcrit li{display:flex;align-items:center;gap:8px}
-.pbcrit li::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--teal);flex:none}
-.pbcrit .verplicht{margin-left:0}
+.pbcrit{background:var(--sink);border:1px solid var(--line2);border-radius:10px;padding:7px 10px;font-size:var(--t1);line-height:1.6}
+.pbcrit .verplicht{margin-left:0;padding:0 6px}
+.pbcrit .anti{margin-top:2px;padding:0;background:none;border:0}
 .pbrisk{font-size:var(--t1);margin-top:7px;color:var(--ink2)}
 .prog{height:5px;border-radius:3px;background:var(--track);overflow:hidden}
 .prog i{display:block;height:100%;background:var(--green);border-radius:3px}
@@ -604,7 +620,7 @@ const pairBase=p=>String(p||'').split(/[\/\-:]/)[0].trim().toUpperCase();
 
 // ───────────────────────── state ─────────────────────────
 let PL=load();
-const S={tab:'dag',modal:null,toast:'',tfOpen:'',open:{},info:{},ctxOpen:false,afsl:'dag',afslDag:null,afslEdit:null,logF:{status:'',pb:'',dir:''},logEdit:null};
+const S={tab:'dag',modal:null,toast:'',tfOpen:'',open:{},critOpen:{},info:{},ctxOpen:false,afsl:'dag',afslDag:null,afslEdit:null,logF:{status:'',pb:'',dir:''},logEdit:null};
 
 // ───────────────────────── thema = journal (besluit 10) ─────────────────────────
 function themaVanJournal(){const s=lsGet(SJ.state,{});document.documentElement.dataset.theme=isObj(s)&&s.theme==='dark'?'dark':'light';}
@@ -833,7 +849,8 @@ function gekoppeldH(s){const ids=s.trades||[];
       :`<div class="faint small">${s.status==='genomen'?'Genomen, nog niet gekoppeld: koppel de trade zodra hij in je journal staat.':'Nog geen trade gekoppeld.'}</div>`}</div>`;}
 
 // ───────────────────────── Mori (de AI-coach van de journal) ─────────────────────────
-// Het plan heeft geen eigen Mori: een knop zet tp3:mori en opent de journal, die de vraag stelt met haar eigen sleutel,
+// Het plan heeft geen eigen Mori: een knop zet tp3:mori en opent het zijpaneel met de journal (?embed=mori), die de vraag
+// stelt met haar eigen sleutel,
 // pakket en veiligheidsregels. Het plan kijkt alleen óf er een sleutel is (de "in"-test, nooit getItem): de waarde
 // leest of verstuurt het nooit, en hij komt nooit in tp3:*.
 const AI_SLEUTEL='sj_ai_key';
@@ -844,7 +861,17 @@ const moriInstellen=()=>`<a class="moriset" href="${esc(JOURNAL_URL)}?page=ai">M
 function moriEdge(day){const o={},st=x=>({n:x.n,wr:x.wr,gemR:x.gemR,betr:x.betr});
   rangschik(day.scenarios,day,weekOf(day.week)).forEach(x=>{const e=x.e;o[x.id]={plek:x.plek,sterkste:x.sterkste,basis:e.basis,live:st(e.live),bt:st(e.bt),zonder:e.zonder,richtingLos:e.richtingLos,gemist:e.gemist,context:e.context};});
   return o;}
-function naarMori(o,day){if(lsSet(LS.mori,Object.assign(o,{ts:Date.now(),edge:JR.klaar?moriEdge(day):null})))location.href=JOURNAL_URL;}
+function naarMori(o,day){if(lsSet(LS.mori,Object.assign(o,{ts:Date.now(),edge:JR.klaar?moriEdge(day):null})))moriPaneel(true,true);}
+// The panel lives outside #app, so render() never rebuilds it. A fresh iframe reads tp3:mori when it starts; one that
+// is already there gets a nudge (postMessage to our own origin) and reads it then.
+const MORI={open:false};
+function moriPaneel(open,vraag){let el=document.getElementById('moripanel');
+  if(open&&!el){el=document.createElement('aside');el.id='moripanel';el.className='moripanel';el.setAttribute('aria-label','Mori');
+    el.innerHTML=`<div class="mph"><b>🤖 Mori</b><span class="small muted">je AI-coach uit de journal</span><button class="ibtn" data-a="moriDicht" aria-label="Mori sluiten" title="Sluiten">✕</button></div><iframe title="Mori" src="${esc(JOURNAL_URL)}?embed=mori"></iframe>`;
+    document.body.appendChild(el);vraag=false;}
+  MORI.open=!!(open&&el);document.body.classList.toggle('mori-open',MORI.open);if(!el)return;
+  el.hidden=!MORI.open;
+  if(MORI.open&&vraag){try{el.querySelector('iframe').contentWindow.postMessage({tp3:'mori'},location.origin);}catch(e){}}}
 function dagMoriH(d){if(!moriKlaar())return moriInstellen();const leeg=!d.scenarios.length;
   return `<button class="btn sm" data-a="dagMori" ${leeg?'disabled aria-describedby="dagmori-uit" title="Voeg eerst een scenario toe"':''}>🤖 Vraag Mori over mijn dagplan</button>${leeg?'<span id="dagmori-uit" class="faint small">Voeg eerst een scenario toe</span>':''}`;}
 
@@ -929,12 +956,20 @@ function antiH(p){return p.anti.map(a=>`<div class="anti">⚠ Niet als: ${esc(a)
 function risicoRegel(p){const r=[['Stop',p.stop],['Target',p.target],['Min. R:R',p.minRR]].filter(x=>x[1]);return r.length?`<div class="pbrisk">${r.map(([k,v])=>`<span class="muted">${k}</span> ${esc(v)}`).join(' · ')}</div>`:'';}
 // In het formulier: de criteria van het gekozen playbook, meteen onder de keuze.
 function pbBlok(naam){const p=pbInfo(naam);if(!p)return '';
-  return `<div class="pbcrit">${p.criteria.length?`<ul>${p.criteria.map(c=>`<li class="crit">${esc(c.text)}${c.mandatory?' <span class="verplicht">verplicht</span>':''}</li>`).join('')}</ul>`:geenCriteria(naam)}${antiH(p)}${risicoRegel(p)}</div>`;}
+  return `<div class="pbcrit">${p.criteria.length?`<div class="critrij"><span class="muted">Criteria</span> ${p.criteria.map(c=>`<span class="crit">${esc(c.text)}${c.mandatory?' <span class="verplicht">verplicht</span>':''}</span>`).join(' · ')}</div>`:geenCriteria(naam)}${p.anti.length?`<div class="anti">⚠ Niet als: ${p.anti.map(esc).join(' · ')}</div>`:''}${risicoRegel(p)}</div>`;}
 function metaH(s){return `<span class="grade ${s.grade}">${s.grade}</span><span class="dir ${s.dir}">${s.dir}</span><span>${esc(s.pair)}</span>${s.pb?`<span>· ${esc(s.pb)}</span>`:''}`;}
 // De criteria van het playbook als afvinklijst, in dezelfde stijl als de confirmations; anti-criteria als waarschuwing.
+// Closed by default (round 3, point 8): one line with the count; if all confirmations are done while mandatory criteria
+// are still open, that line says so in amber. Open/closed lives in S.critOpen: per scenario, for this session only.
 function critH(s,cd){const p=pbInfo(s.pb);
-  return `<div class="critblok"><div class="row between"><h3>Criteria · ${esc(s.pb)}</h3>${cd.nv?`<span class="faint small">${cd.kv}/${cd.nv} verplicht</span>`:''}</div>
-    ${p.criteria.length?p.criteria.map(c=>{const on=s.critChecked.includes(c.text);return `<div class="chk ${on?'on':''}" data-a="crit" data-s="${esc(s.id)}" data-v="${esc(c.text)}" role="checkbox" aria-checked="${on}"><span class="box">${on?'✓':''}</span><span class="lbl">${esc(c.text)}</span>${c.mandatory?'<span class="verplicht">verplicht</span>':''}</div>`;}).join(''):geenCriteria(s.pb)}
+  if(!p.criteria.length&&!p.anti.length)return `<div class="critblok"><h3>Criteria · ${esc(s.pb)}</h3>${geenCriteria(s.pb)}</div>`;
+  const open=!!S.critOpen[s.id],nog=cd.nv-cd.kv,n=p.criteria.length;
+  const stand=cd.nv?`${cd.kv}/${cd.nv} verplicht${nog?'':' ✓'}`:`${n} ${n===1?'criterium':'criteria'}`;
+  const waarsch=nog&&cd.k===cd.n?`<span class="critnog">${nog} ${nog===1?'verplicht criterium':'verplichte criteria'} nog open</span>`:'';
+  return `<div class="critblok"><button class="crithead" data-a="critOpen" data-s="${esc(s.id)}" aria-expanded="${open}"><span class="critpijl" aria-hidden="true">${open?'▾':'▸'}</span> <span class="crittitel">Criteria · ${esc(s.pb)}</span> · <span class="critstand">${stand}</span>${waarsch}</button>
+    ${open?critLijst(s,p):''}</div>`;}
+function critLijst(s,p){
+  return `${p.criteria.length?p.criteria.map(c=>{const on=s.critChecked.includes(c.text);return `<div class="chk ${on?'on':''}" data-a="crit" data-s="${esc(s.id)}" data-v="${esc(c.text)}" role="checkbox" aria-checked="${on}"><span class="box">${on?'✓':''}</span><span class="lbl">${esc(c.text)}</span>${c.mandatory?'<span class="verplicht">verplicht</span>':''}</div>`;}).join(''):geenCriteria(s.pb)}
     ${antiH(p)}</div>`;}
 function scenRij(s,x,d,c){
   const open=!!S.open[s.id],cd=confAf(s),e=x.e,klaar=cd.klaar&&s.status==='open',zwak=basisStat(e).betr==='weinig';
@@ -1184,7 +1219,7 @@ const JOURNAL_URL=IS_HOSTED?'/app':'../work/syncjournal.html';
 function renderTop(){
   document.getElementById('top').innerHTML=`
     <a class="brand" href="${JOURNAL_URL}" title="Terug naar de journal">${LOGO}<div><b>Trading Plan</b><span>week · dag · scenario's · door Zaratras</span></div></a>
-    <div class="tools"><a class="ibtn" href="${JOURNAL_URL}">Journal</a><button class="ibtn" data-a="settings" aria-label="instellingen" title="Instellingen">⚙</button></div>
+    <div class="tools"><button class="ibtn" data-a="moriPaneel" aria-controls="moripanel" aria-expanded="${MORI.open}">🤖 Mori</button><a class="ibtn" href="${JOURNAL_URL}">Journal</a><button class="ibtn" data-a="settings" aria-label="instellingen" title="Instellingen">⚙</button></div>
     <nav class="tabs" aria-label="Onderdelen">${TABS.map(([k,l])=>`<button class="${S.tab===k?'on':''}" data-a="tab" data-v="${k}" ${S.tab===k?'aria-current="page"':''}>${l}</button>`).join('')}</nav>`;
 }
 function render(){
@@ -1242,8 +1277,10 @@ const A={
     S.modal=null;save();toast(ids.length?'Gekoppeld: '+ids.length+' trade'+(ids.length===1?'':'s')+'. De journal vult playbook, grade, lagen en beeld aan waar die nog leeg zijn.':'Geen trades meer gekoppeld.');},
   laterKoppelen:()=>{const x=scenOf(S.modal.sid);if(!x)return;x.s.status='genomen';x.s.statusTs=Date.now();S.modal=null;save();toast('Op genomen gezet. Koppel de trade later vanuit de Afsluiting of de Log.');},
   naarFormulier:()=>{const x=scenOf(S.modal.sid);if(!x)return;lsSet(LS.handoff,{sid:x.s.id,day:x.day.id,ts:Date.now()});location.href=JOURNAL_URL;return false;},
-  mori:el=>{const x=scenOf(el.dataset.s);if(!x)return;naarMori({soort:'scenario',sid:x.s.id,day:x.day.id},x.day);return false;},
-  dagMori:()=>{const d=dayOf(vandaag());if(!d||!d.scenarios.length)return;naarMori({soort:'dag',day:d.id},d);return false;},
+  mori:el=>{const x=scenOf(el.dataset.s);if(!x)return;naarMori({soort:'scenario',sid:x.s.id,day:x.day.id},x.day);},
+  dagMori:()=>{const d=dayOf(vandaag());if(!d||!d.scenarios.length)return;naarMori({soort:'dag',day:d.id},d);},
+  moriPaneel:()=>{moriPaneel(!MORI.open);},
+  moriDicht:()=>{moriPaneel(false);render();const k=document.querySelector('.top [data-a="moriPaneel"]');if(k)k.focus();return false;},
   ontkoppel:el=>{const x=scenOf(el.dataset.s);if(!x)return;x.s.trades=(x.s.trades||[]).filter(i=>String(i)!==el.dataset.v);save();},
   lb:el=>{S.modal={type:'lb',doel:el.dataset.d,id:el.dataset.v};},
   afsl:el=>{S.afsl=el.dataset.v;},
@@ -1258,6 +1295,7 @@ const A={
   linkToe:el=>{const inp=el.closest('.media').querySelector('.linkinp'),v=inp?inp.value:'';if(!v.trim())return false;if(voegLinkToe(v,el.dataset.d)===false)return false;},
   ctx:()=>{S.ctxOpen=!S.ctxOpen;},
   chk:el=>{const x=scenOf(el.dataset.s);if(!x)return;const c=x.s.checked,i=c.indexOf(el.dataset.v);if(i>=0)c.splice(i,1);else c.push(el.dataset.v);save();},
+  critOpen:el=>{const id=el.dataset.s;S.critOpen[id]=!S.critOpen[id];},
   crit:el=>{const x=scenOf(el.dataset.s);if(!x)return;const c=x.s.critChecked,i=c.indexOf(el.dataset.v);if(i>=0)c.splice(i,1);else c.push(el.dataset.v);snoeiCriteria();save();},
   status:el=>{const x=scenOf(el.dataset.s);if(!x)return;x.s.status=el.dataset.v;x.s.statusTs=el.dataset.v==='open'?null:Date.now();save();},
   overnemen:el=>{const id=vandaag(),van=dayOf(el.dataset.v);if(!van||PL.days[id])return;const d=nieuweDag(id),kopie=o=>JSON.parse(JSON.stringify(o));

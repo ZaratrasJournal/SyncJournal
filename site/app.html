@@ -1344,6 +1344,10 @@ details.faq[open] summary{color:var(--accent)}
 .linklike{border:none;background:none;color:var(--accent);font-weight:700;cursor:pointer;padding:0;font-size:inherit;font-family:inherit}
 /* AI-coach */
 .aiwrap{max-width:720px;margin:0 auto}
+/* Mori side panel of TradingPlan (?embed=mori): only the conversation, no sidebar, menu or page actions */
+body.embed .shell{grid-template-columns:minmax(0,1fr)}
+body.embed .side,body.embed .appbar,body.embed .navscrim,body.embed .empty .btn{display:none}
+body.embed main{padding:14px 14px 24px}
 .aifeed{background:var(--surface);border:1px solid var(--line);border-radius:12px 12px 0 0;box-shadow:var(--sh);padding:18px;min-height:320px;max-height:54vh;overflow:auto;display:flex;flex-direction:column;gap:14px}
 .aimsg{display:flex;gap:10px;max-width:84%}
 .aimsg.me{align-self:flex-end;flex-direction:row-reverse}
@@ -2228,8 +2232,13 @@ const KINDS={live:{label:'Live',color:'var(--green)'},gemist:{label:'Gemist',col
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v1.23';
+const APP_VERSION='v1.24';
 const SCHEMA_VERSION=12;
+/* ?embed=mori: the journal inside TradingPlan's Mori side panel (an iframe, same origin, same tab). It is read-only
+   for the journal: only Mori's own storage (sj_ai_*) is written, never trades, tags, playbooks or settings. No sync,
+   update check, welcome, migration, banners, sidebar or menu (see bootEmbed). */
+const IS_EMBED=(()=>{try{return new URLSearchParams(location.search).get('embed')==='mori';}catch(e){return false;}})();
+const EMBED_MAG=k=>/^ai_/.test(k);   // the only sj_-keys the embed may write: Mori's prefs and usage
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
   // ander type dan verwacht (bv. sj_manual='null' of een array waar een object hoort).
@@ -2239,7 +2248,7 @@ const DB={
     if(Array.isArray(fb)!==Array.isArray(parsed))return fb;
     if(typeof parsed!==typeof fb)return fb;
     return parsed;}catch(e){return fb;} },
-  save(k,v){ try{localStorage.setItem('sj_'+k,JSON.stringify(v));}catch(e){
+  save(k,v){ if(IS_EMBED&&!EMBED_MAG(k))return; try{localStorage.setItem('sj_'+k,JSON.stringify(v));}catch(e){
     // Quota vol → geen stil verlies: meld het en bied backup aan.
     if(e&&(e.name==='QuotaExceededError'||e.code===22||e.code===1014)){try{ErrorCenter.report('quota',e,{severity:'warn',userMsg:'Je browseropslag zit vol. Je laatste instelling is mogelijk niet bewaard, maak een back-up en ruim ruimte op.',actions:[{label:'Exporteer backup',fn:()=>exportJSON()}]});}catch(_){}}
   } },
@@ -2283,9 +2292,10 @@ try{ if(navigator.storage&&navigator.storage.estimate){navigator.storage.estimat
 const IDB={db:null,
   open(){return IDB.db?Promise.resolve(IDB.db):new Promise((res,rej)=>{const r=indexedDB.open('sj_db',1);r.onupgradeneeded=()=>r.result.createObjectStore('kv');r.onsuccess=()=>{IDB.db=r.result;res(IDB.db);};r.onerror=()=>rej(r.error);});},
   get(k){return IDB.open().then(db=>new Promise(res=>{const t=db.transaction('kv','readonly').objectStore('kv').get(k);t.onsuccess=()=>res(t.result);t.onerror=()=>res(undefined);})).catch(()=>undefined);},
-  set(k,v){return IDB.open().then(db=>new Promise(res=>{const tx=db.transaction('kv','readwrite');tx.objectStore('kv').put(v,k);tx.oncomplete=()=>res(true);tx.onerror=()=>res(false);})).catch(()=>false);},
-  clearAll(){return IDB.open().then(db=>new Promise(res=>{const tx=db.transaction('kv','readwrite');tx.objectStore('kv').clear();tx.oncomplete=()=>res(true);tx.onerror=()=>res(false);})).catch(()=>false);},
-  del(k){return IDB.open().then(db=>new Promise(res=>{const tx=db.transaction('kv','readwrite');tx.objectStore('kv').delete(k);tx.oncomplete=()=>res(true);tx.onerror=()=>res(false);})).catch(()=>false);},
+  set(k,v){if(IS_EMBED)return Promise.resolve(true);   // embed: trades/playbooks stay untouched (true: nothing to report)
+    return IDB.open().then(db=>new Promise(res=>{const tx=db.transaction('kv','readwrite');tx.objectStore('kv').put(v,k);tx.oncomplete=()=>res(true);tx.onerror=()=>res(false);})).catch(()=>false);},
+  clearAll(){if(IS_EMBED)return Promise.resolve(true);return IDB.open().then(db=>new Promise(res=>{const tx=db.transaction('kv','readwrite');tx.objectStore('kv').clear();tx.oncomplete=()=>res(true);tx.onerror=()=>res(false);})).catch(()=>false);},
+  del(k){if(IS_EMBED)return Promise.resolve(true);return IDB.open().then(db=>new Promise(res=>{const tx=db.transaction('kv','readwrite');tx.objectStore('kv').delete(k);tx.oncomplete=()=>res(true);tx.onerror=()=>res(false);})).catch(()=>false);},
 };
 /* Geversioneerde schema-migratie: elke toekomstige breaking change krijgt een {v, up}-stap.
    up() transformeert de al-geladen live-staat (T, PBOOK, tagConfig, …) in-place.
@@ -2555,7 +2565,7 @@ function schoonPrijzen(t){if(!t||typeof t!=='object')return t;
   (Array.isArray(t.tps)?t.tps:[]).forEach(x=>{if(x&&'price' in x)x.price=schoonPrijs(x.price);});
   return t;}
 function persist(){
-  if(TAB_STALE)return;   // verouderd tabblad schrijft niet: het zou het andere werk wissen
+  if(TAB_STALE||IS_EMBED)return;   // verouderd tabblad (of de embed) schrijft niet: het zou het andere werk wissen
   /* Achtergrondwerk (wisselkoersen, auto-sync, Drive) kan schrijven op een moment dat dit
      tabblad nog niet DOORHEEFT dat een ander tabblad voor was - het storage-signaal is dan
      nog niet verwerkt. Daarom hier nog één keer kijken wat er werkelijk in de opslag staat
@@ -6146,14 +6156,16 @@ const FAQS=[
     ['Waarom kan ik entry en exit niet aanpassen bij een gesyncte trade?','Omdat bij een gesyncte trade (opgehaald via je exchange-koppeling) de exchange de bron is. Entry, exit, size (de grootte van je positie), fees (kosten) en P&L komen dan van de exchange en staan vast. Stop-loss, risico, notities, tags, grade en screenshots blijven van jou. Komt je stop zelf van de exchange, dan staat die ook vast. Klopt hij niet, dan klik je op <b>Zelf aanpassen</b>; zie de vraag over de stop van je exchange. Handmatige trades en CSV-imports kun je wel helemaal aanpassen.'],
   ]],
   ['🗓️ Je trading plan',[
-    ['Wat is het Trading Plan?','Een plan voor je week en je dag, met scenario\'s, dat bij elk scenario je edge uit je eigen trades laat zien. Je opent het met <b>Plan</b> in het menu. Het is een losse pagina, met dezelfde opslag als je journal. Er zijn vier tabs:<ul><li><b>Week</b>: lagen, levels, no-trade en focus voor de week.</li><li><b>Dag</b>: je lagen van vandaag, levels, pre-flight, mentaal en je scenario\'s.</li><li><b>Afsluiting</b>: na de sessie, wat uitkwam en je les.</li><li><b>Log</b>: al je dagen terug.</li></ul>Een <b>scenario</b> is een als-dan-plan: "als BTC de Asia-low sweept, dan long met mijn London SFP". Je <b>edge</b> is waar je structureel geld verdient.','plan'],
-    ['Hoe maak ik een dagplan, en heb ik een weekplan nodig?','Klik op <b>Dag → Maak dagplan</b>. Een weekplan is niet nodig. Heb je er wel een, dan erft elke dag van die week de lagen van de week (gedimd), en wat de week al heeft staat niet nog eens leeg in je dag.<ul><li>Met het tandwiel ⚙ kies je je stijl: <b>Swing</b>, <b>Daytrade</b> of <b>Scalp</b>. Die bepaalt alleen met welke tijdframes een nieuwe week en dag beginnen; je kunt er altijd van afwijken.</li><li>Tags en tijdframes komen uit je journal. In het plan kies je alleen uit die lijst; een nieuwe tag of een nieuw tijdframe voeg je toe bij <b>Instellingen → Tags</b>. Zo blijft je data overal hetzelfde.</li><li>Nog niets voor vandaag? <b>Gisteren overnemen</b> neemt de lagen, levels en nog open scenario\'s van je vorige dagplan over.</li></ul>'],
+    ['Wat is het Trading Plan?','Een plan voor je week en je dag, met scenario\'s, dat bij elk scenario je edge uit je eigen trades laat zien. Je opent het met <b>Plan</b> in het menu. Het is een losse pagina, met dezelfde opslag als je journal. Er zijn vier tabs:<ul><li><b>Week</b>: lagen, levels, no-trade en focus voor de week.</li><li><b>Dag</b>: je lagen van vandaag, levels, charts, je dagstart, je gevoel en je scenario\'s.</li><li><b>Afsluiting</b>: na de sessie, wat uitkwam en je les.</li><li><b>Log</b>: al je dagen terug.</li></ul>Een <b>scenario</b> is een als-dan-plan: "als BTC de Asia-low sweept, dan long met mijn London SFP". Je <b>edge</b> is waar je structureel geld verdient.','plan'],
+    ['Hoe maak ik een dagplan, en heb ik een weekplan nodig?','Klik op <b>Dag → Maak dagplan</b>. Een weekplan is niet nodig. Heb je er wel een, dan staat de week bovenaan je dag op één regel, en erft elke dag de tags van de week (gestippeld).<ul><li>Elke laag is één regel: tijdframe, bias en tags. Tik op een regel om de bias en de tags te kiezen; onderaan dat venster staat <b>Laag weghalen</b>. Een nieuwe laag voeg je toe met <b>+ Tijdframe</b>. Een gestippelde tag komt uit je weekplan: tik op de laag om hem voor vandaag uit te zetten.</li><li>Met het tandwiel ⚙ kies je je stijl: <b>Swing</b>, <b>Daytrade</b> of <b>Scalp</b>. Die bepaalt alleen met welke tijdframes een nieuwe week en dag beginnen; je kunt er altijd van afwijken.</li><li>Tags en tijdframes komen uit je journal. In het plan kies je alleen uit die lijst; een nieuwe tag of een nieuw tijdframe voeg je toe bij <b>Instellingen → Tags</b>. Zo blijft je data overal hetzelfde.</li><li>Nog niets voor vandaag? <b>Gisteren overnemen</b> neemt de lagen, levels en nog open scenario\'s van je vorige dagplan over.</li></ul>'],
     ['Wat zeggen de cijfers bij een scenario?','Hoe je eerdere trades met dezelfde setup het deden: hetzelfde playbook, dezelfde richting en dezelfde tags per tijdframe. <b>Live</b> en <b>Backtest</b> staan apart; Paper telt bij Backtest.<ul><li><b>Gem. R</b>: je gemiddelde resultaat in R. Alleen trades mét stop-loss tellen mee.</li><li><b>Winrate</b>, expectancy, profit factor en je laatste 10.</li><li><b>weinig data</b> (onder 10 trades), <b>redelijk wat data</b> (10 tot 30) of <b>genoeg data</b> (30 of meer).</li><li><b>sterkste</b>: het scenario bovenaan, met minstens 10 trades en een positieve gem. R.</li></ul>Onder 5 trades laat het plan eerst de richting los, dan tags vanaf het hoogste tijdframe; "zonder …" zegt welke. Een tijdframe dat geen van je trades heeft, telt niet mee. Een kans in procenten staat er bewust niet: bij weinig trades is dat schijnzekerheid.'],
-    ['Wanneer is een scenario "Klaar om te nemen"?','Als je alle confirmations van de entry-laag en alle verplichte criteria van je playbook hebt afgevinkt. Open het scenario en vink ze aan; dan staat er <b>Klaar om te nemen</b>, met je risico voor die grade.<ul><li>Het risico per grade (A, B, C) stel je in met het tandwiel ⚙. 0% betekent: niet traden.</li><li>"Niet als: …" uit je playbook staat erbij als waarschuwing.</li><li><b>Pre-flight</b> en <b>mentaal</b> zijn een herinnering, geen slot: niets wordt geblokkeerd. Bij mentaal 1 of 2 zegt het plan: <b>Overweeg alleen A-setups</b>.</li></ul>'],
+    ['Wanneer is een scenario "Klaar om te nemen"?','Als je alle confirmations van de entry-laag en alle verplichte criteria van je playbook hebt afgevinkt. Open het scenario en vink ze aan; dan staat er <b>Klaar om te nemen</b>, met je risico voor die grade.<ul><li>De criteria van je playbook staan ingeklapt op één regel, bv. "Criteria · London SFP · 1/2 verplicht". Tik erop om ze af te vinken. Zijn je confirmations af maar staan er nog verplichte criteria open, dan zegt die regel dat in amber, bv. "2 verplichte criteria nog open".</li><li>Het risico per grade (A, B, C) stel je in met het tandwiel ⚙. 0% betekent: niet traden.</li><li>"Niet als: …" uit je playbook staat erbij als waarschuwing.</li><li>Je <b>Dagstart</b> en je <b>Gevoel</b> zijn een herinnering, geen slot: niets wordt geblokkeerd. Kies je bij Gevoel een negatieve emotie, dan zegt het plan: <b>Overweeg alleen A-setups</b>.</li></ul>'],
+    ['Wat is de Dagstart?','Je eigen lijstje voor je begint met traden, bv. "Nieuws gecheckt" en "Goed geslapen". Je vinkt het elke ochtend af bij <b>Dag</b>; bovenaan staat dan bv. "Dagstart 2/4".<ul><li>De lijst is van jou, met hooguit 8 punten. Klik bij Dagstart op <b>Bewerk</b> om punten toe te voegen, weg te halen of te hernoemen. Met het tandwiel ⚙ kan het ook.</li><li>Een nieuw plan begint met drie standaardpunten.</li><li>Hernoem je een punt, dan gaan je vinkjes mee, ook op eerdere dagen. Haal je een punt weg, dan blijven de andere vinkjes staan.</li></ul>Je Dagstart blokkeert niets: het is een herinnering.'],
+    ['Wat doet Gevoel, en wat zegt het over mijn trades?','Bij <b>Gevoel</b> kies je hoe je de dag begint, uit de emoties van je journal (<b>Instellingen → Tags</b>). Meer dan één mag. Groen is een positieve emotie, rood een negatieve.<ul><li>Kies je een negatieve emotie, bv. FOMO, dan zegt het plan: <b>Overweeg alleen A-setups</b>.</li><li>Onder elke gekozen emotie staat hoe je trades met die emotie het deden, bv. "Met FOMO: 14 trades · 29% · −0,40R". Onder 10 trades staat er weinig data bij.</li><li><b>Je dagstart-gevoel</b> staat in de Log en in de journal bij <b>Tendencies → Plan</b>: per emotie hoe de dagen gingen die je ermee begon. Je ziet het aantal dagen, je trades op die dagen, de winrate, de gem. R en hoeveel trades buiten je plan vielen. De slechtste staat bovenaan, want daar zit de les. Hoe betrouwbaar het is, hangt af van het aantal dagen: onder 10 weinig, vanaf 30 genoeg.</li></ul>Je ochtendgevoel gaat niet mee naar je trades: hoe je de dag begint is iets anders dan hoe je je voelt tijdens een trade. Oude dagen met een cijfer van 1 tot 5 tonen dat als "mentaal 4/5 (oud)".'],
     ['Hoe koppel ik een trade aan een scenario?','Dat kies je zelf: er wordt <b>nooit vanzelf gekoppeld</b>. Open het scenario en klik op <b>Zet om in trade</b>.<ul><li><b>Uit je journal</b>: tik een of meer trades aan en klik op <b>Koppel</b>. Je ziet trades met hetzelfde pair en dezelfde richting op die dag; met <b>Alle pairs en richtingen</b> en <b>+ dag erna</b> zie je meer. Een trade hoort bij hooguit één scenario.</li><li><b>Nieuwe trade invullen</b>: het tradeformulier opent al ingevuld, voor een handmatige, backtest- of papertrade. Opslaan koppelt hem.</li></ul>Achteraf kan ook: <b>Koppel trade</b> in de Afsluiting of de Log, of in de journal bij de trade zelf (<b>Koppel aan scenario</b>). Ontkoppelen: het × bij de trade in het scenario. Lege velden van de trade vult de journal aan uit het scenario.'],
-    ['Kan ik screenshots en TradingView-links in mijn plan zetten?','Ja, in je week, je dag en elk scenario. Plak een screenshot met <b>Ctrl+V</b> (Mac: ⌘+V), sleep hem erheen, of klik op <b>+ Afbeelding</b>. Een link plak je in het veld ernaast en voeg je toe met <b>+ Link</b>; van een TradingView-snapshot zie je meteen een voorbeeld.<ul><li>Hooguit 8 afbeeldingen en 8 links per dag of week, en 4 per scenario.</li><li>Plakken gaat naar het scenario dat openstaat, anders naar de dag.</li><li>Bij <b>Zet om in trade</b> gaan de afbeeldingen en links van het scenario mee naar de trade, als die er zelf nog geen heeft.</li></ul>'],
+    ['Kan ik screenshots en TradingView-links in mijn plan zetten?','Ja, in je week, je dag (bij Dag in de stap <b>Charts</b>) en elk scenario. Plak een screenshot met <b>Ctrl+V</b> (Mac: ⌘+V), sleep hem erheen, of klik op <b>+ Afbeelding</b>. Een link plak je in het veld ernaast en voeg je toe met <b>+ Link</b>; van een TradingView-snapshot zie je meteen een voorbeeld.<ul><li>Hooguit 8 afbeeldingen en 8 links per dag of week, en 4 per scenario.</li><li>Plakken gaat naar het scenario dat openstaat, anders naar de dag.</li><li>Bij <b>Zet om in trade</b> gaan de afbeeldingen en links van het scenario mee naar de trade, als die er zelf nog geen heeft.</li></ul>'],
     ['Wat zie ik in de Afsluiting en de Log?','Hoe je plan uitpakte. In de <b>Afsluiting</b> zet je na de sessie per scenario de status: <b>Genomen</b>, <b>Gemist</b> (uitgekomen, niet genomen), <b>Niet uit</b> (niet uitgekomen) of <b>Ongeldig</b>. Dan zie je:<ul><li>hoeveel scenario\'s uitkwamen, hoeveel je er nam en hoeveel je liet liggen;</li><li><b>binnen plan tegenover buiten plan</b>: je live-trades die bij een scenario horen tegenover die erbuiten, in R en geld;</li><li>ruimte voor één les.</li></ul>De <b>Log</b> toont al je dagen, nieuwste boven, met je <b>voorspel-score</b>: hoe vaak je scenario\'s uitkomen, en hoe vaak je ze dan ook neemt. Dezelfde cijfers staan in de journal bij <b>Tendencies → Plan</b>.'],
-    ['Kan Mori mijn plan bekijken?','Ja, per scenario en je hele dagplan, als Mori aan staat en je sleutel gekoppeld is. Anders staat er <b>Mori instellen</b>.<ul><li>Open een scenario en klik op <b>🤖 Vraag Mori</b>. Mori vergelijkt het met je eigen cijfers en regels, en zegt waar het tegen je week- of dagbias ingaat.</li><li>Bovenaan Dag staat <b>🤖 Vraag Mori over mijn dagplan</b>: welke scenario\'s volgens je cijfers het sterkst en het zwakst zijn, en waar je plan zichzelf tegenspreekt.</li></ul>De journal opent Mori en stelt de vraag. Mee gaan je scenario\'s, lagen, levels, mentaal, pre-flight en de cijfers die het plan toont; bij <b>Wat is er verstuurd?</b> zie je alles. Mori geeft <b>geen koop- of verkoopadvies</b>.'],
+    ['Kan Mori mijn plan bekijken?','Ja, per scenario en je hele dagplan, als Mori aan staat en je sleutel gekoppeld is. Anders staat er <b>Mori instellen</b>.<ul><li>Open een scenario en klik op <b>🤖 Vraag Mori</b>. Mori vergelijkt het met je eigen cijfers en regels, en zegt waar het tegen je week- of dagbias ingaat.</li><li>Bovenaan Dag staat <b>🤖 Vraag Mori over mijn dagplan</b>: welke scenario\'s volgens je cijfers het sterkst en het zwakst zijn, en waar je plan zichzelf tegenspreekt.</li></ul>Mori opent in een <b>paneel naast je plan</b> (op je telefoon schermvullend) en stelt de vraag; daarna kun je gewoon doorvragen. Met <b>🤖 Mori</b> bovenin open je het paneel ook zonder vraag. Sluit je het paneel, dan blijft het gesprek staan tot je de pagina verlaat. In het paneel draait de Mori van je journal: je sleutel blijft daar, en het paneel verandert niets aan je trades of instellingen. Mee gaan je scenario\'s, lagen, levels, je gevoel, je dagstart en de cijfers die het plan toont; bij <b>Wat is er verstuurd?</b> zie je alles. Mori geeft <b>geen koop- of verkoopadvies</b>.'],
     ['Waar is de poort (en mijn oude plan) gebleven?','Die is weg: het Trading Plan is in v1.19 opnieuw opgezet, zonder poort en zonder de drie checklists. Je oude plan wordt niet meer gelezen, maar ook niet gewist. Je begint dus opnieuw, met een dagplan en je scenario\'s. Ook "dekt poort-punt" bij je playbook-criteria is weg; je criteria zelf staan er nog.'],
     ['Gaat mijn plan mee in de back-up?','Ja, je plannen en hun afbeeldingen. Bij <b>Instellingen → Data → Exporteer JSON</b> staat het in het overzicht als <b>TradingPlan</b>, met het aantal plannen, scenario\'s en afbeeldingen. Bij <b>Instellingen → Data → Importeer</b> zet de journal ze terug, ook de afbeeldingen. Je sleutel voor Mori gaat nooit mee.'],
   ]],
@@ -6965,8 +6977,10 @@ function aiMsgHTML(m){
   const gestopt=m.gestopt?'<div class="aigestopt">Gestopt door jou, dit is wat er al was.</div>':'';
   const verstuurd=m.pakket?`<details class="aisent"><summary>Wat is er verstuurd?${m.kosten!=null?' <span class="aikost">≈ '+aiUsd(m.kosten)+'</span>':''}</summary><pre>${esc(m.pakket)}</pre></details>`:'';
   return `<div class="aimsg ai"><div class="aiav">🤖</div><div class="aibub">${body}${gestopt}${verstuurd}${m.terug?aiTerugPlan():''}</div></div>`;}
+// The journal itself (outside the embed), for links from the Mori side panel: they open in the whole tab.
+const embedJournal=q=>location.pathname+'?'+q;
 // A question that came from TradingPlan: a way back, same tab (go('plan') knows where the plan lives).
-const aiTerugPlan=()=>`<a class="linklike aiterug" href="${IS_HOSTED?'/plan/':'../tradingplan/tradingplan.html'}">← Terug naar je plan</a>`;
+const aiTerugPlan=()=>IS_EMBED?'':`<a class="linklike aiterug" href="${IS_HOSTED?'/plan/':'../tradingplan/tradingplan.html'}">← Terug naar je plan</a>`;
 // The pre-trade form. Values live in memory; checking the idea updates the hint and button in place, so typing
 // never triggers a full render.
 let AI_IDEE={open:false,pair:'',dir:'long',setup:'',entry:'',stop:'',tp:''};
@@ -7013,11 +7027,11 @@ function aiZonderSleutel(){
       <ol class="aisteps">
         <li><b>Maak een sleutel</b> op <a class="linklike" href="https://console.anthropic.com" target="_blank" rel="noopener">console.anthropic.com</a>: maak een account, zet er tegoed op (bijvoorbeeld $5) en kies <i>API keys → Create key</i>.</li>
         <li><b>Stel een maandlimiet in</b> bij Anthropic, zodat je nooit meer uitgeeft dan je wilt.</li>
-        <li><b>Plak je sleutel</b> hier.</li>
+        <li><b>Plak je sleutel</b> ${IS_EMBED?'in de journal, bij Mori':'hier'}.</li>
       </ol>
-      <div class="aikeyrow"><input id="aiKeyInput" type="password" autocomplete="off" spellcheck="false" placeholder="sk-ant-…" aria-label="Je Anthropic-sleutel" onkeydown="if(event.key==='Enter')aiKoppel()"><button class="btn pri" id="aiKeyBtn" onclick="aiKoppel()">Koppelen</button></div>
+      ${IS_EMBED?`<a class="btn pri" href="${esc(embedJournal('page=ai'))}" target="_top">Mori instellen</a>`:`<div class="aikeyrow"><input id="aiKeyInput" type="password" autocomplete="off" spellcheck="false" placeholder="sk-ant-…" aria-label="Je Anthropic-sleutel" onkeydown="if(event.key==='Enter')aiKoppel()"><button class="btn pri" id="aiKeyBtn" onclick="aiKoppel()">Koppelen</button></div>
       <label class="aikeysessie"><input type="checkbox" id="aiKeySessie"> Alleen voor deze sessie onthouden (gedeelde computer)</label>
-      <div class="aikeystatus" id="aiKeyStatus" role="status"></div>
+      <div class="aikeystatus" id="aiKeyStatus" role="status"></div>`}
       <p class="aimeegaan">${AI_MEEGAAN} Je sleutel blijft op dit apparaat en gaat nooit mee in een back-up.</p>
     </div>
     <div class="aivb-lbl">Voorbeeld · zo ziet een gesprek eruit, de cijfers zijn verzonnen</div>
@@ -7029,10 +7043,10 @@ function aiLeeg(key){return `<div class="aiwrap">${emptyState(key)}${aiVoet()}</
 function aiLimietHTML(){const v=aiVerbruik();
   return `<div class="aimsg ai limiet" role="alert"><div class="aiav">💰</div><div class="aibub">Je hebt deze maand ongeveer <b>${aiUsd(v.usd)}</b> gebruikt. Dat is boven je eigen limiet van <b>${aiUsd(AIPREFS.limiet)}</b>. Toch versturen?
     <div class="aiknoprij"><button class="btn pri" id="aiLimietJa" onclick="aiVraag(AI_UI.limiet.vraag,{...AI_UI.limiet.o,bevestigd:true})">Toch versturen</button><button class="btn" id="aiLimietNee" onclick="AI_UI.limiet=null;render()">Niet nu</button></div></div></div>`;}
-function aiVoet(){return `<div class="aidisc">Claude ${aiModelNaam()} · sleutel ${esc(aiKeyHint())}${aiKeySessie()?' (alleen deze sessie)':''} · je cijfers gaan naar Anthropic, niet naar ons · geen financieel advies · <a class="linklike" onclick="go('instellingen');setSetTab('ai')">Instellingen</a></div>`;}
+function aiVoet(){return `<div class="aidisc">Claude ${aiModelNaam()} · sleutel ${esc(aiKeyHint())}${aiKeySessie()?' (alleen deze sessie)':''} · je cijfers gaan naar Anthropic, niet naar ons · geen financieel advies · ${IS_EMBED?`<a class="linklike" href="${esc(embedJournal('page=instellingen&tab=ai'))}" target="_top">Instellingen</a>`:`<a class="linklike" onclick="go('instellingen');setSetTab('ai')">Instellingen</a>`}</div>`;}
 function pgAI(){
   aiBewaarInvoer();
-  if(!AIPREFS.enabled)return `<div class="aiwrap"><div class="aioff">${svg(IC.ai,40)}<h3>Mori staat uit</h3><p>Schakel Mori, je AI-coach, in om vragen te stellen over je edge, je lekken en je periode.</p><button class="btn pri" onclick="go('instellingen');setSetTab('ai')">Mori inschakelen</button></div></div>`;
+  if(!AIPREFS.enabled)return `<div class="aiwrap"><div class="aioff">${svg(IC.ai,40)}<h3>Mori staat uit</h3><p>Schakel Mori, je AI-coach, in om vragen te stellen over je edge, je lekken en je periode.</p>${IS_EMBED?`<a class="btn pri" href="${esc(embedJournal('page=instellingen&tab=ai'))}" target="_top">Mori inschakelen</a>`:`<button class="btn pri" onclick="go('instellingen');setSetTab('ai')">Mori inschakelen</button>`}</div></div>`;
   if(!aiKeyGet())return aiZonderSleutel();
   if(!T.length)return aiLeeg('mori-leeg');
   if(!CLOSED.length)return aiLeeg(FT.length?'gesloten-nodig':'mori-niets');
@@ -7103,7 +7117,7 @@ function renderPagina(){
   try{syncStip();}catch(e){}
   const bv=document.getElementById('balVal');if(bv){bv.textContent=(dispCur()==='EUR'?'≈ ':'')+CURSYM()+' '+Math.round(fxNow(totalBalance())).toLocaleString('nl-NL');bv.title=koersUitleg()+(inclFunded()?' · incl. funded (Instellingen → Funded)':'');bv.classList.toggle('oud',koersOud());}
   try{renderSideConns();}catch(e){}
-  const m=document.getElementById('main');destroyCharts();_rcQueue=[];m.innerHTML=tabBanner()+updateBanner()+driveBanner()+backupBanner()+fn();m.style.animation='none';void m.offsetWidth;m.style.animation='';
+  const m=document.getElementById('main');destroyCharts();_rcQueue=[];m.innerHTML=(IS_EMBED?'':tabBanner()+updateBanner()+driveBanner()+backupBanner())+fn();m.style.animation='none';void m.offsetWidth;m.style.animation='';
   document.querySelectorAll('#nav button,#navbot button').forEach(b=>b.classList.toggle('on',b.dataset.p===STATE.page));
   try{bkIndUpdate();}catch(e){}
   wire();mountCharts();
@@ -12205,7 +12219,7 @@ document.addEventListener('keydown',e=>{
 });
 /* sneltoetsen: n = nieuwe trade · / = zoeken */
 document.addEventListener('keydown',e=>{
-  if(e.metaKey||e.ctrlKey||e.altKey)return;
+  if(IS_EMBED||e.metaKey||e.ctrlKey||e.altKey)return;   // the embed only shows Mori
   const tag=(e.target.tagName||'').toLowerCase();
   if(tag==='input'||tag==='textarea'||tag==='select'||e.target.isContentEditable)return;
   if(document.getElementById('modal').classList.contains('on')||document.getElementById('welcome').classList.contains('on'))return;
@@ -12213,15 +12227,30 @@ document.addEventListener('keydown',e=>{
   else if(e.key==='/'){e.preventDefault();if(STATE.page!=='trades')go('trades');setTimeout(()=>{const s=document.getElementById('trSearch');if(s){s.focus();searchWasFocused=true;}},60);}
 });
 /* screenshot plakken uit clipboard (Ctrl/⌘+V) — voegt toe aan de trade die je bekijkt */
-document.addEventListener('paste',e=>{const items=e.clipboardData&&e.clipboardData.items;if(!items)return;
+document.addEventListener('paste',e=>{if(IS_EMBED)return;const items=e.clipboardData&&e.clipboardData.items;if(!items)return;
   const formOpen=document.getElementById('modal').classList.contains('on');
   if(!formOpen&&pasteTargetId==null)return;
   for(const it of items){if(it.type&&it.type.startsWith('image/')){e.preventDefault();const f=it.getAsFile();if(f){if(formOpen){if(document.getElementById('pbexamples'))addPbExample(f);else addFormShot(f);}else addScreenshot(pasteTargetId,f);}return;}}});
+if(IS_EMBED)document.body.classList.add('embed');
 render();
 boot();  // async: laadt data, biedt daarna migratie of welkom aan
 // Laad trades + playbooks uit IndexedDB (async). Eenmalige migratie vanuit het
 // oude localStorage-model (Fase 1) zodat bestaande data niet verloren gaat.
+/* The Mori side panel of TradingPlan: only read trades and playbooks, open Mori and pick up a question from the plan.
+   Everything else boot() does (migrations, sync, backups, Drive, update check, welcome) writes or shows UI. */
+let EMBED_KLAAR=false;
+async function bootEmbed(){
+  try{const t=await IDB.get('trades'),pb=await IDB.get('pbook');laadOpslag(t,pb);}catch(e){T=[];PBOOK={};}
+  EMBED_KLAAR=true;go('ai');try{planMoriVanOverdracht();}catch(e){}
+}
+// "Vraag Mori" in a panel that is already open: the plan writes tp3:mori and nudges us (same origin, our parent only).
+if(IS_EMBED)window.addEventListener('message',e=>{if(e.origin!==location.origin||e.source!==window.parent||!e.data||e.data.tp3!=='mori')return;
+  if(EMBED_KLAAR)planMoriVanOverdracht();});   // still booting: bootEmbed picks the question up itself
+// Stored data through the safety check: whoever has a broken trade in storage (e.g. from an older import) gets back in.
+function laadOpslag(t,pb){T=Array.isArray(t)?t.map((x,i)=>sanitizeTrade(x,x&&x.id!=null?x.id:i)):[];
+  PBOOK={};Object.entries(pb||{}).forEach(([k,v])=>PBOOK[k]=pbNormalize(k,v));}
 async function boot(){
+  if(IS_EMBED)return bootEmbed();
   try{
     let t=await IDB.get('trades'), pb=await IDB.get('pbook');
     // Gebundelde dataset (distributie): eenmalig inladen bij een écht lege eerste-start.
@@ -12231,10 +12260,7 @@ async function boot(){
     }
     if(t===undefined){const ls=DB.load('trades',null);if(ls!=null){t=ls;IDB.set('trades',ls);}try{localStorage.removeItem('sj_trades');}catch(e){}}
     if(pb===undefined){const ls=DB.load('pbook',null);if(ls!=null){pb=ls;IDB.set('pbook',ls);}try{localStorage.removeItem('sj_pbook');}catch(e){}}
-    // ook opgeslagen data langs de veiligheidscontrole: wie al een kapotte trade in de
-    // opslag heeft (bijv. uit een oudere import) komt er zo gewoon weer in
-    T=Array.isArray(t)?t.map((x,i)=>sanitizeTrade(x,x&&x.id!=null?x.id:i)):[];
-    PBOOK={};Object.entries(pb||{}).forEach(([k,v])=>PBOOK[k]=pbNormalize(k,v));
+    laadOpslag(t,pb);
   }catch(e){T=DB.load('trades',[]);PBOOK={};Object.entries(DB.load('pbook',{})).forEach(([k,v])=>PBOOK[k]=pbNormalize(k,v));}
   try{const sm=await IDB.get('snapshots');SNAP_META=Array.isArray(sm)?sm:[];}catch(e){SNAP_META=[];}
   try{const tr=await IDB.get('trash');TRASH=Array.isArray(tr)?tr:[];purgeTrash();}catch(e){TRASH=[];}
