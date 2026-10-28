@@ -160,12 +160,13 @@ const SCEN = [
   let pbt = await p.evaluate(() => (document.querySelector('#modal .pbcrit') || {}).innerText || '');
   ok('playbook kiezen: de criteria verschijnen meteen, de verplichte gemarkeerd', /HTF-trend mee\s*verplicht/i.test(pbt) && /Volume boven gemiddeld/.test(pbt) && !/Volume boven gemiddeld\s*verplicht/i.test(pbt), pbt);
   ok('anti-criteria als "Niet als …", en stop / target / min. R:R op één regel', /Niet als: Vlak voor nieuws/.test(pbt) && /Stop Onder de sweep · Target 2R · Min\. R:R 2/.test(pbt.replace(/\s+/g, ' ')), pbt);
-  ok('een leeg criterium telt niet mee', (await p.evaluate(() => document.querySelectorAll('#modal .pbcrit li.crit').length)) === 2);
+  ok('een leeg criterium telt niet mee', (await p.evaluate(() => document.querySelectorAll('#modal .pbcrit .crit').length)) === 2);
   await p.selectOption('#sc-pb', 'Backtestbaas'); await p.waitForTimeout(120);
   pbt = await p.evaluate(() => { const b = document.querySelector('#modal .pbcrit'); return b ? { t: b.innerText, href: (b.querySelector('a') || {}).href || '' } : null; });
   ok('playbook zonder criteria: geen leeg blok, wel "Dit playbook heeft nog geen criteria" met een link naar het playbook', pbt && /Dit playbook heeft nog geen criteria/.test(pbt.t) && /page=playbook&pb=Backtestbaas/.test(pbt.href), JSON.stringify(pbt));
   await p.click('#modal [data-a="close"]'); await p.waitForTimeout(80);
   await p.click('.ritem[data-s="s_kr"] .rrow'); await p.waitForTimeout(120);
+  await p.click('.ritem[data-s="s_kr"] [data-a="critOpen"]'); await p.waitForTimeout(80);   // criteria are closed by default (round 3, point 8; plan3-criteria)
   const det = () => p.evaluate(() => { const r = document.querySelector('.ritem[data-s="s_kr"]'); return { crit: [...r.querySelectorAll('[data-a="crit"]')].map(x => x.dataset.v), anti: [...r.querySelectorAll('.anti')].map(x => x.innerText.trim()), antiKlik: !!r.querySelector('.anti [data-a]'), ready: r.classList.contains('ready') }; });
   let d6 = await det();
   ok('opengeklapt: criteria als afvinklijst naast de confirmations', d6.crit.join() === 'HTF-trend mee,Volume boven gemiddeld', JSON.stringify(d6));
@@ -178,10 +179,10 @@ const SCEN = [
   ok('playbook zonder criteria: klaar zoals vroeger (alleen de confirmations)', await p.evaluate(() => { __tp3.S.open.s_zc = true; __tp3.render(); const r = document.querySelector('.ritem[data-s="s_zc"]'); return r.classList.contains('ready') && /Dit playbook heeft nog geen criteria/.test(r.innerText) && !r.querySelector('[data-a="crit"]'); }));
   PB6['Trend-pullback'].criteria = [{ text: 'HTF-trend mee (4H)', mandatory: true }, { text: 'Volume boven gemiddeld', mandatory: false }];
   await H.zaaiJournal(p, { trades: H.FIXTURE(), pbook: PB6 }); await p.reload({ waitUntil: 'load' }); await p.waitForTimeout(500);
-  await p.click('.ritem[data-s="s_kr"] .rrow'); await p.waitForTimeout(120);
+  await p.click('.ritem[data-s="s_kr"] .rrow'); await p.waitForTimeout(120); await p.click('.ritem[data-s="s_kr"] [data-a="critOpen"]'); await p.waitForTimeout(80);
   d6 = await det();
   ok('playbook gewijzigd in de journal: het scenario volgt de nieuwe tekst, het vinkje van de oude valt weg', d6.crit.join() === 'HTF-trend mee (4H),Volume boven gemiddeld' && !d6.ready && await p.evaluate(() => __tp3.dayOf(__tp3.vandaag()).scenarios[0].critChecked.join() === 'Volume boven gemiddeld'), JSON.stringify(d6));
-  await H.vierShots(p, 'criteria', async q => { await q.click('.ritem[data-s="s_kr"] .rrow'); await q.waitForTimeout(120); });
+  await H.vierShots(p, 'criteria', async q => { await q.click('.ritem[data-s="s_kr"] .rrow'); await q.click('.ritem[data-s="s_kr"] [data-a="critOpen"]'); await q.waitForTimeout(120); });
   await H.vierShots(p, 'criteria-form', async q => { await q.click('.ritem[data-s="s_kr"] .rrow'); await q.click('.ritem[data-s="s_kr"] [data-a="editScen"]'); await q.waitForTimeout(120); });
   await H.zaaiJournal(p, { trades: H.FIXTURE(), pbook: H.PBOOK });
 

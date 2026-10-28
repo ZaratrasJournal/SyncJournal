@@ -254,13 +254,16 @@ button.lrij:hover{border-color:var(--accent-line);background:var(--hover)}
 .chk.on .box{background:var(--green);border-color:var(--green)}
 .chk.on .lbl{color:var(--ink2)}
 .critblok{margin-top:12px}
+.crithead{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 6px;width:100%;text-align:left;padding:4px 0;color:var(--muted);font-size:var(--t1)}
+.crithead:hover .crittitel{color:var(--ink2)}
+.crittitel{font-weight:700;text-transform:uppercase;letter-spacing:.05em}
+.critpijl{width:10px;flex:none}
+.critnog{margin-left:auto;color:var(--amber);font-weight:600}
 .verplicht{font-size:var(--t1);font-weight:600;color:var(--accent);background:var(--accent-soft);padding:1px 7px;border-radius:999px;margin-left:auto;white-space:nowrap}
 .anti{font-size:var(--t1);color:var(--amber);background:var(--amber-soft);border:1px solid color-mix(in srgb,var(--amber) 30%,transparent);border-radius:8px;padding:5px 9px;margin-top:6px}
-.pbcrit{background:var(--sink);border:1px solid var(--line2);border-radius:10px;padding:9px 12px;font-size:var(--t2)}
-.pbcrit ul{list-style:none;display:flex;flex-direction:column;gap:4px}
-.pbcrit li{display:flex;align-items:center;gap:8px}
-.pbcrit li::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--teal);flex:none}
-.pbcrit .verplicht{margin-left:0}
+.pbcrit{background:var(--sink);border:1px solid var(--line2);border-radius:10px;padding:7px 10px;font-size:var(--t1);line-height:1.6}
+.pbcrit .verplicht{margin-left:0;padding:0 6px}
+.pbcrit .anti{margin-top:2px;padding:0;background:none;border:0}
 .pbrisk{font-size:var(--t1);margin-top:7px;color:var(--ink2)}
 .prog{height:5px;border-radius:3px;background:var(--track);overflow:hidden}
 .prog i{display:block;height:100%;background:var(--green);border-radius:3px}
@@ -617,7 +620,7 @@ const pairBase=p=>String(p||'').split(/[\/\-:]/)[0].trim().toUpperCase();
 
 // ───────────────────────── state ─────────────────────────
 let PL=load();
-const S={tab:'dag',modal:null,toast:'',tfOpen:'',open:{},info:{},ctxOpen:false,afsl:'dag',afslDag:null,afslEdit:null,logF:{status:'',pb:'',dir:''},logEdit:null};
+const S={tab:'dag',modal:null,toast:'',tfOpen:'',open:{},critOpen:{},info:{},ctxOpen:false,afsl:'dag',afslDag:null,afslEdit:null,logF:{status:'',pb:'',dir:''},logEdit:null};
 
 // ───────────────────────── thema = journal (besluit 10) ─────────────────────────
 function themaVanJournal(){const s=lsGet(SJ.state,{});document.documentElement.dataset.theme=isObj(s)&&s.theme==='dark'?'dark':'light';}
@@ -953,12 +956,20 @@ function antiH(p){return p.anti.map(a=>`<div class="anti">⚠ Niet als: ${esc(a)
 function risicoRegel(p){const r=[['Stop',p.stop],['Target',p.target],['Min. R:R',p.minRR]].filter(x=>x[1]);return r.length?`<div class="pbrisk">${r.map(([k,v])=>`<span class="muted">${k}</span> ${esc(v)}`).join(' · ')}</div>`:'';}
 // In het formulier: de criteria van het gekozen playbook, meteen onder de keuze.
 function pbBlok(naam){const p=pbInfo(naam);if(!p)return '';
-  return `<div class="pbcrit">${p.criteria.length?`<ul>${p.criteria.map(c=>`<li class="crit">${esc(c.text)}${c.mandatory?' <span class="verplicht">verplicht</span>':''}</li>`).join('')}</ul>`:geenCriteria(naam)}${antiH(p)}${risicoRegel(p)}</div>`;}
+  return `<div class="pbcrit">${p.criteria.length?`<div class="critrij"><span class="muted">Criteria</span> ${p.criteria.map(c=>`<span class="crit">${esc(c.text)}${c.mandatory?' <span class="verplicht">verplicht</span>':''}</span>`).join(' · ')}</div>`:geenCriteria(naam)}${p.anti.length?`<div class="anti">⚠ Niet als: ${p.anti.map(esc).join(' · ')}</div>`:''}${risicoRegel(p)}</div>`;}
 function metaH(s){return `<span class="grade ${s.grade}">${s.grade}</span><span class="dir ${s.dir}">${s.dir}</span><span>${esc(s.pair)}</span>${s.pb?`<span>· ${esc(s.pb)}</span>`:''}`;}
 // De criteria van het playbook als afvinklijst, in dezelfde stijl als de confirmations; anti-criteria als waarschuwing.
+// Closed by default (round 3, point 8): one line with the count; if all confirmations are done while mandatory criteria
+// are still open, that line says so in amber. Open/closed lives in S.critOpen: per scenario, for this session only.
 function critH(s,cd){const p=pbInfo(s.pb);
-  return `<div class="critblok"><div class="row between"><h3>Criteria · ${esc(s.pb)}</h3>${cd.nv?`<span class="faint small">${cd.kv}/${cd.nv} verplicht</span>`:''}</div>
-    ${p.criteria.length?p.criteria.map(c=>{const on=s.critChecked.includes(c.text);return `<div class="chk ${on?'on':''}" data-a="crit" data-s="${esc(s.id)}" data-v="${esc(c.text)}" role="checkbox" aria-checked="${on}"><span class="box">${on?'✓':''}</span><span class="lbl">${esc(c.text)}</span>${c.mandatory?'<span class="verplicht">verplicht</span>':''}</div>`;}).join(''):geenCriteria(s.pb)}
+  if(!p.criteria.length&&!p.anti.length)return `<div class="critblok"><h3>Criteria · ${esc(s.pb)}</h3>${geenCriteria(s.pb)}</div>`;
+  const open=!!S.critOpen[s.id],nog=cd.nv-cd.kv,n=p.criteria.length;
+  const stand=cd.nv?`${cd.kv}/${cd.nv} verplicht${nog?'':' ✓'}`:`${n} ${n===1?'criterium':'criteria'}`;
+  const waarsch=nog&&cd.k===cd.n?`<span class="critnog">${nog} ${nog===1?'verplicht criterium':'verplichte criteria'} nog open</span>`:'';
+  return `<div class="critblok"><button class="crithead" data-a="critOpen" data-s="${esc(s.id)}" aria-expanded="${open}"><span class="critpijl" aria-hidden="true">${open?'▾':'▸'}</span> <span class="crittitel">Criteria · ${esc(s.pb)}</span> · <span class="critstand">${stand}</span>${waarsch}</button>
+    ${open?critLijst(s,p):''}</div>`;}
+function critLijst(s,p){
+  return `${p.criteria.length?p.criteria.map(c=>{const on=s.critChecked.includes(c.text);return `<div class="chk ${on?'on':''}" data-a="crit" data-s="${esc(s.id)}" data-v="${esc(c.text)}" role="checkbox" aria-checked="${on}"><span class="box">${on?'✓':''}</span><span class="lbl">${esc(c.text)}</span>${c.mandatory?'<span class="verplicht">verplicht</span>':''}</div>`;}).join(''):geenCriteria(s.pb)}
     ${antiH(p)}</div>`;}
 function scenRij(s,x,d,c){
   const open=!!S.open[s.id],cd=confAf(s),e=x.e,klaar=cd.klaar&&s.status==='open',zwak=basisStat(e).betr==='weinig';
@@ -1284,6 +1295,7 @@ const A={
   linkToe:el=>{const inp=el.closest('.media').querySelector('.linkinp'),v=inp?inp.value:'';if(!v.trim())return false;if(voegLinkToe(v,el.dataset.d)===false)return false;},
   ctx:()=>{S.ctxOpen=!S.ctxOpen;},
   chk:el=>{const x=scenOf(el.dataset.s);if(!x)return;const c=x.s.checked,i=c.indexOf(el.dataset.v);if(i>=0)c.splice(i,1);else c.push(el.dataset.v);save();},
+  critOpen:el=>{const id=el.dataset.s;S.critOpen[id]=!S.critOpen[id];},
   crit:el=>{const x=scenOf(el.dataset.s);if(!x)return;const c=x.s.critChecked,i=c.indexOf(el.dataset.v);if(i>=0)c.splice(i,1);else c.push(el.dataset.v);snoeiCriteria();save();},
   status:el=>{const x=scenOf(el.dataset.s);if(!x)return;x.s.status=el.dataset.v;x.s.statusTs=el.dataset.v==='open'?null:Date.now();save();},
   overnemen:el=>{const id=vandaag(),van=dayOf(el.dataset.v);if(!van||PL.days[id])return;const d=nieuweDag(id),kopie=o=>JSON.parse(JSON.stringify(o));
