@@ -72,12 +72,26 @@ const ok = (n, c, e) => { c ? (pass++, console.log('  ✓ ' + n)) : (fail++, con
     ['plan', 'Nieuwe trade invullen'], ['plan', 'Alle pairs en richtingen'], ['plan', '+ dag erna'], ['plan', 'Koppel trade'], ['plan', '+ Afbeelding'], ['plan', '+ Link'], ['plan', 'Klaar om te nemen'],
     ['plan', 'Overweeg alleen A-setups'], ['plan', 'weinig data'], ['plan', 'redelijk wat data'], ['plan', 'genoeg data'], ['plan', 'sterkste'], ['plan', '🤖 Vraag Mori</button>'], ['plan', '🤖 Vraag Mori over mijn dagplan'],
     ['plan', 'Mori instellen'], ['plan', 'Niet als: '], ['plan', "'Niet uit'"], ['plan', "'Ongeldig'"], ['journal', 'Koppel aan scenario'], ['journal', 'Backtest-trade'], ['journal', 'Geen exchange'], ['journal', 'Mori ingeschakeld'],
-    ['journal', 'Wat is er verstuurd?'], ['journal', "['plan','Plan']"], ['journal', "t:'TradingPlan'"]];
+    ['journal', 'Wat is er verstuurd?'], ['journal', "['plan','Plan']"], ['journal', "t:'TradingPlan'"],
+    // ronde 3: Dagstart, Gevoel, lagen als regels, Charts, criteria ingeklapt, Mori in een zijpaneel
+    ['plan', '<h3>Dagstart</h3>'], ['plan', '<h3>Gevoel</h3>'], ['plan', '<h3>Charts</h3>'], ['plan', 'Bewerk</'], ['plan', '+ Tijdframe'], ['plan', 'Laag weghalen'],
+    ['plan', 'Je dagstart-gevoel'], ['journal', 'Je dagstart-gevoel'], ['plan', 'verplichte criteria'], ['plan', '🤖 Mori</button>']];
   const mist = UI.filter(([f, l]) => !bron[f].includes(l)).map(x => x.join(': '));
   ok('de knoppen en meldingen uit de nieuwe antwoorden bestaan in de app', mist.length === 0, mist.join(', '));
-  const label = l => l.replace(/^label:'|'$|<\/button>$|^t:'|^\['plan','|'\]$|^'/g, '').replace(/^Plan'?\]?$/, 'Plan').trim();
+  const label = l => l.replace(/^label:'|'$|<\/button>$|<\/?h3>|<\/$|^t:'|^\['plan','|'\]$|^'/g, '').replace(/^Plan'?\]?$/, 'Plan').trim();
   const nietGenoemd = UI.map(([, l]) => label(l)).filter(l => !plan.tekst.includes(l) && !plan.alles.includes(l));
   ok('en de FAQ noemt ze ook echt (de lijst blijft eerlijk)', nietGenoemd.length === 0, nietGenoemd.join(', '));
+  console.log('─── ronde 3: wat er veranderde, en wat er niet meer staat ───');
+  ok('geen "pre-flight" meer in de FAQ: het heet Dagstart', !/pre-?flight/i.test(plan.alles), (plan.alles.match(/.{40}pre-?flight.{40}/i) || [''])[0]);
+  ok('geen mentaal-cijfer meer als iets wat je kiest (alleen "mentaal 4/5 (oud)" bij oude dagen)', !/mentaal/i.test(plan.alles.replace(/mentaal \d\/5 \(oud\)/g, '')), (plan.alles.match(/.{40}mentaal.{40}/i) || [''])[0]);
+  ok('geen "voeg een tag toe in het plan" of "Ontbreekt er een?"', !/(voeg|maak)[^.]{0,40}(tag|tijdframe)[^.]{0,30}(toe )?in het plan|Ontbreekt er een/i.test(plan.alles));
+  ok('tags en tijdframes alleen via Instellingen → Tags', /alleen[^.]*Instellingen → Tags|Instellingen → Tags[^.]*alleen/.test(plan.tekst));
+  ok('Dagstart: vrije lijst van hooguit 8 punten, met Bewerk en het tandwiel', /Dagstart/.test(plan.tekst) && /hooguit 8/.test(plan.tekst) && /Bewerk/.test(plan.tekst));
+  ok('Gevoel: emoties uit je journal, meer dan één mag, negatief → Overweeg alleen A-setups', /Gevoel/.test(plan.tekst) && /emoties/i.test(plan.tekst) && /negatie(f|ve)[^.]*Overweeg alleen A-setups|Overweeg alleen A-setups[^.]*negatie/i.test(plan.tekst));
+  ok('Gevoel: per emotie je trades uit de journal, en "Je dagstart-gevoel" in de Log en Tendencies → Plan, op aantal dagen', /Je dagstart-gevoel/.test(plan.tekst) && /Tendencies → Plan/.test(plan.tekst) && /dagen/.test(plan.tekst) && /niet[^.]*naar je trades|niet[^.]*bij je trades/i.test(plan.tekst));
+  ok('Mori in een paneel naast je plan (telefoon: schermvullend), doorvragen, gesprek blijft', /paneel/.test(plan.tekst) && /doorvragen/i.test(plan.tekst) && /telefoon/i.test(plan.tekst));
+  ok('criteria standaard ingeklapt, amber als verplichte nog open staan', /ingeklapt/i.test(plan.tekst) && /verplichte criteria nog open/.test(plan.tekst));
+  ok('lagen: één regel per tijdframe, tik om te bewerken, + Tijdframe, Laag weghalen', /\+ Tijdframe/.test(plan.tekst) && /Laag weghalen/.test(plan.tekst) && /gestippeld/i.test(plan.tekst));
   await p.evaluate(() => { faqFilter('scenario'); });
   ok('zoeken op "scenario" vindt de plan-categorie', await p.evaluate(ci => { const c = document.getElementById('faqc-' + ci); return !!c && !c.hidden && [...c.querySelectorAll('details.faq')].some(d => d.offsetParent); }, plan.ci));
   await p.evaluate(() => { faqFilter(''); });
