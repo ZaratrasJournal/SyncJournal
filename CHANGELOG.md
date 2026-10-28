@@ -16,6 +16,13 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v1.23] — 2026-10-28
+
+### Gewijzigd
+- **TradingPlan: het blok Vandaag is rustiger.** Elk tijdframe is een eigen laag op één regel: tijdframe, bias en tags. Tik op een laag om hem te bewerken; daar kies je ook de bias of haal je de laag weg. Je week staat compact bovenaan, de uitleg over de edge achter een ⓘ, en afbeeldingen en links hebben een eigen stap Charts. Het weekplan en de lagen van een scenario lezen op dezelfde manier.
+
+---
+
 ## [v1.22] — 2026-10-28
 
 ### Toegevoegd
