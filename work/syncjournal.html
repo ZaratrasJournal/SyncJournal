@@ -1344,6 +1344,10 @@ details.faq[open] summary{color:var(--accent)}
 .linklike{border:none;background:none;color:var(--accent);font-weight:700;cursor:pointer;padding:0;font-size:inherit;font-family:inherit}
 /* AI-coach */
 .aiwrap{max-width:720px;margin:0 auto}
+/* Mori side panel of TradingPlan (?embed=mori): only the conversation, no sidebar, menu or page actions */
+body.embed .shell{grid-template-columns:minmax(0,1fr)}
+body.embed .side,body.embed .appbar,body.embed .navscrim,body.embed .empty .btn{display:none}
+body.embed main{padding:14px 14px 24px}
 .aifeed{background:var(--surface);border:1px solid var(--line);border-radius:12px 12px 0 0;box-shadow:var(--sh);padding:18px;min-height:320px;max-height:54vh;overflow:auto;display:flex;flex-direction:column;gap:14px}
 .aimsg{display:flex;gap:10px;max-width:84%}
 .aimsg.me{align-self:flex-end;flex-direction:row-reverse}
@@ -2230,6 +2234,11 @@ function isLive(t){return !t.kind||t.kind==='live';}
 /* ═══ Persistentie (localStorage) ═══ */
 const APP_VERSION='v1.21';
 const SCHEMA_VERSION=12;
+/* ?embed=mori: the journal inside TradingPlan's Mori side panel (an iframe, same origin, same tab). It is read-only
+   for the journal: only Mori's own storage (sj_ai_*) is written, never trades, tags, playbooks or settings. No sync,
+   update check, welcome, migration, banners, sidebar or menu (see bootEmbed). */
+const IS_EMBED=(()=>{try{return new URLSearchParams(location.search).get('embed')==='mori';}catch(e){return false;}})();
+const EMBED_MAG=k=>/^ai_/.test(k);   // the only sj_-keys the embed may write: Mori's prefs and usage
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
   // ander type dan verwacht (bv. sj_manual='null' of een array waar een object hoort).
@@ -2239,7 +2248,7 @@ const DB={
     if(Array.isArray(fb)!==Array.isArray(parsed))return fb;
     if(typeof parsed!==typeof fb)return fb;
     return parsed;}catch(e){return fb;} },
-  save(k,v){ try{localStorage.setItem('sj_'+k,JSON.stringify(v));}catch(e){
+  save(k,v){ if(IS_EMBED&&!EMBED_MAG(k))return; try{localStorage.setItem('sj_'+k,JSON.stringify(v));}catch(e){
     // Quota vol → geen stil verlies: meld het en bied backup aan.
     if(e&&(e.name==='QuotaExceededError'||e.code===22||e.code===1014)){try{ErrorCenter.report('quota',e,{severity:'warn',userMsg:'Je browseropslag zit vol. Je laatste instelling is mogelijk niet bewaard, maak een back-up en ruim ruimte op.',actions:[{label:'Exporteer backup',fn:()=>exportJSON()}]});}catch(_){}}
   } },
@@ -2283,9 +2292,10 @@ try{ if(navigator.storage&&navigator.storage.estimate){navigator.storage.estimat
 const IDB={db:null,
   open(){return IDB.db?Promise.resolve(IDB.db):new Promise((res,rej)=>{const r=indexedDB.open('sj_db',1);r.onupgradeneeded=()=>r.result.createObjectStore('kv');r.onsuccess=()=>{IDB.db=r.result;res(IDB.db);};r.onerror=()=>rej(r.error);});},
   get(k){return IDB.open().then(db=>new Promise(res=>{const t=db.transaction('kv','readonly').objectStore('kv').get(k);t.onsuccess=()=>res(t.result);t.onerror=()=>res(undefined);})).catch(()=>undefined);},
-  set(k,v){return IDB.open().then(db=>new Promise(res=>{const tx=db.transaction('kv','readwrite');tx.objectStore('kv').put(v,k);tx.oncomplete=()=>res(true);tx.onerror=()=>res(false);})).catch(()=>false);},
-  clearAll(){return IDB.open().then(db=>new Promise(res=>{const tx=db.transaction('kv','readwrite');tx.objectStore('kv').clear();tx.oncomplete=()=>res(true);tx.onerror=()=>res(false);})).catch(()=>false);},
-  del(k){return IDB.open().then(db=>new Promise(res=>{const tx=db.transaction('kv','readwrite');tx.objectStore('kv').delete(k);tx.oncomplete=()=>res(true);tx.onerror=()=>res(false);})).catch(()=>false);},
+  set(k,v){if(IS_EMBED)return Promise.resolve(true);   // embed: trades/playbooks stay untouched (true: nothing to report)
+    return IDB.open().then(db=>new Promise(res=>{const tx=db.transaction('kv','readwrite');tx.objectStore('kv').put(v,k);tx.oncomplete=()=>res(true);tx.onerror=()=>res(false);})).catch(()=>false);},
+  clearAll(){if(IS_EMBED)return Promise.resolve(true);return IDB.open().then(db=>new Promise(res=>{const tx=db.transaction('kv','readwrite');tx.objectStore('kv').clear();tx.oncomplete=()=>res(true);tx.onerror=()=>res(false);})).catch(()=>false);},
+  del(k){if(IS_EMBED)return Promise.resolve(true);return IDB.open().then(db=>new Promise(res=>{const tx=db.transaction('kv','readwrite');tx.objectStore('kv').delete(k);tx.oncomplete=()=>res(true);tx.onerror=()=>res(false);})).catch(()=>false);},
 };
 /* Geversioneerde schema-migratie: elke toekomstige breaking change krijgt een {v, up}-stap.
    up() transformeert de al-geladen live-staat (T, PBOOK, tagConfig, …) in-place.
@@ -2555,7 +2565,7 @@ function schoonPrijzen(t){if(!t||typeof t!=='object')return t;
   (Array.isArray(t.tps)?t.tps:[]).forEach(x=>{if(x&&'price' in x)x.price=schoonPrijs(x.price);});
   return t;}
 function persist(){
-  if(TAB_STALE)return;   // verouderd tabblad schrijft niet: het zou het andere werk wissen
+  if(TAB_STALE||IS_EMBED)return;   // verouderd tabblad (of de embed) schrijft niet: het zou het andere werk wissen
   /* Achtergrondwerk (wisselkoersen, auto-sync, Drive) kan schrijven op een moment dat dit
      tabblad nog niet DOORHEEFT dat een ander tabblad voor was - het storage-signaal is dan
      nog niet verwerkt. Daarom hier nog één keer kijken wat er werkelijk in de opslag staat
@@ -6965,8 +6975,10 @@ function aiMsgHTML(m){
   const gestopt=m.gestopt?'<div class="aigestopt">Gestopt door jou, dit is wat er al was.</div>':'';
   const verstuurd=m.pakket?`<details class="aisent"><summary>Wat is er verstuurd?${m.kosten!=null?' <span class="aikost">≈ '+aiUsd(m.kosten)+'</span>':''}</summary><pre>${esc(m.pakket)}</pre></details>`:'';
   return `<div class="aimsg ai"><div class="aiav">🤖</div><div class="aibub">${body}${gestopt}${verstuurd}${m.terug?aiTerugPlan():''}</div></div>`;}
+// The journal itself (outside the embed), for links from the Mori side panel: they open in the whole tab.
+const embedJournal=q=>location.pathname+'?'+q;
 // A question that came from TradingPlan: a way back, same tab (go('plan') knows where the plan lives).
-const aiTerugPlan=()=>`<a class="linklike aiterug" href="${IS_HOSTED?'/plan/':'../tradingplan/tradingplan.html'}">← Terug naar je plan</a>`;
+const aiTerugPlan=()=>IS_EMBED?'':`<a class="linklike aiterug" href="${IS_HOSTED?'/plan/':'../tradingplan/tradingplan.html'}">← Terug naar je plan</a>`;
 // The pre-trade form. Values live in memory; checking the idea updates the hint and button in place, so typing
 // never triggers a full render.
 let AI_IDEE={open:false,pair:'',dir:'long',setup:'',entry:'',stop:'',tp:''};
@@ -7013,11 +7025,11 @@ function aiZonderSleutel(){
       <ol class="aisteps">
         <li><b>Maak een sleutel</b> op <a class="linklike" href="https://console.anthropic.com" target="_blank" rel="noopener">console.anthropic.com</a>: maak een account, zet er tegoed op (bijvoorbeeld $5) en kies <i>API keys → Create key</i>.</li>
         <li><b>Stel een maandlimiet in</b> bij Anthropic, zodat je nooit meer uitgeeft dan je wilt.</li>
-        <li><b>Plak je sleutel</b> hier.</li>
+        <li><b>Plak je sleutel</b> ${IS_EMBED?'in de journal, bij Mori':'hier'}.</li>
       </ol>
-      <div class="aikeyrow"><input id="aiKeyInput" type="password" autocomplete="off" spellcheck="false" placeholder="sk-ant-…" aria-label="Je Anthropic-sleutel" onkeydown="if(event.key==='Enter')aiKoppel()"><button class="btn pri" id="aiKeyBtn" onclick="aiKoppel()">Koppelen</button></div>
+      ${IS_EMBED?`<a class="btn pri" href="${esc(embedJournal('page=ai'))}" target="_top">Mori instellen</a>`:`<div class="aikeyrow"><input id="aiKeyInput" type="password" autocomplete="off" spellcheck="false" placeholder="sk-ant-…" aria-label="Je Anthropic-sleutel" onkeydown="if(event.key==='Enter')aiKoppel()"><button class="btn pri" id="aiKeyBtn" onclick="aiKoppel()">Koppelen</button></div>
       <label class="aikeysessie"><input type="checkbox" id="aiKeySessie"> Alleen voor deze sessie onthouden (gedeelde computer)</label>
-      <div class="aikeystatus" id="aiKeyStatus" role="status"></div>
+      <div class="aikeystatus" id="aiKeyStatus" role="status"></div>`}
       <p class="aimeegaan">${AI_MEEGAAN} Je sleutel blijft op dit apparaat en gaat nooit mee in een back-up.</p>
     </div>
     <div class="aivb-lbl">Voorbeeld · zo ziet een gesprek eruit, de cijfers zijn verzonnen</div>
@@ -7029,10 +7041,10 @@ function aiLeeg(key){return `<div class="aiwrap">${emptyState(key)}${aiVoet()}</
 function aiLimietHTML(){const v=aiVerbruik();
   return `<div class="aimsg ai limiet" role="alert"><div class="aiav">💰</div><div class="aibub">Je hebt deze maand ongeveer <b>${aiUsd(v.usd)}</b> gebruikt. Dat is boven je eigen limiet van <b>${aiUsd(AIPREFS.limiet)}</b>. Toch versturen?
     <div class="aiknoprij"><button class="btn pri" id="aiLimietJa" onclick="aiVraag(AI_UI.limiet.vraag,{...AI_UI.limiet.o,bevestigd:true})">Toch versturen</button><button class="btn" id="aiLimietNee" onclick="AI_UI.limiet=null;render()">Niet nu</button></div></div></div>`;}
-function aiVoet(){return `<div class="aidisc">Claude ${aiModelNaam()} · sleutel ${esc(aiKeyHint())}${aiKeySessie()?' (alleen deze sessie)':''} · je cijfers gaan naar Anthropic, niet naar ons · geen financieel advies · <a class="linklike" onclick="go('instellingen');setSetTab('ai')">Instellingen</a></div>`;}
+function aiVoet(){return `<div class="aidisc">Claude ${aiModelNaam()} · sleutel ${esc(aiKeyHint())}${aiKeySessie()?' (alleen deze sessie)':''} · je cijfers gaan naar Anthropic, niet naar ons · geen financieel advies · ${IS_EMBED?`<a class="linklike" href="${esc(embedJournal('page=instellingen&tab=ai'))}" target="_top">Instellingen</a>`:`<a class="linklike" onclick="go('instellingen');setSetTab('ai')">Instellingen</a>`}</div>`;}
 function pgAI(){
   aiBewaarInvoer();
-  if(!AIPREFS.enabled)return `<div class="aiwrap"><div class="aioff">${svg(IC.ai,40)}<h3>Mori staat uit</h3><p>Schakel Mori, je AI-coach, in om vragen te stellen over je edge, je lekken en je periode.</p><button class="btn pri" onclick="go('instellingen');setSetTab('ai')">Mori inschakelen</button></div></div>`;
+  if(!AIPREFS.enabled)return `<div class="aiwrap"><div class="aioff">${svg(IC.ai,40)}<h3>Mori staat uit</h3><p>Schakel Mori, je AI-coach, in om vragen te stellen over je edge, je lekken en je periode.</p>${IS_EMBED?`<a class="btn pri" href="${esc(embedJournal('page=instellingen&tab=ai'))}" target="_top">Mori inschakelen</a>`:`<button class="btn pri" onclick="go('instellingen');setSetTab('ai')">Mori inschakelen</button>`}</div></div>`;
   if(!aiKeyGet())return aiZonderSleutel();
   if(!T.length)return aiLeeg('mori-leeg');
   if(!CLOSED.length)return aiLeeg(FT.length?'gesloten-nodig':'mori-niets');
@@ -7103,7 +7115,7 @@ function renderPagina(){
   try{syncStip();}catch(e){}
   const bv=document.getElementById('balVal');if(bv){bv.textContent=(dispCur()==='EUR'?'≈ ':'')+CURSYM()+' '+Math.round(fxNow(totalBalance())).toLocaleString('nl-NL');bv.title=koersUitleg()+(inclFunded()?' · incl. funded (Instellingen → Funded)':'');bv.classList.toggle('oud',koersOud());}
   try{renderSideConns();}catch(e){}
-  const m=document.getElementById('main');destroyCharts();_rcQueue=[];m.innerHTML=tabBanner()+updateBanner()+driveBanner()+backupBanner()+fn();m.style.animation='none';void m.offsetWidth;m.style.animation='';
+  const m=document.getElementById('main');destroyCharts();_rcQueue=[];m.innerHTML=(IS_EMBED?'':tabBanner()+updateBanner()+driveBanner()+backupBanner())+fn();m.style.animation='none';void m.offsetWidth;m.style.animation='';
   document.querySelectorAll('#nav button,#navbot button').forEach(b=>b.classList.toggle('on',b.dataset.p===STATE.page));
   try{bkIndUpdate();}catch(e){}
   wire();mountCharts();
@@ -12205,7 +12217,7 @@ document.addEventListener('keydown',e=>{
 });
 /* sneltoetsen: n = nieuwe trade · / = zoeken */
 document.addEventListener('keydown',e=>{
-  if(e.metaKey||e.ctrlKey||e.altKey)return;
+  if(IS_EMBED||e.metaKey||e.ctrlKey||e.altKey)return;   // the embed only shows Mori
   const tag=(e.target.tagName||'').toLowerCase();
   if(tag==='input'||tag==='textarea'||tag==='select'||e.target.isContentEditable)return;
   if(document.getElementById('modal').classList.contains('on')||document.getElementById('welcome').classList.contains('on'))return;
@@ -12213,15 +12225,30 @@ document.addEventListener('keydown',e=>{
   else if(e.key==='/'){e.preventDefault();if(STATE.page!=='trades')go('trades');setTimeout(()=>{const s=document.getElementById('trSearch');if(s){s.focus();searchWasFocused=true;}},60);}
 });
 /* screenshot plakken uit clipboard (Ctrl/⌘+V) — voegt toe aan de trade die je bekijkt */
-document.addEventListener('paste',e=>{const items=e.clipboardData&&e.clipboardData.items;if(!items)return;
+document.addEventListener('paste',e=>{if(IS_EMBED)return;const items=e.clipboardData&&e.clipboardData.items;if(!items)return;
   const formOpen=document.getElementById('modal').classList.contains('on');
   if(!formOpen&&pasteTargetId==null)return;
   for(const it of items){if(it.type&&it.type.startsWith('image/')){e.preventDefault();const f=it.getAsFile();if(f){if(formOpen){if(document.getElementById('pbexamples'))addPbExample(f);else addFormShot(f);}else addScreenshot(pasteTargetId,f);}return;}}});
+if(IS_EMBED)document.body.classList.add('embed');
 render();
 boot();  // async: laadt data, biedt daarna migratie of welkom aan
 // Laad trades + playbooks uit IndexedDB (async). Eenmalige migratie vanuit het
 // oude localStorage-model (Fase 1) zodat bestaande data niet verloren gaat.
+/* The Mori side panel of TradingPlan: only read trades and playbooks, open Mori and pick up a question from the plan.
+   Everything else boot() does (migrations, sync, backups, Drive, update check, welcome) writes or shows UI. */
+let EMBED_KLAAR=false;
+async function bootEmbed(){
+  try{const t=await IDB.get('trades'),pb=await IDB.get('pbook');laadOpslag(t,pb);}catch(e){T=[];PBOOK={};}
+  EMBED_KLAAR=true;go('ai');try{planMoriVanOverdracht();}catch(e){}
+}
+// "Vraag Mori" in a panel that is already open: the plan writes tp3:mori and nudges us (same origin, our parent only).
+if(IS_EMBED)window.addEventListener('message',e=>{if(e.origin!==location.origin||e.source!==window.parent||!e.data||e.data.tp3!=='mori')return;
+  if(EMBED_KLAAR)planMoriVanOverdracht();});   // still booting: bootEmbed picks the question up itself
+// Stored data through the safety check: whoever has a broken trade in storage (e.g. from an older import) gets back in.
+function laadOpslag(t,pb){T=Array.isArray(t)?t.map((x,i)=>sanitizeTrade(x,x&&x.id!=null?x.id:i)):[];
+  PBOOK={};Object.entries(pb||{}).forEach(([k,v])=>PBOOK[k]=pbNormalize(k,v));}
 async function boot(){
+  if(IS_EMBED)return bootEmbed();
   try{
     let t=await IDB.get('trades'), pb=await IDB.get('pbook');
     // Gebundelde dataset (distributie): eenmalig inladen bij een écht lege eerste-start.
@@ -12231,10 +12258,7 @@ async function boot(){
     }
     if(t===undefined){const ls=DB.load('trades',null);if(ls!=null){t=ls;IDB.set('trades',ls);}try{localStorage.removeItem('sj_trades');}catch(e){}}
     if(pb===undefined){const ls=DB.load('pbook',null);if(ls!=null){pb=ls;IDB.set('pbook',ls);}try{localStorage.removeItem('sj_pbook');}catch(e){}}
-    // ook opgeslagen data langs de veiligheidscontrole: wie al een kapotte trade in de
-    // opslag heeft (bijv. uit een oudere import) komt er zo gewoon weer in
-    T=Array.isArray(t)?t.map((x,i)=>sanitizeTrade(x,x&&x.id!=null?x.id:i)):[];
-    PBOOK={};Object.entries(pb||{}).forEach(([k,v])=>PBOOK[k]=pbNormalize(k,v));
+    laadOpslag(t,pb);
   }catch(e){T=DB.load('trades',[]);PBOOK={};Object.entries(DB.load('pbook',{})).forEach(([k,v])=>PBOOK[k]=pbNormalize(k,v));}
   try{const sm=await IDB.get('snapshots');SNAP_META=Array.isArray(sm)?sm:[];}catch(e){SNAP_META=[];}
   try{const tr=await IDB.get('trash');TRASH=Array.isArray(tr)?tr:[];purgeTrash();}catch(e){TRASH=[];}

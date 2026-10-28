@@ -74,6 +74,7 @@ module.exports = [
   'plan3-dagstart',          // Dagstart (was pre-flight): vrije lijst van hooguit 8, vinkjes op tekst, migratie van Day.pre
   'plan3-gevoel',            // gevoel bij de dagstart: emoties uit de journal, journal → plan per emotie, "Je dagstart-gevoel"
   'plan3-regels',            // Vandaag: één regel per laag (kaartje), tikken = bewerken, week compact, ⓘ, stap Charts
+  'plan3-zijpaneel',         // Mori in een zijpaneel van het plan: de journal in embed-modus, stil en alleen-lezen
 
   // analyse en weergave
   'matrix', 'yearheatmap', 'review-list', 'coach-share', 'review-beeld', 'tv-links', 'theme-hook', 'beeld-escaping',

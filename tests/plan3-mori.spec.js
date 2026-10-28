@@ -1,7 +1,7 @@
 // TradingPlan v3 — Mori in het plan (docs/plan-v3-mori-2026-10-27.md).
 //  1. "Vraag Mori" per scenario en "Vraag Mori over mijn dagplan": alleen met Mori aan én een sleutel, anders
 //     "Mori instellen". De dag-knop is uit zonder scenario's.
-//  2. Het plan zet tp3:mori en opent de journal; de journal stuurt één vraag met het scenario of het dagplan in het
+//  2. Het plan zet tp3:mori en opent het zijpaneel met de journal (ronde 3, punt 7); de journal stuurt één vraag met het scenario of het dagplan in het
 //     pakket en de juiste opdracht. Een scenario heeft geen entry: geen fout, "entry nog niet bekend".
 //  3. Een oude, kapotte of verweesde overdracht verstuurt niets.
 //  4. De sleutel komt nooit in tp3:*, een overdracht of een pakket; het plan leest hem nooit (alleen óf hij er is).
@@ -18,7 +18,7 @@ const ANTWOORD = 'Je Trend-pullback staat op n=4 (uit je setuptabel). Let op je 
   const srv = await H.server(), T = H.teller(NAAM), ok = T.ok;
   const b = await chromium.launch(); const errs = [];
   const ctx = await b.newContext({ viewport: { width: 1280, height: 900 } }); await H.alleenLokaal(ctx);
-  await N.vooraf(ctx, N.tekst(ANTWOORD), N.tekst(ANTWOORD), N.tekst(ANTWOORD), N.tekst(ANTWOORD));
+  await N.vooraf(ctx, N.tekst(ANTWOORD), N.tekst(ANTWOORD), N.tekst(ANTWOORD), N.tekst(ANTWOORD));   // per page or frame: each starts its own queue
   // Het plan mag alleen weten óf er een sleutel is: elk getItem op sj_ai_key en elke tp3:*-schrijfactie wordt geteld.
   await ctx.addInitScript(() => { window.__lees = []; window.__tp3schrijf = []; const g = Storage.prototype.getItem, s = Storage.prototype.setItem;
     Storage.prototype.getItem = function (k) { window.__lees.push(k); return g.call(this, k); };
@@ -85,19 +85,22 @@ const ANTWOORD = 'Je Trend-pullback staat op n=4 (uit je setuptabel). Let op je 
   const shots = await H.vierShots(p, 'mori-dag', async q => { await q.waitForTimeout(300); await q.click('.ritem[data-s="s_btc"] .rrow'); await q.waitForTimeout(100); });
   ok('390 breed: geen horizontale scroll met de Mori-knoppen', !shots.licht && !shots.donker, JSON.stringify(shots));
 
-  console.log('--- 2a. scenario → journal ---');
+  console.log('--- 2a. scenario → Mori in het zijpaneel (ronde 3, punt 7) ---');
+  // The journal answers inside the plan's side panel (?embed=mori); plan3-zijpaneel tests the panel itself.
+  const frame = () => p.frames().find(x => /[?&]embed=mori/.test(x.url()));
+  const vraagInPaneel = async knop => { const url0 = p.url(); await p.click(knop); for (let i = 0; i < 40 && !frame(); i++) await p.waitForTimeout(100);
+    const f = frame(); await f.waitForFunction(() => window.__nep && window.__nep.verzoeken.length > 0 && typeof AI_UI === 'object' && !AI_UI.bezig, null, { timeout: 8000 }).catch(() => {});
+    await p.waitForTimeout(300); return { f, bleef: p.url() === url0 }; };
   await herlaad(); await open('s_btc');
-  await Promise.all([p.waitForNavigation({ waitUntil: 'load' }), p.click('.ritem[data-s="s_btc"] [data-a="mori"]')]);
-  await p.waitForFunction(() => window.__nep && window.__nep.verzoeken.length > 0 && typeof AI_UI === 'object' && !AI_UI.bezig, null, { timeout: 8000 }).catch(() => {});
-  await p.waitForTimeout(300);
-  let v = await N.verzoeken(p);
+  let { f, bleef } = await vraagInPaneel('.ritem[data-s="s_btc"] [data-a="mori"]');
+  let v = await N.verzoeken(f);
   const pakket = body => ((body.system || []).find(x => /Data van de trader/.test(x.text)) || { text: '' }).text;
   const opdracht = body => ((body.system || []).find(x => /Opdracht voor deze vraag/.test(x.text)) || { text: '' }).text;
-  ok('in de journal, op Mori, precies één verzoek', /syncjournal\.html/.test(p.url()) && await p.evaluate(() => STATE.page) === 'ai' && v.length === 1, p.url() + ' · ' + v.length);
+  ok('het plan blijft staan; Mori in het zijpaneel, precies één verzoek', bleef && await f.evaluate(() => STATE.page) === 'ai' && v.length === 1, f.url() + ' · ' + v.length);
   let body = v[0] ? v[0].body : {}, pk = pakket(body), op = opdracht(body);
   const vraag = body.messages ? body.messages[body.messages.length - 1].content : '';
   ok('de vraag: "Check mijn scenario: BTC trend-pullback — BTC long, Trend-pullback"', vraag === 'Check mijn scenario: BTC trend-pullback — BTC long, Trend-pullback', vraag);
-  ok('opdracht: die van de pre-trade-check (geen koop- of verkoopadvies, niets voorspellen)', op.includes(await p.evaluate(() => AI_PRETRADE_OPDRACHT)), op.slice(0, 200));
+  ok('opdracht: die van de pre-trade-check (geen koop- of verkoopadvies, niets voorspellen)', op.includes(await f.evaluate(() => AI_PRETRADE_OPDRACHT)), op.slice(0, 200));
   ok('opdracht: plus vergelijken met eigen cijfers en de week- of dagbias', /Vergelijk het scenario met de eigen cijfers en regels van de trader, en noem waar het scenario tegen zijn week- of dagbias ingaat\./.test(op));
   ok('pakket: het scenario als trade-idee, entry nog niet bekend, geen fout', /# Trade-idee/.test(pk) && /entry nog niet bekend/i.test(pk) && !/Vul entry en stop in/.test(pk), (pk.match(/# Trade-idee[^]{0,300}/) || [''])[0]);
   ok('pakket: de cijfers van de setup uit de journal', /## Deze setup \(Trend-pullback\)\n- n=4 · /.test(pk));
@@ -111,30 +114,29 @@ const ANTWOORD = 'Je Trend-pullback staat op n=4 (uit je setuptabel). Let op je 
   ok('pakket: edge-regel zoals het plan hem toont (n, winrate, gem. R)', /Edge volgens het plan:/.test(S) && /Live n=\d+ · winrate \d+% · gem\. R [+−]\d/.test(S), (S.match(/Edge volgens het plan[^\n]*\n?[^\n]*/) || [''])[0]);
   ok('pakket: week- en dag-bias, levels, oud mentaal-cijfer', /Weekplan[^]*Weekly Bullish/.test(pk) && /Dagplan[^]*4H Bearish/.test(pk) && /BTC 78\.150 weekly high/.test(pk) && /BTC 76\.200 Asia-low/.test(pk) && /Gevoel bij de dagstart: mentaal 2\/5 \(oud\)/.test(pk), (pk.match(/## Regels uit TradingPlan[^]{0,700}/) || [''])[0]);
   ok('de overdracht is gewist', await p.evaluate(() => localStorage.getItem('tp3:mori') === null));
-  await p.waitForSelector('#aiFeed .aiterug', { timeout: 4000 }).catch(() => {});
-  ok('na het antwoord: "← Terug naar je plan"', await p.evaluate(() => { const a = document.querySelector('#aiFeed .aiterug'); return !!a && /Terug naar je plan/.test(a.textContent) && a.getAttribute('href') === '../tradingplan/tradingplan.html'; }));
-  ok('"Wat is er verstuurd?" toont het pakket', await p.evaluate(() => { const d = [...document.querySelectorAll('#aiFeed details.aisent pre')].pop(); return !!d && /# Scenario uit TradingPlan/.test(d.textContent); }));
-  ok('het antwoord staat in het gesprek', await p.evaluate(a => document.getElementById('aiFeed').innerText.includes(a.slice(0, 30)), ANTWOORD));
-  for (const th of ['light', 'dark']) for (const w of [1280, 390]) {
-    await p.setViewportSize({ width: w, height: 900 }); await p.evaluate(x => { setTheme(x); render(); }, th); await p.waitForTimeout(250);
-    if (w === 390) ok(`journal ${th} 390: geen horizontale scroll`, await p.evaluate(() => document.documentElement.scrollWidth <= 392));
-    await p.screenshot({ path: `${H.SHOTS}/mori-antwoord-${th === 'dark' ? 'donker' : 'licht'}-${w}.png`, fullPage: false });
-  }
-  await p.setViewportSize({ width: 1280, height: 900 }); await p.evaluate(() => { setTheme('light'); render(); });
+  ok('in het zijpaneel geen "← Terug naar je plan": het plan staat ernaast', await f.evaluate(() => !document.querySelector('#aiFeed .aiterug')));
+  ok('"Wat is er verstuurd?" toont het pakket', await f.evaluate(() => { const d = [...document.querySelectorAll('#aiFeed details.aisent pre')].pop(); return !!d && /# Scenario uit TradingPlan/.test(d.textContent); }));
+  ok('het antwoord staat in het gesprek', await f.evaluate(a => document.getElementById('aiFeed').innerText.includes(a.slice(0, 30)), ANTWOORD));
 
-  console.log('--- 2b. bedragen verbergen ---');
-  await p.evaluate(() => { AIPREFS.hideAmounts = true; persistAIPrefs(); });
-  await p.evaluate(d => localStorage.setItem('tp3:mori', JSON.stringify({ soort: 'scenario', sid: 's_btc', day: d, ts: Date.now() })), DAG);
-  await p.reload({ waitUntil: 'load' }); await p.waitForFunction(() => window.__nep && window.__nep.verzoeken.length > 0, null, { timeout: 8000 }).catch(() => {}); await p.waitForTimeout(400);
-  v = await N.verzoeken(p); pk = v[0] ? pakket(v[0].body) : '';
+  console.log('--- 2b. bedragen verbergen; de journal in een eigen tabblad ---');
+  // Een overdracht die in een gewoon journal-tabblad aankomt (geen paneel) werkt nog, mét de weg terug.
+  await j.evaluate(k => sessionStorage.setItem('sj_ai_key', k), N.NEP);   // sessionStorage is per tab: the plan tab's key is not here
+  await j.evaluate(() => { AIPREFS.hideAmounts = true; persistAIPrefs(); });
+  await j.evaluate(d => localStorage.setItem('tp3:mori', JSON.stringify({ soort: 'scenario', sid: 's_btc', day: d, ts: Date.now() })), DAG);
+  await j.reload({ waitUntil: 'load' }); await j.waitForFunction(() => window.__nep && window.__nep.verzoeken.length > 0 && !AI_UI.bezig, null, { timeout: 8000 }).catch(() => {}); await j.waitForTimeout(400);
+  v = await N.verzoeken(j); pk = v[0] ? pakket(v[0].body) : '';
   ok('met "bedragen verbergen": geen bedragen in het pakket', !!pk && !/\$/.test(pk), (pk.match(/.*\$.*/) || [''])[0]);
-  await p.evaluate(() => { AIPREFS.hideAmounts = false; persistAIPrefs(); });
+  ok('journal in een eigen tabblad: na het antwoord "← Terug naar je plan"', await j.evaluate(() => { const a = document.querySelector('#aiFeed .aiterug'); return !!a && /Terug naar je plan/.test(a.textContent) && a.getAttribute('href') === '../tradingplan/tradingplan.html'; }));
+  for (const th of ['light', 'dark']) for (const w of [1280, 390]) {
+    await j.setViewportSize({ width: w, height: 900 }); await j.evaluate(x => { setTheme(x); render(); }, th); await j.waitForTimeout(250);
+    if (w === 390) ok(`journal ${th} 390: geen horizontale scroll`, await j.evaluate(() => document.documentElement.scrollWidth <= 392));
+  }
+  await j.setViewportSize({ width: 1280, height: 900 }); await j.evaluate(() => { setTheme('light'); render(); AIPREFS.hideAmounts = false; persistAIPrefs(); });
 
   console.log('--- 2c. dagplan → journal ---');
   await p.goto(srv.TP, { waitUntil: 'load' }); await p.waitForTimeout(500);
-  await Promise.all([p.waitForNavigation({ waitUntil: 'load' }), p.click('[data-a="dagMori"]')]);
-  await p.waitForFunction(() => window.__nep && window.__nep.verzoeken.length > 0 && !AI_UI.bezig, null, { timeout: 8000 }).catch(() => {}); await p.waitForTimeout(300);
-  v = await N.verzoeken(p); body = v[0] ? v[0].body : {}; pk = pakket(body); op = opdracht(body);
+  ({ f } = await vraagInPaneel('[data-a="dagMori"]'));
+  v = await N.verzoeken(f); body = v[0] ? v[0].body : {}; pk = pakket(body); op = opdracht(body);
   const dagVraag = body.messages ? body.messages[body.messages.length - 1].content : '';
   ok('één verzoek: "Review mijn dagplan van …"', v.length === 1 && /^Review mijn dagplan van \S/.test(dagVraag), dagVraag);
   ok('opdracht: dagplan bespreken, sterkste en zwakste, tegenspraak, gevoel, geen advies, één punt', /Bespreek het dagplan/.test(op) && /sterkst/.test(op) && /zichzelf tegen/.test(op) && /gevoel waarmee de trader de dag begon/.test(op) && /Geen koop- of verkoopadvies/.test(op) && /één concreet punt/.test(op), op.slice(0, 300));
@@ -146,8 +148,8 @@ const ANTWOORD = 'Je Trend-pullback staat op n=4 (uit je setuptabel). Let op je 
   ok('pakket: geen id van een scenario', !/s_btc|s_zc/.test(pk));
 
   console.log('--- 3. oude, kapotte en verweesde overdrachten ---');
-  const naarJournal = async waarde => { await p.evaluate(w => { if (w == null) localStorage.removeItem('tp3:mori'); else localStorage.setItem('tp3:mori', w); }, waarde); await p.reload({ waitUntil: 'load' }); await p.waitForTimeout(1200);
-    return { n: (await N.verzoeken(p)).length, weg: await p.evaluate(() => localStorage.getItem('tp3:mori') === null), feed: await p.evaluate(() => (document.getElementById('aiFeed') || { innerText: '' }).innerText) }; };
+  const naarJournal = async waarde => { await j.evaluate(w => { if (w == null) localStorage.removeItem('tp3:mori'); else localStorage.setItem('tp3:mori', w); }, waarde); await j.reload({ waitUntil: 'load' }); await j.waitForTimeout(1200);
+    return { n: (await N.verzoeken(j)).length, weg: await j.evaluate(() => localStorage.getItem('tp3:mori') === null), feed: await j.evaluate(() => (document.getElementById('aiFeed') || { innerText: '' }).innerText) }; };
   let r = await naarJournal(JSON.stringify({ soort: 'scenario', sid: 's_btc', day: DAG, ts: Date.now() - 11 * 60000 }));
   ok('ouder dan 10 minuten: niets verstuurd, gewist', r.n === 0 && r.weg, JSON.stringify(r));
   r = await naarJournal('{kapot');
