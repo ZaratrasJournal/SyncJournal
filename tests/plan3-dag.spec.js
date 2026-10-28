@@ -1,5 +1,5 @@
 // TradingPlan v3, taak 4: Dag-scherm (Cockpit) en Week-scherm.
-//  (a) links de trechter week → dag → levels → dagstart → gevoel; rechts de gerangschikte scenario's, één regel
+//  (a) links de trechter week → dag → levels → charts → dagstart → gevoel; rechts de gerangschikte scenario's, één regel
 //      "Live n · wr · gemR | Backtest n · wr · gemR" met plek en "sterkste"
 //  (b) tik → open: trigger, ongeldig-als, geërfde tags, confirmations als afvinklijst met voortgangsbalk, edge-tabel,
 //      stop/TP's, notitie; alles af → "Klaar om te nemen · 1% risico" (grade C met 0% → "C: niet traden")
@@ -32,13 +32,16 @@ const SCEN = [
 
   console.log('--- (a) cockpit ---');
   const a = await p.evaluate(() => ({ stappen: [...document.querySelectorAll('.funnel .fstep h3')].map(x => x.textContent.trim().split(' ')[0]), rijen: [...document.querySelectorAll('.ritem')].map(r => ({ id: r.dataset.s, plek: r.querySelector('.rnum').textContent.trim(), sterk: !!r.querySelector('.tag-sterk'), lijn: r.querySelector('.rline').textContent.replace(/\s+/g, ' ').trim() })), txt: document.getElementById('app').innerText + ' ' + document.getElementById('d-levels').value }));
-  ok('trechter: Week → Vandaag → Levels → Dagstart → Gevoel', a.stappen.join() === 'Week,Vandaag,Levels,Dagstart,Gevoel', a.stappen.join());
+  ok('trechter: Week → Vandaag → Levels → Charts → Dagstart → Gevoel', a.stappen.join() === 'Week,Vandaag,Levels,Charts,Dagstart,Gevoel', a.stappen.join());
   ok('scenario\'s gerangschikt: Backtestbaas (+1,0R backtest) · trend-pullback (+0,58R live) · zonder data', a.rijen.map(r => r.id).join() === 's_bb,s_tp,s_c' && a.rijen.map(r => r.plek).join() === '1,2,3', JSON.stringify(a.rijen.map(r => r.id)));
   ok('regel: "Live 13 · 62% · +0,58R | Backtest 8 · 63% · +0,50R"', a.rijen[1].lijn === 'Live 13 · 62% · +0,58R | Backtest 8 · 63% · +0,50R', a.rijen[1].lijn);
   ok('regel Backtestbaas: "Live 3 · 67% · +0,33R | Backtest 12 · 67% · +1,0R"', a.rijen[0].lijn === 'Live 3 · 67% · +0,33R | Backtest 12 · 67% · +1,0R', a.rijen[0].lijn);
   ok('"sterkste" alleen op plek 1', a.rijen[0].sterk && !a.rijen[1].sterk && !a.rijen[2].sterk);
   ok('zonder data: "Nog geen trades met deze combinatie."', /Nog geen trades met deze combinatie/.test(a.rijen[2].lijn), a.rijen[2].lijn);
-  ok('context één keer: Weekly en Daily tellen niet mee', (a.txt.match(/tellen niet mee/g) || []).length === 1 && /Weekly en Daily tellen niet mee/.test(a.txt), (a.txt.match(/[^\n]*tellen niet mee[^\n]*/) || [''])[0]);
+  // ronde 3 punt 6: de context-zin staat achter de ⓘ bij Vandaag
+  await p.click('.funnel h3 [data-a="info"]'); await p.waitForTimeout(80); a.txt = await p.evaluate(() => document.getElementById('app').innerText + ' ' + document.getElementById('d-levels').value);
+  ok('context één keer (achter de ⓘ): Weekly en Daily tellen niet mee', (a.txt.match(/tellen niet mee/g) || []).length === 1 && /Weekly en Daily tellen niet mee/.test(a.txt), (a.txt.match(/[^\n]*tellen niet mee[^\n]*/) || [''])[0]);
+  await p.click('.funnel h3 [data-a="info"]');
   ok('week-focus en levels in beeld', /Alleen A-setups in London/.test(a.txt) && /78\.150/.test(a.txt) && /76\.200/.test(a.txt));
 
   console.log('--- (b) opengeklapt ---');
@@ -52,7 +55,8 @@ const SCEN = [
   ok('alle confirmations af → groen "Klaar om te nemen · 1% risico", bewaard', klaar.ready && /Klaar om te nemen · 1% risico/.test(klaar.txt) && klaar.checked.join() === 'FVG', JSON.stringify(klaar.checked));
   await p.click('.ritem[data-s="s_c"] .rrow'); await p.click('.ritem[data-s="s_c"] [data-a="chk"][data-v="OB"]'); await p.waitForTimeout(120);
   ok('grade C met 0% → "Klaar om te nemen · C: niet traden"', /Klaar om te nemen · C: niet traden/.test(await p.evaluate(() => document.querySelector('.ritem[data-s="s_c"]').innerText)));
-  ok('geërfde tag uitzetten in het opengeklapte scenario', await p.evaluate(() => { document.querySelector('.ritem[data-s="s_tp"] .chip.inh[data-v="Weekly|BOS"]').click(); return __tp3.dayOf(__tp3.vandaag()).scenarios.find(s => s.id === 's_tp').off.includes('Weekly|BOS'); }));
+  await p.click('.ritem[data-s="s_tp"] .lrij[data-tf="Weekly"]'); await p.click('#modal .chip.inh[data-v="Weekly|BOS"]'); await p.click('#modal [data-a="close"]'); await p.waitForTimeout(80);
+  ok('geërfde tag uitzetten in het opengeklapte scenario (tik op de laag, dan op de tag)', await p.evaluate(() => __tp3.dayOf(__tp3.vandaag()).scenarios.find(s => s.id === 's_tp').off.includes('Weekly|BOS')));
 
   console.log('--- (c) status ---');
   await p.click('.ritem[data-s="s_tp"] [data-a="status"][data-v="gemist"]'); await p.waitForTimeout(100);
@@ -78,7 +82,7 @@ const SCEN = [
   console.log('--- (e) toevoegen, bewerken, verwijderen ---');
   await p.click('[data-a="newScen"]'); await p.waitForTimeout(120);
   await p.selectOption('#sc-pb', 'Trend-pullback'); await p.waitForTimeout(120);
-  const vul = await p.evaluate(() => ({ tf: document.querySelector('#sc-tf').value, grade: (document.querySelector('#modal [data-a="dset"][data-p="grade"].on') || {}).textContent, chips: [...document.querySelectorAll('#modal .layer .chip:not(.add):not(.inh)')].map(x => x.textContent.replace('×', '').trim()) }));
+  const vul = await p.evaluate(() => ({ tf: document.querySelector('#sc-tf').value, grade: (document.querySelector('#modal [data-a="dset"][data-p="grade"].on') || {}).textContent, chips: [...document.querySelectorAll('#modal .lrij .chip:not(.inh):not(.meer)')].map(x => x.textContent.trim()) }));
   ok('playbook kiezen: entry-laag 15M met BOS, FVG, OB en grade A uit het journal-playbook', vul.tf === '15M' && vul.grade === 'A' && vul.chips.join() === 'BOS,FVG,OB', JSON.stringify(vul));
   ok('het formulier toont de edge van de combinatie', /Live \d+/.test(await p.evaluate(() => document.querySelector('#modal').innerText)));
   await p.fill('#sc-title', 'Nieuw <b>scenario</b>'); await p.fill('#sc-pair', 'eth/usdt'); await p.click('#modal [data-a="dset"][data-p="dir"][data-v="short"]');
@@ -97,7 +101,7 @@ const SCEN = [
   const tel = await p.evaluate(() => [...document.querySelectorAll('.funnel .fstep')].filter(x => x.offsetParent).map(x => x.querySelector('h3').textContent.trim()));
   ok('390 breed: trechter ingeklapt tot Dagstart en Gevoel', tel.join() === 'Dagstart,Gevoel', tel.join());
   await p.click('[data-a="ctx"]'); await p.waitForTimeout(80);
-  ok('uitklappen toont de hele trechter', await p.evaluate(() => [...document.querySelectorAll('.funnel .fstep')].filter(x => x.offsetParent).length === 5));
+  ok('uitklappen toont de hele trechter', await p.evaluate(() => [...document.querySelectorAll('.funnel .fstep')].filter(x => x.offsetParent).length === 6));
   ok('390 breed: geen horizontale scroll', await p.evaluate(() => document.documentElement.scrollWidth <= 391));
   await p.setViewportSize({ width: 1280, height: 900 });
 
@@ -116,7 +120,7 @@ const SCEN = [
   });
   ok('scenario-kaart: linkerrand naar status (open accent, gemist amber), minstens 3px', kl.open === kl.accent && kl.gemist === kl.amber && kl.breed >= 3, JSON.stringify([kl.open, kl.gemist, kl.breed]));
   ok('grade A: groene badge', kl.grade[0] === kl.green && kl.grade[1] === kl.greenSoft, JSON.stringify(kl.grade));
-  ok('trechter: elke stap een eigen kleur uit de palette', kl.stip.length === 5 && new Set(kl.stip).size === 5 && kl.stip.every(c => kl.palet.includes(c)), JSON.stringify(kl.stip));
+  ok('trechter: elke stap een eigen kleur uit de palette', kl.stip.length === 6 && new Set(kl.stip).size === 6 && kl.stip.every(c => kl.palet.includes(c)), JSON.stringify(kl.stip));
   ok('actieve tab: een eigen gekleurde onderstreping per tab', new Set(kl.tabs).size === 4 && kl.tabs.every(c => kl.palet.includes(c)), JSON.stringify(kl.tabs));
   await p.evaluate(() => { const P = __tp3.load(); P.days[__tp3.vandaag()].scenarios.find(s => s.id === 's_c').status = 'open'; __tp3.save(P); __tp3.render(); });
 
@@ -133,7 +137,7 @@ const SCEN = [
 
   console.log('--- Week-scherm ---');
   await p.click('nav.tabs [data-v="week"]'); await p.waitForTimeout(100);
-  const wk = await p.evaluate(() => ({ lagen: [...document.querySelectorAll('#app .layer .tf')].map(x => x.textContent).join(), nt: document.querySelector('[data-f="week.noTrade"]').value, focus: document.querySelector('[data-f="week.focus"]').value, lv: document.querySelector('[data-f="week.levels"]').value }));
+  const wk = await p.evaluate(() => ({ lagen: [...document.querySelectorAll('#app .lrij .tf')].map(x => x.textContent).join(), nt: document.querySelector('[data-f="week.noTrade"]').value, focus: document.querySelector('[data-f="week.focus"]').value, lv: document.querySelector('[data-f="week.levels"]').value }));
   ok('week: lagen Weekly · Daily, levels, no-trade, focus', wk.lagen === 'Weekly,Daily' && wk.nt === 'do FOMC 19:00' && /Alleen A-setups/.test(wk.focus) && /78\.150/.test(wk.lv), JSON.stringify(wk));
   await p.fill('[data-f="week.focus"]', 'Na 2 verliezen stoppen');
   ok('focus bewaard', await p.evaluate(() => { const P = __tp3.load(); return P.weeks[__tp3.isoWeek(__tp3.vandaag())].focus === 'Na 2 verliezen stoppen'; }));

@@ -50,13 +50,14 @@ const TV = 'https://www.tradingview.com/x/AbC123/';
   ok('vandaag in het plan = dag 1', await p.evaluate(() => __tp3.vandaag()) === D1);
   await p.click('[data-a="settings"]'); await p.click('[data-a="stijl"][data-v="scalp"]'); await p.click('[data-a="saveSettings"]');
   await p.click('nav.tabs [data-v="week"]'); await p.click('[data-a="maakWeek"]'); await p.waitForTimeout(100);
-  ok('weekplan met de Scalp-lagen Daily · 4H', await p.evaluate(() => [...document.querySelectorAll('#app .layer .tf')].map(x => x.textContent).join()) === 'Daily,4H');
-  await p.click('[data-a="bias"][data-p="week.0"][data-v="Bullish"]'); await p.click('[data-a="bias"][data-p="week.1"][data-v="Bullish"]');
-  await p.click('[data-a="picker"][data-p="week.1"]'); await p.click('#modal [data-a="pick"][data-v="BOS"]'); await p.click('#modal [data-a="close"]');
+  ok('weekplan met de Scalp-lagen Daily · 4H', await p.evaluate(() => [...document.querySelectorAll('#app .lrij .tf')].map(x => x.textContent).join()) === 'Daily,4H');
+  // ronde 3 punt 6: tik op de laag-regel, dan bias en tags in het venster
+  await p.click('.lrij[data-p="week.0"]'); await p.click('#modal [data-a="bias"][data-v="Bullish"]'); await p.click('#modal [data-a="close"]');
+  await p.click('.lrij[data-p="week.1"]'); await p.click('#modal [data-a="bias"][data-v="Bullish"]'); await p.click('#modal [data-a="pick"][data-v="BOS"]'); await p.click('#modal [data-a="close"]');
   await p.fill('#w-levels', 'BTC 78.150 weekly high\nBTC 75.000 range-low'); await p.fill('#w-nt', 'do FOMC 19:00, niet traden 18:30–20:00'); await p.fill('#w-focus', 'Alleen A-setups in London');
   await p.click('nav.tabs [data-v="dag"]'); await p.click('[data-a="maakDag"]'); await p.waitForTimeout(100);
   ok('dag 1 met de Scalp-lagen 1H · 15M en de week erboven', await p.evaluate(() => __tp3.dayOf(__tp3.vandaag()).layers.map(l => l.tf).join()) === '1H,15M');
-  await p.click('[data-a="bias"][data-p="day.0"][data-v="Bullish"]');
+  await p.click('.lrij[data-p="day.0"]'); await p.click('#modal [data-a="bias"][data-v="Bullish"]'); await p.click('#modal [data-a="close"]');
   const maakScen = async (o) => { await p.click('section [data-a="newScen"]'); await p.waitForTimeout(100);
     await p.fill('#sc-title', o.titel); if (o.pb) await p.selectOption('#sc-pb', o.pb); await p.fill('#sc-pair', o.pair);
     await p.click(`#modal [data-a="dset"][data-p="dir"][data-v="${o.dir}"]`); if (o.grade) await p.click(`#modal [data-a="dset"][data-p="grade"][data-v="${o.grade}"]`);

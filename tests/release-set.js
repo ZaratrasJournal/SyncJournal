@@ -73,6 +73,7 @@ module.exports = [
   'plan3-mori',              // Mori in het plan: per scenario en het dagplan, via tp3:mori; de sleutel nooit in het plan
   'plan3-dagstart',          // Dagstart (was pre-flight): vrije lijst van hooguit 8, vinkjes op tekst, migratie van Day.pre
   'plan3-gevoel',            // gevoel bij de dagstart: emoties uit de journal, journal → plan per emotie, "Je dagstart-gevoel"
+  'plan3-regels',            // Vandaag: één regel per laag (kaartje), tikken = bewerken, week compact, ⓘ, stap Charts
 
   // analyse en weergave
   'matrix', 'yearheatmap', 'review-list', 'coach-share', 'review-beeld', 'tv-links', 'theme-hook', 'beeld-escaping',
