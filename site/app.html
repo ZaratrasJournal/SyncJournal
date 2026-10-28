@@ -872,6 +872,10 @@ table.tbl{width:100%;border-collapse:collapse;font-size:14px}
 .field input:focus,.field select:focus,.field textarea:focus{border-color:var(--accent);background:var(--surface)}
 .field input[readonly]{border-style:dashed;color:var(--ink2);background:color-mix(in srgb,var(--sink) 55%,var(--surface));cursor:default}
 .lockbar{font-size:12px;color:var(--muted);padding:8px 11px;border:1px dashed var(--line);border-radius:9px;line-height:1.45}
+.plan-gv{display:flex;align-items:center;gap:10px;justify-content:space-between;padding:8px 0;font-size:13px}
+.plan-gv+.plan-gv{border-top:1px dashed var(--line)}
+.plan-gv.weinig>span:first-child{color:var(--muted)}
+.plan-gv .chip{flex:none}
 .plan-obs{margin-top:10px;padding:9px 12px;border-radius:9px;background:var(--accent-soft);border:1px solid var(--accent-line);font-size:12.5px;line-height:1.5}
 .plan-weinig{padding:8px 12px;border-radius:9px;background:var(--sink);border:1px dashed var(--line);font-size:12.5px;color:var(--muted)}
 .formwarn{font-size:12px;color:var(--ink);padding:8px 11px;border:1px dashed color-mix(in srgb,var(--amber) 55%,transparent);background:color-mix(in srgb,var(--amber) 10%,transparent);border-radius:9px;line-height:1.45}
@@ -2224,7 +2228,7 @@ const KINDS={live:{label:'Live',color:'var(--green)'},gemist:{label:'Gemist',col
 function isLive(t){return !t.kind||t.kind==='live';}
 
 /* ═══ Persistentie (localStorage) ═══ */
-const APP_VERSION='v1.21';
+const APP_VERSION='v1.22';
 const SCHEMA_VERSION=12;
 const DB={
   // Type-bewust: valt terug op de default als opslag ontbreekt, corrupt is, of van een
@@ -3304,6 +3308,12 @@ function tradeTimeline(t){
 const TP3={plans:'tp3:plans',cfg:'tp3:cfg',handoff:'tp3:handoff',mori:'tp3:mori'};
 const HANDOFF_MAX_MS=10*60000;   // "Zet om in trade" in het plan: na 10 minuten is de overdracht verlopen
 const planObj=o=>!!o&&typeof o==='object'&&!Array.isArray(o);
+// Dagstart (was pre-flight): cfg.pre is a list of texts, a day keeps the checked texts in dagstart. An old day still has
+// pre: [bool,bool,bool] on the index of cfg.pre. Same rule and default list as load()/CFG_STD in tradingplan/tradingplan.html.
+const PLAN_PRE_STD=['Nieuws gecheckt','Goed geslapen','Limieten in orde'];
+function planDagstart(day,c){const ruw=Array.isArray(c&&c.pre)?c.pre.map(x=>coachPlanTekst(x)):PLAN_PRE_STD,lijst=[...new Set(ruw.filter(Boolean))];
+  const af=Array.isArray(day&&day.dagstart)?day.dagstart:ruw.filter((t,k)=>t&&Array.isArray(day&&day.pre)&&day.pre[k]===true);
+  return lijst.map(t=>[t,af.includes(t)]);}
 function planLoad(){const g=(k,fb)=>{try{const v=JSON.parse(localStorage.getItem(k)||'null');return v==null?fb:v;}catch(e){return fb;}};
   const p=g(TP3.plans,{});return {plans:{v:1,weeks:planObj(p.weeks)?p.weeks:{},days:planObj(p.days)?p.days:{}},cfg:planObj(g(TP3.cfg,{}))?g(TP3.cfg,{}):{}};}
 function planSave(plans){try{localStorage.setItem(TP3.plans,JSON.stringify(plans));return true;}catch(e){toast('Het plan kon niet worden opgeslagen (opslag vol?)','err');return false;}}
@@ -3323,12 +3333,16 @@ function planGetal(v){let s=String(v==null?'':v).trim().replace(/\s/g,'');if(/,/
    samengevoegd, top-down. Uitgezette geërfde tags (s.off, "<tf>|<tag>") gaan niet mee, van de entry-laag
    alleen de afgevinkte confirmations. Lege geërfde lagen vallen weg; de entry-laag blijft (die is het
    tijdframe van de trade). Dezelfde regel staat in tradingplan/tradingplan.html (zetOmLagen). */
+// The week layers as they hold on a day: tags the day switched off (day.off, "<tf>|<tag>") drop out. Same rule as
+// weekVoorDag in tradingplan/tradingplan.html.
+function planWeekVoorDag(week,day){const uit=new Set(Array.isArray(day&&day.off)?day.off:[]);
+  return ((week&&week.layers)||[]).filter(planObj).map(L=>({...L,setups:(L.setups||[]).filter(g=>!uit.has(L.tf+'|'+g)),confirmations:(L.confirmations||[]).filter(g=>!uit.has(L.tf+'|'+g))}));}
 function planLagen(s,day,week){const per=new Map(),uit=new Set(s.off||[]),uniq=a=>[...new Set(a)];
   const add=(L,erft,entry)=>{if(!L||!L.tf)return;const tf=String(L.tf);const k=tf.toLowerCase();
     const set=(L.setups||[]).filter(g=>!erft||!uit.has(tf+'|'+g)),conf=(L.confirmations||[]).filter(g=>(!erft||!uit.has(tf+'|'+g))&&(!entry||(s.checked||[]).includes(g)));
     if(erft&&!set.length&&!conf.length&&!L.bias)return;
     const o=per.get(k)||{timeframe:tf,bias:'',setups:[],confirmations:[]};if(L.bias)o.bias=L.bias;o.setups=uniq([...o.setups,...set]);o.confirmations=uniq([...o.confirmations,...conf]);per.set(k,o);};
-  ((week&&week.layers)||[]).forEach(L=>add(L,true,false));((day&&day.layers)||[]).forEach(L=>add(L,true,false));add(s.entry,false,true);
+  planWeekVoorDag(week,day).forEach(L=>add(L,true,false));((day&&day.layers)||[]).forEach(L=>add(L,true,false));add(s.entry,false,true);
   return sorteerLagen([...per.values()]);}
 /* Neemt over wat het scenario weet, alleen in velden die nog leeg zijn: wat je zelf invulde of wat de exchange
    gaf blijft staan. Geeft de afbeelding-id's terug die nog als screenshot moeten komen (die staan async in
@@ -4332,11 +4346,37 @@ function planObservatie(rows,tot,wat){
   if(best.avg-worst.avg<PLAN_MIN_VERSCHIL)return '';
   return `<div class="plan-obs">${wat} <b>${esc(worst.label)}</b> ${worst.avg<0?'kosten je':'leveren'} <b class="${cls(worst.avg)}">${rS(worst.avg)}</b> per trade (${worst.n} trades); <b>${esc(best.label)}</b> ${best.avg<0?'kosten':'leveren'} <b class="${cls(best.avg)}">${rS(best.avg)}</b> (${best.n}). Verschil ${rS(best.avg-worst.avg)}.</div>`;
 }
+/* Gevoel bij de dagstart (ronde 3 punt 4+5): Day.emoties uit tagConfig.emotionTags. Twee kanten:
+   journal → plan: wat deden je trades mét die emotie (live, gesloten; R alleen mét stop, gemR), en
+   plan → statistiek: wat deden je trades op de dagen die je met die emotie begon. Betrouwbaarheid op het aantal dagen.
+   Dezelfde regels als emoStat/gevoelRijen in tradingplan/tradingplan.html. */
+const PLAN_REL_REDELIJK=10,PLAN_REL_GENOEG=30;
+const planBetr=n=>n>=PLAN_REL_GENOEG?'genoeg':n>=PLAN_REL_REDELIJK?'redelijk':'weinig';
+const planPct=v=>Math.round(v)+'%';
+function planEmoRegel(e,trades){const l=(trades||T).filter(t=>t&&isLive(t)&&t.status==='closed'&&tradeEmotions(t).includes(e)),g=gemR(l);
+  if(!l.length)return 'Nog geen trades met '+e+'.';
+  return 'Met '+e+': '+l.length+' trade'+(l.length===1?'':'s')+' · '+planPct(l.filter(t=>(+t.pnl||0)>0).length/l.length*100)+' · '+(g.n?rS(g.avg):'–')+(l.length<PLAN_REL_REDELIJK?' · weinig data':'');}
+function planGevoelRijen(P,trades){const days=Object.values(P.plans.days).filter(d=>d&&d.id),em=d=>(Array.isArray(d.emoties)?d.emoties:[]).filter(x=>typeof x==='string');
+  const sc=d=>(d.scenarios||[]).filter(planObj),gek=new Set(days.flatMap(d=>sc(d).flatMap(s=>(s.trades||[]).map(String))));
+  return [...new Set(days.flatMap(em))].map(e=>{const ds=days.filter(d=>em(d).includes(e)),ids=new Set(ds.map(d=>d.id));
+    const l=(trades||T).filter(t=>t&&isLive(t)&&t.status==='closed'&&ids.has(planTradeDag(t))),g=gemR(l),S=ds.flatMap(sc),beslist=S.filter(s=>s.status&&s.status!=='open').length,uit=S.filter(s=>s.status==='genomen'||s.status==='gemist').length;
+    return {e,dagen:ds.length,n:l.length,wr:l.length?l.filter(t=>(+t.pnl||0)>0).length/l.length*100:null,gemR:g.n?g.avg:null,buiten:l.filter(t=>!gek.has(String(t.id))).length,pUit:beslist?uit/beslist*100:null,betr:planBetr(ds.length)};})
+    .sort((a,b)=>(a.gemR==null?Infinity:a.gemR)-(b.gemR==null?Infinity:b.gemR)||b.dagen-a.dagen);}
+// b wraps the emotion (html <b> on the page, plain in Mori's package)
+function planGevoelTekst(r,b){b=b||(x=>x);return 'Dagen die je met '+b(r.e)+' begon: '+r.dagen+' '+(r.dagen===1?'dag':'dagen')+' · '+r.n+' trade'+(r.n===1?'':'s')+
+  (r.n?' · '+planPct(r.wr)+' · '+(r.gemR==null?'–':rS(r.gemR))+' · '+r.buiten+' buiten plan':'')+(r.pUit!=null?' · scenario\'s '+planPct(r.pUit)+' uit':'');}
+function planGevoelPanel(P,trades){const R=planGevoelRijen(P,trades),rel=b=>b==='weinig'?'weinig data':b==='redelijk'?'redelijk wat data':'genoeg data';
+  return `<div class="panel"><div class="phead"><h3>Je dagstart-gevoel</h3><span class="sp"></span><span class="chip">per emotie bij de dagstart</span></div><div class="pbody">${R.length?R.map(r=>`<div class="plan-gv${r.betr==='weinig'?' weinig':''}"><span>${planGevoelTekst(r,x=>'<b>'+esc(x)+'</b>')}</span><span class="chip">${rel(r.betr)}</span></div>`).join('')
+    :'<div class="hint">Kies een paar dagen je gevoel bij de dagstart, dan zie je hier wat het met je trades doet.</div>'}</div></div>`;}
+// Mori: "FOMO (negatief), Rustig (positief)", or the old score of a day from before the emotions
+function planGevoelKort(d){const e=(Array.isArray(d&&d.emoties)?d.emoties:[]).filter(x=>typeof x==='string');
+  return e.length?e.map(x=>coachPlanTekst(x)+(isNegEmotie(x)?' (negatief)':' (positief)')).join(', '):d&&d.mental?'mentaal '+d.mental+'/5 (oud)':'';}
 function planTendencies(){
   const P=planLoad(),dagen=Object.values(P.plans.days).filter(d=>d&&d.id),sc=dagen.flatMap(d=>(d.scenarios||[]).filter(Boolean));
   const sub=`<div class="subtabs" id="tendTabs">${TEND_TABS.map(([k,l])=>`<button data-t="${k}" class="${STATE.tend===k?'on':''}">${l}</button>`).join('')}</div>`;
   const kop=(t,d)=>`<div class="phead"><h3>${t}</h3><span class="sp"></span><span class="chip">${d}</span></div>`;
-  if(!sc.length)return `${filterBar()}<div class="panel">${kop('Plan','TradingPlan')}<div class="pbody">${sub}</div>${emptyState('plan-leeg','in')}</div>`;
+  const gevoel=dagen.some(d=>Array.isArray(d.emoties)&&d.emoties.length)||sc.length?`<div style="height:13px"></div>${planGevoelPanel(P,CLOSED)}`:'';
+  if(!sc.length)return `${filterBar()}<div class="panel">${kop('Plan','TradingPlan')}<div class="pbody">${sub}</div>${emptyState('plan-leeg','in')}</div>${gevoel}`;
   // voorspel-score: uitgekomen = genomen + gemist, van alles wat niet meer open staat; ongeldig = niet uitgekomen
   const tel=k=>sc.filter(s=>s.status===k).length,gen=tel('genomen'),gem=tel('gemist'),open=tel('open'),beslist=sc.length-open,uit=gen+gem;
   const perId=new Map(T.filter(Boolean).map(t=>[String(t.id),t])),van=s=>(s.trades||[]).map(id=>perId.get(String(id))).filter(Boolean);
@@ -4357,7 +4397,7 @@ function planTendencies(){
       <div class="pbody"><div style="font-size:15px;line-height:1.55">${score}</div>
         ${hbars(stat.map(([l,n,c])=>({label:l,val:n/sc.length*100,disp:'<b>'+n+'</b>',color:c,sub:Math.round(n/sc.length*100)+'% van je scenario\'s'})))}</div></div><div style="height:13px"></div>
     <div class="panel">${kop('Binnen tegenover buiten plan','live-trades · in R én geld')}<div class="pbody">${tot<PLAN_MIN?`<div class="plan-weinig">📊 Nog te weinig data voor conclusies: <b>${tot} van ${PLAN_MIN}</b> trades sinds je eerste plan. De cijfers hieronder zijn nog toeval, geen patroon.</div>`:''}
-      ${planRowsHtml(rows)}<div class="hint" style="margin-top:8px">${zin}</div>${planObservatie(rows,tot,'Je trades')}</div></div>`;
+      ${planRowsHtml(rows)}<div class="hint" style="margin-top:8px">${zin}</div>${planObservatie(rows,tot,'Je trades')}</div></div>${gevoel}`;
 }
 function pgTendencies(){
   if(STATE.tend==='plan')return planTendencies();
@@ -6107,7 +6147,7 @@ const FAQS=[
   ]],
   ['🗓️ Je trading plan',[
     ['Wat is het Trading Plan?','Een plan voor je week en je dag, met scenario\'s, dat bij elk scenario je edge uit je eigen trades laat zien. Je opent het met <b>Plan</b> in het menu. Het is een losse pagina, met dezelfde opslag als je journal. Er zijn vier tabs:<ul><li><b>Week</b>: lagen, levels, no-trade en focus voor de week.</li><li><b>Dag</b>: je lagen van vandaag, levels, pre-flight, mentaal en je scenario\'s.</li><li><b>Afsluiting</b>: na de sessie, wat uitkwam en je les.</li><li><b>Log</b>: al je dagen terug.</li></ul>Een <b>scenario</b> is een als-dan-plan: "als BTC de Asia-low sweept, dan long met mijn London SFP". Je <b>edge</b> is waar je structureel geld verdient.','plan'],
-    ['Hoe maak ik een dagplan, en heb ik een weekplan nodig?','Klik op <b>Dag → Maak dagplan</b>. Een weekplan is niet nodig. Heb je er wel een, dan erft elke dag van die week de lagen van de week (gedimd), en wat de week al heeft staat niet nog eens leeg in je dag.<ul><li>Met het tandwiel ⚙ kies je je stijl: <b>Swing</b>, <b>Daytrade</b> of <b>Scalp</b>. Die bepaalt alleen met welke tijdframes een nieuwe week en dag beginnen; je kunt er altijd van afwijken.</li><li>De tags komen uit je journal (<b>Instellingen → Tags</b>). Een nieuwe tag die je in het plan maakt, komt daar ook bij.</li><li>Nog niets voor vandaag? <b>Gisteren overnemen</b> neemt de lagen, levels en nog open scenario\'s van je vorige dagplan over.</li></ul>'],
+    ['Hoe maak ik een dagplan, en heb ik een weekplan nodig?','Klik op <b>Dag → Maak dagplan</b>. Een weekplan is niet nodig. Heb je er wel een, dan erft elke dag van die week de lagen van de week (gedimd), en wat de week al heeft staat niet nog eens leeg in je dag.<ul><li>Met het tandwiel ⚙ kies je je stijl: <b>Swing</b>, <b>Daytrade</b> of <b>Scalp</b>. Die bepaalt alleen met welke tijdframes een nieuwe week en dag beginnen; je kunt er altijd van afwijken.</li><li>Tags en tijdframes komen uit je journal. In het plan kies je alleen uit die lijst; een nieuwe tag of een nieuw tijdframe voeg je toe bij <b>Instellingen → Tags</b>. Zo blijft je data overal hetzelfde.</li><li>Nog niets voor vandaag? <b>Gisteren overnemen</b> neemt de lagen, levels en nog open scenario\'s van je vorige dagplan over.</li></ul>'],
     ['Wat zeggen de cijfers bij een scenario?','Hoe je eerdere trades met dezelfde setup het deden: hetzelfde playbook, dezelfde richting en dezelfde tags per tijdframe. <b>Live</b> en <b>Backtest</b> staan apart; Paper telt bij Backtest.<ul><li><b>Gem. R</b>: je gemiddelde resultaat in R. Alleen trades mét stop-loss tellen mee.</li><li><b>Winrate</b>, expectancy, profit factor en je laatste 10.</li><li><b>weinig data</b> (onder 10 trades), <b>redelijk wat data</b> (10 tot 30) of <b>genoeg data</b> (30 of meer).</li><li><b>sterkste</b>: het scenario bovenaan, met minstens 10 trades en een positieve gem. R.</li></ul>Onder 5 trades laat het plan eerst de richting los, dan tags vanaf het hoogste tijdframe; "zonder …" zegt welke. Een tijdframe dat geen van je trades heeft, telt niet mee. Een kans in procenten staat er bewust niet: bij weinig trades is dat schijnzekerheid.'],
     ['Wanneer is een scenario "Klaar om te nemen"?','Als je alle confirmations van de entry-laag en alle verplichte criteria van je playbook hebt afgevinkt. Open het scenario en vink ze aan; dan staat er <b>Klaar om te nemen</b>, met je risico voor die grade.<ul><li>Het risico per grade (A, B, C) stel je in met het tandwiel ⚙. 0% betekent: niet traden.</li><li>"Niet als: …" uit je playbook staat erbij als waarschuwing.</li><li><b>Pre-flight</b> en <b>mentaal</b> zijn een herinnering, geen slot: niets wordt geblokkeerd. Bij mentaal 1 of 2 zegt het plan: <b>Overweeg alleen A-setups</b>.</li></ul>'],
     ['Hoe koppel ik een trade aan een scenario?','Dat kies je zelf: er wordt <b>nooit vanzelf gekoppeld</b>. Open het scenario en klik op <b>Zet om in trade</b>.<ul><li><b>Uit je journal</b>: tik een of meer trades aan en klik op <b>Koppel</b>. Je ziet trades met hetzelfde pair en dezelfde richting op die dag; met <b>Alle pairs en richtingen</b> en <b>+ dag erna</b> zie je meer. Een trade hoort bij hooguit één scenario.</li><li><b>Nieuwe trade invullen</b>: het tradeformulier opent al ingevuld, voor een handmatige, backtest- of papertrade. Opslaan koppelt hem.</li></ul>Achteraf kan ook: <b>Koppel trade</b> in de Afsluiting of de Log, of in de journal bij de trade zelf (<b>Koppel aan scenario</b>). Ontkoppelen: het × bij de trade in het scenario. Lege velden van de trade vult de journal aan uit het scenario.'],
@@ -6517,14 +6557,14 @@ function coachIdeeCijfers(i,o){const e=coachGetal(i.entry),st=coachGetal(i.stop)
 function coachPlanRegels(dir,dagId){const P=planLoad(),vandaag=PLAN_AMS.format(new Date()),vd=dagId||vandaag,wid=coachIsoWeek(vd),wk=P.plans.weeks[wid],dag=P.plans.days[vd],risk=planObj(P.cfg.risk)?P.cfg.risk:null,L=[];
   if(!wk&&!dag&&!risk)return ['- Geen TradingPlan-gegevens gevonden op dit apparaat.'];
   if(wk){L.push('Weekplan '+wid+':');
-    const lagen=coachPlanLagen(wk.layers);if(lagen)L.push('- Lagen: '+lagen);
+    const lagen=coachPlanLagen(planWeekVoorDag(wk,dag));if(lagen)L.push('- Lagen: '+lagen);
     [['Focus',wk.focus],['Niet traden / nieuws',wk.noTrade],['Levels',wk.levels]].forEach(([k,v])=>{if(coachPlanTekst(v))L.push('- '+k+': '+coachPlanTekst(v));});}
   else L.push('- Geen weekplan voor deze week.');
   if(dag){const sc=(dag.scenarios||[]).filter(s=>s&&s.dir===dir),lagen=coachPlanLagen(dag.layers);
     L.push('Dagplan '+coachDatum(vd)+':');
     if(lagen)L.push('- Lagen: '+lagen);
     if(coachPlanTekst(dag.levels))L.push('- Levels: '+coachPlanTekst(dag.levels));
-    if(dag.mental)L.push('- Mentaal '+(vd===vandaag?'vandaag':'op '+coachDatum(vd))+': '+dag.mental+'/5');
+    if(planGevoelKort(dag))L.push('- Gevoel bij de dagstart: '+planGevoelKort(dag)+(vd===vandaag?'':' ('+coachDatum(vd)+')'));
     L.push(sc.length?'Scenario\'s '+(vd===vandaag?'vandaag':'op '+coachDatum(vd))+' ('+dir+'):':'- Geen scenario\'s '+(vd===vandaag?'vandaag':'op '+coachDatum(vd))+' voor een '+dir+'.',...sc.map(s=>'- '+coachPlanTekst(planTitel(s))+(s.pb?' · '+s.pb:'')+' · grade '+(s.grade||'?')+' · '+(s.status||'open')+(s.trigger?' · als '+coachPlanTekst(s.trigger):'')+(s.invalid?' · ongeldig als '+coachPlanTekst(s.invalid):'')));}
   if(risk)L.push(coachPlanRisico(risk));
   return L;}
@@ -6585,14 +6625,16 @@ function coachScenarioDeel(o){const {s,day,week,edge}=o.plan,L=['','# Scenario u
   L.push('- Edge volgens het plan: '+coachEdgeRegel(edge&&edge[s.id]));
   return L;}
 function coachDagplanDeel(rows,o){const {day,week,edge}=o.plan,P=planLoad(),c=P.cfg,L=['','# Dagplan uit TradingPlan ('+coachDatum(day.id)+')'];
-  if(week){L.push('## Week '+week.id);const lg=coachPlanLagen(week.layers);if(lg)L.push('- Lagen: '+lg);
+  if(week){L.push('## Week '+week.id);const lg=coachPlanLagen(planWeekVoorDag(week,day));if(lg)L.push('- Lagen: '+lg);
     [['Levels',week.levels],['Niet traden / nieuws',week.noTrade],['Focus',week.focus]].forEach(([k,v])=>{if(coachPlanTekst(v))L.push('- '+k+': '+coachPlanTekst(v));});}
   else L.push('## Week','- Geen weekplan voor deze week.');
   L.push('## Dag');const lg=coachPlanLagen(day.layers);L.push('- Lagen: '+(lg||'geen'));
   if(coachPlanTekst(day.levels))L.push('- Levels: '+coachPlanTekst(day.levels));
-  L.push('- Mentaal '+(day.id===PLAN_AMS.format(new Date())?'vandaag':'op '+coachDatum(day.id))+': '+(day.mental?day.mental+'/5':'niet ingevuld'));
-  const pre=(Array.isArray(c.pre)?c.pre:[]).map((t,k)=>[coachPlanTekst(t),!!(day.pre||[])[k]]).filter(([t])=>t);
-  if(pre.length)L.push('- Pre-flight: '+pre.map(([t,v])=>t+(v?' ✓':' open')).join(', '));
+  L.push('- Gevoel bij de dagstart: '+(planGevoelKort(day)||'niet ingevuld'));
+  const emo=(Array.isArray(day.emoties)?day.emoties:[]).filter(x=>typeof x==='string');
+  if(emo.length){const R=planGevoelRijen(P);emo.forEach(e=>{L.push('  - '+planEmoRegel(e));const r=R.find(x=>x.e===e);if(r&&r.n)L.push('  - '+planGevoelTekst(r)+(r.betr==='weinig'?' (weinig data: minder dan '+PLAN_REL_REDELIJK+' dagen)':''));});}
+  const ds=planDagstart(day,c);
+  if(ds.length)L.push('- Dagstart: '+ds.map(([t,v])=>t+(v?' ✓':' open')).join(', '));
   const sc=(day.scenarios||[]).filter(planObj),plek=x=>planObj(edge&&edge[x.id])&&+edge[x.id].plek>0?+edge[x.id].plek:99;
   L.push('','## Scenario\'s (op de volgorde van het plan: gem. R van de basis, Live vanaf 10 Live-trades, anders Backtest)',...sc.slice().sort((a,b)=>plek(a)-plek(b)).map(x=>{const e=edge&&edge[x.id];
     return (plek(x)<99?plek(x)+'. ':'- ')+coachPlanTekst(planTitel(x))+' · '+coachPlanTekst(x.pair)+' '+(x.dir==='short'?'short':'long')+' · '+(x.pb||'geen playbook')+' · grade '+(x.grade||'?')+' · '+(x.status||'open')+(planObj(e)&&e.sterkste?' · sterkste':'')+'\n   edge: '+coachEdgeRegel(e);}));
@@ -6794,7 +6836,7 @@ const AI_PRETRADE_OPDRACHT='De trader overweegt een trade (het trade-idee) en wi
 // Not buttons in the journal either: TradingPlan sends these (tp3:mori, planMoriVanOverdracht).
 const AI_PLAN_KNOPPEN=[
   ['plan-scenario','Check mijn scenario',AI_PRETRADE_OPDRACHT+' Vergelijk het scenario met de eigen cijfers en regels van de trader, en noem waar het scenario tegen zijn week- of dagbias ingaat.'],
-  ['plan-dag','Review mijn dagplan','Bespreek het dagplan. Welke scenario\'s zijn volgens de eigen cijfers het sterkst en welke het zwakst, met het cijfer erbij? Waar spreekt het plan zichzelf tegen (bijvoorbeeld een long-scenario tegen een bearish week-bias, of twee scenario\'s die elkaar uitsluiten)? Past het aantal en de grade van de scenario\'s bij de mentale score van vandaag? Geen koop- of verkoopadvies, geen voorspelling over de markt. Sluit af met één concreet punt voor vandaag.'],
+  ['plan-dag','Review mijn dagplan','Bespreek het dagplan. Welke scenario\'s zijn volgens de eigen cijfers het sterkst en welke het zwakst, met het cijfer erbij? Waar spreekt het plan zichzelf tegen (bijvoorbeeld een long-scenario tegen een bearish week-bias, of twee scenario\'s die elkaar uitsluiten)? Past het aantal en de grade van de scenario\'s bij het gevoel waarmee de trader de dag begon (en wat dat gevoel volgens de eigen cijfers met zijn trades doet)? Geen koop- of verkoopadvies, geen voorspelling over de markt. Sluit af met één concreet punt voor vandaag.'],
 ];
 const AI_WEEK_SCHEMA={type:'object',properties:{goed:{type:'string'},kostte:{type:'string'},anders:{type:'string'}},required:['goed','kostte','anders'],additionalProperties:false};
 
@@ -12227,15 +12269,18 @@ async function boot(){
    - ?demo=1          → voorbeelddata, precies zoals de oude "Rondkijken"-knop
    - ?view=rustig     → Rustig/Standaard/Alles, precies zoals de oude keuze op het welkomscherm
    - ?page=playbook&pb=<naam> → dat playbook open (link uit het plan bij een scenario)
+   - ?page=instellingen&tab=tags → Instellingen op dat tabblad (link uit het plan: tags beheer je alleen hier)
    De landing leest zelf alleen (sj_welcomed, sj_view, sj_skip_landing); schrijven doet de journal. */
 function landingAankomst(){
   let q;try{q=new URLSearchParams(location.search);}catch(e){return;}
   DB.save('welcomed',true);   // wie hier is, is binnen: het oude welkomscherm hoeft nooit meer
   const v=q.get('view');if(v&&VIEW_PRESETS[v]&&VIEW.preset!==v)viewPreset(v);
-  const pg=q.get('page');if(pg&&PAGES[pg])go(pg);
+  const pg=q.get('page'),tb=q.get('tab');
+  if(pg==='instellingen'&&/^(accounts|weergave|tags|ai|data|updates|funded|wissen)$/.test(tb||''))STATE.setTab=tb;   // ?page=instellingen&tab=tags: link uit het plan
+  if(pg&&PAGES[pg])go(pg);
   const pb=q.get('pb');if(pg==='playbook'&&pb&&PBOOK[pb])openPlaybook(pb);   // ?page=playbook&pb=<naam>: link uit het plan
   if(q.get('demo')==='1'){try{resetDemo();}catch(e){}}
-  if(q.has('view')||q.has('page')||q.has('demo')||q.has('pb')){try{history.replaceState(null,'',location.pathname);}catch(e){}}
+  if(q.has('view')||q.has('page')||q.has('demo')||q.has('pb')||q.has('tab')){try{history.replaceState(null,'',location.pathname);}catch(e){}}
 }
 function naarLanding(){location.href=(IS_HOSTED?'/':'index.html')+'?landing=1';}   // ?landing=1: ook tonen als "Landingspagina overslaan" aan staat
 function toggleSkipLanding(){DB.save('skip_landing',!DB.load('skip_landing',false));render();}

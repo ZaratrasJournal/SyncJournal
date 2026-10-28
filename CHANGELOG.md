@@ -16,6 +16,20 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v1.22] — 2026-10-28
+
+### Toegevoegd
+- **TradingPlan: kies je gevoel bij de dagstart uit je emotie-tags.** Dit vervangt het cijfer 1–5 voor mentaal. Per gekozen emotie zie je hoe je trades met die emotie liepen ("Met FOMO: 13 trades · 38% · −0,33R"). Begin je met een negatieve emotie, dan staat er "Overweeg alleen A-setups vandaag".
+- **Je dagstart-gevoel**, in de Log van het plan en in Tendencies → Plan: per ochtend-emotie je dagen, trades, winrate, gem. R, trades buiten plan en hoe vaak je scenario's uitkwamen.
+- Een tag uit je weekplan zet je met één tik voor vandaag uit.
+
+### Gewijzigd
+- TradingPlan: "Pre-flight" heet nu **Dagstart**, en is een vrije lijst van hooguit 8 punten die je zelf toevoegt, weghaalt en hernoemt.
+- TradingPlan: tags en tijdframes voeg je alleen nog toe in de journal (Instellingen → Tags). Het plan kiest uit wat daar staat en past je taglijst nooit meer aan.
+- TradingPlan: tags uit je week- of dagplan staan gestippeld, zonder pijltje, met één uitlegregel en een tooltip.
+
+---
+
 ## [v1.21] — 2026-10-27
 
 ### Toegevoegd
