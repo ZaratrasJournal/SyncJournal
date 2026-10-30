@@ -225,6 +225,15 @@ button.lrij:hover{border-color:var(--accent-line);background:var(--hover)}
 .rrow.mini{grid-template-columns:30px minmax(0,1fr) 64px auto}
 .rmini{width:64px;height:36px;object-fit:cover;border-radius:6px;border:1px solid var(--line);background:var(--stage);display:block}
 .rrow:hover{background:var(--hover)}
+.rkopbalk{display:flex;align-items:center}
+.rkopbalk>.rrow{flex:1;min-width:0}
+.rtools{display:flex;align-items:center;gap:4px;padding-right:10px;flex:none}
+.rmenuwrap{position:relative}
+.rmenu{position:absolute;right:0;top:calc(100% + 4px);z-index:25;min-width:170px;background:var(--surface);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shl);padding:4px;display:flex;flex-direction:column}
+.rmenu button{text-align:left;padding:8px 10px;border-radius:7px;font-size:var(--t2);color:var(--ink)}
+.rmenu button:hover,.rmenu button:focus-visible{background:var(--hover)}
+.rmenu button.danger{color:var(--red)}
+.delwat{padding-left:18px;display:flex;flex-direction:column;gap:4px;color:var(--ink2)}
 .rnum{font-family:var(--fd);font-weight:800;font-size:var(--t4);color:var(--faint);text-align:center}
 .rnum.one{color:var(--green)}
 .ttl{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
@@ -404,6 +413,7 @@ button.schip{cursor:pointer}
 .modal{background:var(--surface);border-radius:14px;border:1px solid var(--line);width:100%;max-width:560px;max-height:calc(100vh - 32px);overflow:auto;box-shadow:var(--shl)}
 .modal .mh{display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-bottom:1px solid var(--line2);position:sticky;top:0;background:var(--surface);z-index:1}
 .modal .mb{padding:14px 16px}
+.modal.sm{max-width:440px}
 .modal .mf{padding:12px 16px;border-top:1px solid var(--line2);display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;position:sticky;bottom:0;background:var(--surface)}
 .toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 14px;border-radius:10px;font-size:var(--t2);font-weight:600;z-index:60;max-width:calc(100% - 32px)}
 
@@ -655,7 +665,7 @@ const pairBase=p=>String(p||'').split(/[\/\-:]/)[0].trim().toUpperCase();
 
 // ───────────────────────── state ─────────────────────────
 let PL=load();
-const S={tab:'dag',modal:null,toast:'',tfOpen:'',open:{},critOpen:{},beeldSel:{},info:{},ctxOpen:false,afsl:'dag',afslDag:null,afslEdit:null,logF:{status:'',pb:'',dir:''},logEdit:null};
+const S={tab:'dag',modal:null,toast:'',tfOpen:'',open:{},critOpen:{},beeldSel:{},menu:null,info:{},ctxOpen:false,afsl:'dag',afslDag:null,afslEdit:null,logF:{status:'',pb:'',dir:''},logEdit:null};
 
 // ───────────────────────── thema = journal (besluit 10) ─────────────────────────
 function themaVanJournal(){const s=lsGet(SJ.state,{});document.documentElement.dataset.theme=isObj(s)&&s.theme==='dark'?'dark':'light';}
@@ -1008,17 +1018,22 @@ function critH(s,cd){const p=pbInfo(s.pb);
 function critLijst(s,p){
   return `${p.criteria.length?p.criteria.map(c=>{const on=s.critChecked.includes(c.text);return `<div class="chk ${on?'on':''}" data-a="crit" data-s="${esc(s.id)}" data-v="${esc(c.text)}" role="checkbox" aria-checked="${on}"><span class="box">${on?'✓':''}</span><span class="lbl">${esc(c.text)}</span>${c.mandatory?'<span class="verplicht">verplicht</span>':''}</div>`;}).join(''):geenCriteria(s.pb)}
     ${antiH(p)}`;}   /* no closing tag here: critH closes .critblok (an extra one broke the open scenario in v1.24) */
+// Round 5: edit and delete where you look for them. Open: "✎ Bewerk" in the head; always: a ⋯ menu on the row.
+function rTools(s,open){const sid=esc(s.id),m=S.menu===s.id;
+  return `<div class="rtools">${open?`<button class="btn sm" data-a="editScen" data-s="${sid}">✎ Bewerk</button>`:''}
+    <span class="rmenuwrap"><button class="ibtn" data-a="rMenu" data-s="${sid}" aria-haspopup="menu" aria-expanded="${m}" aria-label="meer voor ${esc(titel(s))}" title="Meer">⋯</button>
+    ${m?`<div class="rmenu" role="menu"><button role="menuitem" data-a="editScen" data-s="${sid}">✎ Bewerk</button><button role="menuitem" class="danger" data-a="delScen" data-s="${sid}">Verwijder…</button></div>`:''}</span></div>`;}
 function scenRij(s,x,d,c){
   const open=!!S.open[s.id],cd=confAf(s),e=x.e,klaar=cd.klaar&&s.status==='open',zwak=basisStat(e).betr==='weinig',mini=!open&&beeldLijst(s)[0];
   return `<div class="card ritem s-${s.status} ${s.status==='ongeldig'||s.status==='niet'?'dim':''} ${klaar?'ready':''}" data-s="${esc(s.id)}">
-    <div class="rrow ${mini?'mini':''}" data-a="toggle" data-s="${esc(s.id)}" role="button" aria-expanded="${open}">
+    <div class="rkopbalk"><div class="rrow ${mini?'mini':''}" data-a="toggle" data-s="${esc(s.id)}" role="button" aria-expanded="${open}">
       <div class="rnum ${x.sterkste?'one':''}">${x.plek}</div>
       <div style="min-width:0"><div class="row" style="gap:6px;flex-wrap:nowrap;min-width:0"><b class="ttl">${esc(titel(s))}</b>${x.sterkste?'<span class="tag-sterk">sterkste</span>':''}</div>
         <div class="meta row">${metaH(s)}</div>
         <div class="rline ${zwak?'weinig':''}">${edgeLijn(e,s)}</div></div>
       ${mini?`<img class="rmini" src="${esc(mini.src)}" alt=""${mini.img?'':' referrerpolicy="no-referrer"'}>`:''}
       <div style="text-align:right"><span class="schip ${s.status}"><span class="sdot ${s.status}"></span>${STATUS_KORT[s.status]}</span><div class="faint small num" style="margin-top:5px">${cd.k}/${cd.n} conf ${open?'▴':'▾'}</div></div>
-    </div>
+    </div>${rTools(s,open)}</div>
     ${open?scenDetail(s,x,d,c,cd,klaar):''}
   </div>`;
 }
@@ -1039,7 +1054,7 @@ function scenDetail(s,x,d,c,cd,klaar){const e=x.e,k='s:'+s.id,erft=geerfd(d).som
       ${s.pb&&pbInfo(s.pb)?`<div class="blok">${critH(s,cd)}</div>`:''}</div>`;
   const uitv=`<div class="ruitv stack"><div class="kh">Uitvoering &amp; edge</div>
       <div class="st" role="group" aria-label="status">${STATUS.map(([kk,l])=>`<button class="${kk} ${s.status===kk?'on':''}" data-a="status" data-s="${esc(s.id)}" data-v="${kk}" title="${l}">${STATUS_KORT[kk]}</button>`).join('')}</div>
-      <div class="row"><button class="btn sm pri" data-a="convert" data-s="${esc(s.id)}">Zet om in trade</button>${moriKlaar()?`<button class="btn sm" data-a="mori" data-s="${esc(s.id)}">🤖 Vraag Mori</button>`:''}<button class="btn sm" data-a="editScen" data-s="${esc(s.id)}">Bewerk</button>${moriKlaar()?'':moriInstellen()}</div>
+      <div class="row"><button class="btn sm pri" data-a="convert" data-s="${esc(s.id)}">Zet om in trade</button>${moriKlaar()?`<button class="btn sm" data-a="mori" data-s="${esc(s.id)}">🤖 Vraag Mori</button>`:''}${moriKlaar()?'':moriInstellen()}</div>
       ${gekoppeldH(s)}
       <div><div class="row between"><h3>Edge</h3>${s.pb&&JR.klaar?relH(e):''}</div>${s.pb?edgeTabel(e)+(e.live.n||e.bt.n?edgeNoten(e):''):'<div class="enote">Kies een playbook (Bewerk), dan vergelijkt het plan dit scenario met je trades.</div>'}</div></div>`;
   return `<div class="rdetail">${scenBeeld(s)}${plan}<div class="rside">${kern}${uitv}</div></div>`;}
@@ -1264,6 +1279,12 @@ function modalH(){
     </div>`;
     f=`${M.isNew?'':'<button class="btn danger" style="margin-right:auto" data-a="delScen">Verwijder</button>'}<button class="btn" data-a="close">Annuleer</button><button class="btn pri" data-a="saveScen">Bewaar</button>`;
   }
+  if(M.type==='delVraag'){const x=scenOf(M.sid);if(!x)return '';const n=(x.s.trades||[]).length,i=x.s.media.imgs.length,l=x.s.media.links.length;
+    const regels=[n?`${n} gekoppelde trade${n===1?' wordt':'s worden'} losgekoppeld. De trade${n===1?' zelf blijft':'s zelf blijven'} in je journal.`:'Er is geen trade gekoppeld.',
+      i?`${i} afbeelding${i===1?'':'en'} van dit scenario ${i===1?'wordt':'worden'} gewist.`:'',l?`${l} link${l===1?'':'s'} ${l===1?'gaat':'gaan'} mee weg.`:''].filter(Boolean);
+    return `<div class="ov" data-a="ovclose"><div class="modal sm" role="dialog" aria-modal="true" aria-labelledby="delkop"><div class="mh"><h2 id="delkop">Scenario verwijderen?</h2></div>
+      <div class="mb"><p style="margin-bottom:8px"><b>${esc(titel(x.s))}</b> gaat weg uit je plan.</p><ul class="delwat">${regels.map(r=>`<li>${esc(r)}</li>`).join('')}</ul></div>
+      <div class="mf"><button class="btn" data-a="delNee">Annuleer</button><button class="btn danger" data-a="delJa">Verwijder scenario</button></div></div></div>`;}
   if(M.type==='lb'){const L=lbLijst(M.doel),n=L.length,i=L.findIndex(x=>x.key===M.id)+1,cur=L[i-1]||{src:'',img:true};
     const weg=cur.img?`<button class="btn sm danger" data-a="rmBeeld" data-d="${esc(M.doel)}" data-v="${esc(M.id)}">Haal weg</button>`:`<button class="btn sm danger" data-a="rmLink" data-d="${esc(M.doel)}" data-v="${esc(M.id)}">Haal link weg</button>`;
     return `<div class="ov" data-a="ovclose"><div class="lb" role="dialog" aria-modal="true" aria-label="afbeelding"><img src="${esc(cur.src)}" alt="afbeelding ${i} van ${n}"${cur.img?'':' referrerpolicy="no-referrer"'}>
@@ -1371,11 +1392,18 @@ const A={
     d.pair=pairBase(d.pair)||'BTC';if(!d.title.trim())d.title=(d.pb||'Scenario')+' '+d.pair;
     if(M.isNew)day.scenarios.push(d);else{const i=day.scenarios.findIndex(s=>s.id===d.id);if(i>=0)day.scenarios[i]=d;}
     S.modal=null;save();},
-  delScen:()=>{const M=S.modal,day=dayOf(M.day);if(!day||!confirm('Scenario "'+titel(M.draft)+'" verwijderen?'))return false;
-    const weg=day.scenarios.find(s=>s.id===M.draft.id);((weg&&weg.media&&weg.media.imgs)||[]).forEach(imgWis);
-    day.scenarios=day.scenarios.filter(s=>s.id!==M.draft.id);S.modal=null;save();},
+  // Delete asks in the page (no confirm()): from the edit window (back = that window) or from the ⋯ menu.
+  delScen:el=>{const M=S.modal,sid=el.dataset.s||(M&&M.draft&&M.draft.id),x=sid&&scenOf(sid);if(!x)return;
+    S.modal={type:'delVraag',sid:x.s.id,back:M&&M.type==='scen'?M:null};},
+  delNee:()=>{S.modal=S.modal.back||null;},
+  delJa:()=>{const x=scenOf(S.modal.sid);S.modal=null;if(!x)return;const day=x.day,t=titel(x.s);
+    (x.s.media.imgs||[]).forEach(imgWis);   // the scenario's images go; its links go with it; linked trades stay in the journal
+    day.scenarios=day.scenarios.filter(s=>s.id!==x.s.id);delete S.open[x.s.id];if(S.laatstOpen===x.s.id)S.laatstOpen='';
+    save();toast('Verwijderd: '+t);return false;},
+  rMenu:el=>{S.menu=S.menu===el.dataset.s?null:el.dataset.s;},
 };
 document.addEventListener('click',ev=>{
+  if(S.menu&&!ev.target.closest('[data-a="rMenu"]')){const inMenu=!!ev.target.closest('.rmenu');S.menu=null;if(!inMenu&&!ev.target.closest('[data-a]')){render();return;}}
   const el=ev.target.closest('[data-a]');if(!el)return;
   const fn=A[el.dataset.a];if(!fn)return;
   if(el.tagName==='A')ev.preventDefault();
@@ -1384,7 +1412,8 @@ document.addEventListener('click',ev=>{
 });
 // Hernoemen in de trechter bij het verlaten van het veld (of Enter), niet bij elke toets.
 document.addEventListener('change',ev=>{const el=ev.target;if(el&&el.dataset&&el.dataset.ds!=null){dsHernoem(+el.dataset.ds,el.value);render();}});
-document.addEventListener('keydown',ev=>{if(ev.key==='Escape'&&S.modal){A.close();render();}
+document.addEventListener('keydown',ev=>{if(ev.key==='Escape'&&S.menu){S.menu=null;render();return;}
+  if(ev.key==='Escape'&&S.modal){A.close();render();}
   if(S.modal&&S.modal.type==='lb'&&(ev.key==='ArrowLeft'||ev.key==='ArrowRight')){ev.preventDefault();A.lbStap({dataset:{v:ev.key==='ArrowLeft'?-1:1}});render();}
   const t=ev.target;if(ev.key==='Enter'&&t&&(t.id==='ds-nieuw'||t.id==='set-ds-nieuw')){ev.preventDefault();const b=t.parentElement.querySelector('button');if(b)b.click();}
   if(ev.key==='Enter'&&t&&t.dataset&&t.dataset.ds!=null){ev.preventDefault();t.blur();}

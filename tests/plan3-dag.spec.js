@@ -93,7 +93,7 @@ const SCEN = [
   await p.click(`.ritem[data-s="${nieuw.id}"] .rrow`); await p.click(`.ritem[data-s="${nieuw.id}"] [data-a="editScen"]`); await p.waitForTimeout(100);
   await p.fill('#sc-title', 'ETH short'); await p.click('#modal [data-a="saveScen"]'); await p.waitForTimeout(100);
   ok('bewerkt: titel ETH short', await p.evaluate(id => __tp3.dayOf(__tp3.vandaag()).scenarios.find(s => s.id === id).title === 'ETH short', nieuw.id));
-  await p.click(`.ritem[data-s="${nieuw.id}"] [data-a="editScen"]`); await p.click('#modal [data-a="delScen"]'); await p.waitForTimeout(100);
+  await p.click(`.ritem[data-s="${nieuw.id}"] [data-a="editScen"]`); await p.click('#modal [data-a="delScen"]'); await p.click('#modal [data-a="delJa"]');   /* round 5: confirm in the page */ await p.waitForTimeout(100);
   ok('verwijderd', await p.evaluate(id => !__tp3.dayOf(__tp3.vandaag()).scenarios.some(s => s.id === id), nieuw.id));
 
   console.log('--- (f) telefoon ---');
