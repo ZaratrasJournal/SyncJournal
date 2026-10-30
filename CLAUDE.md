@@ -385,8 +385,10 @@ PR-review-workflows, `ccusage` voor token- en kostencontrole, en `/design-review
   naar `main` en alles naar work/live blijft achter Denny's expliciete woord.
 - **Geen `git push` naar `origin/main` zonder expliciet "push"-commando van Denny.** Geldt voor élke push (gewoon, force, vanaf andere branch — alles). "Ga maar bouwen" / "doe maar" / "zet erin" / "ja akkoord" zijn **géén** push-toestemming, alleen het letterlijke woord *push* (of "release", "live", "publiceer") telt. Lokale commits + `cp work → main` zijn OK; pas op het moment dat het naar GitHub gaat is expliciete go vereist. Bij twijfel: niet pushen, vragen.
 - Geen `file://` paden in instructies naar gebruikers.
-- API-sleutels in de browser (besluit Denny 25-10-2026, bij de AI-coach): de **eigen** sleutel van een gebruiker
-  mag lokaal op zijn apparaat staan, maar gaat **nooit mee** in een export, back-up of "Data overzetten", en er is
-  een keuze "alleen deze sessie" voor een gedeelde pc. **Nooit onze eigen sleutel** (Denny's of die van de Worker)
-  in de browser. Zie `docs/research-ai-coach-2026-10-25.md` §5.
+- API-sleutels in de browser en in back-ups (besluit Zaratras 30-10-2026, vervangt het besluit van 25-10): de
+  **eigen** sleutels van een gebruiker mogen lokaal op zijn apparaat staan, en mogen mee in een back-up als hij het
+  schuifje **API-sleutels in back-ups** (Instellingen → Data) aanzet; standaard uit. Google Drive en de Mori-sleutel
+  hebben elk een eigen vinkje. Een sleutel "alleen voor deze sessie" gaat nooit mee; veiligheidskopieën in de browser
+  en `diagReport` nooit. **Nooit onze eigen sleutel** (Denny's of die van de Worker) in de browser. Zie
+  `docs/sleutels-schuif-rapport.md` en `docs/research-ai-coach-2026-10-25.md` §5.
 - Geen framework-refactor zonder expliciet akkoord.

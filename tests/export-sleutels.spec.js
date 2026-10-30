@@ -1,6 +1,7 @@
-// F12 (BACKLOG.md): bij export, handmatige back-up en "Data overzetten" kiest de gebruiker zelf of de
-// API-sleutels meegaan; standaard zonder. De automatische back-up (map, Drive) en de veiligheidskopieën
-// in IndexedDB gaan altijd zonder. diagReport bevat nooit een sleutel, sj_ai_key (Mori) gaat nooit mee.
+// F12 (BACKLOG.md), sinds 30-10-2026 via het schuifje "API-sleutels in back-ups" (Instellingen → Data):
+// standaard (schuifje uit) gaan de API-sleutels nergens mee: export, Backup nu, map, Drive. Aan: mee in
+// export, Backup nu en map (details en Drive/Mori-vinkjes in sleutels-schuif.spec.js). "Data overzetten"
+// houdt zijn eigen keuze. Veiligheidskopieën in IndexedDB en diagReport: nooit een sleutel.
 //
 // Nep-sleutels per exchange (Blofin, OKX, Kraken, MEXC, Hyperliquid-wallet) plus handmatige accounts.
 // Er gaat niets het netwerk op (dov-page sluit http(s) af).
@@ -31,28 +32,24 @@ const SHOTS = path.resolve('tests/screenshots'); fs.mkdirSync(SHOTS, { recursive
   const kies = (v) => p.evaluate(v => { const r = document.querySelector(`#modal input[name="sjKeys"][value="${v}"]`); r.click(); }, v);
   const bovenaan = () => p.evaluate(() => { const m = document.querySelector('#modal .mbody'); return !!m && !!m.firstElementChild && m.firstElementChild.id === 'sleutelKeuze'; });
 
-  console.log('─── Exporteren (exportJSON): keuze bovenaan, standaard zonder ───');
-  await p.evaluate(() => exportJSON()); await p.waitForTimeout(150);
-  const mt = await H.modalText(p);
-  ok('exportJSON maakt niet stil een bestand: eerst de keuze', await p.evaluate(() => document.getElementById('modal').classList.contains('on')) && await bovenaan(), mt.slice(0, 200));
-  ok('twee keuzes in gewone taal, "zonder" aanbevolen en standaard', /Zonder API-sleutels \(aanbevolen\)/.test(mt) && /Met API-sleutels/.test(mt) && await p.evaluate(() => document.querySelector('#modal input[name="sjKeys"][value="zonder"]').checked));
-  ok('"met" zegt wat het betekent en wanneer', /Iedereen met dit bestand kan je exchange-account gebruiken/.test(mt) && /andere browser of pc/.test(mt) && /stuur het nooit door/.test(mt), mt.slice(0, 500));
+  console.log('─── Exporteren (exportJSON): schuifje uit = zonder, zonder te vragen ───');
   const bk0 = await p.evaluate(() => BK.ts);
-  const zonder = await download(() => document.getElementById('sjKeysGo').click());
+  const zonder = await download(() => exportJSON());
   const Z = JSON.parse(zonder);
+  ok('exportJSON vraagt niets: geen venster', await p.evaluate(() => !document.getElementById('modal').classList.contains('on')));
   ok('zonder: geen enkele nep-sleutel, secret, passphrase of wallet', lekt(zonder).length === 0, lekt(zonder).join());
   ok('zonder: koppelingen blijven herkenbaar (hint) en vragen om een sleutel', Z.conns.blofin.hint === NEP.blofin.apiKey.slice(-4) && Object.values(Z.conns).every(c => c.needKey === true), JSON.stringify(Z.conns.blofin));
   ok('zonder: trades, playbooks, tags, handmatige accounts gaan mee', Z.trades.length === VOL.trades.length && Object.keys(Z.pbook).length === 4 && Z.manual.length === VOL.manual.length && !!Z.tagConfig);
-  ok('export stempelt de back-up', await p.evaluate(b0 => BK.ts > b0, bk0));
-  await p.evaluate(() => exportJSON()); await p.waitForTimeout(150); await kies('met');
-  ok('"met" gekozen: waarschuwing blijft zichtbaar', /Iedereen met dit bestand/.test(await H.modalText(p)));
-  const met = await download(() => document.getElementById('sjKeysGo').click());
-  ok('met: alle nep-sleutels per exchange staan erin (ook het walletadres)', lekt(met).length === GEHEIM.length, lekt(met).length + '/' + GEHEIM.length);
-  ok('sj_ai_key gaat niet mee, ook niet "met"', !zonder.includes(AI) && !met.includes(AI));
+  ok('export stempelt de back-up (zonder sleutels)', await p.evaluate(b0 => BK.ts > b0 && BK.keys === false, bk0));
+  await p.evaluate(() => bkKeysZet(true));
+  const met = await download(() => exportJSON());
+  ok('schuifje aan: alle nep-sleutels per exchange staan erin (ook het walletadres)', lekt(met).length === GEHEIM.length, lekt(met).length + '/' + GEHEIM.length);
+  ok('sj_ai_key gaat niet mee zonder het Mori-vinkje', !zonder.includes(AI) && !met.includes(AI));
+  await p.evaluate(() => bkKeysZet(false));
 
   console.log('─── Data overzetten (exportOverzicht) ───');
   await p.evaluate(() => exportOverzicht()); await p.waitForTimeout(150);
-  ok('keuze staat bovenaan het overzicht, standaard zonder', await bovenaan() && await p.evaluate(() => document.querySelector('#modal input[name="sjKeys"][value="zonder"]').checked && _dovExp.keys === false));
+  ok('keuze staat bovenaan het overzicht, met schuifje uit voorgekozen op zonder', await bovenaan() && await p.evaluate(() => document.querySelector('#modal input[name="sjKeys"][value="zonder"]').checked && _dovExp.keys === false));
   ok('totaalregel zegt "zonder sleutels"', /zonder sleutels/.test(await p.evaluate(() => document.getElementById('dovExpTot').innerText)));
   const dovZ = await download(() => dovExportGo());
   ok('DOV zonder: geen sleutel, manifest keysIncluded false', lekt(dovZ).length === 0 && JSON.parse(dovZ).manifest.keysIncluded === false, lekt(dovZ).join());
@@ -62,26 +59,19 @@ const SHOTS = path.resolve('tests/screenshots'); fs.mkdirSync(SHOTS, { recursive
   ok('DOV: sj_ai_key nooit', !dovZ.includes(AI) && !dovM.includes(AI) && !JSON.stringify(await p.evaluate(() => dovBuildExport({}, true, null))).includes(AI));
 
   console.log('─── Handmatige back-up (Backup nu) ───');
-  await p.evaluate(() => { BK.choice = 'handmatig'; persistBK(); bkNow(); }); await p.waitForTimeout(150);
-  ok('Backup nu: keuze bovenaan', await bovenaan());
-  const bkZ = await download(() => document.getElementById('sjKeysGo').click());
-  ok('Backup nu, zonder: geen sleutel', lekt(bkZ).length === 0);
-  // map-keuze: "zonder" schrijft in de map, "met" wordt een los bestand (nooit in de automatische map)
+  const bkZ = await download(() => { BK.choice = 'handmatig'; persistBK(); bkNow(); });
+  ok('Backup nu (schuifje uit): direct, geen sleutel', lekt(bkZ).length === 0 && await p.evaluate(() => !document.getElementById('modal').classList.contains('on')));
   await p.evaluate(() => {
     window.__written = {};
     BK_DIR = { name: 'Nep', queryPermission: async () => 'granted', requestPermission: async () => 'granted',
       getFileHandle: async n => ({ createWritable: async () => ({ write: async d => { window.__written[n] = d; }, close: async () => {} }) }),
       values: async function* () { for (const n of Object.keys(window.__written)) yield { kind: 'file', name: n }; }, removeEntry: async n => { delete window.__written[n]; } };
     BK.choice = 'map'; persistBK(); bkNow();
-  }); await p.waitForTimeout(150);
-  await p.evaluate(() => document.getElementById('sjKeysGo').click()); await p.waitForTimeout(300);
+  }); await p.waitForTimeout(300);
   const mapZ = await p.evaluate(() => Object.values(window.__written).join(''));
-  ok('Backup nu met map-keuze, zonder: in de map, zonder sleutel', mapZ.length > 100 && lekt(mapZ).length === 0, String(mapZ.length));
-  await p.evaluate(() => { window.__written = {}; bkNow(); }); await p.waitForTimeout(150); await kies('met');
-  const mapM = await download(() => document.getElementById('sjKeysGo').click());
-  ok('Backup nu, met: los bestand mét sleutels, de map blijft zonder', lekt(mapM).length === GEHEIM.length && lekt(await p.evaluate(() => Object.values(window.__written).join(''))).length === 0);
+  ok('Backup nu met map-keuze (schuifje uit): in de map, zonder sleutel', mapZ.length > 100 && lekt(mapZ).length === 0, String(mapZ.length));
 
-  console.log('─── Automatische back-up en veiligheidskopieën: altijd zonder ───');
+  console.log('─── Automatisch (schuifje uit) en veiligheidskopieën: zonder ───');
   const auto = await p.evaluate(async () => { window.__written = {}; await autoBackup(false); return Object.values(window.__written).join(''); });
   ok('automatische map-back-up: geen sleutel', auto.length > 100 && lekt(auto).length === 0 && !auto.includes(AI));
   const drive = await p.evaluate(async () => {
@@ -123,33 +113,28 @@ const SHOTS = path.resolve('tests/screenshots'); fs.mkdirSync(SHOTS, { recursive
   ok('sj_ai_key niet uit een bestand overgenomen', await p.evaluate(() => !localStorage.getItem('sj_ai_key')));
 
   console.log('─── Toestanden ───');
-  // fout bij exporteren: het bestand maken mislukt → melding in de keuze, knop weer bruikbaar
-  await p.evaluate(() => exportJSON()); await p.waitForTimeout(150);
-  await p.evaluate(() => { window.__echtURL = URL.createObjectURL; URL.createObjectURL = () => { throw new Error('nep-fout'); }; document.getElementById('sjKeysGo').click(); });
-  const bezig = await p.evaluate(() => { const g = document.getElementById('sjKeysGo'); return !!g && g.disabled && /Bezig/.test(g.textContent); });
-  ok('bezig met exporteren: knop uit en "Bezig…"', bezig);
-  await p.waitForTimeout(250);
-  const fout = await p.evaluate(() => { URL.createObjectURL = window.__echtURL; const g = document.getElementById('sjKeysGo'); return { open: document.getElementById('modal').classList.contains('on'), tekst: (document.getElementById('sjKeysErr') || {}).innerText || '', knop: !!g && !g.disabled }; });
-  ok('fout bij exporteren: melding in beeld, venster blijft open, opnieuw kan', fout.open && /lukte niet/.test(fout.tekst) && fout.knop, JSON.stringify(fout));
-  await p.evaluate(() => closeForm());
+  // fout bij exporteren: het bestand maken mislukt → foutmelding, geen stempel
+  const foutBk = await p.evaluate(() => BK.ts);
+  await p.evaluate(() => { window.__echtURL = URL.createObjectURL; URL.createObjectURL = () => { throw new Error('nep-fout'); }; try { exportJSON(); } finally { URL.createObjectURL = window.__echtURL; } });
+  ok('fout bij exporteren: melding "lukte niet", geen stempel', await p.evaluate(b0 => BK.ts === b0 && [...document.querySelectorAll('#toasts .toast')].some(t => /lukte niet/.test(t.textContent)), foutBk));
   // geen koppelingen: geen keuze nodig, wel zeggen dat er geen sleutels zijn
   await p.evaluate(() => { CONNS = {}; persistConns(); });
   const geen = await download(() => exportJSON());
-  ok('geen koppelingen: exportJSON downloadt direct (niets te kiezen)', JSON.parse(geen).trades.length === VOL.trades.length && !(await p.evaluate(() => document.getElementById('modal').classList.contains('on'))));
+  ok('geen koppelingen: exportJSON downloadt direct', JSON.parse(geen).trades.length === VOL.trades.length && !(await p.evaluate(() => document.getElementById('modal').classList.contains('on'))));
   ok('geen koppelingen: melding zegt dat er geen sleutels zijn', await p.evaluate(() => [...document.querySelectorAll('#toasts .toast')].some(t => /geen API-sleutels/.test(t.textContent))));
   await p.evaluate(() => exportOverzicht()); await p.waitForTimeout(150);
   const geenOv = await H.modalText(p);
   ok('geen koppelingen in Data overzetten: melding bovenaan "geen API-sleutels", geen keuze', await bovenaan() && /geen API-sleutels/.test(geenOv) && await p.evaluate(() => !document.querySelector('#modal input[name="sjKeys"]')), geenOv.slice(0, 200));
   await p.evaluate(() => closeForm());
 
-  console.log('─── Licht, donker, 390px ───');
+  console.log('─── Licht, donker, 390px: de keuze in Data overzetten ───');
   await zaai();
   for (const th of ['light', 'dark']) {
     for (const w of [1360, 390]) {
       await p.setViewportSize({ width: w, height: 860 });
-      await p.evaluate(t => { setTheme(t); exportJSON(); }, th); await p.waitForTimeout(250);
+      await p.evaluate(t => { setTheme(t); exportOverzicht(); }, th); await p.waitForTimeout(250);
       const m = await p.evaluate(() => { const k = document.getElementById('sleutelKeuze'), r = k.getBoundingClientRect(), mod = document.getElementById('modal');
-        return { top: r.top, bottom: r.bottom, vh: window.innerHeight, w: r.width, over: mod.scrollWidth > mod.clientWidth + 1, docOver: document.documentElement.scrollWidth > window.innerWidth + 1, fg: getComputedStyle(k).color, bg: getComputedStyle(k).backgroundColor }; });
+        return { top: r.top, bottom: r.bottom, vh: window.innerHeight, w: r.width, over: mod.scrollWidth > mod.clientWidth + 1, docOver: document.documentElement.scrollWidth > window.innerWidth + 1 }; });
       ok(`${th} ${w}px: keuze in beeld, geen horizontale scroll`, m.top >= 0 && m.bottom <= m.vh && m.w > 200 && !m.over && !m.docOver, JSON.stringify(m));
       await p.screenshot({ path: path.join(SHOTS, `export-sleutels-${th}-${w}.png`) });
       await p.evaluate(() => closeForm());
