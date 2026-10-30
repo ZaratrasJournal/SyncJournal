@@ -124,7 +124,7 @@ const TV = 'https://www.tradingview.com/x/AbC123/', TV2 = 'https://www.tradingvi
   const na = await dag();
   ok('na herladen: zelfde aantallen', na.media.imgs.length === voorH.media.imgs.length && na.scenarios[0].media.imgs.length === 3 && na.media.links.length === 8);
   ok('na herladen: de plaatjes van de dag staan in beeld', await p.evaluate(() => [...document.querySelectorAll('.media[data-doel^="dag"] .thumb img')].filter(i => i.src.startsWith('data:image/jpeg')).length === 8));
-  await p.click('.ritem[data-s="s_a"] .rrow'); await p.click('.ritem[data-s="s_a"] [data-a="editScen"]'); await p.click('#modal [data-a="delScen"]'); await p.waitForTimeout(300);
+  await p.click('.ritem[data-s="s_a"] .rrow'); await p.click('.ritem[data-s="s_a"] [data-a="editScen"]'); await p.click('#modal [data-a="delScen"]'); await p.click('#modal [data-a="delJa"]');   /* round 5: confirm in the page */ await p.waitForTimeout(300);
   ok('scenario verwijderen wist ook zijn plaatjes uit IndexedDB', await p.evaluate(ids => Promise.all(ids.map(__tp3.imgLees)).then(v => v.every(x => x === undefined)), na.scenarios[0].media.imgs));
   const sc = await H.vierShots(p, 'media-dag', null);
   ok('390 breed: geen horizontale scroll (licht en donker)', !sc.licht && !sc.donker, JSON.stringify(sc));

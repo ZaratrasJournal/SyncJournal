@@ -6653,8 +6653,12 @@ function coachDagplanDeel(rows,o){const {day,week,edge}=o.plan,P=planLoad(),c=P.
   const ds=planDagstart(day,c);
   if(ds.length)L.push('- Dagstart: '+ds.map(([t,v])=>t+(v?' ✓':' open')).join(', '));
   const sc=(day.scenarios||[]).filter(planObj),plek=x=>planObj(edge&&edge[x.id])&&+edge[x.id].plek>0?+edge[x.id].plek:99;
-  L.push('','## Scenario\'s (op de volgorde van het plan: gem. R van de basis, Live vanaf 10 Live-trades, anders Backtest)',...sc.slice().sort((a,b)=>plek(a)-plek(b)).map(x=>{const e=edge&&edge[x.id];
-    return (plek(x)<99?plek(x)+'. ':'- ')+coachPlanTekst(planTitel(x))+' · '+coachPlanTekst(x.pair)+' '+(x.dir==='short'?'short':'long')+' · '+(x.pb||'geen playbook')+' · grade '+(x.grade||'?')+' · '+(x.status||'open')+(planObj(e)&&e.sterkste?' · sterkste':'')+'\n   edge: '+coachEdgeRegel(e);}));
+  // The order the trader sees in the plan (round 5): their own (Day.volgorde, new ones at the bottom) or on edge.
+  const eigen=day.eigen===true&&Array.isArray(day.volgorde),vi=x=>{const i=eigen?day.volgorde.indexOf(x.id):-1;return i<0?1e6+sc.indexOf(x):i;};
+  const rij=eigen?sc.slice().sort((a,b)=>vi(a)-vi(b)):sc.slice().sort((a,b)=>plek(a)-plek(b));
+  L.push('',eigen?'## Scenario\'s (in de eigen volgorde van de trader; edge-plek = plek op gem. R van de basis, Live vanaf 10 Live-trades, anders Backtest)'
+    :'## Scenario\'s (volgorde op edge, dus op gem. R van de basis, Live vanaf 10 Live-trades, anders Backtest)',...rij.map((x,i)=>{const e=edge&&edge[x.id];
+    return (eigen?(i+1)+'. ':plek(x)<99?plek(x)+'. ':'- ')+coachPlanTekst(planTitel(x))+' · '+coachPlanTekst(x.pair)+' '+(x.dir==='short'?'short':'long')+' · '+(x.pb||'geen playbook')+' · grade '+(x.grade||'?')+' · '+(x.status||'open')+(planObj(e)&&e.sterkste?' · sterkste':'')+(eigen&&plek(x)<99?' · edge-plek '+plek(x):'')+'\n   edge: '+coachEdgeRegel(e);}));
   const pbs=[...new Set(sc.map(x=>x.pb).filter(Boolean))];
   if(pbs.length)L.push('','## Deze playbooks in de journal',...pbs.map(pb=>{const r=rows.filter(t=>t.setup===pb);return '- '+pb+': '+(r.length?'n='+r.length+' · '+coachStats(r,o):'nog geen gesloten trades');}));
   if(planObj(c.risk))L.push('',coachPlanRisico(c.risk));

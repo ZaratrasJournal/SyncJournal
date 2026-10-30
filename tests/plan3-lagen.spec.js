@@ -210,7 +210,7 @@ const TAGS = { setupTags: ['BOS', 'MSB', 'SFP'], confirmationTags: ['Liquidity S
   const dOff = await p.evaluate(() => { const d = __tp3.dayOf(__tp3.vandaag()); return { off: d.off, eis: __tp3.eisen(d.scenarios[0], d, __tp3.weekOf(d.week)).map(x => x.label) }; });
   ok('tik = voor vandaag uitgezet: Day.off ["Daily|BOS"], chip doorgestreept (venster en regel)', dOff.off.join() === 'Daily|BOS' && fu.chip.off && fu.rij.off, JSON.stringify(dOff.off));
   ok('uitgezet voor vandaag: telt niet mee in de edge van de scenario\'s', !dOff.eis.includes('Daily BOS') && dOff.eis.includes('4H Liquidity Sweep') && dOff.eis.includes('1H MSB'), dOff.eis.join());
-  await p.click('.ritem[data-s="s_p2"] .rrow'); await p.click('.ritem[data-s="s_p2"] h3 [data-a="info"]'); await p.waitForTimeout(100);
+  await p.click('.ritem[data-s="s_p2"] .rrow'); await p.click('.ritem[data-s="s_p2"] .kh [data-a="info"]'); await p.waitForTimeout(100);
   const sc2 = await p.evaluate(() => { const r = document.querySelector('.ritem[data-s="s_p2"] .rdetail'); const t = v => (r.querySelector(`.chip.inh[data-v="${v}"]`) || {}).title;
     return { pijl: /↑/.test(r.innerText), week: t('4H|Liquidity Sweep'), dag: t('1H|MSB'), uitDag: !r.querySelector('.chip.inh[data-v="Daily|BOS"]'), uitleg: (r.querySelector('.erfuitleg') || {}).textContent || '' }; });
   ok('scenario: geen "↑"; tooltip "Uit je weekplan" en "Uit je dagplan" naar de bron', !sc2.pijl && /^Uit je weekplan/.test(sc2.week) && /^Uit je dagplan/.test(sc2.dag), JSON.stringify(sc2));

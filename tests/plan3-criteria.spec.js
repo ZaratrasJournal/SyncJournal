@@ -41,7 +41,7 @@ const PB = Object.assign({}, H.PBOOK, { 'Trend-pullback': Object.assign({}, H.PB
   console.log('--- 1. standaard ingeklapt ---');
   await open('s_kr');
   let k = await blok('s_kr');
-  ok('dicht: één regel "Criteria · Trend-pullback · 0/2 verplicht" met pijltje', /^▸ Criteria · Trend-pullback · 0\/2 verplicht$/.test(k.kop) && await p.evaluate(() => { const k = document.querySelector('.ritem[data-s="s_kr"] [data-a="critOpen"]'); return k.getClientRects().length === 1 && k.getBoundingClientRect().height < 30; }) && k.open === 'false', JSON.stringify(k.kop));
+  ok('dicht: één regel "Criteria · Trend-pullback · 0/2 verplicht" met pijltje', /^▸ Criteria · Trend-pullback · 0\/2 verplicht Toon alle 3$/.test(k.kop) && await p.evaluate(() => { const k = document.querySelector('.ritem[data-s="s_kr"] [data-a="critOpen"]'); return k.getClientRects().length === 1 && k.getBoundingClientRect().height < 48; }) && k.open === 'false', JSON.stringify(k.kop));
   ok('dicht: geen afvinklijst en geen "Niet als" in beeld', k.vink === 0 && k.anti === 0, JSON.stringify(k));
   ok('dicht en de confirmation nog open: geen amber waarschuwing', !k.nog, k.nog);
   await p.click('.ritem[data-s="s_kr"] [data-a="critOpen"]'); await p.waitForTimeout(80);
@@ -60,7 +60,7 @@ const PB = Object.assign({}, H.PBOOK, { 'Trend-pullback': Object.assign({}, H.PB
   ok('één af: "1/2 verplicht" en "1 verplicht criterium nog open", het blok blijft open', /1\/2 verplicht/.test(k.kop) && k.nog === '1 verplicht criterium nog open' && k.vink === 3, JSON.stringify(k));
   await p.click('.ritem[data-s="s_kr"] [data-a="crit"][data-v="Liquidity gepakt"]'); await p.waitForTimeout(80);
   k = await blok('s_kr');
-  ok('alles af: "2/2 verplicht ✓", geen amber, "Klaar om te nemen"', /· 2\/2 verplicht ✓$/.test(k.kop) && !k.nog && k.ready && /Klaar om te nemen/.test(k.tekst), JSON.stringify(k));
+  ok('alles af: "2/2 verplicht ✓", geen amber, "Klaar om te nemen"', /· 2\/2 verplicht ✓ Verberg$/.test(k.kop) && !k.nog && k.ready && /Klaar om te nemen/.test(k.tekst), JSON.stringify(k));
 
   console.log('--- 3. per scenario, binnen de sessie ---');
   await open('s_tw');
