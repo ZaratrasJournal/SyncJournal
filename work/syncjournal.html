@@ -8019,7 +8019,7 @@ function migrateOldTrade(ot){
 // Fields every SyncJournal trade and every old TradeJournal trade carries at least one of.
 const TRADE_FIELDS=['pair','date','dir','direction','entry','exit','pnl','srcId'];
 function isTradeLike(t){return !!t&&typeof t==='object'&&!Array.isArray(t)&&TRADE_FIELDS.some(k=>k in t);}
-function looksOldExport(arr){return arr.length>0 && !('dir' in arr[0]) && (('direction' in arr[0])||('stopLoss' in arr[0])||('setupTags' in arr[0])||('simType' in arr[0]));}
+function looksOldExport(arr){return Array.isArray(arr) && arr.length>0 && isTradeLike(arr[0]) && !('dir' in arr[0]) && (('direction' in arr[0])||('stopLoss' in arr[0])||('setupTags' in arr[0])||('simType' in arr[0]));}
 function mergeOldTags(arr){const merge=(cat,vals)=>{const cur=new Set(tagConfig[cat]||[]);(vals||[]).forEach(v=>v&&cur.add(v));tagConfig[cat]=[...cur];};
   arr.forEach(t=>{merge('setupTags',t.setupTags);merge('confirmationTags',t.confirmationTags);merge('timeframeTags',t.timeframeTags);merge('emotionTags',t.emotionTags);merge('mistakeTags',t.mistakeTags);});persistTagConfig();}
 // ═══ Fase 2: migratie oude TradeJournal (localStorage tj_) → SyncJournal ═══
@@ -11503,14 +11503,15 @@ function importJSON(){ const inp=document.createElement('input');inp.type='file'
   inp.onchange=e=>{const f=e.target.files[0];if(!f)return;const rd=new FileReader();
     rd.onload=async ()=>{try{
       const raw=JSON.parse(rd.result);
-      if(!raw||typeof raw!=='object'){toast('Geen journal-gegevens gevonden in dit bestand','err');return;}
-      // Only entries that look like a trade count; junk (1, "x", null, {"foo":"bar"}) would otherwise
-      // show up as trades and offer to replace the journal. A list where none survive is no trades at all.
+      const geenGegevens=()=>toast('Geen journal-gegevens gevonden in dit bestand. Kies een back-up die je in SyncJournal of TradeJournal met Exporteer backup hebt gemaakt; je journal is niet veranderd.','err');
+      if(!raw||typeof raw!=='object'){geenGegevens();return;}
+      /* Only entries that look like a trade count; junk (1, "x", null, {"foo":"bar"}) would otherwise show up as
+         trades and offer to replace the journal. trades that is no list, or a list where none survive, is no trades:
+         then the import keeps your trades and never offers to replace them. */
       const d=Array.isArray(raw)?{trades:raw}:{...raw};
-      if(Array.isArray(d.trades)){const n=d.trades.length;d.trades=d.trades.filter(isTradeLike);if((n||Array.isArray(raw))&&!d.trades.length)delete d.trades;}
-      // een SyncJournal-bestand hoeft geen trades te hebben (bv. alleen playbooks en tags gedeeld)
-      const isSj=d.app==='SyncJournal'||DOV_PARTS.some(p=>p.keys.some(k=>d[k]!=null));
-      if(!isSj){toast('Geen journal-gegevens gevonden in dit bestand','err');return;}
+      if('trades' in d){const lijst=Array.isArray(d.trades)?d.trades.filter(isTradeLike):[];if(lijst.length)d.trades=lijst;else delete d.trades;}
+      // a SyncJournal file needs no trades (e.g. only playbooks and tags shared), but it needs something to take over
+      if(!DOV_PARTS.some(p=>p.keys.some(k=>d[k]!=null))){geenGegevens();return;}
       if(d.trades&&looksOldExport(d.trades)){ migPreview(TJMigrate.mapExport(d),'file'); return; } // eerst controleren, dan pas overzetten (veiligheidskopie in migApply)
       dovImportModal(d,f.name);   // eerst zien wat erin zit en kiezen, dan pas overnemen (veiligheidskopie in dovImportGo)
     }catch(err){ ErrorCenter.report('import',err,{severity:'error',userMsg:'Het bestand kon niet worden geïmporteerd, is het een geldige SyncJournal- of TradeJournal-back-up? Je bestaande data is ongewijzigd.'}); }};

@@ -3,7 +3,8 @@
 // 1. Tussen 00:00 en 02:00 in Amsterdam is het in UTC nog gisteren. Wat de gebruiker als "vandaag"
 //    ziet, moet de lokale dag zijn: new Date().toISOString() geeft de UTC-dag en is dan fout.
 //    De klok staat op 1 juli 2026 00:30 Amsterdam (30 juni 22:30 UTC): dan is zelfs de maand anders.
-// 2. Een back-up met rommel ([1, 'x', null, …]) mag niets toevoegen of vervangen.
+// 2. Een back-up met rommel ([1, 'x', null, …]) mag niets toevoegen of vervangen. De melding komt uit de controle
+//    zelf, niet uit een gevangen TypeError (die gaf de algemene "kon niet worden geïmporteerd"-fout).
 //
 // Herschreven in T2 (24-10-2026): de oude spec testte dezelfde audit-bugs in de bevroren oude app.
 const { chromium } = require('playwright');
@@ -49,22 +50,45 @@ const FILL_UTC = Date.UTC(2026, 5, 30, 22, 30);   // zelfde moment, als exchange
     const [kiezer] = await Promise.all([p.waitForEvent('filechooser'), p.evaluate(() => importJSON())]);
     await kiezer.setFiles(tmp);
     await p.waitForFunction(() => document.getElementById('modal').classList.contains('on') || /niet worden geïmporteerd|geen journal-gegevens/i.test(document.body.innerText), null, { timeout: 5000 }).catch(() => {});
-    return p.evaluate(() => ({ modal: document.getElementById('modal').classList.contains('on'), tekst: document.getElementById('modal').innerText.replace(/\s+/g, ' '),
-      melding: /niet worden geïmporteerd|geen journal-gegevens/i.test(document.body.innerText) }));
+    const r = await p.evaluate(() => ({ modal: document.getElementById('modal').classList.contains('on'), tekst: document.getElementById('modal').innerText.replace(/\s+/g, ' '),
+      melding: /geen journal-gegevens/i.test(document.getElementById('toasts').innerText), uitleg: document.getElementById('toasts').innerText.replace(/\s+/g, ' '),
+      fout: ErrorCenter.log.filter(e => e.ctx === 'import').map(e => e.msg) }));
+    // reset between files: close a modal, clear toasts and the error log
+    await p.evaluate(() => { try { closeForm(); } catch (e) {} document.getElementById('toasts').innerHTML = ''; ErrorCenter.log.length = 0; });
+    return r;
   };
+  const netjes = r => r.melding && !r.modal && !r.fout.length;
   const trades = () => p.evaluate(() => T.map(t => t.date + ' ' + t.pair).sort().join(', '));
   const voor = await trades();
   ok('drie trades staan klaar', voor.split(', ').length === 3, voor);
 
   const r1 = await importeer([1, 2, 3, 'niet-een-trade', null]);
-  ok('alleen rommel: een duidelijke melding, geen keuzescherm', r1.melding && !r1.modal, JSON.stringify({ ...r1, tekst: r1.tekst.slice(0, 80) }));
+  ok('alleen rommel: een duidelijke melding, geen keuzescherm, geen gevangen fout', netjes(r1), JSON.stringify({ ...r1, tekst: r1.tekst.slice(0, 80) }));
+  ok('de melding zegt wat je kunt doen (een back-up uit Exporteer kiezen)', /Exporteer/.test(r1.uitleg), r1.uitleg);
   ok('en niets toegevoegd of vervangen', await trades() === voor, await trades());
 
   // Een object zonder één trade-veld ertussen: de oude app liet dat weg ("{foo:'bar'} is geen trade").
   const r2 = await importeer([{ foo: 'bar' }, 1, 'x', null]);
   // Since v1.15.1 (B10) such an object is not a trade, so the file holds no journal data at all.
-  ok('object tussen de rommel telt niet als trade: dezelfde melding, geen keuzescherm', r2.melding && !r2.modal, JSON.stringify({ ...r2, tekst: r2.tekst.slice(0, 80) }));
+  ok('object tussen de rommel telt niet als trade: dezelfde melding, geen keuzescherm', netjes(r2), JSON.stringify({ ...r2, tekst: r2.tekst.slice(0, 80) }));
   ok('en niets veranderd', await trades() === voor, await trades());
+
+  // Dezelfde rommel in de vorm van een SyncJournal-back-up: een bestand zonder iets over te nemen is geen keuzescherm waard.
+  const r3 = await importeer({ app: 'SyncJournal', trades: [{ foo: 'bar' }, 1, 'x', null] });
+  ok('SyncJournal-back-up met alleen rommel als trades: melding, geen keuzescherm', netjes(r3), JSON.stringify({ ...r3, tekst: r3.tekst.slice(0, 80) }));
+  // trades is geen lijst: eerst een TypeError in looksOldExport ('x'), of een keuzescherm dat bij bevestigen vastliep (object)
+  const r4 = await importeer({ app: 'SyncJournal', trades: 'x' });
+  ok('trades is tekst: melding uit de controle, geen gevangen TypeError', netjes(r4), JSON.stringify({ ...r4, tekst: r4.tekst.slice(0, 80) }));
+  const r5 = await importeer({ trades: { foo: 'bar' } });
+  ok('trades is een object: melding, geen keuzescherm', netjes(r5), JSON.stringify({ ...r5, tekst: r5.tekst.slice(0, 80) }));
+  ok('en nog steeds niets veranderd', await trades() === voor, await trades());
+
+  // Eén echte trade tussen de rommel: die telt, de rest niet. Vervangen geeft dan precies die ene trade.
+  const echt = { date: '2026-06-20', time: '09:00', pair: 'ETH/USDT', dir: 'short', status: 'closed', kind: 'live', entry: 3000, exit: 2900, size: '500', pnl: 16.67 };
+  const r6 = await importeer([echt, { foo: 'bar' }, 1, null]);
+  ok('één echte trade tussen rommel: keuzescherm telt 1 trade', r6.modal && /trades\s*1 · netto/i.test(r6.tekst), r6.tekst.slice(0, 200));
+  const r7 = await importeer({ app: 'SyncJournal', trades: [echt, 'x', 2], tagConfig: { setups: ['A'] } });
+  ok('back-up met één trade en rommel: ook 1 trade, geen fout', r7.modal && /trades\s*1 · netto/i.test(r7.tekst) && !r7.fout.length, r7.tekst.slice(0, 200));
   fs.unlinkSync(tmp);
 
   ok('geen JS-fouten', errs.length === 0, [...new Set(errs)].slice(0, 3).join(' | '));
