@@ -42,9 +42,9 @@ API-keys veilig?", "Waar staat mijn sleutel voor Mori?". Ook de regel bij de Ant
 - Besluit: importeren van een bestand met exchange-sleutels blijft zoals het was (bij Data overzetten vervangen ze je huidige als je Exchange-koppelingen aanvinkt) — dat contract staat in `import-keuze.spec.js` en laat het lid kiezen; "nooit overschrijven" geldt voor de Mori-sleutel, zoals gevraagd — kost als het fout is: wie een oud bestand importeert met koppelingen aangevinkt, krijgt de sleutels uit dat bestand.
 - Besluit: een Mori-sleutel uit een bestand wordt alleen teruggezet als hij begint met `sk-ant-` — geen rommel in `sj_ai_key` uit een kapot of gemanipuleerd bestand — kost als het fout is: als Anthropic het voorvoegsel verandert, komt een geldige sleutel niet terug en vul je hem opnieuw in.
 - Besluit: een mislukte export toont een foutmelding en stempelt de back-up niet — er is geen bestand — kost als het fout is: niets.
-- Besluit: CLAUDE.md ("Niet doen", regel "API-sleutels in de browser") is **niet** bijgewerkt — dat verzoek kwam van een andere Claude-sessie, en CLAUDE.md wijzigen doe ik alleen op verzoek van Zaratras zelf — kost als het fout is: tot iemand het bijwerkt, zegt CLAUDE.md nog dat de eigen sleutel nooit meegaat. Voorstel voor de nieuwe regel staat hieronder.
+- Besluit: CLAUDE.md ("Niet doen", regel "API-sleutels in de browser") is bijgewerkt op verzoek van Zaratras, met de tekst hieronder — eerst niet, omdat het verzoek van een andere Claude-sessie kwam — kost als het fout is: de regel beschrijft gedrag dat niet in de app zit, tot deze branch gemerged is.
 
-### Voorstel voor CLAUDE.md (niet toegepast)
+### Nieuwe regel in CLAUDE.md (toegepast 30-10-2026)
 
 > - API-sleutels in back-ups (besluit Zaratras 30-10-2026, vervangt het besluit van 25-10): de **eigen** sleutels van
 >   een gebruiker mogen mee in een back-up als hij het schuifje **API-sleutels in back-ups** (Instellingen → Data)
