@@ -53,7 +53,8 @@ module.exports = [
   'afgeleide-stappen', 'afgeleide-scenarios', 'handmatig-formulier', 'handmatig-scenarios',
   'handmatig-statistieken', 'tj-backtest', 'export-overzicht', 'import-keuze', 'import-leeg-object',
   'export-import-rondje', 'diagnose', 'possize',
-  'export-sleutels',         // F12: API-sleutels alleen in een bestand als je dat kiest; automatische back-ups nooit
+  'export-sleutels',         // F12: zonder schuifje gaan API-sleutels nergens mee; veiligheidskopieën nooit
+  'sleutels-schuif',         // schuifje "API-sleutels in back-ups": handmatig/map, Drive- en Mori-vinkje apart (30-10-2026)
   'lege-staten',             // C1: elke lege staat via emptyState, twee soorten (leeg / niets in beeld), met een volgende stap
   'account-label',           // C3: hernoemd account → oude trades tonen de nieuwe naam
   'koppel-opnieuw',          // opnieuw koppelen: eerste sync 30 dagen terug of vanaf 'sync vanaf', niet vanaf de oude lastSync (Jarne)
