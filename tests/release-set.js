@@ -76,6 +76,7 @@ module.exports = [
   'plan3-regels',            // Vandaag: één regel per laag (kaartje), tikken = bewerken, week compact, ⓘ, stap Charts
   'plan3-zijpaneel',         // Mori in een zijpaneel van het plan: de journal in embed-modus, stil en alleen-lezen
   'plan3-criteria',          // playbook-criteria in een scenario standaard ingeklapt; amber als verplichte nog open staan
+  'plan3-scenario-beeld',    // ronde 4: Dag breder, opengeklapt scenario met chart, Plan en sticky Uitvoering & edge
 
   // analyse en weergave
   'matrix', 'yearheatmap', 'review-list', 'coach-share', 'review-beeld', 'tv-links', 'theme-hook', 'beeld-escaping',

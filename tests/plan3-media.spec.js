@@ -104,12 +104,14 @@ const TV = 'https://www.tradingview.com/x/AbC123/', TV2 = 'https://www.tradingvi
   console.log('--- (f) lightbox en weghalen ---');
   await p.click('.ritem[data-s="s_a"] .rrow'); await p.waitForTimeout(150);
   const eerste = (await dag()).scenarios[0].media.imgs[0];
-  await p.click(`.ritem[data-s="s_a"] .thumb[data-i="${eerste}"] img`); await p.waitForTimeout(120);
+  // round 4: an open scenario shows its first image big (plan3-scenario-beeld); a click on it opens the lightbox
+  await p.click('.ritem[data-s="s_a"] .sbeeld .groot'); await p.waitForTimeout(120);
   ok('klik → lightbox met het plaatje', await p.evaluate(() => { const i = document.querySelector('.lb img'); return !!i && i.src.startsWith('data:image/'); }));
   await p.screenshot({ path: H.SHOTS + '/media-lightbox-licht-1280.png' });
   await p.keyboard.press('Escape'); await p.waitForTimeout(80);
   ok('Escape sluit de lightbox', await p.evaluate(() => !document.querySelector('.lb')));
-  await p.click(`.ritem[data-s="s_a"] .thumb[data-i="${eerste}"] [data-a="rmBeeld"]`); await p.waitForTimeout(250);
+  await p.click('.ritem[data-s="s_a"] .sbeeld .groot'); await p.waitForTimeout(100);
+  await p.click(`.lb [data-a="rmBeeld"][data-v="${eerste}"]`); await p.waitForTimeout(250);   // "Haal weg" in the lightbox
   ok('weghalen: uit het scenario', !(await dag()).scenarios[0].media.imgs.includes(eerste));
   ok('weghalen: ook uit IndexedDB', await p.evaluate(id => __tp3.imgLees(id).then(v => v === undefined), eerste));
   const link0 = (await dag()).scenarios[0].media.links[0];
