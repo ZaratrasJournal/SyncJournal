@@ -68,6 +68,7 @@ const PB = Object.assign({}, H.PBOOK, { 'Trend-pullback': Object.assign({}, H.PB
   ok('dicht scenario: geen ✎ in de kop, wel een ⋯-menu', await p.evaluate(() => { const r = document.querySelector('.ritem[data-s="s_b"]'); return !r.querySelector('.rtools [data-a="editScen"]') && !!r.querySelector('[data-a="rMenu"]'); }));
   await p.click('.ritem[data-s="s_b"] [data-a="rMenu"]'); await p.waitForTimeout(80);
   const menu = await p.evaluate(() => [...document.querySelectorAll('.ritem[data-s="s_b"] .rmenu [role="menuitem"]')].map(x => x.textContent.trim()));
+  ok('het open menu valt niet weg onder de kaart of de volgende kaart', await p.evaluate(() => { const m = document.querySelector('.ritem[data-s="s_b"] .rmenu'), b = m.getBoundingClientRect(), el = document.elementFromPoint(b.left + 20, b.bottom - 8); return !!el && m.contains(el); }));
   ok('⋯-menu: Bewerk, Omhoog, Omlaag, Verwijder', ['Bewerk', 'Omhoog', 'Omlaag', 'Verwijder'].every(w => menu.some(m => m.includes(w))), JSON.stringify(menu));
   await p.keyboard.press('Escape'); await p.waitForTimeout(60);
   ok('Escape sluit het menu', await p.evaluate(() => !document.querySelector('.rmenu')));
@@ -113,7 +114,7 @@ const PB = Object.assign({}, H.PBOOK, { 'Trend-pullback': Object.assign({}, H.PB
   const v1 = await volgorde();
   ok('↑ op de tweede: die staat nu bovenaan', v1[0] === tweede && v1[1] === edgeVolg[0], JSON.stringify(v1));
   ok('de eerste keer verplaatsen: de keuze springt naar Eigen volgorde', await keuze() === 'edge:false,eigen:true');
-  ok('de edge-plek blijft per scenario zichtbaar (en "sterkste" waar hij was)', JSON.stringify(await plekken()) === JSON.stringify(pl0) && await p.evaluate(s => !!document.querySelector(`.ritem[data-s="${s}"] .tag-sterk`) || !document.querySelector('.tag-sterk'), edgeVolg[0]));
+  ok('de edge-plek blijft per scenario zichtbaar (en "sterkste" waar hij was)', await (async () => { const n = await plekken(); return Object.keys(pl0).every(k => n[k] === pl0[k]); })() && await p.evaluate(s => !!document.querySelector(`.ritem[data-s="${s}"] .tag-sterk`) || !document.querySelector('.tag-sterk'), edgeVolg[0]));
   ok('bewaard in Day.volgorde', JSON.stringify((await dag()).volgorde) === JSON.stringify(v1) && (await dag()).eigen === true, JSON.stringify(await dag()));
   await p.click(`.ritem[data-s="${v1[1]}"] [data-a="omlaag"]`); await p.waitForTimeout(120);
   const v2 = await volgorde();
@@ -156,6 +157,7 @@ const PB = Object.assign({}, H.PBOOK, { 'Trend-pullback': Object.assign({}, H.PB
   await p.click(`.ritem[data-s="${v5[1]}"] [data-a="omhoog"]`); await p.waitForTimeout(120);
   ok('390: ↑ werkt', (await volgorde())[0] === v5[1]);
   ok('390: geen horizontale scroll', await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
+  ok('390: de knoppen staan onder de kop, de titel houdt de breedte van de rij', await p.evaluate(s => { const r = document.querySelector(`.ritem[data-s="${s}"]`), t = r.querySelector('.rtools').getBoundingClientRect(), k = r.querySelector('.rrow').getBoundingClientRect(); return t.top >= k.bottom - 1 && k.width >= r.getBoundingClientRect().width - 20; }, v5[1]));
   await p.setViewportSize({ width: 1280, height: 900 });
 
   console.log('--- screenshots ---');

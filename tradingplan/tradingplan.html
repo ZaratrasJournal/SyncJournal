@@ -226,6 +226,17 @@ button.lrij:hover{border-color:var(--accent-line);background:var(--hover)}
 .rmini{width:64px;height:36px;object-fit:cover;border-radius:6px;border:1px solid var(--line);background:var(--stage);display:block}
 .rrow:hover{background:var(--hover)}
 .rkopbalk{display:flex;align-items:center}
+.grip{flex:none;width:18px;margin-left:6px;cursor:grab;color:var(--faint);font-size:var(--t3);text-align:center;user-select:none}
+.grip:hover{color:var(--ink2)}
+.ritem.sleepdoel{outline:2px dashed var(--accent-line);outline-offset:2px}
+.rpijl{min-width:28px;padding:0 6px}
+.rpijl:disabled{opacity:.35;cursor:default}
+.rnuml{display:block;font-family:var(--fb);font-size:var(--t1);font-weight:600;color:var(--faint);line-height:1}
+.volgkeuze .seg button{padding:4px 9px}
+/* narrow row: the tools go under the head; dragging is for the desktop */
+@container (max-width:520px){.rkopbalk{flex-wrap:wrap}.ritem .rkopbalk>.rrow{flex:1 1 calc(100% - 24px)}.rtools{margin-left:auto;padding:0 10px 8px}.rlbl{display:none}}
+@media(max-width:600px){.grip{display:none}.ritem .rkopbalk>.rrow{flex-basis:100%}}
+.ritem:has(.rmenu){overflow:visible;position:relative;z-index:5}   /* an open ⋯ menu may hang over the card's edge and the next card */
 .rkopbalk>.rrow{flex:1;min-width:0}
 .rtools{display:flex;align-items:center;gap:4px;padding-right:10px;flex:none}
 .rmenuwrap{position:relative}
@@ -481,7 +492,8 @@ function load(){const P=lsGet(LS.plans,null),out={v:1,weeks:{},days:{}};if(!isOb
     out.weeks[k]=Object.assign({},w,{id:k,layers:arr(w.layers,isObj).map(normLaag),levels:str(w.levels),noTrade:str(w.noTrade),focus:str(w.focus),media:normMedia(w.media),les:str(w.les)});});
   Object.entries(isObj(P.days)?P.days:{}).forEach(([k,d])=>{if(!DAG_ID.test(k)||!isObj(d))return;
     out.days[k]=Object.assign({},d,{id:k,week:WEEK_ID.test(d.week)?d.week:isoWeek(k),layers:arr(d.layers,isObj).map(normLaag),levels:str(d.levels),mental:[1,2,3,4,5].includes(d.mental)?d.mental:null,
-      dagstart:dagstart(d),emoties:arr(d.emoties,x=>typeof x==='string'),off:arr(d.off,x=>typeof x==='string'),media:normMedia(d.media),les:str(d.les),scenarios:arr(d.scenarios,s=>isObj(s)&&s.id).map(normScen)});});
+      dagstart:dagstart(d),emoties:arr(d.emoties,x=>typeof x==='string'),off:arr(d.off,x=>typeof x==='string'),media:normMedia(d.media),les:str(d.les),scenarios:arr(d.scenarios,s=>isObj(s)&&s.id).map(normScen),
+      volgorde:arr(d.volgorde,x=>typeof x==='string'),eigen:d.eigen===true});});   // round 5: own order of the scenarios (Day.volgorde), on or off
   Object.values(out.days).forEach(d=>{delete d.pre;snoeiDag(d,out.weeks[d.week]);});
   return out;}
 // save(p) zet een heel plan (alleen __tp3 in de specs): daarna normaal ingelezen, zodat PL nooit een scenario zonder
@@ -646,7 +658,7 @@ function nieuweWeek(id){return {id,layers:stijlLagen(cfg().stijl).week.map(leegL
 // Een nieuwe dag start met de lagen van de stijl, min de tijdframes die het weekplan al heeft (polish punt 3).
 function nieuweDag(id){const w=weekOf(isoWeek(id)),wt=new Set(w?w.layers.map(L=>L.tf):[]);
   return {id,week:isoWeek(id),layers:stijlLagen(cfg().stijl).dag.filter(tf=>!wt.has(tf)).map(leegLaag),levels:'',mental:null,emoties:[],
-  dagstart:[],off:[],media:leegMedia(),les:'',scenarios:[]};}
+  dagstart:[],off:[],media:leegMedia(),les:'',scenarios:[],volgorde:[],eigen:false};}
 function dayOf(id){return PL.days[id]||null;}
 function weekOf(id){return id&&PL.weeks[id]||null;}
 let _sid=0;
@@ -831,6 +843,15 @@ document.addEventListener('paste',ev=>{
   const txt=(cd.getData('text/plain')||'').trim();if(!txt)return;
   const doel=plakDoel();if(!doel)return;ev.preventDefault();voegLinkToe(txt,doel);});
 document.addEventListener('change',ev=>{const el=ev.target;if(el&&el.type==='file'&&el.dataset.doel){voegBestandenToe([...el.files],el.dataset.doel);el.value='';}});
+// Dragging a scenario by its ⠿ grip: drop on another row, above or below its middle. The .media zones ignore it.
+document.addEventListener('dragstart',ev=>{const g=ev.target.closest&&ev.target.closest('.grip');if(!g)return;S.sleepSid=g.dataset.s;ev.dataTransfer.effectAllowed='move';ev.dataTransfer.setData('text/x-scenario',g.dataset.s);});
+document.addEventListener('dragend',()=>{S.sleepSid=null;document.querySelectorAll('.ritem.sleepdoel').forEach(r=>r.classList.remove('sleepdoel'));});
+document.addEventListener('dragover',ev=>{if(!S.sleepSid)return;const r=ev.target.closest&&ev.target.closest('.ritem');if(!r)return;ev.preventDefault();ev.stopImmediatePropagation();
+  document.querySelectorAll('.ritem.sleepdoel').forEach(x=>{if(x!==r)x.classList.remove('sleepdoel');});r.classList.add('sleepdoel');},true);
+document.addEventListener('drop',ev=>{if(!S.sleepSid)return;ev.preventDefault();ev.stopImmediatePropagation();const sid=S.sleepSid;S.sleepSid=null;
+  const r=ev.target.closest&&ev.target.closest('.ritem'),d=dayOf(vandaag());if(r)r.classList.remove('sleepdoel');if(!r||!d||r.dataset.s===sid)return;
+  const ids=zichtVolgorde(d).filter(x=>x!==sid),j=ids.indexOf(r.dataset.s),b=r.getBoundingClientRect();
+  verplaats(d,sid,j+(ev.clientY>b.top+b.height/2?1:0));render();},true);
 document.addEventListener('dragover',ev=>{const m=ev.target.closest&&ev.target.closest('.media');if(m){ev.preventDefault();m.classList.add('sleep');}});
 document.addEventListener('dragleave',ev=>{const m=ev.target.closest&&ev.target.closest('.media');if(m)m.classList.remove('sleep');});
 document.addEventListener('drop',ev=>{const m=ev.target.closest&&ev.target.closest('.media');if(!m)return;ev.preventDefault();m.classList.remove('sleep');
@@ -946,9 +967,9 @@ function dagView(){
       <div class="fstep c-green"><div class="row between"><h3>Dagstart</h3><button class="btn sm ghost fbew" data-a="dsBewerk" aria-pressed="${!!S.dsEdit}">${S.dsEdit?'Klaar':'Bewerk'}</button></div>${S.dsEdit?dsLijst(c.pre.map(t=>({t})),'ds'):`<div class="row" style="gap:6px">${dagstartPills(d,c)}</div>`}</div>
       <div class="fstep c-pink"><h3>Gevoel</h3>${gevoelH(d)}</div>
     </aside>
-    <section><div class="row between" style="margin-bottom:8px"><h2>Scenario's op edge</h2><button class="btn sm" data-a="newScen">+ Scenario</button></div>
+    <section><div class="row between" style="margin-bottom:8px;gap:8px"><h2>Scenario's</h2>${d.scenarios.length>1?`<div class="volgkeuze row" style="gap:6px"><span class="small muted">Volgorde</span><span class="seg" role="group" aria-label="volgorde">${[['edge','Op edge'],['eigen','Eigen volgorde']].map(([v,l])=>`<button data-a="volgorde" data-v="${v}" aria-pressed="${(v==='eigen')===!!d.eigen}" class="${(v==='eigen')===!!d.eigen?'on':''}">${l}</button>`).join('')}</span></div>`:''}<button class="btn sm" data-a="newScen" style="margin-left:auto">+ Scenario</button></div>
       ${geenSterkste?'<div class="enote" style="margin:-4px 0 8px">Nog te weinig trades om te vergelijken: "sterkste" vraagt minstens 10 trades.</div>':''}
-      <div class="rlist">${rk.map(x=>scenRij(bijId[x.id],x,d,c)).join('')||'<div class="card empty"><b>Nog geen scenario\'s</b>Voeg er een toe: als … dan … met je playbook, en je ziet de edge uit je journal.<div class="row"><button class="btn pri" data-a="newScen">+ Scenario</button></div></div>'}</div>
+      <div class="rlist">${(d.eigen?eigenVolgorde(d).map(id=>rk.find(x=>x.id===id)).filter(Boolean):rk).map((x,i,a)=>scenRij(bijId[x.id],x,d,c,i,a.length)).join('')||'<div class="card empty"><b>Nog geen scenario\'s</b>Voeg er een toe: als … dan … met je playbook, en je ziet de edge uit je journal.<div class="row"><button class="btn pri" data-a="newScen">+ Scenario</button></div></div>'}</div>
     </section></div>`;
 }
 const MENTAAL_LAAG=2;   // oude dagen: mentaal ≤ 2 → "overweeg alleen A-setups" (besluit 18)
@@ -1019,21 +1040,28 @@ function critLijst(s,p){
   return `${p.criteria.length?p.criteria.map(c=>{const on=s.critChecked.includes(c.text);return `<div class="chk ${on?'on':''}" data-a="crit" data-s="${esc(s.id)}" data-v="${esc(c.text)}" role="checkbox" aria-checked="${on}"><span class="box">${on?'✓':''}</span><span class="lbl">${esc(c.text)}</span>${c.mandatory?'<span class="verplicht">verplicht</span>':''}</div>`;}).join(''):geenCriteria(s.pb)}
     ${antiH(p)}`;}   /* no closing tag here: critH closes .critblok (an extra one broke the open scenario in v1.24) */
 // Round 5: edit and delete where you look for them. Open: "✎ Bewerk" in the head; always: a ⋯ menu on the row.
-function rTools(s,open){const sid=esc(s.id),m=S.menu===s.id;
-  return `<div class="rtools">${open?`<button class="btn sm" data-a="editScen" data-s="${sid}">✎ Bewerk</button>`:''}
+// Own order: the saved ids that still exist, then the rest in creation order (a new scenario lands at the bottom).
+function eigenVolgorde(d){const ids=d.scenarios.map(s=>s.id);return [...d.volgorde.filter(id=>ids.includes(id)),...ids.filter(id=>!d.volgorde.includes(id))];}
+const edgeVolgorde=d=>rangschik(d.scenarios,d,weekOf(d.week)).map(x=>x.id);
+const zichtVolgorde=d=>d.eigen?eigenVolgorde(d):edgeVolgorde(d);
+// Moving always works on what you see; the first move switches the day to its own order.
+function verplaats(d,sid,naar){const ids=zichtVolgorde(d).filter(x=>x!==sid);naar=Math.max(0,Math.min(ids.length,naar));ids.splice(naar,0,sid);d.volgorde=ids;d.eigen=true;save();}
+function rTools(s,open,i,n){const sid=esc(s.id),m=S.menu===s.id,t=esc(titel(s));
+  return `<div class="rtools">${open?`<button class="btn sm" data-a="editScen" data-s="${sid}">✎ <span class="rlbl">Bewerk</span></button>`:''}
+    <button class="ibtn rpijl" data-a="omhoog" data-s="${sid}" aria-label="${t} omhoog" title="Omhoog" ${i===0?'disabled':''}>↑</button><button class="ibtn rpijl" data-a="omlaag" data-s="${sid}" aria-label="${t} omlaag" title="Omlaag" ${i===n-1?'disabled':''}>↓</button>
     <span class="rmenuwrap"><button class="ibtn" data-a="rMenu" data-s="${sid}" aria-haspopup="menu" aria-expanded="${m}" aria-label="meer voor ${esc(titel(s))}" title="Meer">⋯</button>
-    ${m?`<div class="rmenu" role="menu"><button role="menuitem" data-a="editScen" data-s="${sid}">✎ Bewerk</button><button role="menuitem" class="danger" data-a="delScen" data-s="${sid}">Verwijder…</button></div>`:''}</span></div>`;}
-function scenRij(s,x,d,c){
+    ${m?`<div class="rmenu" role="menu"><button role="menuitem" data-a="editScen" data-s="${sid}">✎ Bewerk</button><button role="menuitem" data-a="omhoog" data-s="${sid}" ${i===0?'disabled':''}>↑ Omhoog</button><button role="menuitem" data-a="omlaag" data-s="${sid}" ${i===n-1?'disabled':''}>↓ Omlaag</button><button role="menuitem" class="danger" data-a="delScen" data-s="${sid}">Verwijder…</button></div>`:''}</span></div>`;}
+function scenRij(s,x,d,c,i,n){
   const open=!!S.open[s.id],cd=confAf(s),e=x.e,klaar=cd.klaar&&s.status==='open',zwak=basisStat(e).betr==='weinig',mini=!open&&beeldLijst(s)[0];
   return `<div class="card ritem s-${s.status} ${s.status==='ongeldig'||s.status==='niet'?'dim':''} ${klaar?'ready':''}" data-s="${esc(s.id)}">
-    <div class="rkopbalk"><div class="rrow ${mini?'mini':''}" data-a="toggle" data-s="${esc(s.id)}" role="button" aria-expanded="${open}">
-      <div class="rnum ${x.sterkste?'one':''}">${x.plek}</div>
+    <div class="rkopbalk"><span class="grip" draggable="true" data-s="${esc(s.id)}" title="Sleep om te verplaatsen" aria-hidden="true">⠿</span><div class="rrow ${mini?'mini':''}" data-a="toggle" data-s="${esc(s.id)}" role="button" aria-expanded="${open}">
+      <div class="rnum ${x.sterkste?'one':''}" title="plek op edge">${d.eigen?'<span class="rnuml">edge</span>':''}${x.plek}</div>
       <div style="min-width:0"><div class="row" style="gap:6px;flex-wrap:nowrap;min-width:0"><b class="ttl">${esc(titel(s))}</b>${x.sterkste?'<span class="tag-sterk">sterkste</span>':''}</div>
         <div class="meta row">${metaH(s)}</div>
         <div class="rline ${zwak?'weinig':''}">${edgeLijn(e,s)}</div></div>
       ${mini?`<img class="rmini" src="${esc(mini.src)}" alt=""${mini.img?'':' referrerpolicy="no-referrer"'}>`:''}
       <div style="text-align:right"><span class="schip ${s.status}"><span class="sdot ${s.status}"></span>${STATUS_KORT[s.status]}</span><div class="faint small num" style="margin-top:5px">${cd.k}/${cd.n} conf ${open?'▴':'▾'}</div></div>
-    </div>${rTools(s,open)}</div>
+    </div>${rTools(s,open,i,n)}</div>
     ${open?scenDetail(s,x,d,c,cd,klaar):''}
   </div>`;
 }
@@ -1398,8 +1426,11 @@ const A={
   delNee:()=>{S.modal=S.modal.back||null;},
   delJa:()=>{const x=scenOf(S.modal.sid);S.modal=null;if(!x)return;const day=x.day,t=titel(x.s);
     (x.s.media.imgs||[]).forEach(imgWis);   // the scenario's images go; its links go with it; linked trades stay in the journal
-    day.scenarios=day.scenarios.filter(s=>s.id!==x.s.id);delete S.open[x.s.id];if(S.laatstOpen===x.s.id)S.laatstOpen='';
+    day.scenarios=day.scenarios.filter(s=>s.id!==x.s.id);day.volgorde=day.volgorde.filter(id=>id!==x.s.id);delete S.open[x.s.id];if(S.laatstOpen===x.s.id)S.laatstOpen='';
     save();toast('Verwijderd: '+t);return false;},
+  volgorde:el=>{const d=dayOf(vandaag());if(!d)return;d.eigen=el.dataset.v==='eigen';if(d.eigen&&!d.volgorde.length)d.volgorde=edgeVolgorde(d);save();},
+  omhoog:el=>{const d=dayOf(vandaag()),i=d?zichtVolgorde(d).indexOf(el.dataset.s):-1;if(i>0)verplaats(d,el.dataset.s,i-1);},
+  omlaag:el=>{const d=dayOf(vandaag()),i=d?zichtVolgorde(d).indexOf(el.dataset.s):-1;if(i>=0)verplaats(d,el.dataset.s,i+1);},
   rMenu:el=>{S.menu=S.menu===el.dataset.s?null:el.dataset.s;},
 };
 document.addEventListener('click',ev=>{
