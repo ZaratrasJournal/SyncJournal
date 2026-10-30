@@ -99,6 +99,7 @@ module.exports = [
 
   // v1.15.1: the bugs T2 found, now real checks
   'privacy-mode', 'integrity-edge', 'a11y', 'tendencies-untagged',
+  'demo-offline-datum',      // the built-in demo trades on weekdays, dated by the local day (T2 rest)
   // v1.15.2 + v1.16: Morani links, FAQ, and the AI coach (key never in an export, the app computes, the model reads)
   'morani-links',
   'coach-pakket', 'coach-sleutel', 'coach-stream', 'coach-verbruik', 'coach-knoppen', 'coach-tools', 'coach-pretrade',
