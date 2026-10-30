@@ -239,7 +239,9 @@ button.lrij:hover{border-color:var(--accent-line);background:var(--hover)}
 .rplan{grid-area:plan}
 .rside{grid-area:side;position:sticky;top:104px;display:flex;flex-direction:column;gap:12px;max-height:calc(100vh - 116px);overflow-y:auto;overscroll-behavior:contain}   /* never taller than the screen: then it can stay in view */
 .rside .st{grid-template-columns:repeat(3,minmax(0,1fr))}
-.kern,.ruitv{background:var(--raise);border:1px solid var(--line2);border-radius:12px;padding:12px}
+.kern,.ruitv,.blok{background:var(--raise);border:1px solid var(--line2);border-radius:12px;padding:12px}
+.rplan{display:flex;flex-direction:column;gap:12px}   /* the same rhythm as .rside */
+.blok .critblok{margin-top:0}
 .kh{font-size:var(--t1);font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink2);margin-bottom:8px}   /* the h3 style, darker: a column head */
 @container (max-width:760px){.rdetail{grid-template-columns:minmax(0,1fr);grid-template-areas:"beeld" "kern" "plan" "uitv"}
   .rside{display:contents;max-height:none}.kern{grid-area:kern}.ruitv{grid-area:uitv}}
@@ -996,12 +998,12 @@ function metaH(s){return `<span class="grade ${s.grade}">${s.grade}</span><span 
 // Closed by default (round 3, point 8): one line with the count; if all confirmations are done while mandatory criteria
 // are still open, that line says so in amber. Open/closed lives in S.critOpen: per scenario, for this session only.
 function critH(s,cd){const p=pbInfo(s.pb);
-  if(!p.criteria.length&&!p.anti.length)return `<div class="critblok"><h3>Criteria · ${esc(s.pb)}</h3>${geenCriteria(s.pb)}</div>`;
+  if(!p.criteria.length&&!p.anti.length)return `<div class="critblok"><div class="kh">Criteria · ${esc(s.pb)}</div>${geenCriteria(s.pb)}</div>`;
   const open=!!S.critOpen[s.id],nog=cd.nv-cd.kv,n=p.criteria.length;
   const stand=cd.nv?`${cd.kv}/${cd.nv} verplicht${nog?'':' ✓'}`:`${n} ${n===1?'criterium':'criteria'}`;
   const waarsch=nog&&cd.k===cd.n?`<span class="critnog">${nog} ${nog===1?'verplicht criterium':'verplichte criteria'} nog open</span>`:'';
   const toon=open?'Verberg':`Toon ${n>1?'alle '+n:n?'het criterium':'"Niet als"'}`;   // round 5: say what a tap does
-  return `<div class="critblok"><button class="crithead" data-a="critOpen" data-s="${esc(s.id)}" aria-expanded="${open}"><span class="critpijl" aria-hidden="true">${open?'▾':'▸'}</span> <span class="crittitel">Criteria · ${esc(s.pb)}</span> · <span class="critstand">${stand}</span>${waarsch} <span class="crittoon">${toon}</span></button>
+  return `<div class="critblok"><button class="crithead" data-a="critOpen" data-s="${esc(s.id)}" aria-expanded="${open}"><span class="critpijl" aria-hidden="true">${open?'▾':'▸'}</span> <span class="crittitel kh">Criteria · ${esc(s.pb)}</span> · <span class="critstand">${stand}</span>${waarsch} <span class="crittoon">${toon}</span></button>
     ${open?critLijst(s,p):''}</div>`;}
 function critLijst(s,p){
   return `${p.criteria.length?p.criteria.map(c=>{const on=s.critChecked.includes(c.text);return `<div class="chk ${on?'on':''}" data-a="crit" data-s="${esc(s.id)}" data-v="${esc(c.text)}" role="checkbox" aria-checked="${on}"><span class="box">${on?'✓':''}</span><span class="lbl">${esc(c.text)}</span>${c.mandatory?'<span class="verplicht">verplicht</span>':''}</div>`;}).join(''):geenCriteria(s.pb)}
@@ -1029,11 +1031,12 @@ function scenDetail(s,x,d,c,cd,klaar){const e=x.e,k='s:'+s.id,erft=geerfd(d).som
       <dl class="niveaus"><dt>Stop</dt><dd class="num">${esc(s.stop)||nvt}</dd><dt>TP's</dt><dd class="num">${s.tps.map(esc).join(' · ')||nvt}</dd><dt>Risico</dt><dd>${risk}</dd></dl>
       ${klaar?`<div class="callout ok"><b>Klaar om te nemen</b> · ${c.risk[s.grade]?pctTxt(c.risk[s.grade])+' risico':esc(s.grade)+': niet traden'}</div>`:''}
       ${s.note?`<div class="small"><span class="muted">Notitie</span> ${esc(s.note)}</div>`:''}</div>`;
-  const plan=`<div class="rplan stack"><div class="kh">Plan</div>
-      <div><h3 style="margin-bottom:5px">Lagen${erft?` <button class="ibt" data-a="info" data-v="${esc(k)}" aria-expanded="${!!S.info[k]}" aria-label="uitleg bij Lagen" title="uitleg">ⓘ</button>`:''}</h3>${erft&&S.info[k]?`<div class="infotxt">${erfUitleg('scen')}</div>`:''}<div class="lagen">${scenRijen(s,d)}</div></div>
-      <div><div class="row between"><h3>Confirmations ${esc(s.entry.tf)}</h3><span class="faint small num">${cd.k}/${cd.n}</span></div>
-        ${cd.n?`<div class="prog" style="margin:5px 0"><i style="width:${cd.k/cd.n*100}%"></i></div>`+s.entry.confirmations.map(cf=>`<div class="chk ${s.checked.includes(cf)?'on':''}" data-a="chk" data-s="${esc(s.id)}" data-v="${esc(cf)}" role="checkbox" aria-checked="${s.checked.includes(cf)}"><span class="box">${s.checked.includes(cf)?'✓':''}</span><span class="lbl">${esc(cf)}</span></div>`).join(''):'<div class="faint small">Geen confirmations op de entry-laag.</div>'}
-        ${s.pb&&pbInfo(s.pb)?critH(s,cd):''}</div></div>`;
+  // round 5: the left column is three blocks in the style of the right one (Scenario, Uitvoering & edge)
+  const plan=`<div class="rplan">
+      <div class="blok"><div class="kh">Lagen${erft?` <button class="ibt" data-a="info" data-v="${esc(k)}" aria-expanded="${!!S.info[k]}" aria-label="uitleg bij Lagen" title="uitleg">ⓘ</button>`:''}</div>${erft&&S.info[k]?`<div class="infotxt">${erfUitleg('scen')}</div>`:''}<div class="lagen">${scenRijen(s,d)}</div></div>
+      <div class="blok"><div class="row between" style="margin-bottom:8px"><div class="kh" style="margin:0">Confirmations ${esc(s.entry.tf)}</div><span class="faint small num">${cd.k}/${cd.n}</span></div>
+        ${cd.n?`<div class="prog" style="margin:0 0 5px"><i style="width:${cd.k/cd.n*100}%"></i></div>`+s.entry.confirmations.map(cf=>`<div class="chk ${s.checked.includes(cf)?'on':''}" data-a="chk" data-s="${esc(s.id)}" data-v="${esc(cf)}" role="checkbox" aria-checked="${s.checked.includes(cf)}"><span class="box">${s.checked.includes(cf)?'✓':''}</span><span class="lbl">${esc(cf)}</span></div>`).join(''):'<div class="faint small">Geen confirmations op de entry-laag.</div>'}</div>
+      ${s.pb&&pbInfo(s.pb)?`<div class="blok">${critH(s,cd)}</div>`:''}</div>`;
   const uitv=`<div class="ruitv stack"><div class="kh">Uitvoering &amp; edge</div>
       <div class="st" role="group" aria-label="status">${STATUS.map(([kk,l])=>`<button class="${kk} ${s.status===kk?'on':''}" data-a="status" data-s="${esc(s.id)}" data-v="${kk}" title="${l}">${STATUS_KORT[kk]}</button>`).join('')}</div>
       <div class="row"><button class="btn sm pri" data-a="convert" data-s="${esc(s.id)}">Zet om in trade</button>${moriKlaar()?`<button class="btn sm" data-a="mori" data-s="${esc(s.id)}">🤖 Vraag Mori</button>`:''}<button class="btn sm" data-a="editScen" data-s="${esc(s.id)}">Bewerk</button>${moriKlaar()?'':moriInstellen()}</div>
