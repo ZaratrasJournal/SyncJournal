@@ -16,6 +16,17 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v1.26] — 2026-10-30
+
+### Toegevoegd
+- **Kies zelf of je API-sleutels in je back-ups gaan.** In Instellingen → Data staat het schuifje **API-sleutels in back-ups** (standaard uit). Zet je het aan, dan gaan je exchange-sleutels en je walletadres mee in Exporteer, Backup nu en de back-up naar een map, zonder dat de app het elke keer vraagt. Aanzetten vraagt één keer om bevestiging: iedereen met zo'n bestand kan je exchange-account gebruiken, dus gebruik alleen-lezen-sleutels.
+- Google Drive en je Mori-sleutel hebben elk een eigen vinkje, standaard uit. Een Mori-sleutel die alleen voor deze sessie is opgeslagen gaat nooit mee, en bij importeren wordt een bestaande Mori-sleutel nooit overschreven.
+
+### Gewijzigd
+- De vraag "Gaan je API-sleutels mee?" bij elke export is weg; onder de knop staat nu of er sleutels meegaan. Data overzetten houdt zijn eigen keuze, voorgekozen volgens het schuifje.
+
+---
+
 ## [v1.25] — 2026-10-30
 
 ### Toegevoegd
