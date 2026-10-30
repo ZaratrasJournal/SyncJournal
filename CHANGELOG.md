@@ -16,6 +16,21 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v1.25] — 2026-10-30
+
+### Toegevoegd
+- **TradingPlan: een chart per scenario, groot in beeld.** Open je een scenario, dan staat de eerste afbeelding groot, met miniaturen eronder als er meer zijn. Tik op de chart en hij gaat schermvullend. Een TradingView-snapshotlink telt ook als beeld. Zonder afbeelding plak of sleep je er meteen een in.
+
+### Gewijzigd
+- TradingPlan: het Dag-scherm is breder en de kolom met week en dag smaller, zodat het scenario meer ruimte krijgt. Een open scenario heeft links de chart en je plan (lagen, confirmations, criteria) en rechts een vaste kolom met trigger, stop, TP's, risico, de knoppen en de edge. Die kolom blijft staan terwijl je links afvinkt.
+
+### Fixed
+- TradingPlan: met de criteria open viel de opmaak van een scenario uit elkaar.
+- Importeren: een bestand met alleen rommel als trades biedt nooit meer "vervangen" aan; je krijgt een melding wat er mis is en wat je kunt doen.
+- De ingebouwde demo zette trades een dag te vroeg, waardoor er trades op zondag vielen.
+
+---
+
 ## [v1.24] — 2026-10-28
 
 ### Toegevoegd
