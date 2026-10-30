@@ -16,6 +16,19 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v1.27] — 2026-10-30
+
+### Toegevoegd
+- **TradingPlan: scenario's verplaatsen.** Boven de lijst kies je **Volgorde: Op edge** of **Eigen volgorde**. Met ↑ ↓, het ⋯-menu of slepen aan het greepje zet je een scenario hoger of lager; de volgorde wordt per dag bewaard. De edge-plek en "sterkste" blijven zichtbaar.
+- TradingPlan: elk scenario heeft een ⋯-menu met Bewerk, Omhoog, Omlaag en Verwijder…, ook als het dicht is.
+
+### Gewijzigd
+- TradingPlan: **✎ Bewerk** staat in de kop van een open scenario. Je wijzigt er alles, ook de naam en het playbook. Verwijderen vraagt in de pagina om bevestiging en zegt wat er gebeurt: gekoppelde trades worden losgekoppeld (ze blijven in je journal) en de afbeeldingen van het scenario worden gewist.
+- TradingPlan: Lagen, Confirmations en Criteria staan in blokken, net als Scenario en Uitvoering & edge.
+- TradingPlan: de criteria-regel is herkenbaar als knop, met een pijltje en "Toon alle 8" / "Verberg".
+
+---
+
 ## [v1.26] — 2026-10-30
 
 ### Toegevoegd
