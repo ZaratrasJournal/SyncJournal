@@ -549,6 +549,10 @@ table.tbl{width:100%;border-collapse:collapse;font-size:14px}
 .sk-opt small{display:block;font-size:12px;color:var(--muted);line-height:1.5;margin-top:2px}
 .sk-opt small b{display:inline;font-size:inherit;color:var(--ink)}
 .sk-acties{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.sk-rij{border-bottom:1px solid var(--line2)} .sk-rij:last-child{border-bottom:none} .sk-rij .setrow{border-bottom:none}
+.sk-bev{margin:0 18px 12px} .sk-bev .sk-acties{margin-top:8px}
+.sk-sub{display:flex;flex-direction:column;gap:2px;padding:0 18px 12px 26px}
+.sk-dis{opacity:.6;cursor:default}
 .dov-tag{font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:999px;white-space:nowrap}
 .dov-tag.warn{background:var(--amber-soft);color:var(--amber)} .dov-tag.ok{background:var(--green-soft);color:var(--green)} .dov-tag.bad{background:var(--red-soft);color:var(--red)}
 .dov-sum{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;padding:12px 18px}
@@ -5319,7 +5323,7 @@ function pgInstellingen(){
         return `<div class="section-sub">🛟 Overzetten uit oude TradeJournal</div><div class="panel"><div class="setrow"><div class="txt"><b>Kom je van de oude TradeJournal?</b><small>Exporteer daar je backup (Instellingen → Exporteer JSON) en lees het bestand hier in. Je krijgt eerst een overzicht ter controle; trades, playbooks, tags én API-koppelingen gaan mee${done?' · <span style="color:var(--green)">al eerder gemigreerd</span>':''}</small></div><button class="btn pri" onclick="importJSON()">Importeer oude backup</button></div></div>`;})()}
       <div class="section-sub">🛡 Backups</div>
       <div class="panel">
-        <div class="setrow"><div class="txt"><b>${bkStatusHtml()}</b></div><button class="btn pri" onclick="bkNow()">Backup nu</button></div>
+        <div class="setrow"><div class="txt"><b>${bkStatusHtml()}</b><small>${bkKeysRegel()}</small></div><button class="btn pri" onclick="bkNow()">Backup nu</button></div>
         <div class="setrow"><div class="txt"><b>Automatisch</b><small>${bkHint()}</small></div>
           <div class="seg" id="bkSeg">
             <button class="${BK.choice==='map'?'on':''}" onclick="bkChoose('map')" ${bkFsaSupported()?'':'disabled'} title="${bkFsaSupported()?'Gedateerde bestanden in een map op je computer (laatste 14), tip: kies een map in je Drive/OneDrive-syncmap':'Alleen in Chrome of Edge'}">📁 Map</button>
@@ -5329,8 +5333,9 @@ function pgInstellingen(){
         ${BK.choice==='drive'?`<div class="setrow"><div class="txt"><b>Herstellen uit Drive</b><small>Handig op een nieuwe computer, je huidige staat wordt eerst veiliggesteld</small></div><button class="btn" onclick="driveRestoreLatest()">Laatste backup terugzetten</button></div>`:''}
         <div class="setrow"><div class="txt"><b>Waarschuwing na</b></div>
           <select class="fsel" aria-label="Waarschuwingsdrempel" onchange="bkSetThreshold(this.value)">${[1,2,3,5,7,14].map(d=>`<option value="${d}" ${BK.threshold===d?'selected':''}>${d} dag${d===1?'':'en'}</option>`).join('')}</select></div>
+        ${bkKeysRij()}
       </div>
-      <div class="panel"><div class="setrow"><div class="txt"><b>Back-up</b><small>Exporteer of importeer je journal als JSON. Je ziet eerst wat er in het bestand gaat, of wat erin zit.</small></div>
+      <div class="panel"><div class="setrow"><div class="txt"><b>Back-up</b><small>Exporteer of importeer je journal als JSON. Je ziet eerst wat er in het bestand gaat, of wat erin zit.<br>${bkKeysRegel()}</small></div>
       <button class="btn" onclick="importJSON()">Importeer</button><button class="btn pri" onclick="exportOverzicht()">Exporteer JSON</button></div>
       <div class="setrow"><div class="txt"><b>Voorbeelddata laden</b><small>Vul de app met ±1.100 voorbeeld-trades van één trader over 20 maanden, incl. accounts, playbooks, tags en TradingPlan; overschrijft je huidige journal</small></div><button class="btn" onclick="resetDemo()">Laden</button></div>
       ${demoPresent()?`<div class="setrow"><div class="txt"><b>Voorbeelddata opruimen</b><small>Haalt de demo-trades, -playbooks en -accounts weer weg. Wat je zelf hebt toegevoegd of aangepast blijft staan.</small></div><button class="btn" onclick="demoCleanup()">Opruimen</button></div>`:''}
@@ -6695,9 +6700,9 @@ function aiToolUitvoeren(c){
   return {tekst:'Onbekende tool "'+(c&&c.name)+'".',fout:true};
 }
 /* ── Key: the member's own, on this device only ──
-   Never in snapshotPayload (export, automatic back-up, Drive, snapshots), DOV or diagReport: it lives under
-   its own storage key that none of those read. "Only this session" keeps it in sessionStorage, for a
-   shared computer. Wiping the journal (sj_*) removes it too. */
+   Only in a back-up when the member ticks "Ook mijn Mori-sleutel" under "API-sleutels in back-ups" (bkPayload);
+   never in snapshots, diagReport or a session-only key. It lives under its own storage key. "Only this
+   session" keeps it in sessionStorage, for a shared computer. Wiping the journal (sj_*) removes it too. */
 const AI_KEY_OPSLAG='sj_ai_key';
 const AI_LOKAAL=[AI_KEY_OPSLAG,'sj_ai_usage'];   // stays on this device: not even its size goes into diagReport
 const AI_URL='https://api.anthropic.com/v1/messages';
@@ -6728,6 +6733,10 @@ function aiUsd(v){return v>0&&v<0.01?'< $ 0,01':'$ '+(+v||0).toFixed(2).replace(
 function setAILimiet(v){const n=parseFloat(String(v).replace(',','.'));AIPREFS.limiet=n>0?n:0;persistAIPrefs();}
 function aiKeyGet(){try{return sessionStorage.getItem(AI_KEY_OPSLAG)||localStorage.getItem(AI_KEY_OPSLAG)||'';}catch(e){return '';}}
 function aiKeySessie(){try{return !!sessionStorage.getItem(AI_KEY_OPSLAG);}catch(e){return false;}}
+// The key a back-up may carry: the one stored on this device. A session-only key never leaves the session.
+function aiKeyLokaal(){try{return aiKeySessie()?'':localStorage.getItem(AI_KEY_OPSLAG)||'';}catch(e){return '';}}
+// From a back-up: only when this device has no key yet (stored or session); an existing key is never overwritten.
+function aiKeyHerstel(k){ if(typeof k!=='string'||!/^sk-ant-/.test(k)||aiKeyGet())return false; try{localStorage.setItem(AI_KEY_OPSLAG,k);return true;}catch(e){return false;} }
 function aiKeySet(k,sessie){try{if(sessie){sessionStorage.setItem(AI_KEY_OPSLAG,k);localStorage.removeItem(AI_KEY_OPSLAG);}else{localStorage.setItem(AI_KEY_OPSLAG,k);sessionStorage.removeItem(AI_KEY_OPSLAG);}}catch(e){}}
 function aiKeyVergeet(){try{localStorage.removeItem(AI_KEY_OPSLAG);sessionStorage.removeItem(AI_KEY_OPSLAG);}catch(e){}AIMSGS=[];render();toast('Sleutel vergeten','ok');}
 function aiKeyHint(){const k=aiKeyGet();return k?'…'+k.slice(-4):'';}
@@ -7192,7 +7201,7 @@ function setCurrency(c){
 function setPctRef(v){STATE.pctRef=Math.max(0,+v||0);persistState();render();}
 /* trades CRUD + import/export */
 // Volledige staat-payload — gedeeld door export, snapshots en herstel.
-// Without exchange keys unless asked (F12): automatic back-ups, Drive, the map and snapshots never carry them.
+// Without exchange keys unless asked (F12). Which routes ask is decided by bkPayload; snapshots never do.
 /* Back-upblok "tradingplan" (plan v3): tp3:plans en tp3:cfg als hun JSON-tekst, en de plaatjes uit IndexedDB tp3
    als {id: data-URL}, zodat er bij een browserwissel niets verloren gaat (besluit 15). tp2:* gaat niet meer mee. */
 function planBackupBlock(){let plans=null,cfg=null;try{plans=localStorage.getItem(TP3.plans);cfg=localStorage.getItem(TP3.cfg);}catch(e){}
@@ -7200,7 +7209,7 @@ function planBackupBlock(){let plans=null,cfg=null;try{plans=localStorage.getIte
   const imgs={};planImgIds(planLoad().plans).forEach(id=>{if(PLAN_IMG[id])imgs[id]=PLAN_IMG[id];});
   return {v:3,plans:plans||JSON.stringify({v:1,weeks:{},days:{}}),cfg:cfg||'{}',imgs};}
 const planBlokV3=b=>!!b&&typeof b==='object'&&b.v===3&&typeof b.plans==='string';
-function snapshotPayload(metSleutels){ return {app:'SyncJournal',appVersion:APP_VERSION,schemaVersion:DB.load('schema',SCHEMA_VERSION),exported:new Date().toISOString(),tradingplan:planBackupBlock(),tagConfig,pbook:PBOOK,conns:metSleutels===true?CONNS:dovStripKeys(CONNS),manual:MANUAL,funded:FUNDED,sync:SYNC,synclog:syncLog(),aiPrefs:AIPREFS,view:{preset:VIEW.preset,v:VIEW.v},exMeta:Object.fromEntries(EXCHANGES.map(e=>[e.id,{val:e.val,acct:e.acct}])),settings:{theme:STATE.theme,currency:STATE.currency,priv:STATE.priv,density:STATE.density,funded:!!STATE.funded,fundedMee:!!STATE.fundedMee},trades:T,trash:TRASH}; }
+function snapshotPayload(metSleutels,metMori){ return {app:'SyncJournal',appVersion:APP_VERSION,schemaVersion:DB.load('schema',SCHEMA_VERSION),exported:new Date().toISOString(),tradingplan:planBackupBlock(),tagConfig,pbook:PBOOK,conns:metSleutels===true?CONNS:dovStripKeys(CONNS),manual:MANUAL,funded:FUNDED,sync:SYNC,synclog:syncLog(),aiPrefs:AIPREFS,view:{preset:VIEW.preset,v:VIEW.v},exMeta:Object.fromEntries(EXCHANGES.map(e=>[e.id,{val:e.val,acct:e.acct}])),settings:{theme:STATE.theme,currency:STATE.currency,priv:STATE.priv,density:STATE.density,funded:!!STATE.funded,fundedMee:!!STATE.fundedMee},trades:T,trash:TRASH,...(metMori===true&&aiKeyLokaal()?{aiKey:aiKeyLokaal()}:{})}; }
 // Zet een volledige backup-payload (nieuw formaat) terug in de live-staat.
 /* Binnenkomende trades veilig maken (audit 2026-09-18): één ontbrekend date-veld in een
    back-up liet het dashboard crashen — en omdat opslaan vóór tekenen gebeurt, overleefde
@@ -7293,6 +7302,7 @@ function applyBackup(d){
   if(d.tagConfig){tagConfig=d.tagConfig;normTagConfig();persistTagConfig();}
   PBOOK={};Object.entries(d.pbook||{}).forEach(([k,v])=>PBOOK[k]=pbNormalize(k,v));persistPbook();
   if(d.conns){CONNS=d.conns;persistConns();}
+  aiKeyHerstel(d.aiKey);
   if(d.manual){MANUAL=d.manual;MANUAL.forEach(m=>{if(!Array.isArray(m.transactions))m.transactions=[];});persistManual();}
   if(Array.isArray(d.funded)){FUNDED=d.funded.filter(f=>f&&f.id);persistFunded();}   // older backups have none: keep what is here
   if(d.sync){SYNC=d.sync;persistSync();}
@@ -7325,19 +7335,39 @@ function applyBackup(d){
 const BK=Object.assign({ts:0,method:'',choice:'',threshold:3,snooze:0,first:0},DB.load('backup',{}));
 if(!BK.first){BK.first=Date.now();DB.save('backup',BK);} // gratieperiode: nieuwe gebruikers pas alarmeren ná de drempel
 const BK_RED_DAYS=7, BK_KEEP=14, BK_DEBOUNCE_MS=60000, BK_MAXWAIT_MS=15*60000;
-function persistBK(){ DB.save('backup',{ts:BK.ts,method:BK.method,choice:BK.choice,threshold:BK.threshold,snooze:BK.snooze,first:BK.first}); }
-function bkStamp(method){ BK.ts=Date.now();BK.method=method;_bkDirtySince=0;persistBK();try{render();}catch(e){} }
+function persistBK(){ DB.save('backup',{ts:BK.ts,method:BK.method,keys:!!BK.keys,choice:BK.choice,threshold:BK.threshold,snooze:BK.snooze,first:BK.first}); }
+function bkStamp(method,metSleutels){ BK.ts=Date.now();BK.method=method;BK.keys=!!metSleutels;_bkDirtySince=0;persistBK();try{render();}catch(e){} }
 function bkAgeDays(){ const ref=BK.ts||BK.first||Date.now(); return Math.floor((Date.now()-ref)/86400e3); }
 const BK_METHOD_LBL={handmatig:'handmatig',map:'map',drive:'Google Drive'};
+/* Keys in back-ups (decision Zaratras 30-10-2026, follow-up to F12): off by default. On, the exchange keys
+   go into the files the member makes and into the map back-up; Google Drive and the Mori key each need
+   their own tick. Kept per device (sj_bk_sleutels) and never itself in a back-up; snapshots stay keyless. */
+const BK_KEYS=Object.assign({aan:false,drive:false,mori:false},DB.load('bk_sleutels',{}));
+let _bkKeysBevestig=false;
+function bkKeysAan(){return BK_KEYS.aan===true;}
+function bkKeysZet(aan){BK_KEYS.aan=!!aan;_bkKeysBevestig=false;DB.save('bk_sleutels',BK_KEYS);}
+function bkKeysSchuif(){ if(bkKeysAan()){bkKeysZet(false);render();toast('API-sleutels gaan niet meer mee in je back-ups','ok');return;} _bkKeysBevestig=true;render(); }
+function bkKeysBevestig(ja){ if(ja){bkKeysZet(true);toast('🔑 API-sleutels gaan voortaan mee in je back-ups','ok');} else _bkKeysBevestig=false; render(); }
+function bkKeysVinkje(k,on){BK_KEYS[k]=!!on;DB.save('bk_sleutels',BK_KEYS);render();}
+// route 'bestand' = Exporteer, Backup nu, the map; 'drive' = Google Drive.
+function bkPayload(route){const aan=bkKeysAan()&&(route!=='drive'||BK_KEYS.drive===true);return snapshotPayload(aan,aan&&BK_KEYS.mori===true);}
+const bkKeysRegel=()=>bkKeysAan()?'🔑 Met API-sleutels · wijzig in Instellingen → Data':'Zonder API-sleutels · wijzig in Instellingen → Data';
+function bkKeysRij(){
+  const aan=bkKeysAan(),heeft=dovHasKeys(CONNS),drive=BK.choice==='drive';
+  const sub=!heeft?'Je hebt nu geen API-sleutels opgeslagen. Staat dit aan, dan gaan ze mee zodra je een exchange koppelt.'
+    :aan?'Je exchange-sleutels en walletadres gaan mee in Exporteer JSON, Backup nu en de back-up naar een map. Veiligheidskopieën in je browser blijven zonder.'
+    :'Uit: je back-ups bevatten geen API-sleutels. Zet je een back-up terug op een andere pc, dan vul je je sleutels opnieuw in.';
+  const bev=_bkKeysBevestig&&!aan?`<div class="dov-note warn sk-bev" id="bkKeysBevestig" role="alert">⚠ <b>Iedereen met een back-up-bestand kan dan je exchange-account gebruiken.</b> Gebruik alleen-lezen-sleutels en bewaar je back-ups veilig.
+    <div class="sk-acties"><button class="btn pri" data-bevestig onclick="bkKeysBevestig(true)">Ja, zet aan</button><button class="btn" data-annuleer onclick="bkKeysBevestig(false)">Annuleren</button></div></div>`:'';
+  const vink=(id,k,label,uitleg,dis)=>`<label class="sk-opt${dis?' sk-dis':''}"><input type="checkbox" id="${id}" ${BK_KEYS[k]&&!dis?'checked':''} ${dis?'disabled':''} onchange="bkKeysVinkje('${k}',this.checked)"><span><b>${label}</b><small>${uitleg}</small></span></label>`;
+  const vinkjes=aan?`<div class="sk-sub">
+    ${vink('bkKeysDrive','drive','Ook in Google Drive-back-ups',drive?'Een Drive-back-up is een kopie in de cloud, in je eigen Google Drive. Met dit vinkje staan je sleutels daar dus ook.':'Koppel eerst Google Drive (☁️ Drive hierboven). Een Drive-back-up is een kopie in de cloud.',!drive)}
+    ${vink('bkKeysMori','mori','Ook mijn Mori-sleutel',aiKeySessie()?'Je Mori-sleutel staat alleen voor deze sessie en gaat nooit mee.':aiKeyGet()?'Je Anthropic-sleutel voor Mori gaat dan ook mee. Terugzetten overschrijft nooit een sleutel die er al staat.':'Je hebt nu geen Mori-sleutel opgeslagen.',false)}</div>`:'';
+  return `<div id="bkKeysRow" class="sk-rij"><div class="setrow"><div class="txt"><b>API-sleutels in back-ups</b><small>${sub}</small></div>
+    <div class="sw ${aan?'on':''}" role="switch" tabindex="0" aria-checked="${aan}" aria-label="API-sleutels in back-ups" onclick="bkKeysSchuif()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();bkKeysSchuif();}"></div></div>${bev}${vinkjes}</div>`;
+}
 function bkSnooze(){ BK.snooze=Date.now()+86400e3;persistBK();render(); }
-function bkNow(){ if(!dovHasKeys(CONNS)){bkNowGo(false);return;}
-  const auto=BK.choice==='map'&&BK_DIR?'je back-upmap':BK.choice==='drive'&&driveReady()?'je Google Drive':'';
-  sleutelModal('🛡 Back-up maken',bkNowGo,auto?`Zonder sleutels komt de back-up in ${auto}. Met sleutels wordt het een los bestand op je computer: in de automatische back-up horen geen sleutels.`:''); }
-// With keys: always a separate download, never the automatic map or Drive (those stay keyless).
-function bkNowGo(met){ if(met){exportBestand(true);return;}
-  if(BK.choice==='map'&&BK_DIR)return autoBackup(true).then(okr=>{ if(!okr)exportBestand(false); });
-  if(BK.choice==='drive'&&driveReady())return driveBackup(true).then(okr=>{ if(!okr)exportBestand(false); });
-  exportBestand(false); }
+function bkNow(){ if(BK.choice==='map'&&BK_DIR){ autoBackup(true).then(okr=>{ if(!okr)exportBestand(); }); } else if(BK.choice==='drive'&&driveReady()){ driveBackup(true).then(okr=>{ if(!okr)exportBestand(); }); } else exportBestand(); }
 function backupBanner(){
   if(!T.length)return '';                          // niets te verliezen → geen alarm
   const age=bkAgeDays();
@@ -7376,8 +7406,8 @@ async function autoBackup(userGesture){
   try{
     const name='syncjournal-backup-'+localDateISO()+'.json';   // 1 bestand per dag; zelfde dag = laatste stand
     const fh=await BK_DIR.getFileHandle(name,{create:true});
-    const w=await fh.createWritable(); await w.write(JSON.stringify(snapshotPayload())); await w.close();
-    bkStamp('map'); bkRetention();
+    const pl=bkPayload('bestand'),w=await fh.createWritable(); await w.write(JSON.stringify(pl)); await w.close();
+    bkStamp('map',dovHasKeys(pl.conns)); bkRetention();
     return true;
   }catch(e){ if(userGesture)toast('Backup schrijven mislukte ('+((e&&e.name)||'onbekend')+')','warn'); return false; }
 }
@@ -7416,11 +7446,11 @@ function bkWhen(){ if(!BK.ts)return 'nog geen backup';
 function bkStatusHtml(){
   const age=bkAgeDays();
   const col=age<BK.threshold?'var(--green)':age>=BK_RED_DAYS?'var(--red)':'var(--amber)';
-  return `<span style="color:${col};font-weight:700">●</span> Laatste backup: <b>${bkWhen()}</b>`;
+  return `<span style="color:${col};font-weight:700">●</span> Laatste backup: <b>${bkWhen()}</b>${BK.ts?` · ${BK.keys?'met':'zonder'} API-sleutels`:''}`;
 }
 function bkHint(){
-  if(BK.choice==='map')return `Map “${BK_DIR?esc(BK_DIR.name):'…'}” · dagbestanden, laatste ${BK_KEEP} bewaard · zonder API-sleutels`;
-  if(BK.choice==='drive')return 'Map “SyncJournal” in je eigen Drive · loopt max 15 min achter · oudere versies 30 dagen via Drive-versiebeheer · zonder API-sleutels';
+  if(BK.choice==='map')return `Map “${BK_DIR?esc(BK_DIR.name):'…'}” · dagbestanden, laatste ${BK_KEEP} bewaard · ${bkKeysAan()?'met':'zonder'} API-sleutels`;
+  if(BK.choice==='drive')return 'Map “SyncJournal” in je eigen Drive · loopt max 15 min achter · oudere versies 30 dagen via Drive-versiebeheer · '+(bkKeysAan()&&BK_KEYS.drive?'met':'zonder')+' API-sleutels';
   return 'Kies 📁 of ☁️ voor automatische backups, of exporteer zelf via de knop hierboven';
 }
 // App-balk-schildje: groen+subtiel = vers · amber puls = ouder dan drempel of wacht op
@@ -7533,7 +7563,7 @@ async function driveBackup(userGesture){
   try{
     await driveToken(userGesture===true);
     await driveEnsureFolder(); if(!DRIVE.folderId)throw new Error('map maken mislukte');
-    const name='syncjournal-backup-'+localDateISO()+'.json', body=JSON.stringify(snapshotPayload());
+    const name='syncjournal-backup-'+localDateISO()+'.json', pl=bkPayload('drive'), body=JSON.stringify(pl);
     const files=await driveList(); const ex=files.find(f=>f.name===name);
     // Conflict-guard: is er elders (ander apparaat) een níeuwere backup gemaakt? Dan niet
     // stil overschrijven maar de overneem-keuze tonen (bij handmatige actie: eerst vragen).
@@ -7553,7 +7583,7 @@ async function driveBackup(userGesture){
       r=await driveFetch(DRIVE_UPLOAD+'/files?uploadType=multipart',{method:'POST',headers:{'Content-Type':'multipart/related; boundary='+bnd},body:mp}); }
     if(!r.ok)throw new Error('upload mislukte ('+r.status+')');
     _bkLastPayload=bodyCmp;
-    bkStamp('drive');
+    bkStamp('drive',dovHasKeys(pl.conns));
     driveRetention(files.filter(f=>f.name!==name));
     return true;
   }catch(e){ if(userGesture)toast('Drive-backup mislukte: '+((e&&e.message)||'onbekend'),'warn'); try{render();}catch(_){} return false; }
@@ -7617,7 +7647,7 @@ async function driveAdopt(){
     if(!d||!Array.isArray(d.trades))throw new Error('ongeldig backup-bestand');
     await Snapshots.create('vóór Drive-herstel');
     if(d.conns)d.conns=connsHerstel(d.conns);
-    DRIVE.adopt=null; applyBackup(d); bkStamp('drive');
+    DRIVE.adopt=null; applyBackup(d); bkStamp('drive',dovHasKeys(d.conns));
     toast('✓ Nieuwste Drive-backup overgenomen','ok');
   }catch(e){ toast('Overnemen mislukte: '+((e&&e.message)||'onbekend'),'warn'); }
 }
@@ -7633,12 +7663,12 @@ function driveBanner(){
 }
 function downloadJSON(d,name){ const blob=new Blob([JSON.stringify(d,null,2)],{type:'application/json'});
   const u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download=name;a.click();URL.revokeObjectURL(u); }
-/* F12: a file the user makes asks first whether the exchange keys go in; the default is without,
-   because a file that is parked or forwarded must not hand out account access. Nothing to choose
-   without stored keys. Automatic back-ups never ask: they are always without. */
-function exportJSON(){ if(!dovHasKeys(CONNS)){exportBestand(false);return;} sleutelModal('📤 Back-up exporteren',exportBestand); }
-function exportBestand(met){ downloadJSON(snapshotPayload(met),'syncjournal-backup-'+localDateISO()+'.json');
-  toast(met?'✓ Back-up mét API-sleutels: bewaar hem veilig':'✓ Back-up geëxporteerd'+(dovHasKeys(CONNS)?', zonder API-sleutels':' · geen API-sleutels'),'ok');bkStamp('handmatig'); }
+/* Export follows the "API-sleutels in back-ups" switch (Instellingen → Data) instead of asking every time.
+   Only "Data overzetten" keeps its own choice, preselected by the switch. */
+function exportJSON(){ exportBestand(); }
+function exportBestand(){ const d=bkPayload('bestand'),met=dovHasKeys(d.conns);
+  downloadJSON(d,'syncjournal-backup-'+localDateISO()+'.json');
+  toast(met?'✓ Back-up met API-sleutels: bewaar hem veilig':'✓ Back-up geëxporteerd'+(dovHasKeys(CONNS)?', zonder API-sleutels':' · geen API-sleutels'),'ok');bkStamp('handmatig',met); }
 function sleutelKeuzeHtml(met,fn){
   if(!dovHasKeys(CONNS))return `<div id="sleutelKeuze" class="dov-note info" style="margin:0">🔒 Je hebt geen API-sleutels opgeslagen, dus er gaan er ook geen mee in dit bestand.</div>`;
   const opt=(v,t,sub)=>`<label class="sk-opt"><input type="radio" name="sjKeys" value="${v}" ${(v==='met')===!!met?'checked':''} onchange="${fn}(this.value==='met')"><span><b>${t}</b><small>${sub}</small></span></label>`;
@@ -7649,23 +7679,6 @@ function sleutelKeuzeHtml(met,fn){
   </div>`;
 }
 function sleutelKeuzeKleur(met){ const k=document.getElementById('sleutelKeuze');if(k)k.classList.toggle('met',met); }
-let _sk={met:false,go:null};
-function sleutelModal(titel,go,uitleg){ _sk={met:false,go};
-  try{ openModalHTML(`<div class="mhead"><h3>${titel}</h3><button class="xbtn" onclick="closeForm()">×</button></div>
-  <div class="mbody mbody-wiz">${sleutelKeuzeHtml(false,'skKies')}
-    ${uitleg?`<p class="setintro" style="margin:0">${uitleg}</p>`:''}
-    <div class="dov-note bad" id="sjKeysErr" role="alert" hidden></div>
-    <div class="sk-acties"><span style="flex:1"></span><button class="btn" onclick="closeForm()">Annuleren</button><button class="btn pri" id="sjKeysGo" onclick="skGo()">Exporteren</button></div>
-  </div>`); }
-  catch(e){ go(false); }   // a broken modal (e.g. from a crash handler) must not block the safety net: without keys
-}
-function skKies(met){ _sk.met=met;sleutelKeuzeKleur(met); }
-function skGo(){ const g=document.getElementById('sjKeysGo'),err=document.getElementById('sjKeysErr');if(!g||g.disabled||!_sk.go)return;
-  const label=g.textContent;g.disabled=true;g.textContent='Bezig…';if(err)err.hidden=true;
-  setTimeout(async()=>{   // lets "Bezig…" paint before a large journal is serialised
-    try{ await _sk.go(_sk.met);closeForm(); }
-    catch(e){ if(err){err.hidden=false;err.textContent='Het bestand maken lukte niet ('+((e&&e.message)||'onbekende fout')+'). Je data is niet aangeraakt; probeer het opnieuw.';} g.disabled=false;g.textContent=label; }
-  },30); }
 /* ═══ Data-overdracht (Denny 2026-09-25, docs/opdracht-data-overzetten.md) ═══
    Eerst zien, dan doen. Export: per onderdeel aantal en omvang, vinkje aan/uit, sleutels
    apart; het bestand krijgt een manifest. Import: per onderdeel wat erin zit tegenover wat
@@ -7731,27 +7744,28 @@ function dovPeriode(list,per){ if(!per||(!per.van&&!per.tot))return list; return
 function dovPeriodeTxt(per){ if(!per||(!per.van&&!per.tot))return ''; const f=d=>{const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(String(d||''));return m?m[3]+'-'+m[2]+'-'+m[1]:String(d);}; return (per.van?f(per.van):'begin')+' t/m '+(per.tot?f(per.tot):'nu'); }
 // Het bestand samenstellen: alleen gekozen onderdelen, sleutels naar keuze, periode, plus manifest.
 function dovBuildExport(sel,keys,per){
-  const full=snapshotPayload(!!keys);
+  const full=snapshotPayload(!!keys,!!keys&&bkKeysAan()&&BK_KEYS.mori===true);
   if(per&&(per.van||per.tot)){full.trades=dovPeriode(full.trades,per);full.trash=dovPeriode(full.trash,per);}
   const desc=dovDescribe(full),out={app:full.app,appVersion:full.appVersion,schemaVersion:full.schemaVersion,exported:full.exported};
   const manifest={parts:{},keysIncluded:!!keys,hostedVersion:UPDATE.remote||'',period:(per&&(per.van||per.tot))?{van:per.van||'',tot:per.tot||''}:null};
   DOV_PARTS.forEach(p=>{const on=sel[p.k]!==false;manifest.parts[p.k]={included:on,count:on?desc[p.k].count:0,bytes:on?desc[p.k].bytes:0};
     if(on)p.keys.forEach(k=>{if(full[k]!=null)out[k]=full[k];});});
+  if(full.aiKey)out.aiKey=full.aiKey;
   out.manifest=manifest;
   return out;
 }
 let _dovExp={sel:{},keys:false,per:{van:'',tot:''}};
 function exportOverzicht(){
-  const desc=dovDescribe(snapshotPayload(true));_dovExp={sel:{},keys:false,per:{van:'',tot:''}};DOV_PARTS.forEach(p=>{_dovExp.sel[p.k]=true;});
+  const desc=dovDescribe(snapshotPayload(true));_dovExp={sel:{},keys:bkKeysAan()&&desc.conns.keys,per:{van:'',tot:''}};DOV_PARTS.forEach(p=>{_dovExp.sel[p.k]=true;});
   const rows=DOV_PARTS.map(p=>`<div class="setrow" data-dov="${p.k}"><input type="checkbox" checked aria-label="${esc(p.t)}" onchange="dovExpToggle('${p.k}',this.checked)" style="width:17px;height:17px;accent-color:var(--accent)"><div class="txt"><b>${esc(p.t)}</b><small>${esc(desc[p.k].sub)}</small></div><span class="dov-cnt dim">${dovKb(desc[p.k].bytes)}</span></div>`).join('');
   openModalHTML(`<div class="mhead"><h3>📤 Wat gaat er mee?</h3><button class="xbtn" onclick="closeForm()">×</button></div>
   <div class="mbody mbody-wiz">
-    ${sleutelKeuzeHtml(false,'dovExpKeys')}
+    ${sleutelKeuzeHtml(_dovExp.keys,'dovExpKeys')}
     <p class="setintro">Kies wat er in het bestand komt. Wat je uitzet ontbreekt in het bestand; bij het terugzetten blijft dat deel dan zoals het is.</p>
     <div class="panel" style="margin-bottom:10px"><div class="setrow"><div class="txt"><b>Periode</b><small id="dovPerHint">Leeg = alle trades. Op de open-datum van de trade; de prullenbak volgt dezelfde periode.</small></div>
       <label class="hint" for="dovVan">van</label><input type="date" id="dovVan" class="fsel" style="padding:5px 8px" onchange="dovExpPeriode()" aria-label="Periode van"><label class="hint" for="dovTot">tot</label><input type="date" id="dovTot" class="fsel" style="padding:5px 8px" onchange="dovExpPeriode()" aria-label="Periode tot"></div></div>
     <div class="panel">${rows}</div>
-    <div class="dov-note info">Automatische back-ups (map of Drive) en veiligheidskopieën gaan altijd zonder API-sleutels. De keuze bovenaan geldt alleen voor het bestand dat je nu zelf maakt.</div>
+    <div class="dov-note info">De keuze bovenaan staat voorgekozen volgens <b>API-sleutels in back-ups</b> (Instellingen → Data) en geldt alleen voor dit bestand. Veiligheidskopieën in je browser gaan altijd zonder sleutels.</div>
     <div style="display:flex;gap:8px;align-items:center;margin-top:12px"><span class="setintro" style="margin:0" id="dovExpTot"></span><span style="flex:1"></span><button class="btn" onclick="closeForm()">Annuleren</button><button class="btn pri" onclick="dovExportGo()">Exporteren</button></div>
   </div>`);
   _dovExp.desc=desc;dovExpTotal();
@@ -7809,7 +7823,7 @@ function dovImportModal(d,fileName){
   const man=d.manifest||{};
   openModalHTML(`<div class="mhead"><h3>📥 Wat zit erin en wat neem je over?</h3><button class="xbtn" onclick="closeForm()">×</button></div>
   <div class="mbody mbody-wiz">
-    <div class="dov-cmp"><div><div class="h">Bestand</div><div class="v">${esc(fileName||'back-up')}</div><small>${esc(d.appVersion||'onbekende versie')}${d.exported?' · '+esc(snapWhen(d.exported)):''}${inF.conns.keys?' · <b style="color:var(--amber)">bevat API-sleutels</b>':' · zonder sleutels'}${man.hostedVersion?' · gemaakt op '+esc(man.hostedVersion):''}${man.period?' · <b>trades '+esc(dovPeriodeTxt(man.period))+'</b> (samenvoegen ligt voor de hand)':''}</small></div>
+    <div class="dov-cmp"><div><div class="h">Bestand</div><div class="v">${esc(fileName||'back-up')}</div><small>${esc(d.appVersion||'onbekende versie')}${d.exported?' · '+esc(snapWhen(d.exported)):''}${inF.conns.keys?' · <b style="color:var(--amber)">bevat API-sleutels</b>':' · zonder sleutels'}${typeof d.aiKey==='string'&&d.aiKey?' · <b style="color:var(--amber)">bevat je Mori-sleutel</b>'+(aiKeyGet()?' (je huidige blijft staan)':''):''}${man.hostedVersion?' · gemaakt op '+esc(man.hostedVersion):''}${man.period?' · <b>trades '+esc(dovPeriodeTxt(man.period))+'</b> (samenvoegen ligt voor de hand)':''}</small></div>
     <div><div class="h">Trades</div><div class="v">${inF.trades.present?ts.length.toLocaleString('nl-NL')+' · netto <span class="'+cls(pnlF)+'">'+eurS(pnlF)+'</span>':'geen trades in dit bestand'}</div><small>nu in je journal: ${(T||[]).length.toLocaleString('nl-NL')} · netto ${eurS(pnlNu)}</small></div></div>
     <div class="panel">${rows}</div>
     ${inF.conns.present&&inF.conns.count&&!inF.conns.keys&&nu.conns.keys?`<div class="dov-note info">🔑 Dit bestand heeft geen API-sleutels. Vink je <b>Exchange-koppelingen</b> aan, dan vragen je koppelingen daarna opnieuw om je sleutels. Zet het vinkje uit om je huidige koppelingen te houden.</div>`:''}
@@ -7830,6 +7844,7 @@ async function dovImportGo(){
   const d=i.d,cur=snapshotPayload(true),d2={app:'SyncJournal',appVersion:d.appVersion||APP_VERSION,schemaVersion:+d.schemaVersion||SCHEMA_VERSION,exported:d.exported||''};
   let nieuw=0,verwacht=null;
   DOV_PARTS.forEach(p=>{const use=i.sel[p.k]&&i.inF[p.k].present;p.keys.forEach(k=>{const v=use?d[k]:cur[k];if(v!=null)d2[k]=v;});});
+  if(typeof d.aiKey==='string')d2.aiKey=d.aiKey;
   if(i.sel.trades&&i.inF.trades.present){
     const ts=d.trades.filter(t=>t&&typeof t==='object');
     if(i.mode==='samenvoegen'){const m=dovMergeTrades(T||[],ts,TRASH);d2.trades=m.list;nieuw=m.nieuw;}
