@@ -16,6 +16,14 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v1.27.4] — 2026-10-31
+
+### Gewijzigd
+- **Het Trading Plan is op elke tab even breed.** Week, Afsluiting en Log gebruiken nu dezelfde breedte als Dag, en de
+  kop verspringt niet meer als je van tab wisselt. Op een breed scherm staan ze in twee kolommen: links de context,
+  rechts het werk. Week toont daarbij de dagen van deze week, met een knop naar hun afsluiting.
+- **Lege schermen zien er overal hetzelfde uit**: één kaartje met uitleg en een knop, op dezelfde plek.
+
 ## [v1.27.3] — 2026-10-31
 
 ### Toegevoegd
