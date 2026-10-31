@@ -16,6 +16,12 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v1.27.3] — 2026-10-31
+
+### Toegevoegd
+- FAQ: **"Waarom een Trading Plan, en waarom gekoppeld aan de journal?"** bij Waarom SyncJournal · mijn visie. Zaratras
+  vertelt hoe het plan is ontstaan en hoe je het gebruikt, van weekplan tot Mori. "Wat is het Trading Plan?" linkt ernaar.
+
 ## [v1.27.2] — 2026-10-31
 
 ### Gewijzigd
