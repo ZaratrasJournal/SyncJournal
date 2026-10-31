@@ -16,6 +16,13 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v1.27.2] — 2026-10-31
+
+### Gewijzigd
+- **Charts al bij het maken van een scenario.** In het venster Nieuw scenario (en Bewerken) staat onderaan Charts: kies,
+  plak of sleep een afbeelding, of plak een TradingView-link. Ze komen bij Bewaar bij het scenario; Annuleer laat niets
+  achter.
+
 ## [v1.27.1] — 2026-10-31
 
 ### Gewijzigd

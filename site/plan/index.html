@@ -120,7 +120,7 @@ body.mori-open{padding-right:420px}
 .inp{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:9px;background:var(--raise);outline:none}
 .inp:focus{border-color:var(--accent-line);box-shadow:0 0 0 3px var(--accent-soft)}
 textarea.inp{resize:vertical;min-height:64px}
-label.f{display:block;font-size:var(--t1);font-weight:600;color:var(--muted);margin-bottom:4px}
+label.f,div.f{display:block;font-size:var(--t1);font-weight:600;color:var(--muted);margin-bottom:4px}
 .empty{padding:22px;text-align:center;color:var(--muted);font-size:var(--t2)}
 .empty b{display:block;color:var(--ink2);margin-bottom:3px;font-size:var(--t2)}
 .empty .row{justify-content:center;margin-top:12px}
@@ -252,6 +252,8 @@ button.lrij:hover{border-color:var(--accent-line);background:var(--hover)}
 .rmenu button{text-align:left;padding:8px 10px;border-radius:7px;font-size:var(--t2);color:var(--ink)}
 .rmenu button:hover,.rmenu button:focus-visible{background:var(--hover)}
 .rmenu button.danger{color:var(--red)}
+.media .btn.uit{opacity:.45;cursor:not-allowed}
+@media(max-width:600px){.media .btn.sm,.media .linkinp{min-height:38px}}   /* thumb-sized on a phone */
 .meeregel{font-size:var(--t1);color:var(--ink2);background:var(--sink);border:1px solid var(--line2);border-radius:8px;padding:6px 10px;margin:0 0 10px}
 .delwat{padding-left:18px;display:flex;flex-direction:column;gap:4px;color:var(--ink2)}
 .rnum{font-family:var(--fd);font-weight:800;font-size:var(--t4);color:var(--faint);text-align:center}
@@ -457,7 +459,7 @@ button.schip{cursor:pointer}
   .modal{border-radius:14px 14px 0 0;max-height:88vh}
 }
 /* labels in hoofdletters: één stijl overal (kaartkoppen, TRIGGER, tabelkoppen, LONG/SHORT, STERKSTE) */
-h3,.ifthen dt,.etable th,.ebox .k,.entrymark,.tag-sterk,.dir,label.f{font-size:var(--t1);font-weight:700;text-transform:uppercase;letter-spacing:.05em}
+h3,.ifthen dt,.etable th,.ebox .k,.entrymark,.tag-sterk,.dir,label.f,div.f{font-size:var(--t1);font-weight:700;text-transform:uppercase;letter-spacing:.05em}
 label.f .faint,h3 .faint{text-transform:none;letter-spacing:0;font-weight:500}
 </style>
 <!-- Cloudflare Web Analytics: zonder cookies, alleen op syncjournal.nl (niet op de werkversie of lokaal). Zie privacy.html. -->
@@ -717,6 +719,11 @@ function riskTxt(g){const r=cfg().risk[g];return r?pctTxt(r)+' risico':g+': niet
 function lagenVan(pad){if(pad==='week')return (weekOf(isoWeek(vandaag()))||{}).layers;if(pad==='day')return (dayOf(vandaag())||{}).layers;return null;}
 function laagRef(p){if(p==='draft.entry')return (draftOf()||{}).entry||null;if(p.includes('@'))return null;
   const [w,i]=p.split('.');return (lagenVan(w)||[])[+i]||null;}
+// The scenario window, also while the lightbox or a tag picker is open on top of it (they keep it as .back).
+function scenModal(){const M=S.modal;return M&&M.type==='scen'?M:M&&M.back&&M.back.type==='scen'?M.back:null;}
+// Leaving the window without Bewaar: images added in it go again; the saved scenario keeps everything it had.
+function conceptWeg(M){if(!M||M.type!=='scen')return;const vast=new Set(((scenOf(M.draft.id)||{}).s||{media:{imgs:[]}}).media.imgs);
+  (M.nieuw||[]).filter(id=>!vast.has(id)).forEach(imgWis);M.nieuw=[];}
 function draftOf(){const M=S.modal;return M&&(M.draft&&M.type==='scen'?M.draft:M.back&&M.back.draft);}
 function chipH(tag,o={}){const k=tagKlasse(tag);
   if(o.inh){const bron=o.bron==='dag'?'Uit je dagplan':'Uit je weekplan',waar=o.act==='dagOff'?'vandaag':'dit scenario';
@@ -814,7 +821,10 @@ const tvShort=u=>{try{const x=new URL(u);const p=x.pathname.length>1?x.pathname:
 function tvSnapshot(u){try{const x=new URL(u);if(!/(^|\.)tradingview\.com$/.test(x.hostname)||!/^https?:$/.test(x.protocol))return null;
   const m=x.pathname.match(/^\/x\/([A-Za-z0-9]+)\/?$/);return m?`https://s3.tradingview.com/snapshots/${m[1][0].toLowerCase()}/${m[1]}.png`:null;}catch(e){return null;}}
 // doel = "dag:<dag-id>" · "week:<week-id>" · "scen:<scenario-id>"
-function doelMedia(doel){const i=String(doel||'').indexOf(':'),soort=doel.slice(0,i),id=doel.slice(i+1);
+// doel "draft" (round 7): the scenario window's concept. It is only hung on the scenario at Bewaar; images already go
+// to IndexedDB tp3 (they have to be shrunk and shown) and are listed in M.nieuw, so Annuleer can wipe them (conceptWeg).
+function doelMedia(doel){if(doel==='draft'){const d=draftOf();if(!d)return null;if(!isObj(d.media))d.media=leegMedia();return {m:d.media,soort:'scen',draft:true};}
+  const i=String(doel||'').indexOf(':'),soort=doel.slice(0,i),id=doel.slice(i+1);
   const o=soort==='dag'?dayOf(id):soort==='week'?weekOf(id):soort==='scen'?(scenOf(id)||{}).s:null;
   if(!o)return null;if(!isObj(o.media))o.media=leegMedia();return {m:o.media,soort};}
 async function voegBeeldToe(file,doel){
@@ -827,27 +837,27 @@ async function voegBeeldToe(file,doel){
   if(!y||y.m.imgs.length>=max){toast(`Hooguit ${max} afbeeldingen ${WAAR[x.soort]}.`);return false;}
   const id='i_'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
   if(await imgZet(id,url)===undefined){toast('Opslaan van de afbeelding lukte niet (browseropslag vol?).');return false;}
-  IMG[id]=url;y.m.imgs.push(id);save();render();return id;}
+  IMG[id]=url;y.m.imgs.push(id);if(y.draft)scenModal().nieuw.push(id);else save();render();return id;}
 function voegLinkToe(url,doel){
   const x=doelMedia(doel);if(!x)return false;const u=String(url||'').trim(),max=MAX_MEDIA[x.soort];
   if(!isHttpUrl(u)){toast('Alleen http(s)-links. "'+(u.length>40?u.slice(0,40)+'…':u)+'" is geweigerd.');return false;}
   if(x.m.links.includes(u)){toast('Die link staat er al.');return false;}
   if(x.m.links.length>=max){toast(`Hooguit ${max} links ${WAAR[x.soort]}.`);return false;}
-  x.m.links.push(u);save();render();return u;}
+  x.m.links.push(u);if(!x.draft)save();render();return u;}
 const TV_KAPOT=new Set();   // voorbeeldplaatjes die niet laadden: die worden een gewone chip
 function mediaBlok(m,o){
-  const max=MAX_MEDIA[o.doel.split(':')[0]],d=esc(o.doel);
+  const soort=o.doel==='draft'?'scen':o.doel.split(':')[0],max=MAX_MEDIA[soort],d=esc(o.doel),volI=m.imgs.length>=max,volL=m.links.length>=max;
   // o.zonderBeeld: images and TradingView previews are already shown big (scenBeeld); only plain links and the controls
   const thumbs=o.zonderBeeld?'':m.imgs.map(id=>`<div class="thumb" data-i="${esc(id)}">${IMG[id]?`<img src="${esc(IMG[id])}" alt="afbeelding" data-a="lb" data-d="${d}" data-v="${esc(id)}">`:'<span class="faint small">…</span>'}<button class="x" data-a="rmBeeld" data-d="${d}" data-v="${esc(id)}" aria-label="afbeelding weghalen" title="weghalen">×</button></div>`).join('');
   const links=m.links.filter(isHttpUrl).filter(u=>!(o.zonderBeeld&&tvSnapshot(u)&&!TV_KAPOT.has(tvSnapshot(u)))).map(u=>{const tv=tvSnapshot(u),rm=`<button class="x" data-a="rmLink" data-d="${d}" data-v="${esc(u)}" aria-label="link weghalen" title="weghalen">×</button>`;
     return tv&&!TV_KAPOT.has(tv)?`<div class="tvprev"><a href="${esc(u)}" target="_blank" rel="noopener noreferrer" title="${esc(u)}"><img src="${esc(tv)}" alt="TradingView-chart" data-tv="${esc(tv)}" referrerpolicy="no-referrer"><span>📈 ${esc(tvShort(u))}</span></a>${rm}</div>`
       :`<span class="lchip"><a href="${esc(u)}" target="_blank" rel="noopener noreferrer" title="${esc(u)}">${tv?'📈 ':'🔗 '}${esc(tvShort(u))} ↗</a>${rm}</span>`;}).join('');
   return `<div class="media" data-doel="${d}">${thumbs||links?`<div class="thumbs">${thumbs}${links}</div>`:''}
-    <div class="row" style="gap:6px;flex-wrap:nowrap"><label class="btn sm" style="flex:none">+ Afbeelding<input type="file" accept="image/*" multiple hidden data-doel="${d}"></label>
-      <input class="inp linkinp" placeholder="https://… (TradingView)" aria-label="link toevoegen" style="padding:5px 8px;font-size:var(--t1);min-width:0"><button class="btn sm" data-a="linkToe" data-d="${d}" style="flex:none">+ Link</button></div>
-    <div class="enote">${m.imgs.length}/${max} afbeeldingen · ${m.links.length}/${max} links${o.hint?' · plak (Ctrl/Cmd+V) of sleep hierheen':''}</div></div>`;}
+    <div class="row" style="gap:6px;flex-wrap:nowrap"><label class="btn sm ${volI?'uit':''}" style="flex:none" ${volI?`title="Hooguit ${max} afbeeldingen ${WAAR[soort]}"`:''}>+ Afbeelding<input type="file" accept="image/*" multiple hidden data-doel="${d}" ${volI?'disabled':''}></label>
+      <input class="inp linkinp" placeholder="https://… (TradingView)" aria-label="link toevoegen" style="padding:5px 8px;font-size:var(--t1);min-width:0" ${volL?'disabled':''}><button class="btn sm" data-a="linkToe" data-d="${d}" style="flex:none" ${volL?'disabled':''}>+ Link</button></div>
+    <div class="enote">${m.imgs.length}/${max} afbeeldingen · ${m.links.length}/${max} links${volI||volL?` · vol: hooguit ${max} ${volI&&volL?'afbeeldingen en links':volI?'afbeeldingen':'links'} ${WAAR[soort]}`:o.hint?' · plak (Ctrl/Cmd+V) of sleep hierheen':''}</div></div>`;}
 // Waar een plak-actie heen gaat: het scenario dat openstaat, anders de dag; op het Week-scherm de week.
-function plakDoel(){if(S.modal)return null;const id=vandaag();
+function plakDoel(){if(S.modal)return scenModal()?'draft':null;const id=vandaag();   // in the scenario window: its Charts
   if(S.tab==='week'){const wid=isoWeek(id);return weekOf(wid)?'week:'+wid:null;}
   if(S.tab!=='dag'||!dayOf(id))return null;
   const sid=S.laatstOpen&&S.open[S.laatstOpen]&&dayOf(id).scenarios.some(s=>s.id===S.laatstOpen)?S.laatstOpen:null;
@@ -1351,6 +1361,7 @@ function modalH(){
       <div><label class="f" for="sc-stop">Stop <span class="faint">(optioneel)</span></label><input class="inp num" id="sc-stop" data-f="draft.stop" value="${esc(d.stop)}"></div>
       <div><label class="f" for="sc-tps">TP's <span class="faint">(optioneel, spatie ertussen)</span></label><input class="inp num" id="sc-tps" data-f="draft.tpsTxt" value="${esc(d.tps.join(' '))}"></div>
       <div class="full"><label class="f" for="sc-note">Notitie</label><textarea class="inp" id="sc-note" data-f="draft.note">${esc(d.note)}</textarea></div>
+      <div class="full" role="group" aria-labelledby="sc-charts-l"><div class="f" id="sc-charts-l">Charts</div>${mediaBlok(d.media,{doel:'draft',hint:1})}</div>
     </div>${scenZij(d,day)}</div>`;
     f=`${M.isNew?'':'<button class="btn danger" style="margin-right:auto" data-a="delScen">Verwijder</button>'}<button class="btn" data-a="close">Annuleer</button><button class="btn pri" data-a="saveScen">Bewaar</button>`;
   }
@@ -1398,8 +1409,8 @@ const A={
   saveSettings:()=>{const d=S.modal.draft;['A','B','C'].forEach(g=>{d.risk[g]=Math.max(0,+String(d.risk[g]).replace(',','.')||0);});
     // eerst het plan bewaren (een oude pre-flight-dag is dan al omgezet met de óude lijst), dan hernoemen, dan de lijst
     save();hernoemVinkjes(new Map(d.pre.map(x=>[x.o,dsTekst(x.t)]).filter(([o,t])=>o&&t&&t!==o)));d.pre=normPre(d.pre.map(x=>x.t));lsSet(LS.cfg,d);S.modal=null;},
-  close:()=>{S.modal=S.modal&&S.modal.back?S.modal.back:null;},   // tag-keuze vanuit het scenario: terug naar het scenario
-  ovclose:(el,ev)=>{if(ev.target!==el)return false;S.modal=null;},
+  close:()=>{if(S.modal&&S.modal.back){S.modal=S.modal.back;return;}conceptWeg(S.modal);S.modal=null;},   // tag-keuze of lightbox vanuit het scenario: terug naar het scenario
+  ovclose:(el,ev)=>{if(ev.target!==el)return false;if(S.modal&&S.modal.back){S.modal=S.modal.back;return;}conceptWeg(S.modal);S.modal=null;},
   maakDag:()=>{const id=vandaag();if(!PL.days[id])PL.days[id]=nieuweDag(id);save();},
   maakWeek:()=>{const wid=isoWeek(vandaag());if(!PL.weeks[wid])PL.weeks[wid]=nieuweWeek(wid);Object.values(PL.days).filter(d=>d.week===wid).forEach(d=>snoeiDag(d,PL.weeks[wid]));save();},
   ds:el=>{const d=dayOf(vandaag()),t=el.dataset.v,i=d.dagstart.indexOf(t);if(i>=0)d.dagstart.splice(i,1);else d.dagstart.push(t);save();},
@@ -1417,8 +1428,8 @@ const A={
   picker:el=>{const back=S.modal&&S.modal.type==='scen'?S.modal:null;S.modal={type:'picker',path:el.dataset.p,back};},
   pick:el=>{const L=laagRef(S.modal.path);if(!L)return;toggleTag(L,el.dataset.v);bewaarLaagPad(S.modal.path);},
   // scenario's
-  newScen:()=>{const day=dayOf(vandaag());S.modal={type:'scen',isNew:true,day:day.id,draft:nieuwScenario(day)};},
-  editScen:el=>{const x=scenOf(el.dataset.s);if(x)S.modal={type:'scen',day:x.day.id,draft:JSON.parse(JSON.stringify(x.s))};},
+  newScen:()=>{const day=dayOf(vandaag());S.modal={type:'scen',isNew:true,day:day.id,draft:nieuwScenario(day),nieuw:[]};},
+  editScen:el=>{const x=scenOf(el.dataset.s);if(x)S.modal={type:'scen',day:x.day.id,draft:JSON.parse(JSON.stringify(x.s)),nieuw:[]};},
   dagOff:el=>{const d=dayOf(vandaag());if(!d)return;const k=el.dataset.v,i=d.off.indexOf(k);if(i>=0)d.off.splice(i,1);else d.off.push(k);save();},
   off:el=>{const x=el.dataset.s&&scenOf(el.dataset.s),d=x?x.s:draftOf();if(!d)return;const k=el.dataset.v,i=d.off.indexOf(k);if(i>=0)d.off.splice(i,1);else d.off.push(k);if(x)save();},
   toggle:el=>{const id=el.dataset.s;S.open[id]=!S.open[id];
@@ -1440,7 +1451,7 @@ const A={
   moriPaneel:()=>{moriPaneel(!MORI.open);},
   moriDicht:()=>{moriPaneel(false);render();const k=document.querySelector('.top [data-a="moriPaneel"]');if(k)k.focus();return false;},
   ontkoppel:el=>{const x=scenOf(el.dataset.s);if(!x)return;x.s.trades=(x.s.trades||[]).filter(i=>String(i)!==el.dataset.v);save();},
-  lb:el=>{S.modal={type:'lb',doel:el.dataset.d,id:el.dataset.v};},
+  lb:el=>{S.modal={type:'lb',doel:el.dataset.d,id:el.dataset.v,back:scenModal()};},
   afsl:el=>{S.afsl=el.dataset.v;},
   afslDag:el=>{S.afslDag=el.dataset.v;S.afslEdit=null;},
   afslEdit:el=>{S.afslEdit=S.afslEdit===el.dataset.s?null:el.dataset.s;},
@@ -1448,8 +1459,9 @@ const A={
   logReset:()=>{S.logF={status:'',pb:'',dir:''};},
   logF:el=>{const k=el.dataset.p;S.logF[k]=S.logF[k]===el.dataset.v?'':el.dataset.v;},
   lbStap:el=>{const L=lbLijst(S.modal.doel).map(x=>x.key),i=L.indexOf(S.modal.id);if(L.length)S.modal.id=L[(i+ +el.dataset.v+L.length)%L.length];},
-  rmBeeld:el=>{const x=doelMedia(el.dataset.d),id=el.dataset.v;if(!x)return;x.m.imgs=x.m.imgs.filter(i=>i!==id);imgWis(id);save();if(S.modal&&S.modal.type==='lb')S.modal=null;},
-  rmLink:el=>{const x=doelMedia(el.dataset.d);if(!x)return;x.m.links=x.m.links.filter(u=>u!==el.dataset.v);save();if(S.modal&&S.modal.type==='lb')S.modal=null;},
+  // In the concept nothing is wiped yet: an image you remove there and then Annuleer is still there (saveScen wipes).
+  rmBeeld:el=>{const x=doelMedia(el.dataset.d),id=el.dataset.v;if(!x)return;x.m.imgs=x.m.imgs.filter(i=>i!==id);if(!x.draft){imgWis(id);save();}if(S.modal&&S.modal.type==='lb')S.modal=S.modal.back||null;},
+  rmLink:el=>{const x=doelMedia(el.dataset.d);if(!x)return;x.m.links=x.m.links.filter(u=>u!==el.dataset.v);if(!x.draft)save();if(S.modal&&S.modal.type==='lb')S.modal=S.modal.back||null;},
   linkToe:el=>{const inp=el.closest('.media').querySelector('.linkinp'),v=inp?inp.value:'';if(!v.trim())return false;if(voegLinkToe(v,el.dataset.d)===false)return false;},
   ctx:()=>{S.ctxOpen=!S.ctxOpen;},
   chk:el=>{const x=scenOf(el.dataset.s);if(!x)return;const c=x.s.checked,i=c.indexOf(el.dataset.v);if(i>=0)c.splice(i,1);else c.push(el.dataset.v);save();},
@@ -1466,13 +1478,15 @@ const A={
   dset:el=>{S.modal.draft[el.dataset.p]=el.dataset.v;},
   saveScen:()=>{const M=S.modal,d=M.draft,day=dayOf(M.day);if(!day)return;
     d.pair=pairBase(d.pair)||'BTC';if(!d.title.trim())d.title=(d.pb||'Scenario')+' '+d.pair;
+    const was=((scenOf(d.id)||{}).s||{media:{imgs:[]}}).media.imgs;
     if(M.isNew)day.scenarios.push(d);else{const i=day.scenarios.findIndex(s=>s.id===d.id);if(i>=0)day.scenarios[i]=d;}
+    [...was,...(M.nieuw||[])].filter(id=>!d.media.imgs.includes(id)).forEach(imgWis);   // removed in the window: gone now
     S.modal=null;save();},
   // Delete asks in the page (no confirm()): from the edit window (back = that window) or from the ⋯ menu.
   delScen:el=>{const M=S.modal,sid=el.dataset.s||(M&&M.draft&&M.draft.id),x=sid&&scenOf(sid);if(!x)return;
     S.modal={type:'delVraag',sid:x.s.id,back:M&&M.type==='scen'?M:null};},
   delNee:()=>{S.modal=S.modal.back||null;},
-  delJa:()=>{const x=scenOf(S.modal.sid);S.modal=null;if(!x)return;const day=x.day,t=titel(x.s);
+  delJa:()=>{const x=scenOf(S.modal.sid),venster=S.modal.back;S.modal=null;conceptWeg(venster);if(!x)return;const day=x.day,t=titel(x.s);
     (x.s.media.imgs||[]).forEach(imgWis);   // the scenario's images go; its links go with it; linked trades stay in the journal
     day.scenarios=day.scenarios.filter(s=>s.id!==x.s.id);day.volgorde=day.volgorde.filter(id=>id!==x.s.id);delete S.open[x.s.id];if(S.laatstOpen===x.s.id)S.laatstOpen='';
     save();toast('Verwijderd: '+t);return false;},
@@ -1494,7 +1508,8 @@ document.addEventListener('change',ev=>{const el=ev.target;if(el&&el.dataset&&el
 document.addEventListener('keydown',ev=>{if(ev.key==='Escape'&&S.menu){S.menu=null;render();return;}
   if(ev.key==='Escape'&&S.modal){A.close();render();}
   if(S.modal&&S.modal.type==='lb'&&(ev.key==='ArrowLeft'||ev.key==='ArrowRight')){ev.preventDefault();A.lbStap({dataset:{v:ev.key==='ArrowLeft'?-1:1}});render();}
-  const t=ev.target;if(ev.key==='Enter'&&t&&(t.id==='ds-nieuw'||t.id==='set-ds-nieuw')){ev.preventDefault();const b=t.parentElement.querySelector('button');if(b)b.click();}
+  const t=ev.target;if(ev.key==='Enter'&&t&&t.classList&&t.classList.contains('linkinp')){ev.preventDefault();const b=t.parentElement.querySelector('[data-a="linkToe"]');if(b)b.click();return;}
+  if(ev.key==='Enter'&&t&&(t.id==='ds-nieuw'||t.id==='set-ds-nieuw')){ev.preventDefault();const b=t.parentElement.querySelector('button');if(b)b.click();}
   if(ev.key==='Enter'&&t&&t.dataset&&t.dataset.ds!=null){ev.preventDefault();t.blur();}
 });
 // Een playbook kiezen vult de entry-laag en de grade uit het journal-playbook (laatste laag = entry).
