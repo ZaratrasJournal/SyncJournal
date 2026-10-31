@@ -16,6 +16,20 @@ Na elke community-release verschijnt hier een nieuw blok. Vragen of feedback? Dr
 
 ---
 
+## [v1.27.1] — 2026-10-31
+
+### Gewijzigd
+- **Een scenario maken of bewerken is overzichtelijker.** Het venster is op een groot scherm twee keer zo breed: links
+  vul je het scenario in, rechts zie je je playbook. De criteria staan onder elkaar met "verplicht" erbij, "Niet als" per
+  regel, target en min. R:R als kengetallen, en de lagen en de edge van deze combinatie.
+- **Richting en grade in kleur** in het scenario-venster: Long groen, Short rood, A groen, B blauw, C amber, net als
+  op de rest van de pagina's.
+
+### Fixed
+- **Afbeeldingen en links van een scenario gaan mee als je een trade koppelt.** Had de trade al een screenshot, dan
+  gingen de afbeeldingen uit je plan verloren. Nu komen ze erbij (tot 8 per trade); wat de trade al had blijft staan. In
+  "Zet om in trade" staat hoeveel er meegaat.
+
 ## [v1.27] — 2026-10-30
 
 ### Toegevoegd
