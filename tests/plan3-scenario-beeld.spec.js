@@ -53,7 +53,7 @@ const PB = Object.assign({}, H.PBOOK, { 'Trend-pullback': Object.assign({}, H.PB
   let k = await kol();
   ok('1680: de pagina is ± 1650 breed, de trechter 300–320, de scenario\'s krijgen de rest', k.pagina >= 1600 && k.links >= 290 && k.links <= 330 && k.rechts >= 1250, JSON.stringify(k));
   for (const tab of ['week', 'afsluiting', 'log']) { await p.click(`nav.tabs [data-v="${tab}"]`); await p.waitForTimeout(80);
-    ok(`1680, ${tab}: blijft ± 1250 breed (breder rekt alleen knoppen en vlakken uit)`, await p.evaluate(() => { const w = document.getElementById('app').getBoundingClientRect().width; return w >= 1200 && w <= 1290; })); }
+    ok(`1680, ${tab}: dezelfde breedte als Dag (ronde 8)`, await p.evaluate(() => { const w = document.querySelector('#app .pagehead').getBoundingClientRect().width; return w >= 1600; })); }
   await p.click('nav.tabs [data-v="dag"]'); await p.waitForTimeout(80);
   await breed(1280); k = await kol();
   ok('1280: trechter 300–320, scenario\'s ≥ 880', k.links >= 290 && k.links <= 330 && k.rechts >= 880, JSON.stringify(k));

@@ -46,14 +46,25 @@ button{cursor:pointer;background:none;border:0}
 a{color:var(--accent)}
 .num{font-variant-numeric:tabular-nums}
 .muted{color:var(--muted)} .faint{color:var(--faint)} .small{font-size:var(--t1)}
-/* round 4: Dag gets up to 1680 px, so an open scenario has room for its chart, its plan and its execution side by side.
-   Week, Afsluiting and Log stay at 1280: wider only stretches their buttons and boxes. */
-.wrap{max-width:1280px;margin:0 auto;padding:0 16px 80px}
-body.breed .wrap,body.breed .top-in{max-width:1680px}
+/* round 8: one width for every tab (round 4 gave only Dag 1680 px). Week, Afsluiting and Log use it with two columns
+   (.kolom2: context on the left, the work on the right) instead of stretching; under 1100 px one column. */
+.wrap{max-width:1680px;margin:0 auto;padding:0 16px 80px}
+.kolom2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;align-items:start}
+.kolom2.log2{grid-template-columns:minmax(0,1.5fr) minmax(320px,1fr)}
+@media(max-width:1099px){.kolom2,.kolom2.log2{grid-template-columns:minmax(0,1fr)}.logzij{order:-1}}
+/* the empty state of every tab: one card, same width, title, explanation and button on the same lines */
+.leegkaart{max-width:680px;margin:28px auto 0;display:grid;grid-template-rows:auto calc(3 * 1.45em) auto;justify-items:center;align-items:start;gap:6px;padding:28px 24px}
+.leegkaart b{margin:0}
+.leegkaart p{max-width:560px}
+.leegkaart .row{margin-top:6px}
+.wkdag{display:flex;align-items:center;gap:10px;padding:8px 0;font-size:var(--t2)}
+.logdagen>.filters:first-child{margin-top:0}   /* top in line with the right column */
+.wkdag+.wkdag{border-top:1px solid var(--line2)}
+.wkdag .btn{margin-left:auto}
 
 /* header */
 .top{position:sticky;top:0;z-index:20;background:var(--bg);border-bottom:1px solid var(--line)}
-.top-in{max-width:1280px;margin:0 auto;padding:10px 16px 0;display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px}
+.top-in{max-width:1680px;margin:0 auto;padding:10px 16px 0;display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px}
 .brand{display:flex;align-items:center;gap:10px;margin-right:auto;min-width:0;text-decoration:none;color:inherit}
 .logo{width:30px;height:30px;flex:none}
 .brand b{font-family:var(--fd);font-size:var(--t3);font-weight:800;letter-spacing:-.01em}
@@ -996,8 +1007,8 @@ function dagView(){
   const id=vandaag(),d=dayOf(id);
   if(!d){const vg=vorigeDag(id);
     return `<div class="pagehead"><div><h1>${cap(datumLang(id))}</h1><p>Week ${isoWeek(id).slice(-2)}</p></div></div>
-    <div class="card empty"><b>Nog geen plan voor vandaag</b>Maak een dagplan: lagen, levels, je dagstart en je scenario's. Een weekplan is niet nodig.
-      <div class="row"><button class="btn pri" data-a="maakDag">Maak dagplan</button>${vg?`<button class="btn" data-a="overnemen" data-v="${vg}" title="lagen, levels en de nog open scenario's">${vg===dagErvoor(id)?'Gisteren overnemen':'Overnemen van '+datumKort(vg)}</button>`:''}</div></div>`;}
+    ${leegKaart('Nog geen plan voor vandaag',"Maak een dagplan: lagen, levels, je dagstart en je scenario's. Een weekplan is niet nodig.",
+      `<button class="btn pri" data-a="maakDag">Maak dagplan</button>${vg?`<button class="btn" data-a="overnemen" data-v="${vg}" title="lagen, levels en de nog open scenario's">${vg===dagErvoor(id)?'Gisteren overnemen':'Overnemen van '+datumKort(vg)}</button>`:''}`)}`;}
   const c=cfg(),w=weekOf(d.week),rk=rangschik(d.scenarios,d,w),bijId=Object.fromEntries(d.scenarios.map(s=>[s.id,s]));
   const pf=c.pre.length,pfAf=c.pre.filter(t=>d.dagstart.includes(t)).length;
   const geenSterkste=rk.length>1&&!rk.some(x=>x.sterkste)&&rk[0].e&&(rk[0].e.basis==='live'?rk[0].e.live:rk[0].e.bt).n<BASIS_LIVE_MIN;
@@ -1213,19 +1224,28 @@ function gevoelBlok(){const R=JR.klaar?gevoelRijen():[];
 const gevoelKort=d=>d.emoties.length?d.emoties.join(' · '):d.mental?'mentaal '+d.mental+'/5 (oud)':'';
 
 // ───────────────────────── Week / Afsluiting / Log ─────────────────────────
+// The empty state of a tab (round 8): the same card everywhere, so switching tabs does not move it.
+const leegKaart=(titel,uitleg,knoppen)=>`<div class="card empty leegkaart"><b>${titel}</b><p>${uitleg}</p><div class="row">${knoppen}</div></div>`;
 function weekView(){
   const wid=isoWeek(vandaag()),w=weekOf(wid),b=weekBereik(wid);
   const kop=`<div class="pagehead"><div><h1>Week ${wid.slice(-2)}</h1><p>${datumLang(b.van)} – ${datumLang(b.tot)} · optioneel: zonder weekplan werkt de dag gewoon</p></div></div>`;
-  if(!w)return kop+`<div class="card empty"><b>Nog geen weekplan</b>Een weekplan geeft je dagen hun context: lagen, levels, no-trade en focus.
-    <div class="row"><button class="btn pri" data-a="maakWeek">Maak weekplan</button></div></div>`;
-  return kop+`<div class="two">
+  if(!w)return kop+leegKaart('Nog geen weekplan','Een weekplan geeft je dagen hun context: lagen, levels, no-trade en focus.','<button class="btn pri" data-a="maakWeek">Maak weekplan</button>');
+  return kop+`<div class="kolom2"><div class="wkcontext stack">
     <div class="card pad"><h3 style="margin-bottom:4px"><span class="kd c-violet"></span>Lagen</h3>${weekRegels(w.layers)}
       <div class="enote">Tags komen uit je journal. Elke dag van deze week erft deze lagen.</div></div>
     <div class="card pad"><label class="f" for="w-levels"><span class="kd c-amber"></span>Levels</label><textarea class="inp" id="w-levels" data-f="week.levels" placeholder="één per regel, bv. BTC 78.150 weekly high">${esc(w.levels)}</textarea></div>
     <div class="card pad"><label class="f" for="w-nt"><span class="kd c-red"></span>No-trade / nieuws</label><input class="inp" id="w-nt" data-f="week.noTrade" value="${esc(w.noTrade)}" placeholder="één regel, bv. do FOMC 19:00"></div>
     <div class="card pad"><label class="f" for="w-focus"><span class="kd c-green"></span>Focus deze week</label><input class="inp" id="w-focus" data-f="week.focus" value="${esc(w.focus)}" placeholder="één regel"></div></div>
-    <div class="card pad" style="margin-top:12px"><h3 style="margin-bottom:6px"><span class="kd c-teal"></span>Afbeeldingen en links</h3>${mediaBlok(w.media,{doel:'week:'+wid,hint:1})}</div>`;
+    <div class="wkwerk stack"><div class="card pad"><h3 style="margin-bottom:6px"><span class="kd c-teal"></span>Afbeeldingen en links</h3>${mediaBlok(w.media,{doel:'week:'+wid,hint:1})}</div>
+      ${weekDagen(b)}</div></div>`;
 }
+// The days of this week that have a plan, with how their scenarios went; a tap opens that day in Afsluiting.
+function weekDagen(b){const ds=Object.values(PL.days).filter(d=>d.id>=b.van&&d.id<=b.tot).sort((a,c)=>a.id.localeCompare(c.id));
+  const tel=(d,k)=>d.scenarios.filter(s=>s.status===k).length,mv=(n,een,veel)=>n+' '+(n===1?een:veel);
+  return `<div class="card pad wkdagen"><h3 style="margin-bottom:4px"><span class="kd c-accent"></span>Dagen van deze week</h3>${ds.length?ds.map(d=>`<div class="wkdag"><b>${d.id===vandaag()?'Vandaag':cap(datumKort(d.id))}</b>
+    <span class="muted small">${[mv(d.scenarios.length,'scenario',"scenario's"),tel(d,'genomen')?tel(d,'genomen')+' genomen':'',tel(d,'gemist')?tel(d,'gemist')+' gemist':'',tel(d,'open')&&d.id<vandaag()?tel(d,'open')+' nog open':''].filter(Boolean).join(' · ')}</span>
+    <button class="btn sm ghost" data-a="afslNaar" data-v="${esc(d.id)}">Afsluiting</button></div>`).join('')
+    :'<div class="enote">Nog geen dagplan deze week. Maak er een in Dag; dan staat hij hier.</div>'}</div>`;}
 // ───────────────────────── blok D: plan tegenover resultaat (besluiten 5, 19, 21) ─────────────────────────
 // Binnen plan = live, gesloten trades die in Scenario.trades staan; buiten plan = live, gesloten trades in de periode
 // die bij geen enkel scenario horen, vanaf je eerste plan-dag (zoals Tendencies → Plan in de journal: trades van vóór
@@ -1264,37 +1284,38 @@ function statusKnoppen(s,kort){return `<div class="st" role="group" aria-label="
 function afslStart(){const ids=Object.keys(PL.days).sort();return ids.includes(vandaag())?vandaag():ids.pop()||null;}
 function afslView(){
   const ids=Object.keys(PL.days).sort().reverse();
-  if(!ids.length)return `<div class="pagehead"><div><h1>Afsluiting</h1></div></div><div class="card empty"><b>Nog niets af te sluiten</b>Maak eerst een dagplan in Dag; na de sessie rekent de afsluiting zichzelf uit en schrijf jij één les.<div class="row"><button class="btn pri" data-a="tab" data-v="dag">Naar Dag</button></div></div>`;
+  if(!ids.length)return `<div class="pagehead"><div><h1>Afsluiting</h1><p>Na de sessie: wat uitkwam, en één les</p></div></div>`+leegKaart('Nog niets af te sluiten','Maak eerst een dagplan in Dag; na de sessie rekent de afsluiting zichzelf uit en schrijf jij één les.','<button class="btn pri" data-a="tab" data-v="dag">Naar Dag</button>');
   if(!S.afslDag||!PL.days[S.afslDag])S.afslDag=afslStart();
   const isWeek=S.afsl==='week',dag=PL.days[S.afslDag],wid=dag.week||isoWeek(dag.id),bw=weekBereik(wid);
   const days=isWeek?Object.values(PL.days).filter(d=>(d.week||isoWeek(d.id))===wid).sort((a,b)=>b.id.localeCompare(a.id)):[dag];
   const b=blokD(days,isWeek?(x=>x>=bw.van&&x<=bw.tot):(x=>x===dag.id)),scen=days.flatMap(d=>d.scenarios),open=scen.filter(s=>s.status==='open');
   const w=weekOf(wid),les=isWeek?(w?w.les:''):dag.les,wanneer=isWeek?'deze week':dag.id===vandaag()?'vandaag':'op '+datumKort(dag.id);
+  const lesH=`<div class="card pad"><label class="f" for="af-les">Les van ${isWeek?'deze week':dag.id===vandaag()?'vandaag':datumKort(dag.id)}</label>
+    <textarea class="inp" id="af-les" data-f="${isWeek?'les.week.'+wid:'les.dag.'+dag.id}" placeholder="Eén ding dat je ${isWeek?'volgende week':'morgen'} anders doet.">${esc(les)}</textarea></div>`;
   return `<div class="pagehead"><div><h1>Afsluiting</h1><p>${isWeek?'Week '+wid.slice(-2)+' · '+datumKort(bw.van)+' – '+datumKort(bw.tot):cap(datumLang(dag.id))} · rekent zichzelf uit, jij schrijft één les</p>${!isWeek&&gevoelKort(dag)?`<p class="afgevoel">Gevoel bij de dagstart: ${esc(gevoelKort(dag))}</p>`:''}</div>
     <span class="seg"><button class="${!isWeek?'on':''}" data-a="afsl" data-v="dag">Dag</button><button class="${isWeek?'on':''}" data-a="afsl" data-v="week">Week</button></span></div>
   ${!isWeek?`<div class="dagkeuze"><span class="seg sm">${ids.slice(0,7).map(id=>`<button class="${id===dag.id?'on':''}" data-a="afslDag" data-v="${id}">${id===vandaag()?'Vandaag':datumKort(id)}</button>`).join('')}</span></div>`:''}
-  ${!scen.length?`<div class="card empty"><b>Geen scenario's ${isWeek?'deze week':'op deze dag'}</b>Maak in Dag een scenario aan; dan rekent de afsluiting zich vanzelf uit.</div>`:`
-  ${open.length?`<div class="card pad afopen" style="margin-bottom:12px"><h3 style="margin-bottom:8px">Nog open · sluit af met één tik</h3>${open.map(s=>`<div class="afrij" data-s="${esc(s.id)}"><div class="row" style="gap:6px;margin-bottom:5px">${metaH(s)}<b>${esc(titel(s))}</b></div>${statusKnoppen(s,true)}</div>`).join('')}</div>`:''}
+  ${!scen.length?`<div class="card empty"><b>Geen scenario's ${isWeek?'deze week':'op deze dag'}</b>Maak in Dag een scenario aan; dan rekent de afsluiting zich vanzelf uit.</div><div style="margin-top:12px">${lesH}</div>`:`
+  <div class="kolom2"><div class="afcontext stack">
+  ${open.length?`<div class="card pad afopen"><h3 style="margin-bottom:8px">Nog open · sluit af met één tik</h3>${open.map(s=>`<div class="afrij" data-s="${esc(s.id)}"><div class="row" style="gap:6px;margin-bottom:5px">${metaH(s)}<b>${esc(titel(s))}</b></div>${statusKnoppen(s,true)}</div>`).join('')}</div>`:''}
+    <div class="card pad"><h3 style="margin-bottom:8px">Scenario's</h3><div class="daychips">${scen.map(s=>schipH(s,{act:'afslEdit'})).join('')}</div>
+      ${scen.some(s=>s.id===S.afslEdit)?(()=>{const s=scen.find(x=>x.id===S.afslEdit);return `<div style="margin-top:10px">${statusKnoppen(s,true)}<div class="row" style="margin-top:6px"><button class="btn sm" data-a="convert" data-s="${esc(s.id)}" data-v="koppel">Koppel trade</button></div></div>`;})():''}
+      ${scen.filter(s=>s.status==='genomen'&&!(s.trades||[]).length).map(s=>`<div class="enote">“${esc(titel(s))}” is genomen maar nog niet gekoppeld · <button class="btn sm ghost" data-a="convert" data-s="${esc(s.id)}" data-v="koppel">koppel</button></div>`).join('')}</div>
+  </div><div class="afwerk stack">
   <div class="three">
     <div class="card kpi c-accent"><div class="s">Uitgekomen</div><div class="v">${b.uit}<span class="faint" style="font-size:var(--t2)"> / ${b.n}</span></div><div class="s">${b.open?b.open+' nog open':'alles afgesloten'}</div></div>
     <div class="card kpi c-green"><div class="s">Genomen</div><div class="v">${b.gen}</div><div class="s">${b.gekoppeld?b.gekoppeld+' trade'+(b.gekoppeld===1?'':'s')+' gekoppeld':'nog geen trade gekoppeld'}</div></div>
     <div class="card kpi c-amber"><div class="s">Gemist</div><div class="v">${b.gem}</div><div class="s">${b.gemR.n?'samen '+rS(b.gemR.sum):b.gem?'R onbekend':'niets laten liggen'}</div></div>
   </div>
-  <div class="two" style="margin-top:12px">
-    <div class="card pad"><h3 style="margin-bottom:8px">Scenario's</h3><div class="daychips">${scen.map(s=>schipH(s,{act:'afslEdit'})).join('')}</div>
-      ${scen.some(s=>s.id===S.afslEdit)?(()=>{const s=scen.find(x=>x.id===S.afslEdit);return `<div style="margin-top:10px">${statusKnoppen(s,true)}<div class="row" style="margin-top:6px"><button class="btn sm" data-a="convert" data-s="${esc(s.id)}" data-v="koppel">Koppel trade</button></div></div>`;})():''}
-      ${scen.filter(s=>s.status==='genomen'&&!(s.trades||[]).length).map(s=>`<div class="enote">“${esc(titel(s))}” is genomen maar nog niet gekoppeld · <button class="btn sm ghost" data-a="convert" data-s="${esc(s.id)}" data-v="koppel">koppel</button></div>`).join('')}</div>
     <div class="card pad"><h3 style="margin-bottom:8px">Binnen plan tegenover buiten plan · live</h3>${planVsH(b)}<div class="enote" style="font-size:var(--t2)">${buitenZin(b,wanneer)}</div></div>
-  </div>`}
-  <div class="card pad" style="margin-top:12px"><label class="f" for="af-les">Les van ${isWeek?'deze week':dag.id===vandaag()?'vandaag':datumKort(dag.id)}</label>
-    <textarea class="inp" id="af-les" data-f="${isWeek?'les.week.'+wid:'les.dag.'+dag.id}" placeholder="Eén ding dat je ${isWeek?'volgende week':'morgen'} anders doet.">${esc(les)}</textarea></div>`;
+    ${lesH}</div></div>`}`;
 }
 
 // ───────────────────────── Log ─────────────────────────
 function logView(){
   const F=S.logF,days=Object.values(PL.days).sort((a,b)=>b.id.localeCompare(a.id));
   const kop=`<div class="pagehead"><div><h1>Log</h1><p>Alle dagen, nieuwste boven. Tik een scenario om de status achteraf te zetten of een trade te koppelen.</p></div></div>`;
-  if(!days.length)return kop+`<div class="card empty"><b>Nog geen dagen in je log</b>Elke dag met een plan komt hier, nieuwste boven, met je voorspel-score erboven.<div class="row"><button class="btn pri" data-a="tab" data-v="dag">Maak een dagplan</button></div></div>`;
+  if(!days.length)return kop+leegKaart('Nog geen dagen in je log','Elke dag met een plan komt hier, nieuwste boven, met je voorspel-score ernaast.','<button class="btn pri" data-a="tab" data-v="dag">Maak een dagplan</button>');
   const b=blokD(days),maand=vandaag().slice(0,7),bm=blokD(days.filter(d=>d.id.slice(0,7)===maand),x=>x.slice(0,7)===maand);
   const keep=s=>(!F.status||s.status===F.status)&&(!F.pb||s.pb===F.pb)&&(!F.dir||s.dir===F.dir);
   const rows=days.map(d=>({d,sc:d.scenarios.filter(keep)})).filter(x=>x.sc.length||(!F.status&&!F.pb&&!F.dir));
@@ -1302,11 +1323,8 @@ function logView(){
   // filters als pills in hun kleur (status, playbook = setup-kleur, richting); nog eens tikken = filter uit
   const fchip=(k,v,l,cls)=>`<button class="chip pick ${cls} ${F[k]===v?'on':''}" data-a="logF" data-p="${k}" data-v="${esc(v)}" aria-pressed="${F[k]===v}">${esc(l)}</button>`;
   const buiten=days.length?d=>JR.trades.filter(t=>isLive(t)&&t.status==='closed'&&tradeDag(t)===d.id&&!bezetting().has(String(t.id))).length:()=>0;
-  return kop+`<div class="card score">${scoreZin(b)}
-      <div class="bar2" title="genomen · gemist · niet uitgekomen · ongeldig">${[['gen','var(--green)'],['gem','var(--amber)'],['niet','var(--faint)'],['ong','var(--red)']].map(([k,c])=>`<i style="width:${b.beslist?b[k]/b.beslist*100:0}%;background:${c}"></i>`).join('')}</div>
-      <div class="row small muted" style="margin-top:6px;gap:12px"><span><span class="sdot genomen"></span> genomen ${b.gen}</span><span><span class="sdot gemist"></span> gemist ${b.gem}</span><span><span class="sdot niet"></span> niet uit ${b.niet}</span><span><span class="sdot ongeldig"></span> ongeldig ${b.ong}</span>${b.open?`<span><span class="sdot open"></span> open ${b.open}</span>`:''}</div></div>
-    <div class="card pad" style="margin-top:12px"><h3 style="margin-bottom:8px">Binnen plan tegenover buiten plan · live · ${MAANDEN[+maand.slice(5)-1]}</h3>${planVsH(bm)}<div class="enote" style="font-size:var(--t2)">${buitenZin(bm,'deze maand')}</div></div>
-    ${gevoelBlok()}
+  // round 8: the days on the left, the score, plan against result and the morning feeling beside them
+  return kop+`<div class="kolom2 log2"><div class="logdagen">
     <div class="filters" aria-label="filters"><div class="fgroep" aria-label="status">${STATUS.map(([k])=>fchip('status',k,STATUS_KORT[k],'st-'+k)).join('')}</div>
       ${pbs.length?`<div class="fgroep" aria-label="playbook">${pbs.map(p=>fchip('pb',p,p,'set')).join('')}</div>`:''}<div class="fgroep" aria-label="richting">${fchip('dir','long','Long','d-long')}${fchip('dir','short','Short','d-short')}</div>
       ${F.status||F.pb||F.dir?'<button class="btn sm ghost" data-a="logReset">Wis filters</button>':''}</div>
@@ -1315,7 +1333,12 @@ function logView(){
       <div class="daychips">${sc.map(s=>schipH(s)).join('')||'<span class="faint small">Geen scenario\'s.</span>'}</div>
       ${sc.some(s=>s.id===S.logEdit)?(()=>{const s=sc.find(x=>x.id===S.logEdit);return `<div style="margin-top:8px">${statusKnoppen(s,true)}<div class="row" style="margin-top:6px"><button class="btn sm" data-a="convert" data-s="${esc(s.id)}" data-v="koppel">Koppel trade</button>${(s.trades||[]).length?`<span class="small muted">${s.trades.length} gekoppeld</span>`:''}</div></div>`;})():''}
       ${d.les?`<div class="small muted" style="margin-top:7px">📝 ${esc(d.les)}</div>`:''}</div>`;}).join('')
-      :'<div class="empty"><b>Niets in beeld met deze filters</b>Er zijn wel scenario\'s, maar geen enkele past. <button class="btn sm ghost" data-a="logReset">Wis filters</button></div>'}</div>`;
+      :'<div class="empty"><b>Niets in beeld met deze filters</b>Er zijn wel scenario\'s, maar geen enkele past. <button class="btn sm ghost" data-a="logReset">Wis filters</button></div>'}</div></div>
+  <div class="logzij stack"><div class="card score">${scoreZin(b)}
+      <div class="bar2" title="genomen · gemist · niet uitgekomen · ongeldig">${[['gen','var(--green)'],['gem','var(--amber)'],['niet','var(--faint)'],['ong','var(--red)']].map(([k,c])=>`<i style="width:${b.beslist?b[k]/b.beslist*100:0}%;background:${c}"></i>`).join('')}</div>
+      <div class="row small muted" style="margin-top:6px;gap:12px"><span><span class="sdot genomen"></span> genomen ${b.gen}</span><span><span class="sdot gemist"></span> gemist ${b.gem}</span><span><span class="sdot niet"></span> niet uit ${b.niet}</span><span><span class="sdot ongeldig"></span> ongeldig ${b.ong}</span>${b.open?`<span><span class="sdot open"></span> open ${b.open}</span>`:''}</div></div>
+    <div class="card pad"><h3 style="margin-bottom:8px">Binnen plan tegenover buiten plan · live · ${MAANDEN[+maand.slice(5)-1]}</h3>${planVsH(bm)}<div class="enote" style="font-size:var(--t2)">${buitenZin(bm,'deze maand')}</div></div>
+    ${gevoelBlok()}</div></div>`;
 }
 
 // ───────────────────────── modals ─────────────────────────
@@ -1390,7 +1413,6 @@ function renderTop(){
     <nav class="tabs" aria-label="Onderdelen">${TABS.map(([k,l])=>`<button class="${S.tab===k?'on':''}" data-a="tab" data-v="${k}" ${S.tab===k?'aria-current="page"':''}>${l}</button>`).join('')}</nav>`;
 }
 function render(){
-  document.body.classList.toggle('breed',S.tab==='dag');
   renderTop();
   const h=S.tab==='week'?weekView():S.tab==='afsluiting'?afslView():S.tab==='log'?logView():dagView();
   document.getElementById('app').innerHTML=h;
@@ -1454,6 +1476,7 @@ const A={
   lb:el=>{S.modal={type:'lb',doel:el.dataset.d,id:el.dataset.v,back:scenModal()};},
   afsl:el=>{S.afsl=el.dataset.v;},
   afslDag:el=>{S.afslDag=el.dataset.v;S.afslEdit=null;},
+  afslNaar:el=>{S.tab='afsluiting';S.afsl='dag';S.afslDag=el.dataset.v;S.afslEdit=null;window.scrollTo(0,0);},
   afslEdit:el=>{S.afslEdit=S.afslEdit===el.dataset.s?null:el.dataset.s;},
   logEdit:el=>{S.logEdit=S.logEdit===el.dataset.s?null:el.dataset.s;},
   logReset:()=>{S.logF={status:'',pb:'',dir:''};},

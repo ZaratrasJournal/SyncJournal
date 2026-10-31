@@ -81,6 +81,7 @@ module.exports = [
   'plan3-ronde5',            // criteria-knop, Plan in blokken, bewerken/verwijderen (⋯-menu, bevestiging in de pagina), volgorde
   'plan3-ronde6',            // scenario-venster: beeld mee bij koppelen, breed venster met playbook rechts, richting/grade in kleur
   'plan3-ronde7',            // charts al in het scenario-venster: concept tot Bewaar, Annuleer laat niets achter in tp3
+  'plan3-ronde8',            // één breedte voor alle tabs: kop en inhoud gelijk, twee kolommen, dezelfde lege staat
 
   // analyse en weergave
   'matrix', 'yearheatmap', 'review-list', 'coach-share', 'review-beeld', 'tv-links', 'theme-hook', 'beeld-escaping',
