@@ -317,10 +317,19 @@ button.lrij:hover{border-color:var(--accent-line);background:var(--hover)}
 .critnog{margin-left:auto;color:var(--amber);font-weight:600}
 .verplicht{font-size:var(--t1);font-weight:600;color:var(--accent);background:var(--accent-soft);padding:1px 7px;border-radius:999px;margin-left:auto;white-space:nowrap}
 .anti{font-size:var(--t1);color:var(--amber);background:var(--amber-soft);border:1px solid color-mix(in srgb,var(--amber) 30%,transparent);border-radius:8px;padding:5px 9px;margin-top:6px}
-.pbcrit{background:var(--sink);border:1px solid var(--line2);border-radius:10px;padding:7px 10px;font-size:var(--t1);line-height:1.6}
-.pbcrit .verplicht{margin-left:0;padding:0 6px}
-.pbcrit .anti{margin-top:2px;padding:0;background:none;border:0}
-.pbrisk{font-size:var(--t1);margin-top:7px;color:var(--ink2)}
+.modal.scen{max-width:1000px}
+.scenvenster{display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:18px;align-items:start}
+.scenvorm{align-content:start}
+.scenzij{position:sticky;top:64px;display:flex;flex-direction:column;gap:10px}   /* 64 px: under the window's sticky head */
+.zijblok{background:var(--raise);border:1px solid var(--line2);border-radius:12px;padding:12px}
+.zijleeg{display:flex;flex-direction:column;gap:4px;text-align:center;padding:22px 16px;color:var(--muted);font-size:var(--t1)}
+.zijleeg b{color:var(--ink2);font-size:var(--t2)}
+.chk.lezen{cursor:default}
+.chk .punt{width:6px;height:6px;border-radius:50%;background:var(--teal);flex:none;margin:0 4px}
+.kgetallen{display:flex;gap:8px;margin-top:10px}
+.kgetal{flex:1;background:var(--sink);border:1px solid var(--line2);border-radius:8px;padding:6px 10px;font-size:var(--t1);color:var(--muted)}
+.kgetal b{display:block;color:var(--ink);font-size:var(--t3)}
+@media(max-width:1023px){.modal.scen{max-width:640px}.scenvenster{grid-template-columns:minmax(0,1fr)}.scenzij{position:static}}
 .prog{height:5px;border-radius:3px;background:var(--track);overflow:hidden}
 .prog i{display:block;height:100%;background:var(--green);border-radius:3px}
 .ifthen{font-size:var(--t2);display:grid;grid-template-columns:auto minmax(0,1fr);gap:3px 10px}
@@ -1037,11 +1046,22 @@ function confAf(s){const n=s.entry.confirmations.length,k=s.entry.confirmations.
   return {n,k,crit,nv:verpl.length,kv,klaar:n+verpl.length>0&&k===n&&kv===verpl.length};}
 const LINK_PB=naam=>JOURNAL_URL+'?page=playbook&pb='+encodeURIComponent(naam);
 function geenCriteria(naam){return `<div class="faint small">Dit playbook heeft nog geen criteria · <a href="${esc(LINK_PB(naam))}">vul ze aan in de journal</a></div>`;}
-function antiH(p){return p.anti.map(a=>`<div class="anti">⚠ Niet als: ${esc(a)}</div>`).join('');}
-function risicoRegel(p){const r=[['Stop',p.stop],['Target',p.target],['Min. R:R',p.minRR]].filter(x=>x[1]);return r.length?`<div class="pbrisk">${r.map(([k,v])=>`<span class="muted">${k}</span> ${esc(v)}`).join(' · ')}</div>`:'';}
-// In het formulier: de criteria van het gekozen playbook, meteen onder de keuze.
-function pbBlok(naam){const p=pbInfo(naam);if(!p)return '';
-  return `<div class="pbcrit">${p.criteria.length?`<div class="critrij"><span class="muted">Criteria</span> ${p.criteria.map(c=>`<span class="crit">${esc(c.text)}${c.mandatory?' <span class="verplicht">verplicht</span>':''}</span>`).join(' · ')}</div>`:geenCriteria(naam)}${p.anti.length?`<div class="anti">⚠ Niet als: ${p.anti.map(esc).join(' · ')}</div>`:''}${risicoRegel(p)}</div>`;}
+function antiH(p,kort){return p.anti.map(a=>`<div class="anti">⚠ ${kort?'':'Niet als: '}${esc(a)}</div>`).join('');}
+// The scenario window's right column (round 6): the playbook (criteria, "Niet als", target and min. R:R) and the
+// context (layers with the entry timeframe, the edge of this combination). Sticky next to the form on a wide screen.
+function scenZij(d,day){const p=d.pb&&pbInfo(d.pb),tfs=[...new Set([...tags().timeframeTags,d.entry.tf])].sort(topDown);
+  const kg=p?[['Target',p.target],['Min. R:R',p.minRR]].filter(x=>x[1]):[];
+  const pb=!d.pb?`<div class="zijblok zijleeg"><b>Kies een playbook om de criteria te zien</b><span>Dan staan hier de criteria, "Niet als" en het doel van dat playbook, en zie je de edge van deze combinatie.</span></div>`
+    :!p?`<div class="zijblok"><div class="kh">Playbook · ${esc(d.pb)}</div><div class="faint small">Dit playbook staat (nog) niet in je journal.</div></div>`
+    :`<div class="zijblok pbcrit"><div class="kh">Criteria · ${esc(d.pb)}</div>${critLijst(d,p,{lezen:1,zonderAnti:1})}
+        ${kg.length?`<div class="kgetallen">${kg.map(([k,v])=>`<div class="kgetal"><span>${k}</span> <b>${esc(v)}</b></div>`).join('')}</div>`:''}${p.stop?`<div class="small muted" style="margin-top:6px">Stop volgens het playbook: ${esc(p.stop)}</div>`:''}</div>
+      ${p.anti.length?`<div class="zijblok"><div class="kh">Niet als</div>${antiH(p,1)}</div>`:''}`;
+  const lagen=`<div class="zijblok"><div class="row between" style="margin-bottom:8px;gap:8px"><div class="kh" style="margin:0">Lagen</div>
+      <label class="row small muted" for="sc-tf" style="gap:6px;flex-wrap:nowrap">Entry-tijdframe <select class="inp" id="sc-tf" style="width:auto;padding:4px 8px" data-f="draft.entry.tf">${tfs.map(x=>`<option ${d.entry.tf===x?'selected':''}>${esc(x)}</option>`).join('')}</select></label></div>
+      ${geerfd(day).some(L=>tagsVan(L).length)?erfUitleg('scen'):''}<div class="lagen" style="margin-top:4px">${scenRijen(d,day,{edit:1})}</div></div>`;
+  const e=edge(d,day,weekOf(day.week));
+  const edgeB=`<div class="zijblok"><div class="row between"><div class="kh" style="margin:0">Edge van deze combinatie</div>${d.pb&&JR.klaar?relH(e):''}</div><div class="rline" style="margin-top:6px;white-space:normal">${edgeLijn(e,d)}</div>${d.pb&&(e.live.n||e.bt.n)?edgeNoten(e):''}</div>`;
+  return `<div class="scenzij">${pb}${lagen}${edgeB}</div>`;}
 function metaH(s){return `<span class="grade ${s.grade}">${s.grade}</span><span class="dir ${s.dir}">${s.dir}</span><span>${esc(s.pair)}</span>${s.pb?`<span>· ${esc(s.pb)}</span>`:''}`;}
 // De criteria van het playbook als afvinklijst, in dezelfde stijl als de confirmations; anti-criteria als waarschuwing.
 // Closed by default (round 3, point 8): one line with the count; if all confirmations are done while mandatory criteria
@@ -1054,9 +1074,13 @@ function critH(s,cd){const p=pbInfo(s.pb);
   const toon=open?'Verberg':`Toon ${n>1?'alle '+n:n?'het criterium':'"Niet als"'}`;   // round 5: say what a tap does
   return `<div class="critblok"><button class="crithead" data-a="critOpen" data-s="${esc(s.id)}" aria-expanded="${open}"><span class="critpijl" aria-hidden="true">${open?'▾':'▸'}</span> <span class="crittitel kh">Criteria · ${esc(s.pb)}</span> · <span class="critstand">${stand}</span>${waarsch} <span class="crittoon">${toon}</span></button>
     ${open?critLijst(s,p):''}</div>`;}
-function critLijst(s,p){
-  return `${p.criteria.length?p.criteria.map(c=>{const on=s.critChecked.includes(c.text);return `<div class="chk ${on?'on':''}" data-a="crit" data-s="${esc(s.id)}" data-v="${esc(c.text)}" role="checkbox" aria-checked="${on}"><span class="box">${on?'✓':''}</span><span class="lbl">${esc(c.text)}</span>${c.mandatory?'<span class="verplicht">verplicht</span>':''}</div>`;}).join(''):geenCriteria(s.pb)}
-    ${antiH(p)}`;}   /* no closing tag here: critH closes .critblok (an extra one broke the open scenario in v1.24) */
+// o.lezen: the scenario window shows the same list read-only (a dot instead of a box, nothing to tick); o.zonderAnti:
+// "Niet als" is shown in a block of its own there.
+function critLijst(s,p,o={}){
+  return `${p.criteria.length?p.criteria.map(c=>{const on=!o.lezen&&s.critChecked.includes(c.text);
+    return o.lezen?`<div class="chk crit lezen"><span class="punt" aria-hidden="true"></span><span class="lbl">${esc(c.text)}</span>${c.mandatory?'<span class="verplicht">verplicht</span>':''}</div>`
+      :`<div class="chk crit ${on?'on':''}" data-a="crit" data-s="${esc(s.id)}" data-v="${esc(c.text)}" role="checkbox" aria-checked="${on}"><span class="box">${on?'✓':''}</span><span class="lbl">${esc(c.text)}</span>${c.mandatory?'<span class="verplicht">verplicht</span>':''}</div>`;}).join(''):geenCriteria(s.pb)}
+    ${o.zonderAnti?'':antiH(p)}`;}   /* no closing tag here: critH closes .critblok (an extra one broke the open scenario in v1.24) */
 // Round 5: edit and delete where you look for them. Open: "✎ Bewerk" in the head; always: a ⋯ menu on the row.
 // Own order: the saved ids that still exist, then the rest in creation order (a new scenario lands at the bottom).
 function eigenVolgorde(d){const ids=d.scenarios.map(s=>s.id);return [...d.volgorde.filter(id=>ids.includes(id)),...ids.filter(id=>!d.volgorde.includes(id))];}
@@ -1306,23 +1330,20 @@ function modalH(){
     f=`${I.rm?`<button class="btn danger" style="margin-right:auto" data-a="rmLaag" data-p="${I.rm}" data-v="${esc(I.tf)}">Laag weghalen</button>`:''}<button class="btn pri" data-a="close">Klaar</button>`;
   } else if(M.type==='scen'){
     const d=M.draft,day=dayOf(M.day);t=M.isNew?'Nieuw scenario':'Scenario bewerken';
-    const pbs=Object.keys(JR.pbook).sort(),tfs=[...new Set([...tags().timeframeTags,d.entry.tf])].sort(topDown);
-    h=`<div class="fgrid">
+    const pbs=Object.keys(JR.pbook).sort();
+    cls='scen';   // round 6: wide, the form on the left and the playbook and context on the right
+    h=`<div class="scenvenster"><div class="scenvorm fgrid">
       <div class="full"><label class="f" for="sc-title">Titel</label><input class="inp" id="sc-title" data-f="draft.title" value="${esc(d.title)}" placeholder="bv. BTC London sweep"></div>
-      <div><label class="f" for="sc-pb">Playbook</label>${pbs.length?`<select class="inp" id="sc-pb" data-f="draft.pb"><option value="">Kies…</option>${pbs.map(p=>`<option value="${esc(p)}" ${d.pb===p?'selected':''}>${esc(p)}</option>`).join('')}</select>`:`<div class="faint small" style="padding-top:6px">Nog geen playbooks in je journal. Maak er een in de journal (Playbooks), dan vergelijkt het plan je trades ermee.</div>`}</div>
-      ${d.pb&&pbInfo(d.pb)?`<div class="full">${pbBlok(d.pb)}</div>`:''}
+      <div class="full"><label class="f" for="sc-pb">Playbook</label>${pbs.length?`<select class="inp" id="sc-pb" data-f="draft.pb"><option value="">Kies…</option>${pbs.map(p=>`<option value="${esc(p)}" ${d.pb===p?'selected':''}>${esc(p)}</option>`).join('')}</select>`:`<div class="faint small" style="padding-top:6px">Nog geen playbooks in je journal. Maak er een in de journal (Playbooks), dan vergelijkt het plan je trades ermee.</div>`}</div>
       <div><label class="f" for="sc-pair">Pair</label><input class="inp" id="sc-pair" data-f="draft.pair" value="${esc(d.pair)}" placeholder="BTC"></div>
-      <div><label class="f">Richting</label><span class="seg" style="display:flex">${['long','short'].map(x=>`<button style="flex:1" class="${d.dir===x?'on':''}" data-a="dset" data-p="dir" data-v="${x}">${cap(x)}</button>`).join('')}</span></div>
-      <div><label class="f">Grade</label><span class="seg" style="display:flex">${['A','B','C'].map(x=>`<button style="flex:1" class="${d.grade===x?'on':''}" data-a="dset" data-p="grade" data-v="${x}">${x}</button>`).join('')}</span></div>
+      <div><label class="f" id="sc-dir-l">Richting</label><span class="seg" id="sc-dir" role="group" aria-labelledby="sc-dir-l" style="display:flex">${['long','short'].map(x=>`<button style="flex:1" class="${d.dir===x?'on':''}" data-a="dset" data-p="dir" data-v="${x}" aria-pressed="${d.dir===x}">${cap(x)}</button>`).join('')}</span></div>
+      <div class="full"><label class="f" id="sc-grade-l">Grade</label><span class="seg" id="sc-grade" role="group" aria-labelledby="sc-grade-l" style="display:flex">${['A','B','C'].map(x=>`<button style="flex:1" class="${d.grade===x?'on':''}" data-a="dset" data-p="grade" data-v="${x}" aria-pressed="${d.grade===x}">${x}</button>`).join('')}</span></div>
       <div class="full"><label class="f" for="sc-trig">Trigger</label><input class="inp" id="sc-trig" data-f="draft.trigger" value="${esc(d.trigger)}" placeholder="Als…"></div>
       <div class="full"><label class="f" for="sc-inv">Ongeldig als</label><input class="inp" id="sc-inv" data-f="draft.invalid" value="${esc(d.invalid)}" placeholder="één regel"></div>
-      <div class="full"><div class="row between" style="margin-bottom:2px"><label class="f" style="margin:0">Lagen</label>
-        <label class="row small muted" for="sc-tf" style="gap:6px;flex-wrap:nowrap">Entry-tijdframe <select class="inp" id="sc-tf" style="width:auto;padding:4px 8px" data-f="draft.entry.tf">${tfs.map(x=>`<option ${d.entry.tf===x?'selected':''}>${esc(x)}</option>`).join('')}</select></label></div>${geerfd(day).some(L=>tagsVan(L).length)?erfUitleg('scen'):''}<div class="lagen" style="margin-top:4px">${scenRijen(d,day,{edit:1})}</div></div>
       <div><label class="f" for="sc-stop">Stop <span class="faint">(optioneel)</span></label><input class="inp num" id="sc-stop" data-f="draft.stop" value="${esc(d.stop)}"></div>
       <div><label class="f" for="sc-tps">TP's <span class="faint">(optioneel, spatie ertussen)</span></label><input class="inp num" id="sc-tps" data-f="draft.tpsTxt" value="${esc(d.tps.join(' '))}"></div>
       <div class="full"><label class="f" for="sc-note">Notitie</label><textarea class="inp" id="sc-note" data-f="draft.note">${esc(d.note)}</textarea></div>
-      <div class="full card pad" style="background:var(--sink)">${(()=>{const e=edge(d,day,weekOf(day.week));return `<div class="row between"><h3>Edge van deze combinatie</h3>${d.pb&&JR.klaar?relH(e):''}</div><div class="rline" style="margin-top:6px;white-space:normal">${edgeLijn(e,d)}</div>${d.pb&&(e.live.n||e.bt.n)?edgeNoten(e):''}`;})()}</div>
-    </div>`;
+    </div>${scenZij(d,day)}</div>`;
     f=`${M.isNew?'':'<button class="btn danger" style="margin-right:auto" data-a="delScen">Verwijder</button>'}<button class="btn" data-a="close">Annuleer</button><button class="btn pri" data-a="saveScen">Bewaar</button>`;
   }
   if(M.type==='delVraag'){const x=scenOf(M.sid);if(!x)return '';const n=(x.s.trades||[]).length,i=x.s.media.imgs.length,l=x.s.media.links.length;

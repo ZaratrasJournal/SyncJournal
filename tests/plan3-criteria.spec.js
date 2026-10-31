@@ -80,8 +80,10 @@ const PB = Object.assign({}, H.PBOOK, { 'Trend-pullback': Object.assign({}, H.PB
   console.log('--- 5. scenario-formulier: compact ---');
   await p.click('[data-a="newScen"]'); await p.selectOption('#sc-pb', 'Trend-pullback'); await p.waitForTimeout(120);
   const f = await p.evaluate(() => { const b = document.querySelector('#modal .pbcrit'); return b ? { t: b.innerText.replace(/\s+/g, ' '), lijst: !!b.querySelector('ul,li'), n: b.querySelectorAll('.crit').length, h: Math.round(b.getBoundingClientRect().height) } : null; });
-  ok('voorvertoning zichtbaar: criteria (verplicht gemarkeerd), "Niet als" en stop/target/R:R', !!f && /HTF-trend mee verplicht/.test(f.t) && /Volume boven gemiddeld/.test(f.t) && /Niet als: Vlak voor nieuws/.test(f.t) && /Stop Onder de sweep · Target 2R · Min\. R:R 2/.test(f.t), JSON.stringify(f));
-  ok('compact: geen lijst onder elkaar, de criteria achter elkaar, lager dan de oude lijst (146 px bij deze drie criteria)', !!f && !f.lijst && f.n === 3 && f.h <= 110, JSON.stringify(f));
+  // ronde 6 (Zaratras: "criteria is tekst achter elkaar"): in het scenario-venster weer een lijst, rechts naast het formulier
+  const zij = await p.evaluate(() => { const z = document.querySelector('#modal .scenzij'); return z ? { t: z.innerText.replace(/\s+/g, ' '), rijen: [...z.querySelectorAll('.crit')].map(c => Math.round(c.getBoundingClientRect().top)), anti: z.querySelectorAll('.anti').length } : null; });
+  ok('voorvertoning zichtbaar: criteria (verplicht gemarkeerd), "Niet als" en target/R:R', !!zij && /HTF-trend mee verplicht/.test(zij.t) && /Volume boven gemiddeld/.test(zij.t) && /Vlak voor nieuws/.test(zij.t) && /Target 2R/.test(zij.t) && /Min\. R:R 2/.test(zij.t) && /Stop volgens het playbook: Onder de sweep/.test(zij.t), JSON.stringify(zij));
+  ok('de criteria als lijst: elk criterium op een eigen regel, "Niet als" apart', !!zij && zij.rijen.length === 3 && new Set(zij.rijen).size === 3 && zij.anti === 1, JSON.stringify(zij));
   await p.click('#modal [data-a="close"]'); await p.waitForTimeout(80);
 
   console.log('--- 6. thema\'s en breedtes ---');

@@ -159,7 +159,9 @@ const SCEN = [
   await p.click('[data-a="newScen"]'); await p.selectOption('#sc-pb', 'Trend-pullback'); await p.waitForTimeout(120);
   let pbt = await p.evaluate(() => (document.querySelector('#modal .pbcrit') || {}).innerText || '');
   ok('playbook kiezen: de criteria verschijnen meteen, de verplichte gemarkeerd', /HTF-trend mee\s*verplicht/i.test(pbt) && /Volume boven gemiddeld/.test(pbt) && !/Volume boven gemiddeld\s*verplicht/i.test(pbt), pbt);
-  ok('anti-criteria als "Niet als …", en stop / target / min. R:R op één regel', /Niet als: Vlak voor nieuws/.test(pbt) && /Stop Onder de sweep · Target 2R · Min\. R:R 2/.test(pbt.replace(/\s+/g, ' ')), pbt);
+  // ronde 6: rechts in het venster "Niet als" als eigen blokje, target en min. R:R als kengetallen, de stop van het playbook eronder
+  const zijT = await p.evaluate(() => (document.querySelector('#modal .scenzij') || {}).innerText || '');
+  ok('anti-criteria in een eigen blok "Niet als", target en min. R:R als kengetallen, en de stop van het playbook', /Niet als[^]*Vlak voor nieuws/i.test(zijT) && /Target\s*2R/.test(zijT) && /Min\. R:R\s*2/.test(zijT) && /Stop volgens het playbook: Onder de sweep/.test(zijT), zijT.slice(0, 300));
   ok('een leeg criterium telt niet mee', (await p.evaluate(() => document.querySelectorAll('#modal .pbcrit .crit').length)) === 2);
   await p.selectOption('#sc-pb', 'Backtestbaas'); await p.waitForTimeout(120);
   pbt = await p.evaluate(() => { const b = document.querySelector('#modal .pbcrit'); return b ? { t: b.innerText, href: (b.querySelector('a') || {}).href || '' } : null; });
