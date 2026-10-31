@@ -80,6 +80,7 @@ module.exports = [
   'plan3-scenario-beeld',    // ronde 4: Dag breder, opengeklapt scenario met chart, Plan en sticky Uitvoering & edge
   'plan3-ronde5',            // criteria-knop, Plan in blokken, bewerken/verwijderen (⋯-menu, bevestiging in de pagina), volgorde
   'plan3-ronde6',            // scenario-venster: beeld mee bij koppelen, breed venster met playbook rechts, richting/grade in kleur
+  'plan3-ronde7',            // charts al in het scenario-venster: concept tot Bewaar, Annuleer laat niets achter in tp3
 
   // analyse en weergave
   'matrix', 'yearheatmap', 'review-list', 'coach-share', 'review-beeld', 'tv-links', 'theme-hook', 'beeld-escaping',
