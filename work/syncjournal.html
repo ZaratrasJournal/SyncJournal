@@ -3359,14 +3359,23 @@ function planLagen(s,day,week){const per=new Map(),uit=new Set(s.off||[]),uniq=a
   planWeekVoorDag(week,day).forEach(L=>add(L,true,false));((day&&day.layers)||[]).forEach(L=>add(L,true,false));add(s.entry,false,true);
   return sorteerLagen([...per.values()]);}
 /* Neemt over wat het scenario weet, alleen in velden die nog leeg zijn: wat je zelf invulde of wat de exchange
-   gaf blijft staan. Geeft de afbeelding-id's terug die nog als screenshot moeten komen (die staan async in
-   IndexedDB tp3). */
-function planAdopt(t,s,day,week){if(!t||!s)return [];
+   gaf blijft staan. Afbeeldingen en links komen erbij (round 6), zie planErbij. Geeft {ids, links}: de
+   afbeelding-id's die nog als screenshot moeten komen (die staan async in IndexedDB tp3) en wat er aan links bij kwam. */
+const TRADE_MAX_BEELD=8;   // per trade, screenshots and TradingView links alike: the trade form's limit (addFormShot, addFormTvLink)
+// Adds to what the trade has, never replaces: only what it does not have yet (same content), up to the limit, in order.
+// {lijst, mee: added, van: new candidates}. Linking the same scenario again adds nothing: it is all there already.
+function planErbij(heeft,nieuw){const er=[...(heeft||[])],extra=(nieuw||[]).filter((u,i,a)=>u&&!er.includes(u)&&a.indexOf(u)===i);
+  const mee=extra.slice(0,Math.max(0,TRADE_MAX_BEELD-er.length));return {lijst:[...er,...mee],mee:mee.length,van:extra.length};}
+// "2 afbeeldingen en 1 link meegenomen" · "2 van 4 afbeeldingen meegenomen, de trade zat vol" · '' when nothing was new.
+function planMeeTekst(img,lnk){const deel=(r,een,veel)=>!r||!r.van?'':r.mee===r.van?r.mee+' '+(r.mee===1?een:veel):r.mee+' van '+r.van+' '+veel;
+  const d=[deel(img,'afbeelding','afbeeldingen'),deel(lnk,'link','links')].filter(Boolean);if(!d.length)return '';
+  return d.join(' en ')+' meegenomen'+((img&&img.mee<img.van)||(lnk&&lnk.mee<lnk.van)?', de trade zat vol':'');}
+function planAdopt(t,s,day,week){if(!t||!s)return {ids:[],links:null};
   if(!t.setup&&s.pb&&PBOOK[s.pb])t.setup=s.pb;
   if(!gradeOf(t)&&/^[ABC]$/.test(String(s.grade||'')))t.grade=s.grade;
   if(!(t.layers||[]).length){const L=planLagen(s,day,week);if(L.length){t.layers=L;if(!t.timeframe)t.timeframe=entryTF(L,'');}}
-  const links=(((s.media||{}).links)||[]).filter(isHttpUrl).slice(0,8);if(!(t.tvLinks||[]).length&&links.length)t.tvLinks=links;
-  return (t.screenshots||[]).length?[]:(((s.media||{}).imgs)||[]).slice(0,8);}
+  const lk=planErbij(t.tvLinks,(((s.media||{}).links)||[]).filter(isHttpUrl));if(lk.mee)t.tvLinks=lk.lijst;
+  return {ids:(((s.media||{}).imgs)||[]).slice(),links:lk};}
 // Afbeeldingen van het plan (IndexedDB tp3/img, waarde = data:image-URL), in dezelfde volgorde.
 function planBeelden(ids){if(!ids||!ids.length)return Promise.resolve([]);
   return new Promise(res=>{let r;try{r=indexedDB.open('tp3',1);}catch(e){return res([]);}
@@ -3390,14 +3399,15 @@ function planImgZet(imgs){const ok=Object.entries(imgs||{}).filter(([k,v])=>/^i_
 // Alle afbeelding-id's in een plan (week, dag, scenario).
 function planImgIds(plans){const ids=[];const m=o=>((o&&o.media&&o.media.imgs)||[]).forEach(i=>ids.push(i));
   Object.values(plans.weeks||{}).forEach(m);Object.values(plans.days||{}).forEach(d=>{m(d);((d&&d.scenarios)||[]).forEach(m);});return [...new Set(ids)];}
-async function planScreens(paren){for(const [t,ids] of paren){const u=await planBeelden(ids);if(u.length&&!(t.screenshots||[]).length)t.screenshots=u;}if(paren.length){persist();render();}}
+async function planScreens(paren){const uit=[];for(const [t,ids] of paren){const r=planErbij(t.screenshots,await planBeelden(ids));if(r.mee)t.screenshots=r.lijst;uit.push(r);}
+  if(paren.length){persist();render();}return uit;}
 /* Spiegel Scenario.trades op de trades: planRef zetten of wissen. Een nieuwe koppeling neemt eenmalig de lege
    velden over (planAdopt). Draait bij het laden, als dit tabblad zichtbaar wordt, en als het plan in een ander
    tabblad tp3:plans wijzigt. */
 function planSync(){const P=planLoad(),bij=new Map();let n=0;const later=[];
   Object.values(P.plans.days).forEach(day=>((day&&day.scenarios)||[]).forEach(s=>((s&&s.trades)||[]).forEach(id=>{if(!bij.has(String(id)))bij.set(String(id),{s,day});})));
   T.forEach(t=>{if(!t)return;const x=bij.get(String(t.id));
-    if(x){const ref='s:'+x.s.id;if(t.planRef!==ref){t.planRef=ref;const ids=planAdopt(t,x.s,x.day,P.plans.weeks[x.day.week]||null);if(ids.length)later.push([t,ids]);n++;}}
+    if(x){const ref='s:'+x.s.id;if(t.planRef!==ref){t.planRef=ref;const a=planAdopt(t,x.s,x.day,P.plans.weeks[x.day.week]||null);if(a.ids.length)later.push([t,a.ids]);n++;}}
     else if(planScenRef(t)){delete t.planRef;n++;}});
   if(n){persist();render();}
   if(later.length)planScreens(later);
@@ -3411,9 +3421,11 @@ function planSetRef(id,ref){const t=T.find(x=>x.id===id);if(!t)return;const P=pl
   if(x){x.s.trades.push(t.id);if(x.s.status==='open'){x.s.status='genomen';x.s.statusTs=Date.now();}}
   planSave(P.plans);
   const nieuw=x&&t.planRef!==ref;t.planRef=x?ref:'none';
-  const ids=nieuw?planAdopt(t,x.s,x.day,x.week):[];
-  persist();closeForm();render();toast(x?'Gekoppeld aan scenario "'+planTitel(x.s)+'"':'Bewust buiten plan gezet','ok');
-  if(ids.length)planScreens([[t,ids]]);}
+  const a=nieuw?planAdopt(t,x.s,x.day,x.week):{ids:[],links:null};
+  persist();closeForm();render();
+  if(!x){toast('Bewust buiten plan gezet','ok');return;}
+  const klaar=img=>{const m=planMeeTekst(img,a.links);toast('Gekoppeld aan scenario "'+planTitel(x.s)+'"'+(m?' · '+m:''),'ok');};
+  if(a.ids.length)planScreens([[t,a.ids]]).then(r=>klaar(r[0]));else klaar(null);}
 function planLine(t){
   const P=planLoad(),sid=planScenRef(t),x=sid&&planScen(sid,P);
   const knop=lbl=>`<a href="#" onclick="event.stopPropagation();planPick(${t.id});return false" style="color:var(--accent);font-weight:600">${lbl}</a>`;
@@ -6167,8 +6179,8 @@ const FAQS=[
     ['Wanneer is een scenario "Klaar om te nemen"?','Als je alle confirmations van de entry-laag en alle verplichte criteria van je playbook hebt afgevinkt. Open het scenario en vink ze aan; dan staat er <b>Klaar om te nemen</b>, met je risico voor die grade.<ul><li>De criteria van je playbook staan ingeklapt op één regel, bv. "Criteria · London SFP · 1/2 verplicht". Tik erop om ze af te vinken. Zijn je confirmations af maar staan er nog verplichte criteria open, dan zegt die regel dat in amber, bv. "2 verplichte criteria nog open".</li><li>Het risico per grade (A, B, C) stel je in met het tandwiel ⚙. 0% betekent: niet traden.</li><li>"Niet als: …" uit je playbook staat erbij als waarschuwing.</li><li>Je <b>Dagstart</b> en je <b>Gevoel</b> zijn een herinnering, geen slot: niets wordt geblokkeerd. Kies je bij Gevoel een negatieve emotie, dan zegt het plan: <b>Overweeg alleen A-setups</b>.</li></ul>'],
     ['Wat is de Dagstart?','Je eigen lijstje voor je begint met traden, bv. "Nieuws gecheckt" en "Goed geslapen". Je vinkt het elke ochtend af bij <b>Dag</b>; bovenaan staat dan bv. "Dagstart 2/4".<ul><li>De lijst is van jou, met hooguit 8 punten. Klik bij Dagstart op <b>Bewerk</b> om punten toe te voegen, weg te halen of te hernoemen. Met het tandwiel ⚙ kan het ook.</li><li>Een nieuw plan begint met drie standaardpunten.</li><li>Hernoem je een punt, dan gaan je vinkjes mee, ook op eerdere dagen. Haal je een punt weg, dan blijven de andere vinkjes staan.</li></ul>Je Dagstart blokkeert niets: het is een herinnering.'],
     ['Wat doet Gevoel, en wat zegt het over mijn trades?','Bij <b>Gevoel</b> kies je hoe je de dag begint, uit de emoties van je journal (<b>Instellingen → Tags</b>). Meer dan één mag. Groen is een positieve emotie, rood een negatieve.<ul><li>Kies je een negatieve emotie, bv. FOMO, dan zegt het plan: <b>Overweeg alleen A-setups</b>.</li><li>Onder elke gekozen emotie staat hoe je trades met die emotie het deden, bv. "Met FOMO: 14 trades · 29% · −0,40R". Onder 10 trades staat er weinig data bij.</li><li><b>Je dagstart-gevoel</b> staat in de Log en in de journal bij <b>Tendencies → Plan</b>: per emotie hoe de dagen gingen die je ermee begon. Je ziet het aantal dagen, je trades op die dagen, de winrate, de gem. R en hoeveel trades buiten je plan vielen. De slechtste staat bovenaan, want daar zit de les. Hoe betrouwbaar het is, hangt af van het aantal dagen: onder 10 weinig, vanaf 30 genoeg.</li></ul>Je ochtendgevoel gaat niet mee naar je trades: hoe je de dag begint is iets anders dan hoe je je voelt tijdens een trade. Oude dagen met een cijfer van 1 tot 5 tonen dat als "mentaal 4/5 (oud)".'],
-    ['Hoe koppel ik een trade aan een scenario?','Dat kies je zelf: er wordt <b>nooit vanzelf gekoppeld</b>. Open het scenario en klik op <b>Zet om in trade</b>.<ul><li><b>Uit je journal</b>: tik een of meer trades aan en klik op <b>Koppel</b>. Je ziet trades met hetzelfde pair en dezelfde richting op die dag; met <b>Alle pairs en richtingen</b> en <b>+ dag erna</b> zie je meer. Een trade hoort bij hooguit één scenario.</li><li><b>Nieuwe trade invullen</b>: het tradeformulier opent al ingevuld, voor een handmatige, backtest- of papertrade. Opslaan koppelt hem.</li></ul>Achteraf kan ook: <b>Koppel trade</b> in de Afsluiting of de Log, of in de journal bij de trade zelf (<b>Koppel aan scenario</b>). Ontkoppelen: het × bij de trade in het scenario. Lege velden van de trade vult de journal aan uit het scenario.'],
-    ['Kan ik screenshots en TradingView-links in mijn plan zetten?','Ja, in je week, je dag (bij Dag in de stap <b>Charts</b>) en elk scenario. Plak een screenshot met <b>Ctrl+V</b> (Mac: ⌘+V), sleep hem erheen, of klik op <b>+ Afbeelding</b>. Een link plak je in het veld ernaast en voeg je toe met <b>+ Link</b>; van een TradingView-snapshot zie je meteen een voorbeeld.<ul><li>Hooguit 8 afbeeldingen en 8 links per dag of week, en 4 per scenario.</li><li>Plakken gaat naar het scenario dat openstaat, anders naar de dag.</li><li>Bij <b>Zet om in trade</b> gaan de afbeeldingen en links van het scenario mee naar de trade, als die er zelf nog geen heeft.</li></ul>'],
+    ['Hoe koppel ik een trade aan een scenario?','Dat kies je zelf: er wordt <b>nooit vanzelf gekoppeld</b>. Open het scenario en klik op <b>Zet om in trade</b>.<ul><li><b>Uit je journal</b>: tik een of meer trades aan en klik op <b>Koppel</b>. Je ziet trades met hetzelfde pair en dezelfde richting op die dag; met <b>Alle pairs en richtingen</b> en <b>+ dag erna</b> zie je meer. Een trade hoort bij hooguit één scenario.</li><li><b>Nieuwe trade invullen</b>: het tradeformulier opent al ingevuld, voor een handmatige, backtest- of papertrade. Opslaan koppelt hem.</li></ul>Achteraf kan ook: <b>Koppel trade</b> in de Afsluiting of de Log, of in de journal bij de trade zelf (<b>Koppel aan scenario</b>). Ontkoppelen: het × bij de trade in het scenario. Lege velden van de trade vult de journal aan uit het scenario.<br><br><b>Afbeeldingen en links</b> van het scenario gaan mee naar de trade; in het venster <b>Zet om in trade</b> staat hoeveel. Bij koppelen komen ze erbij: wat de trade al heeft blijft staan, dezelfde afbeelding komt er niet twee keer op, en een trade heeft hooguit 8 afbeeldingen en 8 links. Past niet alles, dan zegt de melding dat, bv. "2 van 4 afbeeldingen meegenomen, de trade zat vol".'],
+    ['Kan ik screenshots en TradingView-links in mijn plan zetten?','Ja, in je week, je dag (bij Dag in de stap <b>Charts</b>) en elk scenario. Plak een screenshot met <b>Ctrl+V</b> (Mac: ⌘+V), sleep hem erheen, of klik op <b>+ Afbeelding</b>. Een link plak je in het veld ernaast en voeg je toe met <b>+ Link</b>; van een TradingView-snapshot zie je meteen een voorbeeld.<ul><li>Hooguit 8 afbeeldingen en 8 links per dag of week, en 4 per scenario.</li><li>Plakken gaat naar het scenario dat openstaat, anders naar de dag.</li><li>Bij <b>Zet om in trade</b> gaan de afbeeldingen en links van het scenario mee naar de trade, erbij naast wat de trade al heeft (hooguit 8 per trade).</li></ul>'],
     ['Wat zie ik in de Afsluiting en de Log?','Hoe je plan uitpakte. In de <b>Afsluiting</b> zet je na de sessie per scenario de status: <b>Genomen</b>, <b>Gemist</b> (uitgekomen, niet genomen), <b>Niet uit</b> (niet uitgekomen) of <b>Ongeldig</b>. Dan zie je:<ul><li>hoeveel scenario\'s uitkwamen, hoeveel je er nam en hoeveel je liet liggen;</li><li><b>binnen plan tegenover buiten plan</b>: je live-trades die bij een scenario horen tegenover die erbuiten, in R en geld;</li><li>ruimte voor één les.</li></ul>De <b>Log</b> toont al je dagen, nieuwste boven, met je <b>voorspel-score</b>: hoe vaak je scenario\'s uitkomen, en hoe vaak je ze dan ook neemt. Dezelfde cijfers staan in de journal bij <b>Tendencies → Plan</b>.'],
     ['Kan Mori mijn plan bekijken?','Ja, per scenario en je hele dagplan, als Mori aan staat en je sleutel gekoppeld is. Anders staat er <b>Mori instellen</b>.<ul><li>Open een scenario en klik op <b>🤖 Vraag Mori</b>. Mori vergelijkt het met je eigen cijfers en regels, en zegt waar het tegen je week- of dagbias ingaat.</li><li>Bovenaan Dag staat <b>🤖 Vraag Mori over mijn dagplan</b>: welke scenario\'s volgens je cijfers het sterkst en het zwakst zijn, en waar je plan zichzelf tegenspreekt.</li></ul>Mori opent in een <b>paneel naast je plan</b> (op je telefoon schermvullend) en stelt de vraag; daarna kun je gewoon doorvragen. Met <b>🤖 Mori</b> bovenin open je het paneel ook zonder vraag. Sluit je het paneel, dan blijft het gesprek staan tot je de pagina verlaat. In het paneel draait de Mori van je journal: je sleutel blijft daar, en het paneel verandert niets aan je trades of instellingen. Mee gaan je scenario\'s, lagen, levels, je gevoel, je dagstart en de cijfers die het plan toont; bij <b>Wat is er verstuurd?</b> zie je alles. Mori geeft <b>geen koop- of verkoopadvies</b>.'],
     ['Waar is de poort (en mijn oude plan) gebleven?','Die is weg: het Trading Plan is in v1.19 opnieuw opgezet, zonder poort en zonder de drie checklists. Je oude plan wordt niet meer gelezen, maar ook niet gewist. Je begint dus opnieuw, met een dagplan en je scenario\'s. Ook "dekt poort-punt" bij je playbook-criteria is weg; je criteria zelf staan er nog.'],

@@ -244,6 +244,7 @@ button.lrij:hover{border-color:var(--accent-line);background:var(--hover)}
 .rmenu button{text-align:left;padding:8px 10px;border-radius:7px;font-size:var(--t2);color:var(--ink)}
 .rmenu button:hover,.rmenu button:focus-visible{background:var(--hover)}
 .rmenu button.danger{color:var(--red)}
+.meeregel{font-size:var(--t1);color:var(--ink2);background:var(--sink);border:1px solid var(--line2);border-radius:8px;padding:6px 10px;margin:0 0 10px}
 .delwat{padding-left:18px;display:flex;flex-direction:column;gap:4px;color:var(--ink2)}
 .rnum{font-family:var(--fd);font-weight:800;font-size:var(--t4);color:var(--faint);text-align:center}
 .rnum.one{color:var(--green)}
@@ -879,6 +880,22 @@ function zetOmLagen(s,day,week){const per=new Map(),uit=new Set(s.off||[]),uniq=
     if(L.bias)o.bias=L.bias;o.setups=uniq([...o.setups,...set]);o.confirmations=uniq([...o.confirmations,...conf]);per.set(k,o);};
   weekVoorDag(week,day).forEach(L=>add(L,true,false));((day&&day.layers)||[]).forEach(L=>add(L,true,false));add(s.entry,false,true);
   return sorteerLagen([...per.values()]);}
+// Round 6: what goes along to the trade, in both tabs of "Zet om in trade".
+function meeRegel(s){const n=s.media.imgs.length,l=s.media.links.filter(isHttpUrl).length,mv=(x,een,veel)=>x+' '+(x===1?een:veel);
+  if(!n&&!l)return 'Geen afbeeldingen in dit scenario.';
+  if(!n)return 'Geen afbeeldingen in dit scenario; '+mv(l,'link gaat','links gaan')+' mee naar de trade.';
+  return mv(n,'afbeelding','afbeeldingen')+(l?' en '+mv(l,'link','links'):'')+(n+l===1?' gaat':' gaan')+' mee naar de trade.';}
+/* What linking will bring along, per newly linked trade. The journal does it (planErbij in work/syncjournal.html,
+   same rule: add to what the trade has, no duplicates, at most TRADE_MAX_BEELD) once its tab looks at the plan;
+   the plan already knows the trades and says it now. */
+const TRADE_MAX_BEELD=8;   // the journal's trade-form limit, for screenshots and for links
+function erbij(heeft,nieuw){const er=[...(heeft||[])],x=(nieuw||[]).filter((u,i,a)=>u&&!er.includes(u)&&a.indexOf(u)===i);return {mee:Math.min(x.length,Math.max(0,TRADE_MAX_BEELD-er.length)),van:x.length};}
+function meeVoorspel(s,trades){if(!trades.length)return '';const img=s.media.imgs.map(id=>IMG[id]).filter(Boolean),lnk=s.media.links.filter(isHttpUrl);
+  const r=trades.map(t=>({i:erbij(t.screenshots,img),l:erbij(t.tvLinks,lnk)})),deel=(x,een,veel)=>!x.van?'':x.mee===x.van?x.mee+' '+(x.mee===1?een:veel):x.mee+' van '+x.van+' '+veel;
+  if(trades.length===1){const d=[deel(r[0].i,'afbeelding','afbeeldingen'),deel(r[0].l,'link','links')].filter(Boolean);
+    return d.length?d.join(' en ')+(r[0].i.mee+r[0].l.mee===1?' gaat':' gaan')+' mee'+(r[0].i.mee<r[0].i.van||r[0].l.mee<r[0].l.van?', de trade zat vol.':'.'):'';}
+  const vol=r.filter(x=>x.i.mee<x.i.van||x.l.mee<x.l.van).length;
+  return r.some(x=>x.i.van||x.l.van)?'Afbeeldingen en links gaan mee naar de trades'+(vol?'; bij '+vol+' trade'+(vol===1?'':'s')+' paste niet alles':'')+'.':'';}
 // Rustig venster (polish punt 4): kop in één regel, twee tabs, filters als pills, trades als rijen die je aantikt.
 function convertH(M){
   const x=scenOf(M.sid);if(!x)return {t:'Zet om in trade',h:'<div class="empty"><b>Scenario niet gevonden</b></div>',f:'<button class="btn" data-a="close">Sluit</button>'};
@@ -886,13 +903,14 @@ function convertH(M){
   const kop=`<div class="convkop"><span class="grade ${s.grade}">${s.grade}</span><span class="dir ${s.dir}">${s.dir}</span><span class="pair">${esc(s.pair)}</span><b>${esc(titel(s))}</b><span class="datum">${esc(datumKort(day.id))}</span></div>`;
   const tabs=`<div class="mtabs" role="tablist">${[['koppel','Uit je journal'],['hand','Nieuwe trade invullen']].map(([k,l])=>`<button role="tab" aria-selected="${M.weg===k}" class="${M.weg===k?'on':''}" data-a="convWeg" data-v="${k}">${l}</button>`).join('')}</div>`;
   const later='<button class="btn ghost sm tlink" data-a="laterKoppelen">Nog niet binnen? Markeer als genomen</button>';
+  const mee=`<p class="meeregel">${esc(meeRegel(s))}</p>`;
   if(M.weg==='hand'){const L=zetOmLagen(s,day,week),unch=s.entry.confirmations.filter(g=>!s.checked.includes(g));
-    return {t:'Zet om in trade',kop,h:tabs+`<p class="mline">Handmatig, backtest of paper: de journal opent het tradeformulier met dit al ingevuld.</p>
+    return {t:'Zet om in trade',kop,h:tabs+mee+`<p class="mline">Handmatig, backtest of paper: de journal opent het tradeformulier met dit al ingevuld.</p>
       ${c.risk[s.grade]?'':`<div class="callout warn" style="margin-bottom:12px">Grade ${esc(s.grade)} staat in je instellingen op <b>niet traden</b>.</div>`}
       <dl class="kv"><dt>Playbook</dt><dd>${esc(s.pb)||'–'}</dd><dt>Risico</dt><dd>${c.risk[s.grade]?pctTxt(c.risk[s.grade])+' (grade '+s.grade+')':'grade '+s.grade+': niet traden'}</dd>
       <dt>Lagen</dt><dd>${L.map(l=>`<div class="row" style="gap:5px;margin-bottom:4px"><span class="chip tf">${esc(l.tf)}</span>${l.bias?`<span class="bias ${esc(l.bias)}">${esc(l.bias)}</span>`:''}${[...l.setups,...l.confirmations].map(g=>chipH(g)).join('')}</div>`).join('')||'–'}${unch.length?`<div class="faint small">Niet afgevinkt, gaat niet mee: ${unch.map(esc).join(', ')}</div>`:''}</dd>
       <dt>Stop</dt><dd class="num">${esc(s.stop)||'–'}</dd><dt>TP's</dt><dd class="num">${s.tps.map(esc).join(' · ')||'–'}</dd>
-      <dt>Beeld</dt><dd>${s.media.imgs.length} afbeelding${s.media.imgs.length===1?'':'en'} · ${s.media.links.length} link${s.media.links.length===1?'':'s'}</dd></dl>`,
+</dl>`,
       f:`<span></span><button class="btn pri" data-a="naarFormulier">Open tradeformulier</button>`};}
   const bz=bezetting(),lijst=kandidaten(s,day,M);
   const pill=(a,lbl,on)=>`<button class="chip pick ${on?'on':''}" data-a="${a}" aria-pressed="${on}">${lbl}</button>`;
@@ -903,9 +921,9 @@ function convertH(M){
       <span class="vink" aria-hidden="true">${on?'✓':''}</span><span class="num tijd">${esc(tradeTijd(t))}</span><b class="kpair">${esc(t.pair)}</b><span class="dir ${t.dir==='short'?'short':'long'}">${esc(t.dir)}</span>${t.kind&&t.kind!=='live'?`<span class="faint small">${esc(t.kind)}</span>`:''}
       ${ander?`<span class="kbij">bij ${esc(titel(van))}</span>`:res}</button>`;};
   const n=M.sel.length;
-  if(!JR.klaar)return {t:'Zet om in trade',kop,h:tabs+filters+'<div class="empty">Journal laden…</div>',f:later};
-  if(!lijst.length)return {t:'Zet om in trade',kop,h:tabs+filters+`<p class="kgeen">${M.alle?'Geen trades':`Geen ${esc(pairBase(s.pair))} ${esc(s.dir)}`} op ${esc(datumKort(day.id))}${M.erna?' of de dag erna':''} in je journal. Sync eerst in de journal${M.alle?'':', of zet "Alle pairs en richtingen" aan'}.</p>`,f:later};
-  return {t:'Zet om in trade',kop,h:tabs+filters+`<div class="kands">${lijst.map(rij).join('')}</div><p class="mline">Lege velden van de trade worden aangevuld vanuit het scenario.</p>`,
+  if(!JR.klaar)return {t:'Zet om in trade',kop,h:tabs+mee+filters+'<div class="empty">Journal laden…</div>',f:later};
+  if(!lijst.length)return {t:'Zet om in trade',kop,h:tabs+mee+filters+`<p class="kgeen">${M.alle?'Geen trades':`Geen ${esc(pairBase(s.pair))} ${esc(s.dir)}`} op ${esc(datumKort(day.id))}${M.erna?' of de dag erna':''} in je journal. Sync eerst in de journal${M.alle?'':', of zet "Alle pairs en richtingen" aan'}.</p>`,f:later};
+  return {t:'Zet om in trade',kop,h:tabs+mee+filters+`<div class="kands">${lijst.map(rij).join('')}</div><p class="mline">Lege velden van de trade worden aangevuld vanuit het scenario.</p>`,
     f:`${later}<button class="btn pri" data-a="koppel" ${n?'':'disabled'}>${n?`Koppel ${n} trade${n===1?'':'s'}`:'Koppel trade'}</button>`};
 }
 // De gekoppelde trades in een opengeklapt scenario, met ontkoppelen.
@@ -1381,10 +1399,11 @@ const A={
   kandAlle:()=>{S.modal.alle=!S.modal.alle;},
   kandErna:()=>{S.modal.erna=!S.modal.erna;},
   kandSel:el=>{const M=S.modal,k=el.dataset.v,i=M.sel.indexOf(k);if(i>=0)M.sel.splice(i,1);else M.sel.push(k);},
-  koppel:()=>{const M=S.modal,x=scenOf(M.sid);if(!x||!M.sel.length)return;const per=new Map(JR.trades.map(t=>[String(t.id),t.id])),bz=bezetting();
+  koppel:()=>{const M=S.modal,x=scenOf(M.sid);if(!x||!M.sel.length)return;const per=new Map(JR.trades.map(t=>[String(t.id),t.id])),bz=bezetting(),eerder=new Set((x.s.trades||[]).map(String));
     const ids=M.sel.filter(k=>!(bz.get(k)&&bz.get(k).id!==x.s.id)).map(k=>per.has(k)?per.get(k):(x.s.trades||[]).find(i=>String(i)===k)).filter(v=>v!=null);
     x.s.trades=ids;if(ids.length&&x.s.status!=='genomen'){x.s.status='genomen';x.s.statusTs=Date.now();}
-    S.modal=null;save();toast(ids.length?'Gekoppeld: '+ids.length+' trade'+(ids.length===1?'':'s')+'. De journal vult playbook, grade, lagen en beeld aan waar die nog leeg zijn.':'Geen trades meer gekoppeld.');},
+    const mee=meeVoorspel(x.s,ids.filter(i=>!eerder.has(String(i))).map(i=>JR.trades.find(t=>String(t.id)===String(i))).filter(Boolean));
+    S.modal=null;save();toast(ids.length?'Gekoppeld: '+ids.length+' trade'+(ids.length===1?'':'s')+'. '+(mee?mee+' ':'')+'De journal vult playbook, grade en lagen aan waar die nog leeg zijn.':'Geen trades meer gekoppeld.');},
   laterKoppelen:()=>{const x=scenOf(S.modal.sid);if(!x)return;x.s.status='genomen';x.s.statusTs=Date.now();S.modal=null;save();toast('Op genomen gezet. Koppel de trade later vanuit de Afsluiting of de Log.');},
   naarFormulier:()=>{const x=scenOf(S.modal.sid);if(!x)return;lsSet(LS.handoff,{sid:x.s.id,day:x.day.id,ts:Date.now()});location.href=JOURNAL_URL;return false;},
   mori:el=>{const x=scenOf(el.dataset.s);if(!x)return;naarMori({soort:'scenario',sid:x.s.id,day:x.day.id},x.day);},
