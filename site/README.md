@@ -44,7 +44,7 @@ Onderstaande secties gaan over hosting en releases van deze repo.
 |---|---|
 | `index.html` | De landingspagina (eigen, lichte pagina; gebouwd uit `demos/landing-demo.html` in de dev-repo) |
 | `app.html` | De volledige journal (single-file HTML + vanilla JS; kopie van `work/syncjournal.html` op releasemoment). Bereikbaar als `/app` |
-| `robots.txt`, `sitemap.xml`, `og-image.png` | Voor zoekmachines en link-previews; de app zelf staat op `Disallow` |
+| `robots.txt`, `sitemap.xml`, `og-syncjournal.png` | Voor zoekmachines en link-previews; de app zelf staat op `Disallow`. De preview-afbeelding (1200×630, logo in het midden zodat ook een vierkante uitsnede klopt) maak je opnieuw uit `assets/og/og.html`. Nieuwe afbeelding = nieuwe bestandsnaam: chat-apps bewaren de oude per adres. `og-image.png` blijft voor oude links |
 | `version.json` | Bron voor de in-app update-check (`{version, released}`) — **moet gelijk zijn aan `APP_VERSION` in app.html** |
 | `demo-dataset.json` | Voorbeelddata (3000 trades) voor "Rondkijken met voorbeelddata" |
 | `privacy.html` | Privacyverklaring (ook vereist voor de Google Drive-verificatie) |
