@@ -5,6 +5,8 @@
 //  2. Het scenario-venster: ± 1000 breed, links het formulier (vaste volgorde), rechts sticky playbook en context
 //     (criteria als lijst met "verplicht"-badges, "Niet als" per regel in amber, Target en Min R:R, lagen met entry-
 //     tijdframe, edge). Zonder playbook een lege staat. Lange criteria: Annuleer/Bewaar blijven zichtbaar. 390: één kolom.
+//  3. Richting en grade in kleur: gekozen Long groen, Short rood, A groen, B accent, C amber (de kleuren van .dir en
+//     .grade); niet gekozen rustig grijs met een vleugje kleur bij hover; aria-pressed; contrast ≥ 4,5 in licht en donker.
 const { chromium } = require('playwright');
 const H = require('./helpers/plan3'); const NAAM = 'Plan v3 ronde 6';
 const L = (tf, setups = [], confirmations = [], bias = '') => ({ tf, bias, setups, confirmations });
@@ -132,6 +134,31 @@ const TV = 'https://www.tradingview.com/x/AbC123/', EIGEN_TV = 'https://www.trad
   ok('390: één kolom, playbook en context onder het formulier', v.onder && !v.kol, JSON.stringify({ onder: v.onder, kol: v.kol }));
   ok('390: geen horizontale scroll in het venster', await p.evaluate(() => { const m = document.querySelector('#modal .modal'); return m.scrollWidth <= m.clientWidth + 1 && document.documentElement.scrollWidth <= innerWidth + 1; }));
   await p.click('#modal [data-a="close"]'); await p.setViewportSize({ width: 1280, height: 900 });
+
+  console.log('--- 3. richting en grade in kleur ---');
+  // contrast (WCAG) van tekst op zijn achtergrond; getComputedStyle geeft rgb() of color(srgb …)
+  const kleuren = sel => p.evaluate(sel => { const parse = c => { const m = c.match(/color\(srgb ([\d.]+) ([\d.]+) ([\d.]+)/); if (m) return m.slice(1, 4).map(x => +x * 255); const n = c.match(/[\d.]+/g).map(Number); return n.slice(0, 3); };
+    const lum = ([r, g, b]) => { const f = v => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b); };
+    return [...document.querySelectorAll(sel + ' button')].map(b => { const c = getComputedStyle(b), fg = parse(c.color), bg = parse(c.backgroundColor === 'rgba(0, 0, 0, 0)' ? getComputedStyle(b.parentElement).backgroundColor : c.backgroundColor);
+      const L1 = lum(fg), L2 = lum(bg); return { v: b.dataset.v, on: b.getAttribute('aria-pressed') === 'true', fg: fg.map(Math.round), bg: bg.map(Math.round), contrast: +((Math.max(L1, L2) + 0.05) / (Math.min(L1, L2) + 0.05)).toFixed(2) }; }); }, sel);
+  const tint = ([r, g, b]) => Math.max(r, g, b) - Math.min(r, g, b) < 45 ? 'grijs' : g > r + 20 && g > b ? 'groen' : r > g + 20 && r > b + 20 && Math.abs(g - b) < 40 ? 'rood' : b > r + 20 && b > g ? 'blauw' : r > b + 40 && g > b + 15 ? 'amber' : 'grijs';
+  for (const donker of [false, true]) {
+    await H.thema(p, donker); const th = donker ? 'donker' : 'licht';
+    await p.click('[data-a="newScen"]'); await p.waitForTimeout(120);
+    const keuze = async (pp, v) => { await p.click(`#modal [data-a="dset"][data-p="${pp}"][data-v="${v}"]`); await p.waitForTimeout(60); return (await kleuren('#sc-' + (pp === 'dir' ? 'dir' : 'grade'))).find(x => x.v === v); };
+    const L1 = await keuze('dir', 'long'), S1 = await keuze('dir', 'short'), A1 = await keuze('grade', 'A'), B1 = await keuze('grade', 'B'), C1 = await keuze('grade', 'C');
+    ok(`${th}: gekozen Long groen, Short rood`, L1.on && tint(L1.fg) === 'groen' && S1.on && tint(S1.fg) === 'rood', JSON.stringify([L1, S1]));
+    ok(`${th}: gekozen A groen, B accent, C amber`, A1.on && tint(A1.fg) === 'groen' && B1.on && tint(B1.fg) === 'blauw' && C1.on && tint(C1.fg) === 'amber', JSON.stringify([A1, B1, C1]));
+    ok(`${th}: gekozen knoppen hebben contrast ≥ 4,5`, [L1, S1, A1, B1, C1].every(x => x.contrast >= 4.5), JSON.stringify([L1, S1, A1, B1, C1].map(x => x.v + ':' + x.contrast)));
+    const niet = (await kleuren('#sc-grade')).filter(x => !x.on);
+    ok(`${th}: niet gekozen: rustig grijs, leesbaar (≥ 4,5)`, niet.every(x => tint(x.fg) === 'grijs' && x.contrast >= 4.5), JSON.stringify(niet));
+    await p.hover('#modal [data-a="dset"][data-p="grade"][data-v="A"]'); await p.waitForTimeout(150);
+    const hov = (await kleuren('#sc-grade')).find(x => x.v === 'A');
+    ok(`${th}: hover op een niet-gekozen knop: een vleugje van zijn kleur`, tint(hov.fg) === 'groen' && hov.contrast >= 4.5, JSON.stringify(hov));
+    ok(`${th}: aria-pressed op elke knop`, await p.evaluate(() => [...document.querySelectorAll('#sc-dir button,#sc-grade button')].every(b => ['true', 'false'].includes(b.getAttribute('aria-pressed')))));
+    await p.click('#modal [data-a="close"]'); await p.waitForTimeout(80);
+  }
+  await H.thema(p, false);
 
   console.log('--- screenshots van het venster ---');
   const VENSTER = async (naam, open) => { for (const donker of [false, true]) { await H.thema(p, donker); for (const w of [1280, 390]) { await p.setViewportSize({ width: w, height: 900 }); await p.waitForTimeout(120); await open();

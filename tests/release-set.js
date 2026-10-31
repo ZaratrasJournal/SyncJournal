@@ -79,6 +79,7 @@ module.exports = [
   'plan3-criteria',          // playbook-criteria in een scenario standaard ingeklapt; amber als verplichte nog open staan
   'plan3-scenario-beeld',    // ronde 4: Dag breder, opengeklapt scenario met chart, Plan en sticky Uitvoering & edge
   'plan3-ronde5',            // criteria-knop, Plan in blokken, bewerken/verwijderen (⋯-menu, bevestiging in de pagina), volgorde
+  'plan3-ronde6',            // scenario-venster: beeld mee bij koppelen, breed venster met playbook rechts, richting/grade in kleur
 
   // analyse en weergave
   'matrix', 'yearheatmap', 'review-list', 'coach-share', 'review-beeld', 'tv-links', 'theme-hook', 'beeld-escaping',
